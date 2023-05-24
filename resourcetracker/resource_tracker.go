@@ -408,13 +408,16 @@ func buildExternalDependencyMultitrackSpec(extDependency *resource.ExternalDepen
 func buildHelmHookGenericSpec(helmHook *resource.HelmHook, timeout, showProgressEvery time.Duration) *generic.Spec {
 	resourceID := resid.NewResourceID(helmHook.Name(), helmHook.GroupVersionKind(), resid.NewResourceIDOptions{Namespace: helmHook.Namespace()})
 	allowFailuresCount := helmHook.FailuresAllowed()
-	noActivityTimeout, _ := helmHook.NoActivityTimeout()
+	var noActivityTimeout *time.Duration
+	if timeout, set := helmHook.NoActivityTimeout(); set {
+		noActivityTimeout = &timeout
+	}
 
 	// FIXME(ilya-lesikov): is there no way to provide default namespace for generic spec?
 	return &generic.Spec{
 		ResourceID:           resourceID,
 		Timeout:              timeout,
-		NoActivityTimeout:    &noActivityTimeout,
+		NoActivityTimeout:    noActivityTimeout,
 		TrackTerminationMode: generic.TrackTerminationMode(helmHook.TrackTerminationMode()),
 		FailMode:             generic.FailMode(helmHook.FailMode()),
 		AllowFailuresCount:   &allowFailuresCount,
