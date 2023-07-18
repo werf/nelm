@@ -43,7 +43,7 @@ func (a *AnnotationExternalDependencyNamespace) Validate() error {
 }
 
 func (a *AnnotationExternalDependencyNamespace) ExternalDependencyId() string {
-	matches := AnnotationKeyPatternExternalDependencyNamespace.FindStringSubmatch(strings.TrimSpace(a.Value()))
+	matches := AnnotationKeyPatternExternalDependencyNamespace.FindStringSubmatch(strings.TrimSpace(a.Key()))
 	idSubexpIndex := AnnotationKeyPatternExternalDependencyNamespace.SubexpIndex("id")
 	return matches[idSubexpIndex]
 }
