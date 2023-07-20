@@ -8,6 +8,7 @@ import (
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/releaseutil"
 	"helm.sh/helm/v3/pkg/storage/driver"
+	drvr "helm.sh/helm/v3/pkg/storage/driver"
 	helmtime "helm.sh/helm/v3/pkg/time"
 	"helm.sh/helm/v3/pkg/werf/common"
 	"helm.sh/helm/v3/pkg/werf/plan"
@@ -16,7 +17,7 @@ import (
 
 func NewHistory(releaseName, releaseNamespace string, driver driver.Driver) (*History, error) {
 	releases, err := driver.Query(map[string]string{"name": releaseName, "owner": "helm"})
-	if err != nil {
+	if err != nil && err != drvr.ErrReleaseNotFound {
 		return nil, fmt.Errorf("error querying releases: %w", err)
 	}
 	releaseutil.SortByRevision(releases)
