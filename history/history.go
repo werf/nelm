@@ -3,7 +3,6 @@ package history
 import (
 	"fmt"
 
-	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/releaseutil"
@@ -13,6 +12,7 @@ import (
 	"helm.sh/helm/v3/pkg/werf/common"
 	"helm.sh/helm/v3/pkg/werf/plan"
 	"helm.sh/helm/v3/pkg/werf/resource"
+	"sigs.k8s.io/yaml"
 )
 
 func NewHistory(releaseName, releaseNamespace string, driver driver.Driver) (*History, error) {
