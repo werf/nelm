@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"helm.sh/helm/v3/pkg/werf/common"
@@ -31,7 +32,8 @@ type Client struct {
 	discoveryClient discovery.CachedDiscoveryInterface
 	mapper          meta.ResettableRESTMapper
 
-	resourceWaiter      *resourcewaiter.ResourceWaiter
+	resourceWaiter *resourcewaiter.ResourceWaiter
+	// FIXME(ilya-lesikov): to duration
 	waitDeletionTimeout int
 
 	targetResourceMutators []mutator.RuntimeResourceMutator
@@ -178,10 +180,10 @@ func (c *Client) Create(ctx context.Context, opts CreateOptions, resources ...re
 				return result, []error{fmt.Errorf("error deleting resource %q before recreating: %w", runtimeRes, err)}
 			}
 
-			if err := c.resourceWaiter.WaitDeletion(ctx, resourcewaiter.WaitDeletionOptions{
+			if err := c.resourceWaiter.WaitDeletion(ctx, runtimeRes, resourcewaiter.WaitDeletionOptions{
 				FallbackNamespace: fallbackNamespace,
-				Timeout:           c.waitDeletionTimeout,
-			}, runtimeRes); err != nil {
+				Timeout:           time.Duration(c.waitDeletionTimeout) * time.Second,
+			}); err != nil {
 				return result, []error{fmt.Errorf("error waiting for resource %q to be deleted before recreating: %w", runtimeRes, err)}
 			}
 		}
@@ -280,10 +282,10 @@ func (c *Client) Update(ctx context.Context, opts UpdateOptions, resources ...re
 					return result, []error{fmt.Errorf("error deleting resource %q before recreating: %w", runtimeRes, err)}
 				}
 
-				if err := c.resourceWaiter.WaitDeletion(ctx, resourcewaiter.WaitDeletionOptions{
+				if err := c.resourceWaiter.WaitDeletion(ctx, runtimeRes, resourcewaiter.WaitDeletionOptions{
 					FallbackNamespace: fallbackNamespace,
-					Timeout:           c.waitDeletionTimeout,
-				}, runtimeRes); err != nil {
+					Timeout:           time.Duration(c.waitDeletionTimeout) * time.Second,
+				}); err != nil {
 					return result, []error{fmt.Errorf("error waiting for resource %q to be deleted before recreating: %w", runtimeRes, err)}
 				}
 
@@ -409,10 +411,10 @@ func (c *Client) SmartApply(ctx context.Context, opts SmartApplyOptions, resourc
 				return result, []error{fmt.Errorf("error deleting resource %q before recreating: %w", runtimeRes, err)}
 			}
 
-			if err := c.resourceWaiter.WaitDeletion(ctx, resourcewaiter.WaitDeletionOptions{
+			if err := c.resourceWaiter.WaitDeletion(ctx, runtimeRes, resourcewaiter.WaitDeletionOptions{
 				FallbackNamespace: fallbackNamespace,
-				Timeout:           c.waitDeletionTimeout,
-			}, runtimeRes); err != nil {
+				Timeout:           time.Duration(c.waitDeletionTimeout) * time.Second,
+			}); err != nil {
 				return result, []error{fmt.Errorf("error waiting for resource %q to be deleted before recreating: %w", runtimeRes, err)}
 			}
 
