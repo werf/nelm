@@ -161,7 +161,7 @@ func (r *UnmanagedResource) FailuresAllowed() int {
 	}
 }
 
-func (r *UnmanagedResource) IgnoreReadinessProbeFailsForContainers() (durationByContainer map[string]time.Duration, set bool) {
+func (r *UnmanagedResource) IgnoreReadinessProbeFailsForContainers() (durationByContainer map[string]time.Duration) {
 	for key, value := range r.Unstructured().GetAnnotations() {
 		anno := annotation.AnnotationFactory(key, value)
 		if a, ok := anno.(*annotation.AnnotationIgnoreReadinessProbeFailsFor); ok {
@@ -169,21 +169,21 @@ func (r *UnmanagedResource) IgnoreReadinessProbeFailsForContainers() (durationBy
 		}
 	}
 
-	return durationByContainer, len(durationByContainer) > 0
+	return durationByContainer
 }
 
-func (r *UnmanagedResource) LogRegex() (regex *regexp.Regexp, set bool) {
+func (r *UnmanagedResource) LogRegex() (regex *regexp.Regexp) {
 	for key, value := range r.Unstructured().GetAnnotations() {
 		anno := annotation.AnnotationFactory(key, value)
 		if a, ok := anno.(*annotation.AnnotationLogRegex); ok {
-			return a.LogRegex(), true
+			return a.LogRegex()
 		}
 	}
 
-	return nil, false
+	return nil
 }
 
-func (r *UnmanagedResource) LogRegexesForContainers() (regexByContainer map[string]*regexp.Regexp, set bool) {
+func (r *UnmanagedResource) LogRegexesForContainers() (regexByContainer map[string]*regexp.Regexp) {
 	for key, value := range r.Unstructured().GetAnnotations() {
 		anno := annotation.AnnotationFactory(key, value)
 		if a, ok := anno.(*annotation.AnnotationLogRegexFor); ok {
@@ -191,29 +191,30 @@ func (r *UnmanagedResource) LogRegexesForContainers() (regexByContainer map[stri
 		}
 	}
 
-	return regexByContainer, len(regexByContainer) > 0
+	return regexByContainer
 }
 
-func (r *UnmanagedResource) NoActivityTimeout() (duration time.Duration, set bool) {
+func (r *UnmanagedResource) NoActivityTimeout() (duration *time.Duration) {
 	for key, value := range r.Unstructured().GetAnnotations() {
 		anno := annotation.AnnotationFactory(key, value)
 		if a, ok := anno.(*annotation.AnnotationNoActivityTimeout); ok {
-			return a.NoActivityTimeout(), true
+			result := a.NoActivityTimeout()
+			return &result
 		}
 	}
 
-	return 0, false
+	return nil
 }
 
-func (r *UnmanagedResource) ShowLogsOnlyForContainers() (containers []string, set bool) {
+func (r *UnmanagedResource) ShowLogsOnlyForContainers() (containers []string) {
 	for key, value := range r.Unstructured().GetAnnotations() {
 		anno := annotation.AnnotationFactory(key, value)
 		if a, ok := anno.(*annotation.AnnotationShowLogsOnlyForContainers); ok {
-			return a.ForContainers(), true
+			return a.ForContainers()
 		}
 	}
 
-	return nil, false
+	return nil
 }
 
 func (r *UnmanagedResource) ShowServiceMessages() bool {
@@ -238,15 +239,15 @@ func (r *UnmanagedResource) SkipLogs() bool {
 	return false
 }
 
-func (r *UnmanagedResource) SkipLogsForContainers() (containers []string, set bool) {
+func (r *UnmanagedResource) SkipLogsForContainers() (containers []string) {
 	for key, value := range r.Unstructured().GetAnnotations() {
 		anno := annotation.AnnotationFactory(key, value)
 		if a, ok := anno.(*annotation.AnnotationSkipLogsForContainers); ok {
-			return a.ForContainers(), true
+			return a.ForContainers()
 		}
 	}
 
-	return nil, false
+	return nil
 }
 
 func (r *UnmanagedResource) TrackTerminationMode() multitrack.TrackTerminationMode {

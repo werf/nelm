@@ -23,10 +23,12 @@ func NewDeployPlanExecutor(plan *Plan, releaseNs *resource.UnmanagedResource, cl
 }
 
 type DeployPlanExecutor struct {
-	plan             *Plan
-	report           *Report
-	releaseNamespace *resource.UnmanagedResource
-	trackTimeout     time.Duration
+	plan                       *Plan
+	report                     *Report
+	releaseNamespace           *resource.UnmanagedResource
+	trackTimeout               time.Duration
+	resourceShowProgressPeriod time.Duration
+	hookShowProgressPeriod     time.Duration
 
 	client         *client.Client
 	tracker        *resourcetracker.ResourceTracker
@@ -35,6 +37,16 @@ type DeployPlanExecutor struct {
 
 func (e *DeployPlanExecutor) WithTrackTimeout(timeout time.Duration) *DeployPlanExecutor {
 	e.trackTimeout = timeout
+	return e
+}
+
+func (e *DeployPlanExecutor) WithResourceShowProgressPeriod(timeout time.Duration) *DeployPlanExecutor {
+	e.resourceShowProgressPeriod = timeout
+	return e
+}
+
+func (e *DeployPlanExecutor) WithHookShowProgressPeriod(timeout time.Duration) *DeployPlanExecutor {
+	e.hookShowProgressPeriod = timeout
 	return e
 }
 
@@ -47,6 +59,8 @@ func (e *DeployPlanExecutor) Execute(ctx context.Context) (*Report, error) {
 	if e.report == nil {
 		e.report = NewReport()
 	}
+
+	logsFromTime := time.Now()
 
 	for _, phase := range e.plan.Phases {
 		for _, operation := range phase.Operations {
@@ -113,24 +127,73 @@ func (e *DeployPlanExecutor) Execute(ctx context.Context) (*Report, error) {
 					return e.report, fmt.Errorf("error deleting resources: %w", multierror.Append(nil, errs...))
 				}
 			case *OperationTrackHelmHooksReadiness:
-				if err := e.tracker.TrackHelmHooksReadiness(ctx, resourcetracker.TrackHelmHooksReadinessOptions{FallbackNamespace: e.releaseNamespace.Name(), Timeout: e.trackTimeout}, op.Targets...); err != nil {
+				targets := []resourcetracker.ReadinessTrackable{}
+				for _, t := range op.Targets {
+					targets = append(targets, t)
+				}
+
+				if err := e.tracker.TrackReadiness(ctx, resourcetracker.TrackReadinessOptions{
+					FallbackNamespace:  e.releaseNamespace.Name(),
+					Timeout:            e.trackTimeout,
+					ShowProgressPeriod: e.hookShowProgressPeriod,
+					LogsFromTime:       logsFromTime,
+				}, targets...); err != nil {
 					return e.report, fmt.Errorf("error tracking helm hooks readiness: %w", err)
 				}
 			case *OperationTrackHelmResourcesReadiness:
-				if err := e.tracker.TrackHelmResourcesReadiness(ctx, resourcetracker.TrackHelmResourcesReadinessOptions{FallbackNamespace: e.releaseNamespace.Name(), Timeout: e.trackTimeout}, op.Targets...); err != nil {
+				targets := []resourcetracker.ReadinessTrackable{}
+				for _, t := range op.Targets {
+					targets = append(targets, t)
+				}
+
+				if err := e.tracker.TrackReadiness(ctx, resourcetracker.TrackReadinessOptions{
+					FallbackNamespace:  e.releaseNamespace.Name(),
+					Timeout:            e.trackTimeout,
+					ShowProgressPeriod: e.resourceShowProgressPeriod,
+					LogsFromTime:       logsFromTime,
+				}, targets...); err != nil {
 					return e.report, fmt.Errorf("error tracking helm resources readiness: %w", err)
 				}
 			case *OperationTrackUnmanagedResourcesReadiness:
-				if err := e.tracker.TrackUnmanagedResourcesReadiness(ctx, resourcetracker.TrackUnmanagedResourcesReadinessOptions{FallbackNamespace: e.releaseNamespace.Name(), Timeout: e.trackTimeout}, op.Targets...); err != nil {
-					return e.report, fmt.Errorf("error tracking resources readiness: %w", err)
+				targets := []resourcetracker.ReadinessTrackable{}
+				for _, t := range op.Targets {
+					targets = append(targets, t)
+				}
+
+				if err := e.tracker.TrackReadiness(ctx, resourcetracker.TrackReadinessOptions{
+					FallbackNamespace:  e.releaseNamespace.Name(),
+					Timeout:            e.trackTimeout,
+					ShowProgressPeriod: e.resourceShowProgressPeriod,
+					LogsFromTime:       logsFromTime,
+				}, targets...); err != nil {
+					return e.report, fmt.Errorf("error tracking unmanaged resources readiness: %w", err)
 				}
 			case *OperationTrackExternalDependenciesReadiness:
-				if err := e.tracker.TrackExternalDependenciesReadiness(ctx, resourcetracker.TrackExternalDependenciesReadinessOptions{FallbackNamespace: e.releaseNamespace.Name(), Timeout: e.trackTimeout}, op.Targets...); err != nil {
+				targets := []resourcetracker.ReadinessTrackable{}
+				for _, t := range op.Targets {
+					targets = append(targets, t)
+				}
+
+				if err := e.tracker.TrackReadiness(ctx, resourcetracker.TrackReadinessOptions{
+					FallbackNamespace:  e.releaseNamespace.Name(),
+					Timeout:            e.trackTimeout,
+					ShowProgressPeriod: e.resourceShowProgressPeriod,
+					LogsFromTime:       logsFromTime,
+				}, targets...); err != nil {
 					return e.report, fmt.Errorf("error tracking external dependencies readiness: %w", err)
 				}
 			case *OperationTrackDeletion:
-				if err := e.tracker.TrackDeletion(ctx, resourcetracker.TrackDeletionOptions{FallbackNamespace: e.releaseNamespace.Name(), Timeout: e.trackTimeout}, op.Targets...); err != nil {
-					return e.report, fmt.Errorf("error tracking deletion: %w", err)
+				targets := []resourcetracker.DeletionTrackable{}
+				for _, t := range op.Targets {
+					targets = append(targets, t)
+				}
+
+				if err := e.tracker.TrackDeletion(ctx, resourcetracker.TrackDeletionOptions{
+					FallbackNamespace:  e.releaseNamespace.Name(),
+					Timeout:            e.trackTimeout,
+					ShowProgressPeriod: e.resourceShowProgressPeriod,
+				}, targets...); err != nil {
+					return e.report, fmt.Errorf("error tracking resources deletion: %w", err)
 				}
 			case *OperationCreateReleases:
 				for _, rel := range op.Releases {

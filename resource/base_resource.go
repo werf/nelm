@@ -2,10 +2,14 @@ package resource
 
 import (
 	"fmt"
+	"regexp"
+	"time"
 
 	"helm.sh/helm/v3/pkg/werf/annotation"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 )
 
 func newBaseResource(u *unstructured.Unstructured) *baseResource {
@@ -20,6 +24,50 @@ func newBaseResource(u *unstructured.Unstructured) *baseResource {
 type baseResource struct {
 	*Reference
 	unstructured *unstructured.Unstructured
+}
+
+func (r *baseResource) FailuresAllowed() int {
+	return 1
+}
+
+func (r *baseResource) LogRegex() *regexp.Regexp {
+	return nil
+}
+
+func (r *baseResource) LogRegexesForContainers() map[string]*regexp.Regexp {
+	return nil
+}
+
+func (r *baseResource) SkipLogsForContainers() []string {
+	return nil
+}
+
+func (r *baseResource) ShowLogsOnlyForContainers() []string {
+	return nil
+}
+
+func (r *baseResource) IgnoreReadinessProbeFailsForContainers() map[string]time.Duration {
+	return nil
+}
+
+func (r *baseResource) TrackTerminationMode() multitrack.TrackTerminationMode {
+	return multitrack.WaitUntilResourceReady
+}
+
+func (r *baseResource) FailMode() multitrack.FailMode {
+	return multitrack.FailWholeDeployProcessImmediately
+}
+
+func (r *baseResource) SkipLogs() bool {
+	return false
+}
+
+func (r *baseResource) ShowServiceMessages() bool {
+	return false
+}
+
+func (r *baseResource) NoActivityTimeout() *time.Duration {
+	return nil
 }
 
 func (r *baseResource) Validate() error {

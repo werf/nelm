@@ -162,7 +162,8 @@ func (r *HelmResource) FailuresAllowed() int {
 	}
 }
 
-func (r *HelmResource) IgnoreReadinessProbeFailsForContainers() (durationByContainer map[string]time.Duration, set bool) {
+func (r *HelmResource) IgnoreReadinessProbeFailsForContainers() map[string]time.Duration {
+	var durationByContainer map[string]time.Duration
 	for key, value := range r.Unstructured().GetAnnotations() {
 		anno := annotation.AnnotationFactory(key, value)
 		if a, ok := anno.(*annotation.AnnotationIgnoreReadinessProbeFailsFor); ok {
@@ -170,21 +171,21 @@ func (r *HelmResource) IgnoreReadinessProbeFailsForContainers() (durationByConta
 		}
 	}
 
-	return durationByContainer, len(durationByContainer) > 0
+	return durationByContainer
 }
 
-func (r *HelmResource) LogRegex() (regex *regexp.Regexp, set bool) {
+func (r *HelmResource) LogRegex() *regexp.Regexp {
 	for key, value := range r.Unstructured().GetAnnotations() {
 		anno := annotation.AnnotationFactory(key, value)
 		if a, ok := anno.(*annotation.AnnotationLogRegex); ok {
-			return a.LogRegex(), true
+			return a.LogRegex()
 		}
 	}
 
-	return nil, false
+	return nil
 }
 
-func (r *HelmResource) LogRegexesForContainers() (regexByContainer map[string]*regexp.Regexp, set bool) {
+func (r *HelmResource) LogRegexesForContainers() (regexByContainer map[string]*regexp.Regexp) {
 	for key, value := range r.Unstructured().GetAnnotations() {
 		anno := annotation.AnnotationFactory(key, value)
 		if a, ok := anno.(*annotation.AnnotationLogRegexFor); ok {
@@ -192,29 +193,30 @@ func (r *HelmResource) LogRegexesForContainers() (regexByContainer map[string]*r
 		}
 	}
 
-	return regexByContainer, len(regexByContainer) > 0
+	return regexByContainer
 }
 
-func (r *HelmResource) NoActivityTimeout() (duration time.Duration, set bool) {
+func (r *HelmResource) NoActivityTimeout() (duration *time.Duration) {
 	for key, value := range r.Unstructured().GetAnnotations() {
 		anno := annotation.AnnotationFactory(key, value)
 		if a, ok := anno.(*annotation.AnnotationNoActivityTimeout); ok {
-			return a.NoActivityTimeout(), true
+			result := a.NoActivityTimeout()
+			return &result
 		}
 	}
 
-	return 0, false
+	return nil
 }
 
-func (r *HelmResource) ShowLogsOnlyForContainers() (containers []string, set bool) {
+func (r *HelmResource) ShowLogsOnlyForContainers() (containers []string) {
 	for key, value := range r.Unstructured().GetAnnotations() {
 		anno := annotation.AnnotationFactory(key, value)
 		if a, ok := anno.(*annotation.AnnotationShowLogsOnlyForContainers); ok {
-			return a.ForContainers(), true
+			return a.ForContainers()
 		}
 	}
 
-	return nil, false
+	return nil
 }
 
 func (r *HelmResource) ShowServiceMessages() bool {
@@ -239,15 +241,15 @@ func (r *HelmResource) SkipLogs() bool {
 	return false
 }
 
-func (r *HelmResource) SkipLogsForContainers() (containers []string, set bool) {
+func (r *HelmResource) SkipLogsForContainers() (containers []string) {
 	for key, value := range r.Unstructured().GetAnnotations() {
 		anno := annotation.AnnotationFactory(key, value)
 		if a, ok := anno.(*annotation.AnnotationSkipLogsForContainers); ok {
-			return a.ForContainers(), true
+			return a.ForContainers()
 		}
 	}
 
-	return nil, false
+	return nil
 }
 
 func (r *HelmResource) TrackTerminationMode() multitrack.TrackTerminationMode {

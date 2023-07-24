@@ -55,3 +55,12 @@ func ConvertGVKtoGVR(gvk schema.GroupVersionKind, mapper meta.RESTMapper) (gvr s
 
 	return mapping.Resource, mapping.Scope == meta.RESTScopeNamespace, nil
 }
+
+func IsResourceNamespaced(gvk schema.GroupVersionKind, mapper meta.RESTMapper) (bool, error) {
+	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+	if err != nil {
+		return false, fmt.Errorf("error getting resource mapping for %q: %w", gvk, err)
+	}
+
+	return mapping.Scope == meta.RESTScopeNamespace, nil
+}

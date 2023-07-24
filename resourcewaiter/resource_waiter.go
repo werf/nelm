@@ -64,17 +64,18 @@ func (w *ResourceWaiter) WaitDeletion(ctx context.Context, res Waitable, opts Wa
 		return fmt.Errorf("error mapping GroupVersionKind %q to GroupVersionResource: %w", res.GroupVersionKind(), err)
 	}
 
-	var namespace string
-	if res.Namespace() != "" {
-		namespace = res.Namespace()
-	} else if opts.FallbackNamespace != "" {
-		namespace = opts.FallbackNamespace
-	} else {
-		namespace = v1.NamespaceDefault
-	}
-
-	var clientResource dynamic.ResourceInterface
+	var (
+		clientResource dynamic.ResourceInterface
+		namespace      string
+	)
 	if namespaced {
+		if res.Namespace() != "" {
+			namespace = res.Namespace()
+		} else if opts.FallbackNamespace != "" {
+			namespace = opts.FallbackNamespace
+		} else {
+			namespace = v1.NamespaceDefault
+		}
 		clientResource = w.dynamicClient.Resource(gvr).Namespace(namespace)
 	} else {
 		clientResource = w.dynamicClient.Resource(gvr)
