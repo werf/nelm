@@ -1,10 +1,14 @@
 package resourcev2
 
 import (
+	"fmt"
+	"strings"
+
 	"helm.sh/helm/v3/pkg/werf/resourcev2/resourceparts"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/kubernetes/scheme"
 )
 
 func NewLocalGeneralCRD(unstruct *unstructured.Unstructured, filePath string, opts NewLocalGeneralCRDOptions) *LocalGeneralCRD {
@@ -52,4 +56,38 @@ func (r *LocalGeneralCRD) Validate() error {
 	}
 
 	return nil
+}
+
+func BuildLocalGeneralCRDsFromManifests(manifests []string, opts BuildLocalGeneralCRDsFromManifestsOptions) ([]*LocalGeneralCRD, error) {
+	var localGeneralCRDs []*LocalGeneralCRD
+	for _, manifest := range manifests {
+		var path string
+		if strings.HasPrefix(manifest, "# Source: ") {
+			firstLine := strings.TrimSpace(strings.Split(manifest, "\n")[0])
+			path = strings.TrimPrefix(firstLine, "# Source: ")
+		}
+
+		obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(manifest), nil, &unstructured.Unstructured{})
+		if err != nil {
+			return nil, fmt.Errorf("error decoding resource from file %q: %w", path, err)
+		}
+
+		unstructObj := obj.(*unstructured.Unstructured)
+		if !IsCRD(unstructObj) {
+			continue
+		}
+
+		resource := NewLocalGeneralCRD(unstructObj, path, NewLocalGeneralCRDOptions{
+			Mapper:          opts.Mapper,
+			DiscoveryClient: opts.DiscoveryClient,
+		})
+		localGeneralCRDs = append(localGeneralCRDs, resource)
+	}
+
+	return localGeneralCRDs, nil
+}
+
+type BuildLocalGeneralCRDsFromManifestsOptions struct {
+	Mapper          meta.ResettableRESTMapper
+	DiscoveryClient discovery.CachedDiscoveryInterface
 }

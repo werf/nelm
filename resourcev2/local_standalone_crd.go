@@ -1,10 +1,14 @@
 package resourcev2
 
 import (
+	"fmt"
+	"strings"
+
 	"helm.sh/helm/v3/pkg/werf/resourcev2/resourceparts"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/kubernetes/scheme"
 )
 
 func NewLocalStandaloneCRD(unstruct *unstructured.Unstructured, filePath string, opts NewLocalStandaloneCRDOptions) *LocalStandaloneCRD {
@@ -48,4 +52,40 @@ func (r *LocalStandaloneCRD) Validate() error {
 	}
 
 	return nil
+}
+
+func BuildLocalStandaloneCRDsFromManifests(manifests []string, opts BuildLocalStandaloneCRDsFromManifestsOptions) ([]*LocalStandaloneCRD, error) {
+	var localStandaloneCRDs []*LocalStandaloneCRD
+	for _, manifest := range manifests {
+		var path string
+		if strings.HasPrefix(manifest, "# Source: ") {
+			firstLine := strings.TrimSpace(strings.Split(manifest, "\n")[0])
+			path = strings.TrimPrefix(firstLine, "# Source: ")
+		}
+
+		obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(manifest), nil, &unstructured.Unstructured{})
+		if err != nil {
+			return nil, fmt.Errorf("error decoding CRD from file %q: %w", path, err)
+		}
+
+		unstructObj := obj.(*unstructured.Unstructured)
+
+		if !IsCRD(unstructObj) {
+			continue
+		}
+
+		crd := NewLocalStandaloneCRD(unstructObj, path, NewLocalStandaloneCRDOptions{
+			Mapper:          opts.Mapper,
+			DiscoveryClient: opts.DiscoveryClient,
+		})
+
+		localStandaloneCRDs = append(localStandaloneCRDs, crd)
+	}
+
+	return localStandaloneCRDs, nil
+}
+
+type BuildLocalStandaloneCRDsFromManifestsOptions struct {
+	Mapper          meta.ResettableRESTMapper
+	DiscoveryClient discovery.CachedDiscoveryInterface
 }
