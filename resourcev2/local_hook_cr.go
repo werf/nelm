@@ -1,19 +1,16 @@
 package resourcev2
 
 import (
-	"fmt"
-	"strings"
-
 	"helm.sh/helm/v3/pkg/werf/resourcev2/resourceparts"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/discovery"
-	"k8s.io/client-go/kubernetes/scheme"
 )
 
-func NewLocalGeneralResource(unstruct *unstructured.Unstructured, filePath string, opts NewLocalGeneralResourceOptions) *LocalGeneralResource {
-	return &LocalGeneralResource{
+func NewLocalHookCR(unstruct *unstructured.Unstructured, filePath string, opts NewLocalHookCROptions) *LocalHookCR {
+	return &LocalHookCR{
 		LocalBaseResource:            resourceparts.NewLocalBaseResource(unstruct, filePath, resourceparts.NewLocalBaseResourceOptions{Mapper: opts.Mapper}),
+		HookableResource:             resourceparts.NewHookableResource(unstruct),
 		RecreatableResource:          resourceparts.NewRecreatableResource(unstruct),
 		AutoDeletableResource:        resourceparts.NewAutoDeletableResource(unstruct),
 		NeverDeletableResource:       resourceparts.NewNeverDeletableResource(unstruct),
@@ -23,13 +20,14 @@ func NewLocalGeneralResource(unstruct *unstructured.Unstructured, filePath strin
 	}
 }
 
-type NewLocalGeneralResourceOptions struct {
+type NewLocalHookCROptions struct {
 	Mapper          meta.ResettableRESTMapper
 	DiscoveryClient discovery.CachedDiscoveryInterface
 }
 
-type LocalGeneralResource struct {
+type LocalHookCR struct {
 	*resourceparts.LocalBaseResource
+	*resourceparts.HookableResource
 	*resourceparts.RecreatableResource
 	*resourceparts.AutoDeletableResource
 	*resourceparts.NeverDeletableResource
@@ -38,12 +36,12 @@ type LocalGeneralResource struct {
 	*resourceparts.ExternallyDependableResource
 }
 
-func (r *LocalGeneralResource) Validate() error {
+func (r *LocalHookCR) Validate() error {
 	if err := r.LocalBaseResource.Validate(); err != nil {
 		return err
 	}
 
-	if err := r.WeighableResource.Validate(); err != nil {
+	if err := r.HookableResource.Validate(); err != nil {
 		return err
 	}
 
@@ -56,38 +54,4 @@ func (r *LocalGeneralResource) Validate() error {
 	}
 
 	return nil
-}
-
-func BuildLocalGeneralResourcesFromManifests(manifests []string, opts BuildLocalGeneralResourcesFromManifestsOptions) ([]*LocalGeneralResource, error) {
-	var localGeneralResources []*LocalGeneralResource
-	for _, manifest := range manifests {
-		var path string
-		if strings.HasPrefix(manifest, "# Source: ") {
-			firstLine := strings.TrimSpace(strings.Split(manifest, "\n")[0])
-			path = strings.TrimPrefix(firstLine, "# Source: ")
-		}
-
-		obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(manifest), nil, &unstructured.Unstructured{})
-		if err != nil {
-			return nil, fmt.Errorf("error decoding resource from file %q: %w", path, err)
-		}
-
-		unstructObj := obj.(*unstructured.Unstructured)
-		if IsCRD(unstructObj) {
-			continue
-		}
-
-		resource := NewLocalGeneralResource(unstructObj, path, NewLocalGeneralResourceOptions{
-			Mapper:          opts.Mapper,
-			DiscoveryClient: opts.DiscoveryClient,
-		})
-		localGeneralResources = append(localGeneralResources, resource)
-	}
-
-	return localGeneralResources, nil
-}
-
-type BuildLocalGeneralResourcesFromManifestsOptions struct {
-	Mapper          meta.ResettableRESTMapper
-	DiscoveryClient discovery.CachedDiscoveryInterface
 }

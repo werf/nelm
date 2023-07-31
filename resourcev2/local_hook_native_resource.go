@@ -7,35 +7,41 @@ import (
 	"k8s.io/client-go/discovery"
 )
 
-func NewLocalStandaloneCRD(unstruct *unstructured.Unstructured, filePath string, opts NewLocalStandaloneCRDOptions) *LocalStandaloneCRD {
-	return &LocalStandaloneCRD{
+func NewLocalHookNativeResource(unstruct *unstructured.Unstructured, filePath string, opts NewLocalHookNativeResourceOptions) *LocalHookNativeResource {
+	return &LocalHookNativeResource{
 		LocalBaseResource:            resourceparts.NewLocalBaseResource(unstruct, filePath, resourceparts.NewLocalBaseResourceOptions{Mapper: opts.Mapper}),
+		HookableResource:             resourceparts.NewHookableResource(unstruct),
+		RecreatableResource:          resourceparts.NewRecreatableResource(unstruct),
+		AutoDeletableResource:        resourceparts.NewAutoDeletableResource(unstruct),
 		NeverDeletableResource:       resourceparts.NewNeverDeletableResource(unstruct),
-		TrackableResource:            resourceparts.NewTrackableResource(resourceparts.NewTrackableResourceOptions{Unstructured: unstruct}),
 		WeighableResource:            resourceparts.NewWeighableResource(unstruct),
+		TrackableResource:            resourceparts.NewTrackableResource(resourceparts.NewTrackableResourceOptions{Unstructured: unstruct}),
 		ExternallyDependableResource: resourceparts.NewExternallyDependableResource(unstruct, filePath, resourceparts.NewExternallyDependableResourceOptions{Mapper: opts.Mapper, DiscoveryClient: opts.DiscoveryClient}),
 	}
 }
 
-type NewLocalStandaloneCRDOptions struct {
+type NewLocalHookNativeResourceOptions struct {
 	Mapper          meta.ResettableRESTMapper
 	DiscoveryClient discovery.CachedDiscoveryInterface
 }
 
-type LocalStandaloneCRD struct {
+type LocalHookNativeResource struct {
 	*resourceparts.LocalBaseResource
+	*resourceparts.HookableResource
+	*resourceparts.RecreatableResource
+	*resourceparts.AutoDeletableResource
 	*resourceparts.NeverDeletableResource
 	*resourceparts.WeighableResource
 	*resourceparts.TrackableResource
 	*resourceparts.ExternallyDependableResource
 }
 
-func (r *LocalStandaloneCRD) Validate() error {
+func (r *LocalHookNativeResource) Validate() error {
 	if err := r.LocalBaseResource.Validate(); err != nil {
 		return err
 	}
 
-	if err := r.WeighableResource.Validate(); err != nil {
+	if err := r.HookableResource.Validate(); err != nil {
 		return err
 	}
 

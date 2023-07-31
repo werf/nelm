@@ -53,7 +53,7 @@ func (r *HookableResource) Validate() error {
 	return nil
 }
 
-func (r *HookableResource) HookPreInstall() bool {
+func (r *HookableResource) HookBeforeInstall() bool {
 	_, value, _ := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternHook)
 	return value == string(release.HookPreInstall)
 }

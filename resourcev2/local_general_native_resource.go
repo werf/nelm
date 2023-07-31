@@ -1,20 +1,15 @@
 package resourcev2
 
 import (
-	"fmt"
-	"strings"
-
 	"helm.sh/helm/v3/pkg/werf/resourcev2/resourceparts"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/discovery"
-	"k8s.io/client-go/kubernetes/scheme"
 )
 
-func NewLocalHookResource(unstruct *unstructured.Unstructured, filePath string, opts NewLocalHookResourceOptions) *LocalHookResource {
-	return &LocalHookResource{
+func NewLocalGeneralNativeResource(unstruct *unstructured.Unstructured, filePath string, opts NewLocalGeneralNativeResourceOptions) *LocalGeneralNativeResource {
+	return &LocalGeneralNativeResource{
 		LocalBaseResource:            resourceparts.NewLocalBaseResource(unstruct, filePath, resourceparts.NewLocalBaseResourceOptions{Mapper: opts.Mapper}),
-		HookableResource:             resourceparts.NewHookableResource(unstruct),
 		RecreatableResource:          resourceparts.NewRecreatableResource(unstruct),
 		AutoDeletableResource:        resourceparts.NewAutoDeletableResource(unstruct),
 		NeverDeletableResource:       resourceparts.NewNeverDeletableResource(unstruct),
@@ -24,14 +19,13 @@ func NewLocalHookResource(unstruct *unstructured.Unstructured, filePath string, 
 	}
 }
 
-type NewLocalHookResourceOptions struct {
+type NewLocalGeneralNativeResourceOptions struct {
 	Mapper          meta.ResettableRESTMapper
 	DiscoveryClient discovery.CachedDiscoveryInterface
 }
 
-type LocalHookResource struct {
+type LocalGeneralNativeResource struct {
 	*resourceparts.LocalBaseResource
-	*resourceparts.HookableResource
 	*resourceparts.RecreatableResource
 	*resourceparts.AutoDeletableResource
 	*resourceparts.NeverDeletableResource
@@ -40,12 +34,12 @@ type LocalHookResource struct {
 	*resourceparts.ExternallyDependableResource
 }
 
-func (r *LocalHookResource) Validate() error {
+func (r *LocalGeneralNativeResource) Validate() error {
 	if err := r.LocalBaseResource.Validate(); err != nil {
 		return err
 	}
 
-	if err := r.HookableResource.Validate(); err != nil {
+	if err := r.WeighableResource.Validate(); err != nil {
 		return err
 	}
 
@@ -58,39 +52,4 @@ func (r *LocalHookResource) Validate() error {
 	}
 
 	return nil
-}
-
-func BuildLocalHookResourcesFromManifests(manifests []string, opts BuildLocalHookResourcesFromManifestsOptions) ([]*LocalHookResource, error) {
-	var localHookResources []*LocalHookResource
-	for _, manifest := range manifests {
-		var path string
-		if strings.HasPrefix(manifest, "# Source: ") {
-			firstLine := strings.TrimSpace(strings.Split(manifest, "\n")[0])
-			path = strings.TrimPrefix(firstLine, "# Source: ")
-		}
-
-		obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(manifest), nil, &unstructured.Unstructured{})
-		if err != nil {
-			return nil, fmt.Errorf("error decoding hook from file %q: %w", path, err)
-		}
-
-		unstructObj := obj.(*unstructured.Unstructured)
-
-		if IsCRD(unstructObj) {
-			continue
-		}
-
-		resource := NewLocalHookResource(unstructObj, path, NewLocalHookResourceOptions{
-			Mapper:          opts.Mapper,
-			DiscoveryClient: opts.DiscoveryClient,
-		})
-		localHookResources = append(localHookResources, resource)
-	}
-
-	return localHookResources, nil
-}
-
-type BuildLocalHookResourcesFromManifestsOptions struct {
-	Mapper          meta.ResettableRESTMapper
-	DiscoveryClient discovery.CachedDiscoveryInterface
 }
