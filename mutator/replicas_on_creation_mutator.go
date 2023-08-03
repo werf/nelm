@@ -1,8 +1,6 @@
 package mutator
 
 import (
-	"fmt"
-
 	"helm.sh/helm/v3/pkg/werf/annotation"
 	"helm.sh/helm/v3/pkg/werf/common"
 	"helm.sh/helm/v3/pkg/werf/resource"
@@ -39,9 +37,7 @@ func (m *ReplicasOnCreationMutator) Mutate(res resource.Resourcer, operationType
 		schema.GroupKind{Group: "apps", Kind: "StatefulSet"},
 		schema.GroupKind{Group: "apps", Kind: "ReplicaSet"},
 		schema.GroupKind{Group: "apps", Kind: "DaemonSet"}:
-		if err := unstructured.SetNestedField(res.Unstructured().UnstructuredContent(), replicasOnCreationAnno, "spec", "replicas"); err != nil {
-			return nil, fmt.Errorf("error settings replicas on creation: %w", err)
-		}
+		_ = unstructured.SetNestedField(res.Unstructured().UnstructuredContent(), replicasOnCreationAnno, "spec", "replicas")
 	}
 
 	return res, nil

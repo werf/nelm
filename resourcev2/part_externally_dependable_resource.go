@@ -1,4 +1,4 @@
-package resourceparts
+package resourcev2
 
 import (
 	"fmt"
@@ -6,37 +6,39 @@ import (
 	"strings"
 
 	"helm.sh/helm/v3/pkg/werf/errors"
-	"helm.sh/helm/v3/pkg/werf/externaldependency"
 	"helm.sh/helm/v3/pkg/werf/util"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/discovery"
 )
 
+var annotationKeyHumanExternalDependencyResource = "<name>.external-dependency.werf.io/resource"
 var annotationKeyPatternExternalDependencyResource = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io/resource$`)
+
+var annotationKeyHumanExternalDependencyNamespace = "<name>.external-dependency.werf.io/namespace"
 var annotationKeyPatternExternalDependencyNamespace = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io/namespace$`)
 
-func NewExternallyDependableResource(unstruct *unstructured.Unstructured, filePath string, opts NewExternallyDependableResourceOptions) *ExternallyDependableResource {
-	return &ExternallyDependableResource{
+func newExternallyDependableResource(unstruct *unstructured.Unstructured, filePath string, opts newExternallyDependableResourceOptions) *externallyDependableResource {
+	return &externallyDependableResource{
 		unstructured:    unstruct,
 		mapper:          opts.Mapper,
 		discoveryClient: opts.DiscoveryClient,
 	}
 }
 
-type NewExternallyDependableResourceOptions struct {
+type newExternallyDependableResourceOptions struct {
 	Mapper          meta.ResettableRESTMapper
 	DiscoveryClient discovery.CachedDiscoveryInterface
 }
 
-type ExternallyDependableResource struct {
+type externallyDependableResource struct {
 	unstructured    *unstructured.Unstructured
 	filePath        string
 	mapper          meta.ResettableRESTMapper
 	discoveryClient discovery.CachedDiscoveryInterface
 }
 
-func (r *ExternallyDependableResource) Validate() error {
+func (r *externallyDependableResource) Validate() error {
 	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternExternalDependencyResource); found {
 		for key, value := range annotations {
 			keyMatches := annotationKeyPatternExternalDependencyResource.FindStringSubmatch(key)
@@ -107,7 +109,7 @@ func (r *ExternallyDependableResource) Validate() error {
 }
 
 // FIXME(ilya-lesikov): don't forget to validate
-func (r *ExternallyDependableResource) ExternalDependencies() ([]*externaldependency.ExternalDependency, error) {
+func (r *externallyDependableResource) ExternalDependencies() ([]*ExternalDependency, error) {
 	// Pretend we don't have any external dependencies if we don't have cluster access to map GroupVersionResource to GroupVersionKind.
 	if r.mapper == nil || r.discoveryClient == nil {
 		return nil, nil
@@ -148,14 +150,14 @@ func (r *ExternallyDependableResource) ExternalDependencies() ([]*externaldepend
 		}
 	}
 
-	var extDeps []*externaldependency.ExternalDependency
+	var extDeps []*ExternalDependency
 	for _, extDepInfo := range extDepInfos {
 		gvk, err := util.ParseResourceStringtoGVK(extDepInfo.Type, r.mapper, r.discoveryClient)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing external dependency resource type %q: %w", extDepInfo.Type, err)
 		}
 
-		extDep := externaldependency.NewExternalDependency(extDepInfo.Name, r.filePath, gvk, r.mapper, externaldependency.NewExternalDependencyOptions{extDepInfo.Namespace})
+		extDep := NewExternalDependency(extDepInfo.Name, r.filePath, gvk, r.mapper, NewExternalDependencyOptions{extDepInfo.Namespace})
 		extDeps = append(extDeps, extDep)
 	}
 

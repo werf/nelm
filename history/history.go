@@ -2,242 +2,199 @@ package history
 
 import (
 	"fmt"
+	"time"
 
 	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/release"
+	legacyRelease "helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/releaseutil"
 	"helm.sh/helm/v3/pkg/storage/driver"
 	drvr "helm.sh/helm/v3/pkg/storage/driver"
-	helmtime "helm.sh/helm/v3/pkg/time"
-	"helm.sh/helm/v3/pkg/werf/common"
 	"helm.sh/helm/v3/pkg/werf/plan"
-	"helm.sh/helm/v3/pkg/werf/resource"
-	"sigs.k8s.io/yaml"
+	"helm.sh/helm/v3/pkg/werf/release"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/client-go/discovery"
 )
 
-func NewHistory(releaseName, releaseNamespace string, driver driver.Driver) (*History, error) {
-	releases, err := driver.Query(map[string]string{"name": releaseName, "owner": "helm"})
+func NewHistory(releaseName, releaseNamespace string, driver driver.Driver, opts NewHistoryOptions) (*History, error) {
+	legacyRels, err := driver.Query(map[string]string{"name": releaseName, "owner": "helm"})
 	if err != nil && err != drvr.ErrReleaseNotFound {
 		return nil, fmt.Errorf("error querying releases: %w", err)
 	}
-	releaseutil.SortByRevision(releases)
+	releaseutil.SortByRevision(legacyRels)
 
 	return &History{
-		driver:           driver,
-		releases:         releases,
 		releaseName:      releaseName,
 		releaseNamespace: releaseNamespace,
+		legacyReleases:   legacyRels,
+		driver:           driver,
+		mapper:           opts.Mapper,
+		discoveryClient:  opts.DiscoveryClient,
 	}, nil
 }
 
-type History struct {
-	driver           driver.Driver
-	releases         []*release.Release
-	releaseName      string
-	releaseNamespace string
+type NewHistoryOptions struct {
+	Mapper          meta.ResettableRESTMapper
+	DiscoveryClient discovery.CachedDiscoveryInterface
 }
 
-// Get release that is a last attempt to install/upgrade/rollback since last attempt to uninstall release or from the beginning of history.
-func (h *History) LastTriedRelease() *release.Release {
-	if h.EmptyHistory() {
-		return nil
-	}
-
-	for i := len(h.releases) - 1; i >= 0; i-- {
-		switch h.releases[i].Info.Status {
-		case release.StatusUninstalled, release.StatusUninstalling:
-			return nil
-		case release.StatusFailed, release.StatusPendingInstall, release.StatusPendingUpgrade, release.StatusPendingRollback, release.StatusDeployed, release.StatusSuperseded:
-			return h.releases[i]
-		case release.StatusUnknown:
-		}
-	}
-
-	return nil
+type History struct {
+	releaseName      string
+	releaseNamespace string
+	legacyReleases   []*legacyRelease.Release
+	driver           driver.Driver
+	mapper           meta.ResettableRESTMapper
+	discoveryClient  discovery.CachedDiscoveryInterface
 }
 
 // Get last successfully deployed release since last attempt to uninstall release or from the beginning of history.
-func (h *History) LastDeployedRelease() *release.Release {
-	if h.EmptyHistory() {
-		return nil
+func (h *History) LastDeployedRelease() (*release.Release, error) {
+	if h.Empty() {
+		return nil, nil
 	}
 
-	for i := len(h.releases) - 1; i >= 0; i-- {
-		switch h.releases[i].Info.Status {
-		case release.StatusDeployed, release.StatusSuperseded:
-			return h.releases[i]
-		case release.StatusUninstalled, release.StatusUninstalling:
-			return nil
-		case release.StatusUnknown, release.StatusFailed, release.StatusPendingInstall, release.StatusPendingUpgrade, release.StatusPendingRollback:
+	var legacyRel *legacyRelease.Release
+legacyRelLoop:
+	for i := len(h.legacyReleases) - 1; i >= 0; i-- {
+		switch h.legacyReleases[i].Info.Status {
+		case legacyRelease.StatusDeployed, legacyRelease.StatusSuperseded:
+			legacyRel = h.legacyReleases[i]
+			break legacyRelLoop
+		case legacyRelease.StatusUninstalled, legacyRelease.StatusUninstalling:
+			break legacyRelLoop
+		case legacyRelease.StatusUnknown, legacyRelease.StatusFailed, legacyRelease.StatusPendingInstall, legacyRelease.StatusPendingUpgrade, legacyRelease.StatusPendingRollback:
 		}
 	}
 
-	return nil
-}
-
-func (h *History) FirstRelease() *release.Release {
-	if h.EmptyHistory() {
-		return nil
+	if legacyRel == nil {
+		return nil, nil
 	}
 
-	return h.releases[0]
-}
-
-func (h *History) LastRelease() *release.Release {
-	if h.EmptyHistory() {
-		return nil
+	rel, err := release.BuildReleaseFromLegacyRelease(legacyRel, release.BuildReleaseFromLegacyReleaseOptions{
+		Mapper:          h.mapper,
+		DiscoveryClient: h.discoveryClient,
+	}).Load()
+	if err != nil {
+		return nil, fmt.Errorf("error loading release: %w", err)
 	}
 
-	return h.releases[len(h.releases)-1]
+	return rel, nil
 }
 
-func (h *History) LastReleaseIsDeployed() bool {
-	if h.EmptyHistory() {
-		return false
+func (h *History) LastRelease() (*release.Release, error) {
+	if h.Empty() {
+		return nil, nil
 	}
 
-	lastRel := h.LastRelease()
-	lastDeployedRel := h.LastDeployedRelease()
+	legacyRel := h.legacyReleases[len(h.legacyReleases)-1]
 
-	return lastDeployedRel != nil && lastRel.Version == lastDeployedRel.Version
-}
-
-func (h *History) EmptyHistory() bool {
-	return len(h.releases) == 0
-}
-
-func (h *History) DeployTypeForNextRelease() plan.DeployType {
-	if h.EmptyHistory() {
-		return plan.DeployTypeInitial
+	rel, err := release.BuildReleaseFromLegacyRelease(legacyRel, release.BuildReleaseFromLegacyReleaseOptions{
+		Mapper:          h.mapper,
+		DiscoveryClient: h.discoveryClient,
+	}).Load()
+	if err != nil {
+		return nil, fmt.Errorf("error loading release: %w", err)
 	}
 
-	if h.LastDeployedRelease() != nil {
-		return plan.DeployTypeUpgrade
-	}
-
-	return plan.DeployTypeInstall
+	return rel, nil
 }
 
-func (h *History) RevisionForNextRelease() int {
-	if h.EmptyHistory() {
-		return 1
+func (h *History) LastReleaseIsDeployed() (bool, error) {
+	if h.Empty() {
+		return false, nil
 	}
 
-	return h.LastRelease().Version + 1
+	lastRel, err := h.LastRelease()
+	if err != nil {
+		return false, fmt.Errorf("error getting last release: %w", err)
+	}
+
+	lastDeployedRel, err := h.LastDeployedRelease()
+	if err != nil {
+		return false, fmt.Errorf("error getting last deployed release: %w", err)
+	}
+
+	return lastDeployedRel != nil && lastRel.Revision() == lastDeployedRel.Revision(), nil
 }
 
-func (h *History) BuildNextRelease(helmHooks []*resource.HelmHook, helmResources []*resource.HelmResource, notes string, chart *chart.Chart, values map[string]interface{}) (*release.Release, error) {
-	var (
-		firstDeployed, lastDeployed helmtime.Time
-		status                      release.Status
-	)
+func (h *History) DeployTypeForNextRelease() (plan.DeployType, error) {
+	if h.Empty() {
+		return plan.DeployTypeInitial, nil
+	}
 
-	deployType := h.DeployTypeForNextRelease()
-	lastRelease := h.LastRelease()
+	lastDeployedRelease, err := h.LastDeployedRelease()
+	if err != nil {
+		return "", fmt.Errorf("error getting last deployed release: %w", err)
+	}
+	if lastDeployedRelease != nil {
+		return plan.DeployTypeUpgrade, nil
+	}
+
+	return plan.DeployTypeInstall, nil
+}
+
+func (h *History) Empty() bool {
+	return len(h.legacyReleases) == 0
+}
+
+func (h *History) NextReleaseRevision() (int, error) {
+	if h.Empty() {
+		return 1, nil
+	}
+
+	lastRelease, err := h.LastRelease()
+	if err != nil {
+		return 0, fmt.Errorf("error getting last release: %w", err)
+	}
+
+	return lastRelease.Revision() + 1, nil
+}
+
+func (h *History) BuildNextRelease(values map[string]interface{}, legacyChart *chart.Chart, standaloneCRDsManifests, hookManifests, generalManifests []string, notes string) (*release.Release, error) {
+	revision, err := h.NextReleaseRevision()
+	if err != nil {
+		return nil, fmt.Errorf("error getting next release revision: %w", err)
+	}
+
+	rel, err := release.NewRelease(h.releaseName, h.releaseNamespace, revision, values, legacyChart, standaloneCRDsManifests, hookManifests, generalManifests, notes, release.NewReleaseOptions{
+		Mapper:          h.mapper,
+		DiscoveryClient: h.discoveryClient,
+	}).Load()
+	if err != nil {
+		return nil, fmt.Errorf("error loading release: %w", err)
+	}
+
+	deployType, err := h.DeployTypeForNextRelease()
+	if err != nil {
+		return nil, fmt.Errorf("error getting deploy type for next release: %w", err)
+	}
+
+	lastRelease, err := h.LastRelease()
+	if err != nil {
+		return nil, fmt.Errorf("error getting last release: %w", err)
+	}
 
 	switch deployType {
 	case plan.DeployTypeInitial:
 		// BACKCOMPAT: initial deploy attempt doesn't necessarily mean that the release was actually
 		// successfully deployed and installed, but vanilla Helm marked it as such and set
 		// firstDeployed and lastDeployed right away.
-		now := helmtime.Now()
-		firstDeployed = now
-		lastDeployed = now
-		status = release.StatusPendingInstall
+		now := time.Now()
+		rel.SetFirstDeployed(now)
+		rel.SetLastDeployed(now)
+		rel.SetStatus(legacyRelease.StatusPendingInstall)
 	case plan.DeployTypeInstall:
-		firstDeployed = lastRelease.Info.FirstDeployed
-		lastDeployed = helmtime.Now()
-		status = release.StatusPendingInstall
+		rel.SetFirstDeployed(lastRelease.FirstDeployed())
+		rel.SetLastDeployed(time.Now())
+		rel.SetStatus(legacyRelease.StatusPendingInstall)
 	case plan.DeployTypeUpgrade:
-		firstDeployed = lastRelease.Info.FirstDeployed
-		lastDeployed = helmtime.Now()
-		status = release.StatusPendingUpgrade
+		rel.SetFirstDeployed(lastRelease.FirstDeployed())
+		rel.SetLastDeployed(time.Now())
+		rel.SetStatus(legacyRelease.StatusPendingUpgrade)
 	case plan.DeployTypeRollback:
-		firstDeployed = lastRelease.Info.FirstDeployed
-		lastDeployed = helmtime.Now()
-		status = release.StatusPendingRollback
+		rel.SetFirstDeployed(lastRelease.FirstDeployed())
+		rel.SetLastDeployed(time.Now())
+		rel.SetStatus(legacyRelease.StatusPendingRollback)
 	}
 
-	// FIXME(ilya-lesikov): additional sorting?
-	var helmResourceManifests string
-	for _, res := range helmResources {
-		marshalledResByte, err := yaml.Marshal(res.Unstructured())
-		if err != nil {
-			return nil, fmt.Errorf("error marshalling resource %q to YAML: %w", res.String(), err)
-		}
-
-		if helmResourceManifests == "" {
-			helmResourceManifests = string(marshalledResByte)
-		} else {
-			helmResourceManifests = helmResourceManifests + "---\n" + string(marshalledResByte)
-		}
-	}
-
-	// FIXME(ilya-lesikov): additional sorting?
-	var legacyHelmHooks []*release.Hook
-	for _, hook := range helmHooks {
-		marshalledHookByte, err := yaml.Marshal(hook.Unstructured())
-		if err != nil {
-			return nil, fmt.Errorf("error marshalling hook %q to YAML: %w", hook, err)
-		}
-
-		var legacyHookEvents []release.HookEvent
-		for _, hookType := range hook.Types() {
-			if hookType == common.HelmHookTypeTestLegacy {
-				hookType = common.HelmHookTypeTest
-			}
-
-			legacyHookEvents = append(legacyHookEvents, release.HookEvent(hookType))
-		}
-
-		var legacyHookDeletePolicies []release.HookDeletePolicy
-		for _, hookDeletePolicy := range hook.DeletePolicies() {
-			legacyHookDeletePolicies = append(legacyHookDeletePolicies, release.HookDeletePolicy(hookDeletePolicy))
-		}
-
-		legacyHook := &release.Hook{
-			Name:           hook.Name(),
-			Kind:           hook.GroupVersionKind().Kind,
-			Path:           hook.FilePath(),
-			Manifest:       string(marshalledHookByte),
-			Events:         legacyHookEvents,
-			Weight:         hook.Weight(),
-			DeletePolicies: legacyHookDeletePolicies,
-		}
-
-		legacyHelmHooks = append(legacyHelmHooks, legacyHook)
-	}
-
-	pendingRelease := &release.Release{
-		Name:      h.releaseName,
-		Namespace: h.releaseNamespace,
-		Chart:     chart,
-		Config:    values,
-		Info: &release.Info{
-			Status:        status,
-			FirstDeployed: firstDeployed,
-			LastDeployed:  lastDeployed,
-			Notes:         notes,
-		},
-		Version:  h.RevisionForNextRelease(),
-		Manifest: helmResourceManifests,
-		Hooks:    legacyHelmHooks,
-	}
-
-	return pendingRelease, nil
-}
-
-func (h *History) PromoteReleaseToSucceeded(rel *release.Release) *release.Release {
-	rel.Info.Status = release.StatusDeployed
-	return rel
-}
-
-func (h *History) PromoteReleaseToSuperseded(rel *release.Release) *release.Release {
-	rel.Info.Status = release.StatusSuperseded
-	return rel
-}
-
-func (h *History) PromoteReleaseToFailed(rel *release.Release) *release.Release {
-	rel.Info.Status = release.StatusFailed
-	return rel
+	return rel, nil
 }

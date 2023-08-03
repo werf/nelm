@@ -10,41 +10,43 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 )
 
-func NewLocalGeneralCRD(unstruct *unstructured.Unstructured, filePath string, opts NewLocalGeneralCRDOptions) *LocalGeneralCRD {
-	return &LocalGeneralCRD{
+func NewLocalHookResource(unstruct *unstructured.Unstructured, filePath string, opts NewLocalHookResourceOptions) *LocalHookResource {
+	return &LocalHookResource{
 		localBaseResource:            newLocalBaseResource(unstruct, filePath, newLocalBaseResourceOptions{Mapper: opts.Mapper}),
-		helmManageableResource:       newHelmManageableResource(unstruct),
+		hookableResource:             newHookableResource(unstruct),
 		recreatableResource:          newRecreatableResource(unstruct),
 		autoDeletableResource:        newAutoDeletableResource(unstruct),
 		neverDeletableResource:       newNeverDeletableResource(unstruct),
+		replicableResource:           newReplicableResource(unstruct),
 		weighableResource:            newWeighableResource(unstruct),
 		trackableResource:            newTrackableResource(unstruct),
 		externallyDependableResource: newExternallyDependableResource(unstruct, filePath, newExternallyDependableResourceOptions{Mapper: opts.Mapper, DiscoveryClient: opts.DiscoveryClient}),
 	}
 }
 
-type NewLocalGeneralCRDOptions struct {
+type NewLocalHookResourceOptions struct {
 	Mapper          meta.ResettableRESTMapper
 	DiscoveryClient discovery.CachedDiscoveryInterface
 }
 
-type LocalGeneralCRD struct {
+type LocalHookResource struct {
 	*localBaseResource
-	*helmManageableResource
+	*hookableResource
 	*recreatableResource
 	*autoDeletableResource
 	*neverDeletableResource
+	*replicableResource
 	*weighableResource
 	*trackableResource
 	*externallyDependableResource
 }
 
-func (r *LocalGeneralCRD) Validate() error {
+func (r *LocalHookResource) Validate() error {
 	if err := r.localBaseResource.Validate(); err != nil {
 		return err
 	}
 
-	if err := r.weighableResource.Validate(); err != nil {
+	if err := r.hookableResource.Validate(); err != nil {
 		return err
 	}
 
@@ -59,16 +61,16 @@ func (r *LocalGeneralCRD) Validate() error {
 	return nil
 }
 
-func (r *LocalGeneralCRD) PartOfRelease() bool {
+func (r *LocalHookResource) PartOfRelease() bool {
+	return false
+}
+
+func (r *LocalHookResource) ShouldHaveServiceMetadata() bool {
 	return true
 }
 
-func (r *LocalGeneralCRD) ShouldHaveServiceMetadata() bool {
-	return true
-}
-
-func BuildLocalGeneralCRDsFromManifests(manifests []string, opts BuildLocalGeneralCRDsFromManifestsOptions) ([]*LocalGeneralCRD, error) {
-	var localGeneralCRDs []*LocalGeneralCRD
+func BuildLocalHookResourcesFromManifests(manifests []string, opts BuildLocalHookResourcesFromManifestsOptions) ([]*LocalHookResource, error) {
+	var localHookResources []*LocalHookResource
 	for _, manifest := range manifests {
 		var path string
 		if strings.HasPrefix(manifest, "# Source: ") {
@@ -78,25 +80,26 @@ func BuildLocalGeneralCRDsFromManifests(manifests []string, opts BuildLocalGener
 
 		obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(manifest), nil, &unstructured.Unstructured{})
 		if err != nil {
-			return nil, fmt.Errorf("error decoding resource from file %q: %w", path, err)
+			return nil, fmt.Errorf("error decoding hook from file %q: %w", path, err)
 		}
 
 		unstructObj := obj.(*unstructured.Unstructured)
-		if !IsCRD(unstructObj) {
+
+		if IsCRD(unstructObj) {
 			continue
 		}
 
-		resource := NewLocalGeneralCRD(unstructObj, path, NewLocalGeneralCRDOptions{
+		resource := NewLocalHookResource(unstructObj, path, NewLocalHookResourceOptions{
 			Mapper:          opts.Mapper,
 			DiscoveryClient: opts.DiscoveryClient,
 		})
-		localGeneralCRDs = append(localGeneralCRDs, resource)
+		localHookResources = append(localHookResources, resource)
 	}
 
-	return localGeneralCRDs, nil
+	return localHookResources, nil
 }
 
-type BuildLocalGeneralCRDsFromManifestsOptions struct {
+type BuildLocalHookResourcesFromManifestsOptions struct {
 	Mapper          meta.ResettableRESTMapper
 	DiscoveryClient discovery.CachedDiscoveryInterface
 }

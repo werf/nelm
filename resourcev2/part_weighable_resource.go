@@ -1,4 +1,4 @@
-package resourceparts
+package resourcev2
 
 import (
 	"fmt"
@@ -9,18 +9,21 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+var annotationKeyHumanWeight = "werf.io/weight"
 var annotationKeyPatternWeight = regexp.MustCompile(`^werf.io/weight$`)
+
+var annotationKeyHumanHookWeight = "helm.sh/hook-weight"
 var annotationKeyPatternHookWeight = regexp.MustCompile(`^helm.sh/hook-weight$`)
 
-func NewWeighableResource(unstruct *unstructured.Unstructured) *WeighableResource {
-	return &WeighableResource{unstructured: unstruct}
+func newWeighableResource(unstruct *unstructured.Unstructured) *weighableResource {
+	return &weighableResource{unstructured: unstruct}
 }
 
-type WeighableResource struct {
+type weighableResource struct {
 	unstructured *unstructured.Unstructured
 }
 
-func (r *WeighableResource) Validate() error {
+func (r *weighableResource) Validate() error {
 	if IsHook(r.unstructured.GetAnnotations()) {
 		if key, value, found := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternHookWeight); found {
 			if value == "" {
@@ -46,7 +49,7 @@ func (r *WeighableResource) Validate() error {
 	return nil
 }
 
-func (r *WeighableResource) Weight() int {
+func (r *weighableResource) Weight() int {
 	var weightValue string
 	if IsHook(r.unstructured.GetAnnotations()) {
 		_, hookWeightValue, hookWeightFound := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternHookWeight)

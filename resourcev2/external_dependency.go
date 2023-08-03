@@ -1,7 +1,6 @@
-package externaldependency
+package resourcev2
 
 import (
-	"helm.sh/helm/v3/pkg/werf/resourcev2/resourceparts"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -25,8 +24,8 @@ func NewExternalDependency(name, filePath string, groupVersionKind schema.GroupV
 	}
 
 	return &ExternalDependency{
-		LocalBaseResource: resourceparts.NewLocalBaseResource(unstruct, filePath, resourceparts.NewLocalBaseResourceOptions{Mapper: mapper}),
-		TrackableResource: resourceparts.NewTrackableResource(resourceparts.NewTrackableResourceOptions{Unstructured: unstruct}),
+		localBaseResource: newLocalBaseResource(unstruct, filePath, newLocalBaseResourceOptions{Mapper: mapper}),
+		trackableResource: newTrackableResource(unstruct),
 	}
 }
 
@@ -35,16 +34,16 @@ type NewExternalDependencyOptions struct {
 }
 
 type ExternalDependency struct {
-	*resourceparts.LocalBaseResource
-	*resourceparts.TrackableResource
+	*localBaseResource
+	*trackableResource
 }
 
 func (r *ExternalDependency) Validate() error {
-	if err := r.LocalBaseResource.Validate(); err != nil {
+	if err := r.localBaseResource.Validate(); err != nil {
 		return err
 	}
 
-	if err := r.TrackableResource.Validate(); err != nil {
+	if err := r.trackableResource.Validate(); err != nil {
 		return err
 	}
 

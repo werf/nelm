@@ -1,4 +1,4 @@
-package resourceparts
+package resourcev2
 
 import (
 	"regexp"
@@ -8,32 +8,46 @@ import (
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/werf/common"
 	"helm.sh/helm/v3/pkg/werf/errors"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-var annotationKeyPatternDeletePolicy = regexp.MustCompile(`^werf.io/delete-policy$`)
-var annotationKeyPatternHookDeletePolicy = regexp.MustCompile(`^helm.sh/hook-delete-policy$`)
-
-func NewRecreatableResource(unstruct *unstructured.Unstructured) *RecreatableResource {
-	return &RecreatableResource{unstructured: unstruct}
+func IsCRD(res CRDDetectable) bool {
+	return res.GroupVersionKind().GroupKind() == schema.GroupKind{
+		Group: "apiextensions.k8s.io",
+		Kind:  "CustomResourceDefinition",
+	}
 }
 
-type RecreatableResource struct {
-	unstructured *unstructured.Unstructured
+func EqualNameNamespaceGVK(res1, res2 EquatableByNameNamespaceGVK) bool {
+	return res1.Name() == res2.Name() && res1.Namespace() == res2.Namespace() && res1.GroupVersionKind() == res2.GroupVersionKind()
 }
 
-func (r *RecreatableResource) Validate() error {
-	if err := validateDeletePolicyAnnotations(r.unstructured.GetAnnotations()); err != nil {
-		return err
+func IsHook(annotations map[string]string) bool {
+	_, _, found := FindAnnotationOrLabelByKeyPattern(annotations, annotationKeyPatternHook)
+	return found
+}
+
+func FindAnnotationOrLabelByKeyPattern(annotationsOrLabels map[string]string, pattern *regexp.Regexp) (key string, value string, found bool) {
+	key, found = lo.FindKeyBy(annotationsOrLabels, func(k string, _ string) bool {
+		return pattern.MatchString(k)
+	})
+	if found {
+		value = strings.TrimSpace(annotationsOrLabels[key])
 	}
 
-	return nil
+	return key, value, found
 }
 
-func (r *RecreatableResource) ShouldRecreate() bool {
-	deletePolicies := getDeletePolicies(r.unstructured.GetAnnotations())
+func FindAnnotationsOrLabelsByKeyPattern(annotationsOrLabels map[string]string, pattern *regexp.Regexp) (result map[string]string, found bool) {
+	result = map[string]string{}
 
-	return lo.Contains(deletePolicies, common.DeletePolicyBeforeCreation)
+	for key, value := range annotationsOrLabels {
+		if pattern.MatchString(key) {
+			result[key] = strings.TrimSpace(value)
+		}
+	}
+
+	return result, len(result) > 0
 }
 
 func validateDeletePolicyAnnotations(annotations map[string]string) error {
@@ -119,4 +133,14 @@ func getDeletePolicies(annotations map[string]string) []common.DeletePolicy {
 	}
 
 	return deletePolicies
+}
+
+type CRDDetectable interface {
+	GroupVersionKind() schema.GroupVersionKind
+}
+
+type EquatableByNameNamespaceGVK interface {
+	Name() string
+	Namespace() string
+	GroupVersionKind() schema.GroupVersionKind
 }

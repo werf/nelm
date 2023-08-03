@@ -1,4 +1,4 @@
-package resourceparts
+package resourcev2
 
 import (
 	"regexp"
@@ -9,17 +9,18 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+var annotationKeyHumanHook = "helm.sh/hook"
 var annotationKeyPatternHook = regexp.MustCompile(`^helm.sh/hook$`)
 
-func NewHookableResource(unstruct *unstructured.Unstructured) *HookableResource {
-	return &HookableResource{unstructured: unstruct}
+func newHookableResource(unstruct *unstructured.Unstructured) *hookableResource {
+	return &hookableResource{unstructured: unstruct}
 }
 
-type HookableResource struct {
+type hookableResource struct {
 	unstructured *unstructured.Unstructured
 }
 
-func (r *HookableResource) Validate() error {
+func (r *hookableResource) Validate() error {
 	if key, value, found := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternHook); found {
 		if value == "" {
 			return errors.NewValidationError("invalid value %q for annotation %q, expected non-empty string value", value, key)
@@ -47,53 +48,53 @@ func (r *HookableResource) Validate() error {
 			}
 		}
 	} else {
-		return errors.NewValidationError(`hook resource must have "helm.sh/hook" annotation`)
+		return errors.NewValidationError(`hook resource must have %q annotation`, annotationKeyHumanHook)
 	}
 
 	return nil
 }
 
-func (r *HookableResource) HookBeforeInstall() bool {
+func (r *hookableResource) HookPreInstall() bool {
 	_, value, _ := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternHook)
 	return value == string(release.HookPreInstall)
 }
 
-func (r *HookableResource) HookPostInstall() bool {
+func (r *hookableResource) HookPostInstall() bool {
 	_, value, _ := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternHook)
 	return value == string(release.HookPostInstall)
 }
 
-func (r *HookableResource) HookPreUpgrade() bool {
+func (r *hookableResource) HookPreUpgrade() bool {
 	_, value, _ := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternHook)
 	return value == string(release.HookPreUpgrade)
 }
 
-func (r *HookableResource) HookPostUpgrade() bool {
+func (r *hookableResource) HookPostUpgrade() bool {
 	_, value, _ := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternHook)
 	return value == string(release.HookPostUpgrade)
 }
 
-func (r *HookableResource) HookPreRollback() bool {
+func (r *hookableResource) HookPreRollback() bool {
 	_, value, _ := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternHook)
 	return value == string(release.HookPreRollback)
 }
 
-func (r *HookableResource) HookPostRollback() bool {
+func (r *hookableResource) HookPostRollback() bool {
 	_, value, _ := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternHook)
 	return value == string(release.HookPostRollback)
 }
 
-func (r *HookableResource) HookPreDelete() bool {
+func (r *hookableResource) HookPreDelete() bool {
 	_, value, _ := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternHook)
 	return value == string(release.HookPreDelete)
 }
 
-func (r *HookableResource) HookPostDelete() bool {
+func (r *hookableResource) HookPostDelete() bool {
 	_, value, _ := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternHook)
 	return value == string(release.HookPostDelete)
 }
 
-func (r *HookableResource) HookTest() bool {
+func (r *hookableResource) HookTest() bool {
 	_, value, _ := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternHook)
 	return value == string(release.HookTest) || value == "test-success"
 }

@@ -1,4 +1,4 @@
-package resourceparts
+package resourcev2
 
 import (
 	"fmt"
@@ -7,25 +7,25 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-func NewRemoteBaseResource(unstruct *unstructured.Unstructured) *RemoteBaseResource {
-	return &RemoteBaseResource{
+func newRemoteBaseResource(unstruct *unstructured.Unstructured) *remoteBaseResource {
+	return &remoteBaseResource{
 		unstructured: unstruct,
 	}
 }
 
-type RemoteBaseResource struct {
+type remoteBaseResource struct {
 	unstructured *unstructured.Unstructured
 }
 
-func (r *RemoteBaseResource) Name() string {
+func (r *remoteBaseResource) Name() string {
 	return r.unstructured.GetName()
 }
 
-func (r *RemoteBaseResource) Namespace() string {
+func (r *remoteBaseResource) Namespace() string {
 	return r.unstructured.GetNamespace()
 }
 
-func (r *RemoteBaseResource) Scope() (ResourceScope, error) {
+func (r *remoteBaseResource) Scope() (ResourceScope, error) {
 	if r.unstructured.GetNamespace() != "" {
 		return ResourceScopeNamespace, nil
 	} else {
@@ -33,15 +33,15 @@ func (r *RemoteBaseResource) Scope() (ResourceScope, error) {
 	}
 }
 
-func (r *RemoteBaseResource) GroupVersionKind() schema.GroupVersionKind {
+func (r *remoteBaseResource) GroupVersionKind() schema.GroupVersionKind {
 	return r.unstructured.GroupVersionKind()
 }
 
-func (r *RemoteBaseResource) Unstructured() *unstructured.Unstructured {
+func (r *remoteBaseResource) Unstructured() *unstructured.Unstructured {
 	return r.unstructured
 }
 
-func (r *RemoteBaseResource) String() string {
+func (r *remoteBaseResource) String() string {
 	if r.Namespace() != "" {
 		return fmt.Sprintf("%s:%s/%s", r.GroupVersionKind().Kind, r.Namespace(), r.Name())
 	} else {

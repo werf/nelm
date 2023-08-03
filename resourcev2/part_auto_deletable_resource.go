@@ -1,4 +1,4 @@
-package resourceparts
+package resourcev2
 
 import (
 	"github.com/samber/lo"
@@ -6,17 +6,17 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-func NewAutoDeletableResource(unstruct *unstructured.Unstructured) *AutoDeletableResource {
-	return &AutoDeletableResource{
+func newAutoDeletableResource(unstruct *unstructured.Unstructured) *autoDeletableResource {
+	return &autoDeletableResource{
 		unstructured: unstruct,
 	}
 }
 
-type AutoDeletableResource struct {
+type autoDeletableResource struct {
 	unstructured *unstructured.Unstructured
 }
 
-func (r *AutoDeletableResource) Validate() error {
+func (r *autoDeletableResource) Validate() error {
 	if err := validateDeletePolicyAnnotations(r.unstructured.GetAnnotations()); err != nil {
 		return err
 	}
@@ -24,13 +24,13 @@ func (r *AutoDeletableResource) Validate() error {
 	return nil
 }
 
-func (r *AutoDeletableResource) ShouldCleanupWhenSucceeded() bool {
+func (r *autoDeletableResource) ShouldCleanupWhenSucceeded() bool {
 	deletePolicies := getDeletePolicies(r.unstructured.GetAnnotations())
 
 	return lo.Contains(deletePolicies, common.DeletePolicySucceeded)
 }
 
-func (r *AutoDeletableResource) ShouldCleanupWhenFailed() bool {
+func (r *autoDeletableResource) ShouldCleanupWhenFailed() bool {
 	deletePolicies := getDeletePolicies(r.unstructured.GetAnnotations())
 
 	return lo.Contains(deletePolicies, common.DeletePolicyFailed)

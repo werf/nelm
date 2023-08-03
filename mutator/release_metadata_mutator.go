@@ -1,11 +1,8 @@
 package mutator
 
 import (
-	"fmt"
-
 	"helm.sh/helm/v3/pkg/werf/common"
 	"helm.sh/helm/v3/pkg/werf/resource"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 func NewReleaseMetadataMutator(releaseName, releaseNamespace string) *ReleaseMetadataMutator {
@@ -31,17 +28,20 @@ func (m *ReleaseMetadataMutator) Mutate(res resource.Resourcer, operationType co
 		return res, nil
 	}
 
-	if err := unstructured.SetNestedField(res.Unstructured().UnstructuredContent(), m.releaseName, "metadata", "annotations", "meta.helm.sh/release-name"); err != nil {
-		return nil, fmt.Errorf("error adding release name annotation: %w", err)
+	annos := res.Unstructured().GetAnnotations()
+	if annos == nil {
+		annos = make(map[string]string)
 	}
+	annos["meta.helm.sh/release-name"] = m.releaseName
+	annos["meta.helm.sh/release-namespace"] = m.releaseNamespace
+	res.Unstructured().SetAnnotations(annos)
 
-	if err := unstructured.SetNestedField(res.Unstructured().UnstructuredContent(), m.releaseNamespace, "metadata", "annotations", "meta.helm.sh/release-namespace"); err != nil {
-		return nil, fmt.Errorf("error adding release namespace annotation: %w", err)
+	labels := res.Unstructured().GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
 	}
-
-	if err := unstructured.SetNestedField(res.Unstructured().UnstructuredContent(), "Helm", "metadata", "labels", "app.kubernetes.io/managed-by"); err != nil {
-		return nil, fmt.Errorf("error adding managed-by Helm label: %w", err)
-	}
+	labels["app.kubernetes.io/managed-by"] = "Helm"
+	res.Unstructured().SetLabels(labels)
 
 	return res, nil
 }

@@ -1,4 +1,4 @@
-package resourceparts
+package resourcev2
 
 import (
 	"math"
@@ -13,37 +13,50 @@ import (
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 )
 
+var annotationKeyHumanFailMode = "werf.io/fail-mode"
 var annotationKeyPatternFailMode = regexp.MustCompile(`^werf.io/fail-mode$`)
+
+var annotationKeyHumanFailuresAllowedPerReplica = "werf.io/failures-allowed-per-replica"
 var annotationKeyPatternFailuresAllowedPerReplica = regexp.MustCompile(`^werf.io/failures-allowed-per-replica$`)
+
+var annotationKeyHumanIgnoreReadinessProbeFailsFor = "werf.io/ignore-readiness-probe-fails-for-<container>"
 var annotationKeyPatternIgnoreReadinessProbeFailsFor = regexp.MustCompile(`^werf.io/ignore-readiness-probe-fails-for-(?P<container>.+)$`)
+
+var annotationKeyHumanLogRegex = "werf.io/log-regex"
 var annotationKeyPatternLogRegex = regexp.MustCompile(`^werf.io/log-regex$`)
+
+var annotationKeyHumanLogRegexFor = "werf.io/log-regex-for-<container>"
 var annotationKeyPatternLogRegexFor = regexp.MustCompile(`^werf.io/log-regex-for-(?P<container>.+)$`)
+
+var annotationKeyHumanNoActivityTimeout = "werf.io/no-activity-timeout"
 var annotationKeyPatternNoActivityTimeout = regexp.MustCompile(`^werf.io/no-activity-timeout$`)
+
+var annotationKeyHumanShowLogsOnlyForContainers = "werf.io/show-logs-only-for-containers"
 var annotationKeyPatternShowLogsOnlyForContainers = regexp.MustCompile(`^werf.io/show-logs-only-for-containers$`)
+
+var annotationKeyHumanShowServiceMessages = "werf.io/show-service-messages"
 var annotationKeyPatternShowServiceMessages = regexp.MustCompile(`^werf.io/show-service-messages$`)
+
+var annotationKeyHumanSkipLogs = "werf.io/skip-logs"
 var annotationKeyPatternSkipLogs = regexp.MustCompile(`^werf.io/skip-logs$`)
+
+var annotationKeyHumanSkipLogsForContainers = "werf.io/skip-logs-for-containers"
 var annotationKeyPatternSkipLogsForContainers = regexp.MustCompile(`^werf.io/skip-logs-for-containers$`)
+
+var annotationKeyHumanTrackTerminationMode = "werf.io/track-termination-mode"
 var annotationKeyPatternTrackTerminationMode = regexp.MustCompile(`^werf.io/track-termination-mode$`)
 
-func NewTrackableResource(opts NewTrackableResourceOptions) *TrackableResource {
-	return &TrackableResource{
-		unstructured: opts.Unstructured,
+func newTrackableResource(unstruct *unstructured.Unstructured) *trackableResource {
+	return &trackableResource{
+		unstructured: unstruct,
 	}
 }
 
-type NewTrackableResourceOptions struct {
-	Unstructured *unstructured.Unstructured
-}
-
-type TrackableResource struct {
+type trackableResource struct {
 	unstructured *unstructured.Unstructured
 }
 
-func (r *TrackableResource) Validate() error {
-	if r.unstructured == nil {
-		return nil
-	}
-
+func (r *trackableResource) Validate() error {
 	if key, value, found := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternFailMode); found {
 		if value == "" {
 			return errors.NewValidationError("invalid value %q for annotation %q, expected non-empty string value", value, key)
@@ -227,11 +240,7 @@ func (r *TrackableResource) Validate() error {
 	return nil
 }
 
-func (r *TrackableResource) FailMode() multitrack.FailMode {
-	if r.unstructured == nil {
-		return multitrack.FailWholeDeployProcessImmediately
-	}
-
+func (r *trackableResource) FailMode() multitrack.FailMode {
 	_, value, found := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternFailMode)
 	if !found {
 		return multitrack.FailWholeDeployProcessImmediately
@@ -240,11 +249,7 @@ func (r *TrackableResource) FailMode() multitrack.FailMode {
 	return multitrack.FailMode(value)
 }
 
-func (r *TrackableResource) FailuresAllowed() int {
-	if r.unstructured == nil {
-		return 1
-	}
-
+func (r *trackableResource) FailuresAllowed() int {
 	_, value, found := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternFailuresAllowedPerReplica)
 	var failuresAllowed int
 	if found {
@@ -262,11 +267,7 @@ func (r *TrackableResource) FailuresAllowed() int {
 	}
 }
 
-func (r *TrackableResource) IgnoreReadinessProbeFailsForContainers() (durationByContainer map[string]time.Duration) {
-	if r.unstructured == nil {
-		return nil
-	}
-
+func (r *trackableResource) IgnoreReadinessProbeFailsForContainers() (durationByContainer map[string]time.Duration) {
 	annotations, found := FindAnnotationsOrLabelsByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternIgnoreReadinessProbeFailsFor)
 	if !found {
 		return nil
@@ -284,11 +285,7 @@ func (r *TrackableResource) IgnoreReadinessProbeFailsForContainers() (durationBy
 	return durationByContainer
 }
 
-func (r *TrackableResource) LogRegex() *regexp.Regexp {
-	if r.unstructured == nil {
-		return nil
-	}
-
+func (r *trackableResource) LogRegex() *regexp.Regexp {
 	_, value, found := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternLogRegex)
 	if !found {
 		return nil
@@ -297,11 +294,7 @@ func (r *TrackableResource) LogRegex() *regexp.Regexp {
 	return regexp.MustCompile(value)
 }
 
-func (r *TrackableResource) LogRegexesForContainers() (regexByContainer map[string]*regexp.Regexp) {
-	if r.unstructured == nil {
-		return nil
-	}
-
+func (r *trackableResource) LogRegexesForContainers() (regexByContainer map[string]*regexp.Regexp) {
 	annotations, found := FindAnnotationsOrLabelsByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternLogRegexFor)
 	if !found {
 		return nil
@@ -317,11 +310,7 @@ func (r *TrackableResource) LogRegexesForContainers() (regexByContainer map[stri
 	return regexByContainer
 }
 
-func (r *TrackableResource) NoActivityTimeout() *time.Duration {
-	if r.unstructured == nil {
-		return nil
-	}
-
+func (r *trackableResource) NoActivityTimeout() *time.Duration {
 	_, value, found := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternNoActivityTimeout)
 	if !found {
 		return nil
@@ -332,11 +321,7 @@ func (r *TrackableResource) NoActivityTimeout() *time.Duration {
 	return &timeout
 }
 
-func (r *TrackableResource) ShowLogsOnlyForContainers() []string {
-	if r.unstructured == nil {
-		return nil
-	}
-
+func (r *trackableResource) ShowLogsOnlyForContainers() []string {
 	_, value, found := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternShowLogsOnlyForContainers)
 	if !found {
 		return nil
@@ -350,11 +335,7 @@ func (r *TrackableResource) ShowLogsOnlyForContainers() []string {
 	return containers
 }
 
-func (r *TrackableResource) ShowServiceMessages() bool {
-	if r.unstructured == nil {
-		return false
-	}
-
+func (r *trackableResource) ShowServiceMessages() bool {
 	_, value, found := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternShowServiceMessages)
 	if !found {
 		return false
@@ -365,11 +346,7 @@ func (r *TrackableResource) ShowServiceMessages() bool {
 	return showServiceMessages
 }
 
-func (r *TrackableResource) SkipLogs() bool {
-	if r.unstructured == nil {
-		return false
-	}
-
+func (r *trackableResource) SkipLogs() bool {
 	_, value, found := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternSkipLogs)
 	if !found {
 		return false
@@ -380,11 +357,7 @@ func (r *TrackableResource) SkipLogs() bool {
 	return skipLogs
 }
 
-func (r *TrackableResource) SkipLogsForContainers() []string {
-	if r.unstructured == nil {
-		return nil
-	}
-
+func (r *trackableResource) SkipLogsForContainers() []string {
 	_, value, found := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternSkipLogsForContainers)
 	if !found {
 		return nil
@@ -398,11 +371,7 @@ func (r *TrackableResource) SkipLogsForContainers() []string {
 	return containers
 }
 
-func (r *TrackableResource) TrackTerminationMode() multitrack.TrackTerminationMode {
-	if r.unstructured == nil {
-		return multitrack.WaitUntilResourceReady
-	}
-
+func (r *trackableResource) TrackTerminationMode() multitrack.TrackTerminationMode {
 	_, value, found := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternTrackTerminationMode)
 	if !found {
 		return multitrack.WaitUntilResourceReady

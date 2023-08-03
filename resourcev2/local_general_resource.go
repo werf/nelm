@@ -10,36 +10,38 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 )
 
-func NewLocalGeneralCRD(unstruct *unstructured.Unstructured, filePath string, opts NewLocalGeneralCRDOptions) *LocalGeneralCRD {
-	return &LocalGeneralCRD{
+func NewLocalGeneralResource(unstruct *unstructured.Unstructured, filePath string, opts NewLocalGeneralResourceOptions) *LocalGeneralResource {
+	return &LocalGeneralResource{
 		localBaseResource:            newLocalBaseResource(unstruct, filePath, newLocalBaseResourceOptions{Mapper: opts.Mapper}),
 		helmManageableResource:       newHelmManageableResource(unstruct),
 		recreatableResource:          newRecreatableResource(unstruct),
 		autoDeletableResource:        newAutoDeletableResource(unstruct),
 		neverDeletableResource:       newNeverDeletableResource(unstruct),
+		replicableResource:           newReplicableResource(unstruct),
 		weighableResource:            newWeighableResource(unstruct),
 		trackableResource:            newTrackableResource(unstruct),
 		externallyDependableResource: newExternallyDependableResource(unstruct, filePath, newExternallyDependableResourceOptions{Mapper: opts.Mapper, DiscoveryClient: opts.DiscoveryClient}),
 	}
 }
 
-type NewLocalGeneralCRDOptions struct {
+type NewLocalGeneralResourceOptions struct {
 	Mapper          meta.ResettableRESTMapper
 	DiscoveryClient discovery.CachedDiscoveryInterface
 }
 
-type LocalGeneralCRD struct {
+type LocalGeneralResource struct {
 	*localBaseResource
 	*helmManageableResource
 	*recreatableResource
 	*autoDeletableResource
 	*neverDeletableResource
+	*replicableResource
 	*weighableResource
 	*trackableResource
 	*externallyDependableResource
 }
 
-func (r *LocalGeneralCRD) Validate() error {
+func (r *LocalGeneralResource) Validate() error {
 	if err := r.localBaseResource.Validate(); err != nil {
 		return err
 	}
@@ -59,16 +61,16 @@ func (r *LocalGeneralCRD) Validate() error {
 	return nil
 }
 
-func (r *LocalGeneralCRD) PartOfRelease() bool {
+func (r *LocalGeneralResource) PartOfRelease() bool {
 	return true
 }
 
-func (r *LocalGeneralCRD) ShouldHaveServiceMetadata() bool {
+func (r *LocalGeneralResource) ShouldHaveServiceMetadata() bool {
 	return true
 }
 
-func BuildLocalGeneralCRDsFromManifests(manifests []string, opts BuildLocalGeneralCRDsFromManifestsOptions) ([]*LocalGeneralCRD, error) {
-	var localGeneralCRDs []*LocalGeneralCRD
+func BuildLocalGeneralResourcesFromManifests(manifests []string, opts BuildLocalGeneralResourcesFromManifestsOptions) ([]*LocalGeneralResource, error) {
+	var localGeneralResources []*LocalGeneralResource
 	for _, manifest := range manifests {
 		var path string
 		if strings.HasPrefix(manifest, "# Source: ") {
@@ -82,21 +84,21 @@ func BuildLocalGeneralCRDsFromManifests(manifests []string, opts BuildLocalGener
 		}
 
 		unstructObj := obj.(*unstructured.Unstructured)
-		if !IsCRD(unstructObj) {
+		if IsCRD(unstructObj) {
 			continue
 		}
 
-		resource := NewLocalGeneralCRD(unstructObj, path, NewLocalGeneralCRDOptions{
+		resource := NewLocalGeneralResource(unstructObj, path, NewLocalGeneralResourceOptions{
 			Mapper:          opts.Mapper,
 			DiscoveryClient: opts.DiscoveryClient,
 		})
-		localGeneralCRDs = append(localGeneralCRDs, resource)
+		localGeneralResources = append(localGeneralResources, resource)
 	}
 
-	return localGeneralCRDs, nil
+	return localGeneralResources, nil
 }
 
-type BuildLocalGeneralCRDsFromManifestsOptions struct {
+type BuildLocalGeneralResourcesFromManifestsOptions struct {
 	Mapper          meta.ResettableRESTMapper
 	DiscoveryClient discovery.CachedDiscoveryInterface
 }

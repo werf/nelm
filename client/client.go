@@ -32,8 +32,7 @@ type Client struct {
 	discoveryClient discovery.CachedDiscoveryInterface
 	mapper          meta.ResettableRESTMapper
 
-	resourceWaiter *resourcewaiter.ResourceWaiter
-	// FIXME(ilya-lesikov): to duration
+	resourceWaiter      *resourcewaiter.ResourceWaiter
 	waitDeletionTimeout int
 
 	targetResourceMutators []mutator.RuntimeResourceMutator
@@ -73,9 +72,6 @@ func (c *Client) Get(ctx context.Context, opts GetOptions, refs ...resource.Refe
 		gvr, namespaced, err := util.ConvertGVKtoGVR(ref.GroupVersionKind(), c.mapper)
 		if err != nil {
 			if strings.Contains(err.Error(), "no matches for kind") {
-				// FIXME(ilya-lesikov): all the Reset()'s should happen automatically right after
-				// CRDs are deployed, otherwise no Reset's needed. Should we reset kubedog mapper?
-				// Might be not since it is only needed for elimination?
 				c.mapper.Reset()
 				gvr, namespaced, err = util.ConvertGVKtoGVR(ref.GroupVersionKind(), c.mapper)
 				if strings.Contains(err.Error(), "no matches for kind") {
@@ -105,7 +101,6 @@ func (c *Client) Get(ctx context.Context, opts GetOptions, refs ...resource.Refe
 
 		res, err := clientResource.Get(ctx, ref.Name(), metav1.GetOptions{})
 		if err != nil {
-			// FIXME(ilya-lesikov): does this match api resource not existing?
 			if apierrors.IsNotFound(err) {
 				result.NotFound = append(result.NotFound, ref)
 				continue

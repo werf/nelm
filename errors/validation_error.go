@@ -19,5 +19,3 @@ type ValidationError struct {
 func (e *ValidationError) Error() string {
 	return fmt.Sprintf(e.format, e.args...)
 }
-
-// FIXME(ilya-lesikov): wrap/unwrap ?

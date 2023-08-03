@@ -1,22 +1,25 @@
 package resourcev2
 
 import (
-	"helm.sh/helm/v3/pkg/werf/resourcev2/resourceparts"
+	"fmt"
+	"strings"
+
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/kubernetes/scheme"
 )
 
 func NewLocalHookCRD(unstruct *unstructured.Unstructured, filePath string, opts NewLocalHookCRDOptions) *LocalHookCRD {
 	return &LocalHookCRD{
-		LocalBaseResource:            resourceparts.NewLocalBaseResource(unstruct, filePath, resourceparts.NewLocalBaseResourceOptions{Mapper: opts.Mapper}),
-		HookableResource:             resourceparts.NewHookableResource(unstruct),
-		RecreatableResource:          resourceparts.NewRecreatableResource(unstruct),
-		AutoDeletableResource:        resourceparts.NewAutoDeletableResource(unstruct),
-		NeverDeletableResource:       resourceparts.NewNeverDeletableResource(unstruct),
-		WeighableResource:            resourceparts.NewWeighableResource(unstruct),
-		TrackableResource:            resourceparts.NewTrackableResource(resourceparts.NewTrackableResourceOptions{Unstructured: unstruct}),
-		ExternallyDependableResource: resourceparts.NewExternallyDependableResource(unstruct, filePath, resourceparts.NewExternallyDependableResourceOptions{Mapper: opts.Mapper, DiscoveryClient: opts.DiscoveryClient}),
+		localBaseResource:            newLocalBaseResource(unstruct, filePath, newLocalBaseResourceOptions{Mapper: opts.Mapper}),
+		hookableResource:             newHookableResource(unstruct),
+		recreatableResource:          newRecreatableResource(unstruct),
+		autoDeletableResource:        newAutoDeletableResource(unstruct),
+		neverDeletableResource:       newNeverDeletableResource(unstruct),
+		weighableResource:            newWeighableResource(unstruct),
+		trackableResource:            newTrackableResource(unstruct),
+		externallyDependableResource: newExternallyDependableResource(unstruct, filePath, newExternallyDependableResourceOptions{Mapper: opts.Mapper, DiscoveryClient: opts.DiscoveryClient}),
 	}
 }
 
@@ -26,32 +29,75 @@ type NewLocalHookCRDOptions struct {
 }
 
 type LocalHookCRD struct {
-	*resourceparts.LocalBaseResource
-	*resourceparts.HookableResource
-	*resourceparts.RecreatableResource
-	*resourceparts.AutoDeletableResource
-	*resourceparts.NeverDeletableResource
-	*resourceparts.WeighableResource
-	*resourceparts.TrackableResource
-	*resourceparts.ExternallyDependableResource
+	*localBaseResource
+	*hookableResource
+	*recreatableResource
+	*autoDeletableResource
+	*neverDeletableResource
+	*weighableResource
+	*trackableResource
+	*externallyDependableResource
 }
 
 func (r *LocalHookCRD) Validate() error {
-	if err := r.LocalBaseResource.Validate(); err != nil {
+	if err := r.localBaseResource.Validate(); err != nil {
 		return err
 	}
 
-	if err := r.HookableResource.Validate(); err != nil {
+	if err := r.hookableResource.Validate(); err != nil {
 		return err
 	}
 
-	if err := r.TrackableResource.Validate(); err != nil {
+	if err := r.trackableResource.Validate(); err != nil {
 		return err
 	}
 
-	if err := r.ExternallyDependableResource.Validate(); err != nil {
+	if err := r.externallyDependableResource.Validate(); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (r *LocalHookCRD) PartOfRelease() bool {
+	return false
+}
+
+func (r *LocalHookCRD) ShouldHaveServiceMetadata() bool {
+	return true
+}
+
+func BuildLocalHookCRDsFromManifests(manifests []string, opts BuildLocalHookCRDsFromManifestsOptions) ([]*LocalHookCRD, error) {
+	var localHookCRDs []*LocalHookCRD
+	for _, manifest := range manifests {
+		var path string
+		if strings.HasPrefix(manifest, "# Source: ") {
+			firstLine := strings.TrimSpace(strings.Split(manifest, "\n")[0])
+			path = strings.TrimPrefix(firstLine, "# Source: ")
+		}
+
+		obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(manifest), nil, &unstructured.Unstructured{})
+		if err != nil {
+			return nil, fmt.Errorf("error decoding hook from file %q: %w", path, err)
+		}
+
+		unstructObj := obj.(*unstructured.Unstructured)
+
+		if !IsCRD(unstructObj) {
+			continue
+		}
+
+		crd := NewLocalHookCRD(unstructObj, path, NewLocalHookCRDOptions{
+			Mapper:          opts.Mapper,
+			DiscoveryClient: opts.DiscoveryClient,
+		})
+		localHookCRDs = append(localHookCRDs, crd)
+	}
+
+	return localHookCRDs, nil
+}
+
+type BuildLocalHookCRDsFromManifestsOptions struct {
+	Mapper          meta.ResettableRESTMapper
+	DiscoveryClient discovery.CachedDiscoveryInterface
 }

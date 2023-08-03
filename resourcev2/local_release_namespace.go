@@ -1,7 +1,6 @@
 package resourcev2
 
 import (
-	"helm.sh/helm/v3/pkg/werf/resourcev2/resourceparts"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/discovery"
@@ -9,11 +8,11 @@ import (
 
 func NewLocalReleaseNamespace(unstruct *unstructured.Unstructured, opts NewLocalReleaseNamespaceOptions) *LocalReleaseNamespace {
 	return &LocalReleaseNamespace{
-		LocalBaseResource:            resourceparts.NewLocalBaseResource(unstruct, opts.FilePath, resourceparts.NewLocalBaseResourceOptions{Mapper: opts.Mapper}),
-		RecreatableResource:          resourceparts.NewRecreatableResource(unstruct),
-		NeverDeletableResource:       resourceparts.NewNeverDeletableResource(unstruct),
-		TrackableResource:            resourceparts.NewTrackableResource(resourceparts.NewTrackableResourceOptions{Unstructured: unstruct}),
-		ExternallyDependableResource: resourceparts.NewExternallyDependableResource(unstruct, "", resourceparts.NewExternallyDependableResourceOptions{Mapper: opts.Mapper, DiscoveryClient: opts.DiscoveryClient}),
+		localBaseResource:            newLocalBaseResource(unstruct, opts.FilePath, newLocalBaseResourceOptions{Mapper: opts.Mapper}),
+		recreatableResource:          newRecreatableResource(unstruct),
+		neverDeletableResource:       newNeverDeletableResource(unstruct),
+		trackableResource:            newTrackableResource(unstruct),
+		externallyDependableResource: newExternallyDependableResource(unstruct, "", newExternallyDependableResourceOptions{Mapper: opts.Mapper, DiscoveryClient: opts.DiscoveryClient}),
 	}
 }
 
@@ -24,29 +23,37 @@ type NewLocalReleaseNamespaceOptions struct {
 }
 
 type LocalReleaseNamespace struct {
-	*resourceparts.LocalBaseResource
-	*resourceparts.RecreatableResource
-	*resourceparts.NeverDeletableResource
-	*resourceparts.TrackableResource
-	*resourceparts.ExternallyDependableResource
+	*localBaseResource
+	*recreatableResource
+	*neverDeletableResource
+	*trackableResource
+	*externallyDependableResource
 }
 
 func (r *LocalReleaseNamespace) Validate() error {
-	if err := r.LocalBaseResource.Validate(); err != nil {
+	if err := r.localBaseResource.Validate(); err != nil {
 		return err
 	}
 
-	if err := r.TrackableResource.Validate(); err != nil {
+	if err := r.trackableResource.Validate(); err != nil {
 		return err
 	}
 
-	if err := r.ExternallyDependableResource.Validate(); err != nil {
+	if err := r.externallyDependableResource.Validate(); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (r *LocalReleaseNamespace) Scope() resourceparts.ResourceScope {
-	return resourceparts.ResourceScopeCluster
+func (r *LocalReleaseNamespace) Scope() ResourceScope {
+	return ResourceScopeCluster
+}
+
+func (r *LocalReleaseNamespace) PartOfRelease() bool {
+	return false
+}
+
+func (r *LocalReleaseNamespace) ShouldHaveServiceMetadata() bool {
+	return false
 }

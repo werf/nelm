@@ -1,4 +1,4 @@
-package resourceparts
+package resourcev2
 
 import (
 	"fmt"
@@ -7,17 +7,18 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+var annotationKeyHumanResourcePolicy = "helm.sh/resource-policy"
 var annotationKeyPatternResourcePolicy = regexp.MustCompile(`^helm.sh/resource-policy$`)
 
-func NewNeverDeletableResource(unstruct *unstructured.Unstructured) *NeverDeletableResource {
-	return &NeverDeletableResource{unstructured: unstruct}
+func newNeverDeletableResource(unstruct *unstructured.Unstructured) *neverDeletableResource {
+	return &neverDeletableResource{unstructured: unstruct}
 }
 
-type NeverDeletableResource struct {
+type neverDeletableResource struct {
 	unstructured *unstructured.Unstructured
 }
 
-func (r *NeverDeletableResource) Validate() error {
+func (r *neverDeletableResource) Validate() error {
 	if key, value, found := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternResourcePolicy); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
@@ -33,7 +34,7 @@ func (r *NeverDeletableResource) Validate() error {
 	return nil
 }
 
-func (r *NeverDeletableResource) ShouldNeverBeDeleted() bool {
+func (r *neverDeletableResource) ShouldNeverBeDeleted() bool {
 	_, value, found := FindAnnotationOrLabelByKeyPattern(r.unstructured.GetAnnotations(), annotationKeyPatternResourcePolicy)
 	if !found {
 		return false

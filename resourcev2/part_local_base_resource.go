@@ -1,4 +1,4 @@
-package resourceparts
+package resourcev2
 
 import (
 	"fmt"
@@ -8,49 +8,41 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-type ResourceScope string
-
-const (
-	ResourceScopeNamespace ResourceScope = "namespace"
-	ResourceScopeCluster   ResourceScope = "cluster"
-	ResourceScopeUnknown   ResourceScope = "unknown"
-)
-
-func NewLocalBaseResource(unstruct *unstructured.Unstructured, filePath string, opts NewLocalBaseResourceOptions) *LocalBaseResource {
-	return &LocalBaseResource{
+func newLocalBaseResource(unstruct *unstructured.Unstructured, filePath string, opts newLocalBaseResourceOptions) *localBaseResource {
+	return &localBaseResource{
 		unstructured: unstruct,
 		filePath:     filePath,
 		mapper:       opts.Mapper,
 	}
 }
 
-type NewLocalBaseResourceOptions struct {
+type newLocalBaseResourceOptions struct {
 	Mapper meta.ResettableRESTMapper
 }
 
-type LocalBaseResource struct {
+type localBaseResource struct {
 	unstructured *unstructured.Unstructured
 	filePath     string
 	mapper       meta.ResettableRESTMapper
 }
 
-func (r *LocalBaseResource) Validate() error {
+func (r *localBaseResource) Validate() error {
 	return nil
 }
 
-func (r *LocalBaseResource) Name() string {
+func (r *localBaseResource) Name() string {
 	return r.unstructured.GetName()
 }
 
-func (r *LocalBaseResource) Namespace() string {
+func (r *localBaseResource) Namespace() string {
 	return r.unstructured.GetNamespace()
 }
 
-func (r *LocalBaseResource) FilePath() string {
+func (r *localBaseResource) FilePath() string {
 	return r.filePath
 }
 
-func (r *LocalBaseResource) Scope() (ResourceScope, error) {
+func (r *localBaseResource) Scope() (ResourceScope, error) {
 	if r.mapper != nil {
 		mapping, err := r.mapper.RESTMapping(r.GroupVersionKind().GroupKind(), r.GroupVersionKind().Version)
 		if err != nil {
@@ -67,15 +59,15 @@ func (r *LocalBaseResource) Scope() (ResourceScope, error) {
 	return ResourceScopeUnknown, nil
 }
 
-func (r *LocalBaseResource) GroupVersionKind() schema.GroupVersionKind {
+func (r *localBaseResource) GroupVersionKind() schema.GroupVersionKind {
 	return r.unstructured.GroupVersionKind()
 }
 
-func (r *LocalBaseResource) Unstructured() *unstructured.Unstructured {
+func (r *localBaseResource) Unstructured() *unstructured.Unstructured {
 	return r.unstructured
 }
 
-func (r *LocalBaseResource) String() string {
+func (r *localBaseResource) String() string {
 	if r.Namespace() != "" {
 		return fmt.Sprintf("%s:%s/%s", r.GroupVersionKind().Kind, r.Namespace(), r.Name())
 	} else {
