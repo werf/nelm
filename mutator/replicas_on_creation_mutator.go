@@ -23,6 +23,9 @@ func (m *ReplicasOnCreationMutator) Mutate(res resource.Resourcer, operationType
 	for key, value := range res.Unstructured().GetAnnotations() {
 		anno := annotation.AnnotationFactory(key, value)
 		if a, ok := anno.(*annotation.AnnotationReplicasOnCreation); ok {
+			if err := a.Validate(); err != nil {
+				return nil, err
+			}
 			replicasOnCreationAnno = a
 			break
 		}
@@ -37,7 +40,7 @@ func (m *ReplicasOnCreationMutator) Mutate(res resource.Resourcer, operationType
 		schema.GroupKind{Group: "apps", Kind: "StatefulSet"},
 		schema.GroupKind{Group: "apps", Kind: "ReplicaSet"},
 		schema.GroupKind{Group: "apps", Kind: "DaemonSet"}:
-		_ = unstructured.SetNestedField(res.Unstructured().UnstructuredContent(), replicasOnCreationAnno, "spec", "replicas")
+		_ = unstructured.SetNestedField(res.Unstructured().UnstructuredContent(), replicasOnCreationAnno.Replicas(), "spec", "replicas")
 	}
 
 	return res, nil
