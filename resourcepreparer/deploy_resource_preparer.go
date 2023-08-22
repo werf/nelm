@@ -35,42 +35,42 @@ func PrepareDeployResources(
 	}
 
 	wg := &sync.WaitGroup{}
-	wgDoneCh := make(chan struct{}, 1)
+	wgDoneCh := make(chan struct{})
 	defer func() {
 		wgDoneCh <- struct{}{}
 	}()
 
-	prevReleaseGeneralCRDsResultsCh := make(chan *ValidatableGettableResult, 1)
+	prevReleaseGeneralCRDsResultsCh := make(chan *ValidatableGettableResult)
 	for _, res := range prevReleaseGeneralCRDs {
 		validateGet(ctx, res, wg, prevReleaseGeneralCRDsResultsCh, kubeClient, opts.FallbackNamespace)
 	}
 
-	prevReleaseGeneralResourcesResultsCh := make(chan *ValidatableGettableResult, 1)
+	prevReleaseGeneralResourcesResultsCh := make(chan *ValidatableGettableResult)
 	for _, res := range prevReleaseGeneralResources {
 		validateGet(ctx, res, wg, prevReleaseGeneralResourcesResultsCh, kubeClient, opts.FallbackNamespace)
 	}
 
-	standaloneCRDsResultsCh := make(chan *ValidatableGettableDryAppliableResult, 1)
+	standaloneCRDsResultsCh := make(chan *ValidatableGettableDryAppliableResult)
 	for _, res := range standaloneCRDs {
 		validateGetDryApply(ctx, res, wg, standaloneCRDsResultsCh, kubeClient, opts.FallbackNamespace, false, releaseName, releaseNamespace.Name())
 	}
 
-	hookCRDsResultsCh := make(chan *ValidatableGettableDryAppliableResult, 1)
+	hookCRDsResultsCh := make(chan *ValidatableGettableDryAppliableResult)
 	for _, res := range hookCRDs {
 		validateGetDryApply(ctx, res, wg, hookCRDsResultsCh, kubeClient, opts.FallbackNamespace, false, releaseName, releaseNamespace.Name())
 	}
 
-	hookResourcesResultsCh := make(chan *ValidatableGettableDryAppliableResult, 1)
+	hookResourcesResultsCh := make(chan *ValidatableGettableDryAppliableResult)
 	for _, res := range hookResources {
 		validateGetDryApply(ctx, res, wg, hookResourcesResultsCh, kubeClient, opts.FallbackNamespace, false, releaseName, releaseNamespace.Name())
 	}
 
-	generalCRDsResultsCh := make(chan *ValidatableGettableDryAppliableResult, 1)
+	generalCRDsResultsCh := make(chan *ValidatableGettableDryAppliableResult)
 	for _, res := range generalCRDs {
 		validateGetDryApply(ctx, res, wg, generalCRDsResultsCh, kubeClient, opts.FallbackNamespace, true, releaseName, releaseNamespace.Name())
 	}
 
-	generalResourcesResultsCh := make(chan *ValidatableGettableDryAppliableResult, 1)
+	generalResourcesResultsCh := make(chan *ValidatableGettableDryAppliableResult)
 	for _, res := range generalResources {
 		validateGetDryApply(ctx, res, wg, generalResourcesResultsCh, kubeClient, opts.FallbackNamespace, true, releaseName, releaseNamespace.Name())
 	}
