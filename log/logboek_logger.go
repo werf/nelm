@@ -6,44 +6,45 @@ import (
 	"fmt"
 
 	"github.com/werf/logboek"
-	"github.com/werf/logboek/pkg/types"
 )
 
-func NewLogboekLogger(ctx context.Context) *LogboekLogger {
-	return &LogboekLogger{
-		logger: logboek.Context(ctx),
-	}
+var _ Logger = (*LogboekLogger)(nil)
+
+func NewLogboekLogger() *LogboekLogger {
+	return &LogboekLogger{}
 }
 
-type LogboekLogger struct {
-	logger types.LoggerInterface
+type LogboekLogger struct{}
+
+func (l *LogboekLogger) Trace(ctx context.Context, format string, a ...interface{}) {
+	logboek.Context(ctx).Debug().LogF(format+"\n", a...)
 }
 
-func (l *LogboekLogger) Trace(format string, a ...interface{}) {
-	l.logger.Debug().LogF(format+"\n", a...)
-}
-
-func (l *LogboekLogger) TraceStruct(obj interface{}, format string, a ...interface{}) {
+func (l *LogboekLogger) TraceStruct(ctx context.Context, obj interface{}, format string, a ...interface{}) {
 	out, err := json.MarshalIndent(obj, "", "  ")
 	if err != nil {
-		l.Warn("error marshaling object to json while tracing struct for %q: %w", fmt.Sprintf(format, a), err)
+		l.Warn(ctx, "error marshaling object to json while tracing struct for %q: %w", fmt.Sprintf(format, a), err)
 	}
 
-	l.logger.Debug().LogF(fmt.Sprintf(format+"\n", a...) + string(out) + "\n")
+	logboek.Context(ctx).Debug().LogF(fmt.Sprintf(format+"\n", a...) + string(out) + "\n")
 }
 
-func (l *LogboekLogger) Debug(format string, a ...interface{}) {
-	l.logger.Debug().LogF(format+"\n", a...)
+func (l *LogboekLogger) Debug(ctx context.Context, format string, a ...interface{}) {
+	logboek.Context(ctx).Debug().LogF(format+"\n", a...)
 }
 
-func (l *LogboekLogger) Info(format string, a ...interface{}) {
-	l.logger.Info().LogF(format+"\n", a...)
+func (l *LogboekLogger) Info(ctx context.Context, format string, a ...interface{}) {
+	logboek.Context(ctx).Default().LogF(format+"\n", a...)
 }
 
-func (l *LogboekLogger) Warn(format string, a ...interface{}) {
-	l.logger.Warn().LogF(format+"\n", a...)
+func (l *LogboekLogger) Warn(ctx context.Context, format string, a ...interface{}) {
+	logboek.Context(ctx).Warn().LogF(format+"\n", a...)
 }
 
-func (l *LogboekLogger) LogBlock(task func() error, format string, a ...interface{}) error {
-	return l.logger.LogProcess(format, a...).DoError(task)
+func (l *LogboekLogger) Error(ctx context.Context, format string, a ...interface{}) {
+	logboek.Context(ctx).Error().LogF(format+"\n", a...)
+}
+
+func (l *LogboekLogger) LogBlock(ctx context.Context, task func() error, format string, a ...interface{}) error {
+	return logboek.Context(ctx).LogProcess(format, a...).DoError(task)
 }

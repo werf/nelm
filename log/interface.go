@@ -1,10 +1,13 @@
 package log
 
+import "context"
+
 type Logger interface {
-	Trace(format string, a ...interface{})
-	TraceStruct(obj interface{}, format string, a ...interface{})
-	Debug(format string, a ...interface{})
-	Info(format string, a ...interface{})
-	Warn(format string, a ...interface{})
-	LogBlock(task func() error, format string, a ...interface{}) error
+	Trace(ctx context.Context, format string, a ...interface{})
+	TraceStruct(ctx context.Context, obj interface{}, format string, a ...interface{})
+	Debug(ctx context.Context, format string, a ...interface{})
+	Info(ctx context.Context, format string, a ...interface{})
+	Warn(ctx context.Context, format string, a ...interface{})
+	Error(ctx context.Context, format string, a ...interface{})
+	LogBlock(ctx context.Context, task func() error, format string, a ...interface{}) error
 }
