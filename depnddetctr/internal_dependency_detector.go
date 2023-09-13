@@ -202,7 +202,7 @@ func (d *InternalDependencyDetector) parseConfigMapKeyRef(unstruct *unstructured
 		return nil, false
 	}
 
-	name, found := nestedString(configMapKeyRef, "name")
+	name, found := nestedStringNotEmpty(configMapKeyRef, "name")
 	if !found {
 		return nil, false
 	}
@@ -232,7 +232,7 @@ func (d *InternalDependencyDetector) parseSecretKeyRef(unstruct *unstructured.Un
 		return nil, false
 	}
 
-	name, found := nestedString(secretKeyRef, "name")
+	name, found := nestedStringNotEmpty(secretKeyRef, "name")
 	if !found {
 		return nil, false
 	}
@@ -262,7 +262,7 @@ func (d *InternalDependencyDetector) parseConfigMapRef(unstruct *unstructured.Un
 		return nil, false
 	}
 
-	name, found := nestedString(configMapKeyRef, "name")
+	name, found := nestedStringNotEmpty(configMapKeyRef, "name")
 	if !found {
 		return nil, false
 	}
@@ -292,7 +292,7 @@ func (d *InternalDependencyDetector) parseSecretRef(unstruct *unstructured.Unstr
 		return nil, false
 	}
 
-	name, found := nestedString(secretKeyRef, "name")
+	name, found := nestedStringNotEmpty(secretKeyRef, "name")
 	if !found {
 		return nil, false
 	}
@@ -312,7 +312,7 @@ func (d *InternalDependencyDetector) parseSecretRef(unstruct *unstructured.Unstr
 }
 
 func (d *InternalDependencyDetector) parseImagePullSecret(unstruct *unstructured.Unstructured, secret interface{}) (dep *depnd.InternalDependency, found bool) {
-	name, found := nestedString(secret, "name")
+	name, found := nestedStringNotEmpty(secret, "name")
 	if !found {
 		return nil, false
 	}
@@ -332,7 +332,7 @@ func (d *InternalDependencyDetector) parseImagePullSecret(unstruct *unstructured
 }
 
 func (d *InternalDependencyDetector) parseNodeName(pod interface{}) (dep *depnd.InternalDependency, found bool) {
-	nodeName, found := nestedString(pod, "spec", "nodeName")
+	nodeName, found := nestedStringNotEmpty(pod, "spec", "nodeName")
 	if !found {
 		return nil, false
 	}
@@ -352,7 +352,7 @@ func (d *InternalDependencyDetector) parseNodeName(pod interface{}) (dep *depnd.
 }
 
 func (d *InternalDependencyDetector) parsePriorityClassName(unstruct *unstructured.Unstructured, pod interface{}) (dep *depnd.InternalDependency, found bool) {
-	priorityClassName, found := nestedString(pod, "spec", "priorityClassName")
+	priorityClassName, found := nestedStringNotEmpty(pod, "spec", "priorityClassName")
 	if !found {
 		return nil, false
 	}
@@ -377,7 +377,7 @@ func (d *InternalDependencyDetector) parseResourceClaim(unstruct *unstructured.U
 		return nil, false
 	}
 
-	resourceClaimName, resourceClaimNameFound := nestedString(source, "resourceClaimName")
+	resourceClaimName, resourceClaimNameFound := nestedStringNotEmpty(source, "resourceClaimName")
 	if resourceClaimNameFound {
 		dep = depnd.NewInternalDependency(
 			[]string{resourceClaimName},
@@ -393,7 +393,7 @@ func (d *InternalDependencyDetector) parseResourceClaim(unstruct *unstructured.U
 		return dep, true
 	}
 
-	resourceClaimNameTemplate, resourceClaimNameTemplateFound := nestedString(source, "resourceClaimNameTemplate")
+	resourceClaimNameTemplate, resourceClaimNameTemplateFound := nestedStringNotEmpty(source, "resourceClaimNameTemplate")
 	if resourceClaimNameTemplateFound {
 		dep = depnd.NewInternalDependency(
 			[]string{resourceClaimNameTemplate},
@@ -413,7 +413,7 @@ func (d *InternalDependencyDetector) parseResourceClaim(unstruct *unstructured.U
 }
 
 func (d *InternalDependencyDetector) parseRuntimeClassName(pod interface{}) (dep *depnd.InternalDependency, found bool) {
-	runtimeClassName, found := nestedString(pod, "spec", "runtimeClassName")
+	runtimeClassName, found := nestedStringNotEmpty(pod, "spec", "runtimeClassName")
 	if !found {
 		return nil, false
 	}
@@ -433,7 +433,7 @@ func (d *InternalDependencyDetector) parseRuntimeClassName(pod interface{}) (dep
 }
 
 func (d *InternalDependencyDetector) parseServiceAccount(unstruct *unstructured.Unstructured, pod interface{}) (dep *depnd.InternalDependency, found bool) {
-	serviceAccount, found := nestedString(pod, "spec", "serviceAccount")
+	serviceAccount, found := nestedStringNotEmpty(pod, "spec", "serviceAccount")
 	if !found {
 		return nil, false
 	}
@@ -453,7 +453,7 @@ func (d *InternalDependencyDetector) parseServiceAccount(unstruct *unstructured.
 }
 
 func (d *InternalDependencyDetector) parseServiceAccountName(unstruct *unstructured.Unstructured, pod interface{}) (dep *depnd.InternalDependency, found bool) {
-	serviceAccountName, found := nestedString(pod, "spec", "serviceAccountName")
+	serviceAccountName, found := nestedStringNotEmpty(pod, "spec", "serviceAccountName")
 	if !found {
 		return nil, false
 	}
@@ -475,7 +475,7 @@ func (d *InternalDependencyDetector) parseServiceAccountName(unstruct *unstructu
 func (d *InternalDependencyDetector) parseVolume(unstruct *unstructured.Unstructured, volume interface{}) (dep *depnd.InternalDependency, found bool) {
 	configMap, found := nestedMap(volume, "configMap")
 	if found {
-		name, found := nestedString(configMap, "name")
+		name, found := nestedStringNotEmpty(configMap, "name")
 		if !found {
 			return nil, false
 		}
@@ -501,7 +501,7 @@ func (d *InternalDependencyDetector) parseVolume(unstruct *unstructured.Unstruct
 
 	secret, found := nestedMap(volume, "secret")
 	if found {
-		name, found := nestedString(secret, "secretName")
+		name, found := nestedStringNotEmpty(secret, "secretName")
 		if !found {
 			return nil, false
 		}
@@ -529,7 +529,7 @@ func (d *InternalDependencyDetector) parseVolume(unstruct *unstructured.Unstruct
 }
 
 func (d *InternalDependencyDetector) parseServiceName(unstruct *unstructured.Unstructured, spec interface{}) (dep *depnd.InternalDependency, found bool) {
-	name, found := nestedString(spec, "serviceName")
+	name, found := nestedStringNotEmpty(spec, "serviceName")
 	if !found {
 		return nil, false
 	}
@@ -623,6 +623,15 @@ func nestedBool(obj interface{}, fields ...string) (result bool, found bool) {
 func nestedString(obj interface{}, fields ...string) (result string, found bool) {
 	result, found, err := unstructured.NestedString(obj.(map[string]interface{}), fields...)
 	if !found || err != nil {
+		return "", false
+	}
+
+	return result, true
+}
+
+func nestedStringNotEmpty(obj interface{}, fields ...string) (result string, found bool) {
+	result, found, err := unstructured.NestedString(obj.(map[string]interface{}), fields...)
+	if !found || err != nil || result == "" {
 		return "", false
 	}
 
