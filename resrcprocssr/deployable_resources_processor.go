@@ -396,8 +396,6 @@ func (p *DeployableResourcesProcessor) buildReleasableGeneralResources(ctx conte
 	return nil
 }
 
-// FIXME(ilya-lesikov): remove executing operation from output
-
 func (p *DeployableResourcesProcessor) buildDeployableStandaloneCRDs(ctx context.Context) error {
 	var patchedResources []*resrc.StandaloneCRD
 

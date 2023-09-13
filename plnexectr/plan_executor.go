@@ -11,6 +11,7 @@ import (
 	"helm.sh/helm/v3/pkg/werf/log"
 	"helm.sh/helm/v3/pkg/werf/opertn"
 	"helm.sh/helm/v3/pkg/werf/pln"
+	"helm.sh/helm/v3/pkg/werf/utls"
 )
 
 func NewPlanExecutor(plan *pln.Plan, opts PlanExecutorOptions) *PlanExecutor {
@@ -92,7 +93,7 @@ func (e *PlanExecutor) execOperation(opID string, completedOpsIDsCh chan string,
 			opertn.TypeRecreateResourceOperation,
 			opertn.TypeApplyResourceOperation,
 			opertn.TypeDeleteResourceOperation:
-			log.Default.Info(ctx, "Executing operation %q ...", op.HumanID())
+			log.Default.Info(ctx, utls.Capitalize(op.HumanID()))
 		}
 		if err := op.Execute(ctx); err != nil {
 			ctxCancelFn()
