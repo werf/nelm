@@ -103,62 +103,74 @@ type DeployableResourcesProcessor struct {
 	deployablePrevRelGeneralResourcesInfos []*resrcinfo.DeployablePrevReleaseGeneralResourceInfo
 }
 
+// TODO(ilya-lesikov): optimize. Avoid excessive deep copies.
 func (p *DeployableResourcesProcessor) Process(ctx context.Context) error {
+	log.Default.Debug(ctx, "Transforming hook resources ...")
 	if err := p.transformHookResources(ctx); err != nil {
 		return fmt.Errorf("error transforming hook resources: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Transforming general resources ...")
 	if err := p.transformGeneralResources(ctx); err != nil {
 		return fmt.Errorf("error transforming general resources: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Validating resources ...")
 	if err := p.validateResources(); err != nil {
 		return fmt.Errorf("error validating resources: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Building releasable resources ...")
 	if err := p.validateNoDuplicates(); err != nil {
 		return fmt.Errorf("error validating for no duplicated resources: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Building releasable hook resources ...")
 	if err := p.buildReleasableHookResources(ctx); err != nil {
 		return fmt.Errorf("error building releasable hook resources: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Building releasable general resources ...")
 	if err := p.buildReleasableGeneralResources(ctx); err != nil {
 		return fmt.Errorf("error building releasable general resources: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Validating releasable resources ...")
 	if err := p.validateReleasableResources(); err != nil {
 		return fmt.Errorf("error validating releasable resources: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Building deployable standalone CRDs ...")
 	if err := p.buildDeployableStandaloneCRDs(ctx); err != nil {
 		return fmt.Errorf("error building deployable standalone crds: %w", err)
 	}
 
 	p.deployableReleaseNamespace = p.releaseNamespace
 
+	log.Default.Debug(ctx, "Building deployable hook resources ...")
 	if err := p.buildDeployableHookResources(ctx); err != nil {
 		return fmt.Errorf("error building deployable hook resources: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Building deployable general resources ...")
 	if err := p.buildDeployableGeneralResources(ctx); err != nil {
 		return fmt.Errorf("error building deployable general resources: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Validating deployable resources ...")
 	if err := p.validateDeployableResources(); err != nil {
 		return fmt.Errorf("error validating deployable resources: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Building deployable resource infos ...")
 	if err := p.buildDeployableResourceInfos(ctx); err != nil {
 		return fmt.Errorf("error building deployable resource infos: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Validating adoptable resources ...")
 	if err := p.validateAdoptableResources(); err != nil {
 		return fmt.Errorf("error validating adoptable resources: %w", err)
 	}
-
-	log.Default.TraceStruct(ctx, p, "Resources processor:")
 
 	return nil
 }

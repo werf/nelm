@@ -32,9 +32,8 @@ type ResourceIDOptions struct {
 	Mapper           meta.ResettableRESTMapper
 }
 
-// FIXME(ilya-lesikov): ":" in valid for some resource names
 func NewResourceIDFromID(id string, opts ResourceIDOptions) *ResourceID {
-	split := strings.Split(id, ":")
+	split := strings.SplitN(id, ":", 5)
 	lo.Must0(len(split) == 5)
 
 	return NewResourceID(split[4], split[0], schema.GroupVersionKind{
@@ -97,7 +96,7 @@ func (i *ResourceID) ID() string {
 }
 
 func (i *ResourceID) HumanID() string {
-	if i.namespace != i.defaultNamespace {
+	if i.namespace != i.defaultNamespace && i.namespace != "" {
 		return fmt.Sprintf("%s/%s/%s", i.namespace, i.gvk.Kind, i.Name())
 	}
 

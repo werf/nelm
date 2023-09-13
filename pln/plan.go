@@ -14,7 +14,7 @@ import (
 )
 
 func NewPlan() *Plan {
-	planGraph := graph.New(func(t opertn.Operation) string { return t.ID() }, graph.PreventCycles(), graph.Directed())
+	planGraph := graph.New(func(t opertn.Operation) string { return t.ID() }, graph.Acyclic(), graph.PreventCycles(), graph.Directed())
 
 	return &Plan{
 		graph: planGraph,
@@ -242,6 +242,7 @@ func (p *Plan) AddDependency(fromOpID, toOpID string) error {
 
 func (p *Plan) Optimize() error {
 	var err error
+
 	p.graph, err = graph.TransitiveReduction(p.graph)
 	if err != nil {
 		return fmt.Errorf("error transitively reducing graph: %w", err)
@@ -252,7 +253,12 @@ func (p *Plan) Optimize() error {
 
 func (p *Plan) DOT() ([]byte, error) {
 	b := &bytes.Buffer{}
-	if err := draw.DOT(p.graph, b); err != nil {
+
+	if err := draw.DOT(
+		p.graph,
+		b,
+		draw.GraphAttribute("rankdir", "LR"),
+	); err != nil {
 		return nil, fmt.Errorf("error drawing DOT graph: %w", err)
 	}
 

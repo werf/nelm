@@ -9,7 +9,6 @@ import (
 	legacyRelease "helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/releaseutil"
 	"helm.sh/helm/v3/pkg/storage/driver"
-	"helm.sh/helm/v3/pkg/werf/log"
 	"helm.sh/helm/v3/pkg/werf/rls"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
@@ -142,7 +141,6 @@ func (h *History) CreateRelease(ctx context.Context, rel *rls.Release) error {
 	if err := h.storage.Create(legacyRel); err != nil {
 		return fmt.Errorf("error creating release %q (namespace: %q, revision: %q): %w", legacyRel.Name, legacyRel.Namespace, legacyRel.Version, err)
 	}
-	log.Default.TraceStruct(ctx, legacyRel, "Release created:")
 
 	h.legacyReleases = append(h.legacyReleases, legacyRel)
 
@@ -161,7 +159,6 @@ func (h *History) UpdateRelease(ctx context.Context, rel *rls.Release) error {
 	if err := h.storage.Update(legacyRel); err != nil {
 		return fmt.Errorf("error updating release %q (namespace: %q, revision: %q): %w", legacyRel.Name, legacyRel.Namespace, legacyRel.Version, err)
 	}
-	log.Default.TraceStruct(ctx, legacyRel, "Release updated:")
 
 	if _, i, found := lo.FindIndexOf(h.legacyReleases, func(r *legacyRelease.Release) bool {
 		return r.Version == rel.Revision()

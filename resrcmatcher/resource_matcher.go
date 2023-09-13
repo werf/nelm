@@ -37,8 +37,8 @@ func (s *ResourceMatcher) Match(resource *resrcid.ResourceID) bool {
 	if len(s.names) == 0 {
 		nameMatch = true
 	} else {
-		for _, n := range s.names {
-			if n == n {
+		for _, name := range s.names {
+			if resource.Name() == name {
 				nameMatch = true
 				break
 			}
@@ -52,8 +52,8 @@ func (s *ResourceMatcher) Match(resource *resrcid.ResourceID) bool {
 	if len(s.namespaces) == 0 {
 		namespaceMatch = true
 	} else {
-		for _, n := range s.namespaces {
-			if resource.Namespace() == n {
+		for _, namespace := range s.namespaces {
+			if resource.Namespace() == namespace {
 				namespaceMatch = true
 				break
 			}
@@ -67,8 +67,8 @@ func (s *ResourceMatcher) Match(resource *resrcid.ResourceID) bool {
 	if len(s.groups) == 0 {
 		groupMatch = true
 	} else {
-		for _, n := range s.groups {
-			if resource.GroupVersionKind().Group == n {
+		for _, group := range s.groups {
+			if resource.GroupVersionKind().Group == group {
 				groupMatch = true
 				break
 			}
@@ -82,8 +82,8 @@ func (s *ResourceMatcher) Match(resource *resrcid.ResourceID) bool {
 	if len(s.versions) == 0 {
 		versionMatch = true
 	} else {
-		for _, n := range s.versions {
-			if resource.GroupVersionKind().Version == n {
+		for _, version := range s.versions {
+			if resource.GroupVersionKind().Version == version {
 				versionMatch = true
 				break
 			}
@@ -97,8 +97,8 @@ func (s *ResourceMatcher) Match(resource *resrcid.ResourceID) bool {
 	if len(s.kinds) == 0 {
 		kindMatch = true
 	} else {
-		for _, n := range s.kinds {
-			if resource.GroupVersionKind().Kind == n {
+		for _, kind := range s.kinds {
+			if resource.GroupVersionKind().Kind == kind {
 				kindMatch = true
 				break
 			}

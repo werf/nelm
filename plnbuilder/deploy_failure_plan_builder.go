@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"helm.sh/helm/v3/pkg/werf/kubeclnt"
-	"helm.sh/helm/v3/pkg/werf/log"
 	"helm.sh/helm/v3/pkg/werf/opertn"
 	"helm.sh/helm/v3/pkg/werf/pln"
 	"helm.sh/helm/v3/pkg/werf/resrc"
@@ -73,7 +72,7 @@ func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*pln.Plan, error)
 			hookPhase = "post"
 		}
 
-		trackReadinessOpID := fmt.Sprintf("%s/%s-hook-resources/weight-%d", opertn.TypeTrackResourcesReadinessOperation, hookPhase, info.Resource().Weight())
+		trackReadinessOpID := fmt.Sprintf("%s/%s-hook-resources/weight:%d", opertn.TypeTrackResourcesReadinessOperation, hookPhase, info.Resource().Weight())
 
 		op, found := b.deployPlan.Operation(trackReadinessOpID)
 		if !found || op.Status() != opertn.StatusFailed {
@@ -93,7 +92,7 @@ func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*pln.Plan, error)
 			continue
 		}
 
-		trackReadinessOpID := fmt.Sprintf("%s/general-resources/weight-%d", opertn.TypeTrackResourcesReadinessOperation, info.Resource().Weight())
+		trackReadinessOpID := fmt.Sprintf("%s/general-resources/weight:%d", opertn.TypeTrackResourcesReadinessOperation, info.Resource().Weight())
 
 		op, found := b.deployPlan.Operation(trackReadinessOpID)
 		if !found || op.Status() != opertn.StatusFailed {
@@ -106,8 +105,6 @@ func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*pln.Plan, error)
 		)
 		b.plan.AddOperation(cleanupOp)
 	}
-
-	log.Default.TraceStruct(ctx, b.plan, "Failure deploy plan:")
 
 	return b.plan, nil
 }

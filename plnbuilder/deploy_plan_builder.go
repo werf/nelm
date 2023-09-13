@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -144,63 +145,59 @@ type DeployPlanBuilder struct {
 	showProgressPeriod              time.Duration
 	showHookProgressPeriod          time.Duration
 
-	plan                        *pln.Plan
-	opMetaInitStart             *opertn.StageOperation
-	opMetaInitEnd               *opertn.StageOperation
-	opMetaStandaloneCRDsStart   *opertn.StageOperation
-	opMetaStandaloneCRDsEnd     *opertn.StageOperation
-	opMetaPreHooksStart         *opertn.StageOperation
-	opMetaPreHooksEnd           *opertn.StageOperation
-	opMetaGeneralResourcesStart *opertn.StageOperation
-	opMetaGeneralResourcesEnd   *opertn.StageOperation
-	opMetaPostHooksStart        *opertn.StageOperation
-	opMetaPostHooksEnd          *opertn.StageOperation
-	opMetaFinalizationStart     *opertn.StageOperation
-	opMetaFinalizationEnd       *opertn.StageOperation
+	plan *pln.Plan
 }
 
 func (b *DeployPlanBuilder) Build(ctx context.Context) (*pln.Plan, error) {
+	log.Default.Debug(ctx, "Setting up init operations ...")
 	if err := b.setupInitOperations(); err != nil {
 		return nil, fmt.Errorf("error setting up init operations: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Setting up standalone CRDs operations ...")
 	if err := b.setupStandaloneCRDsOperations(); err != nil {
 		return nil, fmt.Errorf("error setting up standalone CRDs operations: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Setting up pre hook resources operations ...")
 	if err := b.setupPreHookResourcesOperations(); err != nil {
 		return nil, fmt.Errorf("error setting up pre hooks operations: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Setting up general resources operations ...")
 	if err := b.setupGeneralResourcesOperations(); err != nil {
 		return nil, fmt.Errorf("error setting up general resources operations: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Setting up post hook resources operations ...")
 	if err := b.setupPostHookResourcesOperations(); err != nil {
 		return nil, fmt.Errorf("error setting up post hooks operations: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Setting up prev release general resources operations ...")
 	if err := b.setupPrevReleaseGeneralResourcesOperations(); err != nil {
 		return nil, fmt.Errorf("error setting up prev release general resources operations: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Setting up finalization operations ...")
 	if err := b.setupFinalizationOperations(); err != nil {
 		return nil, fmt.Errorf("error setting up finalization operations: %w", err)
 	}
 
-	if err := b.connectInternalDependencies(); err != nil {
-		return nil, fmt.Errorf("error connecting internal dependencies: %w", err)
-	}
-
+	log.Default.Debug(ctx, "Connecting stages ...")
 	if err := b.connectStages(); err != nil {
 		return nil, fmt.Errorf("error connecting stages: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Connecting internal dependencies ...")
+	if err := b.connectInternalDependencies(); err != nil {
+		return nil, fmt.Errorf("error connecting internal dependencies: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Optimizing plan ...")
 	if err := b.plan.Optimize(); err != nil {
 		return nil, fmt.Errorf("error optimizing plan: %w", err)
 	}
-
-	log.Default.TraceStruct(ctx, b.plan, "Deploy plan:")
 
 	return b.plan, nil
 }
@@ -313,8 +310,8 @@ func (b *DeployPlanBuilder) setupPreHookResourcesOperations() error {
 		crdInfos := lo.Filter(weighedInfos[weight], func(info *resrcinfo.DeployableHookResourceInfo, _ int) bool {
 			return resrc.IsCRDFromGK(info.GroupVersionKind().GroupKind())
 		})
-		crdsStageStartOpID := fmt.Sprintf("%s/weight-%d/%s", StageOpNamePrefixHookCRDs, weight, StageOpNameSuffixStart)
-		crdsStageEndOpID := fmt.Sprintf("%s/weight-%d/%s", StageOpNamePrefixHookCRDs, weight, StageOpNameSuffixEnd)
+		crdsStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixHookCRDs, weight, StageOpNameSuffixStart)
+		crdsStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixHookCRDs, weight, StageOpNameSuffixEnd)
 
 		if err := b.setupHookOperations(crdInfos, crdsStageStartOpID, crdsStageEndOpID, ""); err != nil {
 			return fmt.Errorf("error setting up hook crds operations: %w", err)
@@ -323,9 +320,9 @@ func (b *DeployPlanBuilder) setupPreHookResourcesOperations() error {
 		resourceInfos := lo.Filter(weighedInfos[weight], func(info *resrcinfo.DeployableHookResourceInfo, _ int) bool {
 			return !resrc.IsCRDFromGK(info.GroupVersionKind().GroupKind())
 		})
-		resourcesStageStartOpID := fmt.Sprintf("%s/weight-%d/%s", StageOpNamePrefixHookResources, weight, StageOpNameSuffixStart)
-		trackReadinessOpID := fmt.Sprintf("%s/pre-hook-resources/weight-%d", opertn.TypeTrackResourcesReadinessOperation, weight)
-		resourcesStageEndOpID := fmt.Sprintf("%s/weight-%d/%s", StageOpNamePrefixHookResources, weight, StageOpNameSuffixEnd)
+		resourcesStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixHookResources, weight, StageOpNameSuffixStart)
+		trackReadinessOpID := fmt.Sprintf("%s/pre-hook-resources/weight:%d", opertn.TypeTrackResourcesReadinessOperation, weight)
+		resourcesStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixHookResources, weight, StageOpNameSuffixEnd)
 
 		if err := b.setupHookOperations(resourceInfos, resourcesStageStartOpID, resourcesStageEndOpID, trackReadinessOpID); err != nil {
 			return fmt.Errorf("error setting up hook resources operations: %w", err)
@@ -347,8 +344,8 @@ func (b *DeployPlanBuilder) setupPostHookResourcesOperations() error {
 		crdInfos := lo.Filter(weighedInfos[weight], func(info *resrcinfo.DeployableHookResourceInfo, _ int) bool {
 			return resrc.IsCRDFromGK(info.GroupVersionKind().GroupKind())
 		})
-		crdsStageStartOpID := fmt.Sprintf("%s/weight-%d/%s", StageOpNamePrefixPostHookCRDs, weight, StageOpNameSuffixStart)
-		crdsStageEndOpID := fmt.Sprintf("%s/weight-%d/%s", StageOpNamePrefixPostHookCRDs, weight, StageOpNameSuffixEnd)
+		crdsStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixPostHookCRDs, weight, StageOpNameSuffixStart)
+		crdsStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixPostHookCRDs, weight, StageOpNameSuffixEnd)
 
 		if err := b.setupHookOperations(crdInfos, crdsStageStartOpID, crdsStageEndOpID, ""); err != nil {
 			return fmt.Errorf("error setting up hook crds operations: %w", err)
@@ -357,9 +354,9 @@ func (b *DeployPlanBuilder) setupPostHookResourcesOperations() error {
 		resourceInfos := lo.Filter(weighedInfos[weight], func(info *resrcinfo.DeployableHookResourceInfo, _ int) bool {
 			return !resrc.IsCRDFromGK(info.GroupVersionKind().GroupKind())
 		})
-		resourcesStageStartOpID := fmt.Sprintf("%s/weight-%d/%s", StageOpNamePrefixPostHookResources, weight, StageOpNameSuffixStart)
-		trackReadinessOpID := fmt.Sprintf("%s/post-hook-resources/weight-%d", opertn.TypeTrackResourcesReadinessOperation, weight)
-		resourcesStageEndOpID := fmt.Sprintf("%s/weight-%d/%s", StageOpNamePrefixPostHookResources, weight, StageOpNameSuffixEnd)
+		resourcesStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixPostHookResources, weight, StageOpNameSuffixStart)
+		trackReadinessOpID := fmt.Sprintf("%s/post-hook-resources/weight:%d", opertn.TypeTrackResourcesReadinessOperation, weight)
+		resourcesStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixPostHookResources, weight, StageOpNameSuffixEnd)
 
 		if err := b.setupHookOperations(resourceInfos, resourcesStageStartOpID, resourcesStageEndOpID, trackReadinessOpID); err != nil {
 			return fmt.Errorf("error setting up hook resources operations: %w", err)
@@ -381,8 +378,8 @@ func (b *DeployPlanBuilder) setupGeneralResourcesOperations() error {
 		crdInfos := lo.Filter(weighedInfos[weight], func(info *resrcinfo.DeployableGeneralResourceInfo, _ int) bool {
 			return resrc.IsCRDFromGK(info.GroupVersionKind().GroupKind())
 		})
-		crdsStageStartOpID := fmt.Sprintf("%s/weight-%d/%s", StageOpNamePrefixGeneralCRDs, weight, StageOpNameSuffixStart)
-		crdsStageEndOpID := fmt.Sprintf("%s/weight-%d/%s", StageOpNamePrefixGeneralCRDs, weight, StageOpNameSuffixEnd)
+		crdsStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixGeneralCRDs, weight, StageOpNameSuffixStart)
+		crdsStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixGeneralCRDs, weight, StageOpNameSuffixEnd)
 
 		if err := b.setupGeneralOperations(crdInfos, crdsStageStartOpID, crdsStageEndOpID, ""); err != nil {
 			return fmt.Errorf("error setting up general resources operations: %w", err)
@@ -391,9 +388,9 @@ func (b *DeployPlanBuilder) setupGeneralResourcesOperations() error {
 		resourceInfos := lo.Filter(weighedInfos[weight], func(info *resrcinfo.DeployableGeneralResourceInfo, _ int) bool {
 			return !resrc.IsCRDFromGK(info.GroupVersionKind().GroupKind())
 		})
-		resourcesStageStartOpID := fmt.Sprintf("%s/weight-%d/%s", StageOpNamePrefixGeneralResources, weight, StageOpNameSuffixStart)
-		trackReadinessOpID := fmt.Sprintf("%s/general-resources/weight-%d", opertn.TypeTrackResourcesReadinessOperation, weight)
-		resourcesStageEndOpID := fmt.Sprintf("%s/weight-%d/%s", StageOpNamePrefixGeneralResources, weight, StageOpNameSuffixEnd)
+		resourcesStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixGeneralResources, weight, StageOpNameSuffixStart)
+		trackReadinessOpID := fmt.Sprintf("%s/general-resources/weight:%d", opertn.TypeTrackResourcesReadinessOperation, weight)
+		resourcesStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixGeneralResources, weight, StageOpNameSuffixEnd)
 
 		if err := b.setupGeneralOperations(resourceInfos, resourcesStageStartOpID, resourcesStageEndOpID, trackReadinessOpID); err != nil {
 			return fmt.Errorf("error setting up general resources operations: %w", err)
@@ -557,6 +554,38 @@ func (b *DeployPlanBuilder) connectStages() error {
 		}))
 
 		if iIndex == jIndex {
+			var iWeight *int
+			for _, iIDSplit := range strings.Split(iID, "/") {
+				parts := strings.SplitN(iIDSplit, ":", 2)
+
+				if parts[0] != "weight" {
+					continue
+				}
+
+				iWeight = lo.ToPtr(lo.Must(strconv.Atoi(parts[1])))
+				break
+			}
+
+			var jWeight *int
+			for _, jIDSplit := range strings.Split(jID, "/") {
+				parts := strings.SplitN(jIDSplit, ":", 2)
+
+				if parts[0] != "weight" {
+					continue
+				}
+
+				jWeight = lo.ToPtr(lo.Must(strconv.Atoi(parts[1])))
+				break
+			}
+
+			if iWeight != nil && jWeight != nil {
+				if *iWeight == *jWeight {
+					return strings.HasSuffix(iID, "/"+StageOpNameSuffixStart)
+				}
+
+				return *iWeight < *jWeight
+			}
+
 			return strings.HasSuffix(iID, "/"+StageOpNameSuffixStart)
 		}
 
