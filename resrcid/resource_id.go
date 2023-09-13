@@ -33,13 +33,12 @@ type ResourceIDOptions struct {
 }
 
 func NewResourceIDFromID(id string, opts ResourceIDOptions) *ResourceID {
-	split := strings.SplitN(id, ":", 5)
-	lo.Must0(len(split) == 5)
+	split := strings.SplitN(id, ":", 4)
+	lo.Must0(len(split) == 4)
 
-	return NewResourceID(split[4], split[0], schema.GroupVersionKind{
-		Group:   split[1],
-		Version: split[2],
-		Kind:    split[3],
+	return NewResourceID(split[3], split[0], schema.GroupVersionKind{
+		Group: split[1],
+		Kind:  split[2],
 	}, opts)
 }
 
@@ -92,7 +91,7 @@ func (i *ResourceID) FilePath() string {
 }
 
 func (i *ResourceID) ID() string {
-	return fmt.Sprintf("%s:%s:%s:%s:%s", i.Namespace(), i.gvk.Group, i.gvk.Version, i.gvk.Kind, i.name)
+	return fmt.Sprintf("%s:%s:%s:%s", i.Namespace(), i.gvk.Group, i.gvk.Kind, i.name)
 }
 
 func (i *ResourceID) HumanID() string {
