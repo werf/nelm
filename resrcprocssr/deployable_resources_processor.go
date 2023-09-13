@@ -16,6 +16,7 @@ import (
 	"helm.sh/helm/v3/pkg/werf/resrctransfrmr"
 	"helm.sh/helm/v3/pkg/werf/utls"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/discovery"
 )
 
@@ -32,6 +33,12 @@ func NewDeployableResourcesProcessor(
 	discoveryClient discovery.CachedDiscoveryInterface,
 	opts DeployableResourcesProcessorOptions,
 ) *DeployableResourcesProcessor {
+	releaseMetadataPatcher := resrcpatcher.NewReleaseMetadataPatcher(releaseName, releaseNamespace.Name())
+
+	deployableStandaloneCRDsPatchers := append([]resrcpatcher.ResourcePatcher{releaseMetadataPatcher}, opts.DeployableStandaloneCRDsPatchers...)
+	deployableHookResourcePatchers := append([]resrcpatcher.ResourcePatcher{releaseMetadataPatcher}, opts.DeployableHookResourcePatchers...)
+	deployableGeneralResourcePatchers := append([]resrcpatcher.ResourcePatcher{releaseMetadataPatcher}, opts.DeployableGeneralResourcePatchers...)
+
 	return &DeployableResourcesProcessor{
 		deployType:                        deployType,
 		releaseName:                       releaseName,
@@ -48,9 +55,9 @@ func NewDeployableResourcesProcessor(
 		generalResourceTransformers:       opts.GeneralResourceTransformers,
 		releasableHookResourcePatchers:    opts.ReleasableHookResourcePatchers,
 		releasableGeneralResourcePatchers: opts.ReleasableGeneralResourcePatchers,
-		deployableStandaloneCRDsPatchers:  opts.DeployableStandaloneCRDsPatchers,
-		deployableHookResourcePatchers:    opts.DeployableHookResourcePatchers,
-		deployableGeneralResourcePatchers: opts.DeployableGeneralResourcePatchers,
+		deployableStandaloneCRDsPatchers:  deployableStandaloneCRDsPatchers,
+		deployableHookResourcePatchers:    deployableHookResourcePatchers,
+		deployableGeneralResourcePatchers: deployableGeneralResourcePatchers,
 	}
 }
 
@@ -288,132 +295,162 @@ func (p *DeployableResourcesProcessor) transformGeneralResources(ctx context.Con
 }
 
 func (p *DeployableResourcesProcessor) buildReleasableHookResources(ctx context.Context) error {
-	p.releasableHookResources = p.hookResources
+	var patchedResources []*resrc.HookResource
 
-	for _, resPatcher := range p.releasableHookResourcePatchers {
-		var patchedResources []*resrc.HookResource
+	for _, res := range p.hookResources {
+		patchedRes := res
 
-		for _, res := range p.releasableHookResources {
+		var deepCopied bool
+		for _, resPatcher := range p.releasableHookResourcePatchers {
 			if matched, err := resPatcher.Match(ctx, &resrcpatcher.ResourceInfo{
-				Obj:          res.Unstructured(),
+				Obj:          patchedRes.Unstructured(),
 				Type:         resrc.TypeHookResource,
-				ManageableBy: res.ManageableBy(),
+				ManageableBy: patchedRes.ManageableBy(),
 			}); err != nil {
-				return fmt.Errorf("error matching hook resource %q for patching by %q: %w", res.HumanID(), resPatcher.Type(), err)
+				return fmt.Errorf("error matching hook resource %q for patching by %q: %w", patchedRes.HumanID(), resPatcher.Type(), err)
 			} else if !matched {
-				patchedResources = append(patchedResources, res)
 				continue
 			}
 
-			patchedObj, err := resPatcher.Patch(ctx, &resrcpatcher.ResourceInfo{
-				Obj:          res.Unstructured().DeepCopy(),
-				Type:         resrc.TypeHookResource,
-				ManageableBy: res.ManageableBy(),
-			})
-			if err != nil {
-				return fmt.Errorf("error patching hook resource %q by %q: %w", res.HumanID(), resPatcher.Type(), err)
+			var unstruct *unstructured.Unstructured
+			if deepCopied {
+				unstruct = patchedRes.Unstructured()
+			} else {
+				unstruct = patchedRes.Unstructured().DeepCopy()
+				deepCopied = true
 			}
 
-			patchedRes := resrc.NewHookResource(patchedObj, resrc.HookResourceOptions{
-				FilePath:         res.FilePath(),
+			patchedObj, err := resPatcher.Patch(ctx, &resrcpatcher.ResourceInfo{
+				Obj:          unstruct,
+				Type:         resrc.TypeHookResource,
+				ManageableBy: patchedRes.ManageableBy(),
+			})
+			if err != nil {
+				return fmt.Errorf("error patching hook resource %q by %q: %w", patchedRes.HumanID(), resPatcher.Type(), err)
+			}
+
+			patchedRes = resrc.NewHookResource(patchedObj, resrc.HookResourceOptions{
+				FilePath:         patchedRes.FilePath(),
 				DefaultNamespace: p.releaseNamespace.Name(),
 				Mapper:           p.mapper,
 				DiscoveryClient:  p.discoveryClient,
 			})
-			patchedResources = append(patchedResources, patchedRes)
 		}
 
-		p.releasableHookResources = patchedResources
+		patchedResources = append(patchedResources, patchedRes)
 	}
+
+	p.releasableHookResources = patchedResources
 
 	return nil
 }
 
 func (p *DeployableResourcesProcessor) buildReleasableGeneralResources(ctx context.Context) error {
-	p.releasableGeneralResources = p.generalResources
+	var patchedResources []*resrc.GeneralResource
 
-	for _, resPatcher := range p.releasableGeneralResourcePatchers {
-		var patchedResources []*resrc.GeneralResource
+	for _, res := range p.generalResources {
+		patchedRes := res
 
-		for _, res := range p.releasableGeneralResources {
+		var deepCopied bool
+		for _, resPatcher := range p.releasableGeneralResourcePatchers {
 			if matched, err := resPatcher.Match(ctx, &resrcpatcher.ResourceInfo{
-				Obj:          res.Unstructured(),
+				Obj:          patchedRes.Unstructured(),
 				Type:         resrc.TypeGeneralResource,
-				ManageableBy: res.ManageableBy(),
+				ManageableBy: patchedRes.ManageableBy(),
 			}); err != nil {
-				return fmt.Errorf("error matching general resource %q for patching by %q: %w", res.HumanID(), resPatcher.Type(), err)
+				return fmt.Errorf("error matching general resource %q for patching by %q: %w", patchedRes.HumanID(), resPatcher.Type(), err)
 			} else if !matched {
-				patchedResources = append(patchedResources, res)
 				continue
 			}
 
-			patchedObj, err := resPatcher.Patch(ctx, &resrcpatcher.ResourceInfo{
-				Obj:          res.Unstructured().DeepCopy(),
-				Type:         resrc.TypeGeneralResource,
-				ManageableBy: res.ManageableBy(),
-			})
-			if err != nil {
-				return fmt.Errorf("error patching general resource %q by %q: %w", res.HumanID(), resPatcher.Type(), err)
+			var unstruct *unstructured.Unstructured
+			if deepCopied {
+				unstruct = patchedRes.Unstructured()
+			} else {
+				unstruct = patchedRes.Unstructured().DeepCopy()
+				deepCopied = true
 			}
 
-			patchedRes := resrc.NewGeneralResource(patchedObj, resrc.GeneralResourceOptions{
-				FilePath:         res.FilePath(),
+			patchedObj, err := resPatcher.Patch(ctx, &resrcpatcher.ResourceInfo{
+				Obj:          unstruct,
+				Type:         resrc.TypeGeneralResource,
+				ManageableBy: patchedRes.ManageableBy(),
+			})
+			if err != nil {
+				return fmt.Errorf("error patching general resource %q by %q: %w", patchedRes.HumanID(), resPatcher.Type(), err)
+			}
+
+			patchedRes = resrc.NewGeneralResource(patchedObj, resrc.GeneralResourceOptions{
+				FilePath:         patchedRes.FilePath(),
 				DefaultNamespace: p.releaseNamespace.Name(),
 				Mapper:           p.mapper,
 				DiscoveryClient:  p.discoveryClient,
 			})
-			patchedResources = append(patchedResources, patchedRes)
 		}
 
-		p.releasableGeneralResources = patchedResources
+		patchedResources = append(patchedResources, patchedRes)
 	}
+
+	p.releasableGeneralResources = patchedResources
 
 	return nil
 }
 
+// FIXME(ilya-lesikov): remove executing operation from output
+
 func (p *DeployableResourcesProcessor) buildDeployableStandaloneCRDs(ctx context.Context) error {
-	p.deployableStandaloneCRDs = p.standaloneCRDs
+	var patchedResources []*resrc.StandaloneCRD
 
-	for _, resPatcher := range p.deployableStandaloneCRDsPatchers {
-		var patchedResources []*resrc.StandaloneCRD
+	for _, res := range p.standaloneCRDs {
+		patchedRes := res
 
-		for _, res := range p.deployableStandaloneCRDs {
+		var deepCopied bool
+		for _, resPatcher := range p.deployableStandaloneCRDsPatchers {
 			if matched, err := resPatcher.Match(ctx, &resrcpatcher.ResourceInfo{
-				Obj:          res.Unstructured(),
+				Obj:          patchedRes.Unstructured(),
 				Type:         resrc.TypeHookResource,
-				ManageableBy: res.ManageableBy(),
+				ManageableBy: patchedRes.ManageableBy(),
 			}); err != nil {
-				return fmt.Errorf("error matching deployable standalone crd %q for patching by %q: %w", res.HumanID(), resPatcher.Type(), err)
+				return fmt.Errorf("error matching deployable standalone crd %q for patching by %q: %w", patchedRes.HumanID(), resPatcher.Type(), err)
 			} else if !matched {
-				patchedResources = append(patchedResources, res)
 				continue
 			}
 
-			patchedObj, err := resPatcher.Patch(ctx, &resrcpatcher.ResourceInfo{
-				Obj:          res.Unstructured().DeepCopy(),
-				Type:         resrc.TypeStandaloneCRD,
-				ManageableBy: res.ManageableBy(),
-			})
-			if err != nil {
-				return fmt.Errorf("error patching deployable standalone crd %q by %q: %w", res.HumanID(), resPatcher.Type(), err)
+			var unstruct *unstructured.Unstructured
+			if deepCopied {
+				unstruct = patchedRes.Unstructured()
+			} else {
+				unstruct = patchedRes.Unstructured().DeepCopy()
+				deepCopied = true
 			}
 
-			patchedRes := resrc.NewStandaloneCRD(patchedObj, resrc.StandaloneCRDOptions{
-				FilePath:         res.FilePath(),
+			patchedObj, err := resPatcher.Patch(ctx, &resrcpatcher.ResourceInfo{
+				Obj:          unstruct,
+				Type:         resrc.TypeStandaloneCRD,
+				ManageableBy: patchedRes.ManageableBy(),
+			})
+			if err != nil {
+				return fmt.Errorf("error patching deployable standalone crd %q by %q: %w", patchedRes.HumanID(), resPatcher.Type(), err)
+			}
+
+			patchedRes = resrc.NewStandaloneCRD(patchedObj, resrc.StandaloneCRDOptions{
+				FilePath:         patchedRes.FilePath(),
 				DefaultNamespace: p.releaseNamespace.Name(),
 				Mapper:           p.mapper,
 			})
-			patchedResources = append(patchedResources, patchedRes)
+
 		}
 
-		p.deployableStandaloneCRDs = patchedResources
+		patchedResources = append(patchedResources, patchedRes)
 	}
+
+	p.deployableStandaloneCRDs = patchedResources
 
 	return nil
 }
 
 func (p *DeployableResourcesProcessor) buildDeployableHookResources(ctx context.Context) error {
-	deployableHookResources := lo.Filter(p.hookResources, func(res *resrc.HookResource, _ int) bool {
+	matchingHookResources := lo.Filter(p.hookResources, func(res *resrc.HookResource, _ int) bool {
 		switch p.deployType {
 		case common.DeployTypeInitial, common.DeployTypeInstall:
 			return res.OnPreInstall() || res.OnPostInstall()
@@ -424,85 +461,103 @@ func (p *DeployableResourcesProcessor) buildDeployableHookResources(ctx context.
 		return false
 	})
 
-	p.deployableHookResources = deployableHookResources
+	var patchedResources []*resrc.HookResource
 
-	for _, resPatcher := range p.deployableHookResourcePatchers {
-		var patchedResources []*resrc.HookResource
+	for _, res := range matchingHookResources {
+		patchedRes := res
 
-		for _, res := range p.deployableHookResources {
+		var deepCopied bool
+		for _, resPatcher := range p.deployableHookResourcePatchers {
 			if matched, err := resPatcher.Match(ctx, &resrcpatcher.ResourceInfo{
-				Obj:          res.Unstructured(),
+				Obj:          patchedRes.Unstructured(),
 				Type:         resrc.TypeHookResource,
-				ManageableBy: res.ManageableBy(),
+				ManageableBy: patchedRes.ManageableBy(),
 			}); err != nil {
-				return fmt.Errorf("error matching deployable hook resource %q for patching by %q: %w", res.HumanID(), resPatcher.Type(), err)
+				return fmt.Errorf("error matching deployable hook resource %q for patching by %q: %w", patchedRes.HumanID(), resPatcher.Type(), err)
 			} else if !matched {
-				patchedResources = append(patchedResources, res)
 				continue
 			}
 
-			patchedObj, err := resPatcher.Patch(ctx, &resrcpatcher.ResourceInfo{
-				Obj:          res.Unstructured().DeepCopy(),
-				Type:         resrc.TypeHookResource,
-				ManageableBy: res.ManageableBy(),
-			})
-			if err != nil {
-				return fmt.Errorf("error patching deployable hook resource %q by %q: %w", res.HumanID(), resPatcher.Type(), err)
+			var unstruct *unstructured.Unstructured
+			if deepCopied {
+				unstruct = patchedRes.Unstructured()
+			} else {
+				unstruct = patchedRes.Unstructured().DeepCopy()
+				deepCopied = true
 			}
 
-			patchedRes := resrc.NewHookResource(patchedObj, resrc.HookResourceOptions{
-				FilePath:         res.FilePath(),
+			patchedObj, err := resPatcher.Patch(ctx, &resrcpatcher.ResourceInfo{
+				Obj:          unstruct,
+				Type:         resrc.TypeHookResource,
+				ManageableBy: patchedRes.ManageableBy(),
+			})
+			if err != nil {
+				return fmt.Errorf("error patching deployable hook resource %q by %q: %w", patchedRes.HumanID(), resPatcher.Type(), err)
+			}
+
+			patchedRes = resrc.NewHookResource(patchedObj, resrc.HookResourceOptions{
+				FilePath:         patchedRes.FilePath(),
 				DefaultNamespace: p.releaseNamespace.Name(),
 				Mapper:           p.mapper,
 				DiscoveryClient:  p.discoveryClient,
 			})
-			patchedResources = append(patchedResources, patchedRes)
 		}
 
-		p.deployableHookResources = patchedResources
+		patchedResources = append(patchedResources, patchedRes)
 	}
+
+	p.deployableHookResources = patchedResources
 
 	return nil
 }
 
 func (p *DeployableResourcesProcessor) buildDeployableGeneralResources(ctx context.Context) error {
-	p.deployableGeneralResources = p.generalResources
+	var patchedResources []*resrc.GeneralResource
 
-	for _, resPatcher := range p.deployableGeneralResourcePatchers {
-		var patchedResources []*resrc.GeneralResource
+	for _, res := range p.generalResources {
+		patchedRes := res
 
-		for _, res := range p.deployableGeneralResources {
+		var deepCopied bool
+		for _, resPatcher := range p.releasableGeneralResourcePatchers {
 			if matched, err := resPatcher.Match(ctx, &resrcpatcher.ResourceInfo{
-				Obj:          res.Unstructured(),
+				Obj:          patchedRes.Unstructured(),
 				Type:         resrc.TypeGeneralResource,
-				ManageableBy: res.ManageableBy(),
+				ManageableBy: patchedRes.ManageableBy(),
 			}); err != nil {
-				return fmt.Errorf("error matching deployable general resource %q for patching by %q: %w", res.HumanID(), resPatcher.Type(), err)
+				return fmt.Errorf("error matching deployable general resource %q for patching by %q: %w", patchedRes.HumanID(), resPatcher.Type(), err)
 			} else if !matched {
-				patchedResources = append(patchedResources, res)
 				continue
 			}
 
-			patchedObj, err := resPatcher.Patch(ctx, &resrcpatcher.ResourceInfo{
-				Obj:          res.Unstructured().DeepCopy(),
-				Type:         resrc.TypeGeneralResource,
-				ManageableBy: res.ManageableBy(),
-			})
-			if err != nil {
-				return fmt.Errorf("error patching deployable general resource %q by %q: %w", res.HumanID(), resPatcher.Type(), err)
+			var unstruct *unstructured.Unstructured
+			if deepCopied {
+				unstruct = patchedRes.Unstructured()
+			} else {
+				unstruct = patchedRes.Unstructured().DeepCopy()
+				deepCopied = true
 			}
 
-			patchedRes := resrc.NewGeneralResource(patchedObj, resrc.GeneralResourceOptions{
-				FilePath:         res.FilePath(),
+			patchedObj, err := resPatcher.Patch(ctx, &resrcpatcher.ResourceInfo{
+				Obj:          unstruct,
+				Type:         resrc.TypeGeneralResource,
+				ManageableBy: patchedRes.ManageableBy(),
+			})
+			if err != nil {
+				return fmt.Errorf("error patching deployable general resource %q by %q: %w", patchedRes.HumanID(), resPatcher.Type(), err)
+			}
+
+			patchedRes = resrc.NewGeneralResource(patchedObj, resrc.GeneralResourceOptions{
+				FilePath:         patchedRes.FilePath(),
 				DefaultNamespace: p.releaseNamespace.Name(),
 				Mapper:           p.mapper,
 				DiscoveryClient:  p.discoveryClient,
 			})
-			patchedResources = append(patchedResources, patchedRes)
 		}
 
-		p.deployableGeneralResources = patchedResources
+		patchedResources = append(patchedResources, patchedRes)
 	}
+
+	p.deployableGeneralResources = patchedResources
 
 	return nil
 }
