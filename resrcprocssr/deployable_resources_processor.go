@@ -33,8 +33,11 @@ func NewDeployableResourcesProcessor(
 	discoveryClient discovery.CachedDiscoveryInterface,
 	opts DeployableResourcesProcessorOptions,
 ) *DeployableResourcesProcessor {
-	releaseMetadataPatcher := resrcpatcher.NewReleaseMetadataPatcher(releaseName, releaseNamespace.Name())
+	listsTransformer := resrctransfrmr.NewResourceListsTransformer()
+	hookResourceTransformers := append([]resrctransfrmr.ResourceTransformer{listsTransformer}, opts.HookResourceTransformers...)
+	generalResourceTransformers := append([]resrctransfrmr.ResourceTransformer{listsTransformer}, opts.GeneralResourceTransformers...)
 
+	releaseMetadataPatcher := resrcpatcher.NewReleaseMetadataPatcher(releaseName, releaseNamespace.Name())
 	deployableStandaloneCRDsPatchers := append([]resrcpatcher.ResourcePatcher{releaseMetadataPatcher}, opts.DeployableStandaloneCRDsPatchers...)
 	deployableHookResourcePatchers := append([]resrcpatcher.ResourcePatcher{releaseMetadataPatcher}, opts.DeployableHookResourcePatchers...)
 	deployableGeneralResourcePatchers := append([]resrcpatcher.ResourcePatcher{releaseMetadataPatcher}, opts.DeployableGeneralResourcePatchers...)
@@ -51,8 +54,8 @@ func NewDeployableResourcesProcessor(
 		mapper:                            mapper,
 		discoveryClient:                   discoveryClient,
 		networkParallelism:                lo.Max([]int{opts.NetworkParallelism, 1}),
-		hookResourceTransformers:          opts.HookResourceTransformers,
-		generalResourceTransformers:       opts.GeneralResourceTransformers,
+		hookResourceTransformers:          hookResourceTransformers,
+		generalResourceTransformers:       generalResourceTransformers,
 		releasableHookResourcePatchers:    opts.ReleasableHookResourcePatchers,
 		releasableGeneralResourcePatchers: opts.ReleasableGeneralResourcePatchers,
 		deployableStandaloneCRDsPatchers:  deployableStandaloneCRDsPatchers,
