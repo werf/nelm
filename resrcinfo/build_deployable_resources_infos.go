@@ -40,6 +40,7 @@ func BuildDeployableResourceInfos(
 	routines := lo.Max([]int{len(standaloneCRDs) / totalResourcesCount * parallelism, 1})
 	standaloneCRDsPool := pool.NewWithResults[*DeployableStandaloneCRDInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range standaloneCRDs {
+		res := res
 		standaloneCRDsPool.Go(func(ctx context.Context) (*DeployableStandaloneCRDInfo, error) {
 			if info, err := NewDeployableStandaloneCRDInfo(ctx, res, kubeClient, mapper); err != nil {
 				return nil, fmt.Errorf("error constructing standalone crd info: %w", err)
@@ -52,6 +53,7 @@ func BuildDeployableResourceInfos(
 	routines = lo.Max([]int{len(hookResources) / totalResourcesCount * parallelism, 1})
 	hookResourcesPool := pool.NewWithResults[*DeployableHookResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range hookResources {
+		res := res
 		hookResourcesPool.Go(func(ctx context.Context) (*DeployableHookResourceInfo, error) {
 			if info, err := NewDeployableHookResourceInfo(ctx, res, kubeClient, mapper); err != nil {
 				return nil, fmt.Errorf("error constructing hook resource info: %w", err)
@@ -64,6 +66,7 @@ func BuildDeployableResourceInfos(
 	routines = lo.Max([]int{len(generalResources) / totalResourcesCount * parallelism, 1})
 	generalResourcesPool := pool.NewWithResults[*DeployableGeneralResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range generalResources {
+		res := res
 		generalResourcesPool.Go(func(ctx context.Context) (*DeployableGeneralResourceInfo, error) {
 			if info, err := NewDeployableGeneralResourceInfo(ctx, res, releaseName, releaseNamespace.Name(), kubeClient, mapper); err != nil {
 				return nil, fmt.Errorf("error constructing general resource info: %w", err)
@@ -73,10 +76,10 @@ func BuildDeployableResourceInfos(
 		})
 	}
 
-	// FIXME(ilya-lesikov): most of these GET requests duplicated with GET requests for general resource infos
 	routines = lo.Max([]int{len(prevReleaseGeneralResources) / totalResourcesCount * parallelism, 1})
 	prevReleaseGeneralResourcesPool := pool.NewWithResults[*DeployablePrevReleaseGeneralResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range prevReleaseGeneralResources {
+		res := res
 		prevReleaseGeneralResourcesPool.Go(func(ctx context.Context) (*DeployablePrevReleaseGeneralResourceInfo, error) {
 			if info, err := NewDeployablePrevReleaseGeneralResourceInfo(ctx, res, kubeClient, mapper); err != nil {
 				return nil, fmt.Errorf("error constructing general resource info: %w", err)

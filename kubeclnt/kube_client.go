@@ -24,8 +24,8 @@ import (
 var _ KubeClienter = (*KubeClient)(nil)
 
 func NewKubeClient(staticClient kubernetes.Interface, dynamicClient dynamic.Interface, discoveryClient discovery.CachedDiscoveryInterface, mapper meta.ResettableRESTMapper) *KubeClient {
-	clusterCache := ttlcache.New[string, *unstructured.Unstructured](
-		ttlcache.WithDisableTouchOnHit[string, *unstructured.Unstructured](),
+	clusterCache := ttlcache.New[string, *clusterCacheEntry](
+		ttlcache.WithDisableTouchOnHit[string, *clusterCacheEntry](),
 	)
 
 	return &KubeClient{
@@ -43,7 +43,7 @@ type KubeClient struct {
 	dynamicClient   dynamic.Interface
 	discoveryClient discovery.CachedDiscoveryInterface
 	mapper          meta.ResettableRESTMapper
-	clusterCache    *ttlcache.Cache[string, *unstructured.Unstructured]
+	clusterCache    *ttlcache.Cache[string, *clusterCacheEntry]
 	resourceLocks   *sync.Map
 }
 
@@ -54,7 +54,10 @@ func (c *KubeClient) Get(ctx context.Context, resource *resrcid.ResourceID, opts
 
 	if opts.TryCache {
 		if res := c.clusterCache.Get(resource.VersionID()); res != nil {
-			return res.Value(), nil
+			if res.Value().err != nil {
+				return nil, fmt.Errorf("error getting resource %q from client cache: %w", resource.HumanID(), res.Value().err)
+			}
+			return res.Value().obj, nil
 		}
 	}
 
@@ -73,10 +76,10 @@ func (c *KubeClient) Get(ctx context.Context, resource *resrcid.ResourceID, opts
 	log.Default.Debug(ctx, "Getting resource %q ...", resource.HumanID())
 	r, err := clientResource.Get(ctx, resource.Name(), metav1.GetOptions{})
 	if err != nil {
+		c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{err: err}, 0)
 		return nil, fmt.Errorf("error getting resource %q: %w", resource.HumanID(), err)
 	}
-
-	c.clusterCache.Set(resource.VersionID(), r, 0)
+	c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{obj: r.DeepCopy()}, 0)
 
 	return r, nil
 }
@@ -107,14 +110,14 @@ func (c *KubeClient) Create(ctx context.Context, resource *resrcid.ResourceID, u
 		FieldManager: common.DefaultFieldManager,
 	})
 	if err != nil {
+		c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{err: err}, 0)
 		return nil, fmt.Errorf("error creating resource %q: %w", resource.HumanID(), err)
 	}
+	c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{obj: resultObj.DeepCopy()}, 0)
 
 	if resrc.IsCRDFromGR(gvr.GroupResource()) {
 		c.mapper.Reset()
 	}
-
-	c.clusterCache.Set(resource.VersionID(), resultObj, 0)
 
 	return resultObj, nil
 }
@@ -148,15 +151,17 @@ func (c *KubeClient) Apply(ctx context.Context, resource *resrcid.ResourceID, un
 		FieldManager: common.DefaultFieldManager,
 	})
 	if err != nil {
+		if !opts.DryRun {
+			c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{err: err}, 0)
+		}
 		return nil, fmt.Errorf("error server-side applying resource %q: %w", resource.HumanID(), err)
+	}
+	if !opts.DryRun {
+		c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{obj: resultObj.DeepCopy()}, 0)
 	}
 
 	if resrc.IsCRDFromGR(gvr.GroupResource()) && !opts.DryRun {
 		c.mapper.Reset()
-	}
-
-	if !opts.DryRun {
-		c.clusterCache.Set(resource.VersionID(), resultObj, 0)
 	}
 
 	return resultObj, nil
@@ -189,10 +194,10 @@ func (c *KubeClient) StrategicPatch(ctx context.Context, resource *resrcid.Resou
 			return nil, nil
 		}
 
+		c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{err: err}, 0)
 		return nil, fmt.Errorf("error strategic patching resource %q: %w", resource.HumanID(), err)
 	}
-
-	c.clusterCache.Set(resource.VersionID(), resultObj, 0)
+	c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{obj: resultObj.DeepCopy()}, 0)
 
 	return resultObj, nil
 }
@@ -223,7 +228,6 @@ func (c *KubeClient) Delete(ctx context.Context, resource *resrcid.ResourceID) e
 
 		return fmt.Errorf("error deleting resource %q: %w", resource.HumanID(), err)
 	}
-
 	c.clusterCache.Delete(resource.VersionID())
 
 	return nil
@@ -260,4 +264,9 @@ type KubeClienter interface {
 	Apply(ctx context.Context, resource *resrcid.ResourceID, unstruct *unstructured.Unstructured, opts KubeClientApplyOptions) (*unstructured.Unstructured, error)
 	StrategicPatch(ctx context.Context, resource *resrcid.ResourceID, patch []byte) (*unstructured.Unstructured, error)
 	Delete(ctx context.Context, resource *resrcid.ResourceID) error
+}
+
+type clusterCacheEntry struct {
+	obj *unstructured.Unstructured
+	err error
 }
