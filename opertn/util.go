@@ -31,10 +31,10 @@ func doRepairManagedFields(ctx context.Context, resource *resrcid.ResourceID, ku
 
 	var updatedManagedFields []v1.ManagedFieldsEntry
 	for _, entry := range liveManagedFields {
-		if entry.Manager == common.OldFieldManager {
+		switch entry.Manager {
+		case common.OldFieldManager, common.KubectlEditFieldManager:
 			entry.Manager = common.DefaultFieldManager
-		} else if entry.Manager == common.KubectlEditFieldManager {
-			continue
+		default:
 		}
 		updatedManagedFields = append(updatedManagedFields, entry)
 	}
