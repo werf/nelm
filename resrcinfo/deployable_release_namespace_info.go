@@ -11,7 +11,9 @@ import (
 )
 
 func NewDeployableReleaseNamespaceInfo(ctx context.Context, res *resrc.ReleaseNamespace, kubeClient kubeclnt.KubeClienter, mapper meta.ResettableRESTMapper) (*DeployableReleaseNamespaceInfo, error) {
-	getObj, getErr := kubeClient.Get(ctx, res.ResourceID)
+	getObj, getErr := kubeClient.Get(ctx, res.ResourceID, kubeclnt.KubeClientGetOptions{
+		TryCache: true,
+	})
 	if getErr != nil {
 		if isNotFoundErr(getErr) {
 			return &DeployableReleaseNamespaceInfo{

@@ -90,6 +90,10 @@ func (i *ResourceID) FilePath() string {
 	return i.filePath
 }
 
+func (i *ResourceID) VersionID() string {
+	return fmt.Sprintf("%s:%s:%s:%s:%s", i.Namespace(), i.gvk.Group, i.gvk.Version, i.gvk.Kind, i.name)
+}
+
 func (i *ResourceID) ID() string {
 	return fmt.Sprintf("%s:%s:%s:%s", i.Namespace(), i.gvk.Group, i.gvk.Kind, i.name)
 }

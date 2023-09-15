@@ -12,7 +12,9 @@ import (
 )
 
 func NewDeployableStandaloneCRDInfo(ctx context.Context, res *resrc.StandaloneCRD, kubeClient kubeclnt.KubeClienter, mapper meta.ResettableRESTMapper) (*DeployableStandaloneCRDInfo, error) {
-	getObj, getErr := kubeClient.Get(ctx, res.ResourceID)
+	getObj, getErr := kubeClient.Get(ctx, res.ResourceID, kubeclnt.KubeClientGetOptions{
+		TryCache: true,
+	})
 	if getErr != nil {
 		if isNotFoundErr(getErr) {
 			return &DeployableStandaloneCRDInfo{

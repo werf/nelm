@@ -3,7 +3,9 @@ package kubeclnt
 import (
 	"context"
 	"fmt"
+	"sync"
 
+	"github.com/jellydator/ttlcache/v3"
 	"helm.sh/helm/v3/pkg/werf/common"
 	"helm.sh/helm/v3/pkg/werf/log"
 	"helm.sh/helm/v3/pkg/werf/resrc"
@@ -22,12 +24,18 @@ import (
 var _ KubeClienter = (*KubeClient)(nil)
 
 func NewKubeClient(staticClient kubernetes.Interface, dynamicClient dynamic.Interface, discoveryClient discovery.CachedDiscoveryInterface, mapper meta.ResettableRESTMapper) *KubeClient {
+	clusterCache := ttlcache.New[string, *unstructured.Unstructured](
+		ttlcache.WithDisableTouchOnHit[string, *unstructured.Unstructured](),
+	)
+
 	return &KubeClient{
 		fieldManager:    common.DefaultFieldManager,
 		staticClient:    staticClient,
 		dynamicClient:   dynamicClient,
 		discoveryClient: discoveryClient,
 		mapper:          mapper,
+		clusterCache:    clusterCache,
+		resourceLocks:   &sync.Map{},
 	}
 }
 
@@ -37,9 +45,21 @@ type KubeClient struct {
 	dynamicClient   dynamic.Interface
 	discoveryClient discovery.CachedDiscoveryInterface
 	mapper          meta.ResettableRESTMapper
+	clusterCache    *ttlcache.Cache[string, *unstructured.Unstructured]
+	resourceLocks   *sync.Map
 }
 
-func (c *KubeClient) Get(ctx context.Context, resource *resrcid.ResourceID) (*unstructured.Unstructured, error) {
+func (c *KubeClient) Get(ctx context.Context, resource *resrcid.ResourceID, opts KubeClientGetOptions) (*unstructured.Unstructured, error) {
+	lock := c.resourceLock(resource)
+	lock.Lock()
+	defer lock.Unlock()
+
+	if opts.TryCache {
+		if res := c.clusterCache.Get(resource.VersionID()); res != nil {
+			return res.Value(), nil
+		}
+	}
+
 	gvr, err := resource.GroupVersionResource()
 	if err != nil {
 		return nil, fmt.Errorf("error getting GroupVersionResource: %w", err)
@@ -58,10 +78,16 @@ func (c *KubeClient) Get(ctx context.Context, resource *resrcid.ResourceID) (*un
 		return nil, fmt.Errorf("error getting resource %q: %w", resource.HumanID(), err)
 	}
 
+	c.clusterCache.Set(resource.VersionID(), r, 0)
+
 	return r, nil
 }
 
 func (c *KubeClient) Create(ctx context.Context, resource *resrcid.ResourceID, unstruct *unstructured.Unstructured, opts KubeClientCreateOptions) (*unstructured.Unstructured, error) {
+	lock := c.resourceLock(resource)
+	lock.Lock()
+	defer lock.Unlock()
+
 	gvr, err := resource.GroupVersionResource()
 	if err != nil {
 		return nil, fmt.Errorf("error getting GroupVersionResource: %w", err)
@@ -90,10 +116,16 @@ func (c *KubeClient) Create(ctx context.Context, resource *resrcid.ResourceID, u
 		c.mapper.Reset()
 	}
 
+	c.clusterCache.Set(resource.VersionID(), resultObj, 0)
+
 	return resultObj, nil
 }
 
 func (c *KubeClient) Apply(ctx context.Context, resource *resrcid.ResourceID, unstruct *unstructured.Unstructured, opts KubeClientApplyOptions) (*unstructured.Unstructured, error) {
+	lock := c.resourceLock(resource)
+	lock.Lock()
+	defer lock.Unlock()
+
 	gvr, err := resource.GroupVersionResource()
 	if err != nil {
 		return nil, fmt.Errorf("error getting GroupVersionResource: %w", err)
@@ -125,10 +157,18 @@ func (c *KubeClient) Apply(ctx context.Context, resource *resrcid.ResourceID, un
 		c.mapper.Reset()
 	}
 
+	if !opts.DryRun {
+		c.clusterCache.Set(resource.VersionID(), resultObj, 0)
+	}
+
 	return resultObj, nil
 }
 
 func (c *KubeClient) StrategicPatch(ctx context.Context, resource *resrcid.ResourceID, patch []byte) (*unstructured.Unstructured, error) {
+	lock := c.resourceLock(resource)
+	lock.Lock()
+	defer lock.Unlock()
+
 	gvr, err := resource.GroupVersionResource()
 	if err != nil {
 		return nil, fmt.Errorf("error getting GroupVersionResource: %w", err)
@@ -154,10 +194,16 @@ func (c *KubeClient) StrategicPatch(ctx context.Context, resource *resrcid.Resou
 		return nil, fmt.Errorf("error strategic patching resource %q: %w", resource.HumanID(), err)
 	}
 
+	c.clusterCache.Set(resource.VersionID(), resultObj, 0)
+
 	return resultObj, nil
 }
 
 func (c *KubeClient) Delete(ctx context.Context, resource *resrcid.ResourceID) error {
+	lock := c.resourceLock(resource)
+	lock.Lock()
+	defer lock.Unlock()
+
 	gvr, err := resource.GroupVersionResource()
 	if err != nil {
 		return fmt.Errorf("error getting GroupVersionResource: %w", err)
@@ -180,7 +226,14 @@ func (c *KubeClient) Delete(ctx context.Context, resource *resrcid.ResourceID) e
 		return fmt.Errorf("error deleting resource %q: %w", resource.HumanID(), err)
 	}
 
+	c.clusterCache.Delete(resource.VersionID())
+
 	return nil
+}
+
+func (c *KubeClient) resourceLock(resource *resrcid.ResourceID) *sync.Mutex {
+	lock, _ := c.resourceLocks.LoadOrStore(resource.VersionID(), &sync.Mutex{})
+	return lock.(*sync.Mutex)
 }
 
 func (c *KubeClient) clientResource(gvr schema.GroupVersionResource, namespace string, namespaced bool) dynamic.ResourceInterface {
@@ -189,6 +242,10 @@ func (c *KubeClient) clientResource(gvr schema.GroupVersionResource, namespace s
 	}
 
 	return c.dynamicClient.Resource(gvr)
+}
+
+type KubeClientGetOptions struct {
+	TryCache bool
 }
 
 type KubeClientCreateOptions struct {
@@ -200,7 +257,7 @@ type KubeClientApplyOptions struct {
 }
 
 type KubeClienter interface {
-	Get(ctx context.Context, resource *resrcid.ResourceID) (*unstructured.Unstructured, error)
+	Get(ctx context.Context, resource *resrcid.ResourceID, opts KubeClientGetOptions) (*unstructured.Unstructured, error)
 	Create(ctx context.Context, resource *resrcid.ResourceID, unstruct *unstructured.Unstructured, opts KubeClientCreateOptions) (*unstructured.Unstructured, error)
 	Apply(ctx context.Context, resource *resrcid.ResourceID, unstruct *unstructured.Unstructured, opts KubeClientApplyOptions) (*unstructured.Unstructured, error)
 	StrategicPatch(ctx context.Context, resource *resrcid.ResourceID, patch []byte) (*unstructured.Unstructured, error)

@@ -12,7 +12,9 @@ import (
 )
 
 func NewDeployableGeneralResourceInfo(ctx context.Context, res *resrc.GeneralResource, releaseName, releaseNamespace string, kubeClient kubeclnt.KubeClienter, mapper meta.ResettableRESTMapper) (*DeployableGeneralResourceInfo, error) {
-	getObj, getErr := kubeClient.Get(ctx, res.ResourceID)
+	getObj, getErr := kubeClient.Get(ctx, res.ResourceID, kubeclnt.KubeClientGetOptions{
+		TryCache: true,
+	})
 	if getErr != nil {
 		if isNotFoundErr(getErr) {
 			return &DeployableGeneralResourceInfo{

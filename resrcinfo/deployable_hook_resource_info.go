@@ -12,7 +12,9 @@ import (
 )
 
 func NewDeployableHookResourceInfo(ctx context.Context, res *resrc.HookResource, kubeClient kubeclnt.KubeClienter, mapper meta.ResettableRESTMapper) (*DeployableHookResourceInfo, error) {
-	getObj, getErr := kubeClient.Get(ctx, res.ResourceID)
+	getObj, getErr := kubeClient.Get(ctx, res.ResourceID, kubeclnt.KubeClientGetOptions{
+		TryCache: true,
+	})
 	if getErr != nil {
 		if isNotFoundErr(getErr) {
 			return &DeployableHookResourceInfo{

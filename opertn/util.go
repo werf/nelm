@@ -15,7 +15,7 @@ import (
 
 // TODO(ilya-lesikov): can we do this in a single apply request?
 func doRepairManagedFields(ctx context.Context, resource *resrcid.ResourceID, kubeClient kubeclnt.KubeClienter) error {
-	getObj, err := kubeClient.Get(ctx, resource)
+	getObj, err := kubeClient.Get(ctx, resource, kubeclnt.KubeClientGetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil
