@@ -519,7 +519,7 @@ func (p *DeployableResourcesProcessor) buildDeployableGeneralResources(ctx conte
 		patchedRes := res
 
 		var deepCopied bool
-		for _, resPatcher := range p.releasableGeneralResourcePatchers {
+		for _, resPatcher := range p.deployableGeneralResourcePatchers {
 			if matched, err := resPatcher.Match(ctx, &resrcpatcher.ResourceInfo{
 				Obj:          patchedRes.Unstructured(),
 				Type:         resrc.TypeGeneralResource,
