@@ -61,7 +61,7 @@ func NewClientFactory() (*ClientFactory, error) {
 		mapper = reflect.ValueOf(m).Interface().(meta.ResettableRESTMapper)
 	}
 
-	kubeClient := NewKubeClient(staticClient, dynamicClient, discoveryClient, mapper, KubeClientOptions{})
+	kubeClient := NewKubeClient(staticClient, dynamicClient, discoveryClient, mapper)
 	if err != nil {
 		return nil, fmt.Errorf("error creating kube client: %w", err)
 	}
