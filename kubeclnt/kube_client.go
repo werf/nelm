@@ -29,7 +29,6 @@ func NewKubeClient(staticClient kubernetes.Interface, dynamicClient dynamic.Inte
 	)
 
 	return &KubeClient{
-		fieldManager:    common.DefaultFieldManager,
 		staticClient:    staticClient,
 		dynamicClient:   dynamicClient,
 		discoveryClient: discoveryClient,
@@ -40,7 +39,6 @@ func NewKubeClient(staticClient kubernetes.Interface, dynamicClient dynamic.Inte
 }
 
 type KubeClient struct {
-	fieldManager    string
 	staticClient    kubernetes.Interface
 	dynamicClient   dynamic.Interface
 	discoveryClient discovery.CachedDiscoveryInterface
@@ -106,7 +104,7 @@ func (c *KubeClient) Create(ctx context.Context, resource *resrcid.ResourceID, u
 
 	log.Default.Debug(ctx, "Creating resource %q ...", resource.HumanID())
 	resultObj, err := clientResource.Create(ctx, unstruct, metav1.CreateOptions{
-		FieldManager: c.fieldManager,
+		FieldManager: common.DefaultFieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error creating resource %q: %w", resource.HumanID(), err)
@@ -147,7 +145,7 @@ func (c *KubeClient) Apply(ctx context.Context, resource *resrcid.ResourceID, un
 	resultObj, err := clientResource.Apply(ctx, resource.Name(), unstruct, metav1.ApplyOptions{
 		DryRun:       dryRun,
 		Force:        true,
-		FieldManager: c.fieldManager,
+		FieldManager: common.DefaultFieldManager,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error server-side applying resource %q: %w", resource.HumanID(), err)
@@ -183,7 +181,7 @@ func (c *KubeClient) StrategicPatch(ctx context.Context, resource *resrcid.Resou
 
 	log.Default.Debug(ctx, "Strategic patching resource %q ...", resource.HumanID())
 	resultObj, err := clientResource.Patch(ctx, resource.Name(), types.StrategicMergePatchType, patch, metav1.PatchOptions{
-		FieldManager: c.fieldManager,
+		FieldManager: common.DefaultFieldManager,
 	})
 	if err != nil {
 		if errors.IsNotFound(err) {
