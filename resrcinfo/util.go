@@ -20,6 +20,8 @@ func isNotFoundErr(err error) bool {
 	return err != nil && errors.IsNotFound(err)
 }
 
+// FIXME(ilya-lesikov): get rid of cmp? They claim it's not production-ready.
+// FIXME(ilya-lesikov): share code with diffableResource()
 func diffGetAndDryApplyObjects(getObj *unstructured.Unstructured, dryApplyObj *unstructured.Unstructured, cmpOptions ...cmp.Option) bool {
 	ignoreFilter := func(path cmp.Path) bool {
 		switch path.GoString() {

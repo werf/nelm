@@ -1,6 +1,10 @@
 package log
 
-import "context"
+import (
+	"context"
+
+	"github.com/werf/logboek/pkg/types"
+)
 
 var _ Logger = (*NullLogger)(nil)
 
@@ -23,6 +27,10 @@ func (l *NullLogger) Warn(ctx context.Context, format string, a ...interface{}) 
 
 func (l *NullLogger) Error(ctx context.Context, format string, a ...interface{}) {}
 
-func (l *NullLogger) LogBlock(ctx context.Context, task func() error, format string, a ...interface{}) error {
+func (l *NullLogger) InfoBlock(ctx context.Context, format string, a ...interface{}) types.LogBlockInterface {
+	return nil
+}
+
+func (l *NullLogger) InfoProcess(ctx context.Context, format string, a ...interface{}) types.LogProcessInterface {
 	return nil
 }

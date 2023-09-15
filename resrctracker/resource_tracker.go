@@ -135,9 +135,9 @@ func (t *ResourceTracker) TrackReadiness(ctx context.Context, opts TrackReadines
 	log.Default.TraceStruct(ctx, t.specsForTrackReadiness, "Multitrack specs:")
 	log.Default.TraceStruct(ctx, multitrackOpts, "Multitrack options:")
 
-	if err := log.Default.LogBlock(ctx, func() error {
+	if err := log.Default.InfoProcess(ctx, "Tracking resources readiness").DoError(func() error {
 		return multitrack.Multitrack(t.staticClient, t.specsForTrackReadiness, multitrackOpts)
-	}, "Tracking resources readiness"); err != nil {
+	}); err != nil {
 		return err
 	}
 	t.specsForTrackReadiness = multitrack.MultitrackSpecs{}
@@ -177,9 +177,9 @@ func (t *ResourceTracker) TrackDeletion(ctx context.Context, opts TrackDeletionO
 	log.Default.TraceStruct(ctx, t.specsForTrackDeletion, "Elimination specs:")
 	log.Default.TraceStruct(ctx, eliminationOpts, "Elimination options:")
 
-	if err := log.Default.LogBlock(ctx, func() error {
+	if err := log.Default.InfoProcess(ctx, "Tracking resources deletion").DoError(func() error {
 		return elimination.TrackUntilEliminated(ctx, t.dynamicClient, t.specsForTrackDeletion, eliminationOpts)
-	}, "Tracking resources deletion"); err != nil {
+	}); err != nil {
 		return err
 	}
 	t.specsForTrackDeletion = []*elimination.EliminationTrackerSpec{}

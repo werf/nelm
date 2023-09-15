@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/werf/logboek"
+	"github.com/werf/logboek/pkg/types"
 )
 
 var _ Logger = (*LogboekLogger)(nil)
@@ -38,13 +39,17 @@ func (l *LogboekLogger) Info(ctx context.Context, format string, a ...interface{
 }
 
 func (l *LogboekLogger) Warn(ctx context.Context, format string, a ...interface{}) {
-	logboek.Context(ctx).Warn().LogF(format+"\n", a...)
+	logboek.Context(ctx).Warn().LogFHighlight(format+"\n", a...)
 }
 
 func (l *LogboekLogger) Error(ctx context.Context, format string, a ...interface{}) {
-	logboek.Context(ctx).Error().LogF(format+"\n", a...)
+	logboek.Context(ctx).Error().LogFHighlight(format+"\n", a...)
 }
 
-func (l *LogboekLogger) LogBlock(ctx context.Context, task func() error, format string, a ...interface{}) error {
-	return logboek.Context(ctx).LogProcess(format, a...).DoError(task)
+func (l *LogboekLogger) InfoBlock(ctx context.Context, format string, a ...interface{}) types.LogBlockInterface {
+	return logboek.Context(ctx).Default().LogBlock(format, a...)
+}
+
+func (l *LogboekLogger) InfoProcess(ctx context.Context, format string, a ...interface{}) types.LogProcessInterface {
+	return logboek.Context(ctx).Default().LogProcess(format, a...)
 }

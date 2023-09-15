@@ -91,12 +91,16 @@ func (i *DeployableStandaloneCRDInfo) ShouldCreate() bool {
 	return !i.exists
 }
 
+func (i *DeployableStandaloneCRDInfo) ShouldUpdate() bool {
+	return i.exists && i.upToDate == UpToDateStatusNo
+}
+
 func (i *DeployableStandaloneCRDInfo) ShouldApply() bool {
-	return i.exists && i.upToDate != UpToDateStatusYes
+	return i.exists && i.upToDate == UpToDateStatusUnknown
 }
 
 func (i *DeployableStandaloneCRDInfo) ShouldRepairManagedFields() bool {
-	return i.exists && i.getResource.ManagedFieldsBroken() && i.ShouldApply()
+	return i.exists && i.getResource.ManagedFieldsBroken() && (i.ShouldUpdate() || i.ShouldApply())
 }
 
 func (i *DeployableStandaloneCRDInfo) LiveUID() (uid types.UID, found bool) {

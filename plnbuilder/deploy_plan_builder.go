@@ -72,22 +72,7 @@ func NewDeployPlanBuilder(
 		return info.Resource().OnPostAnything()
 	})
 
-	var curReleaseExistingResourcesUIDs []types.UID
-	for _, info := range standaloneCRDsInfos {
-		if uid, found := info.LiveUID(); found {
-			curReleaseExistingResourcesUIDs = append(curReleaseExistingResourcesUIDs, uid)
-		}
-	}
-	for _, info := range hookResourcesInfos {
-		if uid, found := info.LiveUID(); found {
-			curReleaseExistingResourcesUIDs = append(curReleaseExistingResourcesUIDs, uid)
-		}
-	}
-	for _, info := range generalResourcesInfos {
-		if uid, found := info.LiveUID(); found {
-			curReleaseExistingResourcesUIDs = append(curReleaseExistingResourcesUIDs, uid)
-		}
-	}
+	curReleaseExistResourcesUIDs, _ := CurrentReleaseExistingResourcesUIDs(standaloneCRDsInfos, hookResourcesInfos, generalResourcesInfos)
 
 	return &DeployPlanBuilder{
 		deployType:                      deployType,
@@ -98,7 +83,7 @@ func NewDeployPlanBuilder(
 		postHookResourcesInfos:          postHookResourcesInfos,
 		generalResourcesInfos:           generalResourcesInfos,
 		prevReleaseGeneralResourceInfos: prevReleaseGeneralResourceInfos,
-		curReleaseExistingResourcesUIDs: curReleaseExistingResourcesUIDs,
+		curReleaseExistingResourcesUIDs: curReleaseExistResourcesUIDs,
 		newRelease:                      newRelease,
 		prevRelease:                     opts.PrevRelease,
 		prevDeployedRelease:             opts.PrevDeployedRelease,
@@ -205,6 +190,7 @@ func (b *DeployPlanBuilder) Build(ctx context.Context) (*pln.Plan, error) {
 func (b *DeployPlanBuilder) setupInitOperations() error {
 	relNsInfo := b.releaseNamespaceInfo
 	createRelNs := relNsInfo.ShouldCreate()
+	updateRelNs := relNsInfo.ShouldUpdate()
 	applyRelNs := relNsInfo.ShouldApply()
 
 	var opDeployRelNs opertn.Operation
@@ -217,6 +203,20 @@ func (b *DeployPlanBuilder) setupInitOperations() error {
 				ManageableBy: relNsInfo.Resource().ManageableBy(),
 			},
 		)
+	} else if updateRelNs {
+		var err error
+		opDeployRelNs, err = opertn.NewUpdateResourceOperation(
+			relNsInfo.ResourceID,
+			relNsInfo.Resource().Unstructured(),
+			b.kubeClient,
+			opertn.UpdateResourceOperationOptions{
+				ManageableBy:        relNsInfo.Resource().ManageableBy(),
+				RepairManagedFields: relNsInfo.ShouldRepairManagedFields(),
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("error creating update resource operation: %w", err)
+		}
 	} else if applyRelNs {
 		var err error
 		opDeployRelNs, err = opertn.NewApplyResourceOperation(
@@ -258,6 +258,7 @@ func (b *DeployPlanBuilder) setupInitOperations() error {
 func (b *DeployPlanBuilder) setupStandaloneCRDsOperations() error {
 	for _, info := range b.standaloneCRDsInfos {
 		create := info.ShouldCreate()
+		update := info.ShouldUpdate()
 		apply := info.ShouldApply()
 
 		var opDeploy opertn.Operation
@@ -270,6 +271,20 @@ func (b *DeployPlanBuilder) setupStandaloneCRDsOperations() error {
 					ManageableBy: info.Resource().ManageableBy(),
 				},
 			)
+		} else if update {
+			var err error
+			opDeploy, err = opertn.NewUpdateResourceOperation(
+				info.ResourceID,
+				info.Resource().Unstructured(),
+				b.kubeClient,
+				opertn.UpdateResourceOperationOptions{
+					ManageableBy:        info.Resource().ManageableBy(),
+					RepairManagedFields: info.ShouldRepairManagedFields(),
+				},
+			)
+			if err != nil {
+				return fmt.Errorf("error creating update resource operation: %w", err)
+			}
 		} else if apply {
 			var err error
 			opDeploy, err = opertn.NewApplyResourceOperation(
@@ -446,6 +461,8 @@ func (b *DeployPlanBuilder) connectInternalDependencies() error {
 			opDeploy = lo.Must(b.plan.Operation(opertn.TypeCreateResourceOperation + "/" + info.ID()))
 		} else if info.ShouldRecreate() {
 			opDeploy = lo.Must(b.plan.Operation(opertn.TypeRecreateResourceOperation + "/" + info.ID()))
+		} else if info.ShouldUpdate() {
+			opDeploy = lo.Must(b.plan.Operation(opertn.TypeUpdateResourceOperation + "/" + info.ID()))
 		} else if info.ShouldApply() {
 			opDeploy = lo.Must(b.plan.Operation(opertn.TypeApplyResourceOperation + "/" + info.ID()))
 		} else {
@@ -456,7 +473,7 @@ func (b *DeployPlanBuilder) connectInternalDependencies() error {
 		manualInternalDeps, _ := info.Resource().ManualInternalDependencies()
 
 		for _, dep := range lo.Union(autoInternalDeps, manualInternalDeps) {
-			opDeployRegex := regexp.MustCompile(fmt.Sprintf(`^(%s|%s|%s)/`, opertn.TypeCreateResourceOperation, opertn.TypeRecreateResourceOperation, opertn.TypeApplyResourceOperation))
+			opDeployRegex := regexp.MustCompile(fmt.Sprintf(`^(%s|%s|%s)/`, opertn.TypeCreateResourceOperation, opertn.TypeRecreateResourceOperation, opertn.TypeUpdateResourceOperation, opertn.TypeApplyResourceOperation))
 			opsDeploy, found, err := b.plan.OperationsMatch(opDeployRegex)
 			if err != nil {
 				return fmt.Errorf("error looking for operations by regex: %w", err)
@@ -491,6 +508,8 @@ func (b *DeployPlanBuilder) connectInternalDependencies() error {
 			opDeploy = lo.Must(b.plan.Operation(opertn.TypeCreateResourceOperation + "/" + info.ID()))
 		} else if info.ShouldRecreate() {
 			opDeploy = lo.Must(b.plan.Operation(opertn.TypeRecreateResourceOperation + "/" + info.ID()))
+		} else if info.ShouldUpdate() {
+			opDeploy = lo.Must(b.plan.Operation(opertn.TypeUpdateResourceOperation + "/" + info.ID()))
 		} else if info.ShouldApply() {
 			opDeploy = lo.Must(b.plan.Operation(opertn.TypeApplyResourceOperation + "/" + info.ID()))
 		} else {
@@ -501,7 +520,7 @@ func (b *DeployPlanBuilder) connectInternalDependencies() error {
 		manualInternalDeps, _ := info.Resource().ManualInternalDependencies()
 
 		for _, dep := range lo.Union(autoInternalDeps, manualInternalDeps) {
-			opDeployRegex := regexp.MustCompile(fmt.Sprintf(`^(%s|%s|%s)/`, opertn.TypeCreateResourceOperation, opertn.TypeRecreateResourceOperation, opertn.TypeApplyResourceOperation))
+			opDeployRegex := regexp.MustCompile(fmt.Sprintf(`^(%s|%s|%s)/`, opertn.TypeCreateResourceOperation, opertn.TypeRecreateResourceOperation, opertn.TypeUpdateResourceOperation, opertn.TypeApplyResourceOperation))
 			opsDeploy, found, err := b.plan.OperationsMatch(opDeployRegex)
 			if err != nil {
 				return fmt.Errorf("error looking for operations by regex: %w", err)
@@ -614,6 +633,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 	for _, info := range infos {
 		create := info.ShouldCreate()
 		recreate := info.ShouldRecreate()
+		update := info.ShouldUpdate()
 		apply := info.ShouldApply()
 		cleanup := info.ShouldCleanup()
 		var trackReadiness bool
@@ -654,6 +674,20 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 					DeletionTimeout: b.deletionTimeout,
 				},
 			)
+		} else if update {
+			var err error
+			opDeploy, err = opertn.NewUpdateResourceOperation(
+				info.ResourceID,
+				info.Resource().Unstructured(),
+				b.kubeClient,
+				opertn.UpdateResourceOperationOptions{
+					ManageableBy:        info.Resource().ManageableBy(),
+					RepairManagedFields: info.ShouldRepairManagedFields(),
+				},
+			)
+			if err != nil {
+				return fmt.Errorf("error creating update resource operation: %w", err)
+			}
 		} else if apply {
 			var err error
 			opDeploy, err = opertn.NewApplyResourceOperation(
@@ -778,6 +812,7 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*resrcinfo.Deployable
 	for _, info := range infos {
 		create := info.ShouldCreate()
 		recreate := info.ShouldRecreate()
+		update := info.ShouldUpdate()
 		apply := info.ShouldApply()
 		cleanup := info.ShouldCleanup()
 		var trackReadiness bool
@@ -818,6 +853,20 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*resrcinfo.Deployable
 					DeletionTimeout: b.deletionTimeout,
 				},
 			)
+		} else if update {
+			var err error
+			opDeploy, err = opertn.NewUpdateResourceOperation(
+				info.ResourceID,
+				info.Resource().Unstructured(),
+				b.kubeClient,
+				opertn.UpdateResourceOperationOptions{
+					ManageableBy:        info.Resource().ManageableBy(),
+					RepairManagedFields: info.ShouldRepairManagedFields(),
+				},
+			)
+			if err != nil {
+				return fmt.Errorf("error creating update resource operation: %w", err)
+			}
 		} else if apply {
 			var err error
 			opDeploy, err = opertn.NewApplyResourceOperation(

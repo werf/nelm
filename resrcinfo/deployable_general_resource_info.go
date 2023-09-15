@@ -105,8 +105,12 @@ func (i *DeployableGeneralResourceInfo) ShouldRecreate() bool {
 	return i.exists && i.resource.Recreate()
 }
 
+func (i *DeployableGeneralResourceInfo) ShouldUpdate() bool {
+	return i.exists && i.upToDate == UpToDateStatusNo && !i.resource.Recreate()
+}
+
 func (i *DeployableGeneralResourceInfo) ShouldApply() bool {
-	return i.exists && i.upToDate != UpToDateStatusYes && !i.resource.Recreate()
+	return i.exists && i.upToDate == UpToDateStatusUnknown && !i.resource.Recreate()
 }
 
 func (i *DeployableGeneralResourceInfo) ShouldCleanup() bool {
@@ -122,7 +126,7 @@ func (i *DeployableGeneralResourceInfo) ShouldKeepOnDelete() bool {
 }
 
 func (i *DeployableGeneralResourceInfo) ShouldRepairManagedFields() bool {
-	return i.exists && i.getResource.ManagedFieldsBroken() && i.ShouldApply()
+	return i.exists && i.getResource.ManagedFieldsBroken() && (i.ShouldUpdate() || i.ShouldApply())
 }
 
 func (i *DeployableGeneralResourceInfo) ShouldTrackReadiness(prevRelFailed bool) bool {
@@ -156,5 +160,5 @@ func (i *DeployableGeneralResourceInfo) LiveUID() (uid types.UID, found bool) {
 }
 
 func (i *DeployableGeneralResourceInfo) shouldDeploy() bool {
-	return i.ShouldCreate() || i.ShouldRecreate() || i.ShouldApply()
+	return i.ShouldCreate() || i.ShouldRecreate() || i.ShouldUpdate() || i.ShouldApply()
 }

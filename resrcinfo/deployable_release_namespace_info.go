@@ -82,12 +82,20 @@ func (i *DeployableReleaseNamespaceInfo) LiveResource() *resrc.RemoteResource {
 	return i.getResource
 }
 
+func (i *DeployableReleaseNamespaceInfo) DryApplyResource() *resrc.RemoteResource {
+	return i.dryApplyResource
+}
+
 func (i *DeployableReleaseNamespaceInfo) ShouldCreate() bool {
 	return !i.exists
 }
 
+func (i *DeployableReleaseNamespaceInfo) ShouldUpdate() bool {
+	return i.exists && i.upToDate == UpToDateStatusNo
+}
+
 func (i *DeployableReleaseNamespaceInfo) ShouldApply() bool {
-	return i.exists && i.upToDate != UpToDateStatusYes
+	return i.exists && i.upToDate == UpToDateStatusUnknown
 }
 
 func (i *DeployableReleaseNamespaceInfo) ShouldKeepOnDelete() bool {
@@ -95,5 +103,5 @@ func (i *DeployableReleaseNamespaceInfo) ShouldKeepOnDelete() bool {
 }
 
 func (i *DeployableReleaseNamespaceInfo) ShouldRepairManagedFields() bool {
-	return i.exists && i.getResource.ManagedFieldsBroken() && i.ShouldApply()
+	return i.exists && i.getResource.ManagedFieldsBroken() && (i.ShouldUpdate() || i.ShouldApply())
 }

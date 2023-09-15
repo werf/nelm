@@ -73,6 +73,7 @@ func BuildDeployableResourceInfos(
 		})
 	}
 
+	// FIXME(ilya-lesikov): most of these GET requests duplicated with GET requests for general resource infos
 	routines = lo.Max([]int{len(prevReleaseGeneralResources) / totalResourcesCount * parallelism, 1})
 	prevReleaseGeneralResourcesPool := pool.NewWithResults[*DeployablePrevReleaseGeneralResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range prevReleaseGeneralResources {

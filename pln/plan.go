@@ -133,6 +133,7 @@ func (p *Plan) WorthyCompletedOperations() (worthyCompletedOps []opertn.Operatio
 		switch op.Type() {
 		case opertn.TypeCreateResourceOperation,
 			opertn.TypeRecreateResourceOperation,
+			opertn.TypeUpdateResourceOperation,
 			opertn.TypeApplyResourceOperation,
 			opertn.TypeDeleteResourceOperation:
 			worthyCompletedOps = append(worthyCompletedOps, op)
@@ -169,6 +170,7 @@ func (p *Plan) WorthyCanceledOperations() (worthyCanceledOps []opertn.Operation,
 		switch op.Type() {
 		case opertn.TypeCreateResourceOperation,
 			opertn.TypeRecreateResourceOperation,
+			opertn.TypeUpdateResourceOperation,
 			opertn.TypeApplyResourceOperation,
 			opertn.TypeDeleteResourceOperation:
 			worthyCanceledOps = append(worthyCanceledOps, op)
@@ -290,6 +292,7 @@ func (p *Plan) Useless() (bool, error) {
 		switch op.Type() {
 		case opertn.TypeCreateResourceOperation,
 			opertn.TypeRecreateResourceOperation,
+			opertn.TypeUpdateResourceOperation,
 			opertn.TypeApplyResourceOperation,
 			opertn.TypeDeleteResourceOperation,
 			opertn.TypeFailReleaseOperation,

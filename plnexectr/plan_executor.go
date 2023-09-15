@@ -91,6 +91,7 @@ func (e *PlanExecutor) execOperation(opID string, completedOpsIDsCh chan string,
 		switch op.Type() {
 		case opertn.TypeCreateResourceOperation,
 			opertn.TypeRecreateResourceOperation,
+			opertn.TypeUpdateResourceOperation,
 			opertn.TypeApplyResourceOperation,
 			opertn.TypeDeleteResourceOperation:
 			log.Default.Info(ctx, utls.Capitalize(op.HumanID()))
