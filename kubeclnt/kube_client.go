@@ -21,25 +21,14 @@ import (
 
 var _ KubeClienter = (*KubeClient)(nil)
 
-func NewKubeClient(staticClient kubernetes.Interface, dynamicClient dynamic.Interface, discoveryClient discovery.CachedDiscoveryInterface, mapper meta.ResettableRESTMapper, opts KubeClientOptions) *KubeClient {
-	var fieldManager string
-	if opts.FieldManager != "" {
-		fieldManager = opts.FieldManager
-	} else {
-		fieldManager = common.DefaultFieldManager
-	}
-
+func NewKubeClient(staticClient kubernetes.Interface, dynamicClient dynamic.Interface, discoveryClient discovery.CachedDiscoveryInterface, mapper meta.ResettableRESTMapper) *KubeClient {
 	return &KubeClient{
-		fieldManager:    fieldManager,
+		fieldManager:    common.DefaultFieldManager,
 		staticClient:    staticClient,
 		dynamicClient:   dynamicClient,
 		discoveryClient: discoveryClient,
 		mapper:          mapper,
 	}
-}
-
-type KubeClientOptions struct {
-	FieldManager string
 }
 
 type KubeClient struct {
