@@ -65,21 +65,21 @@ func LogPlannedChanges(
 		)
 	}
 
-	log.Default.Info(ctx, color.Bold.Render("Planned changes summary")+" for release %q (namespace: %q):  ", releaseName, releaseNamespace)
+	log.Default.Info(ctx, color.Bold.Render("Planned changes summary")+" for release %q (namespace: %q):", releaseName, releaseNamespace)
 	if len(createdChanges) > 0 {
-		log.Default.Info(ctx, "- "+createStyle("create")+": %d resource(s)", len(createdChanges))
+		log.Default.Info(ctx, "- "+createStyle("create:")+" %d resource(s)", len(createdChanges))
 	}
 	if len(recreatedChanges) > 0 {
-		log.Default.Info(ctx, "- "+recreateStyle("recreate")+": %d resource(s)", len(recreatedChanges))
+		log.Default.Info(ctx, "- "+recreateStyle("recreate:")+" %d resource(s)", len(recreatedChanges))
 	}
 	if len(updatedChanges) > 0 {
-		log.Default.Info(ctx, "- "+updateStyle("update")+": %d resource(s)", len(updatedChanges))
+		log.Default.Info(ctx, "- "+updateStyle("update:")+" %d resource(s)", len(updatedChanges))
 	}
 	if len(appliedChanges) > 0 {
-		log.Default.Info(ctx, "- "+applyStyle("blindly apply")+": %d resource(s)", len(appliedChanges))
+		log.Default.Info(ctx, "- "+applyStyle("blindly apply:")+" %d resource(s)", len(appliedChanges))
 	}
 	if len(deletedChanges) > 0 {
-		log.Default.Info(ctx, "- "+deleteStyle("delete")+": %d resource(s)", len(deletedChanges))
+		log.Default.Info(ctx, "- "+deleteStyle("delete:")+" %d resource(s)", len(deletedChanges))
 	}
 }
 

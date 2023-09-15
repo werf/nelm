@@ -7,11 +7,13 @@ import (
 	"os"
 	"sort"
 
+	"github.com/gookit/color"
 	"github.com/samber/lo"
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/werf/log"
 	"helm.sh/helm/v3/pkg/werf/opertn"
 	"helm.sh/helm/v3/pkg/werf/rls"
+	"helm.sh/helm/v3/pkg/werf/utls"
 )
 
 func NewReport(completedOps, canceledOps, failedOps []opertn.Operation, release *rls.Release) *Report {
@@ -41,25 +43,44 @@ type Report struct {
 }
 
 func (r *Report) Print(ctx context.Context) {
+	totalOpsLen := len(r.completedOps) + len(r.failedOps) + len(r.canceledOps)
+	if totalOpsLen == 0 {
+		return
+	}
+
 	if len(r.completedOps) > 0 {
-		log.Default.Info(ctx, "Completed operations:")
-		for _, op := range r.completedOps {
-			log.Default.Info(ctx, "- %s", op.HumanID())
-		}
+		log.Default.InfoBlock(ctx, completedStyle("Completed operations")).Do(func() {
+			for _, op := range r.completedOps {
+				log.Default.Info(ctx, utls.Capitalize(op.HumanID()))
+			}
+		})
 	}
 
 	if len(r.canceledOps) > 0 {
-		log.Default.Info(ctx, "Canceled operations:")
-		for _, op := range r.canceledOps {
-			log.Default.Info(ctx, "- %s", op.HumanID())
-		}
+		log.Default.InfoBlock(ctx, canceledStyle("Canceled operations")).Do(func() {
+			for _, op := range r.canceledOps {
+				log.Default.Info(ctx, utls.Capitalize(op.HumanID()))
+			}
+		})
 	}
 
 	if len(r.failedOps) > 0 {
-		log.Default.Info(ctx, "Failed operations:")
-		for _, op := range r.failedOps {
-			log.Default.Info(ctx, "- %s", op.HumanID())
-		}
+		log.Default.InfoBlock(ctx, failedStyle("Failed operations")).Do(func() {
+			for _, op := range r.failedOps {
+				log.Default.Info(ctx, utls.Capitalize(op.HumanID()))
+			}
+		})
+	}
+
+	log.Default.Info(ctx, color.Bold.Render("Operations summary:"))
+	if len(r.completedOps) > 0 {
+		log.Default.Info(ctx, "- "+completedStyle("completed:")+" %d operation(s)", len(r.completedOps))
+	}
+	if len(r.canceledOps) > 0 {
+		log.Default.Info(ctx, "- "+canceledStyle("canceled:")+" %d operation(s)", len(r.canceledOps))
+	}
+	if len(r.failedOps) > 0 {
+		log.Default.Info(ctx, "- "+failedStyle("failed:")+" %d operation(s)", len(r.failedOps))
 	}
 }
 
@@ -100,6 +121,18 @@ func (r *Report) Save(path string) error {
 	}
 
 	return nil
+}
+
+func completedStyle(text string) string {
+	return color.Style{color.Bold, color.Green}.Render(text)
+}
+
+func canceledStyle(text string) string {
+	return color.Style{color.Bold, color.Yellow}.Render(text)
+}
+
+func failedStyle(text string) string {
+	return color.Style{color.Bold, color.Red}.Render(text)
 }
 
 type reportV2 struct {
