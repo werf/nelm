@@ -210,8 +210,7 @@ func (b *DeployPlanBuilder) setupInitOperations() error {
 			relNsInfo.Resource().Unstructured(),
 			b.kubeClient,
 			opertn.UpdateResourceOperationOptions{
-				ManageableBy:        relNsInfo.Resource().ManageableBy(),
-				RepairManagedFields: relNsInfo.ShouldRepairManagedFields(),
+				ManageableBy: relNsInfo.Resource().ManageableBy(),
 			},
 		)
 		if err != nil {
@@ -224,8 +223,7 @@ func (b *DeployPlanBuilder) setupInitOperations() error {
 			relNsInfo.Resource().Unstructured(),
 			b.kubeClient,
 			opertn.ApplyResourceOperationOptions{
-				ManageableBy:        relNsInfo.Resource().ManageableBy(),
-				RepairManagedFields: relNsInfo.ShouldRepairManagedFields(),
+				ManageableBy: relNsInfo.Resource().ManageableBy(),
 			},
 		)
 		if err != nil {
@@ -278,8 +276,7 @@ func (b *DeployPlanBuilder) setupStandaloneCRDsOperations() error {
 				info.Resource().Unstructured(),
 				b.kubeClient,
 				opertn.UpdateResourceOperationOptions{
-					ManageableBy:        info.Resource().ManageableBy(),
-					RepairManagedFields: info.ShouldRepairManagedFields(),
+					ManageableBy: info.Resource().ManageableBy(),
 				},
 			)
 			if err != nil {
@@ -292,8 +289,7 @@ func (b *DeployPlanBuilder) setupStandaloneCRDsOperations() error {
 				info.Resource().Unstructured(),
 				b.kubeClient,
 				opertn.ApplyResourceOperationOptions{
-					ManageableBy:        info.Resource().ManageableBy(),
-					RepairManagedFields: info.ShouldRepairManagedFields(),
+					ManageableBy: info.Resource().ManageableBy(),
 				},
 			)
 			if err != nil {
@@ -681,8 +677,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 				info.Resource().Unstructured(),
 				b.kubeClient,
 				opertn.UpdateResourceOperationOptions{
-					ManageableBy:        info.Resource().ManageableBy(),
-					RepairManagedFields: info.ShouldRepairManagedFields(),
+					ManageableBy: info.Resource().ManageableBy(),
 				},
 			)
 			if err != nil {
@@ -695,8 +690,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 				info.Resource().Unstructured(),
 				b.kubeClient,
 				opertn.ApplyResourceOperationOptions{
-					ManageableBy:        info.Resource().ManageableBy(),
-					RepairManagedFields: info.ShouldRepairManagedFields(),
+					ManageableBy: info.Resource().ManageableBy(),
 				},
 			)
 			if err != nil {
@@ -860,8 +854,7 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*resrcinfo.Deployable
 				info.Resource().Unstructured(),
 				b.kubeClient,
 				opertn.UpdateResourceOperationOptions{
-					ManageableBy:        info.Resource().ManageableBy(),
-					RepairManagedFields: info.ShouldRepairManagedFields(),
+					ManageableBy: info.Resource().ManageableBy(),
 				},
 			)
 			if err != nil {
@@ -874,8 +867,7 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*resrcinfo.Deployable
 				info.Resource().Unstructured(),
 				b.kubeClient,
 				opertn.ApplyResourceOperationOptions{
-					ManageableBy:        info.Resource().ManageableBy(),
-					RepairManagedFields: info.ShouldRepairManagedFields(),
+					ManageableBy: info.Resource().ManageableBy(),
 				},
 			)
 			if err != nil {

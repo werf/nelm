@@ -11,7 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func NewDeployableStandaloneCRDInfo(ctx context.Context, res *resrc.StandaloneCRD, kubeClient kubeclnt.KubeClienter, mapper meta.ResettableRESTMapper) (*DeployableStandaloneCRDInfo, error) {
+func NewDeployableStandaloneCRDInfo(ctx context.Context, res *resrc.StandaloneCRD, releaseNamespace string, kubeClient kubeclnt.KubeClienter, mapper meta.ResettableRESTMapper) (*DeployableStandaloneCRDInfo, error) {
 	getObj, getErr := kubeClient.Get(ctx, res.ResourceID, kubeclnt.KubeClientGetOptions{
 		TryCache: true,
 	})
@@ -26,9 +26,13 @@ func NewDeployableStandaloneCRDInfo(ctx context.Context, res *resrc.StandaloneCR
 		}
 	}
 	getResource := resrc.NewRemoteResource(getObj, resrc.RemoteResourceOptions{
-		FallbackNamespace: res.Namespace(),
+		FallbackNamespace: releaseNamespace,
 		Mapper:            mapper,
 	})
+
+	if err := fixManagedFields(ctx, releaseNamespace, getObj, getResource, kubeClient, mapper); err != nil {
+		return nil, fmt.Errorf("error fixing managed fields for resource %q: %w", res.HumanID(), err)
+	}
 
 	dryApplyObj, _ := kubeClient.Apply(ctx, res.ResourceID, res.Unstructured(), kubeclnt.KubeClientApplyOptions{
 		DryRun: true,
@@ -36,7 +40,7 @@ func NewDeployableStandaloneCRDInfo(ctx context.Context, res *resrc.StandaloneCR
 	var dryApplyResource *resrc.RemoteResource
 	if dryApplyObj != nil {
 		dryApplyResource = resrc.NewRemoteResource(dryApplyObj, resrc.RemoteResourceOptions{
-			FallbackNamespace: res.Namespace(),
+			FallbackNamespace: releaseNamespace,
 			Mapper:            mapper,
 		})
 	}
@@ -99,10 +103,6 @@ func (i *DeployableStandaloneCRDInfo) ShouldUpdate() bool {
 
 func (i *DeployableStandaloneCRDInfo) ShouldApply() bool {
 	return i.exists && i.upToDate == UpToDateStatusUnknown
-}
-
-func (i *DeployableStandaloneCRDInfo) ShouldRepairManagedFields() bool {
-	return i.exists && i.getResource.ManagedFieldsBroken() && (i.ShouldUpdate() || i.ShouldApply())
 }
 
 func (i *DeployableStandaloneCRDInfo) LiveUID() (uid types.UID, found bool) {

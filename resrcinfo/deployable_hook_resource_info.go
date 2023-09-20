@@ -11,7 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func NewDeployableHookResourceInfo(ctx context.Context, res *resrc.HookResource, kubeClient kubeclnt.KubeClienter, mapper meta.ResettableRESTMapper) (*DeployableHookResourceInfo, error) {
+func NewDeployableHookResourceInfo(ctx context.Context, res *resrc.HookResource, releaseNamespace string, kubeClient kubeclnt.KubeClienter, mapper meta.ResettableRESTMapper) (*DeployableHookResourceInfo, error) {
 	getObj, getErr := kubeClient.Get(ctx, res.ResourceID, kubeclnt.KubeClientGetOptions{
 		TryCache: true,
 	})
@@ -26,9 +26,13 @@ func NewDeployableHookResourceInfo(ctx context.Context, res *resrc.HookResource,
 		}
 	}
 	getResource := resrc.NewRemoteResource(getObj, resrc.RemoteResourceOptions{
-		FallbackNamespace: res.Namespace(),
+		FallbackNamespace: releaseNamespace,
 		Mapper:            mapper,
 	})
+
+	if err := fixManagedFields(ctx, releaseNamespace, getObj, getResource, kubeClient, mapper); err != nil {
+		return nil, fmt.Errorf("error fixing managed fields for resource %q: %w", res.HumanID(), err)
+	}
 
 	dryApplyObj, dryApplyErr := kubeClient.Apply(ctx, res.ResourceID, res.Unstructured(), kubeclnt.KubeClientApplyOptions{
 		DryRun: true,
@@ -39,7 +43,7 @@ func NewDeployableHookResourceInfo(ctx context.Context, res *resrc.HookResource,
 	var dryApplyResource *resrc.RemoteResource
 	if dryApplyObj != nil {
 		dryApplyResource = resrc.NewRemoteResource(dryApplyObj, resrc.RemoteResourceOptions{
-			FallbackNamespace: res.Namespace(),
+			FallbackNamespace: releaseNamespace,
 			Mapper:            mapper,
 		})
 	}
@@ -124,10 +128,6 @@ func (i *DeployableHookResourceInfo) ShouldCleanupOnFailed(prevRelFailed bool) b
 
 func (i *DeployableHookResourceInfo) ShouldKeepOnDelete() bool {
 	return i.resource.KeepOnDelete() || (i.exists && i.getResource.KeepOnDelete())
-}
-
-func (i *DeployableHookResourceInfo) ShouldRepairManagedFields() bool {
-	return i.exists && i.getResource.ManagedFieldsBroken() && (i.ShouldUpdate() || i.ShouldApply())
 }
 
 func (i *DeployableHookResourceInfo) ShouldTrackReadiness(prevRelFailed bool) bool {

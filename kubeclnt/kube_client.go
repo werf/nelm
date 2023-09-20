@@ -105,13 +105,14 @@ func (c *KubeClient) Create(ctx context.Context, resource *resrcid.ResourceID, u
 		unstructured.SetNestedField(unstruct.UnstructuredContent(), *opts.ForceReplicas, "spec", "replicas")
 	}
 
-	log.Default.Debug(ctx, "Creating resource %q ...", resource.HumanID())
-	resultObj, err := clientResource.Create(ctx, unstruct, metav1.CreateOptions{
+	log.Default.Debug(ctx, "Server-side applying resource %q ...", resource.HumanID())
+	resultObj, err := clientResource.Apply(ctx, resource.Name(), unstruct, metav1.ApplyOptions{
+		Force:        true,
 		FieldManager: common.DefaultFieldManager,
 	})
 	if err != nil {
 		c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{err: err}, 0)
-		return nil, fmt.Errorf("error creating resource %q: %w", resource.HumanID(), err)
+		return nil, fmt.Errorf("error server-side applying resource %q: %w", resource.HumanID(), err)
 	}
 	c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{obj: resultObj.DeepCopy()}, 0)
 

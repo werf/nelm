@@ -25,9 +25,13 @@ func NewDeployableReleaseNamespaceInfo(ctx context.Context, res *resrc.ReleaseNa
 		}
 	}
 	getResource := resrc.NewRemoteResource(getObj, resrc.RemoteResourceOptions{
-		FallbackNamespace: res.Namespace(),
+		FallbackNamespace: res.Name(),
 		Mapper:            mapper,
 	})
+
+	if err := fixManagedFields(ctx, res.Name(), getObj, getResource, kubeClient, mapper); err != nil {
+		return nil, fmt.Errorf("error fixing managed fields for resource %q: %w", res.HumanID(), err)
+	}
 
 	dryApplyObject, _ := kubeClient.Apply(ctx, res.ResourceID, res.Unstructured(), kubeclnt.KubeClientApplyOptions{
 		DryRun: true,
@@ -35,7 +39,7 @@ func NewDeployableReleaseNamespaceInfo(ctx context.Context, res *resrc.ReleaseNa
 	var dryApplyResource *resrc.RemoteResource
 	if dryApplyObject != nil {
 		dryApplyResource = resrc.NewRemoteResource(dryApplyObject, resrc.RemoteResourceOptions{
-			FallbackNamespace: res.Namespace(),
+			FallbackNamespace: res.Name(),
 			Mapper:            mapper,
 		})
 	}
@@ -102,8 +106,4 @@ func (i *DeployableReleaseNamespaceInfo) ShouldApply() bool {
 
 func (i *DeployableReleaseNamespaceInfo) ShouldKeepOnDelete() bool {
 	return i.exists && i.getResource.KeepOnDelete()
-}
-
-func (i *DeployableReleaseNamespaceInfo) ShouldRepairManagedFields() bool {
-	return i.exists && i.getResource.ManagedFieldsBroken() && (i.ShouldUpdate() || i.ShouldApply())
 }

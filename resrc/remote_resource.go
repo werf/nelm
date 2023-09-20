@@ -41,8 +41,8 @@ func (r *RemoteResource) Type() Type {
 	return TypeRemoteResource
 }
 
-func (r *RemoteResource) ManagedFieldsBroken() bool {
-	return managedFieldsBroken(r.unstruct)
+func (r *RemoteResource) FixManagedFields() (changed bool, err error) {
+	return fixManagedFields(r.unstruct)
 }
 
 func (r *RemoteResource) AdoptableBy(releaseName, releaseNamespace string) (adoptable bool, nonAdoptableReason string) {

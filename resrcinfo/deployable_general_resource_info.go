@@ -11,7 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func NewDeployableGeneralResourceInfo(ctx context.Context, res *resrc.GeneralResource, releaseName, releaseNamespace string, kubeClient kubeclnt.KubeClienter, mapper meta.ResettableRESTMapper) (*DeployableGeneralResourceInfo, error) {
+func NewDeployableGeneralResourceInfo(ctx context.Context, res *resrc.GeneralResource, releaseNamespace string, kubeClient kubeclnt.KubeClienter, mapper meta.ResettableRESTMapper) (*DeployableGeneralResourceInfo, error) {
 	getObj, getErr := kubeClient.Get(ctx, res.ResourceID, kubeclnt.KubeClientGetOptions{
 		TryCache: true,
 	})
@@ -26,9 +26,13 @@ func NewDeployableGeneralResourceInfo(ctx context.Context, res *resrc.GeneralRes
 		}
 	}
 	getResource := resrc.NewRemoteResource(getObj, resrc.RemoteResourceOptions{
-		FallbackNamespace: res.Namespace(),
+		FallbackNamespace: releaseNamespace,
 		Mapper:            mapper,
 	})
+
+	if err := fixManagedFields(ctx, releaseNamespace, getObj, getResource, kubeClient, mapper); err != nil {
+		return nil, fmt.Errorf("error fixing managed fields for resource %q: %w", res.HumanID(), err)
+	}
 
 	dryApplyObj, dryApplyErr := kubeClient.Apply(ctx, res.ResourceID, res.Unstructured(), kubeclnt.KubeClientApplyOptions{
 		DryRun: true,
@@ -39,7 +43,7 @@ func NewDeployableGeneralResourceInfo(ctx context.Context, res *resrc.GeneralRes
 	var dryApplyResource *resrc.RemoteResource
 	if dryApplyObj != nil {
 		dryApplyResource = resrc.NewRemoteResource(dryApplyObj, resrc.RemoteResourceOptions{
-			FallbackNamespace: res.Namespace(),
+			FallbackNamespace: releaseNamespace,
 			Mapper:            mapper,
 		})
 	}
@@ -125,10 +129,6 @@ func (i *DeployableGeneralResourceInfo) ShouldCleanupOnFailed(prevRelFailed bool
 
 func (i *DeployableGeneralResourceInfo) ShouldKeepOnDelete() bool {
 	return i.resource.KeepOnDelete() || (i.exists && i.getResource.KeepOnDelete())
-}
-
-func (i *DeployableGeneralResourceInfo) ShouldRepairManagedFields() bool {
-	return i.exists && i.getResource.ManagedFieldsBroken() && (i.ShouldUpdate() || i.ShouldApply())
 }
 
 func (i *DeployableGeneralResourceInfo) ShouldTrackReadiness(prevRelFailed bool) bool {

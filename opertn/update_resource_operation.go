@@ -21,36 +21,26 @@ func NewUpdateResourceOperation(
 	opts UpdateResourceOperationOptions,
 ) (*UpdateResourceOperation, error) {
 	return &UpdateResourceOperation{
-		resource:            resource,
-		unstruct:            unstruct,
-		kubeClient:          kubeClient,
-		manageableBy:        opts.ManageableBy,
-		repairManagedFields: opts.RepairManagedFields,
+		resource:     resource,
+		unstruct:     unstruct,
+		kubeClient:   kubeClient,
+		manageableBy: opts.ManageableBy,
 	}, nil
 }
 
 type UpdateResourceOperationOptions struct {
-	ManageableBy        resrc.ManageableBy
-	RepairManagedFields bool
+	ManageableBy resrc.ManageableBy
 }
 
 type UpdateResourceOperation struct {
-	resource            *resrcid.ResourceID
-	unstruct            *unstructured.Unstructured
-	kubeClient          kubeclnt.KubeClienter
-	manageableBy        resrc.ManageableBy
-	repairManagedFields bool
-	status              Status
+	resource     *resrcid.ResourceID
+	unstruct     *unstructured.Unstructured
+	kubeClient   kubeclnt.KubeClienter
+	manageableBy resrc.ManageableBy
+	status       Status
 }
 
 func (o *UpdateResourceOperation) Execute(ctx context.Context) error {
-	if o.repairManagedFields {
-		if err := doRepairManagedFields(ctx, o.resource, o.kubeClient); err != nil {
-			o.status = StatusFailed
-			return fmt.Errorf("error repairing managed fields: %w", err)
-		}
-	}
-
 	if _, err := o.kubeClient.Apply(ctx, o.resource, o.unstruct, kubeclnt.KubeClientApplyOptions{}); err != nil {
 		o.status = StatusFailed
 		return fmt.Errorf("error applying resource: %w", err)

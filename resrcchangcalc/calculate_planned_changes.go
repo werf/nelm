@@ -288,7 +288,7 @@ func diffableResource(unstruct *unstructured.Unstructured) string {
 		unstruct.SetLabels(cleanedLabels)
 	}
 
-	resource := string(lo.Must(yaml.Marshal(unstruct)))
+	resource := string(lo.Must(yaml.Marshal(unstruct.UnstructuredContent())))
 
 	return resource
 }

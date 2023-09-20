@@ -15,8 +15,10 @@ import (
 	"helm.sh/helm/v3/pkg/werf/depnddetctr"
 	"helm.sh/helm/v3/pkg/werf/utls"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/client-go/discovery"
 
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
@@ -806,20 +808,133 @@ func adoptableBy(unstruct *unstructured.Unstructured, releaseName, releaseNamesp
 	return len(nonAdoptableReasons) == 0, nonAdoptableReason
 }
 
-func managedFieldsBroken(unstruct *unstructured.Unstructured) bool {
+func fixManagedFields(unstruct *unstructured.Unstructured) (changed bool, err error) {
 	managedFields := unstruct.GetManagedFields()
-	if managedFields == nil {
-		return true
+	if len(managedFields) == 0 {
+		return false, nil
 	}
 
-	for _, managedField := range managedFields {
-		switch managedField.Manager {
-		case common.OldFieldManager, common.KubectlEditFieldManager:
-			return false
+	var oursEntry metav1.ManagedFieldsEntry
+	if e, found := lo.Find(managedFields, func(e metav1.ManagedFieldsEntry) bool {
+		return e.Manager == common.DefaultFieldManager && e.Operation == metav1.ManagedFieldsOperationApply
+	}); found {
+		oursEntry = e
+	} else {
+		oursEntry = metav1.ManagedFieldsEntry{
+			Manager:    common.DefaultFieldManager,
+			Operation:  metav1.ManagedFieldsOperationApply,
+			APIVersion: unstruct.GetAPIVersion(),
+			Time:       lo.ToPtr(metav1.Now()),
+			FieldsType: "FieldsV1",
+			FieldsV1:   &metav1.FieldsV1{Raw: []byte("{}")},
 		}
 	}
 
-	return true
+	var fixedManagedFields []metav1.ManagedFieldsEntry
+
+	fixedManagedFields = append(fixedManagedFields, differentSubresourceManagers(managedFields, oursEntry)...)
+
+	if newManagedFields, newOursEntry, chngd := removeUndesirableManagers(managedFields, oursEntry); chngd {
+		fixedManagedFields = append(fixedManagedFields, newManagedFields...)
+		oursEntry = newOursEntry
+		changed = true
+	}
+
+	if newManagedFields, chngd := exclusiveOwnershipForOurManager(managedFields, oursEntry); chngd {
+		fixedManagedFields = append(fixedManagedFields, newManagedFields...)
+		changed = true
+	}
+
+	if string(oursEntry.FieldsV1.Raw) != "{}" {
+		fixedManagedFields = append(fixedManagedFields, oursEntry)
+	}
+
+	if changed {
+		unstruct.SetManagedFields(fixedManagedFields)
+	}
+
+	return changed, nil
+}
+
+func differentSubresourceManagers(managedFields []metav1.ManagedFieldsEntry, oursEntry metav1.ManagedFieldsEntry) (newManagedFields []metav1.ManagedFieldsEntry) {
+	for _, managedField := range managedFields {
+		if managedField.Subresource != oursEntry.Subresource {
+			newManagedFields = append(newManagedFields, managedField)
+			continue
+		}
+	}
+
+	return newManagedFields
+}
+
+func removeUndesirableManagers(managedFields []metav1.ManagedFieldsEntry, oursEntry metav1.ManagedFieldsEntry) (newManagedFields []metav1.ManagedFieldsEntry, newOursEntry metav1.ManagedFieldsEntry, changed bool) {
+	oursFieldsByte := lo.Must(json.Marshal(oursEntry.FieldsV1))
+
+	newOursEntry = oursEntry
+	for _, managedField := range managedFields {
+		if managedField.Subresource != oursEntry.Subresource {
+			continue
+		}
+
+		fieldsByte := lo.Must(json.Marshal(managedField.FieldsV1))
+
+		switch managedField.Manager {
+		case common.OldFieldManager, common.KubectlEditFieldManager:
+			merged, mergeChanged := lo.Must2(utls.MergeJson(fieldsByte, oursFieldsByte))
+			if mergeChanged {
+				oursFieldsByte = merged
+				lo.Must0(newOursEntry.FieldsV1.UnmarshalJSON(merged))
+			}
+
+			changed = true
+		case common.DefaultFieldManager:
+			if managedField.Operation == metav1.ManagedFieldsOperationApply {
+				continue
+			}
+
+			merged, mergeChanged := lo.Must2(utls.MergeJson(fieldsByte, oursFieldsByte))
+			if mergeChanged {
+				oursFieldsByte = merged
+				lo.Must0(newOursEntry.FieldsV1.UnmarshalJSON(merged))
+			}
+
+			changed = true
+		}
+	}
+
+	return newManagedFields, newOursEntry, changed
+}
+
+func exclusiveOwnershipForOurManager(managedFields []metav1.ManagedFieldsEntry, oursEntry metav1.ManagedFieldsEntry) (newManagedFields []metav1.ManagedFieldsEntry, changed bool) {
+	oursFieldsByte := lo.Must(json.Marshal(oursEntry.FieldsV1))
+
+	for _, managedField := range managedFields {
+		if managedField.Subresource != oursEntry.Subresource {
+			continue
+		}
+
+		fieldsByte := lo.Must(json.Marshal(managedField.FieldsV1))
+
+		switch managedField.Manager {
+		case common.OldFieldManager, common.KubectlEditFieldManager, common.DefaultFieldManager:
+			continue
+		default:
+			subtracted, subtractChanged := lo.Must2(utls.SubtractJson(fieldsByte, oursFieldsByte))
+			if !subtractChanged {
+				newManagedFields = append(newManagedFields, managedField)
+				continue
+			}
+
+			if string(subtracted) != "{}" {
+				lo.Must0(managedField.FieldsV1.UnmarshalJSON(subtracted))
+				newManagedFields = append(newManagedFields, managedField)
+			}
+
+			changed = true
+		}
+	}
+
+	return newManagedFields, changed
 }
 
 func weight(unstruct *unstructured.Unstructured) int {

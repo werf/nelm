@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func NewDeployablePrevReleaseGeneralResourceInfo(ctx context.Context, res *resrc.GeneralResource, kubeClient kubeclnt.KubeClienter, mapper meta.ResettableRESTMapper) (*DeployablePrevReleaseGeneralResourceInfo, error) {
+func NewDeployablePrevReleaseGeneralResourceInfo(ctx context.Context, res *resrc.GeneralResource, releaseNamespace string, kubeClient kubeclnt.KubeClienter, mapper meta.ResettableRESTMapper) (*DeployablePrevReleaseGeneralResourceInfo, error) {
 	getObj, getErr := kubeClient.Get(ctx, res.ResourceID, kubeclnt.KubeClientGetOptions{
 		TryCache: true,
 	})
@@ -27,7 +27,7 @@ func NewDeployablePrevReleaseGeneralResourceInfo(ctx context.Context, res *resrc
 		}
 	}
 	getResource := resrc.NewRemoteResource(getObj, resrc.RemoteResourceOptions{
-		FallbackNamespace: res.Namespace(),
+		FallbackNamespace: releaseNamespace,
 		Mapper:            mapper,
 	})
 

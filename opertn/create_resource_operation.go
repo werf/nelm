@@ -49,12 +49,6 @@ func (o *CreateResourceOperation) Execute(ctx context.Context) error {
 		ForceReplicas: o.forceReplicas,
 	}); err != nil {
 		if errors.IsAlreadyExists(err) {
-			// TODO(ilya-lesikov): check whether we need to do this
-			if err := doRepairManagedFields(ctx, o.resource, o.kubeClient); err != nil {
-				o.status = StatusFailed
-				return fmt.Errorf("error repairing managed fields: %w", err)
-			}
-
 			if _, err := o.kubeClient.Apply(ctx, o.resource, o.unstruct, kubeclnt.KubeClientApplyOptions{}); err != nil {
 				o.status = StatusFailed
 				return fmt.Errorf("error applying resource: %w", err)
