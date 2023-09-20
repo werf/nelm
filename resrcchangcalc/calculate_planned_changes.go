@@ -84,7 +84,10 @@ func releaseNamespaceChange(info *resrcinfo.DeployableReleaseNamespaceInfo) (cha
 			Udiff:      uDiff,
 		}
 	} else if update {
-		uDiff := lo.Must(utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured())))
+		uDiff, nonEmptyDiff := utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured()))
+		if !nonEmptyDiff {
+			uDiff = "<insignificant changes>"
+		}
 
 		change = &UpdatedResourceChange{
 			ResourceID: info.ResourceID,
@@ -116,7 +119,10 @@ func standaloneCRDChanges(infos []*resrcinfo.DeployableStandaloneCRDInfo) (chang
 				Udiff:      uDiff,
 			})
 		} else if update {
-			uDiff := lo.Must(utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured())))
+			uDiff, nonEmptyDiff := utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured()))
+			if !nonEmptyDiff {
+				uDiff = "<insignificant changes>"
+			}
 
 			changes = append(changes, &UpdatedResourceChange{
 				ResourceID: info.ResourceID,
@@ -163,7 +169,10 @@ func hookResourcesChanges(infos []*resrcinfo.DeployableHookResourceInfo, prevRel
 				CleanedUpOnFailure: cleanupOnFailure,
 			})
 		} else if update {
-			uDiff := lo.Must(utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured())))
+			uDiff, nonEmptyDiff := utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured()))
+			if !nonEmptyDiff {
+				uDiff = "<insignificant changes>"
+			}
 
 			changes = append(changes, &UpdatedResourceChange{
 				ResourceID:         info.ResourceID,
@@ -214,7 +223,10 @@ func generalResourcesChanges(infos []*resrcinfo.DeployableGeneralResourceInfo, p
 				CleanedUpOnFailure: cleanupOnFailure,
 			})
 		} else if update {
-			uDiff := lo.Must(utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured())))
+			uDiff, nonEmptyDiff := utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured()))
+			if !nonEmptyDiff {
+				uDiff = "<insignificant changes>"
+			}
 
 			changes = append(changes, &UpdatedResourceChange{
 				ResourceID:         info.ResourceID,
