@@ -134,52 +134,52 @@ type DeployPlanBuilder struct {
 }
 
 func (b *DeployPlanBuilder) Build(ctx context.Context) (*pln.Plan, error) {
-	log.Default.Debug(ctx, "Setting up init operations ...")
+	log.Default.Debug(ctx, "Setting up init operations")
 	if err := b.setupInitOperations(); err != nil {
 		return nil, fmt.Errorf("error setting up init operations: %w", err)
 	}
 
-	log.Default.Debug(ctx, "Setting up standalone CRDs operations ...")
+	log.Default.Debug(ctx, "Setting up standalone CRDs operations")
 	if err := b.setupStandaloneCRDsOperations(); err != nil {
 		return nil, fmt.Errorf("error setting up standalone CRDs operations: %w", err)
 	}
 
-	log.Default.Debug(ctx, "Setting up pre hook resources operations ...")
+	log.Default.Debug(ctx, "Setting up pre hook resources operations")
 	if err := b.setupPreHookResourcesOperations(); err != nil {
 		return nil, fmt.Errorf("error setting up pre hooks operations: %w", err)
 	}
 
-	log.Default.Debug(ctx, "Setting up general resources operations ...")
+	log.Default.Debug(ctx, "Setting up general resources operations")
 	if err := b.setupGeneralResourcesOperations(); err != nil {
 		return nil, fmt.Errorf("error setting up general resources operations: %w", err)
 	}
 
-	log.Default.Debug(ctx, "Setting up post hook resources operations ...")
+	log.Default.Debug(ctx, "Setting up post hook resources operations")
 	if err := b.setupPostHookResourcesOperations(); err != nil {
 		return nil, fmt.Errorf("error setting up post hooks operations: %w", err)
 	}
 
-	log.Default.Debug(ctx, "Setting up prev release general resources operations ...")
+	log.Default.Debug(ctx, "Setting up prev release general resources operations")
 	if err := b.setupPrevReleaseGeneralResourcesOperations(); err != nil {
 		return nil, fmt.Errorf("error setting up prev release general resources operations: %w", err)
 	}
 
-	log.Default.Debug(ctx, "Setting up finalization operations ...")
+	log.Default.Debug(ctx, "Setting up finalization operations")
 	if err := b.setupFinalizationOperations(); err != nil {
 		return nil, fmt.Errorf("error setting up finalization operations: %w", err)
 	}
 
-	log.Default.Debug(ctx, "Connecting stages ...")
+	log.Default.Debug(ctx, "Connecting stages")
 	if err := b.connectStages(); err != nil {
 		return nil, fmt.Errorf("error connecting stages: %w", err)
 	}
 
-	log.Default.Debug(ctx, "Connecting internal dependencies ...")
+	log.Default.Debug(ctx, "Connecting internal dependencies")
 	if err := b.connectInternalDependencies(); err != nil {
 		return nil, fmt.Errorf("error connecting internal dependencies: %w", err)
 	}
 
-	log.Default.Debug(ctx, "Optimizing plan ...")
+	log.Default.Debug(ctx, "Optimizing plan")
 	if err := b.plan.Optimize(); err != nil {
 		return nil, fmt.Errorf("error optimizing plan: %w", err)
 	}

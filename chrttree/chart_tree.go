@@ -29,13 +29,13 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 
 	getters := getter.All(helm_v3.Settings)
 
-	log.Default.Debug(ctx, "Merging values for chart tree at %q ...", chartPath)
+	log.Default.Debug(ctx, "Merging values for chart tree at %q", chartPath)
 	releaseValues, err := valOpts.MergeValues(getters, loader.GlobalLoadOptions.ChartExtender)
 	if err != nil {
 		return nil, fmt.Errorf("error merging values for chart tree at %q: %w", chartPath, err)
 	}
 
-	log.Default.Debug(ctx, "Loading chart at %q ...", chartPath)
+	log.Default.Debug(ctx, "Loading chart at %q", chartPath)
 	legacyChart, err := loader.Load(chartPath)
 	if err != nil {
 		return nil, fmt.Errorf("error loading chart for chart tree at %q: %w", chartPath, err)
@@ -70,7 +70,7 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		isUpgrade = false
 	}
 
-	log.Default.Debug(ctx, "Rendering values for chart at %q ...", chartPath)
+	log.Default.Debug(ctx, "Rendering values for chart at %q", chartPath)
 	values, err := chartutil.ToRenderValues(legacyChart, releaseValues, chartutil.ReleaseOptions{
 		Name:      releaseName,
 		Namespace: releaseNamespace,
@@ -85,7 +85,7 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 	finalValues := values.AsMap()
 	noClusterAccess := opts.Mapper == nil
 
-	log.Default.Debug(ctx, "Rendering resources for chart at %q ...", chartPath)
+	log.Default.Debug(ctx, "Rendering resources for chart at %q", chartPath)
 	legacyHookResources, generalManifestsBuf, notes, err := actionConfig.RenderResources(legacyChart, values, "", "", true, false, false, nil, noClusterAccess, false)
 	if err != nil {
 		return nil, fmt.Errorf("error rendering resources for chart %q: %w", legacyChart.Name(), err)

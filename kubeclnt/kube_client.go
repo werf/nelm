@@ -73,7 +73,7 @@ func (c *KubeClient) Get(ctx context.Context, resource *resrcid.ResourceID, opts
 
 	clientResource := c.clientResource(gvr, resource.Namespace(), namespaced)
 
-	log.Default.Debug(ctx, "Getting resource %q ...", resource.HumanID())
+	log.Default.Debug(ctx, "Getting resource %q", resource.HumanID())
 	r, err := clientResource.Get(ctx, resource.Name(), metav1.GetOptions{})
 	if err != nil {
 		c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{err: err}, 0)
@@ -105,7 +105,7 @@ func (c *KubeClient) Create(ctx context.Context, resource *resrcid.ResourceID, u
 		unstructured.SetNestedField(unstruct.UnstructuredContent(), *opts.ForceReplicas, "spec", "replicas")
 	}
 
-	log.Default.Debug(ctx, "Server-side applying resource %q ...", resource.HumanID())
+	log.Default.Debug(ctx, "Server-side applying resource %q", resource.HumanID())
 	resultObj, err := clientResource.Apply(ctx, resource.Name(), unstruct, metav1.ApplyOptions{
 		Force:        true,
 		FieldManager: common.DefaultFieldManager,
@@ -145,7 +145,7 @@ func (c *KubeClient) Apply(ctx context.Context, resource *resrcid.ResourceID, un
 		dryRun = []string{metav1.DryRunAll}
 	}
 
-	log.Default.Debug(ctx, "Server-side applying resource %q ...", resource.HumanID())
+	log.Default.Debug(ctx, "Server-side applying resource %q", resource.HumanID())
 	resultObj, err := clientResource.Apply(ctx, resource.Name(), unstruct, metav1.ApplyOptions{
 		DryRun:       dryRun,
 		Force:        true,
@@ -185,7 +185,7 @@ func (c *KubeClient) StrategicPatch(ctx context.Context, resource *resrcid.Resou
 
 	clientResource := c.clientResource(gvr, resource.Namespace(), namespaced)
 
-	log.Default.Debug(ctx, "Strategic patching resource %q ...", resource.HumanID())
+	log.Default.Debug(ctx, "Strategic patching resource %q", resource.HumanID())
 	resultObj, err := clientResource.Patch(ctx, resource.Name(), types.StrategicMergePatchType, patch, metav1.PatchOptions{
 		FieldManager: common.DefaultFieldManager,
 	})
@@ -220,7 +220,7 @@ func (c *KubeClient) Delete(ctx context.Context, resource *resrcid.ResourceID) e
 
 	clientResource := c.clientResource(gvr, resource.Namespace(), namespaced)
 
-	log.Default.Debug(ctx, "Deleting resource %q ...", resource.HumanID())
+	log.Default.Debug(ctx, "Deleting resource %q", resource.HumanID())
 	if err := clientResource.Delete(ctx, resource.Name(), metav1.DeleteOptions{}); err != nil {
 		if errors.IsNotFound(err) {
 			log.Default.Debug(ctx, "Skipping deletion, not found resource %q", resource.HumanID())

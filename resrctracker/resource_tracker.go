@@ -205,7 +205,7 @@ func (t *ResourceTracker) WaitCreation(ctx context.Context, resource *resrcid.Re
 		clientResource = t.dynamicClient.Resource(gvr)
 	}
 
-	log.Default.Debug(ctx, "Polling for resource %q ...", resource.HumanID())
+	log.Default.Debug(ctx, "Polling for resource %q", resource.HumanID())
 	if err := wait.PollImmediate(700*time.Millisecond, opts.Timeout, func() (bool, error) {
 		if _, err := clientResource.Get(ctx, resource.Name(), metav1.GetOptions{}); err != nil {
 			if apierrors.IsResourceExpired(err) || apierrors.IsGone(err) || err == io.EOF || err == io.ErrUnexpectedEOF || apierrors.IsNotFound(err) {
@@ -240,7 +240,7 @@ func (t *ResourceTracker) WaitDeletion(ctx context.Context, resource *resrcid.Re
 		clientResource = t.dynamicClient.Resource(gvr)
 	}
 
-	log.Default.Debug(ctx, "Polling for resource %q ...", resource.HumanID())
+	log.Default.Debug(ctx, "Polling for resource %q", resource.HumanID())
 	if err := wait.PollImmediate(700*time.Millisecond, opts.Timeout, func() (bool, error) {
 		_, err := clientResource.Get(ctx, resource.Name(), metav1.GetOptions{})
 		if err != nil {
