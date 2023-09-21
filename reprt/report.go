@@ -82,6 +82,7 @@ func (r *Report) Print(ctx context.Context) {
 	if len(r.failedOps) > 0 {
 		log.Default.Info(ctx, "- "+failedStyle("failed:")+" %d operation(s)", len(r.failedOps))
 	}
+	log.Default.Info(ctx, "")
 }
 
 func (r *Report) JSON() ([]byte, error) {
