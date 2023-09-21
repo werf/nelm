@@ -295,7 +295,7 @@ func prevReleaseGeneralResourcesChanges(infos []*resrcinfo.DeployablePrevRelease
 			if isCrd {
 				uDiff = HiddenInsignificantOutput
 			} else {
-				uDiff = lo.Must(utls.ColoredUnifiedDiff(diffableResource(info.Resource().Unstructured()), ""))
+				uDiff = lo.Must(utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), ""))
 			}
 
 			changes = append(changes, &DeletedResourceChange{
