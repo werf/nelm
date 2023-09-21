@@ -7,6 +7,7 @@ import (
 	"helm.sh/helm/v3/pkg/werf/kubeclnt"
 	"helm.sh/helm/v3/pkg/werf/resrc"
 	"helm.sh/helm/v3/pkg/werf/resrcid"
+	"helm.sh/helm/v3/pkg/werf/utls"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -51,7 +52,10 @@ func NewDeployableStandaloneCRDInfo(ctx context.Context, res *resrc.StandaloneCR
 	} else if dryApplyResource == nil {
 		upToDateStatus = UpToDateStatusUnknown
 	} else {
-		different := diffGetAndDryApplyObjects(getResource.Unstructured(), dryApplyResource.Unstructured())
+		different, err := utls.ResourcesReallyDiffer(getResource.Unstructured(), dryApplyResource.Unstructured())
+		if err != nil {
+			return nil, fmt.Errorf("error diffing live and dry-apply versions of resource %q: %w", res.HumanID(), err)
+		}
 
 		if different {
 			upToDateStatus = UpToDateStatusNo

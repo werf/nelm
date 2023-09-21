@@ -1,12 +1,17 @@
 package utls
 
 import (
+	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/aymanbagabas/go-udiff"
 	"github.com/aymanbagabas/go-udiff/myers"
 	"github.com/gookit/color"
 	"github.com/samber/lo"
+	"github.com/wI2L/jsondiff"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/util/json"
 )
 
 func ColoredUnifiedDiff(from, to string) (uDiff string, present bool) {
@@ -47,4 +52,34 @@ func ColoredUnifiedDiff(from, to string) (uDiff string, present bool) {
 	}
 
 	return strings.Trim(strings.Join(uDiffLines, "\n"), "\n"), true
+}
+
+func ResourcesReallyDiffer(first, second *unstructured.Unstructured) (differ bool, err error) {
+	firstJson, err := json.Marshal(first.UnstructuredContent())
+	if err != nil {
+		return false, fmt.Errorf("error marshalling live object: %w", err)
+	}
+
+	secondJson, err := json.Marshal(second.UnstructuredContent())
+	if err != nil {
+		return false, fmt.Errorf("error marshalling desired object: %w", err)
+	}
+
+	diffOps, err := jsondiff.CompareJSON(firstJson, secondJson)
+	if err != nil {
+		return false, fmt.Errorf("error comparing json: %w", err)
+	}
+
+	significantDiffOps := lo.Filter(diffOps, func(op jsondiff.Operation, _ int) bool {
+		return !strings.HasPrefix(op.Path, "/metadata/creationTimestamp") &&
+			!strings.HasPrefix(op.Path, "/metadata/generation") &&
+			!strings.HasPrefix(op.Path, "/metadata/resourceVersion") &&
+			!strings.HasPrefix(op.Path, "/metadata/uid") &&
+			!strings.HasPrefix(op.Path, "/status") &&
+			!lo.Must(regexp.MatchString(`^/metadata/managedFields/[0-9]+/time$`, op.Path)) &&
+			!lo.Must(regexp.MatchString(`^/metadata/annotations/.*werf.io.*`, op.Path)) &&
+			!lo.Must(regexp.MatchString(`^/metadata/labels/.*werf.io.*`, op.Path))
+	})
+
+	return len(significantDiffOps) > 0, nil
 }
