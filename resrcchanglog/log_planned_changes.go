@@ -25,6 +25,8 @@ func LogPlannedChanges(
 		return
 	}
 
+	log.Default.Info(ctx, "")
+
 	for _, change := range createdChanges {
 		log.Default.InfoBlock(ctx, createStyle("Create ")+resourceStyle(change.ResourceID.HumanID())+ending(change.CleanedUpOnSuccess, change.CleanedUpOnFailure)).Do(
 			func() {
@@ -81,6 +83,7 @@ func LogPlannedChanges(
 	if len(deletedChanges) > 0 {
 		log.Default.Info(ctx, "- "+deleteStyle("delete:")+" %d resource(s)", len(deletedChanges))
 	}
+	log.Default.Info(ctx, "")
 }
 
 func createStyle(text string) string {
