@@ -168,7 +168,7 @@ func (c *KubeClient) Apply(ctx context.Context, resource *resrcid.ResourceID, un
 	return resultObj, nil
 }
 
-func (c *KubeClient) StrategicPatch(ctx context.Context, resource *resrcid.ResourceID, patch []byte) (*unstructured.Unstructured, error) {
+func (c *KubeClient) MergePatch(ctx context.Context, resource *resrcid.ResourceID, patch []byte) (*unstructured.Unstructured, error) {
 	lock := c.resourceLock(resource)
 	lock.Lock()
 	defer lock.Unlock()
@@ -185,18 +185,18 @@ func (c *KubeClient) StrategicPatch(ctx context.Context, resource *resrcid.Resou
 
 	clientResource := c.clientResource(gvr, resource.Namespace(), namespaced)
 
-	log.Default.Debug(ctx, "Strategic patching resource %q", resource.HumanID())
-	resultObj, err := clientResource.Patch(ctx, resource.Name(), types.StrategicMergePatchType, patch, metav1.PatchOptions{
+	log.Default.Debug(ctx, "Merge patching resource %q", resource.HumanID())
+	resultObj, err := clientResource.Patch(ctx, resource.Name(), types.MergePatchType, patch, metav1.PatchOptions{
 		FieldManager: common.DefaultFieldManager,
 	})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Default.Debug(ctx, "Skipping strategic patching, not found resource %q", resource.HumanID())
+			log.Default.Debug(ctx, "Skipping merge patching, not found resource %q", resource.HumanID())
 			return nil, nil
 		}
 
 		c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{err: err}, 0)
-		return nil, fmt.Errorf("error strategic patching resource %q: %w", resource.HumanID(), err)
+		return nil, fmt.Errorf("error merge patching resource %q: %w", resource.HumanID(), err)
 	}
 	c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{obj: resultObj.DeepCopy()}, 0)
 
@@ -263,7 +263,7 @@ type KubeClienter interface {
 	Get(ctx context.Context, resource *resrcid.ResourceID, opts KubeClientGetOptions) (*unstructured.Unstructured, error)
 	Create(ctx context.Context, resource *resrcid.ResourceID, unstruct *unstructured.Unstructured, opts KubeClientCreateOptions) (*unstructured.Unstructured, error)
 	Apply(ctx context.Context, resource *resrcid.ResourceID, unstruct *unstructured.Unstructured, opts KubeClientApplyOptions) (*unstructured.Unstructured, error)
-	StrategicPatch(ctx context.Context, resource *resrcid.ResourceID, patch []byte) (*unstructured.Unstructured, error)
+	MergePatch(ctx context.Context, resource *resrcid.ResourceID, patch []byte) (*unstructured.Unstructured, error)
 	Delete(ctx context.Context, resource *resrcid.ResourceID) error
 }
 
