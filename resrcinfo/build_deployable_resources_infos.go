@@ -37,7 +37,7 @@ func BuildDeployableResourceInfos(
 
 	totalResourcesCount := len(standaloneCRDs) + len(hookResources) + len(generalResources) + len(prevReleaseGeneralResources)
 
-	routines := lo.Max([]int{len(standaloneCRDs) / totalResourcesCount * parallelism, 1})
+	routines := lo.Max([]int{len(standaloneCRDs) / lo.Max([]int{totalResourcesCount, 1}) * parallelism, 1})
 	standaloneCRDsPool := pool.NewWithResults[*DeployableStandaloneCRDInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range standaloneCRDs {
 		res := res
@@ -50,7 +50,7 @@ func BuildDeployableResourceInfos(
 		})
 	}
 
-	routines = lo.Max([]int{len(hookResources) / totalResourcesCount * parallelism, 1})
+	routines = lo.Max([]int{len(hookResources) / lo.Max([]int{totalResourcesCount, 1}) * parallelism, 1})
 	hookResourcesPool := pool.NewWithResults[*DeployableHookResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range hookResources {
 		res := res
@@ -63,7 +63,7 @@ func BuildDeployableResourceInfos(
 		})
 	}
 
-	routines = lo.Max([]int{len(generalResources) / totalResourcesCount * parallelism, 1})
+	routines = lo.Max([]int{len(generalResources) / lo.Max([]int{totalResourcesCount, 1}) * parallelism, 1})
 	generalResourcesPool := pool.NewWithResults[*DeployableGeneralResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range generalResources {
 		res := res
@@ -76,7 +76,7 @@ func BuildDeployableResourceInfos(
 		})
 	}
 
-	routines = lo.Max([]int{len(prevReleaseGeneralResources) / totalResourcesCount * parallelism, 1})
+	routines = lo.Max([]int{len(prevReleaseGeneralResources) / lo.Max([]int{totalResourcesCount, 1}) * parallelism, 1})
 	prevReleaseGeneralResourcesPool := pool.NewWithResults[*DeployablePrevReleaseGeneralResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range prevReleaseGeneralResources {
 		res := res
