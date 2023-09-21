@@ -878,8 +878,11 @@ func removeUndesirableManagers(managedFields []metav1.ManagedFieldsEntry, oursEn
 
 		fieldsByte := lo.Must(json.Marshal(managedField.FieldsV1))
 
-		switch managedField.Manager {
-		case common.OldFieldManager, common.KubectlEditFieldManager:
+		if managedField.Manager == common.DefaultFieldManager {
+			if managedField.Operation == metav1.ManagedFieldsOperationApply {
+				continue
+			}
+
 			merged, mergeChanged := lo.Must2(utls.MergeJson(fieldsByte, oursFieldsByte))
 			if mergeChanged {
 				oursFieldsByte = merged
@@ -887,11 +890,8 @@ func removeUndesirableManagers(managedFields []metav1.ManagedFieldsEntry, oursEn
 			}
 
 			changed = true
-		case common.DefaultFieldManager:
-			if managedField.Operation == metav1.ManagedFieldsOperationApply {
-				continue
-			}
-
+		} else if managedField.Manager == common.KubectlEditFieldManager ||
+			strings.HasPrefix(managedField.Manager, common.OldFieldManagerPrefix) {
 			merged, mergeChanged := lo.Must2(utls.MergeJson(fieldsByte, oursFieldsByte))
 			if mergeChanged {
 				oursFieldsByte = merged
@@ -915,23 +915,24 @@ func exclusiveOwnershipForOurManager(managedFields []metav1.ManagedFieldsEntry, 
 
 		fieldsByte := lo.Must(json.Marshal(managedField.FieldsV1))
 
-		switch managedField.Manager {
-		case common.OldFieldManager, common.KubectlEditFieldManager, common.DefaultFieldManager:
+		if managedField.Manager == common.DefaultFieldManager ||
+			managedField.Manager == common.KubectlEditFieldManager ||
+			strings.HasPrefix(managedField.Manager, common.OldFieldManagerPrefix) {
 			continue
-		default:
-			subtracted, subtractChanged := lo.Must2(utls.SubtractJson(fieldsByte, oursFieldsByte))
-			if !subtractChanged {
-				newManagedFields = append(newManagedFields, managedField)
-				continue
-			}
-
-			if string(subtracted) != "{}" {
-				lo.Must0(managedField.FieldsV1.UnmarshalJSON(subtracted))
-				newManagedFields = append(newManagedFields, managedField)
-			}
-
-			changed = true
 		}
+
+		subtracted, subtractChanged := lo.Must2(utls.SubtractJson(fieldsByte, oursFieldsByte))
+		if !subtractChanged {
+			newManagedFields = append(newManagedFields, managedField)
+			continue
+		}
+
+		if string(subtracted) != "{}" {
+			lo.Must0(managedField.FieldsV1.UnmarshalJSON(subtracted))
+			newManagedFields = append(newManagedFields, managedField)
+		}
+
+		changed = true
 	}
 
 	return newManagedFields, changed

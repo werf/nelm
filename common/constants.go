@@ -1,8 +1,8 @@
 package common
 
 const DefaultFieldManager = "helm"
-const OldFieldManager = "werf"
 const KubectlEditFieldManager = "kubectl-edit"
+const OldFieldManagerPrefix = "werf"
 
 type DeployType string
 
