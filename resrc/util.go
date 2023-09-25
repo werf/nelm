@@ -22,6 +22,13 @@ func IsCRDFromGR(groupKind schema.GroupResource) bool {
 	}
 }
 
+func IsSecret(groupKind schema.GroupKind) bool {
+	return groupKind == schema.GroupKind{
+		Group: "",
+		Kind:  "Secret",
+	}
+}
+
 func IsHook(annotations map[string]string) bool {
 	_, _, found := FindAnnotationOrLabelByKeyPattern(annotations, annotationKeyPatternHook)
 	return found

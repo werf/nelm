@@ -16,6 +16,7 @@ import (
 
 const HiddenInsignificantOutput = "<hidden insignificant output>"
 const HiddenInsignificantChanges = "<hidden insignificant changes>"
+const HiddenSensitiveOutput = "<hidden sensitive output>"
 
 func CalculatePlannedChanges(
 	releaseNamespaceInfo *resrcinfo.DeployableReleaseNamespaceInfo,
@@ -148,6 +149,7 @@ func standaloneCRDChanges(infos []*resrcinfo.DeployableStandaloneCRDInfo) (chang
 func hookResourcesChanges(infos []*resrcinfo.DeployableHookResourceInfo, prevRelFailed bool) (changes []any, present bool) {
 	for _, info := range infos {
 		isCrd := resrc.IsCRDFromGK(info.ResourceID.GroupVersionKind().GroupKind())
+		isSecret := resrc.IsSecret(info.ResourceID.GroupVersionKind().GroupKind())
 		create := info.ShouldCreate()
 		recreate := info.ShouldRecreate()
 		update := info.ShouldUpdate()
@@ -159,6 +161,8 @@ func hookResourcesChanges(infos []*resrcinfo.DeployableHookResourceInfo, prevRel
 			var uDiff string
 			if isCrd {
 				uDiff = HiddenInsignificantOutput
+			} else if isSecret {
+				uDiff = HiddenSensitiveOutput
 			} else {
 				uDiff = lo.Must(utls.ColoredUnifiedDiff("", diffableResource(info.Resource().Unstructured())))
 			}
@@ -173,6 +177,8 @@ func hookResourcesChanges(infos []*resrcinfo.DeployableHookResourceInfo, prevRel
 			var uDiff string
 			if isCrd {
 				uDiff = HiddenInsignificantOutput
+			} else if isSecret {
+				uDiff = HiddenSensitiveOutput
 			} else {
 				uDiff = lo.Must(utls.ColoredUnifiedDiff("", diffableResource(info.Resource().Unstructured())))
 			}
@@ -184,9 +190,15 @@ func hookResourcesChanges(infos []*resrcinfo.DeployableHookResourceInfo, prevRel
 				CleanedUpOnFailure: cleanupOnFailure,
 			})
 		} else if update {
-			uDiff, nonEmptyDiff := utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured()))
-			if !nonEmptyDiff {
-				uDiff = HiddenInsignificantChanges
+			var uDiff string
+			if isSecret {
+				uDiff = HiddenSensitiveOutput
+			} else {
+				if ud, nonEmpty := utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured())); nonEmpty {
+					uDiff = ud
+				} else {
+					uDiff = HiddenInsignificantChanges
+				}
 			}
 
 			changes = append(changes, &UpdatedResourceChange{
@@ -199,6 +211,8 @@ func hookResourcesChanges(infos []*resrcinfo.DeployableHookResourceInfo, prevRel
 			var uDiff string
 			if isCrd {
 				uDiff = HiddenInsignificantOutput
+			} else if isSecret {
+				uDiff = HiddenSensitiveOutput
 			} else {
 				uDiff = lo.Must(utls.ColoredUnifiedDiff("", diffableResource(info.Resource().Unstructured())))
 			}
@@ -218,6 +232,7 @@ func hookResourcesChanges(infos []*resrcinfo.DeployableHookResourceInfo, prevRel
 func generalResourcesChanges(infos []*resrcinfo.DeployableGeneralResourceInfo, prevRelFailed bool) (changes []any, present bool) {
 	for _, info := range infos {
 		isCrd := resrc.IsCRDFromGK(info.ResourceID.GroupVersionKind().GroupKind())
+		isSecret := resrc.IsSecret(info.ResourceID.GroupVersionKind().GroupKind())
 		create := info.ShouldCreate()
 		recreate := info.ShouldRecreate()
 		update := info.ShouldUpdate()
@@ -229,6 +244,8 @@ func generalResourcesChanges(infos []*resrcinfo.DeployableGeneralResourceInfo, p
 			var uDiff string
 			if isCrd {
 				uDiff = HiddenInsignificantOutput
+			} else if isSecret {
+				uDiff = HiddenSensitiveOutput
 			} else {
 				uDiff = lo.Must(utls.ColoredUnifiedDiff("", diffableResource(info.Resource().Unstructured())))
 			}
@@ -243,6 +260,8 @@ func generalResourcesChanges(infos []*resrcinfo.DeployableGeneralResourceInfo, p
 			var uDiff string
 			if isCrd {
 				uDiff = HiddenInsignificantOutput
+			} else if isSecret {
+				uDiff = HiddenSensitiveOutput
 			} else {
 				uDiff = lo.Must(utls.ColoredUnifiedDiff("", diffableResource(info.Resource().Unstructured())))
 			}
@@ -254,9 +273,15 @@ func generalResourcesChanges(infos []*resrcinfo.DeployableGeneralResourceInfo, p
 				CleanedUpOnFailure: cleanupOnFailure,
 			})
 		} else if update {
-			uDiff, nonEmptyDiff := utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured()))
-			if !nonEmptyDiff {
-				uDiff = HiddenInsignificantChanges
+			var uDiff string
+			if isSecret {
+				uDiff = HiddenSensitiveOutput
+			} else {
+				if ud, nonEmpty := utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured())); nonEmpty {
+					uDiff = ud
+				} else {
+					uDiff = HiddenInsignificantChanges
+				}
 			}
 
 			changes = append(changes, &UpdatedResourceChange{
@@ -269,6 +294,8 @@ func generalResourcesChanges(infos []*resrcinfo.DeployableGeneralResourceInfo, p
 			var uDiff string
 			if isCrd {
 				uDiff = HiddenInsignificantOutput
+			} else if isSecret {
+				uDiff = HiddenSensitiveOutput
 			} else {
 				uDiff = lo.Must(utls.ColoredUnifiedDiff("", diffableResource(info.Resource().Unstructured())))
 			}
@@ -288,12 +315,15 @@ func generalResourcesChanges(infos []*resrcinfo.DeployableGeneralResourceInfo, p
 func prevReleaseGeneralResourcesChanges(infos []*resrcinfo.DeployablePrevReleaseGeneralResourceInfo, curReleaseExistResourcesUIDs []types.UID) (changes []any, present bool) {
 	for _, info := range infos {
 		isCrd := resrc.IsCRDFromGK(info.ResourceID.GroupVersionKind().GroupKind())
+		isSecret := resrc.IsSecret(info.ResourceID.GroupVersionKind().GroupKind())
 		delete := info.ShouldDelete(curReleaseExistResourcesUIDs)
 
 		if delete {
 			var uDiff string
 			if isCrd {
 				uDiff = HiddenInsignificantOutput
+			} else if isSecret {
+				uDiff = HiddenSensitiveOutput
 			} else {
 				uDiff = lo.Must(utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), ""))
 			}
