@@ -551,49 +551,57 @@ func validateExternalDependencies(unstruct *unstructured.Unstructured) error {
 	return nil
 }
 
-func onPreInstall(unstruct *unstructured.Unstructured) bool {
+func on(unstruct *unstructured.Unstructured, phases ...string) bool {
 	_, value := lo.Must2(FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternHook))
-	return value == string(release.HookPreInstall)
+	valPhases := lo.Map(strings.Split(value, ","), func(p string, _ int) string {
+		return strings.TrimSpace(p)
+	})
+
+	for _, phase := range phases {
+		for _, valPhase := range valPhases {
+			if phase == valPhase {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func onPreInstall(unstruct *unstructured.Unstructured) bool {
+	return on(unstruct, string(release.HookPreInstall))
 }
 
 func onPostInstall(unstruct *unstructured.Unstructured) bool {
-	_, value := lo.Must2(FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternHook))
-	return value == string(release.HookPostInstall)
+	return on(unstruct, string(release.HookPostInstall))
 }
 
 func onPreUpgrade(unstruct *unstructured.Unstructured) bool {
-	_, value := lo.Must2(FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternHook))
-	return value == string(release.HookPreUpgrade)
+	return on(unstruct, string(release.HookPreUpgrade))
 }
 
 func onPostUpgrade(unstruct *unstructured.Unstructured) bool {
-	_, value := lo.Must2(FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternHook))
-	return value == string(release.HookPostUpgrade)
+	return on(unstruct, string(release.HookPostUpgrade))
 }
 
 func onPreRollback(unstruct *unstructured.Unstructured) bool {
-	_, value := lo.Must2(FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternHook))
-	return value == string(release.HookPreRollback)
+	return on(unstruct, string(release.HookPreRollback))
 }
 
 func onPostRollback(unstruct *unstructured.Unstructured) bool {
-	_, value := lo.Must2(FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternHook))
-	return value == string(release.HookPostRollback)
+	return on(unstruct, string(release.HookPostRollback))
 }
 
 func onPreDelete(unstruct *unstructured.Unstructured) bool {
-	_, value := lo.Must2(FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternHook))
-	return value == string(release.HookPreDelete)
+	return on(unstruct, string(release.HookPreDelete))
 }
 
 func onPostDelete(unstruct *unstructured.Unstructured) bool {
-	_, value := lo.Must2(FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternHook))
-	return value == string(release.HookPostDelete)
+	return on(unstruct, string(release.HookPostDelete))
 }
 
 func onTest(unstruct *unstructured.Unstructured) bool {
-	_, value := lo.Must2(FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternHook))
-	return value == string(release.HookTest) || value == "test-success"
+	return on(unstruct, string(release.HookTest), "test-success")
 }
 
 func onPreAnything(unstruct *unstructured.Unstructured) bool {
