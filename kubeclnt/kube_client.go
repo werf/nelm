@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/jellydator/ttlcache/v3"
+	"github.com/samber/lo"
 	"helm.sh/helm/v3/pkg/werf/common"
 	"helm.sh/helm/v3/pkg/werf/log"
 	"helm.sh/helm/v3/pkg/werf/resrc"
@@ -145,7 +146,7 @@ func (c *KubeClient) Apply(ctx context.Context, resource *resrcid.ResourceID, un
 		dryRun = []string{metav1.DryRunAll}
 	}
 
-	log.Default.Debug(ctx, "Server-side applying resource %q", resource.HumanID())
+	log.Default.Debug(ctx, "Server-side %sapplying resource %q", lo.Ternary(opts.DryRun, "dry-run ", ""), resource.HumanID())
 	resultObj, err := clientResource.Apply(ctx, resource.Name(), unstruct, metav1.ApplyOptions{
 		DryRun:       dryRun,
 		Force:        true,
@@ -155,7 +156,7 @@ func (c *KubeClient) Apply(ctx context.Context, resource *resrcid.ResourceID, un
 		if !opts.DryRun {
 			c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{err: err}, 0)
 		}
-		return nil, fmt.Errorf("error server-side applying resource %q: %w", resource.HumanID(), err)
+		return nil, fmt.Errorf("error server-side %sapplying resource %q: %w", lo.Ternary(opts.DryRun, "dry-run ", ""), resource.HumanID(), err)
 	}
 	if !opts.DryRun {
 		c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{obj: resultObj.DeepCopy()}, 0)
