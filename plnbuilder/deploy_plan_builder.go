@@ -516,7 +516,7 @@ func (b *DeployPlanBuilder) connectInternalDependencies() error {
 		manualInternalDeps, _ := info.Resource().ManualInternalDependencies()
 
 		for _, dep := range lo.Union(autoInternalDeps, manualInternalDeps) {
-			opDeployRegex := regexp.MustCompile(fmt.Sprintf(`^(%s|%s|%s|%s)`, opertn.TypeCreateResourceOperation, opertn.TypeRecreateResourceOperation, opertn.TypeUpdateResourceOperation, opertn.TypeApplyResourceOperation))
+			opDeployRegex := regexp.MustCompile(fmt.Sprintf(`^(%s|%s|%s|%s)/`, opertn.TypeCreateResourceOperation, opertn.TypeRecreateResourceOperation, opertn.TypeUpdateResourceOperation, opertn.TypeApplyResourceOperation))
 			opsDeploy, found, err := b.plan.OperationsMatch(opDeployRegex)
 			if err != nil {
 				return fmt.Errorf("error looking for operations by regex: %w", err)
