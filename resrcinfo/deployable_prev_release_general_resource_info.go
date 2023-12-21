@@ -17,7 +17,7 @@ func NewDeployablePrevReleaseGeneralResourceInfo(ctx context.Context, res *resrc
 		TryCache: true,
 	})
 	if getErr != nil {
-		if isNotFoundErr(getErr) {
+		if isNotFoundErr(getErr) || isNoSuchKindErr(getErr) {
 			return &DeployablePrevReleaseGeneralResourceInfo{
 				ResourceID: res.ResourceID,
 				resource:   res,

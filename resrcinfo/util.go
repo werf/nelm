@@ -4,14 +4,16 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/validation"
 )
 
 func isImmutableErr(err error) bool {
-	return err != nil && errors.IsInvalid(err) && strings.Contains(err.Error(), "field is immutable")
+	return err != nil && errors.IsInvalid(err) && strings.Contains(err.Error(), validation.FieldImmutableErrorMsg)
 }
 
 func isNoSuchKindErr(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "no matches for kind")
+	return err != nil && meta.IsNoMatchError(err)
 }
 
 func isNotFoundErr(err error) bool {

@@ -17,7 +17,7 @@ func NewDeployableHookResourceInfo(ctx context.Context, res *resrc.HookResource,
 		TryCache: true,
 	})
 	if getErr != nil {
-		if isNotFoundErr(getErr) {
+		if isNotFoundErr(getErr) || isNoSuchKindErr(getErr) {
 			return &DeployableHookResourceInfo{
 				ResourceID: res.ResourceID,
 				resource:   res,
