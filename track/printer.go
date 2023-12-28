@@ -503,17 +503,17 @@ func buildReadinessRootResourceStateCell(taskState *statestore.ReadinessTaskStat
 
 	switch status := taskState.Status(); status {
 	case statestore.ReadinessTaskStatusReady:
-		stateCell = caps.ToCamel(string(status))
+		stateCell = caps.ToUpper(string(status))
 		if colorize {
 			stateCell = color.New(color.Green).Sprintf(stateCell)
 		}
 	case statestore.ReadinessTaskStatusProgressing:
-		stateCell = "Waiting"
+		stateCell = "WAITING"
 		if colorize {
 			stateCell = color.New(color.Yellow).Sprintf(stateCell)
 		}
 	case statestore.ReadinessTaskStatusFailed:
-		stateCell = caps.ToCamel(string(status))
+		stateCell = caps.ToUpper(string(status))
 		if colorize {
 			stateCell = color.New(color.Red).Sprintf(stateCell)
 		}
@@ -529,17 +529,17 @@ func buildReadinessChildResourceStateCell(resourceState *statestore.ResourceStat
 
 	switch status := resourceState.Status(); status {
 	case statestore.ResourceStatusReady:
-		stateCell = caps.ToCamel(string(status))
+		stateCell = caps.ToUpper(string(status))
 		if colorize {
 			stateCell = color.New(color.Green).Sprintf(stateCell)
 		}
 	case statestore.ResourceStatusCreated, statestore.ResourceStatusDeleted:
-		stateCell = caps.ToCamel(string(status))
+		stateCell = caps.ToUpper(string(status))
 		if colorize {
 			stateCell = color.New(color.Yellow).Sprintf(stateCell)
 		}
 	case statestore.ResourceStatusFailed:
-		stateCell = caps.ToCamel(string(status))
+		stateCell = caps.ToUpper(string(status))
 		if colorize {
 			stateCell = color.New(color.Red).Sprintf(stateCell)
 		}
@@ -650,17 +650,17 @@ func buildPresenceRootResourceStateCell(taskState *statestore.PresenceTaskState,
 
 	switch status := taskState.Status(); status {
 	case statestore.PresenceTaskStatusPresent:
-		stateCell = caps.ToCamel(string(status))
+		stateCell = caps.ToUpper(string(status))
 		if colorize {
 			stateCell = color.New(color.Green).Sprintf(stateCell)
 		}
 	case statestore.PresenceTaskStatusProgressing:
-		stateCell = "Waiting"
+		stateCell = "WAITING"
 		if colorize {
 			stateCell = color.New(color.Yellow).Sprintf(stateCell)
 		}
 	case statestore.PresenceTaskStatusFailed:
-		stateCell = caps.ToCamel(string(status))
+		stateCell = caps.ToUpper(string(status))
 		if colorize {
 			stateCell = color.New(color.Red).Sprintf(stateCell)
 		}
@@ -676,17 +676,17 @@ func buildAbsenceRootResourceStateCell(taskState *statestore.AbsenceTaskState, c
 
 	switch status := taskState.Status(); status {
 	case statestore.AbsenceTaskStatusAbsent:
-		stateCell = caps.ToCamel(string(status))
+		stateCell = caps.ToUpper(string(status))
 		if colorize {
 			stateCell = color.New(color.Green).Sprintf(stateCell)
 		}
 	case statestore.AbsenceTaskStatusProgressing:
-		stateCell = "Waiting"
+		stateCell = "WAITING"
 		if colorize {
 			stateCell = color.New(color.Yellow).Sprintf(stateCell)
 		}
 	case statestore.AbsenceTaskStatusFailed:
-		stateCell = caps.ToCamel(string(status))
+		stateCell = caps.ToUpper(string(status))
 		if colorize {
 			stateCell = color.New(color.Red).Sprintf(stateCell)
 		}
