@@ -8,7 +8,7 @@ import (
 	"helm.sh/helm/v3/pkg/time"
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/nelm/resrc"
+	"github.com/werf/nelm/pkg/resrc"
 )
 
 func NewLegacyReleaseFromRelease(rel *Release) (*release.Release, error) {

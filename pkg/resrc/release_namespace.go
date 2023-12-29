@@ -4,7 +4,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/werf/nelm/resrcid"
+	"github.com/werf/nelm/pkg/resrcid"
 )
 
 const TypeReleaseNamespace Type = "release-namespace"

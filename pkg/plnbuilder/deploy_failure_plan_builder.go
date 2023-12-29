@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/werf/nelm/kubeclnt"
-	"github.com/werf/nelm/opertn"
-	"github.com/werf/nelm/pln"
-	"github.com/werf/nelm/resrc"
-	"github.com/werf/nelm/resrcinfo"
-	"github.com/werf/nelm/rls"
-	"github.com/werf/nelm/rlshistor"
+	"github.com/werf/nelm/pkg/kubeclnt"
+	"github.com/werf/nelm/pkg/opertn"
+	"github.com/werf/nelm/pkg/pln"
+	"github.com/werf/nelm/pkg/resrc"
+	"github.com/werf/nelm/pkg/resrcinfo"
+	"github.com/werf/nelm/pkg/rls"
+	"github.com/werf/nelm/pkg/rlshistor"
 )
 
 func NewDeployFailurePlanBuilder(

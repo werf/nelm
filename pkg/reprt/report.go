@@ -11,10 +11,10 @@ import (
 	"github.com/samber/lo"
 	"helm.sh/helm/v3/pkg/release"
 
-	"github.com/werf/nelm/log"
-	"github.com/werf/nelm/opertn"
-	"github.com/werf/nelm/rls"
-	"github.com/werf/nelm/utls"
+	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/opertn"
+	"github.com/werf/nelm/pkg/rls"
+	"github.com/werf/nelm/pkg/utls"
 )
 
 func NewReport(completedOps, canceledOps, failedOps []opertn.Operation, release *rls.Release) *Report {

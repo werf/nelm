@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/werf/nelm/resrcid"
-	"github.com/werf/nelm/resrctracker"
+	"github.com/werf/nelm/pkg/resrcid"
+	"github.com/werf/nelm/pkg/resrctracker"
 )
 
 var _ Operation = (*WaitResourceCreationOperation)(nil)

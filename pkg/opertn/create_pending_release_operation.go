@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/werf/nelm/common"
-	"github.com/werf/nelm/rls"
-	"github.com/werf/nelm/rlshistor"
+	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/rls"
+	"github.com/werf/nelm/pkg/rlshistor"
 )
 
 var _ Operation = (*CreatePendingReleaseOperation)(nil)

@@ -11,8 +11,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
 
-	"github.com/werf/nelm/common"
-	"github.com/werf/nelm/resrc"
+	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/resrc"
 )
 
 func NewRelease(name, namespace string, revision int, values map[string]interface{}, legacyChart *chart.Chart, hookResources []*resrc.HookResource, generalResources []*resrc.GeneralResource, notes string, opts ReleaseOptions) (*Release, error) {

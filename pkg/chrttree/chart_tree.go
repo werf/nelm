@@ -15,9 +15,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
 
-	"github.com/werf/nelm/common"
-	"github.com/werf/nelm/log"
-	"github.com/werf/nelm/resrc"
+	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/resrc"
 )
 
 func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, actionConfig *action.Configuration, opts ChartTreeOptions) (*ChartTree, error) {

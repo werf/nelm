@@ -6,9 +6,9 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/werf/nelm/kubeclnt"
-	"github.com/werf/nelm/resrc"
-	"github.com/werf/nelm/resrcid"
+	"github.com/werf/nelm/pkg/kubeclnt"
+	"github.com/werf/nelm/pkg/resrc"
+	"github.com/werf/nelm/pkg/resrcid"
 )
 
 var _ Operation = (*UpdateResourceOperation)(nil)
