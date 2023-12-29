@@ -1,8 +1,8 @@
 package resrcmatcher
 
 import (
-	"helm.sh/helm/v3/pkg/werf/resrcid"
-	"helm.sh/helm/v3/pkg/werf/utls"
+	"nelm.sh/nelm/pkg/resrcid"
+	"nelm.sh/nelm/pkg/utls"
 )
 
 func NewResourceMatcher(names, namespaces, groups, versions, kinds []string, opts ResourceMatcherOptions) *ResourceMatcher {

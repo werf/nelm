@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"helm.sh/helm/v3/pkg/werf/resrcid"
-	"helm.sh/helm/v3/pkg/werf/resrctracker"
+	"nelm.sh/nelm/pkg/resrcid"
+	"nelm.sh/nelm/pkg/resrctracker"
 )
 
 var _ Operation = (*WaitResourceCreationOperation)(nil)

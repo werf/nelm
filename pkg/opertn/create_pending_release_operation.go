@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"helm.sh/helm/v3/pkg/werf/common"
-	"helm.sh/helm/v3/pkg/werf/rls"
-	"helm.sh/helm/v3/pkg/werf/rlshistor"
+	"nelm.sh/nelm/pkg/common"
+	"nelm.sh/nelm/pkg/rls"
+	"nelm.sh/nelm/pkg/rlshistor"
 )
 
 var _ Operation = (*CreatePendingReleaseOperation)(nil)

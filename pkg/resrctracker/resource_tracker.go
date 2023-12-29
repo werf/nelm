@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/samber/lo"
-	"helm.sh/helm/v3/pkg/werf/log"
-	"helm.sh/helm/v3/pkg/werf/resrcid"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,6 +16,8 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"nelm.sh/nelm/pkg/log"
+	"nelm.sh/nelm/pkg/resrcid"
 
 	"github.com/werf/kubedog/pkg/tracker"
 	dogresid "github.com/werf/kubedog/pkg/tracker/resid"

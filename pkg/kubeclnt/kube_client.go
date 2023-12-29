@@ -7,10 +7,6 @@ import (
 
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/samber/lo"
-	"helm.sh/helm/v3/pkg/werf/common"
-	"helm.sh/helm/v3/pkg/werf/log"
-	"helm.sh/helm/v3/pkg/werf/resrc"
-	"helm.sh/helm/v3/pkg/werf/resrcid"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,6 +16,10 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"nelm.sh/nelm/pkg/common"
+	"nelm.sh/nelm/pkg/log"
+	"nelm.sh/nelm/pkg/resrc"
+	"nelm.sh/nelm/pkg/resrcid"
 )
 
 var _ KubeClienter = (*KubeClient)(nil)

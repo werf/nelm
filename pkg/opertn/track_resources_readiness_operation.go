@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"time"
 
-	"helm.sh/helm/v3/pkg/werf/resrcid"
-	"helm.sh/helm/v3/pkg/werf/resrctracker"
+	"nelm.sh/nelm/pkg/resrcid"
+	"nelm.sh/nelm/pkg/resrctracker"
 
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 )

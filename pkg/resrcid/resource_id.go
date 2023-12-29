@@ -5,10 +5,10 @@ import (
 	"strings"
 
 	"github.com/samber/lo"
-	"helm.sh/helm/v3/pkg/werf/utls"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"nelm.sh/nelm/pkg/utls"
 )
 
 func NewResourceID(name, namespace string, gvk schema.GroupVersionKind, opts ResourceIDOptions) *ResourceID {

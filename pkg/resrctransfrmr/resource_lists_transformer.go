@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"helm.sh/helm/v3/pkg/werf/resrc"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"nelm.sh/nelm/pkg/resrc"
 )
 
 var _ ResourceTransformer = (*ResourceListsTransformer)(nil)

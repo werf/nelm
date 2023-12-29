@@ -6,18 +6,18 @@ import (
 	"strings"
 
 	"github.com/samber/lo"
-	"helm.sh/helm/v3/pkg/werf/common"
-	"helm.sh/helm/v3/pkg/werf/kubeclnt"
-	"helm.sh/helm/v3/pkg/werf/log"
-	"helm.sh/helm/v3/pkg/werf/resrc"
-	"helm.sh/helm/v3/pkg/werf/resrcid"
-	"helm.sh/helm/v3/pkg/werf/resrcinfo"
-	"helm.sh/helm/v3/pkg/werf/resrcpatcher"
-	"helm.sh/helm/v3/pkg/werf/resrctransfrmr"
-	"helm.sh/helm/v3/pkg/werf/utls"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/discovery"
+	"nelm.sh/nelm/pkg/common"
+	"nelm.sh/nelm/pkg/kubeclnt"
+	"nelm.sh/nelm/pkg/log"
+	"nelm.sh/nelm/pkg/resrc"
+	"nelm.sh/nelm/pkg/resrcid"
+	"nelm.sh/nelm/pkg/resrcinfo"
+	"nelm.sh/nelm/pkg/resrcpatcher"
+	"nelm.sh/nelm/pkg/resrctransfrmr"
+	"nelm.sh/nelm/pkg/utls"
 )
 
 func NewDeployableResourcesProcessor(

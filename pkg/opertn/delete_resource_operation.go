@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"helm.sh/helm/v3/pkg/werf/kubeclnt"
-	"helm.sh/helm/v3/pkg/werf/resrcid"
+	"nelm.sh/nelm/pkg/kubeclnt"
+	"nelm.sh/nelm/pkg/resrcid"
 )
 
 var _ Operation = (*DeleteResourceOperation)(nil)

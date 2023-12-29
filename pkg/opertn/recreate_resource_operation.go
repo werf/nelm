@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"helm.sh/helm/v3/pkg/werf/kubeclnt"
-	"helm.sh/helm/v3/pkg/werf/resrc"
-	"helm.sh/helm/v3/pkg/werf/resrcid"
-	"helm.sh/helm/v3/pkg/werf/resrctracker"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"nelm.sh/nelm/pkg/kubeclnt"
+	"nelm.sh/nelm/pkg/resrc"
+	"nelm.sh/nelm/pkg/resrcid"
+	"nelm.sh/nelm/pkg/resrctracker"
 )
 
 var _ Operation = (*RecreateResourceOperation)(nil)

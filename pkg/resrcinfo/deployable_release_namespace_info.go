@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"helm.sh/helm/v3/pkg/werf/kubeclnt"
-	"helm.sh/helm/v3/pkg/werf/resrc"
-	"helm.sh/helm/v3/pkg/werf/resrcid"
-	"helm.sh/helm/v3/pkg/werf/utls"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"nelm.sh/nelm/pkg/kubeclnt"
+	"nelm.sh/nelm/pkg/resrc"
+	"nelm.sh/nelm/pkg/resrcid"
+	"nelm.sh/nelm/pkg/utls"
 )
 
 func NewDeployableReleaseNamespaceInfo(ctx context.Context, res *resrc.ReleaseNamespace, kubeClient kubeclnt.KubeClienter, mapper meta.ResettableRESTMapper) (*DeployableReleaseNamespaceInfo, error) {

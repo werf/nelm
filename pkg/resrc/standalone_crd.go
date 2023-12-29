@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"helm.sh/helm/v3/pkg/werf/resrcid"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/kubernetes/scheme"
+	"nelm.sh/nelm/pkg/resrcid"
 )
 
 const TypeStandaloneCRD Type = "standalone-crd"
