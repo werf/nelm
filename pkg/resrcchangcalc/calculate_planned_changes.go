@@ -6,12 +6,13 @@ import (
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
-	"nelm.sh/nelm/pkg/plnbuilder"
-	"nelm.sh/nelm/pkg/resrc"
-	"nelm.sh/nelm/pkg/resrcid"
-	"nelm.sh/nelm/pkg/resrcinfo"
-	"nelm.sh/nelm/pkg/utls"
 	"sigs.k8s.io/yaml"
+
+	"github.com/werf/nelm/plnbuilder"
+	"github.com/werf/nelm/resrc"
+	"github.com/werf/nelm/resrcid"
+	"github.com/werf/nelm/resrcinfo"
+	"github.com/werf/nelm/utls"
 )
 
 const HiddenInsignificantOutput = "<hidden insignificant output>"

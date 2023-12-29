@@ -7,8 +7,9 @@ import (
 	"github.com/samber/lo"
 	"github.com/sourcegraph/conc/pool"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"nelm.sh/nelm/pkg/kubeclnt"
-	"nelm.sh/nelm/pkg/resrc"
+
+	"github.com/werf/nelm/kubeclnt"
+	"github.com/werf/nelm/resrc"
 )
 
 func BuildDeployableResourceInfos(

@@ -7,9 +7,10 @@ import (
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
-	"nelm.sh/nelm/pkg/kubeclnt"
-	"nelm.sh/nelm/pkg/resrc"
-	"nelm.sh/nelm/pkg/resrcid"
+
+	"github.com/werf/nelm/kubeclnt"
+	"github.com/werf/nelm/resrc"
+	"github.com/werf/nelm/resrcid"
 )
 
 func NewDeployablePrevReleaseGeneralResourceInfo(ctx context.Context, res *resrc.GeneralResource, releaseNamespace string, kubeClient kubeclnt.KubeClienter, mapper meta.ResettableRESTMapper) (*DeployablePrevReleaseGeneralResourceInfo, error) {

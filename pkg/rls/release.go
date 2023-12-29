@@ -10,8 +10,9 @@ import (
 	"helm.sh/helm/v3/pkg/releaseutil"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
-	"nelm.sh/nelm/pkg/common"
-	"nelm.sh/nelm/pkg/resrc"
+
+	"github.com/werf/nelm/common"
+	"github.com/werf/nelm/resrc"
 )
 
 func NewRelease(name, namespace string, revision int, values map[string]interface{}, legacyChart *chart.Chart, hookResources []*resrc.HookResource, generalResources []*resrc.GeneralResource, notes string, opts ReleaseOptions) (*Release, error) {

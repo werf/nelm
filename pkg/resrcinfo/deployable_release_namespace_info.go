@@ -5,10 +5,11 @@ import (
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/meta"
-	"nelm.sh/nelm/pkg/kubeclnt"
-	"nelm.sh/nelm/pkg/resrc"
-	"nelm.sh/nelm/pkg/resrcid"
-	"nelm.sh/nelm/pkg/utls"
+
+	"github.com/werf/nelm/kubeclnt"
+	"github.com/werf/nelm/resrc"
+	"github.com/werf/nelm/resrcid"
+	"github.com/werf/nelm/utls"
 )
 
 func NewDeployableReleaseNamespaceInfo(ctx context.Context, res *resrc.ReleaseNamespace, kubeClient kubeclnt.KubeClienter, mapper meta.ResettableRESTMapper) (*DeployableReleaseNamespaceInfo, error) {

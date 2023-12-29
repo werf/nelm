@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"nelm.sh/nelm/pkg/resrcid"
-	"nelm.sh/nelm/pkg/resrctracker"
+	"github.com/werf/nelm/resrcid"
+	"github.com/werf/nelm/resrctracker"
 )
 
 var _ Operation = (*TrackResourcesDeletionOperation)(nil)

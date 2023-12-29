@@ -5,9 +5,10 @@ import (
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"nelm.sh/nelm/pkg/kubeclnt"
-	"nelm.sh/nelm/pkg/resrc"
-	"nelm.sh/nelm/pkg/resrcid"
+
+	"github.com/werf/nelm/kubeclnt"
+	"github.com/werf/nelm/resrc"
+	"github.com/werf/nelm/resrcid"
 )
 
 var _ Operation = (*ApplyResourceOperation)(nil)
