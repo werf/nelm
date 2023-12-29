@@ -17,10 +17,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/client-go/discovery"
 
-	"github.com/werf/nelm/common"
-	"github.com/werf/nelm/depnd"
-	"github.com/werf/nelm/depnddetctr"
-	"github.com/werf/nelm/utls"
+	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/depnd"
+	"github.com/werf/nelm/pkg/depnddetctr"
+	"github.com/werf/nelm/pkg/utls"
 
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 )

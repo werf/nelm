@@ -17,8 +17,8 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/werf/nelm/log"
-	"github.com/werf/nelm/resrcid"
+	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/resrcid"
 
 	"github.com/werf/kubedog/pkg/tracker"
 	dogresid "github.com/werf/kubedog/pkg/tracker/resid"

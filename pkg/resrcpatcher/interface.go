@@ -5,7 +5,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/werf/nelm/resrc"
+	"github.com/werf/nelm/pkg/resrc"
 )
 
 type ResourcePatcher interface {

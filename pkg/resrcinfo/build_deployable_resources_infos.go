@@ -8,8 +8,8 @@ import (
 	"github.com/sourcegraph/conc/pool"
 	"k8s.io/apimachinery/pkg/api/meta"
 
-	"github.com/werf/nelm/kubeclnt"
-	"github.com/werf/nelm/resrc"
+	"github.com/werf/nelm/pkg/kubeclnt"
+	"github.com/werf/nelm/pkg/resrc"
 )
 
 func BuildDeployableResourceInfos(

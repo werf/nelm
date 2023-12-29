@@ -13,17 +13,17 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/werf/nelm/common"
-	"github.com/werf/nelm/kubeclnt"
-	"github.com/werf/nelm/log"
-	"github.com/werf/nelm/opertn"
-	"github.com/werf/nelm/pln"
-	"github.com/werf/nelm/resrc"
-	"github.com/werf/nelm/resrcid"
-	"github.com/werf/nelm/resrcinfo"
-	"github.com/werf/nelm/resrctracker"
-	"github.com/werf/nelm/rls"
-	"github.com/werf/nelm/rlshistor"
+	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/kubeclnt"
+	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/opertn"
+	"github.com/werf/nelm/pkg/pln"
+	"github.com/werf/nelm/pkg/resrc"
+	"github.com/werf/nelm/pkg/resrcid"
+	"github.com/werf/nelm/pkg/resrcinfo"
+	"github.com/werf/nelm/pkg/resrctracker"
+	"github.com/werf/nelm/pkg/rls"
+	"github.com/werf/nelm/pkg/rlshistor"
 )
 
 var StageOpNamesOrdered = []string{

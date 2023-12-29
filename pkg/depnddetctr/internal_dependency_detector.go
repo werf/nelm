@@ -5,7 +5,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/werf/nelm/depnd"
+	"github.com/werf/nelm/pkg/depnd"
 )
 
 func NewInternalDependencyDetector(opts InternalDependencyDetectorOptions) *InternalDependencyDetector {

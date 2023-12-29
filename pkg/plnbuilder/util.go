@@ -3,7 +3,7 @@ package plnbuilder
 import (
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/werf/nelm/resrcinfo"
+	"github.com/werf/nelm/pkg/resrcinfo"
 )
 
 func CurrentReleaseExistingResourcesUIDs(

@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/werf/nelm/kubeclnt"
-	"github.com/werf/nelm/resrcid"
+	"github.com/werf/nelm/pkg/kubeclnt"
+	"github.com/werf/nelm/pkg/resrcid"
 )
 
 var _ Operation = (*DeleteResourceOperation)(nil)

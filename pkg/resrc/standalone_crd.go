@@ -8,7 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/kubernetes/scheme"
 
-	"github.com/werf/nelm/resrcid"
+	"github.com/werf/nelm/pkg/resrcid"
 )
 
 const TypeStandaloneCRD Type = "standalone-crd"

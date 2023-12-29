@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
 
-	"github.com/werf/nelm/rls"
+	"github.com/werf/nelm/pkg/rls"
 )
 
 var _ Historier = (*History)(nil)

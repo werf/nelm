@@ -8,9 +8,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/json"
 
-	"github.com/werf/nelm/kubeclnt"
-	"github.com/werf/nelm/log"
-	"github.com/werf/nelm/resrc"
+	"github.com/werf/nelm/pkg/kubeclnt"
+	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/resrc"
 )
 
 type UpToDateStatus string
