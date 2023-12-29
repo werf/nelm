@@ -3,7 +3,8 @@ package resrc
 import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"nelm.sh/nelm/pkg/resrcid"
+
+	"github.com/werf/nelm/resrcid"
 )
 
 const TypeReleaseNamespace Type = "release-namespace"

@@ -1,4 +1,4 @@
-module nelm.sh/nelm
+module github.com/werf/nelm
 
 go 1.20
 

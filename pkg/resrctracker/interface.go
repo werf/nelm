@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"time"
 
-	"nelm.sh/nelm/pkg/resrcid"
+	"github.com/werf/nelm/resrcid"
 
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 )

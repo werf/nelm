@@ -8,10 +8,11 @@ import (
 	"github.com/dominikbraun/graph"
 	"github.com/samber/lo"
 	"github.com/sourcegraph/conc/pool"
-	"nelm.sh/nelm/pkg/log"
-	"nelm.sh/nelm/pkg/opertn"
-	"nelm.sh/nelm/pkg/pln"
-	"nelm.sh/nelm/pkg/utls"
+
+	"github.com/werf/nelm/log"
+	"github.com/werf/nelm/opertn"
+	"github.com/werf/nelm/pln"
+	"github.com/werf/nelm/utls"
 )
 
 func NewPlanExecutor(plan *pln.Plan, opts PlanExecutorOptions) *PlanExecutor {

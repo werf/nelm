@@ -14,9 +14,10 @@ import (
 	"helm.sh/helm/v3/pkg/releaseutil"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
-	"nelm.sh/nelm/pkg/common"
-	"nelm.sh/nelm/pkg/log"
-	"nelm.sh/nelm/pkg/resrc"
+
+	"github.com/werf/nelm/common"
+	"github.com/werf/nelm/log"
+	"github.com/werf/nelm/resrc"
 )
 
 func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, actionConfig *action.Configuration, opts ChartTreeOptions) (*ChartTree, error) {

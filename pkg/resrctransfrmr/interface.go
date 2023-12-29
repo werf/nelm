@@ -4,7 +4,8 @@ import (
 	"context"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"nelm.sh/nelm/pkg/resrc"
+
+	"github.com/werf/nelm/resrc"
 )
 
 type ResourceTransformer interface {

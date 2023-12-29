@@ -4,8 +4,9 @@ import (
 	"context"
 
 	"github.com/gookit/color"
-	"nelm.sh/nelm/pkg/log"
-	"nelm.sh/nelm/pkg/resrcchangcalc"
+
+	"github.com/werf/nelm/log"
+	"github.com/werf/nelm/resrcchangcalc"
 )
 
 func LogPlannedChanges(

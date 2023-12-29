@@ -16,10 +16,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/client-go/discovery"
-	"nelm.sh/nelm/pkg/common"
-	"nelm.sh/nelm/pkg/depnd"
-	"nelm.sh/nelm/pkg/depnddetctr"
-	"nelm.sh/nelm/pkg/utls"
+
+	"github.com/werf/nelm/common"
+	"github.com/werf/nelm/depnd"
+	"github.com/werf/nelm/depnddetctr"
+	"github.com/werf/nelm/utls"
 
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 )

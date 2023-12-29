@@ -6,7 +6,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"nelm.sh/nelm/pkg/resrc"
+
+	"github.com/werf/nelm/resrc"
 )
 
 var _ ResourceTransformer = (*ResourceListsTransformer)(nil)

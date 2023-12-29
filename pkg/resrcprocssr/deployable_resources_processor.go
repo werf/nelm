@@ -9,15 +9,16 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/discovery"
-	"nelm.sh/nelm/pkg/common"
-	"nelm.sh/nelm/pkg/kubeclnt"
-	"nelm.sh/nelm/pkg/log"
-	"nelm.sh/nelm/pkg/resrc"
-	"nelm.sh/nelm/pkg/resrcid"
-	"nelm.sh/nelm/pkg/resrcinfo"
-	"nelm.sh/nelm/pkg/resrcpatcher"
-	"nelm.sh/nelm/pkg/resrctransfrmr"
-	"nelm.sh/nelm/pkg/utls"
+
+	"github.com/werf/nelm/common"
+	"github.com/werf/nelm/kubeclnt"
+	"github.com/werf/nelm/log"
+	"github.com/werf/nelm/resrc"
+	"github.com/werf/nelm/resrcid"
+	"github.com/werf/nelm/resrcinfo"
+	"github.com/werf/nelm/resrcpatcher"
+	"github.com/werf/nelm/resrctransfrmr"
+	"github.com/werf/nelm/utls"
 )
 
 func NewDeployableResourcesProcessor(

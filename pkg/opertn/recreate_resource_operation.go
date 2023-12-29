@@ -6,10 +6,11 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"nelm.sh/nelm/pkg/kubeclnt"
-	"nelm.sh/nelm/pkg/resrc"
-	"nelm.sh/nelm/pkg/resrcid"
-	"nelm.sh/nelm/pkg/resrctracker"
+
+	"github.com/werf/nelm/kubeclnt"
+	"github.com/werf/nelm/resrc"
+	"github.com/werf/nelm/resrcid"
+	"github.com/werf/nelm/resrctracker"
 )
 
 var _ Operation = (*RecreateResourceOperation)(nil)

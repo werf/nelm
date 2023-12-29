@@ -16,10 +16,11 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
-	"nelm.sh/nelm/pkg/common"
-	"nelm.sh/nelm/pkg/log"
-	"nelm.sh/nelm/pkg/resrc"
-	"nelm.sh/nelm/pkg/resrcid"
+
+	"github.com/werf/nelm/common"
+	"github.com/werf/nelm/log"
+	"github.com/werf/nelm/resrc"
+	"github.com/werf/nelm/resrcid"
 )
 
 var _ KubeClienter = (*KubeClient)(nil)

@@ -6,10 +6,11 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
-	"nelm.sh/nelm/pkg/kubeclnt"
-	"nelm.sh/nelm/pkg/resrc"
-	"nelm.sh/nelm/pkg/resrcid"
-	"nelm.sh/nelm/pkg/utls"
+
+	"github.com/werf/nelm/kubeclnt"
+	"github.com/werf/nelm/resrc"
+	"github.com/werf/nelm/resrcid"
+	"github.com/werf/nelm/utls"
 )
 
 func NewDeployableStandaloneCRDInfo(ctx context.Context, res *resrc.StandaloneCRD, releaseNamespace string, kubeClient kubeclnt.KubeClienter, mapper meta.ResettableRESTMapper) (*DeployableStandaloneCRDInfo, error) {

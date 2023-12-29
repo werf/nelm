@@ -11,7 +11,8 @@ import (
 	"helm.sh/helm/v3/pkg/storage/driver"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
-	"nelm.sh/nelm/pkg/rls"
+
+	"github.com/werf/nelm/rls"
 )
 
 var _ Historier = (*History)(nil)
