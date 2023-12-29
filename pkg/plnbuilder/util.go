@@ -1,8 +1,8 @@
 package plnbuilder
 
 import (
-	"helm.sh/helm/v3/pkg/werf/resrcinfo"
 	"k8s.io/apimachinery/pkg/types"
+	"nelm.sh/nelm/pkg/resrcinfo"
 )
 
 func CurrentReleaseExistingResourcesUIDs(

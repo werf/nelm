@@ -3,8 +3,8 @@ package resrcpatcher
 import (
 	"context"
 
-	"helm.sh/helm/v3/pkg/werf/resrc"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"nelm.sh/nelm/pkg/resrc"
 )
 
 type ResourcePatcher interface {

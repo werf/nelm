@@ -1,9 +1,9 @@
 package depnd
 
 import (
-	"helm.sh/helm/v3/pkg/werf/resrcid"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"nelm.sh/nelm/pkg/resrcid"
 )
 
 func NewExternalDependency(name, namespace string, gvk schema.GroupVersionKind, opts ExternalDependencyOptions) *ExternalDependency {

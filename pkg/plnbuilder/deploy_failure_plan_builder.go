@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	"helm.sh/helm/v3/pkg/werf/kubeclnt"
-	"helm.sh/helm/v3/pkg/werf/opertn"
-	"helm.sh/helm/v3/pkg/werf/pln"
-	"helm.sh/helm/v3/pkg/werf/resrc"
-	"helm.sh/helm/v3/pkg/werf/resrcinfo"
-	"helm.sh/helm/v3/pkg/werf/rls"
-	"helm.sh/helm/v3/pkg/werf/rlshistor"
+	"nelm.sh/nelm/pkg/kubeclnt"
+	"nelm.sh/nelm/pkg/opertn"
+	"nelm.sh/nelm/pkg/pln"
+	"nelm.sh/nelm/pkg/resrc"
+	"nelm.sh/nelm/pkg/resrcinfo"
+	"nelm.sh/nelm/pkg/rls"
+	"nelm.sh/nelm/pkg/rlshistor"
 )
 
 func NewDeployFailurePlanBuilder(

@@ -1,6 +1,6 @@
 package depnd
 
-import "helm.sh/helm/v3/pkg/werf/resrcmatcher"
+import "nelm.sh/nelm/pkg/resrcmatcher"
 
 func NewInternalDependency(matchNames, matchNamespaces, matchGroups, matchVersions, matchKinds []string, opts InternalDependencyOptions) *InternalDependency {
 	resMatcher := resrcmatcher.NewResourceMatcher(matchNames, matchNamespaces, matchGroups, matchVersions, matchKinds, resrcmatcher.ResourceMatcherOptions{

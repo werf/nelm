@@ -4,13 +4,13 @@ import (
 	"strings"
 
 	"github.com/samber/lo"
-	"helm.sh/helm/v3/pkg/werf/plnbuilder"
-	"helm.sh/helm/v3/pkg/werf/resrc"
-	"helm.sh/helm/v3/pkg/werf/resrcid"
-	"helm.sh/helm/v3/pkg/werf/resrcinfo"
-	"helm.sh/helm/v3/pkg/werf/utls"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
+	"nelm.sh/nelm/pkg/plnbuilder"
+	"nelm.sh/nelm/pkg/resrc"
+	"nelm.sh/nelm/pkg/resrcid"
+	"nelm.sh/nelm/pkg/resrcinfo"
+	"nelm.sh/nelm/pkg/utls"
 	"sigs.k8s.io/yaml"
 )
 

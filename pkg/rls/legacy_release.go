@@ -6,7 +6,7 @@ import (
 
 	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/time"
-	"helm.sh/helm/v3/pkg/werf/resrc"
+	"nelm.sh/nelm/pkg/resrc"
 	"sigs.k8s.io/yaml"
 )
 

@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"helm.sh/helm/v3/pkg/werf/depnd"
-	"helm.sh/helm/v3/pkg/werf/resrcid"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes/scheme"
+	"nelm.sh/nelm/pkg/depnd"
+	"nelm.sh/nelm/pkg/resrcid"
 
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 )

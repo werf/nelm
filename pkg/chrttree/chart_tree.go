@@ -12,11 +12,11 @@ import (
 	"helm.sh/helm/v3/pkg/cli/values"
 	"helm.sh/helm/v3/pkg/getter"
 	"helm.sh/helm/v3/pkg/releaseutil"
-	"helm.sh/helm/v3/pkg/werf/common"
-	"helm.sh/helm/v3/pkg/werf/log"
-	"helm.sh/helm/v3/pkg/werf/resrc"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
+	"nelm.sh/nelm/pkg/common"
+	"nelm.sh/nelm/pkg/log"
+	"nelm.sh/nelm/pkg/resrc"
 )
 
 func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, actionConfig *action.Configuration, opts ChartTreeOptions) (*ChartTree, error) {

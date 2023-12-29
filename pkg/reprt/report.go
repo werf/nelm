@@ -10,10 +10,10 @@ import (
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 	"helm.sh/helm/v3/pkg/release"
-	"helm.sh/helm/v3/pkg/werf/log"
-	"helm.sh/helm/v3/pkg/werf/opertn"
-	"helm.sh/helm/v3/pkg/werf/rls"
-	"helm.sh/helm/v3/pkg/werf/utls"
+	"nelm.sh/nelm/pkg/log"
+	"nelm.sh/nelm/pkg/opertn"
+	"nelm.sh/nelm/pkg/rls"
+	"nelm.sh/nelm/pkg/utls"
 )
 
 func NewReport(completedOps, canceledOps, failedOps []opertn.Operation, release *rls.Release) *Report {

@@ -10,16 +10,16 @@ import (
 
 	"github.com/samber/lo"
 	"helm.sh/helm/v3/pkg/release"
-	"helm.sh/helm/v3/pkg/werf/common"
-	"helm.sh/helm/v3/pkg/werf/depnd"
-	"helm.sh/helm/v3/pkg/werf/depnddetctr"
-	"helm.sh/helm/v3/pkg/werf/utls"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/client-go/discovery"
+	"nelm.sh/nelm/pkg/common"
+	"nelm.sh/nelm/pkg/depnd"
+	"nelm.sh/nelm/pkg/depnddetctr"
+	"nelm.sh/nelm/pkg/utls"
 
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 )

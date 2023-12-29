@@ -1,10 +1,10 @@
 package depnddetctr
 
 import (
-	"helm.sh/helm/v3/pkg/werf/depnd"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"nelm.sh/nelm/pkg/depnd"
 )
 
 func NewInternalDependencyDetector(opts InternalDependencyDetectorOptions) *InternalDependencyDetector {

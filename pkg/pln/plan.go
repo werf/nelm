@@ -10,7 +10,7 @@ import (
 	"github.com/dominikbraun/graph/draw"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
-	"helm.sh/helm/v3/pkg/werf/opertn"
+	"nelm.sh/nelm/pkg/opertn"
 )
 
 func NewPlan() *Plan {

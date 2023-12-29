@@ -9,9 +9,9 @@ import (
 	legacyRelease "helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/releaseutil"
 	"helm.sh/helm/v3/pkg/storage/driver"
-	"helm.sh/helm/v3/pkg/werf/rls"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
+	"nelm.sh/nelm/pkg/rls"
 )
 
 var _ Historier = (*History)(nil)

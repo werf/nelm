@@ -5,11 +5,11 @@ import (
 	"fmt"
 
 	"github.com/samber/lo"
-	"helm.sh/helm/v3/pkg/werf/kubeclnt"
-	"helm.sh/helm/v3/pkg/werf/resrc"
-	"helm.sh/helm/v3/pkg/werf/resrcid"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
+	"nelm.sh/nelm/pkg/kubeclnt"
+	"nelm.sh/nelm/pkg/resrc"
+	"nelm.sh/nelm/pkg/resrcid"
 )
 
 func NewDeployablePrevReleaseGeneralResourceInfo(ctx context.Context, res *resrc.GeneralResource, releaseNamespace string, kubeClient kubeclnt.KubeClienter, mapper meta.ResettableRESTMapper) (*DeployablePrevReleaseGeneralResourceInfo, error) {

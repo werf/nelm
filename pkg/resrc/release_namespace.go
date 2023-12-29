@@ -1,9 +1,9 @@
 package resrc
 
 import (
-	"helm.sh/helm/v3/pkg/werf/resrcid"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"nelm.sh/nelm/pkg/resrcid"
 )
 
 const TypeReleaseNamespace Type = "release-namespace"
