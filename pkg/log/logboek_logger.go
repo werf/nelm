@@ -24,7 +24,7 @@ func (l *LogboekLogger) Trace(ctx context.Context, format string, a ...interface
 func (l *LogboekLogger) TraceStruct(ctx context.Context, obj interface{}, format string, a ...interface{}) {
 	out, err := json.MarshalIndent(obj, "", "  ")
 	if err != nil {
-		l.Warn(ctx, "error marshaling object to json while tracing struct for %q: %w", fmt.Sprintf(format, a), err)
+		l.Warn(ctx, "error marshaling object to json while tracing struct for %q: %w", fmt.Sprintf(format, a...), err)
 	}
 
 	logboek.Context(ctx).Debug().LogF(fmt.Sprintf(format+"\n", a...) + string(out) + "\n")

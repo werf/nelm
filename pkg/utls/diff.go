@@ -20,7 +20,7 @@ func ColoredUnifiedDiff(from, to string) (uDiff string, present bool) {
 		return "", false
 	}
 
-	uncoloredUDiff := lo.Must1(udiff.ToUnified("", "", from, edits))
+	uncoloredUDiff := lo.Must1(udiff.ToUnified("", "", from, edits, udiff.DefaultContextLines))
 
 	var uDiffLines []string
 	var firstHunkHeaderStripped bool
