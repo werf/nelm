@@ -17,7 +17,7 @@ require (
 	github.com/samber/lo v1.39.0
 	github.com/sourcegraph/conc v0.3.0
 	github.com/tidwall/sjson v1.2.5
-	github.com/wI2L/jsondiff v0.4.0
+	github.com/wI2L/jsondiff v0.5.0
 	github.com/werf/kubedog v0.12.1-0.20240116144346-6cc5b832e653
 	github.com/werf/logboek v0.6.1
 	helm.sh/helm/v3 v3.13.3
