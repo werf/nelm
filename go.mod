@@ -1,6 +1,8 @@
 module github.com/werf/nelm
 
-go 1.20
+go 1.21
+
+toolchain go1.21.6
 
 require (
 	github.com/aymanbagabas/go-udiff v0.2.0
@@ -16,7 +18,7 @@ require (
 	github.com/sourcegraph/conc v0.3.0
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.4.0
-	github.com/werf/kubedog v0.12.1-0.20240115134541-7f2b2536e267
+	github.com/werf/kubedog v0.12.1-0.20240116144346-6cc5b832e653
 	github.com/werf/logboek v0.6.1
 	helm.sh/helm/v3 v3.13.3
 	k8s.io/apiextensions-apiserver v0.29.0
@@ -172,4 +174,4 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 )
 
-replace helm.sh/helm/v3 => github.com/werf/3p-helm/v3 v3.0.0-20240115134707-3872be025314
+replace helm.sh/helm/v3 => github.com/werf/3p-helm/v3 v3.0.0-20240116144224-07a251e069dc
