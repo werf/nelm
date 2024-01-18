@@ -32,6 +32,7 @@ func CalculatePlannedChanges(
 	updatedChanges []*UpdatedResourceChange,
 	appliedChanges []*AppliedResourceChange,
 	deletedChanges []*DeletedResourceChange,
+	anyChangesPlanned bool,
 ) {
 	curReleaseExistResourcesUIDs, _ := plnbuilder.CurrentReleaseExistingResourcesUIDs(standaloneCRDsInfos, hookResourcesInfos, generalResourcesInfos)
 
@@ -74,7 +75,11 @@ func CalculatePlannedChanges(
 		}
 	}
 
-	return createdChanges, recreatedChanges, updatedChanges, appliedChanges, deletedChanges
+	if len(allChanges) == 0 {
+		return nil, nil, nil, nil, nil, false
+	}
+
+	return createdChanges, recreatedChanges, updatedChanges, appliedChanges, deletedChanges, true
 }
 
 func releaseNamespaceChange(info *resrcinfo.DeployableReleaseNamespaceInfo) (change any, present bool) {
