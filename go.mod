@@ -174,4 +174,4 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 )
 
-replace helm.sh/helm/v3 => github.com/werf/3p-helm/v3 v3.0.0-20240116144224-07a251e069dc
+replace helm.sh/helm/v3 => github.com/werf/3p-helm/v3 v3.0.0-20240118162323-49c32fc2d8dd
