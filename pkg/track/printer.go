@@ -18,40 +18,39 @@ import (
 )
 
 type TablesBuilder struct {
-	taskStore *kdutil.Concurrent[*statestore.TaskStore]
+	taskStore *statestore.TaskStore
 	logStore  *kdutil.Concurrent[*logstore.LogStore]
 
-	defaultNamespace string
-	maxColumnsWidth  int
-	colorize         bool
+	defaultNamespace      string
+	maxProgressTableWidth int
+	maxLogEventTableWidth int
+	colorize              bool
 
-	nextLogPointers   map[string]int
-	nextEventPointers map[string]int
+	nextLogPointers    map[string]int
+	nextEventPointers  map[string]int
+	hideReadinessTasks map[string]bool
+	hidePresenceTasks  map[string]bool
+	hideAbsenceTasks   map[string]bool
 }
 
-func NewTablesBuilder(taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], opts TablesBuilderOptions) *TablesBuilder {
+func NewTablesBuilder(taskStore *statestore.TaskStore, logStore *kdutil.Concurrent[*logstore.LogStore], opts TablesBuilderOptions) *TablesBuilder {
 	defaultNamespace := lo.WithoutEmpty([]string{opts.DefaultNamespace, v1.NamespaceDefault})[0]
 
-	const nonColumnsWidth = 10 // Symbols reserved for paddings and column separators.
-	highestMaxColumsWidth := 200 - nonColumnsWidth
-	defaultMaxColumnsWidth := 140 - nonColumnsWidth
-
-	var maxColumnsWidth int
-	if opts.MaxTableWidth > 0 {
-		maxColumnsWidth = lo.Min([]int{opts.MaxTableWidth - nonColumnsWidth, highestMaxColumsWidth})
-	} else {
-		maxColumnsWidth = defaultMaxColumnsWidth
+	builder := &TablesBuilder{
+		taskStore:          taskStore,
+		logStore:           logStore,
+		defaultNamespace:   defaultNamespace,
+		colorize:           opts.Colorize,
+		nextLogPointers:    make(map[string]int),
+		nextEventPointers:  make(map[string]int),
+		hideReadinessTasks: make(map[string]bool),
+		hidePresenceTasks:  make(map[string]bool),
+		hideAbsenceTasks:   make(map[string]bool),
 	}
 
-	return &TablesBuilder{
-		taskStore:         taskStore,
-		logStore:          logStore,
-		defaultNamespace:  defaultNamespace,
-		colorize:          opts.Colorize,
-		nextLogPointers:   make(map[string]int),
-		nextEventPointers: make(map[string]int),
-		maxColumnsWidth:   maxColumnsWidth,
-	}
+	builder.SetMaxTableWidth(opts.MaxTableWidth)
+
+	return builder
 }
 
 type TablesBuilderOptions struct {
@@ -62,7 +61,7 @@ type TablesBuilderOptions struct {
 
 func (b *TablesBuilder) BuildProgressTable() (table prtable.Writer, notEmpty bool) {
 	table = prtable.NewWriter()
-	setProgressTableStyle(table, b.maxColumnsWidth)
+	setProgressTableStyle(table, b.maxProgressTableWidth)
 
 	rowsGrouped := [][]prtable.Row{}
 
@@ -101,7 +100,7 @@ func (b *TablesBuilder) BuildLogTables() (tables map[string]prtable.Writer, nonE
 			crl.RTransaction(func(rl *logstore.ResourceLogs) {
 				for source, logLines := range rl.LogLines() {
 					table := prtable.NewWriter()
-					setLogTableStyle(table, b.maxColumnsWidth)
+					setLogTableStyle(table, b.maxLogEventTableWidth)
 
 					header := buildLogsHeader(rl, source, b.defaultNamespace, b.colorize)
 
@@ -140,46 +139,44 @@ func (b *TablesBuilder) BuildLogTables() (tables map[string]prtable.Writer, nonE
 func (b *TablesBuilder) BuildEventTables() (tables map[string]prtable.Writer, nonEmpty bool) {
 	tables = make(map[string]prtable.Writer)
 
-	b.taskStore.RTransaction(func(ts *statestore.TaskStore) {
-		for _, crts := range ts.ReadinessTasksStates() {
-			crts.RTransaction(func(rts *statestore.ReadinessTaskState) {
-				for _, crs := range rts.ResourceStates() {
-					crs.RTransaction(func(rs *statestore.ResourceState) {
-						events := rs.Events()
-						if len(events) == 0 {
-							return
+	for _, crts := range b.taskStore.ReadinessTasksStates() {
+		crts.RTransaction(func(rts *statestore.ReadinessTaskState) {
+			for _, crs := range rts.ResourceStates() {
+				crs.RTransaction(func(rs *statestore.ResourceState) {
+					events := rs.Events()
+					if len(events) == 0 {
+						return
+					}
+
+					table := prtable.NewWriter()
+					setEventTableStyle(table, b.maxLogEventTableWidth)
+
+					header := buildEventsHeader(rs, b.defaultNamespace, b.colorize)
+
+					nextEventPointer, found := b.nextEventPointers[header]
+					if !found {
+						nextEventPointer = 0
+					}
+
+					for i, event := range events {
+						if i < nextEventPointer {
+							continue
 						}
 
-						table := prtable.NewWriter()
-						setEventTableStyle(table, b.maxColumnsWidth)
+						table.AppendRow(prtable.Row{event.Message})
 
-						header := buildEventsHeader(rs, b.defaultNamespace, b.colorize)
+						nextEventPointer++
+					}
 
-						nextEventPointer, found := b.nextEventPointers[header]
-						if !found {
-							nextEventPointer = 0
-						}
+					b.nextEventPointers[header] = nextEventPointer
 
-						for i, event := range events {
-							if i < nextEventPointer {
-								continue
-							}
-
-							table.AppendRow(prtable.Row{event.Message})
-
-							nextEventPointer++
-						}
-
-						b.nextEventPointers[header] = nextEventPointer
-
-						if table.Length() != 0 {
-							tables[header] = table
-						}
-					})
-				}
-			})
-		}
-	})
+					if table.Length() != 0 {
+						tables[header] = table
+					}
+				})
+			}
+		})
+	}
 
 	if len(tables) == 0 {
 		return nil, false
@@ -188,65 +185,89 @@ func (b *TablesBuilder) BuildEventTables() (tables map[string]prtable.Writer, no
 	return tables, true
 }
 
+func (b *TablesBuilder) SetMaxTableWidth(maxTableWidth int) {
+	var maxProgressTableWidth int
+	if maxTableWidth > 0 {
+		maxProgressTableWidth = maxTableWidth
+	} else {
+		maxProgressTableWidth = 140
+	}
+	b.maxProgressTableWidth = lo.Min([]int{maxProgressTableWidth, 200})
+
+	var maxLogEventTableWidth int
+	if maxTableWidth > 0 {
+		maxLogEventTableWidth = maxTableWidth
+	} else {
+		maxLogEventTableWidth = 140
+	}
+	b.maxLogEventTableWidth = lo.Min([]int{maxLogEventTableWidth, 250})
+}
+
 func (b *TablesBuilder) buildReadinessProgressRows() (rows []prtable.Row) {
-	b.taskStore.RTransaction(func(ts *statestore.TaskStore) {
-		crtss := ts.ReadinessTasksStates()
-		sortReadinessTaskStates(crtss)
+	crtss := b.taskStore.ReadinessTasksStates()
+	sortReadinessTaskStates(crtss)
 
-		for _, crts := range crtss {
-			crts.RTransaction(func(rts *statestore.ReadinessTaskState) {
-				readyPods := calculateReadyPods(rts)
+	for _, crts := range crtss {
+		crts.RTransaction(func(rts *statestore.ReadinessTaskState) {
+			if hide, ok := b.hideReadinessTasks[rts.UUID()]; ok && hide {
+				return
+			}
 
-				for _, crs := range rts.ResourceStates() {
-					crs.RTransaction(func(rs *statestore.ResourceState) {
-						var (
-							stateCell    string
-							resourceCell string
-							infoCell     []string
+			readyPods := calculateReadyPods(rts)
+
+			for _, crs := range rts.ResourceStates() {
+				crs.RTransaction(func(rs *statestore.ResourceState) {
+					var (
+						stateCell    string
+						resourceCell string
+						infoCell     []string
+					)
+
+					isRootResource := rts.Name() == rs.Name() && rts.Namespace() == rs.Namespace() && rts.GroupVersionKind() == rs.GroupVersionKind()
+
+					if isRootResource {
+						stateCell = buildReadinessRootResourceStateCell(rts, b.colorize)
+						resourceCell = buildRootResourceCell(rs, b.colorize)
+					} else {
+						stateCell = buildReadinessChildResourceStateCell(rs, b.colorize)
+						resourceCell = buildChildResourceCell(rs, b.colorize)
+					}
+
+					if rs.Namespace() != "" && rs.Namespace() != b.defaultNamespace {
+						infoCell = append(infoCell, buildNamespaceInfo(rs))
+					}
+
+					if statusInfo := buildStatusInfo(rs); statusInfo != "" {
+						infoCell = append(infoCell, statusInfo)
+					}
+
+					if isRootResource && readyPods != nil {
+						if readyPodsInfo := buildReadyPodsInfo(rs, *readyPods); readyPodsInfo != "" {
+							infoCell = append(infoCell, readyPodsInfo)
+						}
+					}
+
+					if genericConditionInfo := buildGenericConditionInfo(rs); genericConditionInfo != "" {
+						infoCell = append(infoCell, genericConditionInfo)
+					}
+
+					if len(rs.Errors()) != 0 {
+						infoCell = append(
+							infoCell,
+							buildErrorsInfo(rs),
+							buildLastErrInfo(rs, b.colorize),
 						)
+					}
 
-						isRootResource := rts.Name() == rs.Name() && rts.Namespace() == rs.Namespace() && rts.GroupVersionKind() == rs.GroupVersionKind()
+					rows = append(rows, prtable.Row{resourceCell, stateCell, strings.Join(infoCell, "  ")})
 
-						if isRootResource {
-							stateCell = buildReadinessRootResourceStateCell(rts, b.colorize)
-							resourceCell = buildRootResourceCell(rs, b.colorize)
-						} else {
-							stateCell = buildReadinessChildResourceStateCell(rs, b.colorize)
-							resourceCell = buildChildResourceCell(rs, b.colorize)
-						}
-
-						if rs.Namespace() != "" && rs.Namespace() != b.defaultNamespace {
-							infoCell = append(infoCell, buildNamespaceInfo(rs))
-						}
-
-						if statusInfo := buildStatusInfo(rs); statusInfo != "" {
-							infoCell = append(infoCell, statusInfo)
-						}
-
-						if isRootResource && readyPods != nil {
-							if readyPodsInfo := buildReadyPodsInfo(rs, *readyPods); readyPodsInfo != "" {
-								infoCell = append(infoCell, readyPodsInfo)
-							}
-						}
-
-						if genericConditionInfo := buildGenericConditionInfo(rs); genericConditionInfo != "" {
-							infoCell = append(infoCell, genericConditionInfo)
-						}
-
-						if len(rs.Errors()) != 0 {
-							infoCell = append(
-								infoCell,
-								buildErrorsInfo(rs),
-								buildLastErrInfo(rs, b.colorize),
-							)
-						}
-
-						rows = append(rows, prtable.Row{resourceCell, stateCell, strings.Join(infoCell, "  ")})
-					})
-				}
-			})
-		}
-	})
+					if rts.Status() == statestore.ReadinessTaskStatusReady {
+						b.hideReadinessTasks[rts.UUID()] = true
+					}
+				})
+			}
+		})
+	}
 
 	if len(rows) > 0 {
 		headerRow := buildReadinessHeaderRow(b.colorize)
@@ -257,35 +278,41 @@ func (b *TablesBuilder) buildReadinessProgressRows() (rows []prtable.Row) {
 }
 
 func (b *TablesBuilder) buildPresenceProgressRows() (rows []prtable.Row) {
-	b.taskStore.RTransaction(func(ts *statestore.TaskStore) {
-		cptss := ts.PresenceTasksStates()
-		sortPresenceTaskStates(cptss)
+	cptss := b.taskStore.PresenceTasksStates()
+	sortPresenceTaskStates(cptss)
 
-		for _, cpts := range cptss {
-			cpts.RTransaction(func(pts *statestore.PresenceTaskState) {
-				pts.ResourceState().RTransaction(func(rs *statestore.ResourceState) {
-					stateCell := buildPresenceRootResourceStateCell(pts, b.colorize)
-					resourceCell := buildRootResourceCell(rs, b.colorize)
+	for _, cpts := range cptss {
+		cpts.RTransaction(func(pts *statestore.PresenceTaskState) {
+			if hide, ok := b.hidePresenceTasks[pts.UUID()]; ok && hide {
+				return
+			}
 
-					var infoCell []string
+			pts.ResourceState().RTransaction(func(rs *statestore.ResourceState) {
+				stateCell := buildPresenceRootResourceStateCell(pts, b.colorize)
+				resourceCell := buildRootResourceCell(rs, b.colorize)
 
-					if rs.Namespace() != "" && rs.Namespace() != b.defaultNamespace {
-						infoCell = append(infoCell, buildNamespaceInfo(rs))
-					}
+				var infoCell []string
 
-					if len(rs.Errors()) != 0 {
-						infoCell = append(
-							infoCell,
-							buildErrorsInfo(rs),
-							buildLastErrInfo(rs, b.colorize),
-						)
-					}
+				if rs.Namespace() != "" && rs.Namespace() != b.defaultNamespace {
+					infoCell = append(infoCell, buildNamespaceInfo(rs))
+				}
 
-					rows = append(rows, prtable.Row{resourceCell, stateCell, strings.Join(infoCell, "  ")})
-				})
+				if len(rs.Errors()) != 0 {
+					infoCell = append(
+						infoCell,
+						buildErrorsInfo(rs),
+						buildLastErrInfo(rs, b.colorize),
+					)
+				}
+
+				rows = append(rows, prtable.Row{resourceCell, stateCell, strings.Join(infoCell, "  ")})
+
+				if pts.Status() == statestore.PresenceTaskStatusPresent {
+					b.hidePresenceTasks[pts.UUID()] = true
+				}
 			})
-		}
-	})
+		})
+	}
 
 	if len(rows) > 0 {
 		headerRow := buildPresenceHeaderRow(b.colorize)
@@ -296,35 +323,41 @@ func (b *TablesBuilder) buildPresenceProgressRows() (rows []prtable.Row) {
 }
 
 func (b *TablesBuilder) buildAbsenceProgressRows() (rows []prtable.Row) {
-	b.taskStore.RTransaction(func(ts *statestore.TaskStore) {
-		catss := ts.AbsenceTasksStates()
-		sortAbsenceTaskStates(catss)
+	catss := b.taskStore.AbsenceTasksStates()
+	sortAbsenceTaskStates(catss)
 
-		for _, cats := range catss {
-			cats.RTransaction(func(ats *statestore.AbsenceTaskState) {
-				ats.ResourceState().RTransaction(func(rs *statestore.ResourceState) {
-					stateCell := buildAbsenceRootResourceStateCell(ats, b.colorize)
-					resourceCell := buildRootResourceCell(rs, b.colorize)
+	for _, cats := range catss {
+		cats.RTransaction(func(ats *statestore.AbsenceTaskState) {
+			if hide, ok := b.hideAbsenceTasks[ats.UUID()]; ok && hide {
+				return
+			}
 
-					var infoCell []string
+			ats.ResourceState().RTransaction(func(rs *statestore.ResourceState) {
+				stateCell := buildAbsenceRootResourceStateCell(ats, b.colorize)
+				resourceCell := buildRootResourceCell(rs, b.colorize)
 
-					if rs.Namespace() != "" && rs.Namespace() != b.defaultNamespace {
-						infoCell = append(infoCell, buildNamespaceInfo(rs))
-					}
+				var infoCell []string
 
-					if len(rs.Errors()) != 0 {
-						infoCell = append(
-							infoCell,
-							buildErrorsInfo(rs),
-							buildLastErrInfo(rs, b.colorize),
-						)
-					}
+				if rs.Namespace() != "" && rs.Namespace() != b.defaultNamespace {
+					infoCell = append(infoCell, buildNamespaceInfo(rs))
+				}
 
-					rows = append(rows, prtable.Row{resourceCell, stateCell, strings.Join(infoCell, "  ")})
-				})
+				if len(rs.Errors()) != 0 {
+					infoCell = append(
+						infoCell,
+						buildErrorsInfo(rs),
+						buildLastErrInfo(rs, b.colorize),
+					)
+				}
+
+				rows = append(rows, prtable.Row{resourceCell, stateCell, strings.Join(infoCell, "  ")})
+
+				if ats.Status() == statestore.AbsenceTaskStatusAbsent {
+					b.hideAbsenceTasks[ats.UUID()] = true
+				}
 			})
-		}
-	})
+		})
+	}
 
 	if len(rows) > 0 {
 		headerRow := buildAbsenceHeaderRow(b.colorize)
@@ -409,23 +442,33 @@ func buildAbsenceHeaderRow(colorize bool) prtable.Row {
 	return headerRow
 }
 
-func setProgressTableStyle(table prtable.Writer, maxColumnsWidth int) {
-	table.SetColumnConfigs([]prtable.ColumnConfig{
+func setProgressTableStyle(table prtable.Writer, tableWidth int) {
+	style := prtable.StyleBoxDefault
+	style.PaddingLeft = ""
+	style.PaddingRight = "  "
+
+	columnConfigs := []prtable.ColumnConfig{
 		{
-			Number:   1,
-			WidthMax: int(float64(maxColumnsWidth-7) * 0.5),
+			Number: 1,
 		},
 		{
-			Number:   2,
-			WidthMax: 7,
+			Number: 2,
 		},
 		{
-			Number:   3,
-			WidthMax: int(float64(maxColumnsWidth-7) * 0.5),
+			Number: 3,
 		},
-	})
+	}
+
+	paddingsWidth := len(columnConfigs) * (len(style.PaddingLeft) + len(style.PaddingRight))
+	columnsWidth := tableWidth - paddingsWidth
+
+	columnConfigs[1].WidthMax = 7
+	columnConfigs[0].WidthMax = int(float64(columnsWidth-columnConfigs[1].WidthMax) * 0.6)
+	columnConfigs[2].WidthMax = int(float64(columnsWidth-columnConfigs[1].WidthMax) * 0.4)
+
+	table.SetColumnConfigs(columnConfigs)
 	table.SetStyle(prtable.Style{
-		Box:     prtable.StyleBoxDefault,
+		Box:     style,
 		Color:   prtable.ColorOptionsDefault,
 		Format:  prtable.FormatOptions{},
 		HTML:    prtable.DefaultHTMLOptions,
@@ -434,15 +477,25 @@ func setProgressTableStyle(table prtable.Writer, maxColumnsWidth int) {
 	})
 }
 
-func setLogTableStyle(table prtable.Writer, maxColumnsWidth int) {
-	table.SetColumnConfigs([]prtable.ColumnConfig{
+func setLogTableStyle(table prtable.Writer, tableWidth int) {
+	style := prtable.StyleBoxDefault
+	style.PaddingLeft = ""
+	style.PaddingRight = ""
+
+	columnConfigs := []prtable.ColumnConfig{
 		{
-			Number:   1,
-			WidthMax: maxColumnsWidth,
+			Number: 1,
 		},
-	})
+	}
+
+	paddingsWidth := len(columnConfigs) * (len(style.PaddingLeft) + len(style.PaddingRight))
+	columnsWidth := tableWidth - paddingsWidth
+
+	columnConfigs[0].WidthMax = columnsWidth
+
+	table.SetColumnConfigs(columnConfigs)
 	table.SetStyle(prtable.Style{
-		Box:     prtable.StyleBoxDefault,
+		Box:     style,
 		Color:   prtable.ColorOptionsDefault,
 		Format:  prtable.FormatOptions{},
 		HTML:    prtable.DefaultHTMLOptions,
@@ -451,15 +504,25 @@ func setLogTableStyle(table prtable.Writer, maxColumnsWidth int) {
 	})
 }
 
-func setEventTableStyle(table prtable.Writer, maxColumnsWidth int) {
-	table.SetColumnConfigs([]prtable.ColumnConfig{
+func setEventTableStyle(table prtable.Writer, tableWidth int) {
+	style := prtable.StyleBoxDefault
+	style.PaddingLeft = ""
+	style.PaddingRight = ""
+
+	columnConfigs := []prtable.ColumnConfig{
 		{
-			Number:   1,
-			WidthMax: maxColumnsWidth,
+			Number: 1,
 		},
-	})
+	}
+
+	paddingsWidth := len(columnConfigs) * (len(style.PaddingLeft) + len(style.PaddingRight))
+	columnsWidth := tableWidth - paddingsWidth
+
+	columnConfigs[0].WidthMax = columnsWidth
+
+	table.SetColumnConfigs(columnConfigs)
 	table.SetStyle(prtable.Style{
-		Box:     prtable.StyleBoxDefault,
+		Box:     style,
 		Color:   prtable.ColorOptionsDefault,
 		Format:  prtable.FormatOptions{},
 		HTML:    prtable.DefaultHTMLOptions,
@@ -564,7 +627,7 @@ func buildRootResourceCell(resourceState *statestore.ResourceState, colorize boo
 }
 
 func buildChildResourceCell(resourceState *statestore.ResourceState, colorize bool) string {
-	return "• " + buildRootResourceCell(resourceState, colorize)
+	return " • " + buildRootResourceCell(resourceState, colorize)
 }
 
 func buildReadyPodsInfo(resourceState *statestore.ResourceState, readyPods int) string {

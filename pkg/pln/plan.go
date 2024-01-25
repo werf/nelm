@@ -297,7 +297,9 @@ func (p *Plan) Useless() (bool, error) {
 			opertn.TypeApplyResourceOperation,
 			opertn.TypeDeleteResourceOperation,
 			opertn.TypeFailReleaseOperation,
-			opertn.TypeTrackResourcesReadinessOperation:
+			opertn.TypeTrackResourceReadinessOperation,
+			opertn.TypeTrackResourcePresenceOperation,
+			opertn.TypeTrackResourceAbsenceOperation:
 			if !op.Empty() {
 				return false, nil
 			}

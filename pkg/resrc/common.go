@@ -205,7 +205,7 @@ func validateDeletePolicy(unstruct *unstructured.Unstructured) error {
 					string(release.HookFailed),
 					string(release.HookBeforeHookCreation):
 				default:
-					return fmt.Errorf("value %q for annotation %q is not supported", value, key, hookDeletePolicy)
+					return fmt.Errorf("value %q for annotation %q is not supported", value, key)
 				}
 			}
 		}
@@ -227,7 +227,7 @@ func validateDeletePolicy(unstruct *unstructured.Unstructured) error {
 				string(common.DeletePolicyFailed),
 				string(common.DeletePolicyBeforeCreation):
 			default:
-				return fmt.Errorf("value %q for annotation %q is not supported", value, key, deletePolicy)
+				return fmt.Errorf("value %q for annotation %q is not supported", value, key)
 			}
 		}
 	}
@@ -671,6 +671,8 @@ func failuresAllowed(unstruct *unstructured.Unstructured) int {
 }
 
 func ignoreReadinessProbeFailsForContainers(unstruct *unstructured.Unstructured) (durationByContainer map[string]time.Duration, set bool) {
+	durationByContainer = make(map[string]time.Duration)
+
 	annotations, found := FindAnnotationsOrLabelsByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternIgnoreReadinessProbeFailsFor)
 	if !found {
 		return nil, false
@@ -698,6 +700,8 @@ func logRegex(unstruct *unstructured.Unstructured) (regex *regexp.Regexp, set bo
 }
 
 func logRegexesForContainers(unstruct *unstructured.Unstructured) (regexByContainer map[string]*regexp.Regexp, set bool) {
+	regexByContainer = make(map[string]*regexp.Regexp)
+
 	annotations, found := FindAnnotationsOrLabelsByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternLogRegexFor)
 	if !found {
 		return nil, false
@@ -716,7 +720,7 @@ func logRegexesForContainers(unstruct *unstructured.Unstructured) (regexByContai
 func noActivityTimeout(unstruct *unstructured.Unstructured) (timeout *time.Duration, set bool) {
 	_, value, found := FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternNoActivityTimeout)
 	if !found {
-		return nil, true
+		return nil, false
 	}
 
 	t := lo.Must(time.ParseDuration(value))
