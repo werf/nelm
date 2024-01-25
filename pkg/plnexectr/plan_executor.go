@@ -39,7 +39,7 @@ func (e *PlanExecutor) Execute(parentCtx context.Context) error {
 		return fmt.Errorf("error getting plan predecessor map: %w", err)
 	}
 
-	workerPool := pool.New().WithContext(ctx).WithMaxGoroutines(e.networkParallelism)
+	workerPool := pool.New().WithContext(ctx).WithMaxGoroutines(e.networkParallelism).WithFirstError()
 	completedOpsIDsCh := make(chan string, 100000)
 
 	for i := 0; len(opsMap) > 0; i++ {
@@ -95,7 +95,7 @@ func (e *PlanExecutor) execOperation(opID string, completedOpsIDsCh chan string,
 			opertn.TypeUpdateResourceOperation,
 			opertn.TypeApplyResourceOperation,
 			opertn.TypeDeleteResourceOperation:
-			log.Default.Info(ctx, utls.Capitalize(op.HumanID()))
+			log.Default.Debug(ctx, utls.Capitalize(op.HumanID()))
 		}
 		if err := op.Execute(ctx); err != nil {
 			ctxCancelFn()

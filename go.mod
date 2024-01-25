@@ -18,7 +18,7 @@ require (
 	github.com/sourcegraph/conc v0.3.0
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.5.0
-	github.com/werf/kubedog v0.12.1-0.20240116144346-6cc5b832e653
+	github.com/werf/kubedog v0.12.3-0.20240125140233-00363e0e93a4
 	github.com/werf/logboek v0.6.1
 	helm.sh/helm/v3 v3.13.3
 	k8s.io/apiextensions-apiserver v0.29.0
@@ -174,4 +174,4 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 )
 
-replace helm.sh/helm/v3 => github.com/werf/3p-helm/v3 v3.0.0-20240118162323-49c32fc2d8dd
+replace github.com/jedib0t/go-pretty/v6 => github.com/werf/3p-go-pretty/v6 v6.0.0-20240125135207-7170e1857aa0 // switch back to upstream when merged: https://github.com/jedib0t/go-pretty/pull/295

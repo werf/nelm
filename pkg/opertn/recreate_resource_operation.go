@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/dynamic"
 
+	"github.com/werf/kubedog/pkg/trackers/dyntracker"
+	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
+	"github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/pkg/kubeclnt"
 	"github.com/werf/nelm/pkg/resrc"
 	"github.com/werf/nelm/pkg/resrcid"
-	"github.com/werf/nelm/pkg/resrctracker"
 )
 
 var _ Operation = (*RecreateResourceOperation)(nil)
@@ -20,37 +24,46 @@ const TypeRecreateResourceOperation = "recreate"
 func NewRecreateResourceOperation(
 	resource *resrcid.ResourceID,
 	unstruct *unstructured.Unstructured,
+	absenceTaskState *util.Concurrent[*statestore.AbsenceTaskState],
 	kubeClient kubeclnt.KubeClienter,
-	tracker resrctracker.ResourceTrackerer,
+	dynamicClient dynamic.Interface,
+	mapper meta.ResettableRESTMapper,
 	opts RecreateResourceOperationOptions,
 ) *RecreateResourceOperation {
 	return &RecreateResourceOperation{
-		resource:        resource,
-		unstruct:        unstruct,
-		kubeClient:      kubeClient,
-		tracker:         tracker,
-		manageableBy:    opts.ManageableBy,
-		forceReplicas:   opts.ForceReplicas,
-		deletionTimeout: opts.DeletionTimeout,
+		resource:                resource,
+		unstruct:                unstruct,
+		taskState:               absenceTaskState,
+		kubeClient:              kubeClient,
+		dynamicClient:           dynamicClient,
+		mapper:                  mapper,
+		manageableBy:            opts.ManageableBy,
+		forceReplicas:           opts.ForceReplicas,
+		deletionTrackTimeout:    opts.DeletionTrackTimeout,
+		deletionTrackPollPeriod: opts.DeletionTrackPollPeriod,
 	}
 }
 
 type RecreateResourceOperationOptions struct {
-	ManageableBy    resrc.ManageableBy
-	ForceReplicas   *int
-	DeletionTimeout time.Duration
+	ManageableBy            resrc.ManageableBy
+	ForceReplicas           *int
+	DeletionTrackTimeout    time.Duration
+	DeletionTrackPollPeriod time.Duration
 }
 
 type RecreateResourceOperation struct {
-	resource           *resrcid.ResourceID
-	unstruct           *unstructured.Unstructured
-	kubeClient         kubeclnt.KubeClienter
-	tracker            resrctracker.ResourceTrackerer
-	manageableBy       resrc.ManageableBy
-	addServiceMetadata bool
-	forceReplicas      *int
-	deletionTimeout    time.Duration
-	status             Status
+	resource                *resrcid.ResourceID
+	unstruct                *unstructured.Unstructured
+	taskState               *util.Concurrent[*statestore.AbsenceTaskState]
+	kubeClient              kubeclnt.KubeClienter
+	dynamicClient           dynamic.Interface
+	mapper                  meta.ResettableRESTMapper
+	manageableBy            resrc.ManageableBy
+	forceReplicas           *int
+	deletionTrackTimeout    time.Duration
+	deletionTrackPollPeriod time.Duration
+
+	status Status
 }
 
 func (o *RecreateResourceOperation) Execute(ctx context.Context) error {
@@ -59,11 +72,14 @@ func (o *RecreateResourceOperation) Execute(ctx context.Context) error {
 		return fmt.Errorf("error deleting resource: %w", err)
 	}
 
-	if err := o.tracker.WaitDeletion(ctx, o.resource, resrctracker.WaitDeletionOptions{
-		Timeout: o.deletionTimeout,
-	}); err != nil {
+	tracker := dyntracker.NewDynamicAbsenceTracker(o.taskState, o.dynamicClient, o.mapper, dyntracker.DynamicAbsenceTrackerOptions{
+		Timeout:    o.deletionTrackTimeout,
+		PollPeriod: o.deletionTrackPollPeriod,
+	})
+
+	if err := tracker.Track(ctx); err != nil {
 		o.status = StatusFailed
-		return fmt.Errorf("error waiting for resource deletion: %w", err)
+		return fmt.Errorf("track resource absence: %w", err)
 	}
 
 	if _, err := o.kubeClient.Create(ctx, o.resource, o.unstruct, kubeclnt.KubeClientCreateOptions{

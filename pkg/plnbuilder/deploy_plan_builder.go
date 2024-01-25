@@ -12,7 +12,13 @@ import (
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 
+	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
+	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
+	"github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/kubeclnt"
 	"github.com/werf/nelm/pkg/log"
@@ -21,7 +27,6 @@ import (
 	"github.com/werf/nelm/pkg/resrc"
 	"github.com/werf/nelm/pkg/resrcid"
 	"github.com/werf/nelm/pkg/resrcinfo"
-	"github.com/werf/nelm/pkg/resrctracker"
 	"github.com/werf/nelm/pkg/rls"
 	"github.com/werf/nelm/pkg/rlshistor"
 )
@@ -52,6 +57,8 @@ const (
 
 func NewDeployPlanBuilder(
 	deployType common.DeployType,
+	taskStore *statestore.TaskStore,
+	logStore *util.Concurrent[*logstore.LogStore],
 	releaseNamespaceInfo *resrcinfo.DeployableReleaseNamespaceInfo,
 	standaloneCRDsInfos []*resrcinfo.DeployableStandaloneCRDInfo,
 	hookResourcesInfos []*resrcinfo.DeployableHookResourceInfo,
@@ -60,8 +67,10 @@ func NewDeployPlanBuilder(
 	newRelease *rls.Release,
 	history rlshistor.Historier,
 	kubeClient kubeclnt.KubeClienter,
+	staticClient kubernetes.Interface,
+	dynamicClient dynamic.Interface,
+	discoveryClient discovery.CachedDiscoveryInterface,
 	mapper meta.ResettableRESTMapper,
-	tracker resrctracker.ResourceTrackerer,
 	opts DeployPlanBuilderOptions,
 ) *DeployPlanBuilder {
 	plan := pln.NewPlan()
@@ -76,6 +85,8 @@ func NewDeployPlanBuilder(
 	curReleaseExistResourcesUIDs, _ := CurrentReleaseExistingResourcesUIDs(standaloneCRDsInfos, hookResourcesInfos, generalResourcesInfos)
 
 	return &DeployPlanBuilder{
+		taskStore:                       taskStore,
+		logStore:                        logStore,
 		deployType:                      deployType,
 		plan:                            plan,
 		releaseNamespaceInfo:            releaseNamespaceInfo,
@@ -90,26 +101,27 @@ func NewDeployPlanBuilder(
 		prevDeployedRelease:             opts.PrevDeployedRelease,
 		history:                         history,
 		kubeClient:                      kubeClient,
+		staticClient:                    staticClient,
+		dynamicClient:                   dynamicClient,
+		discoveryClient:                 discoveryClient,
 		mapper:                          mapper,
-		tracker:                         tracker,
+		creationTimeout:                 opts.CreationTimeout,
 		readinessTimeout:                opts.ReadinessTimeout,
 		deletionTimeout:                 opts.DeletionTimeout,
-		showProgressPeriod:              opts.ShowProgressPeriod,
-		showHookProgressPeriod:          opts.ShowHookProgressPeriod,
 	}
 }
 
 type DeployPlanBuilderOptions struct {
-	PrevRelease            *rls.Release
-	PrevDeployedRelease    *rls.Release
-	CreationTimeout        time.Duration
-	ReadinessTimeout       time.Duration
-	DeletionTimeout        time.Duration
-	ShowProgressPeriod     time.Duration
-	ShowHookProgressPeriod time.Duration
+	PrevRelease         *rls.Release
+	PrevDeployedRelease *rls.Release
+	CreationTimeout     time.Duration
+	ReadinessTimeout    time.Duration
+	DeletionTimeout     time.Duration
 }
 
 type DeployPlanBuilder struct {
+	taskStore                       *statestore.TaskStore
+	logStore                        *util.Concurrent[*logstore.LogStore]
 	deployType                      common.DeployType
 	releaseNamespaceInfo            *resrcinfo.DeployableReleaseNamespaceInfo
 	standaloneCRDsInfos             []*resrcinfo.DeployableStandaloneCRDInfo
@@ -123,13 +135,13 @@ type DeployPlanBuilder struct {
 	prevDeployedRelease             *rls.Release
 	history                         rlshistor.Historier
 	kubeClient                      kubeclnt.KubeClienter
+	staticClient                    kubernetes.Interface
+	dynamicClient                   dynamic.Interface
+	discoveryClient                 discovery.CachedDiscoveryInterface
 	mapper                          meta.ResettableRESTMapper
-	tracker                         resrctracker.ResourceTrackerer
 	creationTimeout                 time.Duration
 	readinessTimeout                time.Duration
 	deletionTimeout                 time.Duration
-	showProgressPeriod              time.Duration
-	showHookProgressPeriod          time.Duration
 
 	plan *pln.Plan
 }
@@ -325,7 +337,7 @@ func (b *DeployPlanBuilder) setupPreHookResourcesOperations() error {
 		crdsStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixHookCRDs, weight, StageOpNameSuffixStart)
 		crdsStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixHookCRDs, weight, StageOpNameSuffixEnd)
 
-		if err := b.setupHookOperations(crdInfos, crdsStageStartOpID, crdsStageEndOpID, ""); err != nil {
+		if err := b.setupHookOperations(crdInfos, crdsStageStartOpID, crdsStageEndOpID); err != nil {
 			return fmt.Errorf("error setting up hook crds operations: %w", err)
 		}
 
@@ -333,10 +345,9 @@ func (b *DeployPlanBuilder) setupPreHookResourcesOperations() error {
 			return !resrc.IsCRDFromGK(info.GroupVersionKind().GroupKind())
 		})
 		resourcesStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixHookResources, weight, StageOpNameSuffixStart)
-		trackReadinessOpID := fmt.Sprintf("%s/pre-hook-resources/weight:%d", opertn.TypeTrackResourcesReadinessOperation, weight)
 		resourcesStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixHookResources, weight, StageOpNameSuffixEnd)
 
-		if err := b.setupHookOperations(resourceInfos, resourcesStageStartOpID, resourcesStageEndOpID, trackReadinessOpID); err != nil {
+		if err := b.setupHookOperations(resourceInfos, resourcesStageStartOpID, resourcesStageEndOpID); err != nil {
 			return fmt.Errorf("error setting up hook resources operations: %w", err)
 		}
 	}
@@ -359,7 +370,7 @@ func (b *DeployPlanBuilder) setupPostHookResourcesOperations() error {
 		crdsStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixPostHookCRDs, weight, StageOpNameSuffixStart)
 		crdsStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixPostHookCRDs, weight, StageOpNameSuffixEnd)
 
-		if err := b.setupHookOperations(crdInfos, crdsStageStartOpID, crdsStageEndOpID, ""); err != nil {
+		if err := b.setupHookOperations(crdInfos, crdsStageStartOpID, crdsStageEndOpID); err != nil {
 			return fmt.Errorf("error setting up hook crds operations: %w", err)
 		}
 
@@ -367,10 +378,9 @@ func (b *DeployPlanBuilder) setupPostHookResourcesOperations() error {
 			return !resrc.IsCRDFromGK(info.GroupVersionKind().GroupKind())
 		})
 		resourcesStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixPostHookResources, weight, StageOpNameSuffixStart)
-		trackReadinessOpID := fmt.Sprintf("%s/post-hook-resources/weight:%d", opertn.TypeTrackResourcesReadinessOperation, weight)
 		resourcesStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixPostHookResources, weight, StageOpNameSuffixEnd)
 
-		if err := b.setupHookOperations(resourceInfos, resourcesStageStartOpID, resourcesStageEndOpID, trackReadinessOpID); err != nil {
+		if err := b.setupHookOperations(resourceInfos, resourcesStageStartOpID, resourcesStageEndOpID); err != nil {
 			return fmt.Errorf("error setting up hook resources operations: %w", err)
 		}
 	}
@@ -393,7 +403,7 @@ func (b *DeployPlanBuilder) setupGeneralResourcesOperations() error {
 		crdsStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixGeneralCRDs, weight, StageOpNameSuffixStart)
 		crdsStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixGeneralCRDs, weight, StageOpNameSuffixEnd)
 
-		if err := b.setupGeneralOperations(crdInfos, crdsStageStartOpID, crdsStageEndOpID, ""); err != nil {
+		if err := b.setupGeneralOperations(crdInfos, crdsStageStartOpID, crdsStageEndOpID); err != nil {
 			return fmt.Errorf("error setting up general resources operations: %w", err)
 		}
 
@@ -401,10 +411,9 @@ func (b *DeployPlanBuilder) setupGeneralResourcesOperations() error {
 			return !resrc.IsCRDFromGK(info.GroupVersionKind().GroupKind())
 		})
 		resourcesStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixGeneralResources, weight, StageOpNameSuffixStart)
-		trackReadinessOpID := fmt.Sprintf("%s/general-resources/weight:%d", opertn.TypeTrackResourcesReadinessOperation, weight)
 		resourcesStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixGeneralResources, weight, StageOpNameSuffixEnd)
 
-		if err := b.setupGeneralOperations(resourceInfos, resourcesStageStartOpID, resourcesStageEndOpID, trackReadinessOpID); err != nil {
+		if err := b.setupGeneralOperations(resourceInfos, resourcesStageStartOpID, resourcesStageEndOpID); err != nil {
 			return fmt.Errorf("error setting up general resources operations: %w", err)
 		}
 	}
@@ -425,6 +434,30 @@ func (b *DeployPlanBuilder) setupPrevReleaseGeneralResourcesOperations() error {
 				opDelete,
 				StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,
 			)
+
+			taskState := util.NewConcurrent(
+				statestore.NewAbsenceTaskState(
+					info.Name(),
+					info.Namespace(),
+					info.GroupVersionKind(),
+					statestore.AbsenceTaskStateOptions{},
+				),
+			)
+			b.taskStore.AddAbsenceTaskState(taskState)
+
+			opTrackDeletion := opertn.NewTrackResourceAbsenceOperation(
+				info.ResourceID,
+				taskState,
+				b.dynamicClient,
+				b.mapper,
+				opertn.TrackResourceAbsenceOperationOptions{
+					Timeout: b.deletionTimeout,
+				},
+			)
+			b.plan.AddOperation(opTrackDeletion)
+			if err := b.plan.AddDependency(opDelete.ID(), opTrackDeletion.ID()); err != nil {
+				return fmt.Errorf("error adding dependency: %w", err)
+			}
 		}
 	}
 
@@ -621,7 +654,7 @@ func (b *DeployPlanBuilder) connectStages() error {
 	return nil
 }
 
-func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHookResourceInfo, stageStartOpID, stageEndOpID, trackReadinessOpID string) error {
+func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHookResourceInfo, stageStartOpID, stageEndOpID string) error {
 	var prevReleaseFailed bool
 	if b.prevRelease != nil {
 		prevReleaseFailed = b.prevRelease.Failed()
@@ -660,15 +693,22 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 				},
 			)
 		} else if recreate {
+			absenceTaskState := util.NewConcurrent(
+				statestore.NewAbsenceTaskState(info.Name(), info.Namespace(), info.GroupVersionKind(), statestore.AbsenceTaskStateOptions{}),
+			)
+			b.taskStore.AddAbsenceTaskState(absenceTaskState)
+
 			opDeploy = opertn.NewRecreateResourceOperation(
 				info.ResourceID,
 				info.Resource().Unstructured(),
+				absenceTaskState,
 				b.kubeClient,
-				b.tracker,
+				b.dynamicClient,
+				b.mapper,
 				opertn.RecreateResourceOperationOptions{
-					ManageableBy:    info.Resource().ManageableBy(),
-					ForceReplicas:   forceReplicas,
-					DeletionTimeout: b.deletionTimeout,
+					ManageableBy:         info.Resource().ManageableBy(),
+					ForceReplicas:        forceReplicas,
+					DeletionTrackTimeout: b.deletionTimeout,
 				},
 			)
 		} else if update {
@@ -709,65 +749,78 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 
 		if extDepsSet && opDeploy != nil {
 			for _, dep := range externalDeps {
-				opWait := opertn.NewWaitResourceCreationOperation(
+				taskState := util.NewConcurrent(
+					statestore.NewPresenceTaskState(
+						dep.Name(),
+						dep.Namespace(),
+						dep.GroupVersionKind(),
+						statestore.PresenceTaskStateOptions{},
+					),
+				)
+				b.taskStore.AddPresenceTaskState(taskState)
+
+				opTrackReadiness := opertn.NewTrackResourcePresenceOperation(
 					dep.ResourceID,
-					b.tracker,
-					opertn.WaitResourceCreationOperationOptions{
+					taskState,
+					b.dynamicClient,
+					b.mapper,
+					opertn.TrackResourcePresenceOperationOptions{
 						Timeout: b.readinessTimeout,
 					},
 				)
 				b.plan.AddInStagedOperation(
-					opWait,
+					opTrackReadiness,
 					stageStartOpID,
 				)
-				lo.Must0(b.plan.AddDependency(opWait.ID(), opDeploy.ID()))
+				lo.Must0(b.plan.AddDependency(opTrackReadiness.ID(), opDeploy.ID()))
 			}
 		}
 
-		var opTrackReadiness *opertn.TrackResourcesReadinessOperation
+		var opTrackReadiness *opertn.TrackResourceReadinessOperation
 		if trackReadiness {
-			if op, found := b.plan.Operation(trackReadinessOpID); found {
-				opTrackReadiness = op.(*opertn.TrackResourcesReadinessOperation)
-			} else {
-				opTrackReadiness = opertn.NewTrackResourcesReadinessOperation(
-					trackReadinessOpID,
-					b.tracker,
-					opertn.TrackResourcesReadinessOperationOptions{
-						Timeout:            b.readinessTimeout,
-						ShowProgressPeriod: b.showHookProgressPeriod,
-					},
-				)
-				b.plan.AddStagedOperation(
-					opTrackReadiness,
-					stageStartOpID,
-					stageEndOpID,
-				)
-			}
-
 			logRegex, _ := info.Resource().LogRegex()
 			logRegexesFor, _ := info.Resource().LogRegexesForContainers()
 			skipLogsFor, _ := info.Resource().SkipLogsForContainers()
 			showLogsOnlyFor, _ := info.Resource().ShowLogsOnlyForContainers()
 			ignoreReadinessProbes, _ := info.Resource().IgnoreReadinessProbeFailsForContainers()
-			noActivity, _ := info.Resource().NoActivityTimeout()
+			var noActivityTimeout time.Duration
+			if timeout, set := info.Resource().NoActivityTimeout(); set {
+				noActivityTimeout = *timeout
+			}
 
-			opTrackReadiness.AddResource(&opertn.ResourceToTrackReadiness{
-				Resource:                               info.ResourceID,
-				FailuresAllowed:                        lo.ToPtr(info.Resource().FailuresAllowed()),
-				LogRegex:                               logRegex,
-				LogRegexesForContainers:                logRegexesFor,
-				SkipLogsForContainers:                  skipLogsFor,
-				ShowLogsOnlyForContainers:              showLogsOnlyFor,
-				IgnoreReadinessProbeFailsForContainers: ignoreReadinessProbes,
-				TrackTerminationMode:                   info.Resource().TrackTerminationMode(),
-				FailMode:                               info.Resource().FailMode(),
-				SkipLogs:                               info.Resource().SkipLogs(),
-				ShowServiceMessages:                    info.Resource().ShowServiceMessages(),
-				NoActivityTimeout:                      noActivity,
-				Timeout:                                b.readinessTimeout,
-				ShowProgressPeriod:                     b.showHookProgressPeriod,
-			})
+			taskState := util.NewConcurrent(
+				statestore.NewReadinessTaskState(info.Name(), info.Namespace(), info.GroupVersionKind(), statestore.ReadinessTaskStateOptions{
+					FailMode:                info.Resource().FailMode(),
+					TotalAllowFailuresCount: info.Resource().FailuresAllowed(),
+				}),
+			)
+			b.taskStore.AddReadinessTaskState(taskState)
 
+			opTrackReadiness = opertn.NewTrackResourceReadinessOperation(
+				info.ResourceID,
+				taskState,
+				b.logStore,
+				b.staticClient,
+				b.dynamicClient,
+				b.discoveryClient,
+				b.mapper,
+				opertn.TrackResourceReadinessOperationOptions{
+					Timeout:                                  b.readinessTimeout,
+					NoActivityTimeout:                        noActivityTimeout,
+					IgnoreReadinessProbeFailsByContainerName: ignoreReadinessProbes,
+					SaveLogsOnlyForContainers:                showLogsOnlyFor,
+					SaveLogsByRegex:                          logRegex,
+					SaveLogsByRegexForContainers:             logRegexesFor,
+					IgnoreLogs:                               info.Resource().SkipLogs(),
+					IgnoreLogsForContainers:                  skipLogsFor,
+					SaveEvents:                               info.Resource().ShowServiceMessages(),
+				},
+			)
+			b.plan.AddStagedOperation(
+				opTrackReadiness,
+				stageStartOpID,
+				stageEndOpID,
+			)
 			if opDeploy != nil {
 				lo.Must0(b.plan.AddDependency(opDeploy.ID(), opTrackReadiness.ID()))
 			}
@@ -790,6 +843,30 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 					cleanupOp,
 					StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,
 				)
+			}
+
+			taskState := util.NewConcurrent(
+				statestore.NewAbsenceTaskState(
+					info.Name(),
+					info.Namespace(),
+					info.GroupVersionKind(),
+					statestore.AbsenceTaskStateOptions{},
+				),
+			)
+			b.taskStore.AddAbsenceTaskState(taskState)
+
+			opTrackDeletion := opertn.NewTrackResourceAbsenceOperation(
+				info.ResourceID,
+				taskState,
+				b.dynamicClient,
+				b.mapper,
+				opertn.TrackResourceAbsenceOperationOptions{
+					Timeout: b.deletionTimeout,
+				},
+			)
+			b.plan.AddOperation(opTrackDeletion)
+			if err := b.plan.AddDependency(cleanupOp.ID(), opTrackDeletion.ID()); err != nil {
+				return fmt.Errorf("error adding dependency: %w", err)
 			}
 		}
 	}
@@ -798,7 +875,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 }
 
 // TODO(ilya-lesikov): almost identical with setupHookOperations, refactor
-func (b *DeployPlanBuilder) setupGeneralOperations(infos []*resrcinfo.DeployableGeneralResourceInfo, stageStartOpID, stageEndOpID, trackReadinessOpID string) error {
+func (b *DeployPlanBuilder) setupGeneralOperations(infos []*resrcinfo.DeployableGeneralResourceInfo, stageStartOpID, stageEndOpID string) error {
 	var prevReleaseFailed bool
 	if b.prevRelease != nil {
 		prevReleaseFailed = b.prevRelease.Failed()
@@ -837,15 +914,22 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*resrcinfo.Deployable
 				},
 			)
 		} else if recreate {
+			absenceTaskState := util.NewConcurrent(
+				statestore.NewAbsenceTaskState(info.Name(), info.Namespace(), info.GroupVersionKind(), statestore.AbsenceTaskStateOptions{}),
+			)
+			b.taskStore.AddAbsenceTaskState(absenceTaskState)
+
 			opDeploy = opertn.NewRecreateResourceOperation(
 				info.ResourceID,
 				info.Resource().Unstructured(),
+				absenceTaskState,
 				b.kubeClient,
-				b.tracker,
+				b.dynamicClient,
+				b.mapper,
 				opertn.RecreateResourceOperationOptions{
-					ManageableBy:    info.Resource().ManageableBy(),
-					ForceReplicas:   forceReplicas,
-					DeletionTimeout: b.deletionTimeout,
+					ManageableBy:         info.Resource().ManageableBy(),
+					ForceReplicas:        forceReplicas,
+					DeletionTrackTimeout: b.deletionTimeout,
 				},
 			)
 		} else if update {
@@ -886,65 +970,78 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*resrcinfo.Deployable
 
 		if extDepsSet && opDeploy != nil {
 			for _, dep := range externalDeps {
-				opWait := opertn.NewWaitResourceCreationOperation(
+				taskState := util.NewConcurrent(
+					statestore.NewPresenceTaskState(
+						dep.Name(),
+						dep.Namespace(),
+						dep.GroupVersionKind(),
+						statestore.PresenceTaskStateOptions{},
+					),
+				)
+				b.taskStore.AddPresenceTaskState(taskState)
+
+				opTrackReadiness := opertn.NewTrackResourcePresenceOperation(
 					dep.ResourceID,
-					b.tracker,
-					opertn.WaitResourceCreationOperationOptions{
+					taskState,
+					b.dynamicClient,
+					b.mapper,
+					opertn.TrackResourcePresenceOperationOptions{
 						Timeout: b.readinessTimeout,
 					},
 				)
 				b.plan.AddInStagedOperation(
-					opWait,
+					opTrackReadiness,
 					stageStartOpID,
 				)
-				lo.Must0(b.plan.AddDependency(opWait.ID(), opDeploy.ID()))
+				lo.Must0(b.plan.AddDependency(opTrackReadiness.ID(), opDeploy.ID()))
 			}
 		}
 
-		var opTrackReadiness *opertn.TrackResourcesReadinessOperation
+		var opTrackReadiness *opertn.TrackResourceReadinessOperation
 		if trackReadiness {
-			if op, found := b.plan.Operation(trackReadinessOpID); found {
-				opTrackReadiness = op.(*opertn.TrackResourcesReadinessOperation)
-			} else {
-				opTrackReadiness = opertn.NewTrackResourcesReadinessOperation(
-					trackReadinessOpID,
-					b.tracker,
-					opertn.TrackResourcesReadinessOperationOptions{
-						Timeout:            b.readinessTimeout,
-						ShowProgressPeriod: b.showHookProgressPeriod,
-					},
-				)
-				b.plan.AddStagedOperation(
-					opTrackReadiness,
-					stageStartOpID,
-					stageEndOpID,
-				)
-			}
-
 			logRegex, _ := info.Resource().LogRegex()
 			logRegexesFor, _ := info.Resource().LogRegexesForContainers()
 			skipLogsFor, _ := info.Resource().SkipLogsForContainers()
 			showLogsOnlyFor, _ := info.Resource().ShowLogsOnlyForContainers()
 			ignoreReadinessProbes, _ := info.Resource().IgnoreReadinessProbeFailsForContainers()
-			noActivity, _ := info.Resource().NoActivityTimeout()
+			var noActivityTimeout time.Duration
+			if timeout, set := info.Resource().NoActivityTimeout(); set {
+				noActivityTimeout = *timeout
+			}
 
-			opTrackReadiness.AddResource(&opertn.ResourceToTrackReadiness{
-				Resource:                               info.ResourceID,
-				FailuresAllowed:                        lo.ToPtr(info.Resource().FailuresAllowed()),
-				LogRegex:                               logRegex,
-				LogRegexesForContainers:                logRegexesFor,
-				SkipLogsForContainers:                  skipLogsFor,
-				ShowLogsOnlyForContainers:              showLogsOnlyFor,
-				IgnoreReadinessProbeFailsForContainers: ignoreReadinessProbes,
-				TrackTerminationMode:                   info.Resource().TrackTerminationMode(),
-				FailMode:                               info.Resource().FailMode(),
-				SkipLogs:                               info.Resource().SkipLogs(),
-				ShowServiceMessages:                    info.Resource().ShowServiceMessages(),
-				NoActivityTimeout:                      noActivity,
-				Timeout:                                b.readinessTimeout,
-				ShowProgressPeriod:                     b.showHookProgressPeriod,
-			})
+			taskState := util.NewConcurrent(
+				statestore.NewReadinessTaskState(info.Name(), info.Namespace(), info.GroupVersionKind(), statestore.ReadinessTaskStateOptions{
+					FailMode:                info.Resource().FailMode(),
+					TotalAllowFailuresCount: info.Resource().FailuresAllowed(),
+				}),
+			)
+			b.taskStore.AddReadinessTaskState(taskState)
 
+			opTrackReadiness = opertn.NewTrackResourceReadinessOperation(
+				info.ResourceID,
+				taskState,
+				b.logStore,
+				b.staticClient,
+				b.dynamicClient,
+				b.discoveryClient,
+				b.mapper,
+				opertn.TrackResourceReadinessOperationOptions{
+					Timeout:                                  b.readinessTimeout,
+					NoActivityTimeout:                        noActivityTimeout,
+					IgnoreReadinessProbeFailsByContainerName: ignoreReadinessProbes,
+					SaveLogsOnlyForContainers:                showLogsOnlyFor,
+					SaveLogsByRegex:                          logRegex,
+					SaveLogsByRegexForContainers:             logRegexesFor,
+					IgnoreLogs:                               info.Resource().SkipLogs(),
+					IgnoreLogsForContainers:                  skipLogsFor,
+					SaveEvents:                               info.Resource().ShowServiceMessages(),
+				},
+			)
+			b.plan.AddStagedOperation(
+				opTrackReadiness,
+				stageStartOpID,
+				stageEndOpID,
+			)
 			if opDeploy != nil {
 				lo.Must0(b.plan.AddDependency(opDeploy.ID(), opTrackReadiness.ID()))
 			}
@@ -967,6 +1064,30 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*resrcinfo.Deployable
 					cleanupOp,
 					StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,
 				)
+			}
+
+			taskState := util.NewConcurrent(
+				statestore.NewAbsenceTaskState(
+					info.Name(),
+					info.Namespace(),
+					info.GroupVersionKind(),
+					statestore.AbsenceTaskStateOptions{},
+				),
+			)
+			b.taskStore.AddAbsenceTaskState(taskState)
+
+			opTrackDeletion := opertn.NewTrackResourceAbsenceOperation(
+				info.ResourceID,
+				taskState,
+				b.dynamicClient,
+				b.mapper,
+				opertn.TrackResourceAbsenceOperationOptions{
+					Timeout: b.deletionTimeout,
+				},
+			)
+			b.plan.AddOperation(opTrackDeletion)
+			if err := b.plan.AddDependency(cleanupOp.ID(), opTrackDeletion.ID()); err != nil {
+				return fmt.Errorf("error adding dependency: %w", err)
 			}
 		}
 	}
