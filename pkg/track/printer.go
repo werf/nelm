@@ -2,6 +2,7 @@ package track
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -463,8 +464,8 @@ func setProgressTableStyle(table prtable.Writer, tableWidth int) {
 	columnsWidth := tableWidth - paddingsWidth
 
 	columnConfigs[1].WidthMax = 7
-	columnConfigs[0].WidthMax = int(float64(columnsWidth-columnConfigs[1].WidthMax) * 0.6)
-	columnConfigs[2].WidthMax = int(float64(columnsWidth-columnConfigs[1].WidthMax) * 0.4)
+	columnConfigs[0].WidthMax = int(math.Floor(float64(columnsWidth-columnConfigs[1].WidthMax)) * 0.6)
+	columnConfigs[2].WidthMax = int(math.Floor(float64(columnsWidth-columnConfigs[1].WidthMax)) * 0.4)
 
 	table.SetColumnConfigs(columnConfigs)
 	table.SetStyle(prtable.Style{
