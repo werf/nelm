@@ -458,6 +458,8 @@ func (p *DeployableResourcesProcessor) buildDeployableHookResources(ctx context.
 			return res.OnPreInstall() || res.OnPostInstall()
 		case common.DeployTypeUpgrade:
 			return res.OnPreUpgrade() || res.OnPostUpgrade()
+		case common.DeployTypeRollback:
+			return res.OnPreRollback() || res.OnPostRollback()
 		}
 
 		return false
