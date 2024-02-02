@@ -84,10 +84,10 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 	}
 
 	finalValues := values.AsMap()
-	noClusterAccess := opts.Mapper == nil
+	hasClusterAccess := opts.Mapper != nil
 
 	log.Default.Debug(ctx, "Rendering resources for chart at %q", chartPath)
-	legacyHookResources, generalManifestsBuf, notes, err := actionConfig.RenderResources(legacyChart, values, "", "", true, false, false, nil, noClusterAccess, false)
+	legacyHookResources, generalManifestsBuf, notes, err := actionConfig.RenderResources(legacyChart, values, "", "", true, false, false, nil, hasClusterAccess, false)
 	if err != nil {
 		return nil, fmt.Errorf("error rendering resources for chart %q: %w", legacyChart.Name(), err)
 	}
