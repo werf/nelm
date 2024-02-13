@@ -661,13 +661,11 @@ func failuresAllowed(unstruct *unstructured.Unstructured) int {
 		failuresAllowed = 1
 	}
 
-	replicas, replicasFound := lo.Must2(unstructured.NestedInt64(unstruct.UnstructuredContent(), "spec", "replicas"))
-
-	if replicasFound {
-		return int(replicas) * failuresAllowed
-	} else {
-		return failuresAllowed
+	if replicas, found, err := unstructured.NestedInt64(unstruct.UnstructuredContent(), "spec", "replicas"); err == nil && found {
+		failuresAllowed = int(replicas) * failuresAllowed
 	}
+
+	return failuresAllowed
 }
 
 func ignoreReadinessProbeFailsForContainers(unstruct *unstructured.Unstructured) (durationByContainer map[string]time.Duration, set bool) {
