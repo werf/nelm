@@ -94,7 +94,12 @@ func (e *PlanExecutor) execOperation(opID string, completedOpsIDsCh chan string,
 			opertn.TypeRecreateResourceOperation,
 			opertn.TypeUpdateResourceOperation,
 			opertn.TypeApplyResourceOperation,
-			opertn.TypeDeleteResourceOperation:
+			opertn.TypeDeleteResourceOperation,
+			opertn.TypeExtraPostCreateResourceOperation,
+			opertn.TypeExtraPostRecreateResourceOperation,
+			opertn.TypeExtraPostApplyResourceOperation,
+			opertn.TypeExtraPostUpdateResourceOperation,
+			opertn.TypeExtraPostDeleteResourceOperation:
 			log.Default.Debug(ctx, utls.Capitalize(op.HumanID()))
 		}
 		if err := op.Execute(ctx); err != nil {

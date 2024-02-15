@@ -20,6 +20,7 @@ import (
 var _ Operation = (*RecreateResourceOperation)(nil)
 
 const TypeRecreateResourceOperation = "recreate"
+const TypeExtraPostRecreateResourceOperation = "extra-post-recreate"
 
 func NewRecreateResourceOperation(
 	resource *resrcid.ResourceID,
@@ -41,6 +42,7 @@ func NewRecreateResourceOperation(
 		forceReplicas:           opts.ForceReplicas,
 		deletionTrackTimeout:    opts.DeletionTrackTimeout,
 		deletionTrackPollPeriod: opts.DeletionTrackPollPeriod,
+		extraPost:               opts.ExtraPost,
 	}
 }
 
@@ -49,6 +51,7 @@ type RecreateResourceOperationOptions struct {
 	ForceReplicas           *int
 	DeletionTrackTimeout    time.Duration
 	DeletionTrackPollPeriod time.Duration
+	ExtraPost               bool
 }
 
 type RecreateResourceOperation struct {
@@ -62,6 +65,7 @@ type RecreateResourceOperation struct {
 	forceReplicas           *int
 	deletionTrackTimeout    time.Duration
 	deletionTrackPollPeriod time.Duration
+	extraPost               bool
 
 	status Status
 }
@@ -95,6 +99,10 @@ func (o *RecreateResourceOperation) Execute(ctx context.Context) error {
 }
 
 func (o *RecreateResourceOperation) ID() string {
+	if o.extraPost {
+		return TypeExtraPostRecreateResourceOperation + "/" + o.resource.ID()
+	}
+
 	return TypeRecreateResourceOperation + "/" + o.resource.ID()
 }
 
@@ -107,6 +115,10 @@ func (o *RecreateResourceOperation) Status() Status {
 }
 
 func (o *RecreateResourceOperation) Type() Type {
+	if o.extraPost {
+		return TypeExtraPostRecreateResourceOperation
+	}
+
 	return TypeRecreateResourceOperation
 }
 
