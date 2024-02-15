@@ -136,7 +136,12 @@ func (p *Plan) WorthyCompletedOperations() (worthyCompletedOps []opertn.Operatio
 			opertn.TypeRecreateResourceOperation,
 			opertn.TypeUpdateResourceOperation,
 			opertn.TypeApplyResourceOperation,
-			opertn.TypeDeleteResourceOperation:
+			opertn.TypeDeleteResourceOperation,
+			opertn.TypeExtraPostCreateResourceOperation,
+			opertn.TypeExtraPostRecreateResourceOperation,
+			opertn.TypeExtraPostApplyResourceOperation,
+			opertn.TypeExtraPostUpdateResourceOperation,
+			opertn.TypeExtraPostDeleteResourceOperation:
 			worthyCompletedOps = append(worthyCompletedOps, op)
 		}
 	}
@@ -299,7 +304,12 @@ func (p *Plan) Useless() (bool, error) {
 			opertn.TypeFailReleaseOperation,
 			opertn.TypeTrackResourceReadinessOperation,
 			opertn.TypeTrackResourcePresenceOperation,
-			opertn.TypeTrackResourceAbsenceOperation:
+			opertn.TypeTrackResourceAbsenceOperation,
+			opertn.TypeExtraPostCreateResourceOperation,
+			opertn.TypeExtraPostRecreateResourceOperation,
+			opertn.TypeExtraPostApplyResourceOperation,
+			opertn.TypeExtraPostUpdateResourceOperation,
+			opertn.TypeExtraPostDeleteResourceOperation:
 			if !op.Empty() {
 				return false, nil
 			}

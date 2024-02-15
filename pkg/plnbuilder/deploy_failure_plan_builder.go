@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/dynamic"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/werf/nelm/pkg/opertn"
 	"github.com/werf/nelm/pkg/pln"
 	"github.com/werf/nelm/pkg/resrc"
+	"github.com/werf/nelm/pkg/resrcid"
 	"github.com/werf/nelm/pkg/resrcinfo"
 	"github.com/werf/nelm/pkg/rls"
 	"github.com/werf/nelm/pkg/rlshistor"
@@ -33,19 +35,24 @@ func NewDeployFailurePlanBuilder(
 ) *DeployFailurePlanBuilder {
 	plan := pln.NewPlan()
 
+	prePostHookResourcesIDs := lo.FilterMap(hookResourcesInfos, func(info *resrcinfo.DeployableHookResourceInfo, _ int) (*resrcid.ResourceID, bool) {
+		return info.ResourceID, info.Resource().OnPreAnything() && info.Resource().OnPostAnything()
+	})
+
 	return &DeployFailurePlanBuilder{
-		taskStore:            taskStore,
-		hookResourceInfos:    hookResourcesInfos,
-		generalResourceInfos: generalResourceInfos,
-		newRelease:           newRelease,
-		prevRelease:          opts.PrevRelease,
-		history:              history,
-		kubeClient:           kubeClient,
-		dynamicClient:        dynamicClient,
-		mapper:               mapper,
-		deployPlan:           deployPlan,
-		plan:                 plan,
-		deletionTimeout:      opts.DeletionTimeout,
+		taskStore:               taskStore,
+		hookResourceInfos:       hookResourcesInfos,
+		prePostHookResourcesIDs: prePostHookResourcesIDs,
+		generalResourceInfos:    generalResourceInfos,
+		newRelease:              newRelease,
+		prevRelease:             opts.PrevRelease,
+		history:                 history,
+		kubeClient:              kubeClient,
+		dynamicClient:           dynamicClient,
+		mapper:                  mapper,
+		deployPlan:              deployPlan,
+		plan:                    plan,
+		deletionTimeout:         opts.DeletionTimeout,
 	}
 }
 
@@ -55,18 +62,19 @@ type DeployFailurePlanBuilderOptions struct {
 }
 
 type DeployFailurePlanBuilder struct {
-	taskStore            *statestore.TaskStore
-	hookResourceInfos    []*resrcinfo.DeployableHookResourceInfo
-	generalResourceInfos []*resrcinfo.DeployableGeneralResourceInfo
-	newRelease           *rls.Release
-	prevRelease          *rls.Release
-	history              rlshistor.Historier
-	kubeClient           kubeclnt.KubeClienter
-	dynamicClient        dynamic.Interface
-	mapper               meta.ResettableRESTMapper
-	deployPlan           *pln.Plan
-	plan                 *pln.Plan
-	deletionTimeout      time.Duration
+	taskStore               *statestore.TaskStore
+	hookResourceInfos       []*resrcinfo.DeployableHookResourceInfo
+	prePostHookResourcesIDs []*resrcid.ResourceID
+	generalResourceInfos    []*resrcinfo.DeployableGeneralResourceInfo
+	newRelease              *rls.Release
+	prevRelease             *rls.Release
+	history                 rlshistor.Historier
+	kubeClient              kubeclnt.KubeClienter
+	dynamicClient           dynamic.Interface
+	mapper                  meta.ResettableRESTMapper
+	deployPlan              *pln.Plan
+	plan                    *pln.Plan
+	deletionTimeout         time.Duration
 }
 
 func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*pln.Plan, error) {
@@ -78,7 +86,11 @@ func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*pln.Plan, error)
 		prevReleaseFailed = b.prevRelease.Failed()
 	}
 
-	for _, info := range b.hookResourceInfos {
+	hookInfos := lo.UniqBy(b.hookResourceInfos, func(info *resrcinfo.DeployableHookResourceInfo) string {
+		return fmt.Sprintf("%s::%t::%t", info.ID(), info.Resource().OnPreAnything(), info.Resource().OnPostAnything())
+	})
+
+	for _, info := range hookInfos {
 		if !info.ShouldCleanupOnFailed(prevReleaseFailed) || resrc.IsCRDFromGK(info.Resource().GroupVersionKind().GroupKind()) {
 			continue
 		}
@@ -93,6 +105,7 @@ func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*pln.Plan, error)
 		cleanupOp := opertn.NewDeleteResourceOperation(
 			info.ResourceID,
 			b.kubeClient,
+			opertn.DeleteResourceOperationOptions{},
 		)
 		b.plan.AddOperation(cleanupOp)
 
@@ -137,6 +150,7 @@ func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*pln.Plan, error)
 		cleanupOp := opertn.NewDeleteResourceOperation(
 			info.ResourceID,
 			b.kubeClient,
+			opertn.DeleteResourceOperationOptions{},
 		)
 		b.plan.AddOperation(cleanupOp)
 

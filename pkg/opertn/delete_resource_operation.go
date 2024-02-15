@@ -11,20 +11,28 @@ import (
 var _ Operation = (*DeleteResourceOperation)(nil)
 
 const TypeDeleteResourceOperation = "delete"
+const TypeExtraPostDeleteResourceOperation = "extra-post-delete"
 
 func NewDeleteResourceOperation(
 	resource *resrcid.ResourceID,
 	kubeClient kubeclnt.KubeClienter,
+	opts DeleteResourceOperationOptions,
 ) *DeleteResourceOperation {
 	return &DeleteResourceOperation{
 		resource:   resource,
 		kubeClient: kubeClient,
+		extraPost:  opts.ExtraPost,
 	}
+}
+
+type DeleteResourceOperationOptions struct {
+	ExtraPost bool
 }
 
 type DeleteResourceOperation struct {
 	resource   *resrcid.ResourceID
 	kubeClient kubeclnt.KubeClienter
+	extraPost  bool
 	status     Status
 }
 
@@ -40,6 +48,10 @@ func (o *DeleteResourceOperation) Execute(ctx context.Context) error {
 }
 
 func (o *DeleteResourceOperation) ID() string {
+	if o.extraPost {
+		return TypeExtraPostDeleteResourceOperation + "/" + o.resource.ID()
+	}
+
 	return TypeDeleteResourceOperation + "/" + o.resource.ID()
 }
 
@@ -52,6 +64,10 @@ func (o *DeleteResourceOperation) Status() Status {
 }
 
 func (o *DeleteResourceOperation) Type() Type {
+	if o.extraPost {
+		return TypeExtraPostDeleteResourceOperation
+	}
+
 	return TypeDeleteResourceOperation
 }
 

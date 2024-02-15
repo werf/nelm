@@ -20,6 +20,7 @@ import (
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/depnd"
 	"github.com/werf/nelm/pkg/kubeclnt"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/opertn"
@@ -81,6 +82,9 @@ func NewDeployPlanBuilder(
 	postHookResourcesInfos := lo.Filter(hookResourcesInfos, func(info *resrcinfo.DeployableHookResourceInfo, _ int) bool {
 		return info.Resource().OnPostAnything()
 	})
+	prePostHookResourcesIDs := lo.FilterMap(hookResourcesInfos, func(info *resrcinfo.DeployableHookResourceInfo, _ int) (*resrcid.ResourceID, bool) {
+		return info.ResourceID, info.Resource().OnPreAnything() && info.Resource().OnPostAnything()
+	})
 
 	curReleaseExistResourcesUIDs, _ := CurrentReleaseExistingResourcesUIDs(standaloneCRDsInfos, hookResourcesInfos, generalResourcesInfos)
 
@@ -93,6 +97,7 @@ func NewDeployPlanBuilder(
 		standaloneCRDsInfos:             standaloneCRDsInfos,
 		preHookResourcesInfos:           preHookResourcesInfos,
 		postHookResourcesInfos:          postHookResourcesInfos,
+		prePostHookResourcesIDs:         prePostHookResourcesIDs,
 		generalResourcesInfos:           generalResourcesInfos,
 		prevReleaseGeneralResourceInfos: prevReleaseGeneralResourceInfos,
 		curReleaseExistingResourcesUIDs: curReleaseExistResourcesUIDs,
@@ -127,6 +132,7 @@ type DeployPlanBuilder struct {
 	standaloneCRDsInfos             []*resrcinfo.DeployableStandaloneCRDInfo
 	preHookResourcesInfos           []*resrcinfo.DeployableHookResourceInfo
 	postHookResourcesInfos          []*resrcinfo.DeployableHookResourceInfo
+	prePostHookResourcesIDs         []*resrcid.ResourceID
 	generalResourcesInfos           []*resrcinfo.DeployableGeneralResourceInfo
 	prevReleaseGeneralResourceInfos []*resrcinfo.DeployablePrevReleaseGeneralResourceInfo
 	curReleaseExistingResourcesUIDs []types.UID
@@ -337,7 +343,7 @@ func (b *DeployPlanBuilder) setupPreHookResourcesOperations() error {
 		crdsStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixHookCRDs, weight, StageOpNameSuffixStart)
 		crdsStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixHookCRDs, weight, StageOpNameSuffixEnd)
 
-		if err := b.setupHookOperations(crdInfos, crdsStageStartOpID, crdsStageEndOpID); err != nil {
+		if err := b.setupHookOperations(crdInfos, crdsStageStartOpID, crdsStageEndOpID, true); err != nil {
 			return fmt.Errorf("error setting up hook crds operations: %w", err)
 		}
 
@@ -347,7 +353,7 @@ func (b *DeployPlanBuilder) setupPreHookResourcesOperations() error {
 		resourcesStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixHookResources, weight, StageOpNameSuffixStart)
 		resourcesStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixHookResources, weight, StageOpNameSuffixEnd)
 
-		if err := b.setupHookOperations(resourceInfos, resourcesStageStartOpID, resourcesStageEndOpID); err != nil {
+		if err := b.setupHookOperations(resourceInfos, resourcesStageStartOpID, resourcesStageEndOpID, true); err != nil {
 			return fmt.Errorf("error setting up hook resources operations: %w", err)
 		}
 	}
@@ -370,7 +376,7 @@ func (b *DeployPlanBuilder) setupPostHookResourcesOperations() error {
 		crdsStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixPostHookCRDs, weight, StageOpNameSuffixStart)
 		crdsStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixPostHookCRDs, weight, StageOpNameSuffixEnd)
 
-		if err := b.setupHookOperations(crdInfos, crdsStageStartOpID, crdsStageEndOpID); err != nil {
+		if err := b.setupHookOperations(crdInfos, crdsStageStartOpID, crdsStageEndOpID, false); err != nil {
 			return fmt.Errorf("error setting up hook crds operations: %w", err)
 		}
 
@@ -380,7 +386,7 @@ func (b *DeployPlanBuilder) setupPostHookResourcesOperations() error {
 		resourcesStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixPostHookResources, weight, StageOpNameSuffixStart)
 		resourcesStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixPostHookResources, weight, StageOpNameSuffixEnd)
 
-		if err := b.setupHookOperations(resourceInfos, resourcesStageStartOpID, resourcesStageEndOpID); err != nil {
+		if err := b.setupHookOperations(resourceInfos, resourcesStageStartOpID, resourcesStageEndOpID, false); err != nil {
 			return fmt.Errorf("error setting up hook resources operations: %w", err)
 		}
 	}
@@ -429,6 +435,7 @@ func (b *DeployPlanBuilder) setupPrevReleaseGeneralResourcesOperations() error {
 			opDelete := opertn.NewDeleteResourceOperation(
 				info.ResourceID,
 				b.kubeClient,
+				opertn.DeleteResourceOperationOptions{},
 			)
 			b.plan.AddInStagedOperation(
 				opDelete,
@@ -485,7 +492,21 @@ func (b *DeployPlanBuilder) setupFinalizationOperations() error {
 }
 
 func (b *DeployPlanBuilder) connectInternalDependencies() error {
-	for _, info := range lo.Union(b.preHookResourcesInfos, b.postHookResourcesInfos) {
+	hookInfos := lo.Union(
+		b.preHookResourcesInfos,
+		lo.Filter(
+			b.postHookResourcesInfos,
+			func(info *resrcinfo.DeployableHookResourceInfo, _ int) bool {
+				_, found := lo.Find(b.prePostHookResourcesIDs, func(rid *resrcid.ResourceID) bool {
+					return rid.ID() == info.ResourceID.ID()
+				})
+
+				return !found
+			},
+		),
+	)
+
+	for _, info := range hookInfos {
 		var opDeploy opertn.Operation
 		if info.ShouldCreate() {
 			opDeploy = lo.Must(b.plan.Operation(opertn.TypeCreateResourceOperation + "/" + info.ID()))
@@ -654,27 +675,39 @@ func (b *DeployPlanBuilder) connectStages() error {
 	return nil
 }
 
-func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHookResourceInfo, stageStartOpID, stageEndOpID string) error {
+func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHookResourceInfo, stageStartOpID, stageEndOpID string, pre bool) error {
 	var prevReleaseFailed bool
 	if b.prevRelease != nil {
 		prevReleaseFailed = b.prevRelease.Failed()
 	}
 
 	for _, info := range infos {
+		var extraPost bool
+		if !pre {
+			_, extraPost = lo.Find(b.prePostHookResourcesIDs, func(rid *resrcid.ResourceID) bool {
+				return rid.ID() == info.ResourceID.ID()
+			})
+		}
+
 		create := info.ShouldCreate()
 		recreate := info.ShouldRecreate()
 		update := info.ShouldUpdate()
 		apply := info.ShouldApply()
 		cleanup := info.ShouldCleanup()
 		var trackReadiness bool
-		if track := info.ShouldTrackReadiness(prevReleaseFailed); track {
+		if track := info.ShouldTrackReadiness(prevReleaseFailed); track && !extraPost {
 			if _, manIntDepsSet := info.Resource().ManualInternalDependencies(); !manIntDepsSet {
 				trackReadiness = true
 			}
 		}
-		externalDeps, extDepsSet, err := info.Resource().ExternalDependencies()
-		if err != nil {
-			return fmt.Errorf("error getting external dependencies: %w", err)
+		var externalDeps []*depnd.ExternalDependency
+		var extDepsSet bool
+		if !extraPost {
+			var err error
+			externalDeps, extDepsSet, err = info.Resource().ExternalDependencies()
+			if err != nil {
+				return fmt.Errorf("error getting external dependencies: %w", err)
+			}
 		}
 		var forceReplicas *int
 		if r, set := info.Resource().DefaultReplicasOnCreation(); set {
@@ -690,6 +723,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 				opertn.CreateResourceOperationOptions{
 					ManageableBy:  info.Resource().ManageableBy(),
 					ForceReplicas: forceReplicas,
+					ExtraPost:     extraPost,
 				},
 			)
 		} else if recreate {
@@ -709,6 +743,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 					ManageableBy:         info.Resource().ManageableBy(),
 					ForceReplicas:        forceReplicas,
 					DeletionTrackTimeout: b.deletionTimeout,
+					ExtraPost:            extraPost,
 				},
 			)
 		} else if update {
@@ -719,6 +754,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 				b.kubeClient,
 				opertn.UpdateResourceOperationOptions{
 					ManageableBy: info.Resource().ManageableBy(),
+					ExtraPost:    extraPost,
 				},
 			)
 			if err != nil {
@@ -732,6 +768,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 				b.kubeClient,
 				opertn.ApplyResourceOperationOptions{
 					ManageableBy: info.Resource().ManageableBy(),
+					ExtraPost:    extraPost,
 				},
 			)
 			if err != nil {
@@ -830,6 +867,9 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 			cleanupOp := opertn.NewDeleteResourceOperation(
 				info.ResourceID,
 				b.kubeClient,
+				opertn.DeleteResourceOperationOptions{
+					ExtraPost: extraPost,
+				},
 			)
 
 			if trackReadiness {
@@ -1051,6 +1091,7 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*resrcinfo.Deployable
 			cleanupOp := opertn.NewDeleteResourceOperation(
 				info.ResourceID,
 				b.kubeClient,
+				opertn.DeleteResourceOperationOptions{},
 			)
 
 			if trackReadiness {

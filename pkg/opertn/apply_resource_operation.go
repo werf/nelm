@@ -14,6 +14,7 @@ import (
 var _ Operation = (*ApplyResourceOperation)(nil)
 
 const TypeApplyResourceOperation = "apply"
+const TypeExtraPostApplyResourceOperation = "extra-post-apply"
 
 func NewApplyResourceOperation(
 	resource *resrcid.ResourceID,
@@ -26,11 +27,13 @@ func NewApplyResourceOperation(
 		unstruct:     unstruct,
 		kubeClient:   kubeClient,
 		manageableBy: opts.ManageableBy,
+		extraPost:    opts.ExtraPost,
 	}, nil
 }
 
 type ApplyResourceOperationOptions struct {
 	ManageableBy resrc.ManageableBy
+	ExtraPost    bool
 }
 
 type ApplyResourceOperation struct {
@@ -38,6 +41,7 @@ type ApplyResourceOperation struct {
 	unstruct     *unstructured.Unstructured
 	kubeClient   kubeclnt.KubeClienter
 	manageableBy resrc.ManageableBy
+	extraPost    bool
 	status       Status
 }
 
@@ -52,6 +56,10 @@ func (o *ApplyResourceOperation) Execute(ctx context.Context) error {
 }
 
 func (o *ApplyResourceOperation) ID() string {
+	if o.extraPost {
+		return TypeExtraPostApplyResourceOperation + "/" + o.resource.ID()
+	}
+
 	return TypeApplyResourceOperation + "/" + o.resource.ID()
 }
 
@@ -64,6 +72,10 @@ func (o *ApplyResourceOperation) Status() Status {
 }
 
 func (o *ApplyResourceOperation) Type() Type {
+	if o.extraPost {
+		return TypeExtraPostApplyResourceOperation
+	}
+
 	return TypeApplyResourceOperation
 }
 

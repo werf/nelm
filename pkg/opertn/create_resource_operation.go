@@ -15,6 +15,7 @@ import (
 var _ Operation = (*CreateResourceOperation)(nil)
 
 const TypeCreateResourceOperation = "create"
+const TypeExtraPostCreateResourceOperation = "extra-post-create"
 
 func NewCreateResourceOperation(
 	resource *resrcid.ResourceID,
@@ -27,6 +28,7 @@ func NewCreateResourceOperation(
 		unstruct:      unstruct,
 		kubeClient:    kubeClient,
 		manageableBy:  opts.ManageableBy,
+		extraPost:     opts.ExtraPost,
 		forceReplicas: opts.ForceReplicas,
 	}
 }
@@ -34,6 +36,7 @@ func NewCreateResourceOperation(
 type CreateResourceOperationOptions struct {
 	ManageableBy  resrc.ManageableBy
 	ForceReplicas *int
+	ExtraPost     bool
 }
 
 type CreateResourceOperation struct {
@@ -42,6 +45,7 @@ type CreateResourceOperation struct {
 	kubeClient    kubeclnt.KubeClienter
 	manageableBy  resrc.ManageableBy
 	forceReplicas *int
+	extraPost     bool
 	status        Status
 }
 
@@ -66,6 +70,10 @@ func (o *CreateResourceOperation) Execute(ctx context.Context) error {
 }
 
 func (o *CreateResourceOperation) ID() string {
+	if o.extraPost {
+		return TypeExtraPostCreateResourceOperation + "/" + o.resource.ID()
+	}
+
 	return TypeCreateResourceOperation + "/" + o.resource.ID()
 }
 
@@ -78,6 +86,10 @@ func (o *CreateResourceOperation) Status() Status {
 }
 
 func (o *CreateResourceOperation) Type() Type {
+	if o.extraPost {
+		return TypeExtraPostCreateResourceOperation
+	}
+
 	return TypeCreateResourceOperation
 }
 
