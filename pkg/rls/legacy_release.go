@@ -15,7 +15,7 @@ func NewLegacyReleaseFromRelease(rel *Release) (*release.Release, error) {
 	var legacyHooks []*release.Hook
 	for _, res := range rel.HookResources() {
 		if legacyHook, err := hookResourceToLegacyHook(res); err != nil {
-			return nil, fmt.Errorf("error converting hook resource to legacy hook for release %q (namespace: %q, revision: %q): %w", rel.Name(), rel.Namespace(), rel.Revision(), err)
+			return nil, fmt.Errorf("error converting hook resource to legacy hook for release %q (namespace: %q, revision: %d): %w", rel.Name(), rel.Namespace(), rel.Revision(), err)
 		} else {
 			legacyHooks = append(legacyHooks, legacyHook)
 		}
@@ -24,7 +24,7 @@ func NewLegacyReleaseFromRelease(rel *Release) (*release.Release, error) {
 	var generalResourcesManifests []string
 	for _, res := range rel.GeneralResources() {
 		if result, err := yaml.Marshal(res.Unstructured().UnstructuredContent()); err != nil {
-			return nil, fmt.Errorf("error marshalling general resource %q for release %q (namespace: %q, revision: %q): %w", res.HumanID(), rel.Name(), rel.Namespace(), rel.Revision(), err)
+			return nil, fmt.Errorf("error marshalling general resource %q for release %q (namespace: %q, revision: %d): %w", res.HumanID(), rel.Name(), rel.Namespace(), rel.Revision(), err)
 		} else if res.FilePath() != "" {
 			manifest := "# Source: " + res.FilePath() + "\n" + string(result)
 			generalResourcesManifests = append(generalResourcesManifests, manifest)
