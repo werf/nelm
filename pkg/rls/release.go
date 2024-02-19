@@ -59,7 +59,7 @@ func NewReleaseFromLegacyRelease(legacyRelease *release.Release, opts ReleaseFro
 			Mapper:           opts.Mapper,
 			DiscoveryClient:  opts.DiscoveryClient,
 		}); err != nil {
-			return nil, fmt.Errorf("error constructing hook resource from manifest for legacy release %q (namespace: %q, revision: %q): %w", legacyRelease.Name, legacyRelease.Namespace, legacyRelease.Version, err)
+			return nil, fmt.Errorf("error constructing hook resource from manifest for legacy release %q (namespace: %q, revision: %d): %w", legacyRelease.Name, legacyRelease.Namespace, legacyRelease.Version, err)
 		} else {
 			hookResources = append(hookResources, res)
 		}
@@ -72,7 +72,7 @@ func NewReleaseFromLegacyRelease(legacyRelease *release.Release, opts ReleaseFro
 			Mapper:           opts.Mapper,
 			DiscoveryClient:  opts.DiscoveryClient,
 		}); err != nil {
-			return nil, fmt.Errorf("error constructing general resource from manifest for legacy release %q (namespace: %q, revision: %q): %w", legacyRelease.Name, legacyRelease.Namespace, legacyRelease.Version, err)
+			return nil, fmt.Errorf("error constructing general resource from manifest for legacy release %q (namespace: %q, revision: %d): %w", legacyRelease.Name, legacyRelease.Namespace, legacyRelease.Version, err)
 		} else {
 			generalResources = append(generalResources, res)
 		}
@@ -85,7 +85,7 @@ func NewReleaseFromLegacyRelease(legacyRelease *release.Release, opts ReleaseFro
 		Mapper:        opts.Mapper,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error building release %q (namespace: %q, revision: %q): %w", legacyRelease.Name, legacyRelease.Namespace, legacyRelease.Version, err)
+		return nil, fmt.Errorf("error building release %q (namespace: %q, revision: %d): %w", legacyRelease.Name, legacyRelease.Namespace, legacyRelease.Version, err)
 	}
 
 	return rel, nil
