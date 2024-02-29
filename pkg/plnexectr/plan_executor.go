@@ -39,35 +39,27 @@ func (e *PlanExecutor) Execute(parentCtx context.Context) error {
 		return fmt.Errorf("error getting plan predecessor map: %w", err)
 	}
 
-	workerPool := pool.New().WithContext(ctx).WithMaxGoroutines(e.networkParallelism).WithFirstError()
+	workerPool := pool.New().WithContext(ctx).WithMaxGoroutines(e.networkParallelism).WithCancelOnError().WithFirstError()
 	completedOpsIDsCh := make(chan string, 100000)
 
 	for i := 0; len(opsMap) > 0; i++ {
-		if i == 0 {
-			executableOpsIDs := e.findExecutableOpsIDs(opsMap)
-			for _, opID := range executableOpsIDs {
-				opID := opID
-				delete(opsMap, opID)
-				e.execOperation(opID, completedOpsIDsCh, workerPool, ctxCancelFn)
+		if i > 0 {
+			if ctx.Err() != nil {
+				break
 			}
-			continue
-		}
 
-		if ctx.Err() != nil {
-			break
-		}
-
-		var gotCompletedOpID bool
-		for len(completedOpsIDsCh) > 0 {
-			completedOpID := <-completedOpsIDsCh
-			gotCompletedOpID = true
-			for _, edgeMap := range opsMap {
-				delete(edgeMap, completedOpID)
+			var gotCompletedOpID bool
+			for len(completedOpsIDsCh) > 0 {
+				completedOpID := <-completedOpsIDsCh
+				gotCompletedOpID = true
+				for _, edgeMap := range opsMap {
+					delete(edgeMap, completedOpID)
+				}
 			}
-		}
-		if !gotCompletedOpID {
-			time.Sleep(100 * time.Millisecond)
-			continue
+			if !gotCompletedOpID {
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
 		}
 
 		executableOpsIDs := e.findExecutableOpsIDs(opsMap)
@@ -87,6 +79,13 @@ func (e *PlanExecutor) Execute(parentCtx context.Context) error {
 
 func (e *PlanExecutor) execOperation(opID string, completedOpsIDsCh chan string, workerPool *pool.ContextPool, ctxCancelFn context.CancelFunc) {
 	workerPool.Go(func(ctx context.Context) error {
+		failed := true
+		defer func() {
+			if failed {
+				ctxCancelFn()
+			}
+		}()
+
 		op := lo.Must(e.plan.Operation(opID))
 
 		switch op.Type() {
@@ -102,12 +101,14 @@ func (e *PlanExecutor) execOperation(opID string, completedOpsIDsCh chan string,
 			opertn.TypeExtraPostDeleteResourceOperation:
 			log.Default.Debug(ctx, utls.Capitalize(op.HumanID()))
 		}
+
 		if err := op.Execute(ctx); err != nil {
-			ctxCancelFn()
 			return fmt.Errorf("error executing operation: %w", err)
 		}
+
 		completedOpsIDsCh <- opID
 
+		failed = false
 		return nil
 	})
 }
