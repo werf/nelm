@@ -2,7 +2,7 @@
 
 **Nelm** is used as the deployment engine in [werf](https://github.com/werf/werf/), but **Nelm** will have its own CLI in the future for those who don't need everything that werf offers.
 
-**Nelm** is based on **Helm 3** codebase, but the deployment subsystem of **Helm 3** was rewritten from scratch to fix numerous issues like [this one](https://github.com/helm/helm/issues/7219) and to introduce major improvements such as:
+**Nelm** is based on **Helm 3**, but the deployment subsystem of **Helm 3** was rewritten from scratch to fix numerous issues like [this one](https://github.com/helm/helm/issues/7219) and to introduce major improvements such as:
 * `terraform plan`-like capabilities
 * Replacement of 3-Way Merge with Server-Side Apply
 * Improved resource tracking built from the ground up
@@ -57,3 +57,8 @@ werf plan --env dev
 ```bash
 werf converge --env dev
 ```
+6. Proceed to [werf documentation](https://werf.io/documentation/v1.2/usage/deploy/overview.html) to learn more.
+
+## Getting started with standalone Nelm
+
+_Not implemented yet_
