@@ -2,7 +2,9 @@ package rls
 
 import (
 	"fmt"
+	"strings"
 	"time"
+	"unicode"
 
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chartutil"
@@ -26,6 +28,10 @@ func NewRelease(name, namespace string, revision int, values map[string]interfac
 	} else {
 		status = opts.Status
 	}
+
+	notes = strings.TrimRightFunc(notes, func(r rune) bool {
+		return unicode.IsSpace(r)
+	})
 
 	return &Release{
 		name:             name,

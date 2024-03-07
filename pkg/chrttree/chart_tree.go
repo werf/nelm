@@ -3,6 +3,8 @@ package chrttree
 import (
 	"context"
 	"fmt"
+	"strings"
+	"unicode"
 
 	helm_v3 "helm.sh/helm/v3/cmd/helm"
 	"helm.sh/helm/v3/pkg/action"
@@ -91,6 +93,10 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 	if err != nil {
 		return nil, fmt.Errorf("error rendering resources for chart %q: %w", legacyChart.Name(), err)
 	}
+
+	notes = strings.TrimRightFunc(notes, func(r rune) bool {
+		return unicode.IsSpace(r)
+	})
 
 	var standaloneCRDs []*resrc.StandaloneCRD
 	for _, crd := range legacyChart.CRDObjects() {
