@@ -72,18 +72,6 @@ func (r *Report) Print(ctx context.Context) {
 			}
 		})
 	}
-
-	log.Default.Info(ctx, color.Bold.Render("Operations summary:"))
-	if len(r.completedOps) > 0 {
-		log.Default.Info(ctx, "- "+completedStyle("completed:")+" %d operation(s)", len(r.completedOps))
-	}
-	if len(r.canceledOps) > 0 {
-		log.Default.Info(ctx, "- "+canceledStyle("canceled:")+" %d operation(s)", len(r.canceledOps))
-	}
-	if len(r.failedOps) > 0 {
-		log.Default.Info(ctx, "- "+failedStyle("failed:")+" %d operation(s)", len(r.failedOps))
-	}
-	log.Default.Info(ctx, "")
 }
 
 func (r *Report) JSON() ([]byte, error) {
