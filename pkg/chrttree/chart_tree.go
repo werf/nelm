@@ -50,7 +50,7 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		}
 	}
 
-	if err := chartutil.ProcessDependencies(legacyChart, &releaseValues); err != nil {
+	if err := chartutil.ProcessDependenciesWithMerge(legacyChart, &releaseValues); err != nil {
 		return nil, fmt.Errorf("error processing chart %q dependencies: %w", legacyChart.Name(), err)
 	}
 
