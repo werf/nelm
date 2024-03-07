@@ -533,30 +533,28 @@ func setEventTableStyle(table prtable.Writer, tableWidth int) {
 }
 
 func buildLogsHeader(resourceLogs *logstore.ResourceLogs, source, defaultNamespace string, colorize bool) string {
-	kind := resourceLogs.GroupVersionKind().Kind
-	if colorize {
-		kind = color.New(color.LightBlue).Sprintf(kind)
-	}
-
-	result := "Logs for " + kind + "/" + resourceLogs.Name() + ", " + source
+	result := "Logs for " + resourceLogs.GroupVersionKind().Kind + "/" + resourceLogs.Name() + ", " + source
 
 	if resourceLogs.Namespace() != defaultNamespace {
 		result += ", namespace: " + resourceLogs.Namespace()
+	}
+
+	if colorize {
+		result = color.New(color.Bold, color.Blue).Sprintf(result)
 	}
 
 	return result
 }
 
 func buildEventsHeader(resourceState *statestore.ResourceState, defaultNamespace string, colorize bool) string {
-	kind := resourceState.GroupVersionKind().Kind
-	if colorize {
-		kind = color.New(color.LightBlue).Sprintf(kind)
-	}
-
-	result := "Events for " + kind + "/" + resourceState.Name()
+	result := "Events for " + resourceState.GroupVersionKind().Kind + "/" + resourceState.Name()
 
 	if resourceState.Namespace() != defaultNamespace {
 		result += ", namespace: " + resourceState.Namespace()
+	}
+
+	if colorize {
+		result = color.New(color.Bold, color.Blue).Sprintf(result)
 	}
 
 	return result
@@ -619,7 +617,7 @@ func buildRootResourceCell(resourceState *statestore.ResourceState, colorize boo
 
 	kind := resourceState.GroupVersionKind().Kind
 	if colorize {
-		kind = color.New(color.LightBlue).Sprintf(kind)
+		kind = color.New(color.Cyan).Sprintf(kind)
 	}
 
 	resourceCell = fmt.Sprintf("%s/%s", kind, resourceState.Name())
