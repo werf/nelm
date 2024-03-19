@@ -104,7 +104,7 @@ func (c *KubeClient) Create(ctx context.Context, resource *resrcid.ResourceID, u
 	clientResource := c.clientResource(gvr, resource.Namespace(), namespaced)
 
 	if opts.ForceReplicas != nil {
-		unstructured.SetNestedField(unstruct.UnstructuredContent(), *opts.ForceReplicas, "spec", "replicas")
+		unstructured.SetNestedField(unstruct.UnstructuredContent(), int64(*opts.ForceReplicas), "spec", "replicas")
 	}
 
 	log.Default.Debug(ctx, "Server-side applying resource %q", resource.HumanID())
