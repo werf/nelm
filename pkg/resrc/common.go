@@ -10,6 +10,7 @@ import (
 
 	"github.com/samber/lo"
 	"helm.sh/helm/v3/pkg/release"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -653,12 +654,22 @@ func failMode(unstruct *unstructured.Unstructured) multitrack.FailMode {
 }
 
 func failuresAllowed(unstruct *unstructured.Unstructured) int {
+	if unstruct.GetKind() == "Job" {
+		return 0
+	}
+
 	_, value, found := FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternFailuresAllowedPerReplica)
 	var failuresAllowed int
 	if found {
 		failuresAllowed = lo.Must(strconv.Atoi(value))
 	} else {
 		failuresAllowed = 1
+
+		if restartPolicy, found, err := unstructured.NestedString(unstruct.UnstructuredContent(), "spec", "template", "spec", "restartPolicy"); err == nil && found {
+			if restartPolicy == string(v1.RestartPolicyNever) {
+				failuresAllowed = 0
+			}
+		}
 	}
 
 	if replicas, found, err := unstructured.NestedInt64(unstruct.UnstructuredContent(), "spec", "replicas"); err == nil && found {
