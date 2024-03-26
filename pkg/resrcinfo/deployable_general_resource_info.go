@@ -7,6 +7,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 	"github.com/werf/nelm/pkg/kubeclnt"
 	"github.com/werf/nelm/pkg/resrc"
 	"github.com/werf/nelm/pkg/resrcid"
@@ -137,7 +138,8 @@ func (i *DeployableGeneralResourceInfo) ShouldKeepOnDelete() bool {
 }
 
 func (i *DeployableGeneralResourceInfo) ShouldTrackReadiness(prevRelFailed bool) bool {
-	if resrc.IsCRDFromGK(i.resource.GroupVersionKind().GroupKind()) {
+	if resrc.IsCRDFromGK(i.resource.GroupVersionKind().GroupKind()) ||
+		i.Resource().TrackTerminationMode() == multitrack.NonBlocking {
 		return false
 	}
 
