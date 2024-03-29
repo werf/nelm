@@ -196,5 +196,3 @@ require (
 	sigs.k8s.io/kustomize/kyaml v0.16.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 )
-
-replace github.com/jedib0t/go-pretty/v6 => github.com/werf/3p-go-pretty/v6 v6.0.0-20240125135207-7170e1857aa0 // switch back to upstream when merged: https://github.com/jedib0t/go-pretty/pull/295
