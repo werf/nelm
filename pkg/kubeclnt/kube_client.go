@@ -205,7 +205,7 @@ func (c *KubeClient) MergePatch(ctx context.Context, resource *resrcid.ResourceI
 	return resultObj, nil
 }
 
-func (c *KubeClient) Delete(ctx context.Context, resource *resrcid.ResourceID) error {
+func (c *KubeClient) Delete(ctx context.Context, resource *resrcid.ResourceID, opts KubeClientDeleteOptions) error {
 	lock := c.resourceLock(resource)
 	lock.Lock()
 	defer lock.Unlock()
@@ -222,8 +222,17 @@ func (c *KubeClient) Delete(ctx context.Context, resource *resrcid.ResourceID) e
 
 	clientResource := c.clientResource(gvr, resource.Namespace(), namespaced)
 
+	var propagationPolicy *metav1.DeletionPropagation
+	if opts.PropagationPolicy != nil {
+		propagationPolicy = opts.PropagationPolicy
+	} else {
+		propagationPolicy = lo.ToPtr(metav1.DeletePropagationForeground)
+	}
+
 	log.Default.Debug(ctx, "Deleting resource %q", resource.HumanID())
-	if err := clientResource.Delete(ctx, resource.Name(), metav1.DeleteOptions{}); err != nil {
+	if err := clientResource.Delete(ctx, resource.Name(), metav1.DeleteOptions{
+		PropagationPolicy: propagationPolicy,
+	}); err != nil {
 		if errors.IsNotFound(err) {
 			log.Default.Debug(ctx, "Skipping deletion, not found resource %q", resource.HumanID())
 			return nil
@@ -261,12 +270,16 @@ type KubeClientApplyOptions struct {
 	DryRun bool
 }
 
+type KubeClientDeleteOptions struct {
+	PropagationPolicy *metav1.DeletionPropagation
+}
+
 type KubeClienter interface {
 	Get(ctx context.Context, resource *resrcid.ResourceID, opts KubeClientGetOptions) (*unstructured.Unstructured, error)
 	Create(ctx context.Context, resource *resrcid.ResourceID, unstruct *unstructured.Unstructured, opts KubeClientCreateOptions) (*unstructured.Unstructured, error)
 	Apply(ctx context.Context, resource *resrcid.ResourceID, unstruct *unstructured.Unstructured, opts KubeClientApplyOptions) (*unstructured.Unstructured, error)
 	MergePatch(ctx context.Context, resource *resrcid.ResourceID, patch []byte) (*unstructured.Unstructured, error)
-	Delete(ctx context.Context, resource *resrcid.ResourceID) error
+	Delete(ctx context.Context, resource *resrcid.ResourceID, opts KubeClientDeleteOptions) error
 }
 
 type clusterCacheEntry struct {
