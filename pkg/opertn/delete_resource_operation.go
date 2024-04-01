@@ -37,7 +37,7 @@ type DeleteResourceOperation struct {
 }
 
 func (o *DeleteResourceOperation) Execute(ctx context.Context) error {
-	if err := o.kubeClient.Delete(ctx, o.resource); err != nil {
+	if err := o.kubeClient.Delete(ctx, o.resource, kubeclnt.KubeClientDeleteOptions{}); err != nil {
 		o.status = StatusFailed
 		return fmt.Errorf("error deleting resource: %w", err)
 	}
