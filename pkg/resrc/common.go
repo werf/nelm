@@ -814,7 +814,7 @@ func adoptableBy(unstruct *unstructured.Unstructured, releaseName, releaseNamesp
 			nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation "%s=%s" must have value %q`, key, value, releaseName))
 		}
 	} else {
-		nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation %q not found, must be set to %q`, annotationKeyHumanReleaseName, value))
+		nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation %q not found, must be set to %q`, annotationKeyHumanReleaseName, releaseName))
 	}
 
 	if key, value, found := FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternReleaseNamespace); found {
@@ -822,7 +822,7 @@ func adoptableBy(unstruct *unstructured.Unstructured, releaseName, releaseNamesp
 			nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation "%s=%s" must have value %q`, key, value, releaseNamespace))
 		}
 	} else {
-		nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation %q not found, must be set to %q`, annotationKeyHumanReleaseNamespace, value))
+		nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation %q not found, must be set to %q`, annotationKeyHumanReleaseNamespace, releaseNamespace))
 	}
 
 	nonAdoptableReason = strings.Join(nonAdoptableReasons, ", ")
