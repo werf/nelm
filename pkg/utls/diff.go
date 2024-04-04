@@ -78,6 +78,7 @@ func ResourcesReallyDiffer(first, second *unstructured.Unstructured) (differ boo
 			!strings.HasPrefix(op.Path, "/status") &&
 			!lo.Must(regexp.MatchString(`^/metadata/managedFields/[0-9]+/time$`, op.Path)) &&
 			!lo.Must(regexp.MatchString(`^/metadata/annotations/.*werf.io.*`, op.Path)) &&
+			!lo.Must(regexp.MatchString(`^/metadata/annotations/helm.sh~1hook.*`, op.Path)) &&
 			!lo.Must(regexp.MatchString(`^/metadata/labels/.*werf.io.*`, op.Path))
 	})
 
