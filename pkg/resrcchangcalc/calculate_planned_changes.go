@@ -356,7 +356,8 @@ func diffableResource(unstruct *unstructured.Unstructured) string {
 		cleanedAnnotations := make(map[string]string)
 
 		for key, val := range annotations {
-			if strings.Contains(key, "werf.io") {
+			if strings.Contains(key, "werf.io") ||
+				strings.Contains(key, "helm.sh") {
 				continue
 			}
 			cleanedAnnotations[key] = val

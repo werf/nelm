@@ -2,6 +2,7 @@ package resrcchanglog
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/gookit/color"
 
@@ -13,6 +14,7 @@ func LogPlannedChanges(
 	ctx context.Context,
 	releaseName string,
 	releaseNamespace string,
+	releaseChangesPlanned bool,
 	createdChanges []*resrcchangcalc.CreatedResourceChange,
 	recreatedChanges []*resrcchangcalc.RecreatedResourceChange,
 	updatedChanges []*resrcchangcalc.UpdatedResourceChange,
@@ -22,7 +24,12 @@ func LogPlannedChanges(
 	totalChangesLen := len(createdChanges) + len(recreatedChanges) + len(updatedChanges) + len(appliedChanges) + len(deletedChanges)
 
 	if totalChangesLen == 0 {
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("No changes planned")+" for release %q (namespace: %q)", releaseName, releaseNamespace)
+		if releaseChangesPlanned {
+			log.Default.Info(ctx, color.Style{color.Bold, color.Yellow}.Render(fmt.Sprintf("No changes planned, but will create release %q (namespace: %q)", releaseName, releaseNamespace)))
+		} else {
+			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("No changes planned for release %q (namespace: %q)", releaseName, releaseNamespace)))
+		}
+
 		return
 	}
 
