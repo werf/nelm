@@ -20,6 +20,7 @@ const HiddenInsignificantChanges = "<hidden insignificant changes>"
 const HiddenSensitiveOutput = "<hidden sensitive output>"
 
 func CalculatePlannedChanges(
+	releaseName string,
 	releaseNamespaceInfo *resrcinfo.DeployableReleaseNamespaceInfo,
 	standaloneCRDsInfos []*resrcinfo.DeployableStandaloneCRDInfo,
 	hookResourcesInfos []*resrcinfo.DeployableHookResourceInfo,
@@ -46,15 +47,15 @@ func CalculatePlannedChanges(
 		allChanges = append(allChanges, changes...)
 	}
 
-	if changes, present := hookResourcesChanges(hookResourcesInfos, prevRelFailed); present {
+	if changes, present := hookResourcesChanges(hookResourcesInfos, prevRelFailed, releaseName, releaseNamespaceInfo.Name()); present {
 		allChanges = append(allChanges, changes...)
 	}
 
-	if changes, present := generalResourcesChanges(generalResourcesInfos, prevRelFailed); present {
+	if changes, present := generalResourcesChanges(generalResourcesInfos, prevRelFailed, releaseName, releaseNamespaceInfo.Name()); present {
 		allChanges = append(allChanges, changes...)
 	}
 
-	if changes, present := prevReleaseGeneralResourcesChanges(prevReleaseGeneralResourceInfos, curReleaseExistResourcesUIDs); present {
+	if changes, present := prevReleaseGeneralResourcesChanges(prevReleaseGeneralResourceInfos, curReleaseExistResourcesUIDs, releaseName, releaseNamespaceInfo.Name()); present {
 		allChanges = append(allChanges, changes...)
 	}
 
@@ -152,7 +153,7 @@ func standaloneCRDChanges(infos []*resrcinfo.DeployableStandaloneCRDInfo) (chang
 	return changes, len(changes) > 0
 }
 
-func hookResourcesChanges(infos []*resrcinfo.DeployableHookResourceInfo, prevRelFailed bool) (changes []any, present bool) {
+func hookResourcesChanges(infos []*resrcinfo.DeployableHookResourceInfo, prevRelFailed bool, releaseName, releaseNamespace string) (changes []any, present bool) {
 	for _, info := range infos {
 		isCrd := resrc.IsCRDFromGK(info.ResourceID.GroupVersionKind().GroupKind())
 		isSecret := resrc.IsSecret(info.ResourceID.GroupVersionKind().GroupKind())
@@ -160,8 +161,8 @@ func hookResourcesChanges(infos []*resrcinfo.DeployableHookResourceInfo, prevRel
 		recreate := info.ShouldRecreate()
 		update := info.ShouldUpdate()
 		apply := info.ShouldApply()
-		cleanup := info.ShouldCleanup()
-		cleanupOnFailure := info.ShouldCleanupOnFailed(prevRelFailed)
+		cleanup := info.ShouldCleanup(releaseName, releaseNamespace)
+		cleanupOnFailure := info.ShouldCleanupOnFailed(prevRelFailed, releaseName, releaseNamespace)
 
 		if create {
 			var uDiff string
@@ -235,7 +236,7 @@ func hookResourcesChanges(infos []*resrcinfo.DeployableHookResourceInfo, prevRel
 	return changes, len(changes) > 0
 }
 
-func generalResourcesChanges(infos []*resrcinfo.DeployableGeneralResourceInfo, prevRelFailed bool) (changes []any, present bool) {
+func generalResourcesChanges(infos []*resrcinfo.DeployableGeneralResourceInfo, prevRelFailed bool, releaseName, releaseNamespace string) (changes []any, present bool) {
 	for _, info := range infos {
 		isCrd := resrc.IsCRDFromGK(info.ResourceID.GroupVersionKind().GroupKind())
 		isSecret := resrc.IsSecret(info.ResourceID.GroupVersionKind().GroupKind())
@@ -243,8 +244,8 @@ func generalResourcesChanges(infos []*resrcinfo.DeployableGeneralResourceInfo, p
 		recreate := info.ShouldRecreate()
 		update := info.ShouldUpdate()
 		apply := info.ShouldApply()
-		cleanup := info.ShouldCleanup()
-		cleanupOnFailure := info.ShouldCleanupOnFailed(prevRelFailed)
+		cleanup := info.ShouldCleanup(releaseName, releaseNamespace)
+		cleanupOnFailure := info.ShouldCleanupOnFailed(prevRelFailed, releaseName, releaseNamespace)
 
 		if create {
 			var uDiff string
@@ -318,11 +319,11 @@ func generalResourcesChanges(infos []*resrcinfo.DeployableGeneralResourceInfo, p
 	return changes, len(changes) > 0
 }
 
-func prevReleaseGeneralResourcesChanges(infos []*resrcinfo.DeployablePrevReleaseGeneralResourceInfo, curReleaseExistResourcesUIDs []types.UID) (changes []any, present bool) {
+func prevReleaseGeneralResourcesChanges(infos []*resrcinfo.DeployablePrevReleaseGeneralResourceInfo, curReleaseExistResourcesUIDs []types.UID, releaseName, releaseNamespace string) (changes []any, present bool) {
 	for _, info := range infos {
 		isCrd := resrc.IsCRDFromGK(info.ResourceID.GroupVersionKind().GroupKind())
 		isSecret := resrc.IsSecret(info.ResourceID.GroupVersionKind().GroupKind())
-		delete := info.ShouldDelete(curReleaseExistResourcesUIDs)
+		delete := info.ShouldDelete(curReleaseExistResourcesUIDs, releaseName, releaseNamespace)
 
 		if delete {
 			var uDiff string

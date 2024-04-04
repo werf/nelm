@@ -429,7 +429,7 @@ func (b *DeployPlanBuilder) setupGeneralResourcesOperations() error {
 
 func (b *DeployPlanBuilder) setupPrevReleaseGeneralResourcesOperations() error {
 	for _, info := range b.prevReleaseGeneralResourceInfos {
-		delete := info.ShouldDelete(b.curReleaseExistingResourcesUIDs)
+		delete := info.ShouldDelete(b.curReleaseExistingResourcesUIDs, b.newRelease.Name(), b.releaseNamespaceInfo.Name())
 
 		if delete {
 			opDelete := opertn.NewDeleteResourceOperation(
@@ -693,7 +693,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 		recreate := info.ShouldRecreate()
 		update := info.ShouldUpdate()
 		apply := info.ShouldApply()
-		cleanup := info.ShouldCleanup()
+		cleanup := info.ShouldCleanup(b.newRelease.Name(), b.releaseNamespaceInfo.Name())
 		var trackReadiness bool
 		if track := info.ShouldTrackReadiness(prevReleaseFailed); track && !extraPost {
 			if _, manIntDepsSet := info.Resource().ManualInternalDependencies(); !manIntDepsSet {
@@ -926,7 +926,7 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*resrcinfo.Deployable
 		recreate := info.ShouldRecreate()
 		update := info.ShouldUpdate()
 		apply := info.ShouldApply()
-		cleanup := info.ShouldCleanup()
+		cleanup := info.ShouldCleanup(b.newRelease.Name(), b.releaseNamespaceInfo.Name())
 		var trackReadiness bool
 		if track := info.ShouldTrackReadiness(prevReleaseFailed); track {
 			if _, manIntDepsSet := info.Resource().ManualInternalDependencies(); !manIntDepsSet {

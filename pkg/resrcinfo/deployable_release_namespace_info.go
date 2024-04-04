@@ -109,6 +109,6 @@ func (i *DeployableReleaseNamespaceInfo) ShouldApply() bool {
 	return i.exists && i.upToDate == UpToDateStatusUnknown
 }
 
-func (i *DeployableReleaseNamespaceInfo) ShouldKeepOnDelete() bool {
-	return i.exists && i.getResource.KeepOnDelete()
+func (i *DeployableReleaseNamespaceInfo) ShouldKeepOnDelete(releaseName string, releaseNamespace string) bool {
+	return i.exists && i.getResource.KeepOnDelete(releaseName, releaseNamespace)
 }

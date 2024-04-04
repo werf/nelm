@@ -24,6 +24,7 @@ import (
 func NewDeployFailurePlanBuilder(
 	deployPlan *pln.Plan,
 	taskStore *statestore.TaskStore,
+	releaseNamespaceInfo *resrcinfo.DeployableReleaseNamespaceInfo,
 	hookResourcesInfos []*resrcinfo.DeployableHookResourceInfo,
 	generalResourceInfos []*resrcinfo.DeployableGeneralResourceInfo,
 	newRelease *rls.Release,
@@ -41,6 +42,7 @@ func NewDeployFailurePlanBuilder(
 
 	return &DeployFailurePlanBuilder{
 		taskStore:               taskStore,
+		releaseNamespaceInfo:    releaseNamespaceInfo,
 		hookResourceInfos:       hookResourcesInfos,
 		prePostHookResourcesIDs: prePostHookResourcesIDs,
 		generalResourceInfos:    generalResourceInfos,
@@ -63,6 +65,7 @@ type DeployFailurePlanBuilderOptions struct {
 
 type DeployFailurePlanBuilder struct {
 	taskStore               *statestore.TaskStore
+	releaseNamespaceInfo    *resrcinfo.DeployableReleaseNamespaceInfo
 	hookResourceInfos       []*resrcinfo.DeployableHookResourceInfo
 	prePostHookResourcesIDs []*resrcid.ResourceID
 	generalResourceInfos    []*resrcinfo.DeployableGeneralResourceInfo
@@ -91,7 +94,7 @@ func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*pln.Plan, error)
 	})
 
 	for _, info := range hookInfos {
-		if !info.ShouldCleanupOnFailed(prevReleaseFailed) || resrc.IsCRDFromGK(info.Resource().GroupVersionKind().GroupKind()) {
+		if !info.ShouldCleanupOnFailed(prevReleaseFailed, b.newRelease.Name(), b.releaseNamespaceInfo.Name()) || resrc.IsCRDFromGK(info.Resource().GroupVersionKind().GroupKind()) {
 			continue
 		}
 
@@ -136,7 +139,7 @@ func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*pln.Plan, error)
 
 	// TODO(ilya-lesikov): same as with hooks, refactor
 	for _, info := range b.generalResourceInfos {
-		if !info.ShouldCleanupOnFailed(prevReleaseFailed) || resrc.IsCRDFromGK(info.Resource().GroupVersionKind().GroupKind()) {
+		if !info.ShouldCleanupOnFailed(prevReleaseFailed, b.newRelease.Name(), b.releaseNamespaceInfo.Name()) || resrc.IsCRDFromGK(info.Resource().GroupVersionKind().GroupKind()) {
 			continue
 		}
 
