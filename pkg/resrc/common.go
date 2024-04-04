@@ -190,11 +190,7 @@ func validateDeletePolicy(unstruct *unstructured.Unstructured) error {
 	annotations := unstruct.GetAnnotations()
 
 	if IsHook(annotations) {
-		if key, value, found := FindAnnotationOrLabelByKeyPattern(annotations, annotationKeyPatternHookDeletePolicy); found {
-			if value == "" {
-				return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
-			}
-
+		if key, value, found := FindAnnotationOrLabelByKeyPattern(annotations, annotationKeyPatternHookDeletePolicy); found && value != "" {
 			for _, hookDeletePolicy := range strings.Split(value, ",") {
 				hookDeletePolicy = strings.TrimSpace(hookDeletePolicy)
 				if hookDeletePolicy == "" {
@@ -212,11 +208,7 @@ func validateDeletePolicy(unstruct *unstructured.Unstructured) error {
 		}
 	}
 
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(annotations, annotationKeyPatternDeletePolicy); found {
-		if value == "" {
-			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
-		}
-
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(annotations, annotationKeyPatternDeletePolicy); found && value != "" {
 		for _, deletePolicy := range strings.Split(value, ",") {
 			deletePolicy = strings.TrimSpace(deletePolicy)
 			if deletePolicy == "" {
