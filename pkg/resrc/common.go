@@ -615,6 +615,22 @@ func keepOnDelete(unstruct *unstructured.Unstructured) bool {
 	return value == "keep"
 }
 
+func orphaned(unstruct *unstructured.Unstructured, releaseName, releaseNamespace string) bool {
+	if _, value, found := FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternReleaseName); !found || value != releaseName {
+		return true
+	}
+
+	if _, value, found := FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternReleaseNamespace); !found || value != releaseNamespace {
+		return true
+	}
+
+	if _, value, found := FindAnnotationOrLabelByKeyPattern(unstruct.GetLabels(), labelKeyPatternManagedBy); !found || value != "Helm" {
+		return true
+	}
+
+	return false
+}
+
 func recreate(unstruct *unstructured.Unstructured) bool {
 	deletePolicies := deletePolicies(unstruct.GetAnnotations())
 
