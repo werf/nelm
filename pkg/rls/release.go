@@ -227,3 +227,7 @@ func (r *Release) Pend(deployType common.DeployType) {
 	}
 	r.lastDeployed = now
 }
+
+func (r *Release) Skip() {
+	r.status = release.StatusSkipped
+}
