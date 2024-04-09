@@ -998,19 +998,22 @@ func weight(unstruct *unstructured.Unstructured) int {
 func deletePolicies(annotations map[string]string) []common.DeletePolicy {
 	var deletePolicies []common.DeletePolicy
 	if IsHook(annotations) {
-		hookDeletePoliciesValues, hookDeletePoliciesFound := FindAnnotationsOrLabelsByKeyPattern(annotations, annotationKeyPatternHookDeletePolicy)
+		_, hookDeletePolicies, hookDeletePoliciesFound := FindAnnotationOrLabelByKeyPattern(annotations, annotationKeyPatternHookDeletePolicy)
 
-		generalDeletePoliciesValues, generalDeletePoliciesFound := FindAnnotationsOrLabelsByKeyPattern(annotations, annotationKeyPatternDeletePolicy)
+		_, generalDeletePolicies, generalDeletePoliciesFound := FindAnnotationOrLabelByKeyPattern(annotations, annotationKeyPatternDeletePolicy)
 
 		if !hookDeletePoliciesFound && !generalDeletePoliciesFound {
 			deletePolicies = append(deletePolicies, common.DeletePolicyBeforeCreation)
 		} else if generalDeletePoliciesFound {
-			for _, generalDeletePolicyValue := range generalDeletePoliciesValues {
-				deletePolicies = append(deletePolicies, common.DeletePolicy(generalDeletePolicyValue))
+			for _, deletePolicy := range strings.Split(generalDeletePolicies, ",") {
+				deletePolicy = strings.TrimSpace(deletePolicy)
+				deletePolicies = append(deletePolicies, common.DeletePolicy(deletePolicy))
 			}
 		} else {
-			for _, hookDeletePolicyValue := range hookDeletePoliciesValues {
-				switch hookDeletePolicyValue {
+			for _, deletePolicy := range strings.Split(hookDeletePolicies, ",") {
+				deletePolicy = strings.TrimSpace(deletePolicy)
+
+				switch deletePolicy {
 				case string(release.HookSucceeded):
 					deletePolicies = append(deletePolicies, common.DeletePolicySucceeded)
 				case string(release.HookFailed):
@@ -1021,10 +1024,10 @@ func deletePolicies(annotations map[string]string) []common.DeletePolicy {
 			}
 		}
 	} else {
-		deletePoliciesValues, deletePoliciesFound := FindAnnotationsOrLabelsByKeyPattern(annotations, annotationKeyPatternDeletePolicy)
-		if deletePoliciesFound {
-			for _, deletePolicyValue := range deletePoliciesValues {
-				deletePolicies = append(deletePolicies, common.DeletePolicy(deletePolicyValue))
+		if _, generalDeletePolicies, found := FindAnnotationOrLabelByKeyPattern(annotations, annotationKeyPatternDeletePolicy); found {
+			for _, deletePolicy := range strings.Split(generalDeletePolicies, ",") {
+				deletePolicy = strings.TrimSpace(deletePolicy)
+				deletePolicies = append(deletePolicies, common.DeletePolicy(deletePolicy))
 			}
 		}
 	}
