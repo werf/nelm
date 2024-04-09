@@ -616,6 +616,11 @@ func keepOnDelete(unstruct *unstructured.Unstructured) bool {
 }
 
 func orphaned(unstruct *unstructured.Unstructured, releaseName, releaseNamespace string) bool {
+	if IsHook(unstruct.GetAnnotations()) ||
+		(unstruct.GetKind() == "Namespace" && unstruct.GetName() == releaseNamespace) {
+		return false
+	}
+
 	if _, value, found := FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternReleaseName); !found || value != releaseName {
 		return true
 	}
