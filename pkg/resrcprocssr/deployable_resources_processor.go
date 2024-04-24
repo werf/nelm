@@ -29,9 +29,6 @@ func NewDeployableResourcesProcessor(
 	hookResources []*resrc.HookResource,
 	generalResources []*resrc.GeneralResource,
 	prevReleaseGeneralResources []*resrc.GeneralResource,
-	kubeClient kubeclnt.KubeClienter,
-	mapper meta.ResettableRESTMapper,
-	discoveryClient discovery.CachedDiscoveryInterface,
 	opts DeployableResourcesProcessorOptions,
 ) *DeployableResourcesProcessor {
 	listsTransformer := resrctransfrmr.NewResourceListsTransformer()
@@ -51,9 +48,10 @@ func NewDeployableResourcesProcessor(
 		hookResources:                     hookResources,
 		generalResources:                  generalResources,
 		prevRelGeneralResources:           prevReleaseGeneralResources,
-		kubeClient:                        kubeClient,
-		mapper:                            mapper,
-		discoveryClient:                   discoveryClient,
+		kubeClient:                        opts.KubeClient,
+		mapper:                            opts.Mapper,
+		discoveryClient:                   opts.DiscoveryClient,
+		allowClusterAccess:                opts.AllowClusterAccess,
 		networkParallelism:                lo.Max([]int{opts.NetworkParallelism, 1}),
 		hookResourceTransformers:          hookResourceTransformers,
 		generalResourceTransformers:       generalResourceTransformers,
@@ -74,6 +72,10 @@ type DeployableResourcesProcessorOptions struct {
 	DeployableStandaloneCRDsPatchers  []resrcpatcher.ResourcePatcher
 	DeployableHookResourcePatchers    []resrcpatcher.ResourcePatcher
 	DeployableGeneralResourcePatchers []resrcpatcher.ResourcePatcher
+	KubeClient                        kubeclnt.KubeClienter
+	Mapper                            meta.ResettableRESTMapper
+	DiscoveryClient                   discovery.CachedDiscoveryInterface
+	AllowClusterAccess                bool
 }
 
 type DeployableResourcesProcessor struct {
@@ -88,6 +90,7 @@ type DeployableResourcesProcessor struct {
 	mapper                  meta.ResettableRESTMapper
 	discoveryClient         discovery.CachedDiscoveryInterface
 	networkParallelism      int
+	allowClusterAccess      bool
 
 	hookResourceTransformers    []resrctransfrmr.ResourceTransformer
 	generalResourceTransformers []resrctransfrmr.ResourceTransformer
@@ -173,14 +176,16 @@ func (p *DeployableResourcesProcessor) Process(ctx context.Context) error {
 		return fmt.Errorf("error validating deployable resources: %w", err)
 	}
 
-	log.Default.Debug(ctx, "Building deployable resource infos")
-	if err := p.buildDeployableResourceInfos(ctx); err != nil {
-		return fmt.Errorf("error building deployable resource infos: %w", err)
-	}
+	if p.allowClusterAccess {
+		log.Default.Debug(ctx, "Building deployable resource infos")
+		if err := p.buildDeployableResourceInfos(ctx); err != nil {
+			return fmt.Errorf("error building deployable resource infos: %w", err)
+		}
 
-	log.Default.Debug(ctx, "Validating adoptable resources")
-	if err := p.validateAdoptableResources(); err != nil {
-		return fmt.Errorf("error validating adoptable resources: %w", err)
+		log.Default.Debug(ctx, "Validating adoptable resources")
+		if err := p.validateAdoptableResources(); err != nil {
+			return fmt.Errorf("error validating adoptable resources: %w", err)
+		}
 	}
 
 	return nil
