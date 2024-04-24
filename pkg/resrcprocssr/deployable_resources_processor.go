@@ -219,6 +219,18 @@ func (p *DeployableResourcesProcessor) DeployablePrevReleaseGeneralResourcesInfo
 	return p.deployablePrevRelGeneralResourcesInfos
 }
 
+func (p *DeployableResourcesProcessor) DeployableStandaloneCRDs() []*resrc.StandaloneCRD {
+	return p.deployableStandaloneCRDs
+}
+
+func (p *DeployableResourcesProcessor) DeployableHookResources() []*resrc.HookResource {
+	return p.deployableHookResources
+}
+
+func (p *DeployableResourcesProcessor) DeployableGeneralResources() []*resrc.GeneralResource {
+	return p.deployableGeneralResources
+}
+
 func (p *DeployableResourcesProcessor) transformHookResources(ctx context.Context) error {
 	for _, resTransformer := range p.hookResourceTransformers {
 		var transformedResources []*resrc.HookResource
