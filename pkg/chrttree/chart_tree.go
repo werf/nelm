@@ -120,6 +120,7 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 				DefaultNamespace: releaseNamespace,
 				Mapper:           opts.Mapper,
 				DiscoveryClient:  opts.DiscoveryClient,
+				FilePath:         hook.Path,
 			}); err != nil {
 				return nil, fmt.Errorf("error constructing hook resource for chart at %q: %w", chartPath, err)
 			} else {
