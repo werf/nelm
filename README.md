@@ -12,7 +12,7 @@
 
 ## Getting started with Nelm via werf
 
-1. Download [werf](https://github.com/werf/werf/releases/latest)
+1. Download [werf v2](https://github.com/werf/werf/releases)
 2. Create new project:
 ```bash
 git init myproject
