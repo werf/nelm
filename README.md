@@ -46,15 +46,11 @@ werf helm dependency update .helm
 git add .
 git commit -m init
 ```
-3. _(for werf 1.2.295 or older)_ Enable Nelm in werf:
-```bash
-export WERF_NELM=1
-```
-4. Check what's going to happen on next release:
+3. Check what's going to happen on next release:
 ```bash
 werf plan --env dev
 ```
-5. Deploy new release:
+4. Deploy new release:
 ```bash
 werf converge --env dev
 ```
