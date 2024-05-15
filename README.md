@@ -54,7 +54,7 @@ werf plan --env dev
 ```bash
 werf converge --env dev
 ```
-5. Proceed to [werf documentation](https://werf.io/documentation/v1.2/usage/deploy/overview.html) to learn more.
+5. Proceed to [werf documentation](https://werf.io/docs/v2/usage/deploy/overview.html) to learn more.
 
 ## Getting started with standalone Nelm
 
