@@ -3,6 +3,7 @@ package resrcprocssr
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/samber/lo"
@@ -361,6 +362,10 @@ func (p *DeployableResourcesProcessor) buildReleasableHookResources(ctx context.
 		patchedResources = append(patchedResources, patchedRes)
 	}
 
+	sort.SliceStable(patchedResources, func(i, j int) bool {
+		return resrcid.ResourceIDsSortHandler(patchedResources[i].ResourceID, patchedResources[j].ResourceID)
+	})
+
 	p.releasableHookResources = patchedResources
 
 	return nil
@@ -412,6 +417,10 @@ func (p *DeployableResourcesProcessor) buildReleasableGeneralResources(ctx conte
 		patchedResources = append(patchedResources, patchedRes)
 	}
 
+	sort.SliceStable(patchedResources, func(i, j int) bool {
+		return resrcid.ResourceIDsSortHandler(patchedResources[i].ResourceID, patchedResources[j].ResourceID)
+	})
+
 	p.releasableGeneralResources = patchedResources
 
 	return nil
@@ -462,6 +471,10 @@ func (p *DeployableResourcesProcessor) buildDeployableStandaloneCRDs(ctx context
 
 		patchedResources = append(patchedResources, patchedRes)
 	}
+
+	sort.SliceStable(patchedResources, func(i, j int) bool {
+		return resrcid.ResourceIDsSortHandler(patchedResources[i].ResourceID, patchedResources[j].ResourceID)
+	})
 
 	p.deployableStandaloneCRDs = patchedResources
 
@@ -527,6 +540,10 @@ func (p *DeployableResourcesProcessor) buildDeployableHookResources(ctx context.
 		patchedResources = append(patchedResources, patchedRes)
 	}
 
+	sort.SliceStable(patchedResources, func(i, j int) bool {
+		return resrcid.ResourceIDsSortHandler(patchedResources[i].ResourceID, patchedResources[j].ResourceID)
+	})
+
 	p.deployableHookResources = patchedResources
 
 	return nil
@@ -577,6 +594,10 @@ func (p *DeployableResourcesProcessor) buildDeployableGeneralResources(ctx conte
 
 		patchedResources = append(patchedResources, patchedRes)
 	}
+
+	sort.SliceStable(patchedResources, func(i, j int) bool {
+		return resrcid.ResourceIDsSortHandler(patchedResources[i].ResourceID, patchedResources[j].ResourceID)
+	})
 
 	p.deployableGeneralResources = patchedResources
 

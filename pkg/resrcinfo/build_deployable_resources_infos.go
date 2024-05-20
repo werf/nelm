@@ -3,6 +3,7 @@ package resrcinfo
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/samber/lo"
 	"github.com/sourcegraph/conc/pool"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/werf/nelm/pkg/kubeclnt"
 	"github.com/werf/nelm/pkg/resrc"
+	"github.com/werf/nelm/pkg/resrcid"
 )
 
 func BuildDeployableResourceInfos(
@@ -109,6 +111,22 @@ func BuildDeployableResourceInfos(
 	if err != nil {
 		return nil, nil, nil, nil, nil, fmt.Errorf("error waiting for general resources pool: %w", err)
 	}
+
+	sort.SliceStable(standaloneCRDsInfos, func(i, j int) bool {
+		return resrcid.ResourceIDsSortHandler(standaloneCRDsInfos[i].ResourceID, standaloneCRDsInfos[j].ResourceID)
+	})
+
+	sort.SliceStable(hookResourcesInfos, func(i, j int) bool {
+		return resrcid.ResourceIDsSortHandler(hookResourcesInfos[i].ResourceID, hookResourcesInfos[j].ResourceID)
+	})
+
+	sort.SliceStable(generalResourcesInfos, func(i, j int) bool {
+		return resrcid.ResourceIDsSortHandler(generalResourcesInfos[i].ResourceID, generalResourcesInfos[j].ResourceID)
+	})
+
+	sort.SliceStable(prevReleaseGeneralResourceInfos, func(i, j int) bool {
+		return resrcid.ResourceIDsSortHandler(prevReleaseGeneralResourceInfos[i].ResourceID, prevReleaseGeneralResourceInfos[j].ResourceID)
+	})
 
 	return releaseNamespaceInfo, standaloneCRDsInfos, hookResourcesInfos, generalResourcesInfos, prevReleaseGeneralResourceInfos, nil
 }

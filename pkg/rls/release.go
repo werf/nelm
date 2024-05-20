@@ -2,6 +2,7 @@ package rls
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -15,12 +16,21 @@ import (
 
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/resrc"
+	"github.com/werf/nelm/pkg/resrcid"
 )
 
 func NewRelease(name, namespace string, revision int, values map[string]interface{}, legacyChart *chart.Chart, hookResources []*resrc.HookResource, generalResources []*resrc.GeneralResource, notes string, opts ReleaseOptions) (*Release, error) {
 	if err := chartutil.ValidateReleaseName(name); err != nil {
 		return nil, fmt.Errorf("release name %q is not valid: %w", name, err)
 	}
+
+	sort.SliceStable(hookResources, func(i, j int) bool {
+		return resrcid.ResourceIDsSortHandler(hookResources[i].ResourceID, hookResources[j].ResourceID)
+	})
+
+	sort.SliceStable(generalResources, func(i, j int) bool {
+		return resrcid.ResourceIDsSortHandler(generalResources[i].ResourceID, generalResources[j].ResourceID)
+	})
 
 	var status release.Status
 	if opts.Status == "" {
