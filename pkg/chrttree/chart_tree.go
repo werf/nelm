@@ -3,6 +3,7 @@ package chrttree
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/resrc"
+	"github.com/werf/nelm/pkg/resrcid"
 )
 
 func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, actionConfig *action.Configuration, opts ChartTreeOptions) (*ChartTree, error) {
@@ -113,6 +115,10 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		}
 	}
 
+	sort.SliceStable(standaloneCRDs, func(i, j int) bool {
+		return resrcid.ResourceIDsSortHandler(standaloneCRDs[i].ResourceID, standaloneCRDs[j].ResourceID)
+	})
+
 	var hookResources []*resrc.HookResource
 	for _, hook := range legacyHookResources {
 		for _, manifest := range releaseutil.SplitManifests(hook.Manifest) {
@@ -129,6 +135,10 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		}
 	}
 
+	sort.SliceStable(hookResources, func(i, j int) bool {
+		return resrcid.ResourceIDsSortHandler(hookResources[i].ResourceID, hookResources[j].ResourceID)
+	})
+
 	var generalResources []*resrc.GeneralResource
 	for _, manifest := range releaseutil.SplitManifests(generalManifestsBuf.String()) {
 		if res, err := resrc.NewGeneralResourceFromManifest(manifest, resrc.GeneralResourceFromManifestOptions{
@@ -141,6 +151,10 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 			generalResources = append(generalResources, res)
 		}
 	}
+
+	sort.SliceStable(generalResources, func(i, j int) bool {
+		return resrcid.ResourceIDsSortHandler(generalResources[i].ResourceID, generalResources[j].ResourceID)
+	})
 
 	return &ChartTree{
 		standaloneCRDs:   standaloneCRDs,
