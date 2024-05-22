@@ -109,6 +109,10 @@ func (r *HookResource) Validate() error {
 		return fmt.Errorf("error validating weight for resource %q: %w", r.HumanID(), err)
 	}
 
+	if err := validateDeployDependencies(r.unstruct); err != nil {
+		return fmt.Errorf("error validating deploy dependencies for resource %q: %w", r.HumanID(), err)
+	}
+
 	if err := validateInternalDependencies(r.unstruct); err != nil {
 		return fmt.Errorf("error validating internal dependencies for resource %q: %w", r.HumanID(), err)
 	}
