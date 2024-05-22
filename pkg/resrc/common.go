@@ -98,6 +98,9 @@ var annotationKeyPatternWeight = regexp.MustCompile(`^werf.io/weight$`)
 var annotationKeyHumanHookWeight = "helm.sh/hook-weight"
 var annotationKeyPatternHookWeight = regexp.MustCompile(`^helm.sh/hook-weight$`)
 
+var annotationKeyHumanDeployDependency = "werf.io/deploy-dependency-<name>"
+var annotationKeyPatternDeployDependency = regexp.MustCompile(`^werf.io/deploy-dependency-(?P<id>.+)$`)
+
 var annotationKeyHumanDependency = "<name>.dependency.werf.io"
 var annotationKeyPatternDependency = regexp.MustCompile(`^(?P<id>.+).dependency.werf.io$`)
 
@@ -417,6 +420,78 @@ func validateTrack(unstruct *unstructured.Unstructured) error {
 		case string(multitrack.NonBlocking):
 		default:
 			return fmt.Errorf("invalid unknown value %q for annotation %q", value, key)
+		}
+	}
+
+	return nil
+}
+
+func validateDeployDependencies(unstruct *unstructured.Unstructured) error {
+	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternDeployDependency); found {
+		for key, value := range annotations {
+			keyMatches := annotationKeyPatternDeployDependency.FindStringSubmatch(key)
+			if keyMatches == nil {
+				return fmt.Errorf("invalid key for annotation %q", key)
+			}
+
+			idSubexpIndex := annotationKeyPatternDeployDependency.SubexpIndex("id")
+			if idSubexpIndex == -1 {
+				return fmt.Errorf("invalid regexp pattern %q for annotation %q", annotationKeyPatternDeployDependency.String(), key)
+			}
+
+			if len(keyMatches) < idSubexpIndex+1 {
+				return fmt.Errorf("can't parse deploy dependency id from annotation key %q", key)
+			}
+
+			if value == "" {
+				return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
+			}
+
+			properties, err := utls.ParseProperties(value)
+			if err != nil {
+				return fmt.Errorf("invalid value %q for annotation %q: %w", err)
+			}
+
+			if !lo.Some(lo.Keys(properties), []string{"group", "version", "kind", "name", "namespace"}) {
+				return fmt.Errorf("invalid value %q for annotation %q, target not specified", value, key)
+			}
+
+			if _, found := properties["state"]; !found {
+				return fmt.Errorf(`invalid value %q for annotation %q, "state" property must be set`, value, key)
+			}
+
+			for propKey, propVal := range properties {
+				switch propKey {
+				case "group", "version", "kind", "name", "namespace":
+					switch pv := propVal.(type) {
+					case string:
+						if pv == "" {
+							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
+						}
+					case bool:
+						return fmt.Errorf("invalid boolean value %q for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				case "state":
+					switch pv := propVal.(type) {
+					case string:
+						switch pv {
+						case "present", "ready":
+						case "":
+							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
+						default:
+							return fmt.Errorf("unknown value %q for property %q", pv, propKey)
+						}
+					case bool:
+						return fmt.Errorf("invalid boolean value %q for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				default:
+					return fmt.Errorf("unknown property %q in value of annotation %q", propKey, key)
+				}
+			}
 		}
 	}
 
@@ -1042,6 +1117,7 @@ func deletePolicies(annotations map[string]string) []common.DeletePolicy {
 
 func manualInternalDependencies(unstruct *unstructured.Unstructured, defaultNamespace string) (dependencies []*depnd.InternalDependency, set bool) {
 	deps := map[string]*depnd.InternalDependency{}
+
 	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternDependency); found {
 		for key, value := range annotations {
 			matches := annotationKeyPatternDependency.FindStringSubmatch(key)
@@ -1079,6 +1155,53 @@ func manualInternalDependencies(unstruct *unstructured.Unstructured, defaultName
 				[]string{gvk.Kind},
 				depnd.InternalDependencyOptions{
 					DefaultNamespace: defaultNamespace,
+				},
+			)
+			deps[depID] = dep
+		}
+	}
+
+	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternDeployDependency); found {
+		for key, value := range annotations {
+			matches := annotationKeyPatternDeployDependency.FindStringSubmatch(key)
+			idSubexpIndex := annotationKeyPatternDeployDependency.SubexpIndex("id")
+			depID := matches[idSubexpIndex]
+			properties := lo.Must(utls.ParseProperties(value))
+
+			var depNames []string
+			if depName, found := properties["name"]; found {
+				depNames = []string{depName.(string)}
+			}
+
+			var depNamespaces []string
+			if depNamespace, found := properties["namespace"]; found {
+				depNamespaces = []string{depNamespace.(string)}
+			}
+
+			var depGroups []string
+			if depGroup, found := properties["group"]; found {
+				depGroups = []string{depGroup.(string)}
+			}
+
+			var depVersions []string
+			if depVersion, found := properties["version"]; found {
+				depVersions = []string{depVersion.(string)}
+			}
+
+			var depKinds []string
+			if depKind, found := properties["kind"]; found {
+				depKinds = []string{depKind.(string)}
+			}
+
+			dep := depnd.NewInternalDependency(
+				depNames,
+				depNamespaces,
+				depGroups,
+				depVersions,
+				depKinds,
+				depnd.InternalDependencyOptions{
+					DefaultNamespace: defaultNamespace,
+					ResourceState:    depnd.ResourceState(properties["state"].(string)),
 				},
 			)
 			deps[depID] = dep

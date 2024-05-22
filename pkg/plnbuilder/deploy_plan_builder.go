@@ -524,15 +524,24 @@ func (b *DeployPlanBuilder) connectInternalDependencies() error {
 		manualInternalDeps, _ := info.Resource().ManualInternalDependencies()
 
 		for _, dep := range lo.Union(autoInternalDeps, manualInternalDeps) {
-			opDeployRegex := regexp.MustCompile(fmt.Sprintf(`^(%s|%s|%s|%s)/`, opertn.TypeCreateResourceOperation, opertn.TypeRecreateResourceOperation, opertn.TypeUpdateResourceOperation, opertn.TypeApplyResourceOperation))
-			opsDeploy, found, err := b.plan.OperationsMatch(opDeployRegex)
+			var dependOnOpCandidateRegex *regexp.Regexp
+			switch dep.ResourceState {
+			case depnd.ResourceStatePresent:
+				dependOnOpCandidateRegex = regexp.MustCompile(fmt.Sprintf(`^(%s|%s|%s|%s)/`, opertn.TypeCreateResourceOperation, opertn.TypeRecreateResourceOperation, opertn.TypeUpdateResourceOperation, opertn.TypeApplyResourceOperation))
+			case depnd.ResourceStateReady:
+				dependOnOpCandidateRegex = regexp.MustCompile(fmt.Sprintf(`^%s/`, opertn.TypeTrackResourceReadinessOperation))
+			default:
+				panic(fmt.Sprintf("unexpected resource state %q", dep.ResourceState))
+			}
+
+			dependOnOpCandidates, found, err := b.plan.OperationsMatch(dependOnOpCandidateRegex)
 			if err != nil {
 				return fmt.Errorf("error looking for operations by regex: %w", err)
 			} else if !found {
 				continue
 			}
 
-			opDepDeploy, found := lo.Find(opsDeploy, func(op opertn.Operation) bool {
+			dependOnOp, found := lo.Find(dependOnOpCandidates, func(op opertn.Operation) bool {
 				_, id := lo.Must2(strings.Cut(op.ID(), "/"))
 
 				resID := resrcid.NewResourceIDFromID(id, resrcid.ResourceIDOptions{
@@ -546,7 +555,7 @@ func (b *DeployPlanBuilder) connectInternalDependencies() error {
 				continue
 			}
 
-			if err := b.plan.AddDependency(opDepDeploy.ID(), opDeploy.ID()); err != nil {
+			if err := b.plan.AddDependency(dependOnOp.ID(), opDeploy.ID()); err != nil {
 				return fmt.Errorf("error adding dependency: %w", err)
 			}
 		}
@@ -571,15 +580,24 @@ func (b *DeployPlanBuilder) connectInternalDependencies() error {
 		manualInternalDeps, _ := info.Resource().ManualInternalDependencies()
 
 		for _, dep := range lo.Union(autoInternalDeps, manualInternalDeps) {
-			opDeployRegex := regexp.MustCompile(fmt.Sprintf(`^(%s|%s|%s|%s)/`, opertn.TypeCreateResourceOperation, opertn.TypeRecreateResourceOperation, opertn.TypeUpdateResourceOperation, opertn.TypeApplyResourceOperation))
-			opsDeploy, found, err := b.plan.OperationsMatch(opDeployRegex)
+			var dependOnOpCandidateRegex *regexp.Regexp
+			switch dep.ResourceState {
+			case depnd.ResourceStatePresent:
+				dependOnOpCandidateRegex = regexp.MustCompile(fmt.Sprintf(`^(%s|%s|%s|%s)/`, opertn.TypeCreateResourceOperation, opertn.TypeRecreateResourceOperation, opertn.TypeUpdateResourceOperation, opertn.TypeApplyResourceOperation))
+			case depnd.ResourceStateReady:
+				dependOnOpCandidateRegex = regexp.MustCompile(fmt.Sprintf(`^%s/`, opertn.TypeTrackResourceReadinessOperation))
+			default:
+				panic(fmt.Sprintf("unexpected resource state %q", dep.ResourceState))
+			}
+
+			dependOnOpCandidates, found, err := b.plan.OperationsMatch(dependOnOpCandidateRegex)
 			if err != nil {
 				return fmt.Errorf("error looking for operations by regex: %w", err)
 			} else if !found {
 				continue
 			}
 
-			opDepDeploy, found := lo.Find(opsDeploy, func(op opertn.Operation) bool {
+			dependOnOp, found := lo.Find(dependOnOpCandidates, func(op opertn.Operation) bool {
 				_, id := lo.Must2(strings.Cut(op.ID(), "/"))
 
 				resID := resrcid.NewResourceIDFromID(id, resrcid.ResourceIDOptions{
@@ -593,7 +611,7 @@ func (b *DeployPlanBuilder) connectInternalDependencies() error {
 				continue
 			}
 
-			if err := b.plan.AddDependency(opDepDeploy.ID(), opDeploy.ID()); err != nil {
+			if err := b.plan.AddDependency(dependOnOp.ID(), opDeploy.ID()); err != nil {
 				return fmt.Errorf("error adding dependency: %w", err)
 			}
 		}
@@ -696,10 +714,9 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 		cleanup := info.ShouldCleanup(b.newRelease.Name(), b.releaseNamespaceInfo.Name())
 		var trackReadiness bool
 		if track := info.ShouldTrackReadiness(prevReleaseFailed); track && !extraPost {
-			if _, manIntDepsSet := info.Resource().ManualInternalDependencies(); !manIntDepsSet {
-				trackReadiness = true
-			}
+			trackReadiness = true
 		}
+		_, manIntDepsSet := info.Resource().ManualInternalDependencies()
 		var externalDeps []*depnd.ExternalDependency
 		var extDepsSet bool
 		if !extraPost {
@@ -777,11 +794,19 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 		}
 
 		if opDeploy != nil {
-			b.plan.AddStagedOperation(
-				opDeploy,
-				stageStartOpID,
-				stageEndOpID,
-			)
+			if manIntDepsSet {
+				b.plan.AddStagedOperation(
+					opDeploy,
+					StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,
+					StageOpNamePrefixFinal+"/"+StageOpNameSuffixStart,
+				)
+			} else {
+				b.plan.AddStagedOperation(
+					opDeploy,
+					stageStartOpID,
+					stageEndOpID,
+				)
+			}
 		}
 
 		if extDepsSet && opDeploy != nil {
@@ -805,10 +830,17 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 						Timeout: b.readinessTimeout,
 					},
 				)
-				b.plan.AddInStagedOperation(
-					opTrackReadiness,
-					stageStartOpID,
-				)
+				if manIntDepsSet {
+					b.plan.AddInStagedOperation(
+						opTrackReadiness,
+						StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,
+					)
+				} else {
+					b.plan.AddInStagedOperation(
+						opTrackReadiness,
+						stageStartOpID,
+					)
+				}
 				lo.Must0(b.plan.AddDependency(opTrackReadiness.ID(), opDeploy.ID()))
 			}
 		}
@@ -853,11 +885,19 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 					SaveEvents:                               info.Resource().ShowServiceMessages(),
 				},
 			)
-			b.plan.AddStagedOperation(
-				opTrackReadiness,
-				stageStartOpID,
-				stageEndOpID,
-			)
+			if manIntDepsSet {
+				b.plan.AddStagedOperation(
+					opTrackReadiness,
+					StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,
+					StageOpNamePrefixFinal+"/"+StageOpNameSuffixStart,
+				)
+			} else {
+				b.plan.AddStagedOperation(
+					opTrackReadiness,
+					stageStartOpID,
+					stageEndOpID,
+				)
+			}
 			if opDeploy != nil {
 				lo.Must0(b.plan.AddDependency(opDeploy.ID(), opTrackReadiness.ID()))
 			}
@@ -927,12 +967,8 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*resrcinfo.Deployable
 		update := info.ShouldUpdate()
 		apply := info.ShouldApply()
 		cleanup := info.ShouldCleanup(b.newRelease.Name(), b.releaseNamespaceInfo.Name())
-		var trackReadiness bool
-		if track := info.ShouldTrackReadiness(prevReleaseFailed); track {
-			if _, manIntDepsSet := info.Resource().ManualInternalDependencies(); !manIntDepsSet {
-				trackReadiness = true
-			}
-		}
+		trackReadiness := info.ShouldTrackReadiness(prevReleaseFailed)
+		_, manIntDepsSet := info.Resource().ManualInternalDependencies()
 		externalDeps, extDepsSet, err := info.Resource().ExternalDependencies()
 		if err != nil {
 			return fmt.Errorf("error getting external dependencies: %w", err)
@@ -1001,11 +1037,19 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*resrcinfo.Deployable
 		}
 
 		if opDeploy != nil {
-			b.plan.AddStagedOperation(
-				opDeploy,
-				stageStartOpID,
-				stageEndOpID,
-			)
+			if manIntDepsSet {
+				b.plan.AddStagedOperation(
+					opDeploy,
+					StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,
+					StageOpNamePrefixFinal+"/"+StageOpNameSuffixStart,
+				)
+			} else {
+				b.plan.AddStagedOperation(
+					opDeploy,
+					stageStartOpID,
+					stageEndOpID,
+				)
+			}
 		}
 
 		if extDepsSet && opDeploy != nil {
@@ -1029,10 +1073,17 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*resrcinfo.Deployable
 						Timeout: b.readinessTimeout,
 					},
 				)
-				b.plan.AddInStagedOperation(
-					opTrackReadiness,
-					stageStartOpID,
-				)
+				if manIntDepsSet {
+					b.plan.AddInStagedOperation(
+						opTrackReadiness,
+						StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,
+					)
+				} else {
+					b.plan.AddInStagedOperation(
+						opTrackReadiness,
+						stageStartOpID,
+					)
+				}
 				lo.Must0(b.plan.AddDependency(opTrackReadiness.ID(), opDeploy.ID()))
 			}
 		}
@@ -1077,11 +1128,19 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*resrcinfo.Deployable
 					SaveEvents:                               info.Resource().ShowServiceMessages(),
 				},
 			)
-			b.plan.AddStagedOperation(
-				opTrackReadiness,
-				stageStartOpID,
-				stageEndOpID,
-			)
+			if manIntDepsSet {
+				b.plan.AddStagedOperation(
+					opTrackReadiness,
+					StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,
+					StageOpNamePrefixFinal+"/"+StageOpNameSuffixStart,
+				)
+			} else {
+				b.plan.AddStagedOperation(
+					opTrackReadiness,
+					stageStartOpID,
+					stageEndOpID,
+				)
+			}
 			if opDeploy != nil {
 				lo.Must0(b.plan.AddDependency(opDeploy.ID(), opTrackReadiness.ID()))
 			}
