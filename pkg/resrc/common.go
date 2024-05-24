@@ -1,6 +1,7 @@
 package resrc
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"regexp"
@@ -447,7 +448,7 @@ func validateDeployDependencies(unstruct *unstructured.Unstructured) error {
 				return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
 			}
 
-			properties, err := utls.ParseProperties(value)
+			properties, err := utls.ParseProperties(context.TODO(), value)
 			if err != nil {
 				return fmt.Errorf("invalid value %q for annotation %q: %w", err)
 			}
@@ -1166,7 +1167,7 @@ func manualInternalDependencies(unstruct *unstructured.Unstructured, defaultName
 			matches := annotationKeyPatternDeployDependency.FindStringSubmatch(key)
 			idSubexpIndex := annotationKeyPatternDeployDependency.SubexpIndex("id")
 			depID := matches[idSubexpIndex]
-			properties := lo.Must(utls.ParseProperties(value))
+			properties := lo.Must(utls.ParseProperties(context.TODO(), value))
 
 			var depNames []string
 			if depName, found := properties["name"]; found {
