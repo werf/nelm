@@ -594,8 +594,13 @@ func (d *InternalDependencyDetector) namespace(unstruct *unstructured.Unstructur
 	return v1.NamespaceDefault
 }
 
-func nestedSlice(obj interface{}, fields ...string) (result []interface{}, found bool) {
-	result, found, err := unstructured.NestedSlice(obj.(map[string]interface{}), fields...)
+func nestedSlice(object interface{}, fields ...string) (result []interface{}, found bool) {
+	obj, ok := object.(map[string]interface{})
+	if !ok {
+		return nil, false
+	}
+
+	result, found, err := unstructured.NestedSlice(obj, fields...)
 	if !found || err != nil || len(result) == 0 {
 		return nil, false
 	}
@@ -603,8 +608,13 @@ func nestedSlice(obj interface{}, fields ...string) (result []interface{}, found
 	return result, true
 }
 
-func nestedMap(obj interface{}, fields ...string) (result map[string]interface{}, found bool) {
-	result, found, err := unstructured.NestedMap(obj.(map[string]interface{}), fields...)
+func nestedMap(object interface{}, fields ...string) (result map[string]interface{}, found bool) {
+	obj, ok := object.(map[string]interface{})
+	if !ok {
+		return nil, false
+	}
+
+	result, found, err := unstructured.NestedMap(obj, fields...)
 	if !found || err != nil || len(result) == 0 {
 		return nil, false
 	}
@@ -612,8 +622,13 @@ func nestedMap(obj interface{}, fields ...string) (result map[string]interface{}
 	return result, true
 }
 
-func nestedBool(obj interface{}, fields ...string) (result bool, found bool) {
-	result, found, err := unstructured.NestedBool(obj.(map[string]interface{}), fields...)
+func nestedBool(object interface{}, fields ...string) (result bool, found bool) {
+	obj, ok := object.(map[string]interface{})
+	if !ok {
+		return false, false
+	}
+
+	result, found, err := unstructured.NestedBool(obj, fields...)
 	if !found || err != nil {
 		return false, false
 	}
@@ -621,8 +636,13 @@ func nestedBool(obj interface{}, fields ...string) (result bool, found bool) {
 	return result, true
 }
 
-func nestedString(obj interface{}, fields ...string) (result string, found bool) {
-	result, found, err := unstructured.NestedString(obj.(map[string]interface{}), fields...)
+func nestedString(object interface{}, fields ...string) (result string, found bool) {
+	obj, ok := object.(map[string]interface{})
+	if !ok {
+		return "", false
+	}
+
+	result, found, err := unstructured.NestedString(obj, fields...)
 	if !found || err != nil {
 		return "", false
 	}
@@ -630,8 +650,13 @@ func nestedString(obj interface{}, fields ...string) (result string, found bool)
 	return result, true
 }
 
-func nestedStringNotEmpty(obj interface{}, fields ...string) (result string, found bool) {
-	result, found, err := unstructured.NestedString(obj.(map[string]interface{}), fields...)
+func nestedStringNotEmpty(object interface{}, fields ...string) (result string, found bool) {
+	obj, ok := object.(map[string]interface{})
+	if !ok {
+		return "", false
+	}
+
+	result, found, err := unstructured.NestedString(obj, fields...)
 	if !found || err != nil || result == "" {
 		return "", false
 	}
