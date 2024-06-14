@@ -9,6 +9,7 @@ import (
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 
 	"github.com/werf/nelm/pkg/common"
@@ -25,7 +26,7 @@ import (
 func NewDeployableResourcesProcessor(
 	deployType common.DeployType,
 	releaseName string,
-	releaseNamespace *resrc.ReleaseNamespace,
+	releaseNamespace string,
 	standaloneCRDs []*resrc.StandaloneCRD,
 	hookResources []*resrc.HookResource,
 	generalResources []*resrc.GeneralResource,
@@ -36,7 +37,7 @@ func NewDeployableResourcesProcessor(
 	hookResourceTransformers := append([]resrctransfrmr.ResourceTransformer{listsTransformer}, opts.HookResourceTransformers...)
 	generalResourceTransformers := append([]resrctransfrmr.ResourceTransformer{listsTransformer}, opts.GeneralResourceTransformers...)
 
-	releaseMetadataPatcher := resrcpatcher.NewReleaseMetadataPatcher(releaseName, releaseNamespace.Name())
+	releaseMetadataPatcher := resrcpatcher.NewReleaseMetadataPatcher(releaseName, releaseNamespace)
 	deployableStandaloneCRDsPatchers := append([]resrcpatcher.ResourcePatcher{releaseMetadataPatcher}, opts.DeployableStandaloneCRDsPatchers...)
 	deployableHookResourcePatchers := append([]resrcpatcher.ResourcePatcher{releaseMetadataPatcher}, opts.DeployableHookResourcePatchers...)
 	deployableGeneralResourcePatchers := append([]resrcpatcher.ResourcePatcher{releaseMetadataPatcher}, opts.DeployableGeneralResourcePatchers...)
@@ -82,7 +83,7 @@ type DeployableResourcesProcessorOptions struct {
 type DeployableResourcesProcessor struct {
 	deployType              common.DeployType
 	releaseName             string
-	releaseNamespace        *resrc.ReleaseNamespace
+	releaseNamespace        string
 	standaloneCRDs          []*resrc.StandaloneCRD
 	hookResources           []*resrc.HookResource
 	generalResources        []*resrc.GeneralResource
@@ -106,7 +107,6 @@ type DeployableResourcesProcessor struct {
 	releasableHookResources    []*resrc.HookResource
 	releasableGeneralResources []*resrc.GeneralResource
 
-	deployableReleaseNamespace *resrc.ReleaseNamespace
 	deployableStandaloneCRDs   []*resrc.StandaloneCRD
 	deployableHookResources    []*resrc.HookResource
 	deployableGeneralResources []*resrc.GeneralResource
@@ -160,8 +160,6 @@ func (p *DeployableResourcesProcessor) Process(ctx context.Context) error {
 		return fmt.Errorf("error building deployable standalone crds: %w", err)
 	}
 
-	p.deployableReleaseNamespace = p.releaseNamespace
-
 	log.Default.Debug(ctx, "Building deployable hook resources")
 	if err := p.buildDeployableHookResources(ctx); err != nil {
 		return fmt.Errorf("error building deployable hook resources: %w", err)
@@ -198,10 +196,6 @@ func (p *DeployableResourcesProcessor) ReleasableHookResources() []*resrc.HookRe
 
 func (p *DeployableResourcesProcessor) ReleasableGeneralResources() []*resrc.GeneralResource {
 	return p.releasableGeneralResources
-}
-
-func (p *DeployableResourcesProcessor) DeployableReleaseNamespaceInfo() *resrcinfo.DeployableReleaseNamespaceInfo {
-	return p.deployableReleaseNamespaceInfo
 }
 
 func (p *DeployableResourcesProcessor) DeployableStandaloneCRDsInfos() []*resrcinfo.DeployableStandaloneCRDInfo {
@@ -260,7 +254,7 @@ func (p *DeployableResourcesProcessor) transformHookResources(ctx context.Contex
 			for _, newObj := range newObjs {
 				newRes := resrc.NewHookResource(newObj, resrc.HookResourceOptions{
 					FilePath:         res.FilePath(),
-					DefaultNamespace: p.releaseNamespace.Name(),
+					DefaultNamespace: p.releaseNamespace,
 					Mapper:           p.mapper,
 					DiscoveryClient:  p.discoveryClient,
 				})
@@ -302,7 +296,7 @@ func (p *DeployableResourcesProcessor) transformGeneralResources(ctx context.Con
 			for _, newObj := range newObjs {
 				newRes := resrc.NewGeneralResource(newObj, resrc.GeneralResourceOptions{
 					FilePath:         res.FilePath(),
-					DefaultNamespace: p.releaseNamespace.Name(),
+					DefaultNamespace: p.releaseNamespace,
 					Mapper:           p.mapper,
 					DiscoveryClient:  p.discoveryClient,
 				})
@@ -353,7 +347,7 @@ func (p *DeployableResourcesProcessor) buildReleasableHookResources(ctx context.
 
 			patchedRes = resrc.NewHookResource(patchedObj, resrc.HookResourceOptions{
 				FilePath:         patchedRes.FilePath(),
-				DefaultNamespace: p.releaseNamespace.Name(),
+				DefaultNamespace: p.releaseNamespace,
 				Mapper:           p.mapper,
 				DiscoveryClient:  p.discoveryClient,
 			})
@@ -408,7 +402,7 @@ func (p *DeployableResourcesProcessor) buildReleasableGeneralResources(ctx conte
 
 			patchedRes = resrc.NewGeneralResource(patchedObj, resrc.GeneralResourceOptions{
 				FilePath:         patchedRes.FilePath(),
-				DefaultNamespace: p.releaseNamespace.Name(),
+				DefaultNamespace: p.releaseNamespace,
 				Mapper:           p.mapper,
 				DiscoveryClient:  p.discoveryClient,
 			})
@@ -463,7 +457,7 @@ func (p *DeployableResourcesProcessor) buildDeployableStandaloneCRDs(ctx context
 
 			patchedRes = resrc.NewStandaloneCRD(patchedObj, resrc.StandaloneCRDOptions{
 				FilePath:         patchedRes.FilePath(),
-				DefaultNamespace: p.releaseNamespace.Name(),
+				DefaultNamespace: p.releaseNamespace,
 				Mapper:           p.mapper,
 			})
 
@@ -531,7 +525,7 @@ func (p *DeployableResourcesProcessor) buildDeployableHookResources(ctx context.
 
 			patchedRes = resrc.NewHookResource(patchedObj, resrc.HookResourceOptions{
 				FilePath:         patchedRes.FilePath(),
-				DefaultNamespace: p.releaseNamespace.Name(),
+				DefaultNamespace: p.releaseNamespace,
 				Mapper:           p.mapper,
 				DiscoveryClient:  p.discoveryClient,
 			})
@@ -586,7 +580,7 @@ func (p *DeployableResourcesProcessor) buildDeployableGeneralResources(ctx conte
 
 			patchedRes = resrc.NewGeneralResource(patchedObj, resrc.GeneralResourceOptions{
 				FilePath:         patchedRes.FilePath(),
-				DefaultNamespace: p.releaseNamespace.Name(),
+				DefaultNamespace: p.releaseNamespace,
 				Mapper:           p.mapper,
 				DiscoveryClient:  p.discoveryClient,
 			})
@@ -609,7 +603,7 @@ func (p *DeployableResourcesProcessor) buildDeployableResourceInfos(ctx context.
 	p.deployableReleaseNamespaceInfo, p.deployableStandaloneCRDsInfos, p.deployableHookResourcesInfos, p.deployableGeneralResourcesInfos, p.deployablePrevRelGeneralResourcesInfos, err = resrcinfo.BuildDeployableResourceInfos(
 		ctx,
 		p.releaseName,
-		p.deployableReleaseNamespace,
+		p.releaseNamespace,
 		p.deployableStandaloneCRDs,
 		p.deployableHookResources,
 		p.deployableGeneralResources,
@@ -627,10 +621,6 @@ func (p *DeployableResourcesProcessor) buildDeployableResourceInfos(ctx context.
 
 func (p *DeployableResourcesProcessor) validateResources() error {
 	var errs []error
-
-	if err := p.releaseNamespace.Validate(); err != nil {
-		errs = append(errs, err)
-	}
 
 	for _, res := range p.standaloneCRDs {
 		if err := res.Validate(); err != nil {
@@ -674,10 +664,6 @@ func (p *DeployableResourcesProcessor) validateReleasableResources() error {
 func (p *DeployableResourcesProcessor) validateDeployableResources() error {
 	var errs []error
 
-	if err := p.deployableReleaseNamespace.Validate(); err != nil {
-		errs = append(errs, err)
-	}
-
 	for _, res := range p.deployableStandaloneCRDs {
 		if err := res.Validate(); err != nil {
 			errs = append(errs, err)
@@ -700,9 +686,7 @@ func (p *DeployableResourcesProcessor) validateDeployableResources() error {
 }
 
 func (p *DeployableResourcesProcessor) validateNoDuplicates() error {
-	resources := []*resrcid.ResourceID{
-		p.releaseNamespace.ResourceID,
-	}
+	var resources []*resrcid.ResourceID
 
 	for _, res := range p.standaloneCRDs {
 		resources = append(resources, res.ResourceID)
@@ -714,6 +698,12 @@ func (p *DeployableResourcesProcessor) validateNoDuplicates() error {
 
 	for _, res := range p.generalResources {
 		resources = append(resources, res.ResourceID)
+	}
+
+	for _, res := range resources {
+		if res.GroupVersionKind() == (schema.GroupVersionKind{Kind: "Namespace", Version: "v1"}) && res.Name() == p.releaseNamespace {
+			return fmt.Errorf("release namespace %q cannot be deployed as part of the release")
+		}
 	}
 
 	resourceIDs := lo.Map(resources, func(res *resrcid.ResourceID, _ int) string {
@@ -747,7 +737,7 @@ func (p *DeployableResourcesProcessor) validateAdoptableResources() error {
 			continue
 		}
 
-		if adoptable, nonAdoptableReason := genResInfo.LiveResource().AdoptableBy(p.releaseName, p.releaseNamespace.Name()); !adoptable {
+		if adoptable, nonAdoptableReason := genResInfo.LiveResource().AdoptableBy(p.releaseName, p.releaseNamespace); !adoptable {
 			errs = append(errs, fmt.Errorf("resource %q is not adoptable: %s", genResInfo.HumanID(), nonAdoptableReason))
 		}
 	}

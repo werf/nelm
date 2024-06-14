@@ -21,7 +21,7 @@ const HiddenSensitiveOutput = "<hidden sensitive output>"
 
 func CalculatePlannedChanges(
 	releaseName string,
-	releaseNamespaceInfo *resrcinfo.DeployableReleaseNamespaceInfo,
+	releaseNamespace string,
 	standaloneCRDsInfos []*resrcinfo.DeployableStandaloneCRDInfo,
 	hookResourcesInfos []*resrcinfo.DeployableHookResourceInfo,
 	generalResourcesInfos []*resrcinfo.DeployableGeneralResourceInfo,
@@ -39,23 +39,19 @@ func CalculatePlannedChanges(
 
 	allChanges := make([]any, 0)
 
-	if change, present := releaseNamespaceChange(releaseNamespaceInfo); present {
-		allChanges = append(allChanges, change)
-	}
-
 	if changes, present := standaloneCRDChanges(standaloneCRDsInfos); present {
 		allChanges = append(allChanges, changes...)
 	}
 
-	if changes, present := hookResourcesChanges(hookResourcesInfos, prevRelFailed, releaseName, releaseNamespaceInfo.Name()); present {
+	if changes, present := hookResourcesChanges(hookResourcesInfos, prevRelFailed, releaseName, releaseNamespace); present {
 		allChanges = append(allChanges, changes...)
 	}
 
-	if changes, present := generalResourcesChanges(generalResourcesInfos, prevRelFailed, releaseName, releaseNamespaceInfo.Name()); present {
+	if changes, present := generalResourcesChanges(generalResourcesInfos, prevRelFailed, releaseName, releaseNamespace); present {
 		allChanges = append(allChanges, changes...)
 	}
 
-	if changes, present := prevReleaseGeneralResourcesChanges(prevReleaseGeneralResourceInfos, curReleaseExistResourcesUIDs, releaseName, releaseNamespaceInfo.Name()); present {
+	if changes, present := prevReleaseGeneralResourcesChanges(prevReleaseGeneralResourceInfos, curReleaseExistResourcesUIDs, releaseName, releaseNamespace); present {
 		allChanges = append(allChanges, changes...)
 	}
 
@@ -81,40 +77,6 @@ func CalculatePlannedChanges(
 	}
 
 	return createdChanges, recreatedChanges, updatedChanges, appliedChanges, deletedChanges, true
-}
-
-func releaseNamespaceChange(info *resrcinfo.DeployableReleaseNamespaceInfo) (change any, present bool) {
-	create := info.ShouldCreate()
-	update := info.ShouldUpdate()
-	apply := info.ShouldApply()
-
-	if create {
-		uDiff := lo.Must(utls.ColoredUnifiedDiff("", diffableResource(info.Resource().Unstructured())))
-
-		change = &CreatedResourceChange{
-			ResourceID: info.ResourceID,
-			Udiff:      uDiff,
-		}
-	} else if update {
-		uDiff, nonEmptyDiff := utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured()))
-		if !nonEmptyDiff {
-			uDiff = HiddenInsignificantChanges
-		}
-
-		change = &UpdatedResourceChange{
-			ResourceID: info.ResourceID,
-			Udiff:      uDiff,
-		}
-	} else if apply {
-		uDiff := lo.Must(utls.ColoredUnifiedDiff("", diffableResource(info.Resource().Unstructured())))
-
-		change = &AppliedResourceChange{
-			ResourceID: info.ResourceID,
-			Udiff:      uDiff,
-		}
-	}
-
-	return change, change != nil
 }
 
 func standaloneCRDChanges(infos []*resrcinfo.DeployableStandaloneCRDInfo) (changes []any, present bool) {
