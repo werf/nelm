@@ -17,7 +17,7 @@ import (
 func BuildDeployableResourceInfos(
 	ctx context.Context,
 	releaseName string,
-	releaseNamespace *resrc.ReleaseNamespace,
+	releaseNamespace string,
 	standaloneCRDs []*resrc.StandaloneCRD,
 	hookResources []*resrc.HookResource,
 	generalResources []*resrc.GeneralResource,
@@ -33,11 +33,6 @@ func BuildDeployableResourceInfos(
 	prevReleaseGeneralResourceInfos []*DeployablePrevReleaseGeneralResourceInfo,
 	err error,
 ) {
-	releaseNamespaceInfo, err = NewDeployableReleaseNamespaceInfo(ctx, releaseNamespace, kubeClient, mapper)
-	if err != nil {
-		return nil, nil, nil, nil, nil, fmt.Errorf("error creating new release namespace info: %w", err)
-	}
-
 	totalResourcesCount := len(standaloneCRDs) + len(hookResources) + len(generalResources) + len(prevReleaseGeneralResources)
 
 	routines := lo.Max([]int{len(standaloneCRDs) / lo.Max([]int{totalResourcesCount, 1}) * parallelism, 1})
@@ -45,7 +40,7 @@ func BuildDeployableResourceInfos(
 	for _, res := range standaloneCRDs {
 		res := res
 		standaloneCRDsPool.Go(func(ctx context.Context) (*DeployableStandaloneCRDInfo, error) {
-			if info, err := NewDeployableStandaloneCRDInfo(ctx, res, releaseNamespace.Name(), kubeClient, mapper); err != nil {
+			if info, err := NewDeployableStandaloneCRDInfo(ctx, res, releaseNamespace, kubeClient, mapper); err != nil {
 				return nil, fmt.Errorf("error constructing standalone crd info: %w", err)
 			} else {
 				return info, nil
@@ -58,7 +53,7 @@ func BuildDeployableResourceInfos(
 	for _, res := range hookResources {
 		res := res
 		hookResourcesPool.Go(func(ctx context.Context) (*DeployableHookResourceInfo, error) {
-			if info, err := NewDeployableHookResourceInfo(ctx, res, releaseNamespace.Name(), kubeClient, mapper); err != nil {
+			if info, err := NewDeployableHookResourceInfo(ctx, res, releaseNamespace, kubeClient, mapper); err != nil {
 				return nil, fmt.Errorf("error constructing hook resource info: %w", err)
 			} else {
 				return info, nil
@@ -71,7 +66,7 @@ func BuildDeployableResourceInfos(
 	for _, res := range generalResources {
 		res := res
 		generalResourcesPool.Go(func(ctx context.Context) (*DeployableGeneralResourceInfo, error) {
-			if info, err := NewDeployableGeneralResourceInfo(ctx, res, releaseNamespace.Name(), kubeClient, mapper); err != nil {
+			if info, err := NewDeployableGeneralResourceInfo(ctx, res, releaseNamespace, kubeClient, mapper); err != nil {
 				return nil, fmt.Errorf("error constructing general resource info: %w", err)
 			} else {
 				return info, nil
@@ -84,7 +79,7 @@ func BuildDeployableResourceInfos(
 	for _, res := range prevReleaseGeneralResources {
 		res := res
 		prevReleaseGeneralResourcesPool.Go(func(ctx context.Context) (*DeployablePrevReleaseGeneralResourceInfo, error) {
-			if info, err := NewDeployablePrevReleaseGeneralResourceInfo(ctx, res, releaseNamespace.Name(), kubeClient, mapper); err != nil {
+			if info, err := NewDeployablePrevReleaseGeneralResourceInfo(ctx, res, releaseNamespace, kubeClient, mapper); err != nil {
 				return nil, fmt.Errorf("error constructing general resource info: %w", err)
 			} else {
 				return info, nil

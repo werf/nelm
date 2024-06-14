@@ -57,10 +57,10 @@ const (
 )
 
 func NewDeployPlanBuilder(
+	releaseNamespace string,
 	deployType common.DeployType,
 	taskStore *statestore.TaskStore,
 	logStore *util.Concurrent[*logstore.LogStore],
-	releaseNamespaceInfo *resrcinfo.DeployableReleaseNamespaceInfo,
 	standaloneCRDsInfos []*resrcinfo.DeployableStandaloneCRDInfo,
 	hookResourcesInfos []*resrcinfo.DeployableHookResourceInfo,
 	generalResourcesInfos []*resrcinfo.DeployableGeneralResourceInfo,
@@ -93,7 +93,7 @@ func NewDeployPlanBuilder(
 		logStore:                        logStore,
 		deployType:                      deployType,
 		plan:                            plan,
-		releaseNamespaceInfo:            releaseNamespaceInfo,
+		releaseNamespace:                releaseNamespace,
 		standaloneCRDsInfos:             standaloneCRDsInfos,
 		preHookResourcesInfos:           preHookResourcesInfos,
 		postHookResourcesInfos:          postHookResourcesInfos,
@@ -127,8 +127,8 @@ type DeployPlanBuilderOptions struct {
 type DeployPlanBuilder struct {
 	taskStore                       *statestore.TaskStore
 	logStore                        *util.Concurrent[*logstore.LogStore]
+	releaseNamespace                string
 	deployType                      common.DeployType
-	releaseNamespaceInfo            *resrcinfo.DeployableReleaseNamespaceInfo
 	standaloneCRDsInfos             []*resrcinfo.DeployableStandaloneCRDInfo
 	preHookResourcesInfos           []*resrcinfo.DeployableHookResourceInfo
 	postHookResourcesInfos          []*resrcinfo.DeployableHookResourceInfo
@@ -207,67 +207,12 @@ func (b *DeployPlanBuilder) Build(ctx context.Context) (*pln.Plan, error) {
 }
 
 func (b *DeployPlanBuilder) setupInitOperations() error {
-	relNsInfo := b.releaseNamespaceInfo
-	createRelNs := relNsInfo.ShouldCreate()
-	updateRelNs := relNsInfo.ShouldUpdate()
-	applyRelNs := relNsInfo.ShouldApply()
-
-	var opDeployRelNs opertn.Operation
-	if createRelNs {
-		opDeployRelNs = opertn.NewCreateResourceOperation(
-			relNsInfo.ResourceID,
-			relNsInfo.Resource().Unstructured(),
-			b.kubeClient,
-			opertn.CreateResourceOperationOptions{
-				ManageableBy: relNsInfo.Resource().ManageableBy(),
-			},
-		)
-	} else if updateRelNs {
-		var err error
-		opDeployRelNs, err = opertn.NewUpdateResourceOperation(
-			relNsInfo.ResourceID,
-			relNsInfo.Resource().Unstructured(),
-			b.kubeClient,
-			opertn.UpdateResourceOperationOptions{
-				ManageableBy: relNsInfo.Resource().ManageableBy(),
-			},
-		)
-		if err != nil {
-			return fmt.Errorf("error creating update resource operation: %w", err)
-		}
-	} else if applyRelNs {
-		var err error
-		opDeployRelNs, err = opertn.NewApplyResourceOperation(
-			relNsInfo.ResourceID,
-			relNsInfo.Resource().Unstructured(),
-			b.kubeClient,
-			opertn.ApplyResourceOperationOptions{
-				ManageableBy: relNsInfo.Resource().ManageableBy(),
-			},
-		)
-		if err != nil {
-			return fmt.Errorf("error creating apply resource operation: %w", err)
-		}
-	}
-
-	if opDeployRelNs != nil {
-		b.plan.AddStagedOperation(
-			opDeployRelNs,
-			StageOpNamePrefixInit+"/"+StageOpNameSuffixStart,
-			StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,
-		)
-	}
-
 	opCreatePendingRel := opertn.NewCreatePendingReleaseOperation(b.newRelease, b.deployType, b.history)
 	b.plan.AddStagedOperation(
 		opCreatePendingRel,
 		StageOpNamePrefixInit+"/"+StageOpNameSuffixStart,
 		StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,
 	)
-
-	if opDeployRelNs != nil {
-		lo.Must0(b.plan.AddDependency(opDeployRelNs.ID(), opCreatePendingRel.ID()))
-	}
 
 	return nil
 }
@@ -429,7 +374,7 @@ func (b *DeployPlanBuilder) setupGeneralResourcesOperations() error {
 
 func (b *DeployPlanBuilder) setupPrevReleaseGeneralResourcesOperations() error {
 	for _, info := range b.prevReleaseGeneralResourceInfos {
-		delete := info.ShouldDelete(b.curReleaseExistingResourcesUIDs, b.newRelease.Name(), b.releaseNamespaceInfo.Name())
+		delete := info.ShouldDelete(b.curReleaseExistingResourcesUIDs, b.newRelease.Name(), b.releaseNamespace)
 
 		if delete {
 			opDelete := opertn.NewDeleteResourceOperation(
@@ -545,7 +490,7 @@ func (b *DeployPlanBuilder) connectInternalDependencies() error {
 				_, id := lo.Must2(strings.Cut(op.ID(), "/"))
 
 				resID := resrcid.NewResourceIDFromID(id, resrcid.ResourceIDOptions{
-					DefaultNamespace: b.releaseNamespaceInfo.Name(),
+					DefaultNamespace: b.releaseNamespace,
 					Mapper:           b.mapper,
 				})
 
@@ -601,7 +546,7 @@ func (b *DeployPlanBuilder) connectInternalDependencies() error {
 				_, id := lo.Must2(strings.Cut(op.ID(), "/"))
 
 				resID := resrcid.NewResourceIDFromID(id, resrcid.ResourceIDOptions{
-					DefaultNamespace: b.releaseNamespaceInfo.Name(),
+					DefaultNamespace: b.releaseNamespace,
 					Mapper:           b.mapper,
 				})
 
@@ -711,7 +656,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 		recreate := info.ShouldRecreate()
 		update := info.ShouldUpdate()
 		apply := info.ShouldApply()
-		cleanup := info.ShouldCleanup(b.newRelease.Name(), b.releaseNamespaceInfo.Name())
+		cleanup := info.ShouldCleanup(b.newRelease.Name(), b.releaseNamespace)
 		var trackReadiness bool
 		if track := info.ShouldTrackReadiness(prevReleaseFailed); track && !extraPost {
 			trackReadiness = true
@@ -966,7 +911,7 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*resrcinfo.Deployable
 		recreate := info.ShouldRecreate()
 		update := info.ShouldUpdate()
 		apply := info.ShouldApply()
-		cleanup := info.ShouldCleanup(b.newRelease.Name(), b.releaseNamespaceInfo.Name())
+		cleanup := info.ShouldCleanup(b.newRelease.Name(), b.releaseNamespace)
 		trackReadiness := info.ShouldTrackReadiness(prevReleaseFailed)
 		_, manIntDepsSet := info.Resource().ManualInternalDependencies()
 		externalDeps, extDepsSet, err := info.Resource().ExternalDependencies()
