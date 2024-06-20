@@ -244,7 +244,12 @@ func Deploy(ctx context.Context, userOpts DeployOptions) error {
 	}
 
 	var lockManager *lock_manager.LockManager
-	if m, err := lock_manager.NewLockManager(opts.ReleaseNamespace, false, clientFactory.Static(), clientFactory.Dynamic()); err != nil {
+	if m, err := lock_manager.NewLockManager(
+		opts.ReleaseNamespace,
+		false,
+		clientFactory.Static(),
+		clientFactory.Dynamic(),
+	); err != nil {
 		return fmt.Errorf("construct lock manager: %w", err)
 	} else {
 		lockManager = m
@@ -490,12 +495,7 @@ func Deploy(ctx context.Context, userOpts DeployOptions) error {
 		if opts.DeployReportSave {
 			newRel.Skip()
 
-			report := reprt.NewReport(
-				nil,
-				nil,
-				nil,
-				newRel,
-			)
+			report := reprt.NewReport(nil, nil, nil, newRel)
 
 			if err := report.Save(opts.DeployReportPath); err != nil {
 				log.Default.Error(ctx, "Error: save deploy report: %s", err)
@@ -811,11 +811,9 @@ func printNotes(ctx context.Context, notes string) {
 		return
 	}
 
-	log.Default.InfoBlock(ctx, color.Style{color.Bold, color.Blue}.Render("Release notes")).Do(
-		func() {
-			log.Default.Info(ctx, notes)
-		},
-	)
+	log.Default.InfoBlock(ctx, color.Style{color.Bold, color.Blue}.Render("Release notes")).Do(func() {
+		log.Default.Info(ctx, notes)
+	})
 }
 
 func printTables(
@@ -830,12 +828,10 @@ func printTables(
 		sort.Strings(headers)
 
 		for _, header := range headers {
-			logboek.Context(ctx).LogBlock(header).Do(
-				func() {
-					tables[header].SuppressTrailingSpaces()
-					logboek.Context(ctx).LogLn(tables[header].Render())
-				},
-			)
+			logboek.Context(ctx).LogBlock(header).Do(func() {
+				tables[header].SuppressTrailingSpaces()
+				logboek.Context(ctx).LogLn(tables[header].Render())
+			})
 		}
 	}
 
@@ -844,22 +840,18 @@ func printTables(
 		sort.Strings(headers)
 
 		for _, header := range headers {
-			logboek.Context(ctx).LogBlock(header).Do(
-				func() {
-					tables[header].SuppressTrailingSpaces()
-					logboek.Context(ctx).LogLn(tables[header].Render())
-				},
-			)
+			logboek.Context(ctx).LogBlock(header).Do(func() {
+				tables[header].SuppressTrailingSpaces()
+				logboek.Context(ctx).LogLn(tables[header].Render())
+			})
 		}
 	}
 
 	if table, nonEmpty := tablesBuilder.BuildProgressTable(); nonEmpty {
-		logboek.Context(ctx).LogBlock(color.Style{color.Bold, color.Blue}.Render("Progress status")).Do(
-			func() {
-				table.SuppressTrailingSpaces()
-				logboek.Context(ctx).LogLn(table.Render())
-			},
-		)
+		logboek.Context(ctx).LogBlock(color.Style{color.Bold, color.Blue}.Render("Progress status")).Do(func() {
+			table.SuppressTrailingSpaces()
+			logboek.Context(ctx).LogLn(table.Render())
+		})
 	}
 }
 
