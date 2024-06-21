@@ -166,11 +166,16 @@ func Deploy(ctx context.Context, userOpts DeployOptions) error {
 		return fmt.Errorf("build deploy options: %w", err)
 	}
 
+	var kubeConfigPath string
+	if len(opts.KubeConfigPaths) > 0 {
+		kubeConfigPath = opts.KubeConfigPaths[0]
+	}
+
 	kubeConfigGetter, err := kube.NewKubeConfigGetter(
 		kube.KubeConfigGetterOptions{
 			KubeConfigOptions: kube.KubeConfigOptions{
 				Context:             opts.KubeContext,
-				ConfigPath:          opts.KubeConfigPaths[0],
+				ConfigPath:          kubeConfigPath,
 				ConfigDataBase64:    opts.KubeConfigBase64,
 				ConfigPathMergeList: opts.KubeConfigPaths,
 			},
@@ -186,7 +191,7 @@ func Deploy(ctx context.Context, userOpts DeployOptions) error {
 	*helmSettings.GetNamespaceP() = opts.ReleaseNamespace
 	opts.ReleaseNamespace = helmSettings.Namespace()
 	helmSettings.KubeContext = opts.KubeContext
-	helmSettings.KubeConfig = opts.KubeConfigPaths[0]
+	helmSettings.KubeConfig = kubeConfigPath
 	helmSettings.MaxHistory = opts.ReleaseHistoryLimit
 
 	helmRegistryClientOpts := []registry.ClientOption{
