@@ -7,15 +7,20 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
-	"time"
+	"strings"
 
-	"github.com/gookit/color"
 	"github.com/mitchellh/copystructure"
 	"github.com/samber/lo"
 	helm_v3 "helm.sh/helm/v3/cmd/helm"
 	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chartutil"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/registry"
+	"helm.sh/helm/v3/pkg/storage"
+	"helm.sh/helm/v3/pkg/storage/driver"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/yaml"
 
 	"github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/nelm/pkg/chrttree"
@@ -23,30 +28,31 @@ import (
 	"github.com/werf/nelm/pkg/kubeclnt"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/resrc"
-	"github.com/werf/nelm/pkg/resrcchangcalc"
-	"github.com/werf/nelm/pkg/resrcchanglog"
 	"github.com/werf/nelm/pkg/resrcpatcher"
 	"github.com/werf/nelm/pkg/resrcprocssr"
-	"github.com/werf/nelm/pkg/rls"
-	"github.com/werf/nelm/pkg/rlsdiff"
 	"github.com/werf/nelm/pkg/rlshistor"
 	"github.com/werf/nelm/pkg/secrets_manager"
 )
 
-type PlanOptions struct {
+const (
+	DefaultRenderOutputFilename = "render.yaml"
+)
+
+type RenderOptions struct {
 	ChartDirPath                 string
 	ChartRepositoryInsecure      bool
 	ChartRepositorySkipTLSVerify bool
 	ChartRepositorySkipUpdate    bool
 	DefaultSecretValuesDisable   bool
 	DefaultValuesDisable         bool
-	ErrorIfChangesPlanned        bool
 	ExtraAnnotations             map[string]string
 	ExtraLabels                  map[string]string
 	ExtraRuntimeAnnotations      map[string]string
 	KubeConfigBase64             string
 	KubeConfigPaths              []string
 	KubeContext                  string
+	Local                        bool
+	LocalKubeVersion             string
 	LogDebug                     bool
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
@@ -54,14 +60,18 @@ type PlanOptions struct {
 	ReleaseName                  string
 	ReleaseNamespace             string
 	ReleaseStorageDriver         ReleaseStorageDriver
+	OutputFilePath               string
+	OutputFileSave               bool
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
+	ShowCRDs                     bool
+	ShowOnlyFiles                []string
 	TempDirPath                  string
 	ValuesFileSets               []string
 	ValuesFilesPaths             []string
 	ValuesSets                   []string
 	ValuesStringSets             []string
-	LegacyPrePlanHook            func(
+	LegacyPreRenderHook          func(
 		ctx context.Context,
 		releaseNamespace string,
 		helmRegistryClient *registry.Client,
@@ -77,7 +87,7 @@ type PlanOptions struct {
 	) error
 }
 
-func Plan(ctx context.Context, userOpts PlanOptions) error {
+func Render(ctx context.Context, userOpts RenderOptions) error {
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)
@@ -88,9 +98,9 @@ func Plan(ctx context.Context, userOpts PlanOptions) error {
 		return fmt.Errorf("get current user: %w", err)
 	}
 
-	opts, err := buildPlanOptions(&userOpts, currentDir, currentUser)
+	opts, err := buildRenderOptions(&userOpts, currentDir, currentUser)
 	if err != nil {
-		return fmt.Errorf("build plan options: %w", err)
+		return fmt.Errorf("build render options: %w", err)
 	}
 
 	var kubeConfigPath string
@@ -164,6 +174,29 @@ func Plan(ctx context.Context, userOpts PlanOptions) error {
 	}
 	helmActionConfig.RegistryClient = helmRegistryClient
 
+	var clientFactory *kubeclnt.ClientFactory
+	if opts.Local {
+		helmReleaseStorageDriver := driver.NewMemory()
+		helmReleaseStorageDriver.SetNamespace(opts.ReleaseNamespace)
+		helmActionConfig.Releases = storage.Init(helmReleaseStorageDriver)
+
+		helmActionConfig.Capabilities = chartutil.DefaultCapabilities.Copy()
+
+		if opts.LocalKubeVersion != "" {
+			kubeVersion, err := chartutil.ParseKubeVersion(opts.LocalKubeVersion)
+			if err != nil {
+				return fmt.Errorf("parse local kube version %q: %w", opts.LocalKubeVersion, err)
+			}
+
+			helmActionConfig.Capabilities.KubeVersion = *kubeVersion
+		}
+	} else {
+		clientFactory, err = kubeclnt.NewClientFactory()
+		if err != nil {
+			return fmt.Errorf("construct kube client factory: %w", err)
+		}
+	}
+
 	helmReleaseStorage := helmActionConfig.Releases
 
 	helmChartPathOptions := action.ChartPathOptions{
@@ -172,19 +205,14 @@ func Plan(ctx context.Context, userOpts PlanOptions) error {
 	}
 	helmChartPathOptions.SetRegistryClient(helmRegistryClient)
 
-	clientFactory, err := kubeclnt.NewClientFactory()
-	if err != nil {
-		return fmt.Errorf("construct kube client factory: %w", err)
-	}
-
 	secretsManager := secrets_manager.NewSecretsManager(
 		secrets_manager.SecretsManagerOptions{
 			DisableSecretsDecryption: opts.SecretKeyIgnore,
 		},
 	)
 
-	if opts.LegacyPrePlanHook != nil {
-		if err := opts.LegacyPrePlanHook(
+	if opts.LegacyPreRenderHook != nil {
+		if err := opts.LegacyPreRenderHook(
 			ctx,
 			opts.ReleaseNamespace,
 			helmRegistryClient,
@@ -198,21 +226,21 @@ func Plan(ctx context.Context, userOpts PlanOptions) error {
 			opts.DefaultSecretValuesDisable,
 			helmSettings,
 		); err != nil {
-			return fmt.Errorf("legacy pre plan hook: %w", err)
+			return fmt.Errorf("legacy pre render hook: %w", err)
 		}
 	}
 
-	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release")+" %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)
+	var historyOptions rlshistor.HistoryOptions
+	if !opts.Local {
+		historyOptions.Mapper = clientFactory.Mapper()
+		historyOptions.DiscoveryClient = clientFactory.Discovery()
+	}
 
-	log.Default.Info(ctx, "Constructing release history")
 	history, err := rlshistor.NewHistory(
 		opts.ReleaseName,
 		opts.ReleaseNamespace,
 		helmReleaseStorage,
-		rlshistor.HistoryOptions{
-			Mapper:          clientFactory.Mapper(),
-			DiscoveryClient: clientFactory.Discovery(),
-		},
+		historyOptions,
 	)
 	if err != nil {
 		return fmt.Errorf("construct release history: %w", err)
@@ -229,10 +257,8 @@ func Plan(ctx context.Context, userOpts PlanOptions) error {
 	}
 
 	var newRevision int
-	var firstDeployed time.Time
 	if prevReleaseFound {
 		newRevision = prevRelease.Revision() + 1
-		firstDeployed = prevRelease.FirstDeployed()
 	} else {
 		newRevision = 1
 	}
@@ -246,7 +272,17 @@ func Plan(ctx context.Context, userOpts PlanOptions) error {
 		deployType = helmcommon.DeployTypeInitial
 	}
 
-	log.Default.Info(ctx, "Constructing chart tree")
+	chartTreeOptions := chrttree.ChartTreeOptions{
+		StringSetValues: opts.ValuesStringSets,
+		SetValues:       opts.ValuesSets,
+		FileValues:      opts.ValuesFileSets,
+		ValuesFiles:     opts.ValuesFilesPaths,
+	}
+	if !opts.Local {
+		chartTreeOptions.Mapper = clientFactory.Mapper()
+		chartTreeOptions.DiscoveryClient = clientFactory.Discovery()
+	}
+
 	chartTree, err := chrttree.NewChartTree(
 		ctx,
 		opts.ChartDirPath,
@@ -255,29 +291,48 @@ func Plan(ctx context.Context, userOpts PlanOptions) error {
 		newRevision,
 		deployType,
 		helmActionConfig,
-		chrttree.ChartTreeOptions{
-			StringSetValues: opts.ValuesStringSets,
-			SetValues:       opts.ValuesSets,
-			FileValues:      opts.ValuesFileSets,
-			ValuesFiles:     opts.ValuesFilesPaths,
-			Mapper:          clientFactory.Mapper(),
-			DiscoveryClient: clientFactory.Discovery(),
-		},
+		chartTreeOptions,
 	)
 	if err != nil {
 		return fmt.Errorf("construct chart tree: %w", err)
 	}
 
-	notes := chartTree.Notes()
-
 	var prevRelGeneralResources []*resrc.GeneralResource
-	var prevRelFailed bool
 	if prevReleaseFound {
 		prevRelGeneralResources = prevRelease.GeneralResources()
-		prevRelFailed = prevRelease.Failed()
 	}
 
-	log.Default.Info(ctx, "Processing resources")
+	resProcessorOptions := resrcprocssr.DeployableResourcesProcessorOptions{
+		NetworkParallelism: opts.NetworkParallelism,
+		ReleasableHookResourcePatchers: []resrcpatcher.ResourcePatcher{
+			resrcpatcher.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+		},
+		ReleasableGeneralResourcePatchers: []resrcpatcher.ResourcePatcher{
+			resrcpatcher.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+		},
+		DeployableStandaloneCRDsPatchers: []resrcpatcher.ResourcePatcher{
+			resrcpatcher.NewExtraMetadataPatcher(
+				lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
+			),
+		},
+		DeployableHookResourcePatchers: []resrcpatcher.ResourcePatcher{
+			resrcpatcher.NewExtraMetadataPatcher(
+				lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
+			),
+		},
+		DeployableGeneralResourcePatchers: []resrcpatcher.ResourcePatcher{
+			resrcpatcher.NewExtraMetadataPatcher(
+				lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
+			),
+		},
+	}
+	if !opts.Local {
+		resProcessorOptions.KubeClient = clientFactory.KubeClient()
+		resProcessorOptions.Mapper = clientFactory.Mapper()
+		resProcessorOptions.DiscoveryClient = clientFactory.Discovery()
+		resProcessorOptions.AllowClusterAccess = true
+	}
+
 	resProcessor := resrcprocssr.NewDeployableResourcesProcessor(
 		deployType,
 		opts.ReleaseName,
@@ -286,110 +341,98 @@ func Plan(ctx context.Context, userOpts PlanOptions) error {
 		chartTree.HookResources(),
 		chartTree.GeneralResources(),
 		prevRelGeneralResources,
-		resrcprocssr.DeployableResourcesProcessorOptions{
-			NetworkParallelism: opts.NetworkParallelism,
-			ReleasableHookResourcePatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-			},
-			ReleasableGeneralResourcePatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-			},
-			DeployableStandaloneCRDsPatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(
-					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations),
-					opts.ExtraLabels,
-				),
-			},
-			DeployableHookResourcePatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(
-					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations),
-					opts.ExtraLabels,
-				),
-			},
-			DeployableGeneralResourcePatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(
-					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations),
-					opts.ExtraLabels,
-				),
-			},
-			KubeClient:         clientFactory.KubeClient(),
-			Mapper:             clientFactory.Mapper(),
-			DiscoveryClient:    clientFactory.Discovery(),
-			AllowClusterAccess: true,
-		},
+		resProcessorOptions,
 	)
 
 	if err := resProcessor.Process(ctx); err != nil {
 		return fmt.Errorf("process resources: %w", err)
 	}
 
-	log.Default.Info(ctx, "Constructing new release")
-	newRel, err := rls.NewRelease(
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
-		newRevision,
-		chartTree.ReleaseValues(),
-		chartTree.LegacyChart(),
-		resProcessor.ReleasableHookResources(),
-		resProcessor.ReleasableGeneralResources(),
-		notes,
-		rls.ReleaseOptions{
-			FirstDeployed: firstDeployed,
-			Mapper:        clientFactory.Mapper(),
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("construct new release: %w", err)
-	}
-
-	log.Default.Info(ctx, "Calculating planned changes")
-	createdChanges, recreatedChanges, updatedChanges, appliedChanges, deletedChanges, planChangesPlanned := resrcchangcalc.CalculatePlannedChanges(
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
-		resProcessor.DeployableStandaloneCRDsInfos(),
-		resProcessor.DeployableHookResourcesInfos(),
-		resProcessor.DeployableGeneralResourcesInfos(),
-		resProcessor.DeployablePrevReleaseGeneralResourcesInfos(),
-		prevRelFailed,
-	)
-
-	var releaseUpToDate bool
-	if prevReleaseFound {
-		releaseUpToDate, err = rlsdiff.ReleaseUpToDate(prevRelease, newRel)
+	var showFiles []string
+	for _, file := range opts.ShowOnlyFiles {
+		absFile, err := filepath.Abs(file)
 		if err != nil {
-			return fmt.Errorf("check if release is up to date: %w", err)
+			return fmt.Errorf("get absolute path for %q: %w", file, err)
+		}
+
+		if strings.HasPrefix(absFile, opts.ChartDirPath) {
+			f, err := filepath.Rel(opts.ChartDirPath, absFile)
+			if err != nil {
+				return fmt.Errorf("get relative path for %q: %w", absFile, err)
+			}
+
+			if !strings.HasPrefix(f, chartTree.Name()) {
+				f = filepath.Join(chartTree.Name(), f)
+			}
+
+			showFiles = append(showFiles, f)
+		} else {
+			if !strings.HasPrefix(file, chartTree.Name()) {
+				file = filepath.Join(chartTree.Name(), file)
+			}
+
+			showFiles = append(showFiles, file)
 		}
 	}
 
-	resrcchanglog.LogPlannedChanges(
-		ctx,
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
-		!releaseUpToDate,
-		createdChanges,
-		recreatedChanges,
-		updatedChanges,
-		appliedChanges,
-		deletedChanges,
-	)
+	var renderOutStream io.Writer
+	if opts.OutputFileSave {
+		file, err := os.Create(opts.OutputFilePath)
+		if err != nil {
+			return fmt.Errorf("create render output file %q: %w", opts.OutputFilePath, err)
+		}
+		defer file.Close()
 
-	if opts.ErrorIfChangesPlanned && (planChangesPlanned || !releaseUpToDate) {
-		return resrcchangcalc.ErrChangesPlanned
+		renderOutStream = file
+	} else {
+		renderOutStream = os.Stdout
+	}
+
+	if opts.ShowCRDs {
+		for _, resource := range resProcessor.DeployableStandaloneCRDs() {
+			if len(showFiles) > 0 && !lo.Contains(showFiles, resource.FilePath()) {
+				continue
+			}
+
+			if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream); err != nil {
+				return fmt.Errorf("render CRD %q: %w", resource.HumanID(), err)
+			}
+		}
+	}
+
+	for _, resource := range resProcessor.DeployableHookResources() {
+		if len(showFiles) > 0 && !lo.Contains(showFiles, resource.FilePath()) {
+			continue
+		}
+
+		if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream); err != nil {
+			return fmt.Errorf("render hook resource %q: %w", resource.HumanID(), err)
+		}
+	}
+
+	for _, resource := range resProcessor.DeployableGeneralResources() {
+		if len(showFiles) > 0 && !lo.Contains(showFiles, resource.FilePath()) {
+			continue
+		}
+
+		if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream); err != nil {
+			return fmt.Errorf("render general resource %q: %w", resource.HumanID(), err)
+		}
 	}
 
 	return nil
 }
 
-func buildPlanOptions(
-	originalOpts *PlanOptions,
+func buildRenderOptions(
+	originalOpts *RenderOptions,
 	currentDir string,
 	currentUser *user.User,
-) (*PlanOptions, error) {
-	var opts *PlanOptions
+) (*RenderOptions, error) {
+	var opts *RenderOptions
 	if o, err := copystructure.Copy(originalOpts); err != nil {
 		return nil, fmt.Errorf("deep copy options: %w", err)
 	} else {
-		opts = o.(*PlanOptions)
+		opts = o.(*RenderOptions)
 	}
 
 	if opts.ChartDirPath == "" {
@@ -401,6 +444,12 @@ func buildPlanOptions(
 		opts.TempDirPath, err = os.MkdirTemp("", "")
 		if err != nil {
 			return nil, fmt.Errorf("create temp dir: %w", err)
+		}
+	}
+
+	if opts.OutputFileSave {
+		if opts.OutputFilePath == "" {
+			opts.OutputFilePath = filepath.Join(opts.TempDirPath, DefaultRenderOutputFilename)
 		}
 	}
 
@@ -422,9 +471,27 @@ func buildPlanOptions(
 
 	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {
 		opts.ReleaseStorageDriver = ReleaseStorageDriverSecrets
-	} else if opts.ReleaseStorageDriver == ReleaseStorageDriverMemory {
-		return nil, fmt.Errorf("memory release storage driver is not supported")
 	}
 
 	return opts, nil
+}
+
+func renderResource(unstruct *unstructured.Unstructured, path string, outStream io.Writer) error {
+	resourceJsonBytes, err := runtime.Encode(unstructured.UnstructuredJSONScheme, unstruct)
+	if err != nil {
+		return fmt.Errorf("encode to JSON: %w", err)
+	}
+
+	resourceYamlBytes, err := yaml.JSONToYAML(resourceJsonBytes)
+	if err != nil {
+		return fmt.Errorf("marshal JSON to YAML: %w", err)
+	}
+
+	prefixBytes := []byte(fmt.Sprintf("---\n# Source: %s\n", path))
+
+	if _, err := outStream.Write(append(prefixBytes, resourceYamlBytes...)); err != nil {
+		return fmt.Errorf("write to output: %w", err)
+	}
+
+	return nil
 }
