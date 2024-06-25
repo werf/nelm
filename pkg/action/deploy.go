@@ -18,7 +18,6 @@ import (
 	helm_v3 "helm.sh/helm/v3/cmd/helm"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/cli"
-	helm_kube "helm.sh/helm/v3/pkg/kube"
 	"helm.sh/helm/v3/pkg/registry"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -112,7 +111,7 @@ type DeployOptions struct {
 	KubeConfigPaths              []string
 	KubeContext                  string
 	LogColorMode                 LogColorMode
-	LogRegistryDebug             bool
+	LogDebug                     bool
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	ProgressTablePrint           bool
@@ -190,12 +189,19 @@ func Deploy(ctx context.Context, userOpts DeployOptions) error {
 	*helmSettings.GetConfigP() = kubeConfigGetter
 	*helmSettings.GetNamespaceP() = opts.ReleaseNamespace
 	opts.ReleaseNamespace = helmSettings.Namespace()
-	helmSettings.KubeContext = opts.KubeContext
-	helmSettings.KubeConfig = kubeConfigPath
 	helmSettings.MaxHistory = opts.ReleaseHistoryLimit
+	helmSettings.Debug = opts.LogDebug
+
+	if opts.KubeContext != "" {
+		helmSettings.KubeContext = opts.KubeContext
+	}
+
+	if kubeConfigPath != "" {
+		helmSettings.KubeConfig = kubeConfigPath
+	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(opts.LogRegistryDebug),
+		registry.ClientOptDebug(opts.LogDebug),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
 	}
 
@@ -230,9 +236,6 @@ func Deploy(ctx context.Context, userOpts DeployOptions) error {
 		return fmt.Errorf("helm action config init: %w", err)
 	}
 	helmActionConfig.RegistryClient = helmRegistryClient
-
-	helmKubeClient := helmActionConfig.KubeClient.(*helm_kube.Client)
-	helmKubeClient.Namespace = opts.ReleaseNamespace
 
 	helmReleaseStorage := helmActionConfig.Releases
 	helmReleaseStorage.MaxHistory = opts.ReleaseHistoryLimit
