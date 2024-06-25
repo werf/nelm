@@ -681,7 +681,12 @@ func buildGenericConditionInfo(resourceState *statestore.ResourceState) string {
 }
 
 func buildErrorsInfo(resourceState *statestore.ResourceState) string {
-	return fmt.Sprintf("Errors:%d", len(resourceState.Errors()))
+	var errsCount int
+	for _, errs := range resourceState.Errors() {
+		errsCount += len(errs)
+	}
+
+	return fmt.Sprintf("Errors:%d", errsCount)
 }
 
 func buildLastErrInfo(resourceState *statestore.ResourceState, colorize bool) string {
