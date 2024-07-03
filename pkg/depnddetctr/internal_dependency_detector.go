@@ -570,9 +570,14 @@ func (d *InternalDependencyDetector) parseRoleRef(unstruct unstructured.Unstruct
 		return nil, false
 	}
 
+	var namespaces []string
+	if kind != "ClusterRole" {
+		namespaces = []string{d.namespace(&unstruct)}
+	}
+
 	dep = depnd.NewInternalDependency(
 		[]string{name},
-		[]string{d.namespace(&unstruct)},
+		namespaces,
 		[]string{apiGroup},
 		[]string{},
 		[]string{kind},
