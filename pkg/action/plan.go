@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gookit/color"
-	"github.com/mitchellh/copystructure"
 	"github.com/samber/lo"
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
@@ -78,7 +77,7 @@ type PlanOptions struct {
 	) error
 }
 
-func Plan(ctx context.Context, userOpts PlanOptions) error {
+func Plan(ctx context.Context, opts PlanOptions) error {
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)
@@ -89,7 +88,7 @@ func Plan(ctx context.Context, userOpts PlanOptions) error {
 		return fmt.Errorf("get current user: %w", err)
 	}
 
-	opts, err := buildPlanOptions(&userOpts, currentDir, currentUser)
+	opts, err = applyPlanOptionsDefaults(opts, currentDir, currentUser)
 	if err != nil {
 		return fmt.Errorf("build plan options: %w", err)
 	}
@@ -381,18 +380,7 @@ func Plan(ctx context.Context, userOpts PlanOptions) error {
 	return nil
 }
 
-func buildPlanOptions(
-	originalOpts *PlanOptions,
-	currentDir string,
-	currentUser *user.User,
-) (*PlanOptions, error) {
-	var opts *PlanOptions
-	if o, err := copystructure.Copy(originalOpts); err != nil {
-		return nil, fmt.Errorf("deep copy options: %w", err)
-	} else {
-		opts = o.(*PlanOptions)
-	}
-
+func applyPlanOptionsDefaults(opts PlanOptions, currentDir string, currentUser *user.User) (PlanOptions, error) {
 	if opts.ChartDirPath == "" {
 		opts.ChartDirPath = currentDir
 	}
@@ -401,7 +389,7 @@ func buildPlanOptions(
 	if opts.TempDirPath == "" {
 		opts.TempDirPath, err = os.MkdirTemp("", "")
 		if err != nil {
-			return nil, fmt.Errorf("create temp dir: %w", err)
+			return PlanOptions{}, fmt.Errorf("create temp dir: %w", err)
 		}
 	}
 
@@ -418,13 +406,13 @@ func buildPlanOptions(
 	}
 
 	if opts.ReleaseName == "" {
-		return nil, fmt.Errorf("release name not specified")
+		return PlanOptions{}, fmt.Errorf("release name not specified")
 	}
 
 	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {
 		opts.ReleaseStorageDriver = ReleaseStorageDriverSecrets
 	} else if opts.ReleaseStorageDriver == ReleaseStorageDriverMemory {
-		return nil, fmt.Errorf("memory release storage driver is not supported")
+		return PlanOptions{}, fmt.Errorf("memory release storage driver is not supported")
 	}
 
 	return opts, nil

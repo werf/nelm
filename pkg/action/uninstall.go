@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gookit/color"
-	"github.com/mitchellh/copystructure"
 	"github.com/samber/lo"
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
@@ -41,7 +40,7 @@ type UninstallOptions struct {
 	TempDirPath                string
 }
 
-func Uninstall(ctx context.Context, userOpts UninstallOptions) error {
+func Uninstall(ctx context.Context, opts UninstallOptions) error {
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)
@@ -52,7 +51,7 @@ func Uninstall(ctx context.Context, userOpts UninstallOptions) error {
 		return fmt.Errorf("get current user: %w", err)
 	}
 
-	opts, err := buildUninstallOptions(&userOpts, currentDir, currentUser)
+	opts, err = applyUninstallOptionsDefaults(opts, currentDir, currentUser)
 	if err != nil {
 		return fmt.Errorf("build uninstall options: %w", err)
 	}
@@ -183,23 +182,12 @@ func Uninstall(ctx context.Context, userOpts UninstallOptions) error {
 	return nil
 }
 
-func buildUninstallOptions(
-	originalOpts *UninstallOptions,
-	currentDir string,
-	currentUser *user.User,
-) (*UninstallOptions, error) {
-	var opts *UninstallOptions
-	if o, err := copystructure.Copy(originalOpts); err != nil {
-		return nil, fmt.Errorf("deep copy options: %w", err)
-	} else {
-		opts = o.(*UninstallOptions)
-	}
-
+func applyUninstallOptionsDefaults(opts UninstallOptions, currentDir string, currentUser *user.User) (UninstallOptions, error) {
 	var err error
 	if opts.TempDirPath == "" {
 		opts.TempDirPath, err = os.MkdirTemp("", "")
 		if err != nil {
-			return nil, fmt.Errorf("create temp dir: %w", err)
+			return UninstallOptions{}, fmt.Errorf("create temp dir: %w", err)
 		}
 	}
 
@@ -216,13 +204,13 @@ func buildUninstallOptions(
 	}
 
 	if opts.ReleaseName == "" {
-		return nil, fmt.Errorf("release name not specified")
+		return UninstallOptions{}, fmt.Errorf("release name not specified")
 	}
 
 	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {
 		opts.ReleaseStorageDriver = ReleaseStorageDriverSecrets
 	} else if opts.ReleaseStorageDriver == ReleaseStorageDriverMemory {
-		return nil, fmt.Errorf("memory release storage driver is not supported")
+		return UninstallOptions{}, fmt.Errorf("memory release storage driver is not supported")
 	}
 
 	return opts, nil

@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mitchellh/copystructure"
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -88,7 +87,7 @@ type RenderOptions struct {
 	) error
 }
 
-func Render(ctx context.Context, userOpts RenderOptions) error {
+func Render(ctx context.Context, opts RenderOptions) error {
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)
@@ -99,7 +98,7 @@ func Render(ctx context.Context, userOpts RenderOptions) error {
 		return fmt.Errorf("get current user: %w", err)
 	}
 
-	opts, err := buildRenderOptions(&userOpts, currentDir, currentUser)
+	opts, err = applyRenderOptionsDefaults(opts, currentDir, currentUser)
 	if err != nil {
 		return fmt.Errorf("build render options: %w", err)
 	}
@@ -424,18 +423,7 @@ func Render(ctx context.Context, userOpts RenderOptions) error {
 	return nil
 }
 
-func buildRenderOptions(
-	originalOpts *RenderOptions,
-	currentDir string,
-	currentUser *user.User,
-) (*RenderOptions, error) {
-	var opts *RenderOptions
-	if o, err := copystructure.Copy(originalOpts); err != nil {
-		return nil, fmt.Errorf("deep copy options: %w", err)
-	} else {
-		opts = o.(*RenderOptions)
-	}
-
+func applyRenderOptionsDefaults(opts RenderOptions, currentDir string, currentUser *user.User) (RenderOptions, error) {
 	if opts.ChartDirPath == "" {
 		opts.ChartDirPath = currentDir
 	}
@@ -444,7 +432,7 @@ func buildRenderOptions(
 	if opts.TempDirPath == "" {
 		opts.TempDirPath, err = os.MkdirTemp("", "")
 		if err != nil {
-			return nil, fmt.Errorf("create temp dir: %w", err)
+			return RenderOptions{}, fmt.Errorf("create temp dir: %w", err)
 		}
 	}
 
@@ -467,7 +455,7 @@ func buildRenderOptions(
 	}
 
 	if opts.ReleaseName == "" {
-		return nil, fmt.Errorf("release name not specified")
+		return RenderOptions{}, fmt.Errorf("release name not specified")
 	}
 
 	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {
