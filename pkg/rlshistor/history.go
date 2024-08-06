@@ -6,11 +6,12 @@ import (
 	"sync"
 
 	"github.com/samber/lo"
-	legacyRelease "helm.sh/helm/v3/pkg/release"
-	"helm.sh/helm/v3/pkg/releaseutil"
-	"helm.sh/helm/v3/pkg/storage/driver"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
+
+	legacyRelease "github.com/werf/3p-helm/pkg/release"
+	"github.com/werf/3p-helm/pkg/releaseutil"
+	"github.com/werf/3p-helm/pkg/storage/driver"
 
 	"github.com/werf/nelm/pkg/rls"
 )

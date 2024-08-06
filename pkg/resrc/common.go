@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/samber/lo"
-	"helm.sh/helm/v3/pkg/release"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,6 +17,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/client-go/discovery"
+
+	"github.com/werf/3p-helm/pkg/release"
 
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/depnd"

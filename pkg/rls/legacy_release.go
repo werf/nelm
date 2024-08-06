@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"helm.sh/helm/v3/pkg/release"
-	"helm.sh/helm/v3/pkg/time"
 	"sigs.k8s.io/yaml"
+
+	"github.com/werf/3p-helm/pkg/release"
+	"github.com/werf/3p-helm/pkg/time"
 
 	"github.com/werf/nelm/pkg/resrc"
 )

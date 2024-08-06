@@ -9,7 +9,8 @@ import (
 
 	"github.com/gookit/color"
 	"github.com/samber/lo"
-	"helm.sh/helm/v3/pkg/release"
+
+	"github.com/werf/3p-helm/pkg/release"
 
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/opertn"
