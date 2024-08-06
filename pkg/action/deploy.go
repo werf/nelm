@@ -465,11 +465,11 @@ func Deploy(ctx context.Context, userOpts DeployOptions) error {
 		},
 	)
 
-	plan, err := deployPlanBuilder.Build(ctx)
-	if err != nil {
+	plan, planBuildErr := deployPlanBuilder.Build(ctx)
+	if planBuildErr != nil {
 		if _, err := os.Create(opts.DeployGraphPath); err != nil {
 			log.Default.Error(ctx, "Error: create deploy graph file: %s", err)
-			return fmt.Errorf("build deploy plan: %w", err)
+			return fmt.Errorf("build deploy plan: %w", planBuildErr)
 		}
 
 		if err := plan.SaveDOT(opts.DeployGraphPath); err != nil {
@@ -478,7 +478,7 @@ func Deploy(ctx context.Context, userOpts DeployOptions) error {
 
 		log.Default.Warn(ctx, "Deploy graph saved to %q for debugging", opts.DeployGraphPath)
 
-		return fmt.Errorf("build deploy plan: %w", err)
+		return fmt.Errorf("build deploy plan: %w", planBuildErr)
 	}
 
 	if opts.DeployGraphSave {
@@ -706,22 +706,16 @@ func buildDeployOptions(
 		}
 	}
 
-	if opts.DeployGraphSave {
-		if opts.DeployGraphPath == "" {
-			opts.DeployGraphPath = filepath.Join(opts.TempDirPath, DefaultDeployGraphFilename)
-		}
+	if opts.DeployGraphPath == "" {
+		opts.DeployGraphPath = filepath.Join(opts.TempDirPath, DefaultDeployGraphFilename)
 	}
 
-	if opts.RollbackGraphSave {
-		if opts.RollbackGraphPath == "" {
-			opts.RollbackGraphPath = filepath.Join(opts.TempDirPath, DefaultRollbackGraphFilename)
-		}
+	if opts.RollbackGraphPath == "" {
+		opts.RollbackGraphPath = filepath.Join(opts.TempDirPath, DefaultRollbackGraphFilename)
 	}
 
-	if opts.DeployReportSave {
-		if opts.DeployReportPath == "" {
-			opts.DeployReportPath = filepath.Join(opts.TempDirPath, DefaultDeployReportFilename)
-		}
+	if opts.DeployReportPath == "" {
+		opts.DeployReportPath = filepath.Join(opts.TempDirPath, DefaultDeployReportFilename)
 	}
 
 	if opts.KubeConfigBase64 == "" && len(opts.KubeConfigPaths) == 0 {
