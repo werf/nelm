@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gookit/color"
-	"github.com/mitchellh/copystructure"
 	"github.com/samber/lo"
 	"github.com/xo/terminfo"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -150,7 +149,7 @@ type DeployOptions struct {
 	) error
 }
 
-func Deploy(ctx context.Context, userOpts DeployOptions) error {
+func Deploy(ctx context.Context, opts DeployOptions) error {
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)
@@ -161,7 +160,7 @@ func Deploy(ctx context.Context, userOpts DeployOptions) error {
 		return fmt.Errorf("get current user: %w", err)
 	}
 
-	opts, err := buildDeployOptions(&userOpts, currentDir, currentUser)
+	opts, err = applyDeployOptionsDefaults(opts, currentDir, currentUser)
 	if err != nil {
 		return fmt.Errorf("build deploy options: %w", err)
 	}
@@ -682,18 +681,11 @@ func Deploy(ctx context.Context, userOpts DeployOptions) error {
 	}
 }
 
-func buildDeployOptions(
-	originalOpts *DeployOptions,
+func applyDeployOptionsDefaults(
+	opts DeployOptions,
 	currentDir string,
 	currentUser *user.User,
-) (*DeployOptions, error) {
-	var opts *DeployOptions
-	if o, err := copystructure.Copy(originalOpts); err != nil {
-		return nil, fmt.Errorf("deep copy options: %w", err)
-	} else {
-		opts = o.(*DeployOptions)
-	}
-
+) (DeployOptions, error) {
 	if opts.ChartDirPath == "" {
 		opts.ChartDirPath = currentDir
 	}
@@ -702,7 +694,7 @@ func buildDeployOptions(
 	if opts.TempDirPath == "" {
 		opts.TempDirPath, err = os.MkdirTemp("", "")
 		if err != nil {
-			return nil, fmt.Errorf("create temp dir: %w", err)
+			return DeployOptions{}, fmt.Errorf("create temp dir: %w", err)
 		}
 	}
 
@@ -747,13 +739,13 @@ func buildDeployOptions(
 	}
 
 	if opts.ReleaseName == "" {
-		return nil, fmt.Errorf("release name not specified")
+		return DeployOptions{}, fmt.Errorf("release name not specified")
 	}
 
 	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {
 		opts.ReleaseStorageDriver = ReleaseStorageDriverSecrets
 	} else if opts.ReleaseStorageDriver == ReleaseStorageDriverMemory {
-		return nil, fmt.Errorf("memory release storage driver is not supported")
+		return DeployOptions{}, fmt.Errorf("memory release storage driver is not supported")
 	}
 
 	return opts, nil
