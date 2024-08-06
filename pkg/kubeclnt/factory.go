@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/samber/lo"
-	helm_v3 "helm.sh/helm/v3/cmd/helm"
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -16,6 +15,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
+
+	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 )
 
 var addToScheme sync.Once

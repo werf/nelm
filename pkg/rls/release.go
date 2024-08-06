@@ -7,12 +7,13 @@ import (
 	"time"
 	"unicode"
 
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chartutil"
-	"helm.sh/helm/v3/pkg/release"
-	"helm.sh/helm/v3/pkg/releaseutil"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
+
+	"github.com/werf/3p-helm/pkg/chart"
+	"github.com/werf/3p-helm/pkg/chartutil"
+	"github.com/werf/3p-helm/pkg/release"
+	"github.com/werf/3p-helm/pkg/releaseutil"
 
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/resrc"

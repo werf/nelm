@@ -23,13 +23,13 @@ require (
 	github.com/sourcegraph/conc v0.3.0
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.5.0
+	github.com/werf/3p-helm v0.0.0-20240806141915-3137f4cc1557
 	github.com/werf/kubedog v0.12.4-0.20240329141850-9e5c458d11bb
 	github.com/werf/lockgate v0.1.1
 	github.com/werf/logboek v0.6.1
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
-	helm.sh/helm/v3 v3.14.3
 	k8s.io/api v0.29.3
 	k8s.io/apiextensions-apiserver v0.29.0
 	k8s.io/apimachinery v0.29.3
@@ -179,5 +179,3 @@ require (
 	sigs.k8s.io/kustomize/kyaml v0.16.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 )
-
-replace helm.sh/helm/v3 => github.com/werf/3p-helm/v3 v3.0.0-20240628131457-bbcfb26e2839 // helm 3

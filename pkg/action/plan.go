@@ -12,10 +12,11 @@ import (
 	"github.com/gookit/color"
 	"github.com/mitchellh/copystructure"
 	"github.com/samber/lo"
-	helm_v3 "helm.sh/helm/v3/cmd/helm"
-	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/cli"
-	"helm.sh/helm/v3/pkg/registry"
+
+	helm_v3 "github.com/werf/3p-helm/cmd/helm"
+	"github.com/werf/3p-helm/pkg/action"
+	"github.com/werf/3p-helm/pkg/cli"
+	"github.com/werf/3p-helm/pkg/registry"
 
 	"github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/nelm/pkg/chrttree"
