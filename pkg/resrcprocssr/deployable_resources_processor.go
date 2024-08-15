@@ -34,8 +34,9 @@ func NewDeployableResourcesProcessor(
 	opts DeployableResourcesProcessorOptions,
 ) *DeployableResourcesProcessor {
 	listsTransformer := resrctransfrmr.NewResourceListsTransformer()
-	hookResourceTransformers := append([]resrctransfrmr.ResourceTransformer{listsTransformer}, opts.HookResourceTransformers...)
-	generalResourceTransformers := append([]resrctransfrmr.ResourceTransformer{listsTransformer}, opts.GeneralResourceTransformers...)
+	annoLabelsTransformer := resrctransfrmr.NewDropInvalidAnnotationsAndLabelsTransformer()
+	hookResourceTransformers := append([]resrctransfrmr.ResourceTransformer{listsTransformer, annoLabelsTransformer}, opts.HookResourceTransformers...)
+	generalResourceTransformers := append([]resrctransfrmr.ResourceTransformer{listsTransformer, annoLabelsTransformer}, opts.GeneralResourceTransformers...)
 
 	releaseMetadataPatcher := resrcpatcher.NewReleaseMetadataPatcher(releaseName, releaseNamespace)
 	deployableStandaloneCRDsPatchers := append([]resrcpatcher.ResourcePatcher{releaseMetadataPatcher}, opts.DeployableStandaloneCRDsPatchers...)
