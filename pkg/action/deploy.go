@@ -133,6 +133,7 @@ type DeployOptions struct {
 	ValuesFilesPaths             []string
 	ValuesSets                   []string
 	ValuesStringSets             []string
+	SubNotes                     bool
 	LegacyPreDeployHook          func(
 		ctx context.Context,
 		releaseNamespace string,
@@ -356,6 +357,7 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 			SetValues:       opts.ValuesSets,
 			FileValues:      opts.ValuesFileSets,
 			ValuesFiles:     opts.ValuesFilesPaths,
+			SubNotes:        opts.SubNotes,
 			Mapper:          clientFactory.Mapper(),
 			DiscoveryClient: clientFactory.Discovery(),
 		},

@@ -71,6 +71,7 @@ type RenderOptions struct {
 	ValuesFilesPaths             []string
 	ValuesSets                   []string
 	ValuesStringSets             []string
+	SubNotes                     bool
 	LegacyPreRenderHook          func(
 		ctx context.Context,
 		releaseNamespace string,
@@ -277,6 +278,7 @@ func Render(ctx context.Context, opts RenderOptions) error {
 		SetValues:       opts.ValuesSets,
 		FileValues:      opts.ValuesFileSets,
 		ValuesFiles:     opts.ValuesFilesPaths,
+		SubNotes:        opts.SubNotes,
 	}
 	if !opts.Local {
 		chartTreeOptions.Mapper = clientFactory.Mapper()
