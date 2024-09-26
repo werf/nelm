@@ -92,7 +92,7 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 	hasClusterAccess := opts.Mapper != nil
 
 	log.Default.Debug(ctx, "Rendering resources for chart at %q", chartPath)
-	legacyHookResources, generalManifestsBuf, notes, err := actionConfig.RenderResources(legacyChart, values, "", "", true, false, false, nil, hasClusterAccess, false)
+	legacyHookResources, generalManifestsBuf, notes, err := actionConfig.RenderResources(legacyChart, values, "", "", opts.SubNotes, false, false, nil, hasClusterAccess, false)
 	if err != nil {
 		return nil, fmt.Errorf("error rendering resources for chart %q: %w", legacyChart.Name(), err)
 	}
@@ -175,6 +175,7 @@ type ChartTreeOptions struct {
 	SetValues       []string
 	FileValues      []string
 	ValuesFiles     []string
+	SubNotes        bool
 }
 
 type ChartTree struct {
