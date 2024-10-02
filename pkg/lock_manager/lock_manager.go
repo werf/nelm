@@ -144,7 +144,7 @@ func defaultLockerOnWait(ctx context.Context) func(lockName string, doWait func(
 }
 
 func defaultLockerOnLostLease(lock lockgate.LockHandle) error {
-	panic(fmt.Sprintf("Locker has lost lease for locked %q uuid %s. Will crash current process immediately!", lock.LockName, lock.UUID))
+	return fmt.Errorf("locker has lost the lease for lock %q uuid %q. The process will stop immediately.\nPossible reasons:\n- Connection issues with Kubernetes API.\n- Network delays caused lease renewal requests to fail.", lock.LockName, lock.UUID)
 }
 
 func createNamespaceIfNotExists(client kubernetes.Interface, namespace string) error {
