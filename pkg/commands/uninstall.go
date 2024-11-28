@@ -30,17 +30,18 @@ func NewUninstallCommand() *cobra.Command {
 		},
 	}
 
+	f := cmd.Flags()
 	// Define flags
-	cmd.Flags().StringVarP(&opts.ReleaseNamespace, "namespace", "n", "default", "Namespace of the release")
-	cmd.Flags().BoolVar(&opts.DeleteHooks, "delete-hooks", false, "Delete hooks")
-	cmd.Flags().BoolVar(&opts.DeleteReleaseNamespace, "delete-namespace", false, "Delete namespace of the release")
-	cmd.Flags().StringVar(&opts.KubeConfigBase64, "kubeconfig-base64", "", "Base64 encoded kube config")
-	cmd.Flags().StringSliceVar(&opts.KubeConfigPaths, "kubeconfig", []string{}, "Paths to kube config files\n(can be set multiple times)")
-	cmd.Flags().StringVar(&opts.KubeContext, "kube-context", "", "Kubernetes context to use")
-	cmd.Flags().BoolVar(&opts.LogDebug, "debug", false, "enable verbose output")
-	cmd.Flags().DurationVar(&opts.ProgressTablePrintInterval, "kubedog-interval", 5*time.Second, "Progress print interval")
-	cmd.Flags().IntVar(&opts.ReleaseHistoryLimit, "keep-history-limit", 10, "Release history limit (0 to remove all history)")
-	cmd.Flags().StringVar(&opts.TempDirPath, "temp-dir", "", "Path to the temporary directory")
+	f.StringVarP(&opts.ReleaseNamespace, "namespace", "n", "default", "Namespace of the release")
+	f.BoolVar(&opts.DeleteHooks, "delete-hooks", false, "Delete hooks")
+	f.BoolVar(&opts.DeleteReleaseNamespace, "delete-namespace", false, "Delete namespace of the release")
+	f.StringVar(&opts.KubeConfigBase64, "kubeconfig-base64", "", "Base64 encoded kube config")
+	f.StringSliceVar(&opts.KubeConfigPaths, "kubeconfig", []string{}, "Paths to kube config files\n(can be set multiple times)")
+	f.StringVar(&opts.KubeContext, "kube-context", "", "Kubernetes context to use")
+	f.BoolVar(&opts.LogDebug, "debug", false, "enable verbose output")
+	f.DurationVar(&opts.ProgressTablePrintInterval, "kubedog-interval", 5*time.Second, "Progress print interval")
+	f.IntVar(&opts.ReleaseHistoryLimit, "keep-history-limit", 10, "Release history limit (0 to remove all history)")
+	f.StringVar(&opts.TempDirPath, "temp-dir", "", "Path to the temporary directory")
 
 	return cmd
 }
