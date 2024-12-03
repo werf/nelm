@@ -11,11 +11,15 @@ import (
 
 	"github.com/gookit/color"
 	"github.com/samber/lo"
+	api_errors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
 	helm_kube "github.com/werf/3p-helm/pkg/kube"
 	"github.com/werf/3p-helm/pkg/storage/driver"
+	"github.com/werf/nelm/pkg/opertn"
+	"github.com/werf/nelm/pkg/resrcid"
 
 	"github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/logboek"
@@ -135,49 +139,101 @@ func Uninstall(ctx context.Context, opts UninstallOptions) error {
 		opts.ProgressTablePrintInterval,
 	)
 
-	if !opts.DeleteReleaseNamespace {
-		if _, err := helmActionConfig.Releases.History(opts.ReleaseName); errors.Is(err, driver.ErrReleaseNotFound) {
-			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("No such release %q (namespace: %q) found", opts.ReleaseName, opts.ReleaseNamespace)))
+	namespaceID := resrcid.NewResourceID(
+		opts.ReleaseNamespace,
+		"",
+		schema.GroupVersionKind{Version: "v1", Kind: "Namespace"},
+		resrcid.ResourceIDOptions{Mapper: clientFactory.Mapper()},
+	)
+
+	if _, err := clientFactory.KubeClient().Get(
+		ctx,
+		namespaceID,
+		kubeclnt.KubeClientGetOptions{
+			TryCache: true,
+		},
+	); err != nil {
+		if api_errors.IsNotFound(err) {
+			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q removal: no release namespace %q found", opts.ReleaseName, opts.ReleaseNamespace)))
+
 			return nil
+		} else {
+			return fmt.Errorf("get release namespace: %w", err)
 		}
 	}
 
-	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Deleting release")+" %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)
+	if err := func() error {
+		var releaseFound bool
+		if _, err := helmActionConfig.Releases.History(opts.ReleaseName); err != nil {
+			if !errors.Is(err, driver.ErrReleaseNotFound) {
+				return fmt.Errorf("get release history: %w", err)
+			}
+		} else {
+			releaseFound = true
+		}
 
-	var lockManager *lock_manager.LockManager
-	if m, err := lock_manager.NewLockManager(
-		opts.ReleaseNamespace,
-		false,
-		clientFactory.Static(),
-		clientFactory.Dynamic(),
-	); err != nil {
-		return fmt.Errorf("construct lock manager: %w", err)
-	} else {
-		lockManager = m
+		if !releaseFound {
+			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q) removal: no release found", opts.ReleaseName, opts.ReleaseNamespace)))
+
+			return nil
+		}
+
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Deleting release")+" %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)
+
+		var lockManager *lock_manager.LockManager
+		if m, err := lock_manager.NewLockManager(
+			opts.ReleaseNamespace,
+			false,
+			clientFactory.Static(),
+			clientFactory.Dynamic(),
+		); err != nil {
+			return fmt.Errorf("construct lock manager: %w", err)
+		} else {
+			lockManager = m
+		}
+
+		if lock, err := lockManager.LockRelease(ctx, opts.ReleaseName); err != nil {
+			return fmt.Errorf("lock release: %w", err)
+		} else {
+			defer lockManager.Unlock(lock)
+		}
+
+		helmUninstallCmd := helm_v3.NewUninstallCmd(
+			helmActionConfig,
+			logboek.Context(ctx).OutStream(),
+			helm_v3.UninstallCmdOptions{
+				StagesSplitter:      deploy.NewStagesSplitter(),
+				DeleteHooks:         lo.ToPtr(opts.DeleteHooks),
+				DontFailIfNoRelease: lo.ToPtr(true),
+			},
+		)
+
+		if err := helmUninstallCmd.RunE(helmUninstallCmd, []string{opts.ReleaseName}); err != nil {
+			return fmt.Errorf("run uninstall command: %w", err)
+		}
+
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleted release %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)))
+
+		return nil
+	}(); err != nil {
+		return err
 	}
 
-	if lock, err := lockManager.LockRelease(ctx, opts.ReleaseName); err != nil {
-		return fmt.Errorf("lock release: %w", err)
-	} else {
-		defer lockManager.Unlock(lock)
+	if opts.DeleteReleaseNamespace {
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleting release namespace %q", namespaceID.Name())))
+
+		deleteOp := opertn.NewDeleteResourceOperation(
+			namespaceID,
+			clientFactory.KubeClient(),
+			opertn.DeleteResourceOperationOptions{},
+		)
+
+		if err := deleteOp.Execute(ctx); err != nil {
+			return fmt.Errorf("delete release namespace: %w", err)
+		}
+
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleted release namespace %q", namespaceID.Name())))
 	}
-
-	helmUninstallCmd := helm_v3.NewUninstallCmd(
-		helmActionConfig,
-		logboek.Context(ctx).OutStream(),
-		helm_v3.UninstallCmdOptions{
-			StagesSplitter:      deploy.NewStagesSplitter(),
-			DeleteNamespace:     lo.ToPtr(opts.DeleteReleaseNamespace),
-			DeleteHooks:         lo.ToPtr(opts.DeleteHooks),
-			DontFailIfNoRelease: lo.ToPtr(true),
-		},
-	)
-
-	if err := helmUninstallCmd.RunE(helmUninstallCmd, []string{opts.ReleaseName}); err != nil {
-		return fmt.Errorf("run uninstall command: %w", err)
-	}
-
-	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleted release %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)))
 
 	return nil
 }
