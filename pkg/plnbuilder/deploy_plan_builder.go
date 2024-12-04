@@ -77,13 +77,44 @@ func NewDeployPlanBuilder(
 	plan := pln.NewPlan()
 
 	preHookResourcesInfos := lo.Filter(hookResourcesInfos, func(info *resrcinfo.DeployableHookResourceInfo, _ int) bool {
-		return info.Resource().OnPreAnything()
+		switch deployType {
+		case common.DeployTypeInitial, common.DeployTypeInstall:
+			return info.Resource().OnPreInstall()
+		case common.DeployTypeUpgrade:
+			return info.Resource().OnPreUpgrade()
+		case common.DeployTypeRollback:
+			return info.Resource().OnPreRollback()
+		}
+
+		return false
 	})
+
 	postHookResourcesInfos := lo.Filter(hookResourcesInfos, func(info *resrcinfo.DeployableHookResourceInfo, _ int) bool {
-		return info.Resource().OnPostAnything()
+		switch deployType {
+		case common.DeployTypeInitial, common.DeployTypeInstall:
+			return info.Resource().OnPostInstall()
+		case common.DeployTypeUpgrade:
+			return info.Resource().OnPostUpgrade()
+		case common.DeployTypeRollback:
+			return info.Resource().OnPostRollback()
+		}
+
+		return false
 	})
+
 	prePostHookResourcesIDs := lo.FilterMap(hookResourcesInfos, func(info *resrcinfo.DeployableHookResourceInfo, _ int) (*resrcid.ResourceID, bool) {
-		return info.ResourceID, info.Resource().OnPreAnything() && info.Resource().OnPostAnything()
+		res := info.Resource()
+
+		switch deployType {
+		case common.DeployTypeInitial, common.DeployTypeInstall:
+			return res.ResourceID, res.OnPreInstall() && res.OnPostInstall()
+		case common.DeployTypeUpgrade:
+			return res.ResourceID, res.OnPreUpgrade() && res.OnPostUpgrade()
+		case common.DeployTypeRollback:
+			return res.ResourceID, res.OnPreRollback() && res.OnPostRollback()
+		}
+
+		return res.ResourceID, false
 	})
 
 	curReleaseExistResourcesUIDs, _ := CurrentReleaseExistingResourcesUIDs(standaloneCRDsInfos, hookResourcesInfos, generalResourcesInfos)

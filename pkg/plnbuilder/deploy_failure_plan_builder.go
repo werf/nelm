@@ -11,11 +11,11 @@ import (
 
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/util"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/kubeclnt"
 	"github.com/werf/nelm/pkg/opertn"
 	"github.com/werf/nelm/pkg/pln"
 	"github.com/werf/nelm/pkg/resrc"
-	"github.com/werf/nelm/pkg/resrcid"
 	"github.com/werf/nelm/pkg/resrcinfo"
 	"github.com/werf/nelm/pkg/rls"
 	"github.com/werf/nelm/pkg/rlshistor"
@@ -23,6 +23,7 @@ import (
 
 func NewDeployFailurePlanBuilder(
 	releaseNamespace string,
+	deployType common.DeployType,
 	deployPlan *pln.Plan,
 	taskStore *statestore.TaskStore,
 	hookResourcesInfos []*resrcinfo.DeployableHookResourceInfo,
@@ -36,25 +37,21 @@ func NewDeployFailurePlanBuilder(
 ) *DeployFailurePlanBuilder {
 	plan := pln.NewPlan()
 
-	prePostHookResourcesIDs := lo.FilterMap(hookResourcesInfos, func(info *resrcinfo.DeployableHookResourceInfo, _ int) (*resrcid.ResourceID, bool) {
-		return info.ResourceID, info.Resource().OnPreAnything() && info.Resource().OnPostAnything()
-	})
-
 	return &DeployFailurePlanBuilder{
-		releaseNamespace:        releaseNamespace,
-		taskStore:               taskStore,
-		hookResourceInfos:       hookResourcesInfos,
-		prePostHookResourcesIDs: prePostHookResourcesIDs,
-		generalResourceInfos:    generalResourceInfos,
-		newRelease:              newRelease,
-		prevRelease:             opts.PrevRelease,
-		history:                 history,
-		kubeClient:              kubeClient,
-		dynamicClient:           dynamicClient,
-		mapper:                  mapper,
-		deployPlan:              deployPlan,
-		plan:                    plan,
-		deletionTimeout:         opts.DeletionTimeout,
+		releaseNamespace:     releaseNamespace,
+		deployType:           deployType,
+		taskStore:            taskStore,
+		hookResourceInfos:    hookResourcesInfos,
+		generalResourceInfos: generalResourceInfos,
+		newRelease:           newRelease,
+		prevRelease:          opts.PrevRelease,
+		history:              history,
+		kubeClient:           kubeClient,
+		dynamicClient:        dynamicClient,
+		mapper:               mapper,
+		deployPlan:           deployPlan,
+		plan:                 plan,
+		deletionTimeout:      opts.DeletionTimeout,
 	}
 }
 
@@ -64,20 +61,20 @@ type DeployFailurePlanBuilderOptions struct {
 }
 
 type DeployFailurePlanBuilder struct {
-	releaseNamespace        string
-	taskStore               *statestore.TaskStore
-	hookResourceInfos       []*resrcinfo.DeployableHookResourceInfo
-	prePostHookResourcesIDs []*resrcid.ResourceID
-	generalResourceInfos    []*resrcinfo.DeployableGeneralResourceInfo
-	newRelease              *rls.Release
-	prevRelease             *rls.Release
-	history                 rlshistor.Historier
-	kubeClient              kubeclnt.KubeClienter
-	dynamicClient           dynamic.Interface
-	mapper                  meta.ResettableRESTMapper
-	deployPlan              *pln.Plan
-	plan                    *pln.Plan
-	deletionTimeout         time.Duration
+	releaseNamespace     string
+	deployType           common.DeployType
+	taskStore            *statestore.TaskStore
+	hookResourceInfos    []*resrcinfo.DeployableHookResourceInfo
+	generalResourceInfos []*resrcinfo.DeployableGeneralResourceInfo
+	newRelease           *rls.Release
+	prevRelease          *rls.Release
+	history              rlshistor.Historier
+	kubeClient           kubeclnt.KubeClienter
+	dynamicClient        dynamic.Interface
+	mapper               meta.ResettableRESTMapper
+	deployPlan           *pln.Plan
+	plan                 *pln.Plan
+	deletionTimeout      time.Duration
 }
 
 func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*pln.Plan, error) {
@@ -90,7 +87,22 @@ func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*pln.Plan, error)
 	}
 
 	hookInfos := lo.UniqBy(b.hookResourceInfos, func(info *resrcinfo.DeployableHookResourceInfo) string {
-		return fmt.Sprintf("%s::%t::%t", info.ID(), info.Resource().OnPreAnything(), info.Resource().OnPostAnything())
+		res := info.Resource()
+
+		var pre, post bool
+		switch b.deployType {
+		case common.DeployTypeInitial, common.DeployTypeInstall:
+			pre = res.OnPreInstall()
+			post = res.OnPostInstall()
+		case common.DeployTypeUpgrade:
+			pre = res.OnPreUpgrade()
+			post = res.OnPostUpgrade()
+		case common.DeployTypeRollback:
+			pre = res.OnPreRollback()
+			post = res.OnPostRollback()
+		}
+
+		return fmt.Sprintf("%s::%t::%t", info.ID(), pre, post)
 	})
 
 	for _, info := range hookInfos {
