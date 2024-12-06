@@ -58,4 +58,29 @@ werf converge --env dev
 
 ## Getting started with standalone Nelm
 
-_Not implemented yet_
+### Installation
+
+```bash
+# build
+go build -o nelm cmd/nelm/main.go
+
+# run
+./nelm
+
+# install
+mv nelm /usr/local/bin/nelm
+```
+
+### Usage
+```bash
+Usage:
+  nelm [command]
+
+Available Commands:
+  completion  Generate the autocompletion script for the specified shell
+  deploy      Deploy a Helm chart
+  help        Help about any command
+  plan        Render Helm chart
+  render      Render Helm charts to Kubernetes manifests
+  uninstall   Uninstall a Helm release
+```
