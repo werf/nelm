@@ -787,15 +787,31 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 
 		if extDepsSet && opDeploy != nil {
 			for _, dep := range externalDeps {
-				taskState := util.NewConcurrent(
-					statestore.NewPresenceTaskState(
-						dep.Name(),
-						dep.Namespace(),
-						dep.GroupVersionKind(),
-						statestore.PresenceTaskStateOptions{},
-					),
-				)
-				b.taskStore.AddPresenceTaskState(taskState)
+				taskState, taskStateFound := lo.Find(b.taskStore.PresenceTasksStates(), func(ts *util.Concurrent[*statestore.PresenceTaskState]) bool {
+					var found bool
+
+					ts.RTransaction(func(pts *statestore.PresenceTaskState) {
+						if pts.Name() == dep.Name() &&
+							pts.Namespace() == dep.Namespace() &&
+							pts.GroupVersionKind() == dep.GroupVersionKind() {
+							found = true
+						}
+					})
+
+					return found
+				})
+
+				if !taskStateFound {
+					taskState = util.NewConcurrent(
+						statestore.NewPresenceTaskState(
+							dep.Name(),
+							dep.Namespace(),
+							dep.GroupVersionKind(),
+							statestore.PresenceTaskStateOptions{},
+						),
+					)
+					b.taskStore.AddPresenceTaskState(taskState)
+				}
 
 				opTrackReadiness := opertn.NewTrackResourcePresenceOperation(
 					dep.ResourceID,
@@ -806,17 +822,12 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*resrcinfo.DeployableHoo
 						Timeout: b.readinessTimeout,
 					},
 				)
-				if manIntDepsSet {
-					b.plan.AddInStagedOperation(
-						opTrackReadiness,
-						StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,
-					)
-				} else {
-					b.plan.AddInStagedOperation(
-						opTrackReadiness,
-						stageStartOpID,
-					)
-				}
+
+				b.plan.AddInStagedOperation(
+					opTrackReadiness,
+					StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,
+				)
+
 				lo.Must0(b.plan.AddDependency(opTrackReadiness.ID(), opDeploy.ID()))
 			}
 		}
@@ -1030,15 +1041,31 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*resrcinfo.Deployable
 
 		if extDepsSet && opDeploy != nil {
 			for _, dep := range externalDeps {
-				taskState := util.NewConcurrent(
-					statestore.NewPresenceTaskState(
-						dep.Name(),
-						dep.Namespace(),
-						dep.GroupVersionKind(),
-						statestore.PresenceTaskStateOptions{},
-					),
-				)
-				b.taskStore.AddPresenceTaskState(taskState)
+				taskState, taskStateFound := lo.Find(b.taskStore.PresenceTasksStates(), func(ts *util.Concurrent[*statestore.PresenceTaskState]) bool {
+					var found bool
+
+					ts.RTransaction(func(pts *statestore.PresenceTaskState) {
+						if pts.Name() == dep.Name() &&
+							pts.Namespace() == dep.Namespace() &&
+							pts.GroupVersionKind() == dep.GroupVersionKind() {
+							found = true
+						}
+					})
+
+					return found
+				})
+
+				if !taskStateFound {
+					taskState = util.NewConcurrent(
+						statestore.NewPresenceTaskState(
+							dep.Name(),
+							dep.Namespace(),
+							dep.GroupVersionKind(),
+							statestore.PresenceTaskStateOptions{},
+						),
+					)
+					b.taskStore.AddPresenceTaskState(taskState)
+				}
 
 				opTrackReadiness := opertn.NewTrackResourcePresenceOperation(
 					dep.ResourceID,
@@ -1049,17 +1076,12 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*resrcinfo.Deployable
 						Timeout: b.readinessTimeout,
 					},
 				)
-				if manIntDepsSet {
-					b.plan.AddInStagedOperation(
-						opTrackReadiness,
-						StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,
-					)
-				} else {
-					b.plan.AddInStagedOperation(
-						opTrackReadiness,
-						stageStartOpID,
-					)
-				}
+
+				b.plan.AddInStagedOperation(
+					opTrackReadiness,
+					StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,
+				)
+
 				lo.Must0(b.plan.AddDependency(opTrackReadiness.ID(), opDeploy.ID()))
 			}
 		}
