@@ -595,7 +595,7 @@ func buildReadinessChildResourceStateCell(resourceState *statestore.ResourceStat
 		if colorize {
 			stateCell = color.New(color.Green).Sprintf(stateCell)
 		}
-	case statestore.ResourceStatusCreated, statestore.ResourceStatusDeleted:
+	case statestore.ResourceStatusCreated, statestore.ResourceStatusDeleted, statestore.ResourceStatusUnknown:
 		stateCell = caps.ToUpper(string(status))
 		if colorize {
 			stateCell = color.New(color.Yellow).Sprintf(stateCell)
