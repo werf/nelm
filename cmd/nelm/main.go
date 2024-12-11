@@ -14,6 +14,9 @@ func main() {
 	// Initialize the logger
 	logger := log.NewLogboekLogger()
 
+	// Print warning message
+	logger.Warn(context.Background(), "Nelm CLI is not ready and is not recommended for general use. Command names, option names, option defaults are going to change, a lot.")
+
 	var rootCmd = &cobra.Command{
 		Use:   "nelm",
 		Short: "Nelm is a Helm 3 replacement with enhanced features",
@@ -24,9 +27,8 @@ func main() {
 	}
 
 	// Add subcommands
-	rootCmd.AddCommand(commands.NewUninstallCommand())
-	rootCmd.AddCommand(commands.NewRenderCommand())
-	rootCmd.AddCommand(commands.NewDeployCommand())
+	rootCmd.AddCommand(commands.NewChartCommand())
+	rootCmd.AddCommand(commands.NewReleaseCommand())
 	rootCmd.AddCommand(commands.NewPlanCommand())
 
 	// Execute the root command

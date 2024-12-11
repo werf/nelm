@@ -11,7 +11,7 @@ import (
 )
 
 
-func NewUninstallCommand() *cobra.Command {
+func NewReleaseUninstallCommand() *cobra.Command {
 	var opts action.UninstallOptions
 
 	cmd := &cobra.Command{

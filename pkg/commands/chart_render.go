@@ -9,7 +9,7 @@ import (
 	"github.com/werf/nelm/pkg/action"
 )
 
-func NewRenderCommand() *cobra.Command {
+func NewChartRenderCommand() *cobra.Command {
 	var opts action.RenderOptions
 
 	cmd := &cobra.Command{
