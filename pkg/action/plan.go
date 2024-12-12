@@ -10,12 +10,13 @@ import (
 	"time"
 
 	"github.com/gookit/color"
+	"github.com/mitchellh/copystructure"
 	"github.com/samber/lo"
-
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
 	"github.com/werf/3p-helm/pkg/cli"
 	"github.com/werf/3p-helm/pkg/registry"
+	"github.com/werf/3p-helm/pkg/werfcompat/secrets_manager"
 
 	"github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/nelm/pkg/chrttree"
@@ -30,7 +31,6 @@ import (
 	"github.com/werf/nelm/pkg/rls"
 	"github.com/werf/nelm/pkg/rlsdiff"
 	"github.com/werf/nelm/pkg/rlshistor"
-	"github.com/werf/nelm/pkg/secrets_manager"
 )
 
 type PlanOptions struct {

@@ -12,15 +12,16 @@ import (
 	"time"
 
 	"github.com/gookit/color"
+	"github.com/mitchellh/copystructure"
 	"github.com/samber/lo"
-	"github.com/xo/terminfo"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
 	"github.com/werf/3p-helm/pkg/cli"
 	"github.com/werf/3p-helm/pkg/registry"
+	"github.com/werf/3p-helm/pkg/werfcompat/secrets_manager"
+	"github.com/xo/terminfo"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
@@ -43,7 +44,6 @@ import (
 	"github.com/werf/nelm/pkg/rls"
 	"github.com/werf/nelm/pkg/rlsdiff"
 	"github.com/werf/nelm/pkg/rlshistor"
-	"github.com/werf/nelm/pkg/secrets_manager"
 	"github.com/werf/nelm/pkg/track"
 	"github.com/werf/nelm/pkg/utls"
 )
@@ -93,48 +93,54 @@ const (
 // logrus.StandardLogger().SetLevel(logrusLogLevel)
 
 type DeployOptions struct {
-	AutoRollback                 bool
-	ChartDirPath                 string
-	ChartRepositoryInsecure      bool
-	ChartRepositorySkipTLSVerify bool
-	ChartRepositorySkipUpdate    bool
-	DefaultSecretValuesDisable   bool
-	DefaultValuesDisable         bool
-	DeployGraphPath              string
-	DeployGraphSave              bool
-	DeployReportPath             string
-	DeployReportSave             bool
-	ExtraAnnotations             map[string]string
-	ExtraLabels                  map[string]string
-	ExtraRuntimeAnnotations      map[string]string
-	KubeConfigBase64             string
-	KubeConfigPaths              []string
-	KubeContext                  string
-	LogColorMode                 LogColorMode
-	LogDebug                     bool
-	LogRegistryStreamOut         io.Writer
-	NetworkParallelism           int
-	ProgressTablePrint           bool
-	ProgressTablePrintInterval   time.Duration
-	RegistryCredentialsPath      string
-	ReleaseHistoryLimit          int
-	ReleaseName                  string
-	ReleaseNamespace             string
-	ReleaseStorageDriver         ReleaseStorageDriver
-	RollbackGraphPath            string
-	RollbackGraphSave            bool
-	SecretKeyIgnore              bool
-	SecretValuesPaths            []string
-	TempDirPath                  string
-	TrackCreationTimeout         time.Duration
-	TrackDeletionTimeout         time.Duration
-	TrackReadinessTimeout        time.Duration
-	ValuesFileSets               []string
-	ValuesFilesPaths             []string
-	ValuesSets                   []string
-	ValuesStringSets             []string
-	SubNotes                     bool
-	LegacyPreDeployHook          func(
+	AutoRollback                   bool
+	ChartDirPath                   string
+	ChartRepositoryInsecure        bool
+	ChartRepositorySkipTLSVerify   bool
+	ChartRepositorySkipUpdate      bool
+	DefaultChartApiVersion         string
+	DefaultChartName               string
+	DefaultChartVersion            string
+	DeployGraphPath                string
+	DeployGraphSave                bool
+	DeployReportPath               string
+	DeployReportSave               bool
+	ExtraAnnotations               map[string]string
+	ExtraLabels                    map[string]string
+	ExtraRuntimeAnnotations        map[string]string
+	KubeConfigBase64               string
+	KubeConfigPaths                []string
+	KubeContext                    string
+	LogColorMode                   LogColorMode
+	LogDebug                       bool
+	LogRegistryStreamOut           io.Writer
+	NetworkParallelism             int
+	ProgressTablePrint             bool
+	ProgressTablePrintInterval     time.Duration
+	RegistryCredentialsPath        string
+	ReleaseHistoryLimit            int
+	ReleaseName                    string
+	ReleaseNamespace               string
+	ReleaseStorageDriver           ReleaseStorageDriver
+	RollbackGraphPath              string
+	RollbackGraphSave              bool
+	SecretFilesPaths               []string
+	SecretKey                      string
+	SecretKeyIgnore                bool
+	SecretValuesFilesPaths         []string
+	SecretsWorkDir                 string
+	DisableDefaultSecretValuesFile bool
+	DisableDefaultValuesFile       bool
+	TempDirPath                    string
+	TrackCreationTimeout           time.Duration
+	TrackDeletionTimeout           time.Duration
+	TrackReadinessTimeout          time.Duration
+	ValuesFileSets                 []string
+	ValuesFilesPaths               []string
+	ValuesSets                     []string
+	ValuesStringSets               []string
+	SubNotes                       bool
+	LegacyPreDeployHook            func(
 		ctx context.Context,
 		releaseNamespace string,
 		helmRegistryClient *registry.Client,
@@ -150,7 +156,7 @@ type DeployOptions struct {
 	) error
 }
 
-func Deploy(ctx context.Context, opts DeployOptions) error {
+func Deploy(ctx context.Context, userOpts DeployOptions) error {
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)
@@ -161,7 +167,7 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 		return fmt.Errorf("get current user: %w", err)
 	}
 
-	opts, err = applyDeployOptionsDefaults(opts, currentDir, currentUser)
+	opts, err := buildDeployOptions(&userOpts, currentDir, currentUser)
 	if err != nil {
 		return fmt.Errorf("build deploy options: %w", err)
 	}
@@ -278,11 +284,11 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 			secretsManager,
 			opts.RegistryCredentialsPath,
 			opts.ChartRepositorySkipUpdate,
-			opts.SecretValuesPaths,
+			opts.SecretValuesFilesPaths,
 			opts.ExtraAnnotations,
 			opts.ExtraLabels,
-			opts.DefaultValuesDisable,
-			opts.DefaultSecretValuesDisable,
+			opts.DisableDefaultValuesFile,
+			opts.DisableDefaultSecretValuesFile,
 			helmSettings,
 		); err != nil {
 			return fmt.Errorf("legacy pre deploy hook: %w", err)
@@ -352,14 +358,18 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 		newRevision,
 		deployType,
 		helmActionConfig,
+		secretsManager,
 		chrttree.ChartTreeOptions{
-			StringSetValues: opts.ValuesStringSets,
-			SetValues:       opts.ValuesSets,
-			FileValues:      opts.ValuesFileSets,
-			ValuesFiles:     opts.ValuesFilesPaths,
-			SubNotes:        opts.SubNotes,
-			Mapper:          clientFactory.Mapper(),
-			DiscoveryClient: clientFactory.Discovery(),
+			Mapper:                     clientFactory.Mapper(),
+			DiscoveryClient:            clientFactory.Discovery(),
+			StringSetValues:            opts.ValuesStringSets,
+			SetValues:                  opts.ValuesSets,
+			FileValues:                 opts.ValuesFileSets,
+			ValuesFiles:                opts.ValuesFilesPaths,
+			SecretValuesFiles:          opts.SecretValuesFilesPaths,
+			DefaultSecretValuesDisable: opts.DisableDefaultSecretValuesFile,
+			SecretsWorkDir:             opts.SecretsWorkDir,
+			SubNotes:                   opts.SubNotes,
 		},
 	)
 	if err != nil {

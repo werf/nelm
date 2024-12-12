@@ -9,11 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mitchellh/copystructure"
 	"github.com/samber/lo"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/yaml"
-
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
 	"github.com/werf/3p-helm/pkg/chartutil"
@@ -21,6 +18,10 @@ import (
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/storage"
 	"github.com/werf/3p-helm/pkg/storage/driver"
+	"github.com/werf/3p-helm/pkg/werfcompat/secrets_manager"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/yaml"
 
 	"github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/nelm/pkg/chrttree"
@@ -31,7 +32,6 @@ import (
 	"github.com/werf/nelm/pkg/resrcpatcher"
 	"github.com/werf/nelm/pkg/resrcprocssr"
 	"github.com/werf/nelm/pkg/rlshistor"
-	"github.com/werf/nelm/pkg/secrets_manager"
 )
 
 const (
