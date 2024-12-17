@@ -7,9 +7,6 @@ import (
 	"strings"
 	"unicode"
 
-	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/client-go/discovery"
-
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
 	"github.com/werf/3p-helm/pkg/chart"
@@ -18,6 +15,10 @@ import (
 	"github.com/werf/3p-helm/pkg/cli/values"
 	"github.com/werf/3p-helm/pkg/getter"
 	"github.com/werf/3p-helm/pkg/releaseutil"
+	"github.com/werf/3p-helm/pkg/werfcompat"
+	"github.com/werf/3p-helm/pkg/werfcompat/secrets_manager"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/client-go/discovery"
 
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
@@ -25,7 +26,17 @@ import (
 	"github.com/werf/nelm/pkg/resrcid"
 )
 
-func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, actionConfig *action.Configuration, opts ChartTreeOptions) (*ChartTree, error) {
+func NewChartTree(
+	ctx context.Context,
+	chartPath string,
+	releaseName string,
+	releaseNamespace string,
+	revision int,
+	deployType common.DeployType,
+	actionConfig *action.Configuration,
+	secretsManager *secrets_manager.SecretsManager,
+	opts ChartTreeOptions,
+) (*ChartTree, error) {
 	valOpts := &values.Options{
 		StringValues: opts.StringSetValues,
 		Values:       opts.SetValues,
@@ -41,8 +52,27 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		return nil, fmt.Errorf("error merging values for chart tree at %q: %w", chartPath, err)
 	}
 
+	secrets := werfcompat.NewSecrets(
+		chartPath,
+		secretsManager,
+		werfcompat.SecretsOptions{
+			CustomSecretValueFiles:     opts.SecretValuesFiles,
+			WithoutDefaultSecretValues: opts.DefaultSecretValuesDisable,
+			SecretsWorkDir:             opts.SecretsWorkDir,
+		},
+	)
+
 	log.Default.Debug(ctx, "Loading chart at %q", chartPath)
-	legacyChart, err := loader.Load(chartPath)
+	legacyChart, err := loader.Load(
+		chartPath,
+		loader.LoadOptions{
+			DefaultChartAPIVersion: opts.DefaultChartApiVersion,
+			DefaultChartName:       opts.DefaultChartName,
+			DefaultChartVersion:    opts.DefaultChartVersion,
+			DefaultValuesDisable:   opts.DefaultValuesDisable,
+			Secrets:                secrets,
+		},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("error loading chart for chart tree at %q: %w", chartPath, err)
 	} else if legacyChart == nil {
@@ -92,7 +122,7 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 	hasClusterAccess := opts.Mapper != nil
 
 	log.Default.Debug(ctx, "Rendering resources for chart at %q", chartPath)
-	legacyHookResources, generalManifestsBuf, notes, err := actionConfig.RenderResources(legacyChart, values, "", "", opts.SubNotes, false, false, nil, hasClusterAccess, false)
+	legacyHookResources, generalManifestsBuf, notes, err := actionConfig.RenderResources(legacyChart, values, "", "", opts.SubNotes, false, false, nil, hasClusterAccess, false, secrets)
 	if err != nil {
 		return nil, fmt.Errorf("error rendering resources for chart %q: %w", legacyChart.Name(), err)
 	}
@@ -169,13 +199,20 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 }
 
 type ChartTreeOptions struct {
-	Mapper          meta.ResettableRESTMapper
-	DiscoveryClient discovery.CachedDiscoveryInterface
-	StringSetValues []string
-	SetValues       []string
-	FileValues      []string
-	ValuesFiles     []string
-	SubNotes        bool
+	DefaultValuesDisable       bool
+	DefaultSecretValuesDisable bool
+	DiscoveryClient            discovery.CachedDiscoveryInterface
+	FileValues                 []string
+	Mapper                     meta.ResettableRESTMapper
+	SecretValuesFiles          []string
+	SecretsWorkDir             string
+	SetValues                  []string
+	StringSetValues            []string
+	ValuesFiles                []string
+	DefaultChartVersion        string
+	DefaultChartApiVersion     string
+	DefaultChartName           string
+	SubNotes                   bool
 }
 
 type ChartTree struct {
