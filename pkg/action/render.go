@@ -21,6 +21,7 @@ import (
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/storage"
 	"github.com/werf/3p-helm/pkg/storage/driver"
+	"github.com/werf/common-go/pkg/secrets_manager"
 
 	"github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/nelm/pkg/chrttree"
@@ -31,7 +32,6 @@ import (
 	"github.com/werf/nelm/pkg/resrcpatcher"
 	"github.com/werf/nelm/pkg/resrcprocssr"
 	"github.com/werf/nelm/pkg/rlshistor"
-	"github.com/werf/nelm/pkg/secrets_manager"
 )
 
 const (
