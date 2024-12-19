@@ -20,7 +20,7 @@ require (
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.5.0
 	github.com/werf/3p-helm v0.0.0-20241219105936-95c628236af1
-	github.com/werf/common-go v0.0.0-20241219105246-5d191dffb739
+	github.com/werf/common-go v0.0.0-20241219162404-a6b652fcdb74
 	github.com/werf/kubedog v0.12.4-0.20241206094259-0fc2d1a1aff7
 	github.com/werf/lockgate v0.1.1
 	github.com/werf/logboek v0.6.1
@@ -136,7 +136,6 @@ require (
 	github.com/tidwall/gjson v1.17.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
-	github.com/werf/common v0.0.0-20241219095818-62c7ceaea23f // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
