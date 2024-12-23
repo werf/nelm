@@ -138,7 +138,6 @@ type DeployOptions struct {
 		ctx context.Context,
 		releaseNamespace string,
 		helmRegistryClient *registry.Client,
-		secretsManager *secrets_manager.SecretsManager,
 		registryCredentialsPath string,
 		chartRepositorySkipUpdate bool,
 		secretValuesPaths []string,
@@ -264,7 +263,7 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 		lockManager = m
 	}
 
-	secretsManager := secrets_manager.NewSecretsManager(
+	secrets_manager.DefaultManager = secrets_manager.NewSecretsManager(
 		secrets_manager.SecretsManagerOptions{
 			DisableSecretsDecryption: opts.SecretKeyIgnore,
 		},
@@ -275,7 +274,6 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 			ctx,
 			opts.ReleaseNamespace,
 			helmRegistryClient,
-			secretsManager,
 			opts.RegistryCredentialsPath,
 			opts.ChartRepositorySkipUpdate,
 			opts.SecretValuesPaths,

@@ -65,7 +65,6 @@ type PlanOptions struct {
 		ctx context.Context,
 		releaseNamespace string,
 		helmRegistryClient *registry.Client,
-		secretsManager *secrets_manager.SecretsManager,
 		registryCredentialsPath string,
 		chartRepositorySkipUpdate bool,
 		secretValuesPaths []string,
@@ -177,7 +176,7 @@ func Plan(ctx context.Context, opts PlanOptions) error {
 		return fmt.Errorf("construct kube client factory: %w", err)
 	}
 
-	secretsManager := secrets_manager.NewSecretsManager(
+	secrets_manager.DefaultManager = secrets_manager.NewSecretsManager(
 		secrets_manager.SecretsManagerOptions{
 			DisableSecretsDecryption: opts.SecretKeyIgnore,
 		},
@@ -188,7 +187,6 @@ func Plan(ctx context.Context, opts PlanOptions) error {
 			ctx,
 			opts.ReleaseNamespace,
 			helmRegistryClient,
-			secretsManager,
 			opts.RegistryCredentialsPath,
 			opts.ChartRepositorySkipUpdate,
 			opts.SecretValuesPaths,
