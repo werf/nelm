@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
 
@@ -16,9 +17,9 @@ import (
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/chartutil"
 	"github.com/werf/3p-helm/pkg/cli/values"
+	"github.com/werf/3p-helm/pkg/downloader"
 	"github.com/werf/3p-helm/pkg/getter"
 	"github.com/werf/3p-helm/pkg/releaseutil"
-
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/resrc"
@@ -44,6 +45,11 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 	log.Default.Debug(ctx, "Loading chart at %q", chartPath)
 	legacyChart, err := loader.Load(chartPath)
 	if err != nil {
+		var e *downloader.ErrRepoNotFound
+		if errors.As(err, &e) {
+			return nil, fmt.Errorf("%w. Please add the missing repos via 'helm repo add'", e)
+		}
+
 		return nil, fmt.Errorf("error loading chart for chart tree at %q: %w", chartPath, err)
 	} else if legacyChart == nil {
 		return nil, fmt.Errorf("error loading chart for chart tree at %q: %w", chartPath, action.ErrMissingChart())

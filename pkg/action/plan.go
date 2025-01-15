@@ -14,9 +14,13 @@ import (
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
+	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/cli"
+	"github.com/werf/3p-helm/pkg/downloader"
+	"github.com/werf/3p-helm/pkg/getter"
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/common-go/pkg/secrets_manager"
+	"github.com/werf/logboek"
 
 	"github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/nelm/pkg/chrttree"
@@ -243,6 +247,21 @@ func Plan(ctx context.Context, opts PlanOptions) error {
 	} else {
 		deployType = helmcommon.DeployTypeInitial
 	}
+
+	downloader := &downloader.Manager{
+		// FIXME(ilya-lesikov):
+		Out:               logboek.Context(ctx).OutStream(),
+		ChartPath:         opts.ChartDirPath,
+		SkipUpdate:        opts.ChartRepositorySkipUpdate,
+		AllowMissingRepos: true,
+		Getters:           getter.All(helmSettings),
+		RegistryClient:    helmRegistryClient,
+		RepositoryConfig:  helmSettings.RepositoryConfig,
+		RepositoryCache:   helmSettings.RepositoryCache,
+		Debug:             helmSettings.Debug,
+	}
+	loader.SetChartPathFunc = downloader.SetChartPath
+	loader.DepsBuildFunc = downloader.Build
 
 	log.Default.Info(ctx, "Constructing chart tree")
 	chartTree, err := chrttree.NewChartTree(

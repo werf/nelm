@@ -16,12 +16,16 @@ import (
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
+	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/chartutil"
 	"github.com/werf/3p-helm/pkg/cli"
+	"github.com/werf/3p-helm/pkg/downloader"
+	"github.com/werf/3p-helm/pkg/getter"
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/storage"
 	"github.com/werf/3p-helm/pkg/storage/driver"
 	"github.com/werf/common-go/pkg/secrets_manager"
+	"github.com/werf/logboek"
 
 	"github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/nelm/pkg/chrttree"
@@ -280,6 +284,21 @@ func Render(ctx context.Context, opts RenderOptions) error {
 		chartTreeOptions.Mapper = clientFactory.Mapper()
 		chartTreeOptions.DiscoveryClient = clientFactory.Discovery()
 	}
+
+	downloader := &downloader.Manager{
+		// FIXME(ilya-lesikov):
+		Out:               logboek.Context(ctx).OutStream(),
+		ChartPath:         opts.ChartDirPath,
+		SkipUpdate:        opts.ChartRepositorySkipUpdate,
+		AllowMissingRepos: true,
+		Getters:           getter.All(helmSettings),
+		RegistryClient:    helmRegistryClient,
+		RepositoryConfig:  helmSettings.RepositoryConfig,
+		RepositoryCache:   helmSettings.RepositoryCache,
+		Debug:             helmSettings.Debug,
+	}
+	loader.SetChartPathFunc = downloader.SetChartPath
+	loader.DepsBuildFunc = downloader.Build
 
 	chartTree, err := chrttree.NewChartTree(
 		ctx,
