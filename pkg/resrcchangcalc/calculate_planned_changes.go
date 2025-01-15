@@ -18,6 +18,7 @@ import (
 const HiddenInsignificantOutput = "<hidden insignificant output>"
 const HiddenInsignificantChanges = "<hidden insignificant changes>"
 const HiddenSensitiveOutput = "<hidden sensitive output>"
+const HiddenSensitiveChanges = "<hidden sensitive changes>"
 
 func CalculatePlannedChanges(
 	releaseName string,
@@ -160,14 +161,14 @@ func hookResourcesChanges(infos []*resrcinfo.DeployableHookResourceInfo, prevRel
 			})
 		} else if update {
 			var uDiff string
-			if isSecret {
-				uDiff = HiddenSensitiveOutput
-			} else {
-				if ud, nonEmpty := utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured())); nonEmpty {
-					uDiff = ud
+			if ud, nonEmpty := utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured())); nonEmpty {
+				if isSecret {
+					uDiff = HiddenSensitiveChanges
 				} else {
-					uDiff = HiddenInsignificantChanges
+					uDiff = ud
 				}
+			} else {
+				uDiff = HiddenInsignificantChanges
 			}
 
 			changes = append(changes, &UpdatedResourceChange{
@@ -243,14 +244,14 @@ func generalResourcesChanges(infos []*resrcinfo.DeployableGeneralResourceInfo, p
 			})
 		} else if update {
 			var uDiff string
-			if isSecret {
-				uDiff = HiddenSensitiveOutput
-			} else {
-				if ud, nonEmpty := utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured())); nonEmpty {
-					uDiff = ud
+			if ud, nonEmpty := utls.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured())); nonEmpty {
+				if isSecret {
+					uDiff = HiddenSensitiveChanges
 				} else {
-					uDiff = HiddenInsignificantChanges
+					uDiff = ud
 				}
+			} else {
+				uDiff = HiddenInsignificantChanges
 			}
 
 			changes = append(changes, &UpdatedResourceChange{
