@@ -48,9 +48,14 @@ type PlanOptions struct {
 	ExtraAnnotations             map[string]string
 	ExtraLabels                  map[string]string
 	ExtraRuntimeAnnotations      map[string]string
+	KubeAPIServerName            string
+	KubeCAPath                   string
 	KubeConfigBase64             string
 	KubeConfigPaths              []string
 	KubeContext                  string
+	KubeSkipTLSVerify            bool
+	KubeTLSServerName            string
+	KubeToken                    string
 	LogDebug                     bool
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
@@ -109,7 +114,12 @@ func Plan(ctx context.Context, opts PlanOptions) error {
 				ConfigDataBase64:    opts.KubeConfigBase64,
 				ConfigPathMergeList: opts.KubeConfigPaths,
 			},
-			Namespace: opts.ReleaseNamespace,
+			Namespace:     opts.ReleaseNamespace,
+			BearerToken:   opts.KubeToken,
+			APIServer:     opts.KubeAPIServerName,
+			CAFile:        opts.KubeCAPath,
+			TLSServerName: opts.KubeTLSServerName,
+			SkipTLSVerify: opts.KubeSkipTLSVerify,
 		},
 	)
 	if err != nil {

@@ -32,9 +32,14 @@ import (
 type UninstallOptions struct {
 	DeleteHooks                bool
 	DeleteReleaseNamespace     bool
+	KubeAPIServerName          string
+	KubeCAPath                 string
 	KubeConfigBase64           string
 	KubeConfigPaths            []string
 	KubeContext                string
+	KubeSkipTLSVerify          bool
+	KubeTLSServerName          string
+	KubeToken                  string
 	LogDebug                   bool
 	ProgressTablePrintInterval time.Duration
 	ReleaseHistoryLimit        int
@@ -73,7 +78,12 @@ func Uninstall(ctx context.Context, opts UninstallOptions) error {
 				ConfigDataBase64:    opts.KubeConfigBase64,
 				ConfigPathMergeList: opts.KubeConfigPaths,
 			},
-			Namespace: opts.ReleaseNamespace,
+			Namespace:     opts.ReleaseNamespace,
+			BearerToken:   opts.KubeToken,
+			APIServer:     opts.KubeAPIServerName,
+			CAFile:        opts.KubeCAPath,
+			TLSServerName: opts.KubeTLSServerName,
+			SkipTLSVerify: opts.KubeSkipTLSVerify,
 		},
 	)
 	if err != nil {
