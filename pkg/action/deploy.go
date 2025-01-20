@@ -110,9 +110,14 @@ type DeployOptions struct {
 	ExtraAnnotations             map[string]string
 	ExtraLabels                  map[string]string
 	ExtraRuntimeAnnotations      map[string]string
+	KubeAPIServerName            string
+	KubeCAPath                   string
 	KubeConfigBase64             string
 	KubeConfigPaths              []string
 	KubeContext                  string
+	KubeSkipTLSVerify            bool
+	KubeTLSServerName            string
+	KubeToken                    string
 	LogColorMode                 LogColorMode
 	LogDebug                     bool
 	LogRegistryStreamOut         io.Writer
@@ -128,6 +133,7 @@ type DeployOptions struct {
 	RollbackGraphSave            bool
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
+	SubNotes                     bool
 	TempDirPath                  string
 	TrackCreationTimeout         time.Duration
 	TrackDeletionTimeout         time.Duration
@@ -136,7 +142,6 @@ type DeployOptions struct {
 	ValuesFilesPaths             []string
 	ValuesSets                   []string
 	ValuesStringSets             []string
-	SubNotes                     bool
 	LegacyPreDeployHook          func(
 		ctx context.Context,
 		releaseNamespace string,
@@ -181,7 +186,12 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 				ConfigDataBase64:    opts.KubeConfigBase64,
 				ConfigPathMergeList: opts.KubeConfigPaths,
 			},
-			Namespace: opts.ReleaseNamespace,
+			Namespace:     opts.ReleaseNamespace,
+			BearerToken:   opts.KubeToken,
+			APIServer:     opts.KubeAPIServerName,
+			CAFile:        opts.KubeCAPath,
+			TLSServerName: opts.KubeTLSServerName,
+			SkipTLSVerify: opts.KubeSkipTLSVerify,
 		},
 	)
 	if err != nil {
@@ -243,6 +253,7 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 	helmReleaseStorage := helmActionConfig.Releases
 	helmReleaseStorage.MaxHistory = opts.ReleaseHistoryLimit
 
+	// FIXME(ilya-lesikov): this is not used later
 	helmChartPathOptions := action.ChartPathOptions{
 		InsecureSkipTLSverify: opts.ChartRepositorySkipTLSVerify,
 		PlainHTTP:             opts.ChartRepositoryInsecure,

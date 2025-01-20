@@ -52,20 +52,25 @@ type RenderOptions struct {
 	ExtraAnnotations             map[string]string
 	ExtraLabels                  map[string]string
 	ExtraRuntimeAnnotations      map[string]string
+	KubeAPIServerName            string
+	KubeCAPath                   string
 	KubeConfigBase64             string
 	KubeConfigPaths              []string
 	KubeContext                  string
+	KubeSkipTLSVerify            bool
+	KubeTLSServerName            string
+	KubeToken                    string
 	Local                        bool
 	LocalKubeVersion             string
 	LogDebug                     bool
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
+	OutputFilePath               string
+	OutputFileSave               bool
 	RegistryCredentialsPath      string
 	ReleaseName                  string
 	ReleaseNamespace             string
 	ReleaseStorageDriver         ReleaseStorageDriver
-	OutputFilePath               string
-	OutputFileSave               bool
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
 	ShowCRDs                     bool
@@ -119,7 +124,12 @@ func Render(ctx context.Context, opts RenderOptions) error {
 				ConfigDataBase64:    opts.KubeConfigBase64,
 				ConfigPathMergeList: opts.KubeConfigPaths,
 			},
-			Namespace: opts.ReleaseNamespace,
+			Namespace:     opts.ReleaseNamespace,
+			BearerToken:   opts.KubeToken,
+			APIServer:     opts.KubeAPIServerName,
+			CAFile:        opts.KubeCAPath,
+			TLSServerName: opts.KubeTLSServerName,
+			SkipTLSVerify: opts.KubeSkipTLSVerify,
 		},
 	)
 	if err != nil {
