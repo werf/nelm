@@ -33,10 +33,12 @@ type UninstallOptions struct {
 	DeleteHooks                bool
 	DeleteReleaseNamespace     bool
 	KubeAPIServerName          string
+	KubeBurstLimit             int
 	KubeCAPath                 string
 	KubeConfigBase64           string
 	KubeConfigPaths            []string
 	KubeContext                string
+	KubeQPSLimit               int
 	KubeSkipTLSVerify          bool
 	KubeTLSServerName          string
 	KubeToken                  string
@@ -84,6 +86,8 @@ func Uninstall(ctx context.Context, opts UninstallOptions) error {
 			CAFile:        opts.KubeCAPath,
 			TLSServerName: opts.KubeTLSServerName,
 			SkipTLSVerify: opts.KubeSkipTLSVerify,
+			QPSLimit:      opts.KubeQPSLimit,
+			BurstLimit:    opts.KubeBurstLimit,
 		},
 	)
 	if err != nil {
@@ -259,6 +263,14 @@ func applyUninstallOptionsDefaults(opts UninstallOptions, currentDir string, cur
 
 	if opts.KubeConfigBase64 == "" && len(opts.KubeConfigPaths) == 0 {
 		opts.KubeConfigPaths = []string{filepath.Join(currentUser.HomeDir, ".kube", "config")}
+	}
+
+	if opts.KubeQPSLimit <= 0 {
+		opts.KubeQPSLimit = DefaultQPSLimit
+	}
+
+	if opts.KubeBurstLimit <= 0 {
+		opts.KubeBurstLimit = DefaultBurstLimit
 	}
 
 	if opts.ProgressTablePrintInterval <= 0 {
