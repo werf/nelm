@@ -33,6 +33,12 @@ const (
 	ReleaseStorageDriverSQL        ReleaseStorageDriver = "sql"
 )
 
+const (
+	DefaultQPSLimit           = 30
+	DefaultBurstLimit         = 100
+	DefaultNetworkParallelism = 30
+)
+
 func initKubedog(ctx context.Context) error {
 	flag.CommandLine.Parse([]string{})
 

@@ -49,10 +49,12 @@ type PlanOptions struct {
 	ExtraLabels                  map[string]string
 	ExtraRuntimeAnnotations      map[string]string
 	KubeAPIServerName            string
+	KubeBurstLimit               int
 	KubeCAPath                   string
 	KubeConfigBase64             string
 	KubeConfigPaths              []string
 	KubeContext                  string
+	KubeQPSLimit                 int
 	KubeSkipTLSVerify            bool
 	KubeTLSServerName            string
 	KubeToken                    string
@@ -120,6 +122,8 @@ func Plan(ctx context.Context, opts PlanOptions) error {
 			CAFile:        opts.KubeCAPath,
 			TLSServerName: opts.KubeTLSServerName,
 			SkipTLSVerify: opts.KubeSkipTLSVerify,
+			QPSLimit:      opts.KubeQPSLimit,
+			BurstLimit:    opts.KubeBurstLimit,
 		},
 	)
 	if err != nil {
@@ -429,7 +433,15 @@ func applyPlanOptionsDefaults(opts PlanOptions, currentDir string, currentUser *
 	}
 
 	if opts.NetworkParallelism <= 0 {
-		opts.NetworkParallelism = 30
+		opts.NetworkParallelism = DefaultNetworkParallelism
+	}
+
+	if opts.KubeQPSLimit <= 0 {
+		opts.KubeQPSLimit = DefaultQPSLimit
+	}
+
+	if opts.KubeBurstLimit <= 0 {
+		opts.KubeBurstLimit = DefaultBurstLimit
 	}
 
 	if opts.ReleaseName == "" {
