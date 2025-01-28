@@ -19,6 +19,7 @@ import (
 	"github.com/werf/3p-helm/pkg/downloader"
 	"github.com/werf/3p-helm/pkg/getter"
 	"github.com/werf/3p-helm/pkg/registry"
+	"github.com/werf/3p-helm/pkg/werf/chartextender"
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/logboek"
 
@@ -38,10 +39,14 @@ import (
 )
 
 type PlanOptions struct {
+	ChartAppVersion              string
 	ChartDirPath                 string
 	ChartRepositoryInsecure      bool
 	ChartRepositorySkipTLSVerify bool
 	ChartRepositorySkipUpdate    bool
+	DefaultChartAPIVersion       string
+	DefaultChartName             string
+	DefaultChartVersion          string
 	DefaultSecretValuesDisable   bool
 	DefaultValuesDisable         bool
 	ErrorIfChangesPlanned        bool
@@ -199,6 +204,11 @@ func Plan(ctx context.Context, opts PlanOptions) error {
 			DisableSecretsDecryption: opts.SecretKeyIgnore,
 		},
 	)
+
+	chartextender.DefaultChartAPIVersion = opts.DefaultChartAPIVersion
+	chartextender.DefaultChartName = opts.DefaultChartName
+	chartextender.DefaultChartVersion = opts.DefaultChartVersion
+	chartextender.ChartAppVersion = opts.ChartAppVersion
 
 	if opts.LegacyPrePlanHook != nil {
 		if err := opts.LegacyPrePlanHook(
