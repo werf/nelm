@@ -24,6 +24,7 @@ import (
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/storage"
 	"github.com/werf/3p-helm/pkg/storage/driver"
+	"github.com/werf/3p-helm/pkg/werf/chartextender"
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/logboek"
 
@@ -43,10 +44,14 @@ const (
 )
 
 type RenderOptions struct {
+	ChartAppVersion              string
 	ChartDirPath                 string
 	ChartRepositoryInsecure      bool
 	ChartRepositorySkipTLSVerify bool
 	ChartRepositorySkipUpdate    bool
+	DefaultChartAPIVersion       string
+	DefaultChartName             string
+	DefaultChartVersion          string
 	DefaultSecretValuesDisable   bool
 	DefaultValuesDisable         bool
 	ExtraAnnotations             map[string]string
@@ -227,6 +232,11 @@ func Render(ctx context.Context, opts RenderOptions) error {
 			DisableSecretsDecryption: opts.SecretKeyIgnore,
 		},
 	)
+
+	chartextender.DefaultChartAPIVersion = opts.DefaultChartAPIVersion
+	chartextender.DefaultChartName = opts.DefaultChartName
+	chartextender.DefaultChartVersion = opts.DefaultChartVersion
+	chartextender.ChartAppVersion = opts.ChartAppVersion
 
 	if opts.LegacyPreRenderHook != nil {
 		if err := opts.LegacyPreRenderHook(
