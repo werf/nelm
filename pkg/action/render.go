@@ -18,7 +18,6 @@ import (
 	"github.com/werf/3p-helm/pkg/action"
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/chartutil"
-	"github.com/werf/3p-helm/pkg/cli"
 	"github.com/werf/3p-helm/pkg/downloader"
 	"github.com/werf/3p-helm/pkg/getter"
 	"github.com/werf/3p-helm/pkg/registry"
@@ -90,15 +89,10 @@ type RenderOptions struct {
 	LegacyPreRenderHook          func(
 		ctx context.Context,
 		releaseNamespace string,
-		helmRegistryClient *registry.Client,
 		registryCredentialsPath string,
-		chartRepositorySkipUpdate bool,
 		secretValuesPaths []string,
-		extraAnnotations map[string]string,
-		extraLabels map[string]string,
 		defaultValuesDisable bool,
 		defaultSecretValuesDisable bool,
-		helmSettings *cli.EnvSettings,
 	) error
 }
 
@@ -242,15 +236,10 @@ func Render(ctx context.Context, opts RenderOptions) error {
 		if err := opts.LegacyPreRenderHook(
 			ctx,
 			opts.ReleaseNamespace,
-			helmRegistryClient,
 			opts.RegistryCredentialsPath,
-			opts.ChartRepositorySkipUpdate,
 			opts.SecretValuesPaths,
-			opts.ExtraAnnotations,
-			opts.ExtraLabels,
 			opts.DefaultValuesDisable,
 			opts.DefaultSecretValuesDisable,
-			helmSettings,
 		); err != nil {
 			return fmt.Errorf("legacy pre render hook: %w", err)
 		}
