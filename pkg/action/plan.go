@@ -79,7 +79,6 @@ type PlanOptions struct {
 	LegacyPrePlanHook            func(
 		ctx context.Context,
 		releaseNamespace string,
-		registryCredentialsPath string,
 		secretValuesPaths []string,
 		defaultValuesDisable bool,
 		defaultSecretValuesDisable bool,
@@ -208,7 +207,6 @@ func Plan(ctx context.Context, opts PlanOptions) error {
 		if err := opts.LegacyPrePlanHook(
 			ctx,
 			opts.ReleaseNamespace,
-			opts.RegistryCredentialsPath,
 			opts.SecretValuesPaths,
 			opts.DefaultValuesDisable,
 			opts.DefaultSecretValuesDisable,
