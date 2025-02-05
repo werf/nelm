@@ -151,7 +151,6 @@ type DeployOptions struct {
 	LegacyPreDeployHook          func(
 		ctx context.Context,
 		releaseNamespace string,
-		registryCredentialsPath string,
 		secretValuesPaths []string,
 		defaultValuesDisable bool,
 		defaultSecretValuesDisable bool,
@@ -295,7 +294,6 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 		if err := opts.LegacyPreDeployHook(
 			ctx,
 			opts.ReleaseNamespace,
-			opts.RegistryCredentialsPath,
 			opts.SecretValuesPaths,
 			opts.DefaultValuesDisable,
 			opts.DefaultSecretValuesDisable,

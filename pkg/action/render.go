@@ -89,7 +89,6 @@ type RenderOptions struct {
 	LegacyPreRenderHook          func(
 		ctx context.Context,
 		releaseNamespace string,
-		registryCredentialsPath string,
 		secretValuesPaths []string,
 		defaultValuesDisable bool,
 		defaultSecretValuesDisable bool,
@@ -236,7 +235,6 @@ func Render(ctx context.Context, opts RenderOptions) error {
 		if err := opts.LegacyPreRenderHook(
 			ctx,
 			opts.ReleaseNamespace,
-			opts.RegistryCredentialsPath,
 			opts.SecretValuesPaths,
 			opts.DefaultValuesDisable,
 			opts.DefaultSecretValuesDisable,
