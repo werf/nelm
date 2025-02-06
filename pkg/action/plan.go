@@ -15,10 +15,12 @@ import (
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
 	"github.com/werf/3p-helm/pkg/chart/loader"
+	"github.com/werf/3p-helm/pkg/chartutil"
 	"github.com/werf/3p-helm/pkg/downloader"
 	"github.com/werf/3p-helm/pkg/getter"
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/werf/chartextender"
+	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/logboek"
 
@@ -71,18 +73,12 @@ type PlanOptions struct {
 	ReleaseStorageDriver         ReleaseStorageDriver
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
+	SecretWorkDir                string
 	TempDirPath                  string
 	ValuesFileSets               []string
 	ValuesFilesPaths             []string
 	ValuesSets                   []string
 	ValuesStringSets             []string
-	LegacyPrePlanHook            func(
-		ctx context.Context,
-		releaseNamespace string,
-		secretValuesPaths []string,
-		defaultValuesDisable bool,
-		defaultSecretValuesDisable bool,
-	) error
 }
 
 func Plan(ctx context.Context, opts PlanOptions) error {
@@ -202,18 +198,12 @@ func Plan(ctx context.Context, opts PlanOptions) error {
 	chartextender.DefaultChartName = opts.DefaultChartName
 	chartextender.DefaultChartVersion = opts.DefaultChartVersion
 	chartextender.ChartAppVersion = opts.ChartAppVersion
-
-	if opts.LegacyPrePlanHook != nil {
-		if err := opts.LegacyPrePlanHook(
-			ctx,
-			opts.ReleaseNamespace,
-			opts.SecretValuesPaths,
-			opts.DefaultValuesDisable,
-			opts.DefaultSecretValuesDisable,
-		); err != nil {
-			return fmt.Errorf("legacy pre plan hook: %w", err)
-		}
-	}
+	loader.WithoutDefaultSecretValues = opts.DefaultSecretValuesDisable
+	loader.WithoutDefaultValues = opts.DefaultValuesDisable
+	secrets.CoalesceTablesFunc = chartutil.CoalesceTables
+	secrets.SecretsWorkingDir = opts.SecretWorkDir
+	loader.SecretValuesFiles = opts.SecretValuesPaths
+	secrets.ChartDir = opts.ChartDirPath
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release")+" %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)
 
@@ -449,6 +439,13 @@ func applyPlanOptionsDefaults(opts PlanOptions, currentDir string, currentUser *
 		opts.ReleaseStorageDriver = ReleaseStorageDriverSecrets
 	} else if opts.ReleaseStorageDriver == ReleaseStorageDriverMemory {
 		return PlanOptions{}, fmt.Errorf("memory release storage driver is not supported")
+	}
+
+	if opts.SecretWorkDir == "" {
+		opts.SecretWorkDir, err = os.Getwd()
+		if err != nil {
+			return PlanOptions{}, fmt.Errorf("get current working directory: %w", err)
+		}
 	}
 
 	return opts, nil
