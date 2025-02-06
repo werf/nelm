@@ -24,6 +24,7 @@ import (
 	"github.com/werf/3p-helm/pkg/storage"
 	"github.com/werf/3p-helm/pkg/storage/driver"
 	"github.com/werf/3p-helm/pkg/werf/chartextender"
+	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/logboek"
 
@@ -79,6 +80,7 @@ type RenderOptions struct {
 	ReleaseStorageDriver         ReleaseStorageDriver
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
+	SecretWorkDir                string
 	ShowCRDs                     bool
 	ShowOnlyFiles                []string
 	TempDirPath                  string
@@ -86,13 +88,6 @@ type RenderOptions struct {
 	ValuesFilesPaths             []string
 	ValuesSets                   []string
 	ValuesStringSets             []string
-	LegacyPreRenderHook          func(
-		ctx context.Context,
-		releaseNamespace string,
-		secretValuesPaths []string,
-		defaultValuesDisable bool,
-		defaultSecretValuesDisable bool,
-	) error
 }
 
 func Render(ctx context.Context, opts RenderOptions) error {
@@ -230,18 +225,12 @@ func Render(ctx context.Context, opts RenderOptions) error {
 	chartextender.DefaultChartName = opts.DefaultChartName
 	chartextender.DefaultChartVersion = opts.DefaultChartVersion
 	chartextender.ChartAppVersion = opts.ChartAppVersion
-
-	if opts.LegacyPreRenderHook != nil {
-		if err := opts.LegacyPreRenderHook(
-			ctx,
-			opts.ReleaseNamespace,
-			opts.SecretValuesPaths,
-			opts.DefaultValuesDisable,
-			opts.DefaultSecretValuesDisable,
-		); err != nil {
-			return fmt.Errorf("legacy pre render hook: %w", err)
-		}
-	}
+	loader.WithoutDefaultSecretValues = opts.DefaultSecretValuesDisable
+	loader.WithoutDefaultValues = opts.DefaultValuesDisable
+	secrets.CoalesceTablesFunc = chartutil.CoalesceTables
+	secrets.SecretsWorkingDir = opts.SecretWorkDir
+	loader.SecretValuesFiles = opts.SecretValuesPaths
+	secrets.ChartDir = opts.ChartDirPath
 
 	var historyOptions rlshistor.HistoryOptions
 	if !opts.Local {
@@ -496,6 +485,13 @@ func applyRenderOptionsDefaults(opts RenderOptions, currentDir string, currentUs
 
 	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {
 		opts.ReleaseStorageDriver = ReleaseStorageDriverSecrets
+	}
+
+	if opts.SecretWorkDir == "" {
+		opts.SecretWorkDir, err = os.Getwd()
+		if err != nil {
+			return RenderOptions{}, fmt.Errorf("get current working directory: %w", err)
+		}
 	}
 
 	return opts, nil

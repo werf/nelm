@@ -37,7 +37,7 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 	getters := getter.All(helm_v3.Settings)
 
 	log.Default.Debug(ctx, "Merging values for chart tree at %q", chartPath)
-	releaseValues, err := valOpts.MergeValues(getters, loader.GlobalLoadOptions.ChartExtender)
+	releaseValues, err := valOpts.MergeValues(getters)
 	if err != nil {
 		return nil, fmt.Errorf("error merging values for chart tree at %q: %w", chartPath, err)
 	}

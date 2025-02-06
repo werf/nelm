@@ -20,10 +20,12 @@ import (
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
 	"github.com/werf/3p-helm/pkg/chart/loader"
+	"github.com/werf/3p-helm/pkg/chartutil"
 	"github.com/werf/3p-helm/pkg/downloader"
 	"github.com/werf/3p-helm/pkg/getter"
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/werf/chartextender"
+	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/common-go/pkg/secrets_manager"
 
 	"github.com/werf/kubedog/pkg/kube"
@@ -139,6 +141,7 @@ type DeployOptions struct {
 	RollbackGraphSave            bool
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
+	SecretWorkDir                string
 	SubNotes                     bool
 	TempDirPath                  string
 	TrackCreationTimeout         time.Duration
@@ -148,13 +151,6 @@ type DeployOptions struct {
 	ValuesFilesPaths             []string
 	ValuesSets                   []string
 	ValuesStringSets             []string
-	LegacyPreDeployHook          func(
-		ctx context.Context,
-		releaseNamespace string,
-		secretValuesPaths []string,
-		defaultValuesDisable bool,
-		defaultSecretValuesDisable bool,
-	) error
 }
 
 func Deploy(ctx context.Context, opts DeployOptions) error {
@@ -289,18 +285,12 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 	chartextender.DefaultChartName = opts.DefaultChartName
 	chartextender.DefaultChartVersion = opts.DefaultChartVersion
 	chartextender.ChartAppVersion = opts.ChartAppVersion
-
-	if opts.LegacyPreDeployHook != nil {
-		if err := opts.LegacyPreDeployHook(
-			ctx,
-			opts.ReleaseNamespace,
-			opts.SecretValuesPaths,
-			opts.DefaultValuesDisable,
-			opts.DefaultSecretValuesDisable,
-		); err != nil {
-			return fmt.Errorf("legacy pre deploy hook: %w", err)
-		}
-	}
+	loader.WithoutDefaultSecretValues = opts.DefaultSecretValuesDisable
+	loader.WithoutDefaultValues = opts.DefaultValuesDisable
+	secrets.CoalesceTablesFunc = chartutil.CoalesceTables
+	secrets.SecretsWorkingDir = opts.SecretWorkDir
+	loader.SecretValuesFiles = opts.SecretValuesPaths
+	secrets.ChartDir = opts.ChartDirPath
 
 	if err := createReleaseNamespace(ctx, clientFactory, opts.ReleaseNamespace); err != nil {
 		return fmt.Errorf("create release namespace: %w", err)
@@ -786,6 +776,13 @@ func applyDeployOptionsDefaults(
 		opts.ReleaseStorageDriver = ReleaseStorageDriverSecrets
 	} else if opts.ReleaseStorageDriver == ReleaseStorageDriverMemory {
 		return DeployOptions{}, fmt.Errorf("memory release storage driver is not supported")
+	}
+
+	if opts.SecretWorkDir == "" {
+		opts.SecretWorkDir, err = os.Getwd()
+		if err != nil {
+			return DeployOptions{}, fmt.Errorf("get current working directory: %w", err)
+		}
 	}
 
 	return opts, nil
