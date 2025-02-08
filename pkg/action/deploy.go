@@ -275,12 +275,6 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 		lockManager = m
 	}
 
-	secrets_manager.DefaultManager = secrets_manager.NewSecretsManager(
-		secrets_manager.SecretsManagerOptions{
-			DisableSecretsDecryption: opts.SecretKeyIgnore,
-		},
-	)
-
 	chartextender.DefaultChartAPIVersion = opts.DefaultChartAPIVersion
 	chartextender.DefaultChartName = opts.DefaultChartName
 	chartextender.DefaultChartVersion = opts.DefaultChartVersion
@@ -291,6 +285,7 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 	secrets.SecretsWorkingDir = opts.SecretWorkDir
 	loader.SecretValuesFiles = opts.SecretValuesPaths
 	secrets.ChartDir = opts.ChartDirPath
+	secrets_manager.DisableSecretsDecryption = opts.SecretKeyIgnore
 
 	if err := createReleaseNamespace(ctx, clientFactory, opts.ReleaseNamespace); err != nil {
 		return fmt.Errorf("create release namespace: %w", err)
