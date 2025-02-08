@@ -188,12 +188,6 @@ func Plan(ctx context.Context, opts PlanOptions) error {
 		return fmt.Errorf("construct kube client factory: %w", err)
 	}
 
-	secrets_manager.DefaultManager = secrets_manager.NewSecretsManager(
-		secrets_manager.SecretsManagerOptions{
-			DisableSecretsDecryption: opts.SecretKeyIgnore,
-		},
-	)
-
 	chartextender.DefaultChartAPIVersion = opts.DefaultChartAPIVersion
 	chartextender.DefaultChartName = opts.DefaultChartName
 	chartextender.DefaultChartVersion = opts.DefaultChartVersion
@@ -204,6 +198,7 @@ func Plan(ctx context.Context, opts PlanOptions) error {
 	secrets.SecretsWorkingDir = opts.SecretWorkDir
 	loader.SecretValuesFiles = opts.SecretValuesPaths
 	secrets.ChartDir = opts.ChartDirPath
+	secrets_manager.DisableSecretsDecryption = opts.SecretKeyIgnore
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release")+" %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)
 

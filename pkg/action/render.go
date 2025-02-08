@@ -215,12 +215,6 @@ func Render(ctx context.Context, opts RenderOptions) error {
 	}
 	helmChartPathOptions.SetRegistryClient(helmRegistryClient)
 
-	secrets_manager.DefaultManager = secrets_manager.NewSecretsManager(
-		secrets_manager.SecretsManagerOptions{
-			DisableSecretsDecryption: opts.SecretKeyIgnore,
-		},
-	)
-
 	chartextender.DefaultChartAPIVersion = opts.DefaultChartAPIVersion
 	chartextender.DefaultChartName = opts.DefaultChartName
 	chartextender.DefaultChartVersion = opts.DefaultChartVersion
@@ -231,6 +225,7 @@ func Render(ctx context.Context, opts RenderOptions) error {
 	secrets.SecretsWorkingDir = opts.SecretWorkDir
 	loader.SecretValuesFiles = opts.SecretValuesPaths
 	secrets.ChartDir = opts.ChartDirPath
+	secrets_manager.DisableSecretsDecryption = opts.SecretKeyIgnore
 
 	var historyOptions rlshistor.HistoryOptions
 	if !opts.Local {
