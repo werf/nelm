@@ -19,7 +19,7 @@ require (
 	github.com/spf13/cobra v1.8.0
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.5.0
-	github.com/werf/3p-helm v0.0.0-20250208082815-f391bcb12608
+	github.com/werf/3p-helm v0.0.0-20250211111853-8c057c735d41
 	github.com/werf/common-go v0.0.0-20250208082739-007d0979ac4b
 	github.com/werf/kubedog v0.12.4-0.20250122091205-68c31637c845
 	github.com/werf/lockgate v0.1.1
