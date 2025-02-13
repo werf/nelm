@@ -14,11 +14,12 @@ func NewReleaseUninstallCommand(ctx context.Context) *cobra.Command {
 	var opts action.UninstallOptions
 
 	cmd := &cobra.Command{
-		Use:               "uninstall -n namespace release",
-		Short:             "Uninstall a Helm Release from Kubernetes.",
-		Long:              "Uninstall a Helm Release from Kubernetes.",
-		Args:              cobra.ExactArgs(1),
-		ValidArgsFunction: cobra.NoFileCompletions,
+		Use:                   "uninstall [options...] -n namespace release",
+		Short:                 "Uninstall a Helm Release from Kubernetes.",
+		Long:                  "Uninstall a Helm Release from Kubernetes.",
+		Args:                  cobra.ExactArgs(1),
+		ValidArgsFunction:     cobra.NoFileCompletions,
+		DisableFlagsInUseLine: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.ReleaseName = args[0]
 

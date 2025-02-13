@@ -14,13 +14,14 @@ func BuildReleaseDeployCommand(ctx context.Context) *cobra.Command {
 	var opts action.DeployOptions
 
 	cmd := &cobra.Command{
-		Use:   "deploy -n namespace -r release [chart-dir]",
+		Use:   "deploy [options...] -n namespace -r release [chart-dir]",
 		Short: "Deploy a Helm Chart to Kubernetes.",
 		Long:  "Deploy a Helm Chart to Kubernetes.",
 		Args:  cobra.MaximumNArgs(1),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			return nil, cobra.ShellCompDirectiveFilterDirs
 		},
+		DisableFlagsInUseLine: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				opts.ChartDirPath = args[0]
