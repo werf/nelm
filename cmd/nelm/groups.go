@@ -4,15 +4,15 @@ import "github.com/spf13/cobra"
 
 var ReleaseGroup = &cobra.Group{
 	ID:    "release",
-	Title: "Release Commands:",
+	Title: "Release commands:",
 }
 
 var ChartGroup = &cobra.Group{
 	ID:    "chart",
-	Title: "Chart Commands:",
+	Title: "Chart commands:",
 }
 
 var PlanGroup = &cobra.Group{
 	ID:    "plan",
-	Title: "Plan Commands:",
+	Title: "Plan commands:",
 }
