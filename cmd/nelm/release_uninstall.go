@@ -1,37 +1,37 @@
-package commands
+package main
 
 import (
 	"context"
 	"fmt"
 	"time"
-	"github.com/werf/logboek"
 
 	"github.com/spf13/cobra"
+
 	"github.com/werf/nelm/pkg/action"
 )
 
-
-func NewReleaseUninstallCommand() *cobra.Command {
+func NewReleaseUninstallCommand(ctx context.Context) *cobra.Command {
 	var opts action.UninstallOptions
 
 	cmd := &cobra.Command{
-		Use:   "uninstall [release-name]",
-		Short: "Uninstall a Helm release",
-		Long:  "Uninstall a Helm release with the specified release name.",
-		Args:  cobra.ExactArgs(1),
+		Use:               "uninstall -n namespace release",
+		Short:             "Uninstall a Helm Release from Kubernetes.",
+		Long:              "Uninstall a Helm Release from Kubernetes.",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.ReleaseName = args[0]
-			ctx := logboek.NewContext(context.Background(), logboek.DefaultLogger())
 
 			if err := action.Uninstall(ctx, opts); err != nil {
-				return fmt.Errorf("uninstall failed: %w", err)
+				return fmt.Errorf("uninstall: %w", err)
 			}
+
 			return nil
 		},
 	}
 
 	f := cmd.Flags()
-	// Define flags
+
 	f.StringVarP(&opts.ReleaseNamespace, "namespace", "n", "default", "Namespace of the release")
 	f.BoolVar(&opts.DeleteHooks, "delete-hooks", false, "Delete hooks")
 	f.BoolVar(&opts.DeleteReleaseNamespace, "delete-namespace", false, "Delete namespace of the release")
@@ -42,6 +42,8 @@ func NewReleaseUninstallCommand() *cobra.Command {
 	f.DurationVar(&opts.ProgressTablePrintInterval, "kubedog-interval", 5*time.Second, "Progress print interval")
 	f.IntVar(&opts.ReleaseHistoryLimit, "keep-history-limit", 10, "Release history limit (0 to remove all history)")
 	f.StringVar(&opts.TempDirPath, "temp-dir", "", "Path to the temporary directory")
+
+	cobra.MarkFlagRequired(f, "namespace")
 
 	return cmd
 }

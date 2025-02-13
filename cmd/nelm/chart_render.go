@@ -1,40 +1,40 @@
-package commands
+package main
 
 import (
 	"context"
 	"fmt"
-	"github.com/werf/logboek"
 
 	"github.com/spf13/cobra"
+
 	"github.com/werf/nelm/pkg/action"
 )
 
-func NewChartRenderCommand() *cobra.Command {
+func NewChartRenderCommand(ctx context.Context) *cobra.Command {
 	var opts action.RenderOptions
 
 	cmd := &cobra.Command{
-		Use:     "render [release-name] [chart-dir]",
-		Short:   "Render Helm charts to Kubernetes manifests",
-		Args:    cobra.MinimumNArgs(1),
-		Aliases: []string{"template"},
+		Use:   "render [-n namespace] [-r release] [chart-dir]",
+		Short: "Render a Helm Chart.",
+		Long:  "Render a Helm Chart.",
+		Args:  cobra.MaximumNArgs(1),
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			return nil, cobra.ShellCompDirectiveFilterDirs
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.ReleaseName = args[0]
-			if len(args) > 1 {
-				opts.ChartDirPath = args[1]
-			} else {
-				opts.ChartDirPath = ""
+			if len(args) > 0 {
+				opts.ChartDirPath = args[0]
 			}
 
-			ctx := logboek.NewContext(context.Background(), logboek.DefaultLogger())
 			if err := action.Render(ctx, opts); err != nil {
-				return fmt.Errorf("render failed: %w", err)
+				return fmt.Errorf("render: %w", err)
 			}
+
 			return nil
 		},
 	}
 
 	f := cmd.Flags()
-	// Define flags
+
 	f.BoolVar(&opts.ChartRepositoryInsecure, "plain-http", false, "use insecure HTTP connections for the chart download")
 	f.BoolVar(&opts.ChartRepositorySkipTLSVerify, "insecure-skip-tls-verify", false, "Skip TLS certificate verification when pulling images")
 	f.BoolVar(&opts.ChartRepositorySkipUpdate, "skip-dependency-update", false, "Skip updating the chart repository index")
@@ -51,7 +51,7 @@ func NewChartRenderCommand() *cobra.Command {
 	f.BoolVar(&opts.LogDebug, "debug", false, "Enable debug logging")
 	f.IntVar(&opts.NetworkParallelism, "network-parallelism", 30, "Network parallelism")
 	f.StringVar(&opts.RegistryCredentialsPath, "registry-credentials-path", "", "Registry credentials path")
-	f.StringVar(&opts.ReleaseNamespace, "namespace", "", "Release namespace")
+	f.StringVarP(&opts.ReleaseNamespace, "namespace", "n", "namespace-stub", "Release namespace")
 	f.StringVar(&opts.OutputFilePath, "output-path", "", "Output file path")
 	f.BoolVar(&opts.OutputFileSave, "output", false, "Output file save")
 	f.BoolVar(&opts.SecretKeyIgnore, "ignore-secret-key", false, "Secret key ignore")
@@ -63,7 +63,7 @@ func NewChartRenderCommand() *cobra.Command {
 	f.StringSliceVar(&opts.ValuesFilesPaths, "values", []string{}, "Values files paths")
 	f.StringSliceVar(&opts.ValuesSets, "set", []string{}, "Values sets")
 	f.StringSliceVar(&opts.ValuesStringSets, "set-string", []string{}, "Values string sets")
+	f.StringVarP(&opts.ReleaseName, "release", "r", "release-stub", "Release name")
 
 	return cmd
 }
-
