@@ -1,5 +1,7 @@
 package common
 
+import "github.com/Masterminds/sprig/v3"
+
 var Version = "dev"
 
 const DefaultFieldManager = "helm"
@@ -26,3 +28,5 @@ const (
 	DeletePolicyFailed         DeletePolicy = "failed"
 	DeletePolicyBeforeCreation DeletePolicy = "before-creation"
 )
+
+var SprigFuncs = sprig.TxtFuncMap()
