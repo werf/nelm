@@ -13,13 +13,14 @@ func NewChartRenderCommand(ctx context.Context) *cobra.Command {
 	var opts action.RenderOptions
 
 	cmd := &cobra.Command{
-		Use:   "render [-n namespace] [-r release] [chart-dir]",
+		Use:   "render [options...] [chart-dir]",
 		Short: "Render a Helm Chart.",
 		Long:  "Render a Helm Chart.",
 		Args:  cobra.MaximumNArgs(1),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			return nil, cobra.ShellCompDirectiveFilterDirs
 		},
+		DisableFlagsInUseLine: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				opts.ChartDirPath = args[0]
