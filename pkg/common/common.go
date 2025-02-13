@@ -2,6 +2,7 @@ package common
 
 import "github.com/Masterminds/sprig/v3"
 
+var Brand = "Nelm"
 var Version = "dev"
 
 const DefaultFieldManager = "helm"
