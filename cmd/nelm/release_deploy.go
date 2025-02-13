@@ -1,42 +1,41 @@
-package commands
+package main
 
 import (
 	"context"
 	"fmt"
 	"time"
-	"github.com/werf/logboek"
 
 	"github.com/spf13/cobra"
+
 	"github.com/werf/nelm/pkg/action"
 )
 
-func NewReleaseDeployCommand() *cobra.Command {
+func BuildReleaseDeployCommand(ctx context.Context) *cobra.Command {
 	var opts action.DeployOptions
 
 	cmd := &cobra.Command{
-		Use:     "deploy [release-name] [chart-dir]",
-		Short:   "Deploy a Helm chart",
-		Long:    "Deploy a Helm chart with the specified release name.",
-		Args:    cobra.MinimumNArgs(1),
-		Aliases: []string{"upgrade", "install"},
+		Use:   "deploy -n namespace -r release [chart-dir]",
+		Short: "Deploy a Helm Chart to Kubernetes.",
+		Long:  "Deploy a Helm Chart to Kubernetes.",
+		Args:  cobra.MaximumNArgs(1),
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			return nil, cobra.ShellCompDirectiveFilterDirs
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts.ReleaseName = args[0]
-			if len(args) > 1 {
-				opts.ChartDirPath = args[1]
-			} else {
-				opts.ChartDirPath = ""
+			if len(args) > 0 {
+				opts.ChartDirPath = args[0]
 			}
 
-			ctx := logboek.NewContext(context.Background(), logboek.DefaultLogger())
 			if err := action.Deploy(ctx, opts); err != nil {
-				return fmt.Errorf("deploy failed: %w", err)
+				return fmt.Errorf("deploy: %w", err)
 			}
+
 			return nil
 		},
 	}
 
 	f := cmd.Flags()
-	// Define flags
+
 	f.BoolVar(&opts.AutoRollback, "atomic", false, "Enable automatic rollback on failure")
 	f.BoolVar(&opts.ChartRepositoryInsecure, "plain-http", false, "use insecure HTTP connections for the chart download")
 	f.BoolVar(&opts.ChartRepositorySkipTLSVerify, "insecure-skip-tls-verify", false, "Skip TLS verification for chart repository")
@@ -58,7 +57,7 @@ func NewReleaseDeployCommand() *cobra.Command {
 	f.DurationVar(&opts.ProgressTablePrintInterval, "kubedog-interval", 10*time.Second, "Progress table print interval")
 	f.StringVar(&opts.RegistryCredentialsPath, "registry-credentials-path", "", "Path to the registry credentials")
 	f.IntVar(&opts.ReleaseHistoryLimit, "history-max", 10, "The maximum number of revisions saved per release. Use 0 for no limit")
-	f.StringVar(&opts.ReleaseNamespace, "namespace", "default", "Namespace for the release")
+	f.StringVarP(&opts.ReleaseNamespace, "namespace", "n", "", "Namespace for the release")
 	f.StringVar(&opts.RollbackGraphPath, "rollback-graph-path", "", "Path to save the rollback graph")
 	f.BoolVar(&opts.RollbackGraphSave, "rollback-graph", false, "Save the rollback graph")
 	f.BoolVar(&opts.SecretKeyIgnore, "ignore-secret-key", false, "Ignore secret keys")
@@ -72,6 +71,10 @@ func NewReleaseDeployCommand() *cobra.Command {
 	f.StringSliceVar(&opts.ValuesSets, "set", []string{}, "Values sets")
 	f.StringSliceVar(&opts.ValuesStringSets, "set-string", []string{}, "Values string sets")
 	f.BoolVar(&opts.SubNotes, "render-subchart-notes", false, "Render subchart notes along with the parent")
+	f.StringVarP(&opts.ReleaseName, "release", "r", "", "Release name")
+
+	cobra.MarkFlagRequired(f, "release")
+	cobra.MarkFlagRequired(f, "namespace")
 
 	return cmd
 }

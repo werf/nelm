@@ -1,5 +1,7 @@
 package common
 
+var Version = "dev"
+
 const DefaultFieldManager = "helm"
 const KubectlEditFieldManager = "kubectl-edit"
 const OldFieldManagerPrefix = "werf"
