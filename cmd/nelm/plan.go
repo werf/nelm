@@ -6,15 +6,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func BuildPlanCommand(ctx context.Context) *cobra.Command {
+func newPlanCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "plan",
 		Short:   "Show planned changes.",
 		Long:    "Show planned changes.",
-		GroupID: PlanGroup.ID,
+		GroupID: planGroup.ID,
 	}
 
-	cmd.AddCommand(NewPlanDeployCommand(ctx))
+	cmd.AddCommand(newPlanDeployCommand(ctx, afterAllCommandsBuiltFuncs))
 
 	return cmd
 }

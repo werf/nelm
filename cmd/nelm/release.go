@@ -6,16 +6,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func BuildReleaseCommand(ctx context.Context) *cobra.Command {
+func newReleaseCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "release",
 		Short:   "Manage Helm releases.",
 		Long:    "Manage Helm releases.",
-		GroupID: ReleaseGroup.ID,
+		GroupID: releaseGroup.ID,
 	}
 
-	cmd.AddCommand(BuildReleaseDeployCommand(ctx))
-	cmd.AddCommand(NewReleaseUninstallCommand(ctx))
+	cmd.AddCommand(newReleaseDeployCommand(ctx, afterAllCommandsBuiltFuncs))
+	cmd.AddCommand(newReleaseUninstallCommand(ctx, afterAllCommandsBuiltFuncs))
 
 	return cmd
 }
