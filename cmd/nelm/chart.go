@@ -6,15 +6,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func BuildChartCommand(ctx context.Context) *cobra.Command {
+func newChartCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "chart",
 		Short:   "Manage Helm Charts.",
 		Long:    "Manage Helm Charts.",
-		GroupID: ChartGroup.ID,
+		GroupID: chartGroup.ID,
 	}
 
-	cmd.AddCommand(NewChartRenderCommand(ctx))
+	cmd.AddCommand(newChartRenderCommand(ctx, afterAllCommandsBuiltFuncs))
 
 	return cmd
 }

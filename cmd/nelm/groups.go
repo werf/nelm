@@ -2,17 +2,17 @@ package main
 
 import "github.com/spf13/cobra"
 
-var ReleaseGroup = &cobra.Group{
+var releaseGroup = &cobra.Group{
 	ID:    "release",
 	Title: "Release commands:",
 }
 
-var ChartGroup = &cobra.Group{
+var chartGroup = &cobra.Group{
 	ID:    "chart",
 	Title: "Chart commands:",
 }
 
-var PlanGroup = &cobra.Group{
+var planGroup = &cobra.Group{
 	ID:    "plan",
 	Title: "Plan commands:",
 }

@@ -3,6 +3,7 @@ module github.com/werf/nelm
 go 1.22.7
 
 require (
+	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/aymanbagabas/go-udiff v0.2.0
 	github.com/chanced/caps v1.0.2
 	github.com/dominikbraun/graph v0.23.0
@@ -43,7 +44,6 @@ require (
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.3.1 // indirect
-	github.com/Masterminds/sprig/v3 v3.2.3 // indirect
 	github.com/Masterminds/squirrel v1.5.4 // indirect
 	github.com/Masterminds/vcs v1.13.3 // indirect
 	github.com/Microsoft/hcsshim v0.12.2 // indirect
