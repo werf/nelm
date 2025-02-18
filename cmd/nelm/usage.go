@@ -11,13 +11,21 @@ import (
 	"github.com/werf/nelm/pkg/common"
 )
 
-const usageTemplate = `Usage:
-{{- if .Runnable}}
-  {{.UseLine}}
+const helpTemplate = `
+{{- with (or .Long .Short)}}
+{{- . | trimTrailingWhitespaces}}
 {{- end}}
 
-{{- if .HasAvailableSubCommands}}
-  {{.CommandPath}} [command]
+{{- if or .Runnable .HasSubCommands}}
+{{- .UsageString}}
+{{- end }}
+`
+
+const usageTemplate = `
+{{- if (and .Runnable .HasParent) }}
+
+Usage:
+  {{.UseLine}}
 {{- end}}
 
 {{- if gt (len .Aliases) 0}}
@@ -45,7 +53,7 @@ Commands:
 {{.Title}}
       {{- $groupedCmds := list }}
       {{- range $cmd := $.Commands}}
-        {{- if (and (eq $cmd.GroupID $group.ID) (or $cmd.IsAvailableCommand (eq $cmd.Name "help")))}}
+        {{- if (and (eq $cmd.GroupID $group.ID) $cmd.IsAvailableCommand)}}
           {{- $groupedCmds = append $groupedCmds $cmd}}
         {{- end}}
       {{- end}}
@@ -58,7 +66,7 @@ Commands:
     {{- if not .AllChildCommandsHaveGroup}}
       {{- $ungroupedCmds := list }}
       {{- range $cmd := .Commands}}
-        {{- if (and (eq $cmd.GroupID "") (or $cmd.IsAvailableCommand (eq $cmd.Name "help")))}}
+        {{- if (and (eq $cmd.GroupID "") $cmd.IsAvailableCommand)}}
           {{- $ungroupedCmds = append $ungroupedCmds $cmd}}
         {{- end}}
       {{- end}}
@@ -74,33 +82,8 @@ Additional commands:
 {{- if .HasAvailableLocalFlags}}
 
 Options:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
-{{- end}}
-
-{{- if .HasAvailableInheritedFlags}}
-
-Global options:
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}
-{{- end}}
-
-{{- if .HasHelpSubCommands}}
-  {{- $helpCmds := list }}
-  {{- range $cmd := .Commands}}
-    {{- if $cmd.IsAdditionalHelpTopicCommand}}
-      {{- $helpCmds = append $helpCmds $cmd}}
-    {{- end}}
-  {{- end}}
-
-Additional help topics:
-  {{- range cmdsShorts $helpCmds }}
-  {{.}}
-  {{- end }}
-{{- end}}
-
-{{- if .HasAvailableSubCommands}}
-
-Use "{{.CommandPath}} [command] --help" for more information about a command.
-{{- end}}
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces }}
+{{- end }}
 `
 
 var templateFuncs = template.FuncMap{
