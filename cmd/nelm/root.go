@@ -20,6 +20,10 @@ func NewRootCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.C
 
 	cmd.SetUsageFunc(usageFunc)
 	cmd.SetUsageTemplate(usageTemplate)
+	cmd.SetHelpTemplate(helpTemplate)
+
+	cmd.PersistentFlags().BoolP("help", "h", false, "Show help")
+	cmd.PersistentFlags().Lookup("help").Hidden = true
 
 	cmd.AddGroup(
 		releaseGroup,
