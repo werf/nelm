@@ -31,7 +31,7 @@ func main() {
 		}
 	}
 
-	if unsupportedEnvVars := flag.FindUndefinedFlagEnvVarsInEnviron(); len(unsupportedEnvVars) > 0 {
+	if unsupportedEnvVars := flag.FindUndefinedEnvVarsInEnviron(); len(unsupportedEnvVars) > 0 {
 		abort(ctx, fmt.Errorf("unsupported environment variable(s): %s", strings.Join(unsupportedEnvVars, ",")))
 	}
 
