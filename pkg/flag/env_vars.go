@@ -3,6 +3,7 @@ package flag
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/chanced/caps"
@@ -13,48 +14,77 @@ import (
 var (
 	EnvVarsPrefix string
 
-	definedFlagEnvVarNames = make(map[string]struct{})
+	definedEnvVarRegexes = make(map[string]*regexp.Regexp)
 
-	_ GetEnvVarNamesInterface = GetLocalEnvVarName
-	_ GetEnvVarNamesInterface = GetGlobalEnvVarName
-	_ GetEnvVarNamesInterface = GetGlobalAndLocalEnvVarName
+	_ GetEnvVarRegexesInterface = GetLocalEnvVarRegexes
+	_ GetEnvVarRegexesInterface = GetGlobalEnvVarRegexes
+	_ GetEnvVarRegexesInterface = GetGlobalAndLocalEnvVarRegexes
+	_ GetEnvVarRegexesInterface = GetLocalMultiEnvVarRegexes
+	_ GetEnvVarRegexesInterface = GetGlobalMultiEnvVarRegexes
+	_ GetEnvVarRegexesInterface = GetGlobalAndLocalMultiEnvVarRegexes
 )
 
-type GetEnvVarNamesInterface func(cmd *cobra.Command, flagName string) ([]string, error)
+type GetEnvVarRegexesInterface func(cmd *cobra.Command, flagName string) ([]string, error)
 
-func GetLocalEnvVarName(cmd *cobra.Command, flagName string) ([]string, error) {
-	return []string{caps.ToScreamingSnake(fmt.Sprintf("%s_%s", cmd.CommandPath(), flagName))}, nil
+func GetLocalEnvVarRegexes(cmd *cobra.Command, flagName string) ([]string, error) {
+	commandPath := lo.Reverse(strings.SplitN(cmd.CommandPath(), " ", 2))[0]
+	expr := "^" + caps.ToScreamingSnake(fmt.Sprintf("%s%s_%s", EnvVarsPrefix, commandPath, flagName)) + "$"
+
+	return []string{expr}, nil
 }
 
-func GetGlobalEnvVarName(cmd *cobra.Command, flagName string) ([]string, error) {
-	return []string{caps.ToScreamingSnake(fmt.Sprintf("%s%s", EnvVarsPrefix, flagName))}, nil
+func GetLocalMultiEnvVarRegexes(cmd *cobra.Command, flagName string) ([]string, error) {
+	commandPath := lo.Reverse(strings.SplitN(cmd.CommandPath(), " ", 2))[0]
+	expr := "^" + caps.ToScreamingSnake(fmt.Sprintf("%s%s_%s", EnvVarsPrefix, commandPath, flagName)) + "_.+"
+
+	return []string{expr}, nil
 }
 
-func GetGlobalAndLocalEnvVarName(cmd *cobra.Command, flagName string) ([]string, error) {
-	globalEnvVar, err := GetGlobalEnvVarName(cmd, flagName)
+func GetGlobalEnvVarRegexes(cmd *cobra.Command, flagName string) ([]string, error) {
+	expr := "^" + caps.ToScreamingSnake(fmt.Sprintf("%s%s", EnvVarsPrefix, flagName)) + "$"
+
+	return []string{expr}, nil
+}
+
+func GetGlobalMultiEnvVarRegexes(cmd *cobra.Command, flagName string) ([]string, error) {
+	expr := "^" + caps.ToScreamingSnake(fmt.Sprintf("%s%s", EnvVarsPrefix, flagName)) + "_.+"
+
+	return []string{expr}, nil
+}
+
+func GetGlobalAndLocalEnvVarRegexes(cmd *cobra.Command, flagName string) ([]string, error) {
+	globalEnvVarRegexes, err := GetGlobalEnvVarRegexes(cmd, flagName)
 	if err != nil {
-		return nil, fmt.Errorf("get global env var name: %w", err)
+		return nil, fmt.Errorf("get global env var regexes: %w", err)
 	}
 
-	localEnvVar, err := GetLocalEnvVarName(cmd, flagName)
+	localEnvVarRegexes, err := GetLocalEnvVarRegexes(cmd, flagName)
 	if err != nil {
-		return nil, fmt.Errorf("get local env var name: %w", err)
+		return nil, fmt.Errorf("get local env var regexes: %w", err)
 	}
 
-	return append(globalEnvVar, localEnvVar...), nil
+	return append(globalEnvVarRegexes, localEnvVarRegexes...), nil
 }
 
-func GetDefinedFlagEnvVarNames() []string {
-	var envVarNames []string
-
-	for envVarName := range definedFlagEnvVarNames {
-		envVarNames = append(envVarNames, envVarName)
+func GetGlobalAndLocalMultiEnvVarRegexes(cmd *cobra.Command, flagName string) ([]string, error) {
+	globalEnvVarRegexes, err := GetGlobalMultiEnvVarRegexes(cmd, flagName)
+	if err != nil {
+		return nil, fmt.Errorf("get global env var regexes: %w", err)
 	}
 
-	return envVarNames
+	localEnvVarRegexes, err := GetLocalMultiEnvVarRegexes(cmd, flagName)
+	if err != nil {
+		return nil, fmt.Errorf("get local env var regexes: %w", err)
+	}
+
+	return append(globalEnvVarRegexes, localEnvVarRegexes...), nil
 }
 
-func FindUndefinedFlagEnvVarsInEnviron() []string {
+func GetDefinedEnvVarRegexes() map[string]*regexp.Regexp {
+	return definedEnvVarRegexes
+}
+
+func FindUndefinedEnvVarsInEnviron() []string {
 	brandedEnvVars := lo.Filter(os.Environ(), func(envVar string, _ int) bool {
 		return strings.HasPrefix(envVar, fmt.Sprintf("%s", EnvVarsPrefix))
 	})
@@ -65,9 +95,12 @@ func FindUndefinedFlagEnvVarsInEnviron() []string {
 	})
 
 	var undefinedEnvVars []string
+envVarsLoop:
 	for _, envVar := range brandedEnvVarNames {
-		if _, ok := definedFlagEnvVarNames[envVar]; ok {
-			continue
+		for _, envVarRegex := range definedEnvVarRegexes {
+			if envVarRegex.MatchString(envVar) {
+				continue envVarsLoop
+			}
 		}
 
 		undefinedEnvVars = append(undefinedEnvVars, envVar)
