@@ -7,12 +7,14 @@ import (
 	"strings"
 
 	"github.com/chanced/caps"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
 	"github.com/werf/logboek"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/flag"
 	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/resrcchangcalc"
 )
 
 func main() {
@@ -27,21 +29,28 @@ func main() {
 
 	for cmd, fn := range afterAllCommandsBuiltFuncs {
 		if err := fn(cmd); err != nil {
-			abort(ctx, err)
+			abort(ctx, err, 1)
 		}
 	}
 
 	if unsupportedEnvVars := flag.FindUndefinedEnvVarsInEnviron(); len(unsupportedEnvVars) > 0 {
-		abort(ctx, fmt.Errorf("unsupported environment variable(s): %s", strings.Join(unsupportedEnvVars, ",")))
+		abort(ctx, fmt.Errorf("unsupported environment variable(s): %s", strings.Join(unsupportedEnvVars, ",")), 1)
 	}
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
-		abort(ctx, err)
+		var exitCode int
+		if errors.Is(err, resrcchangcalc.ErrChangesPlanned) {
+			exitCode = 2
+		} else {
+			exitCode = 1
+		}
+
+		abort(ctx, err, exitCode)
 	}
 }
 
-func abort(ctx context.Context, err error) {
+func abort(ctx context.Context, err error, exitCode int) {
 	log.Default.WarnPop(ctx, "final")
 	log.Default.Error(ctx, "Error: %s", err)
-	os.Exit(1)
+	os.Exit(exitCode)
 }

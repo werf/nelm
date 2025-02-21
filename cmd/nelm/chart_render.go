@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/spf13/cobra"
 
@@ -17,9 +16,6 @@ type chartRenderConfig struct {
 	ChartRepositoryInsecure      bool
 	ChartRepositorySkipTLSVerify bool
 	ChartRepositorySkipUpdate    bool
-	DefaultChartAPIVersion       string
-	DefaultChartName             string
-	DefaultChartVersion          string
 	DefaultSecretValuesDisable   bool
 	DefaultValuesDisable         bool
 	ExtraAnnotations             map[string]string
@@ -38,17 +34,13 @@ type chartRenderConfig struct {
 	Local                        bool
 	LocalKubeVersion             string
 	LogDebug                     bool
-	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	OutputFilePath               string
-	OutputFileSave               bool
 	RegistryCredentialsPath      string
 	ReleaseName                  string
 	ReleaseNamespace             string
-	ReleaseStorageDriver         action.ReleaseStorageDriver
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
-	SecretWorkDir                string
 	ShowCRDs                     bool
 	ShowOnlyFiles                []string
 	TempDirPath                  string
@@ -56,6 +48,16 @@ type chartRenderConfig struct {
 	ValuesFilesPaths             []string
 	ValuesSets                   []string
 	ValuesStringSets             []string
+
+	releaseStorageDriver string
+}
+
+func (c *chartRenderConfig) OutputFileSave() bool {
+	return c.OutputFilePath != ""
+}
+
+func (c *chartRenderConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
+	return action.ReleaseStorageDriver(c.releaseStorageDriver)
 }
 
 func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -81,9 +83,6 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 				ChartRepositoryInsecure:      cfg.ChartRepositoryInsecure,
 				ChartRepositorySkipTLSVerify: cfg.ChartRepositorySkipTLSVerify,
 				ChartRepositorySkipUpdate:    cfg.ChartRepositorySkipUpdate,
-				DefaultChartAPIVersion:       cfg.DefaultChartAPIVersion,
-				DefaultChartName:             cfg.DefaultChartName,
-				DefaultChartVersion:          cfg.DefaultChartVersion,
 				DefaultSecretValuesDisable:   cfg.DefaultSecretValuesDisable,
 				DefaultValuesDisable:         cfg.DefaultValuesDisable,
 				ExtraAnnotations:             cfg.ExtraAnnotations,
@@ -102,17 +101,15 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 				Local:                        cfg.Local,
 				LocalKubeVersion:             cfg.LocalKubeVersion,
 				LogDebug:                     cfg.LogDebug,
-				LogRegistryStreamOut:         cfg.LogRegistryStreamOut,
 				NetworkParallelism:           cfg.NetworkParallelism,
 				OutputFilePath:               cfg.OutputFilePath,
-				OutputFileSave:               cfg.OutputFileSave,
+				OutputFileSave:               cfg.OutputFileSave(),
 				RegistryCredentialsPath:      cfg.RegistryCredentialsPath,
 				ReleaseName:                  cfg.ReleaseName,
 				ReleaseNamespace:             cfg.ReleaseNamespace,
-				ReleaseStorageDriver:         cfg.ReleaseStorageDriver,
+				ReleaseStorageDriver:         cfg.ReleaseStorageDriver(),
 				SecretKeyIgnore:              cfg.SecretKeyIgnore,
 				SecretValuesPaths:            cfg.SecretValuesPaths,
-				SecretWorkDir:                cfg.SecretWorkDir,
 				ShowCRDs:                     cfg.ShowCRDs,
 				ShowOnlyFiles:                cfg.ShowOnlyFiles,
 				TempDirPath:                  cfg.TempDirPath,
@@ -129,330 +126,275 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 	}
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
-		if err := flag.Add(
-			cmd,
-			&cfg.ChartRepositoryInsecure,
-			"plain-http",
-			false,
-			"use insecure HTTP connections for the chart download",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.ChartAppVersion, "app-version", "", "Set appVersion of Chart.yaml", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                patchFlagOptions,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.ChartRepositorySkipTLSVerify,
-			"insecure-skip-tls-verify",
-			false,
-			"Skip TLS certificate verification when pulling images",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.ChartRepositoryInsecure, "insecure-chart-repos", false, "Allow insecure HTTP connections to chart repositories", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                chartRepoFlagGroup,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.ChartRepositorySkipUpdate,
-			"skip-dependency-update",
-			false,
-			"Skip updating the chart repository index",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.ChartRepositorySkipTLSVerify, "no-verify-chart-repos-tls", false, "Don't verify TLS certificates of chart repositories", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                chartRepoFlagGroup,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.DefaultSecretValuesDisable,
-			"disable-default-secret-values",
-			false,
-			"Disable default secret values",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.ChartRepositorySkipUpdate, "no-update-chart-repos", false, "Don't update chart repositories index", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                chartRepoFlagGroup,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.DefaultValuesDisable,
-			"disable-default-values",
-			false,
-			"Disable default values",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.DefaultSecretValuesDisable, "no-secret-values", false, "Ignore secret-values.yaml of the top-level chart", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                secretFlagOptions,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.ExtraAnnotations,
-			"annotations",
-			map[string]string{},
-			"Extra annotations to add to the rendered manifests",
-			flag.AddOptions{
-				ShortName: "a",
+		if err := flag.Add(cmd, &cfg.DefaultValuesDisable, "no-values", false, "Ignore values.yaml of the top-level chart", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                valuesFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.ExtraAnnotations, "annotations", map[string]string{}, "Add annotations to all resources", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalMultiEnvVarRegexes,
+			Group:                patchFlagOptions,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.ExtraLabels, "labels", map[string]string{}, "Add labels to all resources", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalMultiEnvVarRegexes,
+			Group:                patchFlagOptions,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.ExtraRuntimeAnnotations, "runtime-annotations", map[string]string{}, "Add annotations which will not trigger resource updates to all resources", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalMultiEnvVarRegexes,
+			Group:                patchFlagOptions,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.KubeAPIServerName, "kube-api-server", "", "Kubernetes API server address", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                kubeConnectionFlagOptions,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.KubeBurstLimit, "kube-burst-limit", action.DefaultBurstLimit, "Burst limit for requests to Kubernetes", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                performanceFlagOptions,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.KubeCAPath, "kube-ca", "", "Path to Kubernetes API server CA file", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                kubeConnectionFlagOptions,
+			Type:                 flag.TypeFile,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.KubeConfigBase64, "kube-config-base64", "", "Pass kubeconfig file content encoded as base64", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                kubeConnectionFlagOptions,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.KubeConfigPaths, "kube-config", []string{}, "Kubeconfig path(s). If multiple specified, their contents are merged", flag.AddOptions{
+			GetEnvVarRegexesFunc: func(cmd *cobra.Command, flagName string) ([]string, error) {
+				regexes := []string{"^KUBECONFIG$"}
+
+				if r, err := flag.GetGlobalAndLocalMultiEnvVarRegexes(cmd, flagName); err != nil {
+					return nil, fmt.Errorf("get local env var regexes: %w", err)
+				} else {
+					regexes = append(regexes, r...)
+				}
+
+				return regexes, nil
 			},
-		); err != nil {
+			Group: kubeConnectionFlagOptions,
+			Type:  flag.TypeFile,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.ExtraLabels,
-			"labels",
-			map[string]string{},
-			"Extra labels to add to the rendered manifests",
-			flag.AddOptions{
-				ShortName: "l",
-			},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.KubeContext, "kube-context", "", "Kubeconfig context", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                kubeConnectionFlagOptions,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.ExtraRuntimeAnnotations,
-			"runtime-annotations",
-			map[string]string{},
-			"Extra runtime annotations to add to the rendered manifests",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.KubeQPSLimit, "kube-qps-limit", action.DefaultQPSLimit, "Queries Per Second limit for requests to Kubernetes", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                performanceFlagOptions,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.KubeConfigBase64,
-			"kubeconfig-base64",
-			"",
-			"Base64 encoded kube config",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.KubeSkipTLSVerify, "no-verify-kube-tls", false, "Don't verify TLS certificates of Kubernetes API", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                kubeConnectionFlagOptions,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.KubeConfigPaths,
-			"kubeconfig",
-			[]string{},
-			"Paths to kube config files\n(can be set multiple times)",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.KubeTLSServerName, "kube-api-server-tls-name", "", "The server name for Kubernetes API TLS validation, if different from the hostname of Kubernetes API server", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                kubeConnectionFlagOptions,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.KubeContext,
-			"kube-context",
-			"",
-			"Kubernetes context to use",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.KubeToken, "kube-token", "", "The bearer token for authentication in Kubernetes API", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                kubeConnectionFlagOptions,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.Local,
-			"local",
-			false,
-			"Render locally without accessing the Kubernetes cluster",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.Local, "local-kube", false, "Run in the local mode without accessing Kubernetes", flag.AddOptions{
+			Group: mainFlagOptions,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.LocalKubeVersion,
-			"kube-version",
-			"",
-			"Local Kubernetes version",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.LocalKubeVersion, "local-kube-version", action.DefaultLocalKubeVersion, "Kubernetes version stub for local mode", flag.AddOptions{
+			Group: mainFlagOptions,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.LogDebug,
-			"debug",
-			false,
-			"Enable debug logging",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.LogDebug, "debug", false, "Show debug logs", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                miscFlagOptions,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.NetworkParallelism,
-			"network-parallelism",
-			30,
-			"Network parallelism",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.NetworkParallelism, "network-parallelism", action.DefaultNetworkParallelism, "Limit of network-related tasks to run in parallel", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                performanceFlagOptions,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.RegistryCredentialsPath,
-			"registry-credentials-path",
-			"",
-			"Registry credentials path",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.OutputFilePath, "save-output-to", "", "Save output with rendered manifests to a file", flag.AddOptions{
+			Type:  flag.TypeFile,
+			Group: mainFlagOptions,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.ReleaseNamespace,
-			"namespace",
-			"namespace-stub",
-			"Release namespace",
-			flag.AddOptions{
-				ShortName: "n",
-			},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.RegistryCredentialsPath, "oci-chart-repos-creds", action.DefaultRegistryCredentialsPath, "Credentials to access OCI chart repositories", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                chartRepoFlagGroup,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.OutputFilePath,
-			"output-path",
-			"",
-			"Output file path",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.ReleaseName, "release", releaseNameStub, "The release name. Must be unique within the release namespace", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                mainFlagOptions,
+			ShortName:            "r",
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.OutputFileSave,
-			"output",
-			false,
-			"Output file save",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.ReleaseNamespace, "namespace", releaseNamespaceStub, "The release namespace. Resources with no namespace will be deployed here", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                mainFlagOptions,
+			ShortName:            "n",
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.SecretKeyIgnore,
-			"ignore-secret-key",
-			false,
-			"Secret key ignore",
-			flag.AddOptions{},
-		); err != nil {
+		// TODO(ilya-lesikov): restrict allowed values
+		if err := flag.Add(cmd, &cfg.releaseStorageDriver, "release-storage", "", "How releases should be stored", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                miscFlagOptions,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.SecretValuesPaths,
-			"secret-values",
-			[]string{},
-			"Secret values paths",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.SecretKeyIgnore, "no-decrypt-secrets", false, "Do not decrypt secrets and secret values, pass them as is", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                secretFlagOptions,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.ShowCRDs,
-			"show-crds",
-			false,
-			"Show CRDs",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.SecretValuesPaths, "secret-values", []string{}, "Secret values files paths", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                secretFlagOptions,
+			Type:                 flag.TypeFile,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.ShowOnlyFiles,
-			"show-only-files",
-			[]string{},
-			"Show only files",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.ShowCRDs, "show-crds", false, `Show CRDs from "crds/" directories in the output`, flag.AddOptions{
+			Group: mainFlagOptions,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.TempDirPath,
-			"temp-dir",
-			"",
-			"Temp dir path",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.ShowOnlyFiles, "show-only", []string{}, "Show manifests only from specified template files. The render result has corresponding template paths specified before each resource manifest", flag.AddOptions{
+			Group: mainFlagOptions,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.ValuesFileSets,
-			"set-file",
-			[]string{},
-			"Values file sets",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.TempDirPath, "temp-dir", "", "The directory for temporary files. By default, create a new directory in the default system directory for temporary files", flag.AddOptions{
+			Group: miscFlagOptions,
+			Type:  flag.TypeDir,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.ValuesFilesPaths,
-			"values",
-			[]string{},
-			"Values files paths",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.ValuesFileSets, "set-file", []string{}, "Set new values, where the key is the value path and the value is the path to the file with the value content", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                valuesFlagGroup,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.ValuesSets,
-			"set",
-			[]string{},
-			"Values sets",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.ValuesFilesPaths, "values", []string{}, "Additional values files", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                valuesFlagGroup,
+			Type:                 flag.TypeFile,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.ValuesStringSets,
-			"set-string",
-			[]string{},
-			"Values string sets",
-			flag.AddOptions{},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.ValuesSets, "set", []string{}, "Set new values, where the key is the value path and the value is the value", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                valuesFlagGroup,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(
-			cmd,
-			&cfg.ReleaseName,
-			"release",
-			"release-stub",
-			"Release name",
-			flag.AddOptions{
-				ShortName: "r",
-			},
-		); err != nil {
+		if err := flag.Add(cmd, &cfg.ValuesStringSets, "set-string", []string{}, "Set new values, where the key is the value path and the value is the value. The value will always be a string", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                valuesFlagGroup,
+		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 

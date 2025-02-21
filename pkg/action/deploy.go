@@ -223,12 +223,10 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 		)
 	}
 
-	if opts.RegistryCredentialsPath != "" {
-		helmRegistryClientOpts = append(
-			helmRegistryClientOpts,
-			registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
-		)
-	}
+	helmRegistryClientOpts = append(
+		helmRegistryClientOpts,
+		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
+	)
 
 	helmRegistryClient, err := registry.NewClient(helmRegistryClientOpts...)
 	if err != nil {
@@ -735,7 +733,7 @@ func applyDeployOptionsDefaults(
 		opts.LogRegistryStreamOut = os.Stdout
 	}
 
-	if opts.LogColorMode == LogColorModeDefault {
+	if opts.LogColorMode == LogColorModeUnspecified || opts.LogColorMode == LogColorModeAuto {
 		if color.DetectColorLevel() == terminfo.ColorLevelNone {
 			opts.LogColorMode = LogColorModeOff
 		} else {
@@ -756,11 +754,11 @@ func applyDeployOptionsDefaults(
 	}
 
 	if opts.ProgressTablePrintInterval <= 0 {
-		opts.ProgressTablePrintInterval = 5 * time.Second
+		opts.ProgressTablePrintInterval = DefaultProgressPrintInterval
 	}
 
 	if opts.ReleaseHistoryLimit <= 0 {
-		opts.ReleaseHistoryLimit = 10
+		opts.ReleaseHistoryLimit = DefaultReleaseHistoryLimit
 	}
 
 	if opts.ReleaseName == "" {
@@ -778,6 +776,10 @@ func applyDeployOptionsDefaults(
 		if err != nil {
 			return DeployOptions{}, fmt.Errorf("get current working directory: %w", err)
 		}
+	}
+
+	if opts.RegistryCredentialsPath == "" {
+		opts.RegistryCredentialsPath = DefaultRegistryCredentialsPath
 	}
 
 	return opts, nil

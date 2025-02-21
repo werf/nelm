@@ -11,7 +11,7 @@ func newReleaseCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobr
 		Use:     "release",
 		Short:   "Manage Helm releases.",
 		Long:    "Manage Helm releases.",
-		GroupID: releaseGroup.ID,
+		GroupID: releaseCmdGroup.ID,
 	}
 
 	cmd.AddCommand(newReleaseDeployCommand(ctx, afterAllCommandsBuiltFuncs))

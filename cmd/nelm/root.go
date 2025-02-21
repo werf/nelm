@@ -26,9 +26,9 @@ func NewRootCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.C
 	cmd.PersistentFlags().Lookup("help").Hidden = true
 
 	cmd.AddGroup(
-		releaseGroup,
-		planGroup,
-		chartGroup,
+		releaseCmdGroup,
+		planCmdGroup,
+		chartCmdGroup,
 	)
 
 	cmd.AddCommand(newReleaseCommand(ctx, afterAllCommandsBuiltFuncs))

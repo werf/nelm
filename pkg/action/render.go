@@ -159,12 +159,10 @@ func Render(ctx context.Context, opts RenderOptions) error {
 		)
 	}
 
-	if opts.RegistryCredentialsPath != "" {
-		helmRegistryClientOpts = append(
-			helmRegistryClientOpts,
-			registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
-		)
-	}
+	helmRegistryClientOpts = append(
+		helmRegistryClientOpts,
+		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
+	)
 
 	helmRegistryClient, err := registry.NewClient(helmRegistryClientOpts...)
 	if err != nil {
@@ -189,17 +187,14 @@ func Render(ctx context.Context, opts RenderOptions) error {
 		helmReleaseStorageDriver := driver.NewMemory()
 		helmReleaseStorageDriver.SetNamespace(opts.ReleaseNamespace)
 		helmActionConfig.Releases = storage.Init(helmReleaseStorageDriver)
-
 		helmActionConfig.Capabilities = chartutil.DefaultCapabilities.Copy()
 
-		if opts.LocalKubeVersion != "" {
-			kubeVersion, err := chartutil.ParseKubeVersion(opts.LocalKubeVersion)
-			if err != nil {
-				return fmt.Errorf("parse local kube version %q: %w", opts.LocalKubeVersion, err)
-			}
-
-			helmActionConfig.Capabilities.KubeVersion = *kubeVersion
+		kubeVersion, err := chartutil.ParseKubeVersion(opts.LocalKubeVersion)
+		if err != nil {
+			return fmt.Errorf("parse local kube version %q: %w", opts.LocalKubeVersion, err)
 		}
+
+		helmActionConfig.Capabilities.KubeVersion = *kubeVersion
 	} else {
 		clientFactory, err = kubeclnt.NewClientFactory()
 		if err != nil {
@@ -487,6 +482,15 @@ func applyRenderOptionsDefaults(opts RenderOptions, currentDir string, currentUs
 		if err != nil {
 			return RenderOptions{}, fmt.Errorf("get current working directory: %w", err)
 		}
+	}
+
+	if opts.LocalKubeVersion == "" {
+		// TODO(v3): update default local version
+		opts.LocalKubeVersion = DefaultLocalKubeVersion
+	}
+
+	if opts.RegistryCredentialsPath == "" {
+		opts.RegistryCredentialsPath = DefaultRegistryCredentialsPath
 	}
 
 	return opts, nil

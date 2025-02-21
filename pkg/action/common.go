@@ -5,7 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"path/filepath"
+	"time"
 
+	"github.com/docker/cli/cli/config"
+	"github.com/docker/docker/pkg/homedir"
 	"k8s.io/klog"
 	klog_v2 "k8s.io/klog/v2"
 
@@ -16,9 +20,10 @@ import (
 type LogColorMode string
 
 const (
-	LogColorModeDefault LogColorMode = ""
-	LogColorModeOff     LogColorMode = "off"
-	LogColorModeOn      LogColorMode = "on"
+	LogColorModeUnspecified LogColorMode = ""
+	LogColorModeAuto        LogColorMode = "auto"
+	LogColorModeOff         LogColorMode = "off"
+	LogColorModeOn          LogColorMode = "on"
 )
 
 type ReleaseStorageDriver string
@@ -34,10 +39,16 @@ const (
 )
 
 const (
-	DefaultQPSLimit           = 30
-	DefaultBurstLimit         = 100
-	DefaultNetworkParallelism = 30
+	DefaultQPSLimit              = 30
+	DefaultBurstLimit            = 100
+	DefaultNetworkParallelism    = 30
+	DefaultLocalKubeVersion      = "1.20.0"
+	DefaultProgressPrintInterval = 5 * time.Second
+	DefaultReleaseHistoryLimit   = 10
+	DefaultLogColorMode          = LogColorModeAuto
 )
+
+var DefaultRegistryCredentialsPath = filepath.Join(homedir.Get(), ".docker", config.ConfigFileName)
 
 func initKubedog(ctx context.Context) error {
 	flag.CommandLine.Parse([]string{})

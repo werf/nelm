@@ -11,7 +11,7 @@ func newChartCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.
 		Use:     "chart",
 		Short:   "Manage Helm Charts.",
 		Long:    "Manage Helm Charts.",
-		GroupID: chartGroup.ID,
+		GroupID: chartCmdGroup.ID,
 	}
 
 	cmd.AddCommand(newChartRenderCommand(ctx, afterAllCommandsBuiltFuncs))

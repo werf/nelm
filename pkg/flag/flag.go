@@ -23,14 +23,16 @@ type AddOptions struct {
 	Type                 Type
 }
 
-func Add[T any](
-	cmd *cobra.Command,
-	dest *T,
-	name string,
-	defaultValue T,
-	help string,
-	opts AddOptions,
-) error {
+// TODO(ilya-lesikov): human-readable form for var regexes in usage
+// TODO(ilya-lesikov): allow restricted values
+// TODO(ilya-lesikov): show restricted values in usage
+// TODO(ilya-lesikov): pass examples separately?
+// TODO(ilya-lesikov): allow for []string with no comma-separated values (pflag.StringArrayVar?)
+// TODO(ilya-lesikov): allow for map[string]string with no comma-separated values
+// TODO(ilya-lesikov): refactor into AddScalar, AddSlice and AddMap? Or some other structure, check what pflags can already handle
+// TODO(ilya-lesikov): document
+// TODO(ilya-lesikov): unit tests
+func Add[T any](cmd *cobra.Command, dest *T, name string, defaultValue T, help string, opts AddOptions) error {
 	opts, err := applyAddOptionsDefaults(opts, dest)
 	if err != nil {
 		return fmt.Errorf("apply defaults: %w", err)
