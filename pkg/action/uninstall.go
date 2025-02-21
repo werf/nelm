@@ -274,11 +274,11 @@ func applyUninstallOptionsDefaults(opts UninstallOptions, currentDir string, cur
 	}
 
 	if opts.ProgressTablePrintInterval <= 0 {
-		opts.ProgressTablePrintInterval = 5 * time.Second
+		opts.ProgressTablePrintInterval = DefaultProgressPrintInterval
 	}
 
 	if opts.ReleaseHistoryLimit <= 0 {
-		opts.ReleaseHistoryLimit = 10
+		opts.ReleaseHistoryLimit = DefaultReleaseHistoryLimit
 	}
 
 	if opts.ReleaseName == "" {

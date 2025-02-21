@@ -150,12 +150,10 @@ func Plan(ctx context.Context, opts PlanOptions) error {
 		)
 	}
 
-	if opts.RegistryCredentialsPath != "" {
-		helmRegistryClientOpts = append(
-			helmRegistryClientOpts,
-			registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
-		)
-	}
+	helmRegistryClientOpts = append(
+		helmRegistryClientOpts,
+		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
+	)
 
 	helmRegistryClient, err := registry.NewClient(helmRegistryClientOpts...)
 	if err != nil {
@@ -441,6 +439,10 @@ func applyPlanOptionsDefaults(opts PlanOptions, currentDir string, currentUser *
 		if err != nil {
 			return PlanOptions{}, fmt.Errorf("get current working directory: %w", err)
 		}
+	}
+
+	if opts.RegistryCredentialsPath == "" {
+		opts.RegistryCredentialsPath = DefaultRegistryCredentialsPath
 	}
 
 	return opts, nil

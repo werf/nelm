@@ -11,7 +11,7 @@ func newPlanCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.C
 		Use:     "plan",
 		Short:   "Show planned changes.",
 		Long:    "Show planned changes.",
-		GroupID: planGroup.ID,
+		GroupID: planCmdGroup.ID,
 	}
 
 	cmd.AddCommand(newPlanDeployCommand(ctx, afterAllCommandsBuiltFuncs))
