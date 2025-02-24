@@ -122,8 +122,8 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 		}
 
 		if err := flag.Add(cmd, &cfg.KubeConfigPaths, "kube-config", []string{}, "Kubeconfig path(s). If multiple specified, their contents are merged", flag.AddOptions{
-			GetEnvVarRegexesFunc: func(cmd *cobra.Command, flagName string) ([]string, error) {
-				regexes := []string{"^KUBECONFIG$"}
+			GetEnvVarRegexesFunc: func(cmd *cobra.Command, flagName string) ([]*flag.RegexExpr, error) {
+				regexes := []*flag.RegexExpr{flag.NewRegexExpr("^KUBECONFIG$", "$KUBECONFIG")}
 
 				if r, err := flag.GetGlobalAndLocalMultiEnvVarRegexes(cmd, flagName); err != nil {
 					return nil, fmt.Errorf("get local env var regexes: %w", err)

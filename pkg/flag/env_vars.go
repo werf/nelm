@@ -14,7 +14,7 @@ import (
 var (
 	EnvVarsPrefix string
 
-	definedEnvVarRegexes = make(map[string]*regexp.Regexp)
+	definedEnvVarRegexes = make(map[RegexExpr]*regexp.Regexp)
 
 	_ GetEnvVarRegexesInterface = GetLocalEnvVarRegexes
 	_ GetEnvVarRegexesInterface = GetGlobalEnvVarRegexes
@@ -24,35 +24,54 @@ var (
 	_ GetEnvVarRegexesInterface = GetGlobalAndLocalMultiEnvVarRegexes
 )
 
-type GetEnvVarRegexesInterface func(cmd *cobra.Command, flagName string) ([]string, error)
+func NewRegexExpr(expr, human string) *RegexExpr {
+	return &RegexExpr{Expr: expr, Human: human}
+}
 
-func GetLocalEnvVarRegexes(cmd *cobra.Command, flagName string) ([]string, error) {
+type RegexExpr struct {
+	Expr  string
+	Human string
+}
+
+type GetEnvVarRegexesInterface func(cmd *cobra.Command, flagName string) ([]*RegexExpr, error)
+
+func GetLocalEnvVarRegexes(cmd *cobra.Command, flagName string) ([]*RegexExpr, error) {
 	commandPath := lo.Reverse(strings.SplitN(cmd.CommandPath(), " ", 2))[0]
-	expr := "^" + caps.ToScreamingSnake(fmt.Sprintf("%s%s_%s", EnvVarsPrefix, commandPath, flagName)) + "$"
 
-	return []string{expr}, nil
+	base := caps.ToScreamingSnake(fmt.Sprintf("%s%s_%s", EnvVarsPrefix, commandPath, flagName))
+	human := "$" + base
+	expr := "^" + base + "$"
+
+	return []*RegexExpr{NewRegexExpr(expr, human)}, nil
 }
 
-func GetLocalMultiEnvVarRegexes(cmd *cobra.Command, flagName string) ([]string, error) {
+func GetLocalMultiEnvVarRegexes(cmd *cobra.Command, flagName string) ([]*RegexExpr, error) {
 	commandPath := lo.Reverse(strings.SplitN(cmd.CommandPath(), " ", 2))[0]
-	expr := "^" + caps.ToScreamingSnake(fmt.Sprintf("%s%s_%s", EnvVarsPrefix, commandPath, flagName)) + "_.+"
 
-	return []string{expr}, nil
+	base := caps.ToScreamingSnake(fmt.Sprintf("%s%s_%s", EnvVarsPrefix, commandPath, flagName))
+	human := "$" + base + "*"
+	expr := "^" + base + "_.+"
+
+	return []*RegexExpr{NewRegexExpr(expr, human)}, nil
 }
 
-func GetGlobalEnvVarRegexes(cmd *cobra.Command, flagName string) ([]string, error) {
-	expr := "^" + caps.ToScreamingSnake(fmt.Sprintf("%s%s", EnvVarsPrefix, flagName)) + "$"
+func GetGlobalEnvVarRegexes(cmd *cobra.Command, flagName string) ([]*RegexExpr, error) {
+	base := caps.ToScreamingSnake(fmt.Sprintf("%s%s", EnvVarsPrefix, flagName))
+	human := "$" + base
+	expr := "^" + base + "$"
 
-	return []string{expr}, nil
+	return []*RegexExpr{NewRegexExpr(expr, human)}, nil
 }
 
-func GetGlobalMultiEnvVarRegexes(cmd *cobra.Command, flagName string) ([]string, error) {
-	expr := "^" + caps.ToScreamingSnake(fmt.Sprintf("%s%s", EnvVarsPrefix, flagName)) + "_.+"
+func GetGlobalMultiEnvVarRegexes(cmd *cobra.Command, flagName string) ([]*RegexExpr, error) {
+	base := caps.ToScreamingSnake(fmt.Sprintf("%s%s", EnvVarsPrefix, flagName))
+	human := "$" + base + "*"
+	expr := "^" + base + "_.+"
 
-	return []string{expr}, nil
+	return []*RegexExpr{NewRegexExpr(expr, human)}, nil
 }
 
-func GetGlobalAndLocalEnvVarRegexes(cmd *cobra.Command, flagName string) ([]string, error) {
+func GetGlobalAndLocalEnvVarRegexes(cmd *cobra.Command, flagName string) ([]*RegexExpr, error) {
 	globalEnvVarRegexes, err := GetGlobalEnvVarRegexes(cmd, flagName)
 	if err != nil {
 		return nil, fmt.Errorf("get global env var regexes: %w", err)
@@ -66,7 +85,7 @@ func GetGlobalAndLocalEnvVarRegexes(cmd *cobra.Command, flagName string) ([]stri
 	return append(globalEnvVarRegexes, localEnvVarRegexes...), nil
 }
 
-func GetGlobalAndLocalMultiEnvVarRegexes(cmd *cobra.Command, flagName string) ([]string, error) {
+func GetGlobalAndLocalMultiEnvVarRegexes(cmd *cobra.Command, flagName string) ([]*RegexExpr, error) {
 	globalEnvVarRegexes, err := GetGlobalMultiEnvVarRegexes(cmd, flagName)
 	if err != nil {
 		return nil, fmt.Errorf("get global env var regexes: %w", err)
@@ -80,7 +99,7 @@ func GetGlobalAndLocalMultiEnvVarRegexes(cmd *cobra.Command, flagName string) ([
 	return append(globalEnvVarRegexes, localEnvVarRegexes...), nil
 }
 
-func GetDefinedEnvVarRegexes() map[string]*regexp.Regexp {
+func GetDefinedEnvVarRegexes() map[RegexExpr]*regexp.Regexp {
 	return definedEnvVarRegexes
 }
 
