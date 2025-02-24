@@ -50,6 +50,10 @@ func Add[T any](cmd *cobra.Command, dest *T, name string, defaultValue T, help s
 		return fmt.Errorf("add flags: %w", err)
 	}
 
+	if err := processEnvVars(cmd, envVarRegexExprs, name, dest); err != nil {
+		return fmt.Errorf("process env vars: %w", err)
+	}
+
 	if opts.Hidden {
 		if err := cmd.Flags().MarkHidden(name); err != nil {
 			return fmt.Errorf("mark flag as hidden: %w", err)
@@ -60,10 +64,6 @@ func Add[T any](cmd *cobra.Command, dest *T, name string, defaultValue T, help s
 		if err := cmd.Flags().MarkDeprecated(name, "remove it to hide this message."); err != nil {
 			return fmt.Errorf("mark flag as deprecated: %w", err)
 		}
-	}
-
-	if err := processEnvVars(cmd, envVarRegexExprs, name, dest); err != nil {
-		return fmt.Errorf("process env vars: %w", err)
 	}
 
 	if opts.Required {

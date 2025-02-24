@@ -151,7 +151,7 @@ func cmdInfosRecurse(cmd *cobra.Command) []*cmdInfo {
 	if !cmd.HasAvailableSubCommands() {
 		return []*cmdInfo{
 			&cmdInfo{
-				commandPath: cmd.CommandPath(),
+				commandPath: strings.TrimPrefix(cmd.CommandPath(), strings.ToLower(common.Brand+" ")),
 				short:       cmd.Short,
 			},
 		}
