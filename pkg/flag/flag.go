@@ -80,12 +80,8 @@ func Add[T any](cmd *cobra.Command, dest *T, name string, defaultValue T, help s
 	}
 
 	if opts.Group != nil {
-		if err := cmd.Flags().SetAnnotation(name, GroupIDAnnotationName, []string{opts.Group.ID}); err != nil {
-			return fmt.Errorf("set group id annotation: %w", err)
-		}
-
-		if err := cmd.Flags().SetAnnotation(name, GroupTitleAnnotationName, []string{opts.Group.Title}); err != nil {
-			return fmt.Errorf("set group title annotation: %w", err)
+		if err := saveFlagGroupMetadata(cmd, name, opts.Group); err != nil {
+			return fmt.Errorf("save flag group metadata: %w", err)
 		}
 	}
 
@@ -217,6 +213,22 @@ func processEnvVars[T any](cmd *cobra.Command, envVarRegexExprs []string, flagNa
 		}
 	default:
 		return fmt.Errorf("unsupported type %T", dst)
+	}
+
+	return nil
+}
+
+func saveFlagGroupMetadata(cmd *cobra.Command, flagName string, group *Group) error {
+	if err := cmd.Flags().SetAnnotation(flagName, GroupIDAnnotationName, []string{group.ID}); err != nil {
+		return fmt.Errorf("set group id annotation: %w", err)
+	}
+
+	if err := cmd.Flags().SetAnnotation(flagName, GroupTitleAnnotationName, []string{group.Title}); err != nil {
+		return fmt.Errorf("set group title annotation: %w", err)
+	}
+
+	if err := cmd.Flags().SetAnnotation(flagName, GroupPriorityAnnotationName, []string{fmt.Sprintf("%d", group.Priority)}); err != nil {
+		return fmt.Errorf("set group priority annotation: %w", err)
 	}
 
 	return nil

@@ -1,10 +1,18 @@
 package flag
 
 const (
-	// FIXME(ilya-lesikov): group all env vars and display this in usage
-	GroupIDAnnotationName    = "group-id"
-	GroupTitleAnnotationName = "group-title"
+	GroupIDAnnotationName       = "group-id"
+	GroupTitleAnnotationName    = "group-title"
+	GroupPriorityAnnotationName = "group-priority"
 )
+
+func NewGroup(id, title string, priority int) *Group {
+	return &Group{
+		ID:       id,
+		Title:    title,
+		Priority: priority,
+	}
+}
 
 type Group struct {
 	ID       string

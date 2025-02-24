@@ -1,14 +1,21 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"slices"
+	"sort"
+	"strconv"
 	"strings"
 	"text/template"
 	"unicode"
 
+	"github.com/samber/lo"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/flag"
 )
 
 const helpTemplate = `
@@ -81,8 +88,7 @@ Additional commands:
 
 {{- if .HasAvailableLocalFlags}}
 
-Options:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces }}
+{{ flagsUsage .LocalFlags | trimTrailingWhitespaces }}
 {{- end }}
 `
 
@@ -95,6 +101,7 @@ var templateFuncs = template.FuncMap{
 	"trimTrailingWhitespaces": func(s string) string {
 		return strings.TrimRightFunc(s, unicode.IsSpace)
 	},
+	"flagsUsage": flagsUsage,
 }
 
 func usageFunc(c *cobra.Command) error {
@@ -171,6 +178,121 @@ func longestCommandPathLength(infos []*cmdInfo) int {
 	}
 
 	return longest
+}
+
+// FIXME(ilya-lesikov): do wrapping
+func flagsUsage(fset *pflag.FlagSet) string {
+	groupsByPriority, groupedFlags := groupFlags(fset)
+
+	buf := new(bytes.Buffer)
+	lines := []string{}
+
+	maxlen := 0
+	for _, group := range groupsByPriority {
+		lines = append(lines, fmt.Sprintf("\n%s\n", group.Title))
+
+		for _, flag := range groupedFlags[group] {
+			if flag.Hidden {
+				continue
+			}
+
+			line := ""
+			if flag.Shorthand != "" && flag.ShorthandDeprecated == "" {
+				line = fmt.Sprintf("  -%s, --%s", flag.Shorthand, flag.Name)
+			} else {
+				line = fmt.Sprintf("      --%s", flag.Name)
+			}
+
+			varname, usage := pflag.UnquoteUsage(flag)
+			if varname != "" {
+				line += " " + varname
+			}
+
+			if flag.NoOptDefVal != "" {
+				switch flag.Value.Type() {
+				case "string":
+					line += fmt.Sprintf("[=\"%s\"]", flag.NoOptDefVal)
+				case "bool":
+					if flag.NoOptDefVal != "true" {
+						line += fmt.Sprintf("[=%s]", flag.NoOptDefVal)
+					}
+				case "count":
+					if flag.NoOptDefVal != "+1" {
+						line += fmt.Sprintf("[=%s]", flag.NoOptDefVal)
+					}
+				default:
+					line += fmt.Sprintf("[=%s]", flag.NoOptDefVal)
+				}
+			}
+
+			// This special character will be replaced with spacing once the
+			// correct alignment is calculated
+			line += "\x00"
+			if len(line) > maxlen {
+				maxlen = len(line)
+			}
+
+			line += usage
+			if flag.Value.Type() == "string" {
+				line += fmt.Sprintf(" (default %q)", flag.DefValue)
+			} else {
+				line += fmt.Sprintf(" (default %s)", flag.DefValue)
+			}
+
+			if len(flag.Deprecated) != 0 {
+				line += fmt.Sprintf(" (DEPRECATED: %s)", flag.Deprecated)
+			}
+
+			lines = append(lines, line)
+		}
+	}
+
+	for _, line := range lines {
+		sidx := strings.Index(line, "\x00")
+		if sidx == -1 {
+			fmt.Fprintln(buf, line)
+			continue
+		}
+
+		spacing := strings.Repeat(" ", maxlen-sidx)
+		fmt.Fprintln(buf, line[:sidx], spacing, line[sidx+1:])
+	}
+
+	return buf.String()
+}
+
+func groupFlags(fset *pflag.FlagSet) ([]flag.Group, map[flag.Group][]*pflag.Flag) {
+	groupsByPriority := []flag.Group{}
+	groupedFlags := map[flag.Group][]*pflag.Flag{}
+
+	fset.VisitAll(func(f *pflag.Flag) {
+		groupID, found := f.Annotations[flag.GroupIDAnnotationName]
+		if !found {
+			return
+		}
+
+		groupTitle := f.Annotations[flag.GroupTitleAnnotationName]
+		groupPriority := f.Annotations[flag.GroupPriorityAnnotationName]
+
+		group := flag.NewGroup(groupID[0], groupTitle[0], lo.Must1(strconv.Atoi(groupPriority[0])))
+
+		groupsByPriority = append(groupsByPriority, *group)
+		groupedFlags[*group] = append(groupedFlags[*group], f)
+	})
+
+	sort.SliceStable(groupsByPriority, func(i, j int) bool {
+		return groupsByPriority[i].Priority > groupsByPriority[j].Priority
+	})
+
+	groupsByPriority = lo.Uniq(groupsByPriority)
+
+	for group := range groupedFlags {
+		slices.SortStableFunc(groupedFlags[group], func(aFlag, bFlag *pflag.Flag) int {
+			return strings.Compare(aFlag.Name, bFlag.Name)
+		})
+	}
+
+	return groupsByPriority, groupedFlags
 }
 
 type cmdInfo struct {
