@@ -195,7 +195,7 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.ReleaseName, "release", releaseNameStub, "The release name. Must be unique within the release namespace", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.ReleaseName, "release", "", "The release name. Must be unique within the release namespace", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagOptions,
 			Required:             true,
@@ -204,7 +204,7 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.ReleaseNamespace, "namespace", releaseNamespaceStub, "The release namespace. Resources with no namespace will be deployed here", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.ReleaseNamespace, "namespace", "", "The release namespace. Resources with no namespace will be deployed here", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagOptions,
 			Required:             true,
