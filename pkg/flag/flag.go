@@ -104,20 +104,16 @@ func applyAddOptionsDefaults[T any](opts AddOptions, dest *T) (AddOptions, error
 }
 
 func buildHelp[T any](help string, dest *T, envVarRegexes []string) (string, error) {
+	if !strings.HasSuffix(help, ".") {
+		help += "."
+	}
+
 	if len(envVarRegexes) == 0 {
 		return help, nil
 	} else if len(envVarRegexes) == 1 {
-		help = fmt.Sprintf("%s (var %s)", help, envVarRegexes[0])
+		help = fmt.Sprintf("%s Var: %s", help, envVarRegexes[0])
 	} else {
-		help = fmt.Sprintf("%s (vars %s)", help, strings.Join(envVarRegexes, ", "))
-	}
-
-	switch dst := any(dest).(type) {
-	case *bool, *int, *string, *time.Duration:
-	case *[]string, *map[string]string:
-		help += " (can specify multiple times)"
-	default:
-		return "", fmt.Errorf("unsupported type %T", dst)
+		help = fmt.Sprintf("%s Vars: %s", help, strings.Join(envVarRegexes, ", "))
 	}
 
 	return help, nil
