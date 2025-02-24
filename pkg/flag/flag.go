@@ -15,6 +15,7 @@ import (
 )
 
 type AddOptions struct {
+	Deprecated           bool
 	GetEnvVarRegexesFunc GetEnvVarRegexesInterface
 	Group                *Group
 	Hidden               bool
@@ -52,6 +53,12 @@ func Add[T any](cmd *cobra.Command, dest *T, name string, defaultValue T, help s
 	if opts.Hidden {
 		if err := cmd.Flags().MarkHidden(name); err != nil {
 			return fmt.Errorf("mark flag as hidden: %w", err)
+		}
+	}
+
+	if opts.Deprecated {
+		if err := cmd.Flags().MarkDeprecated(name, "remove it to hide this message."); err != nil {
+			return fmt.Errorf("mark flag as deprecated: %w", err)
 		}
 	}
 
