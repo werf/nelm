@@ -21,55 +21,14 @@ var planCmdGroup = &cobra.Group{
 	Title: "Plan commands:",
 }
 
-var mainFlagOptions = &flag.Group{
-	ID:       "main",
-	Title:    "Options:",
-	Priority: 100,
-}
-
-var valuesFlagGroup = &flag.Group{
-	ID:       "values",
-	Title:    "Values options:",
-	Priority: 90,
-}
-
-var secretFlagOptions = &flag.Group{
-	ID:       "secret",
-	Title:    "Secret options:",
-	Priority: 80,
-}
-
-var patchFlagOptions = &flag.Group{
-	ID:       "patch",
-	Title:    "Patch options:",
-	Priority: 70,
-}
-
-var progressFlagOptions = &flag.Group{
-	ID:    "progress",
-	Title: "Progress options:",
-}
-
-var chartRepoFlagGroup = &flag.Group{
-	ID:       "chart-repo",
-	Title:    "Chart repository options:",
-	Priority: 60,
-}
-
-var kubeConnectionFlagOptions = &flag.Group{
-	ID:       "kube-connection",
-	Title:    "Kubernetes connection options:",
-	Priority: 50,
-}
-
-var performanceFlagOptions = &flag.Group{
-	ID:       "performance",
-	Title:    "Performance options:",
-	Priority: 40,
-}
-
-var miscFlagOptions = &flag.Group{
-	ID:       "misc",
-	Title:    "Miscellaneous options:",
-	Priority: 0,
-}
+var (
+	mainFlagOptions           = flag.NewGroup("main", "Options:", 100)
+	valuesFlagGroup           = flag.NewGroup("values", "Values options:", 90)
+	secretFlagOptions         = flag.NewGroup("secret", "Secret options:", 80)
+	patchFlagOptions          = flag.NewGroup("patch", "Patch options:", 70)
+	progressFlagOptions       = flag.NewGroup("progress", "Progress options:", 65)
+	chartRepoFlagGroup        = flag.NewGroup("chart-repo", "Chart repository options:", 60)
+	kubeConnectionFlagOptions = flag.NewGroup("kube-connection", "Kubernetes connection options:", 50)
+	performanceFlagOptions    = flag.NewGroup("performance", "Performance options:", 40)
+	miscFlagOptions           = flag.NewGroup("misc", "Miscellaneous options:", 0)
+)
