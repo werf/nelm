@@ -23,15 +23,12 @@ type AddOptions struct {
 	Type                 Type
 }
 
-// TODO(ilya-lesikov): human-readable form for var regexes in usage
 // TODO(ilya-lesikov): allow restricted values
 // TODO(ilya-lesikov): show restricted values in usage
-// TODO(ilya-lesikov): pass examples separately?
+// TODO(ilya-lesikov): pass examples separately from help
 // TODO(ilya-lesikov): allow for []string with no comma-separated values (pflag.StringArrayVar?)
 // TODO(ilya-lesikov): allow for map[string]string with no comma-separated values
 // TODO(ilya-lesikov): refactor into AddScalar, AddSlice and AddMap? Or some other structure, check what pflags can already handle
-// TODO(ilya-lesikov): document
-// TODO(ilya-lesikov): unit tests
 func Add[T any](cmd *cobra.Command, dest *T, name string, defaultValue T, help string, opts AddOptions) error {
 	opts, err := applyAddOptionsDefaults(opts, dest)
 	if err != nil {
@@ -103,7 +100,7 @@ func applyAddOptionsDefaults[T any](opts AddOptions, dest *T) (AddOptions, error
 	return opts, nil
 }
 
-func buildHelp[T any](help string, dest *T, envVarRegexes []string) (string, error) {
+func buildHelp[T any](help string, dest *T, envVarRegexes []*RegexExpr) (string, error) {
 	if !strings.HasSuffix(help, ".") {
 		help += "."
 	}
@@ -111,9 +108,14 @@ func buildHelp[T any](help string, dest *T, envVarRegexes []string) (string, err
 	if len(envVarRegexes) == 0 {
 		return help, nil
 	} else if len(envVarRegexes) == 1 {
-		help = fmt.Sprintf("%s Var: %s", help, envVarRegexes[0])
+		help = fmt.Sprintf("%s Var: %s", help, envVarRegexes[0].Human)
 	} else {
-		help = fmt.Sprintf("%s Vars: %s", help, strings.Join(envVarRegexes, ", "))
+		var envVarRegexesHuman []string
+		for _, envVarRegex := range envVarRegexes {
+			envVarRegexesHuman = append(envVarRegexesHuman, envVarRegex.Human)
+		}
+
+		help = fmt.Sprintf("%s Vars: %s", help, strings.Join(envVarRegexesHuman, ", "))
 	}
 
 	return help, nil
@@ -140,14 +142,14 @@ func addFlags[T any](cmd *cobra.Command, dest *T, name string, shortName string,
 	return nil
 }
 
-func processEnvVars[T any](cmd *cobra.Command, envVarRegexExprs []string, flagName string, dest T) error {
-	for _, expr := range envVarRegexExprs {
-		regex, err := regexp.Compile(fmt.Sprintf(`%s`, expr))
+func processEnvVars[T any](cmd *cobra.Command, envVarRegexExprs []*RegexExpr, flagName string, dest T) error {
+	for _, regExpr := range envVarRegexExprs {
+		regex, err := regexp.Compile(fmt.Sprintf(`%s`, regExpr.Expr))
 		if err != nil {
-			return fmt.Errorf("compile regex %q: %w", expr, err)
+			return fmt.Errorf("compile regex %q: %w", regExpr.Expr, err)
 		}
 
-		definedEnvVarRegexes[expr] = regex
+		definedEnvVarRegexes[*regExpr] = regex
 	}
 
 	lo.Reverse(envVarRegexExprs)
@@ -164,7 +166,7 @@ func processEnvVars[T any](cmd *cobra.Command, envVarRegexExprs []string, flagNa
 	envs := map[string]string{}
 	for key, val := range envir {
 		for _, regexExpr := range envVarRegexExprs {
-			if !definedEnvVarRegexes[regexExpr].MatchString(key) || val == "" {
+			if !definedEnvVarRegexes[*regexExpr].MatchString(key) || val == "" {
 				continue
 			}
 
@@ -177,7 +179,7 @@ func processEnvVars[T any](cmd *cobra.Command, envVarRegexExprs []string, flagNa
 	envirLoop:
 		for key, val := range envir {
 			for _, regexExpr := range envVarRegexExprs {
-				if !definedEnvVarRegexes[regexExpr].MatchString(key) || val == "" {
+				if !definedEnvVarRegexes[*regexExpr].MatchString(key) || val == "" {
 					continue
 				}
 
