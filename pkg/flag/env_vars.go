@@ -49,7 +49,7 @@ func GetLocalMultiEnvVarRegexes(cmd *cobra.Command, flagName string) ([]*RegexEx
 	commandPath := lo.Reverse(strings.SplitN(cmd.CommandPath(), " ", 2))[0]
 
 	base := caps.ToScreamingSnake(fmt.Sprintf("%s%s_%s", EnvVarsPrefix, commandPath, flagName))
-	human := "$" + base + "*"
+	human := "$" + base + "_*"
 	expr := "^" + base + "_.+"
 
 	return []*RegexExpr{NewRegexExpr(expr, human)}, nil
@@ -65,7 +65,7 @@ func GetGlobalEnvVarRegexes(cmd *cobra.Command, flagName string) ([]*RegexExpr, 
 
 func GetGlobalMultiEnvVarRegexes(cmd *cobra.Command, flagName string) ([]*RegexExpr, error) {
 	base := caps.ToScreamingSnake(fmt.Sprintf("%s%s", EnvVarsPrefix, flagName))
-	human := "$" + base + "*"
+	human := "$" + base + "_*"
 	expr := "^" + base + "_.+"
 
 	return []*RegexExpr{NewRegexExpr(expr, human)}, nil
