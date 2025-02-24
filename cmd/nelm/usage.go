@@ -32,6 +32,7 @@ const usageTemplate = `
 {{- if (and .Runnable .HasParent) }}
 
 Usage:
+
   {{.UseLine}}
 {{- end}}
 
@@ -87,7 +88,6 @@ Additional commands:
 {{- end}}
 
 {{- if .HasAvailableLocalFlags}}
-
 {{ flagsUsage .LocalFlags | trimTrailingWhitespaces }}
 {{- end }}
 `
@@ -187,7 +187,6 @@ func flagsUsage(fset *pflag.FlagSet) string {
 	buf := new(bytes.Buffer)
 	lines := []string{}
 
-	maxlen := 0
 	for _, group := range groupsByPriority {
 		lines = append(lines, fmt.Sprintf("\n%s\n", group.Title))
 
@@ -203,9 +202,18 @@ func flagsUsage(fset *pflag.FlagSet) string {
 				line = fmt.Sprintf("      --%s", flag.Name)
 			}
 
-			varname, usage := pflag.UnquoteUsage(flag)
-			if varname != "" {
-				line += " " + varname
+			switch flag.Value.Type() {
+			case "string":
+				line += fmt.Sprintf("=%q", flag.DefValue)
+			case "stringToString":
+				defValue := flag.DefValue
+				defValue = strings.TrimPrefix(flag.DefValue, "[")
+				defValue = strings.TrimSuffix(defValue, "]")
+				defValue = fmt.Sprintf("{%s}", defValue)
+
+				line += fmt.Sprintf("=%s", defValue)
+			default:
+				line += fmt.Sprintf("=%s", flag.DefValue)
 			}
 
 			if flag.NoOptDefVal != "" {
@@ -225,19 +233,7 @@ func flagsUsage(fset *pflag.FlagSet) string {
 				}
 			}
 
-			// This special character will be replaced with spacing once the
-			// correct alignment is calculated
-			line += "\x00"
-			if len(line) > maxlen {
-				maxlen = len(line)
-			}
-
-			line += usage
-			if flag.Value.Type() == "string" {
-				line += fmt.Sprintf(" (default %q)", flag.DefValue)
-			} else {
-				line += fmt.Sprintf(" (default %s)", flag.DefValue)
-			}
+			line += fmt.Sprintf("\n          %s", flag.Usage)
 
 			if len(flag.Deprecated) != 0 {
 				line += fmt.Sprintf(" (DEPRECATED: %s)", flag.Deprecated)
@@ -248,14 +244,7 @@ func flagsUsage(fset *pflag.FlagSet) string {
 	}
 
 	for _, line := range lines {
-		sidx := strings.Index(line, "\x00")
-		if sidx == -1 {
-			fmt.Fprintln(buf, line)
-			continue
-		}
-
-		spacing := strings.Repeat(" ", maxlen-sidx)
-		fmt.Fprintln(buf, line[:sidx], spacing, line[sidx+1:])
+		fmt.Fprintln(buf, line)
 	}
 
 	return buf.String()
