@@ -235,10 +235,6 @@ func flagsUsage(fset *pflag.FlagSet) string {
 
 			line += fmt.Sprintf("\n          %s", flag.Usage)
 
-			if len(flag.Deprecated) != 0 {
-				line += fmt.Sprintf(" (DEPRECATED: %s)", flag.Deprecated)
-			}
-
 			lines = append(lines, line)
 		}
 	}
