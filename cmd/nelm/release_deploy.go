@@ -195,7 +195,7 @@ func newReleaseDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map
 		}
 
 		if err := flag.Add(cmd, &cfg.DeployGraphPath, "save-graph-to", "", "Save the Graphviz deploy graph to a file", flag.AddOptions{
-			Group: miscFlagOptions,
+			Group: mainFlagOptions,
 			Type:  flag.TypeFile,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
@@ -388,7 +388,7 @@ func newReleaseDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map
 		}
 
 		if err := flag.Add(cmd, &cfg.RollbackGraphPath, "save-rollback-graph-to", "", "Save the Graphviz rollback graph to a file", flag.AddOptions{
-			Group: miscFlagOptions,
+			Group: mainFlagOptions,
 			Type:  flag.TypeFile,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
@@ -410,7 +410,7 @@ func newReleaseDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map
 		}
 
 		if err := flag.Add(cmd, &cfg.SubNotes, "show-subchart-notes", false, "Show NOTES.txt of subcharts after the release", flag.AddOptions{
-			Group: miscFlagOptions,
+			Group: mainFlagOptions,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
