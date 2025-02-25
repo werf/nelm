@@ -115,6 +115,9 @@ var annotationKeyPatternLegacyExternalDependencyResource = regexp.MustCompile(`^
 var annotationKeyHumanLegacyExternalDependencyNamespace = "<name>.external-dependency.werf.io/namespace"
 var annotationKeyPatternLegacyExternalDependencyNamespace = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io/namespace$`)
 
+var annotationKeyHumanSensitive = "werf.io/sensitive"
+var annotationKeyPatternSensitive = regexp.MustCompile(`^werf.io/sensitive$`)
+
 func validateHook(res *unstructured.Unstructured) error {
 	if key, value, found := FindAnnotationOrLabelByKeyPattern(res.GetAnnotations(), annotationKeyPatternHook); found {
 		if value == "" {
@@ -616,6 +619,20 @@ func validateExternalDependencies(unstruct *unstructured.Unstructured) error {
 			if value == "" {
 				return fmt.Errorf("invalid value %q for annotation %q, value must not be empty", value, key)
 			}
+		}
+	}
+
+	return nil
+}
+
+func validateSensitive(unstruct *unstructured.Unstructured) error {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternSensitive); found {
+		if value == "" {
+			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty boolean value", value, key)
+		}
+
+		if _, err := strconv.ParseBool(value); err != nil {
+			return fmt.Errorf("invalid value %q for annotation %q, expected boolean value", value, key)
 		}
 	}
 
