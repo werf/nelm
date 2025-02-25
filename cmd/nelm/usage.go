@@ -14,10 +14,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/werf/common-go/pkg/flag"
 	"github.com/werf/logboek"
 	"github.com/werf/logboek/pkg/types"
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/flag"
 )
 
 const helpTemplate = `

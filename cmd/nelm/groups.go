@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/werf/nelm/pkg/flag"
+	"github.com/werf/common-go/pkg/flag"
 )
 
 var releaseCmdGroup = &cobra.Group{

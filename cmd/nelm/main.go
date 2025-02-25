@@ -10,9 +10,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
+	"github.com/werf/common-go/pkg/flag"
 	"github.com/werf/logboek"
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/flag"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/resrcchangcalc"
 )

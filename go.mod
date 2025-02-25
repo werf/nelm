@@ -6,6 +6,8 @@ require (
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/aymanbagabas/go-udiff v0.2.0
 	github.com/chanced/caps v1.0.2
+	github.com/docker/cli v25.0.5+incompatible
+	github.com/docker/docker v25.0.5+incompatible
 	github.com/dominikbraun/graph v0.23.0
 	github.com/evanphx/json-patch v5.8.0+incompatible
 	github.com/fluxcd/flagger v1.36.1
@@ -18,10 +20,11 @@ require (
 	github.com/samber/lo v1.39.0
 	github.com/sourcegraph/conc v0.3.0
 	github.com/spf13/cobra v1.8.0
+	github.com/spf13/pflag v1.0.5
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.5.0
 	github.com/werf/3p-helm v0.0.0-20250213100721-11da3da05736
-	github.com/werf/common-go v0.0.0-20250208082739-007d0979ac4b
+	github.com/werf/common-go v0.0.0-20250225170837-c0fe1ae7c6a2
 	github.com/werf/kubedog v0.12.4-0.20250122091205-68c31637c845
 	github.com/werf/lockgate v0.1.1
 	github.com/werf/logboek v0.6.1
@@ -61,9 +64,7 @@ require (
 	github.com/distribution/reference v0.5.0 // indirect
 	github.com/djherbis/buffer v1.2.0 // indirect
 	github.com/djherbis/nio/v3 v3.0.1 // indirect
-	github.com/docker/cli v25.0.5+incompatible // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
-	github.com/docker/docker v25.0.5+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.8.1 // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-metrics v0.0.1 // indirect
@@ -136,7 +137,6 @@ require (
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/tidwall/gjson v1.17.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
