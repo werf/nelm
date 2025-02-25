@@ -14,6 +14,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/werf/logboek"
+	"github.com/werf/logboek/pkg/types"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/flag"
 )
@@ -180,8 +182,11 @@ func longestCommandPathLength(infos []*cmdInfo) int {
 	return longest
 }
 
-// FIXME(ilya-lesikov): do wrapping
 func flagsUsage(fset *pflag.FlagSet) string {
+	const helpIndent = 10
+	const minHelpWidthToWrap = 40
+
+	terminalWidth := logboek.Streams().Width()
 	groupsByPriority, groupedFlags := groupFlags(fset)
 
 	buf := new(bytes.Buffer)
@@ -195,46 +200,40 @@ func flagsUsage(fset *pflag.FlagSet) string {
 				continue
 			}
 
-			line := ""
+			header := ""
 			if flag.Shorthand != "" && flag.ShorthandDeprecated == "" {
-				line = fmt.Sprintf("  -%s, --%s", flag.Shorthand, flag.Name)
+				header = fmt.Sprintf("  -%s, --%s", flag.Shorthand, flag.Name)
 			} else {
-				line = fmt.Sprintf("      --%s", flag.Name)
+				header = fmt.Sprintf("      --%s", flag.Name)
 			}
 
 			switch flag.Value.Type() {
 			case "string":
-				line += fmt.Sprintf("=%q", flag.DefValue)
+				header += fmt.Sprintf("=%q", flag.DefValue)
 			case "stringToString":
 				defValue := flag.DefValue
 				defValue = strings.TrimPrefix(flag.DefValue, "[")
 				defValue = strings.TrimSuffix(defValue, "]")
 				defValue = fmt.Sprintf("{%s}", defValue)
 
-				line += fmt.Sprintf("=%s", defValue)
+				header += fmt.Sprintf("=%s", defValue)
 			default:
-				line += fmt.Sprintf("=%s", flag.DefValue)
+				header += fmt.Sprintf("=%s", flag.DefValue)
 			}
 
-			if flag.NoOptDefVal != "" {
-				switch flag.Value.Type() {
-				case "string":
-					line += fmt.Sprintf("[=\"%s\"]", flag.NoOptDefVal)
-				case "bool":
-					if flag.NoOptDefVal != "true" {
-						line += fmt.Sprintf("[=%s]", flag.NoOptDefVal)
-					}
-				case "count":
-					if flag.NoOptDefVal != "+1" {
-						line += fmt.Sprintf("[=%s]", flag.NoOptDefVal)
-					}
-				default:
-					line += fmt.Sprintf("[=%s]", flag.NoOptDefVal)
-				}
+			helpWrapWidth := terminalWidth - helpIndent
+
+			var help string
+			if helpWrapWidth > minHelpWidthToWrap {
+				help = logboek.FitText(flag.Usage, types.FitTextOptions{
+					ExtraIndentWidth: helpIndent,
+					Width:            helpWrapWidth + helpIndent,
+				})
+			} else {
+				help = fmt.Sprintf("%s%s", strings.Repeat(" ", helpIndent), flag.Usage)
 			}
 
-			line += fmt.Sprintf("\n          %s", flag.Usage)
-
+			line := fmt.Sprintf("%s\n%s", header, help)
 			lines = append(lines, line)
 		}
 	}
