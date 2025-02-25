@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/werf/common-go/pkg/flag"
 	"github.com/werf/nelm/pkg/action"
-	"github.com/werf/nelm/pkg/flag"
 )
 
 type releaseDeployConfig struct {
