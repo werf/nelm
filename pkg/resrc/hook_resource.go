@@ -121,6 +121,10 @@ func (r *HookResource) Validate() error {
 		return fmt.Errorf("error validating external dependencies for resource %q: %w", r.HumanID(), err)
 	}
 
+	if err := validateSensitive(r.unstruct); err != nil {
+		return fmt.Errorf("error validating sensitive for resource %q: %w", r.HumanID(), err)
+	}
+
 	return nil
 }
 

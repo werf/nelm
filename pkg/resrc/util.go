@@ -2,6 +2,7 @@ package resrc
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/samber/lo"
@@ -22,11 +23,20 @@ func IsCRDFromGR(groupKind schema.GroupResource) bool {
 	}
 }
 
-func IsSecret(groupKind schema.GroupKind) bool {
-	return groupKind == schema.GroupKind{
-		Group: "",
-		Kind:  "Secret",
+func IsSensitive(groupKind schema.GroupKind, annotations map[string]string) bool {
+	if groupKind == (schema.GroupKind{Group: "", Kind: "Secret"}) {
+		return true
 	}
+
+	if _, value, found := FindAnnotationOrLabelByKeyPattern(annotations, annotationKeyPatternSensitive); found {
+		sensitive := lo.Must(strconv.ParseBool(value))
+
+		if sensitive {
+			return true
+		}
+	}
+
+	return false
 }
 
 func IsHook(annotations map[string]string) bool {
