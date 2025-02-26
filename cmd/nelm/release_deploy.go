@@ -9,6 +9,7 @@ import (
 
 	"github.com/werf/common-go/pkg/flag"
 	"github.com/werf/nelm/pkg/action"
+	"github.com/werf/nelm/pkg/log"
 )
 
 type releaseDeployConfig struct {
@@ -37,7 +38,6 @@ type releaseDeployConfig struct {
 	KubeSkipTLSVerify            bool
 	KubeTLSServerName            string
 	KubeToken                    string
-	LogDebug                     bool
 	NetworkParallelism           int
 	NoProgressTablePrint         bool
 	ProgressTablePrintInterval   time.Duration
@@ -60,6 +60,7 @@ type releaseDeployConfig struct {
 	ValuesStringSets             []string
 
 	logColorMode         string
+	logLevel             string
 	releaseStorageDriver string
 }
 
@@ -69,6 +70,10 @@ func (c *releaseDeployConfig) ReleaseStorageDriver() action.ReleaseStorageDriver
 
 func (c *releaseDeployConfig) LogColorMode() action.LogColorMode {
 	return action.LogColorMode(c.logColorMode)
+}
+
+func (c *releaseDeployConfig) LogLevel() log.Level {
+	return log.Level(c.logLevel)
 }
 
 func newReleaseDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -115,7 +120,7 @@ func newReleaseDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map
 				KubeTLSServerName:            cfg.KubeTLSServerName,
 				KubeToken:                    cfg.KubeToken,
 				LogColorMode:                 cfg.LogColorMode(),
-				LogDebug:                     cfg.LogDebug,
+				LogLevel:                     cfg.LogLevel(),
 				NetworkParallelism:           cfg.NetworkParallelism,
 				ProgressTablePrint:           !cfg.NoProgressTablePrint,
 				ProgressTablePrintInterval:   cfg.ProgressTablePrintInterval,
@@ -319,7 +324,8 @@ func newReleaseDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.LogDebug, "debug", false, "Show debug logs", flag.AddOptions{
+		// FIXME(ilya-lesikov): restrict values
+		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(log.InfoLevel), "Set log level", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagOptions,
 		}); err != nil {

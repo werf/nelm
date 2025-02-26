@@ -25,4 +25,19 @@ type Logger interface {
 	ErrorPop(ctx context.Context, group string)
 	InfoBlock(ctx context.Context, format string, a ...interface{}) types.LogBlockInterface
 	InfoProcess(ctx context.Context, format string, a ...interface{}) types.LogProcessInterface
+	SetLevel(ctx context.Context, lvl Level)
+	Level(ctx context.Context) Level
+	AcceptLevel(ctx context.Context, lvl Level) bool
 }
+
+type Level string
+
+const (
+	ErrorLevel   Level = "error"
+	WarningLevel Level = "warning"
+	InfoLevel    Level = "info"
+	DebugLevel   Level = "debug"
+	TraceLevel   Level = "trace"
+)
+
+var Levels = []Level{ErrorLevel, WarningLevel, InfoLevel, DebugLevel, TraceLevel}

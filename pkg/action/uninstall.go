@@ -42,7 +42,7 @@ type UninstallOptions struct {
 	KubeSkipTLSVerify          bool
 	KubeTLSServerName          string
 	KubeToken                  string
-	LogDebug                   bool
+	LogLevel                   log.Level
 	ProgressTablePrintInterval time.Duration
 	ReleaseHistoryLimit        int
 	ReleaseName                string
@@ -99,7 +99,7 @@ func Uninstall(ctx context.Context, opts UninstallOptions) error {
 	*helmSettings.GetNamespaceP() = opts.ReleaseNamespace
 	opts.ReleaseNamespace = helmSettings.Namespace()
 	helmSettings.MaxHistory = opts.ReleaseHistoryLimit
-	helmSettings.Debug = opts.LogDebug
+	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.DebugLevel)
 
 	if opts.KubeContext != "" {
 		helmSettings.KubeContext = opts.KubeContext

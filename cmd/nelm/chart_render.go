@@ -8,6 +8,7 @@ import (
 
 	"github.com/werf/common-go/pkg/flag"
 	"github.com/werf/nelm/pkg/action"
+	"github.com/werf/nelm/pkg/log"
 )
 
 type chartRenderConfig struct {
@@ -49,6 +50,7 @@ type chartRenderConfig struct {
 	ValuesSets                   []string
 	ValuesStringSets             []string
 
+	logLevel             string
 	releaseStorageDriver string
 }
 
@@ -58,6 +60,10 @@ func (c *chartRenderConfig) OutputFileSave() bool {
 
 func (c *chartRenderConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
 	return action.ReleaseStorageDriver(c.releaseStorageDriver)
+}
+
+func (c *chartRenderConfig) LogLevel() log.Level {
+	return log.Level(c.logLevel)
 }
 
 func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -100,7 +106,7 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 				KubeToken:                    cfg.KubeToken,
 				Local:                        cfg.Local,
 				LocalKubeVersion:             cfg.LocalKubeVersion,
-				LogDebug:                     cfg.LogDebug,
+				LogLevel:                     cfg.LogLevel(),
 				NetworkParallelism:           cfg.NetworkParallelism,
 				OutputFilePath:               cfg.OutputFilePath,
 				OutputFileSave:               cfg.OutputFileSave(),
@@ -283,7 +289,8 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.LogDebug, "debug", false, "Show debug logs", flag.AddOptions{
+		// FIXME(ilya-lesikov): restrict values
+		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(log.InfoLevel), "Set log level", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagOptions,
 		}); err != nil {

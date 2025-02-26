@@ -69,7 +69,7 @@ type RenderOptions struct {
 	KubeToken                    string
 	Local                        bool
 	LocalKubeVersion             string
-	LogDebug                     bool
+	LogLevel                     log.Level
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	OutputFilePath               string
@@ -91,6 +91,8 @@ type RenderOptions struct {
 }
 
 func Render(ctx context.Context, opts RenderOptions) error {
+	log.Default.SetLevel(ctx, opts.LogLevel)
+
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)
@@ -137,7 +139,7 @@ func Render(ctx context.Context, opts RenderOptions) error {
 	*helmSettings.GetConfigP() = kubeConfigGetter
 	*helmSettings.GetNamespaceP() = opts.ReleaseNamespace
 	opts.ReleaseNamespace = helmSettings.Namespace()
-	helmSettings.Debug = opts.LogDebug
+	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.DebugLevel)
 
 	if opts.KubeContext != "" {
 		helmSettings.KubeContext = opts.KubeContext
@@ -148,7 +150,7 @@ func Render(ctx context.Context, opts RenderOptions) error {
 	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(opts.LogDebug),
+		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
 	}
 
