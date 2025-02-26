@@ -100,6 +100,8 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 	log.Default.Debug(ctx, "Rendering resources for chart at %q", chartPath)
 	legacyHookResources, generalManifestsBuf, notes, err := actionConfig.RenderResources(legacyChart, values, "", "", opts.SubNotes, false, false, nil, hasClusterAccess, false)
 	if err != nil {
+		log.Default.Debug(ctx, generalManifestsBuf.String())
+
 		return nil, fmt.Errorf("error rendering resources for chart %q: %w", legacyChart.Name(), err)
 	}
 
