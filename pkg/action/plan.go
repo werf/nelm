@@ -64,7 +64,7 @@ type PlanOptions struct {
 	KubeSkipTLSVerify            bool
 	KubeTLSServerName            string
 	KubeToken                    string
-	LogDebug                     bool
+	LogLevel                     log.Level
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	RegistryCredentialsPath      string
@@ -82,6 +82,8 @@ type PlanOptions struct {
 }
 
 func Plan(ctx context.Context, opts PlanOptions) error {
+	log.Default.SetLevel(ctx, opts.LogLevel)
+
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)
@@ -128,7 +130,7 @@ func Plan(ctx context.Context, opts PlanOptions) error {
 	*helmSettings.GetConfigP() = kubeConfigGetter
 	*helmSettings.GetNamespaceP() = opts.ReleaseNamespace
 	opts.ReleaseNamespace = helmSettings.Namespace()
-	helmSettings.Debug = opts.LogDebug
+	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.DebugLevel)
 
 	if opts.KubeContext != "" {
 		helmSettings.KubeContext = opts.KubeContext
@@ -139,7 +141,7 @@ func Plan(ctx context.Context, opts PlanOptions) error {
 	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(opts.LogDebug),
+		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
 	}
 

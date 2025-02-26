@@ -127,7 +127,7 @@ type DeployOptions struct {
 	KubeTLSServerName            string
 	KubeToken                    string
 	LogColorMode                 LogColorMode
-	LogDebug                     bool
+	LogLevel                     log.Level
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	ProgressTablePrint           bool
@@ -154,6 +154,8 @@ type DeployOptions struct {
 }
 
 func Deploy(ctx context.Context, opts DeployOptions) error {
+	log.Default.SetLevel(ctx, opts.LogLevel)
+
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)
@@ -201,7 +203,7 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 	*helmSettings.GetNamespaceP() = opts.ReleaseNamespace
 	opts.ReleaseNamespace = helmSettings.Namespace()
 	helmSettings.MaxHistory = opts.ReleaseHistoryLimit
-	helmSettings.Debug = opts.LogDebug
+	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.DebugLevel)
 
 	if opts.KubeContext != "" {
 		helmSettings.KubeContext = opts.KubeContext
@@ -212,7 +214,7 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(opts.LogDebug),
+		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
 	}
 

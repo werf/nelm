@@ -9,6 +9,7 @@ import (
 
 	"github.com/werf/common-go/pkg/flag"
 	"github.com/werf/nelm/pkg/action"
+	"github.com/werf/nelm/pkg/log"
 )
 
 type releaseUninstallConfig struct {
@@ -24,18 +25,22 @@ type releaseUninstallConfig struct {
 	KubeSkipTLSVerify          bool
 	KubeTLSServerName          string
 	KubeToken                  string
-	LogDebug                   bool
 	ProgressTablePrintInterval time.Duration
 	ReleaseHistoryLimit        int
 	ReleaseName                string
 	ReleaseNamespace           string
 	TempDirPath                string
 
+	logLevel             string
 	releaseStorageDriver string
 }
 
 func (c *releaseUninstallConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
 	return action.ReleaseStorageDriver(c.releaseStorageDriver)
+}
+
+func (c *releaseUninstallConfig) LogLevel() log.Level {
+	return log.Level(c.logLevel)
 }
 
 func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -64,7 +69,7 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 				KubeSkipTLSVerify:          cfg.KubeSkipTLSVerify,
 				KubeTLSServerName:          cfg.KubeTLSServerName,
 				KubeToken:                  cfg.KubeToken,
-				LogDebug:                   cfg.LogDebug,
+				LogLevel:                   cfg.LogLevel(),
 				ProgressTablePrintInterval: cfg.ProgressTablePrintInterval,
 				ReleaseHistoryLimit:        cfg.ReleaseHistoryLimit,
 				ReleaseName:                cfg.ReleaseName,
@@ -174,7 +179,8 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.LogDebug, "debug", false, "Show debug logs", flag.AddOptions{
+		// FIXME(ilya-lesikov): restrict values
+		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(log.InfoLevel), "Set log level", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagOptions,
 		}); err != nil {

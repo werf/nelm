@@ -8,6 +8,7 @@ import (
 
 	"github.com/werf/common-go/pkg/flag"
 	"github.com/werf/nelm/pkg/action"
+	"github.com/werf/nelm/pkg/log"
 )
 
 type planDeployConfig struct {
@@ -32,7 +33,6 @@ type planDeployConfig struct {
 	KubeSkipTLSVerify            bool
 	KubeTLSServerName            string
 	KubeToken                    string
-	LogDebug                     bool
 	NetworkParallelism           int
 	RegistryCredentialsPath      string
 	ReleaseName                  string
@@ -45,11 +45,16 @@ type planDeployConfig struct {
 	ValuesSets                   []string
 	ValuesStringSets             []string
 
+	logLevel             string
 	releaseStorageDriver string
 }
 
 func (c *planDeployConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
 	return action.ReleaseStorageDriver(c.releaseStorageDriver)
+}
+
+func (c *planDeployConfig) LogLevel() log.Level {
+	return log.Level(c.logLevel)
 }
 
 func newPlanDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -91,7 +96,7 @@ func newPlanDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 				KubeSkipTLSVerify:            cfg.KubeSkipTLSVerify,
 				KubeTLSServerName:            cfg.KubeTLSServerName,
 				KubeToken:                    cfg.KubeToken,
-				LogDebug:                     cfg.LogDebug,
+				LogLevel:                     cfg.LogLevel(),
 				NetworkParallelism:           cfg.NetworkParallelism,
 				RegistryCredentialsPath:      cfg.RegistryCredentialsPath,
 				ReleaseName:                  cfg.ReleaseName,
@@ -264,7 +269,8 @@ func newPlanDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.LogDebug, "debug", false, "Show debug logs", flag.AddOptions{
+		// FIXME(ilya-lesikov): restrict values
+		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(log.InfoLevel), "Set log level", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagOptions,
 		}); err != nil {

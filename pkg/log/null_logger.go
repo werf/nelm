@@ -54,3 +54,13 @@ func (l *NullLogger) InfoBlock(ctx context.Context, format string, a ...interfac
 func (l *NullLogger) InfoProcess(ctx context.Context, format string, a ...interface{}) types.LogProcessInterface {
 	return nil
 }
+
+func (l *NullLogger) SetLevel(ctx context.Context, lvl Level) {}
+
+func (l *NullLogger) Level(context.Context) Level {
+	return InfoLevel
+}
+
+func (l *NullLogger) AcceptLevel(ctx context.Context, lvl Level) bool {
+	return false
+}
