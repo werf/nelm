@@ -22,13 +22,13 @@ var planCmdGroup = &cobra.Group{
 }
 
 var (
-	mainFlagOptions           = flag.NewGroup("main", "Options:", 100)
-	valuesFlagGroup           = flag.NewGroup("values", "Values options:", 90)
-	secretFlagOptions         = flag.NewGroup("secret", "Secret options:", 80)
-	patchFlagOptions          = flag.NewGroup("patch", "Patch options:", 70)
-	progressFlagOptions       = flag.NewGroup("progress", "Progress options:", 65)
-	chartRepoFlagGroup        = flag.NewGroup("chart-repo", "Chart repository options:", 60)
-	kubeConnectionFlagOptions = flag.NewGroup("kube-connection", "Kubernetes connection options:", 50)
-	performanceFlagOptions    = flag.NewGroup("performance", "Performance options:", 40)
-	miscFlagOptions           = flag.NewGroup("misc", "Miscellaneous options:", 0)
+	mainFlagGroup           = flag.NewGroup("main", "Options:", 100)
+	valuesFlagGroup         = flag.NewGroup("values", "Values options:", 90)
+	secretFlagGroup         = flag.NewGroup("secret", "Secret options:", 80)
+	patchFlagGroup          = flag.NewGroup("patch", "Patch options:", 70)
+	progressFlagGroup       = flag.NewGroup("progress", "Progress options:", 65)
+	chartRepoFlagGroup      = flag.NewGroup("chart-repo", "Chart repository options:", 60)
+	kubeConnectionFlagGroup = flag.NewGroup("kube-connection", "Kubernetes connection options:", 50)
+	performanceFlagGroup    = flag.NewGroup("performance", "Performance options:", 40)
+	miscFlagGroup           = flag.NewGroup("misc", "Miscellaneous options:", 0)
 )
