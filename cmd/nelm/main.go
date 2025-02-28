@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
+	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/common-go/pkg/flag"
 	"github.com/werf/logboek"
 	"github.com/werf/nelm/pkg/common"
@@ -24,6 +25,13 @@ func main() {
 
 	flag.EnvVarsPrefix = caps.ToScreamingSnake(common.Brand) + "_"
 	afterAllCommandsBuiltFuncs := make(map[*cobra.Command]func(cmd *cobra.Command) error)
+
+	// Needed for embedding original Helm 3 commands
+	var err error
+	helmRootCmd, err = helm_v3.Init()
+	if err != nil {
+		abort(ctx, fmt.Errorf("init helm: %w", err), 1)
+	}
 
 	rootCmd := NewRootCommand(ctx, afterAllCommandsBuiltFuncs)
 

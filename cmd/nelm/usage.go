@@ -41,12 +41,14 @@ Usage:
 {{- if gt (len .Aliases) 0}}
 
 Aliases:
+
   {{.NameAndAliases}}
 {{- end}}
 
 {{- if .HasExample}}
 
 Examples:
+
 {{.Example}}
 {{- end}}
 
@@ -250,15 +252,15 @@ func groupFlags(fset *pflag.FlagSet) ([]flag.Group, map[flag.Group][]*pflag.Flag
 	groupedFlags := map[flag.Group][]*pflag.Flag{}
 
 	fset.VisitAll(func(f *pflag.Flag) {
-		groupID, found := f.Annotations[flag.GroupIDAnnotationName]
-		if !found {
-			return
+		var group *flag.Group
+
+		if groupID, found := f.Annotations[flag.GroupIDAnnotationName]; found {
+			groupTitle := f.Annotations[flag.GroupTitleAnnotationName]
+			groupPriority := f.Annotations[flag.GroupPriorityAnnotationName]
+			group = flag.NewGroup(groupID[0], groupTitle[0], lo.Must1(strconv.Atoi(groupPriority[0])))
+		} else {
+			group = mainFlagGroup
 		}
-
-		groupTitle := f.Annotations[flag.GroupTitleAnnotationName]
-		groupPriority := f.Annotations[flag.GroupPriorityAnnotationName]
-
-		group := flag.NewGroup(groupID[0], groupTitle[0], lo.Must1(strconv.Atoi(groupPriority[0])))
 
 		groupsByPriority = append(groupsByPriority, *group)
 		groupedFlags[*group] = append(groupedFlags[*group], f)

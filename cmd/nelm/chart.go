@@ -15,6 +15,7 @@ func newChartCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.
 	}
 
 	cmd.AddCommand(newChartRenderCommand(ctx, afterAllCommandsBuiltFuncs))
+	cmd.AddCommand(newChartDependencyCommand(ctx, afterAllCommandsBuiltFuncs))
 
 	return cmd
 }
