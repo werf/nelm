@@ -71,8 +71,8 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 
 	cmd := &cobra.Command{
 		Use:   "render [options...] [chart-dir]",
-		Short: "Render a Helm Chart.",
-		Long:  "Render a Helm Chart.",
+		Short: "Render a chart.",
+		Long:  "Render a chart.",
 		Args:  cobra.MaximumNArgs(1),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			return nil, cobra.ShellCompDirectiveFilterDirs

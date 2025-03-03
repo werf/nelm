@@ -23,6 +23,7 @@ func newChartDependencyBuildCommand(ctx context.Context, afterAllCommandsBuiltFu
 	}))
 
 	cmd.LocalFlags().AddFlagSet(cmd.InheritedFlags())
+	cmd.Short = "Download chart dependencies from Chart.lock."
 	cmd.Aliases = []string{}
 
 	originalRunE := cmd.RunE

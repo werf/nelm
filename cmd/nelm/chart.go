@@ -9,8 +9,8 @@ import (
 func newChartCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "chart",
-		Short:   "Manage Helm Charts.",
-		Long:    "Manage Helm Charts.",
+		Short:   "Manage charts.",
+		Long:    "Manage charts.",
 		GroupID: chartCmdGroup.ID,
 	}
 

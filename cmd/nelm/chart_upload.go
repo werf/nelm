@@ -20,6 +20,7 @@ func newChartUploadCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 
 	cmd.LocalFlags().AddFlagSet(cmd.InheritedFlags())
 	cmd.Use = "upload [chart] [remote]"
+	cmd.Short = "Upload a chart to a repository."
 	cmd.Aliases = []string{}
 
 	originalRunE := cmd.RunE

@@ -20,6 +20,7 @@ func newChartDownloadCommand(ctx context.Context, afterAllCommandsBuiltFuncs map
 
 	cmd.LocalFlags().AddFlagSet(cmd.InheritedFlags())
 	cmd.Use = "download [chart URL | repo/chartname] [...]"
+	cmd.Short = "Download a chart from a repository."
 	cmd.Aliases = []string{}
 
 	originalRunE := cmd.RunE
