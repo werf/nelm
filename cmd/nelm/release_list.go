@@ -19,6 +19,7 @@ func newReleaseListCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 	}))
 
 	cmd.LocalFlags().AddFlagSet(cmd.InheritedFlags())
+	cmd.Aliases = []string{}
 
 	originalRunE := cmd.RunE
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
