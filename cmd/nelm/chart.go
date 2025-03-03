@@ -18,7 +18,7 @@ func newChartCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.
 	cmd.AddCommand(newChartDependencyCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newChartDownloadCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newChartUploadCommand(ctx, afterAllCommandsBuiltFuncs))
-	cmd.AddCommand(newChartArchiveCommand(ctx, afterAllCommandsBuiltFuncs))
+	cmd.AddCommand(newChartPackCommand(ctx, afterAllCommandsBuiltFuncs))
 
 	return cmd
 }
