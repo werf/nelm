@@ -16,6 +16,7 @@ func newReleaseCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobr
 
 	cmd.AddCommand(newReleaseDeployCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newReleaseUninstallCommand(ctx, afterAllCommandsBuiltFuncs))
+	cmd.AddCommand(newReleaseHistoryCommand(ctx, afterAllCommandsBuiltFuncs))
 
 	return cmd
 }
