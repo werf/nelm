@@ -13,12 +13,13 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-func newReleaseHistoryCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
+func newChartDownloadCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cmd := lo.Must(lo.Find(helmRootCmd.Commands(), func(c *cobra.Command) bool {
-		return strings.HasPrefix(c.Use, "history")
+		return strings.HasPrefix(c.Use, "pull")
 	}))
 
 	cmd.LocalFlags().AddFlagSet(cmd.InheritedFlags())
+	cmd.Use = "download [chart URL | repo/chartname] [...]"
 	cmd.Aliases = []string{}
 
 	originalRunE := cmd.RunE
