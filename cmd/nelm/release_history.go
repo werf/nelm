@@ -19,6 +19,7 @@ func newReleaseHistoryCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 	}))
 
 	cmd.LocalFlags().AddFlagSet(cmd.InheritedFlags())
+	cmd.Short = "Show release history."
 	cmd.Aliases = []string{}
 
 	originalRunE := cmd.RunE

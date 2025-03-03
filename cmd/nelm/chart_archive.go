@@ -20,6 +20,8 @@ func newChartArchiveCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[
 
 	cmd.LocalFlags().AddFlagSet(cmd.InheritedFlags())
 	cmd.Use = "archive [CHART_PATH] [...]"
+	cmd.Short = "Pack a chart into an archive to be distributed through a repository."
+	cmd.Long = strings.ReplaceAll(cmd.Long, "helm package", "nelm chart archive")
 	cmd.Aliases = []string{}
 
 	originalRunE := cmd.RunE

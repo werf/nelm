@@ -19,6 +19,7 @@ func newReleaseListCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 	}))
 
 	cmd.LocalFlags().AddFlagSet(cmd.InheritedFlags())
+	cmd.Short = "List all releases in a namespace."
 	cmd.Aliases = []string{}
 
 	originalRunE := cmd.RunE
