@@ -189,6 +189,8 @@ func (l *LogboekLogger) SetLevel(ctx context.Context, lvl Level) {
 		logboek.Context(ctx).SetAcceptedLevel(level.Warn)
 	case ErrorLevel:
 		logboek.Context(ctx).SetAcceptedLevel(level.Error)
+	case SilentLevel:
+		logboek.Context(ctx).Streams().Mute()
 	default:
 		panic(fmt.Sprintf("unsupported log level %q", lvl))
 	}

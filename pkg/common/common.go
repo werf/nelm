@@ -1,9 +1,11 @@
 package common
 
-import "github.com/Masterminds/sprig/v3"
+import (
+	"github.com/Masterminds/sprig/v3"
+)
 
 var Brand = "Nelm"
-var Version = "dev"
+var Version = "0.0.0"
 
 const DefaultFieldManager = "helm"
 const KubectlEditFieldManager = "kubectl-edit"
@@ -31,3 +33,10 @@ const (
 )
 
 var SprigFuncs = sprig.TxtFuncMap()
+
+type OutputFormat string
+
+const (
+	YamlOutputFormat OutputFormat = "yaml"
+	JsonOutputFormat OutputFormat = "json"
+)

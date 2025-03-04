@@ -33,6 +33,7 @@ type Logger interface {
 type Level string
 
 const (
+	SilentLevel  Level = "silent"
 	ErrorLevel   Level = "error"
 	WarningLevel Level = "warning"
 	InfoLevel    Level = "info"
@@ -40,4 +41,4 @@ const (
 	TraceLevel   Level = "trace"
 )
 
-var Levels = []Level{ErrorLevel, WarningLevel, InfoLevel, DebugLevel, TraceLevel}
+var Levels = []Level{SilentLevel, ErrorLevel, WarningLevel, InfoLevel, DebugLevel, TraceLevel}
