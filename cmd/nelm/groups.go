@@ -21,6 +21,11 @@ var planCmdGroup = &cobra.Group{
 	Title: "Plan commands:",
 }
 
+var repoCmdGroup = &cobra.Group{
+	ID:    "repo",
+	Title: "Repo commands:",
+}
+
 var (
 	mainFlagGroup           = flag.NewGroup("main", "Options:", 100)
 	valuesFlagGroup         = flag.NewGroup("values", "Values options:", 90)
