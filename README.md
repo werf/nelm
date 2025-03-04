@@ -43,7 +43,7 @@ cert-manager:
     enabled: false
 EOF
 
-helm dependency update
+nelm chart dependency build
 ```
 3. Check what's going to happen on next release:
 ```bash
