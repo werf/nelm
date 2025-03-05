@@ -7,8 +7,7 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/samber/lo"
-	"sigs.k8s.io/yaml"
+	"github.com/goccy/go-yaml"
 
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
@@ -39,9 +38,9 @@ func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {
 	}
 
 	if semVer, err := semver.StrictNewVersion(common.Version); err == nil {
-		result.MajorVersion = lo.ToPtr(int(semVer.Major()))
-		result.MinorVersion = lo.ToPtr(int(semVer.Minor()))
-		result.PatchVersion = lo.ToPtr(int(semVer.Patch()))
+		result.MajorVersion = int(semVer.Major())
+		result.MinorVersion = int(semVer.Minor())
+		result.PatchVersion = int(semVer.Patch())
 	}
 
 	if !opts.OutputNoPrint {
@@ -56,7 +55,7 @@ func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {
 
 			resultMessage = string(b)
 		case common.YamlOutputFormat:
-			b, err := yaml.Marshal(result)
+			b, err := yaml.MarshalContext(ctx, result)
 			if err != nil {
 				return nil, fmt.Errorf("marshal result to yaml: %w", err)
 			}
@@ -82,7 +81,7 @@ func applyVersionOptionsDefaults(opts VersionOptions) (VersionOptions, error) {
 
 type VersionResult struct {
 	FullVersion  string `json:"full"`
-	MajorVersion *int   `json:"major,omitempty"`
-	MinorVersion *int   `json:"minor,omitempty"`
-	PatchVersion *int   `json:"patch,omitempty"`
+	MajorVersion int    `json:"major"`
+	MinorVersion int    `json:"minor"`
+	PatchVersion int    `json:"patch"`
 }
