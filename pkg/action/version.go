@@ -49,7 +49,7 @@ func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {
 
 		switch opts.OutputFormat {
 		case common.JsonOutputFormat:
-			b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 4))
+			b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
 			if err != nil {
 				return nil, fmt.Errorf("marshal result to json: %w", err)
 			}
