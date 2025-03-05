@@ -52,11 +52,14 @@ func NewRelease(name, namespace string, revision int, values map[string]interfac
 		legacyChart:      legacyChart,
 		mapper:           opts.Mapper,
 		status:           status,
+		firstDeployed:    opts.FirstDeployed,
+		lastDeployed:     opts.LastDeployed,
+		appVersion:       legacyChart.Metadata.AppVersion,
+		chartName:        legacyChart.Metadata.Name,
+		chartVersion:     legacyChart.Metadata.Version,
 		hookResources:    hookResources,
 		generalResources: generalResources,
 		notes:            notes,
-		firstDeployed:    opts.FirstDeployed,
-		lastDeployed:     opts.LastDeployed,
 	}, nil
 }
 
@@ -124,6 +127,9 @@ type Release struct {
 	status        release.Status
 	firstDeployed time.Time
 	lastDeployed  time.Time
+	appVersion    string
+	chartName     string
+	chartVersion  string
 
 	hookResources    []*resrc.HookResource
 	generalResources []*resrc.GeneralResource
@@ -172,6 +178,18 @@ func (r *Release) FirstDeployed() time.Time {
 
 func (r *Release) LastDeployed() time.Time {
 	return r.lastDeployed
+}
+
+func (r *Release) AppVersion() string {
+	return r.appVersion
+}
+
+func (r *Release) ChartName() string {
+	return r.chartName
+}
+
+func (r *Release) ChartVersion() string {
+	return r.chartVersion
 }
 
 func (r *Release) ID() string {
