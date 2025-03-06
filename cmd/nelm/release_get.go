@@ -31,6 +31,7 @@ type releaseGetConfig struct {
 	Revision           int
 	TempDirPath        string
 
+	logColorMode         string
 	logLevel             string
 	outputFormat         string
 	releaseStorageDriver string
@@ -38,6 +39,10 @@ type releaseGetConfig struct {
 
 func (c *releaseGetConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
 	return action.ReleaseStorageDriver(c.releaseStorageDriver)
+}
+
+func (c *releaseGetConfig) LogColorMode() action.LogColorMode {
+	return action.LogColorMode(c.logColorMode)
 }
 
 func (c *releaseGetConfig) LogLevel() log.Level {
@@ -80,6 +85,7 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 				KubeSkipTLSVerify:    cfg.KubeSkipTLSVerify,
 				KubeTLSServerName:    cfg.KubeTLSServerName,
 				KubeToken:            cfg.KubeToken,
+				LogColorMode:         cfg.LogColorMode(),
 				LogLevel:             cfg.LogLevel(),
 				NetworkParallelism:   cfg.NetworkParallelism,
 				OutputFormat:         cfg.OutputFormat(),
@@ -175,6 +181,14 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 		if err := flag.Add(cmd, &cfg.KubeToken, "kube-token", "", "The bearer token for authentication in Kubernetes API", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                kubeConnectionFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		// FIXME(ilya-lesikov): restrict values
+		if err := flag.Add(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                miscFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

@@ -20,9 +20,9 @@ import (
 const DefaultVersionOutputFormat = common.YamlOutputFormat
 
 type VersionOptions struct {
+	LogColorMode  LogColorMode
 	OutputFormat  common.OutputFormat
 	OutputNoPrint bool
-	LogColorMode  LogColorMode
 }
 
 func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {
