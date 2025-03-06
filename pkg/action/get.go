@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
+	"github.com/gookit/color"
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
@@ -36,6 +37,7 @@ type GetOptions struct {
 	KubeSkipTLSVerify    bool
 	KubeTLSServerName    string
 	KubeToken            string
+	LogColorMode         LogColorMode
 	LogLevel             log.Level
 	NetworkParallelism   int
 	OutputFormat         common.OutputFormat
@@ -202,7 +204,14 @@ func Get(ctx context.Context, opts GetOptions) (*GetResultV1, error) {
 			return nil, fmt.Errorf("unknown output format %q", opts.OutputFormat)
 		}
 
-		fmt.Print(resultMessage)
+		var colorLevel color.Level
+		if opts.LogColorMode != LogColorModeOff {
+			colorLevel = color.DetectColorLevel()
+		}
+
+		if err := writeWithSyntaxHighlight(os.Stdout, resultMessage, string(opts.OutputFormat), colorLevel); err != nil {
+			return nil, fmt.Errorf("write result to output: %w", err)
+		}
 	}
 
 	return result, nil
@@ -220,6 +229,8 @@ func applyGetOptionsDefaults(opts GetOptions, currentUser *user.User) (GetOption
 	if opts.KubeConfigBase64 == "" && len(opts.KubeConfigPaths) == 0 {
 		opts.KubeConfigPaths = []string{filepath.Join(currentUser.HomeDir, ".kube", "config")}
 	}
+
+	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
 
 	if opts.NetworkParallelism <= 0 {
 		opts.NetworkParallelism = DefaultNetworkParallelism
