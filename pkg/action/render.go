@@ -9,7 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/alecthomas/chroma/v2/quick"
+	"github.com/gookit/color"
 	"github.com/samber/lo"
+	"github.com/xo/terminfo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/yaml"
@@ -69,6 +72,7 @@ type RenderOptions struct {
 	KubeToken                    string
 	Local                        bool
 	LocalKubeVersion             string
+	LogColorMode                 LogColorMode
 	LogLevel                     log.Level
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
@@ -397,13 +401,18 @@ func Render(ctx context.Context, opts RenderOptions) error {
 		renderOutStream = os.Stdout
 	}
 
+	var colorLevel color.Level
+	if opts.LogColorMode != LogColorModeOff {
+		colorLevel = color.DetectColorLevel()
+	}
+
 	if opts.ShowCRDs {
 		for _, resource := range resProcessor.DeployableStandaloneCRDs() {
 			if len(showFiles) > 0 && !lo.Contains(showFiles, resource.FilePath()) {
 				continue
 			}
 
-			if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream); err != nil {
+			if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream, colorLevel); err != nil {
 				return fmt.Errorf("render CRD %q: %w", resource.HumanID(), err)
 			}
 		}
@@ -414,7 +423,7 @@ func Render(ctx context.Context, opts RenderOptions) error {
 			continue
 		}
 
-		if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream); err != nil {
+		if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream, colorLevel); err != nil {
 			return fmt.Errorf("render hook resource %q: %w", resource.HumanID(), err)
 		}
 	}
@@ -424,7 +433,7 @@ func Render(ctx context.Context, opts RenderOptions) error {
 			continue
 		}
 
-		if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream); err != nil {
+		if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream, colorLevel); err != nil {
 			return fmt.Errorf("render general resource %q: %w", resource.HumanID(), err)
 		}
 	}
@@ -457,6 +466,21 @@ func applyRenderOptionsDefaults(opts RenderOptions, currentDir string, currentUs
 
 	if opts.LogRegistryStreamOut == nil {
 		opts.LogRegistryStreamOut = os.Stdout
+	}
+
+	if opts.LogColorMode == LogColorModeUnspecified || opts.LogColorMode == LogColorModeAuto {
+		piped, err := stdoutPiped()
+		if err != nil {
+			return RenderOptions{}, fmt.Errorf("is stdout piped: %w", err)
+		}
+
+		uncoloredTerminal := color.DetectColorLevel() == terminfo.ColorLevelNone
+
+		if opts.OutputFileSave || piped || uncoloredTerminal {
+			opts.LogColorMode = LogColorModeOff
+		} else {
+			opts.LogColorMode = LogColorModeOn
+		}
 	}
 
 	if opts.NetworkParallelism <= 0 {
@@ -498,7 +522,7 @@ func applyRenderOptionsDefaults(opts RenderOptions, currentDir string, currentUs
 	return opts, nil
 }
 
-func renderResource(unstruct *unstructured.Unstructured, path string, outStream io.Writer) error {
+func renderResource(unstruct *unstructured.Unstructured, path string, outStream io.Writer, colorLevel color.Level) error {
 	resourceJsonBytes, err := runtime.Encode(unstructured.UnstructuredJSONScheme, unstruct)
 	if err != nil {
 		return fmt.Errorf("encode to JSON: %w", err)
@@ -510,9 +534,28 @@ func renderResource(unstruct *unstructured.Unstructured, path string, outStream 
 	}
 
 	prefixBytes := []byte(fmt.Sprintf("---\n# Source: %s\n", path))
+	manifestBytes := append(prefixBytes, resourceYamlBytes...)
 
-	if _, err := outStream.Write(append(prefixBytes, resourceYamlBytes...)); err != nil {
-		return fmt.Errorf("write to output: %w", err)
+	if colorLevel == color.LevelNo {
+		if _, err := outStream.Write(manifestBytes); err != nil {
+			return fmt.Errorf("write to output: %w", err)
+		}
+	} else {
+		var formatterName string
+		switch colorLevel {
+		case color.Level16:
+			formatterName = "terminal16"
+		case color.Level256:
+			formatterName = "terminal256"
+		case color.LevelRgb:
+			formatterName = "terminal16m"
+		default:
+			panic(fmt.Sprintf("unexpected color level %d", colorLevel))
+		}
+
+		if err := quick.Highlight(outStream, string(manifestBytes), "yaml", formatterName, SyntaxHighlightTheme); err != nil {
+			return fmt.Errorf("highlight and write to output: %w", err)
+		}
 	}
 
 	return nil
