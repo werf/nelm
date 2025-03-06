@@ -12,7 +12,12 @@ import (
 )
 
 type versionConfig struct {
+	logColorMode string
 	outputFormat string
+}
+
+func (c *versionConfig) LogColorMode() action.LogColorMode {
+	return action.LogColorMode(c.logColorMode)
 }
 
 func (c *versionConfig) OutputFormat() common.OutputFormat {
@@ -31,6 +36,7 @@ func newVersionCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobr
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if _, err := action.Version(ctx, action.VersionOptions{
 				OutputFormat: cfg.OutputFormat(),
+				LogColorMode: cfg.LogColorMode(),
 			}); err != nil {
 				return fmt.Errorf("version: %w", err)
 			}
@@ -40,6 +46,14 @@ func newVersionCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobr
 	}
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
+		// FIXME(ilya-lesikov): restrict values
+		if err := flag.Add(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		// TODO(ilya-lesikov): restrict values
 		if err := flag.Add(cmd, &cfg.outputFormat, "output-format", string(action.DefaultVersionOutputFormat), "Result output format", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
