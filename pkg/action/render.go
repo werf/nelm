@@ -9,10 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/alecthomas/chroma/v2/quick"
 	"github.com/gookit/color"
 	"github.com/samber/lo"
-	"github.com/xo/terminfo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/yaml"
@@ -468,20 +466,7 @@ func applyRenderOptionsDefaults(opts RenderOptions, currentDir string, currentUs
 		opts.LogRegistryStreamOut = os.Stdout
 	}
 
-	if opts.LogColorMode == LogColorModeUnspecified || opts.LogColorMode == LogColorModeAuto {
-		piped, err := stdoutPiped()
-		if err != nil {
-			return RenderOptions{}, fmt.Errorf("is stdout piped: %w", err)
-		}
-
-		uncoloredTerminal := color.DetectColorLevel() == terminfo.ColorLevelNone
-
-		if opts.OutputFileSave || piped || uncoloredTerminal {
-			opts.LogColorMode = LogColorModeOff
-		} else {
-			opts.LogColorMode = LogColorModeOn
-		}
-	}
+	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, opts.OutputFileSave)
 
 	if opts.NetworkParallelism <= 0 {
 		opts.NetworkParallelism = DefaultNetworkParallelism
@@ -536,26 +521,8 @@ func renderResource(unstruct *unstructured.Unstructured, path string, outStream 
 	prefixBytes := []byte(fmt.Sprintf("---\n# Source: %s\n", path))
 	manifestBytes := append(prefixBytes, resourceYamlBytes...)
 
-	if colorLevel == color.LevelNo {
-		if _, err := outStream.Write(manifestBytes); err != nil {
-			return fmt.Errorf("write to output: %w", err)
-		}
-	} else {
-		var formatterName string
-		switch colorLevel {
-		case color.Level16:
-			formatterName = "terminal16"
-		case color.Level256:
-			formatterName = "terminal256"
-		case color.LevelRgb:
-			formatterName = "terminal16m"
-		default:
-			panic(fmt.Sprintf("unexpected color level %d", colorLevel))
-		}
-
-		if err := quick.Highlight(outStream, string(manifestBytes), "yaml", formatterName, SyntaxHighlightTheme); err != nil {
-			return fmt.Errorf("highlight and write to output: %w", err)
-		}
+	if err := writeWithSyntaxHighlight(outStream, string(manifestBytes), "yaml", colorLevel); err != nil {
+		return fmt.Errorf("write resource to output: %w", err)
 	}
 
 	return nil

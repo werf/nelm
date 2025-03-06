@@ -4,13 +4,17 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/alecthomas/chroma/v2/quick"
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/docker/pkg/homedir"
+	"github.com/gookit/color"
+	"github.com/xo/terminfo"
 	"k8s.io/klog"
 	klog_v2 "k8s.io/klog/v2"
 
@@ -131,4 +135,51 @@ func stdoutPiped() (bool, error) {
 	piped := (fileInfo.Mode() & os.ModeCharDevice) == 0
 
 	return piped, nil
+}
+
+func applyLogColorModeDefault(logColorMode LogColorMode, outputToFile bool) LogColorMode {
+	if logColorMode == LogColorModeUnspecified || logColorMode == LogColorModeAuto {
+		piped, err := stdoutPiped()
+		if err != nil {
+			return LogColorModeOff
+		}
+
+		uncoloredTerminal := color.DetectColorLevel() == terminfo.ColorLevelNone
+
+		if outputToFile || piped || uncoloredTerminal {
+			logColorMode = LogColorModeOff
+		} else {
+			logColorMode = LogColorModeOn
+		}
+	}
+
+	return logColorMode
+}
+
+func writeWithSyntaxHighlight(outStream io.Writer, text string, lang string, colorLevel terminfo.ColorLevel) error {
+	if colorLevel == color.LevelNo {
+		if _, err := outStream.Write([]byte(text)); err != nil {
+			return fmt.Errorf("write to output: %w", err)
+		}
+
+		return nil
+	}
+
+	var formatterName string
+	switch colorLevel {
+	case color.Level16:
+		formatterName = "terminal16"
+	case color.Level256:
+		formatterName = "terminal256"
+	case color.LevelRgb:
+		formatterName = "terminal16m"
+	default:
+		panic(fmt.Sprintf("unexpected color level %d", colorLevel))
+	}
+
+	if err := quick.Highlight(outStream, text, lang, formatterName, SyntaxHighlightTheme); err != nil {
+		return fmt.Errorf("highlight and write to output: %w", err)
+	}
+
+	return nil
 }
