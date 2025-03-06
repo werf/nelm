@@ -50,6 +50,7 @@ type chartRenderConfig struct {
 	ValuesSets                   []string
 	ValuesStringSets             []string
 
+	logColorMode         string
 	logLevel             string
 	releaseStorageDriver string
 }
@@ -60,6 +61,10 @@ func (c *chartRenderConfig) OutputFileSave() bool {
 
 func (c *chartRenderConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
 	return action.ReleaseStorageDriver(c.releaseStorageDriver)
+}
+
+func (c *chartRenderConfig) LogColorMode() action.LogColorMode {
+	return action.LogColorMode(c.logColorMode)
 }
 
 func (c *chartRenderConfig) LogLevel() log.Level {
@@ -285,6 +290,14 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 
 		if err := flag.Add(cmd, &cfg.LocalKubeVersion, "local-kube-version", action.DefaultLocalKubeVersion, "Kubernetes version stub for local mode", flag.AddOptions{
 			Group: mainFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		// FIXME(ilya-lesikov): restrict values
+		if err := flag.Add(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                miscFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

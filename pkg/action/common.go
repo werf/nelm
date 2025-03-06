@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -24,6 +25,10 @@ const (
 	LogColorModeAuto        LogColorMode = "auto"
 	LogColorModeOff         LogColorMode = "off"
 	LogColorModeOn          LogColorMode = "on"
+)
+
+const (
+	SyntaxHighlightTheme = "solarized-light"
 )
 
 type ReleaseStorageDriver string
@@ -115,4 +120,15 @@ func silenceKlogV2(ctx context.Context) error {
 	klog_v2.SetOutputBySeverity("FATAL", logboek.Context(ctx).ErrStream())
 
 	return nil
+}
+
+func stdoutPiped() (bool, error) {
+	fileInfo, err := os.Stdout.Stat()
+	if err != nil {
+		return false, fmt.Errorf("get stdout fileinfo: %w", err)
+	}
+
+	piped := (fileInfo.Mode() & os.ModeCharDevice) == 0
+
+	return piped, nil
 }
