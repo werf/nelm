@@ -111,6 +111,7 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 				KubeToken:                    cfg.KubeToken,
 				Local:                        cfg.Local,
 				LocalKubeVersion:             cfg.LocalKubeVersion,
+				LogColorMode:                 cfg.LogColorMode(),
 				LogLevel:                     cfg.LogLevel(),
 				NetworkParallelism:           cfg.NetworkParallelism,
 				OutputFilePath:               cfg.OutputFilePath,
