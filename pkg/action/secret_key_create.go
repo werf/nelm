@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/pkg/log"
 )
@@ -20,8 +19,6 @@ func SecretKeyCreate(ctx context.Context, opts SecretKeyCreateOptions) (string, 
 	if err != nil {
 		return "", fmt.Errorf("build secret key create options: %w", err)
 	}
-
-	loader.NoChartLockWarning = ""
 
 	var result string
 	if !opts.OutputNoPrint {
