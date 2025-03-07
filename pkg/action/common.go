@@ -8,12 +8,16 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/quick"
+	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/docker/pkg/homedir"
 	"github.com/gookit/color"
+	"github.com/samber/lo"
 	"github.com/xo/terminfo"
 	"k8s.io/klog"
 	klog_v2 "k8s.io/klog/v2"
@@ -29,10 +33,6 @@ const (
 	LogColorModeAuto        LogColorMode = "auto"
 	LogColorModeOff         LogColorMode = "off"
 	LogColorModeOn          LogColorMode = "on"
-)
-
-const (
-	SyntaxHighlightTheme = "solarized-light"
 )
 
 type ReleaseStorageDriver string
@@ -177,9 +177,53 @@ func writeWithSyntaxHighlight(outStream io.Writer, text string, lang string, col
 		panic(fmt.Sprintf("unexpected color level %d", colorLevel))
 	}
 
-	if err := quick.Highlight(outStream, text, lang, formatterName, SyntaxHighlightTheme); err != nil {
+	if err := quick.Highlight(outStream, text, lang, formatterName, syntaxHighlightThemeName); err != nil {
 		return fmt.Errorf("highlight and write to output: %w", err)
 	}
 
 	return nil
 }
+
+func init() {
+	style := lo.Must(chroma.NewXMLStyle(strings.NewReader(syntaxHighlightTheme)))
+	styles.Register(style)
+}
+
+const syntaxHighlightThemeName = "solarized-dark-customized"
+
+var syntaxHighlightTheme = fmt.Sprintf(`
+<style name=%q>
+  <entry type="Other" style="#9c4c2a"/>
+  <entry type="Keyword" style="#719e07"/>
+  <entry type="KeywordConstant" style="#9c4c2a"/>
+  <entry type="KeywordDeclaration" style="#3f7541"/>
+  <entry type="KeywordReserved" style="#3f7541"/>
+  <entry type="KeywordType" style="#a14240"/>
+  <entry type="NameBuiltin" style="#b58900"/>
+  <entry type="NameBuiltinPseudo" style="#018727"/>
+  <entry type="NameClass" style="#3f7541"/>
+  <entry type="NameConstant" style="#9c4c2a"/>
+  <entry type="NameDecorator" style="#3f7541"/>
+  <entry type="NameEntity" style="#9c4c2a"/>
+  <entry type="NameException" style="#9c4c2a"/>
+  <entry type="NameFunction" style="#3f7541"/>
+  <entry type="NameTag" style="#3f7541"/>
+  <entry type="NameVariable" style="#3f7541"/>
+  <entry type="LiteralStringBacktick" style="#586e75"/>
+  <entry type="LiteralStringChar" style="#328a82"/>
+  <entry type="LiteralStringEscape" style="#9c4c2a"/>
+  <entry type="LiteralStringRegex" style="#a14240"/>
+  <entry type="LiteralNumber" style="#328a82"/>
+  <entry type="Operator" style="#719e07"/>
+  <entry type="Comment" style="#586e75"/>
+  <entry type="CommentSpecial" style="#719e07"/>
+  <entry type="CommentPreproc" style="#719e07"/>
+  <entry type="GenericDeleted" style="#a14240"/>
+  <entry type="GenericEmph" style="italic"/>
+  <entry type="GenericError" style="bold #a14240"/>
+  <entry type="GenericHeading" style="#9c4c2a"/>
+  <entry type="GenericInserted" style="#719e07"/>
+  <entry type="GenericStrong" style="bold"/>
+  <entry type="GenericSubheading" style="#3f7541"/>
+</style>
+`, syntaxHighlightThemeName)
