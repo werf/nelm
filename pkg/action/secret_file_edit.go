@@ -12,10 +12,11 @@ import (
 
 type SecretFileEditOptions struct {
 	LogLevel      log.Level
+	TempDirPath   string
 	SecretWorkDir string
 }
 
-func SecretFileEdit(ctx context.Context, filePath string, tempDirPath string, opts SecretFileEditOptions) error {
+func SecretFileEdit(ctx context.Context, filePath string, opts SecretFileEditOptions) error {
 	log.Default.SetLevel(ctx, opts.LogLevel)
 
 	currentDir, err := os.Getwd()
@@ -28,7 +29,7 @@ func SecretFileEdit(ctx context.Context, filePath string, tempDirPath string, op
 		return fmt.Errorf("build secret file edit options: %w", err)
 	}
 
-	if err := secret.SecretEdit(ctx, secrets_manager.Manager, opts.SecretWorkDir, tempDirPath, filePath, false); err != nil {
+	if err := secret.SecretEdit(ctx, secrets_manager.Manager, opts.SecretWorkDir, opts.TempDirPath, filePath, false); err != nil {
 		return fmt.Errorf("secret edit: %w", err)
 	}
 
@@ -36,6 +37,14 @@ func SecretFileEdit(ctx context.Context, filePath string, tempDirPath string, op
 }
 
 func applySecretFileEditOptionsDefaults(opts SecretFileEditOptions, currentDir string) (SecretFileEditOptions, error) {
+	var err error
+	if opts.TempDirPath == "" {
+		opts.TempDirPath, err = os.MkdirTemp("", "")
+		if err != nil {
+			return SecretFileEditOptions{}, fmt.Errorf("create temp dir: %w", err)
+		}
+	}
+
 	if opts.SecretWorkDir == "" {
 		var err error
 		opts.SecretWorkDir, err = os.Getwd()
