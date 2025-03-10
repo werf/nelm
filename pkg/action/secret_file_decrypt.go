@@ -8,7 +8,7 @@ import (
 
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/pkg/log"
-	secret_common "github.com/werf/werf/v2/cmd/werf/helm/secret/common"
+	"github.com/werf/nelm/pkg/secret"
 )
 
 const DefaultSecretFileDecryptOutputFilename = "decrypted-secret.yaml"
@@ -39,7 +39,7 @@ func SecretFileDecrypt(ctx context.Context, filePath string, opts SecretFileDecr
 		outputFilePath = opts.OutputFilePath
 	}
 
-	if err := secret_common.SecretFileDecrypt(ctx, secrets_manager.Manager, opts.SecretWorkDir, filePath, outputFilePath); err != nil {
+	if err := secret.SecretFileDecrypt(ctx, secrets_manager.Manager, opts.SecretWorkDir, filePath, outputFilePath); err != nil {
 		return fmt.Errorf("secret file decrypt: %w", err)
 	}
 

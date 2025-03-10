@@ -1,0 +1,109 @@
+package secret
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os"
+
+	"golang.org/x/crypto/ssh/terminal"
+
+	secret2 "github.com/werf/common-go/pkg/secret"
+	"github.com/werf/common-go/pkg/secrets_manager"
+)
+
+func SecretFileDecrypt(
+	ctx context.Context,
+	m *secrets_manager.SecretsManager,
+	workingDir, filePath, outputFilePath string,
+) error {
+	options := &GenerateOptions{
+		FilePath:       filePath,
+		OutputFilePath: outputFilePath,
+		Values:         false,
+	}
+
+	return secretDecrypt(ctx, m, workingDir, options)
+}
+
+func SecretValuesDecrypt(
+	ctx context.Context,
+	m *secrets_manager.SecretsManager,
+	workingDir, filePath, outputFilePath string,
+) error {
+	options := &GenerateOptions{
+		FilePath:       filePath,
+		OutputFilePath: outputFilePath,
+		Values:         true,
+	}
+
+	return secretDecrypt(ctx, m, workingDir, options)
+}
+
+func secretDecrypt(
+	ctx context.Context,
+	m *secrets_manager.SecretsManager,
+	workingDir string,
+	options *GenerateOptions,
+) error {
+	var encodedData []byte
+	var data []byte
+	var err error
+
+	var encoder *secret2.YamlEncoder
+	if enc, err := m.GetYamlEncoder(ctx, workingDir); err != nil {
+		return err
+	} else {
+		encoder = enc
+	}
+
+	if options.FilePath != "" {
+		encodedData, err = readFileData(options.FilePath)
+		if err != nil {
+			return err
+		}
+	} else {
+		if !terminal.IsTerminal(int(os.Stdin.Fd())) {
+			encodedData, err = InputFromStdin()
+			if err != nil {
+				return err
+			}
+		} else {
+			return ExpectedFilePathOrPipeError()
+		}
+
+		if len(encodedData) == 0 {
+			return nil
+		}
+	}
+
+	encodedData = bytes.TrimSpace(encodedData)
+
+	if options.Values {
+		data, err = encoder.DecryptYamlData(encodedData)
+		if err != nil {
+			return err
+		}
+	} else {
+		data, err = encoder.Decrypt(encodedData)
+		if err != nil {
+			return err
+		}
+	}
+
+	if options.OutputFilePath != "" {
+		if err := SaveGeneratedData(options.OutputFilePath, data); err != nil {
+			return err
+		}
+	} else {
+		if terminal.IsTerminal(int(os.Stdout.Fd())) {
+			if !bytes.HasSuffix(data, []byte("\n")) {
+				data = append(data, []byte("\n")...)
+			}
+		}
+
+		fmt.Printf("%s", string(data))
+	}
+
+	return nil
+}
