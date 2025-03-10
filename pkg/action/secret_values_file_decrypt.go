@@ -8,7 +8,7 @@ import (
 
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/pkg/log"
-	secret_common "github.com/werf/werf/v2/cmd/werf/helm/secret/common"
+	"github.com/werf/nelm/pkg/secret"
 )
 
 const DefaultSecretValuesFileDecryptOutputFilename = "decrypted-secret-values.yaml"
@@ -17,6 +17,7 @@ type SecretValuesFileDecryptOptions struct {
 	LogLevel       log.Level
 	OutputFilePath string
 	OutputFileSave bool
+	SecretKey      string
 	SecretWorkDir  string
 	TempDirPath    string
 }
@@ -39,7 +40,11 @@ func SecretValuesFileDecrypt(ctx context.Context, valuesFilePath string, opts Se
 		outputFilePath = opts.OutputFilePath
 	}
 
-	if err := secret_common.SecretValuesDecrypt(ctx, secrets_manager.Manager, opts.SecretWorkDir, valuesFilePath, outputFilePath); err != nil {
+	if opts.SecretKey != "" {
+		os.Setenv("WERF_SECRET_KEY", opts.SecretKey)
+	}
+
+	if err := secret.SecretValuesDecrypt(ctx, secrets_manager.Manager, opts.SecretWorkDir, valuesFilePath, outputFilePath); err != nil {
 		return fmt.Errorf("secret values decrypt: %w", err)
 	}
 

@@ -13,8 +13,8 @@ import (
 
 type chartSecretKeyRotateOptions struct {
 	ChartDirPath      string
-	NewKey            string
-	OldKey            string
+	NewSecretKey      string
+	OldSecretKey      string
 	SecretValuesPaths []string
 
 	logLevel string
@@ -28,7 +28,7 @@ func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFu
 	cfg := &chartSecretKeyRotateOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "rotate [options...] --old-key secret-key --new-key secret-key [chart-dir]",
+		Use:   "rotate [options...] --old-secret-key secret-key --new-secret-key secret-key [chart-dir]",
 		Short: "Reencrypt secret files with a new secret key.",
 		Long:  "Decrypt with an old secret key, then encrypt with a new secret key chart files secret-values.yaml and secret/*.",
 		Args:  cobra.MaximumNArgs(1),
@@ -44,8 +44,8 @@ func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFu
 			if err := action.SecretKeyRotate(ctx, action.SecretKeyRotateOptions{
 				ChartDirPath:      cfg.ChartDirPath,
 				LogLevel:          cfg.LogLevel(),
-				NewKey:            cfg.NewKey,
-				OldKey:            cfg.OldKey,
+				NewSecretKey:      cfg.NewSecretKey,
+				OldSecretKey:      cfg.OldSecretKey,
 				SecretValuesPaths: cfg.SecretValuesPaths,
 			}); err != nil {
 				return fmt.Errorf("secret key rotate: %w", err)
@@ -64,25 +64,23 @@ func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFu
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.NewKey, "new-key", "", "New secret key", flag.AddOptions{
-			GetEnvVarRegexesFunc: flag.GetLocalEnvVarRegexes,
-			Group:                mainFlagGroup,
-			Required:             true,
+		if err := flag.Add(cmd, &cfg.NewSecretKey, "new-secret-key", "", "New secret key", flag.AddOptions{
+			Group:    mainFlagGroup,
+			Required: true,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.OldKey, "old-key", "", "Old secret key", flag.AddOptions{
-			GetEnvVarRegexesFunc: flag.GetLocalEnvVarRegexes,
-			Group:                mainFlagGroup,
-			Required:             true,
+		if err := flag.Add(cmd, &cfg.OldSecretKey, "old-secret-key", "", "Old secret key", flag.AddOptions{
+			Group:    mainFlagGroup,
+			Required: true,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
 		if err := flag.Add(cmd, &cfg.SecretValuesPaths, "secret-values", []string{}, "Secret values files paths", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
-			Group:                secretFlagGroup,
+			Group:                mainFlagGroup,
 			Type:                 flag.TypeFile,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)

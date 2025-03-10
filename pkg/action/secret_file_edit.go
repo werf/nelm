@@ -7,7 +7,7 @@ import (
 
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/pkg/log"
-	secret_common "github.com/werf/werf/v2/cmd/werf/helm/secret/common"
+	"github.com/werf/nelm/pkg/secret"
 )
 
 type SecretFileEditOptions struct {
@@ -15,7 +15,7 @@ type SecretFileEditOptions struct {
 	SecretWorkDir string
 }
 
-func SecretFileEdit(ctx context.Context, filePath string, opts SecretFileEditOptions) error {
+func SecretFileEdit(ctx context.Context, filePath string, tempDirPath string, opts SecretFileEditOptions) error {
 	log.Default.SetLevel(ctx, opts.LogLevel)
 
 	currentDir, err := os.Getwd()
@@ -28,7 +28,7 @@ func SecretFileEdit(ctx context.Context, filePath string, opts SecretFileEditOpt
 		return fmt.Errorf("build secret file edit options: %w", err)
 	}
 
-	if err := secret_common.SecretEdit(ctx, secrets_manager.Manager, opts.SecretWorkDir, filePath, false); err != nil {
+	if err := secret.SecretEdit(ctx, secrets_manager.Manager, opts.SecretWorkDir, tempDirPath, filePath, false); err != nil {
 		return fmt.Errorf("secret edit: %w", err)
 	}
 

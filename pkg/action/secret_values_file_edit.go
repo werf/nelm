@@ -7,12 +7,14 @@ import (
 
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/pkg/log"
-	secret_common "github.com/werf/werf/v2/cmd/werf/helm/secret/common"
+	"github.com/werf/nelm/pkg/secret"
 )
 
 type SecretValuesFileEditOptions struct {
 	LogLevel      log.Level
+	SecretKey     string
 	SecretWorkDir string
+	TempDirPath   string
 }
 
 func SecretValuesFileEdit(ctx context.Context, valuesFilePath string, opts SecretValuesFileEditOptions) error {
@@ -28,7 +30,11 @@ func SecretValuesFileEdit(ctx context.Context, valuesFilePath string, opts Secre
 		return fmt.Errorf("build secret values file edit options: %w", err)
 	}
 
-	if err := secret_common.SecretEdit(ctx, secrets_manager.Manager, opts.SecretWorkDir, valuesFilePath, true); err != nil {
+	if opts.SecretKey != "" {
+		os.Setenv("WERF_SECRET_KEY", opts.SecretKey)
+	}
+
+	if err := secret.SecretEdit(ctx, secrets_manager.Manager, opts.SecretWorkDir, opts.TempDirPath, valuesFilePath, true); err != nil {
 		return fmt.Errorf("secret edit: %w", err)
 	}
 
@@ -36,6 +42,14 @@ func SecretValuesFileEdit(ctx context.Context, valuesFilePath string, opts Secre
 }
 
 func applySecretValuesFileEditOptionsDefaults(opts SecretValuesFileEditOptions, currentDir string) (SecretValuesFileEditOptions, error) {
+	var err error
+	if opts.TempDirPath == "" {
+		opts.TempDirPath, err = os.MkdirTemp("", "")
+		if err != nil {
+			return SecretValuesFileEditOptions{}, fmt.Errorf("create temp dir: %w", err)
+		}
+	}
+
 	if opts.SecretWorkDir == "" {
 		var err error
 		opts.SecretWorkDir, err = os.Getwd()
