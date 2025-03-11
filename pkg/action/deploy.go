@@ -54,9 +54,8 @@ import (
 )
 
 const (
-	DefaultDeployReportFilename  = "deploy-report.json"
-	DefaultDeployGraphFilename   = "deploy-graph.dot"
-	DefaultRollbackGraphFilename = "rollback-graph.dot"
+	DefaultDeployReportFilename = "deploy-report.json"
+	DefaultDeployGraphFilename  = "deploy-graph.dot"
 )
 
 // FIXME(ilya-lesikov): this is old... need to check
