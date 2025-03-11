@@ -14,6 +14,7 @@ func newChartSecretCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 	}
 
 	cmd.AddCommand(newChartSecretKeyCommand(ctx, afterAllCommandsBuiltFuncs))
+	cmd.AddCommand(newChartSecretFileCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newChartSecretValuesFileCommand(ctx, afterAllCommandsBuiltFuncs))
 
 	return cmd

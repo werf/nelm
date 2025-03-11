@@ -17,6 +17,7 @@ type SecretFileEncryptOptions struct {
 	LogLevel       log.Level
 	OutputFilePath string
 	OutputFileSave bool
+	SecretKey      string
 	SecretWorkDir  string
 	TempDirPath    string
 }
@@ -37,6 +38,10 @@ func SecretFileEncrypt(ctx context.Context, filePath string, opts SecretFileEncr
 	var outputFilePath string
 	if opts.OutputFileSave {
 		outputFilePath = opts.OutputFilePath
+	}
+
+	if opts.SecretKey != "" {
+		os.Setenv("WERF_SECRET_KEY", opts.SecretKey)
 	}
 
 	if err := secret.SecretFileEncrypt(ctx, secrets_manager.Manager, opts.SecretWorkDir, filePath, outputFilePath); err != nil {
