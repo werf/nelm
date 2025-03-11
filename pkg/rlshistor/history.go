@@ -127,6 +127,50 @@ legacyRelLoop:
 	return rel, true, nil
 }
 
+// Get last successfully deployed release since last attempt to uninstall release or from the beginning of history, except the very last release.
+func (h *History) LastDeployedReleaseExceptLastRelease() (rel *rls.Release, found bool, err error) {
+	if h.Empty() {
+		return nil, false, nil
+	}
+
+	var legacyRel *legacyRelease.Release
+legacyRelLoop:
+	for i := len(h.legacyReleases) - 1; i >= 0; i-- {
+		if i == len(h.legacyReleases)-1 {
+			continue
+		}
+
+		switch h.legacyReleases[i].Info.Status {
+		case legacyRelease.StatusDeployed,
+			legacyRelease.StatusSuperseded:
+			legacyRel = h.legacyReleases[i]
+			break legacyRelLoop
+		case legacyRelease.StatusUninstalled,
+			legacyRelease.StatusUninstalling:
+			break legacyRelLoop
+		case legacyRelease.StatusUnknown,
+			legacyRelease.StatusFailed,
+			legacyRelease.StatusPendingInstall,
+			legacyRelease.StatusPendingUpgrade,
+			legacyRelease.StatusPendingRollback:
+		}
+	}
+
+	if legacyRel == nil {
+		return nil, false, nil
+	}
+
+	rel, err = rls.NewReleaseFromLegacyRelease(legacyRel, rls.ReleaseFromLegacyReleaseOptions{
+		Mapper:          h.mapper,
+		DiscoveryClient: h.discoveryClient,
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("error constructing release from legacy release: %w", err)
+	}
+
+	return rel, true, nil
+}
+
 func (h *History) Empty() bool {
 	return len(h.legacyReleases) == 0
 }

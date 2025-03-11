@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -12,9 +13,8 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-type releaseUninstallConfig struct {
-	NoDeleteHooks              bool
-	DeleteReleaseNamespace     bool
+type releaseRollbackConfig struct {
+	ExtraRuntimeAnnotations    map[string]string
 	KubeAPIServerName          string
 	KubeBurstLimit             int
 	KubeCAPath                 string
@@ -25,37 +25,60 @@ type releaseUninstallConfig struct {
 	KubeSkipTLSVerify          bool
 	KubeTLSServerName          string
 	KubeToken                  string
+	NetworkParallelism         int
+	NoProgressTablePrint       bool
 	ProgressTablePrintInterval time.Duration
 	ReleaseHistoryLimit        int
 	ReleaseName                string
 	ReleaseNamespace           string
+	Revision                   int
+	RollbackGraphPath          string
+	RollbackGraphSave          bool
+	RollbackReportPath         string
+	RollbackReportSave         bool
 	TempDirPath                string
+	TrackCreationTimeout       time.Duration
+	TrackDeletionTimeout       time.Duration
+	TrackReadinessTimeout      time.Duration
 
+	logColorMode         string
 	logLevel             string
 	releaseStorageDriver string
 }
 
-func (c *releaseUninstallConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
+func (c *releaseRollbackConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
 	return action.ReleaseStorageDriver(c.releaseStorageDriver)
 }
 
-func (c *releaseUninstallConfig) LogLevel() log.Level {
+func (c *releaseRollbackConfig) LogColorMode() action.LogColorMode {
+	return action.LogColorMode(c.logColorMode)
+}
+
+func (c *releaseRollbackConfig) LogLevel() log.Level {
 	return log.Level(c.logLevel)
 }
 
-func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
-	cfg := &releaseUninstallConfig{}
+func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
+	cfg := &releaseRollbackConfig{}
 
 	cmd := &cobra.Command{
-		Use:                   "uninstall [options...] -n namespace -r release",
-		Short:                 "Uninstall a Helm Release from Kubernetes.",
-		Long:                  "Uninstall a Helm Release from Kubernetes.",
-		Args:                  cobra.NoArgs,
+		Use:                   "rollback [options...] -n namespace -r release [revision]",
+		Short:                 "Rollback to a previously deployed release.",
+		Long:                  "Rollback to a previously deployed release. Choose the last successful revision (except the very last revision), by default.",
+		Args:                  cobra.MaximumNArgs(1),
+		ValidArgsFunction:     cobra.NoFileCompletions,
 		DisableFlagsInUseLine: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := action.Uninstall(ctx, action.UninstallOptions{
-				DeleteHooks:                !cfg.NoDeleteHooks,
-				DeleteReleaseNamespace:     cfg.DeleteReleaseNamespace,
+			if len(args) > 0 {
+				var err error
+				cfg.Revision, err = strconv.Atoi(args[0])
+				if err != nil {
+					return fmt.Errorf("parse revision: %w", err)
+				}
+			}
+
+			if err := action.Rollback(ctx, action.RollbackOptions{
+				ExtraRuntimeAnnotations:    cfg.ExtraRuntimeAnnotations,
 				KubeAPIServerName:          cfg.KubeAPIServerName,
 				KubeBurstLimit:             cfg.KubeBurstLimit,
 				KubeCAPath:                 cfg.KubeCAPath,
@@ -66,15 +89,26 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 				KubeSkipTLSVerify:          cfg.KubeSkipTLSVerify,
 				KubeTLSServerName:          cfg.KubeTLSServerName,
 				KubeToken:                  cfg.KubeToken,
+				LogColorMode:               cfg.LogColorMode(),
 				LogLevel:                   cfg.LogLevel(),
+				NetworkParallelism:         cfg.NetworkParallelism,
+				ProgressTablePrint:         !cfg.NoProgressTablePrint,
 				ProgressTablePrintInterval: cfg.ProgressTablePrintInterval,
 				ReleaseHistoryLimit:        cfg.ReleaseHistoryLimit,
 				ReleaseName:                cfg.ReleaseName,
 				ReleaseNamespace:           cfg.ReleaseNamespace,
 				ReleaseStorageDriver:       cfg.ReleaseStorageDriver(),
+				Revision:                   cfg.Revision,
+				RollbackGraphPath:          cfg.RollbackGraphPath,
+				RollbackGraphSave:          cfg.RollbackGraphSave,
+				RollbackReportPath:         cfg.RollbackReportPath,
+				RollbackReportSave:         cfg.RollbackReportSave,
 				TempDirPath:                cfg.TempDirPath,
+				TrackCreationTimeout:       cfg.TrackCreationTimeout,
+				TrackDeletionTimeout:       cfg.TrackDeletionTimeout,
+				TrackReadinessTimeout:      cfg.TrackReadinessTimeout,
 			}); err != nil {
-				return fmt.Errorf("uninstall: %w", err)
+				return fmt.Errorf("rollback: %w", err)
 			}
 
 			return nil
@@ -82,14 +116,23 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 	}
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
-		if err := flag.Add(cmd, &cfg.NoDeleteHooks, "no-delete-hooks", false, "Do not remove release hooks", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.RollbackGraphPath, "save-graph-to", "", "Save the Graphviz rollback graph to a file", flag.AddOptions{
 			Group: mainFlagGroup,
+			Type:  flag.TypeFile,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.DeleteReleaseNamespace, "delete-namespace", false, "Delete the release namespace", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.RollbackReportPath, "save-report-to", "", "Save the rollback report to a file", flag.AddOptions{
 			Group: mainFlagGroup,
+			Type:  flag.TypeFile,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.ExtraRuntimeAnnotations, "runtime-annotations", map[string]string{}, "Add annotations which will not trigger resource updates to all resources", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalMultiEnvVarRegexes,
+			Group:                patchFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
@@ -177,9 +220,31 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 		}
 
 		// FIXME(ilya-lesikov): restrict values
+		if err := flag.Add(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		// FIXME(ilya-lesikov): restrict values
 		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(log.InfoLevel), "Set log level", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.NetworkParallelism, "network-parallelism", action.DefaultNetworkParallelism, "Limit of network-related tasks to run in parallel", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                performanceFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.NoProgressTablePrint, "no-show-progress", false, "Don't show logs, events and real-time info about release resources", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                progressFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
@@ -224,9 +289,37 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		if err := flag.Add(cmd, &cfg.RollbackGraphPath, "save-rollback-graph-to", "", "Save the Graphviz rollback graph to a file", flag.AddOptions{
+			Group: mainFlagGroup,
+			Type:  flag.TypeFile,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := flag.Add(cmd, &cfg.TempDirPath, "temp-dir", "", "The directory for temporary files. By default, create a new directory in the default system directory for temporary files", flag.AddOptions{
 			Group: miscFlagGroup,
 			Type:  flag.TypeDir,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.TrackCreationTimeout, "resource-creation-timeout", 0, "Fail if resource creation tracking did not finish in time", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                progressFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.TrackDeletionTimeout, "resource-deletion-timeout", 0, "Fail if resource deletion tracking did not finish in time", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                progressFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.TrackReadinessTimeout, "resource-readiness-timeout", 0, "Fail if resource readiness tracking did not finish in time", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                progressFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
