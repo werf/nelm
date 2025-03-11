@@ -188,18 +188,23 @@ func Rollback(ctx context.Context, opts RollbackOptions) error {
 		return fmt.Errorf("not found release %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)
 	}
 
-	prevDeployedRelease, prevDeployedReleaseFound, err := history.LastDeployedRelease()
+	prevDeployedRelease, _, err := history.LastDeployedRelease()
 	if err != nil {
 		return fmt.Errorf("get last deployed release: %w", err)
 	}
 
 	var releaseToRollback *rls.Release
 	if opts.Revision == 0 {
-		if !prevDeployedReleaseFound {
-			return fmt.Errorf("not found successfully deployed release %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)
+		prevDeployedReleaseExceptLastRelease, found, err := history.LastDeployedReleaseExceptLastRelease()
+		if err != nil {
+			return fmt.Errorf("get last deployed release except last release: %w", err)
 		}
 
-		releaseToRollback = prevDeployedRelease
+		if !found {
+			return fmt.Errorf("not found successfully deployed (except last) release %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)
+		}
+
+		releaseToRollback = prevDeployedReleaseExceptLastRelease
 	} else {
 		var found bool
 		releaseToRollback, found, err = history.Release(opts.Revision)
