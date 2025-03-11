@@ -13,6 +13,7 @@ import (
 type SecretFileEditOptions struct {
 	LogLevel      log.Level
 	TempDirPath   string
+	SecretKey     string
 	SecretWorkDir string
 }
 
@@ -27,6 +28,10 @@ func SecretFileEdit(ctx context.Context, filePath string, opts SecretFileEditOpt
 	opts, err = applySecretFileEditOptionsDefaults(opts, currentDir)
 	if err != nil {
 		return fmt.Errorf("build secret file edit options: %w", err)
+	}
+
+	if opts.SecretKey != "" {
+		os.Setenv("WERF_SECRET_KEY", opts.SecretKey)
 	}
 
 	if err := secret.SecretEdit(ctx, secrets_manager.Manager, opts.SecretWorkDir, opts.TempDirPath, filePath, false); err != nil {
