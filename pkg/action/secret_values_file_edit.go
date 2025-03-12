@@ -10,6 +10,10 @@ import (
 	"github.com/werf/nelm/pkg/secret"
 )
 
+const (
+	DefaultSecretValuesFileEditLogLevel = log.ErrorLevel
+)
+
 type SecretValuesFileEditOptions struct {
 	LogLevel      log.Level
 	SecretKey     string
@@ -18,7 +22,11 @@ type SecretValuesFileEditOptions struct {
 }
 
 func SecretValuesFileEdit(ctx context.Context, valuesFilePath string, opts SecretValuesFileEditOptions) error {
-	log.Default.SetLevel(ctx, opts.LogLevel)
+	if opts.LogLevel != "" {
+		log.Default.SetLevel(ctx, opts.LogLevel)
+	} else {
+		log.Default.SetLevel(ctx, DefaultSecretValuesFileEditLogLevel)
+	}
 
 	currentDir, err := os.Getwd()
 	if err != nil {

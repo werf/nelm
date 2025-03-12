@@ -17,16 +17,24 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const DefaultVersionOutputFormat = common.YamlOutputFormat
+const (
+	DefaultVersionOutputFormat = common.YamlOutputFormat
+	DefaultVersionLogLevel     = log.ErrorLevel
+)
 
 type VersionOptions struct {
 	LogColorMode  LogColorMode
+	LogLevel      log.Level
 	OutputFormat  common.OutputFormat
 	OutputNoPrint bool
 }
 
 func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {
-	log.Default.SetLevel(ctx, log.SilentLevel)
+	if opts.LogLevel != "" {
+		log.Default.SetLevel(ctx, opts.LogLevel)
+	} else {
+		log.Default.SetLevel(ctx, DefaultVersionLogLevel)
+	}
 
 	opts, err := applyVersionOptionsDefaults(opts)
 	if err != nil {

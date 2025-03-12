@@ -10,6 +10,10 @@ import (
 	"github.com/werf/nelm/pkg/secret"
 )
 
+const (
+	DefaultSecretFileEditLogLevel = log.ErrorLevel
+)
+
 type SecretFileEditOptions struct {
 	LogLevel      log.Level
 	TempDirPath   string
@@ -18,7 +22,11 @@ type SecretFileEditOptions struct {
 }
 
 func SecretFileEdit(ctx context.Context, filePath string, opts SecretFileEditOptions) error {
-	log.Default.SetLevel(ctx, opts.LogLevel)
+	if opts.LogLevel != "" {
+		log.Default.SetLevel(ctx, opts.LogLevel)
+	} else {
+		log.Default.SetLevel(ctx, DefaultSecretFileEditLogLevel)
+	}
 
 	currentDir, err := os.Getwd()
 	if err != nil {

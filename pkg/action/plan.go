@@ -39,6 +39,10 @@ import (
 	"github.com/werf/nelm/pkg/rlshistor"
 )
 
+const (
+	DefaultPlanLogLevel = log.InfoLevel
+)
+
 type PlanOptions struct {
 	ChartAppVersion              string
 	ChartDirPath                 string
@@ -82,7 +86,11 @@ type PlanOptions struct {
 }
 
 func Plan(ctx context.Context, opts PlanOptions) error {
-	log.Default.SetLevel(ctx, opts.LogLevel)
+	if opts.LogLevel != "" {
+		log.Default.SetLevel(ctx, opts.LogLevel)
+	} else {
+		log.Default.SetLevel(ctx, DefaultPlanLogLevel)
+	}
 
 	currentDir, err := os.Getwd()
 	if err != nil {

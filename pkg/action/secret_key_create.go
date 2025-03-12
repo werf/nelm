@@ -8,12 +8,21 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
+const (
+	DefaultSecretKeyCreateLogLevel = log.ErrorLevel
+)
+
 type SecretKeyCreateOptions struct {
 	OutputNoPrint bool
+	LogLevel      log.Level
 }
 
 func SecretKeyCreate(ctx context.Context, opts SecretKeyCreateOptions) (string, error) {
-	log.Default.SetLevel(ctx, log.SilentLevel)
+	if opts.LogLevel != "" {
+		log.Default.SetLevel(ctx, opts.LogLevel)
+	} else {
+		log.Default.SetLevel(ctx, DefaultSecretKeyCreateLogLevel)
+	}
 
 	opts, err := applySecretKeyCreateOptionsDefaults(opts)
 	if err != nil {

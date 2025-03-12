@@ -24,7 +24,10 @@ import (
 	"github.com/werf/nelm/pkg/rlshistor"
 )
 
-const DefaultGetOutputFormat = common.YamlOutputFormat
+const (
+	DefaultGetOutputFormat = common.YamlOutputFormat
+	DefaultGetLogLevel     = log.ErrorLevel
+)
 
 type GetOptions struct {
 	KubeAPIServerName    string
@@ -50,7 +53,11 @@ type GetOptions struct {
 }
 
 func Get(ctx context.Context, opts GetOptions) (*GetResultV1, error) {
-	log.Default.SetLevel(ctx, opts.LogLevel)
+	if opts.LogLevel != "" {
+		log.Default.SetLevel(ctx, opts.LogLevel)
+	} else {
+		log.Default.SetLevel(ctx, DefaultGetLogLevel)
+	}
 
 	currentUser, err := user.Current()
 	if err != nil {
