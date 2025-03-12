@@ -42,6 +42,7 @@ import (
 
 const (
 	DefaultRenderOutputFilename = "render.yaml"
+	DefaultRenderLogLevel       = log.ErrorLevel
 )
 
 type RenderOptions struct {
@@ -93,7 +94,11 @@ type RenderOptions struct {
 }
 
 func Render(ctx context.Context, opts RenderOptions) error {
-	log.Default.SetLevel(ctx, opts.LogLevel)
+	if opts.LogLevel != "" {
+		log.Default.SetLevel(ctx, opts.LogLevel)
+	} else {
+		log.Default.SetLevel(ctx, DefaultRenderLogLevel)
+	}
 
 	currentDir, err := os.Getwd()
 	if err != nil {

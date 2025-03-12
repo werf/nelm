@@ -56,6 +56,7 @@ import (
 const (
 	DefaultDeployReportFilename = "deploy-report.json"
 	DefaultDeployGraphFilename  = "deploy-graph.dot"
+	DefaultDeployLogLevel       = log.InfoLevel
 )
 
 // FIXME(ilya-lesikov): this is old... need to check
@@ -153,7 +154,11 @@ type DeployOptions struct {
 }
 
 func Deploy(ctx context.Context, opts DeployOptions) error {
-	log.Default.SetLevel(ctx, opts.LogLevel)
+	if opts.LogLevel != "" {
+		log.Default.SetLevel(ctx, opts.LogLevel)
+	} else {
+		log.Default.SetLevel(ctx, DefaultDeployLogLevel)
+	}
 
 	currentDir, err := os.Getwd()
 	if err != nil {

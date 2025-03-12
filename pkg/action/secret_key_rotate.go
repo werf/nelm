@@ -9,6 +9,10 @@ import (
 	"github.com/werf/nelm/pkg/secret"
 )
 
+const (
+	DefaultSecretKeyRotateLogLevel = log.InfoLevel
+)
+
 type SecretKeyRotateOptions struct {
 	ChartDirPath      string
 	LogLevel          log.Level
@@ -19,7 +23,11 @@ type SecretKeyRotateOptions struct {
 }
 
 func SecretKeyRotate(ctx context.Context, opts SecretKeyRotateOptions) error {
-	log.Default.SetLevel(ctx, opts.LogLevel)
+	if opts.LogLevel != "" {
+		log.Default.SetLevel(ctx, opts.LogLevel)
+	} else {
+		log.Default.SetLevel(ctx, DefaultSecretKeyRotateLogLevel)
+	}
 
 	currentDir, err := os.Getwd()
 	if err != nil {

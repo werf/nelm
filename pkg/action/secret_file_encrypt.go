@@ -11,7 +11,10 @@ import (
 	"github.com/werf/nelm/pkg/secret"
 )
 
-const DefaultSecretFileEncryptOutputFilename = "encrypted-secret.yaml"
+const (
+	DefaultSecretFileEncryptOutputFilename = "encrypted-secret.yaml"
+	DefaultSecretFileEncryptLogLevel       = log.ErrorLevel
+)
 
 type SecretFileEncryptOptions struct {
 	LogLevel       log.Level
@@ -23,7 +26,11 @@ type SecretFileEncryptOptions struct {
 }
 
 func SecretFileEncrypt(ctx context.Context, filePath string, opts SecretFileEncryptOptions) error {
-	log.Default.SetLevel(ctx, opts.LogLevel)
+	if opts.LogLevel != "" {
+		log.Default.SetLevel(ctx, opts.LogLevel)
+	} else {
+		log.Default.SetLevel(ctx, DefaultSecretFileEncryptLogLevel)
+	}
 
 	currentDir, err := os.Getwd()
 	if err != nil {

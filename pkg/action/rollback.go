@@ -38,6 +38,7 @@ import (
 const (
 	DefaultRollbackReportFilename = "rollback-report.json"
 	DefaultRollbackGraphFilename  = "rollback-graph.dot"
+	DefaultRollbackLogLevel       = log.InfoLevel
 )
 
 type RollbackOptions struct {
@@ -73,7 +74,11 @@ type RollbackOptions struct {
 }
 
 func Rollback(ctx context.Context, opts RollbackOptions) error {
-	log.Default.SetLevel(ctx, opts.LogLevel)
+	if opts.LogLevel != "" {
+		log.Default.SetLevel(ctx, opts.LogLevel)
+	} else {
+		log.Default.SetLevel(ctx, DefaultRollbackLogLevel)
+	}
 
 	currentUser, err := user.Current()
 	if err != nil {

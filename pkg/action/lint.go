@@ -35,6 +35,10 @@ import (
 	"github.com/werf/nelm/pkg/rlshistor"
 )
 
+const (
+	DefaultLintLogLevel = log.InfoLevel
+)
+
 type LintOptions struct {
 	ChartAppVersion              string
 	ChartDirPath                 string
@@ -79,7 +83,11 @@ type LintOptions struct {
 }
 
 func Lint(ctx context.Context, opts LintOptions) error {
-	log.Default.SetLevel(ctx, opts.LogLevel)
+	if opts.LogLevel != "" {
+		log.Default.SetLevel(ctx, opts.LogLevel)
+	} else {
+		log.Default.SetLevel(ctx, DefaultLintLogLevel)
+	}
 
 	currentDir, err := os.Getwd()
 	if err != nil {

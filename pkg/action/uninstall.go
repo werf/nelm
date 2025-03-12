@@ -29,6 +29,10 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
+const (
+	DefaultUninstallLogLevel = log.InfoLevel
+)
+
 type UninstallOptions struct {
 	DeleteHooks                bool
 	DeleteReleaseNamespace     bool
@@ -52,6 +56,12 @@ type UninstallOptions struct {
 }
 
 func Uninstall(ctx context.Context, opts UninstallOptions) error {
+	if opts.LogLevel != "" {
+		log.Default.SetLevel(ctx, opts.LogLevel)
+	} else {
+		log.Default.SetLevel(ctx, DefaultUninstallLogLevel)
+	}
+
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)
