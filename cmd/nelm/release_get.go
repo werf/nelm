@@ -74,7 +74,7 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 				}
 			}
 
-			if _, err := action.Get(ctx, action.GetOptions{
+			if _, err := action.ReleaseGet(ctx, action.ReleaseGetOptions{
 				KubeAPIServerName:    cfg.KubeAPIServerName,
 				KubeBurstLimit:       cfg.KubeBurstLimit,
 				KubeCAPath:           cfg.KubeCAPath,
@@ -95,7 +95,7 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 				Revision:             cfg.Revision,
 				TempDirPath:          cfg.TempDirPath,
 			}); err != nil {
-				return fmt.Errorf("get: %w", err)
+				return fmt.Errorf("release get: %w", err)
 			}
 
 			return nil
@@ -194,7 +194,7 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 		}
 
 		// FIXME(ilya-lesikov): restrict values
-		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultGetLogLevel), "Set log level", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultReleaseGetLogLevel), "Set log level", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
@@ -209,7 +209,7 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 		}
 
 		// TODO(ilya-lesikov): restrict values
-		if err := flag.Add(cmd, &cfg.outputFormat, "output-format", string(action.DefaultGetOutputFormat), "Result output format", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.outputFormat, "output-format", string(action.DefaultReleaseGetOutputFormat), "Result output format", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

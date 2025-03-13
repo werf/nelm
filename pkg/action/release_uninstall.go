@@ -30,10 +30,10 @@ import (
 )
 
 const (
-	DefaultUninstallLogLevel = log.InfoLevel
+	DefaultReleaseUninstallLogLevel = log.InfoLevel
 )
 
-type UninstallOptions struct {
+type ReleaseUninstallOptions struct {
 	DeleteHooks                bool
 	DeleteReleaseNamespace     bool
 	KubeAPIServerName          string
@@ -55,11 +55,11 @@ type UninstallOptions struct {
 	TempDirPath                string
 }
 
-func Uninstall(ctx context.Context, opts UninstallOptions) error {
+func ReleaseUninstall(ctx context.Context, opts ReleaseUninstallOptions) error {
 	if opts.LogLevel != "" {
 		log.Default.SetLevel(ctx, opts.LogLevel)
 	} else {
-		log.Default.SetLevel(ctx, DefaultUninstallLogLevel)
+		log.Default.SetLevel(ctx, DefaultReleaseUninstallLogLevel)
 	}
 
 	currentDir, err := os.Getwd()
@@ -72,9 +72,9 @@ func Uninstall(ctx context.Context, opts UninstallOptions) error {
 		return fmt.Errorf("get current user: %w", err)
 	}
 
-	opts, err = applyUninstallOptionsDefaults(opts, currentDir, currentUser)
+	opts, err = applyReleaseUninstallOptionsDefaults(opts, currentDir, currentUser)
 	if err != nil {
-		return fmt.Errorf("build uninstall options: %w", err)
+		return fmt.Errorf("build release uninstall options: %w", err)
 	}
 
 	var kubeConfigPath string
@@ -197,7 +197,7 @@ func Uninstall(ctx context.Context, opts UninstallOptions) error {
 		}
 
 		if !releaseFound {
-			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q) removal: no release found", opts.ReleaseName, opts.ReleaseNamespace)))
+			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q) uninstall: no release found", opts.ReleaseName, opts.ReleaseNamespace)))
 
 			return nil
 		}
@@ -236,7 +236,7 @@ func Uninstall(ctx context.Context, opts UninstallOptions) error {
 			return fmt.Errorf("run uninstall command: %w", err)
 		}
 
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleted release %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)))
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Uninstalled release %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)))
 
 		return nil
 	}(); err != nil {
@@ -262,12 +262,12 @@ func Uninstall(ctx context.Context, opts UninstallOptions) error {
 	return nil
 }
 
-func applyUninstallOptionsDefaults(opts UninstallOptions, currentDir string, currentUser *user.User) (UninstallOptions, error) {
+func applyReleaseUninstallOptionsDefaults(opts ReleaseUninstallOptions, currentDir string, currentUser *user.User) (ReleaseUninstallOptions, error) {
 	var err error
 	if opts.TempDirPath == "" {
 		opts.TempDirPath, err = os.MkdirTemp("", "")
 		if err != nil {
-			return UninstallOptions{}, fmt.Errorf("create temp dir: %w", err)
+			return ReleaseUninstallOptions{}, fmt.Errorf("create temp dir: %w", err)
 		}
 	}
 
@@ -292,13 +292,13 @@ func applyUninstallOptionsDefaults(opts UninstallOptions, currentDir string, cur
 	}
 
 	if opts.ReleaseName == "" {
-		return UninstallOptions{}, fmt.Errorf("release name not specified")
+		return ReleaseUninstallOptions{}, fmt.Errorf("release name not specified")
 	}
 
 	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {
 		opts.ReleaseStorageDriver = ReleaseStorageDriverSecrets
 	} else if opts.ReleaseStorageDriver == ReleaseStorageDriverMemory {
-		return UninstallOptions{}, fmt.Errorf("memory release storage driver is not supported")
+		return ReleaseUninstallOptions{}, fmt.Errorf("memory release storage driver is not supported")
 	}
 
 	return opts, nil

@@ -7,8 +7,13 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 
+	"github.com/gookit/color"
 	"github.com/samber/lo"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/yaml"
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
@@ -36,10 +41,11 @@ import (
 )
 
 const (
-	DefaultLintLogLevel = log.InfoLevel
+	DefaultChartRenderOutputFilename = "render.yaml"
+	DefaultChartRenderLogLevel       = log.ErrorLevel
 )
 
-type LintOptions struct {
+type ChartRenderOptions struct {
 	ChartAppVersion              string
 	ChartDirPath                 string
 	ChartRepositoryInsecure      bool
@@ -65,9 +71,12 @@ type LintOptions struct {
 	KubeToken                    string
 	Local                        bool
 	LocalKubeVersion             string
+	LogColorMode                 LogColorMode
 	LogLevel                     log.Level
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
+	OutputFilePath               string
+	OutputFileSave               bool
 	RegistryCredentialsPath      string
 	ReleaseName                  string
 	ReleaseNamespace             string
@@ -75,6 +84,8 @@ type LintOptions struct {
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
 	SecretWorkDir                string
+	ShowCRDs                     bool
+	ShowOnlyFiles                []string
 	TempDirPath                  string
 	ValuesFileSets               []string
 	ValuesFilesPaths             []string
@@ -82,11 +93,11 @@ type LintOptions struct {
 	ValuesStringSets             []string
 }
 
-func Lint(ctx context.Context, opts LintOptions) error {
+func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 	if opts.LogLevel != "" {
 		log.Default.SetLevel(ctx, opts.LogLevel)
 	} else {
-		log.Default.SetLevel(ctx, DefaultLintLogLevel)
+		log.Default.SetLevel(ctx, DefaultChartRenderLogLevel)
 	}
 
 	currentDir, err := os.Getwd()
@@ -99,9 +110,9 @@ func Lint(ctx context.Context, opts LintOptions) error {
 		return fmt.Errorf("get current user: %w", err)
 	}
 
-	opts, err = applyLintOptionsDefaults(opts, currentDir, currentUser)
+	opts, err = applyChartRenderOptionsDefaults(opts, currentDir, currentUser)
 	if err != nil {
-		return fmt.Errorf("build lint options: %w", err)
+		return fmt.Errorf("build chart render options: %w", err)
 	}
 
 	var kubeConfigPath string
@@ -353,10 +364,87 @@ func Lint(ctx context.Context, opts LintOptions) error {
 		return fmt.Errorf("process resources: %w", err)
 	}
 
+	var showFiles []string
+	for _, file := range opts.ShowOnlyFiles {
+		absFile, err := filepath.Abs(file)
+		if err != nil {
+			return fmt.Errorf("get absolute path for %q: %w", file, err)
+		}
+
+		if strings.HasPrefix(absFile, opts.ChartDirPath) {
+			f, err := filepath.Rel(opts.ChartDirPath, absFile)
+			if err != nil {
+				return fmt.Errorf("get relative path for %q: %w", absFile, err)
+			}
+
+			if !strings.HasPrefix(f, chartTree.Name()) {
+				f = filepath.Join(chartTree.Name(), f)
+			}
+
+			showFiles = append(showFiles, f)
+		} else {
+			if !strings.HasPrefix(file, chartTree.Name()) {
+				file = filepath.Join(chartTree.Name(), file)
+			}
+
+			showFiles = append(showFiles, file)
+		}
+	}
+
+	var renderOutStream io.Writer
+	if opts.OutputFileSave {
+		file, err := os.Create(opts.OutputFilePath)
+		if err != nil {
+			return fmt.Errorf("create chart render output file %q: %w", opts.OutputFilePath, err)
+		}
+		defer file.Close()
+
+		renderOutStream = file
+	} else {
+		renderOutStream = os.Stdout
+	}
+
+	var colorLevel color.Level
+	if opts.LogColorMode != LogColorModeOff {
+		colorLevel = color.DetectColorLevel()
+	}
+
+	if opts.ShowCRDs {
+		for _, resource := range resProcessor.DeployableStandaloneCRDs() {
+			if len(showFiles) > 0 && !lo.Contains(showFiles, resource.FilePath()) {
+				continue
+			}
+
+			if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream, colorLevel); err != nil {
+				return fmt.Errorf("render CRD %q: %w", resource.HumanID(), err)
+			}
+		}
+	}
+
+	for _, resource := range resProcessor.DeployableHookResources() {
+		if len(showFiles) > 0 && !lo.Contains(showFiles, resource.FilePath()) {
+			continue
+		}
+
+		if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream, colorLevel); err != nil {
+			return fmt.Errorf("render hook resource %q: %w", resource.HumanID(), err)
+		}
+	}
+
+	for _, resource := range resProcessor.DeployableGeneralResources() {
+		if len(showFiles) > 0 && !lo.Contains(showFiles, resource.FilePath()) {
+			continue
+		}
+
+		if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream, colorLevel); err != nil {
+			return fmt.Errorf("render general resource %q: %w", resource.HumanID(), err)
+		}
+	}
+
 	return nil
 }
 
-func applyLintOptionsDefaults(opts LintOptions, currentDir string, currentUser *user.User) (LintOptions, error) {
+func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir string, currentUser *user.User) (ChartRenderOptions, error) {
 	if opts.ChartDirPath == "" {
 		opts.ChartDirPath = currentDir
 	}
@@ -365,7 +453,13 @@ func applyLintOptionsDefaults(opts LintOptions, currentDir string, currentUser *
 	if opts.TempDirPath == "" {
 		opts.TempDirPath, err = os.MkdirTemp("", "")
 		if err != nil {
-			return LintOptions{}, fmt.Errorf("create temp dir: %w", err)
+			return ChartRenderOptions{}, fmt.Errorf("create temp dir: %w", err)
+		}
+	}
+
+	if opts.OutputFileSave {
+		if opts.OutputFilePath == "" {
+			opts.OutputFilePath = filepath.Join(opts.TempDirPath, DefaultChartRenderOutputFilename)
 		}
 	}
 
@@ -376,6 +470,8 @@ func applyLintOptionsDefaults(opts LintOptions, currentDir string, currentUser *
 	if opts.LogRegistryStreamOut == nil {
 		opts.LogRegistryStreamOut = os.Stdout
 	}
+
+	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, opts.OutputFileSave)
 
 	if opts.NetworkParallelism <= 0 {
 		opts.NetworkParallelism = DefaultNetworkParallelism
@@ -390,7 +486,7 @@ func applyLintOptionsDefaults(opts LintOptions, currentDir string, currentUser *
 	}
 
 	if opts.ReleaseName == "" {
-		return LintOptions{}, fmt.Errorf("release name not specified")
+		return ChartRenderOptions{}, fmt.Errorf("release name not specified")
 	}
 
 	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {
@@ -400,7 +496,7 @@ func applyLintOptionsDefaults(opts LintOptions, currentDir string, currentUser *
 	if opts.SecretWorkDir == "" {
 		opts.SecretWorkDir, err = os.Getwd()
 		if err != nil {
-			return LintOptions{}, fmt.Errorf("get current working directory: %w", err)
+			return ChartRenderOptions{}, fmt.Errorf("get current working directory: %w", err)
 		}
 	}
 
@@ -414,4 +510,25 @@ func applyLintOptionsDefaults(opts LintOptions, currentDir string, currentUser *
 	}
 
 	return opts, nil
+}
+
+func renderResource(unstruct *unstructured.Unstructured, path string, outStream io.Writer, colorLevel color.Level) error {
+	resourceJsonBytes, err := runtime.Encode(unstructured.UnstructuredJSONScheme, unstruct)
+	if err != nil {
+		return fmt.Errorf("encode to JSON: %w", err)
+	}
+
+	resourceYamlBytes, err := yaml.JSONToYAML(resourceJsonBytes)
+	if err != nil {
+		return fmt.Errorf("marshal JSON to YAML: %w", err)
+	}
+
+	prefixBytes := []byte(fmt.Sprintf("---\n# Source: %s\n", path))
+	manifestBytes := append(prefixBytes, resourceYamlBytes...)
+
+	if err := writeWithSyntaxHighlight(outStream, string(manifestBytes), "yaml", colorLevel); err != nil {
+		return fmt.Errorf("write resource to output: %w", err)
+	}
+
+	return nil
 }

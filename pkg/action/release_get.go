@@ -25,11 +25,11 @@ import (
 )
 
 const (
-	DefaultGetOutputFormat = common.YamlOutputFormat
-	DefaultGetLogLevel     = log.ErrorLevel
+	DefaultReleaseGetOutputFormat = common.YamlOutputFormat
+	DefaultReleaseGetLogLevel     = log.ErrorLevel
 )
 
-type GetOptions struct {
+type ReleaseGetOptions struct {
 	KubeAPIServerName    string
 	KubeBurstLimit       int
 	KubeCAPath           string
@@ -52,11 +52,11 @@ type GetOptions struct {
 	TempDirPath          string
 }
 
-func Get(ctx context.Context, opts GetOptions) (*GetResultV1, error) {
+func ReleaseGet(ctx context.Context, opts ReleaseGetOptions) (*ReleaseGetResultV1, error) {
 	if opts.LogLevel != "" {
 		log.Default.SetLevel(ctx, opts.LogLevel)
 	} else {
-		log.Default.SetLevel(ctx, DefaultGetLogLevel)
+		log.Default.SetLevel(ctx, DefaultReleaseGetLogLevel)
 	}
 
 	currentUser, err := user.Current()
@@ -64,9 +64,9 @@ func Get(ctx context.Context, opts GetOptions) (*GetResultV1, error) {
 		return nil, fmt.Errorf("get current user: %w", err)
 	}
 
-	opts, err = applyGetOptionsDefaults(opts, currentUser)
+	opts, err = applyReleaseGetOptionsDefaults(opts, currentUser)
 	if err != nil {
-		return nil, fmt.Errorf("build get options: %w", err)
+		return nil, fmt.Errorf("build release get options: %w", err)
 	}
 
 	var kubeConfigPath string
@@ -161,19 +161,19 @@ func Get(ctx context.Context, opts GetOptions) (*GetResultV1, error) {
 		}
 	}
 
-	result := &GetResultV1{
-		ApiVersion: GetResultApiVersionV1,
-		Release: &GetResultRelease{
+	result := &ReleaseGetResultV1{
+		ApiVersion: ReleaseGetResultApiVersionV1,
+		Release: &ReleaseGetResultRelease{
 			Name:      release.Name(),
 			Namespace: release.Namespace(),
 			Revision:  release.Revision(),
 			Status:    release.Status(),
-			DeployedAt: &GetResultDeployedAt{
+			DeployedAt: &ReleaseGetResultDeployedAt{
 				Human: release.LastDeployed().String(),
 				Unix:  int(release.LastDeployed().Unix()),
 			},
 		},
-		Chart: &GetResultChart{
+		Chart: &ReleaseGetResultChart{
 			Name:       release.ChartName(),
 			Version:    release.ChartVersion(),
 			AppVersion: release.AppVersion(),
@@ -224,12 +224,12 @@ func Get(ctx context.Context, opts GetOptions) (*GetResultV1, error) {
 	return result, nil
 }
 
-func applyGetOptionsDefaults(opts GetOptions, currentUser *user.User) (GetOptions, error) {
+func applyReleaseGetOptionsDefaults(opts ReleaseGetOptions, currentUser *user.User) (ReleaseGetOptions, error) {
 	var err error
 	if opts.TempDirPath == "" {
 		opts.TempDirPath, err = os.MkdirTemp("", "")
 		if err != nil {
-			return GetOptions{}, fmt.Errorf("create temp dir: %w", err)
+			return ReleaseGetOptions{}, fmt.Errorf("create temp dir: %w", err)
 		}
 	}
 
@@ -252,7 +252,7 @@ func applyGetOptionsDefaults(opts GetOptions, currentUser *user.User) (GetOption
 	}
 
 	if opts.ReleaseName == "" {
-		return GetOptions{}, fmt.Errorf("release name not specified")
+		return ReleaseGetOptions{}, fmt.Errorf("release name not specified")
 	}
 
 	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {
@@ -260,37 +260,37 @@ func applyGetOptionsDefaults(opts GetOptions, currentUser *user.User) (GetOption
 	}
 
 	if opts.OutputFormat == "" {
-		opts.OutputFormat = DefaultGetOutputFormat
+		opts.OutputFormat = DefaultReleaseGetOutputFormat
 	}
 
 	return opts, nil
 }
 
-const GetResultApiVersionV1 = "v1"
+const ReleaseGetResultApiVersionV1 = "v1"
 
-type GetResultV1 struct {
+type ReleaseGetResultV1 struct {
 	ApiVersion string                   `json:"apiVersion"`
-	Release    *GetResultRelease        `json:"release"`
-	Chart      *GetResultChart          `json:"chart"`
+	Release    *ReleaseGetResultRelease `json:"release"`
+	Chart      *ReleaseGetResultChart   `json:"chart"`
 	Hooks      []map[string]interface{} `json:"hooks"`
 	Resources  []map[string]interface{} `json:"resources"`
 	Notes      string                   `json:"notes"`
 }
 
-type GetResultRelease struct {
-	Name       string               `json:"name"`
-	Namespace  string               `json:"namespace"`
-	Revision   int                  `json:"revision"`
-	Status     release.Status       `json:"status"`
-	DeployedAt *GetResultDeployedAt `json:"deployedAt"`
+type ReleaseGetResultRelease struct {
+	Name       string                      `json:"name"`
+	Namespace  string                      `json:"namespace"`
+	Revision   int                         `json:"revision"`
+	Status     release.Status              `json:"status"`
+	DeployedAt *ReleaseGetResultDeployedAt `json:"deployedAt"`
 }
 
-type GetResultDeployedAt struct {
+type ReleaseGetResultDeployedAt struct {
 	Human string `json:"human"`
 	Unix  int    `json:"unix"`
 }
 
-type GetResultChart struct {
+type ReleaseGetResultChart struct {
 	Name       string `json:"name"`
 	Version    string `json:"version"`
 	AppVersion string `json:"appVersion"`

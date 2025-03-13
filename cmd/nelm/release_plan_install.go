@@ -11,7 +11,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-type planDeployConfig struct {
+type releasePlanInstallConfig struct {
 	ChartAppVersion              string
 	ChartDirPath                 string
 	ChartRepositoryInsecure      bool
@@ -49,21 +49,21 @@ type planDeployConfig struct {
 	releaseStorageDriver string
 }
 
-func (c *planDeployConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
+func (c *releasePlanInstallConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
 	return action.ReleaseStorageDriver(c.releaseStorageDriver)
 }
 
-func (c *planDeployConfig) LogLevel() log.Level {
+func (c *releasePlanInstallConfig) LogLevel() log.Level {
 	return log.Level(c.logLevel)
 }
 
-func newPlanDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
-	cfg := &planDeployConfig{}
+func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
+	cfg := &releasePlanInstallConfig{}
 
 	cmd := &cobra.Command{
-		Use:   "deploy [options...] -n namespace -r release [chart-dir]",
-		Short: "Plan a release deployment to Kubernetes.",
-		Long:  "Plan a release deployment to Kubernetes.",
+		Use:   "install [options...] -n namespace -r release [chart-dir]",
+		Short: "Plan a release install to Kubernetes.",
+		Long:  "Plan a release install to Kubernetes.",
 		Args:  cobra.MaximumNArgs(1),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			return nil, cobra.ShellCompDirectiveFilterDirs
@@ -74,7 +74,7 @@ func newPlanDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 				cfg.ChartDirPath = args[0]
 			}
 
-			if err := action.Plan(ctx, action.PlanOptions{
+			if err := action.ReleasePlanInstall(ctx, action.ReleasePlanInstallOptions{
 				ChartAppVersion:              cfg.ChartAppVersion,
 				ChartDirPath:                 cfg.ChartDirPath,
 				ChartRepositoryInsecure:      cfg.ChartRepositoryInsecure,
@@ -110,7 +110,7 @@ func newPlanDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 				ValuesSets:                   cfg.ValuesSets,
 				ValuesStringSets:             cfg.ValuesStringSets,
 			}); err != nil {
-				return fmt.Errorf("plan: %w", err)
+				return fmt.Errorf("release plan install: %w", err)
 			}
 
 			return nil
@@ -270,7 +270,7 @@ func newPlanDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 		}
 
 		// FIXME(ilya-lesikov): restrict values
-		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultPlanLogLevel), "Set log level", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultReleasePlanInstallLogLevel), "Set log level", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

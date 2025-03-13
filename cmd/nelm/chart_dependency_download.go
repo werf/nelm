@@ -13,7 +13,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-func newChartDependencyBuildCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
+func newChartDependencyDownloadCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	dependencyCmd := lo.Must(lo.Find(helmRootCmd.Commands(), func(c *cobra.Command) bool {
 		return strings.HasPrefix(c.Use, "dependency")
 	}))
@@ -23,7 +23,9 @@ func newChartDependencyBuildCommand(ctx context.Context, afterAllCommandsBuiltFu
 	}))
 
 	cmd.LocalFlags().AddFlagSet(cmd.InheritedFlags())
+	cmd.Use = "download CHART"
 	cmd.Short = "Download chart dependencies from Chart.lock."
+	cmd.Long = "Download chart dependencies from Chart.lock."
 	cmd.Aliases = []string{}
 
 	originalRunE := cmd.RunE

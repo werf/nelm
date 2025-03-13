@@ -54,9 +54,9 @@ import (
 )
 
 const (
-	DefaultDeployReportFilename = "deploy-report.json"
-	DefaultDeployGraphFilename  = "deploy-graph.dot"
-	DefaultDeployLogLevel       = log.InfoLevel
+	DefaultReleaseInstallReportFilename = "deploy-report.json"
+	DefaultReleaseInstallGraphFilename  = "deploy-graph.dot"
+	DefaultReleaseInstallLogLevel       = log.InfoLevel
 )
 
 // FIXME(ilya-lesikov): this is old... need to check
@@ -97,7 +97,7 @@ const (
 // logrus.StandardLogger().SetOutput(opts.LogStreamOut)
 // logrus.StandardLogger().SetLevel(logrusLogLevel)
 
-type DeployOptions struct {
+type ReleaseInstallOptions struct {
 	AutoRollback                 bool
 	ChartAppVersion              string
 	ChartDirPath                 string
@@ -109,10 +109,10 @@ type DeployOptions struct {
 	DefaultChartVersion          string
 	DefaultSecretValuesDisable   bool
 	DefaultValuesDisable         bool
-	DeployGraphPath              string
-	DeployGraphSave              bool
-	DeployReportPath             string
-	DeployReportSave             bool
+	InstallGraphPath             string
+	InstallGraphSave             bool
+	InstallReportPath            string
+	InstallReportSave            bool
 	ExtraAnnotations             map[string]string
 	ExtraLabels                  map[string]string
 	ExtraRuntimeAnnotations      map[string]string
@@ -153,11 +153,11 @@ type DeployOptions struct {
 	ValuesStringSets             []string
 }
 
-func Deploy(ctx context.Context, opts DeployOptions) error {
+func ReleaseInstall(ctx context.Context, opts ReleaseInstallOptions) error {
 	if opts.LogLevel != "" {
 		log.Default.SetLevel(ctx, opts.LogLevel)
 	} else {
-		log.Default.SetLevel(ctx, DefaultDeployLogLevel)
+		log.Default.SetLevel(ctx, DefaultReleaseInstallLogLevel)
 	}
 
 	currentDir, err := os.Getwd()
@@ -170,9 +170,9 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 		return fmt.Errorf("get current user: %w", err)
 	}
 
-	opts, err = applyDeployOptionsDefaults(opts, currentDir, currentUser)
+	opts, err = applyReleaseInstallOptionsDefaults(opts, currentDir, currentUser)
 	if err != nil {
-		return fmt.Errorf("build deploy options: %w", err)
+		return fmt.Errorf("build release install options: %w", err)
 	}
 
 	var kubeConfigPath string
@@ -485,23 +485,23 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 
 	plan, planBuildErr := deployPlanBuilder.Build(ctx)
 	if planBuildErr != nil {
-		if _, err := os.Create(opts.DeployGraphPath); err != nil {
-			log.Default.Error(ctx, "Error: create deploy graph file: %s", err)
+		if _, err := os.Create(opts.InstallGraphPath); err != nil {
+			log.Default.Error(ctx, "Error: create release install graph file: %s", err)
 			return fmt.Errorf("build deploy plan: %w", planBuildErr)
 		}
 
-		if err := plan.SaveDOT(opts.DeployGraphPath); err != nil {
-			log.Default.Error(ctx, "Error: save deploy graph: %s", err)
+		if err := plan.SaveDOT(opts.InstallGraphPath); err != nil {
+			log.Default.Error(ctx, "Error: save release install graph: %s", err)
 		}
 
-		log.Default.Warn(ctx, "Deploy graph saved to %q for debugging", opts.DeployGraphPath)
+		log.Default.Warn(ctx, "Release install graph saved to %q for debugging", opts.InstallGraphPath)
 
-		return fmt.Errorf("build deploy plan: %w", planBuildErr)
+		return fmt.Errorf("build release install plan: %w", planBuildErr)
 	}
 
-	if opts.DeployGraphSave {
-		if err := plan.SaveDOT(opts.DeployGraphPath); err != nil {
-			return fmt.Errorf("save deploy graph: %w", err)
+	if opts.InstallGraphSave {
+		if err := plan.SaveDOT(opts.InstallGraphPath); err != nil {
+			return fmt.Errorf("save release install graph: %w", err)
 		}
 	}
 
@@ -515,17 +515,17 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 
 	planUseless, err := plan.Useless()
 	if err != nil {
-		return fmt.Errorf("check if deploy plan will do anything useful: %w", err)
+		return fmt.Errorf("check if release install plan will do anything useful: %w", err)
 	}
 
 	if releaseUpToDate && planUseless {
-		if opts.DeployReportSave {
+		if opts.InstallReportSave {
 			newRel.Skip()
 
 			report := reprt.NewReport(nil, nil, nil, newRel)
 
-			if err := report.Save(opts.DeployReportPath); err != nil {
-				log.Default.Error(ctx, "Error: save deploy report: %s", err)
+			if err := report.Save(opts.InstallReportPath); err != nil {
+				log.Default.Error(ctx, "Error: save release install report: %s", err)
 			}
 		}
 
@@ -569,7 +569,7 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 		}()
 	}
 
-	log.Default.Info(ctx, "Executing deploy plan")
+	log.Default.Info(ctx, "Executing release install plan")
 	planExecutor := plnexectr.NewPlanExecutor(
 		plan,
 		plnexectr.PlanExecutorOptions{
@@ -581,7 +581,7 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 
 	planExecutionErr := planExecutor.Execute(ctx)
 	if planExecutionErr != nil {
-		criticalErrs = append(criticalErrs, fmt.Errorf("execute deploy plan: %w", planExecutionErr))
+		criticalErrs = append(criticalErrs, fmt.Errorf("execute release install plan: %w", planExecutionErr))
 	}
 
 	var worthyCompletedOps []opertn.Operation
@@ -681,9 +681,9 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 
 	report.Print(ctx)
 
-	if opts.DeployReportSave {
-		if err := report.Save(opts.DeployReportPath); err != nil {
-			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("save deploy report: %w", err))
+	if opts.InstallReportSave {
+		if err := report.Save(opts.InstallReportPath); err != nil {
+			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("save release install report: %w", err))
 		}
 	}
 
@@ -702,11 +702,11 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 	}
 }
 
-func applyDeployOptionsDefaults(
-	opts DeployOptions,
+func applyReleaseInstallOptionsDefaults(
+	opts ReleaseInstallOptions,
 	currentDir string,
 	currentUser *user.User,
-) (DeployOptions, error) {
+) (ReleaseInstallOptions, error) {
 	if opts.ChartDirPath == "" {
 		opts.ChartDirPath = currentDir
 	}
@@ -715,20 +715,20 @@ func applyDeployOptionsDefaults(
 	if opts.TempDirPath == "" {
 		opts.TempDirPath, err = os.MkdirTemp("", "")
 		if err != nil {
-			return DeployOptions{}, fmt.Errorf("create temp dir: %w", err)
+			return ReleaseInstallOptions{}, fmt.Errorf("create temp dir: %w", err)
 		}
 	}
 
-	if opts.DeployGraphPath == "" {
-		opts.DeployGraphPath = filepath.Join(opts.TempDirPath, DefaultDeployGraphFilename)
+	if opts.InstallGraphPath == "" {
+		opts.InstallGraphPath = filepath.Join(opts.TempDirPath, DefaultReleaseInstallGraphFilename)
 	}
 
 	if opts.RollbackGraphPath == "" {
-		opts.RollbackGraphPath = filepath.Join(opts.TempDirPath, DefaultRollbackGraphFilename)
+		opts.RollbackGraphPath = filepath.Join(opts.TempDirPath, DefaultReleaseRollbackGraphFilename)
 	}
 
-	if opts.DeployReportPath == "" {
-		opts.DeployReportPath = filepath.Join(opts.TempDirPath, DefaultDeployReportFilename)
+	if opts.InstallReportPath == "" {
+		opts.InstallReportPath = filepath.Join(opts.TempDirPath, DefaultReleaseInstallReportFilename)
 	}
 
 	if opts.KubeConfigBase64 == "" && len(opts.KubeConfigPaths) == 0 {
@@ -768,19 +768,19 @@ func applyDeployOptionsDefaults(
 	}
 
 	if opts.ReleaseName == "" {
-		return DeployOptions{}, fmt.Errorf("release name not specified")
+		return ReleaseInstallOptions{}, fmt.Errorf("release name not specified")
 	}
 
 	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {
 		opts.ReleaseStorageDriver = ReleaseStorageDriverSecrets
 	} else if opts.ReleaseStorageDriver == ReleaseStorageDriverMemory {
-		return DeployOptions{}, fmt.Errorf("memory release storage driver is not supported")
+		return ReleaseInstallOptions{}, fmt.Errorf("memory release storage driver is not supported")
 	}
 
 	if opts.SecretWorkDir == "" {
 		opts.SecretWorkDir, err = os.Getwd()
 		if err != nil {
-			return DeployOptions{}, fmt.Errorf("get current working directory: %w", err)
+			return ReleaseInstallOptions{}, fmt.Errorf("get current working directory: %w", err)
 		}
 	}
 

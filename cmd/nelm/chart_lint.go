@@ -76,7 +76,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 				cfg.ChartDirPath = args[0]
 			}
 
-			if err := action.Lint(ctx, action.LintOptions{
+			if err := action.ChartLint(ctx, action.ChartLintOptions{
 				ChartAppVersion:              cfg.ChartAppVersion,
 				ChartDirPath:                 cfg.ChartDirPath,
 				ChartRepositoryInsecure:      cfg.ChartRepositoryInsecure,
@@ -113,7 +113,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 				ValuesSets:                   cfg.ValuesSets,
 				ValuesStringSets:             cfg.ValuesStringSets,
 			}); err != nil {
-				return fmt.Errorf("lint: %w", err)
+				return fmt.Errorf("chart lint: %w", err)
 			}
 
 			return nil
@@ -279,7 +279,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 		}
 
 		// FIXME(ilya-lesikov): restrict values
-		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultLintLogLevel), "Set log level", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultChartLintLogLevel), "Set log level", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

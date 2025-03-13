@@ -77,7 +77,7 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 				}
 			}
 
-			if err := action.Rollback(ctx, action.RollbackOptions{
+			if err := action.ReleaseRollback(ctx, action.ReleaseRollbackOptions{
 				ExtraRuntimeAnnotations:    cfg.ExtraRuntimeAnnotations,
 				KubeAPIServerName:          cfg.KubeAPIServerName,
 				KubeBurstLimit:             cfg.KubeBurstLimit,
@@ -108,7 +108,7 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 				TrackDeletionTimeout:       cfg.TrackDeletionTimeout,
 				TrackReadinessTimeout:      cfg.TrackReadinessTimeout,
 			}); err != nil {
-				return fmt.Errorf("rollback: %w", err)
+				return fmt.Errorf("release rollback: %w", err)
 			}
 
 			return nil
@@ -228,7 +228,7 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 		}
 
 		// FIXME(ilya-lesikov): restrict values
-		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultRollbackLogLevel), "Set log level", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultReleaseRollbackLogLevel), "Set log level", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

@@ -12,7 +12,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-type releaseDeployConfig struct {
+type releaseInstallConfig struct {
 	AutoRollback                 bool
 	ChartAppVersion              string
 	ChartDirPath                 string
@@ -21,10 +21,10 @@ type releaseDeployConfig struct {
 	ChartRepositorySkipUpdate    bool
 	DefaultSecretValuesDisable   bool
 	DefaultValuesDisable         bool
-	DeployGraphPath              string
-	DeployGraphSave              bool
-	DeployReportPath             string
-	DeployReportSave             bool
+	InstallGraphPath             string
+	InstallGraphSave             bool
+	InstallReportPath            string
+	InstallReportSave            bool
 	ExtraAnnotations             map[string]string
 	ExtraLabels                  map[string]string
 	ExtraRuntimeAnnotations      map[string]string
@@ -64,23 +64,23 @@ type releaseDeployConfig struct {
 	releaseStorageDriver string
 }
 
-func (c *releaseDeployConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
+func (c *releaseInstallConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
 	return action.ReleaseStorageDriver(c.releaseStorageDriver)
 }
 
-func (c *releaseDeployConfig) LogColorMode() action.LogColorMode {
+func (c *releaseInstallConfig) LogColorMode() action.LogColorMode {
 	return action.LogColorMode(c.logColorMode)
 }
 
-func (c *releaseDeployConfig) LogLevel() log.Level {
+func (c *releaseInstallConfig) LogLevel() log.Level {
 	return log.Level(c.logLevel)
 }
 
-func newReleaseDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
-	cfg := &releaseDeployConfig{}
+func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
+	cfg := &releaseInstallConfig{}
 
 	cmd := &cobra.Command{
-		Use:   "deploy [options...] -n namespace -r release [chart-dir]",
+		Use:   "install [options...] -n namespace -r release [chart-dir]",
 		Short: "Deploy a chart to Kubernetes.",
 		Long:  "Deploy a chart to Kubernetes.",
 		Args:  cobra.MaximumNArgs(1),
@@ -93,7 +93,7 @@ func newReleaseDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map
 				cfg.ChartDirPath = args[0]
 			}
 
-			if err := action.Deploy(ctx, action.DeployOptions{
+			if err := action.ReleaseInstall(ctx, action.ReleaseInstallOptions{
 				AutoRollback:                 cfg.AutoRollback,
 				ChartAppVersion:              cfg.ChartAppVersion,
 				ChartDirPath:                 cfg.ChartDirPath,
@@ -102,10 +102,10 @@ func newReleaseDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map
 				ChartRepositorySkipUpdate:    cfg.ChartRepositorySkipUpdate,
 				DefaultSecretValuesDisable:   cfg.DefaultSecretValuesDisable,
 				DefaultValuesDisable:         cfg.DefaultValuesDisable,
-				DeployGraphPath:              cfg.DeployGraphPath,
-				DeployGraphSave:              cfg.DeployGraphSave,
-				DeployReportPath:             cfg.DeployReportPath,
-				DeployReportSave:             cfg.DeployReportSave,
+				InstallGraphPath:             cfg.InstallGraphPath,
+				InstallGraphSave:             cfg.InstallGraphSave,
+				InstallReportPath:            cfg.InstallReportPath,
+				InstallReportSave:            cfg.InstallReportSave,
 				ExtraAnnotations:             cfg.ExtraAnnotations,
 				ExtraLabels:                  cfg.ExtraLabels,
 				ExtraRuntimeAnnotations:      cfg.ExtraRuntimeAnnotations,
@@ -143,7 +143,7 @@ func newReleaseDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map
 				ValuesSets:                   cfg.ValuesSets,
 				ValuesStringSets:             cfg.ValuesStringSets,
 			}); err != nil {
-				return fmt.Errorf("deploy: %w", err)
+				return fmt.Errorf("install: %w", err)
 			}
 
 			return nil
@@ -199,14 +199,14 @@ func newReleaseDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.DeployGraphPath, "save-graph-to", "", "Save the Graphviz deploy graph to a file", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.InstallGraphPath, "save-graph-to", "", "Save the Graphviz install graph to a file", flag.AddOptions{
 			Group: mainFlagGroup,
 			Type:  flag.TypeFile,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.DeployReportPath, "save-report-to", "", "Save the deploy report to a file", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.InstallReportPath, "save-report-to", "", "Save the install report to a file", flag.AddOptions{
 			Group: mainFlagGroup,
 			Type:  flag.TypeFile,
 		}); err != nil {
@@ -325,7 +325,7 @@ func newReleaseDeployCommand(ctx context.Context, afterAllCommandsBuiltFuncs map
 		}
 
 		// FIXME(ilya-lesikov): restrict values
-		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultDeployLogLevel), "Set log level", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultReleaseInstallLogLevel), "Set log level", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
