@@ -14,12 +14,13 @@ func newReleaseCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobr
 		GroupID: releaseCmdGroup.ID,
 	}
 
-	cmd.AddCommand(newReleaseDeployCommand(ctx, afterAllCommandsBuiltFuncs))
+	cmd.AddCommand(newReleaseInstallCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newReleaseRollbackCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newReleaseUninstallCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newReleaseHistoryCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newReleaseListCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newReleaseGetCommand(ctx, afterAllCommandsBuiltFuncs))
+	cmd.AddCommand(newPlanCommand(ctx, afterAllCommandsBuiltFuncs))
 
 	return cmd
 }

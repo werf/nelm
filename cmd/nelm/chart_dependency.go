@@ -14,7 +14,7 @@ func newChartDependencyCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 	}
 
 	cmd.AddCommand(newChartDependencyUpdateCommand(ctx, afterAllCommandsBuiltFuncs))
-	cmd.AddCommand(newChartDependencyBuildCommand(ctx, afterAllCommandsBuiltFuncs))
+	cmd.AddCommand(newChartDependencyDownloadCommand(ctx, afterAllCommandsBuiltFuncs))
 
 	return cmd
 }

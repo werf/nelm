@@ -27,13 +27,11 @@ func NewRootCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.C
 
 	cmd.AddGroup(
 		releaseCmdGroup,
-		planCmdGroup,
 		chartCmdGroup,
 		repoCmdGroup,
 	)
 
 	cmd.AddCommand(newReleaseCommand(ctx, afterAllCommandsBuiltFuncs))
-	cmd.AddCommand(newPlanCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newChartCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newRepoCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newVersionCommand(ctx, afterAllCommandsBuiltFuncs))

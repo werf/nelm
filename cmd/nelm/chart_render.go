@@ -88,7 +88,7 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 				cfg.ChartDirPath = args[0]
 			}
 
-			if err := action.Render(ctx, action.RenderOptions{
+			if err := action.ChartRender(ctx, action.ChartRenderOptions{
 				ChartAppVersion:              cfg.ChartAppVersion,
 				ChartDirPath:                 cfg.ChartDirPath,
 				ChartRepositoryInsecure:      cfg.ChartRepositoryInsecure,
@@ -130,7 +130,7 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 				ValuesSets:                   cfg.ValuesSets,
 				ValuesStringSets:             cfg.ValuesStringSets,
 			}); err != nil {
-				return fmt.Errorf("render: %w", err)
+				return fmt.Errorf("chart render: %w", err)
 			}
 
 			return nil
@@ -304,7 +304,7 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 		}
 
 		// FIXME(ilya-lesikov): restrict values
-		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultRenderLogLevel), "Set log level", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultChartRenderLogLevel), "Set log level", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

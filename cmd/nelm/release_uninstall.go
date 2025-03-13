@@ -53,7 +53,7 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 		Args:                  cobra.NoArgs,
 		DisableFlagsInUseLine: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := action.Uninstall(ctx, action.UninstallOptions{
+			if err := action.ReleaseUninstall(ctx, action.ReleaseUninstallOptions{
 				DeleteHooks:                !cfg.NoDeleteHooks,
 				DeleteReleaseNamespace:     cfg.DeleteReleaseNamespace,
 				KubeAPIServerName:          cfg.KubeAPIServerName,
@@ -74,7 +74,7 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 				ReleaseStorageDriver:       cfg.ReleaseStorageDriver(),
 				TempDirPath:                cfg.TempDirPath,
 			}); err != nil {
-				return fmt.Errorf("uninstall: %w", err)
+				return fmt.Errorf("release uninstall: %w", err)
 			}
 
 			return nil
@@ -177,7 +177,7 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 		}
 
 		// FIXME(ilya-lesikov): restrict values
-		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultUninstallLogLevel), "Set log level", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultReleaseUninstallLogLevel), "Set log level", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

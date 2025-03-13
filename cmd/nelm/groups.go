@@ -16,11 +16,6 @@ var chartCmdGroup = &cobra.Group{
 	Title: "Chart commands:",
 }
 
-var planCmdGroup = &cobra.Group{
-	ID:    "plan",
-	Title: "Plan commands:",
-}
-
 var repoCmdGroup = &cobra.Group{
 	ID:    "repo",
 	Title: "Repo commands:",

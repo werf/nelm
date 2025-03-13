@@ -36,12 +36,12 @@ import (
 )
 
 const (
-	DefaultRollbackReportFilename = "rollback-report.json"
-	DefaultRollbackGraphFilename  = "rollback-graph.dot"
-	DefaultRollbackLogLevel       = log.InfoLevel
+	DefaultReleaseRollbackReportFilename = "rollback-report.json"
+	DefaultReleaseRollbackGraphFilename  = "rollback-graph.dot"
+	DefaultReleaseRollbackLogLevel       = log.InfoLevel
 )
 
-type RollbackOptions struct {
+type ReleaseRollbackOptions struct {
 	ExtraRuntimeAnnotations    map[string]string
 	KubeAPIServerName          string
 	KubeBurstLimit             int
@@ -73,11 +73,11 @@ type RollbackOptions struct {
 	TrackReadinessTimeout      time.Duration
 }
 
-func Rollback(ctx context.Context, opts RollbackOptions) error {
+func ReleaseRollback(ctx context.Context, opts ReleaseRollbackOptions) error {
 	if opts.LogLevel != "" {
 		log.Default.SetLevel(ctx, opts.LogLevel)
 	} else {
-		log.Default.SetLevel(ctx, DefaultRollbackLogLevel)
+		log.Default.SetLevel(ctx, DefaultReleaseRollbackLogLevel)
 	}
 
 	currentUser, err := user.Current()
@@ -85,9 +85,9 @@ func Rollback(ctx context.Context, opts RollbackOptions) error {
 		return fmt.Errorf("get current user: %w", err)
 	}
 
-	opts, err = applyRollbackOptionsDefaults(opts, currentUser)
+	opts, err = applyReleaseRollbackOptionsDefaults(opts, currentUser)
 	if err != nil {
-		return fmt.Errorf("build rollback options: %w", err)
+		return fmt.Errorf("build release rollback options: %w", err)
 	}
 
 	var kubeConfigPath string
@@ -317,22 +317,22 @@ func Rollback(ctx context.Context, opts RollbackOptions) error {
 	plan, planBuildErr := deployPlanBuilder.Build(ctx)
 	if planBuildErr != nil {
 		if _, err := os.Create(opts.RollbackGraphPath); err != nil {
-			log.Default.Error(ctx, "Error: create rollback graph file: %s", err)
-			return fmt.Errorf("build rollback plan: %w", planBuildErr)
+			log.Default.Error(ctx, "Error: create release rollback graph file: %s", err)
+			return fmt.Errorf("build release rollback plan: %w", planBuildErr)
 		}
 
 		if err := plan.SaveDOT(opts.RollbackGraphPath); err != nil {
-			log.Default.Error(ctx, "Error: save rollback graph: %s", err)
+			log.Default.Error(ctx, "Error: save release rollback graph: %s", err)
 		}
 
-		log.Default.Warn(ctx, "Rollback graph saved to %q for debugging", opts.RollbackGraphPath)
+		log.Default.Warn(ctx, "Release rollback graph saved to %q for debugging", opts.RollbackGraphPath)
 
-		return fmt.Errorf("build rollback plan: %w", planBuildErr)
+		return fmt.Errorf("build release rollback plan: %w", planBuildErr)
 	}
 
 	if opts.RollbackGraphSave {
 		if err := plan.SaveDOT(opts.RollbackGraphPath); err != nil {
-			return fmt.Errorf("save rollback graph: %w", err)
+			return fmt.Errorf("save release rollback graph: %w", err)
 		}
 	}
 
@@ -346,7 +346,7 @@ func Rollback(ctx context.Context, opts RollbackOptions) error {
 
 	planUseless, err := plan.Useless()
 	if err != nil {
-		return fmt.Errorf("check if rollback plan will do anything useful: %w", err)
+		return fmt.Errorf("check if release rollback plan will do anything useful: %w", err)
 	}
 
 	if releaseUpToDate && planUseless {
@@ -356,7 +356,7 @@ func Rollback(ctx context.Context, opts RollbackOptions) error {
 			report := reprt.NewReport(nil, nil, nil, newRel)
 
 			if err := report.Save(opts.RollbackReportPath); err != nil {
-				log.Default.Error(ctx, "Error: save rollback report: %s", err)
+				log.Default.Error(ctx, "Error: save release rollback report: %s", err)
 			}
 		}
 
@@ -400,7 +400,7 @@ func Rollback(ctx context.Context, opts RollbackOptions) error {
 		}()
 	}
 
-	log.Default.Info(ctx, "Executing rollback plan")
+	log.Default.Info(ctx, "Executing release rollback plan")
 	planExecutor := plnexectr.NewPlanExecutor(
 		plan,
 		plnexectr.PlanExecutorOptions{
@@ -412,7 +412,7 @@ func Rollback(ctx context.Context, opts RollbackOptions) error {
 
 	planExecutionErr := planExecutor.Execute(ctx)
 	if planExecutionErr != nil {
-		criticalErrs = append(criticalErrs, fmt.Errorf("execute rollback plan: %w", planExecutionErr))
+		criticalErrs = append(criticalErrs, fmt.Errorf("execute release rollback plan: %w", planExecutionErr))
 	}
 
 	var worthyCompletedOps []opertn.Operation
@@ -483,7 +483,7 @@ func Rollback(ctx context.Context, opts RollbackOptions) error {
 
 	if opts.RollbackReportSave {
 		if err := report.Save(opts.RollbackReportPath); err != nil {
-			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("save rollback report: %w", err))
+			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("save release rollback report: %w", err))
 		}
 	}
 
@@ -502,24 +502,24 @@ func Rollback(ctx context.Context, opts RollbackOptions) error {
 	}
 }
 
-func applyRollbackOptionsDefaults(
-	opts RollbackOptions,
+func applyReleaseRollbackOptionsDefaults(
+	opts ReleaseRollbackOptions,
 	currentUser *user.User,
-) (RollbackOptions, error) {
+) (ReleaseRollbackOptions, error) {
 	var err error
 	if opts.TempDirPath == "" {
 		opts.TempDirPath, err = os.MkdirTemp("", "")
 		if err != nil {
-			return RollbackOptions{}, fmt.Errorf("create temp dir: %w", err)
+			return ReleaseRollbackOptions{}, fmt.Errorf("create temp dir: %w", err)
 		}
 	}
 
 	if opts.RollbackGraphPath == "" {
-		opts.RollbackGraphPath = filepath.Join(opts.TempDirPath, DefaultRollbackGraphFilename)
+		opts.RollbackGraphPath = filepath.Join(opts.TempDirPath, DefaultReleaseRollbackGraphFilename)
 	}
 
 	if opts.RollbackReportPath == "" {
-		opts.RollbackReportPath = filepath.Join(opts.TempDirPath, DefaultRollbackReportFilename)
+		opts.RollbackReportPath = filepath.Join(opts.TempDirPath, DefaultReleaseRollbackReportFilename)
 	}
 
 	if opts.KubeConfigBase64 == "" && len(opts.KubeConfigPaths) == 0 {
@@ -555,13 +555,13 @@ func applyRollbackOptionsDefaults(
 	}
 
 	if opts.ReleaseName == "" {
-		return RollbackOptions{}, fmt.Errorf("release name not specified")
+		return ReleaseRollbackOptions{}, fmt.Errorf("release name not specified")
 	}
 
 	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {
 		opts.ReleaseStorageDriver = ReleaseStorageDriverSecrets
 	} else if opts.ReleaseStorageDriver == ReleaseStorageDriverMemory {
-		return RollbackOptions{}, fmt.Errorf("memory release storage driver is not supported")
+		return ReleaseRollbackOptions{}, fmt.Errorf("memory release storage driver is not supported")
 	}
 
 	return opts, nil
