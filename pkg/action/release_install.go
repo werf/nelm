@@ -136,6 +136,7 @@ type ReleaseInstallOptions struct {
 	ReleaseStorageDriver         ReleaseStorageDriver
 	RollbackGraphPath            string
 	RollbackGraphSave            bool
+	SecretKey                    string
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
 	SecretWorkDir                string
@@ -170,6 +171,10 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	opts, err = applyReleaseInstallOptionsDefaults(opts, currentDir, currentUser)
 	if err != nil {
 		return fmt.Errorf("build release install options: %w", err)
+	}
+
+	if opts.SecretKey != "" {
+		os.Setenv("WERF_SECRET_KEY", opts.SecretKey)
 	}
 
 	var kubeConfigPath string

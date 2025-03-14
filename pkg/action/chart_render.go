@@ -81,6 +81,7 @@ type ChartRenderOptions struct {
 	ReleaseName                  string
 	ReleaseNamespace             string
 	ReleaseStorageDriver         ReleaseStorageDriver
+	SecretKey                    string
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
 	SecretWorkDir                string
@@ -113,6 +114,10 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 	opts, err = applyChartRenderOptionsDefaults(opts, currentDir, currentUser)
 	if err != nil {
 		return fmt.Errorf("build chart render options: %w", err)
+	}
+
+	if opts.SecretKey != "" {
+		os.Setenv("WERF_SECRET_KEY", opts.SecretKey)
 	}
 
 	var kubeConfigPath string

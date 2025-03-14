@@ -73,6 +73,7 @@ type ChartLintOptions struct {
 	ReleaseName                  string
 	ReleaseNamespace             string
 	ReleaseStorageDriver         ReleaseStorageDriver
+	SecretKey                    string
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
 	SecretWorkDir                string
@@ -103,6 +104,10 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	opts, err = applyChartLintOptionsDefaults(opts, currentDir, currentUser)
 	if err != nil {
 		return fmt.Errorf("build chart lint options: %w", err)
+	}
+
+	if opts.SecretKey != "" {
+		os.Setenv("WERF_SECRET_KEY", opts.SecretKey)
 	}
 
 	var kubeConfigPath string
