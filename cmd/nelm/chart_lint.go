@@ -32,7 +32,7 @@ type chartLintConfig struct {
 	KubeSkipTLSVerify            bool
 	KubeTLSServerName            string
 	KubeToken                    string
-	Local                        bool
+	NoLocal                      bool
 	LocalKubeVersion             string
 	LogDebug                     bool
 	NetworkParallelism           int
@@ -97,7 +97,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 				KubeSkipTLSVerify:            cfg.KubeSkipTLSVerify,
 				KubeTLSServerName:            cfg.KubeTLSServerName,
 				KubeToken:                    cfg.KubeToken,
-				Local:                        cfg.Local,
+				Local:                        !cfg.NoLocal,
 				LocalKubeVersion:             cfg.LocalKubeVersion,
 				LogLevel:                     cfg.LogLevel(),
 				NetworkParallelism:           cfg.NetworkParallelism,
@@ -266,7 +266,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.Local, "local-kube", false, "Run in the local mode without accessing Kubernetes", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.NoLocal, "no-local", false, "Allow cluster access for additional checks", flag.AddOptions{
 			Group: mainFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)

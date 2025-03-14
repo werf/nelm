@@ -1,6 +1,8 @@
 package main
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/spf13/cobra"
+)
 
 const (
 	releaseNameStub      = "release-stub"
