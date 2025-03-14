@@ -74,7 +74,7 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 				cfg.ChartDirPath = args[0]
 			}
 
-			if err := action.ReleasePlanInstall(ctx, action.ReleasePlanInstallOptions{
+			if err := action.ReleasePlanInstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, action.ReleasePlanInstallOptions{
 				ChartAppVersion:              cfg.ChartAppVersion,
 				ChartDirPath:                 cfg.ChartDirPath,
 				ChartRepositoryInsecure:      cfg.ChartRepositoryInsecure,
@@ -99,8 +99,6 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 				LogLevel:                     cfg.LogLevel(),
 				NetworkParallelism:           cfg.NetworkParallelism,
 				RegistryCredentialsPath:      cfg.RegistryCredentialsPath,
-				ReleaseName:                  cfg.ReleaseName,
-				ReleaseNamespace:             cfg.ReleaseNamespace,
 				ReleaseStorageDriver:         cfg.ReleaseStorageDriver(),
 				SecretKeyIgnore:              cfg.SecretKeyIgnore,
 				SecretValuesPaths:            cfg.SecretValuesPaths,

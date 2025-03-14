@@ -13,7 +13,6 @@ import (
 
 	"github.com/gookit/color"
 	"github.com/samber/lo"
-	"github.com/xo/terminfo"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
@@ -54,8 +53,8 @@ import (
 )
 
 const (
-	DefaultReleaseInstallReportFilename = "deploy-report.json"
-	DefaultReleaseInstallGraphFilename  = "deploy-graph.dot"
+	DefaultReleaseInstallReportFilename = "release-install-report.json"
+	DefaultReleaseInstallGraphFilename  = "release-install-graph.dot"
 	DefaultReleaseInstallLogLevel       = log.InfoLevel
 )
 
@@ -134,8 +133,6 @@ type ReleaseInstallOptions struct {
 	ProgressTablePrintInterval   time.Duration
 	RegistryCredentialsPath      string
 	ReleaseHistoryLimit          int
-	ReleaseName                  string
-	ReleaseNamespace             string
 	ReleaseStorageDriver         ReleaseStorageDriver
 	RollbackGraphPath            string
 	RollbackGraphSave            bool
@@ -153,7 +150,7 @@ type ReleaseInstallOptions struct {
 	ValuesStringSets             []string
 }
 
-func ReleaseInstall(ctx context.Context, opts ReleaseInstallOptions) error {
+func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseInstallOptions) error {
 	if opts.LogLevel != "" {
 		log.Default.SetLevel(ctx, opts.LogLevel)
 	} else {
@@ -188,7 +185,7 @@ func ReleaseInstall(ctx context.Context, opts ReleaseInstallOptions) error {
 				ConfigDataBase64:    opts.KubeConfigBase64,
 				ConfigPathMergeList: opts.KubeConfigPaths,
 			},
-			Namespace:     opts.ReleaseNamespace,
+			Namespace:     releaseNamespace,
 			BearerToken:   opts.KubeToken,
 			APIServer:     opts.KubeAPIServerName,
 			CAFile:        opts.KubeCAPath,
@@ -204,8 +201,8 @@ func ReleaseInstall(ctx context.Context, opts ReleaseInstallOptions) error {
 
 	helmSettings := helm_v3.Settings
 	*helmSettings.GetConfigP() = kubeConfigGetter
-	*helmSettings.GetNamespaceP() = opts.ReleaseNamespace
-	opts.ReleaseNamespace = helmSettings.Namespace()
+	*helmSettings.GetNamespaceP() = releaseNamespace
+	releaseNamespace = helmSettings.Namespace()
 	helmSettings.MaxHistory = opts.ReleaseHistoryLimit
 	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.DebugLevel)
 
@@ -242,7 +239,7 @@ func ReleaseInstall(ctx context.Context, opts ReleaseInstallOptions) error {
 	helmActionConfig := &action.Configuration{}
 	if err := helmActionConfig.Init(
 		helmSettings.RESTClientGetter(),
-		opts.ReleaseNamespace,
+		releaseNamespace,
 		string(opts.ReleaseStorageDriver),
 		func(format string, a ...interface{}) {
 			log.Default.Info(ctx, format, a...)
@@ -269,7 +266,7 @@ func ReleaseInstall(ctx context.Context, opts ReleaseInstallOptions) error {
 
 	var lockManager *lock_manager.LockManager
 	if m, err := lock_manager.NewLockManager(
-		opts.ReleaseNamespace,
+		releaseNamespace,
 		false,
 		clientFactory.Static(),
 		clientFactory.Dynamic(),
@@ -291,13 +288,13 @@ func ReleaseInstall(ctx context.Context, opts ReleaseInstallOptions) error {
 	secrets.ChartDir = opts.ChartDirPath
 	secrets_manager.DisableSecretsDecryption = opts.SecretKeyIgnore
 
-	if err := createReleaseNamespace(ctx, clientFactory, opts.ReleaseNamespace); err != nil {
+	if err := createReleaseNamespace(ctx, clientFactory, releaseNamespace); err != nil {
 		return fmt.Errorf("create release namespace: %w", err)
 	}
 
-	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Starting release")+" %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)
+	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Starting release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-	if lock, err := lockManager.LockRelease(ctx, opts.ReleaseName); err != nil {
+	if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
 		return fmt.Errorf("lock release: %w", err)
 	} else {
 		defer lockManager.Unlock(lock)
@@ -305,8 +302,8 @@ func ReleaseInstall(ctx context.Context, opts ReleaseInstallOptions) error {
 
 	log.Default.Info(ctx, "Constructing release history")
 	history, err := rlshistor.NewHistory(
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
+		releaseName,
+		releaseNamespace,
 		helmReleaseStorage,
 		rlshistor.HistoryOptions{
 			Mapper:          clientFactory.Mapper(),
@@ -364,8 +361,8 @@ func ReleaseInstall(ctx context.Context, opts ReleaseInstallOptions) error {
 	chartTree, err := chrttree.NewChartTree(
 		ctx,
 		opts.ChartDirPath,
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
+		releaseName,
+		releaseNamespace,
 		newRevision,
 		deployType,
 		helmActionConfig,
@@ -393,8 +390,8 @@ func ReleaseInstall(ctx context.Context, opts ReleaseInstallOptions) error {
 	log.Default.Info(ctx, "Processing resources")
 	resProcessor := resrcprocssr.NewDeployableResourcesProcessor(
 		deployType,
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
+		releaseName,
+		releaseNamespace,
 		chartTree.StandaloneCRDs(),
 		chartTree.HookResources(),
 		chartTree.GeneralResources(),
@@ -435,8 +432,8 @@ func ReleaseInstall(ctx context.Context, opts ReleaseInstallOptions) error {
 
 	log.Default.Info(ctx, "Constructing new release")
 	newRel, err := rls.NewRelease(
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
+		releaseName,
+		releaseNamespace,
 		newRevision,
 		chartTree.ReleaseValues(),
 		chartTree.LegacyChart(),
@@ -459,7 +456,7 @@ func ReleaseInstall(ctx context.Context, opts ReleaseInstallOptions) error {
 
 	log.Default.Info(ctx, "Constructing new deploy plan")
 	deployPlanBuilder := plnbuilder.NewDeployPlanBuilder(
-		opts.ReleaseNamespace,
+		releaseNamespace,
 		deployType,
 		taskStore,
 		logStore,
@@ -531,7 +528,7 @@ func ReleaseInstall(ctx context.Context, opts ReleaseInstallOptions) error {
 
 		printNotes(ctx, notes)
 
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q): cluster resources already as desired", opts.ReleaseName, opts.ReleaseNamespace)))
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)))
 
 		return nil
 	}
@@ -540,7 +537,7 @@ func ReleaseInstall(ctx context.Context, opts ReleaseInstallOptions) error {
 		taskStore,
 		logStore,
 		track.TablesBuilderOptions{
-			DefaultNamespace: opts.ReleaseNamespace,
+			DefaultNamespace: releaseNamespace,
 			Colorize:         opts.LogColorMode == LogColorModeOn,
 		},
 	)
@@ -617,7 +614,7 @@ func ReleaseInstall(ctx context.Context, opts ReleaseInstallOptions) error {
 	if planExecutionErr != nil && pendingReleaseCreated {
 		wcompops, wfailops, wcancops, criterrs, noncriterrs := runFailureDeployPlan(
 			ctx,
-			opts.ReleaseNamespace,
+			releaseNamespace,
 			deployType,
 			plan,
 			taskStore,
@@ -640,8 +637,8 @@ func ReleaseInstall(ctx context.Context, opts ReleaseInstallOptions) error {
 				ctx,
 				taskStore,
 				logStore,
-				opts.ReleaseName,
-				opts.ReleaseNamespace,
+				releaseName,
+				releaseNamespace,
 				deployType,
 				newRel,
 				prevDeployedRelease,
@@ -692,11 +689,11 @@ func ReleaseInstall(ctx context.Context, opts ReleaseInstallOptions) error {
 	}
 
 	if len(criticalErrs) > 0 {
-		return utls.Multierrorf("failed release %q (namespace: %q)", append(criticalErrs, nonCriticalErrs...), opts.ReleaseName, opts.ReleaseNamespace)
+		return utls.Multierrorf("failed release %q (namespace: %q)", append(criticalErrs, nonCriticalErrs...), releaseName, releaseNamespace)
 	} else if len(nonCriticalErrs) > 0 {
-		return utls.Multierrorf("succeeded release %q (namespace: %q), but non-critical errors encountered", nonCriticalErrs, opts.ReleaseName, opts.ReleaseNamespace)
+		return utls.Multierrorf("succeeded release %q (namespace: %q), but non-critical errors encountered", nonCriticalErrs, releaseName, releaseNamespace)
 	} else {
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Succeeded release %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)))
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Succeeded release %q (namespace: %q)", releaseName, releaseNamespace)))
 
 		return nil
 	}
@@ -739,13 +736,7 @@ func applyReleaseInstallOptionsDefaults(
 		opts.LogRegistryStreamOut = os.Stdout
 	}
 
-	if opts.LogColorMode == LogColorModeUnspecified || opts.LogColorMode == LogColorModeAuto {
-		if color.DetectColorLevel() == terminfo.ColorLevelNone {
-			opts.LogColorMode = LogColorModeOff
-		} else {
-			opts.LogColorMode = LogColorModeOn
-		}
-	}
+	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
 
 	if opts.NetworkParallelism <= 0 {
 		opts.NetworkParallelism = DefaultNetworkParallelism
@@ -765,10 +756,6 @@ func applyReleaseInstallOptionsDefaults(
 
 	if opts.ReleaseHistoryLimit <= 0 {
 		opts.ReleaseHistoryLimit = DefaultReleaseHistoryLimit
-	}
-
-	if opts.ReleaseName == "" {
-		return ReleaseInstallOptions{}, fmt.Errorf("release name not specified")
 	}
 
 	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {

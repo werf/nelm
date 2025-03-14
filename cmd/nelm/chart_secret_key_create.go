@@ -27,6 +27,7 @@ func newChartSecretKeyCreateCommand(ctx context.Context, afterAllCommandsBuiltFu
 		Short:                 "Create a new chart secret key.",
 		Long:                  "Create a new chart secret key.",
 		Args:                  cobra.NoArgs,
+		ValidArgsFunction:     cobra.NoFileCompletions,
 		DisableFlagsInUseLine: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if _, err := action.SecretKeyCreate(ctx, action.SecretKeyCreateOptions{

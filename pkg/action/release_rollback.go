@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gookit/color"
-	"github.com/xo/terminfo"
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
@@ -36,8 +35,8 @@ import (
 )
 
 const (
-	DefaultReleaseRollbackReportFilename = "rollback-report.json"
-	DefaultReleaseRollbackGraphFilename  = "rollback-graph.dot"
+	DefaultReleaseRollbackReportFilename = "release-rollback-report.json"
+	DefaultReleaseRollbackGraphFilename  = "release-rollback-graph.dot"
 	DefaultReleaseRollbackLogLevel       = log.InfoLevel
 )
 
@@ -59,8 +58,6 @@ type ReleaseRollbackOptions struct {
 	ProgressTablePrint         bool
 	ProgressTablePrintInterval time.Duration
 	ReleaseHistoryLimit        int
-	ReleaseName                string
-	ReleaseNamespace           string
 	ReleaseStorageDriver       ReleaseStorageDriver
 	Revision                   int
 	RollbackGraphPath          string
@@ -73,7 +70,7 @@ type ReleaseRollbackOptions struct {
 	TrackReadinessTimeout      time.Duration
 }
 
-func ReleaseRollback(ctx context.Context, opts ReleaseRollbackOptions) error {
+func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseRollbackOptions) error {
 	if opts.LogLevel != "" {
 		log.Default.SetLevel(ctx, opts.LogLevel)
 	} else {
@@ -103,7 +100,7 @@ func ReleaseRollback(ctx context.Context, opts ReleaseRollbackOptions) error {
 				ConfigDataBase64:    opts.KubeConfigBase64,
 				ConfigPathMergeList: opts.KubeConfigPaths,
 			},
-			Namespace:     opts.ReleaseNamespace,
+			Namespace:     releaseNamespace,
 			BearerToken:   opts.KubeToken,
 			APIServer:     opts.KubeAPIServerName,
 			CAFile:        opts.KubeCAPath,
@@ -119,8 +116,8 @@ func ReleaseRollback(ctx context.Context, opts ReleaseRollbackOptions) error {
 
 	helmSettings := helm_v3.Settings
 	*helmSettings.GetConfigP() = kubeConfigGetter
-	*helmSettings.GetNamespaceP() = opts.ReleaseNamespace
-	opts.ReleaseNamespace = helmSettings.Namespace()
+	*helmSettings.GetNamespaceP() = releaseNamespace
+	releaseNamespace = helmSettings.Namespace()
 	helmSettings.MaxHistory = opts.ReleaseHistoryLimit
 	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.DebugLevel)
 
@@ -135,7 +132,7 @@ func ReleaseRollback(ctx context.Context, opts ReleaseRollbackOptions) error {
 	helmActionConfig := &action.Configuration{}
 	if err := helmActionConfig.Init(
 		helmSettings.RESTClientGetter(),
-		opts.ReleaseNamespace,
+		releaseNamespace,
 		string(opts.ReleaseStorageDriver),
 		func(format string, a ...interface{}) {
 			log.Default.Info(ctx, format, a...)
@@ -154,7 +151,7 @@ func ReleaseRollback(ctx context.Context, opts ReleaseRollbackOptions) error {
 
 	var lockManager *lock_manager.LockManager
 	if m, err := lock_manager.NewLockManager(
-		opts.ReleaseNamespace,
+		releaseNamespace,
 		false,
 		clientFactory.Static(),
 		clientFactory.Dynamic(),
@@ -164,9 +161,9 @@ func ReleaseRollback(ctx context.Context, opts ReleaseRollbackOptions) error {
 		lockManager = m
 	}
 
-	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Starting rollback of release")+" %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)
+	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Starting rollback of release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-	if lock, err := lockManager.LockRelease(ctx, opts.ReleaseName); err != nil {
+	if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
 		return fmt.Errorf("lock release: %w", err)
 	} else {
 		defer lockManager.Unlock(lock)
@@ -174,8 +171,8 @@ func ReleaseRollback(ctx context.Context, opts ReleaseRollbackOptions) error {
 
 	log.Default.Info(ctx, "Constructing release history")
 	history, err := rlshistor.NewHistory(
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
+		releaseName,
+		releaseNamespace,
 		helmReleaseStorage,
 		rlshistor.HistoryOptions{
 			Mapper:          clientFactory.Mapper(),
@@ -190,7 +187,7 @@ func ReleaseRollback(ctx context.Context, opts ReleaseRollbackOptions) error {
 	if err != nil {
 		return fmt.Errorf("get last release: %w", err)
 	} else if !prevReleaseFound {
-		return fmt.Errorf("not found release %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)
+		return fmt.Errorf("not found release %q (namespace: %q)", releaseName, releaseNamespace)
 	}
 
 	prevDeployedRelease, _, err := history.LastDeployedRelease()
@@ -206,7 +203,7 @@ func ReleaseRollback(ctx context.Context, opts ReleaseRollbackOptions) error {
 		}
 
 		if !found {
-			return fmt.Errorf("not found successfully deployed (except last) release %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)
+			return fmt.Errorf("not found successfully deployed (except last) release %q (namespace: %q)", releaseName, releaseNamespace)
 		}
 
 		releaseToRollback = prevDeployedReleaseExceptLastRelease
@@ -216,7 +213,7 @@ func ReleaseRollback(ctx context.Context, opts ReleaseRollbackOptions) error {
 		if err != nil {
 			return fmt.Errorf("get release revision %q: %w", opts.Revision, err)
 		} else if !found {
-			return fmt.Errorf("not found revision %q for release %q (namespace: %q)", opts.Revision, opts.ReleaseName, opts.ReleaseNamespace)
+			return fmt.Errorf("not found revision %q for release %q (namespace: %q)", opts.Revision, releaseName, releaseNamespace)
 		}
 	}
 
@@ -235,8 +232,8 @@ func ReleaseRollback(ctx context.Context, opts ReleaseRollbackOptions) error {
 	log.Default.Info(ctx, "Processing rollback resources")
 	resProcessor := resrcprocssr.NewDeployableResourcesProcessor(
 		deployType,
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
+		releaseName,
+		releaseNamespace,
 		nil,
 		releaseToRollback.HookResources(),
 		releaseToRollback.GeneralResources(),
@@ -266,8 +263,8 @@ func ReleaseRollback(ctx context.Context, opts ReleaseRollbackOptions) error {
 
 	log.Default.Info(ctx, "Constructing new rollback release")
 	newRel, err := rls.NewRelease(
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
+		releaseName,
+		releaseNamespace,
 		newRevision,
 		releaseToRollback.Values(),
 		releaseToRollback.LegacyChart(),
@@ -290,7 +287,7 @@ func ReleaseRollback(ctx context.Context, opts ReleaseRollbackOptions) error {
 
 	log.Default.Info(ctx, "Constructing new rollback plan")
 	deployPlanBuilder := plnbuilder.NewDeployPlanBuilder(
-		opts.ReleaseNamespace,
+		releaseNamespace,
 		deployType,
 		taskStore,
 		logStore,
@@ -362,7 +359,7 @@ func ReleaseRollback(ctx context.Context, opts ReleaseRollbackOptions) error {
 
 		printNotes(ctx, notes)
 
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped rollback of release %q (namespace: %q): cluster resources already as desired", opts.ReleaseName, opts.ReleaseNamespace)))
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped rollback of release %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)))
 
 		return nil
 	}
@@ -371,7 +368,7 @@ func ReleaseRollback(ctx context.Context, opts ReleaseRollbackOptions) error {
 		taskStore,
 		logStore,
 		track.TablesBuilderOptions{
-			DefaultNamespace: opts.ReleaseNamespace,
+			DefaultNamespace: releaseNamespace,
 			Colorize:         opts.LogColorMode == LogColorModeOn,
 		},
 	)
@@ -448,7 +445,7 @@ func ReleaseRollback(ctx context.Context, opts ReleaseRollbackOptions) error {
 	if planExecutionErr != nil && pendingReleaseCreated {
 		wcompops, wfailops, wcancops, criterrs, noncriterrs := runFailureDeployPlan(
 			ctx,
-			opts.ReleaseNamespace,
+			releaseNamespace,
 			deployType,
 			plan,
 			taskStore,
@@ -492,11 +489,11 @@ func ReleaseRollback(ctx context.Context, opts ReleaseRollbackOptions) error {
 	}
 
 	if len(criticalErrs) > 0 {
-		return utls.Multierrorf("failed rollback of release %q (namespace: %q)", append(criticalErrs, nonCriticalErrs...), opts.ReleaseName, opts.ReleaseNamespace)
+		return utls.Multierrorf("failed rollback of release %q (namespace: %q)", append(criticalErrs, nonCriticalErrs...), releaseName, releaseNamespace)
 	} else if len(nonCriticalErrs) > 0 {
-		return utls.Multierrorf("succeeded rollback of release %q (namespace: %q), but non-critical errors encountered", nonCriticalErrs, opts.ReleaseName, opts.ReleaseNamespace)
+		return utls.Multierrorf("succeeded rollback of release %q (namespace: %q), but non-critical errors encountered", nonCriticalErrs, releaseName, releaseNamespace)
 	} else {
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Succeeded rollback of release %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)))
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Succeeded rollback of release %q (namespace: %q)", releaseName, releaseNamespace)))
 
 		return nil
 	}
@@ -526,13 +523,7 @@ func applyReleaseRollbackOptionsDefaults(
 		opts.KubeConfigPaths = []string{filepath.Join(currentUser.HomeDir, ".kube", "config")}
 	}
 
-	if opts.LogColorMode == LogColorModeUnspecified || opts.LogColorMode == LogColorModeAuto {
-		if color.DetectColorLevel() == terminfo.ColorLevelNone {
-			opts.LogColorMode = LogColorModeOff
-		} else {
-			opts.LogColorMode = LogColorModeOn
-		}
-	}
+	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
 
 	if opts.NetworkParallelism <= 0 {
 		opts.NetworkParallelism = DefaultNetworkParallelism
@@ -552,10 +543,6 @@ func applyReleaseRollbackOptionsDefaults(
 
 	if opts.ReleaseHistoryLimit <= 0 {
 		opts.ReleaseHistoryLimit = DefaultReleaseHistoryLimit
-	}
-
-	if opts.ReleaseName == "" {
-		return ReleaseRollbackOptions{}, fmt.Errorf("release name not specified")
 	}
 
 	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {

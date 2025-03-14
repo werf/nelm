@@ -93,7 +93,7 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 				cfg.ChartDirPath = args[0]
 			}
 
-			if err := action.ReleaseInstall(ctx, action.ReleaseInstallOptions{
+			if err := action.ReleaseInstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, action.ReleaseInstallOptions{
 				AutoRollback:                 cfg.AutoRollback,
 				ChartAppVersion:              cfg.ChartAppVersion,
 				ChartDirPath:                 cfg.ChartDirPath,
@@ -126,8 +126,6 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 				ProgressTablePrintInterval:   cfg.ProgressTablePrintInterval,
 				RegistryCredentialsPath:      cfg.RegistryCredentialsPath,
 				ReleaseHistoryLimit:          cfg.ReleaseHistoryLimit,
-				ReleaseName:                  cfg.ReleaseName,
-				ReleaseNamespace:             cfg.ReleaseNamespace,
 				ReleaseStorageDriver:         cfg.ReleaseStorageDriver(),
 				RollbackGraphPath:            cfg.RollbackGraphPath,
 				RollbackGraphSave:            cfg.RollbackGraphSave,

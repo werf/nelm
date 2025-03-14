@@ -68,12 +68,11 @@ type ReleasePlanInstallOptions struct {
 	KubeSkipTLSVerify            bool
 	KubeTLSServerName            string
 	KubeToken                    string
+	LogColorMode                 LogColorMode
 	LogLevel                     log.Level
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	RegistryCredentialsPath      string
-	ReleaseName                  string
-	ReleaseNamespace             string
 	ReleaseStorageDriver         ReleaseStorageDriver
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
@@ -85,7 +84,7 @@ type ReleasePlanInstallOptions struct {
 	ValuesStringSets             []string
 }
 
-func ReleasePlanInstall(ctx context.Context, opts ReleasePlanInstallOptions) error {
+func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleasePlanInstallOptions) error {
 	if opts.LogLevel != "" {
 		log.Default.SetLevel(ctx, opts.LogLevel)
 	} else {
@@ -120,7 +119,7 @@ func ReleasePlanInstall(ctx context.Context, opts ReleasePlanInstallOptions) err
 				ConfigDataBase64:    opts.KubeConfigBase64,
 				ConfigPathMergeList: opts.KubeConfigPaths,
 			},
-			Namespace:     opts.ReleaseNamespace,
+			Namespace:     releaseNamespace,
 			BearerToken:   opts.KubeToken,
 			APIServer:     opts.KubeAPIServerName,
 			CAFile:        opts.KubeCAPath,
@@ -136,8 +135,8 @@ func ReleasePlanInstall(ctx context.Context, opts ReleasePlanInstallOptions) err
 
 	helmSettings := helm_v3.Settings
 	*helmSettings.GetConfigP() = kubeConfigGetter
-	*helmSettings.GetNamespaceP() = opts.ReleaseNamespace
-	opts.ReleaseNamespace = helmSettings.Namespace()
+	*helmSettings.GetNamespaceP() = releaseNamespace
+	releaseNamespace = helmSettings.Namespace()
 	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.DebugLevel)
 
 	if opts.KubeContext != "" {
@@ -173,7 +172,7 @@ func ReleasePlanInstall(ctx context.Context, opts ReleasePlanInstallOptions) err
 	helmActionConfig := &action.Configuration{}
 	if err := helmActionConfig.Init(
 		helmSettings.RESTClientGetter(),
-		opts.ReleaseNamespace,
+		releaseNamespace,
 		string(opts.ReleaseStorageDriver),
 		func(format string, a ...interface{}) {
 			log.Default.Info(ctx, format, a...)
@@ -208,12 +207,12 @@ func ReleasePlanInstall(ctx context.Context, opts ReleasePlanInstallOptions) err
 	secrets.ChartDir = opts.ChartDirPath
 	secrets_manager.DisableSecretsDecryption = opts.SecretKeyIgnore
 
-	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release install")+" %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)
+	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release install")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
 	log.Default.Info(ctx, "Constructing release history")
 	history, err := rlshistor.NewHistory(
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
+		releaseName,
+		releaseNamespace,
 		helmReleaseStorage,
 		rlshistor.HistoryOptions{
 			Mapper:          clientFactory.Mapper(),
@@ -271,8 +270,8 @@ func ReleasePlanInstall(ctx context.Context, opts ReleasePlanInstallOptions) err
 	chartTree, err := chrttree.NewChartTree(
 		ctx,
 		opts.ChartDirPath,
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
+		releaseName,
+		releaseNamespace,
 		newRevision,
 		deployType,
 		helmActionConfig,
@@ -301,8 +300,8 @@ func ReleasePlanInstall(ctx context.Context, opts ReleasePlanInstallOptions) err
 	log.Default.Info(ctx, "Processing resources")
 	resProcessor := resrcprocssr.NewDeployableResourcesProcessor(
 		deployType,
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
+		releaseName,
+		releaseNamespace,
 		chartTree.StandaloneCRDs(),
 		chartTree.HookResources(),
 		chartTree.GeneralResources(),
@@ -346,8 +345,8 @@ func ReleasePlanInstall(ctx context.Context, opts ReleasePlanInstallOptions) err
 
 	log.Default.Info(ctx, "Constructing new release")
 	newRel, err := rls.NewRelease(
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
+		releaseName,
+		releaseNamespace,
 		newRevision,
 		chartTree.ReleaseValues(),
 		chartTree.LegacyChart(),
@@ -365,8 +364,8 @@ func ReleasePlanInstall(ctx context.Context, opts ReleasePlanInstallOptions) err
 
 	log.Default.Info(ctx, "Calculating planned changes")
 	createdChanges, recreatedChanges, updatedChanges, appliedChanges, deletedChanges, planChangesPlanned := resrcchangcalc.CalculatePlannedChanges(
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
+		releaseName,
+		releaseNamespace,
 		resProcessor.DeployableStandaloneCRDsInfos(),
 		resProcessor.DeployableHookResourcesInfos(),
 		resProcessor.DeployableGeneralResourcesInfos(),
@@ -384,8 +383,8 @@ func ReleasePlanInstall(ctx context.Context, opts ReleasePlanInstallOptions) err
 
 	resrcchanglog.LogPlannedChanges(
 		ctx,
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
+		releaseName,
+		releaseNamespace,
 		!releaseUpToDate,
 		createdChanges,
 		recreatedChanges,
@@ -422,6 +421,8 @@ func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, curr
 		opts.LogRegistryStreamOut = os.Stdout
 	}
 
+	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
+
 	if opts.NetworkParallelism <= 0 {
 		opts.NetworkParallelism = DefaultNetworkParallelism
 	}
@@ -432,10 +433,6 @@ func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, curr
 
 	if opts.KubeBurstLimit <= 0 {
 		opts.KubeBurstLimit = DefaultBurstLimit
-	}
-
-	if opts.ReleaseName == "" {
-		return ReleasePlanInstallOptions{}, fmt.Errorf("release name not specified")
 	}
 
 	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {

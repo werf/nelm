@@ -15,10 +15,11 @@ const (
 )
 
 type SecretFileEditOptions struct {
+	LogColorMode  LogColorMode
 	LogLevel      log.Level
-	TempDirPath   string
 	SecretKey     string
 	SecretWorkDir string
+	TempDirPath   string
 }
 
 func SecretFileEdit(ctx context.Context, filePath string, opts SecretFileEditOptions) error {
@@ -65,6 +66,8 @@ func applySecretFileEditOptionsDefaults(opts SecretFileEditOptions, currentDir s
 			return SecretFileEditOptions{}, fmt.Errorf("get current working directory: %w", err)
 		}
 	}
+
+	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
 
 	return opts, nil
 }

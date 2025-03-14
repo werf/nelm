@@ -38,6 +38,7 @@ func newVersionCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobr
 		Short:                 "Show version.",
 		Long:                  "Show version.",
 		Args:                  cobra.NoArgs,
+		ValidArgsFunction:     cobra.NoFileCompletions,
 		DisableFlagsInUseLine: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if _, err := action.Version(ctx, action.VersionOptions{

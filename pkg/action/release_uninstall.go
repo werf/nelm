@@ -46,16 +46,16 @@ type ReleaseUninstallOptions struct {
 	KubeSkipTLSVerify          bool
 	KubeTLSServerName          string
 	KubeToken                  string
+	LogColorMode               LogColorMode
 	LogLevel                   log.Level
+	NetworkParallelism         int
 	ProgressTablePrintInterval time.Duration
 	ReleaseHistoryLimit        int
-	ReleaseName                string
-	ReleaseNamespace           string
 	ReleaseStorageDriver       ReleaseStorageDriver
 	TempDirPath                string
 }
 
-func ReleaseUninstall(ctx context.Context, opts ReleaseUninstallOptions) error {
+func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseUninstallOptions) error {
 	if opts.LogLevel != "" {
 		log.Default.SetLevel(ctx, opts.LogLevel)
 	} else {
@@ -90,7 +90,7 @@ func ReleaseUninstall(ctx context.Context, opts ReleaseUninstallOptions) error {
 				ConfigDataBase64:    opts.KubeConfigBase64,
 				ConfigPathMergeList: opts.KubeConfigPaths,
 			},
-			Namespace:     opts.ReleaseNamespace,
+			Namespace:     releaseNamespace,
 			BearerToken:   opts.KubeToken,
 			APIServer:     opts.KubeAPIServerName,
 			CAFile:        opts.KubeCAPath,
@@ -106,8 +106,8 @@ func ReleaseUninstall(ctx context.Context, opts ReleaseUninstallOptions) error {
 
 	helmSettings := helm_v3.Settings
 	*helmSettings.GetConfigP() = kubeConfigGetter
-	*helmSettings.GetNamespaceP() = opts.ReleaseNamespace
-	opts.ReleaseNamespace = helmSettings.Namespace()
+	*helmSettings.GetNamespaceP() = releaseNamespace
+	releaseNamespace = helmSettings.Namespace()
 	helmSettings.MaxHistory = opts.ReleaseHistoryLimit
 	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.DebugLevel)
 
@@ -137,7 +137,7 @@ func ReleaseUninstall(ctx context.Context, opts ReleaseUninstallOptions) error {
 	helmActionConfig := &action.Configuration{}
 	if err := helmActionConfig.Init(
 		helmSettings.RESTClientGetter(),
-		opts.ReleaseNamespace,
+		releaseNamespace,
 		string(opts.ReleaseStorageDriver),
 		func(format string, a ...interface{}) {
 			log.Default.Info(ctx, format, a...)
@@ -155,7 +155,7 @@ func ReleaseUninstall(ctx context.Context, opts ReleaseUninstallOptions) error {
 	}
 
 	helmKubeClient := helmActionConfig.KubeClient.(*helm_kube.Client)
-	helmKubeClient.Namespace = opts.ReleaseNamespace
+	helmKubeClient.Namespace = releaseNamespace
 	helmKubeClient.ResourcesWaiter = deploy.NewResourcesWaiter(
 		helmKubeClient,
 		time.Now(),
@@ -164,7 +164,7 @@ func ReleaseUninstall(ctx context.Context, opts ReleaseUninstallOptions) error {
 	)
 
 	namespaceID := resrcid.NewResourceID(
-		opts.ReleaseNamespace,
+		releaseNamespace,
 		"",
 		schema.GroupVersionKind{Version: "v1", Kind: "Namespace"},
 		resrcid.ResourceIDOptions{Mapper: clientFactory.Mapper()},
@@ -178,7 +178,7 @@ func ReleaseUninstall(ctx context.Context, opts ReleaseUninstallOptions) error {
 		},
 	); err != nil {
 		if api_errors.IsNotFound(err) {
-			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q removal: no release namespace %q found", opts.ReleaseName, opts.ReleaseNamespace)))
+			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q removal: no release namespace %q found", releaseName, releaseNamespace)))
 
 			return nil
 		} else {
@@ -188,7 +188,7 @@ func ReleaseUninstall(ctx context.Context, opts ReleaseUninstallOptions) error {
 
 	if err := func() error {
 		var releaseFound bool
-		if _, err := helmActionConfig.Releases.History(opts.ReleaseName); err != nil {
+		if _, err := helmActionConfig.Releases.History(releaseName); err != nil {
 			if !errors.Is(err, driver.ErrReleaseNotFound) {
 				return fmt.Errorf("get release history: %w", err)
 			}
@@ -197,16 +197,16 @@ func ReleaseUninstall(ctx context.Context, opts ReleaseUninstallOptions) error {
 		}
 
 		if !releaseFound {
-			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q) uninstall: no release found", opts.ReleaseName, opts.ReleaseNamespace)))
+			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q) uninstall: no release found", releaseName, releaseNamespace)))
 
 			return nil
 		}
 
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Deleting release")+" %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Deleting release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
 		var lockManager *lock_manager.LockManager
 		if m, err := lock_manager.NewLockManager(
-			opts.ReleaseNamespace,
+			releaseNamespace,
 			false,
 			clientFactory.Static(),
 			clientFactory.Dynamic(),
@@ -216,7 +216,7 @@ func ReleaseUninstall(ctx context.Context, opts ReleaseUninstallOptions) error {
 			lockManager = m
 		}
 
-		if lock, err := lockManager.LockRelease(ctx, opts.ReleaseName); err != nil {
+		if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
 			return fmt.Errorf("lock release: %w", err)
 		} else {
 			defer lockManager.Unlock(lock)
@@ -232,11 +232,11 @@ func ReleaseUninstall(ctx context.Context, opts ReleaseUninstallOptions) error {
 			},
 		)
 
-		if err := helmUninstallCmd.RunE(helmUninstallCmd, []string{opts.ReleaseName}); err != nil {
+		if err := helmUninstallCmd.RunE(helmUninstallCmd, []string{releaseName}); err != nil {
 			return fmt.Errorf("run uninstall command: %w", err)
 		}
 
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Uninstalled release %q (namespace: %q)", opts.ReleaseName, opts.ReleaseNamespace)))
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Uninstalled release %q (namespace: %q)", releaseName, releaseNamespace)))
 
 		return nil
 	}(); err != nil {
@@ -275,6 +275,12 @@ func applyReleaseUninstallOptionsDefaults(opts ReleaseUninstallOptions, currentD
 		opts.KubeConfigPaths = []string{filepath.Join(currentUser.HomeDir, ".kube", "config")}
 	}
 
+	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
+
+	if opts.NetworkParallelism <= 0 {
+		opts.NetworkParallelism = DefaultNetworkParallelism
+	}
+
 	if opts.KubeQPSLimit <= 0 {
 		opts.KubeQPSLimit = DefaultQPSLimit
 	}
@@ -289,10 +295,6 @@ func applyReleaseUninstallOptionsDefaults(opts ReleaseUninstallOptions, currentD
 
 	if opts.ReleaseHistoryLimit <= 0 {
 		opts.ReleaseHistoryLimit = DefaultReleaseHistoryLimit
-	}
-
-	if opts.ReleaseName == "" {
-		return ReleaseUninstallOptions{}, fmt.Errorf("release name not specified")
 	}
 
 	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {

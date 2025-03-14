@@ -57,13 +57,11 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 	cfg := &releaseGetConfig{}
 
 	cmd := &cobra.Command{
-		Use:   "get [options...] -n namespace -r release [revision]",
-		Short: "Get information about a deployed release.",
-		Long:  "Get information about a deployed release.",
-		Args:  cobra.MaximumNArgs(1),
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			return nil, cobra.ShellCompDirectiveFilterDirs
-		},
+		Use:                   "get [options...] -n namespace -r release [revision]",
+		Short:                 "Get information about a deployed release.",
+		Long:                  "Get information about a deployed release.",
+		Args:                  cobra.MaximumNArgs(1),
+		ValidArgsFunction:     cobra.NoFileCompletions,
 		DisableFlagsInUseLine: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -74,7 +72,7 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 				}
 			}
 
-			if _, err := action.ReleaseGet(ctx, action.ReleaseGetOptions{
+			if _, err := action.ReleaseGet(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, action.ReleaseGetOptions{
 				KubeAPIServerName:    cfg.KubeAPIServerName,
 				KubeBurstLimit:       cfg.KubeBurstLimit,
 				KubeCAPath:           cfg.KubeCAPath,
@@ -89,8 +87,6 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 				LogLevel:             cfg.LogLevel(),
 				NetworkParallelism:   cfg.NetworkParallelism,
 				OutputFormat:         cfg.OutputFormat(),
-				ReleaseName:          cfg.ReleaseName,
-				ReleaseNamespace:     cfg.ReleaseNamespace,
 				ReleaseStorageDriver: cfg.ReleaseStorageDriver(),
 				Revision:             cfg.Revision,
 				TempDirPath:          cfg.TempDirPath,

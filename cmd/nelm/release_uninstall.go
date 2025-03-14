@@ -51,9 +51,10 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 		Short:                 "Uninstall a Helm Release from Kubernetes.",
 		Long:                  "Uninstall a Helm Release from Kubernetes.",
 		Args:                  cobra.NoArgs,
+		ValidArgsFunction:     cobra.NoFileCompletions,
 		DisableFlagsInUseLine: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := action.ReleaseUninstall(ctx, action.ReleaseUninstallOptions{
+			if err := action.ReleaseUninstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, action.ReleaseUninstallOptions{
 				DeleteHooks:                !cfg.NoDeleteHooks,
 				DeleteReleaseNamespace:     cfg.DeleteReleaseNamespace,
 				KubeAPIServerName:          cfg.KubeAPIServerName,
@@ -69,8 +70,6 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 				LogLevel:                   cfg.LogLevel(),
 				ProgressTablePrintInterval: cfg.ProgressTablePrintInterval,
 				ReleaseHistoryLimit:        cfg.ReleaseHistoryLimit,
-				ReleaseName:                cfg.ReleaseName,
-				ReleaseNamespace:           cfg.ReleaseNamespace,
 				ReleaseStorageDriver:       cfg.ReleaseStorageDriver(),
 				TempDirPath:                cfg.TempDirPath,
 			}); err != nil {

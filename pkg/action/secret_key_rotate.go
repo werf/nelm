@@ -15,11 +15,13 @@ const (
 
 type SecretKeyRotateOptions struct {
 	ChartDirPath      string
+	LogColorMode      LogColorMode
 	LogLevel          log.Level
 	NewSecretKey      string
 	OldSecretKey      string
 	SecretValuesPaths []string
 	SecretWorkDir     string
+	TempDirPath       string
 }
 
 func SecretKeyRotate(ctx context.Context, opts SecretKeyRotateOptions) error {
@@ -55,6 +57,14 @@ func SecretKeyRotate(ctx context.Context, opts SecretKeyRotateOptions) error {
 }
 
 func applySecretKeyRotateOptionsDefaults(opts SecretKeyRotateOptions, currentDir string) (SecretKeyRotateOptions, error) {
+	var err error
+	if opts.TempDirPath == "" {
+		opts.TempDirPath, err = os.MkdirTemp("", "")
+		if err != nil {
+			return SecretKeyRotateOptions{}, fmt.Errorf("create temp dir: %w", err)
+		}
+	}
+
 	if opts.ChartDirPath == "" {
 		opts.ChartDirPath = currentDir
 	}
@@ -66,6 +76,8 @@ func applySecretKeyRotateOptionsDefaults(opts SecretKeyRotateOptions, currentDir
 			return SecretKeyRotateOptions{}, fmt.Errorf("get current working directory: %w", err)
 		}
 	}
+
+	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
 
 	return opts, nil
 }
