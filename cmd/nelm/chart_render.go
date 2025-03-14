@@ -332,7 +332,7 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.ReleaseName, "release", releaseNameStub, "The release name. Must be unique within the release namespace", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.ReleaseName, "release", action.StubReleaseName, "The release name. Must be unique within the release namespace", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
 			ShortName:            "r",
@@ -340,7 +340,7 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.ReleaseNamespace, "namespace", releaseNamespaceStub, "The release namespace. Resources with no namespace will be deployed here", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.ReleaseNamespace, "namespace", action.StubReleaseNamespace, "The release namespace. Resources with no namespace will be deployed here", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
 			ShortName:            "n",

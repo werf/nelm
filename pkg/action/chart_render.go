@@ -41,7 +41,7 @@ import (
 )
 
 const (
-	DefaultChartRenderOutputFilename = "render.yaml"
+	DefaultChartRenderOutputFilename = "chart-render-output.yaml"
 	DefaultChartRenderLogLevel       = log.ErrorLevel
 )
 
@@ -447,6 +447,14 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir string, currentUser *user.User) (ChartRenderOptions, error) {
 	if opts.ChartDirPath == "" {
 		opts.ChartDirPath = currentDir
+	}
+
+	if opts.ReleaseName == "" {
+		opts.ReleaseName = StubReleaseName
+	}
+
+	if opts.ReleaseNamespace == "" {
+		opts.ReleaseNamespace = StubReleaseNamespace
 	}
 
 	var err error

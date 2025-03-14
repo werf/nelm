@@ -45,14 +45,12 @@ type ReleaseGetOptions struct {
 	NetworkParallelism   int
 	OutputFormat         common.OutputFormat
 	OutputNoPrint        bool
-	ReleaseName          string
-	ReleaseNamespace     string
 	ReleaseStorageDriver ReleaseStorageDriver
 	Revision             int
 	TempDirPath          string
 }
 
-func ReleaseGet(ctx context.Context, opts ReleaseGetOptions) (*ReleaseGetResultV1, error) {
+func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseGetOptions) (*ReleaseGetResultV1, error) {
 	if opts.LogLevel != "" {
 		log.Default.SetLevel(ctx, opts.LogLevel)
 	} else {
@@ -82,7 +80,7 @@ func ReleaseGet(ctx context.Context, opts ReleaseGetOptions) (*ReleaseGetResultV
 				ConfigDataBase64:    opts.KubeConfigBase64,
 				ConfigPathMergeList: opts.KubeConfigPaths,
 			},
-			Namespace:     opts.ReleaseNamespace,
+			Namespace:     releaseNamespace,
 			BearerToken:   opts.KubeToken,
 			APIServer:     opts.KubeAPIServerName,
 			CAFile:        opts.KubeCAPath,
@@ -98,8 +96,8 @@ func ReleaseGet(ctx context.Context, opts ReleaseGetOptions) (*ReleaseGetResultV
 
 	helmSettings := helm_v3.Settings
 	*helmSettings.GetConfigP() = kubeConfigGetter
-	*helmSettings.GetNamespaceP() = opts.ReleaseNamespace
-	opts.ReleaseNamespace = helmSettings.Namespace()
+	*helmSettings.GetNamespaceP() = releaseNamespace
+	releaseNamespace = helmSettings.Namespace()
 	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.DebugLevel)
 
 	if opts.KubeContext != "" {
@@ -113,7 +111,7 @@ func ReleaseGet(ctx context.Context, opts ReleaseGetOptions) (*ReleaseGetResultV
 	helmActionConfig := &action.Configuration{}
 	if err := helmActionConfig.Init(
 		helmSettings.RESTClientGetter(),
-		opts.ReleaseNamespace,
+		releaseNamespace,
 		string(opts.ReleaseStorageDriver),
 		func(format string, a ...interface{}) {
 			log.Default.Info(ctx, format, a...)
@@ -128,8 +126,8 @@ func ReleaseGet(ctx context.Context, opts ReleaseGetOptions) (*ReleaseGetResultV
 	loader.NoChartLockWarning = ""
 
 	history, err := rlshistor.NewHistory(
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
+		releaseName,
+		releaseNamespace,
 		helmReleaseStorage,
 		rlshistor.HistoryOptions{},
 	)
@@ -155,9 +153,9 @@ func ReleaseGet(ctx context.Context, opts ReleaseGetOptions) (*ReleaseGetResultV
 
 	if !releaseFound {
 		if opts.Revision == 0 {
-			return nil, fmt.Errorf("release %q (namespace %q) not found", opts.ReleaseName, opts.ReleaseNamespace)
+			return nil, fmt.Errorf("release %q (namespace %q) not found", releaseName, releaseNamespace)
 		} else {
-			return nil, fmt.Errorf("revision %d of release %q (namespace %q) not found", opts.Revision, opts.ReleaseName, opts.ReleaseNamespace)
+			return nil, fmt.Errorf("revision %d of release %q (namespace %q) not found", opts.Revision, releaseName, releaseNamespace)
 		}
 	}
 
@@ -249,10 +247,6 @@ func applyReleaseGetOptionsDefaults(opts ReleaseGetOptions, currentUser *user.Us
 
 	if opts.KubeBurstLimit <= 0 {
 		opts.KubeBurstLimit = DefaultBurstLimit
-	}
-
-	if opts.ReleaseName == "" {
-		return ReleaseGetOptions{}, fmt.Errorf("release name not specified")
 	}
 
 	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {

@@ -15,6 +15,7 @@ const (
 )
 
 type SecretValuesFileEditOptions struct {
+	LogColorMode  LogColorMode
 	LogLevel      log.Level
 	SecretKey     string
 	SecretWorkDir string
@@ -65,6 +66,8 @@ func applySecretValuesFileEditOptionsDefaults(opts SecretValuesFileEditOptions, 
 			return SecretValuesFileEditOptions{}, fmt.Errorf("get current working directory: %w", err)
 		}
 	}
+
+	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
 
 	return opts, nil
 }

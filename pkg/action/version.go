@@ -27,6 +27,7 @@ type VersionOptions struct {
 	LogLevel      log.Level
 	OutputFormat  common.OutputFormat
 	OutputNoPrint bool
+	TempDirPath   string
 }
 
 func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {
@@ -90,6 +91,14 @@ func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {
 }
 
 func applyVersionOptionsDefaults(opts VersionOptions) (VersionOptions, error) {
+	var err error
+	if opts.TempDirPath == "" {
+		opts.TempDirPath, err = os.MkdirTemp("", "")
+		if err != nil {
+			return VersionOptions{}, fmt.Errorf("create temp dir: %w", err)
+		}
+	}
+
 	if opts.OutputFormat == "" {
 		opts.OutputFormat = DefaultVersionOutputFormat
 	}

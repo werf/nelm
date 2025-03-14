@@ -65,6 +65,7 @@ type ChartLintOptions struct {
 	KubeToken                    string
 	Local                        bool
 	LocalKubeVersion             string
+	LogColorMode                 LogColorMode
 	LogLevel                     log.Level
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
@@ -361,6 +362,14 @@ func applyChartLintOptionsDefaults(opts ChartLintOptions, currentDir string, cur
 		opts.ChartDirPath = currentDir
 	}
 
+	if opts.ReleaseName == "" {
+		opts.ReleaseName = StubReleaseName
+	}
+
+	if opts.ReleaseNamespace == "" {
+		opts.ReleaseNamespace = StubReleaseNamespace
+	}
+
 	var err error
 	if opts.TempDirPath == "" {
 		opts.TempDirPath, err = os.MkdirTemp("", "")
@@ -376,6 +385,8 @@ func applyChartLintOptionsDefaults(opts ChartLintOptions, currentDir string, cur
 	if opts.LogRegistryStreamOut == nil {
 		opts.LogRegistryStreamOut = os.Stdout
 	}
+
+	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
 
 	if opts.NetworkParallelism <= 0 {
 		opts.NetworkParallelism = DefaultNetworkParallelism

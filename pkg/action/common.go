@@ -55,6 +55,9 @@ const (
 	DefaultProgressPrintInterval = 5 * time.Second
 	DefaultReleaseHistoryLimit   = 10
 	DefaultLogColorMode          = LogColorModeAuto
+
+	StubReleaseName      = "stub-release"
+	StubReleaseNamespace = "stub-namespace"
 )
 
 var DefaultRegistryCredentialsPath = filepath.Join(homedir.Get(), ".docker", config.ConfigFileName)

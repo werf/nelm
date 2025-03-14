@@ -12,11 +12,12 @@ import (
 )
 
 const (
-	DefaultSecretFileEncryptOutputFilename = "encrypted-secret.yaml"
+	DefaultSecretFileEncryptOutputFilename = "secret-file-encrypt-output.yaml"
 	DefaultSecretFileEncryptLogLevel       = log.ErrorLevel
 )
 
 type SecretFileEncryptOptions struct {
+	LogColorMode   LogColorMode
 	LogLevel       log.Level
 	OutputFilePath string
 	OutputFileSave bool
@@ -74,6 +75,8 @@ func applySecretFileEncryptOptionsDefaults(opts SecretFileEncryptOptions, curren
 			return SecretFileEncryptOptions{}, fmt.Errorf("get current working directory: %w", err)
 		}
 	}
+
+	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, opts.OutputFileSave)
 
 	if opts.OutputFileSave {
 		if opts.OutputFilePath == "" {

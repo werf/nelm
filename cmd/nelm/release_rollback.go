@@ -77,7 +77,7 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 				}
 			}
 
-			if err := action.ReleaseRollback(ctx, action.ReleaseRollbackOptions{
+			if err := action.ReleaseRollback(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, action.ReleaseRollbackOptions{
 				ExtraRuntimeAnnotations:    cfg.ExtraRuntimeAnnotations,
 				KubeAPIServerName:          cfg.KubeAPIServerName,
 				KubeBurstLimit:             cfg.KubeBurstLimit,
@@ -95,8 +95,6 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 				ProgressTablePrint:         !cfg.NoProgressTablePrint,
 				ProgressTablePrintInterval: cfg.ProgressTablePrintInterval,
 				ReleaseHistoryLimit:        cfg.ReleaseHistoryLimit,
-				ReleaseName:                cfg.ReleaseName,
-				ReleaseNamespace:           cfg.ReleaseNamespace,
 				ReleaseStorageDriver:       cfg.ReleaseStorageDriver(),
 				Revision:                   cfg.Revision,
 				RollbackGraphPath:          cfg.RollbackGraphPath,

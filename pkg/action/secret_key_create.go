@@ -3,6 +3,7 @@ package action
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/pkg/log"
@@ -13,8 +14,10 @@ const (
 )
 
 type SecretKeyCreateOptions struct {
-	OutputNoPrint bool
+	LogColorMode  LogColorMode
 	LogLevel      log.Level
+	OutputNoPrint bool
+	TempDirPath   string
 }
 
 func SecretKeyCreate(ctx context.Context, opts SecretKeyCreateOptions) (string, error) {
@@ -44,5 +47,15 @@ func SecretKeyCreate(ctx context.Context, opts SecretKeyCreateOptions) (string, 
 }
 
 func applySecretKeyCreateOptionsDefaults(opts SecretKeyCreateOptions) (SecretKeyCreateOptions, error) {
+	var err error
+	if opts.TempDirPath == "" {
+		opts.TempDirPath, err = os.MkdirTemp("", "")
+		if err != nil {
+			return SecretKeyCreateOptions{}, fmt.Errorf("create temp dir: %w", err)
+		}
+	}
+
+	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
+
 	return opts, nil
 }
