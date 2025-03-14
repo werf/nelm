@@ -74,6 +74,7 @@ type ReleasePlanInstallOptions struct {
 	NetworkParallelism           int
 	RegistryCredentialsPath      string
 	ReleaseStorageDriver         ReleaseStorageDriver
+	SecretKey                    string
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
 	SecretWorkDir                string
@@ -104,6 +105,10 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 	opts, err = applyReleasePlanInstallOptionsDefaults(opts, currentDir, currentUser)
 	if err != nil {
 		return fmt.Errorf("build release plan install options: %w", err)
+	}
+
+	if opts.SecretKey != "" {
+		os.Setenv("WERF_SECRET_KEY", opts.SecretKey)
 	}
 
 	var kubeConfigPath string
