@@ -56,6 +56,9 @@ type ReleaseUninstallOptions struct {
 }
 
 func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseUninstallOptions) error {
+	actionLock.Lock()
+	defer actionLock.Unlock()
+
 	if opts.LogLevel != "" {
 		log.Default.SetLevel(ctx, opts.LogLevel)
 	} else {

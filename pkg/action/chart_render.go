@@ -95,6 +95,9 @@ type ChartRenderOptions struct {
 }
 
 func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
+	actionLock.Lock()
+	defer actionLock.Unlock()
+
 	if opts.LogLevel != "" {
 		log.Default.SetLevel(ctx, opts.LogLevel)
 	} else {

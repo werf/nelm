@@ -25,6 +25,9 @@ type SecretKeyRotateOptions struct {
 }
 
 func SecretKeyRotate(ctx context.Context, opts SecretKeyRotateOptions) error {
+	actionLock.Lock()
+	defer actionLock.Unlock()
+
 	if opts.LogLevel != "" {
 		log.Default.SetLevel(ctx, opts.LogLevel)
 	} else {

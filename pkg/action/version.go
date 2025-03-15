@@ -31,6 +31,9 @@ type VersionOptions struct {
 }
 
 func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {
+	actionLock.Lock()
+	defer actionLock.Unlock()
+
 	if opts.LogLevel != "" {
 		log.Default.SetLevel(ctx, opts.LogLevel)
 	} else {

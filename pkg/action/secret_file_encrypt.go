@@ -27,6 +27,9 @@ type SecretFileEncryptOptions struct {
 }
 
 func SecretFileEncrypt(ctx context.Context, filePath string, opts SecretFileEncryptOptions) error {
+	actionLock.Lock()
+	defer actionLock.Unlock()
+
 	if opts.LogLevel != "" {
 		log.Default.SetLevel(ctx, opts.LogLevel)
 	} else {

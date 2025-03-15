@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alecthomas/chroma/v2"
@@ -61,6 +62,9 @@ const (
 )
 
 var DefaultRegistryCredentialsPath = filepath.Join(homedir.Get(), ".docker", config.ConfigFileName)
+
+// TODO: now actions are not thread-safe due to use of globals in actions, also we need to check used original Helm codebase for thread-safety
+var actionLock sync.Mutex
 
 func initKubedog(ctx context.Context) error {
 	flag.CommandLine.Parse([]string{})
