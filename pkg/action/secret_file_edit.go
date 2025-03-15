@@ -23,6 +23,9 @@ type SecretFileEditOptions struct {
 }
 
 func SecretFileEdit(ctx context.Context, filePath string, opts SecretFileEditOptions) error {
+	actionLock.Lock()
+	defer actionLock.Unlock()
+
 	if opts.LogLevel != "" {
 		log.Default.SetLevel(ctx, opts.LogLevel)
 	} else {

@@ -21,6 +21,9 @@ type SecretKeyCreateOptions struct {
 }
 
 func SecretKeyCreate(ctx context.Context, opts SecretKeyCreateOptions) (string, error) {
+	actionLock.Lock()
+	defer actionLock.Unlock()
+
 	if opts.LogLevel != "" {
 		log.Default.SetLevel(ctx, opts.LogLevel)
 	} else {
