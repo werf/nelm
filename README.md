@@ -1,18 +1,16 @@
-**Nelm** is meant to be a direct **Helm 3** replacement, providing first-class **Helm-chart** support, yet improving on what **Helm 3** offers.
+**Nelm** is meant to be a **Helm 3** replacement, providing first-class **Helm-chart** support, yet improving on what **Helm 3** offers.
 
-**Nelm** is used as the deployment engine in [werf](https://github.com/werf/werf/). Standalone Nelm CLI is also available, although it is in active development for now and not recommended for general use.
+**Nelm** is a standalone tool, but is also used as the deployment engine in [werf](https://github.com/werf/werf/).
 
-**Nelm** is based on **Helm 3** — some parts of it improved and some, like the deployment subsystem, are rewritten from scratch to introduce:
+**Nelm** is based on **Helm 3** — some parts of it improved, but some are rewritten from scratch (like the deployment subsystem) to introduce:
 * `terraform plan`-like capabilities
 * Replacement of 3-Way Merge with Server-Side Apply
 * Improved resource tracking built from the ground up
 * Advanced resource ordering capabilities
 * Flexible resource lifecycle management
-* Fixes for numerous issues like [this one](https://github.com/helm/helm/issues/7219) and other improvements
+* Fixes for numerous Helm 3 issues like [this one](https://github.com/helm/helm/issues/7219) and other improvements
 
-## Getting started with Nelm (experimental)
-
-> Standalone Nelm is in active development and *is not recommended* for production use. Nelm commands, options and their defaults are subject to change.
+## Getting started with Nelm
 
 1. Build and install Nelm:
 ```bash
@@ -43,15 +41,15 @@ cert-manager:
     enabled: false
 EOF
 
-nelm chart dependency build
+nelm chart dependency download
 ```
 3. Check what's going to happen on next release:
 ```bash
-nelm plan deploy -n myproject -r myproject
+nelm release plan install -n myproject -r myproject
 ```
 4. Deploy new release:
 ```bash
-nelm release deploy -n myproject -r myproject
+nelm release install -n myproject -r myproject
 ```
 
 ## Getting started with Nelm via werf
