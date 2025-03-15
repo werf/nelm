@@ -58,12 +58,6 @@ const (
 	DefaultReleaseInstallLogLevel       = log.InfoLevel
 )
 
-// FIXME(ilya-lesikov): this is old... need to check
-// 1. if last succeeded release was cleaned up because of release limit, werf will see
-// current release as first install. We might want to not delete last succeeded or last
-// uninstalled release ever.
-// 2. don't forget errs.FormatTemplatingError if any errors occurs
-
 // FIXME(ilya-lesikov): this must be done a level higher
 // var logboekLogLevel level.Level
 // var logrusLogLevel logrus.Level

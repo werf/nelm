@@ -13,6 +13,8 @@ import (
 )
 
 type versionConfig struct {
+	TempDirPath string
+
 	logColorMode string
 	logLevel     string
 	outputFormat string
@@ -42,9 +44,10 @@ func newVersionCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobr
 		DisableFlagsInUseLine: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if _, err := action.Version(ctx, action.VersionOptions{
-				OutputFormat: cfg.OutputFormat(),
 				LogColorMode: cfg.LogColorMode(),
 				LogLevel:     cfg.LogLevel(),
+				OutputFormat: cfg.OutputFormat(),
+				TempDirPath:  cfg.TempDirPath,
 			}); err != nil {
 				return fmt.Errorf("version: %w", err)
 			}
@@ -74,6 +77,13 @@ func newVersionCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobr
 		if err := flag.Add(cmd, &cfg.outputFormat, "output-format", string(action.DefaultVersionOutputFormat), "Result output format", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.TempDirPath, "temp-dir", "", "The directory for temporary files. By default, create a new directory in the default system directory for temporary files", flag.AddOptions{
+			Group: miscFlagGroup,
+			Type:  flag.TypeDir,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

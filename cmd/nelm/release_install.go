@@ -47,6 +47,7 @@ type releaseInstallConfig struct {
 	ReleaseNamespace             string
 	RollbackGraphPath            string
 	RollbackGraphSave            bool
+	SecretKey                    string
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
 	SubNotes                     bool
@@ -129,6 +130,7 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 				ReleaseStorageDriver:         cfg.ReleaseStorageDriver(),
 				RollbackGraphPath:            cfg.RollbackGraphPath,
 				RollbackGraphSave:            cfg.RollbackGraphSave,
+				SecretKey:                    cfg.SecretKey,
 				SecretKeyIgnore:              cfg.SecretKeyIgnore,
 				SecretValuesPaths:            cfg.SecretValuesPaths,
 				SubNotes:                     cfg.SubNotes,
@@ -394,6 +396,13 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 		if err := flag.Add(cmd, &cfg.RollbackGraphPath, "save-rollback-graph-to", "", "Save the Graphviz rollback graph to a file", flag.AddOptions{
 			Group: mainFlagGroup,
 			Type:  flag.TypeFile,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.SecretKey, "secret-key", "", "Secret key", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                secretFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

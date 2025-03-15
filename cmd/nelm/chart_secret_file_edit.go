@@ -12,16 +12,21 @@ import (
 )
 
 type chartSecretFileEditOptions struct {
+	File           string
 	OutputFilePath string
 	SecretKey      string
 	TempDirPath    string
-	File           string
 
-	logLevel string
+	logColorMode string
+	logLevel     string
 }
 
 func (c *chartSecretFileEditOptions) OutputFileSave() bool {
 	return c.OutputFilePath != ""
+}
+
+func (c *chartSecretFileEditOptions) LogColorMode() action.LogColorMode {
+	return action.LogColorMode(c.logColorMode)
 }
 
 func (c *chartSecretFileEditOptions) LogLevel() log.Level {
@@ -44,9 +49,10 @@ func newChartSecretFileEditCommand(ctx context.Context, afterAllCommandsBuiltFun
 			cfg.File = args[0]
 
 			if err := action.SecretFileEdit(ctx, cfg.File, action.SecretFileEditOptions{
-				LogLevel:    cfg.LogLevel(),
-				TempDirPath: cfg.TempDirPath,
-				SecretKey:   cfg.SecretKey,
+				LogColorMode: cfg.LogColorMode(),
+				LogLevel:     cfg.LogLevel(),
+				SecretKey:    cfg.SecretKey,
+				TempDirPath:  cfg.TempDirPath,
 			}); err != nil {
 				return fmt.Errorf("secret file edit: %w", err)
 			}
@@ -56,6 +62,13 @@ func newChartSecretFileEditCommand(ctx context.Context, afterAllCommandsBuiltFun
 	}
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
+		if err := flag.Add(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		// FIXME(ilya-lesikov): restrict values
 		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultSecretFileEditLogLevel), "Set log level", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
