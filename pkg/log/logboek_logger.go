@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/gookit/color"
 	"github.com/samber/lo"
 
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/util"
@@ -128,7 +129,7 @@ func (l *LogboekLogger) Warn(ctx context.Context, format string, a ...interface{
 		return
 	}
 
-	logboek.Context(ctx).Warn().LogFHighlight(format+"\n", a...)
+	logboek.Context(ctx).Warn().LogFWithCustomStyle(color.Style{color.FgRed}, format+"\n", a...)
 }
 
 func (l *LogboekLogger) WarnPush(ctx context.Context, group string, format string, a ...interface{}) {
@@ -152,7 +153,7 @@ func (l *LogboekLogger) Error(ctx context.Context, format string, a ...interface
 		return
 	}
 
-	logboek.Context(ctx).Error().LogFHighlight(format+"\n", a...)
+	logboek.Context(ctx).Error().LogFWithCustomStyle(color.Style{color.FgRed, color.Bold}, format+"\n", a...)
 }
 
 func (l *LogboekLogger) ErrorPush(ctx context.Context, group string, format string, a ...interface{}) {
