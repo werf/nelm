@@ -40,6 +40,7 @@ type chartRenderConfig struct {
 	RegistryCredentialsPath      string
 	ReleaseName                  string
 	ReleaseNamespace             string
+	SecretKey                    string
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
 	ShowCRDs                     bool
@@ -120,6 +121,7 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 				ReleaseName:                  cfg.ReleaseName,
 				ReleaseNamespace:             cfg.ReleaseNamespace,
 				ReleaseStorageDriver:         cfg.ReleaseStorageDriver(),
+				SecretKey:                    cfg.SecretKey,
 				SecretKeyIgnore:              cfg.SecretKeyIgnore,
 				SecretValuesPaths:            cfg.SecretValuesPaths,
 				ShowCRDs:                     cfg.ShowCRDs,
@@ -352,6 +354,13 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 		if err := flag.Add(cmd, &cfg.releaseStorageDriver, "release-storage", "", "How releases should be stored", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.SecretKey, "secret-key", "", "Secret key", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                secretFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

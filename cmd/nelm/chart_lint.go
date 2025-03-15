@@ -39,6 +39,7 @@ type chartLintConfig struct {
 	RegistryCredentialsPath      string
 	ReleaseName                  string
 	ReleaseNamespace             string
+	SecretKey                    string
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
 	TempDirPath                  string
@@ -47,12 +48,17 @@ type chartLintConfig struct {
 	ValuesSets                   []string
 	ValuesStringSets             []string
 
+	logColorMode         string
 	logLevel             string
 	releaseStorageDriver string
 }
 
 func (c *chartLintConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
 	return action.ReleaseStorageDriver(c.releaseStorageDriver)
+}
+
+func (c *chartLintConfig) LogColorMode() action.LogColorMode {
+	return action.LogColorMode(c.logColorMode)
 }
 
 func (c *chartLintConfig) LogLevel() log.Level {
@@ -99,12 +105,14 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 				KubeToken:                    cfg.KubeToken,
 				Local:                        !cfg.NoLocal,
 				LocalKubeVersion:             cfg.LocalKubeVersion,
+				LogColorMode:                 cfg.LogColorMode(),
 				LogLevel:                     cfg.LogLevel(),
 				NetworkParallelism:           cfg.NetworkParallelism,
 				RegistryCredentialsPath:      cfg.RegistryCredentialsPath,
 				ReleaseName:                  cfg.ReleaseName,
 				ReleaseNamespace:             cfg.ReleaseNamespace,
 				ReleaseStorageDriver:         cfg.ReleaseStorageDriver(),
+				SecretKey:                    cfg.SecretKey,
 				SecretKeyIgnore:              cfg.SecretKeyIgnore,
 				SecretValuesPaths:            cfg.SecretValuesPaths,
 				TempDirPath:                  cfg.TempDirPath,
@@ -279,6 +287,14 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 		}
 
 		// FIXME(ilya-lesikov): restrict values
+		if err := flag.Add(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		// FIXME(ilya-lesikov): restrict values
 		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultChartLintLogLevel), "Set log level", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
@@ -320,6 +336,13 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 		if err := flag.Add(cmd, &cfg.releaseStorageDriver, "release-storage", "", "How releases should be stored", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.SecretKey, "secret-key", "", "Secret key", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                secretFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

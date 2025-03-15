@@ -16,8 +16,14 @@ type chartSecretKeyRotateOptions struct {
 	NewSecretKey      string
 	OldSecretKey      string
 	SecretValuesPaths []string
+	TempDirPath       string
 
-	logLevel string
+	logColorMode string
+	logLevel     string
+}
+
+func (c *chartSecretKeyRotateOptions) LogColorMode() action.LogColorMode {
+	return action.LogColorMode(c.logColorMode)
 }
 
 func (c *chartSecretKeyRotateOptions) LogLevel() log.Level {
@@ -43,10 +49,12 @@ func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFu
 
 			if err := action.SecretKeyRotate(ctx, action.SecretKeyRotateOptions{
 				ChartDirPath:      cfg.ChartDirPath,
+				LogColorMode:      cfg.LogColorMode(),
 				LogLevel:          cfg.LogLevel(),
 				NewSecretKey:      cfg.NewSecretKey,
 				OldSecretKey:      cfg.OldSecretKey,
 				SecretValuesPaths: cfg.SecretValuesPaths,
+				TempDirPath:       cfg.TempDirPath,
 			}); err != nil {
 				return fmt.Errorf("secret key rotate: %w", err)
 			}
@@ -56,6 +64,14 @@ func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFu
 	}
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
+		// FIXME(ilya-lesikov): restrict values
+		if err := flag.Add(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		// FIXME(ilya-lesikov): restrict values
 		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultSecretKeyRotateLogLevel), "Set log level", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
@@ -82,6 +98,13 @@ func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFu
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
 			Type:                 flag.TypeFile,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.TempDirPath, "temp-dir", "", "The directory for temporary files. By default, create a new directory in the default system directory for temporary files", flag.AddOptions{
+			Group: miscFlagGroup,
+			Type:  flag.TypeDir,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

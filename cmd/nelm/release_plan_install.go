@@ -37,6 +37,7 @@ type releasePlanInstallConfig struct {
 	RegistryCredentialsPath      string
 	ReleaseName                  string
 	ReleaseNamespace             string
+	SecretKey                    string
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
 	TempDirPath                  string
@@ -45,12 +46,17 @@ type releasePlanInstallConfig struct {
 	ValuesSets                   []string
 	ValuesStringSets             []string
 
+	logColorMode         string
 	logLevel             string
 	releaseStorageDriver string
 }
 
 func (c *releasePlanInstallConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
 	return action.ReleaseStorageDriver(c.releaseStorageDriver)
+}
+
+func (c *releasePlanInstallConfig) LogColorMode() action.LogColorMode {
+	return action.LogColorMode(c.logColorMode)
 }
 
 func (c *releasePlanInstallConfig) LogLevel() log.Level {
@@ -96,10 +102,12 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 				KubeSkipTLSVerify:            cfg.KubeSkipTLSVerify,
 				KubeTLSServerName:            cfg.KubeTLSServerName,
 				KubeToken:                    cfg.KubeToken,
+				LogColorMode:                 cfg.LogColorMode(),
 				LogLevel:                     cfg.LogLevel(),
 				NetworkParallelism:           cfg.NetworkParallelism,
 				RegistryCredentialsPath:      cfg.RegistryCredentialsPath,
 				ReleaseStorageDriver:         cfg.ReleaseStorageDriver(),
+				SecretKey:                    cfg.SecretKey,
 				SecretKeyIgnore:              cfg.SecretKeyIgnore,
 				SecretValuesPaths:            cfg.SecretValuesPaths,
 				TempDirPath:                  cfg.TempDirPath,
@@ -268,6 +276,14 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 		}
 
 		// FIXME(ilya-lesikov): restrict values
+		if err := flag.Add(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		// FIXME(ilya-lesikov): restrict values
 		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultReleasePlanInstallLogLevel), "Set log level", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
@@ -311,6 +327,13 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 		if err := flag.Add(cmd, &cfg.releaseStorageDriver, "release-storage", "", "How releases should be stored", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.SecretKey, "secret-key", "", "Secret key", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                secretFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

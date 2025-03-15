@@ -13,7 +13,6 @@ import (
 )
 
 type releaseUninstallConfig struct {
-	NoDeleteHooks              bool
 	DeleteReleaseNamespace     bool
 	KubeAPIServerName          string
 	KubeBurstLimit             int
@@ -25,18 +24,25 @@ type releaseUninstallConfig struct {
 	KubeSkipTLSVerify          bool
 	KubeTLSServerName          string
 	KubeToken                  string
+	NetworkParallelism         int
+	NoDeleteHooks              bool
 	ProgressTablePrintInterval time.Duration
 	ReleaseHistoryLimit        int
 	ReleaseName                string
 	ReleaseNamespace           string
 	TempDirPath                string
 
+	logColorMode         string
 	logLevel             string
 	releaseStorageDriver string
 }
 
 func (c *releaseUninstallConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
 	return action.ReleaseStorageDriver(c.releaseStorageDriver)
+}
+
+func (c *releaseUninstallConfig) LogColorMode() action.LogColorMode {
+	return action.LogColorMode(c.logColorMode)
 }
 
 func (c *releaseUninstallConfig) LogLevel() log.Level {
@@ -67,7 +73,9 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 				KubeSkipTLSVerify:          cfg.KubeSkipTLSVerify,
 				KubeTLSServerName:          cfg.KubeTLSServerName,
 				KubeToken:                  cfg.KubeToken,
+				LogColorMode:               cfg.LogColorMode(),
 				LogLevel:                   cfg.LogLevel(),
+				NetworkParallelism:         cfg.NetworkParallelism,
 				ProgressTablePrintInterval: cfg.ProgressTablePrintInterval,
 				ReleaseHistoryLimit:        cfg.ReleaseHistoryLimit,
 				ReleaseStorageDriver:       cfg.ReleaseStorageDriver(),
@@ -176,6 +184,14 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 		}
 
 		// FIXME(ilya-lesikov): restrict values
+		if err := flag.Add(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		// FIXME(ilya-lesikov): restrict values
 		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultReleaseUninstallLogLevel), "Set log level", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
@@ -193,6 +209,13 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 		if err := flag.Add(cmd, &cfg.ReleaseHistoryLimit, "release-history-limit", action.DefaultReleaseHistoryLimit, "Limit the number of releases in release history. When limit is exceeded the oldest releases are deleted. Release resources are not affected", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := flag.Add(cmd, &cfg.NetworkParallelism, "network-parallelism", action.DefaultNetworkParallelism, "Limit of network-related tasks to run in parallel", flag.AddOptions{
+			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			Group:                performanceFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
