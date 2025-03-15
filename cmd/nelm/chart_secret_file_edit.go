@@ -69,8 +69,7 @@ func newChartSecretFileEditCommand(ctx context.Context, afterAllCommandsBuiltFun
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		// FIXME(ilya-lesikov): restrict values
-		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultSecretFileEditLogLevel), "Set log level", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultSecretFileEditLogLevel), "Set log level. "+allowedLogLevelsHelp(), flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

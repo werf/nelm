@@ -30,11 +30,12 @@ import (
 type LogColorMode string
 
 const (
-	LogColorModeUnspecified LogColorMode = ""
-	LogColorModeAuto        LogColorMode = "auto"
-	LogColorModeOff         LogColorMode = "off"
-	LogColorModeOn          LogColorMode = "on"
+	LogColorModeAuto LogColorMode = "auto"
+	LogColorModeOff  LogColorMode = "off"
+	LogColorModeOn   LogColorMode = "on"
 )
+
+var LogColorModes = []LogColorMode{LogColorModeAuto, LogColorModeOff, LogColorModeOn}
 
 type ReleaseStorageDriver string
 
@@ -145,7 +146,7 @@ func stdoutPiped() (bool, error) {
 }
 
 func applyLogColorModeDefault(logColorMode LogColorMode, outputToFile bool) LogColorMode {
-	if logColorMode == LogColorModeUnspecified || logColorMode == LogColorModeAuto {
+	if logColorMode == "" || logColorMode == LogColorModeAuto {
 		piped, err := stdoutPiped()
 		if err != nil {
 			return LogColorModeOff

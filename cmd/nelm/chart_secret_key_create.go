@@ -50,16 +50,14 @@ func newChartSecretKeyCreateCommand(ctx context.Context, afterAllCommandsBuiltFu
 	}
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
-		// FIXME(ilya-lesikov): restrict values
-		if err := flag.Add(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs. "+allowedLogColorModesHelp(), flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		// FIXME(ilya-lesikov): restrict values
-		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultSecretKeyCreateLogLevel), "Set log level", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultSecretKeyCreateLogLevel), "Set log level. "+allowedLogLevelsHelp(), flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
