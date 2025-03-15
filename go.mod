@@ -3,7 +3,9 @@ module github.com/werf/nelm
 go 1.22.7
 
 require (
+	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/Masterminds/sprig/v3 v3.2.3
+	github.com/alecthomas/chroma/v2 v2.15.0
 	github.com/aymanbagabas/go-udiff v0.2.0
 	github.com/chanced/caps v1.0.2
 	github.com/docker/cli v25.0.5+incompatible
@@ -11,11 +13,14 @@ require (
 	github.com/dominikbraun/graph v0.23.0
 	github.com/evanphx/json-patch v5.8.0+incompatible
 	github.com/fluxcd/flagger v1.36.1
+	github.com/goccy/go-yaml v1.15.23
+	github.com/google/uuid v1.6.0
 	github.com/gookit/color v1.5.4
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/jedib0t/go-pretty/v6 v6.5.5
 	github.com/jellydator/ttlcache/v3 v3.1.1
 	github.com/looplab/fsm v1.0.2
+	github.com/moby/term v0.5.0
 	github.com/pkg/errors v0.9.1
 	github.com/samber/lo v1.39.0
 	github.com/sourcegraph/conc v0.3.0
@@ -24,11 +29,12 @@ require (
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.5.0
 	github.com/werf/3p-helm v0.0.0-20250228131406-d579a5860ae3
-	github.com/werf/common-go v0.0.0-20250225170837-c0fe1ae7c6a2
+	github.com/werf/common-go v0.0.0-20250315175823-f08787c56be1
 	github.com/werf/kubedog v0.13.1-0.20250225170820-367e45be4347
 	github.com/werf/lockgate v0.1.1
 	github.com/werf/logboek v0.6.1
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e
+	golang.org/x/crypto v0.31.0
 	k8s.io/api v0.29.3
 	k8s.io/apiextensions-apiserver v0.29.0
 	k8s.io/apimachinery v0.29.3
@@ -46,7 +52,6 @@ require (
 	github.com/BurntSushi/toml v1.3.2 // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
-	github.com/Masterminds/semver/v3 v3.3.1 // indirect
 	github.com/Masterminds/squirrel v1.5.4 // indirect
 	github.com/Masterminds/vcs v1.13.3 // indirect
 	github.com/Microsoft/hcsshim v0.12.2 // indirect
@@ -64,6 +69,7 @@ require (
 	github.com/distribution/reference v0.5.0 // indirect
 	github.com/djherbis/buffer v1.2.0 // indirect
 	github.com/djherbis/nio/v3 v3.0.1 // indirect
+	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.8.1 // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
@@ -82,7 +88,6 @@ require (
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
-	github.com/goccy/go-yaml v1.15.23 // indirect
 	github.com/gofrs/flock v0.8.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
@@ -91,7 +96,6 @@ require (
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/gorilla/websocket v1.5.1 // indirect
 	github.com/gosuri/uitable v0.0.4 // indirect
@@ -117,7 +121,6 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/moby/locker v1.0.1 // indirect
 	github.com/moby/spdystream v0.2.0 // indirect
-	github.com/moby/term v0.5.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/monochromegane/go-gitignore v0.0.0-20200626010858-205db1a8cc00 // indirect
@@ -151,7 +154,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.24.0 // indirect
 	go.starlark.net v0.0.0-20231121155337-90ade8b19d09 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/mod v0.21.0 // indirect
 	golang.org/x/net v0.33.0 // indirect
