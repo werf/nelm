@@ -14,7 +14,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"github.com/werf/common-go/pkg/flag"
+	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/logboek"
 	"github.com/werf/logboek/pkg/types"
 	"github.com/werf/nelm/pkg/common"
@@ -247,17 +247,17 @@ func flagsUsage(fset *pflag.FlagSet) string {
 	return buf.String()
 }
 
-func groupFlags(fset *pflag.FlagSet) ([]flag.Group, map[flag.Group][]*pflag.Flag) {
-	groupsByPriority := []flag.Group{}
-	groupedFlags := map[flag.Group][]*pflag.Flag{}
+func groupFlags(fset *pflag.FlagSet) ([]cli.FlagGroup, map[cli.FlagGroup][]*pflag.Flag) {
+	groupsByPriority := []cli.FlagGroup{}
+	groupedFlags := map[cli.FlagGroup][]*pflag.Flag{}
 
 	fset.VisitAll(func(f *pflag.Flag) {
-		var group *flag.Group
+		var group *cli.FlagGroup
 
-		if groupID, found := f.Annotations[flag.GroupIDAnnotationName]; found {
-			groupTitle := f.Annotations[flag.GroupTitleAnnotationName]
-			groupPriority := f.Annotations[flag.GroupPriorityAnnotationName]
-			group = flag.NewGroup(groupID[0], groupTitle[0], lo.Must1(strconv.Atoi(groupPriority[0])))
+		if groupID, found := f.Annotations[cli.FlagGroupIDAnnotationName]; found {
+			groupTitle := f.Annotations[cli.FlagGroupTitleAnnotationName]
+			groupPriority := f.Annotations[cli.FlagGroupPriorityAnnotationName]
+			group = cli.NewFlagGroup(groupID[0], groupTitle[0], lo.Must1(strconv.Atoi(groupPriority[0])))
 		} else {
 			group = mainFlagGroup
 		}
