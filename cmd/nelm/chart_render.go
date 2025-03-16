@@ -32,14 +32,14 @@ type chartRenderConfig struct {
 	KubeSkipTLSVerify            bool
 	KubeTLSServerName            string
 	KubeToken                    string
-	Local                        bool
-	LocalKubeVersion             string
+	KubeVersion                  string
 	LogDebug                     bool
 	NetworkParallelism           int
 	OutputFilePath               string
 	RegistryCredentialsPath      string
 	ReleaseName                  string
 	ReleaseNamespace             string
+	Remote                       bool
 	SecretKey                    string
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
@@ -110,8 +110,8 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 				KubeSkipTLSVerify:            cfg.KubeSkipTLSVerify,
 				KubeTLSServerName:            cfg.KubeTLSServerName,
 				KubeToken:                    cfg.KubeToken,
-				Local:                        cfg.Local,
-				LocalKubeVersion:             cfg.LocalKubeVersion,
+				Local:                        !cfg.Remote,
+				LocalKubeVersion:             cfg.KubeVersion,
 				LogColorMode:                 cfg.LogColorMode(),
 				LogLevel:                     cfg.LogLevel(),
 				NetworkParallelism:           cfg.NetworkParallelism,
@@ -168,14 +168,14 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.DefaultSecretValuesDisable, "no-secret-values", false, "Ignore secret-values.yaml of the top-level chart", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.DefaultSecretValuesDisable, "no-default-secret-values", false, "Ignore secret-values.yaml of the top-level chart", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                secretFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.DefaultValuesDisable, "no-values", false, "Ignore values.yaml of the top-level chart", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.DefaultValuesDisable, "no-default-values", false, "Ignore values.yaml of the top-level chart", flag.AddOptions{
 			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
 			Group:                valuesFlagGroup,
 		}); err != nil {
@@ -285,13 +285,13 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.Local, "local-kube", false, "Run in the local mode without accessing Kubernetes", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.Remote, "remote", false, "Allow cluster access to retrieve Kubernetes version, capabilities and other dynamic data", flag.AddOptions{
 			Group: mainFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.LocalKubeVersion, "local-kube-version", action.DefaultLocalKubeVersion, "Kubernetes version stub for local mode", flag.AddOptions{
+		if err := flag.Add(cmd, &cfg.KubeVersion, "kube-version", action.DefaultLocalKubeVersion, "Kubernetes version stub for non-remote mode", flag.AddOptions{
 			Group: mainFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
@@ -350,7 +350,7 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 
 		// TODO(ilya-lesikov): restrict allowed values
 		if err := flag.Add(cmd, &cfg.releaseStorageDriver, "release-storage", "", "How releases should be stored", flag.AddOptions{
-			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			GetEnvVarRegexesFunc: flag.GetGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
@@ -391,8 +391,9 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 		}
 
 		if err := flag.Add(cmd, &cfg.TempDirPath, "temp-dir", "", "The directory for temporary files. By default, create a new directory in the default system directory for temporary files", flag.AddOptions{
-			Group: miscFlagGroup,
-			Type:  flag.TypeDir,
+			GetEnvVarRegexesFunc: flag.GetGlobalEnvVarRegexes,
+			Group:                miscFlagGroup,
+			Type:                 flag.TypeDir,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
