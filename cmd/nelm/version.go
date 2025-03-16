@@ -79,8 +79,9 @@ func newVersionCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobr
 		}
 
 		if err := flag.Add(cmd, &cfg.TempDirPath, "temp-dir", "", "The directory for temporary files. By default, create a new directory in the default system directory for temporary files", flag.AddOptions{
-			Group: miscFlagGroup,
-			Type:  flag.TypeDir,
+			GetEnvVarRegexesFunc: flag.GetGlobalEnvVarRegexes,
+			Group:                miscFlagGroup,
+			Type:                 flag.TypeDir,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

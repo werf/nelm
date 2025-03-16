@@ -205,7 +205,7 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 		}
 
 		if err := flag.Add(cmd, &cfg.ReleaseHistoryLimit, "release-history-limit", action.DefaultReleaseHistoryLimit, "Limit the number of releases in release history. When limit is exceeded the oldest releases are deleted. Release resources are not affected", flag.AddOptions{
-			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			GetEnvVarRegexesFunc: flag.GetGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
@@ -238,15 +238,16 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 
 		// TODO(ilya-lesikov): restrict allowed values
 		if err := flag.Add(cmd, &cfg.releaseStorageDriver, "release-storage", "", "How releases should be stored", flag.AddOptions{
-			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+			GetEnvVarRegexesFunc: flag.GetGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
 		if err := flag.Add(cmd, &cfg.TempDirPath, "temp-dir", "", "The directory for temporary files. By default, create a new directory in the default system directory for temporary files", flag.AddOptions{
-			Group: miscFlagGroup,
-			Type:  flag.TypeDir,
+			GetEnvVarRegexesFunc: flag.GetGlobalEnvVarRegexes,
+			Group:                miscFlagGroup,
+			Type:                 flag.TypeDir,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

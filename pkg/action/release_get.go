@@ -269,9 +269,9 @@ type ReleaseGetResultV1 struct {
 	ApiVersion string                   `json:"apiVersion"`
 	Release    *ReleaseGetResultRelease `json:"release"`
 	Chart      *ReleaseGetResultChart   `json:"chart"`
+	Notes      string                   `json:"notes"`
 	Hooks      []map[string]interface{} `json:"hooks"`
 	Resources  []map[string]interface{} `json:"resources"`
-	Notes      string                   `json:"notes"`
 }
 
 type ReleaseGetResultRelease struct {
