@@ -29,7 +29,7 @@ require (
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.5.0
 	github.com/werf/3p-helm v0.0.0-20250228131406-d579a5860ae3
-	github.com/werf/common-go v0.0.0-20250315175823-f08787c56be1
+	github.com/werf/common-go v0.0.0-20250316145328-51d91a35927e
 	github.com/werf/kubedog v0.13.1-0.20250225170820-367e45be4347
 	github.com/werf/lockgate v0.1.1
 	github.com/werf/logboek v0.6.1

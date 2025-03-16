@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
-	"github.com/werf/common-go/pkg/flag"
+	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/logboek"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
@@ -21,7 +21,7 @@ import (
 func main() {
 	ctx := logboek.NewContext(context.Background(), logboek.DefaultLogger())
 
-	flag.EnvVarsPrefix = caps.ToScreamingSnake(common.Brand) + "_"
+	cli.FlagEnvVarsPrefix = caps.ToScreamingSnake(common.Brand) + "_"
 	afterAllCommandsBuiltFuncs := make(map[*cobra.Command]func(cmd *cobra.Command) error)
 
 	// Needed for embedding original Helm 3 commands
@@ -39,7 +39,7 @@ func main() {
 		}
 	}
 
-	if unsupportedEnvVars := flag.FindUndefinedEnvVarsInEnviron(); len(unsupportedEnvVars) > 0 {
+	if unsupportedEnvVars := cli.FindUndefinedFlagEnvVarsInEnviron(); len(unsupportedEnvVars) > 0 {
 		abort(ctx, fmt.Errorf("unsupported environment variable(s): %s", strings.Join(unsupportedEnvVars, ",")), 1)
 	}
 

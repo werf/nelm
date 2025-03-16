@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/werf/common-go/pkg/flag"
+	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
 	"github.com/werf/nelm/pkg/log"
 )
@@ -64,46 +64,46 @@ func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFu
 	}
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
-		if err := flag.Add(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs. "+allowedLogColorModesHelp(), flag.AddOptions{
-			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+		if err := cli.AddFlag(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.logLevel, "log-level", string(action.DefaultSecretKeyRotateLogLevel), "Set log level. "+allowedLogLevelsHelp(), flag.AddOptions{
-			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+		if err := cli.AddFlag(cmd, &cfg.logLevel, "log-level", string(action.DefaultSecretKeyRotateLogLevel), "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.NewSecretKey, "new-secret-key", "", "New secret key", flag.AddOptions{
+		if err := cli.AddFlag(cmd, &cfg.NewSecretKey, "new-secret-key", "", "New secret key", cli.AddFlagOptions{
 			Group:    mainFlagGroup,
 			Required: true,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.OldSecretKey, "old-secret-key", "", "Old secret key", flag.AddOptions{
+		if err := cli.AddFlag(cmd, &cfg.OldSecretKey, "old-secret-key", "", "Old secret key", cli.AddFlagOptions{
 			Group:    mainFlagGroup,
 			Required: true,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.SecretValuesPaths, "secret-values", []string{}, "Secret values files paths", flag.AddOptions{
-			GetEnvVarRegexesFunc: flag.GetGlobalAndLocalEnvVarRegexes,
+		if err := cli.AddFlag(cmd, &cfg.SecretValuesPaths, "secret-values", []string{}, "Secret values files paths", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
-			Type:                 flag.TypeFile,
+			Type:                 cli.FlagTypeFile,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := flag.Add(cmd, &cfg.TempDirPath, "temp-dir", "", "The directory for temporary files. By default, create a new directory in the default system directory for temporary files", flag.AddOptions{
-			GetEnvVarRegexesFunc: flag.GetGlobalEnvVarRegexes,
+		if err := cli.AddFlag(cmd, &cfg.TempDirPath, "temp-dir", "", "The directory for temporary files. By default, create a new directory in the default system directory for temporary files", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,
-			Type:                 flag.TypeDir,
+			Type:                 cli.FlagTypeDir,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

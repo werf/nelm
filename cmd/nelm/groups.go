@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/werf/common-go/pkg/flag"
+	"github.com/werf/common-go/pkg/cli"
 )
 
 var releaseCmdGroup = &cobra.Group{
@@ -22,13 +22,13 @@ var repoCmdGroup = &cobra.Group{
 }
 
 var (
-	mainFlagGroup           = flag.NewGroup("main", "Options:", 100)
-	valuesFlagGroup         = flag.NewGroup("values", "Values options:", 90)
-	secretFlagGroup         = flag.NewGroup("secret", "Secret options:", 80)
-	patchFlagGroup          = flag.NewGroup("patch", "Patch options:", 70)
-	progressFlagGroup       = flag.NewGroup("progress", "Progress options:", 65)
-	chartRepoFlagGroup      = flag.NewGroup("chart-repo", "Chart repository options:", 60)
-	kubeConnectionFlagGroup = flag.NewGroup("kube-connection", "Kubernetes connection options:", 50)
-	performanceFlagGroup    = flag.NewGroup("performance", "Performance options:", 40)
-	miscFlagGroup           = flag.NewGroup("misc", "Miscellaneous options:", 0)
+	mainFlagGroup           = cli.NewFlagGroup("main", "Options:", 100)
+	valuesFlagGroup         = cli.NewFlagGroup("values", "Values options:", 90)
+	secretFlagGroup         = cli.NewFlagGroup("secret", "Secret options:", 80)
+	patchFlagGroup          = cli.NewFlagGroup("patch", "Patch options:", 70)
+	progressFlagGroup       = cli.NewFlagGroup("progress", "Progress options:", 65)
+	chartRepoFlagGroup      = cli.NewFlagGroup("chart-repo", "Chart repository options:", 60)
+	kubeConnectionFlagGroup = cli.NewFlagGroup("kube-connection", "Kubernetes connection options:", 50)
+	performanceFlagGroup    = cli.NewFlagGroup("performance", "Performance options:", 40)
+	miscFlagGroup           = cli.NewFlagGroup("misc", "Miscellaneous options:", 0)
 )
