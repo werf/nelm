@@ -61,14 +61,17 @@ func (c *releaseRollbackConfig) LogLevel() log.Level {
 func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cfg := &releaseRollbackConfig{}
 
-	cmd := &cobra.Command{
-		Use:                   "rollback [options...] -n namespace -r release [revision]",
-		Short:                 "Rollback to a previously deployed release.",
-		Long:                  "Rollback to a previously deployed release. Choose the last successful revision (except the very last revision), by default.",
-		Args:                  cobra.MaximumNArgs(1),
-		ValidArgsFunction:     cobra.NoFileCompletions,
-		DisableFlagsInUseLine: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := cli.NewSubCommand(
+		ctx,
+		"rollback [options...] -n namespace -r release [revision]",
+		"Rollback to a previously deployed release.",
+		"Rollback to a previously deployed release. Choose the last successful revision (except the very last revision), by default.",
+		70,
+		releaseCmdGroup,
+		cli.SubCommandOptions{
+			Args: cobra.MaximumNArgs(1),
+		},
+		func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				var err error
 				cfg.Revision, err = strconv.Atoi(args[0])
@@ -111,7 +114,7 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 
 			return nil
 		},
-	}
+	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
 		if err := cli.AddFlag(cmd, &cfg.RollbackGraphPath, "save-graph-to", "", "Save the Graphviz rollback graph to a file", cli.AddFlagOptions{

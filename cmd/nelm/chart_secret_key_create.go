@@ -29,14 +29,15 @@ func (c *chartSecretKeyCreateOptions) LogLevel() log.Level {
 func newChartSecretKeyCreateCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cfg := &chartSecretKeyCreateOptions{}
 
-	cmd := &cobra.Command{
-		Use:                   "create [options...]",
-		Short:                 "Create a new chart secret key.",
-		Long:                  "Create a new chart secret key.",
-		Args:                  cobra.NoArgs,
-		ValidArgsFunction:     cobra.NoFileCompletions,
-		DisableFlagsInUseLine: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := cli.NewSubCommand(
+		ctx,
+		"create [options...]",
+		"Create a new chart secret key.",
+		"Create a new chart secret key.",
+		80,
+		secretCmdGroup,
+		cli.SubCommandOptions{},
+		func(cmd *cobra.Command, args []string) error {
 			if _, err := action.SecretKeyCreate(ctx, action.SecretKeyCreateOptions{
 				LogColorMode: cfg.LogColorMode(),
 				LogLevel:     cfg.LogLevel(),
@@ -47,7 +48,7 @@ func newChartSecretKeyCreateCommand(ctx context.Context, afterAllCommandsBuiltFu
 
 			return nil
 		},
-	}
+	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
 		if err := cli.AddFlag(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{

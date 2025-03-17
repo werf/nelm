@@ -4,15 +4,19 @@ import (
 	"context"
 
 	"github.com/spf13/cobra"
+
+	"github.com/werf/common-go/pkg/cli"
 )
 
 func newChartCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:     "chart",
-		Short:   "Manage charts.",
-		Long:    "Manage charts.",
-		GroupID: chartCmdGroup.ID,
-	}
+	cmd := cli.NewGroupCommand(
+		ctx,
+		"chart",
+		"Manage charts.",
+		"Manage charts.",
+		chartCmdGroup,
+		cli.GroupCommandOptions{},
+	)
 
 	cmd.AddCommand(newChartRenderCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newChartDependencyCommand(ctx, afterAllCommandsBuiltFuncs))

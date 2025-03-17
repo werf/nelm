@@ -35,14 +35,15 @@ func (c *versionConfig) OutputFormat() common.OutputFormat {
 func newVersionCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cfg := &versionConfig{}
 
-	cmd := &cobra.Command{
-		Use:                   "version [options...]",
-		Short:                 "Show version.",
-		Long:                  "Show version.",
-		Args:                  cobra.NoArgs,
-		ValidArgsFunction:     cobra.NoFileCompletions,
-		DisableFlagsInUseLine: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := cli.NewSubCommand(
+		ctx,
+		"version [options...]",
+		"Show version.",
+		"Show version.",
+		50,
+		miscCmdGroup,
+		cli.SubCommandOptions{},
+		func(cmd *cobra.Command, args []string) error {
 			if _, err := action.Version(ctx, action.VersionOptions{
 				LogColorMode: cfg.LogColorMode(),
 				LogLevel:     cfg.LogLevel(),
@@ -54,7 +55,7 @@ func newVersionCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobr
 
 			return nil
 		},
-	}
+	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
 		if err := cli.AddFlag(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{

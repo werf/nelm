@@ -80,16 +80,20 @@ func (c *releaseInstallConfig) LogLevel() log.Level {
 func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cfg := &releaseInstallConfig{}
 
-	cmd := &cobra.Command{
-		Use:   "install [options...] -n namespace -r release [chart-dir]",
-		Short: "Deploy a chart to Kubernetes.",
-		Long:  "Deploy a chart to Kubernetes.",
-		Args:  cobra.MaximumNArgs(1),
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			return nil, cobra.ShellCompDirectiveFilterDirs
+	cmd := cli.NewSubCommand(
+		ctx,
+		"install [options...] -n namespace -r release [chart-dir]",
+		"Deploy a chart to Kubernetes.",
+		"Deploy a chart to Kubernetes.",
+		80,
+		releaseCmdGroup,
+		cli.SubCommandOptions{
+			Args: cobra.MaximumNArgs(1),
+			ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+				return nil, cobra.ShellCompDirectiveFilterDirs
+			},
 		},
-		DisableFlagsInUseLine: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]
 			}
@@ -148,7 +152,7 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 
 			return nil
 		},
-	}
+	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
 		if err := cli.AddFlag(cmd, &cfg.AutoRollback, "auto-rollback", false, "Automatically rollback the release on failure", cli.AddFlagOptions{

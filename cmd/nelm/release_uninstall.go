@@ -52,14 +52,15 @@ func (c *releaseUninstallConfig) LogLevel() log.Level {
 func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cfg := &releaseUninstallConfig{}
 
-	cmd := &cobra.Command{
-		Use:                   "uninstall [options...] -n namespace -r release",
-		Short:                 "Uninstall a Helm Release from Kubernetes.",
-		Long:                  "Uninstall a Helm Release from Kubernetes.",
-		Args:                  cobra.NoArgs,
-		ValidArgsFunction:     cobra.NoFileCompletions,
-		DisableFlagsInUseLine: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := cli.NewSubCommand(
+		ctx,
+		"uninstall [options...] -n namespace -r release",
+		"Uninstall a Helm Release from Kubernetes.",
+		"Uninstall a Helm Release from Kubernetes.",
+		50,
+		releaseCmdGroup,
+		cli.SubCommandOptions{},
+		func(cmd *cobra.Command, args []string) error {
 			if err := action.ReleaseUninstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, action.ReleaseUninstallOptions{
 				DeleteHooks:                !cfg.NoDeleteHooks,
 				DeleteReleaseNamespace:     cfg.DeleteReleaseNamespace,
@@ -86,7 +87,7 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 
 			return nil
 		},
-	}
+	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
 		if err := cli.AddFlag(cmd, &cfg.NoDeleteHooks, "no-delete-hooks", false, "Do not remove release hooks", cli.AddFlagOptions{

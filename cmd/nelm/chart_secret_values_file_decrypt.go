@@ -36,16 +36,20 @@ func (c *chartSecretValuesFileDecryptOptions) LogLevel() log.Level {
 func newChartSecretValuesFileDecryptCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cfg := &chartSecretValuesFileDecryptOptions{}
 
-	cmd := &cobra.Command{
-		Use:   "decrypt [options...] --secret-key secret-key values-file",
-		Short: "Decrypt values file and print result to stdout.",
-		Long:  "Decrypt values file and print result to stdout.",
-		Args:  cobra.ExactArgs(1),
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			return nil, cobra.ShellCompDirectiveDefault
+	cmd := cli.NewSubCommand(
+		ctx,
+		"decrypt [options...] --secret-key secret-key values-file",
+		"Decrypt values file and print result to stdout.",
+		"Decrypt values file and print result to stdout.",
+		40,
+		secretCmdGroup,
+		cli.SubCommandOptions{
+			Args: cobra.ExactArgs(1),
+			ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+				return nil, cobra.ShellCompDirectiveDefault
+			},
 		},
-		DisableFlagsInUseLine: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		func(cmd *cobra.Command, args []string) error {
 			cfg.ValuesFile = args[0]
 
 			if err := action.SecretValuesFileDecrypt(ctx, cfg.ValuesFile, action.SecretValuesFileDecryptOptions{
@@ -61,7 +65,7 @@ func newChartSecretValuesFileDecryptCommand(ctx context.Context, afterAllCommand
 
 			return nil
 		},
-	}
+	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
 		if err := cli.AddFlag(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{

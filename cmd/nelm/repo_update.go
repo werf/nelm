@@ -10,6 +10,7 @@ import (
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
+	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -26,6 +27,7 @@ func newRepoUpdateCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 	cmd.Short = "Update info about available charts for all chart repositories."
 	cmd.Long = ""
 	cmd.Aliases = []string{}
+	cli.SetSubCommandAnnotations(cmd, 40, repoCmdGroup)
 
 	originalRunE := cmd.RunE
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {

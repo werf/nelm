@@ -56,14 +56,17 @@ func (c *releaseGetConfig) OutputFormat() common.OutputFormat {
 func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cfg := &releaseGetConfig{}
 
-	cmd := &cobra.Command{
-		Use:                   "get [options...] -n namespace -r release [revision]",
-		Short:                 "Get information about a deployed release.",
-		Long:                  "Get information about a deployed release.",
-		Args:                  cobra.MaximumNArgs(1),
-		ValidArgsFunction:     cobra.NoFileCompletions,
-		DisableFlagsInUseLine: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := cli.NewSubCommand(
+		ctx,
+		"get [options...] -n namespace -r release [revision]",
+		"Get information about a deployed release.",
+		"Get information about a deployed release.",
+		20,
+		releaseCmdGroup,
+		cli.SubCommandOptions{
+			Args: cobra.MaximumNArgs(1),
+		},
+		func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				var err error
 				cfg.Revision, err = strconv.Atoi(args[0])
@@ -96,7 +99,7 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 
 			return nil
 		},
-	}
+	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
 		if err := cli.AddFlag(cmd, &cfg.KubeAPIServerName, "kube-api-server", "", "Kubernetes API server address", cli.AddFlagOptions{
