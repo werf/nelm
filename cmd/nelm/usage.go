@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"slices"
 	"sort"
@@ -53,43 +54,8 @@ Examples:
 {{- end}}
 
 {{- if .HasAvailableSubCommands}}
-  {{- if eq (len .Groups) 0}}
-
-Commands:
-    {{- range cmdsShorts (list .) }}
-  {{.}}
-    {{- end }}
-  {{- else}}
-    {{- range $group := .Groups}}
-
-{{.Title}}
-      {{- $groupedCmds := list }}
-      {{- range $cmd := $.Commands}}
-        {{- if (and (eq $cmd.GroupID $group.ID) $cmd.IsAvailableCommand)}}
-          {{- $groupedCmds = append $groupedCmds $cmd}}
-        {{- end}}
-      {{- end}}
-
-      {{- range cmdsShorts $groupedCmds}}
-  {{.}}
-      {{- end }}
-    {{- end}}
-
-    {{- if not .AllChildCommandsHaveGroup}}
-      {{- $ungroupedCmds := list }}
-      {{- range $cmd := .Commands}}
-        {{- if (and (eq $cmd.GroupID "") $cmd.IsAvailableCommand)}}
-          {{- $ungroupedCmds = append $ungroupedCmds $cmd}}
-        {{- end}}
-      {{- end}}
-
-Additional commands:
-      {{- range cmdsShorts $ungroupedCmds }}
-  {{.}}
-      {{- end }}
-    {{- end}}
-  {{- end}}
-{{- end}}
+{{ commandsUsage . | trimTrailingWhitespaces }}
+{{- end }}
 
 {{- if .HasAvailableLocalFlags}}
 {{ flagsUsage .LocalFlags | trimTrailingWhitespaces }}
@@ -97,15 +63,12 @@ Additional commands:
 `
 
 var templateFuncs = template.FuncMap{
-	"gt":         cobra.Gt,
-	"eq":         cobra.Eq,
-	"cmdsShorts": cmdsShorts,
-	"append":     common.SprigFuncs["append"],
-	"list":       common.SprigFuncs["list"],
+	"gt": cobra.Gt,
 	"trimTrailingWhitespaces": func(s string) string {
 		return strings.TrimRightFunc(s, unicode.IsSpace)
 	},
-	"flagsUsage": flagsUsage,
+	"flagsUsage":    flagsUsage,
+	"commandsUsage": commandsUsage,
 }
 
 func usageFunc(c *cobra.Command) error {
@@ -123,65 +86,6 @@ func usageFunc(c *cobra.Command) error {
 	}
 
 	return nil
-}
-
-func cmdsShorts(commands []any) []string {
-	var cmds []*cobra.Command
-	for _, cmd := range commands {
-		c, ok := cmd.(*cobra.Command)
-		if !ok {
-			panic(fmt.Sprintf("unexpected type %T", cmd))
-		}
-
-		cmds = append(cmds, c)
-	}
-
-	var infos []*cmdInfo
-	for _, cmd := range cmds {
-		infos = append(infos, cmdInfosRecurse(cmd)...)
-	}
-
-	padding := longestCommandPathLength(infos) + 3
-
-	var result []string
-	for _, info := range infos {
-		result = append(result, fmt.Sprintf("%s%s", fmt.Sprintf("%-*s", padding, info.commandPath), info.short))
-	}
-
-	return result
-}
-
-func cmdInfosRecurse(cmd *cobra.Command) []*cmdInfo {
-	if !cmd.HasAvailableSubCommands() {
-		return []*cmdInfo{
-			&cmdInfo{
-				commandPath: strings.TrimPrefix(cmd.CommandPath(), strings.ToLower(common.Brand+" ")),
-				short:       cmd.Short,
-			},
-		}
-	}
-
-	var infos []*cmdInfo
-	for _, c := range cmd.Commands() {
-		if !c.IsAvailableCommand() {
-			continue
-		}
-
-		infos = append(infos, cmdInfosRecurse(c)...)
-	}
-
-	return infos
-}
-
-func longestCommandPathLength(infos []*cmdInfo) int {
-	var longest int
-	for _, info := range infos {
-		if len(info.commandPath) > longest {
-			longest = len(info.commandPath)
-		}
-	}
-
-	return longest
 }
 
 func flagsUsage(fset *pflag.FlagSet) string {
@@ -281,7 +185,101 @@ func groupFlags(fset *pflag.FlagSet) ([]cli.FlagGroup, map[cli.FlagGroup][]*pfla
 	return groupsByPriority, groupedFlags
 }
 
+func commandsUsage(command *cobra.Command) string {
+	if !command.HasAvailableSubCommands() {
+		return ""
+	}
+
+	subCommands := getSubCommandsRecurse(command)
+	groupsByPriority, groupedSubCommandInfos, longestCmdPathLen := groupCmdInfos(subCommands)
+	padding := longestCmdPathLen + 3
+	cmdIndent := 2
+
+	result := "\n"
+	for _, group := range groupsByPriority {
+		result += fmt.Sprintf("%s\n", group.Title)
+		for _, cmd := range groupedSubCommandInfos[group] {
+			result += fmt.Sprintf("%s%s%s\n", strings.Repeat(" ", cmdIndent), fmt.Sprintf("%-*s", padding, cmd.commandPath), cmd.short)
+		}
+		result += "\n"
+	}
+
+	return result
+}
+
+func getSubCommandsRecurse(cmd *cobra.Command) []*cobra.Command {
+	var allSubCommands []*cobra.Command
+	for _, c := range cmd.Commands() {
+		if !c.IsAvailableCommand() {
+			continue
+		}
+
+		if c.HasAvailableSubCommands() {
+			allSubCommands = append(allSubCommands, getSubCommandsRecurse(c)...)
+		} else {
+			allSubCommands = append(allSubCommands, c)
+		}
+	}
+
+	return allSubCommands
+}
+
+func groupCmdInfos(cmds []*cobra.Command) ([]cli.CommandGroup, map[cli.CommandGroup][]*cmdInfo, int) {
+	var groupsByPriority []cli.CommandGroup
+	var longestCommandPath int
+	groupedSubCommandInfos := map[cli.CommandGroup][]*cmdInfo{}
+
+	for _, subCommand := range cmds {
+		var group *cli.CommandGroup
+
+		if groupID, found := subCommand.Annotations[cli.CommandGroupIDAnnotationName]; found {
+			group = cli.NewCommandGroup(
+				groupID,
+				subCommand.Annotations[cli.CommandGroupTitleAnnotationName],
+				lo.Must(strconv.Atoi(subCommand.Annotations[cli.CommandGroupPriorityAnnotationName])),
+			)
+		} else {
+			group = miscCmdGroup
+		}
+
+		commandPath := strings.TrimPrefix(subCommand.CommandPath(), strings.ToLower(common.Brand+" "))
+
+		if len(commandPath) > longestCommandPath {
+			longestCommandPath = len(commandPath)
+		}
+
+		var commandPriority int
+		if priority, found := subCommand.Annotations[cli.CommandPriorityAnnotationName]; found {
+			commandPriority = lo.Must(strconv.Atoi(priority))
+		} else {
+			commandPriority = 10
+		}
+
+		groupsByPriority = append(groupsByPriority, *group)
+		groupedSubCommandInfos[*group] = append(groupedSubCommandInfos[*group], &cmdInfo{
+			commandPath: commandPath,
+			priority:    commandPriority,
+			short:       subCommand.Short,
+		})
+	}
+
+	sort.SliceStable(groupsByPriority, func(i, j int) bool {
+		return groupsByPriority[i].Priority > groupsByPriority[j].Priority
+	})
+
+	groupsByPriority = lo.Uniq(groupsByPriority)
+
+	for group := range groupedSubCommandInfos {
+		slices.SortStableFunc(groupedSubCommandInfos[group], func(aInfo, bInfo *cmdInfo) int {
+			return cmp.Compare(bInfo.priority, aInfo.priority)
+		})
+	}
+
+	return groupsByPriority, groupedSubCommandInfos, longestCommandPath
+}
+
 type cmdInfo struct {
 	commandPath string
+	priority    int
 	short       string
 }
