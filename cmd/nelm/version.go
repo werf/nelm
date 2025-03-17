@@ -40,7 +40,7 @@ func newVersionCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobr
 		"version [options...]",
 		"Show version.",
 		"Show version.",
-		50,
+		0,
 		miscCmdGroup,
 		cli.SubCommandOptions{},
 		func(cmd *cobra.Command, args []string) error {
