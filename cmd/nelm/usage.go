@@ -259,7 +259,7 @@ func groupFlags(fset *pflag.FlagSet) ([]cli.FlagGroup, map[cli.FlagGroup][]*pfla
 			groupPriority := f.Annotations[cli.FlagGroupPriorityAnnotationName]
 			group = cli.NewFlagGroup(groupID[0], groupTitle[0], lo.Must1(strconv.Atoi(groupPriority[0])))
 		} else {
-			group = mainFlagGroup
+			group = miscFlagGroup
 		}
 
 		groupsByPriority = append(groupsByPriority, *group)

@@ -75,16 +75,20 @@ func (c *chartRenderConfig) LogLevel() log.Level {
 func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cfg := &chartRenderConfig{}
 
-	cmd := &cobra.Command{
-		Use:   "render [options...] [chart-dir]",
-		Short: "Render a chart.",
-		Long:  "Render a chart.",
-		Args:  cobra.MaximumNArgs(1),
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			return nil, cobra.ShellCompDirectiveFilterDirs
+	cmd := cli.NewSubCommand(
+		ctx,
+		"render [options...] [chart-dir]",
+		"Render a chart.",
+		"Render a chart.",
+		60,
+		chartCmdGroup,
+		cli.SubCommandOptions{
+			Args: cobra.MaximumNArgs(1),
+			ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+				return nil, cobra.ShellCompDirectiveFilterDirs
+			},
 		},
-		DisableFlagsInUseLine: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]
 			}
@@ -137,7 +141,7 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 
 			return nil
 		},
-	}
+	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
 		if err := cli.AddFlag(cmd, &cfg.ChartAppVersion, "app-version", "", "Set appVersion of Chart.yaml", cli.AddFlagOptions{

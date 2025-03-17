@@ -33,16 +33,20 @@ func (c *chartSecretKeyRotateOptions) LogLevel() log.Level {
 func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cfg := &chartSecretKeyRotateOptions{}
 
-	cmd := &cobra.Command{
-		Use:   "rotate [options...] --old-secret-key secret-key --new-secret-key secret-key [chart-dir]",
-		Short: "Reencrypt secret files with a new secret key.",
-		Long:  "Decrypt with an old secret key, then encrypt with a new secret key chart files secret-values.yaml and secret/*.",
-		Args:  cobra.MaximumNArgs(1),
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			return nil, cobra.ShellCompDirectiveFilterDirs
+	cmd := cli.NewSubCommand(
+		ctx,
+		"rotate [options...] --old-secret-key secret-key --new-secret-key secret-key [chart-dir]",
+		"Reencrypt secret files with a new secret key.",
+		"Decrypt with an old secret key, then encrypt with a new secret key chart files secret-values.yaml and secret/*.",
+		70,
+		secretCmdGroup,
+		cli.SubCommandOptions{
+			Args: cobra.MaximumNArgs(1),
+			ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+				return nil, cobra.ShellCompDirectiveFilterDirs
+			},
 		},
-		DisableFlagsInUseLine: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]
 			}
@@ -61,7 +65,7 @@ func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFu
 
 			return nil
 		},
-	}
+	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
 		if err := cli.AddFlag(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{

@@ -10,6 +10,7 @@ import (
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
+	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -22,6 +23,7 @@ func newChartUploadCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 	cmd.Use = "upload [chart] [remote]"
 	cmd.Short = "Upload a chart to a repository."
 	cmd.Aliases = []string{}
+	cli.SetSubCommandAnnotations(cmd, 40, chartCmdGroup)
 
 	originalRunE := cmd.RunE
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {

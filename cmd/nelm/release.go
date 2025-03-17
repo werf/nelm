@@ -4,15 +4,19 @@ import (
 	"context"
 
 	"github.com/spf13/cobra"
+
+	"github.com/werf/common-go/pkg/cli"
 )
 
 func newReleaseCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:     "release",
-		Short:   "Manage Helm releases.",
-		Long:    "Manage Helm releases.",
-		GroupID: releaseCmdGroup.ID,
-	}
+	cmd := cli.NewGroupCommand(
+		ctx,
+		"release",
+		"Manage Helm releases.",
+		"Manage Helm releases.",
+		releaseCmdGroup,
+		cli.GroupCommandOptions{},
+	)
 
 	cmd.AddCommand(newReleaseInstallCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newReleaseRollbackCommand(ctx, afterAllCommandsBuiltFuncs))

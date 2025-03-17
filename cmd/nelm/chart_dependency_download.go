@@ -10,6 +10,7 @@ import (
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
+	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -27,6 +28,7 @@ func newChartDependencyDownloadCommand(ctx context.Context, afterAllCommandsBuil
 	cmd.Short = "Download chart dependencies from Chart.lock."
 	cmd.Long = "Download chart dependencies from Chart.lock."
 	cmd.Aliases = []string{}
+	cli.SetSubCommandAnnotations(cmd, 50, dependencyCmdGroup)
 
 	originalRunE := cmd.RunE
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {

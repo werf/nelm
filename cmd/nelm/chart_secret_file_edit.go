@@ -36,16 +36,20 @@ func (c *chartSecretFileEditOptions) LogLevel() log.Level {
 func newChartSecretFileEditCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cfg := &chartSecretFileEditOptions{}
 
-	cmd := &cobra.Command{
-		Use:   "edit [options...] --secret-key secret-key file",
-		Short: "Interactively edit encrypted file.",
-		Long:  "Interactively edit encrypted file.",
-		Args:  cobra.ExactArgs(1),
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			return nil, cobra.ShellCompDirectiveDefault
+	cmd := cli.NewSubCommand(
+		ctx,
+		"edit [options...] --secret-key secret-key file",
+		"Interactively edit encrypted file.",
+		"Interactively edit encrypted file.",
+		30,
+		secretCmdGroup,
+		cli.SubCommandOptions{
+			Args: cobra.ExactArgs(1),
+			ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+				return nil, cobra.ShellCompDirectiveDefault
+			},
 		},
-		DisableFlagsInUseLine: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		func(cmd *cobra.Command, args []string) error {
 			cfg.File = args[0]
 
 			if err := action.SecretFileEdit(ctx, cfg.File, action.SecretFileEditOptions{
@@ -59,7 +63,7 @@ func newChartSecretFileEditCommand(ctx context.Context, afterAllCommandsBuiltFun
 
 			return nil
 		},
-	}
+	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
 		if err := cli.AddFlag(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs", cli.AddFlagOptions{

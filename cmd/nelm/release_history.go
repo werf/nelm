@@ -10,6 +10,7 @@ import (
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
+	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -21,6 +22,7 @@ func newReleaseHistoryCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 	cmd.LocalFlags().AddFlagSet(cmd.InheritedFlags())
 	cmd.Short = "Show release history."
 	cmd.Aliases = []string{}
+	cli.SetSubCommandAnnotations(cmd, 30, releaseCmdGroup)
 
 	originalRunE := cmd.RunE
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {

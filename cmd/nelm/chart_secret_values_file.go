@@ -4,14 +4,19 @@ import (
 	"context"
 
 	"github.com/spf13/cobra"
+
+	"github.com/werf/common-go/pkg/cli"
 )
 
 func newChartSecretValuesFileCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "values-file",
-		Short: "Manage chart secret values files.",
-		Long:  "Manage chart secret values files.",
-	}
+	cmd := cli.NewGroupCommand(
+		ctx,
+		"values-file",
+		"Manage chart secret values files.",
+		"Manage chart secret values files.",
+		secretCmdGroup,
+		cli.GroupCommandOptions{},
+	)
 
 	cmd.AddCommand(newChartSecretValuesFileEncryptCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newChartSecretValuesFileDecryptCommand(ctx, afterAllCommandsBuiltFuncs))

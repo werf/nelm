@@ -66,16 +66,20 @@ func (c *releasePlanInstallConfig) LogLevel() log.Level {
 func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cfg := &releasePlanInstallConfig{}
 
-	cmd := &cobra.Command{
-		Use:   "install [options...] -n namespace -r release [chart-dir]",
-		Short: "Plan a release install to Kubernetes.",
-		Long:  "Plan a release install to Kubernetes.",
-		Args:  cobra.MaximumNArgs(1),
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			return nil, cobra.ShellCompDirectiveFilterDirs
+	cmd := cli.NewSubCommand(
+		ctx,
+		"install [options...] -n namespace -r release [chart-dir]",
+		"Plan a release install to Kubernetes.",
+		"Plan a release install to Kubernetes.",
+		60,
+		releaseCmdGroup,
+		cli.SubCommandOptions{
+			Args: cobra.MaximumNArgs(1),
+			ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+				return nil, cobra.ShellCompDirectiveFilterDirs
+			},
 		},
-		DisableFlagsInUseLine: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]
 			}
@@ -121,7 +125,7 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 
 			return nil
 		},
-	}
+	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
 		if err := cli.AddFlag(cmd, &cfg.ChartAppVersion, "app-version", "", "Set appVersion of Chart.yaml", cli.AddFlagOptions{
