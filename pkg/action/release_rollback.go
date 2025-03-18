@@ -138,7 +138,7 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 		releaseNamespace,
 		string(opts.ReleaseStorageDriver),
 		func(format string, a ...interface{}) {
-			log.Default.Info(ctx, format, a...)
+			log.Default.Debug(ctx, format, a...)
 		},
 	); err != nil {
 		return fmt.Errorf("helm action config init: %w", err)
