@@ -1,0 +1,352 @@
+version: "3"
+
+silent: true
+
+env:
+  GO111MODULE: "on"
+  CGO_ENABLED: "0"
+
+vars:
+  brand: "Nelm"
+  brandSlug: "nelm"
+  version: "0.0.0"
+  os: "{{OS}}"
+  arch: '{{ternary "arm64" ARCH (eq ARCH "arm")}}'
+  package: "github.com/werf/nelm/cmd/nelm"
+
+  tags: ""
+  ldFlags: "-s -w -X github.com/werf/nelm/pkg/common.Brand={{.brand}} -X github.com/werf/nelm/pkg/common.Version={{.version}}"
+
+tasks:
+  _build-and-lint:
+    deps:
+      - build
+      - lint
+
+  default:
+    cmds:
+      - task: format
+      - task: _build-and-lint
+
+  _build:dev: &build_dev
+    cmds:
+      - go build {{if eq .raceDetectorEnabled "true" }}-race{{end}} -o "{{.outputDir | default (printf "./build/%s-%s" .targetOS .targetArch)}}/{{.brandSlug}}{{if (eq .targetOS "windows")}}.exe{{end}}"
+        -ldflags="{{.cldFlags}}" -tags="{{.ctags}}" {{.extraGoBuildArgs}} {{.CLI_ARGS}} {{.pkg | default .package}}
+    env:
+      GOOS: "{{.targetOS}}"
+      GOARCH: "{{.targetArch}}"
+      CC: "{{.cc}}"
+    vars:
+      raceDetectorEnabled: '{{.raceDetectorEnabled | default "false"}}'
+
+  _build:dist:
+    <<: *build_dev
+    cmds:
+      - go build -o "{{.outputDir | default (printf "./dist/%s/%s-%s/bin" .version .targetOS .targetArch)}}/{{.brandSlug}}{{if (eq .targetOS "windows")}}.exe{{end}}"
+        -ldflags="{{.cldFlags}}" -tags="{{.ctags}}" {{.extraGoBuildArgs}} {{.CLI_ARGS}} {{.pkg | default .package}}
+
+  build:
+    desc: "Build main dev binary."
+    run: once
+    cmds:
+      - task: build:dev:{{.os}}:{{.arch}}
+        vars:
+          outputDir: '{{.outputDir | default "./bin"}}'
+          extraGoBuildArgs: "{{.extraGoBuildArgs}}"
+          raceDetectorEnabled: '{{.raceDetectorEnabled | default "false"}}'
+
+  build:dev:all:
+    desc: "Build all main dev binaries in parallel."
+    deps:
+      - build:dev:linux:amd64
+      - build:dev:linux:arm64
+      - build:dev:darwin:amd64
+      - build:dev:darwin:arm64
+      - build:dev:windows:amd64
+
+  build:dist:all:
+    desc: "Build all main release binaries in parallel."
+    deps:
+      - build:dist:linux:amd64
+      - build:dist:linux:arm64
+      - build:dist:darwin:amd64
+      - build:dist:darwin:arm64
+      - build:dist:windows:amd64
+
+  build:dev:linux:amd64:
+    desc: "Build main dev binary for linux/amd64."
+    cmds:
+      - task: _build:dev
+        vars:
+          targetOS: "linux"
+          targetArch: "amd64"
+          outputDir: "{{.outputDir}}"
+          extraGoBuildArgs: "{{.extraGoBuildArgs}}"
+          raceDetectorEnabled: "{{.raceDetectorEnabled}}"
+
+  build:dist:linux:amd64:
+    desc: 'Build main release binary for linux/amd64. Important vars: "version".'
+    cmds:
+      - task: _build:dist
+        vars:
+          targetOS: "linux"
+          targetArch: "amd64"
+          extraGoBuildArgs: "{{.extraGoBuildArgs}}"
+
+  build:dev:linux:arm64:
+    desc: "Build main dev binary for linux/arm64."
+    cmds:
+      - task: _build:dev
+        vars:
+          targetOS: "linux"
+          targetArch: "arm64"
+          cc: "aarch64-linux-gnu-gcc"
+          outputDir: "{{.outputDir}}"
+          extraGoBuildArgs: "{{.extraGoBuildArgs}}"
+          raceDetectorEnabled: "{{.raceDetectorEnabled}}"
+
+  build:dist:linux:arm64:
+    desc: 'Build main release binary for linux/arm64. Important vars: "version".'
+    cmds:
+      - task: _build:dist
+        vars:
+          targetOS: "linux"
+          targetArch: "arm64"
+          cc: "aarch64-linux-gnu-gcc"
+          extraGoBuildArgs: "{{.extraGoBuildArgs}}"
+
+  build:dev:darwin:amd64:
+    desc: "Build main dev binary for darwin/amd64."
+    cmds:
+      - task: _build:dev
+        vars:
+          targetOS: "darwin"
+          targetArch: "amd64"
+          outputDir: "{{.outputDir}}"
+          extraGoBuildArgs: "{{.extraGoBuildArgs}}"
+          raceDetectorEnabled: "{{.raceDetectorEnabled}}"
+
+  build:dist:darwin:amd64:
+    desc: 'Build main release binary for darwin/amd64. Important vars: "version".'
+    cmds:
+      - task: _build:dist
+        vars:
+          targetOS: "darwin"
+          targetArch: "amd64"
+          extraGoBuildArgs: "{{.extraGoBuildArgs}}"
+
+  build:dev:darwin:arm64:
+    desc: "Build main dev binary for darwin/arm64."
+    cmds:
+      - task: _build:dev
+        vars:
+          targetOS: "darwin"
+          targetArch: "arm64"
+          outputDir: "{{.outputDir}}"
+          extraGoBuildArgs: "{{.extraGoBuildArgs}}"
+          raceDetectorEnabled: "{{.raceDetectorEnabled}}"
+
+  build:dist:darwin:arm64:
+    desc: 'Build main release binary for darwin/arm64. Important vars: "version".'
+    cmds:
+      - task: _build:dist
+        vars:
+          targetOS: "darwin"
+          targetArch: "arm64"
+          extraGoBuildArgs: "{{.extraGoBuildArgs}}"
+
+  build:dev:windows:amd64:
+    desc: "Build main dev binary for windows/amd64."
+    cmds:
+      - task: _build:dev
+        vars:
+          targetOS: "windows"
+          targetArch: "amd64"
+          outputDir: "{{.outputDir}}"
+          extraGoBuildArgs: "{{.extraGoBuildArgs}}"
+          raceDetectorEnabled: "{{.raceDetectorEnabled}}"
+
+  build:dist:windows:amd64:
+    desc: 'Build main release binary for windows/amd64. Important vars: "version".'
+    cmds:
+      - task: _build:dist
+        vars:
+          targetOS: "windows"
+          targetArch: "amd64"
+          extraGoBuildArgs: "{{.extraGoBuildArgs}}"
+
+  _test:go-test:
+    cmds:
+      - go test -ldflags="{{.ldFlags}}" -tags="{{.tags}}" {{.extraTestGoTestArgs}} {{.CLI_ARGS}} {{.paths}}
+    requires:
+      vars:
+        - paths
+
+  test:go-test:
+    desc: 'Run raw "go test". Important vars: "paths".'
+    cmds:
+      - task: _test:go-test
+        vars:
+          paths: "{{.paths}}"
+          extraTestGoTestArgs: "{{.extraTestGoTestArgs}}"
+
+  _test:ginkgo:
+    cmds:
+      - |
+        ginkgo {{if eq .parallel "true" }}-p{{end}} -r -ldflags="{{.ldFlags}}" -tags="{{.tags}}" \
+          {{if .labelFilter}}--label-filter="{{.labelFilter}}"{{end}} {{.CLI_ARGS}} {{.paths}}
+    vars:
+      parallel: '{{.parallel | default "true"}}'
+    requires:
+      vars:
+        - paths
+
+  test:ginkgo:
+    desc: 'Run raw "ginkgo". Important vars: "paths".'
+    cmds:
+      - task: _test:ginkgo
+        vars:
+          paths: "{{.paths}}"
+          labelFilter: "{{.labelFilter}}"
+          parallel: "{{.parallel}}"
+
+  test:unit:
+    desc: 'Run unit tests. Important vars: "paths".'
+    cmds:
+      - task: test:ginkgo
+        vars:
+          paths: '{{.paths | default "./pkg ./cmd"}}'
+          parallel: "{{.parallel}}"
+
+  verify:binaries:dist:all:
+    desc: 'Verify that the distributable binaries are built and have correct platform/arch. Important vars: "version".'
+    cmds:
+      - ./scripts/verify-dist-binaries.sh {{.version}}
+
+  format:
+    desc: 'Run all code formatters. Important vars: "paths".'
+    run: once
+    cmds:
+      - task: format:gci
+      - task: format:gofumpt
+      - task: format:prettier
+
+  format:gci:
+    desc: 'Format code with gci. Important vars: "paths".'
+    cmds:
+      - gci write -s Standard -s Default -s 'Prefix({{slice (splitList "/" .package) 0 2 | join "/"}})' {{.CLI_ARGS}} {{.paths | default "pkg/ cmd/"}}
+
+  format:gofumpt:
+    desc: 'Format code with gofumpt. Important vars: "paths".'
+    cmds:
+      - gofumpt -extra -w {{.CLI_ARGS}} {{.paths | default "cmd/ pkg/"}}
+
+  format:prettier:
+    desc: "Format with prettier."
+    deps:
+      - format:prettier:yaml
+
+  format:prettier:yaml:
+    desc: "Format yaml files with prettier."
+    cmds:
+      - docker run --rm -v $(pwd):/work tmknom/prettier -w "**/*.yaml" "**/*.yml"
+
+  lint:
+    desc: 'Run all linters in parallel. Important vars: "paths".'
+    deps:
+      - lint:golangci-lint
+      - lint:prettier
+
+  lint:golangci-lint:
+    desc: 'Lint with golangci-lint. Important vars: "paths".'
+    cmds:
+      - golangci-lint run --build-tags="{{.tags}}" {{.CLI_ARGS}} {{.paths | default "./..."}}
+    vars:
+      paths: "{{.paths}}"
+
+  lint:prettier:
+    desc: "Check if prettier-formatted."
+    deps:
+      - lint:prettier:yaml
+
+  lint:prettier:yaml:
+    desc: "Check if yaml files are prettier-formatted."
+    cmds:
+      - docker run --rm -v $(pwd):/work tmknom/prettier -c "**/*.yaml" "**/*.yml"
+
+  github:dispatch:nelm:
+    desc: 'Manually dispatch specified GitHub workflow. Important vars: "eventType", "githubToken".'
+    cmds:
+      - |
+        curl -sSL 'https://api.github.com/repos/werf/nelm/dispatches' \
+          -H 'Content-Type: application/json' \
+          -H 'Accept: application/vnd.github.everest-preview+json' \
+          -H "Authorization: token {{.githubToken}}" \
+          --data-raw '{
+            "event_type": "{{.eventType}}",
+            "client_payload": {{.clientPayload | default "{}"}}
+          }' {{.CLI_ARGS}}
+    requires:
+      vars:
+        - githubToken
+
+  _image:build:
+    cmds:
+      - docker build {{.CLI_ARGS}} -f "{{.dfilePath}}" -t "{{.imageName}}" "{{.context | default "."}}"
+
+  image:build:builder:
+    desc: 'Build main builder image. Important vars: "imageName".'
+    cmds:
+      - task: _image:build
+        vars:
+          dfilePath: scripts/builder/Dockerfile
+          imageName:
+            sh: "echo registry-write.werf.io/nelm/builder:$(git rev-parse HEAD)"
+
+  _image:push:
+    cmds:
+      - docker push {{.CLI_ARGS}} "{{.imageName}}"
+
+  image:publish:builder:
+    desc: 'Build and publish main builder image. Important vars: "imageName".'
+    deps:
+      - image:build:builder
+    cmds:
+      - task: _image:push
+        vars:
+          imageName:
+            sh: "echo registry-write.werf.io/nelm/builder:$(git rev-parse HEAD)"
+
+  clean:
+    desc: "Clean all temporary files and build artifacts."
+    deps:
+      - clean:binaries
+
+  clean:binaries:
+    desc: "Clean all built binaries."
+    deps:
+      - clean:binaries:dev
+      - clean:binaries:dist
+
+  clean:binaries:dev:
+    desc: "Clean built dev binaries."
+    cmds:
+      - rm -rf ./bin ./build
+
+  clean:binaries:dist:
+    desc: "Clean built release binaries."
+    cmds:
+      - rm -rf ./dist
+
+  sign:
+    desc: 'Sign last version tag + origin/main and push signatures. Important vars: "refs".'
+    cmds:
+      - git fetch --tags -f
+      - git signatures pull {{.CLI_ARGS}}
+      - |
+        for ref in {{.refs | default "$(git tag --sort=v:refname | tail -n1) origin/main"}}; do
+          echo Signing $ref...
+          git signatures add {{.CLI_ARGS}} $ref
+          git signatures show {{.CLI_ARGS}} $ref
+        done
+      - git signatures push {{.CLI_ARGS}}
