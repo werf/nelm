@@ -342,6 +342,7 @@ tasks:
     desc: "Install all dependencies"
     deps:
       - deps:install:ginkgo
+      - deps:install:golangci-lint
 
   deps:install:ginkgo:
     desc: "Install ginkgo binary."
@@ -349,6 +350,11 @@ tasks:
       - |
         version="$(go list -m -f '{{ printf `{{ .Version }}` }}' github.com/onsi/ginkgo/v2)"
         go install {{.CLI_ARGS}} github.com/onsi/ginkgo/v2/ginkgo@${version}
+
+  deps:install:golangci-lint:
+    desc: "Install golangci-lint binary."
+    cmds:
+      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin {{.golangcilintVersion | default "v1.57.1"}}
 
   sign:
     desc: 'Sign last version tag + origin/main and push signatures. Important vars: "refs".'
