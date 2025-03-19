@@ -338,6 +338,18 @@ tasks:
     cmds:
       - rm -rf ./dist
 
+  deps:install:
+    desc: "Install all dependencies"
+    deps:
+      - deps:install:ginkgo
+
+  deps:install:ginkgo:
+    desc: "Install ginkgo binary."
+    cmds:
+      - |
+        version="$(go list -m -f '{{ printf `{{ .Version }}` }}' github.com/onsi/ginkgo/v2)"
+        go install {{.CLI_ARGS}} github.com/onsi/ginkgo/v2/ginkgo@${version}
+
   sign:
     desc: 'Sign last version tag + origin/main and push signatures. Important vars: "refs".'
     cmds:
