@@ -10,8 +10,10 @@ import (
 
 var _ Operation = (*DeleteResourceOperation)(nil)
 
-const TypeDeleteResourceOperation = "delete"
-const TypeExtraPostDeleteResourceOperation = "extra-post-delete"
+const (
+	TypeDeleteResourceOperation          = "delete"
+	TypeExtraPostDeleteResourceOperation = "extra-post-delete"
+)
 
 func NewDeleteResourceOperation(
 	resource *resrcid.ResourceID,

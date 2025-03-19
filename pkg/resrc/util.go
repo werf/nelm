@@ -44,8 +44,8 @@ func IsHook(annotations map[string]string) bool {
 	return found
 }
 
-func FindAnnotationOrLabelByKeyPattern(annotationsOrLabels map[string]string, pattern *regexp.Regexp) (key string, value string, found bool) {
-	key, found = lo.FindKeyBy(annotationsOrLabels, func(k string, _ string) bool {
+func FindAnnotationOrLabelByKeyPattern(annotationsOrLabels map[string]string, pattern *regexp.Regexp) (key, value string, found bool) {
+	key, found = lo.FindKeyBy(annotationsOrLabels, func(k, _ string) bool {
 		return pattern.MatchString(k)
 	})
 	if found {

@@ -14,7 +14,6 @@ import (
 	"github.com/werf/3p-helm/pkg/chartutil"
 	"github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/3p-helm/pkg/releaseutil"
-
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/resrc"
 	"github.com/werf/nelm/pkg/resrcid"
@@ -40,9 +39,7 @@ func NewRelease(name, namespace string, revision int, values map[string]interfac
 		status = opts.Status
 	}
 
-	notes = strings.TrimRightFunc(notes, func(r rune) bool {
-		return unicode.IsSpace(r)
-	})
+	notes = strings.TrimRightFunc(notes, unicode.IsSpace)
 
 	return &Release{
 		name:             name,

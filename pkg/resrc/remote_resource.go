@@ -50,7 +50,7 @@ func (r *RemoteResource) AdoptableBy(releaseName, releaseNamespace string) (adop
 	return adoptableBy(r.unstruct, releaseName, releaseNamespace)
 }
 
-func (r *RemoteResource) KeepOnDelete(releaseName string, releaseNamespace string) bool {
+func (r *RemoteResource) KeepOnDelete(releaseName, releaseNamespace string) bool {
 	if err := validateResourcePolicy(r.unstruct); err != nil {
 		return true
 	}

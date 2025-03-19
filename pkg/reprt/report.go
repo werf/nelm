@@ -11,7 +11,6 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/werf/3p-helm/pkg/release"
-
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/opertn"
 	"github.com/werf/nelm/pkg/rls"
@@ -107,7 +106,7 @@ func (r *Report) Save(path string) error {
 		return fmt.Errorf("error constructing report JSON: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("error writing report file at %q: %w", path, err)
 	}
 

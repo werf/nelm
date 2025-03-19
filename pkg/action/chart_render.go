@@ -27,9 +27,8 @@ import (
 	"github.com/werf/3p-helm/pkg/werf/chartextender"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/common-go/pkg/secrets_manager"
-	"github.com/werf/logboek"
-
 	"github.com/werf/kubedog/pkg/kube"
+	"github.com/werf/logboek"
 	"github.com/werf/nelm/pkg/chrttree"
 	helmcommon "github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/kubeclnt"
@@ -539,10 +538,10 @@ func renderResource(unstruct *unstructured.Unstructured, path string, outStream 
 		return fmt.Errorf("marshal JSON to YAML: %w", err)
 	}
 
-	prefixBytes := []byte(fmt.Sprintf("---\n# Source: %s\n", path))
-	manifestBytes := append(prefixBytes, resourceYamlBytes...)
+	prefix := fmt.Sprintf("---\n# Source: %s\n", path)
+	manifest := prefix + string(resourceYamlBytes)
 
-	if err := writeWithSyntaxHighlight(outStream, string(manifestBytes), "yaml", colorLevel); err != nil {
+	if err := writeWithSyntaxHighlight(outStream, manifest, "yaml", colorLevel); err != nil {
 		return fmt.Errorf("write resource to output: %w", err)
 	}
 

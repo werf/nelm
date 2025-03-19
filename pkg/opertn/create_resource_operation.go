@@ -14,8 +14,10 @@ import (
 
 var _ Operation = (*CreateResourceOperation)(nil)
 
-const TypeCreateResourceOperation = "create"
-const TypeExtraPostCreateResourceOperation = "extra-post-create"
+const (
+	TypeCreateResourceOperation          = "create"
+	TypeExtraPostCreateResourceOperation = "extra-post-create"
+)
 
 func NewCreateResourceOperation(
 	resource *resrcid.ResourceID,

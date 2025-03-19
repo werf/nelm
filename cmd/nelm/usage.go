@@ -117,8 +117,7 @@ func flagsUsage(fset *pflag.FlagSet) string {
 			case "string":
 				header += fmt.Sprintf("=%q", flag.DefValue)
 			case "stringToString":
-				defValue := flag.DefValue
-				defValue = strings.TrimPrefix(flag.DefValue, "[")
+				defValue := strings.TrimPrefix(flag.DefValue, "[")
 				defValue = strings.TrimSuffix(defValue, "]")
 				defValue = fmt.Sprintf("{%s}", defValue)
 

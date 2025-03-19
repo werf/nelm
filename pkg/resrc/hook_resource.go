@@ -11,10 +11,9 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes/scheme"
 
+	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 	"github.com/werf/nelm/pkg/depnd"
 	"github.com/werf/nelm/pkg/resrcid"
-
-	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 )
 
 const TypeHookResource Type = "hook-resource"

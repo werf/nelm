@@ -2,5 +2,7 @@ package plnbuilder
 
 type StageOpNamePrefix string
 
-const StageOpNameSuffixStart = "start"
-const StageOpNameSuffixEnd = "end"
+const (
+	StageOpNameSuffixStart = "start"
+	StageOpNameSuffixEnd   = "end"
+)

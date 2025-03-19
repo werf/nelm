@@ -124,15 +124,15 @@ func (i *DeployableHookResourceInfo) ShouldApply() bool {
 	return i.exists && i.upToDate == UpToDateStatusUnknown && !i.resource.Recreate()
 }
 
-func (i *DeployableHookResourceInfo) ShouldCleanup(releaseName string, releaseNamespace string) bool {
+func (i *DeployableHookResourceInfo) ShouldCleanup(releaseName, releaseNamespace string) bool {
 	return (i.exists || i.shouldDeploy()) && i.resource.DeleteOnSucceeded() && !i.ShouldKeepOnDelete(releaseName, releaseNamespace)
 }
 
-func (i *DeployableHookResourceInfo) ShouldCleanupOnFailed(prevRelFailed bool, releaseName string, releaseNamespace string) bool {
+func (i *DeployableHookResourceInfo) ShouldCleanupOnFailed(prevRelFailed bool, releaseName, releaseNamespace string) bool {
 	return i.ShouldTrackReadiness(prevRelFailed) && i.resource.DeleteOnFailed() && !i.ShouldKeepOnDelete(releaseName, releaseNamespace)
 }
 
-func (i *DeployableHookResourceInfo) ShouldKeepOnDelete(releaseName string, releaseNamespace string) bool {
+func (i *DeployableHookResourceInfo) ShouldKeepOnDelete(releaseName, releaseNamespace string) bool {
 	return i.resource.KeepOnDelete() || (i.exists && i.getResource.KeepOnDelete(releaseName, releaseNamespace))
 }
 

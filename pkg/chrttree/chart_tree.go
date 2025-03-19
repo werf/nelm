@@ -105,9 +105,7 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		return nil, fmt.Errorf("error rendering resources for chart %q: %w", legacyChart.Name(), err)
 	}
 
-	notes = strings.TrimRightFunc(notes, func(r rune) bool {
-		return unicode.IsSpace(r)
-	})
+	notes = strings.TrimRightFunc(notes, unicode.IsSpace)
 
 	var standaloneCRDs []*resrc.StandaloneCRD
 	for _, crd := range legacyChart.CRDObjects() {

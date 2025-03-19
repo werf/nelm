@@ -279,7 +279,7 @@ func (p *Plan) SaveDOT(path string) error {
 		return fmt.Errorf("error getting DOT graph: %w", err)
 	}
 
-	if err := os.WriteFile(path, dot, 0644); err != nil {
+	if err := os.WriteFile(path, dot, 0o644); err != nil {
 		return fmt.Errorf("error writing DOT graph file at %q: %w", path, err)
 	}
 
