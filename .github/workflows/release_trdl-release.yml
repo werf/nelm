@@ -1,0 +1,40 @@
+name: release:trdl-release
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+  repository_dispatch:
+    types: ["release:trdl-release"]
+  workflow_dispatch:
+
+jobs:
+  release:
+    name: Perform release using trdl server
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Notify
+        uses: mattermost/action-mattermost-notify@master
+        with:
+          MATTERMOST_WEBHOOK_URL: ${{ secrets.LOOP_NOTIFICATION_WEBHOOK }}
+          MATTERMOST_CHANNEL: ${{ secrets.LOOP_NOTIFICATION_CHANNEL }}
+          TEXT: |
+            ${{ secrets.LOOP_NOTIFICATION_GROUP }} [${{ github.workflow }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) nelm task sign pls
+
+      - name: Release with retry
+        uses: werf/trdl-vault-actions/release@main
+        with:
+          vault-addr: ${{ secrets.TRDL_VAULT_ADDR }}
+          project-name: nelm
+          git-tag: ${{ github.ref_name }}
+          vault-auth-method: approle
+          vault-role-id: ${{ secrets.TRDL_VAULT_ROLE_ID }}
+          vault-secret-id: ${{ secrets.TRDL_VAULT_SECRET_ID }}
+
+  notify:
+    if: always()
+    needs: release
+    uses: werf/common-ci/.github/workflows/notification.yml@main
+    secrets:
+      loopNotificationGroup: ${{ secrets.LOOP_NOTIFICATION_GROUP }}
+      webhook: ${{ secrets.LOOP_NOTIFICATION_WEBHOOK }}
+      notificationChannel: ${{ secrets.LOOP_NOTIFICATION_CHANNEL }}

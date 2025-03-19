@@ -1,0 +1,66 @@
+name: xxxxx(internal)
+
+on:
+  workflow_call:
+    inputs:
+      packages:
+        description: Comma-separated package paths to test
+        type: string
+      excludePackages:
+        description: Comma-separated package paths to exclude from testing
+        type: string
+      coverage:
+        default: false
+        type: string
+      forceSkip:
+        default: false
+        type: string
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DEBIAN_FRONTEND: "noninteractive"
+
+jobs:
+  _:
+    if: inputs.forceSkip == 'false'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          cache: true
+          go-version-file: go.mod
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up git config
+        uses: ./.github/actions/set-up-git-config
+
+      # TODO: don't build ginkgo everytime? We need distributable binaries
+      - name: Install ginkgo
+        run: task -p deps:install:ginkgo
+
+      - name: Test
+        run: |
+          if ${{ inputs.coverage }}; then
+            task -p test:unit paths="$(echo ${{ inputs.packages }} | tr , ' ')" -- --coverprofile="$(openssl rand -hex 6)-coverage.out" --keep-going --skip-package '${{ inputs.excludePackages }}'
+            mv *-coverage.out "$GITHUB_WORKSPACE/coverage/"
+          else
+            task -p test:unit paths="$(echo ${{ inputs.packages }} | tr , ' ')" -- --keep-going --skip-package '${{ inputs.excludePackages }}'
+          fi
+          echo loadavg: $(cat /proc/loadavg)
+
+      - name: Upload coverage artifact
+        uses: ./.github/actions/upload-coverage-artifact
+        with:
+          coverage: ${{ inputs.coverage }}

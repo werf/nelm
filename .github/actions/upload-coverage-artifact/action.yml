@@ -1,0 +1,19 @@
+name: Upload coverage artifact
+inputs:
+  coverage:
+    default: false
+    type: string
+runs:
+  using: composite
+  steps:
+    - if: inputs.coverage == 'true'
+      name: Set timestamp
+      shell: bash
+      run: echo "TIMESTAMP=$(date +%H%M%S%N)" >> $GITHUB_ENV
+
+    - if: inputs.coverage == 'true'
+      name: Upload coverage artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-${{ env.TIMESTAMP }}
+        path: coverage
