@@ -24,7 +24,7 @@ func main() {
 	cli.FlagEnvVarsPrefix = caps.ToScreamingSnake(common.Brand) + "_"
 	afterAllCommandsBuiltFuncs := make(map[*cobra.Command]func(cmd *cobra.Command) error)
 
-	// Needed for embedding original Helm 3 commands
+	// Needed for embedding original Helm 3 commands.
 	var err error
 	helmRootCmd, err = helm_v3.Init()
 	if err != nil {
