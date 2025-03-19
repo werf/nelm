@@ -13,8 +13,10 @@ import (
 
 var _ Operation = (*ApplyResourceOperation)(nil)
 
-const TypeApplyResourceOperation = "apply"
-const TypeExtraPostApplyResourceOperation = "extra-post-apply"
+const (
+	TypeApplyResourceOperation          = "apply"
+	TypeExtraPostApplyResourceOperation = "extra-post-apply"
+)
 
 func NewApplyResourceOperation(
 	resource *resrcid.ResourceID,

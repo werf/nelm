@@ -164,7 +164,7 @@ func applyLogColorModeDefault(logColorMode LogColorMode, outputToFile bool) LogC
 	return logColorMode
 }
 
-func writeWithSyntaxHighlight(outStream io.Writer, text string, lang string, colorLevel terminfo.ColorLevel) error {
+func writeWithSyntaxHighlight(outStream io.Writer, text, lang string, colorLevel terminfo.ColorLevel) error {
 	if colorLevel == color.LevelNo {
 		if _, err := outStream.Write([]byte(text)); err != nil {
 			return fmt.Errorf("write to output: %w", err)

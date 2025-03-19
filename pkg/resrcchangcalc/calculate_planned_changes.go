@@ -15,10 +15,12 @@ import (
 	"github.com/werf/nelm/pkg/utls"
 )
 
-const HiddenInsignificantOutput = "<hidden insignificant output>"
-const HiddenInsignificantChanges = "<hidden insignificant changes>"
-const HiddenSensitiveOutput = "<hidden sensitive output>"
-const HiddenSensitiveChanges = "<hidden sensitive changes>"
+const (
+	HiddenInsignificantOutput  = "<hidden insignificant output>"
+	HiddenInsignificantChanges = "<hidden insignificant changes>"
+	HiddenSensitiveOutput      = "<hidden sensitive output>"
+	HiddenSensitiveChanges     = "<hidden sensitive changes>"
+)
 
 func CalculatePlannedChanges(
 	releaseName string,

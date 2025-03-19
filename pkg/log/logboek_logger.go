@@ -60,7 +60,7 @@ func (l *LogboekLogger) TraceStruct(ctx context.Context, obj interface{}, format
 	logboek.Context(ctx).Debug().LogF(fmt.Sprintf(format+"\n", a...) + string(out) + "\n")
 }
 
-func (l *LogboekLogger) TracePush(ctx context.Context, group string, format string, a ...interface{}) {
+func (l *LogboekLogger) TracePush(ctx context.Context, group, format string, a ...interface{}) {
 	l.traceStash.RWTransaction(func(stash map[string][]string) {
 		stash[group] = append(stash[group], fmt.Sprintf(format, a...))
 	})
@@ -84,7 +84,7 @@ func (l *LogboekLogger) Debug(ctx context.Context, format string, a ...interface
 	logboek.Context(ctx).Debug().LogF(format+"\n", a...)
 }
 
-func (l *LogboekLogger) DebugPush(ctx context.Context, group string, format string, a ...interface{}) {
+func (l *LogboekLogger) DebugPush(ctx context.Context, group, format string, a ...interface{}) {
 	l.debugStash.RWTransaction(func(stash map[string][]string) {
 		stash[group] = append(stash[group], fmt.Sprintf(format, a...))
 	})
@@ -108,7 +108,7 @@ func (l *LogboekLogger) Info(ctx context.Context, format string, a ...interface{
 	logboek.Context(ctx).Default().LogF(format+"\n", a...)
 }
 
-func (l *LogboekLogger) InfoPush(ctx context.Context, group string, format string, a ...interface{}) {
+func (l *LogboekLogger) InfoPush(ctx context.Context, group, format string, a ...interface{}) {
 	l.infoStash.RWTransaction(func(stash map[string][]string) {
 		stash[group] = append(stash[group], fmt.Sprintf(format, a...))
 	})
@@ -132,7 +132,7 @@ func (l *LogboekLogger) Warn(ctx context.Context, format string, a ...interface{
 	logboek.Context(ctx).Warn().LogFWithCustomStyle(color.Style{color.FgRed}, format+"\n", a...)
 }
 
-func (l *LogboekLogger) WarnPush(ctx context.Context, group string, format string, a ...interface{}) {
+func (l *LogboekLogger) WarnPush(ctx context.Context, group, format string, a ...interface{}) {
 	l.warnStash.RWTransaction(func(stash map[string][]string) {
 		stash[group] = append(stash[group], fmt.Sprintf(format, a...))
 	})
@@ -156,7 +156,7 @@ func (l *LogboekLogger) Error(ctx context.Context, format string, a ...interface
 	logboek.Context(ctx).Error().LogFWithCustomStyle(color.Style{color.FgRed, color.Bold}, format+"\n", a...)
 }
 
-func (l *LogboekLogger) ErrorPush(ctx context.Context, group string, format string, a ...interface{}) {
+func (l *LogboekLogger) ErrorPush(ctx context.Context, group, format string, a ...interface{}) {
 	l.errorStash.RWTransaction(func(stash map[string][]string) {
 		stash[group] = append(stash[group], fmt.Sprintf(format, a...))
 	})

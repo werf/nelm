@@ -19,8 +19,10 @@ import (
 
 var _ Operation = (*RecreateResourceOperation)(nil)
 
-const TypeRecreateResourceOperation = "recreate"
-const TypeExtraPostRecreateResourceOperation = "extra-post-recreate"
+const (
+	TypeRecreateResourceOperation          = "recreate"
+	TypeExtraPostRecreateResourceOperation = "extra-post-recreate"
+)
 
 func NewRecreateResourceOperation(
 	resource *resrcid.ResourceID,

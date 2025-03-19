@@ -4,12 +4,16 @@ import (
 	"github.com/Masterminds/sprig/v3"
 )
 
-var Brand = "Nelm"
-var Version = "0.0.0"
+var (
+	Brand   = "Nelm"
+	Version = "0.0.0"
+)
 
-const DefaultFieldManager = "helm"
-const KubectlEditFieldManager = "kubectl-edit"
-const OldFieldManagerPrefix = "werf"
+const (
+	DefaultFieldManager     = "helm"
+	KubectlEditFieldManager = "kubectl-edit"
+	OldFieldManagerPrefix   = "werf"
+)
 
 type DeployType string
 

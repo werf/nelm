@@ -627,7 +627,7 @@ func nestedMap(object interface{}, fields ...string) (result map[string]interfac
 	return result, true
 }
 
-func nestedBool(object interface{}, fields ...string) (result bool, found bool) {
+func nestedBool(object interface{}, fields ...string) (result, found bool) {
 	obj, ok := object.(map[string]interface{})
 	if !ok {
 		return false, false

@@ -19,13 +19,11 @@ import (
 	"k8s.io/client-go/discovery"
 
 	"github.com/werf/3p-helm/pkg/release"
-
+	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/depnd"
 	"github.com/werf/nelm/pkg/depnddetctr"
 	"github.com/werf/nelm/pkg/utls"
-
-	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 )
 
 type Type string
@@ -37,86 +35,140 @@ const (
 	ManageableBySingleRelease ManageableBy = "manageable-by-single-release"
 )
 
-var annotationKeyHumanReleaseName = "meta.helm.sh/release-name"
-var annotationKeyPatternReleaseName = regexp.MustCompile(`^meta.helm.sh/release-name$`)
+var (
+	annotationKeyHumanReleaseName   = "meta.helm.sh/release-name"
+	annotationKeyPatternReleaseName = regexp.MustCompile(`^meta.helm.sh/release-name$`)
+)
 
-var annotationKeyHumanReleaseNamespace = "meta.helm.sh/release-namespace"
-var annotationKeyPatternReleaseNamespace = regexp.MustCompile(`^meta.helm.sh/release-namespace$`)
+var (
+	annotationKeyHumanReleaseNamespace   = "meta.helm.sh/release-namespace"
+	annotationKeyPatternReleaseNamespace = regexp.MustCompile(`^meta.helm.sh/release-namespace$`)
+)
 
-var labelKeyHumanManagedBy = "app.kubernetes.io/managed-by"
-var labelKeyPatternManagedBy = regexp.MustCompile(`^app.kubernetes.io/managed-by$`)
+var (
+	labelKeyHumanManagedBy   = "app.kubernetes.io/managed-by"
+	labelKeyPatternManagedBy = regexp.MustCompile(`^app.kubernetes.io/managed-by$`)
+)
 
-var annotationKeyHumanHook = "helm.sh/hook"
-var annotationKeyPatternHook = regexp.MustCompile(`^helm.sh/hook$`)
+var (
+	annotationKeyHumanHook   = "helm.sh/hook"
+	annotationKeyPatternHook = regexp.MustCompile(`^helm.sh/hook$`)
+)
 
-var annotationKeyHumanResourcePolicy = "helm.sh/resource-policy"
-var annotationKeyPatternResourcePolicy = regexp.MustCompile(`^helm.sh/resource-policy$`)
+var (
+	annotationKeyHumanResourcePolicy   = "helm.sh/resource-policy"
+	annotationKeyPatternResourcePolicy = regexp.MustCompile(`^helm.sh/resource-policy$`)
+)
 
-var annotationKeyHumanDeletePolicy = "werf.io/delete-policy"
-var annotationKeyPatternDeletePolicy = regexp.MustCompile(`^werf.io/delete-policy$`)
+var (
+	annotationKeyHumanDeletePolicy   = "werf.io/delete-policy"
+	annotationKeyPatternDeletePolicy = regexp.MustCompile(`^werf.io/delete-policy$`)
+)
 
-var annotationKeyHumanHookDeletePolicy = "helm.sh/hook-delete-policy"
-var annotationKeyPatternHookDeletePolicy = regexp.MustCompile(`^helm.sh/hook-delete-policy$`)
+var (
+	annotationKeyHumanHookDeletePolicy   = "helm.sh/hook-delete-policy"
+	annotationKeyPatternHookDeletePolicy = regexp.MustCompile(`^helm.sh/hook-delete-policy$`)
+)
 
-var annotationKeyHumanReplicasOnCreation = "werf.io/replicas-on-creation"
-var annotationKeyPatternReplicasOnCreation = regexp.MustCompile(`^werf.io/replicas-on-creation$`)
+var (
+	annotationKeyHumanReplicasOnCreation   = "werf.io/replicas-on-creation"
+	annotationKeyPatternReplicasOnCreation = regexp.MustCompile(`^werf.io/replicas-on-creation$`)
+)
 
-var annotationKeyHumanFailMode = "werf.io/fail-mode"
-var annotationKeyPatternFailMode = regexp.MustCompile(`^werf.io/fail-mode$`)
+var (
+	annotationKeyHumanFailMode   = "werf.io/fail-mode"
+	annotationKeyPatternFailMode = regexp.MustCompile(`^werf.io/fail-mode$`)
+)
 
-var annotationKeyHumanFailuresAllowedPerReplica = "werf.io/failures-allowed-per-replica"
-var annotationKeyPatternFailuresAllowedPerReplica = regexp.MustCompile(`^werf.io/failures-allowed-per-replica$`)
+var (
+	annotationKeyHumanFailuresAllowedPerReplica   = "werf.io/failures-allowed-per-replica"
+	annotationKeyPatternFailuresAllowedPerReplica = regexp.MustCompile(`^werf.io/failures-allowed-per-replica$`)
+)
 
-var annotationKeyHumanIgnoreReadinessProbeFailsFor = "werf.io/ignore-readiness-probe-fails-for-<container>"
-var annotationKeyPatternIgnoreReadinessProbeFailsFor = regexp.MustCompile(`^werf.io/ignore-readiness-probe-fails-for-(?P<container>.+)$`)
+var (
+	annotationKeyHumanIgnoreReadinessProbeFailsFor   = "werf.io/ignore-readiness-probe-fails-for-<container>"
+	annotationKeyPatternIgnoreReadinessProbeFailsFor = regexp.MustCompile(`^werf.io/ignore-readiness-probe-fails-for-(?P<container>.+)$`)
+)
 
-var annotationKeyHumanLogRegex = "werf.io/log-regex"
-var annotationKeyPatternLogRegex = regexp.MustCompile(`^werf.io/log-regex$`)
+var (
+	annotationKeyHumanLogRegex   = "werf.io/log-regex"
+	annotationKeyPatternLogRegex = regexp.MustCompile(`^werf.io/log-regex$`)
+)
 
-var annotationKeyHumanLogRegexFor = "werf.io/log-regex-for-<container>"
-var annotationKeyPatternLogRegexFor = regexp.MustCompile(`^werf.io/log-regex-for-(?P<container>.+)$`)
+var (
+	annotationKeyHumanLogRegexFor   = "werf.io/log-regex-for-<container>"
+	annotationKeyPatternLogRegexFor = regexp.MustCompile(`^werf.io/log-regex-for-(?P<container>.+)$`)
+)
 
-var annotationKeyHumanNoActivityTimeout = "werf.io/no-activity-timeout"
-var annotationKeyPatternNoActivityTimeout = regexp.MustCompile(`^werf.io/no-activity-timeout$`)
+var (
+	annotationKeyHumanNoActivityTimeout   = "werf.io/no-activity-timeout"
+	annotationKeyPatternNoActivityTimeout = regexp.MustCompile(`^werf.io/no-activity-timeout$`)
+)
 
-var annotationKeyHumanShowLogsOnlyForContainers = "werf.io/show-logs-only-for-containers"
-var annotationKeyPatternShowLogsOnlyForContainers = regexp.MustCompile(`^werf.io/show-logs-only-for-containers$`)
+var (
+	annotationKeyHumanShowLogsOnlyForContainers   = "werf.io/show-logs-only-for-containers"
+	annotationKeyPatternShowLogsOnlyForContainers = regexp.MustCompile(`^werf.io/show-logs-only-for-containers$`)
+)
 
-var annotationKeyHumanShowServiceMessages = "werf.io/show-service-messages"
-var annotationKeyPatternShowServiceMessages = regexp.MustCompile(`^werf.io/show-service-messages$`)
+var (
+	annotationKeyHumanShowServiceMessages   = "werf.io/show-service-messages"
+	annotationKeyPatternShowServiceMessages = regexp.MustCompile(`^werf.io/show-service-messages$`)
+)
 
-var annotationKeyHumanSkipLogs = "werf.io/skip-logs"
-var annotationKeyPatternSkipLogs = regexp.MustCompile(`^werf.io/skip-logs$`)
+var (
+	annotationKeyHumanSkipLogs   = "werf.io/skip-logs"
+	annotationKeyPatternSkipLogs = regexp.MustCompile(`^werf.io/skip-logs$`)
+)
 
-var annotationKeyHumanSkipLogsForContainers = "werf.io/skip-logs-for-containers"
-var annotationKeyPatternSkipLogsForContainers = regexp.MustCompile(`^werf.io/skip-logs-for-containers$`)
+var (
+	annotationKeyHumanSkipLogsForContainers   = "werf.io/skip-logs-for-containers"
+	annotationKeyPatternSkipLogsForContainers = regexp.MustCompile(`^werf.io/skip-logs-for-containers$`)
+)
 
-var annotationKeyHumanTrackTerminationMode = "werf.io/track-termination-mode"
-var annotationKeyPatternTrackTerminationMode = regexp.MustCompile(`^werf.io/track-termination-mode$`)
+var (
+	annotationKeyHumanTrackTerminationMode   = "werf.io/track-termination-mode"
+	annotationKeyPatternTrackTerminationMode = regexp.MustCompile(`^werf.io/track-termination-mode$`)
+)
 
-var annotationKeyHumanWeight = "werf.io/weight"
-var annotationKeyPatternWeight = regexp.MustCompile(`^werf.io/weight$`)
+var (
+	annotationKeyHumanWeight   = "werf.io/weight"
+	annotationKeyPatternWeight = regexp.MustCompile(`^werf.io/weight$`)
+)
 
-var annotationKeyHumanHookWeight = "helm.sh/hook-weight"
-var annotationKeyPatternHookWeight = regexp.MustCompile(`^helm.sh/hook-weight$`)
+var (
+	annotationKeyHumanHookWeight   = "helm.sh/hook-weight"
+	annotationKeyPatternHookWeight = regexp.MustCompile(`^helm.sh/hook-weight$`)
+)
 
-var annotationKeyHumanDeployDependency = "werf.io/deploy-dependency-<name>"
-var annotationKeyPatternDeployDependency = regexp.MustCompile(`^werf.io/deploy-dependency-(?P<id>.+)$`)
+var (
+	annotationKeyHumanDeployDependency   = "werf.io/deploy-dependency-<name>"
+	annotationKeyPatternDeployDependency = regexp.MustCompile(`^werf.io/deploy-dependency-(?P<id>.+)$`)
+)
 
-var annotationKeyHumanDependency = "<name>.dependency.werf.io"
-var annotationKeyPatternDependency = regexp.MustCompile(`^(?P<id>.+).dependency.werf.io$`)
+var (
+	annotationKeyHumanDependency   = "<name>.dependency.werf.io"
+	annotationKeyPatternDependency = regexp.MustCompile(`^(?P<id>.+).dependency.werf.io$`)
+)
 
-var annotationKeyHumanExternalDependency = "<name>.external-dependency.werf.io"
-var annotationKeyPatternExternalDependency = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io$`)
+var (
+	annotationKeyHumanExternalDependency   = "<name>.external-dependency.werf.io"
+	annotationKeyPatternExternalDependency = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io$`)
+)
 
-var annotationKeyHumanLegacyExternalDependencyResource = "<name>.external-dependency.werf.io/resource"
-var annotationKeyPatternLegacyExternalDependencyResource = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io/resource$`)
+var (
+	annotationKeyHumanLegacyExternalDependencyResource   = "<name>.external-dependency.werf.io/resource"
+	annotationKeyPatternLegacyExternalDependencyResource = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io/resource$`)
+)
 
-var annotationKeyHumanLegacyExternalDependencyNamespace = "<name>.external-dependency.werf.io/namespace"
-var annotationKeyPatternLegacyExternalDependencyNamespace = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io/namespace$`)
+var (
+	annotationKeyHumanLegacyExternalDependencyNamespace   = "<name>.external-dependency.werf.io/namespace"
+	annotationKeyPatternLegacyExternalDependencyNamespace = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io/namespace$`)
+)
 
-var annotationKeyHumanSensitive = "werf.io/sensitive"
-var annotationKeyPatternSensitive = regexp.MustCompile(`^werf.io/sensitive$`)
+var (
+	annotationKeyHumanSensitive   = "werf.io/sensitive"
+	annotationKeyPatternSensitive = regexp.MustCompile(`^werf.io/sensitive$`)
+)
 
 func validateHook(res *unstructured.Unstructured) error {
 	if key, value, found := FindAnnotationOrLabelByKeyPattern(res.GetAnnotations(), annotationKeyPatternHook); found {
@@ -373,7 +425,6 @@ func validateTrack(unstruct *unstructured.Unstructured) error {
 			for _, container := range strings.Split(value, ",") {
 				container = strings.TrimSpace(container)
 				if container == "" {
-
 					return fmt.Errorf("invalid value %q for annotation %q, one of the comma-separated values is empty", value, key)
 				}
 			}

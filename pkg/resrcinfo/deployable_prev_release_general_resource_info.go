@@ -57,11 +57,11 @@ func (i *DeployablePrevReleaseGeneralResourceInfo) LiveResource() *resrc.RemoteR
 	return i.getResource
 }
 
-func (i *DeployablePrevReleaseGeneralResourceInfo) ShouldKeepOnDelete(releaseName string, releaseNamespace string) bool {
+func (i *DeployablePrevReleaseGeneralResourceInfo) ShouldKeepOnDelete(releaseName, releaseNamespace string) bool {
 	return i.resource.KeepOnDelete() || (i.exists && i.getResource.KeepOnDelete(releaseName, releaseNamespace))
 }
 
-func (i *DeployablePrevReleaseGeneralResourceInfo) ShouldDelete(curReleaseExistingResourcesUIDs []types.UID, releaseName string, releaseNamespace string) bool {
+func (i *DeployablePrevReleaseGeneralResourceInfo) ShouldDelete(curReleaseExistingResourcesUIDs []types.UID, releaseName, releaseNamespace string) bool {
 	if !i.exists {
 		return false
 	}

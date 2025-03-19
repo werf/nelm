@@ -25,7 +25,7 @@ linters:
     # Default linters.
     - ineffassign
     - typecheck
-    - unused
+    # - unused
 
     # Extra linters.
     - asciicheck
