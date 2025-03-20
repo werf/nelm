@@ -22,9 +22,9 @@ jobs:
         uses: mattermost/action-mattermost-notify@master
         with:
           MATTERMOST_WEBHOOK_URL: ${{ secrets.LOOP_NOTIFICATION_WEBHOOK }}
-          MATTERMOST_CHANNEL: ${{ secrets.LOOP_NOTIFICATION_CHANNEL }}
+          MATTERMOST_CHANNEL: ${{ vars.LOOP_NOTIFICATION_CHANNEL }}
           TEXT: |
-            ${{ secrets.LOOP_NOTIFICATION_GROUP }} [${{ github.workflow }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) nelm task sign pls
+            ${{ vars.LOOP_NOTIFICATION_GROUP }} [${{ github.workflow }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) nelm task sign pls
 
       - name: Publish with retry
         uses: werf/trdl-vault-actions/publish@main
@@ -41,6 +41,6 @@ jobs:
       - publish
     uses: werf/common-ci/.github/workflows/notification.yml@main
     secrets:
-      loopNotificationGroup: ${{ secrets.LOOP_NOTIFICATION_GROUP }}
+      loopNotificationGroup: ${{ vars.LOOP_NOTIFICATION_GROUP }}
       webhook: ${{ secrets.LOOP_NOTIFICATION_WEBHOOK }}
-      notificationChannel: ${{ secrets.LOOP_NOTIFICATION_CHANNEL }}
+      notificationChannel: ${{ vars.LOOP_NOTIFICATION_CHANNEL }}
