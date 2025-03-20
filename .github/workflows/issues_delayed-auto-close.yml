@@ -45,6 +45,6 @@ jobs:
     needs: manage
     uses: werf/common-ci/.github/workflows/notification.yml@main
     secrets:
-      loopNotificationGroup: ${{ secrets.LOOP_NOTIFICATION_GROUP }}
+      loopNotificationGroup: ${{ vars.LOOP_NOTIFICATION_GROUP }}
       webhook: ${{ secrets.LOOP_NOTIFICATION_WEBHOOK }}
-      notificationChannel: ${{ secrets.LOOP_NOTIFICATION_CHANNEL }}
+      notificationChannel: ${{ vars.LOOP_NOTIFICATION_CHANNEL }}
