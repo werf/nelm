@@ -31,7 +31,7 @@ tasks:
   _build:dev: &build_dev
     cmds:
       - go build {{if eq .raceDetectorEnabled "true" }}-race{{end}} -o "{{.outputDir | default (printf "./build/%s-%s" .targetOS .targetArch)}}/{{.brandSlug}}{{if (eq .targetOS "windows")}}.exe{{end}}"
-        -ldflags="{{.cldFlags}}" -tags="{{.ctags}}" {{.extraGoBuildArgs}} {{.CLI_ARGS}} {{.pkg | default .package}}
+        -ldflags="{{.ldFlags}}" -tags="{{.ctags}}" {{.extraGoBuildArgs}} {{.CLI_ARGS}} {{.pkg | default .package}}
     env:
       GOOS: "{{.targetOS}}"
       GOARCH: "{{.targetArch}}"
@@ -43,7 +43,7 @@ tasks:
     <<: *build_dev
     cmds:
       - go build -o "{{.outputDir | default (printf "./dist/%s/%s-%s/bin" .version .targetOS .targetArch)}}/{{.brandSlug}}{{if (eq .targetOS "windows")}}.exe{{end}}"
-        -ldflags="{{.cldFlags}}" -tags="{{.ctags}}" {{.extraGoBuildArgs}} {{.CLI_ARGS}} {{.pkg | default .package}}
+        -ldflags="{{.ldFlags}}" -tags="{{.ctags}}" {{.extraGoBuildArgs}} {{.CLI_ARGS}} {{.pkg | default .package}}
 
   build:
     desc: "Build main dev binary."
