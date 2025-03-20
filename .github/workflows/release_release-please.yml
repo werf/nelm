@@ -31,7 +31,19 @@ jobs:
           release-notes-header: "## Changelog"
           # FIXME(ilya-lesikov): review, add trdl installation instructions
           release-notes-footer: |
-            ## Installation
+            ## Installation via trdl (with autoupdates)
+
+            1. Install trdl client binary (preferably to `~/bin`): https://github.com/werf/trdl/releases/latest
+            2. Add Nelm repository to trdl:
+              ```shell
+              trdl add nelm https://tuf.nelm.sh 1 FIXME
+              ```
+            3. Make `nelm` binary available in the current shell:
+              ```shell
+              source "$(trdl use nelm 1 stable)"
+              ```
+
+            ## Direct installation (no autoupdates)
 
             Download `nelm` binaries from here:
             * [Linux amd64](https://tuf.nelm.sh/targets/releases/{{> version }}/linux-amd64/bin/nelm) ([PGP signature](https://tuf.nelm.sh/targets/signatures/{{> version }}/linux-amd64/bin/nelm.sig))
@@ -40,10 +52,10 @@ jobs:
             * [macOS arm64](https://tuf.nelm.sh/targets/releases/{{> version }}/darwin-arm64/bin/nelm) ([PGP signature](https://tuf.nelm.sh/targets/signatures/{{> version }}/darwin-arm64/bin/nelm.sig))
             * [Windows amd64](https://tuf.nelm.sh/targets/releases/{{> version }}/windows-amd64/bin/nelm.exe) ([PGP signature](https://tuf.nelm.sh/targets/signatures/{{> version }}/windows-amd64/bin/nelm.exe.sig))
 
-            These binaries were signed with PGP and could be verified with the [nelm PGP public key](https://raw.githubusercontent.com/werf/nelm/refs/heads/main/pubkey.asc). For example, `nelm` binary can be downloaded and verified with `gpg` on Linux with these commands:
+            These binaries were signed with PGP and could be verified with the [Nelm PGP public key](https://raw.githubusercontent.com/werf/nelm/refs/heads/main/nelm.asc). For example, `nelm` binary can be downloaded and verified with `gpg` on Linux with these commands:
             ```shell
             curl -sSLO "https://tuf.nelm.sh/targets/releases/{{> version }}/linux-amd64/bin/nelm" -O "https://tuf.nelm.sh/targets/signatures/{{> version }}/linux-amd64/bin/nelm.sig"
-            curl -sSL https://raw.githubusercontent.com/werf/nelm/refs/heads/main/pubkey.asc | gpg --import
+            curl -sSL https://raw.githubusercontent.com/werf/nelm/refs/heads/main/nelm.asc | gpg --import
             gpg --verify nelm.sig nelm
             ```
 
