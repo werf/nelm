@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://www.github.com/werf/nelm/compare/v1.0.0...v1.1.0) (2025-03-21)
+
+
+### Features
+
+* `--release-info-annotations` for `release install`, exposed in `release get` ([e563a61](https://www.github.com/werf/nelm/commit/e563a61ee1bc9aa42e0c932d464375588b80774d))
+
 ## 1.0.0 (2025-03-20)
 
 
