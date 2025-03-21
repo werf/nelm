@@ -38,6 +38,7 @@ func NewLegacyReleaseFromRelease(rel *Release) (*release.Release, error) {
 		Namespace: rel.Namespace(),
 		Version:   rel.Revision(),
 		Info: &release.Info{
+			Annotations:   rel.InfoAnnotations(),
 			FirstDeployed: time.Time{Time: rel.FirstDeployed()},
 			LastDeployed:  time.Time{Time: rel.LastDeployed()},
 			Status:        rel.Status(),

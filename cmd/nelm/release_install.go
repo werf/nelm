@@ -43,6 +43,7 @@ type releaseInstallConfig struct {
 	ProgressTablePrintInterval   time.Duration
 	RegistryCredentialsPath      string
 	ReleaseHistoryLimit          int
+	ReleaseInfoAnnotations       map[string]string
 	ReleaseName                  string
 	ReleaseNamespace             string
 	RollbackGraphPath            string
@@ -107,13 +108,13 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 				ChartRepositorySkipUpdate:    cfg.ChartRepositorySkipUpdate,
 				DefaultSecretValuesDisable:   cfg.DefaultSecretValuesDisable,
 				DefaultValuesDisable:         cfg.DefaultValuesDisable,
+				ExtraAnnotations:             cfg.ExtraAnnotations,
+				ExtraLabels:                  cfg.ExtraLabels,
+				ExtraRuntimeAnnotations:      cfg.ExtraRuntimeAnnotations,
 				InstallGraphPath:             cfg.InstallGraphPath,
 				InstallGraphSave:             cfg.InstallGraphSave,
 				InstallReportPath:            cfg.InstallReportPath,
 				InstallReportSave:            cfg.InstallReportSave,
-				ExtraAnnotations:             cfg.ExtraAnnotations,
-				ExtraLabels:                  cfg.ExtraLabels,
-				ExtraRuntimeAnnotations:      cfg.ExtraRuntimeAnnotations,
 				KubeAPIServerName:            cfg.KubeAPIServerName,
 				KubeBurstLimit:               cfg.KubeBurstLimit,
 				KubeCAPath:                   cfg.KubeCAPath,
@@ -131,6 +132,7 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 				ProgressTablePrintInterval:   cfg.ProgressTablePrintInterval,
 				RegistryCredentialsPath:      cfg.RegistryCredentialsPath,
 				ReleaseHistoryLimit:          cfg.ReleaseHistoryLimit,
+				ReleaseInfoAnnotations:       cfg.ReleaseInfoAnnotations,
 				ReleaseStorageDriver:         cfg.ReleaseStorageDriver(),
 				RollbackGraphPath:            cfg.RollbackGraphPath,
 				RollbackGraphSave:            cfg.RollbackGraphSave,
@@ -365,6 +367,13 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 		if err := cli.AddFlag(cmd, &cfg.ReleaseHistoryLimit, "release-history-limit", action.DefaultReleaseHistoryLimit, "Limit the number of releases in release history. When limit is exceeded the oldest releases are deleted. Release resources are not affected", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.ReleaseInfoAnnotations, "release-info-annotations", map[string]string{}, "Add annotations to release metadata", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagLocalMultiEnvVarRegexes,
+			Group:                mainFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

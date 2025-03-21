@@ -101,13 +101,13 @@ type ReleaseInstallOptions struct {
 	DefaultChartVersion          string
 	DefaultSecretValuesDisable   bool
 	DefaultValuesDisable         bool
+	ExtraAnnotations             map[string]string
+	ExtraLabels                  map[string]string
+	ExtraRuntimeAnnotations      map[string]string
 	InstallGraphPath             string
 	InstallGraphSave             bool
 	InstallReportPath            string
 	InstallReportSave            bool
-	ExtraAnnotations             map[string]string
-	ExtraLabels                  map[string]string
-	ExtraRuntimeAnnotations      map[string]string
 	KubeAPIServerName            string
 	KubeBurstLimit               int
 	KubeCAPath                   string
@@ -126,6 +126,7 @@ type ReleaseInstallOptions struct {
 	ProgressTablePrintInterval   time.Duration
 	RegistryCredentialsPath      string
 	ReleaseHistoryLimit          int
+	ReleaseInfoAnnotations       map[string]string
 	ReleaseStorageDriver         ReleaseStorageDriver
 	RollbackGraphPath            string
 	RollbackGraphSave            bool
@@ -442,8 +443,9 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		resProcessor.ReleasableGeneralResources(),
 		notes,
 		rls.ReleaseOptions{
-			FirstDeployed: firstDeployed,
-			Mapper:        clientFactory.Mapper(),
+			InfoAnnotations: opts.ReleaseInfoAnnotations,
+			FirstDeployed:   firstDeployed,
+			Mapper:          clientFactory.Mapper(),
 		},
 	)
 	if err != nil {
