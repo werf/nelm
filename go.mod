@@ -30,7 +30,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.5.0
-	github.com/werf/3p-helm v0.0.0-20250228131406-d579a5860ae3
+	github.com/werf/3p-helm v0.0.0-20250321133401-c2dd64fffad4
 	github.com/werf/common-go v0.0.0-20250317135621-3a6772a9f88d
 	github.com/werf/kubedog v0.13.1-0.20250225170820-367e45be4347
 	github.com/werf/lockgate v0.1.1
