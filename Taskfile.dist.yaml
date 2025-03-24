@@ -251,6 +251,17 @@ tasks:
     cmds:
       - docker run --rm -v $(pwd):/work tmknom/prettier -w "**/*.yaml" "**/*.yml"
 
+  generate:
+    desc: 'Run all generators. Important vars: "paths".'
+    run: once
+    cmds:
+      - task: generate:doctoc
+
+  generate:doctoc:
+    desc: "Generate Tables of Contents in Markdown files."
+    cmds:
+      - docker run --rm -v "$(pwd)":/work peterdavehello/npm-doctoc doctoc --update-only /work
+
   lint:
     desc: 'Run all linters in parallel. Important vars: "paths".'
     deps:
