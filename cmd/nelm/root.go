@@ -12,6 +12,8 @@ import (
 )
 
 func NewRootCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
+	cobra.EnableErrorOnUnknownSubcommand = true
+
 	cmd := cli.NewRootCommand(
 		ctx,
 		strings.ToLower(common.Brand),
