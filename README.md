@@ -1,11 +1,13 @@
-**Nelm** is a **Helm 3** alternative, providing first-class **Helm Chart** support, yet improving on what **Helm 3** offers. Nelm is used as a deployment engine in [werf](https://github.com/werf/werf/). **Nelm** is based on **Helm 3** — some parts of it improved, but some are rewritten from scratch to introduce:
+**Nelm** is a Helm 3 alternative. It is a Kubernetes deployment tool that manages Helm Charts and deploys them to Kubernetes. It can do (almost) everything that Helm does, but better, and even quite some on top of it. Nelm is based on improved and partially rewritten Helm 3 codebase, to introduce:
+
 * `terraform plan`-like capabilities;
 * replacement of 3-Way Merge with Server-Side Apply;
-* advanced resource ordering capabilities;
 * secrets management;
+* advanced resource ordering capabilities;
 * improved resource state/error tracking;
 * continuous printing of logs, events, resource statuses and errors during deploy;
-* fixes for many Helm 3 issues, e.g. ["no matches for kind Deployment in version apps/v1beta1"](https://github.com/helm/helm/issues/7219)
+* fixes for many Helm 3 issues, e.g. ["no matches for kind Deployment in version apps/v1beta1"](https://github.com/helm/helm/issues/7219);
+* ... and more.
 
 ## Table of Contents
 
@@ -22,27 +24,29 @@
   - [Resource state tracking](#resource-state-tracking)
   - [Printing logs and events during deploy](#printing-logs-and-events-during-deploy)
   - [Release planning](#release-planning)
-  - [Encrypted values or arbitrary files](#encrypted-values-or-arbitrary-files)
-- [Usage](#usage)
-  - [Encrypted values files](#encrypted-values-files)
-  - [Encrypted arbitrary files](#encrypted-arbitrary-files)
-- [Reference](#reference)
-  - [Annotation `werf.io/weight`](#annotation-werfioweight)
-  - [Annotation `werf.io/deploy-dependency-<id>`](#annotation-werfiodeploy-dependency-id)
-  - [Annotation `<id>.external-dependency.werf.io/resource`](#annotation-idexternal-dependencywerfioresource)
-  - [Annotation `<id>.external-dependency.werf.io/name`](#annotation-idexternal-dependencywerfioname)
-  - [Annotation `werf.io/sensitive`](#annotation-werfiosensitive)
-  - [Annotation `werf.io/track-termination-mode`](#annotation-werfiotrack-termination-mode)
-  - [Annotation `werf.io/fail-mode`](#annotation-werfiofail-mode)
-  - [Annotation `werf.io/failures-allowed-per-replica`](#annotation-werfiofailures-allowed-per-replica)
-  - [Annotation `werf.io/no-activity-timeout`](#annotation-werfiono-activity-timeout)
-  - [Annotation `werf.io/log-regex`](#annotation-werfiolog-regex)
-  - [Annotation `werf.io/log-regex-for-<container_name>`](#annotation-werfiolog-regex-for-container_name)
-  - [Annotation `werf.io/skip-logs`](#annotation-werfioskip-logs)
-  - [Annotation `werf.io/skip-logs-for-containers`](#annotation-werfioskip-logs-for-containers)
-  - [Annotation `werf.io/show-logs-only-for-containers`](#annotation-werfioshow-logs-only-for-containers)
-  - [Annotation `werf.io/show-service-messages`](#annotation-werfioshow-service-messages)
-  - [Function `werf_secret_file`](#function-werf_secret_file)
+  - [Encrypted values and encrypted files](#encrypted-values-and-encrypted-files)
+- [Documentation](#documentation)
+  - [Usage](#usage)
+    - [Encrypted values files](#encrypted-values-files)
+    - [Encrypted arbitrary files](#encrypted-arbitrary-files)
+  - [Reference](#reference)
+    - [Annotation `werf.io/weight`](#annotation-werfioweight)
+    - [Annotation `werf.io/deploy-dependency-<id>`](#annotation-werfiodeploy-dependency-id)
+    - [Annotation `<id>.external-dependency.werf.io/resource`](#annotation-idexternal-dependencywerfioresource)
+    - [Annotation `<id>.external-dependency.werf.io/name`](#annotation-idexternal-dependencywerfioname)
+    - [Annotation `werf.io/sensitive`](#annotation-werfiosensitive)
+    - [Annotation `werf.io/track-termination-mode`](#annotation-werfiotrack-termination-mode)
+    - [Annotation `werf.io/fail-mode`](#annotation-werfiofail-mode)
+    - [Annotation `werf.io/failures-allowed-per-replica`](#annotation-werfiofailures-allowed-per-replica)
+    - [Annotation `werf.io/no-activity-timeout`](#annotation-werfiono-activity-timeout)
+    - [Annotation `werf.io/log-regex`](#annotation-werfiolog-regex)
+    - [Annotation `werf.io/log-regex-for-<container_name>`](#annotation-werfiolog-regex-for-container_name)
+    - [Annotation `werf.io/skip-logs`](#annotation-werfioskip-logs)
+    - [Annotation `werf.io/skip-logs-for-containers`](#annotation-werfioskip-logs-for-containers)
+    - [Annotation `werf.io/show-logs-only-for-containers`](#annotation-werfioshow-logs-only-for-containers)
+    - [Annotation `werf.io/show-service-messages`](#annotation-werfioshow-service-messages)
+    - [Function `werf_secret_file`](#function-werf_secret_file)
+  - [More information](#more-information)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -87,7 +91,7 @@ Follow instructions on [GitHub Releases](https://github.com/werf/nelm/releases).
     nelm release install -n myproject -r myproject
     ```
     ... resources successfully created in the cluster and their readiness is ensured:
-    ```text
+    ```smalltalk
     Starting release "myproject" (namespace: "myproject")
    
     ┌ Logs for Pod/myproject-cert-manager-webhook-76c89cc4c7-d8xn4, container/cert-manager-webhook
@@ -136,7 +140,7 @@ Follow instructions on [GitHub Releases](https://github.com/werf/nelm/releases).
     nelm release plan install -n myproject -r myproject --set cert-manager.replicaCount=2
     ```
     ... only the `spec.replicas` field is going to be updated:
-    ```text
+    ```smalltalk
     Planning release install "myproject" (namespace: "myproject")
 
     ┌ Update Deployment/myproject-cert-manager
@@ -159,7 +163,7 @@ Follow instructions on [GitHub Releases](https://github.com/werf/nelm/releases).
     nelm release install -n myproject -r myproject --set cert-manager.replicaCount=2
     ```
     ... only the Deployment is updated:
-    ```text
+    ```smalltalk
     Starting release "myproject" (namespace: "myproject")
    
     ┌ Progress status
@@ -228,20 +232,19 @@ Nelm is built upon Helm 3 codebase with some parts of Helm 3 reimplemented. We a
 
 Helm Charts can be deployed by Nelm with no changes. We support all of the obscure Helm Chart features, such as `lookup` functions.
 
-To store release information we use Helm Releases. In theory, you can deploy the same release first with Helm, then with Nelm, and then again with Helm, and it will work (not that you'll need this, but still).
+To store release information we use Helm Releases. You can deploy the same release first with Helm, then Nelm and then with Helm and Nelm again and it will work just fine.
 
-We have a different CLI layout, flags and environment variables, and commands might have a different output format, but we largely support all the same features.
+We have a different CLI layout, flags and environment variables, and commands might have a different output format, but we largely support all the same features as Helm.
 
 Helm plugins support is not planned due to technical difficulties with Helm plugins API, instead we intend to implement functionality of the most useful plugins natively, like we did with `nelm release plan install` and `nelm chart secret`.
 
-Generally, the migration from Helm to Nelm should be as simple as changing Helm commands to Nelm commands, for example:
+Generally, the migration from Helm to Nelm should be as simple as changing Helm commands to Nelm commands in your CI, for example:
 
-| Helm command | Nelm command |
+| Helm command | Nelm command equivalent |
 | -------- | ------- |
 | helm upgrade --install --atomic --wait -n ns release ./chart | nelm release install --auto-rollback -n ns -r release ./chart |
 | helm uninstall -n ns release | nelm release uninstall -n ns -r release |
 | helm template ./chart | nelm chart render ./chart |
-| helm lint ./chart | nelm chart lint ./chart | 
 | helm dependency build | nelm chart dependency download |
 
 ## Key features
@@ -285,13 +288,17 @@ During deploy Nelm finds Pods of deployed release resources and periodically pri
 
 <!-- add gifs -->
 
-### Encrypted values or arbitrary files
+### Encrypted values and encrypted files
 
-`nelm chart secret` commands manage encrypted values files such as `secret-values.yaml` or encrypted arbitrary files like `secret/mysecret.txt`. These files are decrypted in-memory on deploy and can be used in templates as `.Values.my.secret.value` and `{{ werf_secret_file "mysecret.txt" }}` respectively.
+`nelm chart secret` commands manage encrypted values files such as `secret-values.yaml` or encrypted arbitrary files like `secret/mysecret.txt`. These files are decrypted in-memory during templating and can be used in templates as `.Values.my.secret.value` and `{{ werf_secret_file "mysecret.txt" }}` respectively.
 
-## Usage
+## Documentation
 
-### Encrypted values files
+Nelm-specific features are described below. For general documentation see [Helm docs](https://helm.sh/docs/) and [werf docs](https://werf.io/docs/v2/usage/deploy/overview.html).
+
+### Usage
+
+#### Encrypted values files
 
 Values files can be encrypted and stored in a Helm chart or a git repo. Such values files are decrypted in-memory during templating.
 
@@ -324,7 +331,7 @@ password: verysecurepassword123
 
 NOTE: `$NELM_SECRET_KEY` must be set for any command that encrypts/decrypts secrets, including `nelm chart render`.
 
-### Encrypted arbitrary files
+#### Encrypted arbitrary files
 
 Arbitrary files can be encrypted and stored in the `secret/` directory of a Helm chart. Such files are decrypted in-memory during templating.
 
@@ -358,9 +365,9 @@ config:
   password: verysecurepassword123
 ```
 
-## Reference
+### Reference
 
-### Annotation `werf.io/weight`
+#### Annotation `werf.io/weight`
 
 Format: `<any number>` \
 Default: `0` \
@@ -368,7 +375,7 @@ Example: `werf.io/weight: "10"`, `werf.io/weight: "-10"`
 
 Works the same as `helm.sh/hook-weight`, but can be used for both hooks and non-hook resources. Resources with the same weight are grouped together, then the groups deployed one after the other, from low to high weight. Resources in the same group are deployed in parallel. Has higher priority than `helm.sh/hook-weight`, but lower than `werf.io/deploy-dependency-<id>`.
 
-### Annotation `werf.io/deploy-dependency-<id>`
+#### Annotation `werf.io/deploy-dependency-<id>`
 
 Format: `state=ready|present[,name=<name>][,namespace=<namespace>][,kind=<kind>][,group=<group>][,version=<version>]` \
 Example: \
@@ -377,7 +384,7 @@ Example: \
 
 The resource will deploy only after all of its dependencies are satisfied. Waits until the specified resource is just `present` or is also `ready`. More powerful alternative to hooks and `werf.io/weight`. Can only point to resources in the release. Has higher priority than `werf.io/weight` and `helm.sh/hook-weight`.
 
-### Annotation `<id>.external-dependency.werf.io/resource`
+#### Annotation `<id>.external-dependency.werf.io/resource`
 
 Format: `<kind>[.<version>.<group>]/<name>` \
 Example: \
@@ -386,14 +393,14 @@ Example: \
 
 The resource will deploy only after all of its external dependencies are satisfied. Waits until the specified resource is present and ready. Can only point to resources outside of the release.
 
-### Annotation `<id>.external-dependency.werf.io/name`
+#### Annotation `<id>.external-dependency.werf.io/name`
 
 Format: `<name>` \
 Example: `someapp.external-dependency.werf.io/name: someapp-production`
 
 Set the namespace of the external dependency defined by `<id>.external-dependency.werf.io/resource`. `<id>` must match on both annotations. If not specified, the release namespace is used.
 
-### Annotation `werf.io/sensitive`
+#### Annotation `werf.io/sensitive`
 
 Format: `true|false` \
 Default: `false`, but for `v1/Secret` — `true` \
@@ -401,7 +408,7 @@ Example: `werf.io/sensitive: "true"`
 
 Don't show diffs for the resource.
 
-### Annotation `werf.io/track-termination-mode`
+#### Annotation `werf.io/track-termination-mode`
 
 Format: `WaitUntilResourceReady|NonBlocking` \
 Default: `WaitUntilResourceReady` \
@@ -411,7 +418,7 @@ Configure when to stop resource readiness tracking:
 * `WaitUntilResourceReady`: wait until the resource is ready.
 * `NonBlocking`: don't wait until the resource is ready.
 
-### Annotation `werf.io/fail-mode`
+#### Annotation `werf.io/fail-mode`
 
 Format: `FailWholeDeployProcessImmediately|IgnoreAndContinueDeployProcess` \
 Default: `FailWholeDeployProcessImmediately` \
@@ -421,7 +428,7 @@ Configure what should happen when errors during tracking for the resource exceed
 * `FailWholeDeployProcessImmediately`: fail the release.
 * `IgnoreAndContinueDeployProcess`: do nothing.
 
-### Annotation `werf.io/failures-allowed-per-replica`
+#### Annotation `werf.io/failures-allowed-per-replica`
 
 Format: `<any positive number or zero>` \
 Default: `1` \
@@ -429,7 +436,7 @@ Example: `werf.io/failures-allowed-per-replica: "0"`
 
 Set the number of allowed errors during resource tracking. When exceeded, act according to `werf.io/fail-mode`.
 
-### Annotation `werf.io/no-activity-timeout`
+#### Annotation `werf.io/no-activity-timeout`
 
 Format: `<golang duration>` [(reference)](https://pkg.go.dev/time#ParseDuration) \
 Default: `4m` \
@@ -437,21 +444,21 @@ Example: `werf.io/no-activity-timeout: 8m30s`
 
 Take it as a resource tracking error if no new events or resource updates received during resource tracking for the specified time.
 
-### Annotation `werf.io/log-regex`
+#### Annotation `werf.io/log-regex`
 
 Format: `<re2 regex>` [(reference)](https://github.com/google/re2/wiki/Syntax) \
 Example: `werf.io/log-regex: ".*ERR|err|WARN|warn.*"`
 
 Only show log lines that match the specified regex.
 
-### Annotation `werf.io/log-regex-for-<container_name>`
+#### Annotation `werf.io/log-regex-for-<container_name>`
 
 Format: `<re2 regex>` [(reference)](https://github.com/google/re2/wiki/Syntax) \
 Example: `werf.io/log-regex-for-backend: ".*ERR|err|WARN|warn.*"`
 
 For the specified container only show log lines that match the specified regex.
 
-### Annotation `werf.io/skip-logs`
+#### Annotation `werf.io/skip-logs`
 
 Format: `true|false` \
 Default: `false` \
@@ -459,21 +466,21 @@ Example: `werf.io/skip-logs: "true"`
 
 Don't print container logs during resource tracking.
 
-### Annotation `werf.io/skip-logs-for-containers`
+#### Annotation `werf.io/skip-logs-for-containers`
 
 Format: `<container_name>[,<container_name>...]` \
 Example: `werf.io/skip-logs-for-containers: "backend,frontend"`
 
 Don't print logs for specified containers during resource tracking.
 
-### Annotation `werf.io/show-logs-only-for-containers`
+#### Annotation `werf.io/show-logs-only-for-containers`
 
 Format: `<container_name>[,<container_name>...]` \
 Example: `werf.io/show-logs-only-for-containers: "backend,frontend"`
 
 Print logs only for specified containers during resource tracking.
 
-### Annotation `werf.io/show-service-messages`
+#### Annotation `werf.io/show-service-messages`
 
 Format: `true|false` \
 Default: `false` \
@@ -481,10 +488,13 @@ Example: `werf.io/show-service-messages: "true"`
 
 Show resource events during resource tracking.
 
-### Function `werf_secret_file`
+#### Function `werf_secret_file`
 
 Format: `werf_secret_file "<filename, relative to secret/ dir>"` \
 Example: `config: {{ werf_secret_file "config.yaml" | nindent 4 }}`
 
 Read the specified secret file from the `secret/` directory of the Helm chart.
 
+### More information
+
+For more information, see [Helm docs](https://helm.sh/docs/) and [werf docs](https://werf.io/docs/v2/usage/deploy/overview.html).
