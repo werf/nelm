@@ -17,7 +17,7 @@ func NewRootCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.C
 	cmd := cli.NewRootCommand(
 		ctx,
 		strings.ToLower(common.Brand),
-		fmt.Sprintf("%s is a Helm 3 replacement. %s manages and deploys Helm Charts to Kubernetes just like Helm, but provides a lot of features, improvements and bug fixes on top of what Helm 3 offers.", common.Brand, common.Brand),
+		fmt.Sprintf("%s is a Helm 3 alternative. %s manages and deploys Helm Charts to Kubernetes just like Helm, but provides a lot of features, improvements and bug fixes on top of what Helm 3 offers.", common.Brand, common.Brand),
 	)
 
 	cmd.SetUsageFunc(usageFunc)

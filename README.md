@@ -14,6 +14,8 @@
 
 - [Install](#install)
 - [Quickstart](#quickstart)
+- [CLI Overview](#cli-overview)
+- [Helm compatibility](#helm-compatibility)
 - [Key features](#key-features)
   - [Advanced resource ordering](#advanced-resource-ordering)
   - [3-Way Merge replaced by Server-Side Apply](#3-way-merge-replaced-by-server-side-apply)
@@ -21,7 +23,10 @@
   - [Printing logs and events during deploy](#printing-logs-and-events-during-deploy)
   - [Release planning](#release-planning)
   - [Encrypted values or arbitrary files](#encrypted-values-or-arbitrary-files)
-- [Documentation](#documentation)
+- [Usage](#usage)
+  - [Encrypted values files](#encrypted-values-files)
+  - [Encrypted arbitrary files](#encrypted-arbitrary-files)
+- [Reference](#reference)
   - [Annotation `werf.io/weight`](#annotation-werfioweight)
   - [Annotation `werf.io/deploy-dependency-<id>`](#annotation-werfiodeploy-dependency-id)
   - [Annotation `<id>.external-dependency.werf.io/resource`](#annotation-idexternal-dependencywerfioresource)
@@ -38,8 +43,6 @@
   - [Annotation `werf.io/show-logs-only-for-containers`](#annotation-werfioshow-logs-only-for-containers)
   - [Annotation `werf.io/show-service-messages`](#annotation-werfioshow-service-messages)
   - [Function `werf_secret_file`](#function-werf_secret_file)
-  - [Encrypted values files](#encrypted-values-files)
-  - [Encrypted arbitrary files](#encrypted-arbitrary-files)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -171,6 +174,54 @@ Follow instructions on [GitHub Releases](https://github.com/werf/nelm/releases).
     Succeeded release "myproject" (namespace: "myproject")
     ```
    
+## CLI Overview
+
+```yaml
+Release commands:
+  release install                    Deploy a chart to Kubernetes.
+  release rollback                   Rollback to a previously deployed release.
+  release plan install               Plan a release install to Kubernetes.
+  release uninstall                  Uninstall a Helm Release from Kubernetes.
+  release list                       List all releases in a namespace.
+  release history                    Show release history.
+  release get                        Get information about a deployed release.
+
+Chart commands:
+  chart lint                         Lint a chart.
+  chart render                       Render a chart.
+  chart download                     Download a chart from a repository.
+  chart upload                       Upload a chart to a repository.
+  chart pack                         Pack a chart into an archive to distribute via a repository.
+
+Secret commands:
+  chart secret key create            Create a new chart secret key.
+  chart secret key rotate            Reencrypt secret files with a new secret key.
+  chart secret values-file edit      Interactively edit encrypted values file.
+  chart secret values-file encrypt   Encrypt values file and print result to stdout.
+  chart secret values-file decrypt   Decrypt values file and print result to stdout.
+  chart secret file edit             Interactively edit encrypted file.
+  chart secret file encrypt          Encrypt file and print result to stdout.
+  chart secret file decrypt          Decrypt file and print result to stdout.
+
+Dependency commands:
+  chart dependency download          Download chart dependencies from Chart.lock.
+  chart dependency update            Update Chart.lock and download chart dependencies.
+
+Repo commands:
+  repo add                           Set up a new chart repository.
+  repo remove                        Remove a chart repository.
+  repo update                        Update info about available charts for all chart repositories.
+  repo login                         Log in to an OCI registry with charts.
+  repo logout                        Log out from an OCI registry with charts.
+
+Other commands:
+  completion bash                    Generate the autocompletion script for bash
+  completion fish                    Generate the autocompletion script for fish
+  completion powershell              Generate the autocompletion script for powershell
+  completion zsh                     Generate the autocompletion script for zsh
+  version                            Show version.
+```
+   
 ## Helm compatibility
 
 Nelm is built upon Helm 3 codebase with some parts of Helm 3 reimplemented. We are backwards compatible with Helm Charts and Helm Releases.
@@ -238,7 +289,76 @@ During deploy Nelm finds Pods of deployed release resources and periodically pri
 
 `nelm chart secret` commands manage encrypted values files such as `secret-values.yaml` or encrypted arbitrary files like `secret/mysecret.txt`. These files are decrypted in-memory on deploy and can be used in templates as `.Values.my.secret.value` and `{{ werf_secret_file "mysecret.txt" }}` respectively.
 
-## Documentation
+## Usage
+
+### Encrypted values files
+
+Values files can be encrypted and stored in a Helm chart or a git repo. Such values files are decrypted in-memory during templating.
+
+Create a secret key:
+```bash
+export NELM_SECRET_KEY="$(nelm chart secret key create)"
+```
+
+Create a new secret-values file:
+```bash
+nelm chart secret values-file edit secret-values.yaml
+```
+... with the following content:
+```yaml
+password: verysecurepassword123
+```
+
+Reference encrypted value in Helm templates:
+```yaml
+password: {{ .Values.password }}
+```
+
+Render the chart:
+```bash
+nelm chart render
+```
+```yaml
+password: verysecurepassword123
+```
+
+NOTE: `$NELM_SECRET_KEY` must be set for any command that encrypts/decrypts secrets, including `nelm chart render`.
+
+### Encrypted arbitrary files
+
+Arbitrary files can be encrypted and stored in the `secret/` directory of a Helm chart. Such files are decrypted in-memory during templating.
+
+Create a secret key:
+```bash
+export NELM_SECRET_KEY="$(nelm chart secret key create)"
+```
+
+Create a new secret file:
+```bash
+nelm chart secret file edit secret/config.yaml
+```
+... with the following content:
+```yaml
+user: john-doe
+password: verysecurepassword123
+```
+
+Reference encrypted secret in Helm templates:
+```yaml
+config: {{ werf_secret_file "config.yaml" | nindent 4 }}
+```
+
+Render the chart:
+```bash
+nelm chart render
+```
+```yaml
+config:
+  user: john-doe
+  password: verysecurepassword123
+```
+
+## Reference
 
 ### Annotation `werf.io/weight`
 
@@ -334,7 +454,7 @@ For the specified container only show log lines that match the specified regex.
 ### Annotation `werf.io/skip-logs`
 
 Format: `true|false` \
-Default: `false`
+Default: `false` \
 Example: `werf.io/skip-logs: "true"`
 
 Don't print container logs during resource tracking.
@@ -367,71 +487,4 @@ Format: `werf_secret_file "<filename, relative to secret/ dir>"` \
 Example: `config: {{ werf_secret_file "config.yaml" | nindent 4 }}`
 
 Read the specified secret file from the `secret/` directory of the Helm chart.
-
-### Encrypted values files
-
-Values files can be encrypted and stored in a Helm chart or a git repo. Such values files are decrypted in-memory during templating.
-
-Create a secret key:
-```bash
-export NELM_SECRET_KEY="$(nelm chart secret key create)"
-```
-
-Create a new secret-values file:
-```bash
-nelm chart secret values-file edit secret-values.yaml
-```
-... with the following content:
-```yaml
-password: verysecurepassword123
-```
-
-Reference encrypted value in Helm templates:
-```text
-  password: {{ .Values.password }}
-```
-
-Render the chart:
-```bash
-nelm chart render
-```
-```text
-  password: verysecurepassword123
-```
-
-NOTE: `$NELM_SECRET_KEY` must be set for any command that encrypts/decrypts secrets, including `nelm chart render`.
-
-### Encrypted arbitrary files
-
-Arbitrary files can be encrypted and stored in the `secret/` directory of a Helm chart. Such files are decrypted in-memory during templating.
-
-Create a secret key:
-```bash
-export NELM_SECRET_KEY="$(nelm chart secret key create)"
-```
-
-Create a new secret file:
-```bash
-nelm chart secret file edit secret/config.yaml
-```
-... with the following content:
-```yaml
-user: john-doe
-password: verysecurepassword123
-```
-
-Reference encrypted secret in Helm templates:
-```text
-  config: {{ werf_secret_file "config.yaml" | nindent 4 }}
-```
-
-Render the chart:
-```bash
-nelm chart render
-```
-```text
-  config:
-    user: john-doe
-    password: verysecurepassword123
-```
 
