@@ -172,7 +172,7 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 		defer lockManager.Unlock(lock)
 	}
 
-	log.Default.Info(ctx, "Constructing release history")
+	log.Default.Debug(ctx, "Constructing release history")
 	history, err := rlshistor.NewHistory(
 		releaseName,
 		releaseNamespace,
@@ -232,7 +232,7 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 	deployType := helmcommon.DeployTypeRollback
 	notes := releaseToRollback.Notes()
 
-	log.Default.Info(ctx, "Processing rollback resources")
+	log.Default.Debug(ctx, "Processing rollback resources")
 	resProcessor := resrcprocssr.NewDeployableResourcesProcessor(
 		deployType,
 		releaseName,
@@ -264,7 +264,7 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 		return fmt.Errorf("process resources: %w", err)
 	}
 
-	log.Default.Info(ctx, "Constructing new rollback release")
+	log.Default.Debug(ctx, "Constructing new rollback release")
 	newRel, err := rls.NewRelease(
 		releaseName,
 		releaseNamespace,
@@ -288,7 +288,7 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 		logstore.NewLogStore(),
 	)
 
-	log.Default.Info(ctx, "Constructing new rollback plan")
+	log.Default.Debug(ctx, "Constructing new rollback plan")
 	deployPlanBuilder := plnbuilder.NewDeployPlanBuilder(
 		releaseNamespace,
 		deployType,
@@ -376,7 +376,7 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 		},
 	)
 
-	log.Default.Info(ctx, "Starting tracking")
+	log.Default.Debug(ctx, "Starting tracking")
 	stdoutTrackerStopCh := make(chan bool)
 	stdoutTrackerFinishedCh := make(chan bool)
 
@@ -400,7 +400,7 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 		}()
 	}
 
-	log.Default.Info(ctx, "Executing release rollback plan")
+	log.Default.Debug(ctx, "Executing release rollback plan")
 	planExecutor := plnexectr.NewPlanExecutor(
 		plan,
 		plnexectr.PlanExecutorOptions{
