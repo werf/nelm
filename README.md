@@ -269,7 +269,7 @@ In recent versions Kubernetes introduced Server-Side Apply (SSA) to update resou
 
 Nelm has powerful resource tracking built from the ground up:
 * Reliable detection of resources readiness, presence, absence or failures.
-* Euristically determined readiness for Custom Resources by analyzing their status fields. Works for about half of Custom Resources. No false positives.
+* Heuristically determined readiness for Custom Resources by analyzing their status fields. Works for about half of Custom Resources. No false positives.
 * Some dependent resources, like Pods of Deployments, are automatically found and individually tracked.
 * Table with tracked resources current info (statuses, errors and more) printed every few seconds during deploy.
 * Tracking can be configured per resource with annotations.
