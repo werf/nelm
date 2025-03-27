@@ -1,4 +1,4 @@
-**Nelm** is a Helm 3 alternative. It is a Kubernetes deployment tool that manages Helm Charts and deploys them to Kubernetes. It can do (almost) everything that Helm does, but better, and even quite some on top of it. Nelm is based on improved and partially rewritten Helm 3 codebase, to introduce:
+**Nelm** is a Helm 3 alternative. It is a Kubernetes deployment tool that manages Helm Charts and deploys them to Kubernetes and also is the deployment engine of [werf](https://github.com/werf/werf). It can do (almost) everything that Helm does, but better, and even quite some on top of it. Nelm is based on improved and partially rewritten Helm 3 codebase, to introduce:
 
 * `terraform plan`-like capabilities;
 * replacement of 3-Way Merge with Server-Side Apply;
@@ -6,7 +6,7 @@
 * advanced resource ordering capabilities;
 * improved resource state/error tracking;
 * continuous printing of logs, events, resource statuses and errors during deploy;
-* fixes for many Helm 3 issues, e.g. ["no matches for kind Deployment in version apps/v1beta1"](https://github.com/helm/helm/issues/7219);
+* lots of fixes for Helm 3 bugs, e.g. ["no matches for kind Deployment in version apps/v1beta1"](https://github.com/helm/helm/issues/7219);
 * ... and more.
 
 ## Table of Contents
@@ -274,19 +274,17 @@ Nelm has powerful resource tracking built from the ground up:
 * Table with tracked resources current info (statuses, errors and more) printed every few seconds during deploy.
 * Tracking can be configured per resource with annotations.
 
-<!-- add gifs -->
+![tracking](resources/images/nelm-release-install.gif)
 
 ### Printing logs and events during deploy
 
 During deploy Nelm finds Pods of deployed release resources and periodically prints their container logs. Also, with annotation `werf.io/show-service-messages: "true"` resource events are printed too. Log/event printing can be tuned with annotations.
 
-<!-- add gifs -->
-
 ### Release planning
 
 `nelm release plan install` explains exactly what's going to happen in a cluster on the next release. Shows 100% accurate diffs between current and to-be resource versions, utilizing robust dry-run Server-Side Apply instead of client-side trickery.
 
-<!-- add gifs -->
+![planning](resources/images/nelm-release-plan-install.gif)
 
 ### Encrypted values and encrypted files
 
