@@ -36,7 +36,7 @@ func fixManagedFields(ctx context.Context, namespace string, getObj *unstructure
 		return fmt.Errorf("error marshaling fixed managed fields: %w", err)
 	}
 
-	log.Default.Info(ctx, "Fixing managed fields for resource %q", getResource.HumanID())
+	log.Default.Debug(ctx, "Fixing managed fields for resource %q", getResource.HumanID())
 	getObj, err = kubeClient.MergePatch(ctx, getResource.ResourceID, patch)
 	if err != nil {
 		return fmt.Errorf("error patching managed fields: %w", err)

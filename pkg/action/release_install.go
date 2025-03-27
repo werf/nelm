@@ -302,7 +302,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		defer lockManager.Unlock(lock)
 	}
 
-	log.Default.Info(ctx, "Constructing release history")
+	log.Default.Debug(ctx, "Constructing release history")
 	history, err := rlshistor.NewHistory(
 		releaseName,
 		releaseNamespace,
@@ -359,7 +359,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	loader.SetChartPathFunc = downloader.SetChartPath
 	loader.DepsBuildFunc = downloader.Build
 
-	log.Default.Info(ctx, "Constructing chart tree")
+	log.Default.Debug(ctx, "Constructing chart tree")
 	chartTree, err := chrttree.NewChartTree(
 		ctx,
 		opts.ChartDirPath,
@@ -389,7 +389,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		prevRelGeneralResources = prevRelease.GeneralResources()
 	}
 
-	log.Default.Info(ctx, "Processing resources")
+	log.Default.Debug(ctx, "Processing resources")
 	resProcessor := resrcprocssr.NewDeployableResourcesProcessor(
 		deployType,
 		releaseName,
@@ -432,7 +432,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		return fmt.Errorf("process resources: %w", err)
 	}
 
-	log.Default.Info(ctx, "Constructing new release")
+	log.Default.Debug(ctx, "Constructing new release")
 	newRel, err := rls.NewRelease(
 		releaseName,
 		releaseNamespace,
@@ -457,7 +457,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		logstore.NewLogStore(),
 	)
 
-	log.Default.Info(ctx, "Constructing new deploy plan")
+	log.Default.Debug(ctx, "Constructing new deploy plan")
 	deployPlanBuilder := plnbuilder.NewDeployPlanBuilder(
 		releaseNamespace,
 		deployType,
@@ -545,7 +545,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		},
 	)
 
-	log.Default.Info(ctx, "Starting tracking")
+	log.Default.Debug(ctx, "Starting tracking")
 	stdoutTrackerStopCh := make(chan bool)
 	stdoutTrackerFinishedCh := make(chan bool)
 
@@ -569,7 +569,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		}()
 	}
 
-	log.Default.Info(ctx, "Executing release install plan")
+	log.Default.Debug(ctx, "Executing release install plan")
 	planExecutor := plnexectr.NewPlanExecutor(
 		plan,
 		plnexectr.PlanExecutorOptions{
@@ -808,7 +808,7 @@ func createReleaseNamespace(
 		},
 	); err != nil {
 		if errors.IsNotFound(err) {
-			log.Default.Info(ctx, "Creating release namespace %q", releaseNamespace)
+			log.Default.Debug(ctx, "Creating release namespace %q", releaseNamespace)
 
 			createOp := opertn.NewCreateResourceOperation(
 				releaseNamespaceResource.ResourceID,
@@ -898,7 +898,7 @@ func runFailureDeployPlan(
 	criticalErrs []error,
 	nonCriticalErrs []error,
 ) {
-	log.Default.Info(ctx, "Building failure deploy plan")
+	log.Default.Debug(ctx, "Building failure deploy plan")
 	failurePlanBuilder := plnbuilder.NewDeployFailurePlanBuilder(
 		releaseNamespace,
 		deployType,
@@ -927,7 +927,7 @@ func runFailureDeployPlan(
 		return nil, nil, nil, nil, nil
 	}
 
-	log.Default.Info(ctx, "Executing failure deploy plan")
+	log.Default.Debug(ctx, "Executing failure deploy plan")
 	failurePlanExecutor := plnexectr.NewPlanExecutor(
 		failurePlan,
 		plnexectr.PlanExecutorOptions{
@@ -989,7 +989,7 @@ func runRollbackPlan(
 	criticalErrs []error,
 	nonCriticalErrs []error,
 ) {
-	log.Default.Info(ctx, "Processing rollback resources")
+	log.Default.Debug(ctx, "Processing rollback resources")
 	resProcessor := resrcprocssr.NewDeployableResourcesProcessor(
 		helmcommon.DeployTypeRollback,
 		releaseName,
@@ -1034,7 +1034,7 @@ func runRollbackPlan(
 
 	rollbackRevision := failedRevision + 1
 
-	log.Default.Info(ctx, "Constructing rollback release")
+	log.Default.Debug(ctx, "Constructing rollback release")
 	rollbackRel, err := rls.NewRelease(
 		releaseName,
 		releaseNamespace,
@@ -1053,7 +1053,7 @@ func runRollbackPlan(
 		return nil, nil, nil, "", []error{fmt.Errorf("construct rollback release: %w", err)}, nonCriticalErrs
 	}
 
-	log.Default.Info(ctx, "Constructing rollback plan")
+	log.Default.Debug(ctx, "Constructing rollback plan")
 	rollbackPlanBuilder := plnbuilder.NewDeployPlanBuilder(
 		releaseNamespace,
 		helmcommon.DeployTypeRollback,
@@ -1098,7 +1098,7 @@ func runRollbackPlan(
 		return nil, nil, nil, "", criticalErrs, nonCriticalErrs
 	}
 
-	log.Default.Info(ctx, "Executing rollback plan")
+	log.Default.Debug(ctx, "Executing rollback plan")
 	rollbackPlanExecutor := plnexectr.NewPlanExecutor(
 		rollbackPlan,
 		plnexectr.PlanExecutorOptions{

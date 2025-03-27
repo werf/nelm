@@ -216,7 +216,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release install")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-	log.Default.Info(ctx, "Constructing release history")
+	log.Default.Debug(ctx, "Constructing release history")
 	history, err := rlshistor.NewHistory(
 		releaseName,
 		releaseNamespace,
@@ -273,7 +273,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 	loader.SetChartPathFunc = downloader.SetChartPath
 	loader.DepsBuildFunc = downloader.Build
 
-	log.Default.Info(ctx, "Constructing chart tree")
+	log.Default.Debug(ctx, "Constructing chart tree")
 	chartTree, err := chrttree.NewChartTree(
 		ctx,
 		opts.ChartDirPath,
@@ -304,7 +304,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		prevRelFailed = prevRelease.Failed()
 	}
 
-	log.Default.Info(ctx, "Processing resources")
+	log.Default.Debug(ctx, "Processing resources")
 	resProcessor := resrcprocssr.NewDeployableResourcesProcessor(
 		deployType,
 		releaseName,
@@ -350,7 +350,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		return fmt.Errorf("process resources: %w", err)
 	}
 
-	log.Default.Info(ctx, "Constructing new release")
+	log.Default.Debug(ctx, "Constructing new release")
 	newRel, err := rls.NewRelease(
 		releaseName,
 		releaseNamespace,
@@ -369,7 +369,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		return fmt.Errorf("construct new release: %w", err)
 	}
 
-	log.Default.Info(ctx, "Calculating planned changes")
+	log.Default.Debug(ctx, "Calculating planned changes")
 	createdChanges, recreatedChanges, updatedChanges, appliedChanges, deletedChanges, planChangesPlanned := resrcchangcalc.CalculatePlannedChanges(
 		releaseName,
 		releaseNamespace,
