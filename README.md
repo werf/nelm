@@ -5,7 +5,7 @@
 * secrets management;
 * advanced resource ordering capabilities;
 * improved resource state/error tracking;
-* continuous printing of logs, events, resource statuses and errors during deploy;
+* continuous printing of logs, events, resource statuses, and errors during deployment;
 * lots of fixes for Helm 3 bugs, e.g. ["no matches for kind Deployment in version apps/v1beta1"](https://github.com/helm/helm/issues/7219);
 * ... and more.
 
@@ -228,11 +228,11 @@ Other commands:
    
 ## Helm compatibility
 
-Nelm is built upon Helm 3 codebase with some parts of Helm 3 reimplemented. We are backwards compatible with Helm Charts and Helm Releases.
+Nelm is built upon the Helm 3 codebase with some parts of Helm 3 reimplemented. We are backwards compatible with Helm Charts and Helm Releases.
 
-Helm Charts can be deployed by Nelm with no changes. We support all of the obscure Helm Chart features, such as `lookup` functions.
+Helm Charts can be deployed by Nelm with no changes. We support all the obscure Helm Chart features, such as `lookup` functions.
 
-To store release information we use Helm Releases. You can deploy the same release first with Helm, then Nelm and then with Helm and Nelm again and it will work just fine.
+To store release information, we use Helm Releases. You can deploy the same release first with Helm, then Nelm and then with Helm and Nelm again, and it will work just fine.
 
 We have a different CLI layout, flags and environment variables, and commands might have a different output format, but we largely support all the same features as Helm.
 
@@ -255,13 +255,15 @@ The resource deployment subsystem of Helm is rewritten from scratch in Nelm. Dur
 * The annotation `werf.io/weight` is similar to `helm.sh/hook-weight`, except it works for non-hook resources too and resources with the same weight are deployed in parallel.
 * The annotation `werf.io/deploy-dependency-<id>` makes Nelm wait for readiness or just presence of another resource in a release before deploying the annotated resource. This is the most powerful and effective way to order resources in Nelm.
 * The annotation `<id>.external-dependency.werf.io/resource` allows to wait for readiness of non-release resources, e.g. resources created by third-party operators.
-* Helm ordering capabilities, i.e. Helm Hooks and Helm Hook weights are supported too.
+* Helm ordering capabilities, i.e. Helm Hooks and Helm Hook weights, are supported too.
+
+![ordering](resources/images/graph.png)
 
 ### 3-Way Merge replaced by Server-Side Apply
 
 Nelm fully replaced problematic [Helm 3-Way Merge](https://helm.sh/docs/faq/changes_since_helm2/#improved-upgrade-strategy-3-way-strategic-merge-patches) with [Server-Side Apply](https://kubernetes.io/docs/reference/using-api/server-side-apply/).
 
-3-Way Merge (3WM) is a client-side mechanism to make a patch for updating a resource in a cluster. Its issues stem from the fact that it has to assume that all previous release manifests were successfully applied to the cluster, which is not always the case. For example, if some resources were not updated due to being invalid or if a release was aborted too early, then on the next release incorrect 3WM patches might be produced. This results in a "successful" Helm release with wrong changes silently applied to the cluster, which is a very serious issue.
+3-Way Merge (3WM) is a client-side mechanism to make a patch for updating a resource in a cluster. Its issues stem from the fact that it has to assume that all previous release manifests were successfully applied to the cluster, which is not always the case. For example, if some resources weren't updated due to being invalid or if a release was aborted too early, then on the next release incorrect 3WM patches might be produced. This results in a "successful" Helm release with wrong changes silently applied to the cluster, which is a very serious issue.
 
 In recent versions Kubernetes introduced Server-Side Apply (SSA) to update resources by making patches server-side by Kubernetes instead of doing so client-side by Helm. SSA solves issues of 3WM and is widely adopted by other deployment tools, like Flux. Unfortunately, it will take a lot of work to replace 3WM with SSA in Helm. But since in Nelm the deployment subsystem was rewritten from scratch, we went SSA-first from the beginning, thus solving long-standing issues of 3-Way Merge.
 
@@ -271,14 +273,14 @@ Nelm has powerful resource tracking built from the ground up:
 * Reliable detection of resources readiness, presence, absence or failures.
 * Heuristically determined readiness for Custom Resources by analyzing their status fields. Works for about half of Custom Resources. No false positives.
 * Some dependent resources, like Pods of Deployments, are automatically found and individually tracked.
-* Table with tracked resources current info (statuses, errors and more) printed every few seconds during deploy.
+* Table with tracked resources current info (statuses, errors, and more) printed every few seconds during deployment.
 * Tracking can be configured per resource with annotations.
 
 ![tracking](resources/images/nelm-release-install.gif)
 
 ### Printing logs and events during deploy
 
-During deploy Nelm finds Pods of deployed release resources and periodically prints their container logs. Also, with annotation `werf.io/show-service-messages: "true"` resource events are printed too. Log/event printing can be tuned with annotations.
+During deployment Nelm finds Pods of deployed release resources and periodically prints their container logs. Also, with annotation `werf.io/show-service-messages: "true"` resource events are printed too. Log/event printing can be tuned with annotations.
 
 ### Release planning
 
@@ -389,7 +391,7 @@ Example: \
 `secret.external-dependency.werf.io/resource: secret/config` \
 `someapp.external-dependency.werf.io/resource: deployments.v1.apps/app`
 
-The resource will deploy only after all of its external dependencies are satisfied. Waits until the specified resource is present and ready. Can only point to resources outside of the release.
+The resource will deploy only after all of its external dependencies are satisfied. Waits until the specified resource is present and ready. Can only point to resources outside the release.
 
 #### Annotation `<id>.external-dependency.werf.io/name`
 
@@ -440,7 +442,7 @@ Format: `<golang duration>` [(reference)](https://pkg.go.dev/time#ParseDuration)
 Default: `4m` \
 Example: `werf.io/no-activity-timeout: 8m30s`
 
-Take it as a resource tracking error if no new events or resource updates received during resource tracking for the specified time.
+Take it as a resource tracking error if no new events or resource updates are received during resource tracking for the specified time.
 
 #### Annotation `werf.io/log-regex`
 
