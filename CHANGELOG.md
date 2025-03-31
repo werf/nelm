@@ -1,5 +1,13 @@
 # Changelog
 
+### [1.1.1](https://www.github.com/werf/nelm/compare/v1.1.0...v1.1.1) (2025-03-31)
+
+
+### Bug Fixes
+
+* make `info` log level less verbose ([0de72ff](https://www.github.com/werf/nelm/commit/0de72ffd693a8d9d129f149599f26b09e5de3b49))
+* wrong `nelm version` output ([176ba60](https://www.github.com/werf/nelm/commit/176ba6056427d4cfac0ce356899dbd0feed6b949))
+
 ## [1.1.0](https://www.github.com/werf/nelm/compare/v1.0.0...v1.1.0) (2025-03-24)
 
 
