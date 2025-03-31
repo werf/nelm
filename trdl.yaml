@@ -1,5 +1,6 @@
 docker_image: registry.werf.io/nelm/builder:91799da4d68991754b949e14c44a2ab51b7f2ebe@sha256:60a0058f061d821bfeaa2b6635fef209318a1b04393bd3e9fc5277faff992c1b
 commands:
-  - task -o group -p build:dist:all version={{ .Tag }}
-  - task -p verify:binaries:dist:all version={{ .Tag }}
-  - cp -a ./dist/{{ .Tag }}/* /result
+  - export VERSION="$(echo {{ .Tag }} | cut -c2-)"
+  - task -o group -p build:dist:all version=$VERSION
+  - task -p verify:binaries:dist:all version=$VERSION
+  - cp -a ./dist/$VERSION/* /result
