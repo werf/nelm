@@ -47,6 +47,7 @@
     - [Annotation `werf.io/show-service-messages`](#annotation-werfioshow-service-messages)
     - [Function `werf_secret_file`](#function-werf_secret_file)
   - [More information](#more-information)
+- [Known issues](#known-issues)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -498,3 +499,7 @@ Read the specified secret file from the `secret/` directory of the Helm chart.
 ### More information
 
 For more information, see [Helm docs](https://helm.sh/docs/) and [werf docs](https://werf.io/docs/v2/usage/deploy/overview.html).
+
+## Known issues
+
+- Nelm won't work with Kubernetes versions earlier than v1.14. The `ServerSideApply` feature gate should be enabled (it's enabled by default starting from Kubernetes v1.16). This requirement is caused by leveraging the Server-Side Apply (instead of 3-Way Merge in Helm).
