@@ -20,12 +20,12 @@ import (
 	"github.com/werf/3p-helm/pkg/storage/driver"
 	"github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/logboek"
-	"github.com/werf/nelm/pkg/deploy"
-	"github.com/werf/nelm/pkg/kubeclnt"
-	"github.com/werf/nelm/pkg/lock_manager"
-	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/opertn"
-	"github.com/werf/nelm/pkg/resrcid"
+	"github.com/werf/nelm/internal/deploy"
+	"github.com/werf/nelm/internal/kubeclnt"
+	"github.com/werf/nelm/internal/lock_manager"
+	"github.com/werf/nelm/internal/log"
+	"github.com/werf/nelm/internal/opertn"
+	"github.com/werf/nelm/internal/resrcid"
 )
 
 const (

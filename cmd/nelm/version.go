@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	cobra "github.com/spf13/cobra"
+	"github.com/spf13/cobra"
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"

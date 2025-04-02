@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/crypto/ssh/terminal"
 
-	secret2 "github.com/werf/common-go/pkg/secret"
+	"github.com/werf/common-go/pkg/secret"
 	"github.com/werf/common-go/pkg/secrets_manager"
 )
 
@@ -50,7 +50,7 @@ func secretDecrypt(
 	var data []byte
 	var err error
 
-	var encoder *secret2.YamlEncoder
+	var encoder *secret.YamlEncoder
 	if enc, err := m.GetYamlEncoder(ctx, workingDir); err != nil {
 		return err
 	} else {

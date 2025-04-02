@@ -18,9 +18,9 @@ import (
 	"github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/kubedog/pkg/kube"
-	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/rls"
-	"github.com/werf/nelm/pkg/rlshistor"
+	"github.com/werf/nelm/internal/log"
+	"github.com/werf/nelm/internal/rls"
+	"github.com/werf/nelm/internal/rlshistor"
 )
 
 const (

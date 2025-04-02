@@ -9,12 +9,12 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/goccy/go-yaml"
-	color "github.com/gookit/color"
+	"github.com/gookit/color"
 
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/internal/common"
+	"github.com/werf/nelm/internal/log"
 )
 
 const (

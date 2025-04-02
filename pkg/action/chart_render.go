@@ -29,14 +29,14 @@ import (
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/logboek"
-	"github.com/werf/nelm/pkg/chrttree"
-	helmcommon "github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/kubeclnt"
-	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/resrc"
-	"github.com/werf/nelm/pkg/resrcpatcher"
-	"github.com/werf/nelm/pkg/resrcprocssr"
-	"github.com/werf/nelm/pkg/rlshistor"
+	"github.com/werf/nelm/internal/chrttree"
+	"github.com/werf/nelm/internal/common"
+	"github.com/werf/nelm/internal/kubeclnt"
+	"github.com/werf/nelm/internal/log"
+	"github.com/werf/nelm/internal/resrc"
+	"github.com/werf/nelm/internal/resrcpatcher"
+	"github.com/werf/nelm/internal/resrcprocssr"
+	"github.com/werf/nelm/internal/rlshistor"
 )
 
 const (
@@ -271,13 +271,13 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 		newRevision = 1
 	}
 
-	var deployType helmcommon.DeployType
+	var deployType common.DeployType
 	if prevReleaseFound && prevDeployedReleaseFound {
-		deployType = helmcommon.DeployTypeUpgrade
+		deployType = common.DeployTypeUpgrade
 	} else if prevReleaseFound {
-		deployType = helmcommon.DeployTypeInstall
+		deployType = common.DeployTypeInstall
 	} else {
-		deployType = helmcommon.DeployTypeInitial
+		deployType = common.DeployTypeInitial
 	}
 
 	chartTreeOptions := chrttree.ChartTreeOptions{

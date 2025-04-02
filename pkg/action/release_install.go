@@ -31,24 +31,24 @@ import (
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	kubeutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/logboek"
-	"github.com/werf/nelm/pkg/chrttree"
-	helmcommon "github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/kubeclnt"
-	"github.com/werf/nelm/pkg/lock_manager"
-	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/opertn"
-	"github.com/werf/nelm/pkg/pln"
-	"github.com/werf/nelm/pkg/plnbuilder"
-	"github.com/werf/nelm/pkg/plnexectr"
-	"github.com/werf/nelm/pkg/reprt"
-	"github.com/werf/nelm/pkg/resrc"
-	"github.com/werf/nelm/pkg/resrcpatcher"
-	"github.com/werf/nelm/pkg/resrcprocssr"
-	"github.com/werf/nelm/pkg/rls"
-	"github.com/werf/nelm/pkg/rlsdiff"
-	"github.com/werf/nelm/pkg/rlshistor"
-	"github.com/werf/nelm/pkg/track"
-	"github.com/werf/nelm/pkg/utls"
+	"github.com/werf/nelm/internal/chrttree"
+	"github.com/werf/nelm/internal/common"
+	"github.com/werf/nelm/internal/kubeclnt"
+	"github.com/werf/nelm/internal/lock_manager"
+	"github.com/werf/nelm/internal/log"
+	"github.com/werf/nelm/internal/opertn"
+	"github.com/werf/nelm/internal/pln"
+	"github.com/werf/nelm/internal/plnbuilder"
+	"github.com/werf/nelm/internal/plnexectr"
+	"github.com/werf/nelm/internal/reprt"
+	"github.com/werf/nelm/internal/resrc"
+	"github.com/werf/nelm/internal/resrcpatcher"
+	"github.com/werf/nelm/internal/resrcprocssr"
+	"github.com/werf/nelm/internal/rls"
+	"github.com/werf/nelm/internal/rlsdiff"
+	"github.com/werf/nelm/internal/rlshistor"
+	"github.com/werf/nelm/internal/track"
+	"github.com/werf/nelm/internal/utls"
 )
 
 const (
@@ -335,13 +335,13 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		newRevision = 1
 	}
 
-	var deployType helmcommon.DeployType
+	var deployType common.DeployType
 	if prevReleaseFound && prevDeployedReleaseFound {
-		deployType = helmcommon.DeployTypeUpgrade
+		deployType = common.DeployTypeUpgrade
 	} else if prevReleaseFound {
-		deployType = helmcommon.DeployTypeInstall
+		deployType = common.DeployTypeInstall
 	} else {
-		deployType = helmcommon.DeployTypeInitial
+		deployType = common.DeployTypeInitial
 	}
 
 	downloader := &downloader.Manager{
@@ -883,7 +883,7 @@ func printTables(
 func runFailureDeployPlan(
 	ctx context.Context,
 	releaseNamespace string,
-	deployType helmcommon.DeployType,
+	deployType common.DeployType,
 	failedPlan *pln.Plan,
 	taskStore *statestore.TaskStore,
 	resProcessor *resrcprocssr.DeployableResourcesProcessor,
@@ -966,7 +966,7 @@ func runRollbackPlan(
 	logStore *kubeutil.Concurrent[*logstore.LogStore],
 	releaseName string,
 	releaseNamespace string,
-	deployType helmcommon.DeployType,
+	deployType common.DeployType,
 	failedRelease *rls.Release,
 	prevDeployedRelease *rls.Release,
 	failedRevision int,
@@ -991,7 +991,7 @@ func runRollbackPlan(
 ) {
 	log.Default.Debug(ctx, "Processing rollback resources")
 	resProcessor := resrcprocssr.NewDeployableResourcesProcessor(
-		helmcommon.DeployTypeRollback,
+		common.DeployTypeRollback,
 		releaseName,
 		releaseNamespace,
 		nil,
@@ -1056,7 +1056,7 @@ func runRollbackPlan(
 	log.Default.Debug(ctx, "Constructing rollback plan")
 	rollbackPlanBuilder := plnbuilder.NewDeployPlanBuilder(
 		releaseNamespace,
-		helmcommon.DeployTypeRollback,
+		common.DeployTypeRollback,
 		taskStore,
 		logStore,
 		nil,

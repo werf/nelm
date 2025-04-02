@@ -18,7 +18,7 @@ import (
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/logboek"
 	"github.com/werf/logboek/pkg/types"
-	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/internal/common"
 )
 
 const helpTemplate = `

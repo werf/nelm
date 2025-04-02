@@ -11,7 +11,7 @@ import (
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/common-go/pkg/cli"
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/internal/log"
 )
 
 func newChartUploadCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {

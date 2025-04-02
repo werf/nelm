@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/werf/common-go/pkg/secrets_manager"
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/pkg/secret"
 )
 
