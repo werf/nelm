@@ -9,6 +9,7 @@ RUN apt-get -y update && \
 
 ADD cmd /.nelm-deps/cmd
 ADD pkg /.nelm-deps/pkg
+ADD internal /.nelm-deps/internal
 ADD go.mod go.sum Taskfile.dist.yaml /.nelm-deps/
 ADD scripts /.nelm-deps/scripts
 

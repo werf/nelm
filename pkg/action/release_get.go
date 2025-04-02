@@ -15,12 +15,11 @@ import (
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
 	"github.com/werf/3p-helm/pkg/chart/loader"
-	"github.com/werf/3p-helm/pkg/release"
+	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
-	"github.com/werf/kubedog/pkg/kube"
+	kdkube "github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/nelm/internal/log"
-	"github.com/werf/nelm/internal/rls"
-	"github.com/werf/nelm/internal/rlshistor"
+	"github.com/werf/nelm/internal/release"
 )
 
 const (
@@ -74,9 +73,9 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		kubeConfigPath = opts.KubeConfigPaths[0]
 	}
 
-	kubeConfigGetter, err := kube.NewKubeConfigGetter(
-		kube.KubeConfigGetterOptions{
-			KubeConfigOptions: kube.KubeConfigOptions{
+	kubeConfigGetter, err := kdkube.NewKubeConfigGetter(
+		kdkube.KubeConfigGetterOptions{
+			KubeConfigOptions: kdkube.KubeConfigOptions{
 				Context:             opts.KubeContext,
 				ConfigPath:          kubeConfigPath,
 				ConfigDataBase64:    opts.KubeConfigBase64,
@@ -127,18 +126,18 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 	secrets.DisableSecrets = true
 	loader.NoChartLockWarning = ""
 
-	history, err := rlshistor.NewHistory(
+	history, err := release.NewHistory(
 		releaseName,
 		releaseNamespace,
 		helmReleaseStorage,
-		rlshistor.HistoryOptions{},
+		release.HistoryOptions{},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("construct release history: %w", err)
 	}
 
 	var (
-		release      *rls.Release
+		release      *release.Release
 		releaseFound bool
 	)
 	if opts.Revision == 0 {
@@ -278,7 +277,7 @@ type ReleaseGetResultRelease struct {
 	Name        string                      `json:"name"`
 	Namespace   string                      `json:"namespace"`
 	Revision    int                         `json:"revision"`
-	Status      release.Status              `json:"status"`
+	Status      helmrelease.Status          `json:"status"`
 	DeployedAt  *ReleaseGetResultDeployedAt `json:"deployedAt"`
 	Annotations map[string]string           `json:"annotations"`
 }

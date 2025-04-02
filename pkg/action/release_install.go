@@ -26,29 +26,23 @@ import (
 	"github.com/werf/3p-helm/pkg/werf/chartextender"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/common-go/pkg/secrets_manager"
-	"github.com/werf/kubedog/pkg/kube"
+	kdkube "github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	kubeutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/logboek"
-	"github.com/werf/nelm/internal/chrttree"
+	"github.com/werf/nelm/internal/chart"
 	"github.com/werf/nelm/internal/common"
-	"github.com/werf/nelm/internal/kubeclnt"
-	"github.com/werf/nelm/internal/lock_manager"
+	"github.com/werf/nelm/internal/kube"
+	"github.com/werf/nelm/internal/lock"
 	"github.com/werf/nelm/internal/log"
-	"github.com/werf/nelm/internal/opertn"
-	"github.com/werf/nelm/internal/pln"
-	"github.com/werf/nelm/internal/plnbuilder"
-	"github.com/werf/nelm/internal/plnexectr"
-	"github.com/werf/nelm/internal/reprt"
-	"github.com/werf/nelm/internal/resrc"
-	"github.com/werf/nelm/internal/resrcpatcher"
-	"github.com/werf/nelm/internal/resrcprocssr"
-	"github.com/werf/nelm/internal/rls"
-	"github.com/werf/nelm/internal/rlsdiff"
-	"github.com/werf/nelm/internal/rlshistor"
+	"github.com/werf/nelm/internal/plan"
+	"github.com/werf/nelm/internal/plan/operation"
+	"github.com/werf/nelm/internal/plan/resourceinfo"
+	"github.com/werf/nelm/internal/release"
+	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/internal/track"
-	"github.com/werf/nelm/internal/utls"
+	"github.com/werf/nelm/internal/util"
 )
 
 const (
@@ -179,9 +173,9 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		kubeConfigPath = opts.KubeConfigPaths[0]
 	}
 
-	kubeConfigGetter, err := kube.NewKubeConfigGetter(
-		kube.KubeConfigGetterOptions{
-			KubeConfigOptions: kube.KubeConfigOptions{
+	kubeConfigGetter, err := kdkube.NewKubeConfigGetter(
+		kdkube.KubeConfigGetterOptions{
+			KubeConfigOptions: kdkube.KubeConfigOptions{
 				Context:             opts.KubeContext,
 				ConfigPath:          kubeConfigPath,
 				ConfigDataBase64:    opts.KubeConfigBase64,
@@ -261,13 +255,13 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	}
 	helmChartPathOptions.SetRegistryClient(helmRegistryClient)
 
-	clientFactory, err := kubeclnt.NewClientFactory()
+	clientFactory, err := kube.NewClientFactory()
 	if err != nil {
 		return fmt.Errorf("construct kube client factory: %w", err)
 	}
 
-	var lockManager *lock_manager.LockManager
-	if m, err := lock_manager.NewLockManager(
+	var lockManager *lock.LockManager
+	if m, err := lock.NewLockManager(
 		releaseNamespace,
 		false,
 		clientFactory.Static(),
@@ -303,11 +297,11 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	}
 
 	log.Default.Debug(ctx, "Constructing release history")
-	history, err := rlshistor.NewHistory(
+	history, err := release.NewHistory(
 		releaseName,
 		releaseNamespace,
 		helmReleaseStorage,
-		rlshistor.HistoryOptions{
+		release.HistoryOptions{
 			Mapper:          clientFactory.Mapper(),
 			DiscoveryClient: clientFactory.Discovery(),
 		},
@@ -360,7 +354,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	loader.DepsBuildFunc = downloader.Build
 
 	log.Default.Debug(ctx, "Constructing chart tree")
-	chartTree, err := chrttree.NewChartTree(
+	chartTree, err := chart.NewChartTree(
 		ctx,
 		opts.ChartDirPath,
 		releaseName,
@@ -368,7 +362,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		newRevision,
 		deployType,
 		helmActionConfig,
-		chrttree.ChartTreeOptions{
+		chart.ChartTreeOptions{
 			StringSetValues: opts.ValuesStringSets,
 			SetValues:       opts.ValuesSets,
 			FileValues:      opts.ValuesFileSets,
@@ -384,13 +378,13 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 
 	notes := chartTree.Notes()
 
-	var prevRelGeneralResources []*resrc.GeneralResource
+	var prevRelGeneralResources []*resource.GeneralResource
 	if prevReleaseFound {
 		prevRelGeneralResources = prevRelease.GeneralResources()
 	}
 
 	log.Default.Debug(ctx, "Processing resources")
-	resProcessor := resrcprocssr.NewDeployableResourcesProcessor(
+	resProcessor := resourceinfo.NewDeployableResourcesProcessor(
 		deployType,
 		releaseName,
 		releaseNamespace,
@@ -398,26 +392,26 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		chartTree.HookResources(),
 		chartTree.GeneralResources(),
 		prevRelGeneralResources,
-		resrcprocssr.DeployableResourcesProcessorOptions{
+		resourceinfo.DeployableResourcesProcessorOptions{
 			NetworkParallelism: opts.NetworkParallelism,
-			ReleasableHookResourcePatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+			ReleasableHookResourcePatchers: []resource.ResourcePatcher{
+				resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 			},
-			ReleasableGeneralResourcePatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+			ReleasableGeneralResourcePatchers: []resource.ResourcePatcher{
+				resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 			},
-			DeployableStandaloneCRDsPatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(
+			DeployableStandaloneCRDsPatchers: []resource.ResourcePatcher{
+				resource.NewExtraMetadataPatcher(
 					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
 				),
 			},
-			DeployableHookResourcePatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(
+			DeployableHookResourcePatchers: []resource.ResourcePatcher{
+				resource.NewExtraMetadataPatcher(
 					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
 				),
 			},
-			DeployableGeneralResourcePatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(
+			DeployableGeneralResourcePatchers: []resource.ResourcePatcher{
+				resource.NewExtraMetadataPatcher(
 					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
 				),
 			},
@@ -433,7 +427,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	}
 
 	log.Default.Debug(ctx, "Constructing new release")
-	newRel, err := rls.NewRelease(
+	newRel, err := release.NewRelease(
 		releaseName,
 		releaseNamespace,
 		newRevision,
@@ -442,7 +436,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		resProcessor.ReleasableHookResources(),
 		resProcessor.ReleasableGeneralResources(),
 		notes,
-		rls.ReleaseOptions{
+		release.ReleaseOptions{
 			InfoAnnotations: opts.ReleaseInfoAnnotations,
 			FirstDeployed:   firstDeployed,
 			Mapper:          clientFactory.Mapper(),
@@ -458,7 +452,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	)
 
 	log.Default.Debug(ctx, "Constructing new deploy plan")
-	deployPlanBuilder := plnbuilder.NewDeployPlanBuilder(
+	deployPlanBuilder := plan.NewDeployPlanBuilder(
 		releaseNamespace,
 		deployType,
 		taskStore,
@@ -474,7 +468,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		clientFactory.Dynamic(),
 		clientFactory.Discovery(),
 		clientFactory.Mapper(),
-		plnbuilder.DeployPlanBuilderOptions{
+		plan.DeployPlanBuilderOptions{
 			PrevRelease:         prevRelease,
 			PrevDeployedRelease: prevDeployedRelease,
 			CreationTimeout:     opts.TrackCreationTimeout,
@@ -483,14 +477,14 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		},
 	)
 
-	plan, planBuildErr := deployPlanBuilder.Build(ctx)
+	deployPlan, planBuildErr := deployPlanBuilder.Build(ctx)
 	if planBuildErr != nil {
 		if _, err := os.Create(opts.InstallGraphPath); err != nil {
 			log.Default.Error(ctx, "Error: create release install graph file: %s", err)
 			return fmt.Errorf("build deploy plan: %w", planBuildErr)
 		}
 
-		if err := plan.SaveDOT(opts.InstallGraphPath); err != nil {
+		if err := deployPlan.SaveDOT(opts.InstallGraphPath); err != nil {
 			log.Default.Error(ctx, "Error: save release install graph: %s", err)
 		}
 
@@ -500,20 +494,20 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	}
 
 	if opts.InstallGraphSave {
-		if err := plan.SaveDOT(opts.InstallGraphPath); err != nil {
+		if err := deployPlan.SaveDOT(opts.InstallGraphPath); err != nil {
 			return fmt.Errorf("save release install graph: %w", err)
 		}
 	}
 
 	var releaseUpToDate bool
 	if prevReleaseFound {
-		releaseUpToDate, err = rlsdiff.ReleaseUpToDate(prevRelease, newRel)
+		releaseUpToDate, err = release.ReleaseUpToDate(prevRelease, newRel)
 		if err != nil {
 			return fmt.Errorf("check if release is up to date: %w", err)
 		}
 	}
 
-	planUseless, err := plan.Useless()
+	planUseless, err := deployPlan.Useless()
 	if err != nil {
 		return fmt.Errorf("check if release install plan will do anything useful: %w", err)
 	}
@@ -522,7 +516,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		if opts.InstallReportSave {
 			newRel.Skip()
 
-			report := reprt.NewReport(nil, nil, nil, newRel)
+			report := newReport(nil, nil, nil, newRel)
 
 			if err := report.Save(opts.InstallReportPath); err != nil {
 				log.Default.Error(ctx, "Error: save release install report: %s", err)
@@ -570,9 +564,9 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	}
 
 	log.Default.Debug(ctx, "Executing release install plan")
-	planExecutor := plnexectr.NewPlanExecutor(
-		plan,
-		plnexectr.PlanExecutorOptions{
+	planExecutor := plan.NewPlanExecutor(
+		deployPlan,
+		plan.PlanExecutorOptions{
 			NetworkParallelism: opts.NetworkParallelism,
 		},
 	)
@@ -584,34 +578,34 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		criticalErrs = append(criticalErrs, fmt.Errorf("execute release install plan: %w", planExecutionErr))
 	}
 
-	var worthyCompletedOps []opertn.Operation
-	if ops, found, err := plan.WorthyCompletedOperations(); err != nil {
+	var worthyCompletedOps []operation.Operation
+	if ops, found, err := deployPlan.WorthyCompletedOperations(); err != nil {
 		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful completed operations: %w", err))
 	} else if found {
 		worthyCompletedOps = ops
 	}
 
-	var worthyCanceledOps []opertn.Operation
-	if ops, found, err := plan.WorthyCanceledOperations(); err != nil {
+	var worthyCanceledOps []operation.Operation
+	if ops, found, err := deployPlan.WorthyCanceledOperations(); err != nil {
 		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful canceled operations: %w", err))
 	} else if found {
 		worthyCanceledOps = ops
 	}
 
-	var worthyFailedOps []opertn.Operation
-	if ops, found, err := plan.WorthyFailedOperations(); err != nil {
+	var worthyFailedOps []operation.Operation
+	if ops, found, err := deployPlan.WorthyFailedOperations(); err != nil {
 		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful failed operations: %w", err))
 	} else if found {
 		worthyFailedOps = ops
 	}
 
 	var pendingReleaseCreated bool
-	if ops, found, err := plan.OperationsMatch(regexp.MustCompile(fmt.Sprintf(`^%s/%s$`, opertn.TypeCreatePendingReleaseOperation, newRel.ID()))); err != nil {
+	if ops, found, err := deployPlan.OperationsMatch(regexp.MustCompile(fmt.Sprintf(`^%s/%s$`, operation.TypeCreatePendingReleaseOperation, newRel.ID()))); err != nil {
 		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get pending release operation: %w", err))
 	} else if !found {
 		panic("no pending release operation found")
 	} else {
-		pendingReleaseCreated = ops[0].Status() == opertn.StatusCompleted
+		pendingReleaseCreated = ops[0].Status() == operation.StatusCompleted
 	}
 
 	if planExecutionErr != nil && pendingReleaseCreated {
@@ -619,7 +613,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 			ctx,
 			releaseNamespace,
 			deployType,
-			plan,
+			deployPlan,
 			taskStore,
 			resProcessor,
 			newRel,
@@ -672,7 +666,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		<-stdoutTrackerFinishedCh
 	}
 
-	report := reprt.NewReport(
+	report := newReport(
 		worthyCompletedOps,
 		worthyCanceledOps,
 		worthyFailedOps,
@@ -692,9 +686,9 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	}
 
 	if len(criticalErrs) > 0 {
-		return utls.Multierrorf("failed release %q (namespace: %q)", append(criticalErrs, nonCriticalErrs...), releaseName, releaseNamespace)
+		return util.Multierrorf("failed release %q (namespace: %q)", append(criticalErrs, nonCriticalErrs...), releaseName, releaseNamespace)
 	} else if len(nonCriticalErrs) > 0 {
-		return utls.Multierrorf("succeeded release %q (namespace: %q), but non-critical errors encountered", nonCriticalErrs, releaseName, releaseNamespace)
+		return util.Multierrorf("succeeded release %q (namespace: %q), but non-critical errors encountered", nonCriticalErrs, releaseName, releaseNamespace)
 	} else {
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Succeeded release %q (namespace: %q)", releaseName, releaseNamespace)))
 
@@ -783,10 +777,10 @@ func applyReleaseInstallOptionsDefaults(
 
 func createReleaseNamespace(
 	ctx context.Context,
-	clientFactory *kubeclnt.ClientFactory,
+	clientFactory *kube.ClientFactory,
 	releaseNamespace string,
 ) error {
-	releaseNamespaceResource := resrc.NewReleaseNamespace(
+	releaseNamespaceResource := resource.NewReleaseNamespace(
 		&unstructured.Unstructured{
 			Object: map[string]interface{}{
 				"apiVersion": "v1",
@@ -795,7 +789,7 @@ func createReleaseNamespace(
 					"name": releaseNamespace,
 				},
 			},
-		}, resrc.ReleaseNamespaceOptions{
+		}, resource.ReleaseNamespaceOptions{
 			Mapper: clientFactory.Mapper(),
 		},
 	)
@@ -803,19 +797,19 @@ func createReleaseNamespace(
 	if _, err := clientFactory.KubeClient().Get(
 		ctx,
 		releaseNamespaceResource.ResourceID,
-		kubeclnt.KubeClientGetOptions{
+		kube.KubeClientGetOptions{
 			TryCache: true,
 		},
 	); err != nil {
 		if errors.IsNotFound(err) {
 			log.Default.Debug(ctx, "Creating release namespace %q", releaseNamespace)
 
-			createOp := opertn.NewCreateResourceOperation(
+			createOp := operation.NewCreateResourceOperation(
 				releaseNamespaceResource.ResourceID,
 				releaseNamespaceResource.Unstructured(),
 				clientFactory.KubeClient(),
-				opertn.CreateResourceOperationOptions{
-					ManageableBy: resrc.ManageableByAnyone,
+				operation.CreateResourceOperationOptions{
+					ManageableBy: resource.ManageableByAnyone,
 				},
 			)
 
@@ -884,22 +878,22 @@ func runFailureDeployPlan(
 	ctx context.Context,
 	releaseNamespace string,
 	deployType common.DeployType,
-	failedPlan *pln.Plan,
+	failedPlan *plan.Plan,
 	taskStore *statestore.TaskStore,
-	resProcessor *resrcprocssr.DeployableResourcesProcessor,
-	newRel, prevRelease *rls.Release,
-	history *rlshistor.History,
-	clientFactory *kubeclnt.ClientFactory,
+	resProcessor *resourceinfo.DeployableResourcesProcessor,
+	newRel, prevRelease *release.Release,
+	history *release.History,
+	clientFactory *kube.ClientFactory,
 	networkParallelism int,
 ) (
-	worthyCompletedOps []opertn.Operation,
-	worthyFailedOps []opertn.Operation,
-	worthyCanceledOps []opertn.Operation,
+	worthyCompletedOps []operation.Operation,
+	worthyFailedOps []operation.Operation,
+	worthyCanceledOps []operation.Operation,
 	criticalErrs []error,
 	nonCriticalErrs []error,
 ) {
 	log.Default.Debug(ctx, "Building failure deploy plan")
-	failurePlanBuilder := plnbuilder.NewDeployFailurePlanBuilder(
+	failurePlanBuilder := plan.NewDeployFailurePlanBuilder(
 		releaseNamespace,
 		deployType,
 		failedPlan,
@@ -911,7 +905,7 @@ func runFailureDeployPlan(
 		clientFactory.KubeClient(),
 		clientFactory.Dynamic(),
 		clientFactory.Mapper(),
-		plnbuilder.DeployFailurePlanBuilderOptions{
+		plan.DeployFailurePlanBuilderOptions{
 			PrevRelease: prevRelease,
 		},
 	)
@@ -928,9 +922,9 @@ func runFailureDeployPlan(
 	}
 
 	log.Default.Debug(ctx, "Executing failure deploy plan")
-	failurePlanExecutor := plnexectr.NewPlanExecutor(
+	failurePlanExecutor := plan.NewPlanExecutor(
 		failurePlan,
-		plnexectr.PlanExecutorOptions{
+		plan.PlanExecutorOptions{
 			NetworkParallelism: networkParallelism,
 		},
 	)
@@ -967,11 +961,11 @@ func runRollbackPlan(
 	releaseName string,
 	releaseNamespace string,
 	deployType common.DeployType,
-	failedRelease *rls.Release,
-	prevDeployedRelease *rls.Release,
+	failedRelease *release.Release,
+	prevDeployedRelease *release.Release,
 	failedRevision int,
-	history *rlshistor.History,
-	clientFactory *kubeclnt.ClientFactory,
+	history *release.History,
+	clientFactory *kube.ClientFactory,
 	userExtraAnnotations map[string]string,
 	serviceAnnotations map[string]string,
 	userExtraLabels map[string]string,
@@ -982,15 +976,15 @@ func runRollbackPlan(
 	rollbackGraphPath string,
 	networkParallelism int,
 ) (
-	worthyCompletedOps []opertn.Operation,
-	worthyFailedOps []opertn.Operation,
-	worthyCanceledOps []opertn.Operation,
+	worthyCompletedOps []operation.Operation,
+	worthyFailedOps []operation.Operation,
+	worthyCanceledOps []operation.Operation,
 	notes string,
 	criticalErrs []error,
 	nonCriticalErrs []error,
 ) {
 	log.Default.Debug(ctx, "Processing rollback resources")
-	resProcessor := resrcprocssr.NewDeployableResourcesProcessor(
+	resProcessor := resourceinfo.NewDeployableResourcesProcessor(
 		common.DeployTypeRollback,
 		releaseName,
 		releaseNamespace,
@@ -998,26 +992,26 @@ func runRollbackPlan(
 		prevDeployedRelease.HookResources(),
 		prevDeployedRelease.GeneralResources(),
 		failedRelease.GeneralResources(),
-		resrcprocssr.DeployableResourcesProcessorOptions{
+		resourceinfo.DeployableResourcesProcessorOptions{
 			NetworkParallelism: networkParallelism,
-			ReleasableHookResourcePatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(userExtraAnnotations, userExtraLabels),
+			ReleasableHookResourcePatchers: []resource.ResourcePatcher{
+				resource.NewExtraMetadataPatcher(userExtraAnnotations, userExtraLabels),
 			},
-			ReleasableGeneralResourcePatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(userExtraAnnotations, userExtraLabels),
+			ReleasableGeneralResourcePatchers: []resource.ResourcePatcher{
+				resource.NewExtraMetadataPatcher(userExtraAnnotations, userExtraLabels),
 			},
-			DeployableStandaloneCRDsPatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(
+			DeployableStandaloneCRDsPatchers: []resource.ResourcePatcher{
+				resource.NewExtraMetadataPatcher(
 					lo.Assign(userExtraAnnotations, serviceAnnotations), userExtraLabels,
 				),
 			},
-			DeployableHookResourcePatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(
+			DeployableHookResourcePatchers: []resource.ResourcePatcher{
+				resource.NewExtraMetadataPatcher(
 					lo.Assign(userExtraAnnotations, serviceAnnotations), userExtraLabels,
 				),
 			},
-			DeployableGeneralResourcePatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(
+			DeployableGeneralResourcePatchers: []resource.ResourcePatcher{
+				resource.NewExtraMetadataPatcher(
 					lo.Assign(userExtraAnnotations, serviceAnnotations), userExtraLabels,
 				),
 			},
@@ -1035,7 +1029,7 @@ func runRollbackPlan(
 	rollbackRevision := failedRevision + 1
 
 	log.Default.Debug(ctx, "Constructing rollback release")
-	rollbackRel, err := rls.NewRelease(
+	rollbackRel, err := release.NewRelease(
 		releaseName,
 		releaseNamespace,
 		rollbackRevision,
@@ -1044,7 +1038,7 @@ func runRollbackPlan(
 		resProcessor.ReleasableHookResources(),
 		resProcessor.ReleasableGeneralResources(),
 		prevDeployedRelease.Notes(),
-		rls.ReleaseOptions{
+		release.ReleaseOptions{
 			FirstDeployed: prevDeployedRelease.FirstDeployed(),
 			Mapper:        clientFactory.Mapper(),
 		},
@@ -1054,7 +1048,7 @@ func runRollbackPlan(
 	}
 
 	log.Default.Debug(ctx, "Constructing rollback plan")
-	rollbackPlanBuilder := plnbuilder.NewDeployPlanBuilder(
+	rollbackPlanBuilder := plan.NewDeployPlanBuilder(
 		releaseNamespace,
 		common.DeployTypeRollback,
 		taskStore,
@@ -1070,7 +1064,7 @@ func runRollbackPlan(
 		clientFactory.Dynamic(),
 		clientFactory.Discovery(),
 		clientFactory.Mapper(),
-		plnbuilder.DeployPlanBuilderOptions{
+		plan.DeployPlanBuilderOptions{
 			PrevRelease:         failedRelease,
 			PrevDeployedRelease: prevDeployedRelease,
 			CreationTimeout:     trackCreationTimeout,
@@ -1099,9 +1093,9 @@ func runRollbackPlan(
 	}
 
 	log.Default.Debug(ctx, "Executing rollback plan")
-	rollbackPlanExecutor := plnexectr.NewPlanExecutor(
+	rollbackPlanExecutor := plan.NewPlanExecutor(
 		rollbackPlan,
-		plnexectr.PlanExecutorOptions{
+		plan.PlanExecutorOptions{
 			NetworkParallelism: networkParallelism,
 		},
 	)
@@ -1130,12 +1124,12 @@ func runRollbackPlan(
 	}
 
 	var pendingRollbackReleaseCreated bool
-	if ops, found, err := rollbackPlan.OperationsMatch(regexp.MustCompile(fmt.Sprintf(`^%s/%s$`, opertn.TypeCreatePendingReleaseOperation, rollbackRel.ID()))); err != nil {
+	if ops, found, err := rollbackPlan.OperationsMatch(regexp.MustCompile(fmt.Sprintf(`^%s/%s$`, operation.TypeCreatePendingReleaseOperation, rollbackRel.ID()))); err != nil {
 		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get pending rollback release operation: %w", err))
 	} else if !found {
 		panic("no pending rollback release operation found")
 	} else {
-		pendingRollbackReleaseCreated = ops[0].Status() == opertn.StatusCompleted
+		pendingRollbackReleaseCreated = ops[0].Status() == operation.StatusCompleted
 	}
 
 	if rollbackPlanExecutionErr != nil && pendingRollbackReleaseCreated {

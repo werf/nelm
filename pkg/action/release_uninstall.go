@@ -18,14 +18,14 @@ import (
 	"github.com/werf/3p-helm/pkg/action"
 	helm_kube "github.com/werf/3p-helm/pkg/kube"
 	"github.com/werf/3p-helm/pkg/storage/driver"
-	"github.com/werf/kubedog/pkg/kube"
+	kdkube "github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/logboek"
-	"github.com/werf/nelm/internal/deploy"
-	"github.com/werf/nelm/internal/kubeclnt"
-	"github.com/werf/nelm/internal/lock_manager"
+	"github.com/werf/nelm/internal/kube"
+	"github.com/werf/nelm/internal/legacy/deploy"
+	"github.com/werf/nelm/internal/lock"
 	"github.com/werf/nelm/internal/log"
-	"github.com/werf/nelm/internal/opertn"
-	"github.com/werf/nelm/internal/resrcid"
+	"github.com/werf/nelm/internal/plan/operation"
+	"github.com/werf/nelm/internal/resource/id"
 )
 
 const (
@@ -84,9 +84,9 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 		kubeConfigPath = opts.KubeConfigPaths[0]
 	}
 
-	kubeConfigGetter, err := kube.NewKubeConfigGetter(
-		kube.KubeConfigGetterOptions{
-			KubeConfigOptions: kube.KubeConfigOptions{
+	kubeConfigGetter, err := kdkube.NewKubeConfigGetter(
+		kdkube.KubeConfigGetterOptions{
+			KubeConfigOptions: kdkube.KubeConfigOptions{
 				Context:             opts.KubeContext,
 				ConfigPath:          kubeConfigPath,
 				ConfigDataBase64:    opts.KubeConfigBase64,
@@ -121,8 +121,8 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 		helmSettings.KubeConfig = kubeConfigPath
 	}
 
-	if err := kube.Init(kube.InitOptions{
-		KubeConfigOptions: kube.KubeConfigOptions{
+	if err := kdkube.Init(kdkube.InitOptions{
+		KubeConfigOptions: kdkube.KubeConfigOptions{
 			Context:             opts.KubeContext,
 			ConfigPath:          kubeConfigPath,
 			ConfigDataBase64:    opts.KubeConfigBase64,
@@ -151,7 +151,7 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 	helmReleaseStorage := helmActionConfig.Releases
 	helmReleaseStorage.MaxHistory = opts.ReleaseHistoryLimit
 
-	clientFactory, err := kubeclnt.NewClientFactory()
+	clientFactory, err := kube.NewClientFactory()
 	if err != nil {
 		return fmt.Errorf("construct kube client factory: %w", err)
 	}
@@ -165,17 +165,17 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 		opts.ProgressTablePrintInterval,
 	)
 
-	namespaceID := resrcid.NewResourceID(
+	namespaceID := id.NewResourceID(
 		releaseNamespace,
 		"",
 		schema.GroupVersionKind{Version: "v1", Kind: "Namespace"},
-		resrcid.ResourceIDOptions{Mapper: clientFactory.Mapper()},
+		id.ResourceIDOptions{Mapper: clientFactory.Mapper()},
 	)
 
 	if _, err := clientFactory.KubeClient().Get(
 		ctx,
 		namespaceID,
-		kubeclnt.KubeClientGetOptions{
+		kube.KubeClientGetOptions{
 			TryCache: true,
 		},
 	); err != nil {
@@ -206,8 +206,8 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Deleting release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-		var lockManager *lock_manager.LockManager
-		if m, err := lock_manager.NewLockManager(
+		var lockManager *lock.LockManager
+		if m, err := lock.NewLockManager(
 			releaseNamespace,
 			false,
 			clientFactory.Static(),
@@ -248,10 +248,10 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 	if opts.DeleteReleaseNamespace {
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleting release namespace %q", namespaceID.Name())))
 
-		deleteOp := opertn.NewDeleteResourceOperation(
+		deleteOp := operation.NewDeleteResourceOperation(
 			namespaceID,
 			clientFactory.KubeClient(),
-			opertn.DeleteResourceOperationOptions{},
+			operation.DeleteResourceOperationOptions{},
 		)
 
 		if err := deleteOp.Execute(ctx); err != nil {
