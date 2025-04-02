@@ -9,11 +9,11 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/validation"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/util/json"
 
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/internal/resource"
-	"k8s.io/apimachinery/pkg/util/json"
 )
 
 func isImmutableErr(err error) bool {
