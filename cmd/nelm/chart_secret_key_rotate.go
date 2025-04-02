@@ -8,26 +8,16 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
-	"github.com/werf/nelm/pkg/log"
 )
 
 type chartSecretKeyRotateOptions struct {
 	ChartDirPath      string
+	LogColorMode      string
+	LogLevel          string
 	NewSecretKey      string
 	OldSecretKey      string
 	SecretValuesPaths []string
 	TempDirPath       string
-
-	logColorMode string
-	logLevel     string
-}
-
-func (c *chartSecretKeyRotateOptions) LogColorMode() action.LogColorMode {
-	return action.LogColorMode(c.logColorMode)
-}
-
-func (c *chartSecretKeyRotateOptions) LogLevel() log.Level {
-	return log.Level(c.logLevel)
 }
 
 func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -53,8 +43,8 @@ func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFu
 
 			if err := action.SecretKeyRotate(ctx, action.SecretKeyRotateOptions{
 				ChartDirPath:      cfg.ChartDirPath,
-				LogColorMode:      cfg.LogColorMode(),
-				LogLevel:          cfg.LogLevel(),
+				LogColorMode:      cfg.LogColorMode,
+				LogLevel:          cfg.LogLevel,
 				NewSecretKey:      cfg.NewSecretKey,
 				OldSecretKey:      cfg.OldSecretKey,
 				SecretValuesPaths: cfg.SecretValuesPaths,
@@ -68,14 +58,14 @@ func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFu
 	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
-		if err := cli.AddFlag(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LogColorMode, "color-mode", action.DefaultLogColorMode, "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.logLevel, "log-level", string(action.DefaultSecretKeyRotateLogLevel), "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", action.DefaultSecretKeyRotateLogLevel, "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

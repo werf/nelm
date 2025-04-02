@@ -11,12 +11,12 @@ import (
 )
 
 const (
-	DefaultSecretValuesFileEditLogLevel = log.ErrorLevel
+	DefaultSecretValuesFileEditLogLevel = ErrorLogLevel
 )
 
 type SecretValuesFileEditOptions struct {
-	LogColorMode  LogColorMode
-	LogLevel      log.Level
+	LogColorMode  string
+	LogLevel      string
 	SecretKey     string
 	SecretWorkDir string
 	TempDirPath   string
@@ -27,9 +27,9 @@ func SecretValuesFileEdit(ctx context.Context, valuesFilePath string, opts Secre
 	defer actionLock.Unlock()
 
 	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, opts.LogLevel)
+		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
 	} else {
-		log.Default.SetLevel(ctx, DefaultSecretValuesFileEditLogLevel)
+		log.Default.SetLevel(ctx, log.Level(DefaultSecretValuesFileEditLogLevel))
 	}
 
 	currentDir, err := os.Getwd()

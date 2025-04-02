@@ -13,9 +13,9 @@ import (
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/logboek"
+	"github.com/werf/nelm/pkg/action"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/resrcchangcalc"
 )
 
 func main() {
@@ -45,7 +45,7 @@ func main() {
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		var exitCode int
-		if errors.Is(err, resrcchangcalc.ErrChangesPlanned) {
+		if errors.Is(err, action.ErrChangesPlanned) {
 			exitCode = 2
 		} else {
 			exitCode = 1

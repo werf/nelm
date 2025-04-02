@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gookit/color"
+	"github.com/pkg/errors"
 	"github.com/samber/lo"
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
@@ -39,8 +40,10 @@ import (
 )
 
 const (
-	DefaultReleasePlanInstallLogLevel = log.InfoLevel
+	DefaultReleasePlanInstallLogLevel = InfoLogLevel
 )
+
+var ErrChangesPlanned = errors.New("changes planned")
 
 type ReleasePlanInstallOptions struct {
 	ChartAppVersion              string
@@ -67,12 +70,12 @@ type ReleasePlanInstallOptions struct {
 	KubeSkipTLSVerify            bool
 	KubeTLSServerName            string
 	KubeToken                    string
-	LogColorMode                 LogColorMode
-	LogLevel                     log.Level
+	LogColorMode                 string
+	LogLevel                     string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	RegistryCredentialsPath      string
-	ReleaseStorageDriver         ReleaseStorageDriver
+	ReleaseStorageDriver         string
 	SecretKey                    string
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
@@ -89,9 +92,9 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 	defer actionLock.Unlock()
 
 	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, opts.LogLevel)
+		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
 	} else {
-		log.Default.SetLevel(ctx, DefaultReleasePlanInstallLogLevel)
+		log.Default.SetLevel(ctx, log.Level(DefaultReleasePlanInstallLogLevel))
 	}
 
 	currentDir, err := os.Getwd()
@@ -144,7 +147,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 	*helmSettings.GetConfigP() = kubeConfigGetter
 	*helmSettings.GetNamespaceP() = releaseNamespace
 	releaseNamespace = helmSettings.Namespace()
-	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.DebugLevel)
+	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))
 
 	if opts.KubeContext != "" {
 		helmSettings.KubeContext = opts.KubeContext
@@ -155,7 +158,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
+		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
 	}
 
@@ -401,7 +404,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 	)
 
 	if opts.ErrorIfChangesPlanned && (planChangesPlanned || !releaseUpToDate) {
-		return resrcchangcalc.ErrChangesPlanned
+		return ErrChangesPlanned
 	}
 
 	return nil

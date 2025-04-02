@@ -9,48 +9,29 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/log"
 )
 
 type releaseGetConfig struct {
-	KubeAPIServerName  string
-	KubeBurstLimit     int
-	KubeCAPath         string
-	KubeConfigBase64   string
-	KubeConfigPaths    []string
-	KubeContext        string
-	KubeQPSLimit       int
-	KubeSkipTLSVerify  bool
-	KubeTLSServerName  string
-	KubeToken          string
-	LogDebug           bool
-	NetworkParallelism int
-	ReleaseName        string
-	ReleaseNamespace   string
-	Revision           int
-	TempDirPath        string
-
-	logColorMode         string
-	logLevel             string
-	outputFormat         string
-	releaseStorageDriver string
-}
-
-func (c *releaseGetConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
-	return action.ReleaseStorageDriver(c.releaseStorageDriver)
-}
-
-func (c *releaseGetConfig) LogColorMode() action.LogColorMode {
-	return action.LogColorMode(c.logColorMode)
-}
-
-func (c *releaseGetConfig) LogLevel() log.Level {
-	return log.Level(c.logLevel)
-}
-
-func (c *releaseGetConfig) OutputFormat() common.OutputFormat {
-	return common.OutputFormat(c.outputFormat)
+	KubeAPIServerName    string
+	KubeBurstLimit       int
+	KubeCAPath           string
+	KubeConfigBase64     string
+	KubeConfigPaths      []string
+	KubeContext          string
+	KubeQPSLimit         int
+	KubeSkipTLSVerify    bool
+	KubeTLSServerName    string
+	KubeToken            string
+	LogColorMode         string
+	LogDebug             bool
+	LogLevel             string
+	NetworkParallelism   int
+	OutputFormat         string
+	ReleaseName          string
+	ReleaseNamespace     string
+	ReleaseStorageDriver string
+	Revision             int
+	TempDirPath          string
 }
 
 func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -86,11 +67,11 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 				KubeSkipTLSVerify:    cfg.KubeSkipTLSVerify,
 				KubeTLSServerName:    cfg.KubeTLSServerName,
 				KubeToken:            cfg.KubeToken,
-				LogColorMode:         cfg.LogColorMode(),
-				LogLevel:             cfg.LogLevel(),
+				LogColorMode:         cfg.LogColorMode,
+				LogLevel:             cfg.LogLevel,
 				NetworkParallelism:   cfg.NetworkParallelism,
-				OutputFormat:         cfg.OutputFormat(),
-				ReleaseStorageDriver: cfg.ReleaseStorageDriver(),
+				OutputFormat:         cfg.OutputFormat,
+				ReleaseStorageDriver: cfg.ReleaseStorageDriver,
 				Revision:             cfg.Revision,
 				TempDirPath:          cfg.TempDirPath,
 			}); err != nil {
@@ -184,14 +165,14 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LogColorMode, "color-mode", action.DefaultLogColorMode, "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.logLevel, "log-level", string(action.DefaultReleaseGetLogLevel), "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", action.DefaultReleaseGetLogLevel, "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
@@ -206,7 +187,7 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 		}
 
 		// TODO(ilya-lesikov): restrict values
-		if err := cli.AddFlag(cmd, &cfg.outputFormat, "output-format", string(action.DefaultReleaseGetOutputFormat), "Result output format", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.OutputFormat, "output-format", action.DefaultReleaseGetOutputFormat, "Result output format", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
@@ -232,7 +213,7 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 		}
 
 		// TODO(ilya-lesikov): restrict allowed values
-		if err := cli.AddFlag(cmd, &cfg.releaseStorageDriver, "release-storage", "", "How releases should be stored", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.ReleaseStorageDriver, "release-storage", "", "How releases should be stored", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

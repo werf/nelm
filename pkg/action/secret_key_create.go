@@ -10,12 +10,12 @@ import (
 )
 
 const (
-	DefaultSecretKeyCreateLogLevel = log.ErrorLevel
+	DefaultSecretKeyCreateLogLevel = ErrorLogLevel
 )
 
 type SecretKeyCreateOptions struct {
-	LogColorMode  LogColorMode
-	LogLevel      log.Level
+	LogColorMode  string
+	LogLevel      string
 	OutputNoPrint bool
 	TempDirPath   string
 }
@@ -25,9 +25,9 @@ func SecretKeyCreate(ctx context.Context, opts SecretKeyCreateOptions) (string, 
 	defer actionLock.Unlock()
 
 	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, opts.LogLevel)
+		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
 	} else {
-		log.Default.SetLevel(ctx, DefaultSecretKeyCreateLogLevel)
+		log.Default.SetLevel(ctx, log.Level(DefaultSecretKeyCreateLogLevel))
 	}
 
 	opts, err := applySecretKeyCreateOptionsDefaults(opts)

@@ -54,7 +54,7 @@ import (
 const (
 	DefaultReleaseInstallReportFilename = "release-install-report.json"
 	DefaultReleaseInstallGraphFilename  = "release-install-graph.dot"
-	DefaultReleaseInstallLogLevel       = log.InfoLevel
+	DefaultReleaseInstallLogLevel       = InfoLogLevel
 )
 
 // FIXME(ilya-lesikov): this must be done a level higher
@@ -118,8 +118,8 @@ type ReleaseInstallOptions struct {
 	KubeSkipTLSVerify            bool
 	KubeTLSServerName            string
 	KubeToken                    string
-	LogColorMode                 LogColorMode
-	LogLevel                     log.Level
+	LogColorMode                 string
+	LogLevel                     string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	ProgressTablePrint           bool
@@ -127,7 +127,7 @@ type ReleaseInstallOptions struct {
 	RegistryCredentialsPath      string
 	ReleaseHistoryLimit          int
 	ReleaseInfoAnnotations       map[string]string
-	ReleaseStorageDriver         ReleaseStorageDriver
+	ReleaseStorageDriver         string
 	RollbackGraphPath            string
 	RollbackGraphSave            bool
 	SecretKey                    string
@@ -150,9 +150,9 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	defer actionLock.Unlock()
 
 	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, opts.LogLevel)
+		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
 	} else {
-		log.Default.SetLevel(ctx, DefaultReleaseInstallLogLevel)
+		log.Default.SetLevel(ctx, log.Level(DefaultReleaseInstallLogLevel))
 	}
 
 	currentDir, err := os.Getwd()
@@ -206,7 +206,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	*helmSettings.GetNamespaceP() = releaseNamespace
 	releaseNamespace = helmSettings.Namespace()
 	helmSettings.MaxHistory = opts.ReleaseHistoryLimit
-	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.DebugLevel)
+	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))
 
 	if opts.KubeContext != "" {
 		helmSettings.KubeContext = opts.KubeContext
@@ -217,7 +217,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
+		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
 	}
 

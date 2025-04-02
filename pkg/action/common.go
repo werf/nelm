@@ -25,29 +25,44 @@ import (
 
 	"github.com/werf/kubedog/pkg/display"
 	"github.com/werf/logboek"
+	"github.com/werf/nelm/pkg/log"
 )
-
-type LogColorMode string
 
 const (
-	LogColorModeAuto LogColorMode = "auto"
-	LogColorModeOff  LogColorMode = "off"
-	LogColorModeOn   LogColorMode = "on"
+	LogColorModeAuto = "auto"
+	LogColorModeOff  = "off"
+	LogColorModeOn   = "on"
 )
 
-var LogColorModes = []LogColorMode{LogColorModeAuto, LogColorModeOff, LogColorModeOn}
-
-type ReleaseStorageDriver string
+var LogColorModes = []string{LogColorModeAuto, LogColorModeOff, LogColorModeOn}
 
 const (
-	ReleaseStorageDriverDefault    ReleaseStorageDriver = ""
-	ReleaseStorageDriverSecrets    ReleaseStorageDriver = "secrets"
-	ReleaseStorageDriverSecret     ReleaseStorageDriver = "secret"
-	ReleaseStorageDriverConfigMaps ReleaseStorageDriver = "configmaps"
-	ReleaseStorageDriverConfigMap  ReleaseStorageDriver = "configmap"
-	ReleaseStorageDriverMemory     ReleaseStorageDriver = "memory"
-	ReleaseStorageDriverSQL        ReleaseStorageDriver = "sql"
+	ReleaseStorageDriverDefault    = ""
+	ReleaseStorageDriverSecrets    = "secrets"
+	ReleaseStorageDriverSecret     = "secret"
+	ReleaseStorageDriverConfigMaps = "configmaps"
+	ReleaseStorageDriverConfigMap  = "configmap"
+	ReleaseStorageDriverMemory     = "memory"
+	ReleaseStorageDriverSQL        = "sql"
 )
+
+const (
+	YamlOutputFormat = "yaml"
+	JsonOutputFormat = "json"
+)
+
+const (
+	SilentLogLevel  = string(log.SilentLevel)
+	ErrorLogLevel   = string(log.ErrorLevel)
+	WarningLogLevel = string(log.WarningLevel)
+	InfoLogLevel    = string(log.InfoLevel)
+	DebugLogLevel   = string(log.DebugLevel)
+	TraceLogLevel   = string(log.TraceLevel)
+)
+
+var LogLevels []string = lo.Map(log.Levels, func(lvl log.Level, _ int) string {
+	return string(lvl)
+})
 
 const (
 	DefaultQPSLimit              = 30
@@ -145,8 +160,8 @@ func stdoutPiped() (bool, error) {
 	return piped, nil
 }
 
-func applyLogColorModeDefault(logColorMode LogColorMode, outputToFile bool) LogColorMode {
-	if logColorMode == "" || logColorMode == LogColorModeAuto {
+func applyLogColorModeDefault(mode string, outputToFile bool) string {
+	if mode == "" || mode == LogColorModeAuto {
 		piped, err := stdoutPiped()
 		if err != nil {
 			return LogColorModeOff
@@ -155,13 +170,13 @@ func applyLogColorModeDefault(logColorMode LogColorMode, outputToFile bool) LogC
 		uncoloredTerminal := color.DetectColorLevel() == terminfo.ColorLevelNone
 
 		if outputToFile || piped || uncoloredTerminal {
-			logColorMode = LogColorModeOff
+			mode = LogColorModeOff
 		} else {
-			logColorMode = LogColorModeOn
+			mode = LogColorModeOn
 		}
 	}
 
-	return logColorMode
+	return mode
 }
 
 func writeWithSyntaxHighlight(outStream io.Writer, text, lang string, colorLevel terminfo.ColorLevel) error {

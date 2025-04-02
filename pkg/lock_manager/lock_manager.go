@@ -11,11 +11,11 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/werf/common-go/pkg/locker_with_retry"
 	"github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/lockgate"
 	"github.com/werf/lockgate/pkg/distributed_locker"
 	"github.com/werf/logboek"
-	"github.com/werf/nelm/pkg/locker_with_retry"
 )
 
 // NOTE: LockManager for not is not multithreaded due to the lack of support of contexts in the lockgate library

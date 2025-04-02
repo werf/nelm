@@ -10,7 +10,6 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
-	"github.com/werf/nelm/pkg/log"
 )
 
 type releaseRollbackConfig struct {
@@ -25,12 +24,15 @@ type releaseRollbackConfig struct {
 	KubeSkipTLSVerify          bool
 	KubeTLSServerName          string
 	KubeToken                  string
+	LogColorMode               string
+	LogLevel                   string
 	NetworkParallelism         int
 	NoProgressTablePrint       bool
 	ProgressTablePrintInterval time.Duration
 	ReleaseHistoryLimit        int
 	ReleaseName                string
 	ReleaseNamespace           string
+	ReleaseStorageDriver       string
 	Revision                   int
 	RollbackGraphPath          string
 	RollbackGraphSave          bool
@@ -40,22 +42,6 @@ type releaseRollbackConfig struct {
 	TrackCreationTimeout       time.Duration
 	TrackDeletionTimeout       time.Duration
 	TrackReadinessTimeout      time.Duration
-
-	logColorMode         string
-	logLevel             string
-	releaseStorageDriver string
-}
-
-func (c *releaseRollbackConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
-	return action.ReleaseStorageDriver(c.releaseStorageDriver)
-}
-
-func (c *releaseRollbackConfig) LogColorMode() action.LogColorMode {
-	return action.LogColorMode(c.logColorMode)
-}
-
-func (c *releaseRollbackConfig) LogLevel() log.Level {
-	return log.Level(c.logLevel)
 }
 
 func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -92,13 +78,13 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 				KubeSkipTLSVerify:          cfg.KubeSkipTLSVerify,
 				KubeTLSServerName:          cfg.KubeTLSServerName,
 				KubeToken:                  cfg.KubeToken,
-				LogColorMode:               cfg.LogColorMode(),
-				LogLevel:                   cfg.LogLevel(),
+				LogColorMode:               cfg.LogColorMode,
+				LogLevel:                   cfg.LogLevel,
 				NetworkParallelism:         cfg.NetworkParallelism,
 				ProgressTablePrint:         !cfg.NoProgressTablePrint,
 				ProgressTablePrintInterval: cfg.ProgressTablePrintInterval,
 				ReleaseHistoryLimit:        cfg.ReleaseHistoryLimit,
-				ReleaseStorageDriver:       cfg.ReleaseStorageDriver(),
+				ReleaseStorageDriver:       cfg.ReleaseStorageDriver,
 				Revision:                   cfg.Revision,
 				RollbackGraphPath:          cfg.RollbackGraphPath,
 				RollbackGraphSave:          cfg.RollbackGraphSave,
@@ -220,14 +206,14 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LogColorMode, "color-mode", action.DefaultLogColorMode, "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.logLevel, "log-level", string(action.DefaultReleaseRollbackLogLevel), "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", action.DefaultReleaseRollbackLogLevel, "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
@@ -281,7 +267,7 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 		}
 
 		// TODO(ilya-lesikov): restrict allowed values
-		if err := cli.AddFlag(cmd, &cfg.releaseStorageDriver, "release-storage", "", "How releases should be stored", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.ReleaseStorageDriver, "release-storage", "", "How releases should be stored", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

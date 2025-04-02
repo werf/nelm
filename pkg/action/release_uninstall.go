@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	DefaultReleaseUninstallLogLevel = log.InfoLevel
+	DefaultReleaseUninstallLogLevel = InfoLogLevel
 )
 
 type ReleaseUninstallOptions struct {
@@ -45,12 +45,12 @@ type ReleaseUninstallOptions struct {
 	KubeSkipTLSVerify          bool
 	KubeTLSServerName          string
 	KubeToken                  string
-	LogColorMode               LogColorMode
-	LogLevel                   log.Level
+	LogColorMode               string
+	LogLevel                   string
 	NetworkParallelism         int
 	ProgressTablePrintInterval time.Duration
 	ReleaseHistoryLimit        int
-	ReleaseStorageDriver       ReleaseStorageDriver
+	ReleaseStorageDriver       string
 	TempDirPath                string
 }
 
@@ -59,9 +59,9 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 	defer actionLock.Unlock()
 
 	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, opts.LogLevel)
+		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
 	} else {
-		log.Default.SetLevel(ctx, DefaultReleaseUninstallLogLevel)
+		log.Default.SetLevel(ctx, log.Level(DefaultReleaseUninstallLogLevel))
 	}
 
 	currentDir, err := os.Getwd()
@@ -111,7 +111,7 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 	*helmSettings.GetNamespaceP() = releaseNamespace
 	releaseNamespace = helmSettings.Namespace()
 	helmSettings.MaxHistory = opts.ReleaseHistoryLimit
-	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.DebugLevel)
+	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))
 
 	if opts.KubeContext != "" {
 		helmSettings.KubeContext = opts.KubeContext

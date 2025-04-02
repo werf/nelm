@@ -37,10 +37,3 @@ const (
 )
 
 var SprigFuncs = sprig.TxtFuncMap()
-
-type OutputFormat string
-
-const (
-	YamlOutputFormat OutputFormat = "yaml"
-	JsonOutputFormat OutputFormat = "json"
-)

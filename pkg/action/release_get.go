@@ -18,15 +18,14 @@ import (
 	"github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/kubedog/pkg/kube"
-	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/rls"
 	"github.com/werf/nelm/pkg/rlshistor"
 )
 
 const (
-	DefaultReleaseGetOutputFormat = common.YamlOutputFormat
-	DefaultReleaseGetLogLevel     = log.ErrorLevel
+	DefaultReleaseGetOutputFormat = YamlOutputFormat
+	DefaultReleaseGetLogLevel     = ErrorLogLevel
 )
 
 type ReleaseGetOptions struct {
@@ -40,12 +39,12 @@ type ReleaseGetOptions struct {
 	KubeSkipTLSVerify    bool
 	KubeTLSServerName    string
 	KubeToken            string
-	LogColorMode         LogColorMode
-	LogLevel             log.Level
+	LogColorMode         string
+	LogLevel             string
 	NetworkParallelism   int
-	OutputFormat         common.OutputFormat
+	OutputFormat         string
 	OutputNoPrint        bool
-	ReleaseStorageDriver ReleaseStorageDriver
+	ReleaseStorageDriver string
 	Revision             int
 	TempDirPath          string
 }
@@ -55,9 +54,9 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 	defer actionLock.Unlock()
 
 	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, opts.LogLevel)
+		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
 	} else {
-		log.Default.SetLevel(ctx, DefaultReleaseGetLogLevel)
+		log.Default.SetLevel(ctx, log.Level(DefaultReleaseGetLogLevel))
 	}
 
 	currentUser, err := user.Current()
@@ -101,7 +100,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 	*helmSettings.GetConfigP() = kubeConfigGetter
 	*helmSettings.GetNamespaceP() = releaseNamespace
 	releaseNamespace = helmSettings.Namespace()
-	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.DebugLevel)
+	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))
 
 	if opts.KubeContext != "" {
 		helmSettings.KubeContext = opts.KubeContext
@@ -195,14 +194,14 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		var resultMessage string
 
 		switch opts.OutputFormat {
-		case common.JsonOutputFormat:
+		case JsonOutputFormat:
 			b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
 			if err != nil {
 				return nil, fmt.Errorf("marshal result to json: %w", err)
 			}
 
 			resultMessage = string(b)
-		case common.YamlOutputFormat:
+		case YamlOutputFormat:
 			b, err := yaml.MarshalContext(ctx, result)
 			if err != nil {
 				return nil, fmt.Errorf("marshal result to yaml: %w", err)
