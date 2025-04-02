@@ -1,4 +1,4 @@
-docker_image: registry.werf.io/nelm/builder:91799da4d68991754b949e14c44a2ab51b7f2ebe@sha256:60a0058f061d821bfeaa2b6635fef209318a1b04393bd3e9fc5277faff992c1b
+docker_image: registry.werf.io/nelm/builder:6aba21f40eb88676822303425f67049243119282@sha256:947036751c83977f2ff5c95d122c8714075450d122bd6a4e9c153b68bcc9cd4c
 commands:
   - export VERSION="$(echo {{ .Tag }} | cut -c2-)"
   - task -o group -p build:dist:all version=$VERSION
