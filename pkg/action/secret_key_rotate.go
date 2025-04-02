@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/pkg/secret"
 )
 
