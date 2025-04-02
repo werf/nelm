@@ -8,22 +8,12 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
-	"github.com/werf/nelm/pkg/log"
 )
 
 type chartSecretKeyCreateOptions struct {
-	TempDirPath string
-
-	logColorMode string
-	logLevel     string
-}
-
-func (c *chartSecretKeyCreateOptions) LogColorMode() action.LogColorMode {
-	return action.LogColorMode(c.logColorMode)
-}
-
-func (c *chartSecretKeyCreateOptions) LogLevel() log.Level {
-	return log.Level(c.logLevel)
+	LogColorMode string
+	LogLevel     string
+	TempDirPath  string
 }
 
 func newChartSecretKeyCreateCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -39,8 +29,8 @@ func newChartSecretKeyCreateCommand(ctx context.Context, afterAllCommandsBuiltFu
 		cli.SubCommandOptions{},
 		func(cmd *cobra.Command, args []string) error {
 			if _, err := action.SecretKeyCreate(ctx, action.SecretKeyCreateOptions{
-				LogColorMode: cfg.LogColorMode(),
-				LogLevel:     cfg.LogLevel(),
+				LogColorMode: cfg.LogColorMode,
+				LogLevel:     cfg.LogLevel,
 				TempDirPath:  cfg.TempDirPath,
 			}); err != nil {
 				return fmt.Errorf("secret key create: %w", err)
@@ -51,14 +41,14 @@ func newChartSecretKeyCreateCommand(ctx context.Context, afterAllCommandsBuiltFu
 	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
-		if err := cli.AddFlag(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LogColorMode, "color-mode", action.DefaultLogColorMode, "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.logLevel, "log-level", string(action.DefaultSecretKeyCreateLogLevel), "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", action.DefaultSecretKeyCreateLogLevel, "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

@@ -13,12 +13,12 @@ import (
 
 const (
 	DefaultSecretFileEncryptOutputFilename = "secret-file-encrypt-output.yaml"
-	DefaultSecretFileEncryptLogLevel       = log.ErrorLevel
+	DefaultSecretFileEncryptLogLevel       = ErrorLogLevel
 )
 
 type SecretFileEncryptOptions struct {
-	LogColorMode   LogColorMode
-	LogLevel       log.Level
+	LogColorMode   string
+	LogLevel       string
 	OutputFilePath string
 	OutputFileSave bool
 	SecretKey      string
@@ -31,9 +31,9 @@ func SecretFileEncrypt(ctx context.Context, filePath string, opts SecretFileEncr
 	defer actionLock.Unlock()
 
 	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, opts.LogLevel)
+		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
 	} else {
-		log.Default.SetLevel(ctx, DefaultSecretFileEncryptLogLevel)
+		log.Default.SetLevel(ctx, log.Level(DefaultSecretFileEncryptLogLevel))
 	}
 
 	currentDir, err := os.Getwd()

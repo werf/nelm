@@ -41,7 +41,7 @@ import (
 
 const (
 	DefaultChartRenderOutputFilename = "chart-render-output.yaml"
-	DefaultChartRenderLogLevel       = log.ErrorLevel
+	DefaultChartRenderLogLevel       = ErrorLogLevel
 )
 
 type ChartRenderOptions struct {
@@ -70,8 +70,8 @@ type ChartRenderOptions struct {
 	KubeToken                    string
 	Local                        bool
 	LocalKubeVersion             string
-	LogColorMode                 LogColorMode
-	LogLevel                     log.Level
+	LogColorMode                 string
+	LogLevel                     string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	OutputFilePath               string
@@ -79,7 +79,7 @@ type ChartRenderOptions struct {
 	RegistryCredentialsPath      string
 	ReleaseName                  string
 	ReleaseNamespace             string
-	ReleaseStorageDriver         ReleaseStorageDriver
+	ReleaseStorageDriver         string
 	SecretKey                    string
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
@@ -98,9 +98,9 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 	defer actionLock.Unlock()
 
 	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, opts.LogLevel)
+		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
 	} else {
-		log.Default.SetLevel(ctx, DefaultChartRenderLogLevel)
+		log.Default.SetLevel(ctx, log.Level(DefaultChartRenderLogLevel))
 	}
 
 	currentDir, err := os.Getwd()
@@ -153,7 +153,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 	*helmSettings.GetConfigP() = kubeConfigGetter
 	*helmSettings.GetNamespaceP() = opts.ReleaseNamespace
 	opts.ReleaseNamespace = helmSettings.Namespace()
-	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.DebugLevel)
+	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))
 
 	if opts.KubeContext != "" {
 		helmSettings.KubeContext = opts.KubeContext
@@ -164,7 +164,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
+		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
 	}
 

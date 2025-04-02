@@ -8,7 +8,6 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
-	"github.com/werf/nelm/pkg/log"
 )
 
 type chartLintConfig struct {
@@ -33,11 +32,14 @@ type chartLintConfig struct {
 	KubeTLSServerName            string
 	KubeToken                    string
 	KubeVersion                  string
+	LogColorMode                 string
 	LogDebug                     bool
+	LogLevel                     string
 	NetworkParallelism           int
 	RegistryCredentialsPath      string
 	ReleaseName                  string
 	ReleaseNamespace             string
+	ReleaseStorageDriver         string
 	Remote                       bool
 	SecretKey                    string
 	SecretKeyIgnore              bool
@@ -47,22 +49,6 @@ type chartLintConfig struct {
 	ValuesFilesPaths             []string
 	ValuesSets                   []string
 	ValuesStringSets             []string
-
-	logColorMode         string
-	logLevel             string
-	releaseStorageDriver string
-}
-
-func (c *chartLintConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
-	return action.ReleaseStorageDriver(c.releaseStorageDriver)
-}
-
-func (c *chartLintConfig) LogColorMode() action.LogColorMode {
-	return action.LogColorMode(c.logColorMode)
-}
-
-func (c *chartLintConfig) LogLevel() log.Level {
-	return log.Level(c.logLevel)
 }
 
 func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -109,13 +95,13 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 				KubeToken:                    cfg.KubeToken,
 				Local:                        !cfg.Remote,
 				LocalKubeVersion:             cfg.KubeVersion,
-				LogColorMode:                 cfg.LogColorMode(),
-				LogLevel:                     cfg.LogLevel(),
+				LogColorMode:                 cfg.LogColorMode,
+				LogLevel:                     cfg.LogLevel,
 				NetworkParallelism:           cfg.NetworkParallelism,
 				RegistryCredentialsPath:      cfg.RegistryCredentialsPath,
 				ReleaseName:                  cfg.ReleaseName,
 				ReleaseNamespace:             cfg.ReleaseNamespace,
-				ReleaseStorageDriver:         cfg.ReleaseStorageDriver(),
+				ReleaseStorageDriver:         cfg.ReleaseStorageDriver,
 				SecretKey:                    cfg.SecretKey,
 				SecretKeyIgnore:              cfg.SecretKeyIgnore,
 				SecretValuesPaths:            cfg.SecretValuesPaths,
@@ -290,14 +276,14 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LogColorMode, "color-mode", action.DefaultLogColorMode, "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.logLevel, "log-level", string(action.DefaultChartLintLogLevel), "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", action.DefaultChartLintLogLevel, "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
@@ -335,7 +321,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 		}
 
 		// TODO(ilya-lesikov): restrict allowed values
-		if err := cli.AddFlag(cmd, &cfg.releaseStorageDriver, "release-storage", "", "How releases should be stored", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.ReleaseStorageDriver, "release-storage", "", "How releases should be stored", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

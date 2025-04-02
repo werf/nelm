@@ -10,13 +10,13 @@ import (
 )
 
 const (
-	DefaultSecretKeyRotateLogLevel = log.InfoLevel
+	DefaultSecretKeyRotateLogLevel = InfoLogLevel
 )
 
 type SecretKeyRotateOptions struct {
 	ChartDirPath      string
-	LogColorMode      LogColorMode
-	LogLevel          log.Level
+	LogColorMode      string
+	LogLevel          string
 	NewSecretKey      string
 	OldSecretKey      string
 	SecretValuesPaths []string
@@ -29,9 +29,9 @@ func SecretKeyRotate(ctx context.Context, opts SecretKeyRotateOptions) error {
 	defer actionLock.Unlock()
 
 	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, opts.LogLevel)
+		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
 	} else {
-		log.Default.SetLevel(ctx, DefaultSecretKeyRotateLogLevel)
+		log.Default.SetLevel(ctx, log.Level(DefaultSecretKeyRotateLogLevel))
 	}
 
 	currentDir, err := os.Getwd()

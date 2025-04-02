@@ -8,7 +8,6 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
-	"github.com/werf/nelm/pkg/log"
 )
 
 type releasePlanInstallConfig struct {
@@ -33,10 +32,13 @@ type releasePlanInstallConfig struct {
 	KubeSkipTLSVerify            bool
 	KubeTLSServerName            string
 	KubeToken                    string
+	LogColorMode                 string
+	LogLevel                     string
 	NetworkParallelism           int
 	RegistryCredentialsPath      string
 	ReleaseName                  string
 	ReleaseNamespace             string
+	ReleaseStorageDriver         string
 	SecretKey                    string
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
@@ -45,22 +47,6 @@ type releasePlanInstallConfig struct {
 	ValuesFilesPaths             []string
 	ValuesSets                   []string
 	ValuesStringSets             []string
-
-	logColorMode         string
-	logLevel             string
-	releaseStorageDriver string
-}
-
-func (c *releasePlanInstallConfig) ReleaseStorageDriver() action.ReleaseStorageDriver {
-	return action.ReleaseStorageDriver(c.releaseStorageDriver)
-}
-
-func (c *releasePlanInstallConfig) LogColorMode() action.LogColorMode {
-	return action.LogColorMode(c.logColorMode)
-}
-
-func (c *releasePlanInstallConfig) LogLevel() log.Level {
-	return log.Level(c.logLevel)
 }
 
 func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -106,11 +92,11 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 				KubeSkipTLSVerify:            cfg.KubeSkipTLSVerify,
 				KubeTLSServerName:            cfg.KubeTLSServerName,
 				KubeToken:                    cfg.KubeToken,
-				LogColorMode:                 cfg.LogColorMode(),
-				LogLevel:                     cfg.LogLevel(),
+				LogColorMode:                 cfg.LogColorMode,
+				LogLevel:                     cfg.LogLevel,
 				NetworkParallelism:           cfg.NetworkParallelism,
 				RegistryCredentialsPath:      cfg.RegistryCredentialsPath,
-				ReleaseStorageDriver:         cfg.ReleaseStorageDriver(),
+				ReleaseStorageDriver:         cfg.ReleaseStorageDriver,
 				SecretKey:                    cfg.SecretKey,
 				SecretKeyIgnore:              cfg.SecretKeyIgnore,
 				SecretValuesPaths:            cfg.SecretValuesPaths,
@@ -279,14 +265,14 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.logColorMode, "color-mode", string(action.DefaultLogColorMode), "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LogColorMode, "color-mode", action.DefaultLogColorMode, "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.logLevel, "log-level", string(action.DefaultReleasePlanInstallLogLevel), "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", action.DefaultReleasePlanInstallLogLevel, "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
@@ -326,7 +312,7 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 		}
 
 		// TODO(ilya-lesikov): restrict allowed values
-		if err := cli.AddFlag(cmd, &cfg.releaseStorageDriver, "release-storage", "", "How releases should be stored", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.ReleaseStorageDriver, "release-storage", "", "How releases should be stored", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

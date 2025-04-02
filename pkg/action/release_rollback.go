@@ -37,7 +37,7 @@ import (
 const (
 	DefaultReleaseRollbackReportFilename = "release-rollback-report.json"
 	DefaultReleaseRollbackGraphFilename  = "release-rollback-graph.dot"
-	DefaultReleaseRollbackLogLevel       = log.InfoLevel
+	DefaultReleaseRollbackLogLevel       = InfoLogLevel
 )
 
 type ReleaseRollbackOptions struct {
@@ -52,13 +52,13 @@ type ReleaseRollbackOptions struct {
 	KubeSkipTLSVerify          bool
 	KubeTLSServerName          string
 	KubeToken                  string
-	LogColorMode               LogColorMode
-	LogLevel                   log.Level
+	LogColorMode               string
+	LogLevel                   string
 	NetworkParallelism         int
 	ProgressTablePrint         bool
 	ProgressTablePrintInterval time.Duration
 	ReleaseHistoryLimit        int
-	ReleaseStorageDriver       ReleaseStorageDriver
+	ReleaseStorageDriver       string
 	Revision                   int
 	RollbackGraphPath          string
 	RollbackGraphSave          bool
@@ -75,9 +75,9 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 	defer actionLock.Unlock()
 
 	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, opts.LogLevel)
+		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
 	} else {
-		log.Default.SetLevel(ctx, DefaultReleaseRollbackLogLevel)
+		log.Default.SetLevel(ctx, log.Level(DefaultReleaseRollbackLogLevel))
 	}
 
 	currentUser, err := user.Current()
@@ -122,7 +122,7 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 	*helmSettings.GetNamespaceP() = releaseNamespace
 	releaseNamespace = helmSettings.Namespace()
 	helmSettings.MaxHistory = opts.ReleaseHistoryLimit
-	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.DebugLevel)
+	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))
 
 	if opts.KubeContext != "" {
 		helmSettings.KubeContext = opts.KubeContext

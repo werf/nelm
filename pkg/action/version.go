@@ -18,14 +18,14 @@ import (
 )
 
 const (
-	DefaultVersionOutputFormat = common.YamlOutputFormat
-	DefaultVersionLogLevel     = log.ErrorLevel
+	DefaultVersionOutputFormat = YamlOutputFormat
+	DefaultVersionLogLevel     = ErrorLogLevel
 )
 
 type VersionOptions struct {
-	LogColorMode  LogColorMode
-	LogLevel      log.Level
-	OutputFormat  common.OutputFormat
+	LogColorMode  string
+	LogLevel      string
+	OutputFormat  string
 	OutputNoPrint bool
 	TempDirPath   string
 }
@@ -35,9 +35,9 @@ func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {
 	defer actionLock.Unlock()
 
 	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, opts.LogLevel)
+		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
 	} else {
-		log.Default.SetLevel(ctx, DefaultVersionLogLevel)
+		log.Default.SetLevel(ctx, log.Level(DefaultVersionLogLevel))
 	}
 
 	opts, err := applyVersionOptionsDefaults(opts)
@@ -62,14 +62,14 @@ func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {
 		var resultMessage string
 
 		switch opts.OutputFormat {
-		case common.JsonOutputFormat:
+		case JsonOutputFormat:
 			b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
 			if err != nil {
 				return nil, fmt.Errorf("marshal result to json: %w", err)
 			}
 
 			resultMessage = string(b)
-		case common.YamlOutputFormat:
+		case YamlOutputFormat:
 			b, err := yaml.MarshalContext(ctx, result)
 			if err != nil {
 				return nil, fmt.Errorf("marshal result to yaml: %w", err)

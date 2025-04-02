@@ -35,7 +35,7 @@ import (
 )
 
 const (
-	DefaultChartLintLogLevel = log.InfoLevel
+	DefaultChartLintLogLevel = InfoLogLevel
 )
 
 type ChartLintOptions struct {
@@ -64,14 +64,14 @@ type ChartLintOptions struct {
 	KubeToken                    string
 	Local                        bool
 	LocalKubeVersion             string
-	LogColorMode                 LogColorMode
-	LogLevel                     log.Level
+	LogColorMode                 string
+	LogLevel                     string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	RegistryCredentialsPath      string
 	ReleaseName                  string
 	ReleaseNamespace             string
-	ReleaseStorageDriver         ReleaseStorageDriver
+	ReleaseStorageDriver         string
 	SecretKey                    string
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
@@ -88,9 +88,9 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	defer actionLock.Unlock()
 
 	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, opts.LogLevel)
+		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
 	} else {
-		log.Default.SetLevel(ctx, DefaultChartLintLogLevel)
+		log.Default.SetLevel(ctx, log.Level(DefaultChartLintLogLevel))
 	}
 
 	currentDir, err := os.Getwd()
@@ -143,7 +143,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	*helmSettings.GetConfigP() = kubeConfigGetter
 	*helmSettings.GetNamespaceP() = opts.ReleaseNamespace
 	opts.ReleaseNamespace = helmSettings.Namespace()
-	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.DebugLevel)
+	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))
 
 	if opts.KubeContext != "" {
 		helmSettings.KubeContext = opts.KubeContext
@@ -154,7 +154,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
+		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
 	}
 
