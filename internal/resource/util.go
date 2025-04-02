@@ -6,9 +6,8 @@ import (
 	"strings"
 
 	"github.com/samber/lo"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 func IsSensitive(groupKind schema.GroupKind, annotations map[string]string) bool {
