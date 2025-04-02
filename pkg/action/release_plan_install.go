@@ -23,20 +23,16 @@ import (
 	"github.com/werf/3p-helm/pkg/werf/chartextender"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/common-go/pkg/secrets_manager"
-	"github.com/werf/kubedog/pkg/kube"
+	kdkube "github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/logboek"
-	"github.com/werf/nelm/internal/chrttree"
+	"github.com/werf/nelm/internal/chart"
 	"github.com/werf/nelm/internal/common"
-	"github.com/werf/nelm/internal/kubeclnt"
+	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/log"
-	"github.com/werf/nelm/internal/resrc"
-	"github.com/werf/nelm/internal/resrcchangcalc"
-	"github.com/werf/nelm/internal/resrcchanglog"
-	"github.com/werf/nelm/internal/resrcpatcher"
-	"github.com/werf/nelm/internal/resrcprocssr"
-	"github.com/werf/nelm/internal/rls"
-	"github.com/werf/nelm/internal/rlsdiff"
-	"github.com/werf/nelm/internal/rlshistor"
+	"github.com/werf/nelm/internal/plan"
+	"github.com/werf/nelm/internal/plan/resourceinfo"
+	"github.com/werf/nelm/internal/release"
+	"github.com/werf/nelm/internal/resource"
 )
 
 const (
@@ -121,9 +117,9 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		kubeConfigPath = opts.KubeConfigPaths[0]
 	}
 
-	kubeConfigGetter, err := kube.NewKubeConfigGetter(
-		kube.KubeConfigGetterOptions{
-			KubeConfigOptions: kube.KubeConfigOptions{
+	kubeConfigGetter, err := kdkube.NewKubeConfigGetter(
+		kdkube.KubeConfigGetterOptions{
+			KubeConfigOptions: kdkube.KubeConfigOptions{
 				Context:             opts.KubeContext,
 				ConfigPath:          kubeConfigPath,
 				ConfigDataBase64:    opts.KubeConfigBase64,
@@ -200,7 +196,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 	}
 	helmChartPathOptions.SetRegistryClient(helmRegistryClient)
 
-	clientFactory, err := kubeclnt.NewClientFactory()
+	clientFactory, err := kube.NewClientFactory()
 	if err != nil {
 		return fmt.Errorf("construct kube client factory: %w", err)
 	}
@@ -220,11 +216,11 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release install")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
 	log.Default.Debug(ctx, "Constructing release history")
-	history, err := rlshistor.NewHistory(
+	history, err := release.NewHistory(
 		releaseName,
 		releaseNamespace,
 		helmReleaseStorage,
-		rlshistor.HistoryOptions{
+		release.HistoryOptions{
 			Mapper:          clientFactory.Mapper(),
 			DiscoveryClient: clientFactory.Discovery(),
 		},
@@ -277,7 +273,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 	loader.DepsBuildFunc = downloader.Build
 
 	log.Default.Debug(ctx, "Constructing chart tree")
-	chartTree, err := chrttree.NewChartTree(
+	chartTree, err := chart.NewChartTree(
 		ctx,
 		opts.ChartDirPath,
 		releaseName,
@@ -285,7 +281,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		newRevision,
 		deployType,
 		helmActionConfig,
-		chrttree.ChartTreeOptions{
+		chart.ChartTreeOptions{
 			StringSetValues: opts.ValuesStringSets,
 			SetValues:       opts.ValuesSets,
 			FileValues:      opts.ValuesFileSets,
@@ -300,7 +296,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 
 	notes := chartTree.Notes()
 
-	var prevRelGeneralResources []*resrc.GeneralResource
+	var prevRelGeneralResources []*resource.GeneralResource
 	var prevRelFailed bool
 	if prevReleaseFound {
 		prevRelGeneralResources = prevRelease.GeneralResources()
@@ -308,7 +304,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 	}
 
 	log.Default.Debug(ctx, "Processing resources")
-	resProcessor := resrcprocssr.NewDeployableResourcesProcessor(
+	resProcessor := resourceinfo.NewDeployableResourcesProcessor(
 		deployType,
 		releaseName,
 		releaseNamespace,
@@ -316,28 +312,28 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		chartTree.HookResources(),
 		chartTree.GeneralResources(),
 		prevRelGeneralResources,
-		resrcprocssr.DeployableResourcesProcessorOptions{
+		resourceinfo.DeployableResourcesProcessorOptions{
 			NetworkParallelism: opts.NetworkParallelism,
-			ReleasableHookResourcePatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+			ReleasableHookResourcePatchers: []resource.ResourcePatcher{
+				resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 			},
-			ReleasableGeneralResourcePatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+			ReleasableGeneralResourcePatchers: []resource.ResourcePatcher{
+				resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 			},
-			DeployableStandaloneCRDsPatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(
+			DeployableStandaloneCRDsPatchers: []resource.ResourcePatcher{
+				resource.NewExtraMetadataPatcher(
 					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations),
 					opts.ExtraLabels,
 				),
 			},
-			DeployableHookResourcePatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(
+			DeployableHookResourcePatchers: []resource.ResourcePatcher{
+				resource.NewExtraMetadataPatcher(
 					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations),
 					opts.ExtraLabels,
 				),
 			},
-			DeployableGeneralResourcePatchers: []resrcpatcher.ResourcePatcher{
-				resrcpatcher.NewExtraMetadataPatcher(
+			DeployableGeneralResourcePatchers: []resource.ResourcePatcher{
+				resource.NewExtraMetadataPatcher(
 					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations),
 					opts.ExtraLabels,
 				),
@@ -354,7 +350,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 	}
 
 	log.Default.Debug(ctx, "Constructing new release")
-	newRel, err := rls.NewRelease(
+	newRel, err := release.NewRelease(
 		releaseName,
 		releaseNamespace,
 		newRevision,
@@ -363,7 +359,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		resProcessor.ReleasableHookResources(),
 		resProcessor.ReleasableGeneralResources(),
 		notes,
-		rls.ReleaseOptions{
+		release.ReleaseOptions{
 			FirstDeployed: firstDeployed,
 			Mapper:        clientFactory.Mapper(),
 		},
@@ -373,7 +369,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 	}
 
 	log.Default.Debug(ctx, "Calculating planned changes")
-	createdChanges, recreatedChanges, updatedChanges, appliedChanges, deletedChanges, planChangesPlanned := resrcchangcalc.CalculatePlannedChanges(
+	createdChanges, recreatedChanges, updatedChanges, appliedChanges, deletedChanges, planChangesPlanned := plan.CalculatePlannedChanges(
 		releaseName,
 		releaseNamespace,
 		resProcessor.DeployableStandaloneCRDsInfos(),
@@ -385,13 +381,13 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 
 	var releaseUpToDate bool
 	if prevReleaseFound {
-		releaseUpToDate, err = rlsdiff.ReleaseUpToDate(prevRelease, newRel)
+		releaseUpToDate, err = release.ReleaseUpToDate(prevRelease, newRel)
 		if err != nil {
 			return fmt.Errorf("check if release is up to date: %w", err)
 		}
 	}
 
-	resrcchanglog.LogPlannedChanges(
+	plan.LogPlannedChanges(
 		ctx,
 		releaseName,
 		releaseNamespace,

@@ -215,7 +215,7 @@ tasks:
     cmds:
       - task: test:ginkgo
         vars:
-          paths: '{{.paths | default "./pkg ./cmd"}}'
+          paths: '{{.paths | default "./internal ./pkg ./cmd"}}'
           parallel: "{{.parallel}}"
 
   verify:binaries:dist:all:
@@ -234,12 +234,12 @@ tasks:
   format:gci:
     desc: 'Format code with gci. Important vars: "paths".'
     cmds:
-      - gci write -s Standard -s Default -s 'Prefix({{slice (splitList "/" .package) 0 2 | join "/"}})' {{.CLI_ARGS}} {{.paths | default "pkg/ cmd/"}}
+      - gci write -s Standard -s Default -s 'Prefix({{slice (splitList "/" .package) 0 2 | join "/"}})' {{.CLI_ARGS}} {{.paths | default "internal/ pkg/ cmd/"}}
 
   format:gofumpt:
     desc: 'Format code with gofumpt. Important vars: "paths".'
     cmds:
-      - gofumpt -extra -w {{.CLI_ARGS}} {{.paths | default "cmd/ pkg/"}}
+      - gofumpt -extra -w {{.CLI_ARGS}} {{.paths | default "internal/ cmd/ pkg/"}}
 
   format:prettier:
     desc: "Format with prettier."

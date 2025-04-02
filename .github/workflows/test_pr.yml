@@ -32,6 +32,7 @@ jobs:
               - 'Taskfile.dist.yaml'
               - '.github/**'
               - 'cmd/nelm/**'
+              - 'internal/**'
               - 'pkg/**'
               - 'scripts/**'
 

@@ -27,16 +27,15 @@ import (
 	"github.com/werf/3p-helm/pkg/werf/chartextender"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/common-go/pkg/secrets_manager"
-	"github.com/werf/kubedog/pkg/kube"
+	kdkube "github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/logboek"
-	"github.com/werf/nelm/internal/chrttree"
+	"github.com/werf/nelm/internal/chart"
 	"github.com/werf/nelm/internal/common"
-	"github.com/werf/nelm/internal/kubeclnt"
+	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/log"
-	"github.com/werf/nelm/internal/resrc"
-	"github.com/werf/nelm/internal/resrcpatcher"
-	"github.com/werf/nelm/internal/resrcprocssr"
-	"github.com/werf/nelm/internal/rlshistor"
+	"github.com/werf/nelm/internal/plan/resourceinfo"
+	"github.com/werf/nelm/internal/release"
+	"github.com/werf/nelm/internal/resource"
 )
 
 const (
@@ -127,9 +126,9 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 		kubeConfigPath = opts.KubeConfigPaths[0]
 	}
 
-	kubeConfigGetter, err := kube.NewKubeConfigGetter(
-		kube.KubeConfigGetterOptions{
-			KubeConfigOptions: kube.KubeConfigOptions{
+	kubeConfigGetter, err := kdkube.NewKubeConfigGetter(
+		kdkube.KubeConfigGetterOptions{
+			KubeConfigOptions: kdkube.KubeConfigOptions{
 				Context:             opts.KubeContext,
 				ConfigPath:          kubeConfigPath,
 				ConfigDataBase64:    opts.KubeConfigBase64,
@@ -198,7 +197,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 	}
 	helmActionConfig.RegistryClient = helmRegistryClient
 
-	var clientFactory *kubeclnt.ClientFactory
+	var clientFactory *kube.ClientFactory
 	if opts.Local {
 		helmReleaseStorageDriver := driver.NewMemory()
 		helmReleaseStorageDriver.SetNamespace(opts.ReleaseNamespace)
@@ -212,7 +211,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 
 		helmActionConfig.Capabilities.KubeVersion = *kubeVersion
 	} else {
-		clientFactory, err = kubeclnt.NewClientFactory()
+		clientFactory, err = kube.NewClientFactory()
 		if err != nil {
 			return fmt.Errorf("construct kube client factory: %w", err)
 		}
@@ -238,13 +237,13 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 	secrets.ChartDir = opts.ChartDirPath
 	secrets_manager.DisableSecretsDecryption = opts.SecretKeyIgnore
 
-	var historyOptions rlshistor.HistoryOptions
+	var historyOptions release.HistoryOptions
 	if !opts.Local {
 		historyOptions.Mapper = clientFactory.Mapper()
 		historyOptions.DiscoveryClient = clientFactory.Discovery()
 	}
 
-	history, err := rlshistor.NewHistory(
+	history, err := release.NewHistory(
 		opts.ReleaseName,
 		opts.ReleaseNamespace,
 		helmReleaseStorage,
@@ -280,7 +279,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 		deployType = common.DeployTypeInitial
 	}
 
-	chartTreeOptions := chrttree.ChartTreeOptions{
+	chartTreeOptions := chart.ChartTreeOptions{
 		StringSetValues: opts.ValuesStringSets,
 		SetValues:       opts.ValuesSets,
 		FileValues:      opts.ValuesFileSets,
@@ -306,7 +305,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 	loader.SetChartPathFunc = downloader.SetChartPath
 	loader.DepsBuildFunc = downloader.Build
 
-	chartTree, err := chrttree.NewChartTree(
+	chartTree, err := chart.NewChartTree(
 		ctx,
 		opts.ChartDirPath,
 		opts.ReleaseName,
@@ -320,31 +319,31 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 		return fmt.Errorf("construct chart tree: %w", err)
 	}
 
-	var prevRelGeneralResources []*resrc.GeneralResource
+	var prevRelGeneralResources []*resource.GeneralResource
 	if prevReleaseFound {
 		prevRelGeneralResources = prevRelease.GeneralResources()
 	}
 
-	resProcessorOptions := resrcprocssr.DeployableResourcesProcessorOptions{
+	resProcessorOptions := resourceinfo.DeployableResourcesProcessorOptions{
 		NetworkParallelism: opts.NetworkParallelism,
-		ReleasableHookResourcePatchers: []resrcpatcher.ResourcePatcher{
-			resrcpatcher.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+		ReleasableHookResourcePatchers: []resource.ResourcePatcher{
+			resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 		},
-		ReleasableGeneralResourcePatchers: []resrcpatcher.ResourcePatcher{
-			resrcpatcher.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+		ReleasableGeneralResourcePatchers: []resource.ResourcePatcher{
+			resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 		},
-		DeployableStandaloneCRDsPatchers: []resrcpatcher.ResourcePatcher{
-			resrcpatcher.NewExtraMetadataPatcher(
+		DeployableStandaloneCRDsPatchers: []resource.ResourcePatcher{
+			resource.NewExtraMetadataPatcher(
 				lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
 			),
 		},
-		DeployableHookResourcePatchers: []resrcpatcher.ResourcePatcher{
-			resrcpatcher.NewExtraMetadataPatcher(
+		DeployableHookResourcePatchers: []resource.ResourcePatcher{
+			resource.NewExtraMetadataPatcher(
 				lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
 			),
 		},
-		DeployableGeneralResourcePatchers: []resrcpatcher.ResourcePatcher{
-			resrcpatcher.NewExtraMetadataPatcher(
+		DeployableGeneralResourcePatchers: []resource.ResourcePatcher{
+			resource.NewExtraMetadataPatcher(
 				lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
 			),
 		},
@@ -356,7 +355,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 		resProcessorOptions.AllowClusterAccess = true
 	}
 
-	resProcessor := resrcprocssr.NewDeployableResourcesProcessor(
+	resProcessor := resourceinfo.NewDeployableResourcesProcessor(
 		deployType,
 		opts.ReleaseName,
 		opts.ReleaseNamespace,
