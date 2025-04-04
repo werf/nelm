@@ -1,4 +1,4 @@
-**Nelm** is a Helm 3 alternative. It is a Kubernetes deployment tool that manages Helm Charts and deploys them to Kubernetes and also is the deployment engine of [werf](https://github.com/werf/werf). It can do (almost) everything that Helm does, but better, and even quite some on top of it. Nelm is based on improved and partially rewritten Helm 3 codebase, to introduce:
+**Nelm** is a Helm 3 alternative. It is a Kubernetes deployment tool that manages Helm Charts and deploys them to Kubernetes. It is also the deployment engine of [werf](https://github.com/werf/werf). Nelm can do (almost) everything that Helm does, but better, and even quite some on top of it. Nelm is based on an improved and partially rewritten Helm 3 codebase, to introduce:
 
 * `terraform plan`-like capabilities;
 * replacement of 3-Way Merge with Server-Side Apply;
@@ -16,7 +16,7 @@
 
 - [Install](#install)
 - [Quickstart](#quickstart)
-- [CLI Overview](#cli-overview)
+- [CLI overview](#cli-overview)
 - [Helm compatibility](#helm-compatibility)
 - [Key features](#key-features)
   - [Advanced resource ordering](#advanced-resource-ordering)
@@ -179,7 +179,7 @@ Follow instructions on [GitHub Releases](https://github.com/werf/nelm/releases).
     Succeeded release "myproject" (namespace: "myproject")
     ```
    
-## CLI Overview
+## CLI overview
 
 ```yaml
 Release commands:
@@ -229,73 +229,73 @@ Other commands:
    
 ## Helm compatibility
 
-Nelm is built upon the Helm 3 codebase with some parts of Helm 3 reimplemented. We are backwards compatible with Helm Charts and Helm Releases.
+Nelm is built upon the Helm 3 codebase with some parts of Helm 3 reimplemented. It is backward-compatible with Helm Charts and Helm Releases.
 
-Helm Charts can be deployed by Nelm with no changes. We support all the obscure Helm Chart features, such as `lookup` functions.
+Helm Charts can be deployed by Nelm with no changes. All the obscure Helm Chart features, such as `lookup` functions, are supported.
 
-To store release information, we use Helm Releases. You can deploy the same release first with Helm, then Nelm and then with Helm and Nelm again, and it will work just fine.
+To store release information, Nelm uses Helm Releases. You can deploy the same release first with Helm, then Nelm and then with Helm and Nelm again, and it will work just fine.
 
-We have a different CLI layout, flags and environment variables, and commands might have a different output format, but we largely support all the same features as Helm.
+Nelm has a different CLI layout, flags and environment variables, and commands might have a different output format, but we largely support all the same features as Helm.
 
-Helm plugins support is not planned due to technical difficulties with Helm plugins API, instead we intend to implement functionality of the most useful plugins natively, like we did with `nelm release plan install` and `nelm chart secret`.
+Helm plugins support is not planned due to technical difficulties with Helm plugins API. Instead, we intend to implement functionality of the most useful plugins natively, like we already did with `nelm release plan install` and `nelm chart secret`.
 
 Generally, the migration from Helm to Nelm should be as simple as changing Helm commands to Nelm commands in your CI, for example:
 
 | Helm command | Nelm command equivalent |
 | -------- | ------- |
-| helm upgrade --install --atomic --wait -n ns release ./chart | nelm release install --auto-rollback -n ns -r release ./chart |
-| helm uninstall -n ns release | nelm release uninstall -n ns -r release |
-| helm template ./chart | nelm chart render ./chart |
-| helm dependency build | nelm chart dependency download |
+| `helm upgrade --install --atomic --wait -n ns release ./chart` | `nelm release install --auto-rollback -n ns -r release ./chart` |
+| `helm uninstall -n ns release` | `nelm release uninstall -n ns -r release` |
+| `helm template ./chart` | `nelm chart render ./chart` |
+| `helm dependency build` | `nelm chart dependency download` |
 
 ## Key features
 
 ### Advanced resource ordering
 
-The resource deployment subsystem of Helm is rewritten from scratch in Nelm. During deployment, Nelm builds a Directed Acyclic Graph of all operations we want to perform in a cluster to do a release, which is then executed. A Directed Acyclic Graph allowed us to implement advanced resource ordering capabilities, such as:
-* The annotation `werf.io/weight` is similar to `helm.sh/hook-weight`, except it works for non-hook resources too and resources with the same weight are deployed in parallel.
+The resource deployment subsystem of Helm is rewritten from scratch in Nelm. During deployment, Nelm builds a Directed Acyclic Graph (DAG) of all operations we want to perform in a cluster to do a release, which is then executed. DAG allowed us to implement advanced resource ordering capabilities, such as:
+* The annotation `werf.io/weight` is similar to `helm.sh/hook-weight`, except it also works for non-hook resources, and resources with the same weight are deployed in parallel.
 * The annotation `werf.io/deploy-dependency-<id>` makes Nelm wait for readiness or just presence of another resource in a release before deploying the annotated resource. This is the most powerful and effective way to order resources in Nelm.
 * The annotation `<id>.external-dependency.werf.io/resource` allows to wait for readiness of non-release resources, e.g. resources created by third-party operators.
-* Helm ordering capabilities, i.e. Helm Hooks and Helm Hook weights, are supported too.
+* Helm ordering capabilities, i.e. Helm Hooks and Helm Hook weights, are supported, too.
 
 ![ordering](resources/images/graph.png)
 
 ### 3-Way Merge replaced by Server-Side Apply
 
-Nelm fully replaced problematic [Helm 3-Way Merge](https://helm.sh/docs/faq/changes_since_helm2/#improved-upgrade-strategy-3-way-strategic-merge-patches) with [Server-Side Apply](https://kubernetes.io/docs/reference/using-api/server-side-apply/).
+Nelm fully replaced the troublesome [Helm 3-Way Merge](https://helm.sh/docs/faq/changes_since_helm2/#improved-upgrade-strategy-3-way-strategic-merge-patches) with [Server-Side Apply](https://kubernetes.io/docs/reference/using-api/server-side-apply/).
 
 3-Way Merge (3WM) is a client-side mechanism to make a patch for updating a resource in a cluster. Its issues stem from the fact that it has to assume that all previous release manifests were successfully applied to the cluster, which is not always the case. For example, if some resources weren't updated due to being invalid or if a release was aborted too early, then on the next release incorrect 3WM patches might be produced. This results in a "successful" Helm release with wrong changes silently applied to the cluster, which is a very serious issue.
 
-In recent versions Kubernetes introduced Server-Side Apply (SSA) to update resources by making patches server-side by Kubernetes instead of doing so client-side by Helm. SSA solves issues of 3WM and is widely adopted by other deployment tools, like Flux. Unfortunately, it will take a lot of work to replace 3WM with SSA in Helm. But since in Nelm the deployment subsystem was rewritten from scratch, we went SSA-first from the beginning, thus solving long-standing issues of 3-Way Merge.
+In later versions, Kubernetes introduced Server-Side Apply (SSA) to update resources by making patches server-side by Kubernetes instead of doing so client-side by Helm. SSA solves issues of 3WM and is widely adopted by other deployment tools, like Flux. Unfortunately, it will take a lot of work to replace 3WM with SSA in Helm. But since in Nelm the deployment subsystem was rewritten from scratch, we went SSA-first from the beginning, thus solving long-standing issues of 3-Way Merge.
 
 ### Resource state tracking
 
 Nelm has powerful resource tracking built from the ground up:
 * Reliable detection of resources readiness, presence, absence or failures.
-* Heuristically determined readiness for Custom Resources by analyzing their status fields. Works for about half of Custom Resources. No false positives.
+* Heuristically determined readiness of Custom Resources by analyzing their status fields. It works for about half of Custom Resources. No false positives.
 * Some dependent resources, like Pods of Deployments, are automatically found and individually tracked.
-* Table with tracked resources current info (statuses, errors, and more) printed every few seconds during deployment.
+* Table with tracked resources current information (statuses, errors, and more) is printed every few seconds during deployment.
 * Tracking can be configured per resource with annotations.
 
 ![tracking](resources/images/nelm-release-install.gif)
 
 ### Printing logs and events during deploy
 
-During deployment Nelm finds Pods of deployed release resources and periodically prints their container logs. Also, with annotation `werf.io/show-service-messages: "true"` resource events are printed too. Log/event printing can be tuned with annotations.
+During deployment, Nelm finds Pods of deployed release resources and periodically prints their container logs. With annotation `werf.io/show-service-messages: "true"`, resource events are printed, too. Log/event printing can be tuned with annotations.
 
 ### Release planning
 
-`nelm release plan install` explains exactly what's going to happen in a cluster on the next release. Shows 100% accurate diffs between current and to-be resource versions, utilizing robust dry-run Server-Side Apply instead of client-side trickery.
+`nelm release plan install` explains exactly what's going to happen in a cluster on the next release. It shows 100% accurate diffs between current and to-be resource versions, utilizing robust dry-run Server-Side Apply instead of client-side trickery.
 
 ![planning](resources/images/nelm-release-plan-install.gif)
 
 ### Encrypted values and encrypted files
 
-`nelm chart secret` commands manage encrypted values files such as `secret-values.yaml` or encrypted arbitrary files like `secret/mysecret.txt`. These files are decrypted in-memory during templating and can be used in templates as `.Values.my.secret.value` and `{{ werf_secret_file "mysecret.txt" }}` respectively.
+`nelm chart secret` commands manage encrypted values files such as `secret-values.yaml` or encrypted arbitrary files like `secret/mysecret.txt`. These files are decrypted in-memory during templating and can be used in templates as `.Values.my.secret.value` and `{{ werf_secret_file "mysecret.txt" }}`, respectively.
 
 ## Documentation
 
-Nelm-specific features are described below. For general documentation see [Helm docs](https://helm.sh/docs/) and [werf docs](https://werf.io/docs/v2/usage/deploy/overview.html).
+Nelm-specific features are described below. For general documentation, see [Helm docs](https://helm.sh/docs/) and [werf docs](https://werf.io/docs/v2/usage/deploy/overview.html).
 
 ### Usage
 
@@ -374,7 +374,7 @@ Format: `<any number>` \
 Default: `0` \
 Example: `werf.io/weight: "10"`, `werf.io/weight: "-10"`
 
-Works the same as `helm.sh/hook-weight`, but can be used for both hooks and non-hook resources. Resources with the same weight are grouped together, then the groups deployed one after the other, from low to high weight. Resources in the same group are deployed in parallel. Has higher priority than `helm.sh/hook-weight`, but lower than `werf.io/deploy-dependency-<id>`.
+This annotation works the same as `helm.sh/hook-weight`, but can be used for both hooks and non-hook resources. Resources with the same weight are grouped together, then the groups deployed one after the other, from low to high weight. Resources in the same group are deployed in parallel. This annotation has higher priority than `helm.sh/hook-weight`, but lower than `werf.io/deploy-dependency-<id>`.
 
 #### Annotation `werf.io/deploy-dependency-<id>`
 
@@ -383,7 +383,7 @@ Example: \
 `werf.io/deploy-dependency-db: state=ready,kind=StatefulSet,name=postgres`, \
 `werf.io/deploy-dependency-app: state=present,kind=Deployment,group=apps,version=v1,name=app,namespace=app`
 
-The resource will deploy only after all of its dependencies are satisfied. Waits until the specified resource is just `present` or is also `ready`. More powerful alternative to hooks and `werf.io/weight`. Can only point to resources in the release. Has higher priority than `werf.io/weight` and `helm.sh/hook-weight`.
+The resource will deploy only after all of its dependencies are satisfied. It waits until the specified resource is just `present` or is also `ready`. It serves as a more powerful alternative to hooks and `werf.io/weight`. You can only point to resources in the release. This annotation has higher priority than `werf.io/weight` and `helm.sh/hook-weight`.
 
 #### Annotation `<id>.external-dependency.werf.io/resource`
 
@@ -392,7 +392,7 @@ Example: \
 `secret.external-dependency.werf.io/resource: secret/config` \
 `someapp.external-dependency.werf.io/resource: deployments.v1.apps/app`
 
-The resource will deploy only after all of its external dependencies are satisfied. Waits until the specified resource is present and ready. Can only point to resources outside the release.
+The resource will deploy only after all of its external dependencies are satisfied. It waits until the specified resource is `present` and `ready`. You can only point to resources outside the release.
 
 #### Annotation `<id>.external-dependency.werf.io/name`
 
@@ -416,8 +416,8 @@ Default: `WaitUntilResourceReady` \
 Example: `werf.io/track-termination-mode: NonBlocking`
 
 Configure when to stop resource readiness tracking:
-* `WaitUntilResourceReady`: wait until the resource is ready.
-* `NonBlocking`: don't wait until the resource is ready.
+* `WaitUntilResourceReady`: wait until the resource is `ready`.
+* `NonBlocking`: don't wait until the resource is `ready`.
 
 #### Annotation `werf.io/fail-mode`
 
@@ -457,7 +457,7 @@ Only show log lines that match the specified regex.
 Format: `<re2 regex>` [(reference)](https://github.com/google/re2/wiki/Syntax) \
 Example: `werf.io/log-regex-for-backend: ".*ERR|err|WARN|warn.*"`
 
-For the specified container only show log lines that match the specified regex.
+For the specified container, only show log lines that match the specified regex.
 
 #### Annotation `werf.io/skip-logs`
 
