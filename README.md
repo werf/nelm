@@ -48,6 +48,7 @@
     - [Function `werf_secret_file`](#function-werf_secret_file)
   - [More information](#more-information)
 - [Known issues](#known-issues)
+- [Future plans](#future-plans)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -503,3 +504,14 @@ For more information, see [Helm docs](https://helm.sh/docs/) and [werf docs](htt
 ## Known issues
 
 - Nelm won't work with Kubernetes versions earlier than v1.14. The `ServerSideApply` feature gate should be enabled (it's enabled by default starting from Kubernetes v1.16). This requirement is caused by leveraging the Server-Side Apply (instead of 3-Way Merge in Helm).
+
+## Future plans
+
+Here are some of the big things we plan to implement — feel free to upvote or comment on the relevant issues and/or raise new ones to show your interest:
+
+- An alternative to Helm templating ([#54](https://github.com/werf/nelm/issues/54));
+- An option to pull charts directly from Git;
+- A public Go API for embedding Nelm into third-party software;
+- Enhance the CLI experience with new commands and improve the consistency between the reimplemented commands and original Helm commands;
+- Overhaul the chart dependency management ([#61](https://github.com/werf/nelm/issues/61));
+- Migrate the built-in secret management to Mozilla SOPS ([#62](https://github.com/werf/nelm/issues/62)).
