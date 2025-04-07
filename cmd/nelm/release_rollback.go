@@ -58,6 +58,8 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 			Args: cobra.MaximumNArgs(1),
 		},
 		func(cmd *cobra.Command, args []string) error {
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleaseRollbackLogLevel)
+
 			if len(args) > 0 {
 				var err error
 				cfg.Revision, err = strconv.Atoi(args[0])
@@ -79,7 +81,6 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 				KubeTLSServerName:          cfg.KubeTLSServerName,
 				KubeToken:                  cfg.KubeToken,
 				LogColorMode:               cfg.LogColorMode,
-				LogLevel:                   cfg.LogLevel,
 				NetworkParallelism:         cfg.NetworkParallelism,
 				ProgressTablePrint:         !cfg.NoProgressTablePrint,
 				ProgressTablePrintInterval: cfg.ProgressTablePrintInterval,

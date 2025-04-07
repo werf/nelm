@@ -49,7 +49,6 @@ type ReleaseRollbackOptions struct {
 	KubeTLSServerName          string
 	KubeToken                  string
 	LogColorMode               string
-	LogLevel                   string
 	NetworkParallelism         int
 	ProgressTablePrint         bool
 	ProgressTablePrintInterval time.Duration
@@ -69,12 +68,6 @@ type ReleaseRollbackOptions struct {
 func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseRollbackOptions) error {
 	actionLock.Lock()
 	defer actionLock.Unlock()
-
-	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
-	} else {
-		log.Default.SetLevel(ctx, log.Level(DefaultReleaseRollbackLogLevel))
-	}
 
 	currentUser, err := user.Current()
 	if err != nil {

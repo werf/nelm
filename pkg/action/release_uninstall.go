@@ -46,7 +46,6 @@ type ReleaseUninstallOptions struct {
 	KubeTLSServerName          string
 	KubeToken                  string
 	LogColorMode               string
-	LogLevel                   string
 	NetworkParallelism         int
 	ProgressTablePrintInterval time.Duration
 	ReleaseHistoryLimit        int
@@ -57,12 +56,6 @@ type ReleaseUninstallOptions struct {
 func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseUninstallOptions) error {
 	actionLock.Lock()
 	defer actionLock.Unlock()
-
-	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
-	} else {
-		log.Default.SetLevel(ctx, log.Level(DefaultReleaseUninstallLogLevel))
-	}
 
 	currentDir, err := os.Getwd()
 	if err != nil {

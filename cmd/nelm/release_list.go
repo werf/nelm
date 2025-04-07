@@ -11,7 +11,7 @@ import (
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/common-go/pkg/cli"
-	"github.com/werf/nelm/internal/log"
+	"github.com/werf/nelm/pkg/action"
 )
 
 func newReleaseListCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -28,11 +28,7 @@ func newReleaseListCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		helmSettings := helm_v3.Settings
 
-		if helmSettings.Debug {
-			log.Default.SetLevel(ctx, log.DebugLevel)
-		} else {
-			log.Default.SetLevel(ctx, log.InfoLevel)
-		}
+		ctx = action.SetupLogging(ctx, lo.Ternary(helmSettings.Debug, action.DebugLogLevel, action.InfoLogLevel), "")
 
 		secrets.DisableSecrets = true
 		loader.NoChartLockWarning = ""

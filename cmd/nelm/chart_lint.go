@@ -68,6 +68,8 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultChartLintLogLevel)
+
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]
 			}
@@ -96,7 +98,6 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 				Local:                        !cfg.Remote,
 				LocalKubeVersion:             cfg.KubeVersion,
 				LogColorMode:                 cfg.LogColorMode,
-				LogLevel:                     cfg.LogLevel,
 				NetworkParallelism:           cfg.NetworkParallelism,
 				RegistryCredentialsPath:      cfg.RegistryCredentialsPath,
 				ReleaseName:                  cfg.ReleaseName,

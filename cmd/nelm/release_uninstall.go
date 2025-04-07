@@ -47,6 +47,8 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 		releaseCmdGroup,
 		cli.SubCommandOptions{},
 		func(cmd *cobra.Command, args []string) error {
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleaseUninstallLogLevel)
+
 			if err := action.ReleaseUninstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, action.ReleaseUninstallOptions{
 				DeleteHooks:                !cfg.NoDeleteHooks,
 				DeleteReleaseNamespace:     cfg.DeleteReleaseNamespace,
@@ -61,7 +63,6 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 				KubeTLSServerName:          cfg.KubeTLSServerName,
 				KubeToken:                  cfg.KubeToken,
 				LogColorMode:               cfg.LogColorMode,
-				LogLevel:                   cfg.LogLevel,
 				NetworkParallelism:         cfg.NetworkParallelism,
 				ProgressTablePrintInterval: cfg.ProgressTablePrintInterval,
 				ReleaseHistoryLimit:        cfg.ReleaseHistoryLimit,

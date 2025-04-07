@@ -15,6 +15,8 @@ import (
 	"github.com/werf/logboek/pkg/types"
 )
 
+const LogboekLoggerCtxKeyName = "logboek_logger"
+
 var _ Logger = (*LogboekLogger)(nil)
 
 func NewLogboekLogger() *LogboekLogger {

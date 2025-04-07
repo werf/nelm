@@ -39,7 +39,6 @@ type ReleaseGetOptions struct {
 	KubeTLSServerName    string
 	KubeToken            string
 	LogColorMode         string
-	LogLevel             string
 	NetworkParallelism   int
 	OutputFormat         string
 	OutputNoPrint        bool
@@ -51,12 +50,6 @@ type ReleaseGetOptions struct {
 func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseGetOptions) (*ReleaseGetResultV1, error) {
 	actionLock.Lock()
 	defer actionLock.Unlock()
-
-	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
-	} else {
-		log.Default.SetLevel(ctx, log.Level(DefaultReleaseGetLogLevel))
-	}
 
 	currentUser, err := user.Current()
 	if err != nil {

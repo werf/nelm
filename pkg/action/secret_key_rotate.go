@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/pkg/secret"
 )
 
@@ -16,7 +15,6 @@ const (
 type SecretKeyRotateOptions struct {
 	ChartDirPath      string
 	LogColorMode      string
-	LogLevel          string
 	NewSecretKey      string
 	OldSecretKey      string
 	SecretValuesPaths []string
@@ -27,12 +25,6 @@ type SecretKeyRotateOptions struct {
 func SecretKeyRotate(ctx context.Context, opts SecretKeyRotateOptions) error {
 	actionLock.Lock()
 	defer actionLock.Unlock()
-
-	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
-	} else {
-		log.Default.SetLevel(ctx, log.Level(DefaultSecretKeyRotateLogLevel))
-	}
 
 	currentDir, err := os.Getwd()
 	if err != nil {

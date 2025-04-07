@@ -40,11 +40,12 @@ func newChartSecretFileEditCommand(ctx context.Context, afterAllCommandsBuiltFun
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultSecretFileEditLogLevel)
+
 			cfg.File = args[0]
 
 			if err := action.SecretFileEdit(ctx, cfg.File, action.SecretFileEditOptions{
 				LogColorMode: cfg.LogColorMode,
-				LogLevel:     cfg.LogLevel,
 				SecretKey:    cfg.SecretKey,
 				TempDirPath:  cfg.TempDirPath,
 			}); err != nil {

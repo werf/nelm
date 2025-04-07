@@ -29,9 +29,10 @@ func newVersionCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobr
 		miscCmdGroup,
 		cli.SubCommandOptions{},
 		func(cmd *cobra.Command, args []string) error {
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultVersionLogLevel)
+
 			if _, err := action.Version(ctx, action.VersionOptions{
 				LogColorMode: cfg.LogColorMode,
-				LogLevel:     cfg.LogLevel,
 				OutputFormat: cfg.OutputFormat,
 				TempDirPath:  cfg.TempDirPath,
 			}); err != nil {
