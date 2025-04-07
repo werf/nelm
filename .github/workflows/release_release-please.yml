@@ -36,7 +36,7 @@ jobs:
             2. Add Nelm TUF repository to trdl:
 
                 ```shell
-                trdl add nelm https://storage.googleapis.com/nelm-tuf 1 2122fb476c48de4609fe6d3636759645996088ff6796857fc23ba4b8331a6e3a58fc40f1714c31bda64c709ef6f49bcc4691d091bad6cb1b9a631d8e06e1f308
+                trdl add nelm https://tuf.nelm.sh 1 2122fb476c48de4609fe6d3636759645996088ff6796857fc23ba4b8331a6e3a58fc40f1714c31bda64c709ef6f49bcc4691d091bad6cb1b9a631d8e06e1f308
                 ```
 
             3. Make `nelm` binary available in the current shell:
@@ -48,16 +48,16 @@ jobs:
             ## Install binaries directly (no autoupdates)
 
             Download `nelm` binaries from here:
-            * [Linux amd64](https://storage.googleapis.com/nelm-tuf/targets/releases/{{> version }}/linux-amd64/bin/nelm) ([PGP signature](https://storage.googleapis.com/nelm-tuf/targets/signatures/{{> version }}/linux-amd64/bin/nelm.sig))
-            * [Linux arm64](https://storage.googleapis.com/nelm-tuf/targets/releases/{{> version }}/linux-arm64/bin/nelm) ([PGP signature](https://storage.googleapis.com/nelm-tuf/targets/signatures/{{> version }}/linux-arm64/bin/nelm.sig))
-            * [macOS amd64](https://storage.googleapis.com/nelm-tuf/targets/releases/{{> version }}/darwin-amd64/bin/nelm) ([PGP signature](https://storage.googleapis.com/nelm-tuf/targets/signatures/{{> version }}/darwin-amd64/bin/nelm.sig))
-            * [macOS arm64](https://storage.googleapis.com/nelm-tuf/targets/releases/{{> version }}/darwin-arm64/bin/nelm) ([PGP signature](https://storage.googleapis.com/nelm-tuf/targets/signatures/{{> version }}/darwin-arm64/bin/nelm.sig))
-            * [Windows amd64](https://storage.googleapis.com/nelm-tuf/targets/releases/{{> version }}/windows-amd64/bin/nelm.exe) ([PGP signature](https://storage.googleapis.com/nelm-tuf/targets/signatures/{{> version }}/windows-amd64/bin/nelm.exe.sig))
+            * [Linux amd64](https://tuf.nelm.sh/targets/releases/{{> version }}/linux-amd64/bin/nelm) ([PGP signature](https://tuf.nelm.sh/targets/signatures/{{> version }}/linux-amd64/bin/nelm.sig))
+            * [Linux arm64](https://tuf.nelm.sh/targets/releases/{{> version }}/linux-arm64/bin/nelm) ([PGP signature](https://tuf.nelm.sh/targets/signatures/{{> version }}/linux-arm64/bin/nelm.sig))
+            * [macOS amd64](https://tuf.nelm.sh/targets/releases/{{> version }}/darwin-amd64/bin/nelm) ([PGP signature](https://tuf.nelm.sh/targets/signatures/{{> version }}/darwin-amd64/bin/nelm.sig))
+            * [macOS arm64](https://tuf.nelm.sh/targets/releases/{{> version }}/darwin-arm64/bin/nelm) ([PGP signature](https://tuf.nelm.sh/targets/signatures/{{> version }}/darwin-arm64/bin/nelm.sig))
+            * [Windows amd64](https://tuf.nelm.sh/targets/releases/{{> version }}/windows-amd64/bin/nelm.exe) ([PGP signature](https://tuf.nelm.sh/targets/signatures/{{> version }}/windows-amd64/bin/nelm.exe.sig))
 
             These binaries were signed with PGP and could be verified with the [Nelm PGP public key](https://raw.githubusercontent.com/werf/nelm/refs/heads/main/nelm.asc). For example, `nelm` binary can be downloaded and verified with `gpg` on Linux with these commands:
 
             ```shell
-            curl -sSLO "https://storage.googleapis.com/nelm-tuf/targets/releases/{{> version }}/linux-amd64/bin/nelm" -O "https://storage.googleapis.com/nelm-tuf/targets/signatures/{{> version }}/linux-amd64/bin/nelm.sig"
+            curl -sSLO "https://tuf.nelm.sh/targets/releases/{{> version }}/linux-amd64/bin/nelm" -O "https://tuf.nelm.sh/targets/signatures/{{> version }}/linux-amd64/bin/nelm.sig"
             curl -sSL https://raw.githubusercontent.com/werf/nelm/refs/heads/main/nelm.asc | gpg --import
             gpg --verify nelm.sig nelm
             ```
