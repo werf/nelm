@@ -66,6 +66,8 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleasePlanInstallLogLevel)
+
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]
 			}
@@ -93,7 +95,6 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 				KubeTLSServerName:            cfg.KubeTLSServerName,
 				KubeToken:                    cfg.KubeToken,
 				LogColorMode:                 cfg.LogColorMode,
-				LogLevel:                     cfg.LogLevel,
 				NetworkParallelism:           cfg.NetworkParallelism,
 				RegistryCredentialsPath:      cfg.RegistryCredentialsPath,
 				ReleaseStorageDriver:         cfg.ReleaseStorageDriver,

@@ -51,38 +51,6 @@ const (
 	DefaultReleaseInstallLogLevel       = InfoLogLevel
 )
 
-// FIXME(ilya-lesikov): this must be done a level higher
-// var logboekLogLevel level.Level
-// var logrusLogLevel logrus.Level
-// switch opts.LogLevel {
-// case LogLevelNone:
-// 	logrusLogLevel = logrus.WarnLevel
-// case LogLevelError:
-// 	logrusLogLevel = logrus.ErrorLevel
-// case LogLevelWarn:
-// 	logrusLogLevel = logrus.WarnLevel
-// case LogLevelInfo:
-// 	logrusLogLevel = logrus.InfoLevel
-// case LogLevelDebug:
-// 	logrusLogLevel = logrus.DebugLevel
-// default:
-// 	panic("unknown log level")
-// }
-//
-// if opts.LogLevel == LogLevelNone {
-// 	log.Default = log.DefaultNull
-// } else {
-// 	log.Default = log.NewLogboekLogger(log.LogboekLoggerOptions{
-// 		OutStream: opts.LogStreamOut,
-// 		ErrStream: opts.LogStreamErr,
-// 		LogLevel:  opts.LogLevel,
-// 	})
-// }
-//
-// stdlog.SetOutput(opts.LogStreamOut)
-// logrus.StandardLogger().SetOutput(opts.LogStreamOut)
-// logrus.StandardLogger().SetLevel(logrusLogLevel)
-
 type ReleaseInstallOptions struct {
 	AutoRollback                 bool
 	ChartAppVersion              string
@@ -113,7 +81,6 @@ type ReleaseInstallOptions struct {
 	KubeTLSServerName            string
 	KubeToken                    string
 	LogColorMode                 string
-	LogLevel                     string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	ProgressTablePrint           bool
@@ -142,12 +109,6 @@ type ReleaseInstallOptions struct {
 func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseInstallOptions) error {
 	actionLock.Lock()
 	defer actionLock.Unlock()
-
-	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
-	} else {
-		log.Default.SetLevel(ctx, log.Level(DefaultReleaseInstallLogLevel))
-	}
 
 	currentDir, err := os.Getwd()
 	if err != nil {

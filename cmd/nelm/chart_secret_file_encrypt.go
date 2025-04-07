@@ -40,11 +40,12 @@ func newChartSecretFileEncryptCommand(ctx context.Context, afterAllCommandsBuilt
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultSecretFileEncryptLogLevel)
+
 			cfg.File = args[0]
 
 			if err := action.SecretFileEncrypt(ctx, cfg.File, action.SecretFileEncryptOptions{
 				LogColorMode:   cfg.LogColorMode,
-				LogLevel:       cfg.LogLevel,
 				OutputFilePath: cfg.OutputFilePath,
 				OutputFileSave: cfg.OutputFileSave(),
 				SecretKey:      cfg.SecretKey,

@@ -64,7 +64,6 @@ type ChartLintOptions struct {
 	Local                        bool
 	LocalKubeVersion             string
 	LogColorMode                 string
-	LogLevel                     string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	RegistryCredentialsPath      string
@@ -85,12 +84,6 @@ type ChartLintOptions struct {
 func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	actionLock.Lock()
 	defer actionLock.Unlock()
-
-	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
-	} else {
-		log.Default.SetLevel(ctx, log.Level(DefaultChartLintLogLevel))
-	}
 
 	currentDir, err := os.Getwd()
 	if err != nil {

@@ -14,7 +14,6 @@ import (
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/nelm/internal/common"
-	"github.com/werf/nelm/internal/log"
 )
 
 const (
@@ -24,7 +23,6 @@ const (
 
 type VersionOptions struct {
 	LogColorMode  string
-	LogLevel      string
 	OutputFormat  string
 	OutputNoPrint bool
 	TempDirPath   string
@@ -33,12 +31,6 @@ type VersionOptions struct {
 func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {
 	actionLock.Lock()
 	defer actionLock.Unlock()
-
-	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
-	} else {
-		log.Default.SetLevel(ctx, log.Level(DefaultVersionLogLevel))
-	}
 
 	opts, err := applyVersionOptionsDefaults(opts)
 	if err != nil {

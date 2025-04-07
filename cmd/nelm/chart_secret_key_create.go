@@ -28,9 +28,10 @@ func newChartSecretKeyCreateCommand(ctx context.Context, afterAllCommandsBuiltFu
 		secretCmdGroup,
 		cli.SubCommandOptions{},
 		func(cmd *cobra.Command, args []string) error {
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultSecretKeyCreateLogLevel)
+
 			if _, err := action.SecretKeyCreate(ctx, action.SecretKeyCreateOptions{
 				LogColorMode: cfg.LogColorMode,
-				LogLevel:     cfg.LogLevel,
 				TempDirPath:  cfg.TempDirPath,
 			}); err != nil {
 				return fmt.Errorf("secret key create: %w", err)

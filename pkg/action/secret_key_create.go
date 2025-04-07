@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/werf/common-go/pkg/secrets_manager"
-	"github.com/werf/nelm/internal/log"
 )
 
 const (
@@ -15,7 +14,6 @@ const (
 
 type SecretKeyCreateOptions struct {
 	LogColorMode  string
-	LogLevel      string
 	OutputNoPrint bool
 	TempDirPath   string
 }
@@ -23,12 +21,6 @@ type SecretKeyCreateOptions struct {
 func SecretKeyCreate(ctx context.Context, opts SecretKeyCreateOptions) (string, error) {
 	actionLock.Lock()
 	defer actionLock.Unlock()
-
-	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
-	} else {
-		log.Default.SetLevel(ctx, log.Level(DefaultSecretKeyCreateLogLevel))
-	}
 
 	opts, err := applySecretKeyCreateOptionsDefaults(opts)
 	if err != nil {

@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 
 	"github.com/werf/common-go/pkg/secrets_manager"
-	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/pkg/secret"
 )
 
@@ -18,7 +17,6 @@ const (
 
 type SecretFileDecryptOptions struct {
 	LogColorMode   string
-	LogLevel       string
 	OutputFilePath string
 	OutputFileSave bool
 	SecretKey      string
@@ -29,12 +27,6 @@ type SecretFileDecryptOptions struct {
 func SecretFileDecrypt(ctx context.Context, filePath string, opts SecretFileDecryptOptions) error {
 	actionLock.Lock()
 	defer actionLock.Unlock()
-
-	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
-	} else {
-		log.Default.SetLevel(ctx, log.Level(DefaultSecretFileDecryptLogLevel))
-	}
 
 	currentDir, err := os.Getwd()
 	if err != nil {

@@ -75,6 +75,8 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultChartRenderLogLevel)
+
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]
 			}
@@ -103,7 +105,6 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 				Local:                        !cfg.Remote,
 				LocalKubeVersion:             cfg.KubeVersion,
 				LogColorMode:                 cfg.LogColorMode,
-				LogLevel:                     cfg.LogLevel,
 				NetworkParallelism:           cfg.NetworkParallelism,
 				OutputFilePath:               cfg.OutputFilePath,
 				OutputFileSave:               cfg.OutputFileSave(),

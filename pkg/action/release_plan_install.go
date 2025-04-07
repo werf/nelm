@@ -67,7 +67,6 @@ type ReleasePlanInstallOptions struct {
 	KubeTLSServerName            string
 	KubeToken                    string
 	LogColorMode                 string
-	LogLevel                     string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	RegistryCredentialsPath      string
@@ -86,12 +85,6 @@ type ReleasePlanInstallOptions struct {
 func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleasePlanInstallOptions) error {
 	actionLock.Lock()
 	defer actionLock.Unlock()
-
-	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
-	} else {
-		log.Default.SetLevel(ctx, log.Level(DefaultReleasePlanInstallLogLevel))
-	}
 
 	currentDir, err := os.Getwd()
 	if err != nil {

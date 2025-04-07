@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/werf/common-go/pkg/secrets_manager"
-	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/pkg/secret"
 )
 
@@ -16,7 +15,6 @@ const (
 
 type SecretFileEditOptions struct {
 	LogColorMode  string
-	LogLevel      string
 	SecretKey     string
 	SecretWorkDir string
 	TempDirPath   string
@@ -25,12 +23,6 @@ type SecretFileEditOptions struct {
 func SecretFileEdit(ctx context.Context, filePath string, opts SecretFileEditOptions) error {
 	actionLock.Lock()
 	defer actionLock.Unlock()
-
-	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
-	} else {
-		log.Default.SetLevel(ctx, log.Level(DefaultSecretFileEditLogLevel))
-	}
 
 	currentDir, err := os.Getwd()
 	if err != nil {

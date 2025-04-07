@@ -70,7 +70,6 @@ type ChartRenderOptions struct {
 	Local                        bool
 	LocalKubeVersion             string
 	LogColorMode                 string
-	LogLevel                     string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	OutputFilePath               string
@@ -95,12 +94,6 @@ type ChartRenderOptions struct {
 func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 	actionLock.Lock()
 	defer actionLock.Unlock()
-
-	if opts.LogLevel != "" {
-		log.Default.SetLevel(ctx, log.Level(opts.LogLevel))
-	} else {
-		log.Default.SetLevel(ctx, log.Level(DefaultChartRenderLogLevel))
-	}
 
 	currentDir, err := os.Getwd()
 	if err != nil {

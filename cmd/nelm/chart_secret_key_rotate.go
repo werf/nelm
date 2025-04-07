@@ -37,6 +37,8 @@ func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFu
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultSecretKeyRotateLogLevel)
+
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]
 			}
@@ -44,7 +46,6 @@ func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFu
 			if err := action.SecretKeyRotate(ctx, action.SecretKeyRotateOptions{
 				ChartDirPath:      cfg.ChartDirPath,
 				LogColorMode:      cfg.LogColorMode,
-				LogLevel:          cfg.LogLevel,
 				NewSecretKey:      cfg.NewSecretKey,
 				OldSecretKey:      cfg.OldSecretKey,
 				SecretValuesPaths: cfg.SecretValuesPaths,

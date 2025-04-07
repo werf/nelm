@@ -48,6 +48,8 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 			Args: cobra.MaximumNArgs(1),
 		},
 		func(cmd *cobra.Command, args []string) error {
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleaseGetLogLevel)
+
 			if len(args) > 0 {
 				var err error
 				cfg.Revision, err = strconv.Atoi(args[0])
@@ -68,7 +70,6 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 				KubeTLSServerName:    cfg.KubeTLSServerName,
 				KubeToken:            cfg.KubeToken,
 				LogColorMode:         cfg.LogColorMode,
-				LogLevel:             cfg.LogLevel,
 				NetworkParallelism:   cfg.NetworkParallelism,
 				OutputFormat:         cfg.OutputFormat,
 				ReleaseStorageDriver: cfg.ReleaseStorageDriver,
