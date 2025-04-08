@@ -11,42 +11,12 @@ import (
 )
 
 type releasePlanInstallConfig struct {
-	ChartAppVersion              string
-	ChartDirPath                 string
-	ChartRepositoryInsecure      bool
-	ChartRepositorySkipTLSVerify bool
-	ChartRepositorySkipUpdate    bool
-	DefaultSecretValuesDisable   bool
-	DefaultValuesDisable         bool
-	ErrorIfChangesPlanned        bool
-	ExtraAnnotations             map[string]string
-	ExtraLabels                  map[string]string
-	ExtraRuntimeAnnotations      map[string]string
-	KubeAPIServerName            string
-	KubeBurstLimit               int
-	KubeCAPath                   string
-	KubeConfigBase64             string
-	KubeConfigPaths              []string
-	KubeContext                  string
-	KubeQPSLimit                 int
-	KubeSkipTLSVerify            bool
-	KubeTLSServerName            string
-	KubeToken                    string
-	LogColorMode                 string
-	LogLevel                     string
-	NetworkParallelism           int
-	RegistryCredentialsPath      string
-	ReleaseName                  string
-	ReleaseNamespace             string
-	ReleaseStorageDriver         string
-	SecretKey                    string
-	SecretKeyIgnore              bool
-	SecretValuesPaths            []string
-	TempDirPath                  string
-	ValuesFileSets               []string
-	ValuesFilesPaths             []string
-	ValuesSets                   []string
-	ValuesStringSets             []string
+	action.ReleasePlanInstallOptions
+
+	ChartDirPath     string
+	LogLevel         string
+	ReleaseName      string
+	ReleaseNamespace string
 }
 
 func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -72,41 +42,7 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 				cfg.ChartDirPath = args[0]
 			}
 
-			if err := action.ReleasePlanInstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, action.ReleasePlanInstallOptions{
-				ChartAppVersion:              cfg.ChartAppVersion,
-				ChartDirPath:                 cfg.ChartDirPath,
-				ChartRepositoryInsecure:      cfg.ChartRepositoryInsecure,
-				ChartRepositorySkipTLSVerify: cfg.ChartRepositorySkipTLSVerify,
-				ChartRepositorySkipUpdate:    cfg.ChartRepositorySkipUpdate,
-				DefaultSecretValuesDisable:   cfg.DefaultSecretValuesDisable,
-				DefaultValuesDisable:         cfg.DefaultValuesDisable,
-				ErrorIfChangesPlanned:        cfg.ErrorIfChangesPlanned,
-				ExtraAnnotations:             cfg.ExtraAnnotations,
-				ExtraLabels:                  cfg.ExtraLabels,
-				ExtraRuntimeAnnotations:      cfg.ExtraRuntimeAnnotations,
-				KubeAPIServerName:            cfg.KubeAPIServerName,
-				KubeBurstLimit:               cfg.KubeBurstLimit,
-				KubeCAPath:                   cfg.KubeCAPath,
-				KubeConfigBase64:             cfg.KubeConfigBase64,
-				KubeConfigPaths:              cfg.KubeConfigPaths,
-				KubeContext:                  cfg.KubeContext,
-				KubeQPSLimit:                 cfg.KubeQPSLimit,
-				KubeSkipTLSVerify:            cfg.KubeSkipTLSVerify,
-				KubeTLSServerName:            cfg.KubeTLSServerName,
-				KubeToken:                    cfg.KubeToken,
-				LogColorMode:                 cfg.LogColorMode,
-				NetworkParallelism:           cfg.NetworkParallelism,
-				RegistryCredentialsPath:      cfg.RegistryCredentialsPath,
-				ReleaseStorageDriver:         cfg.ReleaseStorageDriver,
-				SecretKey:                    cfg.SecretKey,
-				SecretKeyIgnore:              cfg.SecretKeyIgnore,
-				SecretValuesPaths:            cfg.SecretValuesPaths,
-				TempDirPath:                  cfg.TempDirPath,
-				ValuesFileSets:               cfg.ValuesFileSets,
-				ValuesFilesPaths:             cfg.ValuesFilesPaths,
-				ValuesSets:                   cfg.ValuesSets,
-				ValuesStringSets:             cfg.ValuesStringSets,
-			}); err != nil {
+			if err := action.ReleasePlanInstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, cfg.ReleasePlanInstallOptions); err != nil {
 				return fmt.Errorf("release plan install: %w", err)
 			}
 

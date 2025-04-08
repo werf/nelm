@@ -11,13 +11,10 @@ import (
 )
 
 type chartSecretKeyRotateOptions struct {
-	ChartDirPath      string
-	LogColorMode      string
-	LogLevel          string
-	NewSecretKey      string
-	OldSecretKey      string
-	SecretValuesPaths []string
-	TempDirPath       string
+	action.SecretKeyRotateOptions
+
+	ChartDirPath string
+	LogLevel     string
 }
 
 func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -43,14 +40,7 @@ func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFu
 				cfg.ChartDirPath = args[0]
 			}
 
-			if err := action.SecretKeyRotate(ctx, action.SecretKeyRotateOptions{
-				ChartDirPath:      cfg.ChartDirPath,
-				LogColorMode:      cfg.LogColorMode,
-				NewSecretKey:      cfg.NewSecretKey,
-				OldSecretKey:      cfg.OldSecretKey,
-				SecretValuesPaths: cfg.SecretValuesPaths,
-				TempDirPath:       cfg.TempDirPath,
-			}); err != nil {
+			if err := action.SecretKeyRotate(ctx, cfg.SecretKeyRotateOptions); err != nil {
 				return fmt.Errorf("secret key rotate: %w", err)
 			}
 

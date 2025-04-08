@@ -11,10 +11,9 @@ import (
 )
 
 type versionConfig struct {
-	LogColorMode string
-	LogLevel     string
-	OutputFormat string
-	TempDirPath  string
+	action.VersionOptions
+
+	LogLevel string
 }
 
 func newVersionCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -31,11 +30,7 @@ func newVersionCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobr
 		func(cmd *cobra.Command, args []string) error {
 			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultVersionLogLevel)
 
-			if _, err := action.Version(ctx, action.VersionOptions{
-				LogColorMode: cfg.LogColorMode,
-				OutputFormat: cfg.OutputFormat,
-				TempDirPath:  cfg.TempDirPath,
-			}); err != nil {
+			if _, err := action.Version(ctx, cfg.VersionOptions); err != nil {
 				return fmt.Errorf("version: %w", err)
 			}
 

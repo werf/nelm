@@ -67,9 +67,7 @@ type ReleaseInstallOptions struct {
 	ExtraLabels                  map[string]string
 	ExtraRuntimeAnnotations      map[string]string
 	InstallGraphPath             string
-	InstallGraphSave             bool
 	InstallReportPath            string
-	InstallReportSave            bool
 	KubeAPIServerName            string
 	KubeBurstLimit               int
 	KubeCAPath                   string
@@ -83,14 +81,13 @@ type ReleaseInstallOptions struct {
 	LogColorMode                 string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
-	ProgressTablePrint           bool
+	NoProgressTablePrint         bool
 	ProgressTablePrintInterval   time.Duration
 	RegistryCredentialsPath      string
 	ReleaseHistoryLimit          int
 	ReleaseInfoAnnotations       map[string]string
 	ReleaseStorageDriver         string
 	RollbackGraphPath            string
-	RollbackGraphSave            bool
 	SecretKey                    string
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
@@ -454,7 +451,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		return fmt.Errorf("build release install plan: %w", planBuildErr)
 	}
 
-	if opts.InstallGraphSave {
+	if opts.InstallGraphPath != "" {
 		if err := deployPlan.SaveDOT(opts.InstallGraphPath); err != nil {
 			return fmt.Errorf("save release install graph: %w", err)
 		}
@@ -474,7 +471,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	}
 
 	if releaseUpToDate && planUseless {
-		if opts.InstallReportSave {
+		if opts.InstallReportPath != "" {
 			newRel.Skip()
 
 			report := newReport(nil, nil, nil, newRel)
@@ -504,7 +501,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	stdoutTrackerStopCh := make(chan bool)
 	stdoutTrackerFinishedCh := make(chan bool)
 
-	if opts.ProgressTablePrint {
+	if !opts.NoProgressTablePrint {
 		go func() {
 			ticker := time.NewTicker(opts.ProgressTablePrintInterval)
 			defer func() {
@@ -609,7 +606,6 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 				opts.TrackCreationTimeout,
 				opts.TrackReadinessTimeout,
 				opts.TrackDeletionTimeout,
-				opts.RollbackGraphSave,
 				opts.RollbackGraphPath,
 				opts.NetworkParallelism,
 			)
@@ -622,7 +618,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		}
 	}
 
-	if opts.ProgressTablePrint {
+	if !opts.NoProgressTablePrint {
 		stdoutTrackerStopCh <- true
 		<-stdoutTrackerFinishedCh
 	}
@@ -636,7 +632,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 
 	report.Print(ctx)
 
-	if opts.InstallReportSave {
+	if opts.InstallReportPath != "" {
 		if err := report.Save(opts.InstallReportPath); err != nil {
 			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("save release install report: %w", err))
 		}
@@ -933,7 +929,6 @@ func runRollbackPlan(
 	trackCreationTimeout time.Duration,
 	trackReadinessTimeout time.Duration,
 	trackDeletionTimeout time.Duration,
-	saveRollbackGraph bool,
 	rollbackGraphPath string,
 	networkParallelism int,
 ) (
@@ -1039,7 +1034,7 @@ func runRollbackPlan(
 		return nil, nil, nil, "", []error{fmt.Errorf("build rollback plan: %w", err)}, nonCriticalErrs
 	}
 
-	if saveRollbackGraph {
+	if rollbackGraphPath != "" {
 		if err := rollbackPlan.SaveDOT(rollbackGraphPath); err != nil {
 			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("save rollback graph: %w", err))
 		}

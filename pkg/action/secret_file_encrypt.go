@@ -4,21 +4,18 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/pkg/secret"
 )
 
 const (
-	DefaultSecretFileEncryptOutputFilename = "secret-file-encrypt-output.yaml"
-	DefaultSecretFileEncryptLogLevel       = ErrorLogLevel
+	DefaultSecretFileEncryptLogLevel = ErrorLogLevel
 )
 
 type SecretFileEncryptOptions struct {
 	LogColorMode   string
 	OutputFilePath string
-	OutputFileSave bool
 	SecretKey      string
 	SecretWorkDir  string
 	TempDirPath    string
@@ -38,16 +35,11 @@ func SecretFileEncrypt(ctx context.Context, filePath string, opts SecretFileEncr
 		return fmt.Errorf("build secret file encrypt options: %w", err)
 	}
 
-	var outputFilePath string
-	if opts.OutputFileSave {
-		outputFilePath = opts.OutputFilePath
-	}
-
 	if opts.SecretKey != "" {
 		os.Setenv("WERF_SECRET_KEY", opts.SecretKey)
 	}
 
-	if err := secret.SecretFileEncrypt(ctx, secrets_manager.Manager, opts.SecretWorkDir, filePath, outputFilePath); err != nil {
+	if err := secret.SecretFileEncrypt(ctx, secrets_manager.Manager, opts.SecretWorkDir, filePath, opts.OutputFilePath); err != nil {
 		return fmt.Errorf("secret file encrypt: %w", err)
 	}
 
@@ -71,13 +63,7 @@ func applySecretFileEncryptOptionsDefaults(opts SecretFileEncryptOptions, curren
 		}
 	}
 
-	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, opts.OutputFileSave)
-
-	if opts.OutputFileSave {
-		if opts.OutputFilePath == "" {
-			opts.OutputFilePath = filepath.Join(opts.TempDirPath, DefaultSecretFileEncryptOutputFilename)
-		}
-	}
+	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, opts.OutputFilePath != "")
 
 	return opts, nil
 }

@@ -39,8 +39,7 @@ import (
 )
 
 const (
-	DefaultChartRenderOutputFilename = "chart-render-output.yaml"
-	DefaultChartRenderLogLevel       = ErrorLogLevel
+	DefaultChartRenderLogLevel = ErrorLogLevel
 )
 
 type ChartRenderOptions struct {
@@ -67,13 +66,12 @@ type ChartRenderOptions struct {
 	KubeSkipTLSVerify            bool
 	KubeTLSServerName            string
 	KubeToken                    string
-	Local                        bool
+	Remote                       bool
 	LocalKubeVersion             string
 	LogColorMode                 string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	OutputFilePath               string
-	OutputFileSave               bool
 	RegistryCredentialsPath      string
 	ReleaseName                  string
 	ReleaseNamespace             string
@@ -191,7 +189,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 	helmActionConfig.RegistryClient = helmRegistryClient
 
 	var clientFactory *kube.ClientFactory
-	if opts.Local {
+	if !opts.Remote {
 		helmReleaseStorageDriver := driver.NewMemory()
 		helmReleaseStorageDriver.SetNamespace(opts.ReleaseNamespace)
 		helmActionConfig.Releases = storage.Init(helmReleaseStorageDriver)
@@ -231,7 +229,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 	secrets_manager.DisableSecretsDecryption = opts.SecretKeyIgnore
 
 	var historyOptions release.HistoryOptions
-	if !opts.Local {
+	if opts.Remote {
 		historyOptions.Mapper = clientFactory.Mapper()
 		historyOptions.DiscoveryClient = clientFactory.Discovery()
 	}
@@ -278,7 +276,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 		FileValues:      opts.ValuesFileSets,
 		ValuesFiles:     opts.ValuesFilesPaths,
 	}
-	if !opts.Local {
+	if opts.Remote {
 		chartTreeOptions.Mapper = clientFactory.Mapper()
 		chartTreeOptions.DiscoveryClient = clientFactory.Discovery()
 	}
@@ -341,7 +339,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 			),
 		},
 	}
-	if !opts.Local {
+	if opts.Remote {
 		resProcessorOptions.KubeClient = clientFactory.KubeClient()
 		resProcessorOptions.Mapper = clientFactory.Mapper()
 		resProcessorOptions.DiscoveryClient = clientFactory.Discovery()
@@ -391,7 +389,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 	}
 
 	var renderOutStream io.Writer
-	if opts.OutputFileSave {
+	if opts.OutputFilePath != "" {
 		file, err := os.Create(opts.OutputFilePath)
 		if err != nil {
 			return fmt.Errorf("create chart render output file %q: %w", opts.OutputFilePath, err)
@@ -464,12 +462,6 @@ func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir string,
 		}
 	}
 
-	if opts.OutputFileSave {
-		if opts.OutputFilePath == "" {
-			opts.OutputFilePath = filepath.Join(opts.TempDirPath, DefaultChartRenderOutputFilename)
-		}
-	}
-
 	if opts.KubeConfigBase64 == "" && len(opts.KubeConfigPaths) == 0 {
 		opts.KubeConfigPaths = []string{filepath.Join(currentUser.HomeDir, ".kube", "config")}
 	}
@@ -478,7 +470,7 @@ func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir string,
 		opts.LogRegistryStreamOut = os.Stdout
 	}
 
-	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, opts.OutputFileSave)
+	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, opts.OutputFilePath != "")
 
 	if opts.NetworkParallelism <= 0 {
 		opts.NetworkParallelism = DefaultNetworkParallelism

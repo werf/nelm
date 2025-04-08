@@ -61,7 +61,7 @@ type ChartLintOptions struct {
 	KubeSkipTLSVerify            bool
 	KubeTLSServerName            string
 	KubeToken                    string
-	Local                        bool
+	Remote                       bool
 	LocalKubeVersion             string
 	LogColorMode                 string
 	LogRegistryStreamOut         io.Writer
@@ -181,7 +181,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	helmActionConfig.RegistryClient = helmRegistryClient
 
 	var clientFactory *kube.ClientFactory
-	if opts.Local {
+	if !opts.Remote {
 		helmReleaseStorageDriver := driver.NewMemory()
 		helmReleaseStorageDriver.SetNamespace(opts.ReleaseNamespace)
 		helmActionConfig.Releases = storage.Init(helmReleaseStorageDriver)
@@ -221,7 +221,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	secrets_manager.DisableSecretsDecryption = opts.SecretKeyIgnore
 
 	var historyOptions release.HistoryOptions
-	if !opts.Local {
+	if opts.Remote {
 		historyOptions.Mapper = clientFactory.Mapper()
 		historyOptions.DiscoveryClient = clientFactory.Discovery()
 	}
@@ -268,7 +268,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		FileValues:      opts.ValuesFileSets,
 		ValuesFiles:     opts.ValuesFilesPaths,
 	}
-	if !opts.Local {
+	if opts.Remote {
 		chartTreeOptions.Mapper = clientFactory.Mapper()
 		chartTreeOptions.DiscoveryClient = clientFactory.Discovery()
 	}
@@ -331,7 +331,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 			),
 		},
 	}
-	if !opts.Local {
+	if opts.Remote {
 		resProcessorOptions.KubeClient = clientFactory.KubeClient()
 		resProcessorOptions.Mapper = clientFactory.Mapper()
 		resProcessorOptions.DiscoveryClient = clientFactory.Discovery()

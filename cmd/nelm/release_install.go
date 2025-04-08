@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -12,56 +11,11 @@ import (
 )
 
 type releaseInstallConfig struct {
-	AutoRollback                 bool
-	ChartAppVersion              string
-	ChartDirPath                 string
-	ChartRepositoryInsecure      bool
-	ChartRepositorySkipTLSVerify bool
-	ChartRepositorySkipUpdate    bool
-	DefaultSecretValuesDisable   bool
-	DefaultValuesDisable         bool
-	ExtraAnnotations             map[string]string
-	ExtraLabels                  map[string]string
-	ExtraRuntimeAnnotations      map[string]string
-	InstallGraphPath             string
-	InstallGraphSave             bool
-	InstallReportPath            string
-	InstallReportSave            bool
-	KubeAPIServerName            string
-	KubeBurstLimit               int
-	KubeCAPath                   string
-	KubeConfigBase64             string
-	KubeConfigPaths              []string
-	KubeContext                  string
-	KubeQPSLimit                 int
-	KubeSkipTLSVerify            bool
-	KubeTLSServerName            string
-	KubeToken                    string
-	LogColorMode                 string
-	LogLevel                     string
-	NetworkParallelism           int
-	NoProgressTablePrint         bool
-	ProgressTablePrintInterval   time.Duration
-	RegistryCredentialsPath      string
-	ReleaseHistoryLimit          int
-	ReleaseInfoAnnotations       map[string]string
-	ReleaseName                  string
-	ReleaseNamespace             string
-	ReleaseStorageDriver         string
-	RollbackGraphPath            string
-	RollbackGraphSave            bool
-	SecretKey                    string
-	SecretKeyIgnore              bool
-	SecretValuesPaths            []string
-	SubNotes                     bool
-	TempDirPath                  string
-	TrackCreationTimeout         time.Duration
-	TrackDeletionTimeout         time.Duration
-	TrackReadinessTimeout        time.Duration
-	ValuesFileSets               []string
-	ValuesFilesPaths             []string
-	ValuesSets                   []string
-	ValuesStringSets             []string
+	action.ReleaseInstallOptions
+
+	LogLevel         string
+	ReleaseName      string
+	ReleaseNamespace string
 }
 
 func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -87,55 +41,7 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 				cfg.ChartDirPath = args[0]
 			}
 
-			if err := action.ReleaseInstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, action.ReleaseInstallOptions{
-				AutoRollback:                 cfg.AutoRollback,
-				ChartAppVersion:              cfg.ChartAppVersion,
-				ChartDirPath:                 cfg.ChartDirPath,
-				ChartRepositoryInsecure:      cfg.ChartRepositoryInsecure,
-				ChartRepositorySkipTLSVerify: cfg.ChartRepositorySkipTLSVerify,
-				ChartRepositorySkipUpdate:    cfg.ChartRepositorySkipUpdate,
-				DefaultSecretValuesDisable:   cfg.DefaultSecretValuesDisable,
-				DefaultValuesDisable:         cfg.DefaultValuesDisable,
-				ExtraAnnotations:             cfg.ExtraAnnotations,
-				ExtraLabels:                  cfg.ExtraLabels,
-				ExtraRuntimeAnnotations:      cfg.ExtraRuntimeAnnotations,
-				InstallGraphPath:             cfg.InstallGraphPath,
-				InstallGraphSave:             cfg.InstallGraphSave,
-				InstallReportPath:            cfg.InstallReportPath,
-				InstallReportSave:            cfg.InstallReportSave,
-				KubeAPIServerName:            cfg.KubeAPIServerName,
-				KubeBurstLimit:               cfg.KubeBurstLimit,
-				KubeCAPath:                   cfg.KubeCAPath,
-				KubeConfigBase64:             cfg.KubeConfigBase64,
-				KubeConfigPaths:              cfg.KubeConfigPaths,
-				KubeContext:                  cfg.KubeContext,
-				KubeQPSLimit:                 cfg.KubeQPSLimit,
-				KubeSkipTLSVerify:            cfg.KubeSkipTLSVerify,
-				KubeTLSServerName:            cfg.KubeTLSServerName,
-				KubeToken:                    cfg.KubeToken,
-				LogColorMode:                 cfg.LogColorMode,
-				NetworkParallelism:           cfg.NetworkParallelism,
-				ProgressTablePrint:           !cfg.NoProgressTablePrint,
-				ProgressTablePrintInterval:   cfg.ProgressTablePrintInterval,
-				RegistryCredentialsPath:      cfg.RegistryCredentialsPath,
-				ReleaseHistoryLimit:          cfg.ReleaseHistoryLimit,
-				ReleaseInfoAnnotations:       cfg.ReleaseInfoAnnotations,
-				ReleaseStorageDriver:         cfg.ReleaseStorageDriver,
-				RollbackGraphPath:            cfg.RollbackGraphPath,
-				RollbackGraphSave:            cfg.RollbackGraphSave,
-				SecretKey:                    cfg.SecretKey,
-				SecretKeyIgnore:              cfg.SecretKeyIgnore,
-				SecretValuesPaths:            cfg.SecretValuesPaths,
-				SubNotes:                     cfg.SubNotes,
-				TempDirPath:                  cfg.TempDirPath,
-				TrackCreationTimeout:         cfg.TrackCreationTimeout,
-				TrackDeletionTimeout:         cfg.TrackDeletionTimeout,
-				TrackReadinessTimeout:        cfg.TrackReadinessTimeout,
-				ValuesFileSets:               cfg.ValuesFileSets,
-				ValuesFilesPaths:             cfg.ValuesFilesPaths,
-				ValuesSets:                   cfg.ValuesSets,
-				ValuesStringSets:             cfg.ValuesStringSets,
-			}); err != nil {
+			if err := action.ReleaseInstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, cfg.ReleaseInstallOptions); err != nil {
 				return fmt.Errorf("install: %w", err)
 			}
 

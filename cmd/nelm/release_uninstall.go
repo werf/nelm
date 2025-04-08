@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -12,27 +11,11 @@ import (
 )
 
 type releaseUninstallConfig struct {
-	DeleteReleaseNamespace     bool
-	KubeAPIServerName          string
-	KubeBurstLimit             int
-	KubeCAPath                 string
-	KubeConfigBase64           string
-	KubeConfigPaths            []string
-	KubeContext                string
-	KubeQPSLimit               int
-	KubeSkipTLSVerify          bool
-	KubeTLSServerName          string
-	KubeToken                  string
-	LogColorMode               string
-	LogLevel                   string
-	NetworkParallelism         int
-	NoDeleteHooks              bool
-	ProgressTablePrintInterval time.Duration
-	ReleaseHistoryLimit        int
-	ReleaseName                string
-	ReleaseNamespace           string
-	ReleaseStorageDriver       string
-	TempDirPath                string
+	action.ReleaseUninstallOptions
+
+	LogLevel         string
+	ReleaseName      string
+	ReleaseNamespace string
 }
 
 func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -49,26 +32,7 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 		func(cmd *cobra.Command, args []string) error {
 			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleaseUninstallLogLevel)
 
-			if err := action.ReleaseUninstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, action.ReleaseUninstallOptions{
-				DeleteHooks:                !cfg.NoDeleteHooks,
-				DeleteReleaseNamespace:     cfg.DeleteReleaseNamespace,
-				KubeAPIServerName:          cfg.KubeAPIServerName,
-				KubeBurstLimit:             cfg.KubeBurstLimit,
-				KubeCAPath:                 cfg.KubeCAPath,
-				KubeConfigBase64:           cfg.KubeConfigBase64,
-				KubeConfigPaths:            cfg.KubeConfigPaths,
-				KubeContext:                cfg.KubeContext,
-				KubeQPSLimit:               cfg.KubeQPSLimit,
-				KubeSkipTLSVerify:          cfg.KubeSkipTLSVerify,
-				KubeTLSServerName:          cfg.KubeTLSServerName,
-				KubeToken:                  cfg.KubeToken,
-				LogColorMode:               cfg.LogColorMode,
-				NetworkParallelism:         cfg.NetworkParallelism,
-				ProgressTablePrintInterval: cfg.ProgressTablePrintInterval,
-				ReleaseHistoryLimit:        cfg.ReleaseHistoryLimit,
-				ReleaseStorageDriver:       cfg.ReleaseStorageDriver,
-				TempDirPath:                cfg.TempDirPath,
-			}); err != nil {
+			if err := action.ReleaseUninstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, cfg.ReleaseUninstallOptions); err != nil {
 				return fmt.Errorf("release uninstall: %w", err)
 			}
 

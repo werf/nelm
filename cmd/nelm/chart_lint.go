@@ -11,44 +11,10 @@ import (
 )
 
 type chartLintConfig struct {
-	ChartAppVersion              string
-	ChartDirPath                 string
-	ChartRepositoryInsecure      bool
-	ChartRepositorySkipTLSVerify bool
-	ChartRepositorySkipUpdate    bool
-	DefaultSecretValuesDisable   bool
-	DefaultValuesDisable         bool
-	ExtraAnnotations             map[string]string
-	ExtraLabels                  map[string]string
-	ExtraRuntimeAnnotations      map[string]string
-	KubeAPIServerName            string
-	KubeBurstLimit               int
-	KubeCAPath                   string
-	KubeConfigBase64             string
-	KubeConfigPaths              []string
-	KubeContext                  string
-	KubeQPSLimit                 int
-	KubeSkipTLSVerify            bool
-	KubeTLSServerName            string
-	KubeToken                    string
-	KubeVersion                  string
-	LogColorMode                 string
-	LogDebug                     bool
-	LogLevel                     string
-	NetworkParallelism           int
-	RegistryCredentialsPath      string
-	ReleaseName                  string
-	ReleaseNamespace             string
-	ReleaseStorageDriver         string
-	Remote                       bool
-	SecretKey                    string
-	SecretKeyIgnore              bool
-	SecretValuesPaths            []string
-	TempDirPath                  string
-	ValuesFileSets               []string
-	ValuesFilesPaths             []string
-	ValuesSets                   []string
-	ValuesStringSets             []string
+	action.ChartLintOptions
+
+	ChartDirPath string
+	LogLevel     string
 }
 
 func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -74,44 +40,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 				cfg.ChartDirPath = args[0]
 			}
 
-			if err := action.ChartLint(ctx, action.ChartLintOptions{
-				ChartAppVersion:              cfg.ChartAppVersion,
-				ChartDirPath:                 cfg.ChartDirPath,
-				ChartRepositoryInsecure:      cfg.ChartRepositoryInsecure,
-				ChartRepositorySkipTLSVerify: cfg.ChartRepositorySkipTLSVerify,
-				ChartRepositorySkipUpdate:    cfg.ChartRepositorySkipUpdate,
-				DefaultSecretValuesDisable:   cfg.DefaultSecretValuesDisable,
-				DefaultValuesDisable:         cfg.DefaultValuesDisable,
-				ExtraAnnotations:             cfg.ExtraAnnotations,
-				ExtraLabels:                  cfg.ExtraLabels,
-				ExtraRuntimeAnnotations:      cfg.ExtraRuntimeAnnotations,
-				KubeAPIServerName:            cfg.KubeAPIServerName,
-				KubeBurstLimit:               cfg.KubeBurstLimit,
-				KubeCAPath:                   cfg.KubeCAPath,
-				KubeConfigBase64:             cfg.KubeConfigBase64,
-				KubeConfigPaths:              cfg.KubeConfigPaths,
-				KubeContext:                  cfg.KubeContext,
-				KubeQPSLimit:                 cfg.KubeQPSLimit,
-				KubeSkipTLSVerify:            cfg.KubeSkipTLSVerify,
-				KubeTLSServerName:            cfg.KubeTLSServerName,
-				KubeToken:                    cfg.KubeToken,
-				Local:                        !cfg.Remote,
-				LocalKubeVersion:             cfg.KubeVersion,
-				LogColorMode:                 cfg.LogColorMode,
-				NetworkParallelism:           cfg.NetworkParallelism,
-				RegistryCredentialsPath:      cfg.RegistryCredentialsPath,
-				ReleaseName:                  cfg.ReleaseName,
-				ReleaseNamespace:             cfg.ReleaseNamespace,
-				ReleaseStorageDriver:         cfg.ReleaseStorageDriver,
-				SecretKey:                    cfg.SecretKey,
-				SecretKeyIgnore:              cfg.SecretKeyIgnore,
-				SecretValuesPaths:            cfg.SecretValuesPaths,
-				TempDirPath:                  cfg.TempDirPath,
-				ValuesFileSets:               cfg.ValuesFileSets,
-				ValuesFilesPaths:             cfg.ValuesFilesPaths,
-				ValuesSets:                   cfg.ValuesSets,
-				ValuesStringSets:             cfg.ValuesStringSets,
-			}); err != nil {
+			if err := action.ChartLint(ctx, cfg.ChartLintOptions); err != nil {
 				return fmt.Errorf("chart lint: %w", err)
 			}
 
@@ -271,7 +200,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.KubeVersion, "kube-version", action.DefaultLocalKubeVersion, "Kubernetes version stub for non-remote mode", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LocalKubeVersion, "kube-version", action.DefaultLocalKubeVersion, "Kubernetes version stub for non-remote mode", cli.AddFlagOptions{
 			Group: mainFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)

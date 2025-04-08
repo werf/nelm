@@ -12,26 +12,12 @@ import (
 )
 
 type releaseGetConfig struct {
-	KubeAPIServerName    string
-	KubeBurstLimit       int
-	KubeCAPath           string
-	KubeConfigBase64     string
-	KubeConfigPaths      []string
-	KubeContext          string
-	KubeQPSLimit         int
-	KubeSkipTLSVerify    bool
-	KubeTLSServerName    string
-	KubeToken            string
-	LogColorMode         string
-	LogDebug             bool
-	LogLevel             string
-	NetworkParallelism   int
-	OutputFormat         string
-	ReleaseName          string
-	ReleaseNamespace     string
-	ReleaseStorageDriver string
-	Revision             int
-	TempDirPath          string
+	action.ReleaseGetOptions
+
+	LogLevel         string
+	ReleaseName      string
+	ReleaseNamespace string
+	Revision         int
 }
 
 func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -58,24 +44,7 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 				}
 			}
 
-			if _, err := action.ReleaseGet(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, action.ReleaseGetOptions{
-				KubeAPIServerName:    cfg.KubeAPIServerName,
-				KubeBurstLimit:       cfg.KubeBurstLimit,
-				KubeCAPath:           cfg.KubeCAPath,
-				KubeConfigBase64:     cfg.KubeConfigBase64,
-				KubeConfigPaths:      cfg.KubeConfigPaths,
-				KubeContext:          cfg.KubeContext,
-				KubeQPSLimit:         cfg.KubeQPSLimit,
-				KubeSkipTLSVerify:    cfg.KubeSkipTLSVerify,
-				KubeTLSServerName:    cfg.KubeTLSServerName,
-				KubeToken:            cfg.KubeToken,
-				LogColorMode:         cfg.LogColorMode,
-				NetworkParallelism:   cfg.NetworkParallelism,
-				OutputFormat:         cfg.OutputFormat,
-				ReleaseStorageDriver: cfg.ReleaseStorageDriver,
-				Revision:             cfg.Revision,
-				TempDirPath:          cfg.TempDirPath,
-			}); err != nil {
+			if _, err := action.ReleaseGet(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, cfg.ReleaseGetOptions); err != nil {
 				return fmt.Errorf("release get: %w", err)
 			}
 
