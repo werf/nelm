@@ -50,7 +50,7 @@ type ReleaseRollbackOptions struct {
 	KubeToken                  string
 	LogColorMode               string
 	NetworkParallelism         int
-	ProgressTablePrint         bool
+	NoProgressTablePrint       bool
 	ProgressTablePrintInterval time.Duration
 	ReleaseHistoryLimit        int
 	ReleaseStorageDriver       string
@@ -369,7 +369,7 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 	stdoutTrackerStopCh := make(chan bool)
 	stdoutTrackerFinishedCh := make(chan bool)
 
-	if opts.ProgressTablePrint {
+	if !opts.NoProgressTablePrint {
 		go func() {
 			ticker := time.NewTicker(opts.ProgressTablePrintInterval)
 			defer func() {
@@ -456,7 +456,7 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 		nonCriticalErrs = append(nonCriticalErrs, noncriterrs...)
 	}
 
-	if opts.ProgressTablePrint {
+	if !opts.NoProgressTablePrint {
 		stdoutTrackerStopCh <- true
 		<-stdoutTrackerFinishedCh
 	}

@@ -11,16 +11,10 @@ import (
 )
 
 type chartSecretFileEncryptOptions struct {
-	File           string
-	LogColorMode   string
-	LogLevel       string
-	OutputFilePath string
-	SecretKey      string
-	TempDirPath    string
-}
+	action.SecretFileEncryptOptions
 
-func (c *chartSecretFileEncryptOptions) OutputFileSave() bool {
-	return c.OutputFilePath != ""
+	File     string
+	LogLevel string
 }
 
 func newChartSecretFileEncryptCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -44,13 +38,7 @@ func newChartSecretFileEncryptCommand(ctx context.Context, afterAllCommandsBuilt
 
 			cfg.File = args[0]
 
-			if err := action.SecretFileEncrypt(ctx, cfg.File, action.SecretFileEncryptOptions{
-				LogColorMode:   cfg.LogColorMode,
-				OutputFilePath: cfg.OutputFilePath,
-				OutputFileSave: cfg.OutputFileSave(),
-				SecretKey:      cfg.SecretKey,
-				TempDirPath:    cfg.TempDirPath,
-			}); err != nil {
+			if err := action.SecretFileEncrypt(ctx, cfg.File, cfg.SecretFileEncryptOptions); err != nil {
 				return fmt.Errorf("secret file encrypt: %w", err)
 			}
 

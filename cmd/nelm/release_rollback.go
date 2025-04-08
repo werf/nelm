@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -13,35 +12,12 @@ import (
 )
 
 type releaseRollbackConfig struct {
-	ExtraRuntimeAnnotations    map[string]string
-	KubeAPIServerName          string
-	KubeBurstLimit             int
-	KubeCAPath                 string
-	KubeConfigBase64           string
-	KubeConfigPaths            []string
-	KubeContext                string
-	KubeQPSLimit               int
-	KubeSkipTLSVerify          bool
-	KubeTLSServerName          string
-	KubeToken                  string
-	LogColorMode               string
-	LogLevel                   string
-	NetworkParallelism         int
-	NoProgressTablePrint       bool
-	ProgressTablePrintInterval time.Duration
-	ReleaseHistoryLimit        int
-	ReleaseName                string
-	ReleaseNamespace           string
-	ReleaseStorageDriver       string
-	Revision                   int
-	RollbackGraphPath          string
-	RollbackGraphSave          bool
-	RollbackReportPath         string
-	RollbackReportSave         bool
-	TempDirPath                string
-	TrackCreationTimeout       time.Duration
-	TrackDeletionTimeout       time.Duration
-	TrackReadinessTimeout      time.Duration
+	action.ReleaseRollbackOptions
+
+	LogLevel         string
+	ReleaseName      string
+	ReleaseNamespace string
+	Revision         int
 }
 
 func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -68,34 +44,7 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 				}
 			}
 
-			if err := action.ReleaseRollback(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, action.ReleaseRollbackOptions{
-				ExtraRuntimeAnnotations:    cfg.ExtraRuntimeAnnotations,
-				KubeAPIServerName:          cfg.KubeAPIServerName,
-				KubeBurstLimit:             cfg.KubeBurstLimit,
-				KubeCAPath:                 cfg.KubeCAPath,
-				KubeConfigBase64:           cfg.KubeConfigBase64,
-				KubeConfigPaths:            cfg.KubeConfigPaths,
-				KubeContext:                cfg.KubeContext,
-				KubeQPSLimit:               cfg.KubeQPSLimit,
-				KubeSkipTLSVerify:          cfg.KubeSkipTLSVerify,
-				KubeTLSServerName:          cfg.KubeTLSServerName,
-				KubeToken:                  cfg.KubeToken,
-				LogColorMode:               cfg.LogColorMode,
-				NetworkParallelism:         cfg.NetworkParallelism,
-				ProgressTablePrint:         !cfg.NoProgressTablePrint,
-				ProgressTablePrintInterval: cfg.ProgressTablePrintInterval,
-				ReleaseHistoryLimit:        cfg.ReleaseHistoryLimit,
-				ReleaseStorageDriver:       cfg.ReleaseStorageDriver,
-				Revision:                   cfg.Revision,
-				RollbackGraphPath:          cfg.RollbackGraphPath,
-				RollbackGraphSave:          cfg.RollbackGraphSave,
-				RollbackReportPath:         cfg.RollbackReportPath,
-				RollbackReportSave:         cfg.RollbackReportSave,
-				TempDirPath:                cfg.TempDirPath,
-				TrackCreationTimeout:       cfg.TrackCreationTimeout,
-				TrackDeletionTimeout:       cfg.TrackDeletionTimeout,
-				TrackReadinessTimeout:      cfg.TrackReadinessTimeout,
-			}); err != nil {
+			if err := action.ReleaseRollback(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, cfg.ReleaseRollbackOptions); err != nil {
 				return fmt.Errorf("release rollback: %w", err)
 			}
 

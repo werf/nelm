@@ -33,7 +33,7 @@ const (
 )
 
 type ReleaseUninstallOptions struct {
-	DeleteHooks                bool
+	NoDeleteHooks              bool
 	DeleteReleaseNamespace     bool
 	KubeAPIServerName          string
 	KubeBurstLimit             int
@@ -222,7 +222,7 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 			logboek.Context(ctx).OutStream(),
 			helm_v3.UninstallCmdOptions{
 				StagesSplitter:      deploy.NewStagesSplitter(),
-				DeleteHooks:         lo.ToPtr(opts.DeleteHooks),
+				DeleteHooks:         lo.ToPtr(!opts.NoDeleteHooks),
 				DontFailIfNoRelease: lo.ToPtr(true),
 			},
 		)
