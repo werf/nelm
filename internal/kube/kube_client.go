@@ -49,6 +49,10 @@ type KubeClient struct {
 	resourceLocks   *sync.Map
 }
 
+type KubeClientGetOptions struct {
+	TryCache bool
+}
+
 func (c *KubeClient) Get(ctx context.Context, resource *id.ResourceID, opts KubeClientGetOptions) (*unstructured.Unstructured, error) {
 	lock := c.resourceLock(resource)
 	lock.Lock()
@@ -57,33 +61,44 @@ func (c *KubeClient) Get(ctx context.Context, resource *id.ResourceID, opts Kube
 	if opts.TryCache {
 		if res := c.clusterCache.Get(resource.VersionID()); res != nil {
 			if res.Value().err != nil {
-				return nil, fmt.Errorf("error getting resource %q from client cache: %w", resource.HumanID(), res.Value().err)
+				return nil, fmt.Errorf("get resource %q from client cache: %w", resource.HumanID(), res.Value().err)
 			}
-			return res.Value().obj, nil
+
+			resultObj := res.Value().obj
+
+			log.Default.TraceStruct(ctx, resultObj, "Got resource %q from cache:", resource.HumanID())
+
+			return resultObj, nil
 		}
 	}
 
 	gvr, err := resource.GroupVersionResource()
 	if err != nil {
-		return nil, fmt.Errorf("error getting GroupVersionResource: %w", err)
+		return nil, fmt.Errorf("get GroupVersionResource: %w", err)
 	}
 
 	namespaced, err := resource.Namespaced()
 	if err != nil {
-		return nil, fmt.Errorf("error checking if resource is namespaced: %w", err)
+		return nil, fmt.Errorf("check if resource is namespaced: %w", err)
 	}
 
 	clientResource := c.clientResource(gvr, resource.Namespace(), namespaced)
 
 	log.Default.Debug(ctx, "Getting resource %q", resource.HumanID())
-	r, err := clientResource.Get(ctx, resource.Name(), metav1.GetOptions{})
+	resultObj, err := clientResource.Get(ctx, resource.Name(), metav1.GetOptions{})
 	if err != nil {
 		c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{err: err}, 0)
-		return nil, fmt.Errorf("error getting resource %q: %w", resource.HumanID(), err)
+		return nil, fmt.Errorf("get resource %q: %w", resource.HumanID(), err)
 	}
-	c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{obj: r.DeepCopy()}, 0)
+	c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{obj: resultObj.DeepCopy()}, 0)
 
-	return r, nil
+	log.Default.TraceStruct(ctx, resultObj, "Got resource %q via Kubernetes API:", resource.HumanID())
+
+	return resultObj, nil
+}
+
+type KubeClientCreateOptions struct {
+	ForceReplicas *int
 }
 
 func (c *KubeClient) Create(ctx context.Context, resource *id.ResourceID, unstruct *unstructured.Unstructured, opts KubeClientCreateOptions) (*unstructured.Unstructured, error) {
@@ -93,12 +108,12 @@ func (c *KubeClient) Create(ctx context.Context, resource *id.ResourceID, unstru
 
 	gvr, err := resource.GroupVersionResource()
 	if err != nil {
-		return nil, fmt.Errorf("error getting GroupVersionResource: %w", err)
+		return nil, fmt.Errorf("get GroupVersionResource: %w", err)
 	}
 
 	namespaced, err := resource.Namespaced()
 	if err != nil {
-		return nil, fmt.Errorf("error checking if resource is namespaced: %w", err)
+		return nil, fmt.Errorf("check if resource is namespaced: %w", err)
 	}
 
 	clientResource := c.clientResource(gvr, resource.Namespace(), namespaced)
@@ -114,7 +129,7 @@ func (c *KubeClient) Create(ctx context.Context, resource *id.ResourceID, unstru
 	})
 	if err != nil {
 		c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{err: err}, 0)
-		return nil, fmt.Errorf("error server-side applying resource %q: %w", resource.HumanID(), err)
+		return nil, fmt.Errorf("server-side apply resource %q: %w", resource.HumanID(), err)
 	}
 	c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{obj: resultObj.DeepCopy()}, 0)
 
@@ -122,7 +137,13 @@ func (c *KubeClient) Create(ctx context.Context, resource *id.ResourceID, unstru
 		c.mapper.Reset()
 	}
 
+	log.Default.TraceStruct(ctx, resultObj, "Created resource %q via Kubernetes API:", resource.HumanID())
+
 	return resultObj, nil
+}
+
+type KubeClientApplyOptions struct {
+	DryRun bool
 }
 
 func (c *KubeClient) Apply(ctx context.Context, resource *id.ResourceID, unstruct *unstructured.Unstructured, opts KubeClientApplyOptions) (*unstructured.Unstructured, error) {
@@ -132,12 +153,12 @@ func (c *KubeClient) Apply(ctx context.Context, resource *id.ResourceID, unstruc
 
 	gvr, err := resource.GroupVersionResource()
 	if err != nil {
-		return nil, fmt.Errorf("error getting GroupVersionResource: %w", err)
+		return nil, fmt.Errorf("get GroupVersionResource: %w", err)
 	}
 
 	namespaced, err := resource.Namespaced()
 	if err != nil {
-		return nil, fmt.Errorf("error checking if resource is namespaced: %w", err)
+		return nil, fmt.Errorf("check if resource is namespaced: %w", err)
 	}
 
 	clientResource := c.clientResource(gvr, resource.Namespace(), namespaced)
@@ -157,7 +178,7 @@ func (c *KubeClient) Apply(ctx context.Context, resource *id.ResourceID, unstruc
 		if !opts.DryRun {
 			c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{err: err}, 0)
 		}
-		return nil, fmt.Errorf("error server-side %sapplying resource %q: %w", lo.Ternary(opts.DryRun, "dry-run ", ""), resource.HumanID(), err)
+		return nil, fmt.Errorf("server-side %sapply resource %q: %w", lo.Ternary(opts.DryRun, "dry-run ", ""), resource.HumanID(), err)
 	}
 	if !opts.DryRun {
 		c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{obj: resultObj.DeepCopy()}, 0)
@@ -166,6 +187,8 @@ func (c *KubeClient) Apply(ctx context.Context, resource *id.ResourceID, unstruc
 	if util.IsCRDFromGR(gvr.GroupResource()) && !opts.DryRun {
 		c.mapper.Reset()
 	}
+
+	log.Default.TraceStruct(ctx, resultObj, "Server-side %sapplied resource %q via Kubernetes API:", lo.Ternary(opts.DryRun, "dry-run ", ""), resource.HumanID())
 
 	return resultObj, nil
 }
@@ -177,12 +200,12 @@ func (c *KubeClient) MergePatch(ctx context.Context, resource *id.ResourceID, pa
 
 	gvr, err := resource.GroupVersionResource()
 	if err != nil {
-		return nil, fmt.Errorf("error getting GroupVersionResource: %w", err)
+		return nil, fmt.Errorf("get GroupVersionResource: %w", err)
 	}
 
 	namespaced, err := resource.Namespaced()
 	if err != nil {
-		return nil, fmt.Errorf("error checking if resource is namespaced: %w", err)
+		return nil, fmt.Errorf("check if resource is namespaced: %w", err)
 	}
 
 	clientResource := c.clientResource(gvr, resource.Namespace(), namespaced)
@@ -198,11 +221,17 @@ func (c *KubeClient) MergePatch(ctx context.Context, resource *id.ResourceID, pa
 		}
 
 		c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{err: err}, 0)
-		return nil, fmt.Errorf("error merge patching resource %q: %w", resource.HumanID(), err)
+		return nil, fmt.Errorf("merge patch resource %q: %w", resource.HumanID(), err)
 	}
 	c.clusterCache.Set(resource.VersionID(), &clusterCacheEntry{obj: resultObj.DeepCopy()}, 0)
 
+	log.Default.TraceStruct(ctx, resultObj, "Merge patched resource %q via Kubernetes API:", resource.HumanID())
+
 	return resultObj, nil
+}
+
+type KubeClientDeleteOptions struct {
+	PropagationPolicy *metav1.DeletionPropagation
 }
 
 func (c *KubeClient) Delete(ctx context.Context, resource *id.ResourceID, opts KubeClientDeleteOptions) error {
@@ -212,12 +241,12 @@ func (c *KubeClient) Delete(ctx context.Context, resource *id.ResourceID, opts K
 
 	gvr, err := resource.GroupVersionResource()
 	if err != nil {
-		return fmt.Errorf("error getting GroupVersionResource: %w", err)
+		return fmt.Errorf("get GroupVersionResource: %w", err)
 	}
 
 	namespaced, err := resource.Namespaced()
 	if err != nil {
-		return fmt.Errorf("error checking if resource is namespaced: %w", err)
+		return fmt.Errorf("check if resource is namespaced: %w", err)
 	}
 
 	clientResource := c.clientResource(gvr, resource.Namespace(), namespaced)
@@ -238,7 +267,7 @@ func (c *KubeClient) Delete(ctx context.Context, resource *id.ResourceID, opts K
 			return nil
 		}
 
-		return fmt.Errorf("error deleting resource %q: %w", resource.HumanID(), err)
+		return fmt.Errorf("delete resource %q: %w", resource.HumanID(), err)
 	}
 	c.clusterCache.Delete(resource.VersionID())
 
@@ -256,30 +285,6 @@ func (c *KubeClient) clientResource(gvr schema.GroupVersionResource, namespace s
 	}
 
 	return c.dynamicClient.Resource(gvr)
-}
-
-type KubeClientGetOptions struct {
-	TryCache bool
-}
-
-type KubeClientCreateOptions struct {
-	ForceReplicas *int
-}
-
-type KubeClientApplyOptions struct {
-	DryRun bool
-}
-
-type KubeClientDeleteOptions struct {
-	PropagationPolicy *metav1.DeletionPropagation
-}
-
-type KubeClienter interface {
-	Get(ctx context.Context, resource *id.ResourceID, opts KubeClientGetOptions) (*unstructured.Unstructured, error)
-	Create(ctx context.Context, resource *id.ResourceID, unstruct *unstructured.Unstructured, opts KubeClientCreateOptions) (*unstructured.Unstructured, error)
-	Apply(ctx context.Context, resource *id.ResourceID, unstruct *unstructured.Unstructured, opts KubeClientApplyOptions) (*unstructured.Unstructured, error)
-	MergePatch(ctx context.Context, resource *id.ResourceID, patch []byte) (*unstructured.Unstructured, error)
-	Delete(ctx context.Context, resource *id.ResourceID, opts KubeClientDeleteOptions) error
 }
 
 type clusterCacheEntry struct {

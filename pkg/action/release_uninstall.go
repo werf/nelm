@@ -72,35 +72,45 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 		return fmt.Errorf("build release uninstall options: %w", err)
 	}
 
-	var kubeConfigPath string
 	if len(opts.KubeConfigPaths) > 0 {
-		kubeConfigPath = opts.KubeConfigPaths[0]
+		var splitPaths []string
+		for _, path := range opts.KubeConfigPaths {
+			splitPaths = append(splitPaths, filepath.SplitList(path)...)
+		}
+
+		opts.KubeConfigPaths = splitPaths
+
+		// Don't even ask... This way we force ClientConfigLoadingRules.ExplicitPath to always be
+		// empty, otherwise KUBECONFIG with multiple files doesn't work. Eventually should switch
+		// from Kubedog to Nelm for initializing K8s Clients like in other actions and get rid of
+		// this.
+		opts.KubeConfigPaths = append([]string{""}, opts.KubeConfigPaths...)
 	}
 
-	kubeConfigGetter, err := kdkube.NewKubeConfigGetter(
-		kdkube.KubeConfigGetterOptions{
-			KubeConfigOptions: kdkube.KubeConfigOptions{
-				Context:             opts.KubeContext,
-				ConfigPath:          kubeConfigPath,
-				ConfigDataBase64:    opts.KubeConfigBase64,
-				ConfigPathMergeList: opts.KubeConfigPaths,
-			},
-			Namespace:     releaseNamespace,
-			BearerToken:   opts.KubeToken,
-			APIServer:     opts.KubeAPIServerName,
-			CAFile:        opts.KubeCAPath,
-			TLSServerName: opts.KubeTLSServerName,
-			SkipTLSVerify: opts.KubeSkipTLSVerify,
-			QPSLimit:      opts.KubeQPSLimit,
-			BurstLimit:    opts.KubeBurstLimit,
-		},
-	)
+	// TODO(ilya-lesikov): some options are not propagated from cli/actions
+	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+		BurstLimit:            opts.KubeBurstLimit,
+		CertificateAuthority:  opts.KubeCAPath,
+		CurrentContext:        opts.KubeContext,
+		InsecureSkipTLSVerify: opts.KubeSkipTLSVerify,
+		KubeConfigBase64:      opts.KubeConfigBase64,
+		Namespace:             releaseNamespace,
+		QPSLimit:              opts.KubeQPSLimit,
+		Server:                opts.KubeAPIServerName,
+		TLSServerName:         opts.KubeTLSServerName,
+		Token:                 opts.KubeToken,
+	})
 	if err != nil {
-		return fmt.Errorf("construct kube config getter: %w", err)
+		return fmt.Errorf("construct kube config: %w", err)
+	}
+
+	clientFactory, err := kube.NewClientFactory(ctx, kubeConfig)
+	if err != nil {
+		return fmt.Errorf("construct kube client factory: %w", err)
 	}
 
 	helmSettings := helm_v3.Settings
-	*helmSettings.GetConfigP() = kubeConfigGetter
+	*helmSettings.GetConfigP() = clientFactory.LegacyClientGetter()
 	*helmSettings.GetNamespaceP() = releaseNamespace
 	releaseNamespace = helmSettings.Namespace()
 	helmSettings.MaxHistory = opts.ReleaseHistoryLimit
@@ -110,9 +120,12 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 		helmSettings.KubeContext = opts.KubeContext
 	}
 
-	if kubeConfigPath != "" {
-		helmSettings.KubeConfig = kubeConfigPath
+	var kubeConfigPath string
+	if len(opts.KubeConfigPaths) > 0 {
+		kubeConfigPath = opts.KubeConfigPaths[0]
 	}
+
+	helmSettings.KubeConfig = kubeConfigPath
 
 	if err := kdkube.Init(kdkube.InitOptions{
 		KubeConfigOptions: kdkube.KubeConfigOptions{
@@ -143,11 +156,6 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 
 	helmReleaseStorage := helmActionConfig.Releases
 	helmReleaseStorage.MaxHistory = opts.ReleaseHistoryLimit
-
-	clientFactory, err := kube.NewClientFactory()
-	if err != nil {
-		return fmt.Errorf("construct kube client factory: %w", err)
-	}
 
 	helmKubeClient := helmActionConfig.KubeClient.(*helm_kube.Client)
 	helmKubeClient.Namespace = releaseNamespace

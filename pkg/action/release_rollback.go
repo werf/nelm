@@ -13,7 +13,6 @@ import (
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
-	kdkube "github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	kubeutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
@@ -31,9 +30,7 @@ import (
 )
 
 const (
-	DefaultReleaseRollbackReportFilename = "release-rollback-report.json"
-	DefaultReleaseRollbackGraphFilename  = "release-rollback-graph.dot"
-	DefaultReleaseRollbackLogLevel       = InfoLogLevel
+	DefaultReleaseRollbackLogLevel = InfoLogLevel
 )
 
 type ReleaseRollbackOptions struct {
@@ -56,9 +53,7 @@ type ReleaseRollbackOptions struct {
 	ReleaseStorageDriver       string
 	Revision                   int
 	RollbackGraphPath          string
-	RollbackGraphSave          bool
 	RollbackReportPath         string
-	RollbackReportSave         bool
 	TempDirPath                string
 	TrackCreationTimeout       time.Duration
 	TrackDeletionTimeout       time.Duration
@@ -79,51 +74,43 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 		return fmt.Errorf("build release rollback options: %w", err)
 	}
 
-	var kubeConfigPath string
 	if len(opts.KubeConfigPaths) > 0 {
-		kubeConfigPath = opts.KubeConfigPaths[0]
+		var splitPaths []string
+		for _, path := range opts.KubeConfigPaths {
+			splitPaths = append(splitPaths, filepath.SplitList(path)...)
+		}
+
+		opts.KubeConfigPaths = splitPaths
 	}
 
-	kubeConfigGetter, err := kdkube.NewKubeConfigGetter(
-		kdkube.KubeConfigGetterOptions{
-			KubeConfigOptions: kdkube.KubeConfigOptions{
-				Context:             opts.KubeContext,
-				ConfigPath:          kubeConfigPath,
-				ConfigDataBase64:    opts.KubeConfigBase64,
-				ConfigPathMergeList: opts.KubeConfigPaths,
-			},
-			Namespace:     releaseNamespace,
-			BearerToken:   opts.KubeToken,
-			APIServer:     opts.KubeAPIServerName,
-			CAFile:        opts.KubeCAPath,
-			TLSServerName: opts.KubeTLSServerName,
-			SkipTLSVerify: opts.KubeSkipTLSVerify,
-			QPSLimit:      opts.KubeQPSLimit,
-			BurstLimit:    opts.KubeBurstLimit,
-		},
-	)
+	// TODO(ilya-lesikov): some options are not propagated from cli/actions
+	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+		BurstLimit:            opts.KubeBurstLimit,
+		CertificateAuthority:  opts.KubeCAPath,
+		CurrentContext:        opts.KubeContext,
+		InsecureSkipTLSVerify: opts.KubeSkipTLSVerify,
+		KubeConfigBase64:      opts.KubeConfigBase64,
+		Namespace:             releaseNamespace,
+		QPSLimit:              opts.KubeQPSLimit,
+		Server:                opts.KubeAPIServerName,
+		TLSServerName:         opts.KubeTLSServerName,
+		Token:                 opts.KubeToken,
+	})
 	if err != nil {
-		return fmt.Errorf("construct kube config getter: %w", err)
+		return fmt.Errorf("construct kube config: %w", err)
+	}
+
+	clientFactory, err := kube.NewClientFactory(ctx, kubeConfig)
+	if err != nil {
+		return fmt.Errorf("construct kube client factory: %w", err)
 	}
 
 	helmSettings := helm_v3.Settings
-	*helmSettings.GetConfigP() = kubeConfigGetter
-	*helmSettings.GetNamespaceP() = releaseNamespace
-	releaseNamespace = helmSettings.Namespace()
-	helmSettings.MaxHistory = opts.ReleaseHistoryLimit
 	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))
-
-	if opts.KubeContext != "" {
-		helmSettings.KubeContext = opts.KubeContext
-	}
-
-	if kubeConfigPath != "" {
-		helmSettings.KubeConfig = kubeConfigPath
-	}
 
 	helmActionConfig := &action.Configuration{}
 	if err := helmActionConfig.Init(
-		helmSettings.RESTClientGetter(),
+		clientFactory.LegacyClientGetter(),
 		releaseNamespace,
 		string(opts.ReleaseStorageDriver),
 		func(format string, a ...interface{}) {
@@ -135,11 +122,6 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 
 	helmReleaseStorage := helmActionConfig.Releases
 	helmReleaseStorage.MaxHistory = opts.ReleaseHistoryLimit
-
-	clientFactory, err := kube.NewClientFactory()
-	if err != nil {
-		return fmt.Errorf("construct kube client factory: %w", err)
-	}
 
 	var lockManager *lock.LockManager
 	if m, err := lock.NewLockManager(
@@ -305,21 +287,28 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 
 	deployPlan, planBuildErr := deployPlanBuilder.Build(ctx)
 	if planBuildErr != nil {
-		if _, err := os.Create(opts.RollbackGraphPath); err != nil {
+		var graphPath string
+		if opts.RollbackGraphPath != "" {
+			graphPath = opts.RollbackGraphPath
+		} else {
+			graphPath = filepath.Join(opts.TempDirPath, "release-rollback-graph.dot")
+		}
+
+		if _, err := os.Create(graphPath); err != nil {
 			log.Default.Error(ctx, "Error: create release rollback graph file: %s", err)
 			return fmt.Errorf("build release rollback plan: %w", planBuildErr)
 		}
 
-		if err := deployPlan.SaveDOT(opts.RollbackGraphPath); err != nil {
+		if err := deployPlan.SaveDOT(graphPath); err != nil {
 			log.Default.Error(ctx, "Error: save release rollback graph: %s", err)
 		}
 
-		log.Default.Warn(ctx, "Release rollback graph saved to %q for debugging", opts.RollbackGraphPath)
+		log.Default.Warn(ctx, "Release rollback graph saved to %q for debugging", graphPath)
 
 		return fmt.Errorf("build release rollback plan: %w", planBuildErr)
 	}
 
-	if opts.RollbackGraphSave {
+	if opts.RollbackGraphPath != "" {
 		if err := deployPlan.SaveDOT(opts.RollbackGraphPath); err != nil {
 			return fmt.Errorf("save release rollback graph: %w", err)
 		}
@@ -339,7 +328,7 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 	}
 
 	if releaseUpToDate && planUseless {
-		if opts.RollbackReportSave {
+		if opts.RollbackReportPath != "" {
 			newRel.Skip()
 
 			report := newReport(nil, nil, nil, newRel)
@@ -470,7 +459,7 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 
 	report.Print(ctx)
 
-	if opts.RollbackReportSave {
+	if opts.RollbackReportPath != "" {
 		if err := report.Save(opts.RollbackReportPath); err != nil {
 			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("save release rollback report: %w", err))
 		}
@@ -501,14 +490,6 @@ func applyReleaseRollbackOptionsDefaults(
 		if err != nil {
 			return ReleaseRollbackOptions{}, fmt.Errorf("create temp dir: %w", err)
 		}
-	}
-
-	if opts.RollbackGraphPath == "" {
-		opts.RollbackGraphPath = filepath.Join(opts.TempDirPath, DefaultReleaseRollbackGraphFilename)
-	}
-
-	if opts.RollbackReportPath == "" {
-		opts.RollbackReportPath = filepath.Join(opts.TempDirPath, DefaultReleaseRollbackReportFilename)
 	}
 
 	if opts.KubeConfigBase64 == "" && len(opts.KubeConfigPaths) == 0 {
