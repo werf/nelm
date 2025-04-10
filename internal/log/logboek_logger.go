@@ -2,10 +2,10 @@ package log
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"slices"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 
@@ -54,12 +54,9 @@ func (l *LogboekLogger) TraceStruct(ctx context.Context, obj interface{}, format
 		return
 	}
 
-	out, err := json.MarshalIndent(obj, "", "  ")
-	if err != nil {
-		l.Warn(ctx, "error marshaling object to json while tracing struct for %q: %w", fmt.Sprintf(format, a...), err)
-	}
+	dump := spew.Sdump(obj)
 
-	logboek.Context(ctx).Debug().LogF(fmt.Sprintf(format+"\n", a...) + string(out) + "\n")
+	logboek.Context(ctx).Debug().LogF(fmt.Sprintf(format+"\n", a...) + dump + "\n")
 }
 
 func (l *LogboekLogger) TracePush(ctx context.Context, group, format string, a ...interface{}) {

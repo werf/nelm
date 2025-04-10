@@ -9,6 +9,7 @@ import (
 	"os"
 
 	contdlog "github.com/containerd/log"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/sirupsen/logrus"
 	"k8s.io/klog"
 	klogv2 "k8s.io/klog/v2"
@@ -33,6 +34,9 @@ func SetupLogging(ctx context.Context, logLevel, defaultLogLevel string) context
 
 	klogv2.SetOutputBySeverity("FATAL", logboek.Context(ctx).ErrStream())
 	klogv2.SetOutputBySeverity("ERROR", logboek.Context(ctx).ErrStream())
+
+	spew.Config.DisablePointerAddresses = true
+	spew.Config.DisableCapacities = true
 
 	switch logLevel {
 	case SilentLogLevel:
