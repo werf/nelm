@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/samber/lo"
+	"k8s.io/cli-runtime/pkg/genericclioptions"
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
@@ -22,7 +23,6 @@ import (
 	"github.com/werf/3p-helm/pkg/werf/chartextender"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/common-go/pkg/secrets_manager"
-	kdkube "github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/logboek"
 	"github.com/werf/nelm/internal/chart"
 	"github.com/werf/nelm/internal/common"
@@ -104,50 +104,50 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		os.Setenv("WERF_SECRET_KEY", opts.SecretKey)
 	}
 
-	var kubeConfigPath string
-	if len(opts.KubeConfigPaths) > 0 {
-		kubeConfigPath = opts.KubeConfigPaths[0]
-	}
+	var clientFactory *kube.ClientFactory
+	var restClientGetter genericclioptions.RESTClientGetter
+	if opts.Remote {
+		if len(opts.KubeConfigPaths) > 0 {
+			var splitPaths []string
+			for _, path := range opts.KubeConfigPaths {
+				splitPaths = append(splitPaths, filepath.SplitList(path)...)
+			}
 
-	kubeConfigGetter, err := kdkube.NewKubeConfigGetter(
-		kdkube.KubeConfigGetterOptions{
-			KubeConfigOptions: kdkube.KubeConfigOptions{
-				Context:             opts.KubeContext,
-				ConfigPath:          kubeConfigPath,
-				ConfigDataBase64:    opts.KubeConfigBase64,
-				ConfigPathMergeList: opts.KubeConfigPaths,
-			},
-			Namespace:     opts.ReleaseNamespace,
-			BearerToken:   opts.KubeToken,
-			APIServer:     opts.KubeAPIServerName,
-			CAFile:        opts.KubeCAPath,
-			TLSServerName: opts.KubeTLSServerName,
-			SkipTLSVerify: opts.KubeSkipTLSVerify,
-			QPSLimit:      opts.KubeQPSLimit,
-			BurstLimit:    opts.KubeBurstLimit,
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("construct kube config getter: %w", err)
+			opts.KubeConfigPaths = splitPaths
+		}
+
+		// TODO(ilya-lesikov): some options are not propagated from cli/actions
+		kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+			BurstLimit:            opts.KubeBurstLimit,
+			CertificateAuthority:  opts.KubeCAPath,
+			CurrentContext:        opts.KubeContext,
+			InsecureSkipTLSVerify: opts.KubeSkipTLSVerify,
+			KubeConfigBase64:      opts.KubeConfigBase64,
+			Namespace:             opts.ReleaseNamespace,
+			QPSLimit:              opts.KubeQPSLimit,
+			Server:                opts.KubeAPIServerName,
+			TLSServerName:         opts.KubeTLSServerName,
+			Token:                 opts.KubeToken,
+		})
+		if err != nil {
+			return fmt.Errorf("construct kube config: %w", err)
+		}
+
+		clientFactory, err = kube.NewClientFactory(ctx, kubeConfig)
+		if err != nil {
+			return fmt.Errorf("construct kube client factory: %w", err)
+		}
+
+		restClientGetter = clientFactory.LegacyClientGetter()
 	}
 
 	helmSettings := helm_v3.Settings
-	*helmSettings.GetConfigP() = kubeConfigGetter
-	*helmSettings.GetNamespaceP() = opts.ReleaseNamespace
-	opts.ReleaseNamespace = helmSettings.Namespace()
 	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))
-
-	if opts.KubeContext != "" {
-		helmSettings.KubeContext = opts.KubeContext
-	}
-
-	if kubeConfigPath != "" {
-		helmSettings.KubeConfig = kubeConfigPath
-	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
 		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
+		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
 	}
 
 	if opts.ChartRepositoryInsecure {
@@ -157,11 +157,6 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		)
 	}
 
-	helmRegistryClientOpts = append(
-		helmRegistryClientOpts,
-		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
-	)
-
 	helmRegistryClient, err := registry.NewClient(helmRegistryClientOpts...)
 	if err != nil {
 		return fmt.Errorf("construct registry client: %w", err)
@@ -169,7 +164,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	helmActionConfig := &action.Configuration{}
 	if err := helmActionConfig.Init(
-		helmSettings.RESTClientGetter(),
+		restClientGetter,
 		opts.ReleaseNamespace,
 		string(opts.ReleaseStorageDriver),
 		func(format string, a ...interface{}) {
@@ -178,9 +173,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	); err != nil {
 		return fmt.Errorf("helm action config init: %w", err)
 	}
-	helmActionConfig.RegistryClient = helmRegistryClient
 
-	var clientFactory *kube.ClientFactory
 	if !opts.Remote {
 		helmReleaseStorageDriver := driver.NewMemory()
 		helmReleaseStorageDriver.SetNamespace(opts.ReleaseNamespace)
@@ -193,20 +186,9 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		}
 
 		helmActionConfig.Capabilities.KubeVersion = *kubeVersion
-	} else {
-		clientFactory, err = kube.NewClientFactory()
-		if err != nil {
-			return fmt.Errorf("construct kube client factory: %w", err)
-		}
 	}
 
 	helmReleaseStorage := helmActionConfig.Releases
-
-	helmChartPathOptions := action.ChartPathOptions{
-		InsecureSkipTLSverify: opts.ChartRepositorySkipTLSVerify,
-		PlainHTTP:             opts.ChartRepositoryInsecure,
-	}
-	helmChartPathOptions.SetRegistryClient(helmRegistryClient)
 
 	chartextender.DefaultChartAPIVersion = opts.DefaultChartAPIVersion
 	chartextender.DefaultChartName = opts.DefaultChartName

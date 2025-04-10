@@ -17,7 +17,7 @@ import (
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
-	kdkube "github.com/werf/kubedog/pkg/kube"
+	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/internal/release"
 )
@@ -61,50 +61,43 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		return nil, fmt.Errorf("build release get options: %w", err)
 	}
 
-	var kubeConfigPath string
 	if len(opts.KubeConfigPaths) > 0 {
-		kubeConfigPath = opts.KubeConfigPaths[0]
+		var splitPaths []string
+		for _, path := range opts.KubeConfigPaths {
+			splitPaths = append(splitPaths, filepath.SplitList(path)...)
+		}
+
+		opts.KubeConfigPaths = splitPaths
 	}
 
-	kubeConfigGetter, err := kdkube.NewKubeConfigGetter(
-		kdkube.KubeConfigGetterOptions{
-			KubeConfigOptions: kdkube.KubeConfigOptions{
-				Context:             opts.KubeContext,
-				ConfigPath:          kubeConfigPath,
-				ConfigDataBase64:    opts.KubeConfigBase64,
-				ConfigPathMergeList: opts.KubeConfigPaths,
-			},
-			Namespace:     releaseNamespace,
-			BearerToken:   opts.KubeToken,
-			APIServer:     opts.KubeAPIServerName,
-			CAFile:        opts.KubeCAPath,
-			TLSServerName: opts.KubeTLSServerName,
-			SkipTLSVerify: opts.KubeSkipTLSVerify,
-			QPSLimit:      opts.KubeQPSLimit,
-			BurstLimit:    opts.KubeBurstLimit,
-		},
-	)
+	// TODO(ilya-lesikov): some options are not propagated from cli/actions
+	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+		BurstLimit:            opts.KubeBurstLimit,
+		CertificateAuthority:  opts.KubeCAPath,
+		CurrentContext:        opts.KubeContext,
+		InsecureSkipTLSVerify: opts.KubeSkipTLSVerify,
+		KubeConfigBase64:      opts.KubeConfigBase64,
+		Namespace:             releaseNamespace,
+		QPSLimit:              opts.KubeQPSLimit,
+		Server:                opts.KubeAPIServerName,
+		TLSServerName:         opts.KubeTLSServerName,
+		Token:                 opts.KubeToken,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("construct kube config getter: %w", err)
+		return nil, fmt.Errorf("construct kube config: %w", err)
+	}
+
+	clientFactory, err := kube.NewClientFactory(ctx, kubeConfig)
+	if err != nil {
+		return nil, fmt.Errorf("construct kube client factory: %w", err)
 	}
 
 	helmSettings := helm_v3.Settings
-	*helmSettings.GetConfigP() = kubeConfigGetter
-	*helmSettings.GetNamespaceP() = releaseNamespace
-	releaseNamespace = helmSettings.Namespace()
 	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))
-
-	if opts.KubeContext != "" {
-		helmSettings.KubeContext = opts.KubeContext
-	}
-
-	if kubeConfigPath != "" {
-		helmSettings.KubeConfig = kubeConfigPath
-	}
 
 	helmActionConfig := &action.Configuration{}
 	if err := helmActionConfig.Init(
-		helmSettings.RESTClientGetter(),
+		clientFactory.LegacyClientGetter(),
 		releaseNamespace,
 		string(opts.ReleaseStorageDriver),
 		func(format string, a ...interface{}) {

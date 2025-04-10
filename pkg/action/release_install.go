@@ -26,7 +26,6 @@ import (
 	"github.com/werf/3p-helm/pkg/werf/chartextender"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/common-go/pkg/secrets_manager"
-	kdkube "github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	kubeutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
@@ -46,9 +45,7 @@ import (
 )
 
 const (
-	DefaultReleaseInstallReportFilename = "release-install-report.json"
-	DefaultReleaseInstallGraphFilename  = "release-install-graph.dot"
-	DefaultReleaseInstallLogLevel       = InfoLogLevel
+	DefaultReleaseInstallLogLevel = InfoLogLevel
 )
 
 type ReleaseInstallOptions struct {
@@ -126,51 +123,44 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		os.Setenv("WERF_SECRET_KEY", opts.SecretKey)
 	}
 
-	var kubeConfigPath string
 	if len(opts.KubeConfigPaths) > 0 {
-		kubeConfigPath = opts.KubeConfigPaths[0]
+		var splitPaths []string
+		for _, path := range opts.KubeConfigPaths {
+			splitPaths = append(splitPaths, filepath.SplitList(path)...)
+		}
+
+		opts.KubeConfigPaths = splitPaths
 	}
 
-	kubeConfigGetter, err := kdkube.NewKubeConfigGetter(
-		kdkube.KubeConfigGetterOptions{
-			KubeConfigOptions: kdkube.KubeConfigOptions{
-				Context:             opts.KubeContext,
-				ConfigPath:          kubeConfigPath,
-				ConfigDataBase64:    opts.KubeConfigBase64,
-				ConfigPathMergeList: opts.KubeConfigPaths,
-			},
-			Namespace:     releaseNamespace,
-			BearerToken:   opts.KubeToken,
-			APIServer:     opts.KubeAPIServerName,
-			CAFile:        opts.KubeCAPath,
-			TLSServerName: opts.KubeTLSServerName,
-			SkipTLSVerify: opts.KubeSkipTLSVerify,
-			QPSLimit:      opts.KubeQPSLimit,
-			BurstLimit:    opts.KubeBurstLimit,
-		},
-	)
+	// TODO(ilya-lesikov): some options are not propagated from cli/actions
+	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+		BurstLimit:            opts.KubeBurstLimit,
+		CertificateAuthority:  opts.KubeCAPath,
+		CurrentContext:        opts.KubeContext,
+		InsecureSkipTLSVerify: opts.KubeSkipTLSVerify,
+		KubeConfigBase64:      opts.KubeConfigBase64,
+		Namespace:             releaseNamespace,
+		QPSLimit:              opts.KubeQPSLimit,
+		Server:                opts.KubeAPIServerName,
+		TLSServerName:         opts.KubeTLSServerName,
+		Token:                 opts.KubeToken,
+	})
 	if err != nil {
-		return fmt.Errorf("construct kube config getter: %w", err)
+		return fmt.Errorf("construct kube config: %w", err)
+	}
+
+	clientFactory, err := kube.NewClientFactory(ctx, kubeConfig)
+	if err != nil {
+		return fmt.Errorf("construct kube client factory: %w", err)
 	}
 
 	helmSettings := helm_v3.Settings
-	*helmSettings.GetConfigP() = kubeConfigGetter
-	*helmSettings.GetNamespaceP() = releaseNamespace
-	releaseNamespace = helmSettings.Namespace()
-	helmSettings.MaxHistory = opts.ReleaseHistoryLimit
 	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))
-
-	if opts.KubeContext != "" {
-		helmSettings.KubeContext = opts.KubeContext
-	}
-
-	if kubeConfigPath != "" {
-		helmSettings.KubeConfig = kubeConfigPath
-	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
 		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
+		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
 	}
 
 	if opts.ChartRepositoryInsecure {
@@ -180,11 +170,6 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		)
 	}
 
-	helmRegistryClientOpts = append(
-		helmRegistryClientOpts,
-		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
-	)
-
 	helmRegistryClient, err := registry.NewClient(helmRegistryClientOpts...)
 	if err != nil {
 		return fmt.Errorf("construct registry client: %w", err)
@@ -192,7 +177,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 
 	helmActionConfig := &action.Configuration{}
 	if err := helmActionConfig.Init(
-		helmSettings.RESTClientGetter(),
+		clientFactory.LegacyClientGetter(),
 		releaseNamespace,
 		string(opts.ReleaseStorageDriver),
 		func(format string, a ...interface{}) {
@@ -201,22 +186,9 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	); err != nil {
 		return fmt.Errorf("helm action config init: %w", err)
 	}
-	helmActionConfig.RegistryClient = helmRegistryClient
 
 	helmReleaseStorage := helmActionConfig.Releases
 	helmReleaseStorage.MaxHistory = opts.ReleaseHistoryLimit
-
-	// FIXME(ilya-lesikov): this is not used later
-	helmChartPathOptions := action.ChartPathOptions{
-		InsecureSkipTLSverify: opts.ChartRepositorySkipTLSVerify,
-		PlainHTTP:             opts.ChartRepositoryInsecure,
-	}
-	helmChartPathOptions.SetRegistryClient(helmRegistryClient)
-
-	clientFactory, err := kube.NewClientFactory()
-	if err != nil {
-		return fmt.Errorf("construct kube client factory: %w", err)
-	}
 
 	var lockManager *lock.LockManager
 	if m, err := lock.NewLockManager(
@@ -437,16 +409,23 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 
 	deployPlan, planBuildErr := deployPlanBuilder.Build(ctx)
 	if planBuildErr != nil {
-		if _, err := os.Create(opts.InstallGraphPath); err != nil {
+		var graphPath string
+		if opts.InstallGraphPath != "" {
+			graphPath = opts.InstallGraphPath
+		} else {
+			graphPath = filepath.Join(opts.TempDirPath, "release-install-graph.dot")
+		}
+
+		if _, err := os.Create(graphPath); err != nil {
 			log.Default.Error(ctx, "Error: create release install graph file: %s", err)
 			return fmt.Errorf("build deploy plan: %w", planBuildErr)
 		}
 
-		if err := deployPlan.SaveDOT(opts.InstallGraphPath); err != nil {
+		if err := deployPlan.SaveDOT(graphPath); err != nil {
 			log.Default.Error(ctx, "Error: save release install graph: %s", err)
 		}
 
-		log.Default.Warn(ctx, "Release install graph saved to %q for debugging", opts.InstallGraphPath)
+		log.Default.Warn(ctx, "Release install graph saved to %q for debugging", graphPath)
 
 		return fmt.Errorf("build release install plan: %w", planBuildErr)
 	}
@@ -668,18 +647,6 @@ func applyReleaseInstallOptionsDefaults(
 		if err != nil {
 			return ReleaseInstallOptions{}, fmt.Errorf("create temp dir: %w", err)
 		}
-	}
-
-	if opts.InstallGraphPath == "" {
-		opts.InstallGraphPath = filepath.Join(opts.TempDirPath, DefaultReleaseInstallGraphFilename)
-	}
-
-	if opts.RollbackGraphPath == "" {
-		opts.RollbackGraphPath = filepath.Join(opts.TempDirPath, DefaultReleaseRollbackGraphFilename)
-	}
-
-	if opts.InstallReportPath == "" {
-		opts.InstallReportPath = filepath.Join(opts.TempDirPath, DefaultReleaseInstallReportFilename)
 	}
 
 	if opts.KubeConfigBase64 == "" && len(opts.KubeConfigPaths) == 0 {

@@ -1,6 +1,7 @@
 package kube
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"sync"
@@ -9,79 +10,66 @@ import (
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
-	cmdutil "k8s.io/kubectl/pkg/cmd/util"
-
-	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 )
 
 var addToScheme sync.Once
 
-func NewClientFactory() (*ClientFactory, error) {
+func NewClientFactory(ctx context.Context, kubeConfig *KubeConfig) (*ClientFactory, error) {
 	addToScheme.Do(func() {
 		lo.Must0(apiextv1.AddToScheme(scheme.Scheme))
 		lo.Must0(apiextv1beta1.AddToScheme(scheme.Scheme))
 	})
 
-	var restClientGetter genericclioptions.RESTClientGetter
-	if getterPtr := helm_v3.Settings.GetConfigP(); getterPtr != nil {
-		restClientGetter = *getterPtr
-	} else {
-		restClientGetter = genericclioptions.NewConfigFlags(true)
-	}
-
-	factory := cmdutil.NewFactory(restClientGetter)
-
-	if err := checkClusterConnectivity(factory); err != nil {
-		return nil, fmt.Errorf("Kubernetes cluster unreachable: %w", err)
-	}
-
-	staticClient, err := factory.KubernetesClientSet()
+	staticClient, err := NewStaticKubeClientFromKubeConfig(kubeConfig)
 	if err != nil {
-		return nil, fmt.Errorf("error getting static kubernetes client: %w", err)
+		return nil, fmt.Errorf("construct static kubernetes client: %w", err)
 	}
 
-	dynamicClient, err := factory.DynamicClient()
+	if _, err := staticClient.ServerVersion(); err != nil {
+		return nil, fmt.Errorf("check kubernetes cluster version to check kubernetes connectivity: %w", err)
+	}
+
+	dynamicClient, err := NewDynamicKubeClientFromKubeConfig(kubeConfig)
 	if err != nil {
-		return nil, fmt.Errorf("error getting dynamic kubernetes client: %w", err)
+		return nil, fmt.Errorf("construct dynamic kubernetes client: %w", err)
 	}
 
-	discoveryClient, err := factory.ToDiscoveryClient()
+	discoveryClient, err := NewDiscoveryKubeClientFromKubeConfig(kubeConfig)
 	if err != nil {
-		return nil, fmt.Errorf("error getting discovery kubernetes client: %w", err)
+		return nil, fmt.Errorf("construct discovery kubernetes client: %w", err)
 	}
 
-	var mapper meta.ResettableRESTMapper
-	if m, err := factory.ToRESTMapper(); err != nil {
-		return nil, fmt.Errorf("error getting REST mapper: %w", err)
-	} else {
-		mapper = reflect.ValueOf(m).Interface().(meta.ResettableRESTMapper)
-	}
+	mapper := reflect.ValueOf(NewKubeMapper(ctx, discoveryClient)).Interface().(meta.ResettableRESTMapper)
 
 	kubeClient := NewKubeClient(staticClient, dynamicClient, discoveryClient, mapper)
-	if err != nil {
-		return nil, fmt.Errorf("error creating kube client: %w", err)
+
+	legacyClientGetter := NewLegacyClientGetter(discoveryClient, mapper, kubeConfig.RestConfig, kubeConfig.LegacyClientConfig)
+
+	clientFactory := &ClientFactory{
+		discoveryClient:    discoveryClient,
+		dynamicClient:      dynamicClient,
+		kubeClient:         kubeClient,
+		kubeConfig:         kubeConfig,
+		legacyClientGetter: legacyClientGetter,
+		mapper:             mapper,
+		staticClient:       staticClient,
 	}
 
-	return &ClientFactory{
-		kubeClient:      kubeClient,
-		staticClient:    staticClient,
-		dynamicClient:   dynamicClient,
-		discoveryClient: discoveryClient,
-		mapper:          mapper,
-	}, nil
+	return clientFactory, nil
 }
 
 type ClientFactory struct {
-	kubeClient      KubeClienter
-	staticClient    kubernetes.Interface
-	dynamicClient   dynamic.Interface
-	discoveryClient discovery.CachedDiscoveryInterface
-	mapper          meta.ResettableRESTMapper
+	discoveryClient    discovery.CachedDiscoveryInterface
+	dynamicClient      dynamic.Interface
+	kubeClient         KubeClienter
+	kubeConfig         *KubeConfig
+	legacyClientGetter *LegacyClientGetter
+	mapper             meta.ResettableRESTMapper
+	staticClient       kubernetes.Interface
 }
 
 func (f *ClientFactory) KubeClient() KubeClienter {
@@ -104,18 +92,10 @@ func (f *ClientFactory) Mapper() meta.ResettableRESTMapper {
 	return f.mapper
 }
 
-func checkClusterConnectivity(factory cmdutil.Factory) error {
-	client, err := factory.KubernetesClientSet()
-	if err != nil {
-		if err == genericclioptions.ErrEmptyConfig {
-			return fmt.Errorf("incomplete configuration")
-		}
-		return fmt.Errorf("error getting kubernetes client: %w", err)
-	}
+func (f *ClientFactory) LegacyClientGetter() *LegacyClientGetter {
+	return f.legacyClientGetter
+}
 
-	if _, err := client.ServerVersion(); err != nil {
-		return fmt.Errorf("error getting kubernetes server version: %w", err)
-	}
-
-	return nil
+func (f *ClientFactory) KubeConfig() *KubeConfig {
+	return f.kubeConfig
 }
