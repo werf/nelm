@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.1.2](https://www.github.com/werf/nelm/compare/v1.1.1...v1.1.2) (2025-04-10)
+
+
+### Bug Fixes
+
+* error if `$KUBECONFIG` has multiple files; major rework of K8s client setup ([5291873](https://www.github.com/werf/nelm/commit/5291873189c30d1dbfcde22a16cba968929a0ebe))
+
 ### [1.1.1](https://www.github.com/werf/nelm/compare/v1.1.0...v1.1.1) (2025-03-31)
 
 
