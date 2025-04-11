@@ -1,5 +1,13 @@
 # Changelog
 
+### [1.1.4](https://www.github.com/werf/nelm/compare/v1.1.3...v1.1.4) (2025-04-11)
+
+
+### Bug Fixes
+
+* allow `werf.io/sensitive: false` for Secrets ([53665fd](https://www.github.com/werf/nelm/commit/53665fd3b9a218dc2e67fb69df4ffb0803f5022e))
+* possible panic in tracking flux canary resource ([c6861bf](https://www.github.com/werf/nelm/commit/c6861bf5391b60d392cb648a1a482c23b489e72e))
+
 ### [1.1.3](https://www.github.com/werf/nelm/compare/v1.1.2...v1.1.3) (2025-04-11)
 
 
