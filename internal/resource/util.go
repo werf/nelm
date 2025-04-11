@@ -11,16 +11,16 @@ import (
 )
 
 func IsSensitive(groupKind schema.GroupKind, annotations map[string]string) bool {
-	if groupKind == (schema.GroupKind{Group: "", Kind: "Secret"}) {
-		return true
-	}
-
 	if _, value, found := FindAnnotationOrLabelByKeyPattern(annotations, annotationKeyPatternSensitive); found {
 		sensitive := lo.Must(strconv.ParseBool(value))
 
 		if sensitive {
 			return true
 		}
+	}
+
+	if groupKind == (schema.GroupKind{Group: "", Kind: "Secret"}) {
+		return true
 	}
 
 	return false
