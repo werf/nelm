@@ -35,7 +35,7 @@ require (
 	github.com/wI2L/jsondiff v0.5.0
 	github.com/werf/3p-helm v0.0.0-20250411132430-d352696fd3eb
 	github.com/werf/common-go v0.0.0-20250402120318-6016fd164f88
-	github.com/werf/kubedog v0.13.1-0.20250225170820-367e45be4347
+	github.com/werf/kubedog v0.13.1-0.20250411133038-3d8084fab0ec
 	github.com/werf/lockgate v0.1.1
 	github.com/werf/logboek v0.6.1
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e
