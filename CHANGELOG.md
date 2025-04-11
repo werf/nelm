@@ -7,6 +7,13 @@
 
 * `nelm version` shows `0.0.0` ([5d79185](https://www.github.com/werf/nelm/commit/5d79185823cce4dfa94dbb72137d63542b648e11))
 
+### [1.1.3](https://www.github.com/werf/nelm/compare/v1.1.2...v1.1.3) (2025-04-11)
+
+
+### Bug Fixes
+
+* `nelm version` shows `0.0.0` ([5d79185](https://www.github.com/werf/nelm/commit/5d79185823cce4dfa94dbb72137d63542b648e11))
+
 ### [1.1.2](https://www.github.com/werf/nelm/compare/v1.1.1...v1.1.2) (2025-04-10)
 
 
