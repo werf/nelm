@@ -17,7 +17,6 @@ type releaseRollbackConfig struct {
 	LogLevel         string
 	ReleaseName      string
 	ReleaseNamespace string
-	Revision         int
 }
 
 func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {

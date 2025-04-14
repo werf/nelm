@@ -13,8 +13,7 @@ import (
 type chartSecretKeyRotateOptions struct {
 	action.SecretKeyRotateOptions
 
-	ChartDirPath string
-	LogLevel     string
+	LogLevel string
 }
 
 func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {

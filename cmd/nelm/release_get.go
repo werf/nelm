@@ -17,7 +17,6 @@ type releaseGetConfig struct {
 	LogLevel         string
 	ReleaseName      string
 	ReleaseNamespace string
-	Revision         int
 }
 
 func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {

@@ -13,7 +13,6 @@ import (
 type releasePlanInstallConfig struct {
 	action.ReleasePlanInstallOptions
 
-	ChartDirPath     string
 	LogLevel         string
 	ReleaseName      string
 	ReleaseNamespace string

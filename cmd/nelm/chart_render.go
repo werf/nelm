@@ -13,8 +13,7 @@ import (
 type chartRenderConfig struct {
 	action.ChartRenderOptions
 
-	ChartDirPath string
-	LogLevel     string
+	LogLevel string
 }
 
 func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
