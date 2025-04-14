@@ -13,8 +13,7 @@ import (
 type chartLintConfig struct {
 	action.ChartLintOptions
 
-	ChartDirPath string
-	LogLevel     string
+	LogLevel string
 }
 
 func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
