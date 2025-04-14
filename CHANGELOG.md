@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.1.5](https://www.github.com/werf/nelm/compare/v1.1.4...v1.1.5) (2025-04-14)
+
+
+### Bug Fixes
+
+* chart dir path and revision options/arguments to some commands ignored ([591b60f](https://www.github.com/werf/nelm/commit/591b60f1b96dac65d58cfa960e1ab3c1a04636f2))
+
 ### [1.1.4](https://www.github.com/werf/nelm/compare/v1.1.3...v1.1.4) (2025-04-11)
 
 
