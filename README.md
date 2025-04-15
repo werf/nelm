@@ -9,6 +9,8 @@
 * lots of fixes for Helm 3 bugs, e.g. ["no matches for kind Deployment in version apps/v1beta1"](https://github.com/helm/helm/issues/7219);
 * ... and more.
 
+**Note on the project status and production readiness**. Prior to a formal public announcement, thousands of projects actively used Nelm via werf. Being the default and only deployment engine since werf v2.0 ([released](https://github.com/werf/werf/discussions/6100) in April 2024), Nelm and all its main features were battle-tested in production before a separate tool with user-facing CLI emerged. However, the Nelm *CLI* [went public](https://blog.werf.io/nelm-cli-helm-compatible-alternative-5648b191f0af) with the Nelm v1 release only (in April 2025) and hasn’t been tested that much yet.
+
 ## Table of Contents
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
