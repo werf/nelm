@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.1.6](https://www.github.com/werf/nelm/compare/v1.1.5...v1.1.6) (2025-04-16)
+
+
+### Bug Fixes
+
+* default kubeconfig not used on empty string kubeconfigpath action option ([ffc2132](https://www.github.com/werf/nelm/commit/ffc21329922511721326ce0b3201a56c4a3201d3))
+
 ### [1.1.5](https://www.github.com/werf/nelm/compare/v1.1.4...v1.1.5) (2025-04-14)
 
 
