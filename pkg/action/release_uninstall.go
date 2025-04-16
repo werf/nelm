@@ -78,7 +78,7 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 			splitPaths = append(splitPaths, filepath.SplitList(path)...)
 		}
 
-		opts.KubeConfigPaths = splitPaths
+		opts.KubeConfigPaths = lo.Compact(splitPaths)
 
 		// Don't even ask... This way we force ClientConfigLoadingRules.ExplicitPath to always be
 		// empty, otherwise KUBECONFIG with multiple files doesn't work. Eventually should switch
@@ -274,7 +274,7 @@ func applyReleaseUninstallOptionsDefaults(opts ReleaseUninstallOptions, currentD
 		}
 	}
 
-	if opts.KubeConfigBase64 == "" && len(opts.KubeConfigPaths) == 0 {
+	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
 		opts.KubeConfigPaths = []string{filepath.Join(currentUser.HomeDir, ".kube", "config")}
 	}
 

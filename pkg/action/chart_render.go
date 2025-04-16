@@ -121,7 +121,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 				splitPaths = append(splitPaths, filepath.SplitList(path)...)
 			}
 
-			opts.KubeConfigPaths = splitPaths
+			opts.KubeConfigPaths = lo.Compact(splitPaths)
 		}
 
 		// TODO(ilya-lesikov): some options are not propagated from cli/actions
@@ -444,7 +444,7 @@ func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir string,
 		}
 	}
 
-	if opts.KubeConfigBase64 == "" && len(opts.KubeConfigPaths) == 0 {
+	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
 		opts.KubeConfigPaths = []string{filepath.Join(currentUser.HomeDir, ".kube", "config")}
 	}
 

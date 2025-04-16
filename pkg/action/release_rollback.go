@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gookit/color"
+	"github.com/samber/lo"
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
@@ -80,7 +81,7 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 			splitPaths = append(splitPaths, filepath.SplitList(path)...)
 		}
 
-		opts.KubeConfigPaths = splitPaths
+		opts.KubeConfigPaths = lo.Compact(splitPaths)
 	}
 
 	// TODO(ilya-lesikov): some options are not propagated from cli/actions
@@ -492,7 +493,7 @@ func applyReleaseRollbackOptionsDefaults(
 		}
 	}
 
-	if opts.KubeConfigBase64 == "" && len(opts.KubeConfigPaths) == 0 {
+	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
 		opts.KubeConfigPaths = []string{filepath.Join(currentUser.HomeDir, ".kube", "config")}
 	}
 
