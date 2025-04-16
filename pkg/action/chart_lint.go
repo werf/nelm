@@ -113,7 +113,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 				splitPaths = append(splitPaths, filepath.SplitList(path)...)
 			}
 
-			opts.KubeConfigPaths = splitPaths
+			opts.KubeConfigPaths = lo.Compact(splitPaths)
 		}
 
 		// TODO(ilya-lesikov): some options are not propagated from cli/actions
@@ -359,7 +359,7 @@ func applyChartLintOptionsDefaults(opts ChartLintOptions, currentDir string, cur
 		}
 	}
 
-	if opts.KubeConfigBase64 == "" && len(opts.KubeConfigPaths) == 0 {
+	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
 		opts.KubeConfigPaths = []string{filepath.Join(currentUser.HomeDir, ".kube", "config")}
 	}
 
