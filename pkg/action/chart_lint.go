@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/user"
 	"path/filepath"
 
 	"github.com/samber/lo"
@@ -90,12 +89,12 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		return fmt.Errorf("get current working directory: %w", err)
 	}
 
-	currentUser, err := user.Current()
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("get current user: %w", err)
+		return fmt.Errorf("get home directory: %w", err)
 	}
 
-	opts, err = applyChartLintOptionsDefaults(opts, currentDir, currentUser)
+	opts, err = applyChartLintOptionsDefaults(opts, currentDir, homeDir)
 	if err != nil {
 		return fmt.Errorf("build chart lint options: %w", err)
 	}
@@ -338,7 +337,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	return nil
 }
 
-func applyChartLintOptionsDefaults(opts ChartLintOptions, currentDir string, currentUser *user.User) (ChartLintOptions, error) {
+func applyChartLintOptionsDefaults(opts ChartLintOptions, currentDir, homeDir string) (ChartLintOptions, error) {
 	if opts.ChartDirPath == "" {
 		opts.ChartDirPath = currentDir
 	}
@@ -360,7 +359,7 @@ func applyChartLintOptionsDefaults(opts ChartLintOptions, currentDir string, cur
 	}
 
 	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
-		opts.KubeConfigPaths = []string{filepath.Join(currentUser.HomeDir, ".kube", "config")}
+		opts.KubeConfigPaths = []string{filepath.Join(homeDir, ".kube", "config")}
 	}
 
 	if opts.LogRegistryStreamOut == nil {

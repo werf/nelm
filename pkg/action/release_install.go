@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/user"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -109,12 +108,12 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		return fmt.Errorf("get current working directory: %w", err)
 	}
 
-	currentUser, err := user.Current()
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("get current user: %w", err)
+		return fmt.Errorf("get home directory: %w", err)
 	}
 
-	opts, err = applyReleaseInstallOptionsDefaults(opts, currentDir, currentUser)
+	opts, err = applyReleaseInstallOptionsDefaults(opts, currentDir, homeDir)
 	if err != nil {
 		return fmt.Errorf("build release install options: %w", err)
 	}
@@ -635,7 +634,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 func applyReleaseInstallOptionsDefaults(
 	opts ReleaseInstallOptions,
 	currentDir string,
-	currentUser *user.User,
+	homeDir string,
 ) (ReleaseInstallOptions, error) {
 	if opts.ChartDirPath == "" {
 		opts.ChartDirPath = currentDir
@@ -650,7 +649,7 @@ func applyReleaseInstallOptionsDefaults(
 	}
 
 	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
-		opts.KubeConfigPaths = []string{filepath.Join(currentUser.HomeDir, ".kube", "config")}
+		opts.KubeConfigPaths = []string{filepath.Join(homeDir, ".kube", "config")}
 	}
 
 	if opts.LogRegistryStreamOut == nil {

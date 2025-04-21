@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strings"
 
@@ -98,12 +97,12 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 		return fmt.Errorf("get current working directory: %w", err)
 	}
 
-	currentUser, err := user.Current()
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("get current user: %w", err)
+		return fmt.Errorf("get home directory: %w", err)
 	}
 
-	opts, err = applyChartRenderOptionsDefaults(opts, currentDir, currentUser)
+	opts, err = applyChartRenderOptionsDefaults(opts, currentDir, homeDir)
 	if err != nil {
 		return fmt.Errorf("build chart render options: %w", err)
 	}
@@ -423,7 +422,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 	return nil
 }
 
-func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir string, currentUser *user.User) (ChartRenderOptions, error) {
+func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir, homeDir string) (ChartRenderOptions, error) {
 	if opts.ChartDirPath == "" {
 		opts.ChartDirPath = currentDir
 	}
@@ -445,7 +444,7 @@ func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir string,
 	}
 
 	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
-		opts.KubeConfigPaths = []string{filepath.Join(currentUser.HomeDir, ".kube", "config")}
+		opts.KubeConfigPaths = []string{filepath.Join(homeDir, ".kube", "config")}
 	}
 
 	if opts.LogRegistryStreamOut == nil {
