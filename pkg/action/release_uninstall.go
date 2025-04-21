@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/user"
 	"path/filepath"
 	"time"
 
@@ -62,12 +61,12 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 		return fmt.Errorf("get current working directory: %w", err)
 	}
 
-	currentUser, err := user.Current()
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("get current user: %w", err)
+		return fmt.Errorf("get home directory: %w", err)
 	}
 
-	opts, err = applyReleaseUninstallOptionsDefaults(opts, currentDir, currentUser)
+	opts, err = applyReleaseUninstallOptionsDefaults(opts, currentDir, homeDir)
 	if err != nil {
 		return fmt.Errorf("build release uninstall options: %w", err)
 	}
@@ -265,7 +264,7 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 	return nil
 }
 
-func applyReleaseUninstallOptionsDefaults(opts ReleaseUninstallOptions, currentDir string, currentUser *user.User) (ReleaseUninstallOptions, error) {
+func applyReleaseUninstallOptionsDefaults(opts ReleaseUninstallOptions, currentDir, homeDir string) (ReleaseUninstallOptions, error) {
 	var err error
 	if opts.TempDirPath == "" {
 		opts.TempDirPath, err = os.MkdirTemp("", "")
@@ -275,7 +274,7 @@ func applyReleaseUninstallOptionsDefaults(opts ReleaseUninstallOptions, currentD
 	}
 
 	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
-		opts.KubeConfigPaths = []string{filepath.Join(currentUser.HomeDir, ".kube", "config")}
+		opts.KubeConfigPaths = []string{filepath.Join(homeDir, ".kube", "config")}
 	}
 
 	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)

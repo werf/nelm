@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strings"
 
@@ -52,12 +51,12 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 	actionLock.Lock()
 	defer actionLock.Unlock()
 
-	currentUser, err := user.Current()
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return nil, fmt.Errorf("get current user: %w", err)
+		return nil, fmt.Errorf("get home directory: %w", err)
 	}
 
-	opts, err = applyReleaseGetOptionsDefaults(opts, currentUser)
+	opts, err = applyReleaseGetOptionsDefaults(opts, homeDir)
 	if err != nil {
 		return nil, fmt.Errorf("build release get options: %w", err)
 	}
@@ -211,7 +210,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 	return result, nil
 }
 
-func applyReleaseGetOptionsDefaults(opts ReleaseGetOptions, currentUser *user.User) (ReleaseGetOptions, error) {
+func applyReleaseGetOptionsDefaults(opts ReleaseGetOptions, homeDir string) (ReleaseGetOptions, error) {
 	var err error
 	if opts.TempDirPath == "" {
 		opts.TempDirPath, err = os.MkdirTemp("", "")
@@ -221,7 +220,7 @@ func applyReleaseGetOptionsDefaults(opts ReleaseGetOptions, currentUser *user.Us
 	}
 
 	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
-		opts.KubeConfigPaths = []string{filepath.Join(currentUser.HomeDir, ".kube", "config")}
+		opts.KubeConfigPaths = []string{filepath.Join(homeDir, ".kube", "config")}
 	}
 
 	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)

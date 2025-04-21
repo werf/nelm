@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/user"
 	"path/filepath"
 	"regexp"
 	"time"
@@ -65,12 +64,12 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 	actionLock.Lock()
 	defer actionLock.Unlock()
 
-	currentUser, err := user.Current()
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("get current user: %w", err)
+		return fmt.Errorf("get home directory: %w", err)
 	}
 
-	opts, err = applyReleaseRollbackOptionsDefaults(opts, currentUser)
+	opts, err = applyReleaseRollbackOptionsDefaults(opts, homeDir)
 	if err != nil {
 		return fmt.Errorf("build release rollback options: %w", err)
 	}
@@ -483,7 +482,7 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 
 func applyReleaseRollbackOptionsDefaults(
 	opts ReleaseRollbackOptions,
-	currentUser *user.User,
+	homeDir string,
 ) (ReleaseRollbackOptions, error) {
 	var err error
 	if opts.TempDirPath == "" {
@@ -494,7 +493,7 @@ func applyReleaseRollbackOptionsDefaults(
 	}
 
 	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
-		opts.KubeConfigPaths = []string{filepath.Join(currentUser.HomeDir, ".kube", "config")}
+		opts.KubeConfigPaths = []string{filepath.Join(homeDir, ".kube", "config")}
 	}
 
 	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
