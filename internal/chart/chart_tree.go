@@ -3,13 +3,15 @@ package chart
 import (
 	"context"
 	"fmt"
+	"path"
 	"sort"
 	"strings"
-	"unicode"
 
 	"github.com/pkg/errors"
+	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
+	"sigs.k8s.io/yaml"
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
@@ -18,14 +20,16 @@ import (
 	"github.com/werf/3p-helm/pkg/chartutil"
 	"github.com/werf/3p-helm/pkg/cli/values"
 	"github.com/werf/3p-helm/pkg/downloader"
+	helmengine "github.com/werf/3p-helm/pkg/engine"
 	"github.com/werf/3p-helm/pkg/getter"
 	"github.com/werf/3p-helm/pkg/releaseutil"
 	"github.com/werf/nelm/internal/common"
+	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/internal/resource"
 )
 
-func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, actionConfig *action.Configuration, opts ChartTreeOptions) (*ChartTree, error) {
+func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, opts ChartTreeOptions) (*ChartTree, error) {
 	valOpts := &values.Options{
 		StringValues: opts.StringSetValues,
 		Values:       opts.SetValues,
@@ -68,9 +72,17 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		log.Default.Warn(ctx, `Chart "%s:%s" is deprecated`, legacyChart.Name(), legacyChart.Metadata.Version)
 	}
 
-	caps, err := actionConfig.GetCapabilities()
+	// TODO(ilya-lesikov): pass custom local api versions
+	caps, err := BuildCapabilities(ctx, BuildCapabilitiesOptions{
+		DiscoveryClient: opts.DiscoveryClient,
+		KubeVersion:     opts.KubeVersion,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("error getting capabilities for chart %q: %w", legacyChart.Name(), err)
+		return nil, fmt.Errorf("build capabilities for chart %q: %w", legacyChart.Name(), err)
+	}
+
+	if legacyChart.Metadata.KubeVersion != "" && !chartutil.IsCompatibleRange(legacyChart.Metadata.KubeVersion, caps.KubeVersion.String()) {
+		return nil, fmt.Errorf("chart requires kubeVersion: %s which is incompatible with Kubernetes %s", legacyChart.Metadata.KubeVersion, caps.KubeVersion.String())
 	}
 
 	var isUpgrade bool
@@ -94,17 +106,16 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 	}
 
 	finalValues := values.AsMap()
-	hasClusterAccess := opts.Mapper != nil
+
+	var engine *helmengine.Engine
+	if opts.KubeConfig != nil {
+		engine = lo.ToPtr(helmengine.New(opts.KubeConfig.RestConfig))
+	} else {
+		engine = lo.ToPtr(helmengine.Engine{})
+	}
+	engine.EnableDNS = opts.AllowDNSRequests
 
 	log.Default.Debug(ctx, "Rendering resources for chart at %q", chartPath)
-	legacyHookResources, generalManifestsBuf, notes, err := actionConfig.RenderResources(legacyChart, values, "", "", opts.SubNotes, false, false, nil, hasClusterAccess, false)
-	if err != nil {
-		log.Default.Debug(ctx, generalManifestsBuf.String())
-
-		return nil, fmt.Errorf("error rendering resources for chart %q: %w", legacyChart.Name(), err)
-	}
-
-	notes = strings.TrimRightFunc(notes, unicode.IsSpace)
 
 	var standaloneCRDs []*resource.StandaloneCRD
 	for _, crd := range legacyChart.CRDObjects() {
@@ -121,42 +132,71 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		}
 	}
 
-	sort.SliceStable(standaloneCRDs, func(i, j int) bool {
-		return resource.ResourceIDsSortHandler(standaloneCRDs[i].ResourceID, standaloneCRDs[j].ResourceID)
-	})
+	renderedTemplates, err := engine.Render(legacyChart, values)
+	if err != nil {
+		return nil, fmt.Errorf("render resources for chart %q: %w", legacyChart.Name(), err)
+	}
 
-	var hookResources []*resource.HookResource
-	for _, hook := range legacyHookResources {
-		for _, manifest := range releaseutil.SplitManifests(hook.Manifest) {
-			if res, err := resource.NewHookResourceFromManifest(manifest, resource.HookResourceFromManifestOptions{
-				DefaultNamespace: releaseNamespace,
-				Mapper:           opts.Mapper,
-				DiscoveryClient:  opts.DiscoveryClient,
-				FilePath:         hook.Path,
-			}); err != nil {
-				return nil, fmt.Errorf("error constructing hook resource for chart at %q: %w", chartPath, err)
-			} else {
+	log.Default.TraceStruct(ctx, renderedTemplates, "Rendered contents of templates/:")
+
+	var (
+		hookResources    []*resource.HookResource
+		generalResources []*resource.GeneralResource
+	)
+	for filePath, fileContent := range renderedTemplates {
+		if strings.HasPrefix(path.Base(filePath), "_") ||
+			strings.HasSuffix(filePath, action.NotesFileSuffix) ||
+			strings.TrimSpace(fileContent) == "" {
+			continue
+		}
+
+		manifests := releaseutil.SplitManifests(fileContent)
+
+		for _, manifest := range manifests {
+			var head releaseutil.SimpleHead
+			if err := yaml.Unmarshal([]byte(manifest), &head); err != nil {
+				return nil, fmt.Errorf("parse YAML for %q: %w", filePath, err)
+			}
+
+			if head.Metadata != nil && resource.IsHook(head.Metadata.Annotations) {
+				res, err := resource.NewHookResourceFromManifest(manifest, resource.HookResourceFromManifestOptions{
+					DefaultNamespace: releaseNamespace,
+					Mapper:           opts.Mapper,
+					DiscoveryClient:  opts.DiscoveryClient,
+					FilePath:         filePath,
+				})
+				if err != nil {
+					return nil, fmt.Errorf("error constructing hook resource for chart at %q: %w", chartPath, err)
+				}
+
 				hookResources = append(hookResources, res)
+			} else {
+				res, err := resource.NewGeneralResourceFromManifest(manifest, resource.GeneralResourceFromManifestOptions{
+					DefaultNamespace: releaseNamespace,
+					Mapper:           opts.Mapper,
+					DiscoveryClient:  opts.DiscoveryClient,
+					FilePath:         filePath,
+				})
+				if err != nil {
+					return nil, fmt.Errorf("error constructing general resource for chart at %q: %w", chartPath, err)
+				}
+
+				generalResources = append(generalResources, res)
 			}
 		}
 	}
 
+	notes := BuildNotes(legacyChart.Name(), renderedTemplates, BuildNotesOptions{
+		RenderSubchartNotes: opts.SubNotes,
+	})
+
+	sort.SliceStable(standaloneCRDs, func(i, j int) bool {
+		return resource.ResourceIDsSortHandler(standaloneCRDs[i].ResourceID, standaloneCRDs[j].ResourceID)
+	})
+
 	sort.SliceStable(hookResources, func(i, j int) bool {
 		return resource.ResourceIDsSortHandler(hookResources[i].ResourceID, hookResources[j].ResourceID)
 	})
-
-	var generalResources []*resource.GeneralResource
-	for _, manifest := range releaseutil.SplitManifests(generalManifestsBuf.String()) {
-		if res, err := resource.NewGeneralResourceFromManifest(manifest, resource.GeneralResourceFromManifestOptions{
-			DefaultNamespace: releaseNamespace,
-			Mapper:           opts.Mapper,
-			DiscoveryClient:  opts.DiscoveryClient,
-		}); err != nil {
-			return nil, fmt.Errorf("error constructing general resource for chart at %q: %w", chartPath, err)
-		} else {
-			generalResources = append(generalResources, res)
-		}
-	}
 
 	sort.SliceStable(generalResources, func(i, j int) bool {
 		return resource.ResourceIDsSortHandler(generalResources[i].ResourceID, generalResources[j].ResourceID)
@@ -173,14 +213,18 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 	}, nil
 }
 
+// TODO(ilya-lesikov): pass missing options from top-level
 type ChartTreeOptions struct {
-	Mapper          meta.ResettableRESTMapper
-	DiscoveryClient discovery.CachedDiscoveryInterface
-	StringSetValues []string
-	SetValues       []string
-	FileValues      []string
-	ValuesFiles     []string
-	SubNotes        bool
+	Mapper           meta.ResettableRESTMapper
+	DiscoveryClient  discovery.CachedDiscoveryInterface
+	KubeConfig       *kube.KubeConfig
+	StringSetValues  []string
+	SetValues        []string
+	FileValues       []string
+	ValuesFiles      []string
+	SubNotes         bool
+	KubeVersion      *chartutil.KubeVersion
+	AllowDNSRequests bool
 }
 
 type ChartTree struct {

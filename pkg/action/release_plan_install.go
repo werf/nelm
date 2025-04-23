@@ -11,13 +11,14 @@ import (
 	"github.com/gookit/color"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
+	"k8s.io/client-go/kubernetes"
 
-	helm_v3 "github.com/werf/3p-helm/cmd/helm"
-	"github.com/werf/3p-helm/pkg/action"
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/chartutil"
+	"github.com/werf/3p-helm/pkg/cli"
 	"github.com/werf/3p-helm/pkg/downloader"
 	"github.com/werf/3p-helm/pkg/getter"
+	"github.com/werf/3p-helm/pkg/helmpath"
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/werf/chartextender"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
@@ -69,6 +70,7 @@ type ReleasePlanInstallOptions struct {
 	NetworkParallelism           int
 	RegistryCredentialsPath      string
 	ReleaseStorageDriver         string
+	SQLConnectionString          string
 	SecretKey                    string
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
@@ -134,9 +136,6 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		return fmt.Errorf("construct kube client factory: %w", err)
 	}
 
-	helmSettings := helm_v3.Settings
-	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))
-
 	helmRegistryClientOpts := []registry.ClientOption{
 		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
@@ -155,19 +154,18 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		return fmt.Errorf("construct registry client: %w", err)
 	}
 
-	helmActionConfig := &action.Configuration{}
-	if err := helmActionConfig.Init(
-		clientFactory.LegacyClientGetter(),
+	releaseStorage, err := release.NewReleaseStorage(
+		ctx,
 		releaseNamespace,
-		string(opts.ReleaseStorageDriver),
-		func(format string, a ...interface{}) {
-			log.Default.Debug(ctx, format, a...)
+		opts.ReleaseStorageDriver,
+		release.ReleaseStorageOptions{
+			StaticClient:        clientFactory.Static().(*kubernetes.Clientset),
+			SQLConnectionString: opts.SQLConnectionString,
 		},
-	); err != nil {
-		return fmt.Errorf("helm action config init: %w", err)
+	)
+	if err != nil {
+		return fmt.Errorf("construct release storage: %w", err)
 	}
-
-	helmReleaseStorage := helmActionConfig.Releases
 
 	chartextender.DefaultChartAPIVersion = opts.DefaultChartAPIVersion
 	chartextender.DefaultChartName = opts.DefaultChartName
@@ -187,7 +185,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 	history, err := release.NewHistory(
 		releaseName,
 		releaseNamespace,
-		helmReleaseStorage,
+		releaseStorage,
 		release.HistoryOptions{
 			Mapper:          clientFactory.Mapper(),
 			DiscoveryClient: clientFactory.Discovery(),
@@ -231,11 +229,11 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		ChartPath:         opts.ChartDirPath,
 		SkipUpdate:        opts.ChartRepositorySkipUpdate,
 		AllowMissingRepos: true,
-		Getters:           getter.All(helmSettings),
+		Getters:           getter.Providers{getter.HttpProvider, getter.OCIProvider},
 		RegistryClient:    helmRegistryClient,
-		RepositoryConfig:  helmSettings.RepositoryConfig,
-		RepositoryCache:   helmSettings.RepositoryCache,
-		Debug:             helmSettings.Debug,
+		RepositoryConfig:  cli.EnvOr("HELM_REPOSITORY_CONFIG", helmpath.ConfigPath("repositories.yaml")),
+		RepositoryCache:   cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
+		Debug:             log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel)),
 	}
 	loader.SetChartPathFunc = downloader.SetChartPath
 	loader.DepsBuildFunc = downloader.Build
@@ -248,14 +246,14 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		releaseNamespace,
 		newRevision,
 		deployType,
-		helmActionConfig,
 		chart.ChartTreeOptions{
+			Mapper:          clientFactory.Mapper(),
+			DiscoveryClient: clientFactory.Discovery(),
+			KubeConfig:      clientFactory.KubeConfig(),
 			StringSetValues: opts.ValuesStringSets,
 			SetValues:       opts.ValuesSets,
 			FileValues:      opts.ValuesFileSets,
 			ValuesFiles:     opts.ValuesFilesPaths,
-			Mapper:          clientFactory.Mapper(),
-			DiscoveryClient: clientFactory.Discovery(),
 		},
 	)
 	if err != nil {

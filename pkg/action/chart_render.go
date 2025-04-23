@@ -12,18 +12,16 @@ import (
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/yaml"
 
-	helm_v3 "github.com/werf/3p-helm/cmd/helm"
-	"github.com/werf/3p-helm/pkg/action"
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/chartutil"
+	"github.com/werf/3p-helm/pkg/cli"
 	"github.com/werf/3p-helm/pkg/downloader"
 	"github.com/werf/3p-helm/pkg/getter"
+	"github.com/werf/3p-helm/pkg/helmpath"
 	"github.com/werf/3p-helm/pkg/registry"
-	"github.com/werf/3p-helm/pkg/storage"
-	"github.com/werf/3p-helm/pkg/storage/driver"
 	"github.com/werf/3p-helm/pkg/werf/chartextender"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/common-go/pkg/secrets_manager"
@@ -75,6 +73,7 @@ type ChartRenderOptions struct {
 	ReleaseName                  string
 	ReleaseNamespace             string
 	ReleaseStorageDriver         string
+	SQLConnectionString          string
 	SecretKey                    string
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
@@ -111,8 +110,11 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 		os.Setenv("WERF_SECRET_KEY", opts.SecretKey)
 	}
 
+	if !opts.Remote {
+		opts.ReleaseStorageDriver = ReleaseStorageDriverMemory
+	}
+
 	var clientFactory *kube.ClientFactory
-	var restClientGetter genericclioptions.RESTClientGetter
 	if opts.Remote {
 		if len(opts.KubeConfigPaths) > 0 {
 			var splitPaths []string
@@ -144,12 +146,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 		if err != nil {
 			return fmt.Errorf("construct kube client factory: %w", err)
 		}
-
-		restClientGetter = clientFactory.LegacyClientGetter()
 	}
-
-	helmSettings := helm_v3.Settings
-	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))
 
 	helmRegistryClientOpts := []registry.ClientOption{
 		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))),
@@ -169,33 +166,18 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 		return fmt.Errorf("construct registry client: %w", err)
 	}
 
-	helmActionConfig := &action.Configuration{}
-	if err := helmActionConfig.Init(
-		restClientGetter,
-		opts.ReleaseNamespace,
-		string(opts.ReleaseStorageDriver),
-		func(format string, a ...interface{}) {
-			log.Default.Debug(ctx, format, a...)
-		},
-	); err != nil {
-		return fmt.Errorf("helm action config init: %w", err)
+	releaseStorageOptions := release.ReleaseStorageOptions{
+		SQLConnectionString: opts.SQLConnectionString,
 	}
 
-	if !opts.Remote {
-		helmReleaseStorageDriver := driver.NewMemory()
-		helmReleaseStorageDriver.SetNamespace(opts.ReleaseNamespace)
-		helmActionConfig.Releases = storage.Init(helmReleaseStorageDriver)
-		helmActionConfig.Capabilities = chartutil.DefaultCapabilities.Copy()
-
-		kubeVersion, err := chartutil.ParseKubeVersion(opts.LocalKubeVersion)
-		if err != nil {
-			return fmt.Errorf("parse local kube version %q: %w", opts.LocalKubeVersion, err)
-		}
-
-		helmActionConfig.Capabilities.KubeVersion = *kubeVersion
+	if opts.Remote {
+		releaseStorageOptions.StaticClient = clientFactory.Static().(*kubernetes.Clientset)
 	}
 
-	helmReleaseStorage := helmActionConfig.Releases
+	releaseStorage, err := release.NewReleaseStorage(ctx, opts.ReleaseNamespace, opts.ReleaseStorageDriver, releaseStorageOptions)
+	if err != nil {
+		return fmt.Errorf("construct release storage: %w", err)
+	}
 
 	chartextender.DefaultChartAPIVersion = opts.DefaultChartAPIVersion
 	chartextender.DefaultChartName = opts.DefaultChartName
@@ -218,7 +200,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 	history, err := release.NewHistory(
 		opts.ReleaseName,
 		opts.ReleaseNamespace,
-		helmReleaseStorage,
+		releaseStorage,
 		historyOptions,
 	)
 	if err != nil {
@@ -257,9 +239,18 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 		FileValues:      opts.ValuesFileSets,
 		ValuesFiles:     opts.ValuesFilesPaths,
 	}
+
 	if opts.Remote {
 		chartTreeOptions.Mapper = clientFactory.Mapper()
 		chartTreeOptions.DiscoveryClient = clientFactory.Discovery()
+		chartTreeOptions.KubeConfig = clientFactory.KubeConfig()
+	} else {
+		ver, err := chartutil.ParseKubeVersion(opts.LocalKubeVersion)
+		if err != nil {
+			return fmt.Errorf("parse local kube version %q: %w", opts.LocalKubeVersion, err)
+		}
+
+		chartTreeOptions.KubeVersion = ver
 	}
 
 	downloader := &downloader.Manager{
@@ -268,11 +259,11 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 		ChartPath:         opts.ChartDirPath,
 		SkipUpdate:        opts.ChartRepositorySkipUpdate,
 		AllowMissingRepos: true,
-		Getters:           getter.All(helmSettings),
+		Getters:           getter.Providers{getter.HttpProvider, getter.OCIProvider},
 		RegistryClient:    helmRegistryClient,
-		RepositoryConfig:  helmSettings.RepositoryConfig,
-		RepositoryCache:   helmSettings.RepositoryCache,
-		Debug:             helmSettings.Debug,
+		RepositoryConfig:  cli.EnvOr("HELM_REPOSITORY_CONFIG", helmpath.ConfigPath("repositories.yaml")),
+		RepositoryCache:   cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
+		Debug:             log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel)),
 	}
 	loader.SetChartPathFunc = downloader.SetChartPath
 	loader.DepsBuildFunc = downloader.Build
@@ -284,7 +275,6 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 		opts.ReleaseNamespace,
 		newRevision,
 		deployType,
-		helmActionConfig,
 		chartTreeOptions,
 	)
 	if err != nil {
