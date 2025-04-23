@@ -1,5 +1,13 @@
 # Changelog
 
+### [1.1.6](https://www.github.com/werf/nelm/compare/v1.1.5...v1.1.6) (2025-04-23)
+
+
+### Bug Fixes
+
+* Buildah reexec sets wrong HOME dir ([4eb656e](https://www.github.com/werf/nelm/commit/4eb656e82a8ba38b4228cf7a80449f297211255b))
+* default kubeconfig not used on empty string kubeconfigpath action option ([ffc2132](https://www.github.com/werf/nelm/commit/ffc21329922511721326ce0b3201a56c4a3201d3))
+
 ### [1.1.5](https://www.github.com/werf/nelm/compare/v1.1.4...v1.1.5) (2025-04-14)
 
 
