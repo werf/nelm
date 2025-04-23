@@ -18,6 +18,7 @@ import (
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/docker/pkg/homedir"
 	"github.com/gookit/color"
+	"github.com/hofstadter-io/cinful"
 	"github.com/samber/lo"
 	"github.com/xo/terminfo"
 	"k8s.io/klog"
@@ -161,22 +162,32 @@ func stdoutPiped() (bool, error) {
 }
 
 func applyLogColorModeDefault(mode string) string {
-	if mode == "" || mode == LogColorModeAuto {
-		piped, err := stdoutPiped()
-		if err != nil {
-			return LogColorModeOff
-		}
+	if mode != "" && mode != LogColorModeAuto {
+		return mode
+	}
 
-		uncoloredTerminal := color.DetectColorLevel() == terminfo.ColorLevelNone
+	if piped, err := stdoutPiped(); err != nil || piped {
+		return LogColorModeOff
+	}
 
-		if piped || uncoloredTerminal {
-			mode = LogColorModeOff
-		} else {
-			mode = LogColorModeOn
+	if ciInfo := cinful.Info(); ciInfo != nil {
+		switch ciInfo.Constant {
+		case "GITLAB", "GITHUB_ACTIONS", "CIRCLE", "TEAMCITY", "TRAVIS":
+			return LogColorModeOn
+		case "JENKINS":
+			switch os.Getenv("TERM") {
+			// From https://github.com/jenkinsci/ansicolor-plugin/tree/e2a42bf6c6acadc46468a6bf75dbd958a4747d0b?tab=readme-ov-file#colormaps
+			case "xterm", "vga", "gnome-terminal", "css":
+				return LogColorModeOn
+			}
 		}
 	}
 
-	return mode
+	if color.DetectColorLevel() == terminfo.ColorLevelNone {
+		return LogColorModeOff
+	}
+
+	return LogColorModeOn
 }
 
 func writeWithSyntaxHighlight(outStream io.Writer, text, lang string, colorLevel terminfo.ColorLevel) error {

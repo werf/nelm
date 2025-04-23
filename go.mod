@@ -19,6 +19,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gookit/color v1.5.4
 	github.com/hashicorp/go-multierror v1.1.1
+	github.com/hofstadter-io/cinful v1.0.0
 	github.com/jedib0t/go-pretty/v6 v6.5.5
 	github.com/jellydator/ttlcache/v3 v3.1.1
 	github.com/looplab/fsm v1.0.2
