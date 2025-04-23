@@ -10,9 +10,8 @@ import (
 
 	"github.com/gookit/color"
 	"github.com/samber/lo"
+	"k8s.io/client-go/kubernetes"
 
-	helm_v3 "github.com/werf/3p-helm/cmd/helm"
-	"github.com/werf/3p-helm/pkg/action"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	kubeutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
@@ -54,6 +53,7 @@ type ReleaseRollbackOptions struct {
 	Revision                   int
 	RollbackGraphPath          string
 	RollbackReportPath         string
+	SQLConnectionString        string
 	TempDirPath                string
 	TrackCreationTimeout       time.Duration
 	TrackDeletionTimeout       time.Duration
@@ -105,23 +105,19 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 		return fmt.Errorf("construct kube client factory: %w", err)
 	}
 
-	helmSettings := helm_v3.Settings
-	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))
-
-	helmActionConfig := &action.Configuration{}
-	if err := helmActionConfig.Init(
-		clientFactory.LegacyClientGetter(),
+	releaseStorage, err := release.NewReleaseStorage(
+		ctx,
 		releaseNamespace,
-		string(opts.ReleaseStorageDriver),
-		func(format string, a ...interface{}) {
-			log.Default.Debug(ctx, format, a...)
+		opts.ReleaseStorageDriver,
+		release.ReleaseStorageOptions{
+			StaticClient:        clientFactory.Static().(*kubernetes.Clientset),
+			HistoryLimit:        opts.ReleaseHistoryLimit,
+			SQLConnectionString: opts.SQLConnectionString,
 		},
-	); err != nil {
-		return fmt.Errorf("helm action config init: %w", err)
+	)
+	if err != nil {
+		return fmt.Errorf("construct release storage: %w", err)
 	}
-
-	helmReleaseStorage := helmActionConfig.Releases
-	helmReleaseStorage.MaxHistory = opts.ReleaseHistoryLimit
 
 	var lockManager *lock.LockManager
 	if m, err := lock.NewLockManager(
@@ -147,7 +143,7 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 	history, err := release.NewHistory(
 		releaseName,
 		releaseNamespace,
-		helmReleaseStorage,
+		releaseStorage,
 		release.HistoryOptions{
 			Mapper:          clientFactory.Mapper(),
 			DiscoveryClient: clientFactory.Discovery(),

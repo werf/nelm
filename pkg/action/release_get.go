@@ -11,14 +11,12 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/gookit/color"
 	"github.com/samber/lo"
+	"k8s.io/client-go/kubernetes"
 
-	helm_v3 "github.com/werf/3p-helm/cmd/helm"
-	"github.com/werf/3p-helm/pkg/action"
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/internal/release"
 )
 
@@ -44,6 +42,7 @@ type ReleaseGetOptions struct {
 	OutputNoPrint        bool
 	ReleaseStorageDriver string
 	Revision             int
+	SQLConnectionString  string
 	TempDirPath          string
 }
 
@@ -92,22 +91,18 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		return nil, fmt.Errorf("construct kube client factory: %w", err)
 	}
 
-	helmSettings := helm_v3.Settings
-	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))
-
-	helmActionConfig := &action.Configuration{}
-	if err := helmActionConfig.Init(
-		clientFactory.LegacyClientGetter(),
+	releaseStorage, err := release.NewReleaseStorage(
+		ctx,
 		releaseNamespace,
-		string(opts.ReleaseStorageDriver),
-		func(format string, a ...interface{}) {
-			log.Default.Debug(ctx, format, a...)
+		opts.ReleaseStorageDriver,
+		release.ReleaseStorageOptions{
+			StaticClient:        clientFactory.Static().(*kubernetes.Clientset),
+			SQLConnectionString: opts.SQLConnectionString,
 		},
-	); err != nil {
-		return nil, fmt.Errorf("helm action config init: %w", err)
+	)
+	if err != nil {
+		return nil, fmt.Errorf("construct release storage: %w", err)
 	}
-
-	helmReleaseStorage := helmActionConfig.Releases
 
 	secrets.DisableSecrets = true
 	loader.NoChartLockWarning = ""
@@ -115,8 +110,11 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 	history, err := release.NewHistory(
 		releaseName,
 		releaseNamespace,
-		helmReleaseStorage,
-		release.HistoryOptions{},
+		releaseStorage,
+		release.HistoryOptions{
+			Mapper:          clientFactory.Mapper(),
+			DiscoveryClient: clientFactory.Discovery(),
+		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("construct release history: %w", err)
