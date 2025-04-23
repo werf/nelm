@@ -44,7 +44,6 @@ type ReleaseRollbackOptions struct {
 	KubeSkipTLSVerify          bool
 	KubeTLSServerName          string
 	KubeToken                  string
-	LogColorMode               string
 	NetworkParallelism         int
 	NoProgressTablePrint       bool
 	ProgressTablePrintInterval time.Duration
@@ -346,7 +345,6 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 		logStore,
 		track.TablesBuilderOptions{
 			DefaultNamespace: releaseNamespace,
-			Colorize:         opts.LogColorMode == LogColorModeOn,
 		},
 	)
 
@@ -491,8 +489,6 @@ func applyReleaseRollbackOptionsDefaults(
 	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
 		opts.KubeConfigPaths = []string{filepath.Join(homeDir, ".kube", "config")}
 	}
-
-	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
 
 	if opts.NetworkParallelism <= 0 {
 		opts.NetworkParallelism = DefaultNetworkParallelism

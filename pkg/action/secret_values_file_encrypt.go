@@ -14,7 +14,6 @@ const (
 )
 
 type SecretValuesFileEncryptOptions struct {
-	LogColorMode   string
 	OutputFilePath string
 	SecretKey      string
 	SecretWorkDir  string
@@ -62,8 +61,6 @@ func applySecretValuesFileEncryptOptionsDefaults(opts SecretValuesFileEncryptOpt
 			return SecretValuesFileEncryptOptions{}, fmt.Errorf("get current working directory: %w", err)
 		}
 	}
-
-	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, opts.OutputFilePath != "")
 
 	return opts, nil
 }

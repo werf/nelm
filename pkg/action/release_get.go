@@ -36,7 +36,6 @@ type ReleaseGetOptions struct {
 	KubeSkipTLSVerify    bool
 	KubeTLSServerName    string
 	KubeToken            string
-	LogColorMode         string
 	NetworkParallelism   int
 	OutputFormat         string
 	OutputNoPrint        bool
@@ -196,7 +195,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		}
 
 		var colorLevel color.Level
-		if opts.LogColorMode != LogColorModeOff {
+		if color.Enable {
 			colorLevel = color.DetectColorLevel()
 		}
 
@@ -220,8 +219,6 @@ func applyReleaseGetOptionsDefaults(opts ReleaseGetOptions, homeDir string) (Rel
 	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
 		opts.KubeConfigPaths = []string{filepath.Join(homeDir, ".kube", "config")}
 	}
-
-	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
 
 	if opts.NetworkParallelism <= 0 {
 		opts.NetworkParallelism = DefaultNetworkParallelism

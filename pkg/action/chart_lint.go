@@ -60,7 +60,6 @@ type ChartLintOptions struct {
 	KubeToken                    string
 	Remote                       bool
 	LocalKubeVersion             string
-	LogColorMode                 string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	RegistryCredentialsPath      string
@@ -355,8 +354,6 @@ func applyChartLintOptionsDefaults(opts ChartLintOptions, currentDir, homeDir st
 	if opts.LogRegistryStreamOut == nil {
 		opts.LogRegistryStreamOut = os.Stdout
 	}
-
-	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
 
 	if opts.NetworkParallelism <= 0 {
 		opts.NetworkParallelism = DefaultNetworkParallelism

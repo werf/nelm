@@ -75,7 +75,6 @@ type ReleaseInstallOptions struct {
 	KubeSkipTLSVerify            bool
 	KubeTLSServerName            string
 	KubeToken                    string
-	LogColorMode                 string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	NoProgressTablePrint         bool
@@ -471,7 +470,6 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		logStore,
 		track.TablesBuilderOptions{
 			DefaultNamespace: releaseNamespace,
-			Colorize:         opts.LogColorMode == LogColorModeOn,
 		},
 	)
 
@@ -655,8 +653,6 @@ func applyReleaseInstallOptionsDefaults(
 	if opts.LogRegistryStreamOut == nil {
 		opts.LogRegistryStreamOut = os.Stdout
 	}
-
-	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
 
 	if opts.NetworkParallelism <= 0 {
 		opts.NetworkParallelism = DefaultNetworkParallelism

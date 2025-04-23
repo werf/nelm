@@ -65,7 +65,6 @@ type ChartRenderOptions struct {
 	KubeToken                    string
 	Remote                       bool
 	LocalKubeVersion             string
-	LogColorMode                 string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	OutputFilePath               string
@@ -359,7 +358,10 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 		}
 	}
 
-	var renderOutStream io.Writer
+	var (
+		renderOutStream  io.Writer
+		renderColorLevel color.Level
+	)
 	if opts.OutputFilePath != "" {
 		file, err := os.Create(opts.OutputFilePath)
 		if err != nil {
@@ -368,13 +370,12 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 		defer file.Close()
 
 		renderOutStream = file
+		renderColorLevel = color.LevelNo
 	} else {
 		renderOutStream = os.Stdout
-	}
-
-	var colorLevel color.Level
-	if opts.LogColorMode != LogColorModeOff {
-		colorLevel = color.DetectColorLevel()
+		if color.Enable {
+			renderColorLevel = color.DetectColorLevel()
+		}
 	}
 
 	if opts.ShowCRDs {
@@ -383,7 +384,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 				continue
 			}
 
-			if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream, colorLevel); err != nil {
+			if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream, renderColorLevel); err != nil {
 				return fmt.Errorf("render CRD %q: %w", resource.HumanID(), err)
 			}
 		}
@@ -394,7 +395,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 			continue
 		}
 
-		if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream, colorLevel); err != nil {
+		if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream, renderColorLevel); err != nil {
 			return fmt.Errorf("render hook resource %q: %w", resource.HumanID(), err)
 		}
 	}
@@ -404,7 +405,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 			continue
 		}
 
-		if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream, colorLevel); err != nil {
+		if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream, renderColorLevel); err != nil {
 			return fmt.Errorf("render general resource %q: %w", resource.HumanID(), err)
 		}
 	}
@@ -440,8 +441,6 @@ func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir, homeDi
 	if opts.LogRegistryStreamOut == nil {
 		opts.LogRegistryStreamOut = os.Stdout
 	}
-
-	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, opts.OutputFilePath != "")
 
 	if opts.NetworkParallelism <= 0 {
 		opts.NetworkParallelism = DefaultNetworkParallelism

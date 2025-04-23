@@ -160,7 +160,7 @@ func stdoutPiped() (bool, error) {
 	return piped, nil
 }
 
-func applyLogColorModeDefault(mode string, outputToFile bool) string {
+func applyLogColorModeDefault(mode string) string {
 	if mode == "" || mode == LogColorModeAuto {
 		piped, err := stdoutPiped()
 		if err != nil {
@@ -169,7 +169,7 @@ func applyLogColorModeDefault(mode string, outputToFile bool) string {
 
 		uncoloredTerminal := color.DetectColorLevel() == terminfo.ColorLevelNone
 
-		if outputToFile || piped || uncoloredTerminal {
+		if piped || uncoloredTerminal {
 			mode = LogColorModeOff
 		} else {
 			mode = LogColorModeOn

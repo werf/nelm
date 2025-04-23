@@ -13,8 +13,9 @@ import (
 type chartSecretValuesFileEditOptions struct {
 	action.SecretValuesFileEditOptions
 
-	LogLevel   string
-	ValuesFile string
+	LogColorMode string
+	LogLevel     string
+	ValuesFile   string
 }
 
 func newChartSecretValuesFileEditCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -34,7 +35,7 @@ func newChartSecretValuesFileEditCommand(ctx context.Context, afterAllCommandsBu
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultSecretValuesFileEditLogLevel)
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultSecretValuesFileEditLogLevel, cfg.LogColorMode)
 
 			cfg.ValuesFile = args[0]
 

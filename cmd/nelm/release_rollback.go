@@ -14,6 +14,7 @@ import (
 type releaseRollbackConfig struct {
 	action.ReleaseRollbackOptions
 
+	LogColorMode     string
 	LogLevel         string
 	ReleaseName      string
 	ReleaseNamespace string
@@ -33,7 +34,7 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 			Args: cobra.MaximumNArgs(1),
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleaseRollbackLogLevel)
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleaseRollbackLogLevel, cfg.LogColorMode)
 
 			if len(args) > 0 {
 				var err error

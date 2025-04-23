@@ -13,8 +13,9 @@ import (
 type chartSecretValuesFileDecryptOptions struct {
 	action.SecretValuesFileDecryptOptions
 
-	LogLevel   string
-	ValuesFile string
+	LogColorMode string
+	LogLevel     string
+	ValuesFile   string
 }
 
 func newChartSecretValuesFileDecryptCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -34,7 +35,7 @@ func newChartSecretValuesFileDecryptCommand(ctx context.Context, afterAllCommand
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultSecretValuesFileDecryptLogLevel)
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultSecretValuesFileDecryptLogLevel, cfg.LogColorMode)
 
 			cfg.ValuesFile = args[0]
 

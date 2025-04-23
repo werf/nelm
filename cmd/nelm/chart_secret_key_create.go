@@ -13,7 +13,8 @@ import (
 type chartSecretKeyCreateOptions struct {
 	action.SecretKeyCreateOptions
 
-	LogLevel string
+	LogColorMode string
+	LogLevel     string
 }
 
 func newChartSecretKeyCreateCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -28,7 +29,7 @@ func newChartSecretKeyCreateCommand(ctx context.Context, afterAllCommandsBuiltFu
 		secretCmdGroup,
 		cli.SubCommandOptions{},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultSecretKeyCreateLogLevel)
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultSecretKeyCreateLogLevel, cfg.LogColorMode)
 
 			if _, err := action.SecretKeyCreate(ctx, cfg.SecretKeyCreateOptions); err != nil {
 				return fmt.Errorf("secret key create: %w", err)

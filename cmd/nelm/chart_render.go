@@ -13,7 +13,8 @@ import (
 type chartRenderConfig struct {
 	action.ChartRenderOptions
 
-	LogLevel string
+	LogColorMode string
+	LogLevel     string
 }
 
 func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -33,7 +34,7 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultChartRenderLogLevel)
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultChartRenderLogLevel, cfg.LogColorMode)
 
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]
