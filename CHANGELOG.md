@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.0](https://www.github.com/werf/nelm/compare/v1.1.5...v1.2.0) (2025-04-23)
+
+
+### Features
+
+* enable colors by default in some popular CI systems ([d3aa7b8](https://www.github.com/werf/nelm/commit/d3aa7b82f911418be846982e4e05b71206eae308))
+
+
+### Bug Fixes
+
+* Buildah reexec sets wrong HOME dir ([4eb656e](https://www.github.com/werf/nelm/commit/4eb656e82a8ba38b4228cf7a80449f297211255b))
+* default kubeconfig not used on empty string kubeconfigpath action option ([ffc2132](https://www.github.com/werf/nelm/commit/ffc21329922511721326ce0b3201a56c4a3201d3))
+
 ### [1.1.5](https://www.github.com/werf/nelm/compare/v1.1.4...v1.1.5) (2025-04-14)
 
 
