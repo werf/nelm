@@ -13,7 +13,6 @@ const (
 )
 
 type SecretKeyCreateOptions struct {
-	LogColorMode  string
 	OutputNoPrint bool
 	TempDirPath   string
 }
@@ -49,8 +48,6 @@ func applySecretKeyCreateOptionsDefaults(opts SecretKeyCreateOptions) (SecretKey
 			return SecretKeyCreateOptions{}, fmt.Errorf("create temp dir: %w", err)
 		}
 	}
-
-	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
 
 	return opts, nil
 }

@@ -13,6 +13,7 @@ import (
 type releasePlanInstallConfig struct {
 	action.ReleasePlanInstallOptions
 
+	LogColorMode     string
 	LogLevel         string
 	ReleaseName      string
 	ReleaseNamespace string
@@ -35,7 +36,7 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleasePlanInstallLogLevel)
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleasePlanInstallLogLevel, cfg.LogColorMode)
 
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]

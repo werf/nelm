@@ -25,7 +25,6 @@ type TablesBuilder struct {
 	defaultNamespace      string
 	maxProgressTableWidth int
 	maxLogEventTableWidth int
-	colorize              bool
 
 	nextLogPointers    map[string]int
 	nextEventPointers  map[string]int
@@ -41,7 +40,6 @@ func NewTablesBuilder(taskStore *statestore.TaskStore, logStore *kdutil.Concurre
 		taskStore:          taskStore,
 		logStore:           logStore,
 		defaultNamespace:   defaultNamespace,
-		colorize:           opts.Colorize,
 		nextLogPointers:    make(map[string]int),
 		nextEventPointers:  make(map[string]int),
 		hideReadinessTasks: make(map[string]bool),
@@ -56,7 +54,6 @@ func NewTablesBuilder(taskStore *statestore.TaskStore, logStore *kdutil.Concurre
 
 type TablesBuilderOptions struct {
 	DefaultNamespace string
-	Colorize         bool
 	MaxTableWidth    int
 }
 
@@ -103,7 +100,7 @@ func (b *TablesBuilder) BuildLogTables() (tables map[string]prtable.Writer, nonE
 					table := prtable.NewWriter()
 					setLogTableStyle(table, b.maxLogEventTableWidth)
 
-					header := buildLogsHeader(rl, source, b.defaultNamespace, b.colorize)
+					header := buildLogsHeader(rl, source, b.defaultNamespace)
 
 					nextLogPointer, found := b.nextLogPointers[header]
 					if !found {
@@ -152,7 +149,7 @@ func (b *TablesBuilder) BuildEventTables() (tables map[string]prtable.Writer, no
 					table := prtable.NewWriter()
 					setEventTableStyle(table, b.maxLogEventTableWidth)
 
-					header := buildEventsHeader(rs, b.defaultNamespace, b.colorize)
+					header := buildEventsHeader(rs, b.defaultNamespace)
 
 					nextEventPointer, found := b.nextEventPointers[header]
 					if !found {
@@ -227,11 +224,11 @@ func (b *TablesBuilder) buildReadinessProgressRows() (rows []prtable.Row) {
 					isRootResource := rts.Name() == rs.Name() && rts.Namespace() == rs.Namespace() && rts.GroupVersionKind() == rs.GroupVersionKind()
 
 					if isRootResource {
-						stateCell = buildReadinessRootResourceStateCell(rts, b.colorize)
-						resourceCell = buildRootResourceCell(rs, b.colorize)
+						stateCell = buildReadinessRootResourceStateCell(rts)
+						resourceCell = buildRootResourceCell(rs)
 					} else {
-						stateCell = buildReadinessChildResourceStateCell(rs, b.colorize)
-						resourceCell = buildChildResourceCell(rs, b.colorize)
+						stateCell = buildReadinessChildResourceStateCell(rs)
+						resourceCell = buildChildResourceCell(rs)
 					}
 
 					if rs.Namespace() != "" && rs.Namespace() != b.defaultNamespace {
@@ -256,7 +253,7 @@ func (b *TablesBuilder) buildReadinessProgressRows() (rows []prtable.Row) {
 						infoCell = append(
 							infoCell,
 							buildErrorsInfo(rs),
-							buildLastErrInfo(rs, b.colorize),
+							buildLastErrInfo(rs),
 						)
 					}
 
@@ -271,7 +268,7 @@ func (b *TablesBuilder) buildReadinessProgressRows() (rows []prtable.Row) {
 	}
 
 	if len(rows) > 0 {
-		headerRow := buildReadinessHeaderRow(b.colorize)
+		headerRow := buildReadinessHeaderRow()
 		rows = append([]prtable.Row{headerRow}, rows...)
 	}
 
@@ -289,8 +286,8 @@ func (b *TablesBuilder) buildPresenceProgressRows() (rows []prtable.Row) {
 			}
 
 			pts.ResourceState().RTransaction(func(rs *statestore.ResourceState) {
-				stateCell := buildPresenceRootResourceStateCell(pts, b.colorize)
-				resourceCell := buildRootResourceCell(rs, b.colorize)
+				stateCell := buildPresenceRootResourceStateCell(pts)
+				resourceCell := buildRootResourceCell(rs)
 
 				var infoCell []string
 
@@ -302,7 +299,7 @@ func (b *TablesBuilder) buildPresenceProgressRows() (rows []prtable.Row) {
 					infoCell = append(
 						infoCell,
 						buildErrorsInfo(rs),
-						buildLastErrInfo(rs, b.colorize),
+						buildLastErrInfo(rs),
 					)
 				}
 
@@ -316,7 +313,7 @@ func (b *TablesBuilder) buildPresenceProgressRows() (rows []prtable.Row) {
 	}
 
 	if len(rows) > 0 {
-		headerRow := buildPresenceHeaderRow(b.colorize)
+		headerRow := buildPresenceHeaderRow()
 		rows = append([]prtable.Row{headerRow}, rows...)
 	}
 
@@ -334,8 +331,8 @@ func (b *TablesBuilder) buildAbsenceProgressRows() (rows []prtable.Row) {
 			}
 
 			ats.ResourceState().RTransaction(func(rs *statestore.ResourceState) {
-				stateCell := buildAbsenceRootResourceStateCell(ats, b.colorize)
-				resourceCell := buildRootResourceCell(rs, b.colorize)
+				stateCell := buildAbsenceRootResourceStateCell(ats)
+				resourceCell := buildRootResourceCell(rs)
 
 				var infoCell []string
 
@@ -347,7 +344,7 @@ func (b *TablesBuilder) buildAbsenceProgressRows() (rows []prtable.Row) {
 					infoCell = append(
 						infoCell,
 						buildErrorsInfo(rs),
-						buildLastErrInfo(rs, b.colorize),
+						buildLastErrInfo(rs),
 					)
 				}
 
@@ -361,86 +358,35 @@ func (b *TablesBuilder) buildAbsenceProgressRows() (rows []prtable.Row) {
 	}
 
 	if len(rows) > 0 {
-		headerRow := buildAbsenceHeaderRow(b.colorize)
+		headerRow := buildAbsenceHeaderRow()
 		rows = append([]prtable.Row{headerRow}, rows...)
 	}
 
 	return rows
 }
 
-func buildReadinessHeaderRow(colorize bool) prtable.Row {
-	resourceColumn := "RESOURCE (→READY)"
-	if colorize {
-		resourceColumn = color.New(color.Bold).Sprintf(resourceColumn)
+func buildReadinessHeaderRow() prtable.Row {
+	return prtable.Row{
+		color.New(color.Bold).Sprintf("RESOURCE (→READY)"),
+		color.New(color.Bold).Sprintf("STATE"),
+		color.New(color.Bold).Sprintf("INFO"),
 	}
-
-	stateColumn := "STATE"
-	if colorize {
-		stateColumn = color.New(color.Bold).Sprintf(stateColumn)
-	}
-
-	infoColumn := "INFO"
-	if colorize {
-		infoColumn = color.New(color.Bold).Sprintf(infoColumn)
-	}
-
-	headerRow := prtable.Row{
-		resourceColumn,
-		stateColumn,
-		infoColumn,
-	}
-
-	return headerRow
 }
 
-func buildPresenceHeaderRow(colorize bool) prtable.Row {
-	resourceColumn := "RESOURCE (→PRESENT)"
-	if colorize {
-		resourceColumn = color.New(color.Bold).Sprintf(resourceColumn)
+func buildPresenceHeaderRow() prtable.Row {
+	return prtable.Row{
+		color.New(color.Bold).Sprintf("RESOURCE (→PRESENT)"),
+		color.New(color.Bold).Sprintf("STATE"),
+		color.New(color.Bold).Sprintf("INFO"),
 	}
-
-	stateColumn := "STATE"
-	if colorize {
-		stateColumn = color.New(color.Bold).Sprintf(stateColumn)
-	}
-
-	infoColumn := "INFO"
-	if colorize {
-		infoColumn = color.New(color.Bold).Sprintf(infoColumn)
-	}
-
-	headerRow := prtable.Row{
-		resourceColumn,
-		stateColumn,
-		infoColumn,
-	}
-
-	return headerRow
 }
 
-func buildAbsenceHeaderRow(colorize bool) prtable.Row {
-	resourceColumn := "RESOURCE (→ABSENT)"
-	if colorize {
-		resourceColumn = color.New(color.Bold).Sprintf(resourceColumn)
+func buildAbsenceHeaderRow() prtable.Row {
+	return prtable.Row{
+		color.New(color.Bold).Sprintf("RESOURCE (→ABSENT)"),
+		color.New(color.Bold).Sprintf("STATE"),
+		color.New(color.Bold).Sprintf("INFO"),
 	}
-
-	stateColumn := "STATE"
-	if colorize {
-		stateColumn = color.New(color.Bold).Sprintf(stateColumn)
-	}
-
-	infoColumn := "INFO"
-	if colorize {
-		infoColumn = color.New(color.Bold).Sprintf(infoColumn)
-	}
-
-	headerRow := prtable.Row{
-		resourceColumn,
-		stateColumn,
-		infoColumn,
-	}
-
-	return headerRow
 }
 
 func setProgressTableStyle(table prtable.Writer, tableWidth int) {
@@ -532,53 +478,36 @@ func setEventTableStyle(table prtable.Writer, tableWidth int) {
 	})
 }
 
-func buildLogsHeader(resourceLogs *logstore.ResourceLogs, source, defaultNamespace string, colorize bool) string {
+func buildLogsHeader(resourceLogs *logstore.ResourceLogs, source, defaultNamespace string) string {
 	result := "Logs for " + resourceLogs.GroupVersionKind().Kind + "/" + resourceLogs.Name() + ", " + source
 
 	if resourceLogs.Namespace() != defaultNamespace {
 		result += ", namespace: " + resourceLogs.Namespace()
 	}
 
-	if colorize {
-		result = color.New(color.Bold, color.Blue).Sprintf(result)
-	}
-
-	return result
+	return color.New(color.Bold, color.Blue).Sprintf(result)
 }
 
-func buildEventsHeader(resourceState *statestore.ResourceState, defaultNamespace string, colorize bool) string {
+func buildEventsHeader(resourceState *statestore.ResourceState, defaultNamespace string) string {
 	result := "Events for " + resourceState.GroupVersionKind().Kind + "/" + resourceState.Name()
 
 	if resourceState.Namespace() != defaultNamespace {
 		result += ", namespace: " + resourceState.Namespace()
 	}
 
-	if colorize {
-		result = color.New(color.Bold, color.Blue).Sprintf(result)
-	}
-
-	return result
+	return color.New(color.Bold, color.Blue).Sprintf(result)
 }
 
-func buildReadinessRootResourceStateCell(taskState *statestore.ReadinessTaskState, colorize bool) string {
+func buildReadinessRootResourceStateCell(taskState *statestore.ReadinessTaskState) string {
 	var stateCell string
 
 	switch status := taskState.Status(); status {
 	case statestore.ReadinessTaskStatusReady:
-		stateCell = caps.ToUpper(string(status))
-		if colorize {
-			stateCell = color.New(color.Green).Sprintf(stateCell)
-		}
+		stateCell = color.New(color.Green).Sprintf(caps.ToUpper(string(status)))
 	case statestore.ReadinessTaskStatusProgressing:
-		stateCell = "WAITING"
-		if colorize {
-			stateCell = color.New(color.Yellow).Sprintf(stateCell)
-		}
+		stateCell = color.New(color.Yellow).Sprintf("WAITING")
 	case statestore.ReadinessTaskStatusFailed:
-		stateCell = caps.ToUpper(string(status))
-		if colorize {
-			stateCell = color.New(color.Red).Sprintf(stateCell)
-		}
+		stateCell = color.New(color.Red).Sprintf(caps.ToUpper(string(status)))
 	default:
 		panic("unexpected task status")
 	}
@@ -586,25 +515,16 @@ func buildReadinessRootResourceStateCell(taskState *statestore.ReadinessTaskStat
 	return stateCell
 }
 
-func buildReadinessChildResourceStateCell(resourceState *statestore.ResourceState, colorize bool) string {
+func buildReadinessChildResourceStateCell(resourceState *statestore.ResourceState) string {
 	var stateCell string
 
 	switch status := resourceState.Status(); status {
 	case statestore.ResourceStatusReady:
-		stateCell = caps.ToUpper(string(status))
-		if colorize {
-			stateCell = color.New(color.Green).Sprintf(stateCell)
-		}
+		stateCell = color.New(color.Green).Sprintf(caps.ToUpper(string(status)))
 	case statestore.ResourceStatusCreated, statestore.ResourceStatusDeleted, statestore.ResourceStatusUnknown:
-		stateCell = caps.ToUpper(string(status))
-		if colorize {
-			stateCell = color.New(color.Yellow).Sprintf(stateCell)
-		}
+		stateCell = color.New(color.Yellow).Sprintf(caps.ToUpper(string(status)))
 	case statestore.ResourceStatusFailed:
-		stateCell = caps.ToUpper(string(status))
-		if colorize {
-			stateCell = color.New(color.Red).Sprintf(stateCell)
-		}
+		stateCell = color.New(color.Red).Sprintf(caps.ToUpper(string(status)))
 	default:
 		panic("unexpected resource status")
 	}
@@ -612,21 +532,14 @@ func buildReadinessChildResourceStateCell(resourceState *statestore.ResourceStat
 	return stateCell
 }
 
-func buildRootResourceCell(resourceState *statestore.ResourceState, colorize bool) string {
-	var resourceCell string
+func buildRootResourceCell(resourceState *statestore.ResourceState) string {
+	kind := color.New(color.Cyan).Sprintf(resourceState.GroupVersionKind().Kind)
 
-	kind := resourceState.GroupVersionKind().Kind
-	if colorize {
-		kind = color.New(color.Cyan).Sprintf(kind)
-	}
-
-	resourceCell = fmt.Sprintf("%s/%s", kind, resourceState.Name())
-
-	return resourceCell
+	return fmt.Sprintf("%s/%s", kind, resourceState.Name())
 }
 
-func buildChildResourceCell(resourceState *statestore.ResourceState, colorize bool) string {
-	return " • " + buildRootResourceCell(resourceState, colorize)
+func buildChildResourceCell(resourceState *statestore.ResourceState) string {
+	return " • " + buildRootResourceCell(resourceState)
 }
 
 func buildReadyPodsInfo(resourceState *statestore.ResourceState, readyPods int) string {
@@ -689,7 +602,7 @@ func buildErrorsInfo(resourceState *statestore.ResourceState) string {
 	return fmt.Sprintf("Errors:%d", errsCount)
 }
 
-func buildLastErrInfo(resourceState *statestore.ResourceState, colorize bool) string {
+func buildLastErrInfo(resourceState *statestore.ResourceState) string {
 	var lastErr *statestore.Error
 	for _, errs := range resourceState.Errors() {
 		for _, err := range errs {
@@ -704,33 +617,19 @@ func buildLastErrInfo(resourceState *statestore.ResourceState, colorize bool) st
 		}
 	}
 
-	errInfo := fmt.Sprintf("LastError:%q", lastErr.Err.Error())
-	if colorize {
-		errInfo = color.New(color.Red).Sprintf(errInfo)
-	}
-
-	return errInfo
+	return color.New(color.Red).Sprintf("LastError:%q", lastErr.Err.Error())
 }
 
-func buildPresenceRootResourceStateCell(taskState *statestore.PresenceTaskState, colorize bool) string {
+func buildPresenceRootResourceStateCell(taskState *statestore.PresenceTaskState) string {
 	var stateCell string
 
 	switch status := taskState.Status(); status {
 	case statestore.PresenceTaskStatusPresent:
-		stateCell = caps.ToUpper(string(status))
-		if colorize {
-			stateCell = color.New(color.Green).Sprintf(stateCell)
-		}
+		stateCell = color.New(color.Green).Sprintf(caps.ToUpper(string(status)))
 	case statestore.PresenceTaskStatusProgressing:
-		stateCell = "WAITING"
-		if colorize {
-			stateCell = color.New(color.Yellow).Sprintf(stateCell)
-		}
+		stateCell = color.New(color.Yellow).Sprintf("WAITING")
 	case statestore.PresenceTaskStatusFailed:
-		stateCell = caps.ToUpper(string(status))
-		if colorize {
-			stateCell = color.New(color.Red).Sprintf(stateCell)
-		}
+		stateCell = color.New(color.Red).Sprintf(caps.ToUpper(string(status)))
 	default:
 		panic("unexpected task status")
 	}
@@ -738,25 +637,16 @@ func buildPresenceRootResourceStateCell(taskState *statestore.PresenceTaskState,
 	return stateCell
 }
 
-func buildAbsenceRootResourceStateCell(taskState *statestore.AbsenceTaskState, colorize bool) string {
+func buildAbsenceRootResourceStateCell(taskState *statestore.AbsenceTaskState) string {
 	var stateCell string
 
 	switch status := taskState.Status(); status {
 	case statestore.AbsenceTaskStatusAbsent:
-		stateCell = caps.ToUpper(string(status))
-		if colorize {
-			stateCell = color.New(color.Green).Sprintf(stateCell)
-		}
+		stateCell = color.New(color.Green).Sprintf(caps.ToUpper(string(status)))
 	case statestore.AbsenceTaskStatusProgressing:
-		stateCell = "WAITING"
-		if colorize {
-			stateCell = color.New(color.Yellow).Sprintf(stateCell)
-		}
+		stateCell = color.New(color.Yellow).Sprintf("WAITING")
 	case statestore.AbsenceTaskStatusFailed:
-		stateCell = caps.ToUpper(string(status))
-		if colorize {
-			stateCell = color.New(color.Red).Sprintf(stateCell)
-		}
+		stateCell = color.New(color.Red).Sprintf(caps.ToUpper(string(status)))
 	default:
 		panic("unexpected task status")
 	}

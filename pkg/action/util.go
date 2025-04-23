@@ -10,6 +10,7 @@ import (
 
 	contdlog "github.com/containerd/log"
 	"github.com/davecgh/go-spew/spew"
+	"github.com/gookit/color"
 	"github.com/sirupsen/logrus"
 	"k8s.io/klog"
 	klogv2 "k8s.io/klog/v2"
@@ -18,7 +19,7 @@ import (
 	"github.com/werf/nelm/internal/log"
 )
 
-func SetupLogging(ctx context.Context, logLevel, defaultLogLevel string) context.Context {
+func SetupLogging(ctx context.Context, logLevel, defaultLogLevel, colorMode string) context.Context {
 	if logLevel == "" {
 		logLevel = defaultLogLevel
 	}
@@ -124,6 +125,9 @@ func SetupLogging(ctx context.Context, logLevel, defaultLogLevel string) context
 	default:
 		panic(fmt.Sprintf("unknown log level %q", logLevel))
 	}
+
+	colorMode = applyLogColorModeDefault(colorMode)
+	color.Enable = colorMode != LogColorModeOff
 
 	return ctx
 }

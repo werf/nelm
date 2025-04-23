@@ -13,7 +13,8 @@ import (
 type chartLintConfig struct {
 	action.ChartLintOptions
 
-	LogLevel string
+	LogColorMode string
+	LogLevel     string
 }
 
 func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -33,7 +34,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultChartLintLogLevel)
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultChartLintLogLevel, cfg.LogColorMode)
 
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]

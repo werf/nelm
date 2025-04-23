@@ -32,7 +32,7 @@ func newChartDependencyUpdateCommand(ctx context.Context, afterAllCommandsBuiltF
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		helmSettings := helm_v3.Settings
 
-		ctx = action.SetupLogging(ctx, lo.Ternary(helmSettings.Debug, action.DebugLogLevel, action.InfoLogLevel), "")
+		ctx = action.SetupLogging(ctx, lo.Ternary(helmSettings.Debug, action.DebugLogLevel, action.InfoLogLevel), "", action.LogColorModeAuto)
 
 		secrets.DisableSecrets = true
 		loader.NoChartLockWarning = ""

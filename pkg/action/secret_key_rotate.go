@@ -14,7 +14,6 @@ const (
 
 type SecretKeyRotateOptions struct {
 	ChartDirPath      string
-	LogColorMode      string
 	NewSecretKey      string
 	OldSecretKey      string
 	SecretValuesPaths []string
@@ -71,8 +70,6 @@ func applySecretKeyRotateOptionsDefaults(opts SecretKeyRotateOptions, currentDir
 			return SecretKeyRotateOptions{}, fmt.Errorf("get current working directory: %w", err)
 		}
 	}
-
-	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
 
 	return opts, nil
 }

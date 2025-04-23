@@ -22,7 +22,6 @@ const (
 )
 
 type VersionOptions struct {
-	LogColorMode  string
 	OutputFormat  string
 	OutputNoPrint bool
 	TempDirPath   string
@@ -73,7 +72,7 @@ func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {
 		}
 
 		var colorLevel color.Level
-		if opts.LogColorMode != LogColorModeOff {
+		if color.Enable {
 			colorLevel = color.DetectColorLevel()
 		}
 
@@ -97,8 +96,6 @@ func applyVersionOptionsDefaults(opts VersionOptions) (VersionOptions, error) {
 	if opts.OutputFormat == "" {
 		opts.OutputFormat = DefaultVersionOutputFormat
 	}
-
-	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
 
 	return opts, nil
 }

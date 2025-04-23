@@ -65,7 +65,6 @@ type ReleasePlanInstallOptions struct {
 	KubeSkipTLSVerify            bool
 	KubeTLSServerName            string
 	KubeToken                    string
-	LogColorMode                 string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	RegistryCredentialsPath      string
@@ -392,8 +391,6 @@ func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, curr
 	if opts.LogRegistryStreamOut == nil {
 		opts.LogRegistryStreamOut = os.Stdout
 	}
-
-	opts.LogColorMode = applyLogColorModeDefault(opts.LogColorMode, false)
 
 	if opts.NetworkParallelism <= 0 {
 		opts.NetworkParallelism = DefaultNetworkParallelism

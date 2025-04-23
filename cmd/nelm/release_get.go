@@ -14,6 +14,7 @@ import (
 type releaseGetConfig struct {
 	action.ReleaseGetOptions
 
+	LogColorMode     string
 	LogLevel         string
 	ReleaseName      string
 	ReleaseNamespace string
@@ -33,7 +34,7 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 			Args: cobra.MaximumNArgs(1),
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleaseGetLogLevel)
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleaseGetLogLevel, cfg.LogColorMode)
 
 			if len(args) > 0 {
 				var err error

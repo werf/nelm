@@ -13,7 +13,8 @@ import (
 type chartSecretKeyRotateOptions struct {
 	action.SecretKeyRotateOptions
 
-	LogLevel string
+	LogColorMode string
+	LogLevel     string
 }
 
 func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -33,7 +34,7 @@ func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFu
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultSecretKeyRotateLogLevel)
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultSecretKeyRotateLogLevel, cfg.LogColorMode)
 
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]
