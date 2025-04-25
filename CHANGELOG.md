@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.2.1](https://www.github.com/werf/nelm/compare/v1.2.0...v1.2.1) (2025-04-25)
+
+
+### Bug Fixes
+
+* `release plan` shows insignificant changes for no reason ([66d500b](https://www.github.com/werf/nelm/commit/66d500b65bc4042456589a09c6ab777529a92424))
+
 ## [1.2.0](https://www.github.com/werf/nelm/compare/v1.1.5...v1.2.0) (2025-04-23)
 
 
