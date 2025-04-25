@@ -88,5 +88,7 @@ func JsonPatchPathToJsonPath(path string) string {
 	}
 	path = strings.ReplaceAll(path, ".", `\.`)
 	path = strings.ReplaceAll(path, ":", `\:`)
-	return strings.ReplaceAll(path, "/", ".")
+	path = strings.ReplaceAll(path, "/", ".")
+	path = strings.ReplaceAll(path, "~1", "/")
+	return strings.ReplaceAll(path, "~0", "~")
 }
