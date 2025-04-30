@@ -2,11 +2,11 @@ groups:
   - name: "1"
     channels:
       - name: alpha
-        version: 1.2.1
+        version: 1.2.2
       - name: beta
-        version: 1.1.5
+        version: 1.2.2
       - name: ea
-        version: 1.1.1
+        version: 1.1.5
       - name: stable
         version: 1.1.1
       - name: rock-solid
