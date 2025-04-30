@@ -29,7 +29,7 @@ func newChartUploadCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		helmSettings := helm_v3.Settings
 
-		ctx = action.SetupLogging(ctx, lo.Ternary(helmSettings.Debug, action.DebugLogLevel, action.InfoLogLevel), "", action.LogColorModeAuto)
+		ctx = action.SetupLogging(ctx, lo.Ternary(helmSettings.Debug, action.DebugLogLevel, action.InfoLogLevel), "", action.LogColorModeAuto, false)
 
 		secrets.DisableSecrets = true
 		loader.NoChartLockWarning = ""

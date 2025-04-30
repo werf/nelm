@@ -374,7 +374,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 	} else {
 		renderOutStream = os.Stdout
 		if color.Enable {
-			renderColorLevel = color.DetectColorLevel()
+			renderColorLevel = color.TermColorLevel()
 		}
 	}
 

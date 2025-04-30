@@ -36,7 +36,7 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleasePlanInstallLogLevel, cfg.LogColorMode)
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleasePlanInstallLogLevel, cfg.LogColorMode, false)
 
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]

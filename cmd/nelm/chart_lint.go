@@ -34,7 +34,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultChartLintLogLevel, cfg.LogColorMode)
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultChartLintLogLevel, cfg.LogColorMode, false)
 
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]

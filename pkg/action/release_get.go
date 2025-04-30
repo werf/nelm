@@ -196,7 +196,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 
 		var colorLevel color.Level
 		if color.Enable {
-			colorLevel = color.DetectColorLevel()
+			colorLevel = color.TermColorLevel()
 		}
 
 		if err := writeWithSyntaxHighlight(os.Stdout, resultMessage, string(opts.OutputFormat), colorLevel); err != nil {
