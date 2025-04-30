@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 
@@ -34,7 +35,10 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultChartRenderLogLevel, cfg.LogColorMode, true)
+			ctx = action.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultChartRenderLogLevel), action.SetupLoggingOptions{
+				ColorMode:      cfg.LogColorMode,
+				LogIsParseable: true,
+			})
 
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]

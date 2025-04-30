@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 
@@ -29,7 +30,10 @@ func newVersionCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobr
 		miscCmdGroup,
 		cli.SubCommandOptions{},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultVersionLogLevel, cfg.LogColorMode, true)
+			ctx = action.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultVersionLogLevel), action.SetupLoggingOptions{
+				ColorMode:      cfg.LogColorMode,
+				LogIsParseable: true,
+			})
 
 			if _, err := action.Version(ctx, cfg.VersionOptions); err != nil {
 				return fmt.Errorf("version: %w", err)

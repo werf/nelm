@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 
@@ -35,7 +36,9 @@ func newChartSecretValuesFileEditCommand(ctx context.Context, afterAllCommandsBu
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultSecretValuesFileEditLogLevel, cfg.LogColorMode, false)
+			ctx = action.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultSecretValuesFileEditLogLevel), action.SetupLoggingOptions{
+				ColorMode: cfg.LogColorMode,
+			})
 
 			cfg.ValuesFile = args[0]
 

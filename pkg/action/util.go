@@ -20,11 +20,12 @@ import (
 	"github.com/werf/nelm/internal/log"
 )
 
-func SetupLogging(ctx context.Context, logLevel, defaultLogLevel, colorMode string, logIsParseable bool) context.Context {
-	if logLevel == "" {
-		logLevel = defaultLogLevel
-	}
+type SetupLoggingOptions struct {
+	ColorMode      string
+	LogIsParseable bool
+}
 
+func SetupLogging(ctx context.Context, logLevel string, opts SetupLoggingOptions) context.Context {
 	if val := ctx.Value(log.LogboekLoggerCtxKeyName); val == nil {
 		ctx = logboek.NewContext(ctx, logboek.DefaultLogger())
 	}
@@ -127,7 +128,7 @@ func SetupLogging(ctx context.Context, logLevel, defaultLogLevel, colorMode stri
 		panic(fmt.Sprintf("unknown log level %q", logLevel))
 	}
 
-	colorLevel := getColorLevel(colorMode, logIsParseable)
+	colorLevel := getColorLevel(opts.ColorMode, opts.LogIsParseable)
 
 	color.Enable = colorLevel != terminfo.ColorLevelNone
 	color.ForceSetColorLevel(colorLevel)
