@@ -34,7 +34,7 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 			Args: cobra.MaximumNArgs(1),
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleaseRollbackLogLevel, cfg.LogColorMode)
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleaseRollbackLogLevel, cfg.LogColorMode, false)
 
 			if len(args) > 0 {
 				var err error

@@ -31,7 +31,7 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 		releaseCmdGroup,
 		cli.SubCommandOptions{},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleaseUninstallLogLevel, cfg.LogColorMode)
+			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleaseUninstallLogLevel, cfg.LogColorMode, false)
 
 			if err := action.ReleaseUninstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, cfg.ReleaseUninstallOptions); err != nil {
 				return fmt.Errorf("release uninstall: %w", err)

@@ -161,33 +161,50 @@ func stdoutPiped() (bool, error) {
 	return piped, nil
 }
 
-func applyLogColorModeDefault(mode string) string {
-	if mode != "" && mode != LogColorModeAuto {
-		return mode
-	}
-
-	if piped, err := stdoutPiped(); err != nil || piped {
-		return LogColorModeOff
+func getColorLevel(mode string, logIsParseable bool) terminfo.ColorLevel {
+	switch mode {
+	case LogColorModeOff:
+		return terminfo.ColorLevelNone
+	case LogColorModeOn:
+		if colorLevel := color.DetectColorLevel(); colorLevel == terminfo.ColorLevelNone {
+			return terminfo.ColorLevelHundreds
+		} else {
+			return colorLevel
+		}
 	}
 
 	if ciInfo := cinful.Info(); ciInfo != nil {
 		switch ciInfo.Constant {
-		case "GITLAB", "GITHUB_ACTIONS", "CIRCLE", "TEAMCITY", "TRAVIS":
-			return LogColorModeOn
+		case "GITLAB", "GITHUB_ACTIONS":
+			if logIsParseable {
+				return terminfo.ColorLevelNone
+			} else {
+				return terminfo.ColorLevelHundreds
+			}
 		case "JENKINS":
-			switch os.Getenv("TERM") {
-			// From https://github.com/jenkinsci/ansicolor-plugin/tree/e2a42bf6c6acadc46468a6bf75dbd958a4747d0b?tab=readme-ov-file#colormaps
-			case "xterm", "vga", "gnome-terminal", "css":
-				return LogColorModeOn
+			if logIsParseable {
+				return terminfo.ColorLevelNone
+			} else {
+				switch os.Getenv("TERM") {
+				// From https://github.com/jenkinsci/ansicolor-plugin/tree/e2a42bf6c6acadc46468a6bf75dbd958a4747d0b?tab=readme-ov-file#colormaps
+				case "xterm", "vga", "gnome-terminal", "css":
+					return terminfo.ColorLevelHundreds
+				}
+			}
+		default:
+			if logIsParseable {
+				return terminfo.ColorLevelNone
+			} else {
+				return color.DetectColorLevel()
 			}
 		}
 	}
 
-	if color.DetectColorLevel() == terminfo.ColorLevelNone {
-		return LogColorModeOff
+	if piped, err := stdoutPiped(); err != nil || piped {
+		return terminfo.ColorLevelNone
 	}
 
-	return LogColorModeOn
+	return color.DetectColorLevel()
 }
 
 func writeWithSyntaxHighlight(outStream io.Writer, text, lang string, colorLevel terminfo.ColorLevel) error {
