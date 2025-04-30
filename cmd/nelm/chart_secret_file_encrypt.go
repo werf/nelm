@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 
@@ -35,7 +36,10 @@ func newChartSecretFileEncryptCommand(ctx context.Context, afterAllCommandsBuilt
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultSecretFileEncryptLogLevel, cfg.LogColorMode, true)
+			ctx = action.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultSecretFileEncryptLogLevel), action.SetupLoggingOptions{
+				ColorMode:      cfg.LogColorMode,
+				LogIsParseable: true,
+			})
 
 			cfg.File = args[0]
 

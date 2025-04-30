@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"strconv"
@@ -34,7 +35,9 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 			Args: cobra.MaximumNArgs(1),
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleaseRollbackLogLevel, cfg.LogColorMode, false)
+			ctx = action.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultReleaseRollbackLogLevel), action.SetupLoggingOptions{
+				ColorMode: cfg.LogColorMode,
+			})
 
 			if len(args) > 0 {
 				var err error

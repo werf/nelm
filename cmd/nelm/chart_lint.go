@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 
@@ -34,7 +35,9 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultChartLintLogLevel, cfg.LogColorMode, false)
+			ctx = action.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultChartLintLogLevel), action.SetupLoggingOptions{
+				ColorMode: cfg.LogColorMode,
+			})
 
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]

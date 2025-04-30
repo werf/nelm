@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 
@@ -35,7 +36,10 @@ func newChartSecretValuesFileDecryptCommand(ctx context.Context, afterAllCommand
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultSecretValuesFileDecryptLogLevel, cfg.LogColorMode, true)
+			ctx = action.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultSecretValuesFileDecryptLogLevel), action.SetupLoggingOptions{
+				ColorMode:      cfg.LogColorMode,
+				LogIsParseable: true,
+			})
 
 			cfg.ValuesFile = args[0]
 

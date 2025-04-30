@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 
@@ -36,7 +37,9 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultReleaseInstallLogLevel, cfg.LogColorMode, false)
+			ctx = action.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultReleaseInstallLogLevel), action.SetupLoggingOptions{
+				ColorMode: cfg.LogColorMode,
+			})
 
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]

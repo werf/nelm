@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 
@@ -29,7 +30,10 @@ func newChartSecretKeyCreateCommand(ctx context.Context, afterAllCommandsBuiltFu
 		secretCmdGroup,
 		cli.SubCommandOptions{},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cfg.LogLevel, action.DefaultSecretKeyCreateLogLevel, cfg.LogColorMode, true)
+			ctx = action.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultSecretKeyCreateLogLevel), action.SetupLoggingOptions{
+				ColorMode:      cfg.LogColorMode,
+				LogIsParseable: true,
+			})
 
 			if _, err := action.SecretKeyCreate(ctx, cfg.SecretKeyCreateOptions); err != nil {
 				return fmt.Errorf("secret key create: %w", err)
