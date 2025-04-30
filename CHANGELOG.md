@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.2.2](https://www.github.com/werf/nelm/compare/v1.2.1...v1.2.2) (2025-04-30)
+
+
+### Bug Fixes
+
+* improve log color detection ([9728f02](https://www.github.com/werf/nelm/commit/9728f021b369aa46bb1fbe70dff41461a5c003a5))
+
 ### [1.2.1](https://www.github.com/werf/nelm/compare/v1.2.0...v1.2.1) (2025-04-25)
 
 
