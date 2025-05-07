@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://www.github.com/werf/nelm/compare/v1.2.2...v1.3.0) (2025-05-07)
+
+
+### Features
+
+* allow specifying remote charts in cli commands ([b21329c](https://www.github.com/werf/nelm/commit/b21329cb4cc745747b1f1979c27f2c60d35c526a))
+
 ### [1.2.2](https://www.github.com/werf/nelm/compare/v1.2.1...v1.2.2) (2025-04-30)
 
 
