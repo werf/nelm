@@ -499,6 +499,14 @@ Example: `config: {{ werf_secret_file "config.yaml" | nindent 4 }}`
 
 Read the specified secret file from the `secret/` directory of the Helm chart.
 
+### Feature gates
+
+#### Env variable `NELM_FEAT_REMOTE_CHARTS`
+
+Example: `NELM_FEAT_REMOTE_CHARTS=true nelm release install -n myproject -r myproject --chart-version 19.1.1 bitnami/nginx` \
+
+Allow specifying not only local, but also remote charts as a command-line argument to some commands, such as `nelm release install`. Adds the `--chart-version` option as well.
+
 ### More information
 
 For more information, see [Helm docs](https://helm.sh/docs/) and [werf docs](https://werf.io/docs/v2/usage/deploy/overview.html).
