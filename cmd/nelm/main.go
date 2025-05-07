@@ -41,12 +41,11 @@ func main() {
 		}
 	}
 
-	unsupportedEnvVars := cli.FindUndefinedFlagEnvVarsInEnviron()
-	unsupportedEnvVars = lo.Filter(unsupportedEnvVars, func(env string, _ int) bool {
-		return !strings.HasPrefix(env, featgate.FeatGateEnvVarsPrefix)
+	featGatesEnvVars := lo.Map(featgate.FeatGates, func(fg *featgate.FeatGate, index int) string {
+		return fg.EnvVarName()
 	})
 
-	if len(unsupportedEnvVars) > 0 {
+	if unsupportedEnvVars := lo.Without(cli.FindUndefinedFlagEnvVarsInEnviron(), featGatesEnvVars...); len(unsupportedEnvVars) > 0 {
 		abort(ctx, fmt.Errorf("unsupported environment variable(s): %s", strings.Join(unsupportedEnvVars, ",")), 1)
 	}
 
