@@ -9,6 +9,7 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
+	"github.com/werf/nelm/pkg/featgate"
 )
 
 type chartLintConfig struct {
@@ -21,9 +22,16 @@ type chartLintConfig struct {
 func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cfg := &chartLintConfig{}
 
+	use := "lint [options...]"
+	if featgate.FeatGateEnabled(featgate.FeatGateRemoteCharts) {
+		use += " [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]"
+	} else {
+		use += " [chart-dir]"
+	}
+
 	cmd := cli.NewSubCommand(
 		ctx,
-		"lint [options...] [chart-dir]",
+		use,
 		"Lint a chart.",
 		"Lint a chart.",
 		70,
@@ -40,7 +48,11 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			})
 
 			if len(args) > 0 {
-				cfg.ChartDirPath = args[0]
+				if featgate.FeatGateEnabled(featgate.FeatGateRemoteCharts) {
+					cfg.Chart = args[0]
+				} else {
+					cfg.ChartDirPath = args[0]
+				}
 			}
 
 			if err := action.ChartLint(ctx, cfg.ChartLintOptions); err != nil {
@@ -78,6 +90,15 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			Group:                chartRepoFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if featgate.FeatGateEnabled(featgate.FeatGateRemoteCharts) {
+			if err := cli.AddFlag(cmd, &cfg.ChartVersion, "chart-version", "", "Choose a remote chart version, otherwise the latest version is used", cli.AddFlagOptions{
+				GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+				Group:                mainFlagGroup,
+			}); err != nil {
+				return fmt.Errorf("add flag: %w", err)
+			}
 		}
 
 		if err := cli.AddFlag(cmd, &cfg.DefaultSecretValuesDisable, "no-default-secret-values", false, "Ignore secret-values.yaml of the top-level chart", cli.AddFlagOptions{

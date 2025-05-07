@@ -3,7 +3,9 @@ package chart
 import (
 	"context"
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -13,23 +15,49 @@ import (
 	"k8s.io/client-go/discovery"
 	"sigs.k8s.io/yaml"
 
-	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
 	"github.com/werf/3p-helm/pkg/chart"
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/chartutil"
+	"github.com/werf/3p-helm/pkg/cli"
 	"github.com/werf/3p-helm/pkg/cli/values"
 	"github.com/werf/3p-helm/pkg/downloader"
 	helmengine "github.com/werf/3p-helm/pkg/engine"
 	"github.com/werf/3p-helm/pkg/getter"
+	"github.com/werf/3p-helm/pkg/helmpath"
+	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/releaseutil"
+	"github.com/werf/3p-helm/pkg/werf/secrets"
+	"github.com/werf/logboek"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/internal/resource"
+	"github.com/werf/nelm/pkg/featgate"
 )
 
 func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, opts ChartTreeOptions) (*ChartTree, error) {
+	if featgate.FeatGateEnabled(featgate.FeatGateRemoteCharts) && !IsLocalChart(chartPath) {
+		chartDownloader, chartRef, err := NewChartDownloader(ctx, chartPath, opts.RegistryClient, ChartDownloaderOptions{
+			CaFile:        opts.KubeCAPath,
+			SkipTLSVerify: opts.ChartRepoSkipTLSVerify,
+			Insecure:      opts.ChartRepoInsecure,
+			Version:       opts.ChartVersion,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("construct chart downloader: %w", err)
+		}
+
+		if err := os.MkdirAll(cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")), 0o755); err != nil {
+			return nil, fmt.Errorf("create repository cache directory: %w", err)
+		}
+
+		chartPath, _, err = chartDownloader.DownloadTo(chartRef, opts.ChartVersion, cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")))
+		if err != nil {
+			return nil, fmt.Errorf("download chart %q: %w", chartRef, err)
+		}
+	}
+
 	valOpts := &values.Options{
 		StringValues: opts.StringSetValues,
 		Values:       opts.SetValues,
@@ -37,13 +65,29 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		ValueFiles:   opts.ValuesFiles,
 	}
 
-	getters := getter.All(helm_v3.Settings)
-
 	log.Default.Debug(ctx, "Merging values for chart tree at %q", chartPath)
-	releaseValues, err := valOpts.MergeValues(getters)
+	releaseValues, err := valOpts.MergeValues(getter.Providers{getter.HttpProvider, getter.OCIProvider})
 	if err != nil {
 		return nil, fmt.Errorf("error merging values for chart tree at %q: %w", chartPath, err)
 	}
+
+	depDownloader := &downloader.Manager{
+		// FIXME(ilya-lesikov):
+		Out:               logboek.Context(ctx).OutStream(),
+		ChartPath:         chartPath,
+		SkipUpdate:        opts.ChartRepoSkipUpdate,
+		AllowMissingRepos: true,
+		Getters:           getter.Providers{getter.HttpProvider, getter.OCIProvider},
+		RegistryClient:    opts.RegistryClient,
+		// TODO(v3): don't read HELM_REPOSITORY_CONFIG anymore
+		RepositoryConfig: cli.EnvOr("HELM_REPOSITORY_CONFIG", helmpath.ConfigPath("repositories.yaml")),
+		// TODO(v3): don't read HELM_REPOSITORY_CACHE anymore
+		RepositoryCache: cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
+		Debug:           log.Default.AcceptLevel(ctx, log.DebugLevel),
+	}
+	loader.SetChartPathFunc = depDownloader.SetChartPath
+	loader.DepsBuildFunc = depDownloader.Build
+	secrets.ChartDir = chartPath
 
 	log.Default.Debug(ctx, "Loading chart at %q", chartPath)
 	legacyChart, err := loader.Load(chartPath)
@@ -215,16 +259,22 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 
 // TODO(ilya-lesikov): pass missing options from top-level
 type ChartTreeOptions struct {
-	Mapper           meta.ResettableRESTMapper
-	DiscoveryClient  discovery.CachedDiscoveryInterface
-	KubeConfig       *kube.KubeConfig
-	StringSetValues  []string
-	SetValues        []string
-	FileValues       []string
-	ValuesFiles      []string
-	SubNotes         bool
-	KubeVersion      *chartutil.KubeVersion
-	AllowDNSRequests bool
+	AllowDNSRequests       bool
+	ChartRepoInsecure      bool
+	ChartRepoSkipTLSVerify bool
+	ChartRepoSkipUpdate    bool
+	ChartVersion           string
+	DiscoveryClient        discovery.CachedDiscoveryInterface
+	FileValues             []string
+	KubeCAPath             string
+	KubeConfig             *kube.KubeConfig
+	KubeVersion            *chartutil.KubeVersion
+	Mapper                 meta.ResettableRESTMapper
+	RegistryClient         *registry.Client
+	SetValues              []string
+	StringSetValues        []string
+	SubNotes               bool
+	ValuesFiles            []string
 }
 
 type ChartTree struct {
@@ -271,4 +321,8 @@ func (t *ChartTree) FinalValues() map[string]interface{} {
 
 func (t *ChartTree) LegacyChart() *chart.Chart {
 	return t.legacyChart
+}
+
+func IsLocalChart(path string) bool {
+	return filepath.IsAbs(path) || filepath.HasPrefix(path, "..") || filepath.HasPrefix(path, ".")
 }

@@ -17,15 +17,10 @@ import (
 
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/chartutil"
-	"github.com/werf/3p-helm/pkg/cli"
-	"github.com/werf/3p-helm/pkg/downloader"
-	"github.com/werf/3p-helm/pkg/getter"
-	"github.com/werf/3p-helm/pkg/helmpath"
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/werf/chartextender"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/common-go/pkg/secrets_manager"
-	"github.com/werf/logboek"
 	"github.com/werf/nelm/internal/chart"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
@@ -40,11 +35,14 @@ const (
 )
 
 type ChartRenderOptions struct {
-	ChartAppVersion              string
+	Chart           string
+	ChartAppVersion string
+	// TODO(v2): get rid
 	ChartDirPath                 string
 	ChartRepositoryInsecure      bool
 	ChartRepositorySkipTLSVerify bool
 	ChartRepositorySkipUpdate    bool
+	ChartVersion                 string
 	DefaultChartAPIVersion       string
 	DefaultChartName             string
 	DefaultChartVersion          string
@@ -187,7 +185,6 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 	secrets.CoalesceTablesFunc = chartutil.CoalesceTables
 	secrets.SecretsWorkingDir = opts.SecretWorkDir
 	loader.SecretValuesFiles = opts.SecretValuesPaths
-	secrets.ChartDir = opts.ChartDirPath
 	secrets_manager.DisableSecretsDecryption = opts.SecretKeyIgnore
 
 	var historyOptions release.HistoryOptions
@@ -233,10 +230,15 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 	}
 
 	chartTreeOptions := chart.ChartTreeOptions{
-		StringSetValues: opts.ValuesStringSets,
-		SetValues:       opts.ValuesSets,
-		FileValues:      opts.ValuesFileSets,
-		ValuesFiles:     opts.ValuesFilesPaths,
+		ChartRepoInsecure:      opts.ChartRepositoryInsecure,
+		ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
+		ChartVersion:           opts.ChartVersion,
+		FileValues:             opts.ValuesFileSets,
+		KubeCAPath:             opts.KubeCAPath,
+		RegistryClient:         helmRegistryClient,
+		SetValues:              opts.ValuesSets,
+		StringSetValues:        opts.ValuesStringSets,
+		ValuesFiles:            opts.ValuesFilesPaths,
 	}
 
 	if opts.Remote {
@@ -252,24 +254,9 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 		chartTreeOptions.KubeVersion = ver
 	}
 
-	downloader := &downloader.Manager{
-		// FIXME(ilya-lesikov):
-		Out:               logboek.Context(ctx).OutStream(),
-		ChartPath:         opts.ChartDirPath,
-		SkipUpdate:        opts.ChartRepositorySkipUpdate,
-		AllowMissingRepos: true,
-		Getters:           getter.Providers{getter.HttpProvider, getter.OCIProvider},
-		RegistryClient:    helmRegistryClient,
-		RepositoryConfig:  cli.EnvOr("HELM_REPOSITORY_CONFIG", helmpath.ConfigPath("repositories.yaml")),
-		RepositoryCache:   cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
-		Debug:             log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel)),
-	}
-	loader.SetChartPathFunc = downloader.SetChartPath
-	loader.DepsBuildFunc = downloader.Build
-
 	chartTree, err := chart.NewChartTree(
 		ctx,
-		opts.ChartDirPath,
+		opts.Chart,
 		opts.ReleaseName,
 		opts.ReleaseNamespace,
 		newRevision,
@@ -338,8 +325,8 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 			return fmt.Errorf("get absolute path for %q: %w", file, err)
 		}
 
-		if strings.HasPrefix(absFile, opts.ChartDirPath) {
-			f, err := filepath.Rel(opts.ChartDirPath, absFile)
+		if strings.HasPrefix(absFile, opts.Chart) {
+			f, err := filepath.Rel(opts.Chart, absFile)
 			if err != nil {
 				return fmt.Errorf("get relative path for %q: %w", absFile, err)
 			}
@@ -414,8 +401,10 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) error {
 }
 
 func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir, homeDir string) (ChartRenderOptions, error) {
-	if opts.ChartDirPath == "" {
-		opts.ChartDirPath = currentDir
+	if opts.Chart == "" && opts.ChartDirPath != "" {
+		opts.Chart = opts.ChartDirPath
+	} else if opts.ChartDirPath == "" && opts.Chart == "" {
+		opts.Chart = currentDir
 	}
 
 	if opts.ReleaseName == "" {
@@ -439,7 +428,7 @@ func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir, homeDi
 	}
 
 	if opts.LogRegistryStreamOut == nil {
-		opts.LogRegistryStreamOut = os.Stdout
+		opts.LogRegistryStreamOut = io.Discard
 	}
 
 	if opts.NetworkParallelism <= 0 {
