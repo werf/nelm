@@ -23,7 +23,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 	cfg := &chartLintConfig{}
 
 	use := "lint [options...]"
-	if featgate.FeatGateEnabled(featgate.FeatGateRemoteCharts) {
+	if featgate.FeatGateRemoteCharts.Enabled() {
 		use += " [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]"
 	} else {
 		use += " [chart-dir]"
@@ -48,7 +48,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			})
 
 			if len(args) > 0 {
-				if featgate.FeatGateEnabled(featgate.FeatGateRemoteCharts) {
+				if featgate.FeatGateRemoteCharts.Enabled() {
 					cfg.Chart = args[0]
 				} else {
 					cfg.ChartDirPath = args[0]
@@ -92,7 +92,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if featgate.FeatGateEnabled(featgate.FeatGateRemoteCharts) {
+		if featgate.FeatGateRemoteCharts.Enabled() {
 			if err := cli.AddFlag(cmd, &cfg.ChartVersion, "chart-version", "", "Choose a remote chart version, otherwise the latest version is used", cli.AddFlagOptions{
 				GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 				Group:                mainFlagGroup,

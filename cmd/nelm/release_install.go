@@ -25,7 +25,7 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 	cfg := &releaseInstallConfig{}
 
 	use := "install [options...] -n namespace -r release"
-	if featgate.FeatGateEnabled(featgate.FeatGateRemoteCharts) {
+	if featgate.FeatGateRemoteCharts.Enabled() {
 		use += " [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]"
 	} else {
 		use += " [chart-dir]"
@@ -50,7 +50,7 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			})
 
 			if len(args) > 0 {
-				if featgate.FeatGateEnabled(featgate.FeatGateRemoteCharts) {
+				if featgate.FeatGateRemoteCharts.Enabled() {
 					cfg.Chart = args[0]
 				} else {
 					cfg.ChartDirPath = args[0]
@@ -100,7 +100,7 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if featgate.FeatGateEnabled(featgate.FeatGateRemoteCharts) {
+		if featgate.FeatGateRemoteCharts.Enabled() {
 			if err := cli.AddFlag(cmd, &cfg.ChartVersion, "chart-version", "", "Choose a remote chart version, otherwise the latest version is used", cli.AddFlagOptions{
 				GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 				Group:                mainFlagGroup,
