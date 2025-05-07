@@ -19,6 +19,13 @@ import (
 	"github.com/werf/logboek"
 	"github.com/werf/logboek/pkg/types"
 	"github.com/werf/nelm/internal/common"
+	"github.com/werf/nelm/pkg/featgate"
+)
+
+const (
+	flagsHelpIndent     = 10
+	featGatesHelpIndent = 10
+	minUsageWrapWidth   = 40
 )
 
 const helpTemplate = `
@@ -60,6 +67,10 @@ Examples:
 {{- if .HasAvailableLocalFlags}}
 {{ flagsUsage .LocalFlags | trimTrailingWhitespaces }}
 {{- end }}
+
+{{- if not .HasAvailableSubCommands}}
+{{ featGatesUsage | trimTrailingWhitespaces }}
+{{- end }}
 `
 
 var templateFuncs = template.FuncMap{
@@ -67,8 +78,9 @@ var templateFuncs = template.FuncMap{
 	"trimTrailingWhitespaces": func(s string) string {
 		return strings.TrimRightFunc(s, unicode.IsSpace)
 	},
-	"flagsUsage":    flagsUsage,
-	"commandsUsage": commandsUsage,
+	"flagsUsage":     flagsUsage,
+	"commandsUsage":  commandsUsage,
+	"featGatesUsage": featGatesUsage,
 }
 
 func usageFunc(c *cobra.Command) error {
@@ -89,9 +101,6 @@ func usageFunc(c *cobra.Command) error {
 }
 
 func flagsUsage(fset *pflag.FlagSet) string {
-	const helpIndent = 10
-	const minHelpWidthToWrap = 40
-
 	terminalWidth := logboek.Streams().Width()
 	groupsByPriority, groupedFlags := groupFlags(fset)
 
@@ -126,16 +135,14 @@ func flagsUsage(fset *pflag.FlagSet) string {
 				header += fmt.Sprintf("=%s", flag.DefValue)
 			}
 
-			helpWrapWidth := terminalWidth - helpIndent
-
 			var help string
-			if helpWrapWidth > minHelpWidthToWrap {
+			if terminalWidth > minUsageWrapWidth {
 				help = logboek.FitText(flag.Usage, types.FitTextOptions{
-					ExtraIndentWidth: helpIndent,
-					Width:            helpWrapWidth + helpIndent,
+					ExtraIndentWidth: flagsHelpIndent,
+					Width:            terminalWidth,
 				})
 			} else {
-				help = fmt.Sprintf("%s%s", strings.Repeat(" ", helpIndent), flag.Usage)
+				help = fmt.Sprintf("%s%s", strings.Repeat(" ", flagsHelpIndent), flag.Usage)
 			}
 
 			line := fmt.Sprintf("%s\n%s", header, help)
@@ -281,4 +288,38 @@ type cmdInfo struct {
 	commandPath string
 	priority    int
 	short       string
+}
+
+func featGatesUsage() string {
+	terminalWidth := logboek.Streams().Width()
+
+	buf := new(bytes.Buffer)
+	lines := []string{}
+
+	for i, featGate := range featgate.FeatGates {
+		if i == 0 {
+			lines = append(lines, "\nFeature gates:\n")
+		}
+
+		header := fmt.Sprintf("      $%s=%v", featGate.EnvVarName(), featGate.Default())
+
+		var help string
+		if terminalWidth > minUsageWrapWidth {
+			help = logboek.FitText(featGate.Help, types.FitTextOptions{
+				ExtraIndentWidth: featGatesHelpIndent,
+				Width:            terminalWidth,
+			})
+		} else {
+			help = fmt.Sprintf("%s%s", strings.Repeat(" ", featGatesHelpIndent), featGate.Help)
+		}
+
+		line := fmt.Sprintf("%s\n%s", header, help)
+		lines = append(lines, line)
+	}
+
+	for _, line := range lines {
+		fmt.Fprintln(buf, line)
+	}
+
+	return buf.String()
 }

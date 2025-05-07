@@ -15,7 +15,7 @@ var (
 	// TODO(v2): always enable
 	FeatGateRemoteCharts = NewFeatGate(
 		"remote-charts",
-		"Allow not only local, but also remote charts as an argument to cli commands. Also adds the `--chart-version` option",
+		`Allow not only local, but also remote charts as an argument to cli commands. Also adds the "--chart-version" option`,
 	)
 )
 
@@ -37,6 +37,10 @@ type FeatGate struct {
 
 func (g *FeatGate) EnvVarName() string {
 	return FeatGateEnvVarsPrefix + caps.ToScreamingSnake(g.Name)
+}
+
+func (g *FeatGate) Default() bool {
+	return false
 }
 
 func (g *FeatGate) Enabled() bool {
