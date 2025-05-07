@@ -9,7 +9,7 @@
 * lots of fixes for Helm 3 bugs, e.g. ["no matches for kind Deployment in version apps/v1beta1"](https://github.com/helm/helm/issues/7219);
 * ... and more.
 
-**Note on the project status and production readiness**. Prior to a formal public announcement, thousands of projects actively used Nelm via werf. Being the default and only deployment engine since werf v2.0 ([released](https://github.com/werf/werf/discussions/6100) in April 2024), Nelm and all its main features were battle-tested in production before a separate tool with user-facing CLI emerged. However, the Nelm *CLI* [went public](https://blog.werf.io/nelm-cli-helm-compatible-alternative-5648b191f0af) with the Nelm v1 release only (in April 2025) and hasn’t been tested that much yet.
+We consider Nelm production-ready, since 95% of the Nelm codebase basically is the werf deployment engine, which was battle-tested in production across thousands of projects for years.
 
 ## Table of Contents
 
@@ -27,6 +27,7 @@
   - [Printing logs and events during deploy](#printing-logs-and-events-during-deploy)
   - [Release planning](#release-planning)
   - [Encrypted values and encrypted files](#encrypted-values-and-encrypted-files)
+  - [Improved CRD management](#improved-crd-management)
 - [Documentation](#documentation)
   - [Usage](#usage)
     - [Encrypted values files](#encrypted-values-files)
@@ -51,7 +52,7 @@
   - [Feature gates](#feature-gates)
     - [Env variable `NELM_FEAT_REMOTE_CHARTS`](#env-variable-nelm_feat_remote_charts)
   - [More information](#more-information)
-- [Known issues](#known-issues)
+- [Limitations](#limitations)
 - [Future plans](#future-plans)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -298,6 +299,10 @@ During deployment, Nelm finds Pods of deployed release resources and periodicall
 
 `nelm chart secret` commands manage encrypted values files such as `secret-values.yaml` or encrypted arbitrary files like `secret/mysecret.txt`. These files are decrypted in-memory during templating and can be used in templates as `.Values.my.secret.value` and `{{ werf_secret_file "mysecret.txt" }}`, respectively.
 
+### Improved CRD management
+
+CRDs from the `crds/` directory of the chart deployed not only on the very first release install, but also on release upgrades. Also, CRDs not only can be created, but can be updated as well.
+
 ## Documentation
 
 Nelm-specific features are described below. For general documentation, see [Helm docs](https://helm.sh/docs/) and [werf docs](https://werf.io/docs/v2/usage/deploy/overview.html).
@@ -505,7 +510,7 @@ Read the specified secret file from the `secret/` directory of the Helm chart.
 
 #### Env variable `NELM_FEAT_REMOTE_CHARTS`
 
-Example: `NELM_FEAT_REMOTE_CHARTS=true nelm release install -n myproject -r myproject --chart-version 19.1.1 bitnami/nginx` \
+Example: `NELM_FEAT_REMOTE_CHARTS=true nelm release install -n myproject -r myproject --chart-version 19.1.1 bitnami/nginx`
 
 Allow specifying not only local, but also remote charts as a command-line argument to some commands, such as `nelm release install`. Adds the `--chart-version` option as well.
 
@@ -513,17 +518,19 @@ Allow specifying not only local, but also remote charts as a command-line argume
 
 For more information, see [Helm docs](https://helm.sh/docs/) and [werf docs](https://werf.io/docs/v2/usage/deploy/overview.html).
 
-## Known issues
+## Limitations
 
-- Nelm won't work with Kubernetes versions earlier than v1.14. The `ServerSideApply` feature gate should be enabled (it's enabled by default starting from Kubernetes v1.16). This requirement is caused by leveraging the Server-Side Apply (instead of 3-Way Merge in Helm).
+* Nelm requires Server-Side Apply enabled in Kubernetes. It is enabled by default since Kubernetes 1.16. In Kubernetes 1.14-1.15 it can be enabled, but disabled by default. Kubernetes 1.13 and older doesn't have Server-Side Apply, thus Nelm won't work with it.
+* Helm *sometimes* uses Values from the previous Helm release to deploy a new release. This "feature" meant to make using Helm without a proper CI/CD process easier. This is dangerous, goes against IaC and this is not what most users expect. Nelm will *never* use Values from previous Helm releases for any purposes. What you explicitly pass via `--values` and `--set` options will be merged with builtin chart Values, then applied to the cluster. Thus, options `--reuse-values`, `--reset-values`, `--reset-then-reuse-values` will not be implemented.
 
 ## Future plans
 
-Here are some of the big things we plan to implement — feel free to upvote or comment on the relevant issues and/or raise new ones to show your interest:
+Here are some of the big things we plan to implement — upvote or comment relevant issues or create a new one to help us prioritize:
 
-- An alternative to Helm templating ([#54](https://github.com/werf/nelm/issues/54));
-- An option to pull charts directly from Git;
-- A public Go API for embedding Nelm into third-party software;
-- Enhance the CLI experience with new commands and improve the consistency between the reimplemented commands and original Helm commands;
-- Overhaul the chart dependency management ([#61](https://github.com/werf/nelm/issues/61));
-- Migrate the built-in secret management to Mozilla SOPS ([#62](https://github.com/werf/nelm/issues/62)).
+* The Nelm operator, interoperable with ArgoCD/Flux.
+* An alternative to Helm templating ([#54](https://github.com/werf/nelm/issues/54)).
+* An option to pull charts directly from Git.
+* A public Go API for embedding Nelm into third-party software.
+* Enhance the CLI experience with new commands and improve the consistency between the reimplemented commands and original Helm commands.
+* Overhaul the chart dependency management ([#61](https://github.com/werf/nelm/issues/61)).
+* Migrate the built-in secret management to Mozilla SOPS ([#62](https://github.com/werf/nelm/issues/62)).
