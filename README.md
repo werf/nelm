@@ -48,6 +48,8 @@
     - [Annotation `werf.io/show-logs-only-for-containers`](#annotation-werfioshow-logs-only-for-containers)
     - [Annotation `werf.io/show-service-messages`](#annotation-werfioshow-service-messages)
     - [Function `werf_secret_file`](#function-werf_secret_file)
+  - [Feature gates](#feature-gates)
+    - [Env variable `NELM_FEAT_REMOTE_CHARTS`](#env-variable-nelm_feat_remote_charts)
   - [More information](#more-information)
 - [Known issues](#known-issues)
 - [Future plans](#future-plans)
