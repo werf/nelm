@@ -8,6 +8,7 @@ import (
 
 	"github.com/chanced/caps"
 	"github.com/pkg/errors"
+	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
@@ -16,6 +17,7 @@ import (
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/pkg/action"
+	"github.com/werf/nelm/pkg/featgate"
 )
 
 func main() {
@@ -39,7 +41,12 @@ func main() {
 		}
 	}
 
-	if unsupportedEnvVars := cli.FindUndefinedFlagEnvVarsInEnviron(); len(unsupportedEnvVars) > 0 {
+	unsupportedEnvVars := cli.FindUndefinedFlagEnvVarsInEnviron()
+	unsupportedEnvVars = lo.Filter(unsupportedEnvVars, func(env string, _ int) bool {
+		return !strings.HasPrefix(env, featgate.FeatGateEnvVarsPrefix)
+	})
+
+	if len(unsupportedEnvVars) > 0 {
 		abort(ctx, fmt.Errorf("unsupported environment variable(s): %s", strings.Join(unsupportedEnvVars, ",")), 1)
 	}
 

@@ -18,10 +18,6 @@ import (
 
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/chartutil"
-	"github.com/werf/3p-helm/pkg/cli"
-	"github.com/werf/3p-helm/pkg/downloader"
-	"github.com/werf/3p-helm/pkg/getter"
-	"github.com/werf/3p-helm/pkg/helmpath"
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/werf/chartextender"
 	"github.com/werf/3p-helm/pkg/werf/secrets"
@@ -49,12 +45,15 @@ const (
 )
 
 type ReleaseInstallOptions struct {
-	AutoRollback                 bool
-	ChartAppVersion              string
+	Chart           string
+	AutoRollback    bool
+	ChartAppVersion string
+	// TODO(v2): get rid
 	ChartDirPath                 string
 	ChartRepositoryInsecure      bool
 	ChartRepositorySkipTLSVerify bool
 	ChartRepositorySkipUpdate    bool
+	ChartVersion                 string
 	DefaultChartAPIVersion       string
 	DefaultChartName             string
 	DefaultChartVersion          string
@@ -207,7 +206,6 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	secrets.CoalesceTablesFunc = chartutil.CoalesceTables
 	secrets.SecretsWorkingDir = opts.SecretWorkDir
 	loader.SecretValuesFiles = opts.SecretValuesPaths
-	secrets.ChartDir = opts.ChartDirPath
 	secrets_manager.DisableSecretsDecryption = opts.SecretKeyIgnore
 
 	if err := createReleaseNamespace(ctx, clientFactory, releaseNamespace); err != nil {
@@ -264,40 +262,29 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		deployType = common.DeployTypeInitial
 	}
 
-	downloader := &downloader.Manager{
-		// FIXME(ilya-lesikov):
-		Out:               logboek.Context(ctx).OutStream(),
-		ChartPath:         opts.ChartDirPath,
-		SkipUpdate:        opts.ChartRepositorySkipUpdate,
-		AllowMissingRepos: true,
-		Getters:           getter.Providers{getter.HttpProvider, getter.OCIProvider},
-		RegistryClient:    helmRegistryClient,
-		// TODO(v3): don't read HELM_REPOSITORY_CONFIG anymore
-		RepositoryConfig: cli.EnvOr("HELM_REPOSITORY_CONFIG", helmpath.ConfigPath("repositories.yaml")),
-		// TODO(v3): don't read HELM_REPOSITORY_CACHE anymore
-		RepositoryCache: cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
-		Debug:           log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel)),
-	}
-	loader.SetChartPathFunc = downloader.SetChartPath
-	loader.DepsBuildFunc = downloader.Build
-
 	log.Default.Debug(ctx, "Constructing chart tree")
 	chartTree, err := chart.NewChartTree(
 		ctx,
-		opts.ChartDirPath,
+		opts.Chart,
 		releaseName,
 		releaseNamespace,
 		newRevision,
 		deployType,
 		chart.ChartTreeOptions{
-			Mapper:          clientFactory.Mapper(),
-			DiscoveryClient: clientFactory.Discovery(),
-			KubeConfig:      clientFactory.KubeConfig(),
-			StringSetValues: opts.ValuesStringSets,
-			SetValues:       opts.ValuesSets,
-			FileValues:      opts.ValuesFileSets,
-			ValuesFiles:     opts.ValuesFilesPaths,
-			SubNotes:        opts.SubNotes,
+			ChartRepoInsecure:      opts.ChartRepositoryInsecure,
+			ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
+			ChartRepoSkipUpdate:    opts.ChartRepositorySkipUpdate,
+			ChartVersion:           opts.ChartVersion,
+			DiscoveryClient:        clientFactory.Discovery(),
+			FileValues:             opts.ValuesFileSets,
+			KubeCAPath:             opts.KubeCAPath,
+			KubeConfig:             clientFactory.KubeConfig(),
+			Mapper:                 clientFactory.Mapper(),
+			RegistryClient:         helmRegistryClient,
+			SetValues:              opts.ValuesSets,
+			StringSetValues:        opts.ValuesStringSets,
+			SubNotes:               opts.SubNotes,
+			ValuesFiles:            opts.ValuesFilesPaths,
 		},
 	)
 	if err != nil {
@@ -634,8 +621,10 @@ func applyReleaseInstallOptionsDefaults(
 	currentDir string,
 	homeDir string,
 ) (ReleaseInstallOptions, error) {
-	if opts.ChartDirPath == "" {
-		opts.ChartDirPath = currentDir
+	if opts.Chart == "" && opts.ChartDirPath != "" {
+		opts.Chart = opts.ChartDirPath
+	} else if opts.ChartDirPath == "" && opts.Chart == "" {
+		opts.Chart = currentDir
 	}
 
 	var err error
@@ -651,7 +640,7 @@ func applyReleaseInstallOptionsDefaults(
 	}
 
 	if opts.LogRegistryStreamOut == nil {
-		opts.LogRegistryStreamOut = os.Stdout
+		opts.LogRegistryStreamOut = io.Discard
 	}
 
 	if opts.NetworkParallelism <= 0 {

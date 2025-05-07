@@ -9,6 +9,7 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
+	"github.com/werf/nelm/pkg/featgate"
 )
 
 type releasePlanInstallConfig struct {
@@ -23,9 +24,16 @@ type releasePlanInstallConfig struct {
 func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cfg := &releasePlanInstallConfig{}
 
+	use := "install [options...] -n namespace -r release"
+	if featgate.FeatGateEnabled(featgate.FeatGateRemoteCharts) {
+		use += " [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]"
+	} else {
+		use += " [chart-dir]"
+	}
+
 	cmd := cli.NewSubCommand(
 		ctx,
-		"install [options...] -n namespace -r release [chart-dir]",
+		use,
 		"Plan a release install to Kubernetes.",
 		"Plan a release install to Kubernetes.",
 		60,
@@ -42,7 +50,11 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			})
 
 			if len(args) > 0 {
-				cfg.ChartDirPath = args[0]
+				if featgate.FeatGateEnabled(featgate.FeatGateRemoteCharts) {
+					cfg.Chart = args[0]
+				} else {
+					cfg.ChartDirPath = args[0]
+				}
 			}
 
 			if err := action.ReleasePlanInstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, cfg.ReleasePlanInstallOptions); err != nil {
@@ -80,6 +92,15 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			Group:                chartRepoFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if featgate.FeatGateEnabled(featgate.FeatGateRemoteCharts) {
+			if err := cli.AddFlag(cmd, &cfg.ChartVersion, "chart-version", "", "Choose a remote chart version, otherwise the latest version is used", cli.AddFlagOptions{
+				GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+				Group:                mainFlagGroup,
+			}); err != nil {
+				return fmt.Errorf("add flag: %w", err)
+			}
 		}
 
 		if err := cli.AddFlag(cmd, &cfg.DefaultSecretValuesDisable, "no-default-secret-values", false, "Ignore secret-values.yaml of the top-level chart", cli.AddFlagOptions{
