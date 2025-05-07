@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.3.1](https://www.github.com/werf/nelm/compare/v1.3.0...v1.3.1) (2025-05-07)
+
+
+### Bug Fixes
+
+* disallow unknown NELM_FEAT_.* env vars ([7e25a16](https://www.github.com/werf/nelm/commit/7e25a16f5f0c40d94308c77d18cad5cee31d5194))
+
 ## [1.3.0](https://www.github.com/werf/nelm/compare/v1.2.2...v1.3.0) (2025-05-07)
 
 
