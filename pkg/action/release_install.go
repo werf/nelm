@@ -90,6 +90,7 @@ type ReleaseInstallOptions struct {
 	SecretWorkDir                string
 	SubNotes                     bool
 	TempDirPath                  string
+	Timeout                      time.Duration
 	TrackCreationTimeout         time.Duration
 	TrackDeletionTimeout         time.Duration
 	TrackReadinessTimeout        time.Duration
@@ -103,6 +104,29 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	actionLock.Lock()
 	defer actionLock.Unlock()
 
+	if opts.Timeout == 0 {
+		return releaseInstall(ctx, releaseName, releaseNamespace, opts)
+	}
+
+	ctx, ctxCancelFn := context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("action timed out after %s", opts.Timeout.String()))
+	defer ctxCancelFn()
+
+	actionCh := make(chan error, 1)
+	go func() {
+		actionCh <- releaseInstall(ctx, releaseName, releaseNamespace, opts)
+	}()
+
+	for {
+		select {
+		case err := <-actionCh:
+			return err
+		case <-ctx.Done():
+			return context.Cause(ctx)
+		}
+	}
+}
+
+func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseInstallOptions) error {
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)
