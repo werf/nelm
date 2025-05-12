@@ -65,6 +65,7 @@ type ReleasePlanInstallOptions struct {
 	KubeToken                    string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
+	NoInstallCRDs                bool
 	RegistryCredentialsPath      string
 	ReleaseStorageDriver         string
 	SQLConnectionString          string
@@ -261,6 +262,7 @@ func releasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 			KubeCAPath:             opts.KubeCAPath,
 			KubeConfig:             clientFactory.KubeConfig(),
 			Mapper:                 clientFactory.Mapper(),
+			NoStandaloneCRDs:       opts.NoInstallCRDs,
 			RegistryClient:         helmRegistryClient,
 			SetValues:              opts.ValuesSets,
 			StringSetValues:        opts.ValuesStringSets,

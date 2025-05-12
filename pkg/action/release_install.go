@@ -76,6 +76,7 @@ type ReleaseInstallOptions struct {
 	KubeToken                    string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
+	NoInstallCRDs                bool
 	NoProgressTablePrint         bool
 	ProgressTablePrintInterval   time.Duration
 	RegistryCredentialsPath      string
@@ -304,6 +305,7 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 			KubeCAPath:             opts.KubeCAPath,
 			KubeConfig:             clientFactory.KubeConfig(),
 			Mapper:                 clientFactory.Mapper(),
+			NoStandaloneCRDs:       opts.NoInstallCRDs,
 			RegistryClient:         helmRegistryClient,
 			SetValues:              opts.ValuesSets,
 			StringSetValues:        opts.ValuesStringSets,
