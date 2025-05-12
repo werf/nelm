@@ -162,16 +162,19 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 	log.Default.Debug(ctx, "Rendering resources for chart at %q", chartPath)
 
 	var standaloneCRDs []*resource.StandaloneCRD
-	for _, crd := range legacyChart.CRDObjects() {
-		for _, manifest := range releaseutil.SplitManifests(string(crd.File.Data)) {
-			if res, err := resource.NewStandaloneCRDFromManifest(manifest, resource.StandaloneCRDFromManifestOptions{
-				FilePath:         crd.Filename,
-				DefaultNamespace: releaseNamespace,
-				Mapper:           opts.Mapper,
-			}); err != nil {
-				return nil, fmt.Errorf("error constructing standalone CRD for chart at %q: %w", chartPath, err)
-			} else {
-				standaloneCRDs = append(standaloneCRDs, res)
+
+	if !opts.NoStandaloneCRDs {
+		for _, crd := range legacyChart.CRDObjects() {
+			for _, manifest := range releaseutil.SplitManifests(string(crd.File.Data)) {
+				if res, err := resource.NewStandaloneCRDFromManifest(manifest, resource.StandaloneCRDFromManifestOptions{
+					FilePath:         crd.Filename,
+					DefaultNamespace: releaseNamespace,
+					Mapper:           opts.Mapper,
+				}); err != nil {
+					return nil, fmt.Errorf("error constructing standalone CRD for chart at %q: %w", chartPath, err)
+				} else {
+					standaloneCRDs = append(standaloneCRDs, res)
+				}
 			}
 		}
 	}
@@ -270,6 +273,7 @@ type ChartTreeOptions struct {
 	KubeConfig             *kube.KubeConfig
 	KubeVersion            *chartutil.KubeVersion
 	Mapper                 meta.ResettableRESTMapper
+	NoStandaloneCRDs       bool
 	RegistryClient         *registry.Client
 	SetValues              []string
 	StringSetValues        []string
