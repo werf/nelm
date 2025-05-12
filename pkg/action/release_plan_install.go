@@ -73,6 +73,7 @@ type ReleasePlanInstallOptions struct {
 	SecretValuesPaths            []string
 	SecretWorkDir                string
 	TempDirPath                  string
+	Timeout                      time.Duration
 	ValuesFileSets               []string
 	ValuesFilesPaths             []string
 	ValuesSets                   []string
@@ -83,6 +84,29 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 	actionLock.Lock()
 	defer actionLock.Unlock()
 
+	if opts.Timeout == 0 {
+		return releasePlanInstall(ctx, releaseName, releaseNamespace, opts)
+	}
+
+	ctx, ctxCancelFn := context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("action timed out after %s", opts.Timeout.String()))
+	defer ctxCancelFn()
+
+	actionCh := make(chan error, 1)
+	go func() {
+		actionCh <- releasePlanInstall(ctx, releaseName, releaseNamespace, opts)
+	}()
+
+	for {
+		select {
+		case err := <-actionCh:
+			return err
+		case <-ctx.Done():
+			return context.Cause(ctx)
+		}
+	}
+}
+
+func releasePlanInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleasePlanInstallOptions) error {
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)

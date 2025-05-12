@@ -49,12 +49,36 @@ type ReleaseUninstallOptions struct {
 	ReleaseHistoryLimit        int
 	ReleaseStorageDriver       string
 	TempDirPath                string
+	Timeout                    time.Duration
 }
 
 func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseUninstallOptions) error {
 	actionLock.Lock()
 	defer actionLock.Unlock()
 
+	if opts.Timeout == 0 {
+		return releaseUninstall(ctx, releaseName, releaseNamespace, opts)
+	}
+
+	ctx, ctxCancelFn := context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("action timed out after %s", opts.Timeout.String()))
+	defer ctxCancelFn()
+
+	actionCh := make(chan error, 1)
+	go func() {
+		actionCh <- releaseUninstall(ctx, releaseName, releaseNamespace, opts)
+	}()
+
+	for {
+		select {
+		case err := <-actionCh:
+			return err
+		case <-ctx.Done():
+			return context.Cause(ctx)
+		}
+	}
+}
+
+func releaseUninstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseUninstallOptions) error {
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)

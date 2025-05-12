@@ -54,6 +54,7 @@ type ReleaseRollbackOptions struct {
 	RollbackReportPath         string
 	SQLConnectionString        string
 	TempDirPath                string
+	Timeout                    time.Duration
 	TrackCreationTimeout       time.Duration
 	TrackDeletionTimeout       time.Duration
 	TrackReadinessTimeout      time.Duration
@@ -63,6 +64,29 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 	actionLock.Lock()
 	defer actionLock.Unlock()
 
+	if opts.Timeout == 0 {
+		return releaseRollback(ctx, releaseName, releaseNamespace, opts)
+	}
+
+	ctx, ctxCancelFn := context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("action timed out after %s", opts.Timeout.String()))
+	defer ctxCancelFn()
+
+	actionCh := make(chan error, 1)
+	go func() {
+		actionCh <- releaseRollback(ctx, releaseName, releaseNamespace, opts)
+	}()
+
+	for {
+		select {
+		case err := <-actionCh:
+			return err
+		case <-ctx.Done():
+			return context.Cause(ctx)
+		}
+	}
+}
+
+func releaseRollback(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseRollbackOptions) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("get home directory: %w", err)
