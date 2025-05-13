@@ -82,6 +82,7 @@ type ReleaseInstallOptions struct {
 	RegistryCredentialsPath      string
 	ReleaseHistoryLimit          int
 	ReleaseInfoAnnotations       map[string]string
+	ReleaseLabels                map[string]string
 	ReleaseStorageDriver         string
 	RollbackGraphPath            string
 	SQLConnectionString          string
@@ -381,6 +382,7 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 			InfoAnnotations: opts.ReleaseInfoAnnotations,
 			FirstDeployed:   firstDeployed,
 			Mapper:          clientFactory.Mapper(),
+			Labels:          opts.ReleaseLabels,
 		},
 	)
 	if err != nil {
@@ -972,8 +974,10 @@ func runRollbackPlan(
 		resProcessor.ReleasableGeneralResources(),
 		prevDeployedRelease.Notes(),
 		release.ReleaseOptions{
-			FirstDeployed: prevDeployedRelease.FirstDeployed(),
-			Mapper:        clientFactory.Mapper(),
+			InfoAnnotations: prevDeployedRelease.InfoAnnotations(),
+			FirstDeployed:   prevDeployedRelease.FirstDeployed(),
+			Mapper:          clientFactory.Mapper(),
+			Labels:          prevDeployedRelease.Labels(),
 		},
 	)
 	if err != nil {

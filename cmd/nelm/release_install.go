@@ -303,6 +303,13 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		if err := cli.AddFlag(cmd, &cfg.ReleaseLabels, "release-labels", map[string]string{}, "Add labels to the release. What kind of labels depends on the storage driver", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagLocalMultiEnvVarRegexes,
+			Group:                mainFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.ReleaseName, "release", "", "The release name. Must be unique within the release namespace", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
