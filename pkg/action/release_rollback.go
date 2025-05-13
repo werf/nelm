@@ -265,8 +265,10 @@ func releaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 		resProcessor.ReleasableGeneralResources(),
 		notes,
 		release.ReleaseOptions{
-			FirstDeployed: firstDeployed,
-			Mapper:        clientFactory.Mapper(),
+			InfoAnnotations: releaseToRollback.InfoAnnotations(),
+			FirstDeployed:   firstDeployed,
+			Mapper:          clientFactory.Mapper(),
+			Labels:          releaseToRollback.Labels(),
 		},
 	)
 	if err != nil {

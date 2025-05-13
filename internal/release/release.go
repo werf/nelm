@@ -44,32 +44,38 @@ func NewRelease(name, namespace string, revision int, values map[string]interfac
 		opts.InfoAnnotations = map[string]string{}
 	}
 
+	if opts.Labels == nil {
+		opts.Labels = map[string]string{}
+	}
+
 	return &Release{
-		name:             name,
-		namespace:        namespace,
-		revision:         revision,
-		values:           values,
-		legacyChart:      legacyChart,
-		mapper:           opts.Mapper,
-		status:           status,
-		firstDeployed:    opts.FirstDeployed,
-		lastDeployed:     opts.LastDeployed,
 		appVersion:       legacyChart.Metadata.AppVersion,
 		chartName:        legacyChart.Metadata.Name,
 		chartVersion:     legacyChart.Metadata.Version,
-		infoAnnotations:  opts.InfoAnnotations,
-		hookResources:    hookResources,
+		firstDeployed:    opts.FirstDeployed,
 		generalResources: generalResources,
+		hookResources:    hookResources,
+		infoAnnotations:  opts.InfoAnnotations,
+		labels:           opts.Labels,
+		lastDeployed:     opts.LastDeployed,
+		legacyChart:      legacyChart,
+		mapper:           opts.Mapper,
+		name:             name,
+		namespace:        namespace,
 		notes:            notes,
+		revision:         revision,
+		status:           status,
+		values:           values,
 	}, nil
 }
 
 type ReleaseOptions struct {
-	InfoAnnotations map[string]string
-	Status          helmrelease.Status
 	FirstDeployed   time.Time
+	InfoAnnotations map[string]string
+	Labels          map[string]string
 	LastDeployed    time.Time
 	Mapper          meta.ResettableRESTMapper
+	Status          helmrelease.Status
 }
 
 func NewReleaseFromLegacyRelease(legacyRelease *helmrelease.Release, opts ReleaseFromLegacyReleaseOptions) (*Release, error) {
@@ -101,11 +107,12 @@ func NewReleaseFromLegacyRelease(legacyRelease *helmrelease.Release, opts Releas
 	}
 
 	rel, err := NewRelease(legacyRelease.Name, legacyRelease.Namespace, legacyRelease.Version, legacyRelease.Config, legacyRelease.Chart, hookResources, generalResources, legacyRelease.Info.Notes, ReleaseOptions{
-		InfoAnnotations: legacyRelease.Info.Annotations,
-		Status:          legacyRelease.Info.Status,
 		FirstDeployed:   legacyRelease.Info.FirstDeployed.Time,
+		InfoAnnotations: legacyRelease.Info.Annotations,
+		Labels:          legacyRelease.Labels,
 		LastDeployed:    legacyRelease.Info.LastDeployed.Time,
 		Mapper:          opts.Mapper,
+		Status:          legacyRelease.Info.Status,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error building release %q (namespace: %q, revision: %d): %w", legacyRelease.Name, legacyRelease.Namespace, legacyRelease.Version, err)
@@ -120,24 +127,23 @@ type ReleaseFromLegacyReleaseOptions struct {
 }
 
 type Release struct {
-	name        string
-	namespace   string
-	revision    int
-	values      map[string]interface{}
-	legacyChart *chart.Chart
-	mapper      meta.ResettableRESTMapper
-
-	status          helmrelease.Status
-	firstDeployed   time.Time
-	lastDeployed    time.Time
-	appVersion      string
-	chartName       string
-	chartVersion    string
-	infoAnnotations map[string]string
-
-	hookResources    []*resource.HookResource
+	appVersion       string
+	chartName        string
+	chartVersion     string
+	firstDeployed    time.Time
 	generalResources []*resource.GeneralResource
+	hookResources    []*resource.HookResource
+	infoAnnotations  map[string]string
+	labels           map[string]string
+	lastDeployed     time.Time
+	legacyChart      *chart.Chart
+	mapper           meta.ResettableRESTMapper
+	name             string
+	namespace        string
 	notes            string
+	revision         int
+	status           helmrelease.Status
+	values           map[string]interface{}
 }
 
 func (r *Release) Name() string {
@@ -198,6 +204,10 @@ func (r *Release) ChartVersion() string {
 
 func (r *Release) InfoAnnotations() map[string]string {
 	return r.infoAnnotations
+}
+
+func (r *Release) Labels() map[string]string {
+	return r.labels
 }
 
 func (r *Release) ID() string {
