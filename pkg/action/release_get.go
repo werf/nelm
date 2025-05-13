@@ -120,27 +120,32 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		return nil, fmt.Errorf("construct release history: %w", err)
 	}
 
+	if history.Empty() {
+		return nil, &ReleaseNotFoundError{
+			ReleaseName:      releaseName,
+			ReleaseNamespace: releaseNamespace,
+		}
+	}
+
 	var (
-		release      *release.Release
-		releaseFound bool
+		release *release.Release
 	)
 	if opts.Revision == 0 {
-		release, releaseFound, err = history.LastRelease()
+		release, _, err = history.LastRelease()
 		if err != nil {
 			return nil, fmt.Errorf("get last release: %w", err)
 		}
 	} else {
-		release, releaseFound, err = history.Release(opts.Revision)
+		var revisionFound bool
+		release, revisionFound, err = history.Release(opts.Revision)
 		if err != nil {
 			return nil, fmt.Errorf("get release revision %d: %w", opts.Revision, err)
-		}
-	}
-
-	if !releaseFound {
-		if opts.Revision == 0 {
-			return nil, fmt.Errorf("release %q (namespace %q) not found", releaseName, releaseNamespace)
-		} else {
-			return nil, fmt.Errorf("revision %d of release %q (namespace %q) not found", opts.Revision, releaseName, releaseNamespace)
+		} else if !revisionFound {
+			return nil, &ReleaseRevisionNotFoundError{
+				ReleaseName:      releaseName,
+				ReleaseNamespace: releaseNamespace,
+				Revision:         opts.Revision,
+			}
 		}
 	}
 
