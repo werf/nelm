@@ -39,6 +39,7 @@ type ReleaseGetOptions struct {
 	NetworkParallelism   int
 	OutputFormat         string
 	OutputNoPrint        bool
+	PrintValues          bool
 	ReleaseStorageDriver string
 	Revision             int
 	SQLConnectionString  string
@@ -161,7 +162,8 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 			Version:    release.ChartVersion(),
 			AppVersion: release.AppVersion(),
 		},
-		Notes: release.Notes(),
+		Notes:  release.Notes(),
+		Values: release.Values(),
 	}
 
 	for _, hook := range release.HookResources() {
@@ -174,6 +176,11 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 
 	if !opts.OutputNoPrint {
 		var resultMessage string
+
+		savedValues := result.Values
+		if !opts.PrintValues {
+			result.Values = nil
+		}
 
 		switch opts.OutputFormat {
 		case JsonOutputFormat:
@@ -192,6 +199,10 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 			resultMessage = string(b)
 		default:
 			return nil, fmt.Errorf("unknown output format %q", opts.OutputFormat)
+		}
+
+		if !opts.PrintValues {
+			result.Values = savedValues
 		}
 
 		var colorLevel color.Level
@@ -250,6 +261,7 @@ type ReleaseGetResultV1 struct {
 	Release    *ReleaseGetResultRelease `json:"release"`
 	Chart      *ReleaseGetResultChart   `json:"chart"`
 	Notes      string                   `json:"notes"`
+	Values     map[string]interface{}   `json:"values"`
 	Hooks      []map[string]interface{} `json:"hooks"`
 	Resources  []map[string]interface{} `json:"resources"`
 }
