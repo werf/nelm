@@ -106,7 +106,12 @@ func NewReleaseFromLegacyRelease(legacyRelease *helmrelease.Release, opts Releas
 		}
 	}
 
-	rel, err := NewRelease(legacyRelease.Name, legacyRelease.Namespace, legacyRelease.Version, legacyRelease.Config, legacyRelease.Chart, hookResources, generalResources, legacyRelease.Info.Notes, ReleaseOptions{
+	vals, err := chartutil.CoalesceValues(legacyRelease.Chart, legacyRelease.Config)
+	if err != nil {
+		return nil, fmt.Errorf("coalesce values for legacy release %q (namespace: %q, revision: %d): %w", legacyRelease.Name, legacyRelease.Namespace, legacyRelease.Version, err)
+	}
+
+	rel, err := NewRelease(legacyRelease.Name, legacyRelease.Namespace, legacyRelease.Version, vals, legacyRelease.Chart, hookResources, generalResources, legacyRelease.Info.Notes, ReleaseOptions{
 		FirstDeployed:   legacyRelease.Info.FirstDeployed.Time,
 		InfoAnnotations: legacyRelease.Info.Annotations,
 		Labels:          legacyRelease.Labels,
