@@ -56,7 +56,7 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 				}
 			}
 
-			if err := action.ChartRender(ctx, cfg.ChartRenderOptions); err != nil {
+			if _, err := action.ChartRender(ctx, cfg.ChartRenderOptions); err != nil {
 				return fmt.Errorf("chart render: %w", err)
 			}
 
