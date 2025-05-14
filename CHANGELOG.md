@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.4.0](https://www.github.com/werf/nelm/compare/v1.3.0...v1.4.0) (2025-05-14)
+
+
+### Features
+
+* `--no-install-crds` for `release install/plan` ([efc22bc](https://www.github.com/werf/nelm/commit/efc22bca73d07af229c351ca74f3e29ebb571f44))
+* `--print-values` option for `release get` ([f41f615](https://www.github.com/werf/nelm/commit/f41f615b3917da22d333d6d588b7b7adf2f9505e))
+* `--release-labels` option for `release install` ([9b20bc0](https://www.github.com/werf/nelm/commit/9b20bc0c63e8651ce3cd728fcf9d8d471da12652))
+* `--timeout` option for `release install/rollback/uninstall/plan` ([d563296](https://www.github.com/werf/nelm/commit/d563296ac4866f3d9ec0030308acb7f9ef20211a))
+
+
+### Bug Fixes
+
+* disallow unknown NELM_FEAT_.* env vars ([7e25a16](https://www.github.com/werf/nelm/commit/7e25a16f5f0c40d94308c77d18cad5cee31d5194))
+
 ## [1.3.0](https://www.github.com/werf/nelm/compare/v1.2.2...v1.3.0) (2025-05-07)
 
 
