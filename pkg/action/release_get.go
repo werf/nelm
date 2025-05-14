@@ -127,9 +127,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		}
 	}
 
-	var (
-		release *release.Release
-	)
+	var release *release.Release
 	if opts.Revision == 0 {
 		release, _, err = history.LastRelease()
 		if err != nil {
