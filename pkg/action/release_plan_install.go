@@ -18,11 +18,11 @@ import (
 	"github.com/werf/nelm/internal/chart"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/plan/resourceinfo"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource"
+	log2 "github.com/werf/nelm/pkg/log"
 )
 
 const (
@@ -157,7 +157,7 @@ func releasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))),
+		registry.ClientOptDebug(log2.Default.AcceptLevel(ctx, log2.Level(DebugLogLevel))),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
 		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
 	}
@@ -203,9 +203,9 @@ func releasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		},
 	}
 
-	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release install")+" %q (namespace: %q)", releaseName, releaseNamespace)
+	log2.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release install")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-	log.Default.Debug(ctx, "Constructing release history")
+	log2.Default.Debug(ctx, "Constructing release history")
 	history, err := release.NewHistory(
 		releaseName,
 		releaseNamespace,
@@ -247,7 +247,7 @@ func releasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		deployType = common.DeployTypeInitial
 	}
 
-	log.Default.Debug(ctx, "Constructing chart tree")
+	log2.Default.Debug(ctx, "Constructing chart tree")
 	chartTree, err := chart.NewChartTree(
 		ctx,
 		opts.Chart,
@@ -286,7 +286,7 @@ func releasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		prevRelFailed = prevRelease.Failed()
 	}
 
-	log.Default.Debug(ctx, "Processing resources")
+	log2.Default.Debug(ctx, "Processing resources")
 	resProcessor := resourceinfo.NewDeployableResourcesProcessor(
 		deployType,
 		releaseName,
@@ -332,7 +332,7 @@ func releasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		return fmt.Errorf("process resources: %w", err)
 	}
 
-	log.Default.Debug(ctx, "Constructing new release")
+	log2.Default.Debug(ctx, "Constructing new release")
 	newRel, err := release.NewRelease(
 		releaseName,
 		releaseNamespace,
@@ -351,7 +351,7 @@ func releasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		return fmt.Errorf("construct new release: %w", err)
 	}
 
-	log.Default.Debug(ctx, "Calculating planned changes")
+	log2.Default.Debug(ctx, "Calculating planned changes")
 	createdChanges, recreatedChanges, updatedChanges, appliedChanges, deletedChanges, planChangesPlanned := plan.CalculatePlannedChanges(
 		releaseName,
 		releaseNamespace,

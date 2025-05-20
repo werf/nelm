@@ -31,9 +31,9 @@ import (
 	"github.com/werf/logboek"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/pkg/featgate"
+	log2 "github.com/werf/nelm/pkg/log"
 )
 
 func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, opts ChartTreeOptions) (*ChartTree, error) {
@@ -70,7 +70,7 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		RepositoryConfig: cli.EnvOr("HELM_REPOSITORY_CONFIG", helmpath.ConfigPath("repositories.yaml")),
 		// TODO(v3): don't read HELM_REPOSITORY_CACHE anymore
 		RepositoryCache: cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
-		Debug:           log.Default.AcceptLevel(ctx, log.DebugLevel),
+		Debug:           log2.Default.AcceptLevel(ctx, log2.DebugLevel),
 	}
 
 	opts.HelmOptions.ChartLoadOpts.ChartDir = chartPath
@@ -83,13 +83,13 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		ValueFiles:   opts.ValuesFiles,
 	}
 
-	log.Default.Debug(ctx, "Merging values for chart tree at %q", chartPath)
+	log2.Default.Debug(ctx, "Merging values for chart tree at %q", chartPath)
 	releaseValues, err := valOpts.MergeValues(getter.Providers{getter.HttpProvider, getter.OCIProvider}, opts.HelmOptions)
 	if err != nil {
 		return nil, fmt.Errorf("error merging values for chart tree at %q: %w", chartPath, err)
 	}
 
-	log.Default.Debug(ctx, "Loading chart at %q", chartPath)
+	log2.Default.Debug(ctx, "Loading chart at %q", chartPath)
 	legacyChart, err := loader.Load(chartPath, opts.HelmOptions)
 	if err != nil {
 		var e *downloader.ErrRepoNotFound
@@ -113,7 +113,7 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 	}
 
 	if legacyChart.Metadata.Deprecated {
-		log.Default.Warn(ctx, `Chart "%s:%s" is deprecated`, legacyChart.Name(), legacyChart.Metadata.Version)
+		log2.Default.Warn(ctx, `Chart "%s:%s" is deprecated`, legacyChart.Name(), legacyChart.Metadata.Version)
 	}
 
 	// TODO(ilya-lesikov): pass custom local api versions
@@ -137,7 +137,7 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		isUpgrade = false
 	}
 
-	log.Default.Debug(ctx, "Rendering values for chart at %q", chartPath)
+	log2.Default.Debug(ctx, "Rendering values for chart at %q", chartPath)
 	values, err := chartutil.ToRenderValues(legacyChart, releaseValues, chartutil.ReleaseOptions{
 		Name:      releaseName,
 		Namespace: releaseNamespace,
@@ -159,7 +159,7 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 	}
 	engine.EnableDNS = opts.AllowDNSRequests
 
-	log.Default.Debug(ctx, "Rendering resources for chart at %q", chartPath)
+	log2.Default.Debug(ctx, "Rendering resources for chart at %q", chartPath)
 
 	var standaloneCRDs []*resource.StandaloneCRD
 
@@ -184,7 +184,7 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		return nil, fmt.Errorf("render resources for chart %q: %w", legacyChart.Name(), err)
 	}
 
-	log.Default.TraceStruct(ctx, renderedTemplates, "Rendered contents of templates/:")
+	log2.Default.TraceStruct(ctx, renderedTemplates, "Rendered contents of templates/:")
 
 	var (
 		hookResources    []*resource.HookResource

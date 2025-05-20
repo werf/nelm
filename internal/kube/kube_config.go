@@ -9,7 +9,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
 
-	"github.com/werf/nelm/internal/log"
+	"github.com/werf/nelm/pkg/log"
 )
 
 type KubeConfigOptions struct {

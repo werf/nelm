@@ -17,7 +17,7 @@ import (
 	klogv2 "k8s.io/klog/v2"
 
 	"github.com/werf/logboek"
-	"github.com/werf/nelm/internal/log"
+	"github.com/werf/nelm/pkg/log"
 )
 
 type SetupLoggingOptions struct {

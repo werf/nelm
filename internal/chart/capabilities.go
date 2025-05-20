@@ -8,7 +8,7 @@ import (
 
 	helmaction "github.com/werf/3p-helm/pkg/action"
 	helmchartutil "github.com/werf/3p-helm/pkg/chartutil"
-	"github.com/werf/nelm/internal/log"
+	"github.com/werf/nelm/pkg/log"
 )
 
 type BuildCapabilitiesOptions struct {

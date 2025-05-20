@@ -14,10 +14,10 @@ import (
 
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/internal/resource/id"
 	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/pkg/log"
 )
 
 func NewDeployableResourcesProcessor(

@@ -9,7 +9,7 @@ import (
 	helmaction "github.com/werf/3p-helm/pkg/action"
 	helmstorage "github.com/werf/3p-helm/pkg/storage"
 	helmdriver "github.com/werf/3p-helm/pkg/storage/driver"
-	"github.com/werf/nelm/internal/log"
+	"github.com/werf/nelm/pkg/log"
 )
 
 type ReleaseStorageOptions struct {

@@ -9,9 +9,9 @@ import (
 	"github.com/samber/lo"
 	"github.com/sourcegraph/conc/pool"
 
-	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/internal/plan/operation"
 	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/pkg/log"
 )
 
 func NewPlanExecutor(plan *Plan, opts PlanExecutorOptions) *PlanExecutor {

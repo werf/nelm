@@ -26,7 +26,7 @@ import (
 
 	"github.com/werf/kubedog/pkg/display"
 	"github.com/werf/logboek"
-	"github.com/werf/nelm/internal/log"
+	"github.com/werf/nelm/pkg/log"
 )
 
 const (
