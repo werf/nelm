@@ -12,8 +12,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/json"
 
 	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/internal/resource"
+	"github.com/werf/nelm/pkg/log"
 )
 
 func isImmutableErr(err error) bool {

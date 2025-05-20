@@ -18,7 +18,6 @@ import (
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/lock"
-	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/plan/operation"
 	"github.com/werf/nelm/internal/plan/resourceinfo"
@@ -26,6 +25,7 @@ import (
 	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/internal/track"
 	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/pkg/log"
 )
 
 const (

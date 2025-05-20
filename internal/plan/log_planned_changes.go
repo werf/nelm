@@ -6,7 +6,7 @@ import (
 
 	"github.com/gookit/color"
 
-	"github.com/werf/nelm/internal/log"
+	"github.com/werf/nelm/pkg/log"
 )
 
 func LogPlannedChanges(
@@ -35,42 +35,52 @@ func LogPlannedChanges(
 	log.Default.Info(ctx, "")
 
 	for _, change := range createdChanges {
-		log.Default.InfoBlock(ctx, createStyle("Create ")+resourceStyle(change.ResourceID.HumanID())+ending(change.CleanedUpOnSuccess, change.CleanedUpOnFailure)).Do(
-			func() {
-				log.Default.Info(ctx, "%s", change.Udiff)
-			},
+		log.Default.InfoBlock(ctx, log.BlockOptions{
+			BlockTitle: createStyle("Create ") + resourceStyle(change.ResourceID.HumanID()) + ending(change.CleanedUpOnSuccess, change.CleanedUpOnFailure),
+		}, func() error {
+			log.Default.Info(ctx, "%s", change.Udiff)
+			return nil
+		},
 		)
 	}
 
 	for _, change := range recreatedChanges {
-		log.Default.InfoBlock(ctx, recreateStyle("Recreate ")+resourceStyle(change.ResourceID.HumanID())+ending(change.CleanedUpOnSuccess, change.CleanedUpOnFailure)).Do(
-			func() {
-				log.Default.Info(ctx, "%s", change.Udiff)
-			},
+		log.Default.InfoBlock(ctx, log.BlockOptions{
+			BlockTitle: recreateStyle("Recreate ") + resourceStyle(change.ResourceID.HumanID()) + ending(change.CleanedUpOnSuccess, change.CleanedUpOnFailure),
+		}, func() error {
+			log.Default.Info(ctx, "%s", change.Udiff)
+			return nil
+		},
 		)
 	}
 
 	for _, change := range updatedChanges {
-		log.Default.InfoBlock(ctx, updateStyle("Update ")+resourceStyle(change.ResourceID.HumanID())+ending(change.CleanedUpOnSuccess, change.CleanedUpOnFailure)).Do(
-			func() {
-				log.Default.Info(ctx, "%s", change.Udiff)
-			},
+		log.Default.InfoBlock(ctx, log.BlockOptions{
+			BlockTitle: updateStyle("Update ") + resourceStyle(change.ResourceID.HumanID()) + ending(change.CleanedUpOnSuccess, change.CleanedUpOnFailure),
+		}, func() error {
+			log.Default.Info(ctx, "%s", change.Udiff)
+			return nil
+		},
 		)
 	}
 
 	for _, change := range appliedChanges {
-		log.Default.InfoBlock(ctx, applyStyle("Blindly apply ")+resourceStyle(change.ResourceID.HumanID())+ending(change.CleanedUpOnSuccess, change.CleanedUpOnFailure)).Do(
-			func() {
-				log.Default.Info(ctx, "%s", change.Udiff)
-			},
+		log.Default.InfoBlock(ctx, log.BlockOptions{
+			BlockTitle: applyStyle("Blindly apply ") + resourceStyle(change.ResourceID.HumanID()) + ending(change.CleanedUpOnSuccess, change.CleanedUpOnFailure),
+		}, func() error {
+			log.Default.Info(ctx, "%s", change.Udiff)
+			return nil
+		},
 		)
 	}
 
 	for _, change := range deletedChanges {
-		log.Default.InfoBlock(ctx, deleteStyle("Delete ")+resourceStyle(change.ResourceID.HumanID())).Do(
-			func() {
-				log.Default.Info(ctx, "%s", change.Udiff)
-			},
+		log.Default.InfoBlock(ctx, log.BlockOptions{
+			BlockTitle: deleteStyle("Delete ") + resourceStyle(change.ResourceID.HumanID()),
+		}, func() error {
+			log.Default.Info(ctx, "%s", change.Udiff)
+			return nil
+		},
 		)
 	}
 

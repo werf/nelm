@@ -12,7 +12,6 @@ import (
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/logboek"
 	"github.com/werf/logboek/pkg/level"
-	"github.com/werf/logboek/pkg/types"
 )
 
 const LogboekLoggerCtxKeyName = "logboek_logger"
@@ -171,12 +170,8 @@ func (l *LogboekLogger) ErrorPop(ctx context.Context, group string) {
 	})
 }
 
-func (l *LogboekLogger) InfoBlock(ctx context.Context, format string, a ...interface{}) types.LogBlockInterface {
-	return logboek.Context(ctx).Default().LogBlock(format, a...)
-}
-
-func (l *LogboekLogger) InfoProcess(ctx context.Context, format string, a ...interface{}) types.LogProcessInterface {
-	return logboek.Context(ctx).Default().LogProcess(format, a...)
+func (l *LogboekLogger) InfoBlock(ctx context.Context, opts BlockOptions, fn func() error) error {
+	return logboek.Context(ctx).Default().LogBlock(opts.BlockTitle).DoError(fn)
 }
 
 func (l *LogboekLogger) SetLevel(ctx context.Context, lvl Level) {

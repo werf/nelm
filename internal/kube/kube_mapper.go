@@ -7,7 +7,7 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/restmapper"
 
-	"github.com/werf/nelm/internal/log"
+	"github.com/werf/nelm/pkg/log"
 )
 
 func NewKubeMapper(ctx context.Context, discoveryClient discovery.CachedDiscoveryInterface) meta.RESTMapper {

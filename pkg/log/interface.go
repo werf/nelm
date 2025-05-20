@@ -2,8 +2,6 @@ package log
 
 import (
 	"context"
-
-	"github.com/werf/logboek/pkg/types"
 )
 
 type Logger interface {
@@ -23,8 +21,7 @@ type Logger interface {
 	Error(ctx context.Context, format string, a ...interface{})
 	ErrorPush(ctx context.Context, group, format string, a ...interface{})
 	ErrorPop(ctx context.Context, group string)
-	InfoBlock(ctx context.Context, format string, a ...interface{}) types.LogBlockInterface
-	InfoProcess(ctx context.Context, format string, a ...interface{}) types.LogProcessInterface
+	InfoBlock(ctx context.Context, opts BlockOptions, fn func() error) error
 	SetLevel(ctx context.Context, lvl Level)
 	Level(ctx context.Context) Level
 	AcceptLevel(ctx context.Context, lvl Level) bool
@@ -42,3 +39,7 @@ const (
 )
 
 var Levels = []Level{SilentLevel, ErrorLevel, WarningLevel, InfoLevel, DebugLevel, TraceLevel}
+
+type BlockOptions struct {
+	BlockTitle string
+}

@@ -11,10 +11,10 @@ import (
 	"github.com/samber/lo"
 
 	helmrelease "github.com/werf/3p-helm/pkg/release"
-	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/internal/plan/operation"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/pkg/log"
 )
 
 func newReport(completedOps, canceledOps, failedOps []operation.Operation, release *release.Release) *report {
@@ -50,26 +50,35 @@ func (r *report) Print(ctx context.Context) {
 	}
 
 	if len(r.completedOps) > 0 {
-		log.Default.InfoBlock(ctx, completedStyle("Completed operations")).Do(func() {
+		log.Default.InfoBlock(ctx, log.BlockOptions{
+			BlockTitle: completedStyle("Completed operations"),
+		}, func() error {
 			for _, op := range r.completedOps {
 				log.Default.Info(ctx, util.Capitalize(op.HumanID()))
 			}
+			return nil
 		})
 	}
 
 	if len(r.canceledOps) > 0 {
-		log.Default.InfoBlock(ctx, canceledStyle("Canceled operations")).Do(func() {
+		log.Default.InfoBlock(ctx, log.BlockOptions{
+			BlockTitle: canceledStyle("Canceled operations"),
+		}, func() error {
 			for _, op := range r.canceledOps {
 				log.Default.Info(ctx, util.Capitalize(op.HumanID()))
 			}
+			return nil
 		})
 	}
 
 	if len(r.failedOps) > 0 {
-		log.Default.InfoBlock(ctx, failedStyle("Failed operations")).Do(func() {
+		log.Default.InfoBlock(ctx, log.BlockOptions{
+			BlockTitle: failedStyle("Failed operations"),
+		}, func() error {
 			for _, op := range r.failedOps {
 				log.Default.Info(ctx, util.Capitalize(op.HumanID()))
 			}
+			return nil
 		})
 	}
 }

@@ -13,7 +13,7 @@ import (
 	"github.com/werf/3p-helm/pkg/helmpath"
 	helmregistry "github.com/werf/3p-helm/pkg/registry"
 	helmrepo "github.com/werf/3p-helm/pkg/repo"
-	"github.com/werf/nelm/internal/log"
+	log2 "github.com/werf/nelm/pkg/log"
 )
 
 // TODO(ilya-lesikov): pass all missing options
@@ -33,7 +33,7 @@ type ChartDownloaderOptions struct {
 
 func NewChartDownloader(ctx context.Context, chartRef string, registryClient *helmregistry.Client, opts ChartDownloaderOptions) (*helmdownloader.ChartDownloader, string, error) {
 	var out io.Writer
-	if log.Default.AcceptLevel(ctx, log.WarningLevel) {
+	if log2.Default.AcceptLevel(ctx, log2.WarningLevel) {
 		out = os.Stdout
 	} else {
 		out = io.Discard

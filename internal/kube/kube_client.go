@@ -18,9 +18,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/werf/nelm/internal/common"
-	"github.com/werf/nelm/internal/log"
 	"github.com/werf/nelm/internal/resource/id"
 	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/pkg/log"
 )
 
 var _ KubeClienter = (*KubeClient)(nil)
