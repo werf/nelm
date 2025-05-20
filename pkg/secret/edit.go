@@ -29,7 +29,7 @@ func SecretEdit(
 	values bool,
 ) error {
 	var encoder *secret.YamlEncoder
-	if enc, err := m.GetYamlEncoder(ctx, workingDir); err != nil {
+	if enc, err := m.GetYamlEncoder(ctx, workingDir, false); err != nil {
 		return err
 	} else {
 		encoder = enc

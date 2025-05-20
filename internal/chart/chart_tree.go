@@ -27,7 +27,7 @@ import (
 	"github.com/werf/3p-helm/pkg/helmpath"
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/releaseutil"
-	"github.com/werf/3p-helm/pkg/werf/secrets"
+	"github.com/werf/3p-helm/pkg/werf/helmopts"
 	"github.com/werf/logboek"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
@@ -58,19 +58,6 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		}
 	}
 
-	valOpts := &values.Options{
-		StringValues: opts.StringSetValues,
-		Values:       opts.SetValues,
-		FileValues:   opts.FileValues,
-		ValueFiles:   opts.ValuesFiles,
-	}
-
-	log.Default.Debug(ctx, "Merging values for chart tree at %q", chartPath)
-	releaseValues, err := valOpts.MergeValues(getter.Providers{getter.HttpProvider, getter.OCIProvider})
-	if err != nil {
-		return nil, fmt.Errorf("error merging values for chart tree at %q: %w", chartPath, err)
-	}
-
 	depDownloader := &downloader.Manager{
 		// FIXME(ilya-lesikov):
 		Out:               logboek.Context(ctx).OutStream(),
@@ -85,12 +72,25 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		RepositoryCache: cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
 		Debug:           log.Default.AcceptLevel(ctx, log.DebugLevel),
 	}
-	loader.SetChartPathFunc = depDownloader.SetChartPath
-	loader.DepsBuildFunc = depDownloader.Build
-	secrets.ChartDir = chartPath
+
+	opts.HelmOptions.ChartLoadOpts.ChartDir = chartPath
+	opts.HelmOptions.ChartLoadOpts.DepDownloader = depDownloader
+
+	valOpts := &values.Options{
+		StringValues: opts.StringSetValues,
+		Values:       opts.SetValues,
+		FileValues:   opts.FileValues,
+		ValueFiles:   opts.ValuesFiles,
+	}
+
+	log.Default.Debug(ctx, "Merging values for chart tree at %q", chartPath)
+	releaseValues, err := valOpts.MergeValues(getter.Providers{getter.HttpProvider, getter.OCIProvider}, opts.HelmOptions)
+	if err != nil {
+		return nil, fmt.Errorf("error merging values for chart tree at %q: %w", chartPath, err)
+	}
 
 	log.Default.Debug(ctx, "Loading chart at %q", chartPath)
-	legacyChart, err := loader.Load(chartPath)
+	legacyChart, err := loader.Load(chartPath, opts.HelmOptions)
 	if err != nil {
 		var e *downloader.ErrRepoNotFound
 		if errors.As(err, &e) {
@@ -179,7 +179,7 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		}
 	}
 
-	renderedTemplates, err := engine.Render(legacyChart, values)
+	renderedTemplates, err := engine.Render(legacyChart, values, opts.HelmOptions)
 	if err != nil {
 		return nil, fmt.Errorf("render resources for chart %q: %w", legacyChart.Name(), err)
 	}
@@ -272,6 +272,7 @@ type ChartTreeOptions struct {
 	KubeCAPath             string
 	KubeConfig             *kube.KubeConfig
 	KubeVersion            *chartutil.KubeVersion
+	HelmOptions            helmopts.HelmOptions
 	Mapper                 meta.ResettableRESTMapper
 	NoStandaloneCRDs       bool
 	RegistryClient         *registry.Client

@@ -9,7 +9,6 @@ import (
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/chart/loader"
-	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
 )
@@ -36,7 +35,6 @@ func newChartDependencyDownloadCommand(ctx context.Context, afterAllCommandsBuil
 
 		ctx = action.SetupLogging(ctx, lo.Ternary(helmSettings.Debug, action.DebugLogLevel, action.InfoLogLevel), action.SetupLoggingOptions{})
 
-		secrets.DisableSecrets = true
 		loader.NoChartLockWarning = ""
 
 		if err := originalRunE(cmd, args); err != nil {

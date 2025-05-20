@@ -13,12 +13,8 @@ import (
 	"github.com/samber/lo"
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/werf/3p-helm/pkg/chart/loader"
-	"github.com/werf/3p-helm/pkg/chartutil"
 	"github.com/werf/3p-helm/pkg/registry"
-	"github.com/werf/3p-helm/pkg/werf/chartextender"
-	"github.com/werf/3p-helm/pkg/werf/secrets"
-	"github.com/werf/common-go/pkg/secrets_manager"
+	"github.com/werf/3p-helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/internal/chart"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
@@ -63,6 +59,8 @@ type ReleasePlanInstallOptions struct {
 	KubeSkipTLSVerify            bool
 	KubeTLSServerName            string
 	KubeToken                    string
+	LegacyChartType              helmopts.ChartType
+	LegacyExtraValues            map[string]interface{}
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	NoInstallCRDs                bool
@@ -189,16 +187,21 @@ func releasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		return fmt.Errorf("construct release storage: %w", err)
 	}
 
-	chartextender.DefaultChartAPIVersion = opts.DefaultChartAPIVersion
-	chartextender.DefaultChartName = opts.DefaultChartName
-	chartextender.DefaultChartVersion = opts.DefaultChartVersion
-	chartextender.ChartAppVersion = opts.ChartAppVersion
-	loader.WithoutDefaultSecretValues = opts.DefaultSecretValuesDisable
-	loader.WithoutDefaultValues = opts.DefaultValuesDisable
-	secrets.CoalesceTablesFunc = chartutil.CoalesceTables
-	secrets.SecretsWorkingDir = opts.SecretWorkDir
-	loader.SecretValuesFiles = opts.SecretValuesPaths
-	secrets_manager.DisableSecretsDecryption = opts.SecretKeyIgnore
+	helmOptions := helmopts.HelmOptions{
+		ChartLoadOpts: helmopts.ChartLoadOptions{
+			ChartAppVersion:        opts.ChartAppVersion,
+			ChartType:              opts.LegacyChartType,
+			DefaultChartAPIVersion: opts.DefaultChartAPIVersion,
+			DefaultChartName:       opts.DefaultChartName,
+			DefaultChartVersion:    opts.DefaultChartVersion,
+			ExtraValues:            opts.LegacyExtraValues,
+			NoDecryptSecrets:       opts.SecretKeyIgnore,
+			NoDefaultSecretValues:  opts.DefaultSecretValuesDisable,
+			NoDefaultValues:        opts.DefaultValuesDisable,
+			SecretValuesFiles:      opts.SecretValuesPaths,
+			SecretsWorkingDir:      opts.SecretWorkDir,
+		},
+	}
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release install")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
@@ -261,6 +264,7 @@ func releasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 			FileValues:             opts.ValuesFileSets,
 			KubeCAPath:             opts.KubeCAPath,
 			KubeConfig:             clientFactory.KubeConfig(),
+			HelmOptions:            helmOptions,
 			Mapper:                 clientFactory.Mapper(),
 			NoStandaloneCRDs:       opts.NoInstallCRDs,
 			RegistryClient:         helmRegistryClient,

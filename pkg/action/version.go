@@ -12,7 +12,6 @@ import (
 	"github.com/gookit/color"
 
 	"github.com/werf/3p-helm/pkg/chart/loader"
-	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/nelm/internal/common"
 )
 
@@ -36,7 +35,6 @@ func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {
 		return nil, fmt.Errorf("build version options: %w", err)
 	}
 
-	secrets.DisableSecrets = true
 	loader.NoChartLockWarning = ""
 
 	result := &VersionResult{

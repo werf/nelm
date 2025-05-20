@@ -15,7 +15,6 @@ import (
 
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	helmrelease "github.com/werf/3p-helm/pkg/release"
-	"github.com/werf/3p-helm/pkg/werf/secrets"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/release"
 )
@@ -104,7 +103,6 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		return nil, fmt.Errorf("construct release storage: %w", err)
 	}
 
-	secrets.DisableSecrets = true
 	loader.NoChartLockWarning = ""
 
 	history, err := release.NewHistory(
