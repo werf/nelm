@@ -22,7 +22,7 @@ func RotateSecretKey(
 ) error {
 	secretsManager := secrets_manager.Manager
 
-	newEncoder, err := secretsManager.GetYamlEncoder(ctx, secretWorkingDir)
+	newEncoder, err := secretsManager.GetYamlEncoder(ctx, secretWorkingDir, false)
 	if err != nil {
 		return err
 	}

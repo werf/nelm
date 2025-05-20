@@ -16,12 +16,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/werf/3p-helm/pkg/chart/loader"
-	"github.com/werf/3p-helm/pkg/chartutil"
 	"github.com/werf/3p-helm/pkg/registry"
-	"github.com/werf/3p-helm/pkg/werf/chartextender"
-	"github.com/werf/3p-helm/pkg/werf/secrets"
-	"github.com/werf/common-go/pkg/secrets_manager"
+	"github.com/werf/3p-helm/pkg/werf/helmopts"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	kubeutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
@@ -45,11 +41,10 @@ const (
 )
 
 type ReleaseInstallOptions struct {
-	Chart           string
-	AutoRollback    bool
-	ChartAppVersion string
-	// TODO(v2): get rid
-	ChartDirPath                 string
+	AutoRollback                 bool
+	Chart                        string
+	ChartAppVersion              string
+	ChartDirPath                 string // TODO(v2): get rid
 	ChartRepositoryInsecure      bool
 	ChartRepositorySkipTLSVerify bool
 	ChartRepositorySkipUpdate    bool
@@ -74,6 +69,8 @@ type ReleaseInstallOptions struct {
 	KubeSkipTLSVerify            bool
 	KubeTLSServerName            string
 	KubeToken                    string
+	LegacyChartType              helmopts.ChartType
+	LegacyExtraValues            map[string]interface{}
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	NoInstallCRDs                bool
@@ -223,16 +220,21 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		lockManager = m
 	}
 
-	chartextender.DefaultChartAPIVersion = opts.DefaultChartAPIVersion
-	chartextender.DefaultChartName = opts.DefaultChartName
-	chartextender.DefaultChartVersion = opts.DefaultChartVersion
-	chartextender.ChartAppVersion = opts.ChartAppVersion
-	loader.WithoutDefaultSecretValues = opts.DefaultSecretValuesDisable
-	loader.WithoutDefaultValues = opts.DefaultValuesDisable
-	secrets.CoalesceTablesFunc = chartutil.CoalesceTables
-	secrets.SecretsWorkingDir = opts.SecretWorkDir
-	loader.SecretValuesFiles = opts.SecretValuesPaths
-	secrets_manager.DisableSecretsDecryption = opts.SecretKeyIgnore
+	helmOptions := helmopts.HelmOptions{
+		ChartLoadOpts: helmopts.ChartLoadOptions{
+			ChartAppVersion:        opts.ChartAppVersion,
+			ChartType:              opts.LegacyChartType,
+			DefaultChartAPIVersion: opts.DefaultChartAPIVersion,
+			DefaultChartName:       opts.DefaultChartName,
+			DefaultChartVersion:    opts.DefaultChartVersion,
+			ExtraValues:            opts.LegacyExtraValues,
+			NoDecryptSecrets:       opts.SecretKeyIgnore,
+			NoDefaultSecretValues:  opts.DefaultSecretValuesDisable,
+			NoDefaultValues:        opts.DefaultValuesDisable,
+			SecretValuesFiles:      opts.SecretValuesPaths,
+			SecretsWorkingDir:      opts.SecretWorkDir,
+		},
+	}
 
 	if err := createReleaseNamespace(ctx, clientFactory, releaseNamespace); err != nil {
 		return fmt.Errorf("create release namespace: %w", err)
@@ -305,6 +307,7 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 			FileValues:             opts.ValuesFileSets,
 			KubeCAPath:             opts.KubeCAPath,
 			KubeConfig:             clientFactory.KubeConfig(),
+			HelmOptions:            helmOptions,
 			Mapper:                 clientFactory.Mapper(),
 			NoStandaloneCRDs:       opts.NoInstallCRDs,
 			RegistryClient:         helmRegistryClient,

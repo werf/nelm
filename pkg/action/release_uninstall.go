@@ -15,6 +15,7 @@ import (
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
+	"github.com/werf/3p-helm/pkg/cli"
 	helm_kube "github.com/werf/3p-helm/pkg/kube"
 	"github.com/werf/3p-helm/pkg/storage/driver"
 	kdkube "github.com/werf/kubedog/pkg/kube"
@@ -131,7 +132,7 @@ func releaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 		return fmt.Errorf("construct kube client factory: %w", err)
 	}
 
-	helmSettings := helm_v3.Settings
+	helmSettings := cli.New()
 	*helmSettings.GetConfigP() = clientFactory.LegacyClientGetter()
 	*helmSettings.GetNamespaceP() = releaseNamespace
 	releaseNamespace = helmSettings.Namespace()

@@ -15,12 +15,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/chartutil"
 	"github.com/werf/3p-helm/pkg/registry"
-	"github.com/werf/3p-helm/pkg/werf/chartextender"
-	"github.com/werf/3p-helm/pkg/werf/secrets"
-	"github.com/werf/common-go/pkg/secrets_manager"
+	"github.com/werf/3p-helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/internal/chart"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
@@ -35,10 +32,9 @@ const (
 )
 
 type ChartRenderOptions struct {
-	Chart           string
-	ChartAppVersion string
-	// TODO(v2): get rid
-	ChartDirPath                 string
+	Chart                        string
+	ChartAppVersion              string
+	ChartDirPath                 string // TODO(v2): get rid
 	ChartRepositoryInsecure      bool
 	ChartRepositorySkipTLSVerify bool
 	ChartRepositorySkipUpdate    bool
@@ -61,7 +57,8 @@ type ChartRenderOptions struct {
 	KubeSkipTLSVerify            bool
 	KubeTLSServerName            string
 	KubeToken                    string
-	Remote                       bool
+	LegacyChartType              helmopts.ChartType
+	LegacyExtraValues            map[string]interface{}
 	LocalKubeVersion             string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
@@ -71,6 +68,7 @@ type ChartRenderOptions struct {
 	ReleaseName                  string
 	ReleaseNamespace             string
 	ReleaseStorageDriver         string
+	Remote                       bool
 	SQLConnectionString          string
 	SecretKey                    string
 	SecretKeyIgnore              bool
@@ -177,16 +175,21 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		return nil, fmt.Errorf("construct release storage: %w", err)
 	}
 
-	chartextender.DefaultChartAPIVersion = opts.DefaultChartAPIVersion
-	chartextender.DefaultChartName = opts.DefaultChartName
-	chartextender.DefaultChartVersion = opts.DefaultChartVersion
-	chartextender.ChartAppVersion = opts.ChartAppVersion
-	loader.WithoutDefaultSecretValues = opts.DefaultSecretValuesDisable
-	loader.WithoutDefaultValues = opts.DefaultValuesDisable
-	secrets.CoalesceTablesFunc = chartutil.CoalesceTables
-	secrets.SecretsWorkingDir = opts.SecretWorkDir
-	loader.SecretValuesFiles = opts.SecretValuesPaths
-	secrets_manager.DisableSecretsDecryption = opts.SecretKeyIgnore
+	helmOptions := helmopts.HelmOptions{
+		ChartLoadOpts: helmopts.ChartLoadOptions{
+			ChartAppVersion:        opts.ChartAppVersion,
+			ChartType:              opts.LegacyChartType,
+			DefaultChartAPIVersion: opts.DefaultChartAPIVersion,
+			DefaultChartName:       opts.DefaultChartName,
+			DefaultChartVersion:    opts.DefaultChartVersion,
+			ExtraValues:            opts.LegacyExtraValues,
+			NoDecryptSecrets:       opts.SecretKeyIgnore,
+			NoDefaultSecretValues:  opts.DefaultSecretValuesDisable,
+			NoDefaultValues:        opts.DefaultValuesDisable,
+			SecretValuesFiles:      opts.SecretValuesPaths,
+			SecretsWorkingDir:      opts.SecretWorkDir,
+		},
+	}
 
 	var historyOptions release.HistoryOptions
 	if opts.Remote {
@@ -236,6 +239,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		ChartVersion:           opts.ChartVersion,
 		FileValues:             opts.ValuesFileSets,
 		KubeCAPath:             opts.KubeCAPath,
+		HelmOptions:            helmOptions,
 		RegistryClient:         helmRegistryClient,
 		SetValues:              opts.ValuesSets,
 		StringSetValues:        opts.ValuesStringSets,
