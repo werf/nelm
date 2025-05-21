@@ -37,51 +37,41 @@ func LogPlannedChanges(
 	for _, change := range createdChanges {
 		log.Default.InfoBlock(ctx, log.BlockOptions{
 			BlockTitle: createStyle("Create ") + resourceStyle(change.ResourceID.HumanID()) + ending(change.CleanedUpOnSuccess, change.CleanedUpOnFailure),
-		}, func() error {
+		}, func() {
 			log.Default.Info(ctx, "%s", change.Udiff)
-			return nil
-		},
-		)
+		})
 	}
 
 	for _, change := range recreatedChanges {
 		log.Default.InfoBlock(ctx, log.BlockOptions{
 			BlockTitle: recreateStyle("Recreate ") + resourceStyle(change.ResourceID.HumanID()) + ending(change.CleanedUpOnSuccess, change.CleanedUpOnFailure),
-		}, func() error {
+		}, func() {
 			log.Default.Info(ctx, "%s", change.Udiff)
-			return nil
-		},
-		)
+		})
 	}
 
 	for _, change := range updatedChanges {
 		log.Default.InfoBlock(ctx, log.BlockOptions{
 			BlockTitle: updateStyle("Update ") + resourceStyle(change.ResourceID.HumanID()) + ending(change.CleanedUpOnSuccess, change.CleanedUpOnFailure),
-		}, func() error {
+		}, func() {
 			log.Default.Info(ctx, "%s", change.Udiff)
-			return nil
-		},
-		)
+		})
 	}
 
 	for _, change := range appliedChanges {
 		log.Default.InfoBlock(ctx, log.BlockOptions{
 			BlockTitle: applyStyle("Blindly apply ") + resourceStyle(change.ResourceID.HumanID()) + ending(change.CleanedUpOnSuccess, change.CleanedUpOnFailure),
-		}, func() error {
+		}, func() {
 			log.Default.Info(ctx, "%s", change.Udiff)
-			return nil
-		},
-		)
+		})
 	}
 
 	for _, change := range deletedChanges {
 		log.Default.InfoBlock(ctx, log.BlockOptions{
 			BlockTitle: deleteStyle("Delete ") + resourceStyle(change.ResourceID.HumanID()),
-		}, func() error {
+		}, func() {
 			log.Default.Info(ctx, "%s", change.Udiff)
-			return nil
-		},
-		)
+		})
 	}
 
 	log.Default.Info(ctx, color.Bold.Render("Planned changes summary")+" for release %q (namespace: %q):", releaseName, releaseNamespace)
