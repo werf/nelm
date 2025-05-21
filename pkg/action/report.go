@@ -52,33 +52,30 @@ func (r *report) Print(ctx context.Context) {
 	if len(r.completedOps) > 0 {
 		log.Default.InfoBlock(ctx, log.BlockOptions{
 			BlockTitle: completedStyle("Completed operations"),
-		}, func() error {
+		}, func() {
 			for _, op := range r.completedOps {
 				log.Default.Info(ctx, util.Capitalize(op.HumanID()))
 			}
-			return nil
 		})
 	}
 
 	if len(r.canceledOps) > 0 {
 		log.Default.InfoBlock(ctx, log.BlockOptions{
 			BlockTitle: canceledStyle("Canceled operations"),
-		}, func() error {
+		}, func() {
 			for _, op := range r.canceledOps {
 				log.Default.Info(ctx, util.Capitalize(op.HumanID()))
 			}
-			return nil
 		})
 	}
 
 	if len(r.failedOps) > 0 {
 		log.Default.InfoBlock(ctx, log.BlockOptions{
 			BlockTitle: failedStyle("Failed operations"),
-		}, func() error {
+		}, func() {
 			for _, op := range r.failedOps {
 				log.Default.Info(ctx, util.Capitalize(op.HumanID()))
 			}
-			return nil
 		})
 	}
 }

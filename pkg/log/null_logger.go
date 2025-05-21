@@ -45,8 +45,8 @@ func (l *NullLogger) ErrorPush(ctx context.Context, group, format string, a ...i
 
 func (l *NullLogger) ErrorPop(ctx context.Context, group string) {}
 
-func (l *NullLogger) InfoBlock(ctx context.Context, opts BlockOptions, fn func() error) error {
-	return nil
+func (l *NullLogger) InfoBlock(ctx context.Context, opts BlockOptions, fn func()) {
+	return
 }
 
 func (l *NullLogger) SetLevel(ctx context.Context, lvl Level) {}

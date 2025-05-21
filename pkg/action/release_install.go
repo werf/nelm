@@ -771,9 +771,8 @@ func printNotes(ctx context.Context, notes string) {
 
 	log.Default.InfoBlock(ctx, log.BlockOptions{
 		BlockTitle: color.Style{color.Bold, color.Blue}.Render("Release notes"),
-	}, func() error {
+	}, func() {
 		log.Default.Info(ctx, notes)
-		return nil
 	})
 }
 
