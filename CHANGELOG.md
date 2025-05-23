@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.4.1](https://www.github.com/werf/nelm/compare/v1.4.0...v1.4.1) (2025-05-23)
+
+
+### Bug Fixes
+
+* improve values handling; add more trace logs ([358855f](https://www.github.com/werf/nelm/commit/358855febc657cb326076efae9ac225698b7a253))
+
 ## [1.4.0](https://www.github.com/werf/nelm/compare/v1.3.0...v1.4.0) (2025-05-14)
 
 
