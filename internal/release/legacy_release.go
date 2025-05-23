@@ -24,7 +24,7 @@ func NewLegacyReleaseFromRelease(rel *Release) (*helmrelease.Release, error) {
 	var generalResourcesManifests []string
 	for _, res := range rel.GeneralResources() {
 		if result, err := yaml.Marshal(res.Unstructured().UnstructuredContent()); err != nil {
-			return nil, fmt.Errorf("error marshalling general resource %q for release %q (namespace: %q, revision: %d): %w", res.HumanID(), rel.Name(), rel.Namespace(), rel.Revision(), err)
+			return nil, fmt.Errorf("error marshaling general resource %q for release %q (namespace: %q, revision: %d): %w", res.HumanID(), rel.Name(), rel.Namespace(), rel.Revision(), err)
 		} else if res.FilePath() != "" {
 			manifest := "# Source: " + res.FilePath() + "\n" + string(result)
 			generalResourcesManifests = append(generalResourcesManifests, manifest)
@@ -97,7 +97,7 @@ func hookResourceToLegacyHook(res *resource.HookResource) (*helmrelease.Hook, er
 
 	var manifest string
 	if result, err := yaml.Marshal(res.Unstructured().UnstructuredContent()); err != nil {
-		return nil, fmt.Errorf("error marshalling hook resource %q: %w", res.HumanID(), err)
+		return nil, fmt.Errorf("error marshaling hook resource %q: %w", res.HumanID(), err)
 	} else if res.FilePath() != "" {
 		manifest = "# Source: " + res.FilePath() + "\n" + string(result)
 	} else {

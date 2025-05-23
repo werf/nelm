@@ -57,12 +57,12 @@ func ColoredUnifiedDiff(from, to string) (uDiff string, present bool) {
 func ResourcesReallyDiffer(first, second *unstructured.Unstructured) (differ bool, err error) {
 	firstJson, err := json.Marshal(first.UnstructuredContent())
 	if err != nil {
-		return false, fmt.Errorf("error marshalling live object: %w", err)
+		return false, fmt.Errorf("error marshaling live object: %w", err)
 	}
 
 	secondJson, err := json.Marshal(second.UnstructuredContent())
 	if err != nil {
-		return false, fmt.Errorf("error marshalling desired object: %w", err)
+		return false, fmt.Errorf("error marshaling desired object: %w", err)
 	}
 
 	diffOps, err := jsondiff.CompareJSON(firstJson, secondJson)
