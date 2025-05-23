@@ -510,7 +510,7 @@ const ChartRenderResultApiVersionV1 = "v1"
 
 type ChartRenderResultV1 struct {
 	APIVersion string                   `json:"apiVersion"`
-	CRDs       []map[string]interface{} `json:"crds"`
-	Hooks      []map[string]interface{} `json:"hooks"`
-	Resources  []map[string]interface{} `json:"resources"`
+	CRDs       []map[string]interface{} `json:"crds,omitempty"`
+	Hooks      []map[string]interface{} `json:"hooks,omitempty"`
+	Resources  []map[string]interface{} `json:"resources,omitempty"`
 }
