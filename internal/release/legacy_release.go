@@ -46,7 +46,7 @@ func NewLegacyReleaseFromRelease(rel *Release) (*helmrelease.Release, error) {
 		},
 		Hooks:    legacyHooks,
 		Manifest: strings.Join(generalResourcesManifests, "\n---\n"),
-		Config:   rel.Values(),
+		Config:   rel.OverrideValues(),
 		Chart:    rel.LegacyChart(),
 		Labels:   rel.Labels(),
 	}

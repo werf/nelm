@@ -18,7 +18,7 @@ import (
 	"github.com/werf/nelm/internal/resource"
 )
 
-func NewRelease(name, namespace string, revision int, values map[string]interface{}, legacyChart *chart.Chart, hookResources []*resource.HookResource, generalResources []*resource.GeneralResource, notes string, opts ReleaseOptions) (*Release, error) {
+func NewRelease(name, namespace string, revision int, overrideValues map[string]interface{}, legacyChart *chart.Chart, hookResources []*resource.HookResource, generalResources []*resource.GeneralResource, notes string, opts ReleaseOptions) (*Release, error) {
 	if err := chartutil.ValidateReleaseName(name); err != nil {
 		return nil, fmt.Errorf("release name %q is not valid: %w", name, err)
 	}
@@ -65,7 +65,7 @@ func NewRelease(name, namespace string, revision int, values map[string]interfac
 		notes:            notes,
 		revision:         revision,
 		status:           status,
-		values:           values,
+		overrideValues:   overrideValues,
 	}, nil
 }
 
@@ -106,12 +106,7 @@ func NewReleaseFromLegacyRelease(legacyRelease *helmrelease.Release, opts Releas
 		}
 	}
 
-	vals, err := chartutil.CoalesceValues(legacyRelease.Chart, legacyRelease.Config)
-	if err != nil {
-		return nil, fmt.Errorf("coalesce values for legacy release %q (namespace: %q, revision: %d): %w", legacyRelease.Name, legacyRelease.Namespace, legacyRelease.Version, err)
-	}
-
-	rel, err := NewRelease(legacyRelease.Name, legacyRelease.Namespace, legacyRelease.Version, vals, legacyRelease.Chart, hookResources, generalResources, legacyRelease.Info.Notes, ReleaseOptions{
+	rel, err := NewRelease(legacyRelease.Name, legacyRelease.Namespace, legacyRelease.Version, legacyRelease.Config, legacyRelease.Chart, hookResources, generalResources, legacyRelease.Info.Notes, ReleaseOptions{
 		FirstDeployed:   legacyRelease.Info.FirstDeployed.Time,
 		InfoAnnotations: legacyRelease.Info.Annotations,
 		Labels:          legacyRelease.Labels,
@@ -148,7 +143,7 @@ type Release struct {
 	notes            string
 	revision         int
 	status           helmrelease.Status
-	values           map[string]interface{}
+	overrideValues   map[string]interface{}
 }
 
 func (r *Release) Name() string {
@@ -163,8 +158,8 @@ func (r *Release) Revision() int {
 	return r.revision
 }
 
-func (r *Release) Values() map[string]interface{} {
-	return r.values
+func (r *Release) OverrideValues() map[string]interface{} {
+	return r.overrideValues
 }
 
 func (r *Release) LegacyChart() *chart.Chart {

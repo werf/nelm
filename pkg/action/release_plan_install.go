@@ -337,7 +337,7 @@ func releasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		releaseName,
 		releaseNamespace,
 		newRevision,
-		chartTree.ReleaseValues(),
+		chartTree.OverrideValues(),
 		chartTree.LegacyChart(),
 		resProcessor.ReleasableHookResources(),
 		resProcessor.ReleasableGeneralResources(),
