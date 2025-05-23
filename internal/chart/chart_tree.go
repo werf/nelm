@@ -33,7 +33,7 @@ import (
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/pkg/featgate"
-	log2 "github.com/werf/nelm/pkg/log"
+	log "github.com/werf/nelm/pkg/log"
 )
 
 func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, opts ChartTreeOptions) (*ChartTree, error) {
@@ -70,26 +70,30 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		RepositoryConfig: cli.EnvOr("HELM_REPOSITORY_CONFIG", helmpath.ConfigPath("repositories.yaml")),
 		// TODO(v3): don't read HELM_REPOSITORY_CACHE anymore
 		RepositoryCache: cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
-		Debug:           log2.Default.AcceptLevel(ctx, log2.DebugLevel),
+		Debug:           log.Default.AcceptLevel(ctx, log.DebugLevel),
 	}
 
 	opts.HelmOptions.ChartLoadOpts.ChartDir = chartPath
 	opts.HelmOptions.ChartLoadOpts.DepDownloader = depDownloader
 
-	valOpts := &values.Options{
+	overrideValuesOpts := &values.Options{
 		StringValues: opts.StringSetValues,
 		Values:       opts.SetValues,
 		FileValues:   opts.FileValues,
 		ValueFiles:   opts.ValuesFiles,
 	}
 
-	log2.Default.Debug(ctx, "Merging values for chart tree at %q", chartPath)
-	releaseValues, err := valOpts.MergeValues(getter.Providers{getter.HttpProvider, getter.OCIProvider}, opts.HelmOptions)
+	log.Default.TraceStruct(ctx, overrideValuesOpts, "Override values options:")
+
+	log.Default.Debug(ctx, "Merging override values for chart tree at %q", chartPath)
+	overrideValues, err := overrideValuesOpts.MergeValues(getter.Providers{getter.HttpProvider, getter.OCIProvider}, opts.HelmOptions)
 	if err != nil {
-		return nil, fmt.Errorf("error merging values for chart tree at %q: %w", chartPath, err)
+		return nil, fmt.Errorf("error merging override values for chart tree at %q: %w", chartPath, err)
 	}
 
-	log2.Default.Debug(ctx, "Loading chart at %q", chartPath)
+	log.Default.TraceStruct(ctx, overrideValues, "Merged override values:")
+
+	log.Default.Debug(ctx, "Loading chart at %q", chartPath)
 	legacyChart, err := loader.Load(chartPath, opts.HelmOptions)
 	if err != nil {
 		var e *downloader.ErrRepoNotFound
@@ -108,12 +112,17 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		}
 	}
 
-	if err := chartutil.ProcessDependenciesWithMerge(legacyChart, &releaseValues); err != nil {
+	log.Default.TraceStruct(ctx, legacyChart, "Legacy chart:")
+
+	if err := chartutil.ProcessDependenciesWithMerge(legacyChart, &overrideValues); err != nil {
 		return nil, fmt.Errorf("error processing chart %q dependencies: %w", legacyChart.Name(), err)
 	}
 
+	log.Default.TraceStruct(ctx, legacyChart, "Legacy chart after processing dependencies:")
+	log.Default.TraceStruct(ctx, overrideValues, "Merged override values after processing dependencies:")
+
 	if legacyChart.Metadata.Deprecated {
-		log2.Default.Warn(ctx, `Chart "%s:%s" is deprecated`, legacyChart.Name(), legacyChart.Metadata.Version)
+		log.Default.Warn(ctx, `Chart "%s:%s" is deprecated`, legacyChart.Name(), legacyChart.Metadata.Version)
 	}
 
 	// TODO(ilya-lesikov): pass custom local api versions
@@ -124,6 +133,8 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 	if err != nil {
 		return nil, fmt.Errorf("build capabilities for chart %q: %w", legacyChart.Name(), err)
 	}
+
+	log.Default.TraceStruct(ctx, caps, "Capabilities:")
 
 	if legacyChart.Metadata.KubeVersion != "" && !chartutil.IsCompatibleRange(legacyChart.Metadata.KubeVersion, caps.KubeVersion.String()) {
 		return nil, fmt.Errorf("chart requires kubeVersion: %s which is incompatible with Kubernetes %s", legacyChart.Metadata.KubeVersion, caps.KubeVersion.String())
@@ -137,8 +148,8 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		isUpgrade = false
 	}
 
-	log2.Default.Debug(ctx, "Rendering values for chart at %q", chartPath)
-	values, err := chartutil.ToRenderValues(legacyChart, releaseValues, chartutil.ReleaseOptions{
+	log.Default.Debug(ctx, "Rendering values for chart at %q", chartPath)
+	renderedValues, err := chartutil.ToRenderValues(legacyChart, overrideValues, chartutil.ReleaseOptions{
 		Name:      releaseName,
 		Namespace: releaseNamespace,
 		Revision:  revision,
@@ -146,10 +157,10 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		IsUpgrade: isUpgrade,
 	}, caps)
 	if err != nil {
-		return nil, fmt.Errorf("error building values for chart %q: %w", legacyChart.Name(), err)
+		return nil, fmt.Errorf("error building rendered values for chart %q: %w", legacyChart.Name(), err)
 	}
 
-	finalValues := values.AsMap()
+	log.Default.TraceStruct(ctx, renderedValues.AsMap(), "Rendered values:")
 
 	var engine *helmengine.Engine
 	if opts.KubeConfig != nil {
@@ -159,7 +170,7 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 	}
 	engine.EnableDNS = opts.AllowDNSRequests
 
-	log2.Default.Debug(ctx, "Rendering resources for chart at %q", chartPath)
+	log.Default.Debug(ctx, "Rendering resources for chart at %q", chartPath)
 
 	var standaloneCRDs []*resource.StandaloneCRD
 
@@ -179,12 +190,12 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		}
 	}
 
-	renderedTemplates, err := engine.Render(legacyChart, values, opts.HelmOptions)
+	renderedTemplates, err := engine.Render(legacyChart, renderedValues, opts.HelmOptions)
 	if err != nil {
 		return nil, fmt.Errorf("render resources for chart %q: %w", legacyChart.Name(), err)
 	}
 
-	log2.Default.TraceStruct(ctx, renderedTemplates, "Rendered contents of templates/:")
+	log.Default.TraceStruct(ctx, renderedTemplates, "Rendered contents of templates/:")
 
 	var (
 		hookResources    []*resource.HookResource
@@ -237,6 +248,8 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		RenderSubchartNotes: opts.SubNotes,
 	})
 
+	log.Default.TraceStruct(ctx, notes, "Rendered notes:")
+
 	sort.SliceStable(standaloneCRDs, func(i, j int) bool {
 		return resource.ResourceIDsSortHandler(standaloneCRDs[i].ResourceID, standaloneCRDs[j].ResourceID)
 	})
@@ -254,8 +267,8 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		hookResources:    hookResources,
 		generalResources: generalResources,
 		notes:            notes,
-		releaseValues:    releaseValues,
-		finalValues:      finalValues,
+		overrideValues:   overrideValues,
+		renderedValues:   renderedValues.AsMap(),
 		legacyChart:      legacyChart,
 	}, nil
 }
@@ -287,8 +300,8 @@ type ChartTree struct {
 	hookResources    []*resource.HookResource
 	generalResources []*resource.GeneralResource
 	notes            string
-	releaseValues    map[string]interface{}
-	finalValues      map[string]interface{}
+	overrideValues   map[string]interface{}
+	renderedValues   map[string]interface{}
 	legacyChart      *chart.Chart
 }
 
@@ -316,12 +329,12 @@ func (t *ChartTree) Notes() string {
 	return t.notes
 }
 
-func (t *ChartTree) ReleaseValues() map[string]interface{} {
-	return t.releaseValues
+func (t *ChartTree) OverrideValues() map[string]interface{} {
+	return t.overrideValues
 }
 
-func (t *ChartTree) FinalValues() map[string]interface{} {
-	return t.finalValues
+func (t *ChartTree) RenderedValues() map[string]interface{} {
+	return t.renderedValues
 }
 
 func (t *ChartTree) LegacyChart() *chart.Chart {

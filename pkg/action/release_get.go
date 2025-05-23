@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/werf/3p-helm/pkg/chart/loader"
+	"github.com/werf/3p-helm/pkg/chartutil"
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/release"
@@ -145,6 +146,11 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		}
 	}
 
+	values, err := chartutil.CoalesceValues(release.LegacyChart(), release.OverrideValues())
+	if err != nil {
+		return nil, fmt.Errorf("coalesce release values: %w", err)
+	}
+
 	result := &ReleaseGetResultV1{
 		ApiVersion: ReleaseGetResultApiVersionV1,
 		Release: &ReleaseGetResultRelease{
@@ -164,7 +170,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 			AppVersion: release.AppVersion(),
 		},
 		Notes:  release.Notes(),
-		Values: release.Values(),
+		Values: values,
 	}
 
 	for _, hook := range release.HookResources() {
@@ -261,10 +267,10 @@ type ReleaseGetResultV1 struct {
 	ApiVersion string                   `json:"apiVersion"`
 	Release    *ReleaseGetResultRelease `json:"release"`
 	Chart      *ReleaseGetResultChart   `json:"chart"`
-	Notes      string                   `json:"notes"`
-	Values     map[string]interface{}   `json:"values"`
-	Hooks      []map[string]interface{} `json:"hooks"`
-	Resources  []map[string]interface{} `json:"resources"`
+	Notes      string                   `json:"notes,omitempty"`
+	Values     map[string]interface{}   `json:"values,omitempty"`
+	Hooks      []map[string]interface{} `json:"hooks,omitempty"`
+	Resources  []map[string]interface{} `json:"resources,omitempty"`
 }
 
 type ReleaseGetResultRelease struct {
