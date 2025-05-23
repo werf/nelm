@@ -100,7 +100,7 @@ func (r *report) JSON() ([]byte, error) {
 
 	data, err := json.MarshalIndent(reportv2, "", "\t")
 	if err != nil {
-		return nil, fmt.Errorf("error marshalling report: %w", err)
+		return nil, fmt.Errorf("error marshaling report: %w", err)
 	}
 
 	return data, nil
