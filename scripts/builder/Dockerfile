@@ -1,16 +1,20 @@
-FROM --platform=linux/amd64 golang:1.23-bookworm@sha256:3149bc5043fa58cf127fd8db1fdd4e533b6aed5a40d663d4f4ae43d20386665f
+FROM golang:1.23.9-bookworm@sha256:6a3aa4fd2c3e15bc8cb450e4a0ae353fb73b5f593bcbb5b25ffeee860cc2ec2a
 ENV DEBIAN_FRONTEND=noninteractive
 
+ARG TARGETPLATFORM
+# linux/amd64 -> linux_amd64
+ENV PLATFORM=${TARGETPLATFORM/\//_}
+
 RUN apt-get -y update && \
-    apt-get -y install apt-utils gcc-aarch64-linux-gnu file &&  \
-    curl -sSLO https://github.com/go-task/task/releases/download/v3.33.1/task_linux_amd64.deb && \
-    apt-get -y install ./task_linux_amd64.deb && \
-    rm -rf ./task_linux_amd64.deb /var/cache/apt/* /var/lib/apt/lists/* /var/log/*
+    apt-get -y install apt-utils gcc-aarch64-linux-gnu file && \
+    curl -sSLO https://github.com/go-task/task/releases/download/v3.43.3/task_${PLATFORM}.deb && \
+    apt-get -y install ./task_${PLATFORM}.deb && \
+    rm -rf ./task_${PLATFORM}.deb /var/cache/apt/* /var/lib/apt/lists/* /var/log/*
 
 ADD cmd /.nelm-deps/cmd
 ADD pkg /.nelm-deps/pkg
 ADD internal /.nelm-deps/internal
-ADD go.mod go.sum Taskfile.dist.yaml /.nelm-deps/
+COPY go.mod go.sum Taskfile.dist.yaml /.nelm-deps/
 ADD scripts /.nelm-deps/scripts
 
 RUN cd /.nelm-deps && \
