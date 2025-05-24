@@ -1,0 +1,12 @@
+# Hidden files and directories
+.*
+
+# Dockerfiles
+Dockerfile*
+
+# Documentation
+*.md
+
+# Configuration (except Taskfile.dist.yaml)
+*.yaml
+!Taskfile.dist.yaml
