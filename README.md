@@ -51,6 +51,7 @@ We consider Nelm production-ready, since 95% of the Nelm codebase basically is t
     - [Function `werf_secret_file`](#function-werf_secret_file)
   - [Feature gates](#feature-gates)
     - [Env variable `NELM_FEAT_REMOTE_CHARTS`](#env-variable-nelm_feat_remote_charts)
+    - [Env variable `NELM_FEAT_NATIVE_RELEASE_LIST`](#env-variable-nelm_feat_native_release_list)
   - [More information](#more-information)
 - [Limitations](#limitations)
 - [Future plans](#future-plans)
@@ -517,6 +518,16 @@ nelm release install -n myproject -r myproject --chart-version 19.1.1 bitnami/ng
 ```
 
 Allows specifying not only local, but also remote charts as a command-line argument to commands such as `nelm release install`. Adds the `--chart-version` option as well.
+
+#### Env variable `NELM_FEAT_NATIVE_RELEASE_LIST`
+
+Example:
+```shell
+export NELM_FEAT_NATIVE_RELEASE_LIST=true
+nelm release list
+```
+
+Use native Nelm implementation of the `release list` command instead of `helm list` exposed as `release list`. Implementations differ a bit, but serve the same purpose.
 
 ### More information
 

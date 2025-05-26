@@ -17,6 +17,11 @@ var (
 		"remote-charts",
 		`Allow not only local, but also remote charts as an argument to cli commands. Also adds the "--chart-version" option`,
 	)
+
+	FeatGateNativeReleaseList = NewFeatGate(
+		"native-release-list",
+		`Use the native "release list" command instead of "helm list" exposed as "release list"`,
+	)
 )
 
 func NewFeatGate(name, help string) *FeatGate {

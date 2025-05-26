@@ -48,8 +48,9 @@ const (
 )
 
 const (
-	YamlOutputFormat = "yaml"
-	JsonOutputFormat = "json"
+	YamlOutputFormat  = "yaml"
+	JsonOutputFormat  = "json"
+	TableOutputFormat = "table"
 )
 
 const (
