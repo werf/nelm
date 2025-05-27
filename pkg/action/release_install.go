@@ -100,9 +100,6 @@ type ReleaseInstallOptions struct {
 }
 
 func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseInstallOptions) error {
-	actionLock.Lock()
-	defer actionLock.Unlock()
-
 	if opts.Timeout == 0 {
 		return releaseInstall(ctx, releaseName, releaseNamespace, opts)
 	}

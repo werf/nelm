@@ -21,9 +21,6 @@ type SecretValuesFileEncryptOptions struct {
 }
 
 func SecretValuesFileEncrypt(ctx context.Context, valuesFilePath string, opts SecretValuesFileEncryptOptions) error {
-	actionLock.Lock()
-	defer actionLock.Unlock()
-
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)

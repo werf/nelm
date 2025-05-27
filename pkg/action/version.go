@@ -27,9 +27,6 @@ type VersionOptions struct {
 }
 
 func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {
-	actionLock.Lock()
-	defer actionLock.Unlock()
-
 	opts, err := applyVersionOptionsDefaults(opts)
 	if err != nil {
 		return nil, fmt.Errorf("build version options: %w", err)

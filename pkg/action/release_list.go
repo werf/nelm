@@ -50,9 +50,6 @@ type ReleaseListOptions struct {
 }
 
 func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResultV1, error) {
-	actionLock.Lock()
-	defer actionLock.Unlock()
-
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("get home directory: %w", err)

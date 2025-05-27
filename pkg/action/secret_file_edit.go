@@ -20,9 +20,6 @@ type SecretFileEditOptions struct {
 }
 
 func SecretFileEdit(ctx context.Context, filePath string, opts SecretFileEditOptions) error {
-	actionLock.Lock()
-	defer actionLock.Unlock()
-
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)
