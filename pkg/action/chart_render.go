@@ -84,9 +84,6 @@ type ChartRenderOptions struct {
 }
 
 func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResultV1, error) {
-	actionLock.Lock()
-	defer actionLock.Unlock()
-
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("get current working directory: %w", err)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/gookit/color"
@@ -24,12 +25,14 @@ import (
 	"github.com/werf/nelm/internal/lock"
 	"github.com/werf/nelm/internal/plan/operation"
 	"github.com/werf/nelm/internal/resource/id"
-	log2 "github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/log"
 )
 
 const (
 	DefaultReleaseUninstallLogLevel = InfoLogLevel
 )
+
+var uninstallLock sync.Mutex
 
 type ReleaseUninstallOptions struct {
 	NoDeleteHooks              bool
@@ -53,8 +56,8 @@ type ReleaseUninstallOptions struct {
 }
 
 func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseUninstallOptions) error {
-	actionLock.Lock()
-	defer actionLock.Unlock()
+	uninstallLock.Lock()
+	defer uninstallLock.Unlock()
 
 	if opts.Timeout == 0 {
 		return releaseUninstall(ctx, releaseName, releaseNamespace, opts)
@@ -136,7 +139,7 @@ func releaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 	*helmSettings.GetNamespaceP() = releaseNamespace
 	releaseNamespace = helmSettings.Namespace()
 	helmSettings.MaxHistory = opts.ReleaseHistoryLimit
-	helmSettings.Debug = log2.Default.AcceptLevel(ctx, log2.Level(DebugLogLevel))
+	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))
 
 	if opts.KubeContext != "" {
 		helmSettings.KubeContext = opts.KubeContext
@@ -170,7 +173,7 @@ func releaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 		releaseNamespace,
 		string(opts.ReleaseStorageDriver),
 		func(format string, a ...interface{}) {
-			log2.Default.Debug(ctx, format, a...)
+			log.Default.Debug(ctx, format, a...)
 		},
 	); err != nil {
 		return fmt.Errorf("helm action config init: %w", err)
@@ -203,7 +206,7 @@ func releaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 		},
 	); err != nil {
 		if api_errors.IsNotFound(err) {
-			log2.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q removal: no release namespace %q found", releaseName, releaseNamespace)))
+			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q removal: no release namespace %q found", releaseName, releaseNamespace)))
 
 			return nil
 		} else {
@@ -222,12 +225,12 @@ func releaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 		}
 
 		if !releaseFound {
-			log2.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q) uninstall: no release found", releaseName, releaseNamespace)))
+			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q) uninstall: no release found", releaseName, releaseNamespace)))
 
 			return nil
 		}
 
-		log2.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Deleting release")+" %q (namespace: %q)", releaseName, releaseNamespace)
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Deleting release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
 		var lockManager *lock.LockManager
 		if m, err := lock.NewLockManager(
@@ -261,7 +264,7 @@ func releaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 			return fmt.Errorf("run uninstall command: %w", err)
 		}
 
-		log2.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Uninstalled release %q (namespace: %q)", releaseName, releaseNamespace)))
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Uninstalled release %q (namespace: %q)", releaseName, releaseNamespace)))
 
 		return nil
 	}(); err != nil {
@@ -269,7 +272,7 @@ func releaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 	}
 
 	if opts.DeleteReleaseNamespace {
-		log2.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleting release namespace %q", namespaceID.Name())))
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleting release namespace %q", namespaceID.Name())))
 
 		deleteOp := operation.NewDeleteResourceOperation(
 			namespaceID,
@@ -281,7 +284,7 @@ func releaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 			return fmt.Errorf("delete release namespace: %w", err)
 		}
 
-		log2.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleted release namespace %q", namespaceID.Name())))
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleted release namespace %q", namespaceID.Name())))
 	}
 
 	return nil

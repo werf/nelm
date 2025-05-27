@@ -22,9 +22,6 @@ type SecretKeyRotateOptions struct {
 }
 
 func SecretKeyRotate(ctx context.Context, opts SecretKeyRotateOptions) error {
-	actionLock.Lock()
-	defer actionLock.Unlock()
-
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)

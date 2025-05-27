@@ -76,9 +76,6 @@ type ChartLintOptions struct {
 }
 
 func ChartLint(ctx context.Context, opts ChartLintOptions) error {
-	actionLock.Lock()
-	defer actionLock.Unlock()
-
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)

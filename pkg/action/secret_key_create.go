@@ -18,9 +18,6 @@ type SecretKeyCreateOptions struct {
 }
 
 func SecretKeyCreate(ctx context.Context, opts SecretKeyCreateOptions) (string, error) {
-	actionLock.Lock()
-	defer actionLock.Unlock()
-
 	opts, err := applySecretKeyCreateOptionsDefaults(opts)
 	if err != nil {
 		return "", fmt.Errorf("build secret key create options: %w", err)

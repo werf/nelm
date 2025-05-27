@@ -80,9 +80,6 @@ type ReleasePlanInstallOptions struct {
 }
 
 func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleasePlanInstallOptions) error {
-	actionLock.Lock()
-	defer actionLock.Unlock()
-
 	if opts.Timeout == 0 {
 		return releasePlanInstall(ctx, releaseName, releaseNamespace, opts)
 	}
