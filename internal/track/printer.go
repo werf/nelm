@@ -449,6 +449,7 @@ func setLogTableStyle(table prtable.Writer, tableWidth int) {
 		Options: prtable.OptionsNoBordersAndSeparators,
 		Title:   prtable.TitleOptionsDefault,
 	})
+	table.SuppressTrailingSpaces()
 }
 
 func setEventTableStyle(table prtable.Writer, tableWidth int) {
@@ -476,6 +477,7 @@ func setEventTableStyle(table prtable.Writer, tableWidth int) {
 		Options: prtable.OptionsNoBordersAndSeparators,
 		Title:   prtable.TitleOptionsDefault,
 	})
+	table.SuppressTrailingSpaces()
 }
 
 func buildLogsHeader(resourceLogs *logstore.ResourceLogs, source, defaultNamespace string) string {

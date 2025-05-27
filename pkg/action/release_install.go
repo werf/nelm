@@ -788,9 +788,10 @@ func printTables(
 		sort.Strings(headers)
 
 		for _, header := range headers {
-			logboek.Context(ctx).LogBlock(header).Do(func() {
-				tables[header].SuppressTrailingSpaces()
-				logboek.Context(ctx).LogLn(tables[header].Render())
+			log.Default.InfoBlock(ctx, log.BlockOptions{
+				BlockTitle: header,
+			}, func() {
+				log.Default.Info(ctx, tables[header].Render())
 			})
 		}
 	}
@@ -800,17 +801,19 @@ func printTables(
 		sort.Strings(headers)
 
 		for _, header := range headers {
-			logboek.Context(ctx).LogBlock(header).Do(func() {
-				tables[header].SuppressTrailingSpaces()
-				logboek.Context(ctx).LogLn(tables[header].Render())
+			log.Default.InfoBlock(ctx, log.BlockOptions{
+				BlockTitle: header,
+			}, func() {
+				log.Default.Info(ctx, tables[header].Render())
 			})
 		}
 	}
 
 	if table, nonEmpty := tablesBuilder.BuildProgressTable(); nonEmpty {
-		logboek.Context(ctx).LogBlock(color.Style{color.Bold, color.Blue}.Render("Progress status")).Do(func() {
-			table.SuppressTrailingSpaces()
-			logboek.Context(ctx).LogLn(table.Render())
+		log.Default.InfoBlock(ctx, log.BlockOptions{
+			BlockTitle: color.Style{color.Bold, color.Blue}.Render("Progress status"),
+		}, func() {
+			log.Default.Info(ctx, table.Render())
 		})
 	}
 }

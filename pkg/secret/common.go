@@ -7,12 +7,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/gookit/color"
 	"github.com/moby/term"
 	"golang.org/x/crypto/ssh/terminal"
 
 	"github.com/werf/common-go/pkg/util"
-	"github.com/werf/logboek"
-	"github.com/werf/logboek/pkg/style"
 )
 
 type GenerateOptions struct {
@@ -31,7 +30,7 @@ func InputFromInteractiveStdin(prompt string) ([]byte, error) {
 
 	isStdoutTerminal := terminal.IsTerminal(int(os.Stdout.Fd()))
 	if isStdoutTerminal {
-		fmt.Printf(logboek.Colorize(style.Highlight(), prompt))
+		fmt.Printf(color.New(color.Bold).Sprintf(prompt))
 	}
 
 	prepareTerminal := func() (func() error, error) {

@@ -87,8 +87,8 @@ var actionLock sync.Mutex
 func initKubedog(ctx context.Context) error {
 	flag.CommandLine.Parse([]string{})
 
-	display.SetOut(logboek.Context(ctx).OutStream())
-	display.SetErr(logboek.Context(ctx).ErrStream())
+	display.SetOut(os.Stdout)
+	display.SetErr(os.Stderr)
 
 	if err := silenceKlog(ctx); err != nil {
 		return fmt.Errorf("silence klog: %w", err)

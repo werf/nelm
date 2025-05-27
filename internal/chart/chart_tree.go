@@ -28,7 +28,6 @@ import (
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/releaseutil"
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
-	"github.com/werf/logboek"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/resource"
@@ -59,8 +58,7 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 	}
 
 	depDownloader := &downloader.Manager{
-		// FIXME(ilya-lesikov):
-		Out:               logboek.Context(ctx).OutStream(),
+		Out:               os.Stdout,
 		ChartPath:         chartPath,
 		SkipUpdate:        opts.ChartRepoSkipUpdate,
 		AllowMissingRepos: true,
