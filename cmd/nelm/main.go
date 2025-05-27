@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
+	"time"
 
 	"github.com/chanced/caps"
 	"github.com/pkg/errors"
@@ -21,6 +23,10 @@ import (
 )
 
 func main() {
+	if featgate.FeatGatePeriodicStackTraces.Enabled() {
+		periodicStackTraces()
+	}
+
 	ctx := logboek.NewContext(context.Background(), logboek.DefaultLogger())
 
 	cli.FlagEnvVarsPrefix = caps.ToScreamingSnake(common.Brand) + "_"
@@ -65,4 +71,16 @@ func abort(ctx context.Context, err error, exitCode int) {
 	log.Default.WarnPop(ctx, "final")
 	log.Default.Error(ctx, "Error: %s", err)
 	os.Exit(exitCode)
+}
+
+func periodicStackTraces() {
+	go func() {
+		for {
+			buf := make([]byte, 1<<16)
+			runtime.Stack(buf, true)
+			fmt.Printf("%s", buf)
+
+			time.Sleep(time.Second * time.Duration(10))
+		}
+	}()
 }

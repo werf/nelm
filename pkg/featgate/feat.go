@@ -18,9 +18,15 @@ var (
 		`Allow not only local, but also remote charts as an argument to cli commands. Also adds the "--chart-version" option`,
 	)
 
+	// TODO(v2): always enable
 	FeatGateNativeReleaseList = NewFeatGate(
 		"native-release-list",
 		`Use the native "release list" command instead of "helm list" exposed as "release list"`,
+	)
+
+	FeatGatePeriodicStackTraces = NewFeatGate(
+		"periodic-stack-traces",
+		`Print stack traces periodically to help with debugging deadlocks and other issues`,
 	)
 )
 
