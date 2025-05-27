@@ -15,7 +15,7 @@ import (
 	kdkube "github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/lockgate"
 	"github.com/werf/lockgate/pkg/distributed_locker"
-	"github.com/werf/logboek"
+	"github.com/werf/nelm/pkg/log"
 )
 
 // NOTE: LockManager for not is not multithreaded due to the lack of support of contexts in the lockgate library
@@ -138,8 +138,8 @@ func setupLockerDefaultOptions(
 
 func defaultLockerOnWait(ctx context.Context) func(lockName string, doWait func() error) error {
 	return func(lockName string, doWait func() error) error {
-		logProcessMsg := fmt.Sprintf("Waiting for locked %q", lockName)
-		return logboek.Context(ctx).Info().LogProcessInline(logProcessMsg).DoError(doWait)
+		log.Default.Info(ctx, fmt.Sprintf("Waiting for locked %q", lockName))
+		return doWait()
 	}
 }
 

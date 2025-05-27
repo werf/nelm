@@ -174,6 +174,10 @@ func (l *LogboekLogger) InfoBlock(ctx context.Context, opts BlockOptions, fn fun
 	logboek.Context(ctx).Default().LogBlock(opts.BlockTitle).Do(fn)
 }
 
+func (l *LogboekLogger) InfoBlockErr(ctx context.Context, opts BlockOptions, fn func() error) error {
+	return logboek.Context(ctx).Default().LogBlock(opts.BlockTitle).DoError(fn)
+}
+
 func (l *LogboekLogger) SetLevel(ctx context.Context, lvl Level) {
 	switch lvl {
 	case DebugLevel, TraceLevel:

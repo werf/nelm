@@ -13,13 +13,13 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/gookit/color"
 	"golang.org/x/crypto/ssh/terminal"
 
 	"github.com/werf/common-go/pkg/secret"
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/common-go/pkg/util"
-	"github.com/werf/logboek"
-	"github.com/werf/logboek/pkg/style"
+	"github.com/werf/nelm/pkg/log"
 )
 
 func SecretEdit(
@@ -104,7 +104,7 @@ func SecretEdit(
 		err := editIteration()
 		if err != nil {
 			if strings.HasPrefix(err.Error(), "encryption failed") {
-				logboek.Warn().LogF("Error: %s\n", err)
+				log.Default.Warn(ctx, "Error: %s\n", err)
 				ok, err := askForConfirmation()
 				if err != nil {
 					return err
@@ -163,7 +163,7 @@ func readEditedFile(filePath string, values bool, encoder *secret.YamlEncoder) (
 func askForConfirmation() (bool, error) {
 	r := os.Stdin
 
-	fmt.Println(logboek.Colorize(style.Highlight(), "Do you want to continue editing the file (Y/n)?"))
+	fmt.Println(color.New(color.Bold).Sprintf("Do you want to continue editing the file (Y/n)?"))
 
 	isTerminal := terminal.IsTerminal(int(r.Fd()))
 	if isTerminal {

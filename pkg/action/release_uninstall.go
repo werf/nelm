@@ -19,7 +19,6 @@ import (
 	helm_kube "github.com/werf/3p-helm/pkg/kube"
 	"github.com/werf/3p-helm/pkg/storage/driver"
 	kdkube "github.com/werf/kubedog/pkg/kube"
-	"github.com/werf/logboek"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/legacy/deploy"
 	"github.com/werf/nelm/internal/lock"
@@ -250,7 +249,7 @@ func releaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 
 		helmUninstallCmd := helm_v3.NewUninstallCmd(
 			helmActionConfig,
-			logboek.Context(ctx).OutStream(),
+			os.Stdout,
 			helm_v3.UninstallCmdOptions{
 				StagesSplitter:      deploy.NewStagesSplitter(),
 				DeleteHooks:         lo.ToPtr(!opts.NoDeleteHooks),

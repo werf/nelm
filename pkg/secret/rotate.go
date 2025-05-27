@@ -11,7 +11,7 @@ import (
 	"github.com/werf/common-go/pkg/secret"
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/common-go/pkg/util"
-	"github.com/werf/logboek"
+	"github.com/werf/nelm/pkg/log"
 )
 
 func RotateSecretKey(
@@ -32,10 +32,11 @@ func RotateSecretKey(
 		return err
 	}
 
-	return secretsRegenerate(newEncoder, oldEncoder, helmChartDir, secretValuesPaths...)
+	return secretsRegenerate(ctx, newEncoder, oldEncoder, helmChartDir, secretValuesPaths...)
 }
 
 func secretsRegenerate(
+	ctx context.Context,
 	newEncoder, oldEncoder *secret.YamlEncoder,
 	helmChartDir string,
 	secretValuesPaths ...string,
@@ -106,20 +107,21 @@ func secretsRegenerate(
 		return err
 	}
 
-	if err := regenerateSecrets(secretFilesData, regeneratedFilesData, oldEncoder.Decrypt, newEncoder.Encrypt); err != nil {
+	if err := regenerateSecrets(ctx, secretFilesData, regeneratedFilesData, oldEncoder.Decrypt, newEncoder.Encrypt); err != nil {
 		return err
 	}
 
-	if err := regenerateSecrets(secretValuesFilesData, regeneratedFilesData, oldEncoder.DecryptYamlData, newEncoder.EncryptYamlData); err != nil {
+	if err := regenerateSecrets(ctx, secretValuesFilesData, regeneratedFilesData, oldEncoder.DecryptYamlData, newEncoder.EncryptYamlData); err != nil {
 		return err
 	}
 
 	for filePath, fileData := range regeneratedFilesData {
-		err := logboek.LogProcess(fmt.Sprintf("Saving file %q", filePath)).DoError(func() error {
+		if err := log.Default.InfoBlockErr(ctx, log.BlockOptions{
+			BlockTitle: fmt.Sprintf("Saving file %q", filePath),
+		}, func() error {
 			fileData = append(bytes.TrimSpace(fileData), []byte("\n")...)
 			return ioutil.WriteFile(filePath, fileData, 0o644)
-		})
-		if err != nil {
+		}); err != nil {
 			return err
 		}
 	}
@@ -128,27 +130,28 @@ func secretsRegenerate(
 }
 
 func regenerateSecrets(
+	ctx context.Context,
 	filesData, regeneratedFilesData map[string][]byte,
 	decodeFunc, encodeFunc func([]byte) ([]byte, error),
 ) error {
 	for filePath, fileData := range filesData {
-		err := logboek.LogProcess(fmt.Sprintf("Regenerating file %q", filePath)).
-			DoError(func() error {
-				data, err := decodeFunc(fileData)
-				if err != nil {
-					return fmt.Errorf("check old encryption key and file data: %w", err)
-				}
+		if err := log.Default.InfoBlockErr(ctx, log.BlockOptions{
+			BlockTitle: fmt.Sprintf("Regenerating file %q", filePath),
+		}, func() error {
+			data, err := decodeFunc(fileData)
+			if err != nil {
+				return fmt.Errorf("check old encryption key and file data: %w", err)
+			}
 
-				resultData, err := encodeFunc(data)
-				if err != nil {
-					return err
-				}
+			resultData, err := encodeFunc(data)
+			if err != nil {
+				return err
+			}
 
-				regeneratedFilesData[filePath] = resultData
+			regeneratedFilesData[filePath] = resultData
 
-				return nil
-			})
-		if err != nil {
+			return nil
+		}); err != nil {
 			return err
 		}
 	}
