@@ -519,6 +519,8 @@ nelm release install -n myproject -r myproject --chart-version 19.1.1 bitnami/ng
 
 Allows specifying not only local, but also remote charts as a command-line argument to commands such as `nelm release install`. Adds the `--chart-version` option as well.
 
+Will be the default in the next major release.
+
 #### Env variable `NELM_FEAT_NATIVE_RELEASE_LIST`
 
 Example:
@@ -528,6 +530,18 @@ nelm release list
 ```
 
 Use native Nelm implementation of the `release list` command instead of `helm list` exposed as `release list`. Implementations differ a bit, but serve the same purpose.
+
+Will be the default in the next major release.
+
+#### Env variable `NELM_FEAT_PERIODIC_STACK_TRACES`
+
+Example:
+```shell
+export NELM_FEAT_PERIODIC_STACK_TRACES=true
+nelm release install -n myproject -r myproject
+```
+
+Every few seconds print stack traces of all goroutines. Useful for debugging purposes.
 
 ### More information
 
