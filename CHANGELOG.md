@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.0](https://www.github.com/werf/nelm/compare/v1.4.1...v1.5.0) (2025-05-28)
+
+
+### Features
+
+* native `release list` command ([ff9e1f0](https://www.github.com/werf/nelm/commit/ff9e1f089ea9099cd3a874592a69595f988167f4))
+
+
+### Bug Fixes
+
+* show stack traces with `NELM_FEAT_PERIODIC_STACK_TRACES=true` ([20310db](https://www.github.com/werf/nelm/commit/20310db2290a42d229a807c17e1352d23911cfeb))
+
 ### [1.4.1](https://www.github.com/werf/nelm/compare/v1.4.0...v1.4.1) (2025-05-23)
 
 
