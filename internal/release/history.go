@@ -3,6 +3,7 @@ package release
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/samber/lo"
@@ -16,6 +17,7 @@ import (
 
 var _ Historier = (*History)(nil)
 
+// FIXME(ilya-lesikov): not completely thread-safe, h.legacyRelease can be read while modified
 func NewHistory(releaseName, releaseNamespace string, historyStorage LegacyStorage, opts HistoryOptions) (*History, error) {
 	legacyRels, err := historyStorage.Query(map[string]string{"name": releaseName, "owner": "helm"})
 	if err != nil && err != driver.ErrReleaseNotFound {
@@ -65,6 +67,24 @@ func (h *History) Release(revision int) (rel *Release, found bool, err error) {
 	}
 
 	return rel, true, nil
+}
+
+func (h *History) Releases() ([]*Release, error) {
+	releases := make([]*Release, 0, len(h.legacyReleases))
+
+	for _, legacyRel := range h.legacyReleases {
+		rel, err := NewReleaseFromLegacyRelease(legacyRel, ReleaseFromLegacyReleaseOptions{
+			Mapper:          h.mapper,
+			DiscoveryClient: h.discoveryClient,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("error constructing release from legacy release: %w", err)
+		}
+
+		releases = append(releases, rel)
+	}
+
+	return releases, nil
 }
 
 func (h *History) LastRelease() (rel *Release, found bool, err error) {
@@ -215,17 +235,40 @@ func (h *History) UpdateRelease(ctx context.Context, rel *Release) error {
 	return nil
 }
 
+func (h *History) DeleteRelease(ctx context.Context, rel *Release) error {
+	h.updateLock.Lock()
+	defer h.updateLock.Unlock()
+
+	legacyRel, err := h.storage.Delete(h.releaseName, rel.Revision())
+	if err != nil {
+		return fmt.Errorf("error uninstalling release %q (namespace: %q, revision: %q): %w", legacyRel.Name, legacyRel.Namespace, legacyRel.Version, err)
+	}
+
+	if _, i, found := lo.FindIndexOf(h.legacyReleases, func(r *helmrelease.Release) bool {
+		return r.Version == rel.Revision()
+	}); !found {
+		return nil
+	} else {
+		h.legacyReleases = slices.Delete(h.legacyReleases, i, i+1)
+	}
+
+	return nil
+}
+
 type LegacyStorage interface {
 	Create(rls *helmrelease.Release) error
 	Update(rls *helmrelease.Release) error
+	Delete(name string, version int) (*helmrelease.Release, error)
 	Query(labels map[string]string) ([]*helmrelease.Release, error)
 }
 
 type Historier interface {
 	Release(revision int) (rel *Release, found bool, err error)
+	Releases() ([]*Release, error)
 	LastRelease() (rel *Release, found bool, err error)
 	LastDeployedRelease() (rel *Release, found bool, err error)
 	Empty() bool
 	CreateRelease(ctx context.Context, rel *Release) error
 	UpdateRelease(ctx context.Context, rel *Release) error
+	DeleteRelease(ctx context.Context, rel *Release) error
 }

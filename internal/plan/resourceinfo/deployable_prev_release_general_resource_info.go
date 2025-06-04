@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/internal/resource/id"
@@ -61,13 +62,17 @@ func (i *DeployablePrevReleaseGeneralResourceInfo) ShouldKeepOnDelete(releaseNam
 	return i.resource.KeepOnDelete() || (i.exists && i.getResource.KeepOnDelete(releaseName, releaseNamespace))
 }
 
-func (i *DeployablePrevReleaseGeneralResourceInfo) ShouldDelete(curReleaseExistingResourcesUIDs []types.UID, releaseName, releaseNamespace string) bool {
+func (i *DeployablePrevReleaseGeneralResourceInfo) ShouldDelete(curReleaseExistingResourcesUIDs []types.UID, releaseName, releaseNamespace string, deployType common.DeployType) bool {
 	if !i.exists {
 		return false
 	}
 
 	if i.ShouldKeepOnDelete(releaseName, releaseNamespace) {
 		return false
+	}
+
+	if deployType == common.DeployTypeUninstall {
+		return true
 	}
 
 	return !lo.Contains(curReleaseExistingResourcesUIDs, i.getResource.Unstructured().GetUID())

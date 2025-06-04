@@ -333,6 +333,7 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		chartTree.StandaloneCRDs(),
 		chartTree.HookResources(),
 		chartTree.GeneralResources(),
+		nil,
 		prevRelGeneralResources,
 		resourceinfo.DeployableResourcesProcessorOptions{
 			NetworkParallelism: opts.NetworkParallelism,
@@ -560,6 +561,7 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	if planExecutionErr != nil && pendingReleaseCreated {
 		wcompops, wfailops, wcancops, criterrs, noncriterrs := runFailureDeployPlan(
 			ctx,
+			releaseName,
 			releaseNamespace,
 			deployType,
 			deployPlan,
@@ -817,6 +819,7 @@ func printTables(
 
 func runFailureDeployPlan(
 	ctx context.Context,
+	releaseName string,
 	releaseNamespace string,
 	deployType common.DeployType,
 	failedPlan *plan.Plan,
@@ -835,18 +838,19 @@ func runFailureDeployPlan(
 ) {
 	log.Default.Debug(ctx, "Building failure deploy plan")
 	failurePlanBuilder := plan.NewDeployFailurePlanBuilder(
+		releaseName,
 		releaseNamespace,
 		deployType,
 		failedPlan,
 		taskStore,
 		resProcessor.DeployableHookResourcesInfos(),
 		resProcessor.DeployableGeneralResourcesInfos(),
-		newRel,
 		history,
 		clientFactory.KubeClient(),
 		clientFactory.Dynamic(),
 		clientFactory.Mapper(),
 		plan.DeployFailurePlanBuilderOptions{
+			NewRelease:  newRel,
 			PrevRelease: prevRelease,
 		},
 	)
@@ -931,6 +935,7 @@ func runRollbackPlan(
 		nil,
 		prevDeployedRelease.HookResources(),
 		prevDeployedRelease.GeneralResources(),
+		nil,
 		failedRelease.GeneralResources(),
 		resourceinfo.DeployableResourcesProcessorOptions{
 			NetworkParallelism: networkParallelism,
@@ -1077,6 +1082,7 @@ func runRollbackPlan(
 	if rollbackPlanExecutionErr != nil && pendingRollbackReleaseCreated {
 		wcompops, wfailops, wcancops, criterrs, noncriterrs := runFailureDeployPlan(
 			ctx,
+			releaseName,
 			releaseNamespace,
 			deployType,
 			rollbackPlan,

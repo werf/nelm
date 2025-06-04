@@ -312,6 +312,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		chartTree.StandaloneCRDs(),
 		chartTree.HookResources(),
 		chartTree.GeneralResources(),
+		nil,
 		prevRelGeneralResources,
 		resProcessorOptions,
 	)

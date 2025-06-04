@@ -305,6 +305,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		chartTree.StandaloneCRDs(),
 		chartTree.HookResources(),
 		chartTree.GeneralResources(),
+		nil,
 		prevRelGeneralResources,
 		resProcessorOptions,
 	)

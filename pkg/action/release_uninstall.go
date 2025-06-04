@@ -2,29 +2,30 @@ package action
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 	api_errors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/kubernetes"
 
-	helm_v3 "github.com/werf/3p-helm/cmd/helm"
-	"github.com/werf/3p-helm/pkg/action"
-	"github.com/werf/3p-helm/pkg/cli"
-	helm_kube "github.com/werf/3p-helm/pkg/kube"
-	"github.com/werf/3p-helm/pkg/storage/driver"
-	kdkube "github.com/werf/kubedog/pkg/kube"
+	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
+	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
+	kubeutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
+	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/legacy/deploy"
 	"github.com/werf/nelm/internal/lock"
+	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/plan/operation"
+	"github.com/werf/nelm/internal/plan/resourceinfo"
+	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource/id"
+	"github.com/werf/nelm/internal/track"
+	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -32,10 +33,7 @@ const (
 	DefaultReleaseUninstallLogLevel = InfoLogLevel
 )
 
-var uninstallLock sync.Mutex
-
 type ReleaseUninstallOptions struct {
-	NoDeleteHooks              bool
 	DeleteReleaseNamespace     bool
 	KubeAPIServerName          string
 	KubeBurstLimit             int
@@ -48,17 +46,21 @@ type ReleaseUninstallOptions struct {
 	KubeTLSServerName          string
 	KubeToken                  string
 	NetworkParallelism         int
+	NoProgressTablePrint       bool
 	ProgressTablePrintInterval time.Duration
 	ReleaseHistoryLimit        int
 	ReleaseStorageDriver       string
+	SQLConnectionString        string
 	TempDirPath                string
 	Timeout                    time.Duration
+	TrackCreationTimeout       time.Duration
+	TrackDeletionTimeout       time.Duration
+	TrackReadinessTimeout      time.Duration
+	UninstallGraphPath         string
+	UninstallReportPath        string
 }
 
 func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseUninstallOptions) error {
-	uninstallLock.Lock()
-	defer uninstallLock.Unlock()
-
 	if opts.Timeout == 0 {
 		return releaseUninstall(ctx, releaseName, releaseNamespace, opts)
 	}
@@ -94,7 +96,7 @@ func releaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 
 	opts, err = applyReleaseUninstallOptionsDefaults(opts, currentDir, homeDir)
 	if err != nil {
-		return fmt.Errorf("build release uninstall options: %w", err)
+		return fmt.Errorf("build  release uninstall options: %w", err)
 	}
 
 	if len(opts.KubeConfigPaths) > 0 {
@@ -104,12 +106,6 @@ func releaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 		}
 
 		opts.KubeConfigPaths = lo.Compact(splitPaths)
-
-		// Don't even ask... This way we force ClientConfigLoadingRules.ExplicitPath to always be
-		// empty, otherwise KUBECONFIG with multiple files doesn't work. Eventually should switch
-		// from Kubedog to Nelm for initializing K8s Clients like in other actions and get rid of
-		// this.
-		opts.KubeConfigPaths = append([]string{""}, opts.KubeConfigPaths...)
 	}
 
 	// TODO(ilya-lesikov): some options are not propagated from cli/actions
@@ -134,62 +130,31 @@ func releaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 		return fmt.Errorf("construct kube client factory: %w", err)
 	}
 
-	helmSettings := cli.New()
-	*helmSettings.GetConfigP() = clientFactory.LegacyClientGetter()
-	*helmSettings.GetNamespaceP() = releaseNamespace
-	releaseNamespace = helmSettings.Namespace()
-	helmSettings.MaxHistory = opts.ReleaseHistoryLimit
-	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))
-
-	if opts.KubeContext != "" {
-		helmSettings.KubeContext = opts.KubeContext
-	}
-
-	var kubeConfigPath string
-	if len(opts.KubeConfigPaths) > 0 {
-		kubeConfigPath = opts.KubeConfigPaths[0]
-	}
-
-	helmSettings.KubeConfig = kubeConfigPath
-
-	if err := kdkube.Init(kdkube.InitOptions{
-		KubeConfigOptions: kdkube.KubeConfigOptions{
-			Context:             opts.KubeContext,
-			ConfigPath:          kubeConfigPath,
-			ConfigDataBase64:    opts.KubeConfigBase64,
-			ConfigPathMergeList: opts.KubeConfigPaths,
-		},
-	}); err != nil {
-		return fmt.Errorf("initialize kubedog kube client: %w", err)
-	}
-
-	if err := initKubedog(ctx); err != nil {
-		return fmt.Errorf("initialize kubedog: %w", err)
-	}
-
-	helmActionConfig := &action.Configuration{}
-	if err := helmActionConfig.Init(
-		helmSettings.RESTClientGetter(),
+	releaseStorage, err := release.NewReleaseStorage(
+		ctx,
 		releaseNamespace,
-		string(opts.ReleaseStorageDriver),
-		func(format string, a ...interface{}) {
-			log.Default.Debug(ctx, format, a...)
+		opts.ReleaseStorageDriver,
+		release.ReleaseStorageOptions{
+			StaticClient:        clientFactory.Static().(*kubernetes.Clientset),
+			HistoryLimit:        opts.ReleaseHistoryLimit,
+			SQLConnectionString: opts.SQLConnectionString,
 		},
-	); err != nil {
-		return fmt.Errorf("helm action config init: %w", err)
+	)
+	if err != nil {
+		return fmt.Errorf("construct release storage: %w", err)
 	}
 
-	helmReleaseStorage := helmActionConfig.Releases
-	helmReleaseStorage.MaxHistory = opts.ReleaseHistoryLimit
-
-	helmKubeClient := helmActionConfig.KubeClient.(*helm_kube.Client)
-	helmKubeClient.Namespace = releaseNamespace
-	helmKubeClient.ResourcesWaiter = deploy.NewResourcesWaiter(
-		helmKubeClient,
-		time.Now(),
-		opts.ProgressTablePrintInterval,
-		opts.ProgressTablePrintInterval,
-	)
+	var lockManager *lock.LockManager
+	if m, err := lock.NewLockManager(
+		releaseNamespace,
+		false,
+		clientFactory.Static(),
+		clientFactory.Dynamic(),
+	); err != nil {
+		return fmt.Errorf("construct lock manager: %w", err)
+	} else {
+		lockManager = m
+	}
 
 	namespaceID := id.NewResourceID(
 		releaseNamespace,
@@ -198,33 +163,41 @@ func releaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 		id.ResourceIDOptions{Mapper: clientFactory.Mapper()},
 	)
 
-	if _, err := clientFactory.KubeClient().Get(
-		ctx,
-		namespaceID,
-		kube.KubeClientGetOptions{
-			TryCache: true,
-		},
-	); err != nil {
-		if api_errors.IsNotFound(err) {
-			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q removal: no release namespace %q found", releaseName, releaseNamespace)))
+	if exists, err := isReleaseNamespaceExist(ctx, clientFactory, namespaceID); err != nil {
+		return fmt.Errorf("check release namespace existence: %w", err)
+	} else if !exists {
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q uninstall: no release namespace %q found", releaseName, releaseNamespace)))
 
-			return nil
-		} else {
-			return fmt.Errorf("get release namespace: %w", err)
-		}
+		return nil
 	}
 
 	if err := func() error {
-		var releaseFound bool
-		if _, err := helmActionConfig.Releases.History(releaseName); err != nil {
-			if !errors.Is(err, driver.ErrReleaseNotFound) {
-				return fmt.Errorf("get release history: %w", err)
-			}
+		if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
+			return fmt.Errorf("lock release: %w", err)
 		} else {
-			releaseFound = true
+			defer lockManager.Unlock(lock)
 		}
 
-		if !releaseFound {
+		log.Default.Debug(ctx, "Constructing release history")
+		history, err := release.NewHistory(
+			releaseName,
+			releaseNamespace,
+			releaseStorage,
+			release.HistoryOptions{
+				Mapper:          clientFactory.Mapper(),
+				DiscoveryClient: clientFactory.Discovery(),
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("construct release history: %w", err)
+		}
+
+		prevRelease, prevReleaseFound, err := history.LastRelease()
+		if err != nil {
+			return fmt.Errorf("get last release: %w", err)
+		}
+
+		if !prevReleaseFound {
 			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q) uninstall: no release found", releaseName, releaseNamespace)))
 
 			return nil
@@ -232,39 +205,205 @@ func releaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Deleting release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-		var lockManager *lock.LockManager
-		if m, err := lock.NewLockManager(
+		log.Default.Debug(ctx, "Processing resources")
+		resProcessor := resourceinfo.NewDeployableResourcesProcessor(
+			common.DeployTypeUninstall,
+			releaseName,
 			releaseNamespace,
-			false,
-			clientFactory.Static(),
-			clientFactory.Dynamic(),
-		); err != nil {
-			return fmt.Errorf("construct lock manager: %w", err)
-		} else {
-			lockManager = m
-		}
-
-		if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
-			return fmt.Errorf("lock release: %w", err)
-		} else {
-			defer lockManager.Unlock(lock)
-		}
-
-		helmUninstallCmd := helm_v3.NewUninstallCmd(
-			helmActionConfig,
-			os.Stdout,
-			helm_v3.UninstallCmdOptions{
-				StagesSplitter:      deploy.NewStagesSplitter(),
-				DeleteHooks:         lo.ToPtr(!opts.NoDeleteHooks),
-				DontFailIfNoRelease: lo.ToPtr(true),
+			nil,
+			nil,
+			nil,
+			prevRelease.HookResources(),
+			prevRelease.GeneralResources(),
+			resourceinfo.DeployableResourcesProcessorOptions{
+				NetworkParallelism: opts.NetworkParallelism,
+				KubeClient:         clientFactory.KubeClient(),
+				Mapper:             clientFactory.Mapper(),
+				DiscoveryClient:    clientFactory.Discovery(),
+				AllowClusterAccess: true,
 			},
 		)
 
-		if err := helmUninstallCmd.RunE(helmUninstallCmd, []string{releaseName}); err != nil {
-			return fmt.Errorf("run uninstall command: %w", err)
+		if err := resProcessor.Process(ctx); err != nil {
+			return fmt.Errorf("process resources: %w", err)
 		}
 
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Uninstalled release %q (namespace: %q)", releaseName, releaseNamespace)))
+		taskStore := statestore.NewTaskStore()
+		logStore := kubeutil.NewConcurrent(
+			logstore.NewLogStore(),
+		)
+
+		log.Default.Debug(ctx, "Constructing new uninstall plan")
+		uninstallPlanBuilder := plan.NewUninstallPlanBuilder(
+			releaseName,
+			releaseNamespace,
+			taskStore,
+			logStore,
+			resProcessor.DeployablePrevReleaseHookResourcesInfos(),
+			resProcessor.DeployablePrevReleaseGeneralResourcesInfos(),
+			prevRelease,
+			history,
+			clientFactory.KubeClient(),
+			clientFactory.Static(),
+			clientFactory.Dynamic(),
+			clientFactory.Discovery(),
+			clientFactory.Mapper(),
+			plan.UninstallPlanBuilderOptions{
+				CreationTimeout:  opts.TrackCreationTimeout,
+				DeletionTimeout:  opts.TrackDeletionTimeout,
+				ReadinessTimeout: opts.TrackReadinessTimeout,
+			},
+		)
+
+		uninstallPlan, planBuildErr := uninstallPlanBuilder.Build(ctx)
+		if planBuildErr != nil {
+			var graphPath string
+			if opts.UninstallGraphPath != "" {
+				graphPath = opts.UninstallGraphPath
+			} else {
+				graphPath = filepath.Join(opts.TempDirPath, "release-uninstall-graph.dot")
+			}
+
+			if _, err := os.Create(graphPath); err != nil {
+				log.Default.Error(ctx, "Error: create release uninstall graph file: %s", err)
+				return fmt.Errorf("build uninstall plan: %w", planBuildErr)
+			}
+
+			if err := uninstallPlan.SaveDOT(graphPath); err != nil {
+				log.Default.Error(ctx, "Error: save release uninstall graph: %s", err)
+			}
+
+			log.Default.Warn(ctx, "Release uninstall graph saved to %q for debugging", graphPath)
+
+			return fmt.Errorf("build release uninstall plan: %w", planBuildErr)
+		}
+
+		if opts.UninstallGraphPath != "" {
+			if err := uninstallPlan.SaveDOT(opts.UninstallGraphPath); err != nil {
+				return fmt.Errorf("save release uninstall graph: %w", err)
+			}
+		}
+
+		tablesBuilder := track.NewTablesBuilder(
+			taskStore,
+			logStore,
+			track.TablesBuilderOptions{
+				DefaultNamespace: releaseNamespace,
+			},
+		)
+
+		log.Default.Debug(ctx, "Starting tracking")
+		stdoutTrackerStopCh := make(chan bool)
+		stdoutTrackerFinishedCh := make(chan bool)
+
+		if !opts.NoProgressTablePrint {
+			go func() {
+				ticker := time.NewTicker(opts.ProgressTablePrintInterval)
+				defer func() {
+					ticker.Stop()
+					stdoutTrackerFinishedCh <- true
+				}()
+
+				for {
+					select {
+					case <-ticker.C:
+						printTables(ctx, tablesBuilder)
+					case <-stdoutTrackerStopCh:
+						printTables(ctx, tablesBuilder)
+						return
+					}
+				}
+			}()
+		}
+
+		log.Default.Debug(ctx, "Executing release uninstall plan")
+		planExecutor := plan.NewPlanExecutor(
+			uninstallPlan,
+			plan.PlanExecutorOptions{
+				NetworkParallelism: opts.NetworkParallelism,
+			},
+		)
+
+		var criticalErrs, nonCriticalErrs []error
+
+		planExecutionErr := planExecutor.Execute(ctx)
+		if planExecutionErr != nil {
+			criticalErrs = append(criticalErrs, fmt.Errorf("execute release uninstall plan: %w", planExecutionErr))
+		}
+
+		var worthyCompletedOps []operation.Operation
+		if ops, found, err := uninstallPlan.WorthyCompletedOperations(); err != nil {
+			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful completed operations: %w", err))
+		} else if found {
+			worthyCompletedOps = ops
+		}
+
+		var worthyCanceledOps []operation.Operation
+		if ops, found, err := uninstallPlan.WorthyCanceledOperations(); err != nil {
+			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful canceled operations: %w", err))
+		} else if found {
+			worthyCanceledOps = ops
+		}
+
+		var worthyFailedOps []operation.Operation
+		if ops, found, err := uninstallPlan.WorthyFailedOperations(); err != nil {
+			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful failed operations: %w", err))
+		} else if found {
+			worthyFailedOps = ops
+		}
+
+		if planExecutionErr != nil {
+			wcompops, wfailops, wcancops, criterrs, noncriterrs := runFailureDeployPlan(
+				ctx,
+				releaseName,
+				releaseNamespace,
+				common.DeployTypeUninstall,
+				uninstallPlan,
+				taskStore,
+				resProcessor,
+				nil,
+				prevRelease,
+				history,
+				clientFactory,
+				opts.NetworkParallelism,
+			)
+
+			worthyCompletedOps = append(worthyCompletedOps, wcompops...)
+			worthyFailedOps = append(worthyFailedOps, wfailops...)
+			worthyCanceledOps = append(worthyCanceledOps, wcancops...)
+			criticalErrs = append(criticalErrs, criterrs...)
+			nonCriticalErrs = append(nonCriticalErrs, noncriterrs...)
+		}
+
+		if !opts.NoProgressTablePrint {
+			stdoutTrackerStopCh <- true
+			<-stdoutTrackerFinishedCh
+		}
+
+		report := newReport(
+			worthyCompletedOps,
+			worthyCanceledOps,
+			worthyFailedOps,
+			prevRelease,
+		)
+
+		report.Print(ctx)
+
+		if opts.UninstallReportPath != "" {
+			if err := report.Save(opts.UninstallReportPath); err != nil {
+				nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("save release uninstall report: %w", err))
+			}
+		}
+
+		if len(criticalErrs) > 0 {
+			return util.Multierrorf("uninstall failed for release %q (namespace: %q)", append(criticalErrs, nonCriticalErrs...), releaseName, releaseNamespace)
+		} else if len(nonCriticalErrs) > 0 {
+			return util.Multierrorf("uninstall succeeded for release %q (namespace: %q), but non-critical errors encountered", nonCriticalErrs, releaseName, releaseNamespace)
+		} else {
+			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Uninstalled release %q (namespace: %q)", releaseName, releaseNamespace)))
+
+			return nil
+		}
 
 		return nil
 	}(); err != nil {
@@ -288,6 +427,24 @@ func releaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 	}
 
 	return nil
+}
+
+func isReleaseNamespaceExist(ctx context.Context, clientFactory *kube.ClientFactory, namespaceID *id.ResourceID) (bool, error) {
+	if _, err := clientFactory.KubeClient().Get(
+		ctx,
+		namespaceID,
+		kube.KubeClientGetOptions{
+			TryCache: true,
+		},
+	); err != nil {
+		if api_errors.IsNotFound(err) {
+			return false, nil
+		} else {
+			return false, fmt.Errorf("get release namespace: %w", err)
+		}
+	}
+
+	return true, nil
 }
 
 func applyReleaseUninstallOptionsDefaults(opts ReleaseUninstallOptions, currentDir, homeDir string) (ReleaseUninstallOptions, error) {

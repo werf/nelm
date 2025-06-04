@@ -27,6 +27,7 @@ func NewDeployableResourcesProcessor(
 	standaloneCRDs []*resource.StandaloneCRD,
 	hookResources []*resource.HookResource,
 	generalResources []*resource.GeneralResource,
+	prevReleaseHooks []*resource.HookResource,
 	prevReleaseGeneralResources []*resource.GeneralResource,
 	opts DeployableResourcesProcessorOptions,
 ) *DeployableResourcesProcessor {
@@ -47,6 +48,7 @@ func NewDeployableResourcesProcessor(
 		standaloneCRDs:                    standaloneCRDs,
 		hookResources:                     hookResources,
 		generalResources:                  generalResources,
+		prevRelHookResources:              prevReleaseHooks,
 		prevRelGeneralResources:           prevReleaseGeneralResources,
 		kubeClient:                        opts.KubeClient,
 		mapper:                            opts.Mapper,
@@ -85,6 +87,7 @@ type DeployableResourcesProcessor struct {
 	standaloneCRDs          []*resource.StandaloneCRD
 	hookResources           []*resource.HookResource
 	generalResources        []*resource.GeneralResource
+	prevRelHookResources    []*resource.HookResource
 	prevRelGeneralResources []*resource.GeneralResource
 	kubeClient              kube.KubeClienter
 	mapper                  meta.ResettableRESTMapper
@@ -113,6 +116,7 @@ type DeployableResourcesProcessor struct {
 	deployableStandaloneCRDsInfos          []*DeployableStandaloneCRDInfo
 	deployableHookResourcesInfos           []*DeployableHookResourceInfo
 	deployableGeneralResourcesInfos        []*DeployableGeneralResourceInfo
+	deployablePrevRelHookResourcesInfos    []*DeployablePrevReleaseHookResourceInfo
 	deployablePrevRelGeneralResourcesInfos []*DeployablePrevReleaseGeneralResourceInfo
 }
 
@@ -130,47 +134,61 @@ func (p *DeployableResourcesProcessor) Process(ctx context.Context) error {
 
 	log.Default.Debug(ctx, "Validating resources")
 	if err := p.validateResources(); err != nil {
-		return fmt.Errorf("error validating resources: %w", err)
+		msg := "error validating resources: "
+		if p.deployType == common.DeployTypeUninstall {
+			log.Default.Warn(ctx, msg+"%s", err)
+			return nil
+		}
+
+		return fmt.Errorf(msg+"%w", err)
 	}
 
 	log.Default.Debug(ctx, "Building releasable resources")
 	if err := p.validateNoDuplicates(); err != nil {
-		return fmt.Errorf("error validating for no duplicated resources: %w", err)
+		msg := "error validating for no duplicated resources: "
+		if p.deployType == common.DeployTypeUninstall {
+			log.Default.Warn(ctx, msg+"%s", err)
+			return nil
+		}
+
+		return fmt.Errorf(msg+"%w", err)
 	}
 
-	log.Default.Debug(ctx, "Building releasable hook resources")
-	if err := p.buildReleasableHookResources(ctx); err != nil {
-		return fmt.Errorf("error building releasable hook resources: %w", err)
-	}
+	if p.deployType != common.DeployTypeUninstall {
+		log.Default.Debug(ctx, "Building releasable hook resources")
+		if err := p.buildReleasableHookResources(ctx); err != nil {
+			return fmt.Errorf("error building releasable hook resources: %w", err)
+		}
 
-	log.Default.Debug(ctx, "Building releasable general resources")
-	if err := p.buildReleasableGeneralResources(ctx); err != nil {
-		return fmt.Errorf("error building releasable general resources: %w", err)
-	}
+		log.Default.Debug(ctx, "Building releasable general resources")
+		if err := p.buildReleasableGeneralResources(ctx); err != nil {
+			return fmt.Errorf("error building releasable general resources: %w", err)
+		}
 
-	log.Default.Debug(ctx, "Validating releasable resources")
-	if err := p.validateReleasableResources(); err != nil {
-		return fmt.Errorf("error validating releasable resources: %w", err)
-	}
+		log.Default.Debug(ctx, "Validating releasable resources")
+		if err := p.validateReleasableResources(); err != nil {
+			return fmt.Errorf("error validating releasable resources: %w", err)
+		}
 
-	log.Default.Debug(ctx, "Building deployable standalone CRDs")
-	if err := p.buildDeployableStandaloneCRDs(ctx); err != nil {
-		return fmt.Errorf("error building deployable standalone crds: %w", err)
-	}
+		log.Default.Debug(ctx, "Building deployable standalone CRDs")
+		if err := p.buildDeployableStandaloneCRDs(ctx); err != nil {
+			return fmt.Errorf("error building deployable standalone crds: %w", err)
+		}
 
-	log.Default.Debug(ctx, "Building deployable hook resources")
-	if err := p.buildDeployableHookResources(ctx); err != nil {
-		return fmt.Errorf("error building deployable hook resources: %w", err)
-	}
+		log.Default.Debug(ctx, "Building deployable hook resources")
+		if err := p.buildDeployableHookResources(ctx); err != nil {
+			return fmt.Errorf("error building deployable hook resources: %w", err)
+		}
 
-	log.Default.Debug(ctx, "Building deployable general resources")
-	if err := p.buildDeployableGeneralResources(ctx); err != nil {
-		return fmt.Errorf("error building deployable general resources: %w", err)
-	}
+		log.Default.Debug(ctx, "Building deployable general resources")
+		if err := p.buildDeployableGeneralResources(ctx); err != nil {
+			return fmt.Errorf("error building deployable general resources: %w", err)
+		}
 
-	log.Default.Debug(ctx, "Validating deployable resources")
-	if err := p.validateDeployableResources(); err != nil {
-		return fmt.Errorf("error validating deployable resources: %w", err)
+		log.Default.Debug(ctx, "Validating deployable resources")
+		if err := p.validateDeployableResources(); err != nil {
+			return fmt.Errorf("error validating deployable resources: %w", err)
+		}
 	}
 
 	if p.allowClusterAccess {
@@ -179,9 +197,11 @@ func (p *DeployableResourcesProcessor) Process(ctx context.Context) error {
 			return fmt.Errorf("error building deployable resource infos: %w", err)
 		}
 
-		log.Default.Debug(ctx, "Validating adoptable resources")
-		if err := p.validateAdoptableResources(); err != nil {
-			return fmt.Errorf("error validating adoptable resources: %w", err)
+		if p.deployType != common.DeployTypeUninstall {
+			log.Default.Debug(ctx, "Validating adoptable resources")
+			if err := p.validateAdoptableResources(); err != nil {
+				return fmt.Errorf("error validating adoptable resources: %w", err)
+			}
 		}
 	}
 
@@ -206,6 +226,10 @@ func (p *DeployableResourcesProcessor) DeployableHookResourcesInfos() []*Deploya
 
 func (p *DeployableResourcesProcessor) DeployableGeneralResourcesInfos() []*DeployableGeneralResourceInfo {
 	return p.deployableGeneralResourcesInfos
+}
+
+func (p *DeployableResourcesProcessor) DeployablePrevReleaseHookResourcesInfos() []*DeployablePrevReleaseHookResourceInfo {
+	return p.deployablePrevRelHookResourcesInfos
 }
 
 func (p *DeployableResourcesProcessor) DeployablePrevReleaseGeneralResourcesInfos() []*DeployablePrevReleaseGeneralResourceInfo {
@@ -598,13 +622,14 @@ func (p *DeployableResourcesProcessor) buildDeployableGeneralResources(ctx conte
 
 func (p *DeployableResourcesProcessor) buildDeployableResourceInfos(ctx context.Context) error {
 	var err error
-	p.deployableReleaseNamespaceInfo, p.deployableStandaloneCRDsInfos, p.deployableHookResourcesInfos, p.deployableGeneralResourcesInfos, p.deployablePrevRelGeneralResourcesInfos, err = BuildDeployableResourceInfos(
+	p.deployableReleaseNamespaceInfo, p.deployableStandaloneCRDsInfos, p.deployableHookResourcesInfos, p.deployableGeneralResourcesInfos, p.deployablePrevRelHookResourcesInfos, p.deployablePrevRelGeneralResourcesInfos, err = BuildDeployableResourceInfos(
 		ctx,
 		p.releaseName,
 		p.releaseNamespace,
 		p.deployableStandaloneCRDs,
 		p.deployableHookResources,
 		p.deployableGeneralResources,
+		p.prevRelHookResources,
 		p.prevRelGeneralResources,
 		p.kubeClient,
 		p.mapper,

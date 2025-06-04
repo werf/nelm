@@ -24,8 +24,9 @@ const (
 	// DeployTypeInitial is used instead.
 	DeployTypeInstall DeployType = "Install"
 	// Activated when a successful revision found.
-	DeployTypeUpgrade  DeployType = "Upgrade"
-	DeployTypeRollback DeployType = "Rollback"
+	DeployTypeUpgrade   DeployType = "Upgrade"
+	DeployTypeRollback  DeployType = "Rollback"
+	DeployTypeUninstall DeployType = "Uninstall"
 )
 
 type DeletePolicy string

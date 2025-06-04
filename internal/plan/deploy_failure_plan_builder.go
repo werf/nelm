@@ -20,13 +20,13 @@ import (
 )
 
 func NewDeployFailurePlanBuilder(
+	releaseName string,
 	releaseNamespace string,
 	deployType common.DeployType,
 	deployPlan *Plan,
 	taskStore *statestore.TaskStore,
 	hookResourcesInfos []*info.DeployableHookResourceInfo,
 	generalResourceInfos []*info.DeployableGeneralResourceInfo,
-	newRelease *release.Release,
 	history release.Historier,
 	kubeClient kube.KubeClienter,
 	dynamicClient dynamic.Interface,
@@ -36,12 +36,13 @@ func NewDeployFailurePlanBuilder(
 	plan := NewPlan()
 
 	return &DeployFailurePlanBuilder{
+		releaseName:          releaseName,
 		releaseNamespace:     releaseNamespace,
 		deployType:           deployType,
 		taskStore:            taskStore,
 		hookResourceInfos:    hookResourcesInfos,
 		generalResourceInfos: generalResourceInfos,
-		newRelease:           newRelease,
+		newRelease:           opts.NewRelease,
 		prevRelease:          opts.PrevRelease,
 		history:              history,
 		kubeClient:           kubeClient,
@@ -54,11 +55,13 @@ func NewDeployFailurePlanBuilder(
 }
 
 type DeployFailurePlanBuilderOptions struct {
+	NewRelease      *release.Release
 	PrevRelease     *release.Release
 	DeletionTimeout time.Duration
 }
 
 type DeployFailurePlanBuilder struct {
+	releaseName          string
 	releaseNamespace     string
 	deployType           common.DeployType
 	taskStore            *statestore.TaskStore
@@ -76,8 +79,10 @@ type DeployFailurePlanBuilder struct {
 }
 
 func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*Plan, error) {
-	opFailRelease := operation.NewFailReleaseOperation(b.newRelease, b.history)
-	b.plan.AddOperation(opFailRelease)
+	if b.newRelease != nil {
+		opFailRelease := operation.NewFailReleaseOperation(b.newRelease, b.history)
+		b.plan.AddOperation(opFailRelease)
+	}
 
 	var prevReleaseFailed bool
 	if b.prevRelease != nil {
@@ -98,13 +103,16 @@ func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*Plan, error) {
 		case common.DeployTypeRollback:
 			pre = res.OnPreRollback()
 			post = res.OnPostRollback()
+		case common.DeployTypeUninstall:
+			pre = res.OnPreDelete()
+			post = res.OnPostDelete()
 		}
 
 		return fmt.Sprintf("%s::%t::%t", info.ID(), pre, post)
 	})
 
 	for _, info := range hookInfos {
-		if !info.ShouldCleanupOnFailed(prevReleaseFailed, b.newRelease.Name(), b.releaseNamespace) || util.IsCRDFromGK(info.Resource().GroupVersionKind().GroupKind()) {
+		if !info.ShouldCleanupOnFailed(prevReleaseFailed, b.releaseName, b.releaseNamespace) || util.IsCRDFromGK(info.Resource().GroupVersionKind().GroupKind()) {
 			continue
 		}
 
@@ -149,7 +157,7 @@ func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*Plan, error) {
 
 	// TODO(ilya-lesikov): same as with hooks, refactor
 	for _, info := range b.generalResourceInfos {
-		if !info.ShouldCleanupOnFailed(prevReleaseFailed, b.newRelease.Name(), b.releaseNamespace) || util.IsCRDFromGK(info.Resource().GroupVersionKind().GroupKind()) {
+		if !info.ShouldCleanupOnFailed(prevReleaseFailed, b.releaseName, b.releaseNamespace) || util.IsCRDFromGK(info.Resource().GroupVersionKind().GroupKind()) {
 			continue
 		}
 

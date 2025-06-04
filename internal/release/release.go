@@ -266,13 +266,21 @@ func (r *Release) Pend(deployType common.DeployType) {
 		r.status = helmrelease.StatusPendingUpgrade
 	case common.DeployTypeRollback:
 		r.status = helmrelease.StatusPendingRollback
+	case common.DeployTypeUninstall:
+		r.status = helmrelease.StatusUninstalling
 	}
 
-	now := time.Now()
-	if r.firstDeployed.IsZero() {
-		r.firstDeployed = now
+	if deployType != common.DeployTypeUninstall {
+		now := time.Now()
+		if r.firstDeployed.IsZero() {
+			r.firstDeployed = now
+		}
+		r.lastDeployed = now
 	}
-	r.lastDeployed = now
+}
+
+func (r *Release) Uninstall() {
+	r.status = helmrelease.StatusUninstalled
 }
 
 func (r *Release) Skip() {

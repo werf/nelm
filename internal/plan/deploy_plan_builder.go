@@ -403,7 +403,7 @@ func (b *DeployPlanBuilder) setupGeneralResourcesOperations() error {
 
 func (b *DeployPlanBuilder) setupPrevReleaseGeneralResourcesOperations() error {
 	for _, info := range b.prevReleaseGeneralResourceInfos {
-		delete := info.ShouldDelete(b.curReleaseExistingResourcesUIDs, b.newRelease.Name(), b.releaseNamespace)
+		delete := info.ShouldDelete(b.curReleaseExistingResourcesUIDs, b.newRelease.Name(), b.releaseNamespace, b.deployType)
 
 		if delete {
 			opDelete := operation.NewDeleteResourceOperation(
