@@ -50,8 +50,11 @@ We consider Nelm production-ready, since 95% of the Nelm codebase basically is t
     - [Annotation `werf.io/show-service-messages`](#annotation-werfioshow-service-messages)
     - [Function `werf_secret_file`](#function-werf_secret_file)
   - [Feature gates](#feature-gates)
+    - [Env variable `NELM_FEAT_PREVIEW_V2`](#env-variable-nelm_feat_preview_v2)
     - [Env variable `NELM_FEAT_REMOTE_CHARTS`](#env-variable-nelm_feat_remote_charts)
     - [Env variable `NELM_FEAT_NATIVE_RELEASE_LIST`](#env-variable-nelm_feat_native_release_list)
+    - [Env variable `NELM_FEAT_NATIVE_RELEASE_UNINSTALL`](#env-variable-nelm_feat_native_release_uninstall)
+    - [Env variable `NELM_FEAT_PERIODIC_STACK_TRACES`](#env-variable-nelm_feat_periodic_stack_traces)
   - [More information](#more-information)
 - [Limitations](#limitations)
 - [Future plans](#future-plans)
@@ -509,6 +512,16 @@ Read the specified secret file from the `secret/` directory of the Helm chart.
 
 ### Feature gates
 
+#### Env variable `NELM_FEAT_PREVIEW_V2`
+
+Example:
+```shell
+export NELM_FEAT_PREVIEW_V2=true
+nelm release list
+```
+
+Activates all feature gates that will be enabled by default in v2.
+
 #### Env variable `NELM_FEAT_REMOTE_CHARTS`
 
 Example:
@@ -530,6 +543,18 @@ nelm release list
 ```
 
 Use native Nelm implementation of the `release list` command instead of `helm list` exposed as `release list`. Implementations differ a bit, but serve the same purpose.
+
+Will be the default in the next major release.
+
+#### Env variable `NELM_FEAT_NATIVE_RELEASE_UNINSTALL`
+
+Example:
+```shell
+export NELM_FEAT_NATIVE_RELEASE_UNINSTALL=true
+nelm release uninstall -n myproject -r myproject
+```
+
+Use a new native Nelm implementation of the `release uninstall` command. Not fully backwards compatible with previous implementation.
 
 Will be the default in the next major release.
 
