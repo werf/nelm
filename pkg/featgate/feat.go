@@ -28,6 +28,11 @@ var (
 		"periodic-stack-traces",
 		`Print stack traces periodically to help with debugging deadlocks and other issues`,
 	)
+
+	FeatGateNativeReleaseUninstall = NewFeatGate(
+		"native-release-uninstall",
+		`Use the new "release uninstall" command implementation (not fully backwards compatible)`,
+	)
 )
 
 func NewFeatGate(name, help string) *FeatGate {

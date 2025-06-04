@@ -227,6 +227,7 @@ func releaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 		nil,
 		releaseToRollback.HookResources(),
 		releaseToRollback.GeneralResources(),
+		nil,
 		prevRelease.GeneralResources(),
 		resourceinfo.DeployableResourcesProcessorOptions{
 			NetworkParallelism: opts.NetworkParallelism,
@@ -443,6 +444,7 @@ func releaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 	if planExecutionErr != nil && pendingReleaseCreated {
 		wcompops, wfailops, wcancops, criterrs, noncriterrs := runFailureDeployPlan(
 			ctx,
+			releaseName,
 			releaseNamespace,
 			deployType,
 			deployPlan,

@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/yaml"
 
+	"github.com/werf/nelm/internal/common"
 	info "github.com/werf/nelm/internal/plan/resourceinfo"
 	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/internal/resource/id"
@@ -22,6 +23,7 @@ const (
 )
 
 func CalculatePlannedChanges(
+	deployType common.DeployType,
 	releaseName string,
 	releaseNamespace string,
 	standaloneCRDsInfos []*info.DeployableStandaloneCRDInfo,
@@ -53,7 +55,7 @@ func CalculatePlannedChanges(
 		allChanges = append(allChanges, changes...)
 	}
 
-	if changes, present := prevReleaseGeneralResourcesChanges(prevReleaseGeneralResourceInfos, curReleaseExistResourcesUIDs, releaseName, releaseNamespace); present {
+	if changes, present := prevReleaseGeneralResourcesChanges(prevReleaseGeneralResourceInfos, curReleaseExistResourcesUIDs, releaseName, releaseNamespace, deployType); present {
 		allChanges = append(allChanges, changes...)
 	}
 
@@ -283,11 +285,11 @@ func generalResourcesChanges(infos []*info.DeployableGeneralResourceInfo, prevRe
 	return changes, len(changes) > 0
 }
 
-func prevReleaseGeneralResourcesChanges(infos []*info.DeployablePrevReleaseGeneralResourceInfo, curReleaseExistResourcesUIDs []types.UID, releaseName, releaseNamespace string) (changes []any, present bool) {
+func prevReleaseGeneralResourcesChanges(infos []*info.DeployablePrevReleaseGeneralResourceInfo, curReleaseExistResourcesUIDs []types.UID, releaseName, releaseNamespace string, deployType common.DeployType) (changes []any, present bool) {
 	for _, info := range infos {
 		isCrd := util.IsCRDFromGK(info.ResourceID.GroupVersionKind().GroupKind())
 		isSensitive := resource.IsSensitive(info.ResourceID.GroupVersionKind().GroupKind(), info.Resource().Unstructured().GetAnnotations())
-		delete := info.ShouldDelete(curReleaseExistResourcesUIDs, releaseName, releaseNamespace)
+		delete := info.ShouldDelete(curReleaseExistResourcesUIDs, releaseName, releaseNamespace, deployType)
 
 		if delete {
 			var uDiff string

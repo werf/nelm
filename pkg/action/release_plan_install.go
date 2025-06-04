@@ -291,6 +291,7 @@ func releasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		chartTree.StandaloneCRDs(),
 		chartTree.HookResources(),
 		chartTree.GeneralResources(),
+		nil,
 		prevRelGeneralResources,
 		resourceinfo.DeployableResourcesProcessorOptions{
 			NetworkParallelism: opts.NetworkParallelism,
@@ -350,6 +351,7 @@ func releasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 
 	log2.Default.Debug(ctx, "Calculating planned changes")
 	createdChanges, recreatedChanges, updatedChanges, appliedChanges, deletedChanges, planChangesPlanned := plan.CalculatePlannedChanges(
+		deployType,
 		releaseName,
 		releaseNamespace,
 		resProcessor.DeployableStandaloneCRDsInfos(),
