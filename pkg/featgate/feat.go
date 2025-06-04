@@ -12,13 +12,11 @@ var (
 	FeatGateEnvVarsPrefix = caps.ToScreamingSnake(common.Brand) + "_FEAT_"
 	FeatGates             = []*FeatGate{}
 
-	// TODO(v2): always enable
 	FeatGateRemoteCharts = NewFeatGate(
 		"remote-charts",
 		`Allow not only local, but also remote charts as an argument to cli commands. Also adds the "--chart-version" option`,
 	)
 
-	// TODO(v2): always enable
 	FeatGateNativeReleaseList = NewFeatGate(
 		"native-release-list",
 		`Use the native "release list" command instead of "helm list" exposed as "release list"`,
@@ -32,6 +30,11 @@ var (
 	FeatGateNativeReleaseUninstall = NewFeatGate(
 		"native-release-uninstall",
 		`Use the new "release uninstall" command implementation (not fully backwards compatible)`,
+	)
+
+	FeatGatePreviewV2 = NewFeatGate(
+		"preview-v2",
+		`Active all feature gates that will be enabled by default in Nelm v2`,
 	)
 )
 

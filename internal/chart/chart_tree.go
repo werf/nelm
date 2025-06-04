@@ -36,7 +36,7 @@ import (
 )
 
 func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, opts ChartTreeOptions) (*ChartTree, error) {
-	if featgate.FeatGateRemoteCharts.Enabled() && !IsLocalChart(chartPath) {
+	if (featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled()) && !IsLocalChart(chartPath) {
 		chartDownloader, chartRef, err := NewChartDownloader(ctx, chartPath, opts.RegistryClient, ChartDownloaderOptions{
 			CaFile:        opts.KubeCAPath,
 			SkipTLSVerify: opts.ChartRepoSkipTLSVerify,
