@@ -22,7 +22,7 @@ func newReleaseCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobr
 	cmd.AddCommand(newReleaseInstallCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newReleaseRollbackCommand(ctx, afterAllCommandsBuiltFuncs))
 
-	if featgate.FeatGateNativeReleaseUninstall.Enabled() {
+	if featgate.FeatGateNativeReleaseUninstall.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
 		cmd.AddCommand(newReleaseUninstallCommand(ctx, afterAllCommandsBuiltFuncs))
 	} else {
 		cmd.AddCommand(newLegacyReleaseUninstallCommand(ctx, afterAllCommandsBuiltFuncs))
@@ -30,7 +30,7 @@ func newReleaseCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobr
 
 	cmd.AddCommand(newReleaseHistoryCommand(ctx, afterAllCommandsBuiltFuncs))
 
-	if featgate.FeatGateNativeReleaseList.Enabled() {
+	if featgate.FeatGateNativeReleaseList.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
 		cmd.AddCommand(newReleaseListCommand(ctx, afterAllCommandsBuiltFuncs))
 	} else {
 		cmd.AddCommand(newLegacyReleaseListCommand(ctx, afterAllCommandsBuiltFuncs))
