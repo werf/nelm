@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.5.0](https://www.github.com/werf/nelm/compare/v1.4.1...v1.5.0) (2025-06-04)
+
+
+### Features
+
+* `NELM_FEAT_PREVIEW_V2` feature gate ([f7ad0ab](https://www.github.com/werf/nelm/commit/f7ad0abc92c5b1462e56ddf13a037752c755278e))
+* native `release list` command ([ff9e1f0](https://www.github.com/werf/nelm/commit/ff9e1f089ea9099cd3a874592a69595f988167f4))
+* native `release uninstall` command ([4d85484](https://www.github.com/werf/nelm/commit/4d854849446a233c4a08515570313a8777bf6c1b))
+
+
+### Bug Fixes
+
+* show stack traces with `NELM_FEAT_PERIODIC_STACK_TRACES=true` ([20310db](https://www.github.com/werf/nelm/commit/20310db2290a42d229a807c17e1352d23911cfeb))
+
 ### [1.4.1](https://www.github.com/werf/nelm/compare/v1.4.0...v1.4.1) (2025-05-23)
 
 
