@@ -49,6 +49,10 @@ We consider Nelm production-ready, since 95% of the Nelm codebase basically is t
     - [Annotation `werf.io/show-logs-only-for-containers`](#annotation-werfioshow-logs-only-for-containers)
     - [Annotation `werf.io/show-service-messages`](#annotation-werfioshow-service-messages)
     - [Function `werf_secret_file`](#function-werf_secret_file)
+    - [Function `dump_debug`](#function-dump_debug)
+    - [Function `printf_debug`](#function-printf_debug)
+    - [Function `include_debug`](#function-include_debug)
+    - [Function `tpl_debug`](#function-tpl_debug)
   - [Feature gates](#feature-gates)
     - [Env variable `NELM_FEAT_PREVIEW_V2`](#env-variable-nelm_feat_preview_v2)
     - [Env variable `NELM_FEAT_REMOTE_CHARTS`](#env-variable-nelm_feat_remote_charts)
@@ -509,6 +513,34 @@ Format: `werf_secret_file "<filename, relative to secret/ dir>"` \
 Example: `config: {{ werf_secret_file "config.yaml" | nindent 4 }}`
 
 Read the specified secret file from the `secret/` directory of the Helm chart.
+
+#### Function `dump_debug`
+
+Format: `dump_debug "<value of any type>"` \
+Example: `{{ dump_debug $ }}`
+
+If the log level is `debug`, then pretty-dumps the passed value to the logs. Handles just fine any kind of complex types, including .Values, or event root context. Never prints to the templating output.
+
+#### Function `printf_debug`
+
+Format: `printf_debug "<format string>" <args...>` \
+Example: `{{ printf_debug "myval: %s" .Values.myval }}`
+
+If the log level is `debug`, then prints the result to the logs. Never prints to the templating output.
+
+#### Function `include_debug`
+
+Format: `include_debug "<template name>" <context>` \
+Example: `{{ include_debug "mytemplate" . }}`
+
+Works exactly like the `include` function, but if the log level is `debug`, then also prints various include-related debug information to the logs. Useful for debugging complex includes/defines.
+
+#### Function `tpl_debug`
+
+Format: `tpl_debug "<template string>" <context>` \
+Example: `{{ tpl_debug "{{ .Values.myval }}" . }}`
+
+Works exactly like the `tpl` function, but if the log level is `debug`, then also prints various tpl-related debug information to the logs. Useful for debugging complex tpl templates.
 
 ### Feature gates
 
