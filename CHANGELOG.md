@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://www.github.com/werf/nelm/compare/v1.5.0...v1.6.0) (2025-06-09)
+
+
+### Features
+
+* include_debug/tpl_debug/printf_debug/dump_debug and detailed template errors ([ee22873](https://www.github.com/werf/nelm/commit/ee228734f5cc48341d3659bc3b32bfc3f6bcea72))
+
 ## [1.5.0](https://www.github.com/werf/nelm/compare/v1.4.1...v1.5.0) (2025-06-04)
 
 
