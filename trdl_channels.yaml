@@ -2,7 +2,7 @@ groups:
   - name: "1"
     channels:
       - name: alpha
-        version: 1.5.0
+        version: 1.6.0
       - name: beta
         version: 1.4.1
       - name: ea
