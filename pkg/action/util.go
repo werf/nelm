@@ -16,6 +16,7 @@ import (
 	"k8s.io/klog"
 	klogv2 "k8s.io/klog/v2"
 
+	"github.com/werf/3p-helm/pkg/engine"
 	"github.com/werf/logboek"
 	"github.com/werf/nelm/pkg/log"
 )
@@ -110,6 +111,8 @@ func SetupLogging(ctx context.Context, logLevel string, opts SetupLoggingOptions
 
 		contdlog.L.Logger.SetOutput(logboek.Context(ctx).OutStream())
 		contdlog.L.Logger.SetLevel(logrus.DebugLevel)
+
+		engine.Debug = true
 	case TraceLogLevel:
 		stdlog.SetOutput(os.Stdout)
 
@@ -124,6 +127,8 @@ func SetupLogging(ctx context.Context, logLevel string, opts SetupLoggingOptions
 
 		contdlog.L.Logger.SetOutput(logboek.Context(ctx).OutStream())
 		contdlog.L.Logger.SetLevel(logrus.TraceLevel)
+
+		engine.Debug = true
 	default:
 		panic(fmt.Sprintf("unknown log level %q", logLevel))
 	}
