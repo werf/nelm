@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://www.github.com/werf/nelm/compare/v1.6.0...v1.7.0) (2025-06-10)
+
+
+### Features
+
+* expose release labels in `release get` ([471c999](https://www.github.com/werf/nelm/commit/471c999a7a47fc738366f0143fa5d824e874a4cf))
+
 ## [1.6.0](https://www.github.com/werf/nelm/compare/v1.5.0...v1.6.0) (2025-06-09)
 
 
