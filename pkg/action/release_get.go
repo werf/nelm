@@ -159,7 +159,8 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 				Human: release.LastDeployed().String(),
 				Unix:  int(release.LastDeployed().Unix()),
 			},
-			Annotations: release.InfoAnnotations(),
+			Annotations:   release.InfoAnnotations(),
+			StorageLabels: release.Labels(),
 		},
 		Chart: &ReleaseGetResultChart{
 			Name:       release.ChartName(),
@@ -271,12 +272,13 @@ type ReleaseGetResultV1 struct {
 }
 
 type ReleaseGetResultRelease struct {
-	Name        string                      `json:"name"`
-	Namespace   string                      `json:"namespace"`
-	Revision    int                         `json:"revision"`
-	Status      helmrelease.Status          `json:"status"`
-	DeployedAt  *ReleaseGetResultDeployedAt `json:"deployedAt"`
-	Annotations map[string]string           `json:"annotations"`
+	Name          string                      `json:"name"`
+	Namespace     string                      `json:"namespace"`
+	Revision      int                         `json:"revision"`
+	Status        helmrelease.Status          `json:"status"`
+	DeployedAt    *ReleaseGetResultDeployedAt `json:"deployedAt"`
+	Annotations   map[string]string           `json:"annotations"`
+	StorageLabels map[string]string           `json:"storageLabels"`
 }
 
 type ReleaseGetResultDeployedAt struct {
