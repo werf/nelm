@@ -38,6 +38,7 @@ We consider Nelm production-ready, since 95% of the Nelm codebase basically is t
     - [Annotation `<id>.external-dependency.werf.io/resource`](#annotation-idexternal-dependencywerfioresource)
     - [Annotation `<id>.external-dependency.werf.io/name`](#annotation-idexternal-dependencywerfioname)
     - [Annotation `werf.io/sensitive`](#annotation-werfiosensitive)
+    - [Annotation `werf.io/sensitive-paths`](#annotation-werfiosensitive-paths)
     - [Annotation `werf.io/track-termination-mode`](#annotation-werfiotrack-termination-mode)
     - [Annotation `werf.io/fail-mode`](#annotation-werfiofail-mode)
     - [Annotation `werf.io/failures-allowed-per-replica`](#annotation-werfiofailures-allowed-per-replica)
@@ -427,6 +428,21 @@ Example: `werf.io/sensitive: "true"`
 
 Don't show diffs for the resource.
 
+The behavior of this annotation depends on the `NELM_FEAT_FIELD_SENSITIVE` feature gate:
+- **Without feature gate (default):** Hides the entire resource content
+- **With feature gate:** Redacts only common sensitive fields (`data.*`, `stringData.*`) instead of hiding the entire resource
+
+#### Annotation `werf.io/sensitive-paths`
+
+Format: `JSONPath1,JSONPath2,...` \
+Example: `werf.io/sensitive-paths: "$.spec.template.spec.containers[*].env[*].value,$.data.*"`
+
+Allows fine-grained control over which specific fields should be redacted in diffs using JSONPath expressions. Multiple paths can be specified as a comma-separated list.
+
+This provides precise control over sensitive data redaction, allowing you to hide only specific sensitive fields (like passwords, API keys, etc.) rather than the entire resource, making diffs more useful while still protecting sensitive information.
+
+*Annotation precedence:* `werf.io/sensitive-paths` has highest priority, over  `werf.io/sensitive: "true"`
+
 #### Annotation `werf.io/track-termination-mode`
 
 Format: `WaitUntilResourceReady|NonBlocking` \
@@ -599,6 +615,21 @@ nelm release install -n myproject -r myproject
 ```
 
 Every few seconds print stack traces of all goroutines. Useful for debugging purposes.
+
+#### Env variable `NELM_FEAT_FIELD_SENSITIVE`
+
+Example:
+```shell
+export NELM_FEAT_FIELD_SENSITIVE=true
+nelm release plan install -n myproject -r myproject
+```
+
+Changes the behavior of the `werf.io/sensitive` annotation and default Secret handling:
+
+- **Without feature gate (default):** `werf.io/sensitive: "true"` and Secrets without annotations hide the entire resource content
+- **With feature gate:** `werf.io/sensitive: "true"` and Secrets without annotations hide only `data.*` and `stringData.*` fields
+
+Note: The `werf.io/sensitive-paths` annotation works regardless of this feature gate setting.
 
 ### More information
 

@@ -32,6 +32,11 @@ var (
 		`Use the new "release uninstall" command implementation (not fully backwards compatible)`,
 	)
 
+	FeatGateFieldSensitive = NewFeatGate(
+		"field-sensitive",
+		`Enable JSONPath-based selective sensitive field redaction`,
+	)
+
 	FeatGatePreviewV2 = NewFeatGate(
 		"preview-v2",
 		`Active all feature gates that will be enabled by default in Nelm v2`,
