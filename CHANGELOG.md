@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.0](https://www.github.com/werf/nelm/compare/v1.6.0...v1.7.0) (2025-06-18)
+
+
+### Features
+
+* `--force-adoption` to disable release annotations checks ([b1dd851](https://www.github.com/werf/nelm/commit/b1dd8519a41ae7862880d752b01ef73dc2284e60))
+* expose release labels in `release get` ([471c999](https://www.github.com/werf/nelm/commit/471c999a7a47fc738366f0143fa5d824e874a4cf))
+
 ## [1.6.0](https://www.github.com/werf/nelm/compare/v1.5.0...v1.6.0) (2025-06-09)
 
 
