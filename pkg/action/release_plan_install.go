@@ -32,10 +32,9 @@ const (
 var ErrChangesPlanned = errors.New("changes planned")
 
 type ReleasePlanInstallOptions struct {
-	Chart           string
-	ChartAppVersion string
-	// TODO(v2): get rid
-	ChartDirPath                 string
+	Chart                        string
+	ChartAppVersion              string
+	ChartDirPath                 string // TODO(v2): get rid
 	ChartRepositoryInsecure      bool
 	ChartRepositorySkipTLSVerify bool
 	ChartRepositorySkipUpdate    bool
@@ -49,6 +48,7 @@ type ReleasePlanInstallOptions struct {
 	ExtraAnnotations             map[string]string
 	ExtraLabels                  map[string]string
 	ExtraRuntimeAnnotations      map[string]string
+	ForceAdoption                bool
 	KubeAPIServerName            string
 	KubeBurstLimit               int
 	KubeCAPath                   string
@@ -295,6 +295,7 @@ func releasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 		prevRelGeneralResources,
 		resourceinfo.DeployableResourcesProcessorOptions{
 			NetworkParallelism: opts.NetworkParallelism,
+			ForceAdoption:      opts.ForceAdoption,
 			ReleasableHookResourcePatchers: []resource.ResourcePatcher{
 				resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 			},
