@@ -57,6 +57,7 @@ type ReleaseInstallOptions struct {
 	ExtraAnnotations             map[string]string
 	ExtraLabels                  map[string]string
 	ExtraRuntimeAnnotations      map[string]string
+	ForceAdoption                bool
 	InstallGraphPath             string
 	InstallReportPath            string
 	KubeAPIServerName            string
@@ -362,6 +363,7 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 			Mapper:             clientFactory.Mapper(),
 			DiscoveryClient:    clientFactory.Discovery(),
 			AllowClusterAccess: true,
+			ForceAdoption:      opts.ForceAdoption,
 		},
 	)
 

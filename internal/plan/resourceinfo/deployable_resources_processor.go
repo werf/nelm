@@ -54,6 +54,7 @@ func NewDeployableResourcesProcessor(
 		mapper:                            opts.Mapper,
 		discoveryClient:                   opts.DiscoveryClient,
 		allowClusterAccess:                opts.AllowClusterAccess,
+		forceAdoption:                     opts.ForceAdoption,
 		networkParallelism:                lo.Max([]int{opts.NetworkParallelism, 1}),
 		hookResourceTransformers:          hookResourceTransformers,
 		generalResourceTransformers:       generalResourceTransformers,
@@ -78,6 +79,7 @@ type DeployableResourcesProcessorOptions struct {
 	Mapper                            meta.ResettableRESTMapper
 	DiscoveryClient                   discovery.CachedDiscoveryInterface
 	AllowClusterAccess                bool
+	ForceAdoption                     bool
 }
 
 type DeployableResourcesProcessor struct {
@@ -94,6 +96,7 @@ type DeployableResourcesProcessor struct {
 	discoveryClient         discovery.CachedDiscoveryInterface
 	networkParallelism      int
 	allowClusterAccess      bool
+	forceAdoption           bool
 
 	hookResourceTransformers    []resource.ResourceTransformer
 	generalResourceTransformers []resource.ResourceTransformer
@@ -197,7 +200,7 @@ func (p *DeployableResourcesProcessor) Process(ctx context.Context) error {
 			return fmt.Errorf("error building deployable resource infos: %w", err)
 		}
 
-		if p.deployType != common.DeployTypeUninstall {
+		if !p.forceAdoption && p.deployType != common.DeployTypeUninstall {
 			log.Default.Debug(ctx, "Validating adoptable resources")
 			if err := p.validateAdoptableResources(); err != nil {
 				return fmt.Errorf("error validating adoptable resources: %w", err)

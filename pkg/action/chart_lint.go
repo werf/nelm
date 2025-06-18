@@ -27,10 +27,9 @@ const (
 )
 
 type ChartLintOptions struct {
-	Chart           string
-	ChartAppVersion string
-	// TODO(v2): get rid
-	ChartDirPath                 string
+	Chart                        string
+	ChartAppVersion              string
+	ChartDirPath                 string // TODO(v2): get rid
 	ChartRepositoryInsecure      bool
 	ChartRepositorySkipTLSVerify bool
 	ChartRepositorySkipUpdate    bool
@@ -43,6 +42,7 @@ type ChartLintOptions struct {
 	ExtraAnnotations             map[string]string
 	ExtraLabels                  map[string]string
 	ExtraRuntimeAnnotations      map[string]string
+	ForceAdoption                bool
 	KubeAPIServerName            string
 	KubeBurstLimit               int
 	KubeCAPath                   string
@@ -55,7 +55,6 @@ type ChartLintOptions struct {
 	KubeToken                    string
 	LegacyChartType              helmopts.ChartType
 	LegacyExtraValues            map[string]interface{}
-	Remote                       bool
 	LocalKubeVersion             string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
@@ -63,6 +62,7 @@ type ChartLintOptions struct {
 	ReleaseName                  string
 	ReleaseNamespace             string
 	ReleaseStorageDriver         string
+	Remote                       bool
 	SQLConnectionString          string
 	SecretKey                    string
 	SecretKeyIgnore              bool
@@ -269,6 +269,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	resProcessorOptions := resourceinfo.DeployableResourcesProcessorOptions{
 		NetworkParallelism: opts.NetworkParallelism,
+		ForceAdoption:      opts.ForceAdoption,
 		ReleasableHookResourcePatchers: []resource.ResourcePatcher{
 			resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 		},

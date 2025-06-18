@@ -34,6 +34,7 @@ const (
 
 type ReleaseRollbackOptions struct {
 	ExtraRuntimeAnnotations    map[string]string
+	ForceAdoption              bool
 	KubeAPIServerName          string
 	KubeBurstLimit             int
 	KubeCAPath                 string
@@ -231,6 +232,7 @@ func releaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 		prevRelease.GeneralResources(),
 		resourceinfo.DeployableResourcesProcessorOptions{
 			NetworkParallelism: opts.NetworkParallelism,
+			ForceAdoption:      opts.ForceAdoption,
 			DeployableHookResourcePatchers: []resource.ResourcePatcher{
 				resource.NewExtraMetadataPatcher(
 					opts.ExtraRuntimeAnnotations, nil,

@@ -47,6 +47,7 @@ type ChartRenderOptions struct {
 	ExtraAnnotations             map[string]string
 	ExtraLabels                  map[string]string
 	ExtraRuntimeAnnotations      map[string]string
+	ForceAdoption                bool
 	KubeAPIServerName            string
 	KubeBurstLimit               int
 	KubeCAPath                   string
@@ -276,6 +277,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	resProcessorOptions := resourceinfo.DeployableResourcesProcessorOptions{
 		NetworkParallelism: opts.NetworkParallelism,
+		ForceAdoption:      opts.ForceAdoption,
 		ReleasableHookResourcePatchers: []resource.ResourcePatcher{
 			resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 		},
