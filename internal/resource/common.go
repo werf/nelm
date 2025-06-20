@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/samber/lo"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -165,8 +165,10 @@ var (
 )
 
 var (
-	annotationKeyHumanSensitive   = "werf.io/sensitive"
-	annotationKeyPatternSensitive = regexp.MustCompile(`^werf.io/sensitive$`)
+	annotationKeyHumanSensitive        = "werf.io/sensitive"
+	annotationKeyPatternSensitive      = regexp.MustCompile(`^werf.io/sensitive$`)
+	annotationKeyHumanSensitivePaths   = "werf.io/sensitive-paths"
+	annotationKeyPatternSensitivePaths = regexp.MustCompile(`^werf.io/sensitive-paths$`)
 )
 
 func validateHook(res *unstructured.Unstructured) error {
@@ -683,6 +685,27 @@ func validateSensitive(unstruct *unstructured.Unstructured) error {
 
 		if _, err := strconv.ParseBool(value); err != nil {
 			return fmt.Errorf("invalid value %q for annotation %q, expected boolean value", value, key)
+		}
+	}
+
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternSensitivePaths); found {
+		if value == "" {
+			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty JSON array of JSONPath strings", value, key)
+		}
+
+		var paths []string
+		if err := json.Unmarshal([]byte(value), &paths); err != nil {
+			return fmt.Errorf("invalid value %q for annotation %q, expected valid JSON array: %v", value, key, err)
+		}
+
+		if len(paths) == 0 {
+			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty array of JSONPath strings", value, key)
+		}
+
+		for _, path := range paths {
+			if strings.TrimSpace(path) == "" {
+				return fmt.Errorf("invalid value %q for annotation %q, JSONPath cannot be empty", value, key)
+			}
 		}
 	}
 
