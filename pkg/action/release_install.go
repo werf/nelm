@@ -525,10 +525,13 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 
 	var criticalErrs, nonCriticalErrs []error
 
+	log.Default.Debug(ctx, "Actually executing release install plan")
 	planExecutionErr := planExecutor.Execute(ctx)
 	if planExecutionErr != nil {
+		log.Default.Debug(ctx, "Error: execute release install plan: %s", planExecutionErr)
 		criticalErrs = append(criticalErrs, fmt.Errorf("execute release install plan: %w", planExecutionErr))
 	}
+	log.Default.Debug(ctx, "Release install plan executed")
 
 	var worthyCompletedOps []operation.Operation
 	if ops, found, err := deployPlan.WorthyCompletedOperations(); err != nil {
