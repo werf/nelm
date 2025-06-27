@@ -9,7 +9,6 @@ import (
 	"github.com/samber/lo"
 	"github.com/sourcegraph/conc/pool"
 
-	"github.com/werf/nelm/internal/plan/operation"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/log"
 )
@@ -41,6 +40,7 @@ func (e *PlanExecutor) Execute(parentCtx context.Context) error {
 	workerPool := pool.New().WithContext(ctx).WithMaxGoroutines(e.networkParallelism).WithCancelOnError().WithFirstError()
 	completedOpsIDsCh := make(chan string, 100000)
 
+	log.Default.Debug(ctx, "Starting plan operations")
 	for i := 0; len(opsMap) > 0; i++ {
 		if i > 0 {
 			if ctx.Err() != nil {
@@ -69,6 +69,7 @@ func (e *PlanExecutor) Execute(parentCtx context.Context) error {
 		}
 	}
 
+	log.Default.Debug(ctx, "Waiting for all plan operations to complete")
 	if err := workerPool.Wait(); err != nil {
 		return fmt.Errorf("error waiting for operations completion: %w", err)
 	}
@@ -87,20 +88,7 @@ func (e *PlanExecutor) execOperation(opID string, completedOpsIDsCh chan string,
 
 		op := lo.Must(e.plan.Operation(opID))
 
-		switch op.Type() {
-		case operation.TypeCreateResourceOperation,
-			operation.TypeRecreateResourceOperation,
-			operation.TypeUpdateResourceOperation,
-			operation.TypeApplyResourceOperation,
-			operation.TypeDeleteResourceOperation,
-			operation.TypeExtraPostCreateResourceOperation,
-			operation.TypeExtraPostRecreateResourceOperation,
-			operation.TypeExtraPostApplyResourceOperation,
-			operation.TypeExtraPostUpdateResourceOperation,
-			operation.TypeExtraPostDeleteResourceOperation:
-			log.Default.Debug(ctx, util.Capitalize(op.HumanID()))
-		}
-
+		log.Default.Debug(ctx, util.Capitalize(op.HumanID()))
 		if err := op.Execute(ctx); err != nil {
 			return fmt.Errorf("error executing operation: %w", err)
 		}
