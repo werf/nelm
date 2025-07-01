@@ -795,7 +795,6 @@ func printTables(
 			log.Default.InfoBlock(ctx, log.BlockOptions{
 				BlockTitle: header,
 			}, func() {
-				fmt.Printf("LESIKOVTEST: %s\n", tables[header].Render())
 				log.Default.Info(ctx, tables[header].Render())
 			})
 		}
@@ -818,6 +817,7 @@ func printTables(
 		log.Default.InfoBlock(ctx, log.BlockOptions{
 			BlockTitle: color.Style{color.Bold, color.Blue}.Render("Progress status"),
 		}, func() {
+			fmt.Printf("LESIKOVTEST: progress table line: %s\n", table.Render())
 			log.Default.Info(ctx, table.Render())
 		})
 	}
