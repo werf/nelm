@@ -795,6 +795,7 @@ func printTables(
 			log.Default.InfoBlock(ctx, log.BlockOptions{
 				BlockTitle: header,
 			}, func() {
+				fmt.Printf("LESIKOVTEST: %s\n", tables[header].Render())
 				log.Default.Info(ctx, tables[header].Render())
 			})
 		}
