@@ -122,7 +122,7 @@ func standaloneCRDChanges(infos []*info.DeployableStandaloneCRDInfo) (changes []
 func hookResourcesChanges(infos []*info.DeployableHookResourceInfo, prevRelFailed bool, releaseName, releaseNamespace string) (changes []any, present bool) {
 	for _, info := range infos {
 		isCrd := util.IsCRDFromGK(info.ResourceID.GroupVersionKind().GroupKind())
-		isSensitive := resource.IsSensitive(info.ResourceID.GroupVersionKind().GroupKind(), info.Resource().Unstructured().GetAnnotations())
+		sensitiveInfo := resource.GetSensitiveInfo(info.ResourceID.GroupVersionKind().GroupKind(), info.Resource().Unstructured().GetAnnotations())
 		create := info.ShouldCreate()
 		recreate := info.ShouldRecreate()
 		update := info.ShouldUpdate()
@@ -134,8 +134,13 @@ func hookResourcesChanges(infos []*info.DeployableHookResourceInfo, prevRelFaile
 			var uDiff string
 			if isCrd {
 				uDiff = HiddenInsignificantOutput
-			} else if isSensitive {
-				uDiff = HiddenSensitiveOutput
+			} else if sensitiveInfo.IsSensitive {
+				if len(sensitiveInfo.SensitivePaths) == 1 && sensitiveInfo.SensitivePaths[0] == resource.HideAll {
+					uDiff = HiddenSensitiveOutput
+				} else {
+					redactedResource := resource.RedactSensitiveData(info.Resource().Unstructured(), sensitiveInfo.SensitivePaths)
+					uDiff = lo.Must(util.ColoredUnifiedDiff("", diffableResource(redactedResource)))
+				}
 			} else {
 				uDiff = lo.Must(util.ColoredUnifiedDiff("", diffableResource(info.Resource().Unstructured())))
 			}
@@ -150,8 +155,13 @@ func hookResourcesChanges(infos []*info.DeployableHookResourceInfo, prevRelFaile
 			var uDiff string
 			if isCrd {
 				uDiff = HiddenInsignificantOutput
-			} else if isSensitive {
-				uDiff = HiddenSensitiveOutput
+			} else if sensitiveInfo.IsSensitive {
+				if len(sensitiveInfo.SensitivePaths) == 1 && sensitiveInfo.SensitivePaths[0] == resource.HideAll {
+					uDiff = HiddenSensitiveOutput
+				} else {
+					redactedResource := resource.RedactSensitiveData(info.Resource().Unstructured(), sensitiveInfo.SensitivePaths)
+					uDiff = lo.Must(util.ColoredUnifiedDiff("", diffableResource(redactedResource)))
+				}
 			} else {
 				uDiff = lo.Must(util.ColoredUnifiedDiff("", diffableResource(info.Resource().Unstructured())))
 			}
@@ -164,14 +174,28 @@ func hookResourcesChanges(infos []*info.DeployableHookResourceInfo, prevRelFaile
 			})
 		} else if update {
 			var uDiff string
-			if ud, nonEmpty := util.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured())); nonEmpty {
-				if isSensitive {
-					uDiff = HiddenSensitiveChanges
+			if sensitiveInfo.IsSensitive {
+				if len(sensitiveInfo.SensitivePaths) == 1 && sensitiveInfo.SensitivePaths[0] == resource.HideAll {
+					if _, nonEmpty := util.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured())); nonEmpty {
+						uDiff = HiddenSensitiveChanges
+					} else {
+						uDiff = HiddenInsignificantChanges
+					}
 				} else {
-					uDiff = ud
+					redactedLive := resource.RedactSensitiveData(info.LiveResource().Unstructured(), sensitiveInfo.SensitivePaths)
+					redactedNew := resource.RedactSensitiveData(info.DryApplyResource().Unstructured(), sensitiveInfo.SensitivePaths)
+					if ud, nonEmpty := util.ColoredUnifiedDiff(diffableResource(redactedLive), diffableResource(redactedNew)); nonEmpty {
+						uDiff = ud
+					} else {
+						uDiff = HiddenInsignificantChanges
+					}
 				}
 			} else {
-				uDiff = HiddenInsignificantChanges
+				if ud, nonEmpty := util.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured())); nonEmpty {
+					uDiff = ud
+				} else {
+					uDiff = HiddenInsignificantChanges
+				}
 			}
 
 			changes = append(changes, &UpdatedResourceChange{
@@ -184,8 +208,13 @@ func hookResourcesChanges(infos []*info.DeployableHookResourceInfo, prevRelFaile
 			var uDiff string
 			if isCrd {
 				uDiff = HiddenInsignificantOutput
-			} else if isSensitive {
-				uDiff = HiddenSensitiveOutput
+			} else if sensitiveInfo.IsSensitive {
+				if len(sensitiveInfo.SensitivePaths) == 1 && sensitiveInfo.SensitivePaths[0] == resource.HideAll {
+					uDiff = HiddenSensitiveOutput
+				} else {
+					redactedResource := resource.RedactSensitiveData(info.Resource().Unstructured(), sensitiveInfo.SensitivePaths)
+					uDiff = lo.Must(util.ColoredUnifiedDiff("", diffableResource(redactedResource)))
+				}
 			} else {
 				uDiff = lo.Must(util.ColoredUnifiedDiff("", diffableResource(info.Resource().Unstructured())))
 			}
@@ -205,7 +234,7 @@ func hookResourcesChanges(infos []*info.DeployableHookResourceInfo, prevRelFaile
 func generalResourcesChanges(infos []*info.DeployableGeneralResourceInfo, prevRelFailed bool, releaseName, releaseNamespace string) (changes []any, present bool) {
 	for _, info := range infos {
 		isCrd := util.IsCRDFromGK(info.ResourceID.GroupVersionKind().GroupKind())
-		isSensitive := resource.IsSensitive(info.ResourceID.GroupVersionKind().GroupKind(), info.Resource().Unstructured().GetAnnotations())
+		sensitiveInfo := resource.GetSensitiveInfo(info.ResourceID.GroupVersionKind().GroupKind(), info.Resource().Unstructured().GetAnnotations())
 		create := info.ShouldCreate()
 		recreate := info.ShouldRecreate()
 		update := info.ShouldUpdate()
@@ -217,8 +246,13 @@ func generalResourcesChanges(infos []*info.DeployableGeneralResourceInfo, prevRe
 			var uDiff string
 			if isCrd {
 				uDiff = HiddenInsignificantOutput
-			} else if isSensitive {
-				uDiff = HiddenSensitiveOutput
+			} else if sensitiveInfo.IsSensitive {
+				if len(sensitiveInfo.SensitivePaths) == 1 && sensitiveInfo.SensitivePaths[0] == resource.HideAll {
+					uDiff = HiddenSensitiveOutput
+				} else {
+					redactedResource := resource.RedactSensitiveData(info.Resource().Unstructured(), sensitiveInfo.SensitivePaths)
+					uDiff = lo.Must(util.ColoredUnifiedDiff("", diffableResource(redactedResource)))
+				}
 			} else {
 				uDiff = lo.Must(util.ColoredUnifiedDiff("", diffableResource(info.Resource().Unstructured())))
 			}
@@ -233,8 +267,13 @@ func generalResourcesChanges(infos []*info.DeployableGeneralResourceInfo, prevRe
 			var uDiff string
 			if isCrd {
 				uDiff = HiddenInsignificantOutput
-			} else if isSensitive {
-				uDiff = HiddenSensitiveOutput
+			} else if sensitiveInfo.IsSensitive {
+				if len(sensitiveInfo.SensitivePaths) == 1 && sensitiveInfo.SensitivePaths[0] == resource.HideAll {
+					uDiff = HiddenSensitiveOutput
+				} else {
+					redactedResource := resource.RedactSensitiveData(info.Resource().Unstructured(), sensitiveInfo.SensitivePaths)
+					uDiff = lo.Must(util.ColoredUnifiedDiff("", diffableResource(redactedResource)))
+				}
 			} else {
 				uDiff = lo.Must(util.ColoredUnifiedDiff("", diffableResource(info.Resource().Unstructured())))
 			}
@@ -247,14 +286,28 @@ func generalResourcesChanges(infos []*info.DeployableGeneralResourceInfo, prevRe
 			})
 		} else if update {
 			var uDiff string
-			if ud, nonEmpty := util.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured())); nonEmpty {
-				if isSensitive {
-					uDiff = HiddenSensitiveChanges
+			if sensitiveInfo.IsSensitive {
+				if len(sensitiveInfo.SensitivePaths) == 1 && sensitiveInfo.SensitivePaths[0] == resource.HideAll {
+					if _, nonEmpty := util.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured())); nonEmpty {
+						uDiff = HiddenSensitiveChanges
+					} else {
+						uDiff = HiddenInsignificantChanges
+					}
 				} else {
-					uDiff = ud
+					redactedLive := resource.RedactSensitiveData(info.LiveResource().Unstructured(), sensitiveInfo.SensitivePaths)
+					redactedNew := resource.RedactSensitiveData(info.DryApplyResource().Unstructured(), sensitiveInfo.SensitivePaths)
+					if ud, nonEmpty := util.ColoredUnifiedDiff(diffableResource(redactedLive), diffableResource(redactedNew)); nonEmpty {
+						uDiff = ud
+					} else {
+						uDiff = HiddenInsignificantChanges
+					}
 				}
 			} else {
-				uDiff = HiddenInsignificantChanges
+				if ud, nonEmpty := util.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), diffableResource(info.DryApplyResource().Unstructured())); nonEmpty {
+					uDiff = ud
+				} else {
+					uDiff = HiddenInsignificantChanges
+				}
 			}
 
 			changes = append(changes, &UpdatedResourceChange{
@@ -267,8 +320,13 @@ func generalResourcesChanges(infos []*info.DeployableGeneralResourceInfo, prevRe
 			var uDiff string
 			if isCrd {
 				uDiff = HiddenInsignificantOutput
-			} else if isSensitive {
-				uDiff = HiddenSensitiveOutput
+			} else if sensitiveInfo.IsSensitive {
+				if len(sensitiveInfo.SensitivePaths) == 1 && sensitiveInfo.SensitivePaths[0] == resource.HideAll {
+					uDiff = HiddenSensitiveOutput
+				} else {
+					redactedResource := resource.RedactSensitiveData(info.Resource().Unstructured(), sensitiveInfo.SensitivePaths)
+					uDiff = lo.Must(util.ColoredUnifiedDiff("", diffableResource(redactedResource)))
+				}
 			} else {
 				uDiff = lo.Must(util.ColoredUnifiedDiff("", diffableResource(info.Resource().Unstructured())))
 			}
@@ -288,15 +346,20 @@ func generalResourcesChanges(infos []*info.DeployableGeneralResourceInfo, prevRe
 func prevReleaseGeneralResourcesChanges(infos []*info.DeployablePrevReleaseGeneralResourceInfo, curReleaseExistResourcesUIDs []types.UID, releaseName, releaseNamespace string, deployType common.DeployType) (changes []any, present bool) {
 	for _, info := range infos {
 		isCrd := util.IsCRDFromGK(info.ResourceID.GroupVersionKind().GroupKind())
-		isSensitive := resource.IsSensitive(info.ResourceID.GroupVersionKind().GroupKind(), info.Resource().Unstructured().GetAnnotations())
+		sensitiveInfo := resource.GetSensitiveInfo(info.ResourceID.GroupVersionKind().GroupKind(), info.Resource().Unstructured().GetAnnotations())
 		delete := info.ShouldDelete(curReleaseExistResourcesUIDs, releaseName, releaseNamespace, deployType)
 
 		if delete {
 			var uDiff string
 			if isCrd {
 				uDiff = HiddenInsignificantOutput
-			} else if isSensitive {
-				uDiff = HiddenSensitiveOutput
+			} else if sensitiveInfo.IsSensitive {
+				if len(sensitiveInfo.SensitivePaths) == 1 && sensitiveInfo.SensitivePaths[0] == resource.HideAll {
+					uDiff = HiddenSensitiveOutput
+				} else {
+					redactedResource := resource.RedactSensitiveData(info.LiveResource().Unstructured(), sensitiveInfo.SensitivePaths)
+					uDiff = lo.Must(util.ColoredUnifiedDiff(diffableResource(redactedResource), ""))
+				}
 			} else {
 				uDiff = lo.Must(util.ColoredUnifiedDiff(diffableResource(info.LiveResource().Unstructured()), ""))
 			}

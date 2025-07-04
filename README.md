@@ -38,6 +38,7 @@ We consider Nelm production-ready, since 95% of the Nelm codebase basically is t
     - [Annotation `<id>.external-dependency.werf.io/resource`](#annotation-idexternal-dependencywerfioresource)
     - [Annotation `<id>.external-dependency.werf.io/name`](#annotation-idexternal-dependencywerfioname)
     - [Annotation `werf.io/sensitive`](#annotation-werfiosensitive)
+    - [Annotation `werf.io/sensitive-paths`](#annotation-werfiosensitive-paths)
     - [Annotation `werf.io/track-termination-mode`](#annotation-werfiotrack-termination-mode)
     - [Annotation `werf.io/fail-mode`](#annotation-werfiofail-mode)
     - [Annotation `werf.io/failures-allowed-per-replica`](#annotation-werfiofailures-allowed-per-replica)
@@ -427,6 +428,25 @@ Example: `werf.io/sensitive: "true"`
 
 Don't show diffs for the resource.
 
+With the `NELM_FEAT_FIELD_SENSITIVE` feature gate enabled, when set to `true`, this annotation will redact common sensitive fields (`spec.*`, `data.*`, `stringData.*`) instead of hiding the entire resource.
+
+#### Annotation `werf.io/sensitive-paths`
+
+Format: `JSONPath1,JSONPath2,...` \
+Example: `werf.io/sensitive-paths: "$.spec.template.spec.containers[*].env[?(@.name=='API_KEY')].value,$.data.password"`
+
+Available only with the `NELM_FEAT_FIELD_SENSITIVE` feature gate enabled. Allows fine-grained control over which specific fields should be redacted in diffs using JSONPath expressions. Multiple paths can be specified as a comma-separated list.
+
+This provides precise control over sensitive data redaction, allowing you to hide only specific sensitive fields (like passwords, API keys, etc.) rather than the entire resource, making diffs more useful while still protecting sensitive information.
+
+**Annotation precedence:**
+
+1. `werf.io/sensitive-paths` - highest priority, if present and non-empty, these JSONPath expressions are used
+2. `werf.io/sensitive: "true"` - medium priority, redacts common fields (`data.*`, `stringData.*`)  
+3. Default behavior for `v1/Secret` resources - lowest priority, redacts `data.*` and `stringData.*` fields
+
+If `werf.io/sensitive: "false"` is explicitly set, no sensitive redaction is applied regardless of resource type.
+
 #### Annotation `werf.io/track-termination-mode`
 
 Format: `WaitUntilResourceReady|NonBlocking` \
@@ -599,6 +619,18 @@ nelm release install -n myproject -r myproject
 ```
 
 Every few seconds print stack traces of all goroutines. Useful for debugging purposes.
+
+#### Env variable `NELM_FEAT_FIELD_SENSITIVE`
+
+Example:
+```shell
+export NELM_FEAT_FIELD_SENSITIVE=true
+nelm release install -n myproject -r myproject
+```
+
+Enable JSONPath-based selective sensitive field redaction. When this feature gate is enabled, the `werf.io/sensitive-paths` annotation accepts JSONPath expressions to specify exactly which fields should be redacted in diffs, providing fine-grained control over sensitive data handling.
+
+This allows you to hide only specific sensitive fields (like passwords, API keys, etc.) rather than the entire resource, making diffs more useful while still protecting sensitive information.
 
 ### More information
 
