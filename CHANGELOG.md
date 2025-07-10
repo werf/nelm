@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.7.2](https://www.github.com/werf/nelm/compare/v1.7.1...v1.7.2) (2025-07-10)
+
+
+### Bug Fixes
+
+* no logs displayed ([39a92da](https://www.github.com/werf/nelm/commit/39a92da4f64195e02933b6f4fec105ae91d7409d))
+
 ### [1.7.1](https://www.github.com/werf/nelm/compare/v1.7.0...v1.7.1) (2025-07-10)
 
 
