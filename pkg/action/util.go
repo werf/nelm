@@ -2,6 +2,7 @@ package action
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -41,15 +42,21 @@ func SetupLogging(ctx context.Context, logLevel string, opts SetupLoggingOptions
 	case SilentLogLevel, ErrorLogLevel, WarningLogLevel, InfoLogLevel:
 		stdlog.SetOutput(io.Discard)
 
-		klog.SetOutputBySeverity("FATAL", ioutil.Discard)
-		klog.SetOutputBySeverity("ERROR", ioutil.Discard)
-		klog.SetOutputBySeverity("WARNING", ioutil.Discard)
-		klog.SetOutputBySeverity("INFO", ioutil.Discard)
+		klog.SetOutput(io.Discard)
+		// From: https://github.com/kubernetes/klog/issues/87#issuecomment-1671820147
+		klogFlags := &flag.FlagSet{}
+		klog.InitFlags(klogFlags)
+		klogFlags.Set("logtostderr", "false")
+		klogFlags.Set("alsologtostderr", "false")
+		klogFlags.Set("stderrthreshold", "4")
 
-		klogv2.SetOutputBySeverity("FATAL", ioutil.Discard)
-		klogv2.SetOutputBySeverity("ERROR", ioutil.Discard)
-		klogv2.SetOutputBySeverity("WARNING", ioutil.Discard)
-		klogv2.SetOutputBySeverity("INFO", ioutil.Discard)
+		klogv2.SetOutput(io.Discard)
+		// From: https://github.com/kubernetes/klog/issues/87#issuecomment-1671820147
+		klogV2Flags := &flag.FlagSet{}
+		klogv2.InitFlags(klogV2Flags)
+		klogV2Flags.Set("logtostderr", "false")
+		klogV2Flags.Set("alsologtostderr", "false")
+		klogV2Flags.Set("stderrthreshold", "4")
 
 		logrus.SetOutput(ioutil.Discard)
 
