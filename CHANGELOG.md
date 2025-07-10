@@ -1,5 +1,13 @@
 # Changelog
 
+### [1.7.1](https://www.github.com/werf/nelm/compare/v1.7.0...v1.7.1) (2025-07-10)
+
+
+### Bug Fixes
+
+* hide libraries logs unless log level is debug ([69dc532](https://www.github.com/werf/nelm/commit/69dc5325dda560e8bf57c953297faee30a4dde85))
+* improve context cancellation handling ([b2b5b93](https://www.github.com/werf/nelm/commit/b2b5b936e097ecc9dae68366ce25e8ff165f53f9))
+
 ## [1.7.0](https://www.github.com/werf/nelm/compare/v1.6.0...v1.7.0) (2025-06-18)
 
 
