@@ -65,7 +65,7 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 		return releaseUninstall(ctx, releaseName, releaseNamespace, opts)
 	}
 
-	ctx, ctxCancelFn := context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("action timed out after %s", opts.Timeout.String()))
+	ctx, ctxCancelFn := context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
 	defer ctxCancelFn()
 
 	actionCh := make(chan error, 1)
