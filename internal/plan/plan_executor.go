@@ -30,7 +30,8 @@ type PlanExecutor struct {
 }
 
 func (e *PlanExecutor) Execute(parentCtx context.Context) error {
-	ctx, ctxCancelFn := context.WithCancel(parentCtx)
+	ctx, ctxCancelFn := context.WithCancelCause(parentCtx)
+	defer ctxCancelFn(fmt.Errorf("context canceled: plan execution finished"))
 
 	opsMap, err := e.plan.PredecessorMap()
 	if err != nil {
@@ -44,6 +45,8 @@ func (e *PlanExecutor) Execute(parentCtx context.Context) error {
 	for i := 0; len(opsMap) > 0; i++ {
 		if i > 0 {
 			if ctx.Err() != nil {
+				log.Default.Debug(ctx, "Stop scheduling plan operations due to context canceled: %s", context.Cause(ctx))
+
 				break
 			}
 
@@ -77,25 +80,25 @@ func (e *PlanExecutor) Execute(parentCtx context.Context) error {
 	return nil
 }
 
-func (e *PlanExecutor) execOperation(opID string, completedOpsIDsCh chan string, workerPool *pool.ContextPool, ctxCancelFn context.CancelFunc) {
+func (e *PlanExecutor) execOperation(opID string, completedOpsIDsCh chan string, workerPool *pool.ContextPool, ctxCancelFn context.CancelCauseFunc) {
 	workerPool.Go(func(ctx context.Context) error {
-		failed := true
+		var err error
 		defer func() {
-			if failed {
-				ctxCancelFn()
+			if err != nil {
+				ctxCancelFn(fmt.Errorf("context canceled: %w", err))
 			}
 		}()
 
 		op := lo.Must(e.plan.Operation(opID))
 
 		log.Default.Debug(ctx, util.Capitalize(op.HumanID()))
-		if err := op.Execute(ctx); err != nil {
+		err = op.Execute(ctx)
+		if err != nil {
 			return fmt.Errorf("error executing operation: %w", err)
 		}
 
 		completedOpsIDsCh <- opID
 
-		failed = false
 		return nil
 	})
 }
