@@ -109,18 +109,7 @@ func RedactSensitiveData(unstruct *unstructured.Unstructured, sensitivePaths []s
 		return copy
 	}
 
-	if featgate.FeatGateFieldSensitive.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
-		return redactSensitiveData(copy, sensitivePaths)
-	}
-
-	return &unstructured.Unstructured{Object: map[string]interface{}{
-		"apiVersion": copy.GetAPIVersion(),
-		"kind":       copy.GetKind(),
-		"metadata": map[string]interface{}{
-			"name":      copy.GetName(),
-			"namespace": copy.GetNamespace(),
-		},
-	}}
+	return redactSensitiveData(copy, sensitivePaths)
 }
 
 func redactSensitiveData(unstruct *unstructured.Unstructured, sensitivePaths []string) *unstructured.Unstructured {

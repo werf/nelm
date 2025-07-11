@@ -2,9 +2,11 @@ package test
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
@@ -124,6 +126,15 @@ func TestGetSensitiveInfo(t *testing.T) {
 			},
 			expected: resource.SensitiveInfo{IsSensitive: false, SensitivePaths: nil},
 		},
+		{
+			name:          "resource with sensitive-paths annotation - feature flag disabled",
+			enableFeature: false,
+			groupKind:     schema.GroupKind{Group: "v1", Kind: "ConfigMap"},
+			annotations: map[string]string{
+				"werf.io/sensitive-paths": "$.data[*]",
+			},
+			expected: resource.SensitiveInfo{IsSensitive: true, SensitivePaths: []string{"$.data[*]"}},
+		},
 	}
 
 	for _, tt := range tests {
@@ -216,6 +227,43 @@ func TestRedactSensitiveData(t *testing.T) {
 		sensitivePaths []string
 		checkFunc      func(t *testing.T, result *unstructured.Unstructured)
 	}{
+		{
+			name:          "bug: sensitive-paths ignored when feature flag disabled",
+			enableFeature: false,
+			input: &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "v1",
+					"kind":       "ConfigMap",
+					"metadata": map[string]interface{}{
+						"name":      "test-config",
+						"namespace": "default",
+					},
+					"data": map[string]interface{}{
+						"key1": "sensitive-value-1",
+						"key2": "sensitive-value-2",
+					},
+				},
+			},
+			sensitivePaths: []string{"data.*"},
+			checkFunc: func(t *testing.T, result *unstructured.Unstructured) {
+				// The bug is that when feature flag is disabled, the entire data section
+				// is removed instead of redacting only the specified sensitive paths
+				data, found, err := unstructured.NestedMap(result.Object, "data")
+				require.NoError(t, err)
+
+				if !found {
+					t.Errorf("data section was completely removed instead of being redacted")
+				} else {
+					// If data exists, it should be redacted
+					for key, value := range data {
+						valueStr, ok := value.(string)
+						if ok && !strings.Contains(valueStr, "SENSITIVE") {
+							t.Errorf("Expected data.%s to be redacted but got: %s", key, valueStr)
+						}
+					}
+				}
+			},
+		},
 		{
 			name:          "no sensitive paths",
 			enableFeature: true,
