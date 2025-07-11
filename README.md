@@ -60,6 +60,7 @@ We consider Nelm production-ready, since 95% of the Nelm codebase basically is t
     - [Env variable `NELM_FEAT_NATIVE_RELEASE_LIST`](#env-variable-nelm_feat_native_release_list)
     - [Env variable `NELM_FEAT_NATIVE_RELEASE_UNINSTALL`](#env-variable-nelm_feat_native_release_uninstall)
     - [Env variable `NELM_FEAT_PERIODIC_STACK_TRACES`](#env-variable-nelm_feat_periodic_stack_traces)
+    - [Env variable `NELM_FEAT_FIELD_SENSITIVE`](#env-variable-nelm_feat_field_sensitive)
   - [More information](#more-information)
 - [Limitations](#limitations)
 - [Future plans](#future-plans)
@@ -426,22 +427,18 @@ Format: `true|false` \
 Default: `false`, but for `v1/Secret` — `true` \
 Example: `werf.io/sensitive: "true"`
 
+DEPRECATED. Use `werf.io/sensitive-paths` instead.
+
 Don't show diffs for the resource.
 
-The behavior of this annotation depends on the `NELM_FEAT_FIELD_SENSITIVE` feature gate:
-- **Without feature gate (default):** Hides the entire resource content
-- **With feature gate:** Redacts only common sensitive fields (`data.*`, `stringData.*`) instead of hiding the entire resource
+`NELM_FEAT_FIELD_SENSITIVE` feature gate alters behavior of this annotation.
 
 #### Annotation `werf.io/sensitive-paths`
 
-Format: `JSONPath1,JSONPath2,...` \
+Format: `JSONPath,JSONPath,...` \
 Example: `werf.io/sensitive-paths: "$.spec.template.spec.containers[*].env[*].value,$.data.*"`
 
-Allows fine-grained control over which specific fields should be redacted in diffs using JSONPath expressions. Multiple paths can be specified as a comma-separated list.
-
-This provides precise control over sensitive data redaction, allowing you to hide only specific sensitive fields (like passwords, API keys, etc.) rather than the entire resource, making diffs more useful while still protecting sensitive information.
-
-*Annotation precedence:* `werf.io/sensitive-paths` has highest priority, over  `werf.io/sensitive: "true"`
+Don't show diffs for resource fields that match specified JSONPath expressions. Overrides the behavior of `werf.io/sensitive`.
 
 #### Annotation `werf.io/track-termination-mode`
 
@@ -624,12 +621,9 @@ export NELM_FEAT_FIELD_SENSITIVE=true
 nelm release plan install -n myproject -r myproject
 ```
 
-Changes the behavior of the `werf.io/sensitive` annotation and default Secret handling:
+When showing diffs for Secrets or `werf.io/sensitive: "true"` annotated resources, instead of hiding the entire resource diff hide only the actual secret fields: `$.data`, `$.stringData`.
 
-- **Without feature gate (default):** `werf.io/sensitive: "true"` and Secrets without annotations hide the entire resource content
-- **With feature gate:** `werf.io/sensitive: "true"` and Secrets without annotations hide only `data.*` and `stringData.*` fields
-
-Note: The `werf.io/sensitive-paths` annotation works regardless of this feature gate setting.
+Will be the default in the next major release.
 
 ### More information
 
