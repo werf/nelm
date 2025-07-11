@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.8.0](https://www.github.com/werf/nelm/compare/v1.7.2...v1.8.0) (2025-07-11)
+
+
+### Features
+
+* werf.io/sensitive-paths annotation and WERF_FEAT_FIELD_SENSITIVE featgate ([#364](https://www.github.com/werf/nelm/issues/364)) ([e3f9798](https://www.github.com/werf/nelm/commit/e3f97984dbb8dc3a13e186284f49b72efc9943f4))
+
+
+### Bug Fixes
+
+* leaking goroutines during tracking ([1c1be03](https://www.github.com/werf/nelm/commit/1c1be031e43311e015be06fc4ed07c46ec785fe2))
+* logs from libraries still showed by default ([c6b3928](https://www.github.com/werf/nelm/commit/c6b39287b0c132b324b7d9ff26b43d769dc6bce9))
+
 ### [1.7.2](https://www.github.com/werf/nelm/compare/v1.7.1...v1.7.2) (2025-07-10)
 
 
