@@ -22,6 +22,7 @@ import (
 	"github.com/werf/logboek"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/release"
+	"github.com/werf/nelm/pkg/log"
 )
 
 const (
@@ -319,7 +320,7 @@ func setReleaseListOutputTableStyle(ctx context.Context, table prtable.Writer) {
 		},
 	}
 
-	tableWidth := logboek.Context(ctx).Streams().ContentWidth()
+	tableWidth := log.Default.BlockContentWidth(ctx)
 	if tableWidth < 20 {
 		tableWidth = 140
 	} else if tableWidth > 200 {

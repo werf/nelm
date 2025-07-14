@@ -794,7 +794,7 @@ func printTables(
 	ctx context.Context,
 	tablesBuilder *track.TablesBuilder,
 ) {
-	maxTableWidth := logboek.Context(ctx).Streams().ContentWidth() - 2
+	maxTableWidth := log.Default.BlockContentWidth(ctx) - 2
 	tablesBuilder.SetMaxTableWidth(maxTableWidth)
 
 	if tables, nonEmpty := tablesBuilder.BuildEventTables(); nonEmpty {

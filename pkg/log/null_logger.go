@@ -53,6 +53,10 @@ func (l *NullLogger) InfoBlockErr(ctx context.Context, opts BlockOptions, fn fun
 	return nil
 }
 
+func (l *NullLogger) BlockContentWidth(ctx context.Context) int {
+	return 0
+}
+
 func (l *NullLogger) SetLevel(ctx context.Context, lvl Level) {}
 
 func (l *NullLogger) Level(context.Context) Level {
