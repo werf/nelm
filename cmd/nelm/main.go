@@ -76,7 +76,7 @@ func abort(ctx context.Context, err error, exitCode int) {
 func periodicStackTraces() {
 	go func() {
 		for {
-			buf := make([]byte, 1<<16)
+			buf := make([]byte, 1<<20)
 			runtime.Stack(buf, true)
 			fmt.Printf("%s", buf)
 

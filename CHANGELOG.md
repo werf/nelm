@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.8.0](https://www.github.com/werf/nelm/compare/v1.7.2...v1.8.0) (2025-07-11)
+
+
+### Features
+
+* werf.io/sensitive-paths annotation and WERF_FEAT_FIELD_SENSITIVE featgate ([#364](https://www.github.com/werf/nelm/issues/364)) ([e3f9798](https://www.github.com/werf/nelm/commit/e3f97984dbb8dc3a13e186284f49b72efc9943f4))
+
+
+### Bug Fixes
+
+* leaking goroutines during tracking ([1c1be03](https://www.github.com/werf/nelm/commit/1c1be031e43311e015be06fc4ed07c46ec785fe2))
+* logs from libraries still showed by default ([c6b3928](https://www.github.com/werf/nelm/commit/c6b39287b0c132b324b7d9ff26b43d769dc6bce9))
+
+### [1.7.2](https://www.github.com/werf/nelm/compare/v1.7.1...v1.7.2) (2025-07-10)
+
+
+### Bug Fixes
+
+* no logs displayed ([39a92da](https://www.github.com/werf/nelm/commit/39a92da4f64195e02933b6f4fec105ae91d7409d))
+
+### [1.7.1](https://www.github.com/werf/nelm/compare/v1.7.0...v1.7.1) (2025-07-10)
+
+
+### Bug Fixes
+
+* hide libraries logs unless log level is debug ([69dc532](https://www.github.com/werf/nelm/commit/69dc5325dda560e8bf57c953297faee30a4dde85))
+* improve context cancellation handling ([b2b5b93](https://www.github.com/werf/nelm/commit/b2b5b936e097ecc9dae68366ce25e8ff165f53f9))
+
 ## [1.7.0](https://www.github.com/werf/nelm/compare/v1.6.0...v1.7.0) (2025-06-18)
 
 

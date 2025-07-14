@@ -316,6 +316,8 @@ github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8m
 github.com/mwitkow/go-conntrack v0.0.0-20161129095857-cc309e4a2223/go.mod h1:qRWi+5nqEBWmkhHvq77mSJWrCKwh8bxhgT7d/eI7P4U=
 github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f h1:y5//uYreIhSUg3J1GEMiLbxo1LJaP8RfCpH6pymGZus=
 github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f/go.mod h1:ZdcZmHo+o7JKHSa8/e818NopupXU1YMK5fe1lsApnBw=
+github.com/ohler55/ojg v1.26.7 h1:yZLS2xlZF/qk5LHM4LFhxxTDyMgZl+46Z6p7wQm8KAU=
+github.com/ohler55/ojg v1.26.7/go.mod h1:/Y5dGWkekv9ocnUixuETqiL58f+5pAsUfg5P8e7Pa2o=
 github.com/onsi/ginkgo/v2 v2.20.1 h1:YlVIbqct+ZmnEph770q9Q7NVAz4wwIiVNahee6JyUzo=
 github.com/onsi/ginkgo/v2 v2.20.1/go.mod h1:lG9ey2Z29hR41WMVthyJBGUBcBhGOtoPF2VFMvBXFCI=
 github.com/onsi/gomega v1.36.0 h1:Pb12RlruUtj4XUuPUqeEWc6j5DkVVVA49Uf6YLfC95Y=
@@ -417,10 +419,8 @@ github.com/werf/3p-helm v0.0.0-20250609150428-130783e0dc18 h1:Uq8yeXGMgb4K/PcsLG
 github.com/werf/3p-helm v0.0.0-20250609150428-130783e0dc18/go.mod h1:KDjmOsjFiOmj0fB0+q+0gGvlejPMjTgckLC59bX0BLg=
 github.com/werf/common-go v0.0.0-20250520111308-b0eda28dde0d h1:nVN0E4lQdToFiPty19uwj5TF+bCI/kAp5LLG4stWdO4=
 github.com/werf/common-go v0.0.0-20250520111308-b0eda28dde0d/go.mod h1:taKDUxKmGfqNOlVx1O0ad5vdV4duKexTLO7Rch9HfeA=
-github.com/werf/kubedog v0.13.1-0.20250411133038-3d8084fab0ec h1:tyfkagRcJVtfBF4aoxmnE6/idE7YIPo4RqdJQXNoJRg=
-github.com/werf/kubedog v0.13.1-0.20250411133038-3d8084fab0ec/go.mod h1:Y6pesrIN5uhFKqmHnHSoeW4jmVyZlWPFWv5SjB0rUPg=
-github.com/werf/kubedog v0.13.1-0.20250625141056-654a0802b36e h1:7bxTFtEa7+2EDcxZggxpyQqbcN+4WArgmSZqkJ1ffS0=
-github.com/werf/kubedog v0.13.1-0.20250625141056-654a0802b36e/go.mod h1:Y6pesrIN5uhFKqmHnHSoeW4jmVyZlWPFWv5SjB0rUPg=
+github.com/werf/kubedog v0.13.1-0.20250710181210-b4a5a7f76b11 h1:9aZ8CjaczcO6Ez9T25DSPBE5EtmeBFyKdbwmvwBcvjM=
+github.com/werf/kubedog v0.13.1-0.20250710181210-b4a5a7f76b11/go.mod h1:Y6pesrIN5uhFKqmHnHSoeW4jmVyZlWPFWv5SjB0rUPg=
 github.com/werf/lockgate v0.1.1 h1:S400JFYjtWfE4i4LY9FA8zx0fMdfui9DPrBiTciCrx4=
 github.com/werf/lockgate v0.1.1/go.mod h1:0yIFSLq9ausy6ejNxF5uUBf/Ib6daMAfXuCaTMZJzIE=
 github.com/werf/logboek v0.6.1 h1:oEe6FkmlKg0z0n80oZjLplj6sXcBeLleCkjfOOZEL2g=

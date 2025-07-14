@@ -38,6 +38,7 @@ We consider Nelm production-ready, since 95% of the Nelm codebase basically is t
     - [Annotation `<id>.external-dependency.werf.io/resource`](#annotation-idexternal-dependencywerfioresource)
     - [Annotation `<id>.external-dependency.werf.io/name`](#annotation-idexternal-dependencywerfioname)
     - [Annotation `werf.io/sensitive`](#annotation-werfiosensitive)
+    - [Annotation `werf.io/sensitive-paths`](#annotation-werfiosensitive-paths)
     - [Annotation `werf.io/track-termination-mode`](#annotation-werfiotrack-termination-mode)
     - [Annotation `werf.io/fail-mode`](#annotation-werfiofail-mode)
     - [Annotation `werf.io/failures-allowed-per-replica`](#annotation-werfiofailures-allowed-per-replica)
@@ -59,6 +60,7 @@ We consider Nelm production-ready, since 95% of the Nelm codebase basically is t
     - [Env variable `NELM_FEAT_NATIVE_RELEASE_LIST`](#env-variable-nelm_feat_native_release_list)
     - [Env variable `NELM_FEAT_NATIVE_RELEASE_UNINSTALL`](#env-variable-nelm_feat_native_release_uninstall)
     - [Env variable `NELM_FEAT_PERIODIC_STACK_TRACES`](#env-variable-nelm_feat_periodic_stack_traces)
+    - [Env variable `NELM_FEAT_FIELD_SENSITIVE`](#env-variable-nelm_feat_field_sensitive)
   - [More information](#more-information)
 - [Limitations](#limitations)
 - [Future plans](#future-plans)
@@ -425,7 +427,18 @@ Format: `true|false` \
 Default: `false`, but for `v1/Secret` — `true` \
 Example: `werf.io/sensitive: "true"`
 
+DEPRECATED. Use `werf.io/sensitive-paths` instead.
+
 Don't show diffs for the resource.
+
+`NELM_FEAT_FIELD_SENSITIVE` feature gate alters behavior of this annotation.
+
+#### Annotation `werf.io/sensitive-paths`
+
+Format: `JSONPath,JSONPath,...` \
+Example: `werf.io/sensitive-paths: "$.spec.template.spec.containers[*].env[*].value,$.data.*"`
+
+Don't show diffs for resource fields that match specified JSONPath expressions. Overrides the behavior of `werf.io/sensitive`.
 
 #### Annotation `werf.io/track-termination-mode`
 
@@ -599,6 +612,18 @@ nelm release install -n myproject -r myproject
 ```
 
 Every few seconds print stack traces of all goroutines. Useful for debugging purposes.
+
+#### Env variable `NELM_FEAT_FIELD_SENSITIVE`
+
+Example:
+```shell
+export NELM_FEAT_FIELD_SENSITIVE=true
+nelm release plan install -n myproject -r myproject
+```
+
+When showing diffs for Secrets or `werf.io/sensitive: "true"` annotated resources, instead of hiding the entire resource diff hide only the actual secret fields: `$.data`, `$.stringData`.
+
+Will be the default in the next major release.
 
 ### More information
 

@@ -32,7 +32,8 @@ type PlanExecutor struct {
 
 func (e *PlanExecutor) Execute(parentCtx context.Context) error {
 	log.Default.Debug(parentCtx, "LESIKOVTEST: start Execute()")
-	ctx, ctxCancelFn := context.WithCancel(parentCtx)
+	ctx, ctxCancelFn := context.WithCancelCause(parentCtx)
+	defer ctxCancelFn(fmt.Errorf("context canceled: plan execution finished"))
 
 	opsMap, err := e.plan.PredecessorMap()
 	if err != nil {
@@ -48,7 +49,7 @@ func (e *PlanExecutor) Execute(parentCtx context.Context) error {
 		log.Default.Debug(ctx, "LESIKOVTEST: iteration %d", i)
 		if i > 0 {
 			if ctx.Err() != nil {
-				log.Default.Debug(ctx, "LESIKOVTEST: breaking because ctx.Err() is not nil: %v", ctx.Err())
+				log.Default.Debug(ctx, "Stop scheduling plan operations due to context canceled: %s", context.Cause(ctx))
 				break
 			}
 
@@ -92,16 +93,16 @@ func (e *PlanExecutor) Execute(parentCtx context.Context) error {
 	return nil
 }
 
-func (e *PlanExecutor) execOperation(ctx context.Context, opID string, completedOpsIDsCh chan string, workerPool *pool.ContextPool, ctxCancelFn context.CancelFunc) {
+func (e *PlanExecutor) execOperation(opID string, completedOpsIDsCh chan string, workerPool *pool.ContextPool, ctxCancelFn context.CancelCauseFunc) {
 	log.Default.Debug(ctx, "LESIKOVTEST: starting goroutine for operation %s", opID)
 	workerPool.Go(func(ctx context.Context) error {
 		log.Default.Debug(ctx, "LESIKOVTEST: inside goroutine for operation %s", opID)
-		failed := true
+		var err error
 		defer func() {
 			log.Default.Debug(ctx, "LESIKOVTEST: deferred function for operation %s", opID)
-			if failed {
+			if err != nil {
 				log.Default.Debug(ctx, "LESIKOVTEST: operation %s failed, cancelling context", opID)
-				ctxCancelFn()
+				ctxCancelFn(fmt.Errorf("context canceled: %w", err))
 			}
 			log.Default.Debug(ctx, "LESIKOVTEST: deferred function for operation %s completed", opID)
 		}()
@@ -111,7 +112,8 @@ func (e *PlanExecutor) execOperation(ctx context.Context, opID string, completed
 		log.Default.Debug(ctx, "LESIKOVTEST: got operation %s from plan", opID)
 
 		log.Default.Debug(ctx, util.Capitalize(op.HumanID()))
-		if err := op.Execute(ctx); err != nil {
+		err = op.Execute(ctx)
+		if err != nil {
 			log.Default.Debug(ctx, "Error executing operation %s: %v", op.HumanID(), err)
 			return fmt.Errorf("error executing operation: %w", err)
 		}
@@ -119,7 +121,6 @@ func (e *PlanExecutor) execOperation(ctx context.Context, opID string, completed
 		log.Default.Debug(ctx, "LESIKOVTEST: operation %s completed successfully", opID)
 		completedOpsIDsCh <- opID
 
-		failed = false
 		log.Default.Debug(ctx, "LESIKOVTEST: operation %s completed, returning nil", opID)
 		return nil
 	})
