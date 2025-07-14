@@ -23,6 +23,7 @@ type Logger interface {
 	ErrorPop(ctx context.Context, group string)
 	InfoBlock(ctx context.Context, opts BlockOptions, fn func())
 	InfoBlockErr(ctx context.Context, opts BlockOptions, fn func() error) error
+	BlockContentWidth(ctx context.Context) int
 	SetLevel(ctx context.Context, lvl Level)
 	Level(ctx context.Context) Level
 	AcceptLevel(ctx context.Context, lvl Level) bool

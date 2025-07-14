@@ -21,7 +21,6 @@ import (
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	kubeutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
-	"github.com/werf/logboek"
 	"github.com/werf/nelm/internal/chart"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
@@ -781,7 +780,7 @@ func printTables(
 	ctx context.Context,
 	tablesBuilder *track.TablesBuilder,
 ) {
-	maxTableWidth := logboek.Context(ctx).Streams().ContentWidth() - 2
+	maxTableWidth := log.Default.BlockContentWidth(ctx) - 2
 	tablesBuilder.SetMaxTableWidth(maxTableWidth)
 
 	if tables, nonEmpty := tablesBuilder.BuildEventTables(); nonEmpty {
