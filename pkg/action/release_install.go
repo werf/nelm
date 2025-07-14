@@ -496,9 +496,12 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	stdoutTrackerFinishedCh := make(chan bool)
 
 	if !opts.NoProgressTablePrint {
+		fmt.Printf("LESIKOVTEST: starting stdout tracker\n")
 		go func() {
+			fmt.Printf("LESIKOVTEST: stdout tracker started in goroutine\n")
 			ticker := time.NewTicker(opts.ProgressTablePrintInterval)
 			defer func() {
+				fmt.Printf("LESIKOVTEST: stopping stdout tracker\n")
 				ticker.Stop()
 				stdoutTrackerFinishedCh <- true
 			}()
@@ -506,8 +509,10 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 			for {
 				select {
 				case <-ticker.C:
+					fmt.Printf("LESIKOVTEST: printtables 1\n")
 					printTables(ctx, tablesBuilder)
 				case <-stdoutTrackerStopCh:
+					fmt.Printf("LESIKOVTEST: printtables 2\n")
 					printTables(ctx, tablesBuilder)
 					return
 				}
@@ -813,7 +818,9 @@ func printTables(
 		}
 	}
 
+	fmt.Printf("LESIKOVTEST: building progress table\n")
 	if table, nonEmpty := tablesBuilder.BuildProgressTable(); nonEmpty {
+		fmt.Printf("LESIKOVTEST: progress table non empty\n")
 		log.Default.InfoBlock(ctx, log.BlockOptions{
 			BlockTitle: color.Style{color.Bold, color.Blue}.Render("Progress status"),
 		}, func() {

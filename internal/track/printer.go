@@ -76,6 +76,7 @@ func (b *TablesBuilder) BuildProgressTable() (table prtable.Writer, notEmpty boo
 	}
 
 	if len(rowsGrouped) == 0 {
+		fmt.Printf("no progress tables to show\n")
 		return nil, false
 	}
 
