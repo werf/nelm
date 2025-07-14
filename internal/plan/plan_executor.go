@@ -93,7 +93,7 @@ func (e *PlanExecutor) Execute(parentCtx context.Context) error {
 	return nil
 }
 
-func (e *PlanExecutor) execOperation(opID string, completedOpsIDsCh chan string, workerPool *pool.ContextPool, ctxCancelFn context.CancelCauseFunc) {
+func (e *PlanExecutor) execOperation(ctx context.Context, opID string, completedOpsIDsCh chan string, workerPool *pool.ContextPool, ctxCancelFn context.CancelCauseFunc) {
 	log.Default.Debug(ctx, "LESIKOVTEST: starting goroutine for operation %s", opID)
 	workerPool.Go(func(ctx context.Context) error {
 		log.Default.Debug(ctx, "LESIKOVTEST: inside goroutine for operation %s", opID)
