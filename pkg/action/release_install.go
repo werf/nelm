@@ -501,9 +501,14 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 			fmt.Printf("LESIKOVTEST: stdout tracker started in goroutine\n")
 			ticker := time.NewTicker(opts.ProgressTablePrintInterval)
 			defer func() {
+				if r := recover(); r != nil {
+					fmt.Println("Recovered panic in progressTablePrint", r)
+				}
+
 				fmt.Printf("LESIKOVTEST: stopping stdout tracker\n")
 				ticker.Stop()
 				stdoutTrackerFinishedCh <- true
+				panic("LESIKOVTEST: panic again")
 			}()
 
 			for {
