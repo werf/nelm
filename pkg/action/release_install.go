@@ -817,6 +817,9 @@ func printTables(
 		log.Default.InfoBlock(ctx, log.BlockOptions{
 			BlockTitle: color.Style{color.Bold, color.Blue}.Render("Progress status"),
 		}, func() {
+			fmt.Printf("LESIKOVTEST: progress table printf inside\n")
+			log.Default.Info(ctx, "LESIKOVTEST: progress table Info inside")
+			fmt.Printf("LESIKOVTEST: progress table printf inside first 10: %.10s\n", table.Render())
 			fmt.Printf("LESIKOVTEST: progress table line: %s\n", table.Render())
 			log.Default.Info(ctx, table.Render())
 		})
