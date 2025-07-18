@@ -491,27 +491,12 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	)
 
 	log.Default.Debug(ctx, "Starting tracking")
-	stdoutTrackerStopCh := make(chan bool)
-	stdoutTrackerFinishedCh := make(chan bool)
+	progressPrinter := newProgressTablePrinter(ctx, opts.ProgressTablePrintInterval, opts.Timeout)
 
 	if !opts.NoProgressTablePrint {
-		go func() {
-			ticker := time.NewTicker(opts.ProgressTablePrintInterval)
-			defer func() {
-				ticker.Stop()
-				stdoutTrackerFinishedCh <- true
-			}()
-
-			for {
-				select {
-				case <-ticker.C:
-					printTables(ctx, tablesBuilder)
-				case <-stdoutTrackerStopCh:
-					printTables(ctx, tablesBuilder)
-					return
-				}
-			}
-		}()
+		progressPrinter.Start(func() {
+			printTables(ctx, tablesBuilder)
+		})
 	}
 
 	log.Default.Debug(ctx, "Executing release install plan")
@@ -613,8 +598,8 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	}
 
 	if !opts.NoProgressTablePrint {
-		stdoutTrackerStopCh <- true
-		<-stdoutTrackerFinishedCh
+		progressPrinter.Stop()
+		progressPrinter.Wait()
 	}
 
 	report := newReport(
