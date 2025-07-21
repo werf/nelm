@@ -293,12 +293,12 @@ func releaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 		)
 
 		log.Default.Debug(ctx, "Starting tracking")
-		progressPrinter := newProgressTablePrinter(ctx, opts.ProgressTablePrintInterval, opts.Timeout)
+		progressPrinter := newProgressTablePrinter(ctx, opts.ProgressTablePrintInterval, opts.Timeout, func() {
+			printTables(ctx, tablesBuilder)
+		})
 
 		if !opts.NoProgressTablePrint {
-			progressPrinter.Start(func() {
-				printTables(ctx, tablesBuilder)
-			})
+			progressPrinter.Start()
 		}
 
 		log.Default.Debug(ctx, "Executing release uninstall plan")
