@@ -31,3 +31,7 @@ func CurrentReleaseExistingResourcesUIDs(
 
 	return existingUIDs, len(existingUIDs) > 0
 }
+
+func alwaysTrue() bool {
+	return true
+}

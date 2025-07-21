@@ -46,6 +46,7 @@ type ReleaseUninstallOptions struct {
 	KubeTLSServerName          string
 	KubeToken                  string
 	NetworkParallelism         int
+	NoLogs                     bool
 	NoProgressTablePrint       bool
 	ProgressTablePrintInterval time.Duration
 	ReleaseHistoryLimit        int
@@ -249,6 +250,7 @@ func releaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 			clientFactory.Discovery(),
 			clientFactory.Mapper(),
 			plan.UninstallPlanBuilderOptions{
+				IgnoreLogs:       opts.NoLogs,
 				CreationTimeout:  opts.TrackCreationTimeout,
 				DeletionTimeout:  opts.TrackDeletionTimeout,
 				ReadinessTimeout: opts.TrackReadinessTimeout,

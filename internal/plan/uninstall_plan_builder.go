@@ -84,12 +84,14 @@ func NewUninstallPlanBuilder(
 }
 
 type UninstallPlanBuilderOptions struct {
+	IgnoreLogs       bool
 	CreationTimeout  time.Duration
 	DeletionTimeout  time.Duration
 	ReadinessTimeout time.Duration
 }
 
 type UninstallPlanBuilder struct {
+	ignoreLogs                      bool
 	taskStore                       *statestore.TaskStore
 	logStore                        *kdutil.Concurrent[*logstore.LogStore]
 	releaseName                     string
@@ -426,7 +428,7 @@ func (b *UninstallPlanBuilder) setupHookOperations(infos []*info.DeployablePrevR
 					SaveLogsOnlyForContainers:                showLogsOnlyFor,
 					SaveLogsByRegex:                          logRegex,
 					SaveLogsByRegexForContainers:             logRegexesFor,
-					IgnoreLogs:                               info.Resource().SkipLogs(),
+					IgnoreLogs:                               lo.TernaryF(b.ignoreLogs, alwaysTrue, info.Resource().SkipLogs),
 					IgnoreLogsForContainers:                  skipLogsFor,
 					SaveEvents:                               info.Resource().ShowServiceMessages(),
 				},

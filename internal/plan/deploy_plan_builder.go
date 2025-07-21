@@ -118,6 +118,7 @@ func NewDeployPlanBuilder(
 	curReleaseExistResourcesUIDs, _ := CurrentReleaseExistingResourcesUIDs(standaloneCRDsInfos, hookResourcesInfos, generalResourcesInfos)
 
 	return &DeployPlanBuilder{
+		ignoreLogs:                      opts.IgnoreLogs,
 		taskStore:                       taskStore,
 		logStore:                        logStore,
 		deployType:                      deployType,
@@ -146,6 +147,7 @@ func NewDeployPlanBuilder(
 }
 
 type DeployPlanBuilderOptions struct {
+	IgnoreLogs          bool
 	PrevRelease         *release.Release
 	PrevDeployedRelease *release.Release
 	CreationTimeout     time.Duration
@@ -154,6 +156,7 @@ type DeployPlanBuilderOptions struct {
 }
 
 type DeployPlanBuilder struct {
+	ignoreLogs                      bool
 	taskStore                       *statestore.TaskStore
 	logStore                        *kdutil.Concurrent[*logstore.LogStore]
 	releaseNamespace                string
@@ -865,7 +868,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*info.DeployableHookReso
 					SaveLogsOnlyForContainers:                showLogsOnlyFor,
 					SaveLogsByRegex:                          logRegex,
 					SaveLogsByRegexForContainers:             logRegexesFor,
-					IgnoreLogs:                               info.Resource().SkipLogs(),
+					IgnoreLogs:                               lo.TernaryF(b.ignoreLogs, alwaysTrue, info.Resource().SkipLogs),
 					IgnoreLogsForContainers:                  skipLogsFor,
 					SaveEvents:                               info.Resource().ShowServiceMessages(),
 				},
@@ -1119,7 +1122,7 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*info.DeployableGener
 					SaveLogsOnlyForContainers:                showLogsOnlyFor,
 					SaveLogsByRegex:                          logRegex,
 					SaveLogsByRegexForContainers:             logRegexesFor,
-					IgnoreLogs:                               info.Resource().SkipLogs(),
+					IgnoreLogs:                               lo.TernaryF(b.ignoreLogs, alwaysTrue, info.Resource().SkipLogs),
 					IgnoreLogsForContainers:                  skipLogsFor,
 					SaveEvents:                               info.Resource().ShowServiceMessages(),
 				},

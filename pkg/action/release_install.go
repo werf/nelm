@@ -74,6 +74,7 @@ type ReleaseInstallOptions struct {
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
 	NoInstallCRDs                bool
+	NoLogs                       bool
 	NoProgressTablePrint         bool
 	ProgressTablePrintInterval   time.Duration
 	RegistryCredentialsPath      string
@@ -414,6 +415,7 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		clientFactory.Discovery(),
 		clientFactory.Mapper(),
 		plan.DeployPlanBuilderOptions{
+			IgnoreLogs:          opts.NoLogs,
 			PrevRelease:         prevRelease,
 			PrevDeployedRelease: prevDeployedRelease,
 			CreationTimeout:     opts.TrackCreationTimeout,

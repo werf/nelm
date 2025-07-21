@@ -46,6 +46,7 @@ type ReleaseRollbackOptions struct {
 	KubeTLSServerName          string
 	KubeToken                  string
 	NetworkParallelism         int
+	NoLogs                     bool
 	NoProgressTablePrint       bool
 	ProgressTablePrintInterval time.Duration
 	ReleaseHistoryLimit        int
@@ -298,6 +299,7 @@ func releaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 		clientFactory.Discovery(),
 		clientFactory.Mapper(),
 		plan.DeployPlanBuilderOptions{
+			IgnoreLogs:          opts.NoLogs,
 			PrevRelease:         prevRelease,
 			PrevDeployedRelease: prevDeployedRelease,
 			CreationTimeout:     opts.TrackCreationTimeout,
