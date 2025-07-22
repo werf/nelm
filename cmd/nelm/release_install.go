@@ -275,6 +275,13 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		if err := cli.AddFlag(cmd, &cfg.NoLogs, "no-logs", false, "Don't collect logs of deployed pods", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.NoProgressTablePrint, "no-show-progress", false, "Don't show logs, events and real-time info about release resources", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                progressFlagGroup,
