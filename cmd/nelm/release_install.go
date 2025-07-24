@@ -275,9 +275,9 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.NoLogs, "no-logs", false, "Don't collect logs of deployed pods", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.NoPodLogs, "no-pod-logs", false, "Disable Pod logs collection and printing", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                miscFlagGroup,
+			Group:                progressFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
