@@ -428,7 +428,7 @@ func (b *UninstallPlanBuilder) setupHookOperations(infos []*info.DeployablePrevR
 					SaveLogsOnlyForContainers:                showLogsOnlyFor,
 					SaveLogsByRegex:                          logRegex,
 					SaveLogsByRegexForContainers:             logRegexesFor,
-					IgnoreLogs:                               lo.TernaryF(b.ignoreLogs, alwaysTrue, info.Resource().SkipLogs),
+					IgnoreLogs:                               b.ignoreLogs || info.Resource().SkipLogs(),
 					IgnoreLogsForContainers:                  skipLogsFor,
 					SaveEvents:                               info.Resource().ShowServiceMessages(),
 				},
