@@ -377,7 +377,7 @@ func releaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 	)
 
 	log.Default.Debug(ctx, "Starting tracking")
-	progressPrinter := newProgressTablePrinter(ctx, opts.ProgressTablePrintInterval, opts.Timeout, func() {
+	progressPrinter := newProgressTablePrinter(ctx, opts.ProgressTablePrintInterval, func() {
 		printTables(ctx, tablesBuilder)
 	})
 
