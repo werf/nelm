@@ -187,6 +187,13 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		if err := cli.AddFlag(cmd, &cfg.NoPodLogs, "no-pod-logs", false, "Disable Pod logs collection and printing", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                progressFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.NoProgressTablePrint, "no-show-progress", false, "Don't show logs, events and real-time info about release resources", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                progressFlagGroup,
