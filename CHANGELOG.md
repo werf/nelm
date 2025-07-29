@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.9.0](https://www.github.com/werf/nelm/compare/v1.8.0...v1.9.0) (2025-07-29)
+
+
+### Features
+
+* **action/release:** ignore pod's logs using NoLogs option ([77e7fb1](https://www.github.com/werf/nelm/commit/77e7fb1dcd5485085cad8dd147e8691da4ba502c))
+* **cli:** release install, release rollback and release uninstall should have --no-pod-logs option ([#386](https://www.github.com/werf/nelm/issues/386)) ([b186537](https://www.github.com/werf/nelm/commit/b1865375b4140948f73b7acb2bc2cbc760cbaaeb))
+
+
+### Bug Fixes
+
+* non-successful release revisions since last successful never cleaned up ([9dc59d8](https://www.github.com/werf/nelm/commit/9dc59d82d2ddb81c90fda24b9ff660a3eafe2816))
+
 ## [1.8.0](https://www.github.com/werf/nelm/compare/v1.7.2...v1.8.0) (2025-07-11)
 
 
