@@ -71,7 +71,6 @@ func NewChartTree(ctx context.Context, chartPath, releaseName, releaseNamespace 
 		Debug:           log.Default.AcceptLevel(ctx, log.DebugLevel),
 	}
 
-	opts.HelmOptions.ChartLoadOpts.ChartDir = chartPath
 	opts.HelmOptions.ChartLoadOpts.DepDownloader = depDownloader
 
 	overrideValuesOpts := &values.Options{
