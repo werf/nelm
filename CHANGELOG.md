@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.10.0](https://www.github.com/werf/nelm/compare/v1.9.0...v1.10.0) (2025-08-01)
+
+
+### Features
+
+* add `werf.io/log-regex-skip` annotation ([3da6610](https://www.github.com/werf/nelm/commit/3da6610d05c5e2baaf14756d7835f2ed13693ccf))
+* **deploy, tracking:** update kubedog to track prometheus resources ([5e7dc4a](https://www.github.com/werf/nelm/commit/5e7dc4adbffc53058871878dff797c1033fc692f))
+
+
+### Bug Fixes
+
+* extra and some secret values wrongly propagated to subcharts ([8ffa419](https://www.github.com/werf/nelm/commit/8ffa419578757452d5d78e5064c7a3469af78fde))
+
 ## [1.9.0](https://www.github.com/werf/nelm/compare/v1.8.0...v1.9.0) (2025-07-29)
 
 
