@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/dynamic"
 
+	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/util"
@@ -28,6 +29,7 @@ func NewRecreateResourceOperation(
 	resource *id.ResourceID,
 	unstruct *unstructured.Unstructured,
 	absenceTaskState *util.Concurrent[*statestore.AbsenceTaskState],
+	informerFactory *util.Concurrent[*informer.InformerFactory],
 	kubeClient kube.KubeClienter,
 	dynamicClient dynamic.Interface,
 	mapper meta.ResettableRESTMapper,
@@ -37,6 +39,7 @@ func NewRecreateResourceOperation(
 		resource:                resource,
 		unstruct:                unstruct,
 		taskState:               absenceTaskState,
+		informerFactory:         informerFactory,
 		kubeClient:              kubeClient,
 		dynamicClient:           dynamicClient,
 		mapper:                  mapper,
@@ -60,6 +63,7 @@ type RecreateResourceOperation struct {
 	resource                *id.ResourceID
 	unstruct                *unstructured.Unstructured
 	taskState               *util.Concurrent[*statestore.AbsenceTaskState]
+	informerFactory         *util.Concurrent[*informer.InformerFactory]
 	kubeClient              kube.KubeClienter
 	dynamicClient           dynamic.Interface
 	mapper                  meta.ResettableRESTMapper
@@ -78,7 +82,7 @@ func (o *RecreateResourceOperation) Execute(ctx context.Context) error {
 		return fmt.Errorf("error deleting resource: %w", err)
 	}
 
-	tracker := dyntracker.NewDynamicAbsenceTracker(o.taskState, o.dynamicClient, o.mapper, dyntracker.DynamicAbsenceTrackerOptions{
+	tracker := dyntracker.NewDynamicAbsenceTracker(o.taskState, o.informerFactory, o.dynamicClient, o.mapper, dyntracker.DynamicAbsenceTrackerOptions{
 		Timeout:    o.deletionTrackTimeout,
 		PollPeriod: o.deletionTrackPollPeriod,
 	})

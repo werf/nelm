@@ -12,6 +12,7 @@ import (
 	"github.com/samber/lo"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	kubeutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
@@ -63,16 +64,18 @@ type ReleaseRollbackOptions struct {
 }
 
 func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseRollbackOptions) error {
+	ctx, ctxCancelFn := context.WithCancelCause(ctx)
+
 	if opts.Timeout == 0 {
-		return releaseRollback(ctx, releaseName, releaseNamespace, opts)
+		return releaseRollback(ctx, ctxCancelFn, releaseName, releaseNamespace, opts)
 	}
 
-	ctx, ctxCancelFn := context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
-	defer ctxCancelFn()
+	ctx, _ = context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
+	defer ctxCancelFn(fmt.Errorf("context canceled: action finished"))
 
 	actionCh := make(chan error, 1)
 	go func() {
-		actionCh <- releaseRollback(ctx, releaseName, releaseNamespace, opts)
+		actionCh <- releaseRollback(ctx, ctxCancelFn, releaseName, releaseNamespace, opts)
 	}()
 
 	for {
@@ -85,7 +88,7 @@ func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 	}
 }
 
-func releaseRollback(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseRollbackOptions) error {
+func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, opts ReleaseRollbackOptions) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("get home directory: %w", err)
@@ -280,6 +283,8 @@ func releaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 	logStore := kubeutil.NewConcurrent(
 		logstore.NewLogStore(),
 	)
+	watchErrCh := make(chan error, 1)
+	informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
 
 	log.Default.Debug(ctx, "Constructing new rollback plan")
 	deployPlanBuilder := plan.NewDeployPlanBuilder(
@@ -287,6 +292,7 @@ func releaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 		deployType,
 		taskStore,
 		logStore,
+		informerFactory,
 		resProcessor.DeployableStandaloneCRDsInfos(),
 		resProcessor.DeployableHookResourcesInfos(),
 		resProcessor.DeployableGeneralResourcesInfos(),
@@ -377,12 +383,16 @@ func releaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 	)
 
 	log.Default.Debug(ctx, "Starting tracking")
-	progressPrinter := newProgressTablePrinter(ctx, opts.ProgressTablePrintInterval, func() {
-		printTables(ctx, tablesBuilder)
-	})
+	go func() {
+		if err := <-watchErrCh; err != nil {
+			ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
+		}
+	}()
 
+	var progressPrinter *progressPrinter
 	if !opts.NoProgressTablePrint {
-		progressPrinter.Start()
+		progressPrinter = newProgressPrinter()
+		progressPrinter.Start(ctx, opts.ProgressTablePrintInterval, tablesBuilder)
 	}
 
 	log.Default.Debug(ctx, "Executing release rollback plan")
@@ -438,6 +448,7 @@ func releaseRollback(ctx context.Context, releaseName, releaseNamespace string, 
 			deployType,
 			deployPlan,
 			taskStore,
+			informerFactory,
 			resProcessor,
 			newRel,
 			prevRelease,

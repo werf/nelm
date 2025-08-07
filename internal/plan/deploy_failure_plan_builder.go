@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/dynamic"
 
+	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/internal/common"
@@ -25,6 +26,7 @@ func NewDeployFailurePlanBuilder(
 	deployType common.DeployType,
 	deployPlan *Plan,
 	taskStore *statestore.TaskStore,
+	informerFactory *kdutil.Concurrent[*informer.InformerFactory],
 	hookResourcesInfos []*info.DeployableHookResourceInfo,
 	generalResourceInfos []*info.DeployableGeneralResourceInfo,
 	history release.Historier,
@@ -40,6 +42,7 @@ func NewDeployFailurePlanBuilder(
 		releaseNamespace:     releaseNamespace,
 		deployType:           deployType,
 		taskStore:            taskStore,
+		informerFactory:      informerFactory,
 		hookResourceInfos:    hookResourcesInfos,
 		generalResourceInfos: generalResourceInfos,
 		newRelease:           opts.NewRelease,
@@ -65,6 +68,7 @@ type DeployFailurePlanBuilder struct {
 	releaseNamespace     string
 	deployType           common.DeployType
 	taskStore            *statestore.TaskStore
+	informerFactory      *kdutil.Concurrent[*informer.InformerFactory]
 	hookResourceInfos    []*info.DeployableHookResourceInfo
 	generalResourceInfos []*info.DeployableGeneralResourceInfo
 	newRelease           *release.Release
@@ -143,6 +147,7 @@ func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*Plan, error) {
 		trackDeletionOp := operation.NewTrackResourceAbsenceOperation(
 			info.ResourceID,
 			taskState,
+			b.informerFactory,
 			b.dynamicClient,
 			b.mapper,
 			operation.TrackResourceAbsenceOperationOptions{
@@ -188,6 +193,7 @@ func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*Plan, error) {
 		trackDeletionOp := operation.NewTrackResourceAbsenceOperation(
 			info.ResourceID,
 			taskState,
+			b.informerFactory,
 			b.dynamicClient,
 			b.mapper,
 			operation.TrackResourceAbsenceOperationOptions{

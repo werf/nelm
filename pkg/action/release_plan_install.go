@@ -80,16 +80,18 @@ type ReleasePlanInstallOptions struct {
 }
 
 func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleasePlanInstallOptions) error {
+	ctx, ctxCancelFn := context.WithCancelCause(ctx)
+
 	if opts.Timeout == 0 {
-		return releasePlanInstall(ctx, releaseName, releaseNamespace, opts)
+		return releasePlanInstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts)
 	}
 
-	ctx, ctxCancelFn := context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
-	defer ctxCancelFn()
+	ctx, _ = context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
+	defer ctxCancelFn(fmt.Errorf("context canceled: action finished"))
 
 	actionCh := make(chan error, 1)
 	go func() {
-		actionCh <- releasePlanInstall(ctx, releaseName, releaseNamespace, opts)
+		actionCh <- releasePlanInstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts)
 	}()
 
 	for {
@@ -102,7 +104,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 	}
 }
 
-func releasePlanInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleasePlanInstallOptions) error {
+func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, opts ReleasePlanInstallOptions) error {
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)
