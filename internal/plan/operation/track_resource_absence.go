@@ -8,6 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/dynamic"
 
+	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/util"
@@ -21,17 +22,19 @@ const TypeTrackResourceAbsenceOperation = "track-resource-absence"
 func NewTrackResourceAbsenceOperation(
 	resource *id.ResourceID,
 	taskState *util.Concurrent[*statestore.AbsenceTaskState],
+	informerFactory *util.Concurrent[*informer.InformerFactory],
 	dynamicClient dynamic.Interface,
 	mapper meta.ResettableRESTMapper,
 	opts TrackResourceAbsenceOperationOptions,
 ) *TrackResourceAbsenceOperation {
 	return &TrackResourceAbsenceOperation{
-		resource:      resource,
-		taskState:     taskState,
-		dynamicClient: dynamicClient,
-		mapper:        mapper,
-		timeout:       opts.Timeout,
-		pollPeriod:    opts.PollPeriod,
+		resource:        resource,
+		taskState:       taskState,
+		informerFactory: informerFactory,
+		dynamicClient:   dynamicClient,
+		mapper:          mapper,
+		timeout:         opts.Timeout,
+		pollPeriod:      opts.PollPeriod,
 	}
 }
 
@@ -41,18 +44,19 @@ type TrackResourceAbsenceOperationOptions struct {
 }
 
 type TrackResourceAbsenceOperation struct {
-	resource      *id.ResourceID
-	taskState     *util.Concurrent[*statestore.AbsenceTaskState]
-	dynamicClient dynamic.Interface
-	mapper        meta.ResettableRESTMapper
-	timeout       time.Duration
-	pollPeriod    time.Duration
+	resource        *id.ResourceID
+	taskState       *util.Concurrent[*statestore.AbsenceTaskState]
+	informerFactory *util.Concurrent[*informer.InformerFactory]
+	dynamicClient   dynamic.Interface
+	mapper          meta.ResettableRESTMapper
+	timeout         time.Duration
+	pollPeriod      time.Duration
 
 	status Status
 }
 
 func (o *TrackResourceAbsenceOperation) Execute(ctx context.Context) error {
-	tracker := dyntracker.NewDynamicAbsenceTracker(o.taskState, o.dynamicClient, o.mapper, dyntracker.DynamicAbsenceTrackerOptions{
+	tracker := dyntracker.NewDynamicAbsenceTracker(o.taskState, o.informerFactory, o.dynamicClient, o.mapper, dyntracker.DynamicAbsenceTrackerOptions{
 		Timeout:    o.timeout,
 		PollPeriod: o.pollPeriod,
 	})

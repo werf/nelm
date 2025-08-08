@@ -15,6 +15,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
@@ -34,6 +35,7 @@ func NewUninstallPlanBuilder(
 	releaseNamespace string,
 	taskStore *statestore.TaskStore,
 	logStore *kdutil.Concurrent[*logstore.LogStore],
+	informerFactory *kdutil.Concurrent[*informer.InformerFactory],
 	prevReleaseHookResourceInfos []*info.DeployablePrevReleaseHookResourceInfo,
 	prevReleaseGeneralResourceInfos []*info.DeployablePrevReleaseGeneralResourceInfo,
 	prevRelease *release.Release,
@@ -63,6 +65,7 @@ func NewUninstallPlanBuilder(
 	return &UninstallPlanBuilder{
 		taskStore:                       taskStore,
 		logStore:                        logStore,
+		informerFactory:                 informerFactory,
 		plan:                            plan,
 		releaseName:                     releaseName,
 		releaseNamespace:                releaseNamespace,
@@ -94,6 +97,7 @@ type UninstallPlanBuilder struct {
 	ignoreLogs                      bool
 	taskStore                       *statestore.TaskStore
 	logStore                        *kdutil.Concurrent[*logstore.LogStore]
+	informerFactory                 *kdutil.Concurrent[*informer.InformerFactory]
 	releaseName                     string
 	releaseNamespace                string
 	preHookResourcesInfos           []*info.DeployablePrevReleaseHookResourceInfo
@@ -290,6 +294,7 @@ func (b *UninstallPlanBuilder) setupHookOperations(infos []*info.DeployablePrevR
 				info.ResourceID,
 				info.Resource().Unstructured(),
 				absenceTaskState,
+				b.informerFactory,
 				b.kubeClient,
 				b.dynamicClient,
 				b.mapper,
@@ -377,6 +382,7 @@ func (b *UninstallPlanBuilder) setupHookOperations(infos []*info.DeployablePrevR
 				opTrackReadiness := operation.NewTrackResourcePresenceOperation(
 					dep.ResourceID,
 					taskState,
+					b.informerFactory,
 					b.dynamicClient,
 					b.mapper,
 					operation.TrackResourcePresenceOperationOptions{
@@ -416,6 +422,7 @@ func (b *UninstallPlanBuilder) setupHookOperations(infos []*info.DeployablePrevR
 			opTrackReadiness = operation.NewTrackResourceReadinessOperation(
 				info.ResourceID,
 				taskState,
+				b.informerFactory,
 				b.logStore,
 				b.staticClient,
 				b.dynamicClient,
@@ -486,6 +493,7 @@ func (b *UninstallPlanBuilder) setupHookOperations(infos []*info.DeployablePrevR
 			opTrackDeletion := operation.NewTrackResourceAbsenceOperation(
 				info.ResourceID,
 				taskState,
+				b.informerFactory,
 				b.dynamicClient,
 				b.mapper,
 				operation.TrackResourceAbsenceOperationOptions{
@@ -534,6 +542,7 @@ func (b *UninstallPlanBuilder) setupPrevReleaseGeneralResourcesOperations() erro
 			opTrackDeletion := operation.NewTrackResourceAbsenceOperation(
 				info.ResourceID,
 				taskState,
+				b.informerFactory,
 				b.dynamicClient,
 				b.mapper,
 				operation.TrackResourceAbsenceOperationOptions{

@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"time"
 
 	"github.com/gookit/color"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
+	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	kubeutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
@@ -101,16 +101,18 @@ type ReleaseInstallOptions struct {
 }
 
 func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseInstallOptions) error {
+	ctx, ctxCancelFn := context.WithCancelCause(ctx)
+
 	if opts.Timeout == 0 {
-		return releaseInstall(ctx, releaseName, releaseNamespace, opts)
+		return releaseInstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts)
 	}
 
-	ctx, ctxCancelFn := context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
-	defer ctxCancelFn()
+	ctx, _ = context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
+	defer ctxCancelFn(fmt.Errorf("context canceled: action finished"))
 
 	actionCh := make(chan error, 1)
 	go func() {
-		actionCh <- releaseInstall(ctx, releaseName, releaseNamespace, opts)
+		actionCh <- releaseInstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts)
 	}()
 
 	for {
@@ -123,7 +125,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	}
 }
 
-func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseInstallOptions) error {
+func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, opts ReleaseInstallOptions) error {
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)
@@ -396,6 +398,8 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	logStore := kubeutil.NewConcurrent(
 		logstore.NewLogStore(),
 	)
+	watchErrCh := make(chan error, 1)
+	informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
 
 	log.Default.Debug(ctx, "Constructing new deploy plan")
 	deployPlanBuilder := plan.NewDeployPlanBuilder(
@@ -403,6 +407,7 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		deployType,
 		taskStore,
 		logStore,
+		informerFactory,
 		resProcessor.DeployableStandaloneCRDsInfos(),
 		resProcessor.DeployableHookResourcesInfos(),
 		resProcessor.DeployableGeneralResourcesInfos(),
@@ -493,12 +498,16 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	)
 
 	log.Default.Debug(ctx, "Starting tracking")
-	progressPrinter := newProgressTablePrinter(ctx, opts.ProgressTablePrintInterval, func() {
-		printTables(ctx, tablesBuilder)
-	})
+	go func() {
+		if err := <-watchErrCh; err != nil {
+			ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
+		}
+	}()
 
+	var progressPrinter *progressPrinter
 	if !opts.NoProgressTablePrint {
-		progressPrinter.Start()
+		progressPrinter = newProgressPrinter()
+		progressPrinter.Start(ctx, opts.ProgressTablePrintInterval, tablesBuilder)
 	}
 
 	log.Default.Debug(ctx, "Executing release install plan")
@@ -554,6 +563,7 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 			deployType,
 			deployPlan,
 			taskStore,
+			informerFactory,
 			resProcessor,
 			newRel,
 			prevRelease,
@@ -573,6 +583,7 @@ func releaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 				ctx,
 				taskStore,
 				logStore,
+				informerFactory,
 				releaseName,
 				releaseNamespace,
 				deployType,
@@ -763,48 +774,6 @@ func printNotes(ctx context.Context, notes string) {
 	})
 }
 
-func printTables(
-	ctx context.Context,
-	tablesBuilder *track.TablesBuilder,
-) {
-	maxTableWidth := log.Default.BlockContentWidth(ctx) - 2
-	tablesBuilder.SetMaxTableWidth(maxTableWidth)
-
-	if tables, nonEmpty := tablesBuilder.BuildEventTables(); nonEmpty {
-		headers := lo.Keys(tables)
-		sort.Strings(headers)
-
-		for _, header := range headers {
-			log.Default.InfoBlock(ctx, log.BlockOptions{
-				BlockTitle: header,
-			}, func() {
-				log.Default.Info(ctx, tables[header].Render())
-			})
-		}
-	}
-
-	if tables, nonEmpty := tablesBuilder.BuildLogTables(); nonEmpty {
-		headers := lo.Keys(tables)
-		sort.Strings(headers)
-
-		for _, header := range headers {
-			log.Default.InfoBlock(ctx, log.BlockOptions{
-				BlockTitle: header,
-			}, func() {
-				log.Default.Info(ctx, tables[header].Render())
-			})
-		}
-	}
-
-	if table, nonEmpty := tablesBuilder.BuildProgressTable(); nonEmpty {
-		log.Default.InfoBlock(ctx, log.BlockOptions{
-			BlockTitle: color.Style{color.Bold, color.Blue}.Render("Progress status"),
-		}, func() {
-			log.Default.Info(ctx, table.Render())
-		})
-	}
-}
-
 func runFailureDeployPlan(
 	ctx context.Context,
 	releaseName string,
@@ -812,6 +781,7 @@ func runFailureDeployPlan(
 	deployType common.DeployType,
 	failedPlan *plan.Plan,
 	taskStore *statestore.TaskStore,
+	informerFactory *kubeutil.Concurrent[*informer.InformerFactory],
 	resProcessor *resourceinfo.DeployableResourcesProcessor,
 	newRel, prevRelease *release.Release,
 	history *release.History,
@@ -831,6 +801,7 @@ func runFailureDeployPlan(
 		deployType,
 		failedPlan,
 		taskStore,
+		informerFactory,
 		resProcessor.DeployableHookResourcesInfos(),
 		resProcessor.DeployableGeneralResourcesInfos(),
 		history,
@@ -891,6 +862,7 @@ func runRollbackPlan(
 	ctx context.Context,
 	taskStore *statestore.TaskStore,
 	logStore *kubeutil.Concurrent[*logstore.LogStore],
+	informerFactory *kubeutil.Concurrent[*informer.InformerFactory],
 	releaseName string,
 	releaseNamespace string,
 	deployType common.DeployType,
@@ -988,6 +960,7 @@ func runRollbackPlan(
 		common.DeployTypeRollback,
 		taskStore,
 		logStore,
+		informerFactory,
 		nil,
 		resProcessor.DeployableHookResourcesInfos(),
 		resProcessor.DeployableGeneralResourcesInfos(),
@@ -1075,6 +1048,7 @@ func runRollbackPlan(
 			deployType,
 			rollbackPlan,
 			taskStore,
+			informerFactory,
 			resProcessor,
 			rollbackRel,
 			failedRelease,

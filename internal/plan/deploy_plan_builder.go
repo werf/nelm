@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
@@ -59,6 +60,7 @@ func NewDeployPlanBuilder(
 	deployType common.DeployType,
 	taskStore *statestore.TaskStore,
 	logStore *kdutil.Concurrent[*logstore.LogStore],
+	informerFactory *kdutil.Concurrent[*informer.InformerFactory],
 	standaloneCRDsInfos []*info.DeployableStandaloneCRDInfo,
 	hookResourcesInfos []*info.DeployableHookResourceInfo,
 	generalResourcesInfos []*info.DeployableGeneralResourceInfo,
@@ -121,6 +123,7 @@ func NewDeployPlanBuilder(
 		ignoreLogs:                      opts.IgnoreLogs,
 		taskStore:                       taskStore,
 		logStore:                        logStore,
+		informerFactory:                 informerFactory,
 		deployType:                      deployType,
 		plan:                            plan,
 		releaseNamespace:                releaseNamespace,
@@ -159,6 +162,7 @@ type DeployPlanBuilder struct {
 	ignoreLogs                      bool
 	taskStore                       *statestore.TaskStore
 	logStore                        *kdutil.Concurrent[*logstore.LogStore]
+	informerFactory                 *kdutil.Concurrent[*informer.InformerFactory]
 	releaseNamespace                string
 	deployType                      common.DeployType
 	standaloneCRDsInfos             []*info.DeployableStandaloneCRDInfo
@@ -432,6 +436,7 @@ func (b *DeployPlanBuilder) setupPrevReleaseGeneralResourcesOperations() error {
 			opTrackDeletion := operation.NewTrackResourceAbsenceOperation(
 				info.ResourceID,
 				taskState,
+				b.informerFactory,
 				b.dynamicClient,
 				b.mapper,
 				operation.TrackResourceAbsenceOperationOptions{
@@ -730,6 +735,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*info.DeployableHookReso
 				info.ResourceID,
 				info.Resource().Unstructured(),
 				absenceTaskState,
+				b.informerFactory,
 				b.kubeClient,
 				b.dynamicClient,
 				b.mapper,
@@ -817,6 +823,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*info.DeployableHookReso
 				opTrackReadiness := operation.NewTrackResourcePresenceOperation(
 					dep.ResourceID,
 					taskState,
+					b.informerFactory,
 					b.dynamicClient,
 					b.mapper,
 					operation.TrackResourcePresenceOperationOptions{
@@ -856,6 +863,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*info.DeployableHookReso
 			opTrackReadiness = operation.NewTrackResourceReadinessOperation(
 				info.ResourceID,
 				taskState,
+				b.informerFactory,
 				b.logStore,
 				b.staticClient,
 				b.dynamicClient,
@@ -926,6 +934,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*info.DeployableHookReso
 			opTrackDeletion := operation.NewTrackResourceAbsenceOperation(
 				info.ResourceID,
 				taskState,
+				b.informerFactory,
 				b.dynamicClient,
 				b.mapper,
 				operation.TrackResourceAbsenceOperationOptions{
@@ -987,6 +996,7 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*info.DeployableGener
 				info.ResourceID,
 				info.Resource().Unstructured(),
 				absenceTaskState,
+				b.informerFactory,
 				b.kubeClient,
 				b.dynamicClient,
 				b.mapper,
@@ -1071,6 +1081,7 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*info.DeployableGener
 				opTrackReadiness := operation.NewTrackResourcePresenceOperation(
 					dep.ResourceID,
 					taskState,
+					b.informerFactory,
 					b.dynamicClient,
 					b.mapper,
 					operation.TrackResourcePresenceOperationOptions{
@@ -1110,6 +1121,7 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*info.DeployableGener
 			opTrackReadiness = operation.NewTrackResourceReadinessOperation(
 				info.ResourceID,
 				taskState,
+				b.informerFactory,
 				b.logStore,
 				b.staticClient,
 				b.dynamicClient,
@@ -1178,6 +1190,7 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*info.DeployableGener
 			opTrackDeletion := operation.NewTrackResourceAbsenceOperation(
 				info.ResourceID,
 				taskState,
+				b.informerFactory,
 				b.dynamicClient,
 				b.mapper,
 				operation.TrackResourceAbsenceOperationOptions{

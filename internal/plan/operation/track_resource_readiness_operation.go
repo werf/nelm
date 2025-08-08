@@ -11,6 +11,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
@@ -25,6 +26,7 @@ const TypeTrackResourceReadinessOperation = "track-resource-readiness"
 func NewTrackResourceReadinessOperation(
 	resource *id.ResourceID,
 	taskState *util.Concurrent[*statestore.ReadinessTaskState],
+	informerFactory *util.Concurrent[*informer.InformerFactory],
 	logStore *util.Concurrent[*logstore.LogStore],
 	staticClient kubernetes.Interface,
 	dynamicClient dynamic.Interface,
@@ -35,6 +37,7 @@ func NewTrackResourceReadinessOperation(
 	return &TrackResourceReadinessOperation{
 		resource:                                 resource,
 		taskState:                                taskState,
+		informerFactory:                          informerFactory,
 		logStore:                                 logStore,
 		staticClient:                             staticClient,
 		dynamicClient:                            dynamicClient,
@@ -69,6 +72,7 @@ type TrackResourceReadinessOperationOptions struct {
 type TrackResourceReadinessOperation struct {
 	resource                                 *id.ResourceID
 	taskState                                *util.Concurrent[*statestore.ReadinessTaskState]
+	informerFactory                          *util.Concurrent[*informer.InformerFactory]
 	logStore                                 *util.Concurrent[*logstore.LogStore]
 	staticClient                             kubernetes.Interface
 	dynamicClient                            dynamic.Interface
@@ -89,7 +93,7 @@ type TrackResourceReadinessOperation struct {
 }
 
 func (o *TrackResourceReadinessOperation) Execute(ctx context.Context) error {
-	tracker, err := dyntracker.NewDynamicReadinessTracker(ctx, o.taskState, o.logStore, o.staticClient, o.dynamicClient, o.discoveryClient, o.mapper, dyntracker.DynamicReadinessTrackerOptions{
+	tracker, err := dyntracker.NewDynamicReadinessTracker(ctx, o.taskState, o.logStore, o.informerFactory, o.staticClient, o.dynamicClient, o.discoveryClient, o.mapper, dyntracker.DynamicReadinessTrackerOptions{
 		Timeout:                                  o.timeout,
 		NoActivityTimeout:                        o.noActivityTimeout,
 		IgnoreReadinessProbeFailsByContainerName: o.ignoreReadinessProbeFailsByContainerName,

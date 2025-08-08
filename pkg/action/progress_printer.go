@@ -2,61 +2,97 @@ package action
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"time"
+
+	"github.com/gookit/color"
+	"github.com/samber/lo"
+
+	"github.com/werf/nelm/internal/track"
+	"github.com/werf/nelm/pkg/log"
 )
 
-type progressTablePrinter struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	interval time.Duration
-	callback func()
-	finished chan bool
+func newProgressPrinter() *progressPrinter {
+	return &progressPrinter{}
 }
 
-func newProgressTablePrinter(ctx context.Context, interval time.Duration, callback func()) *progressTablePrinter {
-	return &progressTablePrinter{
-		ctx:      ctx,
-		interval: interval,
-		callback: callback,
-		finished: make(chan bool),
-	}
+type progressPrinter struct {
+	ctxCancelFn context.CancelCauseFunc
+	finishedCh  chan struct{}
 }
 
-func (p *progressTablePrinter) Start() {
-	p.ctx, p.cancel = context.WithCancel(p.ctx)
-	// Cancel function is called inside the goroutine below.
-
+func (p *progressPrinter) Start(ctx context.Context, interval time.Duration, tablesBuilder *track.TablesBuilder) {
 	go func() {
-		defer p.finish()
-		defer p.cancel()
+		p.finishedCh = make(chan struct{})
 
-		ticker := time.NewTicker(p.interval)
+		ctx, p.ctxCancelFn = context.WithCancelCause(ctx)
+		defer func() {
+			p.ctxCancelFn(fmt.Errorf("context canceled: table printer finished"))
+			p.finishedCh <- struct{}{}
+		}()
+
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
 		for {
 			select {
-			case <-p.ctx.Done():
-				p.callback()
-				return
 			case <-ticker.C:
-				p.callback()
+				printTables(ctx, tablesBuilder)
+			case <-ctx.Done():
+				printTables(ctx, tablesBuilder)
+				return
 			}
 		}
 	}()
 }
 
-func (p *progressTablePrinter) Stop() {
-	if p.cancel != nil {
-		p.cancel()
-	}
+func (p *progressPrinter) Stop() {
+	p.ctxCancelFn(fmt.Errorf("context canceled: table printer stopped"))
 }
 
-func (p *progressTablePrinter) Wait() {
-	if p.cancel != nil {
-		<-p.finished // Wait for graceful stop
-	}
+func (p *progressPrinter) Wait() {
+	<-p.finishedCh
 }
 
-func (p *progressTablePrinter) finish() {
-	p.finished <- true // Used for graceful stop
+func printTables(
+	ctx context.Context,
+	tablesBuilder *track.TablesBuilder,
+) {
+	maxTableWidth := log.Default.BlockContentWidth(ctx) - 2
+	tablesBuilder.SetMaxTableWidth(maxTableWidth)
+
+	if tables, nonEmpty := tablesBuilder.BuildEventTables(); nonEmpty {
+		headers := lo.Keys(tables)
+		sort.Strings(headers)
+
+		for _, header := range headers {
+			log.Default.InfoBlock(ctx, log.BlockOptions{
+				BlockTitle: header,
+			}, func() {
+				log.Default.Info(ctx, tables[header].Render())
+			})
+		}
+	}
+
+	if tables, nonEmpty := tablesBuilder.BuildLogTables(); nonEmpty {
+		headers := lo.Keys(tables)
+		sort.Strings(headers)
+
+		for _, header := range headers {
+			log.Default.InfoBlock(ctx, log.BlockOptions{
+				BlockTitle: header,
+			}, func() {
+				log.Default.Info(ctx, tables[header].Render())
+			})
+		}
+	}
+
+	if table, nonEmpty := tablesBuilder.BuildProgressTable(); nonEmpty {
+		log.Default.InfoBlock(ctx, log.BlockOptions{
+			BlockTitle: color.Style{color.Bold, color.Blue}.Render("Progress status"),
+		}, func() {
+			log.Default.Info(ctx, table.Render())
+		})
+	}
 }
