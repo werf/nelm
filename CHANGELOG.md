@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.11.0](https://www.github.com/werf/nelm/compare/v1.10.0...v1.11.0) (2025-08-08)
+
+
+### Features
+
+* greatly decrease Kubernetes apiserver load ([7afe7ad](https://www.github.com/werf/nelm/commit/7afe7ad1b5a9ec0b3c5301f5d51b82d5d51f947e))
+
+
+### Bug Fixes
+
+* panic "rules file not valid" ([075b8e0](https://www.github.com/werf/nelm/commit/075b8e0f658ce708d140c4c07a6668b74bb6ec21))
+* panic "validate rules file" ([6bb4e3b](https://www.github.com/werf/nelm/commit/6bb4e3b43b8582a08584b588cd0d7babf88819c8))
+
 ## [1.10.0](https://www.github.com/werf/nelm/compare/v1.9.0...v1.10.0) (2025-08-01)
 
 
