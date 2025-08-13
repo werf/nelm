@@ -191,6 +191,10 @@ func (r *HookResource) ShowServiceMessages() bool {
 	return showServiceMessages(r.unstruct)
 }
 
+func (r *HookResource) ShowLogsOnlyForNumberOfReplicas() int {
+	return showLogsOnlyForNumberOfReplicas(r.unstruct)
+}
+
 func (r *HookResource) SkipLogs() bool {
 	return skipLogs(r.unstruct)
 }

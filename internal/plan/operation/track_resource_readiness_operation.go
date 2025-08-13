@@ -47,6 +47,7 @@ func NewTrackResourceReadinessOperation(
 		noActivityTimeout:                        opts.NoActivityTimeout,
 		ignoreReadinessProbeFailsByContainerName: opts.IgnoreReadinessProbeFailsByContainerName,
 		captureLogsFromTime:                      opts.CaptureLogsFromTime,
+		saveLogsOnlyForNumberOfReplicas:          opts.SaveLogsOnlyForNumberOfReplicas,
 		saveLogsOnlyForContainers:                opts.SaveLogsOnlyForContainers,
 		saveLogsByRegex:                          opts.SaveLogsByRegex,
 		saveLogsByRegexForContainers:             opts.SaveLogsByRegexForContainers,
@@ -61,6 +62,7 @@ type TrackResourceReadinessOperationOptions struct {
 	NoActivityTimeout                        time.Duration
 	IgnoreReadinessProbeFailsByContainerName map[string]time.Duration
 	CaptureLogsFromTime                      time.Time
+	SaveLogsOnlyForNumberOfReplicas          int
 	SaveLogsOnlyForContainers                []string
 	SaveLogsByRegex                          *regexp.Regexp
 	SaveLogsByRegexForContainers             map[string]*regexp.Regexp
@@ -82,6 +84,7 @@ type TrackResourceReadinessOperation struct {
 	noActivityTimeout                        time.Duration
 	ignoreReadinessProbeFailsByContainerName map[string]time.Duration
 	captureLogsFromTime                      time.Time
+	saveLogsOnlyForNumberOfReplicas          int
 	saveLogsOnlyForContainers                []string
 	saveLogsByRegex                          *regexp.Regexp
 	saveLogsByRegexForContainers             map[string]*regexp.Regexp
@@ -98,6 +101,7 @@ func (o *TrackResourceReadinessOperation) Execute(ctx context.Context) error {
 		NoActivityTimeout:                        o.noActivityTimeout,
 		IgnoreReadinessProbeFailsByContainerName: o.ignoreReadinessProbeFailsByContainerName,
 		CaptureLogsFromTime:                      o.captureLogsFromTime,
+		SaveLogsOnlyForNumberOfReplicas:          o.saveLogsOnlyForNumberOfReplicas,
 		SaveLogsOnlyForContainers:                o.saveLogsOnlyForContainers,
 		SaveLogsByRegex:                          o.saveLogsByRegex,
 		SaveLogsByRegexForContainers:             o.saveLogsByRegexForContainers,

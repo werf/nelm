@@ -116,6 +116,11 @@ var (
 )
 
 var (
+	annotationKeyHumanShowLogsOnlyForNumberOfReplicas   = "werf.io/show-logs-only-for-number-of-replicas"
+	annotationKeyPatternShowLogsOnlyForNumberOfReplicas = regexp.MustCompile(`^werf.io/show-logs-only-for-number-of-replicas$`)
+)
+
+var (
 	annotationKeyHumanSkipLogs   = "werf.io/skip-logs"
 	annotationKeyPatternSkipLogs = regexp.MustCompile(`^werf.io/skip-logs$`)
 )
@@ -440,6 +445,18 @@ func validateTrack(unstruct *unstructured.Unstructured) error {
 
 		if _, err := strconv.ParseBool(value); err != nil {
 			return fmt.Errorf("invalid value %q for annotation %q, expected boolean value", value, key)
+		}
+	}
+
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternShowLogsOnlyForContainers); found {
+		if value == "" {
+			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty integer value", value, key)
+		}
+
+		if replicas, err := strconv.Atoi(value); err != nil {
+			return fmt.Errorf("invalid value %q for annotation %q, expected integer value", value, key)
+		} else if replicas < 0 {
+			return fmt.Errorf("invalid value %q for annotation %q, expected non-negative integer value", value, key)
 		}
 	}
 
@@ -939,6 +956,17 @@ func showServiceMessages(unstruct *unstructured.Unstructured) bool {
 	showServiceMessages := lo.Must(strconv.ParseBool(value))
 
 	return showServiceMessages
+}
+
+func showLogsOnlyForNumberOfReplicas(unstruct *unstructured.Unstructured) int {
+	_, value, found := FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternShowLogsOnlyForNumberOfReplicas)
+	if !found {
+		return 1
+	}
+
+	replicas := lo.Must(strconv.Atoi(value))
+
+	return replicas
 }
 
 func skipLogs(unstruct *unstructured.Unstructured) bool {

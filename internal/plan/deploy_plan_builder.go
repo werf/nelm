@@ -844,6 +844,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*info.DeployableHookReso
 		if trackReadiness {
 			logRegex, _ := info.Resource().LogRegex()
 			logRegexesFor, _ := info.Resource().LogRegexesForContainers()
+			showLogsOnlyForNumberOfReplicas := info.Resource().ShowLogsOnlyForNumberOfReplicas()
 			skipLogsFor, _ := info.Resource().SkipLogsForContainers()
 			showLogsOnlyFor, _ := info.Resource().ShowLogsOnlyForContainers()
 			ignoreReadinessProbes, _ := info.Resource().IgnoreReadinessProbeFailsForContainers()
@@ -873,6 +874,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*info.DeployableHookReso
 					Timeout:                                  b.readinessTimeout,
 					NoActivityTimeout:                        noActivityTimeout,
 					IgnoreReadinessProbeFailsByContainerName: ignoreReadinessProbes,
+					SaveLogsOnlyForNumberOfReplicas:          showLogsOnlyForNumberOfReplicas,
 					SaveLogsOnlyForContainers:                showLogsOnlyFor,
 					SaveLogsByRegex:                          logRegex,
 					SaveLogsByRegexForContainers:             logRegexesFor,
@@ -1102,6 +1104,7 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*info.DeployableGener
 		if trackReadiness {
 			logRegex, _ := info.Resource().LogRegex()
 			logRegexesFor, _ := info.Resource().LogRegexesForContainers()
+			showLogsOnlyForNumberOfReplicas := info.Resource().ShowLogsOnlyForNumberOfReplicas()
 			skipLogsFor, _ := info.Resource().SkipLogsForContainers()
 			showLogsOnlyFor, _ := info.Resource().ShowLogsOnlyForContainers()
 			ignoreReadinessProbes, _ := info.Resource().IgnoreReadinessProbeFailsForContainers()
@@ -1131,6 +1134,7 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*info.DeployableGener
 					Timeout:                                  b.readinessTimeout,
 					NoActivityTimeout:                        noActivityTimeout,
 					IgnoreReadinessProbeFailsByContainerName: ignoreReadinessProbes,
+					SaveLogsOnlyForNumberOfReplicas:          showLogsOnlyForNumberOfReplicas,
 					SaveLogsOnlyForContainers:                showLogsOnlyFor,
 					SaveLogsByRegex:                          logRegex,
 					SaveLogsByRegexForContainers:             logRegexesFor,
