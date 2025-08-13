@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://www.github.com/werf/nelm/compare/v1.11.0...v1.12.0) (2025-08-13)
+
+
+### Features
+
+* display logs only from 1 replica by default (configured with annotation `werf.io/show-logs-only-for-number-of-replicas`) ([47072bf](https://www.github.com/werf/nelm/commit/47072bf102d4a366f3ee00bed07182296c4cece8))
+
 ## [1.11.0](https://www.github.com/werf/nelm/compare/v1.10.0...v1.11.0) (2025-08-08)
 
 
