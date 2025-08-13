@@ -48,6 +48,7 @@ We consider Nelm production-ready, since 95% of the Nelm codebase basically is t
     - [Annotation `werf.io/log-regex-skip`](#annotation-werfiolog-regex-skip)
     - [Annotation `werf.io/skip-logs`](#annotation-werfioskip-logs)
     - [Annotation `werf.io/skip-logs-for-containers`](#annotation-werfioskip-logs-for-containers)
+    - [Annotation `werf.io/show-logs-only-for-number-of-replicas`](#annotation-werfioshow-logs-only-for-number-of-replicas)
     - [Annotation `werf.io/show-logs-only-for-containers`](#annotation-werfioshow-logs-only-for-containers)
     - [Annotation `werf.io/show-service-messages`](#annotation-werfioshow-service-messages)
     - [Function `werf_secret_file`](#function-werf_secret_file)
@@ -512,6 +513,14 @@ Format: `<container_name>[,<container_name>...]` \
 Example: `werf.io/skip-logs-for-containers: "backend,frontend"`
 
 Don't print logs for specified containers during resource tracking.
+
+#### Annotation `werf.io/show-logs-only-for-number-of-replicas`
+
+Format: `<any positive number or zero>` \
+Default: `1` \
+Example: `werf.io/show-logs-only-for-number-of-replicas: "999"`
+
+Print logs only for the specified number of replicas during resource tracking. We print logs only for a single replica by default to avoid excessive log output and to optimize resource usage.
 
 #### Annotation `werf.io/show-logs-only-for-containers`
 
