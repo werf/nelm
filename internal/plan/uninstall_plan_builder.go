@@ -403,6 +403,7 @@ func (b *UninstallPlanBuilder) setupHookOperations(infos []*info.DeployablePrevR
 		if trackReadiness {
 			logRegex, _ := info.Resource().LogRegex()
 			logRegexesFor, _ := info.Resource().LogRegexesForContainers()
+			showLogsOnlyForNumberOfReplicas := info.Resource().ShowLogsOnlyForNumberOfReplicas()
 			skipLogsFor, _ := info.Resource().SkipLogsForContainers()
 			showLogsOnlyFor, _ := info.Resource().ShowLogsOnlyForContainers()
 			ignoreReadinessProbes, _ := info.Resource().IgnoreReadinessProbeFailsForContainers()
@@ -432,6 +433,7 @@ func (b *UninstallPlanBuilder) setupHookOperations(infos []*info.DeployablePrevR
 					Timeout:                                  b.readinessTimeout,
 					NoActivityTimeout:                        noActivityTimeout,
 					IgnoreReadinessProbeFailsByContainerName: ignoreReadinessProbes,
+					SaveLogsOnlyForNumberOfReplicas:          showLogsOnlyForNumberOfReplicas,
 					SaveLogsOnlyForContainers:                showLogsOnlyFor,
 					SaveLogsByRegex:                          logRegex,
 					SaveLogsByRegexForContainers:             logRegexesFor,

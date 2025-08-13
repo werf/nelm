@@ -183,6 +183,10 @@ func (r *GeneralResource) ShowServiceMessages() bool {
 	return showServiceMessages(r.unstruct)
 }
 
+func (r *GeneralResource) ShowLogsOnlyForNumberOfReplicas() int {
+	return showLogsOnlyForNumberOfReplicas(r.unstruct)
+}
+
 func (r *GeneralResource) SkipLogs() bool {
 	return skipLogs(r.unstruct)
 }
