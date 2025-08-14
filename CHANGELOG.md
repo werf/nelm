@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.12.1](https://www.github.com/werf/nelm/compare/v1.12.0...v1.12.1) (2025-08-14)
+
+
+### Bug Fixes
+
+* error `"werf.io/show-logs-only-for-containers", expected integer value` ([209bd1c](https://www.github.com/werf/nelm/commit/209bd1c5ae9201426cb047435cec2fdaf5cfae48))
+
 ## [1.12.0](https://www.github.com/werf/nelm/compare/v1.11.0...v1.12.0) (2025-08-13)
 
 
