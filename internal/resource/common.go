@@ -448,7 +448,7 @@ func validateTrack(unstruct *unstructured.Unstructured) error {
 		}
 	}
 
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternShowLogsOnlyForContainers); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternShowLogsOnlyForNumberOfReplicas); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty integer value", value, key)
 		}
