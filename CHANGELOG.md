@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.12.2](https://www.github.com/werf/nelm/compare/v1.12.1...v1.12.2) (2025-08-15)
+
+
+### Bug Fixes
+
+* release namespace deletes after stopping being part of a release ([2bba22b](https://www.github.com/werf/nelm/commit/2bba22bf08f5e14f8b5851e23ab16425698d17d6))
+
 ### [1.12.1](https://www.github.com/werf/nelm/compare/v1.12.0...v1.12.1) (2025-08-14)
 
 
