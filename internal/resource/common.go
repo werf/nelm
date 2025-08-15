@@ -800,8 +800,7 @@ func keepOnDelete(unstruct *unstructured.Unstructured) bool {
 }
 
 func orphaned(unstruct *unstructured.Unstructured, releaseName, releaseNamespace string) bool {
-	if IsHook(unstruct.GetAnnotations()) ||
-		(unstruct.GetKind() == "Namespace" && unstruct.GetName() == releaseNamespace) {
+	if IsHook(unstruct.GetAnnotations()) {
 		return false
 	}
 
@@ -818,6 +817,10 @@ func orphaned(unstruct *unstructured.Unstructured, releaseName, releaseNamespace
 	}
 
 	return false
+}
+
+func isReleaseNamespace(unstruct *unstructured.Unstructured, releaseNamespace string) bool {
+	return unstruct.GetKind() == "Namespace" && unstruct.GetName() == releaseNamespace
 }
 
 func recreate(unstruct *unstructured.Unstructured) bool {

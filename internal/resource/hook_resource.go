@@ -155,8 +155,8 @@ func (r *HookResource) DeleteOnFailed() bool {
 	return deleteOnFailed(r.unstruct)
 }
 
-func (r *HookResource) KeepOnDelete() bool {
-	return keepOnDelete(r.unstruct)
+func (r *HookResource) KeepOnDelete(releaseNamespace string) bool {
+	return keepOnDelete(r.unstruct) || isReleaseNamespace(r.unstruct, releaseNamespace)
 }
 
 func (r *HookResource) FailMode() multitrack.FailMode {

@@ -728,7 +728,7 @@ func (p *DeployableResourcesProcessor) validateNoDuplicates() error {
 
 	for _, res := range resources {
 		if res.GroupVersionKind() == (schema.GroupVersionKind{Kind: "Namespace", Version: "v1"}) && res.Name() == p.releaseNamespace {
-			return fmt.Errorf("release namespace %q cannot be deployed as part of the release")
+			return fmt.Errorf("release namespace %q cannot be deployed as part of the release", res.Name())
 		}
 	}
 

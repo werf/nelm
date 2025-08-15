@@ -147,8 +147,8 @@ func (r *GeneralResource) DeleteOnFailed() bool {
 	return deleteOnFailed(r.unstruct)
 }
 
-func (r *GeneralResource) KeepOnDelete() bool {
-	return keepOnDelete(r.unstruct)
+func (r *GeneralResource) KeepOnDelete(releaseNamespace string) bool {
+	return keepOnDelete(r.unstruct) || isReleaseNamespace(r.unstruct, releaseNamespace)
 }
 
 func (r *GeneralResource) FailMode() multitrack.FailMode {

@@ -134,7 +134,7 @@ func (i *DeployableGeneralResourceInfo) ShouldCleanupOnFailed(prevRelFailed bool
 }
 
 func (i *DeployableGeneralResourceInfo) ShouldKeepOnDelete(releaseName, releaseNamespace string) bool {
-	return i.resource.KeepOnDelete() || (i.exists && i.getResource.KeepOnDelete(releaseName, releaseNamespace))
+	return i.resource.KeepOnDelete(releaseNamespace) || (i.exists && i.getResource.KeepOnDelete(releaseName, releaseNamespace))
 }
 
 func (i *DeployableGeneralResourceInfo) ShouldTrackReadiness(prevRelFailed bool) bool {
