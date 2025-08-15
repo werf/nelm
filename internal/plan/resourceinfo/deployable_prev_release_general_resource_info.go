@@ -59,7 +59,7 @@ func (i *DeployablePrevReleaseGeneralResourceInfo) LiveResource() *resource.Remo
 }
 
 func (i *DeployablePrevReleaseGeneralResourceInfo) ShouldKeepOnDelete(releaseName, releaseNamespace string) bool {
-	return i.resource.KeepOnDelete() || (i.exists && i.getResource.KeepOnDelete(releaseName, releaseNamespace))
+	return i.resource.KeepOnDelete(releaseNamespace) || (i.exists && i.getResource.KeepOnDelete(releaseName, releaseNamespace))
 }
 
 func (i *DeployablePrevReleaseGeneralResourceInfo) ShouldDelete(curReleaseExistingResourcesUIDs []types.UID, releaseName, releaseNamespace string, deployType common.DeployType) bool {

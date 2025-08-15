@@ -133,7 +133,7 @@ func (i *DeployableHookResourceInfo) ShouldCleanupOnFailed(prevRelFailed bool, r
 }
 
 func (i *DeployableHookResourceInfo) ShouldKeepOnDelete(releaseName, releaseNamespace string) bool {
-	return i.resource.KeepOnDelete() || (i.exists && i.getResource.KeepOnDelete(releaseName, releaseNamespace))
+	return i.resource.KeepOnDelete(releaseNamespace) || (i.exists && i.getResource.KeepOnDelete(releaseName, releaseNamespace))
 }
 
 func (i *DeployableHookResourceInfo) ShouldTrackReadiness(prevRelFailed bool) bool {
