@@ -4,10 +4,10 @@ groups:
       - name: alpha
         version: 1.12.2
       - name: beta
-        version: 1.10.0
+        version: 1.12.2
       - name: ea
         version: 1.10.0
       - name: stable
-        version: 1.8.0
+        version: 1.10.0
       - name: rock-solid
         version: 1.8.0
