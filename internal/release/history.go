@@ -7,8 +7,6 @@ import (
 	"sync"
 
 	"github.com/samber/lo"
-	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/client-go/discovery"
 
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/3p-helm/pkg/releaseutil"
@@ -17,258 +15,165 @@ import (
 
 var _ Historier = (*History)(nil)
 
-// FIXME(ilya-lesikov): not completely thread-safe, h.legacyRelease can be read while modified
-func NewHistory(releaseName, releaseNamespace string, historyStorage LegacyStorage, opts HistoryOptions) (*History, error) {
-	legacyRels, err := historyStorage.Query(map[string]string{"name": releaseName, "owner": "helm"})
-	if err != nil && err != driver.ErrReleaseNotFound {
-		return nil, fmt.Errorf("error querying releases for release %q (namespace: %q): %w", releaseName, releaseNamespace, err)
-	}
-	releaseutil.SortByRevision(legacyRels)
-
-	return &History{
-		releaseName:      releaseName,
-		releaseNamespace: releaseNamespace,
-		legacyReleases:   legacyRels,
-		storage:          historyStorage,
-		mapper:           opts.Mapper,
-		discoveryClient:  opts.DiscoveryClient,
-	}, nil
-}
-
-type HistoryOptions struct {
-	Mapper          meta.ResettableRESTMapper
-	DiscoveryClient discovery.CachedDiscoveryInterface
+type Historier interface {
+	Releases() []*helmrelease.Release
+	FindAllDeployed() []*helmrelease.Release
+	FindRevision(revision int) (rel *helmrelease.Release, found bool)
+	CreateRelease(ctx context.Context, rel *helmrelease.Release) error
+	UpdateRelease(ctx context.Context, rel *helmrelease.Release) error
+	DeleteRelease(ctx context.Context, name string, revision int) error
 }
 
 type History struct {
-	releaseName      string
-	releaseNamespace string
-	legacyReleases   []*helmrelease.Release
-	storage          LegacyStorage
-	mapper           meta.ResettableRESTMapper
-	discoveryClient  discovery.CachedDiscoveryInterface
-	updateLock       sync.Mutex
+	releaseName string
+	releases    []*helmrelease.Release
+	storage     ReleaseStorager
+	updateLock  sync.Mutex
 }
 
-func (h *History) Release(revision int) (rel *Release, found bool, err error) {
-	legacyRel, found := lo.Find(h.legacyReleases, func(r *helmrelease.Release) bool {
+type HistoryOptions struct{}
+
+func NewHistory(rels []*helmrelease.Release, releaseName string, historyStorage ReleaseStorager, opts HistoryOptions) *History {
+	releaseutil.SortByRevision(rels)
+
+	return &History{
+		releaseName: releaseName,
+		releases:    rels,
+		storage:     historyStorage,
+	}
+}
+
+func (h *History) Releases() []*helmrelease.Release {
+	return h.releases
+}
+
+func (h *History) FindAllDeployed() []*helmrelease.Release {
+	_, lastUninstalledRelIndex, lastUninstalledRelFound := lo.FindLastIndexOf(h.releases, func(r *helmrelease.Release) bool {
+		return r.Info.Status == helmrelease.StatusUninstalled ||
+			r.Info.Status == helmrelease.StatusUninstalling
+	})
+
+	var relsSinceUninstalled []*helmrelease.Release
+	if lastUninstalledRelFound {
+		if lastUninstalledRelIndex == len(h.releases)-1 {
+			return nil
+		}
+
+		relsSinceUninstalled = h.releases[lastUninstalledRelIndex+1:]
+	} else {
+		relsSinceUninstalled = h.releases
+	}
+
+	return lo.Filter(relsSinceUninstalled, func(r *helmrelease.Release, _ int) bool {
+		return r.Info.Status == helmrelease.StatusDeployed ||
+			r.Info.Status == helmrelease.StatusSuperseded
+	})
+}
+
+func (h *History) FindRevision(revision int) (rel *helmrelease.Release, found bool) {
+	return lo.Find(h.releases, func(r *helmrelease.Release) bool {
 		return r.Version == revision
 	})
-	if !found {
-		return nil, false, nil
-	}
-
-	rel, err = NewReleaseFromLegacyRelease(legacyRel, ReleaseFromLegacyReleaseOptions{
-		Mapper:          h.mapper,
-		DiscoveryClient: h.discoveryClient,
-	})
-	if err != nil {
-		return nil, false, fmt.Errorf("error constructing release from legacy release: %w", err)
-	}
-
-	return rel, true, nil
 }
 
-func (h *History) Releases() ([]*Release, error) {
-	releases := make([]*Release, 0, len(h.legacyReleases))
-
-	for _, legacyRel := range h.legacyReleases {
-		rel, err := NewReleaseFromLegacyRelease(legacyRel, ReleaseFromLegacyReleaseOptions{
-			Mapper:          h.mapper,
-			DiscoveryClient: h.discoveryClient,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("error constructing release from legacy release: %w", err)
-		}
-
-		releases = append(releases, rel)
-	}
-
-	return releases, nil
-}
-
-func (h *History) LastRelease() (rel *Release, found bool, err error) {
-	if h.Empty() {
-		return nil, false, nil
-	}
-
-	legacyRel := h.legacyReleases[len(h.legacyReleases)-1]
-
-	rel, err = NewReleaseFromLegacyRelease(legacyRel, ReleaseFromLegacyReleaseOptions{
-		Mapper:          h.mapper,
-		DiscoveryClient: h.discoveryClient,
-	})
-	if err != nil {
-		return nil, false, fmt.Errorf("error constructing release from legacy release: %w", err)
-	}
-
-	return rel, true, nil
-}
-
-// Get last successfully deployed release since last attempt to uninstall release or from the beginning of history.
-func (h *History) LastDeployedRelease() (rel *Release, found bool, err error) {
-	if h.Empty() {
-		return nil, false, nil
-	}
-
-	var legacyRel *helmrelease.Release
-legacyRelLoop:
-	for i := len(h.legacyReleases) - 1; i >= 0; i-- {
-		switch h.legacyReleases[i].Info.Status {
-		case helmrelease.StatusDeployed,
-			helmrelease.StatusSuperseded:
-			legacyRel = h.legacyReleases[i]
-			break legacyRelLoop
-		case helmrelease.StatusUninstalled,
-			helmrelease.StatusUninstalling:
-			break legacyRelLoop
-		case helmrelease.StatusUnknown,
-			helmrelease.StatusFailed,
-			helmrelease.StatusPendingInstall,
-			helmrelease.StatusPendingUpgrade,
-			helmrelease.StatusPendingRollback:
-		}
-	}
-
-	if legacyRel == nil {
-		return nil, false, nil
-	}
-
-	rel, err = NewReleaseFromLegacyRelease(legacyRel, ReleaseFromLegacyReleaseOptions{
-		Mapper:          h.mapper,
-		DiscoveryClient: h.discoveryClient,
-	})
-	if err != nil {
-		return nil, false, fmt.Errorf("error constructing release from legacy release: %w", err)
-	}
-
-	return rel, true, nil
-}
-
-// Get last successfully deployed release since last attempt to uninstall release or from the beginning of history, except the very last release.
-func (h *History) LastDeployedReleaseExceptLastRelease() (rel *Release, found bool, err error) {
-	if h.Empty() {
-		return nil, false, nil
-	}
-
-	var legacyRel *helmrelease.Release
-legacyRelLoop:
-	for i := len(h.legacyReleases) - 1; i >= 0; i-- {
-		if i == len(h.legacyReleases)-1 {
-			continue
-		}
-
-		switch h.legacyReleases[i].Info.Status {
-		case helmrelease.StatusDeployed,
-			helmrelease.StatusSuperseded:
-			legacyRel = h.legacyReleases[i]
-			break legacyRelLoop
-		case helmrelease.StatusUninstalled,
-			helmrelease.StatusUninstalling:
-			break legacyRelLoop
-		case helmrelease.StatusUnknown,
-			helmrelease.StatusFailed,
-			helmrelease.StatusPendingInstall,
-			helmrelease.StatusPendingUpgrade,
-			helmrelease.StatusPendingRollback:
-		}
-	}
-
-	if legacyRel == nil {
-		return nil, false, nil
-	}
-
-	rel, err = NewReleaseFromLegacyRelease(legacyRel, ReleaseFromLegacyReleaseOptions{
-		Mapper:          h.mapper,
-		DiscoveryClient: h.discoveryClient,
-	})
-	if err != nil {
-		return nil, false, fmt.Errorf("error constructing release from legacy release: %w", err)
-	}
-
-	return rel, true, nil
-}
-
-func (h *History) Empty() bool {
-	return len(h.legacyReleases) == 0
-}
-
-func (h *History) CreateRelease(ctx context.Context, rel *Release) error {
+func (h *History) CreateRelease(ctx context.Context, rel *helmrelease.Release) error {
 	h.updateLock.Lock()
 	defer h.updateLock.Unlock()
 
-	legacyRel, err := NewLegacyReleaseFromRelease(rel)
-	if err != nil {
-		return fmt.Errorf("error constructing legacy release from release: %w", err)
+	if err := h.storage.Create(rel); err != nil {
+		return fmt.Errorf("create release %q (namespace: %q, revision: %q): %w", rel.Name, rel.Namespace, rel.Version, err)
 	}
 
-	if err := h.storage.Create(legacyRel); err != nil {
-		return fmt.Errorf("error creating release %q (namespace: %q, revision: %q): %w", legacyRel.Name, legacyRel.Namespace, legacyRel.Version, err)
-	}
-
-	h.legacyReleases = append(h.legacyReleases, legacyRel)
+	h.releases = append(h.releases, rel)
 
 	return nil
 }
 
-func (h *History) UpdateRelease(ctx context.Context, rel *Release) error {
+func (h *History) UpdateRelease(ctx context.Context, rel *helmrelease.Release) error {
 	h.updateLock.Lock()
 	defer h.updateLock.Unlock()
 
-	legacyRel, err := NewLegacyReleaseFromRelease(rel)
-	if err != nil {
-		return fmt.Errorf("error constructing legacy release from release: %w", err)
+	if err := h.storage.Update(rel); err != nil {
+		return fmt.Errorf("update release %q (namespace: %q, revision: %q): %w", rel.Name, rel.Namespace, rel.Version, err)
 	}
 
-	if err := h.storage.Update(legacyRel); err != nil {
-		return fmt.Errorf("error updating release %q (namespace: %q, revision: %q): %w", legacyRel.Name, legacyRel.Namespace, legacyRel.Version, err)
-	}
-
-	if _, i, found := lo.FindIndexOf(h.legacyReleases, func(r *helmrelease.Release) bool {
-		return r.Version == rel.Revision()
+	if _, i, found := lo.FindIndexOf(h.releases, func(r *helmrelease.Release) bool {
+		return r.Version == rel.Version
 	}); !found {
-		return fmt.Errorf("release %q (namespace: %q, revision: %q) not found in history", rel.Name(), rel.Namespace(), rel.Revision())
+		return fmt.Errorf("release %q (namespace: %q, revision: %q) not found in history", rel.Name, rel.Namespace, rel.Version)
 	} else {
-		h.legacyReleases[i] = legacyRel
+		h.releases[i] = rel
 	}
 
 	return nil
 }
 
-func (h *History) DeleteRelease(ctx context.Context, rel *Release) error {
+func (h *History) DeleteRelease(ctx context.Context, name string, revision int) error {
 	h.updateLock.Lock()
 	defer h.updateLock.Unlock()
 
-	legacyRel, err := h.storage.Delete(h.releaseName, rel.Revision())
+	rel, err := h.storage.Delete(name, revision)
 	if err != nil {
-		return fmt.Errorf("error uninstalling release %q (namespace: %q, revision: %q): %w", legacyRel.Name, legacyRel.Namespace, legacyRel.Version, err)
+		return fmt.Errorf("uninstall release %q (namespace: %q, revision: %q): %w", rel.Name, rel.Namespace, rel.Version, err)
 	}
 
-	if _, i, found := lo.FindIndexOf(h.legacyReleases, func(r *helmrelease.Release) bool {
-		return r.Version == rel.Revision()
+	if _, i, found := lo.FindIndexOf(h.releases, func(r *helmrelease.Release) bool {
+		return r.Version == rel.Version
 	}); !found {
 		return nil
 	} else {
-		h.legacyReleases = slices.Delete(h.legacyReleases, i, i+1)
+		h.releases = slices.Delete(h.releases, i, i+1)
 	}
 
 	return nil
 }
 
-type LegacyStorage interface {
-	Create(rls *helmrelease.Release) error
-	Update(rls *helmrelease.Release) error
-	Delete(name string, version int) (*helmrelease.Release, error)
-	Query(labels map[string]string) ([]*helmrelease.Release, error)
+func BuildHistories(historyStorage ReleaseStorager, opts HistoryOptions) ([]*History, error) {
+	rels, err := historyStorage.Query(map[string]string{"owner": "helm"})
+	if err != nil && err != driver.ErrReleaseNotFound {
+		return nil, fmt.Errorf("query releases: %w", err)
+	}
+
+	releasesByNamespace := map[string]map[string][]*helmrelease.Release{}
+	for _, rel := range rels {
+		if releasesByNamespace[rel.Namespace] == nil {
+			releasesByNamespace[rel.Namespace] = map[string][]*helmrelease.Release{}
+		}
+
+		if releasesByNamespace[rel.Namespace][rel.Name] == nil {
+			releasesByNamespace[rel.Namespace][rel.Name] = []*helmrelease.Release{}
+		}
+
+		releasesByNamespace[rel.Namespace][rel.Name] = append(releasesByNamespace[rel.Namespace][rel.Name], rel)
+	}
+
+	var histories []*History
+	for _, releasesFromNamespace := range releasesByNamespace {
+		for relName, revisions := range releasesFromNamespace {
+			history := NewHistory(
+				revisions,
+				relName,
+				historyStorage,
+				opts,
+			)
+
+			histories = append(histories, history)
+		}
+	}
+
+	return histories, nil
 }
 
-type Historier interface {
-	Release(revision int) (rel *Release, found bool, err error)
-	Releases() ([]*Release, error)
-	LastRelease() (rel *Release, found bool, err error)
-	LastDeployedRelease() (rel *Release, found bool, err error)
-	Empty() bool
-	CreateRelease(ctx context.Context, rel *Release) error
-	UpdateRelease(ctx context.Context, rel *Release) error
-	DeleteRelease(ctx context.Context, rel *Release) error
+func BuildHistory(releaseName string, historyStorage ReleaseStorager, opts HistoryOptions) (*History, error) {
+	rels, err := historyStorage.Query(map[string]string{"name": releaseName, "owner": "helm"})
+	if err != nil && err != driver.ErrReleaseNotFound {
+		return nil, fmt.Errorf("query releases for release %q: %w", releaseName, err)
+	}
+
+	return NewHistory(
+		rels,
+		releaseName,
+		historyStorage,
+		opts,
+	), nil
 }

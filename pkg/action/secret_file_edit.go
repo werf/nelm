@@ -6,11 +6,12 @@ import (
 	"os"
 
 	"github.com/werf/common-go/pkg/secrets_manager"
-	"github.com/werf/nelm/pkg/secret"
+	"github.com/werf/nelm/pkg/legacy/secret"
+	"github.com/werf/nelm/pkg/log"
 )
 
 const (
-	DefaultSecretFileEditLogLevel = ErrorLogLevel
+	DefaultSecretFileEditLogLevel = log.ErrorLevel
 )
 
 type SecretFileEditOptions struct {
@@ -52,6 +53,7 @@ func applySecretFileEditOptionsDefaults(opts SecretFileEditOptions, currentDir s
 
 	if opts.SecretWorkDir == "" {
 		var err error
+
 		opts.SecretWorkDir, err = os.Getwd()
 		if err != nil {
 			return SecretFileEditOptions{}, fmt.Errorf("get current working directory: %w", err)

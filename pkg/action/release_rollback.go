@@ -5,32 +5,31 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
+	"sort"
 	"time"
 
 	"github.com/gookit/color"
 	"github.com/samber/lo"
-	"k8s.io/client-go/kubernetes"
 
+	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
-	kubeutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
+	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/lock"
 	"github.com/werf/nelm/internal/plan"
-	"github.com/werf/nelm/internal/plan/operation"
-	"github.com/werf/nelm/internal/plan/resourceinfo"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource"
+	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/track"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/log"
 )
 
 const (
-	DefaultReleaseRollbackLogLevel = InfoLogLevel
+	DefaultReleaseRollbackLogLevel = log.InfoLevel
 )
 
 type ReleaseRollbackOptions struct {
@@ -130,338 +129,267 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		return fmt.Errorf("construct kube client factory: %w", err)
 	}
 
-	releaseStorage, err := release.NewReleaseStorage(
-		ctx,
-		releaseNamespace,
-		opts.ReleaseStorageDriver,
-		release.ReleaseStorageOptions{
-			StaticClient:        clientFactory.Static().(*kubernetes.Clientset),
-			HistoryLimit:        opts.ReleaseHistoryLimit,
-			SQLConnectionString: opts.SQLConnectionString,
-		},
-	)
+	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, clientFactory, release.ReleaseStorageOptions{
+		HistoryLimit:        opts.ReleaseHistoryLimit,
+		SQLConnectionString: opts.SQLConnectionString,
+	})
 	if err != nil {
 		return fmt.Errorf("construct release storage: %w", err)
 	}
 
 	var lockManager *lock.LockManager
-	if m, err := lock.NewLockManager(
-		releaseNamespace,
-		false,
-		clientFactory.Static(),
-		clientFactory.Dynamic(),
-	); err != nil {
+	if m, err := lock.NewLockManager(releaseNamespace, false, clientFactory); err != nil {
 		return fmt.Errorf("construct lock manager: %w", err)
 	} else {
 		lockManager = m
 	}
 
-	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Starting rollback of release")+" %q (namespace: %q)", releaseName, releaseNamespace)
+	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Start rollback of release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
 	if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
 		return fmt.Errorf("lock release: %w", err)
 	} else {
-		defer lockManager.Unlock(lock)
+		defer func() {
+			_ = lockManager.Unlock(lock)
+		}()
 	}
 
-	log.Default.Debug(ctx, "Constructing release history")
-	history, err := release.NewHistory(
-		releaseName,
-		releaseNamespace,
-		releaseStorage,
-		release.HistoryOptions{
-			Mapper:          clientFactory.Mapper(),
-			DiscoveryClient: clientFactory.Discovery(),
-		},
-	)
+	log.Default.Debug(ctx, "Build release history")
+
+	history, err := release.BuildHistory(releaseName, releaseStorage, release.HistoryOptions{})
 	if err != nil {
-		return fmt.Errorf("construct release history: %w", err)
+		return fmt.Errorf("build release history: %w", err)
 	}
 
-	prevRelease, prevReleaseFound, err := history.LastRelease()
-	if err != nil {
-		return fmt.Errorf("get last release: %w", err)
-	} else if !prevReleaseFound {
+	releases := history.Releases()
+	if len(releases) == 0 {
 		return fmt.Errorf("not found release %q (namespace: %q)", releaseName, releaseNamespace)
 	}
 
-	prevDeployedRelease, _, err := history.LastDeployedRelease()
-	if err != nil {
-		return fmt.Errorf("get last deployed release: %w", err)
-	}
+	deployedReleases := history.FindAllDeployed()
+	prevRelease := lo.LastOrEmpty(releases)
+	prevDeployedRelease := lo.LastOrEmpty(deployedReleases)
 
-	var releaseToRollback *release.Release
+	var rollbackRelease *helmrelease.Release
 	if opts.Revision == 0 {
-		prevDeployedReleaseExceptLastRelease, found, err := history.LastDeployedReleaseExceptLastRelease()
-		if err != nil {
-			return fmt.Errorf("get last deployed release except last release: %w", err)
+		if len(deployedReleases) == 0 {
+			return fmt.Errorf("not found successfully deployed release %q (namespace: %q)", releaseName, releaseNamespace)
 		}
 
-		if !found {
-			return fmt.Errorf("not found successfully deployed (except last) release %q (namespace: %q)", releaseName, releaseNamespace)
-		}
+		if prevDeployedRelease.Version != prevRelease.Version {
+			rollbackRelease = prevDeployedRelease
+		} else {
+			if len(deployedReleases) < 2 {
+				return fmt.Errorf("not found successfully deployed (except last) release %q (namespace: %q)", releaseName, releaseNamespace)
+			}
 
-		releaseToRollback = prevDeployedReleaseExceptLastRelease
+			rollbackRelease = deployedReleases[len(deployedReleases)-2]
+		}
 	} else {
 		var found bool
-		releaseToRollback, found, err = history.Release(opts.Revision)
-		if err != nil {
-			return fmt.Errorf("get release revision %q: %w", opts.Revision, err)
-		} else if !found {
+
+		rollbackRelease, found = lo.Find(releases, func(rel *helmrelease.Release) bool {
+			return rel.Version == opts.Revision
+		})
+		if !found {
 			return fmt.Errorf("not found revision %q for release %q (namespace: %q)", opts.Revision, releaseName, releaseNamespace)
 		}
 	}
 
-	var newRevision int
-	var firstDeployed time.Time
-	if prevReleaseFound {
-		newRevision = prevRelease.Revision() + 1
-		firstDeployed = prevRelease.FirstDeployed()
+	var (
+		newRevision       int
+		prevReleaseFailed bool
+	)
+
+	if prevRelease != nil {
+		newRevision = prevRelease.Version + 1
+		prevReleaseFailed = prevRelease.IsStatusFailed()
 	} else {
 		newRevision = 1
 	}
 
 	deployType := common.DeployTypeRollback
-	notes := releaseToRollback.Notes()
 
-	log.Default.Debug(ctx, "Processing rollback resources")
-	resProcessor := resourceinfo.NewDeployableResourcesProcessor(
-		deployType,
-		releaseName,
-		releaseNamespace,
-		nil,
-		releaseToRollback.HookResources(),
-		releaseToRollback.GeneralResources(),
-		nil,
-		prevRelease.GeneralResources(),
-		resourceinfo.DeployableResourcesProcessorOptions{
-			NetworkParallelism: opts.NetworkParallelism,
-			ForceAdoption:      opts.ForceAdoption,
-			DeployableHookResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(
-					opts.ExtraRuntimeAnnotations, nil,
-				),
-			},
-			DeployableGeneralResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(
-					opts.ExtraRuntimeAnnotations, nil,
-				),
-			},
-			KubeClient:         clientFactory.KubeClient(),
-			Mapper:             clientFactory.Mapper(),
-			DiscoveryClient:    clientFactory.Discovery(),
-			AllowClusterAccess: true,
-		},
-	)
+	log.Default.Debug(ctx, "Convert release to resource specs")
 
-	if err := resProcessor.Process(ctx); err != nil {
-		return fmt.Errorf("process resources: %w", err)
-	}
-
-	log.Default.Debug(ctx, "Constructing new rollback release")
-	newRel, err := release.NewRelease(
-		releaseName,
-		releaseNamespace,
-		newRevision,
-		releaseToRollback.OverrideValues(),
-		releaseToRollback.LegacyChart(),
-		resProcessor.ReleasableHookResources(),
-		resProcessor.ReleasableGeneralResources(),
-		notes,
-		release.ReleaseOptions{
-			InfoAnnotations: releaseToRollback.InfoAnnotations(),
-			FirstDeployed:   firstDeployed,
-			Mapper:          clientFactory.Mapper(),
-			Labels:          releaseToRollback.Labels(),
-		},
-	)
+	rollbackReleaseResSpecs, err := release.ReleaseToResourceSpecs(rollbackRelease, releaseNamespace)
 	if err != nil {
-		return fmt.Errorf("construct new rollback release: %w", err)
+		return fmt.Errorf("convert release to rollback to resource specs: %w", err)
 	}
 
-	taskStore := statestore.NewTaskStore()
-	logStore := kubeutil.NewConcurrent(
-		logstore.NewLogStore(),
-	)
-	watchErrCh := make(chan error, 1)
-	informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
+	newRelease, err := release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, rollbackReleaseResSpecs, rollbackRelease.Chart, rollbackRelease.Config, release.ReleaseOptions{
+		InfoAnnotations: rollbackRelease.Info.Annotations,
+		Labels:          rollbackRelease.Labels,
+		Notes:           rollbackRelease.Info.Notes,
+	})
+	if err != nil {
+		return fmt.Errorf("construct new release: %w", err)
+	}
 
-	log.Default.Debug(ctx, "Constructing new rollback plan")
-	deployPlanBuilder := plan.NewDeployPlanBuilder(
-		releaseNamespace,
-		deployType,
-		taskStore,
-		logStore,
-		informerFactory,
-		resProcessor.DeployableStandaloneCRDsInfos(),
-		resProcessor.DeployableHookResourcesInfos(),
-		resProcessor.DeployableGeneralResourcesInfos(),
-		resProcessor.DeployablePrevReleaseGeneralResourcesInfos(),
-		newRel,
-		history,
-		clientFactory.KubeClient(),
-		clientFactory.Static(),
-		clientFactory.Dynamic(),
-		clientFactory.Discovery(),
-		clientFactory.Mapper(),
-		plan.DeployPlanBuilderOptions{
-			IgnoreLogs:          opts.NoPodLogs,
-			PrevRelease:         prevRelease,
-			PrevDeployedRelease: prevDeployedRelease,
-			CreationTimeout:     opts.TrackCreationTimeout,
-			ReadinessTimeout:    opts.TrackReadinessTimeout,
-			DeletionTimeout:     opts.TrackDeletionTimeout,
-		},
-	)
+	log.Default.Debug(ctx, "Convert previous release to resource specs")
 
-	deployPlan, planBuildErr := deployPlanBuilder.Build(ctx)
-	if planBuildErr != nil {
-		var graphPath string
-		if opts.RollbackGraphPath != "" {
-			graphPath = opts.RollbackGraphPath
-		} else {
-			graphPath = filepath.Join(opts.TempDirPath, "release-rollback-graph.dot")
-		}
+	prevRelResSpecs, err := release.ReleaseToResourceSpecs(prevRelease, releaseNamespace)
+	if err != nil {
+		return fmt.Errorf("convert previous release to resource specs: %w", err)
+	}
 
-		if _, err := os.Create(graphPath); err != nil {
-			log.Default.Error(ctx, "Error: create release rollback graph file: %s", err)
-			return fmt.Errorf("build release rollback plan: %w", planBuildErr)
-		}
+	log.Default.Debug(ctx, "Convert new release to resource specs")
 
-		if err := deployPlan.SaveDOT(graphPath); err != nil {
-			log.Default.Error(ctx, "Error: save release rollback graph: %s", err)
-		}
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace)
+	if err != nil {
+		return fmt.Errorf("convert new release to resource specs: %w", err)
+	}
 
-		log.Default.Warn(ctx, "Release rollback graph saved to %q for debugging", graphPath)
+	log.Default.Debug(ctx, "Build resources")
 
-		return fmt.Errorf("build release rollback plan: %w", planBuildErr)
+	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
+		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
+		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
+	}, clientFactory, resource.BuildResourcesOptions{
+		Remote: true,
+	})
+	if err != nil {
+		return fmt.Errorf("build resources: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Locally validate resources")
+
+	if err := resource.ValidateLocal(releaseNamespace, instResources); err != nil {
+		return fmt.Errorf("locally validate resources: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Build resource infos")
+
+	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, opts.NetworkParallelism)
+	if err != nil {
+		return fmt.Errorf("build resource infos: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Remotely validate resources")
+
+	if err := plan.ValidateRemote(releaseName, releaseNamespace, instResInfos, opts.ForceAdoption); err != nil {
+		return fmt.Errorf("remotely validate resources: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Build release infos")
+
+	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, releases, newRelease)
+	if err != nil {
+		return fmt.Errorf("build release infos: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Build install plan")
+
+	installPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos)
+	if err != nil {
+		handleBuildPlanErr(ctx, installPlan, err, opts.RollbackGraphPath, opts.TempDirPath, "release-rollback-graph.dot")
+		return fmt.Errorf("build install plan: %w", err)
 	}
 
 	if opts.RollbackGraphPath != "" {
-		if err := deployPlan.SaveDOT(opts.RollbackGraphPath); err != nil {
-			return fmt.Errorf("save release rollback graph: %w", err)
+		if err := savePlanAsDot(installPlan, opts.RollbackGraphPath); err != nil {
+			return fmt.Errorf("save release install graph: %w", err)
 		}
 	}
 
-	var releaseUpToDate bool
-	if prevReleaseFound {
-		releaseUpToDate, err = release.ReleaseUpToDate(prevRelease, newRel)
-		if err != nil {
-			return fmt.Errorf("check if release is up to date: %w", err)
-		}
-	}
-
-	planUseless, err := deployPlan.Useless()
+	releaseIsUpToDate, err := release.IsReleaseUpToDate(prevRelease, newRelease)
 	if err != nil {
-		return fmt.Errorf("check if release rollback plan will do anything useful: %w", err)
+		return fmt.Errorf("check if release is up to date: %w", err)
 	}
 
-	if releaseUpToDate && planUseless {
+	installPlanIsUseless := lo.NoneBy(installPlan.Operations(), func(op *plan.Operation) bool {
+		switch op.Category {
+		case plan.OperationCategoryResource, plan.OperationCategoryTrack:
+			return true
+		default:
+			return false
+		}
+	})
+
+	if releaseIsUpToDate && installPlanIsUseless {
 		if opts.RollbackReportPath != "" {
-			newRel.Skip()
-
-			report := newReport(nil, nil, nil, newRel)
-
-			if err := report.Save(opts.RollbackReportPath); err != nil {
-				log.Default.Error(ctx, "Error: save release rollback report: %s", err)
+			if err := saveReport(opts.RollbackReportPath, &releaseReportV3{
+				Version:   3,
+				Release:   releaseName,
+				Namespace: releaseNamespace,
+				Revision:  newRelease.Version,
+				Status:    helmrelease.StatusSkipped,
+			}); err != nil {
+				return fmt.Errorf("save release install report: %w", err)
 			}
 		}
 
-		printNotes(ctx, notes)
+		printNotes(ctx, newRelease.Info.Notes)
 
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped rollback of release %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)))
 
 		return nil
 	}
 
-	tablesBuilder := track.NewTablesBuilder(
-		taskStore,
-		logStore,
-		track.TablesBuilderOptions{
-			DefaultNamespace: releaseNamespace,
-		},
-	)
+	taskStore := kdutil.NewConcurrent(statestore.NewTaskStore())
+	logStore := kdutil.NewConcurrent(logstore.NewLogStore())
+	watchErrCh := make(chan error, 1)
+	informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
 
-	log.Default.Debug(ctx, "Starting tracking")
+	log.Default.Debug(ctx, "Start tracking")
+
 	go func() {
 		if err := <-watchErrCh; err != nil {
 			ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
 		}
 	}()
 
-	var progressPrinter *progressPrinter
+	var progressPrinter *track.ProgressTablesPrinter
 	if !opts.NoProgressTablePrint {
-		progressPrinter = newProgressPrinter()
-		progressPrinter.Start(ctx, opts.ProgressTablePrintInterval, tablesBuilder)
+		progressPrinter = track.NewProgressTablesPrinter(taskStore, logStore, track.ProgressTablesPrinterOptions{
+			DefaultNamespace: releaseNamespace,
+		})
+		progressPrinter.Start(ctx, opts.ProgressTablePrintInterval)
 	}
-
-	log.Default.Debug(ctx, "Executing release rollback plan")
-	planExecutor := plan.NewPlanExecutor(
-		deployPlan,
-		plan.PlanExecutorOptions{
-			NetworkParallelism: opts.NetworkParallelism,
-		},
-	)
 
 	var criticalErrs, nonCriticalErrs []error
 
-	planExecutionErr := planExecutor.Execute(ctx)
-	if planExecutionErr != nil {
-		criticalErrs = append(criticalErrs, fmt.Errorf("execute release rollback plan: %w", planExecutionErr))
+	log.Default.Debug(ctx, "Execute release install plan")
+
+	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, installPlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
+		NetworkParallelism: opts.NetworkParallelism,
+		ReadinessTimeout:   opts.TrackReadinessTimeout,
+		PresenceTimeout:    opts.TrackCreationTimeout,
+		AbsenceTimeout:     opts.TrackDeletionTimeout,
+	})
+	if executePlanErr != nil {
+		criticalErrs = append(criticalErrs, fmt.Errorf("execute release install plan: %w", executePlanErr))
 	}
 
-	var worthyCompletedOps []operation.Operation
-	if ops, found, err := deployPlan.WorthyCompletedOperations(); err != nil {
-		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful completed operations: %w", err))
-	} else if found {
-		worthyCompletedOps = ops
-	}
+	resourceOps := lo.Filter(installPlan.Operations(), func(op *plan.Operation, _ int) bool {
+		return op.Category == plan.OperationCategoryResource
+	})
 
-	var worthyCanceledOps []operation.Operation
-	if ops, found, err := deployPlan.WorthyCanceledOperations(); err != nil {
-		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful canceled operations: %w", err))
-	} else if found {
-		worthyCanceledOps = ops
-	}
+	completedResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
+		return op.Status == plan.OperationStatusCompleted
+	})
 
-	var worthyFailedOps []operation.Operation
-	if ops, found, err := deployPlan.WorthyFailedOperations(); err != nil {
-		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful failed operations: %w", err))
-	} else if found {
-		worthyFailedOps = ops
-	}
+	canceledResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
+		return op.Status == plan.OperationStatusPending || op.Status == plan.OperationStatusUnknown
+	})
 
-	var pendingReleaseCreated bool
-	if ops, found, err := deployPlan.OperationsMatch(regexp.MustCompile(fmt.Sprintf(`^%s/%s$`, operation.TypeCreatePendingReleaseOperation, newRel.ID()))); err != nil {
-		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get pending release operation: %w", err))
-	} else if !found {
-		panic("no pending release operation found")
-	} else {
-		pendingReleaseCreated = ops[0].Status() == operation.StatusCompleted
-	}
+	failedResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
+		return op.Status == plan.OperationStatusFailed
+	})
 
-	if planExecutionErr != nil && pendingReleaseCreated {
-		wcompops, wfailops, wcancops, criterrs, noncriterrs := runFailureDeployPlan(
-			ctx,
-			releaseName,
-			releaseNamespace,
-			deployType,
-			deployPlan,
-			taskStore,
-			informerFactory,
-			resProcessor,
-			newRel,
-			prevRelease,
-			history,
-			clientFactory,
-			opts.NetworkParallelism,
-		)
+	if executePlanErr != nil {
+		runFailurePlanResult, nonCritErrs, critErrs := runFailurePlan(ctx, releaseNamespace, installPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
+			NetworkParallelism:    opts.NetworkParallelism,
+			TrackReadinessTimeout: opts.TrackReadinessTimeout,
+			TrackCreationTimeout:  opts.TrackCreationTimeout,
+			TrackDeletionTimeout:  opts.TrackDeletionTimeout,
+		})
 
-		worthyCompletedOps = append(worthyCompletedOps, wcompops...)
-		worthyFailedOps = append(worthyFailedOps, wfailops...)
-		worthyCanceledOps = append(worthyCanceledOps, wcancops...)
-		criticalErrs = append(criticalErrs, criterrs...)
-		nonCriticalErrs = append(nonCriticalErrs, noncriterrs...)
+		criticalErrs = append(criticalErrs, critErrs...)
+		nonCriticalErrs = append(nonCriticalErrs, nonCritErrs...)
+		completedResourceOps = append(completedResourceOps, runFailurePlanResult.CompletedResourceOps...)
+		canceledResourceOps = append(canceledResourceOps, runFailurePlanResult.CanceledResourceOps...)
+		failedResourceOps = append(failedResourceOps, runFailurePlanResult.FailedResourceOps...)
 	}
 
 	if !opts.NoProgressTablePrint {
@@ -469,23 +397,43 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		progressPrinter.Wait()
 	}
 
-	report := newReport(
-		worthyCompletedOps,
-		worthyCanceledOps,
-		worthyFailedOps,
-		newRel,
-	)
+	reportCompletedOps := lo.Map(completedResourceOps, func(op *plan.Operation, _ int) string {
+		return op.IDHuman()
+	})
 
-	report.Print(ctx)
+	reportCanceledOps := lo.Map(canceledResourceOps, func(op *plan.Operation, _ int) string {
+		return op.IDHuman()
+	})
+
+	reportFailedOps := lo.Map(failedResourceOps, func(op *plan.Operation, _ int) string {
+		return op.IDHuman()
+	})
+
+	sort.Strings(reportCompletedOps)
+	sort.Strings(reportCanceledOps)
+	sort.Strings(reportFailedOps)
+
+	report := &releaseReportV3{
+		Version:             3,
+		Release:             releaseName,
+		Namespace:           releaseNamespace,
+		Revision:            newRelease.Version,
+		Status:              helmrelease.StatusDeployed,
+		CompletedOperations: reportCompletedOps,
+		CanceledOperations:  reportCanceledOps,
+		FailedOperations:    reportFailedOps,
+	}
+
+	printReport(ctx, report)
 
 	if opts.RollbackReportPath != "" {
-		if err := report.Save(opts.RollbackReportPath); err != nil {
-			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("save release rollback report: %w", err))
+		if err := saveReport(opts.RollbackReportPath, report); err != nil {
+			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("save release install report: %w", err))
 		}
 	}
 
 	if len(criticalErrs) == 0 {
-		printNotes(ctx, notes)
+		printNotes(ctx, newRelease.Info.Notes)
 	}
 
 	if len(criticalErrs) > 0 {
@@ -499,10 +447,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	}
 }
 
-func applyReleaseRollbackOptionsDefaults(
-	opts ReleaseRollbackOptions,
-	homeDir string,
-) (ReleaseRollbackOptions, error) {
+func applyReleaseRollbackOptionsDefaults(opts ReleaseRollbackOptions, homeDir string) (ReleaseRollbackOptions, error) {
 	var err error
 	if opts.TempDirPath == "" {
 		opts.TempDirPath, err = os.MkdirTemp("", "")
@@ -535,9 +480,10 @@ func applyReleaseRollbackOptionsDefaults(
 		opts.ReleaseHistoryLimit = DefaultReleaseHistoryLimit
 	}
 
-	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {
+	switch opts.ReleaseStorageDriver {
+	case ReleaseStorageDriverDefault:
 		opts.ReleaseStorageDriver = ReleaseStorageDriverSecrets
-	} else if opts.ReleaseStorageDriver == ReleaseStorageDriverMemory {
+	case ReleaseStorageDriverMemory:
 		return ReleaseRollbackOptions{}, fmt.Errorf("memory release storage driver is not supported")
 	}
 

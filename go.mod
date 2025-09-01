@@ -16,6 +16,7 @@ require (
 	github.com/evanphx/json-patch v5.8.0+incompatible
 	github.com/fluxcd/flagger v1.36.1
 	github.com/goccy/go-yaml v1.15.23
+	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/gookit/color v1.5.4
 	github.com/hashicorp/go-multierror v1.1.1
@@ -23,6 +24,7 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.5.5
 	github.com/jellydator/ttlcache/v3 v3.1.1
 	github.com/looplab/fsm v1.0.2
+	github.com/mitchellh/copystructure v1.2.0
 	github.com/moby/term v0.5.0
 	github.com/ohler55/ojg v1.26.7
 	github.com/onsi/ginkgo/v2 v2.20.1
@@ -36,9 +38,9 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.5.0
-	github.com/werf/3p-helm v0.0.0-20250731134240-58a9eff8ec5b
+	github.com/werf/3p-helm v0.0.0-20251008125713-ebc656a7ccc7
 	github.com/werf/common-go v0.0.0-20250520111308-b0eda28dde0d
-	github.com/werf/kubedog v0.13.1-0.20250813095923-12d70b6780b0
+	github.com/werf/kubedog v0.13.1-0.20251008125513-7b4fcf23698a
 	github.com/werf/lockgate v0.1.1
 	github.com/werf/logboek v0.6.1
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e
@@ -99,7 +101,6 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/gnostic-models v0.6.9-0.20230804172637-c7be7c783f49 // indirect
-	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/pprof v0.0.0-20241029153458-d1b30febd7db // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
@@ -123,7 +124,6 @@ require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
-	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/moby/locker v1.0.1 // indirect
