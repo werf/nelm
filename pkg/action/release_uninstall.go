@@ -183,7 +183,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		log.Default.Debug(ctx, "Constructing release history")
-		history, err := release.NewHistory(
+		history, err := release.BuildHistory(
 			releaseName,
 			releaseNamespace,
 			releaseStorage,
@@ -328,21 +328,21 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			criticalErrs = append(criticalErrs, fmt.Errorf("execute release uninstall plan: %w", planExecutionErr))
 		}
 
-		var worthyCompletedOps []operation.Operation
+		var worthyCompletedOps []operation.FixmeOperation
 		if ops, found, err := uninstallPlan.WorthyCompletedOperations(); err != nil {
 			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful completed operations: %w", err))
 		} else if found {
 			worthyCompletedOps = ops
 		}
 
-		var worthyCanceledOps []operation.Operation
+		var worthyCanceledOps []operation.FixmeOperation
 		if ops, found, err := uninstallPlan.WorthyCanceledOperations(); err != nil {
 			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful canceled operations: %w", err))
 		} else if found {
 			worthyCanceledOps = ops
 		}
 
-		var worthyFailedOps []operation.Operation
+		var worthyFailedOps []operation.FixmeOperation
 		if ops, found, err := uninstallPlan.WorthyFailedOperations(); err != nil {
 			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful failed operations: %w", err))
 		} else if found {
@@ -435,7 +435,7 @@ func isReleaseNamespaceExist(ctx context.Context, clientFactory *kube.ClientFact
 			TryCache: true,
 		},
 	); err != nil {
-		if api_errors.IsNotFound(err) {
+		if kube.IsNotFoundErr(err) {
 			return false, nil
 		} else {
 			return false, fmt.Errorf("get release namespace: %w", err)

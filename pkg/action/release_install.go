@@ -249,7 +249,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	log.Default.Debug(ctx, "Constructing release history")
-	history, err := release.NewHistory(
+	history, err := release.BuildHistory(
 		releaseName,
 		releaseNamespace,
 		releaseStorage,
@@ -291,14 +291,14 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	log.Default.Debug(ctx, "Constructing chart tree")
-	chartTree, err := chart.NewChartTree(
+	chartTree, err := chart.RenderChart(
 		ctx,
 		opts.Chart,
 		releaseName,
 		releaseNamespace,
 		newRevision,
 		deployType,
-		chart.ChartTreeOptions{
+		chart.RenderChartOptions{
 			ChartRepoInsecure:      opts.ChartRepositoryInsecure,
 			ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
 			ChartRepoSkipUpdate:    opts.ChartRepositorySkipUpdate,
@@ -323,54 +323,94 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	notes := chartTree.Notes()
 
-	var prevRelGeneralResources []*resource.GeneralResource
+	var prevRelResources []*resource.DeletableResource
+	var prevRelFailed bool
 	if prevReleaseFound {
-		prevRelGeneralResources = prevRelease.GeneralResources()
+		prevRelResources = prevRelease.InstallableResources()
+		prevRelFailed = prevRelease.Failed()
 	}
 
-	log.Default.Debug(ctx, "Processing resources")
-	resProcessor := resourceinfo.NewDeployableResourcesProcessor(
+	log.Default.Debug(ctx, "Build transformed resources")
+	transformedResSpecs, err := resourceinfo.BuildTransformedResourceSpecs(
+		ctx,
+		releaseNamespace,
+		chartTree.Resources(),
+		[]resource.ResourceTransformer{
+			resource.NewResourceListsTransformer(),
+			resource.NewDropInvalidAnnotationsAndLabelsTransformer(),
+		},
+		clientFactory.Discovery(),
+		clientFactory.Mapper(),
+	)
+	if err != nil {
+		return fmt.Errorf("build transformed resources: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Locally validate resources")
+	if err := resourceinfo.ValidateLocal(
+		releaseNamespace,
+		transformedResSpecs,
+		clientFactory.Mapper(),
+	); err != nil {
+		return fmt.Errorf("locally validate resources: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Build releasable resources")
+	releasableResSpecs, err := resourceinfo.BuildReleasableResourceSpecs(
+		ctx,
+		releaseNamespace,
+		transformedResSpecs,
+		[]resource.ResourcePatcher{
+			resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+		},
+		clientFactory.Discovery(),
+		clientFactory.Mapper(),
+	)
+	if err != nil {
+		return fmt.Errorf("build releasable resources: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Build deployable resources")
+	deployableResources, err := resourceinfo.BuildDeployableResources(
+		ctx,
 		deployType,
+		releaseNamespace,
+		releasableResSpecs,
+		[]resource.ResourcePatcher{
+			resource.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
+			resource.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
+		},
+		clientFactory.Discovery(),
+		clientFactory.Mapper(),
+	)
+	if err != nil {
+		return fmt.Errorf("build deployable resources: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Build deployable resource infos")
+	installableResourceInfos, deletableResourceInfos, err := resourceinfo.BuildDeployableResourceInfos(
+		ctx,
 		releaseName,
 		releaseNamespace,
-		chartTree.StandaloneCRDs(),
-		chartTree.HookResources(),
-		chartTree.GeneralResources(),
-		nil,
-		prevRelGeneralResources,
-		resourceinfo.DeployableResourcesProcessorOptions{
-			NetworkParallelism: opts.NetworkParallelism,
-			ReleasableHookResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-			},
-			ReleasableGeneralResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-			},
-			DeployableStandaloneCRDsPatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(
-					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
-				),
-			},
-			DeployableHookResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(
-					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
-				),
-			},
-			DeployableGeneralResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(
-					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
-				),
-			},
-			KubeClient:         clientFactory.KubeClient(),
-			Mapper:             clientFactory.Mapper(),
-			DiscoveryClient:    clientFactory.Discovery(),
-			AllowClusterAccess: true,
-			ForceAdoption:      opts.ForceAdoption,
-		},
+		deployableResources,
+		prevRelResources,
+		prevRelFailed,
+		clientFactory.KubeClient(),
+		clientFactory.Mapper(),
+		opts.NetworkParallelism,
 	)
+	if err != nil {
+		return fmt.Errorf("build deployable resource infos: %w", err)
+	}
 
-	if err := resProcessor.Process(ctx); err != nil {
-		return fmt.Errorf("process resources: %w", err)
+	log.Default.Debug(ctx, "Remotely validate resources")
+	if err := resourceinfo.ValidateRemote(
+		releaseName,
+		releaseNamespace,
+		installableResourceInfos,
+		opts.ForceAdoption,
+	); err != nil {
+		return fmt.Errorf("remotely validate resources: %w", err)
 	}
 
 	log.Default.Debug(ctx, "Constructing new release")
@@ -525,21 +565,21 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		criticalErrs = append(criticalErrs, fmt.Errorf("execute release install plan: %w", planExecutionErr))
 	}
 
-	var worthyCompletedOps []operation.Operation
+	var worthyCompletedOps []operation.FixmeOperation
 	if ops, found, err := deployPlan.WorthyCompletedOperations(); err != nil {
 		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful completed operations: %w", err))
 	} else if found {
 		worthyCompletedOps = ops
 	}
 
-	var worthyCanceledOps []operation.Operation
+	var worthyCanceledOps []operation.FixmeOperation
 	if ops, found, err := deployPlan.WorthyCanceledOperations(); err != nil {
 		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful canceled operations: %w", err))
 	} else if found {
 		worthyCanceledOps = ops
 	}
 
-	var worthyFailedOps []operation.Operation
+	var worthyFailedOps []operation.FixmeOperation
 	if ops, found, err := deployPlan.WorthyFailedOperations(); err != nil {
 		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful failed operations: %w", err))
 	} else if found {
@@ -600,6 +640,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 				opts.TrackDeletionTimeout,
 				opts.RollbackGraphPath,
 				opts.NetworkParallelism,
+				opts.ForceAdoption,
 			)
 
 			worthyCompletedOps = append(worthyCompletedOps, wcompops...)
@@ -738,7 +779,7 @@ func createReleaseNamespace(
 			TryCache: true,
 		},
 	); err != nil {
-		if errors.IsNotFound(err) {
+		if kube.IsNotFoundErr(err) {
 			log.Default.Debug(ctx, "Creating release namespace %q", releaseNamespace)
 
 			createOp := operation.NewCreateResourceOperation(
@@ -746,7 +787,7 @@ func createReleaseNamespace(
 				releaseNamespaceResource.Unstructured(),
 				clientFactory.KubeClient(),
 				operation.CreateResourceOperationOptions{
-					ManageableBy: resource.ManageableByAnyone,
+					ManageableBy: common.OwnershipEveryone,
 				},
 			)
 
@@ -779,7 +820,7 @@ func runFailureDeployPlan(
 	releaseName string,
 	releaseNamespace string,
 	deployType common.DeployType,
-	failedPlan *plan.Plan,
+	failedPlan *plan.FixmePlan,
 	taskStore *statestore.TaskStore,
 	informerFactory *kubeutil.Concurrent[*informer.InformerFactory],
 	resProcessor *resourceinfo.DeployableResourcesProcessor,
@@ -788,9 +829,9 @@ func runFailureDeployPlan(
 	clientFactory *kube.ClientFactory,
 	networkParallelism int,
 ) (
-	worthyCompletedOps []operation.Operation,
-	worthyFailedOps []operation.Operation,
-	worthyCanceledOps []operation.Operation,
+	worthyCompletedOps []operation.FixmeOperation,
+	worthyFailedOps []operation.FixmeOperation,
+	worthyCanceledOps []operation.FixmeOperation,
 	criticalErrs []error,
 	nonCriticalErrs []error,
 ) {
@@ -879,10 +920,11 @@ func runRollbackPlan(
 	trackDeletionTimeout time.Duration,
 	rollbackGraphPath string,
 	networkParallelism int,
+	forceAdoption bool,
 ) (
-	worthyCompletedOps []operation.Operation,
-	worthyFailedOps []operation.Operation,
-	worthyCanceledOps []operation.Operation,
+	worthyCompletedOps []operation.FixmeOperation,
+	worthyFailedOps []operation.FixmeOperation,
+	worthyCanceledOps []operation.FixmeOperation,
 	notes string,
 	criticalErrs []error,
 	nonCriticalErrs []error,
@@ -899,31 +941,17 @@ func runRollbackPlan(
 		failedRelease.GeneralResources(),
 		resourceinfo.DeployableResourcesProcessorOptions{
 			NetworkParallelism: networkParallelism,
-			ReleasableHookResourcePatchers: []resource.ResourcePatcher{
+			ExtraReleasableResourcePatchers: []resource.ResourcePatcher{
 				resource.NewExtraMetadataPatcher(userExtraAnnotations, userExtraLabels),
 			},
-			ReleasableGeneralResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(userExtraAnnotations, userExtraLabels),
-			},
-			DeployableStandaloneCRDsPatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(
-					lo.Assign(userExtraAnnotations, serviceAnnotations), userExtraLabels,
-				),
-			},
-			DeployableHookResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(
-					lo.Assign(userExtraAnnotations, serviceAnnotations), userExtraLabels,
-				),
-			},
-			DeployableGeneralResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(
-					lo.Assign(userExtraAnnotations, serviceAnnotations), userExtraLabels,
-				),
+			ExtraDeployableResourcePatchers: []resource.ResourcePatcher{
+				resource.NewExtraMetadataPatcher(serviceAnnotations, nil),
 			},
 			KubeClient:         clientFactory.KubeClient(),
 			Mapper:             clientFactory.Mapper(),
 			DiscoveryClient:    clientFactory.Discovery(),
 			AllowClusterAccess: true,
+			ForceAdoption:      forceAdoption,
 		},
 	)
 

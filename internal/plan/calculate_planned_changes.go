@@ -121,7 +121,7 @@ func standaloneCRDChanges(infos []*info.DeployableStandaloneCRDInfo) (changes []
 
 func hookResourcesChanges(infos []*info.DeployableHookResourceInfo, prevRelFailed bool, releaseName, releaseNamespace string) (changes []any, present bool) {
 	for _, info := range infos {
-		isCrd := util.IsCRDFromGK(info.ResourceID.GroupVersionKind().GroupKind())
+		isCrd := resource.IsCRD(info.ResourceID.GroupVersionKind().GroupKind())
 		sensitiveInfo := resource.GetSensitiveInfo(info.ResourceID.GroupVersionKind().GroupKind(), info.Resource().Unstructured().GetAnnotations())
 		create := info.ShouldCreate()
 		recreate := info.ShouldRecreate()
@@ -233,7 +233,7 @@ func hookResourcesChanges(infos []*info.DeployableHookResourceInfo, prevRelFaile
 
 func generalResourcesChanges(infos []*info.DeployableGeneralResourceInfo, prevRelFailed bool, releaseName, releaseNamespace string) (changes []any, present bool) {
 	for _, info := range infos {
-		isCrd := util.IsCRDFromGK(info.ResourceID.GroupVersionKind().GroupKind())
+		isCrd := resource.IsCRD(info.ResourceID.GroupVersionKind().GroupKind())
 		sensitiveInfo := resource.GetSensitiveInfo(info.ResourceID.GroupVersionKind().GroupKind(), info.Resource().Unstructured().GetAnnotations())
 		create := info.ShouldCreate()
 		recreate := info.ShouldRecreate()
@@ -345,7 +345,7 @@ func generalResourcesChanges(infos []*info.DeployableGeneralResourceInfo, prevRe
 
 func prevReleaseGeneralResourcesChanges(infos []*info.DeployablePrevReleaseGeneralResourceInfo, curReleaseExistResourcesUIDs []types.UID, releaseName, releaseNamespace string, deployType common.DeployType) (changes []any, present bool) {
 	for _, info := range infos {
-		isCrd := util.IsCRDFromGK(info.ResourceID.GroupVersionKind().GroupKind())
+		isCrd := resource.IsCRD(info.ResourceID.GroupVersionKind().GroupKind())
 		sensitiveInfo := resource.GetSensitiveInfo(info.ResourceID.GroupVersionKind().GroupKind(), info.Resource().Unstructured().GetAnnotations())
 		delete := info.ShouldDelete(curReleaseExistResourcesUIDs, releaseName, releaseNamespace, deployType)
 

@@ -15,7 +15,5 @@ type ResourceTransformer interface {
 }
 
 type ResourceTransformerResourceInfo struct {
-	Obj          *unstructured.Unstructured
-	Type         Type
-	ManageableBy ManageableBy
+	Obj *unstructured.Unstructured
 }

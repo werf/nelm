@@ -26,8 +26,8 @@ import (
 	"github.com/werf/nelm/internal/plan/operation"
 	info "github.com/werf/nelm/internal/plan/resourceinfo"
 	"github.com/werf/nelm/internal/release"
+	"github.com/werf/nelm/internal/resource"
 	resid "github.com/werf/nelm/internal/resource/id"
-	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -74,7 +74,7 @@ func NewDeployPlanBuilder(
 	mapper meta.ResettableRESTMapper,
 	opts DeployPlanBuilderOptions,
 ) *DeployPlanBuilder {
-	plan := NewPlan()
+	plan := NewFixmePlan()
 
 	preHookResourcesInfos := lo.Filter(hookResourcesInfos, func(info *info.DeployableHookResourceInfo, _ int) bool {
 		switch deployType {
@@ -185,10 +185,10 @@ type DeployPlanBuilder struct {
 	readinessTimeout                time.Duration
 	deletionTimeout                 time.Duration
 
-	plan *Plan
+	plan *FixmePlan
 }
 
-func (b *DeployPlanBuilder) Build(ctx context.Context) (*Plan, error) {
+func (b *DeployPlanBuilder) Build(ctx context.Context) (*FixmePlan, error) {
 	log.Default.Debug(ctx, "Setting up init operations")
 	if err := b.setupInitOperations(); err != nil {
 		return b.plan, fmt.Errorf("error setting up init operations: %w", err)
@@ -259,7 +259,7 @@ func (b *DeployPlanBuilder) setupStandaloneCRDsOperations() error {
 		update := info.ShouldUpdate()
 		apply := info.ShouldApply()
 
-		var opDeploy operation.Operation
+		var opDeploy operation.FixmeOperation
 		if create {
 			opDeploy = operation.NewCreateResourceOperation(
 				info.ResourceID,
@@ -319,7 +319,7 @@ func (b *DeployPlanBuilder) setupPreHookResourcesOperations() error {
 
 	for _, weight := range weights {
 		crdInfos := lo.Filter(weighedInfos[weight], func(info *info.DeployableHookResourceInfo, _ int) bool {
-			return util.IsCRDFromGK(info.GroupVersionKind().GroupKind())
+			return resource.IsCRD(info.GroupVersionKind().GroupKind())
 		})
 		crdsStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixHookCRDs, weight, StageOpNameSuffixStart)
 		crdsStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixHookCRDs, weight, StageOpNameSuffixEnd)
@@ -329,7 +329,7 @@ func (b *DeployPlanBuilder) setupPreHookResourcesOperations() error {
 		}
 
 		resourceInfos := lo.Filter(weighedInfos[weight], func(info *info.DeployableHookResourceInfo, _ int) bool {
-			return !util.IsCRDFromGK(info.GroupVersionKind().GroupKind())
+			return !resource.IsCRD(info.GroupVersionKind().GroupKind())
 		})
 		resourcesStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixHookResources, weight, StageOpNameSuffixStart)
 		resourcesStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixHookResources, weight, StageOpNameSuffixEnd)
@@ -352,7 +352,7 @@ func (b *DeployPlanBuilder) setupPostHookResourcesOperations() error {
 
 	for _, weight := range weights {
 		crdInfos := lo.Filter(weighedInfos[weight], func(info *info.DeployableHookResourceInfo, _ int) bool {
-			return util.IsCRDFromGK(info.GroupVersionKind().GroupKind())
+			return resource.IsCRD(info.GroupVersionKind().GroupKind())
 		})
 		crdsStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixPostHookCRDs, weight, StageOpNameSuffixStart)
 		crdsStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixPostHookCRDs, weight, StageOpNameSuffixEnd)
@@ -362,7 +362,7 @@ func (b *DeployPlanBuilder) setupPostHookResourcesOperations() error {
 		}
 
 		resourceInfos := lo.Filter(weighedInfos[weight], func(info *info.DeployableHookResourceInfo, _ int) bool {
-			return !util.IsCRDFromGK(info.GroupVersionKind().GroupKind())
+			return !resource.IsCRD(info.GroupVersionKind().GroupKind())
 		})
 		resourcesStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixPostHookResources, weight, StageOpNameSuffixStart)
 		resourcesStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixPostHookResources, weight, StageOpNameSuffixEnd)
@@ -385,7 +385,7 @@ func (b *DeployPlanBuilder) setupGeneralResourcesOperations() error {
 
 	for _, weight := range weights {
 		crdInfos := lo.Filter(weighedInfos[weight], func(info *info.DeployableGeneralResourceInfo, _ int) bool {
-			return util.IsCRDFromGK(info.GroupVersionKind().GroupKind())
+			return resource.IsCRD(info.GroupVersionKind().GroupKind())
 		})
 		crdsStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixGeneralCRDs, weight, StageOpNameSuffixStart)
 		crdsStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixGeneralCRDs, weight, StageOpNameSuffixEnd)
@@ -395,7 +395,7 @@ func (b *DeployPlanBuilder) setupGeneralResourcesOperations() error {
 		}
 
 		resourceInfos := lo.Filter(weighedInfos[weight], func(info *info.DeployableGeneralResourceInfo, _ int) bool {
-			return !util.IsCRDFromGK(info.GroupVersionKind().GroupKind())
+			return !resource.IsCRD(info.GroupVersionKind().GroupKind())
 		})
 		resourcesStageStartOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixGeneralResources, weight, StageOpNameSuffixStart)
 		resourcesStageEndOpID := fmt.Sprintf("%s/weight:%d/%s", StageOpNamePrefixGeneralResources, weight, StageOpNameSuffixEnd)
@@ -489,7 +489,7 @@ func (b *DeployPlanBuilder) connectInternalDependencies() error {
 	)
 
 	for _, info := range hookInfos {
-		var opDeploy operation.Operation
+		var opDeploy operation.FixmeOperation
 		if info.ShouldCreate() {
 			opDeploy = lo.Must(b.plan.Operation(operation.TypeCreateResourceOperation + "/" + info.ID()))
 		} else if info.ShouldRecreate() {
@@ -502,8 +502,8 @@ func (b *DeployPlanBuilder) connectInternalDependencies() error {
 			continue
 		}
 
-		autoInternalDeps, _ := info.Resource().AutoInternalDependencies()
-		manualInternalDeps, _ := info.Resource().ManualInternalDependencies()
+		autoInternalDeps := info.Resource().AutoInternalDependencies()
+		manualInternalDeps := info.Resource().ManualInternalDependencies()
 
 		for _, dep := range lo.Union(autoInternalDeps, manualInternalDeps) {
 			var dependOnOpCandidateRegex *regexp.Regexp
@@ -523,7 +523,7 @@ func (b *DeployPlanBuilder) connectInternalDependencies() error {
 				continue
 			}
 
-			dependOnOp, found := lo.Find(dependOnOpCandidates, func(op operation.Operation) bool {
+			dependOnOp, found := lo.Find(dependOnOpCandidates, func(op operation.FixmeOperation) bool {
 				_, id := lo.Must2(strings.Cut(op.ID(), "/"))
 
 				resID := resid.NewResourceIDFromID(id, resid.ResourceIDOptions{
@@ -545,7 +545,7 @@ func (b *DeployPlanBuilder) connectInternalDependencies() error {
 
 	// TODO(ilya-lesikov): almost identical with hooks, refactor
 	for _, info := range b.generalResourcesInfos {
-		var opDeploy operation.Operation
+		var opDeploy operation.FixmeOperation
 		if info.ShouldCreate() {
 			opDeploy = lo.Must(b.plan.Operation(operation.TypeCreateResourceOperation + "/" + info.ID()))
 		} else if info.ShouldRecreate() {
@@ -558,8 +558,8 @@ func (b *DeployPlanBuilder) connectInternalDependencies() error {
 			continue
 		}
 
-		autoInternalDeps, _ := info.Resource().AutoInternalDependencies()
-		manualInternalDeps, _ := info.Resource().ManualInternalDependencies()
+		autoInternalDeps := info.Resource().AutoInternalDependencies()
+		manualInternalDeps := info.Resource().ManualInternalDependencies()
 
 		for _, dep := range lo.Union(autoInternalDeps, manualInternalDeps) {
 			var dependOnOpCandidateRegex *regexp.Regexp
@@ -579,7 +579,7 @@ func (b *DeployPlanBuilder) connectInternalDependencies() error {
 				continue
 			}
 
-			dependOnOp, found := lo.Find(dependOnOpCandidates, func(op operation.Operation) bool {
+			dependOnOp, found := lo.Find(dependOnOpCandidates, func(op operation.FixmeOperation) bool {
 				_, id := lo.Must2(strings.Cut(op.ID(), "/"))
 
 				resID := resid.NewResourceIDFromID(id, resid.ResourceIDOptions{
@@ -698,12 +698,11 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*info.DeployableHookReso
 		if track := info.ShouldTrackReadiness(prevReleaseFailed); track && !extraPost {
 			trackReadiness = true
 		}
-		_, manIntDepsSet := info.Resource().ManualInternalDependencies()
+		manIntDeps := info.Resource().ManualInternalDependencies()
 		var externalDeps []*dependency.ExternalDependency
-		var extDepsSet bool
 		if !extraPost {
 			var err error
-			externalDeps, extDepsSet, err = info.Resource().ExternalDependencies()
+			externalDeps, err = info.Resource().ExternalDependencies()
 			if err != nil {
 				return fmt.Errorf("error getting external dependencies: %w", err)
 			}
@@ -713,7 +712,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*info.DeployableHookReso
 			forceReplicas = &r
 		}
 
-		var opDeploy operation.Operation
+		var opDeploy operation.FixmeOperation
 		if create {
 			opDeploy = operation.NewCreateResourceOperation(
 				info.ResourceID,
@@ -777,7 +776,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*info.DeployableHookReso
 		}
 
 		if opDeploy != nil {
-			if manIntDepsSet {
+			if len(manIntDeps) > 0 {
 				b.plan.AddStagedOperation(
 					opDeploy,
 					StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,
@@ -792,7 +791,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*info.DeployableHookReso
 			}
 		}
 
-		if extDepsSet && opDeploy != nil {
+		if len(externalDeps) > 0 && opDeploy != nil {
 			for _, dep := range externalDeps {
 				taskState, taskStateFound := lo.Find(b.taskStore.PresenceTasksStates(), func(ts *kdutil.Concurrent[*statestore.PresenceTaskState]) bool {
 					var found bool
@@ -842,14 +841,14 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*info.DeployableHookReso
 
 		var opTrackReadiness *operation.TrackResourceReadinessOperation
 		if trackReadiness {
-			logRegex, _ := info.Resource().LogRegex()
-			logRegexesFor, _ := info.Resource().LogRegexesForContainers()
+			logRegex := info.Resource().LogRegex()
+			logRegexesFor := info.Resource().LogRegexesForContainers()
 			showLogsOnlyForNumberOfReplicas := info.Resource().ShowLogsOnlyForNumberOfReplicas()
-			skipLogsFor, _ := info.Resource().SkipLogsForContainers()
-			showLogsOnlyFor, _ := info.Resource().ShowLogsOnlyForContainers()
-			ignoreReadinessProbes, _ := info.Resource().IgnoreReadinessProbeFailsForContainers()
+			skipLogsFor := info.Resource().SkipLogsForContainers()
+			showLogsOnlyFor := info.Resource().ShowLogsOnlyForContainers()
+			ignoreReadinessProbes := info.Resource().IgnoreReadinessProbeFailsForContainers()
 			var noActivityTimeout time.Duration
-			if timeout, set := info.Resource().NoActivityTimeout(); set {
+			if timeout := info.Resource().NoActivityTimeout(); timeout != nil {
 				noActivityTimeout = *timeout
 			}
 
@@ -883,7 +882,7 @@ func (b *DeployPlanBuilder) setupHookOperations(infos []*info.DeployableHookReso
 					SaveEvents:                               info.Resource().ShowServiceMessages(),
 				},
 			)
-			if manIntDepsSet {
+			if len(manIntDeps) > 0 {
 				b.plan.AddStagedOperation(
 					opTrackReadiness,
 					StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,
@@ -967,8 +966,8 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*info.DeployableGener
 		apply := info.ShouldApply()
 		cleanup := info.ShouldCleanup(b.newRelease.Name(), b.releaseNamespace)
 		trackReadiness := info.ShouldTrackReadiness(prevReleaseFailed)
-		_, manIntDepsSet := info.Resource().ManualInternalDependencies()
-		externalDeps, extDepsSet, err := info.Resource().ExternalDependencies()
+		manIntDeps := info.Resource().ManualInternalDependencies()
+		externalDeps, err := info.Resource().ExternalDependencies()
 		if err != nil {
 			return fmt.Errorf("error getting external dependencies: %w", err)
 		}
@@ -977,7 +976,7 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*info.DeployableGener
 			forceReplicas = &r
 		}
 
-		var opDeploy operation.Operation
+		var opDeploy operation.FixmeOperation
 		if create {
 			opDeploy = operation.NewCreateResourceOperation(
 				info.ResourceID,
@@ -1037,7 +1036,7 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*info.DeployableGener
 		}
 
 		if opDeploy != nil {
-			if manIntDepsSet {
+			if len(manIntDeps) > 0 {
 				b.plan.AddStagedOperation(
 					opDeploy,
 					StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,
@@ -1052,7 +1051,7 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*info.DeployableGener
 			}
 		}
 
-		if extDepsSet && opDeploy != nil {
+		if len(externalDeps) > 0 && opDeploy != nil {
 			for _, dep := range externalDeps {
 				taskState, taskStateFound := lo.Find(b.taskStore.PresenceTasksStates(), func(ts *kdutil.Concurrent[*statestore.PresenceTaskState]) bool {
 					var found bool
@@ -1102,14 +1101,14 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*info.DeployableGener
 
 		var opTrackReadiness *operation.TrackResourceReadinessOperation
 		if trackReadiness {
-			logRegex, _ := info.Resource().LogRegex()
-			logRegexesFor, _ := info.Resource().LogRegexesForContainers()
+			logRegex := info.Resource().LogRegex()
+			logRegexesFor := info.Resource().LogRegexesForContainers()
 			showLogsOnlyForNumberOfReplicas := info.Resource().ShowLogsOnlyForNumberOfReplicas()
-			skipLogsFor, _ := info.Resource().SkipLogsForContainers()
-			showLogsOnlyFor, _ := info.Resource().ShowLogsOnlyForContainers()
-			ignoreReadinessProbes, _ := info.Resource().IgnoreReadinessProbeFailsForContainers()
+			skipLogsFor := info.Resource().SkipLogsForContainers()
+			showLogsOnlyFor := info.Resource().ShowLogsOnlyForContainers()
+			ignoreReadinessProbes := info.Resource().IgnoreReadinessProbeFailsForContainers()
 			var noActivityTimeout time.Duration
-			if timeout, set := info.Resource().NoActivityTimeout(); set {
+			if timeout := info.Resource().NoActivityTimeout(); timeout != nil {
 				noActivityTimeout = *timeout
 			}
 
@@ -1143,7 +1142,7 @@ func (b *DeployPlanBuilder) setupGeneralOperations(infos []*info.DeployableGener
 					SaveEvents:                               info.Resource().ShowServiceMessages(),
 				},
 			)
-			if manIntDepsSet {
+			if len(manIntDeps) > 0 {
 				b.plan.AddStagedOperation(
 					opTrackReadiness,
 					StageOpNamePrefixInit+"/"+StageOpNameSuffixEnd,

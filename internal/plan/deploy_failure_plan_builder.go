@@ -17,14 +17,14 @@ import (
 	"github.com/werf/nelm/internal/plan/operation"
 	info "github.com/werf/nelm/internal/plan/resourceinfo"
 	"github.com/werf/nelm/internal/release"
-	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/internal/resource"
 )
 
 func NewDeployFailurePlanBuilder(
 	releaseName string,
 	releaseNamespace string,
 	deployType common.DeployType,
-	deployPlan *Plan,
+	deployPlan *FixmePlan,
 	taskStore *statestore.TaskStore,
 	informerFactory *kdutil.Concurrent[*informer.InformerFactory],
 	hookResourcesInfos []*info.DeployableHookResourceInfo,
@@ -35,7 +35,7 @@ func NewDeployFailurePlanBuilder(
 	mapper meta.ResettableRESTMapper,
 	opts DeployFailurePlanBuilderOptions,
 ) *DeployFailurePlanBuilder {
-	plan := NewPlan()
+	plan := NewFixmePlan()
 
 	return &DeployFailurePlanBuilder{
 		releaseName:          releaseName,
@@ -77,12 +77,12 @@ type DeployFailurePlanBuilder struct {
 	kubeClient           kube.KubeClienter
 	dynamicClient        dynamic.Interface
 	mapper               meta.ResettableRESTMapper
-	deployPlan           *Plan
-	plan                 *Plan
+	deployPlan           *FixmePlan
+	plan                 *FixmePlan
 	deletionTimeout      time.Duration
 }
 
-func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*Plan, error) {
+func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*FixmePlan, error) {
 	if b.newRelease != nil {
 		opFailRelease := operation.NewFailReleaseOperation(b.newRelease, b.history)
 		b.plan.AddOperation(opFailRelease)
@@ -116,7 +116,7 @@ func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*Plan, error) {
 	})
 
 	for _, info := range hookInfos {
-		if !info.ShouldCleanupOnFailed(prevReleaseFailed, b.releaseName, b.releaseNamespace) || util.IsCRDFromGK(info.Resource().GroupVersionKind().GroupKind()) {
+		if !info.ShouldCleanupOnFailed(prevReleaseFailed, b.releaseName, b.releaseNamespace) || resource.IsCRD(info.Resource().GroupVersionKind().GroupKind()) {
 			continue
 		}
 
@@ -162,7 +162,7 @@ func (b *DeployFailurePlanBuilder) Build(ctx context.Context) (*Plan, error) {
 
 	// TODO(ilya-lesikov): same as with hooks, refactor
 	for _, info := range b.generalResourceInfos {
-		if !info.ShouldCleanupOnFailed(prevReleaseFailed, b.releaseName, b.releaseNamespace) || util.IsCRDFromGK(info.Resource().GroupVersionKind().GroupKind()) {
+		if !info.ShouldCleanupOnFailed(prevReleaseFailed, b.releaseName, b.releaseNamespace) || resource.IsCRD(info.Resource().GroupVersionKind().GroupKind()) {
 			continue
 		}
 

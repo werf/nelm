@@ -13,7 +13,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-func NewPlanExecutor(plan *Plan, opts PlanExecutorOptions) *PlanExecutor {
+func NewPlanExecutor(plan *FixmePlan, opts PlanExecutorOptions) *PlanExecutor {
 	return &PlanExecutor{
 		plan:               plan,
 		networkParallelism: lo.Max([]int{opts.NetworkParallelism, 1}),
@@ -25,7 +25,7 @@ type PlanExecutorOptions struct {
 }
 
 type PlanExecutor struct {
-	plan               *Plan
+	plan               *FixmePlan
 	networkParallelism int
 }
 
@@ -91,7 +91,7 @@ func (e *PlanExecutor) execOperation(opID string, completedOpsIDsCh chan string,
 
 		op := lo.Must(e.plan.Operation(opID))
 
-		log.Default.Debug(ctx, util.Capitalize(op.HumanID()))
+		log.Default.Debug(ctx, util.Capitalize(op.IDHuman()))
 		err = op.Execute(ctx)
 		if err != nil {
 			return fmt.Errorf("error executing operation: %w", err)

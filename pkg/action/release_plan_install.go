@@ -205,7 +205,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	log2.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release install")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
 	log2.Default.Debug(ctx, "Constructing release history")
-	history, err := release.NewHistory(
+	history, err := release.BuildHistory(
 		releaseName,
 		releaseNamespace,
 		releaseStorage,
@@ -247,14 +247,14 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	}
 
 	log2.Default.Debug(ctx, "Constructing chart tree")
-	chartTree, err := chart.NewChartTree(
+	chartTree, err := chart.RenderChart(
 		ctx,
 		opts.Chart,
 		releaseName,
 		releaseNamespace,
 		newRevision,
 		deployType,
-		chart.ChartTreeOptions{
+		chart.RenderChartOptions{
 			ChartRepoInsecure:      opts.ChartRepositoryInsecure,
 			ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
 			ChartRepoSkipUpdate:    opts.ChartRepositorySkipUpdate,
@@ -298,29 +298,11 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		resourceinfo.DeployableResourcesProcessorOptions{
 			NetworkParallelism: opts.NetworkParallelism,
 			ForceAdoption:      opts.ForceAdoption,
-			ReleasableHookResourcePatchers: []resource.ResourcePatcher{
+			ExtraReleasableResourcePatchers: []resource.ResourcePatcher{
 				resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 			},
-			ReleasableGeneralResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-			},
-			DeployableStandaloneCRDsPatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(
-					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations),
-					opts.ExtraLabels,
-				),
-			},
-			DeployableHookResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(
-					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations),
-					opts.ExtraLabels,
-				),
-			},
-			DeployableGeneralResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(
-					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations),
-					opts.ExtraLabels,
-				),
+			ExtraDeployableResourcePatchers: []resource.ResourcePatcher{
+				resource.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
 			},
 			KubeClient:         clientFactory.KubeClient(),
 			Mapper:             clientFactory.Mapper(),

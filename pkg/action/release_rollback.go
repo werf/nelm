@@ -165,7 +165,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	}
 
 	log.Default.Debug(ctx, "Constructing release history")
-	history, err := release.NewHistory(
+	history, err := release.BuildHistory(
 		releaseName,
 		releaseNamespace,
 		releaseStorage,
@@ -204,7 +204,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		releaseToRollback = prevDeployedReleaseExceptLastRelease
 	} else {
 		var found bool
-		releaseToRollback, found, err = history.Release(opts.Revision)
+		releaseToRollback, found, err = history.FindRevision(opts.Revision)
 		if err != nil {
 			return fmt.Errorf("get release revision %q: %w", opts.Revision, err)
 		} else if !found {
@@ -410,21 +410,21 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		criticalErrs = append(criticalErrs, fmt.Errorf("execute release rollback plan: %w", planExecutionErr))
 	}
 
-	var worthyCompletedOps []operation.Operation
+	var worthyCompletedOps []operation.FixmeOperation
 	if ops, found, err := deployPlan.WorthyCompletedOperations(); err != nil {
 		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful completed operations: %w", err))
 	} else if found {
 		worthyCompletedOps = ops
 	}
 
-	var worthyCanceledOps []operation.Operation
+	var worthyCanceledOps []operation.FixmeOperation
 	if ops, found, err := deployPlan.WorthyCanceledOperations(); err != nil {
 		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful canceled operations: %w", err))
 	} else if found {
 		worthyCanceledOps = ops
 	}
 
-	var worthyFailedOps []operation.Operation
+	var worthyFailedOps []operation.FixmeOperation
 	if ops, found, err := deployPlan.WorthyFailedOperations(); err != nil {
 		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful failed operations: %w", err))
 	} else if found {

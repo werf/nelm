@@ -7,10 +7,20 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	helmaction "github.com/werf/3p-helm/pkg/action"
+	helmrelease "github.com/werf/3p-helm/pkg/release"
 	helmstorage "github.com/werf/3p-helm/pkg/storage"
 	helmdriver "github.com/werf/3p-helm/pkg/storage/driver"
 	"github.com/werf/nelm/pkg/log"
 )
+
+var _ ReleaseStorager = (*helmstorage.Storage)(nil)
+
+type ReleaseStorager interface {
+	Create(rls *helmrelease.Release) error
+	Update(rls *helmrelease.Release) error
+	Delete(name string, version int) (*helmrelease.Release, error)
+	Query(labels map[string]string) ([]*helmrelease.Release, error)
+}
 
 type ReleaseStorageOptions struct {
 	HistoryLimit        int

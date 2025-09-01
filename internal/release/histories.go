@@ -3,47 +3,42 @@ package release
 import (
 	"fmt"
 
-	"github.com/samber/lo"
-	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/client-go/discovery"
-
 	helmrelease "github.com/werf/3p-helm/pkg/release"
-	"github.com/werf/3p-helm/pkg/releaseutil"
 	"github.com/werf/3p-helm/pkg/storage/driver"
 )
 
-type BuildHistoriesOptions struct {
-	DiscoveryClient discovery.CachedDiscoveryInterface
-	Mapper          meta.ResettableRESTMapper
-}
-
-func BuildHistories(historyStorage LegacyStorage, opts BuildHistoriesOptions) ([]*History, error) {
-	legacyRels, err := historyStorage.Query(map[string]string{"owner": "helm"})
+func BuildHistories(historyStorage ReleaseStorager, opts HistoryOptions) ([]*History, error) {
+	rels, err := historyStorage.Query(map[string]string{"owner": "helm"})
 	if err != nil && err != driver.ErrReleaseNotFound {
 		return nil, fmt.Errorf("query releases: %w", err)
 	}
 
-	histories := make(map[string]*History)
-	for _, legacyRelease := range legacyRels {
-		id := legacyRelease.Namespace + "/" + legacyRelease.Name
+	releasesByNamespace := map[string]map[string][]*helmrelease.Release{}
+	for _, rel := range rels {
+		if releasesByNamespace[rel.Namespace] == nil {
+			releasesByNamespace[rel.Namespace] = map[string][]*helmrelease.Release{}
+		}
 
-		if _, ok := histories[id]; ok {
-			histories[id].legacyReleases = append(histories[id].legacyReleases, legacyRelease)
-		} else {
-			histories[id] = &History{
-				releaseName:      legacyRelease.Name,
-				releaseNamespace: legacyRelease.Namespace,
-				legacyReleases:   []*helmrelease.Release{legacyRelease},
-				storage:          historyStorage,
-				mapper:           opts.Mapper,
-				discoveryClient:  opts.DiscoveryClient,
-			}
+		if releasesByNamespace[rel.Namespace][rel.Name] == nil {
+			releasesByNamespace[rel.Namespace][rel.Name] = []*helmrelease.Release{}
+		}
+
+		releasesByNamespace[rel.Namespace][rel.Name] = append(releasesByNamespace[rel.Namespace][rel.Name], rel)
+	}
+
+	var histories []*History
+	for _, releasesFromNamespace := range releasesByNamespace {
+		for relName, revisions := range releasesFromNamespace {
+			history := NewHistory(
+				revisions,
+				relName,
+				historyStorage,
+				opts,
+			)
+
+			histories = append(histories, history)
 		}
 	}
 
-	for _, history := range histories {
-		releaseutil.SortByRevision(history.legacyReleases)
-	}
-
-	return lo.Values(histories), nil
+	return histories, nil
 }
