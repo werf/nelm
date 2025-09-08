@@ -15,31 +15,7 @@ func ResourceSpecSortHandler(r1, r2 *ResourceSpec) bool {
 		}
 	}
 
-	kind1 := r1.Unstruct.GroupVersionKind().Kind
-	kind2 := r2.Unstruct.GroupVersionKind().Kind
-	if kind1 != kind2 {
-		return kind1 < kind2
-	}
-
-	group1 := r1.Unstruct.GroupVersionKind().Group
-	group2 := r2.Unstruct.GroupVersionKind().Group
-	if group1 != group2 {
-		return group1 < group2
-	}
-
-	version1 := r1.Unstruct.GroupVersionKind().Version
-	version2 := r2.Unstruct.GroupVersionKind().Version
-	if version1 != version2 {
-		return version1 < version2
-	}
-
-	namespace1 := r1.Unstruct.GetNamespace()
-	namespace2 := r2.Unstruct.GetNamespace()
-	if namespace1 != namespace2 {
-		return namespace1 < namespace2
-	}
-
-	return r1.Unstruct.GetName() < r1.Unstruct.GetName()
+	return ResourceMetaSortHandler(r1.ResourceMeta, r2.ResourceMeta)
 }
 
 func ResourceMetaSortHandler(r1, r2 *ResourceMeta) bool {

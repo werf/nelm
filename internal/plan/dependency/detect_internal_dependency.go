@@ -1,77 +1,64 @@
 package dependency
 
 import (
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	"github.com/werf/nelm/internal/common"
 )
 
-func NewInternalDependencyDetector(opts InternalDependencyDetectorOptions) *InternalDependencyDetector {
-	return &InternalDependencyDetector{
-		defaultNamespace: opts.DefaultNamespace,
-	}
-}
-
-type InternalDependencyDetectorOptions struct {
-	DefaultNamespace string
-}
-
-type InternalDependencyDetector struct {
-	defaultNamespace string
-}
-
-func (d *InternalDependencyDetector) Detect(unstruct *unstructured.Unstructured) []*InternalDependency {
+func DetectInternalDependencies(unstruct *unstructured.Unstructured) []*InternalDependency {
 	gvk := unstruct.GroupVersionKind()
 	gk := gvk.GroupKind()
 
 	var dependencies []*InternalDependency
 	if gk == (schema.GroupKind{Kind: "Deployment", Group: "apps"}) {
 		if pod, found := nestedMap(unstruct.Object, "spec", "template"); found {
-			if deps, found := d.parsePod(unstruct, pod); found {
+			if deps, found := parsePod(unstruct, pod); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
 	} else if gk == (schema.GroupKind{Kind: "CronJob", Group: "batch"}) {
 		if pod, found := nestedMap(unstruct.Object, "spec", "jobTemplate", "spec", "template"); found {
-			if deps, found := d.parsePod(unstruct, pod); found {
+			if deps, found := parsePod(unstruct, pod); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
 	} else if gk == (schema.GroupKind{Kind: "DaemonSet", Group: "apps"}) {
 		if pod, found := nestedMap(unstruct.Object, "spec", "template"); found {
-			if deps, found := d.parsePod(unstruct, pod); found {
+			if deps, found := parsePod(unstruct, pod); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
 	} else if gk == (schema.GroupKind{Kind: "Job", Group: "batch"}) {
 		if pod, found := nestedMap(unstruct.Object, "spec", "template"); found {
-			if deps, found := d.parsePod(unstruct, pod); found {
+			if deps, found := parsePod(unstruct, pod); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
 	} else if gk == (schema.GroupKind{Kind: "Pod", Group: ""}) {
-		if deps, found := d.parsePod(unstruct, unstruct.Object); found {
+		if deps, found := parsePod(unstruct, unstruct.Object); found {
 			dependencies = append(dependencies, deps...)
 		}
 	} else if gk == (schema.GroupKind{Kind: "ReplicaSet", Group: "apps"}) {
 		if pod, found := nestedMap(unstruct.Object, "spec", "template"); found {
-			if deps, found := d.parsePod(unstruct, pod); found {
+			if deps, found := parsePod(unstruct, pod); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
 	} else if gk == (schema.GroupKind{Kind: "ReplicationController", Group: ""}) {
 		if pod, found := nestedMap(unstruct.Object, "spec", "template"); found {
-			if deps, found := d.parsePod(unstruct, pod); found {
+			if deps, found := parsePod(unstruct, pod); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
 	} else if gk == (schema.GroupKind{Kind: "StatefulSet", Group: "apps"}) {
-		if dep, found := d.parseServiceName(unstruct, unstruct.Object); found {
+		if dep, found := parseServiceName(unstruct, unstruct.Object); found {
 			dependencies = append(dependencies, dep)
 		}
 
 		if pod, found := nestedMap(unstruct.Object, "spec", "template"); found {
-			if deps, found := d.parsePod(unstruct, pod); found {
+			if deps, found := parsePod(unstruct, pod); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
@@ -90,11 +77,11 @@ func (d *InternalDependencyDetector) Detect(unstruct *unstructured.Unstructured)
 	} else if gk == (schema.GroupKind{Kind: "HorizontalPodAutoscaler", Group: "autoscaling"}) {
 		// TODO(ilya-lesikov):
 	} else if gk == (schema.GroupKind{Kind: "ClusterRoleBinding", Group: "rbac.authorization.k8s.io"}) {
-		if dep, found := d.parseRoleRef(*unstruct); found {
+		if dep, found := parseRoleRef(*unstruct); found {
 			dependencies = append(dependencies, dep)
 		}
 	} else if gk == (schema.GroupKind{Kind: "RoleBinding", Group: "rbac.authorization.k8s.io"}) {
-		if dep, found := d.parseRoleRef(*unstruct); found {
+		if dep, found := parseRoleRef(*unstruct); found {
 			dependencies = append(dependencies, dep)
 		}
 	}
@@ -102,65 +89,65 @@ func (d *InternalDependencyDetector) Detect(unstruct *unstructured.Unstructured)
 	return dependencies
 }
 
-func (d *InternalDependencyDetector) parsePod(unstruct *unstructured.Unstructured, pod interface{}) (dependencies []*InternalDependency, found bool) {
+func parsePod(unstruct *unstructured.Unstructured, pod interface{}) (dependencies []*InternalDependency, found bool) {
 	containers, _ := nestedSlice(pod, "spec", "containers")
 	for _, container := range containers {
-		if deps, found := d.parseContainer(unstruct, container); found {
+		if deps, found := parseContainer(unstruct, container); found {
 			dependencies = append(dependencies, deps...)
 		}
 	}
 
 	initContainers, _ := nestedSlice(pod, "spec", "initContainers")
 	for _, container := range initContainers {
-		if deps, found := d.parseContainer(unstruct, container); found {
+		if deps, found := parseContainer(unstruct, container); found {
 			dependencies = append(dependencies, deps...)
 		}
 	}
 
 	ephemeralContainers, _ := nestedSlice(pod, "spec", "ephemeralContainers")
 	for _, container := range ephemeralContainers {
-		if deps, found := d.parseContainer(unstruct, container); found {
+		if deps, found := parseContainer(unstruct, container); found {
 			dependencies = append(dependencies, deps...)
 		}
 	}
 
 	imagePullSecrets, _ := nestedSlice(pod, "spec", "imagePullSecrets")
 	for _, secret := range imagePullSecrets {
-		if dep, found := d.parseImagePullSecret(unstruct, secret); found {
+		if dep, found := parseImagePullSecret(unstruct, secret); found {
 			dependencies = append(dependencies, dep)
 		}
 	}
 
-	if dep, found := d.parseNodeName(pod); found {
+	if dep, found := parseNodeName(pod); found {
 		dependencies = append(dependencies, dep)
 	}
 
-	if dep, found := d.parsePriorityClassName(unstruct, pod); found {
+	if dep, found := parsePriorityClassName(unstruct, pod); found {
 		dependencies = append(dependencies, dep)
 	}
 
 	resourceClaims, _ := nestedSlice(pod, "spec", "resourceClaims")
 	for _, claim := range resourceClaims {
-		if dep, found := d.parseResourceClaim(unstruct, claim); found {
+		if dep, found := parseResourceClaim(unstruct, claim); found {
 			dependencies = append(dependencies, dep)
 		}
 	}
 
-	if dep, found := d.parseRuntimeClassName(pod); found {
+	if dep, found := parseRuntimeClassName(pod); found {
 		dependencies = append(dependencies, dep)
 	}
 
-	if dep, found := d.parseServiceAccount(unstruct, pod); found {
+	if dep, found := parseServiceAccount(unstruct, pod); found {
 		dependencies = append(dependencies, dep)
 	}
 
-	if dep, found := d.parseServiceAccountName(unstruct, pod); found {
+	if dep, found := parseServiceAccountName(unstruct, pod); found {
 		dependencies = append(dependencies, dep)
 	}
 
 	volumes, _ := nestedSlice(pod, "spec", "volumes")
 	for _, volume := range volumes {
-		if dep, found := d.parseVolume(unstruct, volume); found {
+		if dep, found := parseVolume(unstruct, volume); found {
 			dependencies = append(dependencies, dep)
 		}
 	}
@@ -168,21 +155,21 @@ func (d *InternalDependencyDetector) parsePod(unstruct *unstructured.Unstructure
 	return dependencies, len(dependencies) > 0
 }
 
-func (d *InternalDependencyDetector) parseContainer(unstruct *unstructured.Unstructured, container interface{}) (dependencies []*InternalDependency, found bool) {
+func parseContainer(unstruct *unstructured.Unstructured, container interface{}) (dependencies []*InternalDependency, found bool) {
 	envs, _ := nestedSlice(container, "env")
 	for _, env := range envs {
-		if dep, found := d.parseConfigMapKeyRef(unstruct, env); found {
+		if dep, found := parseConfigMapKeyRef(unstruct, env); found {
 			dependencies = append(dependencies, dep)
-		} else if dep, found := d.parseSecretKeyRef(unstruct, env); found {
+		} else if dep, found := parseSecretKeyRef(unstruct, env); found {
 			dependencies = append(dependencies, dep)
 		}
 	}
 
 	envFrom, _ := nestedSlice(container, "envFrom")
 	for _, env := range envFrom {
-		if dep, found := d.parseConfigMapRef(unstruct, env); found {
+		if dep, found := parseConfigMapRef(unstruct, env); found {
 			dependencies = append(dependencies, dep)
-		} else if dep, found := d.parseSecretRef(unstruct, env); found {
+		} else if dep, found := parseSecretRef(unstruct, env); found {
 			dependencies = append(dependencies, dep)
 		}
 	}
@@ -190,7 +177,7 @@ func (d *InternalDependencyDetector) parseContainer(unstruct *unstructured.Unstr
 	return dependencies, len(dependencies) > 0
 }
 
-func (d *InternalDependencyDetector) parseConfigMapKeyRef(unstruct *unstructured.Unstructured, env interface{}) (dep *InternalDependency, found bool) {
+func parseConfigMapKeyRef(unstruct *unstructured.Unstructured, env interface{}) (dep *InternalDependency, found bool) {
 	configMapKeyRef, found := nestedMap(env, "valueFrom", "configMapKeyRef")
 	if !found {
 		return nil, false
@@ -208,19 +195,17 @@ func (d *InternalDependencyDetector) parseConfigMapKeyRef(unstruct *unstructured
 
 	dep = NewInternalDependency(
 		[]string{name},
-		[]string{d.namespace(unstruct)},
+		[]string{unstruct.GetNamespace()},
 		[]string{""},
 		[]string{},
 		[]string{"ConfigMap"},
-		InternalDependencyOptions{
-			DefaultNamespace: d.defaultNamespace,
-		},
+		common.ResourceStatePresent,
 	)
 
 	return dep, true
 }
 
-func (d *InternalDependencyDetector) parseSecretKeyRef(unstruct *unstructured.Unstructured, env interface{}) (dep *InternalDependency, found bool) {
+func parseSecretKeyRef(unstruct *unstructured.Unstructured, env interface{}) (dep *InternalDependency, found bool) {
 	secretKeyRef, found := nestedMap(env, "valueFrom", "secretKeyRef")
 	if !found {
 		return nil, false
@@ -238,19 +223,17 @@ func (d *InternalDependencyDetector) parseSecretKeyRef(unstruct *unstructured.Un
 
 	dep = NewInternalDependency(
 		[]string{name},
-		[]string{d.namespace(unstruct)},
+		[]string{unstruct.GetNamespace()},
 		[]string{""},
 		[]string{},
 		[]string{"Secret"},
-		InternalDependencyOptions{
-			DefaultNamespace: d.defaultNamespace,
-		},
+		common.ResourceStatePresent,
 	)
 
 	return dep, true
 }
 
-func (d *InternalDependencyDetector) parseConfigMapRef(unstruct *unstructured.Unstructured, env interface{}) (dep *InternalDependency, found bool) {
+func parseConfigMapRef(unstruct *unstructured.Unstructured, env interface{}) (dep *InternalDependency, found bool) {
 	configMapKeyRef, found := nestedMap(env, "valueFrom", "configMapRef")
 	if !found {
 		return nil, false
@@ -268,19 +251,17 @@ func (d *InternalDependencyDetector) parseConfigMapRef(unstruct *unstructured.Un
 
 	dep = NewInternalDependency(
 		[]string{name},
-		[]string{d.namespace(unstruct)},
+		[]string{unstruct.GetNamespace()},
 		[]string{""},
 		[]string{},
 		[]string{"ConfigMap"},
-		InternalDependencyOptions{
-			DefaultNamespace: d.defaultNamespace,
-		},
+		common.ResourceStatePresent,
 	)
 
 	return dep, true
 }
 
-func (d *InternalDependencyDetector) parseSecretRef(unstruct *unstructured.Unstructured, env interface{}) (dep *InternalDependency, found bool) {
+func parseSecretRef(unstruct *unstructured.Unstructured, env interface{}) (dep *InternalDependency, found bool) {
 	secretKeyRef, found := nestedMap(env, "valueFrom", "secretRef")
 	if !found {
 		return nil, false
@@ -298,19 +279,17 @@ func (d *InternalDependencyDetector) parseSecretRef(unstruct *unstructured.Unstr
 
 	dep = NewInternalDependency(
 		[]string{name},
-		[]string{d.namespace(unstruct)},
+		[]string{unstruct.GetNamespace()},
 		[]string{""},
 		[]string{},
 		[]string{"Secret"},
-		InternalDependencyOptions{
-			DefaultNamespace: d.defaultNamespace,
-		},
+		common.ResourceStatePresent,
 	)
 
 	return dep, true
 }
 
-func (d *InternalDependencyDetector) parseImagePullSecret(unstruct *unstructured.Unstructured, secret interface{}) (dep *InternalDependency, found bool) {
+func parseImagePullSecret(unstruct *unstructured.Unstructured, secret interface{}) (dep *InternalDependency, found bool) {
 	name, found := nestedStringNotEmpty(secret, "name")
 	if !found {
 		return nil, false
@@ -318,19 +297,17 @@ func (d *InternalDependencyDetector) parseImagePullSecret(unstruct *unstructured
 
 	dep = NewInternalDependency(
 		[]string{name},
-		[]string{d.namespace(unstruct)},
+		[]string{unstruct.GetNamespace()},
 		[]string{""},
 		[]string{},
 		[]string{"Secret"},
-		InternalDependencyOptions{
-			DefaultNamespace: d.defaultNamespace,
-		},
+		common.ResourceStatePresent,
 	)
 
 	return dep, true
 }
 
-func (d *InternalDependencyDetector) parseNodeName(pod interface{}) (dep *InternalDependency, found bool) {
+func parseNodeName(pod interface{}) (dep *InternalDependency, found bool) {
 	nodeName, found := nestedStringNotEmpty(pod, "spec", "nodeName")
 	if !found {
 		return nil, false
@@ -342,15 +319,13 @@ func (d *InternalDependencyDetector) parseNodeName(pod interface{}) (dep *Intern
 		[]string{""},
 		[]string{},
 		[]string{"Node"},
-		InternalDependencyOptions{
-			DefaultNamespace: d.defaultNamespace,
-		},
+		common.ResourceStatePresent,
 	)
 
 	return dep, true
 }
 
-func (d *InternalDependencyDetector) parsePriorityClassName(unstruct *unstructured.Unstructured, pod interface{}) (dep *InternalDependency, found bool) {
+func parsePriorityClassName(unstruct *unstructured.Unstructured, pod interface{}) (dep *InternalDependency, found bool) {
 	priorityClassName, found := nestedStringNotEmpty(pod, "spec", "priorityClassName")
 	if !found {
 		return nil, false
@@ -362,15 +337,13 @@ func (d *InternalDependencyDetector) parsePriorityClassName(unstruct *unstructur
 		[]string{"scheduling.k8s.io"},
 		[]string{},
 		[]string{"PriorityClass"},
-		InternalDependencyOptions{
-			DefaultNamespace: d.defaultNamespace,
-		},
+		common.ResourceStatePresent,
 	)
 
 	return dep, true
 }
 
-func (d *InternalDependencyDetector) parseResourceClaim(unstruct *unstructured.Unstructured, claim interface{}) (dep *InternalDependency, found bool) {
+func parseResourceClaim(unstruct *unstructured.Unstructured, claim interface{}) (dep *InternalDependency, found bool) {
 	source, found := nestedMap(claim, "source")
 	if !found {
 		return nil, false
@@ -380,13 +353,11 @@ func (d *InternalDependencyDetector) parseResourceClaim(unstruct *unstructured.U
 	if resourceClaimNameFound {
 		dep = NewInternalDependency(
 			[]string{resourceClaimName},
-			[]string{d.namespace(unstruct)},
+			[]string{unstruct.GetNamespace()},
 			[]string{"resource.k8s.io"},
 			[]string{},
 			[]string{"ResourceClaim"},
-			InternalDependencyOptions{
-				DefaultNamespace: d.defaultNamespace,
-			},
+			common.ResourceStatePresent,
 		)
 
 		return dep, true
@@ -396,13 +367,11 @@ func (d *InternalDependencyDetector) parseResourceClaim(unstruct *unstructured.U
 	if resourceClaimNameTemplateFound {
 		dep = NewInternalDependency(
 			[]string{resourceClaimNameTemplate},
-			[]string{d.namespace(unstruct)},
+			[]string{unstruct.GetNamespace()},
 			[]string{"resource.k8s.io"},
 			[]string{},
 			[]string{"ResourceClaimTemplate"},
-			InternalDependencyOptions{
-				DefaultNamespace: d.defaultNamespace,
-			},
+			common.ResourceStatePresent,
 		)
 
 		return dep, true
@@ -411,7 +380,7 @@ func (d *InternalDependencyDetector) parseResourceClaim(unstruct *unstructured.U
 	return nil, false
 }
 
-func (d *InternalDependencyDetector) parseRuntimeClassName(pod interface{}) (dep *InternalDependency, found bool) {
+func parseRuntimeClassName(pod interface{}) (dep *InternalDependency, found bool) {
 	runtimeClassName, found := nestedStringNotEmpty(pod, "spec", "runtimeClassName")
 	if !found {
 		return nil, false
@@ -423,15 +392,13 @@ func (d *InternalDependencyDetector) parseRuntimeClassName(pod interface{}) (dep
 		[]string{"node.k8s.io"},
 		[]string{},
 		[]string{"RuntimeClass"},
-		InternalDependencyOptions{
-			DefaultNamespace: d.defaultNamespace,
-		},
+		common.ResourceStatePresent,
 	)
 
 	return dep, true
 }
 
-func (d *InternalDependencyDetector) parseServiceAccount(unstruct *unstructured.Unstructured, pod interface{}) (dep *InternalDependency, found bool) {
+func parseServiceAccount(unstruct *unstructured.Unstructured, pod interface{}) (dep *InternalDependency, found bool) {
 	serviceAccount, found := nestedStringNotEmpty(pod, "spec", "serviceAccount")
 	if !found {
 		return nil, false
@@ -439,19 +406,17 @@ func (d *InternalDependencyDetector) parseServiceAccount(unstruct *unstructured.
 
 	dep = NewInternalDependency(
 		[]string{serviceAccount},
-		[]string{d.namespace(unstruct)},
+		[]string{unstruct.GetNamespace()},
 		[]string{""},
 		[]string{},
 		[]string{"ServiceAccount"},
-		InternalDependencyOptions{
-			DefaultNamespace: d.defaultNamespace,
-		},
+		common.ResourceStatePresent,
 	)
 
 	return dep, true
 }
 
-func (d *InternalDependencyDetector) parseServiceAccountName(unstruct *unstructured.Unstructured, pod interface{}) (dep *InternalDependency, found bool) {
+func parseServiceAccountName(unstruct *unstructured.Unstructured, pod interface{}) (dep *InternalDependency, found bool) {
 	serviceAccountName, found := nestedStringNotEmpty(pod, "spec", "serviceAccountName")
 	if !found {
 		return nil, false
@@ -459,19 +424,17 @@ func (d *InternalDependencyDetector) parseServiceAccountName(unstruct *unstructu
 
 	dep = NewInternalDependency(
 		[]string{serviceAccountName},
-		[]string{d.namespace(unstruct)},
+		[]string{unstruct.GetNamespace()},
 		[]string{""},
 		[]string{},
 		[]string{"ServiceAccount"},
-		InternalDependencyOptions{
-			DefaultNamespace: d.defaultNamespace,
-		},
+		common.ResourceStatePresent,
 	)
 
 	return dep, true
 }
 
-func (d *InternalDependencyDetector) parseVolume(unstruct *unstructured.Unstructured, volume interface{}) (dep *InternalDependency, found bool) {
+func parseVolume(unstruct *unstructured.Unstructured, volume interface{}) (dep *InternalDependency, found bool) {
 	configMap, found := nestedMap(volume, "configMap")
 	if found {
 		name, found := nestedStringNotEmpty(configMap, "name")
@@ -486,13 +449,11 @@ func (d *InternalDependencyDetector) parseVolume(unstruct *unstructured.Unstruct
 
 		dep = NewInternalDependency(
 			[]string{name},
-			[]string{d.namespace(unstruct)},
+			[]string{unstruct.GetNamespace()},
 			[]string{""},
 			[]string{},
 			[]string{"ConfigMap"},
-			InternalDependencyOptions{
-				DefaultNamespace: d.defaultNamespace,
-			},
+			common.ResourceStatePresent,
 		)
 
 		return dep, true
@@ -512,13 +473,11 @@ func (d *InternalDependencyDetector) parseVolume(unstruct *unstructured.Unstruct
 
 		dep = NewInternalDependency(
 			[]string{name},
-			[]string{d.namespace(unstruct)},
+			[]string{unstruct.GetNamespace()},
 			[]string{""},
 			[]string{},
 			[]string{"Secret"},
-			InternalDependencyOptions{
-				DefaultNamespace: d.defaultNamespace,
-			},
+			common.ResourceStatePresent,
 		)
 
 		return dep, true
@@ -527,7 +486,7 @@ func (d *InternalDependencyDetector) parseVolume(unstruct *unstructured.Unstruct
 	return nil, false
 }
 
-func (d *InternalDependencyDetector) parseServiceName(unstruct *unstructured.Unstructured, spec interface{}) (dep *InternalDependency, found bool) {
+func parseServiceName(unstruct *unstructured.Unstructured, spec interface{}) (dep *InternalDependency, found bool) {
 	name, found := nestedStringNotEmpty(spec, "serviceName")
 	if !found {
 		return nil, false
@@ -535,19 +494,17 @@ func (d *InternalDependencyDetector) parseServiceName(unstruct *unstructured.Uns
 
 	dep = NewInternalDependency(
 		[]string{name},
-		[]string{d.namespace(unstruct)},
+		[]string{unstruct.GetNamespace()},
 		[]string{""},
 		[]string{},
 		[]string{"Service"},
-		InternalDependencyOptions{
-			DefaultNamespace: d.defaultNamespace,
-		},
+		common.ResourceStatePresent,
 	)
 
 	return dep, true
 }
 
-func (d *InternalDependencyDetector) parseRoleRef(unstruct unstructured.Unstructured) (dep *InternalDependency, found bool) {
+func parseRoleRef(unstruct unstructured.Unstructured) (dep *InternalDependency, found bool) {
 	roleRef, found := nestedMap(unstruct.Object, "roleRef")
 	if !found {
 		return nil, false
@@ -570,7 +527,7 @@ func (d *InternalDependencyDetector) parseRoleRef(unstruct unstructured.Unstruct
 
 	var namespaces []string
 	if kind != "ClusterRole" {
-		namespaces = []string{d.namespace(&unstruct)}
+		namespaces = []string{unstruct.GetNamespace()}
 	}
 
 	dep = NewInternalDependency(
@@ -579,22 +536,10 @@ func (d *InternalDependencyDetector) parseRoleRef(unstruct unstructured.Unstruct
 		[]string{apiGroup},
 		[]string{},
 		[]string{kind},
-		InternalDependencyOptions{
-			DefaultNamespace: d.defaultNamespace,
-		},
+		common.ResourceStatePresent,
 	)
 
 	return dep, true
-}
-
-func (d *InternalDependencyDetector) namespace(unstruct *unstructured.Unstructured) string {
-	if unstruct.GetNamespace() != "" {
-		return unstruct.GetNamespace()
-	} else if d.defaultNamespace != "" {
-		return d.defaultNamespace
-	}
-
-	return v1.NamespaceDefault
 }
 
 func nestedSlice(object interface{}, fields ...string) (result []interface{}, found bool) {

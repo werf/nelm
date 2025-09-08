@@ -7,7 +7,7 @@ import (
 
 type DeletableResourceOptions struct{}
 
-func NewDeletableResource(meta *id.ResourceMeta, releaseNamespace string, opts DeletableResourceOptions) *DeletableResource {
+func NewDeletableResource(meta *id.ResourceMeta, releaseNamespace string, stage common.Stage, opts DeletableResourceOptions) *DeletableResource {
 	var keep bool
 	if err := ValidateResourcePolicy(meta); err != nil {
 		keep = true
@@ -34,4 +34,5 @@ type DeletableResource struct {
 
 	Ownership    common.Ownership
 	KeepOnDelete bool
+	Stage        common.Stage
 }

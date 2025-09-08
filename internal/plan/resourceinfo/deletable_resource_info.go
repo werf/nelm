@@ -17,7 +17,6 @@ func BuildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 	noDeleteInfo := &DeletableResourceInfo{
 		ResourceMeta:  localRes.ResourceMeta,
 		LocalResource: localRes,
-		MustDelete:    false,
 	}
 
 	if localRes.KeepOnDelete || localRes.Ownership == common.OwnershipEveryone {
@@ -54,6 +53,8 @@ func BuildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 		LocalResource: localRes,
 		GetResult:     getObj,
 		MustDelete:    true,
+		// TODO: make switchable
+		MustTrackAbsence: true,
 	}, nil
 }
 
@@ -63,5 +64,6 @@ type DeletableResourceInfo struct {
 	LocalResource *resource.DeletableResource
 	GetResult     *unstructured.Unstructured
 
-	MustDelete bool
+	MustDelete       bool
+	MustTrackAbsence bool
 }

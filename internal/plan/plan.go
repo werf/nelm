@@ -9,7 +9,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
 
-	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/plan/operation"
 )
 
@@ -26,7 +25,7 @@ type Plan struct {
 func (p *Plan) Operation(id string) (op *operation.Operation, found bool) {
 	vertex, err := p.graph.Vertex(id)
 	if err != nil {
-		if err == graph.ErrVertexNotFound {
+		if errors.Is(err, graph.ErrVertexNotFound) {
 			return nil, false
 		} else {
 			panic(fmt.Sprintf("unexpected error: %s", err))
@@ -36,38 +35,25 @@ func (p *Plan) Operation(id string) (op *operation.Operation, found bool) {
 	return vertex, true
 }
 
-func (p *Plan) Operations() ([]*operation.Operation, error) {
+func (p *Plan) Operations() []*operation.Operation {
 	var operations []*operation.Operation
-	adjMap, err := p.graph.AdjacencyMap()
-	if err != nil {
-		return nil, fmt.Errorf("get adjacency map: %w", err)
-	}
+	adjMap := lo.Must(p.graph.AdjacencyMap())
 
 	for opID := range adjMap {
 		operations = append(operations, lo.Must(p.Operation(opID)))
 	}
 
-	return operations, nil
+	return operations
 }
 
-func (p *Plan) PredecessorMap() (map[string]map[string]graph.Edge[string], error) {
-	return p.graph.PredecessorMap()
+func (p *Plan) PredecessorMap() map[string]map[string]graph.Edge[string] {
+	return lo.Must(p.graph.PredecessorMap())
 }
 
-func (p *Plan) AddOperation(op *operation.Operation) {
-	if err := p.graph.AddVertex(op); err != nil && !errors.Is(err, graph.ErrVertexAlreadyExists) {
-		panic(fmt.Sprintf("unexpected error: %s", err))
+func (p *Plan) AddOperationChain() *planChainBuilder {
+	return &planChainBuilder{
+		plan: p,
 	}
-}
-
-func (p *Plan) AddOperationInStage(op *operation.Operation, stage common.Stage) {
-	p.AddOperation(op)
-
-	stageStartOp := lo.Must(p.Operation(fmt.Sprintf("%s/%s", stage, common.StageStartSuffix)))
-	lo.Must0(p.Connect(stageStartOp.ID(), op.ID()))
-
-	stageEndOp := lo.Must(p.Operation(fmt.Sprintf("%s/%s", stage, common.StageEndSuffix)))
-	lo.Must0(p.Connect(op.ID(), stageEndOp.ID()))
 }
 
 func (p *Plan) Connect(fromID, toID string) error {

@@ -16,9 +16,8 @@ var _ OperationConfig = (*OperationConfigTrackReadiness)(nil)
 
 type OperationConfigTrackReadiness struct {
 	ResourceMeta                             *id.ResourceMeta
-	NoActivityTimeout                        time.Duration
+	NoActivityTimeout                        *time.Duration
 	IgnoreReadinessProbeFailsByContainerName map[string]time.Duration
-	CaptureLogsFromTime                      time.Time
 	SaveLogsOnlyForNumberOfReplicas          int
 	SaveLogsOnlyForContainers                []string
 	SaveLogsByRegex                          *regexp.Regexp

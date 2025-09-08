@@ -70,15 +70,18 @@ func BuildResourceInfos(
 		return nil, nil, fmt.Errorf("wait for prev release resource pool: %w", err)
 	}
 
-	delResourceInfos = filterDelResourcesPresentInInstResources(instResourceInfos, delResourceInfos)
-
 	sort.SliceStable(instResourceInfos, func(i, j int) bool {
-		return id.ResourceSpecSortHandler(instResourceInfos[i].LocalResource.ResourceSpec, instResourceInfos[j].LocalResource.ResourceSpec)
+		return resource.InstallableResourceSortHandler(instResourceInfos[i].LocalResource, instResourceInfos[j].LocalResource)
 	})
 
 	sort.SliceStable(delResourceInfos, func(i, j int) bool {
 		return id.ResourceMetaSortHandler(delResourceInfos[i].LocalResource.ResourceMeta, delResourceInfos[j].LocalResource.ResourceMeta)
 	})
+
+	iterateInstallableResourceInfos(instResourceInfos)
+
+	delResourceInfos = filterDelResourcesPresentInInstResources(instResourceInfos, delResourceInfos)
+	delResourceInfos = deduplicateDeletableResourceInfos(delResourceInfos)
 
 	return instResourceInfos, delResourceInfos, nil
 }
@@ -104,4 +107,25 @@ func filterDelResourcesPresentInInstResources(instResourceInfos []*InstallableRe
 	}
 
 	return filteredDelResourceInfos
+}
+
+func iterateInstallableResourceInfos(infos []*InstallableResourceInfo) {
+	var seenInfos []*InstallableResourceInfo
+
+	for _, info := range infos {
+		seenInfo, seen := lo.Find(seenInfos, func(inf *InstallableResourceInfo) bool {
+			return info.ID() == inf.ID()
+		})
+		if seen {
+			info.Iteration = seenInfo.Iteration + 1
+		}
+
+		seenInfos = append(seenInfos, info)
+	}
+}
+
+func deduplicateDeletableResourceInfos(infos []*DeletableResourceInfo) []*DeletableResourceInfo {
+	return lo.UniqBy(infos, func(info *DeletableResourceInfo) string {
+		return info.ID()
+	})
 }

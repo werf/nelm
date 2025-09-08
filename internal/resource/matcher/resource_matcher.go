@@ -2,27 +2,19 @@ package matcher
 
 import (
 	"github.com/werf/nelm/internal/resource/id"
-	"github.com/werf/nelm/internal/util"
 )
 
 func NewResourceMatcher(names, namespaces, groups, versions, kinds []string, opts ResourceMatcherOptions) *ResourceMatcher {
-	var nses []string
-	for _, ns := range namespaces {
-		nses = append(nses, util.FallbackNamespace(ns, opts.DefaultNamespace))
-	}
-
 	return &ResourceMatcher{
 		names:      names,
-		namespaces: nses,
+		namespaces: namespaces,
 		groups:     groups,
 		versions:   versions,
 		kinds:      kinds,
 	}
 }
 
-type ResourceMatcherOptions struct {
-	DefaultNamespace string
-}
+type ResourceMatcherOptions struct{}
 
 type ResourceMatcher struct {
 	names      []string
@@ -32,13 +24,13 @@ type ResourceMatcher struct {
 	kinds      []string
 }
 
-func (s *ResourceMatcher) Match(resource *id.ResourceID) bool {
+func (s *ResourceMatcher) Match(resMeta *id.ResourceMeta) bool {
 	var nameMatch bool
 	if len(s.names) == 0 {
 		nameMatch = true
 	} else {
 		for _, name := range s.names {
-			if resource.Name() == name {
+			if resMeta.Name == name {
 				nameMatch = true
 				break
 			}
@@ -53,7 +45,7 @@ func (s *ResourceMatcher) Match(resource *id.ResourceID) bool {
 		namespaceMatch = true
 	} else {
 		for _, namespace := range s.namespaces {
-			if resource.Namespace() == namespace {
+			if resMeta.Namespace == namespace {
 				namespaceMatch = true
 				break
 			}
@@ -68,7 +60,7 @@ func (s *ResourceMatcher) Match(resource *id.ResourceID) bool {
 		groupMatch = true
 	} else {
 		for _, group := range s.groups {
-			if resource.GroupVersionKind().Group == group {
+			if resMeta.GroupVersionKind.Group == group {
 				groupMatch = true
 				break
 			}
@@ -83,7 +75,7 @@ func (s *ResourceMatcher) Match(resource *id.ResourceID) bool {
 		versionMatch = true
 	} else {
 		for _, version := range s.versions {
-			if resource.GroupVersionKind().Version == version {
+			if resMeta.GroupVersionKind.Version == version {
 				versionMatch = true
 				break
 			}
@@ -98,7 +90,7 @@ func (s *ResourceMatcher) Match(resource *id.ResourceID) bool {
 		kindMatch = true
 	} else {
 		for _, kind := range s.kinds {
-			if resource.GroupVersionKind().Kind == kind {
+			if resMeta.GroupVersionKind.Kind == kind {
 				kindMatch = true
 				break
 			}

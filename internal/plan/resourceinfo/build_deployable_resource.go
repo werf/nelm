@@ -8,7 +8,6 @@ import (
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/client-go/discovery"
 
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/nelm/internal/common"
@@ -18,8 +17,7 @@ import (
 )
 
 type BuildDeployableResourcesOptions struct {
-	DiscoveryClient discovery.CachedDiscoveryInterface
-	Mapper          meta.ResettableRESTMapper
+	Mapper meta.ResettableRESTMapper
 }
 
 func BuildDeployableResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRel, newRel *helmrelease.Release, patchers []resource.ResourcePatcher, opts BuildDeployableResourcesOptions) ([]*resource.InstallableResource, []*resource.DeletableResource, error) {
@@ -34,21 +32,27 @@ func BuildDeployableResources(ctx context.Context, deployType common.DeployType,
 
 	var prevRelDelResources []*resource.DeletableResource
 	for _, resSpec := range prevRelResSpecs {
-		deletableRes := resource.NewDeletableResource(resSpec.ResourceMeta, releaseNamespace, resource.DeletableResourceOptions{})
+		var stage common.Stage
+		if deployType == common.DeployTypeUninstall {
+			stage = common.StageUninstall
+		} else {
+			stage = common.StagePrePreUninstall
+		}
+
+		deletableRes := resource.NewDeletableResource(resSpec.ResourceMeta, releaseNamespace, stage, resource.DeletableResourceOptions{})
 		prevRelDelResources = append(prevRelDelResources, deletableRes)
 	}
 
 	var prevRelInstResources []*resource.InstallableResource
 	for _, resSpec := range prevRelResSpecs {
-		installableRes, err := resource.NewInstallableResource(resSpec, releaseNamespace, resource.InstallableResourceOptions{
-			DiscoveryClient: opts.DiscoveryClient,
-			Mapper:          opts.Mapper,
+		installableResources, err := resource.NewInstallableResource(resSpec, deployType, releaseNamespace, resource.InstallableResourceOptions{
+			Mapper: opts.Mapper,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct installable resource: %w", err)
 		}
 
-		prevRelInstResources = append(prevRelInstResources, installableRes)
+		prevRelInstResources = append(prevRelInstResources, installableResources...)
 	}
 
 	var newRelResSpecs []*id.ResourceSpec
@@ -62,19 +66,18 @@ func BuildDeployableResources(ctx context.Context, deployType common.DeployType,
 
 	var newRelInstResources []*resource.InstallableResource
 	for _, resSpec := range newRelResSpecs {
-		installableRes, err := resource.NewInstallableResource(resSpec, releaseNamespace, resource.InstallableResourceOptions{
-			DiscoveryClient: opts.DiscoveryClient,
-			Mapper:          opts.Mapper,
+		installableResources, err := resource.NewInstallableResource(resSpec, deployType, releaseNamespace, resource.InstallableResourceOptions{
+			Mapper: opts.Mapper,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct installable resource: %w", err)
 		}
 
-		newRelInstResources = append(newRelInstResources, installableRes)
+		newRelInstResources = append(newRelInstResources, installableResources...)
 	}
 
 	var filteredPrevRelInstResources []*resource.InstallableResource
-	if newRel == nil && deployType == common.DeployTypeUninstall {
+	if deployType == common.DeployTypeUninstall {
 		filteredPrevRelInstResources = lo.Filter(prevRelInstResources, func(instRes *resource.InstallableResource, _ int) bool {
 			if len(instRes.DeployConditions) == 0 {
 				return false
@@ -144,50 +147,55 @@ func BuildDeployableResources(ctx context.Context, deployType common.DeployType,
 
 	var instResources []*resource.InstallableResource
 	for _, r := range append(filteredPrevRelInstResources, filteredNewRelInstResources...) {
-		instRes := r
+		instReses := []*resource.InstallableResource{r}
 
 		var deepCopied bool
 		for _, patcher := range patchers {
-			if matched, err := patcher.Match(ctx, &resource.ResourcePatcherResourceInfo{
-				Obj:       instRes.Unstruct,
-				Ownership: instRes.Ownership,
-			}); err != nil {
-				return nil, nil, fmt.Errorf("match deployable resource for patching by %q: %w", patcher.Type(), err)
-			} else if !matched {
-				continue
+			var newInstReses []*resource.InstallableResource
+			for _, instRes := range instReses {
+				if matched, err := patcher.Match(ctx, &resource.ResourcePatcherResourceInfo{
+					Obj:       instRes.Unstruct,
+					Ownership: instRes.Ownership,
+				}); err != nil {
+					return nil, nil, fmt.Errorf("match deployable resource for patching by %q: %w", patcher.Type(), err)
+				} else if !matched {
+					continue
+				}
+
+				var unstruct *unstructured.Unstructured
+				if deepCopied {
+					unstruct = instRes.Unstruct
+				} else {
+					unstruct = instRes.Unstruct.DeepCopy()
+					deepCopied = true
+				}
+
+				patchedObj, err := patcher.Patch(ctx, &resource.ResourcePatcherResourceInfo{
+					Obj:       unstruct,
+					Ownership: instRes.Ownership,
+				})
+				if err != nil {
+					return nil, nil, fmt.Errorf("patch deployable resource by %q: %w", patcher.Type(), err)
+				}
+
+				resSpec := id.NewResourceSpec(patchedObj, releaseNamespace, id.ResourceSpecOptions{
+					StoreAs:  instRes.StoreAs,
+					FilePath: instRes.FilePath,
+				})
+
+				if rs, err := resource.NewInstallableResource(resSpec, deployType, releaseNamespace, resource.InstallableResourceOptions{
+					Mapper: opts.Mapper,
+				}); err != nil {
+					return nil, nil, fmt.Errorf("construct deployable resource from patched object by %q: %w", patcher.Type(), err)
+				} else {
+					newInstReses = append(newInstReses, rs...)
+				}
 			}
 
-			var unstruct *unstructured.Unstructured
-			if deepCopied {
-				unstruct = instRes.Unstruct
-			} else {
-				unstruct = instRes.Unstruct.DeepCopy()
-				deepCopied = true
-			}
-
-			patchedObj, err := patcher.Patch(ctx, &resource.ResourcePatcherResourceInfo{
-				Obj:       unstruct,
-				Ownership: instRes.Ownership,
-			})
-			if err != nil {
-				return nil, nil, fmt.Errorf("patch deployable resource by %q: %w", patcher.Type(), err)
-			}
-
-			resSpec := id.NewResourceSpec(patchedObj, releaseNamespace, id.ResourceSpecOptions{
-				StoreAs:  instRes.StoreAs,
-				FilePath: instRes.FilePath,
-			})
-
-			instRes, err = resource.NewInstallableResource(resSpec, releaseNamespace, resource.InstallableResourceOptions{
-				DiscoveryClient: opts.DiscoveryClient,
-				Mapper:          opts.Mapper,
-			})
-			if err != nil {
-				return nil, nil, fmt.Errorf("construct deployable resource from patched object by %q: %w", patcher.Type(), err)
-			}
+			instReses = newInstReses
 		}
 
-		instResources = append(instResources, instRes)
+		instResources = append(instResources, instReses...)
 	}
 
 	sort.SliceStable(instResources, func(i, j int) bool {

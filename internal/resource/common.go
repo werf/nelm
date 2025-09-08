@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -15,7 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/discovery"
 
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
@@ -26,156 +26,97 @@ import (
 )
 
 var (
-	annotationKeyHumanReleaseName   = "meta.helm.sh/release-name"
-	annotationKeyPatternReleaseName = regexp.MustCompile(`^meta.helm.sh/release-name$`)
-)
-
-var (
-	annotationKeyHumanReleaseNamespace   = "meta.helm.sh/release-namespace"
-	annotationKeyPatternReleaseNamespace = regexp.MustCompile(`^meta.helm.sh/release-namespace$`)
-)
-
-var (
 	labelKeyHumanManagedBy   = "app.kubernetes.io/managed-by"
 	labelKeyPatternManagedBy = regexp.MustCompile(`^app.kubernetes.io/managed-by$`)
-)
 
-var (
+	annotationKeyHumanReleaseName   = "meta.helm.sh/release-name"
+	annotationKeyPatternReleaseName = regexp.MustCompile(`^meta.helm.sh/release-name$`)
+
+	annotationKeyHumanReleaseNamespace   = "meta.helm.sh/release-namespace"
+	annotationKeyPatternReleaseNamespace = regexp.MustCompile(`^meta.helm.sh/release-namespace$`)
+
 	annotationKeyHumanHook   = "helm.sh/hook"
 	annotationKeyPatternHook = regexp.MustCompile(`^helm.sh/hook$`)
-)
 
-var (
 	annotationKeyHumanResourcePolicy   = "helm.sh/resource-policy"
 	annotationKeyPatternResourcePolicy = regexp.MustCompile(`^helm.sh/resource-policy$`)
-)
 
-var (
 	annotationKeyHumanDeletePolicy   = "werf.io/delete-policy"
 	annotationKeyPatternDeletePolicy = regexp.MustCompile(`^werf.io/delete-policy$`)
-)
 
-var (
 	annotationKeyHumanHookDeletePolicy   = "helm.sh/hook-delete-policy"
 	annotationKeyPatternHookDeletePolicy = regexp.MustCompile(`^helm.sh/hook-delete-policy$`)
-)
 
-var (
 	annotationKeyHumanReplicasOnCreation   = "werf.io/replicas-on-creation"
 	annotationKeyPatternReplicasOnCreation = regexp.MustCompile(`^werf.io/replicas-on-creation$`)
-)
 
-var (
 	annotationKeyHumanFailMode   = "werf.io/fail-mode"
 	annotationKeyPatternFailMode = regexp.MustCompile(`^werf.io/fail-mode$`)
-)
 
-var (
 	annotationKeyHumanFailuresAllowedPerReplica   = "werf.io/failures-allowed-per-replica"
 	annotationKeyPatternFailuresAllowedPerReplica = regexp.MustCompile(`^werf.io/failures-allowed-per-replica$`)
-)
 
-var (
 	annotationKeyHumanIgnoreReadinessProbeFailsFor   = "werf.io/ignore-readiness-probe-fails-for-<container>"
 	annotationKeyPatternIgnoreReadinessProbeFailsFor = regexp.MustCompile(`^werf.io/ignore-readiness-probe-fails-for-(?P<container>.+)$`)
-)
 
-var (
 	annotationKeyHumanLogRegex   = "werf.io/log-regex"
 	annotationKeyPatternLogRegex = regexp.MustCompile(`^werf.io/log-regex$`)
-)
 
-var (
 	annotationKeyHumanLogRegexFor   = "werf.io/log-regex-for-<container>"
 	annotationKeyPatternLogRegexFor = regexp.MustCompile(`^werf.io/log-regex-for-(?P<container>.+)$`)
-)
 
-var (
 	annotationKeyHumanNoActivityTimeout   = "werf.io/no-activity-timeout"
 	annotationKeyPatternNoActivityTimeout = regexp.MustCompile(`^werf.io/no-activity-timeout$`)
-)
 
-var (
 	annotationKeyHumanShowLogsOnlyForContainers   = "werf.io/show-logs-only-for-containers"
 	annotationKeyPatternShowLogsOnlyForContainers = regexp.MustCompile(`^werf.io/show-logs-only-for-containers$`)
-)
 
-var (
 	annotationKeyHumanShowServiceMessages   = "werf.io/show-service-messages"
 	annotationKeyPatternShowServiceMessages = regexp.MustCompile(`^werf.io/show-service-messages$`)
-)
 
-var (
 	annotationKeyHumanShowLogsOnlyForNumberOfReplicas   = "werf.io/show-logs-only-for-number-of-replicas"
 	annotationKeyPatternShowLogsOnlyForNumberOfReplicas = regexp.MustCompile(`^werf.io/show-logs-only-for-number-of-replicas$`)
-)
 
-var (
 	annotationKeyHumanSkipLogs   = "werf.io/skip-logs"
 	annotationKeyPatternSkipLogs = regexp.MustCompile(`^werf.io/skip-logs$`)
-)
 
-var (
 	annotationKeyHumanSkipLogsForContainers   = "werf.io/skip-logs-for-containers"
 	annotationKeyPatternSkipLogsForContainers = regexp.MustCompile(`^werf.io/skip-logs-for-containers$`)
-)
 
-var (
 	annotationKeyHumanTrackTerminationMode   = "werf.io/track-termination-mode"
 	annotationKeyPatternTrackTerminationMode = regexp.MustCompile(`^werf.io/track-termination-mode$`)
-)
 
-var (
 	annotationKeyHumanWeight   = "werf.io/weight"
 	annotationKeyPatternWeight = regexp.MustCompile(`^werf.io/weight$`)
-)
 
-var (
 	annotationKeyHumanHookWeight   = "helm.sh/hook-weight"
 	annotationKeyPatternHookWeight = regexp.MustCompile(`^helm.sh/hook-weight$`)
-)
 
-var (
 	annotationKeyHumanDeployDependency   = "werf.io/deploy-dependency-<name>"
 	annotationKeyPatternDeployDependency = regexp.MustCompile(`^werf.io/deploy-dependency-(?P<id>.+)$`)
-)
 
-var (
+	// TODO(v2): get rid
 	annotationKeyHumanDependency   = "<name>.dependency.werf.io"
 	annotationKeyPatternDependency = regexp.MustCompile(`^(?P<id>.+).dependency.werf.io$`)
-)
 
-var (
 	annotationKeyHumanExternalDependency   = "<name>.external-dependency.werf.io"
 	annotationKeyPatternExternalDependency = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io$`)
-)
 
-var (
 	annotationKeyHumanLegacyExternalDependencyResource   = "<name>.external-dependency.werf.io/resource"
 	annotationKeyPatternLegacyExternalDependencyResource = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io/resource$`)
-)
 
-var (
 	annotationKeyHumanLegacyExternalDependencyNamespace   = "<name>.external-dependency.werf.io/namespace"
 	annotationKeyPatternLegacyExternalDependencyNamespace = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io/namespace$`)
-)
 
-var (
 	annotationKeyHumanSensitive   = "werf.io/sensitive"
 	annotationKeyPatternSensitive = regexp.MustCompile(`^werf.io/sensitive$`)
-)
 
-var (
 	annotationKeyHumanSensitivePaths   = "werf.io/sensitive-paths"
 	annotationKeyPatternSensitivePaths = regexp.MustCompile(`^werf.io/sensitive-paths$`)
-)
 
-var (
 	annotationKeyHumanDeployOn   = "werf.io/deploy-on"
 	annotationKeyPatternDeployOn = regexp.MustCompile(`^werf.io/deploy-on$`)
-)
 
-var (
 	annotationKeyHumanOwnership   = "werf.io/ownership"
 	annotationKeyPatternOwnership = regexp.MustCompile(`^werf.io/ownership$`)
 )
@@ -805,6 +746,10 @@ func validateDeployOn(meta *id.ResourceMeta) error {
 				string(helmrelease.HookPreDelete),
 				string(helmrelease.HookPostDelete),
 				string(helmrelease.HookTest),
+				string(helmrelease.HookInstall),
+				string(helmrelease.HookUpgrade),
+				string(helmrelease.HookRollback),
+				string(helmrelease.HookDelete),
 				"test-success":
 			default:
 				return fmt.Errorf("value %q for annotation %q is not supported", value, key)
@@ -1082,6 +1027,12 @@ func deployConditionsForAnnotation(meta *id.ResourceMeta, annoPattern *regexp.Re
 		}
 	}
 
+	for on := range result {
+		sort.SliceStable(result[on], func(i, j int) bool {
+			return common.StagesSortHandler(result[on][i], result[on][j])
+		})
+	}
+
 	return result
 }
 
@@ -1101,9 +1052,13 @@ func ownership(meta *id.ResourceMeta, releaseNamespace string) common.Ownership 
 	return common.OwnershipRelease
 }
 
-func weight(meta *id.ResourceMeta) int {
+func weight(meta *id.ResourceMeta, hasManualInternalDeps bool) *int {
+	if hasManualInternalDeps {
+		return nil
+	}
+
 	if IsCRD(meta.GroupVersionKind.GroupKind()) {
-		return 0
+		return lo.ToPtr(0)
 	}
 
 	var weightValue string
@@ -1113,7 +1068,7 @@ func weight(meta *id.ResourceMeta) int {
 		_, generalWeightValue, weightFound := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternWeight)
 
 		if !hookWeightFound && !weightFound {
-			return 0
+			return lo.ToPtr(0)
 		} else if weightFound {
 			weightValue = generalWeightValue
 		} else {
@@ -1123,11 +1078,11 @@ func weight(meta *id.ResourceMeta) int {
 		var found bool
 		_, weightValue, found = FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternWeight)
 		if !found {
-			return 0
+			return lo.ToPtr(0)
 		}
 	}
 
-	return lo.Must(strconv.Atoi(weightValue))
+	return lo.ToPtr(lo.Must(strconv.Atoi(weightValue)))
 }
 
 func deletePolicies(meta *id.ResourceMeta) []common.DeletePolicy {
@@ -1170,7 +1125,7 @@ func deletePolicies(meta *id.ResourceMeta) []common.DeletePolicy {
 	return deletePolicies
 }
 
-func manualInternalDependencies(meta *id.ResourceMeta, defaultNamespace string) []*dependency.InternalDependency {
+func manualInternalDependencies(meta *id.ResourceMeta) []*dependency.InternalDependency {
 	if IsCRD(meta.GroupVersionKind.GroupKind()) {
 		return nil
 	}
@@ -1212,9 +1167,7 @@ func manualInternalDependencies(meta *id.ResourceMeta, defaultNamespace string) 
 				[]string{gvk.Group},
 				[]string{gvk.Version},
 				[]string{gvk.Kind},
-				dependency.InternalDependencyOptions{
-					DefaultNamespace: defaultNamespace,
-				},
+				common.ResourceStatePresent,
 			)
 			deps[depID] = dep
 		}
@@ -1252,16 +1205,20 @@ func manualInternalDependencies(meta *id.ResourceMeta, defaultNamespace string) 
 				depKinds = []string{depKind.(string)}
 			}
 
+			var depState common.ResourceState
+			if s := properties["state"].(string); s != "" {
+				depState = common.ResourceState(s)
+			} else {
+				depState = common.ResourceStatePresent
+			}
+
 			dep := dependency.NewInternalDependency(
 				depNames,
 				depNamespaces,
 				depGroups,
 				depVersions,
 				depKinds,
-				dependency.InternalDependencyOptions{
-					DefaultNamespace: defaultNamespace,
-					ResourceState:    dependency.ResourceState(properties["state"].(string)),
-				},
+				depState,
 			)
 			deps[depID] = dep
 		}
@@ -1270,26 +1227,18 @@ func manualInternalDependencies(meta *id.ResourceMeta, defaultNamespace string) 
 	return lo.Values(deps)
 }
 
-func autoInternalDependencies(unstruct *unstructured.Unstructured, defaultNamespace string) []*dependency.InternalDependency {
-	depDetector := dependency.NewInternalDependencyDetector(dependency.InternalDependencyDetectorOptions{
-		DefaultNamespace: defaultNamespace,
-	})
-
-	return depDetector.Detect(unstruct)
-}
-
-func externalDependencies(meta *id.ResourceMeta, defaultNamespace string, mapper meta.ResettableRESTMapper, discoveryClient discovery.CachedDiscoveryInterface) ([]*dependency.ExternalDependency, error) {
+func externalDependencies(meta *id.ResourceMeta, releaseNamespace string, mapper meta.ResettableRESTMapper) ([]*dependency.ExternalDependency, error) {
 	if IsCRD(meta.GroupVersionKind.GroupKind()) {
 		return nil, nil
 	}
 
-	deps := externalDeps(meta, defaultNamespace, mapper)
+	deps := externalDeps(meta, releaseNamespace)
 
 	legacyExtDeps := map[string]*dependency.ExternalDependency{}
 	// Pretend that we don't have any external dependencies when we don't have cluster access, since we need cluster access to map GVR to GVK.
-	if mapper != nil && discoveryClient != nil {
+	if mapper != nil {
 		var err error
-		legacyExtDeps, err = legacyExternalDeps(meta, defaultNamespace, mapper, discoveryClient)
+		legacyExtDeps, err = legacyExternalDeps(meta, releaseNamespace, mapper)
 		if err != nil {
 			return nil, fmt.Errorf("get legacy external dependencies: %w", err)
 		}
@@ -1303,7 +1252,7 @@ func externalDependencies(meta *id.ResourceMeta, defaultNamespace string, mapper
 	return uniqResult, nil
 }
 
-func externalDeps(meta *id.ResourceMeta, defaultNamespace string, mapper meta.ResettableRESTMapper) map[string]*dependency.ExternalDependency {
+func externalDeps(meta *id.ResourceMeta, releaseNamespace string) map[string]*dependency.ExternalDependency {
 	deps := map[string]*dependency.ExternalDependency{}
 	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, annotationKeyPatternExternalDependency); found {
 		for key, value := range annotations {
@@ -1334,15 +1283,8 @@ func externalDeps(meta *id.ResourceMeta, defaultNamespace string, mapper meta.Re
 
 			depName := valParts[len(valParts)-1]
 
-			dep := dependency.NewExternalDependency(
-				depName,
-				depNamespace,
-				gvk,
-				dependency.ExternalDependencyOptions{
-					DefaultNamespace: defaultNamespace,
-					Mapper:           mapper,
-				},
-			)
+			resMeta := id.NewResourceMeta(depName, depNamespace, releaseNamespace, "", gvk, nil, nil)
+			dep := dependency.NewExternalDependency(resMeta)
 
 			deps[depID] = dep
 		}
@@ -1352,7 +1294,7 @@ func externalDeps(meta *id.ResourceMeta, defaultNamespace string, mapper meta.Re
 }
 
 // TODO(v2): get rid of legacy external deps
-func legacyExternalDeps(meta *id.ResourceMeta, defaultNamespace string, mapper meta.ResettableRESTMapper, discoveryClient discovery.CachedDiscoveryInterface) (map[string]*dependency.ExternalDependency, error) {
+func legacyExternalDeps(meta *id.ResourceMeta, releaseNamespace string, mapper meta.ResettableRESTMapper) (map[string]*dependency.ExternalDependency, error) {
 	deps := map[string]*dependency.ExternalDependency{}
 
 	type DepInfo struct {
@@ -1391,20 +1333,14 @@ func legacyExternalDeps(meta *id.ResourceMeta, defaultNamespace string, mapper m
 	}
 
 	for extDepID, extDepInfo := range extDepInfos {
-		gvk, err := ParseKubectlResourceStringtoGVK(extDepInfo.Type, mapper, discoveryClient)
+		gvk, err := ParseKubectlResourceStringtoGVK(extDepInfo.Type, mapper)
 		if err != nil {
 			return nil, fmt.Errorf("parse external dependency resource type %q for dependency %q (namespace: %q): %w", extDepInfo.Type, extDepInfo.Name, extDepInfo.Namespace, err)
 		}
 
-		dep := dependency.NewExternalDependency(
-			extDepInfo.Name,
-			extDepInfo.Namespace,
-			gvk,
-			dependency.ExternalDependencyOptions{
-				DefaultNamespace: defaultNamespace,
-				Mapper:           mapper,
-			},
-		)
+		resMeta := id.NewResourceMeta(extDepInfo.Name, extDepInfo.Namespace, releaseNamespace, "", gvk, nil, nil)
+		dep := dependency.NewExternalDependency(resMeta)
+
 		deps[extDepID] = dep
 	}
 

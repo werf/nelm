@@ -1,7 +1,10 @@
 package common
 
 import (
+	"fmt"
+
 	"github.com/Masterminds/sprig/v3"
+	"github.com/samber/lo"
 )
 
 var (
@@ -60,8 +63,34 @@ const (
 	StagePostUninstall     Stage = "post-uninstall"    // cleanup post-hooks
 	StagePostPostInstall   Stage = "post-post-install"
 	StagePostPostUninstall Stage = "post-post-uninstall" // uninstall crd, webhook
-	StageFinal             Stage = "final"               // succeed pending release
+	StageFinal             Stage = "final"               // succeed pending release, supersede previous release
 )
+
+var StagesOrdered = []Stage{
+	StageInit,
+	StagePrePreUninstall,
+	StagePrePreInstall,
+	StagePreInstall,
+	StagePreUninstall,
+	StageInstall,
+	StageUninstall,
+	StagePostInstall,
+	StagePostUninstall,
+	StagePostPostInstall,
+	StagePostPostUninstall,
+	StageFinal,
+}
+
+func StagesSortHandler(stage1, stage2 Stage) bool {
+	index1 := lo.IndexOf(StagesOrdered, stage1)
+	index2 := lo.IndexOf(StagesOrdered, stage2)
+
+	return index1 < index2
+}
+
+func SubStageWeighted(stage Stage, weight int) Stage {
+	return Stage(fmt.Sprintf("%s/weight:%d", stage, weight))
+}
 
 type On string
 
@@ -71,6 +100,14 @@ const (
 	InstallOnRollback On = "rollback"
 	InstallOnDelete   On = "delete"
 	InstallOnTest     On = "test"
+)
+
+type ResourceState string
+
+const (
+	ResourceStateAbsent  ResourceState = "absent"
+	ResourceStatePresent ResourceState = "present"
+	ResourceStateReady   ResourceState = "ready"
 )
 
 var SprigFuncs = sprig.TxtFuncMap()
