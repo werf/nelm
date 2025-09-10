@@ -5,8 +5,8 @@ import (
 )
 
 const (
-	OperationTypeUpdateRelease    = "update-release"
-	OperationVersionUpdateRelease = 1
+	OperationTypeUpdateRelease    OperationType    = "update-release"
+	OperationVersionUpdateRelease OperationVersion = 1
 )
 
 var _ OperationConfig = (*OperationConfigUpdateRelease)(nil)

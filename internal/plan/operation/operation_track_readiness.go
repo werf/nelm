@@ -4,27 +4,31 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 	"github.com/werf/nelm/internal/resource/id"
 )
 
 const (
-	OperationTypeTrackReadiness    = "track-readiness"
-	OperationVersionTrackReadiness = 1
+	OperationTypeTrackReadiness    OperationType    = "track-readiness"
+	OperationVersionTrackReadiness OperationVersion = 1
 )
 
 var _ OperationConfig = (*OperationConfigTrackReadiness)(nil)
 
 type OperationConfigTrackReadiness struct {
-	ResourceMeta                             *id.ResourceMeta
-	NoActivityTimeout                        *time.Duration
-	IgnoreReadinessProbeFailsByContainerName map[string]time.Duration
-	SaveLogsOnlyForNumberOfReplicas          int
-	SaveLogsOnlyForContainers                []string
-	SaveLogsByRegex                          *regexp.Regexp
-	SaveLogsByRegexForContainers             map[string]*regexp.Regexp
+	ResourceMeta *id.ResourceMeta
+
+	FailMode                                 multitrack.FailMode
+	FailuresAllowed                          int
 	IgnoreLogs                               bool
 	IgnoreLogsForContainers                  []string
+	IgnoreReadinessProbeFailsByContainerName map[string]time.Duration
+	NoActivityTimeout                        time.Duration
 	SaveEvents                               bool
+	SaveLogsByRegex                          *regexp.Regexp
+	SaveLogsByRegexForContainers             map[string]*regexp.Regexp
+	SaveLogsOnlyForContainers                []string
+	SaveLogsOnlyForNumberOfReplicas          int
 }
 
 func (c *OperationConfigTrackReadiness) ID() string {

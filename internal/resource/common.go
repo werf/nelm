@@ -880,13 +880,13 @@ func logRegexesForContainers(meta *id.ResourceMeta) map[string]*regexp.Regexp {
 	return regexByContainer
 }
 
-func noActivityTimeout(meta *id.ResourceMeta) *time.Duration {
+func noActivityTimeout(meta *id.ResourceMeta) time.Duration {
 	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternNoActivityTimeout)
 	if !found {
-		return nil
+		return 4 * time.Minute
 	}
 
-	return lo.ToPtr(lo.Must(time.ParseDuration(value)))
+	return lo.Must(time.ParseDuration(value))
 }
 
 func showLogsOnlyForContainers(meta *id.ResourceMeta) []string {

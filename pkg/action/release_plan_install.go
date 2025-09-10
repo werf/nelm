@@ -335,7 +335,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	}
 
 	log2.Default.Debug(ctx, "Calculating planned changes")
-	createdChanges, recreatedChanges, updatedChanges, appliedChanges, deletedChanges, planChangesPlanned := plan.CalculatePlannedChanges(
+	createdChanges, recreatedChanges, updatedChanges, appliedChanges, deletedChanges, planChangesPlanned := plan.FixmeCalculatePlannedChanges(
 		deployType,
 		releaseName,
 		releaseNamespace,

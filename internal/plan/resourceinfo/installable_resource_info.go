@@ -3,7 +3,9 @@ package resourceinfo
 import (
 	"context"
 	"fmt"
+	"regexp"
 
+	"github.com/wI2L/jsondiff"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
@@ -103,9 +105,19 @@ func resourceInstallType(localRes *resource.InstallableResource, getObj, dryAppl
 		return ResourceInstallTypeApply, nil
 	}
 
-	if different, err := util.ResourcesReallyDiffer(getObj, dryApplyObj); err != nil {
-		return "", fmt.Errorf("diff live and dry-apply versions of resource %q: %w", localRes.IDHuman(), err)
-	} else if different {
+	cleanRegexes := []*regexp.Regexp{
+		regexp.MustCompile(`.*werf\.io/.+`),
+		regexp.MustCompile(`^helm\.sh/.+`),
+	}
+
+	diffableGetObj, diffableDryApplyObj := util.BuildDiffableUnstructs(getObj, dryApplyObj, util.BuildDiffableUnstructsOptions{
+		CleanAnnotationsRegexes: cleanRegexes,
+		CleanLabelsRegexes:      cleanRegexes,
+	})
+
+	if patch, err := jsondiff.Compare(diffableGetObj, diffableDryApplyObj); err != nil {
+		return "", fmt.Errorf("compare live and dry-apply versions of resource %q: %w", localRes.IDHuman(), err)
+	} else if len(patch) > 0 {
 		return ResourceInstallTypeUpdate, nil
 	}
 

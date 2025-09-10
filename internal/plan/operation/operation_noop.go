@@ -1,8 +1,8 @@
 package operation
 
 const (
-	OperationTypeNoop    = "noop"
-	OperationVersionNoop = 1
+	OperationTypeNoop    OperationType    = "noop"
+	OperationVersionNoop OperationVersion = 1
 )
 
 var _ OperationConfig = (*OperationConfigNoop)(nil)

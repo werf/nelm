@@ -3,8 +3,8 @@ package operation
 import "github.com/werf/nelm/internal/resource/id"
 
 const (
-	OperationTypeCreate    = "create"
-	OperationVersionCreate = 1
+	OperationTypeCreate    OperationType    = "create"
+	OperationVersionCreate OperationVersion = 1
 )
 
 var _ OperationConfig = (*OperationConfigCreate)(nil)

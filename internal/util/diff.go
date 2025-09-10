@@ -1,7 +1,6 @@
 package util
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -9,9 +8,8 @@ import (
 	"github.com/aymanbagabas/go-udiff/myers"
 	"github.com/gookit/color"
 	"github.com/samber/lo"
-	"github.com/wI2L/jsondiff"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/util/json"
 )
 
 func ColoredUnifiedDiff(from, to string) (uDiff string, present bool) {
@@ -54,33 +52,63 @@ func ColoredUnifiedDiff(from, to string) (uDiff string, present bool) {
 	return strings.Trim(strings.Join(uDiffLines, "\n"), "\n"), true
 }
 
-func ResourcesReallyDiffer(first, second *unstructured.Unstructured) (differ bool, err error) {
-	firstJson, err := json.Marshal(first.UnstructuredContent())
-	if err != nil {
-		return false, fmt.Errorf("error marshaling live object: %w", err)
+type BuildDiffableUnstructsOptions struct {
+	CleanAnnotationsRegexes []*regexp.Regexp
+	CleanLabelsRegexes      []*regexp.Regexp
+	NoCleanRuntimeData      bool
+}
+
+func BuildDiffableUnstructs(unstruct1, unstruct2 *unstructured.Unstructured, opts BuildDiffableUnstructsOptions) (*unstructured.Unstructured, *unstructured.Unstructured) {
+	unstructCopy1 := unstruct1.DeepCopy()
+	unstructCopy2 := unstruct2.DeepCopy()
+
+	if !opts.NoCleanRuntimeData {
+		cleanRuntimeDataFromUnstruct(unstructCopy1)
+		cleanRuntimeDataFromUnstruct(unstructCopy2)
 	}
 
-	secondJson, err := json.Marshal(second.UnstructuredContent())
-	if err != nil {
-		return false, fmt.Errorf("error marshaling desired object: %w", err)
+	filteredAnnos1 := filterAnnosOrLabels(unstructCopy1.GetAnnotations(), opts.CleanAnnotationsRegexes)
+	unstructCopy1.SetAnnotations(filteredAnnos1)
+
+	filteredAnnos2 := filterAnnosOrLabels(unstructCopy2.GetAnnotations(), opts.CleanAnnotationsRegexes)
+	unstructCopy2.SetAnnotations(filteredAnnos2)
+
+	filteredLabels1 := filterAnnosOrLabels(unstructCopy1.GetLabels(), opts.CleanLabelsRegexes)
+	unstructCopy1.SetLabels(filteredLabels1)
+
+	filteredLabels2 := filterAnnosOrLabels(unstructCopy2.GetLabels(), opts.CleanLabelsRegexes)
+	unstructCopy2.SetLabels(filteredLabels2)
+
+	return unstructCopy1, unstructCopy2
+}
+
+func filterAnnosOrLabels(annosOrLabels map[string]string, regexes []*regexp.Regexp) map[string]string {
+	filtered := map[string]string{}
+
+annoOrLabelLoop:
+	for key, val := range annosOrLabels {
+		for _, regex := range regexes {
+			if regex.MatchString(key) {
+				continue annoOrLabelLoop
+			}
+		}
+
+		filtered[key] = val
 	}
 
-	diffOps, err := jsondiff.CompareJSON(firstJson, secondJson)
-	if err != nil {
-		return false, fmt.Errorf("error comparing json: %w", err)
+	return filtered
+}
+
+func cleanRuntimeDataFromUnstruct(unstruct *unstructured.Unstructured) {
+	unstruct.SetResourceVersion("")
+	unstruct.SetGeneration(0)
+	unstruct.SetUID("")
+	unstruct.SetCreationTimestamp(metav1.Time{})
+	unstruct.Object["status"] = nil
+
+	managedFields := unstruct.GetManagedFields()
+	for _, entry := range managedFields {
+		entry.Time = nil
 	}
-
-	significantDiffOps := lo.Filter(diffOps, func(op jsondiff.Operation, _ int) bool {
-		return !strings.HasPrefix(op.Path, "/metadata/creationTimestamp") &&
-			!strings.HasPrefix(op.Path, "/metadata/generation") &&
-			!strings.HasPrefix(op.Path, "/metadata/resourceVersion") &&
-			!strings.HasPrefix(op.Path, "/metadata/uid") &&
-			!strings.HasPrefix(op.Path, "/status") &&
-			!lo.Must(regexp.MatchString(`^/metadata/managedFields/[0-9]+/time$`, op.Path)) &&
-			!lo.Must(regexp.MatchString(`^/metadata/annotations/.*werf.io.*`, op.Path)) &&
-			!lo.Must(regexp.MatchString(`^/metadata/annotations/helm.sh~1hook.*`, op.Path)) &&
-			!lo.Must(regexp.MatchString(`^/metadata/labels/.*werf.io.*`, op.Path))
-	})
-
-	return len(significantDiffOps) > 0, nil
+	unstruct.SetManagedFields(managedFields)
 }

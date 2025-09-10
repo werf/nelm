@@ -134,7 +134,7 @@ type InstallableResource struct {
 	IgnoreReadinessProbeFailsForContainers map[string]time.Duration
 	LogRegex                               *regexp.Regexp
 	LogRegexesForContainers                map[string]*regexp.Regexp
-	NoActivityTimeout                      *time.Duration
+	NoActivityTimeout                      time.Duration
 	ShowLogsOnlyForContainers              []string
 	ShowServiceMessages                    bool
 	ShowLogsOnlyForNumberOfReplicas        int

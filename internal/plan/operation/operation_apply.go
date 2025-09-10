@@ -3,8 +3,8 @@ package operation
 import "github.com/werf/nelm/internal/resource/id"
 
 const (
-	OperationTypeApply    = "apply"
-	OperationVersionApply = 1
+	OperationTypeApply    OperationType    = "apply"
+	OperationVersionApply OperationVersion = 1
 )
 
 var _ OperationConfig = (*OperationConfigApply)(nil)

@@ -3,8 +3,8 @@ package operation
 import "github.com/werf/nelm/internal/resource/id"
 
 const (
-	OperationTypeTrackPresence    = "track-presence"
-	OperationVersionTrackPresence = 1
+	OperationTypeTrackPresence    OperationType    = "track-presence"
+	OperationVersionTrackPresence OperationVersion = 1
 )
 
 var _ OperationConfig = (*OperationConfigTrackPresence)(nil)

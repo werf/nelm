@@ -3,8 +3,8 @@ package operation
 import "github.com/werf/nelm/internal/resource/id"
 
 const (
-	OperationTypeDelete    = "delete"
-	OperationVersionDelete = 1
+	OperationTypeDelete    OperationType    = "delete"
+	OperationVersionDelete OperationVersion = 1
 )
 
 var _ OperationConfig = (*OperationConfigDelete)(nil)

@@ -385,15 +385,17 @@ func addInstallResourceOps(plan *Plan, infos []*resourceinfo.InstallableResource
 				Iteration: operation.OperationIteration(info.Iteration),
 				Config: &operation.OperationConfigTrackReadiness{
 					ResourceMeta:                             info.ResourceMeta,
-					NoActivityTimeout:                        info.LocalResource.NoActivityTimeout,
-					IgnoreReadinessProbeFailsByContainerName: info.LocalResource.IgnoreReadinessProbeFailsForContainers,
-					SaveLogsOnlyForNumberOfReplicas:          info.LocalResource.ShowLogsOnlyForNumberOfReplicas,
-					SaveLogsOnlyForContainers:                info.LocalResource.ShowLogsOnlyForContainers,
-					SaveLogsByRegex:                          info.LocalResource.LogRegex,
-					SaveLogsByRegexForContainers:             info.LocalResource.LogRegexesForContainers,
+					FailMode:                                 info.LocalResource.FailMode,
+					FailuresAllowed:                          info.LocalResource.FailuresAllowed,
 					IgnoreLogs:                               info.LocalResource.SkipLogs,
 					IgnoreLogsForContainers:                  info.LocalResource.SkipLogsForContainers,
+					IgnoreReadinessProbeFailsByContainerName: info.LocalResource.IgnoreReadinessProbeFailsForContainers,
+					NoActivityTimeout:                        info.LocalResource.NoActivityTimeout,
 					SaveEvents:                               info.LocalResource.ShowServiceMessages,
+					SaveLogsByRegex:                          info.LocalResource.LogRegex,
+					SaveLogsByRegexForContainers:             info.LocalResource.LogRegexesForContainers,
+					SaveLogsOnlyForContainers:                info.LocalResource.ShowLogsOnlyForContainers,
+					SaveLogsOnlyForNumberOfReplicas:          info.LocalResource.ShowLogsOnlyForNumberOfReplicas,
 				},
 			}
 			chain.AddOperation(trackOp).Stage(stg)

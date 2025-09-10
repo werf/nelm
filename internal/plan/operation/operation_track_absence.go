@@ -3,8 +3,8 @@ package operation
 import "github.com/werf/nelm/internal/resource/id"
 
 const (
-	OperationTypeTrackAbsence    = "track-absence"
-	OperationVersionTrackAbsence = 1
+	OperationTypeTrackAbsence    OperationType    = "track-absence"
+	OperationVersionTrackAbsence OperationVersion = 1
 )
 
 var _ OperationConfig = (*OperationConfigTrackAbsence)(nil)

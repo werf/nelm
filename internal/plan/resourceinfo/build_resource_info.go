@@ -111,7 +111,6 @@ func filterDelResourcesPresentInInstResources(instResourceInfos []*InstallableRe
 
 func iterateInstallableResourceInfos(infos []*InstallableResourceInfo) {
 	var seenInfos []*InstallableResourceInfo
-
 	for _, info := range infos {
 		seenInfo, seen := lo.Find(seenInfos, func(inf *InstallableResourceInfo) bool {
 			return info.ID() == inf.ID()
@@ -121,6 +120,36 @@ func iterateInstallableResourceInfos(infos []*InstallableResourceInfo) {
 		}
 
 		seenInfos = append(seenInfos, info)
+	}
+
+	var highestIteration int
+	nonZeroIterInfos := lo.Filter(infos, func(info *InstallableResourceInfo, _ int) bool {
+		highestIteration = lo.Max([]int{highestIteration, info.Iteration})
+		return info.Iteration > 0
+	})
+
+	if highestIteration == 0 {
+		return
+	}
+
+	for iter := 1; iter <= highestIteration; iter++ {
+		iterInfos := lo.Filter(nonZeroIterInfos, func(info *InstallableResourceInfo, _ int) bool {
+			return info.Iteration == iter
+		})
+
+		for _, iterInfo := range iterInfos {
+			if iterInfo.MustInstall == ResourceInstallTypeNone {
+				continue
+			}
+
+			prevIterInfo := lo.Must(lo.Find(infos, func(inf *InstallableResourceInfo) bool {
+				return iterInfo.ID() == inf.ID() && inf.Iteration == iterInfo.Iteration-1
+			}))
+
+			if prevIterInfo.MustDeleteOnSuccessfulInstall {
+				iterInfo.MustInstall = ResourceInstallTypeCreate
+			}
+		}
 	}
 }
 

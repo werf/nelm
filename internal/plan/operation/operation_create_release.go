@@ -5,8 +5,8 @@ import (
 )
 
 const (
-	OperationTypeCreateRelease    = "create-release"
-	OperationVersionCreateRelease = 1
+	OperationTypeCreateRelease    OperationType    = "create-release"
+	OperationVersionCreateRelease OperationVersion = 1
 )
 
 var _ OperationConfig = (*OperationConfigCreateRelease)(nil)

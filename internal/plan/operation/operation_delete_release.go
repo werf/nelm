@@ -3,8 +3,8 @@ package operation
 import "github.com/werf/3p-helm/pkg/release"
 
 const (
-	OperationTypeDeleteRelease    = "delete-release"
-	OperationVersionDeleteRelease = 1
+	OperationTypeDeleteRelease    OperationType    = "delete-release"
+	OperationVersionDeleteRelease OperationVersion = 1
 )
 
 var _ OperationConfig = (*OperationConfigDeleteRelease)(nil)
