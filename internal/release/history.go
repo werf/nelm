@@ -24,14 +24,40 @@ type Historier interface {
 	DeleteRelease(ctx context.Context, name string, revision int) error
 }
 
-func NewHistory(rels []*helmrelease.Release, releaseName string, historyStorage ReleaseStorager, opts HistoryOptions) *History {
-	releaseutil.SortByRevision(rels)
-
-	return &History{
-		releaseName: releaseName,
-		releases:    rels,
-		storage:     historyStorage,
+func BuildHistories(historyStorage ReleaseStorager, opts HistoryOptions) ([]*History, error) {
+	rels, err := historyStorage.Query(map[string]string{"owner": "helm"})
+	if err != nil && err != driver.ErrReleaseNotFound {
+		return nil, fmt.Errorf("query releases: %w", err)
 	}
+
+	releasesByNamespace := map[string]map[string][]*helmrelease.Release{}
+	for _, rel := range rels {
+		if releasesByNamespace[rel.Namespace] == nil {
+			releasesByNamespace[rel.Namespace] = map[string][]*helmrelease.Release{}
+		}
+
+		if releasesByNamespace[rel.Namespace][rel.Name] == nil {
+			releasesByNamespace[rel.Namespace][rel.Name] = []*helmrelease.Release{}
+		}
+
+		releasesByNamespace[rel.Namespace][rel.Name] = append(releasesByNamespace[rel.Namespace][rel.Name], rel)
+	}
+
+	var histories []*History
+	for _, releasesFromNamespace := range releasesByNamespace {
+		for relName, revisions := range releasesFromNamespace {
+			history := NewHistory(
+				revisions,
+				relName,
+				historyStorage,
+				opts,
+			)
+
+			histories = append(histories, history)
+		}
+	}
+
+	return histories, nil
 }
 
 func BuildHistory(releaseName string, historyStorage ReleaseStorager, opts HistoryOptions) (*History, error) {
@@ -49,6 +75,16 @@ func BuildHistory(releaseName string, historyStorage ReleaseStorager, opts Histo
 }
 
 type HistoryOptions struct{}
+
+func NewHistory(rels []*helmrelease.Release, releaseName string, historyStorage ReleaseStorager, opts HistoryOptions) *History {
+	releaseutil.SortByRevision(rels)
+
+	return &History{
+		releaseName: releaseName,
+		releases:    rels,
+		storage:     historyStorage,
+	}
+}
 
 type History struct {
 	releaseName string

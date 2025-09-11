@@ -24,7 +24,7 @@ import (
 	"github.com/werf/nelm/internal/legacy/deploy"
 	"github.com/werf/nelm/internal/lock"
 	"github.com/werf/nelm/internal/plan/operation"
-	"github.com/werf/nelm/internal/resource/id"
+	"github.com/werf/nelm/internal/resource/meta"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -191,11 +191,11 @@ func legacyReleaseUninstall(ctx context.Context, releaseName, releaseNamespace s
 		opts.ProgressTablePrintInterval,
 	)
 
-	namespaceID := id.NewResourceID(
+	namespaceID := meta.NewResourceID(
 		releaseNamespace,
 		"",
 		schema.GroupVersionKind{Version: "v1", Kind: "Namespace"},
-		id.ResourceIDOptions{Mapper: clientFactory.Mapper()},
+		meta.ResourceIDOptions{Mapper: clientFactory.Mapper()},
 	)
 
 	if _, err := clientFactory.KubeClient().Get(

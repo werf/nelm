@@ -1,6 +1,8 @@
 package operation
 
-import "github.com/werf/nelm/internal/resource/id"
+import (
+	"github.com/werf/nelm/internal/resource"
+)
 
 const (
 	OperationTypeApply    OperationType    = "apply"
@@ -10,7 +12,7 @@ const (
 var _ OperationConfig = (*OperationConfigApply)(nil)
 
 type OperationConfigApply struct {
-	ResourceSpec *id.ResourceSpec
+	ResourceSpec *resource.ResourceSpec
 }
 
 func (c *OperationConfigApply) ID() string {

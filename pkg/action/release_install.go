@@ -27,7 +27,7 @@ import (
 	"github.com/werf/nelm/internal/lock"
 	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/plan/operation"
-	"github.com/werf/nelm/internal/plan/resourceinfo"
+	"github.com/werf/nelm/internal/plan/resinfo"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/internal/track"
@@ -331,7 +331,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	log.Default.Debug(ctx, "Build transformed resources")
-	transformedResSpecs, err := resourceinfo.BuildTransformedResourceSpecs(
+	transformedResSpecs, err := resource.BuildTransformedResourceSpecs(
 		ctx,
 		releaseNamespace,
 		chartTree.Resources(),
@@ -347,7 +347,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	log.Default.Debug(ctx, "Locally validate resources")
-	if err := resourceinfo.ValidateLocal(
+	if err := resource.ValidateLocal(
 		releaseNamespace,
 		transformedResSpecs,
 		clientFactory.Mapper(),
@@ -356,7 +356,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	log.Default.Debug(ctx, "Build releasable resources")
-	releasableResSpecs, err := resourceinfo.BuildReleasableResourceSpecs(
+	releasableResSpecs, err := resource.BuildReleasableResourceSpecs(
 		ctx,
 		releaseNamespace,
 		transformedResSpecs,
@@ -371,7 +371,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	log.Default.Debug(ctx, "Build deployable resources")
-	deployableResources, err := resourceinfo.BuildDeployableResources(
+	deployableResources, err := resource.BuildResources(
 		ctx,
 		deployType,
 		releaseNamespace,
@@ -388,7 +388,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	log.Default.Debug(ctx, "Build deployable resource infos")
-	installableResourceInfos, deletableResourceInfos, err := resourceinfo.BuildDeployableResourceInfos(
+	installableResourceInfos, deletableResourceInfos, err := resinfo.BuildDeployableResourceInfos(
 		ctx,
 		releaseName,
 		releaseNamespace,
@@ -404,7 +404,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	log.Default.Debug(ctx, "Remotely validate resources")
-	if err := resourceinfo.ValidateRemote(
+	if err := resinfo.ValidateRemote(
 		releaseName,
 		releaseNamespace,
 		installableResourceInfos,
@@ -500,7 +500,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	var releaseUpToDate bool
 	if prevReleaseFound {
-		releaseUpToDate, err = release.ReleaseUpToDate(prevRelease, newRel)
+		releaseUpToDate, err = release.IsReleaseUpToDate(prevRelease, newRel)
 		if err != nil {
 			return fmt.Errorf("check if release is up to date: %w", err)
 		}
@@ -529,10 +529,10 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		return nil
 	}
 
-	tablesBuilder := track.NewTablesBuilder(
+	tablesBuilder := track.newTablesBuilder(
 		taskStore,
 		logStore,
-		track.TablesBuilderOptions{
+		track.tablesBuilderOptions{
 			DefaultNamespace: releaseNamespace,
 		},
 	)
@@ -544,9 +544,9 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}
 	}()
 
-	var progressPrinter *progressPrinter
+	var progressPrinter *track.ProgressTablesPrinter
 	if !opts.NoProgressTablePrint {
-		progressPrinter = newProgressPrinter()
+		progressPrinter = &track.NewProgressTablesPrinter()
 		progressPrinter.Start(ctx, opts.ProgressTablePrintInterval, tablesBuilder)
 	}
 
@@ -823,7 +823,7 @@ func runFailureDeployPlan(
 	failedPlan *plan.FixmePlan,
 	taskStore *statestore.TaskStore,
 	informerFactory *kubeutil.Concurrent[*informer.InformerFactory],
-	resProcessor *resourceinfo.DeployableResourcesProcessor,
+	resProcessor *resinfo.DeployableResourcesProcessor,
 	newRel, prevRelease *release.Release,
 	history *release.History,
 	clientFactory *kube.ClientFactory,
@@ -930,7 +930,7 @@ func runRollbackPlan(
 	nonCriticalErrs []error,
 ) {
 	log.Default.Debug(ctx, "Processing rollback resources")
-	resProcessor := resourceinfo.NewDeployableResourcesProcessor(
+	resProcessor := resinfo.NewDeployableResourcesProcessor(
 		common.DeployTypeRollback,
 		releaseName,
 		releaseNamespace,
@@ -939,7 +939,7 @@ func runRollbackPlan(
 		prevDeployedRelease.GeneralResources(),
 		nil,
 		failedRelease.GeneralResources(),
-		resourceinfo.DeployableResourcesProcessorOptions{
+		resinfo.DeployableResourcesProcessorOptions{
 			NetworkParallelism: networkParallelism,
 			ExtraReleasableResourcePatchers: []resource.ResourcePatcher{
 				resource.NewExtraMetadataPatcher(userExtraAnnotations, userExtraLabels),

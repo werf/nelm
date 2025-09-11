@@ -11,7 +11,7 @@ import (
 	"github.com/werf/3p-helm/pkg/chartutil"
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/nelm/internal/common"
-	"github.com/werf/nelm/internal/resource/id"
+	"github.com/werf/nelm/internal/resource"
 )
 
 type ReleaseOptions struct {
@@ -20,7 +20,7 @@ type ReleaseOptions struct {
 	Notes           string
 }
 
-func NewRelease(name, namespace string, revision int, deployType common.DeployType, resources []*id.ResourceSpec, opts ReleaseOptions) (*helmrelease.Release, error) {
+func NewRelease(name, namespace string, revision int, deployType common.DeployType, resources []*resource.ResourceSpec, opts ReleaseOptions) (*helmrelease.Release, error) {
 	if err := chartutil.ValidateReleaseName(name); err != nil {
 		return nil, fmt.Errorf("release name %q is not valid: %w", name, err)
 	}
@@ -49,7 +49,7 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 	}
 
 	sort.SliceStable(resources, func(i, j int) bool {
-		return id.ResourceSpecSortHandler(resources[i], resources[j])
+		return resource.ResourceSpecSortHandler(resources[i], resources[j])
 	})
 
 	var unstoredResources []string
@@ -57,7 +57,7 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 	var hookResources []*helmrelease.Hook
 	for _, res := range resources {
 		switch res.StoreAs {
-		case id.StoreAsHook:
+		case resource.StoreAsHook:
 			manifest, err := resourceSpecToManifest(name, namespace, revision, res)
 			if err != nil {
 				return nil, fmt.Errorf("convert resource spec to manifest: %w", err)
@@ -66,14 +66,14 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 			hookResources = append(hookResources, &helmrelease.Hook{
 				Manifest: manifest,
 			})
-		case id.StoreAsRegular:
+		case resource.StoreAsRegular:
 			manifest, err := resourceSpecToManifest(name, namespace, revision, res)
 			if err != nil {
 				return nil, fmt.Errorf("convert resource spec to manifest: %w", err)
 			}
 
 			regularResources = append(regularResources, manifest)
-		case id.StoreAsNone:
+		case resource.StoreAsNone:
 			manifest, err := resourceSpecToManifest(name, namespace, revision, res)
 			if err != nil {
 				return nil, fmt.Errorf("convert resource spec to manifest: %w", err)
@@ -103,7 +103,7 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 	}, nil
 }
 
-func resourceSpecToManifest(name string, namespace string, revision int, res *id.ResourceSpec) (string, error) {
+func resourceSpecToManifest(name string, namespace string, revision int, res *resource.ResourceSpec) (string, error) {
 	manifestByte, err := yaml.Marshal(res.Unstruct.UnstructuredContent())
 	if err != nil {
 		return "", fmt.Errorf("marshal resource %q for release %q (namespace: %q, revision: %d): %w", res.IDHuman(), name, namespace, revision, err)

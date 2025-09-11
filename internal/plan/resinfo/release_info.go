@@ -1,4 +1,4 @@
-package resourceinfo
+package resinfo
 
 import (
 	"context"
@@ -6,6 +6,25 @@ import (
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/nelm/internal/common"
 )
+
+type ReleaseType string
+
+const (
+	ReleaseTypeNone      ReleaseType = "none"
+	ReleaseTypeInstall   ReleaseType = "install"
+	ReleaseTypeUpgrade   ReleaseType = "upgrade"
+	ReleaseTypeRollback  ReleaseType = "rollback"
+	ReleaseTypeSupersede ReleaseType = "supersede"
+	ReleaseTypeUninstall ReleaseType = "uninstall"
+	ReleaseTypeDelete    ReleaseType = "delete"
+)
+
+type ReleaseInfo struct {
+	Release *helmrelease.Release
+
+	Must                   ReleaseType
+	MustFailOnFailedDeploy bool
+}
 
 func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevReleases []*helmrelease.Release, newRel *helmrelease.Release) ([]*ReleaseInfo, error) {
 	var infos []*ReleaseInfo

@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/chanced/caps"
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 
@@ -54,7 +55,7 @@ func (r *report) Print(ctx context.Context) {
 			BlockTitle: completedStyle("Completed operations"),
 		}, func() {
 			for _, op := range r.completedOps {
-				log.Default.Info(ctx, util.Capitalize(op.IDHuman()))
+				log.Default.Info(ctx, caps.ToUpper(op.IDHuman()))
 			}
 		})
 	}
@@ -64,7 +65,7 @@ func (r *report) Print(ctx context.Context) {
 			BlockTitle: canceledStyle("Canceled operations"),
 		}, func() {
 			for _, op := range r.canceledOps {
-				log.Default.Info(ctx, util.Capitalize(op.IDHuman()))
+				log.Default.Info(ctx, caps.ToUpper(op.IDHuman()))
 			}
 		})
 	}
@@ -74,7 +75,7 @@ func (r *report) Print(ctx context.Context) {
 			BlockTitle: failedStyle("Failed operations"),
 		}, func() {
 			for _, op := range r.failedOps {
-				log.Default.Info(ctx, util.Capitalize(op.IDHuman()))
+				log.Default.Info(ctx, caps.ToUpper(op.IDHuman()))
 			}
 		})
 	}

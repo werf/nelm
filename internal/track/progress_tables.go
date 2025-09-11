@@ -1,10 +1,12 @@
 package track
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/chanced/caps"
 	"github.com/gookit/color"
@@ -16,27 +18,113 @@ import (
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
+	"github.com/werf/nelm/pkg/log"
 )
 
-type TablesBuilder struct {
-	taskStore *statestore.TaskStore
-	logStore  *kdutil.Concurrent[*logstore.LogStore]
-
-	defaultNamespace      string
-	maxProgressTableWidth int
-	maxLogEventTableWidth int
-
-	nextLogPointers    map[string]int
-	nextEventPointers  map[string]int
-	hideReadinessTasks map[string]bool
-	hidePresenceTasks  map[string]bool
-	hideAbsenceTasks   map[string]bool
+type ProgressTablesPrinterOptions struct {
+	DefaultNamespace string
+	MaxTableWidth    int
 }
 
-func NewTablesBuilder(taskStore *statestore.TaskStore, logStore *kdutil.Concurrent[*logstore.LogStore], opts TablesBuilderOptions) *TablesBuilder {
+func NewProgressTablesPrinter(taskStore *statestore.TaskStore, logStore *kdutil.Concurrent[*logstore.LogStore], opts ProgressTablesPrinterOptions) *ProgressTablesPrinter {
+	return &ProgressTablesPrinter{
+		tablesBuilder: newTablesBuilder(taskStore, logStore, tablesBuilderOptions{
+			DefaultNamespace: opts.DefaultNamespace,
+			MaxTableWidth:    opts.MaxTableWidth,
+		}),
+	}
+}
+
+type ProgressTablesPrinter struct {
+	ctxCancelFn   context.CancelCauseFunc
+	finishedCh    chan struct{}
+	tablesBuilder *tablesBuilder
+}
+
+func (p *ProgressTablesPrinter) Start(ctx context.Context, interval time.Duration) {
+	go func() {
+		p.finishedCh = make(chan struct{})
+
+		ctx, p.ctxCancelFn = context.WithCancelCause(ctx)
+		defer func() {
+			p.ctxCancelFn(fmt.Errorf("context canceled: table printer finished"))
+			p.finishedCh <- struct{}{}
+		}()
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				printTables(ctx, p.tablesBuilder)
+			case <-ctx.Done():
+				printTables(ctx, p.tablesBuilder)
+				return
+			}
+		}
+	}()
+}
+
+func (p *ProgressTablesPrinter) Stop() {
+	p.ctxCancelFn(fmt.Errorf("context canceled: table printer stopped"))
+}
+
+func (p *ProgressTablesPrinter) Wait() {
+	<-p.finishedCh
+}
+
+func printTables(
+	ctx context.Context,
+	tablesBuilder *tablesBuilder,
+) {
+	maxTableWidth := log.Default.BlockContentWidth(ctx) - 2
+	tablesBuilder.SetMaxTableWidth(maxTableWidth)
+
+	if tables, nonEmpty := tablesBuilder.BuildEventTables(); nonEmpty {
+		headers := lo.Keys(tables)
+		sort.Strings(headers)
+
+		for _, header := range headers {
+			log.Default.InfoBlock(ctx, log.BlockOptions{
+				BlockTitle: header,
+			}, func() {
+				log.Default.Info(ctx, tables[header].Render())
+			})
+		}
+	}
+
+	if tables, nonEmpty := tablesBuilder.BuildLogTables(); nonEmpty {
+		headers := lo.Keys(tables)
+		sort.Strings(headers)
+
+		for _, header := range headers {
+			log.Default.InfoBlock(ctx, log.BlockOptions{
+				BlockTitle: header,
+			}, func() {
+				log.Default.Info(ctx, tables[header].Render())
+			})
+		}
+	}
+
+	if table, nonEmpty := tablesBuilder.BuildProgressTable(); nonEmpty {
+		log.Default.InfoBlock(ctx, log.BlockOptions{
+			BlockTitle: color.Style{color.Bold, color.Blue}.Render("Progress status"),
+		}, func() {
+			log.Default.Info(ctx, table.Render())
+		})
+	}
+}
+
+type tablesBuilderOptions struct {
+	DefaultNamespace string
+	MaxTableWidth    int
+}
+
+func newTablesBuilder(taskStore *statestore.TaskStore, logStore *kdutil.Concurrent[*logstore.LogStore], opts tablesBuilderOptions) *tablesBuilder {
 	defaultNamespace := lo.WithoutEmpty([]string{opts.DefaultNamespace, v1.NamespaceDefault})[0]
 
-	builder := &TablesBuilder{
+	builder := &tablesBuilder{
 		taskStore:          taskStore,
 		logStore:           logStore,
 		defaultNamespace:   defaultNamespace,
@@ -52,12 +140,22 @@ func NewTablesBuilder(taskStore *statestore.TaskStore, logStore *kdutil.Concurre
 	return builder
 }
 
-type TablesBuilderOptions struct {
-	DefaultNamespace string
-	MaxTableWidth    int
+type tablesBuilder struct {
+	taskStore *statestore.TaskStore
+	logStore  *kdutil.Concurrent[*logstore.LogStore]
+
+	defaultNamespace      string
+	maxProgressTableWidth int
+	maxLogEventTableWidth int
+
+	nextLogPointers    map[string]int
+	nextEventPointers  map[string]int
+	hideReadinessTasks map[string]bool
+	hidePresenceTasks  map[string]bool
+	hideAbsenceTasks   map[string]bool
 }
 
-func (b *TablesBuilder) BuildProgressTable() (table prtable.Writer, notEmpty bool) {
+func (b *tablesBuilder) BuildProgressTable() (table prtable.Writer, notEmpty bool) {
 	table = prtable.NewWriter()
 	setProgressTableStyle(table, b.maxProgressTableWidth)
 
@@ -90,7 +188,7 @@ func (b *TablesBuilder) BuildProgressTable() (table prtable.Writer, notEmpty boo
 	return table, true
 }
 
-func (b *TablesBuilder) BuildLogTables() (tables map[string]prtable.Writer, nonEmpty bool) {
+func (b *tablesBuilder) BuildLogTables() (tables map[string]prtable.Writer, nonEmpty bool) {
 	tables = make(map[string]prtable.Writer)
 
 	b.logStore.RTransaction(func(ls *logstore.LogStore) {
@@ -134,7 +232,7 @@ func (b *TablesBuilder) BuildLogTables() (tables map[string]prtable.Writer, nonE
 	return tables, true
 }
 
-func (b *TablesBuilder) BuildEventTables() (tables map[string]prtable.Writer, nonEmpty bool) {
+func (b *tablesBuilder) BuildEventTables() (tables map[string]prtable.Writer, nonEmpty bool) {
 	tables = make(map[string]prtable.Writer)
 
 	for _, crts := range b.taskStore.ReadinessTasksStates() {
@@ -183,7 +281,7 @@ func (b *TablesBuilder) BuildEventTables() (tables map[string]prtable.Writer, no
 	return tables, true
 }
 
-func (b *TablesBuilder) SetMaxTableWidth(maxTableWidth int) {
+func (b *tablesBuilder) SetMaxTableWidth(maxTableWidth int) {
 	var maxProgressTableWidth int
 	if maxTableWidth > 0 {
 		maxProgressTableWidth = maxTableWidth
@@ -201,7 +299,7 @@ func (b *TablesBuilder) SetMaxTableWidth(maxTableWidth int) {
 	b.maxLogEventTableWidth = lo.Min([]int{maxLogEventTableWidth, 250})
 }
 
-func (b *TablesBuilder) buildReadinessProgressRows() (rows []prtable.Row) {
+func (b *tablesBuilder) buildReadinessProgressRows() (rows []prtable.Row) {
 	crtss := b.taskStore.ReadinessTasksStates()
 	sortReadinessTaskStates(crtss)
 
@@ -275,7 +373,7 @@ func (b *TablesBuilder) buildReadinessProgressRows() (rows []prtable.Row) {
 	return rows
 }
 
-func (b *TablesBuilder) buildPresenceProgressRows() (rows []prtable.Row) {
+func (b *tablesBuilder) buildPresenceProgressRows() (rows []prtable.Row) {
 	cptss := b.taskStore.PresenceTasksStates()
 	sortPresenceTaskStates(cptss)
 
@@ -320,7 +418,7 @@ func (b *TablesBuilder) buildPresenceProgressRows() (rows []prtable.Row) {
 	return rows
 }
 
-func (b *TablesBuilder) buildAbsenceProgressRows() (rows []prtable.Row) {
+func (b *tablesBuilder) buildAbsenceProgressRows() (rows []prtable.Row) {
 	catss := b.taskStore.AbsenceTasksStates()
 	sortAbsenceTaskStates(catss)
 

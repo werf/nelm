@@ -19,7 +19,7 @@ import (
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/plan"
-	"github.com/werf/nelm/internal/plan/resourceinfo"
+	"github.com/werf/nelm/internal/plan/resinfo"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource"
 	log2 "github.com/werf/nelm/pkg/log"
@@ -286,7 +286,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	}
 
 	log2.Default.Debug(ctx, "Processing resources")
-	resProcessor := resourceinfo.NewDeployableResourcesProcessor(
+	resProcessor := resinfo.NewDeployableResourcesProcessor(
 		deployType,
 		releaseName,
 		releaseNamespace,
@@ -295,7 +295,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		chartTree.GeneralResources(),
 		nil,
 		prevRelGeneralResources,
-		resourceinfo.DeployableResourcesProcessorOptions{
+		resinfo.DeployableResourcesProcessorOptions{
 			NetworkParallelism: opts.NetworkParallelism,
 			ForceAdoption:      opts.ForceAdoption,
 			ExtraReleasableResourcePatchers: []resource.ResourcePatcher{
@@ -348,13 +348,13 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	var releaseUpToDate bool
 	if prevReleaseFound {
-		releaseUpToDate, err = release.ReleaseUpToDate(prevRelease, newRel)
+		releaseUpToDate, err = release.IsReleaseUpToDate(prevRelease, newRel)
 		if err != nil {
 			return fmt.Errorf("check if release is up to date: %w", err)
 		}
 	}
 
-	plan.LogPlannedChanges(
+	plan.FixmeLogPlannedChanges(
 		ctx,
 		releaseName,
 		releaseNamespace,

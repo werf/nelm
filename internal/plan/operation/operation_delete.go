@@ -1,6 +1,6 @@
 package operation
 
-import "github.com/werf/nelm/internal/resource/id"
+import "github.com/werf/nelm/internal/resource/meta"
 
 const (
 	OperationTypeDelete    OperationType    = "delete"
@@ -10,7 +10,7 @@ const (
 var _ OperationConfig = (*OperationConfigDelete)(nil)
 
 type OperationConfigDelete struct {
-	ResourceMeta *id.ResourceMeta
+	ResourceMeta *meta.ResourceMeta
 }
 
 func (c *OperationConfigDelete) ID() string {

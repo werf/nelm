@@ -1,6 +1,7 @@
 package chart
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -8,10 +9,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
-	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
 	"sigs.k8s.io/yaml"
 
@@ -30,7 +32,7 @@ import (
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
-	resid "github.com/werf/nelm/internal/resource/id"
+	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
@@ -48,7 +50,7 @@ type RenderChartOptions struct {
 	KubeCAPath             string
 	KubeConfig             *kube.KubeConfig
 	KubeVersion            *chartutil.KubeVersion
-	Mapper                 meta.ResettableRESTMapper
+	Mapper                 metav1.ResettableRESTMapper
 	NoStandaloneCRDs       bool
 	RegistryClient         *registry.Client
 	SetValues              []string
@@ -60,7 +62,7 @@ type RenderChartOptions struct {
 type RenderChartResult struct {
 	Chart         *chart.Chart
 	Notes         string
-	ResourceSpecs []*resid.ResourceSpec
+	ResourceSpecs []*resource.ResourceSpec
 	Values        map[string]interface{}
 }
 
@@ -176,13 +178,13 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 
 	log.Default.Debug(ctx, "Rendering resources for chart at %q", chartPath)
 
-	var resources []*resid.ResourceSpec
+	var resources []*resource.ResourceSpec
 
 	if !opts.NoStandaloneCRDs {
 		for _, crd := range chart.CRDObjects() {
 			for _, manifest := range releaseutil.SplitManifests(string(crd.File.Data)) {
-				if res, err := resid.NewResourceSpecFromManifest(manifest, releaseNamespace, resid.ResourceSpecOptions{
-					StoreAs:  resid.StoreAsNone,
+				if res, err := resource.NewResourceSpecFromManifest(manifest, releaseNamespace, resource.ResourceSpecOptions{
+					StoreAs:  resource.StoreAsNone,
 					FilePath: crd.Filename,
 				}); err != nil {
 					return nil, fmt.Errorf("construct standalone CRD for chart at %q: %w", chartPath, err)
@@ -206,14 +208,12 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		resources = append(resources, r...)
 	}
 
-	notes := buildChartNotes(chart.Name(), renderedTemplates, buildChartNotesOptions{
-		RenderSubchartNotes: opts.SubNotes,
-	})
+	notes := buildChartNotes(chart.Name(), renderedTemplates, opts.SubNotes)
 
 	log.Default.TraceStruct(ctx, notes, "Rendered notes:")
 
 	sort.SliceStable(resources, func(i, j int) bool {
-		return resid.ResourceSpecSortHandler(resources[i], resources[j])
+		return resource.ResourceSpecSortHandler(resources[i], resources[j])
 	})
 
 	return &RenderChartResult{
@@ -271,8 +271,8 @@ func validateChart(ctx context.Context, chart *chart.Chart) error {
 	return nil
 }
 
-func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, releaseNamespace string, opts RenderChartOptions) ([]*resid.ResourceSpec, error) {
-	var resources []*resid.ResourceSpec
+func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, releaseNamespace string, opts RenderChartOptions) ([]*resource.ResourceSpec, error) {
+	var resources []*resource.ResourceSpec
 	for filePath, fileContent := range renderedTemplates {
 		if strings.HasPrefix(path.Base(filePath), "_") ||
 			strings.HasSuffix(filePath, action.NotesFileSuffix) ||
@@ -288,7 +288,7 @@ func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, relea
 				return nil, fmt.Errorf("parse YAML for %q: %w", filePath, err)
 			}
 
-			if res, err := resid.NewResourceSpecFromManifest(manifest, releaseNamespace, resid.ResourceSpecOptions{
+			if res, err := resource.NewResourceSpecFromManifest(manifest, releaseNamespace, resource.ResourceSpecOptions{
 				FilePath: filePath,
 			}); err != nil {
 				return nil, fmt.Errorf("construct resource spec for %q: %w", filePath, err)
@@ -303,4 +303,33 @@ func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, relea
 
 func isLocalChart(path string) bool {
 	return filepath.IsAbs(path) || filepath.HasPrefix(path, "..") || filepath.HasPrefix(path, ".")
+}
+
+func buildChartNotes(chartName string, renderedTemplates map[string]string, renderSubchartNotes bool) string {
+	var resultBuf bytes.Buffer
+
+	for filePath, fileContent := range renderedTemplates {
+		if !strings.HasSuffix(filePath, action.NotesFileSuffix) {
+			continue
+		}
+
+		fileContent = strings.TrimRightFunc(fileContent, unicode.IsSpace)
+		if fileContent == "" {
+			continue
+		}
+
+		isTopLevelNotes := filePath == path.Join(chartName, "templates", action.NotesFileSuffix)
+
+		if !isTopLevelNotes && !renderSubchartNotes {
+			continue
+		}
+
+		if resultBuf.Len() > 0 {
+			resultBuf.WriteString("\n")
+		}
+
+		resultBuf.WriteString(fileContent)
+	}
+
+	return resultBuf.String()
 }

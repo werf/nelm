@@ -1,4 +1,4 @@
-package resourceinfo
+package resinfo
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/resource"
-	"github.com/werf/nelm/internal/resource/id"
+	"github.com/werf/nelm/internal/resource/meta"
 )
 
 func BuildResourceInfos(
@@ -71,11 +71,11 @@ func BuildResourceInfos(
 	}
 
 	sort.SliceStable(instResourceInfos, func(i, j int) bool {
-		return resource.InstallableResourceSortHandler(instResourceInfos[i].LocalResource, instResourceInfos[j].LocalResource)
+		return resource.InstallableResourceSortByStageAndWeightHandler(instResourceInfos[i].LocalResource, instResourceInfos[j].LocalResource)
 	})
 
 	sort.SliceStable(delResourceInfos, func(i, j int) bool {
-		return id.ResourceMetaSortHandler(delResourceInfos[i].LocalResource.ResourceMeta, delResourceInfos[j].LocalResource.ResourceMeta)
+		return meta.ResourceMetaSortHandler(delResourceInfos[i].LocalResource.ResourceMeta, delResourceInfos[j].LocalResource.ResourceMeta)
 	})
 
 	iterateInstallableResourceInfos(instResourceInfos)

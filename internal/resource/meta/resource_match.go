@@ -1,8 +1,6 @@
-package matcher
+package meta
 
-import (
-	"github.com/werf/nelm/internal/resource/id"
-)
+type ResourceMatcherOptions struct{}
 
 func NewResourceMatcher(names, namespaces, groups, versions, kinds []string, opts ResourceMatcherOptions) *ResourceMatcher {
 	return &ResourceMatcher{
@@ -14,8 +12,6 @@ func NewResourceMatcher(names, namespaces, groups, versions, kinds []string, opt
 	}
 }
 
-type ResourceMatcherOptions struct{}
-
 type ResourceMatcher struct {
 	names      []string
 	namespaces []string
@@ -24,7 +20,7 @@ type ResourceMatcher struct {
 	kinds      []string
 }
 
-func (s *ResourceMatcher) Match(resMeta *id.ResourceMeta) bool {
+func (s *ResourceMatcher) Match(resMeta *ResourceMeta) bool {
 	var nameMatch bool
 	if len(s.names) == 0 {
 		nameMatch = true

@@ -9,7 +9,6 @@ import (
 
 	"github.com/gookit/color"
 	"github.com/samber/lo"
-	api_errors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 
@@ -22,9 +21,9 @@ import (
 	"github.com/werf/nelm/internal/lock"
 	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/plan/operation"
-	"github.com/werf/nelm/internal/plan/resourceinfo"
+	"github.com/werf/nelm/internal/plan/resinfo"
 	"github.com/werf/nelm/internal/release"
-	"github.com/werf/nelm/internal/resource/id"
+	"github.com/werf/nelm/internal/resource/meta"
 	"github.com/werf/nelm/internal/track"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/log"
@@ -160,11 +159,11 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		lockManager = m
 	}
 
-	namespaceID := id.NewResourceID(
+	namespaceID := meta.NewResourceID(
 		releaseNamespace,
 		"",
 		schema.GroupVersionKind{Version: "v1", Kind: "Namespace"},
-		id.ResourceIDOptions{Mapper: clientFactory.Mapper()},
+		meta.ResourceIDOptions{Mapper: clientFactory.Mapper()},
 	)
 
 	if exists, err := isReleaseNamespaceExist(ctx, clientFactory, namespaceID); err != nil {
@@ -210,7 +209,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Deleting release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
 		log.Default.Debug(ctx, "Processing resources")
-		resProcessor := resourceinfo.NewDeployableResourcesProcessor(
+		resProcessor := resinfo.NewDeployableResourcesProcessor(
 			common.DeployTypeUninstall,
 			releaseName,
 			releaseNamespace,
@@ -219,7 +218,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			nil,
 			prevRelease.HookResources(),
 			prevRelease.GeneralResources(),
-			resourceinfo.DeployableResourcesProcessorOptions{
+			resinfo.DeployableResourcesProcessorOptions{
 				NetworkParallelism: opts.NetworkParallelism,
 				KubeClient:         clientFactory.KubeClient(),
 				Mapper:             clientFactory.Mapper(),
@@ -292,10 +291,10 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			}
 		}
 
-		tablesBuilder := track.NewTablesBuilder(
+		tablesBuilder := track.newTablesBuilder(
 			taskStore,
 			logStore,
-			track.TablesBuilderOptions{
+			track.tablesBuilderOptions{
 				DefaultNamespace: releaseNamespace,
 			},
 		)
@@ -307,9 +306,9 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			}
 		}()
 
-		var progressPrinter *progressPrinter
+		var progressPrinter *track.ProgressTablesPrinter
 		if !opts.NoProgressTablePrint {
-			progressPrinter = newProgressPrinter()
+			progressPrinter = &track.NewProgressTablesPrinter()
 			progressPrinter.Start(ctx, opts.ProgressTablePrintInterval, tablesBuilder)
 		}
 
@@ -427,7 +426,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 	return nil
 }
 
-func isReleaseNamespaceExist(ctx context.Context, clientFactory *kube.ClientFactory, namespaceID *id.ResourceID) (bool, error) {
+func isReleaseNamespaceExist(ctx context.Context, clientFactory *kube.ClientFactory, namespaceID *meta.ResourceID) (bool, error) {
 	if _, err := clientFactory.KubeClient().Get(
 		ctx,
 		namespaceID,

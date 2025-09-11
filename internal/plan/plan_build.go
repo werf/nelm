@@ -10,11 +10,11 @@ import (
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/plan/operation"
-	"github.com/werf/nelm/internal/plan/resourceinfo"
-	"github.com/werf/nelm/internal/resource/id"
+	"github.com/werf/nelm/internal/plan/resinfo"
+	"github.com/werf/nelm/internal/resource/meta"
 )
 
-func BuildPlan(installableInfos []*resourceinfo.InstallableResourceInfo, deletableInfos []*resourceinfo.DeletableResourceInfo, releaseInfos []*resourceinfo.ReleaseInfo) (*Plan, error) {
+func BuildPlan(installableInfos []*resinfo.InstallableResourceInfo, deletableInfos []*resinfo.DeletableResourceInfo, releaseInfos []*resinfo.ReleaseInfo) (*Plan, error) {
 	plan := NewPlan()
 
 	if err := addMainStages(plan); err != nil {
@@ -77,32 +77,32 @@ func addMainStages(plan *Plan) error {
 	return nil
 }
 
-func addReleaseOperations(plan *Plan, releaseInfos []*resourceinfo.ReleaseInfo) error {
+func addReleaseOperations(plan *Plan, releaseInfos []*resinfo.ReleaseInfo) error {
 	for _, info := range releaseInfos {
 		switch info.Must {
-		case resourceinfo.ReleaseTypeInstall:
+		case resinfo.ReleaseTypeInstall:
 			if err := addPendingAndDeployedReleaseOps(plan, info, helmrelease.StatusPendingInstall); err != nil {
 				return fmt.Errorf("add pending/deployed ops for release install: %w", err)
 			}
-		case resourceinfo.ReleaseTypeUpgrade:
+		case resinfo.ReleaseTypeUpgrade:
 			if err := addPendingAndDeployedReleaseOps(plan, info, helmrelease.StatusPendingUpgrade); err != nil {
 				return fmt.Errorf("add pending/deployed ops for release upgrade: %w", err)
 			}
-		case resourceinfo.ReleaseTypeRollback:
+		case resinfo.ReleaseTypeRollback:
 			if err := addPendingAndDeployedReleaseOps(plan, info, helmrelease.StatusPendingRollback); err != nil {
 				return fmt.Errorf("add pending/deployed ops for release rollback: %w", err)
 			}
-		case resourceinfo.ReleaseTypeSupersede:
+		case resinfo.ReleaseTypeSupersede:
 			if err := addSupersedeReleaseOps(plan, info); err != nil {
 				return fmt.Errorf("add supersede ops for release: %w", err)
 			}
-		case resourceinfo.ReleaseTypeUninstall:
+		case resinfo.ReleaseTypeUninstall:
 			if err := addUninstallReleaseOps(plan, info); err != nil {
 				return fmt.Errorf("add uninstall ops for release: %w", err)
 			}
-		case resourceinfo.ReleaseTypeDelete:
+		case resinfo.ReleaseTypeDelete:
 			addDeleteReleaseOps(plan, info)
-		case resourceinfo.ReleaseTypeNone:
+		case resinfo.ReleaseTypeNone:
 		default:
 			panic("unexpected release must condition")
 		}
@@ -111,7 +111,7 @@ func addReleaseOperations(plan *Plan, releaseInfos []*resourceinfo.ReleaseInfo) 
 	return nil
 }
 
-func addPendingAndDeployedReleaseOps(plan *Plan, info *resourceinfo.ReleaseInfo, pendingStatus helmrelease.Status) error {
+func addPendingAndDeployedReleaseOps(plan *Plan, info *resinfo.ReleaseInfo, pendingStatus helmrelease.Status) error {
 	var pendingRel *helmrelease.Release
 	if rel, err := copystructure.Copy(info.Release); err != nil {
 		return fmt.Errorf("deep copy release: %w", err)
@@ -151,7 +151,7 @@ func addPendingAndDeployedReleaseOps(plan *Plan, info *resourceinfo.ReleaseInfo,
 	return nil
 }
 
-func addSupersedeReleaseOps(plan *Plan, info *resourceinfo.ReleaseInfo) error {
+func addSupersedeReleaseOps(plan *Plan, info *resinfo.ReleaseInfo) error {
 	var supersededRel *helmrelease.Release
 	if rel, err := copystructure.Copy(info.Release); err != nil {
 		return fmt.Errorf("deep copy release: %w", err)
@@ -173,7 +173,7 @@ func addSupersedeReleaseOps(plan *Plan, info *resourceinfo.ReleaseInfo) error {
 	return nil
 }
 
-func addUninstallReleaseOps(plan *Plan, info *resourceinfo.ReleaseInfo) error {
+func addUninstallReleaseOps(plan *Plan, info *resinfo.ReleaseInfo) error {
 	var uninstallingRel *helmrelease.Release
 	if rel, err := copystructure.Copy(info.Release); err != nil {
 		return fmt.Errorf("deep copy release: %w", err)
@@ -206,7 +206,7 @@ func addUninstallReleaseOps(plan *Plan, info *resourceinfo.ReleaseInfo) error {
 	return nil
 }
 
-func addDeleteReleaseOps(plan *Plan, info *resourceinfo.ReleaseInfo) {
+func addDeleteReleaseOps(plan *Plan, info *resinfo.ReleaseInfo) {
 	deletedOp := &operation.Operation{
 		Type:    operation.OperationTypeDeleteRelease,
 		Version: operation.OperationVersionDeleteRelease,
@@ -219,7 +219,7 @@ func addDeleteReleaseOps(plan *Plan, info *resourceinfo.ReleaseInfo) {
 	lo.Must0(plan.AddOperationChain().AddOperation(deletedOp).Stage(common.StageFinal).Do())
 }
 
-func addDeleteResourcesOps(plan *Plan, infos []*resourceinfo.DeletableResourceInfo) error {
+func addDeleteResourcesOps(plan *Plan, infos []*resinfo.DeletableResourceInfo) error {
 	for _, info := range infos {
 		if info.MustDelete {
 			chain := plan.AddOperationChain()
@@ -254,7 +254,7 @@ func addDeleteResourcesOps(plan *Plan, infos []*resourceinfo.DeletableResourceIn
 	return nil
 }
 
-func addWeightedSubStages(plan *Plan, infos []*resourceinfo.InstallableResourceInfo) error {
+func addWeightedSubStages(plan *Plan, infos []*resinfo.InstallableResourceInfo) error {
 	stageWeights := map[common.Stage][]int{}
 	for _, info := range infos {
 		if info.LocalResource.Weight == nil {
@@ -306,7 +306,7 @@ func addWeightedSubStages(plan *Plan, infos []*resourceinfo.InstallableResourceI
 	return nil
 }
 
-func addInstallResourceOps(plan *Plan, infos []*resourceinfo.InstallableResourceInfo) error {
+func addInstallResourceOps(plan *Plan, infos []*resinfo.InstallableResourceInfo) error {
 	for _, info := range infos {
 		chain := plan.AddOperationChain()
 
@@ -317,7 +317,7 @@ func addInstallResourceOps(plan *Plan, infos []*resourceinfo.InstallableResource
 			stg = info.LocalResource.Stage
 		}
 
-		if info.MustInstall != resourceinfo.ResourceInstallTypeNone {
+		if info.MustInstall != resinfo.ResourceInstallTypeNone {
 			for _, extDep := range info.LocalResource.ExternalDependencies {
 				trackOp := &operation.Operation{
 					Type:    operation.OperationTypeTrackPresence,
@@ -331,7 +331,7 @@ func addInstallResourceOps(plan *Plan, infos []*resourceinfo.InstallableResource
 		}
 
 		switch info.MustInstall {
-		case resourceinfo.ResourceInstallTypeCreate:
+		case resinfo.ResourceInstallTypeCreate:
 			createOp := &operation.Operation{
 				Type:      operation.OperationTypeCreate,
 				Version:   operation.OperationVersionCreate,
@@ -342,7 +342,7 @@ func addInstallResourceOps(plan *Plan, infos []*resourceinfo.InstallableResource
 				},
 			}
 			chain.AddOperation(createOp).Stage(stg)
-		case resourceinfo.ResourceInstallTypeRecreate:
+		case resinfo.ResourceInstallTypeRecreate:
 			recreateOp := &operation.Operation{
 				Type:      operation.OperationTypeRecreate,
 				Version:   operation.OperationVersionRecreate,
@@ -353,7 +353,7 @@ func addInstallResourceOps(plan *Plan, infos []*resourceinfo.InstallableResource
 				},
 			}
 			chain.AddOperation(recreateOp).Stage(stg)
-		case resourceinfo.ResourceInstallTypeUpdate:
+		case resinfo.ResourceInstallTypeUpdate:
 			updateOp := &operation.Operation{
 				Type:      operation.OperationTypeUpdate,
 				Version:   operation.OperationVersionUpdate,
@@ -363,7 +363,7 @@ func addInstallResourceOps(plan *Plan, infos []*resourceinfo.InstallableResource
 				},
 			}
 			chain.AddOperation(updateOp).Stage(stg)
-		case resourceinfo.ResourceInstallTypeApply:
+		case resinfo.ResourceInstallTypeApply:
 			applyOp := &operation.Operation{
 				Type:      operation.OperationTypeApply,
 				Version:   operation.OperationVersionApply,
@@ -373,7 +373,7 @@ func addInstallResourceOps(plan *Plan, infos []*resourceinfo.InstallableResource
 				},
 			}
 			chain.AddOperation(applyOp).Stage(stg)
-		case resourceinfo.ResourceInstallTypeNone:
+		case resinfo.ResourceInstallTypeNone:
 		default:
 			panic("unexpected resource must condition")
 		}
@@ -431,7 +431,7 @@ func addInstallResourceOps(plan *Plan, infos []*resourceinfo.InstallableResource
 	return nil
 }
 
-func connectInternalDependencies(plan *Plan, infos []*resourceinfo.InstallableResourceInfo) error {
+func connectInternalDependencies(plan *Plan, infos []*resinfo.InstallableResourceInfo) error {
 	for _, info := range infos {
 		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualInternalDependencies)
 		if len(internalDeps) == 0 {
@@ -476,18 +476,18 @@ func connectInternalDependencies(plan *Plan, infos []*resourceinfo.InstallableRe
 	return nil
 }
 
-func getDeployOp(plan *Plan, info *resourceinfo.InstallableResourceInfo, iteration int) (op *operation.Operation, found bool) {
+func getDeployOp(plan *Plan, info *resinfo.InstallableResourceInfo, iteration int) (op *operation.Operation, found bool) {
 	var deployOpID string
 	switch info.MustInstall {
-	case resourceinfo.ResourceInstallTypeCreate:
+	case resinfo.ResourceInstallTypeCreate:
 		deployOpID = operation.OperationID(operation.OperationTypeCreate, operation.OperationVersionCreate, operation.OperationIteration(iteration), info.ResourceMeta.ID())
-	case resourceinfo.ResourceInstallTypeRecreate:
+	case resinfo.ResourceInstallTypeRecreate:
 		deployOpID = operation.OperationID(operation.OperationTypeRecreate, operation.OperationVersionRecreate, operation.OperationIteration(iteration), info.ResourceMeta.ID())
-	case resourceinfo.ResourceInstallTypeUpdate:
+	case resinfo.ResourceInstallTypeUpdate:
 		deployOpID = operation.OperationID(operation.OperationTypeUpdate, operation.OperationVersionUpdate, operation.OperationIteration(iteration), info.ResourceMeta.ID())
-	case resourceinfo.ResourceInstallTypeApply:
+	case resinfo.ResourceInstallTypeApply:
 		deployOpID = operation.OperationID(operation.OperationTypeApply, operation.OperationVersionApply, operation.OperationIteration(iteration), info.ResourceMeta.ID())
-	case resourceinfo.ResourceInstallTypeNone:
+	case resinfo.ResourceInstallTypeNone:
 		return nil, false
 	default:
 		panic("unexpected resource must condition")
@@ -535,7 +535,7 @@ func getAllFirstIterationTrackReadinessOps(plan *Plan) []*operation.Operation {
 	return trackOps
 }
 
-func getOpMeta(op *operation.Operation) *id.ResourceMeta {
+func getOpMeta(op *operation.Operation) *meta.ResourceMeta {
 	switch cfg := op.Config.(type) {
 	case *operation.OperationConfigCreate:
 		return cfg.ResourceSpec.ResourceMeta

@@ -18,7 +18,7 @@ import (
 
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/resource"
-	"github.com/werf/nelm/internal/resource/id"
+	"github.com/werf/nelm/internal/resource/meta"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -52,7 +52,7 @@ type KubeClientGetOptions struct {
 	TryCache bool
 }
 
-func (c *KubeClient) Get(ctx context.Context, meta *id.ResourceMeta, opts KubeClientGetOptions) (*unstructured.Unstructured, error) {
+func (c *KubeClient) Get(ctx context.Context, meta *meta.ResourceMeta, opts KubeClientGetOptions) (*unstructured.Unstructured, error) {
 	lock := c.resourceLock(meta)
 	lock.Lock()
 	defer lock.Unlock()
@@ -95,7 +95,7 @@ type KubeClientCreateOptions struct {
 	ForceReplicas *int
 }
 
-func (c *KubeClient) Create(ctx context.Context, spec *id.ResourceSpec, opts KubeClientCreateOptions) (*unstructured.Unstructured, error) {
+func (c *KubeClient) Create(ctx context.Context, spec *meta.ResourceSpec, opts KubeClientCreateOptions) (*unstructured.Unstructured, error) {
 	lock := c.resourceLock(spec.ResourceMeta)
 	lock.Lock()
 	defer lock.Unlock()
@@ -135,7 +135,7 @@ type KubeClientApplyOptions struct {
 	DryRun bool
 }
 
-func (c *KubeClient) Apply(ctx context.Context, spec *id.ResourceSpec, opts KubeClientApplyOptions) (*unstructured.Unstructured, error) {
+func (c *KubeClient) Apply(ctx context.Context, spec *meta.ResourceSpec, opts KubeClientApplyOptions) (*unstructured.Unstructured, error) {
 	lock := c.resourceLock(spec.ResourceMeta)
 	lock.Lock()
 	defer lock.Unlock()
@@ -177,7 +177,7 @@ func (c *KubeClient) Apply(ctx context.Context, spec *id.ResourceSpec, opts Kube
 	return resultObj, nil
 }
 
-func (c *KubeClient) MergePatch(ctx context.Context, meta *id.ResourceMeta, patch []byte) (*unstructured.Unstructured, error) {
+func (c *KubeClient) MergePatch(ctx context.Context, meta *meta.ResourceMeta, patch []byte) (*unstructured.Unstructured, error) {
 	lock := c.resourceLock(meta)
 	lock.Lock()
 	defer lock.Unlock()
@@ -213,7 +213,7 @@ type KubeClientDeleteOptions struct {
 	PropagationPolicy *metav1.DeletionPropagation
 }
 
-func (c *KubeClient) Delete(ctx context.Context, meta *id.ResourceMeta, opts KubeClientDeleteOptions) error {
+func (c *KubeClient) Delete(ctx context.Context, meta *meta.ResourceMeta, opts KubeClientDeleteOptions) error {
 	lock := c.resourceLock(meta)
 	lock.Lock()
 	defer lock.Unlock()
@@ -248,7 +248,7 @@ func (c *KubeClient) Delete(ctx context.Context, meta *id.ResourceMeta, opts Kub
 	return nil
 }
 
-func (c *KubeClient) resourceLock(meta *id.ResourceMeta) *sync.Mutex {
+func (c *KubeClient) resourceLock(meta *meta.ResourceMeta) *sync.Mutex {
 	lock, _ := c.resourceLocks.LoadOrStore(meta.IDWithVersion(), &sync.Mutex{})
 	return lock.(*sync.Mutex)
 }

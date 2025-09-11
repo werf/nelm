@@ -1,4 +1,4 @@
-package resourceinfo
+package resource
 
 import (
 	"context"
@@ -6,20 +6,17 @@ import (
 	"sort"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
-	"github.com/werf/nelm/internal/resource"
-	"github.com/werf/nelm/internal/resource/id"
 )
 
-func BuildReleasableResourceSpecs(ctx context.Context, releaseNamespace string, transformedResources []*id.ResourceSpec, patchers []resource.ResourcePatcher) ([]*id.ResourceSpec, error) {
-	var releasableResources []*id.ResourceSpec
+func BuildReleasableResourceSpecs(ctx context.Context, releaseNamespace string, transformedResources []*ResourceSpec, patchers []ResourcePatcher) ([]*ResourceSpec, error) {
+	var releasableResources []*ResourceSpec
 
 	for _, res := range transformedResources {
 		releasableRes := res
 
 		var deepCopied bool
 		for _, resPatcher := range patchers {
-			if matched, err := resPatcher.Match(ctx, &resource.ResourcePatcherResourceInfo{
+			if matched, err := resPatcher.Match(ctx, &ResourcePatcherResourceInfo{
 				Obj: releasableRes.Unstruct,
 				// FIXME(ilya-lesikov): get rid of ownership for releasable resources
 				Ownership: "",
@@ -37,7 +34,7 @@ func BuildReleasableResourceSpecs(ctx context.Context, releaseNamespace string, 
 				deepCopied = true
 			}
 
-			patchedObj, err := resPatcher.Patch(ctx, &resource.ResourcePatcherResourceInfo{
+			patchedObj, err := resPatcher.Patch(ctx, &ResourcePatcherResourceInfo{
 				Obj: unstruct,
 				// FIXME(ilya-lesikov): get rid of ownership for releasable resources
 				Ownership: "",
@@ -46,7 +43,7 @@ func BuildReleasableResourceSpecs(ctx context.Context, releaseNamespace string, 
 				return nil, fmt.Errorf("patch resource by %q: %w", resPatcher.Type(), err)
 			}
 
-			releasableRes = id.NewResourceSpec(patchedObj, releaseNamespace, id.ResourceSpecOptions{
+			releasableRes = NewResourceSpec(patchedObj, releaseNamespace, ResourceSpecOptions{
 				StoreAs:  res.StoreAs,
 				FilePath: res.FilePath,
 			})
@@ -56,7 +53,7 @@ func BuildReleasableResourceSpecs(ctx context.Context, releaseNamespace string, 
 	}
 
 	sort.SliceStable(releasableResources, func(i, j int) bool {
-		return id.ResourceSpecSortHandler(releasableResources[i], releasableResources[j])
+		return ResourceSpecSortHandler(releasableResources[i], releasableResources[j])
 	})
 
 	return releasableResources, nil

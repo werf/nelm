@@ -10,14 +10,14 @@ import (
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/plan/dependency"
-	"github.com/werf/nelm/internal/resource/id"
+	"github.com/werf/nelm/internal/resource/meta"
 )
 
 type InstallableResourceOptions struct {
 	Mapper meta.ResettableRESTMapper
 }
 
-func NewInstallableResource(res *id.ResourceSpec, deployType common.DeployType, releaseNamespace string, opts InstallableResourceOptions) ([]*InstallableResource, error) {
+func NewInstallableResource(res *meta.ResourceSpec, deployType common.DeployType, releaseNamespace string, opts InstallableResourceOptions) ([]*InstallableResource, error) {
 	if err := validateHook(res.ResourceMeta); err != nil {
 		return nil, fmt.Errorf("validate hook configuration: %w", err)
 	}
@@ -121,7 +121,7 @@ func NewInstallableResource(res *id.ResourceSpec, deployType common.DeployType, 
 }
 
 type InstallableResource struct {
-	*id.ResourceSpec
+	*meta.ResourceSpec
 
 	Ownership                              common.Ownership
 	Recreate                               bool

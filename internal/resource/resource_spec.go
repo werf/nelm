@@ -1,4 +1,4 @@
-package id
+package resource
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/kubernetes/scheme"
 
-	"github.com/werf/nelm/internal/resource"
+	"github.com/werf/nelm/internal/resource/meta"
 )
 
 type StoreAs string
@@ -25,7 +25,7 @@ type ResourceSpecOptions struct {
 
 func NewResourceSpec(unstruct *unstructured.Unstructured, releaseNamespace string, opts ResourceSpecOptions) *ResourceSpec {
 	if opts.StoreAs == "" {
-		if resource.IsHook(unstruct.GetAnnotations()) {
+		if IsHook(unstruct.GetAnnotations()) {
 			opts.StoreAs = StoreAsHook
 		} else {
 			opts.StoreAs = StoreAsRegular
@@ -37,7 +37,7 @@ func NewResourceSpec(unstruct *unstructured.Unstructured, releaseNamespace strin
 	}
 
 	return &ResourceSpec{
-		ResourceMeta: NewResourceMetaFromUnstructured(unstruct, releaseNamespace, opts.FilePath),
+		ResourceMeta: meta.NewResourceMetaFromUnstructured(unstruct, releaseNamespace, opts.FilePath),
 		Unstruct:     unstruct,
 		StoreAs:      opts.StoreAs,
 	}
@@ -58,7 +58,7 @@ func NewResourceSpecFromManifest(manifest string, releaseNamespace string, opts 
 }
 
 type ResourceSpec struct {
-	*ResourceMeta
+	*meta.ResourceMeta
 
 	Unstruct *unstructured.Unstructured
 	StoreAs

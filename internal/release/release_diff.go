@@ -5,16 +5,16 @@ import (
 	"hash"
 	"hash/fnv"
 	"reflect"
-	"strings"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/kubernetes/scheme"
 
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/3p-helm/pkg/releaseutil"
+	"github.com/werf/nelm/internal/resource"
 )
 
-func ReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
+func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 	if oldRel.Info.Status != helmrelease.StatusDeployed ||
 		oldRel.Info.Notes != newRel.Info.Notes ||
 		!reflect.DeepEqual(oldRel.Info.Annotations, newRel.Info.Annotations) ||
@@ -103,20 +103,10 @@ func writeUnstructHash(unstruct *unstructured.Unstructured, hash hash.Hash32) er
 }
 
 func cleanUnstruct(unstruct *unstructured.Unstructured) *unstructured.Unstructured {
-	unstr := unstruct.DeepCopy()
-
-	if annos := unstr.GetAnnotations(); len(annos) > 0 {
-		for key := range annos {
-			if strings.HasPrefix(key, "project.werf.io/") ||
-				strings.Contains(key, "ci.werf.io/") ||
-				key == "werf.io/version" ||
-				key == "werf.io/release-channel" {
-				delete(annos, key)
-			}
-		}
-
-		unstr.SetAnnotations(annos)
-	}
-
-	return unstr
+	return resource.CleanUnstruct(unstruct, resource.CleanUnstructOptions{
+		CleanManagedFiles:       true,
+		CleanReleaseAnnosLabels: true,
+		CleanRuntimeData:        true,
+		CleanWerfIoRuntimeAnnos: true,
+	})
 }

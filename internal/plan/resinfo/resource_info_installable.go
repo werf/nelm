@@ -1,10 +1,10 @@
-package resourceinfo
+package resinfo
 
 import (
 	"context"
 	"fmt"
-	"regexp"
 
+	"github.com/samber/lo"
 	"github.com/wI2L/jsondiff"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -12,8 +12,7 @@ import (
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/resource"
-	"github.com/werf/nelm/internal/resource/id"
-	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/internal/resource/meta"
 )
 
 type ResourceInstallType string
@@ -25,6 +24,21 @@ const (
 	ResourceInstallTypeUpdate   ResourceInstallType = "update"
 	ResourceInstallTypeApply    ResourceInstallType = "apply"
 )
+
+var OrderedResourceInstallTypes = []ResourceInstallType{
+	ResourceInstallTypeNone,
+	ResourceInstallTypeCreate,
+	ResourceInstallTypeRecreate,
+	ResourceInstallTypeUpdate,
+	ResourceInstallTypeApply,
+}
+
+func ResourceInstallTypeSortHandler(type1, type2 ResourceInstallType) bool {
+	type1I := lo.IndexOf(OrderedResourceInstallTypes, type1)
+	type2I := lo.IndexOf(OrderedResourceInstallTypes, type2)
+
+	return type1I < type2I
+}
 
 // TODO(v2): keep annotation should probably forbid resource recreations
 func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, releaseNamespace string, prevRelFailed bool, kubeClient kube.KubeClienter, mapper meta.ResettableRESTMapper) (*InstallableResourceInfo, error) {
@@ -61,7 +75,7 @@ func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 		return nil, fmt.Errorf("determine install type for resource %q: %w", localRes.IDHuman(), err)
 	}
 
-	getMeta := id.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
+	getMeta := meta.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
 
 	return &InstallableResourceInfo{
 		ResourceMeta:                  localRes.ResourceMeta,
@@ -77,7 +91,7 @@ func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 }
 
 type InstallableResourceInfo struct {
-	*id.ResourceMeta
+	*meta.ResourceMeta
 
 	LocalResource  *resource.InstallableResource
 	GetResult      *unstructured.Unstructured
@@ -105,14 +119,16 @@ func resourceInstallType(localRes *resource.InstallableResource, getObj, dryAppl
 		return ResourceInstallTypeApply, nil
 	}
 
-	cleanRegexes := []*regexp.Regexp{
-		regexp.MustCompile(`.*werf\.io/.+`),
-		regexp.MustCompile(`^helm\.sh/.+`),
-	}
+	diffableGetObj := resource.CleanUnstruct(getObj, resource.CleanUnstructOptions{
+		CleanHelmShAnnos: true,
+		CleanWerfIoAnnos: true,
+		CleanRuntimeData: true,
+	})
 
-	diffableGetObj, diffableDryApplyObj := util.BuildDiffableUnstructs(getObj, dryApplyObj, util.BuildDiffableUnstructsOptions{
-		CleanAnnotationsRegexes: cleanRegexes,
-		CleanLabelsRegexes:      cleanRegexes,
+	diffableDryApplyObj := resource.CleanUnstruct(dryApplyObj, resource.CleanUnstructOptions{
+		CleanHelmShAnnos: true,
+		CleanWerfIoAnnos: true,
+		CleanRuntimeData: true,
 	})
 
 	if patch, err := jsondiff.Compare(diffableGetObj, diffableDryApplyObj); err != nil {
@@ -124,7 +140,7 @@ func resourceInstallType(localRes *resource.InstallableResource, getObj, dryAppl
 	return ResourceInstallTypeNone, nil
 }
 
-func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMeta *id.ResourceMeta, installType ResourceInstallType, releaseNamespace string) bool {
+func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMeta *meta.ResourceMeta, installType ResourceInstallType, releaseNamespace string) bool {
 	if !localRes.DeleteOnSucceeded || localRes.KeepOnDelete {
 		return false
 	}
@@ -150,7 +166,7 @@ func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMet
 	return true
 }
 
-func mustDeleteOnFailedDeploy(res *resource.InstallableResource, getMeta *id.ResourceMeta, installType ResourceInstallType, releaseNamespace string) bool {
+func mustDeleteOnFailedDeploy(res *resource.InstallableResource, getMeta *meta.ResourceMeta, installType ResourceInstallType, releaseNamespace string) bool {
 	if !res.DeleteOnFailed ||
 		res.KeepOnDelete ||
 		installType == ResourceInstallTypeNone {

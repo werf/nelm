@@ -1,6 +1,8 @@
 package operation
 
-import "github.com/werf/nelm/internal/resource/id"
+import (
+	"github.com/werf/nelm/internal/resource"
+)
 
 const (
 	OperationTypeCreate    OperationType    = "create"
@@ -10,7 +12,7 @@ const (
 var _ OperationConfig = (*OperationConfigCreate)(nil)
 
 type OperationConfigCreate struct {
-	ResourceSpec  *id.ResourceSpec
+	ResourceSpec  *resource.ResourceSpec
 	ForceReplicas *int
 }
 

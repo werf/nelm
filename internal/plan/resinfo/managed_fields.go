@@ -1,4 +1,4 @@
-package resourceinfo
+package resinfo
 
 import (
 	"context"
@@ -12,12 +12,12 @@ import (
 
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/resource/id"
+	"github.com/werf/nelm/internal/resource/meta"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/log"
 )
 
-func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, getObj *unstructured.Unstructured, meta *id.ResourceMeta, kubeClient kube.KubeClienter) (*unstructured.Unstructured, error) {
+func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, getObj *unstructured.Unstructured, meta *meta.ResourceMeta, kubeClient kube.KubeClienter) (*unstructured.Unstructured, error) {
 	if changed, err := fixManagedFields(getObj); err != nil {
 		return nil, fmt.Errorf("fix managed fields for resource %q: %w", meta.IDHuman(), err)
 	} else if !changed {

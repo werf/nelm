@@ -1,4 +1,4 @@
-package resourceinfo
+package resource
 
 import (
 	"context"
@@ -12,16 +12,15 @@ import (
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/release"
-	"github.com/werf/nelm/internal/resource"
-	"github.com/werf/nelm/internal/resource/id"
+	"github.com/werf/nelm/internal/resource/meta"
 )
 
-type BuildDeployableResourcesOptions struct {
+type BuildResourcesOptions struct {
 	Mapper meta.ResettableRESTMapper
 }
 
-func BuildDeployableResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRel, newRel *helmrelease.Release, patchers []resource.ResourcePatcher, opts BuildDeployableResourcesOptions) ([]*resource.InstallableResource, []*resource.DeletableResource, error) {
-	var prevRelResSpecs []*id.ResourceSpec
+func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRel, newRel *helmrelease.Release, patchers []ResourcePatcher, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
+	var prevRelResSpecs []*meta.ResourceSpec
 	if prevRel != nil {
 		if resSpecs, err := release.ReleaseToResourceSpecs(prevRel, releaseNamespace); err != nil {
 			return nil, nil, fmt.Errorf("convert previous release to resource specs: %w", err)
@@ -30,7 +29,7 @@ func BuildDeployableResources(ctx context.Context, deployType common.DeployType,
 		}
 	}
 
-	var prevRelDelResources []*resource.DeletableResource
+	var prevRelDelResources []*DeletableResource
 	for _, resSpec := range prevRelResSpecs {
 		var stage common.Stage
 		if deployType == common.DeployTypeUninstall {
@@ -39,13 +38,13 @@ func BuildDeployableResources(ctx context.Context, deployType common.DeployType,
 			stage = common.StagePrePreUninstall
 		}
 
-		deletableRes := resource.NewDeletableResource(resSpec.ResourceMeta, releaseNamespace, stage, resource.DeletableResourceOptions{})
+		deletableRes := NewDeletableResource(resSpec.ResourceMeta, releaseNamespace, stage, DeletableResourceOptions{})
 		prevRelDelResources = append(prevRelDelResources, deletableRes)
 	}
 
-	var prevRelInstResources []*resource.InstallableResource
+	var prevRelInstResources []*InstallableResource
 	for _, resSpec := range prevRelResSpecs {
-		installableResources, err := resource.NewInstallableResource(resSpec, deployType, releaseNamespace, resource.InstallableResourceOptions{
+		installableResources, err := NewInstallableResource(resSpec, deployType, releaseNamespace, InstallableResourceOptions{
 			Mapper: opts.Mapper,
 		})
 		if err != nil {
@@ -55,7 +54,7 @@ func BuildDeployableResources(ctx context.Context, deployType common.DeployType,
 		prevRelInstResources = append(prevRelInstResources, installableResources...)
 	}
 
-	var newRelResSpecs []*id.ResourceSpec
+	var newRelResSpecs []*meta.ResourceSpec
 	if newRel != nil {
 		if resSpecs, err := release.ReleaseToResourceSpecs(newRel, releaseNamespace); err != nil {
 			return nil, nil, fmt.Errorf("convert new release to resource specs: %w", err)
@@ -64,9 +63,9 @@ func BuildDeployableResources(ctx context.Context, deployType common.DeployType,
 		}
 	}
 
-	var newRelInstResources []*resource.InstallableResource
+	var newRelInstResources []*InstallableResource
 	for _, resSpec := range newRelResSpecs {
-		installableResources, err := resource.NewInstallableResource(resSpec, deployType, releaseNamespace, resource.InstallableResourceOptions{
+		installableResources, err := NewInstallableResource(resSpec, deployType, releaseNamespace, InstallableResourceOptions{
 			Mapper: opts.Mapper,
 		})
 		if err != nil {
@@ -76,9 +75,9 @@ func BuildDeployableResources(ctx context.Context, deployType common.DeployType,
 		newRelInstResources = append(newRelInstResources, installableResources...)
 	}
 
-	var filteredPrevRelInstResources []*resource.InstallableResource
+	var filteredPrevRelInstResources []*InstallableResource
 	if deployType == common.DeployTypeUninstall {
-		filteredPrevRelInstResources = lo.Filter(prevRelInstResources, func(instRes *resource.InstallableResource, _ int) bool {
+		filteredPrevRelInstResources = lo.Filter(prevRelInstResources, func(instRes *InstallableResource, _ int) bool {
 			if len(instRes.DeployConditions) == 0 {
 				return false
 			}
@@ -92,8 +91,8 @@ func BuildDeployableResources(ctx context.Context, deployType common.DeployType,
 		})
 	}
 
-	delResources := lo.Filter(prevRelDelResources, func(delRes *resource.DeletableResource, _ int) bool {
-		if _, isInstallable := lo.Find(filteredPrevRelInstResources, func(instRes *resource.InstallableResource) bool {
+	delResources := lo.Filter(prevRelDelResources, func(delRes *DeletableResource, _ int) bool {
+		if _, isInstallable := lo.Find(filteredPrevRelInstResources, func(instRes *InstallableResource) bool {
 			return instRes.ID() == delRes.ID()
 		}); isInstallable {
 			return false
@@ -113,7 +112,7 @@ func BuildDeployableResources(ctx context.Context, deployType common.DeployType,
 		}
 	})
 
-	filteredNewRelInstResources := lo.Filter(newRelInstResources, func(instRes *resource.InstallableResource, _ int) bool {
+	filteredNewRelInstResources := lo.Filter(newRelInstResources, func(instRes *InstallableResource, _ int) bool {
 		if len(instRes.DeployConditions) == 0 {
 			return false
 		}
@@ -145,15 +144,15 @@ func BuildDeployableResources(ctx context.Context, deployType common.DeployType,
 		}
 	})
 
-	var instResources []*resource.InstallableResource
+	var instResources []*InstallableResource
 	for _, r := range append(filteredPrevRelInstResources, filteredNewRelInstResources...) {
-		instReses := []*resource.InstallableResource{r}
+		instReses := []*InstallableResource{r}
 
 		var deepCopied bool
 		for _, patcher := range patchers {
-			var newInstReses []*resource.InstallableResource
+			var newInstReses []*InstallableResource
 			for _, instRes := range instReses {
-				if matched, err := patcher.Match(ctx, &resource.ResourcePatcherResourceInfo{
+				if matched, err := patcher.Match(ctx, &ResourcePatcherResourceInfo{
 					Obj:       instRes.Unstruct,
 					Ownership: instRes.Ownership,
 				}); err != nil {
@@ -170,7 +169,7 @@ func BuildDeployableResources(ctx context.Context, deployType common.DeployType,
 					deepCopied = true
 				}
 
-				patchedObj, err := patcher.Patch(ctx, &resource.ResourcePatcherResourceInfo{
+				patchedObj, err := patcher.Patch(ctx, &ResourcePatcherResourceInfo{
 					Obj:       unstruct,
 					Ownership: instRes.Ownership,
 				})
@@ -178,12 +177,12 @@ func BuildDeployableResources(ctx context.Context, deployType common.DeployType,
 					return nil, nil, fmt.Errorf("patch deployable resource by %q: %w", patcher.Type(), err)
 				}
 
-				resSpec := id.NewResourceSpec(patchedObj, releaseNamespace, id.ResourceSpecOptions{
+				resSpec := meta.NewResourceSpec(patchedObj, releaseNamespace, meta.ResourceSpecOptions{
 					StoreAs:  instRes.StoreAs,
 					FilePath: instRes.FilePath,
 				})
 
-				if rs, err := resource.NewInstallableResource(resSpec, deployType, releaseNamespace, resource.InstallableResourceOptions{
+				if rs, err := NewInstallableResource(resSpec, deployType, releaseNamespace, InstallableResourceOptions{
 					Mapper: opts.Mapper,
 				}); err != nil {
 					return nil, nil, fmt.Errorf("construct deployable resource from patched object by %q: %w", patcher.Type(), err)
@@ -199,11 +198,11 @@ func BuildDeployableResources(ctx context.Context, deployType common.DeployType,
 	}
 
 	sort.SliceStable(instResources, func(i, j int) bool {
-		return id.ResourceSpecSortHandler(instResources[i].ResourceSpec, instResources[j].ResourceSpec)
+		return meta.ResourceSpecSortHandler(instResources[i].ResourceSpec, instResources[j].ResourceSpec)
 	})
 
 	sort.SliceStable(delResources, func(i, j int) bool {
-		return id.ResourceMetaSortHandler(delResources[i].ResourceMeta, delResources[j].ResourceMeta)
+		return meta.ResourceMetaSortHandler(delResources[i].ResourceMeta, delResources[j].ResourceMeta)
 	})
 
 	return instResources, delResources, nil

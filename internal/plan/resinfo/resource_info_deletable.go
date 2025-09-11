@@ -1,4 +1,4 @@
-package resourceinfo
+package resinfo
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/resource"
-	"github.com/werf/nelm/internal/resource/id"
+	"github.com/werf/nelm/internal/resource/meta"
 )
 
 func BuildDeletableResourceInfo(ctx context.Context, localRes *resource.DeletableResource, releaseName, releaseNamespace string, kubeClient kube.KubeClienter, mapper meta.ResettableRESTMapper) (*DeletableResourceInfo, error) {
@@ -34,7 +34,7 @@ func BuildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 		}
 	}
 
-	getMeta := id.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
+	getMeta := meta.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
 
 	if err := resource.ValidateResourcePolicy(getMeta); err != nil {
 		return noDeleteInfo, nil
@@ -59,7 +59,7 @@ func BuildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 }
 
 type DeletableResourceInfo struct {
-	*id.ResourceMeta
+	*meta.ResourceMeta
 
 	LocalResource *resource.DeletableResource
 	GetResult     *unstructured.Unstructured

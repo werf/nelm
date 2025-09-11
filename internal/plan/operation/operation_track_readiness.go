@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
-	"github.com/werf/nelm/internal/resource/id"
+	"github.com/werf/nelm/internal/resource/meta"
 )
 
 const (
@@ -16,7 +16,7 @@ const (
 var _ OperationConfig = (*OperationConfigTrackReadiness)(nil)
 
 type OperationConfigTrackReadiness struct {
-	ResourceMeta *id.ResourceMeta
+	ResourceMeta *meta.ResourceMeta
 
 	FailMode                                 multitrack.FailMode
 	FailuresAllowed                          int

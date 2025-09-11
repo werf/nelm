@@ -21,7 +21,7 @@ import (
 	"github.com/werf/nelm/internal/lock"
 	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/plan/operation"
-	"github.com/werf/nelm/internal/plan/resourceinfo"
+	"github.com/werf/nelm/internal/plan/resinfo"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/internal/track"
@@ -225,7 +225,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	notes := releaseToRollback.Notes()
 
 	log.Default.Debug(ctx, "Processing rollback resources")
-	resProcessor := resourceinfo.NewDeployableResourcesProcessor(
+	resProcessor := resinfo.NewDeployableResourcesProcessor(
 		deployType,
 		releaseName,
 		releaseNamespace,
@@ -234,7 +234,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		releaseToRollback.GeneralResources(),
 		nil,
 		prevRelease.GeneralResources(),
-		resourceinfo.DeployableResourcesProcessorOptions{
+		resinfo.DeployableResourcesProcessorOptions{
 			NetworkParallelism: opts.NetworkParallelism,
 			ForceAdoption:      opts.ForceAdoption,
 			DeployableHookResourcePatchers: []resource.ResourcePatcher{
@@ -345,7 +345,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	var releaseUpToDate bool
 	if prevReleaseFound {
-		releaseUpToDate, err = release.ReleaseUpToDate(prevRelease, newRel)
+		releaseUpToDate, err = release.IsReleaseUpToDate(prevRelease, newRel)
 		if err != nil {
 			return fmt.Errorf("check if release is up to date: %w", err)
 		}
@@ -374,10 +374,10 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		return nil
 	}
 
-	tablesBuilder := track.NewTablesBuilder(
+	tablesBuilder := track.newTablesBuilder(
 		taskStore,
 		logStore,
-		track.TablesBuilderOptions{
+		track.tablesBuilderOptions{
 			DefaultNamespace: releaseNamespace,
 		},
 	)
@@ -389,9 +389,9 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		}
 	}()
 
-	var progressPrinter *progressPrinter
+	var progressPrinter *track.ProgressTablesPrinter
 	if !opts.NoProgressTablePrint {
-		progressPrinter = newProgressPrinter()
+		progressPrinter = &track.NewProgressTablesPrinter()
 		progressPrinter.Start(ctx, opts.ProgressTablePrintInterval, tablesBuilder)
 	}
 

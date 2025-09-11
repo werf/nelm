@@ -10,6 +10,7 @@ import (
 
 var _ genericclioptions.RESTClientGetter = (*LegacyClientGetter)(nil)
 
+// TODO(v2): get rid
 func NewLegacyClientGetter(discoveryClient discovery.CachedDiscoveryInterface, mapper meta.ResettableRESTMapper, restConfig *rest.Config, legacyClientConfig clientcmd.ClientConfig) *LegacyClientGetter {
 	return &LegacyClientGetter{
 		discoveryClient:    discoveryClient,

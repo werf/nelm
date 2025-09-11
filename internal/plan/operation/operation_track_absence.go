@@ -1,6 +1,6 @@
 package operation
 
-import "github.com/werf/nelm/internal/resource/id"
+import "github.com/werf/nelm/internal/resource/meta"
 
 const (
 	OperationTypeTrackAbsence    OperationType    = "track-absence"
@@ -10,7 +10,7 @@ const (
 var _ OperationConfig = (*OperationConfigTrackAbsence)(nil)
 
 type OperationConfigTrackAbsence struct {
-	ResourceMeta *id.ResourceMeta
+	ResourceMeta *meta.ResourceMeta
 }
 
 func (c *OperationConfigTrackAbsence) ID() string {

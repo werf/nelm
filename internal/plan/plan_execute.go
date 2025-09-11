@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/chanced/caps"
 	"github.com/dominikbraun/graph"
 	"github.com/samber/lo"
 	"github.com/sourcegraph/conc/pool"
@@ -22,7 +23,6 @@ import (
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/plan/operation"
 	"github.com/werf/nelm/internal/release"
-	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -143,7 +143,7 @@ func execOperation(
 		op := lo.Must(plan.Operation(opID))
 		op.Status = operation.OperationStatusPending
 
-		log.Default.Debug(ctx, util.Capitalize(op.IDHuman()))
+		log.Default.Debug(ctx, caps.ToUpper(op.IDHuman()))
 		err = execOp(
 			ctx,
 			op,

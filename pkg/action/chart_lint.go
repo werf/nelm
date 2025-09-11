@@ -16,7 +16,7 @@ import (
 	"github.com/werf/nelm/internal/chart"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/plan/resourceinfo"
+	"github.com/werf/nelm/internal/plan/resinfo"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource"
 	log2 "github.com/werf/nelm/pkg/log"
@@ -267,7 +267,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		prevRelGeneralResources = prevRelease.GeneralResources()
 	}
 
-	resProcessorOptions := resourceinfo.DeployableResourcesProcessorOptions{
+	resProcessorOptions := resinfo.DeployableResourcesProcessorOptions{
 		NetworkParallelism: opts.NetworkParallelism,
 		ForceAdoption:      opts.ForceAdoption,
 		ExtraReleasableResourcePatchers: []resource.ResourcePatcher{
@@ -284,7 +284,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		resProcessorOptions.AllowClusterAccess = true
 	}
 
-	resProcessor := resourceinfo.NewDeployableResourcesProcessor(
+	resProcessor := resinfo.NewDeployableResourcesProcessor(
 		deployType,
 		opts.ReleaseName,
 		opts.ReleaseNamespace,

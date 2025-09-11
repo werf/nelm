@@ -1,18 +1,15 @@
-package resourceinfo
+package resource
 
 import (
 	"context"
 	"fmt"
-
-	"github.com/werf/nelm/internal/resource"
-	"github.com/werf/nelm/internal/resource/id"
 )
 
-func BuildTransformedResourceSpecs(ctx context.Context, releaseNamespace string, resources []*id.ResourceSpec, transformers []resource.ResourceTransformer) ([]*id.ResourceSpec, error) {
-	var transformedResources []*id.ResourceSpec
+func BuildTransformedResourceSpecs(ctx context.Context, releaseNamespace string, resources []*ResourceSpec, transformers []ResourceTransformer) ([]*ResourceSpec, error) {
+	var transformedResources []*ResourceSpec
 	for _, transformer := range transformers {
 		for _, res := range resources {
-			if matched, err := transformer.Match(ctx, &resource.ResourceTransformerResourceInfo{
+			if matched, err := transformer.Match(ctx, &ResourceTransformerResourceInfo{
 				Obj: res.Unstruct,
 			}); err != nil {
 				return nil, fmt.Errorf("match resource by %q: %w", transformer.Type(), err)
@@ -21,7 +18,7 @@ func BuildTransformedResourceSpecs(ctx context.Context, releaseNamespace string,
 				continue
 			}
 
-			newObjs, err := transformer.Transform(ctx, &resource.ResourceTransformerResourceInfo{
+			newObjs, err := transformer.Transform(ctx, &ResourceTransformerResourceInfo{
 				Obj: res.Unstruct,
 			})
 			if err != nil {
@@ -29,7 +26,7 @@ func BuildTransformedResourceSpecs(ctx context.Context, releaseNamespace string,
 			}
 
 			for _, newObj := range newObjs {
-				newRes := id.NewResourceSpec(newObj, releaseNamespace, id.ResourceSpecOptions{
+				newRes := NewResourceSpec(newObj, releaseNamespace, ResourceSpecOptions{
 					StoreAs:  res.StoreAs,
 					FilePath: res.FilePath,
 				})

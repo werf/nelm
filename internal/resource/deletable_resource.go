@@ -2,12 +2,12 @@ package resource
 
 import (
 	"github.com/werf/nelm/internal/common"
-	"github.com/werf/nelm/internal/resource/id"
+	"github.com/werf/nelm/internal/resource/meta"
 )
 
 type DeletableResourceOptions struct{}
 
-func NewDeletableResource(meta *id.ResourceMeta, releaseNamespace string, stage common.Stage, opts DeletableResourceOptions) *DeletableResource {
+func NewDeletableResource(meta *meta.ResourceMeta, releaseNamespace string, stage common.Stage, opts DeletableResourceOptions) *DeletableResource {
 	var keep bool
 	if err := ValidateResourcePolicy(meta); err != nil {
 		keep = true
@@ -30,7 +30,7 @@ func NewDeletableResource(meta *id.ResourceMeta, releaseNamespace string, stage 
 }
 
 type DeletableResource struct {
-	*id.ResourceMeta
+	*meta.ResourceMeta
 
 	Ownership    common.Ownership
 	KeepOnDelete bool
