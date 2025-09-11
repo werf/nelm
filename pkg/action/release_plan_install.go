@@ -19,7 +19,7 @@ import (
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/plan"
-	"github.com/werf/nelm/internal/plan/resourceinfo"
+	"github.com/werf/nelm/internal/plan/resinfo"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource"
 	log2 "github.com/werf/nelm/pkg/log"
@@ -205,7 +205,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	log2.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release install")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
 	log2.Default.Debug(ctx, "Constructing release history")
-	history, err := release.NewHistory(
+	history, err := release.BuildHistory(
 		releaseName,
 		releaseNamespace,
 		releaseStorage,
@@ -247,14 +247,14 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	}
 
 	log2.Default.Debug(ctx, "Constructing chart tree")
-	chartTree, err := chart.NewChartTree(
+	chartTree, err := chart.RenderChart(
 		ctx,
 		opts.Chart,
 		releaseName,
 		releaseNamespace,
 		newRevision,
 		deployType,
-		chart.ChartTreeOptions{
+		chart.RenderChartOptions{
 			ChartRepoInsecure:      opts.ChartRepositoryInsecure,
 			ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
 			ChartRepoSkipUpdate:    opts.ChartRepositorySkipUpdate,
@@ -286,7 +286,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	}
 
 	log2.Default.Debug(ctx, "Processing resources")
-	resProcessor := resourceinfo.NewDeployableResourcesProcessor(
+	resProcessor := resinfo.NewDeployableResourcesProcessor(
 		deployType,
 		releaseName,
 		releaseNamespace,
@@ -295,32 +295,14 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		chartTree.GeneralResources(),
 		nil,
 		prevRelGeneralResources,
-		resourceinfo.DeployableResourcesProcessorOptions{
+		resinfo.DeployableResourcesProcessorOptions{
 			NetworkParallelism: opts.NetworkParallelism,
 			ForceAdoption:      opts.ForceAdoption,
-			ReleasableHookResourcePatchers: []resource.ResourcePatcher{
+			ExtraReleasableResourcePatchers: []resource.ResourcePatcher{
 				resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 			},
-			ReleasableGeneralResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-			},
-			DeployableStandaloneCRDsPatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(
-					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations),
-					opts.ExtraLabels,
-				),
-			},
-			DeployableHookResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(
-					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations),
-					opts.ExtraLabels,
-				),
-			},
-			DeployableGeneralResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(
-					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations),
-					opts.ExtraLabels,
-				),
+			ExtraDeployableResourcePatchers: []resource.ResourcePatcher{
+				resource.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
 			},
 			KubeClient:         clientFactory.KubeClient(),
 			Mapper:             clientFactory.Mapper(),
@@ -353,7 +335,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	}
 
 	log2.Default.Debug(ctx, "Calculating planned changes")
-	createdChanges, recreatedChanges, updatedChanges, appliedChanges, deletedChanges, planChangesPlanned := plan.CalculatePlannedChanges(
+	createdChanges, recreatedChanges, updatedChanges, appliedChanges, deletedChanges, planChangesPlanned := plan.FixmeCalculatePlannedChanges(
 		deployType,
 		releaseName,
 		releaseNamespace,
@@ -366,13 +348,13 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	var releaseUpToDate bool
 	if prevReleaseFound {
-		releaseUpToDate, err = release.ReleaseUpToDate(prevRelease, newRel)
+		releaseUpToDate, err = release.IsReleaseUpToDate(prevRelease, newRel)
 		if err != nil {
 			return fmt.Errorf("check if release is up to date: %w", err)
 		}
 	}
 
-	plan.LogPlannedChanges(
+	plan.FixmeLogPlannedChanges(
 		ctx,
 		releaseName,
 		releaseNamespace,

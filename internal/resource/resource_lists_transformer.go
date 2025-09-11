@@ -19,12 +19,6 @@ func NewResourceListsTransformer() *ResourceListsTransformer {
 type ResourceListsTransformer struct{}
 
 func (t *ResourceListsTransformer) Match(ctx context.Context, info *ResourceTransformerResourceInfo) (matched bool, err error) {
-	switch info.Type {
-	case TypeHookResource, TypeGeneralResource:
-	default:
-		return false, nil
-	}
-
 	return info.Obj.IsList(), nil
 }
 

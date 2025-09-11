@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/chanced/caps"
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 
@@ -17,15 +18,15 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-func newReport(completedOps, canceledOps, failedOps []operation.Operation, release *release.Release) *report {
+func newReport(completedOps, canceledOps, failedOps []operation.FixmeOperation, release *release.Release) *report {
 	sort.Slice(completedOps, func(i, j int) bool {
-		return completedOps[i].HumanID() < completedOps[j].HumanID()
+		return completedOps[i].IDHuman() < completedOps[j].IDHuman()
 	})
 	sort.Slice(canceledOps, func(i, j int) bool {
-		return canceledOps[i].HumanID() < canceledOps[j].HumanID()
+		return canceledOps[i].IDHuman() < canceledOps[j].IDHuman()
 	})
 	sort.Slice(failedOps, func(i, j int) bool {
-		return failedOps[i].HumanID() < failedOps[j].HumanID()
+		return failedOps[i].IDHuman() < failedOps[j].IDHuman()
 	})
 
 	return &report{
@@ -37,9 +38,9 @@ func newReport(completedOps, canceledOps, failedOps []operation.Operation, relea
 }
 
 type report struct {
-	completedOps []operation.Operation
-	failedOps    []operation.Operation
-	canceledOps  []operation.Operation
+	completedOps []operation.FixmeOperation
+	failedOps    []operation.FixmeOperation
+	canceledOps  []operation.FixmeOperation
 	release      *release.Release
 }
 
@@ -54,7 +55,7 @@ func (r *report) Print(ctx context.Context) {
 			BlockTitle: completedStyle("Completed operations"),
 		}, func() {
 			for _, op := range r.completedOps {
-				log.Default.Info(ctx, util.Capitalize(op.HumanID()))
+				log.Default.Info(ctx, caps.ToUpper(op.IDHuman()))
 			}
 		})
 	}
@@ -64,7 +65,7 @@ func (r *report) Print(ctx context.Context) {
 			BlockTitle: canceledStyle("Canceled operations"),
 		}, func() {
 			for _, op := range r.canceledOps {
-				log.Default.Info(ctx, util.Capitalize(op.HumanID()))
+				log.Default.Info(ctx, caps.ToUpper(op.IDHuman()))
 			}
 		})
 	}
@@ -74,7 +75,7 @@ func (r *report) Print(ctx context.Context) {
 			BlockTitle: failedStyle("Failed operations"),
 		}, func() {
 			for _, op := range r.failedOps {
-				log.Default.Info(ctx, util.Capitalize(op.HumanID()))
+				log.Default.Info(ctx, caps.ToUpper(op.IDHuman()))
 			}
 		})
 	}
@@ -87,13 +88,13 @@ func (r *report) JSON() ([]byte, error) {
 		Namespace: r.release.Namespace(),
 		Revision:  r.release.Revision(),
 		Status:    r.release.Status(),
-		CompletedOperations: lo.Map(r.completedOps, func(op operation.Operation, _ int) string {
+		CompletedOperations: lo.Map(r.completedOps, func(op operation.FixmeOperation, _ int) string {
 			return op.ID()
 		}),
-		CanceledOperations: lo.Map(r.canceledOps, func(op operation.Operation, _ int) string {
+		CanceledOperations: lo.Map(r.canceledOps, func(op operation.FixmeOperation, _ int) string {
 			return op.ID()
 		}),
-		FailedOperations: lo.Map(r.failedOps, func(op operation.Operation, _ int) string {
+		FailedOperations: lo.Map(r.failedOps, func(op operation.FixmeOperation, _ int) string {
 			return op.ID()
 		}),
 	}

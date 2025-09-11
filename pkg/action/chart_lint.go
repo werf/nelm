@@ -16,7 +16,7 @@ import (
 	"github.com/werf/nelm/internal/chart"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/plan/resourceinfo"
+	"github.com/werf/nelm/internal/plan/resinfo"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource"
 	log2 "github.com/werf/nelm/pkg/log"
@@ -186,7 +186,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		historyOptions.DiscoveryClient = clientFactory.Discovery()
 	}
 
-	history, err := release.NewHistory(
+	history, err := release.BuildHistory(
 		opts.ReleaseName,
 		opts.ReleaseNamespace,
 		releaseStorage,
@@ -222,7 +222,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		deployType = common.DeployTypeInitial
 	}
 
-	chartTreeOptions := chart.ChartTreeOptions{
+	chartTreeOptions := chart.RenderChartOptions{
 		ChartRepoInsecure:      opts.ChartRepositoryInsecure,
 		ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
 		ChartRepoSkipUpdate:    opts.ChartRepositorySkipUpdate,
@@ -249,7 +249,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		chartTreeOptions.KubeVersion = ver
 	}
 
-	chartTree, err := chart.NewChartTree(
+	chartTree, err := chart.RenderChart(
 		ctx,
 		opts.Chart,
 		opts.ReleaseName,
@@ -267,29 +267,14 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		prevRelGeneralResources = prevRelease.GeneralResources()
 	}
 
-	resProcessorOptions := resourceinfo.DeployableResourcesProcessorOptions{
+	resProcessorOptions := resinfo.DeployableResourcesProcessorOptions{
 		NetworkParallelism: opts.NetworkParallelism,
 		ForceAdoption:      opts.ForceAdoption,
-		ReleasableHookResourcePatchers: []resource.ResourcePatcher{
+		ExtraReleasableResourcePatchers: []resource.ResourcePatcher{
 			resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 		},
-		ReleasableGeneralResourcePatchers: []resource.ResourcePatcher{
-			resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-		},
-		DeployableStandaloneCRDsPatchers: []resource.ResourcePatcher{
-			resource.NewExtraMetadataPatcher(
-				lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
-			),
-		},
-		DeployableHookResourcePatchers: []resource.ResourcePatcher{
-			resource.NewExtraMetadataPatcher(
-				lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
-			),
-		},
-		DeployableGeneralResourcePatchers: []resource.ResourcePatcher{
-			resource.NewExtraMetadataPatcher(
-				lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
-			),
+		ExtraDeployableResourcePatchers: []resource.ResourcePatcher{
+			resource.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
 		},
 	}
 	if opts.Remote {
@@ -299,7 +284,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		resProcessorOptions.AllowClusterAccess = true
 	}
 
-	resProcessor := resourceinfo.NewDeployableResourcesProcessor(
+	resProcessor := resinfo.NewDeployableResourcesProcessor(
 		deployType,
 		opts.ReleaseName,
 		opts.ReleaseNamespace,

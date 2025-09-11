@@ -293,8 +293,8 @@ func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV
 
 func setReleaseListOutputTableStyle(ctx context.Context, table prtable.Writer) {
 	style := prtable.StyleBoxDefault
-	style.PaddingLeft = " "
-	style.PaddingRight = " "
+	style.PaddingLeft = ""
+	style.PaddingRight = "  "
 
 	columnConfigs := []prtable.ColumnConfig{
 		{

@@ -24,6 +24,10 @@ type SensitiveInfo struct {
 	SensitivePaths []string
 }
 
+func (i *SensitiveInfo) FullySensitive() bool {
+	return i.IsSensitive && len(i.SensitivePaths) == 1 && i.SensitivePaths[0] == HideAll
+}
+
 func IsSensitive(groupKind schema.GroupKind, annotations map[string]string) bool {
 	info := GetSensitiveInfo(groupKind, annotations)
 	return info.IsSensitive
@@ -103,13 +107,11 @@ func ParseSensitivePaths(value string) []string {
 }
 
 func RedactSensitiveData(unstruct *unstructured.Unstructured, sensitivePaths []string) *unstructured.Unstructured {
-	copy := unstruct.DeepCopy()
-
 	if len(sensitivePaths) == 0 {
-		return copy
+		return unstruct
 	}
 
-	return redactSensitiveData(copy, sensitivePaths)
+	return redactSensitiveData(unstruct.DeepCopy(), sensitivePaths)
 }
 
 func redactSensitiveData(unstruct *unstructured.Unstructured, sensitivePaths []string) *unstructured.Unstructured {
@@ -142,22 +144,22 @@ func createSensitiveReplacement(value interface{}) interface{} {
 	switch v := value.(type) {
 	case string:
 		hash := fmt.Sprintf("%x", sha256.Sum256([]byte(v)))[:12]
-		return fmt.Sprintf("SENSITIVE (%d bytes, %s)", len(v), hash)
+		return fmt.Sprintf("<hidden %d sensitive bytes, hash %s>", len(v), hash)
 	case []byte:
 		hash := fmt.Sprintf("%x", sha256.Sum256(v))[:12]
-		return fmt.Sprintf("SENSITIVE (%d bytes, %s)", len(v), hash)
+		return fmt.Sprintf("<hidden %d sensitive bytes, hash %s>", len(v), hash)
 	case []interface{}:
 		jsonData, _ := json.Marshal(v)
 		hash := fmt.Sprintf("%x", sha256.Sum256(jsonData))[:12]
-		return fmt.Sprintf("SENSITIVE (%d entries, %s)", len(v), hash)
+		return fmt.Sprintf("<hidden %d sensitive entries, hash %s>", len(v), hash)
 	case map[string]interface{}:
 		jsonData, _ := json.Marshal(v)
 		hash := fmt.Sprintf("%x", sha256.Sum256(jsonData))[:12]
-		return fmt.Sprintf("SENSITIVE (%d entries, %s)", len(v), hash)
+		return fmt.Sprintf("<hidden %d sensitive entries, hash %s>", len(v), hash)
 	default:
 		// For other types, convert to string and hash
 		str := fmt.Sprintf("%v", v)
 		hash := fmt.Sprintf("%x", sha256.Sum256([]byte(str)))[:12]
-		return fmt.Sprintf("SENSITIVE (%d bytes, %s)", len(str), hash)
+		return fmt.Sprintf("<hidden %d sensitive bytes, hash %s>", len(str), hash)
 	}
 }

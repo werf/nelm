@@ -103,7 +103,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 
 	loader.NoChartLockWarning = ""
 
-	history, err := release.NewHistory(
+	history, err := release.BuildHistory(
 		releaseName,
 		releaseNamespace,
 		releaseStorage,
@@ -131,7 +131,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		}
 	} else {
 		var revisionFound bool
-		release, revisionFound, err = history.Release(opts.Revision)
+		release, revisionFound, err = history.FindRevision(opts.Revision)
 		if err != nil {
 			return nil, fmt.Errorf("get release revision %d: %w", opts.Revision, err)
 		} else if !revisionFound {

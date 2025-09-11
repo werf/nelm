@@ -21,10 +21,10 @@ import (
 	"github.com/werf/nelm/internal/chart"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/plan/resourceinfo"
+	"github.com/werf/nelm/internal/plan/resinfo"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource"
-	log2 "github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/log"
 )
 
 const (
@@ -143,7 +143,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(log2.Default.AcceptLevel(ctx, log2.Level(DebugLogLevel))),
+		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
 		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
 	}
@@ -195,7 +195,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		historyOptions.DiscoveryClient = clientFactory.Discovery()
 	}
 
-	history, err := release.NewHistory(
+	history, err := release.BuildHistory(
 		opts.ReleaseName,
 		opts.ReleaseNamespace,
 		releaseStorage,
@@ -231,7 +231,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		deployType = common.DeployTypeInitial
 	}
 
-	chartTreeOptions := chart.ChartTreeOptions{
+	chartTreeOptions := chart.RenderChartOptions{
 		ChartRepoInsecure:      opts.ChartRepositoryInsecure,
 		ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
 		ChartVersion:           opts.ChartVersion,
@@ -257,7 +257,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		chartTreeOptions.KubeVersion = ver
 	}
 
-	chartTree, err := chart.NewChartTree(
+	chartTree, err := chart.RenderChart(
 		ctx,
 		opts.Chart,
 		opts.ReleaseName,
@@ -275,29 +275,14 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		prevRelGeneralResources = prevRelease.GeneralResources()
 	}
 
-	resProcessorOptions := resourceinfo.DeployableResourcesProcessorOptions{
+	resProcessorOptions := resinfo.DeployableResourcesProcessorOptions{
 		NetworkParallelism: opts.NetworkParallelism,
 		ForceAdoption:      opts.ForceAdoption,
-		ReleasableHookResourcePatchers: []resource.ResourcePatcher{
+		ExtraReleasableResourcePatchers: []resource.ResourcePatcher{
 			resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 		},
-		ReleasableGeneralResourcePatchers: []resource.ResourcePatcher{
-			resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-		},
-		DeployableStandaloneCRDsPatchers: []resource.ResourcePatcher{
-			resource.NewExtraMetadataPatcher(
-				lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
-			),
-		},
-		DeployableHookResourcePatchers: []resource.ResourcePatcher{
-			resource.NewExtraMetadataPatcher(
-				lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
-			),
-		},
-		DeployableGeneralResourcePatchers: []resource.ResourcePatcher{
-			resource.NewExtraMetadataPatcher(
-				lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
-			),
+		ExtraDeployableResourcePatchers: []resource.ResourcePatcher{
+			resource.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
 		},
 	}
 	if opts.Remote {
@@ -307,7 +292,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		resProcessorOptions.AllowClusterAccess = true
 	}
 
-	resProcessor := resourceinfo.NewDeployableResourcesProcessor(
+	resProcessor := resinfo.NewDeployableResourcesProcessor(
 		deployType,
 		opts.ReleaseName,
 		opts.ReleaseNamespace,
@@ -381,7 +366,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 		if opts.ShowCRDs {
 			if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream, renderColorLevel); err != nil {
-				return nil, fmt.Errorf("render CRD %q: %w", resource.HumanID(), err)
+				return nil, fmt.Errorf("render CRD %q: %w", resource.IDHuman(), err)
 			}
 		}
 
@@ -394,7 +379,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		}
 
 		if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream, renderColorLevel); err != nil {
-			return nil, fmt.Errorf("render hook resource %q: %w", resource.HumanID(), err)
+			return nil, fmt.Errorf("render hook resource %q: %w", resource.IDHuman(), err)
 		}
 
 		result.Hooks = append(result.Hooks, resource.Unstructured().Object)
@@ -406,7 +391,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		}
 
 		if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream, renderColorLevel); err != nil {
-			return nil, fmt.Errorf("render general resource %q: %w", resource.HumanID(), err)
+			return nil, fmt.Errorf("render general resource %q: %w", resource.IDHuman(), err)
 		}
 
 		result.Resources = append(result.Resources, resource.Unstructured().Object)

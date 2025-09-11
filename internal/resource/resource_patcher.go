@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	"github.com/werf/nelm/internal/common"
 )
 
 type ResourcePatcher interface {
@@ -13,9 +15,8 @@ type ResourcePatcher interface {
 }
 
 type ResourcePatcherResourceInfo struct {
-	Obj          *unstructured.Unstructured
-	Type         Type
-	ManageableBy ManageableBy
+	Obj       *unstructured.Unstructured
+	Ownership common.Ownership
 }
 
 type ResourcePatcherType string

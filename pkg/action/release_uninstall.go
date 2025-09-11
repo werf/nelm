@@ -9,7 +9,6 @@ import (
 
 	"github.com/gookit/color"
 	"github.com/samber/lo"
-	api_errors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 
@@ -22,9 +21,9 @@ import (
 	"github.com/werf/nelm/internal/lock"
 	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/plan/operation"
-	"github.com/werf/nelm/internal/plan/resourceinfo"
+	"github.com/werf/nelm/internal/plan/resinfo"
 	"github.com/werf/nelm/internal/release"
-	"github.com/werf/nelm/internal/resource/id"
+	"github.com/werf/nelm/internal/resource/meta"
 	"github.com/werf/nelm/internal/track"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/log"
@@ -160,11 +159,11 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		lockManager = m
 	}
 
-	namespaceID := id.NewResourceID(
+	namespaceID := meta.NewResourceID(
 		releaseNamespace,
 		"",
 		schema.GroupVersionKind{Version: "v1", Kind: "Namespace"},
-		id.ResourceIDOptions{Mapper: clientFactory.Mapper()},
+		meta.ResourceIDOptions{Mapper: clientFactory.Mapper()},
 	)
 
 	if exists, err := isReleaseNamespaceExist(ctx, clientFactory, namespaceID); err != nil {
@@ -183,7 +182,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		log.Default.Debug(ctx, "Constructing release history")
-		history, err := release.NewHistory(
+		history, err := release.BuildHistory(
 			releaseName,
 			releaseNamespace,
 			releaseStorage,
@@ -210,7 +209,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Deleting release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
 		log.Default.Debug(ctx, "Processing resources")
-		resProcessor := resourceinfo.NewDeployableResourcesProcessor(
+		resProcessor := resinfo.NewDeployableResourcesProcessor(
 			common.DeployTypeUninstall,
 			releaseName,
 			releaseNamespace,
@@ -219,7 +218,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			nil,
 			prevRelease.HookResources(),
 			prevRelease.GeneralResources(),
-			resourceinfo.DeployableResourcesProcessorOptions{
+			resinfo.DeployableResourcesProcessorOptions{
 				NetworkParallelism: opts.NetworkParallelism,
 				KubeClient:         clientFactory.KubeClient(),
 				Mapper:             clientFactory.Mapper(),
@@ -292,10 +291,10 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			}
 		}
 
-		tablesBuilder := track.NewTablesBuilder(
+		tablesBuilder := track.newTablesBuilder(
 			taskStore,
 			logStore,
-			track.TablesBuilderOptions{
+			track.tablesBuilderOptions{
 				DefaultNamespace: releaseNamespace,
 			},
 		)
@@ -307,9 +306,9 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			}
 		}()
 
-		var progressPrinter *progressPrinter
+		var progressPrinter *track.ProgressTablesPrinter
 		if !opts.NoProgressTablePrint {
-			progressPrinter = newProgressPrinter()
+			progressPrinter = &track.NewProgressTablesPrinter()
 			progressPrinter.Start(ctx, opts.ProgressTablePrintInterval, tablesBuilder)
 		}
 
@@ -328,21 +327,21 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			criticalErrs = append(criticalErrs, fmt.Errorf("execute release uninstall plan: %w", planExecutionErr))
 		}
 
-		var worthyCompletedOps []operation.Operation
+		var worthyCompletedOps []operation.FixmeOperation
 		if ops, found, err := uninstallPlan.WorthyCompletedOperations(); err != nil {
 			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful completed operations: %w", err))
 		} else if found {
 			worthyCompletedOps = ops
 		}
 
-		var worthyCanceledOps []operation.Operation
+		var worthyCanceledOps []operation.FixmeOperation
 		if ops, found, err := uninstallPlan.WorthyCanceledOperations(); err != nil {
 			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful canceled operations: %w", err))
 		} else if found {
 			worthyCanceledOps = ops
 		}
 
-		var worthyFailedOps []operation.Operation
+		var worthyFailedOps []operation.FixmeOperation
 		if ops, found, err := uninstallPlan.WorthyFailedOperations(); err != nil {
 			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful failed operations: %w", err))
 		} else if found {
@@ -427,7 +426,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 	return nil
 }
 
-func isReleaseNamespaceExist(ctx context.Context, clientFactory *kube.ClientFactory, namespaceID *id.ResourceID) (bool, error) {
+func isReleaseNamespaceExist(ctx context.Context, clientFactory *kube.ClientFactory, namespaceID *meta.ResourceID) (bool, error) {
 	if _, err := clientFactory.KubeClient().Get(
 		ctx,
 		namespaceID,
@@ -435,7 +434,7 @@ func isReleaseNamespaceExist(ctx context.Context, clientFactory *kube.ClientFact
 			TryCache: true,
 		},
 	); err != nil {
-		if api_errors.IsNotFound(err) {
+		if kube.IsNotFoundErr(err) {
 			return false, nil
 		} else {
 			return false, fmt.Errorf("get release namespace: %w", err)

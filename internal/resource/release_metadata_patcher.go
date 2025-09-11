@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	"github.com/werf/nelm/internal/common"
 )
 
 var _ ResourcePatcher = (*ReleaseMetadataPatcher)(nil)
@@ -23,7 +25,7 @@ type ReleaseMetadataPatcher struct {
 }
 
 func (p *ReleaseMetadataPatcher) Match(ctx context.Context, info *ResourcePatcherResourceInfo) (bool, error) {
-	return info.ManageableBy == ManageableBySingleRelease, nil
+	return info.Ownership == common.OwnershipRelease, nil
 }
 
 func (p *ReleaseMetadataPatcher) Patch(ctx context.Context, info *ResourcePatcherResourceInfo) (*unstructured.Unstructured, error) {
