@@ -10,20 +10,19 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/werf/nelm/internal/common"
-	"github.com/werf/nelm/internal/plan/operation"
 )
 
 func NewPlan() *Plan {
 	return &Plan{
-		graph: graph.New(func(t *operation.Operation) string { return t.ID() }, graph.Acyclic(), graph.PreventCycles(), graph.Directed()),
+		graph: graph.New(func(t *Operation) string { return t.ID() }, graph.Acyclic(), graph.PreventCycles(), graph.Directed()),
 	}
 }
 
 type Plan struct {
-	graph graph.Graph[string, *operation.Operation]
+	graph graph.Graph[string, *Operation]
 }
 
-func (p *Plan) Operation(id string) (op *operation.Operation, found bool) {
+func (p *Plan) Operation(id string) (op *Operation, found bool) {
 	vertex, err := p.graph.Vertex(id)
 	if err != nil {
 		if errors.Is(err, graph.ErrVertexNotFound) {
@@ -36,8 +35,8 @@ func (p *Plan) Operation(id string) (op *operation.Operation, found bool) {
 	return vertex, true
 }
 
-func (p *Plan) Operations() []*operation.Operation {
-	var operations []*operation.Operation
+func (p *Plan) Operations() []*Operation {
+	var operations []*Operation
 	adjMap := lo.Must(p.graph.AdjacencyMap())
 
 	for opID := range adjMap {
@@ -94,7 +93,7 @@ type planChainBuilder struct {
 	err   error
 }
 
-func (b *planChainBuilder) AddOperation(op *operation.Operation) *planChainBuilder {
+func (b *planChainBuilder) AddOperation(op *Operation) *planChainBuilder {
 	if b.err != nil {
 		return b
 	}
@@ -162,7 +161,7 @@ func (b *planChainBuilder) Do() error {
 }
 
 type planBuilderStep struct {
-	operation       *operation.Operation
+	operation       *Operation
 	skipOnDuplicate bool
 	stage           common.Stage
 }

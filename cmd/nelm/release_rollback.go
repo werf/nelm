@@ -10,6 +10,7 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
+	"github.com/werf/nelm/pkg/log"
 )
 
 type releaseRollbackConfig struct {
@@ -35,7 +36,7 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 			Args: cobra.MaximumNArgs(1),
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultReleaseRollbackLogLevel), action.SetupLoggingOptions{
+			ctx = log.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultReleaseRollbackLogLevel), log.SetupLoggingOptions{
 				ColorMode: cfg.LogColorMode,
 			})
 

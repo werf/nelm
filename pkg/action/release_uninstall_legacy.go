@@ -3,7 +3,9 @@ package action
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
@@ -11,19 +13,22 @@ import (
 
 	"github.com/gookit/color"
 	"github.com/samber/lo"
-	api_errors "k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/klog"
+	klogv2 "k8s.io/klog/v2"
 
-	helm_v3 "github.com/werf/3p-helm/cmd/helm"
+	helmv3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/action"
 	"github.com/werf/3p-helm/pkg/cli"
-	helm_kube "github.com/werf/3p-helm/pkg/kube"
+	helmkube "github.com/werf/3p-helm/pkg/kube"
 	"github.com/werf/3p-helm/pkg/storage/driver"
+	"github.com/werf/kubedog/pkg/display"
 	kdkube "github.com/werf/kubedog/pkg/kube"
+	"github.com/werf/logboek"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/legacy/deploy"
 	"github.com/werf/nelm/internal/lock"
-	"github.com/werf/nelm/internal/plan/operation"
 	"github.com/werf/nelm/internal/resource/meta"
 	"github.com/werf/nelm/pkg/log"
 )
@@ -182,7 +187,7 @@ func legacyReleaseUninstall(ctx context.Context, releaseName, releaseNamespace s
 	helmReleaseStorage := helmActionConfig.Releases
 	helmReleaseStorage.MaxHistory = opts.ReleaseHistoryLimit
 
-	helmKubeClient := helmActionConfig.KubeClient.(*helm_kube.Client)
+	helmKubeClient := helmActionConfig.KubeClient.(*helmkube.Client)
 	helmKubeClient.Namespace = releaseNamespace
 	helmKubeClient.ResourcesWaiter = deploy.NewResourcesWaiter(
 		helmKubeClient,
@@ -205,7 +210,7 @@ func legacyReleaseUninstall(ctx context.Context, releaseName, releaseNamespace s
 			TryCache: true,
 		},
 	); err != nil {
-		if api_errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q removal: no release namespace %q found", releaseName, releaseNamespace)))
 
 			return nil
@@ -250,10 +255,10 @@ func legacyReleaseUninstall(ctx context.Context, releaseName, releaseNamespace s
 			defer lockManager.Unlock(lock)
 		}
 
-		helmUninstallCmd := helm_v3.NewUninstallCmd(
+		helmUninstallCmd := helmv3.NewUninstallCmd(
 			helmActionConfig,
 			os.Stdout,
-			helm_v3.UninstallCmdOptions{
+			helmv3.UninstallCmdOptions{
 				StagesSplitter:      deploy.NewStagesSplitter(),
 				DeleteHooks:         lo.ToPtr(!opts.NoDeleteHooks),
 				DontFailIfNoRelease: lo.ToPtr(true),
@@ -330,4 +335,71 @@ func applyLegacyReleaseUninstallOptionsDefaults(opts LegacyReleaseUninstallOptio
 	}
 
 	return opts, nil
+}
+
+func initKubedog(ctx context.Context) error {
+	flag.CommandLine.Parse([]string{})
+
+	display.SetOut(os.Stdout)
+	display.SetErr(os.Stderr)
+
+	if err := silenceKlog(ctx); err != nil {
+		return fmt.Errorf("silence klog: %w", err)
+	}
+
+	if err := silenceKlogV2(ctx); err != nil {
+		return fmt.Errorf("silence klog v2: %w", err)
+	}
+
+	return nil
+}
+
+func silenceKlog(ctx context.Context) error {
+	fs := flag.NewFlagSet("klog", flag.PanicOnError)
+	klog.InitFlags(fs)
+
+	if err := fs.Set("logtostderr", "false"); err != nil {
+		return fmt.Errorf("set logtostderr: %w", err)
+	}
+
+	if err := fs.Set("alsologtostderr", "false"); err != nil {
+		return fmt.Errorf("set alsologtostderr: %w", err)
+	}
+
+	if err := fs.Set("stderrthreshold", "5"); err != nil {
+		return fmt.Errorf("set stderrthreshold: %w", err)
+	}
+
+	// Suppress info and warnings from client-go reflector
+	klog.SetOutputBySeverity("INFO", ioutil.Discard)
+	klog.SetOutputBySeverity("WARNING", ioutil.Discard)
+	klog.SetOutputBySeverity("ERROR", ioutil.Discard)
+	klog.SetOutputBySeverity("FATAL", logboek.Context(ctx).ErrStream())
+
+	return nil
+}
+
+func silenceKlogV2(ctx context.Context) error {
+	fs := flag.NewFlagSet("klog", flag.PanicOnError)
+	klogv2.InitFlags(fs)
+
+	if err := fs.Set("logtostderr", "false"); err != nil {
+		return fmt.Errorf("set logtostderr: %w", err)
+	}
+
+	if err := fs.Set("alsologtostderr", "false"); err != nil {
+		return fmt.Errorf("set alsologtostderr: %w", err)
+	}
+
+	if err := fs.Set("stderrthreshold", "5"); err != nil {
+		return fmt.Errorf("set stderrthreshold: %w", err)
+	}
+
+	// Suppress info and warnings from client-go reflector
+	klogv2.SetOutputBySeverity("INFO", ioutil.Discard)
+	klogv2.SetOutputBySeverity("WARNING", ioutil.Discard)
+	klogv2.SetOutputBySeverity("ERROR", ioutil.Discard)
+	klogv2.SetOutputBySeverity("FATAL", logboek.Context(ctx).ErrStream())
+
+	return nil
 }

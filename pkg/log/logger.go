@@ -45,3 +45,11 @@ var Levels = []Level{SilentLevel, ErrorLevel, WarningLevel, InfoLevel, DebugLeve
 type BlockOptions struct {
 	BlockTitle string
 }
+
+const (
+	LogColorModeAuto = "auto"
+	LogColorModeOff  = "off"
+	LogColorModeOn   = "on"
+)
+
+var LogColorModes = []string{LogColorModeAuto, LogColorModeOff, LogColorModeOn}

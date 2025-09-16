@@ -23,14 +23,12 @@ import (
 
 type ProgressTablesPrinterOptions struct {
 	DefaultNamespace string
-	MaxTableWidth    int
 }
 
-func NewProgressTablesPrinter(taskStore *statestore.TaskStore, logStore *kdutil.Concurrent[*logstore.LogStore], opts ProgressTablesPrinterOptions) *ProgressTablesPrinter {
+func NewProgressTablesPrinter(taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], opts ProgressTablesPrinterOptions) *ProgressTablesPrinter {
 	return &ProgressTablesPrinter{
 		tablesBuilder: newTablesBuilder(taskStore, logStore, tablesBuilderOptions{
 			DefaultNamespace: opts.DefaultNamespace,
-			MaxTableWidth:    opts.MaxTableWidth,
 		}),
 	}
 }
@@ -118,10 +116,9 @@ func printTables(
 
 type tablesBuilderOptions struct {
 	DefaultNamespace string
-	MaxTableWidth    int
 }
 
-func newTablesBuilder(taskStore *statestore.TaskStore, logStore *kdutil.Concurrent[*logstore.LogStore], opts tablesBuilderOptions) *tablesBuilder {
+func newTablesBuilder(taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], opts tablesBuilderOptions) *tablesBuilder {
 	defaultNamespace := lo.WithoutEmpty([]string{opts.DefaultNamespace, v1.NamespaceDefault})[0]
 
 	builder := &tablesBuilder{
@@ -135,13 +132,11 @@ func newTablesBuilder(taskStore *statestore.TaskStore, logStore *kdutil.Concurre
 		hideAbsenceTasks:   make(map[string]bool),
 	}
 
-	builder.SetMaxTableWidth(opts.MaxTableWidth)
-
 	return builder
 }
 
 type tablesBuilder struct {
-	taskStore *statestore.TaskStore
+	taskStore *kdutil.Concurrent[*statestore.TaskStore]
 	logStore  *kdutil.Concurrent[*logstore.LogStore]
 
 	defaultNamespace      string
@@ -235,44 +230,46 @@ func (b *tablesBuilder) BuildLogTables() (tables map[string]prtable.Writer, nonE
 func (b *tablesBuilder) BuildEventTables() (tables map[string]prtable.Writer, nonEmpty bool) {
 	tables = make(map[string]prtable.Writer)
 
-	for _, crts := range b.taskStore.ReadinessTasksStates() {
-		crts.RTransaction(func(rts *statestore.ReadinessTaskState) {
-			for _, crs := range rts.ResourceStates() {
-				crs.RTransaction(func(rs *statestore.ResourceState) {
-					events := rs.Events()
-					if len(events) == 0 {
-						return
-					}
-
-					table := prtable.NewWriter()
-					setEventTableStyle(table, b.maxLogEventTableWidth)
-
-					header := buildEventsHeader(rs, b.defaultNamespace)
-
-					nextEventPointer, found := b.nextEventPointers[header]
-					if !found {
-						nextEventPointer = 0
-					}
-
-					for i, event := range events {
-						if i < nextEventPointer {
-							continue
+	b.taskStore.RTransaction(func(ts *statestore.TaskStore) {
+		for _, crts := range ts.ReadinessTasksStates() {
+			crts.RTransaction(func(rts *statestore.ReadinessTaskState) {
+				for _, crs := range rts.ResourceStates() {
+					crs.RTransaction(func(rs *statestore.ResourceState) {
+						events := rs.Events()
+						if len(events) == 0 {
+							return
 						}
 
-						table.AppendRow(prtable.Row{event.Message})
+						table := prtable.NewWriter()
+						setEventTableStyle(table, b.maxLogEventTableWidth)
 
-						nextEventPointer++
-					}
+						header := buildEventsHeader(rs, b.defaultNamespace)
 
-					b.nextEventPointers[header] = nextEventPointer
+						nextEventPointer, found := b.nextEventPointers[header]
+						if !found {
+							nextEventPointer = 0
+						}
 
-					if table.Length() != 0 {
-						tables[header] = table
-					}
-				})
-			}
-		})
-	}
+						for i, event := range events {
+							if i < nextEventPointer {
+								continue
+							}
+
+							table.AppendRow(prtable.Row{event.Message})
+
+							nextEventPointer++
+						}
+
+						b.nextEventPointers[header] = nextEventPointer
+
+						if table.Length() != 0 {
+							tables[header] = table
+						}
+					})
+				}
+			})
+		}
+	})
 
 	if len(tables) == 0 {
 		return nil, false
@@ -300,51 +297,100 @@ func (b *tablesBuilder) SetMaxTableWidth(maxTableWidth int) {
 }
 
 func (b *tablesBuilder) buildReadinessProgressRows() (rows []prtable.Row) {
-	crtss := b.taskStore.ReadinessTasksStates()
-	sortReadinessTaskStates(crtss)
+	b.taskStore.RTransaction(func(ts *statestore.TaskStore) {
+		crtss := ts.ReadinessTasksStates()
+		sortReadinessTaskStates(crtss)
 
-	for _, crts := range crtss {
-		crts.RTransaction(func(rts *statestore.ReadinessTaskState) {
-			if hide, ok := b.hideReadinessTasks[rts.UUID()]; ok && hide {
-				return
-			}
+		for _, crts := range crtss {
+			crts.RTransaction(func(rts *statestore.ReadinessTaskState) {
+				if hide, ok := b.hideReadinessTasks[rts.UUID()]; ok && hide {
+					return
+				}
 
-			readyPods := calculateReadyPods(rts)
+				readyPods := calculateReadyPods(rts)
 
-			for _, crs := range rts.ResourceStates() {
-				crs.RTransaction(func(rs *statestore.ResourceState) {
-					var (
-						stateCell    string
-						resourceCell string
-						infoCell     []string
-					)
+				for _, crs := range rts.ResourceStates() {
+					crs.RTransaction(func(rs *statestore.ResourceState) {
+						var (
+							stateCell    string
+							resourceCell string
+							infoCell     []string
+						)
 
-					isRootResource := rts.Name() == rs.Name() && rts.Namespace() == rs.Namespace() && rts.GroupVersionKind() == rs.GroupVersionKind()
+						isRootResource := rts.Name() == rs.Name() && rts.Namespace() == rs.Namespace() && rts.GroupVersionKind() == rs.GroupVersionKind()
 
-					if isRootResource {
-						stateCell = buildReadinessRootResourceStateCell(rts)
-						resourceCell = buildRootResourceCell(rs)
-					} else {
-						stateCell = buildReadinessChildResourceStateCell(rs)
-						resourceCell = buildChildResourceCell(rs)
-					}
+						if isRootResource {
+							stateCell = buildReadinessRootResourceStateCell(rts)
+							resourceCell = buildRootResourceCell(rs)
+						} else {
+							stateCell = buildReadinessChildResourceStateCell(rs)
+							resourceCell = buildChildResourceCell(rs)
+						}
+
+						if rs.Namespace() != "" && rs.Namespace() != b.defaultNamespace {
+							infoCell = append(infoCell, buildNamespaceInfo(rs))
+						}
+
+						if statusInfo := buildStatusInfo(rs); statusInfo != "" {
+							infoCell = append(infoCell, statusInfo)
+						}
+
+						if isRootResource && readyPods != nil {
+							if readyPodsInfo := buildReadyPodsInfo(rs, *readyPods); readyPodsInfo != "" {
+								infoCell = append(infoCell, readyPodsInfo)
+							}
+						}
+
+						if genericConditionInfo := buildGenericConditionInfo(rs); genericConditionInfo != "" {
+							infoCell = append(infoCell, genericConditionInfo)
+						}
+
+						if len(rs.Errors()) != 0 {
+							infoCell = append(
+								infoCell,
+								buildErrorsInfo(rs),
+								buildLastErrInfo(rs),
+							)
+						}
+
+						rows = append(rows, prtable.Row{resourceCell, stateCell, strings.Join(infoCell, "  ")})
+
+						if rts.Status() == statestore.ReadinessTaskStatusReady {
+							b.hideReadinessTasks[rts.UUID()] = true
+						}
+					})
+				}
+			})
+		}
+	})
+
+	if len(rows) > 0 {
+		headerRow := buildReadinessHeaderRow()
+		rows = append([]prtable.Row{headerRow}, rows...)
+	}
+
+	return rows
+}
+
+func (b *tablesBuilder) buildPresenceProgressRows() (rows []prtable.Row) {
+	b.taskStore.RTransaction(func(ts *statestore.TaskStore) {
+		cptss := ts.PresenceTasksStates()
+		sortPresenceTaskStates(cptss)
+
+		for _, cpts := range cptss {
+			cpts.RTransaction(func(pts *statestore.PresenceTaskState) {
+				if hide, ok := b.hidePresenceTasks[pts.UUID()]; ok && hide {
+					return
+				}
+
+				pts.ResourceState().RTransaction(func(rs *statestore.ResourceState) {
+					stateCell := buildPresenceRootResourceStateCell(pts)
+					resourceCell := buildRootResourceCell(rs)
+
+					var infoCell []string
 
 					if rs.Namespace() != "" && rs.Namespace() != b.defaultNamespace {
 						infoCell = append(infoCell, buildNamespaceInfo(rs))
-					}
-
-					if statusInfo := buildStatusInfo(rs); statusInfo != "" {
-						infoCell = append(infoCell, statusInfo)
-					}
-
-					if isRootResource && readyPods != nil {
-						if readyPodsInfo := buildReadyPodsInfo(rs, *readyPods); readyPodsInfo != "" {
-							infoCell = append(infoCell, readyPodsInfo)
-						}
-					}
-
-					if genericConditionInfo := buildGenericConditionInfo(rs); genericConditionInfo != "" {
-						infoCell = append(infoCell, genericConditionInfo)
 					}
 
 					if len(rs.Errors()) != 0 {
@@ -357,58 +403,13 @@ func (b *tablesBuilder) buildReadinessProgressRows() (rows []prtable.Row) {
 
 					rows = append(rows, prtable.Row{resourceCell, stateCell, strings.Join(infoCell, "  ")})
 
-					if rts.Status() == statestore.ReadinessTaskStatusReady {
-						b.hideReadinessTasks[rts.UUID()] = true
+					if pts.Status() == statestore.PresenceTaskStatusPresent {
+						b.hidePresenceTasks[pts.UUID()] = true
 					}
 				})
-			}
-		})
-	}
-
-	if len(rows) > 0 {
-		headerRow := buildReadinessHeaderRow()
-		rows = append([]prtable.Row{headerRow}, rows...)
-	}
-
-	return rows
-}
-
-func (b *tablesBuilder) buildPresenceProgressRows() (rows []prtable.Row) {
-	cptss := b.taskStore.PresenceTasksStates()
-	sortPresenceTaskStates(cptss)
-
-	for _, cpts := range cptss {
-		cpts.RTransaction(func(pts *statestore.PresenceTaskState) {
-			if hide, ok := b.hidePresenceTasks[pts.UUID()]; ok && hide {
-				return
-			}
-
-			pts.ResourceState().RTransaction(func(rs *statestore.ResourceState) {
-				stateCell := buildPresenceRootResourceStateCell(pts)
-				resourceCell := buildRootResourceCell(rs)
-
-				var infoCell []string
-
-				if rs.Namespace() != "" && rs.Namespace() != b.defaultNamespace {
-					infoCell = append(infoCell, buildNamespaceInfo(rs))
-				}
-
-				if len(rs.Errors()) != 0 {
-					infoCell = append(
-						infoCell,
-						buildErrorsInfo(rs),
-						buildLastErrInfo(rs),
-					)
-				}
-
-				rows = append(rows, prtable.Row{resourceCell, stateCell, strings.Join(infoCell, "  ")})
-
-				if pts.Status() == statestore.PresenceTaskStatusPresent {
-					b.hidePresenceTasks[pts.UUID()] = true
-				}
 			})
-		})
-	}
+		}
+	})
 
 	if len(rows) > 0 {
 		headerRow := buildPresenceHeaderRow()
@@ -419,41 +420,43 @@ func (b *tablesBuilder) buildPresenceProgressRows() (rows []prtable.Row) {
 }
 
 func (b *tablesBuilder) buildAbsenceProgressRows() (rows []prtable.Row) {
-	catss := b.taskStore.AbsenceTasksStates()
-	sortAbsenceTaskStates(catss)
+	b.taskStore.RTransaction(func(ts *statestore.TaskStore) {
+		catss := ts.AbsenceTasksStates()
+		sortAbsenceTaskStates(catss)
 
-	for _, cats := range catss {
-		cats.RTransaction(func(ats *statestore.AbsenceTaskState) {
-			if hide, ok := b.hideAbsenceTasks[ats.UUID()]; ok && hide {
-				return
-			}
-
-			ats.ResourceState().RTransaction(func(rs *statestore.ResourceState) {
-				stateCell := buildAbsenceRootResourceStateCell(ats)
-				resourceCell := buildRootResourceCell(rs)
-
-				var infoCell []string
-
-				if rs.Namespace() != "" && rs.Namespace() != b.defaultNamespace {
-					infoCell = append(infoCell, buildNamespaceInfo(rs))
+		for _, cats := range catss {
+			cats.RTransaction(func(ats *statestore.AbsenceTaskState) {
+				if hide, ok := b.hideAbsenceTasks[ats.UUID()]; ok && hide {
+					return
 				}
 
-				if len(rs.Errors()) != 0 {
-					infoCell = append(
-						infoCell,
-						buildErrorsInfo(rs),
-						buildLastErrInfo(rs),
-					)
-				}
+				ats.ResourceState().RTransaction(func(rs *statestore.ResourceState) {
+					stateCell := buildAbsenceRootResourceStateCell(ats)
+					resourceCell := buildRootResourceCell(rs)
 
-				rows = append(rows, prtable.Row{resourceCell, stateCell, strings.Join(infoCell, "  ")})
+					var infoCell []string
 
-				if ats.Status() == statestore.AbsenceTaskStatusAbsent {
-					b.hideAbsenceTasks[ats.UUID()] = true
-				}
+					if rs.Namespace() != "" && rs.Namespace() != b.defaultNamespace {
+						infoCell = append(infoCell, buildNamespaceInfo(rs))
+					}
+
+					if len(rs.Errors()) != 0 {
+						infoCell = append(
+							infoCell,
+							buildErrorsInfo(rs),
+							buildLastErrInfo(rs),
+						)
+					}
+
+					rows = append(rows, prtable.Row{resourceCell, stateCell, strings.Join(infoCell, "  ")})
+
+					if ats.Status() == statestore.AbsenceTaskStatusAbsent {
+						b.hideAbsenceTasks[ats.UUID()] = true
+					}
+				})
 			})
-		})
-	}
+		}
+	})
 
 	if len(rows) > 0 {
 		headerRow := buildAbsenceHeaderRow()

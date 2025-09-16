@@ -34,7 +34,7 @@ func GVKtoGVR(gvk schema.GroupVersionKind, mapper meta.RESTMapper) (gvr schema.G
 }
 
 func IsHook(annotations map[string]string) bool {
-	_, _, found := FindAnnotationOrLabelByKeyPattern(annotations, annotationKeyPatternHook)
+	_, _, found := FindAnnotationOrLabelByKeyPattern(annotations, AnnotationKeyPatternHook)
 	return found
 }
 

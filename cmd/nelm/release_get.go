@@ -10,6 +10,7 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
+	"github.com/werf/nelm/pkg/log"
 )
 
 type releaseGetConfig struct {
@@ -35,7 +36,7 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 			Args: cobra.MaximumNArgs(1),
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultReleaseGetLogLevel), action.SetupLoggingOptions{
+			ctx = log.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultReleaseGetLogLevel), log.SetupLoggingOptions{
 				ColorMode:      cfg.LogColorMode,
 				LogIsParseable: true,
 			})

@@ -13,116 +13,116 @@ import (
 	"github.com/ohler55/ojg/jp"
 	"github.com/samber/lo"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 	"github.com/werf/nelm/internal/common"
-	"github.com/werf/nelm/internal/plan/dependency"
+	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/resource/meta"
 	"github.com/werf/nelm/internal/util"
 )
 
 var (
-	labelKeyHumanManagedBy   = "app.kubernetes.io/managed-by"
+	LabelKeyHumanManagedBy   = "app.kubernetes.io/managed-by"
 	LabelKeyPatternManagedBy = regexp.MustCompile(`^app.kubernetes.io/managed-by$`)
 
-	annotationKeyHumanReleaseName   = "meta.helm.sh/release-name"
+	AnnotationKeyHumanReleaseName   = "meta.helm.sh/release-name"
 	AnnotationKeyPatternReleaseName = regexp.MustCompile(`^meta.helm.sh/release-name$`)
 
-	annotationKeyHumanReleaseNamespace   = "meta.helm.sh/release-namespace"
+	AnnotationKeyHumanReleaseNamespace   = "meta.helm.sh/release-namespace"
 	AnnotationKeyPatternReleaseNamespace = regexp.MustCompile(`^meta.helm.sh/release-namespace$`)
 
-	annotationKeyHumanHook   = "helm.sh/hook"
-	annotationKeyPatternHook = regexp.MustCompile(`^helm.sh/hook$`)
+	AnnotationKeyHumanHook   = "helm.sh/hook"
+	AnnotationKeyPatternHook = regexp.MustCompile(`^helm.sh/hook$`)
 
-	annotationKeyHumanResourcePolicy   = "helm.sh/resource-policy"
-	annotationKeyPatternResourcePolicy = regexp.MustCompile(`^helm.sh/resource-policy$`)
+	AnnotationKeyHumanResourcePolicy   = "helm.sh/resource-policy"
+	AnnotationKeyPatternResourcePolicy = regexp.MustCompile(`^helm.sh/resource-policy$`)
 
-	annotationKeyHumanDeletePolicy   = "werf.io/delete-policy"
-	annotationKeyPatternDeletePolicy = regexp.MustCompile(`^werf.io/delete-policy$`)
+	AnnotationKeyHumanDeletePolicy   = "werf.io/delete-policy"
+	AnnotationKeyPatternDeletePolicy = regexp.MustCompile(`^werf.io/delete-policy$`)
 
-	annotationKeyHumanHookDeletePolicy   = "helm.sh/hook-delete-policy"
-	annotationKeyPatternHookDeletePolicy = regexp.MustCompile(`^helm.sh/hook-delete-policy$`)
+	AnnotationKeyHumanHookDeletePolicy   = "helm.sh/hook-delete-policy"
+	AnnotationKeyPatternHookDeletePolicy = regexp.MustCompile(`^helm.sh/hook-delete-policy$`)
 
-	annotationKeyHumanReplicasOnCreation   = "werf.io/replicas-on-creation"
-	annotationKeyPatternReplicasOnCreation = regexp.MustCompile(`^werf.io/replicas-on-creation$`)
+	AnnotationKeyHumanReplicasOnCreation   = "werf.io/replicas-on-creation"
+	AnnotationKeyPatternReplicasOnCreation = regexp.MustCompile(`^werf.io/replicas-on-creation$`)
 
-	annotationKeyHumanFailMode   = "werf.io/fail-mode"
-	annotationKeyPatternFailMode = regexp.MustCompile(`^werf.io/fail-mode$`)
+	AnnotationKeyHumanFailMode   = "werf.io/fail-mode"
+	AnnotationKeyPatternFailMode = regexp.MustCompile(`^werf.io/fail-mode$`)
 
-	annotationKeyHumanFailuresAllowedPerReplica   = "werf.io/failures-allowed-per-replica"
-	annotationKeyPatternFailuresAllowedPerReplica = regexp.MustCompile(`^werf.io/failures-allowed-per-replica$`)
+	AnnotationKeyHumanFailuresAllowedPerReplica   = "werf.io/failures-allowed-per-replica"
+	AnnotationKeyPatternFailuresAllowedPerReplica = regexp.MustCompile(`^werf.io/failures-allowed-per-replica$`)
 
-	annotationKeyHumanIgnoreReadinessProbeFailsFor   = "werf.io/ignore-readiness-probe-fails-for-<container>"
-	annotationKeyPatternIgnoreReadinessProbeFailsFor = regexp.MustCompile(`^werf.io/ignore-readiness-probe-fails-for-(?P<container>.+)$`)
+	AnnotationKeyHumanIgnoreReadinessProbeFailsFor   = "werf.io/ignore-readiness-probe-fails-for-<container>"
+	AnnotationKeyPatternIgnoreReadinessProbeFailsFor = regexp.MustCompile(`^werf.io/ignore-readiness-probe-fails-for-(?P<container>.+)$`)
 
-	annotationKeyHumanLogRegex   = "werf.io/log-regex"
-	annotationKeyPatternLogRegex = regexp.MustCompile(`^werf.io/log-regex$`)
+	AnnotationKeyHumanLogRegex   = "werf.io/log-regex"
+	AnnotationKeyPatternLogRegex = regexp.MustCompile(`^werf.io/log-regex$`)
 
-	annotationKeyHumanLogRegexFor   = "werf.io/log-regex-for-<container>"
-	annotationKeyPatternLogRegexFor = regexp.MustCompile(`^werf.io/log-regex-for-(?P<container>.+)$`)
+	AnnotationKeyHumanLogRegexFor   = "werf.io/log-regex-for-<container>"
+	AnnotationKeyPatternLogRegexFor = regexp.MustCompile(`^werf.io/log-regex-for-(?P<container>.+)$`)
 
-	annotationKeyHumanNoActivityTimeout   = "werf.io/no-activity-timeout"
-	annotationKeyPatternNoActivityTimeout = regexp.MustCompile(`^werf.io/no-activity-timeout$`)
+	AnnotationKeyHumanNoActivityTimeout   = "werf.io/no-activity-timeout"
+	AnnotationKeyPatternNoActivityTimeout = regexp.MustCompile(`^werf.io/no-activity-timeout$`)
 
-	annotationKeyHumanShowLogsOnlyForContainers   = "werf.io/show-logs-only-for-containers"
-	annotationKeyPatternShowLogsOnlyForContainers = regexp.MustCompile(`^werf.io/show-logs-only-for-containers$`)
+	AnnotationKeyHumanShowLogsOnlyForContainers   = "werf.io/show-logs-only-for-containers"
+	AnnotationKeyPatternShowLogsOnlyForContainers = regexp.MustCompile(`^werf.io/show-logs-only-for-containers$`)
 
-	annotationKeyHumanShowServiceMessages   = "werf.io/show-service-messages"
-	annotationKeyPatternShowServiceMessages = regexp.MustCompile(`^werf.io/show-service-messages$`)
+	AnnotationKeyHumanShowServiceMessages   = "werf.io/show-service-messages"
+	AnnotationKeyPatternShowServiceMessages = regexp.MustCompile(`^werf.io/show-service-messages$`)
 
-	annotationKeyHumanShowLogsOnlyForNumberOfReplicas   = "werf.io/show-logs-only-for-number-of-replicas"
-	annotationKeyPatternShowLogsOnlyForNumberOfReplicas = regexp.MustCompile(`^werf.io/show-logs-only-for-number-of-replicas$`)
+	AnnotationKeyHumanShowLogsOnlyForNumberOfReplicas   = "werf.io/show-logs-only-for-number-of-replicas"
+	AnnotationKeyPatternShowLogsOnlyForNumberOfReplicas = regexp.MustCompile(`^werf.io/show-logs-only-for-number-of-replicas$`)
 
-	annotationKeyHumanSkipLogs   = "werf.io/skip-logs"
-	annotationKeyPatternSkipLogs = regexp.MustCompile(`^werf.io/skip-logs$`)
+	AnnotationKeyHumanSkipLogs   = "werf.io/skip-logs"
+	AnnotationKeyPatternSkipLogs = regexp.MustCompile(`^werf.io/skip-logs$`)
 
-	annotationKeyHumanSkipLogsForContainers   = "werf.io/skip-logs-for-containers"
-	annotationKeyPatternSkipLogsForContainers = regexp.MustCompile(`^werf.io/skip-logs-for-containers$`)
+	AnnotationKeyHumanSkipLogsForContainers   = "werf.io/skip-logs-for-containers"
+	AnnotationKeyPatternSkipLogsForContainers = regexp.MustCompile(`^werf.io/skip-logs-for-containers$`)
 
-	annotationKeyHumanTrackTerminationMode   = "werf.io/track-termination-mode"
-	annotationKeyPatternTrackTerminationMode = regexp.MustCompile(`^werf.io/track-termination-mode$`)
+	AnnotationKeyHumanTrackTerminationMode   = "werf.io/track-termination-mode"
+	AnnotationKeyPatternTrackTerminationMode = regexp.MustCompile(`^werf.io/track-termination-mode$`)
 
-	annotationKeyHumanWeight   = "werf.io/weight"
-	annotationKeyPatternWeight = regexp.MustCompile(`^werf.io/weight$`)
+	AnnotationKeyHumanWeight   = "werf.io/weight"
+	AnnotationKeyPatternWeight = regexp.MustCompile(`^werf.io/weight$`)
 
-	annotationKeyHumanHookWeight   = "helm.sh/hook-weight"
-	annotationKeyPatternHookWeight = regexp.MustCompile(`^helm.sh/hook-weight$`)
+	AnnotationKeyHumanHookWeight   = "helm.sh/hook-weight"
+	AnnotationKeyPatternHookWeight = regexp.MustCompile(`^helm.sh/hook-weight$`)
 
-	annotationKeyHumanDeployDependency   = "werf.io/deploy-dependency-<name>"
-	annotationKeyPatternDeployDependency = regexp.MustCompile(`^werf.io/deploy-dependency-(?P<id>.+)$`)
+	AnnotationKeyHumanDeployDependency   = "werf.io/deploy-dependency-<name>"
+	AnnotationKeyPatternDeployDependency = regexp.MustCompile(`^werf.io/deploy-dependency-(?P<id>.+)$`)
 
 	// TODO(v2): get rid
-	annotationKeyHumanDependency   = "<name>.dependency.werf.io"
-	annotationKeyPatternDependency = regexp.MustCompile(`^(?P<id>.+).dependency.werf.io$`)
+	AnnotationKeyHumanDependency   = "<name>.dependency.werf.io"
+	AnnotationKeyPatternDependency = regexp.MustCompile(`^(?P<id>.+).dependency.werf.io$`)
 
-	annotationKeyHumanExternalDependency   = "<name>.external-dependency.werf.io"
-	annotationKeyPatternExternalDependency = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io$`)
+	AnnotationKeyHumanExternalDependency   = "<name>.external-dependency.werf.io"
+	AnnotationKeyPatternExternalDependency = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io$`)
 
-	annotationKeyHumanLegacyExternalDependencyResource   = "<name>.external-dependency.werf.io/resource"
-	annotationKeyPatternLegacyExternalDependencyResource = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io/resource$`)
+	AnnotationKeyHumanLegacyExternalDependencyResource   = "<name>.external-dependency.werf.io/resource"
+	AnnotationKeyPatternLegacyExternalDependencyResource = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io/resource$`)
 
-	annotationKeyHumanLegacyExternalDependencyNamespace   = "<name>.external-dependency.werf.io/namespace"
-	annotationKeyPatternLegacyExternalDependencyNamespace = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io/namespace$`)
+	AnnotationKeyHumanLegacyExternalDependencyNamespace   = "<name>.external-dependency.werf.io/namespace"
+	AnnotationKeyPatternLegacyExternalDependencyNamespace = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io/namespace$`)
 
-	annotationKeyHumanSensitive   = "werf.io/sensitive"
-	annotationKeyPatternSensitive = regexp.MustCompile(`^werf.io/sensitive$`)
+	AnnotationKeyHumanSensitive   = "werf.io/sensitive"
+	AnnotationKeyPatternSensitive = regexp.MustCompile(`^werf.io/sensitive$`)
 
-	annotationKeyHumanSensitivePaths   = "werf.io/sensitive-paths"
-	annotationKeyPatternSensitivePaths = regexp.MustCompile(`^werf.io/sensitive-paths$`)
+	AnnotationKeyHumanSensitivePaths   = "werf.io/sensitive-paths"
+	AnnotationKeyPatternSensitivePaths = regexp.MustCompile(`^werf.io/sensitive-paths$`)
 
-	annotationKeyHumanDeployOn   = "werf.io/deploy-on"
-	annotationKeyPatternDeployOn = regexp.MustCompile(`^werf.io/deploy-on$`)
+	AnnotationKeyHumanDeployOn   = "werf.io/deploy-on"
+	AnnotationKeyPatternDeployOn = regexp.MustCompile(`^werf.io/deploy-on$`)
 
-	annotationKeyHumanOwnership   = "werf.io/ownership"
-	annotationKeyPatternOwnership = regexp.MustCompile(`^werf.io/ownership$`)
+	AnnotationKeyHumanOwnership   = "werf.io/ownership"
+	AnnotationKeyPatternOwnership = regexp.MustCompile(`^werf.io/ownership$`)
 )
 
 func ValidateResourcePolicy(meta *meta.ResourceMeta) error {
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternResourcePolicy); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternResourcePolicy); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
 		}
@@ -142,7 +142,7 @@ func KeepOnDelete(meta *meta.ResourceMeta, releaseNamespace string) bool {
 		return true
 	}
 
-	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternResourcePolicy)
+	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternResourcePolicy)
 	if !found {
 		return false
 	}
@@ -174,7 +174,7 @@ func AdoptableBy(meta *meta.ResourceMeta, releaseName, releaseNamespace string) 
 			nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation "%s=%s" must have value %q`, key, value, releaseName))
 		}
 	} else {
-		nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation %q not found, must be set to %q`, annotationKeyHumanReleaseName, releaseName))
+		nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation %q not found, must be set to %q`, AnnotationKeyHumanReleaseName, releaseName))
 	}
 
 	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternReleaseNamespace); found {
@@ -182,7 +182,7 @@ func AdoptableBy(meta *meta.ResourceMeta, releaseName, releaseNamespace string) 
 			nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation "%s=%s" must have value %q`, key, value, releaseNamespace))
 		}
 	} else {
-		nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation %q not found, must be set to %q`, annotationKeyHumanReleaseNamespace, releaseNamespace))
+		nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation %q not found, must be set to %q`, AnnotationKeyHumanReleaseNamespace, releaseNamespace))
 	}
 
 	nonAdoptableReason = strings.Join(nonAdoptableReasons, ", ")
@@ -191,7 +191,7 @@ func AdoptableBy(meta *meta.ResourceMeta, releaseName, releaseNamespace string) 
 }
 
 func validateHook(meta *meta.ResourceMeta) error {
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternHook); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternHook); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
 		}
@@ -224,7 +224,7 @@ func validateHook(meta *meta.ResourceMeta) error {
 
 func validateWeight(meta *meta.ResourceMeta) error {
 	if IsHook(meta.Annotations) {
-		if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternHookWeight); found {
+		if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternHookWeight); found {
 			if value == "" {
 				return fmt.Errorf("invalid value %q for annotation %q, expected non-empty integer value", value, key)
 			}
@@ -235,7 +235,7 @@ func validateWeight(meta *meta.ResourceMeta) error {
 		}
 	}
 
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternWeight); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternWeight); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty integer value", value, key)
 		}
@@ -252,7 +252,7 @@ func validateDeletePolicy(meta *meta.ResourceMeta) error {
 	annotations := meta.Annotations
 
 	if IsHook(annotations) {
-		if key, value, found := FindAnnotationOrLabelByKeyPattern(annotations, annotationKeyPatternHookDeletePolicy); found && value != "" {
+		if key, value, found := FindAnnotationOrLabelByKeyPattern(annotations, AnnotationKeyPatternHookDeletePolicy); found && value != "" {
 			for _, hookDeletePolicy := range strings.Split(value, ",") {
 				hookDeletePolicy = strings.TrimSpace(hookDeletePolicy)
 				if hookDeletePolicy == "" {
@@ -270,7 +270,7 @@ func validateDeletePolicy(meta *meta.ResourceMeta) error {
 		}
 	}
 
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(annotations, annotationKeyPatternDeletePolicy); found && value != "" {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(annotations, AnnotationKeyPatternDeletePolicy); found && value != "" {
 		for _, deletePolicy := range strings.Split(value, ",") {
 			deletePolicy = strings.TrimSpace(deletePolicy)
 			if deletePolicy == "" {
@@ -291,7 +291,7 @@ func validateDeletePolicy(meta *meta.ResourceMeta) error {
 }
 
 func validateReplicasOnCreation(meta *meta.ResourceMeta) error {
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternReplicasOnCreation); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternReplicasOnCreation); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty numeric value", value, key)
 		}
@@ -310,7 +310,7 @@ func validateReplicasOnCreation(meta *meta.ResourceMeta) error {
 }
 
 func validateTrack(meta *meta.ResourceMeta) error {
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternFailMode); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternFailMode); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
 		}
@@ -324,7 +324,7 @@ func validateTrack(meta *meta.ResourceMeta) error {
 		}
 	}
 
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternFailuresAllowedPerReplica); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternFailuresAllowedPerReplica); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty integer value", value, key)
 		}
@@ -336,16 +336,16 @@ func validateTrack(meta *meta.ResourceMeta) error {
 		}
 	}
 
-	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, annotationKeyPatternIgnoreReadinessProbeFailsFor); found {
+	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, AnnotationKeyPatternIgnoreReadinessProbeFailsFor); found {
 		for key, value := range annotations {
-			keyMatches := annotationKeyPatternIgnoreReadinessProbeFailsFor.FindStringSubmatch(key)
+			keyMatches := AnnotationKeyPatternIgnoreReadinessProbeFailsFor.FindStringSubmatch(key)
 			if keyMatches == nil {
 				return fmt.Errorf("invalid key for annotation %q", key)
 			}
 
-			containerSubexpIndex := annotationKeyPatternIgnoreReadinessProbeFailsFor.SubexpIndex("container")
+			containerSubexpIndex := AnnotationKeyPatternIgnoreReadinessProbeFailsFor.SubexpIndex("container")
 			if containerSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", annotationKeyPatternIgnoreReadinessProbeFailsFor.String(), key)
+				return fmt.Errorf("invalid regexp pattern %q for annotation %q", AnnotationKeyPatternIgnoreReadinessProbeFailsFor.String(), key)
 			}
 
 			if len(keyMatches) < containerSubexpIndex+1 {
@@ -367,7 +367,7 @@ func validateTrack(meta *meta.ResourceMeta) error {
 		}
 	}
 
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternLogRegex); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternLogRegex); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
 		}
@@ -377,16 +377,16 @@ func validateTrack(meta *meta.ResourceMeta) error {
 		}
 	}
 
-	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, annotationKeyPatternLogRegexFor); found {
+	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, AnnotationKeyPatternLogRegexFor); found {
 		for key, value := range annotations {
-			keyMatches := annotationKeyPatternLogRegexFor.FindStringSubmatch(key)
+			keyMatches := AnnotationKeyPatternLogRegexFor.FindStringSubmatch(key)
 			if keyMatches == nil {
 				return fmt.Errorf("invalid key for annotation %q", key)
 			}
 
-			containerSubexpIndex := annotationKeyPatternLogRegexFor.SubexpIndex("container")
+			containerSubexpIndex := AnnotationKeyPatternLogRegexFor.SubexpIndex("container")
 			if containerSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", annotationKeyPatternLogRegexFor.String(), key)
+				return fmt.Errorf("invalid regexp pattern %q for annotation %q", AnnotationKeyPatternLogRegexFor.String(), key)
 			}
 
 			if len(keyMatches) < containerSubexpIndex+1 {
@@ -403,7 +403,7 @@ func validateTrack(meta *meta.ResourceMeta) error {
 		}
 	}
 
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternNoActivityTimeout); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternNoActivityTimeout); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty duration value", value, key)
 		}
@@ -418,7 +418,7 @@ func validateTrack(meta *meta.ResourceMeta) error {
 		}
 	}
 
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternShowLogsOnlyForContainers); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternShowLogsOnlyForContainers); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
 		}
@@ -433,7 +433,7 @@ func validateTrack(meta *meta.ResourceMeta) error {
 		}
 	}
 
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternShowServiceMessages); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternShowServiceMessages); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty boolean value", value, key)
 		}
@@ -443,7 +443,7 @@ func validateTrack(meta *meta.ResourceMeta) error {
 		}
 	}
 
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternShowLogsOnlyForNumberOfReplicas); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternShowLogsOnlyForNumberOfReplicas); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty integer value", value, key)
 		}
@@ -455,7 +455,7 @@ func validateTrack(meta *meta.ResourceMeta) error {
 		}
 	}
 
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternSkipLogs); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternSkipLogs); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty boolean value", value, key)
 		}
@@ -465,7 +465,7 @@ func validateTrack(meta *meta.ResourceMeta) error {
 		}
 	}
 
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternSkipLogsForContainers); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternSkipLogsForContainers); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
 		}
@@ -480,7 +480,7 @@ func validateTrack(meta *meta.ResourceMeta) error {
 		}
 	}
 
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternTrackTerminationMode); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternTrackTerminationMode); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
 		}
@@ -497,16 +497,16 @@ func validateTrack(meta *meta.ResourceMeta) error {
 }
 
 func validateDeployDependencies(meta *meta.ResourceMeta) error {
-	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, annotationKeyPatternDeployDependency); found {
+	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, AnnotationKeyPatternDeployDependency); found {
 		for key, value := range annotations {
-			keyMatches := annotationKeyPatternDeployDependency.FindStringSubmatch(key)
+			keyMatches := AnnotationKeyPatternDeployDependency.FindStringSubmatch(key)
 			if keyMatches == nil {
 				return fmt.Errorf("invalid key for annotation %q", key)
 			}
 
-			idSubexpIndex := annotationKeyPatternDeployDependency.SubexpIndex("id")
+			idSubexpIndex := AnnotationKeyPatternDeployDependency.SubexpIndex("id")
 			if idSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", annotationKeyPatternDeployDependency.String(), key)
+				return fmt.Errorf("invalid regexp pattern %q for annotation %q", AnnotationKeyPatternDeployDependency.String(), key)
 			}
 
 			if len(keyMatches) < idSubexpIndex+1 {
@@ -569,16 +569,16 @@ func validateDeployDependencies(meta *meta.ResourceMeta) error {
 }
 
 func validateInternalDependencies(meta *meta.ResourceMeta) error {
-	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, annotationKeyPatternDependency); found {
+	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, AnnotationKeyPatternDependency); found {
 		for key, value := range annotations {
-			keyMatches := annotationKeyPatternDependency.FindStringSubmatch(key)
+			keyMatches := AnnotationKeyPatternDependency.FindStringSubmatch(key)
 			if keyMatches == nil {
 				return fmt.Errorf("invalid key for annotation %q", key)
 			}
 
-			idSubexpIndex := annotationKeyPatternDependency.SubexpIndex("id")
+			idSubexpIndex := AnnotationKeyPatternDependency.SubexpIndex("id")
 			if idSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", annotationKeyPatternDependency.String(), key)
+				return fmt.Errorf("invalid regexp pattern %q for annotation %q", AnnotationKeyPatternDependency.String(), key)
 			}
 
 			if len(keyMatches) < idSubexpIndex+1 {
@@ -599,16 +599,16 @@ func validateInternalDependencies(meta *meta.ResourceMeta) error {
 }
 
 func validateExternalDependencies(meta *meta.ResourceMeta) error {
-	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, annotationKeyPatternExternalDependency); found {
+	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, AnnotationKeyPatternExternalDependency); found {
 		for key, value := range annotations {
-			keyMatches := annotationKeyPatternExternalDependency.FindStringSubmatch(key)
+			keyMatches := AnnotationKeyPatternExternalDependency.FindStringSubmatch(key)
 			if keyMatches == nil {
 				return fmt.Errorf("invalid key for annotation %q", key)
 			}
 
-			idSubexpIndex := annotationKeyPatternExternalDependency.SubexpIndex("id")
+			idSubexpIndex := AnnotationKeyPatternExternalDependency.SubexpIndex("id")
 			if idSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", annotationKeyPatternExternalDependency.String(), key)
+				return fmt.Errorf("invalid regexp pattern %q for annotation %q", AnnotationKeyPatternExternalDependency.String(), key)
 			}
 
 			if len(keyMatches) < idSubexpIndex+1 {
@@ -623,16 +623,16 @@ func validateExternalDependencies(meta *meta.ResourceMeta) error {
 		}
 	}
 
-	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, annotationKeyPatternLegacyExternalDependencyResource); found {
+	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, AnnotationKeyPatternLegacyExternalDependencyResource); found {
 		for key, value := range annotations {
-			keyMatches := annotationKeyPatternLegacyExternalDependencyResource.FindStringSubmatch(key)
+			keyMatches := AnnotationKeyPatternLegacyExternalDependencyResource.FindStringSubmatch(key)
 			if keyMatches == nil {
 				return fmt.Errorf("invalid key for annotation %q", key)
 			}
 
-			idSubexpIndex := annotationKeyPatternLegacyExternalDependencyResource.SubexpIndex("id")
+			idSubexpIndex := AnnotationKeyPatternLegacyExternalDependencyResource.SubexpIndex("id")
 			if idSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", annotationKeyPatternLegacyExternalDependencyResource.String(), key)
+				return fmt.Errorf("invalid regexp pattern %q for annotation %q", AnnotationKeyPatternLegacyExternalDependencyResource.String(), key)
 			}
 
 			if len(keyMatches) < idSubexpIndex+1 {
@@ -665,16 +665,16 @@ func validateExternalDependencies(meta *meta.ResourceMeta) error {
 		}
 	}
 
-	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, annotationKeyPatternLegacyExternalDependencyNamespace); found {
+	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, AnnotationKeyPatternLegacyExternalDependencyNamespace); found {
 		for key, value := range annotations {
-			keyMatches := annotationKeyPatternLegacyExternalDependencyNamespace.FindStringSubmatch(key)
+			keyMatches := AnnotationKeyPatternLegacyExternalDependencyNamespace.FindStringSubmatch(key)
 			if keyMatches == nil {
 				return fmt.Errorf("invalid key for annotation %q", key)
 			}
 
-			idSubexpIndex := annotationKeyPatternLegacyExternalDependencyNamespace.SubexpIndex("id")
+			idSubexpIndex := AnnotationKeyPatternLegacyExternalDependencyNamespace.SubexpIndex("id")
 			if idSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", annotationKeyPatternLegacyExternalDependencyNamespace.String(), key)
+				return fmt.Errorf("invalid regexp pattern %q for annotation %q", AnnotationKeyPatternLegacyExternalDependencyNamespace.String(), key)
 			}
 
 			if len(keyMatches) < idSubexpIndex+1 {
@@ -691,7 +691,7 @@ func validateExternalDependencies(meta *meta.ResourceMeta) error {
 }
 
 func validateSensitive(meta *meta.ResourceMeta) error {
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternSensitive); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternSensitive); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty boolean value", value, key)
 		}
@@ -701,7 +701,7 @@ func validateSensitive(meta *meta.ResourceMeta) error {
 		}
 	}
 
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternSensitivePaths); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternSensitivePaths); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty comma-separated list of JSONPath strings", value, key)
 		}
@@ -725,7 +725,7 @@ func validateSensitive(meta *meta.ResourceMeta) error {
 }
 
 func validateDeployOn(meta *meta.ResourceMeta) error {
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternDeployOn); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternDeployOn); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
 		}
@@ -761,7 +761,7 @@ func validateDeployOn(meta *meta.ResourceMeta) error {
 }
 
 func validateOwnership(meta *meta.ResourceMeta) error {
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternOwnership); found {
+	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternOwnership); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
 		}
@@ -783,7 +783,7 @@ func recreate(meta *meta.ResourceMeta) bool {
 }
 
 func defaultReplicasOnCreation(meta *meta.ResourceMeta, releaseNamespace string) *int {
-	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternReplicasOnCreation)
+	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternReplicasOnCreation)
 	if !found {
 		return nil
 	}
@@ -792,7 +792,7 @@ func defaultReplicasOnCreation(meta *meta.ResourceMeta, releaseNamespace string)
 }
 
 func failMode(meta *meta.ResourceMeta) multitrack.FailMode {
-	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternFailMode)
+	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternFailMode)
 	if !found {
 		return multitrack.FailWholeDeployProcessImmediately
 	}
@@ -812,7 +812,7 @@ func failuresAllowed(unstruct *unstructured.Unstructured) int {
 	}
 
 	var failuresAllowed int
-	_, value, found := FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), annotationKeyPatternFailuresAllowedPerReplica)
+	_, value, found := FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), AnnotationKeyPatternFailuresAllowedPerReplica)
 	if found {
 		failuresAllowed = lo.Must(strconv.Atoi(value))
 	} else {
@@ -837,15 +837,15 @@ func failuresAllowed(unstruct *unstructured.Unstructured) int {
 }
 
 func ignoreReadinessProbeFailsForContainers(meta *meta.ResourceMeta) map[string]time.Duration {
-	annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, annotationKeyPatternIgnoreReadinessProbeFailsFor)
+	annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, AnnotationKeyPatternIgnoreReadinessProbeFailsFor)
 	if !found {
 		return nil
 	}
 
 	durationByContainer := map[string]time.Duration{}
 	for key, value := range annotations {
-		keyMatches := annotationKeyPatternIgnoreReadinessProbeFailsFor.FindStringSubmatch(key)
-		containerSubexpIndex := annotationKeyPatternIgnoreReadinessProbeFailsFor.SubexpIndex("container")
+		keyMatches := AnnotationKeyPatternIgnoreReadinessProbeFailsFor.FindStringSubmatch(key)
+		containerSubexpIndex := AnnotationKeyPatternIgnoreReadinessProbeFailsFor.SubexpIndex("container")
 		container := keyMatches[containerSubexpIndex]
 		duration := lo.Must(time.ParseDuration(value))
 		durationByContainer[container] = duration
@@ -855,7 +855,7 @@ func ignoreReadinessProbeFailsForContainers(meta *meta.ResourceMeta) map[string]
 }
 
 func logRegex(meta *meta.ResourceMeta) *regexp.Regexp {
-	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternLogRegex)
+	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternLogRegex)
 	if !found {
 		return nil
 	}
@@ -864,15 +864,15 @@ func logRegex(meta *meta.ResourceMeta) *regexp.Regexp {
 }
 
 func logRegexesForContainers(meta *meta.ResourceMeta) map[string]*regexp.Regexp {
-	annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, annotationKeyPatternLogRegexFor)
+	annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, AnnotationKeyPatternLogRegexFor)
 	if !found {
 		return nil
 	}
 
 	regexByContainer := map[string]*regexp.Regexp{}
 	for key, value := range annotations {
-		keyMatches := annotationKeyPatternLogRegexFor.FindStringSubmatch(key)
-		containerSubexpIndex := annotationKeyPatternLogRegexFor.SubexpIndex("container")
+		keyMatches := AnnotationKeyPatternLogRegexFor.FindStringSubmatch(key)
+		containerSubexpIndex := AnnotationKeyPatternLogRegexFor.SubexpIndex("container")
 		container := keyMatches[containerSubexpIndex]
 		regexByContainer[container] = regexp.MustCompile(value)
 	}
@@ -881,7 +881,7 @@ func logRegexesForContainers(meta *meta.ResourceMeta) map[string]*regexp.Regexp 
 }
 
 func noActivityTimeout(meta *meta.ResourceMeta) time.Duration {
-	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternNoActivityTimeout)
+	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternNoActivityTimeout)
 	if !found {
 		return 4 * time.Minute
 	}
@@ -890,7 +890,7 @@ func noActivityTimeout(meta *meta.ResourceMeta) time.Duration {
 }
 
 func showLogsOnlyForContainers(meta *meta.ResourceMeta) []string {
-	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternShowLogsOnlyForContainers)
+	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternShowLogsOnlyForContainers)
 	if !found {
 		return nil
 	}
@@ -905,7 +905,7 @@ func showLogsOnlyForContainers(meta *meta.ResourceMeta) []string {
 }
 
 func showServiceMessages(meta *meta.ResourceMeta) bool {
-	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternShowServiceMessages)
+	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternShowServiceMessages)
 	if !found {
 		return false
 	}
@@ -914,7 +914,7 @@ func showServiceMessages(meta *meta.ResourceMeta) bool {
 }
 
 func showLogsOnlyForNumberOfReplicas(meta *meta.ResourceMeta) int {
-	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternShowLogsOnlyForNumberOfReplicas)
+	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternShowLogsOnlyForNumberOfReplicas)
 	if !found {
 		return 1
 	}
@@ -923,7 +923,7 @@ func showLogsOnlyForNumberOfReplicas(meta *meta.ResourceMeta) int {
 }
 
 func skipLogs(meta *meta.ResourceMeta) bool {
-	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternSkipLogs)
+	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternSkipLogs)
 	if !found {
 		return false
 	}
@@ -932,7 +932,7 @@ func skipLogs(meta *meta.ResourceMeta) bool {
 }
 
 func skipLogsForContainers(meta *meta.ResourceMeta) []string {
-	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternSkipLogsForContainers)
+	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternSkipLogsForContainers)
 	if !found {
 		return nil
 	}
@@ -947,7 +947,7 @@ func skipLogsForContainers(meta *meta.ResourceMeta) []string {
 }
 
 func trackTerminationMode(meta *meta.ResourceMeta) multitrack.TrackTerminationMode {
-	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternTrackTerminationMode)
+	_, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternTrackTerminationMode)
 	if !found {
 		return multitrack.WaitUntilResourceReady
 	}
@@ -974,12 +974,12 @@ func deployConditions(meta *meta.ResourceMeta) map[common.On][]common.Stage {
 		}
 	}
 
-	if generalConditions := deployConditionsForAnnotation(meta, annotationKeyPatternDeployOn); len(generalConditions) > 0 {
+	if generalConditions := deployConditionsForAnnotation(meta, AnnotationKeyPatternDeployOn); len(generalConditions) > 0 {
 		return generalConditions
 	}
 
 	if IsHook(meta.Annotations) {
-		if conditions := deployConditionsForAnnotation(meta, annotationKeyPatternHook); len(conditions) > 0 {
+		if conditions := deployConditionsForAnnotation(meta, AnnotationKeyPatternHook); len(conditions) > 0 {
 			return conditions
 		}
 	}
@@ -1041,7 +1041,7 @@ func ownership(meta *meta.ResourceMeta, releaseNamespace string) common.Ownershi
 		return common.OwnershipEveryone
 	}
 
-	if _, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternOwnership); found {
+	if _, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternOwnership); found {
 		return common.Ownership(value)
 	}
 
@@ -1063,9 +1063,9 @@ func weight(meta *meta.ResourceMeta, hasManualInternalDeps bool) *int {
 
 	var weightValue string
 	if IsHook(meta.Annotations) {
-		_, hookWeightValue, hookWeightFound := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternHookWeight)
+		_, hookWeightValue, hookWeightFound := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternHookWeight)
 
-		_, generalWeightValue, weightFound := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternWeight)
+		_, generalWeightValue, weightFound := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternWeight)
 
 		if !hookWeightFound && !weightFound {
 			return lo.ToPtr(0)
@@ -1076,7 +1076,7 @@ func weight(meta *meta.ResourceMeta, hasManualInternalDeps bool) *int {
 		}
 	} else {
 		var found bool
-		_, weightValue, found = FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternWeight)
+		_, weightValue, found = FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternWeight)
 		if !found {
 			return lo.ToPtr(0)
 		}
@@ -1088,9 +1088,9 @@ func weight(meta *meta.ResourceMeta, hasManualInternalDeps bool) *int {
 func deletePolicies(meta *meta.ResourceMeta) []common.DeletePolicy {
 	var deletePolicies []common.DeletePolicy
 	if IsHook(meta.Annotations) {
-		_, hookDeletePolicies, hookDeletePoliciesFound := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternHookDeletePolicy)
+		_, hookDeletePolicies, hookDeletePoliciesFound := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternHookDeletePolicy)
 
-		_, generalDeletePolicies, generalDeletePoliciesFound := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternDeletePolicy)
+		_, generalDeletePolicies, generalDeletePoliciesFound := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternDeletePolicy)
 
 		if !hookDeletePoliciesFound && !generalDeletePoliciesFound {
 			deletePolicies = append(deletePolicies, common.DeletePolicyBeforeCreation)
@@ -1114,7 +1114,7 @@ func deletePolicies(meta *meta.ResourceMeta) []common.DeletePolicy {
 			}
 		}
 	} else {
-		if _, generalDeletePolicies, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, annotationKeyPatternDeletePolicy); found {
+		if _, generalDeletePolicies, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternDeletePolicy); found {
 			for _, deletePolicy := range strings.Split(generalDeletePolicies, ",") {
 				deletePolicy = strings.TrimSpace(deletePolicy)
 				deletePolicies = append(deletePolicies, common.DeletePolicy(deletePolicy))
@@ -1125,17 +1125,17 @@ func deletePolicies(meta *meta.ResourceMeta) []common.DeletePolicy {
 	return deletePolicies
 }
 
-func manualInternalDependencies(meta *meta.ResourceMeta) []*dependency.InternalDependency {
+func manualInternalDependencies(meta *meta.ResourceMeta) []*plan.InternalDependency {
 	if IsCRD(meta.GroupVersionKind.GroupKind()) {
 		return nil
 	}
 
-	deps := map[string]*dependency.InternalDependency{}
+	deps := map[string]*plan.InternalDependency{}
 
-	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, annotationKeyPatternDependency); found {
+	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, AnnotationKeyPatternDependency); found {
 		for key, value := range annotations {
-			matches := annotationKeyPatternDependency.FindStringSubmatch(key)
-			idSubexpIndex := annotationKeyPatternDependency.SubexpIndex("id")
+			matches := AnnotationKeyPatternDependency.FindStringSubmatch(key)
+			idSubexpIndex := AnnotationKeyPatternDependency.SubexpIndex("id")
 			depID := matches[idSubexpIndex]
 			valParts := strings.Split(value, ":")
 			depApiVersionParts := strings.SplitN(valParts[0], "/", 2)
@@ -1161,7 +1161,7 @@ func manualInternalDependencies(meta *meta.ResourceMeta) []*dependency.InternalD
 
 			depName := valParts[len(valParts)-1]
 
-			dep := dependency.NewInternalDependency(
+			dep := plan.NewInternalDependency(
 				[]string{depName},
 				[]string{depNamespace},
 				[]string{gvk.Group},
@@ -1173,10 +1173,10 @@ func manualInternalDependencies(meta *meta.ResourceMeta) []*dependency.InternalD
 		}
 	}
 
-	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, annotationKeyPatternDeployDependency); found {
+	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, AnnotationKeyPatternDeployDependency); found {
 		for key, value := range annotations {
-			matches := annotationKeyPatternDeployDependency.FindStringSubmatch(key)
-			idSubexpIndex := annotationKeyPatternDeployDependency.SubexpIndex("id")
+			matches := AnnotationKeyPatternDeployDependency.FindStringSubmatch(key)
+			idSubexpIndex := AnnotationKeyPatternDeployDependency.SubexpIndex("id")
 			depID := matches[idSubexpIndex]
 			properties := lo.Must(util.ParseProperties(context.TODO(), value))
 
@@ -1212,7 +1212,7 @@ func manualInternalDependencies(meta *meta.ResourceMeta) []*dependency.InternalD
 				depState = common.ResourceStatePresent
 			}
 
-			dep := dependency.NewInternalDependency(
+			dep := plan.NewInternalDependency(
 				depNames,
 				depNamespaces,
 				depGroups,
@@ -1227,14 +1227,14 @@ func manualInternalDependencies(meta *meta.ResourceMeta) []*dependency.InternalD
 	return lo.Values(deps)
 }
 
-func externalDependencies(meta *meta.ResourceMeta, releaseNamespace string, mapper meta.ResettableRESTMapper) ([]*dependency.ExternalDependency, error) {
+func externalDependencies(meta *meta.ResourceMeta, releaseNamespace string, mapper apimeta.ResettableRESTMapper) ([]*plan.ExternalDependency, error) {
 	if IsCRD(meta.GroupVersionKind.GroupKind()) {
 		return nil, nil
 	}
 
 	deps := externalDeps(meta, releaseNamespace)
 
-	legacyExtDeps := map[string]*dependency.ExternalDependency{}
+	legacyExtDeps := map[string]*plan.ExternalDependency{}
 	// Pretend that we don't have any external dependencies when we don't have cluster access, since we need cluster access to map GVR to GVK.
 	if mapper != nil {
 		var err error
@@ -1245,19 +1245,19 @@ func externalDependencies(meta *meta.ResourceMeta, releaseNamespace string, mapp
 	}
 
 	duplResult := lo.Values(lo.Assign(legacyExtDeps, deps))
-	uniqResult := lo.UniqBy(duplResult, func(d *dependency.ExternalDependency) string {
+	uniqResult := lo.UniqBy(duplResult, func(d *plan.ExternalDependency) string {
 		return d.ID()
 	})
 
 	return uniqResult, nil
 }
 
-func externalDeps(meta *meta.ResourceMeta, releaseNamespace string) map[string]*dependency.ExternalDependency {
-	deps := map[string]*dependency.ExternalDependency{}
-	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, annotationKeyPatternExternalDependency); found {
+func externalDeps(resMeta *meta.ResourceMeta, releaseNamespace string) map[string]*plan.ExternalDependency {
+	deps := map[string]*plan.ExternalDependency{}
+	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(resMeta.Annotations, AnnotationKeyPatternExternalDependency); found {
 		for key, value := range annotations {
-			matches := annotationKeyPatternExternalDependency.FindStringSubmatch(key)
-			idSubexpIndex := annotationKeyPatternExternalDependency.SubexpIndex("id")
+			matches := AnnotationKeyPatternExternalDependency.FindStringSubmatch(key)
+			idSubexpIndex := AnnotationKeyPatternExternalDependency.SubexpIndex("id")
 			depID := matches[idSubexpIndex]
 			valParts := strings.Split(value, ":")
 			depApiVersionParts := strings.SplitN(valParts[0], "/", 2)
@@ -1284,7 +1284,7 @@ func externalDeps(meta *meta.ResourceMeta, releaseNamespace string) map[string]*
 			depName := valParts[len(valParts)-1]
 
 			resMeta := meta.NewResourceMeta(depName, depNamespace, releaseNamespace, "", gvk, nil, nil)
-			dep := &dependency.ExternalDependency{
+			dep := &plan.ExternalDependency{
 				ResourceMeta: resMeta,
 			}
 
@@ -1296,8 +1296,8 @@ func externalDeps(meta *meta.ResourceMeta, releaseNamespace string) map[string]*
 }
 
 // TODO(v2): get rid of legacy external deps
-func legacyExternalDeps(meta *meta.ResourceMeta, releaseNamespace string, mapper meta.ResettableRESTMapper) (map[string]*dependency.ExternalDependency, error) {
-	deps := map[string]*dependency.ExternalDependency{}
+func legacyExternalDeps(resMeta *meta.ResourceMeta, releaseNamespace string, mapper apimeta.ResettableRESTMapper) (map[string]*plan.ExternalDependency, error) {
+	deps := map[string]*plan.ExternalDependency{}
 
 	type DepInfo struct {
 		Name      string
@@ -1306,10 +1306,10 @@ func legacyExternalDeps(meta *meta.ResourceMeta, releaseNamespace string, mapper
 	}
 	extDepInfos := map[string]*DepInfo{}
 
-	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, annotationKeyPatternLegacyExternalDependencyResource); found {
+	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(resMeta.Annotations, AnnotationKeyPatternLegacyExternalDependencyResource); found {
 		for key, value := range annotations {
-			matches := annotationKeyPatternLegacyExternalDependencyResource.FindStringSubmatch(key)
-			idSubexpIndex := annotationKeyPatternLegacyExternalDependencyResource.SubexpIndex("id")
+			matches := AnnotationKeyPatternLegacyExternalDependencyResource.FindStringSubmatch(key)
+			idSubexpIndex := AnnotationKeyPatternLegacyExternalDependencyResource.SubexpIndex("id")
 			extDepID := matches[idSubexpIndex]
 			extDepType := strings.Split(value, "/")[0]
 			extDepName := strings.Split(value, "/")[1]
@@ -1321,10 +1321,10 @@ func legacyExternalDeps(meta *meta.ResourceMeta, releaseNamespace string, mapper
 		}
 	}
 
-	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, annotationKeyPatternLegacyExternalDependencyNamespace); found {
+	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(resMeta.Annotations, AnnotationKeyPatternLegacyExternalDependencyNamespace); found {
 		for key, value := range annotations {
-			matches := annotationKeyPatternLegacyExternalDependencyNamespace.FindStringSubmatch(key)
-			idSubexpIndex := annotationKeyPatternLegacyExternalDependencyNamespace.SubexpIndex("id")
+			matches := AnnotationKeyPatternLegacyExternalDependencyNamespace.FindStringSubmatch(key)
+			idSubexpIndex := AnnotationKeyPatternLegacyExternalDependencyNamespace.SubexpIndex("id")
 			extDepID := matches[idSubexpIndex]
 			extDepNamespace := value
 
@@ -1341,7 +1341,7 @@ func legacyExternalDeps(meta *meta.ResourceMeta, releaseNamespace string, mapper
 		}
 
 		resMeta := meta.NewResourceMeta(extDepInfo.Name, extDepInfo.Namespace, releaseNamespace, "", gvk, nil, nil)
-		dep := &dependency.ExternalDependency{
+		dep := &plan.ExternalDependency{
 			ResourceMeta: resMeta,
 		}
 

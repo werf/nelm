@@ -9,6 +9,7 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
+	"github.com/werf/nelm/pkg/log"
 )
 
 type chartSecretKeyRotateOptions struct {
@@ -35,7 +36,7 @@ func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFu
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultSecretKeyRotateLogLevel), action.SetupLoggingOptions{
+			ctx = log.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultSecretKeyRotateLogLevel), log.SetupLoggingOptions{
 				ColorMode: cfg.LogColorMode,
 			})
 

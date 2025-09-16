@@ -1,4 +1,4 @@
-package resinfo
+package plan
 
 import (
 	"github.com/werf/nelm/internal/resource"

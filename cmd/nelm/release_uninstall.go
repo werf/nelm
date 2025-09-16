@@ -9,6 +9,7 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
+	"github.com/werf/nelm/pkg/log"
 )
 
 type releaseUninstallConfig struct {
@@ -32,7 +33,7 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 		releaseCmdGroup,
 		cli.SubCommandOptions{},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultReleaseUninstallLogLevel), action.SetupLoggingOptions{
+			ctx = log.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultReleaseUninstallLogLevel), log.SetupLoggingOptions{
 				ColorMode: cfg.LogColorMode,
 			})
 

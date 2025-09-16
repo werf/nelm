@@ -11,7 +11,6 @@ import (
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/werf/nelm/internal/plan/resinfo"
 	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/internal/resource/meta"
 	"github.com/werf/nelm/internal/util"
@@ -34,7 +33,7 @@ type CalculatePlannedChangesOptions struct {
 	ShowInsignificantDiffs bool
 }
 
-func CalculatePlannedChanges(installableInfos []*resinfo.InstallableResourceInfo, deletableInfos []*resinfo.DeletableResourceInfo, opts CalculatePlannedChangesOptions) ([]*ResourceChange, error) {
+func CalculatePlannedChanges(installableInfos []*InstallableResourceInfo, deletableInfos []*DeletableResourceInfo, opts CalculatePlannedChangesOptions) ([]*ResourceChange, error) {
 	instInfosByIter := groupInstInfosByIter(installableInfos)
 
 	instChanges, err := buildInstChanges(instInfosByIter, opts)
@@ -88,11 +87,11 @@ func LogPlannedChanges(
 	log.Default.Info(ctx, "")
 }
 
-func groupInstInfosByIter(installableInfos []*resinfo.InstallableResourceInfo) [][]*resinfo.InstallableResourceInfo {
-	var instInfosByIter [][]*resinfo.InstallableResourceInfo
+func groupInstInfosByIter(installableInfos []*InstallableResourceInfo) [][]*InstallableResourceInfo {
+	var instInfosByIter [][]*InstallableResourceInfo
 	for _, instInfo := range installableInfos {
 		if len(instInfosByIter) < instInfo.Iteration+1 {
-			instInfosByIter = append(instInfosByIter, []*resinfo.InstallableResourceInfo{})
+			instInfosByIter = append(instInfosByIter, []*InstallableResourceInfo{})
 		}
 
 		instInfosByIter[instInfo.Iteration] = append(instInfosByIter[instInfo.Iteration], instInfo)
@@ -100,39 +99,39 @@ func groupInstInfosByIter(installableInfos []*resinfo.InstallableResourceInfo) [
 
 	for _, instInfos := range instInfosByIter {
 		sort.SliceStable(instInfos, func(i, j int) bool {
-			return resinfo.InstallableResourceInfoSortByMustInstallHandler(instInfos[i], instInfos[j])
+			return InstallableResourceInfoSortByMustInstallHandler(instInfos[i], instInfos[j])
 		})
 	}
 
 	return instInfosByIter
 }
 
-func buildInstChanges(instInfosByIter [][]*resinfo.InstallableResourceInfo, opts CalculatePlannedChangesOptions) ([]*ResourceChange, error) {
+func buildInstChanges(instInfosByIter [][]*InstallableResourceInfo, opts CalculatePlannedChangesOptions) ([]*ResourceChange, error) {
 	var changes []*ResourceChange
 	for iter, instInfos := range instInfosByIter {
 		if iter == 0 {
 			for _, info := range instInfos {
 				var change *ResourceChange
 				switch info.MustInstall {
-				case resinfo.ResourceInstallTypeCreate:
+				case ResourceInstallTypeCreate:
 					var err error
 					change, err = buildResourceChange(info.ResourceMeta, nil, info.LocalResource.Unstruct, info.MustDeleteOnSuccessfulInstall, "create", color.Style{color.Bold, color.Green}, opts)
 					if err != nil {
 						return nil, fmt.Errorf("build resource change for create: %w", err)
 					}
-				case resinfo.ResourceInstallTypeRecreate:
+				case ResourceInstallTypeRecreate:
 					var err error
 					change, err = buildResourceChange(info.ResourceMeta, nil, info.LocalResource.Unstruct, info.MustDeleteOnSuccessfulInstall, "recreate", color.Style{color.Bold, color.LightGreen}, opts)
 					if err != nil {
 						return nil, fmt.Errorf("build resource change for recreate: %w", err)
 					}
-				case resinfo.ResourceInstallTypeUpdate:
+				case ResourceInstallTypeUpdate:
 					var err error
 					change, err = buildResourceChange(info.ResourceMeta, info.GetResult, info.DryApplyResult, info.MustDeleteOnSuccessfulInstall, "update", color.Style{color.Bold, color.Yellow}, opts)
 					if err != nil {
 						return nil, fmt.Errorf("build resource change for update: %w", err)
 					}
-				case resinfo.ResourceInstallTypeApply:
+				case ResourceInstallTypeApply:
 					var err error
 					change, err = buildResourceChange(info.ResourceMeta, nil, info.LocalResource.Unstruct, info.MustDeleteOnSuccessfulInstall, "blind apply", color.Style{color.Bold, color.LightYellow}, opts)
 					if err != nil {
@@ -142,7 +141,7 @@ func buildInstChanges(instInfosByIter [][]*resinfo.InstallableResourceInfo, opts
 					if info.DryApplyErr != nil {
 						change.Reason = fmt.Sprintf("error: %s", info.DryApplyErr)
 					}
-				case resinfo.ResourceInstallTypeNone:
+				case ResourceInstallTypeNone:
 				default:
 					panic("unexpected resource must install condition")
 				}
@@ -156,15 +155,15 @@ func buildInstChanges(instInfosByIter [][]*resinfo.InstallableResourceInfo, opts
 				}))
 
 				switch info.MustInstall {
-				case resinfo.ResourceInstallTypeCreate:
+				case ResourceInstallTypeCreate:
 					change.ExtraOperations = append(change.ExtraOperations, "create")
-				case resinfo.ResourceInstallTypeRecreate:
+				case ResourceInstallTypeRecreate:
 					change.ExtraOperations = append(change.ExtraOperations, "recreate")
-				case resinfo.ResourceInstallTypeUpdate:
+				case ResourceInstallTypeUpdate:
 					change.ExtraOperations = append(change.ExtraOperations, "update")
-				case resinfo.ResourceInstallTypeApply:
+				case ResourceInstallTypeApply:
 					change.ExtraOperations = append(change.ExtraOperations, "blind apply")
-				case resinfo.ResourceInstallTypeNone:
+				case ResourceInstallTypeNone:
 				default:
 					panic("unexpected resource must install condition")
 				}
@@ -179,7 +178,7 @@ func buildInstChanges(instInfosByIter [][]*resinfo.InstallableResourceInfo, opts
 	return changes, nil
 }
 
-func buildDelChanges(delInfos []*resinfo.DeletableResourceInfo, opts CalculatePlannedChangesOptions) ([]*ResourceChange, error) {
+func buildDelChanges(delInfos []*DeletableResourceInfo, opts CalculatePlannedChangesOptions) ([]*ResourceChange, error) {
 	var changes []*ResourceChange
 	for _, info := range delInfos {
 		if !info.MustDelete {

@@ -27,9 +27,9 @@ func ResourceSpecSortHandler(r1, r2 *ResourceSpec) bool {
 	// TODO(v2): sorted based on sortAs for compatibility. In future should just probably sort
 	// like this: first CRDs (any type), then helm.sh/hook hooks, then the rest
 	if sortAs1 != sortAs2 {
-		if sortAs1 == StoreAsNone {
+		if sortAs1 == common.StoreAsNone {
 			return true
-		} else if sortAs1 == StoreAsHook && !(sortAs2 == StoreAsNone) {
+		} else if sortAs1 == common.StoreAsHook && !(sortAs2 == common.StoreAsNone) {
 			return true
 		} else {
 			return false

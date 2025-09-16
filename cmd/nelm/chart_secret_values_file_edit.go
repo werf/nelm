@@ -9,6 +9,7 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
+	"github.com/werf/nelm/pkg/log"
 )
 
 type chartSecretValuesFileEditOptions struct {
@@ -36,7 +37,7 @@ func newChartSecretValuesFileEditCommand(ctx context.Context, afterAllCommandsBu
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultSecretValuesFileEditLogLevel), action.SetupLoggingOptions{
+			ctx = log.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultSecretValuesFileEditLogLevel), log.SetupLoggingOptions{
 				ColorMode: cfg.LogColorMode,
 			})
 

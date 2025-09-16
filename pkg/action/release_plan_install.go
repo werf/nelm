@@ -22,7 +22,7 @@ import (
 	"github.com/werf/nelm/internal/plan/resinfo"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource"
-	log2 "github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/log"
 )
 
 const (
@@ -156,7 +156,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(log2.Default.AcceptLevel(ctx, log2.Level(DebugLogLevel))),
+		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
 		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
 	}
@@ -202,9 +202,9 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		},
 	}
 
-	log2.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release install")+" %q (namespace: %q)", releaseName, releaseNamespace)
+	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release install")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-	log2.Default.Debug(ctx, "Constructing release history")
+	log.Default.Debug(ctx, "Constructing release history")
 	history, err := release.BuildHistory(
 		releaseName,
 		releaseNamespace,
@@ -246,7 +246,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		deployType = common.DeployTypeInitial
 	}
 
-	log2.Default.Debug(ctx, "Constructing chart tree")
+	log.Default.Debug(ctx, "Constructing chart tree")
 	chartTree, err := chart.RenderChart(
 		ctx,
 		opts.Chart,
@@ -285,7 +285,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		prevRelFailed = prevRelease.Failed()
 	}
 
-	log2.Default.Debug(ctx, "Processing resources")
+	log.Default.Debug(ctx, "Processing resources")
 	resProcessor := resinfo.NewDeployableResourcesProcessor(
 		deployType,
 		releaseName,
@@ -315,7 +315,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		return fmt.Errorf("process resources: %w", err)
 	}
 
-	log2.Default.Debug(ctx, "Constructing new release")
+	log.Default.Debug(ctx, "Constructing new release")
 	newRel, err := release.NewRelease(
 		releaseName,
 		releaseNamespace,
@@ -334,7 +334,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		return fmt.Errorf("construct new release: %w", err)
 	}
 
-	log2.Default.Debug(ctx, "Calculating planned changes")
+	log.Default.Debug(ctx, "Calculating planned changes")
 	createdChanges, recreatedChanges, updatedChanges, appliedChanges, deletedChanges, planChangesPlanned := plan.FixmeCalculatePlannedChanges(
 		deployType,
 		releaseName,

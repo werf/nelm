@@ -12,13 +12,14 @@ import (
 	"github.com/samber/lo"
 
 	helmrelease "github.com/werf/3p-helm/pkg/release"
+	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/plan/operation"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/log"
 )
 
-func newReport(completedOps, canceledOps, failedOps []operation.FixmeOperation, release *release.Release) *report {
+func newReport(completedOps, canceledOps, failedOps []*plan.Operation, release *release.Release) *report {
 	sort.Slice(completedOps, func(i, j int) bool {
 		return completedOps[i].IDHuman() < completedOps[j].IDHuman()
 	})

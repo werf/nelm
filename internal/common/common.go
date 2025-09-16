@@ -110,4 +110,12 @@ const (
 	ResourceStateReady   ResourceState = "ready"
 )
 
+type StoreAs string
+
+const (
+	StoreAsNone    StoreAs = "none"
+	StoreAsHook    StoreAs = "hook"
+	StoreAsRegular StoreAs = "regular"
+)
+
 var SprigFuncs = sprig.TxtFuncMap()

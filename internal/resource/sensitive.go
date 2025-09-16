@@ -35,7 +35,7 @@ func IsSensitive(groupKind schema.GroupKind, annotations map[string]string) bool
 
 func GetSensitiveInfo(groupKind schema.GroupKind, annotations map[string]string) SensitiveInfo {
 	// Check for werf.io/sensitive-paths (comma-separated)
-	if _, value, found := FindAnnotationOrLabelByKeyPattern(annotations, annotationKeyPatternSensitivePaths); found {
+	if _, value, found := FindAnnotationOrLabelByKeyPattern(annotations, AnnotationKeyPatternSensitivePaths); found {
 		paths := ParseSensitivePaths(value)
 		if len(paths) > 0 {
 			return SensitiveInfo{IsSensitive: true, SensitivePaths: paths}
@@ -45,7 +45,7 @@ func GetSensitiveInfo(groupKind schema.GroupKind, annotations map[string]string)
 	useNewBehavior := featgate.FeatGateFieldSensitive.Enabled() || featgate.FeatGatePreviewV2.Enabled()
 
 	// Check for werf.io/sensitive annotation
-	if _, value, found := FindAnnotationOrLabelByKeyPattern(annotations, annotationKeyPatternSensitive); found {
+	if _, value, found := FindAnnotationOrLabelByKeyPattern(annotations, AnnotationKeyPatternSensitive); found {
 		sensitive := lo.Must(strconv.ParseBool(value))
 		if sensitive {
 			if useNewBehavior {

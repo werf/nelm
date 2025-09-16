@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/werf/nelm/pkg/secret"
+	"github.com/werf/nelm/pkg/legacy/secret"
 )
 
 const (

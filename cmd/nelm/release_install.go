@@ -10,6 +10,7 @@ import (
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
 	"github.com/werf/nelm/pkg/featgate"
+	"github.com/werf/nelm/pkg/log"
 )
 
 type releaseInstallConfig struct {
@@ -45,7 +46,7 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultReleaseInstallLogLevel), action.SetupLoggingOptions{
+			ctx = log.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultReleaseInstallLogLevel), log.SetupLoggingOptions{
 				ColorMode: cfg.LogColorMode,
 			})
 

@@ -13,7 +13,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
-	metav1 "k8s.io/apimachinery/pkg/api/meta"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
 	"sigs.k8s.io/yaml"
 
@@ -50,7 +50,7 @@ type RenderChartOptions struct {
 	KubeCAPath             string
 	KubeConfig             *kube.KubeConfig
 	KubeVersion            *chartutil.KubeVersion
-	Mapper                 metav1.ResettableRESTMapper
+	Mapper                 apimeta.ResettableRESTMapper
 	NoStandaloneCRDs       bool
 	RegistryClient         *registry.Client
 	SetValues              []string
@@ -184,7 +184,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		for _, crd := range chart.CRDObjects() {
 			for _, manifest := range releaseutil.SplitManifests(string(crd.File.Data)) {
 				if res, err := resource.NewResourceSpecFromManifest(manifest, releaseNamespace, resource.ResourceSpecOptions{
-					StoreAs:  resource.StoreAsNone,
+					StoreAs:  common.StoreAsNone,
 					FilePath: crd.Filename,
 				}); err != nil {
 					return nil, fmt.Errorf("construct standalone CRD for chart at %q: %w", chartPath, err)
@@ -332,4 +332,64 @@ func buildChartNotes(chartName string, renderedTemplates map[string]string, rend
 	}
 
 	return resultBuf.String()
+}
+
+type buildChartCapabilitiesOptions struct {
+	APIVersions     *chartutil.VersionSet
+	DiscoveryClient discovery.CachedDiscoveryInterface
+	KubeVersion     *chartutil.KubeVersion
+}
+
+func buildChartCapabilities(ctx context.Context, opts buildChartCapabilitiesOptions) (*chartutil.Capabilities, error) {
+	capabilities := &chartutil.Capabilities{
+		HelmVersion: chartutil.DefaultCapabilities.HelmVersion,
+	}
+
+	if opts.DiscoveryClient != nil {
+		opts.DiscoveryClient.Invalidate()
+
+		if opts.KubeVersion != nil {
+			capabilities.KubeVersion = *opts.KubeVersion
+		} else {
+			kubeVersion, err := opts.DiscoveryClient.ServerVersion()
+			if err != nil {
+				return nil, fmt.Errorf("get kubernetes server version: %w", err)
+			}
+
+			capabilities.KubeVersion = chartutil.KubeVersion{
+				Version: kubeVersion.GitVersion,
+				Major:   kubeVersion.Major,
+				Minor:   kubeVersion.Minor,
+			}
+		}
+
+		if opts.APIVersions != nil {
+			capabilities.APIVersions = *opts.APIVersions
+		} else {
+			apiVersions, err := action.GetVersionSet(opts.DiscoveryClient)
+			if err != nil {
+				if discovery.IsGroupDiscoveryFailedError(err) {
+					log.Default.Warn(ctx, "Discovery failed: %s", err.Error())
+				} else {
+					return nil, fmt.Errorf("get version set: %w", err)
+				}
+			}
+
+			capabilities.APIVersions = apiVersions
+		}
+	} else {
+		if opts.KubeVersion != nil {
+			capabilities.KubeVersion = *opts.KubeVersion
+		} else {
+			capabilities.KubeVersion = chartutil.DefaultCapabilities.KubeVersion
+		}
+
+		if opts.APIVersions != nil {
+			capabilities.APIVersions = *opts.APIVersions
+		} else {
+			capabilities.APIVersions = chartutil.DefaultCapabilities.APIVersions
+		}
+	}
+
+	return capabilities, nil
 }

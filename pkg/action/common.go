@@ -2,10 +2,8 @@ package action
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,24 +15,16 @@ import (
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/docker/pkg/homedir"
 	"github.com/gookit/color"
-	"github.com/hofstadter-io/cinful"
 	"github.com/samber/lo"
 	"github.com/xo/terminfo"
-	"k8s.io/klog"
-	klog_v2 "k8s.io/klog/v2"
 
-	"github.com/werf/kubedog/pkg/display"
-	"github.com/werf/logboek"
 	"github.com/werf/nelm/pkg/log"
 )
 
-const (
-	LogColorModeAuto = "auto"
-	LogColorModeOff  = "off"
-	LogColorModeOn   = "on"
-)
-
-var LogColorModes = []string{LogColorModeAuto, LogColorModeOff, LogColorModeOn}
+func init() {
+	style := lo.Must(chroma.NewXMLStyle(strings.NewReader(syntaxHighlightTheme)))
+	styles.Register(style)
+}
 
 const (
 	ReleaseStorageDriverDefault    = ""
@@ -72,170 +62,13 @@ const (
 	DefaultLocalKubeVersion      = "1.20.0"
 	DefaultProgressPrintInterval = 5 * time.Second
 	DefaultReleaseHistoryLimit   = 10
-	DefaultLogColorMode          = LogColorModeAuto
+	DefaultLogColorMode          = log.LogColorModeAuto
 
 	StubReleaseName      = "stub-release"
 	StubReleaseNamespace = "stub-namespace"
 )
 
 var DefaultRegistryCredentialsPath = filepath.Join(homedir.Get(), ".docker", config.ConfigFileName)
-
-func initKubedog(ctx context.Context) error {
-	flag.CommandLine.Parse([]string{})
-
-	display.SetOut(os.Stdout)
-	display.SetErr(os.Stderr)
-
-	if err := silenceKlog(ctx); err != nil {
-		return fmt.Errorf("silence klog: %w", err)
-	}
-
-	if err := silenceKlogV2(ctx); err != nil {
-		return fmt.Errorf("silence klog v2: %w", err)
-	}
-
-	return nil
-}
-
-func silenceKlog(ctx context.Context) error {
-	fs := flag.NewFlagSet("klog", flag.PanicOnError)
-	klog.InitFlags(fs)
-
-	if err := fs.Set("logtostderr", "false"); err != nil {
-		return fmt.Errorf("set logtostderr: %w", err)
-	}
-
-	if err := fs.Set("alsologtostderr", "false"); err != nil {
-		return fmt.Errorf("set alsologtostderr: %w", err)
-	}
-
-	if err := fs.Set("stderrthreshold", "5"); err != nil {
-		return fmt.Errorf("set stderrthreshold: %w", err)
-	}
-
-	// Suppress info and warnings from client-go reflector
-	klog.SetOutputBySeverity("INFO", ioutil.Discard)
-	klog.SetOutputBySeverity("WARNING", ioutil.Discard)
-	klog.SetOutputBySeverity("ERROR", ioutil.Discard)
-	klog.SetOutputBySeverity("FATAL", logboek.Context(ctx).ErrStream())
-
-	return nil
-}
-
-func silenceKlogV2(ctx context.Context) error {
-	fs := flag.NewFlagSet("klog", flag.PanicOnError)
-	klog_v2.InitFlags(fs)
-
-	if err := fs.Set("logtostderr", "false"); err != nil {
-		return fmt.Errorf("set logtostderr: %w", err)
-	}
-
-	if err := fs.Set("alsologtostderr", "false"); err != nil {
-		return fmt.Errorf("set alsologtostderr: %w", err)
-	}
-
-	if err := fs.Set("stderrthreshold", "5"); err != nil {
-		return fmt.Errorf("set stderrthreshold: %w", err)
-	}
-
-	// Suppress info and warnings from client-go reflector
-	klog_v2.SetOutputBySeverity("INFO", ioutil.Discard)
-	klog_v2.SetOutputBySeverity("WARNING", ioutil.Discard)
-	klog_v2.SetOutputBySeverity("ERROR", ioutil.Discard)
-	klog_v2.SetOutputBySeverity("FATAL", logboek.Context(ctx).ErrStream())
-
-	return nil
-}
-
-func stdoutPiped() (bool, error) {
-	fileInfo, err := os.Stdout.Stat()
-	if err != nil {
-		return false, fmt.Errorf("get stdout fileinfo: %w", err)
-	}
-
-	piped := (fileInfo.Mode() & os.ModeCharDevice) == 0
-
-	return piped, nil
-}
-
-func getColorLevel(mode string, logIsParseable bool) terminfo.ColorLevel {
-	switch mode {
-	case LogColorModeOff:
-		return terminfo.ColorLevelNone
-	case LogColorModeOn:
-		if colorLevel := color.DetectColorLevel(); colorLevel == terminfo.ColorLevelNone {
-			return terminfo.ColorLevelHundreds
-		} else {
-			return colorLevel
-		}
-	}
-
-	if ciInfo := cinful.Info(); ciInfo != nil {
-		switch ciInfo.Constant {
-		case "GITLAB", "GITHUB_ACTIONS":
-			if logIsParseable {
-				return terminfo.ColorLevelNone
-			} else {
-				return terminfo.ColorLevelHundreds
-			}
-		case "JENKINS":
-			if logIsParseable {
-				return terminfo.ColorLevelNone
-			} else {
-				switch os.Getenv("TERM") {
-				// From https://github.com/jenkinsci/ansicolor-plugin/tree/e2a42bf6c6acadc46468a6bf75dbd958a4747d0b?tab=readme-ov-file#colormaps
-				case "xterm", "vga", "gnome-terminal", "css":
-					return terminfo.ColorLevelHundreds
-				}
-			}
-		default:
-			if logIsParseable {
-				return terminfo.ColorLevelNone
-			} else {
-				return color.DetectColorLevel()
-			}
-		}
-	}
-
-	if piped, err := stdoutPiped(); err != nil || piped {
-		return terminfo.ColorLevelNone
-	}
-
-	return color.DetectColorLevel()
-}
-
-func writeWithSyntaxHighlight(outStream io.Writer, text, lang string, colorLevel terminfo.ColorLevel) error {
-	if colorLevel == color.LevelNo {
-		if _, err := outStream.Write([]byte(text)); err != nil {
-			return fmt.Errorf("write to output: %w", err)
-		}
-
-		return nil
-	}
-
-	var formatterName string
-	switch colorLevel {
-	case color.Level16:
-		formatterName = "terminal16"
-	case color.Level256:
-		formatterName = "terminal256"
-	case color.LevelRgb:
-		formatterName = "terminal16m"
-	default:
-		panic(fmt.Sprintf("unexpected color level %d", colorLevel))
-	}
-
-	if err := quick.Highlight(outStream, text, lang, formatterName, syntaxHighlightThemeName); err != nil {
-		return fmt.Errorf("highlight and write to output: %w", err)
-	}
-
-	return nil
-}
-
-func init() {
-	style := lo.Must(chroma.NewXMLStyle(strings.NewReader(syntaxHighlightTheme)))
-	styles.Register(style)
-}
 
 const syntaxHighlightThemeName = "solarized-dark-customized"
 
@@ -275,3 +108,56 @@ var syntaxHighlightTheme = fmt.Sprintf(`
   <entry type="GenericSubheading" style="#3f7541"/>
 </style>
 `, syntaxHighlightThemeName)
+
+func writeWithSyntaxHighlight(outStream io.Writer, text, lang string, colorLevel terminfo.ColorLevel) error {
+	if colorLevel == color.LevelNo {
+		if _, err := outStream.Write([]byte(text)); err != nil {
+			return fmt.Errorf("write to output: %w", err)
+		}
+
+		return nil
+	}
+
+	var formatterName string
+	switch colorLevel {
+	case color.Level16:
+		formatterName = "terminal16"
+	case color.Level256:
+		formatterName = "terminal256"
+	case color.LevelRgb:
+		formatterName = "terminal16m"
+	default:
+		panic(fmt.Sprintf("unexpected color level %d", colorLevel))
+	}
+
+	if err := quick.Highlight(outStream, text, lang, formatterName, syntaxHighlightThemeName); err != nil {
+		return fmt.Errorf("highlight and write to output: %w", err)
+	}
+
+	return nil
+}
+
+func printNotes(ctx context.Context, notes string) {
+	if notes == "" {
+		return
+	}
+
+	log.Default.InfoBlock(ctx, log.BlockOptions{
+		BlockTitle: color.Style{color.Bold, color.Blue}.Render("Release notes"),
+	}, func() {
+		log.Default.Info(ctx, notes)
+	})
+}
+
+func saveReport(reportPath string, report *reportV2) error {
+	reportByte, err := json.MarshalIndent(report, "", "\t")
+	if err != nil {
+		return fmt.Errorf("marshal report: %w", err)
+	}
+
+	if err := os.WriteFile(reportPath, reportByte, 0644); err != nil {
+		return fmt.Errorf("write report: %w", err)
+	}
+
+	return nil
+}

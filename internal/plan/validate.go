@@ -1,4 +1,4 @@
-package resinfo
+package plan
 
 import (
 	"fmt"
