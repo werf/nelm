@@ -349,7 +349,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		if planExecutionErr != nil {
-			wcompops, wfailops, wcancops, criterrs, noncriterrs := runFailureDeployPlan(
+			wcompops, wfailops, wcancops, criterrs, noncriterrs := fixmeRunFailureDeployPlan(
 				ctx,
 				releaseName,
 				releaseNamespace,

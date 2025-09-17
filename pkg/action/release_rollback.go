@@ -441,7 +441,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	}
 
 	if planExecutionErr != nil && pendingReleaseCreated {
-		wcompops, wfailops, wcancops, criterrs, noncriterrs := runFailureDeployPlan(
+		wcompops, wfailops, wcancops, criterrs, noncriterrs := fixmeRunFailureDeployPlan(
 			ctx,
 			releaseName,
 			releaseNamespace,

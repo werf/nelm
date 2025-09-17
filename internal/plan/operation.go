@@ -15,6 +15,7 @@ import (
 type (
 	OperationType      string
 	OperationVersion   int
+	OperationCategory  string
 	OperationIteration int
 	OperationStatus    string
 	OperationConfig    interface {
@@ -24,14 +25,23 @@ type (
 )
 
 const (
+	OperationStatusUnknown   OperationStatus = "unknown"
 	OperationStatusPending   OperationStatus = "pending"
 	OperationStatusCompleted OperationStatus = "completed"
 	OperationStatusFailed    OperationStatus = "failed"
 )
 
+const (
+	OperationCategoryMeta     OperationCategory = "meta"
+	OperationCategoryResource OperationCategory = "resource"
+	OperationCategoryTrack    OperationCategory = "track"
+	OperationCategoryRelease  OperationCategory = "release"
+)
+
 type Operation struct {
 	Type      OperationType
 	Version   OperationVersion
+	Category  OperationCategory
 	Iteration OperationIteration
 	Status    OperationStatus
 	Config    OperationConfig

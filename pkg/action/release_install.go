@@ -423,70 +423,55 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	var criticalErrs, nonCriticalErrs []error
 
 	log.Default.Debug(ctx, "Execute release install plan")
-	if err := plan.ExecutePlan(ctx, installPlan, taskStore, logStore, informerFactory, history, clientFactory.KubeClient(), clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), plan.ExecutePlanOptions{
+	executePlanErr := plan.ExecutePlan(ctx, installPlan, taskStore, logStore, informerFactory, history, clientFactory.KubeClient(), clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), plan.ExecutePlanOptions{
 		NetworkParallelism: opts.NetworkParallelism,
 		ReadinessTimeout:   opts.TrackReadinessTimeout,
 		PresenceTimeout:    opts.TrackCreationTimeout,
 		AbsenceTimeout:     opts.TrackDeletionTimeout,
-	}); err != nil {
-		criticalErrs = append(criticalErrs, fmt.Errorf("execute release install plan: %w", err))
+	})
+	if executePlanErr != nil {
+		criticalErrs = append(criticalErrs, fmt.Errorf("execute release install plan: %w", executePlanErr))
 	}
 
-	var worthyCompletedOps []operation.FixmeOperation
-	if ops, found, err := deployPlan.WorthyCompletedOperations(); err != nil {
-		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful completed operations: %w", err))
-	} else if found {
-		worthyCompletedOps = ops
-	}
+	resourceOps := lo.Filter(installPlan.Operations(), func(op *plan.Operation, _ int) bool {
+		return op.Category == plan.OperationCategoryResource
+	})
 
-	var worthyCanceledOps []operation.FixmeOperation
-	if ops, found, err := deployPlan.WorthyCanceledOperations(); err != nil {
-		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful canceled operations: %w", err))
-	} else if found {
-		worthyCanceledOps = ops
-	}
+	completedResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
+		return op.Status == plan.OperationStatusCompleted
+	})
 
-	var worthyFailedOps []operation.FixmeOperation
-	if ops, found, err := deployPlan.WorthyFailedOperations(); err != nil {
-		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful failed operations: %w", err))
-	} else if found {
-		worthyFailedOps = ops
-	}
+	canceledResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
+		return op.Status == plan.OperationStatusPending || op.Status == plan.OperationStatusUnknown
+	})
 
-	var pendingReleaseCreated bool
-	if ops, found, err := deployPlan.OperationsMatch(regexp.MustCompile(fmt.Sprintf(`^%s/%s$`, operation.TypeCreatePendingReleaseOperation, newRel.ID()))); err != nil {
-		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get pending release operation: %w", err))
-	} else if !found {
-		panic("no pending release operation found")
-	} else {
-		pendingReleaseCreated = ops[0].Status() == operation.StatusCompleted
-	}
+	failedResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
+		return op.Status == plan.OperationStatusFailed
+	})
 
-	if planExecutionErr != nil && pendingReleaseCreated {
-		wcompops, wfailops, wcancops, criterrs, noncriterrs := runFailureDeployPlan(
-			ctx,
-			releaseName,
-			releaseNamespace,
-			deployType,
-			deployPlan,
-			taskStore,
-			informerFactory,
-			resProcessor,
-			newRel,
-			prevRelease,
-			history,
-			clientFactory,
-			opts.NetworkParallelism,
-		)
+	_, newReleaseCreated := lo.Find(installPlan.Operations(), func(op *plan.Operation) bool {
+		return op.Type == plan.OperationTypeCreateRelease &&
+			op.Status == plan.OperationStatusCompleted &&
+			op.Config.(*plan.OperationConfigCreateRelease).Release.ID() == newRelease.ID() &&
+			op.Config.(*plan.OperationConfigCreateRelease).Release.Info.Status.IsPending()
+	})
 
-		worthyCompletedOps = append(worthyCompletedOps, wcompops...)
-		worthyFailedOps = append(worthyFailedOps, wfailops...)
-		worthyCanceledOps = append(worthyCanceledOps, wcancops...)
-		criticalErrs = append(criticalErrs, criterrs...)
-		nonCriticalErrs = append(nonCriticalErrs, noncriterrs...)
+	if executePlanErr != nil && newReleaseCreated {
+		runFailureInstallPlanResult, nonCritErrs, critErrs := runFailureInstallPlan(ctx, installPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
+			NetworkParallelism:    opts.NetworkParallelism,
+			TrackReadinessTimeout: opts.TrackReadinessTimeout,
+			TrackCreationTimeout:  opts.TrackCreationTimeout,
+			TrackDeletionTimeout:  opts.TrackDeletionTimeout,
+		})
 
-		if opts.AutoRollback && prevDeployedReleaseFound {
-			wcompops, wfailops, wcancops, notes, criterrs, noncriterrs = runRollbackPlan(
+		criticalErrs = append(criticalErrs, critErrs...)
+		nonCriticalErrs = append(nonCriticalErrs, nonCritErrs...)
+		completedResourceOps = append(completedResourceOps, runFailureInstallPlanResult.CompletedResourceOps...)
+		canceledResourceOps = append(canceledResourceOps, runFailureInstallPlanResult.CanceledResourceOps...)
+		failedResourceOps = append(failedResourceOps, runFailureInstallPlanResult.FailedResourceOps...)
+
+		if opts.AutoRollback && prevDeployedRelease != nil {
+			wcompops, wfailops, wcancops, notes, criterrs, noncriterrs = fixmeRunRollbackPlan(
 				ctx,
 				taskStore,
 				logStore,
@@ -651,91 +636,164 @@ func createReleaseNamespace(ctx context.Context, clientFactory *kube.ClientFacto
 	return nil
 }
 
-func runFailureDeployPlan(
+type runFailureInstallPlanOptions struct {
+	NetworkParallelism    int
+	TrackReadinessTimeout time.Duration
+	TrackCreationTimeout  time.Duration
+	TrackDeletionTimeout  time.Duration
+}
+
+type runFailureInstallPlanResult struct {
+	CompletedResourceOps []*plan.Operation
+	CanceledResourceOps  []*plan.Operation
+	FailedResourceOps    []*plan.Operation
+}
+
+func runFailureInstallPlan(
+	ctx context.Context,
+	failedPlan *plan.Plan,
+	installableInfos []*plan.InstallableResourceInfo,
+	releaseInfos []*plan.ReleaseInfo,
+	taskStore *kubeutil.Concurrent[*statestore.TaskStore],
+	logStore *kubeutil.Concurrent[*logstore.LogStore],
+	informerFactory *kubeutil.Concurrent[*informer.InformerFactory],
+	history *release.History,
+	clientFactory *kube.ClientFactory,
+	opts runFailureInstallPlanOptions,
+) (result *runFailureInstallPlanResult, nonCritErrs []error, critErrs []error) {
+	log.Default.Debug(ctx, "Build failure plan")
+	failurePlan, err := plan.BuildFailurePlan(failedPlan, installableInfos, releaseInfos)
+	if err != nil {
+		critErrs = append(critErrs, fmt.Errorf("build failure plan: %w", err))
+		return nil, nonCritErrs, critErrs
+	}
+
+	if _, planIsUseless := lo.Find(failurePlan.Operations(), func(op *plan.Operation) bool {
+		return op.Type != plan.OperationTypeNoop
+	}); planIsUseless {
+		return &runFailureInstallPlanResult{}, nonCritErrs, critErrs
+	}
+
+	log.Default.Debug(ctx, "Execute failure plan")
+	executePlanErr := plan.ExecutePlan(ctx, failurePlan, taskStore, logStore, informerFactory, history, clientFactory.KubeClient(), clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), plan.ExecutePlanOptions{
+		NetworkParallelism: opts.NetworkParallelism,
+		ReadinessTimeout:   opts.TrackReadinessTimeout,
+		PresenceTimeout:    opts.TrackCreationTimeout,
+		AbsenceTimeout:     opts.TrackDeletionTimeout,
+	})
+	if executePlanErr != nil {
+		critErrs = append(critErrs, fmt.Errorf("execute failure plan: %w", executePlanErr))
+	}
+
+	resourceOps := lo.Filter(failurePlan.Operations(), func(op *plan.Operation, _ int) bool {
+		return op.Category == plan.OperationCategoryResource
+	})
+
+	completedResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
+		return op.Status == plan.OperationStatusCompleted
+	})
+
+	canceledResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
+		return op.Status == plan.OperationStatusPending || op.Status == plan.OperationStatusUnknown
+	})
+
+	failedResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
+		return op.Status == plan.OperationStatusFailed
+	})
+
+	return &runFailureInstallPlanResult{
+		CompletedResourceOps: completedResourceOps,
+		CanceledResourceOps:  canceledResourceOps,
+		FailedResourceOps:    failedResourceOps,
+	}, nonCritErrs, critErrs
+}
+
+type runRollbackPlanOptions struct {
+	NetworkParallelism    int
+	TrackReadinessTimeout time.Duration
+	TrackCreationTimeout  time.Duration
+	TrackDeletionTimeout  time.Duration
+}
+
+type runRollbackPlanResult struct {
+	CompletedResourceOps []*plan.Operation
+	CanceledResourceOps  []*plan.Operation
+	FailedResourceOps    []*plan.Operation
+}
+
+func runRollbackPlan(
 	ctx context.Context,
 	releaseName string,
 	releaseNamespace string,
 	deployType common.DeployType,
-	failedPlan *plan.FixmePlan,
-	taskStore *statestore.TaskStore,
-	informerFactory *kubeutil.Concurrent[*informer.InformerFactory],
-	resProcessor *resinfo.DeployableResourcesProcessor,
-	newRel, prevRelease *release.Release,
-	history *release.History,
-	clientFactory *kube.ClientFactory,
-	networkParallelism int,
-) (
-	worthyCompletedOps []operation.FixmeOperation,
-	worthyFailedOps []operation.FixmeOperation,
-	worthyCanceledOps []operation.FixmeOperation,
-	criticalErrs []error,
-	nonCriticalErrs []error,
-) {
-	log.Default.Debug(ctx, "Building failure deploy plan")
-	failurePlanBuilder := plan.NewDeployFailurePlanBuilder(
-		releaseName,
-		releaseNamespace,
-		deployType,
-		failedPlan,
-		taskStore,
-		informerFactory,
-		resProcessor.DeployableHookResourcesInfos(),
-		resProcessor.DeployableGeneralResourcesInfos(),
-		history,
-		clientFactory.KubeClient(),
-		clientFactory.Dynamic(),
-		clientFactory.Mapper(),
-		plan.DeployFailurePlanBuilderOptions{
-			NewRelease:  newRel,
-			PrevRelease: prevRelease,
-		},
-	)
-
-	failurePlan, err := failurePlanBuilder.Build(ctx)
+	failedRelease *helmrelease.Release,
+	prevDeployedRelease *helmrelease.Release,
+	opts runRollbackPlanOptions,
+) (result *runRollbackPlanResult, nonCritErrs []error, critErrs []error) {
+	resSpecs, err := release.ReleaseToResourceSpecs(prevDeployedRelease, releaseNamespace)
 	if err != nil {
-		return nil, nil, nil, []error{fmt.Errorf("build failure plan: %w", err)}, nil
+		critErrs = append(critErrs, fmt.Errorf("convert previous deployed release to resource specs: %w", err))
+		return nil, nonCritErrs, critErrs
 	}
 
-	if useless, err := failurePlan.Useless(); err != nil {
-		return nil, nil, nil, []error{fmt.Errorf("check if failure plan do anything useful: %w", err)}, nil
-	} else if useless {
-		return nil, nil, nil, nil, nil
+	newRelease, err := release.NewRelease(releaseName, releaseNamespace, failedRelease.Version+1, deployType, releasableResSpecs, release.ReleaseOptions{
+		InfoAnnotations: opts.ReleaseInfoAnnotations,
+		Labels:          opts.ReleaseLabels,
+		Notes:           renderChartResult.Notes,
+	})
+	if err != nil {
+		return fmt.Errorf("construct new release: %w", err)
 	}
 
-	log.Default.Debug(ctx, "Executing failure deploy plan")
-	failurePlanExecutor := plan.NewPlanExecutor(
-		failurePlan,
-		plan.PlanExecutorOptions{
-			NetworkParallelism: networkParallelism,
-		},
-	)
-
-	if err := failurePlanExecutor.Execute(ctx); err != nil {
-		criticalErrs = append(criticalErrs, fmt.Errorf("execute failure plan: %w", err))
+	log.Default.Debug(ctx, "Build rollback plan")
+	rollbackPlan, err := plan.BuildPlan(failedPlan, installableInfos, releaseInfos)
+	if err != nil {
+		critErrs = append(critErrs, fmt.Errorf("build rollback plan: %w", err))
+		return nil, critErrs
 	}
 
-	if ops, found, err := failurePlan.WorthyCompletedOperations(); err != nil {
-		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful completed operations: %w", err))
-	} else if found {
-		worthyCompletedOps = append(worthyCompletedOps, ops...)
+	if _, planIsUseless := lo.Find(rollbackPlan.Operations(), func(op *plan.Operation) bool {
+		return op.Type != plan.OperationTypeNoop
+	}); planIsUseless {
+		return &runRollbackPlanResult{}, critErrs
 	}
 
-	if ops, found, err := failurePlan.WorthyFailedOperations(); err != nil {
-		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful failed operations: %w", err))
-	} else if found {
-		worthyFailedOps = append(worthyFailedOps, ops...)
+	log.Default.Debug(ctx, "Execute rollback plan")
+	executePlanErr := plan.ExecutePlan(ctx, rollbackPlan, taskStore, logStore, informerFactory, history, clientFactory.KubeClient(), clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), plan.ExecutePlanOptions{
+		NetworkParallelism: opts.NetworkParallelism,
+		ReadinessTimeout:   opts.TrackReadinessTimeout,
+		PresenceTimeout:    opts.TrackCreationTimeout,
+		AbsenceTimeout:     opts.TrackDeletionTimeout,
+	})
+	if executePlanErr != nil {
+		critErrs = append(critErrs, fmt.Errorf("execute rollback plan: %w", executePlanErr))
 	}
 
-	if ops, found, err := failurePlan.WorthyCanceledOperations(); err != nil {
-		nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful canceled operations: %w", err))
-	} else if found {
-		worthyCanceledOps = append(worthyCanceledOps, ops...)
-	}
+	resourceOps := lo.Filter(rollbackPlan.Operations(), func(op *plan.Operation, _ int) bool {
+		return op.Category == plan.OperationCategoryResource
+	})
 
-	return worthyCompletedOps, worthyFailedOps, worthyCanceledOps, criticalErrs, nonCriticalErrs
+	completedResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
+		return op.Status == plan.OperationStatusCompleted
+	})
+
+	canceledResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
+		return op.Status == plan.OperationStatusPending || op.Status == plan.OperationStatusUnknown
+	})
+
+	failedResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
+		return op.Status == plan.OperationStatusFailed
+	})
+
+	return &runRollbackPlanResult{
+		CompletedResourceOps: completedResourceOps,
+		CanceledResourceOps:  canceledResourceOps,
+		FailedResourceOps:    failedResourceOps,
+		NonCriticalErrs:      nonCritErrs,
+	}, critErrs
 }
 
-func runRollbackPlan(
+func fixmeRunRollbackPlan(
 	ctx context.Context,
 	taskStore *statestore.TaskStore,
 	logStore *kubeutil.Concurrent[*logstore.LogStore],
@@ -905,7 +963,7 @@ func runRollbackPlan(
 	}
 
 	if rollbackPlanExecutionErr != nil && pendingRollbackReleaseCreated {
-		wcompops, wfailops, wcancops, criterrs, noncriterrs := runFailureDeployPlan(
+		wcompops, wfailops, wcancops, criterrs, noncriterrs := fixmeRunFailureDeployPlan(
 			ctx,
 			releaseName,
 			releaseNamespace,

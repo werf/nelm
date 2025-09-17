@@ -43,15 +43,38 @@ func BuildPlan(installableInfos []*InstallableResourceInfo, deletableInfos []*De
 		return nil, fmt.Errorf("optimize plan: %w", err)
 	}
 
-	return &Plan{}, nil
+	return plan, nil
+}
+
+func BuildFailurePlan(failedPlan *Plan, installableInfos []*InstallableResourceInfo, releaseInfos []*ReleaseInfo) (*Plan, error) {
+	plan := NewPlan()
+
+	if err := addMainStages(plan); err != nil {
+		return nil, fmt.Errorf("add main stages: %w", err)
+	}
+
+	if err := addFailureReleaseOperations(failedPlan, plan, releaseInfos); err != nil {
+		return nil, fmt.Errorf("add failure release operations: %w", err)
+	}
+
+	if err := addFailureResourceOperations(failedPlan, plan, installableInfos); err != nil {
+		return nil, fmt.Errorf("add failure resource operations: %w", err)
+	}
+
+	if err := plan.Optimize(); err != nil {
+		return nil, fmt.Errorf("optimize plan: %w", err)
+	}
+
+	return plan, nil
 }
 
 func addMainStages(plan *Plan) error {
 	chain := plan.AddOperationChain()
 	for _, stage := range common.StagesOrdered {
 		startOp := &Operation{
-			Type:    OperationTypeNoop,
-			Version: OperationVersionNoop,
+			Type:     OperationTypeNoop,
+			Version:  OperationVersionNoop,
+			Category: OperationCategoryMeta,
 			Config: &OperationConfigNoop{
 				OpID: fmt.Sprintf("%s/%s", stage, common.StageStartSuffix),
 			},
@@ -59,8 +82,9 @@ func addMainStages(plan *Plan) error {
 		chain.AddOperation(startOp)
 
 		endOp := &Operation{
-			Type:    OperationTypeNoop,
-			Version: OperationVersionNoop,
+			Type:     OperationTypeNoop,
+			Version:  OperationVersionNoop,
+			Category: OperationCategoryMeta,
 			Config: &OperationConfigNoop{
 				OpID: fmt.Sprintf("%s/%s", stage, common.StageEndSuffix),
 			},
@@ -109,6 +133,29 @@ func addReleaseOperations(plan *Plan, releaseInfos []*ReleaseInfo) error {
 	return nil
 }
 
+func addFailureReleaseOperations(failedPlan *Plan, plan *Plan, releaseInfos []*ReleaseInfo) error {
+	for _, info := range releaseInfos {
+		if !info.MustFailOnFailedDeploy {
+			continue
+		}
+
+		if _, releaseCreated := lo.Find(failedPlan.Operations(), func(op *Operation) bool {
+			return (op.Type == OperationTypeCreateRelease ||
+				op.Type == OperationTypeUpdateRelease) &&
+				op.Status == OperationStatusCompleted &&
+				op.Config.(*OperationConfigCreateRelease).Release.ID() == info.Release.ID()
+		}); !releaseCreated {
+			continue
+		}
+
+		if err := addFailedReleaseOps(plan, info); err != nil {
+			return fmt.Errorf("add failed release ops for release: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func addPendingAndDeployedReleaseOps(plan *Plan, info *ReleaseInfo, pendingStatus helmrelease.Status) error {
 	var pendingRel *helmrelease.Release
 	if rel, err := copystructure.Copy(info.Release); err != nil {
@@ -120,8 +167,9 @@ func addPendingAndDeployedReleaseOps(plan *Plan, info *ReleaseInfo, pendingStatu
 	pendingRel.Info.Status = pendingStatus
 
 	pendingOp := &Operation{
-		Type:    OperationTypeCreateRelease,
-		Version: OperationVersionCreateRelease,
+		Type:     OperationTypeCreateRelease,
+		Version:  OperationVersionCreateRelease,
+		Category: OperationCategoryRelease,
 		Config: &OperationConfigCreateRelease{
 			Release: pendingRel,
 		},
@@ -138,13 +186,37 @@ func addPendingAndDeployedReleaseOps(plan *Plan, info *ReleaseInfo, pendingStatu
 	succeededRel.Info.Status = helmrelease.StatusDeployed
 
 	succeededOp := &Operation{
-		Type:    OperationTypeUpdateRelease,
-		Version: OperationVersionUpdateRelease,
+		Type:     OperationTypeUpdateRelease,
+		Version:  OperationVersionUpdateRelease,
+		Category: OperationCategoryRelease,
 		Config: &OperationConfigUpdateRelease{
 			Release: succeededRel,
 		},
 	}
 	lo.Must0(plan.AddOperationChain().AddOperation(succeededOp).Stage(common.StageFinal).Do())
+
+	return nil
+}
+
+func addFailedReleaseOps(plan *Plan, info *ReleaseInfo) error {
+	var failedRel *helmrelease.Release
+	if rel, err := copystructure.Copy(info.Release); err != nil {
+		return fmt.Errorf("deep copy release: %w", err)
+	} else {
+		failedRel = rel.(*helmrelease.Release)
+	}
+
+	failedRel.Info.Status = helmrelease.StatusFailed
+
+	failedOp := &Operation{
+		Type:     OperationTypeUpdateRelease,
+		Version:  OperationVersionUpdateRelease,
+		Category: OperationCategoryRelease,
+		Config: &OperationConfigUpdateRelease{
+			Release: failedRel,
+		},
+	}
+	lo.Must0(plan.AddOperationChain().AddOperation(failedOp).Stage(common.StageInit).Do())
 
 	return nil
 }
@@ -160,8 +232,9 @@ func addSupersedeReleaseOps(plan *Plan, info *ReleaseInfo) error {
 	supersededRel.Info.Status = helmrelease.StatusSuperseded
 
 	supersedeOp := &Operation{
-		Type:    OperationTypeUpdateRelease,
-		Version: OperationVersionUpdateRelease,
+		Type:     OperationTypeUpdateRelease,
+		Version:  OperationVersionUpdateRelease,
+		Category: OperationCategoryRelease,
 		Config: &OperationConfigUpdateRelease{
 			Release: supersededRel,
 		},
@@ -182,8 +255,9 @@ func addUninstallReleaseOps(plan *Plan, info *ReleaseInfo) error {
 	uninstallingRel.Info.Status = helmrelease.StatusUninstalling
 
 	uninstallingOp := &Operation{
-		Type:    OperationTypeUpdateRelease,
-		Version: OperationVersionUpdateRelease,
+		Type:     OperationTypeUpdateRelease,
+		Version:  OperationVersionUpdateRelease,
+		Category: OperationCategoryRelease,
 		Config: &OperationConfigUpdateRelease{
 			Release: uninstallingRel,
 		},
@@ -191,8 +265,9 @@ func addUninstallReleaseOps(plan *Plan, info *ReleaseInfo) error {
 	lo.Must0(plan.AddOperationChain().AddOperation(uninstallingOp).Stage(common.StageInit).Do())
 
 	uninstalledOp := &Operation{
-		Type:    OperationTypeDeleteRelease,
-		Version: OperationVersionDeleteRelease,
+		Type:     OperationTypeDeleteRelease,
+		Version:  OperationVersionDeleteRelease,
+		Category: OperationCategoryRelease,
 		Config: &OperationConfigDeleteRelease{
 			ReleaseName:      uninstallingRel.Name,
 			ReleaseNamespace: uninstallingRel.Namespace,
@@ -206,8 +281,9 @@ func addUninstallReleaseOps(plan *Plan, info *ReleaseInfo) error {
 
 func addDeleteReleaseOps(plan *Plan, info *ReleaseInfo) {
 	deletedOp := &Operation{
-		Type:    OperationTypeDeleteRelease,
-		Version: OperationVersionDeleteRelease,
+		Type:     OperationTypeDeleteRelease,
+		Version:  OperationVersionDeleteRelease,
+		Category: OperationCategoryRelease,
 		Config: &OperationConfigDeleteRelease{
 			ReleaseName:      info.Release.Name,
 			ReleaseNamespace: info.Release.Namespace,
@@ -223,8 +299,9 @@ func addDeleteResourcesOps(plan *Plan, infos []*DeletableResourceInfo) error {
 			chain := plan.AddOperationChain()
 
 			deleteOp := &Operation{
-				Type:    OperationTypeDelete,
-				Version: OperationVersionDelete,
+				Type:     OperationTypeDelete,
+				Version:  OperationVersionDelete,
+				Category: OperationCategoryResource,
 				Config: &OperationConfigDelete{
 					ResourceMeta: info.ResourceMeta,
 				},
@@ -234,8 +311,9 @@ func addDeleteResourcesOps(plan *Plan, infos []*DeletableResourceInfo) error {
 
 			if info.MustTrackAbsence {
 				trackOp := &Operation{
-					Type:    OperationTypeTrackAbsence,
-					Version: OperationVersionTrackAbsence,
+					Type:     OperationTypeTrackAbsence,
+					Version:  OperationVersionTrackAbsence,
+					Category: OperationCategoryTrack,
 					Config: &OperationConfigTrackAbsence{
 						ResourceMeta: info.ResourceMeta,
 					},
@@ -278,8 +356,9 @@ func addWeightedSubStages(plan *Plan, infos []*InstallableResourceInfo) error {
 			weightedSubStage := common.SubStageWeighted(stage, weight)
 
 			startOp := &Operation{
-				Type:    OperationTypeNoop,
-				Version: OperationVersionNoop,
+				Type:     OperationTypeNoop,
+				Version:  OperationVersionNoop,
+				Category: OperationCategoryMeta,
 				Config: &OperationConfigNoop{
 					OpID: fmt.Sprintf("%s/%d", weightedSubStage, common.StageStartSuffix),
 				},
@@ -287,8 +366,9 @@ func addWeightedSubStages(plan *Plan, infos []*InstallableResourceInfo) error {
 			chain.AddOperation(startOp).Stage(stage)
 
 			endOp := &Operation{
-				Type:    OperationTypeNoop,
-				Version: OperationVersionNoop,
+				Type:     OperationTypeNoop,
+				Version:  OperationVersionNoop,
+				Category: OperationCategoryMeta,
 				Config: &OperationConfigNoop{
 					OpID: fmt.Sprintf("%s/%s", weightedSubStage, common.StageEndSuffix),
 				},
@@ -318,8 +398,9 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 		if info.MustInstall != ResourceInstallTypeNone {
 			for _, extDep := range info.LocalResource.ExternalDependencies {
 				trackOp := &Operation{
-					Type:    OperationTypeTrackPresence,
-					Version: OperationVersionTrackPresence,
+					Type:     OperationTypeTrackPresence,
+					Version:  OperationVersionTrackPresence,
+					Category: OperationCategoryTrack,
 					Config: &OperationConfigTrackPresence{
 						ResourceMeta: extDep.ResourceMeta,
 					},
@@ -333,6 +414,7 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 			createOp := &Operation{
 				Type:      OperationTypeCreate,
 				Version:   OperationVersionCreate,
+				Category:  OperationCategoryResource,
 				Iteration: OperationIteration(info.Iteration),
 				Config: &OperationConfigCreate{
 					ResourceSpec:  info.LocalResource.ResourceSpec,
@@ -344,6 +426,7 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 			recreateOp := &Operation{
 				Type:      OperationTypeRecreate,
 				Version:   OperationVersionRecreate,
+				Category:  OperationCategoryResource,
 				Iteration: OperationIteration(info.Iteration),
 				Config: &OperationConfigRecreate{
 					ResourceSpec:  info.LocalResource.ResourceSpec,
@@ -355,6 +438,7 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 			updateOp := &Operation{
 				Type:      OperationTypeUpdate,
 				Version:   OperationVersionUpdate,
+				Category:  OperationCategoryResource,
 				Iteration: OperationIteration(info.Iteration),
 				Config: &OperationConfigUpdate{
 					ResourceSpec: info.LocalResource.ResourceSpec,
@@ -365,6 +449,7 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 			applyOp := &Operation{
 				Type:      OperationTypeApply,
 				Version:   OperationVersionApply,
+				Category:  OperationCategoryResource,
 				Iteration: OperationIteration(info.Iteration),
 				Config: &OperationConfigApply{
 					ResourceSpec: info.LocalResource.ResourceSpec,
@@ -380,6 +465,7 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 			trackOp := &Operation{
 				Type:      OperationTypeTrackReadiness,
 				Version:   OperationVersionTrackReadiness,
+				Category:  OperationCategoryTrack,
 				Iteration: OperationIteration(info.Iteration),
 				Config: &OperationConfigTrackReadiness{
 					ResourceMeta:                             info.ResourceMeta,
@@ -403,6 +489,7 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 			deleteOp := &Operation{
 				Type:      OperationTypeDelete,
 				Version:   OperationVersionDelete,
+				Category:  OperationCategoryResource,
 				Iteration: OperationIteration(info.Iteration),
 				Config: &OperationConfigDelete{
 					ResourceMeta: info.ResourceMeta,
@@ -413,6 +500,7 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 			opTrack := &Operation{
 				Type:      OperationTypeTrackAbsence,
 				Version:   OperationVersionTrackAbsence,
+				Category:  OperationCategoryTrack,
 				Iteration: OperationIteration(info.Iteration),
 				Config: &OperationConfigTrackAbsence{
 					ResourceMeta: info.ResourceMeta,
@@ -420,6 +508,62 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 			}
 			chain.AddOperation(opTrack).Stage(stg)
 		}
+
+		if err := chain.Do(); err != nil {
+			return fmt.Errorf("do add chain operations: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func addFailureResourceOperations(failedPlan, plan *Plan, infos []*InstallableResourceInfo) error {
+	for _, info := range infos {
+		if !info.MustDeleteOnFailedInstall || !info.MustTrackReadiness || info.MustInstall == ResourceInstallTypeNone {
+			continue
+		}
+
+		trackReadinessOp := lo.Must(failedPlan.Operation(OperationID(OperationTypeTrackReadiness, OperationVersionTrackReadiness, OperationIteration(info.Iteration), info.ResourceMeta.ID())))
+
+		if trackReadinessOp.Status != OperationStatusFailed {
+			continue
+		}
+
+		if info.MustDeleteOnSuccessfulInstall {
+			deleteOnSuccessfulInstallOp := lo.Must(lo.Find(failedPlan.Operations(), func(op *Operation) bool {
+				return op.Type == OperationTypeDelete &&
+					op.Iteration == OperationIteration(info.Iteration) &&
+					op.Config.(*OperationConfigDelete).ResourceMeta.ID() == info.ResourceMeta.ID()
+			}))
+
+			if deleteOnSuccessfulInstallOp.Status == OperationStatusCompleted {
+				continue
+			}
+		}
+
+		chain := plan.AddOperationChain()
+
+		deleteOp := &Operation{
+			Type:      OperationTypeDelete,
+			Version:   OperationVersionDelete,
+			Category:  OperationCategoryResource,
+			Iteration: OperationIteration(info.Iteration),
+			Config: &OperationConfigDelete{
+				ResourceMeta: info.ResourceMeta,
+			},
+		}
+		chain.AddOperation(deleteOp).Stage(common.StageUninstall)
+
+		trackAbsenceOp := &Operation{
+			Type:      OperationTypeTrackAbsence,
+			Version:   OperationVersionTrackAbsence,
+			Category:  OperationCategoryTrack,
+			Iteration: OperationIteration(info.Iteration),
+			Config: &OperationConfigTrackAbsence{
+				ResourceMeta: info.ResourceMeta,
+			},
+		}
+		chain.AddOperation(trackAbsenceOp).Stage(common.StageUninstall)
 
 		if err := chain.Do(); err != nil {
 			return fmt.Errorf("do add chain operations: %w", err)
