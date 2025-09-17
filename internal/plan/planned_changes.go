@@ -1,12 +1,9 @@
 package plan
 
 import (
-	"context"
 	"fmt"
 	"sort"
-	"strings"
 
-	"github.com/chanced/caps"
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -14,7 +11,6 @@ import (
 	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/internal/resource/meta"
 	"github.com/werf/nelm/internal/util"
-	"github.com/werf/nelm/pkg/log"
 )
 
 const (
@@ -51,40 +47,6 @@ func CalculatePlannedChanges(installableInfos []*InstallableResourceInfo, deleta
 	}
 
 	return append(instChanges, delChanges...), nil
-}
-
-func LogPlannedChanges(
-	ctx context.Context,
-	releaseName string,
-	releaseNamespace string,
-	releaseChangesPlanned bool,
-	changes []*ResourceChange,
-) {
-	if len(changes) == 0 {
-		if releaseChangesPlanned {
-			log.Default.Info(ctx, color.Style{color.Bold, color.Yellow}.Render(fmt.Sprintf("No resource changes planned, but will create release %q (namespace: %q)", releaseName, releaseNamespace)))
-		} else {
-			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("No changes planned for release %q (namespace: %q)", releaseName, releaseNamespace)))
-		}
-
-		return
-	}
-
-	log.Default.Info(ctx, "")
-
-	for _, change := range changes {
-		log.Default.InfoBlock(ctx, log.BlockOptions{
-			BlockTitle: buildDiffHeader(change),
-		}, func() {
-			log.Default.Info(ctx, "%s", change.Udiff)
-		})
-	}
-
-	log.Default.Info(ctx, color.Bold.Render("Planned changes summary")+" for release %q (namespace: %q):", releaseName, releaseNamespace)
-	for _, changeType := range []string{"create", "recreate", "update", "blind apply", "delete"} {
-		logSummaryLine(ctx, changes, changeType)
-	}
-	log.Default.Info(ctx, "")
 }
 
 func groupInstInfosByIter(installableInfos []*InstallableResourceInfo) [][]*InstallableResourceInfo {
@@ -273,36 +235,6 @@ func cleanUnstruct(unstruct *unstructured.Unstructured, sensitiveInfo resource.S
 	unstructClean = resource.CleanUnstruct(unstructClean, cleanUnstructOpts)
 
 	return unstructClean
-}
-
-func buildDiffHeader(change *ResourceChange) string {
-	header := change.TypeStyle.Render(caps.ToUpper(change.Type))
-	header += " " + color.Style{color.Bold}.Render(change.ResourceMeta.IDHuman())
-
-	var headerOps []string
-	for _, op := range change.ExtraOperations {
-		headerOps = append(headerOps, color.Style{color.Bold}.Render(op))
-	}
-
-	if len(headerOps) > 0 {
-		header += ", then " + strings.Join(headerOps, ", ")
-	}
-
-	if change.Reason != "" {
-		header += ". Reason: " + change.Reason
-	}
-
-	return header
-}
-
-func logSummaryLine(ctx context.Context, changes []*ResourceChange, changeType string) {
-	filteredChanges := lo.Filter(changes, func(change *ResourceChange, _ int) bool {
-		return change.Type == changeType
-	})
-
-	if len(filteredChanges) > 0 {
-		log.Default.Info(ctx, "- %s: %d resources", filteredChanges[0].TypeStyle.Render("create"), len(filteredChanges))
-	}
 }
 
 type ResourceChange struct {

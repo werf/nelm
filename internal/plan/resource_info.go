@@ -127,13 +127,15 @@ func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 	})
 	if getErr != nil {
 		if kube.IsNotFoundErr(getErr) || kube.IsNoSuchKindErr(getErr) {
+			trackReadiness := mustTrackReadiness(localRes, ResourceInstallTypeCreate, false, prevRelFailed)
+
 			return &InstallableResourceInfo{
 				ResourceMeta:                  localRes.ResourceMeta,
 				LocalResource:                 localRes,
 				MustInstall:                   ResourceInstallTypeCreate,
 				MustDeleteOnSuccessfulInstall: mustDeleteOnSuccessfulDeploy(localRes, nil, ResourceInstallTypeCreate, releaseNamespace),
-				MustDeleteOnFailedInstall:     mustDeleteOnFailedDeploy(localRes, nil, ResourceInstallTypeCreate, releaseNamespace),
-				MustTrackReadiness:            mustTrackReadiness(localRes, ResourceInstallTypeCreate, false, prevRelFailed),
+				MustDeleteOnFailedInstall:     mustDeleteOnFailedDeploy(localRes, nil, ResourceInstallTypeCreate, releaseNamespace, trackReadiness),
+				MustTrackReadiness:            trackReadiness,
 			}, nil
 		} else {
 			return nil, fmt.Errorf("get resource %q: %w", localRes.IDHuman(), getErr)
@@ -156,6 +158,7 @@ func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 	}
 
 	getMeta := meta.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
+	trackReadiness := mustTrackReadiness(localRes, installType, true, prevRelFailed)
 
 	return &InstallableResourceInfo{
 		ResourceMeta:                  localRes.ResourceMeta,
@@ -165,8 +168,8 @@ func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 		DryApplyErr:                   dryApplyErr,
 		MustInstall:                   installType,
 		MustDeleteOnSuccessfulInstall: mustDeleteOnSuccessfulDeploy(localRes, getMeta, installType, releaseNamespace),
-		MustDeleteOnFailedInstall:     mustDeleteOnFailedDeploy(localRes, getMeta, installType, releaseNamespace),
-		MustTrackReadiness:            mustTrackReadiness(localRes, installType, true, prevRelFailed),
+		MustDeleteOnFailedInstall:     mustDeleteOnFailedDeploy(localRes, getMeta, installType, releaseNamespace, trackReadiness),
+		MustTrackReadiness:            trackReadiness,
 	}, nil
 }
 
@@ -374,10 +377,11 @@ func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMet
 	return true
 }
 
-func mustDeleteOnFailedDeploy(res *resource.InstallableResource, getMeta *meta.ResourceMeta, installType ResourceInstallType, releaseNamespace string) bool {
+func mustDeleteOnFailedDeploy(res *resource.InstallableResource, getMeta *meta.ResourceMeta, installType ResourceInstallType, releaseNamespace string, mustTrackReadiness bool) bool {
 	if !res.DeleteOnFailed ||
 		res.KeepOnDelete ||
-		installType == ResourceInstallTypeNone {
+		installType == ResourceInstallTypeNone ||
+		!mustTrackReadiness {
 		return false
 	}
 

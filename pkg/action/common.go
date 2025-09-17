@@ -2,6 +2,7 @@ package action
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -12,12 +13,21 @@ import (
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/quick"
 	"github.com/alecthomas/chroma/v2/styles"
+	"github.com/chanced/caps"
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/docker/pkg/homedir"
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 	"github.com/xo/terminfo"
 
+	helmrelease "github.com/werf/3p-helm/pkg/release"
+	"github.com/werf/kubedog/pkg/informer"
+	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
+	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
+	"github.com/werf/kubedog/pkg/trackers/dyntracker/util"
+	"github.com/werf/nelm/internal/kube"
+	"github.com/werf/nelm/internal/plan"
+	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -109,6 +119,17 @@ var syntaxHighlightTheme = fmt.Sprintf(`
 </style>
 `, syntaxHighlightThemeName)
 
+type installReportV3 struct {
+	Version             int                `json:"version,omitempty"`
+	Release             string             `json:"release,omitempty"`
+	Namespace           string             `json:"namespace,omitempty"`
+	Revision            int                `json:"revision,omitempty"`
+	Status              helmrelease.Status `json:"status,omitempty"`
+	CompletedOperations []string           `json:"operations,omitempty"`
+	CanceledOperations  []string           `json:"operations,omitempty"`
+	FailedOperations    []string           `json:"operations,omitempty"`
+}
+
 func writeWithSyntaxHighlight(outStream io.Writer, text, lang string, colorLevel terminfo.ColorLevel) error {
 	if colorLevel == color.LevelNo {
 		if _, err := outStream.Write([]byte(text)); err != nil {
@@ -149,7 +170,7 @@ func printNotes(ctx context.Context, notes string) {
 	})
 }
 
-func saveReport(reportPath string, report *reportV2) error {
+func saveReport(reportPath string, report *installReportV3) error {
 	reportByte, err := json.MarshalIndent(report, "", "\t")
 	if err != nil {
 		return fmt.Errorf("marshal report: %w", err)
@@ -157,6 +178,130 @@ func saveReport(reportPath string, report *reportV2) error {
 
 	if err := os.WriteFile(reportPath, reportByte, 0644); err != nil {
 		return fmt.Errorf("write report: %w", err)
+	}
+
+	return nil
+}
+
+func printReport(ctx context.Context, report *installReportV3) {
+	if totalOpsLen := len(report.CompletedOperations) + len(report.CanceledOperations) + len(report.FailedOperations); totalOpsLen == 0 {
+		return
+	}
+
+	if len(report.CompletedOperations) > 0 {
+		log.Default.InfoBlock(ctx, log.BlockOptions{
+			BlockTitle: color.Style{color.Bold, color.Green}.Render("Completed operations"),
+		}, func() {
+			for _, op := range report.CompletedOperations {
+				log.Default.Info(ctx, caps.ToUpper(op))
+			}
+		})
+	}
+
+	if len(report.CanceledOperations) > 0 {
+		log.Default.InfoBlock(ctx, log.BlockOptions{
+			BlockTitle: color.Style{color.Bold, color.Yellow}.Render("Canceled operations"),
+		}, func() {
+			for _, op := range report.CanceledOperations {
+				log.Default.Info(ctx, caps.ToUpper(op))
+			}
+		})
+	}
+
+	if len(report.FailedOperations) > 0 {
+		log.Default.InfoBlock(ctx, log.BlockOptions{
+			BlockTitle: color.Style{color.Bold, color.Red}.Render("Failed operations"),
+		}, func() {
+			for _, op := range report.FailedOperations {
+				log.Default.Info(ctx, caps.ToUpper(op))
+			}
+		})
+	}
+}
+
+type runFailureInstallPlanOptions struct {
+	NetworkParallelism    int
+	TrackReadinessTimeout time.Duration
+	TrackCreationTimeout  time.Duration
+	TrackDeletionTimeout  time.Duration
+}
+
+type runFailureInstallPlanResult struct {
+	CompletedResourceOps []*plan.Operation
+	CanceledResourceOps  []*plan.Operation
+	FailedResourceOps    []*plan.Operation
+}
+
+func runFailureInstallPlan(
+	ctx context.Context,
+	failedPlan *plan.Plan,
+	installableInfos []*plan.InstallableResourceInfo,
+	releaseInfos []*plan.ReleaseInfo,
+	taskStore *util.Concurrent[*statestore.TaskStore],
+	logStore *util.Concurrent[*logstore.LogStore],
+	informerFactory *util.Concurrent[*informer.InformerFactory],
+	history *release.History,
+	clientFactory *kube.ClientFactory,
+	opts runFailureInstallPlanOptions,
+) (result *runFailureInstallPlanResult, nonCritErrs []error, critErrs []error) {
+	log.Default.Debug(ctx, "Build failure plan")
+	failurePlan, err := plan.BuildFailurePlan(failedPlan, installableInfos, releaseInfos)
+	if err != nil {
+		return nil, nonCritErrs, append(critErrs, fmt.Errorf("build failure plan: %w", err))
+	}
+
+	if _, planIsUseless := lo.Find(failurePlan.Operations(), func(op *plan.Operation) bool {
+		switch op.Category {
+		case plan.OperationCategoryResource, plan.OperationCategoryTrack, plan.OperationCategoryRelease:
+			return true
+		default:
+			return false
+		}
+	}); planIsUseless {
+		return &runFailureInstallPlanResult{}, nonCritErrs, critErrs
+	}
+
+	log.Default.Debug(ctx, "Execute failure plan")
+	if err := plan.ExecutePlan(ctx, failurePlan, taskStore, logStore, informerFactory, history, clientFactory.KubeClient(), clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), plan.ExecutePlanOptions{
+		NetworkParallelism: opts.NetworkParallelism,
+		ReadinessTimeout:   opts.TrackReadinessTimeout,
+		PresenceTimeout:    opts.TrackCreationTimeout,
+		AbsenceTimeout:     opts.TrackDeletionTimeout,
+	}); err != nil {
+		critErrs = append(critErrs, fmt.Errorf("execute failure plan: %w", err))
+	}
+
+	resourceOps := lo.Filter(failurePlan.Operations(), func(op *plan.Operation, _ int) bool {
+		return op.Category == plan.OperationCategoryResource
+	})
+
+	completedResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
+		return op.Status == plan.OperationStatusCompleted
+	})
+
+	canceledResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
+		return op.Status == plan.OperationStatusPending || op.Status == plan.OperationStatusUnknown
+	})
+
+	failedResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
+		return op.Status == plan.OperationStatusFailed
+	})
+
+	return &runFailureInstallPlanResult{
+		CompletedResourceOps: completedResourceOps,
+		CanceledResourceOps:  canceledResourceOps,
+		FailedResourceOps:    failedResourceOps,
+	}, nonCritErrs, critErrs
+}
+
+func savePlanAsDot(plan *plan.Plan, path string) error {
+	dotByte, err := plan.ToDOT()
+	if err != nil {
+		return fmt.Errorf("convert plan to DOT file: %w", err)
+	}
+
+	if err := os.WriteFile(path, dotByte, 0o644); err != nil {
+		return fmt.Errorf("write DOT graph file at %q: %w", path, err)
 	}
 
 	return nil

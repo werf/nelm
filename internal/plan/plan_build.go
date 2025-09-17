@@ -519,7 +519,7 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 
 func addFailureResourceOperations(failedPlan, plan *Plan, infos []*InstallableResourceInfo) error {
 	for _, info := range infos {
-		if !info.MustDeleteOnFailedInstall || !info.MustTrackReadiness || info.MustInstall == ResourceInstallTypeNone {
+		if !info.MustDeleteOnFailedInstall {
 			continue
 		}
 
