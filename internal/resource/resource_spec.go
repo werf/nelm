@@ -141,5 +141,5 @@ type ResourceSpec struct {
 	*meta.ResourceMeta
 
 	Unstruct *unstructured.Unstructured
-	common.StoreAs
+	StoreAs  common.StoreAs
 }

@@ -119,6 +119,7 @@ var syntaxHighlightTheme = fmt.Sprintf(`
 </style>
 `, syntaxHighlightThemeName)
 
+// TODO(v2): Version > APIVersion as string "v3"
 type installReportV3 struct {
 	Version             int                `json:"version,omitempty"`
 	Release             string             `json:"release,omitempty"`
@@ -305,4 +306,22 @@ func savePlanAsDot(plan *plan.Plan, path string) error {
 	}
 
 	return nil
+}
+
+func handleBuildInstallPlanErr(ctx context.Context, installPlan *plan.Plan, planErr error, installGraphPath, tempDirPath, fallbackGraphFilename string) {
+	var graphPath string
+	if installGraphPath != "" {
+		graphPath = installGraphPath
+	} else {
+		graphPath = filepath.Join(tempDirPath)
+	}
+
+	if err := savePlanAsDot(installPlan, graphPath); err != nil {
+		log.Default.Error(ctx, "Error: save release install graph: %s", err)
+		return
+	}
+
+	log.Default.Warn(ctx, "Release install graph saved to %q for debugging", graphPath)
+
+	return
 }

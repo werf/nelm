@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/gookit/color"
@@ -106,42 +107,34 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 
 	loader.NoChartLockWarning = ""
 
-	histories, err := release.BuildHistories(releaseStorage, release.BuildHistoriesOptions{
-		DiscoveryClient: clientFactory.Discovery(),
-		Mapper:          clientFactory.Mapper(),
-	})
+	log.Default.Info(ctx, "Build release histories")
+	histories, err := release.BuildHistories(releaseStorage, release.HistoryOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("build release histories: %w", err)
 	}
 
 	result := &ReleaseListResultV1{
-		ApiVersion: ReleaseListResultApiVersionV1,
+		ApiVersion: "v1",
 	}
 
 	for _, history := range histories {
-		lastRelease, found, err := history.LastRelease()
-		if err != nil {
-			return nil, fmt.Errorf("get last release: %w", err)
-		}
-
-		if !found {
-			continue
-		}
+		releases := history.Releases()
+		lastRelease := lo.LastOrEmpty(releases)
 
 		result.Releases = append(result.Releases, &ReleaseListResultRelease{
-			Name:      lastRelease.Name(),
-			Namespace: lastRelease.Namespace(),
-			Revision:  lastRelease.Revision(),
-			Status:    lastRelease.Status(),
+			Name:      lastRelease.Name,
+			Namespace: lastRelease.Namespace,
+			Revision:  lastRelease.Version,
+			Status:    lastRelease.Info.Status,
 			DeployedAt: &ReleaseListResultDeployedAt{
-				Human: lastRelease.LastDeployed().String(),
-				Unix:  int(lastRelease.LastDeployed().Unix()),
+				Human: time.Time{}.String(),
+				Unix:  int(time.Time{}.Unix()),
 			},
-			Annotations: lastRelease.InfoAnnotations(),
+			Annotations: lastRelease.Info.Annotations,
 			Chart: &ReleaseListResultChart{
-				Name:       lastRelease.ChartName(),
-				Version:    lastRelease.ChartVersion(),
-				AppVersion: lastRelease.AppVersion(),
+				Name:       lastRelease.Chart.Name(),
+				Version:    lastRelease.Chart.Metadata.Version,
+				AppVersion: lastRelease.Chart.Metadata.AppVersion,
 			},
 		})
 	}
@@ -154,39 +147,41 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 		return result.Releases[i].Name < result.Releases[j].Name
 	})
 
-	if !opts.OutputNoPrint {
-		var resultMessage string
+	if opts.OutputNoPrint {
+		return result, nil
+	}
 
-		switch opts.OutputFormat {
-		case TableOutputFormat:
-			table := buildReleaseListOutputTable(ctx, result)
-			resultMessage = table.Render()
-		case JsonOutputFormat:
-			b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
-			if err != nil {
-				return nil, fmt.Errorf("marshal result to json: %w", err)
-			}
+	var resultMessage string
 
-			resultMessage = string(b)
-		case YamlOutputFormat:
-			b, err := yaml.MarshalContext(ctx, result)
-			if err != nil {
-				return nil, fmt.Errorf("marshal result to yaml: %w", err)
-			}
-
-			resultMessage = string(b)
-		default:
-			return nil, fmt.Errorf("unknown output format %q", opts.OutputFormat)
+	switch opts.OutputFormat {
+	case TableOutputFormat:
+		table := buildReleaseListOutputTable(ctx, result)
+		resultMessage = table.Render()
+	case JsonOutputFormat:
+		b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
+		if err != nil {
+			return nil, fmt.Errorf("marshal result to json: %w", err)
 		}
 
-		var colorLevel color.Level
-		if color.Enable {
-			colorLevel = color.TermColorLevel()
+		resultMessage = string(b)
+	case YamlOutputFormat:
+		b, err := yaml.MarshalContext(ctx, result)
+		if err != nil {
+			return nil, fmt.Errorf("marshal result to yaml: %w", err)
 		}
 
-		if err := writeWithSyntaxHighlight(os.Stdout, resultMessage, string(opts.OutputFormat), colorLevel); err != nil {
-			return nil, fmt.Errorf("write result to output: %w", err)
-		}
+		resultMessage = string(b)
+	default:
+		return nil, fmt.Errorf("unknown output format %q", opts.OutputFormat)
+	}
+
+	var colorLevel color.Level
+	if color.Enable {
+		colorLevel = color.TermColorLevel()
+	}
+
+	if err := writeWithSyntaxHighlight(os.Stdout, resultMessage, string(opts.OutputFormat), colorLevel); err != nil {
+		return nil, fmt.Errorf("write result to output: %w", err)
 	}
 
 	return result, nil
@@ -228,8 +223,6 @@ func applyReleaseListOptionsDefaults(opts ReleaseListOptions, homeDir string) (R
 	return opts, nil
 }
 
-const ReleaseListResultApiVersionV1 = "v1"
-
 type ReleaseListResultV1 struct {
 	ApiVersion string                      `json:"apiVersion"`
 	Releases   []*ReleaseListResultRelease `json:"releases"`
@@ -245,6 +238,7 @@ type ReleaseListResultRelease struct {
 	Chart       *ReleaseListResultChart      `json:"chart"`
 }
 
+// TODO(v2): get rid
 type ReleaseListResultDeployedAt struct {
 	Human string `json:"human"`
 	Unix  int    `json:"unix"`

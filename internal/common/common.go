@@ -118,4 +118,6 @@ const (
 	StoreAsRegular StoreAs = "regular"
 )
 
+var OrderedStoreAs = []StoreAs{StoreAsNone, StoreAsHook, StoreAsRegular}
+
 var SprigFuncs = sprig.TxtFuncMap()

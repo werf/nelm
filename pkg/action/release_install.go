@@ -237,24 +237,19 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		defer lockManager.Unlock(lock)
 	}
 
-	log.Default.Debug(ctx, "Construct release history")
+	log.Default.Debug(ctx, "Build release history")
 	history, err := release.BuildHistory(releaseName, releaseStorage, release.HistoryOptions{})
 	if err != nil {
-		return fmt.Errorf("construct release history: %w", err)
+		return fmt.Errorf("build release history: %w", err)
 	}
-
-	var prevRelease *helmrelease.Release
-	var prevDeployedRelease *helmrelease.Release
-	var prevReleaseFailed bool
 
 	releases := history.Releases()
 	deployedReleases := history.FindAllDeployed()
-	if len(releases) > 0 {
-		prevRelease = lo.LastOrEmpty(releases)
-		prevDeployedRelease = lo.LastOrEmpty(deployedReleases)
-	}
+	prevRelease := lo.LastOrEmpty(releases)
+	prevDeployedRelease := lo.LastOrEmpty(deployedReleases)
 
 	var newRevision int
+	var prevReleaseFailed bool
 	if prevRelease != nil {
 		newRevision = prevRelease.Version + 1
 		prevReleaseFailed = prevRelease.IsStatusFailed()
@@ -356,7 +351,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	log.Default.Debug(ctx, "Build install plan")
 	installPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos)
 	if err != nil {
-		handleBuildInstallPlanErr(ctx, installPlan, err, opts.InstallGraphPath, opts.TempDirPath)
+		handleBuildInstallPlanErr(ctx, installPlan, err, opts.InstallGraphPath, opts.TempDirPath, "release-install-graph.dot")
 		return fmt.Errorf("build install plan: %w", err)
 	}
 
@@ -817,21 +812,4 @@ func runRollbackPlan(
 		CanceledResourceOps:  canceledResourceOps,
 		FailedResourceOps:    failedResourceOps,
 	}, nonCritErrs, critErrs
-}
-
-func handleBuildInstallPlanErr(ctx context.Context, installPlan *plan.Plan, planErr error, installGraphPath, tempDirPath string) {
-	var graphPath string
-	if installGraphPath != "" {
-		graphPath = installGraphPath
-	} else {
-		graphPath = filepath.Join(tempDirPath, "release-install-graph.dot")
-	}
-
-	if err := savePlanAsDot(installPlan, graphPath); err != nil {
-		log.Default.Error(ctx, "Error: save release install graph: %s", err)
-		return
-	}
-
-	log.Default.Warn(ctx, "Release install graph saved to %q for debugging", graphPath)
-	return
 }

@@ -196,16 +196,11 @@ func legacyReleaseUninstall(ctx context.Context, releaseName, releaseNamespace s
 		opts.ProgressTablePrintInterval,
 	)
 
-	namespaceID := meta.NewResourceID(
-		releaseNamespace,
-		"",
-		schema.GroupVersionKind{Version: "v1", Kind: "Namespace"},
-		meta.ResourceIDOptions{Mapper: clientFactory.Mapper()},
-	)
+	nsMeta := meta.NewResourceMeta(releaseNamespace, "", releaseNamespace, "", schema.GroupVersionKind{Version: "v1", Kind: "Namespace"}, nil, nil)
 
 	if _, err := clientFactory.KubeClient().Get(
 		ctx,
-		namespaceID,
+		nsMeta,
 		kube.KubeClientGetOptions{
 			TryCache: true,
 		},
@@ -277,19 +272,13 @@ func legacyReleaseUninstall(ctx context.Context, releaseName, releaseNamespace s
 	}
 
 	if opts.DeleteReleaseNamespace {
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleting release namespace %q", namespaceID.Name())))
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleting release namespace %q", releaseNamespace)))
 
-		deleteOp := operation.NewDeleteResourceOperation(
-			namespaceID,
-			clientFactory.KubeClient(),
-			operation.DeleteResourceOperationOptions{},
-		)
-
-		if err := deleteOp.Execute(ctx); err != nil {
+		if err := clientFactory.KubeClient().Delete(ctx, nsMeta, kube.KubeClientDeleteOptions{}); err != nil {
 			return fmt.Errorf("delete release namespace: %w", err)
 		}
 
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleted release namespace %q", namespaceID.Name())))
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleted release namespace %q", releaseNamespace)))
 	}
 
 	return nil

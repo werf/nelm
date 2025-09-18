@@ -133,40 +133,25 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		return fmt.Errorf("construct kube client factory: %w", err)
 	}
 
-	releaseStorage, err := release.NewReleaseStorage(
-		ctx,
-		releaseNamespace,
-		opts.ReleaseStorageDriver,
-		release.ReleaseStorageOptions{
-			StaticClient:        clientFactory.Static().(*kubernetes.Clientset),
-			HistoryLimit:        opts.ReleaseHistoryLimit,
-			SQLConnectionString: opts.SQLConnectionString,
-		},
-	)
+	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, release.ReleaseStorageOptions{
+		StaticClient:        clientFactory.Static().(*kubernetes.Clientset),
+		HistoryLimit:        opts.ReleaseHistoryLimit,
+		SQLConnectionString: opts.SQLConnectionString,
+	})
 	if err != nil {
 		return fmt.Errorf("construct release storage: %w", err)
 	}
 
 	var lockManager *lock.LockManager
-	if m, err := lock.NewLockManager(
-		releaseNamespace,
-		false,
-		clientFactory.Static(),
-		clientFactory.Dynamic(),
-	); err != nil {
+	if m, err := lock.NewLockManager(releaseNamespace, false, clientFactory.Static(), clientFactory.Dynamic()); err != nil {
 		return fmt.Errorf("construct lock manager: %w", err)
 	} else {
 		lockManager = m
 	}
 
-	namespaceID := meta.NewResourceID(
-		releaseNamespace,
-		"",
-		schema.GroupVersionKind{Version: "v1", Kind: "Namespace"},
-		meta.ResourceIDOptions{Mapper: clientFactory.Mapper()},
-	)
+	nsMeta := meta.NewResourceMeta(releaseNamespace, "", releaseNamespace, "", schema.GroupVersionKind{Version: "v1", Kind: "Namespace"}, nil, nil)
 
-	if exists, err := isReleaseNamespaceExist(ctx, clientFactory, namespaceID); err != nil {
+	if exists, err := isReleaseNamespaceExist(ctx, clientFactory, nsMeta); err != nil {
 		return fmt.Errorf("check release namespace existence: %w", err)
 	} else if !exists {
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q uninstall: no release namespace %q found", releaseName, releaseNamespace)))
@@ -181,32 +166,22 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			defer lockManager.Unlock(lock)
 		}
 
-		log.Default.Debug(ctx, "Constructing release history")
-		history, err := release.BuildHistory(
-			releaseName,
-			releaseNamespace,
-			releaseStorage,
-			release.HistoryOptions{
-				Mapper:          clientFactory.Mapper(),
-				DiscoveryClient: clientFactory.Discovery(),
-			},
-		)
+		log.Default.Debug(ctx, "Build release history")
+		history, err := release.BuildHistory(releaseName, releaseStorage, release.HistoryOptions{})
 		if err != nil {
-			return fmt.Errorf("construct release history: %w", err)
+			return fmt.Errorf("build release history: %w", err)
 		}
 
-		prevRelease, prevReleaseFound, err := history.LastRelease()
-		if err != nil {
-			return fmt.Errorf("get last release: %w", err)
-		}
+		releases := history.Releases()
+		prevRelease := lo.LastOrEmpty(releases)
 
-		if !prevReleaseFound {
+		if prevRelease == nil {
 			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q) uninstall: no release found", releaseName, releaseNamespace)))
 
 			return nil
 		}
 
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Deleting release")+" %q (namespace: %q)", releaseName, releaseNamespace)
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Delete release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
 		log.Default.Debug(ctx, "Processing resources")
 		resProcessor := resinfo.NewDeployableResourcesProcessor(
@@ -426,10 +401,10 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 	return nil
 }
 
-func isReleaseNamespaceExist(ctx context.Context, clientFactory *kube.ClientFactory, namespaceID *meta.ResourceID) (bool, error) {
+func isReleaseNamespaceExist(ctx context.Context, clientFactory *kube.ClientFactory, nsMeta *meta.ResourceMeta) (bool, error) {
 	if _, err := clientFactory.KubeClient().Get(
 		ctx,
-		namespaceID,
+		nsMeta,
 		kube.KubeClientGetOptions{
 			TryCache: true,
 		},

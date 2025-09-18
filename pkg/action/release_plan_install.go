@@ -16,7 +16,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/werf/3p-helm/pkg/registry"
-	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/internal/chart"
 	"github.com/werf/nelm/internal/common"
@@ -176,15 +175,10 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		return fmt.Errorf("construct registry client: %w", err)
 	}
 
-	releaseStorage, err := release.NewReleaseStorage(
-		ctx,
-		releaseNamespace,
-		opts.ReleaseStorageDriver,
-		release.ReleaseStorageOptions{
-			StaticClient:        clientFactory.Static().(*kubernetes.Clientset),
-			SQLConnectionString: opts.SQLConnectionString,
-		},
-	)
+	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, release.ReleaseStorageOptions{
+		StaticClient:        clientFactory.Static().(*kubernetes.Clientset),
+		SQLConnectionString: opts.SQLConnectionString,
+	})
 	if err != nil {
 		return fmt.Errorf("construct release storage: %w", err)
 	}
@@ -207,24 +201,19 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release install")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-	log.Default.Debug(ctx, "Construct release history")
+	log.Default.Debug(ctx, "Build release history")
 	history, err := release.BuildHistory(releaseName, releaseStorage, release.HistoryOptions{})
 	if err != nil {
-		return fmt.Errorf("construct release history: %w", err)
+		return fmt.Errorf("build release history: %w", err)
 	}
-
-	var prevRelease *helmrelease.Release
-	var prevDeployedRelease *helmrelease.Release
-	var prevReleaseFailed bool
 
 	releases := history.Releases()
 	deployedReleases := history.FindAllDeployed()
-	if len(releases) > 0 {
-		prevRelease = lo.LastOrEmpty(releases)
-		prevDeployedRelease = lo.LastOrEmpty(deployedReleases)
-	}
+	prevRelease := lo.LastOrEmpty(releases)
+	prevDeployedRelease := lo.LastOrEmpty(deployedReleases)
 
 	var newRevision int
+	var prevReleaseFailed bool
 	if prevRelease != nil {
 		newRevision = prevRelease.Version + 1
 		prevReleaseFailed = prevRelease.IsStatusFailed()
@@ -257,7 +246,6 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		RegistryClient:         helmRegistryClient,
 		SetValues:              opts.ValuesSets,
 		StringSetValues:        opts.ValuesStringSets,
-		SubNotes:               opts.SubNotes,
 		ValuesFiles:            opts.ValuesFilesPaths,
 	})
 	if err != nil {
@@ -324,7 +312,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	log.Default.Debug(ctx, "Build install plan")
 	installPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos)
 	if err != nil {
-		handleBuildInstallPlanErr(ctx, installPlan, err, opts.InstallGraphPath, opts.TempDirPath)
+		handleBuildInstallPlanErr(ctx, installPlan, err, opts.InstallGraphPath, opts.TempDirPath, "release-install-graph.dot")
 		return fmt.Errorf("build install plan: %w", err)
 	}
 

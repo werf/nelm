@@ -58,18 +58,30 @@ type ResourceMeta struct {
 }
 
 func (m *ResourceMeta) ID() string {
-	return fmt.Sprintf("%s:%s:%s:%s", m.Namespace, m.GroupVersionKind.Group, m.GroupVersionKind.Kind, m.Name)
+	return ID(m.Name, m.Namespace, m.GroupVersionKind.Group, m.GroupVersionKind.Kind)
 }
 
 func (m *ResourceMeta) IDWithVersion() string {
-	return fmt.Sprintf("%s:%s:%s:%s:%s", m.Namespace, m.GroupVersionKind.Group, m.GroupVersionKind.Version, m.GroupVersionKind.Kind, m.Name)
+	return IDWithVersion(m.Name, m.Namespace, m.GroupVersionKind.Group, m.GroupVersionKind.Version, m.GroupVersionKind.Kind)
 }
 
 func (m *ResourceMeta) IDHuman() string {
-	id := fmt.Sprintf("%s/%s", m.GroupVersionKind.Kind, m.Name)
+	return IDHuman(m.Name, m.Namespace, m.GroupVersionKind.Group, m.GroupVersionKind.Kind)
+}
 
-	if m.Namespace != "" {
-		id = fmt.Sprintf("%s (namespace=%s)", id, m.Namespace)
+func ID(name, namespace, group, kind string) string {
+	return fmt.Sprintf("%s:%s:%s:%s", namespace, group, kind, name)
+}
+
+func IDWithVersion(name, namespace, group, version, kind string) string {
+	return fmt.Sprintf("%s:%s:%s:%s:%s", namespace, group, version, kind, name)
+}
+
+func IDHuman(name, namespace, group, kind string) string {
+	id := fmt.Sprintf("%s/%s", kind, name)
+
+	if namespace != "" {
+		id = fmt.Sprintf("%s (namespace=%s)", id, namespace)
 	}
 
 	return id
