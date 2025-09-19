@@ -66,6 +66,7 @@ func init() {
 	flaggerscheme.AddToScheme(scheme.Scheme)
 }
 
+// TODO(v2): get rid
 type ResourcesWaiter struct {
 	Client                    *helm_kube.Client
 	LogsFromTime              time.Time

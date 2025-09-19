@@ -1,33 +1,40 @@
 package resource
 
 import (
-	"github.com/werf/nelm/internal/resource/id"
+	"github.com/werf/nelm/internal/common"
+	"github.com/werf/nelm/internal/resource/meta"
 )
 
-func ResourceIDsSortHandler(id1, id2 *id.ResourceID) bool {
-	kind1 := id1.GroupVersionKind().Kind
-	kind2 := id2.GroupVersionKind().Kind
-	if kind1 != kind2 {
-		return kind1 < kind2
+func InstallableResourceSortByStageAndWeightHandler(r1, r2 *InstallableResource) bool {
+	if r1.Stage != r2.Stage {
+		return common.StagesSortHandler(r1.Stage, r2.Stage)
 	}
 
-	group1 := id1.GroupVersionKind().Group
-	group2 := id2.GroupVersionKind().Group
-	if group1 != group2 {
-		return group1 < group2
+	if r1.Weight == nil {
+		return true
+	} else if r2.Weight == nil {
+		return false
+	} else if r1.Weight != r2.Weight {
+		return *r1.Weight < *r2.Weight
 	}
 
-	version1 := id1.GroupVersionKind().Version
-	version2 := id2.GroupVersionKind().Version
-	if version1 != version2 {
-		return version1 < version2
+	return ResourceSpecSortHandler(r1.ResourceSpec, r2.ResourceSpec)
+}
+
+func ResourceSpecSortHandler(r1, r2 *ResourceSpec) bool {
+	sortAs1 := r1.StoreAs
+	sortAs2 := r2.StoreAs
+	// TODO(v2): sorted based on sortAs for compatibility. In future should just probably sort
+	// like this: first CRDs (any type), then helm.sh/hook hooks, then the rest
+	if sortAs1 != sortAs2 {
+		if sortAs1 == common.StoreAsNone {
+			return true
+		} else if sortAs1 == common.StoreAsHook && !(sortAs2 == common.StoreAsNone) {
+			return true
+		} else {
+			return false
+		}
 	}
 
-	namespace1 := id1.Namespace()
-	namespace2 := id2.Namespace()
-	if namespace1 != namespace2 {
-		return namespace1 < namespace2
-	}
-
-	return id1.Name() < id2.Name()
+	return meta.ResourceMetaSortHandler(r1.ResourceMeta, r2.ResourceMeta)
 }

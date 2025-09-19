@@ -62,6 +62,8 @@ require (
 	github.com/Masterminds/squirrel v1.5.4 // indirect
 	github.com/Masterminds/vcs v1.13.3 // indirect
 	github.com/Microsoft/hcsshim v0.12.2 // indirect
+	github.com/PaesslerAG/gval v1.0.0 // indirect
+	github.com/PaesslerAG/jsonpath v0.1.1 // indirect
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/avelino/slugify v0.0.0-20180501145920-855f152bd774 // indirect

@@ -15,6 +15,7 @@ import (
 	kdkube "github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/lockgate"
 	"github.com/werf/lockgate/pkg/distributed_locker"
+	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -148,7 +149,7 @@ func defaultLockerOnLostLease(lock lockgate.LockHandle) error {
 }
 
 func createNamespaceIfNotExists(client kubernetes.Interface, namespace string) error {
-	if _, err := client.CoreV1().Namespaces().Get(context.Background(), namespace, metav1.GetOptions{}); errors.IsNotFound(err) {
+	if _, err := client.CoreV1().Namespaces().Get(context.Background(), namespace, metav1.GetOptions{}); kube.IsNotFoundErr(err) {
 		ns := &v1.Namespace{
 			TypeMeta: metav1.TypeMeta{
 				APIVersion: "v1",
@@ -177,7 +178,7 @@ func getOrCreateConfigMapWithNamespaceIfNotExists(
 ) (*v1.ConfigMap, error) {
 	obj, err := client.CoreV1().ConfigMaps(namespace).Get(context.Background(), configMapName, metav1.GetOptions{})
 	switch {
-	case errors.IsNotFound(err):
+	case kube.IsNotFoundErr(err):
 		if createNamespace {
 			if err := createNamespaceIfNotExists(client, namespace); err != nil {
 				return nil, err

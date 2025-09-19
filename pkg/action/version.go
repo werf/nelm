@@ -13,11 +13,12 @@ import (
 
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/nelm/internal/common"
+	"github.com/werf/nelm/pkg/log"
 )
 
 const (
 	DefaultVersionOutputFormat = YamlOutputFormat
-	DefaultVersionLogLevel     = ErrorLogLevel
+	DefaultVersionLogLevel     = log.ErrorLevel
 )
 
 type VersionOptions struct {

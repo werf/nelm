@@ -6,11 +6,12 @@ import (
 	"os"
 
 	"github.com/werf/common-go/pkg/secrets_manager"
-	"github.com/werf/nelm/pkg/secret"
+	"github.com/werf/nelm/pkg/legacy/secret"
+	"github.com/werf/nelm/pkg/log"
 )
 
 const (
-	DefaultSecretValuesFileEncryptLogLevel = ErrorLogLevel
+	DefaultSecretValuesFileEncryptLogLevel = log.ErrorLevel
 )
 
 type SecretValuesFileEncryptOptions struct {

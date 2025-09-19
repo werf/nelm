@@ -32,7 +32,7 @@ linters:
     - bodyclose
     - errname
     - errorlint
-    - exportloopref
+    - copyloopvar
     - gci
     - gocritic
     - gofumpt

@@ -16,14 +16,14 @@ import (
 	"github.com/werf/nelm/internal/chart"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/plan/resourceinfo"
+	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource"
-	log2 "github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/log"
 )
 
 const (
-	DefaultChartLintLogLevel = InfoLogLevel
+	DefaultChartLintLogLevel = log.InfoLevel
 )
 
 type ChartLintOptions struct {
@@ -134,7 +134,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(log2.Default.AcceptLevel(ctx, log2.Level(DebugLogLevel))),
+		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(log.DebugLevel))),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
 		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
 	}
@@ -180,56 +180,43 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		},
 	}
 
-	var historyOptions release.HistoryOptions
-	if opts.Remote {
-		historyOptions.Mapper = clientFactory.Mapper()
-		historyOptions.DiscoveryClient = clientFactory.Discovery()
+	log.Default.Debug(ctx, "Build release history")
+	history, err := release.BuildHistory(opts.ReleaseName, releaseStorage, release.HistoryOptions{})
+	if err != nil {
+		return fmt.Errorf("build release history: %w", err)
 	}
 
-	history, err := release.NewHistory(
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
-		releaseStorage,
-		historyOptions,
-	)
-	if err != nil {
-		return fmt.Errorf("construct release history: %w", err)
-	}
-
-	prevRelease, prevReleaseFound, err := history.LastRelease()
-	if err != nil {
-		return fmt.Errorf("get last release: %w", err)
-	}
-
-	_, prevDeployedReleaseFound, err := history.LastDeployedRelease()
-	if err != nil {
-		return fmt.Errorf("get last deployed release: %w", err)
-	}
+	releases := history.Releases()
+	deployedReleases := history.FindAllDeployed()
+	prevRelease := lo.LastOrEmpty(releases)
+	prevDeployedRelease := lo.LastOrEmpty(deployedReleases)
 
 	var newRevision int
-	if prevReleaseFound {
-		newRevision = prevRelease.Revision() + 1
+	var prevReleaseFailed bool
+	if prevRelease != nil {
+		newRevision = prevRelease.Version + 1
+		prevReleaseFailed = prevRelease.IsStatusFailed()
 	} else {
 		newRevision = 1
 	}
 
 	var deployType common.DeployType
-	if prevReleaseFound && prevDeployedReleaseFound {
+	if prevDeployedRelease != nil {
 		deployType = common.DeployTypeUpgrade
-	} else if prevReleaseFound {
+	} else if prevRelease != nil {
 		deployType = common.DeployTypeInstall
 	} else {
 		deployType = common.DeployTypeInitial
 	}
 
-	chartTreeOptions := chart.ChartTreeOptions{
+	chartTreeOptions := chart.RenderChartOptions{
 		ChartRepoInsecure:      opts.ChartRepositoryInsecure,
 		ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
 		ChartRepoSkipUpdate:    opts.ChartRepositorySkipUpdate,
 		ChartVersion:           opts.ChartVersion,
 		FileValues:             opts.ValuesFileSets,
-		KubeCAPath:             opts.KubeCAPath,
 		HelmOptions:            helmOptions,
+		KubeCAPath:             opts.KubeCAPath,
 		RegistryClient:         helmRegistryClient,
 		SetValues:              opts.ValuesSets,
 		StringSetValues:        opts.ValuesStringSets,
@@ -249,70 +236,94 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		chartTreeOptions.KubeVersion = ver
 	}
 
-	chartTree, err := chart.NewChartTree(
-		ctx,
-		opts.Chart,
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
-		newRevision,
-		deployType,
-		chartTreeOptions,
-	)
+	log.Default.Debug(ctx, "Render chart")
+	renderChartResult, err := chart.RenderChart(ctx, opts.Chart, opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, chartTreeOptions)
 	if err != nil {
-		return fmt.Errorf("construct chart tree: %w", err)
+		return fmt.Errorf("render chart: %w", err)
 	}
 
-	var prevRelGeneralResources []*resource.GeneralResource
-	if prevReleaseFound {
-		prevRelGeneralResources = prevRelease.GeneralResources()
+	log.Default.Debug(ctx, "Build transformed resource specs")
+	transformedResSpecs, err := resource.BuildTransformedResourceSpecs(ctx, opts.ReleaseNamespace, renderChartResult.ResourceSpecs, []resource.ResourceTransformer{
+		resource.NewResourceListsTransformer(),
+		resource.NewDropInvalidAnnotationsAndLabelsTransformer(),
+	})
+	if err != nil {
+		return fmt.Errorf("build transformed resource specs: %w", err)
 	}
 
-	resProcessorOptions := resourceinfo.DeployableResourcesProcessorOptions{
-		NetworkParallelism: opts.NetworkParallelism,
-		ForceAdoption:      opts.ForceAdoption,
-		ReleasableHookResourcePatchers: []resource.ResourcePatcher{
-			resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-		},
-		ReleasableGeneralResourcePatchers: []resource.ResourcePatcher{
-			resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-		},
-		DeployableStandaloneCRDsPatchers: []resource.ResourcePatcher{
-			resource.NewExtraMetadataPatcher(
-				lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
-			),
-		},
-		DeployableHookResourcePatchers: []resource.ResourcePatcher{
-			resource.NewExtraMetadataPatcher(
-				lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
-			),
-		},
-		DeployableGeneralResourcePatchers: []resource.ResourcePatcher{
-			resource.NewExtraMetadataPatcher(
-				lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
-			),
-		},
+	log.Default.Debug(ctx, "Build releasable resource specs")
+	releasableResSpecs, err := resource.BuildReleasableResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []resource.ResourcePatcher{
+		resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+	})
+	if err != nil {
+		return fmt.Errorf("build releasable resource specs: %w", err)
 	}
+
+	newRelease, err := release.NewRelease(opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, releasableResSpecs, release.ReleaseOptions{
+		Notes: renderChartResult.Notes,
+	})
+	if err != nil {
+		return fmt.Errorf("construct new release: %w", err)
+	}
+
+	buildResourcesOpts := resource.BuildResourcesOptions{}
 	if opts.Remote {
-		resProcessorOptions.KubeClient = clientFactory.KubeClient()
-		resProcessorOptions.Mapper = clientFactory.Mapper()
-		resProcessorOptions.DiscoveryClient = clientFactory.Discovery()
-		resProcessorOptions.AllowClusterAccess = true
+		buildResourcesOpts.Mapper = clientFactory.Mapper()
 	}
 
-	resProcessor := resourceinfo.NewDeployableResourcesProcessor(
-		deployType,
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
-		chartTree.StandaloneCRDs(),
-		chartTree.HookResources(),
-		chartTree.GeneralResources(),
-		nil,
-		prevRelGeneralResources,
-		resProcessorOptions,
-	)
+	log.Default.Debug(ctx, "Convert previous release to resource specs")
+	var prevRelResSpecs []*resource.ResourceSpec
+	if prevRelease != nil {
+		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, opts.ReleaseNamespace)
+		if err != nil {
+			return fmt.Errorf("convert previous release to resource specs: %w", err)
+		}
+	}
 
-	if err := resProcessor.Process(ctx); err != nil {
-		return fmt.Errorf("process resources: %w", err)
+	log.Default.Debug(ctx, "Convert new release to resource specs")
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, opts.ReleaseNamespace)
+	if err != nil {
+		return fmt.Errorf("convert new release to resource specs: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Build resources")
+	instResources, delResources, err := resource.BuildResources(ctx, deployType, opts.ReleaseNamespace, prevRelResSpecs, newRelResSpecs, []resource.ResourcePatcher{
+		resource.NewReleaseMetadataPatcher(opts.ReleaseName, opts.ReleaseNamespace),
+		resource.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
+	}, buildResourcesOpts)
+	if err != nil {
+		return fmt.Errorf("build resources: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Locally validate resources")
+	if err := resource.ValidateLocal(opts.ReleaseNamespace, instResources); err != nil {
+		return fmt.Errorf("locally validate resources: %w", err)
+	}
+
+	if !opts.Remote {
+		return nil
+	}
+
+	log.Default.Debug(ctx, "Build resource infos")
+	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, opts.ReleaseName, opts.ReleaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory.KubeClient(), clientFactory.Mapper(), opts.NetworkParallelism)
+	if err != nil {
+		return fmt.Errorf("build resource infos: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Remotely validate resources")
+	if err := plan.ValidateRemote(opts.ReleaseName, opts.ReleaseNamespace, instResInfos, opts.ForceAdoption); err != nil {
+		return fmt.Errorf("remotely validate resources: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Build release infos")
+	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, releases, newRelease)
+	if err != nil {
+		return fmt.Errorf("build release infos: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Build install plan")
+	if _, err := plan.BuildPlan(instResInfos, delResInfos, relInfos); err != nil {
+		return fmt.Errorf("build install plan: %w", err)
 	}
 
 	return nil

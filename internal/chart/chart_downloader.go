@@ -13,11 +13,11 @@ import (
 	"github.com/werf/3p-helm/pkg/helmpath"
 	helmregistry "github.com/werf/3p-helm/pkg/registry"
 	helmrepo "github.com/werf/3p-helm/pkg/repo"
-	log2 "github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/log"
 )
 
 // TODO(ilya-lesikov): pass all missing options
-type ChartDownloaderOptions struct {
+type chartDownloaderOptions struct {
 	KeyringFile        string
 	PassCredentialsAll bool
 	CertFile           string
@@ -31,9 +31,9 @@ type ChartDownloaderOptions struct {
 	Version            string
 }
 
-func NewChartDownloader(ctx context.Context, chartRef string, registryClient *helmregistry.Client, opts ChartDownloaderOptions) (*helmdownloader.ChartDownloader, string, error) {
+func newChartDownloader(ctx context.Context, chartRef string, registryClient *helmregistry.Client, opts chartDownloaderOptions) (*helmdownloader.ChartDownloader, string, error) {
 	var out io.Writer
-	if log2.Default.AcceptLevel(ctx, log2.WarningLevel) {
+	if log.Default.AcceptLevel(ctx, log.WarningLevel) {
 		out = os.Stdout
 	} else {
 		out = io.Discard
