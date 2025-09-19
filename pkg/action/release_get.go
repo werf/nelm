@@ -25,7 +25,7 @@ import (
 
 const (
 	DefaultReleaseGetOutputFormat = YamlOutputFormat
-	DefaultReleaseGetLogLevel     = ErrorLogLevel
+	DefaultReleaseGetLogLevel     = log.ErrorLevel
 )
 
 type ReleaseGetOptions struct {

@@ -37,7 +37,7 @@ func newChartSecretValuesFileEditCommand(ctx context.Context, afterAllCommandsBu
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = log.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultSecretValuesFileEditLogLevel), log.SetupLoggingOptions{
+			ctx = log.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultSecretValuesFileEditLogLevel), log.SetupLoggingOptions{
 				ColorMode: cfg.LogColorMode,
 			})
 
@@ -59,7 +59,7 @@ func newChartSecretValuesFileEditCommand(ctx context.Context, afterAllCommandsBu
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", action.DefaultSecretValuesFileEditLogLevel, "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", string(action.DefaultSecretValuesFileEditLogLevel), "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

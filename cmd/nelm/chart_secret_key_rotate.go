@@ -36,7 +36,7 @@ func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFu
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = log.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultSecretKeyRotateLogLevel), log.SetupLoggingOptions{
+			ctx = log.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultSecretKeyRotateLogLevel), log.SetupLoggingOptions{
 				ColorMode: cfg.LogColorMode,
 			})
 
@@ -60,7 +60,7 @@ func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFu
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", action.DefaultSecretKeyRotateLogLevel, "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", string(action.DefaultSecretKeyRotateLogLevel), "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

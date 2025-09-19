@@ -137,13 +137,29 @@ func (b *planChainBuilder) Do() error {
 			}
 		}
 
+		operations := b.plan.Operations()
+
 		if step.stage != "" {
-			stageStartOp := lo.Must(b.plan.Operation(fmt.Sprintf("%s/%s", step.stage, common.StageStartSuffix)))
+			stageStartOp := lo.Must(lo.Find(operations, func(op *Operation) bool {
+				config, ok := op.Config.(*OperationConfigNoop)
+				if !ok {
+					return false
+				}
+
+				return config.OpID == fmt.Sprintf("%s/%s/%s", common.StagePrefix, step.stage, common.StageStartSuffix)
+			}))
 			if err := b.plan.Connect(stageStartOp.ID(), step.operation.ID()); err != nil {
 				return fmt.Errorf("connect starting stage: %w", err)
 			}
 
-			stageEndOp := lo.Must(b.plan.Operation(fmt.Sprintf("%s/%s", step.stage, common.StageEndSuffix)))
+			stageEndOp := lo.Must(lo.Find(operations, func(op *Operation) bool {
+				config, ok := op.Config.(*OperationConfigNoop)
+				if !ok {
+					return false
+				}
+
+				return config.OpID == fmt.Sprintf("%s/%s/%s", common.StagePrefix, step.stage, common.StageEndSuffix)
+			}))
 			if err := b.plan.Connect(step.operation.ID(), stageEndOp.ID()); err != nil {
 				return fmt.Errorf("connect ending stage: %w", err)
 			}

@@ -16,7 +16,7 @@ import (
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
-	kubeutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
+	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/lock"
@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	DefaultReleaseRollbackLogLevel = InfoLogLevel
+	DefaultReleaseRollbackLogLevel = log.InfoLevel
 )
 
 type ReleaseRollbackOptions struct {
@@ -173,24 +173,24 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	prevRelease := lo.LastOrEmpty(releases)
 	prevDeployedRelease := lo.LastOrEmpty(deployedReleases)
 
-	var releaseToRollback *helmrelease.Release
+	var rollbackRelease *helmrelease.Release
 	if opts.Revision == 0 {
 		if len(deployedReleases) == 0 {
 			return fmt.Errorf("not found successfully deployed release %q (namespace: %q)", releaseName, releaseNamespace)
 		}
 
 		if prevDeployedRelease.Version != prevRelease.Version {
-			releaseToRollback = prevDeployedRelease
+			rollbackRelease = prevDeployedRelease
 		} else {
 			if len(deployedReleases) < 2 {
 				return fmt.Errorf("not found successfully deployed (except last) release %q (namespace: %q)", releaseName, releaseNamespace)
 			}
 
-			releaseToRollback = deployedReleases[len(deployedReleases)-2]
+			rollbackRelease = deployedReleases[len(deployedReleases)-2]
 		}
 	} else {
 		var found bool
-		releaseToRollback, found = lo.Find(releases, func(rel *helmrelease.Release) bool {
+		rollbackRelease, found = lo.Find(releases, func(rel *helmrelease.Release) bool {
 			return rel.Version == opts.Revision
 		})
 		if !found {
@@ -210,22 +210,34 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	deployType := common.DeployTypeRollback
 
 	log.Default.Debug(ctx, "Convert release to resource specs")
-	releasableResSpecs, err := release.ReleaseToResourceSpecs(releaseToRollback, releaseNamespace)
+	rollbackReleaseResSpecs, err := release.ReleaseToResourceSpecs(rollbackRelease, releaseNamespace)
 	if err != nil {
 		return fmt.Errorf("convert release to rollback to resource specs: %w", err)
 	}
 
-	newRelease, err := release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, releasableResSpecs, release.ReleaseOptions{
-		InfoAnnotations: releaseToRollback.Info.Annotations,
-		Labels:          releaseToRollback.Labels,
-		Notes:           releaseToRollback.Info.Notes,
+	newRelease, err := release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, rollbackReleaseResSpecs, release.ReleaseOptions{
+		InfoAnnotations: rollbackRelease.Info.Annotations,
+		Labels:          rollbackRelease.Labels,
+		Notes:           rollbackRelease.Info.Notes,
 	})
 	if err != nil {
 		return fmt.Errorf("construct new release: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Convert previous release to resource specs")
+	prevRelResSpecs, err := release.ReleaseToResourceSpecs(prevRelease, releaseNamespace)
+	if err != nil {
+		return fmt.Errorf("convert previous release to resource specs: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Convert new release to resource specs")
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace)
+	if err != nil {
+		return fmt.Errorf("convert new release to resource specs: %w", err)
+	}
+
 	log.Default.Debug(ctx, "Build resources")
-	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelease, newRelease, []resource.ResourcePatcher{
+	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []resource.ResourcePatcher{
 		resource.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 		resource.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
 	}, resource.BuildResourcesOptions{
@@ -260,7 +272,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	log.Default.Debug(ctx, "Build install plan")
 	installPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos)
 	if err != nil {
-		handleBuildInstallPlanErr(ctx, installPlan, err, opts.RollbackGraphPath, opts.TempDirPath, "release-rollback-graph.dot")
+		handleBuildPlanErr(ctx, installPlan, err, opts.RollbackGraphPath, opts.TempDirPath, "release-rollback-graph.dot")
 		return fmt.Errorf("build install plan: %w", err)
 	}
 
@@ -286,7 +298,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	if releaseIsUpToDate && installPlanIsUseless {
 		if opts.RollbackReportPath != "" {
-			if err := saveReport(opts.RollbackReportPath, &installReportV3{
+			if err := saveReport(opts.RollbackReportPath, &releaseReportV3{
 				Version:   3,
 				Release:   releaseName,
 				Namespace: releaseNamespace,
@@ -304,8 +316,8 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		return nil
 	}
 
-	taskStore := kubeutil.NewConcurrent(statestore.NewTaskStore())
-	logStore := kubeutil.NewConcurrent(logstore.NewLogStore())
+	taskStore := kdutil.NewConcurrent(statestore.NewTaskStore())
+	logStore := kdutil.NewConcurrent(logstore.NewLogStore())
 	watchErrCh := make(chan error, 1)
 	informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
 
@@ -327,7 +339,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	var criticalErrs, nonCriticalErrs []error
 
 	log.Default.Debug(ctx, "Execute release install plan")
-	executePlanErr := plan.ExecutePlan(ctx, installPlan, taskStore, logStore, informerFactory, history, clientFactory.KubeClient(), clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), plan.ExecutePlanOptions{
+	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, installPlan, taskStore, logStore, informerFactory, history, clientFactory.KubeClient(), clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), plan.ExecutePlanOptions{
 		NetworkParallelism: opts.NetworkParallelism,
 		ReadinessTimeout:   opts.TrackReadinessTimeout,
 		PresenceTimeout:    opts.TrackCreationTimeout,
@@ -354,7 +366,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	})
 
 	if executePlanErr != nil {
-		runFailureInstallPlanResult, nonCritErrs, critErrs := runFailureInstallPlan(ctx, installPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
+		runFailurePlanResult, nonCritErrs, critErrs := runFailurePlan(ctx, releaseNamespace, installPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
 			NetworkParallelism:    opts.NetworkParallelism,
 			TrackReadinessTimeout: opts.TrackReadinessTimeout,
 			TrackCreationTimeout:  opts.TrackCreationTimeout,
@@ -363,9 +375,9 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 		criticalErrs = append(criticalErrs, critErrs...)
 		nonCriticalErrs = append(nonCriticalErrs, nonCritErrs...)
-		completedResourceOps = append(completedResourceOps, runFailureInstallPlanResult.CompletedResourceOps...)
-		canceledResourceOps = append(canceledResourceOps, runFailureInstallPlanResult.CanceledResourceOps...)
-		failedResourceOps = append(failedResourceOps, runFailureInstallPlanResult.FailedResourceOps...)
+		completedResourceOps = append(completedResourceOps, runFailurePlanResult.CompletedResourceOps...)
+		canceledResourceOps = append(canceledResourceOps, runFailurePlanResult.CanceledResourceOps...)
+		failedResourceOps = append(failedResourceOps, runFailurePlanResult.FailedResourceOps...)
 	}
 
 	if !opts.NoProgressTablePrint {
@@ -389,7 +401,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	sort.Strings(reportCanceledOps)
 	sort.Strings(reportFailedOps)
 
-	report := &installReportV3{
+	report := &releaseReportV3{
 		Version:             3,
 		Release:             releaseName,
 		Namespace:           releaseNamespace,

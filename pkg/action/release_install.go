@@ -21,7 +21,7 @@ import (
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
-	kubeutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
+	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/internal/chart"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
@@ -35,7 +35,7 @@ import (
 )
 
 const (
-	DefaultReleaseInstallLogLevel = InfoLogLevel
+	DefaultReleaseInstallLogLevel = log.InfoLevel
 )
 
 type ReleaseInstallOptions struct {
@@ -176,7 +176,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))),
+		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(log.DebugLevel))),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
 		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
 	}
@@ -315,8 +315,23 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		return fmt.Errorf("construct new release: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Convert previous release to resource specs")
+	var prevRelResSpecs []*resource.ResourceSpec
+	if prevRelease != nil {
+		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, releaseNamespace)
+		if err != nil {
+			return fmt.Errorf("convert previous release to resource specs: %w", err)
+		}
+	}
+
+	log.Default.Debug(ctx, "Convert new release to resource specs")
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace)
+	if err != nil {
+		return fmt.Errorf("convert new release to resource specs: %w", err)
+	}
+
 	log.Default.Debug(ctx, "Build resources")
-	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelease, newRelease, []resource.ResourcePatcher{
+	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []resource.ResourcePatcher{
 		resource.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 		resource.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
 	}, resource.BuildResourcesOptions{
@@ -351,7 +366,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	log.Default.Debug(ctx, "Build install plan")
 	installPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos)
 	if err != nil {
-		handleBuildInstallPlanErr(ctx, installPlan, err, opts.InstallGraphPath, opts.TempDirPath, "release-install-graph.dot")
+		handleBuildPlanErr(ctx, installPlan, err, opts.InstallGraphPath, opts.TempDirPath, "release-install-graph.dot")
 		return fmt.Errorf("build install plan: %w", err)
 	}
 
@@ -377,7 +392,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	if releaseIsUpToDate && installPlanIsUseless {
 		if opts.InstallReportPath != "" {
-			if err := saveReport(opts.InstallReportPath, &installReportV3{
+			if err := saveReport(opts.InstallReportPath, &releaseReportV3{
 				Version:   3,
 				Release:   releaseName,
 				Namespace: releaseNamespace,
@@ -395,8 +410,8 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		return nil
 	}
 
-	taskStore := kubeutil.NewConcurrent(statestore.NewTaskStore())
-	logStore := kubeutil.NewConcurrent(logstore.NewLogStore())
+	taskStore := kdutil.NewConcurrent(statestore.NewTaskStore())
+	logStore := kdutil.NewConcurrent(logstore.NewLogStore())
 	watchErrCh := make(chan error, 1)
 	informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
 
@@ -418,7 +433,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	var criticalErrs, nonCriticalErrs []error
 
 	log.Default.Debug(ctx, "Execute release install plan")
-	executePlanErr := plan.ExecutePlan(ctx, installPlan, taskStore, logStore, informerFactory, history, clientFactory.KubeClient(), clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), plan.ExecutePlanOptions{
+	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, installPlan, taskStore, logStore, informerFactory, history, clientFactory.KubeClient(), clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), plan.ExecutePlanOptions{
 		NetworkParallelism: opts.NetworkParallelism,
 		ReadinessTimeout:   opts.TrackReadinessTimeout,
 		PresenceTimeout:    opts.TrackCreationTimeout,
@@ -445,7 +460,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	})
 
 	if executePlanErr != nil {
-		runFailureInstallPlanResult, nonCritErrs, critErrs := runFailureInstallPlan(ctx, installPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
+		runFailurePlanResult, nonCritErrs, critErrs := runFailurePlan(ctx, releaseNamespace, installPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
 			NetworkParallelism:    opts.NetworkParallelism,
 			TrackReadinessTimeout: opts.TrackReadinessTimeout,
 			TrackCreationTimeout:  opts.TrackCreationTimeout,
@@ -454,9 +469,9 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		criticalErrs = append(criticalErrs, critErrs...)
 		nonCriticalErrs = append(nonCriticalErrs, nonCritErrs...)
-		completedResourceOps = append(completedResourceOps, runFailureInstallPlanResult.CompletedResourceOps...)
-		canceledResourceOps = append(canceledResourceOps, runFailureInstallPlanResult.CanceledResourceOps...)
-		failedResourceOps = append(failedResourceOps, runFailureInstallPlanResult.FailedResourceOps...)
+		completedResourceOps = append(completedResourceOps, runFailurePlanResult.CompletedResourceOps...)
+		canceledResourceOps = append(canceledResourceOps, runFailurePlanResult.CanceledResourceOps...)
+		failedResourceOps = append(failedResourceOps, runFailurePlanResult.FailedResourceOps...)
 
 		if opts.AutoRollback && prevDeployedRelease != nil {
 			runRollbackPlanResult, nonCritErrs, critErrs := runRollbackPlan(ctx, releaseName, releaseNamespace, newRelease, prevDeployedRelease, taskStore, logStore, informerFactory, history, clientFactory, runRollbackPlanOptions{
@@ -502,7 +517,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	sort.Strings(reportCanceledOps)
 	sort.Strings(reportFailedOps)
 
-	report := &installReportV3{
+	report := &releaseReportV3{
 		Version:             3,
 		Release:             releaseName,
 		Namespace:           releaseNamespace,
@@ -660,13 +675,14 @@ func runRollbackPlan(
 	releaseNamespace string,
 	failedRelease *helmrelease.Release,
 	prevDeployedRelease *helmrelease.Release,
-	taskStore *kubeutil.Concurrent[*statestore.TaskStore],
-	logStore *kubeutil.Concurrent[*logstore.LogStore],
-	informerFactory *kubeutil.Concurrent[*informer.InformerFactory],
+	taskStore *kdutil.Concurrent[*statestore.TaskStore],
+	logStore *kdutil.Concurrent[*logstore.LogStore],
+	informerFactory *kdutil.Concurrent[*informer.InformerFactory],
 	history *release.History,
 	clientFactory *kube.ClientFactory,
 	opts runRollbackPlanOptions,
 ) (result *runRollbackPlanResult, nonCritErrs []error, critErrs []error) {
+	log.Default.Debug(ctx, "Convert prev deployed release to resource specs")
 	resSpecs, err := release.ReleaseToResourceSpecs(prevDeployedRelease, releaseNamespace)
 	if err != nil {
 		return nil, nonCritErrs, append(critErrs, fmt.Errorf("convert previous deployed release to resource specs: %w", err))
@@ -698,8 +714,20 @@ func runRollbackPlan(
 		return nil, nonCritErrs, append(critErrs, fmt.Errorf("construct new release: %w", err))
 	}
 
+	log.Default.Debug(ctx, "Convert failed release to resource specs")
+	failedRelResSpecs, err := release.ReleaseToResourceSpecs(failedRelease, releaseNamespace)
+	if err != nil {
+		return nil, nonCritErrs, append(critErrs, fmt.Errorf("convert previous release to resource specs: %w", err))
+	}
+
+	log.Default.Debug(ctx, "Convert new release to resource specs")
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace)
+	if err != nil {
+		return nil, nonCritErrs, append(critErrs, fmt.Errorf("convert new release to resource specs: %w", err))
+	}
+
 	log.Default.Debug(ctx, "Build resources")
-	instResources, delResources, err := resource.BuildResources(ctx, common.DeployTypeRollback, releaseNamespace, failedRelease, newRelease, []resource.ResourcePatcher{
+	instResources, delResources, err := resource.BuildResources(ctx, common.DeployTypeRollback, releaseNamespace, failedRelResSpecs, newRelResSpecs, []resource.ResourcePatcher{
 		resource.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 		resource.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
 	}, resource.BuildResourcesOptions{
@@ -766,7 +794,7 @@ func runRollbackPlan(
 	}
 
 	log.Default.Debug(ctx, "Execute rollback plan")
-	executePlanErr := plan.ExecutePlan(ctx, rollbackPlan, taskStore, logStore, informerFactory, history, clientFactory.KubeClient(), clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), plan.ExecutePlanOptions{
+	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, rollbackPlan, taskStore, logStore, informerFactory, history, clientFactory.KubeClient(), clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), plan.ExecutePlanOptions{
 		NetworkParallelism: opts.NetworkParallelism,
 		ReadinessTimeout:   opts.TrackReadinessTimeout,
 		PresenceTimeout:    opts.TrackCreationTimeout,
@@ -793,7 +821,7 @@ func runRollbackPlan(
 	})
 
 	if executePlanErr != nil {
-		runFailureInstallPlanResult, nonCrErrs, crErrs := runFailureInstallPlan(ctx, rollbackPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
+		runFailurePlanResult, nonCrErrs, crErrs := runFailurePlan(ctx, releaseNamespace, rollbackPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
 			NetworkParallelism:    opts.NetworkParallelism,
 			TrackReadinessTimeout: opts.TrackReadinessTimeout,
 			TrackCreationTimeout:  opts.TrackCreationTimeout,
@@ -802,9 +830,9 @@ func runRollbackPlan(
 
 		critErrs = append(critErrs, crErrs...)
 		nonCritErrs = append(nonCritErrs, nonCrErrs...)
-		completedResourceOps = append(completedResourceOps, runFailureInstallPlanResult.CompletedResourceOps...)
-		canceledResourceOps = append(canceledResourceOps, runFailureInstallPlanResult.CanceledResourceOps...)
-		failedResourceOps = append(failedResourceOps, runFailureInstallPlanResult.FailedResourceOps...)
+		completedResourceOps = append(completedResourceOps, runFailurePlanResult.CompletedResourceOps...)
+		canceledResourceOps = append(canceledResourceOps, runFailurePlanResult.CanceledResourceOps...)
+		failedResourceOps = append(failedResourceOps, runFailurePlanResult.FailedResourceOps...)
 	}
 
 	return &runRollbackPlanResult{

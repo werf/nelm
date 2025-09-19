@@ -6,10 +6,11 @@ import (
 	"os"
 
 	"github.com/werf/nelm/pkg/legacy/secret"
+	"github.com/werf/nelm/pkg/log"
 )
 
 const (
-	DefaultSecretKeyRotateLogLevel = InfoLogLevel
+	DefaultSecretKeyRotateLogLevel = log.InfoLevel
 )
 
 type SecretKeyRotateOptions struct {

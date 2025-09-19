@@ -21,12 +21,10 @@ import (
 	"github.com/werf/3p-helm/pkg/engine"
 	"github.com/werf/kubedog/pkg/tracker/debug"
 	"github.com/werf/logboek"
-	"github.com/werf/nelm/pkg/action"
 )
 
 var (
-	Default        Logger = DefaultLogboek
-	DefaultLogboek        = NewLogboekLogger()
+	Default Logger = NewLogboekLogger()
 )
 
 type SetupLoggingOptions struct {
@@ -34,18 +32,18 @@ type SetupLoggingOptions struct {
 	LogIsParseable bool
 }
 
-func SetupLogging(ctx context.Context, logLevel string, opts SetupLoggingOptions) context.Context {
+func SetupLogging(ctx context.Context, logLevel Level, opts SetupLoggingOptions) context.Context {
 	if val := ctx.Value(LogboekLoggerCtxKeyName); val == nil {
 		ctx = logboek.NewContext(ctx, logboek.DefaultLogger())
 	}
 
-	Default.SetLevel(ctx, Level(logLevel))
+	Default.SetLevel(ctx, logLevel)
 
 	spew.Config.DisablePointerAddresses = true
 	spew.Config.DisableCapacities = true
 
 	switch logLevel {
-	case action.SilentLogLevel, action.ErrorLogLevel, action.WarningLogLevel, action.InfoLogLevel:
+	case SilentLevel, ErrorLevel, WarningLevel, InfoLevel:
 		stdlog.SetOutput(io.Discard)
 
 		klog.SetOutput(io.Discard)
@@ -71,7 +69,7 @@ func SetupLogging(ctx context.Context, logLevel string, opts SetupLoggingOptions
 		engine.Debug = false
 
 		debug.SetDebug(false)
-	case action.DebugLogLevel:
+	case DebugLevel:
 		stdlog.SetOutput(os.Stdout)
 
 		klog.SetOutputBySeverity("FATAL", logboek.Context(ctx).ErrStream())
@@ -93,7 +91,7 @@ func SetupLogging(ctx context.Context, logLevel string, opts SetupLoggingOptions
 		engine.Debug = true
 
 		debug.SetDebug(true)
-	case action.TraceLogLevel:
+	case TraceLevel:
 		stdlog.SetOutput(os.Stdout)
 
 		klog.SetOutputBySeverity("FATAL", logboek.Context(ctx).ErrStream())

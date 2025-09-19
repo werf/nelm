@@ -27,7 +27,7 @@ import (
 
 const (
 	DefaultReleaseListOutputFormat = TableOutputFormat
-	DefaultReleaseListLogLevel     = ErrorLogLevel
+	DefaultReleaseListLogLevel     = log.ErrorLevel
 )
 
 type ReleaseListOptions struct {

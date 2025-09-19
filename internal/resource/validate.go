@@ -26,6 +26,10 @@ func validateNoDuplicates(releaseNamespace string, transformedResources []*Insta
 		return instRes.ID()
 	})
 
+	if len(duplicates) == 0 {
+		return nil
+	}
+
 	duplicatedIDHumans := lo.Map(duplicates, func(instRes *InstallableResource, _ int) string {
 		return instRes.IDHuman()
 	})

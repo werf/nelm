@@ -3,9 +3,9 @@ package main
 import (
 	"strings"
 
+	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 
-	"github.com/werf/nelm/pkg/action"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -21,5 +21,7 @@ func allowedLogColorModesHelp() string {
 }
 
 func allowedLogLevelsHelp() string {
-	return "Allowed: " + strings.Join(action.LogLevels, ", ")
+	return "Allowed: " + strings.Join(lo.Map(log.Levels, func(lvl log.Level, _ int) string {
+		return string(lvl)
+	}), ", ")
 }

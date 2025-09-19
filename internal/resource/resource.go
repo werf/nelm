@@ -11,11 +11,8 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 	"github.com/werf/nelm/internal/common"
-	"github.com/werf/nelm/internal/plan"
-	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource/meta"
 )
 
@@ -23,16 +20,7 @@ type BuildResourcesOptions struct {
 	Mapper apimeta.ResettableRESTMapper
 }
 
-func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRel, newRel *helmrelease.Release, patchers []ResourcePatcher, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
-	var prevRelResSpecs []*ResourceSpec
-	if prevRel != nil {
-		if resSpecs, err := release.ReleaseToResourceSpecs(prevRel, releaseNamespace); err != nil {
-			return nil, nil, fmt.Errorf("convert previous release to resource specs: %w", err)
-		} else {
-			prevRelResSpecs = resSpecs
-		}
-	}
-
+func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRelResSpecs, newRelResSpecs []*ResourceSpec, patchers []ResourcePatcher, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
 	var prevRelDelResources []*DeletableResource
 	for _, resSpec := range prevRelResSpecs {
 		var stage common.Stage
@@ -56,15 +44,6 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 		}
 
 		prevRelInstResources = append(prevRelInstResources, installableResources...)
-	}
-
-	var newRelResSpecs []*ResourceSpec
-	if newRel != nil {
-		if resSpecs, err := release.ReleaseToResourceSpecs(newRel, releaseNamespace); err != nil {
-			return nil, nil, fmt.Errorf("convert new release to resource specs: %w", err)
-		} else {
-			newRelResSpecs = resSpecs
-		}
 	}
 
 	var newRelInstResources []*InstallableResource
@@ -309,7 +288,7 @@ func NewInstallableResource(res *ResourceSpec, deployType common.DeployType, rel
 			TrackTerminationMode:                   trackTerminationMode(res.ResourceMeta),
 			Weight:                                 weight(res.ResourceMeta, len(manIntDeps) > 0),
 			ManualInternalDependencies:             manIntDeps,
-			AutoInternalDependencies:               plan.DetectInternalDependencies(res.Unstruct),
+			AutoInternalDependencies:               DetectInternalDependencies(res.Unstruct),
 			ExternalDependencies:                   extDeps,
 			DeployConditions:                       deplConditions,
 			Stage:                                  stage,
@@ -341,9 +320,9 @@ type InstallableResource struct {
 	SkipLogsForContainers                  []string
 	TrackTerminationMode                   multitrack.TrackTerminationMode
 	Weight                                 *int
-	ManualInternalDependencies             []*plan.InternalDependency
-	AutoInternalDependencies               []*plan.InternalDependency
-	ExternalDependencies                   []*plan.ExternalDependency
+	ManualInternalDependencies             []*InternalDependency
+	AutoInternalDependencies               []*InternalDependency
+	ExternalDependencies                   []*ExternalDependency
 	DeployConditions                       map[common.On][]common.Stage
 	Stage                                  common.Stage
 }

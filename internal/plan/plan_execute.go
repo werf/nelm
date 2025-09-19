@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/chanced/caps"
 	"github.com/dominikbraun/graph"
 	"github.com/samber/lo"
 	"github.com/sourcegraph/conc/pool"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -22,6 +21,9 @@ import (
 	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/release"
+	"github.com/werf/nelm/internal/resource"
+	"github.com/werf/nelm/internal/resource/meta"
+	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -34,6 +36,7 @@ type ExecutePlanOptions struct {
 
 func ExecutePlan(
 	parentCtx context.Context,
+	releaseNamespace string,
 	plan *Plan,
 	taskStore *kdutil.Concurrent[*statestore.TaskStore],
 	logStore *kdutil.Concurrent[*logstore.LogStore],
@@ -43,7 +46,7 @@ func ExecutePlan(
 	staticClient kubernetes.Interface,
 	dynamicClient dynamic.Interface,
 	discoveryClient discovery.CachedDiscoveryInterface,
-	mapper meta.ResettableRESTMapper,
+	mapper apimeta.ResettableRESTMapper,
 	opts ExecutePlanOptions,
 ) error {
 	ctx, ctxCancelFn := context.WithCancelCause(parentCtx)
@@ -84,6 +87,7 @@ func ExecutePlan(
 			delete(opsMap, opID)
 			execOperation(
 				opID,
+				releaseNamespace,
 				completedOpsIDsCh,
 				workerPool,
 				plan,
@@ -114,6 +118,7 @@ func ExecutePlan(
 
 func execOperation(
 	opID string,
+	releaseNamespace string,
 	completedOpsIDsCh chan string,
 	workerPool *pool.ContextPool,
 	plan *Plan,
@@ -125,7 +130,7 @@ func execOperation(
 	staticClient kubernetes.Interface,
 	dynamicClient dynamic.Interface,
 	discoveryClient discovery.CachedDiscoveryInterface,
-	mapper meta.ResettableRESTMapper,
+	mapper apimeta.ResettableRESTMapper,
 	ctxCancelFn context.CancelCauseFunc,
 	readinessTimeout time.Duration,
 	presenceTimeout time.Duration,
@@ -142,10 +147,11 @@ func execOperation(
 		op := lo.Must(plan.Operation(opID))
 		op.Status = OperationStatusPending
 
-		log.Default.Debug(ctx, caps.ToUpper(op.IDHuman()))
+		log.Default.Debug(ctx, util.Capitalize(op.IDHuman()))
 		err = execOp(
 			ctx,
 			op,
+			releaseNamespace,
 			taskStore,
 			logStore,
 			informerFactory,
@@ -185,6 +191,7 @@ func findExecutableOpsIDs(opsMap map[string]map[string]graph.Edge[string]) []str
 func execOp(
 	ctx context.Context,
 	op *Operation,
+	releaseNamespace string,
 	taskStore *kdutil.Concurrent[*statestore.TaskStore],
 	logStore *kdutil.Concurrent[*logstore.LogStore],
 	informerFactory *kdutil.Concurrent[*informer.InformerFactory],
@@ -193,28 +200,28 @@ func execOp(
 	staticClient kubernetes.Interface,
 	dynamicClient dynamic.Interface,
 	discoveryClient discovery.CachedDiscoveryInterface,
-	mapper meta.ResettableRESTMapper,
+	mapper apimeta.ResettableRESTMapper,
 	readinessTimeout time.Duration,
 	presenceTimeout time.Duration,
 	absenceTimeout time.Duration,
 ) error {
 	switch op.Type {
 	case OperationTypeCreate:
-		return execOpCreate(ctx, op, kubeClient)
+		return execOpCreate(ctx, op, kubeClient, releaseNamespace)
 	case OperationTypeRecreate:
-		return execOpRecreate(ctx, op, taskStore, informerFactory, kubeClient, dynamicClient, mapper, absenceTimeout)
+		return execOpRecreate(ctx, op, releaseNamespace, taskStore, informerFactory, kubeClient, dynamicClient, mapper, absenceTimeout)
 	case OperationTypeUpdate:
-		return execOpUpdate(ctx, op, kubeClient)
+		return execOpUpdate(ctx, op, kubeClient, releaseNamespace)
 	case OperationTypeApply:
-		return execOpApply(ctx, op, kubeClient)
+		return execOpApply(ctx, op, kubeClient, releaseNamespace)
 	case OperationTypeDelete:
-		return execOpDelete(ctx, op, kubeClient)
+		return execOpDelete(ctx, op, kubeClient, releaseNamespace)
 	case OperationTypeTrackReadiness:
-		return execOpTrackReadiness(ctx, op, taskStore, logStore, informerFactory, kubeClient, staticClient, dynamicClient, discoveryClient, mapper, readinessTimeout)
+		return execOpTrackReadiness(ctx, op, releaseNamespace, taskStore, logStore, informerFactory, kubeClient, staticClient, dynamicClient, discoveryClient, mapper, readinessTimeout)
 	case OperationTypeTrackPresence:
-		return execOpTrackPresence(ctx, op, taskStore, informerFactory, dynamicClient, mapper, presenceTimeout)
+		return execOpTrackPresence(ctx, op, releaseNamespace, taskStore, informerFactory, dynamicClient, mapper, presenceTimeout)
 	case OperationTypeTrackAbsence:
-		return execOpTrackAbsence(ctx, op, taskStore, informerFactory, dynamicClient, mapper, absenceTimeout)
+		return execOpTrackAbsence(ctx, op, releaseNamespace, taskStore, informerFactory, dynamicClient, mapper, absenceTimeout)
 	case OperationTypeCreateRelease:
 		return execOpCreateRelease(ctx, op, history)
 	case OperationTypeUpdateRelease:
@@ -229,14 +236,17 @@ func execOp(
 	return nil
 }
 
-func execOpCreate(ctx context.Context, op *Operation, kubeClient kube.KubeClienter) error {
+func execOpCreate(ctx context.Context, op *Operation, kubeClient kube.KubeClienter, releaseNamespace string) error {
 	opConfig := op.Config.(*OperationConfigCreate)
 
 	if _, err := kubeClient.Create(ctx, opConfig.ResourceSpec, kube.KubeClientCreateOptions{
-		ForceReplicas: opConfig.ForceReplicas,
+		DefaultNamespace: releaseNamespace,
+		ForceReplicas:    opConfig.ForceReplicas,
 	}); err != nil {
 		if errors.IsAlreadyExists(err) {
-			if _, err := kubeClient.Apply(ctx, opConfig.ResourceSpec, kube.KubeClientApplyOptions{}); err != nil {
+			if _, err := kubeClient.Apply(ctx, opConfig.ResourceSpec, kube.KubeClientApplyOptions{
+				DefaultNamespace: releaseNamespace,
+			}); err != nil {
 				return fmt.Errorf("apply resource: %w", err)
 			}
 		} else {
@@ -250,21 +260,29 @@ func execOpCreate(ctx context.Context, op *Operation, kubeClient kube.KubeClient
 func execOpRecreate(
 	ctx context.Context,
 	op *Operation,
+	releaseNamespace string,
 	taskStore *kdutil.Concurrent[*statestore.TaskStore],
 	informerFactory *kdutil.Concurrent[*informer.InformerFactory],
 	kubeClient kube.KubeClienter,
 	dynamicClient dynamic.Interface,
-	mapper meta.ResettableRESTMapper,
+	mapper apimeta.ResettableRESTMapper,
 	absenceTimeout time.Duration,
 ) error {
 	opConfig := op.Config.(*OperationConfigRecreate)
 
-	if err := kubeClient.Delete(ctx, opConfig.ResourceSpec.ResourceMeta, kube.KubeClientDeleteOptions{}); err != nil {
+	if err := kubeClient.Delete(ctx, opConfig.ResourceSpec.ResourceMeta, kube.KubeClientDeleteOptions{
+		DefaultNamespace: releaseNamespace,
+	}); err != nil {
 		return fmt.Errorf("delete resource: %w", err)
 	}
 
+	namespace, err := getNamespace(opConfig.ResourceSpec.ResourceMeta, mapper, releaseNamespace)
+	if err != nil {
+		return fmt.Errorf("determine resource namespace: %w", err)
+	}
+
 	taskState := kdutil.NewConcurrent(
-		statestore.NewAbsenceTaskState(opConfig.ResourceSpec.Name, opConfig.ResourceSpec.Namespace, opConfig.ResourceSpec.GroupVersionKind, statestore.AbsenceTaskStateOptions{}),
+		statestore.NewAbsenceTaskState(opConfig.ResourceSpec.Name, namespace, opConfig.ResourceSpec.GroupVersionKind, statestore.AbsenceTaskStateOptions{}),
 	)
 
 	taskStore.RWTransaction(func(ts *statestore.TaskStore) {
@@ -280,7 +298,8 @@ func execOpRecreate(
 	}
 
 	if _, err := kubeClient.Create(ctx, opConfig.ResourceSpec, kube.KubeClientCreateOptions{
-		ForceReplicas: opConfig.ForceReplicas,
+		DefaultNamespace: releaseNamespace,
+		ForceReplicas:    opConfig.ForceReplicas,
 	}); err != nil {
 		return fmt.Errorf("create resource: %w", err)
 	}
@@ -288,30 +307,36 @@ func execOpRecreate(
 	return nil
 }
 
-func execOpUpdate(ctx context.Context, op *Operation, kubeClient kube.KubeClienter) error {
+func execOpUpdate(ctx context.Context, op *Operation, kubeClient kube.KubeClienter, releaseNamespace string) error {
 	opConfig := op.Config.(*OperationConfigUpdate)
 
-	if _, err := kubeClient.Apply(ctx, opConfig.ResourceSpec, kube.KubeClientApplyOptions{}); err != nil {
+	if _, err := kubeClient.Apply(ctx, opConfig.ResourceSpec, kube.KubeClientApplyOptions{
+		DefaultNamespace: releaseNamespace,
+	}); err != nil {
 		return fmt.Errorf("apply resource: %w", err)
 	}
 
 	return nil
 }
 
-func execOpApply(ctx context.Context, op *Operation, kubeClient kube.KubeClienter) error {
+func execOpApply(ctx context.Context, op *Operation, kubeClient kube.KubeClienter, releaseNamespace string) error {
 	opConfig := op.Config.(*OperationConfigApply)
 
-	if _, err := kubeClient.Apply(ctx, opConfig.ResourceSpec, kube.KubeClientApplyOptions{}); err != nil {
+	if _, err := kubeClient.Apply(ctx, opConfig.ResourceSpec, kube.KubeClientApplyOptions{
+		DefaultNamespace: releaseNamespace,
+	}); err != nil {
 		return fmt.Errorf("apply resource: %w", err)
 	}
 
 	return nil
 }
 
-func execOpDelete(ctx context.Context, op *Operation, kubeClient kube.KubeClienter) error {
+func execOpDelete(ctx context.Context, op *Operation, kubeClient kube.KubeClienter, releaseNamespace string) error {
 	opConfig := op.Config.(*OperationConfigDelete)
 
-	if err := kubeClient.Delete(ctx, opConfig.ResourceMeta, kube.KubeClientDeleteOptions{}); err != nil {
+	if err := kubeClient.Delete(ctx, opConfig.ResourceMeta, kube.KubeClientDeleteOptions{
+		DefaultNamespace: releaseNamespace,
+	}); err != nil {
 		return fmt.Errorf("delete resource: %w", err)
 	}
 
@@ -321,6 +346,7 @@ func execOpDelete(ctx context.Context, op *Operation, kubeClient kube.KubeClient
 func execOpTrackReadiness(
 	ctx context.Context,
 	op *Operation,
+	releaseNamespace string,
 	taskStore *kdutil.Concurrent[*statestore.TaskStore],
 	logStore *kdutil.Concurrent[*logstore.LogStore],
 	informerFactory *kdutil.Concurrent[*informer.InformerFactory],
@@ -328,13 +354,18 @@ func execOpTrackReadiness(
 	staticClient kubernetes.Interface,
 	dynamicClient dynamic.Interface,
 	discoveryClient discovery.CachedDiscoveryInterface,
-	mapper meta.ResettableRESTMapper,
+	mapper apimeta.ResettableRESTMapper,
 	timeout time.Duration,
 ) error {
 	opConfig := op.Config.(*OperationConfigTrackReadiness)
 
+	namespace, err := getNamespace(opConfig.ResourceMeta, mapper, releaseNamespace)
+	if err != nil {
+		return fmt.Errorf("determine resource namespace: %w", err)
+	}
+
 	taskState := kdutil.NewConcurrent(
-		statestore.NewReadinessTaskState(opConfig.ResourceMeta.Name, opConfig.ResourceMeta.Namespace, opConfig.ResourceMeta.GroupVersionKind, statestore.ReadinessTaskStateOptions{
+		statestore.NewReadinessTaskState(opConfig.ResourceMeta.Name, namespace, opConfig.ResourceMeta.GroupVersionKind, statestore.ReadinessTaskStateOptions{
 			FailMode:                opConfig.FailMode,
 			TotalAllowFailuresCount: opConfig.FailuresAllowed,
 		}),
@@ -370,16 +401,22 @@ func execOpTrackReadiness(
 func execOpTrackPresence(
 	ctx context.Context,
 	op *Operation,
+	releaseNamespace string,
 	taskStore *kdutil.Concurrent[*statestore.TaskStore],
 	informerFactory *kdutil.Concurrent[*informer.InformerFactory],
 	dynamicClient dynamic.Interface,
-	mapper meta.ResettableRESTMapper,
+	mapper apimeta.ResettableRESTMapper,
 	timeout time.Duration,
 ) error {
 	opConfig := op.Config.(*OperationConfigTrackPresence)
 
+	namespace, err := getNamespace(opConfig.ResourceMeta, mapper, releaseNamespace)
+	if err != nil {
+		return fmt.Errorf("determine resource namespace: %w", err)
+	}
+
 	taskState := kdutil.NewConcurrent(
-		statestore.NewPresenceTaskState(opConfig.ResourceMeta.Name, opConfig.ResourceMeta.Namespace, opConfig.ResourceMeta.GroupVersionKind, statestore.PresenceTaskStateOptions{}),
+		statestore.NewPresenceTaskState(opConfig.ResourceMeta.Name, namespace, opConfig.ResourceMeta.GroupVersionKind, statestore.PresenceTaskStateOptions{}),
 	)
 
 	taskStore.RWTransaction(func(ts *statestore.TaskStore) {
@@ -400,16 +437,22 @@ func execOpTrackPresence(
 func execOpTrackAbsence(
 	ctx context.Context,
 	op *Operation,
+	releaseNamespace string,
 	taskStore *kdutil.Concurrent[*statestore.TaskStore],
 	informerFactory *kdutil.Concurrent[*informer.InformerFactory],
 	dynamicClient dynamic.Interface,
-	mapper meta.ResettableRESTMapper,
+	mapper apimeta.ResettableRESTMapper,
 	timeout time.Duration,
 ) error {
 	opConfig := op.Config.(*OperationConfigTrackAbsence)
 
+	namespace, err := getNamespace(opConfig.ResourceMeta, mapper, releaseNamespace)
+	if err != nil {
+		return fmt.Errorf("determine resource namespace: %w", err)
+	}
+
 	taskState := kdutil.NewConcurrent(
-		statestore.NewAbsenceTaskState(opConfig.ResourceMeta.Name, opConfig.ResourceMeta.Namespace, opConfig.ResourceMeta.GroupVersionKind, statestore.AbsenceTaskStateOptions{}),
+		statestore.NewAbsenceTaskState(opConfig.ResourceMeta.Name, namespace, opConfig.ResourceMeta.GroupVersionKind, statestore.AbsenceTaskStateOptions{}),
 	)
 
 	taskStore.RWTransaction(func(ts *statestore.TaskStore) {
@@ -467,4 +510,19 @@ func execOpDeleteRelease(
 	}
 
 	return nil
+}
+
+func getNamespace(resMeta *meta.ResourceMeta, mapper apimeta.ResettableRESTMapper, releaseNamespace string) (string, error) {
+	var namespace string
+	if namespaced, err := resource.Namespaced(resMeta.GroupVersionKind, mapper); err != nil {
+		return "", fmt.Errorf("check if resource is namespaced: %w", err)
+	} else if namespaced {
+		if resMeta.Namespace != "" {
+			namespace = resMeta.Namespace
+		} else {
+			namespace = releaseNamespace
+		}
+	}
+
+	return namespace, nil
 }

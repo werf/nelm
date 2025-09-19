@@ -20,7 +20,6 @@ import (
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 	"github.com/werf/nelm/internal/common"
-	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/resource/meta"
 	"github.com/werf/nelm/internal/util"
 )
@@ -1125,12 +1124,12 @@ func deletePolicies(meta *meta.ResourceMeta) []common.DeletePolicy {
 	return deletePolicies
 }
 
-func manualInternalDependencies(meta *meta.ResourceMeta) []*plan.InternalDependency {
+func manualInternalDependencies(meta *meta.ResourceMeta) []*InternalDependency {
 	if IsCRD(meta.GroupVersionKind.GroupKind()) {
 		return nil
 	}
 
-	deps := map[string]*plan.InternalDependency{}
+	deps := map[string]*InternalDependency{}
 
 	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, AnnotationKeyPatternDependency); found {
 		for key, value := range annotations {
@@ -1161,7 +1160,7 @@ func manualInternalDependencies(meta *meta.ResourceMeta) []*plan.InternalDepende
 
 			depName := valParts[len(valParts)-1]
 
-			dep := plan.NewInternalDependency(
+			dep := NewInternalDependency(
 				[]string{depName},
 				[]string{depNamespace},
 				[]string{gvk.Group},
@@ -1212,7 +1211,7 @@ func manualInternalDependencies(meta *meta.ResourceMeta) []*plan.InternalDepende
 				depState = common.ResourceStatePresent
 			}
 
-			dep := plan.NewInternalDependency(
+			dep := NewInternalDependency(
 				depNames,
 				depNamespaces,
 				depGroups,
@@ -1227,14 +1226,14 @@ func manualInternalDependencies(meta *meta.ResourceMeta) []*plan.InternalDepende
 	return lo.Values(deps)
 }
 
-func externalDependencies(meta *meta.ResourceMeta, releaseNamespace string, mapper apimeta.ResettableRESTMapper) ([]*plan.ExternalDependency, error) {
+func externalDependencies(meta *meta.ResourceMeta, releaseNamespace string, mapper apimeta.ResettableRESTMapper) ([]*ExternalDependency, error) {
 	if IsCRD(meta.GroupVersionKind.GroupKind()) {
 		return nil, nil
 	}
 
 	deps := externalDeps(meta, releaseNamespace)
 
-	legacyExtDeps := map[string]*plan.ExternalDependency{}
+	legacyExtDeps := map[string]*ExternalDependency{}
 	// Pretend that we don't have any external dependencies when we don't have cluster access, since we need cluster access to map GVR to GVK.
 	if mapper != nil {
 		var err error
@@ -1245,15 +1244,15 @@ func externalDependencies(meta *meta.ResourceMeta, releaseNamespace string, mapp
 	}
 
 	duplResult := lo.Values(lo.Assign(legacyExtDeps, deps))
-	uniqResult := lo.UniqBy(duplResult, func(d *plan.ExternalDependency) string {
+	uniqResult := lo.UniqBy(duplResult, func(d *ExternalDependency) string {
 		return d.ID()
 	})
 
 	return uniqResult, nil
 }
 
-func externalDeps(resMeta *meta.ResourceMeta, releaseNamespace string) map[string]*plan.ExternalDependency {
-	deps := map[string]*plan.ExternalDependency{}
+func externalDeps(resMeta *meta.ResourceMeta, releaseNamespace string) map[string]*ExternalDependency {
+	deps := map[string]*ExternalDependency{}
 	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(resMeta.Annotations, AnnotationKeyPatternExternalDependency); found {
 		for key, value := range annotations {
 			matches := AnnotationKeyPatternExternalDependency.FindStringSubmatch(key)
@@ -1284,7 +1283,7 @@ func externalDeps(resMeta *meta.ResourceMeta, releaseNamespace string) map[strin
 			depName := valParts[len(valParts)-1]
 
 			resMeta := meta.NewResourceMeta(depName, depNamespace, releaseNamespace, "", gvk, nil, nil)
-			dep := &plan.ExternalDependency{
+			dep := &ExternalDependency{
 				ResourceMeta: resMeta,
 			}
 
@@ -1296,8 +1295,8 @@ func externalDeps(resMeta *meta.ResourceMeta, releaseNamespace string) map[strin
 }
 
 // TODO(v2): get rid of legacy external deps
-func legacyExternalDeps(resMeta *meta.ResourceMeta, releaseNamespace string, mapper apimeta.ResettableRESTMapper) (map[string]*plan.ExternalDependency, error) {
-	deps := map[string]*plan.ExternalDependency{}
+func legacyExternalDeps(resMeta *meta.ResourceMeta, releaseNamespace string, mapper apimeta.ResettableRESTMapper) (map[string]*ExternalDependency, error) {
+	deps := map[string]*ExternalDependency{}
 
 	type DepInfo struct {
 		Name      string
@@ -1341,7 +1340,7 @@ func legacyExternalDeps(resMeta *meta.ResourceMeta, releaseNamespace string, map
 		}
 
 		resMeta := meta.NewResourceMeta(extDepInfo.Name, extDepInfo.Namespace, releaseNamespace, "", gvk, nil, nil)
-		dep := &plan.ExternalDependency{
+		dep := &ExternalDependency{
 			ResourceMeta: resMeta,
 		}
 

@@ -34,7 +34,7 @@ import (
 )
 
 const (
-	DefaultLegacyReleaseUninstallLogLevel = InfoLogLevel
+	DefaultLegacyReleaseUninstallLogLevel = log.InfoLevel
 )
 
 var legacyUninstallLock sync.Mutex
@@ -144,7 +144,7 @@ func legacyReleaseUninstall(ctx context.Context, releaseName, releaseNamespace s
 	*helmSettings.GetNamespaceP() = releaseNamespace
 	releaseNamespace = helmSettings.Namespace()
 	helmSettings.MaxHistory = opts.ReleaseHistoryLimit
-	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))
+	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(log.DebugLevel))
 
 	if opts.KubeContext != "" {
 		helmSettings.KubeContext = opts.KubeContext

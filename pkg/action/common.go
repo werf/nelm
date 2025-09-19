@@ -13,7 +13,6 @@ import (
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/quick"
 	"github.com/alecthomas/chroma/v2/styles"
-	"github.com/chanced/caps"
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/docker/pkg/homedir"
 	"github.com/gookit/color"
@@ -24,10 +23,11 @@ import (
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/util"
+	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/release"
+	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -51,19 +51,6 @@ const (
 	JsonOutputFormat  = "json"
 	TableOutputFormat = "table"
 )
-
-const (
-	SilentLogLevel  = string(log.SilentLevel)
-	ErrorLogLevel   = string(log.ErrorLevel)
-	WarningLogLevel = string(log.WarningLevel)
-	InfoLogLevel    = string(log.InfoLevel)
-	DebugLogLevel   = string(log.DebugLevel)
-	TraceLogLevel   = string(log.TraceLevel)
-)
-
-var LogLevels []string = lo.Map(log.Levels, func(lvl log.Level, _ int) string {
-	return string(lvl)
-})
 
 const (
 	DefaultQPSLimit              = 30
@@ -120,7 +107,7 @@ var syntaxHighlightTheme = fmt.Sprintf(`
 `, syntaxHighlightThemeName)
 
 // TODO(v2): Version > APIVersion as string "v3"
-type installReportV3 struct {
+type releaseReportV3 struct {
 	Version             int                `json:"version,omitempty"`
 	Release             string             `json:"release,omitempty"`
 	Namespace           string             `json:"namespace,omitempty"`
@@ -171,7 +158,7 @@ func printNotes(ctx context.Context, notes string) {
 	})
 }
 
-func saveReport(reportPath string, report *installReportV3) error {
+func saveReport(reportPath string, report *releaseReportV3) error {
 	reportByte, err := json.MarshalIndent(report, "", "\t")
 	if err != nil {
 		return fmt.Errorf("marshal report: %w", err)
@@ -184,7 +171,7 @@ func saveReport(reportPath string, report *installReportV3) error {
 	return nil
 }
 
-func printReport(ctx context.Context, report *installReportV3) {
+func printReport(ctx context.Context, report *releaseReportV3) {
 	if totalOpsLen := len(report.CompletedOperations) + len(report.CanceledOperations) + len(report.FailedOperations); totalOpsLen == 0 {
 		return
 	}
@@ -194,7 +181,7 @@ func printReport(ctx context.Context, report *installReportV3) {
 			BlockTitle: color.Style{color.Bold, color.Green}.Render("Completed operations"),
 		}, func() {
 			for _, op := range report.CompletedOperations {
-				log.Default.Info(ctx, caps.ToUpper(op))
+				log.Default.Info(ctx, util.Capitalize(op))
 			}
 		})
 	}
@@ -204,7 +191,7 @@ func printReport(ctx context.Context, report *installReportV3) {
 			BlockTitle: color.Style{color.Bold, color.Yellow}.Render("Canceled operations"),
 		}, func() {
 			for _, op := range report.CanceledOperations {
-				log.Default.Info(ctx, caps.ToUpper(op))
+				log.Default.Info(ctx, util.Capitalize(op))
 			}
 		})
 	}
@@ -214,7 +201,7 @@ func printReport(ctx context.Context, report *installReportV3) {
 			BlockTitle: color.Style{color.Bold, color.Red}.Render("Failed operations"),
 		}, func() {
 			for _, op := range report.FailedOperations {
-				log.Default.Info(ctx, caps.ToUpper(op))
+				log.Default.Info(ctx, util.Capitalize(op))
 			}
 		})
 	}
@@ -227,24 +214,25 @@ type runFailureInstallPlanOptions struct {
 	TrackDeletionTimeout  time.Duration
 }
 
-type runFailureInstallPlanResult struct {
+type runFailurePlanResult struct {
 	CompletedResourceOps []*plan.Operation
 	CanceledResourceOps  []*plan.Operation
 	FailedResourceOps    []*plan.Operation
 }
 
-func runFailureInstallPlan(
+func runFailurePlan(
 	ctx context.Context,
+	releaseNamespace string,
 	failedPlan *plan.Plan,
 	installableInfos []*plan.InstallableResourceInfo,
 	releaseInfos []*plan.ReleaseInfo,
-	taskStore *util.Concurrent[*statestore.TaskStore],
-	logStore *util.Concurrent[*logstore.LogStore],
-	informerFactory *util.Concurrent[*informer.InformerFactory],
+	taskStore *kdutil.Concurrent[*statestore.TaskStore],
+	logStore *kdutil.Concurrent[*logstore.LogStore],
+	informerFactory *kdutil.Concurrent[*informer.InformerFactory],
 	history *release.History,
 	clientFactory *kube.ClientFactory,
 	opts runFailureInstallPlanOptions,
-) (result *runFailureInstallPlanResult, nonCritErrs []error, critErrs []error) {
+) (result *runFailurePlanResult, nonCritErrs []error, critErrs []error) {
 	log.Default.Debug(ctx, "Build failure plan")
 	failurePlan, err := plan.BuildFailurePlan(failedPlan, installableInfos, releaseInfos)
 	if err != nil {
@@ -259,11 +247,11 @@ func runFailureInstallPlan(
 			return false
 		}
 	}); planIsUseless {
-		return &runFailureInstallPlanResult{}, nonCritErrs, critErrs
+		return &runFailurePlanResult{}, nonCritErrs, critErrs
 	}
 
 	log.Default.Debug(ctx, "Execute failure plan")
-	if err := plan.ExecutePlan(ctx, failurePlan, taskStore, logStore, informerFactory, history, clientFactory.KubeClient(), clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), plan.ExecutePlanOptions{
+	if err := plan.ExecutePlan(ctx, releaseNamespace, failurePlan, taskStore, logStore, informerFactory, history, clientFactory.KubeClient(), clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), plan.ExecutePlanOptions{
 		NetworkParallelism: opts.NetworkParallelism,
 		ReadinessTimeout:   opts.TrackReadinessTimeout,
 		PresenceTimeout:    opts.TrackCreationTimeout,
@@ -288,7 +276,7 @@ func runFailureInstallPlan(
 		return op.Status == plan.OperationStatusFailed
 	})
 
-	return &runFailureInstallPlanResult{
+	return &runFailurePlanResult{
 		CompletedResourceOps: completedResourceOps,
 		CanceledResourceOps:  canceledResourceOps,
 		FailedResourceOps:    failedResourceOps,
@@ -308,7 +296,7 @@ func savePlanAsDot(plan *plan.Plan, path string) error {
 	return nil
 }
 
-func handleBuildInstallPlanErr(ctx context.Context, installPlan *plan.Plan, planErr error, installGraphPath, tempDirPath, fallbackGraphFilename string) {
+func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr error, installGraphPath, tempDirPath, fallbackGraphFilename string) {
 	var graphPath string
 	if installGraphPath != "" {
 		graphPath = installGraphPath
@@ -317,11 +305,11 @@ func handleBuildInstallPlanErr(ctx context.Context, installPlan *plan.Plan, plan
 	}
 
 	if err := savePlanAsDot(installPlan, graphPath); err != nil {
-		log.Default.Error(ctx, "Error: save release install graph: %s", err)
+		log.Default.Error(ctx, "Error: save plan graph: %s", err)
 		return
 	}
 
-	log.Default.Warn(ctx, "Release install graph saved to %q for debugging", graphPath)
+	log.Default.Warn(ctx, "Plan graph saved to %q for debugging", graphPath)
 
 	return
 }

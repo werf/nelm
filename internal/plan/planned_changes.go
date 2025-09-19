@@ -22,7 +22,7 @@ const (
 
 // TODO: expose to the user
 type CalculatePlannedChangesOptions struct {
-	DiffContextLines       int // FIXME(ilya-lesikov): don't forget 3 by default from upper levels
+	DiffContextLines       int
 	ShowVerboseCRDDiffs    bool
 	ShowVerboseDiffs       bool
 	ShowSensitiveDiffs     bool

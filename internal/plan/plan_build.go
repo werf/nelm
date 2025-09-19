@@ -76,7 +76,7 @@ func addMainStages(plan *Plan) error {
 			Version:  OperationVersionNoop,
 			Category: OperationCategoryMeta,
 			Config: &OperationConfigNoop{
-				OpID: fmt.Sprintf("%s/%s", stage, common.StageStartSuffix),
+				OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, stage, common.StageStartSuffix),
 			},
 		}
 		chain.AddOperation(startOp)
@@ -86,7 +86,7 @@ func addMainStages(plan *Plan) error {
 			Version:  OperationVersionNoop,
 			Category: OperationCategoryMeta,
 			Config: &OperationConfigNoop{
-				OpID: fmt.Sprintf("%s/%s", stage, common.StageEndSuffix),
+				OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, stage, common.StageEndSuffix),
 			},
 		}
 		chain.AddOperation(endOp)
@@ -360,7 +360,7 @@ func addWeightedSubStages(plan *Plan, infos []*InstallableResourceInfo) error {
 				Version:  OperationVersionNoop,
 				Category: OperationCategoryMeta,
 				Config: &OperationConfigNoop{
-					OpID: fmt.Sprintf("%s/%d", weightedSubStage, common.StageStartSuffix),
+					OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, weightedSubStage, common.StageStartSuffix),
 				},
 			}
 			chain.AddOperation(startOp).Stage(stage)
@@ -370,7 +370,7 @@ func addWeightedSubStages(plan *Plan, infos []*InstallableResourceInfo) error {
 				Version:  OperationVersionNoop,
 				Category: OperationCategoryMeta,
 				Config: &OperationConfigNoop{
-					OpID: fmt.Sprintf("%s/%s", weightedSubStage, common.StageEndSuffix),
+					OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, weightedSubStage, common.StageEndSuffix),
 				},
 			}
 			chain.AddOperation(endOp).Stage(stage)

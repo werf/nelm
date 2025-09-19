@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	DefaultChartRenderLogLevel = ErrorLogLevel
+	DefaultChartRenderLogLevel = log.ErrorLevel
 )
 
 type ChartRenderOptions struct {
@@ -143,7 +143,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))),
+		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(log.DebugLevel))),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
 		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
 	}
@@ -277,8 +277,23 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		buildResourcesOpts.Mapper = clientFactory.Mapper()
 	}
 
+	log.Default.Debug(ctx, "Convert previous release to resource specs")
+	var prevRelResSpecs []*resource.ResourceSpec
+	if prevRelease != nil {
+		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, opts.ReleaseNamespace)
+		if err != nil {
+			return nil, fmt.Errorf("convert previous release to resource specs: %w", err)
+		}
+	}
+
+	log.Default.Debug(ctx, "Convert new release to resource specs")
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, opts.ReleaseNamespace)
+	if err != nil {
+		return nil, fmt.Errorf("convert new release to resource specs: %w", err)
+	}
+
 	log.Default.Debug(ctx, "Build resources")
-	instResources, _, err := resource.BuildResources(ctx, deployType, opts.ReleaseNamespace, prevRelease, newRelease, []resource.ResourcePatcher{
+	instResources, _, err := resource.BuildResources(ctx, deployType, opts.ReleaseNamespace, prevRelResSpecs, newRelResSpecs, []resource.ResourcePatcher{
 		resource.NewReleaseMetadataPatcher(opts.ReleaseName, opts.ReleaseNamespace),
 		resource.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
 	}, buildResourcesOpts)

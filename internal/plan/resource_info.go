@@ -123,7 +123,8 @@ func BuildResourceInfos(
 // TODO(v2): keep annotation should probably forbid resource recreations
 func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, releaseNamespace string, prevRelFailed bool, kubeClient kube.KubeClienter, mapper apimeta.ResettableRESTMapper) (*InstallableResourceInfo, error) {
 	getObj, getErr := kubeClient.Get(ctx, localRes.ResourceMeta, kube.KubeClientGetOptions{
-		TryCache: true,
+		DefaultNamespace: releaseNamespace,
+		TryCache:         true,
 	})
 	if getErr != nil {
 		if kube.IsNotFoundErr(getErr) || kube.IsNoSuchKindErr(getErr) {
@@ -149,7 +150,8 @@ func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 	}
 
 	dryApplyObj, dryApplyErr := kubeClient.Apply(ctx, localRes.ResourceSpec, kube.KubeClientApplyOptions{
-		DryRun: true,
+		DefaultNamespace: releaseNamespace,
+		DryRun:           true,
 	})
 
 	installType, err := resourceInstallType(localRes, getObj, dryApplyObj, dryApplyErr)
@@ -184,7 +186,8 @@ func BuildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 	}
 
 	getObj, getErr := kubeClient.Get(ctx, localRes.ResourceMeta, kube.KubeClientGetOptions{
-		TryCache: true,
+		DefaultNamespace: releaseNamespace,
+		TryCache:         true,
 	})
 	if getErr != nil {
 		if kube.IsNotFoundErr(getErr) || kube.IsNoSuchKindErr(getErr) {
@@ -431,7 +434,9 @@ func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, get
 	}
 
 	log.Default.Debug(ctx, "Fixing managed fields for resource %q", meta.IDHuman())
-	getObj, err = kubeClient.MergePatch(ctx, meta, patch)
+	getObj, err = kubeClient.MergePatch(ctx, meta, patch, kube.KubeClientMergePatchOptions{
+		DefaultNamespace: releaseNamespace,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("patch managed fields: %w", err)
 	}

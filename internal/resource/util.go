@@ -33,6 +33,15 @@ func GVKtoGVR(gvk schema.GroupVersionKind, mapper meta.RESTMapper) (gvr schema.G
 	return mapping.Resource, mapping.Scope == meta.RESTScopeNamespace, nil
 }
 
+func Namespaced(gvk schema.GroupVersionKind, mapper meta.RESTMapper) (bool, error) {
+	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+	if err != nil {
+		return false, fmt.Errorf("get resource mapping for %q: %w", gvk.String(), err)
+	}
+
+	return mapping.Scope == meta.RESTScopeNamespace, nil
+}
+
 func IsHook(annotations map[string]string) bool {
 	_, _, found := FindAnnotationOrLabelByKeyPattern(annotations, AnnotationKeyPatternHook)
 	return found

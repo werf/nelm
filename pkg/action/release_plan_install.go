@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chanced/caps"
 	"github.com/gookit/color"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
@@ -23,11 +22,12 @@ import (
 	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource"
+	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/log"
 )
 
 const (
-	DefaultReleasePlanInstallLogLevel = InfoLogLevel
+	DefaultReleasePlanInstallLogLevel = log.InfoLevel
 )
 
 var ErrChangesPlanned = errors.New("changes planned")
@@ -50,7 +50,7 @@ type ReleasePlanInstallOptions struct {
 	ExtraLabels                  map[string]string
 	ExtraRuntimeAnnotations      map[string]string
 	ForceAdoption                bool
-	InstallGraphPath             string // FIXME(ilya-lesikov): set from cli
+	InstallGraphPath             string // TODO: set from cli
 	KubeAPIServerName            string
 	KubeBurstLimit               int
 	KubeCAPath                   string
@@ -158,7 +158,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(DebugLogLevel))),
+		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(log.DebugLevel))),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
 		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
 	}
@@ -276,8 +276,23 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		return fmt.Errorf("construct new release: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Convert previous release to resource specs")
+	var prevRelResSpecs []*resource.ResourceSpec
+	if prevRelease != nil {
+		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, releaseNamespace)
+		if err != nil {
+			return fmt.Errorf("convert previous release to resource specs: %w", err)
+		}
+	}
+
+	log.Default.Debug(ctx, "Convert new release to resource specs")
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace)
+	if err != nil {
+		return fmt.Errorf("convert new release to resource specs: %w", err)
+	}
+
 	log.Default.Debug(ctx, "Build resources")
-	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelease, newRelease, []resource.ResourcePatcher{
+	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []resource.ResourcePatcher{
 		resource.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 		resource.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
 	}, resource.BuildResourcesOptions{
@@ -312,7 +327,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	log.Default.Debug(ctx, "Build install plan")
 	installPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos)
 	if err != nil {
-		handleBuildInstallPlanErr(ctx, installPlan, err, opts.InstallGraphPath, opts.TempDirPath, "release-install-graph.dot")
+		handleBuildPlanErr(ctx, installPlan, err, opts.InstallGraphPath, opts.TempDirPath, "release-install-graph.dot")
 		return fmt.Errorf("build install plan: %w", err)
 	}
 
@@ -343,7 +358,9 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	}
 
 	log.Default.Debug(ctx, "Calculate planned changes")
-	changes, err := plan.CalculatePlannedChanges(instResInfos, delResInfos, plan.CalculatePlannedChangesOptions{})
+	changes, err := plan.CalculatePlannedChanges(instResInfos, delResInfos, plan.CalculatePlannedChangesOptions{
+		DiffContextLines: 3,
+	})
 	if err != nil {
 		return fmt.Errorf("calculate planned changes: %w", err)
 	}
@@ -439,7 +456,7 @@ func logPlannedChanges(
 }
 
 func buildDiffHeader(change *plan.ResourceChange) string {
-	header := change.TypeStyle.Render(caps.ToUpper(change.Type))
+	header := change.TypeStyle.Render(util.Capitalize(change.Type))
 	header += " " + color.Style{color.Bold}.Render(change.ResourceMeta.IDHuman())
 
 	var headerOps []string

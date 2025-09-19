@@ -56,7 +56,7 @@ func (o *Operation) IDHuman() string {
 }
 
 func OperationID(t OperationType, version OperationVersion, iteration OperationIteration, configID string) string {
-	return fmt.Sprintf("%s/%s/%s/%s", t, version, iteration, configID)
+	return fmt.Sprintf("%s/%d/%d/%s", t, version, iteration, configID)
 }
 
 func OperationIDHuman(t OperationType, iteration OperationIteration, configIDHuman string) string {

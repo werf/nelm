@@ -16,6 +16,7 @@ const (
 	DefaultFieldManager     = "helm"
 	KubectlEditFieldManager = "kubectl-edit"
 	OldFieldManagerPrefix   = "werf"
+	StagePrefix             = "stage"
 	StageStartSuffix        = "start"
 	StageEndSuffix          = "end"
 )

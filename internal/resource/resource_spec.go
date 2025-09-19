@@ -14,15 +14,16 @@ import (
 )
 
 func BuildTransformedResourceSpecs(ctx context.Context, releaseNamespace string, resources []*ResourceSpec, transformers []ResourceTransformer) ([]*ResourceSpec, error) {
-	var transformedResources []*ResourceSpec
+	transformedResources := resources
 	for _, transformer := range transformers {
-		for _, res := range resources {
+		var transfResources []*ResourceSpec
+		for _, res := range transformedResources {
 			if matched, err := transformer.Match(ctx, &ResourceTransformerResourceInfo{
 				Obj: res.Unstruct,
 			}); err != nil {
 				return nil, fmt.Errorf("match resource by %q: %w", transformer.Type(), err)
 			} else if !matched {
-				transformedResources = append(transformedResources, res)
+				transfResources = append(transfResources, res)
 				continue
 			}
 
@@ -39,9 +40,11 @@ func BuildTransformedResourceSpecs(ctx context.Context, releaseNamespace string,
 					FilePath: res.FilePath,
 				})
 
-				transformedResources = append(transformedResources, newRes)
+				transfResources = append(transfResources, newRes)
 			}
 		}
+
+		transformedResources = transfResources
 	}
 
 	return transformedResources, nil
@@ -57,7 +60,7 @@ func BuildReleasableResourceSpecs(ctx context.Context, releaseNamespace string, 
 		for _, resPatcher := range patchers {
 			if matched, err := resPatcher.Match(ctx, &ResourcePatcherResourceInfo{
 				Obj: releasableRes.Unstruct,
-				// FIXME(ilya-lesikov): get rid of ownership for releasable resources
+				// TODO(ilya-lesikov): get rid of ownership for releasable resources
 				Ownership: "",
 			}); err != nil {
 				return nil, fmt.Errorf("match resource for patching by %q: %w", resPatcher.Type(), err)
@@ -75,7 +78,7 @@ func BuildReleasableResourceSpecs(ctx context.Context, releaseNamespace string, 
 
 			patchedObj, err := resPatcher.Patch(ctx, &ResourcePatcherResourceInfo{
 				Obj: unstruct,
-				// FIXME(ilya-lesikov): get rid of ownership for releasable resources
+				// TODO(ilya-lesikov): get rid of ownership for releasable resources
 				Ownership: "",
 			})
 			if err != nil {
