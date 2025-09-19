@@ -25,5 +25,5 @@ func ResourceMetaSortHandler(r1, r2 *ResourceMeta) bool {
 		return namespace1 < namespace2
 	}
 
-	return r1.Name < r1.Name
+	return r1.Name < r2.Name
 }

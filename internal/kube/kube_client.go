@@ -261,7 +261,7 @@ func (c *KubeClient) resourceLock(meta *meta.ResourceMeta) *sync.Mutex {
 	return lock.(*sync.Mutex)
 }
 
-func (c *KubeClient) clientResource(gvr schema.GroupVersionResource, namespace string, defaultNamespace string, namespaced bool) dynamic.ResourceInterface {
+func (c *KubeClient) clientResource(gvr schema.GroupVersionResource, namespace, defaultNamespace string, namespaced bool) dynamic.ResourceInterface {
 	if namespaced {
 		if namespace == "" {
 			namespace = defaultNamespace

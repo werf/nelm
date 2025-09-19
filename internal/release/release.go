@@ -226,7 +226,7 @@ func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string) (
 	return resources, nil
 }
 
-func resourceSpecToManifest(name string, namespace string, revision int, res *resource.ResourceSpec) (string, error) {
+func resourceSpecToManifest(name, namespace string, revision int, res *resource.ResourceSpec) (string, error) {
 	manifestByte, err := yaml.Marshal(res.Unstruct.UnstructuredContent())
 	if err != nil {
 		return "", fmt.Errorf("marshal resource %q for release %q (namespace: %q, revision: %d): %w", res.IDHuman(), name, namespace, revision, err)

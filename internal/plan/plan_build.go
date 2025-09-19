@@ -133,7 +133,7 @@ func addReleaseOperations(plan *Plan, releaseInfos []*ReleaseInfo) error {
 	return nil
 }
 
-func addFailureReleaseOperations(failedPlan *Plan, plan *Plan, releaseInfos []*ReleaseInfo) error {
+func addFailureReleaseOperations(failedPlan, plan *Plan, releaseInfos []*ReleaseInfo) error {
 	for _, info := range releaseInfos {
 		if !info.MustFailOnFailedDeploy {
 			continue

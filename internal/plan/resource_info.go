@@ -69,7 +69,6 @@ func BuildResourceInfos(
 	routines := lo.Max([]int{len(instResources) / lo.Max([]int{totalResourcesCount, 1}) * parallelism, 1})
 	instResourcesPool := pool.NewWithResults[*InstallableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range instResources {
-		res := res
 		instResourcesPool.Go(func(ctx context.Context) (*InstallableResourceInfo, error) {
 			info, err := BuildInstallableResourceInfo(ctx, res, releaseNamespace, prevReleaseFailed, kubeClient, mapper)
 			if err != nil {
@@ -83,7 +82,6 @@ func BuildResourceInfos(
 	routines = lo.Max([]int{len(delResources) / lo.Max([]int{totalResourcesCount, 1}) * parallelism, 1})
 	delResourcesPool := pool.NewWithResults[*DeletableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range delResources {
-		res := res
 		delResourcesPool.Go(func(ctx context.Context) (*DeletableResourceInfo, error) {
 			info, err := BuildDeletableResourceInfo(ctx, res, releaseName, releaseNamespace, kubeClient, mapper)
 			if err != nil {

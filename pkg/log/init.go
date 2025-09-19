@@ -23,9 +23,7 @@ import (
 	"github.com/werf/logboek"
 )
 
-var (
-	Default Logger = NewLogboekLogger()
-)
+var Default Logger = NewLogboekLogger()
 
 type SetupLoggingOptions struct {
 	ColorMode      string

@@ -10,8 +10,10 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-var _ ResourceTransformer = (*DropInvalidAnnotationsAndLabelsTransformer)(nil)
-var _ ResourceTransformer = (*ResourceListsTransformer)(nil)
+var (
+	_ ResourceTransformer = (*DropInvalidAnnotationsAndLabelsTransformer)(nil)
+	_ ResourceTransformer = (*ResourceListsTransformer)(nil)
+)
 
 type ResourceTransformerType string
 

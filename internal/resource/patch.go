@@ -8,8 +8,10 @@ import (
 	"github.com/werf/nelm/internal/common"
 )
 
-var _ ResourcePatcher = (*ExtraMetadataPatcher)(nil)
-var _ ResourcePatcher = (*ReleaseMetadataPatcher)(nil)
+var (
+	_ ResourcePatcher = (*ExtraMetadataPatcher)(nil)
+	_ ResourcePatcher = (*ReleaseMetadataPatcher)(nil)
+)
 
 type ResourcePatcher interface {
 	Match(ctx context.Context, resourceInfo *ResourcePatcherResourceInfo) (matched bool, err error)

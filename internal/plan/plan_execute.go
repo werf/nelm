@@ -83,7 +83,6 @@ func ExecutePlan(
 
 		executableOpsIDs := findExecutableOpsIDs(opsMap)
 		for _, opID := range executableOpsIDs {
-			opID := opID
 			delete(opsMap, opID)
 			execOperation(
 				opID,

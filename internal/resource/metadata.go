@@ -967,9 +967,9 @@ func deleteOnFailed(meta *meta.ResourceMeta) bool {
 func deployConditions(meta *meta.ResourceMeta) map[common.On][]common.Stage {
 	if IsCRD(meta.GroupVersionKind.GroupKind()) {
 		return map[common.On][]common.Stage{
-			common.InstallOnInstall:  []common.Stage{common.StagePrePreInstall},
-			common.InstallOnUpgrade:  []common.Stage{common.StagePrePreInstall},
-			common.InstallOnRollback: []common.Stage{common.StagePrePreInstall},
+			common.InstallOnInstall:  {common.StagePrePreInstall},
+			common.InstallOnUpgrade:  {common.StagePrePreInstall},
+			common.InstallOnRollback: {common.StagePrePreInstall},
 		}
 	}
 
@@ -984,9 +984,9 @@ func deployConditions(meta *meta.ResourceMeta) map[common.On][]common.Stage {
 	}
 
 	return map[common.On][]common.Stage{
-		common.InstallOnInstall:  []common.Stage{common.StageInstall},
-		common.InstallOnUpgrade:  []common.Stage{common.StageInstall},
-		common.InstallOnRollback: []common.Stage{common.StageInstall},
+		common.InstallOnInstall:  {common.StageInstall},
+		common.InstallOnUpgrade:  {common.StageInstall},
+		common.InstallOnRollback: {common.StageInstall},
 	}
 }
 

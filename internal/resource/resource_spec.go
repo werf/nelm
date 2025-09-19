@@ -126,7 +126,7 @@ func NewResourceSpec(unstruct *unstructured.Unstructured, releaseNamespace strin
 	}
 }
 
-func NewResourceSpecFromManifest(manifest string, releaseNamespace string, opts ResourceSpecOptions) (*ResourceSpec, error) {
+func NewResourceSpecFromManifest(manifest, releaseNamespace string, opts ResourceSpecOptions) (*ResourceSpec, error) {
 	if opts.FilePath == "" && strings.HasPrefix(manifest, "# Source: ") {
 		firstLine := strings.TrimSpace(strings.Split(manifest, "\n")[0])
 		opts.FilePath = strings.TrimPrefix(firstLine, "# Source: ")

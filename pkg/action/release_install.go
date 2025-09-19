@@ -681,7 +681,7 @@ func runRollbackPlan(
 	history *release.History,
 	clientFactory *kube.ClientFactory,
 	opts runRollbackPlanOptions,
-) (result *runRollbackPlanResult, nonCritErrs []error, critErrs []error) {
+) (result *runRollbackPlanResult, nonCritErrs, critErrs []error) {
 	log.Default.Debug(ctx, "Convert prev deployed release to resource specs")
 	resSpecs, err := release.ReleaseToResourceSpecs(prevDeployedRelease, releaseNamespace)
 	if err != nil {

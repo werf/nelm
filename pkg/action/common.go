@@ -164,7 +164,7 @@ func saveReport(reportPath string, report *releaseReportV3) error {
 		return fmt.Errorf("marshal report: %w", err)
 	}
 
-	if err := os.WriteFile(reportPath, reportByte, 0644); err != nil {
+	if err := os.WriteFile(reportPath, reportByte, 0o644); err != nil {
 		return fmt.Errorf("write report: %w", err)
 	}
 
@@ -232,7 +232,7 @@ func runFailurePlan(
 	history *release.History,
 	clientFactory *kube.ClientFactory,
 	opts runFailureInstallPlanOptions,
-) (result *runFailurePlanResult, nonCritErrs []error, critErrs []error) {
+) (result *runFailurePlanResult, nonCritErrs, critErrs []error) {
 	log.Default.Debug(ctx, "Build failure plan")
 	failurePlan, err := plan.BuildFailurePlan(failedPlan, installableInfos, releaseInfos)
 	if err != nil {
@@ -301,7 +301,7 @@ func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr err
 	if installGraphPath != "" {
 		graphPath = installGraphPath
 	} else {
-		graphPath = filepath.Join(tempDirPath)
+		graphPath = filepath.Join(tempDirPath, fallbackGraphFilename)
 	}
 
 	if err := savePlanAsDot(installPlan, graphPath); err != nil {
