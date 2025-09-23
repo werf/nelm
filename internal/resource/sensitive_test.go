@@ -341,9 +341,9 @@ func TestRedactSensitiveData(t *testing.T) {
 
 				// Check that values are replaced with sensitive format
 				assert.Contains(t, usernameVal, "sensitive")
-				assert.Contains(t, usernameVal, "12 bytes")
+				assert.Contains(t, usernameVal, "12 sensitive bytes")
 				assert.Contains(t, passwordVal, "sensitive")
-				assert.Contains(t, passwordVal, "12 bytes")
+				assert.Contains(t, passwordVal, "12 sensitive bytes")
 
 				// Check that type field is preserved
 				assert.Equal(t, "Opaque", result.Object["type"])
@@ -376,7 +376,7 @@ func TestRedactSensitiveData(t *testing.T) {
 				// Password should be redacted
 				passwordVal := data["password"].(string)
 				assert.Contains(t, passwordVal, "sensitive")
-				assert.Contains(t, passwordVal, "12 bytes")
+				assert.Contains(t, passwordVal, "12 sensitive bytes")
 			},
 		},
 		{
@@ -417,7 +417,7 @@ func TestRedactSensitiveData(t *testing.T) {
 
 				valueStr := envVar["value"].(string)
 				assert.Contains(t, valueStr, "sensitive")
-				assert.Contains(t, valueStr, "entries")
+				assert.Contains(t, valueStr, "sensitive entries")
 			},
 		},
 	}
@@ -535,7 +535,7 @@ func TestRedactAtJSONPath(t *testing.T) {
 				appConf := data["app.conf"].(string)
 
 				assert.Contains(t, configYaml, "sensitive")
-				assert.Contains(t, configYaml, "bytes")
+				assert.Contains(t, configYaml, "sensitive bytes")
 				assert.Equal(t, "db_password=mysecret", appConf) // unchanged
 			},
 		},
@@ -712,15 +712,15 @@ func TestRedactAtJSONPath(t *testing.T) {
 
 					switch key {
 					case "stringValue":
-						assert.Contains(t, valueStr, "16 bytes")
+						assert.Contains(t, valueStr, "16 sensitive bytes")
 					case "intValue":
-						assert.Contains(t, valueStr, "2 bytes") // "42"
+						assert.Contains(t, valueStr, "2 sensitive bytes") // "42"
 					case "boolValue":
-						assert.Contains(t, valueStr, "4 bytes") // "true"
+						assert.Contains(t, valueStr, "4 sensitive bytes") // "true"
 					case "arrayValue":
-						assert.Contains(t, valueStr, "3 entries")
+						assert.Contains(t, valueStr, "3 sensitive entries")
 					case "objectValue":
-						assert.Contains(t, valueStr, "1 entries")
+						assert.Contains(t, valueStr, "1 sensitive entries")
 					}
 				}
 			},
@@ -853,7 +853,7 @@ func TestRedactAtJSONPath(t *testing.T) {
 					if key == "nil_value" {
 						// nil values get converted to string representation
 						assert.Contains(t, value.(string), "sensitive")
-						assert.Contains(t, value.(string), "bytes")
+						assert.Contains(t, value.(string), "sensitive bytes")
 					} else {
 						valueStr := value.(string)
 						assert.Contains(t, valueStr, "sensitive", "Key %s should be redacted", key)
