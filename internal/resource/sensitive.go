@@ -113,7 +113,7 @@ func ParseSensitivePaths(value string) []string {
 
 func RedactSensitiveData(unstruct *unstructured.Unstructured, sensitivePaths []string) *unstructured.Unstructured {
 	if len(sensitivePaths) == 0 {
-		return unstruct
+		return unstruct.DeepCopy()
 	}
 
 	return redactSensitiveData(unstruct.DeepCopy(), sensitivePaths)
