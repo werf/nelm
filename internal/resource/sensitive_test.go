@@ -257,7 +257,7 @@ func TestRedactSensitiveData(t *testing.T) {
 					// If data exists, it should be redacted
 					for key, value := range data {
 						valueStr, ok := value.(string)
-						if ok && !strings.Contains(valueStr, "SENSITIVE") {
+						if ok && !strings.Contains(valueStr, "sensitive") {
 							t.Errorf("Expected data.%s to be redacted but got: %s", key, valueStr)
 						}
 					}
@@ -339,10 +339,10 @@ func TestRedactSensitiveData(t *testing.T) {
 				usernameVal := data["username"].(string)
 				passwordVal := data["password"].(string)
 
-				// Check that values are replaced with SENSITIVE format
-				assert.Contains(t, usernameVal, "SENSITIVE")
+				// Check that values are replaced with sensitive format
+				assert.Contains(t, usernameVal, "sensitive")
 				assert.Contains(t, usernameVal, "12 bytes")
-				assert.Contains(t, passwordVal, "SENSITIVE")
+				assert.Contains(t, passwordVal, "sensitive")
 				assert.Contains(t, passwordVal, "12 bytes")
 
 				// Check that type field is preserved
@@ -375,7 +375,7 @@ func TestRedactSensitiveData(t *testing.T) {
 
 				// Password should be redacted
 				passwordVal := data["password"].(string)
-				assert.Contains(t, passwordVal, "SENSITIVE")
+				assert.Contains(t, passwordVal, "sensitive")
 				assert.Contains(t, passwordVal, "12 bytes")
 			},
 		},
@@ -416,7 +416,7 @@ func TestRedactSensitiveData(t *testing.T) {
 				envVar := env[0].(map[string]interface{})
 
 				valueStr := envVar["value"].(string)
-				assert.Contains(t, valueStr, "SENSITIVE")
+				assert.Contains(t, valueStr, "sensitive")
 				assert.Contains(t, valueStr, "entries")
 			},
 		},
@@ -534,7 +534,7 @@ func TestRedactAtJSONPath(t *testing.T) {
 				configYaml := data["config.yaml"].(string)
 				appConf := data["app.conf"].(string)
 
-				assert.Contains(t, configYaml, "SENSITIVE")
+				assert.Contains(t, configYaml, "sensitive")
 				assert.Contains(t, configYaml, "bytes")
 				assert.Equal(t, "db_password=mysecret", appConf) // unchanged
 			},
@@ -584,15 +584,15 @@ func TestRedactAtJSONPath(t *testing.T) {
 				env1_0 := env1[0].(map[string]interface{})
 				env1_1 := env1[1].(map[string]interface{})
 
-				assert.Contains(t, env1_0["value"].(string), "SENSITIVE")
-				assert.Contains(t, env1_1["value"].(string), "SENSITIVE")
+				assert.Contains(t, env1_0["value"].(string), "sensitive")
+				assert.Contains(t, env1_1["value"].(string), "sensitive")
 
 				// Check second container
 				container2 := containers[1].(map[string]interface{})
 				env2 := container2["env"].([]interface{})
 				env2_0 := env2[0].(map[string]interface{})
 
-				assert.Contains(t, env2_0["value"].(string), "SENSITIVE")
+				assert.Contains(t, env2_0["value"].(string), "sensitive")
 
 				// Verify names are unchanged
 				assert.Equal(t, "PASSWORD", env1_0["name"])
@@ -619,7 +619,7 @@ func TestRedactAtJSONPath(t *testing.T) {
 				items := data["items"].([]interface{})
 
 				assert.Equal(t, "public_item", items[0])
-				assert.Contains(t, items[1].(string), "SENSITIVE")
+				assert.Contains(t, items[1].(string), "sensitive")
 				assert.Equal(t, "another_public_item", items[2])
 			},
 		},
@@ -678,8 +678,8 @@ func TestRedactAtJSONPath(t *testing.T) {
 				item0 := items[0].(map[string]interface{})
 				item1 := items[1].(map[string]interface{})
 
-				assert.Contains(t, item0["key"].(string), "SENSITIVE")
-				assert.Contains(t, item1["key"].(string), "SENSITIVE")
+				assert.Contains(t, item0["key"].(string), "sensitive")
+				assert.Contains(t, item1["key"].(string), "sensitive")
 
 				// Paths should remain unchanged
 				assert.Equal(t, "db/password", item0["path"])
@@ -705,10 +705,10 @@ func TestRedactAtJSONPath(t *testing.T) {
 			checkFunc: func(t *testing.T, result *unstructured.Unstructured) {
 				data := result.Object["data"].(map[string]interface{})
 
-				// All values should be redacted with appropriate SENSITIVE format
+				// All values should be redacted with appropriate sensitive format
 				for key, value := range data {
 					valueStr := value.(string)
-					assert.Contains(t, valueStr, "SENSITIVE", "Key %s should be redacted", key)
+					assert.Contains(t, valueStr, "sensitive", "Key %s should be redacted", key)
 
 					switch key {
 					case "stringValue":
@@ -746,22 +746,22 @@ func TestRedactAtJSONPath(t *testing.T) {
 			checkFunc: func(t *testing.T, result *unstructured.Unstructured) {
 				// Root level password
 				rootPassword := result.Object["password"].(string)
-				assert.Contains(t, rootPassword, "SENSITIVE")
+				assert.Contains(t, rootPassword, "sensitive")
 
 				// Level 1 password
 				level1 := result.Object["level1"].(map[string]interface{})
 				level1Password := level1["password"].(string)
-				assert.Contains(t, level1Password, "SENSITIVE")
+				assert.Contains(t, level1Password, "sensitive")
 
 				// Level 2 password
 				level2 := level1["level2"].(map[string]interface{})
 				level2Password := level2["password"].(string)
-				assert.Contains(t, level2Password, "SENSITIVE")
+				assert.Contains(t, level2Password, "sensitive")
 
 				// Level 3 password
 				level3 := level2["level3"].(map[string]interface{})
 				level3Password := level3["password"].(string)
-				assert.Contains(t, level3Password, "SENSITIVE")
+				assert.Contains(t, level3Password, "sensitive")
 
 				// Other field should be unchanged
 				assert.Equal(t, "public", level3["other"])
@@ -795,9 +795,9 @@ func TestRedactAtJSONPath(t *testing.T) {
 				data := result.Object["data"].(map[string]interface{})
 
 				// Sensitive fields should be redacted
-				assert.Contains(t, database["password"].(string), "SENSITIVE")
-				assert.Contains(t, redis["auth"].(string), "SENSITIVE")
-				assert.Contains(t, data["api_key"].(string), "SENSITIVE")
+				assert.Contains(t, database["password"].(string), "sensitive")
+				assert.Contains(t, redis["auth"].(string), "sensitive")
+				assert.Contains(t, data["api_key"].(string), "sensitive")
 
 				// Non-sensitive fields should remain unchanged
 				assert.Equal(t, "localhost", database["host"])
@@ -828,7 +828,7 @@ func TestRedactAtJSONPath(t *testing.T) {
 
 				// Items 1, 2, 3 should be redacted
 				for i := 1; i <= 3; i++ {
-					assert.Contains(t, items[i].(string), "SENSITIVE")
+					assert.Contains(t, items[i].(string), "sensitive")
 				}
 			},
 		},
@@ -852,11 +852,11 @@ func TestRedactAtJSONPath(t *testing.T) {
 				for key, value := range data {
 					if key == "nil_value" {
 						// nil values get converted to string representation
-						assert.Contains(t, value.(string), "SENSITIVE")
+						assert.Contains(t, value.(string), "sensitive")
 						assert.Contains(t, value.(string), "bytes")
 					} else {
 						valueStr := value.(string)
-						assert.Contains(t, valueStr, "SENSITIVE", "Key %s should be redacted", key)
+						assert.Contains(t, valueStr, "sensitive", "Key %s should be redacted", key)
 					}
 				}
 			},
