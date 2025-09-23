@@ -12,14 +12,14 @@ import (
 	"github.com/werf/nelm/internal/common"
 )
 
+type Plan struct {
+	graph graph.Graph[string, *Operation]
+}
+
 func NewPlan() *Plan {
 	return &Plan{
 		graph: graph.New(func(t *Operation) string { return t.ID() }, graph.Acyclic(), graph.PreventCycles(), graph.Directed()),
 	}
-}
-
-type Plan struct {
-	graph graph.Graph[string, *Operation]
 }
 
 func (p *Plan) Operation(id string) (op *Operation, found bool) {

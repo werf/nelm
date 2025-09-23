@@ -43,6 +43,11 @@ var (
 	)
 )
 
+type FeatGate struct {
+	Name string
+	Help string
+}
+
 func NewFeatGate(name, help string) *FeatGate {
 	fg := &FeatGate{
 		Name: name,
@@ -52,11 +57,6 @@ func NewFeatGate(name, help string) *FeatGate {
 	FeatGates = append(FeatGates, fg)
 
 	return fg
-}
-
-type FeatGate struct {
-	Name string
-	Help string
 }
 
 func (g *FeatGate) EnvVarName() string {

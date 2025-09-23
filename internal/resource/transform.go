@@ -15,8 +15,6 @@ var (
 	_ ResourceTransformer = (*ResourceListsTransformer)(nil)
 )
 
-type ResourceTransformerType string
-
 type ResourceTransformer interface {
 	Match(ctx context.Context, resourceInfo *ResourceTransformerResourceInfo) (matched bool, err error)
 	Transform(ctx context.Context, matchedResourceInfo *ResourceTransformerResourceInfo) (output []*unstructured.Unstructured, err error)
@@ -27,14 +25,19 @@ type ResourceTransformerResourceInfo struct {
 	Obj *unstructured.Unstructured
 }
 
-const TypeDropInvalidAnnotationsAndLabelsTransformer ResourceTransformerType = "drop-invalid-annotations-and-labels-transformer"
+type ResourceTransformerType string
+
+const (
+	TypeDropInvalidAnnotationsAndLabelsTransformer ResourceTransformerType = "drop-invalid-annotations-and-labels-transformer"
+	TypeResourceListsTransformer                   ResourceTransformerType = "resource-lists-transformer"
+)
+
+// TODO(v2): remove this transformer. Replace it with proper early validation of resource Heads.
+type DropInvalidAnnotationsAndLabelsTransformer struct{}
 
 func NewDropInvalidAnnotationsAndLabelsTransformer() *DropInvalidAnnotationsAndLabelsTransformer {
 	return &DropInvalidAnnotationsAndLabelsTransformer{}
 }
-
-// TODO(3.0): remove this transformer. Replace it with proper early validation of resource Heads.
-type DropInvalidAnnotationsAndLabelsTransformer struct{}
 
 func (t *DropInvalidAnnotationsAndLabelsTransformer) Match(ctx context.Context, info *ResourceTransformerResourceInfo) (matched bool, err error) {
 	return true, nil
@@ -77,13 +80,11 @@ func (t *DropInvalidAnnotationsAndLabelsTransformer) Type() ResourceTransformerT
 	return TypeDropInvalidAnnotationsAndLabelsTransformer
 }
 
-const TypeResourceListsTransformer ResourceTransformerType = "resource-lists-transformer"
+type ResourceListsTransformer struct{}
 
 func NewResourceListsTransformer() *ResourceListsTransformer {
 	return &ResourceListsTransformer{}
 }
-
-type ResourceListsTransformer struct{}
 
 func (t *ResourceListsTransformer) Match(ctx context.Context, info *ResourceTransformerResourceInfo) (matched bool, err error) {
 	return info.Obj.IsList(), nil

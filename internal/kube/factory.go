@@ -18,6 +18,16 @@ import (
 
 var addToScheme sync.Once
 
+type ClientFactory struct {
+	discoveryClient    discovery.CachedDiscoveryInterface
+	dynamicClient      dynamic.Interface
+	kubeClient         KubeClienter
+	kubeConfig         *KubeConfig
+	legacyClientGetter *LegacyClientGetter
+	mapper             meta.ResettableRESTMapper
+	staticClient       kubernetes.Interface
+}
+
 func NewClientFactory(ctx context.Context, kubeConfig *KubeConfig) (*ClientFactory, error) {
 	addToScheme.Do(func() {
 		lo.Must0(apiextv1.AddToScheme(scheme.Scheme))
@@ -60,16 +70,6 @@ func NewClientFactory(ctx context.Context, kubeConfig *KubeConfig) (*ClientFacto
 	}
 
 	return clientFactory, nil
-}
-
-type ClientFactory struct {
-	discoveryClient    discovery.CachedDiscoveryInterface
-	dynamicClient      dynamic.Interface
-	kubeClient         KubeClienter
-	kubeConfig         *KubeConfig
-	legacyClientGetter *LegacyClientGetter
-	mapper             meta.ResettableRESTMapper
-	staticClient       kubernetes.Interface
 }
 
 func (f *ClientFactory) KubeClient() KubeClienter {

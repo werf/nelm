@@ -49,21 +49,33 @@ func ResourceInstallTypeSortHandler(type1, type2 ResourceInstallType) bool {
 	return type1I < type2I
 }
 
-func BuildResourceInfos(
-	ctx context.Context,
-	releaseName string,
-	releaseNamespace string,
-	instResources []*resource.InstallableResource,
-	delResources []*resource.DeletableResource,
-	prevReleaseFailed bool,
-	kubeClient kube.KubeClienter,
-	mapper apimeta.ResettableRESTMapper,
-	parallelism int,
-) (
-	instResourceInfos []*InstallableResourceInfo,
-	delResourceInfos []*DeletableResourceInfo,
-	err error,
-) {
+type InstallableResourceInfo struct {
+	*meta.ResourceMeta
+
+	LocalResource  *resource.InstallableResource
+	GetResult      *unstructured.Unstructured
+	DryApplyResult *unstructured.Unstructured
+	DryApplyErr    error
+
+	MustInstall                   ResourceInstallType
+	MustDeleteOnSuccessfulInstall bool
+	MustDeleteOnFailedInstall     bool
+	MustTrackReadiness            bool
+
+	Iteration int
+}
+
+type DeletableResourceInfo struct {
+	*meta.ResourceMeta
+
+	LocalResource *resource.DeletableResource
+	GetResult     *unstructured.Unstructured
+
+	MustDelete       bool
+	MustTrackAbsence bool
+}
+
+func BuildResourceInfos(ctx context.Context, releaseName string, releaseNamespace string, instResources []*resource.InstallableResource, delResources []*resource.DeletableResource, prevReleaseFailed bool, kubeClient kube.KubeClienter, mapper apimeta.ResettableRESTMapper, parallelism int) (instResourceInfos []*InstallableResourceInfo, delResourceInfos []*DeletableResourceInfo, err error) {
 	totalResourcesCount := len(instResources) + len(delResources)
 
 	routines := lo.Max([]int{len(instResources) / lo.Max([]int{totalResourcesCount, 1}) * parallelism, 1})
@@ -205,7 +217,7 @@ func BuildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 		}
 	}
 
-	if resource.Orphaned(getMeta, releaseName, releaseNamespace) {
+	if orphaned(getMeta, releaseName, releaseNamespace) {
 		return noDeleteInfo, nil
 	}
 
@@ -217,32 +229,6 @@ func BuildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 		// TODO: make switchable
 		MustTrackAbsence: true,
 	}, nil
-}
-
-type InstallableResourceInfo struct {
-	*meta.ResourceMeta
-
-	LocalResource  *resource.InstallableResource
-	GetResult      *unstructured.Unstructured
-	DryApplyResult *unstructured.Unstructured
-	DryApplyErr    error
-
-	MustInstall                   ResourceInstallType
-	MustDeleteOnSuccessfulInstall bool
-	MustDeleteOnFailedInstall     bool
-	MustTrackReadiness            bool
-
-	Iteration int
-}
-
-type DeletableResourceInfo struct {
-	*meta.ResourceMeta
-
-	LocalResource *resource.DeletableResource
-	GetResult     *unstructured.Unstructured
-
-	MustDelete       bool
-	MustTrackAbsence bool
 }
 
 func filterDelResourcesPresentInInstResources(instResourceInfos []*InstallableResourceInfo, delResourceInfos []*DeletableResourceInfo) []*DeletableResourceInfo {
@@ -570,4 +556,20 @@ func exclusiveOwnershipForOurManager(managedFields []v1.ManagedFieldsEntry, ours
 	}
 
 	return newManagedFields, changed
+}
+
+func orphaned(meta *meta.ResourceMeta, releaseName, releaseNamespace string) bool {
+	if _, value, found := resource.FindAnnotationOrLabelByKeyPattern(meta.Annotations, resource.AnnotationKeyPatternReleaseName); !found || value != releaseName {
+		return true
+	}
+
+	if _, value, found := resource.FindAnnotationOrLabelByKeyPattern(meta.Annotations, resource.AnnotationKeyPatternReleaseNamespace); !found || value != releaseNamespace {
+		return true
+	}
+
+	if _, value, found := resource.FindAnnotationOrLabelByKeyPattern(meta.Labels, resource.LabelKeyPatternManagedBy); !found || value != "Helm" {
+		return true
+	}
+
+	return false
 }

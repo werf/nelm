@@ -10,6 +10,15 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 )
 
+type ResourceMeta struct {
+	Name             string
+	Namespace        string
+	GroupVersionKind schema.GroupVersionKind
+	FilePath         string
+	Annotations      map[string]string
+	Labels           map[string]string
+}
+
 func NewResourceMeta(name, namespace, releaseNamespace, filePath string, gvk schema.GroupVersionKind, annotations, labels map[string]string) *ResourceMeta {
 	if releaseNamespace == namespace {
 		namespace = ""
@@ -46,15 +55,6 @@ func NewResourceMetaFromManifest(manifest, releaseNamespace string) (*ResourceMe
 	}
 
 	return NewResourceMetaFromPartialMetadata(obj.(*v1.PartialObjectMetadata), releaseNamespace, filePath), nil
-}
-
-type ResourceMeta struct {
-	Name             string
-	Namespace        string
-	GroupVersionKind schema.GroupVersionKind
-	FilePath         string
-	Annotations      map[string]string
-	Labels           map[string]string
 }
 
 func (m *ResourceMeta) ID() string {

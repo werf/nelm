@@ -29,6 +29,15 @@ type CalculatePlannedChangesOptions struct {
 	ShowInsignificantDiffs bool
 }
 
+type ResourceChange struct {
+	ExtraOperations []string
+	Reason          string
+	ResourceMeta    *meta.ResourceMeta
+	Type            string
+	TypeStyle       color.Style
+	Udiff           string
+}
+
 func CalculatePlannedChanges(installableInfos []*InstallableResourceInfo, deletableInfos []*DeletableResourceInfo, opts CalculatePlannedChangesOptions) ([]*ResourceChange, error) {
 	instInfosByIter := groupInstInfosByIter(installableInfos)
 
@@ -235,13 +244,4 @@ func cleanUnstruct(unstruct *unstructured.Unstructured, sensitiveInfo resource.S
 	unstructClean = resource.CleanUnstruct(unstructClean, cleanUnstructOpts)
 
 	return unstructClean
-}
-
-type ResourceChange struct {
-	ExtraOperations []string
-	Reason          string
-	ResourceMeta    *meta.ResourceMeta
-	Type            string
-	TypeStyle       color.Style
-	Udiff           string
 }

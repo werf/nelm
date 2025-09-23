@@ -24,6 +24,23 @@ import (
 
 var _ KubeClienter = (*KubeClient)(nil)
 
+type KubeClienter interface {
+	Get(ctx context.Context, meta *meta.ResourceMeta, opts KubeClientGetOptions) (*unstructured.Unstructured, error)
+	Create(ctx context.Context, spec *resource.ResourceSpec, opts KubeClientCreateOptions) (*unstructured.Unstructured, error)
+	Apply(ctx context.Context, spec *resource.ResourceSpec, opts KubeClientApplyOptions) (*unstructured.Unstructured, error)
+	MergePatch(ctx context.Context, meta *meta.ResourceMeta, patch []byte, opts KubeClientMergePatchOptions) (*unstructured.Unstructured, error)
+	Delete(ctx context.Context, meta *meta.ResourceMeta, opts KubeClientDeleteOptions) error
+}
+
+type KubeClient struct {
+	staticClient    kubernetes.Interface
+	dynamicClient   dynamic.Interface
+	discoveryClient discovery.CachedDiscoveryInterface
+	mapper          apimeta.ResettableRESTMapper
+	clusterCache    *ttlcache.Cache[string, *clusterCacheEntry]
+	resourceLocks   *sync.Map
+}
+
 func NewKubeClient(staticClient kubernetes.Interface, dynamicClient dynamic.Interface, discoveryClient discovery.CachedDiscoveryInterface, mapper apimeta.ResettableRESTMapper) *KubeClient {
 	clusterCache := ttlcache.New[string, *clusterCacheEntry](
 		ttlcache.WithDisableTouchOnHit[string, *clusterCacheEntry](),
@@ -37,15 +54,6 @@ func NewKubeClient(staticClient kubernetes.Interface, dynamicClient dynamic.Inte
 		clusterCache:    clusterCache,
 		resourceLocks:   &sync.Map{},
 	}
-}
-
-type KubeClient struct {
-	staticClient    kubernetes.Interface
-	dynamicClient   dynamic.Interface
-	discoveryClient discovery.CachedDiscoveryInterface
-	mapper          apimeta.ResettableRESTMapper
-	clusterCache    *ttlcache.Cache[string, *clusterCacheEntry]
-	resourceLocks   *sync.Map
 }
 
 type KubeClientGetOptions struct {

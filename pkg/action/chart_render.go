@@ -277,33 +277,10 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		buildResourcesOpts.Mapper = clientFactory.Mapper()
 	}
 
-	log.Default.Debug(ctx, "Convert previous release to resource specs")
-	var prevRelResSpecs []*resource.ResourceSpec
-	if prevRelease != nil {
-		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, opts.ReleaseNamespace)
-		if err != nil {
-			return nil, fmt.Errorf("convert previous release to resource specs: %w", err)
-		}
-	}
-
 	log.Default.Debug(ctx, "Convert new release to resource specs")
-	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, opts.ReleaseNamespace)
+	resSpecs, err := release.ReleaseToResourceSpecs(newRelease, opts.ReleaseNamespace)
 	if err != nil {
 		return nil, fmt.Errorf("convert new release to resource specs: %w", err)
-	}
-
-	log.Default.Debug(ctx, "Build resources")
-	instResources, _, err := resource.BuildResources(ctx, deployType, opts.ReleaseNamespace, prevRelResSpecs, newRelResSpecs, []resource.ResourcePatcher{
-		resource.NewReleaseMetadataPatcher(opts.ReleaseName, opts.ReleaseNamespace),
-		resource.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
-	}, buildResourcesOpts)
-	if err != nil {
-		return nil, fmt.Errorf("build resources: %w", err)
-	}
-
-	log.Default.Debug(ctx, "Locally validate resources")
-	if err := resource.ValidateLocal(opts.ReleaseNamespace, instResources); err != nil {
-		return nil, fmt.Errorf("locally validate resources: %w", err)
 	}
 
 	var showFiles []string
@@ -355,9 +332,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	result := &ChartRenderResultV2{
 		APIVersion: "v2",
-		Resources: lo.Map(instResources, func(res *resource.InstallableResource, _ int) *resource.ResourceSpec {
-			return res.ResourceSpec
-		}),
+		Resources:  resSpecs,
 	}
 
 	sort.SliceStable(result.Resources, func(i, j int) bool {

@@ -149,46 +149,6 @@ func KeepOnDelete(meta *meta.ResourceMeta, releaseNamespace string) bool {
 	return value == "keep"
 }
 
-func Orphaned(meta *meta.ResourceMeta, releaseName, releaseNamespace string) bool {
-	if _, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternReleaseName); !found || value != releaseName {
-		return true
-	}
-
-	if _, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternReleaseNamespace); !found || value != releaseNamespace {
-		return true
-	}
-
-	if _, value, found := FindAnnotationOrLabelByKeyPattern(meta.Labels, LabelKeyPatternManagedBy); !found || value != "Helm" {
-		return true
-	}
-
-	return false
-}
-
-func AdoptableBy(meta *meta.ResourceMeta, releaseName, releaseNamespace string) (adoptable bool, nonAdoptableReason string) {
-	nonAdoptableReasons := []string{}
-
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternReleaseName); found {
-		if value != releaseName {
-			nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation "%s=%s" must have value %q`, key, value, releaseName))
-		}
-	} else {
-		nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation %q not found, must be set to %q`, AnnotationKeyHumanReleaseName, releaseName))
-	}
-
-	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternReleaseNamespace); found {
-		if value != releaseNamespace {
-			nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation "%s=%s" must have value %q`, key, value, releaseNamespace))
-		}
-	} else {
-		nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation %q not found, must be set to %q`, AnnotationKeyHumanReleaseNamespace, releaseNamespace))
-	}
-
-	nonAdoptableReason = strings.Join(nonAdoptableReasons, ", ")
-
-	return len(nonAdoptableReasons) == 0, nonAdoptableReason
-}
-
 func validateHook(meta *meta.ResourceMeta) error {
 	if key, value, found := FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternHook); found {
 		if value == "" {
@@ -1000,7 +960,7 @@ func deployConditionsForAnnotation(meta *meta.ResourceMeta, annoPattern *regexp.
 		return strings.TrimSpace(p)
 	})
 
-	var result map[common.On][]common.Stage
+	result := map[common.On][]common.Stage{}
 	for _, valCondition := range valConditions {
 		switch valCondition {
 		case string(helmrelease.HookPreInstall):

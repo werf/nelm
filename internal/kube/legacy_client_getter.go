@@ -10,6 +10,13 @@ import (
 
 var _ genericclioptions.RESTClientGetter = (*LegacyClientGetter)(nil)
 
+type LegacyClientGetter struct {
+	discoveryClient    discovery.CachedDiscoveryInterface
+	mapper             meta.ResettableRESTMapper
+	restConfig         *rest.Config
+	legacyClientConfig clientcmd.ClientConfig
+}
+
 // TODO(v2): get rid
 func NewLegacyClientGetter(discoveryClient discovery.CachedDiscoveryInterface, mapper meta.ResettableRESTMapper, restConfig *rest.Config, legacyClientConfig clientcmd.ClientConfig) *LegacyClientGetter {
 	return &LegacyClientGetter{
@@ -18,13 +25,6 @@ func NewLegacyClientGetter(discoveryClient discovery.CachedDiscoveryInterface, m
 		restConfig:         restConfig,
 		legacyClientConfig: legacyClientConfig,
 	}
-}
-
-type LegacyClientGetter struct {
-	discoveryClient    discovery.CachedDiscoveryInterface
-	mapper             meta.ResettableRESTMapper
-	restConfig         *rest.Config
-	legacyClientConfig clientcmd.ClientConfig
 }
 
 func (g *LegacyClientGetter) ToRESTConfig() (*rest.Config, error) {

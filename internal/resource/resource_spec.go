@@ -13,6 +13,52 @@ import (
 	"github.com/werf/nelm/internal/resource/meta"
 )
 
+type ResourceSpec struct {
+	*meta.ResourceMeta
+
+	Unstruct *unstructured.Unstructured
+	StoreAs  common.StoreAs
+}
+
+type ResourceSpecOptions struct {
+	StoreAs  common.StoreAs
+	FilePath string
+}
+
+func NewResourceSpec(unstruct *unstructured.Unstructured, releaseNamespace string, opts ResourceSpecOptions) *ResourceSpec {
+	if opts.StoreAs == "" {
+		if IsHook(unstruct.GetAnnotations()) {
+			opts.StoreAs = common.StoreAsHook
+		} else {
+			opts.StoreAs = common.StoreAsRegular
+		}
+	}
+
+	if releaseNamespace == unstruct.GetNamespace() {
+		unstruct.SetNamespace("")
+	}
+
+	return &ResourceSpec{
+		ResourceMeta: meta.NewResourceMetaFromUnstructured(unstruct, releaseNamespace, opts.FilePath),
+		Unstruct:     unstruct,
+		StoreAs:      opts.StoreAs,
+	}
+}
+
+func NewResourceSpecFromManifest(manifest, releaseNamespace string, opts ResourceSpecOptions) (*ResourceSpec, error) {
+	if opts.FilePath == "" && strings.HasPrefix(manifest, "# Source: ") {
+		firstLine := strings.TrimSpace(strings.Split(manifest, "\n")[0])
+		opts.FilePath = strings.TrimPrefix(firstLine, "# Source: ")
+	}
+
+	obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(manifest), nil, &unstructured.Unstructured{})
+	if err != nil {
+		return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
+	}
+
+	return NewResourceSpec(obj.(*unstructured.Unstructured), releaseNamespace, opts), nil
+}
+
 func BuildTransformedResourceSpecs(ctx context.Context, releaseNamespace string, resources []*ResourceSpec, transformers []ResourceTransformer) ([]*ResourceSpec, error) {
 	transformedResources := resources
 	for _, transformer := range transformers {
@@ -99,50 +145,4 @@ func BuildReleasableResourceSpecs(ctx context.Context, releaseNamespace string, 
 	})
 
 	return releasableResources, nil
-}
-
-type ResourceSpecOptions struct {
-	StoreAs  common.StoreAs
-	FilePath string
-}
-
-func NewResourceSpec(unstruct *unstructured.Unstructured, releaseNamespace string, opts ResourceSpecOptions) *ResourceSpec {
-	if opts.StoreAs == "" {
-		if IsHook(unstruct.GetAnnotations()) {
-			opts.StoreAs = common.StoreAsHook
-		} else {
-			opts.StoreAs = common.StoreAsRegular
-		}
-	}
-
-	if releaseNamespace == unstruct.GetNamespace() {
-		unstruct.SetNamespace("")
-	}
-
-	return &ResourceSpec{
-		ResourceMeta: meta.NewResourceMetaFromUnstructured(unstruct, releaseNamespace, opts.FilePath),
-		Unstruct:     unstruct,
-		StoreAs:      opts.StoreAs,
-	}
-}
-
-func NewResourceSpecFromManifest(manifest, releaseNamespace string, opts ResourceSpecOptions) (*ResourceSpec, error) {
-	if opts.FilePath == "" && strings.HasPrefix(manifest, "# Source: ") {
-		firstLine := strings.TrimSpace(strings.Split(manifest, "\n")[0])
-		opts.FilePath = strings.TrimPrefix(firstLine, "# Source: ")
-	}
-
-	obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(manifest), nil, &unstructured.Unstructured{})
-	if err != nil {
-		return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
-	}
-
-	return NewResourceSpec(obj.(*unstructured.Unstructured), releaseNamespace, opts), nil
-}
-
-type ResourceSpec struct {
-	*meta.ResourceMeta
-
-	Unstruct *unstructured.Unstructured
-	StoreAs  common.StoreAs
 }

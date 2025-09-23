@@ -14,9 +14,19 @@ import (
 	"github.com/werf/logboek/pkg/level"
 )
 
+var _ Logger = (*LogboekLogger)(nil)
+
 const LogboekLoggerCtxKeyName = "logboek_logger"
 
-var _ Logger = (*LogboekLogger)(nil)
+type LogboekLogger struct {
+	traceStash *util.Concurrent[map[string][]string]
+	debugStash *util.Concurrent[map[string][]string]
+	infoStash  *util.Concurrent[map[string][]string]
+	warnStash  *util.Concurrent[map[string][]string]
+	errorStash *util.Concurrent[map[string][]string]
+
+	level *util.Concurrent[*Level]
+}
 
 func NewLogboekLogger() *LogboekLogger {
 	return &LogboekLogger{
@@ -28,16 +38,6 @@ func NewLogboekLogger() *LogboekLogger {
 
 		level: util.NewConcurrent(lo.ToPtr(InfoLevel)),
 	}
-}
-
-type LogboekLogger struct {
-	traceStash *util.Concurrent[map[string][]string]
-	debugStash *util.Concurrent[map[string][]string]
-	infoStash  *util.Concurrent[map[string][]string]
-	warnStash  *util.Concurrent[map[string][]string]
-	errorStash *util.Concurrent[map[string][]string]
-
-	level *util.Concurrent[*Level]
 }
 
 func (l *LogboekLogger) Trace(ctx context.Context, format string, a ...interface{}) {

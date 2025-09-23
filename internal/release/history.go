@@ -24,54 +24,11 @@ type Historier interface {
 	DeleteRelease(ctx context.Context, name string, revision int) error
 }
 
-func BuildHistories(historyStorage ReleaseStorager, opts HistoryOptions) ([]*History, error) {
-	rels, err := historyStorage.Query(map[string]string{"owner": "helm"})
-	if err != nil && err != driver.ErrReleaseNotFound {
-		return nil, fmt.Errorf("query releases: %w", err)
-	}
-
-	releasesByNamespace := map[string]map[string][]*helmrelease.Release{}
-	for _, rel := range rels {
-		if releasesByNamespace[rel.Namespace] == nil {
-			releasesByNamespace[rel.Namespace] = map[string][]*helmrelease.Release{}
-		}
-
-		if releasesByNamespace[rel.Namespace][rel.Name] == nil {
-			releasesByNamespace[rel.Namespace][rel.Name] = []*helmrelease.Release{}
-		}
-
-		releasesByNamespace[rel.Namespace][rel.Name] = append(releasesByNamespace[rel.Namespace][rel.Name], rel)
-	}
-
-	var histories []*History
-	for _, releasesFromNamespace := range releasesByNamespace {
-		for relName, revisions := range releasesFromNamespace {
-			history := NewHistory(
-				revisions,
-				relName,
-				historyStorage,
-				opts,
-			)
-
-			histories = append(histories, history)
-		}
-	}
-
-	return histories, nil
-}
-
-func BuildHistory(releaseName string, historyStorage ReleaseStorager, opts HistoryOptions) (*History, error) {
-	rels, err := historyStorage.Query(map[string]string{"name": releaseName, "owner": "helm"})
-	if err != nil && err != driver.ErrReleaseNotFound {
-		return nil, fmt.Errorf("query releases for release %q: %w", releaseName, err)
-	}
-
-	return NewHistory(
-		rels,
-		releaseName,
-		historyStorage,
-		opts,
-	), nil
+type History struct {
+	releaseName string
+	releases    []*helmrelease.Release
+	storage     ReleaseStorager
+	updateLock  sync.Mutex
 }
 
 type HistoryOptions struct{}
@@ -84,13 +41,6 @@ func NewHistory(rels []*helmrelease.Release, releaseName string, historyStorage 
 		releases:    rels,
 		storage:     historyStorage,
 	}
-}
-
-type History struct {
-	releaseName string
-	releases    []*helmrelease.Release
-	storage     ReleaseStorager
-	updateLock  sync.Mutex
 }
 
 func (h *History) Releases() []*helmrelease.Release {
@@ -176,4 +126,54 @@ func (h *History) DeleteRelease(ctx context.Context, name string, revision int) 
 	}
 
 	return nil
+}
+
+func BuildHistories(historyStorage ReleaseStorager, opts HistoryOptions) ([]*History, error) {
+	rels, err := historyStorage.Query(map[string]string{"owner": "helm"})
+	if err != nil && err != driver.ErrReleaseNotFound {
+		return nil, fmt.Errorf("query releases: %w", err)
+	}
+
+	releasesByNamespace := map[string]map[string][]*helmrelease.Release{}
+	for _, rel := range rels {
+		if releasesByNamespace[rel.Namespace] == nil {
+			releasesByNamespace[rel.Namespace] = map[string][]*helmrelease.Release{}
+		}
+
+		if releasesByNamespace[rel.Namespace][rel.Name] == nil {
+			releasesByNamespace[rel.Namespace][rel.Name] = []*helmrelease.Release{}
+		}
+
+		releasesByNamespace[rel.Namespace][rel.Name] = append(releasesByNamespace[rel.Namespace][rel.Name], rel)
+	}
+
+	var histories []*History
+	for _, releasesFromNamespace := range releasesByNamespace {
+		for relName, revisions := range releasesFromNamespace {
+			history := NewHistory(
+				revisions,
+				relName,
+				historyStorage,
+				opts,
+			)
+
+			histories = append(histories, history)
+		}
+	}
+
+	return histories, nil
+}
+
+func BuildHistory(releaseName string, historyStorage ReleaseStorager, opts HistoryOptions) (*History, error) {
+	rels, err := historyStorage.Query(map[string]string{"name": releaseName, "owner": "helm"})
+	if err != nil && err != driver.ErrReleaseNotFound {
+		return nil, fmt.Errorf("query releases for release %q: %w", releaseName, err)
+	}
+
+	return NewHistory(
+		rels,
+		releaseName,
+		historyStorage,
+		opts,
+	), nil
 }

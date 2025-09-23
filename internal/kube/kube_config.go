@@ -12,6 +12,13 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
+type KubeConfig struct {
+	LegacyClientConfig clientcmd.ClientConfig
+	Namespace          string
+	RawConfig          *api.Config
+	RestConfig         *rest.Config
+}
+
 type KubeConfigOptions struct {
 	AuthInfo              string
 	BurstLimit            int
@@ -111,13 +118,6 @@ func NewKubeConfig(ctx context.Context, kubeConfigPaths []string, opts KubeConfi
 	log.Default.TraceStruct(ctx, kubeConfig, "Constructed KubeConfig:")
 
 	return kubeConfig, nil
-}
-
-type KubeConfig struct {
-	LegacyClientConfig clientcmd.ClientConfig
-	Namespace          string
-	RawConfig          *api.Config
-	RestConfig         *rest.Config
 }
 
 func loadKubeConfigBase64(kubeConfigBase64 string) (*api.Config, error) {

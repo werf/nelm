@@ -1,5 +1,13 @@
 package meta
 
+type ResourceMatcher struct {
+	names      []string
+	namespaces []string
+	groups     []string
+	versions   []string
+	kinds      []string
+}
+
 type ResourceMatcherOptions struct{}
 
 func NewResourceMatcher(names, namespaces, groups, versions, kinds []string, opts ResourceMatcherOptions) *ResourceMatcher {
@@ -10,14 +18,6 @@ func NewResourceMatcher(names, namespaces, groups, versions, kinds []string, opt
 		versions:   versions,
 		kinds:      kinds,
 	}
-}
-
-type ResourceMatcher struct {
-	names      []string
-	namespaces []string
-	groups     []string
-	versions   []string
-	kinds      []string
 }
 
 func (s *ResourceMatcher) Match(resMeta *ResourceMeta) bool {

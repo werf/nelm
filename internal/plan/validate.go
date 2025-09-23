@@ -2,8 +2,10 @@ package plan
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/werf/nelm/internal/resource"
+	"github.com/werf/nelm/internal/resource/meta"
 	"github.com/werf/nelm/internal/util"
 )
 
@@ -24,10 +26,34 @@ func validateAdoptableResources(releaseName, releaseNamespace string, resourceIn
 			continue
 		}
 
-		if adoptable, nonAdoptableReason := resource.AdoptableBy(info.LocalResource.ResourceMeta, releaseName, releaseNamespace); !adoptable {
+		if adoptable, nonAdoptableReason := adoptableBy(info.LocalResource.ResourceMeta, releaseName, releaseNamespace); !adoptable {
 			errs = append(errs, fmt.Errorf("resource %q is not adoptable: %s", info.IDHuman(), nonAdoptableReason))
 		}
 	}
 
 	return util.Multierrorf("adoption validation failed", errs)
+}
+
+func adoptableBy(meta *meta.ResourceMeta, releaseName, releaseNamespace string) (adoptable bool, nonAdoptableReason string) {
+	nonAdoptableReasons := []string{}
+
+	if key, value, found := resource.FindAnnotationOrLabelByKeyPattern(meta.Annotations, resource.AnnotationKeyPatternReleaseName); found {
+		if value != releaseName {
+			nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation "%s=%s" must have value %q`, key, value, releaseName))
+		}
+	} else {
+		nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation %q not found, must be set to %q`, resource.AnnotationKeyHumanReleaseName, releaseName))
+	}
+
+	if key, value, found := resource.FindAnnotationOrLabelByKeyPattern(meta.Annotations, resource.AnnotationKeyPatternReleaseNamespace); found {
+		if value != releaseNamespace {
+			nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation "%s=%s" must have value %q`, key, value, releaseNamespace))
+		}
+	} else {
+		nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation %q not found, must be set to %q`, resource.AnnotationKeyHumanReleaseNamespace, releaseNamespace))
+	}
+
+	nonAdoptableReason = strings.Join(nonAdoptableReasons, ", ")
+
+	return len(nonAdoptableReasons) == 0, nonAdoptableReason
 }

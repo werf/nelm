@@ -26,18 +26,21 @@ type ResourcePatcherResourceInfo struct {
 
 type ResourcePatcherType string
 
-const TypeExtraMetadataPatcher ResourcePatcherType = "extra-metadata-patcher"
+const (
+	TypeExtraMetadataPatcher   ResourcePatcherType = "extra-metadata-patcher"
+	TypeReleaseMetadataPatcher ResourcePatcherType = "release-metadata-patcher"
+)
+
+type ExtraMetadataPatcher struct {
+	annotations map[string]string
+	labels      map[string]string
+}
 
 func NewExtraMetadataPatcher(annotations, labels map[string]string) *ExtraMetadataPatcher {
 	return &ExtraMetadataPatcher{
 		annotations: annotations,
 		labels:      labels,
 	}
-}
-
-type ExtraMetadataPatcher struct {
-	annotations map[string]string
-	labels      map[string]string
 }
 
 func (p *ExtraMetadataPatcher) Match(ctx context.Context, info *ResourcePatcherResourceInfo) (bool, error) {
@@ -53,18 +56,16 @@ func (p *ExtraMetadataPatcher) Type() ResourcePatcherType {
 	return TypeExtraMetadataPatcher
 }
 
-const TypeReleaseMetadataPatcher ResourcePatcherType = "release-metadata-patcher"
+type ReleaseMetadataPatcher struct {
+	releaseName      string
+	releaseNamespace string
+}
 
 func NewReleaseMetadataPatcher(releaseName, releaseNamespace string) *ReleaseMetadataPatcher {
 	return &ReleaseMetadataPatcher{
 		releaseName:      releaseName,
 		releaseNamespace: releaseNamespace,
 	}
-}
-
-type ReleaseMetadataPatcher struct {
-	releaseName      string
-	releaseNamespace string
 }
 
 func (p *ReleaseMetadataPatcher) Match(ctx context.Context, info *ResourcePatcherResourceInfo) (bool, error) {

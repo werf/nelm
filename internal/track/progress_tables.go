@@ -21,6 +21,12 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
+type ProgressTablesPrinter struct {
+	ctxCancelFn   context.CancelCauseFunc
+	finishedCh    chan struct{}
+	tablesBuilder *tablesBuilder
+}
+
 type ProgressTablesPrinterOptions struct {
 	DefaultNamespace string
 }
@@ -31,12 +37,6 @@ func NewProgressTablesPrinter(taskStore *kdutil.Concurrent[*statestore.TaskStore
 			DefaultNamespace: opts.DefaultNamespace,
 		}),
 	}
-}
-
-type ProgressTablesPrinter struct {
-	ctxCancelFn   context.CancelCauseFunc
-	finishedCh    chan struct{}
-	tablesBuilder *tablesBuilder
 }
 
 func (p *ProgressTablesPrinter) Start(ctx context.Context, interval time.Duration) {
@@ -114,6 +114,21 @@ func printTables(
 	}
 }
 
+type tablesBuilder struct {
+	taskStore *kdutil.Concurrent[*statestore.TaskStore]
+	logStore  *kdutil.Concurrent[*logstore.LogStore]
+
+	defaultNamespace      string
+	maxProgressTableWidth int
+	maxLogEventTableWidth int
+
+	nextLogPointers    map[string]int
+	nextEventPointers  map[string]int
+	hideReadinessTasks map[string]bool
+	hidePresenceTasks  map[string]bool
+	hideAbsenceTasks   map[string]bool
+}
+
 type tablesBuilderOptions struct {
 	DefaultNamespace string
 }
@@ -133,21 +148,6 @@ func newTablesBuilder(taskStore *kdutil.Concurrent[*statestore.TaskStore], logSt
 	}
 
 	return builder
-}
-
-type tablesBuilder struct {
-	taskStore *kdutil.Concurrent[*statestore.TaskStore]
-	logStore  *kdutil.Concurrent[*logstore.LogStore]
-
-	defaultNamespace      string
-	maxProgressTableWidth int
-	maxLogEventTableWidth int
-
-	nextLogPointers    map[string]int
-	nextEventPointers  map[string]int
-	hideReadinessTasks map[string]bool
-	hidePresenceTasks  map[string]bool
-	hideAbsenceTasks   map[string]bool
 }
 
 func (b *tablesBuilder) BuildProgressTable() (table prtable.Writer, notEmpty bool) {
