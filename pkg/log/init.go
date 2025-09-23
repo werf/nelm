@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	stdlog "log"
 	"os"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/gookit/color"
 	"github.com/hofstadter-io/cinful"
+	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"github.com/xo/terminfo"
 	"k8s.io/klog"
@@ -48,21 +48,21 @@ func SetupLogging(ctx context.Context, logLevel Level, opts SetupLoggingOptions)
 		// From: https://github.com/kubernetes/klog/issues/87#issuecomment-1671820147
 		klogFlags := &flag.FlagSet{}
 		klog.InitFlags(klogFlags)
-		klogFlags.Set("logtostderr", "false")
-		klogFlags.Set("alsologtostderr", "false")
-		klogFlags.Set("stderrthreshold", "4")
+		lo.Must0(klogFlags.Set("logtostderr", "false"))
+		lo.Must0(klogFlags.Set("alsologtostderr", "false"))
+		lo.Must0(klogFlags.Set("stderrthreshold", "4"))
 
 		klogv2.SetOutput(io.Discard)
 		// From: https://github.com/kubernetes/klog/issues/87#issuecomment-1671820147
 		klogV2Flags := &flag.FlagSet{}
 		klogv2.InitFlags(klogV2Flags)
-		klogV2Flags.Set("logtostderr", "false")
-		klogV2Flags.Set("alsologtostderr", "false")
-		klogV2Flags.Set("stderrthreshold", "4")
+		lo.Must0(klogV2Flags.Set("logtostderr", "false"))
+		lo.Must0(klogV2Flags.Set("alsologtostderr", "false"))
+		lo.Must0(klogV2Flags.Set("stderrthreshold", "4"))
 
-		logrus.SetOutput(ioutil.Discard)
+		logrus.SetOutput(io.Discard)
 
-		cdlog.L.Logger.SetOutput(ioutil.Discard)
+		cdlog.L.Logger.SetOutput(io.Discard)
 
 		engine.Debug = false
 

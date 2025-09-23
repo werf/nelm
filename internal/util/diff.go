@@ -17,8 +17,11 @@ func ColoredUnifiedDiff(from, to string, diffContextLines int) string {
 
 	uncoloredUDiff := lo.Must1(udiff.ToUnified("", "", from, edits, diffContextLines))
 
-	var uDiffLines []string
-	var firstHunkHeaderStripped bool
+	var (
+		uDiffLines              []string
+		firstHunkHeaderStripped bool
+	)
+
 	lines := strings.Split(uncoloredUDiff, "\n")
 	for i, line := range lines {
 		if strings.HasPrefix(line, "--- ") || strings.HasPrefix(line, "+++ ") || (i == len(lines)-1 && strings.TrimSpace(line) == "") {
@@ -30,6 +33,7 @@ func ColoredUnifiedDiff(from, to string, diffContextLines int) string {
 				firstHunkHeaderStripped = true
 				continue
 			}
+
 			uDiffLines = append(uDiffLines, color.Gray.Renderln("   ..."))
 		} else if strings.HasPrefix(line, "+") {
 			uDiffLines = append(uDiffLines, color.Green.Renderln(line[:1]+" "+line[1:]))

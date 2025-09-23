@@ -114,6 +114,7 @@ func (lockManager *LockManager) LockRelease(
 	// TODO: add support of context into lockgate
 	lockManager.LockerWithRetry.Ctx = ctx
 	_, handle, err := lockManager.LockerWithRetry.Acquire(fmt.Sprintf("release/%s", releaseName), setupLockerDefaultOptions(ctx, lockgate.AcquireOptions{}))
+
 	return handle, err
 }
 
@@ -121,6 +122,7 @@ func (lockManager *LockManager) Unlock(handle lockgate.LockHandle) error {
 	defer func() {
 		lockManager.LockerWithRetry.Ctx = nil
 	}()
+
 	return lockManager.LockerWithRetry.Release(handle)
 }
 
@@ -131,9 +133,11 @@ func setupLockerDefaultOptions(
 	if opts.OnWaitFunc == nil {
 		opts.OnWaitFunc = defaultLockerOnWait(ctx)
 	}
+
 	if opts.OnLostLeaseFunc == nil {
 		opts.OnLostLeaseFunc = defaultLockerOnLostLease
 	}
+
 	return opts
 }
 
@@ -145,7 +149,7 @@ func defaultLockerOnWait(ctx context.Context) func(lockName string, doWait func(
 }
 
 func defaultLockerOnLostLease(lock lockgate.LockHandle) error {
-	return fmt.Errorf("locker has lost the lease for lock %q uuid %q. The process will stop immediately.\nPossible reasons:\n- Connection issues with Kubernetes API.\n- Network delays caused lease renewal requests to fail.", lock.LockName, lock.UUID)
+	return fmt.Errorf("locker has lost the lease for lock %q uuid %q. The process will stop immediately.\nPossible reasons:\n- Connection issues with Kubernetes API.\n- Network delays caused lease renewal requests to fail", lock.LockName, lock.UUID)
 }
 
 func createNamespaceIfNotExists(client kubernetes.Interface, namespace string) error {
@@ -168,6 +172,7 @@ func createNamespaceIfNotExists(client kubernetes.Interface, namespace string) e
 	} else if err != nil {
 		return fmt.Errorf("get Namespace %s error: %w", namespace, err)
 	}
+
 	return nil
 }
 

@@ -76,8 +76,11 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 		}
 	case common.DeployTypeUninstall:
 		for i := 0; i < len(prevReleases); i++ {
-			var releaseType ReleaseType
-			var failOnFailedDeploy bool
+			var (
+				releaseType        ReleaseType
+				failOnFailedDeploy bool
+			)
+
 			if i == len(prevReleases)-1 {
 				releaseType = ReleaseTypeUninstall
 				failOnFailedDeploy = true

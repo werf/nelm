@@ -32,6 +32,7 @@ func (s *ResourceMatcher) Match(resMeta *ResourceMeta) bool {
 			}
 		}
 	}
+
 	if !nameMatch {
 		return false
 	}
@@ -47,6 +48,7 @@ func (s *ResourceMatcher) Match(resMeta *ResourceMeta) bool {
 			}
 		}
 	}
+
 	if !namespaceMatch {
 		return false
 	}
@@ -62,6 +64,7 @@ func (s *ResourceMatcher) Match(resMeta *ResourceMeta) bool {
 			}
 		}
 	}
+
 	if !groupMatch {
 		return false
 	}
@@ -77,6 +80,7 @@ func (s *ResourceMatcher) Match(resMeta *ResourceMeta) bool {
 			}
 		}
 	}
+
 	if !versionMatch {
 		return false
 	}
@@ -92,6 +96,7 @@ func (s *ResourceMatcher) Match(resMeta *ResourceMeta) bool {
 			}
 		}
 	}
+
 	if !kindMatch {
 		return false
 	}

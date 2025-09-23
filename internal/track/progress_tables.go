@@ -3,7 +3,6 @@ package track
 import (
 	"context"
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 	"time"
@@ -33,9 +32,7 @@ type ProgressTablesPrinterOptions struct {
 
 func NewProgressTablesPrinter(taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], opts ProgressTablesPrinterOptions) *ProgressTablesPrinter {
 	return &ProgressTablesPrinter{
-		tablesBuilder: newTablesBuilder(taskStore, logStore, tablesBuilderOptions{
-			DefaultNamespace: opts.DefaultNamespace,
-		}),
+		tablesBuilder: newTablesBuilder(taskStore, logStore, tablesBuilderOptions(opts)),
 	}
 }
 
@@ -46,6 +43,7 @@ func (p *ProgressTablesPrinter) Start(ctx context.Context, interval time.Duratio
 		ctx, p.ctxCancelFn = context.WithCancelCause(ctx)
 		defer func() {
 			p.ctxCancelFn(fmt.Errorf("context canceled: table printer finished"))
+
 			p.finishedCh <- struct{}{}
 		}()
 
@@ -134,7 +132,7 @@ type tablesBuilderOptions struct {
 }
 
 func newTablesBuilder(taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], opts tablesBuilderOptions) *tablesBuilder {
-	defaultNamespace := lo.WithoutEmpty([]string{opts.DefaultNamespace, v1.NamespaceDefault})[0]
+	defaultNamespace := lo.Compact([]string{opts.DefaultNamespace, v1.NamespaceDefault})[0]
 
 	builder := &tablesBuilder{
 		taskStore:          taskStore,
@@ -285,6 +283,7 @@ func (b *tablesBuilder) SetMaxTableWidth(maxTableWidth int) {
 	} else {
 		maxProgressTableWidth = 140
 	}
+
 	b.maxProgressTableWidth = lo.Min([]int{maxProgressTableWidth, 200})
 
 	var maxLogEventTableWidth int
@@ -293,6 +292,7 @@ func (b *tablesBuilder) SetMaxTableWidth(maxTableWidth int) {
 	} else {
 		maxLogEventTableWidth = 140
 	}
+
 	b.maxLogEventTableWidth = lo.Min([]int{maxLogEventTableWidth, 250})
 }
 
@@ -511,8 +511,8 @@ func setProgressTableStyle(table prtable.Writer, tableWidth int) {
 	columnsWidth := tableWidth - paddingsWidth
 
 	columnConfigs[1].WidthMax = 7
-	columnConfigs[0].WidthMax = int(math.Floor(float64(columnsWidth-columnConfigs[1].WidthMax)) * 0.6)
-	columnConfigs[2].WidthMax = int(math.Floor(float64(columnsWidth-columnConfigs[1].WidthMax)) * 0.4)
+	columnConfigs[0].WidthMax = int(float64(columnsWidth-columnConfigs[1].WidthMax) * 0.6)
+	columnConfigs[2].WidthMax = int(float64(columnsWidth-columnConfigs[1].WidthMax) * 0.4)
 
 	table.SetColumnConfigs(columnConfigs)
 	table.SetStyle(prtable.Style{
@@ -784,6 +784,7 @@ func sortReadinessTaskStates(taskStates []*kdutil.Concurrent[*statestore.Readine
 		taskStates[i].RTransaction(func(irts *statestore.ReadinessTaskState) {
 			taskStates[j].RTransaction(func(jrts *statestore.ReadinessTaskState) {
 				iResourceStatesLen := len(irts.ResourceStates())
+
 				jResourceStatesLen := len(jrts.ResourceStates())
 				if iResourceStatesLen > jResourceStatesLen {
 					less = true

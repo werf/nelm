@@ -32,47 +32,48 @@ func DetectInternalDependencies(unstruct *unstructured.Unstructured) []*Internal
 	gk := gvk.GroupKind()
 
 	var dependencies []*InternalDependency
-	if gk == (schema.GroupKind{Kind: "Deployment", Group: "apps"}) {
+	switch gk {
+	case schema.GroupKind{Kind: "Deployment", Group: "apps"}:
 		if pod, found := nestedMap(unstruct.Object, "spec", "template"); found {
 			if deps, found := parsePod(unstruct, pod); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
-	} else if gk == (schema.GroupKind{Kind: "CronJob", Group: "batch"}) {
+	case schema.GroupKind{Kind: "CronJob", Group: "batch"}:
 		if pod, found := nestedMap(unstruct.Object, "spec", "jobTemplate", "spec", "template"); found {
 			if deps, found := parsePod(unstruct, pod); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
-	} else if gk == (schema.GroupKind{Kind: "DaemonSet", Group: "apps"}) {
+	case schema.GroupKind{Kind: "DaemonSet", Group: "apps"}:
 		if pod, found := nestedMap(unstruct.Object, "spec", "template"); found {
 			if deps, found := parsePod(unstruct, pod); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
-	} else if gk == (schema.GroupKind{Kind: "Job", Group: "batch"}) {
+	case schema.GroupKind{Kind: "Job", Group: "batch"}:
 		if pod, found := nestedMap(unstruct.Object, "spec", "template"); found {
 			if deps, found := parsePod(unstruct, pod); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
-	} else if gk == (schema.GroupKind{Kind: "Pod", Group: ""}) {
+	case schema.GroupKind{Kind: "Pod", Group: ""}:
 		if deps, found := parsePod(unstruct, unstruct.Object); found {
 			dependencies = append(dependencies, deps...)
 		}
-	} else if gk == (schema.GroupKind{Kind: "ReplicaSet", Group: "apps"}) {
+	case schema.GroupKind{Kind: "ReplicaSet", Group: "apps"}:
 		if pod, found := nestedMap(unstruct.Object, "spec", "template"); found {
 			if deps, found := parsePod(unstruct, pod); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
-	} else if gk == (schema.GroupKind{Kind: "ReplicationController", Group: ""}) {
+	case schema.GroupKind{Kind: "ReplicationController", Group: ""}:
 		if pod, found := nestedMap(unstruct.Object, "spec", "template"); found {
 			if deps, found := parsePod(unstruct, pod); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
-	} else if gk == (schema.GroupKind{Kind: "StatefulSet", Group: "apps"}) {
+	case schema.GroupKind{Kind: "StatefulSet", Group: "apps"}:
 		if dep, found := parseServiceName(unstruct, unstruct.Object); found {
 			dependencies = append(dependencies, dep)
 		}
@@ -82,25 +83,21 @@ func DetectInternalDependencies(unstruct *unstructured.Unstructured) []*Internal
 				dependencies = append(dependencies, deps...)
 			}
 		}
-	} else if gk == (schema.GroupKind{Kind: "Endpoints", Group: ""}) {
-		// 	TODO(ilya-lesikov):
-	} else if gk == (schema.GroupKind{Kind: "EndpointSlice", Group: ""}) {
-		// 	TODO(ilya-lesikov):
-	} else if gk == (schema.GroupKind{Kind: "Ingress", Group: "networking.k8s.io"}) {
-		// 	TODO(ilya-lesikov):
-	} else if gk == (schema.GroupKind{Kind: "IngressClass", Group: "networking.k8s.io"}) {
-		// 	TODO(ilya-lesikov):
-	} else if gk == (schema.GroupKind{Kind: "PersistentVolumeClaim", Group: ""}) {
-		// 	TODO(ilya-lesikov):
-	} else if gk == (schema.GroupKind{Kind: "VolumeAttachment", Group: "storage.k8s.io"}) {
+	case schema.GroupKind{Kind: "Endpoints", Group: ""}:
 		// TODO(ilya-lesikov):
-	} else if gk == (schema.GroupKind{Kind: "HorizontalPodAutoscaler", Group: "autoscaling"}) {
+	case schema.GroupKind{Kind: "EndpointSlice", Group: ""}:
 		// TODO(ilya-lesikov):
-	} else if gk == (schema.GroupKind{Kind: "ClusterRoleBinding", Group: "rbac.authorization.k8s.io"}) {
-		if dep, found := parseRoleRef(*unstruct); found {
-			dependencies = append(dependencies, dep)
-		}
-	} else if gk == (schema.GroupKind{Kind: "RoleBinding", Group: "rbac.authorization.k8s.io"}) {
+	case schema.GroupKind{Kind: "Ingress", Group: "networking.k8s.io"}:
+		// TODO(ilya-lesikov):
+	case schema.GroupKind{Kind: "IngressClass", Group: "networking.k8s.io"}:
+		// TODO(ilya-lesikov):
+	case schema.GroupKind{Kind: "PersistentVolumeClaim", Group: ""}:
+		// TODO(ilya-lesikov):
+	case schema.GroupKind{Kind: "VolumeAttachment", Group: "storage.k8s.io"}:
+		// TODO(ilya-lesikov):
+	case schema.GroupKind{Kind: "HorizontalPodAutoscaler", Group: "autoscaling"}:
+		// TODO(ilya-lesikov):
+	case schema.GroupKind{Kind: "ClusterRoleBinding", Group: "rbac.authorization.k8s.io"}, schema.GroupKind{Kind: "RoleBinding", Group: "rbac.authorization.k8s.io"}:
 		if dep, found := parseRoleRef(*unstruct); found {
 			dependencies = append(dependencies, dep)
 		}

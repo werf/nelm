@@ -82,6 +82,7 @@ func OperationID(t OperationType, version OperationVersion, iteration OperationI
 
 func OperationIDHuman(t OperationType, iteration OperationIteration, configIDHuman string) string {
 	id := fmt.Sprintf("%s: ", strings.ReplaceAll(string(t), "-", " "))
+
 	id += configIDHuman
 	if iteration > 0 {
 		id += fmt.Sprintf(" (iteration=%d)", iteration)

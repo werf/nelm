@@ -143,7 +143,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.Level(log.DebugLevel))),
+		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
 		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
 	}
@@ -190,6 +190,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	}
 
 	log.Default.Debug(ctx, "Build release history")
+
 	history, err := release.BuildHistory(opts.ReleaseName, releaseStorage, release.HistoryOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("build release history: %w", err)
@@ -243,12 +244,14 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	}
 
 	log.Default.Debug(ctx, "Render chart")
+
 	renderChartResult, err := chart.RenderChart(ctx, opts.Chart, opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, chartTreeOptions)
 	if err != nil {
 		return nil, fmt.Errorf("render chart: %w", err)
 	}
 
 	log.Default.Debug(ctx, "Build transformed resource specs")
+
 	transformedResSpecs, err := resource.BuildTransformedResourceSpecs(ctx, opts.ReleaseNamespace, renderChartResult.ResourceSpecs, []resource.ResourceTransformer{
 		resource.NewResourceListsTransformer(),
 		resource.NewDropInvalidAnnotationsAndLabelsTransformer(),
@@ -258,6 +261,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	}
 
 	log.Default.Debug(ctx, "Build releasable resource specs")
+
 	releasableResSpecs, err := resource.BuildReleasableResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []resource.ResourcePatcher{
 		resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 	})
@@ -278,6 +282,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	}
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
+
 	resSpecs, err := release.ReleaseToResourceSpecs(newRelease, opts.ReleaseNamespace)
 	if err != nil {
 		return nil, fmt.Errorf("convert new release to resource specs: %w", err)
@@ -325,6 +330,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		renderColorLevel = color.LevelNo
 	} else {
 		renderOutStream = os.Stdout
+
 		if color.Enable {
 			renderColorLevel = color.TermColorLevel()
 		}
@@ -428,12 +434,12 @@ func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir, homeDi
 }
 
 func renderResource(unstruct *unstructured.Unstructured, path string, outStream io.Writer, colorLevel color.Level) error {
-	resourceJsonBytes, err := runtime.Encode(unstructured.UnstructuredJSONScheme, unstruct)
+	resourceJSONBytes, err := runtime.Encode(unstructured.UnstructuredJSONScheme, unstruct)
 	if err != nil {
 		return fmt.Errorf("encode to JSON: %w", err)
 	}
 
-	resourceYamlBytes, err := yaml.JSONToYAML(resourceJsonBytes)
+	resourceYamlBytes, err := yaml.JSONToYAML(resourceJSONBytes)
 	if err != nil {
 		return fmt.Errorf("marshal JSON to YAML: %w", err)
 	}

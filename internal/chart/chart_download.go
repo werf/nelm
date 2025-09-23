@@ -64,17 +64,17 @@ func newChartDownloader(ctx context.Context, chartRef string, registryClient *he
 			return nil, "", fmt.Errorf("get chart URL: %w", err)
 		}
 
-		rUrl, err := url.Parse(opts.RepoURL)
+		rURL, err := url.Parse(opts.RepoURL)
 		if err != nil {
 			return nil, "", fmt.Errorf("parse repo URL: %w", err)
 		}
 
-		cUrl, err := url.Parse(chartURL)
+		cURL, err := url.Parse(chartURL)
 		if err != nil {
 			return nil, "", fmt.Errorf("parse chart URL: %w", err)
 		}
 
-		if rUrl.Scheme == cUrl.Scheme && rUrl.Host == cUrl.Host {
+		if rURL.Scheme == cURL.Scheme && rURL.Host == cURL.Host {
 			downloader.Options = append(downloader.Options, helmgetter.WithBasicAuth(opts.Username, opts.Password))
 		} else {
 			downloader.Options = append(downloader.Options, helmgetter.WithBasicAuth("", ""))

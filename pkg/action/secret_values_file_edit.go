@@ -53,6 +53,7 @@ func applySecretValuesFileEditOptionsDefaults(opts SecretValuesFileEditOptions, 
 
 	if opts.SecretWorkDir == "" {
 		var err error
+
 		opts.SecretWorkDir, err = os.Getwd()
 		if err != nil {
 			return SecretValuesFileEditOptions{}, fmt.Errorf("get current working directory: %w", err)

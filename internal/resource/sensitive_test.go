@@ -1,4 +1,4 @@
-package test
+package resource_test
 
 import (
 	"os"
@@ -451,6 +451,7 @@ func TestSHA256HashingConsistency(t *testing.T) {
 			os.Unsetenv(featgate.FeatGateFieldSensitive.EnvVarName())
 		}
 	}()
+
 	os.Setenv(featgate.FeatGateFieldSensitive.EnvVarName(), "true")
 
 	input1 := &unstructured.Unstructured{
@@ -503,6 +504,7 @@ func TestRedactAtJSONPath(t *testing.T) {
 			os.Unsetenv(featgate.FeatGateFieldSensitive.EnvVarName())
 		}
 	}()
+
 	os.Setenv(featgate.FeatGateFieldSensitive.EnvVarName(), "true")
 
 	tests := []struct {
@@ -883,6 +885,7 @@ func TestRedactSensitiveDataEdgeCases(t *testing.T) {
 			os.Unsetenv(featgate.FeatGateFieldSensitive.EnvVarName())
 		}
 	}()
+
 	os.Setenv(featgate.FeatGateFieldSensitive.EnvVarName(), "true")
 
 	tests := []struct {

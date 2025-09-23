@@ -82,6 +82,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 	totalResourcesCount := len(instResources) + len(delResources)
 
 	routines := lo.Max([]int{len(instResources) / lo.Max([]int{totalResourcesCount, 1}) * parallelism, 1})
+
 	instResourcesPool := pool.NewWithResults[[]*InstallableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range instResources {
 		instResourcesPool.Go(func(ctx context.Context) ([]*InstallableResourceInfo, error) {
@@ -95,6 +96,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 	}
 
 	routines = lo.Max([]int{len(delResources) / lo.Max([]int{totalResourcesCount, 1}) * parallelism, 1})
+
 	delResourcesPool := pool.NewWithResults[*DeletableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range delResources {
 		delResourcesPool.Go(func(ctx context.Context) (*DeletableResourceInfo, error) {
@@ -149,6 +151,7 @@ func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 	default:
 		panic("unexpected deploy type")
 	}
+
 	if len(stages) == 0 {
 		return nil, nil
 	}
@@ -178,6 +181,7 @@ func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 	}
 
 	var err error
+
 	getObj, err = fixManagedFieldsInCluster(ctx, releaseNamespace, getObj, localRes.ResourceMeta, kubeClient)
 	if err != nil {
 		return nil, fmt.Errorf("fix managed fields for resource %q: %w", localRes.IDHuman(), err)
@@ -304,6 +308,7 @@ func iterateInstallableResourceInfos(infos []*InstallableResourceInfo) {
 	}
 
 	var highestIteration int
+
 	nonZeroIterInfos := lo.Filter(infos, func(info *InstallableResourceInfo, _ int) bool {
 		highestIteration = lo.Max([]int{highestIteration, info.Iteration})
 		return info.Iteration > 0
@@ -390,11 +395,7 @@ func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMet
 	}
 
 	if installType == ResourceInstallTypeNone {
-		if getMeta != nil {
-			return true
-		}
-
-		return false
+		return getMeta != nil
 	}
 
 	return true
@@ -454,14 +455,19 @@ func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, get
 	}
 
 	log.Default.Debug(ctx, "Fixing managed fields for resource %q", meta.IDHuman())
-	getObj, err = kubeClient.MergePatch(ctx, meta, patch, kube.KubeClientMergePatchOptions{
+
+	patchedObj, err := kubeClient.MergePatch(ctx, meta, patch, kube.KubeClientMergePatchOptions{
 		DefaultNamespace: releaseNamespace,
 	})
 	if err != nil {
+		if kube.IsNotFoundErr(err) {
+			return getObj, nil
+		}
+
 		return nil, fmt.Errorf("patch managed fields: %w", err)
 	}
 
-	return getObj, nil
+	return patchedObj, nil
 }
 
 func fixManagedFields(unstruct *unstructured.Unstructured) (changed bool, err error) {
@@ -539,7 +545,7 @@ func removeUndesirableManagers(managedFields []v1.ManagedFieldsEntry, oursEntry 
 				continue
 			}
 
-			merged, mergeChanged := lo.Must2(util.MergeJson(fieldsByte, oursFieldsByte))
+			merged, mergeChanged := lo.Must2(util.MergeJSON(fieldsByte, oursFieldsByte))
 			if mergeChanged {
 				oursFieldsByte = merged
 				lo.Must0(newOursEntry.FieldsV1.UnmarshalJSON(merged))
@@ -548,7 +554,7 @@ func removeUndesirableManagers(managedFields []v1.ManagedFieldsEntry, oursEntry 
 			changed = true
 		} else if managedField.Manager == common.KubectlEditFieldManager ||
 			strings.HasPrefix(managedField.Manager, common.OldFieldManagerPrefix) {
-			merged, mergeChanged := lo.Must2(util.MergeJson(fieldsByte, oursFieldsByte))
+			merged, mergeChanged := lo.Must2(util.MergeJSON(fieldsByte, oursFieldsByte))
 			if mergeChanged {
 				oursFieldsByte = merged
 				lo.Must0(newOursEntry.FieldsV1.UnmarshalJSON(merged))
@@ -577,7 +583,7 @@ func exclusiveOwnershipForOurManager(managedFields []v1.ManagedFieldsEntry, ours
 			continue
 		}
 
-		subtracted, subtractChanged := lo.Must2(util.SubtractJson(fieldsByte, oursFieldsByte))
+		subtracted, subtractChanged := lo.Must2(util.SubtractJSON(fieldsByte, oursFieldsByte))
 		if !subtractChanged {
 			newManagedFields = append(newManagedFields, managedField)
 			continue

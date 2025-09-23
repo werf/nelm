@@ -36,13 +36,14 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 			Args: cobra.MaximumNArgs(1),
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = log.SetupLogging(ctx, cmp.Or(log.Level(log.Level(cfg.LogLevel)), action.DefaultReleaseGetLogLevel), log.SetupLoggingOptions{
+			ctx = log.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultReleaseGetLogLevel), log.SetupLoggingOptions{
 				ColorMode:      cfg.LogColorMode,
 				LogIsParseable: true,
 			})
 
 			if len(args) > 0 {
 				var err error
+
 				cfg.Revision, err = strconv.Atoi(args[0])
 				if err != nil {
 					return fmt.Errorf("invalid revision: %s", args[0])

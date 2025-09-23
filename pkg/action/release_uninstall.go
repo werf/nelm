@@ -166,7 +166,9 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
 			return fmt.Errorf("lock release: %w", err)
 		} else {
-			defer lockManager.Unlock(lock)
+			defer func() {
+				_ = lockManager.Unlock(lock)
+			}()
 		}
 
 		log.Default.Debug(ctx, "Build release history")
@@ -390,9 +392,10 @@ func applyReleaseUninstallOptionsDefaults(opts ReleaseUninstallOptions, currentD
 		opts.ReleaseHistoryLimit = DefaultReleaseHistoryLimit
 	}
 
-	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {
+	switch opts.ReleaseStorageDriver {
+	case ReleaseStorageDriverDefault:
 		opts.ReleaseStorageDriver = ReleaseStorageDriverSecrets
-	} else if opts.ReleaseStorageDriver == ReleaseStorageDriverMemory {
+	case ReleaseStorageDriverMemory:
 		return ReleaseUninstallOptions{}, fmt.Errorf("memory release storage driver is not supported")
 	}
 

@@ -9,11 +9,6 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const (
-	releaseNameStub      = "release-stub"
-	releaseNamespaceStub = "namespace-stub"
-)
-
 var helmRootCmd *cobra.Command
 
 func allowedLogColorModesHelp() string {

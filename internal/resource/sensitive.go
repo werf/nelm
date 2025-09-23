@@ -79,13 +79,17 @@ func ParseSensitivePaths(value string) []string {
 		return nil
 	}
 
-	var paths []string
-	var current strings.Builder
+	var (
+		paths   []string
+		current strings.Builder
+	)
+
 	escaped := false
 
 	for _, r := range value {
 		if escaped {
 			current.WriteRune(r)
+
 			escaped = false
 		} else if r == '\\' {
 			escaped = true
@@ -93,6 +97,7 @@ func ParseSensitivePaths(value string) []string {
 			if path := strings.TrimSpace(current.String()); path != "" {
 				paths = append(paths, path)
 			}
+
 			current.Reset()
 		} else {
 			current.WriteRune(r)
@@ -151,15 +156,18 @@ func createSensitiveReplacement(value interface{}) interface{} {
 	case []interface{}:
 		jsonData, _ := json.Marshal(v)
 		hash := fmt.Sprintf("%x", sha256.Sum256(jsonData))[:12]
+
 		return fmt.Sprintf("<hidden %d sensitive entries, hash %s>", len(v), hash)
 	case map[string]interface{}:
 		jsonData, _ := json.Marshal(v)
 		hash := fmt.Sprintf("%x", sha256.Sum256(jsonData))[:12]
+
 		return fmt.Sprintf("<hidden %d sensitive entries, hash %s>", len(v), hash)
 	default:
 		// For other types, convert to string and hash
 		str := fmt.Sprintf("%v", v)
 		hash := fmt.Sprintf("%x", sha256.Sum256([]byte(str)))[:12]
+
 		return fmt.Sprintf("<hidden %d sensitive bytes, hash %s>", len(str), hash)
 	}
 }

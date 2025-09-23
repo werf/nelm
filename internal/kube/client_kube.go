@@ -63,6 +63,7 @@ type KubeClientGetOptions struct {
 
 func (c *KubeClient) Get(ctx context.Context, resMeta *meta.ResourceMeta, opts KubeClientGetOptions) (*unstructured.Unstructured, error) {
 	lock := c.resourceLock(resMeta)
+
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -88,11 +89,13 @@ func (c *KubeClient) Get(ctx context.Context, resMeta *meta.ResourceMeta, opts K
 	clientResource := c.clientResource(gvr, resMeta.Namespace, opts.DefaultNamespace, namespaced)
 
 	log.Default.Debug(ctx, "Getting resource %q", resMeta.IDHuman())
+
 	resultObj, err := clientResource.Get(ctx, resMeta.Name, metav1.GetOptions{})
 	if err != nil {
 		c.clusterCache.Set(resMeta.IDWithVersion(), &clusterCacheEntry{err: err}, 0)
 		return nil, fmt.Errorf("get resource %q: %w", resMeta.IDHuman(), err)
 	}
+
 	c.clusterCache.Set(resMeta.IDWithVersion(), &clusterCacheEntry{obj: resultObj.DeepCopy()}, 0)
 
 	log.Default.TraceStruct(ctx, resultObj, "Got resource %q via Kubernetes API:", resMeta.IDHuman())
@@ -107,6 +110,7 @@ type KubeClientCreateOptions struct {
 
 func (c *KubeClient) Create(ctx context.Context, resSpec *resource.ResourceSpec, opts KubeClientCreateOptions) (*unstructured.Unstructured, error) {
 	lock := c.resourceLock(resSpec.ResourceMeta)
+
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -118,10 +122,13 @@ func (c *KubeClient) Create(ctx context.Context, resSpec *resource.ResourceSpec,
 	clientResource := c.clientResource(gvr, resSpec.Namespace, opts.DefaultNamespace, namespaced)
 
 	if opts.ForceReplicas != nil {
-		unstructured.SetNestedField(resSpec.Unstruct.UnstructuredContent(), int64(*opts.ForceReplicas), "spec", "replicas")
+		if err := unstructured.SetNestedField(resSpec.Unstruct.UnstructuredContent(), int64(*opts.ForceReplicas), "spec", "replicas"); err != nil {
+			return nil, fmt.Errorf("set spec.replicas for resource %q: %w", resSpec.IDHuman(), err)
+		}
 	}
 
 	log.Default.Debug(ctx, "Server-side applying resource %q", resSpec.IDHuman())
+
 	resultObj, err := clientResource.Apply(ctx, resSpec.Name, resSpec.Unstruct, metav1.ApplyOptions{
 		Force:        true,
 		FieldManager: common.DefaultFieldManager,
@@ -130,6 +137,7 @@ func (c *KubeClient) Create(ctx context.Context, resSpec *resource.ResourceSpec,
 		c.clusterCache.Set(resSpec.IDWithVersion(), &clusterCacheEntry{err: err}, 0)
 		return nil, fmt.Errorf("server-side apply resource %q: %w", resSpec.IDHuman(), err)
 	}
+
 	c.clusterCache.Set(resSpec.IDWithVersion(), &clusterCacheEntry{obj: resultObj.DeepCopy()}, 0)
 
 	if resource.IsCRDFromGR(gvr.GroupResource()) {
@@ -148,6 +156,7 @@ type KubeClientApplyOptions struct {
 
 func (c *KubeClient) Apply(ctx context.Context, resSpec *resource.ResourceSpec, opts KubeClientApplyOptions) (*unstructured.Unstructured, error) {
 	lock := c.resourceLock(resSpec.ResourceMeta)
+
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -164,6 +173,7 @@ func (c *KubeClient) Apply(ctx context.Context, resSpec *resource.ResourceSpec, 
 	}
 
 	log.Default.Debug(ctx, "Server-side %sapplying resource %q", lo.Ternary(opts.DryRun, "dry-run ", ""), resSpec.IDHuman())
+
 	resultObj, err := clientResource.Apply(ctx, resSpec.Name, resSpec.Unstruct, metav1.ApplyOptions{
 		DryRun:       dryRun,
 		Force:        true,
@@ -173,8 +183,10 @@ func (c *KubeClient) Apply(ctx context.Context, resSpec *resource.ResourceSpec, 
 		if !opts.DryRun {
 			c.clusterCache.Set(resSpec.IDWithVersion(), &clusterCacheEntry{err: err}, 0)
 		}
+
 		return nil, fmt.Errorf("server-side %sapply resource %q: %w", lo.Ternary(opts.DryRun, "dry-run ", ""), resSpec.IDHuman(), err)
 	}
+
 	if !opts.DryRun {
 		c.clusterCache.Set(resSpec.IDWithVersion(), &clusterCacheEntry{obj: resultObj.DeepCopy()}, 0)
 	}
@@ -194,6 +206,7 @@ type KubeClientMergePatchOptions struct {
 
 func (c *KubeClient) MergePatch(ctx context.Context, resMeta *meta.ResourceMeta, patch []byte, opts KubeClientMergePatchOptions) (*unstructured.Unstructured, error) {
 	lock := c.resourceLock(resMeta)
+
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -205,18 +218,18 @@ func (c *KubeClient) MergePatch(ctx context.Context, resMeta *meta.ResourceMeta,
 	clientResource := c.clientResource(gvr, resMeta.Namespace, opts.DefaultNamespace, namespaced)
 
 	log.Default.Debug(ctx, "Merge patching resource %q", resMeta.IDHuman())
+
 	resultObj, err := clientResource.Patch(ctx, resMeta.Name, types.MergePatchType, patch, metav1.PatchOptions{
 		FieldManager: common.DefaultFieldManager,
 	})
 	if err != nil {
-		if IsNotFoundErr(err) {
-			log.Default.Debug(ctx, "Skipping merge patching, not found resource %q", resMeta.IDHuman())
-			return nil, nil
+		if !IsNotFoundErr(err) {
+			c.clusterCache.Set(resMeta.IDWithVersion(), &clusterCacheEntry{err: err}, 0)
 		}
 
-		c.clusterCache.Set(resMeta.IDWithVersion(), &clusterCacheEntry{err: err}, 0)
 		return nil, fmt.Errorf("merge patch resource %q: %w", resMeta.IDHuman(), err)
 	}
+
 	c.clusterCache.Set(resMeta.IDWithVersion(), &clusterCacheEntry{obj: resultObj.DeepCopy()}, 0)
 
 	log.Default.TraceStruct(ctx, resultObj, "Merge patched resource %q via Kubernetes API:", resMeta.IDHuman())
@@ -231,6 +244,7 @@ type KubeClientDeleteOptions struct {
 
 func (c *KubeClient) Delete(ctx context.Context, resMeta *meta.ResourceMeta, opts KubeClientDeleteOptions) error {
 	lock := c.resourceLock(resMeta)
+
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -249,6 +263,7 @@ func (c *KubeClient) Delete(ctx context.Context, resMeta *meta.ResourceMeta, opt
 	}
 
 	log.Default.Debug(ctx, "Deleting resource %q", resMeta.IDHuman())
+
 	if err := clientResource.Delete(ctx, resMeta.Name, metav1.DeleteOptions{
 		PropagationPolicy: propagationPolicy,
 	}); err != nil {
@@ -259,6 +274,7 @@ func (c *KubeClient) Delete(ctx context.Context, resMeta *meta.ResourceMeta, opt
 
 		return fmt.Errorf("delete resource %q: %w", resMeta.IDHuman(), err)
 	}
+
 	c.clusterCache.Delete(resMeta.IDWithVersion())
 
 	return nil

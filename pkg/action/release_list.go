@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -108,13 +107,14 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 	loader.NoChartLockWarning = ""
 
 	log.Default.Info(ctx, "Build release histories")
+
 	histories, err := release.BuildHistories(releaseStorage, release.HistoryOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("build release histories: %w", err)
 	}
 
 	result := &ReleaseListResultV1{
-		ApiVersion: "v1",
+		APIVersion: "v1",
 	}
 
 	for _, history := range histories {
@@ -157,7 +157,7 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 	case TableOutputFormat:
 		table := buildReleaseListOutputTable(ctx, result)
 		resultMessage = table.Render()
-	case JsonOutputFormat:
+	case JSONOutputFormat:
 		b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
 		if err != nil {
 			return nil, fmt.Errorf("marshal result to json: %w", err)
@@ -180,7 +180,7 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 		colorLevel = color.TermColorLevel()
 	}
 
-	if err := writeWithSyntaxHighlight(os.Stdout, resultMessage, string(opts.OutputFormat), colorLevel); err != nil {
+	if err := writeWithSyntaxHighlight(os.Stdout, resultMessage, opts.OutputFormat, colorLevel); err != nil {
 		return nil, fmt.Errorf("write result to output: %w", err)
 	}
 
@@ -224,7 +224,7 @@ func applyReleaseListOptionsDefaults(opts ReleaseListOptions, homeDir string) (R
 }
 
 type ReleaseListResultV1 struct {
-	ApiVersion string                      `json:"apiVersion"`
+	APIVersion string                      `json:"apiVersion"`
 	Releases   []*ReleaseListResultRelease `json:"releases"`
 }
 
@@ -325,9 +325,9 @@ func setReleaseListOutputTableStyle(ctx context.Context, table prtable.Writer) {
 
 	columnConfigs[2].WidthMax = 16
 	columnConfigs[3].WidthMax = 8
-	columnConfigs[0].WidthMax = int(math.Floor(float64(columnsWidth-columnConfigs[2].WidthMax-columnConfigs[3].WidthMax)) * 0.3)
-	columnConfigs[1].WidthMax = int(math.Floor(float64(columnsWidth-columnConfigs[2].WidthMax-columnConfigs[3].WidthMax)) * 0.4)
-	columnConfigs[4].WidthMax = int(math.Floor(float64(columnsWidth-columnConfigs[2].WidthMax-columnConfigs[3].WidthMax)) * 0.4)
+	columnConfigs[0].WidthMax = int(float64(columnsWidth-columnConfigs[2].WidthMax-columnConfigs[3].WidthMax) * 0.3)
+	columnConfigs[1].WidthMax = int(float64(columnsWidth-columnConfigs[2].WidthMax-columnConfigs[3].WidthMax) * 0.4)
+	columnConfigs[4].WidthMax = int(float64(columnsWidth-columnConfigs[2].WidthMax-columnConfigs[3].WidthMax) * 0.4)
 
 	table.SetColumnConfigs(columnConfigs)
 	table.SetStyle(prtable.Style{

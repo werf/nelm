@@ -27,14 +27,19 @@ func CleanUnstruct(unstruct *unstructured.Unstructured, opts CleanUnstructOption
 		unstructCopy.SetManagedFields(nil)
 	}
 
-	var cleanAnnotationsRegexes []*regexp.Regexp
-	var cleanLabelsRegexes []*regexp.Regexp
+	var (
+		cleanAnnotationsRegexes []*regexp.Regexp
+		cleanLabelsRegexes      []*regexp.Regexp
+	)
+
 	if opts.CleanHelmShAnnos {
 		cleanAnnotationsRegexes = append(cleanAnnotationsRegexes, regexp.MustCompile(`^helm\.sh/.+`))
 	}
+
 	if opts.CleanWerfIoAnnos {
 		cleanAnnotationsRegexes = append(cleanAnnotationsRegexes, regexp.MustCompile(`.*werf\.io/.+`))
 	}
+
 	if opts.CleanWerfIoRuntimeAnnos {
 		cleanAnnotationsRegexes = append(cleanAnnotationsRegexes,
 			regexp.MustCompile(`^project\.werf\.io/.+`),
@@ -42,6 +47,7 @@ func CleanUnstruct(unstruct *unstructured.Unstructured, opts CleanUnstructOption
 			regexp.MustCompile(`^werf\.io/version$`), regexp.MustCompile(`^werf\.io/release-channel$`),
 		)
 	}
+
 	if opts.CleanReleaseAnnosLabels {
 		cleanAnnotationsRegexes = append(cleanAnnotationsRegexes, AnnotationKeyPatternReleaseName, AnnotationKeyPatternReleaseNamespace)
 		cleanLabelsRegexes = append(cleanLabelsRegexes, LabelKeyPatternManagedBy)
@@ -84,5 +90,6 @@ func cleanRuntimeDataFromUnstruct(unstruct *unstructured.Unstructured) {
 	for _, entry := range managedFields {
 		entry.Time = nil
 	}
+
 	unstruct.SetManagedFields(managedFields)
 }

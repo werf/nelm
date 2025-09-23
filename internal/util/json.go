@@ -9,7 +9,7 @@ import (
 	"github.com/wI2L/jsondiff"
 )
 
-func MergeJson(mergeA, toB []byte) (result []byte, changed bool, err error) {
+func MergeJSON(mergeA, toB []byte) (result []byte, changed bool, err error) {
 	ops, err := jsondiff.CompareJSON(toB, mergeA)
 	if err != nil {
 		return nil, false, fmt.Errorf("error comparing json: %w", err)
@@ -51,7 +51,7 @@ func MergeJson(mergeA, toB []byte) (result []byte, changed bool, err error) {
 	return result, true, nil
 }
 
-func SubtractJson(fromA, subtractB []byte) (result []byte, changed bool, err error) {
+func SubtractJSON(fromA, subtractB []byte) (result []byte, changed bool, err error) {
 	ops, err := jsondiff.CompareJSON(subtractB, fromA)
 	if err != nil {
 		return nil, false, fmt.Errorf("error comparing json: %w", err)
@@ -71,8 +71,10 @@ func SubtractJson(fromA, subtractB []byte) (result []byte, changed bool, err err
 
 	res := "{}"
 	for _, op := range addOps {
-		jsonPath := JsonPatchPathToJsonPath(op.Path)
+		jsonPath := JSONPatchPathToJSONPath(op.Path)
+
 		var err error
+
 		res, err = sjson.Set(res, jsonPath, op.Value)
 		if err != nil {
 			return nil, false, fmt.Errorf("error setting value by jsonpath: %w", err)
@@ -82,13 +84,12 @@ func SubtractJson(fromA, subtractB []byte) (result []byte, changed bool, err err
 	return []byte(res), string(fromA) != res, nil
 }
 
-func JsonPatchPathToJsonPath(path string) string {
-	if strings.HasPrefix(path, "/") {
-		path = path[1:]
-	}
+func JSONPatchPathToJSONPath(path string) string {
+	path = strings.TrimPrefix(path, "/")
 	path = strings.ReplaceAll(path, ".", `\.`)
 	path = strings.ReplaceAll(path, ":", `\:`)
 	path = strings.ReplaceAll(path, "/", ".")
 	path = strings.ReplaceAll(path, "~1", "/")
+
 	return strings.ReplaceAll(path, "~0", "~")
 }

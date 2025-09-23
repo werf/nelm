@@ -18,10 +18,10 @@ func NewDiscoveryKubeClientFromKubeConfig(kubeConfig *KubeConfig) (*disk.CachedD
 		cacheDir = DefaultKubectlCacheDir
 	}
 
-	httpCacheDir := filepath.Join(cacheDir, KubectlHttpCacheSubdir)
+	httpCacheDir := filepath.Join(cacheDir, KubectlHTTPCacheSubdir)
 	discoveryCacheDir := computeDiscoveryCacheDir(filepath.Join(cacheDir, KubectlDiscoveryCacheSubdir), kubeConfig.RestConfig.Host)
 
-	return disk.NewCachedDiscoveryClientForConfig(kubeConfig.RestConfig, discoveryCacheDir, httpCacheDir, time.Duration(6*time.Hour))
+	return disk.NewCachedDiscoveryClientForConfig(kubeConfig.RestConfig, discoveryCacheDir, httpCacheDir, 6*time.Hour)
 }
 
 // Taken from: https://github.com/kubernetes/cli-runtime/blob/e447e205e17575154e7108dbd67e6965499488a0/pkg/genericclioptions/config_flags.go#L485

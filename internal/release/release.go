@@ -59,9 +59,12 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 		return resource.ResourceSpecSortHandler(resources[i], resources[j])
 	})
 
-	var unstoredResources []string
-	var regularResources []string
-	var hookResources []*helmrelease.Hook
+	var (
+		unstoredResources []string
+		regularResources  []string
+		hookResources     []*helmrelease.Hook
+	)
+
 	for _, res := range resources {
 		switch res.StoreAs {
 		case common.StoreAsHook:
@@ -161,6 +164,7 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 	}
 
 	oldRelManifests := releaseutil.SplitManifests(oldRel.Manifest)
+
 	oldRegularResourcesHash := fnv.New32a()
 	for _, manifest := range oldRelManifests {
 		obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(manifest), nil, &unstructured.Unstructured{})
@@ -176,6 +180,7 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 	}
 
 	newRelManifests := releaseutil.SplitManifests(newRel.Manifest)
+
 	newRegularResourcesHash := fnv.New32a()
 	for _, manifest := range newRelManifests {
 		obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(manifest), nil, &unstructured.Unstructured{})

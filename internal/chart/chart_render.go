@@ -98,6 +98,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	log.Default.TraceStruct(ctx, overrideValuesOpts, "Override values options:")
 
 	log.Default.Debug(ctx, "Merging override values for chart at %q", chartPath)
+
 	overrideValues, err := overrideValuesOpts.MergeValues(getter.Providers{getter.HttpProvider, getter.OCIProvider}, opts.HelmOptions)
 	if err != nil {
 		return nil, fmt.Errorf("merge override values for chart at %q: %w", chartPath, err)
@@ -106,6 +107,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	log.Default.TraceStruct(ctx, overrideValues, "Merged override values:")
 
 	log.Default.Debug(ctx, "Loading chart at %q", chartPath)
+
 	chart, err := loader.Load(chartPath, opts.HelmOptions)
 	if err != nil {
 		var e *downloader.ErrRepoNotFound
@@ -155,6 +157,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	}
 
 	log.Default.Debug(ctx, "Rendering values for chart at %q", chartPath)
+
 	renderedValues, err := chartutil.ToRenderValues(chart, overrideValues, chartutil.ReleaseOptions{
 		Name:      releaseName,
 		Namespace: releaseNamespace,
@@ -174,6 +177,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	} else {
 		engine = lo.ToPtr(helmengine.Engine{})
 	}
+
 	engine.EnableDNS = opts.AllowDNSRequests
 
 	log.Default.Debug(ctx, "Rendering resources for chart at %q", chartPath)

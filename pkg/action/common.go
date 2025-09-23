@@ -48,7 +48,7 @@ const (
 
 const (
 	YamlOutputFormat  = "yaml"
-	JsonOutputFormat  = "json"
+	JSONOutputFormat  = "json"
 	TableOutputFormat = "table"
 )
 
@@ -113,9 +113,9 @@ type releaseReportV3 struct {
 	Namespace           string             `json:"namespace,omitempty"`
 	Revision            int                `json:"revision,omitempty"`
 	Status              helmrelease.Status `json:"status,omitempty"`
-	CompletedOperations []string           `json:"operations,omitempty"`
-	CanceledOperations  []string           `json:"operations,omitempty"`
-	FailedOperations    []string           `json:"operations,omitempty"`
+	CompletedOperations []string           `json:"completedOperations,omitempty"`
+	CanceledOperations  []string           `json:"canceledOperations,omitempty"`
+	FailedOperations    []string           `json:"failedOperations,omitempty"`
 }
 
 func writeWithSyntaxHighlight(outStream io.Writer, text, lang string, colorLevel terminfo.ColorLevel) error {
@@ -164,7 +164,7 @@ func saveReport(reportPath string, report *releaseReportV3) error {
 		return fmt.Errorf("marshal report: %w", err)
 	}
 
-	if err := os.WriteFile(reportPath, reportByte, 0o644); err != nil {
+	if err := os.WriteFile(reportPath, reportByte, 0o600); err != nil {
 		return fmt.Errorf("write report: %w", err)
 	}
 
@@ -234,6 +234,7 @@ func runFailurePlan(
 	opts runFailureInstallPlanOptions,
 ) (result *runFailurePlanResult, nonCritErrs, critErrs []error) {
 	log.Default.Debug(ctx, "Build failure plan")
+
 	failurePlan, err := plan.BuildFailurePlan(failedPlan, installableInfos, releaseInfos)
 	if err != nil {
 		return nil, nonCritErrs, append(critErrs, fmt.Errorf("build failure plan: %w", err))
@@ -251,6 +252,7 @@ func runFailurePlan(
 	}
 
 	log.Default.Debug(ctx, "Execute failure plan")
+
 	if err := plan.ExecutePlan(ctx, releaseNamespace, failurePlan, taskStore, logStore, informerFactory, history, clientFactory.KubeClient(), clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), plan.ExecutePlanOptions{
 		NetworkParallelism: opts.NetworkParallelism,
 		ReadinessTimeout:   opts.TrackReadinessTimeout,
@@ -289,7 +291,7 @@ func savePlanAsDot(plan *plan.Plan, path string) error {
 		return fmt.Errorf("convert plan to DOT file: %w", err)
 	}
 
-	if err := os.WriteFile(path, dotByte, 0o644); err != nil {
+	if err := os.WriteFile(path, dotByte, 0o600); err != nil {
 		return fmt.Errorf("write DOT graph file at %q: %w", path, err)
 	}
 
@@ -310,6 +312,4 @@ func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr err
 	}
 
 	log.Default.Warn(ctx, "Plan graph saved to %q for debugging", graphPath)
-
-	return
 }

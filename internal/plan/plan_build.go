@@ -523,7 +523,7 @@ func addFailureResourceOperations(failedPlan, plan *Plan, infos []*InstallableRe
 			continue
 		}
 
-		trackReadinessOp := lo.Must(failedPlan.Operation(OperationID(OperationTypeTrackReadiness, OperationVersionTrackReadiness, OperationIteration(info.Iteration), info.ResourceMeta.ID())))
+		trackReadinessOp := lo.Must(failedPlan.Operation(OperationID(OperationTypeTrackReadiness, OperationVersionTrackReadiness, OperationIteration(info.Iteration), info.ID())))
 
 		if trackReadinessOp.Status != OperationStatusFailed {
 			continue
@@ -533,7 +533,7 @@ func addFailureResourceOperations(failedPlan, plan *Plan, infos []*InstallableRe
 			deleteOnSuccessfulInstallOp := lo.Must(lo.Find(failedPlan.Operations(), func(op *Operation) bool {
 				return op.Type == OperationTypeDelete &&
 					op.Iteration == OperationIteration(info.Iteration) &&
-					op.Config.(*OperationConfigDelete).ResourceMeta.ID() == info.ResourceMeta.ID()
+					op.Config.(*OperationConfigDelete).ResourceMeta.ID() == info.ID()
 			}))
 
 			if deleteOnSuccessfulInstallOp.Status == OperationStatusCompleted {
@@ -586,20 +586,23 @@ func connectInternalDependencies(plan *Plan, infos []*InstallableResourceInfo) e
 		}
 
 		for _, dep := range internalDeps {
-			var dependUponOp *Operation
-			var dependUponOpFound bool
+			var (
+				dependUponOp      *Operation
+				dependUponOpFound bool
+			)
+
 			switch dep.ResourceState {
 			case common.ResourceStatePresent:
 				deployOps := getAllFirstIterationDeployOps(plan)
 
 				dependUponOp, dependUponOpFound = lo.Find(deployOps, func(op *Operation) bool {
-					return dep.ResourceMatcher.Match(getOpMeta(op))
+					return dep.Match(getOpMeta(op))
 				})
 			case common.ResourceStateReady:
 				trackOps := getAllFirstIterationTrackReadinessOps(plan)
 
 				dependUponOp, dependUponOpFound = lo.Find(trackOps, func(op *Operation) bool {
-					return dep.ResourceMatcher.Match(getOpMeta(op))
+					return dep.Match(getOpMeta(op))
 				})
 			default:
 				panic("unexpected internal dependency resource state")
@@ -622,13 +625,13 @@ func getDeployOp(plan *Plan, info *InstallableResourceInfo, iteration int) (op *
 	var deployOpID string
 	switch info.MustInstall {
 	case ResourceInstallTypeCreate:
-		deployOpID = OperationID(OperationTypeCreate, OperationVersionCreate, OperationIteration(iteration), info.ResourceMeta.ID())
+		deployOpID = OperationID(OperationTypeCreate, OperationVersionCreate, OperationIteration(iteration), info.ID())
 	case ResourceInstallTypeRecreate:
-		deployOpID = OperationID(OperationTypeRecreate, OperationVersionRecreate, OperationIteration(iteration), info.ResourceMeta.ID())
+		deployOpID = OperationID(OperationTypeRecreate, OperationVersionRecreate, OperationIteration(iteration), info.ID())
 	case ResourceInstallTypeUpdate:
-		deployOpID = OperationID(OperationTypeUpdate, OperationVersionUpdate, OperationIteration(iteration), info.ResourceMeta.ID())
+		deployOpID = OperationID(OperationTypeUpdate, OperationVersionUpdate, OperationIteration(iteration), info.ID())
 	case ResourceInstallTypeApply:
-		deployOpID = OperationID(OperationTypeApply, OperationVersionApply, OperationIteration(iteration), info.ResourceMeta.ID())
+		deployOpID = OperationID(OperationTypeApply, OperationVersionApply, OperationIteration(iteration), info.ID())
 	case ResourceInstallTypeNone:
 		return nil, false
 	default:

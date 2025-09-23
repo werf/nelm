@@ -86,24 +86,28 @@ func buildInstChanges(instInfosByIter [][]*InstallableResourceInfo, opts Calcula
 				switch info.MustInstall {
 				case ResourceInstallTypeCreate:
 					var err error
+
 					change, err = buildResourceChange(info.ResourceMeta, nil, info.LocalResource.Unstruct, info.MustDeleteOnSuccessfulInstall, "create", color.Style{color.Bold, color.Green}, opts)
 					if err != nil {
 						return nil, fmt.Errorf("build resource change for create: %w", err)
 					}
 				case ResourceInstallTypeRecreate:
 					var err error
+
 					change, err = buildResourceChange(info.ResourceMeta, nil, info.LocalResource.Unstruct, info.MustDeleteOnSuccessfulInstall, "recreate", color.Style{color.Bold, color.LightGreen}, opts)
 					if err != nil {
 						return nil, fmt.Errorf("build resource change for recreate: %w", err)
 					}
 				case ResourceInstallTypeUpdate:
 					var err error
+
 					change, err = buildResourceChange(info.ResourceMeta, info.GetResult, info.DryApplyResult, info.MustDeleteOnSuccessfulInstall, "update", color.Style{color.Bold, color.Yellow}, opts)
 					if err != nil {
 						return nil, fmt.Errorf("build resource change for update: %w", err)
 					}
 				case ResourceInstallTypeApply:
 					var err error
+
 					change, err = buildResourceChange(info.ResourceMeta, nil, info.LocalResource.Unstruct, info.MustDeleteOnSuccessfulInstall, "blind apply", color.Style{color.Bold, color.LightYellow}, opts)
 					if err != nil {
 						return nil, fmt.Errorf("build resource change for blind apply: %w", err)
@@ -180,8 +184,11 @@ func buildResourceChange(resMeta *meta.ResourceMeta, oldUnstruct, newUnstruct *u
 	} else if !opts.ShowVerboseDiffs && (oldUnstruct == nil || newUnstruct == nil) {
 		uDiff = HiddenVerboseChanges
 	} else {
-		var oldObjManifest string
-		var newObjManifest string
+		var (
+			oldObjManifest string
+			newObjManifest string
+		)
+
 		if oldUnstruct != nil {
 			oldUnstructClean := cleanUnstruct(oldUnstruct, sensitiveInfo, opts)
 

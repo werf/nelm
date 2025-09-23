@@ -54,6 +54,7 @@ func applySecretFileDecryptOptionsDefaults(opts SecretFileDecryptOptions, curren
 
 	if opts.SecretWorkDir == "" {
 		var err error
+
 		opts.SecretWorkDir, err = os.Getwd()
 		if err != nil {
 			return SecretFileDecryptOptions{}, fmt.Errorf("get current working directory: %w", err)

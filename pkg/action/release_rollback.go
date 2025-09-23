@@ -155,10 +155,13 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
 		return fmt.Errorf("lock release: %w", err)
 	} else {
-		defer lockManager.Unlock(lock)
+		defer func() {
+			_ = lockManager.Unlock(lock)
+		}()
 	}
 
 	log.Default.Debug(ctx, "Build release history")
+
 	history, err := release.BuildHistory(releaseName, releaseStorage, release.HistoryOptions{})
 	if err != nil {
 		return fmt.Errorf("build release history: %w", err)
@@ -190,6 +193,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		}
 	} else {
 		var found bool
+
 		rollbackRelease, found = lo.Find(releases, func(rel *helmrelease.Release) bool {
 			return rel.Version == opts.Revision
 		})
@@ -198,8 +202,11 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		}
 	}
 
-	var newRevision int
-	var prevReleaseFailed bool
+	var (
+		newRevision       int
+		prevReleaseFailed bool
+	)
+
 	if prevRelease != nil {
 		newRevision = prevRelease.Version + 1
 		prevReleaseFailed = prevRelease.IsStatusFailed()
@@ -210,6 +217,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	deployType := common.DeployTypeRollback
 
 	log.Default.Debug(ctx, "Convert release to resource specs")
+
 	rollbackReleaseResSpecs, err := release.ReleaseToResourceSpecs(rollbackRelease, releaseNamespace)
 	if err != nil {
 		return fmt.Errorf("convert release to rollback to resource specs: %w", err)
@@ -225,18 +233,21 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	}
 
 	log.Default.Debug(ctx, "Convert previous release to resource specs")
+
 	prevRelResSpecs, err := release.ReleaseToResourceSpecs(prevRelease, releaseNamespace)
 	if err != nil {
 		return fmt.Errorf("convert previous release to resource specs: %w", err)
 	}
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
+
 	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace)
 	if err != nil {
 		return fmt.Errorf("convert new release to resource specs: %w", err)
 	}
 
 	log.Default.Debug(ctx, "Build resources")
+
 	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []resource.ResourcePatcher{
 		resource.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 		resource.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
@@ -248,28 +259,33 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	}
 
 	log.Default.Debug(ctx, "Locally validate resources")
+
 	if err := resource.ValidateLocal(releaseNamespace, instResources); err != nil {
 		return fmt.Errorf("locally validate resources: %w", err)
 	}
 
 	log.Default.Debug(ctx, "Build resource infos")
+
 	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory.KubeClient(), clientFactory.Mapper(), opts.NetworkParallelism)
 	if err != nil {
 		return fmt.Errorf("build resource infos: %w", err)
 	}
 
 	log.Default.Debug(ctx, "Remotely validate resources")
+
 	if err := plan.ValidateRemote(releaseName, releaseNamespace, instResInfos, opts.ForceAdoption); err != nil {
 		return fmt.Errorf("remotely validate resources: %w", err)
 	}
 
 	log.Default.Debug(ctx, "Build release infos")
+
 	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, releases, newRelease)
 	if err != nil {
 		return fmt.Errorf("build release infos: %w", err)
 	}
 
 	log.Default.Debug(ctx, "Build install plan")
+
 	installPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos)
 	if err != nil {
 		handleBuildPlanErr(ctx, installPlan, err, opts.RollbackGraphPath, opts.TempDirPath, "release-rollback-graph.dot")
@@ -322,6 +338,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
 
 	log.Default.Debug(ctx, "Start tracking")
+
 	go func() {
 		if err := <-watchErrCh; err != nil {
 			ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
@@ -339,6 +356,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	var criticalErrs, nonCriticalErrs []error
 
 	log.Default.Debug(ctx, "Execute release install plan")
+
 	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, installPlan, taskStore, logStore, informerFactory, history, clientFactory.KubeClient(), clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), plan.ExecutePlanOptions{
 		NetworkParallelism: opts.NetworkParallelism,
 		ReadinessTimeout:   opts.TrackReadinessTimeout,
@@ -471,9 +489,10 @@ func applyReleaseRollbackOptionsDefaults(
 		opts.ReleaseHistoryLimit = DefaultReleaseHistoryLimit
 	}
 
-	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {
+	switch opts.ReleaseStorageDriver {
+	case ReleaseStorageDriverDefault:
 		opts.ReleaseStorageDriver = ReleaseStorageDriverSecrets
-	} else if opts.ReleaseStorageDriver == ReleaseStorageDriverMemory {
+	case ReleaseStorageDriverMemory:
 		return ReleaseRollbackOptions{}, fmt.Errorf("memory release storage driver is not supported")
 	}
 

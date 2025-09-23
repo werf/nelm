@@ -59,6 +59,7 @@ func ExecutePlan(
 	opsMap := plan.PredecessorMap()
 
 	log.Default.Debug(ctx, "Start plan operations")
+
 	for i := 0; len(opsMap) > 0; i++ {
 		if i > 0 {
 			if ctx.Err() != nil {
@@ -71,10 +72,12 @@ func ExecutePlan(
 			for len(completedOpsIDsCh) > 0 {
 				completedOpID := <-completedOpsIDsCh
 				gotCompletedOpID = true
+
 				for _, edgeMap := range opsMap {
 					delete(edgeMap, completedOpID)
 				}
 			}
+
 			if !gotCompletedOpID {
 				time.Sleep(100 * time.Millisecond)
 				continue
@@ -108,6 +111,7 @@ func ExecutePlan(
 	}
 
 	log.Default.Debug(ctx, "Wait for all plan operations to complete")
+
 	if err := workerPool.Wait(); err != nil {
 		return fmt.Errorf("wait for operations completion: %w", err)
 	}
@@ -147,6 +151,7 @@ func execOperation(
 		op.Status = OperationStatusPending
 
 		log.Default.Debug(ctx, util.Capitalize(op.IDHuman()))
+
 		err = execOp(
 			ctx,
 			op,
@@ -170,6 +175,7 @@ func execOperation(
 		}
 
 		op.Status = OperationStatusCompleted
+
 		completedOpsIDsCh <- opID
 
 		return nil

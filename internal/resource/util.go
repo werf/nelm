@@ -118,9 +118,11 @@ func setAnnotationsAndLabels(res *unstructured.Unstructured, annotations, labels
 		if annos == nil {
 			annos = map[string]string{}
 		}
+
 		for k, v := range annotations {
 			annos[k] = v
 		}
+
 		res.SetAnnotations(annos)
 	}
 
@@ -129,9 +131,11 @@ func setAnnotationsAndLabels(res *unstructured.Unstructured, annotations, labels
 		if lbls == nil {
 			lbls = map[string]string{}
 		}
+
 		for k, v := range labels {
 			lbls[k] = v
 		}
+
 		res.SetLabels(lbls)
 	}
 }

@@ -478,7 +478,7 @@ func validateDeployDependencies(meta *meta.ResourceMeta) error {
 
 			properties, err := util.ParseProperties(context.TODO(), value)
 			if err != nil {
-				return fmt.Errorf("invalid value %q for annotation %q: %w", err)
+				return fmt.Errorf("invalid value %q for annotation %q: %w", value, key, err)
 			}
 
 			if !lo.Some(lo.Keys(properties), []string{"group", "version", "kind", "name", "namespace"}) {
@@ -498,7 +498,7 @@ func validateDeployDependencies(meta *meta.ResourceMeta) error {
 							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
 						}
 					case bool:
-						return fmt.Errorf("invalid boolean value %q for property %q, expected string value", pv, propKey)
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
 					default:
 						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
 					}
@@ -513,7 +513,7 @@ func validateDeployDependencies(meta *meta.ResourceMeta) error {
 							return fmt.Errorf("unknown value %q for property %q", pv, propKey)
 						}
 					case bool:
-						return fmt.Errorf("invalid boolean value %q for property %q, expected string value", pv, propKey)
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
 					default:
 						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
 					}
@@ -669,13 +669,14 @@ func validateSensitive(meta *meta.ResourceMeta) error {
 		if len(paths) == 0 {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty comma-separated list of JSONPath strings", value, key)
 		}
+
 		for _, path := range paths {
 			if strings.TrimSpace(path) == "" {
 				return fmt.Errorf("invalid value %q for annotation %q, JSONPath cannot be empty", value, key)
 			}
 
 			if _, err := jp.ParseString(path); err != nil {
-				return fmt.Errorf("invalid JSONPath expression %q in annotation %q: %v", path, key, err)
+				return fmt.Errorf("invalid JSONPath expression %q in annotation %q: %w", path, key, err)
 			}
 		}
 	}
@@ -771,6 +772,7 @@ func failuresAllowed(unstruct *unstructured.Unstructured) int {
 	}
 
 	var failuresAllowed int
+
 	_, value, found := FindAnnotationOrLabelByKeyPattern(unstruct.GetAnnotations(), AnnotationKeyPatternFailuresAllowedPerReplica)
 	if found {
 		failuresAllowed = lo.Must(strconv.Atoi(value))
@@ -1035,6 +1037,7 @@ func weight(meta *meta.ResourceMeta, hasManualInternalDeps bool) *int {
 		}
 	} else {
 		var found bool
+
 		_, weightValue, found = FindAnnotationOrLabelByKeyPattern(meta.Annotations, AnnotationKeyPatternWeight)
 		if !found {
 			return lo.ToPtr(0)
@@ -1097,18 +1100,18 @@ func manualInternalDependencies(meta *meta.ResourceMeta) []*InternalDependency {
 			idSubexpIndex := AnnotationKeyPatternDependency.SubexpIndex("id")
 			depID := matches[idSubexpIndex]
 			valParts := strings.Split(value, ":")
-			depApiVersionParts := strings.SplitN(valParts[0], "/", 2)
+			depAPIVersionParts := strings.SplitN(valParts[0], "/", 2)
 
 			var gvk schema.GroupVersionKind
-			if len(depApiVersionParts) == 1 {
+			if len(depAPIVersionParts) == 1 {
 				gvk = schema.GroupVersionKind{
-					Version: depApiVersionParts[0],
+					Version: depAPIVersionParts[0],
 					Kind:    valParts[1],
 				}
 			} else {
 				gvk = schema.GroupVersionKind{
-					Group:   depApiVersionParts[0],
-					Version: depApiVersionParts[1],
+					Group:   depAPIVersionParts[0],
+					Version: depAPIVersionParts[1],
 					Kind:    valParts[1],
 				}
 			}
@@ -1197,6 +1200,7 @@ func externalDependencies(meta *meta.ResourceMeta, releaseNamespace string, mapp
 	// Pretend that we don't have any external dependencies when we don't have cluster access, since we need cluster access to map GVR to GVK.
 	if mapper != nil {
 		var err error
+
 		legacyExtDeps, err = legacyExternalDeps(meta, releaseNamespace, mapper)
 		if err != nil {
 			return nil, fmt.Errorf("get legacy external dependencies: %w", err)
@@ -1219,18 +1223,18 @@ func externalDeps(resMeta *meta.ResourceMeta, releaseNamespace string) map[strin
 			idSubexpIndex := AnnotationKeyPatternExternalDependency.SubexpIndex("id")
 			depID := matches[idSubexpIndex]
 			valParts := strings.Split(value, ":")
-			depApiVersionParts := strings.SplitN(valParts[0], "/", 2)
+			depAPIVersionParts := strings.SplitN(valParts[0], "/", 2)
 
 			var gvk schema.GroupVersionKind
-			if len(depApiVersionParts) == 1 {
+			if len(depAPIVersionParts) == 1 {
 				gvk = schema.GroupVersionKind{
-					Version: depApiVersionParts[0],
+					Version: depAPIVersionParts[0],
 					Kind:    valParts[1],
 				}
 			} else {
 				gvk = schema.GroupVersionKind{
-					Group:   depApiVersionParts[0],
-					Version: depApiVersionParts[1],
+					Group:   depAPIVersionParts[0],
+					Version: depAPIVersionParts[1],
 					Kind:    valParts[1],
 				}
 			}
@@ -1263,6 +1267,7 @@ func legacyExternalDeps(resMeta *meta.ResourceMeta, releaseNamespace string, map
 		Namespace string
 		Type      string
 	}
+
 	extDepInfos := map[string]*DepInfo{}
 
 	if annotations, found := FindAnnotationsOrLabelsByKeyPattern(resMeta.Annotations, AnnotationKeyPatternLegacyExternalDependencyResource); found {

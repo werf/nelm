@@ -42,6 +42,7 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 
 			if len(args) > 0 {
 				var err error
+
 				cfg.Revision, err = strconv.Atoi(args[0])
 				if err != nil {
 					return fmt.Errorf("parse revision: %w", err)

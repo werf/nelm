@@ -37,6 +37,7 @@ func (p *Plan) Operation(id string) (op *Operation, found bool) {
 
 func (p *Plan) Operations() []*Operation {
 	var operations []*Operation
+
 	adjMap := lo.Must(p.graph.AdjacencyMap())
 
 	for opID := range adjMap {
@@ -70,6 +71,7 @@ func (p *Plan) Connect(fromID, toID string) error {
 
 func (p *Plan) Optimize() error {
 	var err error
+
 	p.graph, err = graph.TransitiveReduction(p.graph)
 	if err != nil {
 		return fmt.Errorf("transitively reduce graph: %w", err)

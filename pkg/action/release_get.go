@@ -102,6 +102,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 	loader.NoChartLockWarning = ""
 
 	log.Default.Debug(ctx, "Build release history")
+
 	history, err := release.BuildHistory(releaseName, releaseStorage, release.HistoryOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("build release history: %w", err)
@@ -120,6 +121,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		rel = lo.LastOrEmpty(releases)
 	} else {
 		var revisionFound bool
+
 		rel, revisionFound = history.FindRevision(opts.Revision)
 		if !revisionFound {
 			return nil, &ReleaseRevisionNotFoundError{
@@ -136,7 +138,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 	}
 
 	result := &ReleaseGetResultV1{
-		ApiVersion: "v1",
+		APIVersion: "v1",
 		Release: &ReleaseGetResultRelease{
 			Name:      rel.Name,
 			Namespace: rel.Namespace,
@@ -183,7 +185,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 	}
 
 	switch opts.OutputFormat {
-	case JsonOutputFormat:
+	case JSONOutputFormat:
 		b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
 		if err != nil {
 			return nil, fmt.Errorf("marshal result to json: %w", err)
@@ -210,7 +212,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		colorLevel = color.TermColorLevel()
 	}
 
-	if err := writeWithSyntaxHighlight(os.Stdout, resultMessage, string(opts.OutputFormat), colorLevel); err != nil {
+	if err := writeWithSyntaxHighlight(os.Stdout, resultMessage, opts.OutputFormat, colorLevel); err != nil {
 		return nil, fmt.Errorf("write result to output: %w", err)
 	}
 
@@ -254,7 +256,7 @@ func applyReleaseGetOptionsDefaults(opts ReleaseGetOptions, homeDir string) (Rel
 }
 
 type ReleaseGetResultV1 struct {
-	ApiVersion string                   `json:"apiVersion"`
+	APIVersion string                   `json:"apiVersion"`
 	Release    *ReleaseGetResultRelease `json:"release"`
 	Chart      *ReleaseGetResultChart   `json:"chart"`
 	Notes      string                   `json:"notes,omitempty"`

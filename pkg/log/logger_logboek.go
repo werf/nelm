@@ -41,7 +41,7 @@ func NewLogboekLogger() *LogboekLogger {
 }
 
 func (l *LogboekLogger) Trace(ctx context.Context, format string, a ...interface{}) {
-	if !l.AcceptLevel(nil, TraceLevel) {
+	if !l.AcceptLevel(ctx, TraceLevel) {
 		return
 	}
 
@@ -49,7 +49,7 @@ func (l *LogboekLogger) Trace(ctx context.Context, format string, a ...interface
 }
 
 func (l *LogboekLogger) TraceStruct(ctx context.Context, obj interface{}, format string, a ...interface{}) {
-	if !l.AcceptLevel(nil, TraceLevel) {
+	if !l.AcceptLevel(ctx, TraceLevel) {
 		return
 	}
 
@@ -75,7 +75,7 @@ func (l *LogboekLogger) TracePop(ctx context.Context, group string) {
 }
 
 func (l *LogboekLogger) Debug(ctx context.Context, format string, a ...interface{}) {
-	if !l.AcceptLevel(nil, DebugLevel) {
+	if !l.AcceptLevel(ctx, DebugLevel) {
 		return
 	}
 
@@ -99,7 +99,7 @@ func (l *LogboekLogger) DebugPop(ctx context.Context, group string) {
 }
 
 func (l *LogboekLogger) Info(ctx context.Context, format string, a ...interface{}) {
-	if !l.AcceptLevel(nil, InfoLevel) {
+	if !l.AcceptLevel(ctx, InfoLevel) {
 		return
 	}
 
@@ -123,7 +123,7 @@ func (l *LogboekLogger) InfoPop(ctx context.Context, group string) {
 }
 
 func (l *LogboekLogger) Warn(ctx context.Context, format string, a ...interface{}) {
-	if !l.AcceptLevel(nil, WarningLevel) {
+	if !l.AcceptLevel(ctx, WarningLevel) {
 		return
 	}
 
@@ -147,7 +147,7 @@ func (l *LogboekLogger) WarnPop(ctx context.Context, group string) {
 }
 
 func (l *LogboekLogger) Error(ctx context.Context, format string, a ...interface{}) {
-	if !l.AcceptLevel(nil, ErrorLevel) {
+	if !l.AcceptLevel(ctx, ErrorLevel) {
 		return
 	}
 
@@ -203,7 +203,7 @@ func (l *LogboekLogger) SetLevel(ctx context.Context, lvl Level) {
 	})
 }
 
-func (l *LogboekLogger) Level(context.Context) Level {
+func (l *LogboekLogger) Level(ctx context.Context) Level {
 	var lv Level
 	l.level.RTransaction(func(l *Level) {
 		lv = *l
