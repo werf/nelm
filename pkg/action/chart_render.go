@@ -265,7 +265,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		return nil, fmt.Errorf("build releasable resource specs: %w", err)
 	}
 
-	newRelease, err := release.NewRelease(opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, releasableResSpecs, release.ReleaseOptions{
+	newRelease, err := release.NewRelease(opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, releasableResSpecs, renderChartResult.Chart, renderChartResult.ReleaseConfig, release.ReleaseOptions{
 		Notes: renderChartResult.Notes,
 	})
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/internal/resource/meta"
 	"github.com/werf/nelm/internal/util"
@@ -23,6 +24,10 @@ func validateAdoptableResources(releaseName, releaseNamespace string, resourceIn
 	var errs []error
 	for _, info := range resourceInfos {
 		if info.GetResult == nil {
+			continue
+		}
+
+		if info.LocalResource.Ownership == common.OwnershipEveryone {
 			continue
 		}
 

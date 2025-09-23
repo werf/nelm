@@ -62,6 +62,7 @@ type RenderChartOptions struct {
 type RenderChartResult struct {
 	Chart         *chart.Chart
 	Notes         string
+	ReleaseConfig map[string]interface{}
 	ResourceSpecs []*resource.ResourceSpec
 	Values        map[string]interface{}
 }
@@ -219,6 +220,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	return &RenderChartResult{
 		Chart:         chart,
 		Notes:         notes,
+		ReleaseConfig: overrideValues,
 		ResourceSpecs: resources,
 		Values:        renderedValues.AsMap(),
 	}, nil

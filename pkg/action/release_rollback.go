@@ -215,7 +215,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		return fmt.Errorf("convert release to rollback to resource specs: %w", err)
 	}
 
-	newRelease, err := release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, rollbackReleaseResSpecs, release.ReleaseOptions{
+	newRelease, err := release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, rollbackReleaseResSpecs, rollbackRelease.Chart, rollbackRelease.Config, release.ReleaseOptions{
 		InfoAnnotations: rollbackRelease.Info.Annotations,
 		Labels:          rollbackRelease.Labels,
 		Notes:           rollbackRelease.Info.Notes,
@@ -253,7 +253,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	}
 
 	log.Default.Debug(ctx, "Build resource infos")
-	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory.KubeClient(), clientFactory.Mapper(), opts.NetworkParallelism)
+	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory.KubeClient(), clientFactory.Mapper(), opts.NetworkParallelism)
 	if err != nil {
 		return fmt.Errorf("build resource infos: %w", err)
 	}

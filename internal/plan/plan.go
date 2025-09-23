@@ -131,15 +131,18 @@ func (b *planChainBuilder) Do() error {
 	}
 
 	for i, step := range b.steps {
+		var vertexAdded bool
 		if err := b.plan.graph.AddVertex(step.operation); err != nil {
 			if !errors.Is(err, graph.ErrVertexAlreadyExists) || !step.skipOnDuplicate {
 				return fmt.Errorf("add vertex: %w", err)
 			}
+		} else {
+			vertexAdded = true
 		}
 
 		operations := b.plan.Operations()
 
-		if step.stage != "" {
+		if step.stage != "" && vertexAdded {
 			stageStartOp := lo.Must(lo.Find(operations, func(op *Operation) bool {
 				config, ok := op.Config.(*OperationConfigNoop)
 				if !ok {

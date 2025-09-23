@@ -42,14 +42,13 @@ type InstallableResource struct {
 	AutoInternalDependencies               []*InternalDependency
 	ExternalDependencies                   []*ExternalDependency
 	DeployConditions                       map[common.On][]common.Stage
-	Stage                                  common.Stage
 }
 
 type InstallableResourceOptions struct {
 	Mapper apimeta.ResettableRESTMapper
 }
 
-func NewInstallableResource(res *ResourceSpec, deployType common.DeployType, releaseNamespace string, opts InstallableResourceOptions) ([]*InstallableResource, error) {
+func NewInstallableResource(res *ResourceSpec, releaseNamespace string, opts InstallableResourceOptions) (*InstallableResource, error) {
 	if err := validateHook(res.ResourceMeta); err != nil {
 		return nil, fmt.Errorf("validate hook configuration: %w", err)
 	}
@@ -103,53 +102,34 @@ func NewInstallableResource(res *ResourceSpec, deployType common.DeployType, rel
 		return nil, fmt.Errorf("get external dependencies: %w", err)
 	}
 
-	deplConditions := deployConditions(res.ResourceMeta)
 	manIntDeps := manualInternalDependencies(res.ResourceMeta)
 
-	var stages []common.Stage
-	switch deployType {
-	case common.DeployTypeInitial, common.DeployTypeInstall:
-		stages = deplConditions[common.InstallOnInstall]
-	case common.DeployTypeUpgrade:
-		stages = deplConditions[common.InstallOnUpgrade]
-	case common.DeployTypeRollback:
-		stages = deplConditions[common.InstallOnRollback]
-	case common.DeployTypeUninstall:
-		stages = deplConditions[common.InstallOnDelete]
-	}
-
-	var instResources []*InstallableResource
-	for _, stage := range stages {
-		instResources = append(instResources, &InstallableResource{
-			ResourceSpec:                           res,
-			Recreate:                               recreate(res.ResourceMeta),
-			DefaultReplicasOnCreation:              defaultReplicasOnCreation(res.ResourceMeta, releaseNamespace),
-			Ownership:                              ownership(res.ResourceMeta, releaseNamespace),
-			DeleteOnSucceeded:                      deleteOnSucceeded(res.ResourceMeta),
-			DeleteOnFailed:                         deleteOnFailed(res.ResourceMeta),
-			KeepOnDelete:                           KeepOnDelete(res.ResourceMeta, releaseNamespace),
-			FailMode:                               failMode(res.ResourceMeta),
-			FailuresAllowed:                        failuresAllowed(res.Unstruct),
-			IgnoreReadinessProbeFailsForContainers: ignoreReadinessProbeFailsForContainers(res.ResourceMeta),
-			LogRegex:                               logRegex(res.ResourceMeta),
-			LogRegexesForContainers:                logRegexesForContainers(res.ResourceMeta),
-			NoActivityTimeout:                      noActivityTimeout(res.ResourceMeta),
-			ShowLogsOnlyForContainers:              showLogsOnlyForContainers(res.ResourceMeta),
-			ShowServiceMessages:                    showServiceMessages(res.ResourceMeta),
-			ShowLogsOnlyForNumberOfReplicas:        showLogsOnlyForNumberOfReplicas(res.ResourceMeta),
-			SkipLogs:                               skipLogs(res.ResourceMeta),
-			SkipLogsForContainers:                  skipLogsForContainers(res.ResourceMeta),
-			TrackTerminationMode:                   trackTerminationMode(res.ResourceMeta),
-			Weight:                                 weight(res.ResourceMeta, len(manIntDeps) > 0),
-			ManualInternalDependencies:             manIntDeps,
-			AutoInternalDependencies:               DetectInternalDependencies(res.Unstruct),
-			ExternalDependencies:                   extDeps,
-			DeployConditions:                       deplConditions,
-			Stage:                                  stage,
-		})
-	}
-
-	return instResources, nil
+	return &InstallableResource{
+		ResourceSpec:                           res,
+		Recreate:                               recreate(res.ResourceMeta),
+		DefaultReplicasOnCreation:              defaultReplicasOnCreation(res.ResourceMeta, releaseNamespace),
+		Ownership:                              ownership(res.ResourceMeta, releaseNamespace),
+		DeleteOnSucceeded:                      deleteOnSucceeded(res.ResourceMeta),
+		DeleteOnFailed:                         deleteOnFailed(res.ResourceMeta),
+		KeepOnDelete:                           KeepOnDelete(res.ResourceMeta, releaseNamespace),
+		FailMode:                               failMode(res.ResourceMeta),
+		FailuresAllowed:                        failuresAllowed(res.Unstruct),
+		IgnoreReadinessProbeFailsForContainers: ignoreReadinessProbeFailsForContainers(res.ResourceMeta),
+		LogRegex:                               logRegex(res.ResourceMeta),
+		LogRegexesForContainers:                logRegexesForContainers(res.ResourceMeta),
+		NoActivityTimeout:                      noActivityTimeout(res.ResourceMeta),
+		ShowLogsOnlyForContainers:              showLogsOnlyForContainers(res.ResourceMeta),
+		ShowServiceMessages:                    showServiceMessages(res.ResourceMeta),
+		ShowLogsOnlyForNumberOfReplicas:        showLogsOnlyForNumberOfReplicas(res.ResourceMeta),
+		SkipLogs:                               skipLogs(res.ResourceMeta),
+		SkipLogsForContainers:                  skipLogsForContainers(res.ResourceMeta),
+		TrackTerminationMode:                   trackTerminationMode(res.ResourceMeta),
+		Weight:                                 weight(res.ResourceMeta, len(manIntDeps) > 0),
+		ManualInternalDependencies:             manIntDeps,
+		AutoInternalDependencies:               DetectInternalDependencies(res.Unstruct),
+		ExternalDependencies:                   extDeps,
+		DeployConditions:                       deployConditions(res.ResourceMeta),
+	}, nil
 }
 
 type DeletableResource struct {
@@ -157,12 +137,11 @@ type DeletableResource struct {
 
 	Ownership    common.Ownership
 	KeepOnDelete bool
-	Stage        common.Stage
 }
 
 type DeletableResourceOptions struct{}
 
-func NewDeletableResource(meta *meta.ResourceMeta, releaseNamespace string, stage common.Stage, opts DeletableResourceOptions) *DeletableResource {
+func NewDeletableResource(meta *meta.ResourceMeta, releaseNamespace string, opts DeletableResourceOptions) *DeletableResource {
 	var keep bool
 	if err := ValidateResourcePolicy(meta); err != nil {
 		keep = true
@@ -191,39 +170,32 @@ type BuildResourcesOptions struct {
 func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRelResSpecs, newRelResSpecs []*ResourceSpec, patchers []ResourcePatcher, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
 	var prevRelDelResources []*DeletableResource
 	for _, resSpec := range prevRelResSpecs {
-		var stage common.Stage
-		if deployType == common.DeployTypeUninstall {
-			stage = common.StageUninstall
-		} else {
-			stage = common.StagePrePreUninstall
-		}
-
-		deletableRes := NewDeletableResource(resSpec.ResourceMeta, releaseNamespace, stage, DeletableResourceOptions{})
+		deletableRes := NewDeletableResource(resSpec.ResourceMeta, releaseNamespace, DeletableResourceOptions{})
 		prevRelDelResources = append(prevRelDelResources, deletableRes)
 	}
 
 	var prevRelInstResources []*InstallableResource
 	for _, resSpec := range prevRelResSpecs {
-		installableResources, err := NewInstallableResource(resSpec, deployType, releaseNamespace, InstallableResourceOptions{
+		installableResource, err := NewInstallableResource(resSpec, releaseNamespace, InstallableResourceOptions{
 			Mapper: opts.Mapper,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct installable resource: %w", err)
 		}
 
-		prevRelInstResources = append(prevRelInstResources, installableResources...)
+		prevRelInstResources = append(prevRelInstResources, installableResource)
 	}
 
 	var newRelInstResources []*InstallableResource
 	for _, resSpec := range newRelResSpecs {
-		installableResources, err := NewInstallableResource(resSpec, deployType, releaseNamespace, InstallableResourceOptions{
+		installableResource, err := NewInstallableResource(resSpec, releaseNamespace, InstallableResourceOptions{
 			Mapper: opts.Mapper,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct installable resource: %w", err)
 		}
 
-		newRelInstResources = append(newRelInstResources, installableResources...)
+		newRelInstResources = append(newRelInstResources, installableResource)
 	}
 
 	var filteredPrevRelInstResources []*InstallableResource
@@ -233,12 +205,7 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 				return false
 			}
 
-			conds, found := instRes.DeployConditions[common.InstallOnDelete]
-			if !found {
-				return false
-			}
-
-			return len(conds) > 0
+			return len(instRes.DeployConditions[common.InstallOnDelete]) > 0
 		})
 	}
 
@@ -270,26 +237,11 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 
 		switch deployType {
 		case common.DeployTypeInitial, common.DeployTypeInstall:
-			conds, found := instRes.DeployConditions[common.InstallOnInstall]
-			if !found {
-				return false
-			}
-
-			return len(conds) > 0
+			return len(instRes.DeployConditions[common.InstallOnInstall]) > 0
 		case common.DeployTypeUpgrade:
-			conds, found := instRes.DeployConditions[common.InstallOnUpgrade]
-			if !found {
-				return false
-			}
-
-			return len(conds) > 0
+			return len(instRes.DeployConditions[common.InstallOnUpgrade]) > 0
 		case common.DeployTypeRollback:
-			conds, found := instRes.DeployConditions[common.InstallOnRollback]
-			if !found {
-				return false
-			}
-
-			return len(conds) > 0
+			return len(instRes.DeployConditions[common.InstallOnRollback]) > 0
 		default:
 			panic("unexpected deploy type")
 		}
@@ -331,34 +283,15 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 				FilePath: instRes.FilePath,
 			})
 
-			// FIXME(ilya-lesikov): BuildResources must never change number of resources, also because later it is used for chart render/lint/...
-			// FIXME(ilya-lesikov): this might again split the same resource into multiple because of helm.sh/hook or werf.io/on
-			// FIXME(ilya-lesikov): move some field like Stage from InstallableResource to Info?
-			instReses, err := NewInstallableResource(resSpec, deployType, releaseNamespace, InstallableResourceOptions{
+			instRes, err = NewInstallableResource(resSpec, releaseNamespace, InstallableResourceOptions{
 				Mapper: opts.Mapper,
 			})
 			if err != nil {
 				return nil, nil, fmt.Errorf("construct deployable resource from patched object by %q: %w", patcher.Type(), err)
 			}
-
-			// FIXME(ilya-lesikov):
-			lo.Must0(len(instReses) == 1)
-			instRes = instReses[0]
 		}
 
-		// FIXME(ilya-lesikov): keep helm Release compatible
 		instResources = append(instResources, instRes)
-	}
-
-	// FIXME(ilya-lesikov):
-	fmt.Println("newrelinstresources")
-	for _, res := range newRelInstResources {
-		fmt.Println(res.ID())
-	}
-
-	fmt.Println("instresources")
-	for _, res := range instResources {
-		fmt.Println(res.ID())
 	}
 
 	sort.SliceStable(instResources, func(i, j int) bool {

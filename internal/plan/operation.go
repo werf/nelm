@@ -84,7 +84,7 @@ func OperationIDHuman(t OperationType, iteration OperationIteration, configIDHum
 	id := fmt.Sprintf("%s: ", strings.ReplaceAll(string(t), "-", " "))
 	id += configIDHuman
 	if iteration > 0 {
-		id += fmt.Sprintf(" (%d)", iteration)
+		id += fmt.Sprintf(" (iteration=%d)", iteration)
 	}
 
 	return id

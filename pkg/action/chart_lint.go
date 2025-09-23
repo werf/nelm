@@ -259,7 +259,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		return fmt.Errorf("build releasable resource specs: %w", err)
 	}
 
-	newRelease, err := release.NewRelease(opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, releasableResSpecs, release.ReleaseOptions{
+	newRelease, err := release.NewRelease(opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, releasableResSpecs, renderChartResult.Chart, renderChartResult.ReleaseConfig, release.ReleaseOptions{
 		Notes: renderChartResult.Notes,
 	})
 	if err != nil {
@@ -305,7 +305,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	}
 
 	log.Default.Debug(ctx, "Build resource infos")
-	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, opts.ReleaseName, opts.ReleaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory.KubeClient(), clientFactory.Mapper(), opts.NetworkParallelism)
+	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, opts.ReleaseName, opts.ReleaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory.KubeClient(), clientFactory.Mapper(), opts.NetworkParallelism)
 	if err != nil {
 		return fmt.Errorf("build resource infos: %w", err)
 	}

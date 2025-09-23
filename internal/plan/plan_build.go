@@ -16,31 +16,31 @@ func BuildPlan(installableInfos []*InstallableResourceInfo, deletableInfos []*De
 	plan := NewPlan()
 
 	if err := addMainStages(plan); err != nil {
-		return nil, fmt.Errorf("add main stages: %w", err)
+		return plan, fmt.Errorf("add main stages: %w", err)
 	}
 
 	if err := addWeightedSubStages(plan, installableInfos); err != nil {
-		return nil, fmt.Errorf("add weighted substages: %w", err)
+		return plan, fmt.Errorf("add weighted substages: %w", err)
 	}
 
 	if err := addReleaseOperations(plan, releaseInfos); err != nil {
-		return nil, fmt.Errorf("add release operations: %w", err)
+		return plan, fmt.Errorf("add release operations: %w", err)
 	}
 
 	if err := addDeleteResourcesOps(plan, deletableInfos); err != nil {
-		return nil, fmt.Errorf("add delete resources operations: %w", err)
+		return plan, fmt.Errorf("add delete resources operations: %w", err)
 	}
 
 	if err := addInstallResourceOps(plan, installableInfos); err != nil {
-		return nil, fmt.Errorf("add install resource operations: %w", err)
+		return plan, fmt.Errorf("add install resource operations: %w", err)
 	}
 
 	if err := connectInternalDependencies(plan, installableInfos); err != nil {
-		return nil, fmt.Errorf("connect internal dependencies: %w", err)
+		return plan, fmt.Errorf("connect internal dependencies: %w", err)
 	}
 
 	if err := plan.Optimize(); err != nil {
-		return nil, fmt.Errorf("optimize plan: %w", err)
+		return plan, fmt.Errorf("optimize plan: %w", err)
 	}
 
 	return plan, nil
@@ -50,19 +50,19 @@ func BuildFailurePlan(failedPlan *Plan, installableInfos []*InstallableResourceI
 	plan := NewPlan()
 
 	if err := addMainStages(plan); err != nil {
-		return nil, fmt.Errorf("add main stages: %w", err)
+		return plan, fmt.Errorf("add main stages: %w", err)
 	}
 
 	if err := addFailureReleaseOperations(failedPlan, plan, releaseInfos); err != nil {
-		return nil, fmt.Errorf("add failure release operations: %w", err)
+		return plan, fmt.Errorf("add failure release operations: %w", err)
 	}
 
 	if err := addFailureResourceOperations(failedPlan, plan, installableInfos); err != nil {
-		return nil, fmt.Errorf("add failure resource operations: %w", err)
+		return plan, fmt.Errorf("add failure resource operations: %w", err)
 	}
 
 	if err := plan.Optimize(); err != nil {
-		return nil, fmt.Errorf("optimize plan: %w", err)
+		return plan, fmt.Errorf("optimize plan: %w", err)
 	}
 
 	return plan, nil
@@ -307,7 +307,7 @@ func addDeleteResourcesOps(plan *Plan, infos []*DeletableResourceInfo) error {
 				},
 			}
 
-			chain.AddOperation(deleteOp).Stage(info.LocalResource.Stage)
+			chain.AddOperation(deleteOp).Stage(info.Stage)
 
 			if info.MustTrackAbsence {
 				trackOp := &Operation{
@@ -318,7 +318,7 @@ func addDeleteResourcesOps(plan *Plan, infos []*DeletableResourceInfo) error {
 						ResourceMeta: info.ResourceMeta,
 					},
 				}
-				chain.AddOperation(trackOp).Stage(info.LocalResource.Stage)
+				chain.AddOperation(trackOp).Stage(info.Stage)
 			}
 
 			if err := chain.Do(); err != nil {
@@ -337,11 +337,11 @@ func addWeightedSubStages(plan *Plan, infos []*InstallableResourceInfo) error {
 			continue
 		}
 
-		if _, found := stageWeights[info.LocalResource.Stage]; !found {
-			stageWeights[info.LocalResource.Stage] = []int{}
+		if _, found := stageWeights[info.Stage]; !found {
+			stageWeights[info.Stage] = []int{}
 		}
 
-		stageWeights[info.LocalResource.Stage] = append(stageWeights[info.LocalResource.Stage], *info.LocalResource.Weight)
+		stageWeights[info.Stage] = append(stageWeights[info.Stage], *info.LocalResource.Weight)
 	}
 
 	for stage := range stageWeights {
@@ -390,9 +390,9 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 
 		var stg common.Stage
 		if info.LocalResource.Weight != nil {
-			stg = common.SubStageWeighted(info.LocalResource.Stage, *info.LocalResource.Weight)
+			stg = common.SubStageWeighted(info.Stage, *info.LocalResource.Weight)
 		} else {
-			stg = info.LocalResource.Stage
+			stg = info.Stage
 		}
 
 		if info.MustInstall != ResourceInstallTypeNone {

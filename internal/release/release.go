@@ -13,6 +13,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/yaml"
 
+	helmchart "github.com/werf/3p-helm/pkg/chart"
 	"github.com/werf/3p-helm/pkg/chartutil"
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/3p-helm/pkg/releaseutil"
@@ -26,7 +27,7 @@ type ReleaseOptions struct {
 	Notes           string
 }
 
-func NewRelease(name, namespace string, revision int, deployType common.DeployType, resources []*resource.ResourceSpec, opts ReleaseOptions) (*helmrelease.Release, error) {
+func NewRelease(name, namespace string, revision int, deployType common.DeployType, resources []*resource.ResourceSpec, chart *helmchart.Chart, releaseConfig map[string]interface{}, opts ReleaseOptions) (*helmrelease.Release, error) {
 	if err := chartutil.ValidateReleaseName(name); err != nil {
 		return nil, fmt.Errorf("release name %q is not valid: %w", name, err)
 	}
@@ -69,9 +70,12 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 				return nil, fmt.Errorf("convert resource spec to manifest: %w", err)
 			}
 
-			hookResources = append(hookResources, &helmrelease.Hook{
-				Manifest: manifest,
-			})
+			hook, err := releaseutil.HookManifestToHook(manifest, res.FilePath)
+			if err != nil {
+				return nil, fmt.Errorf("convert hook manifest to hook: %w", err)
+			}
+
+			hookResources = append(hookResources, hook)
 		case common.StoreAsRegular:
 			manifest, err := resourceSpecToManifest(name, namespace, revision, res)
 			if err != nil {
@@ -100,6 +104,8 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 			Notes:       opts.Notes,
 			Annotations: opts.InfoAnnotations,
 		},
+		Chart:            chart,
+		Config:           releaseConfig,
 		Manifest:         strings.Join(regularResources, "\n---\n"),
 		Hooks:            hookResources,
 		Version:          revision,

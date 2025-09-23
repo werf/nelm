@@ -5,11 +5,7 @@ import (
 	"github.com/werf/nelm/internal/resource/meta"
 )
 
-func InstallableResourceSortByStageAndWeightHandler(r1, r2 *InstallableResource) bool {
-	if r1.Stage != r2.Stage {
-		return common.StagesSortHandler(r1.Stage, r2.Stage)
-	}
-
+func InstallableResourceSortByWeightHandler(r1, r2 *InstallableResource) bool {
 	if r1.Weight == nil {
 		return true
 	} else if r2.Weight == nil {
