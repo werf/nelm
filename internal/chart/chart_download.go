@@ -13,6 +13,7 @@ import (
 	"github.com/werf/3p-helm/pkg/helmpath"
 	helmregistry "github.com/werf/3p-helm/pkg/registry"
 	helmrepo "github.com/werf/3p-helm/pkg/repo"
+	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -83,4 +84,29 @@ func newChartDownloader(ctx context.Context, chartRef string, registryClient *he
 	}
 
 	return downloader, chartRef, nil
+}
+
+func downloadChart(ctx context.Context, chartPath string, opts RenderChartOptions) (string, error) {
+	if (featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled()) && !isLocalChart(chartPath) {
+		chartDownloader, chartRef, err := newChartDownloader(ctx, chartPath, opts.RegistryClient, chartDownloaderOptions{
+			CaFile:        opts.KubeCAPath,
+			SkipTLSVerify: opts.ChartRepoSkipTLSVerify,
+			Insecure:      opts.ChartRepoInsecure,
+			Version:       opts.ChartVersion,
+		})
+		if err != nil {
+			return "", fmt.Errorf("construct chart downloader: %w", err)
+		}
+
+		if err := os.MkdirAll(cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")), 0o755); err != nil {
+			return "", fmt.Errorf("create repository cache directory: %w", err)
+		}
+
+		chartPath, _, err = chartDownloader.DownloadTo(chartRef, opts.ChartVersion, cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")))
+		if err != nil {
+			return "", fmt.Errorf("download chart %q: %w", chartRef, err)
+		}
+	}
+
+	return chartPath, nil
 }
