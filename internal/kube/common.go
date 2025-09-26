@@ -11,7 +11,7 @@ import (
 var (
 	DefaultKubectlCacheDir      = filepath.Join(homedir.HomeDir(), ".kube", "cache")
 	KubectlCacheDirEnv          = "KUBECACHEDIR"
-	KubectlHttpCacheSubdir      = "http"
+	KubectlHTTPCacheSubdir      = "http"
 	KubectlDiscoveryCacheSubdir = "discovery"
 )
 

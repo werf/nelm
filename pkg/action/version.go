@@ -13,11 +13,13 @@ import (
 
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/nelm/internal/common"
+	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/pkg/log"
 )
 
 const (
 	DefaultVersionOutputFormat = YamlOutputFormat
-	DefaultVersionLogLevel     = ErrorLogLevel
+	DefaultVersionLogLevel     = log.ErrorLevel
 )
 
 type VersionOptions struct {
@@ -39,16 +41,16 @@ func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {
 	}
 
 	if semVer, err := semver.StrictNewVersion(common.Version); err == nil {
-		result.MajorVersion = int(semVer.Major())
-		result.MinorVersion = int(semVer.Minor())
-		result.PatchVersion = int(semVer.Patch())
+		result.MajorVersion = util.Uint64ToInt(semVer.Major())
+		result.MinorVersion = util.Uint64ToInt(semVer.Minor())
+		result.PatchVersion = util.Uint64ToInt(semVer.Patch())
 	}
 
 	if !opts.OutputNoPrint {
 		var resultMessage string
 
 		switch opts.OutputFormat {
-		case JsonOutputFormat:
+		case JSONOutputFormat:
 			b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
 			if err != nil {
 				return nil, fmt.Errorf("marshal result to json: %w", err)
@@ -71,7 +73,7 @@ func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {
 			colorLevel = color.TermColorLevel()
 		}
 
-		if err := writeWithSyntaxHighlight(os.Stdout, resultMessage, string(opts.OutputFormat), colorLevel); err != nil {
+		if err := writeWithSyntaxHighlight(os.Stdout, resultMessage, opts.OutputFormat, colorLevel); err != nil {
 			return nil, fmt.Errorf("write result to output: %w", err)
 		}
 	}

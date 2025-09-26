@@ -6,12 +6,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gookit/color"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
-	"k8s.io/client-go/kubernetes"
 
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
@@ -19,14 +19,15 @@ import (
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/plan"
-	"github.com/werf/nelm/internal/plan/resourceinfo"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource"
-	log2 "github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/internal/resource/spec"
+	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/pkg/log"
 )
 
 const (
-	DefaultReleasePlanInstallLogLevel = InfoLogLevel
+	DefaultReleasePlanInstallLogLevel = log.InfoLevel
 )
 
 var ErrChangesPlanned = errors.New("changes planned")
@@ -49,6 +50,7 @@ type ReleasePlanInstallOptions struct {
 	ExtraLabels                  map[string]string
 	ExtraRuntimeAnnotations      map[string]string
 	ForceAdoption                bool
+	InstallGraphPath             string // TODO: set from cli
 	KubeAPIServerName            string
 	KubeBurstLimit               int
 	KubeCAPath                   string
@@ -156,7 +158,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(log2.Default.AcceptLevel(ctx, log2.Level(DebugLogLevel))),
+		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
 		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
 	}
@@ -173,15 +175,9 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		return fmt.Errorf("construct registry client: %w", err)
 	}
 
-	releaseStorage, err := release.NewReleaseStorage(
-		ctx,
-		releaseNamespace,
-		opts.ReleaseStorageDriver,
-		release.ReleaseStorageOptions{
-			StaticClient:        clientFactory.Static().(*kubernetes.Clientset),
-			SQLConnectionString: opts.SQLConnectionString,
-		},
-	)
+	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, clientFactory, release.ReleaseStorageOptions{
+		SQLConnectionString: opts.SQLConnectionString,
+	})
 	if err != nil {
 		return fmt.Errorf("construct release storage: %w", err)
 	}
@@ -202,189 +198,189 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		},
 	}
 
-	log2.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release install")+" %q (namespace: %q)", releaseName, releaseNamespace)
+	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release install")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-	log2.Default.Debug(ctx, "Constructing release history")
-	history, err := release.NewHistory(
-		releaseName,
-		releaseNamespace,
-		releaseStorage,
-		release.HistoryOptions{
-			Mapper:          clientFactory.Mapper(),
-			DiscoveryClient: clientFactory.Discovery(),
-		},
+	log.Default.Debug(ctx, "Build release history")
+
+	history, err := release.BuildHistory(releaseName, releaseStorage, release.HistoryOptions{})
+	if err != nil {
+		return fmt.Errorf("build release history: %w", err)
+	}
+
+	releases := history.Releases()
+	deployedReleases := history.FindAllDeployed()
+	prevRelease := lo.LastOrEmpty(releases)
+	prevDeployedRelease := lo.LastOrEmpty(deployedReleases)
+
+	var (
+		newRevision       int
+		prevReleaseFailed bool
 	)
-	if err != nil {
-		return fmt.Errorf("construct release history: %w", err)
-	}
 
-	prevRelease, prevReleaseFound, err := history.LastRelease()
-	if err != nil {
-		return fmt.Errorf("get last release: %w", err)
-	}
-
-	_, prevDeployedReleaseFound, err := history.LastDeployedRelease()
-	if err != nil {
-		return fmt.Errorf("get last deployed release: %w", err)
-	}
-
-	var newRevision int
-	var firstDeployed time.Time
-	if prevReleaseFound {
-		newRevision = prevRelease.Revision() + 1
-		firstDeployed = prevRelease.FirstDeployed()
+	if prevRelease != nil {
+		newRevision = prevRelease.Version + 1
+		prevReleaseFailed = prevRelease.IsStatusFailed()
 	} else {
 		newRevision = 1
 	}
 
 	var deployType common.DeployType
-	if prevReleaseFound && prevDeployedReleaseFound {
+	if prevDeployedRelease != nil {
 		deployType = common.DeployTypeUpgrade
-	} else if prevReleaseFound {
+	} else if prevRelease != nil {
 		deployType = common.DeployTypeInstall
 	} else {
 		deployType = common.DeployTypeInitial
 	}
 
-	log2.Default.Debug(ctx, "Constructing chart tree")
-	chartTree, err := chart.NewChartTree(
-		ctx,
-		opts.Chart,
-		releaseName,
-		releaseNamespace,
-		newRevision,
-		deployType,
-		chart.ChartTreeOptions{
-			ChartRepoInsecure:      opts.ChartRepositoryInsecure,
-			ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
-			ChartRepoSkipUpdate:    opts.ChartRepositorySkipUpdate,
-			ChartVersion:           opts.ChartVersion,
-			DiscoveryClient:        clientFactory.Discovery(),
-			FileValues:             opts.ValuesFileSets,
-			KubeCAPath:             opts.KubeCAPath,
-			KubeConfig:             clientFactory.KubeConfig(),
-			HelmOptions:            helmOptions,
-			Mapper:                 clientFactory.Mapper(),
-			NoStandaloneCRDs:       opts.NoInstallCRDs,
-			RegistryClient:         helmRegistryClient,
-			SetValues:              opts.ValuesSets,
-			StringSetValues:        opts.ValuesStringSets,
-			ValuesFiles:            opts.ValuesFilesPaths,
-		},
-	)
+	log.Default.Debug(ctx, "Render chart")
+
+	renderChartResult, err := chart.RenderChart(ctx, opts.Chart, releaseName, releaseNamespace, newRevision, deployType, clientFactory, chart.RenderChartOptions{
+		ChartRepoInsecure:      opts.ChartRepositoryInsecure,
+		ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
+		ChartRepoSkipUpdate:    opts.ChartRepositorySkipUpdate,
+		ChartVersion:           opts.ChartVersion,
+		FileValues:             opts.ValuesFileSets,
+		HelmOptions:            helmOptions,
+		KubeCAPath:             opts.KubeCAPath,
+		NoStandaloneCRDs:       opts.NoInstallCRDs,
+		RegistryClient:         helmRegistryClient,
+		Remote:                 true,
+		SetValues:              opts.ValuesSets,
+		StringSetValues:        opts.ValuesStringSets,
+		ValuesFiles:            opts.ValuesFilesPaths,
+	})
 	if err != nil {
-		return fmt.Errorf("construct chart tree: %w", err)
+		return fmt.Errorf("render chart: %w", err)
 	}
 
-	notes := chartTree.Notes()
+	log.Default.Debug(ctx, "Build transformed resource specs")
 
-	var prevRelGeneralResources []*resource.GeneralResource
-	var prevRelFailed bool
-	if prevReleaseFound {
-		prevRelGeneralResources = prevRelease.GeneralResources()
-		prevRelFailed = prevRelease.Failed()
+	transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, releaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
+		spec.NewResourceListsTransformer(),
+		spec.NewDropInvalidAnnotationsAndLabelsTransformer(),
+	})
+	if err != nil {
+		return fmt.Errorf("build transformed resource specs: %w", err)
 	}
 
-	log2.Default.Debug(ctx, "Processing resources")
-	resProcessor := resourceinfo.NewDeployableResourcesProcessor(
-		deployType,
-		releaseName,
-		releaseNamespace,
-		chartTree.StandaloneCRDs(),
-		chartTree.HookResources(),
-		chartTree.GeneralResources(),
-		nil,
-		prevRelGeneralResources,
-		resourceinfo.DeployableResourcesProcessorOptions{
-			NetworkParallelism: opts.NetworkParallelism,
-			ForceAdoption:      opts.ForceAdoption,
-			ReleasableHookResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-			},
-			ReleasableGeneralResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-			},
-			DeployableStandaloneCRDsPatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(
-					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations),
-					opts.ExtraLabels,
-				),
-			},
-			DeployableHookResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(
-					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations),
-					opts.ExtraLabels,
-				),
-			},
-			DeployableGeneralResourcePatchers: []resource.ResourcePatcher{
-				resource.NewExtraMetadataPatcher(
-					lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations),
-					opts.ExtraLabels,
-				),
-			},
-			KubeClient:         clientFactory.KubeClient(),
-			Mapper:             clientFactory.Mapper(),
-			DiscoveryClient:    clientFactory.Discovery(),
-			AllowClusterAccess: true,
-		},
-	)
+	log.Default.Debug(ctx, "Build releasable resource specs")
 
-	if err := resProcessor.Process(ctx); err != nil {
-		return fmt.Errorf("process resources: %w", err)
+	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, releaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
+		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+	})
+	if err != nil {
+		return fmt.Errorf("build releasable resource specs: %w", err)
 	}
 
-	log2.Default.Debug(ctx, "Constructing new release")
-	newRel, err := release.NewRelease(
-		releaseName,
-		releaseNamespace,
-		newRevision,
-		chartTree.OverrideValues(),
-		chartTree.LegacyChart(),
-		resProcessor.ReleasableHookResources(),
-		resProcessor.ReleasableGeneralResources(),
-		notes,
-		release.ReleaseOptions{
-			FirstDeployed: firstDeployed,
-			Mapper:        clientFactory.Mapper(),
-		},
-	)
+	newRelease, err := release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, releasableResSpecs, renderChartResult.Chart, renderChartResult.ReleaseConfig, release.ReleaseOptions{
+		Notes: renderChartResult.Notes,
+	})
 	if err != nil {
 		return fmt.Errorf("construct new release: %w", err)
 	}
 
-	log2.Default.Debug(ctx, "Calculating planned changes")
-	createdChanges, recreatedChanges, updatedChanges, appliedChanges, deletedChanges, planChangesPlanned := plan.CalculatePlannedChanges(
-		deployType,
-		releaseName,
-		releaseNamespace,
-		resProcessor.DeployableStandaloneCRDsInfos(),
-		resProcessor.DeployableHookResourcesInfos(),
-		resProcessor.DeployableGeneralResourcesInfos(),
-		resProcessor.DeployablePrevReleaseGeneralResourcesInfos(),
-		prevRelFailed,
-	)
+	log.Default.Debug(ctx, "Convert previous release to resource specs")
 
-	var releaseUpToDate bool
-	if prevReleaseFound {
-		releaseUpToDate, err = release.ReleaseUpToDate(prevRelease, newRel)
+	var prevRelResSpecs []*spec.ResourceSpec
+	if prevRelease != nil {
+		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, releaseNamespace)
 		if err != nil {
-			return fmt.Errorf("check if release is up to date: %w", err)
+			return fmt.Errorf("convert previous release to resource specs: %w", err)
 		}
 	}
 
-	plan.LogPlannedChanges(
-		ctx,
-		releaseName,
-		releaseNamespace,
-		!releaseUpToDate,
-		createdChanges,
-		recreatedChanges,
-		updatedChanges,
-		appliedChanges,
-		deletedChanges,
-	)
+	log.Default.Debug(ctx, "Convert new release to resource specs")
 
-	if opts.ErrorIfChangesPlanned && (planChangesPlanned || !releaseUpToDate) {
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace)
+	if err != nil {
+		return fmt.Errorf("convert new release to resource specs: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Build resources")
+
+	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
+		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
+		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
+	}, clientFactory, resource.BuildResourcesOptions{
+		Remote: true,
+	})
+	if err != nil {
+		return fmt.Errorf("build resources: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Locally validate resources")
+
+	if err := resource.ValidateLocal(releaseNamespace, instResources); err != nil {
+		return fmt.Errorf("locally validate resources: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Build resource infos")
+
+	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, opts.NetworkParallelism)
+	if err != nil {
+		return fmt.Errorf("build resource infos: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Remotely validate resources")
+
+	if err := plan.ValidateRemote(releaseName, releaseNamespace, instResInfos, opts.ForceAdoption); err != nil {
+		return fmt.Errorf("remotely validate resources: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Build release infos")
+
+	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, releases, newRelease)
+	if err != nil {
+		return fmt.Errorf("build release infos: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Build install plan")
+
+	installPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos)
+	if err != nil {
+		handleBuildPlanErr(ctx, installPlan, err, opts.InstallGraphPath, opts.TempDirPath, "release-install-graph.dot")
+		return fmt.Errorf("build install plan: %w", err)
+	}
+
+	if opts.InstallGraphPath != "" {
+		if err := savePlanAsDot(installPlan, opts.InstallGraphPath); err != nil {
+			return fmt.Errorf("save release install graph: %w", err)
+		}
+	}
+
+	releaseIsUpToDate, err := release.IsReleaseUpToDate(prevRelease, newRelease)
+	if err != nil {
+		return fmt.Errorf("check if release is up to date: %w", err)
+	}
+
+	installPlanIsUseless := lo.NoneBy(installPlan.Operations(), func(op *plan.Operation) bool {
+		switch op.Category {
+		case plan.OperationCategoryResource, plan.OperationCategoryTrack:
+			return true
+		default:
+			return false
+		}
+	})
+
+	if releaseIsUpToDate && installPlanIsUseless {
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("No changes planned for release %q (namespace: %q)", releaseName, releaseNamespace)))
+	} else if installPlanIsUseless {
+		log.Default.Info(ctx, color.Style{color.Bold, color.Yellow}.Render(fmt.Sprintf("No resource changes planned, but still must install release %q (namespace: %q)", releaseName, releaseNamespace)))
+	}
+
+	log.Default.Debug(ctx, "Calculate planned changes")
+
+	changes, err := plan.CalculatePlannedChanges(instResInfos, delResInfos, plan.CalculatePlannedChangesOptions{
+		DiffContextLines: 3,
+	})
+	if err != nil {
+		return fmt.Errorf("calculate planned changes: %w", err)
+	}
+
+	logPlannedChanges(ctx, releaseName, releaseNamespace, changes)
+
+	if opts.ErrorIfChangesPlanned && (!releaseIsUpToDate || !installPlanIsUseless) {
 		return ErrChangesPlanned
 	}
 
@@ -426,9 +422,10 @@ func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, curr
 		opts.KubeBurstLimit = DefaultBurstLimit
 	}
 
-	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {
+	switch opts.ReleaseStorageDriver {
+	case ReleaseStorageDriverDefault:
 		opts.ReleaseStorageDriver = ReleaseStorageDriverSecrets
-	} else if opts.ReleaseStorageDriver == ReleaseStorageDriverMemory {
+	case ReleaseStorageDriverMemory:
 		return ReleasePlanInstallOptions{}, fmt.Errorf("memory release storage driver is not supported")
 	}
 
@@ -444,4 +441,61 @@ func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, curr
 	}
 
 	return opts, nil
+}
+
+func logPlannedChanges(
+	ctx context.Context,
+	releaseName string,
+	releaseNamespace string,
+	changes []*plan.ResourceChange,
+) {
+	lo.Must0(len(changes) > 0)
+
+	log.Default.Info(ctx, "")
+
+	for _, change := range changes {
+		log.Default.InfoBlock(ctx, log.BlockOptions{
+			BlockTitle: buildDiffHeader(change),
+		}, func() {
+			log.Default.Info(ctx, "%s", change.Udiff)
+		})
+	}
+
+	log.Default.Info(ctx, color.Bold.Render("Planned changes summary")+" for release %q (namespace: %q):", releaseName, releaseNamespace)
+
+	for _, changeType := range []string{"create", "recreate", "update", "blind apply", "delete"} {
+		logSummaryLine(ctx, changes, changeType)
+	}
+
+	log.Default.Info(ctx, "")
+}
+
+func buildDiffHeader(change *plan.ResourceChange) string {
+	header := change.TypeStyle.Render(util.Capitalize(change.Type))
+	header += " " + color.Style{color.Bold}.Render(change.ResourceMeta.IDHuman())
+
+	var headerOps []string
+	for _, op := range change.ExtraOperations {
+		headerOps = append(headerOps, color.Style{color.Bold}.Render(op))
+	}
+
+	if len(headerOps) > 0 {
+		header += ", then " + strings.Join(headerOps, ", ")
+	}
+
+	if change.Reason != "" {
+		header += ". Reason: " + change.Reason
+	}
+
+	return header
+}
+
+func logSummaryLine(ctx context.Context, changes []*plan.ResourceChange, changeType string) {
+	filteredChanges := lo.Filter(changes, func(change *plan.ResourceChange, _ int) bool {
+		return change.Type == changeType
+	})
+
+	if len(filteredChanges) > 0 {
+		log.Default.Info(ctx, "- %s: %d resources", filteredChanges[0].TypeStyle.Render("create"), len(filteredChanges))
+	}
 }

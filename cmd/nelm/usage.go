@@ -115,7 +115,7 @@ func flagsUsage(fset *pflag.FlagSet) string {
 				continue
 			}
 
-			header := ""
+			var header string
 			if flag.Shorthand != "" && flag.ShorthandDeprecated == "" {
 				header = fmt.Sprintf("  -%s, --%s", flag.Shorthand, flag.Name)
 			} else {
@@ -207,6 +207,7 @@ func commandsUsage(command *cobra.Command) string {
 		for _, cmd := range groupedSubCommandInfos[group] {
 			result += fmt.Sprintf("%s%s%s\n", strings.Repeat(" ", cmdIndent), fmt.Sprintf("%-*s", padding, cmd.commandPath), cmd.short)
 		}
+
 		result += "\n"
 	}
 
@@ -231,8 +232,11 @@ func getSubCommandsRecurse(cmd *cobra.Command) []*cobra.Command {
 }
 
 func groupCmdInfos(cmds []*cobra.Command) ([]cli.CommandGroup, map[cli.CommandGroup][]*cmdInfo, int) {
-	var groupsByPriority []cli.CommandGroup
-	var longestCommandPath int
+	var (
+		groupsByPriority   []cli.CommandGroup
+		longestCommandPath int
+	)
+
 	groupedSubCommandInfos := map[cli.CommandGroup][]*cmdInfo{}
 
 	for _, subCommand := range cmds {

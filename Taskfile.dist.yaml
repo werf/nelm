@@ -377,7 +377,7 @@ tasks:
   deps:install:golangci-lint:
     desc: "Install golangci-lint binary."
     cmds:
-      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin {{.golangcilintVersion | default "v1.57.1"}}
+      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin {{.golangcilintVersion | default "v2.5.0"}}
 
   sign:
     desc: 'Sign last version tag + origin/main and push signatures. Important vars: "refs".'
