@@ -9,7 +9,7 @@ import (
 
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/nelm/internal/common"
-	"github.com/werf/nelm/internal/resource/meta"
+	"github.com/werf/nelm/internal/resource/spec"
 )
 
 func BuildPlan(installableInfos []*InstallableResourceInfo, deletableInfos []*DeletableResourceInfo, releaseInfos []*ReleaseInfo) (*Plan, error) {
@@ -680,7 +680,7 @@ func getAllFirstIterationTrackReadinessOps(plan *Plan) []*Operation {
 	return trackOps
 }
 
-func getOpMeta(op *Operation) *meta.ResourceMeta {
+func getOpMeta(op *Operation) *spec.ResourceMeta {
 	switch cfg := op.Config.(type) {
 	case *OperationConfigCreate:
 		return cfg.ResourceSpec.ResourceMeta

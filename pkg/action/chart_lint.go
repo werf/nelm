@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 
 	"github.com/samber/lo"
-	"k8s.io/client-go/kubernetes"
 
 	"github.com/werf/3p-helm/pkg/chartutil"
 	"github.com/werf/3p-helm/pkg/registry"
@@ -19,6 +18,7 @@ import (
 	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource"
+	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -155,11 +155,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		SQLConnectionString: opts.SQLConnectionString,
 	}
 
-	if opts.Remote {
-		releaseStorageOptions.StaticClient = clientFactory.Static().(*kubernetes.Clientset)
-	}
-
-	releaseStorage, err := release.NewReleaseStorage(ctx, opts.ReleaseNamespace, opts.ReleaseStorageDriver, releaseStorageOptions)
+	releaseStorage, err := release.NewReleaseStorage(ctx, opts.ReleaseNamespace, opts.ReleaseStorageDriver, clientFactory, releaseStorageOptions)
 	if err != nil {
 		return fmt.Errorf("construct release storage: %w", err)
 	}
@@ -222,16 +218,13 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		HelmOptions:            helmOptions,
 		KubeCAPath:             opts.KubeCAPath,
 		RegistryClient:         helmRegistryClient,
+		Remote:                 opts.Remote,
 		SetValues:              opts.ValuesSets,
 		StringSetValues:        opts.ValuesStringSets,
 		ValuesFiles:            opts.ValuesFilesPaths,
 	}
 
-	if opts.Remote {
-		chartTreeOptions.Mapper = clientFactory.Mapper()
-		chartTreeOptions.DiscoveryClient = clientFactory.Discovery()
-		chartTreeOptions.KubeConfig = clientFactory.KubeConfig()
-	} else {
+	if !opts.Remote {
 		ver, err := chartutil.ParseKubeVersion(opts.LocalKubeVersion)
 		if err != nil {
 			return fmt.Errorf("parse local kube version %q: %w", opts.LocalKubeVersion, err)
@@ -242,16 +235,16 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Render chart")
 
-	renderChartResult, err := chart.RenderChart(ctx, opts.Chart, opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, chartTreeOptions)
+	renderChartResult, err := chart.RenderChart(ctx, opts.Chart, opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, clientFactory, chartTreeOptions)
 	if err != nil {
 		return fmt.Errorf("render chart: %w", err)
 	}
 
 	log.Default.Debug(ctx, "Build transformed resource specs")
 
-	transformedResSpecs, err := resource.BuildTransformedResourceSpecs(ctx, opts.ReleaseNamespace, renderChartResult.ResourceSpecs, []resource.ResourceTransformer{
-		resource.NewResourceListsTransformer(),
-		resource.NewDropInvalidAnnotationsAndLabelsTransformer(),
+	transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, opts.ReleaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
+		spec.NewResourceListsTransformer(),
+		spec.NewDropInvalidAnnotationsAndLabelsTransformer(),
 	})
 	if err != nil {
 		return fmt.Errorf("build transformed resource specs: %w", err)
@@ -259,8 +252,8 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Build releasable resource specs")
 
-	releasableResSpecs, err := resource.BuildReleasableResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []resource.ResourcePatcher{
-		resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
+		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 	})
 	if err != nil {
 		return fmt.Errorf("build releasable resource specs: %w", err)
@@ -273,14 +266,9 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		return fmt.Errorf("construct new release: %w", err)
 	}
 
-	buildResourcesOpts := resource.BuildResourcesOptions{}
-	if opts.Remote {
-		buildResourcesOpts.Mapper = clientFactory.Mapper()
-	}
-
 	log.Default.Debug(ctx, "Convert previous release to resource specs")
 
-	var prevRelResSpecs []*resource.ResourceSpec
+	var prevRelResSpecs []*spec.ResourceSpec
 	if prevRelease != nil {
 		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, opts.ReleaseNamespace)
 		if err != nil {
@@ -297,10 +285,12 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Build resources")
 
-	instResources, delResources, err := resource.BuildResources(ctx, deployType, opts.ReleaseNamespace, prevRelResSpecs, newRelResSpecs, []resource.ResourcePatcher{
-		resource.NewReleaseMetadataPatcher(opts.ReleaseName, opts.ReleaseNamespace),
-		resource.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
-	}, buildResourcesOpts)
+	instResources, delResources, err := resource.BuildResources(ctx, deployType, opts.ReleaseNamespace, prevRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
+		spec.NewReleaseMetadataPatcher(opts.ReleaseName, opts.ReleaseNamespace),
+		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
+	}, clientFactory, resource.BuildResourcesOptions{
+		Remote: opts.Remote,
+	})
 	if err != nil {
 		return fmt.Errorf("build resources: %w", err)
 	}
@@ -317,7 +307,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Build resource infos")
 
-	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, opts.ReleaseName, opts.ReleaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory.KubeClient(), clientFactory.Mapper(), opts.NetworkParallelism)
+	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, opts.ReleaseName, opts.ReleaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, opts.NetworkParallelism)
 	if err != nil {
 		return fmt.Errorf("build resource infos: %w", err)
 	}

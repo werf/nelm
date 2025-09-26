@@ -13,7 +13,6 @@ import (
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/yaml"
 
 	"github.com/werf/3p-helm/pkg/chartutil"
@@ -23,7 +22,7 @@ import (
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/release"
-	"github.com/werf/nelm/internal/resource"
+	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -164,11 +163,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		SQLConnectionString: opts.SQLConnectionString,
 	}
 
-	if opts.Remote {
-		releaseStorageOptions.StaticClient = clientFactory.Static().(*kubernetes.Clientset)
-	}
-
-	releaseStorage, err := release.NewReleaseStorage(ctx, opts.ReleaseNamespace, opts.ReleaseStorageDriver, releaseStorageOptions)
+	releaseStorage, err := release.NewReleaseStorage(ctx, opts.ReleaseNamespace, opts.ReleaseStorageDriver, clientFactory, releaseStorageOptions)
 	if err != nil {
 		return nil, fmt.Errorf("construct release storage: %w", err)
 	}
@@ -222,19 +217,16 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
 		ChartVersion:           opts.ChartVersion,
 		FileValues:             opts.ValuesFileSets,
-		KubeCAPath:             opts.KubeCAPath,
 		HelmOptions:            helmOptions,
+		KubeCAPath:             opts.KubeCAPath,
 		RegistryClient:         helmRegistryClient,
+		Remote:                 opts.Remote,
 		SetValues:              opts.ValuesSets,
 		StringSetValues:        opts.ValuesStringSets,
 		ValuesFiles:            opts.ValuesFilesPaths,
 	}
 
-	if opts.Remote {
-		chartTreeOptions.Mapper = clientFactory.Mapper()
-		chartTreeOptions.DiscoveryClient = clientFactory.Discovery()
-		chartTreeOptions.KubeConfig = clientFactory.KubeConfig()
-	} else {
+	if !opts.Remote {
 		ver, err := chartutil.ParseKubeVersion(opts.LocalKubeVersion)
 		if err != nil {
 			return nil, fmt.Errorf("parse local kube version %q: %w", opts.LocalKubeVersion, err)
@@ -245,16 +237,16 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	log.Default.Debug(ctx, "Render chart")
 
-	renderChartResult, err := chart.RenderChart(ctx, opts.Chart, opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, chartTreeOptions)
+	renderChartResult, err := chart.RenderChart(ctx, opts.Chart, opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, clientFactory, chartTreeOptions)
 	if err != nil {
 		return nil, fmt.Errorf("render chart: %w", err)
 	}
 
 	log.Default.Debug(ctx, "Build transformed resource specs")
 
-	transformedResSpecs, err := resource.BuildTransformedResourceSpecs(ctx, opts.ReleaseNamespace, renderChartResult.ResourceSpecs, []resource.ResourceTransformer{
-		resource.NewResourceListsTransformer(),
-		resource.NewDropInvalidAnnotationsAndLabelsTransformer(),
+	transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, opts.ReleaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
+		spec.NewResourceListsTransformer(),
+		spec.NewDropInvalidAnnotationsAndLabelsTransformer(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build transformed resource specs: %w", err)
@@ -262,8 +254,8 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	log.Default.Debug(ctx, "Build releasable resource specs")
 
-	releasableResSpecs, err := resource.BuildReleasableResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []resource.ResourcePatcher{
-		resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
+		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build releasable resource specs: %w", err)
@@ -274,11 +266,6 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	})
 	if err != nil {
 		return nil, fmt.Errorf("construct new release: %w", err)
-	}
-
-	buildResourcesOpts := resource.BuildResourcesOptions{}
-	if opts.Remote {
-		buildResourcesOpts.Mapper = clientFactory.Mapper()
 	}
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
@@ -342,7 +329,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	}
 
 	sort.SliceStable(result.Resources, func(i, j int) bool {
-		return resource.ResourceSpecSortHandler(result.Resources[i], result.Resources[j])
+		return spec.ResourceSpecSortHandler(result.Resources[i], result.Resources[j])
 	})
 
 	for _, res := range result.Resources {
@@ -351,7 +338,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		}
 
 		if !opts.ShowCRDs && res.StoreAs == common.StoreAsNone &&
-			resource.IsCRD(res.GroupVersionKind.GroupKind()) {
+			spec.IsCRD(res.GroupVersionKind.GroupKind()) {
 			continue
 		}
 
@@ -455,6 +442,6 @@ func renderResource(unstruct *unstructured.Unstructured, path string, outStream 
 }
 
 type ChartRenderResultV2 struct {
-	APIVersion string                   `json:"apiVersion,omitempty"`
-	Resources  []*resource.ResourceSpec `json:"resources,omitempty"`
+	APIVersion string               `json:"apiVersion,omitempty"`
+	Resources  []*spec.ResourceSpec `json:"resources,omitempty"`
 }

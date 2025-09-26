@@ -8,16 +8,16 @@ import (
 	"time"
 
 	"github.com/samber/lo"
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 	"github.com/werf/nelm/internal/common"
-	"github.com/werf/nelm/internal/resource/meta"
+	"github.com/werf/nelm/internal/kube"
+	"github.com/werf/nelm/internal/resource/spec"
 )
 
 type InstallableResource struct {
-	*ResourceSpec
+	*spec.ResourceSpec
 
 	Ownership                              common.Ownership
 	Recreate                               bool
@@ -45,10 +45,10 @@ type InstallableResource struct {
 }
 
 type InstallableResourceOptions struct {
-	Mapper apimeta.ResettableRESTMapper
+	Remote bool
 }
 
-func NewInstallableResource(res *ResourceSpec, releaseNamespace string, opts InstallableResourceOptions) (*InstallableResource, error) {
+func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, clientFactory kube.ClientFactorier, opts InstallableResourceOptions) (*InstallableResource, error) {
 	if err := validateHook(res.ResourceMeta); err != nil {
 		return nil, fmt.Errorf("validate hook configuration: %w", err)
 	}
@@ -97,7 +97,7 @@ func NewInstallableResource(res *ResourceSpec, releaseNamespace string, opts Ins
 		return nil, fmt.Errorf("validate ownership: %w", err)
 	}
 
-	extDeps, err := externalDependencies(res.ResourceMeta, releaseNamespace, opts.Mapper)
+	extDeps, err := externalDependencies(res.ResourceMeta, releaseNamespace, clientFactory, opts.Remote)
 	if err != nil {
 		return nil, fmt.Errorf("get external dependencies: %w", err)
 	}
@@ -133,7 +133,7 @@ func NewInstallableResource(res *ResourceSpec, releaseNamespace string, opts Ins
 }
 
 type DeletableResource struct {
-	*meta.ResourceMeta
+	*spec.ResourceMeta
 
 	Ownership    common.Ownership
 	KeepOnDelete bool
@@ -141,7 +141,7 @@ type DeletableResource struct {
 
 type DeletableResourceOptions struct{}
 
-func NewDeletableResource(meta *meta.ResourceMeta, releaseNamespace string, opts DeletableResourceOptions) *DeletableResource {
+func NewDeletableResource(meta *spec.ResourceMeta, releaseNamespace string, opts DeletableResourceOptions) *DeletableResource {
 	var keep bool
 	if err := ValidateResourcePolicy(meta); err != nil {
 		keep = true
@@ -164,10 +164,10 @@ func NewDeletableResource(meta *meta.ResourceMeta, releaseNamespace string, opts
 }
 
 type BuildResourcesOptions struct {
-	Mapper apimeta.ResettableRESTMapper
+	Remote bool
 }
 
-func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRelResSpecs, newRelResSpecs []*ResourceSpec, patchers []ResourcePatcher, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
+func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRelResSpecs, newRelResSpecs []*spec.ResourceSpec, patchers []spec.ResourcePatcher, clientFactory kube.ClientFactorier, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
 	var prevRelDelResources []*DeletableResource
 	for _, resSpec := range prevRelResSpecs {
 		deletableRes := NewDeletableResource(resSpec.ResourceMeta, releaseNamespace, DeletableResourceOptions{})
@@ -176,8 +176,8 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 
 	var prevRelInstResources []*InstallableResource
 	for _, resSpec := range prevRelResSpecs {
-		installableResource, err := NewInstallableResource(resSpec, releaseNamespace, InstallableResourceOptions{
-			Mapper: opts.Mapper,
+		installableResource, err := NewInstallableResource(resSpec, releaseNamespace, clientFactory, InstallableResourceOptions{
+			Remote: opts.Remote,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct installable resource: %w", err)
@@ -188,8 +188,8 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 
 	var newRelInstResources []*InstallableResource
 	for _, resSpec := range newRelResSpecs {
-		installableResource, err := NewInstallableResource(resSpec, releaseNamespace, InstallableResourceOptions{
-			Mapper: opts.Mapper,
+		installableResource, err := NewInstallableResource(resSpec, releaseNamespace, clientFactory, InstallableResourceOptions{
+			Remote: opts.Remote,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct installable resource: %w", err)
@@ -253,7 +253,7 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 
 		var deepCopied bool
 		for _, patcher := range patchers {
-			if matched, err := patcher.Match(ctx, &ResourcePatcherResourceInfo{
+			if matched, err := patcher.Match(ctx, &spec.ResourcePatcherResourceInfo{
 				Obj:       instRes.Unstruct,
 				Ownership: instRes.Ownership,
 			}); err != nil {
@@ -270,7 +270,7 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 				deepCopied = true
 			}
 
-			patchedObj, err := patcher.Patch(ctx, &ResourcePatcherResourceInfo{
+			patchedObj, err := patcher.Patch(ctx, &spec.ResourcePatcherResourceInfo{
 				Obj:       unstruct,
 				Ownership: instRes.Ownership,
 			})
@@ -278,13 +278,13 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 				return nil, nil, fmt.Errorf("patch deployable resource by %q: %w", patcher.Type(), err)
 			}
 
-			resSpec := NewResourceSpec(patchedObj, releaseNamespace, ResourceSpecOptions{
+			resSpec := spec.NewResourceSpec(patchedObj, releaseNamespace, spec.ResourceSpecOptions{
 				StoreAs:  instRes.StoreAs,
 				FilePath: instRes.FilePath,
 			})
 
-			instRes, err = NewInstallableResource(resSpec, releaseNamespace, InstallableResourceOptions{
-				Mapper: opts.Mapper,
+			instRes, err = NewInstallableResource(resSpec, releaseNamespace, clientFactory, InstallableResourceOptions{
+				Remote: opts.Remote,
 			})
 			if err != nil {
 				return nil, nil, fmt.Errorf("construct deployable resource from patched object by %q: %w", patcher.Type(), err)
@@ -295,11 +295,11 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	}
 
 	sort.SliceStable(instResources, func(i, j int) bool {
-		return ResourceSpecSortHandler(instResources[i].ResourceSpec, instResources[j].ResourceSpec)
+		return spec.ResourceSpecSortHandler(instResources[i].ResourceSpec, instResources[j].ResourceSpec)
 	})
 
 	sort.SliceStable(delResources, func(i, j int) bool {
-		return meta.ResourceMetaSortHandler(delResources[i].ResourceMeta, delResources[j].ResourceMeta)
+		return spec.ResourceMetaSortHandler(delResources[i].ResourceMeta, delResources[j].ResourceMeta)
 	})
 
 	return instResources, delResources, nil

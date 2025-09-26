@@ -10,6 +10,7 @@ import (
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	helmstorage "github.com/werf/3p-helm/pkg/storage"
 	helmdriver "github.com/werf/3p-helm/pkg/storage/driver"
+	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -24,15 +25,14 @@ type ReleaseStorager interface {
 
 type ReleaseStorageOptions struct {
 	HistoryLimit        int
-	StaticClient        *kubernetes.Clientset
 	SQLConnectionString string
 }
 
-func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, opts ReleaseStorageOptions) (*helmstorage.Storage, error) {
+func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, clientFactory kube.ClientFactorier, opts ReleaseStorageOptions) (*helmstorage.Storage, error) {
 	var storage *helmstorage.Storage
 
 	lazyClient := helmaction.NewLazyClient(namespace, func() (*kubernetes.Clientset, error) {
-		return opts.StaticClient, nil
+		return clientFactory.Static().(*kubernetes.Clientset), nil
 	})
 
 	logFn := func(format string, a ...interface{}) {

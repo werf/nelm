@@ -29,7 +29,7 @@ import (
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/legacy/deploy"
 	"github.com/werf/nelm/internal/lock"
-	"github.com/werf/nelm/internal/resource/meta"
+	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -196,7 +196,7 @@ func legacyReleaseUninstall(ctx context.Context, releaseName, releaseNamespace s
 		opts.ProgressTablePrintInterval,
 	)
 
-	nsMeta := meta.NewResourceMeta(releaseNamespace, "", releaseNamespace, "", schema.GroupVersionKind{Version: "v1", Kind: "Namespace"}, nil, nil)
+	nsMeta := spec.NewResourceMeta(releaseNamespace, "", releaseNamespace, "", schema.GroupVersionKind{Version: "v1", Kind: "Namespace"}, nil, nil)
 
 	if _, err := clientFactory.KubeClient().Get(
 		ctx,
@@ -233,12 +233,7 @@ func legacyReleaseUninstall(ctx context.Context, releaseName, releaseNamespace s
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Deleting release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
 		var lockManager *lock.LockManager
-		if m, err := lock.NewLockManager(
-			releaseNamespace,
-			false,
-			clientFactory.Static(),
-			clientFactory.Dynamic(),
-		); err != nil {
+		if m, err := lock.NewLockManager(releaseNamespace, false, clientFactory); err != nil {
 			return fmt.Errorf("construct lock manager: %w", err)
 		} else {
 			lockManager = m

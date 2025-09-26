@@ -24,7 +24,7 @@ import (
 	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource"
-	"github.com/werf/nelm/internal/resource/meta"
+	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/track"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/log"
@@ -134,8 +134,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		return fmt.Errorf("construct kube client factory: %w", err)
 	}
 
-	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, release.ReleaseStorageOptions{
-		StaticClient:        clientFactory.Static().(*kubernetes.Clientset),
+	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, clientFactory, release.ReleaseStorageOptions{
 		HistoryLimit:        opts.ReleaseHistoryLimit,
 		SQLConnectionString: opts.SQLConnectionString,
 	})
@@ -144,13 +143,13 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 	}
 
 	var lockManager *lock.LockManager
-	if m, err := lock.NewLockManager(releaseNamespace, false, clientFactory.Static(), clientFactory.Dynamic()); err != nil {
+	if m, err := lock.NewLockManager(releaseNamespace, false, clientFactory); err != nil {
 		return fmt.Errorf("construct lock manager: %w", err)
 	} else {
 		lockManager = m
 	}
 
-	nsMeta := meta.NewResourceMeta(releaseNamespace, "", releaseNamespace, "", schema.GroupVersionKind{Version: "v1", Kind: "Namespace"}, nil, nil)
+	nsMeta := spec.NewResourceMeta(releaseNamespace, "", releaseNamespace, "", schema.GroupVersionKind{Version: "v1", Kind: "Namespace"}, nil, nil)
 
 	if exists, err := isReleaseNamespaceExist(ctx, clientFactory, nsMeta); err != nil {
 		return fmt.Errorf("check release namespace existence: %w", err)
@@ -195,17 +194,17 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		log.Default.Debug(ctx, "Build resources")
-		instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, nil, []resource.ResourcePatcher{
-			resource.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
-		}, resource.BuildResourcesOptions{
-			Mapper: clientFactory.Mapper(),
+		instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, nil, []spec.ResourcePatcher{
+			spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
+		}, clientFactory, resource.BuildResourcesOptions{
+			Remote: true,
 		})
 		if err != nil {
 			return fmt.Errorf("build resources: %w", err)
 		}
 
 		log.Default.Debug(ctx, "Build resource infos")
-		instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory.KubeClient(), clientFactory.Mapper(), opts.NetworkParallelism)
+		instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, opts.NetworkParallelism)
 		if err != nil {
 			return fmt.Errorf("build resource infos: %w", err)
 		}
@@ -252,7 +251,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		var criticalErrs, nonCriticalErrs []error
 
 		log.Default.Debug(ctx, "Execute release delete plan")
-		executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, deletePlan, taskStore, logStore, informerFactory, history, clientFactory.KubeClient(), clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), plan.ExecutePlanOptions{
+		executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, deletePlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
 			NetworkParallelism: opts.NetworkParallelism,
 			ReadinessTimeout:   opts.TrackReadinessTimeout,
 			PresenceTimeout:    opts.TrackCreationTimeout,
@@ -402,7 +401,7 @@ func applyReleaseUninstallOptionsDefaults(opts ReleaseUninstallOptions, currentD
 	return opts, nil
 }
 
-func isReleaseNamespaceExist(ctx context.Context, clientFactory *kube.ClientFactory, nsMeta *meta.ResourceMeta) (bool, error) {
+func isReleaseNamespaceExist(ctx context.Context, clientFactory *kube.ClientFactory, nsMeta *spec.ResourceMeta) (bool, error) {
 	if _, err := clientFactory.KubeClient().Get(
 		ctx,
 		nsMeta,

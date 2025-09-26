@@ -1,4 +1,4 @@
-package resource
+package spec
 
 import (
 	"context"
@@ -10,11 +10,10 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 
 	"github.com/werf/nelm/internal/common"
-	"github.com/werf/nelm/internal/resource/meta"
 )
 
 type ResourceSpec struct {
-	*meta.ResourceMeta
+	*ResourceMeta
 
 	Unstruct *unstructured.Unstructured
 	StoreAs  common.StoreAs
@@ -39,7 +38,7 @@ func NewResourceSpec(unstruct *unstructured.Unstructured, releaseNamespace strin
 	}
 
 	return &ResourceSpec{
-		ResourceMeta: meta.NewResourceMetaFromUnstructured(unstruct, releaseNamespace, opts.FilePath),
+		ResourceMeta: NewResourceMetaFromUnstructured(unstruct, releaseNamespace, opts.FilePath),
 		Unstruct:     unstruct,
 		StoreAs:      opts.StoreAs,
 	}

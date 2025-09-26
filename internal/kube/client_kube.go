@@ -17,19 +17,18 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/werf/nelm/internal/common"
-	"github.com/werf/nelm/internal/resource"
-	"github.com/werf/nelm/internal/resource/meta"
+	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/pkg/log"
 )
 
 var _ KubeClienter = (*KubeClient)(nil)
 
 type KubeClienter interface {
-	Get(ctx context.Context, meta *meta.ResourceMeta, opts KubeClientGetOptions) (*unstructured.Unstructured, error)
-	Create(ctx context.Context, spec *resource.ResourceSpec, opts KubeClientCreateOptions) (*unstructured.Unstructured, error)
-	Apply(ctx context.Context, spec *resource.ResourceSpec, opts KubeClientApplyOptions) (*unstructured.Unstructured, error)
-	MergePatch(ctx context.Context, meta *meta.ResourceMeta, patch []byte, opts KubeClientMergePatchOptions) (*unstructured.Unstructured, error)
-	Delete(ctx context.Context, meta *meta.ResourceMeta, opts KubeClientDeleteOptions) error
+	Get(ctx context.Context, meta *spec.ResourceMeta, opts KubeClientGetOptions) (*unstructured.Unstructured, error)
+	Create(ctx context.Context, spec *spec.ResourceSpec, opts KubeClientCreateOptions) (*unstructured.Unstructured, error)
+	Apply(ctx context.Context, spec *spec.ResourceSpec, opts KubeClientApplyOptions) (*unstructured.Unstructured, error)
+	MergePatch(ctx context.Context, meta *spec.ResourceMeta, patch []byte, opts KubeClientMergePatchOptions) (*unstructured.Unstructured, error)
+	Delete(ctx context.Context, meta *spec.ResourceMeta, opts KubeClientDeleteOptions) error
 }
 
 type KubeClient struct {
@@ -61,7 +60,7 @@ type KubeClientGetOptions struct {
 	TryCache         bool
 }
 
-func (c *KubeClient) Get(ctx context.Context, resMeta *meta.ResourceMeta, opts KubeClientGetOptions) (*unstructured.Unstructured, error) {
+func (c *KubeClient) Get(ctx context.Context, resMeta *spec.ResourceMeta, opts KubeClientGetOptions) (*unstructured.Unstructured, error) {
 	lock := c.resourceLock(resMeta)
 
 	lock.Lock()
@@ -81,7 +80,7 @@ func (c *KubeClient) Get(ctx context.Context, resMeta *meta.ResourceMeta, opts K
 		}
 	}
 
-	gvr, namespaced, err := resource.GVKtoGVR(resMeta.GroupVersionKind, c.mapper)
+	gvr, namespaced, err := spec.GVKtoGVR(resMeta.GroupVersionKind, c.mapper)
 	if err != nil {
 		return nil, fmt.Errorf("convert GVK to GVR: %w", err)
 	}
@@ -108,13 +107,13 @@ type KubeClientCreateOptions struct {
 	ForceReplicas    *int
 }
 
-func (c *KubeClient) Create(ctx context.Context, resSpec *resource.ResourceSpec, opts KubeClientCreateOptions) (*unstructured.Unstructured, error) {
+func (c *KubeClient) Create(ctx context.Context, resSpec *spec.ResourceSpec, opts KubeClientCreateOptions) (*unstructured.Unstructured, error) {
 	lock := c.resourceLock(resSpec.ResourceMeta)
 
 	lock.Lock()
 	defer lock.Unlock()
 
-	gvr, namespaced, err := resource.GVKtoGVR(resSpec.GroupVersionKind, c.mapper)
+	gvr, namespaced, err := spec.GVKtoGVR(resSpec.GroupVersionKind, c.mapper)
 	if err != nil {
 		return nil, fmt.Errorf("convert GVK to GVR: %w", err)
 	}
@@ -140,7 +139,7 @@ func (c *KubeClient) Create(ctx context.Context, resSpec *resource.ResourceSpec,
 
 	c.clusterCache.Set(resSpec.IDWithVersion(), &clusterCacheEntry{obj: resultObj.DeepCopy()}, 0)
 
-	if resource.IsCRDFromGR(gvr.GroupResource()) {
+	if spec.IsCRDFromGR(gvr.GroupResource()) {
 		c.mapper.Reset()
 	}
 
@@ -154,13 +153,13 @@ type KubeClientApplyOptions struct {
 	DryRun           bool
 }
 
-func (c *KubeClient) Apply(ctx context.Context, resSpec *resource.ResourceSpec, opts KubeClientApplyOptions) (*unstructured.Unstructured, error) {
+func (c *KubeClient) Apply(ctx context.Context, resSpec *spec.ResourceSpec, opts KubeClientApplyOptions) (*unstructured.Unstructured, error) {
 	lock := c.resourceLock(resSpec.ResourceMeta)
 
 	lock.Lock()
 	defer lock.Unlock()
 
-	gvr, namespaced, err := resource.GVKtoGVR(resSpec.GroupVersionKind, c.mapper)
+	gvr, namespaced, err := spec.GVKtoGVR(resSpec.GroupVersionKind, c.mapper)
 	if err != nil {
 		return nil, fmt.Errorf("convert GVK to GVR: %w", err)
 	}
@@ -191,7 +190,7 @@ func (c *KubeClient) Apply(ctx context.Context, resSpec *resource.ResourceSpec, 
 		c.clusterCache.Set(resSpec.IDWithVersion(), &clusterCacheEntry{obj: resultObj.DeepCopy()}, 0)
 	}
 
-	if resource.IsCRDFromGR(gvr.GroupResource()) && !opts.DryRun {
+	if spec.IsCRDFromGR(gvr.GroupResource()) && !opts.DryRun {
 		c.mapper.Reset()
 	}
 
@@ -204,13 +203,13 @@ type KubeClientMergePatchOptions struct {
 	DefaultNamespace string
 }
 
-func (c *KubeClient) MergePatch(ctx context.Context, resMeta *meta.ResourceMeta, patch []byte, opts KubeClientMergePatchOptions) (*unstructured.Unstructured, error) {
+func (c *KubeClient) MergePatch(ctx context.Context, resMeta *spec.ResourceMeta, patch []byte, opts KubeClientMergePatchOptions) (*unstructured.Unstructured, error) {
 	lock := c.resourceLock(resMeta)
 
 	lock.Lock()
 	defer lock.Unlock()
 
-	gvr, namespaced, err := resource.GVKtoGVR(resMeta.GroupVersionKind, c.mapper)
+	gvr, namespaced, err := spec.GVKtoGVR(resMeta.GroupVersionKind, c.mapper)
 	if err != nil {
 		return nil, fmt.Errorf("convert GVK to GVR: %w", err)
 	}
@@ -242,13 +241,13 @@ type KubeClientDeleteOptions struct {
 	PropagationPolicy *metav1.DeletionPropagation
 }
 
-func (c *KubeClient) Delete(ctx context.Context, resMeta *meta.ResourceMeta, opts KubeClientDeleteOptions) error {
+func (c *KubeClient) Delete(ctx context.Context, resMeta *spec.ResourceMeta, opts KubeClientDeleteOptions) error {
 	lock := c.resourceLock(resMeta)
 
 	lock.Lock()
 	defer lock.Unlock()
 
-	gvr, namespaced, err := resource.GVKtoGVR(resMeta.GroupVersionKind, c.mapper)
+	gvr, namespaced, err := spec.GVKtoGVR(resMeta.GroupVersionKind, c.mapper)
 	if err != nil {
 		return fmt.Errorf("convert GVK to GVR: %w", err)
 	}
@@ -280,7 +279,7 @@ func (c *KubeClient) Delete(ctx context.Context, resMeta *meta.ResourceMeta, opt
 	return nil
 }
 
-func (c *KubeClient) resourceLock(meta *meta.ResourceMeta) *sync.Mutex {
+func (c *KubeClient) resourceLock(meta *spec.ResourceMeta) *sync.Mutex {
 	lock, _ := c.resourceLocks.LoadOrStore(meta.IDWithVersion(), &sync.Mutex{})
 	return lock.(*sync.Mutex)
 }

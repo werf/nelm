@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/samber/lo"
+
+	"github.com/werf/nelm/internal/resource/spec"
 )
 
 func ValidateLocal(releaseNamespace string, transformedResources []*InstallableResource) error {
@@ -17,7 +19,7 @@ func ValidateLocal(releaseNamespace string, transformedResources []*InstallableR
 
 func validateNoDuplicates(releaseNamespace string, transformedResources []*InstallableResource) error {
 	for _, res := range transformedResources {
-		if IsReleaseNamespace(res.Unstruct.GetName(), res.Unstruct.GroupVersionKind(), releaseNamespace) {
+		if spec.IsReleaseNamespace(res.Unstruct.GetName(), res.Unstruct.GroupVersionKind(), releaseNamespace) {
 			return fmt.Errorf("release namespace %q cannot be deployed as part of the release", res.Unstruct.GetName())
 		}
 	}

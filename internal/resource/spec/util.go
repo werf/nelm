@@ -1,4 +1,4 @@
-package resource
+package spec
 
 import (
 	"fmt"
@@ -9,6 +9,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	"github.com/werf/nelm/internal/common"
 )
 
 func GVRtoGVK(gvr schema.GroupVersionResource, restMapper meta.RESTMapper) (schema.GroupVersionKind, error) {
@@ -42,13 +44,28 @@ func Namespaced(gvk schema.GroupVersionKind, mapper meta.RESTMapper) (bool, erro
 	return mapping.Scope == meta.RESTScopeNamespace, nil
 }
 
-func IsHook(annotations map[string]string) bool {
-	_, _, found := FindAnnotationOrLabelByKeyPattern(annotations, AnnotationKeyPatternHook)
-	return found
+func ParseKubectlResourceStringtoGVK(resource string, restMapper meta.RESTMapper) (schema.GroupVersionKind, error) {
+	var gvk schema.GroupVersionKind
+
+	gvr := ParseKubectlResourceStringToGVR(resource)
+
+	gvk, err := GVRtoGVK(gvr, restMapper)
+	if err != nil {
+		return gvk, fmt.Errorf("convert GroupVersionResource to GroupVersionKind: %w", err)
+	}
+
+	return gvk, nil
 }
 
-func IsReleaseNamespace(resourceName string, resourceGVK schema.GroupVersionKind, releaseNamespace string) bool {
-	return resourceGVK.Group == "" && resourceGVK.Kind == "Namespace" && resourceName == releaseNamespace
+func ParseKubectlResourceStringToGVR(resource string) schema.GroupVersionResource {
+	var result schema.GroupVersionResource
+	if gvr, gr := schema.ParseResourceArg(resource); gvr != nil {
+		result = *gvr
+	} else {
+		result = gr.WithVersion("")
+	}
+
+	return result
 }
 
 func IsCRD(groupKind schema.GroupKind) bool {
@@ -63,6 +80,15 @@ func IsCRDFromGR(groupKind schema.GroupResource) bool {
 		Group:    "apiextensions.k8s.io",
 		Resource: "customresourcedefinitions",
 	}
+}
+
+func IsHook(annotations map[string]string) bool {
+	_, _, found := FindAnnotationOrLabelByKeyPattern(annotations, common.AnnotationKeyPatternHook)
+	return found
+}
+
+func IsReleaseNamespace(resourceName string, resourceGVK schema.GroupVersionKind, releaseNamespace string) bool {
+	return resourceGVK.Group == "" && resourceGVK.Kind == "Namespace" && resourceName == releaseNamespace
 }
 
 func FindAnnotationOrLabelByKeyPattern(annotationsOrLabels map[string]string, pattern *regexp.Regexp) (key, value string, found bool) {
@@ -86,30 +112,6 @@ func FindAnnotationsOrLabelsByKeyPattern(annotationsOrLabels map[string]string, 
 	}
 
 	return result, len(result) > 0
-}
-
-func ParseKubectlResourceStringtoGVK(resource string, restMapper meta.RESTMapper) (schema.GroupVersionKind, error) {
-	var gvk schema.GroupVersionKind
-
-	gvr := ParseKubectlResourceStringToGVR(resource)
-
-	gvk, err := GVRtoGVK(gvr, restMapper)
-	if err != nil {
-		return gvk, fmt.Errorf("convert GroupVersionResource to GroupVersionKind: %w", err)
-	}
-
-	return gvk, nil
-}
-
-func ParseKubectlResourceStringToGVR(resource string) schema.GroupVersionResource {
-	var result schema.GroupVersionResource
-	if gvr, gr := schema.ParseResourceArg(resource); gvr != nil {
-		result = *gvr
-	} else {
-		result = gr.WithVersion("")
-	}
-
-	return result
 }
 
 func setAnnotationsAndLabels(res *unstructured.Unstructured, annotations, labels map[string]string) {

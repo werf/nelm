@@ -9,7 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/werf/nelm/internal/resource"
-	"github.com/werf/nelm/internal/resource/meta"
+	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/util"
 )
 
@@ -32,7 +32,7 @@ type CalculatePlannedChangesOptions struct {
 type ResourceChange struct {
 	ExtraOperations []string
 	Reason          string
-	ResourceMeta    *meta.ResourceMeta
+	ResourceMeta    *spec.ResourceMeta
 	Type            string
 	TypeStyle       color.Style
 	Udiff           string
@@ -47,7 +47,7 @@ func CalculatePlannedChanges(installableInfos []*InstallableResourceInfo, deleta
 	}
 
 	sort.SliceStable(deletableInfos, func(i, j int) bool {
-		return meta.ResourceMetaSortHandler(deletableInfos[i].ResourceMeta, deletableInfos[j].ResourceMeta)
+		return spec.ResourceMetaSortHandler(deletableInfos[i].ResourceMeta, deletableInfos[j].ResourceMeta)
 	})
 
 	delChanges, err := buildDelChanges(deletableInfos, opts)
@@ -171,11 +171,11 @@ func buildDelChanges(delInfos []*DeletableResourceInfo, opts CalculatePlannedCha
 	return changes, nil
 }
 
-func buildResourceChange(resMeta *meta.ResourceMeta, oldUnstruct, newUnstruct *unstructured.Unstructured, deleteAfter bool, opType string, opTypeStyle color.Style, opts CalculatePlannedChangesOptions) (*ResourceChange, error) {
+func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *unstructured.Unstructured, deleteAfter bool, opType string, opTypeStyle color.Style, opts CalculatePlannedChangesOptions) (*ResourceChange, error) {
 	sensitiveInfo := resource.GetSensitiveInfo(resMeta.GroupVersionKind.GroupKind(), resMeta.Annotations)
 
 	var uDiff string
-	if resource.IsCRD(resMeta.GroupVersionKind.GroupKind()) &&
+	if spec.IsCRD(resMeta.GroupVersionKind.GroupKind()) &&
 		!opts.ShowVerboseCRDDiffs &&
 		(oldUnstruct == nil || newUnstruct == nil) {
 		uDiff = HiddenVerboseCRDChanges

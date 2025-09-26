@@ -41,9 +41,11 @@ linters:
     - nilnil
     - predeclared
     - tagliatelle
+    - testifylint
     - testpackage
     - unconvert
     - usestdlibvars
+    - usetesting
     - wastedassign
     - wsl_v5
 

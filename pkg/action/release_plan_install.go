@@ -12,7 +12,6 @@ import (
 	"github.com/gookit/color"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
-	"k8s.io/client-go/kubernetes"
 
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
@@ -22,6 +21,7 @@ import (
 	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource"
+	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/log"
 )
@@ -175,8 +175,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		return fmt.Errorf("construct registry client: %w", err)
 	}
 
-	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, release.ReleaseStorageOptions{
-		StaticClient:        clientFactory.Static().(*kubernetes.Clientset),
+	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, clientFactory, release.ReleaseStorageOptions{
 		SQLConnectionString: opts.SQLConnectionString,
 	})
 	if err != nil {
@@ -236,19 +235,17 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Render chart")
 
-	renderChartResult, err := chart.RenderChart(ctx, opts.Chart, releaseName, releaseNamespace, newRevision, deployType, chart.RenderChartOptions{
+	renderChartResult, err := chart.RenderChart(ctx, opts.Chart, releaseName, releaseNamespace, newRevision, deployType, clientFactory, chart.RenderChartOptions{
 		ChartRepoInsecure:      opts.ChartRepositoryInsecure,
 		ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
 		ChartRepoSkipUpdate:    opts.ChartRepositorySkipUpdate,
 		ChartVersion:           opts.ChartVersion,
-		DiscoveryClient:        clientFactory.Discovery(),
 		FileValues:             opts.ValuesFileSets,
 		HelmOptions:            helmOptions,
 		KubeCAPath:             opts.KubeCAPath,
-		KubeConfig:             clientFactory.KubeConfig(),
-		Mapper:                 clientFactory.Mapper(),
 		NoStandaloneCRDs:       opts.NoInstallCRDs,
 		RegistryClient:         helmRegistryClient,
+		Remote:                 true,
 		SetValues:              opts.ValuesSets,
 		StringSetValues:        opts.ValuesStringSets,
 		ValuesFiles:            opts.ValuesFilesPaths,
@@ -259,9 +256,9 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Build transformed resource specs")
 
-	transformedResSpecs, err := resource.BuildTransformedResourceSpecs(ctx, releaseNamespace, renderChartResult.ResourceSpecs, []resource.ResourceTransformer{
-		resource.NewResourceListsTransformer(),
-		resource.NewDropInvalidAnnotationsAndLabelsTransformer(),
+	transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, releaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
+		spec.NewResourceListsTransformer(),
+		spec.NewDropInvalidAnnotationsAndLabelsTransformer(),
 	})
 	if err != nil {
 		return fmt.Errorf("build transformed resource specs: %w", err)
@@ -269,8 +266,8 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Build releasable resource specs")
 
-	releasableResSpecs, err := resource.BuildReleasableResourceSpecs(ctx, releaseNamespace, transformedResSpecs, []resource.ResourcePatcher{
-		resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, releaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
+		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 	})
 	if err != nil {
 		return fmt.Errorf("build releasable resource specs: %w", err)
@@ -285,7 +282,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Convert previous release to resource specs")
 
-	var prevRelResSpecs []*resource.ResourceSpec
+	var prevRelResSpecs []*spec.ResourceSpec
 	if prevRelease != nil {
 		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, releaseNamespace)
 		if err != nil {
@@ -302,11 +299,11 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Build resources")
 
-	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []resource.ResourcePatcher{
-		resource.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
-		resource.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
-	}, resource.BuildResourcesOptions{
-		Mapper: clientFactory.Mapper(),
+	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
+		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
+		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
+	}, clientFactory, resource.BuildResourcesOptions{
+		Remote: true,
 	})
 	if err != nil {
 		return fmt.Errorf("build resources: %w", err)
@@ -320,7 +317,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Build resource infos")
 
-	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory.KubeClient(), clientFactory.Mapper(), opts.NetworkParallelism)
+	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, opts.NetworkParallelism)
 	if err != nil {
 		return fmt.Errorf("build resource infos: %w", err)
 	}

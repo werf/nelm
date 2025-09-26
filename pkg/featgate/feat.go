@@ -39,7 +39,7 @@ var (
 
 	FeatGatePreviewV2 = NewFeatGate(
 		"preview-v2",
-		`Active all feature gates that will be enabled by default in Nelm v2`,
+		`Activate all feature gates that will be enabled by default in Nelm v2`,
 	)
 )
 

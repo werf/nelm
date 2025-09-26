@@ -19,6 +19,7 @@ import (
 	"github.com/werf/3p-helm/pkg/releaseutil"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/resource"
+	"github.com/werf/nelm/internal/resource/spec"
 )
 
 type ReleaseOptions struct {
@@ -27,7 +28,7 @@ type ReleaseOptions struct {
 	Notes           string
 }
 
-func NewRelease(name, namespace string, revision int, deployType common.DeployType, resources []*resource.ResourceSpec, chart *helmchart.Chart, releaseConfig map[string]interface{}, opts ReleaseOptions) (*helmrelease.Release, error) {
+func NewRelease(name, namespace string, revision int, deployType common.DeployType, resources []*spec.ResourceSpec, chart *helmchart.Chart, releaseConfig map[string]interface{}, opts ReleaseOptions) (*helmrelease.Release, error) {
 	if err := chartutil.ValidateReleaseName(name); err != nil {
 		return nil, fmt.Errorf("release name %q is not valid: %w", name, err)
 	}
@@ -56,7 +57,7 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 	}
 
 	sort.SliceStable(resources, func(i, j int) bool {
-		return resource.ResourceSpecSortHandler(resources[i], resources[j])
+		return spec.ResourceSpecSortHandler(resources[i], resources[j])
 	})
 
 	var (
@@ -202,10 +203,10 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 	return true, nil
 }
 
-func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string) ([]*resource.ResourceSpec, error) {
-	var resources []*resource.ResourceSpec
+func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string) ([]*spec.ResourceSpec, error) {
+	var resources []*spec.ResourceSpec
 	for _, manifest := range releaseutil.SplitManifests(rel.UnstoredManifest) {
-		if res, err := resource.NewResourceSpecFromManifest(manifest, releaseNamespace, resource.ResourceSpecOptions{
+		if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
 			StoreAs: common.StoreAsNone,
 		}); err != nil {
 			return nil, fmt.Errorf("construct resource spec from unstored manifest: %w", err)
@@ -215,7 +216,7 @@ func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string) (
 	}
 
 	for _, manifest := range releaseutil.SplitManifests(rel.Manifest) {
-		if res, err := resource.NewResourceSpecFromManifest(manifest, releaseNamespace, resource.ResourceSpecOptions{
+		if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
 			StoreAs: common.StoreAsRegular,
 		}); err != nil {
 			return nil, fmt.Errorf("construct resource spec from regular manifest: %w", err)
@@ -225,7 +226,7 @@ func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string) (
 	}
 
 	for _, hook := range rel.Hooks {
-		if res, err := resource.NewResourceSpecFromManifest(hook.Manifest, releaseNamespace, resource.ResourceSpecOptions{
+		if res, err := spec.NewResourceSpecFromManifest(hook.Manifest, releaseNamespace, spec.ResourceSpecOptions{
 			StoreAs: common.StoreAsHook,
 		}); err != nil {
 			return nil, fmt.Errorf("construct resource spec from hook manifest: %w", err)
@@ -237,7 +238,7 @@ func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string) (
 	return resources, nil
 }
 
-func resourceSpecToManifest(name, namespace string, revision int, res *resource.ResourceSpec) (string, error) {
+func resourceSpecToManifest(name, namespace string, revision int, res *spec.ResourceSpec) (string, error) {
 	manifestByte, err := yaml.Marshal(res.Unstruct.UnstructuredContent())
 	if err != nil {
 		return "", fmt.Errorf("marshal resource %q for release %q (namespace: %q, revision: %d): %w", res.IDHuman(), name, namespace, revision, err)

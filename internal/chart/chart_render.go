@@ -13,7 +13,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
 	"sigs.k8s.io/yaml"
 
@@ -32,7 +31,7 @@ import (
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/resource"
+	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -43,15 +42,13 @@ type RenderChartOptions struct {
 	ChartRepoSkipTLSVerify bool
 	ChartRepoSkipUpdate    bool
 	ChartVersion           string
-	DiscoveryClient        discovery.CachedDiscoveryInterface
 	FileValues             []string
 	HelmOptions            helmopts.HelmOptions
 	KubeCAPath             string
-	KubeConfig             *kube.KubeConfig
 	KubeVersion            *chartutil.KubeVersion
-	Mapper                 apimeta.ResettableRESTMapper
 	NoStandaloneCRDs       bool
 	RegistryClient         *registry.Client
+	Remote                 bool
 	SetValues              []string
 	StringSetValues        []string
 	SubNotes               bool
@@ -62,11 +59,11 @@ type RenderChartResult struct {
 	Chart         *chart.Chart
 	Notes         string
 	ReleaseConfig map[string]interface{}
-	ResourceSpecs []*resource.ResourceSpec
+	ResourceSpecs []*spec.ResourceSpec
 	Values        map[string]interface{}
 }
 
-func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, opts RenderChartOptions) (*RenderChartResult, error) {
+func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, clientFactory kube.ClientFactorier, opts RenderChartOptions) (*RenderChartResult, error) {
 	chartPath, err := downloadChart(ctx, chartPath, opts)
 	if err != nil {
 		return nil, fmt.Errorf("download chart %q: %w", chartPath, err)
@@ -132,9 +129,9 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	log.Default.TraceStruct(ctx, overrideValues, "Merged override values after processing dependencies:")
 
 	// TODO(ilya-lesikov): pass custom local api versions
-	caps, err := buildChartCapabilities(ctx, buildChartCapabilitiesOptions{
-		DiscoveryClient: opts.DiscoveryClient,
-		KubeVersion:     opts.KubeVersion,
+	caps, err := buildChartCapabilities(ctx, clientFactory, buildChartCapabilitiesOptions{
+		Remote:      opts.Remote,
+		KubeVersion: opts.KubeVersion,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build capabilities for chart %q: %w", chart.Name(), err)
@@ -172,8 +169,8 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	log.Default.TraceStruct(ctx, renderedValues.AsMap(), "Rendered values:")
 
 	var engine *helmengine.Engine
-	if opts.KubeConfig != nil {
-		engine = lo.ToPtr(helmengine.New(opts.KubeConfig.RestConfig))
+	if opts.Remote && clientFactory.KubeClient() != nil {
+		engine = lo.ToPtr(helmengine.New(clientFactory.KubeConfig().RestConfig))
 	} else {
 		engine = lo.ToPtr(helmengine.Engine{})
 	}
@@ -182,12 +179,12 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 
 	log.Default.Debug(ctx, "Rendering resources for chart at %q", chartPath)
 
-	var resources []*resource.ResourceSpec
+	var resources []*spec.ResourceSpec
 
 	if !opts.NoStandaloneCRDs {
 		for _, crd := range chart.CRDObjects() {
 			for _, manifest := range releaseutil.SplitManifests(string(crd.File.Data)) {
-				if res, err := resource.NewResourceSpecFromManifest(manifest, releaseNamespace, resource.ResourceSpecOptions{
+				if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
 					StoreAs:  common.StoreAsNone,
 					FilePath: crd.Filename,
 				}); err != nil {
@@ -217,7 +214,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	log.Default.TraceStruct(ctx, notes, "Rendered notes:")
 
 	sort.SliceStable(resources, func(i, j int) bool {
-		return resource.ResourceSpecSortHandler(resources[i], resources[j])
+		return spec.ResourceSpecSortHandler(resources[i], resources[j])
 	})
 
 	return &RenderChartResult{
@@ -251,8 +248,8 @@ func validateChart(ctx context.Context, chart *chart.Chart) error {
 	return nil
 }
 
-func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, releaseNamespace string, opts RenderChartOptions) ([]*resource.ResourceSpec, error) {
-	var resources []*resource.ResourceSpec
+func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, releaseNamespace string, opts RenderChartOptions) ([]*spec.ResourceSpec, error) {
+	var resources []*spec.ResourceSpec
 	for filePath, fileContent := range renderedTemplates {
 		if strings.HasPrefix(path.Base(filePath), "_") ||
 			strings.HasSuffix(filePath, action.NotesFileSuffix) ||
@@ -268,7 +265,7 @@ func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, relea
 				return nil, fmt.Errorf("parse YAML for %q: %w", filePath, err)
 			}
 
-			if res, err := resource.NewResourceSpecFromManifest(manifest, releaseNamespace, resource.ResourceSpecOptions{
+			if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
 				FilePath: filePath,
 			}); err != nil {
 				return nil, fmt.Errorf("construct resource spec for %q: %w", filePath, err)
@@ -315,23 +312,23 @@ func buildChartNotes(chartName string, renderedTemplates map[string]string, rend
 }
 
 type buildChartCapabilitiesOptions struct {
-	APIVersions     *chartutil.VersionSet
-	DiscoveryClient discovery.CachedDiscoveryInterface
-	KubeVersion     *chartutil.KubeVersion
+	APIVersions *chartutil.VersionSet
+	KubeVersion *chartutil.KubeVersion
+	Remote      bool
 }
 
-func buildChartCapabilities(ctx context.Context, opts buildChartCapabilitiesOptions) (*chartutil.Capabilities, error) {
+func buildChartCapabilities(ctx context.Context, clientFactory kube.ClientFactorier, opts buildChartCapabilitiesOptions) (*chartutil.Capabilities, error) {
 	capabilities := &chartutil.Capabilities{
 		HelmVersion: chartutil.DefaultCapabilities.HelmVersion,
 	}
 
-	if opts.DiscoveryClient != nil {
-		opts.DiscoveryClient.Invalidate()
+	if opts.Remote {
+		clientFactory.Discovery().Invalidate()
 
 		if opts.KubeVersion != nil {
 			capabilities.KubeVersion = *opts.KubeVersion
 		} else {
-			kubeVersion, err := opts.DiscoveryClient.ServerVersion()
+			kubeVersion, err := clientFactory.Discovery().ServerVersion()
 			if err != nil {
 				return nil, fmt.Errorf("get kubernetes server version: %w", err)
 			}
@@ -346,7 +343,7 @@ func buildChartCapabilities(ctx context.Context, opts buildChartCapabilitiesOpti
 		if opts.APIVersions != nil {
 			capabilities.APIVersions = *opts.APIVersions
 		} else {
-			apiVersions, err := action.GetVersionSet(opts.DiscoveryClient)
+			apiVersions, err := action.GetVersionSet(clientFactory.Discovery())
 			if err != nil {
 				if discovery.IsGroupDiscoveryFailedError(err) {
 					log.Default.Warn(ctx, "Discovery failed: %s", err.Error())

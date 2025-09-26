@@ -5,6 +5,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	"github.com/werf/nelm/internal/common"
 )
 
 type CleanUnstructOptions struct {
@@ -49,8 +51,8 @@ func CleanUnstruct(unstruct *unstructured.Unstructured, opts CleanUnstructOption
 	}
 
 	if opts.CleanReleaseAnnosLabels {
-		cleanAnnotationsRegexes = append(cleanAnnotationsRegexes, AnnotationKeyPatternReleaseName, AnnotationKeyPatternReleaseNamespace)
-		cleanLabelsRegexes = append(cleanLabelsRegexes, LabelKeyPatternManagedBy)
+		cleanAnnotationsRegexes = append(cleanAnnotationsRegexes, common.AnnotationKeyPatternReleaseName, common.AnnotationKeyPatternReleaseNamespace)
+		cleanLabelsRegexes = append(cleanLabelsRegexes, common.LabelKeyPatternManagedBy)
 	}
 
 	filteredAnnos := filterAnnosOrLabels(unstructCopy.GetAnnotations(), cleanAnnotationsRegexes)

@@ -12,14 +12,13 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/gookit/color"
 	"github.com/samber/lo"
-	"k8s.io/client-go/kubernetes"
 
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/chartutil"
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/release"
-	"github.com/werf/nelm/internal/resource"
+	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -91,8 +90,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		return nil, fmt.Errorf("construct kube client factory: %w", err)
 	}
 
-	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, release.ReleaseStorageOptions{
-		StaticClient:        clientFactory.Static().(*kubernetes.Clientset),
+	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, clientFactory, release.ReleaseStorageOptions{
 		SQLConnectionString: opts.SQLConnectionString,
 	})
 	if err != nil {
@@ -166,7 +164,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 	}
 
 	for _, res := range resSpecs {
-		if resource.IsHook(res.Annotations) {
+		if spec.IsHook(res.Annotations) {
 			result.Hooks = append(result.Hooks, res.Unstruct.Object)
 		} else {
 			result.Resources = append(result.Resources, res.Unstruct.Object)

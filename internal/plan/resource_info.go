@@ -9,7 +9,6 @@ import (
 	"github.com/samber/lo"
 	"github.com/sourcegraph/conc/pool"
 	"github.com/wI2L/jsondiff"
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
@@ -19,7 +18,7 @@ import (
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/resource"
-	"github.com/werf/nelm/internal/resource/meta"
+	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/log"
 )
@@ -50,7 +49,7 @@ func ResourceInstallTypeSortHandler(type1, type2 ResourceInstallType) bool {
 }
 
 type InstallableResourceInfo struct {
-	*meta.ResourceMeta
+	*spec.ResourceMeta
 
 	LocalResource  *resource.InstallableResource
 	GetResult      *unstructured.Unstructured
@@ -67,7 +66,7 @@ type InstallableResourceInfo struct {
 }
 
 type DeletableResourceInfo struct {
-	*meta.ResourceMeta
+	*spec.ResourceMeta
 
 	LocalResource *resource.DeletableResource
 	GetResult     *unstructured.Unstructured
@@ -78,7 +77,7 @@ type DeletableResourceInfo struct {
 	Stage common.Stage
 }
 
-func BuildResourceInfos(ctx context.Context, deployType common.DeployType, releaseName, releaseNamespace string, instResources []*resource.InstallableResource, delResources []*resource.DeletableResource, prevReleaseFailed bool, kubeClient kube.KubeClienter, mapper apimeta.ResettableRESTMapper, parallelism int) (instResourceInfos []*InstallableResourceInfo, delResourceInfos []*DeletableResourceInfo, err error) {
+func BuildResourceInfos(ctx context.Context, deployType common.DeployType, releaseName, releaseNamespace string, instResources []*resource.InstallableResource, delResources []*resource.DeletableResource, prevReleaseFailed bool, clientFactory kube.ClientFactorier, parallelism int) (instResourceInfos []*InstallableResourceInfo, delResourceInfos []*DeletableResourceInfo, err error) {
 	totalResourcesCount := len(instResources) + len(delResources)
 
 	routines := lo.Max([]int{len(instResources) / lo.Max([]int{totalResourcesCount, 1}) * parallelism, 1})
@@ -86,7 +85,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 	instResourcesPool := pool.NewWithResults[[]*InstallableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range instResources {
 		instResourcesPool.Go(func(ctx context.Context) ([]*InstallableResourceInfo, error) {
-			infos, err := BuildInstallableResourceInfo(ctx, res, deployType, releaseNamespace, prevReleaseFailed, kubeClient, mapper)
+			infos, err := BuildInstallableResourceInfo(ctx, res, deployType, releaseNamespace, prevReleaseFailed, clientFactory)
 			if err != nil {
 				return nil, fmt.Errorf("build installable resource info: %w", err)
 			}
@@ -100,7 +99,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 	delResourcesPool := pool.NewWithResults[*DeletableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range delResources {
 		delResourcesPool.Go(func(ctx context.Context) (*DeletableResourceInfo, error) {
-			info, err := BuildDeletableResourceInfo(ctx, res, deployType, releaseName, releaseNamespace, kubeClient, mapper)
+			info, err := BuildDeletableResourceInfo(ctx, res, deployType, releaseName, releaseNamespace, clientFactory)
 			if err != nil {
 				return nil, fmt.Errorf("build deletable resource info: %w", err)
 			}
@@ -125,7 +124,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 	})
 
 	sort.SliceStable(delResourceInfos, func(i, j int) bool {
-		return meta.ResourceMetaSortHandler(delResourceInfos[i].LocalResource.ResourceMeta, delResourceInfos[j].LocalResource.ResourceMeta)
+		return spec.ResourceMetaSortHandler(delResourceInfos[i].LocalResource.ResourceMeta, delResourceInfos[j].LocalResource.ResourceMeta)
 	})
 
 	iterateInstallableResourceInfos(instResourceInfos)
@@ -137,7 +136,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 }
 
 // TODO(v2): keep annotation should probably forbid resource recreations
-func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed bool, kubeClient kube.KubeClienter, mapper apimeta.ResettableRESTMapper) ([]*InstallableResourceInfo, error) {
+func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed bool, clientFactory kube.ClientFactorier) ([]*InstallableResourceInfo, error) {
 	var stages []common.Stage
 	switch deployType {
 	case common.DeployTypeInitial, common.DeployTypeInstall:
@@ -156,7 +155,7 @@ func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 		return nil, nil
 	}
 
-	getObj, getErr := kubeClient.Get(ctx, localRes.ResourceMeta, kube.KubeClientGetOptions{
+	getObj, getErr := clientFactory.KubeClient().Get(ctx, localRes.ResourceMeta, kube.KubeClientGetOptions{
 		DefaultNamespace: releaseNamespace,
 		TryCache:         true,
 	})
@@ -182,12 +181,12 @@ func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 
 	var err error
 
-	getObj, err = fixManagedFieldsInCluster(ctx, releaseNamespace, getObj, localRes.ResourceMeta, kubeClient)
+	getObj, err = fixManagedFieldsInCluster(ctx, releaseNamespace, getObj, localRes.ResourceMeta, clientFactory)
 	if err != nil {
 		return nil, fmt.Errorf("fix managed fields for resource %q: %w", localRes.IDHuman(), err)
 	}
 
-	dryApplyObj, dryApplyErr := kubeClient.Apply(ctx, localRes.ResourceSpec, kube.KubeClientApplyOptions{
+	dryApplyObj, dryApplyErr := clientFactory.KubeClient().Apply(ctx, localRes.ResourceSpec, kube.KubeClientApplyOptions{
 		DefaultNamespace: releaseNamespace,
 		DryRun:           true,
 	})
@@ -197,7 +196,7 @@ func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 		return nil, fmt.Errorf("determine install type for resource %q: %w", localRes.IDHuman(), err)
 	}
 
-	getMeta := meta.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
+	getMeta := spec.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
 	trackReadiness := mustTrackReadiness(localRes, installType, true, prevRelFailed)
 
 	return lo.Map(stages, func(stg common.Stage, _ int) *InstallableResourceInfo {
@@ -216,7 +215,7 @@ func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 	}), nil
 }
 
-func BuildDeletableResourceInfo(ctx context.Context, localRes *resource.DeletableResource, deployType common.DeployType, releaseName, releaseNamespace string, kubeClient kube.KubeClienter, mapper apimeta.ResettableRESTMapper) (*DeletableResourceInfo, error) {
+func BuildDeletableResourceInfo(ctx context.Context, localRes *resource.DeletableResource, deployType common.DeployType, releaseName, releaseNamespace string, clientFactory kube.ClientFactorier) (*DeletableResourceInfo, error) {
 	var stage common.Stage
 	if deployType == common.DeployTypeUninstall {
 		stage = common.StageUninstall
@@ -234,7 +233,7 @@ func BuildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 		return noDeleteInfo, nil
 	}
 
-	getObj, getErr := kubeClient.Get(ctx, localRes.ResourceMeta, kube.KubeClientGetOptions{
+	getObj, getErr := clientFactory.KubeClient().Get(ctx, localRes.ResourceMeta, kube.KubeClientGetOptions{
 		DefaultNamespace: releaseNamespace,
 		TryCache:         true,
 	})
@@ -246,7 +245,7 @@ func BuildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 		}
 	}
 
-	getMeta := meta.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
+	getMeta := spec.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
 
 	if err := resource.ValidateResourcePolicy(getMeta); err != nil {
 		return noDeleteInfo, nil
@@ -379,7 +378,7 @@ func resourceInstallType(localRes *resource.InstallableResource, getObj, dryAppl
 	return ResourceInstallTypeNone, nil
 }
 
-func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMeta *meta.ResourceMeta, installType ResourceInstallType, releaseNamespace string) bool {
+func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMeta *spec.ResourceMeta, installType ResourceInstallType, releaseNamespace string) bool {
 	if !localRes.DeleteOnSucceeded || localRes.KeepOnDelete {
 		return false
 	}
@@ -401,7 +400,7 @@ func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMet
 	return true
 }
 
-func mustDeleteOnFailedDeploy(res *resource.InstallableResource, getMeta *meta.ResourceMeta, installType ResourceInstallType, releaseNamespace string, mustTrackReadiness bool) bool {
+func mustDeleteOnFailedDeploy(res *resource.InstallableResource, getMeta *spec.ResourceMeta, installType ResourceInstallType, releaseNamespace string, mustTrackReadiness bool) bool {
 	if !res.DeleteOnFailed ||
 		res.KeepOnDelete ||
 		installType == ResourceInstallTypeNone ||
@@ -423,7 +422,7 @@ func mustDeleteOnFailedDeploy(res *resource.InstallableResource, getMeta *meta.R
 }
 
 func mustTrackReadiness(res *resource.InstallableResource, resInstallType ResourceInstallType, exists, prevRelFailed bool) bool {
-	if resource.IsCRD(res.Unstruct.GroupVersionKind().GroupKind()) ||
+	if spec.IsCRD(res.Unstruct.GroupVersionKind().GroupKind()) ||
 		res.TrackTerminationMode == multitrack.NonBlocking {
 		return false
 	}
@@ -439,7 +438,7 @@ func mustTrackReadiness(res *resource.InstallableResource, resInstallType Resour
 	return true
 }
 
-func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, getObj *unstructured.Unstructured, meta *meta.ResourceMeta, kubeClient kube.KubeClienter) (*unstructured.Unstructured, error) {
+func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, getObj *unstructured.Unstructured, meta *spec.ResourceMeta, clientFactory kube.ClientFactorier) (*unstructured.Unstructured, error) {
 	if changed, err := fixManagedFields(getObj); err != nil {
 		return nil, fmt.Errorf("fix managed fields for resource %q: %w", meta.IDHuman(), err)
 	} else if !changed {
@@ -456,7 +455,7 @@ func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, get
 
 	log.Default.Debug(ctx, "Fixing managed fields for resource %q", meta.IDHuman())
 
-	patchedObj, err := kubeClient.MergePatch(ctx, meta, patch, kube.KubeClientMergePatchOptions{
+	patchedObj, err := clientFactory.KubeClient().MergePatch(ctx, meta, patch, kube.KubeClientMergePatchOptions{
 		DefaultNamespace: releaseNamespace,
 	})
 	if err != nil {
@@ -600,16 +599,16 @@ func exclusiveOwnershipForOurManager(managedFields []v1.ManagedFieldsEntry, ours
 	return newManagedFields, changed
 }
 
-func orphaned(meta *meta.ResourceMeta, releaseName, releaseNamespace string) bool {
-	if _, value, found := resource.FindAnnotationOrLabelByKeyPattern(meta.Annotations, resource.AnnotationKeyPatternReleaseName); !found || value != releaseName {
+func orphaned(meta *spec.ResourceMeta, releaseName, releaseNamespace string) bool {
+	if _, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternReleaseName); !found || value != releaseName {
 		return true
 	}
 
-	if _, value, found := resource.FindAnnotationOrLabelByKeyPattern(meta.Annotations, resource.AnnotationKeyPatternReleaseNamespace); !found || value != releaseNamespace {
+	if _, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternReleaseNamespace); !found || value != releaseNamespace {
 		return true
 	}
 
-	if _, value, found := resource.FindAnnotationOrLabelByKeyPattern(meta.Labels, resource.LabelKeyPatternManagedBy); !found || value != "Helm" {
+	if _, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Labels, common.LabelKeyPatternManagedBy); !found || value != "Helm" {
 		return true
 	}
 

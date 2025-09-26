@@ -253,7 +253,7 @@ func runFailurePlan(
 
 	log.Default.Debug(ctx, "Execute failure plan")
 
-	if err := plan.ExecutePlan(ctx, releaseNamespace, failurePlan, taskStore, logStore, informerFactory, history, clientFactory.KubeClient(), clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), plan.ExecutePlanOptions{
+	if err := plan.ExecutePlan(ctx, releaseNamespace, failurePlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
 		NetworkParallelism: opts.NetworkParallelism,
 		ReadinessTimeout:   opts.TrackReadinessTimeout,
 		PresenceTimeout:    opts.TrackCreationTimeout,

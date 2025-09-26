@@ -6,8 +6,7 @@ import (
 
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
-	"github.com/werf/nelm/internal/resource"
-	"github.com/werf/nelm/internal/resource/meta"
+	"github.com/werf/nelm/internal/resource/spec"
 )
 
 var (
@@ -43,7 +42,7 @@ func (c *OperationConfigNoop) IDHuman() string {
 }
 
 type OperationConfigCreate struct {
-	ResourceSpec  *resource.ResourceSpec
+	ResourceSpec  *spec.ResourceSpec
 	ForceReplicas *int
 }
 
@@ -56,7 +55,7 @@ func (c *OperationConfigCreate) IDHuman() string {
 }
 
 type OperationConfigRecreate struct {
-	ResourceSpec  *resource.ResourceSpec
+	ResourceSpec  *spec.ResourceSpec
 	ForceReplicas *int
 }
 
@@ -69,7 +68,7 @@ func (c *OperationConfigRecreate) IDHuman() string {
 }
 
 type OperationConfigUpdate struct {
-	ResourceSpec *resource.ResourceSpec
+	ResourceSpec *spec.ResourceSpec
 }
 
 func (c *OperationConfigUpdate) ID() string {
@@ -81,7 +80,7 @@ func (c *OperationConfigUpdate) IDHuman() string {
 }
 
 type OperationConfigApply struct {
-	ResourceSpec *resource.ResourceSpec
+	ResourceSpec *spec.ResourceSpec
 }
 
 func (c *OperationConfigApply) ID() string {
@@ -93,7 +92,7 @@ func (c *OperationConfigApply) IDHuman() string {
 }
 
 type OperationConfigDelete struct {
-	ResourceMeta *meta.ResourceMeta
+	ResourceMeta *spec.ResourceMeta
 }
 
 func (c *OperationConfigDelete) ID() string {
@@ -105,7 +104,7 @@ func (c *OperationConfigDelete) IDHuman() string {
 }
 
 type OperationConfigTrackReadiness struct {
-	ResourceMeta *meta.ResourceMeta
+	ResourceMeta *spec.ResourceMeta
 
 	FailMode                                 multitrack.FailMode
 	FailuresAllowed                          int
@@ -129,7 +128,7 @@ func (c *OperationConfigTrackReadiness) IDHuman() string {
 }
 
 type OperationConfigTrackPresence struct {
-	ResourceMeta *meta.ResourceMeta
+	ResourceMeta *spec.ResourceMeta
 }
 
 func (c *OperationConfigTrackPresence) ID() string {
@@ -141,7 +140,7 @@ func (c *OperationConfigTrackPresence) IDHuman() string {
 }
 
 type OperationConfigTrackAbsence struct {
-	ResourceMeta *meta.ResourceMeta
+	ResourceMeta *spec.ResourceMeta
 }
 
 func (c *OperationConfigTrackAbsence) ID() string {

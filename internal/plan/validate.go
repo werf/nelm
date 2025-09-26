@@ -5,8 +5,7 @@ import (
 	"strings"
 
 	"github.com/werf/nelm/internal/common"
-	"github.com/werf/nelm/internal/resource"
-	"github.com/werf/nelm/internal/resource/meta"
+	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/util"
 )
 
@@ -39,23 +38,23 @@ func validateAdoptableResources(releaseName, releaseNamespace string, resourceIn
 	return util.Multierrorf("adoption validation failed", errs)
 }
 
-func adoptableBy(meta *meta.ResourceMeta, releaseName, releaseNamespace string) (adoptable bool, nonAdoptableReason string) {
+func adoptableBy(meta *spec.ResourceMeta, releaseName, releaseNamespace string) (adoptable bool, nonAdoptableReason string) {
 	nonAdoptableReasons := []string{}
 
-	if key, value, found := resource.FindAnnotationOrLabelByKeyPattern(meta.Annotations, resource.AnnotationKeyPatternReleaseName); found {
+	if key, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternReleaseName); found {
 		if value != releaseName {
 			nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation "%s=%s" must have value %q`, key, value, releaseName))
 		}
 	} else {
-		nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation %q not found, must be set to %q`, resource.AnnotationKeyHumanReleaseName, releaseName))
+		nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation %q not found, must be set to %q`, common.AnnotationKeyHumanReleaseName, releaseName))
 	}
 
-	if key, value, found := resource.FindAnnotationOrLabelByKeyPattern(meta.Annotations, resource.AnnotationKeyPatternReleaseNamespace); found {
+	if key, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternReleaseNamespace); found {
 		if value != releaseNamespace {
 			nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation "%s=%s" must have value %q`, key, value, releaseNamespace))
 		}
 	} else {
-		nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation %q not found, must be set to %q`, resource.AnnotationKeyHumanReleaseNamespace, releaseNamespace))
+		nonAdoptableReasons = append(nonAdoptableReasons, fmt.Sprintf(`annotation %q not found, must be set to %q`, common.AnnotationKeyHumanReleaseNamespace, releaseNamespace))
 	}
 
 	nonAdoptableReason = strings.Join(nonAdoptableReasons, ", ")

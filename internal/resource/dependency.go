@@ -5,17 +5,17 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/werf/nelm/internal/common"
-	"github.com/werf/nelm/internal/resource/meta"
+	"github.com/werf/nelm/internal/resource/spec"
 )
 
 type InternalDependency struct {
-	*meta.ResourceMatcher
+	*spec.ResourceMatcher
 
 	ResourceState common.ResourceState
 }
 
 func NewInternalDependency(matchNames, matchNamespaces, matchGroups, matchVersions, matchKinds []string, matchState common.ResourceState) *InternalDependency {
-	resMatcher := meta.NewResourceMatcher(matchNames, matchNamespaces, matchGroups, matchVersions, matchKinds, meta.ResourceMatcherOptions{})
+	resMatcher := spec.NewResourceMatcher(matchNames, matchNamespaces, matchGroups, matchVersions, matchKinds, spec.ResourceMatcherOptions{})
 
 	return &InternalDependency{
 		ResourceMatcher: resMatcher,
@@ -24,7 +24,7 @@ func NewInternalDependency(matchNames, matchNamespaces, matchGroups, matchVersio
 }
 
 type ExternalDependency struct {
-	*meta.ResourceMeta
+	*spec.ResourceMeta
 }
 
 func DetectInternalDependencies(unstruct *unstructured.Unstructured) []*InternalDependency {
