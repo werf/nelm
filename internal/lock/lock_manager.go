@@ -135,7 +135,7 @@ func defaultLockerOnLostLease(lock lockgate.LockHandle) error {
 	return fmt.Errorf("locker has lost the lease for lock %q uuid %q. The process will stop immediately.\nPossible reasons:\n- Connection issues with Kubernetes API.\n- Network delays caused lease renewal requests to fail", lock.LockName, lock.UUID)
 }
 
-func createNamespaceIfNotExists(clientFactory kube.ClientFactorier, namespace string, releaseNamespace string) error {
+func createNamespaceIfNotExists(clientFactory kube.ClientFactorier, namespace, releaseNamespace string) error {
 	unstruct := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "v1",

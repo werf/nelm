@@ -24,6 +24,14 @@ func NewResourceMeta(name, namespace, releaseNamespace, filePath string, gvk sch
 		namespace = ""
 	}
 
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
+
+	if labels == nil {
+		labels = map[string]string{}
+	}
+
 	return &ResourceMeta{
 		Name:             name,
 		Namespace:        namespace,

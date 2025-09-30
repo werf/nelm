@@ -126,7 +126,7 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 		TrackTerminationMode:                   trackTerminationMode(res.ResourceMeta),
 		Weight:                                 weight(res.ResourceMeta, len(manIntDeps) > 0),
 		ManualInternalDependencies:             manIntDeps,
-		AutoInternalDependencies:               DetectInternalDependencies(res.Unstruct),
+		AutoInternalDependencies:               internalDependencies(res.Unstruct),
 		ExternalDependencies:                   extDeps,
 		DeployConditions:                       deployConditions(res.ResourceMeta),
 	}, nil
@@ -167,6 +167,7 @@ type BuildResourcesOptions struct {
 	Remote bool
 }
 
+// FIXME(ilya-lesikov): test
 func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRelResSpecs, newRelResSpecs []*spec.ResourceSpec, patchers []spec.ResourcePatcher, clientFactory kube.ClientFactorier, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
 	var prevRelDelResources []*DeletableResource
 	for _, resSpec := range prevRelResSpecs {

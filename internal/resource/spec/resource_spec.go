@@ -58,6 +58,16 @@ func NewResourceSpecFromManifest(manifest, releaseNamespace string, opts Resourc
 	return NewResourceSpec(obj.(*unstructured.Unstructured), releaseNamespace, opts), nil
 }
 
+func (s *ResourceSpec) SetAnnotations(annotations map[string]string) {
+	s.Unstruct.SetAnnotations(annotations)
+	s.ResourceMeta.Annotations = annotations
+}
+
+func (s *ResourceSpec) SetLabels(labels map[string]string) {
+	s.Unstruct.SetLabels(labels)
+	s.ResourceMeta.Labels = labels
+}
+
 func BuildTransformedResourceSpecs(ctx context.Context, releaseNamespace string, resources []*ResourceSpec, transformers []ResourceTransformer) ([]*ResourceSpec, error) {
 	transformedResources := resources
 	for _, transformer := range transformers {

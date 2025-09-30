@@ -1,31 +1,19 @@
 package spec
 
 type ResourceMatcher struct {
-	names      []string
-	namespaces []string
-	groups     []string
-	versions   []string
-	kinds      []string
-}
-
-type ResourceMatcherOptions struct{}
-
-func NewResourceMatcher(names, namespaces, groups, versions, kinds []string, opts ResourceMatcherOptions) *ResourceMatcher {
-	return &ResourceMatcher{
-		names:      names,
-		namespaces: namespaces,
-		groups:     groups,
-		versions:   versions,
-		kinds:      kinds,
-	}
+	Names      []string
+	Namespaces []string
+	Groups     []string
+	Versions   []string
+	Kinds      []string
 }
 
 func (s *ResourceMatcher) Match(resMeta *ResourceMeta) bool {
 	var nameMatch bool
-	if len(s.names) == 0 {
+	if len(s.Names) == 0 {
 		nameMatch = true
 	} else {
-		for _, name := range s.names {
+		for _, name := range s.Names {
 			if resMeta.Name == name {
 				nameMatch = true
 				break
@@ -38,10 +26,10 @@ func (s *ResourceMatcher) Match(resMeta *ResourceMeta) bool {
 	}
 
 	var namespaceMatch bool
-	if len(s.namespaces) == 0 {
+	if len(s.Namespaces) == 0 {
 		namespaceMatch = true
 	} else {
-		for _, namespace := range s.namespaces {
+		for _, namespace := range s.Namespaces {
 			if resMeta.Namespace == namespace {
 				namespaceMatch = true
 				break
@@ -54,10 +42,10 @@ func (s *ResourceMatcher) Match(resMeta *ResourceMeta) bool {
 	}
 
 	var groupMatch bool
-	if len(s.groups) == 0 {
+	if len(s.Groups) == 0 {
 		groupMatch = true
 	} else {
-		for _, group := range s.groups {
+		for _, group := range s.Groups {
 			if resMeta.GroupVersionKind.Group == group {
 				groupMatch = true
 				break
@@ -70,10 +58,10 @@ func (s *ResourceMatcher) Match(resMeta *ResourceMeta) bool {
 	}
 
 	var versionMatch bool
-	if len(s.versions) == 0 {
+	if len(s.Versions) == 0 {
 		versionMatch = true
 	} else {
-		for _, version := range s.versions {
+		for _, version := range s.Versions {
 			if resMeta.GroupVersionKind.Version == version {
 				versionMatch = true
 				break
@@ -86,10 +74,10 @@ func (s *ResourceMatcher) Match(resMeta *ResourceMeta) bool {
 	}
 
 	var kindMatch bool
-	if len(s.kinds) == 0 {
+	if len(s.Kinds) == 0 {
 		kindMatch = true
 	} else {
-		for _, kind := range s.kinds {
+		for _, kind := range s.Kinds {
 			if resMeta.GroupVersionKind.Kind == kind {
 				kindMatch = true
 				break

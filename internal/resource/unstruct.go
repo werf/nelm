@@ -55,11 +55,15 @@ func CleanUnstruct(unstruct *unstructured.Unstructured, opts CleanUnstructOption
 		cleanLabelsRegexes = append(cleanLabelsRegexes, common.LabelKeyPatternManagedBy)
 	}
 
-	filteredAnnos := filterAnnosOrLabels(unstructCopy.GetAnnotations(), cleanAnnotationsRegexes)
-	unstructCopy.SetAnnotations(filteredAnnos)
+	if annos := unstructCopy.GetAnnotations(); len(annos) > 0 {
+		filteredAnnos := filterAnnosOrLabels(annos, cleanAnnotationsRegexes)
+		unstructCopy.SetAnnotations(filteredAnnos)
+	}
 
-	filteredLabels := filterAnnosOrLabels(unstructCopy.GetLabels(), cleanLabelsRegexes)
-	unstructCopy.SetLabels(filteredLabels)
+	if labels := unstructCopy.GetLabels(); len(labels) > 0 {
+		filteredLabels := filterAnnosOrLabels(labels, cleanLabelsRegexes)
+		unstructCopy.SetLabels(filteredLabels)
+	}
 
 	return unstructCopy
 }
@@ -86,6 +90,8 @@ func cleanRuntimeDataFromUnstruct(unstruct *unstructured.Unstructured) {
 	unstruct.SetGeneration(0)
 	unstruct.SetUID("")
 	unstruct.SetCreationTimestamp(v1.Time{})
+	unstruct.SetSelfLink("")
+	unstruct.SetFinalizers(nil)
 	unstruct.Object["status"] = nil
 
 	managedFields := unstruct.GetManagedFields()

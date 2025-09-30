@@ -567,7 +567,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 }
 
-func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir string, homeDir string) (ReleaseInstallOptions, error) {
+func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir, homeDir string) (ReleaseInstallOptions, error) {
 	if opts.Chart == "" && opts.ChartDirPath != "" {
 		opts.Chart = opts.ChartDirPath
 	} else if opts.ChartDirPath == "" && opts.Chart == "" {
@@ -682,7 +682,7 @@ type runRollbackPlanResult struct {
 	FailedResourceOps    []*plan.Operation
 }
 
-func runRollbackPlan(ctx context.Context, releaseName string, releaseNamespace string, failedRelease *helmrelease.Release, prevDeployedRelease *helmrelease.Release, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history *release.History, clientFactory *kube.ClientFactory, opts runRollbackPlanOptions) (result *runRollbackPlanResult, nonCritErrs, critErrs []error) {
+func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, failedRelease, prevDeployedRelease *helmrelease.Release, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history *release.History, clientFactory *kube.ClientFactory, opts runRollbackPlanOptions) (result *runRollbackPlanResult, nonCritErrs, critErrs []error) {
 	log.Default.Debug(ctx, "Convert prev deployed release to resource specs")
 
 	resSpecs, err := release.ReleaseToResourceSpecs(prevDeployedRelease, releaseNamespace)

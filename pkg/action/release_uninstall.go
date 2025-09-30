@@ -11,7 +11,6 @@ import (
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/kubernetes"
 
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/kubedog/pkg/informer"

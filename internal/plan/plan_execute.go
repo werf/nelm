@@ -80,7 +80,7 @@ func ExecutePlan(parentCtx context.Context, releaseNamespace string, plan *Plan,
 	return nil
 }
 
-func execOperation(opID string, releaseNamespace string, completedOpsIDsCh chan string, workerPool *pool.ContextPool, plan *Plan, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history release.Historier, clientFactory kube.ClientFactorier, ctxCancelFn context.CancelCauseFunc, readinessTimeout time.Duration, presenceTimeout time.Duration, absenceTimeout time.Duration) {
+func execOperation(opID, releaseNamespace string, completedOpsIDsCh chan string, workerPool *pool.ContextPool, plan *Plan, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history release.Historier, clientFactory kube.ClientFactorier, ctxCancelFn context.CancelCauseFunc, readinessTimeout, presenceTimeout, absenceTimeout time.Duration) {
 	workerPool.Go(func(ctx context.Context) error {
 		var err error
 		defer func() {
@@ -118,7 +118,7 @@ func findExecutableOpsIDs(opsMap map[string]map[string]graph.Edge[string]) []str
 	return executableOpsIDs
 }
 
-func execOp(ctx context.Context, op *Operation, releaseNamespace string, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history release.Historier, clientFactory kube.ClientFactorier, readinessTimeout time.Duration, presenceTimeout time.Duration, absenceTimeout time.Duration) error {
+func execOp(ctx context.Context, op *Operation, releaseNamespace string, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history release.Historier, clientFactory kube.ClientFactorier, readinessTimeout, presenceTimeout, absenceTimeout time.Duration) error {
 	switch op.Type {
 	case OperationTypeCreate:
 		return execOpCreate(ctx, op, releaseNamespace, clientFactory)

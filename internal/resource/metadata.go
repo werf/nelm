@@ -182,7 +182,7 @@ func validateTrack(meta *spec.ResourceMeta) error {
 		switch value {
 		case string(multitrack.IgnoreAndContinueDeployProcess):
 		case string(multitrack.FailWholeDeployProcessImmediately):
-		case string(multitrack.HopeUntilEndOfDeployProcess):
+		case string(multitrack.LegacyHopeUntilEndOfDeployProcess):
 		default:
 			return fmt.Errorf("invalid unknown value %q for annotation %q", value, key)
 		}
@@ -601,7 +601,7 @@ func validateDeployOn(meta *spec.ResourceMeta) error {
 				return fmt.Errorf("invalid value %q for annotation %q, one of the comma-separated values is empty", value, key)
 			}
 
-			switch value {
+			switch on {
 			case string(helmrelease.HookPreInstall),
 				string(helmrelease.HookPostInstall),
 				string(helmrelease.HookPreUpgrade),
@@ -888,6 +888,14 @@ func deployConditionsForAnnotation(meta *spec.ResourceMeta, annoPattern *regexp.
 			result[common.InstallOnDelete] = append(result[common.InstallOnDelete], common.StagePostInstall)
 		case string(helmrelease.HookTest), "test-success":
 			result[common.InstallOnTest] = append(result[common.InstallOnTest], common.StageInstall)
+		case string(helmrelease.HookInstall):
+			result[common.InstallOnInstall] = append(result[common.InstallOnInstall], common.StageInstall)
+		case string(helmrelease.HookUpgrade):
+			result[common.InstallOnUpgrade] = append(result[common.InstallOnUpgrade], common.StageInstall)
+		case string(helmrelease.HookRollback):
+			result[common.InstallOnRollback] = append(result[common.InstallOnRollback], common.StageInstall)
+		case string(helmrelease.HookDelete):
+			result[common.InstallOnDelete] = append(result[common.InstallOnDelete], common.StageInstall)
 		default:
 			panic(fmt.Sprintf("unknown value %q for %s", value, key))
 		}
@@ -1028,14 +1036,16 @@ func manualInternalDependencies(meta *spec.ResourceMeta) []*InternalDependency {
 
 			depName := valParts[len(valParts)-1]
 
-			dep := NewInternalDependency(
-				[]string{depName},
-				[]string{depNamespace},
-				[]string{gvk.Group},
-				[]string{gvk.Version},
-				[]string{gvk.Kind},
-				common.ResourceStatePresent,
-			)
+			dep := &InternalDependency{
+				ResourceMatcher: &spec.ResourceMatcher{
+					Names:      []string{depName},
+					Namespaces: []string{depNamespace},
+					Groups:     []string{gvk.Group},
+					Versions:   []string{gvk.Version},
+					Kinds:      []string{gvk.Kind},
+				},
+				ResourceState: common.ResourceStatePresent,
+			}
 			deps[depID] = dep
 		}
 	}
@@ -1079,14 +1089,16 @@ func manualInternalDependencies(meta *spec.ResourceMeta) []*InternalDependency {
 				depState = common.ResourceStatePresent
 			}
 
-			dep := NewInternalDependency(
-				depNames,
-				depNamespaces,
-				depGroups,
-				depVersions,
-				depKinds,
-				depState,
-			)
+			dep := &InternalDependency{
+				ResourceMatcher: &spec.ResourceMatcher{
+					Names:      depNames,
+					Namespaces: depNamespaces,
+					Groups:     depGroups,
+					Versions:   depVersions,
+					Kinds:      depKinds,
+				},
+				ResourceState: depState,
+			}
 			deps[depID] = dep
 		}
 	}

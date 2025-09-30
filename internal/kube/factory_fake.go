@@ -14,7 +14,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/kubectl/pkg/cmd/testing"
 )
 
 var _ ClientFactorier = (*FakeClientFactory)(nil)
@@ -35,13 +34,7 @@ func NewFakeClientFactory(ctx context.Context) *FakeClientFactory {
 
 	staticClient := fake.NewSimpleClientset()
 	dynamicClient := dynamicfake.NewSimpleDynamicClient(scheme.Scheme)
-
-	discoveryClient := testing.NewFakeCachedDiscoveryClient()
-	discGroups, discResources := lo.Must2(staticClient.Discovery().ServerGroupsAndResources())
-	discoveryClient.Groups = discGroups
-	discoveryClient.Resources = discResources
-	discoveryClient.PreferredResources = lo.Must(staticClient.Discovery().ServerPreferredResources())
-
+	discoveryClient := NewFakeDiscoveryClient()
 	mapper := reflect.ValueOf(NewKubeMapper(ctx, discoveryClient)).Interface().(meta.ResettableRESTMapper)
 	kubeClient := NewKubeClient(staticClient, dynamicClient, discoveryClient, mapper)
 
