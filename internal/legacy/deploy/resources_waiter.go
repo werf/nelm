@@ -66,6 +66,7 @@ func init() {
 	flaggerscheme.AddToScheme(scheme.Scheme)
 }
 
+// TODO(v2): get rid
 type ResourcesWaiter struct {
 	Client                    *helm_kube.Client
 	LogsFromTime              time.Time
@@ -162,14 +163,14 @@ mainLoop:
 		case SkipLogsAnnoName:
 			boolValue, err := strconv.ParseBool(annoValue)
 			if err != nil {
-				return nil, fmt.Errorf("%s: bool expected: %w", invalidAnnoValueError, err)
+				return nil, fmt.Errorf("%s: bool expected: %w", invalidAnnoValueError.Error(), err)
 			}
 
 			multitrackSpec.SkipLogs = boolValue
 		case ShowEventsAnnoName:
 			boolValue, err := strconv.ParseBool(annoValue)
 			if err != nil {
-				return nil, fmt.Errorf("%s: bool expected: %w", invalidAnnoValueError, err)
+				return nil, fmt.Errorf("%s: bool expected: %w", invalidAnnoValueError.Error(), err)
 			}
 
 			multitrackSpec.ShowServiceMessages = boolValue
@@ -186,7 +187,7 @@ mainLoop:
 			return nil, fmt.Errorf("%w: choose one of %v", invalidAnnoValueError, values)
 		case FailModeAnnoName:
 			failModeValue := multitrack.FailMode(annoValue)
-			values := []multitrack.FailMode{multitrack.IgnoreAndContinueDeployProcess, multitrack.FailWholeDeployProcessImmediately, multitrack.HopeUntilEndOfDeployProcess}
+			values := []multitrack.FailMode{multitrack.IgnoreAndContinueDeployProcess, multitrack.FailWholeDeployProcessImmediately, multitrack.LegacyHopeUntilEndOfDeployProcess}
 			for _, value := range values {
 				if value == failModeValue {
 					multitrackSpec.FailMode = failModeValue
@@ -207,7 +208,7 @@ mainLoop:
 		case LogRegexAnnoName:
 			regexpValue, err := regexp.Compile(annoValue)
 			if err != nil {
-				return nil, fmt.Errorf("%s: %w", invalidAnnoValueError, err)
+				return nil, fmt.Errorf("%s: %w", invalidAnnoValueError.Error(), err)
 			}
 
 			multitrackSpec.LogRegex = regexpValue
@@ -251,7 +252,7 @@ mainLoop:
 				if containerName := strings.TrimPrefix(annoName, LogRegexForAnnoPrefix); containerName != "" {
 					regexpValue, err := regexp.Compile(annoValue)
 					if err != nil {
-						return nil, fmt.Errorf("%s: %w", invalidAnnoValueError, err)
+						return nil, fmt.Errorf("%s: %w", invalidAnnoValueError.Error(), err)
 					}
 
 					multitrackSpec.LogRegexByContainerName[containerName] = regexpValue
@@ -261,7 +262,7 @@ mainLoop:
 				if containerName := strings.TrimPrefix(annoName, IgnoreReadinessProbeFailsForPrefix); containerName != "" {
 					ignoreDuration, err := time.ParseDuration(annoValue)
 					if err != nil {
-						return nil, fmt.Errorf("%s: %w", invalidAnnoValueError, err)
+						return nil, fmt.Errorf("%s: %w", invalidAnnoValueError.Error(), err)
 					}
 					if math.Signbit(ignoreDuration.Seconds()) {
 						return nil, fmt.Errorf("%w: can't be less than 0", invalidAnnoValueError)
@@ -291,7 +292,7 @@ mainLoop:
 		case ShowEventsAnnoName:
 			boolValue, err := strconv.ParseBool(annoValue)
 			if err != nil {
-				return nil, fmt.Errorf("%s: bool expected: %w", invalidAnnoValueError, err)
+				return nil, fmt.Errorf("%s: bool expected: %w", invalidAnnoValueError.Error(), err)
 			}
 
 			genericSpec.ShowServiceMessages = boolValue
@@ -320,7 +321,7 @@ mainLoop:
 		case NoActivityTimeoutName:
 			noActivityTimeout, err := time.ParseDuration(annoValue)
 			if err != nil {
-				return nil, fmt.Errorf("%s: %w", invalidAnnoValueError, err)
+				return nil, fmt.Errorf("%s: %w", invalidAnnoValueError.Error(), err)
 			} else if noActivityTimeout.Seconds() < 1 {
 				return nil, fmt.Errorf("%w: can't be less than 1 second", invalidAnnoValueError)
 			}

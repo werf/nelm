@@ -7,22 +7,24 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/gookit/color"
 	"github.com/samber/lo"
-	"k8s.io/client-go/kubernetes"
 
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/chartutil"
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/release"
+	"github.com/werf/nelm/internal/resource/spec"
+	"github.com/werf/nelm/pkg/log"
 )
 
 const (
 	DefaultReleaseGetOutputFormat = YamlOutputFormat
-	DefaultReleaseGetLogLevel     = ErrorLogLevel
+	DefaultReleaseGetLogLevel     = log.ErrorLevel
 )
 
 type ReleaseGetOptions struct {
@@ -88,53 +90,38 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		return nil, fmt.Errorf("construct kube client factory: %w", err)
 	}
 
-	releaseStorage, err := release.NewReleaseStorage(
-		ctx,
-		releaseNamespace,
-		opts.ReleaseStorageDriver,
-		release.ReleaseStorageOptions{
-			StaticClient:        clientFactory.Static().(*kubernetes.Clientset),
-			SQLConnectionString: opts.SQLConnectionString,
-		},
-	)
+	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, clientFactory, release.ReleaseStorageOptions{
+		SQLConnectionString: opts.SQLConnectionString,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("construct release storage: %w", err)
 	}
 
 	loader.NoChartLockWarning = ""
 
-	history, err := release.NewHistory(
-		releaseName,
-		releaseNamespace,
-		releaseStorage,
-		release.HistoryOptions{
-			Mapper:          clientFactory.Mapper(),
-			DiscoveryClient: clientFactory.Discovery(),
-		},
-	)
+	log.Default.Debug(ctx, "Build release history")
+
+	history, err := release.BuildHistory(releaseName, releaseStorage, release.HistoryOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("construct release history: %w", err)
+		return nil, fmt.Errorf("build release history: %w", err)
 	}
 
-	if history.Empty() {
+	releases := history.Releases()
+	if len(releases) == 0 {
 		return nil, &ReleaseNotFoundError{
 			ReleaseName:      releaseName,
 			ReleaseNamespace: releaseNamespace,
 		}
 	}
 
-	var release *release.Release
+	var rel *helmrelease.Release
 	if opts.Revision == 0 {
-		release, _, err = history.LastRelease()
-		if err != nil {
-			return nil, fmt.Errorf("get last release: %w", err)
-		}
+		rel = lo.LastOrEmpty(releases)
 	} else {
 		var revisionFound bool
-		release, revisionFound, err = history.Release(opts.Revision)
-		if err != nil {
-			return nil, fmt.Errorf("get release revision %d: %w", opts.Revision, err)
-		} else if !revisionFound {
+
+		rel, revisionFound = history.FindRevision(opts.Revision)
+		if !revisionFound {
 			return nil, &ReleaseRevisionNotFoundError{
 				ReleaseName:      releaseName,
 				ReleaseNamespace: releaseNamespace,
@@ -143,81 +130,88 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		}
 	}
 
-	values, err := chartutil.CoalesceValues(release.LegacyChart(), release.OverrideValues())
+	values, err := chartutil.CoalesceValues(rel.Chart, rel.Config)
 	if err != nil {
 		return nil, fmt.Errorf("coalesce release values: %w", err)
 	}
 
 	result := &ReleaseGetResultV1{
-		ApiVersion: ReleaseGetResultApiVersionV1,
+		APIVersion: "v1",
 		Release: &ReleaseGetResultRelease{
-			Name:      release.Name(),
-			Namespace: release.Namespace(),
-			Revision:  release.Revision(),
-			Status:    release.Status(),
+			Name:      rel.Name,
+			Namespace: rel.Namespace,
+			Revision:  rel.Version,
+			Status:    rel.Info.Status,
 			DeployedAt: &ReleaseGetResultDeployedAt{
-				Human: release.LastDeployed().String(),
-				Unix:  int(release.LastDeployed().Unix()),
+				Human: time.Time{}.String(),
+				Unix:  int(time.Time{}.Unix()),
 			},
-			Annotations:   release.InfoAnnotations(),
-			StorageLabels: release.Labels(),
+			Annotations:   rel.Info.Annotations,
+			StorageLabels: rel.Labels,
 		},
 		Chart: &ReleaseGetResultChart{
-			Name:       release.ChartName(),
-			Version:    release.ChartVersion(),
-			AppVersion: release.AppVersion(),
+			Name:       rel.Chart.Name(),
+			Version:    rel.Chart.Metadata.Version,
+			AppVersion: rel.Chart.Metadata.AppVersion,
 		},
-		Notes:  release.Notes(),
+		Notes:  rel.Info.Notes,
 		Values: values,
 	}
 
-	for _, hook := range release.HookResources() {
-		result.Hooks = append(result.Hooks, hook.Unstructured().Object)
+	resSpecs, err := release.ReleaseToResourceSpecs(rel, releaseNamespace)
+	if err != nil {
+		return nil, fmt.Errorf("convert release to resource specs: %w", err)
 	}
 
-	for _, resource := range release.GeneralResources() {
-		result.Resources = append(result.Resources, resource.Unstructured().Object)
+	for _, res := range resSpecs {
+		if spec.IsHook(res.Annotations) {
+			result.Hooks = append(result.Hooks, res.Unstruct.Object)
+		} else {
+			result.Resources = append(result.Resources, res.Unstruct.Object)
+		}
 	}
 
-	if !opts.OutputNoPrint {
-		var resultMessage string
+	if opts.OutputNoPrint {
+		return result, nil
+	}
 
-		savedValues := result.Values
-		if !opts.PrintValues {
-			result.Values = nil
+	var resultMessage string
+
+	savedValues := result.Values
+	if !opts.PrintValues {
+		result.Values = nil
+	}
+
+	switch opts.OutputFormat {
+	case JSONOutputFormat:
+		b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
+		if err != nil {
+			return nil, fmt.Errorf("marshal result to json: %w", err)
 		}
 
-		switch opts.OutputFormat {
-		case JsonOutputFormat:
-			b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
-			if err != nil {
-				return nil, fmt.Errorf("marshal result to json: %w", err)
-			}
-
-			resultMessage = string(b)
-		case YamlOutputFormat:
-			b, err := yaml.MarshalContext(ctx, result)
-			if err != nil {
-				return nil, fmt.Errorf("marshal result to yaml: %w", err)
-			}
-
-			resultMessage = string(b)
-		default:
-			return nil, fmt.Errorf("unknown output format %q", opts.OutputFormat)
+		resultMessage = string(b)
+	case YamlOutputFormat:
+		b, err := yaml.MarshalContext(ctx, result)
+		if err != nil {
+			return nil, fmt.Errorf("marshal result to yaml: %w", err)
 		}
 
-		if !opts.PrintValues {
-			result.Values = savedValues
-		}
+		resultMessage = string(b)
+	default:
+		return nil, fmt.Errorf("unknown output format %q", opts.OutputFormat)
+	}
 
-		var colorLevel color.Level
-		if color.Enable {
-			colorLevel = color.TermColorLevel()
-		}
+	if !opts.PrintValues {
+		result.Values = savedValues
+	}
 
-		if err := writeWithSyntaxHighlight(os.Stdout, resultMessage, string(opts.OutputFormat), colorLevel); err != nil {
-			return nil, fmt.Errorf("write result to output: %w", err)
-		}
+	var colorLevel color.Level
+	if color.Enable {
+		colorLevel = color.TermColorLevel()
+	}
+
+	if err := writeWithSyntaxHighlight(os.Stdout, resultMessage, opts.OutputFormat, colorLevel); err != nil {
+		return nil, fmt.Errorf("write result to output: %w", err)
 	}
 
 	return result, nil
@@ -259,16 +253,15 @@ func applyReleaseGetOptionsDefaults(opts ReleaseGetOptions, homeDir string) (Rel
 	return opts, nil
 }
 
-const ReleaseGetResultApiVersionV1 = "v1"
-
 type ReleaseGetResultV1 struct {
-	ApiVersion string                   `json:"apiVersion"`
+	APIVersion string                   `json:"apiVersion"`
 	Release    *ReleaseGetResultRelease `json:"release"`
 	Chart      *ReleaseGetResultChart   `json:"chart"`
 	Notes      string                   `json:"notes,omitempty"`
 	Values     map[string]interface{}   `json:"values,omitempty"`
-	Hooks      []map[string]interface{} `json:"hooks,omitempty"`
-	Resources  []map[string]interface{} `json:"resources,omitempty"`
+	// TODO(v2): Join Hooks and Resources together as ResourceSpecs?
+	Hooks     []map[string]interface{} `json:"hooks,omitempty"`
+	Resources []map[string]interface{} `json:"resources,omitempty"`
 }
 
 type ReleaseGetResultRelease struct {
@@ -281,6 +274,7 @@ type ReleaseGetResultRelease struct {
 	StorageLabels map[string]string           `json:"storageLabels"`
 }
 
+// TODO(v2): get rid
 type ReleaseGetResultDeployedAt struct {
 	Human string `json:"human"`
 	Unix  int    `json:"unix"`

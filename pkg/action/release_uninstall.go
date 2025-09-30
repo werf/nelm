@@ -5,33 +5,32 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/gookit/color"
 	"github.com/samber/lo"
-	api_errors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/kubernetes"
 
+	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
-	kubeutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
+	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/lock"
 	"github.com/werf/nelm/internal/plan"
-	"github.com/werf/nelm/internal/plan/operation"
-	"github.com/werf/nelm/internal/plan/resourceinfo"
 	"github.com/werf/nelm/internal/release"
-	"github.com/werf/nelm/internal/resource/id"
+	"github.com/werf/nelm/internal/resource"
+	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/track"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/log"
 )
 
 const (
-	DefaultReleaseUninstallLogLevel = InfoLogLevel
+	DefaultReleaseUninstallLogLevel = log.InfoLevel
 )
 
 type ReleaseUninstallOptions struct {
@@ -134,40 +133,24 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		return fmt.Errorf("construct kube client factory: %w", err)
 	}
 
-	releaseStorage, err := release.NewReleaseStorage(
-		ctx,
-		releaseNamespace,
-		opts.ReleaseStorageDriver,
-		release.ReleaseStorageOptions{
-			StaticClient:        clientFactory.Static().(*kubernetes.Clientset),
-			HistoryLimit:        opts.ReleaseHistoryLimit,
-			SQLConnectionString: opts.SQLConnectionString,
-		},
-	)
+	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, clientFactory, release.ReleaseStorageOptions{
+		HistoryLimit:        opts.ReleaseHistoryLimit,
+		SQLConnectionString: opts.SQLConnectionString,
+	})
 	if err != nil {
 		return fmt.Errorf("construct release storage: %w", err)
 	}
 
 	var lockManager *lock.LockManager
-	if m, err := lock.NewLockManager(
-		releaseNamespace,
-		false,
-		clientFactory.Static(),
-		clientFactory.Dynamic(),
-	); err != nil {
+	if m, err := lock.NewLockManager(releaseNamespace, false, clientFactory); err != nil {
 		return fmt.Errorf("construct lock manager: %w", err)
 	} else {
 		lockManager = m
 	}
 
-	namespaceID := id.NewResourceID(
-		releaseNamespace,
-		"",
-		schema.GroupVersionKind{Version: "v1", Kind: "Namespace"},
-		id.ResourceIDOptions{Mapper: clientFactory.Mapper()},
-	)
+	nsMeta := spec.NewResourceMeta(releaseNamespace, "", releaseNamespace, "", schema.GroupVersionKind{Version: "v1", Kind: "Namespace"}, nil, nil)
 
-	if exists, err := isReleaseNamespaceExist(ctx, clientFactory, namespaceID); err != nil {
+	if exists, err := isReleaseNamespaceExist(ctx, clientFactory, nsMeta); err != nil {
 		return fmt.Errorf("check release namespace existence: %w", err)
 	} else if !exists {
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q uninstall: no release namespace %q found", releaseName, releaseNamespace)))
@@ -176,201 +159,136 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 	}
 
 	if err := func() error {
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Delete release")+" %q (namespace: %q)", releaseName, releaseNamespace)
+
 		if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
 			return fmt.Errorf("lock release: %w", err)
 		} else {
-			defer lockManager.Unlock(lock)
+			defer func() {
+				_ = lockManager.Unlock(lock)
+			}()
 		}
 
-		log.Default.Debug(ctx, "Constructing release history")
-		history, err := release.NewHistory(
-			releaseName,
-			releaseNamespace,
-			releaseStorage,
-			release.HistoryOptions{
-				Mapper:          clientFactory.Mapper(),
-				DiscoveryClient: clientFactory.Discovery(),
-			},
-		)
+		log.Default.Debug(ctx, "Build release history")
+		history, err := release.BuildHistory(releaseName, releaseStorage, release.HistoryOptions{})
 		if err != nil {
-			return fmt.Errorf("construct release history: %w", err)
+			return fmt.Errorf("build release history: %w", err)
 		}
 
-		prevRelease, prevReleaseFound, err := history.LastRelease()
-		if err != nil {
-			return fmt.Errorf("get last release: %w", err)
-		}
-
-		if !prevReleaseFound {
+		releases := history.Releases()
+		if len(releases) == 0 {
 			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q) uninstall: no release found", releaseName, releaseNamespace)))
 
 			return nil
 		}
 
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Deleting release")+" %q (namespace: %q)", releaseName, releaseNamespace)
+		prevRelease := lo.LastOrEmpty(releases)
+		prevReleaseFailed := prevRelease.IsStatusFailed()
+		deployType := common.DeployTypeUninstall
 
-		log.Default.Debug(ctx, "Processing resources")
-		resProcessor := resourceinfo.NewDeployableResourcesProcessor(
-			common.DeployTypeUninstall,
-			releaseName,
-			releaseNamespace,
-			nil,
-			nil,
-			nil,
-			prevRelease.HookResources(),
-			prevRelease.GeneralResources(),
-			resourceinfo.DeployableResourcesProcessorOptions{
-				NetworkParallelism: opts.NetworkParallelism,
-				KubeClient:         clientFactory.KubeClient(),
-				Mapper:             clientFactory.Mapper(),
-				DiscoveryClient:    clientFactory.Discovery(),
-				AllowClusterAccess: true,
-			},
-		)
-
-		if err := resProcessor.Process(ctx); err != nil {
-			return fmt.Errorf("process resources: %w", err)
+		log.Default.Debug(ctx, "Convert previous release to resource specs")
+		prevRelResSpecs, err := release.ReleaseToResourceSpecs(prevRelease, releaseNamespace)
+		if err != nil {
+			return fmt.Errorf("convert previous release to resource specs: %w", err)
 		}
 
-		taskStore := statestore.NewTaskStore()
-		logStore := kubeutil.NewConcurrent(
-			logstore.NewLogStore(),
-		)
-		watchErrCh := make(chan error, 1)
-		informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
+		log.Default.Debug(ctx, "Build resources")
+		instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, nil, []spec.ResourcePatcher{
+			spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
+		}, clientFactory, resource.BuildResourcesOptions{
+			Remote: true,
+		})
+		if err != nil {
+			return fmt.Errorf("build resources: %w", err)
+		}
 
-		log.Default.Debug(ctx, "Constructing new uninstall plan")
-		uninstallPlanBuilder := plan.NewUninstallPlanBuilder(
-			releaseName,
-			releaseNamespace,
-			taskStore,
-			logStore,
-			informerFactory,
-			resProcessor.DeployablePrevReleaseHookResourcesInfos(),
-			resProcessor.DeployablePrevReleaseGeneralResourcesInfos(),
-			prevRelease,
-			history,
-			clientFactory.KubeClient(),
-			clientFactory.Static(),
-			clientFactory.Dynamic(),
-			clientFactory.Discovery(),
-			clientFactory.Mapper(),
-			plan.UninstallPlanBuilderOptions{
-				IgnoreLogs:       opts.NoPodLogs,
-				CreationTimeout:  opts.TrackCreationTimeout,
-				DeletionTimeout:  opts.TrackDeletionTimeout,
-				ReadinessTimeout: opts.TrackReadinessTimeout,
-			},
-		)
+		log.Default.Debug(ctx, "Build resource infos")
+		instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, opts.NetworkParallelism)
+		if err != nil {
+			return fmt.Errorf("build resource infos: %w", err)
+		}
 
-		uninstallPlan, planBuildErr := uninstallPlanBuilder.Build(ctx)
-		if planBuildErr != nil {
-			var graphPath string
-			if opts.UninstallGraphPath != "" {
-				graphPath = opts.UninstallGraphPath
-			} else {
-				graphPath = filepath.Join(opts.TempDirPath, "release-uninstall-graph.dot")
-			}
+		log.Default.Debug(ctx, "Build release infos")
+		relInfos, err := plan.BuildReleaseInfos(ctx, deployType, releases, nil)
+		if err != nil {
+			return fmt.Errorf("build release infos: %w", err)
+		}
 
-			if _, err := os.Create(graphPath); err != nil {
-				log.Default.Error(ctx, "Error: create release uninstall graph file: %s", err)
-				return fmt.Errorf("build uninstall plan: %w", planBuildErr)
-			}
-
-			if err := uninstallPlan.SaveDOT(graphPath); err != nil {
-				log.Default.Error(ctx, "Error: save release uninstall graph: %s", err)
-			}
-
-			log.Default.Warn(ctx, "Release uninstall graph saved to %q for debugging", graphPath)
-
-			return fmt.Errorf("build release uninstall plan: %w", planBuildErr)
+		log.Default.Debug(ctx, "Build delete plan")
+		deletePlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos)
+		if err != nil {
+			handleBuildPlanErr(ctx, deletePlan, err, opts.UninstallGraphPath, opts.TempDirPath, "release-uninstall-graph.dot")
+			return fmt.Errorf("build delete plan: %w", err)
 		}
 
 		if opts.UninstallGraphPath != "" {
-			if err := uninstallPlan.SaveDOT(opts.UninstallGraphPath); err != nil {
-				return fmt.Errorf("save release uninstall graph: %w", err)
+			if err := savePlanAsDot(deletePlan, opts.UninstallGraphPath); err != nil {
+				return fmt.Errorf("save release delete graph: %w", err)
 			}
 		}
 
-		tablesBuilder := track.NewTablesBuilder(
-			taskStore,
-			logStore,
-			track.TablesBuilderOptions{
-				DefaultNamespace: releaseNamespace,
-			},
-		)
+		taskStore := kdutil.NewConcurrent(statestore.NewTaskStore())
+		logStore := kdutil.NewConcurrent(logstore.NewLogStore())
+		watchErrCh := make(chan error, 1)
+		informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
 
-		log.Default.Debug(ctx, "Starting tracking")
+		log.Default.Debug(ctx, "Start tracking")
 		go func() {
 			if err := <-watchErrCh; err != nil {
 				ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
 			}
 		}()
 
-		var progressPrinter *progressPrinter
+		var progressPrinter *track.ProgressTablesPrinter
 		if !opts.NoProgressTablePrint {
-			progressPrinter = newProgressPrinter()
-			progressPrinter.Start(ctx, opts.ProgressTablePrintInterval, tablesBuilder)
+			progressPrinter = track.NewProgressTablesPrinter(taskStore, logStore, track.ProgressTablesPrinterOptions{
+				DefaultNamespace: releaseNamespace,
+			})
+			progressPrinter.Start(ctx, opts.ProgressTablePrintInterval)
 		}
-
-		log.Default.Debug(ctx, "Executing release uninstall plan")
-		planExecutor := plan.NewPlanExecutor(
-			uninstallPlan,
-			plan.PlanExecutorOptions{
-				NetworkParallelism: opts.NetworkParallelism,
-			},
-		)
 
 		var criticalErrs, nonCriticalErrs []error
 
-		planExecutionErr := planExecutor.Execute(ctx)
-		if planExecutionErr != nil {
-			criticalErrs = append(criticalErrs, fmt.Errorf("execute release uninstall plan: %w", planExecutionErr))
+		log.Default.Debug(ctx, "Execute release delete plan")
+		executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, deletePlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
+			NetworkParallelism: opts.NetworkParallelism,
+			ReadinessTimeout:   opts.TrackReadinessTimeout,
+			PresenceTimeout:    opts.TrackCreationTimeout,
+			AbsenceTimeout:     opts.TrackDeletionTimeout,
+		})
+		if executePlanErr != nil {
+			criticalErrs = append(criticalErrs, fmt.Errorf("execute release delete plan: %w", executePlanErr))
 		}
 
-		var worthyCompletedOps []operation.Operation
-		if ops, found, err := uninstallPlan.WorthyCompletedOperations(); err != nil {
-			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful completed operations: %w", err))
-		} else if found {
-			worthyCompletedOps = ops
-		}
+		resourceOps := lo.Filter(deletePlan.Operations(), func(op *plan.Operation, _ int) bool {
+			return op.Category == plan.OperationCategoryResource
+		})
 
-		var worthyCanceledOps []operation.Operation
-		if ops, found, err := uninstallPlan.WorthyCanceledOperations(); err != nil {
-			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful canceled operations: %w", err))
-		} else if found {
-			worthyCanceledOps = ops
-		}
+		completedResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
+			return op.Status == plan.OperationStatusCompleted
+		})
 
-		var worthyFailedOps []operation.Operation
-		if ops, found, err := uninstallPlan.WorthyFailedOperations(); err != nil {
-			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("get meaningful failed operations: %w", err))
-		} else if found {
-			worthyFailedOps = ops
-		}
+		canceledResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
+			return op.Status == plan.OperationStatusPending || op.Status == plan.OperationStatusUnknown
+		})
 
-		if planExecutionErr != nil {
-			wcompops, wfailops, wcancops, criterrs, noncriterrs := runFailureDeployPlan(
-				ctx,
-				releaseName,
-				releaseNamespace,
-				common.DeployTypeUninstall,
-				uninstallPlan,
-				taskStore,
-				informerFactory,
-				resProcessor,
-				nil,
-				prevRelease,
-				history,
-				clientFactory,
-				opts.NetworkParallelism,
-			)
+		failedResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
+			return op.Status == plan.OperationStatusFailed
+		})
 
-			worthyCompletedOps = append(worthyCompletedOps, wcompops...)
-			worthyFailedOps = append(worthyFailedOps, wfailops...)
-			worthyCanceledOps = append(worthyCanceledOps, wcancops...)
-			criticalErrs = append(criticalErrs, criterrs...)
-			nonCriticalErrs = append(nonCriticalErrs, noncriterrs...)
+		if executePlanErr != nil {
+			runFailurePlanResult, nonCritErrs, critErrs := runFailurePlan(ctx, releaseNamespace, deletePlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
+				NetworkParallelism:    opts.NetworkParallelism,
+				TrackReadinessTimeout: opts.TrackReadinessTimeout,
+				TrackCreationTimeout:  opts.TrackCreationTimeout,
+				TrackDeletionTimeout:  opts.TrackDeletionTimeout,
+			})
+
+			criticalErrs = append(criticalErrs, critErrs...)
+			nonCriticalErrs = append(nonCriticalErrs, nonCritErrs...)
+			completedResourceOps = append(completedResourceOps, runFailurePlanResult.CompletedResourceOps...)
+			canceledResourceOps = append(canceledResourceOps, runFailurePlanResult.CanceledResourceOps...)
+			failedResourceOps = append(failedResourceOps, runFailurePlanResult.FailedResourceOps...)
 		}
 
 		if !opts.NoProgressTablePrint {
@@ -378,18 +296,38 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			progressPrinter.Wait()
 		}
 
-		report := newReport(
-			worthyCompletedOps,
-			worthyCanceledOps,
-			worthyFailedOps,
-			prevRelease,
-		)
+		reportCompletedOps := lo.Map(completedResourceOps, func(op *plan.Operation, _ int) string {
+			return op.IDHuman()
+		})
 
-		report.Print(ctx)
+		reportCanceledOps := lo.Map(canceledResourceOps, func(op *plan.Operation, _ int) string {
+			return op.IDHuman()
+		})
+
+		reportFailedOps := lo.Map(failedResourceOps, func(op *plan.Operation, _ int) string {
+			return op.IDHuman()
+		})
+
+		sort.Strings(reportCompletedOps)
+		sort.Strings(reportCanceledOps)
+		sort.Strings(reportFailedOps)
+
+		report := &releaseReportV3{
+			Version:             3,
+			Release:             releaseName,
+			Namespace:           releaseNamespace,
+			Revision:            prevRelease.Version,
+			Status:              helmrelease.StatusUninstalled,
+			CompletedOperations: reportCompletedOps,
+			CanceledOperations:  reportCanceledOps,
+			FailedOperations:    reportFailedOps,
+		}
+
+		printReport(ctx, report)
 
 		if opts.UninstallReportPath != "" {
-			if err := report.Save(opts.UninstallReportPath); err != nil {
-				nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("save release uninstall report: %w", err))
+			if err := saveReport(opts.UninstallReportPath, report); err != nil {
+				nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("save release delete report: %w", err))
 			}
 		}
 
@@ -402,47 +340,21 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 			return nil
 		}
-
-		return nil
 	}(); err != nil {
 		return err
 	}
 
 	if opts.DeleteReleaseNamespace {
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleting release namespace %q", namespaceID.Name())))
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Delete release namespace %q", nsMeta.Name)))
 
-		deleteOp := operation.NewDeleteResourceOperation(
-			namespaceID,
-			clientFactory.KubeClient(),
-			operation.DeleteResourceOperationOptions{},
-		)
-
-		if err := deleteOp.Execute(ctx); err != nil {
+		if err := clientFactory.KubeClient().Delete(ctx, nsMeta, kube.KubeClientDeleteOptions{}); err != nil {
 			return fmt.Errorf("delete release namespace: %w", err)
 		}
 
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleted release namespace %q", namespaceID.Name())))
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleted release namespace %q", nsMeta.Name)))
 	}
 
 	return nil
-}
-
-func isReleaseNamespaceExist(ctx context.Context, clientFactory *kube.ClientFactory, namespaceID *id.ResourceID) (bool, error) {
-	if _, err := clientFactory.KubeClient().Get(
-		ctx,
-		namespaceID,
-		kube.KubeClientGetOptions{
-			TryCache: true,
-		},
-	); err != nil {
-		if api_errors.IsNotFound(err) {
-			return false, nil
-		} else {
-			return false, fmt.Errorf("get release namespace: %w", err)
-		}
-	}
-
-	return true, nil
 }
 
 func applyReleaseUninstallOptionsDefaults(opts ReleaseUninstallOptions, currentDir, homeDir string) (ReleaseUninstallOptions, error) {
@@ -478,11 +390,30 @@ func applyReleaseUninstallOptionsDefaults(opts ReleaseUninstallOptions, currentD
 		opts.ReleaseHistoryLimit = DefaultReleaseHistoryLimit
 	}
 
-	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {
+	switch opts.ReleaseStorageDriver {
+	case ReleaseStorageDriverDefault:
 		opts.ReleaseStorageDriver = ReleaseStorageDriverSecrets
-	} else if opts.ReleaseStorageDriver == ReleaseStorageDriverMemory {
+	case ReleaseStorageDriverMemory:
 		return ReleaseUninstallOptions{}, fmt.Errorf("memory release storage driver is not supported")
 	}
 
 	return opts, nil
+}
+
+func isReleaseNamespaceExist(ctx context.Context, clientFactory *kube.ClientFactory, nsMeta *spec.ResourceMeta) (bool, error) {
+	if _, err := clientFactory.KubeClient().Get(
+		ctx,
+		nsMeta,
+		kube.KubeClientGetOptions{
+			TryCache: true,
+		},
+	); err != nil {
+		if kube.IsNotFoundErr(err) {
+			return false, nil
+		} else {
+			return false, fmt.Errorf("get release namespace: %w", err)
+		}
+	}
+
+	return true, nil
 }

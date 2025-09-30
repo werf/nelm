@@ -6,11 +6,12 @@ import (
 	"os"
 
 	"github.com/werf/common-go/pkg/secrets_manager"
-	"github.com/werf/nelm/pkg/secret"
+	"github.com/werf/nelm/pkg/legacy/secret"
+	"github.com/werf/nelm/pkg/log"
 )
 
 const (
-	DefaultSecretFileEncryptLogLevel = ErrorLogLevel
+	DefaultSecretFileEncryptLogLevel = log.ErrorLevel
 )
 
 type SecretFileEncryptOptions struct {
@@ -53,6 +54,7 @@ func applySecretFileEncryptOptionsDefaults(opts SecretFileEncryptOptions, curren
 
 	if opts.SecretWorkDir == "" {
 		var err error
+
 		opts.SecretWorkDir, err = os.Getwd()
 		if err != nil {
 			return SecretFileEncryptOptions{}, fmt.Errorf("get current working directory: %w", err)

@@ -82,10 +82,13 @@ func ParseProperties(ctx context.Context, input string) (map[string]any, error) 
 		fsm.Callbacks{},
 	)
 
-	var key []rune
-	var value []rune
-	var valQuote rune
-	var valPresent bool
+	var (
+		key        []rune
+		value      []rune
+		valQuote   rune
+		valPresent bool
+	)
+
 	reader := bufio.NewReader(strings.NewReader(input))
 	for {
 		r, _, err := reader.ReadRune()
@@ -126,6 +129,7 @@ func ParseProperties(ctx context.Context, input string) (map[string]any, error) 
 		case equalsRune:
 			if machine.Can("foundKVSeparator") {
 				valPresent = true
+
 				lo.Must0(machine.Event(ctx, "foundKVSeparator"))
 			} else if machine.Is("key") {
 				key = append(key, r)
@@ -135,6 +139,7 @@ func ParseProperties(ctx context.Context, input string) (map[string]any, error) 
 		case doubleQuoteRune, singleQuoteRune:
 			if machine.Can("foundOpeningValueQuote") {
 				valQuote = r
+
 				lo.Must0(machine.Event(ctx, "foundOpeningValueQuote"))
 			} else if machine.Can("foundClosingValueQuote") && valQuote == r && (len(value) == 0 || value[len(value)-1] != '\\') {
 				lo.Must0(machine.Event(ctx, "foundClosingValueQuote"))
@@ -197,6 +202,7 @@ func trimLeftChars(s string, n int) string {
 		if m >= n {
 			return s[i:]
 		}
+
 		m++
 	}
 

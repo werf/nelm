@@ -6,10 +6,11 @@ import (
 	"os"
 
 	"github.com/werf/common-go/pkg/secrets_manager"
+	"github.com/werf/nelm/pkg/log"
 )
 
 const (
-	DefaultSecretKeyCreateLogLevel = ErrorLogLevel
+	DefaultSecretKeyCreateLogLevel = log.ErrorLevel
 )
 
 type SecretKeyCreateOptions struct {

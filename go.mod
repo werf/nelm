@@ -23,6 +23,7 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.5.5
 	github.com/jellydator/ttlcache/v3 v3.1.1
 	github.com/looplab/fsm v1.0.2
+	github.com/mitchellh/copystructure v1.2.0
 	github.com/moby/term v0.5.0
 	github.com/ohler55/ojg v1.26.7
 	github.com/onsi/ginkgo/v2 v2.20.1
@@ -36,7 +37,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.5.0
-	github.com/werf/3p-helm v0.0.0-20250731134240-58a9eff8ec5b
+	github.com/werf/3p-helm v0.0.0-20250923205550-71175ce0a9c6
 	github.com/werf/common-go v0.0.0-20250520111308-b0eda28dde0d
 	github.com/werf/kubedog v0.13.1-0.20250813095923-12d70b6780b0
 	github.com/werf/lockgate v0.1.1
@@ -123,7 +124,6 @@ require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
-	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/moby/locker v1.0.1 // indirect

@@ -39,9 +39,14 @@ var (
 
 	FeatGatePreviewV2 = NewFeatGate(
 		"preview-v2",
-		`Active all feature gates that will be enabled by default in Nelm v2`,
+		`Activate all feature gates that will be enabled by default in Nelm v2`,
 	)
 )
+
+type FeatGate struct {
+	Name string
+	Help string
+}
 
 func NewFeatGate(name, help string) *FeatGate {
 	fg := &FeatGate{
@@ -52,11 +57,6 @@ func NewFeatGate(name, help string) *FeatGate {
 	FeatGates = append(FeatGates, fg)
 
 	return fg
-}
-
-type FeatGate struct {
-	Name string
-	Help string
 }
 
 func (g *FeatGate) EnvVarName() string {
