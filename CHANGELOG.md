@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.13.0](https://www.github.com/werf/nelm/compare/v1.12.2...v1.13.0) (2025-10-08)
+
+
+### Features
+
+* `release plan install` options `--diff-context-lines`, `--show-insignificant-diffs`, `--show-sensitive-diffs`, `--show-verbose-crd-diffs`, `--show-verbose-diffs` ([fc1dd5d](https://www.github.com/werf/nelm/commit/fc1dd5d4aa1d4c310ae930121ccf77267ab130a6))
+* major refactor, `werf.io/delete-policy`, `werf.io/ownership`, `werf.io/deploy-on` and more ([07d21f7](https://www.github.com/werf/nelm/commit/07d21f7e5e54653919bd46d429ead86272770540))
+
 ### [1.12.2](https://www.github.com/werf/nelm/compare/v1.12.1...v1.12.2) (2025-08-15)
 
 
