@@ -56,6 +56,7 @@ const (
 	DefaultQPSLimit              = 30
 	DefaultBurstLimit            = 100
 	DefaultNetworkParallelism    = 30
+	DefaultDiffContextLines      = 3
 	DefaultLocalKubeVersion      = "1.20.0"
 	DefaultProgressPrintInterval = 5 * time.Second
 	DefaultReleaseHistoryLimit   = 10

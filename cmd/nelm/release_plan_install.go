@@ -118,6 +118,13 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		if err := cli.AddFlag(cmd, &cfg.DiffContextLines, "diff-context-lines", action.DefaultDiffContextLines, "Show N lines of context around diffs", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagLocalEnvVarRegexes,
+			Group:                mainFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.ErrorIfChangesPlanned, "exit-code", false, "Return exit code 0 if no changes, 1 if error, 2 if any changes planned and no error", cli.AddFlagOptions{
 			Group: mainFlagGroup,
 		}); err != nil {
@@ -313,6 +320,34 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                secretFlagGroup,
 			Type:                 cli.FlagTypeFile,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.ShowInsignificantDiffs, "show-insignificant-diffs", false, "Show insignificant diff lines", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagLocalEnvVarRegexes,
+			Group:                mainFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.ShowSensitiveDiffs, "show-sensitive-diffs", false, "Show sensitive diff lines", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagLocalEnvVarRegexes,
+			Group:                mainFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.ShowVerboseCRDDiffs, "show-verbose-crd-diffs", false, "Show verbose CRD diff lines", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagLocalEnvVarRegexes,
+			Group:                mainFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.ShowVerboseDiffs, "show-verbose-diffs", false, "Show verbose diff lines", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagLocalEnvVarRegexes,
+			Group:                mainFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
