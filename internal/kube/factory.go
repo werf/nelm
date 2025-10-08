@@ -16,10 +16,34 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 )
 
-var addToScheme sync.Once
+var (
+	_ ClientFactorier = (*ClientFactory)(nil)
+
+	AddToScheme sync.Once
+)
+
+type ClientFactorier interface {
+	KubeClient() KubeClienter
+	Static() kubernetes.Interface
+	Dynamic() dynamic.Interface
+	Discovery() discovery.CachedDiscoveryInterface
+	Mapper() meta.ResettableRESTMapper
+	LegacyClientGetter() *LegacyClientGetter
+	KubeConfig() *KubeConfig
+}
+
+type ClientFactory struct {
+	discoveryClient    discovery.CachedDiscoveryInterface
+	dynamicClient      dynamic.Interface
+	kubeClient         KubeClienter
+	kubeConfig         *KubeConfig
+	legacyClientGetter *LegacyClientGetter
+	mapper             meta.ResettableRESTMapper
+	staticClient       kubernetes.Interface
+}
 
 func NewClientFactory(ctx context.Context, kubeConfig *KubeConfig) (*ClientFactory, error) {
-	addToScheme.Do(func() {
+	AddToScheme.Do(func() {
 		lo.Must0(apiextv1.AddToScheme(scheme.Scheme))
 		lo.Must0(apiextv1beta1.AddToScheme(scheme.Scheme))
 	})
@@ -44,9 +68,7 @@ func NewClientFactory(ctx context.Context, kubeConfig *KubeConfig) (*ClientFacto
 	}
 
 	mapper := reflect.ValueOf(NewKubeMapper(ctx, discoveryClient)).Interface().(meta.ResettableRESTMapper)
-
 	kubeClient := NewKubeClient(staticClient, dynamicClient, discoveryClient, mapper)
-
 	legacyClientGetter := NewLegacyClientGetter(discoveryClient, mapper, kubeConfig.RestConfig, kubeConfig.LegacyClientConfig)
 
 	clientFactory := &ClientFactory{
@@ -60,16 +82,6 @@ func NewClientFactory(ctx context.Context, kubeConfig *KubeConfig) (*ClientFacto
 	}
 
 	return clientFactory, nil
-}
-
-type ClientFactory struct {
-	discoveryClient    discovery.CachedDiscoveryInterface
-	dynamicClient      dynamic.Interface
-	kubeClient         KubeClienter
-	kubeConfig         *KubeConfig
-	legacyClientGetter *LegacyClientGetter
-	mapper             meta.ResettableRESTMapper
-	staticClient       kubernetes.Interface
 }
 
 func (f *ClientFactory) KubeClient() KubeClienter {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
+	"github.com/werf/nelm/pkg/log"
 )
 
 type releaseRollbackConfig struct {
@@ -35,12 +36,13 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 			Args: cobra.MaximumNArgs(1),
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultReleaseRollbackLogLevel), action.SetupLoggingOptions{
+			ctx = log.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultReleaseRollbackLogLevel), log.SetupLoggingOptions{
 				ColorMode: cfg.LogColorMode,
 			})
 
 			if len(args) > 0 {
 				var err error
+
 				cfg.Revision, err = strconv.Atoi(args[0])
 				if err != nil {
 					return fmt.Errorf("parse revision: %w", err)
@@ -173,7 +175,7 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", action.DefaultReleaseRollbackLogLevel, "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", string(action.DefaultReleaseRollbackLogLevel), "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

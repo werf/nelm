@@ -1,30 +1,14 @@
-run:
-  timeout: 10m
-
-linters-settings:
-  gofumpt:
-    extra-rules: true
-  gci:
-    sections:
-      - standard
-      - default
-      - prefix(github.com/werf/)
-  gocritic:
-    disabled-checks:
-      - ifElseChain
-  errorlint:
-    comparison: false
-    asserts: false
-  misspell:
-    locale: US
+version: "2"
 
 linters:
-  disable-all: true
+  default: none
   enable:
     # Default linters.
     - ineffassign
-    - typecheck
-    # - unused
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
 
     # Extra linters.
     - asciicheck
@@ -32,21 +16,102 @@ linters:
     - bodyclose
     - errname
     - errorlint
-    - exportloopref
-    - gci
+    - copyloopvar
     - gocritic
-    - gofumpt
     - misspell
     - nolintlint
+    - embeddedstructfieldcheck
+    - exptostd
+    - funcorder
+    - ginkgolinter
+    - gocheckcompilerdirectives
+    - gochecksumtype
+    - gocritic
+    - godox
+    - gosec
+    - gosmopolitan
+    - govet
+    - grouper
+    - iface
+    - makezero
+    - mirror
+    - misspell
+    - musttag
+    - nilnesserr
+    - nilnil
+    - predeclared
+    - tagliatelle
+    - testifylint
+    - testpackage
+    - unconvert
+    - usestdlibvars
+    - usetesting
+    - wastedassign
+    - wsl_v5
+
+    # Enable eventually.
+    # - err113
+  settings:
+    errorlint:
+      asserts: false
+      comparison: false
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+        - unlambda
+    misspell:
+      locale: US
+    staticcheck:
+      checks:
+        - all
+        - -S1016
+        - -SA1019
+    govet:
+      disable:
+        - lostcancel
+    godox:
+      keywords:
+        - FIXME
+    wsl_v5:
+      allow-whole-block: true
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - scripts
+      - docs
+      - third_party$
+      - builtin$
+      - examples$
+      - pkg/legacy
+      - internal/legacy
+      - pkg/action/release_uninstall_legacy.go$
+
+formatters:
+  enable:
+    - gci
+    - gofumpt
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/werf/)
+    gofumpt:
+      extra-rules: true
+  exclusions:
+    generated: lax
+    paths:
+      - scripts
+      - docs
+      - third_party$
+      - builtin$
+      - examples$
 
 issues:
-  # Show all errors.
   max-issues-per-linter: 0
   max-same-issues: 0
-  exclude-dirs:
-    - scripts
-    - docs
-
-  exclude:
-    # TODO use %w in the future.
-    - "non-wrapping format verb for fmt.Errorf" # errorlint

@@ -34,6 +34,7 @@ func main() {
 
 	// Needed for embedding original Helm 3 commands.
 	var err error
+
 	helmRootCmd, err = helm_v3.Init()
 	if err != nil {
 		abort(ctx, fmt.Errorf("init helm: %w", err), 1)

@@ -6,13 +6,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/yaml"
 
 	"github.com/werf/3p-helm/pkg/chartutil"
@@ -21,14 +21,13 @@ import (
 	"github.com/werf/nelm/internal/chart"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/plan/resourceinfo"
 	"github.com/werf/nelm/internal/release"
-	"github.com/werf/nelm/internal/resource"
-	log2 "github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/internal/resource/spec"
+	"github.com/werf/nelm/pkg/log"
 )
 
 const (
-	DefaultChartRenderLogLevel = ErrorLogLevel
+	DefaultChartRenderLogLevel = log.ErrorLevel
 )
 
 type ChartRenderOptions struct {
@@ -84,7 +83,7 @@ type ChartRenderOptions struct {
 	ValuesStringSets             []string
 }
 
-func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResultV1, error) {
+func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResultV2, error) {
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("get current working directory: %w", err)
@@ -143,7 +142,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	}
 
 	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(log2.Default.AcceptLevel(ctx, log2.Level(DebugLogLevel))),
+		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
 		registry.ClientOptWriter(opts.LogRegistryStreamOut),
 		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
 	}
@@ -164,11 +163,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		SQLConnectionString: opts.SQLConnectionString,
 	}
 
-	if opts.Remote {
-		releaseStorageOptions.StaticClient = clientFactory.Static().(*kubernetes.Clientset)
-	}
-
-	releaseStorage, err := release.NewReleaseStorage(ctx, opts.ReleaseNamespace, opts.ReleaseStorageDriver, releaseStorageOptions)
+	releaseStorage, err := release.NewReleaseStorage(ctx, opts.ReleaseNamespace, opts.ReleaseStorageDriver, clientFactory, releaseStorageOptions)
 	if err != nil {
 		return nil, fmt.Errorf("construct release storage: %w", err)
 	}
@@ -189,66 +184,49 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		},
 	}
 
-	var historyOptions release.HistoryOptions
-	if opts.Remote {
-		historyOptions.Mapper = clientFactory.Mapper()
-		historyOptions.DiscoveryClient = clientFactory.Discovery()
+	log.Default.Debug(ctx, "Build release history")
+
+	history, err := release.BuildHistory(opts.ReleaseName, releaseStorage, release.HistoryOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("build release history: %w", err)
 	}
 
-	history, err := release.NewHistory(
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
-		releaseStorage,
-		historyOptions,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("construct release history: %w", err)
-	}
-
-	prevRelease, prevReleaseFound, err := history.LastRelease()
-	if err != nil {
-		return nil, fmt.Errorf("get last release: %w", err)
-	}
-
-	_, prevDeployedReleaseFound, err := history.LastDeployedRelease()
-	if err != nil {
-		return nil, fmt.Errorf("get last deployed release: %w", err)
-	}
+	releases := history.Releases()
+	deployedReleases := history.FindAllDeployed()
+	prevRelease := lo.LastOrEmpty(releases)
+	prevDeployedRelease := lo.LastOrEmpty(deployedReleases)
 
 	var newRevision int
-	if prevReleaseFound {
-		newRevision = prevRelease.Revision() + 1
+	if prevRelease != nil {
+		newRevision = prevRelease.Version + 1
 	} else {
 		newRevision = 1
 	}
 
 	var deployType common.DeployType
-	if prevReleaseFound && prevDeployedReleaseFound {
+	if prevDeployedRelease != nil {
 		deployType = common.DeployTypeUpgrade
-	} else if prevReleaseFound {
+	} else if prevRelease != nil {
 		deployType = common.DeployTypeInstall
 	} else {
 		deployType = common.DeployTypeInitial
 	}
 
-	chartTreeOptions := chart.ChartTreeOptions{
+	chartTreeOptions := chart.RenderChartOptions{
 		ChartRepoInsecure:      opts.ChartRepositoryInsecure,
 		ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
 		ChartVersion:           opts.ChartVersion,
 		FileValues:             opts.ValuesFileSets,
-		KubeCAPath:             opts.KubeCAPath,
 		HelmOptions:            helmOptions,
+		KubeCAPath:             opts.KubeCAPath,
 		RegistryClient:         helmRegistryClient,
+		Remote:                 opts.Remote,
 		SetValues:              opts.ValuesSets,
 		StringSetValues:        opts.ValuesStringSets,
 		ValuesFiles:            opts.ValuesFilesPaths,
 	}
 
-	if opts.Remote {
-		chartTreeOptions.Mapper = clientFactory.Mapper()
-		chartTreeOptions.DiscoveryClient = clientFactory.Discovery()
-		chartTreeOptions.KubeConfig = clientFactory.KubeConfig()
-	} else {
+	if !opts.Remote {
 		ver, err := chartutil.ParseKubeVersion(opts.LocalKubeVersion)
 		if err != nil {
 			return nil, fmt.Errorf("parse local kube version %q: %w", opts.LocalKubeVersion, err)
@@ -257,70 +235,44 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		chartTreeOptions.KubeVersion = ver
 	}
 
-	chartTree, err := chart.NewChartTree(
-		ctx,
-		opts.Chart,
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
-		newRevision,
-		deployType,
-		chartTreeOptions,
-	)
+	log.Default.Debug(ctx, "Render chart")
+
+	renderChartResult, err := chart.RenderChart(ctx, opts.Chart, opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, clientFactory, chartTreeOptions)
 	if err != nil {
-		return nil, fmt.Errorf("construct chart tree: %w", err)
+		return nil, fmt.Errorf("render chart: %w", err)
 	}
 
-	var prevRelGeneralResources []*resource.GeneralResource
-	if prevReleaseFound {
-		prevRelGeneralResources = prevRelease.GeneralResources()
+	log.Default.Debug(ctx, "Build transformed resource specs")
+
+	transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, opts.ReleaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
+		spec.NewResourceListsTransformer(),
+		spec.NewDropInvalidAnnotationsAndLabelsTransformer(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("build transformed resource specs: %w", err)
 	}
 
-	resProcessorOptions := resourceinfo.DeployableResourcesProcessorOptions{
-		NetworkParallelism: opts.NetworkParallelism,
-		ForceAdoption:      opts.ForceAdoption,
-		ReleasableHookResourcePatchers: []resource.ResourcePatcher{
-			resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-		},
-		ReleasableGeneralResourcePatchers: []resource.ResourcePatcher{
-			resource.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-		},
-		DeployableStandaloneCRDsPatchers: []resource.ResourcePatcher{
-			resource.NewExtraMetadataPatcher(
-				lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
-			),
-		},
-		DeployableHookResourcePatchers: []resource.ResourcePatcher{
-			resource.NewExtraMetadataPatcher(
-				lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
-			),
-		},
-		DeployableGeneralResourcePatchers: []resource.ResourcePatcher{
-			resource.NewExtraMetadataPatcher(
-				lo.Assign(opts.ExtraAnnotations, opts.ExtraRuntimeAnnotations), opts.ExtraLabels,
-			),
-		},
-	}
-	if opts.Remote {
-		resProcessorOptions.KubeClient = clientFactory.KubeClient()
-		resProcessorOptions.Mapper = clientFactory.Mapper()
-		resProcessorOptions.DiscoveryClient = clientFactory.Discovery()
-		resProcessorOptions.AllowClusterAccess = true
+	log.Default.Debug(ctx, "Build releasable resource specs")
+
+	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
+		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("build releasable resource specs: %w", err)
 	}
 
-	resProcessor := resourceinfo.NewDeployableResourcesProcessor(
-		deployType,
-		opts.ReleaseName,
-		opts.ReleaseNamespace,
-		chartTree.StandaloneCRDs(),
-		chartTree.HookResources(),
-		chartTree.GeneralResources(),
-		nil,
-		prevRelGeneralResources,
-		resProcessorOptions,
-	)
+	newRelease, err := release.NewRelease(opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, releasableResSpecs, renderChartResult.Chart, renderChartResult.ReleaseConfig, release.ReleaseOptions{
+		Notes: renderChartResult.Notes,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("construct new release: %w", err)
+	}
 
-	if err := resProcessor.Process(ctx); err != nil {
-		return nil, fmt.Errorf("process resources: %w", err)
+	log.Default.Debug(ctx, "Convert new release to resource specs")
+
+	resSpecs, err := release.ReleaseToResourceSpecs(newRelease, opts.ReleaseNamespace)
+	if err != nil {
+		return nil, fmt.Errorf("convert new release to resource specs: %w", err)
 	}
 
 	var showFiles []string
@@ -336,14 +288,14 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 				return nil, fmt.Errorf("get relative path for %q: %w", absFile, err)
 			}
 
-			if !strings.HasPrefix(f, chartTree.Name()) {
-				f = filepath.Join(chartTree.Name(), f)
+			if !strings.HasPrefix(f, renderChartResult.Chart.Name()) {
+				f = filepath.Join(renderChartResult.Chart.Name(), f)
 			}
 
 			showFiles = append(showFiles, f)
 		} else {
-			if !strings.HasPrefix(file, chartTree.Name()) {
-				file = filepath.Join(chartTree.Name(), file)
+			if !strings.HasPrefix(file, renderChartResult.Chart.Name()) {
+				file = filepath.Join(renderChartResult.Chart.Name(), file)
 			}
 
 			showFiles = append(showFiles, file)
@@ -365,51 +317,34 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		renderColorLevel = color.LevelNo
 	} else {
 		renderOutStream = os.Stdout
+
 		if color.Enable {
 			renderColorLevel = color.TermColorLevel()
 		}
 	}
 
-	result := &ChartRenderResultV1{
-		APIVersion: ChartRenderResultApiVersionV1,
+	result := &ChartRenderResultV2{
+		APIVersion: "v2",
+		Resources:  resSpecs,
 	}
 
-	for _, resource := range resProcessor.DeployableStandaloneCRDs() {
-		if len(showFiles) > 0 && !lo.Contains(showFiles, resource.FilePath()) {
+	sort.SliceStable(result.Resources, func(i, j int) bool {
+		return spec.ResourceSpecSortHandler(result.Resources[i], result.Resources[j])
+	})
+
+	for _, res := range result.Resources {
+		if len(showFiles) > 0 && !lo.Contains(showFiles, res.FilePath) {
 			continue
 		}
 
-		if opts.ShowCRDs {
-			if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream, renderColorLevel); err != nil {
-				return nil, fmt.Errorf("render CRD %q: %w", resource.HumanID(), err)
-			}
-		}
-
-		result.CRDs = append(result.CRDs, resource.Unstructured().Object)
-	}
-
-	for _, resource := range resProcessor.DeployableHookResources() {
-		if len(showFiles) > 0 && !lo.Contains(showFiles, resource.FilePath()) {
+		if !opts.ShowCRDs && res.StoreAs == common.StoreAsNone &&
+			spec.IsCRD(res.GroupVersionKind.GroupKind()) {
 			continue
 		}
 
-		if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream, renderColorLevel); err != nil {
-			return nil, fmt.Errorf("render hook resource %q: %w", resource.HumanID(), err)
+		if err := renderResource(res.Unstruct, res.FilePath, renderOutStream, renderColorLevel); err != nil {
+			return nil, fmt.Errorf("render resource %q: %w", res.IDHuman(), err)
 		}
-
-		result.Hooks = append(result.Hooks, resource.Unstructured().Object)
-	}
-
-	for _, resource := range resProcessor.DeployableGeneralResources() {
-		if len(showFiles) > 0 && !lo.Contains(showFiles, resource.FilePath()) {
-			continue
-		}
-
-		if err := renderResource(resource.Unstructured(), resource.FilePath(), renderOutStream, renderColorLevel); err != nil {
-			return nil, fmt.Errorf("render general resource %q: %w", resource.HumanID(), err)
-		}
-
-		result.Resources = append(result.Resources, resource.Unstructured().Object)
 	}
 
 	return result, nil
@@ -486,12 +421,12 @@ func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir, homeDi
 }
 
 func renderResource(unstruct *unstructured.Unstructured, path string, outStream io.Writer, colorLevel color.Level) error {
-	resourceJsonBytes, err := runtime.Encode(unstructured.UnstructuredJSONScheme, unstruct)
+	resourceJSONBytes, err := runtime.Encode(unstructured.UnstructuredJSONScheme, unstruct)
 	if err != nil {
 		return fmt.Errorf("encode to JSON: %w", err)
 	}
 
-	resourceYamlBytes, err := yaml.JSONToYAML(resourceJsonBytes)
+	resourceYamlBytes, err := yaml.JSONToYAML(resourceJSONBytes)
 	if err != nil {
 		return fmt.Errorf("marshal JSON to YAML: %w", err)
 	}
@@ -506,11 +441,7 @@ func renderResource(unstruct *unstructured.Unstructured, path string, outStream 
 	return nil
 }
 
-const ChartRenderResultApiVersionV1 = "v1"
-
-type ChartRenderResultV1 struct {
-	APIVersion string                   `json:"apiVersion"`
-	CRDs       []map[string]interface{} `json:"crds,omitempty"`
-	Hooks      []map[string]interface{} `json:"hooks,omitempty"`
-	Resources  []map[string]interface{} `json:"resources,omitempty"`
+type ChartRenderResultV2 struct {
+	APIVersion string               `json:"apiVersion,omitempty"`
+	Resources  []*spec.ResourceSpec `json:"resources,omitempty"`
 }

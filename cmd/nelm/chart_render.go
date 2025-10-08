@@ -10,6 +10,7 @@ import (
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
 	"github.com/werf/nelm/pkg/featgate"
+	"github.com/werf/nelm/pkg/log"
 )
 
 type chartRenderConfig struct {
@@ -43,7 +44,7 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cmp.Or(cfg.LogLevel, action.DefaultChartRenderLogLevel), action.SetupLoggingOptions{
+			ctx = log.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultChartRenderLogLevel), log.SetupLoggingOptions{
 				ColorMode:      cfg.LogColorMode,
 				LogIsParseable: true,
 			})
@@ -245,7 +246,7 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", action.DefaultChartRenderLogLevel, "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", string(action.DefaultChartRenderLogLevel), "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

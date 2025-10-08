@@ -4,18 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/gookit/color"
 	prtable "github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
 	"github.com/samber/lo"
-	"k8s.io/client-go/kubernetes"
 
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	helmrelease "github.com/werf/3p-helm/pkg/release"
@@ -26,7 +25,7 @@ import (
 
 const (
 	DefaultReleaseListOutputFormat = TableOutputFormat
-	DefaultReleaseListLogLevel     = ErrorLogLevel
+	DefaultReleaseListLogLevel     = log.ErrorLevel
 )
 
 type ReleaseListOptions struct {
@@ -95,8 +94,8 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 		ctx,
 		opts.ReleaseNamespace,
 		opts.ReleaseStorageDriver,
+		clientFactory,
 		release.ReleaseStorageOptions{
-			StaticClient:        clientFactory.Static().(*kubernetes.Clientset),
 			SQLConnectionString: opts.SQLConnectionString,
 		},
 	)
@@ -106,42 +105,35 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 
 	loader.NoChartLockWarning = ""
 
-	histories, err := release.BuildHistories(releaseStorage, release.BuildHistoriesOptions{
-		DiscoveryClient: clientFactory.Discovery(),
-		Mapper:          clientFactory.Mapper(),
-	})
+	log.Default.Info(ctx, "Build release histories")
+
+	histories, err := release.BuildHistories(releaseStorage, release.HistoryOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("build release histories: %w", err)
 	}
 
 	result := &ReleaseListResultV1{
-		ApiVersion: ReleaseListResultApiVersionV1,
+		APIVersion: "v1",
 	}
 
 	for _, history := range histories {
-		lastRelease, found, err := history.LastRelease()
-		if err != nil {
-			return nil, fmt.Errorf("get last release: %w", err)
-		}
-
-		if !found {
-			continue
-		}
+		releases := history.Releases()
+		lastRelease := lo.LastOrEmpty(releases)
 
 		result.Releases = append(result.Releases, &ReleaseListResultRelease{
-			Name:      lastRelease.Name(),
-			Namespace: lastRelease.Namespace(),
-			Revision:  lastRelease.Revision(),
-			Status:    lastRelease.Status(),
+			Name:      lastRelease.Name,
+			Namespace: lastRelease.Namespace,
+			Revision:  lastRelease.Version,
+			Status:    lastRelease.Info.Status,
 			DeployedAt: &ReleaseListResultDeployedAt{
-				Human: lastRelease.LastDeployed().String(),
-				Unix:  int(lastRelease.LastDeployed().Unix()),
+				Human: time.Time{}.String(),
+				Unix:  int(time.Time{}.Unix()),
 			},
-			Annotations: lastRelease.InfoAnnotations(),
+			Annotations: lastRelease.Info.Annotations,
 			Chart: &ReleaseListResultChart{
-				Name:       lastRelease.ChartName(),
-				Version:    lastRelease.ChartVersion(),
-				AppVersion: lastRelease.AppVersion(),
+				Name:       lastRelease.Chart.Name(),
+				Version:    lastRelease.Chart.Metadata.Version,
+				AppVersion: lastRelease.Chart.Metadata.AppVersion,
 			},
 		})
 	}
@@ -154,39 +146,41 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 		return result.Releases[i].Name < result.Releases[j].Name
 	})
 
-	if !opts.OutputNoPrint {
-		var resultMessage string
+	if opts.OutputNoPrint {
+		return result, nil
+	}
 
-		switch opts.OutputFormat {
-		case TableOutputFormat:
-			table := buildReleaseListOutputTable(ctx, result)
-			resultMessage = table.Render()
-		case JsonOutputFormat:
-			b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
-			if err != nil {
-				return nil, fmt.Errorf("marshal result to json: %w", err)
-			}
+	var resultMessage string
 
-			resultMessage = string(b)
-		case YamlOutputFormat:
-			b, err := yaml.MarshalContext(ctx, result)
-			if err != nil {
-				return nil, fmt.Errorf("marshal result to yaml: %w", err)
-			}
-
-			resultMessage = string(b)
-		default:
-			return nil, fmt.Errorf("unknown output format %q", opts.OutputFormat)
+	switch opts.OutputFormat {
+	case TableOutputFormat:
+		table := buildReleaseListOutputTable(ctx, result)
+		resultMessage = table.Render()
+	case JSONOutputFormat:
+		b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
+		if err != nil {
+			return nil, fmt.Errorf("marshal result to json: %w", err)
 		}
 
-		var colorLevel color.Level
-		if color.Enable {
-			colorLevel = color.TermColorLevel()
+		resultMessage = string(b)
+	case YamlOutputFormat:
+		b, err := yaml.MarshalContext(ctx, result)
+		if err != nil {
+			return nil, fmt.Errorf("marshal result to yaml: %w", err)
 		}
 
-		if err := writeWithSyntaxHighlight(os.Stdout, resultMessage, string(opts.OutputFormat), colorLevel); err != nil {
-			return nil, fmt.Errorf("write result to output: %w", err)
-		}
+		resultMessage = string(b)
+	default:
+		return nil, fmt.Errorf("unknown output format %q", opts.OutputFormat)
+	}
+
+	var colorLevel color.Level
+	if color.Enable {
+		colorLevel = color.TermColorLevel()
+	}
+
+	if err := writeWithSyntaxHighlight(os.Stdout, resultMessage, opts.OutputFormat, colorLevel); err != nil {
+		return nil, fmt.Errorf("write result to output: %w", err)
 	}
 
 	return result, nil
@@ -228,10 +222,8 @@ func applyReleaseListOptionsDefaults(opts ReleaseListOptions, homeDir string) (R
 	return opts, nil
 }
 
-const ReleaseListResultApiVersionV1 = "v1"
-
 type ReleaseListResultV1 struct {
-	ApiVersion string                      `json:"apiVersion"`
+	APIVersion string                      `json:"apiVersion"`
 	Releases   []*ReleaseListResultRelease `json:"releases"`
 }
 
@@ -245,6 +237,7 @@ type ReleaseListResultRelease struct {
 	Chart       *ReleaseListResultChart      `json:"chart"`
 }
 
+// TODO(v2): get rid
 type ReleaseListResultDeployedAt struct {
 	Human string `json:"human"`
 	Unix  int    `json:"unix"`
@@ -293,8 +286,8 @@ func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV
 
 func setReleaseListOutputTableStyle(ctx context.Context, table prtable.Writer) {
 	style := prtable.StyleBoxDefault
-	style.PaddingLeft = " "
-	style.PaddingRight = " "
+	style.PaddingLeft = ""
+	style.PaddingRight = "  "
 
 	columnConfigs := []prtable.ColumnConfig{
 		{
@@ -331,9 +324,9 @@ func setReleaseListOutputTableStyle(ctx context.Context, table prtable.Writer) {
 
 	columnConfigs[2].WidthMax = 16
 	columnConfigs[3].WidthMax = 8
-	columnConfigs[0].WidthMax = int(math.Floor(float64(columnsWidth-columnConfigs[2].WidthMax-columnConfigs[3].WidthMax)) * 0.3)
-	columnConfigs[1].WidthMax = int(math.Floor(float64(columnsWidth-columnConfigs[2].WidthMax-columnConfigs[3].WidthMax)) * 0.4)
-	columnConfigs[4].WidthMax = int(math.Floor(float64(columnsWidth-columnConfigs[2].WidthMax-columnConfigs[3].WidthMax)) * 0.4)
+	columnConfigs[0].WidthMax = int(float64(columnsWidth-columnConfigs[2].WidthMax-columnConfigs[3].WidthMax) * 0.3)
+	columnConfigs[1].WidthMax = int(float64(columnsWidth-columnConfigs[2].WidthMax-columnConfigs[3].WidthMax) * 0.4)
+	columnConfigs[4].WidthMax = int(float64(columnsWidth-columnConfigs[2].WidthMax-columnConfigs[3].WidthMax) * 0.4)
 
 	table.SetColumnConfigs(columnConfigs)
 	table.SetStyle(prtable.Style{
