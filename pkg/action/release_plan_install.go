@@ -45,6 +45,7 @@ type ReleasePlanInstallOptions struct {
 	DefaultChartVersion          string
 	DefaultSecretValuesDisable   bool
 	DefaultValuesDisable         bool
+	DiffContextLines             int
 	ErrorIfChangesPlanned        bool
 	ExtraAnnotations             map[string]string
 	ExtraLabels                  map[string]string
@@ -73,6 +74,10 @@ type ReleasePlanInstallOptions struct {
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
 	SecretWorkDir                string
+	ShowInsignificantDiffs       bool
+	ShowSensitiveDiffs           bool
+	ShowVerboseCRDDiffs          bool
+	ShowVerboseDiffs             bool
 	TempDirPath                  string
 	Timeout                      time.Duration
 	ValuesFileSets               []string
@@ -372,7 +377,11 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	log.Default.Debug(ctx, "Calculate planned changes")
 
 	changes, err := plan.CalculatePlannedChanges(instResInfos, delResInfos, plan.CalculatePlannedChangesOptions{
-		DiffContextLines: 3,
+		DiffContextLines:       opts.DiffContextLines,
+		ShowVerboseCRDDiffs:    opts.ShowVerboseCRDDiffs,
+		ShowVerboseDiffs:       opts.ShowVerboseDiffs,
+		ShowSensitiveDiffs:     opts.ShowSensitiveDiffs,
+		ShowInsignificantDiffs: opts.ShowInsignificantDiffs,
 	})
 	if err != nil {
 		return fmt.Errorf("calculate planned changes: %w", err)
@@ -420,6 +429,10 @@ func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, curr
 
 	if opts.KubeBurstLimit <= 0 {
 		opts.KubeBurstLimit = DefaultBurstLimit
+	}
+
+	if opts.DiffContextLines < 0 {
+		opts.DiffContextLines = DefaultDiffContextLines
 	}
 
 	switch opts.ReleaseStorageDriver {
