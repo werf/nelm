@@ -462,7 +462,9 @@ func logPlannedChanges(
 	releaseNamespace string,
 	changes []*plan.ResourceChange,
 ) {
-	lo.Must0(len(changes) > 0)
+	if len(changes) == 0 {
+		return
+	}
 
 	log.Default.Info(ctx, "")
 
@@ -509,6 +511,6 @@ func logSummaryLine(ctx context.Context, changes []*plan.ResourceChange, changeT
 	})
 
 	if len(filteredChanges) > 0 {
-		log.Default.Info(ctx, "- %s: %d resources", filteredChanges[0].TypeStyle.Render("create"), len(filteredChanges))
+		log.Default.Info(ctx, "- %s: %d resources", filteredChanges[0].TypeStyle.Render(changeType), len(filteredChanges))
 	}
 }
