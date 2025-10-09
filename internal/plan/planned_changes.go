@@ -1,9 +1,11 @@
 package plan
 
 import (
+	"context"
 	"fmt"
 	"sort"
 
+	"github.com/goccy/go-yaml"
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -117,6 +119,7 @@ func buildInstChanges(instInfosByIter [][]*InstallableResourceInfo, opts Calcula
 						change.Reason = fmt.Sprintf("error: %s", info.DryApplyErr)
 					}
 				case ResourceInstallTypeNone:
+					continue
 				default:
 					panic("unexpected resource must install condition")
 				}
@@ -192,8 +195,8 @@ func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *u
 		if oldUnstruct != nil {
 			oldUnstructClean := cleanUnstruct(oldUnstruct, sensitiveInfo, opts)
 
-			if oldObjByte, err := oldUnstructClean.MarshalJSON(); err != nil {
-				return nil, fmt.Errorf("marshal old unstruct to json: %w", err)
+			if oldObjByte, err := yaml.MarshalContext(context.TODO(), oldUnstructClean); err != nil {
+				return nil, fmt.Errorf("marshal old unstruct to yaml: %w", err)
 			} else {
 				oldObjManifest = string(oldObjByte)
 			}
@@ -202,8 +205,8 @@ func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *u
 		if newUnstruct != nil {
 			newUnstructClean := cleanUnstruct(newUnstruct, sensitiveInfo, opts)
 
-			if newObjByte, err := newUnstructClean.MarshalJSON(); err != nil {
-				return nil, fmt.Errorf("marshal new unstruct to json: %w", err)
+			if newObjByte, err := yaml.MarshalContext(context.TODO(), newUnstructClean); err != nil {
+				return nil, fmt.Errorf("marshal new unstruct to yaml: %w", err)
 			} else {
 				newObjManifest = string(newObjByte)
 			}
