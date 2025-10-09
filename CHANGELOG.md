@@ -8,6 +8,14 @@
 * `plan` panic and json diffs instead of yaml ([737cd51](https://www.github.com/werf/nelm/commit/737cd518132070c05f088cb314ae9645e48fa3fb))
 * git-go security vulnerability ([80ae9d3](https://www.github.com/werf/nelm/commit/80ae9d3c2d7e92c473fd5db8bf44d2f9789a6b42))
 
+### [1.13.1](https://www.github.com/werf/nelm/compare/v1.13.0...v1.13.1) (2025-10-09)
+
+
+### Bug Fixes
+
+* `plan` panic and json diffs instead of yaml ([737cd51](https://www.github.com/werf/nelm/commit/737cd518132070c05f088cb314ae9645e48fa3fb))
+* git-go security vulnerability ([80ae9d3](https://www.github.com/werf/nelm/commit/80ae9d3c2d7e92c473fd5db8bf44d2f9789a6b42))
+
 ## [1.13.0](https://www.github.com/werf/nelm/compare/v1.12.2...v1.13.0) (2025-10-08)
 
 
