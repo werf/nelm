@@ -37,12 +37,15 @@ We consider Nelm production-ready, since 95% of the Nelm codebase basically is t
     - [Annotation `werf.io/deploy-dependency-<id>`](#annotation-werfiodeploy-dependency-id)
     - [Annotation `<id>.external-dependency.werf.io/resource`](#annotation-idexternal-dependencywerfioresource)
     - [Annotation `<id>.external-dependency.werf.io/name`](#annotation-idexternal-dependencywerfioname)
-    - [Annotation `werf.io/sensitive`](#annotation-werfiosensitive)
-    - [Annotation `werf.io/sensitive-paths`](#annotation-werfiosensitive-paths)
+    - [Annotation `werf.io/ownership`](#annotation-werfioownership)
+    - [Annotation `werf.io/deploy-on`](#annotation-werfiodeploy-on)
+    - [Annotation `werf.io/delete-policy`](#annotation-werfiodelete-policy)
     - [Annotation `werf.io/track-termination-mode`](#annotation-werfiotrack-termination-mode)
     - [Annotation `werf.io/fail-mode`](#annotation-werfiofail-mode)
     - [Annotation `werf.io/failures-allowed-per-replica`](#annotation-werfiofailures-allowed-per-replica)
     - [Annotation `werf.io/no-activity-timeout`](#annotation-werfiono-activity-timeout)
+    - [Annotation `werf.io/sensitive`](#annotation-werfiosensitive)
+    - [Annotation `werf.io/sensitive-paths`](#annotation-werfiosensitive-paths)
     - [Annotation `werf.io/log-regex`](#annotation-werfiolog-regex)
     - [Annotation `werf.io/log-regex-for-<container_name>`](#annotation-werfiolog-regex-for-container_name)
     - [Annotation `werf.io/log-regex-skip`](#annotation-werfiolog-regex-skip)
@@ -423,24 +426,31 @@ Example: `someapp.external-dependency.werf.io/name: someapp-production`
 
 Set the namespace of the external dependency defined by `<id>.external-dependency.werf.io/resource`. `<id>` must match on both annotations. If not specified, the release namespace is used.
 
-#### Annotation `werf.io/sensitive`
+#### Annotation `werf.io/ownership`
 
-Format: `true|false` \
-Default: `false`, but for `v1/Secret` — `true` \
-Example: `werf.io/sensitive: "true"`
+Format: `anyone|release` \
+Default: `release` for general resources, `anyone` for hooks and CRDs from `crds/` directory \
+Example: `werf.io/ownership: anyone`
 
-DEPRECATED. Use `werf.io/sensitive-paths` instead.
+Inspired by Helm hooks. Sets the ownership of the resource. `release` means that the resource is deleted if removed from the chart or when the release is uninstalled, and release annotations of the resource are applied/validated during deploy. `anyone` means the opposite: resource is never deleted on uninstall or when removed from the chart, and release annotations are not applied/validated during deploy.
 
-Don't show diffs for the resource.
+#### Annotation `werf.io/deploy-on`
 
-`NELM_FEAT_FIELD_SENSITIVE` feature gate alters behavior of this annotation.
+Format: `[pre-install][,install][,post-install][,pre-upgrade][,upgrade][,post-upgrade][,pre-rollback][,rollback][,post-rollback][,pre-uninstall][,uninstall][,post-uninstall]` \
+Default: `install,upgrade,rollback` for general resources, populated from `helm.sh/hook` for hooks \
+Example: `werf.io/deploy-on: pre-install,upgrade`
 
-#### Annotation `werf.io/sensitive-paths`
+Inspired by `helm.sh/hook`. Render the resource for deployment only on the specified deploy types and stages. Has precedence over `helm.sh/hook`.
 
-Format: `JSONPath,JSONPath,...` \
-Example: `werf.io/sensitive-paths: "$.spec.template.spec.containers[*].env[*].value,$.data.*"`
+Beware that with `werf.io/ownership: release` if the resource is rendered for install, but, for example, not for upgrade, then it is going to be deployed on install, but then deleted on upgrade, so you might want to consider `werf.io/ownership: anyone`.
 
-Don't show diffs for resource fields that match specified JSONPath expressions. Overrides the behavior of `werf.io/sensitive`.
+#### Annotation `werf.io/delete-policy`
+
+Format: `[before-creation][,succeeded][,failed]` \
+Default: nothing for general resources, mapped from `helm.sh/hook-delete-policy` for hooks \
+Example: `werf.io/delete-policy: before-creation,succeeded`
+
+Inspired by `helm.sh/hook-delete-policy`. Controls resource deletions during resource deployment. `before-creation` means always recreate the resource, `succeeded` means delete the resource at the end of the current deployment stage if the resource was successfully deployed, `failed` means delete the resource if it's readiness check failed. Has precedence over `helm.sh/hook-delete-policy`.
 
 #### Annotation `werf.io/track-termination-mode`
 
@@ -477,6 +487,25 @@ Default: `4m` \
 Example: `werf.io/no-activity-timeout: 8m30s`
 
 Take it as a resource tracking error if no new events or resource updates are received during resource tracking for the specified time.
+
+#### Annotation `werf.io/sensitive`
+
+Format: `true|false` \
+Default: `false`, but for `v1/Secret` — `true` \
+Example: `werf.io/sensitive: "true"`
+
+DEPRECATED. Use `werf.io/sensitive-paths` instead.
+
+Don't show diffs for the resource.
+
+`NELM_FEAT_FIELD_SENSITIVE` feature gate alters behavior of this annotation.
+
+#### Annotation `werf.io/sensitive-paths`
+
+Format: `JSONPath,JSONPath,...` \
+Example: `werf.io/sensitive-paths: "$.spec.template.spec.containers[*].env[*].value,$.data.*"`
+
+Don't show diffs for resource fields that match specified JSONPath expressions. Overrides the behavior of `werf.io/sensitive`.
 
 #### Annotation `werf.io/log-regex`
 
