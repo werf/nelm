@@ -1,5 +1,12 @@
 # Changelog
 
+### [1.13.2](https://www.github.com/werf/nelm/compare/v1.13.1...v1.13.2) (2025-10-13)
+
+
+### Bug Fixes
+
+* panic in `release plan install` ([f682b8d](https://www.github.com/werf/nelm/commit/f682b8da6f97812b6b24d8d2636b6a6e4a181b6b))
+
 ### [1.13.1](https://www.github.com/werf/nelm/compare/v1.13.0...v1.13.1) (2025-10-09)
 
 
