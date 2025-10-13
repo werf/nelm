@@ -128,9 +128,12 @@ func buildInstChanges(instInfosByIter [][]*InstallableResourceInfo, opts Calcula
 			}
 		} else {
 			for _, info := range instInfos {
-				change := lo.Must(lo.Find(changes, func(change *ResourceChange) bool {
+				change, found := lo.Find(changes, func(change *ResourceChange) bool {
 					return change.ResourceMeta.ID() == info.ID() && info.Iteration == iter-1
-				}))
+				})
+				if !found {
+					continue
+				}
 
 				switch info.MustInstall {
 				case ResourceInstallTypeCreate:
