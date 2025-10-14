@@ -75,6 +75,7 @@ type ReleaseInstallOptions struct {
 	NoInstallCRDs                bool
 	NoPodLogs                    bool
 	NoProgressTablePrint         bool
+	NoRemoveManualChanges        bool
 	ProgressTablePrintInterval   time.Duration
 	RegistryCredentialsPath      string
 	ReleaseHistoryLimit          int
@@ -358,7 +359,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	log.Default.Debug(ctx, "Build resource infos")
 
-	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, opts.NetworkParallelism)
+	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, !opts.NoRemoveManualChanges, clientFactory, opts.NetworkParallelism)
 	if err != nil {
 		return fmt.Errorf("build resource infos: %w", err)
 	}
@@ -502,6 +503,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 				TrackCreationTimeout:    opts.TrackCreationTimeout,
 				TrackDeletionTimeout:    opts.TrackDeletionTimeout,
 				TrackReadinessTimeout:   opts.TrackReadinessTimeout,
+				NoRemoveManualChanges:   opts.NoRemoveManualChanges,
 			})
 
 			criticalErrs = append(criticalErrs, critErrs...)
@@ -670,6 +672,7 @@ type runRollbackPlanOptions struct {
 	NetworkParallelism      int
 	ReleaseInfoAnnotations  map[string]string
 	ReleaseLabels           map[string]string
+	NoRemoveManualChanges   bool
 	RollbackGraphPath       string
 	TrackCreationTimeout    time.Duration
 	TrackDeletionTimeout    time.Duration
@@ -752,7 +755,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Build resource infos")
 
-	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, common.DeployTypeRollback, releaseName, releaseNamespace, instResources, delResources, true, clientFactory, opts.NetworkParallelism)
+	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, common.DeployTypeRollback, releaseName, releaseNamespace, instResources, delResources, true, !opts.NoRemoveManualChanges, clientFactory, opts.NetworkParallelism)
 	if err != nil {
 		return nil, nonCritErrs, append(critErrs, fmt.Errorf("build resource infos: %w", err))
 	}
