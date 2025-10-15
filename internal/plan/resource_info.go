@@ -9,7 +9,7 @@ import (
 	"github.com/samber/lo"
 	"github.com/sourcegraph/conc/pool"
 	"github.com/wI2L/jsondiff"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/json"
@@ -349,11 +349,12 @@ func deduplicateDeletableResourceInfos(infos []*DeletableResourceInfo) []*Deleta
 }
 
 func resourceInstallType(localRes *resource.InstallableResource, getObj, dryApplyObj *unstructured.Unstructured, dryApplyErr error) (ResourceInstallType, error) {
-	if dryApplyErr != nil && kube.IsImmutableErr(dryApplyErr) && !localRes.Recreate {
+	isImmutable := dryApplyErr != nil && kube.IsImmutableErr(dryApplyErr)
+	if isImmutable && !localRes.Recreate && !localRes.RecreateOnImmutable {
 		return "", fmt.Errorf("immutable fields change in resource %q, but recreation is not requested: %w", localRes.IDHuman(), dryApplyErr)
 	}
 
-	if localRes.Recreate {
+	if localRes.Recreate || (isImmutable && localRes.RecreateOnImmutable) {
 		return ResourceInstallTypeRecreate, nil
 	}
 

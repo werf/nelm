@@ -39,9 +39,10 @@ const (
 type DeletePolicy string
 
 const (
-	DeletePolicySucceeded      DeletePolicy = "succeeded"
-	DeletePolicyFailed         DeletePolicy = "failed"
-	DeletePolicyBeforeCreation DeletePolicy = "before-creation"
+	DeletePolicySucceeded                 DeletePolicy = "succeeded"
+	DeletePolicyFailed                    DeletePolicy = "failed"
+	DeletePolicyBeforeCreation            DeletePolicy = "before-creation"
+	DeletePolicyBeforeCreationIfImmutable DeletePolicy = "before-creation-if-immutable"
 )
 
 type Ownership string
