@@ -144,7 +144,8 @@ func validateDeletePolicy(meta *spec.ResourceMeta) error {
 			switch deletePolicy {
 			case string(common.DeletePolicySucceeded),
 				string(common.DeletePolicyFailed),
-				string(common.DeletePolicyBeforeCreation):
+				string(common.DeletePolicyBeforeCreation),
+				string(common.DeletePolicyBeforeCreationIfImmutable):
 			default:
 				return fmt.Errorf("value %q for annotation %q is not supported", value, key)
 			}
@@ -645,6 +646,11 @@ func validateOwnership(meta *spec.ResourceMeta) error {
 func recreate(meta *spec.ResourceMeta) bool {
 	deletePolicies := deletePolicies(meta)
 	return lo.Contains(deletePolicies, common.DeletePolicyBeforeCreation)
+}
+
+func recreateOnImmutable(meta *spec.ResourceMeta) bool {
+	deletePolicies := deletePolicies(meta)
+	return lo.Contains(deletePolicies, common.DeletePolicyBeforeCreationIfImmutable)
 }
 
 func defaultReplicasOnCreation(meta *spec.ResourceMeta, releaseNamespace string) *int {

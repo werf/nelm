@@ -21,6 +21,7 @@ type InstallableResource struct {
 
 	Ownership                              common.Ownership
 	Recreate                               bool
+	RecreateOnImmutable                    bool
 	DefaultReplicasOnCreation              *int
 	DeleteOnSucceeded                      bool
 	DeleteOnFailed                         bool
@@ -107,6 +108,7 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 	return &InstallableResource{
 		ResourceSpec:                           res,
 		Recreate:                               recreate(res.ResourceMeta),
+		RecreateOnImmutable:                    recreateOnImmutable(res.ResourceMeta),
 		DefaultReplicasOnCreation:              defaultReplicasOnCreation(res.ResourceMeta, releaseNamespace),
 		Ownership:                              ownership(res.ResourceMeta, releaseNamespace, res.StoreAs),
 		DeleteOnSucceeded:                      deleteOnSucceeded(res.ResourceMeta),
