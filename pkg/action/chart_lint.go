@@ -58,6 +58,7 @@ type ChartLintOptions struct {
 	LocalKubeVersion             string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
+	NoRemoveManualChanges        bool
 	RegistryCredentialsPath      string
 	ReleaseName                  string
 	ReleaseNamespace             string
@@ -307,7 +308,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Build resource infos")
 
-	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, opts.ReleaseName, opts.ReleaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, opts.NetworkParallelism)
+	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, opts.ReleaseName, opts.ReleaseNamespace, instResources, delResources, prevReleaseFailed, !opts.NoRemoveManualChanges, clientFactory, opts.NetworkParallelism)
 	if err != nil {
 		return fmt.Errorf("build resource infos: %w", err)
 	}

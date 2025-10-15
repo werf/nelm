@@ -48,6 +48,7 @@ type ReleaseUninstallOptions struct {
 	NetworkParallelism         int
 	NoPodLogs                  bool
 	NoProgressTablePrint       bool
+	NoRemoveManualChanges      bool
 	ProgressTablePrintInterval time.Duration
 	ReleaseHistoryLimit        int
 	ReleaseStorageDriver       string
@@ -203,7 +204,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		log.Default.Debug(ctx, "Build resource infos")
-		instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, opts.NetworkParallelism)
+		instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, !opts.NoRemoveManualChanges, clientFactory, opts.NetworkParallelism)
 		if err != nil {
 			return fmt.Errorf("build resource infos: %w", err)
 		}
