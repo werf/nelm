@@ -79,7 +79,10 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDefaults() {
 				return defaultJobResourceSpec(s.releaseNamespace)
 			},
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
-				return defaultJobInstallableResource(resSpec)
+				res := defaultJobInstallableResource(resSpec)
+				res.RecreateOnImmutable = true
+
+				return res
 			},
 		},
 		{

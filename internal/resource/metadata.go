@@ -1021,6 +1021,12 @@ func deletePolicies(meta *spec.ResourceMeta) []common.DeletePolicy {
 				deletePolicies = append(deletePolicies, common.DeletePolicy(deletePolicy))
 			}
 		}
+
+		if len(deletePolicies) == 0 {
+			if meta.GroupVersionKind.GroupKind() == (schema.GroupKind{Kind: "Job", Group: "batch"}) {
+				deletePolicies = append(deletePolicies, common.DeletePolicyBeforeCreationIfImmutable)
+			}
+		}
 	}
 
 	return deletePolicies
