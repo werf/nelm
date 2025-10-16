@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.14.0](https://www.github.com/werf/nelm/compare/v1.13.2...v1.14.0) (2025-10-16)
+
+
+### Features
+
+* ability to use werf.io/delete-policy: before-creation-if-immutable annotation in case of field is immutable error ([e6b648f](https://www.github.com/werf/nelm/commit/e6b648f4d965b371b30e7cc8c9a672f5f591493c))
+* option `--no-final-tracking` ([439cd63](https://www.github.com/werf/nelm/commit/439cd63bc2c036476b3ec46a8c516ea9e1a8c411))
+* option `--no-remove-manual-changes` from the cluster resources ([ce489f3](https://www.github.com/werf/nelm/commit/ce489f3332a7918572094592dde0a39654039cf5))
+* recreate non-hook Jobs on `field is immutable` by default ([4b2521f](https://www.github.com/werf/nelm/commit/4b2521f22321be9ce89568748973fb98bf489430))
+
 ### [1.13.2](https://www.github.com/werf/nelm/compare/v1.13.1...v1.13.2) (2025-10-13)
 
 
