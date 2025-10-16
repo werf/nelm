@@ -169,6 +169,13 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		if err := cli.AddFlag(cmd, &cfg.NoFinalTracking, "no-final-tracking", false, "By default disable tracking operations that have no create/update/delete resource operations after them, which are most tracking operations, to speed up the release", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                progressFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.NoPodLogs, "no-pod-logs", false, "Disable Pod logs collection and printing", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                progressFlagGroup,

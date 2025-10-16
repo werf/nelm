@@ -66,7 +66,7 @@ func (p *Plan) Connect(fromID, toID string) error {
 	return nil
 }
 
-func (p *Plan) Optimize() error {
+func (p *Plan) Optimize(noFinalTracking bool) error {
 	var err error
 
 	p.Graph, err = graph.TransitiveReduction(p.Graph)
@@ -76,7 +76,35 @@ func (p *Plan) Optimize() error {
 
 	squashUselessMetaOperations(p)
 
+	if noFinalTracking {
+		squashFinalTrackingOperations(p)
+	}
+
 	return nil
+}
+
+func (p *Plan) SquashOperation(op *Operation) {
+	adjMap := lo.Must(p.Graph.AdjacencyMap())
+	predMap := lo.Must(p.Graph.PredecessorMap())
+
+	opPreds := predMap[op.ID()]
+	opAdjacencies := adjMap[op.ID()]
+
+	for predID := range opPreds {
+		lo.Must0(p.Graph.RemoveEdge(predID, op.ID()))
+	}
+
+	for adjID := range opAdjacencies {
+		lo.Must0(p.Graph.RemoveEdge(op.ID(), adjID))
+	}
+
+	for predID := range opPreds {
+		for adjID := range opAdjacencies {
+			lo.Must0(p.Connect(predID, adjID))
+		}
+	}
+
+	lo.Must0(p.Graph.RemoveVertex(op.ID()))
 }
 
 func (p *Plan) ToDOT() ([]byte, error) {
@@ -243,33 +271,9 @@ func squashUselessMetaOperations(p *Plan) {
 	uselessOperationPairs := findUselessMetaOperations(operationPairs, lo.Must(p.Graph.AdjacencyMap()))
 
 	for _, pair := range uselessOperationPairs {
-		startOp := pair[0]
-		endOp := pair[1]
-
-		adjMap := lo.Must(p.Graph.AdjacencyMap())
-		predMap := lo.Must(p.Graph.PredecessorMap())
-
-		startPreds := predMap[startOp.ID()]
-		endAdjacencies := adjMap[endOp.ID()]
-
-		lo.Must0(p.Graph.RemoveEdge(startOp.ID(), endOp.ID()))
-
-		for predID := range startPreds {
-			lo.Must0(p.Graph.RemoveEdge(predID, startOp.ID()))
+		for _, op := range pair {
+			p.SquashOperation(op)
 		}
-
-		for adjID := range endAdjacencies {
-			lo.Must0(p.Graph.RemoveEdge(endOp.ID(), adjID))
-		}
-
-		for predID := range startPreds {
-			for adjID := range endAdjacencies {
-				lo.Must0(p.Connect(predID, adjID))
-			}
-		}
-
-		lo.Must0(p.Graph.RemoveVertex(startOp.ID()))
-		lo.Must0(p.Graph.RemoveVertex(endOp.ID()))
 	}
 
 	operationPairs = findMetaOperationPairs(p.Operations())
@@ -277,5 +281,29 @@ func squashUselessMetaOperations(p *Plan) {
 
 	if len(uselessOperationPairs) > 0 {
 		squashUselessMetaOperations(p)
+	}
+}
+
+func squashFinalTrackingOperations(p *Plan) {
+	ops := p.Operations()
+	trackingOps := lo.Filter(ops, func(op *Operation, _ int) bool {
+		return op.Category == OperationCategoryTrack
+	})
+
+	for _, trackingOp := range trackingOps {
+		var foundDependentResourceOps bool
+		lo.Must0(graph.BFS(p.Graph, trackingOp.ID(), func(opID string) bool {
+			op := lo.Must(p.Operation(opID))
+			if op.Category == OperationCategoryResource {
+				foundDependentResourceOps = true
+				return true
+			}
+
+			return false
+		}))
+
+		if !foundDependentResourceOps {
+			p.SquashOperation(trackingOp)
+		}
 	}
 }

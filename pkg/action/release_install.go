@@ -72,6 +72,7 @@ type ReleaseInstallOptions struct {
 	LegacyExtraValues            map[string]interface{}
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
+	NoFinalTracking              bool
 	NoInstallCRDs                bool
 	NoPodLogs                    bool
 	NoProgressTablePrint         bool
@@ -379,7 +380,9 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	log.Default.Debug(ctx, "Build install plan")
 
-	installPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos)
+	installPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
+		NoFinalTracking: opts.NoFinalTracking,
+	})
 	if err != nil {
 		handleBuildPlanErr(ctx, installPlan, err, opts.InstallGraphPath, opts.TempDirPath, "release-install-graph.dot")
 		return fmt.Errorf("build install plan: %w", err)
@@ -479,9 +482,10 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	if executePlanErr != nil {
 		runFailurePlanResult, nonCritErrs, critErrs := runFailurePlan(ctx, releaseNamespace, installPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
 			NetworkParallelism:    opts.NetworkParallelism,
-			TrackReadinessTimeout: opts.TrackReadinessTimeout,
+			NoFinalTracking:       opts.NoFinalTracking,
 			TrackCreationTimeout:  opts.TrackCreationTimeout,
 			TrackDeletionTimeout:  opts.TrackDeletionTimeout,
+			TrackReadinessTimeout: opts.TrackReadinessTimeout,
 		})
 
 		criticalErrs = append(criticalErrs, critErrs...)
@@ -497,13 +501,14 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 				ExtraRuntimeAnnotations: opts.ExtraRuntimeAnnotations,
 				ForceAdoption:           opts.ForceAdoption,
 				NetworkParallelism:      opts.NetworkParallelism,
+				NoFinalTracking:         opts.NoFinalTracking,
+				NoRemoveManualChanges:   opts.NoRemoveManualChanges,
 				ReleaseInfoAnnotations:  opts.ReleaseInfoAnnotations,
 				ReleaseLabels:           opts.ReleaseLabels,
 				RollbackGraphPath:       opts.RollbackGraphPath,
 				TrackCreationTimeout:    opts.TrackCreationTimeout,
 				TrackDeletionTimeout:    opts.TrackDeletionTimeout,
 				TrackReadinessTimeout:   opts.TrackReadinessTimeout,
-				NoRemoveManualChanges:   opts.NoRemoveManualChanges,
 			})
 
 			criticalErrs = append(criticalErrs, critErrs...)
@@ -670,9 +675,10 @@ type runRollbackPlanOptions struct {
 	ExtraRuntimeAnnotations map[string]string
 	ForceAdoption           bool
 	NetworkParallelism      int
+	NoFinalTracking         bool
+	NoRemoveManualChanges   bool
 	ReleaseInfoAnnotations  map[string]string
 	ReleaseLabels           map[string]string
-	NoRemoveManualChanges   bool
 	RollbackGraphPath       string
 	TrackCreationTimeout    time.Duration
 	TrackDeletionTimeout    time.Duration
@@ -777,7 +783,9 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Build rollback plan")
 
-	rollbackPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos)
+	rollbackPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
+		NoFinalTracking: opts.NoFinalTracking,
+	})
 	if err != nil {
 		return nil, nonCritErrs, append(critErrs, fmt.Errorf("build rollback plan: %w", err))
 	}
@@ -839,6 +847,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 	if executePlanErr != nil {
 		runFailurePlanResult, nonCrErrs, crErrs := runFailurePlan(ctx, releaseNamespace, rollbackPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
 			NetworkParallelism:    opts.NetworkParallelism,
+			NoFinalTracking:       opts.NoFinalTracking,
 			TrackReadinessTimeout: opts.TrackReadinessTimeout,
 			TrackCreationTimeout:  opts.TrackCreationTimeout,
 			TrackDeletionTimeout:  opts.TrackDeletionTimeout,

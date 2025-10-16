@@ -46,6 +46,7 @@ type ReleaseRollbackOptions struct {
 	KubeTLSServerName          string
 	KubeToken                  string
 	NetworkParallelism         int
+	NoFinalTracking            bool
 	NoPodLogs                  bool
 	NoProgressTablePrint       bool
 	NoRemoveManualChanges      bool
@@ -281,7 +282,9 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	log.Default.Debug(ctx, "Build install plan")
 
-	installPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos)
+	installPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
+		NoFinalTracking: opts.NoFinalTracking,
+	})
 	if err != nil {
 		handleBuildPlanErr(ctx, installPlan, err, opts.RollbackGraphPath, opts.TempDirPath, "release-rollback-graph.dot")
 		return fmt.Errorf("build install plan: %w", err)
@@ -381,6 +384,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	if executePlanErr != nil {
 		runFailurePlanResult, nonCritErrs, critErrs := runFailurePlan(ctx, releaseNamespace, installPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
 			NetworkParallelism:    opts.NetworkParallelism,
+			NoFinalTracking:       opts.NoFinalTracking,
 			TrackReadinessTimeout: opts.TrackReadinessTimeout,
 			TrackCreationTimeout:  opts.TrackCreationTimeout,
 			TrackDeletionTimeout:  opts.TrackDeletionTimeout,

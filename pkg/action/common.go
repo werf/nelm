@@ -210,9 +210,10 @@ func printReport(ctx context.Context, report *releaseReportV3) {
 
 type runFailureInstallPlanOptions struct {
 	NetworkParallelism    int
-	TrackReadinessTimeout time.Duration
+	NoFinalTracking       bool
 	TrackCreationTimeout  time.Duration
 	TrackDeletionTimeout  time.Duration
+	TrackReadinessTimeout time.Duration
 }
 
 type runFailurePlanResult struct {
@@ -236,7 +237,9 @@ func runFailurePlan(
 ) (result *runFailurePlanResult, nonCritErrs, critErrs []error) {
 	log.Default.Debug(ctx, "Build failure plan")
 
-	failurePlan, err := plan.BuildFailurePlan(failedPlan, installableInfos, releaseInfos)
+	failurePlan, err := plan.BuildFailurePlan(failedPlan, installableInfos, releaseInfos, plan.BuildFailurePlanOptions{
+		NoFinalTracking: opts.NoFinalTracking,
+	})
 	if err != nil {
 		return nil, nonCritErrs, append(critErrs, fmt.Errorf("build failure plan: %w", err))
 	}

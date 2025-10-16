@@ -58,6 +58,7 @@ type ChartLintOptions struct {
 	LocalKubeVersion             string
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
+	NoFinalTracking              bool
 	NoRemoveManualChanges        bool
 	RegistryCredentialsPath      string
 	ReleaseName                  string
@@ -328,7 +329,9 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Build install plan")
 
-	if _, err := plan.BuildPlan(instResInfos, delResInfos, relInfos); err != nil {
+	if _, err := plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
+		NoFinalTracking: opts.NoFinalTracking,
+	}); err != nil {
 		return fmt.Errorf("build install plan: %w", err)
 	}
 

@@ -259,6 +259,13 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		if err := cli.AddFlag(cmd, &cfg.NoFinalTracking, "no-final-tracking", false, "By default disable tracking operations that have no create/update/delete resource operations after them, which are most tracking operations, to speed up the release", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                progressFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.NoRemoveManualChanges, "no-remove-manual-changes", false, "Don't remove fields added manually to the resource in the cluster if fields aren't present in the manifest", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
