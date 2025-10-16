@@ -154,15 +154,15 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 
 	switch opts.OutputFormat {
 	case TableOutputFormat:
-		table := buildReleaseListOutputTable(ctx, result)
-		resultMessage = table.Render()
+		table := buildReleaseListOutputTable(ctx, result, opts.ReleaseNamespace != "")
+		resultMessage = table.Render() + "\n"
 	case JSONOutputFormat:
 		b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
 		if err != nil {
 			return nil, fmt.Errorf("marshal result to json: %w", err)
 		}
 
-		resultMessage = string(b)
+		resultMessage = string(b) + "\n"
 	case YamlOutputFormat:
 		b, err := yaml.MarshalContext(ctx, result)
 		if err != nil {
@@ -249,17 +249,20 @@ type ReleaseListResultChart struct {
 	AppVersion string `json:"appVersion"`
 }
 
-func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV1) prtable.Writer {
+func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV1, namespaced bool) prtable.Writer {
 	table := prtable.NewWriter()
 	setReleaseListOutputTableStyle(ctx, table)
 
-	table.AppendHeader(prtable.Row{
-		color.New(color.Bold).Sprintf("NAMESPACE"),
+	headerRow := prtable.Row{
 		color.New(color.Bold).Sprintf("NAME"),
 		color.New(color.Bold).Sprintf("STATUS"),
 		color.New(color.Bold).Sprintf("REVISION"),
-		color.New(color.Bold).Sprintf("DEPLOYED"),
-	})
+	}
+	if !namespaced {
+		headerRow = append([]interface{}{color.New(color.Bold).Sprintf("NAMESPACE")}, headerRow...)
+	}
+
+	table.AppendHeader(headerRow)
 
 	for _, release := range result.Releases {
 		var statusColor color.Color
@@ -272,13 +275,16 @@ func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV
 			statusColor = color.LightYellow
 		}
 
-		table.AppendRow(prtable.Row{
-			release.Namespace,
+		row := prtable.Row{
 			color.New(color.Cyan).Sprintf(release.Name),
 			color.New(statusColor).Sprintf(string(release.Status)),
 			release.Revision,
-			release.DeployedAt.Human,
-		})
+		}
+		if !namespaced {
+			row = append([]interface{}{release.Namespace}, row...)
+		}
+
+		table.AppendRow(row)
 	}
 
 	return table
