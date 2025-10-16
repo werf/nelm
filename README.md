@@ -446,11 +446,11 @@ Beware that with `werf.io/ownership: release` if the resource is rendered for in
 
 #### Annotation `werf.io/delete-policy`
 
-Format: `[before-creation][,succeeded][,failed]` \
-Default: nothing for general resources, mapped from `helm.sh/hook-delete-policy` for hooks \
+Format: `[before-creation][,before-creation-if-immutable][,succeeded][,failed]` \
+Default: nothing for general resources (unless Job, then `before-creation-if-immutable`), mapped from `helm.sh/hook-delete-policy` for hooks \
 Example: `werf.io/delete-policy: before-creation,succeeded`
 
-Inspired by `helm.sh/hook-delete-policy`. Controls resource deletions during resource deployment. `before-creation` means always recreate the resource, `succeeded` means delete the resource at the end of the current deployment stage if the resource was successfully deployed, `failed` means delete the resource if it's readiness check failed. Has precedence over `helm.sh/hook-delete-policy`.
+Inspired by `helm.sh/hook-delete-policy`. Controls resource deletions during resource deployment. `before-creation` means always recreate the resource, `before-creation-if-immutable` means recreate the resource only when we got "field is immutable" error during its update, `succeeded` means delete the resource at the end of the current deployment stage if the resource was successfully deployed, `failed` means delete the resource if it's readiness check failed. Has precedence over `helm.sh/hook-delete-policy`.
 
 #### Annotation `werf.io/track-termination-mode`
 

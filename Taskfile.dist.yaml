@@ -20,6 +20,7 @@ vars:
 tasks:
   _build-and-lint:
     deps:
+      - generate
       - build
       - format
       - lint
