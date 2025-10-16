@@ -1,5 +1,14 @@
 # Changelog
 
+### [1.14.1](https://www.github.com/werf/nelm/compare/v1.14.0...v1.14.1) (2025-10-16)
+
+
+### Bug Fixes
+
+* broken diffs with `object:` in `plan` ([97fceea](https://www.github.com/werf/nelm/commit/97fceeaba5e8bda53d87d40e80bb8d838ba74bc3))
+* improve diffs in `plan` output ([90fd841](https://www.github.com/werf/nelm/commit/90fd841a5e4b0ce23812cd7120499ef43038d8d5))
+* improve output of experimental `release list` ([902b6d9](https://www.github.com/werf/nelm/commit/902b6d9e1dd8cc07dd72e855d89a550a9e5b4078))
+
 ## [1.14.0](https://www.github.com/werf/nelm/compare/v1.13.2...v1.14.0) (2025-10-16)
 
 
