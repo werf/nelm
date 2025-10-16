@@ -92,7 +92,7 @@ func cleanRuntimeDataFromUnstruct(unstruct *unstructured.Unstructured) {
 	unstruct.SetCreationTimestamp(v1.Time{})
 	unstruct.SetSelfLink("")
 	unstruct.SetFinalizers(nil)
-	unstruct.Object["status"] = nil
+	delete(unstruct.Object, "status")
 
 	managedFields := unstruct.GetManagedFields()
 	for _, entry := range managedFields {

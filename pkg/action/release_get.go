@@ -191,7 +191,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 
 		resultMessage = string(b)
 	case YamlOutputFormat:
-		b, err := yaml.MarshalContext(ctx, result)
+		b, err := yaml.MarshalContext(ctx, result, yaml.UseLiteralStyleIfMultiline(true))
 		if err != nil {
 			return nil, fmt.Errorf("marshal result to yaml: %w", err)
 		}

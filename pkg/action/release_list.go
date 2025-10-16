@@ -164,7 +164,7 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 
 		resultMessage = string(b) + "\n"
 	case YamlOutputFormat:
-		b, err := yaml.MarshalContext(ctx, result)
+		b, err := yaml.MarshalContext(ctx, result, yaml.UseLiteralStyleIfMultiline(true))
 		if err != nil {
 			return nil, fmt.Errorf("marshal result to yaml: %w", err)
 		}
