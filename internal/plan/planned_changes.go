@@ -198,7 +198,7 @@ func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *u
 		if oldUnstruct != nil {
 			oldUnstructClean := cleanUnstruct(oldUnstruct, sensitiveInfo, opts)
 
-			if oldObjByte, err := yaml.MarshalContext(context.TODO(), oldUnstructClean); err != nil {
+			if oldObjByte, err := yaml.MarshalContext(context.TODO(), oldUnstructClean.Object); err != nil {
 				return nil, fmt.Errorf("marshal old unstruct to yaml: %w", err)
 			} else {
 				oldObjManifest = string(oldObjByte)
@@ -208,7 +208,7 @@ func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *u
 		if newUnstruct != nil {
 			newUnstructClean := cleanUnstruct(newUnstruct, sensitiveInfo, opts)
 
-			if newObjByte, err := yaml.MarshalContext(context.TODO(), newUnstructClean); err != nil {
+			if newObjByte, err := yaml.MarshalContext(context.TODO(), newUnstructClean.Object); err != nil {
 				return nil, fmt.Errorf("marshal new unstruct to yaml: %w", err)
 			} else {
 				newObjManifest = string(newObjByte)
