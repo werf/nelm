@@ -21,7 +21,9 @@ tasks:
   _build-and-lint:
     deps:
       - build
+      - format
       - lint
+      - test:unit
 
   default:
     cmds:

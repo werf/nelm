@@ -46,6 +46,7 @@ type ReleaseUninstallOptions struct {
 	KubeTLSServerName          string
 	KubeToken                  string
 	NetworkParallelism         int
+	NoFinalTracking            bool
 	NoPodLogs                  bool
 	NoProgressTablePrint       bool
 	NoRemoveManualChanges      bool
@@ -216,7 +217,9 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		log.Default.Debug(ctx, "Build delete plan")
-		deletePlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos)
+		deletePlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
+			NoFinalTracking: opts.NoFinalTracking,
+		})
 		if err != nil {
 			handleBuildPlanErr(ctx, deletePlan, err, opts.UninstallGraphPath, opts.TempDirPath, "release-uninstall-graph.dot")
 			return fmt.Errorf("build delete plan: %w", err)
@@ -280,6 +283,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		if executePlanErr != nil {
 			runFailurePlanResult, nonCritErrs, critErrs := runFailurePlan(ctx, releaseNamespace, deletePlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
 				NetworkParallelism:    opts.NetworkParallelism,
+				NoFinalTracking:       opts.NoFinalTracking,
 				TrackReadinessTimeout: opts.TrackReadinessTimeout,
 				TrackCreationTimeout:  opts.TrackCreationTimeout,
 				TrackDeletionTimeout:  opts.TrackDeletionTimeout,

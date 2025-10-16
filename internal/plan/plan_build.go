@@ -12,7 +12,11 @@ import (
 	"github.com/werf/nelm/internal/resource/spec"
 )
 
-func BuildPlan(installableInfos []*InstallableResourceInfo, deletableInfos []*DeletableResourceInfo, releaseInfos []*ReleaseInfo) (*Plan, error) {
+type BuildPlanOptions struct {
+	NoFinalTracking bool
+}
+
+func BuildPlan(installableInfos []*InstallableResourceInfo, deletableInfos []*DeletableResourceInfo, releaseInfos []*ReleaseInfo, opts BuildPlanOptions) (*Plan, error) {
 	plan := NewPlan()
 
 	if err := addMainStages(plan); err != nil {
@@ -39,14 +43,18 @@ func BuildPlan(installableInfos []*InstallableResourceInfo, deletableInfos []*De
 		return plan, fmt.Errorf("connect internal dependencies: %w", err)
 	}
 
-	if err := plan.Optimize(); err != nil {
+	if err := plan.Optimize(opts.NoFinalTracking); err != nil {
 		return plan, fmt.Errorf("optimize plan: %w", err)
 	}
 
 	return plan, nil
 }
 
-func BuildFailurePlan(failedPlan *Plan, installableInfos []*InstallableResourceInfo, releaseInfos []*ReleaseInfo) (*Plan, error) {
+type BuildFailurePlanOptions struct {
+	NoFinalTracking bool
+}
+
+func BuildFailurePlan(failedPlan *Plan, installableInfos []*InstallableResourceInfo, releaseInfos []*ReleaseInfo, opts BuildFailurePlanOptions) (*Plan, error) {
 	plan := NewPlan()
 
 	if err := addMainStages(plan); err != nil {
@@ -61,7 +69,7 @@ func BuildFailurePlan(failedPlan *Plan, installableInfos []*InstallableResourceI
 		return plan, fmt.Errorf("add failure resource operations: %w", err)
 	}
 
-	if err := plan.Optimize(); err != nil {
+	if err := plan.Optimize(opts.NoFinalTracking); err != nil {
 		return plan, fmt.Errorf("optimize plan: %w", err)
 	}
 

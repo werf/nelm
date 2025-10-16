@@ -43,7 +43,7 @@ func (s *BuildPlanSuite) SetupSuite() {
 type buildPlanTestCase struct {
 	name   string
 	skip   bool
-	input  func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo)
+	input  func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo, opts plan.BuildPlanOptions)
 	expect func(installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) (operations []*plan.Operation, adjMap map[string]map[string]graph.Edge[string])
 }
 
@@ -51,10 +51,10 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 	testCases := []buildPlanTestCase{
 		{
 			name: `install resource`,
-			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) {
+			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo, opts plan.BuildPlanOptions) {
 				return []*plan.InstallableResourceInfo{
 					defaultInstallableResourceInfo(defaultInstallableResource(s.releaseName, s.releaseNamespace)),
-				}, nil, nil
+				}, nil, nil, plan.BuildPlanOptions{}
 			},
 			expect: func(installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) ([]*plan.Operation, map[string]map[string]graph.Edge[string]) {
 				createOp := &plan.Operation{
@@ -155,10 +155,10 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 		},
 		{
 			name: `delete resource`,
-			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) {
+			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo, opts plan.BuildPlanOptions) {
 				return nil, []*plan.DeletableResourceInfo{
 					defaultDeletableResourceInfo(defaultDeletableResource(s.releaseName, s.releaseNamespace), s.releaseName, s.releaseNamespace),
-				}, nil
+				}, nil, plan.BuildPlanOptions{}
 			},
 			expect: func(installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) ([]*plan.Operation, map[string]map[string]graph.Edge[string]) {
 				deleteOp := &plan.Operation{
@@ -222,10 +222,10 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 		},
 		{
 			name: `create release`,
-			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) {
+			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo, opts plan.BuildPlanOptions) {
 				return nil, nil, []*plan.ReleaseInfo{
 					defaultReleaseInfo(s.releaseName, s.releaseNamespace),
-				}
+				}, plan.BuildPlanOptions{}
 			},
 			expect: func(installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) ([]*plan.Operation, map[string]map[string]graph.Edge[string]) {
 				createReleaseOp := &plan.Operation{
@@ -321,14 +321,14 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 		},
 		{
 			name: `delete release`,
-			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) {
+			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo, opts plan.BuildPlanOptions) {
 				relInfo := defaultReleaseInfo(s.releaseName, s.releaseNamespace)
 				relInfo.Must = plan.ReleaseTypeDelete
 				relInfo.MustFailOnFailedDeploy = false
 
 				return nil, nil, []*plan.ReleaseInfo{
 					relInfo,
-				}
+				}, plan.BuildPlanOptions{}
 			},
 			expect: func(installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) ([]*plan.Operation, map[string]map[string]graph.Edge[string]) {
 				deleteReleaseOp := &plan.Operation{
@@ -381,8 +381,8 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 		},
 		{
 			name: `do nothing`,
-			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) {
-				return nil, nil, nil
+			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo, opts plan.BuildPlanOptions) {
+				return nil, nil, nil, plan.BuildPlanOptions{}
 			},
 			expect: func(installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) ([]*plan.Operation, map[string]map[string]graph.Edge[string]) {
 				return []*plan.Operation{}, map[string]map[string]graph.Edge[string]{}
@@ -390,7 +390,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 		},
 		{
 			name: `install automatically interdependent resources`,
-			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) {
+			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo, opts plan.BuildPlanOptions) {
 				resInfo := defaultInstallableResourceInfo(defaultInstallableResource(s.releaseName, s.releaseNamespace))
 				resInfo.MustTrackReadiness = false
 
@@ -415,7 +415,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 				return []*plan.InstallableResourceInfo{
 					resInfo,
 					dependentResInfo,
-				}, nil, nil
+				}, nil, nil, plan.BuildPlanOptions{}
 			},
 			expect: func(installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) ([]*plan.Operation, map[string]map[string]graph.Edge[string]) {
 				createOp := &plan.Operation{
@@ -505,7 +505,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 		},
 		{
 			name: `install manually interdependent resources`,
-			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) {
+			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo, opts plan.BuildPlanOptions) {
 				resInfo := defaultInstallableResourceInfo(defaultInstallableResource(s.releaseName, s.releaseNamespace))
 				resInfo.MustTrackReadiness = false
 
@@ -531,7 +531,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 				return []*plan.InstallableResourceInfo{
 					resInfo,
 					dependentResInfo,
-				}, nil, nil
+				}, nil, nil, plan.BuildPlanOptions{}
 			},
 			expect: func(installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) ([]*plan.Operation, map[string]map[string]graph.Edge[string]) {
 				createOp := &plan.Operation{
@@ -621,15 +621,156 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 			},
 		},
 		{
+			name: `install manually interdependent resources with no final tracking operations`,
+			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo, opts plan.BuildPlanOptions) {
+				resInfo := defaultInstallableResourceInfo(defaultInstallableResource(s.releaseName, s.releaseNamespace))
+
+				dependentResSpec := defaultInstallableResource(s.releaseName, s.releaseNamespace)
+				dependentResSpec.Name = "dependent-resource"
+				dependentResSpec.Unstruct.SetName("dependent-resource")
+				dependentResSpec.Weight = nil
+				dependentResSpec.ManualInternalDependencies = []*resource.InternalDependency{
+					{
+						ResourceMatcher: &spec.ResourceMatcher{
+							Names:      []string{resInfo.Name},
+							Namespaces: []string{resInfo.Namespace},
+							Groups:     []string{resInfo.GroupVersionKind.Group},
+							Kinds:      []string{resInfo.GroupVersionKind.Kind},
+							Versions:   []string{resInfo.GroupVersionKind.Version},
+						},
+						ResourceState: common.ResourceStateReady,
+					},
+				}
+				dependentResInfo := defaultInstallableResourceInfo(dependentResSpec)
+
+				return []*plan.InstallableResourceInfo{
+						resInfo,
+						dependentResInfo,
+					}, nil, nil, plan.BuildPlanOptions{
+						NoFinalTracking: true,
+					}
+			},
+			expect: func(installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) ([]*plan.Operation, map[string]map[string]graph.Edge[string]) {
+				createOp := &plan.Operation{
+					Type:     plan.OperationTypeCreate,
+					Version:  plan.OperationVersionCreate,
+					Category: plan.OperationCategoryResource,
+					Config: &plan.OperationConfigCreate{
+						ResourceSpec: installableInfos[0].LocalResource.ResourceSpec,
+					},
+				}
+
+				createDependentOp := &plan.Operation{
+					Type:     plan.OperationTypeCreate,
+					Version:  plan.OperationVersionCreate,
+					Category: plan.OperationCategoryResource,
+					Config: &plan.OperationConfigCreate{
+						ResourceSpec: installableInfos[1].LocalResource.ResourceSpec,
+					},
+				}
+
+				trackReadinessOp := &plan.Operation{
+					Type:     plan.OperationTypeTrackReadiness,
+					Version:  plan.OperationVersionTrackReadiness,
+					Category: plan.OperationCategoryTrack,
+					Config: &plan.OperationConfigTrackReadiness{
+						ResourceMeta:                             installableInfos[0].LocalResource.ResourceMeta,
+						FailMode:                                 installableInfos[0].LocalResource.FailMode,
+						FailuresAllowed:                          installableInfos[0].LocalResource.FailuresAllowed,
+						IgnoreLogs:                               installableInfos[0].LocalResource.SkipLogs,
+						IgnoreLogsForContainers:                  installableInfos[0].LocalResource.SkipLogsForContainers,
+						IgnoreReadinessProbeFailsByContainerName: installableInfos[0].LocalResource.IgnoreReadinessProbeFailsForContainers,
+						NoActivityTimeout:                        installableInfos[0].LocalResource.NoActivityTimeout,
+						SaveEvents:                               installableInfos[0].LocalResource.ShowServiceMessages,
+						SaveLogsByRegex:                          installableInfos[0].LocalResource.LogRegex,
+						SaveLogsByRegexForContainers:             installableInfos[0].LocalResource.LogRegexesForContainers,
+						SaveLogsOnlyForContainers:                installableInfos[0].LocalResource.ShowLogsOnlyForContainers,
+						SaveLogsOnlyForNumberOfReplicas:          installableInfos[0].LocalResource.ShowLogsOnlyForNumberOfReplicas,
+					},
+				}
+
+				mainStageStartOp := &plan.Operation{
+					Type:     plan.OperationTypeNoop,
+					Version:  plan.OperationVersionNoop,
+					Category: plan.OperationCategoryMeta,
+					Config: &plan.OperationConfigNoop{
+						OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, common.StageInstall, common.StageStartSuffix),
+					},
+				}
+
+				mainStageEndOp := &plan.Operation{
+					Type:     plan.OperationTypeNoop,
+					Version:  plan.OperationVersionNoop,
+					Category: plan.OperationCategoryMeta,
+					Config: &plan.OperationConfigNoop{
+						OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, common.StageInstall, common.StageEndSuffix),
+					},
+				}
+
+				weightStageStartOp := &plan.Operation{
+					Type:     plan.OperationTypeNoop,
+					Version:  plan.OperationVersionNoop,
+					Category: plan.OperationCategoryMeta,
+					Config: &plan.OperationConfigNoop{
+						OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, common.SubStageWeighted(common.StageInstall, *installableInfos[0].LocalResource.Weight), common.StageStartSuffix),
+					},
+				}
+
+				weightStageEndOp := &plan.Operation{
+					Type:     plan.OperationTypeNoop,
+					Version:  plan.OperationVersionNoop,
+					Category: plan.OperationCategoryMeta,
+					Config: &plan.OperationConfigNoop{
+						OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, common.SubStageWeighted(common.StageInstall, *installableInfos[0].LocalResource.Weight), common.StageEndSuffix),
+					},
+				}
+
+				ops := []*plan.Operation{
+					mainStageStartOp,
+					weightStageStartOp,
+					createOp,
+					trackReadinessOp,
+					weightStageEndOp,
+					createDependentOp,
+					mainStageEndOp,
+				}
+
+				adjMap := map[string]map[string]graph.Edge[string]{
+					mainStageStartOp.ID(): {
+						weightStageStartOp.ID(): {},
+					},
+					weightStageStartOp.ID(): {
+						createOp.ID(): {},
+					},
+					createOp.ID(): {
+						trackReadinessOp.ID(): {},
+					},
+					trackReadinessOp.ID(): {
+						weightStageEndOp.ID():  {},
+						createDependentOp.ID(): {},
+					},
+					weightStageEndOp.ID(): {
+						mainStageEndOp.ID(): {},
+					},
+					createDependentOp.ID(): {
+						mainStageEndOp.ID(): {},
+					},
+					mainStageEndOp.ID(): {},
+				}
+
+				return ops, adjMap
+			},
+		},
+		{
 			name: `create resource on pre-install stage`,
-			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) {
+			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo, opts plan.BuildPlanOptions) {
 				info := defaultInstallableResourceInfo(defaultInstallableResource(s.releaseName, s.releaseNamespace))
 				info.Stage = common.StagePreInstall
 				info.MustTrackReadiness = false
 
 				return []*plan.InstallableResourceInfo{
 					info,
-				}, nil, nil
+				}, nil, nil, plan.BuildPlanOptions{}
 			},
 			expect: func(installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) ([]*plan.Operation, map[string]map[string]graph.Edge[string]) {
 				createOp := &plan.Operation{
@@ -706,7 +847,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 		},
 		{
 			name: `create two resource iterations`,
-			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) {
+			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo, opts plan.BuildPlanOptions) {
 				info1 := defaultInstallableResourceInfo(defaultInstallableResource(s.releaseName, s.releaseNamespace))
 				info1.MustTrackReadiness = false
 
@@ -718,7 +859,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 				return []*plan.InstallableResourceInfo{
 					info1,
 					info2,
-				}, nil, nil
+				}, nil, nil, plan.BuildPlanOptions{}
 			},
 			expect: func(installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) ([]*plan.Operation, map[string]map[string]graph.Edge[string]) {
 				createOp1 := &plan.Operation{
@@ -861,14 +1002,14 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 		},
 		{
 			name: `create resource and delete it after`,
-			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) {
+			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo, opts plan.BuildPlanOptions) {
 				info := defaultInstallableResourceInfo(defaultInstallableResource(s.releaseName, s.releaseNamespace))
 				info.MustTrackReadiness = false
 				info.MustDeleteOnSuccessfulInstall = true
 
 				return []*plan.InstallableResourceInfo{
 					info,
-				}, nil, nil
+				}, nil, nil, plan.BuildPlanOptions{}
 			},
 			expect: func(installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) ([]*plan.Operation, map[string]map[string]graph.Edge[string]) {
 				createOp := &plan.Operation{
@@ -971,14 +1112,14 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 		},
 		{
 			name: `recreate resource`,
-			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) {
+			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo, opts plan.BuildPlanOptions) {
 				info := defaultInstallableResourceInfo(defaultInstallableResource(s.releaseName, s.releaseNamespace))
 				info.MustTrackReadiness = false
 				info.MustInstall = plan.ResourceInstallTypeRecreate
 
 				return []*plan.InstallableResourceInfo{
 					info,
-				}, nil, nil
+				}, nil, nil, plan.BuildPlanOptions{}
 			},
 			expect: func(installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) ([]*plan.Operation, map[string]map[string]graph.Edge[string]) {
 				recreateOp := &plan.Operation{
@@ -1055,14 +1196,14 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 		},
 		{
 			name: `apply resource`,
-			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) {
+			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo, opts plan.BuildPlanOptions) {
 				info := defaultInstallableResourceInfo(defaultInstallableResource(s.releaseName, s.releaseNamespace))
 				info.MustTrackReadiness = false
 				info.MustInstall = plan.ResourceInstallTypeApply
 
 				return []*plan.InstallableResourceInfo{
 					info,
-				}, nil, nil
+				}, nil, nil, plan.BuildPlanOptions{}
 			},
 			expect: func(installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) ([]*plan.Operation, map[string]map[string]graph.Edge[string]) {
 				applyOp := &plan.Operation{
@@ -1139,14 +1280,14 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 		},
 		{
 			name: `update resource`,
-			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) {
+			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo, opts plan.BuildPlanOptions) {
 				info := defaultInstallableResourceInfo(defaultInstallableResource(s.releaseName, s.releaseNamespace))
 				info.MustTrackReadiness = false
 				info.MustInstall = plan.ResourceInstallTypeUpdate
 
 				return []*plan.InstallableResourceInfo{
 					info,
-				}, nil, nil
+				}, nil, nil, plan.BuildPlanOptions{}
 			},
 			expect: func(installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) ([]*plan.Operation, map[string]map[string]graph.Edge[string]) {
 				updateOp := &plan.Operation{
@@ -1257,9 +1398,9 @@ func runBuildPlanTest(tc buildPlanTestCase, s *BuildPlanSuite) func() {
 			s.T().Skip()
 		}
 
-		instInfos, delInfos, relInfos := tc.input()
+		instInfos, delInfos, relInfos, opts := tc.input()
 
-		plan, err := plan.BuildPlan(instInfos, delInfos, relInfos)
+		plan, err := plan.BuildPlan(instInfos, delInfos, relInfos, opts)
 		s.Require().NoError(err)
 
 		operations := plan.Operations()

@@ -66,6 +66,7 @@ type ReleasePlanInstallOptions struct {
 	LegacyExtraValues            map[string]interface{}
 	LogRegistryStreamOut         io.Writer
 	NetworkParallelism           int
+	NoFinalTracking              bool
 	NoInstallCRDs                bool
 	NoRemoveManualChanges        bool
 	RegistryCredentialsPath      string
@@ -343,7 +344,9 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Build install plan")
 
-	installPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos)
+	installPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
+		NoFinalTracking: opts.NoFinalTracking,
+	})
 	if err != nil {
 		handleBuildPlanErr(ctx, installPlan, err, opts.InstallGraphPath, opts.TempDirPath, "release-install-graph.dot")
 		return fmt.Errorf("build install plan: %w", err)
