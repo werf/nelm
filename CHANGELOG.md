@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.15.0](https://github.com/werf/nelm/compare/v1.14.1...v1.15.0) (2025-10-17)
+
+
+### Features
+
+* option `--set-runtime-json` ([948a502](https://github.com/werf/nelm/commit/948a502971ec9468a041a1725cfc666019769b70))
+
+
+### Bug Fixes
+
+* error `too many arguments in call to chartutil.ToRenderValues` ([cd349f3](https://github.com/werf/nelm/commit/cd349f36e00c23e51eb30e6182c31617156ed7ab))
+* invalid `helm.sh/hook` causes panic in `render` ([802708f](https://github.com/werf/nelm/commit/802708f0fab524e2aed4461752e9df979833ac4d))
+
 ### [1.14.1](https://www.github.com/werf/nelm/compare/v1.14.0...v1.14.1) (2025-10-16)
 
 
