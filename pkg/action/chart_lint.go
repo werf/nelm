@@ -65,6 +65,7 @@ type ChartLintOptions struct {
 	ReleaseNamespace             string
 	ReleaseStorageDriver         string
 	Remote                       bool
+	RuntimeJSONSets              []string
 	SQLConnectionString          string
 	SecretKey                    string
 	SecretKeyIgnore              bool
@@ -216,14 +217,15 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
 		ChartRepoSkipUpdate:    opts.ChartRepositorySkipUpdate,
 		ChartVersion:           opts.ChartVersion,
-		FileValues:             opts.ValuesFileSets,
 		HelmOptions:            helmOptions,
 		KubeCAPath:             opts.KubeCAPath,
 		RegistryClient:         helmRegistryClient,
 		Remote:                 opts.Remote,
-		SetValues:              opts.ValuesSets,
-		StringSetValues:        opts.ValuesStringSets,
-		ValuesFiles:            opts.ValuesFilesPaths,
+		RuntimeJSONSets:        opts.RuntimeJSONSets,
+		ValuesFileSets:         opts.ValuesFileSets,
+		ValuesFilesPaths:       opts.ValuesFilesPaths,
+		ValuesSets:             opts.ValuesSets,
+		ValuesStringSets:       opts.ValuesStringSets,
 	}
 
 	if !opts.Remote {

@@ -69,6 +69,7 @@ type ChartRenderOptions struct {
 	ReleaseNamespace             string
 	ReleaseStorageDriver         string
 	Remote                       bool
+	RuntimeJSONSets              []string
 	SQLConnectionString          string
 	SecretKey                    string
 	SecretKeyIgnore              bool
@@ -216,14 +217,15 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		ChartRepoInsecure:      opts.ChartRepositoryInsecure,
 		ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
 		ChartVersion:           opts.ChartVersion,
-		FileValues:             opts.ValuesFileSets,
 		HelmOptions:            helmOptions,
 		KubeCAPath:             opts.KubeCAPath,
 		RegistryClient:         helmRegistryClient,
 		Remote:                 opts.Remote,
-		SetValues:              opts.ValuesSets,
-		StringSetValues:        opts.ValuesStringSets,
-		ValuesFiles:            opts.ValuesFilesPaths,
+		RuntimeJSONSets:        opts.RuntimeJSONSets,
+		ValuesFileSets:         opts.ValuesFileSets,
+		ValuesFilesPaths:       opts.ValuesFilesPaths,
+		ValuesSets:             opts.ValuesSets,
+		ValuesStringSets:       opts.ValuesStringSets,
 	}
 
 	if !opts.Remote {

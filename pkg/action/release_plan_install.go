@@ -71,6 +71,7 @@ type ReleasePlanInstallOptions struct {
 	NoRemoveManualChanges        bool
 	RegistryCredentialsPath      string
 	ReleaseStorageDriver         string
+	RuntimeJSONSets              []string
 	SQLConnectionString          string
 	SecretKey                    string
 	SecretKeyIgnore              bool
@@ -247,15 +248,16 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
 		ChartRepoSkipUpdate:    opts.ChartRepositorySkipUpdate,
 		ChartVersion:           opts.ChartVersion,
-		FileValues:             opts.ValuesFileSets,
 		HelmOptions:            helmOptions,
 		KubeCAPath:             opts.KubeCAPath,
 		NoStandaloneCRDs:       opts.NoInstallCRDs,
 		RegistryClient:         helmRegistryClient,
 		Remote:                 true,
-		SetValues:              opts.ValuesSets,
-		StringSetValues:        opts.ValuesStringSets,
-		ValuesFiles:            opts.ValuesFilesPaths,
+		RuntimeJSONSets:        opts.RuntimeJSONSets,
+		ValuesFileSets:         opts.ValuesFileSets,
+		ValuesFilesPaths:       opts.ValuesFilesPaths,
+		ValuesSets:             opts.ValuesSets,
+		ValuesStringSets:       opts.ValuesStringSets,
 	})
 	if err != nil {
 		return fmt.Errorf("render chart: %w", err)
