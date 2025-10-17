@@ -84,6 +84,7 @@ type ReleaseInstallOptions struct {
 	ReleaseLabels                map[string]string
 	ReleaseStorageDriver         string
 	RollbackGraphPath            string
+	RuntimeJSONSets              []string
 	SQLConnectionString          string
 	SecretKey                    string
 	SecretKeyIgnore              bool
@@ -280,16 +281,17 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
 		ChartRepoSkipUpdate:    opts.ChartRepositorySkipUpdate,
 		ChartVersion:           opts.ChartVersion,
-		FileValues:             opts.ValuesFileSets,
 		HelmOptions:            helmOptions,
 		KubeCAPath:             opts.KubeCAPath,
 		NoStandaloneCRDs:       opts.NoInstallCRDs,
 		RegistryClient:         helmRegistryClient,
 		Remote:                 true,
-		SetValues:              opts.ValuesSets,
-		StringSetValues:        opts.ValuesStringSets,
+		RuntimeJSONSets:        opts.RuntimeJSONSets,
 		SubNotes:               opts.SubNotes,
-		ValuesFiles:            opts.ValuesFilesPaths,
+		ValuesFileSets:         opts.ValuesFileSets,
+		ValuesFilesPaths:       opts.ValuesFilesPaths,
+		ValuesSets:             opts.ValuesSets,
+		ValuesStringSets:       opts.ValuesStringSets,
 	})
 	if err != nil {
 		return fmt.Errorf("render chart: %w", err)

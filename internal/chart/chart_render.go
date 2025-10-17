@@ -28,6 +28,7 @@ import (
 	"github.com/werf/3p-helm/pkg/helmpath"
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/releaseutil"
+	"github.com/werf/3p-helm/pkg/strvals"
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
@@ -42,17 +43,18 @@ type RenderChartOptions struct {
 	ChartRepoSkipTLSVerify bool
 	ChartRepoSkipUpdate    bool
 	ChartVersion           string
-	FileValues             []string
 	HelmOptions            helmopts.HelmOptions
 	KubeCAPath             string
 	KubeVersion            *chartutil.KubeVersion
 	NoStandaloneCRDs       bool
 	RegistryClient         *registry.Client
 	Remote                 bool
-	SetValues              []string
-	StringSetValues        []string
+	RuntimeJSONSets        []string
 	SubNotes               bool
-	ValuesFiles            []string
+	ValuesFileSets         []string
+	ValuesFilesPaths       []string
+	ValuesSets             []string
+	ValuesStringSets       []string
 }
 
 type RenderChartResult struct {
@@ -86,10 +88,10 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	opts.HelmOptions.ChartLoadOpts.DepDownloader = depDownloader
 
 	overrideValuesOpts := &values.Options{
-		StringValues: opts.StringSetValues,
-		Values:       opts.SetValues,
-		FileValues:   opts.FileValues,
-		ValueFiles:   opts.ValuesFiles,
+		StringValues: opts.ValuesStringSets,
+		Values:       opts.ValuesSets,
+		FileValues:   opts.ValuesFileSets,
+		ValueFiles:   opts.ValuesFilesPaths,
 	}
 
 	log.Default.TraceStruct(ctx, overrideValuesOpts, "Override values options:")
@@ -143,6 +145,13 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		return nil, fmt.Errorf("chart requires kubeVersion: %s which is incompatible with Kubernetes %s", chart.Metadata.KubeVersion, caps.KubeVersion.String())
 	}
 
+	runtime, err := buildRuntime(opts.RuntimeJSONSets)
+	if err != nil {
+		return nil, fmt.Errorf("build runtime: %w", err)
+	}
+
+	log.Default.TraceStruct(ctx, runtime, "Runtime:")
+
 	var isUpgrade bool
 	switch deployType {
 	case common.DeployTypeUpgrade, common.DeployTypeRollback:
@@ -161,7 +170,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		Revision:  revision,
 		IsInstall: !isUpgrade,
 		IsUpgrade: isUpgrade,
-	}, caps)
+	}, caps, runtime)
 	if err != nil {
 		return nil, fmt.Errorf("build rendered values for chart %q: %w", chart.Name(), err)
 	}
@@ -369,4 +378,16 @@ func buildChartCapabilities(ctx context.Context, clientFactory kube.ClientFactor
 	}
 
 	return capabilities, nil
+}
+
+func buildRuntime(jsonSets []string) (map[string]interface{}, error) {
+	runtime := map[string]interface{}{}
+
+	for _, jsonSet := range jsonSets {
+		if err := strvals.ParseJSON(jsonSet, runtime); err != nil {
+			return nil, fmt.Errorf("parse runtime JSON set %q: %w", jsonSet, err)
+		}
+	}
+
+	return runtime, nil
 }

@@ -233,6 +233,14 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		if err := cli.AddFlag(cmd, &cfg.RuntimeJSONSets, "set-runtime-json", []string{}, "Set new keys in $.Runtime, where the key is the value path and the value is JSON. This is meant to be generated inside the program, so use --set-json instead, unless you know what you are doing", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                valuesFlagGroup,
+			NoSplitOnCommas:      true,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.LocalKubeVersion, "kube-version", action.DefaultLocalKubeVersion, "Kubernetes version stub for non-remote mode", cli.AddFlagOptions{
 			Group: mainFlagGroup,
 		}); err != nil {
