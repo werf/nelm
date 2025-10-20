@@ -77,6 +77,7 @@ type ReleasePlanInstallOptions struct {
 	SecretKeyIgnore              bool
 	SecretValuesPaths            []string
 	SecretWorkDir                string
+	HideInsignificantChanges     bool
 	ShowInsignificantDiffs       bool
 	ShowSensitiveDiffs           bool
 	ShowVerboseCRDDiffs          bool
@@ -393,7 +394,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		return fmt.Errorf("calculate planned changes: %w", err)
 	}
 
-	logPlannedChanges(ctx, releaseName, releaseNamespace, changes)
+	logPlannedChanges(ctx, releaseName, releaseNamespace, changes, opts)
 
 	if opts.ErrorIfChangesPlanned && (!releaseIsUpToDate || !installPlanIsUseless) {
 		return ErrChangesPlanned
@@ -467,6 +468,7 @@ func logPlannedChanges(
 	releaseName string,
 	releaseNamespace string,
 	changes []*plan.ResourceChange,
+	opts ReleasePlanInstallOptions,
 ) {
 	if len(changes) == 0 {
 		return
@@ -475,11 +477,13 @@ func logPlannedChanges(
 	log.Default.Info(ctx, "")
 
 	for _, change := range changes {
-		log.Default.InfoBlock(ctx, log.BlockOptions{
-			BlockTitle: buildDiffHeader(change),
-		}, func() {
-			log.Default.Info(ctx, "%s", change.Udiff)
-		})
+		if !change.IsInsignificant() || !opts.HideInsignificantChanges || opts.ShowInsignificantDiffs {
+			log.Default.InfoBlock(ctx, log.BlockOptions{
+				BlockTitle: buildDiffHeader(change),
+			}, func() {
+				log.Default.Info(ctx, "%s", change.Udiff)
+			})
+		}
 	}
 
 	log.Default.Info(ctx, color.Bold.Render("Planned changes summary")+" for release %q (namespace: %q):", releaseName, releaseNamespace)

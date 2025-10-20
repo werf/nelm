@@ -40,6 +40,10 @@ type ResourceChange struct {
 	Udiff           string
 }
 
+func (rc *ResourceChange) IsInsignificant() bool {
+	return rc.Udiff == HiddenInsignificantChanges
+}
+
 func CalculatePlannedChanges(installableInfos []*InstallableResourceInfo, deletableInfos []*DeletableResourceInfo, opts CalculatePlannedChangesOptions) ([]*ResourceChange, error) {
 	instInfosByIter := groupInstInfosByIter(installableInfos)
 
@@ -185,8 +189,6 @@ func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *u
 		!opts.ShowVerboseCRDDiffs &&
 		(oldUnstruct == nil || newUnstruct == nil) {
 		uDiff = HiddenVerboseCRDChanges
-	} else if sensitiveInfo.FullySensitive() && !opts.ShowSensitiveDiffs {
-		uDiff = HiddenSensitiveChanges
 	} else if !opts.ShowVerboseDiffs && (oldUnstruct == nil || newUnstruct == nil) {
 		uDiff = HiddenVerboseChanges
 	} else {
@@ -218,6 +220,10 @@ func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *u
 		uDiff = util.ColoredUnifiedDiff(oldObjManifest, newObjManifest, opts.DiffContextLines)
 	}
 
+	if sensitiveInfo.FullySensitive() && !opts.ShowSensitiveDiffs && len(uDiff) > 0 {
+		uDiff = HiddenSensitiveChanges
+	}
+
 	if uDiff == "" {
 		uDiff = HiddenInsignificantChanges
 	}
@@ -238,7 +244,7 @@ func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *u
 
 func cleanUnstruct(unstruct *unstructured.Unstructured, sensitiveInfo resource.SensitiveInfo, opts CalculatePlannedChangesOptions) *unstructured.Unstructured {
 	var unstructClean *unstructured.Unstructured
-	if sensitiveInfo.IsSensitive && !opts.ShowSensitiveDiffs {
+	if sensitiveInfo.IsSensitive && !sensitiveInfo.FullySensitive() && !opts.ShowSensitiveDiffs {
 		unstructClean = resource.RedactSensitiveData(unstruct, sensitiveInfo.SensitivePaths)
 	} else {
 		unstructClean = unstruct
