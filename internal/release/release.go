@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"hash"
 	"hash/fnv"
-	"reflect"
 	"sort"
 	"strings"
 	"unicode"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/yaml"
@@ -124,11 +125,14 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 		return false, nil
 	}
 
+	cmpOpts := cmp.Options{
+		cmpopts.EquateEmpty(),
+	}
+
 	if oldRel.Info.Status != helmrelease.StatusDeployed ||
 		oldRel.Info.Notes != newRel.Info.Notes ||
-		!reflect.DeepEqual(oldRel.Info.Annotations, newRel.Info.Annotations) ||
-		!reflect.DeepEqual(oldRel.Labels, newRel.Labels) ||
-		!reflect.DeepEqual(oldRel.Config, newRel.Config) {
+		!cmp.Equal(oldRel.Info.Annotations, newRel.Info.Annotations, cmpOpts) ||
+		!cmp.Equal(oldRel.Config, newRel.Config, cmpOpts) {
 		return false, nil
 	}
 
@@ -266,7 +270,7 @@ func writeUnstructHash(unstruct *unstructured.Unstructured, hash hash.Hash32) er
 
 func cleanUnstruct(unstruct *unstructured.Unstructured) *unstructured.Unstructured {
 	return resource.CleanUnstruct(unstruct, resource.CleanUnstructOptions{
-		CleanManagedFiles:       true,
+		CleanManagedFields:      true,
 		CleanReleaseAnnosLabels: true,
 		CleanRuntimeData:        true,
 		CleanWerfIoRuntimeAnnos: true,

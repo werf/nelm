@@ -11,7 +11,7 @@ import (
 
 type CleanUnstructOptions struct {
 	CleanHelmShAnnos        bool
-	CleanManagedFiles       bool
+	CleanManagedFields      bool
 	CleanReleaseAnnosLabels bool
 	CleanRuntimeData        bool
 	CleanWerfIoAnnos        bool
@@ -25,7 +25,7 @@ func CleanUnstruct(unstruct *unstructured.Unstructured, opts CleanUnstructOption
 		cleanRuntimeDataFromUnstruct(unstructCopy)
 	}
 
-	if opts.CleanManagedFiles {
+	if opts.CleanManagedFields {
 		unstructCopy.SetManagedFields(nil)
 	}
 
@@ -44,8 +44,8 @@ func CleanUnstruct(unstruct *unstructured.Unstructured, opts CleanUnstructOption
 
 	if opts.CleanWerfIoRuntimeAnnos {
 		cleanAnnotationsRegexes = append(cleanAnnotationsRegexes,
+			regexp.MustCompile(`.*ci\.werf\.io/.+`),
 			regexp.MustCompile(`^project\.werf\.io/.+`),
-			regexp.MustCompile(`^ci\.werf\.io/.+`),
 			regexp.MustCompile(`^werf\.io/version$`), regexp.MustCompile(`^werf\.io/release-channel$`),
 		)
 	}

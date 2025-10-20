@@ -132,6 +132,9 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 	delResourceInfos = filterDelResourcesPresentInInstResources(instResourceInfos, delResourceInfos)
 	delResourceInfos = deduplicateDeletableResourceInfos(delResourceInfos)
 
+	log.Default.TraceStruct(ctx, instResourceInfos, "Built InstallableResourceInfos:")
+	log.Default.TraceStruct(ctx, delResourceInfos, "Built DeletableResourceInfos:")
+
 	return instResourceInfos, delResourceInfos, nil
 }
 

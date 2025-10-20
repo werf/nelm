@@ -70,6 +70,8 @@ type ReleasePlanInstallOptions struct {
 	NoInstallCRDs                bool
 	NoRemoveManualChanges        bool
 	RegistryCredentialsPath      string
+	ReleaseInfoAnnotations       map[string]string
+	ReleaseLabels                map[string]string
 	ReleaseStorageDriver         string
 	RuntimeJSONSets              []string
 	SQLConnectionString          string
@@ -283,7 +285,9 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	}
 
 	newRelease, err := release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, releasableResSpecs, renderChartResult.Chart, renderChartResult.ReleaseConfig, release.ReleaseOptions{
-		Notes: renderChartResult.Notes,
+		InfoAnnotations: opts.ReleaseInfoAnnotations,
+		Labels:          opts.ReleaseLabels,
+		Notes:           renderChartResult.Notes,
 	})
 	if err != nil {
 		return fmt.Errorf("construct new release: %w", err)

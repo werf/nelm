@@ -121,7 +121,7 @@ func (s *UnstructSuite) TestCleanUnstruct() {
 			name: `should clean managed fields`,
 			input: func() (*unstructured.Unstructured, resource.CleanUnstructOptions) {
 				return defaultUncleanUnstruct(), resource.CleanUnstructOptions{
-					CleanManagedFiles: true,
+					CleanManagedFields: true,
 				}
 			},
 			expect: func() *unstructured.Unstructured {

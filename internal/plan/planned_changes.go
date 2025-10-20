@@ -251,7 +251,7 @@ func cleanUnstruct(unstruct *unstructured.Unstructured, sensitiveInfo resource.S
 	if !opts.ShowInsignificantDiffs {
 		cleanUnstructOpts.CleanHelmShAnnos = true
 		cleanUnstructOpts.CleanWerfIoAnnos = true
-		cleanUnstructOpts.CleanManagedFiles = true
+		cleanUnstructOpts.CleanManagedFields = true
 	}
 
 	unstructClean = resource.CleanUnstruct(unstructClean, cleanUnstructOpts)
