@@ -12,13 +12,13 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
-	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/kube/fake"
 	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/test"
+	"github.com/werf/nelm/pkg/common"
 )
 
 type ResourceInfoSuite struct {

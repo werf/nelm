@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
 
-	"github.com/werf/nelm/internal/common"
+	"github.com/werf/nelm/pkg/common"
 )
 
 type Plan struct {

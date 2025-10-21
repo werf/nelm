@@ -16,8 +16,8 @@ import (
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/logboek"
-	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/pkg/action"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )

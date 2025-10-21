@@ -9,6 +9,7 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -53,7 +54,7 @@ func newChartSecretFileEncryptCommand(ctx context.Context, afterAllCommandsBuilt
 	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
-		if err := cli.AddFlag(cmd, &cfg.LogColorMode, "color-mode", action.DefaultLogColorMode, "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LogColorMode, "color-mode", common.DefaultLogColorMode, "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

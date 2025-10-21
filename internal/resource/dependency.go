@@ -4,8 +4,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/resource/spec"
+	"github.com/werf/nelm/pkg/common"
 )
 
 type InternalDependency struct {

@@ -30,6 +30,7 @@ import (
 	"github.com/werf/nelm/internal/legacy/deploy"
 	"github.com/werf/nelm/internal/lock"
 	"github.com/werf/nelm/internal/resource/spec"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -40,24 +41,16 @@ const (
 var legacyUninstallLock sync.Mutex
 
 type LegacyReleaseUninstallOptions struct {
-	NoDeleteHooks              bool
-	DeleteReleaseNamespace     bool
-	KubeAPIServerName          string
-	KubeBurstLimit             int
-	KubeCAPath                 string
-	KubeConfigBase64           string
-	KubeConfigPaths            []string
-	KubeContext                string
-	KubeQPSLimit               int
-	KubeSkipTLSVerify          bool
-	KubeTLSServerName          string
-	KubeToken                  string
-	NetworkParallelism         int
-	ProgressTablePrintInterval time.Duration
-	ReleaseHistoryLimit        int
-	ReleaseStorageDriver       string
-	TempDirPath                string
-	Timeout                    time.Duration
+	common.KubeConnectionOptions
+	common.TrackingOptions
+
+	NoDeleteHooks          bool
+	DeleteReleaseNamespace bool
+	NetworkParallelism     int
+	ReleaseHistoryLimit    int
+	ReleaseStorageDriver   string
+	TempDirPath            string
+	Timeout                time.Duration
 }
 
 func LegacyReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string, opts LegacyReleaseUninstallOptions) error {
@@ -118,16 +111,8 @@ func legacyReleaseUninstall(ctx context.Context, releaseName, releaseNamespace s
 	}
 
 	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
-		BurstLimit:       opts.KubeBurstLimit,
-		TLSCAPath:        opts.KubeCAPath,
-		ContextCurrent:   opts.KubeContext,
-		SkipTLSVerify:    opts.KubeSkipTLSVerify,
-		KubeConfigBase64: opts.KubeConfigBase64,
-		ContextNamespace: releaseNamespace,
-		QPSLimit:         opts.KubeQPSLimit,
-		APIServerAddress: opts.KubeAPIServerName,
-		TLSServerName:    opts.KubeTLSServerName,
-		BearerTokenData:  opts.KubeToken,
+		KubeConnectionOptions: opts.KubeConnectionOptions,
+		KubeContextNamespace:  releaseNamespace,
 	})
 	if err != nil {
 		return fmt.Errorf("construct kube config: %w", err)
@@ -145,8 +130,8 @@ func legacyReleaseUninstall(ctx context.Context, releaseName, releaseNamespace s
 	helmSettings.MaxHistory = opts.ReleaseHistoryLimit
 	helmSettings.Debug = log.Default.AcceptLevel(ctx, log.Level(log.DebugLevel))
 
-	if opts.KubeContext != "" {
-		helmSettings.KubeContext = opts.KubeContext
+	if opts.KubeContextCurrent != "" {
+		helmSettings.KubeContext = opts.KubeContextCurrent
 	}
 
 	var kubeConfigPath string
@@ -158,7 +143,7 @@ func legacyReleaseUninstall(ctx context.Context, releaseName, releaseNamespace s
 
 	if err := kdkube.Init(kdkube.InitOptions{
 		KubeConfigOptions: kdkube.KubeConfigOptions{
-			Context:             opts.KubeContext,
+			Context:             opts.KubeContextCurrent,
 			ConfigPath:          kubeConfigPath,
 			ConfigDataBase64:    opts.KubeConfigBase64,
 			ConfigPathMergeList: opts.KubeConfigPaths,
@@ -287,33 +272,20 @@ func applyLegacyReleaseUninstallOptionsDefaults(opts LegacyReleaseUninstallOptio
 		}
 	}
 
-	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
-		opts.KubeConfigPaths = []string{filepath.Join(homeDir, ".kube", "config")}
-	}
+	opts.KubeConnectionOptions.ApplyDefaults(homeDir)
+	opts.TrackingOptions.ApplyDefaults()
 
 	if opts.NetworkParallelism <= 0 {
-		opts.NetworkParallelism = DefaultNetworkParallelism
-	}
-
-	if opts.KubeQPSLimit <= 0 {
-		opts.KubeQPSLimit = DefaultQPSLimit
-	}
-
-	if opts.KubeBurstLimit <= 0 {
-		opts.KubeBurstLimit = DefaultBurstLimit
-	}
-
-	if opts.ProgressTablePrintInterval <= 0 {
-		opts.ProgressTablePrintInterval = DefaultProgressPrintInterval
+		opts.NetworkParallelism = common.DefaultNetworkParallelism
 	}
 
 	if opts.ReleaseHistoryLimit <= 0 {
-		opts.ReleaseHistoryLimit = DefaultReleaseHistoryLimit
+		opts.ReleaseHistoryLimit = common.DefaultReleaseHistoryLimit
 	}
 
-	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {
-		opts.ReleaseStorageDriver = ReleaseStorageDriverSecrets
-	} else if opts.ReleaseStorageDriver == ReleaseStorageDriverMemory {
+	if opts.ReleaseStorageDriver == common.ReleaseStorageDriverDefault {
+		opts.ReleaseStorageDriver = common.ReleaseStorageDriverSecrets
+	} else if opts.ReleaseStorageDriver == common.ReleaseStorageDriverMemory {
 		return LegacyReleaseUninstallOptions{}, fmt.Errorf("memory release storage driver is not supported")
 	}
 

@@ -16,8 +16,8 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/resource/spec"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 )
 

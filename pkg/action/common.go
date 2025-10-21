@@ -8,13 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/quick"
 	"github.com/alecthomas/chroma/v2/styles"
-	"github.com/docker/cli/cli/config"
-	"github.com/docker/docker/pkg/homedir"
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 	"github.com/xo/terminfo"
@@ -28,6 +25,7 @@ import (
 	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -37,38 +35,8 @@ func init() {
 }
 
 const (
-	ReleaseStorageDriverDefault    = ""
-	ReleaseStorageDriverSecrets    = "secrets"
-	ReleaseStorageDriverSecret     = "secret"
-	ReleaseStorageDriverConfigMaps = "configmaps"
-	ReleaseStorageDriverConfigMap  = "configmap"
-	ReleaseStorageDriverMemory     = "memory"
-	ReleaseStorageDriverSQL        = "sql"
+	syntaxHighlightThemeName = "solarized-dark-customized"
 )
-
-const (
-	YamlOutputFormat  = "yaml"
-	JSONOutputFormat  = "json"
-	TableOutputFormat = "table"
-)
-
-const (
-	DefaultQPSLimit              = 30
-	DefaultBurstLimit            = 100
-	DefaultNetworkParallelism    = 30
-	DefaultDiffContextLines      = 3
-	DefaultLocalKubeVersion      = "1.20.0"
-	DefaultProgressPrintInterval = 5 * time.Second
-	DefaultReleaseHistoryLimit   = 10
-	DefaultLogColorMode          = log.LogColorModeAuto
-
-	StubReleaseName      = "stub-release"
-	StubReleaseNamespace = "stub-namespace"
-)
-
-var DefaultRegistryCredentialsPath = filepath.Join(homedir.Get(), ".docker", config.ConfigFileName)
-
-const syntaxHighlightThemeName = "solarized-dark-customized"
 
 var syntaxHighlightTheme = fmt.Sprintf(`
 <style name=%q>
@@ -209,11 +177,9 @@ func printReport(ctx context.Context, report *releaseReportV3) {
 }
 
 type runFailureInstallPlanOptions struct {
-	NetworkParallelism    int
-	NoFinalTracking       bool
-	TrackCreationTimeout  time.Duration
-	TrackDeletionTimeout  time.Duration
-	TrackReadinessTimeout time.Duration
+	common.TrackingOptions
+
+	NetworkParallelism int
 }
 
 type runFailurePlanResult struct {
@@ -258,10 +224,8 @@ func runFailurePlan(
 	log.Default.Debug(ctx, "Execute failure plan")
 
 	if err := plan.ExecutePlan(ctx, releaseNamespace, failurePlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		NetworkParallelism:    opts.NetworkParallelism,
-		TrackReadinessTimeout: opts.TrackReadinessTimeout,
-		TrackCreationTimeout:  opts.TrackCreationTimeout,
-		TrackDeletionTimeout:  opts.TrackDeletionTimeout,
+		TrackingOptions:    opts.TrackingOptions,
+		NetworkParallelism: opts.NetworkParallelism,
 	}); err != nil {
 		critErrs = append(critErrs, fmt.Errorf("execute failure plan: %w", err))
 	}

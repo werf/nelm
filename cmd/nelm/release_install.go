@@ -9,6 +9,7 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
@@ -67,6 +68,26 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
+		if err := AddKubeConnectionFlags(cmd, cfg.KubeConnectionOptions); err != nil {
+			return fmt.Errorf("add kube connection flags: %w", err)
+		}
+
+		if err := AddChartRepoConnectionFlags(cmd, cfg.ChartRepoConnectionOptions); err != nil {
+			return fmt.Errorf("add chart repo connection flags: %w", err)
+		}
+
+		if err := AddValuesFlags(cmd, cfg.ValuesOptions); err != nil {
+			return fmt.Errorf("add values flags: %w", err)
+		}
+
+		if err := AddSecretValuesFlags(cmd, cfg.SecretValuesOptions); err != nil {
+			return fmt.Errorf("add secret values flags: %w", err)
+		}
+
+		if err := AddTrackingFlags(cmd, &cfg.TrackingOptions); err != nil {
+			return fmt.Errorf("add tracking flags: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.AutoRollback, "auto-rollback", false, "Automatically rollback the release on failure", cli.AddFlagOptions{
 			Group: mainFlagGroup,
 		}); err != nil {
@@ -76,20 +97,6 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 		if err := cli.AddFlag(cmd, &cfg.ChartAppVersion, "app-version", "", "Set appVersion of Chart.yaml", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                patchFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.ChartRepoInsecure, "insecure-chart-repos", false, "Allow insecure HTTP connections to chart repositories", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                chartRepoFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.ChartRepoSkipTLSVerify, "no-verify-chart-repos-tls", false, "Don't verify TLS certificates of chart repositories", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                chartRepoFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
@@ -108,20 +115,6 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			}); err != nil {
 				return fmt.Errorf("add flag: %w", err)
 			}
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.DefaultSecretValuesDisable, "no-default-secret-values", false, "Ignore secret-values.yaml of the top-level chart", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                secretFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.DefaultValuesDisable, "no-default-values", false, "Ignore values.yaml of the top-level chart", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                valuesFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
 		}
 
 		if err := cli.AddFlag(cmd, &cfg.InstallGraphPath, "save-graph-to", "", "Save the Graphviz install graph to a file", cli.AddFlagOptions{
@@ -166,89 +159,7 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.KubeAPIServerAddress, "kube-api-server", "", "Kubernetes API server address", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                kubeConnectionFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.KubeBurstLimit, "kube-burst-limit", action.DefaultBurstLimit, "Burst limit for requests to Kubernetes", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                performanceFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.KubeTLSCAPath, "kube-ca", "", "Path to Kubernetes API server CA file", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                kubeConnectionFlagGroup,
-			Type:                 cli.FlagTypeFile,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.KubeConfigBase64, "kube-config-base64", "", "Pass kubeconfig file content encoded as base64", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                kubeConnectionFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.KubeConfigPaths, "kube-config", []string{}, "Kubeconfig path(s). If multiple specified, their contents are merged", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: func(cmd *cobra.Command, flagName string) ([]*cli.FlagRegexExpr, error) {
-				regexes := []*cli.FlagRegexExpr{cli.NewFlagRegexExpr("^KUBECONFIG$", "$KUBECONFIG")}
-
-				if r, err := cli.GetFlagGlobalAndLocalMultiEnvVarRegexes(cmd, flagName); err != nil {
-					return nil, fmt.Errorf("get local env var regexes: %w", err)
-				} else {
-					regexes = append(regexes, r...)
-				}
-
-				return regexes, nil
-			},
-			Group: kubeConnectionFlagGroup,
-			Type:  cli.FlagTypeFile,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.KubeContextCurrent, "kube-context", "", "Kubeconfig context", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                kubeConnectionFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.KubeQPSLimit, "kube-qps-limit", action.DefaultQPSLimit, "Queries Per Second limit for requests to Kubernetes", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                performanceFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.KubeSkipTLSVerify, "no-verify-kube-tls", false, "Don't verify TLS certificates of Kubernetes API", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                kubeConnectionFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.KubeTLSServerName, "kube-api-server-tls-name", "", "The server name for Kubernetes API TLS validation, if different from the hostname of Kubernetes API server", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                kubeConnectionFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.KubeBearerTokenData, "kube-token", "", "The bearer token for authentication in Kubernetes API", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                kubeConnectionFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.LogColorMode, "color-mode", action.DefaultLogColorMode, "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LogColorMode, "color-mode", common.DefaultLogColorMode, "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
@@ -262,16 +173,9 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.NetworkParallelism, "network-parallelism", action.DefaultNetworkParallelism, "Limit of network-related tasks to run in parallel", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.NetworkParallelism, "network-parallelism", common.DefaultNetworkParallelism, "Limit of network-related tasks to run in parallel", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                performanceFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.NoFinalTracking, "no-final-tracking", false, "By default disable tracking operations that have no create/update/delete resource operations after them, which are most tracking operations, to speed up the release", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                progressFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
@@ -283,20 +187,6 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.NoPodLogs, "no-pod-logs", false, "Disable Pod logs collection and printing", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                progressFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.NoProgressTablePrint, "no-show-progress", false, "Don't show logs, events and real-time info about release resources", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                progressFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
 		if err := cli.AddFlag(cmd, &cfg.NoRemoveManualChanges, "no-remove-manual-changes", false, "Don't remove fields added manually to the resource in the cluster if fields aren't present in the manifest", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
@@ -304,21 +194,14 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.ProgressTablePrintInterval, "progress-interval", action.DefaultProgressPrintInterval, "How often to print new logs, events and real-time info about release resources", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                progressFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.RegistryCredentialsPath, "oci-chart-repos-creds", action.DefaultRegistryCredentialsPath, "Credentials to access OCI chart repositories", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.RegistryCredentialsPath, "oci-chart-repos-creds", common.DefaultRegistryCredentialsPath, "Credentials to access OCI chart repositories", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                chartRepoFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.ReleaseHistoryLimit, "release-history-limit", action.DefaultReleaseHistoryLimit, "Limit the number of releases in release history. When limit is exceeded the oldest releases are deleted. Release resources are not affected", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.ReleaseHistoryLimit, "release-history-limit", common.DefaultReleaseHistoryLimit, "Limit the number of releases in release history. When limit is exceeded the oldest releases are deleted. Release resources are not affected", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
@@ -372,28 +255,6 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.SecretKey, "secret-key", "", "Secret key", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                secretFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.SecretKeyIgnore, "no-decrypt-secrets", false, "Do not decrypt secrets and secret values, pass them as is", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                secretFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.SecretValuesFiles, "secret-values", []string{}, "Secret values files paths", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                secretFlagGroup,
-			Type:                 cli.FlagTypeFile,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
 		if err := cli.AddFlag(cmd, &cfg.ShowSubchartNotes, "show-subchart-notes", false, "Show NOTES.txt of subcharts after the release", cli.AddFlagOptions{
 			Group: mainFlagGroup,
 		}); err != nil {
@@ -411,56 +272,6 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 		if err := cli.AddFlag(cmd, &cfg.Timeout, "timeout", 0, "Fail if not finished in time", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.TrackCreationTimeout, "resource-creation-timeout", 0, "Fail if resource creation tracking did not finish in time", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                progressFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.TrackDeletionTimeout, "resource-deletion-timeout", 0, "Fail if resource deletion tracking did not finish in time", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                progressFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.TrackReadinessTimeout, "resource-readiness-timeout", 0, "Fail if resource readiness tracking did not finish in time", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                progressFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.ValuesSetFile, "set-file", []string{}, "Set new values, where the key is the value path and the value is the path to the file with the value content", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                valuesFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.ValuesFiles, "values", []string{}, "Additional values files", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                valuesFlagGroup,
-			Type:                 cli.FlagTypeFile,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.ValuesSet, "set", []string{}, "Set new values, where the key is the value path and the value is the value", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                valuesFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.ValuesSetString, "set-string", []string{}, "Set new values, where the key is the value path and the value is the value. The value will always be a string", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                valuesFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

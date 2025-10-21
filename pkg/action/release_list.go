@@ -20,42 +20,18 @@ import (
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/release"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 )
 
 const (
-	DefaultReleaseListOutputFormat = TableOutputFormat
+	DefaultReleaseListOutputFormat = common.OutputFormatTable
 	DefaultReleaseListLogLevel     = log.ErrorLevel
 )
 
 type ReleaseListOptions struct {
-	KubeAPIServerAddress        string
-	KubeAuthProviderConfig      map[string]string
-	KubeAuthProviderName        string
-	KubeBasicAuthPassword       string
-	KubeBasicAuthUsername       string
-	KubeBearerTokenData         string
-	KubeBearerTokenPath         string
-	KubeBurstLimit              int
-	KubeConfigBase64            string
-	KubeConfigPaths             []string
-	KubeContextCluster          string
-	KubeContextCurrent          string
-	KubeContextUser             string
-	KubeImpersonateGroups       []string
-	KubeImpersonateUID          string
-	KubeImpersonateUser         string
-	KubeProxyURL                string
-	KubeQPSLimit                int
-	KubeRequestTimeout          string
-	KubeSkipTLSVerify           bool
-	KubeTLSCAData               string
-	KubeTLSCAPath               string
-	KubeTLSClientCertData       string
-	KubeTLSClientCertPath       string
-	KubeTLSClientKeyData        string
-	KubeTLSClientKeyPath        string
-	KubeTLSServerName           string
+	common.KubeConnectionOptions
+
 	NetworkParallelism          int
 	OutputFormat                string
 	OutputNoPrint               bool
@@ -86,33 +62,8 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 	}
 
 	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
-		APIServerAddress:   opts.KubeAPIServerAddress,
-		AuthProviderConfig: opts.KubeAuthProviderConfig,
-		AuthProviderName:   opts.KubeAuthProviderName,
-		BasicAuthPassword:  opts.KubeBasicAuthPassword,
-		BasicAuthUsername:  opts.KubeBasicAuthUsername,
-		BearerTokenData:    opts.KubeBearerTokenData,
-		BearerTokenPath:    opts.KubeBearerTokenPath,
-		BurstLimit:         opts.KubeBurstLimit,
-		ContextCluster:     opts.KubeContextCluster,
-		ContextCurrent:     opts.KubeContextCurrent,
-		ContextNamespace:   opts.ReleaseNamespace, // TODO: unset it everywhere
-		ContextUser:        opts.KubeContextUser,
-		ImpersonateGroups:  opts.KubeImpersonateGroups,
-		ImpersonateUID:     opts.KubeImpersonateUID,
-		ImpersonateUser:    opts.KubeImpersonateUser,
-		KubeConfigBase64:   opts.KubeConfigBase64,
-		ProxyURL:           opts.KubeProxyURL,
-		QPSLimit:           opts.KubeQPSLimit,
-		RequestTimeout:     opts.KubeRequestTimeout,
-		SkipTLSVerify:      opts.KubeSkipTLSVerify,
-		TLSCAData:          opts.KubeTLSCAData,
-		TLSCAPath:          opts.KubeTLSCAPath,
-		TLSClientCertData:  opts.KubeTLSClientCertData,
-		TLSClientCertPath:  opts.KubeTLSClientCertPath,
-		TLSClientKeyData:   opts.KubeTLSClientKeyData,
-		TLSClientKeyPath:   opts.KubeTLSClientKeyPath,
-		TLSServerName:      opts.KubeTLSServerName,
+		KubeConnectionOptions: opts.KubeConnectionOptions,
+		KubeContextNamespace:  opts.ReleaseNamespace, // TODO: unset it everywhere
 	})
 	if err != nil {
 		return nil, fmt.Errorf("construct kube config: %w", err)
@@ -180,17 +131,17 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 	var resultMessage string
 
 	switch opts.OutputFormat {
-	case TableOutputFormat:
+	case common.OutputFormatTable:
 		table := buildReleaseListOutputTable(ctx, result, opts.ReleaseNamespace != "")
 		resultMessage = table.Render() + "\n"
-	case JSONOutputFormat:
+	case common.OutputFormatJSON:
 		b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
 		if err != nil {
 			return nil, fmt.Errorf("marshal result to json: %w", err)
 		}
 
 		resultMessage = string(b) + "\n"
-	case YamlOutputFormat:
+	case common.OutputFormatYAML:
 		b, err := yaml.MarshalContext(ctx, result, yaml.UseLiteralStyleIfMultiline(true))
 		if err != nil {
 			return nil, fmt.Errorf("marshal result to yaml: %w", err)
@@ -222,24 +173,14 @@ func applyReleaseListOptionsDefaults(opts ReleaseListOptions, homeDir string) (R
 		}
 	}
 
-	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
-		opts.KubeConfigPaths = []string{filepath.Join(homeDir, ".kube", "config")}
-	}
+	opts.KubeConnectionOptions.ApplyDefaults(homeDir)
 
 	if opts.NetworkParallelism <= 0 {
-		opts.NetworkParallelism = DefaultNetworkParallelism
+		opts.NetworkParallelism = common.DefaultNetworkParallelism
 	}
 
-	if opts.KubeQPSLimit <= 0 {
-		opts.KubeQPSLimit = DefaultQPSLimit
-	}
-
-	if opts.KubeBurstLimit <= 0 {
-		opts.KubeBurstLimit = DefaultBurstLimit
-	}
-
-	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {
-		opts.ReleaseStorageDriver = ReleaseStorageDriverSecrets
+	if opts.ReleaseStorageDriver == common.ReleaseStorageDriverDefault {
+		opts.ReleaseStorageDriver = common.ReleaseStorageDriverSecrets
 	}
 
 	if opts.OutputFormat == "" {

@@ -5,7 +5,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/werf/nelm/internal/common"
+	"github.com/werf/nelm/pkg/common"
 )
 
 var (

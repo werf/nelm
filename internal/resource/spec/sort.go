@@ -1,6 +1,6 @@
 package spec
 
-import "github.com/werf/nelm/internal/common"
+import "github.com/werf/nelm/pkg/common"
 
 func ResourceSpecSortHandler(r1, r2 *ResourceSpec) bool {
 	sortAs1 := r1.StoreAs
