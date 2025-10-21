@@ -117,7 +117,6 @@ func legacyReleaseUninstall(ctx context.Context, releaseName, releaseNamespace s
 		opts.KubeConfigPaths = append([]string{""}, opts.KubeConfigPaths...)
 	}
 
-	// TODO(ilya-lesikov): some options are not propagated from cli/actions
 	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
 		BurstLimit:       opts.KubeBurstLimit,
 		TLSCAPath:        opts.KubeCAPath,

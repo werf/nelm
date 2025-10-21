@@ -22,7 +22,6 @@ const (
 	HiddenSensitiveChanges     = "<hidden sensitive changes>"
 )
 
-// TODO: expose to the user
 type CalculatePlannedChangesOptions struct {
 	DiffContextLines       int
 	ShowVerboseCRDDiffs    bool

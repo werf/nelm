@@ -128,7 +128,6 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		opts.KubeConfigPaths = lo.Compact(splitPaths)
 	}
 
-	// TODO(ilya-lesikov): some options are not propagated from cli/actions
 	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
 		APIServerAddress:   opts.KubeAPIServerAddress,
 		AuthProviderConfig: opts.KubeAuthProviderConfig,

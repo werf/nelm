@@ -36,7 +36,6 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-// TODO(ilya-lesikov): pass missing options from top-level
 type RenderChartOptions struct {
 	ChartProvenanceKeyring     string
 	ChartProvenanceStrategy    string
