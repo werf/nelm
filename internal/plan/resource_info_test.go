@@ -653,7 +653,9 @@ func runBuildResourceInfosTest(tc buildResourceInfosTestCase, s *ResourceInfoSui
 
 		instResources, delResources, deployType, prevRelFailed := tc.input()
 
-		instResInfos, delResInfos, err := plan.BuildResourceInfos(context.Background(), deployType, s.releaseName, s.releaseNamespace, instResources, delResources, prevRelFailed, true, s.clientFactory, 10)
+		instResInfos, delResInfos, err := plan.BuildResourceInfos(context.Background(), deployType, s.releaseName, s.releaseNamespace, instResources, delResources, prevRelFailed, s.clientFactory, plan.BuildResourceInfosOptions{
+			NetworkParallelism: 10,
+		})
 		s.Require().NoError(err)
 
 		expectInstResInfos, expectDelResInfos := tc.expect(instResources, delResources)

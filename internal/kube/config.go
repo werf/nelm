@@ -20,56 +20,70 @@ type KubeConfig struct {
 }
 
 type KubeConfigOptions struct {
-	AuthInfo              string
-	BurstLimit            int
-	CertificateAuthority  string
-	ClientCertificate     string
-	ClientKey             string
-	Cluster               string
-	CurrentContext        string
-	DisableCompression    bool
-	Impersonate           string
-	ImpersonateGroups     []string
-	ImpersonateUID        string
-	InsecureSkipTLSVerify bool
-	KubeConfigBase64      string
-	Namespace             string
-	Password              string
-	QPSLimit              int
-	Server                string
-	TLSServerName         string
-	Timeout               string
-	Token                 string
-	Username              string
+	APIServerAddress   string
+	AuthProviderConfig map[string]string
+	AuthProviderName   string
+	BasicAuthPassword  string
+	BasicAuthUsername  string
+	BearerTokenData    string
+	BearerTokenPath    string
+	BurstLimit         int
+	ContextCluster     string
+	ContextCurrent     string
+	ContextNamespace   string
+	ContextUser        string
+	ImpersonateGroups  []string
+	ImpersonateUID     string
+	ImpersonateUser    string
+	KubeConfigBase64   string
+	ProxyURL           string
+	QPSLimit           int
+	RequestTimeout     string
+	SkipTLSVerify      bool
+	TLSCAData          string
+	TLSCAPath          string
+	TLSClientCertData  string
+	TLSClientCertPath  string
+	TLSClientKeyData   string
+	TLSClientKeyPath   string
+	TLSServerName      string
 }
 
 func NewKubeConfig(ctx context.Context, kubeConfigPaths []string, opts KubeConfigOptions) (*KubeConfig, error) {
 	overrides := &clientcmd.ConfigOverrides{
 		AuthInfo: api.AuthInfo{
-			ClientCertificate: opts.ClientCertificate,
-			ClientKey:         opts.ClientKey,
-			Impersonate:       opts.Impersonate,
-			ImpersonateGroups: opts.ImpersonateGroups,
-			ImpersonateUID:    opts.ImpersonateUID,
-			Password:          opts.Password,
-			Token:             opts.Token,
-			Username:          opts.Username,
+			AuthProvider: &api.AuthProviderConfig{
+				Name:   opts.AuthProviderName,
+				Config: opts.AuthProviderConfig,
+			},
+			ClientCertificate:     opts.TLSClientCertPath,
+			ClientCertificateData: []byte(opts.TLSClientCertData),
+			ClientKey:             opts.TLSClientKeyPath,
+			ClientKeyData:         []byte(opts.TLSClientKeyData),
+			Impersonate:           opts.ImpersonateUser,
+			ImpersonateGroups:     opts.ImpersonateGroups,
+			ImpersonateUID:        opts.ImpersonateUID,
+			Password:              opts.BasicAuthPassword,
+			Token:                 opts.BearerTokenData,
+			TokenFile:             opts.BearerTokenPath,
+			Username:              opts.BasicAuthUsername,
 		},
 		ClusterDefaults: clientcmd.ClusterDefaults,
 		ClusterInfo: api.Cluster{
-			CertificateAuthority:  opts.CertificateAuthority,
-			DisableCompression:    opts.DisableCompression,
-			InsecureSkipTLSVerify: opts.InsecureSkipTLSVerify,
-			Server:                opts.Server,
-			TLSServerName:         opts.TLSServerName,
+			CertificateAuthority:     opts.TLSCAPath,
+			CertificateAuthorityData: []byte(opts.TLSCAData),
+			InsecureSkipTLSVerify:    opts.SkipTLSVerify,
+			ProxyURL:                 opts.ProxyURL,
+			Server:                   opts.APIServerAddress,
+			TLSServerName:            opts.TLSServerName,
 		},
 		Context: api.Context{
-			AuthInfo:  opts.AuthInfo,
-			Cluster:   opts.Cluster,
-			Namespace: opts.Namespace,
+			AuthInfo:  opts.ContextUser,
+			Cluster:   opts.ContextCluster,
+			Namespace: opts.ContextNamespace,
 		},
-		CurrentContext: opts.CurrentContext,
-		Timeout:        opts.Timeout,
+		CurrentContext: opts.ContextCurrent,
+		Timeout:        opts.RequestTimeout,
 	}
 
 	var clientConfig clientcmd.ClientConfig

@@ -34,14 +34,6 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 		return nil, fmt.Errorf("release name %q is not valid: %w", name, err)
 	}
 
-	if opts.InfoAnnotations == nil {
-		opts.InfoAnnotations = map[string]string{}
-	}
-
-	if opts.Labels == nil {
-		opts.Labels = map[string]string{}
-	}
-
 	var status helmrelease.Status
 	switch deployType {
 	case common.DeployTypeInitial,

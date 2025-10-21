@@ -258,10 +258,10 @@ func runFailurePlan(
 	log.Default.Debug(ctx, "Execute failure plan")
 
 	if err := plan.ExecutePlan(ctx, releaseNamespace, failurePlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		NetworkParallelism: opts.NetworkParallelism,
-		ReadinessTimeout:   opts.TrackReadinessTimeout,
-		PresenceTimeout:    opts.TrackCreationTimeout,
-		AbsenceTimeout:     opts.TrackDeletionTimeout,
+		NetworkParallelism:    opts.NetworkParallelism,
+		TrackReadinessTimeout: opts.TrackReadinessTimeout,
+		TrackCreationTimeout:  opts.TrackCreationTimeout,
+		TrackDeletionTimeout:  opts.TrackDeletionTimeout,
 	}); err != nil {
 		critErrs = append(critErrs, fmt.Errorf("execute failure plan: %w", err))
 	}

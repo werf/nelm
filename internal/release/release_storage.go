@@ -24,8 +24,8 @@ type ReleaseStorager interface {
 }
 
 type ReleaseStorageOptions struct {
-	HistoryLimit        int
-	SQLConnectionString string
+	HistoryLimit  int
+	SQLConnection string
 }
 
 func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, clientFactory kube.ClientFactorier, opts ReleaseStorageOptions) (*helmstorage.Storage, error) {
@@ -56,7 +56,7 @@ func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, cli
 
 		storage = helmstorage.Init(driver)
 	case "sql":
-		driver, err := helmdriver.NewSQL(opts.SQLConnectionString, logFn, namespace)
+		driver, err := helmdriver.NewSQL(opts.SQLConnection, logFn, namespace)
 		if err != nil {
 			return nil, fmt.Errorf("construct sql driver: %w", err)
 		}

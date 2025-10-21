@@ -28,24 +28,41 @@ const (
 )
 
 type ReleaseGetOptions struct {
-	KubeAPIServerName    string
-	KubeBurstLimit       int
-	KubeCAPath           string
-	KubeConfigBase64     string
-	KubeConfigPaths      []string
-	KubeContext          string
-	KubeQPSLimit         int
-	KubeSkipTLSVerify    bool
-	KubeTLSServerName    string
-	KubeToken            string
-	NetworkParallelism   int
-	OutputFormat         string
-	OutputNoPrint        bool
-	PrintValues          bool
-	ReleaseStorageDriver string
-	Revision             int
-	SQLConnectionString  string
-	TempDirPath          string
+	KubeAPIServerAddress        string
+	KubeAuthProviderConfig      map[string]string
+	KubeAuthProviderName        string
+	KubeBasicAuthPassword       string
+	KubeBasicAuthUsername       string
+	KubeBearerTokenData         string
+	KubeBearerTokenPath         string
+	KubeBurstLimit              int
+	KubeConfigBase64            string
+	KubeConfigPaths             []string
+	KubeContextCluster          string
+	KubeContextCurrent          string
+	KubeContextUser             string
+	KubeImpersonateGroups       []string
+	KubeImpersonateUID          string
+	KubeImpersonateUser         string
+	KubeProxyURL                string
+	KubeQPSLimit                int
+	KubeRequestTimeout          string
+	KubeSkipTLSVerify           bool
+	KubeTLSCAData               string
+	KubeTLSCAPath               string
+	KubeTLSClientCertData       string
+	KubeTLSClientCertPath       string
+	KubeTLSClientKeyData        string
+	KubeTLSClientKeyPath        string
+	KubeTLSServerName           string
+	NetworkParallelism          int
+	OutputFormat                string
+	OutputNoPrint               bool
+	PrintValues                 bool
+	ReleaseStorageDriver        string
+	ReleaseStorageSQLConnection string
+	Revision                    int
+	TempDirPath                 string
 }
 
 func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseGetOptions) (*ReleaseGetResultV1, error) {
@@ -68,18 +85,34 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		opts.KubeConfigPaths = lo.Compact(splitPaths)
 	}
 
-	// TODO(ilya-lesikov): some options are not propagated from cli/actions
 	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
-		BurstLimit:            opts.KubeBurstLimit,
-		CertificateAuthority:  opts.KubeCAPath,
-		CurrentContext:        opts.KubeContext,
-		InsecureSkipTLSVerify: opts.KubeSkipTLSVerify,
-		KubeConfigBase64:      opts.KubeConfigBase64,
-		Namespace:             releaseNamespace,
-		QPSLimit:              opts.KubeQPSLimit,
-		Server:                opts.KubeAPIServerName,
-		TLSServerName:         opts.KubeTLSServerName,
-		Token:                 opts.KubeToken,
+		APIServerAddress:   opts.KubeAPIServerAddress,
+		AuthProviderConfig: opts.KubeAuthProviderConfig,
+		AuthProviderName:   opts.KubeAuthProviderName,
+		BasicAuthPassword:  opts.KubeBasicAuthPassword,
+		BasicAuthUsername:  opts.KubeBasicAuthUsername,
+		BearerTokenData:    opts.KubeBearerTokenData,
+		BearerTokenPath:    opts.KubeBearerTokenPath,
+		BurstLimit:         opts.KubeBurstLimit,
+		ContextCluster:     opts.KubeContextCluster,
+		ContextCurrent:     opts.KubeContextCurrent,
+		ContextNamespace:   releaseNamespace, // TODO: unset it everywhere
+		ContextUser:        opts.KubeContextUser,
+		ImpersonateGroups:  opts.KubeImpersonateGroups,
+		ImpersonateUID:     opts.KubeImpersonateUID,
+		ImpersonateUser:    opts.KubeImpersonateUser,
+		KubeConfigBase64:   opts.KubeConfigBase64,
+		ProxyURL:           opts.KubeProxyURL,
+		QPSLimit:           opts.KubeQPSLimit,
+		RequestTimeout:     opts.KubeRequestTimeout,
+		SkipTLSVerify:      opts.KubeSkipTLSVerify,
+		TLSCAData:          opts.KubeTLSCAData,
+		TLSCAPath:          opts.KubeTLSCAPath,
+		TLSClientCertData:  opts.KubeTLSClientCertData,
+		TLSClientCertPath:  opts.KubeTLSClientCertPath,
+		TLSClientKeyData:   opts.KubeTLSClientKeyData,
+		TLSClientKeyPath:   opts.KubeTLSClientKeyPath,
+		TLSServerName:      opts.KubeTLSServerName,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("construct kube config: %w", err)
@@ -91,7 +124,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 	}
 
 	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, clientFactory, release.ReleaseStorageOptions{
-		SQLConnectionString: opts.SQLConnectionString,
+		SQLConnection: opts.ReleaseStorageSQLConnection,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("construct release storage: %w", err)

@@ -39,67 +39,99 @@ const (
 )
 
 type ReleaseInstallOptions struct {
-	AutoRollback                 bool
-	Chart                        string
-	ChartAppVersion              string
-	ChartDirPath                 string // TODO(v2): get rid
-	ChartRepositoryInsecure      bool
-	ChartRepositorySkipTLSVerify bool
-	ChartRepositorySkipUpdate    bool
-	ChartVersion                 string
-	DefaultChartAPIVersion       string
-	DefaultChartName             string
-	DefaultChartVersion          string
-	DefaultSecretValuesDisable   bool
-	DefaultValuesDisable         bool
-	ExtraAnnotations             map[string]string
-	ExtraLabels                  map[string]string
-	ExtraRuntimeAnnotations      map[string]string
-	ForceAdoption                bool
-	InstallGraphPath             string
-	InstallReportPath            string
-	KubeAPIServerName            string
-	KubeBurstLimit               int
-	KubeCAPath                   string
-	KubeConfigBase64             string
-	KubeConfigPaths              []string
-	KubeContext                  string
-	KubeQPSLimit                 int
-	KubeSkipTLSVerify            bool
-	KubeTLSServerName            string
-	KubeToken                    string
-	LegacyChartType              helmopts.ChartType
-	LegacyExtraValues            map[string]interface{}
-	LogRegistryStreamOut         io.Writer
-	NetworkParallelism           int
-	NoFinalTracking              bool
-	NoInstallCRDs                bool
-	NoPodLogs                    bool
-	NoProgressTablePrint         bool
-	NoRemoveManualChanges        bool
-	ProgressTablePrintInterval   time.Duration
-	RegistryCredentialsPath      string
-	ReleaseHistoryLimit          int
-	ReleaseInfoAnnotations       map[string]string
-	ReleaseLabels                map[string]string
-	ReleaseStorageDriver         string
-	RollbackGraphPath            string
-	RuntimeJSONSets              []string
-	SQLConnectionString          string
-	SecretKey                    string
-	SecretKeyIgnore              bool
-	SecretValuesPaths            []string
-	SecretWorkDir                string
-	SubNotes                     bool
-	TempDirPath                  string
-	Timeout                      time.Duration
-	TrackCreationTimeout         time.Duration
-	TrackDeletionTimeout         time.Duration
-	TrackReadinessTimeout        time.Duration
-	ValuesFileSets               []string
-	ValuesFilesPaths             []string
-	ValuesSets                   []string
-	ValuesStringSets             []string
+	AutoRollback                bool
+	Chart                       string
+	ChartAppVersion             string
+	ChartDirPath                string // TODO(v2): get rid
+	ChartProvenanceKeyring      string
+	ChartProvenanceStrategy     string
+	ChartRepoBasicAuthPassword  string
+	ChartRepoBasicAuthUsername  string
+	ChartRepoCAPath             string
+	ChartRepoCertPath           string
+	ChartRepoInsecure           bool
+	ChartRepoKeyPath            string
+	ChartRepoPassCreds          bool
+	ChartRepoRequestTimeout     time.Duration
+	ChartRepoSkipTLSVerify      bool
+	ChartRepoSkipUpdate         bool
+	ChartRepoURL                string
+	ChartVersion                string
+	DefaultChartAPIVersion      string
+	DefaultChartName            string
+	DefaultChartVersion         string
+	DefaultSecretValuesDisable  bool
+	DefaultValuesDisable        bool
+	ExtraAnnotations            map[string]string
+	ExtraLabels                 map[string]string
+	ExtraRuntimeAnnotations     map[string]string
+	ExtraRuntimeLabels          map[string]string
+	ForceAdoption               bool
+	InstallGraphPath            string
+	InstallReportPath           string
+	KubeAPIServerAddress        string
+	KubeAuthProviderConfig      map[string]string
+	KubeAuthProviderName        string
+	KubeBasicAuthPassword       string
+	KubeBasicAuthUsername       string
+	KubeBearerTokenData         string
+	KubeBearerTokenPath         string
+	KubeBurstLimit              int
+	KubeConfigBase64            string
+	KubeConfigPaths             []string
+	KubeContextCluster          string
+	KubeContextCurrent          string
+	KubeContextUser             string
+	KubeImpersonateGroups       []string
+	KubeImpersonateUID          string
+	KubeImpersonateUser         string
+	KubeProxyURL                string
+	KubeQPSLimit                int
+	KubeRequestTimeout          string
+	KubeSkipTLSVerify           bool
+	KubeTLSCAData               string
+	KubeTLSCAPath               string
+	KubeTLSClientCertData       string
+	KubeTLSClientCertPath       string
+	KubeTLSClientKeyData        string
+	KubeTLSClientKeyPath        string
+	KubeTLSServerName           string
+	LegacyChartType             helmopts.ChartType
+	LegacyExtraValues           map[string]interface{}
+	LegacyLogRegistryStreamOut  io.Writer
+	NetworkParallelism          int
+	NoFinalTracking             bool
+	NoInstallStandaloneCRDs     bool
+	NoPodLogs                   bool
+	NoProgressTablePrint        bool
+	NoRemoveManualChanges       bool
+	NoShowNotes                 bool
+	ProgressTablePrintInterval  time.Duration
+	RegistryCredentialsPath     string
+	ReleaseHistoryLimit         int
+	ReleaseInfoAnnotations      map[string]string
+	ReleaseLabels               map[string]string
+	ReleaseStorageDriver        string
+	ReleaseStorageSQLConnection string
+	RollbackGraphPath           string
+	RuntimeSetJSON              []string
+	SecretKey                   string
+	SecretKeyIgnore             bool
+	SecretValuesFiles           []string
+	SecretWorkDir               string
+	ShowSubchartNotes           bool
+	TempDirPath                 string
+	TemplatesAllowDNS           bool
+	Timeout                     time.Duration
+	TrackCreationTimeout        time.Duration
+	TrackDeletionTimeout        time.Duration
+	TrackReadinessTimeout       time.Duration
+	ValuesFiles                 []string
+	ValuesSet                   []string
+	ValuesSetFile               []string
+	ValuesSetJSON               []string
+	ValuesSetLiteral            []string
+	ValuesSetString             []string
 }
 
 func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseInstallOptions) error {
@@ -144,7 +176,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	if opts.SecretKey != "" {
-		os.Setenv("WERF_SECRET_KEY", opts.SecretKey)
+		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
 	}
 
 	if len(opts.KubeConfigPaths) > 0 {
@@ -156,18 +188,34 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		opts.KubeConfigPaths = lo.Compact(splitPaths)
 	}
 
-	// TODO(ilya-lesikov): some options are not propagated from cli/actions
 	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
-		BurstLimit:            opts.KubeBurstLimit,
-		CertificateAuthority:  opts.KubeCAPath,
-		CurrentContext:        opts.KubeContext,
-		InsecureSkipTLSVerify: opts.KubeSkipTLSVerify,
-		KubeConfigBase64:      opts.KubeConfigBase64,
-		Namespace:             releaseNamespace,
-		QPSLimit:              opts.KubeQPSLimit,
-		Server:                opts.KubeAPIServerName,
-		TLSServerName:         opts.KubeTLSServerName,
-		Token:                 opts.KubeToken,
+		APIServerAddress:   opts.KubeAPIServerAddress,
+		AuthProviderConfig: opts.KubeAuthProviderConfig,
+		AuthProviderName:   opts.KubeAuthProviderName,
+		BasicAuthPassword:  opts.KubeBasicAuthPassword,
+		BasicAuthUsername:  opts.KubeBasicAuthUsername,
+		BearerTokenData:    opts.KubeBearerTokenData,
+		BearerTokenPath:    opts.KubeBearerTokenPath,
+		BurstLimit:         opts.KubeBurstLimit,
+		ContextCluster:     opts.KubeContextCluster,
+		ContextCurrent:     opts.KubeContextCurrent,
+		ContextNamespace:   releaseNamespace, // TODO: unset it everywhere
+		ContextUser:        opts.KubeContextUser,
+		ImpersonateGroups:  opts.KubeImpersonateGroups,
+		ImpersonateUID:     opts.KubeImpersonateUID,
+		ImpersonateUser:    opts.KubeImpersonateUser,
+		KubeConfigBase64:   opts.KubeConfigBase64,
+		ProxyURL:           opts.KubeProxyURL,
+		QPSLimit:           opts.KubeQPSLimit,
+		RequestTimeout:     opts.KubeRequestTimeout,
+		SkipTLSVerify:      opts.KubeSkipTLSVerify,
+		TLSCAData:          opts.KubeTLSCAData,
+		TLSCAPath:          opts.KubeTLSCAPath,
+		TLSClientCertData:  opts.KubeTLSClientCertData,
+		TLSClientCertPath:  opts.KubeTLSClientCertPath,
+		TLSClientKeyData:   opts.KubeTLSClientKeyData,
+		TLSClientKeyPath:   opts.KubeTLSClientKeyPath,
+		TLSServerName:      opts.KubeTLSServerName,
 	})
 	if err != nil {
 		return fmt.Errorf("construct kube config: %w", err)
@@ -180,11 +228,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	helmRegistryClientOpts := []registry.ClientOption{
 		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
-		registry.ClientOptWriter(opts.LogRegistryStreamOut),
+		// TODO(log):
+		registry.ClientOptWriter(opts.LegacyLogRegistryStreamOut),
 		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
 	}
 
-	if opts.ChartRepositoryInsecure {
+	if opts.ChartRepoInsecure {
 		helmRegistryClientOpts = append(
 			helmRegistryClientOpts,
 			registry.ClientOptPlainHTTP(),
@@ -197,8 +246,8 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, clientFactory, release.ReleaseStorageOptions{
-		HistoryLimit:        opts.ReleaseHistoryLimit,
-		SQLConnectionString: opts.SQLConnectionString,
+		HistoryLimit:  opts.ReleaseHistoryLimit,
+		SQLConnection: opts.ReleaseStorageSQLConnection,
 	})
 	if err != nil {
 		return fmt.Errorf("construct release storage: %w", err)
@@ -213,17 +262,17 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	helmOptions := helmopts.HelmOptions{
 		ChartLoadOpts: helmopts.ChartLoadOptions{
-			ChartAppVersion:        opts.ChartAppVersion,
-			ChartType:              opts.LegacyChartType,
-			DefaultChartAPIVersion: opts.DefaultChartAPIVersion,
-			DefaultChartName:       opts.DefaultChartName,
-			DefaultChartVersion:    opts.DefaultChartVersion,
-			ExtraValues:            opts.LegacyExtraValues,
-			NoDecryptSecrets:       opts.SecretKeyIgnore,
-			NoDefaultSecretValues:  opts.DefaultSecretValuesDisable,
-			NoDefaultValues:        opts.DefaultValuesDisable,
-			SecretValuesFiles:      opts.SecretValuesPaths,
-			SecretsWorkingDir:      opts.SecretWorkDir,
+			ChartAppVersion:            opts.ChartAppVersion,
+			ChartType:                  opts.LegacyChartType,
+			DefaultChartAPIVersion:     opts.DefaultChartAPIVersion,
+			DefaultChartName:           opts.DefaultChartName,
+			DefaultChartVersion:        opts.DefaultChartVersion,
+			DefaultSecretValuesDisable: opts.DefaultSecretValuesDisable,
+			DefaultValuesDisable:       opts.DefaultValuesDisable,
+			ExtraValues:                opts.LegacyExtraValues,
+			NoDecryptSecrets:           opts.SecretKeyIgnore,
+			SecretValuesFiles:          opts.SecretValuesFiles,
+			SecretsWorkingDir:          opts.SecretWorkDir,
 		},
 	}
 
@@ -276,22 +325,33 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	log.Default.Debug(ctx, "Render chart")
 
-	renderChartResult, err := chart.RenderChart(ctx, opts.Chart, releaseName, releaseNamespace, newRevision, deployType, clientFactory, chart.RenderChartOptions{
-		ChartRepoInsecure:      opts.ChartRepositoryInsecure,
-		ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
-		ChartRepoSkipUpdate:    opts.ChartRepositorySkipUpdate,
-		ChartVersion:           opts.ChartVersion,
-		HelmOptions:            helmOptions,
-		KubeCAPath:             opts.KubeCAPath,
-		NoStandaloneCRDs:       opts.NoInstallCRDs,
-		RegistryClient:         helmRegistryClient,
-		Remote:                 true,
-		RuntimeJSONSets:        opts.RuntimeJSONSets,
-		SubNotes:               opts.SubNotes,
-		ValuesFileSets:         opts.ValuesFileSets,
-		ValuesFilesPaths:       opts.ValuesFilesPaths,
-		ValuesSets:             opts.ValuesSets,
-		ValuesStringSets:       opts.ValuesStringSets,
+	renderChartResult, err := chart.RenderChart(ctx, opts.Chart, releaseName, releaseNamespace, newRevision, deployType, helmRegistryClient, clientFactory, chart.RenderChartOptions{
+		ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
+		ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
+		ChartRepoBasicAuthPassword: opts.ChartRepoBasicAuthPassword,
+		ChartRepoBasicAuthUsername: opts.ChartRepoBasicAuthUsername,
+		ChartRepoCAPath:            opts.ChartRepoCAPath,
+		ChartRepoCertPath:          opts.ChartRepoCertPath,
+		ChartRepoInsecure:          opts.ChartRepoInsecure,
+		ChartRepoKeyPath:           opts.ChartRepoKeyPath,
+		ChartRepoNoTLSVerify:       opts.ChartRepoSkipTLSVerify,
+		ChartRepoNoUpdate:          opts.ChartRepoSkipUpdate,
+		ChartRepoPassCreds:         opts.ChartRepoPassCreds,
+		ChartRepoRequestTimeout:    opts.ChartRepoRequestTimeout,
+		ChartRepoURL:               opts.ChartRepoURL,
+		ChartVersion:               opts.ChartVersion,
+		HelmOptions:                helmOptions,
+		NoStandaloneCRDs:           opts.NoInstallStandaloneCRDs,
+		Remote:                     true,
+		RuntimeSetJSON:             opts.RuntimeSetJSON,
+		SubchartNotes:              opts.ShowSubchartNotes,
+		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
+		ValuesFiles:                opts.ValuesFiles,
+		ValuesSet:                  opts.ValuesSet,
+		ValuesSetFile:              opts.ValuesSetFile,
+		ValuesSetJSON:              opts.ValuesSetJSON,
+		ValuesSetLiteral:           opts.ValuesSetLiteral,
+		ValuesSetString:            opts.ValuesSetString,
 	})
 	if err != nil {
 		return fmt.Errorf("render chart: %w", err)
@@ -346,7 +406,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
 		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
-		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
+		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 	}, clientFactory, resource.BuildResourcesOptions{
 		Remote: true,
 	})
@@ -362,7 +422,10 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	log.Default.Debug(ctx, "Build resource infos")
 
-	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, !opts.NoRemoveManualChanges, clientFactory, opts.NetworkParallelism)
+	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
+		NetworkParallelism:    opts.NetworkParallelism,
+		NoRemoveManualChanges: opts.NoRemoveManualChanges,
+	})
 	if err != nil {
 		return fmt.Errorf("build resource infos: %w", err)
 	}
@@ -423,7 +486,9 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			}
 		}
 
-		printNotes(ctx, renderChartResult.Notes)
+		if !opts.NoShowNotes {
+			printNotes(ctx, renderChartResult.Notes)
+		}
 
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)))
 
@@ -456,10 +521,10 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	log.Default.Debug(ctx, "Execute release install plan")
 
 	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, installPlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		NetworkParallelism: opts.NetworkParallelism,
-		ReadinessTimeout:   opts.TrackReadinessTimeout,
-		PresenceTimeout:    opts.TrackCreationTimeout,
-		AbsenceTimeout:     opts.TrackDeletionTimeout,
+		NetworkParallelism:    opts.NetworkParallelism,
+		TrackCreationTimeout:  opts.TrackCreationTimeout,
+		TrackDeletionTimeout:  opts.TrackDeletionTimeout,
+		TrackReadinessTimeout: opts.TrackReadinessTimeout,
 	})
 	if executePlanErr != nil {
 		criticalErrs = append(criticalErrs, fmt.Errorf("execute release install plan: %w", executePlanErr))
@@ -501,6 +566,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 				ExtraAnnotations:        opts.ExtraAnnotations,
 				ExtraLabels:             opts.ExtraLabels,
 				ExtraRuntimeAnnotations: opts.ExtraRuntimeAnnotations,
+				ExtraRuntimeLabels:      opts.ExtraRuntimeLabels,
 				ForceAdoption:           opts.ForceAdoption,
 				NetworkParallelism:      opts.NetworkParallelism,
 				NoFinalTracking:         opts.NoFinalTracking,
@@ -561,7 +627,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}
 	}
 
-	if len(criticalErrs) == 0 {
+	if len(criticalErrs) == 0 && !opts.NoShowNotes {
 		printNotes(ctx, renderChartResult.Notes)
 	}
 
@@ -595,8 +661,8 @@ func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir, 
 		opts.KubeConfigPaths = []string{filepath.Join(homeDir, ".kube", "config")}
 	}
 
-	if opts.LogRegistryStreamOut == nil {
-		opts.LogRegistryStreamOut = io.Discard
+	if opts.LegacyLogRegistryStreamOut == nil {
+		opts.LegacyLogRegistryStreamOut = io.Discard
 	}
 
 	if opts.NetworkParallelism <= 0 {
@@ -675,6 +741,7 @@ type runRollbackPlanOptions struct {
 	ExtraAnnotations        map[string]string
 	ExtraLabels             map[string]string
 	ExtraRuntimeAnnotations map[string]string
+	ExtraRuntimeLabels      map[string]string
 	ForceAdoption           bool
 	NetworkParallelism      int
 	NoFinalTracking         bool
@@ -747,7 +814,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	instResources, delResources, err := resource.BuildResources(ctx, common.DeployTypeRollback, releaseNamespace, failedRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
 		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
-		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
+		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 	}, clientFactory, resource.BuildResourcesOptions{
 		Remote: true,
 	})
@@ -763,7 +830,10 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Build resource infos")
 
-	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, common.DeployTypeRollback, releaseName, releaseNamespace, instResources, delResources, true, !opts.NoRemoveManualChanges, clientFactory, opts.NetworkParallelism)
+	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, common.DeployTypeRollback, releaseName, releaseNamespace, instResources, delResources, true, clientFactory, plan.BuildResourceInfosOptions{
+		NetworkParallelism:    opts.NetworkParallelism,
+		NoRemoveManualChanges: opts.NoRemoveManualChanges,
+	})
 	if err != nil {
 		return nil, nonCritErrs, append(critErrs, fmt.Errorf("build resource infos: %w", err))
 	}
@@ -821,10 +891,10 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 	log.Default.Debug(ctx, "Execute rollback plan")
 
 	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, rollbackPlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		NetworkParallelism: opts.NetworkParallelism,
-		ReadinessTimeout:   opts.TrackReadinessTimeout,
-		PresenceTimeout:    opts.TrackCreationTimeout,
-		AbsenceTimeout:     opts.TrackDeletionTimeout,
+		NetworkParallelism:    opts.NetworkParallelism,
+		TrackCreationTimeout:  opts.TrackCreationTimeout,
+		TrackDeletionTimeout:  opts.TrackDeletionTimeout,
+		TrackReadinessTimeout: opts.TrackReadinessTimeout,
 	})
 	if executePlanErr != nil {
 		critErrs = append(critErrs, fmt.Errorf("execute rollback plan: %w", executePlanErr))
@@ -850,9 +920,9 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		runFailurePlanResult, nonCrErrs, crErrs := runFailurePlan(ctx, releaseNamespace, rollbackPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
 			NetworkParallelism:    opts.NetworkParallelism,
 			NoFinalTracking:       opts.NoFinalTracking,
-			TrackReadinessTimeout: opts.TrackReadinessTimeout,
 			TrackCreationTimeout:  opts.TrackCreationTimeout,
 			TrackDeletionTimeout:  opts.TrackDeletionTimeout,
+			TrackReadinessTimeout: opts.TrackReadinessTimeout,
 		})
 
 		critErrs = append(critErrs, crErrs...)

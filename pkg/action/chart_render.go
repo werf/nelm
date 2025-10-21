@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gookit/color"
 	"github.com/samber/lo"
@@ -15,7 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/3p-helm/pkg/chartutil"
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/internal/chart"
@@ -31,57 +31,88 @@ const (
 )
 
 type ChartRenderOptions struct {
-	Chart                        string
-	ChartAppVersion              string
-	ChartDirPath                 string // TODO(v2): get rid
-	ChartRepositoryInsecure      bool
-	ChartRepositorySkipTLSVerify bool
-	ChartRepositorySkipUpdate    bool
-	ChartVersion                 string
-	DefaultChartAPIVersion       string
-	DefaultChartName             string
-	DefaultChartVersion          string
-	DefaultSecretValuesDisable   bool
-	DefaultValuesDisable         bool
-	ExtraAnnotations             map[string]string
-	ExtraLabels                  map[string]string
-	ExtraRuntimeAnnotations      map[string]string
-	ForceAdoption                bool
-	KubeAPIServerName            string
-	KubeBurstLimit               int
-	KubeCAPath                   string
-	KubeConfigBase64             string
-	KubeConfigPaths              []string
-	KubeContext                  string
-	KubeQPSLimit                 int
-	KubeSkipTLSVerify            bool
-	KubeTLSServerName            string
-	KubeToken                    string
-	LegacyChartType              helmopts.ChartType
-	LegacyExtraValues            map[string]interface{}
-	LocalKubeVersion             string
-	LogRegistryStreamOut         io.Writer
-	NetworkParallelism           int
-	OutputFilePath               string
-	OutputNoPrint                bool
-	RegistryCredentialsPath      string
-	ReleaseName                  string
-	ReleaseNamespace             string
-	ReleaseStorageDriver         string
-	Remote                       bool
-	RuntimeJSONSets              []string
-	SQLConnectionString          string
-	SecretKey                    string
-	SecretKeyIgnore              bool
-	SecretValuesPaths            []string
-	SecretWorkDir                string
-	ShowCRDs                     bool
-	ShowOnlyFiles                []string
-	TempDirPath                  string
-	ValuesFileSets               []string
-	ValuesFilesPaths             []string
-	ValuesSets                   []string
-	ValuesStringSets             []string
+	Chart                       string
+	ChartAppVersion             string
+	ChartDirPath                string // TODO(v2): get rid
+	ChartProvenanceKeyring      string
+	ChartProvenanceStrategy     string
+	ChartRepoBasicAuthPassword  string
+	ChartRepoBasicAuthUsername  string
+	ChartRepoCAPath             string
+	ChartRepoCertPath           string
+	ChartRepoInsecure           bool
+	ChartRepoKeyPath            string
+	ChartRepoPassCreds          bool
+	ChartRepoRequestTimeout     time.Duration
+	ChartRepoSkipTLSVerify      bool
+	ChartRepoSkipUpdate         bool
+	ChartRepoURL                string
+	ChartVersion                string
+	DefaultChartAPIVersion      string
+	DefaultChartName            string
+	DefaultChartVersion         string
+	DefaultSecretValuesDisable  bool
+	DefaultValuesDisable        bool
+	ExtraAPIVersions            []string
+	ExtraAnnotations            map[string]string
+	ExtraLabels                 map[string]string
+	ExtraRuntimeAnnotations     map[string]string // TODO(v2): get rid?? or do custom logic
+	ForceAdoption               bool              // TODO(v2): get rid, useless
+	KubeAPIServerAddress        string
+	KubeAuthProviderConfig      map[string]string
+	KubeAuthProviderName        string
+	KubeBasicAuthPassword       string
+	KubeBasicAuthUsername       string
+	KubeBearerTokenData         string
+	KubeBearerTokenPath         string
+	KubeBurstLimit              int
+	KubeConfigBase64            string
+	KubeConfigPaths             []string
+	KubeContextCluster          string
+	KubeContextCurrent          string
+	KubeContextUser             string
+	KubeImpersonateGroups       []string
+	KubeImpersonateUID          string
+	KubeImpersonateUser         string
+	KubeProxyURL                string
+	KubeQPSLimit                int
+	KubeRequestTimeout          string
+	KubeSkipTLSVerify           bool
+	KubeTLSCAData               string
+	KubeTLSCAPath               string
+	KubeTLSClientCertData       string
+	KubeTLSClientCertPath       string
+	KubeTLSClientKeyData        string
+	KubeTLSClientKeyPath        string
+	KubeTLSServerName           string
+	LegacyChartType             helmopts.ChartType
+	LegacyExtraValues           map[string]interface{}
+	LegacyLogRegistryStreamOut  io.Writer
+	LocalKubeVersion            string
+	NetworkParallelism          int
+	OutputFilePath              string
+	OutputNoPrint               bool
+	RegistryCredentialsPath     string
+	ReleaseName                 string
+	ReleaseNamespace            string
+	ReleaseStorageDriver        string
+	ReleaseStorageSQLConnection string
+	Remote                      bool
+	RuntimeSetJSON              []string
+	SecretKey                   string
+	SecretKeyIgnore             bool
+	SecretValuesFiles           []string
+	SecretWorkDir               string
+	ShowOnlyFiles               []string
+	ShowStandaloneCRDs          bool
+	TempDirPath                 string
+	TemplatesAllowDNS           bool
+	ValuesFiles                 []string
+	ValuesSet                   []string
+	ValuesSetFile               []string
+	ValuesSetJSON               []string
+	ValuesSetLiteral            []string
+	ValuesSetString             []string
 }
 
 func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResultV2, error) {
@@ -101,7 +132,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	}
 
 	if opts.SecretKey != "" {
-		os.Setenv("WERF_SECRET_KEY", opts.SecretKey)
+		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
 	}
 
 	if !opts.Remote {
@@ -119,18 +150,34 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 			opts.KubeConfigPaths = lo.Compact(splitPaths)
 		}
 
-		// TODO(ilya-lesikov): some options are not propagated from cli/actions
 		kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
-			BurstLimit:            opts.KubeBurstLimit,
-			CertificateAuthority:  opts.KubeCAPath,
-			CurrentContext:        opts.KubeContext,
-			InsecureSkipTLSVerify: opts.KubeSkipTLSVerify,
-			KubeConfigBase64:      opts.KubeConfigBase64,
-			Namespace:             opts.ReleaseNamespace,
-			QPSLimit:              opts.KubeQPSLimit,
-			Server:                opts.KubeAPIServerName,
-			TLSServerName:         opts.KubeTLSServerName,
-			Token:                 opts.KubeToken,
+			APIServerAddress:   opts.KubeAPIServerAddress,
+			AuthProviderConfig: opts.KubeAuthProviderConfig,
+			AuthProviderName:   opts.KubeAuthProviderName,
+			BasicAuthPassword:  opts.KubeBasicAuthPassword,
+			BasicAuthUsername:  opts.KubeBasicAuthUsername,
+			BearerTokenData:    opts.KubeBearerTokenData,
+			BearerTokenPath:    opts.KubeBearerTokenPath,
+			BurstLimit:         opts.KubeBurstLimit,
+			ContextCluster:     opts.KubeContextCluster,
+			ContextCurrent:     opts.KubeContextCurrent,
+			ContextNamespace:   opts.ReleaseNamespace, // TODO: unset it everywhere
+			ContextUser:        opts.KubeContextUser,
+			ImpersonateGroups:  opts.KubeImpersonateGroups,
+			ImpersonateUID:     opts.KubeImpersonateUID,
+			ImpersonateUser:    opts.KubeImpersonateUser,
+			KubeConfigBase64:   opts.KubeConfigBase64,
+			ProxyURL:           opts.KubeProxyURL,
+			QPSLimit:           opts.KubeQPSLimit,
+			RequestTimeout:     opts.KubeRequestTimeout,
+			SkipTLSVerify:      opts.KubeSkipTLSVerify,
+			TLSCAData:          opts.KubeTLSCAData,
+			TLSCAPath:          opts.KubeTLSCAPath,
+			TLSClientCertData:  opts.KubeTLSClientCertData,
+			TLSClientCertPath:  opts.KubeTLSClientCertPath,
+			TLSClientKeyData:   opts.KubeTLSClientKeyData,
+			TLSClientKeyPath:   opts.KubeTLSClientKeyPath,
+			TLSServerName:      opts.KubeTLSServerName,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("construct kube config: %w", err)
@@ -144,11 +191,11 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	helmRegistryClientOpts := []registry.ClientOption{
 		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
-		registry.ClientOptWriter(opts.LogRegistryStreamOut),
+		registry.ClientOptWriter(opts.LegacyLogRegistryStreamOut),
 		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
 	}
 
-	if opts.ChartRepositoryInsecure {
+	if opts.ChartRepoInsecure {
 		helmRegistryClientOpts = append(
 			helmRegistryClientOpts,
 			registry.ClientOptPlainHTTP(),
@@ -161,7 +208,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	}
 
 	releaseStorageOptions := release.ReleaseStorageOptions{
-		SQLConnectionString: opts.SQLConnectionString,
+		SQLConnection: opts.ReleaseStorageSQLConnection,
 	}
 
 	releaseStorage, err := release.NewReleaseStorage(ctx, opts.ReleaseNamespace, opts.ReleaseStorageDriver, clientFactory, releaseStorageOptions)
@@ -171,17 +218,17 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	helmOptions := helmopts.HelmOptions{
 		ChartLoadOpts: helmopts.ChartLoadOptions{
-			ChartAppVersion:        opts.ChartAppVersion,
-			ChartType:              opts.LegacyChartType,
-			DefaultChartAPIVersion: opts.DefaultChartAPIVersion,
-			DefaultChartName:       opts.DefaultChartName,
-			DefaultChartVersion:    opts.DefaultChartVersion,
-			ExtraValues:            opts.LegacyExtraValues,
-			NoDecryptSecrets:       opts.SecretKeyIgnore,
-			NoDefaultSecretValues:  opts.DefaultSecretValuesDisable,
-			NoDefaultValues:        opts.DefaultValuesDisable,
-			SecretValuesFiles:      opts.SecretValuesPaths,
-			SecretsWorkingDir:      opts.SecretWorkDir,
+			ChartAppVersion:            opts.ChartAppVersion,
+			ChartType:                  opts.LegacyChartType,
+			DefaultChartAPIVersion:     opts.DefaultChartAPIVersion,
+			DefaultChartName:           opts.DefaultChartName,
+			DefaultChartVersion:        opts.DefaultChartVersion,
+			DefaultSecretValuesDisable: opts.DefaultSecretValuesDisable,
+			DefaultValuesDisable:       opts.DefaultValuesDisable,
+			ExtraValues:                opts.LegacyExtraValues,
+			NoDecryptSecrets:           opts.SecretKeyIgnore,
+			SecretValuesFiles:          opts.SecretValuesFiles,
+			SecretsWorkingDir:          opts.SecretWorkDir,
 		},
 	}
 
@@ -214,32 +261,37 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	}
 
 	chartTreeOptions := chart.RenderChartOptions{
-		ChartRepoInsecure:      opts.ChartRepositoryInsecure,
-		ChartRepoSkipTLSVerify: opts.ChartRepositorySkipTLSVerify,
-		ChartVersion:           opts.ChartVersion,
-		HelmOptions:            helmOptions,
-		KubeCAPath:             opts.KubeCAPath,
-		RegistryClient:         helmRegistryClient,
-		Remote:                 opts.Remote,
-		RuntimeJSONSets:        opts.RuntimeJSONSets,
-		ValuesFileSets:         opts.ValuesFileSets,
-		ValuesFilesPaths:       opts.ValuesFilesPaths,
-		ValuesSets:             opts.ValuesSets,
-		ValuesStringSets:       opts.ValuesStringSets,
-	}
-
-	if !opts.Remote {
-		ver, err := chartutil.ParseKubeVersion(opts.LocalKubeVersion)
-		if err != nil {
-			return nil, fmt.Errorf("parse local kube version %q: %w", opts.LocalKubeVersion, err)
-		}
-
-		chartTreeOptions.KubeVersion = ver
+		ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
+		ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
+		ChartRepoBasicAuthPassword: opts.ChartRepoBasicAuthPassword,
+		ChartRepoBasicAuthUsername: opts.ChartRepoBasicAuthUsername,
+		ChartRepoCAPath:            opts.ChartRepoCAPath,
+		ChartRepoCertPath:          opts.ChartRepoCertPath,
+		ChartRepoInsecure:          opts.ChartRepoInsecure,
+		ChartRepoKeyPath:           opts.ChartRepoKeyPath,
+		ChartRepoNoTLSVerify:       opts.ChartRepoSkipTLSVerify,
+		ChartRepoNoUpdate:          opts.ChartRepoSkipUpdate,
+		ChartRepoPassCreds:         opts.ChartRepoPassCreds,
+		ChartRepoRequestTimeout:    opts.ChartRepoRequestTimeout,
+		ChartRepoURL:               opts.ChartRepoURL,
+		ChartVersion:               opts.ChartVersion,
+		ExtraAPIVersions:           opts.ExtraAPIVersions,
+		HelmOptions:                helmOptions,
+		LocalKubeVersion:           opts.LocalKubeVersion,
+		Remote:                     opts.Remote,
+		RuntimeSetJSON:             opts.RuntimeSetJSON,
+		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
+		ValuesFiles:                opts.ValuesFiles,
+		ValuesSet:                  opts.ValuesSet,
+		ValuesSetFile:              opts.ValuesSetFile,
+		ValuesSetJSON:              opts.ValuesSetJSON,
+		ValuesSetLiteral:           opts.ValuesSetLiteral,
+		ValuesSetString:            opts.ValuesSetString,
 	}
 
 	log.Default.Debug(ctx, "Render chart")
 
-	renderChartResult, err := chart.RenderChart(ctx, opts.Chart, opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, clientFactory, chartTreeOptions)
+	renderChartResult, err := chart.RenderChart(ctx, opts.Chart, opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, helmRegistryClient, clientFactory, chartTreeOptions)
 	if err != nil {
 		return nil, fmt.Errorf("render chart: %w", err)
 	}
@@ -263,9 +315,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		return nil, fmt.Errorf("build releasable resource specs: %w", err)
 	}
 
-	newRelease, err := release.NewRelease(opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, releasableResSpecs, renderChartResult.Chart, renderChartResult.ReleaseConfig, release.ReleaseOptions{
-		Notes: renderChartResult.Notes,
-	})
+	newRelease, err := release.NewRelease(opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, releasableResSpecs, renderChartResult.Chart, renderChartResult.ReleaseConfig, release.ReleaseOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("construct new release: %w", err)
 	}
@@ -339,7 +389,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 			continue
 		}
 
-		if !opts.ShowCRDs && res.StoreAs == common.StoreAsNone &&
+		if !opts.ShowStandaloneCRDs && res.StoreAs == common.StoreAsNone &&
 			spec.IsCRD(res.GroupVersionKind.GroupKind()) {
 			continue
 		}
@@ -379,8 +429,8 @@ func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir, homeDi
 		opts.KubeConfigPaths = []string{filepath.Join(homeDir, ".kube", "config")}
 	}
 
-	if opts.LogRegistryStreamOut == nil {
-		opts.LogRegistryStreamOut = io.Discard
+	if opts.LegacyLogRegistryStreamOut == nil {
+		opts.LegacyLogRegistryStreamOut = io.Discard
 	}
 
 	if opts.NetworkParallelism <= 0 {
@@ -393,10 +443,6 @@ func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir, homeDi
 
 	if opts.KubeBurstLimit <= 0 {
 		opts.KubeBurstLimit = DefaultBurstLimit
-	}
-
-	if opts.ReleaseName == "" {
-		return ChartRenderOptions{}, fmt.Errorf("release name not specified")
 	}
 
 	if opts.ReleaseStorageDriver == ReleaseStorageDriverDefault {

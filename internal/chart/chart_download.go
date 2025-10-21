@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"time"
 
 	"github.com/werf/3p-helm/pkg/cli"
 	helmdownloader "github.com/werf/3p-helm/pkg/downloader"
@@ -17,24 +18,26 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-// TODO(ilya-lesikov): pass all missing options
 type chartDownloaderOptions struct {
-	KeyringFile        string
-	PassCredentialsAll bool
-	CertFile           string
-	KeyFile            string
-	CaFile             string
-	SkipTLSVerify      bool
-	Insecure           bool
-	RepoURL            string
-	Username           string
-	Password           string
-	Version            string
+	ChartProvenanceKeyring     string
+	ChartProvenanceStrategy    string
+	ChartRepoBasicAuthPassword string
+	ChartRepoBasicAuthUsername string
+	ChartRepoCAPath            string
+	ChartRepoCertPath          string
+	ChartRepoInsecure          bool
+	ChartRepoKeyPath           string
+	ChartRepoPassCreds         bool
+	ChartRepoRequestTimeout    time.Duration
+	ChartRepoNoTLSVerify       bool
+	ChartRepoURL               string
+	ChartVersion               string
 }
 
 func newChartDownloader(ctx context.Context, chartRef string, registryClient *helmregistry.Client, opts chartDownloaderOptions) (*helmdownloader.ChartDownloader, string, error) {
 	var out io.Writer
 	if log.Default.AcceptLevel(ctx, log.WarningLevel) {
+		// TODO(log):
 		out = os.Stdout
 	} else {
 		out = io.Discard
@@ -42,29 +45,31 @@ func newChartDownloader(ctx context.Context, chartRef string, registryClient *he
 
 	downloader := &helmdownloader.ChartDownloader{
 		Out:     out,
-		Keyring: opts.KeyringFile,
+		Verify:  helmdownloader.VerificationStrategyString(opts.ChartProvenanceStrategy).ToVerificationStrategy(),
+		Keyring: opts.ChartProvenanceKeyring,
 		Getters: helmgetter.Providers{helmgetter.HttpProvider, helmgetter.OCIProvider},
 		Options: []helmgetter.Option{
-			helmgetter.WithPassCredentialsAll(opts.PassCredentialsAll),
-			helmgetter.WithTLSClientConfig(opts.CertFile, opts.KeyFile, opts.CaFile),
-			helmgetter.WithInsecureSkipVerifyTLS(opts.SkipTLSVerify),
-			helmgetter.WithPlainHTTP(opts.Insecure),
+			helmgetter.WithPassCredentialsAll(opts.ChartRepoPassCreds),
+			helmgetter.WithTLSClientConfig(opts.ChartRepoCertPath, opts.ChartRepoKeyPath, opts.ChartRepoCAPath),
+			helmgetter.WithInsecureSkipVerifyTLS(opts.ChartRepoNoTLSVerify),
+			helmgetter.WithPlainHTTP(opts.ChartRepoInsecure),
 			helmgetter.WithRegistryClient(registryClient),
+			helmgetter.WithTimeout(opts.ChartRepoRequestTimeout),
 		},
-		RegistryClient:   registryClient,
+		RegistryClient: registryClient,
+		// TODO(v2): get rid of HELM_ env vars support
 		RepositoryConfig: cli.EnvOr("HELM_REPOSITORY_CONFIG", helmpath.ConfigPath("repositories.yaml")),
-		RepositoryCache:  cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
+		// TODO(v2): get rid of HELM_ env vars support
+		RepositoryCache: cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
 	}
 
-	if opts.PassCredentialsAll || opts.RepoURL == "" {
-		downloader.Options = append(downloader.Options, helmgetter.WithBasicAuth(opts.Username, opts.Password))
-	} else {
-		chartURL, err := helmrepo.FindChartInAuthAndTLSAndPassRepoURL(opts.RepoURL, opts.Username, opts.Password, chartRef, opts.Version, opts.CertFile, opts.KeyFile, opts.CaFile, opts.SkipTLSVerify, opts.PassCredentialsAll, helmgetter.Providers{helmgetter.HttpProvider, helmgetter.OCIProvider})
+	if opts.ChartRepoURL != "" {
+		chartURL, err := helmrepo.FindChartInAuthAndTLSAndPassRepoURL(opts.ChartRepoURL, opts.ChartRepoBasicAuthUsername, opts.ChartRepoBasicAuthPassword, chartRef, opts.ChartVersion, opts.ChartRepoCertPath, opts.ChartRepoKeyPath, opts.ChartRepoCAPath, opts.ChartRepoNoTLSVerify, opts.ChartRepoPassCreds, helmgetter.Providers{helmgetter.HttpProvider, helmgetter.OCIProvider})
 		if err != nil {
 			return nil, "", fmt.Errorf("get chart URL: %w", err)
 		}
 
-		rURL, err := url.Parse(opts.RepoURL)
+		rURL, err := url.Parse(opts.ChartRepoURL)
 		if err != nil {
 			return nil, "", fmt.Errorf("parse repo URL: %w", err)
 		}
@@ -74,34 +79,47 @@ func newChartDownloader(ctx context.Context, chartRef string, registryClient *he
 			return nil, "", fmt.Errorf("parse chart URL: %w", err)
 		}
 
-		if rURL.Scheme == cURL.Scheme && rURL.Host == cURL.Host {
-			downloader.Options = append(downloader.Options, helmgetter.WithBasicAuth(opts.Username, opts.Password))
+		if opts.ChartRepoPassCreds || (rURL.Scheme == cURL.Scheme && rURL.Host == cURL.Host) {
+			downloader.Options = append(downloader.Options, helmgetter.WithBasicAuth(opts.ChartRepoBasicAuthUsername, opts.ChartRepoBasicAuthPassword))
 		} else {
 			downloader.Options = append(downloader.Options, helmgetter.WithBasicAuth("", ""))
 		}
 
 		chartRef = chartURL
+	} else {
+		downloader.Options = append(downloader.Options, helmgetter.WithBasicAuth(opts.ChartRepoBasicAuthUsername, opts.ChartRepoBasicAuthPassword))
 	}
 
 	return downloader, chartRef, nil
 }
 
-func downloadChart(ctx context.Context, chartPath string, opts RenderChartOptions) (string, error) {
+func downloadChart(ctx context.Context, chartPath string, registryClient *helmregistry.Client, opts RenderChartOptions) (string, error) {
 	if (featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled()) && !isLocalChart(chartPath) {
-		chartDownloader, chartRef, err := newChartDownloader(ctx, chartPath, opts.RegistryClient, chartDownloaderOptions{
-			CaFile:        opts.KubeCAPath,
-			SkipTLSVerify: opts.ChartRepoSkipTLSVerify,
-			Insecure:      opts.ChartRepoInsecure,
-			Version:       opts.ChartVersion,
+		chartDownloader, chartRef, err := newChartDownloader(ctx, chartPath, registryClient, chartDownloaderOptions{
+			ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
+			ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
+			ChartRepoBasicAuthPassword: opts.ChartRepoBasicAuthPassword,
+			ChartRepoBasicAuthUsername: opts.ChartRepoBasicAuthUsername,
+			ChartRepoCAPath:            opts.ChartRepoCAPath,
+			ChartRepoCertPath:          opts.ChartRepoCertPath,
+			ChartRepoInsecure:          opts.ChartRepoInsecure,
+			ChartRepoKeyPath:           opts.ChartRepoKeyPath,
+			ChartRepoPassCreds:         opts.ChartRepoPassCreds,
+			ChartRepoRequestTimeout:    opts.ChartRepoRequestTimeout,
+			ChartRepoNoTLSVerify:       opts.ChartRepoNoTLSVerify,
+			ChartRepoURL:               opts.ChartRepoURL,
+			ChartVersion:               opts.ChartVersion,
 		})
 		if err != nil {
 			return "", fmt.Errorf("construct chart downloader: %w", err)
 		}
 
+		// TODO(v2): get rid of HELM_ env vars support
 		if err := os.MkdirAll(cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")), 0o755); err != nil {
 			return "", fmt.Errorf("create repository cache directory: %w", err)
 		}
 
+		// TODO(v2): get rid of HELM_ env vars support
 		chartPath, _, err = chartDownloader.DownloadTo(chartRef, opts.ChartVersion, cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")))
 		if err != nil {
 			return "", fmt.Errorf("download chart %q: %w", chartRef, err)
