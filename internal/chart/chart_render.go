@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/samber/lo"
@@ -30,41 +29,27 @@ import (
 	"github.com/werf/3p-helm/pkg/releaseutil"
 	"github.com/werf/3p-helm/pkg/strvals"
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
-	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/resource/spec"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 )
 
 type RenderChartOptions struct {
-	ChartProvenanceKeyring     string
-	ChartProvenanceStrategy    string
-	ChartRepoBasicAuthPassword string
-	ChartRepoBasicAuthUsername string
-	ChartRepoCAPath            string
-	ChartRepoCertPath          string
-	ChartRepoInsecure          bool
-	ChartRepoKeyPath           string
-	ChartRepoNoTLSVerify       bool
-	ChartRepoNoUpdate          bool
-	ChartRepoPassCreds         bool
-	ChartRepoRequestTimeout    time.Duration
-	ChartRepoURL               string
-	ChartVersion               string
-	ExtraAPIVersions           []string
-	HelmOptions                helmopts.HelmOptions
-	LocalKubeVersion           string
-	NoStandaloneCRDs           bool
-	Remote                     bool
-	RuntimeSetJSON             []string
-	SubchartNotes              bool
-	TemplatesAllowDNS          bool
-	ValuesFiles                []string
-	ValuesSet                  []string
-	ValuesSetFile              []string
-	ValuesSetJSON              []string
-	ValuesSetLiteral           []string
-	ValuesSetString            []string
+	common.ChartRepoConnectionOptions
+	common.ValuesOptions
+
+	ChartProvenanceKeyring  string
+	ChartProvenanceStrategy string
+	ChartRepoNoUpdate       bool
+	ChartVersion            string
+	ExtraAPIVersions        []string
+	HelmOptions             helmopts.HelmOptions
+	LocalKubeVersion        string
+	NoStandaloneCRDs        bool
+	Remote                  bool
+	SubchartNotes           bool
+	TemplatesAllowDNS       bool
 }
 
 type RenderChartResult struct {

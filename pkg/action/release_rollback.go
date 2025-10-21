@@ -16,7 +16,6 @@ import (
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
-	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/lock"
 	"github.com/werf/nelm/internal/plan"
@@ -25,6 +24,7 @@ import (
 	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/track"
 	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -33,43 +33,15 @@ const (
 )
 
 type ReleaseRollbackOptions struct {
+	common.KubeConnectionOptions
+	common.TrackingOptions
+
 	ExtraRuntimeAnnotations     map[string]string
 	ExtraRuntimeLabels          map[string]string
 	ForceAdoption               bool
-	KubeAPIServerAddress        string
-	KubeAuthProviderConfig      map[string]string
-	KubeAuthProviderName        string
-	KubeBasicAuthPassword       string
-	KubeBasicAuthUsername       string
-	KubeBearerTokenData         string
-	KubeBearerTokenPath         string
-	KubeBurstLimit              int
-	KubeConfigBase64            string
-	KubeConfigPaths             []string
-	KubeContextCluster          string
-	KubeContextCurrent          string
-	KubeContextUser             string
-	KubeImpersonateGroups       []string
-	KubeImpersonateUID          string
-	KubeImpersonateUser         string
-	KubeProxyURL                string
-	KubeQPSLimit                int
-	KubeRequestTimeout          string
-	KubeSkipTLSVerify           bool
-	KubeTLSCAData               string
-	KubeTLSCAPath               string
-	KubeTLSClientCertData       string
-	KubeTLSClientCertPath       string
-	KubeTLSClientKeyData        string
-	KubeTLSClientKeyPath        string
-	KubeTLSServerName           string
 	NetworkParallelism          int
-	NoFinalTracking             bool
-	NoPodLogs                   bool
-	NoProgressTablePrint        bool
 	NoRemoveManualChanges       bool
 	NoShowNotes                 bool
-	ProgressTablePrintInterval  time.Duration
 	ReleaseHistoryLimit         int
 	ReleaseStorageDriver        string
 	ReleaseStorageSQLConnection string
@@ -78,9 +50,6 @@ type ReleaseRollbackOptions struct {
 	RollbackReportPath          string
 	TempDirPath                 string
 	Timeout                     time.Duration
-	TrackCreationTimeout        time.Duration
-	TrackDeletionTimeout        time.Duration
-	TrackReadinessTimeout       time.Duration
 }
 
 func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseRollbackOptions) error {
@@ -129,33 +98,8 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	}
 
 	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
-		APIServerAddress:   opts.KubeAPIServerAddress,
-		AuthProviderConfig: opts.KubeAuthProviderConfig,
-		AuthProviderName:   opts.KubeAuthProviderName,
-		BasicAuthPassword:  opts.KubeBasicAuthPassword,
-		BasicAuthUsername:  opts.KubeBasicAuthUsername,
-		BearerTokenData:    opts.KubeBearerTokenData,
-		BearerTokenPath:    opts.KubeBearerTokenPath,
-		BurstLimit:         opts.KubeBurstLimit,
-		ContextCluster:     opts.KubeContextCluster,
-		ContextCurrent:     opts.KubeContextCurrent,
-		ContextNamespace:   releaseNamespace, // TODO: unset it everywhere
-		ContextUser:        opts.KubeContextUser,
-		ImpersonateGroups:  opts.KubeImpersonateGroups,
-		ImpersonateUID:     opts.KubeImpersonateUID,
-		ImpersonateUser:    opts.KubeImpersonateUser,
-		KubeConfigBase64:   opts.KubeConfigBase64,
-		ProxyURL:           opts.KubeProxyURL,
-		QPSLimit:           opts.KubeQPSLimit,
-		RequestTimeout:     opts.KubeRequestTimeout,
-		SkipTLSVerify:      opts.KubeSkipTLSVerify,
-		TLSCAData:          opts.KubeTLSCAData,
-		TLSCAPath:          opts.KubeTLSCAPath,
-		TLSClientCertData:  opts.KubeTLSClientCertData,
-		TLSClientCertPath:  opts.KubeTLSClientCertPath,
-		TLSClientKeyData:   opts.KubeTLSClientKeyData,
-		TLSClientKeyPath:   opts.KubeTLSClientKeyPath,
-		TLSServerName:      opts.KubeTLSServerName,
+		KubeConnectionOptions: opts.KubeConnectionOptions,
+		KubeContextNamespace:  releaseNamespace, // TODO: unset it everywhere
 	})
 	if err != nil {
 		return fmt.Errorf("construct kube config: %w", err)
@@ -396,10 +340,8 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	log.Default.Debug(ctx, "Execute release install plan")
 
 	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, installPlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		NetworkParallelism:    opts.NetworkParallelism,
-		TrackCreationTimeout:  opts.TrackCreationTimeout,
-		TrackDeletionTimeout:  opts.TrackDeletionTimeout,
-		TrackReadinessTimeout: opts.TrackReadinessTimeout,
+		TrackingOptions:    opts.TrackingOptions,
+		NetworkParallelism: opts.NetworkParallelism,
 	})
 	if executePlanErr != nil {
 		criticalErrs = append(criticalErrs, fmt.Errorf("execute release install plan: %w", executePlanErr))
@@ -423,11 +365,8 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	if executePlanErr != nil {
 		runFailurePlanResult, nonCritErrs, critErrs := runFailurePlan(ctx, releaseNamespace, installPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
-			NetworkParallelism:    opts.NetworkParallelism,
-			NoFinalTracking:       opts.NoFinalTracking,
-			TrackCreationTimeout:  opts.TrackCreationTimeout,
-			TrackDeletionTimeout:  opts.TrackDeletionTimeout,
-			TrackReadinessTimeout: opts.TrackReadinessTimeout,
+			TrackingOptions:    opts.TrackingOptions,
+			NetworkParallelism: opts.NetworkParallelism,
 		})
 
 		criticalErrs = append(criticalErrs, critErrs...)
@@ -504,34 +443,25 @@ func applyReleaseRollbackOptionsDefaults(opts ReleaseRollbackOptions, homeDir st
 		}
 	}
 
-	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
-		opts.KubeConfigPaths = []string{filepath.Join(homeDir, ".kube", "config")}
-	}
+	opts.KubeConnectionOptions.ApplyDefaults(homeDir)
+	opts.TrackingOptions.ApplyDefaults()
 
 	if opts.NetworkParallelism <= 0 {
-		opts.NetworkParallelism = DefaultNetworkParallelism
-	}
-
-	if opts.KubeQPSLimit <= 0 {
-		opts.KubeQPSLimit = DefaultQPSLimit
-	}
-
-	if opts.KubeBurstLimit <= 0 {
-		opts.KubeBurstLimit = DefaultBurstLimit
+		opts.NetworkParallelism = common.DefaultNetworkParallelism
 	}
 
 	if opts.ProgressTablePrintInterval <= 0 {
-		opts.ProgressTablePrintInterval = DefaultProgressPrintInterval
+		opts.ProgressTablePrintInterval = common.DefaultProgressPrintInterval
 	}
 
 	if opts.ReleaseHistoryLimit <= 0 {
-		opts.ReleaseHistoryLimit = DefaultReleaseHistoryLimit
+		opts.ReleaseHistoryLimit = common.DefaultReleaseHistoryLimit
 	}
 
 	switch opts.ReleaseStorageDriver {
-	case ReleaseStorageDriverDefault:
-		opts.ReleaseStorageDriver = ReleaseStorageDriverSecrets
-	case ReleaseStorageDriverMemory:
+	case common.ReleaseStorageDriverDefault:
+		opts.ReleaseStorageDriver = common.ReleaseStorageDriverSecrets
+	case common.ReleaseStorageDriverMemory:
 		return ReleaseRollbackOptions{}, fmt.Errorf("memory release storage driver is not supported")
 	}
 

@@ -9,6 +9,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
 
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -20,70 +21,46 @@ type KubeConfig struct {
 }
 
 type KubeConfigOptions struct {
-	APIServerAddress   string
-	AuthProviderConfig map[string]string
-	AuthProviderName   string
-	BasicAuthPassword  string
-	BasicAuthUsername  string
-	BearerTokenData    string
-	BearerTokenPath    string
-	BurstLimit         int
-	ContextCluster     string
-	ContextCurrent     string
-	ContextNamespace   string
-	ContextUser        string
-	ImpersonateGroups  []string
-	ImpersonateUID     string
-	ImpersonateUser    string
-	KubeConfigBase64   string
-	ProxyURL           string
-	QPSLimit           int
-	RequestTimeout     string
-	SkipTLSVerify      bool
-	TLSCAData          string
-	TLSCAPath          string
-	TLSClientCertData  string
-	TLSClientCertPath  string
-	TLSClientKeyData   string
-	TLSClientKeyPath   string
-	TLSServerName      string
+	common.KubeConnectionOptions
+
+	KubeContextNamespace string
 }
 
 func NewKubeConfig(ctx context.Context, kubeConfigPaths []string, opts KubeConfigOptions) (*KubeConfig, error) {
 	overrides := &clientcmd.ConfigOverrides{
 		AuthInfo: api.AuthInfo{
 			AuthProvider: &api.AuthProviderConfig{
-				Name:   opts.AuthProviderName,
-				Config: opts.AuthProviderConfig,
+				Name:   opts.KubeAuthProviderName,
+				Config: opts.KubeAuthProviderConfig,
 			},
-			ClientCertificate:     opts.TLSClientCertPath,
-			ClientCertificateData: []byte(opts.TLSClientCertData),
-			ClientKey:             opts.TLSClientKeyPath,
-			ClientKeyData:         []byte(opts.TLSClientKeyData),
-			Impersonate:           opts.ImpersonateUser,
-			ImpersonateGroups:     opts.ImpersonateGroups,
-			ImpersonateUID:        opts.ImpersonateUID,
-			Password:              opts.BasicAuthPassword,
-			Token:                 opts.BearerTokenData,
-			TokenFile:             opts.BearerTokenPath,
-			Username:              opts.BasicAuthUsername,
+			ClientCertificate:     opts.KubeTLSClientCertPath,
+			ClientCertificateData: []byte(opts.KubeTLSClientCertData),
+			ClientKey:             opts.KubeTLSClientKeyPath,
+			ClientKeyData:         []byte(opts.KubeTLSClientKeyData),
+			Impersonate:           opts.KubeImpersonateUser,
+			ImpersonateGroups:     opts.KubeImpersonateGroups,
+			ImpersonateUID:        opts.KubeImpersonateUID,
+			Password:              opts.KubeBasicAuthPassword,
+			Token:                 opts.KubeBearerTokenData,
+			TokenFile:             opts.KubeBearerTokenPath,
+			Username:              opts.KubeBasicAuthUsername,
 		},
 		ClusterDefaults: clientcmd.ClusterDefaults,
 		ClusterInfo: api.Cluster{
-			CertificateAuthority:     opts.TLSCAPath,
-			CertificateAuthorityData: []byte(opts.TLSCAData),
-			InsecureSkipTLSVerify:    opts.SkipTLSVerify,
-			ProxyURL:                 opts.ProxyURL,
-			Server:                   opts.APIServerAddress,
-			TLSServerName:            opts.TLSServerName,
+			CertificateAuthority:     opts.KubeTLSCAPath,
+			CertificateAuthorityData: []byte(opts.KubeTLSCAData),
+			InsecureSkipTLSVerify:    opts.KubeSkipTLSVerify,
+			ProxyURL:                 opts.KubeProxyURL,
+			Server:                   opts.KubeAPIServerAddress,
+			TLSServerName:            opts.KubeTLSServerName,
 		},
 		Context: api.Context{
-			AuthInfo:  opts.ContextUser,
-			Cluster:   opts.ContextCluster,
-			Namespace: opts.ContextNamespace,
+			AuthInfo:  opts.KubeContextUser,
+			Cluster:   opts.KubeContextCluster,
+			Namespace: opts.KubeContextNamespace,
 		},
-		CurrentContext: opts.ContextCurrent,
-		Timeout:        opts.RequestTimeout,
+		CurrentContext: opts.KubeContextCurrent,
+		Timeout:        opts.KubeRequestTimeout,
 	}
 
 	var clientConfig clientcmd.ClientConfig
@@ -119,8 +96,8 @@ func NewKubeConfig(ctx context.Context, kubeConfigPaths []string, opts KubeConfi
 		return nil, fmt.Errorf("get rest config: %w", err)
 	}
 
-	restConfig.QPS = float32(opts.QPSLimit)
-	restConfig.Burst = opts.BurstLimit
+	restConfig.QPS = float32(opts.KubeQPSLimit)
+	restConfig.Burst = opts.KubeBurstLimit
 
 	kubeConfig := &KubeConfig{
 		LegacyClientConfig: clientConfig,

@@ -4,7 +4,7 @@ import (
 	"context"
 
 	helmrelease "github.com/werf/3p-helm/pkg/release"
-	"github.com/werf/nelm/internal/common"
+	"github.com/werf/nelm/pkg/common"
 )
 
 type ReleaseType string

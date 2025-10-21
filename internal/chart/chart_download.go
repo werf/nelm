@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"time"
 
 	"github.com/werf/3p-helm/pkg/cli"
 	helmdownloader "github.com/werf/3p-helm/pkg/downloader"
@@ -14,24 +13,17 @@ import (
 	"github.com/werf/3p-helm/pkg/helmpath"
 	helmregistry "github.com/werf/3p-helm/pkg/registry"
 	helmrepo "github.com/werf/3p-helm/pkg/repo"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
 
 type chartDownloaderOptions struct {
-	ChartProvenanceKeyring     string
-	ChartProvenanceStrategy    string
-	ChartRepoBasicAuthPassword string
-	ChartRepoBasicAuthUsername string
-	ChartRepoCAPath            string
-	ChartRepoCertPath          string
-	ChartRepoInsecure          bool
-	ChartRepoKeyPath           string
-	ChartRepoPassCreds         bool
-	ChartRepoRequestTimeout    time.Duration
-	ChartRepoNoTLSVerify       bool
-	ChartRepoURL               string
-	ChartVersion               string
+	common.ChartRepoConnectionOptions
+
+	ChartProvenanceKeyring  string
+	ChartProvenanceStrategy string
+	ChartVersion            string
 }
 
 func newChartDownloader(ctx context.Context, chartRef string, registryClient *helmregistry.Client, opts chartDownloaderOptions) (*helmdownloader.ChartDownloader, string, error) {
@@ -51,7 +43,7 @@ func newChartDownloader(ctx context.Context, chartRef string, registryClient *he
 		Options: []helmgetter.Option{
 			helmgetter.WithPassCredentialsAll(opts.ChartRepoPassCreds),
 			helmgetter.WithTLSClientConfig(opts.ChartRepoCertPath, opts.ChartRepoKeyPath, opts.ChartRepoCAPath),
-			helmgetter.WithInsecureSkipVerifyTLS(opts.ChartRepoNoTLSVerify),
+			helmgetter.WithInsecureSkipVerifyTLS(opts.ChartRepoSkipTLSVerify),
 			helmgetter.WithPlainHTTP(opts.ChartRepoInsecure),
 			helmgetter.WithRegistryClient(registryClient),
 			helmgetter.WithTimeout(opts.ChartRepoRequestTimeout),
@@ -64,7 +56,7 @@ func newChartDownloader(ctx context.Context, chartRef string, registryClient *he
 	}
 
 	if opts.ChartRepoURL != "" {
-		chartURL, err := helmrepo.FindChartInAuthAndTLSAndPassRepoURL(opts.ChartRepoURL, opts.ChartRepoBasicAuthUsername, opts.ChartRepoBasicAuthPassword, chartRef, opts.ChartVersion, opts.ChartRepoCertPath, opts.ChartRepoKeyPath, opts.ChartRepoCAPath, opts.ChartRepoNoTLSVerify, opts.ChartRepoPassCreds, helmgetter.Providers{helmgetter.HttpProvider, helmgetter.OCIProvider})
+		chartURL, err := helmrepo.FindChartInAuthAndTLSAndPassRepoURL(opts.ChartRepoURL, opts.ChartRepoBasicAuthUsername, opts.ChartRepoBasicAuthPassword, chartRef, opts.ChartVersion, opts.ChartRepoCertPath, opts.ChartRepoKeyPath, opts.ChartRepoCAPath, opts.ChartRepoSkipTLSVerify, opts.ChartRepoPassCreds, helmgetter.Providers{helmgetter.HttpProvider, helmgetter.OCIProvider})
 		if err != nil {
 			return nil, "", fmt.Errorf("get chart URL: %w", err)
 		}
@@ -96,18 +88,9 @@ func newChartDownloader(ctx context.Context, chartRef string, registryClient *he
 func downloadChart(ctx context.Context, chartPath string, registryClient *helmregistry.Client, opts RenderChartOptions) (string, error) {
 	if (featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled()) && !isLocalChart(chartPath) {
 		chartDownloader, chartRef, err := newChartDownloader(ctx, chartPath, registryClient, chartDownloaderOptions{
+			ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
 			ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
 			ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
-			ChartRepoBasicAuthPassword: opts.ChartRepoBasicAuthPassword,
-			ChartRepoBasicAuthUsername: opts.ChartRepoBasicAuthUsername,
-			ChartRepoCAPath:            opts.ChartRepoCAPath,
-			ChartRepoCertPath:          opts.ChartRepoCertPath,
-			ChartRepoInsecure:          opts.ChartRepoInsecure,
-			ChartRepoKeyPath:           opts.ChartRepoKeyPath,
-			ChartRepoPassCreds:         opts.ChartRepoPassCreds,
-			ChartRepoRequestTimeout:    opts.ChartRepoRequestTimeout,
-			ChartRepoNoTLSVerify:       opts.ChartRepoNoTLSVerify,
-			ChartRepoURL:               opts.ChartRepoURL,
 			ChartVersion:               opts.ChartVersion,
 		})
 		if err != nil {

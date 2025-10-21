@@ -18,14 +18,14 @@ import (
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 )
 
 type ExecutePlanOptions struct {
-	NetworkParallelism    int
-	TrackCreationTimeout  time.Duration
-	TrackDeletionTimeout  time.Duration
-	TrackReadinessTimeout time.Duration
+	common.TrackingOptions
+
+	NetworkParallelism int
 }
 
 func ExecutePlan(parentCtx context.Context, releaseNamespace string, plan *Plan, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history release.Historier, clientFactory kube.ClientFactorier, opts ExecutePlanOptions) error {

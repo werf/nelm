@@ -15,11 +15,11 @@ import (
 	"k8s.io/apimachinery/pkg/util/json"
 
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
-	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 )
 

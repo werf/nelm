@@ -19,10 +19,10 @@ import (
 
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
-	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/pkg/common"
 )
 
 func ValidateResourcePolicy(meta *spec.ResourceMeta) error {

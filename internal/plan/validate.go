@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/pkg/common"
 )
 
 func ValidateRemote(releaseName, releaseNamespace string, installableResourceInfos []*InstallableResourceInfo, forceAdoption bool) error {

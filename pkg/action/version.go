@@ -12,13 +12,13 @@ import (
 	"github.com/gookit/color"
 
 	"github.com/werf/3p-helm/pkg/chart/loader"
-	"github.com/werf/nelm/internal/common"
 	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 )
 
 const (
-	DefaultVersionOutputFormat = YamlOutputFormat
+	DefaultVersionOutputFormat = common.OutputFormatYAML
 	DefaultVersionLogLevel     = log.ErrorLevel
 )
 
@@ -50,14 +50,14 @@ func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {
 		var resultMessage string
 
 		switch opts.OutputFormat {
-		case JSONOutputFormat:
+		case common.OutputFormatJSON:
 			b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
 			if err != nil {
 				return nil, fmt.Errorf("marshal result to json: %w", err)
 			}
 
 			resultMessage = string(b)
-		case YamlOutputFormat:
+		case common.OutputFormatYAML:
 			b, err := yaml.MarshalContext(ctx, result, yaml.UseLiteralStyleIfMultiline(true))
 			if err != nil {
 				return nil, fmt.Errorf("marshal result to yaml: %w", err)

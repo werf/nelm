@@ -2,10 +2,16 @@ package common
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
+	"time"
 
 	"github.com/Masterminds/sprig/v3"
+	"github.com/docker/cli/cli/config"
+	"github.com/docker/docker/pkg/homedir"
 	"github.com/samber/lo"
+
+	"github.com/werf/nelm/pkg/log"
 )
 
 var (
@@ -14,12 +20,38 @@ var (
 )
 
 const (
-	DefaultFieldManager     = "helm"
-	KubectlEditFieldManager = "kubectl-edit"
-	OldFieldManagerPrefix   = "werf"
-	StagePrefix             = "stage"
-	StageStartSuffix        = "start"
-	StageEndSuffix          = "end"
+	DefaultBurstLimit            = 100
+	DefaultDiffContextLines      = 3
+	DefaultFieldManager          = "helm"
+	DefaultLocalKubeVersion      = "1.20.0"
+	DefaultLogColorMode          = log.LogColorModeAuto
+	DefaultNetworkParallelism    = 30
+	DefaultProgressPrintInterval = 5 * time.Second
+	DefaultQPSLimit              = 30
+	DefaultReleaseHistoryLimit   = 10
+	KubectlEditFieldManager      = "kubectl-edit"
+	OldFieldManagerPrefix        = "werf"
+	StageEndSuffix               = "end"
+	StagePrefix                  = "stage"
+	StageStartSuffix             = "start"
+	StubReleaseName              = "stub-release"
+	StubReleaseNamespace         = "stub-namespace"
+)
+
+const (
+	OutputFormatJSON  = "json"
+	OutputFormatTable = "table"
+	OutputFormatYAML  = "yaml"
+)
+
+const (
+	ReleaseStorageDriverConfigMap  = "configmap"
+	ReleaseStorageDriverConfigMaps = "configmaps"
+	ReleaseStorageDriverDefault    = ""
+	ReleaseStorageDriverMemory     = "memory"
+	ReleaseStorageDriverSQL        = "sql"
+	ReleaseStorageDriverSecret     = "secret"
+	ReleaseStorageDriverSecrets    = "secrets"
 )
 
 type DeployType string
@@ -122,6 +154,8 @@ const (
 )
 
 var OrderedStoreAs = []StoreAs{StoreAsNone, StoreAsHook, StoreAsRegular}
+
+var DefaultRegistryCredentialsPath = filepath.Join(homedir.Get(), ".docker", config.ConfigFileName)
 
 var (
 	LabelKeyHumanManagedBy   = "app.kubernetes.io/managed-by"
