@@ -33,35 +33,54 @@ const (
 )
 
 type ReleaseRollbackOptions struct {
-	ExtraRuntimeAnnotations    map[string]string
-	ForceAdoption              bool
-	KubeAPIServerName          string
-	KubeBurstLimit             int
-	KubeCAPath                 string
-	KubeConfigBase64           string
-	KubeConfigPaths            []string
-	KubeContext                string
-	KubeQPSLimit               int
-	KubeSkipTLSVerify          bool
-	KubeTLSServerName          string
-	KubeToken                  string
-	NetworkParallelism         int
-	NoFinalTracking            bool
-	NoPodLogs                  bool
-	NoProgressTablePrint       bool
-	NoRemoveManualChanges      bool
-	ProgressTablePrintInterval time.Duration
-	ReleaseHistoryLimit        int
-	ReleaseStorageDriver       string
-	Revision                   int
-	RollbackGraphPath          string
-	RollbackReportPath         string
-	SQLConnectionString        string
-	TempDirPath                string
-	Timeout                    time.Duration
-	TrackCreationTimeout       time.Duration
-	TrackDeletionTimeout       time.Duration
-	TrackReadinessTimeout      time.Duration
+	ExtraRuntimeAnnotations     map[string]string
+	ExtraRuntimeLabels          map[string]string
+	ForceAdoption               bool
+	KubeAPIServerAddress        string
+	KubeAuthProviderConfig      map[string]string
+	KubeAuthProviderName        string
+	KubeBasicAuthPassword       string
+	KubeBasicAuthUsername       string
+	KubeBearerTokenData         string
+	KubeBearerTokenPath         string
+	KubeBurstLimit              int
+	KubeConfigBase64            string
+	KubeConfigPaths             []string
+	KubeContextCluster          string
+	KubeContextCurrent          string
+	KubeContextUser             string
+	KubeImpersonateGroups       []string
+	KubeImpersonateUID          string
+	KubeImpersonateUser         string
+	KubeProxyURL                string
+	KubeQPSLimit                int
+	KubeRequestTimeout          string
+	KubeSkipTLSVerify           bool
+	KubeTLSCAData               string
+	KubeTLSCAPath               string
+	KubeTLSClientCertData       string
+	KubeTLSClientCertPath       string
+	KubeTLSClientKeyData        string
+	KubeTLSClientKeyPath        string
+	KubeTLSServerName           string
+	NetworkParallelism          int
+	NoFinalTracking             bool
+	NoPodLogs                   bool
+	NoProgressTablePrint        bool
+	NoRemoveManualChanges       bool
+	NoShowNotes                 bool
+	ProgressTablePrintInterval  time.Duration
+	ReleaseHistoryLimit         int
+	ReleaseStorageDriver        string
+	ReleaseStorageSQLConnection string
+	Revision                    int
+	RollbackGraphPath           string
+	RollbackReportPath          string
+	TempDirPath                 string
+	Timeout                     time.Duration
+	TrackCreationTimeout        time.Duration
+	TrackDeletionTimeout        time.Duration
+	TrackReadinessTimeout       time.Duration
 }
 
 func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseRollbackOptions) error {
@@ -111,16 +130,33 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	// TODO(ilya-lesikov): some options are not propagated from cli/actions
 	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
-		BurstLimit:            opts.KubeBurstLimit,
-		CertificateAuthority:  opts.KubeCAPath,
-		CurrentContext:        opts.KubeContext,
-		InsecureSkipTLSVerify: opts.KubeSkipTLSVerify,
-		KubeConfigBase64:      opts.KubeConfigBase64,
-		Namespace:             releaseNamespace,
-		QPSLimit:              opts.KubeQPSLimit,
-		Server:                opts.KubeAPIServerName,
-		TLSServerName:         opts.KubeTLSServerName,
-		Token:                 opts.KubeToken,
+		APIServerAddress:   opts.KubeAPIServerAddress,
+		AuthProviderConfig: opts.KubeAuthProviderConfig,
+		AuthProviderName:   opts.KubeAuthProviderName,
+		BasicAuthPassword:  opts.KubeBasicAuthPassword,
+		BasicAuthUsername:  opts.KubeBasicAuthUsername,
+		BearerTokenData:    opts.KubeBearerTokenData,
+		BearerTokenPath:    opts.KubeBearerTokenPath,
+		BurstLimit:         opts.KubeBurstLimit,
+		ContextCluster:     opts.KubeContextCluster,
+		ContextCurrent:     opts.KubeContextCurrent,
+		ContextNamespace:   releaseNamespace, // TODO: unset it everywhere
+		ContextUser:        opts.KubeContextUser,
+		ImpersonateGroups:  opts.KubeImpersonateGroups,
+		ImpersonateUID:     opts.KubeImpersonateUID,
+		ImpersonateUser:    opts.KubeImpersonateUser,
+		KubeConfigBase64:   opts.KubeConfigBase64,
+		ProxyURL:           opts.KubeProxyURL,
+		QPSLimit:           opts.KubeQPSLimit,
+		RequestTimeout:     opts.KubeRequestTimeout,
+		SkipTLSVerify:      opts.KubeSkipTLSVerify,
+		TLSCAData:          opts.KubeTLSCAData,
+		TLSCAPath:          opts.KubeTLSCAPath,
+		TLSClientCertData:  opts.KubeTLSClientCertData,
+		TLSClientCertPath:  opts.KubeTLSClientCertPath,
+		TLSClientKeyData:   opts.KubeTLSClientKeyData,
+		TLSClientKeyPath:   opts.KubeTLSClientKeyPath,
+		TLSServerName:      opts.KubeTLSServerName,
 	})
 	if err != nil {
 		return fmt.Errorf("construct kube config: %w", err)
@@ -132,8 +168,8 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	}
 
 	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, clientFactory, release.ReleaseStorageOptions{
-		HistoryLimit:        opts.ReleaseHistoryLimit,
-		SQLConnectionString: opts.SQLConnectionString,
+		HistoryLimit:  opts.ReleaseHistoryLimit,
+		SQLConnection: opts.ReleaseStorageSQLConnection,
 	})
 	if err != nil {
 		return fmt.Errorf("construct release storage: %w", err)
@@ -246,7 +282,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
 		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
-		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, nil),
+		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 	}, clientFactory, resource.BuildResourcesOptions{
 		Remote: true,
 	})
@@ -262,7 +298,10 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	log.Default.Debug(ctx, "Build resource infos")
 
-	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, !opts.NoRemoveManualChanges, clientFactory, opts.NetworkParallelism)
+	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
+		NetworkParallelism:    opts.NetworkParallelism,
+		NoRemoveManualChanges: opts.NoRemoveManualChanges,
+	})
 	if err != nil {
 		return fmt.Errorf("build resource infos: %w", err)
 	}
@@ -323,7 +362,9 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 			}
 		}
 
-		printNotes(ctx, newRelease.Info.Notes)
+		if !opts.NoShowNotes {
+			printNotes(ctx, newRelease.Info.Notes)
+		}
 
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped rollback of release %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)))
 
@@ -356,10 +397,10 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	log.Default.Debug(ctx, "Execute release install plan")
 
 	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, installPlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		NetworkParallelism: opts.NetworkParallelism,
-		ReadinessTimeout:   opts.TrackReadinessTimeout,
-		PresenceTimeout:    opts.TrackCreationTimeout,
-		AbsenceTimeout:     opts.TrackDeletionTimeout,
+		NetworkParallelism:    opts.NetworkParallelism,
+		TrackCreationTimeout:  opts.TrackCreationTimeout,
+		TrackDeletionTimeout:  opts.TrackDeletionTimeout,
+		TrackReadinessTimeout: opts.TrackReadinessTimeout,
 	})
 	if executePlanErr != nil {
 		criticalErrs = append(criticalErrs, fmt.Errorf("execute release install plan: %w", executePlanErr))
@@ -385,9 +426,9 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		runFailurePlanResult, nonCritErrs, critErrs := runFailurePlan(ctx, releaseNamespace, installPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
 			NetworkParallelism:    opts.NetworkParallelism,
 			NoFinalTracking:       opts.NoFinalTracking,
-			TrackReadinessTimeout: opts.TrackReadinessTimeout,
 			TrackCreationTimeout:  opts.TrackCreationTimeout,
 			TrackDeletionTimeout:  opts.TrackDeletionTimeout,
+			TrackReadinessTimeout: opts.TrackReadinessTimeout,
 		})
 
 		criticalErrs = append(criticalErrs, critErrs...)
@@ -437,7 +478,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		}
 	}
 
-	if len(criticalErrs) == 0 {
+	if len(criticalErrs) == 0 && !opts.NoShowNotes {
 		printNotes(ctx, newRelease.Info.Notes)
 	}
 

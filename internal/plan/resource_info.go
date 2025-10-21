@@ -77,15 +77,20 @@ type DeletableResourceInfo struct {
 	Stage common.Stage
 }
 
-func BuildResourceInfos(ctx context.Context, deployType common.DeployType, releaseName, releaseNamespace string, instResources []*resource.InstallableResource, delResources []*resource.DeletableResource, prevReleaseFailed, removeManualChanges bool, clientFactory kube.ClientFactorier, parallelism int) (instResourceInfos []*InstallableResourceInfo, delResourceInfos []*DeletableResourceInfo, err error) {
+type BuildResourceInfosOptions struct {
+	NetworkParallelism    int
+	NoRemoveManualChanges bool
+}
+
+func BuildResourceInfos(ctx context.Context, deployType common.DeployType, releaseName, releaseNamespace string, instResources []*resource.InstallableResource, delResources []*resource.DeletableResource, prevReleaseFailed bool, clientFactory kube.ClientFactorier, opts BuildResourceInfosOptions) (instResourceInfos []*InstallableResourceInfo, delResourceInfos []*DeletableResourceInfo, err error) {
 	totalResourcesCount := len(instResources) + len(delResources)
 
-	routines := lo.Max([]int{len(instResources) / lo.Max([]int{totalResourcesCount, 1}) * parallelism, 1})
+	routines := lo.Max([]int{len(instResources) / lo.Max([]int{totalResourcesCount, 1}) * opts.NetworkParallelism, 1})
 
 	instResourcesPool := pool.NewWithResults[[]*InstallableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range instResources {
 		instResourcesPool.Go(func(ctx context.Context) ([]*InstallableResourceInfo, error) {
-			infos, err := BuildInstallableResourceInfo(ctx, res, deployType, releaseNamespace, prevReleaseFailed, removeManualChanges, clientFactory)
+			infos, err := BuildInstallableResourceInfo(ctx, res, deployType, releaseNamespace, prevReleaseFailed, opts.NoRemoveManualChanges, clientFactory)
 			if err != nil {
 				return nil, fmt.Errorf("build installable resource info: %w", err)
 			}
@@ -94,7 +99,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 		})
 	}
 
-	routines = lo.Max([]int{len(delResources) / lo.Max([]int{totalResourcesCount, 1}) * parallelism, 1})
+	routines = lo.Max([]int{len(delResources) / lo.Max([]int{totalResourcesCount, 1}) * opts.NetworkParallelism, 1})
 
 	delResourcesPool := pool.NewWithResults[*DeletableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range delResources {
@@ -139,7 +144,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 }
 
 // TODO(v2): keep annotation should probably forbid resource recreations
-func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed, removeManualChanges bool, clientFactory kube.ClientFactorier) ([]*InstallableResourceInfo, error) {
+func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed, noRemoveManualChanges bool, clientFactory kube.ClientFactorier) ([]*InstallableResourceInfo, error) {
 	var stages []common.Stage
 	switch deployType {
 	case common.DeployTypeInitial, common.DeployTypeInstall:
@@ -185,7 +190,7 @@ func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 
 	var err error
 
-	getObj, err = fixManagedFieldsInCluster(ctx, releaseNamespace, getObj, localRes.ResourceMeta, removeManualChanges, clientFactory)
+	getObj, err = fixManagedFieldsInCluster(ctx, releaseNamespace, getObj, localRes.ResourceMeta, noRemoveManualChanges, clientFactory)
 	if err != nil {
 		return nil, fmt.Errorf("fix managed fields for resource %q: %w", localRes.IDHuman(), err)
 	}
@@ -446,8 +451,8 @@ func mustTrackReadiness(res *resource.InstallableResource, resInstallType Resour
 	return true
 }
 
-func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, getObj *unstructured.Unstructured, meta *spec.ResourceMeta, removeManualChanges bool, clientFactory kube.ClientFactorier) (*unstructured.Unstructured, error) {
-	if changed, err := fixManagedFields(getObj, removeManualChanges); err != nil {
+func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, getObj *unstructured.Unstructured, meta *spec.ResourceMeta, noRemoveManualChanges bool, clientFactory kube.ClientFactorier) (*unstructured.Unstructured, error) {
+	if changed, err := fixManagedFields(getObj, noRemoveManualChanges); err != nil {
 		return nil, fmt.Errorf("fix managed fields for resource %q: %w", meta.IDHuman(), err)
 	} else if !changed {
 		return getObj, nil
@@ -477,7 +482,7 @@ func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, get
 	return patchedObj, nil
 }
 
-func fixManagedFields(unstruct *unstructured.Unstructured, removeManualChanges bool) (changed bool, err error) {
+func fixManagedFields(unstruct *unstructured.Unstructured, noRemoveManualChanges bool) (changed bool, err error) {
 	managedFields := unstruct.GetManagedFields()
 	if len(managedFields) == 0 {
 		return false, nil
@@ -503,7 +508,7 @@ func fixManagedFields(unstruct *unstructured.Unstructured, removeManualChanges b
 
 	fixedManagedFields = append(fixedManagedFields, differentSubresourceManagers(managedFields, oursEntry)...)
 
-	if newManagedFields, newOursEntry, chngd := removeUndesirableManagers(managedFields, oursEntry, removeManualChanges); chngd {
+	if newManagedFields, newOursEntry, chngd := removeUndesirableManagers(managedFields, oursEntry, noRemoveManualChanges); chngd {
 		fixedManagedFields = append(fixedManagedFields, newManagedFields...)
 		oursEntry = newOursEntry
 		changed = true
@@ -536,7 +541,7 @@ func differentSubresourceManagers(managedFields []v1.ManagedFieldsEntry, oursEnt
 	return newManagedFields
 }
 
-func removeUndesirableManagers(managedFields []v1.ManagedFieldsEntry, oursEntry v1.ManagedFieldsEntry, removeManualChanges bool) (newManagedFields []v1.ManagedFieldsEntry, newOursEntry v1.ManagedFieldsEntry, changed bool) {
+func removeUndesirableManagers(managedFields []v1.ManagedFieldsEntry, oursEntry v1.ManagedFieldsEntry, noRemoveManualChanges bool) (newManagedFields []v1.ManagedFieldsEntry, newOursEntry v1.ManagedFieldsEntry, changed bool) {
 	oursFieldsByte := lo.Must(json.Marshal(oursEntry.FieldsV1))
 
 	newOursEntry = oursEntry
@@ -559,7 +564,7 @@ func removeUndesirableManagers(managedFields []v1.ManagedFieldsEntry, oursEntry 
 			}
 
 			changed = true
-		} else if (removeManualChanges && managedField.Manager == common.KubectlEditFieldManager) ||
+		} else if (!noRemoveManualChanges && managedField.Manager == common.KubectlEditFieldManager) ||
 			strings.HasPrefix(managedField.Manager, common.OldFieldManagerPrefix) {
 			merged, mergeChanged := lo.Must2(util.MergeJSON(fieldsByte, oursFieldsByte))
 			if mergeChanged {

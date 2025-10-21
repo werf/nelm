@@ -22,10 +22,10 @@ import (
 )
 
 type ExecutePlanOptions struct {
-	NetworkParallelism int
-	ReadinessTimeout   time.Duration
-	PresenceTimeout    time.Duration
-	AbsenceTimeout     time.Duration
+	NetworkParallelism    int
+	TrackCreationTimeout  time.Duration
+	TrackDeletionTimeout  time.Duration
+	TrackReadinessTimeout time.Duration
 }
 
 func ExecutePlan(parentCtx context.Context, releaseNamespace string, plan *Plan, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history release.Historier, clientFactory kube.ClientFactorier, opts ExecutePlanOptions) error {
@@ -67,7 +67,7 @@ func ExecutePlan(parentCtx context.Context, releaseNamespace string, plan *Plan,
 		executableOpsIDs := findExecutableOpsIDs(opsMap)
 		for _, opID := range executableOpsIDs {
 			delete(opsMap, opID)
-			execOperation(opID, releaseNamespace, completedOpsIDsCh, workerPool, plan, taskStore, logStore, informerFactory, history, clientFactory, ctxCancelFn, opts.ReadinessTimeout, opts.PresenceTimeout, opts.AbsenceTimeout)
+			execOperation(opID, releaseNamespace, completedOpsIDsCh, workerPool, plan, taskStore, logStore, informerFactory, history, clientFactory, ctxCancelFn, opts.TrackReadinessTimeout, opts.TrackCreationTimeout, opts.TrackDeletionTimeout)
 		}
 	}
 

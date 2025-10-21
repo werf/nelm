@@ -52,7 +52,7 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.KubeAPIServerName, "kube-api-server", "", "Kubernetes API server address", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.KubeAPIServerAddress, "kube-api-server", "", "Kubernetes API server address", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                kubeConnectionFlagGroup,
 		}); err != nil {
@@ -66,7 +66,7 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.KubeCAPath, "kube-ca", "", "Path to Kubernetes API server CA file", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.KubeTLSCAPath, "kube-ca", "", "Path to Kubernetes API server CA file", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                kubeConnectionFlagGroup,
 			Type:                 cli.FlagTypeFile,
@@ -99,7 +99,7 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.KubeContext, "kube-context", "", "Kubeconfig context", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.KubeContextCurrent, "kube-context", "", "Kubeconfig context", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                kubeConnectionFlagGroup,
 		}); err != nil {
@@ -127,7 +127,7 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.KubeToken, "kube-token", "", "The bearer token for authentication in Kubernetes API", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.KubeBearerTokenData, "kube-token", "", "The bearer token for authentication in Kubernetes API", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                kubeConnectionFlagGroup,
 		}); err != nil {

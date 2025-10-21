@@ -119,16 +119,16 @@ func legacyReleaseUninstall(ctx context.Context, releaseName, releaseNamespace s
 
 	// TODO(ilya-lesikov): some options are not propagated from cli/actions
 	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
-		BurstLimit:            opts.KubeBurstLimit,
-		CertificateAuthority:  opts.KubeCAPath,
-		CurrentContext:        opts.KubeContext,
-		InsecureSkipTLSVerify: opts.KubeSkipTLSVerify,
-		KubeConfigBase64:      opts.KubeConfigBase64,
-		Namespace:             releaseNamespace,
-		QPSLimit:              opts.KubeQPSLimit,
-		Server:                opts.KubeAPIServerName,
-		TLSServerName:         opts.KubeTLSServerName,
-		Token:                 opts.KubeToken,
+		BurstLimit:       opts.KubeBurstLimit,
+		TLSCAPath:        opts.KubeCAPath,
+		ContextCurrent:   opts.KubeContext,
+		SkipTLSVerify:    opts.KubeSkipTLSVerify,
+		KubeConfigBase64: opts.KubeConfigBase64,
+		ContextNamespace: releaseNamespace,
+		QPSLimit:         opts.KubeQPSLimit,
+		APIServerAddress: opts.KubeAPIServerName,
+		TLSServerName:    opts.KubeTLSServerName,
+		BearerTokenData:  opts.KubeToken,
 	})
 	if err != nil {
 		return fmt.Errorf("construct kube config: %w", err)

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/samber/lo"
+
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/pkg/legacy/secret"
 	"github.com/werf/nelm/pkg/log"
@@ -33,7 +35,7 @@ func SecretValuesFileDecrypt(ctx context.Context, valuesFilePath string, opts Se
 	}
 
 	if opts.SecretKey != "" {
-		os.Setenv("WERF_SECRET_KEY", opts.SecretKey)
+		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
 	}
 
 	if err := secret.SecretValuesDecrypt(ctx, secrets_manager.Manager, opts.SecretWorkDir, valuesFilePath, opts.OutputFilePath); err != nil {

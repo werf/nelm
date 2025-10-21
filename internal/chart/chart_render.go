@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 
-	"github.com/pkg/errors"
 	"github.com/samber/lo"
 	"k8s.io/client-go/discovery"
 	"sigs.k8s.io/yaml"
@@ -22,7 +22,7 @@ import (
 	"github.com/werf/3p-helm/pkg/chartutil"
 	"github.com/werf/3p-helm/pkg/cli"
 	"github.com/werf/3p-helm/pkg/cli/values"
-	"github.com/werf/3p-helm/pkg/downloader"
+	helmdownloader "github.com/werf/3p-helm/pkg/downloader"
 	helmengine "github.com/werf/3p-helm/pkg/engine"
 	"github.com/werf/3p-helm/pkg/getter"
 	"github.com/werf/3p-helm/pkg/helmpath"
@@ -38,23 +38,34 @@ import (
 
 // TODO(ilya-lesikov): pass missing options from top-level
 type RenderChartOptions struct {
-	AllowDNSRequests       bool
-	ChartRepoInsecure      bool
-	ChartRepoSkipTLSVerify bool
-	ChartRepoSkipUpdate    bool
-	ChartVersion           string
-	HelmOptions            helmopts.HelmOptions
-	KubeCAPath             string
-	KubeVersion            *chartutil.KubeVersion
-	NoStandaloneCRDs       bool
-	RegistryClient         *registry.Client
-	Remote                 bool
-	RuntimeJSONSets        []string
-	SubNotes               bool
-	ValuesFileSets         []string
-	ValuesFilesPaths       []string
-	ValuesSets             []string
-	ValuesStringSets       []string
+	ChartProvenanceKeyring     string
+	ChartProvenanceStrategy    string
+	ChartRepoBasicAuthPassword string
+	ChartRepoBasicAuthUsername string
+	ChartRepoCAPath            string
+	ChartRepoCertPath          string
+	ChartRepoInsecure          bool
+	ChartRepoKeyPath           string
+	ChartRepoNoTLSVerify       bool
+	ChartRepoNoUpdate          bool
+	ChartRepoPassCreds         bool
+	ChartRepoRequestTimeout    time.Duration
+	ChartRepoURL               string
+	ChartVersion               string
+	ExtraAPIVersions           []string
+	HelmOptions                helmopts.HelmOptions
+	LocalKubeVersion           string
+	NoStandaloneCRDs           bool
+	Remote                     bool
+	RuntimeSetJSON             []string
+	SubchartNotes              bool
+	TemplatesAllowDNS          bool
+	ValuesFiles                []string
+	ValuesSet                  []string
+	ValuesSetFile              []string
+	ValuesSetJSON              []string
+	ValuesSetLiteral           []string
+	ValuesSetString            []string
 }
 
 type RenderChartResult struct {
@@ -65,37 +76,40 @@ type RenderChartResult struct {
 	Values        map[string]interface{}
 }
 
-func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, clientFactory kube.ClientFactorier, opts RenderChartOptions) (*RenderChartResult, error) {
-	chartPath, err := downloadChart(ctx, chartPath, opts)
+func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, registryClient *registry.Client, clientFactory kube.ClientFactorier, opts RenderChartOptions) (*RenderChartResult, error) {
+	chartPath, err := downloadChart(ctx, chartPath, registryClient, opts)
 	if err != nil {
 		return nil, fmt.Errorf("download chart %q: %w", chartPath, err)
 	}
 
-	depDownloader := &downloader.Manager{
-		Out:               os.Stdout,
-		ChartPath:         chartPath,
-		SkipUpdate:        opts.ChartRepoSkipUpdate,
-		AllowMissingRepos: true,
-		Getters:           getter.Providers{getter.HttpProvider, getter.OCIProvider},
-		RegistryClient:    opts.RegistryClient,
-		// TODO(v3): don't read HELM_REPOSITORY_CONFIG anymore
+	depDownloader := &helmdownloader.Manager{
+		Out:            os.Stdout,
+		ChartPath:      chartPath,
+		Verify:         helmdownloader.VerificationStrategyString(opts.ChartProvenanceStrategy).ToVerificationStrategy(),
+		Debug:          log.Default.AcceptLevel(ctx, log.DebugLevel),
+		Keyring:        opts.ChartProvenanceKeyring,
+		SkipUpdate:     opts.ChartRepoNoUpdate,
+		Getters:        getter.Providers{getter.HttpProvider, getter.OCIProvider},
+		RegistryClient: registryClient,
+		// TODO(v2): don't read HELM_REPOSITORY_CONFIG anymore
 		RepositoryConfig: cli.EnvOr("HELM_REPOSITORY_CONFIG", helmpath.ConfigPath("repositories.yaml")),
-		// TODO(v3): don't read HELM_REPOSITORY_CACHE anymore
-		RepositoryCache: cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
-		Debug:           log.Default.AcceptLevel(ctx, log.DebugLevel),
+		// TODO(v2): don't read HELM_REPOSITORY_CACHE anymore
+		RepositoryCache:   cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
+		AllowMissingRepos: true,
 	}
 
 	opts.HelmOptions.ChartLoadOpts.DepDownloader = depDownloader
 
 	overrideValuesOpts := &values.Options{
-		StringValues: opts.ValuesStringSets,
-		Values:       opts.ValuesSets,
-		FileValues:   opts.ValuesFileSets,
-		ValueFiles:   opts.ValuesFilesPaths,
+		ValueFiles:    opts.ValuesFiles,
+		StringValues:  opts.ValuesSetString,
+		Values:        opts.ValuesSet,
+		FileValues:    opts.ValuesSetFile,
+		JSONValues:    opts.ValuesSetJSON,
+		LiteralValues: opts.ValuesSetLiteral,
 	}
 
 	log.Default.TraceStruct(ctx, overrideValuesOpts, "Override values options:")
-
 	log.Default.Debug(ctx, "Merging override values for chart at %q", chartPath)
 
 	overrideValues, err := overrideValuesOpts.MergeValues(getter.Providers{getter.HttpProvider, getter.OCIProvider}, opts.HelmOptions)
@@ -104,16 +118,10 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	}
 
 	log.Default.TraceStruct(ctx, overrideValues, "Merged override values:")
-
 	log.Default.Debug(ctx, "Loading chart at %q", chartPath)
 
 	chart, err := loader.Load(chartPath, opts.HelmOptions)
 	if err != nil {
-		var e *downloader.ErrRepoNotFound
-		if errors.As(err, &e) {
-			return nil, fmt.Errorf("%w. Please add the missing repos via 'helm repo add'", e)
-		}
-
 		return nil, fmt.Errorf("load chart at %q: %w", chartPath, err)
 	}
 
@@ -130,10 +138,10 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	log.Default.TraceStruct(ctx, chart, "Chart after processing dependencies:")
 	log.Default.TraceStruct(ctx, overrideValues, "Merged override values after processing dependencies:")
 
-	// TODO(ilya-lesikov): pass custom local api versions
 	caps, err := buildChartCapabilities(ctx, clientFactory, buildChartCapabilitiesOptions{
-		Remote:      opts.Remote,
-		KubeVersion: opts.KubeVersion,
+		ExtraAPIVersions: opts.ExtraAPIVersions,
+		LocalKubeVersion: opts.LocalKubeVersion,
+		Remote:           opts.Remote,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build capabilities for chart %q: %w", chart.Name(), err)
@@ -145,7 +153,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		return nil, fmt.Errorf("chart requires kubeVersion: %s which is incompatible with Kubernetes %s", chart.Metadata.KubeVersion, caps.KubeVersion.String())
 	}
 
-	runtime, err := buildRuntime(opts.RuntimeJSONSets)
+	runtime, err := buildRuntime(opts.RuntimeSetJSON)
 	if err != nil {
 		return nil, fmt.Errorf("build runtime: %w", err)
 	}
@@ -184,7 +192,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		engine = lo.ToPtr(helmengine.Engine{})
 	}
 
-	engine.EnableDNS = opts.AllowDNSRequests
+	engine.EnableDNS = opts.TemplatesAllowDNS
 
 	log.Default.Debug(ctx, "Rendering resources for chart at %q", chartPath)
 
@@ -218,7 +226,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		resources = append(resources, r...)
 	}
 
-	notes := buildChartNotes(chart.Name(), renderedTemplates, opts.SubNotes)
+	notes := buildChartNotes(chart.Name(), renderedTemplates, opts.SubchartNotes)
 
 	log.Default.TraceStruct(ctx, notes, "Rendered notes:")
 
@@ -321,9 +329,9 @@ func buildChartNotes(chartName string, renderedTemplates map[string]string, rend
 }
 
 type buildChartCapabilitiesOptions struct {
-	APIVersions *chartutil.VersionSet
-	KubeVersion *chartutil.KubeVersion
-	Remote      bool
+	ExtraAPIVersions []string
+	LocalKubeVersion string
+	Remote           bool
 }
 
 func buildChartCapabilities(ctx context.Context, clientFactory kube.ClientFactorier, opts buildChartCapabilitiesOptions) (*chartutil.Capabilities, error) {
@@ -334,47 +342,44 @@ func buildChartCapabilities(ctx context.Context, clientFactory kube.ClientFactor
 	if opts.Remote {
 		clientFactory.Discovery().Invalidate()
 
-		if opts.KubeVersion != nil {
-			capabilities.KubeVersion = *opts.KubeVersion
-		} else {
-			kubeVersion, err := clientFactory.Discovery().ServerVersion()
-			if err != nil {
-				return nil, fmt.Errorf("get kubernetes server version: %w", err)
-			}
+		kubeVersion, err := clientFactory.Discovery().ServerVersion()
+		if err != nil {
+			return nil, fmt.Errorf("get kubernetes server version: %w", err)
+		}
 
-			capabilities.KubeVersion = chartutil.KubeVersion{
-				Version: kubeVersion.GitVersion,
-				Major:   kubeVersion.Major,
-				Minor:   kubeVersion.Minor,
+		capabilities.KubeVersion = chartutil.KubeVersion{
+			Version: kubeVersion.GitVersion,
+			Major:   kubeVersion.Major,
+			Minor:   kubeVersion.Minor,
+		}
+
+		apiVersions, err := action.GetVersionSet(clientFactory.Discovery())
+		if err != nil {
+			if discovery.IsGroupDiscoveryFailedError(err) {
+				log.Default.Warn(ctx, "Discovery failed: %s", err.Error())
+			} else {
+				return nil, fmt.Errorf("get version set: %w", err)
 			}
 		}
 
-		if opts.APIVersions != nil {
-			capabilities.APIVersions = *opts.APIVersions
-		} else {
-			apiVersions, err := action.GetVersionSet(clientFactory.Discovery())
-			if err != nil {
-				if discovery.IsGroupDiscoveryFailedError(err) {
-					log.Default.Warn(ctx, "Discovery failed: %s", err.Error())
-				} else {
-					return nil, fmt.Errorf("get version set: %w", err)
-				}
-			}
-
-			capabilities.APIVersions = apiVersions
-		}
+		capabilities.APIVersions = apiVersions
 	} else {
-		if opts.KubeVersion != nil {
-			capabilities.KubeVersion = *opts.KubeVersion
+		if opts.LocalKubeVersion != "" {
+			kubeVersion, err := chartutil.ParseKubeVersion(opts.LocalKubeVersion)
+			if err != nil {
+				return nil, fmt.Errorf("parse kube version %q: %w", opts.LocalKubeVersion, err)
+			}
+
+			capabilities.KubeVersion = *kubeVersion
 		} else {
 			capabilities.KubeVersion = chartutil.DefaultCapabilities.KubeVersion
 		}
 
-		if opts.APIVersions != nil {
-			capabilities.APIVersions = *opts.APIVersions
-		} else {
-			capabilities.APIVersions = chartutil.DefaultCapabilities.APIVersions
-		}
+		capabilities.APIVersions = chartutil.DefaultCapabilities.APIVersions
+	}
+
+	if opts.ExtraAPIVersions != nil {
+		capabilities.APIVersions = append(capabilities.APIVersions, chartutil.VersionSet(opts.ExtraAPIVersions)...)
 	}
 
 	return capabilities, nil

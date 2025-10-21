@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/samber/lo"
+
 	"github.com/werf/nelm/pkg/legacy/secret"
 	"github.com/werf/nelm/pkg/log"
 )
@@ -17,7 +19,7 @@ type SecretKeyRotateOptions struct {
 	ChartDirPath      string
 	NewSecretKey      string
 	OldSecretKey      string
-	SecretValuesPaths []string
+	SecretValuesFiles []string
 	SecretWorkDir     string
 	TempDirPath       string
 }
@@ -34,14 +36,14 @@ func SecretKeyRotate(ctx context.Context, opts SecretKeyRotateOptions) error {
 	}
 
 	if opts.OldSecretKey != "" {
-		os.Setenv("WERF_OLD_SECRET_KEY", opts.OldSecretKey)
+		lo.Must0(os.Setenv("WERF_OLD_SECRET_KEY", opts.OldSecretKey))
 	}
 
 	if opts.NewSecretKey != "" {
-		os.Setenv("WERF_SECRET_KEY", opts.NewSecretKey)
+		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.NewSecretKey))
 	}
 
-	if err := secret.RotateSecretKey(ctx, opts.ChartDirPath, opts.SecretWorkDir, opts.SecretValuesPaths...); err != nil {
+	if err := secret.RotateSecretKey(ctx, opts.ChartDirPath, opts.SecretWorkDir, opts.SecretValuesFiles...); err != nil {
 		return fmt.Errorf("rotate secret key: %w", err)
 	}
 
