@@ -200,7 +200,7 @@ func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 		DryRun:           true,
 	})
 
-	installType, err := resourceInstallType(localRes, getObj, dryApplyObj, dryApplyErr)
+	installType, err := resourceInstallType(ctx, localRes, getObj, dryApplyObj, dryApplyErr)
 	if err != nil {
 		return nil, fmt.Errorf("determine install type for resource %q: %w", localRes.IDHuman(), err)
 	}
@@ -356,7 +356,7 @@ func deduplicateDeletableResourceInfos(infos []*DeletableResourceInfo) []*Deleta
 	})
 }
 
-func resourceInstallType(localRes *resource.InstallableResource, getObj, dryApplyObj *unstructured.Unstructured, dryApplyErr error) (ResourceInstallType, error) {
+func resourceInstallType(ctx context.Context, localRes *resource.InstallableResource, getObj, dryApplyObj *unstructured.Unstructured, dryApplyErr error) (ResourceInstallType, error) {
 	isImmutable := dryApplyErr != nil && kube.IsImmutableErr(dryApplyErr)
 	if isImmutable && !localRes.Recreate && !localRes.RecreateOnImmutable {
 		return "", fmt.Errorf("immutable fields change in resource %q, but recreation is not requested: %w", localRes.IDHuman(), dryApplyErr)
@@ -385,6 +385,7 @@ func resourceInstallType(localRes *resource.InstallableResource, getObj, dryAppl
 	if patch, err := jsondiff.Compare(diffableGetObj, diffableDryApplyObj); err != nil {
 		return "", fmt.Errorf("compare live and dry-apply versions of resource %q: %w", localRes.IDHuman(), err)
 	} else if len(patch) > 0 {
+		log.Default.Trace(ctx, "Get/DryApply patch for %q: %s", localRes.IDHuman(), patch.String())
 		return ResourceInstallTypeUpdate, nil
 	}
 
