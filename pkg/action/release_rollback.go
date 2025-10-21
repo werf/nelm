@@ -432,9 +432,12 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 		criticalErrs = append(criticalErrs, critErrs...)
 		nonCriticalErrs = append(nonCriticalErrs, nonCritErrs...)
-		completedResourceOps = append(completedResourceOps, runFailurePlanResult.CompletedResourceOps...)
-		canceledResourceOps = append(canceledResourceOps, runFailurePlanResult.CanceledResourceOps...)
-		failedResourceOps = append(failedResourceOps, runFailurePlanResult.FailedResourceOps...)
+
+		if runFailurePlanResult != nil {
+			completedResourceOps = append(completedResourceOps, runFailurePlanResult.CompletedResourceOps...)
+			canceledResourceOps = append(canceledResourceOps, runFailurePlanResult.CanceledResourceOps...)
+			failedResourceOps = append(failedResourceOps, runFailurePlanResult.FailedResourceOps...)
+		}
 	}
 
 	if !opts.NoProgressTablePrint {

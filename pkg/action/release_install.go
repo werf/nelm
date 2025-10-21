@@ -557,9 +557,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		criticalErrs = append(criticalErrs, critErrs...)
 		nonCriticalErrs = append(nonCriticalErrs, nonCritErrs...)
-		completedResourceOps = append(completedResourceOps, runFailurePlanResult.CompletedResourceOps...)
-		canceledResourceOps = append(canceledResourceOps, runFailurePlanResult.CanceledResourceOps...)
-		failedResourceOps = append(failedResourceOps, runFailurePlanResult.FailedResourceOps...)
+
+		if runFailurePlanResult != nil {
+			completedResourceOps = append(completedResourceOps, runFailurePlanResult.CompletedResourceOps...)
+			canceledResourceOps = append(canceledResourceOps, runFailurePlanResult.CanceledResourceOps...)
+			failedResourceOps = append(failedResourceOps, runFailurePlanResult.FailedResourceOps...)
+		}
 
 		if opts.AutoRollback && prevDeployedRelease != nil {
 			runRollbackPlanResult, nonCritErrs, critErrs := runRollbackPlan(ctx, releaseName, releaseNamespace, newRelease, prevDeployedRelease, taskStore, logStore, informerFactory, history, clientFactory, runRollbackPlanOptions{
@@ -581,9 +584,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 			criticalErrs = append(criticalErrs, critErrs...)
 			nonCriticalErrs = append(nonCriticalErrs, nonCritErrs...)
-			completedResourceOps = append(completedResourceOps, runRollbackPlanResult.CompletedResourceOps...)
-			canceledResourceOps = append(canceledResourceOps, runRollbackPlanResult.CanceledResourceOps...)
-			failedResourceOps = append(failedResourceOps, runRollbackPlanResult.FailedResourceOps...)
+
+			if runRollbackPlanResult != nil {
+				completedResourceOps = append(completedResourceOps, runRollbackPlanResult.CompletedResourceOps...)
+				canceledResourceOps = append(canceledResourceOps, runRollbackPlanResult.CanceledResourceOps...)
+				failedResourceOps = append(failedResourceOps, runRollbackPlanResult.FailedResourceOps...)
+			}
 		}
 	}
 
@@ -927,9 +933,12 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 		critErrs = append(critErrs, crErrs...)
 		nonCritErrs = append(nonCritErrs, nonCrErrs...)
-		completedResourceOps = append(completedResourceOps, runFailurePlanResult.CompletedResourceOps...)
-		canceledResourceOps = append(canceledResourceOps, runFailurePlanResult.CanceledResourceOps...)
-		failedResourceOps = append(failedResourceOps, runFailurePlanResult.FailedResourceOps...)
+
+		if runFailurePlanResult != nil {
+			completedResourceOps = append(completedResourceOps, runFailurePlanResult.CompletedResourceOps...)
+			canceledResourceOps = append(canceledResourceOps, runFailurePlanResult.CanceledResourceOps...)
+			failedResourceOps = append(failedResourceOps, runFailurePlanResult.FailedResourceOps...)
+		}
 	}
 
 	return &runRollbackPlanResult{
