@@ -123,7 +123,6 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 
 	if oldRel.Info.Status != helmrelease.StatusDeployed ||
 		oldRel.Info.Notes != newRel.Info.Notes ||
-		!cmp.Equal(oldRel.Info.Annotations, newRel.Info.Annotations, cmpOpts) ||
 		!cmp.Equal(oldRel.Config, newRel.Config, cmpOpts) {
 		return false, nil
 	}

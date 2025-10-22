@@ -95,8 +95,8 @@ func cleanRuntimeDataFromUnstruct(unstruct *unstructured.Unstructured) {
 	delete(unstruct.Object, "status")
 
 	managedFields := unstruct.GetManagedFields()
-	for _, entry := range managedFields {
-		entry.Time = nil
+	for i := 0; i < len(managedFields); i++ {
+		managedFields[i].Time = nil
 	}
 
 	unstruct.SetManagedFields(managedFields)
