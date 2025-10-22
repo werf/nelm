@@ -425,6 +425,10 @@ func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, curr
 		opts.RegistryCredentialsPath = common.DefaultRegistryCredentialsPath
 	}
 
+	if opts.ChartProvenanceStrategy == "" {
+		opts.ChartProvenanceStrategy = common.DefaultChartProvenanceStrategy
+	}
+
 	return opts, nil
 }
 

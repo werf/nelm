@@ -20,22 +20,23 @@ var (
 )
 
 const (
-	DefaultBurstLimit            = 100
-	DefaultDiffContextLines      = 3
-	DefaultFieldManager          = "helm"
-	DefaultLocalKubeVersion      = "1.20.0"
-	DefaultLogColorMode          = log.LogColorModeAuto
-	DefaultNetworkParallelism    = 30
-	DefaultProgressPrintInterval = 5 * time.Second
-	DefaultQPSLimit              = 30
-	DefaultReleaseHistoryLimit   = 10
-	KubectlEditFieldManager      = "kubectl-edit"
-	OldFieldManagerPrefix        = "werf"
-	StageEndSuffix               = "end"
-	StagePrefix                  = "stage"
-	StageStartSuffix             = "start"
-	StubReleaseName              = "stub-release"
-	StubReleaseNamespace         = "stub-namespace"
+	DefaultBurstLimit              = 100
+	DefaultChartProvenanceStrategy = "never" // TODO(v2): switch to if-possible
+	DefaultDiffContextLines        = 3
+	DefaultFieldManager            = "helm"
+	DefaultLocalKubeVersion        = "1.20.0"
+	DefaultLogColorMode            = log.LogColorModeAuto
+	DefaultNetworkParallelism      = 30
+	DefaultProgressPrintInterval   = 5 * time.Second
+	DefaultQPSLimit                = 30
+	DefaultReleaseHistoryLimit     = 10
+	KubectlEditFieldManager        = "kubectl-edit"
+	OldFieldManagerPrefix          = "werf"
+	StageEndSuffix                 = "end"
+	StagePrefix                    = "stage"
+	StageStartSuffix               = "start"
+	StubReleaseName                = "stub-release"
+	StubReleaseNamespace           = "stub-namespace"
 )
 
 const (

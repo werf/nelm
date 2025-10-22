@@ -365,6 +365,10 @@ func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir, homeDi
 		opts.RegistryCredentialsPath = common.DefaultRegistryCredentialsPath
 	}
 
+	if opts.ChartProvenanceStrategy == "" {
+		opts.ChartProvenanceStrategy = common.DefaultChartProvenanceStrategy
+	}
+
 	return opts, nil
 }
 
