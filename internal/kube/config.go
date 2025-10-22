@@ -27,12 +27,17 @@ type KubeConfigOptions struct {
 }
 
 func NewKubeConfig(ctx context.Context, kubeConfigPaths []string, opts KubeConfigOptions) (*KubeConfig, error) {
+	var authProviderConfig *api.AuthProviderConfig
+	if opts.KubeAuthProviderName != "" || len(opts.KubeAuthProviderConfig) != 0 {
+		authProviderConfig = &api.AuthProviderConfig{
+			Name:   opts.KubeAuthProviderName,
+			Config: opts.KubeAuthProviderConfig,
+		}
+	}
+
 	overrides := &clientcmd.ConfigOverrides{
 		AuthInfo: api.AuthInfo{
-			AuthProvider: &api.AuthProviderConfig{
-				Name:   opts.KubeAuthProviderName,
-				Config: opts.KubeAuthProviderConfig,
-			},
+			AuthProvider:          authProviderConfig,
 			ClientCertificate:     opts.KubeTLSClientCertPath,
 			ClientCertificateData: []byte(opts.KubeTLSClientCertData),
 			ClientKey:             opts.KubeTLSClientKeyPath,

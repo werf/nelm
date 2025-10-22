@@ -356,5 +356,9 @@ func applyChartLintOptionsDefaults(opts ChartLintOptions, currentDir, homeDir st
 		opts.RegistryCredentialsPath = common.DefaultRegistryCredentialsPath
 	}
 
+	if opts.ChartProvenanceStrategy == "" {
+		opts.ChartProvenanceStrategy = common.DefaultChartProvenanceStrategy
+	}
+
 	return opts, nil
 }
