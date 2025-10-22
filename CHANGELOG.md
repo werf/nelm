@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.15.1](https://github.com/werf/nelm/compare/v1.15.0...v1.15.1) (2025-10-22)
+
+
+### Bug Fixes
+
+* correct release planning ([b34f6c1](https://github.com/werf/nelm/commit/b34f6c120ffadee06528e8d5fb5d9ac9fdaf9234))
+* error `undefined: helmdownloader.VerificationStrategyString` ([a5299cb](https://github.com/werf/nelm/commit/a5299cbd494a041d769b7786a839216d3b68ccb4))
+* no Auth Provider found for name "" ([f4ca24c](https://github.com/werf/nelm/commit/f4ca24c70ec6393ca9762e67ca0219838b5f945c))
+* panic `unknown VerificationStrategyString value` ([f4ca24c](https://github.com/werf/nelm/commit/f4ca24c70ec6393ca9762e67ca0219838b5f945c))
+* panic if failure/rollback plan fails ([778fa3f](https://github.com/werf/nelm/commit/778fa3fa4f8d4e43e01e6eb971ba829f5111d56b))
+
 ## [1.15.0](https://github.com/werf/nelm/compare/v1.14.1...v1.15.0) (2025-10-20)
 
 
