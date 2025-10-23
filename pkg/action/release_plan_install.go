@@ -449,6 +449,10 @@ func logPlannedChanges(
 			BlockTitle: buildDiffHeader(change),
 		}, func() {
 			log.Default.Info(ctx, "%s", change.Udiff)
+
+			if change.Reason != "" {
+				log.Default.Info(ctx, "<%s reason: %s>", change.Type, change.Reason)
+			}
 		})
 	}
 
@@ -472,10 +476,6 @@ func buildDiffHeader(change *plan.ResourceChange) string {
 
 	if len(headerOps) > 0 {
 		header += ", then " + strings.Join(headerOps, ", ")
-	}
-
-	if change.Reason != "" {
-		header += ". Reason: " + change.Reason
 	}
 
 	return header
