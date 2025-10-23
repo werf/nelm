@@ -1,4 +1,4 @@
-FROM golang:1.23.9-bookworm@sha256:6a3aa4fd2c3e15bc8cb450e4a0ae353fb73b5f593bcbb5b25ffeee860cc2ec2a
+FROM golang:1.24.9-bookworm@sha256:e400aebe4e96e1d52b510fb7a82c417d9377f595f0160eb1bd979d441711d20c
 ENV DEBIAN_FRONTEND=noninteractive
 
 ARG TARGETPLATFORM
