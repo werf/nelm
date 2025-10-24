@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.16.0](https://github.com/werf/nelm/compare/v1.15.1...v1.16.0) (2025-10-24)
+
+
+### Features
+
+* chart repo connection flags `--chart-repo-basic-password`, `--chart-repo-basic-username`, `--chart-repo-ca`, `--chart-repo-cert`, `--chart-repo-key`, `--chart-repo-pass-creds`, `--chart-repo-request-timeout`, `--chart-repo-url` ([e6d1d7c](https://github.com/werf/nelm/commit/e6d1d7c22f5d508b1aae3e936eef1c622161e668))
+* flag `--extra-apiversions` for "lint/render" ([e6d1d7c](https://github.com/werf/nelm/commit/e6d1d7c22f5d508b1aae3e936eef1c622161e668))
+* flags `--no-notes` for "install/rollback" ([e6d1d7c](https://github.com/werf/nelm/commit/e6d1d7c22f5d508b1aae3e936eef1c622161e668))
+* flags `--save-graph-to`, `--release-info-annotations`, `--release-labels` for "plan" ([e6d1d7c](https://github.com/werf/nelm/commit/e6d1d7c22f5d508b1aae3e936eef1c622161e668))
+* flags `--set-json`, `--set-literal`, `--provenance-keyring`, `--provenance-strategy`, `--templates-allow-dns`, `--runtime-labels`, `--release-storage-sql-connection` ([e6d1d7c](https://github.com/werf/nelm/commit/e6d1d7c22f5d508b1aae3e936eef1c622161e668))
+* k8s connection flags `--kube-auth-password`, `--kube-auth-provider`, `--kube-auth-provider-config`, `--kube-auth-username`, `--kube-ca-data`, `--kube-cert`, `--kube-cert-data`, `--kube-context-cluster`, `--kube-context-user`, `--kube-impersonate-group`, `--kube-impersonate-uid`, `--kube-impersonate-user`, `--kube-key`, `--kube-key-data`, `--kube-proxy-url`, `--kube-request-timeout`, `--kube-token-path` ([e6d1d7c](https://github.com/werf/nelm/commit/e6d1d7c22f5d508b1aae3e936eef1c622161e668))
+* lots of new cli flags ([e6d1d7c](https://github.com/werf/nelm/commit/e6d1d7c22f5d508b1aae3e936eef1c622161e668))
+
+
+### Bug Fixes
+
+* improve blind apply reason in `plan` ([a5ff9d3](https://github.com/werf/nelm/commit/a5ff9d310b5bf073770a2e54bcf5048cd092f4b7))
+
 ## [1.15.1](https://github.com/werf/nelm/compare/v1.15.0...v1.15.1) (2025-10-22)
 
 
