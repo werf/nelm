@@ -47,7 +47,7 @@ func newLegacyReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuilt
 	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
-		if err := AddKubeConnectionFlags(cmd, cfg.KubeConnectionOptions); err != nil {
+		if err := AddKubeConnectionFlags(cmd, &cfg.KubeConnectionOptions); err != nil {
 			return fmt.Errorf("add kube connection flags: %w", err)
 		}
 

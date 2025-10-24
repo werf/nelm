@@ -60,22 +60,8 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
-		if err := AddKubeConnectionFlags(cmd, cfg.KubeConnectionOptions); err != nil {
+		if err := AddKubeConnectionFlags(cmd, &cfg.KubeConnectionOptions); err != nil {
 			return fmt.Errorf("add kube connection flags: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.LogColorMode, "color-mode", common.DefaultLogColorMode, "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                miscFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", string(action.DefaultReleaseGetLogLevel), "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                miscFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
 		}
 
 		if err := cli.AddFlag(cmd, &cfg.NetworkParallelism, "network-parallelism", common.DefaultNetworkParallelism, "Limit of network-related tasks to run in parallel", cli.AddFlagOptions{
@@ -100,6 +86,43 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		// TODO(ilya-lesikov): restrict allowed values
+		if err := cli.AddFlag(cmd, &cfg.ReleaseStorageDriver, "release-storage", "", "How releases should be stored", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
+			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.ReleaseStorageSQLConnection, "release-storage-sql-connection", "", "SQL connection string for MySQL release storage driver", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
+			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.TempDirPath, "temp-dir", "", "The directory for temporary files. By default, create a new directory in the default system directory for temporary files", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
+			Group:                miscFlagGroup,
+			Type:                 cli.FlagTypeDir,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.LogColorMode, "color-mode", common.DefaultLogColorMode, "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", string(action.DefaultReleaseGetLogLevel), "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.ReleaseName, "release", "", "The release name. Must be unique within the release namespace", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
@@ -114,22 +137,6 @@ func newReleaseGetCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*c
 			Group:                mainFlagGroup,
 			Required:             true,
 			ShortName:            "n",
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		// TODO(ilya-lesikov): restrict allowed values
-		if err := cli.AddFlag(cmd, &cfg.ReleaseStorageDriver, "release-storage", "", "How releases should be stored", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
-			Group:                miscFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.TempDirPath, "temp-dir", "", "The directory for temporary files. By default, create a new directory in the default system directory for temporary files", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
-			Group:                miscFlagGroup,
-			Type:                 cli.FlagTypeDir,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

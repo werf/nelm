@@ -9,10 +9,53 @@ import (
 	"github.com/werf/nelm/pkg/common"
 )
 
-func AddKubeConnectionFlags(cmd *cobra.Command, cfg common.KubeConnectionOptions) error {
+func AddKubeConnectionFlags(cmd *cobra.Command, cfg *common.KubeConnectionOptions) error {
 	if err := cli.AddFlag(cmd, &cfg.KubeAPIServerAddress, "kube-api-server", "", "Kubernetes API server address", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                kubeConnectionFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.KubeAuthProviderConfig, "kube-auth-provider-config", nil, "Auth provider config for authentication in Kubernetes API", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                kubeConnectionFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.KubeAuthProviderName, "kube-auth-provider", "", "Auth provider name for authentication in Kubernetes", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                kubeConnectionFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.KubeBasicAuthPassword, "kube-auth-password", "", "Basic auth password for Kubernetes API", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                kubeConnectionFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.KubeBasicAuthUsername, "kube-auth-username", "", "Basic auth username for Kubernetes API", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                kubeConnectionFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.KubeBearerTokenData, "kube-token", "", "Bearer token for authentication in Kubernetes", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                kubeConnectionFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.KubeBearerTokenPath, "kube-token-path", "", "Path to file with bearer token for authentication in Kubernetes", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                kubeConnectionFlagGroup,
+		Type:                 cli.FlagTypeFile,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}
@@ -24,15 +67,7 @@ func AddKubeConnectionFlags(cmd *cobra.Command, cfg common.KubeConnectionOptions
 		return fmt.Errorf("add flag: %w", err)
 	}
 
-	if err := cli.AddFlag(cmd, &cfg.KubeTLSCAPath, "kube-ca", "", "Path to Kubernetes API server CA file", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                kubeConnectionFlagGroup,
-		Type:                 cli.FlagTypeFile,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.KubeConfigBase64, "kube-config-base64", "", "Pass kubeconfig file content encoded as base64", cli.AddFlagOptions{
+	if err := cli.AddFlag(cmd, &cfg.KubeConfigBase64, "kube-config-base64", "", "Pass Kubeconfig file content encoded as base64", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                kubeConnectionFlagGroup,
 	}); err != nil {
@@ -57,7 +92,50 @@ func AddKubeConnectionFlags(cmd *cobra.Command, cfg common.KubeConnectionOptions
 		return fmt.Errorf("add flag: %w", err)
 	}
 
-	if err := cli.AddFlag(cmd, &cfg.KubeContextCurrent, "kube-context", "", "Kubeconfig context", cli.AddFlagOptions{
+	if err := cli.AddFlag(cmd, &cfg.KubeContextCluster, "kube-context-cluster", "", "Use cluster from Kubeconfig for current context", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                kubeConnectionFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.KubeContextCurrent, "kube-context", "", "Use specified Kubeconfig context", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                kubeConnectionFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.KubeContextUser, "kube-context-user", "", "Use user from Kubeconfig for current context", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                kubeConnectionFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.KubeImpersonateGroups, "kube-impersonate-group", nil, "Sets Impersonate-Group headers when authenticating in Kubernetes", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                kubeConnectionFlagGroup,
+		NoSplitOnCommas:      true,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.KubeImpersonateUID, "kube-impersonate-uid", "", "Sets Impersonate-Uid header when authenticating in Kubernetes", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                kubeConnectionFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.KubeImpersonateUser, "kube-impersonate-user", "", "Sets Impersonate-User header when authenticating in Kubernetes", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                kubeConnectionFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.KubeProxyURL, "kube-proxy-url", "", "Proxy URL to use for proxying all requests to Kubernetes API", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                kubeConnectionFlagGroup,
 	}); err != nil {
@@ -71,6 +149,13 @@ func AddKubeConnectionFlags(cmd *cobra.Command, cfg common.KubeConnectionOptions
 		return fmt.Errorf("add flag: %w", err)
 	}
 
+	if err := cli.AddFlag(cmd, &cfg.KubeRequestTimeout, "kube-request-timeout", 0, "Timeout for all requests to Kubernetes API", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                kubeConnectionFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
 	if err := cli.AddFlag(cmd, &cfg.KubeSkipTLSVerify, "no-verify-kube-tls", false, "Don't verify TLS certificates of Kubernetes API", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                kubeConnectionFlagGroup,
@@ -78,14 +163,52 @@ func AddKubeConnectionFlags(cmd *cobra.Command, cfg common.KubeConnectionOptions
 		return fmt.Errorf("add flag: %w", err)
 	}
 
-	if err := cli.AddFlag(cmd, &cfg.KubeTLSServerName, "kube-api-server-tls-name", "", "The server name for Kubernetes API TLS validation, if different from the hostname of Kubernetes API server", cli.AddFlagOptions{
+	if err := cli.AddFlag(cmd, &cfg.KubeTLSCAData, "kube-ca-data", "", "Pass Kubernetes API server TLS CA data", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                kubeConnectionFlagGroup,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}
 
-	if err := cli.AddFlag(cmd, &cfg.KubeBearerTokenData, "kube-token", "", "The bearer token for authentication in Kubernetes API", cli.AddFlagOptions{
+	if err := cli.AddFlag(cmd, &cfg.KubeTLSCAPath, "kube-ca", "", "Path to Kubernetes API server TLS CA file", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                kubeConnectionFlagGroup,
+		Type:                 cli.FlagTypeFile,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.KubeTLSClientCertData, "kube-cert-data", "", "Pass PEM-encoded TLS client cert for connecting to Kubernetes API", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                kubeConnectionFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.KubeTLSClientCertPath, "kube-cert", "", "Path to PEM-encoded TLS client cert for connecting to Kubernetes API", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                kubeConnectionFlagGroup,
+		Type:                 cli.FlagTypeFile,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.KubeTLSClientKeyData, "kube-key-data", "", "Pass PEM-encoded TLS client key for connecting to Kubernetes API", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                kubeConnectionFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.KubeTLSClientKeyPath, "kube-key", "", "Path to PEM-encoded TLS client key for connecting to Kubernetes API", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                kubeConnectionFlagGroup,
+		Type:                 cli.FlagTypeFile,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.KubeTLSServerName, "kube-api-server-tls-name", "", "Server name for Kubernetes API TLS validation, if different from the hostname of Kubernetes API server", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                kubeConnectionFlagGroup,
 	}); err != nil {
@@ -95,15 +218,74 @@ func AddKubeConnectionFlags(cmd *cobra.Command, cfg common.KubeConnectionOptions
 	return nil
 }
 
-func AddChartRepoConnectionFlags(cmd *cobra.Command, cfg common.ChartRepoConnectionOptions) error {
-	if err := cli.AddFlag(cmd, &cfg.ChartRepoInsecure, "insecure-chart-repos", false, "Allow insecure HTTP connections to chart repositories", cli.AddFlagOptions{
+func AddChartRepoConnectionFlags(cmd *cobra.Command, cfg *common.ChartRepoConnectionOptions) error {
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoBasicAuthPassword, "chart-repo-basic-password", "", "Basic auth password to authenticate in chart repository", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                chartRepoFlagGroup,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}
 
-	if err := cli.AddFlag(cmd, &cfg.ChartRepoSkipTLSVerify, "no-verify-chart-repos-tls", false, "Don't verify TLS certificates of chart repositories", cli.AddFlagOptions{
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoBasicAuthUsername, "chart-repo-basic-username", "", "Basic auth username to authenticate in chart repository", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                chartRepoFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoCAPath, "chart-repo-ca", "", "Path to TLS CA file for connecting to chart repository", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                chartRepoFlagGroup,
+		Type:                 cli.FlagTypeFile,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoCertPath, "chart-repo-cert", "", "Path to TLS client cert file for connecting to chart repository", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                chartRepoFlagGroup,
+		Type:                 cli.FlagTypeFile,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoInsecure, "insecure-chart-repos", false, "Allow insecure HTTP connections to chart repository", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                chartRepoFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoKeyPath, "chart-repo-key", "", "Path to TLS client key file for connecting to chart repository", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                chartRepoFlagGroup,
+		Type:                 cli.FlagTypeFile,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoPassCreds, "chart-repo-pass-creds", false, "Allow sending chart repository credentials to domains different from the chart repository domain when downloading charts", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                chartRepoFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoRequestTimeout, "chart-repo-request-timeout", 0, "Set timeout for all requests to chart repository", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                chartRepoFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoSkipTLSVerify, "no-verify-chart-repos-tls", false, "Don't verify TLS certificates of chart repository", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                chartRepoFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoURL, "chart-repo-url", "", "Set URL of chart repo to be used to look for chart", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                chartRepoFlagGroup,
 	}); err != nil {
@@ -113,10 +295,18 @@ func AddChartRepoConnectionFlags(cmd *cobra.Command, cfg common.ChartRepoConnect
 	return nil
 }
 
-func AddValuesFlags(cmd *cobra.Command, cfg common.ValuesOptions) error {
+func AddValuesFlags(cmd *cobra.Command, cfg *common.ValuesOptions) error {
 	if err := cli.AddFlag(cmd, &cfg.DefaultValuesDisable, "no-default-values", false, "Ignore values.yaml of the top-level chart", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                valuesFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.RuntimeSetJSON, "set-runtime-json", []string{}, "Set new keys in $.Runtime, where the key is the value path and the value is JSON. This is meant to be generated inside the program, so use --set-json instead, unless you know what you are doing", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                valuesFlagGroup,
+		NoSplitOnCommas:      true,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}
@@ -145,7 +335,23 @@ func AddValuesFlags(cmd *cobra.Command, cfg common.ValuesOptions) error {
 		return fmt.Errorf("add flag: %w", err)
 	}
 
-	if err := cli.AddFlag(cmd, &cfg.ValuesSetString, "set-string", []string{}, "Set new values, where the key is the value path and the value is the value. The value will always be a string", cli.AddFlagOptions{
+	if err := cli.AddFlag(cmd, &cfg.ValuesSetJSON, "set-json", []string{}, "Set new values, where the key is the value path and the value is JSON", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                valuesFlagGroup,
+		NoSplitOnCommas:      true,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ValuesSetLiteral, "set-literal", []string{}, "Set new values, where the key is the value path and the value is the value. The value will always become a literal string", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                valuesFlagGroup,
+		NoSplitOnCommas:      true,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ValuesSetString, "set-string", []string{}, "Set new values, where the key is the value path and the value is the value. The value will always become a string", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                valuesFlagGroup,
 	}); err != nil {
@@ -155,7 +361,7 @@ func AddValuesFlags(cmd *cobra.Command, cfg common.ValuesOptions) error {
 	return nil
 }
 
-func AddSecretValuesFlags(cmd *cobra.Command, cfg common.SecretValuesOptions) error {
+func AddSecretValuesFlags(cmd *cobra.Command, cfg *common.SecretValuesOptions) error {
 	if err := cli.AddFlag(cmd, &cfg.DefaultSecretValuesDisable, "no-default-secret-values", false, "Ignore secret-values.yaml of the top-level chart", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                secretFlagGroup,

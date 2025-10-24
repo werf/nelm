@@ -65,7 +65,7 @@ func NewKubeConfig(ctx context.Context, kubeConfigPaths []string, opts KubeConfi
 			Namespace: opts.KubeContextNamespace,
 		},
 		CurrentContext: opts.KubeContextCurrent,
-		Timeout:        opts.KubeRequestTimeout,
+		Timeout:        opts.KubeRequestTimeout.String(),
 	}
 
 	var clientConfig clientcmd.ClientConfig
