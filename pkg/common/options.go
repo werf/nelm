@@ -26,7 +26,7 @@ type KubeConnectionOptions struct {
 	KubeImpersonateUser    string
 	KubeProxyURL           string
 	KubeQPSLimit           int
-	KubeRequestTimeout     string
+	KubeRequestTimeout     time.Duration
 	KubeSkipTLSVerify      bool
 	KubeTLSCAData          string
 	KubeTLSCAPath          string
