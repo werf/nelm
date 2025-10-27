@@ -47,6 +47,7 @@ jobs:
     uses: ./.github/workflows/_test_unit.yml
     with:
       forceSkip: ${{ github.event_name == 'pull_request' && needs.detect-changes.outputs.workflow_proceed == 'false' }}
+      coverage: true
 
   build:
     if: ${{ !(github.event_name == 'pull_request' && needs.detect-changes.outputs.workflow_proceed == 'false') }}
