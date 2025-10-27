@@ -1,0 +1,40 @@
+name: Set up prebuilt werf test binary
+inputs:
+  coverage:
+    default: false
+    type: string
+runs:
+  using: composite
+  steps:
+    - name: Set WERF_TEST_* env vars
+      run: |
+        if ${{ inputs.coverage }}; then
+          cat >> "$GITHUB_ENV" <<EOF
+        WERF_TEST_BINARY_PATH=$GITHUB_WORKSPACE/bin/nelm
+        WERF_TEST_COVER_DIR=$GITHUB_WORKSPACE/covdata
+        WERF_TEST_COVERAGE_DIR=$GITHUB_WORKSPACE/coverage
+        EOF
+        else
+          cat >> "$GITHUB_ENV" <<EOF
+        WERF_TEST_BINARY_PATH=$GITHUB_WORKSPACE/bin/nelm
+        EOF
+        fi
+      shell: bash
+
+    - if: inputs.coverage == 'true'
+      name: Create WERF_TEST_COVERAGE_DIR and WERF_TEST_COVER_DIR
+      run: |
+        mkdir -p "$WERF_TEST_COVERAGE_DIR"
+        mkdir -p "$WERF_TEST_COVER_DIR"
+      shell: bash
+
+    - name: Build werf test binary
+      run: |
+        if ${{ inputs.coverage }}; then
+          task --yes -p build-with-coverage
+        else
+          task --yes -p build
+        fi
+      shell: bash
+      env:
+        TASK_X_REMOTE_TASKFILES: 1
