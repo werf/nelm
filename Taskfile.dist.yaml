@@ -178,14 +178,6 @@ tasks:
           targetArch: "amd64"
           extraGoBuildArgs: "{{.extraGoBuildArgs}}"
 
-  build-with-coverage:
-    desc: "Build main binary to run E2E tests with coverage."
-    cmds:
-      - task: build:dev:{{.os}}:{{.arch}}
-        vars:
-          outputDir: '{{.outputDir | default "./bin"}}'
-          extraGoBuildArgs: "-cover -coverpkg=./..."
-
   _test:go-test:
     cmds:
       - go test -ldflags="{{.ldFlags}}" -tags="{{.tags}}" {{.extraTestGoTestArgs}} {{.CLI_ARGS}} {{.paths}}
