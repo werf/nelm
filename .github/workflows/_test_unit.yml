@@ -50,6 +50,10 @@ jobs:
       - name: Install ginkgo
         run: task -p deps:install:ginkgo
 
+      - name: Prepare coverage dir
+        if: ${{ inputs.coverage }}
+        run: mkdir -p "$GITHUB_WORKSPACE/coverage"
+
       - name: Test
         run: |
           if ${{ inputs.coverage }}; then
