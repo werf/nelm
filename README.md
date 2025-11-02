@@ -1,7 +1,7 @@
-<p align="center">
+<!-- <p align="center">
   <a href="https://godoc.org/github.com/werf/nelm"><img src="https://godoc.org/github.com/werf/nelm?status.svg" alt="GoDoc"></a>
   <a href="https://qlty.sh/gh/werf/projects/nelm"><img src="https://qlty.sh/gh/werf/projects/nelm/coverage.svg" alt="Code Coverage" /></a>
-</p>
+</p> -->
 
 **Nelm** is a Helm 3 alternative. It is a Kubernetes deployment tool that manages Helm Charts and deploys them to Kubernetes. It is also the deployment engine of [werf](https://github.com/werf/werf). Nelm can do (almost) everything that Helm does, but better, and even quite some on top of it. Nelm is based on an improved and partially rewritten Helm 3 codebase, to introduce:
 
