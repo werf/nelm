@@ -15,7 +15,7 @@ vars:
   package: "github.com/werf/nelm/cmd/nelm"
 
   tags: ""
-  ldFlags: "-s -w -X github.com/werf/nelm/internal/common.Brand={{.brand}} -X github.com/werf/nelm/internal/common.Version={{.version}}"
+  ldFlags: "-s -w -X github.com/werf/nelm/pkg/common.Brand={{.brand}} -X github.com/werf/nelm/pkg/common.Version={{.version}}"
 
 tasks:
   _build-and-lint:
