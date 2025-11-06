@@ -87,6 +87,16 @@ func IsHook(annotations map[string]string) bool {
 	return found
 }
 
+func IsWebhook(groupKind schema.GroupKind) bool {
+	return groupKind == schema.GroupKind{
+		Group: "admissionregistration.k8s.io",
+		Kind:  "MutatingWebhookConfiguration",
+	} || groupKind == schema.GroupKind{
+		Group: "admissionregistration.k8s.io",
+		Kind:  "ValidatingWebhookConfiguration",
+	}
+}
+
 func IsReleaseNamespace(resourceName string, resourceGVK schema.GroupVersionKind, releaseNamespace string) bool {
 	return resourceGVK.Group == "" && resourceGVK.Kind == "Namespace" && resourceName == releaseNamespace
 }
