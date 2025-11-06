@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.16.1](https://github.com/werf/nelm/compare/v1.16.0...v1.16.1) (2025-11-06)
+
+
+### Bug Fixes
+
+* failures in init containers of Jobs ignored ([68bf839](https://github.com/werf/nelm/commit/68bf839ce5fd129442000127077e1af3ce362e3e))
+* version 0.0.0 ([16455d7](https://github.com/werf/nelm/commit/16455d7e88eb951f509a641ac4533d03553ab0b6))
+* webhooks not readying ([55c46af](https://github.com/werf/nelm/commit/55c46afac355f04e100ca3a3892bdde59aee1df4))
+
 ## [1.16.0](https://github.com/werf/nelm/compare/v1.15.1...v1.16.0) (2025-10-24)
 
 
