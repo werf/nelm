@@ -88,16 +88,16 @@ const (
 type Stage string
 
 const (
-	StageInit              Stage = "init"              // create pending release
-	StagePrePreUninstall   Stage = "pre-pre-uninstall" // uninstall previous release resources
-	StagePrePreInstall     Stage = "pre-pre-install"   // install crd
-	StagePreInstall        Stage = "pre-install"       // install pre-hooks
-	StagePreUninstall      Stage = "pre-uninstall"     // cleanup pre-hooks
-	StageInstall           Stage = "install"           // install resources
-	StageUninstall         Stage = "uninstall"         // cleanup resources
-	StagePostInstall       Stage = "post-install"      // install post-hooks
-	StagePostUninstall     Stage = "post-uninstall"    // cleanup post-hooks
-	StagePostPostInstall   Stage = "post-post-install"
+	StageInit              Stage = "init"                // create pending release
+	StagePrePreUninstall   Stage = "pre-pre-uninstall"   // uninstall previous release resources
+	StagePrePreInstall     Stage = "pre-pre-install"     // install crd
+	StagePreInstall        Stage = "pre-install"         // install pre-hooks
+	StagePreUninstall      Stage = "pre-uninstall"       // cleanup pre-hooks
+	StageInstall           Stage = "install"             // install resources
+	StageUninstall         Stage = "uninstall"           // cleanup resources
+	StagePostInstall       Stage = "post-install"        // install post-hooks
+	StagePostUninstall     Stage = "post-uninstall"      // cleanup post-hooks
+	StagePostPostInstall   Stage = "post-post-install"   // install webhook
 	StagePostPostUninstall Stage = "post-post-uninstall" // uninstall crd, webhook
 	StageFinal             Stage = "final"               // succeed pending release, supersede previous release
 )

@@ -28,6 +28,10 @@ func validateNoDuplicates(releaseNamespace string, transformedResources []*Insta
 		return instRes.ID()
 	})
 
+	duplicates = lo.Filter(duplicates, func(instRes *InstallableResource, _ int) bool {
+		return !spec.IsWebhook(instRes.GroupVersionKind.GroupKind())
+	})
+
 	if len(duplicates) == 0 {
 		return nil
 	}

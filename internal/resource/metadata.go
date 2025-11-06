@@ -843,6 +843,10 @@ func deployConditions(meta *spec.ResourceMeta) map[common.On][]common.Stage {
 			for on := range conditions {
 				conditions[on] = []common.Stage{common.StagePrePreInstall}
 			}
+		} else if spec.IsWebhook(meta.GroupVersionKind.GroupKind()) {
+			for on := range conditions {
+				conditions[on] = []common.Stage{common.StagePostPostInstall}
+			}
 		}
 
 		return conditions
@@ -853,6 +857,10 @@ func deployConditions(meta *spec.ResourceMeta) map[common.On][]common.Stage {
 			if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
 				for on := range conditions {
 					conditions[on] = []common.Stage{common.StagePrePreInstall}
+				}
+			} else if spec.IsWebhook(meta.GroupVersionKind.GroupKind()) {
+				for on := range conditions {
+					conditions[on] = []common.Stage{common.StagePostPostInstall}
 				}
 			}
 
@@ -865,6 +873,12 @@ func deployConditions(meta *spec.ResourceMeta) map[common.On][]common.Stage {
 			common.InstallOnInstall:  {common.StagePrePreInstall},
 			common.InstallOnUpgrade:  {common.StagePrePreInstall},
 			common.InstallOnRollback: {common.StagePrePreInstall},
+		}
+	} else if spec.IsWebhook(meta.GroupVersionKind.GroupKind()) {
+		return map[common.On][]common.Stage{
+			common.InstallOnInstall:  {common.StagePostPostInstall},
+			common.InstallOnUpgrade:  {common.StagePostPostInstall},
+			common.InstallOnRollback: {common.StagePostPostInstall},
 		}
 	}
 
