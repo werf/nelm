@@ -1,0 +1,34 @@
+name: test:daily
+
+on:
+  schedule:
+    - cron: "0 8 * * *"
+  repository_dispatch:
+    types: ["test:daily"]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    uses: ./.github/workflows/_lint.yml
+
+  unit:
+    uses: ./.github/workflows/_test_unit.yml
+    with:
+      coverage: true
+
+  coverage_report:
+    uses: ./.github/workflows/_coverage_report.yml
+    needs:
+      - unit
+    secrets: inherit
+
+  notify:
+    if: always()
+    needs:
+      - lint
+      - coverage_report
+    uses: werf/common-ci/.github/workflows/notification.yml@main
+    secrets:
+      loopNotificationGroup: ${{ vars.LOOP_NOTIFICATION_GROUP }}
+      webhook: ${{ secrets.LOOP_NOTIFICATION_WEBHOOK }}
+      notificationChannel: ${{ vars.LOOP_NOTIFICATION_CHANNEL }}
