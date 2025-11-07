@@ -43,6 +43,8 @@ type ReleaseRollbackOptions struct {
 	NoRemoveManualChanges       bool
 	NoShowNotes                 bool
 	ReleaseHistoryLimit         int
+	ReleaseInfoAnnotations      map[string]string
+	ReleaseLabels               map[string]string
 	ReleaseStorageDriver        string
 	ReleaseStorageSQLConnection string
 	Revision                    int
@@ -173,7 +175,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 			return rel.Version == opts.Revision
 		})
 		if !found {
-			return fmt.Errorf("not found revision %q for release %q (namespace: %q)", opts.Revision, releaseName, releaseNamespace)
+			return fmt.Errorf("not found revision %d for release %q (namespace: %q)", opts.Revision, releaseName, releaseNamespace)
 		}
 	}
 
@@ -199,8 +201,8 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	}
 
 	newRelease, err := release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, rollbackReleaseResSpecs, rollbackRelease.Chart, rollbackRelease.Config, release.ReleaseOptions{
-		InfoAnnotations: rollbackRelease.Info.Annotations,
-		Labels:          rollbackRelease.Labels,
+		InfoAnnotations: lo.Assign(rollbackRelease.Info.Annotations, opts.ReleaseInfoAnnotations),
+		Labels:          lo.Assign(rollbackRelease.Labels, opts.ReleaseLabels),
 		Notes:           rollbackRelease.Info.Notes,
 	})
 	if err != nil {
