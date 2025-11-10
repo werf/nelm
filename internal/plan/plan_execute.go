@@ -77,6 +77,10 @@ func ExecutePlan(parentCtx context.Context, releaseNamespace string, plan *Plan,
 		return fmt.Errorf("wait for operations completion: %w", err)
 	}
 
+	if ctx.Err() != nil {
+		return fmt.Errorf("execution canceled: %w", context.Cause(ctx))
+	}
+
 	return nil
 }
 
