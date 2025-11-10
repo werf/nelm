@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.17.0](https://github.com/werf/nelm/compare/v1.16.1...v1.17.0) (2025-11-10)
+
+
+### Features
+
+* `--release-info-annotation` and `--release-labels` for `rollback` ([3ea8ef4](https://github.com/werf/nelm/commit/3ea8ef4cb18cbe1518d383910d4dce41f62113c4))
+
+
+### Bug Fixes
+
+* bad handling of context cancellation in install ([fbdbc62](https://github.com/werf/nelm/commit/fbdbc629c70fc3718c7f550913e00f4dd9b7ee1e))
+* canceled operations not displayed in the end of deployment ([7ffed4a](https://github.com/werf/nelm/commit/7ffed4a3bce904162f881e383d3ea2eb8b5ca7ba))
+* empty Release.Info.First(Last)Deployed ([cf23ebb](https://github.com/werf/nelm/commit/cf23ebb29de758e702695f1a8dbdb132662786a2))
+* error `unable to acquire lock` if install to new namespace ([79a51d5](https://github.com/werf/nelm/commit/79a51d593d90a85b7060b87b9d40640b14dd24d2))
+
 ## [1.16.1](https://github.com/werf/nelm/compare/v1.16.0...v1.16.1) (2025-11-06)
 
 
