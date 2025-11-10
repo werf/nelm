@@ -11,6 +11,7 @@ import (
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/3p-helm/pkg/releaseutil"
 	"github.com/werf/3p-helm/pkg/storage/driver"
+	helmtime "github.com/werf/3p-helm/pkg/time"
 )
 
 var _ Historier = (*History)(nil)
@@ -80,6 +81,9 @@ func (h *History) CreateRelease(ctx context.Context, rel *helmrelease.Release) e
 	h.updateLock.Lock()
 	defer h.updateLock.Unlock()
 
+	rel.Info.FirstDeployed = helmtime.Now()
+	rel.Info.LastDeployed = rel.Info.FirstDeployed
+
 	if err := h.storage.Create(rel); err != nil {
 		return fmt.Errorf("create release %q (namespace: %q, revision: %q): %w", rel.Name, rel.Namespace, rel.Version, err)
 	}
@@ -92,6 +96,9 @@ func (h *History) CreateRelease(ctx context.Context, rel *helmrelease.Release) e
 func (h *History) UpdateRelease(ctx context.Context, rel *helmrelease.Release) error {
 	h.updateLock.Lock()
 	defer h.updateLock.Unlock()
+
+	rel.Info.FirstDeployed = helmtime.Now()
+	rel.Info.LastDeployed = rel.Info.FirstDeployed
 
 	if err := h.storage.Update(rel); err != nil {
 		return fmt.Errorf("update release %q (namespace: %q, revision: %q): %w", rel.Name, rel.Namespace, rel.Version, err)
