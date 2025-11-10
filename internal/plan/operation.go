@@ -51,7 +51,7 @@ const (
 type OperationStatus string
 
 const (
-	OperationStatusUnknown   OperationStatus = "unknown"
+	OperationStatusUnknown   OperationStatus = ""
 	OperationStatusPending   OperationStatus = "pending"
 	OperationStatusCompleted OperationStatus = "completed"
 	OperationStatusFailed    OperationStatus = "failed"
