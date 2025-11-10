@@ -195,6 +195,8 @@ func getOrCreateConfigMapWithNamespaceIfNotExists(clientFactory kube.ClientFacto
 			}); err != nil {
 				return fmt.Errorf("create resource: %w", err)
 			}
+
+			return nil
 		}
 
 		return fmt.Errorf("get resource: %w", err)
