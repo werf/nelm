@@ -401,106 +401,204 @@ config:
 
 ### Reference
 
-#### Annotation `werf.io/weight`
+#### `werf.io/weight` annotation 
 
-Format: `<any number>` \
-Default: `0` \
-Example: `werf.io/weight: "10"`, `werf.io/weight: "-10"`
+Example:
+```yaml
+werf.io/weight: "10"
+werf.io/weight: "-10"
+```
+Format:
+```
+werf.io/weight: "<any number>"
+```
+Default:
+```
+0
+```
 
 This annotation works the same as `helm.sh/hook-weight`, but can be used for both hooks and non-hook resources. Resources with the same weight are grouped together, then the groups deployed one after the other, from low to high weight. Resources in the same group are deployed in parallel. This annotation has higher priority than `helm.sh/hook-weight`, but lower than `werf.io/deploy-dependency-<id>`.
 
-#### Annotation `werf.io/deploy-dependency-<id>`
+#### `werf.io/deploy-dependency-<id>` annotation 
 
-Format: `state=ready|present[,name=<name>][,namespace=<namespace>][,kind=<kind>][,group=<group>][,version=<version>]` \
-Example: \
-`werf.io/deploy-dependency-db: state=ready,kind=StatefulSet,name=postgres`, \
-`werf.io/deploy-dependency-app: state=present,kind=Deployment,group=apps,version=v1,name=app,namespace=app`
+Example:
+```yaml
+werf.io/deploy-dependency-db: state=ready,kind=StatefulSet,name=postgres
+werf.io/deploy-dependency-app: state=present,kind=Deployment,group=apps,version=v1,name=app,namespace=app
+```
+Format:
+```
+werf.io/deploy-dependency-<anything>: state=ready|present[,name=<name>][,namespace=<namespace>][,kind=<kind>][,group=<group>][,version=<version>]
+```
 
 The resource will deploy only after all of its dependencies are satisfied. It waits until the specified resource is just `present` or is also `ready`. It serves as a more powerful alternative to hooks and `werf.io/weight`. You can only point to resources in the release. This annotation has higher priority than `werf.io/weight` and `helm.sh/hook-weight`.
 
-#### Annotation `<id>.external-dependency.werf.io/resource`
+#### `<id>.external-dependency.werf.io/resource` annotation 
 
-Format: `<kind>[.<version>.<group>]/<name>` \
-Example: \
-`secret.external-dependency.werf.io/resource: secret/config` \
-`someapp.external-dependency.werf.io/resource: deployments.v1.apps/app`
+Example:
+```yaml
+secret.external-dependency.werf.io/resource: secret/config
+someapp.external-dependency.werf.io/resource: deployments.v1.apps/app
+```
+Format:
+```
+<anything>.external-dependency.werf.io/resource: <kind>[.<version>.<group>]/<name>
+```
 
 The resource will deploy only after all of its external dependencies are satisfied. It waits until the specified resource is `present` and `ready`. You can only point to resources outside the release.
 
-#### Annotation `<id>.external-dependency.werf.io/name`
+#### `<id>.external-dependency.werf.io/name` annotation 
 
-Format: `<name>` \
-Example: `someapp.external-dependency.werf.io/name: someapp-production`
+Example:
+```yaml
+someapp.external-dependency.werf.io/name: someapp-production
+```
+Format:
+```
+<anything>.external-dependency.werf.io/name: <name>
+```
 
 Set the namespace of the external dependency defined by `<id>.external-dependency.werf.io/resource`. `<id>` must match on both annotations. If not specified, the release namespace is used.
 
-#### Annotation `werf.io/ownership`
+#### `werf.io/ownership` annotation 
 
-Format: `anyone|release` \
-Default: `release` for general resources, `anyone` for hooks and CRDs from `crds/` directory \
-Example: `werf.io/ownership: anyone`
+Example:
+```yaml
+werf.io/ownership: anyone
+```
+Format:
+```
+werf.io/ownership: anyone|release
+```
+Default:
+```
+"release" for general resources, "anyone" for hooks and CRDs from "crds/" directory
+```
 
 Inspired by Helm hooks. Sets the ownership of the resource. `release` means that the resource is deleted if removed from the chart or when the release is uninstalled, and release annotations of the resource are applied/validated during deploy. `anyone` means the opposite: resource is never deleted on uninstall or when removed from the chart, and release annotations are not applied/validated during deploy.
 
-#### Annotation `werf.io/deploy-on`
+#### `werf.io/deploy-on` annotation 
 
-Format: `[pre-install][,install][,post-install][,pre-upgrade][,upgrade][,post-upgrade][,pre-rollback][,rollback][,post-rollback][,pre-uninstall][,uninstall][,post-uninstall]` \
-Default: `install,upgrade,rollback` for general resources, populated from `helm.sh/hook` for hooks \
-Example: `werf.io/deploy-on: pre-install,upgrade`
+Example:
+```yaml
+werf.io/deploy-on: pre-install,upgrade
+```
+Format:
+```
+werf.io/deploy-on: [pre-install][,install][,post-install][,pre-upgrade][,upgrade][,post-upgrade][,pre-rollback][,rollback][,post-rollback][,pre-uninstall][,uninstall][,post-uninstall]
+```
+Default:
+```
+"install,upgrade,rollback" for general resources, populated from "helm.sh/hook" for hooks
+```
 
 Inspired by `helm.sh/hook`. Render the resource for deployment only on the specified deploy types and stages. Has precedence over `helm.sh/hook`.
 
 Beware that with `werf.io/ownership: release` if the resource is rendered for install, but, for example, not for upgrade, then it is going to be deployed on install, but then deleted on upgrade, so you might want to consider `werf.io/ownership: anyone`.
 
-#### Annotation `werf.io/delete-policy`
+#### `werf.io/delete-policy` annotation 
 
-Format: `[before-creation][,before-creation-if-immutable][,succeeded][,failed]` \
-Default: nothing for general resources (unless Job, then `before-creation-if-immutable`), mapped from `helm.sh/hook-delete-policy` for hooks \
-Example: `werf.io/delete-policy: before-creation,succeeded`
+Example:
+```yaml
+werf.io/delete-policy: before-creation,succeeded
+```
+Format:
+```
+werf.io/delete-policy: [before-creation][,before-creation-if-immutable][,succeeded][,failed]
+```
+Default:
+```
+nothing for general resources (unless Job, then "before-creation-if-immutable"), mapped from "helm.sh/hook-delete-policy" for hooks
+```
 
 Inspired by `helm.sh/hook-delete-policy`. Controls resource deletions during resource deployment. `before-creation` means always recreate the resource, `before-creation-if-immutable` means recreate the resource only when we got "field is immutable" error during its update, `succeeded` means delete the resource at the end of the current deployment stage if the resource was successfully deployed, `failed` means delete the resource if it's readiness check failed. Has precedence over `helm.sh/hook-delete-policy`.
 
-#### Annotation `werf.io/track-termination-mode`
+#### `werf.io/track-termination-mode` annotation 
 
-Format: `WaitUntilResourceReady|NonBlocking` \
-Default: `WaitUntilResourceReady` \
-Example: `werf.io/track-termination-mode: NonBlocking`
+Example:
+```yaml
+werf.io/track-termination-mode: NonBlocking
+```
+Format:
+```
+werf.io/track-termination-mode: WaitUntilResourceReady|NonBlocking
+```
+Default:
+```
+WaitUntilResourceReady
+```
 
 Configure when to stop resource readiness tracking:
 * `WaitUntilResourceReady`: wait until the resource is `ready`.
 * `NonBlocking`: don't wait until the resource is `ready`.
 
-#### Annotation `werf.io/fail-mode`
+#### `werf.io/fail-mode` annotation 
 
-Format: `FailWholeDeployProcessImmediately|IgnoreAndContinueDeployProcess` \
-Default: `FailWholeDeployProcessImmediately` \
-Example: `werf.io/fail-mode: IgnoreAndContinueDeployProcess`
+Example:
+```yaml
+werf.io/fail-mode: IgnoreAndContinueDeployProcess
+```
+Format:
+```
+werf.io/fail-mode: FailWholeDeployProcessImmediately|IgnoreAndContinueDeployProcess
+```
+Default:
+```
+FailWholeDeployProcessImmediately
+```
 
 Configure what should happen when errors during tracking for the resource exceeded `werf.io/failures-allowed-per-replica`:
 * `FailWholeDeployProcessImmediately`: fail the release.
 * `IgnoreAndContinueDeployProcess`: do nothing.
 
-#### Annotation `werf.io/failures-allowed-per-replica`
+#### `werf.io/failures-allowed-per-replica` annotation 
 
-Format: `<any positive number or zero>` \
-Default: `1` \
-Example: `werf.io/failures-allowed-per-replica: "0"`
+Example:
+```yaml
+werf.io/failures-allowed-per-replica: "0"
+```
+Format:
+```
+werf.io/failures-allowed-per-replica: "<any positive number or zero>"
+```
+Default:
+```
+1
+```
 
 Set the number of allowed errors during resource tracking. When exceeded, act according to `werf.io/fail-mode`.
 
-#### Annotation `werf.io/no-activity-timeout`
+#### `werf.io/no-activity-timeout` annotation 
 
-Format: `<golang duration>` [(reference)](https://pkg.go.dev/time#ParseDuration) \
-Default: `4m` \
-Example: `werf.io/no-activity-timeout: 8m30s`
+Example:
+```yaml
+werf.io/no-activity-timeout: 8m30s
+```
+Format ([more info](https://pkg.go.dev/time#ParseDuration)):
+```
+werf.io/no-activity-timeout: <golang duration>
+```
+Default:
+```
+4m
+```
 
 Take it as a resource tracking error if no new events or resource updates are received during resource tracking for the specified time.
 
-#### Annotation `werf.io/sensitive`
+#### `werf.io/sensitive` annotation 
 
-Format: `true|false` \
-Default: `false`, but for `v1/Secret` — `true` \
-Example: `werf.io/sensitive: "true"`
+Example:
+```yaml
+werf.io/sensitive: "true"
+```
+Format:
+```
+werf.io/sensitive: "true|false"
+```
+Default:
+```
+"false", but for "v1/Secret" — "true"
+```
 
 DEPRECATED. Use `werf.io/sensitive-paths` instead.
 
@@ -508,110 +606,203 @@ Don't show diffs for the resource.
 
 `NELM_FEAT_FIELD_SENSITIVE` feature gate alters behavior of this annotation.
 
-#### Annotation `werf.io/sensitive-paths`
+#### `werf.io/sensitive-paths` annotation 
 
-Format: `JSONPath,JSONPath,...` \
-Example: `werf.io/sensitive-paths: "$.spec.template.spec.containers[*].env[*].value,$.data.*"`
+Example:
+```yaml
+werf.io/sensitive-paths: "$.spec.template.spec.containers[*].env[*].value,$.data.*"
+```
+Format:
+```
+werf.io/sensitive-paths: <JSONPath>,<JSONPath>,...
+```
 
 Don't show diffs for resource fields that match specified JSONPath expressions. Overrides the behavior of `werf.io/sensitive`.
 
-#### Annotation `werf.io/log-regex`
+#### `werf.io/log-regex` annotation 
 
-Format: `<re2 regex>` [(reference)](https://github.com/google/re2/wiki/Syntax) \
-Example: `werf.io/log-regex: ".*ERR|err|WARN|warn.*"`
+Example:
+```yaml
+werf.io/log-regex: ".*ERR|err|WARN|warn.*"
+```
+Format ([more info](https://github.com/google/re2/wiki/Syntax)):
+```
+werf.io/log-regex: <re2 regex>
+```
 
 Only show log lines that match the specified regex.
 
-#### Annotation `werf.io/log-regex-for-<container_name>`
+#### `werf.io/log-regex-for-<container_name>` annotation 
 
-Format: `<re2 regex>` [(reference)](https://github.com/google/re2/wiki/Syntax) \
-Example: `werf.io/log-regex-for-backend: ".*ERR|err|WARN|warn.*"`
+Example:
+```yaml
+werf.io/log-regex-for-backend: ".*ERR|err|WARN|warn.*"
+```
+Format ([more info](https://github.com/google/re2/wiki/Syntax)):
+```
+werf.io/log-regex-for-backend: <re2 regex>
+```
 
 For the specified container, only show log lines that match the specified regex.
 
-#### Annotation `werf.io/log-regex-skip`
+#### `werf.io/log-regex-skip` annotation 
 
-Format: `<re2 regex>` [(reference)](https://github.com/google/re2/wiki/Syntax) \
-Example: `werf.io/log-regex-skip: ".*TRACE|trace|DEBUG|debug.*"`
+Example:
+```yaml
+werf.io/log-regex-skip: ".*TRACE|trace|DEBUG|debug.*"
+```
+Format ([more info](https://github.com/google/re2/wiki/Syntax)):
+```
+werf.io/log-regex-skip: <re2 regex>
+```
 
 Don't show log lines that match the specified regex.
 
-#### Annotation `werf.io/skip-logs`
+#### `werf.io/skip-logs` annotation 
 
-Format: `true|false` \
-Default: `false` \
-Example: `werf.io/skip-logs: "true"`
+Example:
+```yaml
+werf.io/skip-logs: "true"
+```
+Format:
+```
+werf.io/skip-logs: "true|false"
+```
+Default:
+```
+false
+```
 
 Don't print container logs during resource tracking.
 
-#### Annotation `werf.io/skip-logs-for-containers`
+#### `werf.io/skip-logs-for-containers` annotation 
 
-Format: `<container_name>[,<container_name>...]` \
-Example: `werf.io/skip-logs-for-containers: "backend,frontend"`
+Example:
+```yaml
+werf.io/skip-logs-for-containers: "backend,frontend"
+```
+Format:
+```
+werf.io/skip-logs-for-containers: <container_name>[,<container_name>...]
+```
 
 Don't print logs for specified containers during resource tracking.
 
-#### Annotation `werf.io/show-logs-only-for-number-of-replicas`
+#### `werf.io/show-logs-only-for-number-of-replicas` annotation 
 
-Format: `<any positive number or zero>` \
-Default: `1` \
-Example: `werf.io/show-logs-only-for-number-of-replicas: "999"`
+Example:
+```yaml
+werf.io/show-logs-only-for-number-of-replicas: "999"
+```
+Format:
+```
+werf.io/show-logs-only-for-number-of-replicas: "<any positive number or zero>"
+```
+Default:
+```
+1
+```
 
 Print logs only for the specified number of replicas during resource tracking. We print logs only for a single replica by default to avoid excessive log output and to optimize resource usage.
 
-#### Annotation `werf.io/show-logs-only-for-containers`
+#### `werf.io/show-logs-only-for-containers` annotation 
 
-Format: `<container_name>[,<container_name>...]` \
-Example: `werf.io/show-logs-only-for-containers: "backend,frontend"`
+Example:
+```yaml
+werf.io/show-logs-only-for-containers: "backend,frontend"
+```
+Format:
+```
+werf.io/show-logs-only-for-containers: <container_name>[,<container_name>...]
+```
 
 Print logs only for specified containers during resource tracking.
 
-#### Annotation `werf.io/show-service-messages`
+#### `werf.io/show-service-messages` annotation 
 
-Format: `true|false` \
-Default: `false` \
-Example: `werf.io/show-service-messages: "true"`
+Example:
+```yaml
+werf.io/show-service-messages: "true"
+```
+Format:
+```
+werf.io/show-service-messages: "true|false"
+```
+Default:
+```
+false
+```
 
 Show resource events during resource tracking.
 
-#### Function `werf_secret_file`
+#### `werf_secret_file` function 
 
-Format: `werf_secret_file "<filename, relative to secret/ dir>"` \
-Example: `config: {{ werf_secret_file "config.yaml" | nindent 4 }}`
+Example:
+```
+config: {{ werf_secret_file "config.yaml" | nindent 4 }}
+```
+Format:
+```
+{{ werf_secret_file "<filename, relative to secret/ dir>" }}
+```
 
 Read the specified secret file from the `secret/` directory of the Helm chart.
 
-#### Function `dump_debug`
+#### `dump_debug` function 
 
-Format: `dump_debug "<value of any type>"` \
-Example: `{{ dump_debug $ }}`
+Example:
+```
+{{ dump_debug $ }}
+```
+Format:
+```
+{{ dump_debug "<value of any type>" }}
+```
 
 If the log level is `debug`, then pretty-dumps the passed value to the logs. Handles just fine any kind of complex types, including .Values, or event root context. Never prints to the templating output.
 
-#### Function `printf_debug`
+#### `printf_debug` function 
 
-Format: `printf_debug "<format string>" <args...>` \
-Example: `{{ printf_debug "myval: %s" .Values.myval }}`
+Example:
+```
+{{ printf_debug "myval: %s" .Values.myval }}
+```
+Format:
+```
+{{ printf_debug "<format string>" <args...> }}
+```
 
 If the log level is `debug`, then prints the result to the logs. Never prints to the templating output.
 
-#### Function `include_debug`
+#### `include_debug` function 
 
-Format: `include_debug "<template name>" <context>` \
-Example: `{{ include_debug "mytemplate" . }}`
+Example:
+```
+{{ include_debug "mytemplate" . }}
+```
+Format:
+```
+{{ include_debug "<template name>" <context> }}
+```
 
 Works exactly like the `include` function, but if the log level is `debug`, then also prints various include-related debug information to the logs. Useful for debugging complex includes/defines.
 
-#### Function `tpl_debug`
+#### `tpl_debug` function 
 
-Format: `tpl_debug "<template string>" <context>` \
-Example: `{{ tpl_debug "{{ .Values.myval }}" . }}`
+Example:
+```
+{{ tpl_debug "{{ .Values.myval }}" . }}
+```
+Format:
+```
+{{ tpl_debug "<template string>" <context> }}
+```
 
 Works exactly like the `tpl` function, but if the log level is `debug`, then also prints various tpl-related debug information to the logs. Useful for debugging complex tpl templates.
 
 ### Feature gates
 
-#### Env variable `NELM_FEAT_PREVIEW_V2`
+#### `NELM_FEAT_PREVIEW_V2` env. variable
 
 Example:
 ```shell
@@ -621,7 +812,7 @@ nelm release list
 
 Activates all feature gates that will be enabled by default in v2.
 
-#### Env variable `NELM_FEAT_REMOTE_CHARTS`
+#### `NELM_FEAT_REMOTE_CHARTS` env. variable
 
 Example:
 ```shell
@@ -633,7 +824,7 @@ Allows specifying not only local, but also remote charts as a command-line argum
 
 Will be the default in the next major release.
 
-#### Env variable `NELM_FEAT_NATIVE_RELEASE_LIST`
+#### `NELM_FEAT_NATIVE_RELEASE_LIST` env. variable
 
 Example:
 ```shell
@@ -645,7 +836,7 @@ Use native Nelm implementation of the `release list` command instead of `helm li
 
 Will be the default in the next major release.
 
-#### Env variable `NELM_FEAT_NATIVE_RELEASE_UNINSTALL`
+#### `NELM_FEAT_NATIVE_RELEASE_UNINSTALL` env. variable
 
 Example:
 ```shell
@@ -657,7 +848,7 @@ Use a new native Nelm implementation of the `release uninstall` command. Not ful
 
 Will be the default in the next major release.
 
-#### Env variable `NELM_FEAT_PERIODIC_STACK_TRACES`
+#### `NELM_FEAT_PERIODIC_STACK_TRACES` env. variable
 
 Example:
 ```shell
@@ -667,7 +858,7 @@ nelm release install -n myproject -r myproject
 
 Every few seconds print stack traces of all goroutines. Useful for debugging purposes.
 
-#### Env variable `NELM_FEAT_FIELD_SENSITIVE`
+#### `NELM_FEAT_FIELD_SENSITIVE` env. variable
 
 Example:
 ```shell
