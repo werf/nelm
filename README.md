@@ -3,18 +3,20 @@
   <a href="https://qlty.sh/gh/werf/projects/nelm"><img src="https://qlty.sh/gh/werf/projects/nelm/coverage.svg" alt="Code Coverage" /></a>
 </p> -->
 
-**Nelm** is a Helm 3 alternative. It is a Kubernetes deployment tool that manages Helm Charts and deploys them to Kubernetes. It is also the deployment engine of [werf](https://github.com/werf/werf). Nelm can do (almost) everything that Helm does, but better, and even quite some on top of it. Nelm is based on an improved and partially rewritten Helm 3 codebase, to introduce:
+**Nelm** is a Helm 4 alternative. It is a Kubernetes deployment tool that manages Helm Charts and deploys them to Kubernetes. It is also the deployment engine of [werf](https://github.com/werf/werf). Nelm does everything that Helm does, but better, and even quite some on top of it. Nelm is based on an improved and partially rewritten Helm codebase, to introduce:
 
 * `terraform plan`-like capabilities;
-* replacement of 3-Way Merge with Server-Side Apply;
-* secrets management;
+* out-of-the-box secrets management;
 * advanced resource ordering capabilities;
+* advanced resource lifecycle capabilities;
 * improved resource state/error tracking;
 * continuous printing of logs, events, resource statuses, and errors during deployment;
-* lots of fixes for Helm 3 bugs, e.g. ["no matches for kind Deployment in version apps/v1beta1"](https://github.com/helm/helm/issues/7219);
-* ... and more.
+* fixed hundreds of Helm bugs, e.g. ["no matches for kind Deployment in version apps/v1beta1"](https://github.com/helm/helm/issues/7219);
+* performance and stability improvements and more.
 
-We consider Nelm production-ready, since 95% of the Nelm codebase basically is the werf deployment engine, which was battle-tested in production across thousands of projects for years.
+The Nelm goal is to provide a modern alternative to Helm, with long-standing issues fixed and many new major features introduced. Nelm moves fast, but our focus remains on Helm Chart and Release compatibility, to ease the migration from Helm.
+
+Nelm is production-ready: as the werf deployment engine, it was battle-tested across thousands of projects for years.
 
 ## Table of Contents
 
@@ -27,7 +29,7 @@ We consider Nelm production-ready, since 95% of the Nelm codebase basically is t
 - [Helm compatibility](#helm-compatibility)
 - [Key features](#key-features)
   - [Advanced resource ordering](#advanced-resource-ordering)
-  - [3-Way Merge replaced by Server-Side Apply](#3-way-merge-replaced-by-server-side-apply)
+  - [Advanced resource lifecycle capabilities](#advanced-resource-lifecycle-capabilities)
   - [Resource state tracking](#resource-state-tracking)
   - [Printing logs and events during deploy](#printing-logs-and-events-during-deploy)
   - [Release planning](#release-planning)
@@ -255,22 +257,22 @@ Other commands:
    
 ## Helm compatibility
 
-Nelm is built upon the Helm 3 codebase with some parts of Helm 3 reimplemented. It is backward-compatible with Helm Charts and Helm Releases.
+Nelm is built upon the Helm codebase with some parts of Helm reimplemented. It is backward-compatible with Helm Charts and Helm Releases.
 
 Helm Charts can be deployed by Nelm with no changes. All the obscure Helm Chart features, such as `lookup` functions, are supported.
 
-To store release information, Nelm uses Helm Releases. You can deploy the same release first with Helm, then Nelm and then with Helm and Nelm again, and it will work just fine.
+To store release information, Nelm uses Helm Releases. You can deploy the same release with Helm and Nelm interchangeably, and it will work just fine. No migration needed from/to Helm.
 
-Nelm has a different CLI layout, flags and environment variables, and commands might have a different output format, but we largely support all the same features as Helm.
+Nelm has a different CLI layout, flags and environment variables, but we largely support all the same features as Helm.
 
-Helm plugins support is not planned due to technical difficulties with Helm plugins API. Instead, we intend to implement functionality of the most useful plugins natively, like we already did with `nelm release plan install` and `nelm chart secret`.
+Helm plugins support is not planned due to technical difficulties with the Helm plugins API. Instead, we intend to implement functionality of the most useful plugins natively, like we already did with `nelm release plan install` and `nelm chart secret`.
 
 Generally, the migration from Helm to Nelm should be as simple as changing Helm commands to Nelm commands in your CI, for example:
 
 | Helm command | Nelm command equivalent |
 | -------- | ------- |
-| `helm upgrade --install --atomic --wait -n ns release ./chart` | `nelm release install --auto-rollback -n ns -r release ./chart` |
-| `helm uninstall -n ns release` | `nelm release uninstall -n ns -r release` |
+| `helm upgrade --install --atomic --wait -n myns myrls ./chart` | `nelm release install --auto-rollback -n myns -r myrls ./chart` |
+| `helm uninstall -n myns myrls` | `nelm release uninstall -n myns -r myrls` |
 | `helm template ./chart` | `nelm chart render ./chart` |
 | `helm dependency build` | `nelm chart dependency download` |
 
@@ -278,40 +280,41 @@ Generally, the migration from Helm to Nelm should be as simple as changing Helm 
 
 ### Advanced resource ordering
 
-The resource deployment subsystem of Helm is rewritten from scratch in Nelm. During deployment, Nelm builds a Directed Acyclic Graph (DAG) of all operations we want to perform in a cluster to do a release, which is then executed. DAG allowed us to implement advanced resource ordering capabilities, such as:
-* The annotation `werf.io/weight` is similar to `helm.sh/hook-weight`, except it also works for non-hook resources, and resources with the same weight are deployed in parallel.
-* The annotation `werf.io/deploy-dependency-<id>` makes Nelm wait for readiness or just presence of another resource in a release before deploying the annotated resource. This is the most powerful and effective way to order resources in Nelm.
-* The annotation `<id>.external-dependency.werf.io/resource` allows to wait for readiness of non-release resources, e.g. resources created by third-party operators.
-* Helm ordering capabilities, i.e. Helm Hooks and Helm Hook weights, are supported, too.
+The resource deployment subsystem of Helm is rewritten from scratch in Nelm. During the deployment, Nelm builds the Directed Acyclic Graph (DAG) of all operations we want to perform in the cluster to do the release, then the DAG is executed. The DAG allowed us to implement advanced resource ordering capabilities, such as:
+* The `werf.io/weight` annotation: similar to `helm.sh/hook-weight`, but also works for non-hook resources. Resources with the same weight deployed in parallel.
+* The `werf.io/deploy-dependency-<id>` annotation: do not deploy the annotated resource until the dependency is present or ready. This is the most powerful and effective way to enforce deployment order in Nelm.
+* The `<id>.external-dependency.werf.io/resource` annotation: do not deploy the annotated resource until the dependency is ready. The dependency can be an external, non-release resource, e.g. a resource created by a third-party operator.
+* Helm Hooks and their weights are supported, too.
 
 ![ordering](resources/images/graph.png)
 
-### 3-Way Merge replaced by Server-Side Apply
+### Advanced resource lifecycle capabilities
 
-Nelm fully replaced the troublesome [Helm 3-Way Merge](https://helm.sh/docs/faq/changes_since_helm2/#improved-upgrade-strategy-3-way-strategic-merge-patches) with [Server-Side Apply](https://kubernetes.io/docs/reference/using-api/server-side-apply/).
+Helm doesn't offer any resource lifecycle capabilities, except `helm.sh/resource-policy: keep` and `helm.sh/hook-delete-policy` for Hooks. On top of these, Nelm offers the following:
+* The `werf.io/delete-policy` annotation. Inspired by `helm.sh/hook-delete-policy`, but works for any resource. Set `before-creation` to always recreate the resource, `before-creation-if-immutable` to only recreate if the resource is immutable, `succeeded` or `failed` to delete the resource on success or failure. 
+* The `werf.io/ownership` annotation. `anyone` allows to get Hook-like behavior for regular resources: don't delete the resource if it is removed from the Chart or when the whole release is removed, and never check or apply release annotations.
+* The `werf.io/deploy-on` annotation. Inspired by `helm.sh/hook`. Render and deploy the resource only on install/upgrade/rollback/uninstall in a pre/main/post stage.
 
-3-Way Merge (3WM) is a client-side mechanism to make a patch for updating a resource in a cluster. Its issues stem from the fact that it has to assume that all previous release manifests were successfully applied to the cluster, which is not always the case. For example, if some resources weren't updated due to being invalid or if a release was aborted too early, then on the next release incorrect 3WM patches might be produced. This results in a "successful" Helm release with wrong changes silently applied to the cluster, which is a very serious issue.
-
-In later versions, Kubernetes introduced Server-Side Apply (SSA) to update resources by making patches server-side by Kubernetes instead of doing so client-side by Helm. SSA solves issues of 3WM and is widely adopted by other deployment tools, like Flux. Unfortunately, it will take a lot of work to replace 3WM with SSA in Helm. But since in Nelm the deployment subsystem was rewritten from scratch, we went SSA-first from the beginning, thus solving long-standing issues of 3-Way Merge.
+These annotations make Helm Hooks obsolete: regular resources can do all the same things now.
 
 ### Resource state tracking
 
-Nelm has powerful resource tracking built from the ground up:
+Nelm has powerful resource tracking built from the ground up, much more advanced than what Helm has:
 * Reliable detection of resources readiness, presence, absence or failures.
-* Heuristically determined readiness of Custom Resources by analyzing their status fields. It works for about half of Custom Resources. No false positives.
-* Some dependent resources, like Pods of Deployments, are automatically found and individually tracked.
-* Table with tracked resources current information (statuses, errors, and more) is printed every few seconds during deployment.
-* Tracking can be configured per resource with annotations.
+* Standard Kubernetes Resources have their own smart status trackers.
+* Popular Custom Resources have hand-crafted rules to detect their statuses.
+* For unknown Custom Resources, we heuristically determine their readiness by analyzing their status fields. Works for most Custom Resources. No false positives.
+* The table with statuses, errors, and other info about currently tracked resources is printed every few seconds during the deployment.
 
 ![tracking](resources/images/nelm-release-install.gif)
 
 ### Printing logs and events during deploy
 
-During deployment, Nelm finds Pods of deployed release resources and periodically prints their container logs. With annotation `werf.io/show-service-messages: "true"`, resource events are printed, too. Log/event printing can be tuned with annotations.
+During the deployment, Nelm finds Pods of deploying resources and periodically prints their container logs. With annotation `werf.io/show-service-messages: "true"`, resource events are also printed. Can be configured with CLI flags and annotations.
 
 ### Release planning
 
-`nelm release plan install` explains exactly what's going to happen in a cluster on the next release. It shows 100% accurate diffs between current and to-be resource versions, utilizing robust dry-run Server-Side Apply instead of client-side trickery.
+`nelm release plan install` shows exactly what's going to happen in the cluster on the next release. It shows 100% accurate diffs between current and to-be resource versions, utilizing robust dry-run Server-Side Apply instead of client-side trickery.
 
 ![planning](resources/images/nelm-release-plan-install.gif)
 
@@ -683,16 +686,12 @@ For more information, see [Helm docs](https://helm.sh/docs/) and [werf docs](htt
 ## Limitations
 
 * Nelm requires Server-Side Apply enabled in Kubernetes. It is enabled by default since Kubernetes 1.16. In Kubernetes 1.14-1.15 it can be enabled, but disabled by default. Kubernetes 1.13 and older doesn't have Server-Side Apply, thus Nelm won't work with it.
-* Helm *sometimes* uses Values from the previous Helm release to deploy a new release. This "feature" meant to make using Helm without a proper CI/CD process easier. This is dangerous, goes against IaC and this is not what most users expect. Nelm will *never* use Values from previous Helm releases for any purposes. What you explicitly pass via `--values` and `--set` options will be merged with builtin chart Values, then applied to the cluster. Thus, options `--reuse-values`, `--reset-values`, `--reset-then-reuse-values` will not be implemented.
+* *Helm sometimes uses Values from the previous Helm release to deploy a new release*. This is to make Helm easier to use without a proper CI/CD process. This is dangerous, goes against IaC and this is not what users expect. Nelm will never do this: what you explicitly pass via `--values` and `--set` options will be merged with chart values files, then applied to the cluster, as expected.
 
 ## Future plans
 
-Here are some of the big things we plan to implement — upvote or comment relevant issues or create a new one to help us prioritize:
-
-* The Nelm operator, interoperable with ArgoCD/Flux.
+* The Nelm operator, which can integrate with ArgoCD/Flux.
 * An alternative to Helm templating ([#54](https://github.com/werf/nelm/issues/54)).
-* An option to pull charts directly from Git.
-* A public Go API for embedding Nelm into third-party software.
-* Enhance the CLI experience with new commands and improve the consistency between the reimplemented commands and original Helm commands.
-* Overhaul the chart dependency management ([#61](https://github.com/werf/nelm/issues/61)).
-* Migrate the built-in secret management to Mozilla SOPS ([#62](https://github.com/werf/nelm/issues/62)).
+* Resource patching support ([#115](https://github.com/werf/nelm/issues/115)).
+* Downloading charts directly from Git.
+* Migrate the built-in secrets management to Mozilla SOPS ([#62](https://github.com/werf/nelm/issues/62)).
