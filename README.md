@@ -402,6 +402,8 @@ Nelm-specific features are described below. For general documentation, see [Helm
 
 ### `werf.io/weight` annotation 
 
+This annotation works the same as `helm.sh/hook-weight`, but can be used for both hooks and non-hook resources. Resources with the same weight are grouped together, then the groups deployed one after the other, from low to high weight. Resources in the same group are deployed in parallel. This annotation has higher priority than `helm.sh/hook-weight`, but lower than `werf.io/deploy-dependency-<id>`.
+
 Example:
 ```yaml
 werf.io/weight: "10"
@@ -416,9 +418,9 @@ Default:
 0
 ```
 
-This annotation works the same as `helm.sh/hook-weight`, but can be used for both hooks and non-hook resources. Resources with the same weight are grouped together, then the groups deployed one after the other, from low to high weight. Resources in the same group are deployed in parallel. This annotation has higher priority than `helm.sh/hook-weight`, but lower than `werf.io/deploy-dependency-<id>`.
-
 ### `werf.io/deploy-dependency-<id>` annotation 
+
+The resource will deploy only after all of its dependencies are satisfied. It waits until the specified resource is just `present` or is also `ready`. It serves as a more powerful alternative to hooks and `werf.io/weight`. You can only point to resources in the release. This annotation has higher priority than `werf.io/weight` and `helm.sh/hook-weight`.
 
 Example:
 ```yaml
@@ -430,9 +432,9 @@ Format:
 werf.io/deploy-dependency-<anything>: state=ready|present[,name=<name>][,namespace=<namespace>][,kind=<kind>][,group=<group>][,version=<version>]
 ```
 
-The resource will deploy only after all of its dependencies are satisfied. It waits until the specified resource is just `present` or is also `ready`. It serves as a more powerful alternative to hooks and `werf.io/weight`. You can only point to resources in the release. This annotation has higher priority than `werf.io/weight` and `helm.sh/hook-weight`.
-
 ### `<id>.external-dependency.werf.io/resource` annotation 
+
+The resource will deploy only after all of its external dependencies are satisfied. It waits until the specified resource is `present` and `ready`. You can only point to resources outside the release.
 
 Example:
 ```yaml
@@ -444,9 +446,9 @@ Format:
 <anything>.external-dependency.werf.io/resource: <kind>[.<version>.<group>]/<name>
 ```
 
-The resource will deploy only after all of its external dependencies are satisfied. It waits until the specified resource is `present` and `ready`. You can only point to resources outside the release.
-
 ### `<id>.external-dependency.werf.io/name` annotation 
+
+Set the namespace of the external dependency defined by `<id>.external-dependency.werf.io/resource`. `<id>` must match on both annotations. If not specified, the release namespace is used.
 
 Example:
 ```yaml
@@ -457,9 +459,9 @@ Format:
 <anything>.external-dependency.werf.io/name: <name>
 ```
 
-Set the namespace of the external dependency defined by `<id>.external-dependency.werf.io/resource`. `<id>` must match on both annotations. If not specified, the release namespace is used.
-
 ### `werf.io/ownership` annotation 
+
+Inspired by Helm hooks. Sets the ownership of the resource. `release` means that the resource is deleted if removed from the chart or when the release is uninstalled, and release annotations of the resource are applied/validated during deploy. `anyone` means the opposite: resource is never deleted on uninstall or when removed from the chart, and release annotations are not applied/validated during deploy.
 
 Example:
 ```yaml
@@ -474,9 +476,11 @@ Default:
 "release" for general resources, "anyone" for hooks and CRDs from "crds/" directory
 ```
 
-Inspired by Helm hooks. Sets the ownership of the resource. `release` means that the resource is deleted if removed from the chart or when the release is uninstalled, and release annotations of the resource are applied/validated during deploy. `anyone` means the opposite: resource is never deleted on uninstall or when removed from the chart, and release annotations are not applied/validated during deploy.
-
 ### `werf.io/deploy-on` annotation 
+
+Inspired by `helm.sh/hook`. Render the resource for deployment only on the specified deploy types and stages. Has precedence over `helm.sh/hook`.
+
+Beware that with `werf.io/ownership: release` if the resource is rendered for install, but, for example, not for upgrade, then it is going to be deployed on install, but then deleted on upgrade, so you might want to consider `werf.io/ownership: anyone`.
 
 Example:
 ```yaml
@@ -491,11 +495,9 @@ Default:
 "install,upgrade,rollback" for general resources, populated from "helm.sh/hook" for hooks
 ```
 
-Inspired by `helm.sh/hook`. Render the resource for deployment only on the specified deploy types and stages. Has precedence over `helm.sh/hook`.
-
-Beware that with `werf.io/ownership: release` if the resource is rendered for install, but, for example, not for upgrade, then it is going to be deployed on install, but then deleted on upgrade, so you might want to consider `werf.io/ownership: anyone`.
-
 ### `werf.io/delete-policy` annotation 
+
+Inspired by `helm.sh/hook-delete-policy`. Controls resource deletions during resource deployment. `before-creation` means always recreate the resource, `before-creation-if-immutable` means recreate the resource only when we got "field is immutable" error during its update, `succeeded` means delete the resource at the end of the current deployment stage if the resource was successfully deployed, `failed` means delete the resource if it's readiness check failed. Has precedence over `helm.sh/hook-delete-policy`.
 
 Example:
 ```yaml
@@ -510,9 +512,11 @@ Default:
 nothing for general resources (unless Job, then "before-creation-if-immutable"), mapped from "helm.sh/hook-delete-policy" for hooks
 ```
 
-Inspired by `helm.sh/hook-delete-policy`. Controls resource deletions during resource deployment. `before-creation` means always recreate the resource, `before-creation-if-immutable` means recreate the resource only when we got "field is immutable" error during its update, `succeeded` means delete the resource at the end of the current deployment stage if the resource was successfully deployed, `failed` means delete the resource if it's readiness check failed. Has precedence over `helm.sh/hook-delete-policy`.
-
 ### `werf.io/track-termination-mode` annotation 
+
+Configure when to stop resource readiness tracking:
+* `WaitUntilResourceReady`: wait until the resource is `ready`.
+* `NonBlocking`: don't wait until the resource is `ready`.
 
 Example:
 ```yaml
@@ -527,11 +531,11 @@ Default:
 WaitUntilResourceReady
 ```
 
-Configure when to stop resource readiness tracking:
-* `WaitUntilResourceReady`: wait until the resource is `ready`.
-* `NonBlocking`: don't wait until the resource is `ready`.
-
 ### `werf.io/fail-mode` annotation 
+
+Configure what should happen when errors during tracking for the resource exceeded `werf.io/failures-allowed-per-replica`:
+* `FailWholeDeployProcessImmediately`: fail the release.
+* `IgnoreAndContinueDeployProcess`: do nothing.
 
 Example:
 ```yaml
@@ -546,11 +550,9 @@ Default:
 FailWholeDeployProcessImmediately
 ```
 
-Configure what should happen when errors during tracking for the resource exceeded `werf.io/failures-allowed-per-replica`:
-* `FailWholeDeployProcessImmediately`: fail the release.
-* `IgnoreAndContinueDeployProcess`: do nothing.
-
 ### `werf.io/failures-allowed-per-replica` annotation 
+
+Set the number of allowed errors during resource tracking. When exceeded, act according to `werf.io/fail-mode`.
 
 Example:
 ```yaml
@@ -565,9 +567,9 @@ Default:
 1
 ```
 
-Set the number of allowed errors during resource tracking. When exceeded, act according to `werf.io/fail-mode`.
-
 ### `werf.io/no-activity-timeout` annotation 
+
+Take it as a resource tracking error if no new events or resource updates are received during resource tracking for the specified time.
 
 Example:
 ```yaml
@@ -582,9 +584,13 @@ Default:
 4m
 ```
 
-Take it as a resource tracking error if no new events or resource updates are received during resource tracking for the specified time.
-
 ### `werf.io/sensitive` annotation 
+
+DEPRECATED. Use `werf.io/sensitive-paths` instead.
+
+Don't show diffs for the resource.
+
+`NELM_FEAT_FIELD_SENSITIVE` feature gate alters behavior of this annotation.
 
 Example:
 ```yaml
@@ -599,13 +605,9 @@ Default:
 "false", but for "v1/Secret" — "true"
 ```
 
-DEPRECATED. Use `werf.io/sensitive-paths` instead.
-
-Don't show diffs for the resource.
-
-`NELM_FEAT_FIELD_SENSITIVE` feature gate alters behavior of this annotation.
-
 ### `werf.io/sensitive-paths` annotation 
+
+Don't show diffs for resource fields that match specified JSONPath expressions. Overrides the behavior of `werf.io/sensitive`.
 
 Example:
 ```yaml
@@ -616,9 +618,9 @@ Format:
 werf.io/sensitive-paths: <JSONPath>,<JSONPath>,...
 ```
 
-Don't show diffs for resource fields that match specified JSONPath expressions. Overrides the behavior of `werf.io/sensitive`.
-
 ### `werf.io/log-regex` annotation 
+
+Only show log lines that match the specified regex.
 
 Example:
 ```yaml
@@ -629,9 +631,9 @@ Format ([more info](https://github.com/google/re2/wiki/Syntax)):
 werf.io/log-regex: <re2 regex>
 ```
 
-Only show log lines that match the specified regex.
-
 ### `werf.io/log-regex-for-<container_name>` annotation 
+
+For the specified container, only show log lines that match the specified regex.
 
 Example:
 ```yaml
@@ -642,9 +644,9 @@ Format ([more info](https://github.com/google/re2/wiki/Syntax)):
 werf.io/log-regex-for-backend: <re2 regex>
 ```
 
-For the specified container, only show log lines that match the specified regex.
-
 ### `werf.io/log-regex-skip` annotation 
+
+Don't show log lines that match the specified regex.
 
 Example:
 ```yaml
@@ -655,9 +657,9 @@ Format ([more info](https://github.com/google/re2/wiki/Syntax)):
 werf.io/log-regex-skip: <re2 regex>
 ```
 
-Don't show log lines that match the specified regex.
-
 ### `werf.io/skip-logs` annotation 
+
+Don't print container logs during resource tracking.
 
 Example:
 ```yaml
@@ -672,9 +674,9 @@ Default:
 false
 ```
 
-Don't print container logs during resource tracking.
-
 ### `werf.io/skip-logs-for-containers` annotation 
+
+Don't print logs for specified containers during resource tracking.
 
 Example:
 ```yaml
@@ -685,9 +687,9 @@ Format:
 werf.io/skip-logs-for-containers: <container_name>[,<container_name>...]
 ```
 
-Don't print logs for specified containers during resource tracking.
-
 ### `werf.io/show-logs-only-for-number-of-replicas` annotation 
+
+Print logs only for the specified number of replicas during resource tracking. We print logs only for a single replica by default to avoid excessive log output and to optimize resource usage.
 
 Example:
 ```yaml
@@ -702,9 +704,9 @@ Default:
 1
 ```
 
-Print logs only for the specified number of replicas during resource tracking. We print logs only for a single replica by default to avoid excessive log output and to optimize resource usage.
-
 ### `werf.io/show-logs-only-for-containers` annotation 
+
+Print logs only for specified containers during resource tracking.
 
 Example:
 ```yaml
@@ -715,9 +717,9 @@ Format:
 werf.io/show-logs-only-for-containers: <container_name>[,<container_name>...]
 ```
 
-Print logs only for specified containers during resource tracking.
-
 ### `werf.io/show-service-messages` annotation 
+
+Show resource events during resource tracking.
 
 Example:
 ```yaml
@@ -732,9 +734,9 @@ Default:
 false
 ```
 
-Show resource events during resource tracking.
-
 ### `werf_secret_file` function 
+
+Read the specified secret file from the `secret/` directory of the Helm chart.
 
 Example:
 ```
@@ -745,9 +747,9 @@ Format:
 {{ werf_secret_file "<filename, relative to secret/ dir>" }}
 ```
 
-Read the specified secret file from the `secret/` directory of the Helm chart.
-
 ### `dump_debug` function 
+
+If the log level is `debug`, then pretty-dumps the passed value to the logs. Handles just fine any kind of complex types, including .Values, or event root context. Never prints to the templating output.
 
 Example:
 ```
@@ -758,9 +760,9 @@ Format:
 {{ dump_debug "<value of any type>" }}
 ```
 
-If the log level is `debug`, then pretty-dumps the passed value to the logs. Handles just fine any kind of complex types, including .Values, or event root context. Never prints to the templating output.
-
 ### `printf_debug` function 
+
+If the log level is `debug`, then prints the result to the logs. Never prints to the templating output.
 
 Example:
 ```
@@ -771,9 +773,9 @@ Format:
 {{ printf_debug "<format string>" <args...> }}
 ```
 
-If the log level is `debug`, then prints the result to the logs. Never prints to the templating output.
-
 ### `include_debug` function 
+
+Works exactly like the `include` function, but if the log level is `debug`, then also prints various include-related debug information to the logs. Useful for debugging complex includes/defines.
 
 Example:
 ```
@@ -784,9 +786,9 @@ Format:
 {{ include_debug "<template name>" <context> }}
 ```
 
-Works exactly like the `include` function, but if the log level is `debug`, then also prints various include-related debug information to the logs. Useful for debugging complex includes/defines.
-
 ### `tpl_debug` function 
+
+Works exactly like the `tpl` function, but if the log level is `debug`, then also prints various tpl-related debug information to the logs. Useful for debugging complex tpl templates.
 
 Example:
 ```
@@ -797,11 +799,11 @@ Format:
 {{ tpl_debug "<template string>" <context> }}
 ```
 
-Works exactly like the `tpl` function, but if the log level is `debug`, then also prints various tpl-related debug information to the logs. Useful for debugging complex tpl templates.
-
 ## Feature gates
 
 ### `NELM_FEAT_PREVIEW_V2` environment variable
+
+Activates all feature gates that will be enabled by default in v2.
 
 Example:
 ```shell
@@ -809,9 +811,11 @@ export NELM_FEAT_PREVIEW_V2=true
 nelm release list
 ```
 
-Activates all feature gates that will be enabled by default in v2.
-
 ### `NELM_FEAT_REMOTE_CHARTS` environment variable
+
+Allows specifying not only local, but also remote charts as a command-line argument to commands such as `nelm release install`. Adds the `--chart-version` option as well.
+
+Will be the default in the next major release.
 
 Example:
 ```shell
@@ -819,11 +823,11 @@ export NELM_FEAT_REMOTE_CHARTS=true
 nelm release install -n myproject -r myproject --chart-version 19.1.1 bitnami/nginx
 ```
 
-Allows specifying not only local, but also remote charts as a command-line argument to commands such as `nelm release install`. Adds the `--chart-version` option as well.
+### `NELM_FEAT_NATIVE_RELEASE_LIST` environment variable
+
+Use native Nelm implementation of the `release list` command instead of `helm list` exposed as `release list`. Implementations differ a bit, but serve the same purpose.
 
 Will be the default in the next major release.
-
-### `NELM_FEAT_NATIVE_RELEASE_LIST` environment variable
 
 Example:
 ```shell
@@ -831,11 +835,11 @@ export NELM_FEAT_NATIVE_RELEASE_LIST=true
 nelm release list
 ```
 
-Use native Nelm implementation of the `release list` command instead of `helm list` exposed as `release list`. Implementations differ a bit, but serve the same purpose.
+### `NELM_FEAT_NATIVE_RELEASE_UNINSTALL` environment variable
+
+Use a new native Nelm implementation of the `release uninstall` command. Not fully backwards compatible with previous implementation.
 
 Will be the default in the next major release.
-
-### `NELM_FEAT_NATIVE_RELEASE_UNINSTALL` environment variable
 
 Example:
 ```shell
@@ -843,11 +847,9 @@ export NELM_FEAT_NATIVE_RELEASE_UNINSTALL=true
 nelm release uninstall -n myproject -r myproject
 ```
 
-Use a new native Nelm implementation of the `release uninstall` command. Not fully backwards compatible with previous implementation.
-
-Will be the default in the next major release.
-
 ### `NELM_FEAT_PERIODIC_STACK_TRACES` environment variable
+
+Every few seconds print stack traces of all goroutines. Useful for debugging purposes.
 
 Example:
 ```shell
@@ -855,19 +857,17 @@ export NELM_FEAT_PERIODIC_STACK_TRACES=true
 nelm release install -n myproject -r myproject
 ```
 
-Every few seconds print stack traces of all goroutines. Useful for debugging purposes.
-
 ### `NELM_FEAT_FIELD_SENSITIVE` environment variable
+
+When showing diffs for Secrets or `werf.io/sensitive: "true"` annotated resources, instead of hiding the entire resource diff hide only the actual secret fields: `$.data`, `$.stringData`.
+
+Will be the default in the next major release.
 
 Example:
 ```shell
 export NELM_FEAT_FIELD_SENSITIVE=true
 nelm release plan install -n myproject -r myproject
 ```
-
-When showing diffs for Secrets or `werf.io/sensitive: "true"` annotated resources, instead of hiding the entire resource diff hide only the actual secret fields: `$.data`, `$.stringData`.
-
-Will be the default in the next major release.
 
 ## More documentation
 
