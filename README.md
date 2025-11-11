@@ -66,12 +66,12 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [`include_debug` function](#include_debug-function)
   - [`tpl_debug` function](#tpl_debug-function)
 - [Feature gates](#feature-gates)
-  - [`NELM_FEAT_PREVIEW_V2` env. variable](#nelm_feat_preview_v2-env-variable)
-  - [`NELM_FEAT_REMOTE_CHARTS` env. variable](#nelm_feat_remote_charts-env-variable)
-  - [`NELM_FEAT_NATIVE_RELEASE_LIST` env. variable](#nelm_feat_native_release_list-env-variable)
-  - [`NELM_FEAT_NATIVE_RELEASE_UNINSTALL` env. variable](#nelm_feat_native_release_uninstall-env-variable)
-  - [`NELM_FEAT_PERIODIC_STACK_TRACES` env. variable](#nelm_feat_periodic_stack_traces-env-variable)
-  - [`NELM_FEAT_FIELD_SENSITIVE` env. variable](#nelm_feat_field_sensitive-env-variable)
+  - [`NELM_FEAT_PREVIEW_V2` environment variable](#nelm_feat_preview_v2-environment-variable)
+  - [`NELM_FEAT_REMOTE_CHARTS` environment variable](#nelm_feat_remote_charts-environment-variable)
+  - [`NELM_FEAT_NATIVE_RELEASE_LIST` environment variable](#nelm_feat_native_release_list-environment-variable)
+  - [`NELM_FEAT_NATIVE_RELEASE_UNINSTALL` environment variable](#nelm_feat_native_release_uninstall-environment-variable)
+  - [`NELM_FEAT_PERIODIC_STACK_TRACES` environment variable](#nelm_feat_periodic_stack_traces-environment-variable)
+  - [`NELM_FEAT_FIELD_SENSITIVE` environment variable](#nelm_feat_field_sensitive-environment-variable)
 - [More documentation](#more-documentation)
 - [Future plans](#future-plans)
 - [Limitations](#limitations)
@@ -801,7 +801,7 @@ Works exactly like the `tpl` function, but if the log level is `debug`, then als
 
 ## Feature gates
 
-### `NELM_FEAT_PREVIEW_V2` env. variable
+### `NELM_FEAT_PREVIEW_V2` environment variable
 
 Example:
 ```shell
@@ -811,7 +811,7 @@ nelm release list
 
 Activates all feature gates that will be enabled by default in v2.
 
-### `NELM_FEAT_REMOTE_CHARTS` env. variable
+### `NELM_FEAT_REMOTE_CHARTS` environment variable
 
 Example:
 ```shell
@@ -823,7 +823,7 @@ Allows specifying not only local, but also remote charts as a command-line argum
 
 Will be the default in the next major release.
 
-### `NELM_FEAT_NATIVE_RELEASE_LIST` env. variable
+### `NELM_FEAT_NATIVE_RELEASE_LIST` environment variable
 
 Example:
 ```shell
@@ -835,7 +835,7 @@ Use native Nelm implementation of the `release list` command instead of `helm li
 
 Will be the default in the next major release.
 
-### `NELM_FEAT_NATIVE_RELEASE_UNINSTALL` env. variable
+### `NELM_FEAT_NATIVE_RELEASE_UNINSTALL` environment variable
 
 Example:
 ```shell
@@ -847,7 +847,7 @@ Use a new native Nelm implementation of the `release uninstall` command. Not ful
 
 Will be the default in the next major release.
 
-### `NELM_FEAT_PERIODIC_STACK_TRACES` env. variable
+### `NELM_FEAT_PERIODIC_STACK_TRACES` environment variable
 
 Example:
 ```shell
@@ -857,7 +857,7 @@ nelm release install -n myproject -r myproject
 
 Every few seconds print stack traces of all goroutines. Useful for debugging purposes.
 
-### `NELM_FEAT_FIELD_SENSITIVE` env. variable
+### `NELM_FEAT_FIELD_SENSITIVE` environment variable
 
 Example:
 ```shell
