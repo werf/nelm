@@ -35,47 +35,46 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [Release planning](#release-planning)
   - [Encrypted values and encrypted files](#encrypted-values-and-encrypted-files)
   - [Improved CRD management](#improved-crd-management)
-- [Documentation](#documentation)
-  - [Usage](#usage)
-    - [Encrypted values files](#encrypted-values-files)
-    - [Encrypted arbitrary files](#encrypted-arbitrary-files)
-  - [Reference](#reference)
-    - [Annotation `werf.io/weight`](#annotation-werfioweight)
-    - [Annotation `werf.io/deploy-dependency-<id>`](#annotation-werfiodeploy-dependency-id)
-    - [Annotation `<id>.external-dependency.werf.io/resource`](#annotation-idexternal-dependencywerfioresource)
-    - [Annotation `<id>.external-dependency.werf.io/name`](#annotation-idexternal-dependencywerfioname)
-    - [Annotation `werf.io/ownership`](#annotation-werfioownership)
-    - [Annotation `werf.io/deploy-on`](#annotation-werfiodeploy-on)
-    - [Annotation `werf.io/delete-policy`](#annotation-werfiodelete-policy)
-    - [Annotation `werf.io/track-termination-mode`](#annotation-werfiotrack-termination-mode)
-    - [Annotation `werf.io/fail-mode`](#annotation-werfiofail-mode)
-    - [Annotation `werf.io/failures-allowed-per-replica`](#annotation-werfiofailures-allowed-per-replica)
-    - [Annotation `werf.io/no-activity-timeout`](#annotation-werfiono-activity-timeout)
-    - [Annotation `werf.io/sensitive`](#annotation-werfiosensitive)
-    - [Annotation `werf.io/sensitive-paths`](#annotation-werfiosensitive-paths)
-    - [Annotation `werf.io/log-regex`](#annotation-werfiolog-regex)
-    - [Annotation `werf.io/log-regex-for-<container_name>`](#annotation-werfiolog-regex-for-container_name)
-    - [Annotation `werf.io/log-regex-skip`](#annotation-werfiolog-regex-skip)
-    - [Annotation `werf.io/skip-logs`](#annotation-werfioskip-logs)
-    - [Annotation `werf.io/skip-logs-for-containers`](#annotation-werfioskip-logs-for-containers)
-    - [Annotation `werf.io/show-logs-only-for-number-of-replicas`](#annotation-werfioshow-logs-only-for-number-of-replicas)
-    - [Annotation `werf.io/show-logs-only-for-containers`](#annotation-werfioshow-logs-only-for-containers)
-    - [Annotation `werf.io/show-service-messages`](#annotation-werfioshow-service-messages)
-    - [Function `werf_secret_file`](#function-werf_secret_file)
-    - [Function `dump_debug`](#function-dump_debug)
-    - [Function `printf_debug`](#function-printf_debug)
-    - [Function `include_debug`](#function-include_debug)
-    - [Function `tpl_debug`](#function-tpl_debug)
-  - [Feature gates](#feature-gates)
-    - [Env variable `NELM_FEAT_PREVIEW_V2`](#env-variable-nelm_feat_preview_v2)
-    - [Env variable `NELM_FEAT_REMOTE_CHARTS`](#env-variable-nelm_feat_remote_charts)
-    - [Env variable `NELM_FEAT_NATIVE_RELEASE_LIST`](#env-variable-nelm_feat_native_release_list)
-    - [Env variable `NELM_FEAT_NATIVE_RELEASE_UNINSTALL`](#env-variable-nelm_feat_native_release_uninstall)
-    - [Env variable `NELM_FEAT_PERIODIC_STACK_TRACES`](#env-variable-nelm_feat_periodic_stack_traces)
-    - [Env variable `NELM_FEAT_FIELD_SENSITIVE`](#env-variable-nelm_feat_field_sensitive)
-  - [More information](#more-information)
-- [Limitations](#limitations)
+- [Usage](#usage)
+  - [Encrypted values files](#encrypted-values-files)
+  - [Encrypted arbitrary files](#encrypted-arbitrary-files)
+- [Reference](#reference)
+  - [`werf.io/weight` annotation](#werfioweight-annotation)
+  - [`werf.io/deploy-dependency-<id>` annotation](#werfiodeploy-dependency-id-annotation)
+  - [`<id>.external-dependency.werf.io/resource` annotation](#idexternal-dependencywerfioresource-annotation)
+  - [`<id>.external-dependency.werf.io/name` annotation](#idexternal-dependencywerfioname-annotation)
+  - [`werf.io/ownership` annotation](#werfioownership-annotation)
+  - [`werf.io/deploy-on` annotation](#werfiodeploy-on-annotation)
+  - [`werf.io/delete-policy` annotation](#werfiodelete-policy-annotation)
+  - [`werf.io/track-termination-mode` annotation](#werfiotrack-termination-mode-annotation)
+  - [`werf.io/fail-mode` annotation](#werfiofail-mode-annotation)
+  - [`werf.io/failures-allowed-per-replica` annotation](#werfiofailures-allowed-per-replica-annotation)
+  - [`werf.io/no-activity-timeout` annotation](#werfiono-activity-timeout-annotation)
+  - [`werf.io/sensitive` annotation](#werfiosensitive-annotation)
+  - [`werf.io/sensitive-paths` annotation](#werfiosensitive-paths-annotation)
+  - [`werf.io/log-regex` annotation](#werfiolog-regex-annotation)
+  - [`werf.io/log-regex-for-<container_name>` annotation](#werfiolog-regex-for-container_name-annotation)
+  - [`werf.io/log-regex-skip` annotation](#werfiolog-regex-skip-annotation)
+  - [`werf.io/skip-logs` annotation](#werfioskip-logs-annotation)
+  - [`werf.io/skip-logs-for-containers` annotation](#werfioskip-logs-for-containers-annotation)
+  - [`werf.io/show-logs-only-for-number-of-replicas` annotation](#werfioshow-logs-only-for-number-of-replicas-annotation)
+  - [`werf.io/show-logs-only-for-containers` annotation](#werfioshow-logs-only-for-containers-annotation)
+  - [`werf.io/show-service-messages` annotation](#werfioshow-service-messages-annotation)
+  - [`werf_secret_file` function](#werf_secret_file-function)
+  - [`dump_debug` function](#dump_debug-function)
+  - [`printf_debug` function](#printf_debug-function)
+  - [`include_debug` function](#include_debug-function)
+  - [`tpl_debug` function](#tpl_debug-function)
+- [Feature gates](#feature-gates)
+  - [`NELM_FEAT_PREVIEW_V2` env. variable](#nelm_feat_preview_v2-env-variable)
+  - [`NELM_FEAT_REMOTE_CHARTS` env. variable](#nelm_feat_remote_charts-env-variable)
+  - [`NELM_FEAT_NATIVE_RELEASE_LIST` env. variable](#nelm_feat_native_release_list-env-variable)
+  - [`NELM_FEAT_NATIVE_RELEASE_UNINSTALL` env. variable](#nelm_feat_native_release_uninstall-env-variable)
+  - [`NELM_FEAT_PERIODIC_STACK_TRACES` env. variable](#nelm_feat_periodic_stack_traces-env-variable)
+  - [`NELM_FEAT_FIELD_SENSITIVE` env. variable](#nelm_feat_field_sensitive-env-variable)
+- [More documentation](#more-documentation)
 - [Future plans](#future-plans)
+- [Limitations](#limitations)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -326,13 +325,11 @@ During the deployment, Nelm finds Pods of deploying resources and periodically p
 
 CRDs from the `crds/` directory of the chart deployed not only on the very first release install, but also on release upgrades. Also, CRDs not only can be created, but can be updated as well.
 
-## Documentation
+## Usage
 
 Nelm-specific features are described below. For general documentation, see [Helm docs](https://helm.sh/docs/) and [werf docs](https://werf.io/docs/v2/usage/deploy/overview.html).
 
-### Usage
-
-#### Encrypted values files
+### Encrypted values files
 
 Values files can be encrypted and stored in a Helm chart or a git repo. Such values files are decrypted in-memory during templating.
 
@@ -365,7 +362,7 @@ password: verysecurepassword123
 
 NOTE: `$NELM_SECRET_KEY` must be set for any command that encrypts/decrypts secrets, including `nelm chart render`.
 
-#### Encrypted arbitrary files
+### Encrypted arbitrary files
 
 Arbitrary files can be encrypted and stored in the `secret/` directory of a Helm chart. Such files are decrypted in-memory during templating.
 
@@ -399,9 +396,11 @@ config:
   password: verysecurepassword123
 ```
 
-### Reference
+## Reference
 
-#### `werf.io/weight` annotation 
+Nelm-specific features are described below. For general documentation, see [Helm docs](https://helm.sh/docs/) and [werf docs](https://werf.io/docs/v2/usage/deploy/overview.html).
+
+### `werf.io/weight` annotation 
 
 Example:
 ```yaml
@@ -419,7 +418,7 @@ Default:
 
 This annotation works the same as `helm.sh/hook-weight`, but can be used for both hooks and non-hook resources. Resources with the same weight are grouped together, then the groups deployed one after the other, from low to high weight. Resources in the same group are deployed in parallel. This annotation has higher priority than `helm.sh/hook-weight`, but lower than `werf.io/deploy-dependency-<id>`.
 
-#### `werf.io/deploy-dependency-<id>` annotation 
+### `werf.io/deploy-dependency-<id>` annotation 
 
 Example:
 ```yaml
@@ -433,7 +432,7 @@ werf.io/deploy-dependency-<anything>: state=ready|present[,name=<name>][,namespa
 
 The resource will deploy only after all of its dependencies are satisfied. It waits until the specified resource is just `present` or is also `ready`. It serves as a more powerful alternative to hooks and `werf.io/weight`. You can only point to resources in the release. This annotation has higher priority than `werf.io/weight` and `helm.sh/hook-weight`.
 
-#### `<id>.external-dependency.werf.io/resource` annotation 
+### `<id>.external-dependency.werf.io/resource` annotation 
 
 Example:
 ```yaml
@@ -447,7 +446,7 @@ Format:
 
 The resource will deploy only after all of its external dependencies are satisfied. It waits until the specified resource is `present` and `ready`. You can only point to resources outside the release.
 
-#### `<id>.external-dependency.werf.io/name` annotation 
+### `<id>.external-dependency.werf.io/name` annotation 
 
 Example:
 ```yaml
@@ -460,7 +459,7 @@ Format:
 
 Set the namespace of the external dependency defined by `<id>.external-dependency.werf.io/resource`. `<id>` must match on both annotations. If not specified, the release namespace is used.
 
-#### `werf.io/ownership` annotation 
+### `werf.io/ownership` annotation 
 
 Example:
 ```yaml
@@ -477,7 +476,7 @@ Default:
 
 Inspired by Helm hooks. Sets the ownership of the resource. `release` means that the resource is deleted if removed from the chart or when the release is uninstalled, and release annotations of the resource are applied/validated during deploy. `anyone` means the opposite: resource is never deleted on uninstall or when removed from the chart, and release annotations are not applied/validated during deploy.
 
-#### `werf.io/deploy-on` annotation 
+### `werf.io/deploy-on` annotation 
 
 Example:
 ```yaml
@@ -496,7 +495,7 @@ Inspired by `helm.sh/hook`. Render the resource for deployment only on the speci
 
 Beware that with `werf.io/ownership: release` if the resource is rendered for install, but, for example, not for upgrade, then it is going to be deployed on install, but then deleted on upgrade, so you might want to consider `werf.io/ownership: anyone`.
 
-#### `werf.io/delete-policy` annotation 
+### `werf.io/delete-policy` annotation 
 
 Example:
 ```yaml
@@ -513,7 +512,7 @@ nothing for general resources (unless Job, then "before-creation-if-immutable"),
 
 Inspired by `helm.sh/hook-delete-policy`. Controls resource deletions during resource deployment. `before-creation` means always recreate the resource, `before-creation-if-immutable` means recreate the resource only when we got "field is immutable" error during its update, `succeeded` means delete the resource at the end of the current deployment stage if the resource was successfully deployed, `failed` means delete the resource if it's readiness check failed. Has precedence over `helm.sh/hook-delete-policy`.
 
-#### `werf.io/track-termination-mode` annotation 
+### `werf.io/track-termination-mode` annotation 
 
 Example:
 ```yaml
@@ -532,7 +531,7 @@ Configure when to stop resource readiness tracking:
 * `WaitUntilResourceReady`: wait until the resource is `ready`.
 * `NonBlocking`: don't wait until the resource is `ready`.
 
-#### `werf.io/fail-mode` annotation 
+### `werf.io/fail-mode` annotation 
 
 Example:
 ```yaml
@@ -551,7 +550,7 @@ Configure what should happen when errors during tracking for the resource exceed
 * `FailWholeDeployProcessImmediately`: fail the release.
 * `IgnoreAndContinueDeployProcess`: do nothing.
 
-#### `werf.io/failures-allowed-per-replica` annotation 
+### `werf.io/failures-allowed-per-replica` annotation 
 
 Example:
 ```yaml
@@ -568,7 +567,7 @@ Default:
 
 Set the number of allowed errors during resource tracking. When exceeded, act according to `werf.io/fail-mode`.
 
-#### `werf.io/no-activity-timeout` annotation 
+### `werf.io/no-activity-timeout` annotation 
 
 Example:
 ```yaml
@@ -585,7 +584,7 @@ Default:
 
 Take it as a resource tracking error if no new events or resource updates are received during resource tracking for the specified time.
 
-#### `werf.io/sensitive` annotation 
+### `werf.io/sensitive` annotation 
 
 Example:
 ```yaml
@@ -606,7 +605,7 @@ Don't show diffs for the resource.
 
 `NELM_FEAT_FIELD_SENSITIVE` feature gate alters behavior of this annotation.
 
-#### `werf.io/sensitive-paths` annotation 
+### `werf.io/sensitive-paths` annotation 
 
 Example:
 ```yaml
@@ -619,7 +618,7 @@ werf.io/sensitive-paths: <JSONPath>,<JSONPath>,...
 
 Don't show diffs for resource fields that match specified JSONPath expressions. Overrides the behavior of `werf.io/sensitive`.
 
-#### `werf.io/log-regex` annotation 
+### `werf.io/log-regex` annotation 
 
 Example:
 ```yaml
@@ -632,7 +631,7 @@ werf.io/log-regex: <re2 regex>
 
 Only show log lines that match the specified regex.
 
-#### `werf.io/log-regex-for-<container_name>` annotation 
+### `werf.io/log-regex-for-<container_name>` annotation 
 
 Example:
 ```yaml
@@ -645,7 +644,7 @@ werf.io/log-regex-for-backend: <re2 regex>
 
 For the specified container, only show log lines that match the specified regex.
 
-#### `werf.io/log-regex-skip` annotation 
+### `werf.io/log-regex-skip` annotation 
 
 Example:
 ```yaml
@@ -658,7 +657,7 @@ werf.io/log-regex-skip: <re2 regex>
 
 Don't show log lines that match the specified regex.
 
-#### `werf.io/skip-logs` annotation 
+### `werf.io/skip-logs` annotation 
 
 Example:
 ```yaml
@@ -675,7 +674,7 @@ false
 
 Don't print container logs during resource tracking.
 
-#### `werf.io/skip-logs-for-containers` annotation 
+### `werf.io/skip-logs-for-containers` annotation 
 
 Example:
 ```yaml
@@ -688,7 +687,7 @@ werf.io/skip-logs-for-containers: <container_name>[,<container_name>...]
 
 Don't print logs for specified containers during resource tracking.
 
-#### `werf.io/show-logs-only-for-number-of-replicas` annotation 
+### `werf.io/show-logs-only-for-number-of-replicas` annotation 
 
 Example:
 ```yaml
@@ -705,7 +704,7 @@ Default:
 
 Print logs only for the specified number of replicas during resource tracking. We print logs only for a single replica by default to avoid excessive log output and to optimize resource usage.
 
-#### `werf.io/show-logs-only-for-containers` annotation 
+### `werf.io/show-logs-only-for-containers` annotation 
 
 Example:
 ```yaml
@@ -718,7 +717,7 @@ werf.io/show-logs-only-for-containers: <container_name>[,<container_name>...]
 
 Print logs only for specified containers during resource tracking.
 
-#### `werf.io/show-service-messages` annotation 
+### `werf.io/show-service-messages` annotation 
 
 Example:
 ```yaml
@@ -735,7 +734,7 @@ false
 
 Show resource events during resource tracking.
 
-#### `werf_secret_file` function 
+### `werf_secret_file` function 
 
 Example:
 ```
@@ -748,7 +747,7 @@ Format:
 
 Read the specified secret file from the `secret/` directory of the Helm chart.
 
-#### `dump_debug` function 
+### `dump_debug` function 
 
 Example:
 ```
@@ -761,7 +760,7 @@ Format:
 
 If the log level is `debug`, then pretty-dumps the passed value to the logs. Handles just fine any kind of complex types, including .Values, or event root context. Never prints to the templating output.
 
-#### `printf_debug` function 
+### `printf_debug` function 
 
 Example:
 ```
@@ -774,7 +773,7 @@ Format:
 
 If the log level is `debug`, then prints the result to the logs. Never prints to the templating output.
 
-#### `include_debug` function 
+### `include_debug` function 
 
 Example:
 ```
@@ -787,7 +786,7 @@ Format:
 
 Works exactly like the `include` function, but if the log level is `debug`, then also prints various include-related debug information to the logs. Useful for debugging complex includes/defines.
 
-#### `tpl_debug` function 
+### `tpl_debug` function 
 
 Example:
 ```
@@ -800,9 +799,9 @@ Format:
 
 Works exactly like the `tpl` function, but if the log level is `debug`, then also prints various tpl-related debug information to the logs. Useful for debugging complex tpl templates.
 
-### Feature gates
+## Feature gates
 
-#### `NELM_FEAT_PREVIEW_V2` env. variable
+### `NELM_FEAT_PREVIEW_V2` env. variable
 
 Example:
 ```shell
@@ -812,7 +811,7 @@ nelm release list
 
 Activates all feature gates that will be enabled by default in v2.
 
-#### `NELM_FEAT_REMOTE_CHARTS` env. variable
+### `NELM_FEAT_REMOTE_CHARTS` env. variable
 
 Example:
 ```shell
@@ -824,7 +823,7 @@ Allows specifying not only local, but also remote charts as a command-line argum
 
 Will be the default in the next major release.
 
-#### `NELM_FEAT_NATIVE_RELEASE_LIST` env. variable
+### `NELM_FEAT_NATIVE_RELEASE_LIST` env. variable
 
 Example:
 ```shell
@@ -836,7 +835,7 @@ Use native Nelm implementation of the `release list` command instead of `helm li
 
 Will be the default in the next major release.
 
-#### `NELM_FEAT_NATIVE_RELEASE_UNINSTALL` env. variable
+### `NELM_FEAT_NATIVE_RELEASE_UNINSTALL` env. variable
 
 Example:
 ```shell
@@ -848,7 +847,7 @@ Use a new native Nelm implementation of the `release uninstall` command. Not ful
 
 Will be the default in the next major release.
 
-#### `NELM_FEAT_PERIODIC_STACK_TRACES` env. variable
+### `NELM_FEAT_PERIODIC_STACK_TRACES` env. variable
 
 Example:
 ```shell
@@ -858,7 +857,7 @@ nelm release install -n myproject -r myproject
 
 Every few seconds print stack traces of all goroutines. Useful for debugging purposes.
 
-#### `NELM_FEAT_FIELD_SENSITIVE` env. variable
+### `NELM_FEAT_FIELD_SENSITIVE` env. variable
 
 Example:
 ```shell
@@ -870,14 +869,9 @@ When showing diffs for Secrets or `werf.io/sensitive: "true"` annotated resource
 
 Will be the default in the next major release.
 
-### More information
+## More documentation
 
-For more information, see [Helm docs](https://helm.sh/docs/) and [werf docs](https://werf.io/docs/v2/usage/deploy/overview.html).
-
-## Limitations
-
-* Nelm requires Server-Side Apply enabled in Kubernetes. It is enabled by default since Kubernetes 1.16. In Kubernetes 1.14-1.15 it can be enabled, but disabled by default. Kubernetes 1.13 and older doesn't have Server-Side Apply, thus Nelm won't work with it.
-* *Helm sometimes uses Values from the previous Helm release to deploy a new release*. This is to make Helm easier to use without a proper CI/CD process. This is dangerous, goes against IaC and this is not what users expect. Nelm will never do this: what you explicitly pass via `--values` and `--set` options will be merged with chart values files, then applied to the cluster, as expected.
+For documentation on regular Helm features, see [Helm docs](https://helm.sh/docs/). A lot of useful documentation can be found in [werf docs](https://werf.io/docs/v2/usage/deploy/overview.html).
 
 ## Future plans
 
@@ -886,3 +880,8 @@ For more information, see [Helm docs](https://helm.sh/docs/) and [werf docs](htt
 * Resource patching support ([#115](https://github.com/werf/nelm/issues/115)).
 * Downloading charts directly from Git.
 * Migrate the built-in secrets management to Mozilla SOPS ([#62](https://github.com/werf/nelm/issues/62)).
+
+## Limitations
+
+* Nelm requires Server-Side Apply enabled in Kubernetes. It is enabled by default since Kubernetes 1.16. In Kubernetes 1.14-1.15 it can be enabled, but disabled by default. Kubernetes 1.13 and older doesn't have Server-Side Apply, thus Nelm won't work with it.
+* *Helm sometimes uses Values from the previous Helm release to deploy a new release*. This is to make Helm easier to use without a proper CI/CD process. This is dangerous, goes against IaC and this is not what users expect. Nelm will never do this: what you explicitly pass via `--values` and `--set` options will be merged with chart values files, then applied to the cluster, as expected.
