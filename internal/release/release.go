@@ -159,7 +159,7 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 		return false, nil
 	}
 
-	oldRelManifests := releaseutil.SplitManifests(oldRel.Manifest)
+	oldRelManifests := releaseutil.SplitManifestsToSlice(oldRel.Manifest)
 
 	oldRegularResourcesHash := fnv.New32a()
 	for _, manifest := range oldRelManifests {
@@ -175,7 +175,7 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 		}
 	}
 
-	newRelManifests := releaseutil.SplitManifests(newRel.Manifest)
+	newRelManifests := releaseutil.SplitManifestsToSlice(newRel.Manifest)
 
 	newRegularResourcesHash := fnv.New32a()
 	for _, manifest := range newRelManifests {
@@ -200,7 +200,7 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 
 func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string) ([]*spec.ResourceSpec, error) {
 	var resources []*spec.ResourceSpec
-	for _, manifest := range releaseutil.SplitManifests(rel.UnstoredManifest) {
+	for _, manifest := range releaseutil.SplitManifestsToSlice(rel.UnstoredManifest) {
 		if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
 			StoreAs: common.StoreAsNone,
 		}); err != nil {
@@ -210,7 +210,7 @@ func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string) (
 		}
 	}
 
-	for _, manifest := range releaseutil.SplitManifests(rel.Manifest) {
+	for _, manifest := range releaseutil.SplitManifestsToSlice(rel.Manifest) {
 		if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
 			StoreAs: common.StoreAsRegular,
 		}); err != nil {

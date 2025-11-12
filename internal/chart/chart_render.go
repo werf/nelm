@@ -184,7 +184,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 
 	if !opts.NoStandaloneCRDs {
 		for _, crd := range chart.CRDObjects() {
-			for _, manifest := range releaseutil.SplitManifests(string(crd.File.Data)) {
+			for _, manifest := range releaseutil.SplitManifestsToSlice(string(crd.File.Data)) {
 				if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
 					StoreAs:  common.StoreAsNone,
 					FilePath: crd.Filename,
@@ -258,7 +258,7 @@ func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, relea
 			continue
 		}
 
-		manifests := releaseutil.SplitManifests(fileContent)
+		manifests := releaseutil.SplitManifestsToSlice(fileContent)
 
 		for _, manifest := range manifests {
 			var head releaseutil.SimpleHead
