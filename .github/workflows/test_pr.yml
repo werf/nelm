@@ -12,47 +12,61 @@ concurrency:
 
 jobs:
   detect-changes:
+    name: Detect changed file groups
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:
       pull-requests: read
     outputs:
-      workflow_proceed: ${{ steps.changes.outputs.workflow_proceed }}
+      src_changed: ${{ steps.changed-files.outputs.src_any_changed }}
+      lint_changed: ${{ steps.changed-files.outputs.lint_any_changed }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Detect changes
-        uses: dorny/paths-filter@v3
-        id: changes
+      - name: Detect file groups
+        id: changed-files
+        uses: tj-actions/changed-files@v47
         with:
-          filters: |
-            workflow_proceed:
+          files_yaml: |
+            src:
+              - '**/*.go'
               - 'go.mod'
+              - 'go.sum'
               - 'Taskfile.dist.yaml'
-              - '.github/**'
               - 'cmd/nelm/**'
               - 'internal/**'
               - 'pkg/**'
               - 'scripts/**'
+            lint:
+              - '**/*.go'
+              - '**/*.yaml'
+              - '**/*.yml'
+
+      - name: Debug changed files
+        run: |
+          echo "🧩 src_changed=${{ steps.changed-files.outputs.src_any_changed }}"
+          echo "🎨 lint_changed=${{ steps.changed-files.outputs.lint_any_changed }}"
+          echo "SRC files:"
+          echo "${{ steps.changed-files.outputs.src_all_changed_files }}" | tr ' ' '\n'
+          echo "LINT files:"
+          echo "${{ steps.changed-files.outputs.lint_all_changed_files }}" | tr ' ' '\n'
 
   lint:
     needs: detect-changes
     uses: ./.github/workflows/_lint.yml
     with:
-      forceSkip: ${{ github.event_name == 'pull_request' && needs.detect-changes.outputs.workflow_proceed == 'false' }}
+      forceSkip: ${{ github.event_name == 'pull_request' && needs.detect-changes.outputs.lint_changed == 'false' }}
 
   unit:
     needs: detect-changes
     uses: ./.github/workflows/_test_unit.yml
     with:
-      forceSkip: ${{ github.event_name == 'pull_request' && needs.detect-changes.outputs.workflow_proceed == 'false' }}
+      forceSkip: ${{ github.event_name == 'pull_request' && needs.detect-changes.outputs.src_changed == 'false' }}
 
   build:
-    if: ${{ !(github.event_name == 'pull_request' && needs.detect-changes.outputs.workflow_proceed == 'false') }}
     needs: detect-changes
-    strategy:
-      fail-fast: false
+    if: needs.detect-changes.outputs.src_changed == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
@@ -65,10 +79,22 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        id: setup-go
+        uses: actions/setup-go@v6
         with:
-          cache: true
+          cache: false
           go-version-file: go.mod
+
+      - name: Cache Go modules and build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/runner/go/pkg/mod
+            /home/runner/.cache/go-build
+          key: ${{ runner.os }}-go-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ steps.setup-go.outputs.go-version }}-
+            ${{ runner.os }}-go-
 
       - name: Install Task
         uses: arduino/setup-task@v2
