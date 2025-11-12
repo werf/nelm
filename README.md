@@ -118,92 +118,15 @@ Follow instructions on [GitHub Releases](https://github.com/werf/nelm/releases).
     ```bash
     nelm release install -n myproject -r myproject
     ```
-    ... resources successfully created in the cluster and their readiness is ensured:
-    ```smalltalk
-    Starting release "myproject" (namespace: "myproject")
-   
-    ┌ Logs for Pod/myproject-cert-manager-webhook-76c89cc4c7-d8xn4, container/cert-manager-webhook
-    │ W0324 14:49:12.719893       1 client_config.go:618] Neither --kubeconfig nor --master was specified.  Using the inClusterConfig.  This might not work.
-    │ I0324 14:49:12.743617       1 webhook.go:128] "cert-manager/webhook: using dynamic certificate generating using CA stored in Secret resource" secret_namespace="myproject" secret_name="myproject-cert-manager-webhook-ca"
-    │ I0324 14:49:12.743756       1 server.go:147] "cert-manager: listening for insecure healthz connections" address=":6080"
-    │ I0324 14:49:12.744309       1 server.go:213] "cert-manager: listening for secure connections" address=":10250"
-    │ I0324 14:49:13.747685       1 dynamic_source.go:255] "cert-manager: Updated cert-manager webhook TLS certificate" DNSNames=["myproject-cert-manager-webhook","myproject-cert-manager-webhook.myproject","myproject-cert-manager-webhook.myproject.svc"]
-    └ Logs for Pod/myproject-cert-manager-webhook-76c89cc4c7-d8xn4, container/cert-manager-webhook
-    
-    ┌ Progress status
-    │ RESOURCE (→READY)                                                STATE    INFO
-    │ Deployment/myproject-cert-manager-webhook                        WAITING  Ready:0/1
-    │  • Pod/myproject-cert-manager-webhook-76c89cc4c7-d8xn4           UNKNOWN  Status:Running
-    │ ClusterRole/myproject-cert-manager-cainjector                    READY
-    │ ClusterRole/myproject-cert-manager-cluster-view                  READY
-    │ Role/myproject-cert-manager:leaderelection                       READY    Namespace:kube-system
-    │ Role/myproject-cert-manager-webhook:dynamic-serving              READY
-    │ RoleBinding/myproject-cert-manager-cainjector:leaderelection     WAITING  Namespace:kube-system
-    │ RoleBinding/myproject-cert-manager:leaderelection                WAITING  Namespace:kube-system
-    │ RoleBinding/myproject-cert-manager-webhook:dynamic-serving       WAITING
-    │ Service/myproject-cert-manager                                   READY
-    │ Service/myproject-cert-manager-webhook                           READY
-    │ ServiceAccount/myproject-cert-manager                            READY
-    │ ServiceAccount/myproject-cert-manager-cainjector                 READY
-    │ ServiceAccount/myproject-cert-manager-webhook                    READY
-    │ ValidatingWebhookConfiguration/myproject-cert-manager-webhook    READY
-    ...
-    └ Progress status
-    
-    ┌ Completed operations
-    │ Create resource: ClusterRole/myproject-cert-manager-cainjector
-    │ Create resource: ClusterRole/myproject-cert-manager-cluster-view
-    │ Create resource: ClusterRole/myproject-cert-manager-controller-approve:cert-manager-io
-    │ Create resource: ClusterRole/myproject-cert-manager-controller-certificates
-    │ Create resource: ClusterRole/myproject-cert-manager-controller-certificatesigningrequests
-    │ Create resource: ClusterRole/myproject-cert-manager-controller-challenges
-    ...
-    └ Completed operations
-    
-    Succeeded release "myproject" (namespace: "myproject")
-    ```
 
-1. Plan the second release with an increased number of replicas:
+1. Plan the second release with an increased number of replicas, where only a single field in a single Deployment will be updated:
     ```bash
     nelm release plan install -n myproject -r myproject --set cert-manager.replicaCount=2
     ```
-    ... only the `spec.replicas` field is going to be updated:
-    ```smalltalk
-    Planning release install "myproject" (namespace: "myproject")
 
-    ┌ Update Deployment/myproject-cert-manager
-    │     namespace: myproject
-    │   spec:
-    │     progressDeadlineSeconds: 600
-    │ -   replicas: 1
-    │ +   replicas: 2
-    │     revisionHistoryLimit: 10
-    │     selector:
-    │       matchLabels:
-    └ Update Deployment/myproject-cert-manager
-
-    Planned changes summary for release "myproject" (namespace: "myproject"):
-    - update: 1 resource(s)
-    ```
-
-1. Deploy the second release:
+1. Deploy the second release, where only the Deployment will be updated:
     ```bash
     nelm release install -n myproject -r myproject --set cert-manager.replicaCount=2
-    ```
-    ... only the Deployment is updated:
-    ```smalltalk
-    Starting release "myproject" (namespace: "myproject")
-   
-    ┌ Progress status
-    │ RESOURCE (→READY)                  STATE  INFO
-    │ Deployment/myproject-cert-manager  READY
-    └ Progress status
-    
-    ┌ Completed operations
-    │ Update resource: Deployment/myproject-cert-manager
-    └ Completed operations
-    
-    Succeeded release "myproject" (namespace: "myproject")
     ```
    
 ## CLI overview
