@@ -298,7 +298,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	var prevRelResSpecs []*spec.ResourceSpec
 	if prevRelease != nil {
-		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, releaseNamespace)
+		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, releaseNamespace, false)
 		if err != nil {
 			return fmt.Errorf("convert previous release to resource specs: %w", err)
 		}
@@ -306,7 +306,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
-	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace)
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace, false)
 	if err != nil {
 		return fmt.Errorf("convert new release to resource specs: %w", err)
 	}
@@ -655,7 +655,7 @@ type runRollbackPlanResult struct {
 func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, failedRelease, prevDeployedRelease *helmrelease.Release, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history *release.History, clientFactory *kube.ClientFactory, opts runRollbackPlanOptions) (result *runRollbackPlanResult, nonCritErrs, critErrs []error) {
 	log.Default.Debug(ctx, "Convert prev deployed release to resource specs")
 
-	resSpecs, err := release.ReleaseToResourceSpecs(prevDeployedRelease, releaseNamespace)
+	resSpecs, err := release.ReleaseToResourceSpecs(prevDeployedRelease, releaseNamespace, false)
 	if err != nil {
 		return nil, nonCritErrs, append(critErrs, fmt.Errorf("convert previous deployed release to resource specs: %w", err))
 	}
@@ -690,14 +690,14 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Convert failed release to resource specs")
 
-	failedRelResSpecs, err := release.ReleaseToResourceSpecs(failedRelease, releaseNamespace)
+	failedRelResSpecs, err := release.ReleaseToResourceSpecs(failedRelease, releaseNamespace, false)
 	if err != nil {
 		return nil, nonCritErrs, append(critErrs, fmt.Errorf("convert previous release to resource specs: %w", err))
 	}
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
-	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace)
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace, false)
 	if err != nil {
 		return nil, nonCritErrs, append(critErrs, fmt.Errorf("convert new release to resource specs: %w", err))
 	}

@@ -238,7 +238,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	var prevRelResSpecs []*spec.ResourceSpec
 	if prevRelease != nil {
-		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, opts.ReleaseNamespace)
+		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, opts.ReleaseNamespace, false)
 		if err != nil {
 			return fmt.Errorf("convert previous release to resource specs: %w", err)
 		}
@@ -246,7 +246,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
-	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, opts.ReleaseNamespace)
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, opts.ReleaseNamespace, false)
 	if err != nil {
 		return fmt.Errorf("convert new release to resource specs: %w", err)
 	}

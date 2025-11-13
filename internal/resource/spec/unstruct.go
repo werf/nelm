@@ -1,4 +1,4 @@
-package resource
+package spec
 
 import (
 	"regexp"
@@ -12,6 +12,7 @@ import (
 type CleanUnstructOptions struct {
 	CleanHelmShAnnos        bool
 	CleanManagedFields      bool
+	CleanNullFields         bool
 	CleanReleaseAnnosLabels bool
 	CleanRuntimeData        bool
 	CleanWerfIoAnnos        bool
@@ -65,6 +66,10 @@ func CleanUnstruct(unstruct *unstructured.Unstructured, opts CleanUnstructOption
 		unstructCopy.SetLabels(filteredLabels)
 	}
 
+	if opts.CleanNullFields {
+		unstructCopy.Object = cleanNulls(unstructCopy.Object).(map[string]interface{})
+	}
+
 	return unstructCopy
 }
 
@@ -100,4 +105,31 @@ func cleanRuntimeDataFromUnstruct(unstruct *unstructured.Unstructured) {
 	}
 
 	unstruct.SetManagedFields(managedFields)
+}
+
+func cleanNulls(field interface{}) interface{} {
+	switch f := field.(type) {
+	case map[string]interface{}:
+		cleanedF := map[string]interface{}{}
+		for k, v := range f {
+			cleanedV := cleanNulls(v)
+			if cleanedV != nil {
+				cleanedF[k] = cleanedV
+			}
+		}
+
+		return cleanedF
+	case []interface{}:
+		cleanedF := []interface{}{}
+		for _, v := range f {
+			cleanedVal := cleanNulls(v)
+			if cleanedVal != nil {
+				cleanedF = append(cleanedF, cleanedVal)
+			}
+		}
+
+		return cleanedF
+	default:
+		return f
+	}
 }

@@ -236,7 +236,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
-	resSpecs, err := release.ReleaseToResourceSpecs(newRelease, opts.ReleaseNamespace)
+	resSpecs, err := release.ReleaseToResourceSpecs(newRelease, opts.ReleaseNamespace, true)
 	if err != nil {
 		return nil, fmt.Errorf("convert new release to resource specs: %w", err)
 	}

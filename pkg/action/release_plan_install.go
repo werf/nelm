@@ -270,7 +270,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	var prevRelResSpecs []*spec.ResourceSpec
 	if prevRelease != nil {
-		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, releaseNamespace)
+		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, releaseNamespace, false)
 		if err != nil {
 			return fmt.Errorf("convert previous release to resource specs: %w", err)
 		}
@@ -278,7 +278,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
-	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace)
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace, false)
 	if err != nil {
 		return fmt.Errorf("convert new release to resource specs: %w", err)
 	}

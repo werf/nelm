@@ -243,7 +243,7 @@ func cleanUnstruct(unstruct *unstructured.Unstructured, sensitiveInfo resource.S
 		unstructClean = unstruct
 	}
 
-	cleanUnstructOpts := resource.CleanUnstructOptions{
+	cleanUnstructOpts := spec.CleanUnstructOptions{
 		CleanRuntimeData: true,
 	}
 
@@ -253,7 +253,7 @@ func cleanUnstruct(unstruct *unstructured.Unstructured, sensitiveInfo resource.S
 		cleanUnstructOpts.CleanManagedFields = true
 	}
 
-	unstructClean = resource.CleanUnstruct(unstructClean, cleanUnstructOpts)
+	unstructClean = spec.CleanUnstruct(unstructClean, cleanUnstructOpts)
 
 	return unstructClean
 }

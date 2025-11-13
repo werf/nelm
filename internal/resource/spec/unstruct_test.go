@@ -1,4 +1,4 @@
-package resource_test
+package spec_test
 
 import (
 	"testing"
@@ -10,7 +10,7 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/werf/nelm/internal/resource"
+	"github.com/werf/nelm/internal/resource/spec"
 )
 
 type UnstructSuite struct {
@@ -28,7 +28,7 @@ func (s *UnstructSuite) SetupSuite() {
 type cleanUnstructTestCase struct {
 	name   string
 	skip   bool
-	input  func() (*unstructured.Unstructured, resource.CleanUnstructOptions)
+	input  func() (*unstructured.Unstructured, spec.CleanUnstructOptions)
 	expect func() *unstructured.Unstructured
 }
 
@@ -36,8 +36,8 @@ func (s *UnstructSuite) TestCleanUnstruct() {
 	testCases := []cleanUnstructTestCase{
 		{
 			name: `should not change anything`,
-			input: func() (*unstructured.Unstructured, resource.CleanUnstructOptions) {
-				return defaultUncleanUnstruct(), resource.CleanUnstructOptions{}
+			input: func() (*unstructured.Unstructured, spec.CleanUnstructOptions) {
+				return defaultUncleanUnstruct(), spec.CleanUnstructOptions{}
 			},
 			expect: func() *unstructured.Unstructured {
 				return defaultUncleanUnstruct()
@@ -45,8 +45,8 @@ func (s *UnstructSuite) TestCleanUnstruct() {
 		},
 		{
 			name: `should clean helm.sh annotations`,
-			input: func() (*unstructured.Unstructured, resource.CleanUnstructOptions) {
-				return defaultUncleanUnstruct(), resource.CleanUnstructOptions{
+			input: func() (*unstructured.Unstructured, spec.CleanUnstructOptions) {
+				return defaultUncleanUnstruct(), spec.CleanUnstructOptions{
 					CleanHelmShAnnos: true,
 				}
 			},
@@ -62,8 +62,8 @@ func (s *UnstructSuite) TestCleanUnstruct() {
 		},
 		{
 			name: `should clean werf.io annotations`,
-			input: func() (*unstructured.Unstructured, resource.CleanUnstructOptions) {
-				return defaultUncleanUnstruct(), resource.CleanUnstructOptions{
+			input: func() (*unstructured.Unstructured, spec.CleanUnstructOptions) {
+				return defaultUncleanUnstruct(), spec.CleanUnstructOptions{
 					CleanWerfIoAnnos: true,
 				}
 			},
@@ -81,8 +81,8 @@ func (s *UnstructSuite) TestCleanUnstruct() {
 		},
 		{
 			name: `should clean werf.io runtime annotations`,
-			input: func() (*unstructured.Unstructured, resource.CleanUnstructOptions) {
-				return defaultUncleanUnstruct(), resource.CleanUnstructOptions{
+			input: func() (*unstructured.Unstructured, spec.CleanUnstructOptions) {
+				return defaultUncleanUnstruct(), spec.CleanUnstructOptions{
 					CleanWerfIoRuntimeAnnos: true,
 				}
 			},
@@ -99,8 +99,8 @@ func (s *UnstructSuite) TestCleanUnstruct() {
 		},
 		{
 			name: `should clean release annotations and labels`,
-			input: func() (*unstructured.Unstructured, resource.CleanUnstructOptions) {
-				return defaultUncleanUnstruct(), resource.CleanUnstructOptions{
+			input: func() (*unstructured.Unstructured, spec.CleanUnstructOptions) {
+				return defaultUncleanUnstruct(), spec.CleanUnstructOptions{
 					CleanReleaseAnnosLabels: true,
 				}
 			},
@@ -119,8 +119,8 @@ func (s *UnstructSuite) TestCleanUnstruct() {
 		},
 		{
 			name: `should clean managed fields`,
-			input: func() (*unstructured.Unstructured, resource.CleanUnstructOptions) {
-				return defaultUncleanUnstruct(), resource.CleanUnstructOptions{
+			input: func() (*unstructured.Unstructured, spec.CleanUnstructOptions) {
+				return defaultUncleanUnstruct(), spec.CleanUnstructOptions{
 					CleanManagedFields: true,
 				}
 			},
@@ -133,8 +133,8 @@ func (s *UnstructSuite) TestCleanUnstruct() {
 		},
 		{
 			name: `should clean runtime data`,
-			input: func() (*unstructured.Unstructured, resource.CleanUnstructOptions) {
-				return defaultUncleanUnstruct(), resource.CleanUnstructOptions{
+			input: func() (*unstructured.Unstructured, spec.CleanUnstructOptions) {
+				return defaultUncleanUnstruct(), spec.CleanUnstructOptions{
 					CleanRuntimeData: true,
 				}
 			},
@@ -222,7 +222,7 @@ func runCleanUnstructTest(tc cleanUnstructTestCase, s *UnstructSuite) func() {
 
 		inputUnstruct, opts := tc.input()
 		expectedUnstruct := tc.expect()
-		unstruct := resource.CleanUnstruct(inputUnstruct, opts)
+		unstruct := spec.CleanUnstruct(inputUnstruct, opts)
 
 		if !cmp.Equal(expectedUnstruct, unstruct, s.cmpOpts) {
 			s.T().Fatalf("unexpected unstruct (-want +got):\n%s", cmp.Diff(expectedUnstruct, unstruct, s.cmpOpts))
