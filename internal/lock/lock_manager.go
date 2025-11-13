@@ -67,11 +67,7 @@ func (locker *ConfigMapLocker) Release(lock lockgate.LockHandle) error {
 	return locker.Locker.Release(lock)
 }
 
-func NewLockManager(
-	namespace string,
-	createNamespace bool,
-	clientFactory kube.ClientFactorier,
-) (*LockManager, error) {
+func NewLockManager(ctx context.Context, namespace string, createNamespace bool, clientFactory kube.ClientFactorier) (*LockManager, error) {
 	configMapName := "werf-synchronization"
 
 	locker := distributed_locker.NewKubernetesLocker(
@@ -82,7 +78,16 @@ func NewLockManager(
 		}, configMapName, namespace,
 	)
 	cmLocker := NewConfigMapLocker(configMapName, namespace, namespace, locker, clientFactory, ConfigMapLockerOptions{CreateNamespace: createNamespace})
-	lockerWithRetry := locker_with_retry.NewLockerWithRetry(context.Background(), cmLocker, locker_with_retry.LockerWithRetryOptions{MaxAcquireAttempts: 10, MaxReleaseAttempts: 10})
+	lockerWithRetry := locker_with_retry.NewLockerWithRetry(ctx, cmLocker, locker_with_retry.LockerWithRetryOptions{
+		MaxAcquireAttempts: 10,
+		MaxReleaseAttempts: 10,
+		CustomLogWarnFunc: func(msg string) {
+			log.Default.Warn(ctx, msg)
+		},
+		CustomLogErrFunc: func(msg string) {
+			log.Default.Error(ctx, msg)
+		},
+	})
 
 	return &LockManager{
 		Namespace:       namespace,
