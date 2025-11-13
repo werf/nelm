@@ -148,10 +148,18 @@ func addFailureReleaseOperations(failedPlan, plan *Plan, releaseInfos []*Release
 		}
 
 		if _, releaseCreated := lo.Find(failedPlan.Operations(), func(op *Operation) bool {
-			return (op.Type == OperationTypeCreateRelease ||
-				op.Type == OperationTypeUpdateRelease) &&
-				op.Status == OperationStatusCompleted &&
-				op.Config.(*OperationConfigCreateRelease).Release.ID() == info.Release.ID()
+			if op.Status != OperationStatusCompleted {
+				return false
+			}
+
+			switch config := op.Config.(type) {
+			case *OperationConfigCreateRelease:
+				return config.Release.ID() == info.Release.ID()
+			case *OperationConfigUpdateRelease:
+				return config.Release.ID() == info.Release.ID()
+			default:
+				return false
+			}
 		}); !releaseCreated {
 			continue
 		}
