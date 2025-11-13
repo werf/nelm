@@ -20,11 +20,16 @@ type ResourceSpec struct {
 }
 
 type ResourceSpecOptions struct {
-	StoreAs  common.StoreAs
-	FilePath string
+	FilePath                string
+	LegacyNoCleanNullFields bool // TODO(v2): always clean
+	StoreAs                 common.StoreAs
 }
 
 func NewResourceSpec(unstruct *unstructured.Unstructured, releaseNamespace string, opts ResourceSpecOptions) *ResourceSpec {
+	unstruct = CleanUnstruct(unstruct, CleanUnstructOptions{
+		CleanNullFields: !opts.LegacyNoCleanNullFields,
+	})
+
 	if opts.StoreAs == "" {
 		if IsHook(unstruct.GetAnnotations()) {
 			opts.StoreAs = common.StoreAsHook

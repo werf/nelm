@@ -370,13 +370,13 @@ func resourceInstallType(ctx context.Context, localRes *resource.InstallableReso
 		return ResourceInstallTypeApply, nil
 	}
 
-	diffableGetObj := resource.CleanUnstruct(getObj, resource.CleanUnstructOptions{
+	diffableGetObj := spec.CleanUnstruct(getObj, spec.CleanUnstructOptions{
 		CleanHelmShAnnos: true,
 		CleanWerfIoAnnos: true,
 		CleanRuntimeData: true,
 	})
 
-	diffableDryApplyObj := resource.CleanUnstruct(dryApplyObj, resource.CleanUnstructOptions{
+	diffableDryApplyObj := spec.CleanUnstruct(dryApplyObj, spec.CleanUnstructOptions{
 		CleanHelmShAnnos: true,
 		CleanWerfIoAnnos: true,
 		CleanRuntimeData: true,

@@ -142,7 +142,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		Values: values,
 	}
 
-	resSpecs, err := release.ReleaseToResourceSpecs(rel, releaseNamespace)
+	resSpecs, err := release.ReleaseToResourceSpecs(rel, releaseNamespace, false)
 	if err != nil {
 		return nil, fmt.Errorf("convert release to resource specs: %w", err)
 	}

@@ -18,7 +18,6 @@ import (
 	"github.com/werf/3p-helm/pkg/chartutil"
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/3p-helm/pkg/releaseutil"
-	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/pkg/common"
 )
@@ -198,11 +197,12 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 	return true, nil
 }
 
-func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string) ([]*spec.ResourceSpec, error) {
+func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string, noCleanNullFields bool /* TODO(v2): get rid */) ([]*spec.ResourceSpec, error) {
 	var resources []*spec.ResourceSpec
 	for _, manifest := range releaseutil.SplitManifestsToSlice(rel.UnstoredManifest) {
 		if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
-			StoreAs: common.StoreAsNone,
+			StoreAs:                 common.StoreAsNone,
+			LegacyNoCleanNullFields: noCleanNullFields,
 		}); err != nil {
 			return nil, fmt.Errorf("construct resource spec from unstored manifest: %w", err)
 		} else {
@@ -212,7 +212,8 @@ func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string) (
 
 	for _, manifest := range releaseutil.SplitManifestsToSlice(rel.Manifest) {
 		if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
-			StoreAs: common.StoreAsRegular,
+			StoreAs:                 common.StoreAsRegular,
+			LegacyNoCleanNullFields: noCleanNullFields,
 		}); err != nil {
 			return nil, fmt.Errorf("construct resource spec from regular manifest: %w", err)
 		} else {
@@ -222,7 +223,8 @@ func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string) (
 
 	for _, hook := range rel.Hooks {
 		if res, err := spec.NewResourceSpecFromManifest(hook.Manifest, releaseNamespace, spec.ResourceSpecOptions{
-			StoreAs: common.StoreAsHook,
+			StoreAs:                 common.StoreAsHook,
+			LegacyNoCleanNullFields: noCleanNullFields,
 		}); err != nil {
 			return nil, fmt.Errorf("construct resource spec from hook manifest: %w", err)
 		} else {
@@ -260,7 +262,7 @@ func writeUnstructHash(unstruct *unstructured.Unstructured, hash hash.Hash32) er
 }
 
 func cleanUnstruct(unstruct *unstructured.Unstructured) *unstructured.Unstructured {
-	return resource.CleanUnstruct(unstruct, resource.CleanUnstructOptions{
+	return spec.CleanUnstruct(unstruct, spec.CleanUnstructOptions{
 		CleanManagedFields:      true,
 		CleanReleaseAnnosLabels: true,
 		CleanRuntimeData:        true,
