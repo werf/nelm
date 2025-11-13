@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.17.1](https://github.com/werf/nelm/compare/v1.17.0...v1.17.1) (2025-11-13)
+
+
+### Bug Fixes
+
+* `panic: interface conversion: plan.OperationConfig` ([df9709c](https://github.com/werf/nelm/commit/df9709c2bba64ba7214520a0c673d1d0d5f8b124))
+* new release created even if no changes ([15db0fe](https://github.com/werf/nelm/commit/15db0fec382651b3289f4ad2162c2425afb55d6e))
+* null or empty fields might fail resource deploys ([f990fc1](https://github.com/werf/nelm/commit/f990fc1135e5e2c214670f1e432d4666cb8bd79b))
+
 ## [1.17.0](https://github.com/werf/nelm/compare/v1.16.1...v1.17.0) (2025-11-10)
 
 
