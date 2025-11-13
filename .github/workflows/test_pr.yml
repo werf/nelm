@@ -33,7 +33,6 @@ jobs:
               - '**/*.go'
               - 'go.mod'
               - 'go.sum'
-              - 'Taskfile.dist.yaml'
               - 'cmd/nelm/**'
               - 'internal/**'
               - 'pkg/**'
@@ -42,15 +41,6 @@ jobs:
               - '**/*.go'
               - '**/*.yaml'
               - '**/*.yml'
-
-      - name: Debug changed files
-        run: |
-          echo "🧩 src_changed=${{ steps.changed-files.outputs.src_any_changed }}"
-          echo "🎨 lint_changed=${{ steps.changed-files.outputs.lint_any_changed }}"
-          echo "SRC files:"
-          echo "${{ steps.changed-files.outputs.src_all_changed_files }}" | tr ' ' '\n'
-          echo "LINT files:"
-          echo "${{ steps.changed-files.outputs.lint_all_changed_files }}" | tr ' ' '\n'
 
   lint:
     needs: detect-changes
