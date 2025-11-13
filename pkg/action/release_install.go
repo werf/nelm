@@ -178,7 +178,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	var lockManager *lock.LockManager
-	if m, err := lock.NewLockManager(releaseNamespace, false, clientFactory); err != nil {
+	if m, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory); err != nil {
 		return fmt.Errorf("construct lock manager: %w", err)
 	} else {
 		lockManager = m

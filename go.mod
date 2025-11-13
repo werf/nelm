@@ -38,8 +38,8 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.5.0
-	github.com/werf/3p-helm v0.0.0-20251112103649-0b91c2384f73
-	github.com/werf/common-go v0.0.0-20251017004901-cb6247f72f1a
+	github.com/werf/3p-helm v0.0.0-20251113141050-17dd24e6c20b
+	github.com/werf/common-go v0.0.0-20251113140850-a1a98e909e9b
 	github.com/werf/kubedog v0.13.1-0.20251110132552-6ffc5a117ada
 	github.com/werf/lockgate v0.1.1
 	github.com/werf/logboek v0.6.1
@@ -143,7 +143,6 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rubenv/sql-migrate v1.6.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
-	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
 	github.com/shopspring/decimal v1.3.1 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
