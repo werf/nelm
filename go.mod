@@ -1,6 +1,6 @@
 module github.com/werf/nelm
 
-go 1.23.0
+go 1.23.1
 
 require (
 	github.com/Masterminds/semver/v3 v3.3.1
