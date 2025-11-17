@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.17.2](https://github.com/werf/nelm/compare/v1.17.1...v1.17.2) (2025-11-17)
+
+
+### Bug Fixes
+
+* panics if logboek context not initialized ([0e0ea90](https://github.com/werf/nelm/commit/0e0ea9049efef95ae996cf4cc1095f7ec84a2a6c))
+* show verbose diffs by default like before ([5d32927](https://github.com/werf/nelm/commit/5d329275339cf4dd516b5ee3faa3d0f1eba9ab33))
+
 ## [1.17.1](https://github.com/werf/nelm/compare/v1.17.0...v1.17.1) (2025-11-13)
 
 
