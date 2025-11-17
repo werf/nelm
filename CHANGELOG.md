@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.2](https://github.com/werf/nelm/compare/v1.16.1...v1.16.2) (2025-11-17)
+
+
+### Bug Fixes
+
+* show verbose diffs by default like before ([89af792](https://github.com/werf/nelm/commit/89af792d7fed72f5da15e25ce82ea60f55e2c631))
+
 ## [1.16.1](https://github.com/werf/nelm/compare/v1.16.0...v1.16.1) (2025-11-06)
 
 
