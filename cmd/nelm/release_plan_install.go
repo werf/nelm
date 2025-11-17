@@ -263,7 +263,8 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.ShowVerboseDiffs, "show-verbose-diffs", false, "Show verbose diff lines", cli.AddFlagOptions{
+		// TODO(v2): get rid?
+		if err := cli.AddFlag(cmd, &cfg.ShowVerboseDiffs, "show-verbose-diffs", true, "Show verbose diff lines", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
 		}); err != nil {
