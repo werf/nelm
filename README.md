@@ -18,6 +18,8 @@ The Nelm goal is to provide a modern alternative to Helm, with long-standing iss
 
 Nelm is production-ready: as the werf deployment engine, it was battle-tested across thousands of projects for years.
 
+![install](resources/images/nelm-release-install.png)
+
 ## Table of Contents
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
