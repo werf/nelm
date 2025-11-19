@@ -32,26 +32,63 @@ const (
 	DefaultReleaseRollbackLogLevel = log.InfoLevel
 )
 
+// ReleaseRollbackOptions contains all options for rolling back a Helm release to a previous revision.
+// This operation reverts the release to a specified earlier state by deploying the resources from that revision.
 type ReleaseRollbackOptions struct {
+	// Embedded option groups for connection and tracking
 	common.KubeConnectionOptions
 	common.TrackingOptions
 
-	ExtraRuntimeAnnotations     map[string]string
-	ExtraRuntimeLabels          map[string]string
-	ForceAdoption               bool
-	NetworkParallelism          int
-	NoRemoveManualChanges       bool
-	NoShowNotes                 bool
-	ReleaseHistoryLimit         int
-	ReleaseInfoAnnotations      map[string]string
-	ReleaseLabels               map[string]string
-	ReleaseStorageDriver        string
+	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime during rollback.
+	// These are added during resource creation/update but not stored in the release.
+	ExtraRuntimeAnnotations map[string]string
+	// ExtraRuntimeLabels are additional labels to add to resources at runtime during rollback.
+	// These are added during resource creation/update but not stored in the release.
+	ExtraRuntimeLabels map[string]string
+	// ForceAdoption, when true, allows adopting resources that belong to a different Helm release.
+	// WARNING: This can lead to conflicts if resources are managed by multiple releases.
+	ForceAdoption bool
+	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
+	// Defaults to DefaultNetworkParallelism if not set or <= 0.
+	NetworkParallelism int
+	// NoRemoveManualChanges, when true, preserves fields manually added to resources in the cluster
+	// that are not present in the chart manifests. By default, such fields are removed during rollback.
+	NoRemoveManualChanges bool
+	// NoShowNotes, when true, suppresses printing of NOTES.txt after successful rollback.
+	// NOTES.txt typically contains usage instructions and next steps.
+	NoShowNotes bool
+	// ReleaseHistoryLimit sets the maximum number of release revisions to keep in storage.
+	// When exceeded, the oldest revisions are deleted. Defaults to DefaultReleaseHistoryLimit if not set or <= 0.
+	// Note: Only release metadata is deleted; actual Kubernetes resources are not affected.
+	ReleaseHistoryLimit int
+	// ReleaseInfoAnnotations are custom annotations to add to the new rollback release metadata (stored in Secret/ConfigMap).
+	// These do not affect resources but can be used for tagging releases.
+	ReleaseInfoAnnotations map[string]string
+	// ReleaseLabels are labels to add to the new rollback release storage object (Secret/ConfigMap).
+	// Used for filtering and organizing releases in storage.
+	ReleaseLabels map[string]string
+	// ReleaseStorageDriver specifies how release metadata is stored in Kubernetes.
+	// Valid values: "secret" (default), "configmap", "sql".
+	// Defaults to "secret" if not specified or set to "default".
+	ReleaseStorageDriver string
+	// ReleaseStorageSQLConnection is the SQL connection string when using SQL storage driver.
+	// Only used when ReleaseStorageDriver is "sql".
 	ReleaseStorageSQLConnection string
-	Revision                    int
-	RollbackGraphPath           string
-	RollbackReportPath          string
-	TempDirPath                 string
-	Timeout                     time.Duration
+	// Revision specifies which release revision to roll back to.
+	// If 0, rolls back to the previous deployed revision.
+	Revision int
+	// RollbackGraphPath, if specified, saves the Graphviz representation of the rollback plan to this file path.
+	// Useful for debugging and visualizing the dependency graph of resource operations.
+	RollbackGraphPath string
+	// RollbackReportPath, if specified, saves a JSON report of the rollback results to this file path.
+	// The report includes lists of completed, canceled, and failed operations.
+	RollbackReportPath string
+	// TempDirPath is the directory for temporary files during the operation.
+	// A temporary directory is created automatically if not specified.
+	TempDirPath string
+	// Timeout is the maximum duration for the entire rollback operation.
+	// If 0, no timeout is applied and the operation runs until completion or error.
+	Timeout time.Duration
 }
 
 func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseRollbackOptions) error {

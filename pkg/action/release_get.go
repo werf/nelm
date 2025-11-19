@@ -28,17 +28,38 @@ const (
 	DefaultReleaseGetLogLevel     = log.ErrorLevel
 )
 
+// ReleaseGetOptions contains all options for retrieving information about a Helm release.
+// This operation fetches release metadata, chart info, values, and resources without modifying anything.
 type ReleaseGetOptions struct {
+	// Embedded option group for Kubernetes connection
 	common.KubeConnectionOptions
 
-	NetworkParallelism          int
-	OutputFormat                string
-	OutputNoPrint               bool
-	PrintValues                 bool
-	ReleaseStorageDriver        string
+	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
+	// Defaults to DefaultNetworkParallelism if not set or <= 0.
+	NetworkParallelism int
+	// OutputFormat specifies the output format for the release information.
+	// Valid values: "yaml" (default), "json", "table".
+	// Defaults to DefaultReleaseGetOutputFormat (yaml) if not specified.
+	OutputFormat string
+	// OutputNoPrint, when true, suppresses printing the output and only returns the result data structure.
+	// Useful when calling this programmatically.
+	OutputNoPrint bool
+	// PrintValues, when true, includes the computed values used to render the release in the output.
+	// These are the merged values from all sources (values.yaml, --set flags, etc.).
+	PrintValues bool
+	// ReleaseStorageDriver specifies how release metadata is stored in Kubernetes.
+	// Valid values: "secret" (default), "configmap", "sql".
+	// Defaults to "secret" if not specified or set to "default".
+	ReleaseStorageDriver string
+	// ReleaseStorageSQLConnection is the SQL connection string when using SQL storage driver.
+	// Only used when ReleaseStorageDriver is "sql".
 	ReleaseStorageSQLConnection string
-	Revision                    int
-	TempDirPath                 string
+	// Revision specifies which release revision to retrieve.
+	// If 0, retrieves the latest deployed revision.
+	Revision int
+	// TempDirPath is the directory for temporary files during the operation.
+	// A temporary directory is created automatically if not specified.
+	TempDirPath string
 }
 
 func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseGetOptions) (*ReleaseGetResultV1, error) {

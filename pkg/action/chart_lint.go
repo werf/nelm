@@ -25,43 +25,106 @@ const (
 	DefaultChartLintLogLevel = log.InfoLevel
 )
 
+// ChartLintOptions contains all options for linting a Helm chart.
+// This operation validates chart structure, templates, and performs a dry-run deployment check.
 type ChartLintOptions struct {
+	// Embedded option groups for connection, chart repo, values, and secrets
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
 	common.ValuesOptions
 	common.SecretValuesOptions
 
-	Chart                       string
-	ChartAppVersion             string
-	ChartDirPath                string // TODO(v2): get rid
-	ChartProvenanceKeyring      string
-	ChartProvenanceStrategy     string
-	ChartRepoSkipUpdate         bool
-	ChartVersion                string
-	DefaultChartAPIVersion      string
-	DefaultChartName            string
-	DefaultChartVersion         string
-	ExtraAPIVersions            []string
-	ExtraAnnotations            map[string]string
-	ExtraLabels                 map[string]string
-	ExtraRuntimeAnnotations     map[string]string
-	ExtraRuntimeLabels          map[string]string
-	ForceAdoption               bool
-	LegacyChartType             helmopts.ChartType
-	LegacyExtraValues           map[string]interface{}
-	LegacyLogRegistryStreamOut  io.Writer
-	LocalKubeVersion            string
-	NetworkParallelism          int
-	NoFinalTracking             bool
-	NoRemoveManualChanges       bool
-	RegistryCredentialsPath     string
-	ReleaseName                 string
-	ReleaseNamespace            string
-	ReleaseStorageDriver        string
+	// Chart specifies the chart to lint. Can be a local directory path, chart archive,
+	// OCI registry URL (oci://registry/chart), or chart repository reference (repo/chart).
+	// Defaults to current directory if not specified.
+	Chart string
+	// ChartAppVersion overrides the appVersion field in Chart.yaml.
+	// Used to set application version metadata without modifying the chart file.
+	ChartAppVersion string
+	// ChartDirPath is deprecated (TODO v2: remove). Use Chart instead.
+	ChartDirPath string // TODO(v2): get rid
+	// ChartProvenanceKeyring is the path to a keyring file containing public keys
+	// used to verify chart provenance signatures. Used with signed charts for security.
+	ChartProvenanceKeyring string
+	// ChartProvenanceStrategy defines how to verify chart provenance.
+	// Defaults to DefaultChartProvenanceStrategy if not set.
+	ChartProvenanceStrategy string
+	// ChartRepoSkipUpdate, when true, skips updating the chart repository cache before fetching the chart.
+	// Useful for offline operations or when repository is known to be up-to-date.
+	ChartRepoSkipUpdate bool
+	// ChartVersion specifies the version of the chart to lint (e.g., "1.2.3").
+	// If not specified, the latest version is used.
+	ChartVersion string
+	// DefaultChartAPIVersion sets the default Chart API version when Chart.yaml doesn't specify one.
+	DefaultChartAPIVersion string
+	// DefaultChartName sets the default chart name when Chart.yaml doesn't specify one.
+	DefaultChartName string
+	// DefaultChartVersion sets the default chart version when Chart.yaml doesn't specify one.
+	DefaultChartVersion string
+	// ExtraAPIVersions is a list of additional Kubernetes API versions to include during linting.
+	// Used by Capabilities.APIVersions in templates to check for API availability.
+	ExtraAPIVersions []string
+	// ExtraAnnotations are additional Kubernetes annotations to add to all chart resources during validation.
+	// These are used for the validation dry-run.
+	ExtraAnnotations map[string]string
+	// ExtraLabels are additional Kubernetes labels to add to all chart resources during validation.
+	// These are used for the validation dry-run.
+	ExtraLabels map[string]string
+	// ExtraRuntimeAnnotations are additional annotations to add to resources during validation.
+	// These are used for the validation dry-run but not stored.
+	ExtraRuntimeAnnotations map[string]string
+	// ExtraRuntimeLabels are additional labels to add to resources during validation.
+	// These are used for the validation dry-run but not stored.
+	ExtraRuntimeLabels map[string]string
+	// ForceAdoption, when true, allows adopting resources during validation that belong to a different Helm release.
+	// Used during the validation phase to check if resources could be adopted.
+	ForceAdoption bool
+	// LegacyChartType specifies the chart type for legacy compatibility.
+	// Used internally for backward compatibility with werf integration.
+	LegacyChartType helmopts.ChartType
+	// LegacyExtraValues provides additional values programmatically.
+	// Used internally for backward compatibility with werf integration.
+	LegacyExtraValues map[string]interface{}
+	// LegacyLogRegistryStreamOut is the output writer for Helm registry client logs.
+	// Defaults to io.Discard if not set. Used for debugging registry operations.
+	LegacyLogRegistryStreamOut io.Writer
+	// LocalKubeVersion specifies the Kubernetes version to use for linting when not connected to a cluster.
+	// Format: "major.minor.patch" (e.g., "1.28.0"). Defaults to DefaultLocalKubeVersion if not set.
+	LocalKubeVersion string
+	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
+	// Defaults to DefaultNetworkParallelism if not set or <= 0.
+	NetworkParallelism int
+	// NoFinalTracking, when true, disables final tracking operations during validation to speed up linting.
+	NoFinalTracking bool
+	// NoRemoveManualChanges, when true, preserves fields during validation that would be manually added.
+	// Used in the validation dry-run to check resource compatibility.
+	NoRemoveManualChanges bool
+	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
+	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
+	// Used for authenticating to OCI registries when pulling charts.
+	RegistryCredentialsPath string
+	// ReleaseName is the name of the release to use for linting.
+	// Available as .Release.Name in chart templates. Defaults to a stub value if not specified.
+	ReleaseName string
+	// ReleaseNamespace is the namespace where the release would be installed for linting purposes.
+	// Available as .Release.Namespace in chart templates. Defaults to a stub value if not specified.
+	ReleaseNamespace string
+	// ReleaseStorageDriver specifies how release metadata would be stored (affects validation).
+	// Valid values: "secret" (default), "configmap", "sql", "memory".
+	// Set to "memory" automatically when Remote is false.
+	ReleaseStorageDriver string
+	// ReleaseStorageSQLConnection is the SQL connection string when using SQL storage driver.
+	// Only used when ReleaseStorageDriver is "sql".
 	ReleaseStorageSQLConnection string
-	Remote                      bool
-	TempDirPath                 string
-	TemplatesAllowDNS           bool
+	// Remote, when true, connects to a real Kubernetes cluster for validation.
+	// When false, performs only local validation without cluster connectivity.
+	Remote bool
+	// TempDirPath is the directory for temporary files during the operation.
+	// A temporary directory is created automatically if not specified.
+	TempDirPath string
+	// TemplatesAllowDNS, when true, enables DNS lookups in chart templates using template functions.
+	// WARNING: This can make template rendering non-deterministic and slower.
+	TemplatesAllowDNS bool
 }
 
 func ChartLint(ctx context.Context, opts ChartLintOptions) error {

@@ -7,36 +7,78 @@ import (
 	"github.com/samber/lo"
 )
 
+// KubeConnectionOptions contains all options for connecting to a Kubernetes cluster.
+// These options configure authentication, TLS settings, context selection, and performance parameters.
 type KubeConnectionOptions struct {
-	KubeAPIServerAddress   string
+	// KubeAPIServerAddress is the Kubernetes API server address (e.g., "https://kubernetes.example.com:6443").
+	KubeAPIServerAddress string
+	// KubeAuthProviderConfig is the configuration map for the authentication provider in Kubernetes API.
 	KubeAuthProviderConfig map[string]string
-	KubeAuthProviderName   string
-	KubeBasicAuthPassword  string
-	KubeBasicAuthUsername  string
-	KubeBearerTokenData    string
-	KubeBearerTokenPath    string
-	KubeBurstLimit         int
-	KubeConfigBase64       string
-	KubeConfigPaths        []string
-	KubeContextCluster     string
-	KubeContextCurrent     string
-	KubeContextUser        string
-	KubeImpersonateGroups  []string
-	KubeImpersonateUID     string
-	KubeImpersonateUser    string
-	KubeProxyURL           string
-	KubeQPSLimit           int
-	KubeRequestTimeout     time.Duration
-	KubeSkipTLSVerify      bool
-	KubeTLSCAData          string
-	KubeTLSCAPath          string
-	KubeTLSClientCertData  string
-	KubeTLSClientCertPath  string
-	KubeTLSClientKeyData   string
-	KubeTLSClientKeyPath   string
-	KubeTLSServerName      string
+	// KubeAuthProviderName is the name of the authentication provider for Kubernetes (e.g., "gcp", "azure", "oidc").
+	KubeAuthProviderName string
+	// KubeBasicAuthPassword is the password for HTTP basic authentication to the Kubernetes API.
+	KubeBasicAuthPassword string
+	// KubeBasicAuthUsername is the username for HTTP basic authentication to the Kubernetes API.
+	KubeBasicAuthUsername string
+	// KubeBearerTokenData is the bearer token data for authentication in Kubernetes.
+	KubeBearerTokenData string
+	// KubeBearerTokenPath is the path to a file containing the bearer token for Kubernetes authentication.
+	KubeBearerTokenPath string
+	// KubeBurstLimit is the maximum burst limit for throttling requests to Kubernetes API.
+	// Defaults to DefaultBurstLimit (100) if not set or <= 0.
+	KubeBurstLimit int
+	// KubeConfigBase64 is the base64-encoded kubeconfig file content.
+	// Takes precedence over reading from file paths.
+	KubeConfigBase64 string
+	// KubeConfigPaths is a list of paths to kubeconfig files. If multiple are specified, their contents are merged.
+	// Defaults to ~/.kube/config if both this and KubeConfigBase64 are empty.
+	KubeConfigPaths []string
+	// KubeContextCluster overrides the cluster to use from the kubeconfig for the current context.
+	KubeContextCluster string
+	// KubeContextCurrent specifies which kubeconfig context to use (e.g., "production", "staging").
+	KubeContextCurrent string
+	// KubeContextUser overrides the user to use from the kubeconfig for the current context.
+	KubeContextUser string
+	// KubeImpersonateGroups sets the Impersonate-Group headers when authenticating in Kubernetes.
+	// Used to impersonate specific groups for authorization purposes.
+	KubeImpersonateGroups []string
+	// KubeImpersonateUID sets the Impersonate-Uid header when authenticating in Kubernetes.
+	KubeImpersonateUID string
+	// KubeImpersonateUser sets the Impersonate-User header when authenticating in Kubernetes.
+	// Used to perform actions as a different user.
+	KubeImpersonateUser string
+	// KubeProxyURL is the proxy URL to use for all requests to the Kubernetes API (e.g., "http://proxy.example.com:8080").
+	KubeProxyURL string
+	// KubeQPSLimit is the Queries Per Second limit for requests to Kubernetes API.
+	// Controls the rate of API requests. Defaults to DefaultQPSLimit (30) if not set or <= 0.
+	KubeQPSLimit int
+	// KubeRequestTimeout is the timeout duration for all requests to the Kubernetes API.
+	// If 0, no timeout is applied.
+	KubeRequestTimeout time.Duration
+	// KubeSkipTLSVerify, when true, disables TLS certificate verification for the Kubernetes API.
+	// WARNING: This makes connections insecure and should only be used for testing.
+	KubeSkipTLSVerify bool
+	// KubeTLSCAData is the PEM-encoded TLS CA certificate data for the Kubernetes API server.
+	KubeTLSCAData string
+	// KubeTLSCAPath is the path to the PEM-encoded TLS CA certificate file for the Kubernetes API server.
+	KubeTLSCAPath string
+	// KubeTLSClientCertData is the PEM-encoded TLS client certificate data for connecting to Kubernetes API.
+	KubeTLSClientCertData string
+	// KubeTLSClientCertPath is the path to the PEM-encoded TLS client certificate file for connecting to Kubernetes API.
+	KubeTLSClientCertPath string
+	// KubeTLSClientKeyData is the PEM-encoded TLS client key data for connecting to Kubernetes API.
+	KubeTLSClientKeyData string
+	// KubeTLSClientKeyPath is the path to the PEM-encoded TLS client key file for connecting to Kubernetes API.
+	KubeTLSClientKeyPath string
+	// KubeTLSServerName is the server name to use for Kubernetes API TLS validation.
+	// Useful when the API server hostname differs from the TLS certificate's subject.
+	KubeTLSServerName string
 }
 
+// ApplyDefaults sets default values for KubeConnectionOptions.
+// If no kubeconfig is specified (neither base64 nor paths), it defaults to ~/.kube/config.
+// If KubeQPSLimit is not set, it defaults to DefaultQPSLimit (30).
+// If KubeBurstLimit is not set, it defaults to DefaultBurstLimit (100).
 func (opts *KubeConnectionOptions) ApplyDefaults(homeDir string) {
 	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
 		opts.KubeConfigPaths = []string{filepath.Join(homeDir, ".kube", "config")}
@@ -51,58 +93,138 @@ func (opts *KubeConnectionOptions) ApplyDefaults(homeDir string) {
 	}
 }
 
+// ChartRepoConnectionOptions contains all options for connecting to a Helm chart repository.
+// These options configure authentication, TLS settings, and connection parameters for chart repositories.
 type ChartRepoConnectionOptions struct {
+	// ChartRepoBasicAuthPassword is the password for HTTP basic authentication to the chart repository.
 	ChartRepoBasicAuthPassword string
+	// ChartRepoBasicAuthUsername is the username for HTTP basic authentication to the chart repository.
 	ChartRepoBasicAuthUsername string
-	ChartRepoCAPath            string
-	ChartRepoCertPath          string
-	ChartRepoInsecure          bool
-	ChartRepoKeyPath           string
-	ChartRepoPassCreds         bool
-	ChartRepoRequestTimeout    time.Duration
-	ChartRepoSkipTLSVerify     bool
-	ChartRepoURL               string
+	// ChartRepoCAPath is the path to the TLS CA certificate file for verifying the chart repository server.
+	ChartRepoCAPath string
+	// ChartRepoCertPath is the path to the TLS client certificate file for connecting to the chart repository.
+	ChartRepoCertPath string
+	// ChartRepoInsecure, when true, allows insecure HTTP connections to the chart repository.
+	// WARNING: This disables HTTPS and should only be used for testing.
+	ChartRepoInsecure bool
+	// ChartRepoKeyPath is the path to the TLS client key file for connecting to the chart repository.
+	ChartRepoKeyPath string
+	// ChartRepoPassCreds, when true, passes repository credentials to all domains during chart operations.
+	// By default, credentials are only passed to the original repository domain.
+	ChartRepoPassCreds bool
+	// ChartRepoRequestTimeout is the timeout duration for requests to the chart repository.
+	// If 0, no timeout is applied.
+	ChartRepoRequestTimeout time.Duration
+	// ChartRepoSkipTLSVerify, when true, disables TLS certificate verification for the chart repository.
+	// WARNING: This makes connections insecure and should only be used for testing.
+	ChartRepoSkipTLSVerify bool
+	// ChartRepoURL is the URL of the chart repository to use for chart lookups (e.g., "https://charts.example.com").
+	ChartRepoURL string
 }
 
+// ApplyDefaults sets default values for ChartRepoConnectionOptions.
+// Currently, there are no defaults to apply for chart repository options.
 func (opts *ChartRepoConnectionOptions) ApplyDefaults() {}
 
+// ValuesOptions contains all options for providing values to Helm charts.
+// Values can be provided through files, command-line flags, or programmatically.
+// Multiple sources are merged together with later values taking precedence.
 type ValuesOptions struct {
+	// DefaultValuesDisable, when true, ignores the values.yaml file from the top-level chart.
+	// Useful when you want complete control over values without chart defaults.
 	DefaultValuesDisable bool
-	RuntimeSetJSON       []string
-	ValuesFiles          []string
-	ValuesSet            []string
-	ValuesSetFile        []string
-	ValuesSetJSON        []string
-	ValuesSetLiteral     []string
-	ValuesSetString      []string
+	// RuntimeSetJSON is a list of key-value pairs in "key=json" format to set in $.Runtime.
+	// This is meant to be generated programmatically. Users should prefer ValuesSetJSON.
+	// Example: ["runtime.env=dev", "runtime.timestamp=1234567890"]
+	RuntimeSetJSON []string
+	// ValuesFiles is a list of paths to additional values files to merge with chart values.
+	// Files are merged in order, with later files overriding earlier ones.
+	ValuesFiles []string
+	// ValuesSet is a list of key-value pairs in "key=value" format to set chart values.
+	// Values are parsed and may become various types (string, int, bool, etc.).
+	// Example: ["image.tag=v1.2.3", "replicas=3"]
+	ValuesSet []string
+	// ValuesSetFile is a list of key-file pairs in "key=filepath" format.
+	// The value is set to the contents of the specified file.
+	// Example: ["config.yaml=/path/to/config.yaml"]
+	ValuesSetFile []string
+	// ValuesSetJSON is a list of key-value pairs in "key=json" format.
+	// Values must be valid JSON and are parsed as such.
+	// Example: ["config={\"key\":\"value\"}", "list=[1,2,3]"]
+	ValuesSetJSON []string
+	// ValuesSetLiteral is a list of key-value pairs in "key=value" format.
+	// Values always become literal strings, even if they look like numbers or booleans.
+	// Example: ["version=1.0.0", "enabled=true"] results in strings "1.0.0" and "true"
+	ValuesSetLiteral []string
+	// ValuesSetString is a list of key-value pairs in "key=value" format.
+	// Values always become strings (no type inference).
+	// Example: ["image.tag=v1.2.3", "count=5"] results in strings "v1.2.3" and "5"
+	ValuesSetString []string
 }
 
+// ApplyDefaults sets default values for ValuesOptions.
+// Currently, there are no defaults to apply for values options.
 func (opts *ValuesOptions) ApplyDefaults() {}
 
+// SecretValuesOptions contains all options for handling encrypted values files in Helm charts.
+// Nelm supports encrypting sensitive values using a secret key for secure storage in version control.
 type SecretValuesOptions struct {
+	// DefaultSecretValuesDisable, when true, ignores the default secret-values.yaml file from the chart.
+	// Useful when you don't want to use the chart's default encrypted values.
 	DefaultSecretValuesDisable bool
-	SecretKey                  string
-	SecretKeyIgnore            bool
-	SecretValuesFiles          []string
-	SecretWorkDir              string
+	// SecretKey is the encryption/decryption key for secret values files.
+	// Must be set (or available via $NELM_SECRET_KEY) to work with encrypted values.
+	SecretKey string
+	// SecretKeyIgnore, when true, ignores the secret key and skips decryption of secret values files.
+	// Useful for operations that don't require access to secrets.
+	SecretKeyIgnore bool
+	// SecretValuesFiles is a list of paths to encrypted values files to decrypt and merge.
+	// Files are decrypted in-memory during chart operations using the secret key.
+	SecretValuesFiles []string
+	// SecretWorkDir is the working directory for resolving relative paths in secret operations.
+	// Defaults to the current directory if not specified.
+	SecretWorkDir string
 }
 
+// ApplyDefaults sets default values for SecretValuesOptions.
+// If SecretWorkDir is not set, it defaults to the provided currentDir.
 func (opts *SecretValuesOptions) ApplyDefaults(currentDir string) {
 	if opts.SecretWorkDir == "" {
 		opts.SecretWorkDir = currentDir
 	}
 }
 
+// TrackingOptions contains all options for tracking Kubernetes resources during release operations.
+// Tracking monitors resource status, logs, and events during installation, upgrades, and rollbacks.
 type TrackingOptions struct {
-	NoFinalTracking            bool
-	NoPodLogs                  bool
-	NoProgressTablePrint       bool
+	// NoFinalTracking, when true, disables final tracking of resources after the release operation.
+	// Final tracking waits for all resources to reach their ready state.
+	NoFinalTracking bool
+	// NoPodLogs, when true, disables collection and printing of Pod logs during tracking.
+	// By default, logs from failing or starting Pods are shown.
+	NoPodLogs bool
+	// NoProgressTablePrint, when true, disables real-time progress table display.
+	// The progress table shows logs, events, and status information for release resources.
+	NoProgressTablePrint bool
+	// ProgressTablePrintInterval is the interval for updating the progress table display.
+	// Defaults to DefaultProgressPrintInterval (5 seconds) if not set or <= 0.
 	ProgressTablePrintInterval time.Duration
-	TrackCreationTimeout       time.Duration
-	TrackDeletionTimeout       time.Duration
-	TrackReadinessTimeout      time.Duration
+	// TrackCreationTimeout is the timeout duration for tracking resource creation.
+	// If resource creation doesn't complete within this time, the operation fails.
+	// If 0, no timeout is applied and resources are tracked indefinitely.
+	TrackCreationTimeout time.Duration
+	// TrackDeletionTimeout is the timeout duration for tracking resource deletion.
+	// If resource deletion doesn't complete within this time, the operation fails.
+	// If 0, no timeout is applied and resources are tracked indefinitely.
+	TrackDeletionTimeout time.Duration
+	// TrackReadinessTimeout is the timeout duration for tracking resource readiness.
+	// If resources don't become ready within this time, the operation fails.
+	// If 0, no timeout is applied and resources are tracked indefinitely.
+	TrackReadinessTimeout time.Duration
 }
 
+// ApplyDefaults sets default values for TrackingOptions.
+// If ProgressTablePrintInterval is not set, it defaults to DefaultProgressPrintInterval (5 seconds).
 func (opts *TrackingOptions) ApplyDefaults() {
 	if opts.ProgressTablePrintInterval <= 0 {
 		opts.ProgressTablePrintInterval = DefaultProgressPrintInterval

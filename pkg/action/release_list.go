@@ -29,16 +29,35 @@ const (
 	DefaultReleaseListLogLevel     = log.ErrorLevel
 )
 
+// ReleaseListOptions contains all options for listing Helm releases in a namespace.
+// This operation retrieves information about all releases without modifying anything.
 type ReleaseListOptions struct {
+	// Embedded option group for Kubernetes connection
 	common.KubeConnectionOptions
 
-	NetworkParallelism          int
-	OutputFormat                string
-	OutputNoPrint               bool
-	ReleaseNamespace            string
-	ReleaseStorageDriver        string
+	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
+	// Defaults to DefaultNetworkParallelism if not set or <= 0.
+	NetworkParallelism int
+	// OutputFormat specifies the output format for the release list.
+	// Valid values: "table" (default), "yaml", "json".
+	// Defaults to DefaultReleaseListOutputFormat (table) if not specified.
+	OutputFormat string
+	// OutputNoPrint, when true, suppresses printing the output and only returns the result data structure.
+	// Useful when calling this programmatically.
+	OutputNoPrint bool
+	// ReleaseNamespace specifies the namespace to list releases from.
+	// If empty, uses the namespace from kubeconfig context.
+	ReleaseNamespace string
+	// ReleaseStorageDriver specifies how release metadata is stored in Kubernetes.
+	// Valid values: "secret" (default), "configmap", "sql".
+	// Defaults to "secret" if not specified or set to "default".
+	ReleaseStorageDriver string
+	// ReleaseStorageSQLConnection is the SQL connection string when using SQL storage driver.
+	// Only used when ReleaseStorageDriver is "sql".
 	ReleaseStorageSQLConnection string
-	TempDirPath                 string
+	// TempDirPath is the directory for temporary files during the operation.
+	// A temporary directory is created automatically if not specified.
+	TempDirPath string
 }
 
 func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResultV1, error) {

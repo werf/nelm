@@ -30,51 +30,131 @@ const (
 	DefaultReleasePlanInstallLogLevel = log.InfoLevel
 )
 
+// ErrChangesPlanned is returned when ErrorIfChangesPlanned is true and the plan includes changes.
+// This is used to signal a specific exit code (2) indicating changes are planned without errors.
 var ErrChangesPlanned = errors.New("changes planned")
 
+// ReleasePlanInstallOptions contains all options for planning a Helm release installation to Kubernetes.
+// This operation performs a dry-run that shows what changes would be made without actually applying them.
 type ReleasePlanInstallOptions struct {
+	// Embedded option groups for connection, values, and secrets
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
 	common.ValuesOptions
 	common.SecretValuesOptions
 
-	Chart                       string
-	ChartAppVersion             string
-	ChartDirPath                string // TODO(v2): get rid
-	ChartProvenanceKeyring      string
-	ChartProvenanceStrategy     string
-	ChartRepoSkipUpdate         bool
-	ChartVersion                string
-	DefaultChartAPIVersion      string
-	DefaultChartName            string
-	DefaultChartVersion         string
-	DiffContextLines            int
-	ErrorIfChangesPlanned       bool
-	ExtraAnnotations            map[string]string
-	ExtraLabels                 map[string]string
-	ExtraRuntimeAnnotations     map[string]string
-	ExtraRuntimeLabels          map[string]string
-	ForceAdoption               bool
-	InstallGraphPath            string
-	LegacyChartType             helmopts.ChartType
-	LegacyExtraValues           map[string]interface{}
-	LegacyLogRegistryStreamOut  io.Writer
-	NetworkParallelism          int
-	NoFinalTracking             bool
-	NoInstallStandaloneCRDs     bool
-	NoRemoveManualChanges       bool
-	RegistryCredentialsPath     string
-	ReleaseInfoAnnotations      map[string]string
-	ReleaseLabels               map[string]string
-	ReleaseStorageDriver        string
+	// Chart specifies the chart to plan installation for. Can be a local directory path, chart archive,
+	// OCI registry URL (oci://registry/chart), or chart repository reference (repo/chart).
+	// Defaults to current directory if not specified.
+	Chart string
+	// ChartAppVersion overrides the appVersion field in Chart.yaml.
+	// Used to set application version metadata without modifying the chart file.
+	ChartAppVersion string
+	// ChartDirPath is deprecated (TODO v2: remove). Use Chart instead.
+	ChartDirPath string // TODO(v2): get rid
+	// ChartProvenanceKeyring is the path to a keyring file containing public keys
+	// used to verify chart provenance signatures. Used with signed charts for security.
+	ChartProvenanceKeyring string
+	// ChartProvenanceStrategy defines how to verify chart provenance.
+	// Defaults to DefaultChartProvenanceStrategy if not set.
+	ChartProvenanceStrategy string
+	// ChartRepoSkipUpdate, when true, skips updating the chart repository cache before fetching the chart.
+	// Useful for offline operations or when repository is known to be up-to-date.
+	ChartRepoSkipUpdate bool
+	// ChartVersion specifies the version of the chart to plan for (e.g., "1.2.3").
+	// If not specified, the latest version is used.
+	ChartVersion string
+	// DefaultChartAPIVersion sets the default Chart API version when Chart.yaml doesn't specify one.
+	DefaultChartAPIVersion string
+	// DefaultChartName sets the default chart name when Chart.yaml doesn't specify one.
+	DefaultChartName string
+	// DefaultChartVersion sets the default chart version when Chart.yaml doesn't specify one.
+	DefaultChartVersion string
+	// DiffContextLines specifies the number of context lines to show around diffs in the output.
+	// Defaults to DefaultDiffContextLines (3) if not set or < 0. Set to 0 to hide context.
+	DiffContextLines int
+	// ErrorIfChangesPlanned, when true, returns ErrChangesPlanned if any changes are detected.
+	// Used with --exit-code flag to return exit code 2 if changes are planned, 0 if no changes, 1 on error.
+	ErrorIfChangesPlanned bool
+	// ExtraAnnotations are additional Kubernetes annotations to add to all chart resources.
+	// These are added during chart rendering, before resources are stored in the release.
+	ExtraAnnotations map[string]string
+	// ExtraLabels are additional Kubernetes labels to add to all chart resources.
+	// These are added during chart rendering, before resources are stored in the release.
+	ExtraLabels map[string]string
+	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime.
+	// These are added during resource creation/update but not stored in the release.
+	ExtraRuntimeAnnotations map[string]string
+	// ExtraRuntimeLabels are additional labels to add to resources at runtime.
+	// These are added during resource creation/update but not stored in the release.
+	ExtraRuntimeLabels map[string]string
+	// ForceAdoption, when true, allows adopting resources that belong to a different Helm release.
+	// WARNING: This can lead to conflicts if resources are managed by multiple releases.
+	ForceAdoption bool
+	// InstallGraphPath, if specified, saves the Graphviz representation of the install plan to this file path.
+	// Useful for debugging and visualizing the dependency graph of resource operations.
+	InstallGraphPath string
+	// LegacyChartType specifies the chart type for legacy compatibility.
+	// Used internally for backward compatibility with werf integration.
+	LegacyChartType helmopts.ChartType
+	// LegacyExtraValues provides additional values programmatically.
+	// Used internally for backward compatibility with werf integration.
+	LegacyExtraValues map[string]interface{}
+	// LegacyLogRegistryStreamOut is the output writer for Helm registry client logs.
+	// Defaults to io.Discard if not set. Used for debugging registry operations.
+	LegacyLogRegistryStreamOut io.Writer
+	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
+	// Defaults to DefaultNetworkParallelism if not set or <= 0.
+	NetworkParallelism int
+	// NoFinalTracking, when true, disables final tracking operations in the plan that have no
+	// create/update/delete resource operations after them. This speeds up plan generation.
+	NoFinalTracking bool
+	// NoInstallStandaloneCRDs, when true, skips installation of CustomResourceDefinitions from the "crds/" directory.
+	// By default, CRDs are installed first before other chart resources.
+	NoInstallStandaloneCRDs bool
+	// NoRemoveManualChanges, when true, preserves fields manually added to resources in the cluster
+	// that are not present in the chart manifests. By default, such fields are removed during updates.
+	NoRemoveManualChanges bool
+	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
+	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
+	// Used for authenticating to OCI registries when pulling charts.
+	RegistryCredentialsPath string
+	// ReleaseInfoAnnotations are custom annotations to add to the release metadata (stored in Secret/ConfigMap).
+	// These do not affect resources but can be used for tagging releases.
+	ReleaseInfoAnnotations map[string]string
+	// ReleaseLabels are labels to add to the release storage object (Secret/ConfigMap).
+	// Used for filtering and organizing releases in storage.
+	ReleaseLabels map[string]string
+	// ReleaseStorageDriver specifies how release metadata is stored in Kubernetes.
+	// Valid values: "secret" (default), "configmap", "sql".
+	// Defaults to "secret" if not specified or set to "default".
+	ReleaseStorageDriver string
+	// ReleaseStorageSQLConnection is the SQL connection string when using SQL storage driver.
+	// Only used when ReleaseStorageDriver is "sql".
 	ReleaseStorageSQLConnection string
-	ShowInsignificantDiffs      bool
-	ShowSensitiveDiffs          bool
-	ShowVerboseCRDDiffs         bool
-	ShowVerboseDiffs            bool
-	TempDirPath                 string
-	TemplatesAllowDNS           bool
-	Timeout                     time.Duration
+	// ShowInsignificantDiffs, when true, includes insignificant changes in diff output.
+	// Insignificant changes include: Helm SHA annotations, werf.io annotations, and managedFields.
+	// By default, these are hidden to reduce noise in diffs.
+	ShowInsignificantDiffs bool
+	// ShowSensitiveDiffs, when true, shows diff content for sensitive resources (Secrets, resources with
+	// werf.io/sensitive="true" annotation, or fields matching werf.io/sensitive-paths).
+	// By default, sensitive data is redacted in diffs and shown as "<hidden N bytes, hash XXX>".
+	ShowSensitiveDiffs bool
+	// ShowVerboseCRDDiffs, when true, shows verbose diffs for CRD create/delete operations.
+	// By default, CRD diffs are hidden with "<hidden verbose CRD changes>" to reduce noise.
+	ShowVerboseCRDDiffs bool
+	// ShowVerboseDiffs, when true, shows verbose diffs for resource create/delete operations.
+	// Defaults to true. When false, create/delete diffs are hidden with "<hidden verbose changes>".
+	ShowVerboseDiffs bool
+	// TempDirPath is the directory for temporary files during the operation.
+	// A temporary directory is created automatically if not specified.
+	TempDirPath string
+	// TemplatesAllowDNS, when true, enables DNS lookups in chart templates using template functions.
+	// WARNING: This can make template rendering non-deterministic and slower.
+	TemplatesAllowDNS bool
+	// Timeout is the maximum duration for the entire plan operation.
+	// If 0, no timeout is applied and the operation runs until completion or error.
+	Timeout time.Duration
 }
 
 func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleasePlanInstallOptions) error {
