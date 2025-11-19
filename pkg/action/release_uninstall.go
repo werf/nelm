@@ -33,20 +33,45 @@ const (
 	DefaultReleaseUninstallLogLevel = log.InfoLevel
 )
 
+// ReleaseUninstallOptions contains all options for uninstalling a Helm release from Kubernetes.
+// This operation removes all resources associated with a release and deletes the release history.
 type ReleaseUninstallOptions struct {
+	// Embedded option groups for connection and tracking
 	common.KubeConnectionOptions
 	common.TrackingOptions
 
-	DeleteReleaseNamespace      bool
-	NetworkParallelism          int
-	NoRemoveManualChanges       bool
-	ReleaseHistoryLimit         int
-	ReleaseStorageDriver        string
+	// DeleteReleaseNamespace, when true, deletes the release namespace after uninstalling the release.
+	// WARNING: This will delete the entire namespace including resources not managed by this release.
+	DeleteReleaseNamespace bool
+	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
+	// Defaults to DefaultNetworkParallelism if not set or <= 0.
+	NetworkParallelism int
+	// NoRemoveManualChanges, when true, preserves fields manually added to resources in the cluster
+	// that are not present in the chart manifests. By default, such fields are removed during deletion.
+	NoRemoveManualChanges bool
+	// ReleaseHistoryLimit sets the maximum number of release revisions to keep in storage.
+	// Defaults to DefaultReleaseHistoryLimit if not set or <= 0.
+	// After uninstall, only the uninstall record itself is kept.
+	ReleaseHistoryLimit int
+	// ReleaseStorageDriver specifies how release metadata is stored in Kubernetes.
+	// Valid values: "secret" (default), "configmap", "sql".
+	// Defaults to "secret" if not specified or set to "default".
+	ReleaseStorageDriver string
+	// ReleaseStorageSQLConnection is the SQL connection string when using SQL storage driver.
+	// Only used when ReleaseStorageDriver is "sql".
 	ReleaseStorageSQLConnection string
-	TempDirPath                 string
-	Timeout                     time.Duration
-	UninstallGraphPath          string
-	UninstallReportPath         string
+	// TempDirPath is the directory for temporary files during the operation.
+	// A temporary directory is created automatically if not specified.
+	TempDirPath string
+	// Timeout is the maximum duration for the entire uninstall operation.
+	// If 0, no timeout is applied and the operation runs until completion or error.
+	Timeout time.Duration
+	// UninstallGraphPath, if specified, saves the Graphviz representation of the uninstall plan to this file path.
+	// Useful for debugging and visualizing the dependency graph of resource deletion operations.
+	UninstallGraphPath string
+	// UninstallReportPath, if specified, saves a JSON report of the uninstallation results to this file path.
+	// The report includes lists of completed, canceled, and failed operations.
+	UninstallReportPath string
 }
 
 func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseUninstallOptions) error {

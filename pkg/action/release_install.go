@@ -38,49 +38,124 @@ const (
 	DefaultReleaseInstallLogLevel = log.InfoLevel
 )
 
+// ReleaseInstallOptions contains all options for installing a Helm release to Kubernetes.
+// This operation deploys a chart to a cluster, creating or upgrading resources as needed.
 type ReleaseInstallOptions struct {
+	// Embedded option groups for connection, values, secrets, and tracking
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
 	common.ValuesOptions
 	common.SecretValuesOptions
 	common.TrackingOptions
 
-	AutoRollback                bool
-	Chart                       string
-	ChartAppVersion             string
-	ChartDirPath                string // TODO(v2): get rid
-	ChartProvenanceKeyring      string
-	ChartProvenanceStrategy     string
-	ChartRepoSkipUpdate         bool
-	ChartVersion                string
-	DefaultChartAPIVersion      string
-	DefaultChartName            string
-	DefaultChartVersion         string
-	ExtraAnnotations            map[string]string
-	ExtraLabels                 map[string]string
-	ExtraRuntimeAnnotations     map[string]string
-	ExtraRuntimeLabels          map[string]string
-	ForceAdoption               bool
-	InstallGraphPath            string
-	InstallReportPath           string
-	LegacyChartType             helmopts.ChartType
-	LegacyExtraValues           map[string]interface{}
-	LegacyLogRegistryStreamOut  io.Writer
-	NetworkParallelism          int
-	NoInstallStandaloneCRDs     bool
-	NoRemoveManualChanges       bool
-	NoShowNotes                 bool
-	RegistryCredentialsPath     string
-	ReleaseHistoryLimit         int
-	ReleaseInfoAnnotations      map[string]string
-	ReleaseLabels               map[string]string
-	ReleaseStorageDriver        string
+	// AutoRollback, when true, automatically rolls back to the previous deployed release on installation failure.
+	// Only works if there is a previously successfully deployed release.
+	AutoRollback bool
+	// Chart specifies the chart to install. Can be a local directory path, chart archive,
+	// OCI registry URL (oci://registry/chart), or chart repository reference (repo/chart).
+	// Defaults to current directory if not specified.
+	Chart string
+	// ChartAppVersion overrides the appVersion field in Chart.yaml.
+	// Used to set application version metadata without modifying the chart file.
+	ChartAppVersion string
+	// ChartDirPath is deprecated (TODO v2: remove). Use Chart instead.
+	ChartDirPath string // TODO(v2): get rid
+	// ChartProvenanceKeyring is the path to a keyring file containing public keys
+	// used to verify chart provenance signatures. Used with signed charts for security.
+	ChartProvenanceKeyring string
+	// ChartProvenanceStrategy defines how to verify chart provenance.
+	// Defaults to DefaultChartProvenanceStrategy if not set.
+	ChartProvenanceStrategy string
+	// ChartRepoSkipUpdate, when true, skips updating the chart repository cache before fetching the chart.
+	// Useful for offline operations or when repository is known to be up-to-date.
+	ChartRepoSkipUpdate bool
+	// ChartVersion specifies the version of the chart to install (e.g., "1.2.3").
+	// If not specified, the latest version is used.
+	ChartVersion string
+	// DefaultChartAPIVersion sets the default Chart API version when Chart.yaml doesn't specify one.
+	DefaultChartAPIVersion string
+	// DefaultChartName sets the default chart name when Chart.yaml doesn't specify one.
+	DefaultChartName string
+	// DefaultChartVersion sets the default chart version when Chart.yaml doesn't specify one.
+	DefaultChartVersion string
+	// ExtraAnnotations are additional Kubernetes annotations to add to all chart resources.
+	// These are added during chart rendering, before resources are stored in the release.
+	ExtraAnnotations map[string]string
+	// ExtraLabels are additional Kubernetes labels to add to all chart resources.
+	// These are added during chart rendering, before resources are stored in the release.
+	ExtraLabels map[string]string
+	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime.
+	// These are added during resource creation/update but not stored in the release.
+	ExtraRuntimeAnnotations map[string]string
+	// ExtraRuntimeLabels are additional labels to add to resources at runtime.
+	// These are added during resource creation/update but not stored in the release.
+	ExtraRuntimeLabels map[string]string
+	// ForceAdoption, when true, allows adopting resources that belong to a different Helm release.
+	// WARNING: This can lead to conflicts if resources are managed by multiple releases.
+	ForceAdoption bool
+	// InstallGraphPath, if specified, saves the Graphviz representation of the install plan to this file path.
+	// Useful for debugging and visualizing the dependency graph of resource operations.
+	InstallGraphPath string
+	// InstallReportPath, if specified, saves a JSON report of the installation results to this file path.
+	// The report includes the release status and lists of completed, canceled, and failed operations.
+	InstallReportPath string
+	// LegacyChartType specifies the chart type for legacy compatibility.
+	// Used internally for backward compatibility with werf integration.
+	LegacyChartType helmopts.ChartType
+	// LegacyExtraValues provides additional values programmatically.
+	// Used internally for backward compatibility with werf integration.
+	LegacyExtraValues map[string]interface{}
+	// LegacyLogRegistryStreamOut is the output writer for Helm registry client logs.
+	// Defaults to io.Discard if not set. Used for debugging registry operations.
+	LegacyLogRegistryStreamOut io.Writer
+	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
+	// Defaults to DefaultNetworkParallelism if not set or <= 0.
+	NetworkParallelism int
+	// NoInstallStandaloneCRDs, when true, skips installation of CustomResourceDefinitions from the "crds/" directory.
+	// By default, CRDs are installed first before other chart resources.
+	NoInstallStandaloneCRDs bool
+	// NoRemoveManualChanges, when true, preserves fields manually added to resources in the cluster
+	// that are not present in the chart manifests. By default, such fields are removed during updates.
+	NoRemoveManualChanges bool
+	// NoShowNotes, when true, suppresses printing of NOTES.txt after successful installation.
+	// NOTES.txt typically contains usage instructions and next steps.
+	NoShowNotes bool
+	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
+	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
+	// Used for authenticating to OCI registries when pulling charts.
+	RegistryCredentialsPath string
+	// ReleaseHistoryLimit sets the maximum number of release revisions to keep in storage.
+	// When exceeded, the oldest revisions are deleted. Defaults to DefaultReleaseHistoryLimit if not set or <= 0.
+	// Note: Only release metadata is deleted; actual Kubernetes resources are not affected.
+	ReleaseHistoryLimit int
+	// ReleaseInfoAnnotations are custom annotations to add to the release metadata (stored in Secret/ConfigMap).
+	// These do not affect resources but can be used for tagging releases.
+	ReleaseInfoAnnotations map[string]string
+	// ReleaseLabels are labels to add to the release storage object (Secret/ConfigMap).
+	// Used for filtering and organizing releases in storage.
+	ReleaseLabels map[string]string
+	// ReleaseStorageDriver specifies how release metadata is stored in Kubernetes.
+	// Valid values: "secret" (default), "configmap", "sql".
+	// Defaults to "secret" if not specified or set to "default".
+	ReleaseStorageDriver string
+	// ReleaseStorageSQLConnection is the SQL connection string when using SQL storage driver.
+	// Only used when ReleaseStorageDriver is "sql".
 	ReleaseStorageSQLConnection string
-	RollbackGraphPath           string
-	ShowSubchartNotes           bool
-	TempDirPath                 string
-	TemplatesAllowDNS           bool
-	Timeout                     time.Duration
+	// RollbackGraphPath, if specified, saves the Graphviz representation of the rollback plan (if auto-rollback occurs)
+	// to this file path. Only used when AutoRollback is true and rollback is triggered.
+	RollbackGraphPath string
+	// ShowSubchartNotes, when true, shows NOTES.txt from subcharts in addition to the main chart's notes.
+	// By default, only the parent chart's NOTES.txt is displayed.
+	ShowSubchartNotes bool
+	// TempDirPath is the directory for temporary files during the operation.
+	// A temporary directory is created automatically if not specified.
+	TempDirPath string
+	// TemplatesAllowDNS, when true, enables DNS lookups in chart templates using template functions.
+	// WARNING: This can make template rendering non-deterministic and slower.
+	TemplatesAllowDNS bool
+	// Timeout is the maximum duration for the entire release installation operation.
+	// If 0, no timeout is applied and the operation runs until completion or error.
+	Timeout time.Duration
 }
 
 func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseInstallOptions) error {

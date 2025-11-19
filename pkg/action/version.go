@@ -22,10 +22,19 @@ const (
 	DefaultVersionLogLevel     = log.ErrorLevel
 )
 
+// VersionOptions contains all options for retrieving nelm version information.
+// This operation displays the version of nelm including major, minor, and patch version numbers.
 type VersionOptions struct {
-	OutputFormat  string
+	// OutputFormat specifies the output format for version information.
+	// Valid values: "yaml" (default), "json".
+	// Defaults to DefaultVersionOutputFormat (yaml) if not specified.
+	OutputFormat string
+	// OutputNoPrint, when true, suppresses printing the output and only returns the result data structure.
+	// Useful when calling this programmatically.
 	OutputNoPrint bool
-	TempDirPath   string
+	// TempDirPath is the directory for temporary files during the operation.
+	// A temporary directory is created automatically if not specified.
+	TempDirPath string
 }
 
 func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {

@@ -29,44 +29,108 @@ const (
 	DefaultChartRenderLogLevel = log.ErrorLevel
 )
 
+// ChartRenderOptions contains all options for rendering a Helm chart to Kubernetes manifests.
+// This operation generates YAML manifests from chart templates without applying them to a cluster.
 type ChartRenderOptions struct {
+	// Embedded option groups for connection, chart repo, values, and secrets
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
 	common.ValuesOptions
 	common.SecretValuesOptions
 
-	Chart                       string
-	ChartAppVersion             string
-	ChartDirPath                string // TODO(v2): get rid
-	ChartProvenanceKeyring      string
-	ChartProvenanceStrategy     string
-	ChartRepoSkipUpdate         bool
-	ChartVersion                string
-	DefaultChartAPIVersion      string
-	DefaultChartName            string
-	DefaultChartVersion         string
-	ExtraAPIVersions            []string
-	ExtraAnnotations            map[string]string
-	ExtraLabels                 map[string]string
-	ExtraRuntimeAnnotations     map[string]string // TODO(v2): get rid?? or do custom logic
-	ForceAdoption               bool              // TODO(v2): get rid, useless
-	LegacyChartType             helmopts.ChartType
-	LegacyExtraValues           map[string]interface{}
-	LegacyLogRegistryStreamOut  io.Writer
-	LocalKubeVersion            string
-	NetworkParallelism          int
-	OutputFilePath              string
-	OutputNoPrint               bool
-	RegistryCredentialsPath     string
-	ReleaseName                 string
-	ReleaseNamespace            string
-	ReleaseStorageDriver        string
+	// Chart specifies the chart to render. Can be a local directory path, chart archive,
+	// OCI registry URL (oci://registry/chart), or chart repository reference (repo/chart).
+	// Defaults to current directory if not specified.
+	Chart string
+	// ChartAppVersion overrides the appVersion field in Chart.yaml.
+	// Used to set application version metadata without modifying the chart file.
+	ChartAppVersion string
+	// ChartDirPath is deprecated (TODO v2: remove). Use Chart instead.
+	ChartDirPath string // TODO(v2): get rid
+	// ChartProvenanceKeyring is the path to a keyring file containing public keys
+	// used to verify chart provenance signatures. Used with signed charts for security.
+	ChartProvenanceKeyring string
+	// ChartProvenanceStrategy defines how to verify chart provenance.
+	// Defaults to DefaultChartProvenanceStrategy if not set.
+	ChartProvenanceStrategy string
+	// ChartRepoSkipUpdate, when true, skips updating the chart repository cache before fetching the chart.
+	// Useful for offline operations or when repository is known to be up-to-date.
+	ChartRepoSkipUpdate bool
+	// ChartVersion specifies the version of the chart to render (e.g., "1.2.3").
+	// If not specified, the latest version is used.
+	ChartVersion string
+	// DefaultChartAPIVersion sets the default Chart API version when Chart.yaml doesn't specify one.
+	DefaultChartAPIVersion string
+	// DefaultChartName sets the default chart name when Chart.yaml doesn't specify one.
+	DefaultChartName string
+	// DefaultChartVersion sets the default chart version when Chart.yaml doesn't specify one.
+	DefaultChartVersion string
+	// ExtraAPIVersions is a list of additional Kubernetes API versions to include when rendering.
+	// Used by Capabilities.APIVersions in templates to check for API availability.
+	ExtraAPIVersions []string
+	// ExtraAnnotations are additional Kubernetes annotations to add to all chart resources.
+	// These are added during chart rendering.
+	ExtraAnnotations map[string]string
+	// ExtraLabels are additional Kubernetes labels to add to all chart resources.
+	// These are added during chart rendering.
+	ExtraLabels map[string]string
+	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime.
+	// TODO(v2): remove or implement custom logic for this field.
+	ExtraRuntimeAnnotations map[string]string // TODO(v2): get rid?? or do custom logic
+	// ForceAdoption is currently unused in chart rendering.
+	// TODO(v2): remove this useless field.
+	ForceAdoption bool // TODO(v2): get rid, useless
+	// LegacyChartType specifies the chart type for legacy compatibility.
+	// Used internally for backward compatibility with werf integration.
+	LegacyChartType helmopts.ChartType
+	// LegacyExtraValues provides additional values programmatically.
+	// Used internally for backward compatibility with werf integration.
+	LegacyExtraValues map[string]interface{}
+	// LegacyLogRegistryStreamOut is the output writer for Helm registry client logs.
+	// Defaults to io.Discard if not set. Used for debugging registry operations.
+	LegacyLogRegistryStreamOut io.Writer
+	// LocalKubeVersion specifies the Kubernetes version to use for template rendering when not connected to a cluster.
+	// Format: "major.minor.patch" (e.g., "1.28.0"). Defaults to DefaultLocalKubeVersion if not set.
+	LocalKubeVersion string
+	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
+	// Defaults to DefaultNetworkParallelism if not set or <= 0.
+	NetworkParallelism int
+	// OutputFilePath, if specified, writes the rendered manifests to this file instead of stdout.
+	OutputFilePath string
+	// OutputNoPrint, when true, suppresses printing the rendered manifests to stdout.
+	// Useful when only the result data structure is needed.
+	OutputNoPrint bool
+	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
+	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
+	// Used for authenticating to OCI registries when pulling charts.
+	RegistryCredentialsPath string
+	// ReleaseName is the name of the release to use in templates.
+	// Available as .Release.Name in chart templates.
+	ReleaseName string
+	// ReleaseNamespace is the namespace where the release would be installed.
+	// Available as .Release.Namespace in chart templates.
+	ReleaseNamespace string
+	// ReleaseStorageDriver specifies how release metadata would be stored (affects template rendering).
+	// Valid values: "secret" (default), "configmap", "sql", "memory".
+	ReleaseStorageDriver string
+	// ReleaseStorageSQLConnection is the SQL connection string when using SQL storage driver.
+	// Only used when ReleaseStorageDriver is "sql".
 	ReleaseStorageSQLConnection string
-	Remote                      bool
-	ShowOnlyFiles               []string
-	ShowStandaloneCRDs          bool
-	TempDirPath                 string
-	TemplatesAllowDNS           bool
+	// Remote, when true, connects to a real Kubernetes cluster to fetch capabilities and validate API versions.
+	// When false, uses local/stub Kubernetes version for rendering.
+	Remote bool
+	// ShowOnlyFiles, if specified, filters output to only show resources from these file paths.
+	// Paths are relative to the chart directory (e.g., "templates/deployment.yaml").
+	ShowOnlyFiles []string
+	// ShowStandaloneCRDs, when true, includes CustomResourceDefinitions from the "crds/" directory in the output.
+	// By default, CRDs are hidden from rendered output.
+	ShowStandaloneCRDs bool
+	// TempDirPath is the directory for temporary files during the operation.
+	// A temporary directory is created automatically if not specified.
+	TempDirPath string
+	// TemplatesAllowDNS, when true, enables DNS lookups in chart templates using template functions.
+	// WARNING: This can make template rendering non-deterministic and slower.
+	TemplatesAllowDNS bool
 }
 
 func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResultV2, error) {
