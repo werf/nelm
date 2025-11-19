@@ -6,6 +6,7 @@
 **Nelm** is a Helm 4 alternative. It is a Kubernetes deployment tool that manages Helm Charts and deploys them to Kubernetes. It is also the deployment engine of [werf](https://github.com/werf/werf). Nelm does everything that Helm does, but better, and even quite some on top of it. Nelm is based on an improved and partially rewritten Helm codebase, to introduce:
 
 * `terraform plan`-like capabilities;
+* improved CRD management;
 * out-of-the-box secrets management;
 * advanced resource ordering capabilities;
 * advanced resource lifecycle capabilities;
