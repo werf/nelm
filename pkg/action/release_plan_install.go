@@ -430,12 +430,6 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		}
 	})
 
-	if releaseIsUpToDate && installPlanIsUseless {
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("No changes planned for release %q (namespace: %q)", releaseName, releaseNamespace)))
-	} else if installPlanIsUseless {
-		log.Default.Info(ctx, color.Style{color.Bold, color.Yellow}.Render(fmt.Sprintf("No resource changes planned, but still must install release %q (namespace: %q)", releaseName, releaseNamespace)))
-	}
-
 	log.Default.Debug(ctx, "Calculate planned changes")
 
 	changes, err := plan.CalculatePlannedChanges(instResInfos, delResInfos, plan.CalculatePlannedChangesOptions{
@@ -447,6 +441,12 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	})
 	if err != nil {
 		return fmt.Errorf("calculate planned changes: %w", err)
+	}
+
+	if releaseIsUpToDate && installPlanIsUseless {
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("No changes planned for release %q (namespace: %q)", releaseName, releaseNamespace)))
+	} else if installPlanIsUseless || len(changes) == 0 {
+		log.Default.Info(ctx, color.Style{color.Bold, color.Yellow}.Render(fmt.Sprintf("No resource changes planned, but still must install release %q (namespace: %q)", releaseName, releaseNamespace)))
 	}
 
 	logPlannedChanges(ctx, releaseName, releaseNamespace, changes)
