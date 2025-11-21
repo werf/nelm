@@ -28,10 +28,7 @@ const (
 	DefaultReleaseGetLogLevel     = log.ErrorLevel
 )
 
-// ReleaseGetOptions contains all options for retrieving information about a Helm release.
-// This operation fetches release metadata, chart info, values, and resources without modifying anything.
 type ReleaseGetOptions struct {
-	// Embedded option group for Kubernetes connection
 	common.KubeConnectionOptions
 
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).

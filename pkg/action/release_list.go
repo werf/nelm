@@ -29,10 +29,7 @@ const (
 	DefaultReleaseListLogLevel     = log.ErrorLevel
 )
 
-// ReleaseListOptions contains all options for listing Helm releases in a namespace.
-// This operation retrieves information about all releases without modifying anything.
 type ReleaseListOptions struct {
-	// Embedded option group for Kubernetes connection
 	common.KubeConnectionOptions
 
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).

@@ -22,8 +22,6 @@ const (
 	DefaultVersionLogLevel     = log.ErrorLevel
 )
 
-// VersionOptions contains all options for retrieving nelm version information.
-// This operation displays the version of nelm including major, minor, and patch version numbers.
 type VersionOptions struct {
 	// OutputFormat specifies the output format for version information.
 	// Valid values: "yaml" (default), "json".

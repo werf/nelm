@@ -33,10 +33,7 @@ const (
 	DefaultReleaseUninstallLogLevel = log.InfoLevel
 )
 
-// ReleaseUninstallOptions contains all options for uninstalling a Helm release from Kubernetes.
-// This operation removes all resources associated with a release and deletes the release history.
 type ReleaseUninstallOptions struct {
-	// Embedded option groups for connection and tracking
 	common.KubeConnectionOptions
 	common.TrackingOptions
 

@@ -32,10 +32,7 @@ const (
 	DefaultReleaseRollbackLogLevel = log.InfoLevel
 )
 
-// ReleaseRollbackOptions contains all options for rolling back a Helm release to a previous revision.
-// This operation reverts the release to a specified earlier state by deploying the resources from that revision.
 type ReleaseRollbackOptions struct {
-	// Embedded option groups for connection and tracking
 	common.KubeConnectionOptions
 	common.TrackingOptions
 

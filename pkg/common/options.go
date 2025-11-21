@@ -7,8 +7,6 @@ import (
 	"github.com/samber/lo"
 )
 
-// KubeConnectionOptions contains all options for connecting to a Kubernetes cluster.
-// These options configure authentication, TLS settings, context selection, and performance parameters.
 type KubeConnectionOptions struct {
 	// KubeAPIServerAddress is the Kubernetes API server address (e.g., "https://kubernetes.example.com:6443").
 	KubeAPIServerAddress string
@@ -75,10 +73,6 @@ type KubeConnectionOptions struct {
 	KubeTLSServerName string
 }
 
-// ApplyDefaults sets default values for KubeConnectionOptions.
-// If no kubeconfig is specified (neither base64 nor paths), it defaults to ~/.kube/config.
-// If KubeQPSLimit is not set, it defaults to DefaultQPSLimit (30).
-// If KubeBurstLimit is not set, it defaults to DefaultBurstLimit (100).
 func (opts *KubeConnectionOptions) ApplyDefaults(homeDir string) {
 	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
 		opts.KubeConfigPaths = []string{filepath.Join(homeDir, ".kube", "config")}
@@ -93,8 +87,6 @@ func (opts *KubeConnectionOptions) ApplyDefaults(homeDir string) {
 	}
 }
 
-// ChartRepoConnectionOptions contains all options for connecting to a Helm chart repository.
-// These options configure authentication, TLS settings, and connection parameters for chart repositories.
 type ChartRepoConnectionOptions struct {
 	// ChartRepoBasicAuthPassword is the password for HTTP basic authentication to the chart repository.
 	ChartRepoBasicAuthPassword string
@@ -122,13 +114,8 @@ type ChartRepoConnectionOptions struct {
 	ChartRepoURL string
 }
 
-// ApplyDefaults sets default values for ChartRepoConnectionOptions.
-// Currently, there are no defaults to apply for chart repository options.
 func (opts *ChartRepoConnectionOptions) ApplyDefaults() {}
 
-// ValuesOptions contains all options for providing values to Helm charts.
-// Values can be provided through files, command-line flags, or programmatically.
-// Multiple sources are merged together with later values taking precedence.
 type ValuesOptions struct {
 	// DefaultValuesDisable, when true, ignores the values.yaml file from the top-level chart.
 	// Useful when you want complete control over values without chart defaults.
@@ -162,12 +149,8 @@ type ValuesOptions struct {
 	ValuesSetString []string
 }
 
-// ApplyDefaults sets default values for ValuesOptions.
-// Currently, there are no defaults to apply for values options.
 func (opts *ValuesOptions) ApplyDefaults() {}
 
-// SecretValuesOptions contains all options for handling encrypted values files in Helm charts.
-// Nelm supports encrypting sensitive values using a secret key for secure storage in version control.
 type SecretValuesOptions struct {
 	// DefaultSecretValuesDisable, when true, ignores the default secret-values.yaml file from the chart.
 	// Useful when you don't want to use the chart's default encrypted values.
@@ -186,16 +169,12 @@ type SecretValuesOptions struct {
 	SecretWorkDir string
 }
 
-// ApplyDefaults sets default values for SecretValuesOptions.
-// If SecretWorkDir is not set, it defaults to the provided currentDir.
 func (opts *SecretValuesOptions) ApplyDefaults(currentDir string) {
 	if opts.SecretWorkDir == "" {
 		opts.SecretWorkDir = currentDir
 	}
 }
 
-// TrackingOptions contains all options for tracking Kubernetes resources during release operations.
-// Tracking monitors resource status, logs, and events during installation, upgrades, and rollbacks.
 type TrackingOptions struct {
 	// NoFinalTracking, when true, disables final tracking of resources after the release operation.
 	// Final tracking waits for all resources to reach their ready state.
@@ -223,8 +202,6 @@ type TrackingOptions struct {
 	TrackReadinessTimeout time.Duration
 }
 
-// ApplyDefaults sets default values for TrackingOptions.
-// If ProgressTablePrintInterval is not set, it defaults to DefaultProgressPrintInterval (5 seconds).
 func (opts *TrackingOptions) ApplyDefaults() {
 	if opts.ProgressTablePrintInterval <= 0 {
 		opts.ProgressTablePrintInterval = DefaultProgressPrintInterval

@@ -38,10 +38,7 @@ const (
 	DefaultReleaseInstallLogLevel = log.InfoLevel
 )
 
-// ReleaseInstallOptions contains all options for installing a Helm release to Kubernetes.
-// This operation deploys a chart to a cluster, creating or upgrading resources as needed.
 type ReleaseInstallOptions struct {
-	// Embedded option groups for connection, values, secrets, and tracking
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
 	common.ValuesOptions
@@ -58,7 +55,7 @@ type ReleaseInstallOptions struct {
 	// ChartAppVersion overrides the appVersion field in Chart.yaml.
 	// Used to set application version metadata without modifying the chart file.
 	ChartAppVersion string
-	// ChartDirPath is deprecated (TODO v2: remove). Use Chart instead.
+	// ChartDirPath is deprecated
 	ChartDirPath string // TODO(v2): get rid
 	// ChartProvenanceKeyring is the path to a keyring file containing public keys
 	// used to verify chart provenance signatures. Used with signed charts for security.

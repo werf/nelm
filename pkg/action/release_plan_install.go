@@ -30,12 +30,8 @@ const (
 	DefaultReleasePlanInstallLogLevel = log.InfoLevel
 )
 
-// ErrChangesPlanned is returned when ErrorIfChangesPlanned is true and the plan includes changes.
-// This is used to signal a specific exit code (2) indicating changes are planned without errors.
 var ErrChangesPlanned = errors.New("changes planned")
 
-// ReleasePlanInstallOptions contains all options for planning a Helm release installation to Kubernetes.
-// This operation performs a dry-run that shows what changes would be made without actually applying them.
 type ReleasePlanInstallOptions struct {
 	// Embedded option groups for connection, values, and secrets
 	common.KubeConnectionOptions
@@ -50,7 +46,7 @@ type ReleasePlanInstallOptions struct {
 	// ChartAppVersion overrides the appVersion field in Chart.yaml.
 	// Used to set application version metadata without modifying the chart file.
 	ChartAppVersion string
-	// ChartDirPath is deprecated (TODO v2: remove). Use Chart instead.
+	// ChartDirPath is deprecated
 	ChartDirPath string // TODO(v2): get rid
 	// ChartProvenanceKeyring is the path to a keyring file containing public keys
 	// used to verify chart provenance signatures. Used with signed charts for security.
