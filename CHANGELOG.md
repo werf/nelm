@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.3](https://github.com/werf/nelm/compare/v1.17.2...v1.17.3) (2025-11-21)
+
+
+### Bug Fixes
+
+* `plan` shows nothing if only tracking ops in plan ([bd36c0e](https://github.com/werf/nelm/commit/bd36c0e83492e15343eef0fd522997aac89a0b4f))
+
 ## [1.17.2](https://github.com/werf/nelm/compare/v1.17.1...v1.17.2) (2025-11-17)
 
 
