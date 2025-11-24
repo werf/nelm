@@ -11,6 +11,7 @@ import (
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/suite"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
@@ -1190,6 +1191,7 @@ func defaultInstallableResource(resSpec *spec.ResourceSpec) *resource.Installabl
 			common.InstallOnUpgrade:  {common.StageInstall},
 			common.InstallOnRollback: {common.StageInstall},
 		},
+		DeletePropagation: metav1.DeletePropagationForeground,
 	}
 }
 
@@ -1237,8 +1239,9 @@ func defaultHookInstallableResource(resSpec *spec.ResourceSpec) *resource.Instal
 
 func defaultDeletableResource(resMeta *spec.ResourceMeta) *resource.DeletableResource {
 	return &resource.DeletableResource{
-		ResourceMeta: resMeta,
-		Ownership:    common.OwnershipRelease,
+		ResourceMeta:      resMeta,
+		Ownership:         common.OwnershipRelease,
+		DeletePropagation: metav1.DeletePropagationForeground,
 	}
 }
 

@@ -166,7 +166,8 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 					Version:  plan.OperationVersionDelete,
 					Category: plan.OperationCategoryResource,
 					Config: &plan.OperationConfigDelete{
-						ResourceMeta: deletableInfos[0].LocalResource.ResourceMeta,
+						ResourceMeta:      deletableInfos[0].LocalResource.ResourceMeta,
+						DeletePropagation: deletableInfos[0].LocalResource.DeletePropagation,
 					},
 				}
 
@@ -1026,7 +1027,8 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 					Version:  plan.OperationVersionDelete,
 					Category: plan.OperationCategoryResource,
 					Config: &plan.OperationConfigDelete{
-						ResourceMeta: installableInfos[0].LocalResource.ResourceMeta,
+						ResourceMeta:      installableInfos[0].LocalResource.ResourceMeta,
+						DeletePropagation: installableInfos[0].LocalResource.DeletePropagation,
 					},
 				}
 

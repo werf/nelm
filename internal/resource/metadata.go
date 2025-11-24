@@ -12,8 +12,9 @@ import (
 
 	"github.com/ohler55/ojg/jp"
 	"github.com/samber/lo"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	apiv1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
@@ -643,6 +644,22 @@ func validateOwnership(meta *spec.ResourceMeta) error {
 	return nil
 }
 
+func validateDeletePropagation(meta *spec.ResourceMeta) error {
+	if key, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeletePropagation); found {
+		if value == "" {
+			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
+		}
+
+		switch apiv1.DeletionPropagation(value) {
+		case apiv1.DeletePropagationForeground, apiv1.DeletePropagationBackground, apiv1.DeletePropagationOrphan:
+		default:
+			return fmt.Errorf("invalid unknown value %q for annotation %q", value, key)
+		}
+	}
+
+	return nil
+}
+
 func recreate(meta *spec.ResourceMeta) bool {
 	deletePolicies := deletePolicies(meta)
 	return lo.Contains(deletePolicies, common.DeletePolicyBeforeCreation)
@@ -678,7 +695,7 @@ func failuresAllowed(unstruct *unstructured.Unstructured) int {
 		return 0
 	}
 
-	if restartPolicy, found, err := unstructured.NestedString(unstruct.UnstructuredContent(), "spec", "template", "spec", "restartPolicy"); err == nil && found && restartPolicy == string(v1.RestartPolicyNever) {
+	if restartPolicy, found, err := unstructured.NestedString(unstruct.UnstructuredContent(), "spec", "template", "spec", "restartPolicy"); err == nil && found && restartPolicy == string(corev1.RestartPolicyNever) {
 		return 0
 	}
 
@@ -964,6 +981,18 @@ func ownership(meta *spec.ResourceMeta, releaseNamespace string, storeAs common.
 	default:
 		panic("unexpected storeAs value")
 	}
+}
+
+func deletePropagation(meta *spec.ResourceMeta, defaultDeletePropagation apiv1.DeletionPropagation) apiv1.DeletionPropagation {
+	if _, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeletePropagation); found {
+		return apiv1.DeletionPropagation(value)
+	}
+
+	if defaultDeletePropagation != "" {
+		return defaultDeletePropagation
+	}
+
+	return common.DefaultDeletePropagation
 }
 
 func weight(meta *spec.ResourceMeta, hasManualInternalDeps bool) *int {

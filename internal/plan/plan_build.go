@@ -319,7 +319,8 @@ func addDeleteResourcesOps(plan *Plan, infos []*DeletableResourceInfo) error {
 				Version:  OperationVersionDelete,
 				Category: OperationCategoryResource,
 				Config: &OperationConfigDelete{
-					ResourceMeta: info.ResourceMeta,
+					ResourceMeta:      info.ResourceMeta,
+					DeletePropagation: info.LocalResource.DeletePropagation,
 				},
 			}
 
@@ -445,8 +446,9 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 				Category:  OperationCategoryResource,
 				Iteration: OperationIteration(info.Iteration),
 				Config: &OperationConfigRecreate{
-					ResourceSpec:  info.LocalResource.ResourceSpec,
-					ForceReplicas: info.LocalResource.DefaultReplicasOnCreation,
+					ResourceSpec:      info.LocalResource.ResourceSpec,
+					ForceReplicas:     info.LocalResource.DefaultReplicasOnCreation,
+					DeletePropagation: info.LocalResource.DeletePropagation,
 				},
 			}
 			chain.AddOperation(recreateOp).Stage(stg)
@@ -508,7 +510,8 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 				Category:  OperationCategoryResource,
 				Iteration: OperationIteration(info.Iteration),
 				Config: &OperationConfigDelete{
-					ResourceMeta: info.ResourceMeta,
+					ResourceMeta:      info.ResourceMeta,
+					DeletePropagation: info.LocalResource.DeletePropagation,
 				},
 			}
 			chain.AddOperation(deleteOp).Stage(stg)
@@ -565,7 +568,8 @@ func addFailureResourceOperations(failedPlan, plan *Plan, infos []*InstallableRe
 			Category:  OperationCategoryResource,
 			Iteration: OperationIteration(info.Iteration),
 			Config: &OperationConfigDelete{
-				ResourceMeta: info.ResourceMeta,
+				ResourceMeta:      info.ResourceMeta,
+				DeletePropagation: info.LocalResource.DeletePropagation,
 			},
 		}
 		chain.AddOperation(deleteOp).Stage(common.StageUninstall)

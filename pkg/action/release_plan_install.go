@@ -12,6 +12,7 @@ import (
 	"github.com/gookit/color"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
@@ -66,6 +67,8 @@ type ReleasePlanInstallOptions struct {
 	DefaultChartName string
 	// DefaultChartVersion sets the default chart version when Chart.yaml doesn't specify one.
 	DefaultChartVersion string
+	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
+	DefaultDeletePropagation string
 	// DiffContextLines specifies the number of context lines to show around diffs in the output.
 	// Defaults to DefaultDiffContextLines (3) if not set or < 0. Set to 0 to hide context.
 	DiffContextLines int
@@ -365,7 +368,8 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 	}, clientFactory, resource.BuildResourcesOptions{
-		Remote: true,
+		Remote:                   true,
+		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 	})
 	if err != nil {
 		return fmt.Errorf("build resources: %w", err)
@@ -503,6 +507,10 @@ func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, curr
 
 	if opts.ChartProvenanceStrategy == "" {
 		opts.ChartProvenanceStrategy = common.DefaultChartProvenanceStrategy
+	}
+
+	if opts.DefaultDeletePropagation == "" {
+		opts.DefaultDeletePropagation = string(common.DefaultDeletePropagation)
 	}
 
 	return opts, nil

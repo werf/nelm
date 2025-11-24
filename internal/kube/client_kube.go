@@ -238,7 +238,7 @@ func (c *KubeClient) MergePatch(ctx context.Context, resMeta *spec.ResourceMeta,
 
 type KubeClientDeleteOptions struct {
 	DefaultNamespace  string
-	PropagationPolicy *metav1.DeletionPropagation
+	PropagationPolicy metav1.DeletionPropagation
 }
 
 func (c *KubeClient) Delete(ctx context.Context, resMeta *spec.ResourceMeta, opts KubeClientDeleteOptions) error {
@@ -254,17 +254,17 @@ func (c *KubeClient) Delete(ctx context.Context, resMeta *spec.ResourceMeta, opt
 
 	clientResource := c.clientResource(gvr, resMeta.Namespace, opts.DefaultNamespace, namespaced)
 
-	var propagationPolicy *metav1.DeletionPropagation
-	if opts.PropagationPolicy != nil {
+	var propagationPolicy metav1.DeletionPropagation
+	if opts.PropagationPolicy != "" {
 		propagationPolicy = opts.PropagationPolicy
 	} else {
-		propagationPolicy = lo.ToPtr(metav1.DeletePropagationForeground)
+		propagationPolicy = common.DefaultDeletePropagation
 	}
 
 	log.Default.Debug(ctx, "Deleting resource %q", resMeta.IDHuman())
 
 	if err := clientResource.Delete(ctx, resMeta.Name, metav1.DeleteOptions{
-		PropagationPolicy: propagationPolicy,
+		PropagationPolicy: lo.ToPtr(propagationPolicy),
 	}); err != nil {
 		if IsNotFoundErr(err) {
 			log.Default.Debug(ctx, "Skipping deletion, not found resource %q", resMeta.IDHuman())

@@ -55,6 +55,14 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 			return fmt.Errorf("add tracking flags: %w", err)
 		}
 
+		// TODO: restrict allowed values
+		if err := cli.AddFlag(cmd, &cfg.DefaultDeletePropagation, "delete-propagation", string(common.DefaultDeletePropagation), "Default delete propagation strategy", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                mainFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.DeleteReleaseNamespace, "delete-namespace", false, "Delete the release namespace", cli.AddFlagOptions{
 			Group: mainFlagGroup,
 		}); err != nil {

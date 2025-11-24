@@ -121,6 +121,14 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			}
 		}
 
+		// TODO: restrict allowed values
+		if err := cli.AddFlag(cmd, &cfg.DefaultDeletePropagation, "delete-propagation", string(common.DefaultDeletePropagation), "Default delete propagation strategy", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                mainFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.ExtraAPIVersions, "extra-apiversions", nil, "Extra Kubernetes API versions passed to $.Capabilities.APIVersions", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalMultiEnvVarRegexes,
 			Group:                mainFlagGroup,

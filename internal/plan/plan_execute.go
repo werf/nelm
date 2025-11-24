@@ -171,7 +171,8 @@ func execOpRecreate(ctx context.Context, op *Operation, releaseNamespace string,
 	opConfig := op.Config.(*OperationConfigRecreate)
 
 	if err := clientFactory.KubeClient().Delete(ctx, opConfig.ResourceSpec.ResourceMeta, kube.KubeClientDeleteOptions{
-		DefaultNamespace: releaseNamespace,
+		DefaultNamespace:  releaseNamespace,
+		PropagationPolicy: opConfig.DeletePropagation,
 	}); err != nil {
 		return fmt.Errorf("delete resource: %w", err)
 	}
@@ -235,7 +236,8 @@ func execOpDelete(ctx context.Context, op *Operation, releaseNamespace string, c
 	opConfig := op.Config.(*OperationConfigDelete)
 
 	if err := clientFactory.KubeClient().Delete(ctx, opConfig.ResourceMeta, kube.KubeClientDeleteOptions{
-		DefaultNamespace: releaseNamespace,
+		DefaultNamespace:  releaseNamespace,
+		PropagationPolicy: opConfig.DeletePropagation,
 	}); err != nil {
 		return fmt.Errorf("delete resource: %w", err)
 	}
