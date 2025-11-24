@@ -41,6 +41,11 @@ var (
 		"preview-v2",
 		`Activate all feature gates that will be enabled by default in Nelm v2`,
 	)
+
+	FeatCleanNullFields = NewFeatGate(
+		"clean-null-fields",
+		`Enable cleaning of null fields from resource manifests for better Helm chart compatibility`,
+	)
 )
 
 type FeatGate struct {
