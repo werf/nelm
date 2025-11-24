@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/chanced/caps"
+	"github.com/samber/lo"
 
 	"github.com/werf/nelm/pkg/common"
 )
@@ -51,6 +52,8 @@ var (
 type FeatGate struct {
 	Name string
 	Help string
+
+	forceEnabled *bool
 }
 
 func NewFeatGate(name, help string) *FeatGate {
@@ -73,5 +76,17 @@ func (g *FeatGate) Default() bool {
 }
 
 func (g *FeatGate) Enabled() bool {
+	if g.forceEnabled != nil {
+		return *g.forceEnabled
+	}
+
 	return os.Getenv(g.EnvVarName()) == "true"
+}
+
+func (g *FeatGate) Enable() {
+	g.forceEnabled = lo.ToPtr(true)
+}
+
+func (g *FeatGate) Disable() {
+	g.forceEnabled = lo.ToPtr(false)
 }
