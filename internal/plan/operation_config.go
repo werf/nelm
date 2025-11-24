@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 	"github.com/werf/nelm/internal/resource/spec"
@@ -55,8 +57,9 @@ func (c *OperationConfigCreate) IDHuman() string {
 }
 
 type OperationConfigRecreate struct {
-	ResourceSpec  *spec.ResourceSpec
-	ForceReplicas *int
+	ResourceSpec      *spec.ResourceSpec
+	DeletePropagation metav1.DeletionPropagation
+	ForceReplicas     *int
 }
 
 func (c *OperationConfigRecreate) ID() string {
@@ -92,7 +95,8 @@ func (c *OperationConfigApply) IDHuman() string {
 }
 
 type OperationConfigDelete struct {
-	ResourceMeta *spec.ResourceMeta
+	ResourceMeta      *spec.ResourceMeta
+	DeletePropagation metav1.DeletionPropagation
 }
 
 func (c *OperationConfigDelete) ID() string {

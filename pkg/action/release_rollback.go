@@ -10,6 +10,7 @@ import (
 
 	"github.com/gookit/color"
 	"github.com/samber/lo"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/kubedog/pkg/informer"
@@ -36,6 +37,8 @@ type ReleaseRollbackOptions struct {
 	common.KubeConnectionOptions
 	common.TrackingOptions
 
+	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
+	DefaultDeletePropagation string
 	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime during rollback.
 	// These are added during resource creation/update but not stored in the release.
 	ExtraRuntimeAnnotations map[string]string
@@ -263,7 +266,8 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 	}, clientFactory, resource.BuildResourcesOptions{
-		Remote: true,
+		Remote:                   true,
+		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 	})
 	if err != nil {
 		return fmt.Errorf("build resources: %w", err)
@@ -499,6 +503,10 @@ func applyReleaseRollbackOptionsDefaults(opts ReleaseRollbackOptions, homeDir st
 		opts.ReleaseStorageDriver = common.ReleaseStorageDriverSecrets
 	case common.ReleaseStorageDriverMemory:
 		return ReleaseRollbackOptions{}, fmt.Errorf("memory release storage driver is not supported")
+	}
+
+	if opts.DefaultDeletePropagation == "" {
+		opts.DefaultDeletePropagation = string(common.DefaultDeletePropagation)
 	}
 
 	return opts, nil

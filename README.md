@@ -49,6 +49,7 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [`werf.io/ownership` annotation](#werfioownership-annotation)
   - [`werf.io/deploy-on` annotation](#werfiodeploy-on-annotation)
   - [`werf.io/delete-policy` annotation](#werfiodelete-policy-annotation)
+  - [`werf.io/delete-propagation` annotation](#werfiodelete-propagation-annotation)
   - [`werf.io/track-termination-mode` annotation](#werfiotrack-termination-mode-annotation)
   - [`werf.io/fail-mode` annotation](#werfiofail-mode-annotation)
   - [`werf.io/failures-allowed-per-replica` annotation](#werfiofailures-allowed-per-replica-annotation)
@@ -436,6 +437,23 @@ werf.io/delete-policy: [before-creation][,before-creation-if-immutable][,succeed
 Default:
 ```
 nothing for general resources (unless Job, then "before-creation-if-immutable"), mapped from "helm.sh/hook-delete-policy" for hooks
+```
+
+### `werf.io/delete-propagation` annotation
+
+Set the deletion propagation policy for the resource. `Foreground` means delete the resource after deleting all of its dependents, `Background` means delete the resource immediately, and delete all of its dependents in the background, and `Orphan` means delete the resource, but leave all of its dependents untouched.
+
+Example:
+```yaml
+werf.io/delete-propagation: Background
+```
+Format:
+```
+werf.io/delete-propagation: Foreground|Background|Orphan
+```
+Default:
+```
+Foreground
 ```
 
 ### `werf.io/track-termination-mode` annotation 

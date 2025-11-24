@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/samber/lo"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/werf/3p-helm/pkg/registry"
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
@@ -61,6 +62,8 @@ type ChartLintOptions struct {
 	DefaultChartName string
 	// DefaultChartVersion sets the default chart version when Chart.yaml doesn't specify one.
 	DefaultChartVersion string
+	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
+	DefaultDeletePropagation string
 	// ExtraAPIVersions is a list of additional Kubernetes API versions to include during linting.
 	// Used by Capabilities.APIVersions in templates to check for API availability.
 	ExtraAPIVersions []string
@@ -320,7 +323,8 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		spec.NewReleaseMetadataPatcher(opts.ReleaseName, opts.ReleaseNamespace),
 		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 	}, clientFactory, resource.BuildResourcesOptions{
-		Remote: opts.Remote,
+		Remote:                   opts.Remote,
+		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 	})
 	if err != nil {
 		return fmt.Errorf("build resources: %w", err)
@@ -421,6 +425,10 @@ func applyChartLintOptionsDefaults(opts ChartLintOptions, currentDir, homeDir st
 
 	if opts.ChartProvenanceStrategy == "" {
 		opts.ChartProvenanceStrategy = common.DefaultChartProvenanceStrategy
+	}
+
+	if opts.DefaultDeletePropagation == "" {
+		opts.DefaultDeletePropagation = string(common.DefaultDeletePropagation)
 	}
 
 	return opts, nil

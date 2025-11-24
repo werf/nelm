@@ -10,6 +10,7 @@ import (
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/docker/pkg/homedir"
 	"github.com/samber/lo"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/werf/nelm/pkg/log"
 )
@@ -37,6 +38,7 @@ const (
 	StageStartSuffix               = "start"
 	StubReleaseName                = "stub-release"
 	StubReleaseNamespace           = "stub-namespace"
+	DefaultDeletePropagation       = metav1.DeletePropagationForeground
 )
 
 const (
@@ -252,6 +254,9 @@ var (
 
 	AnnotationKeyHumanOwnership   = "werf.io/ownership"
 	AnnotationKeyPatternOwnership = regexp.MustCompile(`^werf.io/ownership$`)
+
+	AnnotationKeyHumanDeletePropagation   = "werf.io/delete-propagation"
+	AnnotationKeyPatternDeletePropagation = regexp.MustCompile(`^werf.io/delete-propagation$`)
 )
 
 var SprigFuncs = sprig.TxtFuncMap()

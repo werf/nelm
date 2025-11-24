@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/samber/lo"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
@@ -43,10 +44,12 @@ type InstallableResource struct {
 	AutoInternalDependencies               []*InternalDependency
 	ExternalDependencies                   []*ExternalDependency
 	DeployConditions                       map[common.On][]common.Stage
+	DeletePropagation                      metav1.DeletionPropagation
 }
 
 type InstallableResourceOptions struct {
-	Remote bool
+	Remote                   bool
+	DefaultDeletePropagation metav1.DeletionPropagation
 }
 
 func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, clientFactory kube.ClientFactorier, opts InstallableResourceOptions) (*InstallableResource, error) {
@@ -98,6 +101,10 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 		return nil, fmt.Errorf("validate ownership: %w", err)
 	}
 
+	if err := validateDeletePropagation(res.ResourceMeta); err != nil {
+		return nil, fmt.Errorf("validate delete propagation: %w", err)
+	}
+
 	extDeps, err := externalDependencies(res.ResourceMeta, releaseNamespace, clientFactory, opts.Remote)
 	if err != nil {
 		return nil, fmt.Errorf("get external dependencies: %w", err)
@@ -131,17 +138,21 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 		AutoInternalDependencies:               internalDependencies(res.Unstruct),
 		ExternalDependencies:                   extDeps,
 		DeployConditions:                       deployConditions(res.ResourceMeta),
+		DeletePropagation:                      deletePropagation(res.ResourceMeta, opts.DefaultDeletePropagation),
 	}, nil
 }
 
 type DeletableResource struct {
 	*spec.ResourceMeta
 
-	Ownership    common.Ownership
-	KeepOnDelete bool
+	Ownership         common.Ownership
+	KeepOnDelete      bool
+	DeletePropagation metav1.DeletionPropagation
 }
 
-type DeletableResourceOptions struct{}
+type DeletableResourceOptions struct {
+	DefaultDeletePropagation metav1.DeletionPropagation
+}
 
 func NewDeletableResource(spec *spec.ResourceSpec, releaseNamespace string, opts DeletableResourceOptions) *DeletableResource {
 	var keep bool
@@ -158,28 +169,40 @@ func NewDeletableResource(spec *spec.ResourceSpec, releaseNamespace string, opts
 		owner = ownership(spec.ResourceMeta, releaseNamespace, spec.StoreAs)
 	}
 
+	var delPropagation metav1.DeletionPropagation
+	if err := validateDeletePropagation(spec.ResourceMeta); err != nil {
+		delPropagation = common.DefaultDeletePropagation
+	} else {
+		delPropagation = deletePropagation(spec.ResourceMeta, opts.DefaultDeletePropagation)
+	}
+
 	return &DeletableResource{
-		ResourceMeta: spec.ResourceMeta,
-		Ownership:    owner,
-		KeepOnDelete: keep,
+		ResourceMeta:      spec.ResourceMeta,
+		Ownership:         owner,
+		KeepOnDelete:      keep,
+		DeletePropagation: delPropagation,
 	}
 }
 
 type BuildResourcesOptions struct {
-	Remote bool
+	Remote                   bool
+	DefaultDeletePropagation metav1.DeletionPropagation
 }
 
 func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRelResSpecs, newRelResSpecs []*spec.ResourceSpec, patchers []spec.ResourcePatcher, clientFactory kube.ClientFactorier, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
 	var prevRelDelResources []*DeletableResource
 	for _, resSpec := range prevRelResSpecs {
-		deletableRes := NewDeletableResource(resSpec, releaseNamespace, DeletableResourceOptions{})
+		deletableRes := NewDeletableResource(resSpec, releaseNamespace, DeletableResourceOptions{
+			DefaultDeletePropagation: opts.DefaultDeletePropagation,
+		})
 		prevRelDelResources = append(prevRelDelResources, deletableRes)
 	}
 
 	var prevRelInstResources []*InstallableResource
 	for _, resSpec := range prevRelResSpecs {
 		installableResource, err := NewInstallableResource(resSpec, releaseNamespace, clientFactory, InstallableResourceOptions{
-			Remote: opts.Remote,
+			Remote:                   opts.Remote,
+			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct installable resource: %w", err)
@@ -191,7 +214,8 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	var newRelInstResources []*InstallableResource
 	for _, resSpec := range newRelResSpecs {
 		installableResource, err := NewInstallableResource(resSpec, releaseNamespace, clientFactory, InstallableResourceOptions{
-			Remote: opts.Remote,
+			Remote:                   opts.Remote,
+			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct installable resource: %w", err)
@@ -286,7 +310,8 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 			})
 
 			instRes, err = NewInstallableResource(resSpec, releaseNamespace, clientFactory, InstallableResourceOptions{
-				Remote: opts.Remote,
+				Remote:                   opts.Remote,
+				DefaultDeletePropagation: opts.DefaultDeletePropagation,
 			})
 			if err != nil {
 				return nil, nil, fmt.Errorf("construct deployable resource from patched object by %q: %w", patcher.Type(), err)

@@ -12,6 +12,7 @@ import (
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/werf/3p-helm/pkg/registry"
@@ -75,6 +76,8 @@ type ReleaseInstallOptions struct {
 	DefaultChartName string
 	// DefaultChartVersion sets the default chart version when Chart.yaml doesn't specify one.
 	DefaultChartVersion string
+	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
+	DefaultDeletePropagation string
 	// ExtraAnnotations are additional Kubernetes annotations to add to all chart resources.
 	// These are added during chart rendering, before resources are stored in the release.
 	ExtraAnnotations map[string]string
@@ -389,7 +392,8 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 	}, clientFactory, resource.BuildResourcesOptions{
-		Remote: true,
+		Remote:                   true,
+		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 	})
 	if err != nil {
 		return fmt.Errorf("build resources: %w", err)
@@ -542,17 +546,18 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		if opts.AutoRollback && prevDeployedRelease != nil {
 			runRollbackPlanResult, nonCritErrs, critErrs := runRollbackPlan(ctx, releaseName, releaseNamespace, newRelease, prevDeployedRelease, taskStore, logStore, informerFactory, history, clientFactory, runRollbackPlanOptions{
-				TrackingOptions:         opts.TrackingOptions,
-				ExtraAnnotations:        opts.ExtraAnnotations,
-				ExtraLabels:             opts.ExtraLabels,
-				ExtraRuntimeAnnotations: opts.ExtraRuntimeAnnotations,
-				ExtraRuntimeLabels:      opts.ExtraRuntimeLabels,
-				ForceAdoption:           opts.ForceAdoption,
-				NetworkParallelism:      opts.NetworkParallelism,
-				NoRemoveManualChanges:   opts.NoRemoveManualChanges,
-				ReleaseInfoAnnotations:  opts.ReleaseInfoAnnotations,
-				ReleaseLabels:           opts.ReleaseLabels,
-				RollbackGraphPath:       opts.RollbackGraphPath,
+				DefaultDeletePropagation: opts.DefaultDeletePropagation,
+				TrackingOptions:          opts.TrackingOptions,
+				ExtraAnnotations:         opts.ExtraAnnotations,
+				ExtraLabels:              opts.ExtraLabels,
+				ExtraRuntimeAnnotations:  opts.ExtraRuntimeAnnotations,
+				ExtraRuntimeLabels:       opts.ExtraRuntimeLabels,
+				ForceAdoption:            opts.ForceAdoption,
+				NetworkParallelism:       opts.NetworkParallelism,
+				NoRemoveManualChanges:    opts.NoRemoveManualChanges,
+				ReleaseInfoAnnotations:   opts.ReleaseInfoAnnotations,
+				ReleaseLabels:            opts.ReleaseLabels,
+				RollbackGraphPath:        opts.RollbackGraphPath,
 			})
 
 			criticalErrs = append(criticalErrs, critErrs...)
@@ -669,6 +674,10 @@ func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir, 
 		opts.ChartProvenanceStrategy = common.DefaultChartProvenanceStrategy
 	}
 
+	if opts.DefaultDeletePropagation == "" {
+		opts.DefaultDeletePropagation = string(common.DefaultDeletePropagation)
+	}
+
 	return opts, nil
 }
 
@@ -706,16 +715,17 @@ func createReleaseNamespace(ctx context.Context, clientFactory *kube.ClientFacto
 type runRollbackPlanOptions struct {
 	common.TrackingOptions
 
-	ExtraAnnotations        map[string]string
-	ExtraLabels             map[string]string
-	ExtraRuntimeAnnotations map[string]string
-	ExtraRuntimeLabels      map[string]string
-	ForceAdoption           bool
-	NetworkParallelism      int
-	NoRemoveManualChanges   bool
-	ReleaseInfoAnnotations  map[string]string
-	ReleaseLabels           map[string]string
-	RollbackGraphPath       string
+	DefaultDeletePropagation string
+	ExtraAnnotations         map[string]string
+	ExtraLabels              map[string]string
+	ExtraRuntimeAnnotations  map[string]string
+	ExtraRuntimeLabels       map[string]string
+	ForceAdoption            bool
+	NetworkParallelism       int
+	NoRemoveManualChanges    bool
+	ReleaseInfoAnnotations   map[string]string
+	ReleaseLabels            map[string]string
+	RollbackGraphPath        string
 }
 
 type runRollbackPlanResult struct {
@@ -780,7 +790,8 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 	}, clientFactory, resource.BuildResourcesOptions{
-		Remote: true,
+		Remote:                   true,
+		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 	})
 	if err != nil {
 		return nil, nonCritErrs, append(critErrs, fmt.Errorf("build resources: %w", err))

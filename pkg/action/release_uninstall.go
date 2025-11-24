@@ -10,6 +10,7 @@ import (
 
 	"github.com/gookit/color"
 	"github.com/samber/lo"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	helmrelease "github.com/werf/3p-helm/pkg/release"
@@ -37,6 +38,8 @@ type ReleaseUninstallOptions struct {
 	common.KubeConnectionOptions
 	common.TrackingOptions
 
+	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
+	DefaultDeletePropagation string
 	// DeleteReleaseNamespace, when true, deletes the release namespace after uninstalling the release.
 	// WARNING: This will delete the entire namespace including resources not managed by this release.
 	DeleteReleaseNamespace bool
@@ -197,7 +200,8 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, nil, []spec.ResourcePatcher{
 			spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 		}, clientFactory, resource.BuildResourcesOptions{
-			Remote: true,
+			Remote:                   true,
+			DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 		})
 		if err != nil {
 			return fmt.Errorf("build resources: %w", err)
@@ -390,6 +394,10 @@ func applyReleaseUninstallOptionsDefaults(opts ReleaseUninstallOptions, currentD
 		opts.ReleaseStorageDriver = common.ReleaseStorageDriverSecrets
 	case common.ReleaseStorageDriverMemory:
 		return ReleaseUninstallOptions{}, fmt.Errorf("memory release storage driver is not supported")
+	}
+
+	if opts.DefaultDeletePropagation == "" {
+		opts.DefaultDeletePropagation = string(common.DefaultDeletePropagation)
 	}
 
 	return opts, nil
