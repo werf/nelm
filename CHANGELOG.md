@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.18.0](https://github.com/werf/nelm/compare/v1.17.2...v1.18.0) (2025-11-25)
+
+
+### Features
+
+* `--delete-propagation` and `werf.io/delete-propagation` ([79e448e](https://github.com/werf/nelm/commit/79e448ea313057605494ce1062370c02f1e4b20c))
+
+
+### Bug Fixes
+
+* `plan` shows nothing if only tracking ops in plan ([bd36c0e](https://github.com/werf/nelm/commit/bd36c0e83492e15343eef0fd522997aac89a0b4f))
+* remove `null` keys from manifests now only on `NELM_FEAT_CLEAN_NULL_FIELDS=true` ([f1c9a36](https://github.com/werf/nelm/commit/f1c9a360aa17b78345ecd9d4d1bcb9ac8f554eba))
+
 ## [1.17.2](https://github.com/werf/nelm/compare/v1.17.1...v1.17.2) (2025-11-17)
 
 
