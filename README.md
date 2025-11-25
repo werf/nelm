@@ -838,7 +838,7 @@ For documentation on regular Helm features, see [Helm docs](https://helm.sh/docs
 - [x] Advanced resource lifecycle management.
 - [ ] Nelm v2.
 - [ ] Migration to Helm v4.
-- [ ] The Nelm operator, which can integrate with ArgoCD/Flux.
+- [ ] The Nelm operator, which can integrate with ArgoCD/Flux ([#494](https://github.com/werf/nelm/issues/494)).
 - [ ] An alternative to Helm templating ([#54](https://github.com/werf/nelm/issues/54)).
 - [ ] Resource patching support ([#115](https://github.com/werf/nelm/issues/115)).
 - [ ] Downloading charts directly from Git.
