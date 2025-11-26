@@ -841,6 +841,7 @@ For documentation on regular Helm features, see [Helm docs](https://helm.sh/docs
 - [ ] The Nelm operator, which can integrate with ArgoCD/Flux ([#494](https://github.com/werf/nelm/issues/494)).
 - [ ] An alternative to Helm templating ([#54](https://github.com/werf/nelm/issues/54)).
 - [ ] Resource patching support ([#115](https://github.com/werf/nelm/issues/115)).
+- [ ] DRY values.yaml files ([#495](https://github.com/werf/nelm/issues/495)).
 - [ ] Downloading charts directly from Git.
 - [ ] Migrate the built-in secrets management to Mozilla SOPS ([#62](https://github.com/werf/nelm/issues/62)).
 - [ ] Nelmfile.
