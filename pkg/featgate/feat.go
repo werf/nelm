@@ -41,6 +41,11 @@ var (
 		"preview-v2",
 		`Activate all feature gates that will be enabled by default in Nelm v2`,
 	)
+
+	FeatGateJSCharts = NewFeatGate(
+		"js-charts",
+		`Enable JavaScript-based chart rendering from js-templates/ directory`,
+	)
 )
 
 type FeatGate struct {

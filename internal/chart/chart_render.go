@@ -1,6 +1,7 @@
 package chart
 
 import (
+	"maps"
 	"bytes"
 	"context"
 	"fmt"
@@ -29,9 +30,11 @@ import (
 	"github.com/werf/3p-helm/pkg/releaseutil"
 	"github.com/werf/3p-helm/pkg/strvals"
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/internal/jsengine"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -203,6 +206,17 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	}
 
 	log.Default.TraceStruct(ctx, renderedTemplates, "Rendered contents of templates/:")
+
+	jsRenderedTemplates, err := renderJSTemplates(ctx, chart, renderedValues)
+	if err != nil {
+		return nil, fmt.Errorf("render JavaScript templates for chart %q: %w", chart.Name(), err)
+	}
+
+	if len(jsRenderedTemplates) > 0 {
+		log.Default.TraceStruct(ctx, jsRenderedTemplates, "Rendered contents of js-templates/:")
+
+		maps.Copy(renderedTemplates, jsRenderedTemplates)
+	}
 
 	if r, err := renderedTemplatesToResourceSpecs(renderedTemplates, releaseNamespace, opts); err != nil {
 		return nil, fmt.Errorf("convert rendered templates to installable resources for chart at %q: %w", chartPath, err)
@@ -379,4 +393,37 @@ func buildRuntime(jsonSets []string) (map[string]interface{}, error) {
 	}
 
 	return runtime, nil
+}
+
+func renderJSTemplates(
+	ctx context.Context,
+	chart *chart.Chart,
+	renderedValues chartutil.Values,
+) (map[string]string, error) {
+	jsTemplatesExists := false
+	for _, file := range chart.Files {
+		if strings.HasPrefix(file.Name, jsengine.JSTemplatesDir+"/") {
+			jsTemplatesExists = true
+			break
+		}
+	}
+
+	if !jsTemplatesExists {
+		return map[string]string{}, nil
+	}
+
+	if !featgate.FeatGateJSCharts.Enabled() {
+		return nil, fmt.Errorf("JavaScript templates found in chart but NELM_FEAT_JS_CHARTS feature gate is not enabled. Set NELM_FEAT_JS_CHARTS=true to enable JS chart rendering")
+	}
+
+	log.Default.Debug(ctx, "Rendering JavaScript resources for chart %q", chart.Name())
+
+	jsEngine := jsengine.New()
+
+	jsRenderedTemplates, err := jsEngine.RenderFiles(ctx, chart, renderedValues)
+	if err != nil {
+		return nil, err
+	}
+
+	return jsRenderedTemplates, nil
 }
