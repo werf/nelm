@@ -243,7 +243,7 @@ During the deployment, Nelm finds Pods of deploying resources and periodically p
 
 `nelm release plan install` shows exactly what's going to happen in the cluster on the next release. It shows 100% accurate diffs between current and to-be resource versions, utilizing robust dry-run Server-Side Apply instead of client-side trickery.
 
-![planning](resources/images/nelm-release-plan-install.gif)
+![planning](resources/images/nelm-release-plan-install.png)
 
 ### Encrypted values and encrypted files
 
