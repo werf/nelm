@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.1](https://github.com/werf/nelm/compare/v1.18.0...v1.18.1) (2025-11-28)
+
+
+### Bug Fixes
+
+* inherit `deckhouse-controller` managed fields ([0116483](https://github.com/werf/nelm/commit/0116483ae15553394a4fd7a0e82721fb613fff2d))
+
 ## [1.18.0](https://github.com/werf/nelm/compare/v1.17.2...v1.18.0) (2025-11-25)
 
 
