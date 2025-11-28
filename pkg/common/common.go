@@ -23,6 +23,7 @@ var (
 const (
 	DefaultBurstLimit              = 100
 	DefaultChartProvenanceStrategy = "never" // TODO(v2): switch to if-possible
+	DefaultDeletePropagation       = metav1.DeletePropagationForeground
 	DefaultDiffContextLines        = 3
 	DefaultFieldManager            = "helm"
 	DefaultLocalKubeVersion        = "1.20.0"
@@ -32,13 +33,13 @@ const (
 	DefaultQPSLimit                = 30
 	DefaultReleaseHistoryLimit     = 10
 	KubectlEditFieldManager        = "kubectl-edit"
+	OldDeckhouseControllerManager  = "deckhouse-controller"
 	OldFieldManagerPrefix          = "werf"
 	StageEndSuffix                 = "end"
 	StagePrefix                    = "stage"
 	StageStartSuffix               = "start"
 	StubReleaseName                = "stub-release"
 	StubReleaseNamespace           = "stub-namespace"
-	DefaultDeletePropagation       = metav1.DeletePropagationForeground
 )
 
 const (

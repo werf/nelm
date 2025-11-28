@@ -566,6 +566,7 @@ func removeUndesirableManagers(managedFields []v1.ManagedFieldsEntry, oursEntry 
 
 			changed = true
 		} else if (!noRemoveManualChanges && managedField.Manager == common.KubectlEditFieldManager) ||
+			managedField.Manager == common.OldDeckhouseControllerManager ||
 			strings.HasPrefix(managedField.Manager, common.OldFieldManagerPrefix) {
 			merged, mergeChanged := lo.Must2(util.MergeJSON(fieldsByte, oursFieldsByte))
 			if mergeChanged {
@@ -590,8 +591,11 @@ func exclusiveOwnershipForOurManager(managedFields []v1.ManagedFieldsEntry, ours
 
 		fieldsByte := lo.Must(json.Marshal(managedField.FieldsV1))
 
-		if managedField.Manager == common.DefaultFieldManager ||
-			managedField.Manager == common.KubectlEditFieldManager ||
+		if lo.Contains([]string{
+			common.DefaultFieldManager,
+			common.KubectlEditFieldManager,
+			common.OldDeckhouseControllerManager,
+		}, managedField.Manager) ||
 			strings.HasPrefix(managedField.Manager, common.OldFieldManagerPrefix) {
 			continue
 		}
