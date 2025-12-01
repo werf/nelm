@@ -27,7 +27,7 @@ Created ts/src/index.ts
 Next steps:
   cd ts
   npm install
-  npm run generate-types   # if values.schema.json exists
+  npm run generate:values   # if values.schema.json exists
 ```
 
 ### nelm chart render
@@ -57,9 +57,11 @@ nelm chart publish [path] [flags]
 ```
 
 **Behavior:**
-1. Bundles TypeScript with esbuild → `ts/vendor/bundle.js`
+1. Bundles TypeScript with embedded esbuild → `ts/vendor/bundle.js`
 2. Packages chart
 3. Uploads to registry
+
+**Note:** esbuild is embedded in Nelm CLI.
 
 ## Existing Commands (unchanged)
 
@@ -86,7 +88,7 @@ nelm chart ts init .
 cd ts && npm install
 
 # Generate types from schema
-npm run generate-types
+npm run generate:values
 
 # Develop...
 # Edit src/index.ts

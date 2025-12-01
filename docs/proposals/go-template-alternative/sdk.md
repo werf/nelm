@@ -1,204 +1,180 @@
-# @nelm/sdk Package
+# Types & Packages
 
-## Overview
+## npm Packages
 
-Minimal SDK providing TypeScript types and one helper function. All runtime functions are injected by Nelm (Go) into the JS context.
+| Package | Type | Purpose |
+|---------|------|---------|
+| `@nelm/types` | Types | HelmContext, Manifest, K8s resources |
+| `@nelm/crd-to-ts` | CLI generator | Generate types from CRD |
+| `json-schema-to-typescript` | CLI generator | Generate Values types from schema |
 
-## Package Structure
+## @nelm/types
 
-```
-@nelm/sdk/
-  package.json
-  index.ts
-  index.d.ts
-  types/
-    context.ts    # HelmContext, Release, Chart, etc.
-    manifest.ts   # Manifest, ObjectMeta
-    capabilities.ts
-    files.ts
-```
+Single package with all types. No helper functions.
 
-## Source Code
-
-### index.ts
+### Nelm Types
 
 ```typescript
-// Re-export all types
-export * from './types/context'
-export * from './types/manifest'
-export * from './types/capabilities'
-export * from './types/files'
-
-// The only runtime helper
-export function when<T>(condition: boolean, items: T[]): T[] {
-  return condition ? items : []
-}
+import { HelmContext, Manifest, DataContext, DataRequest } from '@nelm/types'
 ```
 
-### types/context.ts
+### Kubernetes Types (Generated from OpenAPI)
 
 ```typescript
-import { Capabilities } from './capabilities'
-import { Files } from './files'
-
-export interface HelmContext<V = unknown> {
-  Values: V
-  Release: Release
-  Chart: Chart
-  Capabilities: Capabilities
-  Files: Files
-
-  // Functions injected from Go
-  lookup<T = unknown>(apiVersion: string, kind: string, namespace: string, name: string): T | null
-  toYaml(obj: unknown): string
-  fromYaml<T>(str: string): T
-  toJson(obj: unknown): string
-  fromJson<T>(str: string): T
-  b64encode(str: string): string
-  b64decode(str: string): string
-  sha256(str: string): string
-  sha1(str: string): string
-  md5(str: string): string
-  indent(str: string, spaces: number): string
-  nindent(str: string, spaces: number): string
-  trim(str: string): string
-  trimPrefix(str: string, prefix: string): string
-  trimSuffix(str: string, suffix: string): string
-  upper(str: string): string
-  lower(str: string): string
-  title(str: string): string
-  quote(str: string): string
-  squote(str: string): string
-}
-
-export interface Release {
-  Name: string
-  Namespace: string
-  IsUpgrade: boolean
-  IsInstall: boolean
-  Revision: number
-  Service: string
-}
-
-export interface Chart {
-  Name: string
-  Version: string
-  AppVersion: string
-  Description: string
-  Keywords: string[]
-  Home: string
-  Sources: string[]
-  Icon: string
-  Deprecated: boolean
-  Type: string
-}
+import { Deployment, StatefulSet, DaemonSet } from '@nelm/types/apps/v1'
+import { ConfigMap, Secret, Service, Pod } from '@nelm/types/core/v1'
+import { Ingress, NetworkPolicy } from '@nelm/types/networking/v1'
+import { Job, CronJob } from '@nelm/types/batch/v1'
 ```
 
-### types/capabilities.ts
+### Package Structure
 
-```typescript
-export interface Capabilities {
-  KubeVersion: KubeVersion
-  APIVersions: APIVersions
-  HelmVersion: HelmVersion
-}
-
-export interface KubeVersion {
-  Major: string
-  Minor: string
-  GitVersion: string
-
-  gte(version: string): boolean
-  gt(version: string): boolean
-  lte(version: string): boolean
-  lt(version: string): boolean
-  eq(version: string): boolean
-}
-
-export interface APIVersions {
-  list: string[]
-  has(apiVersion: string): boolean
-}
-
-export interface HelmVersion {
-  Version: string
-  GitCommit: string
-  GoVersion: string
-}
+```
+@nelm/types/
+  index.ts                # HelmContext, Manifest, DataRequest, etc.
+  apps/
+    v1.ts                 # Deployment, StatefulSet, DaemonSet, ReplicaSet
+  core/
+    v1.ts                 # ConfigMap, Secret, Service, Pod, PVC, etc.
+  networking/
+    v1.ts                 # Ingress, NetworkPolicy, IngressClass
+  batch/
+    v1.ts                 # Job, CronJob
+  rbac.authorization.k8s.io/
+    v1.ts                 # Role, ClusterRole, RoleBinding, etc.
+  autoscaling/
+    v2.ts                 # HorizontalPodAutoscaler
+  policy/
+    v1.ts                 # PodDisruptionBudget
+  ...                     # Generated from K8s OpenAPI spec
 ```
 
-### types/files.ts
+### Generation
 
-```typescript
-export interface Files {
-  get(path: string): string
-  getBytes(path: string): Uint8Array
-  glob(pattern: string): Map<string, string>
-  lines(path: string): string[]
-  asConfig(pattern?: string): Record<string, string>
-  asSecrets(pattern?: string): Record<string, string>
-}
+K8s types generated from OpenAPI spec in CI. Version managed in CI pipeline.
+
+## @nelm/crd-to-ts
+
+CLI for generating TypeScript types from Kubernetes CRD.
+
+```bash
+# From cluster
+npx @nelm/crd-to-ts --crd prometheuses.monitoring.coreos.com -o src/generated/
+
+# From file
+npx @nelm/crd-to-ts --file crds/my-crd.yaml -o src/generated/
+
+# From URL
+npx @nelm/crd-to-ts --url https://raw.githubusercontent.com/.../crd.yaml -o src/generated/
 ```
 
-### types/manifest.ts
-
+Generates:
 ```typescript
-export interface Manifest {
-  apiVersion: string
-  kind: string
+// src/generated/prometheus.types.ts
+
+export interface Prometheus {
+  apiVersion: 'monitoring.coreos.com/v1'
+  kind: 'Prometheus'
   metadata: ObjectMeta
-  [key: string]: unknown
+  spec: PrometheusSpec
+  status?: PrometheusStatus
 }
 
-export interface ObjectMeta {
-  name: string
-  namespace?: string
-  labels?: Record<string, string>
-  annotations?: Record<string, string>
-  ownerReferences?: OwnerReference[]
-  finalizers?: string[]
+export interface PrometheusSpec {
+  replicas?: number
+  serviceAccountName?: string
+  serviceMonitorSelector?: LabelSelector
+  // ... from OpenAPI schema in CRD
 }
+```
 
-export interface OwnerReference {
-  apiVersion: string
-  kind: string
-  name: string
-  uid: string
-  controller?: boolean
-  blockOwnerDeletion?: boolean
-}
+## Project Structure
+
+```
+ts/
+  src/
+    generated/
+      values.types.ts       # json-schema-to-typescript
+      prometheus.types.ts   # @nelm/crd-to-ts
+    index.ts
+  package.json
+  tsconfig.json
+  vendor/
+    bundle.js               # ES5 bundle
 ```
 
 ## package.json
 
 ```json
 {
-  "name": "@nelm/sdk",
-  "version": "1.0.0",
-  "description": "TypeScript SDK for Nelm charts",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
+  "name": "mychart-ts",
+  "private": true,
   "scripts": {
-    "build": "tsc",
-    "prepublishOnly": "npm run build"
+    "generate:values": "json2ts ../values.schema.json -o src/generated/values.types.ts",
+    "generate:crd": "crd-to-ts --crd servicemonitors.monitoring.coreos.com -o src/generated/",
+    "typecheck": "tsc --noEmit",
+    "build": "esbuild src/index.ts --bundle --target=es5 --format=iife --outfile=vendor/bundle.js"
   },
   "devDependencies": {
-    "typescript": "^5.0.0"
-  },
-  "keywords": ["nelm", "helm", "kubernetes", "typescript"],
-  "license": "Apache-2.0"
+    "@nelm/types": "^1.0.0",
+    "@nelm/crd-to-ts": "^1.0.0",
+    "typescript": "^5.0.0",
+    "json-schema-to-typescript": "^15.0.0"
+  }
+  // Note: esbuild embedded in Nelm, not needed here
 }
 ```
 
-## Distribution
+## Usage Example
 
-Published to npm as `@nelm/sdk`.
+```typescript
+import { HelmContext, Manifest } from '@nelm/types'
+import { Deployment } from '@nelm/types/apps/v1'
+import { Service } from '@nelm/types/core/v1'
+import { ConfigMap } from '@nelm/types/core/v1'
+import { Values } from './generated/values.types'
 
-Developers install as devDependency since it's primarily types:
+function when<T>(condition: boolean, items: T[]): T[] {
+  return condition ? items : []
+}
 
-```bash
-npm install --save-dev @nelm/sdk
+export default function render(ctx: HelmContext<Values>): Manifest[] {
+  var labels = {
+    'app.kubernetes.io/name': ctx.Chart.Name,
+    'app.kubernetes.io/instance': ctx.Release.Name,
+  }
+
+  var deployment: Deployment = {
+    apiVersion: 'apps/v1',
+    kind: 'Deployment',
+    metadata: {
+      name: ctx.Release.Name,
+      namespace: ctx.Release.Namespace,
+      labels: labels,
+    },
+    spec: {
+      replicas: ctx.Values.replicas,
+      selector: { matchLabels: labels },
+      template: {
+        metadata: { labels: labels },
+        spec: {
+          containers: [{
+            name: ctx.Chart.Name,
+            image: ctx.Values.image.repository + ':' + ctx.Values.image.tag,
+          }],
+        },
+      },
+    },
+  }
+
+  return [
+    deployment,
+    ...when(ctx.Values.service.enabled, [{
+      apiVersion: 'v1',
+      kind: 'Service',
+      metadata: { name: ctx.Release.Name },
+      spec: { selector: labels, ports: [{ port: 80 }] },
+    }]),
+  ]
+}
 ```

@@ -6,19 +6,19 @@
 mychart/
   Chart.yaml
   values.yaml
-  values.schema.json      # Optional, for type generation
-  templates/              # Go templates (optional)
-  ts/                     # TypeScript source
+  values.schema.json        # Optional, for type generation
+  templates/                # Go templates (optional)
+  ts/                       # TypeScript source
     package.json
     tsconfig.json
-    node_modules/         # .gitignore
+    node_modules/           # .gitignore
     src/
-      index.ts            # Entry point
-      values.types.ts     # Generated from schema
-      deployment.ts       # Helper modules
-      service.ts
+      generated/
+        values.types.ts     # From values.schema.json
+        *.types.ts          # From CRDs
+      index.ts              # Entry point (render + optional data)
     vendor/
-      bundle.js           # Bundled for distribution
+      bundle.js             # ES5 bundle for distribution
 ```
 
 ## Development Workflow
@@ -48,7 +48,7 @@ Created ts/src/index.ts
 Next steps:
   cd ts
   npm install
-  npm run generate-types   # if values.schema.json exists
+  npm run generate:values   # if values.schema.json exists
 ```
 
 ### 2. Install Dependencies
@@ -58,21 +58,22 @@ cd ts
 npm install
 ```
 
-### 3. Generate Types (if schema exists)
+### 3. Generate Types
 
 ```bash
-npm run generate-types
-```
+# Values types from schema
+npm run generate:values
 
-Creates `src/values.types.ts` from `../values.schema.json`.
+# CRD types (if needed)
+npm run generate:crd
+```
 
 ### 4. Develop
 
-Edit `src/index.ts` and other modules. IDE provides full TypeScript support.
-
 ```typescript
-import { HelmContext, Manifest, when } from '@nelm/sdk'
-import { Values } from './values.types'
+import { HelmContext, Manifest } from '@nelm/types'
+import { Deployment, Service } from '@nelm/types/apps/v1'
+import { Values } from './generated/values.types'
 
 export default function render(ctx: HelmContext<Values>): Manifest[] {
   return [
@@ -81,25 +82,17 @@ export default function render(ctx: HelmContext<Values>): Manifest[] {
 }
 ```
 
-### 5. Test Locally with Node.js
-
-```bash
-npm run dev
-# Executes with Node.js, outputs manifests to stdout
-```
-
-### 6. Test with QuickJS (Nelm)
-
-```bash
-nelm chart render .
-# Uses embedded QuickJS runtime
-```
-
-### 7. Type Check
+### 5. Type Check
 
 ```bash
 npm run typecheck
-# tsc --noEmit
+```
+
+### 6. Test with Nelm
+
+```bash
+cd ..
+nelm chart render .
 ```
 
 ## Publishing Workflow
@@ -110,16 +103,19 @@ npm run typecheck
 nelm chart publish .
 ```
 
-Nelm internally runs:
+Nelm runs embedded esbuild:
 ```bash
-esbuild ts/src/index.ts --bundle --outfile=ts/vendor/bundle.js --format=esm
+# Internally:
+esbuild ts/src/index.ts --bundle --target=es5 --format=iife --outfile=ts/vendor/bundle.js
 ```
+
+**Note:** esbuild is embedded in Nelm CLI. No need to install separately.
 
 ### 2. Upload to Registry
 
-Chart is uploaded with `ts/vendor/bundle.js` included.
+Chart uploaded with `ts/vendor/bundle.js`.
 
-`node_modules/` is NOT included (in .gitignore).
+`node_modules/` NOT included.
 
 ## Deployment Workflow
 
@@ -131,14 +127,15 @@ nelm release install myrepo/mychart
 
 ### 2. Nelm Renders
 
-Under the hood:
-1. Nelm loads `ts/vendor/bundle.js`
-2. Passes context (Values, Release, etc.) to QuickJS
-3. Executes `render(ctx)`
-4. Receives manifests array
-5. Serializes to YAML
-6. Combines with Go templates output (if any)
-7. Deploys to cluster
+1. Load `ts/vendor/bundle.js`
+2. If `data` export exists:
+   - Execute `data(ctx)` in goja
+   - Fetch external data (Go)
+   - Populate `ctx.Data`
+3. Execute `render(ctx)` in goja
+4. Serialize Manifest[] to YAML
+5. Combine with Go templates (if any)
+6. Deploy
 
 **No Node.js required on deployment machine.**
 
@@ -150,21 +147,22 @@ Under the hood:
 {
   "name": "mychart-ts",
   "private": true,
-  "type": "module",
   "scripts": {
-    "generate-types": "json2ts ../values.schema.json -o src/values.types.ts",
+    "generate:values": "json2ts ../values.schema.json -o src/generated/values.types.ts",
+    "generate:crd": "crd-to-ts --crd servicemonitors.monitoring.coreos.com -o src/generated/",
     "typecheck": "tsc --noEmit",
-    "dev": "tsx src/index.ts",
-    "build": "esbuild src/index.ts --bundle --outfile=vendor/bundle.js --format=esm"
+    "build": "esbuild src/index.ts --bundle --target=es5 --format=iife --outfile=vendor/bundle.js"
   },
   "devDependencies": {
-    "@nelm/sdk": "^1.0.0",
+    "@nelm/types": "^1.0.0",
+    "@nelm/crd-to-ts": "^1.0.0",
     "typescript": "^5.0.0",
-    "json-schema-to-typescript": "^15.0.0",
-    "tsx": "^4.0.0"
+    "json-schema-to-typescript": "^15.0.0"
   }
 }
 ```
+
+**Note:** esbuild is embedded in Nelm CLI, not needed in devDependencies.
 
 ### tsconfig.json
 
@@ -188,10 +186,10 @@ Under the hood:
 ### src/index.ts (template)
 
 ```typescript
-import { HelmContext, Manifest, when } from '@nelm/sdk'
-// import { Values } from './values.types'  // Uncomment after generate-types
+import { HelmContext, Manifest } from '@nelm/types'
+// import { Values } from './generated/values.types'
 
-type Values = Record<string, unknown>  // Remove after generate-types
+type Values = Record<string, unknown>  // Remove after generate:values
 
 export default function render(ctx: HelmContext<Values>): Manifest[] {
   return [
@@ -210,10 +208,17 @@ export default function render(ctx: HelmContext<Values>): Manifest[] {
 }
 ```
 
-## .gitignore Additions
+## .gitignore
 
 ```gitignore
 ts/node_modules/
 ```
 
-Note: `ts/vendor/bundle.js` IS committed for published charts.
+Note: `ts/vendor/bundle.js` IS committed.
+
+## Build Constraints
+
+- **Target:** ES5 (goja compatibility)
+- **Format:** IIFE
+- **No async/await**
+- **No network/fs in JS**

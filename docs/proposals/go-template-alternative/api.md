@@ -3,47 +3,18 @@
 ## Main Interface
 
 ```typescript
-interface HelmContext<V = unknown> {
-  // Data
+interface HelmContext<V = unknown, D = DataResults> {
+  // Data only, no functions
   Values: V
   Release: Release
   Chart: Chart
   Capabilities: Capabilities
   Files: Files
-
-  // Functions (injected from Go)
-  lookup<T = unknown>(apiVersion: string, kind: string, namespace: string, name: string): T | null
-
-  // Serialization
-  toYaml(obj: unknown): string
-  fromYaml<T>(str: string): T
-  toJson(obj: unknown): string
-  fromJson<T>(str: string): T
-
-  // Encoding
-  b64encode(str: string): string
-  b64decode(str: string): string
-
-  // Hashing
-  sha256(str: string): string
-  sha1(str: string): string
-  md5(str: string): string
-
-  // String manipulation (Helm-compatible)
-  indent(str: string, spaces: number): string
-  nindent(str: string, spaces: number): string
-  trim(str: string): string
-  trimPrefix(str: string, prefix: string): string
-  trimSuffix(str: string, suffix: string): string
-  upper(str: string): string
-  lower(str: string): string
-  title(str: string): string
-  quote(str: string): string
-  squote(str: string): string
-
-  // ... other Helm helpers
+  Data: D  // Results from data() phase
 }
 ```
+
+**Note:** No helper functions in ctx. Define your own as needed.
 
 ## Release
 
@@ -88,18 +59,10 @@ interface KubeVersion {
   Major: string
   Minor: string
   GitVersion: string  // e.g., "v1.28.3"
-
-  // Semver comparison helpers
-  gte(version: string): boolean
-  gt(version: string): boolean
-  lte(version: string): boolean
-  lt(version: string): boolean
-  eq(version: string): boolean
 }
 
 interface APIVersions {
   list: string[]
-  has(apiVersion: string): boolean
 }
 
 interface HelmVersion {
@@ -115,12 +78,24 @@ interface HelmVersion {
 interface Files {
   get(path: string): string
   getBytes(path: string): Uint8Array
-  glob(pattern: string): Map<string, string>  // path -> content
+  glob(pattern: string): Record<string, string>  // path -> content
   lines(path: string): string[]
-  asConfig(pattern?: string): Record<string, string>
-  asSecrets(pattern?: string): Record<string, string>  // base64 encoded
 }
 ```
+
+## Data (from data mechanism)
+
+```typescript
+type DataResults = Record<string, DataResult>
+
+type DataResult =
+  | KubernetesResource
+  | KubernetesList
+  | boolean
+  | null
+```
+
+See [data-mechanism.md](./data-mechanism.md) for details.
 
 ## Manifest
 
@@ -145,58 +120,65 @@ interface ObjectMeta {
 ## Usage Example
 
 ```typescript
-import { HelmContext, Manifest } from '@nelm/sdk'
-import { Values } from './values.types'
-import { when } from '@nelm/sdk'
+import { HelmContext, Manifest } from '@nelm/types'
+import { Deployment } from '@nelm/types/apps/v1'
+import { Service } from '@nelm/types/core/v1'
+import { Values } from './generated/values.types'
+
+// User-defined helper
+function when<T>(condition: boolean, items: T[]): T[] {
+  return condition ? items : []
+}
 
 export default function render(ctx: HelmContext<Values>): Manifest[] {
-  const labels = {
+  var labels = {
     'app.kubernetes.io/name': ctx.Chart.Name,
     'app.kubernetes.io/instance': ctx.Release.Name,
     'app.kubernetes.io/version': ctx.Chart.AppVersion,
   }
 
-  return [
-    // Deployment
-    {
-      apiVersion: 'apps/v1',
-      kind: 'Deployment',
-      metadata: {
-        name: ctx.Release.Name,
-        namespace: ctx.Release.Namespace,
-        labels,
-      },
-      spec: {
-        replicas: ctx.Values.replicas,
-        selector: { matchLabels: labels },
-        template: {
-          metadata: { labels },
-          spec: {
-            containers: [{
-              name: ctx.Chart.Name,
-              image: `${ctx.Values.image.repository}:${ctx.Values.image.tag}`,
-            }],
-          },
+  var deployment: Deployment = {
+    apiVersion: 'apps/v1',
+    kind: 'Deployment',
+    metadata: {
+      name: ctx.Release.Name,
+      namespace: ctx.Release.Namespace,
+      labels: labels,
+    },
+    spec: {
+      replicas: ctx.Values.replicas,
+      selector: { matchLabels: labels },
+      template: {
+        metadata: { labels: labels },
+        spec: {
+          containers: [{
+            name: ctx.Chart.Name,
+            image: ctx.Values.image.repository + ':' + ctx.Values.image.tag,
+          }],
         },
       },
     },
+  }
 
-    // Service
-    {
-      apiVersion: 'v1',
-      kind: 'Service',
-      metadata: {
-        name: ctx.Release.Name,
-        namespace: ctx.Release.Namespace,
-        labels,
-      },
-      spec: {
-        selector: labels,
-        ports: [{ port: 80, targetPort: 8080 }],
-      },
+  var service: Service = {
+    apiVersion: 'v1',
+    kind: 'Service',
+    metadata: {
+      name: ctx.Release.Name,
+      namespace: ctx.Release.Namespace,
+      labels: labels,
     },
+    spec: {
+      selector: labels,
+      ports: [{ port: 80, targetPort: 8080 }],
+    },
+  }
 
-    // Conditional Ingress
+  return [
+    deployment,
+    service,
+
+    // Conditional based on values
     ...when(ctx.Values.ingress.enabled, [{
       apiVersion: 'networking.k8s.io/v1',
       kind: 'Ingress',
@@ -223,8 +205,8 @@ export default function render(ctx: HelmContext<Values>): Manifest[] {
       },
     }]),
 
-    // Conditional: check if CRD exists
-    ...when(ctx.Capabilities.APIVersions.has('monitoring.coreos.com/v1'), [{
+    // Conditional based on data mechanism
+    ...when(ctx.Data.serviceMonitorCRDExists === true, [{
       apiVersion: 'monitoring.coreos.com/v1',
       kind: 'ServiceMonitor',
       metadata: {
