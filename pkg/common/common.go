@@ -33,7 +33,6 @@ const (
 	DefaultQPSLimit                = 30
 	DefaultReleaseHistoryLimit     = 10
 	KubectlEditFieldManager        = "kubectl-edit"
-	OldDeckhouseControllerManager  = "deckhouse-controller"
 	OldFieldManagerPrefix          = "werf"
 	StageEndSuffix                 = "end"
 	StagePrefix                    = "stage"
