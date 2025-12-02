@@ -66,7 +66,7 @@ Hard requirements for the solution:
 
 Here is a comparison of all viable options, along with Go templates for reference:
 
-|  | helm | ts | python | go | cue | kcl | pkl | jsonnet | ytt | starlark | dhall |
+|  | gotpl | ts | python | go | cue | kcl | pkl | jsonnet | ytt | starlark | dhall |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Activity | Active | Active | Active | Active | Active | Active | Active | Maintenance | Abandoned | Abandoned | Abandoned |
 | Abandonment risk¹ | No | No | No | No | Moderate | High | Moderate |  |  |  |  |
@@ -76,10 +76,9 @@ Here is a comparison of all viable options, along with Go templates for referenc
 | Libs bundling³ | No | Yes | No | No | No | No | No |  |  |  |  |
 | Air-gapped deploys⁴ | Poor | Yes | Poor | Poor | Poor | Poor | No |  |  |  |  |
 | 3rd-party libraries | Few | Great | Great | Great | Few | No | No |  |  |  |  |
-| Tooling<br>(editors, lint, ...) | Poor | Great | Great | Great | Poor |  |  |  |  |  |  |
+| Tooling (editors, ...)| Poor | Great | Great | Great | Poor |  |  |  |  |  |  |
 | Working with CRs | Poor | Great | Great | Poor | Great |  |  |  |  |  |  |
-| Complexity<br>(no programming exp.) | 2 | 4 | 2 | 3 | 3 |  |  |  |  |  |  |
-| Complexity<br>(with programming exp.) | 2 | 3 | 1 | 2 | 4 |  |  |  |  |  |  |
+| Complexity | 2 | 4 | 2 | 3 | 3 |  |  |  |  |  |  |
 | Flexibility | 2 | 5 | 4 | 3 | 2 |  |  |  |  |  |  |
 | Debugging | 1 | 5 | 5 | 5 | 2 |  |  |  |  |  |  |
 | Community | 2 | 5 | 5 | 5 | 1 | 1 | 1 |  |  |  |  |
@@ -147,7 +146,7 @@ Here the only difference is the new `ts` directory. This directory basically rep
 
 During chart publishing all dependencies will be bundled into `vendor/libs.js` (source maps embedded) and `node_modules` directory will not be published. This will be done with esbuild, which is to be embedded in Nelm.
 
-Nelm must include [esbuild](https://github.com/evanw/esbuild) (TS/JS transpiler and bundler) and [Goja](https://github.com/dop251/goja/).
+Nelm must embed [esbuild](https://github.com/evanw/esbuild) (TS/JS transpiler and bundler) and [Goja](https://github.com/dop251/goja/).
 
 Development workflow:
 1. NodeJS, NPM and Nelm must be installed for local development.
