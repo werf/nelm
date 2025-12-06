@@ -386,7 +386,7 @@ export function render(context: any) {
 			values := chartutil.Values{}
 			_, err = engine.RenderFiles(ctx, chart, values)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("chart_render_main.js"))
+			Expect(err.Error()).To(ContainSubstring("index.ts"))
 			Expect(err.Error()).To(ContainSubstring("undefined"))
 		})
 
