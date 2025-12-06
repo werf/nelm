@@ -156,6 +156,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	}
 
 	var clientFactory *kube.ClientFactory
+
 	if opts.Remote {
 		if len(opts.KubeConfigPaths) > 0 {
 			var splitPaths []string
@@ -305,6 +306,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	}
 
 	var showFiles []string
+
 	for _, file := range opts.ShowOnlyFiles {
 		absFile, err := filepath.Abs(file)
 		if err != nil {
@@ -335,6 +337,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		renderOutStream  io.Writer
 		renderColorLevel color.Level
 	)
+
 	if opts.OutputFilePath != "" {
 		file, err := os.Create(opts.OutputFilePath)
 		if err != nil {

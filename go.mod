@@ -13,7 +13,10 @@ require (
 	github.com/docker/cli v25.0.5+incompatible
 	github.com/docker/docker v25.0.5+incompatible
 	github.com/dominikbraun/graph v0.23.0
+	github.com/dop251/goja v0.0.0-20251121114222-56b1242a5f86
+	github.com/dop251/goja_nodejs v0.0.0-20251015164255-5e94316bedaf
 	github.com/evanphx/json-patch v5.8.0+incompatible
+	github.com/evanw/esbuild v0.27.0
 	github.com/fluxcd/flagger v1.36.1
 	github.com/goccy/go-yaml v1.15.23
 	github.com/google/go-cmp v0.6.0
@@ -94,6 +97,7 @@ require (
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
+	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gofrs/flock v0.8.1 // indirect
