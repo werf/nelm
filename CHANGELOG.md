@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.18.1](https://github.com/werf/nelm/compare/v1.18.0...v1.18.1) (2025-12-08)
+
+
+### Bug Fixes
+
+* hooks cleaned up too early ([#503](https://github.com/werf/nelm/issues/503)) ([f9986dd](https://github.com/werf/nelm/commit/f9986ddfdd556ce6ccacc1b3b7ad87626d084ea1))
+* inherit `deckhouse-controller` managed fields ([0116483](https://github.com/werf/nelm/commit/0116483ae15553394a4fd7a0e82721fb613fff2d))
+* revert: inherit `deckhouse-controller` managed fields ([c3dd378](https://github.com/werf/nelm/commit/c3dd3788de561b297becef68c15aacc5ceb3011b))
+
 ## [1.18.0](https://github.com/werf/nelm/compare/v1.17.2...v1.18.0) (2025-11-25)
 
 
