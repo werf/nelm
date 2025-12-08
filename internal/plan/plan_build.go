@@ -514,7 +514,7 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 					DeletePropagation: info.LocalResource.DeletePropagation,
 				},
 			}
-			chain.AddOperation(deleteOp).Stage(stg)
+			chain.AddOperation(deleteOp).Stage(info.StageDeleteOnSuccessfulInstall)
 
 			opTrack := &Operation{
 				Type:      OperationTypeTrackAbsence,
@@ -525,7 +525,7 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 					ResourceMeta: info.ResourceMeta,
 				},
 			}
-			chain.AddOperation(opTrack).Stage(stg)
+			chain.AddOperation(opTrack).Stage(info.StageDeleteOnSuccessfulInstall)
 		}
 
 		if err := chain.Do(); err != nil {

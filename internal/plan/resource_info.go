@@ -61,8 +61,9 @@ type InstallableResourceInfo struct {
 	MustDeleteOnFailedInstall     bool
 	MustTrackReadiness            bool
 
-	Stage     common.Stage
-	Iteration int
+	Stage                          common.Stage
+	StageDeleteOnSuccessfulInstall common.Stage
+	Iteration                      int
 }
 
 type DeletableResourceInfo struct {
@@ -174,13 +175,14 @@ func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 
 			return lo.Map(stages, func(stg common.Stage, _ int) *InstallableResourceInfo {
 				return &InstallableResourceInfo{
-					ResourceMeta:                  localRes.ResourceMeta,
-					LocalResource:                 localRes,
-					MustInstall:                   ResourceInstallTypeCreate,
-					MustDeleteOnSuccessfulInstall: mustDeleteOnSuccess,
-					MustDeleteOnFailedInstall:     mustDeleteOnFailedDeploy(localRes, nil, ResourceInstallTypeCreate, releaseNamespace, trackReadiness),
-					MustTrackReadiness:            trackReadiness,
-					Stage:                         stg,
+					ResourceMeta:                   localRes.ResourceMeta,
+					LocalResource:                  localRes,
+					MustInstall:                    ResourceInstallTypeCreate,
+					MustDeleteOnSuccessfulInstall:  mustDeleteOnSuccess,
+					MustDeleteOnFailedInstall:      mustDeleteOnFailedDeploy(localRes, nil, ResourceInstallTypeCreate, releaseNamespace, trackReadiness),
+					MustTrackReadiness:             trackReadiness,
+					Stage:                          stg,
+					StageDeleteOnSuccessfulInstall: stageDeleteOnSuccessfulInstall(mustDeleteOnSuccess, stg),
 				}
 			}), nil
 		} else {
@@ -211,16 +213,17 @@ func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 
 	return lo.Map(stages, func(stg common.Stage, _ int) *InstallableResourceInfo {
 		return &InstallableResourceInfo{
-			ResourceMeta:                  localRes.ResourceMeta,
-			LocalResource:                 localRes,
-			GetResult:                     getObj,
-			DryApplyResult:                dryApplyObj,
-			DryApplyErr:                   dryApplyErr,
-			MustInstall:                   installType,
-			MustDeleteOnSuccessfulInstall: mustDeleteOnSuccess,
-			MustDeleteOnFailedInstall:     mustDeleteOnFailedDeploy(localRes, getMeta, installType, releaseNamespace, trackReadiness),
-			MustTrackReadiness:            trackReadiness,
-			Stage:                         stg,
+			ResourceMeta:                   localRes.ResourceMeta,
+			LocalResource:                  localRes,
+			GetResult:                      getObj,
+			DryApplyResult:                 dryApplyObj,
+			DryApplyErr:                    dryApplyErr,
+			MustInstall:                    installType,
+			MustDeleteOnSuccessfulInstall:  mustDeleteOnSuccess,
+			MustDeleteOnFailedInstall:      mustDeleteOnFailedDeploy(localRes, getMeta, installType, releaseNamespace, trackReadiness),
+			MustTrackReadiness:             trackReadiness,
+			Stage:                          stg,
+			StageDeleteOnSuccessfulInstall: stageDeleteOnSuccessfulInstall(mustDeleteOnSuccess, stg),
 		}
 	}), nil
 }
@@ -450,6 +453,25 @@ func mustTrackReadiness(res *resource.InstallableResource, resInstallType Resour
 	}
 
 	return true
+}
+
+func stageDeleteOnSuccessfulInstall(shouldDelete bool, installStg common.Stage) common.Stage {
+	if !shouldDelete {
+		return ""
+	}
+
+	switch installStg {
+	case common.StagePreInstall:
+		return common.StagePreUninstall
+	case common.StageInstall:
+		return common.StageUninstall
+	case common.StagePostInstall:
+		return common.StagePostUninstall
+	case common.StagePostPostInstall:
+		return common.StagePostPostUninstall
+	default:
+		panic("unexpected resource install stage")
+	}
 }
 
 func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, getObj *unstructured.Unstructured, meta *spec.ResourceMeta, noRemoveManualChanges bool, clientFactory kube.ClientFactorier) (*unstructured.Unstructured, error) {
