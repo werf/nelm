@@ -152,6 +152,7 @@ func (s *ResourceInfoSuite) TestBuildInstallableResourceInfo() {
 				info.DryApplyResult = defaultResourceSpec(s.releaseName, s.releaseNamespace).Unstruct
 				info.MustInstall = plan.ResourceInstallTypeNone
 				info.MustDeleteOnSuccessfulInstall = true
+				info.StageDeleteOnSuccessfulInstall = common.StageUninstall
 
 				return []*plan.InstallableResourceInfo{info}
 			},

@@ -1007,6 +1007,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 				info := defaultInstallableResourceInfo(defaultInstallableResource(s.releaseName, s.releaseNamespace))
 				info.MustTrackReadiness = false
 				info.MustDeleteOnSuccessfulInstall = true
+				info.StageDeleteOnSuccessfulInstall = common.StageUninstall
 
 				return []*plan.InstallableResourceInfo{
 					info,
@@ -1019,25 +1020,6 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 					Category: plan.OperationCategoryResource,
 					Config: &plan.OperationConfigCreate{
 						ResourceSpec: installableInfos[0].LocalResource.ResourceSpec,
-					},
-				}
-
-				deleteOp := &plan.Operation{
-					Type:     plan.OperationTypeDelete,
-					Version:  plan.OperationVersionDelete,
-					Category: plan.OperationCategoryResource,
-					Config: &plan.OperationConfigDelete{
-						ResourceMeta:      installableInfos[0].LocalResource.ResourceMeta,
-						DeletePropagation: installableInfos[0].LocalResource.DeletePropagation,
-					},
-				}
-
-				trackDeletionOp := &plan.Operation{
-					Type:     plan.OperationTypeTrackAbsence,
-					Version:  plan.OperationVersionTrackAbsence,
-					Category: plan.OperationCategoryTrack,
-					Config: &plan.OperationConfigTrackAbsence{
-						ResourceMeta: installableInfos[0].LocalResource.ResourceMeta,
 					},
 				}
 
@@ -1077,14 +1059,53 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 					},
 				}
 
+				mainDeleteStageStartOp := &plan.Operation{
+					Type:     plan.OperationTypeNoop,
+					Version:  plan.OperationVersionNoop,
+					Category: plan.OperationCategoryMeta,
+					Config: &plan.OperationConfigNoop{
+						OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, common.StageUninstall, common.StageStartSuffix),
+					},
+				}
+
+				deleteOp := &plan.Operation{
+					Type:     plan.OperationTypeDelete,
+					Version:  plan.OperationVersionDelete,
+					Category: plan.OperationCategoryResource,
+					Config: &plan.OperationConfigDelete{
+						ResourceMeta:      installableInfos[0].LocalResource.ResourceMeta,
+						DeletePropagation: installableInfos[0].LocalResource.DeletePropagation,
+					},
+				}
+
+				trackDeletionOp := &plan.Operation{
+					Type:     plan.OperationTypeTrackAbsence,
+					Version:  plan.OperationVersionTrackAbsence,
+					Category: plan.OperationCategoryTrack,
+					Config: &plan.OperationConfigTrackAbsence{
+						ResourceMeta: installableInfos[0].LocalResource.ResourceMeta,
+					},
+				}
+
+				mainDeleteStageEndOp := &plan.Operation{
+					Type:     plan.OperationTypeNoop,
+					Version:  plan.OperationVersionNoop,
+					Category: plan.OperationCategoryMeta,
+					Config: &plan.OperationConfigNoop{
+						OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, common.StageUninstall, common.StageEndSuffix),
+					},
+				}
+
 				ops := []*plan.Operation{
 					mainStageStartOp,
 					weightStageStartOp,
 					createOp,
-					deleteOp,
-					trackDeletionOp,
 					weightStageEndOp,
 					mainStageEndOp,
+					mainDeleteStageStartOp,
+					deleteOp,
+					trackDeletionOp,
+					mainDeleteStageEndOp,
 				}
 
 				adjMap := map[string]map[string]graph.Edge[string]{
@@ -1095,18 +1116,24 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 						createOp.ID(): {},
 					},
 					createOp.ID(): {
+						weightStageEndOp.ID(): {},
+					},
+					weightStageEndOp.ID(): {
+						mainStageEndOp.ID(): {},
+					},
+					mainStageEndOp.ID(): {
+						mainDeleteStageStartOp.ID(): {},
+					},
+					mainDeleteStageStartOp.ID(): {
 						deleteOp.ID(): {},
 					},
 					deleteOp.ID(): {
 						trackDeletionOp.ID(): {},
 					},
 					trackDeletionOp.ID(): {
-						weightStageEndOp.ID(): {},
+						mainDeleteStageEndOp.ID(): {},
 					},
-					weightStageEndOp.ID(): {
-						mainStageEndOp.ID(): {},
-					},
-					mainStageEndOp.ID(): {},
+					mainDeleteStageEndOp.ID(): {},
 				}
 
 				return ops, adjMap
