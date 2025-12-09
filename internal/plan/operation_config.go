@@ -114,6 +114,8 @@ type OperationConfigTrackReadiness struct {
 	FailuresAllowed                          int
 	IgnoreLogs                               bool
 	IgnoreLogsForContainers                  []string
+	IgnoreLogsByRegex                        *regexp.Regexp
+	IgnoreLogsByRegexForContainers           map[string]*regexp.Regexp
 	IgnoreReadinessProbeFailsByContainerName map[string]time.Duration
 	NoActivityTimeout                        time.Duration
 	SaveEvents                               bool

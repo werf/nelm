@@ -274,6 +274,8 @@ func execOpTrackReadiness(ctx context.Context, op *Operation, releaseNamespace s
 		SaveLogsByRegexForContainers:             opConfig.SaveLogsByRegexForContainers,
 		IgnoreLogs:                               opConfig.IgnoreLogs,
 		IgnoreLogsForContainers:                  opConfig.IgnoreLogsForContainers,
+		IgnoreLogsByRegex:                        opConfig.IgnoreLogsByRegex,
+		IgnoreLogsByRegexForContainers:           opConfig.IgnoreLogsByRegexForContainers,
 		SaveEvents:                               opConfig.SaveEvents,
 	})
 	if err != nil {

@@ -243,6 +243,16 @@ func validateTrack(meta *spec.ResourceMeta) error {
 		}
 	}
 
+	if key, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternLogRegexSkip); found {
+		if value == "" {
+			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
+		}
+
+		if _, err := regexp.Compile(value); err != nil {
+			return fmt.Errorf("invalid value %q for annotation %q, expected valid regexp", value, key)
+		}
+	}
+
 	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternLogRegexFor); found {
 		for key, value := range annotations {
 			keyMatches := common.AnnotationKeyPatternLogRegexFor.FindStringSubmatch(key)
@@ -253,6 +263,32 @@ func validateTrack(meta *spec.ResourceMeta) error {
 			containerSubexpIndex := common.AnnotationKeyPatternLogRegexFor.SubexpIndex("container")
 			if containerSubexpIndex == -1 {
 				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternLogRegexFor.String(), key)
+			}
+
+			if len(keyMatches) < containerSubexpIndex+1 {
+				return fmt.Errorf("can't parse container name for annotation %q", key)
+			}
+
+			if value == "" {
+				return fmt.Errorf("invalid value %q for annotation %q, expected non-empty value", value, key)
+			}
+
+			if _, err := regexp.Compile(value); err != nil {
+				return fmt.Errorf("invalid value %q for annotation %q, expected valid regular expression", value, key)
+			}
+		}
+	}
+
+	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternSkipLogRegexFor); found {
+		for key, value := range annotations {
+			keyMatches := common.AnnotationKeyPatternSkipLogRegexFor.FindStringSubmatch(key)
+			if keyMatches == nil {
+				return fmt.Errorf("invalid key for annotation %q", key)
+			}
+
+			containerSubexpIndex := common.AnnotationKeyPatternSkipLogRegexFor.SubexpIndex("container")
+			if containerSubexpIndex == -1 {
+				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternSkipLogRegexFor.String(), key)
 			}
 
 			if len(keyMatches) < containerSubexpIndex+1 {
@@ -752,6 +788,15 @@ func logRegex(meta *spec.ResourceMeta) *regexp.Regexp {
 	return regexp.MustCompile(value)
 }
 
+func skipLogRegex(meta *spec.ResourceMeta) *regexp.Regexp {
+	_, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternLogRegexSkip)
+	if !found {
+		return nil
+	}
+
+	return regexp.MustCompile(value)
+}
+
 func logRegexesForContainers(meta *spec.ResourceMeta) map[string]*regexp.Regexp {
 	annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternLogRegexFor)
 	if !found {
@@ -762,6 +807,23 @@ func logRegexesForContainers(meta *spec.ResourceMeta) map[string]*regexp.Regexp 
 	for key, value := range annotations {
 		keyMatches := common.AnnotationKeyPatternLogRegexFor.FindStringSubmatch(key)
 		containerSubexpIndex := common.AnnotationKeyPatternLogRegexFor.SubexpIndex("container")
+		container := keyMatches[containerSubexpIndex]
+		regexByContainer[container] = regexp.MustCompile(value)
+	}
+
+	return regexByContainer
+}
+
+func skipLogRegexesForContainers(meta *spec.ResourceMeta) map[string]*regexp.Regexp {
+	annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternSkipLogRegexFor)
+	if !found {
+		return nil
+	}
+
+	regexByContainer := map[string]*regexp.Regexp{}
+	for key, value := range annotations {
+		keyMatches := common.AnnotationKeyPatternSkipLogRegexFor.FindStringSubmatch(key)
+		containerSubexpIndex := common.AnnotationKeyPatternSkipLogRegexFor.SubexpIndex("container")
 		container := keyMatches[containerSubexpIndex]
 		regexByContainer[container] = regexp.MustCompile(value)
 	}

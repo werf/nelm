@@ -491,6 +491,8 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 					FailuresAllowed:                          info.LocalResource.FailuresAllowed,
 					IgnoreLogs:                               info.LocalResource.SkipLogs,
 					IgnoreLogsForContainers:                  info.LocalResource.SkipLogsForContainers,
+					IgnoreLogsByRegex:                        info.LocalResource.SkipLogsRegex,
+					IgnoreLogsByRegexForContainers:           info.LocalResource.SkipLogsRegexForContainers,
 					IgnoreReadinessProbeFailsByContainerName: info.LocalResource.IgnoreReadinessProbeFailsForContainers,
 					NoActivityTimeout:                        info.LocalResource.NoActivityTimeout,
 					SaveEvents:                               info.LocalResource.ShowServiceMessages,

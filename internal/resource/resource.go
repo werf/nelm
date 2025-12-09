@@ -38,6 +38,8 @@ type InstallableResource struct {
 	ShowLogsOnlyForNumberOfReplicas        int
 	SkipLogs                               bool
 	SkipLogsForContainers                  []string
+	SkipLogsRegex                          *regexp.Regexp
+	SkipLogsRegexForContainers             map[string]*regexp.Regexp
 	TrackTerminationMode                   multitrack.TrackTerminationMode
 	Weight                                 *int
 	ManualInternalDependencies             []*InternalDependency
@@ -132,6 +134,8 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 		ShowLogsOnlyForNumberOfReplicas:        showLogsOnlyForNumberOfReplicas(res.ResourceMeta),
 		SkipLogs:                               skipLogs(res.ResourceMeta),
 		SkipLogsForContainers:                  skipLogsForContainers(res.ResourceMeta),
+		SkipLogsRegex:                          skipLogRegex(res.ResourceMeta),
+		SkipLogsRegexForContainers:             skipLogRegexesForContainers(res.ResourceMeta),
 		TrackTerminationMode:                   trackTerminationMode(res.ResourceMeta),
 		Weight:                                 weight(res.ResourceMeta, len(manIntDeps) > 0),
 		ManualInternalDependencies:             manIntDeps,
