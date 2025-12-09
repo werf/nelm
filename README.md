@@ -59,6 +59,7 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [`werf.io/log-regex` annotation](#werfiolog-regex-annotation)
   - [`werf.io/log-regex-for-<container_name>` annotation](#werfiolog-regex-for-container_name-annotation)
   - [`werf.io/log-regex-skip` annotation](#werfiolog-regex-skip-annotation)
+  - [`werf.io/log-regex-skip-for-<container_name>` annotation](#werfiolog-regex-skip-for-container_name-annotation)
   - [`werf.io/skip-logs` annotation](#werfioskip-logs-annotation)
   - [`werf.io/skip-logs-for-containers` annotation](#werfioskip-logs-for-containers-annotation)
   - [`werf.io/show-logs-only-for-number-of-replicas` annotation](#werfioshow-logs-only-for-number-of-replicas-annotation)
@@ -600,6 +601,19 @@ werf.io/log-regex-skip: ".*TRACE|trace|DEBUG|debug.*"
 Format ([more info](https://github.com/google/re2/wiki/Syntax)):
 ```
 werf.io/log-regex-skip: <re2 regex>
+```
+
+### `werf.io/log-regex-skip-for-<container_name>` annotation 
+
+For the specified container, exclude log lines that match the specified regex.
+
+Example:
+```yaml
+werf.io/log-regex-skip-for-backend: ".*ERR|err|WARN|warn.*"
+```
+Format ([more info](https://github.com/google/re2/wiki/Syntax)):
+```
+werf.io/log-regex-skip-for-backend: <re2 regex>
 ```
 
 ### `werf.io/skip-logs` annotation 

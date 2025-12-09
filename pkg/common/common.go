@@ -197,8 +197,14 @@ var (
 	AnnotationKeyHumanLogRegex   = "werf.io/log-regex"
 	AnnotationKeyPatternLogRegex = regexp.MustCompile(`^werf.io/log-regex$`)
 
+	AnnotationKeyHumanLogRegexSkip   = "werf.io/log-regex-skip"
+	AnnotationKeyPatternLogRegexSkip = regexp.MustCompile(`^werf.io/log-regex-skip$`)
+
 	AnnotationKeyHumanLogRegexFor   = "werf.io/log-regex-for-<container>"
 	AnnotationKeyPatternLogRegexFor = regexp.MustCompile(`^werf.io/log-regex-for-(?P<container>.+)$`)
+
+	AnnotationKeyHumanSkipLogRegexFor   = "werf.io/log-regex-skip-for-<container>"
+	AnnotationKeyPatternSkipLogRegexFor = regexp.MustCompile(`^werf.io/log-regex-skip-for-(?P<container>.+)$`)
 
 	AnnotationKeyHumanNoActivityTimeout   = "werf.io/no-activity-timeout"
 	AnnotationKeyPatternNoActivityTimeout = regexp.MustCompile(`^werf.io/no-activity-timeout$`)
