@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.19.0](https://github.com/werf/nelm/compare/v1.18.1...v1.19.0) (2025-12-10)
+
+
+### Features
+
+* `werf.io/log-regex-skip` and `werf.io/log-regex-skip-for-<container>` annotations ([#506](https://github.com/werf/nelm/issues/506)) ([ced6487](https://github.com/werf/nelm/commit/ced6487db92603b8cdbca9154bd64779b56c32a2))
+
+
+### Bug Fixes
+
+* panic if apiserver connection lost ([#507](https://github.com/werf/nelm/issues/507)) ([d9db36b](https://github.com/werf/nelm/commit/d9db36b837e41d34548e475bb6f866093faec163))
+
 ## [1.18.1](https://github.com/werf/nelm/compare/v1.18.0...v1.18.1) (2025-12-08)
 
 
