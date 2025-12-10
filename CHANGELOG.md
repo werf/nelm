@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.19.1](https://github.com/werf/nelm/compare/v1.19.0...v1.19.1) (2025-12-10)
+
+
+### Bug Fixes
+
+* docker hub creds might leak in pod events ([#510](https://github.com/werf/nelm/issues/510)) ([8f8d7b4](https://github.com/werf/nelm/commit/8f8d7b4991e780e6aba1687f694495f2a8bed001))
+* logs stop showing after 4 hours ([#508](https://github.com/werf/nelm/issues/508)) ([9d31303](https://github.com/werf/nelm/commit/9d313034adba7c3fd6c6358d04212ed8293d9e2c))
+
 ## [1.19.0](https://github.com/werf/nelm/compare/v1.18.1...v1.19.0) (2025-12-10)
 
 
