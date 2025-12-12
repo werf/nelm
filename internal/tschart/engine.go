@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/dop251/goja"
 	helmchart "github.com/werf/3p-helm/pkg/chart"
@@ -12,24 +11,11 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-const (
-	DefaultTimeout = 3 * time.Second
-)
 
-type Engine struct {
-	timeout time.Duration
-}
+type Engine struct {}
 
 func NewEngine() *Engine {
-	return &Engine{
-		timeout: DefaultTimeout,
-	}
-}
-
-func NewEngineWithTimeout(timeout time.Duration) *Engine {
-	return &Engine{
-		timeout: timeout,
-	}
+	return &Engine{}
 }
 
 func (e *Engine) RenderFiles(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values) (map[string]string, error) {
@@ -85,19 +71,6 @@ func (e *Engine) executeBundle(ctx context.Context, bundleContent []byte, render
 	if err != nil {
 		return "", fmt.Errorf("create JS VM: %w", err)
 	}
-
-	timeoutCtx, cancel := context.WithTimeout(ctx, e.timeout)
-	defer cancel()
-
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-timeoutCtx.Done():
-			vm.Interrupt("execution timeout exceeded")
-		case <-done:
-		}
-	}()
-	defer close(done)
 
 	exportsVal, err := requireModule.Require("./" + BundleFile)
 	if err != nil {
