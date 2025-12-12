@@ -49,7 +49,7 @@ func buildTSFromDir(ctx context.Context, tsDir string, entryPoint string) (esbui
 
 		// It does not work for CommonJS
 		// TreeShaking: esbuild.TreeShakingTrue,
-		External:    []string{"nelm:helpers"},
+		External:    []string{},
 	})
 
 	return result, nil

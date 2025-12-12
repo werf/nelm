@@ -309,52 +309,6 @@ export function render(context: RenderContext) {
 		})
 	})
 
-	Describe("Using nelm:helpers module", func() {
-		It("should import and use nelm:helpers from TypeScript", func() {
-			chartPath := filepath.Join(tempDir, "test-chart")
-			tsDir := filepath.Join(chartPath, "ts", "src")
-			Expect(os.MkdirAll(tsDir, 0755)).To(Succeed())
-
-			Expect(os.WriteFile(
-				filepath.Join(tsDir, "index.ts"),
-				[]byte(`
-const { b64enc, sha256sum } = require('nelm:helpers');
-
-export function render(context: any) {
-	return {
-		manifests: [{
-			apiVersion: 'v1',
-			kind: 'Secret',
-			metadata: { name: 'app-secret' },
-			type: 'Opaque',
-			data: {
-				password: b64enc('my-secret-password'),
-				checksum: sha256sum('data-to-hash')
-			}
-		}]
-	};
-}
-				`),
-				0644,
-			)).To(Succeed())
-
-			chart := &helmchart.Chart{Files: []*helmchart.File{}}
-			transformer := NewTransformer()
-			err := transformer.TransformChartForRender(ctx, chartPath, chart)
-			Expect(err).NotTo(HaveOccurred())
-
-			engine := NewEngine()
-			values := chartutil.Values{}
-			renderedTemplates, err := engine.RenderFiles(ctx, chart, values)
-			Expect(err).NotTo(HaveOccurred())
-
-			yaml := renderedTemplates[BundleFile]
-			Expect(yaml).To(ContainSubstring("kind: Secret"))
-			Expect(yaml).To(ContainSubstring("password:"))
-			Expect(yaml).To(ContainSubstring("checksum:"))
-		})
-	})
-
 	Describe("Error handling with sourcemaps", func() {
 		It("should show TypeScript error with source location", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")

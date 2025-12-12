@@ -185,48 +185,6 @@ func TestNoJSBundle(t *testing.T) {
 	assert.Len(t, renderedTemplates, 0)
 }
 
-func TestRenderWithHelpers(t *testing.T) {
-	bundleContent := `
-const { b64enc, sha256sum } = require('nelm:helpers');
-
-module.exports.render = function(context) {
-    return {
-        manifests: [{
-            apiVersion: 'v1',
-            kind: 'Secret',
-            metadata: { name: 'test-secret' },
-            type: 'Opaque',
-            data: {
-                password: b64enc(context.Values.password),
-                checksum: sha256sum('data')
-            }
-        }]
-    };
-};
-`
-	testChart := newTestChart(map[string]string{
-		"ts/chart_render_main.js": bundleContent,
-	})
-
-	ctx := context.Background()
-	renderedValues := newTestValues(map[string]interface{}{
-		"Values": map[string]interface{}{
-			"password": "secret123",
-		},
-	})
-
-	engine := NewEngine()
-	renderedTemplates, err := engine.RenderFiles(ctx, testChart, renderedValues)
-	require.NoError(t, err)
-
-	assert.Len(t, renderedTemplates, 1)
-
-	yaml := renderedTemplates["ts/chart_render_main.js"]
-	assert.Contains(t, yaml, "kind: Secret")
-	assert.Contains(t, yaml, "password:")
-	assert.Contains(t, yaml, "checksum:")
-}
-
 func TestRenderWithModuleExportsObject(t *testing.T) {
 	bundleContent := `
 module.exports = {

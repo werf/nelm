@@ -3,7 +3,6 @@ package tschart
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/require"
@@ -15,11 +14,6 @@ func (e *Engine) createVM(ctx context.Context, bundleContent []byte) (*goja.Runt
 	vm := goja.New()
 
 	sourceLoader := func(requestedPath string) ([]byte, error) {
-		// Let registry handle nelm: modules
-		if strings.HasPrefix(requestedPath, "nelm:") || strings.Contains(requestedPath, "/nelm:") {
-			return nil, require.ModuleFileDoesNotExistError
-		}
-
 		if requestedPath == BundleFile || requestedPath == "./"+BundleFile {
 			return bundleContent, nil
 		}
@@ -28,7 +22,6 @@ func (e *Engine) createVM(ctx context.Context, bundleContent []byte) (*goja.Runt
 	}
 
 	registry := require.NewRegistryWithLoader(sourceLoader)
-	helpers.RegisterHelpersModule(registry)
 
 	requireModule := registry.Enable(vm)
 
