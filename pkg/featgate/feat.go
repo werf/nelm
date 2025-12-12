@@ -48,8 +48,8 @@ var (
 		`Enable cleaning of null fields from resource manifests for better Helm chart compatibility`,
 	)
 
-	FeatGateTSCharts = NewFeatGate(
-		"ts-charts",
+	FeatGateTypescript = NewFeatGate(
+		"typescript",
 		`Enable TypeScript chart rendering from ts/ directory`,
 	)
 )

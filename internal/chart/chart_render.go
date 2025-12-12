@@ -115,7 +115,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		return nil, fmt.Errorf("load chart at %q: %w", chartPath, err)
 	}
 
-	if featgate.FeatGateTSCharts.Enabled() {
+	if featgate.FeatGateTypescript.Enabled() {
 		if err := tschart.NewTransformer().TransformChartForRender(ctx, originalChartPath, chart); err != nil {
 			return nil, fmt.Errorf("transform TS chart at %q: %w", chartPath, err)
 		}
@@ -215,7 +215,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	}
 
 
-	if featgate.FeatGateTSCharts.Enabled() {
+	if featgate.FeatGateTypescript.Enabled() {
 		jsRenderedTemplates, err := renderJSTemplates(ctx, chart, renderedValues)
 		if err != nil {
 			return nil, fmt.Errorf("render ts chart templates for chart %q: %w", chart.Name(), err)

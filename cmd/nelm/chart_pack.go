@@ -36,7 +36,7 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 
 		loader.NoChartLockWarning = ""
 
-		if featgate.FeatGateTSCharts.Enabled() {
+		if featgate.FeatGateTypescript.Enabled() {
 			transformer := tschart.NewTransformer()
 			for _, chartPath := range args {
 				if err := transformer.TransformChartDir(ctx, chartPath); err != nil {

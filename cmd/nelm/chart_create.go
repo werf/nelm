@@ -42,8 +42,8 @@ func newChartCreateCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 
 		// Handle --only-ts mode
 		if cfg.OnlyTS {
-			if !featgate.FeatGateTSCharts.Enabled() {
-				return fmt.Errorf("--only-ts requires NELM_FEAT_TS_CHARTS=true")
+			if !featgate.FeatGateTypescript.Enabled() {
+				return fmt.Errorf("--only-ts requires NELM_FEAT_TYPESCRIPT=true")
 			}
 
 			if len(args) == 0 {
@@ -95,7 +95,7 @@ func newChartCreateCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			return err
 		}
 
-		if featgate.FeatGateTSCharts.Enabled() && len(args) > 0 {
+		if featgate.FeatGateTypescript.Enabled() && len(args) > 0 {
 			chartPath := args[0]
 			chartName := filepath.Base(chartPath)
 
@@ -114,7 +114,7 @@ func newChartCreateCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 	}
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
-		if err := cli.AddFlag(cmd, &cfg.OnlyTS, "only-ts", false, "Create TypeScript-only chart without templates/ directory (requires NELM_FEAT_TS_CHARTS=true)", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.OnlyTS, "only-ts", false, "Create TypeScript-only chart without templates/ directory (requires NELM_FEAT_TYPESCRIPT=true)", cli.AddFlagOptions{
 			Group: mainFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
