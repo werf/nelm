@@ -49,7 +49,7 @@ func CreateTSOnlyChartStructure(ctx context.Context, chartPath, chartName string
 
 	files := map[string]string{
 		filepath.Join(chartPath, "Chart.yaml"):  generateChartYaml(chartName),
-		filepath.Join(chartPath, "values.yaml"): generateValuesYaml(chartName),
+		filepath.Join(chartPath, "values.yaml"): generateValuesYaml(),
 		filepath.Join(chartPath, ".helmignore"): generateHelmignoreWithTS(),
 	}
 
@@ -92,41 +92,15 @@ ts/dist/
 
 func generateIndexTS() string {
 	return `import { RenderContext, RenderResult } from '../types/nelm';
-import {
-  createDeployment,
-  createService,
-  createServiceAccount,
-  createIngress,
-  createHPA,
-} from './resources';
-import {
-  shouldCreateIngress,
-  shouldCreateHPA,
-  shouldCreateServiceAccount,
-} from './helpers';
+import { newDeployment, newService } from './resources';
 
-export function render(context: RenderContext): RenderResult {
+export function render($: RenderContext): RenderResult {
   const manifests: object[] = [];
 
-  // ServiceAccount
-  if (shouldCreateServiceAccount(context)) {
-    manifests.push(createServiceAccount(context));
-  }
+  manifests.push(newDeployment($));
 
-  // Deployment
-  manifests.push(createDeployment(context));
-
-  // Service
-  manifests.push(createService(context));
-
-  // Ingress
-  if (shouldCreateIngress(context)) {
-    manifests.push(createIngress(context));
-  }
-
-  // HorizontalPodAutoscaler
-  if (shouldCreateHPA(context)) {
-    manifests.push(createHPA(context));
+  if ($.Values.service?.enabled !== false) {
+    manifests.push(newService($));
   }
 
   return { manifests };
@@ -146,319 +120,98 @@ export function trunc(str: string, max: number): string {
 }
 
 /**
- * Get the chart name, respecting nameOverride.
- */
-export function name(context: RenderContext): string {
-  const override = context.Values.nameOverride;
-  return trunc(override || context.Chart.Name, 63);
-}
-
-/**
  * Get the fully qualified app name.
  * Truncated at 63 chars (DNS naming spec limit).
  */
-export function fullname(context: RenderContext): string {
-  const { Release, Chart, Values } = context;
-
-  if (Values.fullnameOverride) {
-    return trunc(Values.fullnameOverride, 63);
+export function fullname($: RenderContext): string {
+  if ($.Values.fullnameOverride) {
+    return trunc($.Values.fullnameOverride, 63);
   }
 
-  const chartName = Values.nameOverride || Chart.Name;
+  const chartName = $.Values.nameOverride || $.Chart.Name;
 
-  if (Release.Name.includes(chartName)) {
-    return trunc(Release.Name, 63);
+  if ($.Release.Name.includes(chartName)) {
+    return trunc($.Release.Name, 63);
   }
 
-  return trunc(` + "`${Release.Name}-${chartName}`" + `, 63);
+  return trunc(` + "`${$.Release.Name}-${chartName}`" + `, 63);
 }
 
-/**
- * Get chart name and version for chart label.
- */
-export function chart(context: RenderContext): string {
-  const str = ` + "`${context.Chart.Name}-${context.Chart.Version}`" + `.replace(/\\+/g, '_');
-  return trunc(str, 63);
-}
-
-/**
- * Common labels for all resources.
- */
-export function labels(context: RenderContext): Record<string, string> {
+export function labels($: RenderContext): Record<string, string> {
   return {
-    'helm.sh/chart': chart(context),
-    ...selectorLabels(context),
-    ...(context.Chart.AppVersion
-      ? { 'app.kubernetes.io/version': context.Chart.AppVersion }
-      : {}),
-    'app.kubernetes.io/managed-by': context.Release.Service,
+    'app.kubernetes.io/name': $.Chart.Name,
+    'app.kubernetes.io/instance': $.Release.Name,
   };
 }
 
-/**
- * Selector labels for matching pods.
- */
-export function selectorLabels(context: RenderContext): Record<string, string> {
+export function selectorLabels($: RenderContext): Record<string, string> {
   return {
-    'app.kubernetes.io/name': name(context),
-    'app.kubernetes.io/instance': context.Release.Name,
+    'app.kubernetes.io/name': $.Chart.Name,
+    'app.kubernetes.io/instance': $.Release.Name,
   };
-}
-
-/**
- * Get the service account name.
- */
-export function serviceAccountName(context: RenderContext): string {
-  const sa = context.Values.serviceAccount;
-  if (sa?.create) {
-    return sa.name || fullname(context);
-  }
-  return sa?.name || 'default';
-}
-
-/**
- * Check if ServiceAccount should be created.
- */
-export function shouldCreateServiceAccount(context: RenderContext): boolean {
-  return context.Values.serviceAccount?.create === true;
-}
-
-/**
- * Check if Ingress should be created.
- */
-export function shouldCreateIngress(context: RenderContext): boolean {
-  return context.Values.ingress?.enabled === true;
-}
-
-/**
- * Check if HPA should be created.
- */
-export function shouldCreateHPA(context: RenderContext): boolean {
-  return context.Values.autoscaling?.enabled === true;
 }
 `
 }
 
 func generateResourcesTS() string {
 	return `import { RenderContext } from '../types/nelm';
-import { fullname, labels, selectorLabels, serviceAccountName } from './helpers';
+import { fullname, labels, selectorLabels } from './helpers';
 
-/**
- * Create a Deployment resource.
- */
-export function createDeployment(context: RenderContext): object {
-  const { Values, Chart } = context;
-  const name = fullname(context);
+export function newDeployment($: RenderContext): object {
+  const name = fullname($);
 
   return {
     apiVersion: 'apps/v1',
     kind: 'Deployment',
     metadata: {
       name,
-      labels: labels(context),
+      labels: labels($),
     },
     spec: {
-      ...(Values.autoscaling?.enabled
-        ? {}
-        : { replicas: Values.replicaCount ?? 1 }),
+      replicas: $.Values.replicaCount ?? 1,
       selector: {
-        matchLabels: selectorLabels(context),
+        matchLabels: selectorLabels($),
       },
       template: {
         metadata: {
-          labels: {
-            ...selectorLabels(context),
-            ...Values.podLabels,
-          },
-          ...(Values.podAnnotations
-            ? { annotations: Values.podAnnotations }
-            : {}),
+          labels: selectorLabels($),
         },
         spec: {
-          ...(Values.imagePullSecrets?.length
-            ? { imagePullSecrets: Values.imagePullSecrets }
-            : {}),
-          serviceAccountName: serviceAccountName(context),
-          ...(Values.podSecurityContext
-            ? { securityContext: Values.podSecurityContext }
-            : {}),
           containers: [
             {
-              name: Chart.Name,
-              ...(Values.securityContext
-                ? { securityContext: Values.securityContext }
-                : {}),
-              image: ` + "`${Values.image?.repository}:${Values.image?.tag || Chart.AppVersion}`" + `,
-              imagePullPolicy: Values.image?.pullPolicy ?? 'IfNotPresent',
+              name: name,
+              image: ` + "`${$.Values.image?.repository}:${$.Values.image?.tag}`" + `,
               ports: [
                 {
                   name: 'http',
-                  containerPort: Values.service?.port ?? 80,
-                  protocol: 'TCP',
+                  containerPort: $.Values.service?.port ?? 80,
                 },
               ],
-              ...(Values.livenessProbe
-                ? { livenessProbe: Values.livenessProbe }
-                : {}),
-              ...(Values.readinessProbe
-                ? { readinessProbe: Values.readinessProbe }
-                : {}),
-              ...(Values.resources ? { resources: Values.resources } : {}),
-              ...(Values.volumeMounts?.length
-                ? { volumeMounts: Values.volumeMounts }
-                : {}),
             },
           ],
-          ...(Values.volumes?.length ? { volumes: Values.volumes } : {}),
-          ...(Values.nodeSelector ? { nodeSelector: Values.nodeSelector } : {}),
-          ...(Values.affinity ? { affinity: Values.affinity } : {}),
-          ...(Values.tolerations?.length
-            ? { tolerations: Values.tolerations }
-            : {}),
         },
       },
     },
   };
 }
 
-/**
- * Create a Service resource.
- */
-export function createService(context: RenderContext): object {
-  const { Values } = context;
-
+export function newService($: RenderContext): object {
   return {
     apiVersion: 'v1',
     kind: 'Service',
     metadata: {
-      name: fullname(context),
-      labels: labels(context),
+      name: fullname($),
+      labels: labels($),
     },
     spec: {
-      type: Values.service?.type ?? 'ClusterIP',
+      type: $.Values.service?.type ?? 'ClusterIP',
       ports: [
         {
-          port: Values.service?.port ?? 80,
+          port: $.Values.service?.port ?? 80,
           targetPort: 'http',
-          protocol: 'TCP',
-          name: 'http',
         },
       ],
-      selector: selectorLabels(context),
-    },
-  };
-}
-
-/**
- * Create a ServiceAccount resource.
- */
-export function createServiceAccount(context: RenderContext): object {
-  const { Values } = context;
-
-  return {
-    apiVersion: 'v1',
-    kind: 'ServiceAccount',
-    metadata: {
-      name: serviceAccountName(context),
-      labels: labels(context),
-      ...(Values.serviceAccount?.annotations
-        ? { annotations: Values.serviceAccount.annotations }
-        : {}),
-    },
-    automountServiceAccountToken: Values.serviceAccount?.automount ?? true,
-  };
-}
-
-/**
- * Create an Ingress resource.
- */
-export function createIngress(context: RenderContext): object {
-  const { Values } = context;
-  const name = fullname(context);
-  const ing = Values.ingress;
-
-  return {
-    apiVersion: 'networking.k8s.io/v1',
-    kind: 'Ingress',
-    metadata: {
-      name,
-      labels: labels(context),
-      ...(ing?.annotations ? { annotations: ing.annotations } : {}),
-    },
-    spec: {
-      ...(ing?.className ? { ingressClassName: ing.className } : {}),
-      ...(ing?.tls?.length ? { tls: ing.tls } : {}),
-      rules: (ing?.hosts || []).map((host: any) => ({
-        host: host.host,
-        http: {
-          paths: (host.paths || []).map((path: any) => ({
-            path: path.path,
-            pathType: path.pathType ?? 'ImplementationSpecific',
-            backend: {
-              service: {
-                name,
-                port: { number: Values.service?.port ?? 80 },
-              },
-            },
-          })),
-        },
-      })),
-    },
-  };
-}
-
-/**
- * Create a HorizontalPodAutoscaler resource.
- */
-export function createHPA(context: RenderContext): object {
-  const { Values } = context;
-  const as = Values.autoscaling;
-  const name = fullname(context);
-
-  const metrics: object[] = [];
-
-  if (as?.targetCPUUtilizationPercentage) {
-    metrics.push({
-      type: 'Resource',
-      resource: {
-        name: 'cpu',
-        target: {
-          type: 'Utilization',
-          averageUtilization: as.targetCPUUtilizationPercentage,
-        },
-      },
-    });
-  }
-
-  if (as?.targetMemoryUtilizationPercentage) {
-    metrics.push({
-      type: 'Resource',
-      resource: {
-        name: 'memory',
-        target: {
-          type: 'Utilization',
-          averageUtilization: as.targetMemoryUtilizationPercentage,
-        },
-      },
-    });
-  }
-
-  return {
-    apiVersion: 'autoscaling/v2',
-    kind: 'HorizontalPodAutoscaler',
-    metadata: {
-      name,
-      labels: labels(context),
-    },
-    spec: {
-      scaleTargetRef: {
-        apiVersion: 'apps/v1',
-        kind: 'Deployment',
-        name,
-      },
-      minReplicas: as?.minReplicas ?? 1,
-      maxReplicas: as?.maxReplicas ?? 100,
-      ...(metrics.length ? { metrics } : {}),
+      selector: selectorLabels($),
     },
   };
 }
@@ -466,372 +219,36 @@ export function createHPA(context: RenderContext): object {
 }
 
 func generateNelmDTS() string {
-	return `/**
- * Nelm TypeScript Chart Type Definitions
- *
- * These types define the context object passed to the render() function
- * and the expected return type.
- */
-
-/**
- * The context object passed to the render() function.
- */
-export interface RenderContext {
-  /**
-   * User-provided values merged with chart defaults.
-   */
-  Values: Values;
-
-  /**
-   * Information about the Helm release.
-   */
+	return `export interface RenderContext {
+  Values: Record<string, any>;
   Release: Release;
-
-  /**
-   * Chart metadata from Chart.yaml.
-   */
   Chart: ChartMetadata;
-
-  /**
-   * Kubernetes cluster capabilities.
-   */
   Capabilities: Capabilities;
-
-  /**
-   * All files in the chart (excluding templates).
-   * Keys are file paths relative to chart root.
-   * Values are file contents as Uint8Array.
-   */
   Files: Record<string, Uint8Array>;
 }
 
-/**
- * User-provided values merged with chart defaults.
- * This interface can be extended to match your values.yaml schema.
- */
-export interface Values {
-  /** Number of replicas for the deployment */
-  replicaCount?: number;
-
-  /** Container image configuration */
-  image?: ImageConfig;
-
-  /** Image pull secrets */
-  imagePullSecrets?: Array<{ name: string }>;
-
-  /** Override the chart name */
-  nameOverride?: string;
-
-  /** Override the full release name */
-  fullnameOverride?: string;
-
-  /** Service account configuration */
-  serviceAccount?: ServiceAccountConfig;
-
-  /** Pod annotations */
-  podAnnotations?: Record<string, string>;
-
-  /** Pod labels */
-  podLabels?: Record<string, string>;
-
-  /** Pod security context */
-  podSecurityContext?: object;
-
-  /** Container security context */
-  securityContext?: object;
-
-  /** Service configuration */
-  service?: ServiceConfig;
-
-  /** Ingress configuration */
-  ingress?: IngressConfig;
-
-  /** Resource requests and limits */
-  resources?: ResourceConfig;
-
-  /** Liveness probe configuration */
-  livenessProbe?: ProbeConfig;
-
-  /** Readiness probe configuration */
-  readinessProbe?: ProbeConfig;
-
-  /** Autoscaling configuration */
-  autoscaling?: AutoscalingConfig;
-
-  /** Volume definitions */
-  volumes?: object[];
-
-  /** Volume mount definitions */
-  volumeMounts?: object[];
-
-  /** Node selector */
-  nodeSelector?: Record<string, string>;
-
-  /** Tolerations */
-  tolerations?: object[];
-
-  /** Affinity rules */
-  affinity?: object;
-
-  /** Allow any additional values */
-  [key: string]: any;
-}
-
-export interface ImageConfig {
-  repository?: string;
-  pullPolicy?: 'Always' | 'IfNotPresent' | 'Never';
-  tag?: string;
-}
-
-export interface ServiceAccountConfig {
-  create?: boolean;
-  automount?: boolean;
-  annotations?: Record<string, string>;
-  name?: string;
-}
-
-export interface ServiceConfig {
-  type?: 'ClusterIP' | 'NodePort' | 'LoadBalancer' | 'ExternalName';
-  port?: number;
-}
-
-export interface IngressConfig {
-  enabled?: boolean;
-  className?: string;
-  annotations?: Record<string, string>;
-  hosts?: IngressHost[];
-  tls?: IngressTLS[];
-}
-
-export interface IngressHost {
-  host: string;
-  paths: IngressPath[];
-}
-
-export interface IngressPath {
-  path: string;
-  pathType?: 'Prefix' | 'Exact' | 'ImplementationSpecific';
-}
-
-export interface IngressTLS {
-  secretName: string;
-  hosts: string[];
-}
-
-export interface ResourceConfig {
-  limits?: {
-    cpu?: string;
-    memory?: string;
-  };
-  requests?: {
-    cpu?: string;
-    memory?: string;
-  };
-}
-
-export interface ProbeConfig {
-  httpGet?: {
-    path: string;
-    port: string | number;
-  };
-  tcpSocket?: {
-    port: string | number;
-  };
-  exec?: {
-    command: string[];
-  };
-  initialDelaySeconds?: number;
-  periodSeconds?: number;
-  timeoutSeconds?: number;
-  successThreshold?: number;
-  failureThreshold?: number;
-}
-
-export interface AutoscalingConfig {
-  enabled?: boolean;
-  minReplicas?: number;
-  maxReplicas?: number;
-  targetCPUUtilizationPercentage?: number;
-  targetMemoryUtilizationPercentage?: number;
-}
-
-/**
- * Information about the Helm release.
- */
 export interface Release {
-  /** The release name */
   Name: string;
-
-  /** The release namespace */
   Namespace: string;
-
-  /** The release revision number */
   Revision: number;
-
-  /** True if this is a fresh install */
   IsInstall: boolean;
-
-  /** True if this is an upgrade */
   IsUpgrade: boolean;
-
-  /** The name of the release service (e.g., "Helm") */
   Service: string;
 }
 
-/**
- * Chart metadata from Chart.yaml.
- */
 export interface ChartMetadata {
-  /** The chart name */
   Name: string;
-
-  /** The chart version */
   Version: string;
-
-  /** The application version */
   AppVersion: string;
-
-  /** Chart description */
-  Description?: string;
-
-  /** Chart type: "application" or "library" */
-  Type?: string;
-
-  /** Chart API version */
-  APIVersion?: string;
-
-  /** Chart keywords */
-  Keywords?: string[];
-
-  /** Chart home URL */
-  Home?: string;
-
-  /** Chart sources */
-  Sources?: string[];
-
-  /** Chart maintainers */
-  Maintainers?: Maintainer[];
-
-  /** Chart icon URL */
-  Icon?: string;
-
-  /** Deprecated flag */
-  Deprecated?: boolean;
-
-  /** Chart annotations */
-  Annotations?: Record<string, string>;
-
-  /** Kubernetes version constraint */
-  KubeVersion?: string;
-
-  /** Chart dependencies */
-  Dependencies?: Dependency[];
 }
 
-export interface Maintainer {
-  name: string;
-  email?: string;
-  url?: string;
-}
-
-export interface Dependency {
-  name: string;
-  version: string;
-  repository?: string;
-  condition?: string;
-  tags?: string[];
-  enabled?: boolean;
-  alias?: string;
-}
-
-/**
- * Kubernetes cluster capabilities.
- */
 export interface Capabilities {
-  /** List of supported API versions */
   APIVersions: string[];
-
-  /** Kubernetes version information */
-  KubeVersion: KubeVersion;
+  KubeVersion: { Version: string; Major: string; Minor: string };
 }
 
-export interface KubeVersion {
-  /** Full version string (e.g., "v1.28.0") */
-  Version: string;
-
-  /** Major version number */
-  Major: string;
-
-  /** Minor version number */
-  Minor: string;
-}
-
-/**
- * The expected return type from the render() function.
- */
 export interface RenderResult {
-  /**
-   * Array of Kubernetes manifests to render.
-   * Each manifest should be a valid Kubernetes resource object.
-   * Return an empty array to skip rendering.
-   * Return null to skip TypeScript rendering entirely.
-   */
   manifests: object[] | null;
-}
-
-/**
- * A generic Kubernetes manifest structure.
- */
-export interface Manifest {
-  apiVersion: string;
-  kind: string;
-  metadata: ManifestMetadata;
-  spec?: object;
-  data?: Record<string, string>;
-  stringData?: Record<string, string>;
-  [key: string]: any;
-}
-
-export interface ManifestMetadata {
-  name: string;
-  namespace?: string;
-  labels?: Record<string, string>;
-  annotations?: Record<string, string>;
-  [key: string]: any;
-}
-
-/**
- * Helper module functions available via require('nelm:helpers').
- */
-export interface NelmHelpers {
-  /** Encode a string to base64 */
-  b64enc(str: string): string;
-
-  /** Decode a base64 string */
-  b64dec(str: string): string;
-
-  /** Encode a byte array to base64 */
-  b64encBytes(bytes: Uint8Array): string;
-
-  /** Decode a base64 string to byte array */
-  b64decBytes(str: string): Uint8Array;
-
-  /** Calculate SHA256 hash of a string */
-  sha256sum(str: string): string;
-
-  /** Calculate SHA256 hash of a byte array */
-  sha256sumBytes(bytes: Uint8Array): string;
-
-  /** Convert byte array to string */
-  bytesToString(bytes: Uint8Array): string;
-
-  /** Convert string to byte array */
-  stringToBytes(str: string): Uint8Array;
-}
-
-declare module 'nelm:helpers' {
-  const helpers: NelmHelpers;
-  export = helpers;
 }
 `
 }
@@ -895,140 +312,22 @@ dist/
 func generateChartYaml(chartName string) string {
 	return fmt.Sprintf(`apiVersion: v2
 name: %s
-description: A Helm chart for Kubernetes
-
-# A chart can be either an 'application' or a 'library' chart.
-#
-# Application charts are a collection of templates that can be packaged into versioned archives
-# to be deployed.
-#
-# Library charts provide useful utilities or functions for the chart developer. They're included as
-# a dependency of application charts to inject those utilities and functions into the rendering
-# pipeline. Library charts do not define any templates and therefore cannot be deployed.
-type: application
-
-# This is the chart version. This version number should be incremented each time you make changes
-# to the chart and its templates, including the app version.
-# Versions are expected to follow Semantic Versioning (https://semver.org/)
 version: 0.1.0
-
-# This is the version number of the application being deployed. This version number should be
-# incremented each time you make changes to the application. Versions are not expected to
-# follow Semantic Versioning. They should reflect the version the application is using.
-# It is recommended to use it with quotes.
-appVersion: "1.16.0"
 `, chartName)
 }
 
-func generateValuesYaml(chartName string) string {
-	return fmt.Sprintf(`# Default values for %s.
-# This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
-
-replicaCount: 1
+func generateValuesYaml() string {
+	return `replicaCount: 1
 
 image:
   repository: nginx
-  pullPolicy: IfNotPresent
-  # Overrides the image tag whose default is the chart appVersion.
-  tag: ""
-
-imagePullSecrets: []
-nameOverride: ""
-fullnameOverride: ""
-
-serviceAccount:
-  # Specifies whether a service account should be created
-  create: true
-  # Automatically mount a ServiceAccount's API credentials?
-  automount: true
-  # Annotations to add to the service account
-  annotations: {}
-  # The name of the service account to use.
-  # If not set and create is true, a name is generated using the fullname template
-  name: ""
-
-podAnnotations: {}
-podLabels: {}
-
-podSecurityContext: {}
-  # fsGroup: 2000
-
-securityContext: {}
-  # capabilities:
-  #   drop:
-  #   - ALL
-  # readOnlyRootFilesystem: true
-  # runAsNonRoot: true
-  # runAsUser: 1000
+  tag: latest
 
 service:
+  enabled: true
   type: ClusterIP
   port: 80
-
-ingress:
-  enabled: false
-  className: ""
-  annotations: {}
-    # kubernetes.io/ingress.class: nginx
-    # kubernetes.io/tls-acme: "true"
-  hosts:
-    - host: chart-example.local
-      paths:
-        - path: /
-          pathType: ImplementationSpecific
-  tls: []
-  #  - secretName: chart-example-tls
-  #    hosts:
-  #      - chart-example.local
-
-resources: {}
-  # We usually recommend not to specify default resources and to leave this as a conscious
-  # choice for the user. This also increases chances charts run on environments with little
-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-  # limits:
-  #   cpu: 100m
-  #   memory: 128Mi
-  # requests:
-  #   cpu: 100m
-  #   memory: 128Mi
-
-livenessProbe:
-  httpGet:
-    path: /
-    port: http
-readinessProbe:
-  httpGet:
-    path: /
-    port: http
-
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 100
-  targetCPUUtilizationPercentage: 80
-  # targetMemoryUtilizationPercentage: 80
-
-# Additional volumes on the output Deployment definition.
-volumes: []
-# - name: foo
-#   secret:
-#     secretName: mysecret
-#     optional: false
-
-# Additional volumeMounts on the output Deployment definition.
-volumeMounts: []
-# - name: foo
-#   mountPath: "/etc/foo"
-#   readOnly: true
-
-nodeSelector: {}
-
-tolerations: []
-
-affinity: {}
-`, chartName)
+`
 }
 
 func generateHelmignoreWithTS() string {

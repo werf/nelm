@@ -99,7 +99,6 @@ var _ = Describe("Create", func() {
 			Expect(string(content)).To(ContainSubstring("export function fullname"))
 			Expect(string(content)).To(ContainSubstring("export function labels"))
 			Expect(string(content)).To(ContainSubstring("export function selectorLabels"))
-			Expect(string(content)).To(ContainSubstring("export function serviceAccountName"))
 		})
 
 		It("should include resource generators in resources.ts", func() {
@@ -111,11 +110,8 @@ var _ = Describe("Create", func() {
 
 			content, err := os.ReadFile(filepath.Join(chartPath, "ts", "src", "resources.ts"))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(string(content)).To(ContainSubstring("export function createDeployment"))
-			Expect(string(content)).To(ContainSubstring("export function createService"))
-			Expect(string(content)).To(ContainSubstring("export function createServiceAccount"))
-			Expect(string(content)).To(ContainSubstring("export function createIngress"))
-			Expect(string(content)).To(ContainSubstring("export function createHPA"))
+			Expect(string(content)).To(ContainSubstring("export function newDeployment"))
+			Expect(string(content)).To(ContainSubstring("export function newService"))
 		})
 
 		It("should include type definitions in nelm.d.ts", func() {
@@ -128,11 +124,9 @@ var _ = Describe("Create", func() {
 			content, err := os.ReadFile(filepath.Join(chartPath, "ts", "types", "nelm.d.ts"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(content)).To(ContainSubstring("export interface RenderContext"))
-			Expect(string(content)).To(ContainSubstring("export interface Values"))
 			Expect(string(content)).To(ContainSubstring("export interface Release"))
 			Expect(string(content)).To(ContainSubstring("export interface ChartMetadata"))
 			Expect(string(content)).To(ContainSubstring("export interface RenderResult"))
-			Expect(string(content)).To(ContainSubstring("declare module 'nelm:helpers'"))
 		})
 
 		It("should include correct tsconfig.json options", func() {
