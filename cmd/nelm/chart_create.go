@@ -87,6 +87,10 @@ func newChartCreateCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 				}
 			}
 
+			if err := tschart.EnsureGitignore(chartPath); err != nil {
+				return fmt.Errorf("ensure .gitignore: %w", err)
+			}
+
 			log.Default.Info(ctx, "Created TypeScript chart in %s", chartPath)
 			return nil
 		}
@@ -105,6 +109,10 @@ func newChartCreateCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 
 			if err := tschart.AppendToHelmignore(chartPath); err != nil {
 				return fmt.Errorf("update .helmignore: %w", err)
+			}
+
+			if err := tschart.EnsureGitignore(chartPath); err != nil {
+				return fmt.Errorf("ensure .gitignore: %w", err)
 			}
 
 			log.Default.Info(ctx, "Added TypeScript chart support to %s", chartPath)

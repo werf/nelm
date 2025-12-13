@@ -90,6 +90,46 @@ ts/dist/
 	return nil
 }
 
+func EnsureGitignore(chartPath string) error {
+	gitignorePath := filepath.Join(chartPath, ".gitignore")
+
+	entries := []string{
+		"ts/node_modules/",
+		"ts/dist/",
+		"ts/chart_render_main.js",
+	}
+
+	existingContent, err := os.ReadFile(gitignorePath)
+	if os.IsNotExist(err) {
+		content := strings.Join(entries, "\n") + "\n"
+		if err := os.WriteFile(gitignorePath, []byte(content), 0644); err != nil {
+			return fmt.Errorf("create .gitignore: %w", err)
+		}
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("read .gitignore: %w", err)
+	}
+
+	content := string(existingContent)
+	var toAdd []string
+	for _, entry := range entries {
+		if !strings.Contains(content, entry) {
+			toAdd = append(toAdd, entry)
+		}
+	}
+
+	if len(toAdd) == 0 {
+		return nil
+	}
+
+	newContent := strings.TrimRight(content, "\n") + "\n" + strings.Join(toAdd, "\n") + "\n"
+	if err := os.WriteFile(gitignorePath, []byte(newContent), 0644); err != nil {
+		return fmt.Errorf("write .gitignore: %w", err)
+	}
+
+	return nil
+}
+
 func generateIndexTS() string {
 	return `import { RenderContext, RenderResult } from '../types/nelm';
 import { newDeployment, newService } from './resources';

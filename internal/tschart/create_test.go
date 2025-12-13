@@ -224,6 +224,73 @@ var _ = Describe("Create", func() {
 		})
 	})
 
+	Describe("EnsureGitignore", func() {
+		It("should create minimal .gitignore if it does not exist", func() {
+			chartPath := filepath.Join(tempDir, "test-chart")
+			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
+
+			err := EnsureGitignore(chartPath)
+			Expect(err).NotTo(HaveOccurred())
+
+			content, err := os.ReadFile(filepath.Join(chartPath, ".gitignore"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(content)).To(ContainSubstring("ts/node_modules/"))
+			Expect(string(content)).To(ContainSubstring("ts/dist/"))
+			Expect(string(content)).To(ContainSubstring("ts/chart_render_main.js"))
+		})
+
+		It("should append missing entries to existing .gitignore", func() {
+			chartPath := filepath.Join(tempDir, "test-chart")
+			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
+
+			originalContent := "# My project\n*.log\n"
+			Expect(os.WriteFile(filepath.Join(chartPath, ".gitignore"), []byte(originalContent), 0644)).To(Succeed())
+
+			err := EnsureGitignore(chartPath)
+			Expect(err).NotTo(HaveOccurred())
+
+			content, err := os.ReadFile(filepath.Join(chartPath, ".gitignore"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(content)).To(ContainSubstring("# My project"))
+			Expect(string(content)).To(ContainSubstring("*.log"))
+			Expect(string(content)).To(ContainSubstring("ts/node_modules/"))
+			Expect(string(content)).To(ContainSubstring("ts/dist/"))
+			Expect(string(content)).To(ContainSubstring("ts/chart_render_main.js"))
+		})
+
+		It("should not duplicate entries if already present", func() {
+			chartPath := filepath.Join(tempDir, "test-chart")
+			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
+
+			existingContent := "ts/node_modules/\nts/dist/\nts/chart_render_main.js\n"
+			Expect(os.WriteFile(filepath.Join(chartPath, ".gitignore"), []byte(existingContent), 0644)).To(Succeed())
+
+			err := EnsureGitignore(chartPath)
+			Expect(err).NotTo(HaveOccurred())
+
+			content, err := os.ReadFile(filepath.Join(chartPath, ".gitignore"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(content)).To(Equal(existingContent))
+		})
+
+		It("should add only missing entries", func() {
+			chartPath := filepath.Join(tempDir, "test-chart")
+			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
+
+			existingContent := "ts/node_modules/\n"
+			Expect(os.WriteFile(filepath.Join(chartPath, ".gitignore"), []byte(existingContent), 0644)).To(Succeed())
+
+			err := EnsureGitignore(chartPath)
+			Expect(err).NotTo(HaveOccurred())
+
+			content, err := os.ReadFile(filepath.Join(chartPath, ".gitignore"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(content)).To(ContainSubstring("ts/node_modules/"))
+			Expect(string(content)).To(ContainSubstring("ts/dist/"))
+			Expect(string(content)).To(ContainSubstring("ts/chart_render_main.js"))
+		})
+	})
+
 	Describe("AppendToHelmignore", func() {
 		It("should append TS entries to existing .helmignore", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")
