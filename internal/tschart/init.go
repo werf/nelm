@@ -192,7 +192,7 @@ export function trunc(str: string, max: number): string {
  * Get the fully qualified app name.
  * Truncated at 63 chars (DNS naming spec limit).
  */
-export function fullname($: RenderContext): string {
+export function getFullname($: RenderContext): string {
   if ($.Values.fullnameOverride) {
     return trunc($.Values.fullnameOverride, 63);
   }
@@ -206,14 +206,14 @@ export function fullname($: RenderContext): string {
   return trunc(` + "`${$.Release.Name}-${chartName}`" + `, 63);
 }
 
-export function labels($: RenderContext): Record<string, string> {
+export function getLabels($: RenderContext): Record<string, string> {
   return {
     'app.kubernetes.io/name': $.Chart.Name,
     'app.kubernetes.io/instance': $.Release.Name,
   };
 }
 
-export function selectorLabels($: RenderContext): Record<string, string> {
+export function getSelectorLabels($: RenderContext): Record<string, string> {
   return {
     'app.kubernetes.io/name': $.Chart.Name,
     'app.kubernetes.io/instance': $.Release.Name,
@@ -224,26 +224,26 @@ export function selectorLabels($: RenderContext): Record<string, string> {
 
 func generateResourcesTS() string {
 	return `import { RenderContext } from '../types/nelm';
-import { fullname, labels, selectorLabels } from './helpers';
+import { getFullname, getLabels, getSelectorLabels } from './helpers';
 
 export function newDeployment($: RenderContext): object {
-  const name = fullname($);
+  const name = getFullname($);
 
   return {
     apiVersion: 'apps/v1',
     kind: 'Deployment',
     metadata: {
       name,
-      labels: labels($),
+      labels: getLabels($),
     },
     spec: {
       replicas: $.Values.replicaCount ?? 1,
       selector: {
-        matchLabels: selectorLabels($),
+        matchLabels: getSelectorLabels($),
       },
       template: {
         metadata: {
-          labels: selectorLabels($),
+          labels: getSelectorLabels($),
         },
         spec: {
           containers: [
@@ -269,8 +269,8 @@ export function newService($: RenderContext): object {
     apiVersion: 'v1',
     kind: 'Service',
     metadata: {
-      name: fullname($),
-      labels: labels($),
+      name: getFullname($),
+      labels: getLabels($),
     },
     spec: {
       type: $.Values.service?.type ?? 'ClusterIP',
@@ -280,7 +280,7 @@ export function newService($: RenderContext): object {
           targetPort: 'http',
         },
       ],
-      selector: selectorLabels($),
+      selector: getSelectorLabels($),
     },
   };
 }

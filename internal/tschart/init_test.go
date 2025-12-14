@@ -96,9 +96,9 @@ var _ = Describe("Init", func() {
 
 			content, err := os.ReadFile(filepath.Join(chartPath, "ts", "src", "helpers.ts"))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(string(content)).To(ContainSubstring("export function fullname"))
-			Expect(string(content)).To(ContainSubstring("export function labels"))
-			Expect(string(content)).To(ContainSubstring("export function selectorLabels"))
+			Expect(string(content)).To(ContainSubstring("export function getFullname"))
+			Expect(string(content)).To(ContainSubstring("export function getLabels"))
+			Expect(string(content)).To(ContainSubstring("export function getSelectorLabels"))
 		})
 
 		It("should include resource generators in resources.ts", func() {
