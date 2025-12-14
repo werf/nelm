@@ -216,7 +216,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 
 
 	if featgate.FeatGateTypescript.Enabled() {
-		jsRenderedTemplates, err := renderJSTemplates(ctx, chart, renderedValues)
+		jsRenderedTemplates, err := renderJSTemplates(ctx, originalChartPath, chart, renderedValues)
 		if err != nil {
 			return nil, fmt.Errorf("render ts chart templates for chart %q: %w", chart.Name(), err)
 		}
@@ -254,26 +254,15 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 
 func renderJSTemplates(
 	ctx context.Context,
+	chartPath string,
 	chart *chart.Chart,
 	renderedValues chartutil.Values,
 ) (map[string]string, error) {
-	jsRenderExists := false
-	for _, file := range chart.Files {
-		if file.Name == tschart.BundleFile {
-			jsRenderExists = true
-			break
-		}
-	}
-
-	if !jsRenderExists {
-		return map[string]string{}, nil
-	}
-
 	log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q", chart.Name())
 
 	jsEngine := tschart.NewEngine()
 
-	jsRenderedTemplates, err := jsEngine.RenderFiles(ctx, chart, renderedValues)
+	jsRenderedTemplates, err := jsEngine.RenderFiles(ctx, chartPath, chart, renderedValues)
 	if err != nil {
 		return nil, err
 	}

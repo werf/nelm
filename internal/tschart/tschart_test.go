@@ -34,7 +34,7 @@ var _ = Describe("TSChart Integration Tests", func() {
 		os.RemoveAll(tempDir)
 	})
 
-	Describe("Full Flow: TypeScript -> Transform -> Render -> YAML", func() {
+	Describe("Full Flow: TypeScript -> Render -> YAML", func() {
 		It("should handle simple TypeScript with types", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")
 			tsDir := filepath.Join(chartPath, "ts", "src")
@@ -74,20 +74,6 @@ export function render(context: any) {
 				Files: []*helmchart.File{},
 			}
 
-			transformer := NewTransformer()
-			err := transformer.TransformChartForRender(ctx, chartPath, chart)
-			Expect(err).NotTo(HaveOccurred())
-
-			var bundleFile *helmchart.File
-			for _, f := range chart.Files {
-				if f.Name == BundleFile {
-					bundleFile = f
-					break
-				}
-			}
-			Expect(bundleFile).NotTo(BeNil())
-			Expect(bundleFile.Data).NotTo(BeEmpty())
-
 			engine := NewEngine()
 			values := chartutil.Values{
 				"Values": map[string]interface{}{
@@ -99,11 +85,11 @@ export function render(context: any) {
 				},
 			}
 
-			renderedTemplates, err := engine.RenderFiles(ctx, chart, values)
+			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(renderedTemplates).To(HaveKey(BundleFile))
+			Expect(renderedTemplates).To(HaveKey(OutputFile))
 
-			yaml := renderedTemplates[BundleFile]
+			yaml := renderedTemplates[OutputFile]
 			Expect(yaml).To(ContainSubstring("kind: ConfigMap"))
 			Expect(yaml).To(ContainSubstring("name: test-release-config"))
 			Expect(yaml).To(ContainSubstring("namespace: default"))
@@ -133,16 +119,12 @@ module.exports.render = function(context: any) {
 			)).To(Succeed())
 
 			chart := &helmchart.Chart{Files: []*helmchart.File{}}
-			transformer := NewTransformer()
-			err := transformer.TransformChartForRender(ctx, chartPath, chart)
-			Expect(err).NotTo(HaveOccurred())
-
 			engine := NewEngine()
 			values := chartutil.Values{}
-			renderedTemplates, err := engine.RenderFiles(ctx, chart, values)
+			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
-			yaml := renderedTemplates[BundleFile]
+			yaml := renderedTemplates[OutputFile]
 			Expect(yaml).To(ContainSubstring("kind: ConfigMap"))
 			Expect(yaml).To(ContainSubstring("name: module-exports-test"))
 		})
@@ -171,16 +153,12 @@ module.exports = {
 			)).To(Succeed())
 
 			chart := &helmchart.Chart{Files: []*helmchart.File{}}
-			transformer := NewTransformer()
-			err := transformer.TransformChartForRender(ctx, chartPath, chart)
-			Expect(err).NotTo(HaveOccurred())
-
 			engine := NewEngine()
 			values := chartutil.Values{}
-			renderedTemplates, err := engine.RenderFiles(ctx, chart, values)
+			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
-			yaml := renderedTemplates[BundleFile]
+			yaml := renderedTemplates[OutputFile]
 			Expect(yaml).To(ContainSubstring("kind: Secret"))
 			Expect(yaml).To(ContainSubstring("name: object-pattern-test"))
 		})
@@ -215,10 +193,6 @@ export const render = (context: any) => {
 			)).To(Succeed())
 
 			chart := &helmchart.Chart{Files: []*helmchart.File{}}
-			transformer := NewTransformer()
-			err := transformer.TransformChartForRender(ctx, chartPath, chart)
-			Expect(err).NotTo(HaveOccurred())
-
 			engine := NewEngine()
 			values := chartutil.Values{
 				"Release": map[string]interface{}{
@@ -226,10 +200,10 @@ export const render = (context: any) => {
 				},
 			}
 
-			renderedTemplates, err := engine.RenderFiles(ctx, chart, values)
+			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
-			yaml := renderedTemplates[BundleFile]
+			yaml := renderedTemplates[OutputFile]
 			Expect(yaml).To(ContainSubstring("name: my-app-config-1"))
 			Expect(yaml).To(ContainSubstring("name: my-app-config-2"))
 			Expect(yaml).To(ContainSubstring("name: my-app-config-3"))
@@ -284,10 +258,6 @@ export function render(context: RenderContext) {
 			)).To(Succeed())
 
 			chart := &helmchart.Chart{Files: []*helmchart.File{}}
-			transformer := NewTransformer()
-			err := transformer.TransformChartForRender(ctx, chartPath, chart)
-			Expect(err).NotTo(HaveOccurred())
-
 			engine := NewEngine()
 			values := chartutil.Values{
 				"Release": map[string]interface{}{
@@ -299,10 +269,10 @@ export function render(context: RenderContext) {
 				},
 			}
 
-			renderedTemplates, err := engine.RenderFiles(ctx, chart, values)
+			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
-			yaml := renderedTemplates[BundleFile]
+			yaml := renderedTemplates[OutputFile]
 			Expect(yaml).To(ContainSubstring("kind: Deployment"))
 			Expect(yaml).To(ContainSubstring("name: typed-app"))
 			Expect(yaml).To(ContainSubstring("replicas: 5"))
@@ -332,13 +302,9 @@ export function render(context: any) {
 			)).To(Succeed())
 
 			chart := &helmchart.Chart{Files: []*helmchart.File{}}
-			transformer := NewTransformer()
-			err := transformer.TransformChartForRender(ctx, chartPath, chart)
-			Expect(err).NotTo(HaveOccurred())
-
 			engine := NewEngine()
 			values := chartutil.Values{}
-			_, err = engine.RenderFiles(ctx, chart, values)
+			_, err := engine.RenderFiles(ctx, chartPath, chart, values)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("index.ts"))
 			Expect(err.Error()).To(ContainSubstring("undefined"))
@@ -360,13 +326,9 @@ export function notRender(context: any) {
 			)).To(Succeed())
 
 			chart := &helmchart.Chart{Files: []*helmchart.File{}}
-			transformer := NewTransformer()
-			err := transformer.TransformChartForRender(ctx, chartPath, chart)
-			Expect(err).NotTo(HaveOccurred())
-
 			engine := NewEngine()
 			values := chartutil.Values{}
-			_, err = engine.RenderFiles(ctx, chart, values)
+			_, err := engine.RenderFiles(ctx, chartPath, chart, values)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("does not export 'render' function"))
 		})
@@ -395,9 +357,10 @@ export function render(context: any) {
 			)).To(Succeed())
 
 			chart := &helmchart.Chart{Files: []*helmchart.File{}}
-			transformer := NewTransformer()
-			err := transformer.TransformChartForRender(ctx, chartPath, chart)
+			engine := NewEngine()
+			values := chartutil.Values{}
 			// esbuild doesn't check types, so this will succeed
+			_, err := engine.RenderFiles(ctx, chartPath, chart, values)
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
@@ -442,10 +405,6 @@ export function createConfigMap(name: string) {
 			)).To(Succeed())
 
 			chart := &helmchart.Chart{Files: []*helmchart.File{}}
-			transformer := NewTransformer()
-			err := transformer.TransformChartForRender(ctx, chartPath, chart)
-			Expect(err).NotTo(HaveOccurred())
-
 			engine := NewEngine()
 			values := chartutil.Values{
 				"Release": map[string]interface{}{
@@ -453,25 +412,29 @@ export function createConfigMap(name: string) {
 				},
 			}
 
-			renderedTemplates, err := engine.RenderFiles(ctx, chart, values)
+			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
-			yaml := renderedTemplates[BundleFile]
+			yaml := renderedTemplates[OutputFile]
 			Expect(yaml).To(ContainSubstring("name: multi-file-app-config"))
 			Expect(yaml).To(ContainSubstring("source: helper-function"))
 		})
 	})
 
 	Describe("Inline sourcemaps", func() {
-		It("should include inline sourcemaps in bundle", func() {
+		It("should include inline sourcemaps for error reporting", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")
 			tsDir := filepath.Join(chartPath, "ts", "src")
 			Expect(os.MkdirAll(tsDir, 0755)).To(Succeed())
 
+			// Create a file that will cause a runtime error
 			Expect(os.WriteFile(
 				filepath.Join(tsDir, "index.ts"),
 				[]byte(`
 export function render(context: any) {
+	// Intentionally access undefined to trigger error with sourcemap
+	const x: any = undefined;
+	x.foo.bar; // This line should appear in error
 	return { manifests: [] };
 }
 				`),
@@ -479,69 +442,142 @@ export function render(context: any) {
 			)).To(Succeed())
 
 			chart := &helmchart.Chart{Files: []*helmchart.File{}}
-			transformer := NewTransformer()
-			err := transformer.TransformChartForRender(ctx, chartPath, chart)
-			Expect(err).NotTo(HaveOccurred())
-
-			var bundleFile *helmchart.File
-			for _, f := range chart.Files {
-				if f.Name == BundleFile {
-					bundleFile = f
-					break
-				}
-			}
-			Expect(bundleFile).NotTo(BeNil())
-
-			bundleContent := string(bundleFile.Data)
-			Expect(bundleContent).To(ContainSubstring("//# sourceMappingURL=data:application/json;base64"))
+			engine := NewEngine()
+			values := chartutil.Values{}
+			_, err := engine.RenderFiles(ctx, chartPath, chart, values)
+			Expect(err).To(HaveOccurred())
+			// The error should reference the original .ts file thanks to sourcemaps
+			Expect(err.Error()).To(ContainSubstring("index.ts"))
 		})
 	})
 
-	Describe("Pre-built bundle in chart.Files", func() {
-		It("should use existing bundle without rebuilding", func() {
-			// Create chart with pre-built bundle (simulates packaged chart)
-			preBuildBundle := []byte(`
-// Pre-built bundle
-var __defProp = Object.defineProperty;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var src_exports = {};
-__export(src_exports, {
-  render: () => render
-});
-module.exports = src_exports;
-function render(context) {
-  return {
-    manifests: [{
-      apiVersion: "v1",
-      kind: "ConfigMap",
-      metadata: { name: "pre-built-bundle-test" }
-    }]
-  };
+	Describe("Packaged charts with source files", func() {
+		It("should render from packaged chart source files", func() {
+			// Create chart with source files (simulates packaged chart)
+			sourceContent := `
+export function render(context: any) {
+	return {
+		manifests: [{
+			apiVersion: "v1",
+			kind: "ConfigMap",
+			metadata: { name: "packaged-source-test" }
+		}]
+	};
 }
-			`)
-
+`
 			chart := &helmchart.Chart{
 				Files: []*helmchart.File{
-					{Name: BundleFile, Data: preBuildBundle},
+					{Name: "ts/src/index.ts", Data: []byte(sourceContent)},
 				},
 			}
 
-			transformer := NewTransformer()
-			err := transformer.TransformChartForRender(ctx, "./any-path.tgz", chart)
-			Expect(err).NotTo(HaveOccurred())
-
-			Expect(chart.Files).To(HaveLen(1))
-
 			engine := NewEngine()
 			values := chartutil.Values{}
-			renderedTemplates, err := engine.RenderFiles(ctx, chart, values)
+			// Use non-existent path to simulate packaged chart
+			renderedTemplates, err := engine.RenderFiles(ctx, "./packaged-chart.tgz", chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
-			yaml := renderedTemplates[BundleFile]
-			Expect(yaml).To(ContainSubstring("name: pre-built-bundle-test"))
+			yaml := renderedTemplates[OutputFile]
+			Expect(yaml).To(ContainSubstring("name: packaged-source-test"))
+		})
+
+		It("should use vendor bundle from packaged chart for npm dependencies", func() {
+			// Create a vendor bundle that provides a fake module
+			vendorBundle := `
+var __NELM_VENDOR_BUNDLE__ = (function() {
+	var __NELM_VENDOR__ = {};
+	__NELM_VENDOR__['fake-lib'] = {
+		helper: function(name) {
+			return { apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: name + '-from-vendor' } };
+		}
+	};
+	if (typeof global !== 'undefined') { global.__NELM_VENDOR__ = __NELM_VENDOR__; }
+	return { __NELM_VENDOR__: __NELM_VENDOR__ };
+})();
+`
+			sourceContent := `
+const fakeLib = require('fake-lib');
+export function render(context: any) {
+	return {
+		manifests: [fakeLib.helper(context.Release.Name)]
+	};
+}
+`
+			chart := &helmchart.Chart{
+				Files: []*helmchart.File{
+					{Name: VendorBundleFile, Data: []byte(vendorBundle)},
+					{Name: "ts/src/index.ts", Data: []byte(sourceContent)},
+				},
+			}
+
+			engine := NewEngine()
+			values := chartutil.Values{
+				"Release": map[string]interface{}{
+					"Name": "vendor-test",
+				},
+			}
+			renderedTemplates, err := engine.RenderFiles(ctx, "./packaged-chart.tgz", chart, values)
+			Expect(err).NotTo(HaveOccurred())
+
+			yaml := renderedTemplates[OutputFile]
+			Expect(yaml).To(ContainSubstring("name: vendor-test-from-vendor"))
+		})
+	})
+
+	Describe("npm dependencies with vendor bundle", func() {
+		It("should render chart with npm dependencies from node_modules", func() {
+			chartPath := filepath.Join(tempDir, "test-chart")
+			tsDir := filepath.Join(chartPath, "ts", "src")
+			Expect(os.MkdirAll(tsDir, 0755)).To(Succeed())
+
+			// Create source that uses a fake npm module
+			Expect(os.WriteFile(
+				filepath.Join(tsDir, "index.ts"),
+				[]byte(`
+import { helper } from 'fake-lib';
+
+export function render(context: any) {
+	return {
+		manifests: [helper(context.Release.Name)]
+	};
+}
+				`),
+				0644,
+			)).To(Succeed())
+
+			// Create fake node_modules
+			fakeLibDir := filepath.Join(chartPath, "ts", "node_modules", "fake-lib")
+			Expect(os.MkdirAll(fakeLibDir, 0755)).To(Succeed())
+
+			Expect(os.WriteFile(
+				filepath.Join(fakeLibDir, "package.json"),
+				[]byte(`{"name": "fake-lib", "version": "1.0.0", "main": "index.js"}`),
+				0644,
+			)).To(Succeed())
+
+			Expect(os.WriteFile(
+				filepath.Join(fakeLibDir, "index.js"),
+				[]byte(`
+module.exports.helper = function(name) {
+	return { apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: name + '-from-npm' } };
+};
+				`),
+				0644,
+			)).To(Succeed())
+
+			chart := &helmchart.Chart{Files: []*helmchart.File{}}
+			engine := NewEngine()
+			values := chartutil.Values{
+				"Release": map[string]interface{}{
+					"Name": "npm-test",
+				},
+			}
+
+			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
+			Expect(err).NotTo(HaveOccurred())
+
+			yaml := renderedTemplates[OutputFile]
+			Expect(yaml).To(ContainSubstring("name: npm-test-from-npm"))
 		})
 	})
 })

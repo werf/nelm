@@ -13,7 +13,9 @@ require (
 	github.com/docker/cli v25.0.5+incompatible
 	github.com/docker/docker v25.0.5+incompatible
 	github.com/dominikbraun/graph v0.23.0
+	github.com/dop251/goja v0.0.0-20251121114222-56b1242a5f86
 	github.com/evanphx/json-patch v5.8.0+incompatible
+	github.com/evanw/esbuild v0.27.0
 	github.com/fluxcd/flagger v1.36.1
 	github.com/goccy/go-yaml v1.15.23
 	github.com/google/go-cmp v0.6.0
@@ -81,10 +83,7 @@ require (
 	github.com/docker/docker-credential-helpers v0.8.1 // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-metrics v0.0.1 // indirect
-	github.com/dop251/goja v0.0.0-20251121114222-56b1242a5f86 // indirect
-	github.com/dop251/goja_nodejs v0.0.0-20251015164255-5e94316bedaf // indirect
 	github.com/emicklei/go-restful/v3 v3.11.2 // indirect
-	github.com/evanw/esbuild v0.27.0 // indirect
 	github.com/exponent-io/jsonpath v0.0.0-20210407135951-1de76d718b3f // indirect
 	github.com/fatih/color v1.16.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect

@@ -153,7 +153,7 @@ var _ = Describe("Create", func() {
 
 			content, err := os.ReadFile(filepath.Join(chartPath, "ts", ".gitignore"))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(string(content)).To(ContainSubstring("chart_render_main.js"))
+			Expect(string(content)).To(ContainSubstring("vendor/"))
 			Expect(string(content)).To(ContainSubstring("node_modules/"))
 			Expect(string(content)).To(ContainSubstring("dist/"))
 		})
@@ -235,8 +235,8 @@ var _ = Describe("Create", func() {
 			content, err := os.ReadFile(filepath.Join(chartPath, ".gitignore"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(content)).To(ContainSubstring("ts/node_modules/"))
+			Expect(string(content)).To(ContainSubstring("ts/vendor/"))
 			Expect(string(content)).To(ContainSubstring("ts/dist/"))
-			Expect(string(content)).To(ContainSubstring("ts/chart_render_main.js"))
 		})
 
 		It("should append missing entries to existing .gitignore", func() {
@@ -254,15 +254,15 @@ var _ = Describe("Create", func() {
 			Expect(string(content)).To(ContainSubstring("# My project"))
 			Expect(string(content)).To(ContainSubstring("*.log"))
 			Expect(string(content)).To(ContainSubstring("ts/node_modules/"))
+			Expect(string(content)).To(ContainSubstring("ts/vendor/"))
 			Expect(string(content)).To(ContainSubstring("ts/dist/"))
-			Expect(string(content)).To(ContainSubstring("ts/chart_render_main.js"))
 		})
 
 		It("should not duplicate entries if already present", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")
 			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
 
-			existingContent := "ts/node_modules/\nts/dist/\nts/chart_render_main.js\n"
+			existingContent := "ts/node_modules/\nts/vendor/\nts/dist/\n"
 			Expect(os.WriteFile(filepath.Join(chartPath, ".gitignore"), []byte(existingContent), 0644)).To(Succeed())
 
 			err := EnsureGitignore(chartPath)
@@ -286,8 +286,8 @@ var _ = Describe("Create", func() {
 			content, err := os.ReadFile(filepath.Join(chartPath, ".gitignore"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(content)).To(ContainSubstring("ts/node_modules/"))
+			Expect(string(content)).To(ContainSubstring("ts/vendor/"))
 			Expect(string(content)).To(ContainSubstring("ts/dist/"))
-			Expect(string(content)).To(ContainSubstring("ts/chart_render_main.js"))
 		})
 	})
 

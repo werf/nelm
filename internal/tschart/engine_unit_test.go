@@ -2,6 +2,8 @@ package tschart
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,9 +36,26 @@ func newTestValues(data map[string]interface{}) chartutil.Values {
 	return chartutil.Values(data)
 }
 
+// createTestChartDir creates a temporary chart directory with TypeScript source files
+func createTestChartDir(t *testing.T, sourceContent string) string {
+	tempDir, err := os.MkdirTemp("", "tschart-engine-test-*")
+	require.NoError(t, err)
+
+	tsDir := filepath.Join(tempDir, "ts", "src")
+	require.NoError(t, os.MkdirAll(tsDir, 0755))
+
+	require.NoError(t, os.WriteFile(
+		filepath.Join(tsDir, "index.ts"),
+		[]byte(sourceContent),
+		0644,
+	))
+
+	return tempDir
+}
+
 func TestRenderSimpleManifest(t *testing.T) {
-	bundleContent := `
-module.exports.render = function(context) {
+	sourceContent := `
+export function render(context: any) {
     return {
         manifests: [{
             apiVersion: 'v1',
@@ -50,11 +69,16 @@ module.exports.render = function(context) {
             }
         }]
     };
-};
+}
 `
-	testChart := newTestChart(map[string]string{
-		"ts/chart_render_main.js": bundleContent,
-	})
+	chartDir := createTestChartDir(t, sourceContent)
+	defer os.RemoveAll(chartDir)
+
+	testChart := newTestChart(map[string]string{})
+	testChart.Metadata = &chart.Metadata{
+		Name:    "test-chart",
+		Version: "1.0.0",
+	}
 
 	ctx := context.Background()
 	renderedValues := newTestValues(map[string]interface{}{
@@ -84,14 +108,13 @@ module.exports.render = function(context) {
 	})
 
 	engine := NewEngine()
-	renderedTemplates, err := engine.RenderFiles(ctx, testChart, renderedValues)
+	renderedTemplates, err := engine.RenderFiles(ctx, chartDir, testChart, renderedValues)
 	require.NoError(t, err)
 
 	assert.Len(t, renderedTemplates, 1)
+	assert.Contains(t, renderedTemplates, OutputFile)
 
-	assert.Contains(t, renderedTemplates, "ts/chart_render_main.js")
-
-	yaml := renderedTemplates["ts/chart_render_main.js"]
+	yaml := renderedTemplates[OutputFile]
 	assert.Contains(t, yaml, "kind: ConfigMap")
 	assert.Contains(t, yaml, "name: test-release-config")
 	assert.Contains(t, yaml, "namespace: default")
@@ -99,8 +122,8 @@ module.exports.render = function(context) {
 }
 
 func TestRenderMultipleResources(t *testing.T) {
-	bundleContent := `
-module.exports.render = function(context) {
+	sourceContent := `
+export function render(context: any) {
     return {
         manifests: [
             {
@@ -115,11 +138,12 @@ module.exports.render = function(context) {
             }
         ]
     };
-};
+}
 `
-	testChart := newTestChart(map[string]string{
-		"ts/chart_render_main.js": bundleContent,
-	})
+	chartDir := createTestChartDir(t, sourceContent)
+	defer os.RemoveAll(chartDir)
+
+	testChart := newTestChart(map[string]string{})
 
 	ctx := context.Background()
 	renderedValues := newTestValues(map[string]interface{}{
@@ -129,12 +153,12 @@ module.exports.render = function(context) {
 	})
 
 	engine := NewEngine()
-	renderedTemplates, err := engine.RenderFiles(ctx, testChart, renderedValues)
+	renderedTemplates, err := engine.RenderFiles(ctx, chartDir, testChart, renderedValues)
 	require.NoError(t, err)
 
 	assert.Len(t, renderedTemplates, 1)
 
-	yaml := renderedTemplates["ts/chart_render_main.js"]
+	yaml := renderedTemplates[OutputFile]
 
 	assert.Contains(t, yaml, "kind: Service")
 	assert.Contains(t, yaml, "kind: Deployment")
@@ -142,19 +166,20 @@ module.exports.render = function(context) {
 }
 
 func TestRenderReturnsNull(t *testing.T) {
-	bundleContent := `
-module.exports.render = function(context) {
+	sourceContent := `
+export function render(context: any) {
     if (!context.Values.enabled) {
         return null;
     }
     return {
         manifests: [{ apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: 'test' } }]
     };
-};
+}
 `
-	testChart := newTestChart(map[string]string{
-		"ts/chart_render_main.js": bundleContent,
-	})
+	chartDir := createTestChartDir(t, sourceContent)
+	defer os.RemoveAll(chartDir)
+
+	testChart := newTestChart(map[string]string{})
 
 	ctx := context.Background()
 	renderedValues := newTestValues(map[string]interface{}{
@@ -164,13 +189,18 @@ module.exports.render = function(context) {
 	})
 
 	engine := NewEngine()
-	renderedTemplates, err := engine.RenderFiles(ctx, testChart, renderedValues)
+	renderedTemplates, err := engine.RenderFiles(ctx, chartDir, testChart, renderedValues)
 	require.NoError(t, err)
 
 	assert.Len(t, renderedTemplates, 0)
 }
 
-func TestNoJSBundle(t *testing.T) {
+func TestNoTypeScriptSource(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "tschart-no-ts-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	// Create a chart directory without ts/ folder
 	testChart := newTestChart(map[string]string{
 		"templates/deployment.yaml": "apiVersion: v1\nkind: Deployment",
 	})
@@ -179,16 +209,16 @@ func TestNoJSBundle(t *testing.T) {
 	renderedValues := newTestValues(map[string]interface{}{})
 
 	engine := NewEngine()
-	renderedTemplates, err := engine.RenderFiles(ctx, testChart, renderedValues)
+	renderedTemplates, err := engine.RenderFiles(ctx, tempDir, testChart, renderedValues)
 	require.NoError(t, err)
 
 	assert.Len(t, renderedTemplates, 0)
 }
 
 func TestRenderWithModuleExportsObject(t *testing.T) {
-	bundleContent := `
+	sourceContent := `
 module.exports = {
-    render: function(context) {
+    render: function(context: any) {
         return {
             manifests: [{
                 apiVersion: 'v1',
@@ -199,19 +229,51 @@ module.exports = {
     }
 };
 `
+	chartDir := createTestChartDir(t, sourceContent)
+	defer os.RemoveAll(chartDir)
+
+	testChart := newTestChart(map[string]string{})
+
+	ctx := context.Background()
+	renderedValues := newTestValues(map[string]interface{}{})
+
+	engine := NewEngine()
+	renderedTemplates, err := engine.RenderFiles(ctx, chartDir, testChart, renderedValues)
+	require.NoError(t, err)
+
+	assert.Len(t, renderedTemplates, 1)
+	yaml := renderedTemplates[OutputFile]
+	assert.Contains(t, yaml, "kind: ConfigMap")
+	assert.Contains(t, yaml, "name: test-object-pattern")
+}
+
+func TestRenderFromPackagedChart(t *testing.T) {
+	// Simulate a packaged chart (not a local directory) with source files
+	sourceContent := `
+export function render(context: any) {
+    return {
+        manifests: [{
+            apiVersion: 'v1',
+            kind: 'ConfigMap',
+            metadata: { name: 'packaged-chart-test' }
+        }]
+    };
+}
+`
 	testChart := newTestChart(map[string]string{
-		"ts/chart_render_main.js": bundleContent,
+		"ts/src/index.ts": sourceContent,
 	})
 
 	ctx := context.Background()
 	renderedValues := newTestValues(map[string]interface{}{})
 
 	engine := NewEngine()
-	renderedTemplates, err := engine.RenderFiles(ctx, testChart, renderedValues)
+	// Use a non-existent path to simulate packaged chart
+	renderedTemplates, err := engine.RenderFiles(ctx, "./non-existent-chart.tgz", testChart, renderedValues)
 	require.NoError(t, err)
 
 	assert.Len(t, renderedTemplates, 1)
-	yaml := renderedTemplates["ts/chart_render_main.js"]
+	yaml := renderedTemplates[OutputFile]
 	assert.Contains(t, yaml, "kind: ConfigMap")
-	assert.Contains(t, yaml, "name: test-object-pattern")
+	assert.Contains(t, yaml, "name: packaged-chart-test")
 }
