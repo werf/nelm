@@ -51,14 +51,14 @@ func (e *Engine) RenderFiles(ctx context.Context, chartPath string, chart *helmc
 			return nil, fmt.Errorf("build app bundle: %w", err)
 		}
 	} else {
-		vendorBundle, packages = GetVendorBundleFromFiles(chart.Files)
+		vendorBundle, packages = GetVendorBundleFromFiles(chart.RuntimeFiles)
 
-		sourceFiles := ExtractSourceFiles(chart.Files)
+		sourceFiles := ExtractSourceFiles(chart.RuntimeFiles)
 		if len(sourceFiles) == 0 {
 			return map[string]string{}, nil
 		}
 
-		appBundle, err = BuildAppBundleFromChartFiles(ctx, chart.Files, packages)
+		appBundle, err = BuildAppBundleFromChartFiles(ctx, chart.RuntimeFiles, packages)
 		if err != nil {
 			return nil, fmt.Errorf("build app bundle from chart files: %w", err)
 		}

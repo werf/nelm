@@ -466,7 +466,7 @@ export function render(context: any) {
 }
 `
 			chart := &helmchart.Chart{
-				Files: []*helmchart.File{
+				RuntimeFiles: []*helmchart.File{
 					{Name: "ts/src/index.ts", Data: []byte(sourceContent)},
 				},
 			}
@@ -504,7 +504,7 @@ export function render(context: any) {
 }
 `
 			chart := &helmchart.Chart{
-				Files: []*helmchart.File{
+				RuntimeFiles: []*helmchart.File{
 					{Name: VendorBundleFile, Data: []byte(vendorBundle)},
 					{Name: "ts/src/index.ts", Data: []byte(sourceContent)},
 				},

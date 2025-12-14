@@ -14,8 +14,13 @@ import (
 
 func newTestChart(files map[string]string) *chart.Chart {
 	var fileList []*chart.File
+	var runtimeFileList []*chart.File
 	for name, content := range files {
 		fileList = append(fileList, &chart.File{
+			Name: name,
+			Data: []byte(content),
+		})
+		runtimeFileList = append(runtimeFileList, &chart.File{
 			Name: name,
 			Data: []byte(content),
 		})
@@ -26,7 +31,8 @@ func newTestChart(files map[string]string) *chart.Chart {
 			Name:    "test-chart",
 			Version: "1.0.0",
 		},
-		Files: fileList,
+		Files:        fileList,
+		RuntimeFiles: runtimeFileList,
 	}
 
 	return testChart

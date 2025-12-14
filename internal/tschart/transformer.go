@@ -447,7 +447,7 @@ func (t *Transformer) TransformChartForRender(ctx context.Context, chartPath str
 	stat, err := os.Stat(chartPath)
 	if err != nil || !stat.IsDir() {
 		hasSourceFiles := false
-		for _, f := range chart.Files {
+		for _, f := range chart.RuntimeFiles {
 			if strings.HasPrefix(f.Name, TSSourceDir+"src/") {
 				for _, ep := range EntryPoints {
 					if f.Name == TSSourceDir+ep {
@@ -467,7 +467,7 @@ func (t *Transformer) TransformChartForRender(ctx context.Context, chartPath str
 		}
 
 		hasVendorBundle := false
-		for _, f := range chart.Files {
+		for _, f := range chart.RuntimeFiles {
 			if f.Name == VendorBundleFile {
 				hasVendorBundle = true
 				break
