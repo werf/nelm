@@ -10,10 +10,71 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-func CreateTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
+// InitChartStructure creates Chart.yaml and values.yaml if they don't exist.
+// For .helmignore: creates if missing, or appends TS entries if exists.
+func InitChartStructure(ctx context.Context, chartPath, chartName string) error {
+	skipIfExists := []struct {
+		path    string
+		content string
+	}{
+		{filepath.Join(chartPath, "Chart.yaml"), generateChartYaml(chartName)},
+		{filepath.Join(chartPath, "values.yaml"), generateValuesYaml()},
+	}
+
+	for _, f := range skipIfExists {
+		if _, err := os.Stat(f.path); err == nil {
+			log.Default.Debug(ctx, "Skipping existing file %s", f.path)
+			continue
+		}
+
+		if err := os.WriteFile(f.path, []byte(f.content), 0644); err != nil {
+			return fmt.Errorf("write %s: %w", f.path, err)
+		}
+		log.Default.Debug(ctx, "Created %s", f.path)
+	}
+
+	// Handle .helmignore specially: create or enrich
+	helmignorePath := filepath.Join(chartPath, ".helmignore")
+	if _, err := os.Stat(helmignorePath); err == nil {
+		if err := AppendToHelmignore(chartPath); err != nil {
+			return fmt.Errorf("enrich .helmignore: %w", err)
+		}
+		log.Default.Debug(ctx, "Enriched existing %s with TypeScript entries", helmignorePath)
+	} else {
+		if err := os.WriteFile(helmignorePath, []byte(generateHelmignoreWithTS()), 0644); err != nil {
+			return fmt.Errorf("write %s: %w", helmignorePath, err)
+		}
+		log.Default.Debug(ctx, "Created %s", helmignorePath)
+	}
+
+	return nil
+}
+
+// InitTSBoilerplate creates TypeScript boilerplate files in ts/ directory.
+// Returns error if any TypeScript file already exists.
+func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
 	tsDir := filepath.Join(chartPath, TSSourceDir)
 	srcDir := filepath.Join(tsDir, "src")
 	typesDir := filepath.Join(tsDir, "types")
+
+	files := []struct {
+		path    string
+		content string
+	}{
+		{filepath.Join(srcDir, "index.ts"), generateIndexTS()},
+		{filepath.Join(srcDir, "helpers.ts"), generateHelpersTS()},
+		{filepath.Join(srcDir, "resources.ts"), generateResourcesTS()},
+		{filepath.Join(typesDir, "nelm.d.ts"), generateNelmDTS()},
+		{filepath.Join(tsDir, "tsconfig.json"), generateTSConfig()},
+		{filepath.Join(tsDir, "package.json"), generatePackageJSON(chartName)},
+		{filepath.Join(tsDir, ".gitignore"), generateTSGitignore()},
+	}
+
+	for _, f := range files {
+		if _, err := os.Stat(f.path); err == nil {
+			return fmt.Errorf("TypeScript file already exists: %s. Cannot initialize in a directory with existing TypeScript chart files", f.path)
+		}
+	}
 
 	for _, dir := range []string{srcDir, typesDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
@@ -21,43 +82,11 @@ func CreateTSBoilerplate(ctx context.Context, chartPath, chartName string) error
 		}
 	}
 
-	files := map[string]string{
-		filepath.Join(srcDir, "index.ts"):     generateIndexTS(),
-		filepath.Join(srcDir, "helpers.ts"):   generateHelpersTS(),
-		filepath.Join(srcDir, "resources.ts"): generateResourcesTS(),
-		filepath.Join(typesDir, "nelm.d.ts"):  generateNelmDTS(),
-		filepath.Join(tsDir, "tsconfig.json"): generateTSConfig(),
-		filepath.Join(tsDir, "package.json"):  generatePackageJSON(chartName),
-		filepath.Join(tsDir, ".gitignore"):    generateTSGitignore(),
-	}
-
-	for path, content := range files {
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-			return fmt.Errorf("write %s: %w", path, err)
+	for _, f := range files {
+		if err := os.WriteFile(f.path, []byte(f.content), 0644); err != nil {
+			return fmt.Errorf("write %s: %w", f.path, err)
 		}
-		log.Default.Debug(ctx, "Created %s", path)
-	}
-
-	return nil
-}
-
-func CreateTSOnlyChartStructure(ctx context.Context, chartPath, chartName string) error {
-	chartsDir := filepath.Join(chartPath, "charts")
-	if err := os.MkdirAll(chartsDir, 0755); err != nil {
-		return fmt.Errorf("create charts directory: %w", err)
-	}
-
-	files := map[string]string{
-		filepath.Join(chartPath, "Chart.yaml"):  generateChartYaml(chartName),
-		filepath.Join(chartPath, "values.yaml"): generateValuesYaml(),
-		filepath.Join(chartPath, ".helmignore"): generateHelmignoreWithTS(),
-	}
-
-	for path, content := range files {
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-			return fmt.Errorf("write %s: %w", path, err)
-		}
-		log.Default.Debug(ctx, "Created %s", path)
+		log.Default.Debug(ctx, "Created %s", f.path)
 	}
 
 	return nil
@@ -323,8 +352,8 @@ func generatePackageJSON(chartName string) string {
   "description": "TypeScript chart for %s",
   "main": "src/index.ts",
   "scripts": {
-    "build": "tsc --noEmit",
-    "typecheck": "tsc --noEmit"
+    "build": "npx tsc --noEmit",
+    "typecheck": "npx tsc --noEmit"
   },
   "keywords": [
     "helm",
@@ -332,7 +361,10 @@ func generatePackageJSON(chartName string) string {
     "kubernetes",
     "chart"
   ],
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
 }
 `, chartName, chartName)
 }
@@ -374,26 +406,6 @@ func generateHelmignoreWithTS() string {
 	return `# Patterns to ignore when building packages.
 # This supports shell glob matching, relative path matching, and
 # negation (prefixed with !). Only one pattern per line.
-.DS_Store
-# Common VCS dirs
-.git/
-.gitignore
-.bzr/
-.bzrignore
-.hg/
-.hgignore
-.svn/
-# Common backup files
-*.swp
-*.bak
-*.tmp
-*.orig
-*~
-# Various IDEs
-.project
-.idea/
-*.tmproj
-.vscode/
 
 # TypeScript chart files
 ts/node_modules/

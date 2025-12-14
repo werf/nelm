@@ -9,7 +9,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Create", func() {
+var _ = Describe("Init", func() {
 	var (
 		ctx     context.Context
 		tempDir string
@@ -18,7 +18,7 @@ var _ = Describe("Create", func() {
 	BeforeEach(func() {
 		ctx = context.Background()
 		var err error
-		tempDir, err = os.MkdirTemp("", "tschart-create-test-*")
+		tempDir, err = os.MkdirTemp("", "tschart-init-test-*")
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -26,12 +26,12 @@ var _ = Describe("Create", func() {
 		os.RemoveAll(tempDir)
 	})
 
-	Describe("CreateTSBoilerplate", func() {
+	Describe("InitTSBoilerplate", func() {
 		It("should create all expected files", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")
 			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
 
-			err := CreateTSBoilerplate(ctx, chartPath, "test-chart")
+			err := InitTSBoilerplate(ctx, chartPath, "test-chart")
 			Expect(err).NotTo(HaveOccurred())
 
 			// Check ts/src/ files
@@ -52,7 +52,7 @@ var _ = Describe("Create", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")
 			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
 
-			err := CreateTSBoilerplate(ctx, chartPath, "test-chart")
+			err := InitTSBoilerplate(ctx, chartPath, "test-chart")
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(filepath.Join(chartPath, "ts")).To(BeADirectory())
@@ -64,7 +64,7 @@ var _ = Describe("Create", func() {
 			chartPath := filepath.Join(tempDir, "my-custom-chart")
 			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
 
-			err := CreateTSBoilerplate(ctx, chartPath, "my-custom-chart")
+			err := InitTSBoilerplate(ctx, chartPath, "my-custom-chart")
 			Expect(err).NotTo(HaveOccurred())
 
 			content, err := os.ReadFile(filepath.Join(chartPath, "ts", "package.json"))
@@ -77,7 +77,7 @@ var _ = Describe("Create", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")
 			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
 
-			err := CreateTSBoilerplate(ctx, chartPath, "test-chart")
+			err := InitTSBoilerplate(ctx, chartPath, "test-chart")
 			Expect(err).NotTo(HaveOccurred())
 
 			content, err := os.ReadFile(filepath.Join(chartPath, "ts", "src", "index.ts"))
@@ -91,7 +91,7 @@ var _ = Describe("Create", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")
 			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
 
-			err := CreateTSBoilerplate(ctx, chartPath, "test-chart")
+			err := InitTSBoilerplate(ctx, chartPath, "test-chart")
 			Expect(err).NotTo(HaveOccurred())
 
 			content, err := os.ReadFile(filepath.Join(chartPath, "ts", "src", "helpers.ts"))
@@ -105,7 +105,7 @@ var _ = Describe("Create", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")
 			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
 
-			err := CreateTSBoilerplate(ctx, chartPath, "test-chart")
+			err := InitTSBoilerplate(ctx, chartPath, "test-chart")
 			Expect(err).NotTo(HaveOccurred())
 
 			content, err := os.ReadFile(filepath.Join(chartPath, "ts", "src", "resources.ts"))
@@ -118,7 +118,7 @@ var _ = Describe("Create", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")
 			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
 
-			err := CreateTSBoilerplate(ctx, chartPath, "test-chart")
+			err := InitTSBoilerplate(ctx, chartPath, "test-chart")
 			Expect(err).NotTo(HaveOccurred())
 
 			content, err := os.ReadFile(filepath.Join(chartPath, "ts", "types", "nelm.d.ts"))
@@ -133,7 +133,7 @@ var _ = Describe("Create", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")
 			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
 
-			err := CreateTSBoilerplate(ctx, chartPath, "test-chart")
+			err := InitTSBoilerplate(ctx, chartPath, "test-chart")
 			Expect(err).NotTo(HaveOccurred())
 
 			content, err := os.ReadFile(filepath.Join(chartPath, "ts", "tsconfig.json"))
@@ -148,7 +148,7 @@ var _ = Describe("Create", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")
 			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
 
-			err := CreateTSBoilerplate(ctx, chartPath, "test-chart")
+			err := InitTSBoilerplate(ctx, chartPath, "test-chart")
 			Expect(err).NotTo(HaveOccurred())
 
 			content, err := os.ReadFile(filepath.Join(chartPath, "ts", ".gitignore"))
@@ -158,41 +158,46 @@ var _ = Describe("Create", func() {
 			Expect(string(content)).To(ContainSubstring("dist/"))
 		})
 
-		It("should overwrite existing ts/ directory", func() {
+		It("should fail if ts/ files already exist", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")
 			tsDir := filepath.Join(chartPath, "ts", "src")
 			Expect(os.MkdirAll(tsDir, 0755)).To(Succeed())
 			Expect(os.WriteFile(filepath.Join(tsDir, "index.ts"), []byte("old content"), 0644)).To(Succeed())
 
-			err := CreateTSBoilerplate(ctx, chartPath, "test-chart")
-			Expect(err).NotTo(HaveOccurred())
-
-			content, err := os.ReadFile(filepath.Join(tsDir, "index.ts"))
-			Expect(err).NotTo(HaveOccurred())
-			Expect(string(content)).NotTo(Equal("old content"))
-			Expect(string(content)).To(ContainSubstring("export function render"))
+			err := InitTSBoilerplate(ctx, chartPath, "test-chart")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("TypeScript file already exists"))
 		})
 	})
 
-	Describe("CreateTSOnlyChartStructure", func() {
-		It("should create Chart.yaml, values.yaml, .helmignore, and charts/", func() {
+	Describe("InitChartStructure", func() {
+		It("should create Chart.yaml, values.yaml, .helmignore", func() {
 			chartPath := filepath.Join(tempDir, "ts-only-chart")
 			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
 
-			err := CreateTSOnlyChartStructure(ctx, chartPath, "ts-only-chart")
+			err := InitChartStructure(ctx, chartPath, "ts-only-chart")
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(filepath.Join(chartPath, "Chart.yaml")).To(BeARegularFile())
 			Expect(filepath.Join(chartPath, "values.yaml")).To(BeARegularFile())
 			Expect(filepath.Join(chartPath, ".helmignore")).To(BeARegularFile())
-			Expect(filepath.Join(chartPath, "charts")).To(BeADirectory())
+		})
+
+		It("should NOT create charts/ directory", func() {
+			chartPath := filepath.Join(tempDir, "ts-only-chart")
+			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
+
+			err := InitChartStructure(ctx, chartPath, "ts-only-chart")
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(filepath.Join(chartPath, "charts")).NotTo(BeADirectory())
 		})
 
 		It("should NOT create templates/ directory", func() {
 			chartPath := filepath.Join(tempDir, "ts-only-chart")
 			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
 
-			err := CreateTSOnlyChartStructure(ctx, chartPath, "ts-only-chart")
+			err := InitChartStructure(ctx, chartPath, "ts-only-chart")
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(filepath.Join(chartPath, "templates")).NotTo(BeADirectory())
@@ -202,7 +207,7 @@ var _ = Describe("Create", func() {
 			chartPath := filepath.Join(tempDir, "my-ts-chart")
 			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
 
-			err := CreateTSOnlyChartStructure(ctx, chartPath, "my-ts-chart")
+			err := InitChartStructure(ctx, chartPath, "my-ts-chart")
 			Expect(err).NotTo(HaveOccurred())
 
 			content, err := os.ReadFile(filepath.Join(chartPath, "Chart.yaml"))
@@ -214,11 +219,59 @@ var _ = Describe("Create", func() {
 			chartPath := filepath.Join(tempDir, "ts-only-chart")
 			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
 
-			err := CreateTSOnlyChartStructure(ctx, chartPath, "ts-only-chart")
+			err := InitChartStructure(ctx, chartPath, "ts-only-chart")
 			Expect(err).NotTo(HaveOccurred())
 
 			content, err := os.ReadFile(filepath.Join(chartPath, ".helmignore"))
 			Expect(err).NotTo(HaveOccurred())
+			Expect(string(content)).To(ContainSubstring("ts/node_modules/"))
+			Expect(string(content)).To(ContainSubstring("ts/dist/"))
+		})
+
+		It("should skip existing Chart.yaml", func() {
+			chartPath := filepath.Join(tempDir, "existing-chart")
+			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
+
+			existingContent := "apiVersion: v2\nname: existing-name\nversion: 1.0.0\n"
+			Expect(os.WriteFile(filepath.Join(chartPath, "Chart.yaml"), []byte(existingContent), 0644)).To(Succeed())
+
+			err := InitChartStructure(ctx, chartPath, "new-name")
+			Expect(err).NotTo(HaveOccurred())
+
+			content, err := os.ReadFile(filepath.Join(chartPath, "Chart.yaml"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(content)).To(Equal(existingContent))
+		})
+
+		It("should skip existing values.yaml", func() {
+			chartPath := filepath.Join(tempDir, "existing-chart")
+			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
+
+			existingContent := "myValue: 123\n"
+			Expect(os.WriteFile(filepath.Join(chartPath, "values.yaml"), []byte(existingContent), 0644)).To(Succeed())
+
+			err := InitChartStructure(ctx, chartPath, "test-chart")
+			Expect(err).NotTo(HaveOccurred())
+
+			content, err := os.ReadFile(filepath.Join(chartPath, "values.yaml"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(content)).To(Equal(existingContent))
+		})
+
+		It("should enrich existing .helmignore with TS entries", func() {
+			chartPath := filepath.Join(tempDir, "existing-chart")
+			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
+
+			existingContent := ".DS_Store\n.git/\n"
+			Expect(os.WriteFile(filepath.Join(chartPath, ".helmignore"), []byte(existingContent), 0644)).To(Succeed())
+
+			err := InitChartStructure(ctx, chartPath, "test-chart")
+			Expect(err).NotTo(HaveOccurred())
+
+			content, err := os.ReadFile(filepath.Join(chartPath, ".helmignore"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(content)).To(ContainSubstring(".DS_Store"))
+			Expect(string(content)).To(ContainSubstring(".git/"))
 			Expect(string(content)).To(ContainSubstring("ts/node_modules/"))
 			Expect(string(content)).To(ContainSubstring("ts/dist/"))
 		})
