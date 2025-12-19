@@ -47,6 +47,11 @@ var (
 		"clean-null-fields",
 		`Enable cleaning of null fields from resource manifests for better Helm chart compatibility`,
 	)
+
+	FeatGateTypescript = NewFeatGate(
+		"typescript",
+		`Enable TypeScript chart rendering from ts/ directory`,
+	)
 )
 
 type FeatGate struct {

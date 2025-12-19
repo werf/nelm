@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/werf/3p-helm/pkg/action"
 	"github.com/werf/3p-helm/pkg/chart"
+	helmchart "github.com/werf/3p-helm/pkg/chart"
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/chartutil"
 	"github.com/werf/3p-helm/pkg/cli"
@@ -31,7 +33,9 @@ import (
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/resource/spec"
+	"github.com/werf/nelm/internal/tschart"
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -61,6 +65,8 @@ type RenderChartResult struct {
 }
 
 func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, registryClient *registry.Client, clientFactory kube.ClientFactorier, opts RenderChartOptions) (*RenderChartResult, error) {
+	originalChartPath := chartPath // Save original path before download
+
 	chartPath, err := downloadChart(ctx, chartPath, registryClient, opts)
 	if err != nil {
 		return nil, fmt.Errorf("download chart %q: %w", chartPath, err)
@@ -107,6 +113,12 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	chart, err := loader.Load(chartPath, opts.HelmOptions)
 	if err != nil {
 		return nil, fmt.Errorf("load chart at %q: %w", chartPath, err)
+	}
+
+	if featgate.FeatGateTypescript.Enabled() {
+		if err := tschart.NewTransformer().TransformChartForRender(ctx, originalChartPath, chart); err != nil {
+			return nil, fmt.Errorf("transform TS chart at %q: %w", chartPath, err)
+		}
 	}
 
 	if err := validateChart(ctx, chart); err != nil {
@@ -202,6 +214,18 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		return nil, fmt.Errorf("render resources for chart %q: %w", chart.Name(), err)
 	}
 
+
+	if featgate.FeatGateTypescript.Enabled() {
+		jsRenderedTemplates, err := renderJSTemplates(ctx, originalChartPath, chart, renderedValues)
+		if err != nil {
+			return nil, fmt.Errorf("render ts chart templates for chart %q: %w", chart.Name(), err)
+		}
+
+		if len(jsRenderedTemplates) > 0 {
+			maps.Copy(renderedTemplates, jsRenderedTemplates)
+		}
+	}
+
 	log.Default.TraceStruct(ctx, renderedTemplates, "Rendered contents of templates/:")
 
 	if r, err := renderedTemplatesToResourceSpecs(renderedTemplates, releaseNamespace, opts); err != nil {
@@ -227,7 +251,26 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	}, nil
 }
 
-func validateChart(ctx context.Context, chart *chart.Chart) error {
+
+func renderJSTemplates(
+	ctx context.Context,
+	chartPath string,
+	chart *chart.Chart,
+	renderedValues chartutil.Values,
+) (map[string]string, error) {
+	log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q", chart.Name())
+
+	jsEngine := tschart.NewEngine()
+
+	jsRenderedTemplates, err := jsEngine.RenderFiles(ctx, chartPath, chart, renderedValues)
+	if err != nil {
+		return nil, err
+	}
+
+	return jsRenderedTemplates, nil
+}
+
+func validateChart(ctx context.Context, chart *helmchart.Chart) error {
 	if chart == nil {
 		return fmt.Errorf("load chart: %w", action.ErrMissingChart())
 	}
