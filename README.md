@@ -78,6 +78,7 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [`NELM_FEAT_PERIODIC_STACK_TRACES` environment variable](#nelm_feat_periodic_stack_traces-environment-variable)
   - [`NELM_FEAT_FIELD_SENSITIVE` environment variable](#nelm_feat_field_sensitive-environment-variable)
   - [`NELM_FEAT_CLEAN_NULL_FIELDS` environment variable](#nelm_feat_clean_null_fields-environment-variable)
+  - [`NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN` environment variable](#nelm_feat_more_detailed_exit_code_for_plan-environment-variable)
 - [More documentation](#more-documentation)
 - [Future plans](#future-plans)
 - [Limitations](#limitations)
@@ -838,6 +839,18 @@ Example:
 ```shell
 export NELM_FEAT_CLEAN_NULL_FIELDS=true
 nelm release install -n myproject -r myproject
+```
+
+### `NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN` environment variable
+
+When the `--exit-code` flag is specified for `nelm release plan install`, return exit code 3, if no resource changes planned, but release still must be installed. Previously, exit code 2 was returned in this case.
+
+Will be the default in the next major release.
+
+Example:
+```shell
+export NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN=true
+nelm release plan install -n myproject -r myproject --exit-code
 ```
 
 ## More documentation

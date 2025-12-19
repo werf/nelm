@@ -28,7 +28,7 @@ type ResourceSpecOptions struct {
 
 func NewResourceSpec(unstruct *unstructured.Unstructured, releaseNamespace string, opts ResourceSpecOptions) *ResourceSpec {
 	unstruct = CleanUnstruct(unstruct, CleanUnstructOptions{
-		CleanNullFields: (featgate.FeatGatePreviewV2.Enabled() || featgate.FeatCleanNullFields.Enabled()) && !opts.LegacyNoCleanNullFields,
+		CleanNullFields: (featgate.FeatGatePreviewV2.Enabled() || featgate.FeatGateCleanNullFields.Enabled()) && !opts.LegacyNoCleanNullFields,
 	})
 
 	if opts.StoreAs == "" {

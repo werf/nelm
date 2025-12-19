@@ -58,8 +58,10 @@ func main() {
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		var exitCode int
-		if errors.Is(err, action.ErrChangesPlanned) {
+		if errors.Is(err, action.ErrChangesPlanned) || errors.Is(err, action.ErrResourceChangesPlanned) {
 			exitCode = 2
+		} else if errors.Is(err, action.ErrReleaseInstallPlanned) {
+			exitCode = 3
 		} else {
 			exitCode = 1
 		}
