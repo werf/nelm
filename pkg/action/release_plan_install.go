@@ -24,6 +24,7 @@ import (
 	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -31,7 +32,12 @@ const (
 	DefaultReleasePlanInstallLogLevel = log.InfoLevel
 )
 
-var ErrChangesPlanned = errors.New("changes planned")
+// TODO(v2): get rid
+var (
+	ErrChangesPlanned         = errors.New("changes planned")
+	ErrResourceChangesPlanned = errors.New("resource changes planned")
+	ErrReleaseInstallPlanned  = errors.New("no resource changes planned, but still must install release")
+)
 
 type ReleasePlanInstallOptions struct {
 	// Embedded option groups for connection, values, and secrets
@@ -455,8 +461,20 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	logPlannedChanges(ctx, releaseName, releaseNamespace, changes)
 
-	if opts.ErrorIfChangesPlanned && (!releaseIsUpToDate || !installPlanIsUseless) {
-		return ErrChangesPlanned
+	if opts.ErrorIfChangesPlanned {
+		if featgate.FeatGateMoreDetailedExitCodeForPlan.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
+			if releaseIsUpToDate && installPlanIsUseless {
+				return nil
+			} else if installPlanIsUseless || len(changes) == 0 {
+				return ErrReleaseInstallPlanned
+			} else {
+				return ErrResourceChangesPlanned
+			}
+		} else {
+			if !releaseIsUpToDate || !installPlanIsUseless {
+				return ErrChangesPlanned
+			}
+		}
 	}
 
 	return nil

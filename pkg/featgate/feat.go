@@ -43,9 +43,14 @@ var (
 		`Activate all feature gates that will be enabled by default in Nelm v2`,
 	)
 
-	FeatCleanNullFields = NewFeatGate(
+	FeatGateCleanNullFields = NewFeatGate(
 		"clean-null-fields",
 		`Enable cleaning of null fields from resource manifests for better Helm chart compatibility`,
+	)
+
+	FeatGateMoreDetailedExitCodeForPlan = NewFeatGate(
+		"more-detailed-exit-code-for-plan",
+		`Make the "plan" command with the flag "--exit-code" return an exit code 3 instead of 2 when no resource changes, but still must install the release`,
 	)
 )
 

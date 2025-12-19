@@ -138,7 +138,14 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.ErrorIfChangesPlanned, "exit-code", false, "Return exit code 0 if no changes, 1 if error, 2 if any changes planned and no error", cli.AddFlagOptions{
+		var desc string
+		if featgate.FeatGateMoreDetailedExitCodeForPlan.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
+			desc = "Return exit code 0 if no changes, 1 if error, 2 if resource changes planned, 3 if no resource changes planned, but release still should be installed"
+		} else {
+			desc = "Return exit code 0 if no changes, 1 if error, 2 if any changes planned"
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.ErrorIfChangesPlanned, "exit-code", false, desc, cli.AddFlagOptions{
 			Group: mainFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
