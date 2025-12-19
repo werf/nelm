@@ -89,7 +89,7 @@ func newChartInitCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
-		if err := cli.AddFlag(cmd, &cfg.TS, "ts", false, "Initialize TypeScript chart (requires NELM_FEAT_TYPESCRIPT=true)", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.TS, "ts", false, "Initialize TypeScript chart", cli.AddFlagOptions{
 			Group: mainFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
