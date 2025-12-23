@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.20.0](https://github.com/werf/nelm/compare/v1.19.1...v1.20.0) (2025-12-23)
+
+
+### Features
+
+* `NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN=true` to return exit code 3 on "no resource changes, but must install release" if `--exit-code` ([#515](https://github.com/werf/nelm/issues/515)) ([d24f926](https://github.com/werf/nelm/commit/d24f9262926b5a8fa39162bbd145b53034988f16))
+
+
+### Bug Fixes
+
+* panic in pre/post-delete hooks tracking ([#518](https://github.com/werf/nelm/issues/518)) ([f01de36](https://github.com/werf/nelm/commit/f01de366eaa93a92c556b1bb18350e25c7ba3976))
+
 ## [1.19.1](https://github.com/werf/nelm/compare/v1.19.0...v1.19.1) (2025-12-10)
 
 
