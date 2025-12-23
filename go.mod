@@ -38,7 +38,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.5.0
-	github.com/werf/3p-helm v0.0.0-20251113141050-17dd24e6c20b
+	github.com/werf/3p-helm v0.0.0-20251223091030-77130d200f5c
 	github.com/werf/common-go v0.0.0-20251113140850-a1a98e909e9b
 	github.com/werf/kubedog v0.13.1-0.20251210123541-25b3a13e42fe
 	github.com/werf/lockgate v0.1.1
