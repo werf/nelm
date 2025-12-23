@@ -113,6 +113,8 @@ github.com/dominikbraun/graph v0.23.0 h1:TdZB4pPqCLFxYhdyMFb1TBdFxp8XLcJfTTBQucV
 github.com/dominikbraun/graph v0.23.0/go.mod h1:yOjYyogZLY1LSG9E33JWZJiq5k83Qy2C6POAuiViluc=
 github.com/dop251/goja v0.0.0-20251121114222-56b1242a5f86 h1:iY/kk+Fw7k49PRM4cS2wz9CVxO0jB61+h//XN9bbAS4=
 github.com/dop251/goja v0.0.0-20251121114222-56b1242a5f86/go.mod h1:MxLav0peU43GgvwVgNbLAj1s/bSGboKkhuULvq/7hx4=
+github.com/dop251/goja_nodejs v0.0.0-20251015164255-5e94316bedaf h1:gbmvliZnCut4NjaPSNOQlfqBoZ9C5Dpf72mHMMYhgVE=
+github.com/dop251/goja_nodejs v0.0.0-20251015164255-5e94316bedaf/go.mod h1:Tb7Xxye4LX7cT3i8YLvmPMGCV92IOi4CDZvm/V8ylc0=
 github.com/emicklei/go-restful/v3 v3.11.2 h1:1onLa9DcsMYO9P+CXaL0dStDqQ2EHHXLiz+BtnqkLAU=
 github.com/emicklei/go-restful/v3 v3.11.2/go.mod h1:6n3XBCmQQb25CM2LCACGz8ukIrRry+4bhvbpWn3mrbc=
 github.com/evanphx/json-patch v5.8.0+incompatible h1:1Av9pn2FyxPdvrWNQszj1g6D6YthSmvCfcN6SYclTJg=

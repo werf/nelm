@@ -14,6 +14,7 @@ require (
 	github.com/docker/docker v25.0.5+incompatible
 	github.com/dominikbraun/graph v0.23.0
 	github.com/dop251/goja v0.0.0-20251121114222-56b1242a5f86
+	github.com/dop251/goja_nodejs v0.0.0-20251015164255-5e94316bedaf
 	github.com/evanphx/json-patch v5.8.0+incompatible
 	github.com/evanw/esbuild v0.27.0
 	github.com/fluxcd/flagger v1.36.1

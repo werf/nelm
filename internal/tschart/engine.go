@@ -65,7 +65,7 @@ func (e *Engine) RenderFiles(ctx context.Context, chartPath string, chart *helmc
 	}
 
 	renderContext := buildRenderContext(renderedValues, chart)
-	result, err := executeInGoja(ctx, vendorBundle, appBundle, renderContext)
+	result, err := executeInGoja(vendorBundle, appBundle, renderContext)
 	if err != nil {
 		return nil, fmt.Errorf("execute bundle: %w", err)
 	}

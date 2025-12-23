@@ -1,7 +1,6 @@
 package tschart
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/dop251/goja"
@@ -27,18 +26,18 @@ const RequireShim = `
 })()
 `
 
-func createVM(ctx context.Context) (*goja.Runtime, error) {
+func createVM() (*goja.Runtime, error) {
 	vm := goja.New()
 
 	global := vm.NewObject()
 	vm.Set("global", global)
-	helpers.SetupConsoleGlobal(ctx, vm)
+	helpers.SetupConsoleGlobal(vm)
 
 	return vm, nil
 }
 
-func executeInGoja(ctx context.Context, vendorBundle, appBundle string, renderCtx map[string]interface{}) (interface{}, error) {
-	vm, err := createVM(ctx)
+func executeInGoja(vendorBundle, appBundle string, renderCtx map[string]interface{}) (interface{}, error) {
+	vm, err := createVM()
 	if err != nil {
 		return nil, fmt.Errorf("create VM: %w", err)
 	}
