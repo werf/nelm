@@ -87,9 +87,9 @@ export function render(context: any) {
 
 			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(renderedTemplates).To(HaveKey(OutputFile))
+			Expect(renderedTemplates).To(HaveKey(DefaultOutputFile))
 
-			yaml := renderedTemplates[OutputFile]
+			yaml := renderedTemplates[DefaultOutputFile]
 			Expect(yaml).To(ContainSubstring("kind: ConfigMap"))
 			Expect(yaml).To(ContainSubstring("name: test-release-config"))
 			Expect(yaml).To(ContainSubstring("namespace: default"))
@@ -124,7 +124,7 @@ module.exports.render = function(context: any) {
 			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
-			yaml := renderedTemplates[OutputFile]
+			yaml := renderedTemplates[DefaultOutputFile]
 			Expect(yaml).To(ContainSubstring("kind: ConfigMap"))
 			Expect(yaml).To(ContainSubstring("name: module-exports-test"))
 		})
@@ -158,7 +158,7 @@ module.exports = {
 			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
-			yaml := renderedTemplates[OutputFile]
+			yaml := renderedTemplates[DefaultOutputFile]
 			Expect(yaml).To(ContainSubstring("kind: Secret"))
 			Expect(yaml).To(ContainSubstring("name: object-pattern-test"))
 		})
@@ -203,7 +203,7 @@ export const render = (context: any) => {
 			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
-			yaml := renderedTemplates[OutputFile]
+			yaml := renderedTemplates[DefaultOutputFile]
 			Expect(yaml).To(ContainSubstring("name: my-app-config-1"))
 			Expect(yaml).To(ContainSubstring("name: my-app-config-2"))
 			Expect(yaml).To(ContainSubstring("name: my-app-config-3"))
@@ -272,7 +272,7 @@ export function render(context: RenderContext) {
 			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
-			yaml := renderedTemplates[OutputFile]
+			yaml := renderedTemplates[DefaultOutputFile]
 			Expect(yaml).To(ContainSubstring("kind: Deployment"))
 			Expect(yaml).To(ContainSubstring("name: typed-app"))
 			Expect(yaml).To(ContainSubstring("replicas: 5"))
@@ -415,7 +415,7 @@ export function createConfigMap(name: string) {
 			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
-			yaml := renderedTemplates[OutputFile]
+			yaml := renderedTemplates[DefaultOutputFile]
 			Expect(yaml).To(ContainSubstring("name: multi-file-app-config"))
 			Expect(yaml).To(ContainSubstring("source: helper-function"))
 		})
@@ -477,7 +477,7 @@ export function render(context: any) {
 			renderedTemplates, err := engine.RenderFiles(ctx, "./packaged-chart.tgz", chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
-			yaml := renderedTemplates[OutputFile]
+			yaml := renderedTemplates[DefaultOutputFile]
 			Expect(yaml).To(ContainSubstring("name: packaged-source-test"))
 		})
 
@@ -519,7 +519,7 @@ export function render(context: any) {
 			renderedTemplates, err := engine.RenderFiles(ctx, "./packaged-chart.tgz", chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
-			yaml := renderedTemplates[OutputFile]
+			yaml := renderedTemplates[DefaultOutputFile]
 			Expect(yaml).To(ContainSubstring("name: vendor-test-from-vendor"))
 		})
 	})
@@ -576,7 +576,7 @@ module.exports.helper = function(name) {
 			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
-			yaml := renderedTemplates[OutputFile]
+			yaml := renderedTemplates[DefaultOutputFile]
 			Expect(yaml).To(ContainSubstring("name: npm-test-from-npm"))
 		})
 	})

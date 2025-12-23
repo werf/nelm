@@ -4,20 +4,163 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
 	helmchart "github.com/werf/3p-helm/pkg/chart"
 	"github.com/werf/3p-helm/pkg/chartutil"
+	"github.com/werf/nelm/pkg/log"
 	"sigs.k8s.io/yaml"
 )
 
-const OutputFile = "ts/render_output.yaml"
+// Used for tests. The actual output path is determined by the entrypoint found.
+const DefaultOutputFile = "ts/src/index.ts"
 
 type Engine struct{}
 
 func NewEngine() *Engine {
 	return &Engine{}
+}
+
+func (e *Engine) RenderChartWithDependencies(
+	ctx context.Context,
+	rootChartPath string,
+	chart *helmchart.Chart,
+	renderedValues chartutil.Values,
+) (map[string]string, error) {
+	allRendered := make(map[string]string)
+
+	err := e.renderChartRecursive(ctx, rootChartPath, chart, renderedValues, chart.Name(), allRendered)
+	if err != nil {
+		return nil, err
+	}
+
+	return allRendered, nil
+}
+
+func (e *Engine) renderChartRecursive(
+	ctx context.Context,
+	chartDirPath string, // Filesystem path (for local charts)
+	chart *helmchart.Chart,
+	values chartutil.Values,
+	pathPrefix string, // Output path prefix (e.g., "root/charts/sub")
+	results map[string]string,
+) error {
+	log.Default.Debug(ctx, "Rendering TypeScript for chart %q (path prefix: %s)", chart.Name(), pathPrefix)
+
+	rendered, err := e.RenderFiles(ctx, chartDirPath, chart, values)
+	if err != nil {
+		return fmt.Errorf("render TypeScript for chart %q: %w", chart.Name(), err)
+	}
+
+	for filename, content := range rendered {
+		outputPath := path.Join(pathPrefix, filename)
+		results[outputPath] = content
+		log.Default.Debug(ctx, "Added TypeScript output: %s", outputPath)
+	}
+
+	for _, dep := range chart.Dependencies() {
+		depName := dep.Name()
+
+		log.Default.Debug(ctx, "Processing dependency %q for chart %q", depName, chart.Name())
+
+		depValues := scopeValuesForSubchart(values, depName, dep)
+
+		depDirPath := filepath.Join(chartDirPath, "charts", depName)
+
+		depPathPrefix := path.Join(pathPrefix, "charts", depName)
+
+		if err := NewTransformer().TransformChartForRender(ctx, depDirPath, dep); err != nil {
+			return fmt.Errorf("transform TypeScript subchart %q: %w", depName, err)
+		}
+
+		err := e.renderChartRecursive(ctx, depDirPath, dep, depValues, depPathPrefix, results)
+		if err != nil {
+			return fmt.Errorf("render dependency %q: %w", depName, err)
+		}
+	}
+
+	return nil
+}
+
+func scopeValuesForSubchart(parentValues chartutil.Values, subchartName string, subchart *helmchart.Chart) chartutil.Values {
+	scoped := chartutil.Values{}
+
+	if caps, ok := parentValues["Capabilities"]; ok {
+		scoped["Capabilities"] = caps
+	}
+
+	if release, ok := parentValues["Release"]; ok {
+		scoped["Release"] = release
+	}
+
+	scoped["Chart"] = buildChartMetadata(subchart)
+
+	if parentVals, ok := parentValues["Values"]; ok {
+		switch v := parentVals.(type) {
+		case map[string]interface{}:
+			if subVals, ok := v[subchartName]; ok {
+				scoped["Values"] = subVals
+			} else {
+				scoped["Values"] = map[string]interface{}{}
+			}
+		case chartutil.Values:
+			if subVals, ok := v[subchartName]; ok {
+				scoped["Values"] = subVals
+			} else {
+				scoped["Values"] = map[string]interface{}{}
+			}
+		default:
+			scoped["Values"] = map[string]interface{}{}
+		}
+	} else {
+		scoped["Values"] = map[string]interface{}{}
+	}
+
+	files := make(map[string]interface{}, len(subchart.Files))
+	for _, file := range subchart.Files {
+		files[file.Name] = file.Data
+	}
+	scoped["Files"] = files
+
+	return scoped
+}
+
+func buildChartMetadata(chart *helmchart.Chart) map[string]interface{} {
+	metadata := map[string]interface{}{
+		"Name":    chart.Name(),
+		"Version": "",
+	}
+
+	if chart.Metadata != nil {
+		metadata["Version"] = chart.Metadata.Version
+		metadata["AppVersion"] = chart.Metadata.AppVersion
+		metadata["Description"] = chart.Metadata.Description
+		metadata["Keywords"] = chart.Metadata.Keywords
+		metadata["Home"] = chart.Metadata.Home
+		metadata["Sources"] = chart.Metadata.Sources
+		metadata["Icon"] = chart.Metadata.Icon
+		metadata["APIVersion"] = chart.Metadata.APIVersion
+		metadata["Condition"] = chart.Metadata.Condition
+		metadata["Tags"] = chart.Metadata.Tags
+		metadata["Type"] = chart.Metadata.Type
+		metadata["Annotations"] = chart.Metadata.Annotations
+
+		if chart.Metadata.Maintainers != nil {
+			maintainers := make([]map[string]interface{}, len(chart.Metadata.Maintainers))
+			for i, m := range chart.Metadata.Maintainers {
+				maintainers[i] = map[string]interface{}{
+					"Name":  m.Name,
+					"Email": m.Email,
+					"URL":   m.URL,
+				}
+			}
+			metadata["Maintainers"] = maintainers
+		}
+	}
+
+	return metadata
 }
 
 func (e *Engine) RenderFiles(ctx context.Context, chartPath string, chart *helmchart.Chart, renderedValues chartutil.Values) (map[string]string, error) {
@@ -26,6 +169,7 @@ func (e *Engine) RenderFiles(ctx context.Context, chartPath string, chart *helmc
 	var vendorBundle string
 	var packages []string
 	var appBundle string
+	var entrypoint string
 	var err error
 
 	if isLocalDir {
@@ -35,6 +179,11 @@ func (e *Engine) RenderFiles(ctx context.Context, chartPath string, chart *helmc
 		}
 		tsDir := filepath.Join(absChartPath, TSSourceDir)
 		if _, err := os.Stat(tsDir); os.IsNotExist(err) {
+			return map[string]string{}, nil
+		}
+
+		entrypoint = findEntrypoint(tsDir)
+		if entrypoint == "" {
 			return map[string]string{}, nil
 		}
 
@@ -55,6 +204,11 @@ func (e *Engine) RenderFiles(ctx context.Context, chartPath string, chart *helmc
 
 		sourceFiles := ExtractSourceFiles(chart.RuntimeFiles)
 		if len(sourceFiles) == 0 {
+			return map[string]string{}, nil
+		}
+
+		entrypoint = findEntrypointFromFiles(sourceFiles)
+		if entrypoint == "" {
 			return map[string]string{}, nil
 		}
 
@@ -83,9 +237,20 @@ func (e *Engine) RenderFiles(ctx context.Context, chartPath string, chart *helmc
 		return map[string]string{}, nil
 	}
 
+	outputPath := path.Join(TSSourceDir, entrypoint)
+
 	return map[string]string{
-		OutputFile: yamlOutput,
+		outputPath: yamlOutput,
 	}, nil
+}
+
+func findEntrypointFromFiles(sourceFiles map[string][]byte) string {
+	for _, ep := range EntryPoints {
+		if _, exists := sourceFiles[ep]; exists {
+			return ep
+		}
+	}
+	return ""
 }
 
 func isLocalDirectory(chartPath string) bool {
@@ -104,6 +269,8 @@ func buildRenderContext(renderedValues chartutil.Values, chart *helmchart.Chart)
 			renderContext["Values"] = chartValues.AsMap()
 		}
 	}
+
+	renderContext["Chart"] = buildChartMetadata(chart)
 
 	files := make(map[string]interface{}, len(chart.Files))
 	for _, file := range chart.Files {

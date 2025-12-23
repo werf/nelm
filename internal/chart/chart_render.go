@@ -258,11 +258,11 @@ func renderJSTemplates(
 	chart *chart.Chart,
 	renderedValues chartutil.Values,
 ) (map[string]string, error) {
-	log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q", chart.Name())
+	log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", chart.Name())
 
 	jsEngine := tschart.NewEngine()
 
-	jsRenderedTemplates, err := jsEngine.RenderFiles(ctx, chartPath, chart, renderedValues)
+	jsRenderedTemplates, err := jsEngine.RenderChartWithDependencies(ctx, chartPath, chart, renderedValues)
 	if err != nil {
 		return nil, err
 	}

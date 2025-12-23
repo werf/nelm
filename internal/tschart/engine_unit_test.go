@@ -118,9 +118,9 @@ export function render(context: any) {
 	require.NoError(t, err)
 
 	assert.Len(t, renderedTemplates, 1)
-	assert.Contains(t, renderedTemplates, OutputFile)
+	assert.Contains(t, renderedTemplates, DefaultOutputFile)
 
-	yaml := renderedTemplates[OutputFile]
+	yaml := renderedTemplates[DefaultOutputFile]
 	assert.Contains(t, yaml, "kind: ConfigMap")
 	assert.Contains(t, yaml, "name: test-release-config")
 	assert.Contains(t, yaml, "namespace: default")
@@ -164,7 +164,7 @@ export function render(context: any) {
 
 	assert.Len(t, renderedTemplates, 1)
 
-	yaml := renderedTemplates[OutputFile]
+	yaml := renderedTemplates[DefaultOutputFile]
 
 	assert.Contains(t, yaml, "kind: Service")
 	assert.Contains(t, yaml, "kind: Deployment")
@@ -248,7 +248,7 @@ module.exports = {
 	require.NoError(t, err)
 
 	assert.Len(t, renderedTemplates, 1)
-	yaml := renderedTemplates[OutputFile]
+	yaml := renderedTemplates[DefaultOutputFile]
 	assert.Contains(t, yaml, "kind: ConfigMap")
 	assert.Contains(t, yaml, "name: test-object-pattern")
 }
@@ -279,7 +279,422 @@ export function render(context: any) {
 	require.NoError(t, err)
 
 	assert.Len(t, renderedTemplates, 1)
-	yaml := renderedTemplates[OutputFile]
+	yaml := renderedTemplates[DefaultOutputFile]
 	assert.Contains(t, yaml, "kind: ConfigMap")
 	assert.Contains(t, yaml, "name: packaged-chart-test")
+}
+
+// createTestChartWithSubchart creates a root chart with a TypeScript subchart dependency
+func createTestChartWithSubchart(t *testing.T, rootContent, subchartContent string) (string, *chart.Chart) {
+	tempDir, err := os.MkdirTemp("", "tschart-deps-test-*")
+	require.NoError(t, err)
+
+	// Create root chart ts/src/index.ts
+	rootTsDir := filepath.Join(tempDir, "ts", "src")
+	require.NoError(t, os.MkdirAll(rootTsDir, 0755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(rootTsDir, "index.ts"),
+		[]byte(rootContent),
+		0644,
+	))
+
+	// Create subchart ts/src/index.ts
+	subchartTsDir := filepath.Join(tempDir, "charts", "ts-subchart", "ts", "src")
+	require.NoError(t, os.MkdirAll(subchartTsDir, 0755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(subchartTsDir, "index.ts"),
+		[]byte(subchartContent),
+		0644,
+	))
+
+	// Build subchart object
+	subchart := &chart.Chart{
+		Metadata: &chart.Metadata{
+			Name:    "ts-subchart",
+			Version: "0.1.0",
+		},
+		Files:        []*chart.File{},
+		RuntimeFiles: []*chart.File{},
+	}
+
+	// Build root chart object with dependency
+	rootChart := &chart.Chart{
+		Metadata: &chart.Metadata{
+			Name:    "root-chart",
+			Version: "1.0.0",
+		},
+		Files:        []*chart.File{},
+		RuntimeFiles: []*chart.File{},
+	}
+	rootChart.SetDependencies(subchart)
+
+	return tempDir, rootChart
+}
+
+func TestRenderChartWithTSSubchart(t *testing.T) {
+	rootContent := `
+export function render(context: any) {
+    return {
+        manifests: [{
+            apiVersion: 'v1',
+            kind: 'ConfigMap',
+            metadata: { name: 'root-config' },
+            data: {
+                chartName: context.Chart.Name,
+                message: context.Values.rootMessage || 'default'
+            }
+        }]
+    };
+}
+`
+	subchartContent := `
+export function render(context: any) {
+    return {
+        manifests: [{
+            apiVersion: 'v1',
+            kind: 'ConfigMap',
+            metadata: { name: 'subchart-config' },
+            data: {
+                chartName: context.Chart.Name,
+                message: context.Values.subMessage || 'default'
+            }
+        }]
+    };
+}
+`
+	chartDir, rootChart := createTestChartWithSubchart(t, rootContent, subchartContent)
+	defer os.RemoveAll(chartDir)
+
+	ctx := context.Background()
+	renderedValues := newTestValues(map[string]interface{}{
+		"Values": map[string]interface{}{
+			"rootMessage": "Hello from root",
+			"ts-subchart": map[string]interface{}{
+				"subMessage": "Hello from subchart",
+			},
+		},
+		"Release": map[string]interface{}{
+			"Name":      "test-release",
+			"Namespace": "default",
+		},
+		"Capabilities": map[string]interface{}{},
+	})
+
+	engine := NewEngine()
+	renderedTemplates, err := engine.RenderChartWithDependencies(ctx, chartDir, rootChart, renderedValues)
+	require.NoError(t, err)
+
+	// Should have 2 outputs: root and subchart
+	assert.Len(t, renderedTemplates, 2)
+
+	// Check root chart output path
+	rootOutputPath := "root-chart/" + DefaultOutputFile
+	assert.Contains(t, renderedTemplates, rootOutputPath)
+	rootYaml := renderedTemplates[rootOutputPath]
+	assert.Contains(t, rootYaml, "name: root-config")
+	assert.Contains(t, rootYaml, "chartName: root-chart")
+	assert.Contains(t, rootYaml, "message: Hello from root")
+
+	// Check subchart output path follows Helm convention
+	subchartOutputPath := "root-chart/charts/ts-subchart/" + DefaultOutputFile
+	assert.Contains(t, renderedTemplates, subchartOutputPath)
+	subYaml := renderedTemplates[subchartOutputPath]
+	assert.Contains(t, subYaml, "name: subchart-config")
+	assert.Contains(t, subYaml, "chartName: ts-subchart")
+	assert.Contains(t, subYaml, "message: Hello from subchart")
+}
+
+func TestRenderClassicRootWithTSSubchart(t *testing.T) {
+	// Root chart has no ts/ directory (classic Go template chart)
+	// Only the subchart has TypeScript
+	subchartContent := `
+export function render(context: any) {
+    return {
+        manifests: [{
+            apiVersion: 'v1',
+            kind: 'ConfigMap',
+            metadata: { name: 'ts-subchart-only' },
+            data: {
+                chartName: context.Chart.Name,
+                releaseName: context.Release.Name
+            }
+        }]
+    };
+}
+`
+	tempDir, err := os.MkdirTemp("", "tschart-classic-root-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	// Create subchart ts/src/index.ts (no root ts/)
+	subchartTsDir := filepath.Join(tempDir, "charts", "ts-subchart", "ts", "src")
+	require.NoError(t, os.MkdirAll(subchartTsDir, 0755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(subchartTsDir, "index.ts"),
+		[]byte(subchartContent),
+		0644,
+	))
+
+	subchart := &chart.Chart{
+		Metadata: &chart.Metadata{
+			Name:    "ts-subchart",
+			Version: "0.1.0",
+		},
+		Files:        []*chart.File{},
+		RuntimeFiles: []*chart.File{},
+	}
+
+	rootChart := &chart.Chart{
+		Metadata: &chart.Metadata{
+			Name:    "classic-root",
+			Version: "1.0.0",
+		},
+		Files:        []*chart.File{},
+		RuntimeFiles: []*chart.File{},
+	}
+	rootChart.SetDependencies(subchart)
+
+	ctx := context.Background()
+	renderedValues := newTestValues(map[string]interface{}{
+		"Values": map[string]interface{}{
+			"ts-subchart": map[string]interface{}{},
+		},
+		"Release": map[string]interface{}{
+			"Name":      "my-release",
+			"Namespace": "default",
+		},
+		"Capabilities": map[string]interface{}{},
+	})
+
+	engine := NewEngine()
+	renderedTemplates, err := engine.RenderChartWithDependencies(ctx, tempDir, rootChart, renderedValues)
+	require.NoError(t, err)
+
+	// Only subchart output (root has no ts/)
+	assert.Len(t, renderedTemplates, 1)
+
+	subchartOutputPath := "classic-root/charts/ts-subchart/" + DefaultOutputFile
+	assert.Contains(t, renderedTemplates, subchartOutputPath)
+	yaml := renderedTemplates[subchartOutputPath]
+	assert.Contains(t, yaml, "name: ts-subchart-only")
+	assert.Contains(t, yaml, "chartName: ts-subchart")
+	assert.Contains(t, yaml, "releaseName: my-release")
+}
+
+func TestScopeValuesForSubchart(t *testing.T) {
+	subchart := &chart.Chart{
+		Metadata: &chart.Metadata{
+			Name:        "my-subchart",
+			Version:     "2.0.0",
+			AppVersion:  "1.5.0",
+			Description: "Test subchart",
+		},
+		Files: []*chart.File{
+			{Name: "README.md", Data: []byte("# Subchart")},
+		},
+	}
+
+	parentValues := chartutil.Values{
+		"Values": map[string]interface{}{
+			"rootKey": "rootValue",
+			"my-subchart": map[string]interface{}{
+				"subKey": "subValue",
+				"nested": map[string]interface{}{
+					"deep": "value",
+				},
+			},
+		},
+		"Release": map[string]interface{}{
+			"Name":      "test-release",
+			"Namespace": "prod",
+		},
+		"Capabilities": map[string]interface{}{
+			"KubeVersion": map[string]interface{}{
+				"Version": "v1.28.0",
+			},
+		},
+	}
+
+	scoped := scopeValuesForSubchart(parentValues, "my-subchart", subchart)
+
+	// Release should be copied
+	assert.Equal(t, "test-release", scoped["Release"].(map[string]interface{})["Name"])
+	assert.Equal(t, "prod", scoped["Release"].(map[string]interface{})["Namespace"])
+
+	// Capabilities should be copied
+	assert.NotNil(t, scoped["Capabilities"])
+
+	// Chart metadata should come from subchart
+	chartMeta := scoped["Chart"].(map[string]interface{})
+	assert.Equal(t, "my-subchart", chartMeta["Name"])
+	assert.Equal(t, "2.0.0", chartMeta["Version"])
+	assert.Equal(t, "1.5.0", chartMeta["AppVersion"])
+
+	// Values should be scoped to subchart's values only
+	scopedValues := scoped["Values"].(map[string]interface{})
+	assert.Equal(t, "subValue", scopedValues["subKey"])
+	assert.Equal(t, "value", scopedValues["nested"].(map[string]interface{})["deep"])
+	// Root values should NOT be present
+	assert.Nil(t, scopedValues["rootKey"])
+
+	// Files should come from subchart
+	assert.NotNil(t, scoped["Files"])
+}
+
+func TestScopeValuesForSubchartMissingValues(t *testing.T) {
+	subchart := &chart.Chart{
+		Metadata: &chart.Metadata{
+			Name:    "missing-values-subchart",
+			Version: "1.0.0",
+		},
+	}
+
+	// Parent values don't have an entry for this subchart
+	parentValues := chartutil.Values{
+		"Values": map[string]interface{}{
+			"other-subchart": map[string]interface{}{
+				"key": "value",
+			},
+		},
+		"Release": map[string]interface{}{
+			"Name": "test",
+		},
+	}
+
+	scoped := scopeValuesForSubchart(parentValues, "missing-values-subchart", subchart)
+
+	// Values should be empty map, not nil
+	assert.NotNil(t, scoped["Values"])
+	assert.Empty(t, scoped["Values"])
+}
+
+func TestRenderNestedDependencies(t *testing.T) {
+	// Create a 3-level nested structure: root -> sub1 -> sub2
+	rootContent := `
+export function render(context: any) {
+    return {
+        manifests: [{
+            apiVersion: 'v1',
+            kind: 'ConfigMap',
+            metadata: { name: 'root' },
+            data: { level: 'root' }
+        }]
+    };
+}
+`
+	sub1Content := `
+export function render(context: any) {
+    return {
+        manifests: [{
+            apiVersion: 'v1',
+            kind: 'ConfigMap',
+            metadata: { name: 'sub1' },
+            data: { level: 'sub1' }
+        }]
+    };
+}
+`
+	sub2Content := `
+export function render(context: any) {
+    return {
+        manifests: [{
+            apiVersion: 'v1',
+            kind: 'ConfigMap',
+            metadata: { name: 'sub2' },
+            data: { level: 'sub2' }
+        }]
+    };
+}
+`
+	tempDir, err := os.MkdirTemp("", "tschart-nested-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
+
+	// Create directory structure
+	rootTsDir := filepath.Join(tempDir, "ts", "src")
+	require.NoError(t, os.MkdirAll(rootTsDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(rootTsDir, "index.ts"), []byte(rootContent), 0644))
+
+	sub1TsDir := filepath.Join(tempDir, "charts", "sub1", "ts", "src")
+	require.NoError(t, os.MkdirAll(sub1TsDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(sub1TsDir, "index.ts"), []byte(sub1Content), 0644))
+
+	sub2TsDir := filepath.Join(tempDir, "charts", "sub1", "charts", "sub2", "ts", "src")
+	require.NoError(t, os.MkdirAll(sub2TsDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(sub2TsDir, "index.ts"), []byte(sub2Content), 0644))
+
+	// Build chart objects
+	sub2 := &chart.Chart{
+		Metadata: &chart.Metadata{Name: "sub2", Version: "0.1.0"},
+	}
+	sub1 := &chart.Chart{
+		Metadata: &chart.Metadata{Name: "sub1", Version: "0.1.0"},
+	}
+	sub1.SetDependencies(sub2)
+
+	rootChart := &chart.Chart{
+		Metadata: &chart.Metadata{Name: "nested-root", Version: "1.0.0"},
+	}
+	rootChart.SetDependencies(sub1)
+
+	ctx := context.Background()
+	renderedValues := newTestValues(map[string]interface{}{
+		"Values": map[string]interface{}{
+			"sub1": map[string]interface{}{
+				"sub2": map[string]interface{}{},
+			},
+		},
+		"Release":      map[string]interface{}{"Name": "test"},
+		"Capabilities": map[string]interface{}{},
+	})
+
+	engine := NewEngine()
+	renderedTemplates, err := engine.RenderChartWithDependencies(ctx, tempDir, rootChart, renderedValues)
+	require.NoError(t, err)
+
+	// Should have 3 outputs
+	assert.Len(t, renderedTemplates, 3)
+
+	// Verify paths follow Helm convention
+	assert.Contains(t, renderedTemplates, "nested-root/"+DefaultOutputFile)
+	assert.Contains(t, renderedTemplates, "nested-root/charts/sub1/"+DefaultOutputFile)
+	assert.Contains(t, renderedTemplates, "nested-root/charts/sub1/charts/sub2/"+DefaultOutputFile)
+
+	// Verify content
+	assert.Contains(t, renderedTemplates["nested-root/"+DefaultOutputFile], "level: root")
+	assert.Contains(t, renderedTemplates["nested-root/charts/sub1/"+DefaultOutputFile], "level: sub1")
+	assert.Contains(t, renderedTemplates["nested-root/charts/sub1/charts/sub2/"+DefaultOutputFile], "level: sub2")
+}
+
+func TestRenderSubchartError(t *testing.T) {
+	rootContent := `
+export function render(context: any) {
+    return { manifests: [{ apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: 'root' } }] };
+}
+`
+	// Subchart has invalid TypeScript that will cause runtime error
+	subchartContent := `
+export function render(context: any) {
+    // This will cause a runtime error
+    const x: any = null;
+    x.nonExistent.deep;
+    return { manifests: [] };
+}
+`
+	chartDir, rootChart := createTestChartWithSubchart(t, rootContent, subchartContent)
+	defer os.RemoveAll(chartDir)
+
+	ctx := context.Background()
+	renderedValues := newTestValues(map[string]interface{}{
+		"Values":       map[string]interface{}{"ts-subchart": map[string]interface{}{}},
+		"Release":      map[string]interface{}{"Name": "test"},
+		"Capabilities": map[string]interface{}{},
+	})
+
+	engine := NewEngine()
+	_, err := engine.RenderChartWithDependencies(ctx, chartDir, rootChart, renderedValues)
+
+	// Should fail with error mentioning the subchart
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ts-subchart")
 }
