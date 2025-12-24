@@ -4,8 +4,6 @@ import (
 	"fmt"
 
 	"github.com/dop251/goja"
-
-	"github.com/werf/nelm/internal/tschart/helpers"
 )
 
 const RequireShim = `
@@ -31,7 +29,7 @@ func createVM() (*goja.Runtime, error) {
 
 	global := vm.NewObject()
 	vm.Set("global", global)
-	helpers.SetupConsoleGlobal(vm)
+	SetupConsoleGlobal(vm)
 
 	return vm, nil
 }

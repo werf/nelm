@@ -1,4 +1,4 @@
-package helpers
+package tschart
 
 import (
 	"github.com/dop251/goja"
