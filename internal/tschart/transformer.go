@@ -443,54 +443,7 @@ func (t *Transformer) TransformChartDir(ctx context.Context, chartPath string) e
 	return nil
 }
 
-func (t *Transformer) TransformChartForRender(ctx context.Context, chartPath string, chart *helmchart.Chart) error {
-	stat, err := os.Stat(chartPath)
-	if err != nil || !stat.IsDir() {
-		hasSourceFiles := false
-		for _, f := range chart.RuntimeFiles {
-			if strings.HasPrefix(f.Name, TSSourceDir+"src/") {
-				for _, ep := range EntryPoints {
-					if f.Name == TSSourceDir+ep {
-						hasSourceFiles = true
-						break
-					}
-				}
-			}
-			if hasSourceFiles {
-				break
-			}
-		}
 
-		if !hasSourceFiles {
-			log.Default.Debug(ctx, "No TypeScript source found in packaged chart, skipping")
-			return nil
-		}
-
-		hasVendorBundle := false
-		for _, f := range chart.RuntimeFiles {
-			if f.Name == VendorBundleFile {
-				hasVendorBundle = true
-				break
-			}
-		}
-
-		if !hasVendorBundle {
-			log.Default.Debug(ctx, "Packaged chart has TypeScript source but no vendor bundle (may have no npm deps)")
-		}
-
-		return nil
-	}
-
-	tsDir := filepath.Join(chartPath, TSSourceDir)
-	entrypointFile := findEntrypoint(tsDir)
-	if entrypointFile == "" {
-		log.Default.Debug(ctx, "No TypeScript entrypoint found, skipping transformation")
-		return nil
-	}
-
-	log.Default.Debug(ctx, "TypeScript chart ready for rendering: %s", chartPath)
-	return nil
-}
 
 func GetVendorBundleFromDir(ctx context.Context, chartPath string) (string, []string, error) {
 	absChartPath, err := filepath.Abs(chartPath)

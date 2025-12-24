@@ -68,10 +68,6 @@ func (e *Engine) renderChartRecursive(
 
 		depPathPrefix := path.Join(pathPrefix, "charts", depName)
 
-		if err := NewTransformer().TransformChartForRender(ctx, depDirPath, dep); err != nil {
-			return fmt.Errorf("transform TypeScript subchart %q: %w", depName, err)
-		}
-
 		err := e.renderChartRecursive(ctx, depDirPath, dep, depValues, depPathPrefix, results)
 		if err != nil {
 			return fmt.Errorf("render dependency %q: %w", depName, err)

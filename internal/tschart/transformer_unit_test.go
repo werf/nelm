@@ -7,7 +7,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	helmchart "github.com/werf/3p-helm/pkg/chart"
 )
 
 var _ = Describe("Transformer", func() {
@@ -310,105 +309,7 @@ var _ = Describe("Transformer", func() {
 		})
 	})
 
-	Describe("TransformChartForRender", func() {
-		var (
-			tempDir string
-		)
 
-		BeforeEach(func() {
-			var err error
-			tempDir, err = os.MkdirTemp("", "tschart-render-test-*")
-			Expect(err).NotTo(HaveOccurred())
-		})
-
-		AfterEach(func() {
-			os.RemoveAll(tempDir)
-		})
-
-		Context("when local directory has entrypoint", func() {
-			It("should mark chart as ready for rendering", func() {
-				chartPath := filepath.Join(tempDir, "my-chart")
-				tsDir := filepath.Join(chartPath, "ts", "src")
-				Expect(os.MkdirAll(tsDir, 0755)).To(Succeed())
-
-				Expect(os.WriteFile(
-					filepath.Join(tsDir, "index.ts"),
-					[]byte(`
-						export function render(context: any) {
-							return { manifests: [{ apiVersion: 'v1', kind: 'ConfigMap' }] };
-						}
-					`),
-					0644,
-				)).To(Succeed())
-
-				chart := &helmchart.Chart{
-					Files: []*helmchart.File{},
-				}
-
-				err := transformer.TransformChartForRender(ctx, chartPath, chart)
-				Expect(err).NotTo(HaveOccurred())
-				// No files should be added - app bundle is built at render time
-				Expect(chart.Files).To(HaveLen(0))
-			})
-		})
-
-		Context("when local directory has no TypeScript", func() {
-			It("should skip transformation silently", func() {
-				chartPath := filepath.Join(tempDir, "my-chart")
-				Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
-
-				chart := &helmchart.Chart{
-					Files: []*helmchart.File{},
-				}
-
-				err := transformer.TransformChartForRender(ctx, chartPath, chart)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(chart.Files).To(HaveLen(0))
-			})
-		})
-
-		Context("when packaged chart has source files", func() {
-			It("should allow rendering without vendor bundle (no npm deps)", func() {
-				chart := &helmchart.Chart{
-					Files: []*helmchart.File{
-						{Name: "ts/src/index.ts", Data: []byte("export function render() {}")},
-					},
-				}
-
-				err := transformer.TransformChartForRender(ctx, "./my-chart.tgz", chart)
-				Expect(err).NotTo(HaveOccurred())
-			})
-		})
-
-		Context("when packaged chart has vendor bundle", func() {
-			It("should use existing vendor bundle from chart.Files", func() {
-				chart := &helmchart.Chart{
-					Files: []*helmchart.File{
-						{Name: VendorBundleFile, Data: []byte("// vendor bundle")},
-						{Name: "ts/src/index.ts", Data: []byte("export function render() {}")},
-					},
-				}
-
-				err := transformer.TransformChartForRender(ctx, "./my-chart.tgz", chart)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(chart.Files).To(HaveLen(2))
-			})
-		})
-
-		Context("when packaged chart has no TypeScript", func() {
-			It("should skip transformation silently", func() {
-				chart := &helmchart.Chart{
-					Files: []*helmchart.File{
-						{Name: "README.md", Data: []byte("readme")},
-					},
-				}
-
-				err := transformer.TransformChartForRender(ctx, "./my-chart.tgz", chart)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(chart.Files).To(HaveLen(1))
-			})
-		})
-	})
 
 	Describe("extractPackageNames", func() {
 		It("should extract regular packages from metafile", func() {

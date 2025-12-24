@@ -115,11 +115,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		return nil, fmt.Errorf("load chart at %q: %w", chartPath, err)
 	}
 
-	if featgate.FeatGateTypescript.Enabled() {
-		if err := tschart.NewTransformer().TransformChartForRender(ctx, originalChartPath, chart); err != nil {
-			return nil, fmt.Errorf("transform TS chart at %q: %w", chartPath, err)
-		}
-	}
+
 
 	if err := validateChart(ctx, chart); err != nil {
 		return nil, fmt.Errorf("validate chart at %q: %w", chartPath, err)
