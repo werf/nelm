@@ -37,7 +37,8 @@ var _ = Describe("Init", func() {
 			// Check ts/src/ files
 			Expect(filepath.Join(chartPath, "ts", "src", "index.ts")).To(BeARegularFile())
 			Expect(filepath.Join(chartPath, "ts", "src", "helpers.ts")).To(BeARegularFile())
-			Expect(filepath.Join(chartPath, "ts", "src", "resources.ts")).To(BeARegularFile())
+			Expect(filepath.Join(chartPath, "ts", "src", "deployment.ts")).To(BeARegularFile())
+			Expect(filepath.Join(chartPath, "ts", "src", "service.ts")).To(BeARegularFile())
 
 			// Check ts/types/ files
 			Expect(filepath.Join(chartPath, "ts", "types", "nelm.d.ts")).To(BeARegularFile())
@@ -101,17 +102,20 @@ var _ = Describe("Init", func() {
 			Expect(string(content)).To(ContainSubstring("export function getSelectorLabels"))
 		})
 
-		It("should include resource generators in resources.ts", func() {
+		It("should include resource generators in separate files", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")
 			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
 
 			err := InitTSBoilerplate(ctx, chartPath, "test-chart")
 			Expect(err).NotTo(HaveOccurred())
 
-			content, err := os.ReadFile(filepath.Join(chartPath, "ts", "src", "resources.ts"))
+			deploymentContent, err := os.ReadFile(filepath.Join(chartPath, "ts", "src", "deployment.ts"))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(string(content)).To(ContainSubstring("export function newDeployment"))
-			Expect(string(content)).To(ContainSubstring("export function newService"))
+			Expect(string(deploymentContent)).To(ContainSubstring("export function newDeployment"))
+
+			serviceContent, err := os.ReadFile(filepath.Join(chartPath, "ts", "src", "service.ts"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(serviceContent)).To(ContainSubstring("export function newService"))
 		})
 
 		It("should include type definitions in nelm.d.ts", func() {
@@ -224,7 +228,6 @@ var _ = Describe("Init", func() {
 
 			content, err := os.ReadFile(filepath.Join(chartPath, ".helmignore"))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(string(content)).To(ContainSubstring("ts/node_modules/"))
 			Expect(string(content)).To(ContainSubstring("ts/dist/"))
 		})
 
@@ -272,7 +275,6 @@ var _ = Describe("Init", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(content)).To(ContainSubstring(".DS_Store"))
 			Expect(string(content)).To(ContainSubstring(".git/"))
-			Expect(string(content)).To(ContainSubstring("ts/node_modules/"))
 			Expect(string(content)).To(ContainSubstring("ts/dist/"))
 		})
 	})
@@ -359,7 +361,6 @@ var _ = Describe("Init", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(content)).To(ContainSubstring("# Original content"))
 			Expect(string(content)).To(ContainSubstring("*.swp"))
-			Expect(string(content)).To(ContainSubstring("ts/node_modules/"))
 			Expect(string(content)).To(ContainSubstring("ts/dist/"))
 		})
 
@@ -367,7 +368,7 @@ var _ = Describe("Init", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")
 			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
 
-			existingContent := "# Existing\nts/node_modules/\nts/dist/\n"
+			existingContent := "# Existing\nts/dist/\n"
 			Expect(os.WriteFile(filepath.Join(chartPath, ".helmignore"), []byte(existingContent), 0644)).To(Succeed())
 
 			err := AppendToHelmignore(chartPath)

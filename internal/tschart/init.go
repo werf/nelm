@@ -71,7 +71,8 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
 	}{
 		{filepath.Join(srcDir, "index.ts"), generateIndexTS()},
 		{filepath.Join(srcDir, "helpers.ts"), generateHelpersTS()},
-		{filepath.Join(srcDir, "resources.ts"), generateResourcesTS()},
+		{filepath.Join(srcDir, "deployment.ts"), generateDeploymentTS()},
+		{filepath.Join(srcDir, "service.ts"), generateServiceTS()},
 		{filepath.Join(typesDir, "nelm.d.ts"), generateNelmDTS()},
 		{filepath.Join(tsDir, "tsconfig.json"), generateTSConfig()},
 		{filepath.Join(tsDir, "package.json"), generatePackageJSON(chartName)},
@@ -113,13 +114,12 @@ func AppendToHelmignore(chartPath string) error {
 	}
 
 	content := string(existingContent)
-	if strings.Contains(content, "ts/node_modules/") {
+	if strings.Contains(content, "ts/dist/") {
 		return nil
 	}
 
 	tsEntries := `
 # TypeScript chart files
-ts/node_modules/
 ts/dist/
 `
 	newContent := strings.TrimRight(content, "\n") + "\n" + tsEntries
@@ -173,7 +173,8 @@ func EnsureGitignore(chartPath string) error {
 
 func generateIndexTS() string {
 	return `import { RenderContext, RenderResult } from '../types/nelm';
-import { newDeployment, newService } from './resources';
+import { newDeployment } from './deployment';
+import { newService } from './service';
 
 export function render($: RenderContext): RenderResult {
   const manifests: object[] = [];
@@ -234,7 +235,7 @@ export function getSelectorLabels($: RenderContext): Record<string, string> {
 `
 }
 
-func generateResourcesTS() string {
+func generateDeploymentTS() string {
 	return `import { RenderContext } from '../types/nelm';
 import { getFullname, getLabels, getSelectorLabels } from './helpers';
 
@@ -275,6 +276,12 @@ export function newDeployment($: RenderContext): object {
     },
   };
 }
+`
+}
+
+func generateServiceTS() string {
+	return `import { RenderContext } from '../types/nelm';
+import { getFullname, getLabels, getSelectorLabels } from './helpers';
 
 export function newService($: RenderContext): object {
   return {
@@ -420,7 +427,6 @@ func generateHelmignoreWithTS() string {
 # negation (prefixed with !). Only one pattern per line.
 
 # TypeScript chart files
-ts/node_modules/
 ts/dist/
 `
 }
