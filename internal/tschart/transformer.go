@@ -177,34 +177,6 @@ func loaderFromPath(path string) esbuild.Loader {
 	}
 }
 
-func resolvePath(importPath string, resolveDir string, importer string) string {
-	if strings.HasPrefix(importPath, "./") || strings.HasPrefix(importPath, "../") {
-		var baseDir string
-		if importer != "" {
-			baseDir = filepath.Dir(importer)
-		} else {
-			baseDir = resolveDir
-		}
-		resolved := filepath.Clean(filepath.Join(baseDir, importPath))
-
-		if filepath.Ext(resolved) == "" {
-			for _, ext := range []string{".ts", ".tsx", ".js", ".jsx", ".json"} {
-				if _, ok := getFileFromPath(resolved + ext); ok {
-					return resolved + ext
-				}
-			}
-			for _, ext := range []string{".ts", ".js"} {
-				indexPath := filepath.Join(resolved, "index"+ext)
-				if _, ok := getFileFromPath(indexPath); ok {
-					return indexPath
-				}
-			}
-		}
-		return resolved
-	}
-	return importPath
-}
-
 func getFileFromPath(path string) ([]byte, bool) {
 	return nil, false
 }
@@ -381,39 +353,58 @@ func formatBuildErrors(errors []esbuild.Message) error {
 	return fmt.Errorf("%s", errMsg.String())
 }
 
-func findEntrypoint(tsDir string) string {
+func findEntrypoint(tsDir string) (string, error) {
 	for _, ep := range EntryPoints {
 		epPath := filepath.Join(tsDir, ep)
-		if _, err := os.Stat(epPath); err == nil {
-			return ep
+		_, err := os.Stat(epPath)
+		if err == nil {
+			return ep, nil
+		}
+		if !os.IsNotExist(err) {
+			return "", fmt.Errorf("stat %s: %w", epPath, err)
 		}
 	}
-	return ""
+	return "", nil
 }
 
 func (t *Transformer) TransformChartDir(ctx context.Context, chartPath string) error {
 	stat, err := os.Stat(chartPath)
-	if err != nil || !stat.IsDir() {
-		log.Default.Debug(ctx, "Skipping TypeScript transformation: %s is not a directory", chartPath)
-		return nil
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Default.Debug(ctx, "Skipping TypeScript transformation: %s does not exist", chartPath)
+			return nil
+		}
+		return fmt.Errorf("stat %s: %w", chartPath, err)
+	}
+	if !stat.IsDir() {
+		return fmt.Errorf("%s is not a directory", chartPath)
 	}
 
 	tsDir := filepath.Join(chartPath, TSSourceDir)
-	if _, err := os.Stat(tsDir); os.IsNotExist(err) {
-		log.Default.Debug(ctx, "No %s directory found, skipping transformation", TSSourceDir)
-		return nil
+	if _, err := os.Stat(tsDir); err != nil {
+		if os.IsNotExist(err) {
+			log.Default.Debug(ctx, "No %s directory found, skipping transformation", TSSourceDir)
+			return nil
+		}
+		return fmt.Errorf("stat %s: %w", tsDir, err)
 	}
 
-	entrypointFile := findEntrypoint(tsDir)
+	entrypointFile, err := findEntrypoint(tsDir)
+	if err != nil {
+		return fmt.Errorf("find entrypoint: %w", err)
+	}
 	if entrypointFile == "" {
 		log.Default.Debug(ctx, "No TypeScript entrypoint found, skipping transformation")
 		return nil
 	}
 
 	nodeModulesPath := filepath.Join(tsDir, "node_modules")
-	if _, err := os.Stat(nodeModulesPath); os.IsNotExist(err) {
-		log.Default.Debug(ctx, "No node_modules directory found, skipping vendor bundle")
-		return nil
+	if _, err := os.Stat(nodeModulesPath); err != nil {
+		if os.IsNotExist(err) {
+			log.Default.Debug(ctx, "No node_modules directory found, skipping vendor bundle")
+			return nil
+		}
+		return fmt.Errorf("stat %s: %w", nodeModulesPath, err)
 	}
 
 	log.Default.Info(ctx, "Building vendor bundle for TypeScript chart: %s", chartPath)
@@ -453,17 +444,28 @@ func GetVendorBundleFromDir(ctx context.Context, chartPath string) (string, []st
 	nodeModulesPath := filepath.Join(tsDir, "node_modules")
 	vendorPath := filepath.Join(absChartPath, VendorBundleFile)
 
-	entrypointFile := findEntrypoint(tsDir)
+	entrypointFile, err := findEntrypoint(tsDir)
+	if err != nil {
+		return "", nil, fmt.Errorf("find entrypoint: %w", err)
+	}
 	if entrypointFile == "" {
 		return "", nil, nil
 	}
 
-	if _, err := os.Stat(nodeModulesPath); err == nil {
+	_, err = os.Stat(nodeModulesPath)
+	if err != nil && !os.IsNotExist(err) {
+		return "", nil, fmt.Errorf("stat %s: %w", nodeModulesPath, err)
+	}
+	if err == nil {
 		log.Default.Debug(ctx, "Building vendor bundle from node_modules")
 		return buildVendorBundle(tsDir, entrypointFile)
 	}
 
-	if _, err := os.Stat(vendorPath); err == nil {
+	_, err = os.Stat(vendorPath)
+	if err != nil && !os.IsNotExist(err) {
+		return "", nil, fmt.Errorf("stat %s: %w", vendorPath, err)
+	}
+	if err == nil {
 		log.Default.Debug(ctx, "Using pre-built vendor bundle from %s", vendorPath)
 		vendorBytes, err := os.ReadFile(vendorPath)
 		if err != nil {
@@ -505,7 +507,10 @@ func BuildAppBundleFromDir(ctx context.Context, chartPath string, externalPackag
 	}
 
 	tsDir := filepath.Join(absChartPath, TSSourceDir)
-	entrypointFile := findEntrypoint(tsDir)
+	entrypointFile, err := findEntrypoint(tsDir)
+	if err != nil {
+		return "", fmt.Errorf("find entrypoint: %w", err)
+	}
 	if entrypointFile == "" {
 		return "", fmt.Errorf("no TypeScript entrypoint found")
 	}

@@ -22,7 +22,11 @@ func InitChartStructure(ctx context.Context, chartPath, chartName string) error 
 	}
 
 	for _, f := range skipIfExists {
-		if _, err := os.Stat(f.path); err == nil {
+		_, err := os.Stat(f.path)
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("stat %s: %w", f.path, err)
+		}
+		if err == nil {
 			log.Default.Debug(ctx, "Skipping existing file %s", f.path)
 			continue
 		}
@@ -35,7 +39,11 @@ func InitChartStructure(ctx context.Context, chartPath, chartName string) error 
 
 	// Handle .helmignore specially: create or enrich
 	helmignorePath := filepath.Join(chartPath, ".helmignore")
-	if _, err := os.Stat(helmignorePath); err == nil {
+	_, err := os.Stat(helmignorePath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("stat %s: %w", helmignorePath, err)
+	}
+	if err == nil {
 		if err := AppendToHelmignore(chartPath); err != nil {
 			return fmt.Errorf("enrich .helmignore: %w", err)
 		}
@@ -71,7 +79,11 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
 	}
 
 	for _, f := range files {
-		if _, err := os.Stat(f.path); err == nil {
+		_, err := os.Stat(f.path)
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("stat %s: %w", f.path, err)
+		}
+		if err == nil {
 			return fmt.Errorf("TypeScript file already exists: %s. Cannot initialize in a directory with existing TypeScript chart files", f.path)
 		}
 	}

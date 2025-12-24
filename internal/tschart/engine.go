@@ -157,13 +157,15 @@ func buildChartMetadata(chart *helmchart.Chart) map[string]interface{} {
 }
 
 func (e *Engine) RenderFiles(ctx context.Context, chartPath string, chart *helmchart.Chart, renderedValues chartutil.Values) (map[string]string, error) {
-	isLocalDir := isLocalDirectory(chartPath)
+	isLocalDir, err := isLocalDirectory(chartPath)
+	if err != nil {
+		return nil, fmt.Errorf("check if local directory: %w", err)
+	}
 
 	var vendorBundle string
 	var packages []string
 	var appBundle string
 	var entrypoint string
-	var err error
 
 	if isLocalDir {
 		absChartPath, err := filepath.Abs(chartPath)
@@ -171,11 +173,17 @@ func (e *Engine) RenderFiles(ctx context.Context, chartPath string, chart *helmc
 			return nil, fmt.Errorf("get absolute path: %w", err)
 		}
 		tsDir := filepath.Join(absChartPath, TSSourceDir)
-		if _, err := os.Stat(tsDir); os.IsNotExist(err) {
-			return map[string]string{}, nil
+		if _, err := os.Stat(tsDir); err != nil {
+			if os.IsNotExist(err) {
+				return map[string]string{}, nil
+			}
+			return nil, fmt.Errorf("stat %s: %w", tsDir, err)
 		}
 
-		entrypoint = findEntrypoint(tsDir)
+		entrypoint, err = findEntrypoint(tsDir)
+		if err != nil {
+			return nil, fmt.Errorf("find entrypoint: %w", err)
+		}
 		if entrypoint == "" {
 			return map[string]string{}, nil
 		}
@@ -246,12 +254,15 @@ func findEntrypointFromFiles(sourceFiles map[string][]byte) string {
 	return ""
 }
 
-func isLocalDirectory(chartPath string) bool {
+func isLocalDirectory(chartPath string) (bool, error) {
 	stat, err := os.Stat(chartPath)
 	if err != nil {
-		return false
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("stat %s: %w", chartPath, err)
 	}
-	return stat.IsDir()
+	return stat.IsDir(), nil
 }
 
 func buildRenderContext(renderedValues chartutil.Values, chart *helmchart.Chart) map[string]interface{} {

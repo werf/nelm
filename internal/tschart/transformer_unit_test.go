@@ -41,12 +41,13 @@ var _ = Describe("Transformer", func() {
 				Expect(err).NotTo(HaveOccurred())
 			})
 
-			It("should skip transformation for file path", func() {
+			It("should return error for file path", func() {
 				filePath := filepath.Join(tempDir, "chart.tgz")
 				Expect(os.WriteFile(filePath, []byte("dummy"), 0644)).To(Succeed())
 
 				err := transformer.TransformChartDir(ctx, filePath)
-				Expect(err).NotTo(HaveOccurred())
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("is not a directory"))
 			})
 		})
 
