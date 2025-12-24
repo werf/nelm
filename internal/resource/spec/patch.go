@@ -5,12 +5,14 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
+	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 	"github.com/werf/nelm/pkg/common"
 )
 
 var (
 	_ ResourcePatcher = (*ExtraMetadataPatcher)(nil)
 	_ ResourcePatcher = (*ReleaseMetadataPatcher)(nil)
+	_ ResourcePatcher = (*LegacyOnlyTrackJobsPatcher)(nil)
 )
 
 type ResourcePatcher interface {
@@ -29,6 +31,7 @@ type ResourcePatcherType string
 const (
 	TypeExtraMetadataPatcher   ResourcePatcherType = "extra-metadata-patcher"
 	TypeReleaseMetadataPatcher ResourcePatcherType = "release-metadata-patcher"
+	TypeOnlyTrackJobsPatcher   ResourcePatcherType = "only-track-jobs-patcher"
 )
 
 type ExtraMetadataPatcher struct {
@@ -87,4 +90,34 @@ func (p *ReleaseMetadataPatcher) Patch(ctx context.Context, info *ResourcePatche
 
 func (p *ReleaseMetadataPatcher) Type() ResourcePatcherType {
 	return TypeReleaseMetadataPatcher
+}
+
+// TODO(v2): get rid of it when patching is implemented or when Kubedog compaitiblity with Helm charts improved
+type LegacyOnlyTrackJobsPatcher struct{}
+
+func NewLegacyOnlyTrackJobsPatcher() *LegacyOnlyTrackJobsPatcher {
+	return &LegacyOnlyTrackJobsPatcher{}
+}
+
+func (p *LegacyOnlyTrackJobsPatcher) Match(ctx context.Context, info *ResourcePatcherResourceInfo) (bool, error) {
+	switch info.Obj.GetKind() {
+	case "Job", "Pod":
+		return false, nil
+	default:
+		return true, nil
+	}
+}
+
+func (p *LegacyOnlyTrackJobsPatcher) Patch(ctx context.Context, info *ResourcePatcherResourceInfo) (*unstructured.Unstructured, error) {
+	annos := map[string]string{}
+	annos["werf.io/fail-mode"] = string(multitrack.IgnoreAndContinueDeployProcess)
+	annos["werf.io/track-termination-mode"] = string(multitrack.NonBlocking)
+
+	setAnnotationsAndLabels(info.Obj, annos, nil)
+
+	return info.Obj, nil
+}
+
+func (p *LegacyOnlyTrackJobsPatcher) Type() ResourcePatcherType {
+	return TypeOnlyTrackJobsPatcher
 }

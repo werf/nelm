@@ -105,6 +105,8 @@ type ReleasePlanInstallOptions struct {
 	// LegacyExtraValues provides additional values programmatically.
 	// Used internally for backward compatibility with werf integration.
 	LegacyExtraValues map[string]interface{}
+	// LegacyHelmCompatibleTracking enables Helm-compatible tracking behavior: only Jobs-hooks are tracked.
+	LegacyHelmCompatibleTracking bool
 	// LegacyLogRegistryStreamOut is the output writer for Helm registry client logs.
 	// Defaults to io.Discard if not set. Used for debugging registry operations.
 	LegacyLogRegistryStreamOut io.Writer
@@ -335,9 +337,15 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Build releasable resource specs")
 
-	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, releaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
+	patchers := []spec.ResourcePatcher{
 		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-	})
+	}
+
+	if opts.LegacyHelmCompatibleTracking {
+		patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
+	}
+
+	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patchers)
 	if err != nil {
 		return fmt.Errorf("build releasable resource specs: %w", err)
 	}

@@ -196,10 +196,16 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			return fmt.Errorf("convert previous release to resource specs: %w", err)
 		}
 
-		log.Default.Debug(ctx, "Build resources")
-		instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, nil, []spec.ResourcePatcher{
+		patchers := []spec.ResourcePatcher{
 			spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
-		}, clientFactory, resource.BuildResourcesOptions{
+		}
+
+		if opts.LegacyHelmCompatibleTracking {
+			patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
+		}
+
+		log.Default.Debug(ctx, "Build resources")
+		instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, nil, patchers, clientFactory, resource.BuildResourcesOptions{
 			Remote:                   true,
 			DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 		})

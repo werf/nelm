@@ -353,9 +353,15 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	log.Default.Debug(ctx, "Build releasable resource specs")
 
-	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, releaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
+	patchers := []spec.ResourcePatcher{
 		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-	})
+	}
+
+	if opts.LegacyHelmCompatibleTracking {
+		patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
+	}
+
+	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patchers)
 	if err != nil {
 		return fmt.Errorf("build releasable resource specs: %w", err)
 	}
@@ -754,9 +760,15 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Build releasable resource specs")
 
-	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, releaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
+	patchers := []spec.ResourcePatcher{
 		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-	})
+	}
+
+	if opts.LegacyHelmCompatibleTracking {
+		patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
+	}
+
+	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patchers)
 	if err != nil {
 		return nil, nonCritErrs, append(critErrs, fmt.Errorf("build releasable resource specs: %w", err))
 	}
