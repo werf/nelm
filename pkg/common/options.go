@@ -176,6 +176,8 @@ func (opts *SecretValuesOptions) ApplyDefaults(currentDir string) {
 }
 
 type TrackingOptions struct {
+	// LegacyHelmCompatibleTracking enables Helm-compatible tracking behavior: only Jobs-hooks are tracked.
+	LegacyHelmCompatibleTracking bool
 	// NoFinalTracking, when true, disables final tracking of resources after the release operation.
 	// Final tracking waits for all resources to reach their ready state.
 	NoFinalTracking bool

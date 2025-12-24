@@ -411,8 +411,8 @@ github.com/werf/3p-helm v0.0.0-20251223091030-77130d200f5c h1:1oQ+geCG75FgIBbn7I
 github.com/werf/3p-helm v0.0.0-20251223091030-77130d200f5c/go.mod h1:UAmQvGZhiUULXQpigm1yqcp57s097kpAHz2EvFtKCSk=
 github.com/werf/common-go v0.0.0-20251113140850-a1a98e909e9b h1:58850oFrnw5Jy5YaB8QifXz75qpGotfx6qqZ9Q2my1A=
 github.com/werf/common-go v0.0.0-20251113140850-a1a98e909e9b/go.mod h1:MXS0JR9zut+oR9oEM8PEkdXXoEbKDILTmWopt0z1eZs=
-github.com/werf/kubedog v0.13.1-0.20251210123541-25b3a13e42fe h1:fQDk19dTi6CEue5tYR+lroJCFwFrt+zh1kO1b2pjXQo=
-github.com/werf/kubedog v0.13.1-0.20251210123541-25b3a13e42fe/go.mod h1:gu4EY4hxtiYVDy5o6WE2lRZS0YWqrOV0HS//GTYyrUE=
+github.com/werf/kubedog v0.13.1-0.20251224155629-4ae22b4494ba h1:fBrnq6RHW8xBTNxwvGJn65YEk+pPOnqvRzUZZcJCKV8=
+github.com/werf/kubedog v0.13.1-0.20251224155629-4ae22b4494ba/go.mod h1:gu4EY4hxtiYVDy5o6WE2lRZS0YWqrOV0HS//GTYyrUE=
 github.com/werf/lockgate v0.1.1 h1:S400JFYjtWfE4i4LY9FA8zx0fMdfui9DPrBiTciCrx4=
 github.com/werf/lockgate v0.1.1/go.mod h1:0yIFSLq9ausy6ejNxF5uUBf/Ib6daMAfXuCaTMZJzIE=
 github.com/werf/logboek v0.6.1 h1:oEe6FkmlKg0z0n80oZjLplj6sXcBeLleCkjfOOZEL2g=
