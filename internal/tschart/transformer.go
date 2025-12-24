@@ -46,8 +46,14 @@ func extractPackageNames(metafileJSON string) ([]string, error) {
 
 	pkgSet := make(map[string]struct{})
 	for inputPath := range meta.Inputs {
-		if strings.HasPrefix(inputPath, "node_modules/") {
-			parts := strings.Split(inputPath, "/")
+		// Handle both regular paths and virtual namespace paths (e.g., "virtual:node_modules/...")
+		normalizedPath := inputPath
+		if strings.HasPrefix(inputPath, "virtual:") {
+			normalizedPath = strings.TrimPrefix(inputPath, "virtual:")
+		}
+
+		if strings.HasPrefix(normalizedPath, "node_modules/") {
+			parts := strings.Split(normalizedPath, "/")
 			var pkgName string
 			if len(parts) >= 2 && strings.HasPrefix(parts[1], "@") && len(parts) >= 3 {
 				pkgName = parts[1] + "/" + parts[2]
@@ -82,7 +88,7 @@ func generateVendorEntrypoint(packages []string) string {
 	return builder.String()
 }
 
-func buildVendorBundle(chartTsDir string, entrypoint string) (vendorBundle string, packages []string, err error) {
+func buildVendorBundleInDir(chartTsDir string, entrypoint string) (vendorBundle string, packages []string, err error) {
 	absEntrypoint := filepath.Join(chartTsDir, entrypoint)
 
 	scanResult := esbuild.Build(esbuild.BuildOptions{
@@ -177,10 +183,6 @@ func loaderFromPath(path string) esbuild.Loader {
 	}
 }
 
-func getFileFromPath(path string) ([]byte, bool) {
-	return nil, false
-}
-
 func createVirtualFSPlugin(files map[string][]byte) esbuild.Plugin {
 	fileExists := func(path string) bool {
 		_, exists := files[path]
@@ -268,6 +270,231 @@ func createVirtualFSPlugin(files map[string][]byte) esbuild.Plugin {
 	}
 }
 
+// createVirtualFSPluginWithNodeModules creates an esbuild plugin that resolves both
+// source files and node_modules from in-memory files map.
+func createVirtualFSPluginWithNodeModules(files map[string][]byte) esbuild.Plugin {
+	fileExists := func(path string) bool {
+		_, exists := files[path]
+		return exists
+	}
+
+	tryResolve := func(basePath string) string {
+		if fileExists(basePath) {
+			return basePath
+		}
+		for _, ext := range []string{".ts", ".tsx", ".js", ".jsx", ".json"} {
+			if fileExists(basePath + ext) {
+				return basePath + ext
+			}
+		}
+		for _, ext := range []string{".ts", ".js"} {
+			indexPath := filepath.Join(basePath, "index"+ext)
+			if fileExists(indexPath) {
+				return indexPath
+			}
+		}
+		return ""
+	}
+
+	// resolveNodeModule resolves a bare import like "lodash" to its entry file
+	resolveNodeModule := func(pkgName string) string {
+		// Handle scoped packages like @types/node
+		pkgPath := filepath.Join("node_modules", pkgName)
+
+		// Try package.json first
+		pkgJSONPath := filepath.Join(pkgPath, "package.json")
+		if pkgJSON, exists := files[pkgJSONPath]; exists {
+			var pkg struct {
+				Main    string `json:"main"`
+				Module  string `json:"module"`
+				Exports interface{} `json:"exports"`
+			}
+			if err := json.Unmarshal(pkgJSON, &pkg); err == nil {
+				// Try main field first
+				if pkg.Main != "" {
+					mainPath := filepath.Join(pkgPath, pkg.Main)
+					if resolved := tryResolve(mainPath); resolved != "" {
+						return resolved
+					}
+				}
+				// Try module field (ES modules)
+				if pkg.Module != "" {
+					modulePath := filepath.Join(pkgPath, pkg.Module)
+					if resolved := tryResolve(modulePath); resolved != "" {
+						return resolved
+					}
+				}
+			}
+		}
+
+		// Fallback: try index.js or index.ts directly
+		if resolved := tryResolve(pkgPath); resolved != "" {
+			return resolved
+		}
+
+		return ""
+	}
+
+	return esbuild.Plugin{
+		Name: "virtual-fs-with-node-modules",
+		Setup: func(build esbuild.PluginBuild) {
+			build.OnResolve(esbuild.OnResolveOptions{Filter: `.*`},
+				func(args esbuild.OnResolveArgs) (esbuild.OnResolveResult, error) {
+					// Handle entrypoint
+					if args.Importer == "" {
+						finalPath := tryResolve(args.Path)
+						if finalPath != "" {
+							return esbuild.OnResolveResult{
+								Path:      finalPath,
+								Namespace: "virtual",
+							}, nil
+						}
+					}
+
+					// Handle bare imports (node_modules)
+					if !strings.HasPrefix(args.Path, ".") && !strings.HasPrefix(args.Path, "/") {
+						// Check if it's a subpath import like "lodash/merge"
+						parts := strings.SplitN(args.Path, "/", 2)
+						pkgName := parts[0]
+
+						// Handle scoped packages (@org/pkg)
+						if strings.HasPrefix(pkgName, "@") && len(parts) > 1 {
+							subparts := strings.SplitN(parts[1], "/", 2)
+							pkgName = pkgName + "/" + subparts[0]
+							if len(subparts) > 1 {
+								parts = []string{pkgName, subparts[1]}
+							} else {
+								parts = []string{pkgName}
+							}
+						}
+
+						if len(parts) == 2 {
+							// Subpath import: lodash/merge -> node_modules/lodash/merge
+							subPath := filepath.Join("node_modules", pkgName, parts[1])
+							if resolved := tryResolve(subPath); resolved != "" {
+								return esbuild.OnResolveResult{
+									Path:      resolved,
+									Namespace: "virtual",
+								}, nil
+							}
+						} else {
+							// Package root import
+							if resolved := resolveNodeModule(pkgName); resolved != "" {
+								return esbuild.OnResolveResult{
+									Path:      resolved,
+									Namespace: "virtual",
+								}, nil
+							}
+						}
+
+						// Package not found in virtual FS
+						return esbuild.OnResolveResult{}, fmt.Errorf("cannot resolve package %q in virtual filesystem", args.Path)
+					}
+
+					// Handle relative imports
+					var resolvedPath string
+					if strings.HasPrefix(args.Path, "./") || strings.HasPrefix(args.Path, "../") {
+						var baseDir string
+						if args.Importer != "" {
+							baseDir = filepath.Dir(args.Importer)
+						} else {
+							baseDir = args.ResolveDir
+						}
+						resolvedPath = filepath.Clean(filepath.Join(baseDir, args.Path))
+					} else {
+						resolvedPath = args.Path
+					}
+
+					resolvedPath = strings.TrimPrefix(resolvedPath, "./")
+
+					finalPath := tryResolve(resolvedPath)
+					if finalPath != "" {
+						return esbuild.OnResolveResult{
+							Path:      finalPath,
+							Namespace: "virtual",
+						}, nil
+					}
+
+					return esbuild.OnResolveResult{}, nil
+				})
+
+			build.OnLoad(esbuild.OnLoadOptions{Filter: `.*`, Namespace: "virtual"},
+				func(args esbuild.OnLoadArgs) (esbuild.OnLoadResult, error) {
+					content, exists := files[args.Path]
+					if !exists {
+						return esbuild.OnLoadResult{}, fmt.Errorf("file not found in virtual fs: %s", args.Path)
+					}
+					contentStr := string(content)
+					loader := loaderFromPath(args.Path)
+					return esbuild.OnLoadResult{
+						Contents:   &contentStr,
+						Loader:     loader,
+						ResolveDir: filepath.Dir(args.Path),
+					}, nil
+				})
+		},
+	}
+}
+
+// buildVendorBundleFromFiles builds a vendor bundle from in-memory source files and node_modules.
+// It scans the entrypoint to find which packages are used, then bundles them.
+func buildVendorBundleFromFiles(files map[string][]byte, entrypoint string) (vendorBundle string, packages []string, err error) {
+	// Step 1: Scan to find which packages are used
+	scanResult := esbuild.Build(esbuild.BuildOptions{
+		EntryPoints: []string{entrypoint},
+		Bundle:      true,
+		Write:       false,
+		Metafile:    true,
+		Platform:    esbuild.PlatformNode,
+		Format:      esbuild.FormatCommonJS,
+		Target:      esbuild.ES2015,
+		Plugins:     []esbuild.Plugin{createVirtualFSPluginWithNodeModules(files)},
+	})
+
+	if len(scanResult.Errors) > 0 {
+		return "", nil, formatBuildErrors(scanResult.Errors)
+	}
+
+	// Step 2: Extract package names from metafile
+	packages, err = extractPackageNames(scanResult.Metafile)
+	if err != nil {
+		return "", nil, err
+	}
+
+	if len(packages) == 0 {
+		return "", packages, nil
+	}
+
+	// Step 3: Generate vendor entrypoint
+	virtualEntry := generateVendorEntrypoint(packages)
+
+	// Step 4: Build vendor bundle
+	vendorResult := esbuild.Build(esbuild.BuildOptions{
+		Stdin: &esbuild.StdinOptions{
+			Contents:   virtualEntry,
+			ResolveDir: ".",
+			Loader:     esbuild.LoaderJS,
+		},
+		Bundle:     true,
+		Write:      false,
+		Platform:   esbuild.PlatformNode,
+		Format:     esbuild.FormatIIFE,
+		Target:     esbuild.ES2015,
+		GlobalName: "__NELM_VENDOR_BUNDLE__",
+		Plugins:    []esbuild.Plugin{createVirtualFSPluginWithNodeModules(files)},
+	})
+
+	if len(vendorResult.Errors) > 0 {
+		return "", nil, formatBuildErrors(vendorResult.Errors)
+	}
+
+	if len(vendorResult.OutputFiles) == 0 {
+		return "", nil, fmt.Errorf("no output files from vendor bundle build")
+	}
+
+	return string(vendorResult.OutputFiles[0].Contents), packages, nil
+}
+
 func buildAppBundleFromFiles(files map[string][]byte, entrypoint string, externalPackages []string) (string, error) {
 	result := esbuild.Build(esbuild.BuildOptions{
 		EntryPoints: []string{entrypoint},
@@ -353,7 +580,7 @@ func formatBuildErrors(errors []esbuild.Message) error {
 	return fmt.Errorf("%s", errMsg.String())
 }
 
-func findEntrypoint(tsDir string) (string, error) {
+func findEntrypointInDir(tsDir string) (string, error) {
 	for _, ep := range EntryPoints {
 		epPath := filepath.Join(tsDir, ep)
 		_, err := os.Stat(epPath)
@@ -367,20 +594,26 @@ func findEntrypoint(tsDir string) (string, error) {
 	return "", nil
 }
 
+// FIXME: remove
 func (t *Transformer) TransformChartDir(ctx context.Context, chartPath string) error {
-	stat, err := os.Stat(chartPath)
+	absChartPath, err := filepath.Abs(chartPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			log.Default.Debug(ctx, "Skipping TypeScript transformation: %s does not exist", chartPath)
-			return nil
-		}
-		return fmt.Errorf("stat %s: %w", chartPath, err)
-	}
-	if !stat.IsDir() {
-		return fmt.Errorf("%s is not a directory", chartPath)
+		return fmt.Errorf("get absolute path: %w", err)
 	}
 
-	tsDir := filepath.Join(chartPath, TSSourceDir)
+	stat, err := os.Stat(absChartPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Default.Debug(ctx, "Skipping TypeScript transformation: %s does not exist", absChartPath)
+			return nil
+		}
+		return fmt.Errorf("stat %s: %w", absChartPath, err)
+	}
+	if !stat.IsDir() {
+		return fmt.Errorf("%s is not a directory", absChartPath)
+	}
+
+	tsDir := filepath.Join(absChartPath, TSSourceDir)
 	if _, err := os.Stat(tsDir); err != nil {
 		if os.IsNotExist(err) {
 			log.Default.Debug(ctx, "No %s directory found, skipping transformation", TSSourceDir)
@@ -389,7 +622,7 @@ func (t *Transformer) TransformChartDir(ctx context.Context, chartPath string) e
 		return fmt.Errorf("stat %s: %w", tsDir, err)
 	}
 
-	entrypointFile, err := findEntrypoint(tsDir)
+	entrypointFile, err := findEntrypointInDir(tsDir)
 	if err != nil {
 		return fmt.Errorf("find entrypoint: %w", err)
 	}
@@ -407,9 +640,9 @@ func (t *Transformer) TransformChartDir(ctx context.Context, chartPath string) e
 		return fmt.Errorf("stat %s: %w", nodeModulesPath, err)
 	}
 
-	log.Default.Info(ctx, "Building vendor bundle for TypeScript chart: %s", chartPath)
+	log.Default.Info(ctx, "Building vendor bundle for TypeScript chart: %s", absChartPath)
 
-	vendorBundle, packages, err := buildVendorBundle(tsDir, entrypointFile)
+	vendorBundle, packages, err := buildVendorBundleInDir(tsDir, entrypointFile)
 	if err != nil {
 		return fmt.Errorf("build vendor bundle: %w", err)
 	}
@@ -421,7 +654,7 @@ func (t *Transformer) TransformChartDir(ctx context.Context, chartPath string) e
 
 	log.Default.Info(ctx, "Bundled %d npm packages: %s", len(packages), strings.Join(packages, ", "))
 
-	vendorPath := filepath.Join(chartPath, VendorBundleFile)
+	vendorPath := filepath.Join(absChartPath, VendorBundleFile)
 	if err := os.MkdirAll(filepath.Dir(vendorPath), 0755); err != nil {
 		return fmt.Errorf("create vendor directory: %w", err)
 	}
@@ -444,7 +677,7 @@ func GetVendorBundleFromDir(ctx context.Context, chartPath string) (string, []st
 	nodeModulesPath := filepath.Join(tsDir, "node_modules")
 	vendorPath := filepath.Join(absChartPath, VendorBundleFile)
 
-	entrypointFile, err := findEntrypoint(tsDir)
+	entrypointFile, err := findEntrypointInDir(tsDir)
 	if err != nil {
 		return "", nil, fmt.Errorf("find entrypoint: %w", err)
 	}
@@ -458,7 +691,7 @@ func GetVendorBundleFromDir(ctx context.Context, chartPath string) (string, []st
 	}
 	if err == nil {
 		log.Default.Debug(ctx, "Building vendor bundle from node_modules")
-		return buildVendorBundle(tsDir, entrypointFile)
+		return buildVendorBundleInDir(tsDir, entrypointFile)
 	}
 
 	_, err = os.Stat(vendorPath)
@@ -479,25 +712,63 @@ func GetVendorBundleFromDir(ctx context.Context, chartPath string) (string, []st
 	return "", nil, nil
 }
 
-func GetVendorBundleFromFiles(files []*helmchart.File) (string, []string) {
+// prepareFilesMap converts []*helmchart.File to map[string][]byte, stripping the ts/ prefix.
+// This prepares files for use with the virtual FS plugin.
+func prepareFilesMap(files []*helmchart.File) map[string][]byte {
+	result := make(map[string][]byte)
+	for _, f := range files {
+		// Strip ts/ prefix so paths become like "src/index.ts" and "node_modules/lodash/index.js"
+		name := strings.TrimPrefix(f.Name, TSSourceDir)
+		result[name] = f.Data
+	}
+	return result
+}
+
+// hasNodeModules checks if the files contain node_modules
+func hasNodeModules(files []*helmchart.File) bool {
+	for _, f := range files {
+		if strings.HasPrefix(f.Name, TSSourceDir+"node_modules/") {
+			return true
+		}
+	}
+	return false
+}
+
+// GetVendorBundleFromFiles returns the vendor bundle and list of packages.
+// If node_modules are present in files, it builds the vendor bundle in-memory.
+// Otherwise, it looks for a pre-built vendor bundle at ts/vendor/libs.js.
+func GetVendorBundleFromFiles(files []*helmchart.File) (string, []string, error) {
+	// Check if node_modules are present - if so, build vendor bundle in-memory
+	if hasNodeModules(files) {
+		filesMap := prepareFilesMap(files)
+
+		// Find entrypoint
+		var entrypoint string
+		for _, ep := range EntryPoints {
+			if _, exists := filesMap[ep]; exists {
+				entrypoint = ep
+				break
+			}
+		}
+		if entrypoint == "" {
+			return "", nil, nil // No entrypoint, no vendor bundle needed
+		}
+
+		vendorBundle, packages, err := buildVendorBundleFromFiles(filesMap, entrypoint)
+		if err != nil {
+			return "", nil, fmt.Errorf("build vendor bundle from node_modules: %w", err)
+		}
+		return vendorBundle, packages, nil
+	}
+
+	// Fall back to pre-built vendor bundle
 	for _, f := range files {
 		if f.Name == VendorBundleFile {
 			packages := extractPackagesFromVendorBundle(string(f.Data))
-			return string(f.Data), packages
+			return string(f.Data), packages, nil
 		}
 	}
-	return "", nil
-}
-
-func ExtractSourceFiles(files []*helmchart.File) map[string][]byte {
-	sourceFiles := make(map[string][]byte)
-	for _, f := range files {
-		if strings.HasPrefix(f.Name, TSSourceDir+"src/") {
-			relativePath := strings.TrimPrefix(f.Name, TSSourceDir)
-			sourceFiles[relativePath] = f.Data
-		}
-	}
-	return sourceFiles
+	return "", nil, nil
 }
 
 func BuildAppBundleFromDir(ctx context.Context, chartPath string, externalPackages []string) (string, error) {
@@ -507,7 +778,7 @@ func BuildAppBundleFromDir(ctx context.Context, chartPath string, externalPackag
 	}
 
 	tsDir := filepath.Join(absChartPath, TSSourceDir)
-	entrypointFile, err := findEntrypoint(tsDir)
+	entrypointFile, err := findEntrypointInDir(tsDir)
 	if err != nil {
 		return "", fmt.Errorf("find entrypoint: %w", err)
 	}
@@ -538,4 +809,15 @@ func BuildAppBundleFromChartFiles(ctx context.Context, files []*helmchart.File, 
 
 	log.Default.Debug(ctx, "Building app bundle from chart files with entrypoint %s", entrypoint)
 	return buildAppBundleFromFiles(sourceFiles, entrypoint, externalPackages)
+}
+
+func ExtractSourceFiles(files []*helmchart.File) map[string][]byte {
+	sourceFiles := make(map[string][]byte)
+	for _, f := range files {
+		if strings.HasPrefix(f.Name, TSSourceDir+"src/") {
+			relativePath := strings.TrimPrefix(f.Name, TSSourceDir)
+			sourceFiles[relativePath] = f.Data
+		}
+	}
+	return sourceFiles
 }

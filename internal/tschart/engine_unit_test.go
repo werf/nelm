@@ -2,8 +2,6 @@ package tschart
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -42,23 +40,6 @@ func newTestValues(data map[string]interface{}) chartutil.Values {
 	return chartutil.Values(data)
 }
 
-// createTestChartDir creates a temporary chart directory with TypeScript source files
-func createTestChartDir(t *testing.T, sourceContent string) string {
-	tempDir, err := os.MkdirTemp("", "tschart-engine-test-*")
-	require.NoError(t, err)
-
-	tsDir := filepath.Join(tempDir, "ts", "src")
-	require.NoError(t, os.MkdirAll(tsDir, 0755))
-
-	require.NoError(t, os.WriteFile(
-		filepath.Join(tsDir, "index.ts"),
-		[]byte(sourceContent),
-		0644,
-	))
-
-	return tempDir
-}
-
 func TestRenderSimpleManifest(t *testing.T) {
 	sourceContent := `
 export function render(context: any) {
@@ -77,10 +58,9 @@ export function render(context: any) {
     };
 }
 `
-	chartDir := createTestChartDir(t, sourceContent)
-	defer os.RemoveAll(chartDir)
-
-	testChart := newTestChart(map[string]string{})
+	testChart := newTestChart(map[string]string{
+		"ts/src/index.ts": sourceContent,
+	})
 	testChart.Metadata = &chart.Metadata{
 		Name:    "test-chart",
 		Version: "1.0.0",
@@ -114,7 +94,7 @@ export function render(context: any) {
 	})
 
 	engine := NewEngine()
-	renderedTemplates, err := engine.RenderFiles(ctx, chartDir, testChart, renderedValues)
+	renderedTemplates, err := engine.RenderFiles(ctx, "", testChart, renderedValues)
 	require.NoError(t, err)
 
 	assert.Len(t, renderedTemplates, 1)
@@ -146,10 +126,9 @@ export function render(context: any) {
     };
 }
 `
-	chartDir := createTestChartDir(t, sourceContent)
-	defer os.RemoveAll(chartDir)
-
-	testChart := newTestChart(map[string]string{})
+	testChart := newTestChart(map[string]string{
+		"ts/src/index.ts": sourceContent,
+	})
 
 	ctx := context.Background()
 	renderedValues := newTestValues(map[string]interface{}{
@@ -159,7 +138,7 @@ export function render(context: any) {
 	})
 
 	engine := NewEngine()
-	renderedTemplates, err := engine.RenderFiles(ctx, chartDir, testChart, renderedValues)
+	renderedTemplates, err := engine.RenderFiles(ctx, "", testChart, renderedValues)
 	require.NoError(t, err)
 
 	assert.Len(t, renderedTemplates, 1)
@@ -182,10 +161,9 @@ export function render(context: any) {
     };
 }
 `
-	chartDir := createTestChartDir(t, sourceContent)
-	defer os.RemoveAll(chartDir)
-
-	testChart := newTestChart(map[string]string{})
+	testChart := newTestChart(map[string]string{
+		"ts/src/index.ts": sourceContent,
+	})
 
 	ctx := context.Background()
 	renderedValues := newTestValues(map[string]interface{}{
@@ -195,18 +173,14 @@ export function render(context: any) {
 	})
 
 	engine := NewEngine()
-	renderedTemplates, err := engine.RenderFiles(ctx, chartDir, testChart, renderedValues)
+	renderedTemplates, err := engine.RenderFiles(ctx, "", testChart, renderedValues)
 	require.NoError(t, err)
 
 	assert.Len(t, renderedTemplates, 0)
 }
 
 func TestNoTypeScriptSource(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "tschart-no-ts-*")
-	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
-
-	// Create a chart directory without ts/ folder
+	// Create a chart without ts/ folder
 	testChart := newTestChart(map[string]string{
 		"templates/deployment.yaml": "apiVersion: v1\nkind: Deployment",
 	})
@@ -215,7 +189,7 @@ func TestNoTypeScriptSource(t *testing.T) {
 	renderedValues := newTestValues(map[string]interface{}{})
 
 	engine := NewEngine()
-	renderedTemplates, err := engine.RenderFiles(ctx, tempDir, testChart, renderedValues)
+	renderedTemplates, err := engine.RenderFiles(ctx, "", testChart, renderedValues)
 	require.NoError(t, err)
 
 	assert.Len(t, renderedTemplates, 0)
@@ -235,16 +209,15 @@ module.exports = {
     }
 };
 `
-	chartDir := createTestChartDir(t, sourceContent)
-	defer os.RemoveAll(chartDir)
-
-	testChart := newTestChart(map[string]string{})
+	testChart := newTestChart(map[string]string{
+		"ts/src/index.ts": sourceContent,
+	})
 
 	ctx := context.Background()
 	renderedValues := newTestValues(map[string]interface{}{})
 
 	engine := NewEngine()
-	renderedTemplates, err := engine.RenderFiles(ctx, chartDir, testChart, renderedValues)
+	renderedTemplates, err := engine.RenderFiles(ctx, "", testChart, renderedValues)
 	require.NoError(t, err)
 
 	assert.Len(t, renderedTemplates, 1)
@@ -285,50 +258,33 @@ export function render(context: any) {
 }
 
 // createTestChartWithSubchart creates a root chart with a TypeScript subchart dependency
-func createTestChartWithSubchart(t *testing.T, rootContent, subchartContent string) (string, *chart.Chart) {
-	tempDir, err := os.MkdirTemp("", "tschart-deps-test-*")
-	require.NoError(t, err)
-
-	// Create root chart ts/src/index.ts
-	rootTsDir := filepath.Join(tempDir, "ts", "src")
-	require.NoError(t, os.MkdirAll(rootTsDir, 0755))
-	require.NoError(t, os.WriteFile(
-		filepath.Join(rootTsDir, "index.ts"),
-		[]byte(rootContent),
-		0644,
-	))
-
-	// Create subchart ts/src/index.ts
-	subchartTsDir := filepath.Join(tempDir, "charts", "ts-subchart", "ts", "src")
-	require.NoError(t, os.MkdirAll(subchartTsDir, 0755))
-	require.NoError(t, os.WriteFile(
-		filepath.Join(subchartTsDir, "index.ts"),
-		[]byte(subchartContent),
-		0644,
-	))
-
-	// Build subchart object
+func createTestChartWithSubchart(t *testing.T, rootContent, subchartContent string) *chart.Chart {
+	// Build subchart object with RuntimeFiles
 	subchart := &chart.Chart{
 		Metadata: &chart.Metadata{
 			Name:    "ts-subchart",
 			Version: "0.1.0",
 		},
-		Files:        []*chart.File{},
-		RuntimeFiles: []*chart.File{},
+		Files: []*chart.File{},
+		RuntimeFiles: []*chart.File{
+			{Name: "ts/src/index.ts", Data: []byte(subchartContent)},
+		},
 	}
 
-	// Build root chart object with dependency
+	// Build root chart object with dependency and RuntimeFiles
 	rootChart := &chart.Chart{
 		Metadata: &chart.Metadata{
 			Name:    "root-chart",
 			Version: "1.0.0",
 		},
-		Files:        []*chart.File{},
-		RuntimeFiles: []*chart.File{},
+		Files: []*chart.File{},
+		RuntimeFiles: []*chart.File{
+			{Name: "ts/src/index.ts", Data: []byte(rootContent)},
+		},
 	}
 	rootChart.SetDependencies(subchart)
 
-	return tempDir, rootChart
+	return rootChart
 }
 
 func TestRenderChartWithTSSubchart(t *testing.T) {
@@ -362,8 +318,7 @@ export function render(context: any) {
     };
 }
 `
-	chartDir, rootChart := createTestChartWithSubchart(t, rootContent, subchartContent)
-	defer os.RemoveAll(chartDir)
+	rootChart := createTestChartWithSubchart(t, rootContent, subchartContent)
 
 	ctx := context.Background()
 	renderedValues := newTestValues(map[string]interface{}{
@@ -381,7 +336,7 @@ export function render(context: any) {
 	})
 
 	engine := NewEngine()
-	renderedTemplates, err := engine.RenderChartWithDependencies(ctx, chartDir, rootChart, renderedValues)
+	renderedTemplates, err := engine.RenderChartWithDependencies(ctx, "", rootChart, renderedValues)
 	require.NoError(t, err)
 
 	// Should have 2 outputs: root and subchart
@@ -422,26 +377,15 @@ export function render(context: any) {
     };
 }
 `
-	tempDir, err := os.MkdirTemp("", "tschart-classic-root-*")
-	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
-
-	// Create subchart ts/src/index.ts (no root ts/)
-	subchartTsDir := filepath.Join(tempDir, "charts", "ts-subchart", "ts", "src")
-	require.NoError(t, os.MkdirAll(subchartTsDir, 0755))
-	require.NoError(t, os.WriteFile(
-		filepath.Join(subchartTsDir, "index.ts"),
-		[]byte(subchartContent),
-		0644,
-	))
-
 	subchart := &chart.Chart{
 		Metadata: &chart.Metadata{
 			Name:    "ts-subchart",
 			Version: "0.1.0",
 		},
-		Files:        []*chart.File{},
-		RuntimeFiles: []*chart.File{},
+		Files: []*chart.File{},
+		RuntimeFiles: []*chart.File{
+			{Name: "ts/src/index.ts", Data: []byte(subchartContent)},
+		},
 	}
 
 	rootChart := &chart.Chart{
@@ -450,7 +394,7 @@ export function render(context: any) {
 			Version: "1.0.0",
 		},
 		Files:        []*chart.File{},
-		RuntimeFiles: []*chart.File{},
+		RuntimeFiles: []*chart.File{}, // No TypeScript in root
 	}
 	rootChart.SetDependencies(subchart)
 
@@ -467,7 +411,7 @@ export function render(context: any) {
 	})
 
 	engine := NewEngine()
-	renderedTemplates, err := engine.RenderChartWithDependencies(ctx, tempDir, rootChart, renderedValues)
+	renderedTemplates, err := engine.RenderChartWithDependencies(ctx, "", rootChart, renderedValues)
 	require.NoError(t, err)
 
 	// Only subchart output (root has no ts/)
@@ -606,34 +550,26 @@ export function render(context: any) {
     };
 }
 `
-	tempDir, err := os.MkdirTemp("", "tschart-nested-*")
-	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
-
-	// Create directory structure
-	rootTsDir := filepath.Join(tempDir, "ts", "src")
-	require.NoError(t, os.MkdirAll(rootTsDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(rootTsDir, "index.ts"), []byte(rootContent), 0644))
-
-	sub1TsDir := filepath.Join(tempDir, "charts", "sub1", "ts", "src")
-	require.NoError(t, os.MkdirAll(sub1TsDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(sub1TsDir, "index.ts"), []byte(sub1Content), 0644))
-
-	sub2TsDir := filepath.Join(tempDir, "charts", "sub1", "charts", "sub2", "ts", "src")
-	require.NoError(t, os.MkdirAll(sub2TsDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(sub2TsDir, "index.ts"), []byte(sub2Content), 0644))
-
-	// Build chart objects
+	// Build chart objects with RuntimeFiles
 	sub2 := &chart.Chart{
 		Metadata: &chart.Metadata{Name: "sub2", Version: "0.1.0"},
+		RuntimeFiles: []*chart.File{
+			{Name: "ts/src/index.ts", Data: []byte(sub2Content)},
+		},
 	}
 	sub1 := &chart.Chart{
 		Metadata: &chart.Metadata{Name: "sub1", Version: "0.1.0"},
+		RuntimeFiles: []*chart.File{
+			{Name: "ts/src/index.ts", Data: []byte(sub1Content)},
+		},
 	}
 	sub1.SetDependencies(sub2)
 
 	rootChart := &chart.Chart{
 		Metadata: &chart.Metadata{Name: "nested-root", Version: "1.0.0"},
+		RuntimeFiles: []*chart.File{
+			{Name: "ts/src/index.ts", Data: []byte(rootContent)},
+		},
 	}
 	rootChart.SetDependencies(sub1)
 
@@ -649,7 +585,7 @@ export function render(context: any) {
 	})
 
 	engine := NewEngine()
-	renderedTemplates, err := engine.RenderChartWithDependencies(ctx, tempDir, rootChart, renderedValues)
+	renderedTemplates, err := engine.RenderChartWithDependencies(ctx, "", rootChart, renderedValues)
 	require.NoError(t, err)
 
 	// Should have 3 outputs
@@ -681,8 +617,7 @@ export function render(context: any) {
     return { manifests: [] };
 }
 `
-	chartDir, rootChart := createTestChartWithSubchart(t, rootContent, subchartContent)
-	defer os.RemoveAll(chartDir)
+	rootChart := createTestChartWithSubchart(t, rootContent, subchartContent)
 
 	ctx := context.Background()
 	renderedValues := newTestValues(map[string]interface{}{
@@ -692,7 +627,7 @@ export function render(context: any) {
 	})
 
 	engine := NewEngine()
-	_, err := engine.RenderChartWithDependencies(ctx, chartDir, rootChart, renderedValues)
+	_, err := engine.RenderChartWithDependencies(ctx, "", rootChart, renderedValues)
 
 	// Should fail with error mentioning the subchart
 	require.Error(t, err)

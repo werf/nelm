@@ -2,8 +2,6 @@ package tschart
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -17,32 +15,49 @@ func TestTSChart(t *testing.T) {
 	RunSpecs(t, "TSChart Integration Suite")
 }
 
+// createChartWithTSSource creates a chart with TypeScript source in RuntimeFiles
+func createChartWithTSSource(sourceContent string) *helmchart.Chart {
+	return &helmchart.Chart{
+		Metadata: &helmchart.Metadata{
+			Name:    "test-chart",
+			Version: "1.0.0",
+		},
+		Files: []*helmchart.File{},
+		RuntimeFiles: []*helmchart.File{
+			{Name: "ts/src/index.ts", Data: []byte(sourceContent)},
+		},
+	}
+}
+
+// createChartWithTSFiles creates a chart with multiple TypeScript files in RuntimeFiles
+func createChartWithTSFiles(files map[string]string) *helmchart.Chart {
+	var runtimeFiles []*helmchart.File
+	for name, content := range files {
+		runtimeFiles = append(runtimeFiles, &helmchart.File{
+			Name: "ts/" + name,
+			Data: []byte(content),
+		})
+	}
+	return &helmchart.Chart{
+		Metadata: &helmchart.Metadata{
+			Name:    "test-chart",
+			Version: "1.0.0",
+		},
+		Files:        []*helmchart.File{},
+		RuntimeFiles: runtimeFiles,
+	}
+}
+
 var _ = Describe("TSChart Integration Tests", func() {
-	var (
-		ctx     context.Context
-		tempDir string
-	)
+	var ctx context.Context
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		var err error
-		tempDir, err = os.MkdirTemp("", "tschart-integration-*")
-		Expect(err).NotTo(HaveOccurred())
-	})
-
-	AfterEach(func() {
-		os.RemoveAll(tempDir)
 	})
 
 	Describe("Full Flow: TypeScript -> Render -> YAML", func() {
 		It("should handle simple TypeScript with types", func() {
-			chartPath := filepath.Join(tempDir, "test-chart")
-			tsDir := filepath.Join(chartPath, "ts", "src")
-			Expect(os.MkdirAll(tsDir, 0755)).To(Succeed())
-
-			Expect(os.WriteFile(
-				filepath.Join(tsDir, "index.ts"),
-				[]byte(`
+			sourceContent := `
 export function render(context: any) {
 	const releaseName: string = context.Release.Name;
 	const replicas: number = context.Values.replicas || 1;
@@ -62,17 +77,8 @@ export function render(context: any) {
 		}]
 	};
 }
-				`),
-				0644,
-			)).To(Succeed())
-
-			chart := &helmchart.Chart{
-				Metadata: &helmchart.Metadata{
-					Name:    "test-chart",
-					Version: "1.0.0",
-				},
-				Files: []*helmchart.File{},
-			}
+`
+			chart := createChartWithTSSource(sourceContent)
 
 			engine := NewEngine()
 			values := chartutil.Values{
@@ -85,7 +91,7 @@ export function render(context: any) {
 				},
 			}
 
-			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
+			renderedTemplates, err := engine.RenderFiles(ctx, "", chart, values)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(renderedTemplates).To(HaveKey(DefaultOutputFile))
 
@@ -98,13 +104,7 @@ export function render(context: any) {
 		})
 
 		It("should handle module.exports.render pattern", func() {
-			chartPath := filepath.Join(tempDir, "test-chart")
-			tsDir := filepath.Join(chartPath, "ts", "src")
-			Expect(os.MkdirAll(tsDir, 0755)).To(Succeed())
-
-			Expect(os.WriteFile(
-				filepath.Join(tsDir, "index.ts"),
-				[]byte(`
+			sourceContent := `
 module.exports.render = function(context: any) {
 	return {
 		manifests: [{
@@ -114,14 +114,11 @@ module.exports.render = function(context: any) {
 		}]
 	};
 };
-				`),
-				0644,
-			)).To(Succeed())
-
-			chart := &helmchart.Chart{Files: []*helmchart.File{}}
+`
+			chart := createChartWithTSSource(sourceContent)
 			engine := NewEngine()
 			values := chartutil.Values{}
-			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
+			renderedTemplates, err := engine.RenderFiles(ctx, "", chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
 			yaml := renderedTemplates[DefaultOutputFile]
@@ -130,13 +127,7 @@ module.exports.render = function(context: any) {
 		})
 
 		It("should handle module.exports = { render } pattern", func() {
-			chartPath := filepath.Join(tempDir, "test-chart")
-			tsDir := filepath.Join(chartPath, "ts", "src")
-			Expect(os.MkdirAll(tsDir, 0755)).To(Succeed())
-
-			Expect(os.WriteFile(
-				filepath.Join(tsDir, "index.ts"),
-				[]byte(`
+			sourceContent := `
 module.exports = {
 	render: function(context: any) {
 		return {
@@ -148,14 +139,11 @@ module.exports = {
 		};
 	}
 };
-				`),
-				0644,
-			)).To(Succeed())
-
-			chart := &helmchart.Chart{Files: []*helmchart.File{}}
+`
+			chart := createChartWithTSSource(sourceContent)
 			engine := NewEngine()
 			values := chartutil.Values{}
-			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
+			renderedTemplates, err := engine.RenderFiles(ctx, "", chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
 			yaml := renderedTemplates[DefaultOutputFile]
@@ -164,13 +152,7 @@ module.exports = {
 		})
 
 		It("should handle TypeScript features (template literals, arrow functions)", func() {
-			chartPath := filepath.Join(tempDir, "test-chart")
-			tsDir := filepath.Join(chartPath, "ts", "src")
-			Expect(os.MkdirAll(tsDir, 0755)).To(Succeed())
-
-			Expect(os.WriteFile(
-				filepath.Join(tsDir, "index.ts"),
-				[]byte(`
+			sourceContent := `
 export const render = (context: any) => {
 	const prefix = context.Release.Name;
 	const resources = [1, 2, 3].map(i => ({
@@ -188,11 +170,8 @@ export const render = (context: any) => {
 		manifests: resources
 	};
 };
-				`),
-				0644,
-			)).To(Succeed())
-
-			chart := &helmchart.Chart{Files: []*helmchart.File{}}
+`
+			chart := createChartWithTSSource(sourceContent)
 			engine := NewEngine()
 			values := chartutil.Values{
 				"Release": map[string]interface{}{
@@ -200,7 +179,7 @@ export const render = (context: any) => {
 				},
 			}
 
-			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
+			renderedTemplates, err := engine.RenderFiles(ctx, "", chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
 			yaml := renderedTemplates[DefaultOutputFile]
@@ -211,13 +190,7 @@ export const render = (context: any) => {
 		})
 
 		It("should handle TypeScript interfaces and types", func() {
-			chartPath := filepath.Join(tempDir, "test-chart")
-			tsDir := filepath.Join(chartPath, "ts", "src")
-			Expect(os.MkdirAll(tsDir, 0755)).To(Succeed())
-
-			Expect(os.WriteFile(
-				filepath.Join(tsDir, "index.ts"),
-				[]byte(`
+			sourceContent := `
 interface RenderContext {
 	Release: {
 		Name: string;
@@ -253,11 +226,8 @@ export function render(context: RenderContext) {
 		manifests: [manifest]
 	};
 }
-				`),
-				0644,
-			)).To(Succeed())
-
-			chart := &helmchart.Chart{Files: []*helmchart.File{}}
+`
+			chart := createChartWithTSSource(sourceContent)
 			engine := NewEngine()
 			values := chartutil.Values{
 				"Release": map[string]interface{}{
@@ -269,7 +239,7 @@ export function render(context: RenderContext) {
 				},
 			}
 
-			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
+			renderedTemplates, err := engine.RenderFiles(ctx, "", chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
 			yaml := renderedTemplates[DefaultOutputFile]
@@ -281,13 +251,7 @@ export function render(context: RenderContext) {
 
 	Describe("Error handling with sourcemaps", func() {
 		It("should show TypeScript error with source location", func() {
-			chartPath := filepath.Join(tempDir, "test-chart")
-			tsDir := filepath.Join(chartPath, "ts", "src")
-			Expect(os.MkdirAll(tsDir, 0755)).To(Succeed())
-
-			Expect(os.WriteFile(
-				filepath.Join(tsDir, "index.ts"),
-				[]byte(`
+			sourceContent := `
 export function render(context: any) {
 	// This will throw a runtime error
 	const obj: any = null;
@@ -297,83 +261,51 @@ export function render(context: any) {
 		manifests: []
 	};
 }
-				`),
-				0644,
-			)).To(Succeed())
-
-			chart := &helmchart.Chart{Files: []*helmchart.File{}}
+`
+			chart := createChartWithTSSource(sourceContent)
 			engine := NewEngine()
 			values := chartutil.Values{}
-			_, err := engine.RenderFiles(ctx, chartPath, chart, values)
+			_, err := engine.RenderFiles(ctx, "", chart, values)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("index.ts"))
 			Expect(err.Error()).To(ContainSubstring("undefined"))
 		})
 
 		It("should show error when render function is missing", func() {
-			chartPath := filepath.Join(tempDir, "test-chart")
-			tsDir := filepath.Join(chartPath, "ts", "src")
-			Expect(os.MkdirAll(tsDir, 0755)).To(Succeed())
-
-			Expect(os.WriteFile(
-				filepath.Join(tsDir, "index.ts"),
-				[]byte(`
+			sourceContent := `
 export function notRender(context: any) {
 	return { manifests: [] };
 }
-				`),
-				0644,
-			)).To(Succeed())
-
-			chart := &helmchart.Chart{Files: []*helmchart.File{}}
+`
+			chart := createChartWithTSSource(sourceContent)
 			engine := NewEngine()
 			values := chartutil.Values{}
-			_, err := engine.RenderFiles(ctx, chartPath, chart, values)
+			_, err := engine.RenderFiles(ctx, "", chart, values)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("does not export 'render' function"))
 		})
 
 		// Note: esbuild doesn't perform type checking, only syntax/transpilation
 		PIt("should show TypeScript type errors (skipped - esbuild doesn't type check)", func() {
-			chartPath := filepath.Join(tempDir, "test-chart")
-			tsDir := filepath.Join(chartPath, "ts", "src")
-			Expect(os.MkdirAll(tsDir, 0755)).To(Succeed())
-
-			Expect(os.WriteFile(
-				filepath.Join(tsDir, "index.ts"),
-				[]byte(`
+			sourceContent := `
 export function render(context: any) {
 	const x: number = "not a number";
 	return { manifests: [] };
 }
-				`),
-				0644,
-			)).To(Succeed())
-
-			Expect(os.WriteFile(
-				filepath.Join(chartPath, "ts", "tsconfig.json"),
-				[]byte(`{"compilerOptions": {"strict": true}}`),
-				0644,
-			)).To(Succeed())
-
-			chart := &helmchart.Chart{Files: []*helmchart.File{}}
+`
+			chart := createChartWithTSSource(sourceContent)
 			engine := NewEngine()
 			values := chartutil.Values{}
 			// esbuild doesn't check types, so this will succeed
-			_, err := engine.RenderFiles(ctx, chartPath, chart, values)
+			_, err := engine.RenderFiles(ctx, "", chart, values)
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 
 	Describe("Multiple files and imports", func() {
 		It("should handle TypeScript with multiple files", func() {
-			chartPath := filepath.Join(tempDir, "test-chart")
-			tsDir := filepath.Join(chartPath, "ts", "src")
-			Expect(os.MkdirAll(tsDir, 0755)).To(Succeed())
-
-			Expect(os.WriteFile(
-				filepath.Join(tsDir, "index.ts"),
-				[]byte(`
+			chart := createChartWithTSFiles(map[string]string{
+				"src/index.ts": `
 import { createConfigMap } from './helpers';
 
 export function render(context: any) {
@@ -381,13 +313,8 @@ export function render(context: any) {
 		manifests: [createConfigMap(context.Release.Name)]
 	};
 }
-				`),
-				0644,
-			)).To(Succeed())
-
-			Expect(os.WriteFile(
-				filepath.Join(tsDir, "helpers.ts"),
-				[]byte(`
+`,
+				"src/helpers.ts": `
 export function createConfigMap(name: string) {
 	return {
 		apiVersion: 'v1',
@@ -400,11 +327,8 @@ export function createConfigMap(name: string) {
 		}
 	};
 }
-				`),
-				0644,
-			)).To(Succeed())
-
-			chart := &helmchart.Chart{Files: []*helmchart.File{}}
+`,
+			})
 			engine := NewEngine()
 			values := chartutil.Values{
 				"Release": map[string]interface{}{
@@ -412,7 +336,7 @@ export function createConfigMap(name: string) {
 				},
 			}
 
-			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
+			renderedTemplates, err := engine.RenderFiles(ctx, "", chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
 			yaml := renderedTemplates[DefaultOutputFile]
@@ -423,28 +347,18 @@ export function createConfigMap(name: string) {
 
 	Describe("Inline sourcemaps", func() {
 		It("should include inline sourcemaps for error reporting", func() {
-			chartPath := filepath.Join(tempDir, "test-chart")
-			tsDir := filepath.Join(chartPath, "ts", "src")
-			Expect(os.MkdirAll(tsDir, 0755)).To(Succeed())
-
-			// Create a file that will cause a runtime error
-			Expect(os.WriteFile(
-				filepath.Join(tsDir, "index.ts"),
-				[]byte(`
+			sourceContent := `
 export function render(context: any) {
 	// Intentionally access undefined to trigger error with sourcemap
 	const x: any = undefined;
 	x.foo.bar; // This line should appear in error
 	return { manifests: [] };
 }
-				`),
-				0644,
-			)).To(Succeed())
-
-			chart := &helmchart.Chart{Files: []*helmchart.File{}}
+`
+			chart := createChartWithTSSource(sourceContent)
 			engine := NewEngine()
 			values := chartutil.Values{}
-			_, err := engine.RenderFiles(ctx, chartPath, chart, values)
+			_, err := engine.RenderFiles(ctx, "", chart, values)
 			Expect(err).To(HaveOccurred())
 			// The error should reference the original .ts file thanks to sourcemaps
 			Expect(err.Error()).To(ContainSubstring("index.ts"))
@@ -526,14 +440,17 @@ export function render(context: any) {
 
 	Describe("npm dependencies with vendor bundle", func() {
 		It("should render chart with npm dependencies from node_modules", func() {
-			chartPath := filepath.Join(tempDir, "test-chart")
-			tsDir := filepath.Join(chartPath, "ts", "src")
-			Expect(os.MkdirAll(tsDir, 0755)).To(Succeed())
-
-			// Create source that uses a fake npm module
-			Expect(os.WriteFile(
-				filepath.Join(tsDir, "index.ts"),
-				[]byte(`
+			// Create chart with source files and node_modules in RuntimeFiles/RuntimeDepsFiles
+			chart := &helmchart.Chart{
+				Metadata: &helmchart.Metadata{
+					Name:    "test-chart",
+					Version: "1.0.0",
+				},
+				Files: []*helmchart.File{},
+				RuntimeFiles: []*helmchart.File{
+					{
+						Name: "ts/src/index.ts",
+						Data: []byte(`
 import { helper } from 'fake-lib';
 
 export function render(context: any) {
@@ -541,31 +458,25 @@ export function render(context: any) {
 		manifests: [helper(context.Release.Name)]
 	};
 }
-				`),
-				0644,
-			)).To(Succeed())
-
-			// Create fake node_modules
-			fakeLibDir := filepath.Join(chartPath, "ts", "node_modules", "fake-lib")
-			Expect(os.MkdirAll(fakeLibDir, 0755)).To(Succeed())
-
-			Expect(os.WriteFile(
-				filepath.Join(fakeLibDir, "package.json"),
-				[]byte(`{"name": "fake-lib", "version": "1.0.0", "main": "index.js"}`),
-				0644,
-			)).To(Succeed())
-
-			Expect(os.WriteFile(
-				filepath.Join(fakeLibDir, "index.js"),
-				[]byte(`
+`),
+					},
+				},
+				RuntimeDepsFiles: []*helmchart.File{
+					{
+						Name: "ts/node_modules/fake-lib/package.json",
+						Data: []byte(`{"name": "fake-lib", "version": "1.0.0", "main": "index.js"}`),
+					},
+					{
+						Name: "ts/node_modules/fake-lib/index.js",
+						Data: []byte(`
 module.exports.helper = function(name) {
 	return { apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: name + '-from-npm' } };
 };
-				`),
-				0644,
-			)).To(Succeed())
+`),
+					},
+				},
+			}
 
-			chart := &helmchart.Chart{Files: []*helmchart.File{}}
 			engine := NewEngine()
 			values := chartutil.Values{
 				"Release": map[string]interface{}{
@@ -573,7 +484,7 @@ module.exports.helper = function(name) {
 				},
 			}
 
-			renderedTemplates, err := engine.RenderFiles(ctx, chartPath, chart, values)
+			renderedTemplates, err := engine.RenderFiles(ctx, "", chart, values)
 			Expect(err).NotTo(HaveOccurred())
 
 			yaml := renderedTemplates[DefaultOutputFile]

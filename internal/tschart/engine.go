@@ -3,7 +3,6 @@ package tschart
 import (
 	"context"
 	"fmt"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -13,6 +12,16 @@ import (
 	"github.com/werf/nelm/pkg/log"
 	"sigs.k8s.io/yaml"
 )
+
+func mergeRuntimeFiles(runtimeFiles, runtimeDepsFiles []*helmchart.File) []*helmchart.File {
+	if len(runtimeDepsFiles) == 0 {
+		return runtimeFiles
+	}
+	merged := make([]*helmchart.File, 0, len(runtimeFiles)+len(runtimeDepsFiles))
+	merged = append(merged, runtimeFiles...)
+	merged = append(merged, runtimeDepsFiles...)
+	return merged
+}
 
 type Engine struct{}
 
@@ -157,66 +166,30 @@ func buildChartMetadata(chart *helmchart.Chart) map[string]interface{} {
 }
 
 func (e *Engine) RenderFiles(ctx context.Context, chartPath string, chart *helmchart.Chart, renderedValues chartutil.Values) (map[string]string, error) {
-	isLocalDir, err := isLocalDirectory(chartPath)
-	if err != nil {
-		return nil, fmt.Errorf("check if local directory: %w", err)
-	}
+	mergedFiles := mergeRuntimeFiles(chart.RuntimeFiles, chart.RuntimeDepsFiles)
 
 	var vendorBundle string
 	var packages []string
-	var appBundle string
 	var entrypoint string
 
-	if isLocalDir {
-		absChartPath, err := filepath.Abs(chartPath)
-		if err != nil {
-			return nil, fmt.Errorf("get absolute path: %w", err)
-		}
-		tsDir := filepath.Join(absChartPath, TSSourceDir)
-		if _, err := os.Stat(tsDir); err != nil {
-			if os.IsNotExist(err) {
-				return map[string]string{}, nil
-			}
-			return nil, fmt.Errorf("stat %s: %w", tsDir, err)
-		}
+	vendorBundle, packages, err := GetVendorBundleFromFiles(mergedFiles)
+	if err != nil {
+		return nil, fmt.Errorf("get vendor bundle: %w", err)
+	}
 
-		entrypoint, err = findEntrypoint(tsDir)
-		if err != nil {
-			return nil, fmt.Errorf("find entrypoint: %w", err)
-		}
-		if entrypoint == "" {
-			return map[string]string{}, nil
-		}
+	sourceFiles := ExtractSourceFiles(mergedFiles)
+	if len(sourceFiles) == 0 {
+		return map[string]string{}, nil
+	}
 
-		vendorBundle, packages, err = GetVendorBundleFromDir(ctx, chartPath)
-		if err != nil {
-			return nil, fmt.Errorf("get vendor bundle: %w", err)
-		}
+	entrypoint = findEntrypointFromFiles(sourceFiles)
+	if entrypoint == "" {
+		return map[string]string{}, nil
+	}
 
-		appBundle, err = BuildAppBundleFromDir(ctx, chartPath, packages)
-		if err != nil {
-			if strings.Contains(err.Error(), "no TypeScript entrypoint found") {
-				return map[string]string{}, nil
-			}
-			return nil, fmt.Errorf("build app bundle: %w", err)
-		}
-	} else {
-		vendorBundle, packages = GetVendorBundleFromFiles(chart.RuntimeFiles)
-
-		sourceFiles := ExtractSourceFiles(chart.RuntimeFiles)
-		if len(sourceFiles) == 0 {
-			return map[string]string{}, nil
-		}
-
-		entrypoint = findEntrypointFromFiles(sourceFiles)
-		if entrypoint == "" {
-			return map[string]string{}, nil
-		}
-
-		appBundle, err = BuildAppBundleFromChartFiles(ctx, chart.RuntimeFiles, packages)
-		if err != nil {
-			return nil, fmt.Errorf("build app bundle from chart files: %w", err)
-		}
+	appBundle, err := BuildAppBundleFromChartFiles(ctx, mergedFiles, packages)
+	if err != nil {
+		return nil, fmt.Errorf("build app bundle from chart files: %w", err)
 	}
 
 	renderContext := buildRenderContext(renderedValues, chart)
@@ -252,17 +225,6 @@ func findEntrypointFromFiles(sourceFiles map[string][]byte) string {
 		}
 	}
 	return ""
-}
-
-func isLocalDirectory(chartPath string) (bool, error) {
-	stat, err := os.Stat(chartPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, fmt.Errorf("stat %s: %w", chartPath, err)
-	}
-	return stat.IsDir(), nil
 }
 
 func buildRenderContext(renderedValues chartutil.Values, chart *helmchart.Chart) map[string]interface{} {
