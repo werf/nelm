@@ -443,8 +443,6 @@ func (t *Transformer) TransformChartDir(ctx context.Context, chartPath string) e
 	return nil
 }
 
-
-
 func GetVendorBundleFromDir(ctx context.Context, chartPath string) (string, []string, error) {
 	absChartPath, err := filepath.Abs(chartPath)
 	if err != nil {
