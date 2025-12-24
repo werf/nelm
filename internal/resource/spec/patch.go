@@ -3,6 +3,7 @@ package spec
 import (
 	"context"
 
+	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
@@ -100,12 +101,22 @@ func NewLegacyOnlyTrackJobsPatcher() *LegacyOnlyTrackJobsPatcher {
 }
 
 func (p *LegacyOnlyTrackJobsPatcher) Match(ctx context.Context, info *ResourcePatcherResourceInfo) (bool, error) {
+	annos := info.Obj.GetAnnotations()
+	if annos == nil {
+		return true, nil
+	}
+
+	if !lo.HasKey(annos, "helm.sh/hook") {
+		return true, nil
+	}
+
 	switch info.Obj.GetKind() {
 	case "Job", "Pod":
-		return false, nil
 	default:
 		return true, nil
 	}
+
+	return false, nil
 }
 
 func (p *LegacyOnlyTrackJobsPatcher) Patch(ctx context.Context, info *ResourcePatcherResourceInfo) (*unstructured.Unstructured, error) {
