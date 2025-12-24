@@ -14,9 +14,6 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// Used for tests. The actual output path is determined by the entrypoint found.
-const DefaultOutputFile = "ts/src/index.ts"
-
 type Engine struct{}
 
 func NewEngine() *Engine {
