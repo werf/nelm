@@ -608,7 +608,7 @@ func runBuildInstallableResourceInfoTest(tc buildInstallableResourceInfoTestCase
 
 		localRes, deployType, prevRelFailed := tc.input()
 
-		resInfos, err := plan.buildInstallableResourceInfo(context.Background(), localRes, deployType, s.releaseNamespace, prevRelFailed, true, s.clientFactory)
+		resInfos, err := plan.BuildInstallableResourceInfo(context.Background(), localRes, deployType, s.releaseNamespace, prevRelFailed, true, s.clientFactory)
 		s.Require().NoError(err)
 
 		expectResInfos := tc.expect(localRes)
@@ -631,7 +631,7 @@ func runBuildDeletableResourceInfoTest(tc buildDeletableResourceInfoTestCase, s 
 
 		localRes, deployType := tc.input()
 
-		resInfo, err := plan.buildDeletableResourceInfo(context.Background(), localRes, deployType, s.releaseName, s.releaseNamespace, s.clientFactory)
+		resInfo, err := plan.BuildDeletableResourceInfo(context.Background(), localRes, deployType, s.releaseName, s.releaseNamespace, s.clientFactory)
 		s.Require().NoError(err)
 
 		expectResInfo := tc.expect(localRes)

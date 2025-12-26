@@ -18,6 +18,7 @@ import (
 	"github.com/werf/3p-helm/pkg/chartutil"
 	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/3p-helm/pkg/releaseutil"
+	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/pkg/common"
 )
