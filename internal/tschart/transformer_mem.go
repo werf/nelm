@@ -181,29 +181,87 @@ func hasNodeModules(files []*helmchart.File) bool {
 	return false
 }
 
-func createVirtualFSPlugin(files map[string][]byte) esbuild.Plugin {
-	fileExists := func(path string) bool {
-		_, exists := files[path]
-		return exists
+// virtualFSResolver provides file resolution for virtual filesystem plugins.
+type virtualFSResolver struct {
+	files map[string][]byte
+}
+
+func newVirtualFSResolver(files map[string][]byte) *virtualFSResolver {
+	return &virtualFSResolver{files: files}
+}
+
+func (r *virtualFSResolver) exists(path string) bool {
+	_, exists := r.files[path]
+	return exists
+}
+
+func (r *virtualFSResolver) resolve(basePath string) string {
+	if r.exists(basePath) {
+		return basePath
+	}
+	for _, ext := range []string{".ts", ".tsx", ".js", ".jsx", ".json"} {
+		if r.exists(basePath + ext) {
+			return basePath + ext
+		}
+	}
+	for _, ext := range []string{".ts", ".js"} {
+		indexPath := filepath.Join(basePath, "index"+ext)
+		if r.exists(indexPath) {
+			return indexPath
+		}
+	}
+	return ""
+}
+
+func (r *virtualFSResolver) resolveNodeModule(pkgName string) string {
+	pkgPath := filepath.Join("node_modules", pkgName)
+
+	pkgJSONPath := filepath.Join(pkgPath, "package.json")
+	if pkgJSON, exists := r.files[pkgJSONPath]; exists {
+		var pkg struct {
+			Main    string      `json:"main"`
+			Module  string      `json:"module"`
+			Exports interface{} `json:"exports"`
+		}
+		if err := json.Unmarshal(pkgJSON, &pkg); err == nil {
+			if pkg.Main != "" {
+				mainPath := filepath.Join(pkgPath, pkg.Main)
+				if resolved := r.resolve(mainPath); resolved != "" {
+					return resolved
+				}
+			}
+			if pkg.Module != "" {
+				modulePath := filepath.Join(pkgPath, pkg.Module)
+				if resolved := r.resolve(modulePath); resolved != "" {
+					return resolved
+				}
+			}
+		}
 	}
 
-	tryResolve := func(basePath string) string {
-		if fileExists(basePath) {
-			return basePath
-		}
-		for _, ext := range []string{".ts", ".tsx", ".js", ".jsx", ".json"} {
-			if fileExists(basePath + ext) {
-				return basePath + ext
-			}
-		}
-		for _, ext := range []string{".ts", ".js"} {
-			indexPath := filepath.Join(basePath, "index"+ext)
-			if fileExists(indexPath) {
-				return indexPath
-			}
-		}
-		return ""
+	if resolved := r.resolve(pkgPath); resolved != "" {
+		return resolved
 	}
+
+	return ""
+}
+
+func (r *virtualFSResolver) load(path string) (esbuild.OnLoadResult, error) {
+	content, exists := r.files[path]
+	if !exists {
+		return esbuild.OnLoadResult{}, fmt.Errorf("file not found in virtual fs: %s", path)
+	}
+	contentStr := string(content)
+	loader := loaderFromPath(path)
+	return esbuild.OnLoadResult{
+		Contents:   &contentStr,
+		Loader:     loader,
+		ResolveDir: filepath.Dir(path),
+	}, nil
+}
+
+func createVirtualFSPlugin(files map[string][]byte) esbuild.Plugin {
+	r := newVirtualFSResolver(files)
 
 	return esbuild.Plugin{
 		Name: "virtual-fs",
@@ -211,7 +269,7 @@ func createVirtualFSPlugin(files map[string][]byte) esbuild.Plugin {
 			build.OnResolve(esbuild.OnResolveOptions{Filter: `.*`},
 				func(args esbuild.OnResolveArgs) (esbuild.OnResolveResult, error) {
 					if args.Importer == "" {
-						finalPath := tryResolve(args.Path)
+						finalPath := r.resolve(args.Path)
 						if finalPath != "" {
 							return esbuild.OnResolveResult{
 								Path:      finalPath,
@@ -239,7 +297,7 @@ func createVirtualFSPlugin(files map[string][]byte) esbuild.Plugin {
 
 					resolvedPath = strings.TrimPrefix(resolvedPath, "./")
 
-					finalPath := tryResolve(resolvedPath)
+					finalPath := r.resolve(resolvedPath)
 					if finalPath != "" {
 						return esbuild.OnResolveResult{
 							Path:      finalPath,
@@ -252,17 +310,7 @@ func createVirtualFSPlugin(files map[string][]byte) esbuild.Plugin {
 
 			build.OnLoad(esbuild.OnLoadOptions{Filter: `.*`, Namespace: "virtual"},
 				func(args esbuild.OnLoadArgs) (esbuild.OnLoadResult, error) {
-					content, exists := files[args.Path]
-					if !exists {
-						return esbuild.OnLoadResult{}, fmt.Errorf("file not found in virtual fs: %s", args.Path)
-					}
-					contentStr := string(content)
-					loader := loaderFromPath(args.Path)
-					return esbuild.OnLoadResult{
-						Contents:   &contentStr,
-						Loader:     loader,
-						ResolveDir: filepath.Dir(args.Path),
-					}, nil
+					return r.load(args.Path)
 				})
 		},
 	}
@@ -271,61 +319,7 @@ func createVirtualFSPlugin(files map[string][]byte) esbuild.Plugin {
 // createVirtualFSPluginWithNodeModules creates an esbuild plugin that resolves both
 // source files and node_modules from in-memory files map.
 func createVirtualFSPluginWithNodeModules(files map[string][]byte) esbuild.Plugin {
-	fileExists := func(path string) bool {
-		_, exists := files[path]
-		return exists
-	}
-
-	tryResolve := func(basePath string) string {
-		if fileExists(basePath) {
-			return basePath
-		}
-		for _, ext := range []string{".ts", ".tsx", ".js", ".jsx", ".json"} {
-			if fileExists(basePath + ext) {
-				return basePath + ext
-			}
-		}
-		for _, ext := range []string{".ts", ".js"} {
-			indexPath := filepath.Join(basePath, "index"+ext)
-			if fileExists(indexPath) {
-				return indexPath
-			}
-		}
-		return ""
-	}
-
-	resolveNodeModule := func(pkgName string) string {
-		pkgPath := filepath.Join("node_modules", pkgName)
-
-		pkgJSONPath := filepath.Join(pkgPath, "package.json")
-		if pkgJSON, exists := files[pkgJSONPath]; exists {
-			var pkg struct {
-				Main    string      `json:"main"`
-				Module  string      `json:"module"`
-				Exports interface{} `json:"exports"`
-			}
-			if err := json.Unmarshal(pkgJSON, &pkg); err == nil {
-				if pkg.Main != "" {
-					mainPath := filepath.Join(pkgPath, pkg.Main)
-					if resolved := tryResolve(mainPath); resolved != "" {
-						return resolved
-					}
-				}
-				if pkg.Module != "" {
-					modulePath := filepath.Join(pkgPath, pkg.Module)
-					if resolved := tryResolve(modulePath); resolved != "" {
-						return resolved
-					}
-				}
-			}
-		}
-
-		if resolved := tryResolve(pkgPath); resolved != "" {
-			return resolved
-		}
-
-		return ""
-	}
+	r := newVirtualFSResolver(files)
 
 	return esbuild.Plugin{
 		Name: "virtual-fs-with-node-modules",
@@ -333,7 +327,7 @@ func createVirtualFSPluginWithNodeModules(files map[string][]byte) esbuild.Plugi
 			build.OnResolve(esbuild.OnResolveOptions{Filter: `.*`},
 				func(args esbuild.OnResolveArgs) (esbuild.OnResolveResult, error) {
 					if args.Importer == "" {
-						finalPath := tryResolve(args.Path)
+						finalPath := r.resolve(args.Path)
 						if finalPath != "" {
 							return esbuild.OnResolveResult{
 								Path:      finalPath,
@@ -358,14 +352,14 @@ func createVirtualFSPluginWithNodeModules(files map[string][]byte) esbuild.Plugi
 
 						if len(parts) == 2 {
 							subPath := filepath.Join("node_modules", pkgName, parts[1])
-							if resolved := tryResolve(subPath); resolved != "" {
+							if resolved := r.resolve(subPath); resolved != "" {
 								return esbuild.OnResolveResult{
 									Path:      resolved,
 									Namespace: "virtual",
 								}, nil
 							}
 						} else {
-							if resolved := resolveNodeModule(pkgName); resolved != "" {
+							if resolved := r.resolveNodeModule(pkgName); resolved != "" {
 								return esbuild.OnResolveResult{
 									Path:      resolved,
 									Namespace: "virtual",
@@ -391,7 +385,7 @@ func createVirtualFSPluginWithNodeModules(files map[string][]byte) esbuild.Plugi
 
 					resolvedPath = strings.TrimPrefix(resolvedPath, "./")
 
-					finalPath := tryResolve(resolvedPath)
+					finalPath := r.resolve(resolvedPath)
 					if finalPath != "" {
 						return esbuild.OnResolveResult{
 							Path:      finalPath,
@@ -404,17 +398,7 @@ func createVirtualFSPluginWithNodeModules(files map[string][]byte) esbuild.Plugi
 
 			build.OnLoad(esbuild.OnLoadOptions{Filter: `.*`, Namespace: "virtual"},
 				func(args esbuild.OnLoadArgs) (esbuild.OnLoadResult, error) {
-					content, exists := files[args.Path]
-					if !exists {
-						return esbuild.OnLoadResult{}, fmt.Errorf("file not found in virtual fs: %s", args.Path)
-					}
-					contentStr := string(content)
-					loader := loaderFromPath(args.Path)
-					return esbuild.OnLoadResult{
-						Contents:   &contentStr,
-						Loader:     loader,
-						ResolveDir: filepath.Dir(args.Path),
-					}, nil
+					return r.load(args.Path)
 				})
 		},
 	}
