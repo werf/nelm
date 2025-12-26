@@ -8,16 +8,21 @@ import (
 	"github.com/werf/nelm/pkg/common"
 )
 
+// Represents a dependency on a Kubernetes resource in the Helm release.
 type InternalDependency struct {
 	*spec.ResourceMatcher
 
 	ResourceState common.ResourceState
 }
 
+// Represents a dependency on an external resource outside of the Helm release.
 type ExternalDependency struct {
 	*spec.ResourceMeta
 }
 
+// Automatically detects internal dependencies on resources by examining specific fields in the
+// resource spec. As an example, examining "envFrom" in a Pod container spec produces an internal
+// dependency on a ConfigMap or a Secret.
 func internalDependencies(unstruct *unstructured.Unstructured) []*InternalDependency {
 	gvk := unstruct.GroupVersionKind()
 	gk := gvk.GroupKind()

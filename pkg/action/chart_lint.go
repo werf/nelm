@@ -26,10 +26,7 @@ const (
 	DefaultChartLintLogLevel = log.InfoLevel
 )
 
-// ChartLintOptions contains all options for linting a Helm chart.
-// This operation validates chart structure, templates, and performs a dry-run deployment check.
 type ChartLintOptions struct {
-	// Embedded option groups for connection, chart repo, values, and secrets
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
 	common.ValuesOptions
@@ -130,6 +127,7 @@ type ChartLintOptions struct {
 	TemplatesAllowDNS bool
 }
 
+// Lint the Helm chart.
 func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	currentDir, err := os.Getwd()
 	if err != nil {

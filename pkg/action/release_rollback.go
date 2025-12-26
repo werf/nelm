@@ -91,6 +91,7 @@ type ReleaseRollbackOptions struct {
 	Timeout time.Duration
 }
 
+// Rolls back the Helm release to the specified revision.
 func ReleaseRollback(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseRollbackOptions) error {
 	ctx, ctxCancelFn := context.WithCancelCause(ctx)
 

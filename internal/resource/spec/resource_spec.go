@@ -13,6 +13,9 @@ import (
 	"github.com/werf/nelm/pkg/featgate"
 )
 
+// Contains all generic information about the resource, e.g. its name, namespace, GVK and its spec.
+// Enough to create or update resources, as well as delete, get, etc. Use it when ResourceMeta is
+// not enough and you also need the actual resource spec.
 type ResourceSpec struct {
 	*ResourceMeta
 
@@ -74,6 +77,8 @@ func (s *ResourceSpec) SetLabels(labels map[string]string) {
 	s.Labels = labels
 }
 
+// Transforms ResourceSpecs, which means specs can be added, deleted, expanded (like Lists). If you
+// just need to modify specs, use patchers in BuildReleasableResourceSpecs instead.
 func BuildTransformedResourceSpecs(ctx context.Context, releaseNamespace string, resources []*ResourceSpec, transformers []ResourceTransformer) ([]*ResourceSpec, error) {
 	transformedResources := resources
 	for _, transformer := range transformers {
@@ -111,6 +116,9 @@ func BuildTransformedResourceSpecs(ctx context.Context, releaseNamespace string,
 	return transformedResources, nil
 }
 
+// Patch ResourceSpecs to make them releasable, after which they can be saved into the Helm release.
+// Don't try to add/delete/expand specs here, use transformers in BuildTransformedResourceSpecs
+// instead.
 func BuildReleasableResourceSpecs(ctx context.Context, releaseNamespace string, transformedResources []*ResourceSpec, patchers []ResourcePatcher) ([]*ResourceSpec, error) {
 	var releasableResources []*ResourceSpec
 

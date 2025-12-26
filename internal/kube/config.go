@@ -13,6 +13,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
+// Abstracts all static configuration needed to create Kubernetes clients.
 type KubeConfig struct {
 	LegacyClientConfig clientcmd.ClientConfig
 	Namespace          string

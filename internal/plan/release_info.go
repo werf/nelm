@@ -10,15 +10,24 @@ import (
 type ReleaseType string
 
 const (
-	ReleaseTypeNone      ReleaseType = "none"
-	ReleaseTypeInstall   ReleaseType = "install"
-	ReleaseTypeUpgrade   ReleaseType = "upgrade"
-	ReleaseTypeRollback  ReleaseType = "rollback"
+	// No-op
+	ReleaseTypeNone ReleaseType = "none"
+	// First release revision is to be installed
+	ReleaseTypeInstall ReleaseType = "install"
+	// New release revision is to be installed as an upgrade over the previous one
+	ReleaseTypeUpgrade ReleaseType = "upgrade"
+	// New release revision is to be installed, based on one of the previous revisions
+	ReleaseTypeRollback ReleaseType = "rollback"
+	// One of the previous revisions is to be superseded by a successful release
 	ReleaseTypeSupersede ReleaseType = "supersede"
+	// Release is to be uninstalled as a whole, with its resources
 	ReleaseTypeUninstall ReleaseType = "uninstall"
-	ReleaseTypeDelete    ReleaseType = "delete"
+	// Release revision is to be dropped/deleted (its resources are untouched)
+	ReleaseTypeDelete ReleaseType = "delete"
 )
 
+// Data class, which stores all info to make a decision on what to do with the release revision
+// in the plan.
 type ReleaseInfo struct {
 	Release *helmrelease.Release
 
@@ -26,6 +35,10 @@ type ReleaseInfo struct {
 	MustFailOnFailedDeploy bool
 }
 
+// Build ReleaseInfos from Releases that we got from the cluster. Here we actually decide on what to
+// do with each release revision. Compute here as much as you can: Release shouldn't be used for
+// decision making (its just a JSON representation of a Helm release) and BuildPlan is complex
+// enough already.
 func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevReleases []*helmrelease.Release, newRel *helmrelease.Release) ([]*ReleaseInfo, error) {
 	var infos []*ReleaseInfo
 	switch deployType {

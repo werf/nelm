@@ -40,7 +40,6 @@ var (
 )
 
 type ReleasePlanInstallOptions struct {
-	// Embedded option groups for connection, values, and secrets
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
 	common.ValuesOptions
@@ -164,6 +163,7 @@ type ReleasePlanInstallOptions struct {
 	Timeout time.Duration
 }
 
+// Plans the next release installation without applying changes to the cluster.
 func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleasePlanInstallOptions) error {
 	ctx, ctxCancelFn := context.WithCancelCause(ctx)
 

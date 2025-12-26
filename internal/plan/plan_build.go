@@ -16,6 +16,11 @@ type BuildPlanOptions struct {
 	NoFinalTracking bool
 }
 
+// Builds any kind of a plan, be it for install, upgrade, rollback or uninstall. The only exception
+// is a failure plan (see BuildFailurePlan), because it's way too different. Any differences between
+// different kinds of plans must be figured out earlier, e.g. at BuildResourceInfos level. This
+// generic design must be preserved. Keep it simple: if something can be done on earlier stages, do
+// it there.
 func BuildPlan(installableInfos []*InstallableResourceInfo, deletableInfos []*DeletableResourceInfo, releaseInfos []*ReleaseInfo, opts BuildPlanOptions) (*Plan, error) {
 	plan := NewPlan()
 
@@ -54,6 +59,7 @@ type BuildFailurePlanOptions struct {
 	NoFinalTracking bool
 }
 
+// When the main plan fails, the failure plan must be built and executed.
 func BuildFailurePlan(failedPlan *Plan, installableInfos []*InstallableResourceInfo, releaseInfos []*ReleaseInfo, opts BuildFailurePlanOptions) (*Plan, error) {
 	plan := NewPlan()
 

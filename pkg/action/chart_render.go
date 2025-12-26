@@ -29,10 +29,7 @@ const (
 	DefaultChartRenderLogLevel = log.ErrorLevel
 )
 
-// ChartRenderOptions contains all options for rendering a Helm chart to Kubernetes manifests.
-// This operation generates YAML manifests from chart templates without applying them to a cluster.
 type ChartRenderOptions struct {
-	// Embedded option groups for connection, chart repo, values, and secrets
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
 	common.ValuesOptions
@@ -133,6 +130,7 @@ type ChartRenderOptions struct {
 	TemplatesAllowDNS bool
 }
 
+// Render the Helm chart.
 func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResultV2, error) {
 	currentDir, err := os.Getwd()
 	if err != nil {

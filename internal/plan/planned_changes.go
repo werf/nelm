@@ -31,14 +31,19 @@ type CalculatePlannedChangesOptions struct {
 }
 
 type ResourceChange struct {
+	// Any operations on the resource after the initial one.
 	ExtraOperations []string
-	Reason          string
-	ResourceMeta    *spec.ResourceMeta
-	Type            string
-	TypeStyle       color.Style
-	Udiff           string
+	// The reason for the change.
+	Reason       string
+	ResourceMeta *spec.ResourceMeta
+	Type         string
+	TypeStyle    color.Style
+	Udiff        string
 }
 
+// Calculate planned changes for informational purposes. Doesn't need the full plan, just having
+// Installable/DeletableResourceInfos is enough. Returns the structured result and shouldn't decide
+// on how to present this data.
 func CalculatePlannedChanges(installableInfos []*InstallableResourceInfo, deletableInfos []*DeletableResourceInfo, opts CalculatePlannedChangesOptions) ([]*ResourceChange, error) {
 	instInfosByIter := groupInstInfosByIter(installableInfos)
 

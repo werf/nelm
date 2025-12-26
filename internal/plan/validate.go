@@ -9,6 +9,7 @@ import (
 	"github.com/werf/nelm/pkg/common"
 )
 
+// Should only be called if cluster access is allowed.
 func ValidateRemote(releaseName, releaseNamespace string, installableResourceInfos []*InstallableResourceInfo, forceAdoption bool) error {
 	if !forceAdoption {
 		if err := validateAdoptableResources(releaseName, releaseNamespace, installableResourceInfos); err != nil {

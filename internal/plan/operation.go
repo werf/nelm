@@ -8,10 +8,14 @@ import (
 type OperationCategory string
 
 const (
-	OperationCategoryMeta     OperationCategory = "meta"
+	// Does nothing. Used for things like  grouping.
+	OperationCategoryMeta OperationCategory = "meta"
+	// Operations that mutate Kubernetes resources in the cluster.
 	OperationCategoryResource OperationCategory = "resource"
-	OperationCategoryTrack    OperationCategory = "track"
-	OperationCategoryRelease  OperationCategory = "release"
+	// Operations that track resources in the cluster. Never mutate anything.
+	OperationCategoryTrack OperationCategory = "track"
+	// Operations that mutate Helm releases in the cluster.
+	OperationCategoryRelease OperationCategory = "release"
 )
 
 type OperationType string
@@ -31,6 +35,7 @@ const (
 	OperationTypeUpdateRelease  OperationType = "update-release"
 )
 
+// Used to handle breaking changes in the Operation struct.
 type OperationVersion int
 
 const (
@@ -57,8 +62,14 @@ const (
 	OperationStatusFailed    OperationStatus = "failed"
 )
 
+// Helps to avoid operation ID collisions. Since you can't have two operations with the same ID in
+// the graph, you can increment the iteration to get a new unique ID for the operation. The higher
+// the iteration, the later in the plan/graph the operation should appear.
 type OperationIteration int
 
+// Represents an operation on a resource, such as create, update, track readiness, etc. The
+// operation ID must be unique: you can't have two operations with the same ID in the plan/graph.
+// Operation must be easily serializable.
 type Operation struct {
 	Type      OperationType
 	Version   OperationVersion

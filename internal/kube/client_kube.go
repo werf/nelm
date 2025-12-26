@@ -31,6 +31,9 @@ type KubeClienter interface {
 	Delete(ctx context.Context, meta *spec.ResourceMeta, opts KubeClientDeleteOptions) error
 }
 
+// High-level Kubernetes Client. Always prefer using it instead of static/dynamic Kubernetes
+// go-client directly. Provides caching, which works as long as there is no other client or other
+// program modifying Kubernetes resources that we work with through this client.
 type KubeClient struct {
 	staticClient    kubernetes.Interface
 	dynamicClient   dynamic.Interface

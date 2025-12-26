@@ -11,7 +11,8 @@ import (
 
 var (
 	FeatGateEnvVarsPrefix = caps.ToScreamingSnake(common.Brand) + "_FEAT_"
-	FeatGates             = []*FeatGate{}
+	// Contains all defined feature gates.
+	FeatGates = []*FeatGate{}
 
 	FeatGateRemoteCharts = NewFeatGate(
 		"remote-charts",
@@ -54,6 +55,8 @@ var (
 	)
 )
 
+// A feature gate, which enabled/disables a specific feature. Can be toggled via an env var or
+// programmatically.
 type FeatGate struct {
 	Name string
 	Help string

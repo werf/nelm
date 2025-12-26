@@ -32,6 +32,8 @@ type ClientFactorier interface {
 	KubeConfig() *KubeConfig
 }
 
+// Constructs all Kubernetes clients you may possibly need and makes it easy to pass them all
+// around.
 type ClientFactory struct {
 	discoveryClient    discovery.CachedDiscoveryInterface
 	dynamicClient      dynamic.Interface

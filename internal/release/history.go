@@ -25,6 +25,7 @@ type Historier interface {
 	DeleteRelease(ctx context.Context, name string, revision int) error
 }
 
+// Wraps Helm release management for easier use.
 type History struct {
 	releaseName string
 	releases    []*helmrelease.Release
@@ -135,6 +136,7 @@ func (h *History) DeleteRelease(ctx context.Context, name string, revision int) 
 	return nil
 }
 
+// Builds histories for multiple different releases.
 func BuildHistories(historyStorage ReleaseStorager, opts HistoryOptions) ([]*History, error) {
 	rels, err := historyStorage.Query(map[string]string{"owner": "helm"})
 	if err != nil && err != driver.ErrReleaseNotFound {
@@ -171,6 +173,7 @@ func BuildHistories(historyStorage ReleaseStorager, opts HistoryOptions) ([]*His
 	return histories, nil
 }
 
+// Builds history for a specific release.
 func BuildHistory(releaseName string, historyStorage ReleaseStorager, opts HistoryOptions) (*History, error) {
 	rels, err := historyStorage.Query(map[string]string{"name": releaseName, "owner": "helm"})
 	if err != nil && err != driver.ErrReleaseNotFound {

@@ -30,7 +30,8 @@ const (
 	ResourceInstallTypeCreate   ResourceInstallType = "create"
 	ResourceInstallTypeRecreate ResourceInstallType = "recreate"
 	ResourceInstallTypeUpdate   ResourceInstallType = "update"
-	ResourceInstallTypeApply    ResourceInstallType = "apply"
+	// When we can't figure out whether to create or update the resource, we blindly apply it
+	ResourceInstallTypeApply ResourceInstallType = "apply"
 )
 
 var OrderedResourceInstallTypes = []ResourceInstallType{
@@ -48,6 +49,8 @@ func ResourceInstallTypeSortHandler(type1, type2 ResourceInstallType) bool {
 	return type1I < type2I
 }
 
+// A data class, which stores all info to make a decision on what to do with the to-be-installed
+// resource in the plan.
 type InstallableResourceInfo struct {
 	*spec.ResourceMeta
 
@@ -66,6 +69,8 @@ type InstallableResourceInfo struct {
 	Iteration                      int
 }
 
+// A data class, which stores all info to make a decision on what to do with the to-be-deleted
+// resource in the plan.
 type DeletableResourceInfo struct {
 	*spec.ResourceMeta
 
@@ -83,6 +88,10 @@ type BuildResourceInfosOptions struct {
 	NoRemoveManualChanges bool
 }
 
+// From Installable/DeletableResource builds Installable/DeletableResourceInfo. If you can do
+// something earlier than in BuildReleaseInfos - do it there. Here you can access the cluster to get
+// more info, and here we actually decide what to do with each resource. Initially all this logic
+// was in BuildPlan, but it became way too complex, so we extracted it here.
 func BuildResourceInfos(ctx context.Context, deployType common.DeployType, releaseName, releaseNamespace string, instResources []*resource.InstallableResource, delResources []*resource.DeletableResource, prevReleaseFailed bool, clientFactory kube.ClientFactorier, opts BuildResourceInfosOptions) (instResourceInfos []*InstallableResourceInfo, delResourceInfos []*DeletableResourceInfo, err error) {
 	totalResourcesCount := len(instResources) + len(delResources)
 
@@ -91,7 +100,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 	instResourcesPool := pool.NewWithResults[[]*InstallableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range instResources {
 		instResourcesPool.Go(func(ctx context.Context) ([]*InstallableResourceInfo, error) {
-			infos, err := BuildInstallableResourceInfo(ctx, res, deployType, releaseNamespace, prevReleaseFailed, opts.NoRemoveManualChanges, clientFactory)
+			infos, err := buildInstallableResourceInfo(ctx, res, deployType, releaseNamespace, prevReleaseFailed, opts.NoRemoveManualChanges, clientFactory)
 			if err != nil {
 				return nil, fmt.Errorf("build installable resource info: %w", err)
 			}
@@ -105,7 +114,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 	delResourcesPool := pool.NewWithResults[*DeletableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range delResources {
 		delResourcesPool.Go(func(ctx context.Context) (*DeletableResourceInfo, error) {
-			info, err := BuildDeletableResourceInfo(ctx, res, deployType, releaseName, releaseNamespace, clientFactory)
+			info, err := buildDeletableResourceInfo(ctx, res, deployType, releaseName, releaseNamespace, clientFactory)
 			if err != nil {
 				return nil, fmt.Errorf("build deletable resource info: %w", err)
 			}
@@ -145,7 +154,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 }
 
 // TODO(v2): keep annotation should probably forbid resource recreations
-func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed, noRemoveManualChanges bool, clientFactory kube.ClientFactorier) ([]*InstallableResourceInfo, error) {
+func buildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed, noRemoveManualChanges bool, clientFactory kube.ClientFactorier) ([]*InstallableResourceInfo, error) {
 	var stages []common.Stage
 	switch deployType {
 	case common.DeployTypeInitial, common.DeployTypeInstall:
@@ -228,7 +237,7 @@ func BuildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 	}), nil
 }
 
-func BuildDeletableResourceInfo(ctx context.Context, localRes *resource.DeletableResource, deployType common.DeployType, releaseName, releaseNamespace string, clientFactory kube.ClientFactorier) (*DeletableResourceInfo, error) {
+func buildDeletableResourceInfo(ctx context.Context, localRes *resource.DeletableResource, deployType common.DeployType, releaseName, releaseNamespace string, clientFactory kube.ClientFactorier) (*DeletableResourceInfo, error) {
 	var stage common.Stage
 	if deployType == common.DeployTypeUninstall {
 		stage = common.StageUninstall

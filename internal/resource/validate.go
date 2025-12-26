@@ -9,6 +9,7 @@ import (
 	"github.com/werf/nelm/internal/resource/spec"
 )
 
+// Can be called even without cluster access.
 func ValidateLocal(releaseNamespace string, transformedResources []*InstallableResource) error {
 	if err := validateNoDuplicates(releaseNamespace, transformedResources); err != nil {
 		return fmt.Errorf("validate for no duplicated resources: %w", err)

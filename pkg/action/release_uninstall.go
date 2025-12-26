@@ -74,6 +74,7 @@ type ReleaseUninstallOptions struct {
 	UninstallReportPath string
 }
 
+// Uninstall the Helm release along with its resources from the cluster.
 func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseUninstallOptions) error {
 	ctx, ctxCancelFn := context.WithCancelCause(ctx)
 

@@ -26,6 +26,9 @@ var (
 	_ OperationConfig = (*OperationConfigUpdateRelease)(nil)
 )
 
+// Any config that is needed to execute the operation goes here, as long as it doesn't fit into
+// other fields of the Operation struct. The underlying struct can have any number of fields of any
+// kind, just make sure they are easily serializable.
 type OperationConfig interface {
 	ID() string
 	IDHuman() string

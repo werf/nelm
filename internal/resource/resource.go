@@ -17,6 +17,9 @@ import (
 	"github.com/werf/nelm/pkg/common"
 )
 
+// Represent a Kubernetes resource that can be installed. Higher level than ResourceSpec, but lower
+// level than InstallableResourceInfo. If something can be computed on this level instead of doing
+// this on higher levels, it's better to do it here.
 type InstallableResource struct {
 	*spec.ResourceSpec
 
@@ -54,6 +57,8 @@ type InstallableResourceOptions struct {
 	DefaultDeletePropagation metav1.DeletionPropagation
 }
 
+// Construct an InstallableResource from a ResourceSpec. Must never contact the cluster, because
+// this is called even when no cluster access allowed.
 func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, clientFactory kube.ClientFactorier, opts InstallableResourceOptions) (*InstallableResource, error) {
 	if err := validateHook(res.ResourceMeta); err != nil {
 		return nil, fmt.Errorf("validate hook configuration: %w", err)
@@ -146,6 +151,9 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 	}, nil
 }
 
+// Represent a Kubernetes resource that can be deleted. Higher level than ResourceMeta, but lower
+// level than DeletableResourceInfo. If something can be computed on this level instead of doing
+// this on higher levels, it's better to do it here.
 type DeletableResource struct {
 	*spec.ResourceMeta
 
@@ -158,6 +166,8 @@ type DeletableResourceOptions struct {
 	DefaultDeletePropagation metav1.DeletionPropagation
 }
 
+// Construct a DeletableResource from a ResourceSpec. Must never contact the cluster, because
+// this is called even when no cluster access allowed.
 func NewDeletableResource(spec *spec.ResourceSpec, releaseNamespace string, opts DeletableResourceOptions) *DeletableResource {
 	var keep bool
 	if err := ValidateResourcePolicy(spec.ResourceMeta); err != nil {
@@ -193,6 +203,9 @@ type BuildResourcesOptions struct {
 	DefaultDeletePropagation metav1.DeletionPropagation
 }
 
+// Build Installable/DeletableResources from ResourceSpecs. Resulting Resources can be used to
+// construct Installable/DeletableResourceInfos later. Must never contact the cluster, because this
+// is called even when no cluster access allowed.
 func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRelResSpecs, newRelResSpecs []*spec.ResourceSpec, patchers []spec.ResourcePatcher, clientFactory kube.ClientFactorier, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
 	var prevRelDelResources []*DeletableResource
 	for _, resSpec := range prevRelResSpecs {

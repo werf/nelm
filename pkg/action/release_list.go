@@ -57,6 +57,7 @@ type ReleaseListOptions struct {
 	TempDirPath string
 }
 
+// Lists Helm releases from the cluster.
 func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResultV1, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {

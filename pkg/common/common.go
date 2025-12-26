@@ -16,29 +16,34 @@ import (
 )
 
 var (
+	// Use it whenever possible (e.g. in --help output) to refer to the product name, so it can be
+	// easily white-labeled in forks.
 	Brand   = "Nelm"
 	Version = "0.0.0"
 )
 
 const (
-	DefaultBurstLimit              = 100
-	DefaultChartProvenanceStrategy = "never" // TODO(v2): switch to if-possible
-	DefaultDeletePropagation       = metav1.DeletePropagationForeground
-	DefaultDiffContextLines        = 3
-	DefaultFieldManager            = "helm"
-	DefaultLocalKubeVersion        = "1.20.0"
-	DefaultLogColorMode            = log.LogColorModeAuto
-	DefaultNetworkParallelism      = 30
-	DefaultProgressPrintInterval   = 5 * time.Second
-	DefaultQPSLimit                = 30
-	DefaultReleaseHistoryLimit     = 10
-	KubectlEditFieldManager        = "kubectl-edit"
-	OldFieldManagerPrefix          = "werf"
-	StageEndSuffix                 = "end"
-	StagePrefix                    = "stage"
-	StageStartSuffix               = "start"
-	StubReleaseName                = "stub-release"
-	StubReleaseNamespace           = "stub-namespace"
+	DefaultBurstLimit = 100
+	// TODO(v2): switch to if-possible
+	DefaultChartProvenanceStrategy = "never"
+	// TODO(v2): reconsider?
+	DefaultDeletePropagation = metav1.DeletePropagationForeground
+	DefaultDiffContextLines  = 3
+	DefaultFieldManager      = "helm"
+	// TODO(v2): update to a more recent version? Not sure about backwards compatibility.
+	DefaultLocalKubeVersion      = "1.20.0"
+	DefaultLogColorMode          = log.LogColorModeAuto
+	DefaultNetworkParallelism    = 30
+	DefaultProgressPrintInterval = 5 * time.Second
+	DefaultQPSLimit              = 30
+	DefaultReleaseHistoryLimit   = 10
+	KubectlEditFieldManager      = "kubectl-edit"
+	OldFieldManagerPrefix        = "werf"
+	StageEndSuffix               = "end"
+	StagePrefix                  = "stage"
+	StageStartSuffix             = "start"
+	StubReleaseName              = "stub-release"
+	StubReleaseNamespace         = "stub-namespace"
 )
 
 const (
@@ -57,36 +62,52 @@ const (
 	ReleaseStorageDriverSecrets    = "secrets"
 )
 
+// Type of the current operation.
 type DeployType string
 
 const (
-	// Activated for the first revision of the release.
+	// Installing revision number 1 of the release always considered "Initial".
 	DeployTypeInitial DeployType = "Initial"
-	// Activated when no successful revision found. But for the very first revision
-	// DeployTypeInitial is used instead.
+	// FIXME(ilya-lesikov): looks like Install type can be used again when a lot of releases failed
+	//  and Nelm cleaned up older revision, so only failed revisions remain.
+	// Revision number > 1 with no successful revisions between revision 1 and the last revision
+	// results in install.
 	DeployTypeInstall DeployType = "Install"
-	// Activated when a successful revision found.
-	DeployTypeUpgrade   DeployType = "Upgrade"
-	DeployTypeRollback  DeployType = "Rollback"
+	// If any successful revision found in history, then the current operation is upgrade.
+	DeployTypeUpgrade DeployType = "Upgrade"
+	// If current operation is release rollback.
+	DeployTypeRollback DeployType = "Rollback"
+	// If current operation is release uninstall.
 	DeployTypeUninstall DeployType = "Uninstall"
 )
 
+// Configures resource deletions during deployment of this resource.
 type DeletePolicy string
 
 const (
-	DeletePolicySucceeded                 DeletePolicy = "succeeded"
-	DeletePolicyFailed                    DeletePolicy = "failed"
-	DeletePolicyBeforeCreation            DeletePolicy = "before-creation"
+	// Delete the resource after it is successfully deployed.
+	DeletePolicySucceeded DeletePolicy = "succeeded"
+	// Delete the resource after it fails to be deployed.
+	DeletePolicyFailed DeletePolicy = "failed"
+	// Delete the resource before deploying it. Basically means "recreate the resource" instead of
+	// updating it.
+	DeletePolicyBeforeCreation DeletePolicy = "before-creation"
+	// If during resource update we got an immutable error, then recreate the resource instead of
+	// updating it.
 	DeletePolicyBeforeCreationIfImmutable DeletePolicy = "before-creation-if-immutable"
 )
 
+// Resource ownership.
 type Ownership string
 
 const (
-	OwnershipAnyone  Ownership = "anyone"
+	// The resource is owned by anyone (e.g. not tied to the release).
+	OwnershipAnyone Ownership = "anyone"
+	// The resource is owned by a single release.
 	OwnershipRelease Ownership = "release"
 )
 
+// A sequential stage of the plan.
 type Stage string
 
 const (
@@ -130,16 +151,23 @@ func SubStageWeighted(stage Stage, weight int) Stage {
 	return Stage(fmt.Sprintf("%s/weight:%d", stage, weight))
 }
 
+// On which action type the resource should be rendered for the deployment.
 type On string
 
 const (
-	InstallOnInstall  On = "install"
-	InstallOnUpgrade  On = "upgrade"
+	// Render resource on release installation.
+	InstallOnInstall On = "install"
+	// Render resource on release upgrade.
+	InstallOnUpgrade On = "upgrade"
+	// Render resource on release rollback.
 	InstallOnRollback On = "rollback"
-	InstallOnDelete   On = "delete"
-	InstallOnTest     On = "test"
+	// Render resource on release uninstall.
+	InstallOnDelete On = "delete"
+	// Render resource on release test.
+	InstallOnTest On = "test"
 )
 
+// The state of the resource in the cluster.
 type ResourceState string
 
 const (
@@ -148,6 +176,7 @@ const (
 	ResourceStateReady   ResourceState = "ready"
 )
 
+// How the resource should be stored in the Helm release.
 type StoreAs string
 
 const (
