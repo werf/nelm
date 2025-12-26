@@ -16,6 +16,7 @@ import (
 
 var _ ReleaseStorager = (*helmstorage.Storage)(nil)
 
+// Minimal interface for Helm storage drivers.
 type ReleaseStorager interface {
 	Create(rls *helmrelease.Release) error
 	Update(rls *helmrelease.Release) error
@@ -28,6 +29,7 @@ type ReleaseStorageOptions struct {
 	SQLConnection string
 }
 
+// Constructs Helm release storage driver.
 func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, clientFactory kube.ClientFactorier, opts ReleaseStorageOptions) (*helmstorage.Storage, error) {
 	var storage *helmstorage.Storage
 

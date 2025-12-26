@@ -28,6 +28,10 @@ type ExecutePlanOptions struct {
 	NetworkParallelism int
 }
 
+// Executes the given plan. It doesn't care what kind of plan it is (install, upgrade, failure plan,
+// etc.). All the differences between these plans must be figured out earlier, e.g. in BuildPlan.
+// This generic design must be preserved. Keep it simple: if something can be done on earlier
+// stages, do it there.
 func ExecutePlan(parentCtx context.Context, releaseNamespace string, plan *Plan, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history release.Historier, clientFactory kube.ClientFactorier, opts ExecutePlanOptions) error {
 	ctx, ctxCancelFn := context.WithCancelCause(parentCtx)
 	defer ctxCancelFn(fmt.Errorf("context canceled: plan execution finished"))

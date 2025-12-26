@@ -19,6 +19,8 @@ type CleanUnstructOptions struct {
 	CleanWerfIoRuntimeAnnos bool
 }
 
+// Clean an Unstructured object from things like managed fields, non-deterministic runtime data,
+// etc, for diffing, hashing, human-friendly output and so on.
 func CleanUnstruct(unstruct *unstructured.Unstructured, opts CleanUnstructOptions) *unstructured.Unstructured {
 	unstructCopy := unstruct.DeepCopy()
 

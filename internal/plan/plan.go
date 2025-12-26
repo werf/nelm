@@ -13,6 +13,7 @@ import (
 	"github.com/werf/nelm/pkg/common"
 )
 
+// Wrapper over dominikbraun/graph to make it easier to use as a plan/graph of operations.
 type Plan struct {
 	Graph graph.Graph[string, *Operation]
 }

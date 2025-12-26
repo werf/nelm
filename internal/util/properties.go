@@ -19,6 +19,8 @@ const (
 	doubleQuoteRune = '"'
 )
 
+// This is a pretty well-thought-out properties parser using a finite state machine (FSM). We should
+// use it more, especially in annotations.
 func ParseProperties(ctx context.Context, input string) (map[string]any, error) {
 	result := make(map[string]any)
 

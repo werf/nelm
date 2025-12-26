@@ -59,6 +59,7 @@ type ReleaseGetOptions struct {
 	TempDirPath string
 }
 
+// Retrieves detailed information about the Helm release from the cluster.
 func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseGetOptions) (*ReleaseGetResultV1, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {

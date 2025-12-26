@@ -28,6 +28,7 @@ type ReleaseOptions struct {
 	Notes           string
 }
 
+// Construct Helm release.
 func NewRelease(name, namespace string, revision int, deployType common.DeployType, resources []*spec.ResourceSpec, chart *helmchart.Chart, releaseConfig map[string]interface{}, opts ReleaseOptions) (*helmrelease.Release, error) {
 	if err := chartutil.ValidateReleaseName(name); err != nil {
 		return nil, fmt.Errorf("release name %q is not valid: %w", name, err)
@@ -111,6 +112,8 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 	}, nil
 }
 
+// Check if the new Release is up-to-date compared to the old Release. It doesn't check any
+// resources of the release in the cluster, just compares Release objects.
 func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 	if oldRel == nil {
 		return false, nil
@@ -197,6 +200,7 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 	return true, nil
 }
 
+// Constructs ResourceSpecs from a Release object.
 func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string, noCleanNullFields bool /* TODO(v2): get rid */) ([]*spec.ResourceSpec, error) {
 	var resources []*spec.ResourceSpec
 	for _, manifest := range releaseutil.SplitManifestsToSlice(rel.UnstoredManifest) {

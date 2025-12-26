@@ -10,6 +10,9 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 )
 
+// Contains basic information about a Kubernetes resource, without its full spec. Very useful for
+// getting, deleting, tracking resources, when you don't care about the resource spec (or when it's
+// not available). If also the resource spec is needed, use ResourceSpec.
 type ResourceMeta struct {
 	Name             string
 	Namespace        string
@@ -65,6 +68,7 @@ func NewResourceMetaFromManifest(manifest, releaseNamespace string) (*ResourceMe
 	return NewResourceMetaFromPartialMetadata(obj.(*v1.PartialObjectMetadata), releaseNamespace, filePath), nil
 }
 
+// Uniquely identifies the resource.
 func (m *ResourceMeta) ID() string {
 	return ID(m.Name, m.Namespace, m.GroupVersionKind.Group, m.GroupVersionKind.Kind)
 }

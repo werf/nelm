@@ -20,6 +20,8 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
+// Prints progress tables at regular intervals. Progress tables include resource statuses, container
+// logs and Kubernetes events.
 type ProgressTablesPrinter struct {
 	ctxCancelFn   context.CancelCauseFunc
 	finishedCh    chan struct{}

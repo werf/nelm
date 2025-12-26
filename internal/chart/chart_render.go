@@ -60,6 +60,8 @@ type RenderChartResult struct {
 	Values        map[string]interface{}
 }
 
+// Download chart and its dependencies, build and merge values, then render templates. Most of the
+// logic is in Helm SDK, in Nelm its mostly orchestration level.
 func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, registryClient *registry.Client, clientFactory kube.ClientFactorier, opts RenderChartOptions) (*RenderChartResult, error) {
 	chartPath, err := downloadChart(ctx, chartPath, registryClient, opts)
 	if err != nil {

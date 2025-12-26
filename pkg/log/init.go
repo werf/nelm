@@ -30,6 +30,7 @@ type SetupLoggingOptions struct {
 	LogIsParseable bool
 }
 
+// Sets up logging levels, colors, output formats, etc.
 func SetupLogging(ctx context.Context, logLevel Level, opts SetupLoggingOptions) context.Context {
 	if val := ctx.Value(LogboekLoggerCtxKeyName); val == nil {
 		ctx = logboek.NewContext(ctx, logboek.DefaultLogger())
