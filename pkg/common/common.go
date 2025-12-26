@@ -68,8 +68,6 @@ type DeployType string
 const (
 	// Installing revision number 1 of the release always considered "Initial".
 	DeployTypeInitial DeployType = "Initial"
-	// FIXME(ilya-lesikov): looks like Install type can be used again when a lot of releases failed
-	//  and Nelm cleaned up older revision, so only failed revisions remain.
 	// Revision number > 1 with no successful revisions between revision 1 and the last revision
 	// results in install.
 	DeployTypeInstall DeployType = "Install"
