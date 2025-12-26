@@ -72,6 +72,12 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
 	srcDir := filepath.Join(tsDir, "src")
 	typesDir := filepath.Join(tsDir, "types")
 
+	if _, err := os.Stat(tsDir); err == nil {
+		return fmt.Errorf("TypeScript directory already exists: %s", tsDir)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat %s: %w", tsDir, err)
+	}
+
 	files := []struct {
 		path    string
 		content string

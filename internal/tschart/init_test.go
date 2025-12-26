@@ -148,15 +148,14 @@ var _ = Describe("Init", func() {
 		})
 
 
-		It("should fail if ts/ files already exist", func() {
+		It("should fail if ts/ directory already exists", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")
-			tsDir := filepath.Join(chartPath, "ts", "src")
+			tsDir := filepath.Join(chartPath, "ts")
 			Expect(os.MkdirAll(tsDir, 0755)).To(Succeed())
-			Expect(os.WriteFile(filepath.Join(tsDir, "index.ts"), []byte("old content"), 0644)).To(Succeed())
 
 			err := InitTSBoilerplate(ctx, chartPath, "test-chart")
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("TypeScript file already exists"))
+			Expect(err.Error()).To(ContainSubstring("TypeScript directory already exists"))
 		})
 	})
 
