@@ -97,6 +97,10 @@ func scopeValuesForSubchart(parentValues chartutil.Values, subchartName string, 
 		scoped["Release"] = release
 	}
 
+	if runtime, ok := parentValues["Runtime"]; ok {
+		scoped["Runtime"] = runtime
+	}
+
 	scoped["Chart"] = buildChartMetadata(subchart)
 
 	if parentVals, ok := parentValues["Values"]; ok {
