@@ -1,0 +1,30 @@
+{
+  "name": "@nelm/types",
+  "version": "0.1.0",
+  "description": "TypeScript type definitions for Nelm charts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "nelm",
+    "helm",
+    "kubernetes",
+    "types",
+    "typescript"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/werf/nelm.git",
+    "directory": "ts/nelm-types"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

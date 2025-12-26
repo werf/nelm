@@ -40,9 +40,6 @@ var _ = Describe("Init", func() {
 			Expect(filepath.Join(chartPath, "ts", "src", "deployment.ts")).To(BeARegularFile())
 			Expect(filepath.Join(chartPath, "ts", "src", "service.ts")).To(BeARegularFile())
 
-			// Check ts/types/ files
-			Expect(filepath.Join(chartPath, "ts", "types", "nelm.d.ts")).To(BeARegularFile())
-
 			// Check ts/ root files
 			Expect(filepath.Join(chartPath, "ts", "tsconfig.json")).To(BeARegularFile())
 			Expect(filepath.Join(chartPath, "ts", "package.json")).To(BeARegularFile())
@@ -57,7 +54,6 @@ var _ = Describe("Init", func() {
 
 			Expect(filepath.Join(chartPath, "ts")).To(BeADirectory())
 			Expect(filepath.Join(chartPath, "ts", "src")).To(BeADirectory())
-			Expect(filepath.Join(chartPath, "ts", "types")).To(BeADirectory())
 		})
 
 		It("should substitute chart name in package.json", func() {
@@ -117,19 +113,16 @@ var _ = Describe("Init", func() {
 			Expect(string(serviceContent)).To(ContainSubstring("export function newService"))
 		})
 
-		It("should include type definitions in nelm.d.ts", func() {
+		It("should include @nelm/types dependency in package.json", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")
 			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
 
 			err := InitTSBoilerplate(ctx, chartPath, "test-chart")
 			Expect(err).NotTo(HaveOccurred())
 
-			content, err := os.ReadFile(filepath.Join(chartPath, "ts", "types", "nelm.d.ts"))
+			content, err := os.ReadFile(filepath.Join(chartPath, "ts", "package.json"))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(string(content)).To(ContainSubstring("export interface RenderContext"))
-			Expect(string(content)).To(ContainSubstring("export interface Release"))
-			Expect(string(content)).To(ContainSubstring("export interface ChartMetadata"))
-			Expect(string(content)).To(ContainSubstring("export interface RenderResult"))
+			Expect(string(content)).To(ContainSubstring(`"@nelm/types"`))
 		})
 
 		It("should include correct tsconfig.json options", func() {

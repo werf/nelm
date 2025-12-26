@@ -70,7 +70,6 @@ func InitChartStructure(ctx context.Context, chartPath, chartName string) error 
 func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
 	tsDir := filepath.Join(chartPath, TSSourceDir)
 	srcDir := filepath.Join(tsDir, "src")
-	typesDir := filepath.Join(tsDir, "types")
 
 	if _, err := os.Stat(tsDir); err == nil {
 		return fmt.Errorf("TypeScript directory already exists: %s", tsDir)
@@ -86,15 +85,12 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
 		{filepath.Join(srcDir, "helpers.ts"), generateHelpersTS()},
 		{filepath.Join(srcDir, "deployment.ts"), generateDeploymentTS()},
 		{filepath.Join(srcDir, "service.ts"), generateServiceTS()},
-		{filepath.Join(typesDir, "nelm.d.ts"), generateNelmDTS()},
 		{filepath.Join(tsDir, "tsconfig.json"), generateTSConfig()},
 		{filepath.Join(tsDir, "package.json"), generatePackageJSON(chartName)},
 	}
 
-	for _, dir := range []string{srcDir, typesDir} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("create directory %s: %w", dir, err)
-		}
+	if err := os.MkdirAll(srcDir, 0755); err != nil {
+		return fmt.Errorf("create directory %s: %w", srcDir, err)
 	}
 
 	for _, f := range files {
@@ -174,7 +170,7 @@ func EnsureGitignore(chartPath string) error {
 }
 
 func generateIndexTS() string {
-	return `import { RenderContext, RenderResult } from '../types/nelm';
+	return `import { RenderContext, RenderResult } from '@nelm/types';
 import { newDeployment } from './deployment';
 import { newService } from './service';
 
@@ -193,7 +189,7 @@ export function render($: RenderContext): RenderResult {
 }
 
 func generateHelpersTS() string {
-	return `import { RenderContext } from '../types/nelm';
+	return `import { RenderContext } from '@nelm/types';
 
 /**
  * Truncate string to max length, removing trailing hyphens.
@@ -238,7 +234,7 @@ export function getSelectorLabels($: RenderContext): Record<string, string> {
 }
 
 func generateDeploymentTS() string {
-	return `import { RenderContext } from '../types/nelm';
+	return `import { RenderContext } from '@nelm/types';
 import { getFullname, getLabels, getSelectorLabels } from './helpers';
 
 export function newDeployment($: RenderContext): object {
@@ -282,7 +278,7 @@ export function newDeployment($: RenderContext): object {
 }
 
 func generateServiceTS() string {
-	return `import { RenderContext } from '../types/nelm';
+	return `import { RenderContext } from '@nelm/types';
 import { getFullname, getLabels, getSelectorLabels } from './helpers';
 
 export function newService($: RenderContext): object {
@@ -304,73 +300,6 @@ export function newService($: RenderContext): object {
       selector: getSelectorLabels($),
     },
   };
-}
-`
-}
-
-func generateNelmDTS() string {
-	return `export interface RenderContext {
-  Values: Record<string, any>;
-  Release: Release;
-  Chart: ChartMetadata;
-  Capabilities: Capabilities;
-  Runtime: Record<string, any>;
-  Files: Record<string, Uint8Array>;
-}
-
-export interface Release {
-  Name: string;
-  Namespace: string;
-  Revision: number;
-  IsInstall: boolean;
-  IsUpgrade: boolean;
-  Service: string;
-}
-
-export interface ChartMetadata {
-  Name: string;
-  Version: string;
-  AppVersion: string;
-  Description: string;
-  Home: string;
-  Icon: string;
-  APIVersion: string;
-  Condition: string;
-  Tags: string;
-  Type: string;
-  Keywords: string[];
-  Sources: string[];
-  Maintainers: Maintainer[];
-  Annotations: Record<string, string>;
-}
-
-export interface Maintainer {
-  Name: string;
-  Email: string;
-  URL: string;
-}
-
-export interface Capabilities {
-  APIVersions: string[];
-  KubeVersion: KubeVersion;
-  HelmVersion: HelmVersion;
-}
-
-export interface KubeVersion {
-  Version: string;
-  Major: string;
-  Minor: string;
-}
-
-export interface HelmVersion {
-  Version: string;
-  GitCommit: string;
-  GitTreeState: string;
-  GoVersion: string;
-}
-
-export interface RenderResult {
-  manifests: object[] | null;
 }
 `
 }
@@ -415,6 +344,9 @@ func generatePackageJSON(chartName string) string {
     "chart"
   ],
   "license": "Apache-2.0",
+  "dependencies": {
+    "@nelm/types": "^0.1.0"
+  },
   "devDependencies": {
     "typescript": "^5.0.0"
   }
