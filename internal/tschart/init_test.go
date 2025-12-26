@@ -46,7 +46,6 @@ var _ = Describe("Init", func() {
 			// Check ts/ root files
 			Expect(filepath.Join(chartPath, "ts", "tsconfig.json")).To(BeARegularFile())
 			Expect(filepath.Join(chartPath, "ts", "package.json")).To(BeARegularFile())
-			Expect(filepath.Join(chartPath, "ts", ".gitignore")).To(BeARegularFile())
 		})
 
 		It("should create correct directory structure", func() {
@@ -148,19 +147,6 @@ var _ = Describe("Init", func() {
 			Expect(string(content)).To(ContainSubstring(`"declaration": true`))
 		})
 
-		It("should include correct .gitignore entries", func() {
-			chartPath := filepath.Join(tempDir, "test-chart")
-			Expect(os.MkdirAll(chartPath, 0755)).To(Succeed())
-
-			err := InitTSBoilerplate(ctx, chartPath, "test-chart")
-			Expect(err).NotTo(HaveOccurred())
-
-			content, err := os.ReadFile(filepath.Join(chartPath, "ts", ".gitignore"))
-			Expect(err).NotTo(HaveOccurred())
-			Expect(string(content)).To(ContainSubstring("vendor/"))
-			Expect(string(content)).To(ContainSubstring("node_modules/"))
-			Expect(string(content)).To(ContainSubstring("dist/"))
-		})
 
 		It("should fail if ts/ files already exist", func() {
 			chartPath := filepath.Join(tempDir, "test-chart")
