@@ -115,8 +115,6 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		return nil, fmt.Errorf("load chart at %q: %w", chartPath, err)
 	}
 
-
-
 	if err := validateChart(ctx, chart); err != nil {
 		return nil, fmt.Errorf("validate chart at %q: %w", chartPath, err)
 	}
@@ -209,7 +207,6 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	if err != nil {
 		return nil, fmt.Errorf("render resources for chart %q: %w", chart.Name(), err)
 	}
-
 
 	if featgate.FeatGateTypescript.Enabled() {
 		jsRenderedTemplates, err := renderJSTemplates(ctx, originalChartPath, chart, renderedValues)
