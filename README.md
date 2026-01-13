@@ -82,8 +82,6 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
 - [More documentation](#more-documentation)
 - [Limitations](#limitations)
 - [Contributing](#contributing)
-- [Development](#development)
-- [Architecture](#architecture)
 - [Future plans](#future-plans)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -867,24 +865,7 @@ For documentation on regular Helm features, see [Helm docs](https://helm.sh/docs
 
 ## Contributing
 
-For any significant change, open the issue first (or comment on an existing one) to discuss with the maintainers on what to do and how. When the solution is agreed upon, you can proceed with implementation and open a pull request.
-
-For small changes, such as few lines bugfixes or documentation improvements, feel free to open a pull request directly.
-
-For easy first issues, check the [good first issue](https://github.com/werf/nelm/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22) tag.
-
-## Development
-
-1. Install Go: https://go.dev/doc/install
-1. Install Task: https://taskfile.dev/docs/installation
-1. Run `task build` to build the `bin/nelm` binary.
-1. Run `task -l` to see all available tasks.
-
-It is recommended to run `task` with no arguments regularly, especially before committing. This will run all essential checks, i.e. build, lint, format, quick tests, and others.
-
-## Architecture
-
-For architectural overview, see [ARCHITECTURE.md](ARCHITECTURE.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Future plans
 
