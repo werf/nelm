@@ -1,5 +1,3 @@
-# AGENTS.md
-
 ## Project Context
 
 This repository contains Nelm.
