@@ -3,6 +3,7 @@ package plan
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sort"
 
 	"github.com/goccy/go-yaml"
@@ -181,6 +182,27 @@ func buildDelChanges(delInfos []*DeletableResourceInfo, opts CalculatePlannedCha
 	return changes, nil
 }
 
+func hasChangedSensitiveInfo(resMeta *spec.ResourceMeta, oldUndsruct, newUnstruct *unstructured.Unstructured) bool {
+	if resMeta.GroupVersionKind.GroupKind().Kind != "Secret" {
+		return false
+	}
+
+	hasChanged := lo.SomeBy([]string{"data", "stringData"}, func(dataKey string) bool {
+		var oldData, newData map[string]interface{}
+
+		if oldUndsruct != nil {
+			oldData, _, _ = unstructured.NestedMap(oldUndsruct.Object, dataKey)
+		}
+		if newUnstruct != nil {
+			newData, _, _ = unstructured.NestedMap(newUnstruct.Object, dataKey)
+		}
+
+		return !reflect.DeepEqual(oldData, newData)
+	})
+
+	return hasChanged
+}
+
 func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *unstructured.Unstructured, deleteAfter bool, opType string, opTypeStyle color.Style, opts CalculatePlannedChangesOptions) (*ResourceChange, error) {
 	sensitiveInfo := resource.GetSensitiveInfo(resMeta.GroupVersionKind.GroupKind(), resMeta.Annotations)
 
@@ -189,7 +211,7 @@ func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *u
 		!opts.ShowVerboseCRDDiffs &&
 		(oldUnstruct == nil || newUnstruct == nil) {
 		uDiff = HiddenVerboseCRDChanges
-	} else if sensitiveInfo.FullySensitive() && !opts.ShowSensitiveDiffs {
+	} else if sensitiveInfo.FullySensitive() && !opts.ShowSensitiveDiffs && hasChangedSensitiveInfo(resMeta, oldUnstruct, newUnstruct) {
 		uDiff = HiddenSensitiveChanges
 	} else if !opts.ShowVerboseDiffs && (oldUnstruct == nil || newUnstruct == nil) {
 		uDiff = HiddenVerboseChanges
