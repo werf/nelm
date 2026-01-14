@@ -69,6 +69,7 @@ Examples of branch names:
 * Prefer functions over methods.
 * Prefer public fields over getters/setters.
 * Keep everything private/internal as much as possible.
+* Validate early, validate a lot.
 * Keep APIs stupid and minimal.
 * Avoid global state.
 * For complex things use libraries instead of reinventing the wheel.
