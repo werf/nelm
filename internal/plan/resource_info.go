@@ -6,11 +6,13 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/pkg/errors"
 	"github.com/samber/lo"
 	"github.com/sourcegraph/conc/pool"
 	"github.com/wI2L/jsondiff"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/json"
 
@@ -201,7 +203,7 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 
 	var err error
 
-	getObj, err = fixManagedFieldsInCluster(ctx, releaseNamespace, getObj, localRes.ResourceMeta, noRemoveManualChanges, clientFactory)
+	getObj, err = fixManagedFieldsInCluster(ctx, releaseNamespace, getObj, localRes, noRemoveManualChanges, clientFactory)
 	if err != nil {
 		return nil, fmt.Errorf("fix managed fields for resource %q: %w", localRes.IDHuman(), err)
 	}
@@ -483,9 +485,9 @@ func stageDeleteOnSuccessfulInstall(shouldDelete bool, installStg common.Stage) 
 	}
 }
 
-func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, getObj *unstructured.Unstructured, meta *spec.ResourceMeta, noRemoveManualChanges bool, clientFactory kube.ClientFactorier) (*unstructured.Unstructured, error) {
-	if changed, err := fixManagedFields(getObj, noRemoveManualChanges); err != nil {
-		return nil, fmt.Errorf("fix managed fields for resource %q: %w", meta.IDHuman(), err)
+func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, getObj *unstructured.Unstructured, localRes *resource.InstallableResource, noRemoveManualChanges bool, clientFactory kube.ClientFactorier) (*unstructured.Unstructured, error) {
+	if changed, err := fixManagedFields(getObj, localRes, noRemoveManualChanges); err != nil {
+		return nil, fmt.Errorf("fix managed fields for resource %q: %w", localRes.ResourceMeta.IDHuman(), err)
 	} else if !changed {
 		return getObj, nil
 	}
@@ -495,12 +497,12 @@ func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, get
 
 	patch, err := json.Marshal(unstruct.UnstructuredContent())
 	if err != nil {
-		return nil, fmt.Errorf("marshal fixed managed fields for resource %q: %w", meta.IDHuman(), err)
+		return nil, fmt.Errorf("marshal fixed managed fields for resource %q: %w", localRes.ResourceMeta.IDHuman(), err)
 	}
 
-	log.Default.Debug(ctx, "Fixing managed fields for resource %q", meta.IDHuman())
+	log.Default.Debug(ctx, "Fixing managed fields for resource %q", localRes.ResourceMeta.IDHuman())
 
-	patchedObj, err := clientFactory.KubeClient().MergePatch(ctx, meta, patch, kube.KubeClientMergePatchOptions{
+	patchedObj, err := clientFactory.KubeClient().MergePatch(ctx, localRes.ResourceMeta, patch, kube.KubeClientMergePatchOptions{
 		DefaultNamespace: releaseNamespace,
 	})
 	if err != nil {
@@ -514,7 +516,7 @@ func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, get
 	return patchedObj, nil
 }
 
-func fixManagedFields(unstruct *unstructured.Unstructured, noRemoveManualChanges bool) (changed bool, err error) {
+func fixManagedFields(unstruct *unstructured.Unstructured, localRes *resource.InstallableResource, noRemoveManualChanges bool) (changed bool, err error) {
 	managedFields := unstruct.GetManagedFields()
 	if len(managedFields) == 0 {
 		return false, nil
@@ -534,6 +536,16 @@ func fixManagedFields(unstruct *unstructured.Unstructured, noRemoveManualChanges
 			FieldsType: "FieldsV1",
 			FieldsV1:   &v1.FieldsV1{Raw: []byte("{}")},
 		}
+	}
+
+	if lo.Must(isServiceAccountManagedFieldFixRequired(localRes.Unstruct, &oursEntry)) {
+		err = fixServiceAccountManagedFields(&oursEntry,
+			getManagedFieldPathFromSpecPath(getServiceAccountSpecSubPath(localRes.Unstruct.GroupVersionKind())))
+		if err != nil {
+			return false, fmt.Errorf("cannot fix service account managed fields: %w", err)
+		}
+
+		changed = true
 	}
 
 	var fixedManagedFields []v1.ManagedFieldsEntry
@@ -560,6 +572,138 @@ func fixManagedFields(unstruct *unstructured.Unstructured, noRemoveManualChanges
 	}
 
 	return changed, nil
+}
+
+func getManagedFieldPathFromSpecPath(subPath []string) []string {
+	if len(subPath) == 0 {
+		return subPath
+	}
+
+	path := make([]string, len(subPath))
+
+	for i := 0; i < len(subPath); i++ {
+		path[i] = "f:" + subPath[i]
+	}
+
+	return path
+}
+
+func isServiceAccountFieldManaged(entry v1.ManagedFieldsEntry, subPath []string) (bool, error) {
+	var fieldsV1 map[string]interface{}
+
+	if err := json.Unmarshal(entry.FieldsV1.Raw, &fieldsV1); err != nil {
+		return false, fmt.Errorf("failed to unmarshal managed field: %w", err)
+	}
+
+	for _, v := range []string{"f:serviceAccount", "f:serviceAccountName"} {
+		_, found, err := unstructured.NestedFieldNoCopy(fieldsV1, append(subPath, v)...)
+		if err != nil {
+			return false, fmt.Errorf("cannot check if %q field is managed: %w", v, err)
+		}
+
+		if found {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func getServiceAccountSpecSubPath(gvk schema.GroupVersionKind) []string {
+	var path []string
+
+	switch gvk.Group {
+	case "":
+		if gvk.Kind == "Pod" {
+			path = []string{"spec"}
+		}
+	case "apps":
+		switch gvk.Kind {
+		case "Deployment", "StatefulSet", "DaemonSet":
+			path = []string{"spec", "template", "spec"}
+		}
+	case "batch":
+		switch gvk.Kind {
+		case "CronJob":
+			path = []string{"spec", "jobTemplate", "spec", "template", "spec"}
+		case "Job":
+			path = []string{"spec", "template", "spec"}
+		}
+	}
+
+	return path
+}
+
+func isServiceAccountManagedFieldFixRequired(localRes *unstructured.Unstructured, entry *v1.ManagedFieldsEntry) (bool, error) {
+	gvk := localRes.GroupVersionKind()
+
+	if gvk.Empty() {
+		return false, nil
+	}
+
+	path := getServiceAccountSpecSubPath(gvk)
+
+	if len(path) == 0 {
+		return false, nil
+	}
+
+	ok, err := isServiceAccountFieldManaged(*entry, getManagedFieldPathFromSpecPath(path))
+	if err != nil {
+		return false, fmt.Errorf("failed to check if service account field managed: %w", err)
+	}
+
+	if !ok {
+		return false, nil
+	}
+
+	found, err := findServiceAccountRefBySubPath(localRes.Object, path)
+	if err != nil {
+		return found, err
+	}
+
+	return !found, nil
+}
+
+func findServiceAccountRefBySubPath(data map[string]interface{}, subPath []string) (bool, error) {
+	for _, v := range []string{"serviceAccount", "serviceAccountName"} {
+		value, found, err := unstructured.NestedFieldNoCopy(data, append(subPath, v)...)
+		if err != nil {
+			return false, fmt.Errorf("cannot check if %q param exists: %w", v, err)
+		}
+
+		if found {
+			_, ok := value.(string)
+			if !ok {
+				return false, errors.New("service account reference is not a string")
+			}
+
+			return ok, nil
+		}
+	}
+
+	return false, nil
+}
+
+func fixServiceAccountManagedFields(entry *v1.ManagedFieldsEntry, subPath []string) error {
+	unstruct := unstructured.Unstructured{}
+
+	if err := json.Unmarshal(entry.FieldsV1.Raw, &unstruct.Object); err != nil {
+		return fmt.Errorf("failed to unmarshal managed field: %w", err)
+	}
+
+	for _, v := range []string{"f:serviceAccount", "f:serviceAccountName"} {
+		err := unstructured.SetNestedField(unstruct.Object, make(map[string]interface{}), append(subPath, v)...)
+		if err != nil {
+			return err
+		}
+	}
+
+	updatedEntryRaw, err := json.Marshal(unstruct.Object)
+	if err != nil {
+		return fmt.Errorf("failed to marshal managed field: %w", err)
+	}
+
+	return entry.FieldsV1.UnmarshalJSON(updatedEntryRaw)
 }
 
 func differentSubresourceManagers(managedFields []v1.ManagedFieldsEntry, oursEntry v1.ManagedFieldsEntry) (newManagedFields []v1.ManagedFieldsEntry) {
