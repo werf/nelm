@@ -193,6 +193,7 @@ func hasChangedSensitiveInfo(resMeta *spec.ResourceMeta, oldUndsruct, newUnstruc
 		if oldUndsruct != nil {
 			oldData, _, _ = unstructured.NestedMap(oldUndsruct.Object, dataKey)
 		}
+
 		if newUnstruct != nil {
 			newData, _, _ = unstructured.NestedMap(newUnstruct.Object, dataKey)
 		}
