@@ -182,16 +182,12 @@ func buildDelChanges(delInfos []*DeletableResourceInfo, opts CalculatePlannedCha
 	return changes, nil
 }
 
-func hasChangedSensitiveInfo(resMeta *spec.ResourceMeta, oldUndsruct, newUnstruct *unstructured.Unstructured) bool {
-	if resMeta.GroupVersionKind.GroupKind().Kind != "Secret" {
-		return false
-	}
-
+func hasChangedSensitiveInfo(oldUnstruct, newUnstruct *unstructured.Unstructured) bool {
 	hasChanged := lo.SomeBy([]string{"data", "stringData"}, func(dataKey string) bool {
 		var oldData, newData map[string]interface{}
 
-		if oldUndsruct != nil {
-			oldData, _, _ = unstructured.NestedMap(oldUndsruct.Object, dataKey)
+		if oldUnstruct != nil {
+			oldData, _, _ = unstructured.NestedMap(oldUnstruct.Object, dataKey)
 		}
 
 		if newUnstruct != nil {
@@ -212,7 +208,7 @@ func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *u
 		!opts.ShowVerboseCRDDiffs &&
 		(oldUnstruct == nil || newUnstruct == nil) {
 		uDiff = HiddenVerboseCRDChanges
-	} else if sensitiveInfo.FullySensitive() && !opts.ShowSensitiveDiffs && hasChangedSensitiveInfo(resMeta, oldUnstruct, newUnstruct) {
+	} else if sensitiveInfo.FullySensitive() && !opts.ShowSensitiveDiffs && hasChangedSensitiveInfo(oldUnstruct, newUnstruct) {
 		uDiff = HiddenSensitiveChanges
 	} else if !opts.ShowVerboseDiffs && (oldUnstruct == nil || newUnstruct == nil) {
 		uDiff = HiddenVerboseChanges
