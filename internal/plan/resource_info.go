@@ -538,7 +538,12 @@ func fixManagedFields(unstruct *unstructured.Unstructured, localRes *resource.In
 		}
 	}
 
-	if lo.Must(isServiceAccountManagedFieldFixRequired(localRes.Unstruct, &oursEntry)) {
+	required, err := isServiceAccountManagedFieldFixRequired(localRes.Unstruct, &oursEntry)
+	if err != nil {
+		return false, fmt.Errorf("cannot check if service account managed field fix is required: %w", err)
+	}
+
+	if required {
 		err = fixServiceAccountManagedFields(&oursEntry,
 			getManagedFieldPathFromSpecPath(getServiceAccountSpecSubPath(localRes.Unstruct.GroupVersionKind())))
 		if err != nil {
