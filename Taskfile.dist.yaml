@@ -252,7 +252,7 @@ tasks:
   format:prettier:yaml:
     desc: "Format yaml files with prettier."
     cmds:
-      - docker run --rm -v $(pwd):/work tmknom/prettier -w "**/*.yaml" "**/*.yml"
+      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work tmknom/prettier -w "**/*.yaml" "**/*.yml"
 
   generate:
     desc: 'Run all generators. Important vars: "paths".'
@@ -297,7 +297,7 @@ tasks:
   lint:prettier:yaml:
     desc: "Check if yaml files are prettier-formatted."
     cmds:
-      - docker run --rm -v $(pwd):/work tmknom/prettier -c "**/*.yaml" "**/*.yml"
+      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work tmknom/prettier -c "**/*.yaml" "**/*.yml"
 
   github:dispatch:nelm:
     desc: 'Manually dispatch specified GitHub workflow. Important vars: "eventType", "githubToken".'
