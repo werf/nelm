@@ -72,6 +72,7 @@ Examples of branch names:
 * Validate early, validate a lot.
 * Keep APIs stupid and minimal.
 * Avoid global state.
+* Prefer simplicity over micro-optimizations.
 * For complex things use libraries instead of reinventing the wheel.
 
 ## Style guidelines
@@ -100,6 +101,8 @@ Constants:
 Errors:
 * Always wrap errors with additional context using `fmt.Errorf("...: %w", err)`.
 * On programmer errors prefer panics, e.g. on an unexpected case in a switch.
+* Do one-line `if err := myfunc(); err != nil` wherever possible.
+* When wrapping errors with fmt.Errorf, describe what is being done, not what failed, e.g. `fmt.Errorf("reading config file: %w", err)` instead of `fmt.Errorf("cannot read config file: %w", err)`.
 
 Concurrency:
 * Instead of raw mutexes use the transactional `Concurrent{}` helper.
