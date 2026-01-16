@@ -252,18 +252,29 @@ tasks:
   format:prettier:yaml:
     desc: "Format yaml files with prettier."
     cmds:
-      - docker run --rm -v $(pwd):/work tmknom/prettier -w "**/*.yaml" "**/*.yml"
+      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work tmknom/prettier -w "**/*.yaml" "**/*.yml"
 
   generate:
     desc: 'Run all generators. Important vars: "paths".'
     run: once
-    cmds:
-      - task: generate:doctoc
+    deps:
+      - generate:doctoc
 
   generate:doctoc:
     desc: "Generate Tables of Contents in Markdown files."
     cmds:
       - docker run --rm -v "$(pwd)":/work peterdavehello/npm-doctoc doctoc --update-only /work
+
+  generate:ai-context:
+    desc: "Generate AI context bundle for better repo awareness."
+    cmds:
+      - rm .ai/context.md
+      - printf "# AI context bundle\n\nThis is rebuilt on every commit to main, so might not reflect uncommited changes or changes in branches.\n\n## Repository file tree\n\n" >> .ai/context.md
+      - tree --gitignore --dirsfirst --noreport >> .ai/context.md
+      - printf "\n\n## Imports\n\nImports for each package in the repository. Output of go list command.\n\n" >> .ai/context.md
+      - go list -f '{{ printf "{{ .ImportPath }} -> {{ join .Imports \" \" }}" }}' ./... >> .ai/context.md
+      - printf "\n\n## Symbols\n\nAll public symbols of this repository, per package. With docs, if present. Output of go doc command.\n\n" >> .ai/context.md
+      - go list ./... | xargs -I {} sh -c 'printf "### Package\n\n~~~~\n"; go doc -all "{}" | grep -vE "^\s*\s//\s"; printf "~~~~\n\n"' >> .ai/context.md
 
   lint:
     desc: 'Run all linters in parallel. Important vars: "paths".'
@@ -286,7 +297,7 @@ tasks:
   lint:prettier:yaml:
     desc: "Check if yaml files are prettier-formatted."
     cmds:
-      - docker run --rm -v $(pwd):/work tmknom/prettier -c "**/*.yaml" "**/*.yml"
+      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work tmknom/prettier -c "**/*.yaml" "**/*.yml"
 
   github:dispatch:nelm:
     desc: 'Manually dispatch specified GitHub workflow. Important vars: "eventType", "githubToken".'
