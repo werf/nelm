@@ -155,6 +155,7 @@ func (p *SecretStringDataPatcher) Patch(ctx context.Context, info *ResourcePatch
 			byteValue := []byte(val.(string))
 			data[key] = base64.StdEncoding.EncodeToString(byteValue)
 		}
+
 		delete(unstructObject, "stringData")
 	}
 
