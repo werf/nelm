@@ -2,6 +2,7 @@ package spec
 
 import (
 	"context"
+	"encoding/base64"
 
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -14,6 +15,7 @@ var (
 	_ ResourcePatcher = (*ExtraMetadataPatcher)(nil)
 	_ ResourcePatcher = (*ReleaseMetadataPatcher)(nil)
 	_ ResourcePatcher = (*LegacyOnlyTrackJobsPatcher)(nil)
+	_ ResourcePatcher = (*SecretStringDataPatcher)(nil)
 )
 
 type ResourcePatcher interface {
@@ -30,9 +32,10 @@ type ResourcePatcherResourceInfo struct {
 type ResourcePatcherType string
 
 const (
-	TypeExtraMetadataPatcher   ResourcePatcherType = "extra-metadata-patcher"
-	TypeReleaseMetadataPatcher ResourcePatcherType = "release-metadata-patcher"
-	TypeOnlyTrackJobsPatcher   ResourcePatcherType = "only-track-jobs-patcher"
+	TypeExtraMetadataPatcher    ResourcePatcherType = "extra-metadata-patcher"
+	TypeReleaseMetadataPatcher  ResourcePatcherType = "release-metadata-patcher"
+	TypeOnlyTrackJobsPatcher    ResourcePatcherType = "only-track-jobs-patcher"
+	TypeSecretStringDataPatcher ResourcePatcherType = "secret-string-data-patcher"
 )
 
 type ExtraMetadataPatcher struct {
@@ -132,3 +135,30 @@ func (p *LegacyOnlyTrackJobsPatcher) Patch(ctx context.Context, info *ResourcePa
 func (p *LegacyOnlyTrackJobsPatcher) Type() ResourcePatcherType {
 	return TypeOnlyTrackJobsPatcher
 }
+
+type SecretStringDataPatcher struct{}
+
+func NewSecretStringDataPatcher() *SecretStringDataPatcher {
+	return &SecretStringDataPatcher{}
+}
+
+func (p *SecretStringDataPatcher) Match(ctx context.Context, info *ResourcePatcherResourceInfo) (bool, error) {
+	return info.Obj.GetKind() == "Secret", nil
+}
+
+func (p *SecretStringDataPatcher) Patch(ctx context.Context, info *ResourcePatcherResourceInfo) (*unstructured.Unstructured, error) {
+	unstructObject := info.Obj.UnstructuredContent()
+
+	if stringData, ok := unstructObject["stringData"].(map[string]interface{}); ok {
+		data := unstructObject["data"].(map[string]interface{})
+		for key, val := range stringData {
+			byteValue := []byte(val.(string))
+			data[key] = base64.StdEncoding.EncodeToString(byteValue)
+		}
+		delete(unstructObject, "stringData")
+	}
+
+	return info.Obj, nil
+}
+
+func (p *SecretStringDataPatcher) Type() ResourcePatcherType { return TypeSecretStringDataPatcher }

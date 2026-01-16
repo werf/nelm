@@ -286,6 +286,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
 		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+		spec.NewSecretStringDataPatcher(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build releasable resource specs: %w", err)

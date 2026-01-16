@@ -355,6 +355,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	patchers := []spec.ResourcePatcher{
 		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+		spec.NewSecretStringDataPatcher(),
 	}
 
 	if opts.LegacyHelmCompatibleTracking {

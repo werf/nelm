@@ -288,6 +288,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
 		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+		spec.NewSecretStringDataPatcher(),
 	})
 	if err != nil {
 		return fmt.Errorf("build releasable resource specs: %w", err)
