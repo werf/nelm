@@ -355,6 +355,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	patchers := []spec.ResourcePatcher{
 		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+		spec.NewSecretStringDataPatcher(),
 	}
 
 	if opts.LegacyHelmCompatibleTracking {
@@ -762,6 +763,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	patchers := []spec.ResourcePatcher{
 		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+		spec.NewSecretStringDataPatcher(),
 	}
 
 	if opts.LegacyHelmCompatibleTracking {

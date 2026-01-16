@@ -2,9 +2,12 @@ package spec
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 	"github.com/werf/nelm/pkg/common"
@@ -14,6 +17,7 @@ var (
 	_ ResourcePatcher = (*ExtraMetadataPatcher)(nil)
 	_ ResourcePatcher = (*ReleaseMetadataPatcher)(nil)
 	_ ResourcePatcher = (*LegacyOnlyTrackJobsPatcher)(nil)
+	_ ResourcePatcher = (*SecretStringDataPatcher)(nil)
 )
 
 type ResourcePatcher interface {
@@ -30,9 +34,10 @@ type ResourcePatcherResourceInfo struct {
 type ResourcePatcherType string
 
 const (
-	TypeExtraMetadataPatcher   ResourcePatcherType = "extra-metadata-patcher"
-	TypeReleaseMetadataPatcher ResourcePatcherType = "release-metadata-patcher"
-	TypeOnlyTrackJobsPatcher   ResourcePatcherType = "only-track-jobs-patcher"
+	TypeExtraMetadataPatcher    ResourcePatcherType = "extra-metadata-patcher"
+	TypeReleaseMetadataPatcher  ResourcePatcherType = "release-metadata-patcher"
+	TypeOnlyTrackJobsPatcher    ResourcePatcherType = "only-track-jobs-patcher"
+	TypeSecretStringDataPatcher ResourcePatcherType = "secret-string-data-patcher"
 )
 
 type ExtraMetadataPatcher struct {
@@ -132,3 +137,50 @@ func (p *LegacyOnlyTrackJobsPatcher) Patch(ctx context.Context, info *ResourcePa
 func (p *LegacyOnlyTrackJobsPatcher) Type() ResourcePatcherType {
 	return TypeOnlyTrackJobsPatcher
 }
+
+type SecretStringDataPatcher struct{}
+
+func NewSecretStringDataPatcher() *SecretStringDataPatcher {
+	return &SecretStringDataPatcher{}
+}
+
+func (p *SecretStringDataPatcher) Match(ctx context.Context, info *ResourcePatcherResourceInfo) (bool, error) {
+	return info.Obj.GroupVersionKind().GroupKind() == schema.GroupKind{Group: "", Kind: "Secret"}, nil
+}
+
+func (p *SecretStringDataPatcher) Patch(ctx context.Context, info *ResourcePatcherResourceInfo) (*unstructured.Unstructured, error) {
+	unstructuredContent := info.Obj.UnstructuredContent()
+
+	stringData, found, err := unstructured.NestedStringMap(unstructuredContent, "stringData")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stringData from secret: %w", err)
+	}
+
+	if !found {
+		return info.Obj, nil
+	}
+
+	data, found, err := unstructured.NestedStringMap(unstructuredContent, "data")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get data from secret: %w", err)
+	}
+
+	if !found {
+		data = map[string]string{}
+	}
+
+	for key, val := range stringData {
+		data[key] = base64.StdEncoding.EncodeToString([]byte(val))
+	}
+
+	err = unstructured.SetNestedStringMap(unstructuredContent, data, "data")
+	if err != nil {
+		return nil, err
+	}
+
+	unstructured.RemoveNestedField(unstructuredContent, "stringData")
+
+	return info.Obj, nil
+}
+
+func (p *SecretStringDataPatcher) Type() ResourcePatcherType { return TypeSecretStringDataPatcher }
