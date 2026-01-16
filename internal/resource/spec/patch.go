@@ -3,9 +3,11 @@ package spec
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 	"github.com/werf/nelm/pkg/common"
@@ -143,21 +145,40 @@ func NewSecretStringDataPatcher() *SecretStringDataPatcher {
 }
 
 func (p *SecretStringDataPatcher) Match(ctx context.Context, info *ResourcePatcherResourceInfo) (bool, error) {
-	return info.Obj.GetKind() == "Secret", nil
+	return info.Obj.GroupVersionKind().GroupKind() == schema.GroupKind{Group: "", Kind: "Secret"}, nil
 }
 
 func (p *SecretStringDataPatcher) Patch(ctx context.Context, info *ResourcePatcherResourceInfo) (*unstructured.Unstructured, error) {
-	unstructObject := info.Obj.UnstructuredContent()
+	unstructuredContent := info.Obj.UnstructuredContent()
 
-	if stringData, ok := unstructObject["stringData"].(map[string]interface{}); ok {
-		data := unstructObject["data"].(map[string]interface{})
-		for key, val := range stringData {
-			byteValue := []byte(val.(string))
-			data[key] = base64.StdEncoding.EncodeToString(byteValue)
-		}
-
-		delete(unstructObject, "stringData")
+	stringData, found, err := unstructured.NestedStringMap(unstructuredContent, "stringData")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stringData from secret: %w", err)
 	}
+
+	if !found {
+		return info.Obj, nil
+	}
+
+	data, found, err := unstructured.NestedStringMap(unstructuredContent, "data")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get data from secret: %w", err)
+	}
+
+	if !found {
+		data = map[string]string{}
+	}
+
+	for key, val := range stringData {
+		data[key] = base64.StdEncoding.EncodeToString([]byte(val))
+	}
+
+	err = unstructured.SetNestedStringMap(unstructuredContent, data, "data")
+	if err != nil {
+		return nil, err
+	}
+
+	unstructured.RemoveNestedField(unstructuredContent, "stringData")
 
 	return info.Obj, nil
 }
