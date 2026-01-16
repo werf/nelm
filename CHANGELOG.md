@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.20.1](https://github.com/werf/nelm/compare/v1.20.0...v1.20.1) (2026-01-16)
+
+
+### Bug Fixes
+
+* add standalone pod tracking ([87958aa](https://github.com/werf/nelm/commit/87958aa932a33de4d682243481cca90d2678f117))
+* add standalone pod tracking ([5c956f6](https://github.com/werf/nelm/commit/5c956f6ca1630078b7c8fb65f15f4827e0edc1b6))
+* adjust service account managed fields ([#527](https://github.com/werf/nelm/issues/527)) ([7412d98](https://github.com/werf/nelm/commit/7412d9833744d3834c63a4a6315f4194203a456c))
+
 ## [1.20.0](https://github.com/werf/nelm/compare/v1.19.1...v1.20.0) (2025-12-23)
 
 
