@@ -1,12 +1,17 @@
 package resource
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/samber/lo"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/yaml"
+
+	"github.com/yannh/kubeconform/pkg/resource"
+	"github.com/yannh/kubeconform/pkg/validator"
 
 	"github.com/werf/nelm/internal/resource/spec"
 )
@@ -53,14 +58,33 @@ func validateNoDuplicates(releaseNamespace string, transformedResources []*Insta
 // validateResourceSchemas validates that resources conform to their Kubernetes API schemas
 // by attempting to decode them into typed objects using scheme.Codecs.
 func validateResourceSchemas(transformedResources []*InstallableResource) error {
+	// Filter out resources that should be skipped
+	resourcesToValidate := lo.Filter(transformedResources, func(res *InstallableResource, _ int) bool {
+		return !shouldSkipSchemaValidation(res)
+	})
+
+	if len(resourcesToValidate) == 0 {
+		return nil
+	}
+
+	schemaLocations := []string{"default"}
+	opts := validator.Opts{
+		Strict:               true, // Strict undefined params check
+		IgnoreMissingSchemas: true,
+		KubernetesVersion:    "", // Use latest available
+	}
+
+	validatorInstance, err := validator.New(schemaLocations, opts)
+	if err != nil {
+		return fmt.Errorf("create schema validator: %w", err)
+	}
+
+	// TODO: need to pass real context
+	ctx := context.TODO()
 	var errs []string
 
-	for _, res := range transformedResources {
-		if shouldSkipSchemaValidation(res) {
-			continue
-		}
-
-		if err := validateResourceSchema(res); err != nil {
+	for _, res := range resourcesToValidate {
+		if err := validateResourceWithKubeconform(ctx, validatorInstance, res); err != nil {
 			errs = append(errs, "\tvalidate "+res.IDHuman()+": "+err.Error())
 		}
 	}
@@ -70,6 +94,41 @@ func validateResourceSchemas(transformedResources []*InstallableResource) error 
 	}
 
 	return fmt.Errorf("schema validation failed:\n%s", strings.Join(errs, "\n"))
+}
+
+// validateResourceWithKubeconform validates a single resource using kubeconform
+func validateResourceWithKubeconform(ctx context.Context, v validator.Validator, res *InstallableResource) error {
+	yamlBytes, err := yaml.Marshal(res.Unstruct.Object)
+	if err != nil {
+		return fmt.Errorf("marshal resource to YAML: %w", err)
+	}
+
+	resCh, errCh := resource.FromStream(ctx, res.FilePath, bytes.NewReader(yamlBytes))
+
+	var validationErrs []string
+
+	for validationResource := range resCh {
+		validationResult := v.ValidateResource(validationResource)
+
+		if validationResult.Status != validator.Valid {
+			for _, validationError := range validationResult.ValidationErrors {
+				validationErrs = append(validationErrs, validationError.Msg)
+			}
+		}
+	}
+
+	// Check for stream reading errors
+	for err := range errCh {
+		if err != nil {
+			return fmt.Errorf("read resource stream: %w", err)
+		}
+	}
+
+	if len(validationErrs) > 0 {
+		return fmt.Errorf("%s", strings.Join(validationErrs, "; "))
+	}
+
+	return nil
 }
 
 // shouldSkipSchemaValidation returns true if the resource should be skipped from schema validation.
@@ -86,82 +145,4 @@ func shouldSkipSchemaValidation(res *InstallableResource) bool {
 	}
 
 	return false
-}
-
-// validateResourceSchema validates a single resource by attempting to decode it into a typed object.
-// This will catch schema mismatches, invalid field values, and missing required fields.
-func validateResourceSchema(res *InstallableResource) error {
-	unstruct := res.Unstruct
-	gvk := unstruct.GroupVersionKind()
-
-	originalUnstruct := unstruct.DeepCopy()
-
-	jsonBytes, err := originalUnstruct.MarshalJSON()
-	if err != nil {
-		return err
-	}
-
-	decoder := scheme.Codecs.UniversalDecoder(gvk.GroupVersion())
-
-	// Decode into typed object - this validates the schema
-	obj, _, err := decoder.Decode(jsonBytes, &gvk, nil)
-	if err != nil {
-		return err
-	}
-
-	// Convert typed object back to unstructured
-	// This will drop any unknown fields that weren't in the schema
-	convertedUnstruct, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
-	if err != nil {
-		return err
-	}
-
-	unknownFields := findUnknownFields(originalUnstruct.Object, convertedUnstruct, "")
-	if len(unknownFields) > 0 {
-		return fmt.Errorf("unknown fields found: %s", strings.Join(unknownFields, ", "))
-	}
-
-	return nil
-}
-
-// findUnknownFields recursively compares the original and converted unstructured objects
-// to find fields that exist in the original but not in the converted (unknown fields).
-func findUnknownFields(original map[string]interface{}, converted map[string]interface{}, pathPrefix string) []string {
-	var unknownFields []string
-
-	for key, originalValue := range original {
-		// Skip metadata fields that are always present and may be normalized
-		if pathPrefix == "" && (key == "apiVersion" || key == "kind" || key == "metadata") {
-			continue
-		}
-
-		convertedValue, exists := converted[key]
-		if !exists {
-			fieldPath := key
-
-			if pathPrefix != "" {
-				fieldPath = pathPrefix + "." + key
-			}
-
-			unknownFields = append(unknownFields, fieldPath)
-
-			continue
-		}
-
-		originalMap, originalIsMap := originalValue.(map[string]interface{})
-		convertedMap, convertedIsMap := convertedValue.(map[string]interface{})
-
-		if originalIsMap && convertedIsMap {
-			fieldPath := key
-
-			if pathPrefix != "" {
-				fieldPath = pathPrefix + "." + key
-			}
-
-			nestedUnknown := findUnknownFields(originalMap, convertedMap, fieldPath)
-			unknownFields = append(unknownFields, nestedUnknown...)
-		}
-	}
-
-	return unknownFields
 }
