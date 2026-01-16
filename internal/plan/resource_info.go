@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/pkg/errors"
 	"github.com/samber/lo"
 	"github.com/sourcegraph/conc/pool"
 	"github.com/wI2L/jsondiff"
@@ -487,7 +486,7 @@ func stageDeleteOnSuccessfulInstall(shouldDelete bool, installStg common.Stage) 
 
 func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, getObj *unstructured.Unstructured, localRes *resource.InstallableResource, noRemoveManualChanges bool, clientFactory kube.ClientFactorier) (*unstructured.Unstructured, error) {
 	if changed, err := fixManagedFields(getObj, localRes, noRemoveManualChanges); err != nil {
-		return nil, fmt.Errorf("fix managed fields for resource %q: %w", localRes.ResourceMeta.IDHuman(), err)
+		return nil, fmt.Errorf("fix managed fields for resource %q: %w", localRes.IDHuman(), err)
 	} else if !changed {
 		return getObj, nil
 	}
@@ -497,10 +496,10 @@ func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, get
 
 	patch, err := json.Marshal(unstruct.UnstructuredContent())
 	if err != nil {
-		return nil, fmt.Errorf("marshal fixed managed fields for resource %q: %w", localRes.ResourceMeta.IDHuman(), err)
+		return nil, fmt.Errorf("marshal fixed managed fields for resource %q: %w", localRes.IDHuman(), err)
 	}
 
-	log.Default.Debug(ctx, "Fixing managed fields for resource %q", localRes.ResourceMeta.IDHuman())
+	log.Default.Debug(ctx, "Fixing managed fields for resource %q", localRes.IDHuman())
 
 	patchedObj, err := clientFactory.KubeClient().MergePatch(ctx, localRes.ResourceMeta, patch, kube.KubeClientMergePatchOptions{
 		DefaultNamespace: releaseNamespace,
@@ -538,16 +537,15 @@ func fixManagedFields(unstruct *unstructured.Unstructured, localRes *resource.In
 		}
 	}
 
-	required, err := isServiceAccountManagedFieldFixRequired(localRes.Unstruct, &oursEntry)
-	if err != nil {
-		return false, fmt.Errorf("cannot check if service account managed field fix is required: %w", err)
-	}
+	if required, err := isServiceAccountManagedFieldFixRequired(localRes.Unstruct, &oursEntry); err != nil {
+		return false, fmt.Errorf("check if service account managed field fix is required: %w", err)
+	} else if required {
+		specSubPath := getServiceAccountSpecSubPath(localRes.Unstruct.GroupVersionKind())
+		managedFieldsSubPath := getManagedFieldPathFromSpecPath(specSubPath)
 
-	if required {
-		err = fixServiceAccountManagedFields(&oursEntry,
-			getManagedFieldPathFromSpecPath(getServiceAccountSpecSubPath(localRes.Unstruct.GroupVersionKind())))
+		err = fixServiceAccountManagedFields(&oursEntry, managedFieldsSubPath)
 		if err != nil {
-			return false, fmt.Errorf("cannot fix service account managed fields: %w", err)
+			return false, fmt.Errorf("fix service account managed fields: %w", err)
 		}
 
 		changed = true
@@ -580,14 +578,10 @@ func fixManagedFields(unstruct *unstructured.Unstructured, localRes *resource.In
 }
 
 func getManagedFieldPathFromSpecPath(subPath []string) []string {
-	if len(subPath) == 0 {
-		return subPath
-	}
-
 	path := make([]string, len(subPath))
 
-	for i := 0; i < len(subPath); i++ {
-		path[i] = "f:" + subPath[i]
+	for i, s := range subPath {
+		path[i] = "f:" + s
 	}
 
 	return path
@@ -597,13 +591,13 @@ func isServiceAccountFieldManaged(entry v1.ManagedFieldsEntry, subPath []string)
 	var fieldsV1 map[string]interface{}
 
 	if err := json.Unmarshal(entry.FieldsV1.Raw, &fieldsV1); err != nil {
-		return false, fmt.Errorf("failed to unmarshal managed field: %w", err)
+		return false, fmt.Errorf("unmarshal managed field: %w", err)
 	}
 
 	for _, v := range []string{"f:serviceAccount", "f:serviceAccountName"} {
 		_, found, err := unstructured.NestedFieldNoCopy(fieldsV1, append(subPath, v)...)
 		if err != nil {
-			return false, fmt.Errorf("cannot check if %q field is managed: %w", v, err)
+			return false, fmt.Errorf("check if %q field is managed: %w", v, err)
 		}
 
 		if found {
@@ -642,10 +636,6 @@ func getServiceAccountSpecSubPath(gvk schema.GroupVersionKind) []string {
 func isServiceAccountManagedFieldFixRequired(localRes *unstructured.Unstructured, entry *v1.ManagedFieldsEntry) (bool, error) {
 	gvk := localRes.GroupVersionKind()
 
-	if gvk.Empty() {
-		return false, nil
-	}
-
 	path := getServiceAccountSpecSubPath(gvk)
 
 	if len(path) == 0 {
@@ -654,7 +644,7 @@ func isServiceAccountManagedFieldFixRequired(localRes *unstructured.Unstructured
 
 	ok, err := isServiceAccountFieldManaged(*entry, getManagedFieldPathFromSpecPath(path))
 	if err != nil {
-		return false, fmt.Errorf("failed to check if service account field managed: %w", err)
+		return false, fmt.Errorf("check if service account field managed: %w", err)
 	}
 
 	if !ok {
@@ -663,7 +653,7 @@ func isServiceAccountManagedFieldFixRequired(localRes *unstructured.Unstructured
 
 	found, err := findServiceAccountRefBySubPath(localRes.Object, path)
 	if err != nil {
-		return found, err
+		return found, fmt.Errorf("find service account reference: %w", err)
 	}
 
 	return !found, nil
@@ -671,18 +661,13 @@ func isServiceAccountManagedFieldFixRequired(localRes *unstructured.Unstructured
 
 func findServiceAccountRefBySubPath(data map[string]interface{}, subPath []string) (bool, error) {
 	for _, v := range []string{"serviceAccount", "serviceAccountName"} {
-		value, found, err := unstructured.NestedFieldNoCopy(data, append(subPath, v)...)
+		_, found, err := unstructured.NestedString(data, append(subPath, v)...)
 		if err != nil {
 			return false, fmt.Errorf("cannot check if %q param exists: %w", v, err)
 		}
 
 		if found {
-			_, ok := value.(string)
-			if !ok {
-				return false, errors.New("service account reference is not a string")
-			}
-
-			return ok, nil
+			return found, nil
 		}
 	}
 
@@ -690,22 +675,22 @@ func findServiceAccountRefBySubPath(data map[string]interface{}, subPath []strin
 }
 
 func fixServiceAccountManagedFields(entry *v1.ManagedFieldsEntry, subPath []string) error {
-	unstruct := unstructured.Unstructured{}
+	unstruct := make(map[string]interface{})
 
-	if err := json.Unmarshal(entry.FieldsV1.Raw, &unstruct.Object); err != nil {
-		return fmt.Errorf("failed to unmarshal managed field: %w", err)
+	if err := json.Unmarshal(entry.FieldsV1.Raw, &unstruct); err != nil {
+		return fmt.Errorf("unmarshal managed field: %w", err)
 	}
 
 	for _, v := range []string{"f:serviceAccount", "f:serviceAccountName"} {
-		err := unstructured.SetNestedField(unstruct.Object, make(map[string]interface{}), append(subPath, v)...)
+		err := unstructured.SetNestedField(unstruct, make(map[string]interface{}), append(subPath, v)...)
 		if err != nil {
 			return err
 		}
 	}
 
-	updatedEntryRaw, err := json.Marshal(unstruct.Object)
+	updatedEntryRaw, err := json.Marshal(unstruct)
 	if err != nil {
-		return fmt.Errorf("failed to marshal managed field: %w", err)
+		return fmt.Errorf("marshal managed field: %w", err)
 	}
 
 	return entry.FieldsV1.UnmarshalJSON(updatedEntryRaw)
