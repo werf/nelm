@@ -543,8 +543,7 @@ func fixManagedFields(unstruct *unstructured.Unstructured, localRes *resource.In
 		specSubPath := getServiceAccountSpecSubPath(localRes.Unstruct.GroupVersionKind())
 		managedFieldsSubPath := getManagedFieldPathFromSpecPath(specSubPath)
 
-		err = fixServiceAccountManagedFields(&oursEntry, managedFieldsSubPath)
-		if err != nil {
+		if err := fixServiceAccountManagedFields(&oursEntry, managedFieldsSubPath); err != nil {
 			return false, fmt.Errorf("fix service account managed fields: %w", err)
 		}
 
@@ -595,12 +594,9 @@ func isServiceAccountFieldManaged(entry v1.ManagedFieldsEntry, subPath []string)
 	}
 
 	for _, v := range []string{"f:serviceAccount", "f:serviceAccountName"} {
-		_, found, err := unstructured.NestedFieldNoCopy(fieldsV1, append(subPath, v)...)
-		if err != nil {
+		if _, found, err := unstructured.NestedFieldNoCopy(fieldsV1, append(subPath, v)...); err != nil {
 			return false, fmt.Errorf("check if %q field is managed: %w", v, err)
-		}
-
-		if found {
+		} else if found {
 			return true, nil
 		}
 	}
@@ -642,18 +638,15 @@ func isServiceAccountManagedFieldFixRequired(localRes *unstructured.Unstructured
 		return false, nil
 	}
 
-	ok, err := isServiceAccountFieldManaged(*entry, getManagedFieldPathFromSpecPath(path))
-	if err != nil {
+	if ok, err := isServiceAccountFieldManaged(*entry, getManagedFieldPathFromSpecPath(path)); err != nil {
 		return false, fmt.Errorf("check if service account field managed: %w", err)
-	}
-
-	if !ok {
+	} else if !ok {
 		return false, nil
 	}
 
 	found, err := findServiceAccountRefBySubPath(localRes.Object, path)
 	if err != nil {
-		return found, fmt.Errorf("find service account reference: %w", err)
+		return false, fmt.Errorf("find service account reference: %w", err)
 	}
 
 	return !found, nil
@@ -661,13 +654,10 @@ func isServiceAccountManagedFieldFixRequired(localRes *unstructured.Unstructured
 
 func findServiceAccountRefBySubPath(data map[string]interface{}, subPath []string) (bool, error) {
 	for _, v := range []string{"serviceAccount", "serviceAccountName"} {
-		_, found, err := unstructured.NestedString(data, append(subPath, v)...)
-		if err != nil {
+		if _, found, err := unstructured.NestedString(data, append(subPath, v)...); err != nil {
 			return false, fmt.Errorf("cannot check if %q param exists: %w", v, err)
-		}
-
-		if found {
-			return found, nil
+		} else if found {
+			return true, nil
 		}
 	}
 
@@ -682,9 +672,8 @@ func fixServiceAccountManagedFields(entry *v1.ManagedFieldsEntry, subPath []stri
 	}
 
 	for _, v := range []string{"f:serviceAccount", "f:serviceAccountName"} {
-		err := unstructured.SetNestedField(unstruct, make(map[string]interface{}), append(subPath, v)...)
-		if err != nil {
-			return err
+		if err := unstructured.SetNestedField(unstruct, make(map[string]interface{}), append(subPath, v)...); err != nil {
+			return fmt.Errorf("set nested field: %w", err)
 		}
 	}
 
