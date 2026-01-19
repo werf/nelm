@@ -74,7 +74,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			return fmt.Errorf("add chart repo connection flags: %w", err)
 		}
 
-		if err := AddLocalResourceValidationFlags(cmd, &cfg.LocalResourceValidationOptions); err != nil {
+		if err := AddLocalResourceValidationFlags(cmd, &cfg.ResourceLocalValidationOptions); err != nil {
 			return fmt.Errorf("add local resource validation flags: %w", err)
 		}
 

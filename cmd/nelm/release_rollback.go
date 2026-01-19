@@ -67,6 +67,10 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 			return fmt.Errorf("add tracking flags: %w", err)
 		}
 
+		if err := AddLocalResourceValidationFlags(cmd, &cfg.ResourceLocalValidationOptions); err != nil {
+			return fmt.Errorf("add local resource validation flags: %w", err)
+		}
+
 		// TODO: restrict allowed values
 		if err := cli.AddFlag(cmd, &cfg.DefaultDeletePropagation, "delete-propagation", string(common.DefaultDeletePropagation), "Default delete propagation strategy", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,

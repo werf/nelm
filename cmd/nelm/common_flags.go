@@ -296,28 +296,29 @@ func AddChartRepoConnectionFlags(cmd *cobra.Command, cfg *common.ChartRepoConnec
 	return nil
 }
 
-func AddLocalResourceValidationFlags(cmd *cobra.Command, cfg *common.LocalResourceValidationOptions) error {
+func AddLocalResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceLocalValidationOptions) error {
 	if !featgate.FeatGateLocalResourceValidation.Enabled() {
 		return nil
 	}
 
-	if err := cli.AddFlag(cmd, &cfg.NoResourceValidation, "no-local-validation", false, "Disable local resource validation", cli.AddFlagOptions{
+	if err := cli.AddFlag(cmd, &cfg.NoResourceValidation, "no-validation", false, "Disable local resource validation", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                localResourceValidationGroup,
+		Group:                resourceValidationGroup,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}
 
-	if err := cli.AddFlag(cmd, &cfg.KubernetesVersion, "local-validation-kube-version", common.DefaultLocalResourceValidationKubeVersion, "Kubernetes schemas to use during local resource validation", cli.AddFlagOptions{
+	if err := cli.AddFlag(cmd, &cfg.ValidationKubeVersion, "validation-kube-version", common.DefaultLocalResourceValidationKubeVersion, "Kubernetes schemas to use during local resource validation", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                localResourceValidationGroup,
+		Group:                resourceValidationGroup,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}
 
-	if err := cli.AddFlag(cmd, &cfg.SkipKinds, "local-validation-skip-kind", []string{}, "Skip local resource validation for resources with specified kinds", cli.AddFlagOptions{
+	if err := cli.AddFlag(cmd, &cfg.ValidationSkip, "validation-skip", []string{}, "Skip local resource validation for resources with specified attributes", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                localResourceValidationGroup,
+		Group:                resourceValidationGroup,
+		NoSplitOnCommas:      true,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}
