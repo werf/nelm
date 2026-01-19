@@ -261,8 +261,8 @@ func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV
 		}
 
 		row := prtable.Row{
-			color.New(color.Cyan).Sprintf(release.Name),
-			color.New(statusColor).Sprintf(string(release.Status)),
+			color.New(color.Cyan).Sprintf("%s", release.Name),
+			color.New(statusColor).Sprintf("%s", string(release.Status)),
 			release.Revision,
 		}
 		if !namespaced {

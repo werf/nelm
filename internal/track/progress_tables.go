@@ -591,7 +591,7 @@ func buildLogsHeader(resourceLogs *logstore.ResourceLogs, source, defaultNamespa
 		result += ", namespace: " + resourceLogs.Namespace()
 	}
 
-	return color.New(color.Bold, color.Blue).Sprintf(result)
+	return color.New(color.Bold, color.Blue).Sprintf("%s", result)
 }
 
 func buildEventsHeader(resourceState *statestore.ResourceState, defaultNamespace string) string {
@@ -601,7 +601,7 @@ func buildEventsHeader(resourceState *statestore.ResourceState, defaultNamespace
 		result += ", namespace: " + resourceState.Namespace()
 	}
 
-	return color.New(color.Bold, color.Blue).Sprintf(result)
+	return color.New(color.Bold, color.Blue).Sprintf("%s", result)
 }
 
 func buildReadinessRootResourceStateCell(taskState *statestore.ReadinessTaskState) string {
@@ -609,11 +609,11 @@ func buildReadinessRootResourceStateCell(taskState *statestore.ReadinessTaskStat
 
 	switch status := taskState.Status(); status {
 	case statestore.ReadinessTaskStatusReady:
-		stateCell = color.New(color.Green).Sprintf(caps.ToUpper(string(status)))
+		stateCell = color.New(color.Green).Sprintf("%s", caps.ToUpper(string(status)))
 	case statestore.ReadinessTaskStatusProgressing:
 		stateCell = color.New(color.Yellow).Sprintf("WAITING")
 	case statestore.ReadinessTaskStatusFailed:
-		stateCell = color.New(color.Red).Sprintf(caps.ToUpper(string(status)))
+		stateCell = color.New(color.Red).Sprintf("%s", caps.ToUpper(string(status)))
 	default:
 		panic("unexpected task status")
 	}
@@ -626,11 +626,11 @@ func buildReadinessChildResourceStateCell(resourceState *statestore.ResourceStat
 
 	switch status := resourceState.Status(); status {
 	case statestore.ResourceStatusReady:
-		stateCell = color.New(color.Green).Sprintf(caps.ToUpper(string(status)))
+		stateCell = color.New(color.Green).Sprintf("%s", caps.ToUpper(string(status)))
 	case statestore.ResourceStatusCreated, statestore.ResourceStatusDeleted, statestore.ResourceStatusUnknown:
-		stateCell = color.New(color.Yellow).Sprintf(caps.ToUpper(string(status)))
+		stateCell = color.New(color.Yellow).Sprintf("%s", caps.ToUpper(string(status)))
 	case statestore.ResourceStatusFailed:
-		stateCell = color.New(color.Red).Sprintf(caps.ToUpper(string(status)))
+		stateCell = color.New(color.Red).Sprintf("%s", caps.ToUpper(string(status)))
 	default:
 		panic("unexpected resource status")
 	}
@@ -639,7 +639,7 @@ func buildReadinessChildResourceStateCell(resourceState *statestore.ResourceStat
 }
 
 func buildRootResourceCell(resourceState *statestore.ResourceState) string {
-	kind := color.New(color.Cyan).Sprintf(resourceState.GroupVersionKind().Kind)
+	kind := color.New(color.Cyan).Sprintf("%s", resourceState.GroupVersionKind().Kind)
 
 	return fmt.Sprintf("%s/%s", kind, resourceState.Name())
 }
@@ -731,11 +731,11 @@ func buildPresenceRootResourceStateCell(taskState *statestore.PresenceTaskState)
 
 	switch status := taskState.Status(); status {
 	case statestore.PresenceTaskStatusPresent:
-		stateCell = color.New(color.Green).Sprintf(caps.ToUpper(string(status)))
+		stateCell = color.New(color.Green).Sprintf("%s", caps.ToUpper(string(status)))
 	case statestore.PresenceTaskStatusProgressing:
 		stateCell = color.New(color.Yellow).Sprintf("WAITING")
 	case statestore.PresenceTaskStatusFailed:
-		stateCell = color.New(color.Red).Sprintf(caps.ToUpper(string(status)))
+		stateCell = color.New(color.Red).Sprintf("%s", caps.ToUpper(string(status)))
 	default:
 		panic("unexpected task status")
 	}
@@ -748,11 +748,11 @@ func buildAbsenceRootResourceStateCell(taskState *statestore.AbsenceTaskState) s
 
 	switch status := taskState.Status(); status {
 	case statestore.AbsenceTaskStatusAbsent:
-		stateCell = color.New(color.Green).Sprintf(caps.ToUpper(string(status)))
+		stateCell = color.New(color.Green).Sprintf("%s", caps.ToUpper(string(status)))
 	case statestore.AbsenceTaskStatusProgressing:
 		stateCell = color.New(color.Yellow).Sprintf("WAITING")
 	case statestore.AbsenceTaskStatusFailed:
-		stateCell = color.New(color.Red).Sprintf(caps.ToUpper(string(status)))
+		stateCell = color.New(color.Red).Sprintf("%s", caps.ToUpper(string(status)))
 	default:
 		panic("unexpected task status")
 	}

@@ -12,27 +12,25 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
+	"github.com/yannh/kubeconform/pkg/resource"
+	"github.com/yannh/kubeconform/pkg/validator"
+	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/yaml"
+
 	"github.com/werf/3p-helm/pkg/helmpath"
+	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
-	"k8s.io/client-go/kubernetes/scheme"
-	"sigs.k8s.io/yaml"
-
-	"github.com/yannh/kubeconform/pkg/resource"
-	"github.com/yannh/kubeconform/pkg/validator"
-
-	"github.com/werf/nelm/internal/resource/spec"
 )
 
-var (
-	validationSkipSupportedPropertyNames = []string{"group", "kind", "name", "namespace", "version"}
-)
+var validationSkipSupportedPropertyNames = []string{"group", "kind", "name", "namespace", "version"}
 
 // Can be called even without cluster access.
 func ValidateLocal(ctx context.Context, releaseNamespace string, transformedResources []*InstallableResource,
-	opts common.ResourceLocalValidationOptions) error {
+	opts common.ResourceLocalValidationOptions,
+) error {
 	if err := validateNoDuplicates(releaseNamespace, transformedResources); err != nil {
 		return fmt.Errorf("validate for no duplicated resources: %w", err)
 	}
@@ -115,7 +113,8 @@ func validateResourceSchemas(ctx context.Context, resources []*InstallableResour
 }
 
 func validateResourceSchemaWithKubeConform(ctx context.Context, kubeconformValidator validator.Validator,
-	res *InstallableResource) error {
+	res *InstallableResource,
+) error {
 	yamlBytes, err := yaml.Marshal(res.Unstruct.Object)
 	if err != nil {
 		return fmt.Errorf("marshal resource to yaml: %w", err)
@@ -258,7 +257,7 @@ func getKubeConformSchemaCacheDir(kubeVersion string, create bool) (string, erro
 	}
 
 	if stat, err := os.Stat(cacheDirPath); os.IsNotExist(err) {
-		if err := os.MkdirAll(cacheDirPath, 0750); err != nil {
+		if err := os.MkdirAll(cacheDirPath, 0o750); err != nil {
 			return "", fmt.Errorf("create cache dir: %w", err)
 		}
 

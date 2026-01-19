@@ -4,10 +4,10 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/werf/nelm/pkg/featgate"
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/featgate"
 )
 
 func AddKubeConnectionFlags(cmd *cobra.Command, cfg *common.KubeConnectionOptions) error {
