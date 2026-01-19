@@ -149,36 +149,33 @@ func (p *SecretStringDataPatcher) Match(ctx context.Context, info *ResourcePatch
 }
 
 func (p *SecretStringDataPatcher) Patch(ctx context.Context, info *ResourcePatcherResourceInfo) (*unstructured.Unstructured, error) {
-	unstructuredContent := info.Obj.UnstructuredContent()
+	content := info.Obj.UnstructuredContent()
 
-	stringData, found, err := unstructured.NestedStringMap(unstructuredContent, "stringData")
+	data, found, err := unstructured.NestedStringMap(content, "data")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get stringData from secret: %w", err)
+		return nil, fmt.Errorf("read .data: %w", err)
 	}
 
-	if !found {
-		return info.Obj, nil
-	}
-
-	data, found, err := unstructured.NestedStringMap(unstructuredContent, "data")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get data from secret: %w", err)
-	}
-
-	if !found {
+	if !found || data == nil {
 		data = map[string]string{}
 	}
 
-	for key, val := range stringData {
-		data[key] = base64.StdEncoding.EncodeToString([]byte(val))
-	}
-
-	err = unstructured.SetNestedStringMap(unstructuredContent, data, "data")
+	stringData, found, err := unstructured.NestedStringMap(content, "stringData")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read .stringData: %w", err)
 	}
 
-	unstructured.RemoveNestedField(unstructuredContent, "stringData")
+	if found && stringData != nil {
+		for key, val := range stringData {
+			data[key] = base64.StdEncoding.EncodeToString([]byte(val))
+		}
+
+		if err := unstructured.SetNestedStringMap(content, data, "data"); err != nil {
+			return nil, fmt.Errorf("write .data: %w", err)
+		}
+
+		unstructured.RemoveNestedField(content, "stringData")
+	}
 
 	return info.Obj, nil
 }
