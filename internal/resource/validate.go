@@ -25,8 +25,6 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-var validationSkipSupportedPropertyNames = []string{"group", "kind", "name", "namespace", "version"}
-
 // Can be called even without cluster access.
 func ValidateLocal(ctx context.Context, releaseNamespace string, transformedResources []*InstallableResource,
 	opts common.ResourceLocalValidationOptions,
@@ -39,7 +37,7 @@ func ValidateLocal(ctx context.Context, releaseNamespace string, transformedReso
 		return nil
 	}
 
-	if err := validateResourceSchemas(ctx, transformedResources, opts); err != nil {
+	if err := validateResourceSchemas(ctx, releaseNamespace, transformedResources, opts); err != nil {
 		return fmt.Errorf("validate resource schemas: %w", err)
 	}
 
@@ -72,7 +70,7 @@ func validateNoDuplicates(releaseNamespace string, transformedResources []*Insta
 	return fmt.Errorf("duplicated resources found: %s", strings.Join(duplicatedIDHumans, ", "))
 }
 
-func validateResourceSchemas(ctx context.Context, resources []*InstallableResource, opts common.ResourceLocalValidationOptions) error {
+func validateResourceSchemas(ctx context.Context, releaseNamespace string, resources []*InstallableResource, opts common.ResourceLocalValidationOptions) error {
 	if len(resources) == 0 {
 		return nil
 	}
@@ -85,7 +83,7 @@ func validateResourceSchemas(ctx context.Context, resources []*InstallableResour
 	var sb strings.Builder
 
 	for _, res := range resources {
-		if ok, err := shouldSkipValidation(ctx, opts.ValidationSkip, res.ResourceMeta); err != nil {
+		if ok, err := shouldSkipValidation(ctx, opts.ValidationSkip, releaseNamespace, res.ResourceMeta); err != nil {
 			return fmt.Errorf("skip validation: %w", err)
 		} else if ok {
 			log.Default.Debug(ctx, "Skip local validation for resource (due to ValidationSkip): %s", res.IDHuman())
@@ -112,7 +110,7 @@ func validateResourceSchemas(ctx context.Context, resources []*InstallableResour
 	return fmt.Errorf("schema validation failed:\n%s", sb.String())
 }
 
-func validateResourceSchemaWithKubeConform(ctx context.Context, kubeconformValidator validator.Validator,
+func validateResourceSchemaWithKubeConform(ctx context.Context, kubeConformValidator validator.Validator,
 	res *InstallableResource,
 ) error {
 	yamlBytes, err := yaml.Marshal(res.Unstruct.Object)
@@ -125,7 +123,7 @@ func validateResourceSchemaWithKubeConform(ctx context.Context, kubeconformValid
 	var validationErrs []string
 
 	for validationResource := range resCh {
-		validationResult := kubeconformValidator.ValidateResource(validationResource)
+		validationResult := kubeConformValidator.ValidateResource(validationResource)
 
 		if validationResult.Status == validator.Error {
 			return validationResult.Err
@@ -290,38 +288,48 @@ func validateResourceWithCodec(res *InstallableResource) error {
 	return nil
 }
 
-func shouldSkipValidation(ctx context.Context, input []string, meta *spec.ResourceMeta) (bool, error) {
-	var match bool
-
-	metaMap := map[string]string{
-		"kind":      meta.GroupVersionKind.Kind,
-		"group":     meta.GroupVersionKind.Group,
-		"version":   meta.GroupVersionKind.Version,
-		"namespace": meta.Namespace,
-		"name":      meta.Name,
+func shouldSkipValidation(ctx context.Context, filters []string, releaseNamespace string, meta *spec.ResourceMeta) (bool, error) {
+	metaMap := map[string]func(string) bool{
+		"kind":    func(s string) bool { return s == meta.GroupVersionKind.Kind },
+		"group":   func(s string) bool { return s == meta.GroupVersionKind.Group },
+		"version": func(s string) bool { return s == meta.GroupVersionKind.Version },
+		// TODO: need to figure out how to filter on namespace set in the manifest itself
+		"namespace": func(s string) bool { return s == meta.Namespace || s == releaseNamespace },
+		"name":      func(s string) bool { return s == meta.Name },
 	}
 
-	for _, value := range input {
-		properties, err := util.ParseProperties(ctx, value)
+INPUT:
+	for _, filter := range filters {
+		var match bool
+
+		properties, err := util.ParseProperties(ctx, filter)
 		if err != nil {
 			return false, fmt.Errorf("cannot parse properties: %w", err)
 		}
 
-		for _, property := range lo.UniqKeys(properties) {
-			if !lo.Contains(validationSkipSupportedPropertyNames, property) {
+		for property := range properties {
+			if _, found := metaMap[property]; !found {
 				return false, fmt.Errorf("only %s skip properties are supported",
-					strings.Join(validationSkipSupportedPropertyNames, ", "))
+					strings.Join(lo.Keys(metaMap), ", "))
+			}
+		}
+
+		for property, value := range properties {
+			f := metaMap[property]
+
+			if stringValue, ok := value.(string); !ok {
+				return false, fmt.Errorf("property %s has invalid value", property)
+			} else if !f(stringValue) {
+				continue INPUT
 			}
 
-			if v, found := properties[property]; found {
-				if v.(string) != metaMap[property] {
-					return false, nil
-				}
+			match = true
+		}
 
-				match = true
-			}
+		if match {
+			return true, nil
 		}
 	}
 
-	return match, nil
+	return false, nil
 }
