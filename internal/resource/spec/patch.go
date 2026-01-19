@@ -153,7 +153,7 @@ func (p *SecretStringDataPatcher) Patch(ctx context.Context, info *ResourcePatch
 
 	data, found, err := unstructured.NestedStringMap(content, "data")
 	if err != nil {
-		return nil, fmt.Errorf("read .data: %w", err)
+		return info.Obj, nil
 	}
 
 	if !found || data == nil {
@@ -162,7 +162,7 @@ func (p *SecretStringDataPatcher) Patch(ctx context.Context, info *ResourcePatch
 
 	stringData, found, err := unstructured.NestedStringMap(content, "stringData")
 	if err != nil {
-		return nil, fmt.Errorf("read .stringData: %w", err)
+		return info.Obj, nil
 	}
 
 	if found && stringData != nil {
