@@ -282,9 +282,10 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	log.Default.Debug(ctx, "Locally validate resources")
 
-	if err := resource.ValidateLocal(releaseNamespace, instResources); err != nil {
-		return fmt.Errorf("locally validate resources: %w", err)
-	}
+	// TODO: double check if we need local resource validation here
+	//if err := resource.ValidateLocal(releaseNamespace, instResources); err != nil {
+	//	return fmt.Errorf("locally validate resources: %w", err)
+	//}
 
 	log.Default.Debug(ctx, "Build resource infos")
 

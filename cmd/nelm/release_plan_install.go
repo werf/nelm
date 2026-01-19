@@ -80,6 +80,10 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			return fmt.Errorf("add values flags: %w", err)
 		}
 
+		if err := AddLocalResourceValidationFlags(cmd, &cfg.LocalResourceValidationOptions); err != nil {
+			return fmt.Errorf("add local resource validation flags: %w", err)
+		}
+
 		if err := AddSecretValuesFlags(cmd, &cfg.SecretValuesOptions); err != nil {
 			return fmt.Errorf("add secret values flags: %w", err)
 		}

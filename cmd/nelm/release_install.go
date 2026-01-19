@@ -76,6 +76,10 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add chart repo connection flags: %w", err)
 		}
 
+		if err := AddLocalResourceValidationFlags(cmd, &cfg.LocalResourceValidationOptions); err != nil {
+			return fmt.Errorf("add local resource validation flags: %w", err)
+		}
+
 		if err := AddValuesFlags(cmd, &cfg.ValuesOptions); err != nil {
 			return fmt.Errorf("add values flags: %w", err)
 		}

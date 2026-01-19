@@ -42,6 +42,7 @@ const (
 type ReleaseInstallOptions struct {
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
+	common.LocalResourceValidationOptions
 	common.ValuesOptions
 	common.SecretValuesOptions
 	common.TrackingOptions
@@ -408,7 +409,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	log.Default.Debug(ctx, "Locally validate resources")
 
-	if err := resource.ValidateLocal(releaseNamespace, instResources); err != nil {
+	if err := resource.ValidateLocal(ctx, releaseNamespace, instResources, opts.LocalResourceValidationOptions); err != nil {
 		return fmt.Errorf("locally validate resources: %w", err)
 	}
 
@@ -813,9 +814,10 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Locally validate resources")
 
-	if err := resource.ValidateLocal(releaseNamespace, instResources); err != nil {
-		return nil, nonCritErrs, append(critErrs, fmt.Errorf("locally validate resources: %w", err))
-	}
+	// TODO: Double check if we need local resource validation here.
+	//if err := resource.ValidateLocal(releaseNamespace, instResources); err != nil {
+	//	return nil, nonCritErrs, append(critErrs, fmt.Errorf("locally validate resources: %w", err))
+	//}
 
 	log.Default.Debug(ctx, "Build resource infos")
 

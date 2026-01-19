@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/werf/nelm/pkg/featgate"
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/common"
@@ -288,6 +289,35 @@ func AddChartRepoConnectionFlags(cmd *cobra.Command, cfg *common.ChartRepoConnec
 	if err := cli.AddFlag(cmd, &cfg.ChartRepoURL, "chart-repo-url", "", "Set URL of chart repo to be used to look for chart", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                chartRepoFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	return nil
+}
+
+func AddLocalResourceValidationFlags(cmd *cobra.Command, cfg *common.LocalResourceValidationOptions) error {
+	if !featgate.FeatGateLocalResourceValidation.Enabled() {
+		return nil
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.NoResourceValidation, "no-local-validation", false, "Disable local resource validation", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                localResourceValidationGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.KubernetesVersion, "local-validation-kube-version", common.DefaultLocalResourceValidationKubeVersion, "Kubernetes schemas to use during local resource validation", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                localResourceValidationGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.SkipKinds, "local-validation-skip-kind", []string{}, "Skip local resource validation for resources with specified kinds", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                localResourceValidationGroup,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}

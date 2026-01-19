@@ -30,6 +30,9 @@ const (
 	DefaultDeletePropagation = metav1.DeletePropagationForeground
 	DefaultDiffContextLines  = 3
 	DefaultFieldManager      = "helm"
+	// DefaultLocalValidationKubeVersion Kubernetes version to use during local resource validation by kubeconform
+	DefaultLocalResourceValidationKubeVersion = "1.35.0"
+	LocalResourceValidationSchemasDirPath     = ""
 	// TODO(v2): update to a more recent version? Not sure about backwards compatibility.
 	DefaultLocalKubeVersion      = "1.20.0"
 	DefaultLogColorMode          = log.LogColorModeAuto

@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/samber/lo"
-	"k8s.io/client-go/kubernetes/scheme"
+	"github.com/werf/3p-helm/pkg/helmpath"
+	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/featgate"
+	"github.com/werf/nelm/pkg/log"
 	"sigs.k8s.io/yaml"
 
 	"github.com/yannh/kubeconform/pkg/resource"
@@ -17,12 +21,17 @@ import (
 )
 
 // Can be called even without cluster access.
-func ValidateLocal(releaseNamespace string, transformedResources []*InstallableResource) error {
+func ValidateLocal(ctx context.Context, releaseNamespace string, transformedResources []*InstallableResource,
+	opts common.LocalResourceValidationOptions) error {
 	if err := validateNoDuplicates(releaseNamespace, transformedResources); err != nil {
 		return fmt.Errorf("validate for no duplicated resources: %w", err)
 	}
 
-	if err := validateResourceSchemas(transformedResources); err != nil {
+	if !featgate.FeatGateLocalResourceValidation.Enabled() || opts.NoResourceValidation {
+		return nil
+	}
+
+	if err := validateResourceSchemas(ctx, transformedResources, opts); err != nil {
 		return fmt.Errorf("validate resource schemas: %w", err)
 	}
 
@@ -57,34 +66,20 @@ func validateNoDuplicates(releaseNamespace string, transformedResources []*Insta
 
 // validateResourceSchemas validates that resources conform to their Kubernetes API schemas
 // by attempting to decode them into typed objects using scheme.Codecs.
-func validateResourceSchemas(transformedResources []*InstallableResource) error {
-	// Filter out resources that should be skipped
-	resourcesToValidate := lo.Filter(transformedResources, func(res *InstallableResource, _ int) bool {
-		return !shouldSkipSchemaValidation(res)
-	})
-
-	if len(resourcesToValidate) == 0 {
+func validateResourceSchemas(ctx context.Context, resources []*InstallableResource, opts common.LocalResourceValidationOptions) error {
+	if len(resources) == 0 {
 		return nil
 	}
 
-	schemaLocations := []string{"default"}
-	opts := validator.Opts{
-		Strict:               true, // Strict undefined params check
-		IgnoreMissingSchemas: true,
-		KubernetesVersion:    "", // Use latest available
-	}
-
-	validatorInstance, err := validator.New(schemaLocations, opts)
+	resValidator, err := getSchemaValidator(opts.KubernetesVersion, opts.SkipKinds)
 	if err != nil {
-		return fmt.Errorf("create schema validator: %w", err)
+		return fmt.Errorf("get schema validator: %w", err)
 	}
 
-	// TODO: need to pass real context
-	ctx := context.TODO()
 	var errs []string
 
-	for _, res := range resourcesToValidate {
-		if err := validateResourceWithKubeconform(ctx, validatorInstance, res); err != nil {
+	for _, res := range resources {
+		if err := validateResourceSchema(ctx, resValidator, res); err != nil {
 			errs = append(errs, "\tvalidate "+res.IDHuman()+": "+err.Error())
 		}
 	}
@@ -96,8 +91,8 @@ func validateResourceSchemas(transformedResources []*InstallableResource) error 
 	return fmt.Errorf("schema validation failed:\n%s", strings.Join(errs, "\n"))
 }
 
-// validateResourceWithKubeconform validates a single resource using kubeconform
-func validateResourceWithKubeconform(ctx context.Context, v validator.Validator, res *InstallableResource) error {
+// validateResourceSchema validates a single resource using kubeconform
+func validateResourceSchema(ctx context.Context, v validator.Validator, res *InstallableResource) error {
 	yamlBytes, err := yaml.Marshal(res.Unstruct.Object)
 	if err != nil {
 		return fmt.Errorf("marshal resource to YAML: %w", err)
@@ -110,9 +105,13 @@ func validateResourceWithKubeconform(ctx context.Context, v validator.Validator,
 	for validationResource := range resCh {
 		validationResult := v.ValidateResource(validationResource)
 
+		if validationResult.Status == validator.Skipped {
+			log.Default.Debug(ctx, "Skip local validation for resource: %s", res.IDHuman())
+		}
+
 		if validationResult.Status != validator.Valid {
 			for _, validationError := range validationResult.ValidationErrors {
-				validationErrs = append(validationErrs, validationError.Msg)
+				validationErrs = append(validationErrs, validationError.Path+": "+validationError.Msg)
 			}
 		}
 	}
@@ -131,18 +130,48 @@ func validateResourceWithKubeconform(ctx context.Context, v validator.Validator,
 	return nil
 }
 
-// shouldSkipSchemaValidation returns true if the resource should be skipped from schema validation.
-// This includes CRD definitions and Custom Resources (instances of CRDs).
-func shouldSkipSchemaValidation(res *InstallableResource) bool {
-	gvk := res.Unstruct.GroupVersionKind()
+func getSchemaValidator(kubeVersion string, skipKinds []string) (validator.Validator, error) {
+	schemaLocations := []string{"default"}
 
-	if spec.IsCRD(gvk.GroupKind()) {
-		return true
+	skipKindsMap := lo.SliceToMap(skipKinds, func(s string) (string, struct{}) {
+		return s, struct{}{}
+	})
+
+	cacheDir, err := getSchemaCacheDir(kubeVersion)
+	if err != nil {
+		return nil, fmt.Errorf("get schema cache dir: %w", err)
 	}
 
-	if _, err := scheme.Scheme.New(gvk); err != nil {
-		return true
+	validatorOpts := validator.Opts{
+		Strict:               false, // Skip undefined params check
+		IgnoreMissingSchemas: true,
+		SkipKinds:            skipKindsMap,
+		Cache:                cacheDir,
+		KubernetesVersion:    kubeVersion,
 	}
 
-	return false
+	validatorInstance, err := validator.New(schemaLocations, validatorOpts)
+	if err != nil {
+		return nil, fmt.Errorf("create schema validator: %w", err)
+	}
+
+	return validatorInstance, nil
+}
+
+func getSchemaCacheDir(kubeVersion string) (string, error) {
+	cacheDirPath := helmpath.CachePath(".nelm", "api-resource-json-schemas", kubeVersion)
+
+	if stat, err := os.Stat(cacheDirPath); os.IsNotExist(err) {
+		if err := os.MkdirAll(cacheDirPath, 0750); err != nil {
+			return "", fmt.Errorf("create cache dir: %w", err)
+		}
+
+		return cacheDirPath, nil
+	} else if err != nil {
+		return "", fmt.Errorf("stat cache dir: %w", err)
+	} else if !stat.IsDir() {
+		return "", fmt.Errorf("%s is not a directory", cacheDirPath)
+	}
+
+	return cacheDirPath, nil
 }

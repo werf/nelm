@@ -209,3 +209,14 @@ func (opts *TrackingOptions) ApplyDefaults() {
 		opts.ProgressTablePrintInterval = DefaultProgressPrintInterval
 	}
 }
+
+type LocalResourceValidationOptions struct {
+	// NoResourceValidation Disable local resource validation.
+	NoResourceValidation bool
+	// KubernetesVersion sets specific Kubernetes version and respective schemas to use on resource validation.
+	KubernetesVersion string
+	// SkipKinds Do not validate resources with specific kind.
+	SkipKinds []string
+}
+
+func (opts *LocalResourceValidationOptions) ApplyDefaults() {}

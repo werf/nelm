@@ -42,6 +42,7 @@ var (
 type ReleasePlanInstallOptions struct {
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
+	common.LocalResourceValidationOptions
 	common.ValuesOptions
 	common.SecretValuesOptions
 
@@ -392,7 +393,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Locally validate resources")
 
-	if err := resource.ValidateLocal(releaseNamespace, instResources); err != nil {
+	if err := resource.ValidateLocal(ctx, releaseNamespace, instResources, opts.LocalResourceValidationOptions); err != nil {
 		return fmt.Errorf("locally validate resources: %w", err)
 	}
 
