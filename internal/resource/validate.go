@@ -44,32 +44,6 @@ func ValidateLocal(ctx context.Context, releaseNamespace string, transformedReso
 	return nil
 }
 
-func validateNoDuplicates(releaseNamespace string, transformedResources []*InstallableResource) error {
-	for _, res := range transformedResources {
-		if spec.IsReleaseNamespace(res.Unstruct.GetName(), res.Unstruct.GroupVersionKind(), releaseNamespace) {
-			return fmt.Errorf("release namespace %q cannot be deployed as part of the release", res.Unstruct.GetName())
-		}
-	}
-
-	duplicates := lo.FindDuplicatesBy(transformedResources, func(instRes *InstallableResource) string {
-		return instRes.ID()
-	})
-
-	duplicates = lo.Filter(duplicates, func(instRes *InstallableResource, _ int) bool {
-		return !spec.IsWebhook(instRes.GroupVersionKind.GroupKind())
-	})
-
-	if len(duplicates) == 0 {
-		return nil
-	}
-
-	duplicatedIDHumans := lo.Map(duplicates, func(instRes *InstallableResource, _ int) string {
-		return instRes.IDHuman()
-	})
-
-	return fmt.Errorf("duplicated resources found: %s", strings.Join(duplicatedIDHumans, ", "))
-}
-
 func validateResourceSchemas(ctx context.Context, releaseNamespace string, resources []*InstallableResource, opts common.ResourceLocalValidationOptions) error {
 	if len(resources) == 0 {
 		return nil
@@ -110,48 +84,42 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 	return fmt.Errorf("schema validation failed:\n%s", sb.String())
 }
 
-func validateResourceSchemaWithKubeConform(ctx context.Context, kubeConformValidator validator.Validator,
-	res *InstallableResource,
-) error {
-	yamlBytes, err := yaml.Marshal(res.Unstruct.Object)
+func getKubeConformValidator(ctx context.Context, kubeVersion string, skipKinds []string) (validator.Validator, error) {
+	kubeVersion = strings.TrimLeft(kubeVersion, "v")
+
+	if err := checkIfKubeConformSpecExists(ctx, kubeVersion); err != nil {
+		return nil, err
+	}
+
+	schemaLocations := []string{
+		"default",
+		"https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json",
+	}
+
+	skipKindsMap := lo.SliceToMap(skipKinds, func(s string) (string, struct{}) {
+		return s, struct{}{}
+	})
+
+	cacheDir, err := getKubeConformSchemaCacheDir(kubeVersion, true)
 	if err != nil {
-		return fmt.Errorf("marshal resource to yaml: %w", err)
+		return nil, fmt.Errorf("get schema cache dir: %w", err)
 	}
 
-	resCh, errCh := resource.FromStream(ctx, res.FilePath, bytes.NewReader(yamlBytes))
-
-	var validationErrs []string
-
-	for validationResource := range resCh {
-		validationResult := kubeConformValidator.ValidateResource(validationResource)
-
-		if validationResult.Status == validator.Error {
-			return validationResult.Err
-		}
-
-		if validationResult.Status == validator.Skipped {
-			log.Default.Debug(ctx, "Skip local validation for resource: %s", res.IDHuman())
-		}
-
-		if validationResult.Status != validator.Valid {
-			for _, validationError := range validationResult.ValidationErrors {
-				validationErrs = append(validationErrs, validationError.Path+": "+validationError.Msg)
-			}
-		}
+	validatorOpts := validator.Opts{
+		Strict:               false, // Skip undefined params check
+		IgnoreMissingSchemas: true,
+		SkipKinds:            skipKindsMap,
+		Cache:                cacheDir,
+		KubernetesVersion:    kubeVersion,
+		Debug:                true,
 	}
 
-	// Check for stream reading errors
-	for err := range errCh {
-		if err != nil {
-			return fmt.Errorf("read resource stream: %w", err)
-		}
+	validatorInstance, err := validator.New(schemaLocations, validatorOpts)
+	if err != nil {
+		return nil, fmt.Errorf("create schema validator: %w", err)
 	}
 
-	if len(validationErrs) > 0 {
-		return fmt.Errorf("%s", strings.Join(validationErrs, "\n"))
-	}
-
-	return nil
+	return validatorInstance, nil
 }
 
 func checkIfKubeConformSpecExists(ctx context.Context, kubeVersion string) error {
@@ -160,7 +128,7 @@ func checkIfKubeConformSpecExists(ctx context.Context, kubeVersion string) error
 		return err
 	}
 
-	// Use signal file to avoid sending subsequence requests
+	// Use signal file to avoid sending subsequent requests
 	signalFilePath := filepath.Join(cacheDir, "ready")
 
 	stat, err := os.Stat(signalFilePath)
@@ -209,44 +177,6 @@ func checkIfKubeConformSpecExists(ctx context.Context, kubeVersion string) error
 	return nil
 }
 
-func getKubeConformValidator(ctx context.Context, kubeVersion string, skipKinds []string) (validator.Validator, error) {
-	kubeVersion = strings.TrimLeft(kubeVersion, "v")
-
-	if err := checkIfKubeConformSpecExists(ctx, kubeVersion); err != nil {
-		return nil, err
-	}
-
-	schemaLocations := []string{
-		"default",
-		"https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json",
-	}
-
-	skipKindsMap := lo.SliceToMap(skipKinds, func(s string) (string, struct{}) {
-		return s, struct{}{}
-	})
-
-	cacheDir, err := getKubeConformSchemaCacheDir(kubeVersion, true)
-	if err != nil {
-		return nil, fmt.Errorf("get schema cache dir: %w", err)
-	}
-
-	validatorOpts := validator.Opts{
-		Strict:               false, // Skip undefined params check
-		IgnoreMissingSchemas: true,
-		SkipKinds:            skipKindsMap,
-		Cache:                cacheDir,
-		KubernetesVersion:    kubeVersion,
-		Debug:                true,
-	}
-
-	validatorInstance, err := validator.New(schemaLocations, validatorOpts)
-	if err != nil {
-		return nil, fmt.Errorf("create schema validator: %w", err)
-	}
-
-	return validatorInstance, nil
-}
-
 func getKubeConformSchemaCacheDir(kubeVersion string, create bool) (string, error) {
 	cacheDirPath := helmpath.CachePath(".nelm", "api-resource-json-schemas", kubeVersion)
 
@@ -267,25 +197,6 @@ func getKubeConformSchemaCacheDir(kubeVersion string, create bool) (string, erro
 	}
 
 	return cacheDirPath, nil
-}
-
-func validateResourceWithCodec(res *InstallableResource) error {
-	unstruct := res.Unstruct
-	gvk := unstruct.GroupVersionKind()
-
-	jsonBytes, err := unstruct.MarshalJSON()
-	if err != nil {
-		return fmt.Errorf("marshal josn: %w", err)
-	}
-
-	decoder := scheme.Codecs.UniversalDecoder(gvk.GroupVersion())
-
-	_, _, err = decoder.Decode(jsonBytes, &gvk, nil)
-	if err != nil {
-		return fmt.Errorf("decoder decode: %w", err)
-	}
-
-	return nil
 }
 
 func shouldSkipValidation(ctx context.Context, filters []string, releaseNamespace string, meta *spec.ResourceMeta) (bool, error) {
@@ -332,4 +243,93 @@ INPUT:
 	}
 
 	return false, nil
+}
+
+func validateNoDuplicates(releaseNamespace string, transformedResources []*InstallableResource) error {
+	for _, res := range transformedResources {
+		if spec.IsReleaseNamespace(res.Unstruct.GetName(), res.Unstruct.GroupVersionKind(), releaseNamespace) {
+			return fmt.Errorf("release namespace %q cannot be deployed as part of the release", res.Unstruct.GetName())
+		}
+	}
+
+	duplicates := lo.FindDuplicatesBy(transformedResources, func(instRes *InstallableResource) string {
+		return instRes.ID()
+	})
+
+	duplicates = lo.Filter(duplicates, func(instRes *InstallableResource, _ int) bool {
+		return !spec.IsWebhook(instRes.GroupVersionKind.GroupKind())
+	})
+
+	if len(duplicates) == 0 {
+		return nil
+	}
+
+	duplicatedIDHumans := lo.Map(duplicates, func(instRes *InstallableResource, _ int) string {
+		return instRes.IDHuman()
+	})
+
+	return fmt.Errorf("duplicated resources found: %s", strings.Join(duplicatedIDHumans, ", "))
+}
+
+func validateResourceSchemaWithKubeConform(ctx context.Context, kubeConformValidator validator.Validator,
+	res *InstallableResource,
+) error {
+	yamlBytes, err := yaml.Marshal(res.Unstruct.Object)
+	if err != nil {
+		return fmt.Errorf("marshal resource to yaml: %w", err)
+	}
+
+	resCh, errCh := resource.FromStream(ctx, res.FilePath, bytes.NewReader(yamlBytes))
+
+	var validationErrs []string
+
+	for validationResource := range resCh {
+		validationResult := kubeConformValidator.ValidateResource(validationResource)
+
+		if validationResult.Status == validator.Error {
+			return validationResult.Err
+		}
+
+		if validationResult.Status == validator.Skipped {
+			log.Default.Debug(ctx, "Skip local validation for resource: %s", res.IDHuman())
+		}
+
+		if validationResult.Status != validator.Valid {
+			for _, validationError := range validationResult.ValidationErrors {
+				validationErrs = append(validationErrs, validationError.Path+": "+validationError.Msg)
+			}
+		}
+	}
+
+	// Check for stream reading errors
+	for err := range errCh {
+		if err != nil {
+			return fmt.Errorf("read resource stream: %w", err)
+		}
+	}
+
+	if len(validationErrs) > 0 {
+		return fmt.Errorf("%s", strings.Join(validationErrs, "\n"))
+	}
+
+	return nil
+}
+
+func validateResourceWithCodec(res *InstallableResource) error {
+	unstruct := res.Unstruct
+	gvk := unstruct.GroupVersionKind()
+
+	jsonBytes, err := unstruct.MarshalJSON()
+	if err != nil {
+		return fmt.Errorf("marshal josn: %w", err)
+	}
+
+	decoder := scheme.Codecs.UniversalDecoder(gvk.GroupVersion())
+
+	_, _, err = decoder.Decode(jsonBytes, &gvk, nil)
+	if err != nil {
+		return fmt.Errorf("decoder decode: %w", err)
+	}
+
+	return nil
 }
