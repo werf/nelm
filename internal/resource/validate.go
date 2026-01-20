@@ -49,7 +49,7 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 		return nil
 	}
 
-	resValidator, err := getKubeConformValidator(ctx, opts.ValidationKubeVersion, opts.ValidationSkip)
+	resValidator, err := getKubeConformValidator(ctx, opts.ValidationKubeVersion)
 	if err != nil {
 		return fmt.Errorf("get schema validator: %w", err)
 	}
@@ -84,7 +84,7 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 	return fmt.Errorf("schema validation failed:\n%s", sb.String())
 }
 
-func getKubeConformValidator(ctx context.Context, kubeVersion string, skipKinds []string) (validator.Validator, error) {
+func getKubeConformValidator(ctx context.Context, kubeVersion string) (validator.Validator, error) {
 	kubeVersion = strings.TrimLeft(kubeVersion, "v")
 
 	if err := checkIfKubeConformSpecExists(ctx, kubeVersion); err != nil {
@@ -96,10 +96,6 @@ func getKubeConformValidator(ctx context.Context, kubeVersion string, skipKinds 
 		"https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json",
 	}
 
-	skipKindsMap := lo.SliceToMap(skipKinds, func(s string) (string, struct{}) {
-		return s, struct{}{}
-	})
-
 	cacheDir, err := getKubeConformSchemaCacheDir(kubeVersion, true)
 	if err != nil {
 		return nil, fmt.Errorf("get schema cache dir: %w", err)
@@ -108,7 +104,6 @@ func getKubeConformValidator(ctx context.Context, kubeVersion string, skipKinds 
 	validatorOpts := validator.Opts{
 		Strict:               false, // Skip undefined params check
 		IgnoreMissingSchemas: true,
-		SkipKinds:            skipKindsMap,
 		Cache:                cacheDir,
 		KubernetesVersion:    kubeVersion,
 		Debug:                true,
