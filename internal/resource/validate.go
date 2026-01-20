@@ -126,19 +126,16 @@ func checkIfKubeConformSpecExists(ctx context.Context, kubeVersion string) error
 	// Use signal file to avoid sending subsequent requests
 	signalFilePath := filepath.Join(cacheDir, "ready")
 
-	stat, err := os.Stat(signalFilePath)
-	if err != nil && !os.IsNotExist(err) {
+	if stat, err := os.Stat(signalFilePath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("check cache dir: %w", err)
-	}
-
-	if stat != nil {
+	} else if stat != nil {
 		return nil
 	}
 
 	// This file must exist to specific version. If it does not - version is not valid.
 	url := "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/v" + kubeVersion + "-standalone/all.json"
 
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
@@ -199,9 +196,14 @@ func shouldSkipValidation(ctx context.Context, filters []string, releaseNamespac
 		"kind":    func(s string) bool { return s == meta.GroupVersionKind.Kind },
 		"group":   func(s string) bool { return s == meta.GroupVersionKind.Group },
 		"version": func(s string) bool { return s == meta.GroupVersionKind.Version },
-		// TODO: need to figure out how to filter on namespace set in the manifest itself
-		"namespace": func(s string) bool { return s == meta.Namespace || s == releaseNamespace },
-		"name":      func(s string) bool { return s == meta.Name },
+		"namespace": func(s string) bool {
+			if s == "" {
+				s = "default"
+			}
+
+			return s == meta.Namespace || (meta.Namespace == "" && s == releaseNamespace)
+		},
+		"name": func(s string) bool { return s == meta.Name },
 	}
 
 INPUT:
@@ -213,6 +215,7 @@ INPUT:
 			return false, fmt.Errorf("cannot parse properties: %w", err)
 		}
 
+		// check if all params are valid. Otherwise, operation can be unexpected, depending on iteration over properties.
 		for property := range properties {
 			if _, found := metaMap[property]; !found {
 				return false, fmt.Errorf("only %s skip properties are supported",
@@ -321,8 +324,7 @@ func validateResourceWithCodec(res *InstallableResource) error {
 
 	decoder := scheme.Codecs.UniversalDecoder(gvk.GroupVersion())
 
-	_, _, err = decoder.Decode(jsonBytes, &gvk, nil)
-	if err != nil {
+	if _, _, err = decoder.Decode(jsonBytes, &gvk, nil); err != nil {
 		return fmt.Errorf("decoder decode: %w", err)
 	}
 
