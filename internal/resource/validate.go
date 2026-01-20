@@ -66,7 +66,9 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 		}
 
 		if err := validateResourceSchemaWithKubeConform(ctx, resValidator, res); err != nil {
-			sb.WriteString("  validate " + res.IDHuman() + ": " + err.Error() + "\n")
+			for _, s := range strings.Split(err.Error(), "\n") {
+				sb.WriteString("  validate " + res.IDHuman() + ": " + s + "\n")
+			}
 
 			continue
 		}
