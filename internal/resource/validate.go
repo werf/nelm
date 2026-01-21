@@ -24,7 +24,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-var ErrKubeConformUnexpectedError = errors.New("unexpected non-validation error")
+var ErrKubeConformUnexpected = errors.New("unexpected non-validation error")
 
 // Can be called even without cluster access.
 func ValidateLocal(ctx context.Context, releaseNamespace string, transformedResources []*InstallableResource,
@@ -65,7 +65,7 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 		}
 
 		if err := validateResourceSchemaWithKubeConform(ctx, resValidator, res); err != nil {
-			if errors.Is(err, ErrKubeConformUnexpectedError) {
+			if errors.Is(err, ErrKubeConformUnexpected) {
 				return fmt.Errorf("validate resource %s: %w", res.IDHuman(), err)
 			}
 
@@ -243,7 +243,7 @@ func validateResourceSchemaWithKubeConform(ctx context.Context, kubeConformValid
 
 		switch validationResult.Status {
 		case validator.Error:
-			return fmt.Errorf("%w: %w", ErrKubeConformUnexpectedError, validationResult.Err)
+			return fmt.Errorf("%w: %w", ErrKubeConformUnexpected, validationResult.Err)
 		case validator.Skipped:
 			log.Default.Debug(ctx, "Skip validation for resource: %s", res.IDHuman())
 		case validator.Invalid:
@@ -253,7 +253,7 @@ func validateResourceSchemaWithKubeConform(ctx context.Context, kubeConformValid
 		case validator.Empty, validator.Valid:
 			continue
 		default:
-			return fmt.Errorf("%w: %w", ErrKubeConformUnexpectedError,
+			return fmt.Errorf("%w: %w", ErrKubeConformUnexpected,
 				fmt.Errorf("unexpected validation status: %d", validationResult.Status))
 		}
 	}
@@ -261,7 +261,7 @@ func validateResourceSchemaWithKubeConform(ctx context.Context, kubeConformValid
 	// Check for stream reading errors
 	for err := range errCh {
 		if err != nil {
-			return fmt.Errorf("%w: read resource stream: %w", ErrKubeConformUnexpectedError, err)
+			return fmt.Errorf("%w: read resource stream: %w", ErrKubeConformUnexpected, err)
 		}
 	}
 
