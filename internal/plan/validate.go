@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/common"
@@ -31,7 +33,7 @@ func validateAdoptableResources(releaseName, releaseNamespace string, resourceIn
 			continue
 		}
 
-		if adoptable, nonAdoptableReason := adoptableBy(info.LocalResource.ResourceMeta, releaseName, releaseNamespace); !adoptable {
+		if adoptable, nonAdoptableReason := adoptableBy(info.GetResult, releaseName, releaseNamespace); !adoptable {
 			errs = append(errs, fmt.Errorf("resource %q is not adoptable: %s", info.IDHuman(), nonAdoptableReason))
 		}
 	}
@@ -39,8 +41,11 @@ func validateAdoptableResources(releaseName, releaseNamespace string, resourceIn
 	return util.Multierrorf("adoption validation failed", errs)
 }
 
-func adoptableBy(meta *spec.ResourceMeta, releaseName, releaseNamespace string) (adoptable bool, nonAdoptableReason string) {
+func adoptableBy(unstruct *unstructured.Unstructured, releaseName, releaseNamespace string) (adoptable bool, nonAdoptableReason string) {
 	nonAdoptableReasons := []string{}
+
+	// TODO: refactor, make GetResult a ResourceSpec
+	meta := spec.NewResourceMetaFromUnstructured(unstruct, releaseNamespace, "")
 
 	if key, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternReleaseName); found {
 		if value != releaseName {
