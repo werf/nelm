@@ -1,6 +1,7 @@
 package kube
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -21,7 +22,12 @@ func NewDiscoveryKubeClientFromKubeConfig(kubeConfig *KubeConfig) (*disk.CachedD
 	httpCacheDir := filepath.Join(cacheDir, KubectlHTTPCacheSubdir)
 	discoveryCacheDir := computeDiscoveryCacheDir(filepath.Join(cacheDir, KubectlDiscoveryCacheSubdir), kubeConfig.RestConfig.Host)
 
-	return disk.NewCachedDiscoveryClientForConfig(kubeConfig.RestConfig, discoveryCacheDir, httpCacheDir, 6*time.Hour)
+	client, err := disk.NewCachedDiscoveryClientForConfig(kubeConfig.RestConfig, discoveryCacheDir, httpCacheDir, 6*time.Hour)
+	if err != nil {
+		return nil, fmt.Errorf("new discovery client for config: %w", err)
+	}
+
+	return client, nil
 }
 
 // Taken from: https://github.com/kubernetes/cli-runtime/blob/e447e205e17575154e7108dbd67e6965499488a0/pkg/genericclioptions/config_flags.go#L485

@@ -48,6 +48,7 @@ linters:
     - usetesting
     - wastedassign
     - wsl_v5
+    - wrapcheck
 
     # Enable eventually.
     # - err113
@@ -75,6 +76,10 @@ linters:
         - FIXME
     wsl_v5:
       allow-whole-block: true
+    wrapcheck:
+      extra-ignore-sigs:
+        - context.Cause(
+        - .Multierrorf(
   exclusions:
     generated: lax
     presets:
@@ -91,6 +96,13 @@ linters:
       - pkg/legacy
       - internal/legacy
       - pkg/action/release_uninstall_legacy.go$
+    rules:
+      - path: '.+/log/.+\.go'
+        linters:
+          - wrapcheck
+      - path: '.+/fake/.+\.go'
+        linters:
+          - wrapcheck
 
 formatters:
   enable:
