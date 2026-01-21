@@ -1,6 +1,6 @@
 module github.com/werf/nelm
 
-go 1.24
+go 1.23.1
 
 require (
 	github.com/Masterminds/semver/v3 v3.3.1
@@ -44,7 +44,7 @@ require (
 	github.com/werf/lockgate v0.1.1
 	github.com/werf/logboek v0.6.1
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e
-	github.com/yannh/kubeconform v0.7.0
+	github.com/yannh/kubeconform v0.6.7
 	golang.org/x/crypto v0.31.0
 	k8s.io/api v0.29.3
 	k8s.io/apiextensions-apiserver v0.29.0
@@ -146,7 +146,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rubenv/sql-migrate v1.6.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
-	github.com/santhosh-tekuri/jsonschema/v6 v6.0.1 // indirect
+	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1 // indirect
 	github.com/shopspring/decimal v1.3.1 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
