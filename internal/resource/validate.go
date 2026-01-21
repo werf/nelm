@@ -139,7 +139,7 @@ func checkIfKubeConformSpecExists(ctx context.Context, kubeVersion string) error
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return errors.New("schemas not found")
+		return fmt.Errorf("schemas for kube version %s not found", kubeVersion)
 	}
 
 	return nil
