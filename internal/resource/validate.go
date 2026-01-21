@@ -164,7 +164,8 @@ func createKubeConformCacheDir(version string) (string, error) {
 }
 
 func shouldSkipValidation(ctx context.Context, filters []string, releaseNamespace string,
-	meta *spec.ResourceMeta) (bool, error) {
+	meta *spec.ResourceMeta,
+) (bool, error) {
 	for _, filter := range filters {
 		properties := lo.Must(util.ParseProperties(ctx, filter))
 
@@ -252,8 +253,8 @@ func validateResourceSchemaWithKubeConform(ctx context.Context, kubeConformValid
 		case validator.Empty, validator.Valid:
 			continue
 		default:
-			return fmt.Errorf("%w: unexpected validation status: %s", ErrKubeConformUnexpectedError,
-				validationResult.Status)
+			return fmt.Errorf("%w: %w", ErrKubeConformUnexpectedError,
+				fmt.Errorf("unexpected validation status: %d", validationResult.Status))
 		}
 	}
 
