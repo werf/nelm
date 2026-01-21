@@ -206,13 +206,13 @@ github.com/werf/nelm/internal/legacy/deploy -> context fmt github.com/fluxcd/fla
 github.com/werf/nelm/internal/lock -> context fmt github.com/werf/common-go/pkg/locker_with_retry github.com/werf/lockgate github.com/werf/lockgate/pkg/distributed_locker github.com/werf/nelm/internal/kube github.com/werf/nelm/internal/resource/spec github.com/werf/nelm/pkg/log k8s.io/apimachinery/pkg/apis/meta/v1/unstructured k8s.io/apimachinery/pkg/runtime/schema
 github.com/werf/nelm/internal/plan -> bytes context fmt github.com/dominikbraun/graph github.com/dominikbraun/graph/draw github.com/goccy/go-yaml github.com/gookit/color github.com/mitchellh/copystructure github.com/pkg/errors github.com/samber/lo github.com/sourcegraph/conc/pool github.com/wI2L/jsondiff github.com/werf/3p-helm/pkg/release github.com/werf/kubedog/pkg/informer github.com/werf/kubedog/pkg/trackers/dyntracker github.com/werf/kubedog/pkg/trackers/dyntracker/logstore github.com/werf/kubedog/pkg/trackers/dyntracker/statestore github.com/werf/kubedog/pkg/trackers/dyntracker/util github.com/werf/kubedog/pkg/trackers/rollout/multitrack github.com/werf/nelm/internal/kube github.com/werf/nelm/internal/release github.com/werf/nelm/internal/resource github.com/werf/nelm/internal/resource/spec github.com/werf/nelm/internal/util github.com/werf/nelm/pkg/common github.com/werf/nelm/pkg/log k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/apis/meta/v1/unstructured k8s.io/apimachinery/pkg/runtime/schema k8s.io/apimachinery/pkg/types k8s.io/apimachinery/pkg/util/json regexp sort strings time
 github.com/werf/nelm/internal/release -> context fmt github.com/google/go-cmp/cmp github.com/google/go-cmp/cmp/cmpopts github.com/samber/lo github.com/werf/3p-helm/pkg/action github.com/werf/3p-helm/pkg/chart github.com/werf/3p-helm/pkg/chartutil github.com/werf/3p-helm/pkg/release github.com/werf/3p-helm/pkg/releaseutil github.com/werf/3p-helm/pkg/storage github.com/werf/3p-helm/pkg/storage/driver github.com/werf/3p-helm/pkg/time github.com/werf/nelm/internal/kube github.com/werf/nelm/internal/resource/spec github.com/werf/nelm/pkg/common github.com/werf/nelm/pkg/log hash hash/fnv k8s.io/apimachinery/pkg/apis/meta/v1/unstructured k8s.io/client-go/kubernetes k8s.io/client-go/kubernetes/scheme sigs.k8s.io/yaml slices sort strings sync unicode
-github.com/werf/nelm/internal/resource -> context crypto/sha256 encoding/json fmt github.com/ohler55/ojg/jp github.com/samber/lo github.com/werf/3p-helm/pkg/release github.com/werf/kubedog/pkg/trackers/rollout/multitrack github.com/werf/nelm/internal/kube github.com/werf/nelm/internal/resource/spec github.com/werf/nelm/internal/util github.com/werf/nelm/pkg/common github.com/werf/nelm/pkg/featgate k8s.io/api/core/v1 k8s.io/apimachinery/pkg/api/meta k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/apis/meta/v1/unstructured k8s.io/apimachinery/pkg/runtime/schema math regexp sort strconv strings time
+github.com/werf/nelm/internal/resource -> bytes context crypto/sha256 encoding/json fmt github.com/ohler55/ojg/jp github.com/pkg/errors github.com/samber/lo github.com/werf/3p-helm/pkg/release github.com/werf/kubedog/pkg/trackers/rollout/multitrack github.com/werf/nelm/internal/kube github.com/werf/nelm/internal/resource/spec github.com/werf/nelm/internal/util github.com/werf/nelm/pkg/common github.com/werf/nelm/pkg/featgate github.com/werf/nelm/pkg/log github.com/yannh/kubeconform/pkg/resource github.com/yannh/kubeconform/pkg/validator k8s.io/api/core/v1 k8s.io/apimachinery/pkg/api/meta k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/apis/meta/v1/unstructured k8s.io/apimachinery/pkg/runtime/schema k8s.io/client-go/kubernetes/scheme math net/http os path/filepath regexp sigs.k8s.io/yaml sort strconv strings time
 github.com/werf/nelm/internal/resource/spec -> context encoding/base64 fmt github.com/samber/lo github.com/werf/kubedog/pkg/trackers/rollout/multitrack github.com/werf/nelm/pkg/common github.com/werf/nelm/pkg/featgate github.com/werf/nelm/pkg/log k8s.io/apimachinery/pkg/api/meta k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/apis/meta/v1/unstructured k8s.io/apimachinery/pkg/runtime k8s.io/apimachinery/pkg/runtime/schema k8s.io/client-go/kubernetes/scheme regexp sort strings
 github.com/werf/nelm/internal/test -> github.com/davecgh/go-spew/spew github.com/dominikbraun/graph github.com/google/go-cmp/cmp github.com/google/go-cmp/cmp/cmpopts github.com/samber/lo github.com/werf/nelm/internal/resource regexp
 github.com/werf/nelm/internal/track -> context fmt github.com/chanced/caps github.com/gookit/color github.com/jedib0t/go-pretty/v6/table github.com/samber/lo github.com/werf/kubedog/pkg/trackers/dyntracker/logstore github.com/werf/kubedog/pkg/trackers/dyntracker/statestore github.com/werf/kubedog/pkg/trackers/dyntracker/util github.com/werf/nelm/pkg/log k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/runtime/schema sort strings time
 github.com/werf/nelm/internal/util -> bufio context fmt github.com/aymanbagabas/go-udiff github.com/aymanbagabas/go-udiff/myers github.com/evanphx/json-patch github.com/gookit/color github.com/hashicorp/go-multierror github.com/looplab/fsm github.com/samber/lo github.com/tidwall/sjson github.com/wI2L/jsondiff io strings unicode
 github.com/werf/nelm/pkg/action -> context encoding/json errors flag fmt github.com/Masterminds/semver/v3 github.com/alecthomas/chroma/v2 github.com/alecthomas/chroma/v2/quick github.com/alecthomas/chroma/v2/styles github.com/goccy/go-yaml github.com/gookit/color github.com/jedib0t/go-pretty/v6/table github.com/jedib0t/go-pretty/v6/text github.com/pkg/errors github.com/samber/lo github.com/werf/3p-helm/cmd/helm github.com/werf/3p-helm/pkg/action github.com/werf/3p-helm/pkg/chart/loader github.com/werf/3p-helm/pkg/chartutil github.com/werf/3p-helm/pkg/cli github.com/werf/3p-helm/pkg/kube github.com/werf/3p-helm/pkg/registry github.com/werf/3p-helm/pkg/release github.com/werf/3p-helm/pkg/storage/driver github.com/werf/3p-helm/pkg/werf/helmopts github.com/werf/common-go/pkg/secrets_manager github.com/werf/kubedog/pkg/display github.com/werf/kubedog/pkg/informer github.com/werf/kubedog/pkg/kube github.com/werf/kubedog/pkg/trackers/dyntracker/logstore github.com/werf/kubedog/pkg/trackers/dyntracker/statestore github.com/werf/kubedog/pkg/trackers/dyntracker/util github.com/werf/logboek github.com/werf/nelm/internal/chart github.com/werf/nelm/internal/kube github.com/werf/nelm/internal/legacy/deploy github.com/werf/nelm/internal/lock github.com/werf/nelm/internal/plan github.com/werf/nelm/internal/release github.com/werf/nelm/internal/resource github.com/werf/nelm/internal/resource/spec github.com/werf/nelm/internal/track github.com/werf/nelm/internal/util github.com/werf/nelm/pkg/common github.com/werf/nelm/pkg/featgate github.com/werf/nelm/pkg/legacy/secret github.com/werf/nelm/pkg/log github.com/xo/terminfo io io/ioutil k8s.io/apimachinery/pkg/api/errors k8s.io/apimachinery/pkg/apis/meta/v1 k8s.io/apimachinery/pkg/apis/meta/v1/unstructured k8s.io/apimachinery/pkg/runtime k8s.io/apimachinery/pkg/runtime/schema k8s.io/klog k8s.io/klog/v2 os path/filepath sigs.k8s.io/yaml sort strings sync time
-github.com/werf/nelm/pkg/common -> fmt github.com/Masterminds/sprig/v3 github.com/docker/cli/cli/config github.com/docker/docker/pkg/homedir github.com/samber/lo github.com/werf/nelm/pkg/log k8s.io/apimachinery/pkg/apis/meta/v1 path/filepath regexp time
+github.com/werf/nelm/pkg/common -> fmt github.com/Masterminds/sprig/v3 github.com/docker/cli/cli/config github.com/docker/docker/pkg/homedir github.com/samber/lo github.com/werf/3p-helm/pkg/helmpath github.com/werf/nelm/pkg/log k8s.io/apimachinery/pkg/apis/meta/v1 path/filepath regexp time
 github.com/werf/nelm/pkg/featgate -> github.com/chanced/caps github.com/samber/lo github.com/werf/nelm/pkg/common os
 github.com/werf/nelm/pkg/legacy/secret -> bytes context errors fmt github.com/google/uuid github.com/gookit/color github.com/moby/term github.com/werf/common-go/pkg/secret github.com/werf/common-go/pkg/secrets_manager github.com/werf/common-go/pkg/util github.com/werf/nelm/pkg/log golang.org/x/crypto/ssh/terminal io io/ioutil os os/exec path/filepath runtime strings
 github.com/werf/nelm/pkg/log -> context flag fmt github.com/containerd/log github.com/davecgh/go-spew/spew github.com/gookit/color github.com/hofstadter-io/cinful github.com/samber/lo github.com/sirupsen/logrus github.com/werf/3p-helm/pkg/engine github.com/werf/kubedog/pkg/tracker/debug github.com/werf/kubedog/pkg/trackers/dyntracker/util github.com/werf/logboek github.com/werf/logboek/pkg/level github.com/xo/terminfo io k8s.io/klog k8s.io/klog/v2 log os slices
@@ -231,6 +231,7 @@ FUNCTIONS
 
 func AddChartRepoConnectionFlags(cmd *cobra.Command, cfg *common.ChartRepoConnectionOptions) error
 func AddKubeConnectionFlags(cmd *cobra.Command, cfg *common.KubeConnectionOptions) error
+func AddResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceValidationOptions) error
 func AddSecretValuesFlags(cmd *cobra.Command, cfg *common.SecretValuesOptions) error
 func AddTrackingFlags(cmd *cobra.Command, cfg *common.TrackingOptions) error
 func AddValuesFlags(cmd *cobra.Command, cfg *common.ValuesOptions) error
@@ -1081,7 +1082,9 @@ func IsSensitive(groupKind schema.GroupKind, annotations map[string]string) bool
 func KeepOnDelete(meta *spec.ResourceMeta, releaseNamespace string) bool
 func ParseSensitivePaths(value string) []string
 func RedactSensitiveData(unstruct *unstructured.Unstructured, sensitivePaths []string) *unstructured.Unstructured
-func ValidateLocal(releaseNamespace string, transformedResources []*InstallableResource) error
+func ValidateLocal(ctx context.Context, releaseNamespace string, transformedResources []*InstallableResource,
+	opts common.ResourceValidationOptions,
+) error
     Can be called even without cluster access.
 
 func ValidateResourcePolicy(meta *spec.ResourceMeta) error
@@ -1169,6 +1172,13 @@ type InternalDependency struct {
 	ResourceState common.ResourceState
 }
     Represents a dependency on a Kubernetes resource in the Helm release.
+
+type KubeConformValidationError struct {
+	Errors []error
+}
+
+func (e KubeConformValidationError) Error() string
+    Error for interface compatibility
 
 type SensitiveInfo struct {
 	IsSensitive    bool
@@ -1568,6 +1578,7 @@ TYPES
 type ChartLintOptions struct {
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
+	common.ResourceValidationOptions
 	common.ValuesOptions
 	common.SecretValuesOptions
 
@@ -1717,6 +1728,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 type ReleaseInstallOptions struct {
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
+	common.ResourceValidationOptions
 	common.ValuesOptions
 	common.SecretValuesOptions
 	common.TrackingOptions
@@ -1812,6 +1824,7 @@ func (e *ReleaseNotFoundError) Error() string
 type ReleasePlanInstallOptions struct {
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
+	common.ResourceValidationOptions
 	common.ValuesOptions
 	common.SecretValuesOptions
 
@@ -1867,6 +1880,7 @@ func (e *ReleaseRevisionNotFoundError) Error() string
 type ReleaseRollbackOptions struct {
 	common.KubeConnectionOptions
 	common.TrackingOptions
+	common.ResourceValidationOptions
 
 	DefaultDeletePropagation string
 	ExtraRuntimeAnnotations map[string]string
@@ -1989,6 +2003,7 @@ const (
 	DefaultDeletePropagation = metav1.DeletePropagationForeground
 	DefaultDiffContextLines  = 3
 	DefaultFieldManager      = "helm"
+	DefaultResourceValidationKubeVersion = "1.35.0"
 	DefaultLocalKubeVersion      = "1.20.0"
 	DefaultLogColorMode          = log.LogColorModeAuto
 	DefaultNetworkParallelism    = 30
@@ -2127,6 +2142,13 @@ var (
 	AnnotationKeyHumanDeletePropagation   = "werf.io/delete-propagation"
 	AnnotationKeyPatternDeletePropagation = regexp.MustCompile(`^werf.io/delete-propagation$`)
 )
+var (
+	APIResourceValidationJSONSchemasCacheDir        = helmpath.CachePath("nelm", "api-resource-json-schemas")
+	APIResourceValidationKubeConformSchemasLocation = []string{
+		"default",
+		"https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json",
+	}
+)
 var DefaultRegistryCredentialsPath = filepath.Join(homedir.Get(), ".docker", config.ConfigFileName)
 var OrderedStoreAs = []StoreAs{StoreAsNone, StoreAsHook, StoreAsRegular}
 var SprigFuncs = sprig.TxtFuncMap()
@@ -2242,6 +2264,14 @@ const (
 	ResourceStatePresent ResourceState = "present"
 	ResourceStateReady   ResourceState = "ready"
 )
+type ResourceValidationOptions struct {
+	NoResourceValidation bool
+	ValidationKubeVersion string
+	ValidationSkip []string
+}
+
+func (opts *ResourceValidationOptions) ApplyDefaults()
+
 type SecretValuesOptions struct {
 	DefaultSecretValuesDisable bool
 	SecretKey string
@@ -2357,6 +2387,11 @@ var (
 	FeatGateMoreDetailedExitCodeForPlan = NewFeatGate(
 		"more-detailed-exit-code-for-plan",
 		`Make the "plan" command with the flag "--exit-code" return an exit code 3 instead of 2 when no resource changes, but still must install the release`,
+	)
+
+	FeatGateResourceValidation = NewFeatGate(
+		"resource-validation",
+		"Validate chart resources against specific Kubernetes resources' schemas",
 	)
 )
 
