@@ -253,8 +253,7 @@ func validateResourceSchemaWithKubeConform(ctx context.Context, kubeConformValid
 		case validator.Empty, validator.Valid:
 			continue
 		default:
-			return fmt.Errorf("%w: %w", ErrKubeConformUnexpected,
-				fmt.Errorf("unexpected validation status: %d", validationResult.Status))
+			panic("unexpected validation status")
 		}
 	}
 
