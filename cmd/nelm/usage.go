@@ -88,13 +88,11 @@ func usageFunc(c *cobra.Command) error {
 	t.Funcs(templateFuncs)
 
 	if _, err := t.Parse(c.UsageTemplate()); err != nil {
-		c.PrintErrln(err)
-		return err
+		return fmt.Errorf("parse template: %w", err)
 	}
 
 	if err := t.Execute(c.OutOrStderr(), c); err != nil {
-		c.PrintErrln(err)
-		return err
+		return fmt.Errorf("execute template: %w", err)
 	}
 
 	return nil
