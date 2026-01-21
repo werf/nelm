@@ -24,7 +24,20 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-var ErrKubeConformUnexpected = errors.New("unexpected non-validation error")
+type KubeConformValidationError struct {
+	Errors []error
+}
+
+// Error for interface compatibility
+func (e KubeConformValidationError) Error() string {
+	err := util.Multierrorf("validation error", e.Errors)
+
+	if err == nil {
+		return "validation error"
+	}
+
+	return err.Error()
+}
 
 // Can be called even without cluster access.
 func ValidateLocal(ctx context.Context, releaseNamespace string, transformedResources []*InstallableResource,
@@ -53,7 +66,7 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 		return fmt.Errorf("get schema validator: %w", err)
 	}
 
-	var sb strings.Builder
+	var errs []error
 
 	for _, res := range resources {
 		if ok, err := shouldSkipValidation(ctx, opts.ValidationSkip, releaseNamespace, res.ResourceMeta); err != nil {
@@ -65,27 +78,27 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 		}
 
 		if err := validateResourceSchemaWithKubeConform(ctx, resValidator, res); err != nil {
-			if errors.Is(err, ErrKubeConformUnexpected) {
-				return fmt.Errorf("validate resource %s: %w", res.IDHuman(), err)
+			var kubeConformValidationError *KubeConformValidationError
+
+			if errors.As(err, &kubeConformValidationError) {
+				errs = append(errs, kubeConformValidationError.Errors...)
+
+				continue
 			}
 
-			for _, s := range strings.Split(err.Error(), "\n") {
-				sb.WriteString("  validate " + res.IDHuman() + ": " + s + "\n")
-			}
-
-			continue
+			return fmt.Errorf("validate resource %s: %w", res.IDHuman(), err)
 		}
 
 		if err := validateResourceWithCodec(res); err != nil {
-			sb.WriteString("  validate " + res.IDHuman() + ": " + err.Error() + "\n")
+			errs = append(errs, fmt.Errorf("validate resource %s: %w", res.IDHuman(), err))
 		}
 	}
 
-	if sb.Len() == 0 {
+	if len(errs) == 0 {
 		return nil
 	}
 
-	return fmt.Errorf("schema validation failed:\n%s", sb.String())
+	return util.Multierrorf("schema validation failed", errs)
 }
 
 func getKubeConformValidator(ctx context.Context, kubeVersion string) (validator.Validator, error) {
@@ -163,9 +176,7 @@ func createKubeConformCacheDir(version string) (string, error) {
 	return path, nil
 }
 
-func shouldSkipValidation(ctx context.Context, filters []string, releaseNamespace string,
-	meta *spec.ResourceMeta,
-) (bool, error) {
+func shouldSkipValidation(ctx context.Context, filters []string, releaseNamespace string, meta *spec.ResourceMeta) (bool, error) {
 	for _, filter := range filters {
 		properties := lo.Must(util.ParseProperties(ctx, filter))
 
@@ -226,9 +237,7 @@ func validateNoDuplicates(releaseNamespace string, transformedResources []*Insta
 	return fmt.Errorf("duplicated resources found: %s", strings.Join(duplicatedIDHumans, ", "))
 }
 
-func validateResourceSchemaWithKubeConform(ctx context.Context, kubeConformValidator validator.Validator,
-	res *InstallableResource,
-) error {
+func validateResourceSchemaWithKubeConform(ctx context.Context, kubeConformValidator validator.Validator, res *InstallableResource) error {
 	yamlBytes, err := yaml.Marshal(res.Unstruct.Object)
 	if err != nil {
 		return fmt.Errorf("marshal resource to yaml: %w", err)
@@ -236,19 +245,20 @@ func validateResourceSchemaWithKubeConform(ctx context.Context, kubeConformValid
 
 	resCh, errCh := resource.FromStream(ctx, res.FilePath, bytes.NewReader(yamlBytes))
 
-	var validationErrs []string
+	var validationErrs []error
 
 	for validationResource := range resCh {
 		validationResult := kubeConformValidator.ValidateResource(validationResource)
 
 		switch validationResult.Status {
 		case validator.Error:
-			return fmt.Errorf("%w: %w", ErrKubeConformUnexpected, validationResult.Err)
+			return validationResult.Err
 		case validator.Skipped:
 			log.Default.Debug(ctx, "Skip validation for resource: %s", res.IDHuman())
 		case validator.Invalid:
 			for _, validationError := range validationResult.ValidationErrors {
-				validationErrs = append(validationErrs, validationError.Path+": "+validationError.Msg)
+				validationErrs = append(validationErrs,
+					fmt.Errorf("validation %s: %s: %s", res.IDHuman(), validationError.Path, validationError.Msg))
 			}
 		case validator.Empty, validator.Valid:
 			continue
@@ -257,15 +267,15 @@ func validateResourceSchemaWithKubeConform(ctx context.Context, kubeConformValid
 		}
 	}
 
-	// Check for stream reading errors
+	// Check for stream reading Errors
 	for err := range errCh {
 		if err != nil {
-			return fmt.Errorf("%w: read resource stream: %w", ErrKubeConformUnexpected, err)
+			return fmt.Errorf("read resource stream: %w", err)
 		}
 	}
 
 	if len(validationErrs) > 0 {
-		return fmt.Errorf("%s", strings.Join(validationErrs, "\n"))
+		return &KubeConformValidationError{Errors: validationErrs}
 	}
 
 	return nil
