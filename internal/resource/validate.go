@@ -244,7 +244,7 @@ func validateResourceSchemaWithKubeConform(ctx context.Context, kubeConformValid
 		case validator.Error:
 			return fmt.Errorf("%w: %w", ErrKubeConformUnexpectedError, validationResult.Err)
 		case validator.Skipped:
-			log.Default.Debug(ctx, "Skip local validation for resource: %s", res.IDHuman())
+			log.Default.Debug(ctx, "Skip validation for resource: %s", res.IDHuman())
 		case validator.Invalid:
 			for _, validationError := range validationResult.ValidationErrors {
 				validationErrs = append(validationErrs, validationError.Path+": "+validationError.Msg)
