@@ -7,6 +7,7 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/featgate"
 )
 
 func AddKubeConnectionFlags(cmd *cobra.Command, cfg *common.KubeConnectionOptions) error {
@@ -288,6 +289,36 @@ func AddChartRepoConnectionFlags(cmd *cobra.Command, cfg *common.ChartRepoConnec
 	if err := cli.AddFlag(cmd, &cfg.ChartRepoURL, "chart-repo-url", "", "Set URL of chart repo to be used to look for chart", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                chartRepoFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	return nil
+}
+
+func AddResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceValidationOptions) error {
+	if !featgate.FeatGateResourceValidation.Enabled() {
+		return nil
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.NoResourceValidation, "no-resource-validation", false, "Disable resource validation", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                resourceValidationGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ValidationKubeVersion, "resource-validation-kube-version", common.DefaultResourceValidationKubeVersion, "Kubernetes schemas version to use during resource validation", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                resourceValidationGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ValidationSkip, "resource-validation-skip", []string{}, "Skip resource validation for resources with specified attributes. Format: key1=value1,key2=value2. Supported keys: group, version, kind, name, namespace. Example: kind=Deployment,name=my-app", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                resourceValidationGroup,
+		NoSplitOnCommas:      true,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}

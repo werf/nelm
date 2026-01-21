@@ -15,6 +15,7 @@ var (
 	mainFlagGroup           = cli.NewFlagGroup("main", "Options:", 100)
 	valuesFlagGroup         = cli.NewFlagGroup("values", "Values options:", 90)
 	secretFlagGroup         = cli.NewFlagGroup("secret", "Secret options:", 80)
+	resourceValidationGroup = cli.NewFlagGroup("resource-validation", "Resource validation options:", 75)
 	patchFlagGroup          = cli.NewFlagGroup("patch", "Patch options:", 70)
 	progressFlagGroup       = cli.NewFlagGroup("progress", "Progress options:", 65)
 	chartRepoFlagGroup      = cli.NewFlagGroup("chart-repo", "Chart repository options:", 60)

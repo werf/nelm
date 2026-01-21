@@ -36,6 +36,7 @@ const (
 type ReleaseRollbackOptions struct {
 	common.KubeConnectionOptions
 	common.TrackingOptions
+	common.ResourceValidationOptions
 
 	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
 	DefaultDeletePropagation string
@@ -282,7 +283,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	log.Default.Debug(ctx, "Locally validate resources")
 
-	if err := resource.ValidateLocal(releaseNamespace, instResources); err != nil {
+	if err := resource.ValidateLocal(ctx, releaseNamespace, instResources, opts.ResourceValidationOptions); err != nil {
 		return fmt.Errorf("locally validate resources: %w", err)
 	}
 
