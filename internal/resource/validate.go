@@ -31,12 +31,11 @@ type KubeConformValidationError struct {
 // Error for interface compatibility
 func (e KubeConformValidationError) Error() string {
 	err := util.Multierrorf("validation error", e.Errors)
-
-	if err == nil {
-		return "validation error"
+	if err != nil {
+		return err.Error()
 	}
 
-	return err.Error()
+	return "validation error"
 }
 
 // Can be called even without cluster access.
