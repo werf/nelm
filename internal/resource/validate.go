@@ -17,7 +17,6 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/3p-helm/pkg/helmpath"
 	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/common"
@@ -25,26 +24,26 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
+var ErrKubeConformUnexpectedError = errors.New("unexpected non-validation error")
+
 // Can be called even without cluster access.
 func ValidateLocal(ctx context.Context, releaseNamespace string, transformedResources []*InstallableResource,
-	opts common.ResourceLocalValidationOptions,
+	opts common.ResourceValidationOptions,
 ) error {
 	if err := validateNoDuplicates(releaseNamespace, transformedResources); err != nil {
 		return fmt.Errorf("validate for no duplicated resources: %w", err)
 	}
 
-	if !featgate.FeatGateLocalResourceValidation.Enabled() || opts.NoResourceValidation {
-		return nil
-	}
-
-	if err := validateResourceSchemas(ctx, releaseNamespace, transformedResources, opts); err != nil {
-		return fmt.Errorf("validate resource schemas: %w", err)
+	if featgate.FeatGateResourceValidation.Enabled() && !opts.NoResourceValidation {
+		if err := validateResourceSchemas(ctx, releaseNamespace, transformedResources, opts); err != nil {
+			return fmt.Errorf("validate resource schemas: %w", err)
+		}
 	}
 
 	return nil
 }
 
-func validateResourceSchemas(ctx context.Context, releaseNamespace string, resources []*InstallableResource, opts common.ResourceLocalValidationOptions) error {
+func validateResourceSchemas(ctx context.Context, releaseNamespace string, resources []*InstallableResource, opts common.ResourceValidationOptions) error {
 	if len(resources) == 0 {
 		return nil
 	}
@@ -66,6 +65,10 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 		}
 
 		if err := validateResourceSchemaWithKubeConform(ctx, resValidator, res); err != nil {
+			if errors.Is(err, ErrKubeConformUnexpectedError) {
+				return fmt.Errorf("validate resource %s: %w", res.IDHuman(), err)
+			}
+
 			for _, s := range strings.Split(err.Error(), "\n") {
 				sb.WriteString("  validate " + res.IDHuman() + ": " + s + "\n")
 			}
@@ -73,8 +76,7 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 			continue
 		}
 
-		if err := validateResourceWithCodec(res); err != nil &&
-			!strings.Contains(err.Error(), fmt.Sprintf("no kind %q is registered", res.GroupVersionKind.Kind)) {
+		if err := validateResourceWithCodec(res); err != nil {
 			sb.WriteString("  validate " + res.IDHuman() + ": " + err.Error() + "\n")
 		}
 	}
@@ -93,12 +95,7 @@ func getKubeConformValidator(ctx context.Context, kubeVersion string) (validator
 		return nil, err
 	}
 
-	schemaLocations := []string{
-		"default",
-		"https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json",
-	}
-
-	cacheDir, err := getKubeConformSchemaCacheDir(kubeVersion, true)
+	cacheDir, err := createKubeConformCacheDir(kubeVersion)
 	if err != nil {
 		return nil, fmt.Errorf("get schema cache dir: %w", err)
 	}
@@ -108,10 +105,13 @@ func getKubeConformValidator(ctx context.Context, kubeVersion string) (validator
 		IgnoreMissingSchemas: true,
 		Cache:                cacheDir,
 		KubernetesVersion:    kubeVersion,
-		Debug:                true,
 	}
 
-	validatorInstance, err := validator.New(schemaLocations, validatorOpts)
+	if log.Default.AcceptLevel(ctx, log.DebugLevel) {
+		validatorOpts.Debug = true
+	}
+
+	validatorInstance, err := validator.New(common.APIResourceValidationKubeConformSchemasLocation, validatorOpts)
 	if err != nil {
 		return nil, fmt.Errorf("create schema validator: %w", err)
 	}
@@ -120,20 +120,6 @@ func getKubeConformValidator(ctx context.Context, kubeVersion string) (validator
 }
 
 func checkIfKubeConformSpecExists(ctx context.Context, kubeVersion string) error {
-	cacheDir, err := getKubeConformSchemaCacheDir(kubeVersion, false)
-	if err != nil {
-		return err
-	}
-
-	// Use signal file to avoid sending subsequent requests
-	signalFilePath := filepath.Join(cacheDir, "ready")
-
-	if stat, err := os.Stat(signalFilePath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("check cache dir: %w", err)
-	} else if stat != nil {
-		return nil
-	}
-
 	// This file must exist to specific version. If it does not - version is not valid.
 	url := "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/v" + kubeVersion + "-standalone/all.json"
 
@@ -156,88 +142,56 @@ func checkIfKubeConformSpecExists(ctx context.Context, kubeVersion string) error
 		return errors.New("schemas not found")
 	}
 
-	_, err = getKubeConformSchemaCacheDir(kubeVersion, true)
-	if err != nil {
-		return fmt.Errorf("create cache dir: %w", err)
-	}
-
-	f, err := os.Create(signalFilePath)
-	if err != nil {
-		return fmt.Errorf("cannot initialize kubernetes %s cache: %w", signalFilePath, err)
-	}
-
-	defer f.Close()
-
 	return nil
 }
 
-func getKubeConformSchemaCacheDir(kubeVersion string, create bool) (string, error) {
-	cacheDirPath := helmpath.CachePath(".nelm", "api-resource-json-schemas", kubeVersion)
+func createKubeConformCacheDir(version string) (string, error) {
+	path := filepath.Join(common.APIResourceValidationJSONSchemasCacheDir, version)
 
-	if !create {
-		return cacheDirPath, nil
-	}
-
-	if stat, err := os.Stat(cacheDirPath); os.IsNotExist(err) {
-		if err := os.MkdirAll(cacheDirPath, 0o750); err != nil {
-			return "", fmt.Errorf("create cache dir: %w", err)
+	if stat, err := os.Stat(path); os.IsNotExist(err) {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			return "", fmt.Errorf("create cache dir %q: %w", path, err)
 		}
 
-		return cacheDirPath, nil
+		return path, nil
 	} else if err != nil {
-		return "", fmt.Errorf("stat cache dir: %w", err)
+		return "", fmt.Errorf("stat cache dir %q: %w", path, err)
 	} else if !stat.IsDir() {
-		return "", fmt.Errorf("%s is not a directory", cacheDirPath)
+		return "", fmt.Errorf("%s is not a directory", path)
 	}
 
-	return cacheDirPath, nil
+	return path, nil
 }
 
-func shouldSkipValidation(ctx context.Context, filters []string, releaseNamespace string, meta *spec.ResourceMeta) (bool, error) {
-	metaMap := map[string]func(string) bool{
-		"kind":    func(s string) bool { return s == meta.GroupVersionKind.Kind },
-		"group":   func(s string) bool { return s == meta.GroupVersionKind.Group },
-		"version": func(s string) bool { return s == meta.GroupVersionKind.Version },
-		"namespace": func(s string) bool {
-			if s == "" {
-				s = "default"
-			}
-
-			return s == meta.Namespace || (meta.Namespace == "" && s == releaseNamespace)
-		},
-		"name": func(s string) bool { return s == meta.Name },
-	}
-
-INPUT:
+func shouldSkipValidation(ctx context.Context, filters []string, releaseNamespace string,
+	meta *spec.ResourceMeta) (bool, error) {
 	for _, filter := range filters {
-		var match bool
+		properties := lo.Must(util.ParseProperties(ctx, filter))
 
-		properties, err := util.ParseProperties(ctx, filter)
-		if err != nil {
-			return false, fmt.Errorf("cannot parse properties: %w", err)
-		}
-
-		// check if all params are valid. Otherwise, operation can be unexpected, depending on iteration over properties.
-		for property := range properties {
-			if _, found := metaMap[property]; !found {
-				return false, fmt.Errorf("only %s skip properties are supported",
-					strings.Join(lo.Keys(metaMap), ", "))
-			}
-		}
+		var matcher spec.ResourceMatcher
 
 		for property, value := range properties {
-			f := metaMap[property]
+			valueString := value.(string)
 
-			if stringValue, ok := value.(string); !ok {
-				return false, fmt.Errorf("property %s has invalid value", property)
-			} else if !f(stringValue) {
-				continue INPUT
+			switch property {
+			case "group":
+				matcher.Groups = append(matcher.Groups, valueString)
+			case "version":
+				matcher.Versions = append(matcher.Versions, valueString)
+			case "kind":
+				matcher.Kinds = append(matcher.Kinds, valueString)
+			case "namespace":
+				if valueString == "" {
+					valueString = releaseNamespace
+				}
+
+				matcher.Namespaces = append(matcher.Namespaces, valueString)
+			case "name":
+				matcher.Names = append(matcher.Names, valueString)
 			}
-
-			match = true
 		}
 
-		if match {
+		if matcher.Match(meta) {
 			return true, nil
 		}
 	}
@@ -286,25 +240,27 @@ func validateResourceSchemaWithKubeConform(ctx context.Context, kubeConformValid
 	for validationResource := range resCh {
 		validationResult := kubeConformValidator.ValidateResource(validationResource)
 
-		if validationResult.Status == validator.Error {
-			return validationResult.Err
-		}
-
-		if validationResult.Status == validator.Skipped {
+		switch validationResult.Status {
+		case validator.Error:
+			return fmt.Errorf("%w: %w", ErrKubeConformUnexpectedError, validationResult.Err)
+		case validator.Skipped:
 			log.Default.Debug(ctx, "Skip local validation for resource: %s", res.IDHuman())
-		}
-
-		if validationResult.Status != validator.Valid {
+		case validator.Invalid:
 			for _, validationError := range validationResult.ValidationErrors {
 				validationErrs = append(validationErrs, validationError.Path+": "+validationError.Msg)
 			}
+		case validator.Empty, validator.Valid:
+			continue
+		default:
+			return fmt.Errorf("%w: unexpected validation status: %s", ErrKubeConformUnexpectedError,
+				validationResult.Status)
 		}
 	}
 
 	// Check for stream reading errors
 	for err := range errCh {
 		if err != nil {
-			return fmt.Errorf("read resource stream: %w", err)
+			return fmt.Errorf("%w: read resource stream: %w", ErrKubeConformUnexpectedError, err)
 		}
 	}
 
@@ -321,12 +277,13 @@ func validateResourceWithCodec(res *InstallableResource) error {
 
 	jsonBytes, err := unstruct.MarshalJSON()
 	if err != nil {
-		return fmt.Errorf("marshal josn: %w", err)
+		return fmt.Errorf("marshal json: %w", err)
 	}
 
 	decoder := scheme.Codecs.UniversalDecoder(gvk.GroupVersion())
 
-	if _, _, err = decoder.Decode(jsonBytes, &gvk, nil); err != nil {
+	if _, _, err = decoder.Decode(jsonBytes, &gvk, nil); err != nil &&
+		!strings.Contains(err.Error(), fmt.Sprintf("no kind %q is registered", res.GroupVersionKind.Kind)) {
 		return fmt.Errorf("decoder decode: %w", err)
 	}
 

@@ -296,26 +296,26 @@ func AddChartRepoConnectionFlags(cmd *cobra.Command, cfg *common.ChartRepoConnec
 	return nil
 }
 
-func AddLocalResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceLocalValidationOptions) error {
-	if !featgate.FeatGateLocalResourceValidation.Enabled() {
+func AddResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceValidationOptions) error {
+	if !featgate.FeatGateResourceValidation.Enabled() {
 		return nil
 	}
 
-	if err := cli.AddFlag(cmd, &cfg.NoResourceValidation, "no-validation", false, "Disable local resource validation", cli.AddFlagOptions{
+	if err := cli.AddFlag(cmd, &cfg.NoResourceValidation, "no-resource-validation", false, "Disable resource validation", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                resourceValidationGroup,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}
 
-	if err := cli.AddFlag(cmd, &cfg.ValidationKubeVersion, "validation-kube-version", common.DefaultLocalResourceValidationKubeVersion, "Kubernetes schemas to use during local resource validation", cli.AddFlagOptions{
+	if err := cli.AddFlag(cmd, &cfg.ValidationKubeVersion, "resource-validation-kube-version", common.DefaultResourceValidationKubeVersion, "Kubernetes schemas version to use during resource validation", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                resourceValidationGroup,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}
 
-	if err := cli.AddFlag(cmd, &cfg.ValidationSkip, "validation-skip", []string{}, "Skip local resource validation for resources with specified attributes", cli.AddFlagOptions{
+	if err := cli.AddFlag(cmd, &cfg.ValidationSkip, "resource-validation-skip", []string{}, "Skip resource validation for resources with specified attributes. Format: key1=value1,key2=value2. Supported keys: group, version, kind, name, namespace. Example: kind=Deployment,name=my-app", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                resourceValidationGroup,
 		NoSplitOnCommas:      true,

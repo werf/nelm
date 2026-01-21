@@ -210,7 +210,7 @@ func (opts *TrackingOptions) ApplyDefaults() {
 	}
 }
 
-type ResourceLocalValidationOptions struct {
+type ResourceValidationOptions struct {
 	// NoResourceValidation Disable local resource validation.
 	NoResourceValidation bool
 	// ValidationKubeVersion sets specific Kubernetes version and respective schemas to use on resource validation.
@@ -219,4 +219,4 @@ type ResourceLocalValidationOptions struct {
 	ValidationSkip []string
 }
 
-func (opts *ResourceLocalValidationOptions) ApplyDefaults() {}
+func (opts *ResourceValidationOptions) ApplyDefaults() {}

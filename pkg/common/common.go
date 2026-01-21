@@ -10,6 +10,7 @@ import (
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/docker/pkg/homedir"
 	"github.com/samber/lo"
+	"github.com/werf/3p-helm/pkg/helmpath"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/werf/nelm/pkg/log"
@@ -30,9 +31,8 @@ const (
 	DefaultDeletePropagation = metav1.DeletePropagationForeground
 	DefaultDiffContextLines  = 3
 	DefaultFieldManager      = "helm"
-	// DefaultLocalValidationKubeVersion Kubernetes version to use during local resource validation by kubeconform
-	DefaultLocalResourceValidationKubeVersion = "1.35.0"
-	LocalResourceValidationSchemasDirPath     = ""
+	// DefaultResourceValidationKubeVersion Kubernetes version to use during resource validation by kubeconform
+	DefaultResourceValidationKubeVersion = "1.35.0"
 	// TODO(v2): update to a more recent version? Not sure about backwards compatibility.
 	DefaultLocalKubeVersion      = "1.20.0"
 	DefaultLogColorMode          = log.LogColorModeAuto
@@ -296,3 +296,11 @@ var (
 )
 
 var SprigFuncs = sprig.TxtFuncMap()
+
+var (
+	APIResourceValidationJSONSchemasCacheDir        = helmpath.CachePath("nelm", "api-resource-json-schemas")
+	APIResourceValidationKubeConformSchemasLocation = []string{
+		"default",
+		"https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json",
+	}
+)

@@ -54,9 +54,9 @@ var (
 		`Make the "plan" command with the flag "--exit-code" return an exit code 3 instead of 2 when no resource changes, but still must install the release`,
 	)
 
-	FeatGateLocalResourceValidation = NewFeatGate(
-		"local-resource-validation",
-		"Locally validate chart resources against specific Kubernetes resources' schemas",
+	FeatGateResourceValidation = NewFeatGate(
+		"resource-validation",
+		"Validate chart resources against specific Kubernetes resources' schemas",
 	)
 )
 

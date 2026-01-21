@@ -42,7 +42,7 @@ const (
 type ReleaseInstallOptions struct {
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
-	common.ResourceLocalValidationOptions
+	common.ResourceValidationOptions
 	common.ValuesOptions
 	common.SecretValuesOptions
 	common.TrackingOptions
@@ -409,7 +409,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	log.Default.Debug(ctx, "Locally validate resources")
 
-	if err := resource.ValidateLocal(ctx, releaseNamespace, instResources, opts.ResourceLocalValidationOptions); err != nil {
+	if err := resource.ValidateLocal(ctx, releaseNamespace, instResources, opts.ResourceValidationOptions); err != nil {
 		return fmt.Errorf("locally validate resources: %w", err)
 	}
 
@@ -554,19 +554,19 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		if opts.AutoRollback && prevDeployedRelease != nil {
 			runRollbackPlanResult, nonCritErrs, critErrs := runRollbackPlan(ctx, releaseName, releaseNamespace, newRelease, prevDeployedRelease, taskStore, logStore, informerFactory, history, clientFactory, runRollbackPlanOptions{
-				DefaultDeletePropagation:       opts.DefaultDeletePropagation,
-				TrackingOptions:                opts.TrackingOptions,
-				ExtraAnnotations:               opts.ExtraAnnotations,
-				ExtraLabels:                    opts.ExtraLabels,
-				ExtraRuntimeAnnotations:        opts.ExtraRuntimeAnnotations,
-				ExtraRuntimeLabels:             opts.ExtraRuntimeLabels,
-				ForceAdoption:                  opts.ForceAdoption,
-				NetworkParallelism:             opts.NetworkParallelism,
-				NoRemoveManualChanges:          opts.NoRemoveManualChanges,
-				ReleaseInfoAnnotations:         opts.ReleaseInfoAnnotations,
-				ReleaseLabels:                  opts.ReleaseLabels,
-				RollbackGraphPath:              opts.RollbackGraphPath,
-				ResourceLocalValidationOptions: opts.ResourceLocalValidationOptions,
+				DefaultDeletePropagation:  opts.DefaultDeletePropagation,
+				TrackingOptions:           opts.TrackingOptions,
+				ExtraAnnotations:          opts.ExtraAnnotations,
+				ExtraLabels:               opts.ExtraLabels,
+				ExtraRuntimeAnnotations:   opts.ExtraRuntimeAnnotations,
+				ExtraRuntimeLabels:        opts.ExtraRuntimeLabels,
+				ForceAdoption:             opts.ForceAdoption,
+				NetworkParallelism:        opts.NetworkParallelism,
+				NoRemoveManualChanges:     opts.NoRemoveManualChanges,
+				ReleaseInfoAnnotations:    opts.ReleaseInfoAnnotations,
+				ReleaseLabels:             opts.ReleaseLabels,
+				RollbackGraphPath:         opts.RollbackGraphPath,
+				ResourceValidationOptions: opts.ResourceValidationOptions,
 			})
 
 			criticalErrs = append(criticalErrs, critErrs...)
@@ -723,7 +723,7 @@ func createReleaseNamespace(ctx context.Context, clientFactory *kube.ClientFacto
 
 type runRollbackPlanOptions struct {
 	common.TrackingOptions
-	common.ResourceLocalValidationOptions
+	common.ResourceValidationOptions
 
 	DefaultDeletePropagation string
 	ExtraAnnotations         map[string]string
@@ -816,7 +816,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Locally validate resources")
 
-	if err := resource.ValidateLocal(ctx, releaseNamespace, instResources, opts.ResourceLocalValidationOptions); err != nil {
+	if err := resource.ValidateLocal(ctx, releaseNamespace, instResources, opts.ResourceValidationOptions); err != nil {
 		return nil, nonCritErrs, append(critErrs, fmt.Errorf("locally validate resources: %w", err))
 	}
 
