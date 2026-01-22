@@ -144,7 +144,7 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 		TrackTerminationMode:                   trackTerminationMode(res.ResourceMeta),
 		Weight:                                 weight(res.ResourceMeta, len(manIntDeps) > 0),
 		ManualInternalDependencies:             manIntDeps,
-		AutoInternalDependencies:               internalDependencies(res.Unstruct),
+		AutoInternalDependencies:               internalDeployDependencies(res.Unstruct),
 		ExternalDependencies:                   extDeps,
 		DeployConditions:                       deployConditions(res.ResourceMeta),
 		DeletePropagation:                      deletePropagation(res.ResourceMeta, opts.DefaultDeletePropagation),
@@ -157,9 +157,11 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 type DeletableResource struct {
 	*spec.ResourceMeta
 
-	Ownership         common.Ownership
-	KeepOnDelete      bool
-	DeletePropagation metav1.DeletionPropagation
+	Ownership                  common.Ownership
+	KeepOnDelete               bool
+	DeletePropagation          metav1.DeletionPropagation
+	ManualInternalDependencies []*InternalDependency
+	AutoInternalDependencies   []*InternalDependency
 }
 
 type DeletableResourceOptions struct {
