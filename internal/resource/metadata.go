@@ -966,6 +966,7 @@ func deployConditions(meta *spec.ResourceMeta) map[common.On][]common.Stage {
 		}
 	} else if spec.IsWebhook(meta.GroupVersionKind.GroupKind()) {
 		stage := getWebhookStage(meta)
+
 		return map[common.On][]common.Stage{
 			common.InstallOnInstall:  {stage},
 			common.InstallOnUpgrade:  {stage},
