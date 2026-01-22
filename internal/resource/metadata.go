@@ -916,6 +916,15 @@ func deleteOnFailed(meta *spec.ResourceMeta) bool {
 	return lo.Contains(deletePolicies, common.DeletePolicyFailed)
 }
 
+func getWebhookStage(meta *spec.ResourceMeta) common.Stage {
+	if _, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeployDependency); found {
+		// If webhook has deploy-dependency annotation - use standard StageInstall, as for other resources
+		return common.StageInstall
+	}
+	// Return default state for webhook
+	return common.StagePostPostInstall
+}
+
 func deployConditions(meta *spec.ResourceMeta) map[common.On][]common.Stage {
 	if conditions := deployConditionsForAnnotation(meta, common.AnnotationKeyPatternDeployOn); len(conditions) > 0 {
 		if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
@@ -923,8 +932,9 @@ func deployConditions(meta *spec.ResourceMeta) map[common.On][]common.Stage {
 				conditions[on] = []common.Stage{common.StagePrePreInstall}
 			}
 		} else if spec.IsWebhook(meta.GroupVersionKind.GroupKind()) {
+			stage := getWebhookStage(meta)
 			for on := range conditions {
-				conditions[on] = []common.Stage{common.StagePostPostInstall}
+				conditions[on] = []common.Stage{stage}
 			}
 		}
 
@@ -938,8 +948,9 @@ func deployConditions(meta *spec.ResourceMeta) map[common.On][]common.Stage {
 					conditions[on] = []common.Stage{common.StagePrePreInstall}
 				}
 			} else if spec.IsWebhook(meta.GroupVersionKind.GroupKind()) {
+				stage := getWebhookStage(meta)
 				for on := range conditions {
-					conditions[on] = []common.Stage{common.StagePostPostInstall}
+					conditions[on] = []common.Stage{stage}
 				}
 			}
 
@@ -954,10 +965,11 @@ func deployConditions(meta *spec.ResourceMeta) map[common.On][]common.Stage {
 			common.InstallOnRollback: {common.StagePrePreInstall},
 		}
 	} else if spec.IsWebhook(meta.GroupVersionKind.GroupKind()) {
+		stage := getWebhookStage(meta)
 		return map[common.On][]common.Stage{
-			common.InstallOnInstall:  {common.StagePostPostInstall},
-			common.InstallOnUpgrade:  {common.StagePostPostInstall},
-			common.InstallOnRollback: {common.StagePostPostInstall},
+			common.InstallOnInstall:  {stage},
+			common.InstallOnUpgrade:  {stage},
+			common.InstallOnRollback: {stage},
 		}
 	}
 
