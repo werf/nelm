@@ -146,7 +146,7 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 		ManualInternalDependencies:             manIntDeps,
 		AutoInternalDependencies:               internalDeployDependencies(res.Unstruct),
 		ExternalDependencies:                   extDeps,
-		DeployConditions:                       deployConditions(res.ResourceMeta),
+		DeployConditions:                       deployConditions(res.ResourceMeta, len(manIntDeps) > 0),
 		DeletePropagation:                      deletePropagation(res.ResourceMeta, opts.DefaultDeletePropagation),
 	}, nil
 }
