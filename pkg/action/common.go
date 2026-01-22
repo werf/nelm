@@ -200,14 +200,17 @@ func runFailurePlan(
 	history *release.History,
 	clientFactory *kube.ClientFactory,
 	opts runFailureInstallPlanOptions,
-) (result *runFailurePlanResult, nonCritErrs, critErrs []error) {
+) (result *runFailurePlanResult, nonCritErrs, critErrs *util.MultiError) {
+	critErrs = &util.MultiError{}
+	nonCritErrs = &util.MultiError{}
+
 	log.Default.Debug(ctx, "Build failure plan")
 
 	failurePlan, err := plan.BuildFailurePlan(failedPlan, installableInfos, releaseInfos, plan.BuildFailurePlanOptions{
 		NoFinalTracking: opts.NoFinalTracking,
 	})
 	if err != nil {
-		return nil, nonCritErrs, append(critErrs, fmt.Errorf("build failure plan: %w", err))
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build failure plan: %w", err))
 	}
 
 	if _, planIsUseless := lo.Find(failurePlan.Operations(), func(op *plan.Operation) bool {
@@ -227,7 +230,7 @@ func runFailurePlan(
 		TrackingOptions:    opts.TrackingOptions,
 		NetworkParallelism: opts.NetworkParallelism,
 	}); err != nil {
-		critErrs = append(critErrs, fmt.Errorf("execute failure plan: %w", err))
+		critErrs.Add(fmt.Errorf("execute failure plan: %w", err))
 	}
 
 	resourceOps := lo.Filter(failurePlan.Operations(), func(op *plan.Operation, _ int) bool {

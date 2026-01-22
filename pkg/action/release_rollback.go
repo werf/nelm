@@ -383,7 +383,8 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		progressPrinter.Start(ctx, opts.ProgressTablePrintInterval)
 	}
 
-	var criticalErrs, nonCriticalErrs []error
+	criticalErrs := &util.MultiError{}
+	nonCriticalErrs := &util.MultiError{}
 
 	log.Default.Debug(ctx, "Execute release install plan")
 
@@ -392,7 +393,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		NetworkParallelism: opts.NetworkParallelism,
 	})
 	if executePlanErr != nil {
-		criticalErrs = append(criticalErrs, fmt.Errorf("execute release install plan: %w", executePlanErr))
+		criticalErrs.Add(fmt.Errorf("execute release install plan: %w", executePlanErr))
 	}
 
 	resourceOps := lo.Filter(installPlan.Operations(), func(op *plan.Operation, _ int) bool {
@@ -417,8 +418,8 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 			NetworkParallelism: opts.NetworkParallelism,
 		})
 
-		criticalErrs = append(criticalErrs, critErrs...)
-		nonCriticalErrs = append(nonCriticalErrs, nonCritErrs...)
+		criticalErrs.Add(critErrs)
+		nonCriticalErrs.Add(nonCritErrs)
 
 		if runFailurePlanResult != nil {
 			completedResourceOps = append(completedResourceOps, runFailurePlanResult.CompletedResourceOps...)
@@ -463,18 +464,21 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	if opts.RollbackReportPath != "" {
 		if err := saveReport(opts.RollbackReportPath, report); err != nil {
-			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("save release install report: %w", err))
+			nonCriticalErrs.Add(fmt.Errorf("save release install report: %w", err))
 		}
 	}
 
-	if len(criticalErrs) == 0 && !opts.NoShowNotes {
+	if !criticalErrs.HasErrors() && !opts.NoShowNotes {
 		printNotes(ctx, newRelease.Info.Notes)
 	}
 
-	if len(criticalErrs) > 0 {
-		return util.Multierrorf("failed rollback of release %q (namespace: %q)", append(criticalErrs, nonCriticalErrs...), releaseName, releaseNamespace)
-	} else if len(nonCriticalErrs) > 0 {
-		return util.Multierrorf("succeeded rollback of release %q (namespace: %q), but non-critical errors encountered", nonCriticalErrs, releaseName, releaseNamespace)
+	if criticalErrs.HasErrors() {
+		allErrs := &util.MultiError{}
+		allErrs.Add(criticalErrs, nonCriticalErrs)
+
+		return fmt.Errorf("failed rollback of release %q (namespace: %q): %w", releaseName, releaseNamespace, allErrs)
+	} else if nonCriticalErrs.HasErrors() {
+		return fmt.Errorf("succeeded rollback of release %q (namespace: %q), but non-critical errors encountered: %w", releaseName, releaseNamespace, nonCriticalErrs)
 	} else {
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Succeeded rollback of release %q (namespace: %q)", releaseName, releaseNamespace)))
 
