@@ -29,6 +29,7 @@ const (
 type ChartLintOptions struct {
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
+	common.ResourceValidationOptions
 	common.ValuesOptions
 	common.SecretValuesOptions
 
@@ -331,7 +332,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Locally validate resources")
 
-	if err := resource.ValidateLocal(opts.ReleaseNamespace, instResources); err != nil {
+	if err := resource.ValidateLocal(ctx, opts.ReleaseNamespace, instResources, opts.ResourceValidationOptions); err != nil {
 		return fmt.Errorf("locally validate resources: %w", err)
 	}
 

@@ -60,11 +60,20 @@ func (locker *ConfigMapLocker) Acquire(lockName string, opts lockgate.AcquireOpt
 		return false, lockgate.LockHandle{}, fmt.Errorf("unable to prepare kubernetes cm/%s in ns/%s: %w", locker.ConfigMapName, locker.Namespace, err)
 	}
 
-	return locker.Locker.Acquire(lockName, opts)
+	acquired, handle, err := locker.Locker.Acquire(lockName, opts)
+	if err != nil {
+		return false, lockgate.LockHandle{}, fmt.Errorf("acquire lock: %w", err)
+	}
+
+	return acquired, handle, nil
 }
 
 func (locker *ConfigMapLocker) Release(lock lockgate.LockHandle) error {
-	return locker.Locker.Release(lock)
+	if err := locker.Locker.Release(lock); err != nil {
+		return fmt.Errorf("release lock: %w", err)
+	}
+
+	return nil
 }
 
 func NewLockManager(ctx context.Context, namespace string, createNamespace bool, clientFactory kube.ClientFactorier) (*LockManager, error) {
@@ -101,9 +110,13 @@ func (lockManager *LockManager) LockRelease(
 ) (lockgate.LockHandle, error) {
 	// TODO: add support of context into lockgate
 	lockManager.LockerWithRetry.Ctx = ctx
-	_, handle, err := lockManager.LockerWithRetry.Acquire(fmt.Sprintf("release/%s", releaseName), setupLockerDefaultOptions(ctx, lockgate.AcquireOptions{}))
 
-	return handle, err
+	_, handle, err := lockManager.LockerWithRetry.Acquire(fmt.Sprintf("release/%s", releaseName), setupLockerDefaultOptions(ctx, lockgate.AcquireOptions{}))
+	if err != nil {
+		return lockgate.LockHandle{}, fmt.Errorf("acquire release lock: %w", err)
+	}
+
+	return handle, nil
 }
 
 func (lockManager *LockManager) Unlock(handle lockgate.LockHandle) error {
@@ -111,7 +124,11 @@ func (lockManager *LockManager) Unlock(handle lockgate.LockHandle) error {
 		lockManager.LockerWithRetry.Ctx = nil
 	}()
 
-	return lockManager.LockerWithRetry.Release(handle)
+	if err := lockManager.LockerWithRetry.Release(handle); err != nil {
+		return fmt.Errorf("release release lock: %w", err)
+	}
+
+	return nil
 }
 
 func setupLockerDefaultOptions(

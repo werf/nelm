@@ -682,7 +682,11 @@ func fixServiceAccountManagedFields(entry *v1.ManagedFieldsEntry, subPath []stri
 		return fmt.Errorf("marshal managed field: %w", err)
 	}
 
-	return entry.FieldsV1.UnmarshalJSON(updatedEntryRaw)
+	if err := entry.FieldsV1.UnmarshalJSON(updatedEntryRaw); err != nil {
+		return fmt.Errorf("unmarshal updated managed field: %w", err)
+	}
+
+	return nil
 }
 
 func differentSubresourceManagers(managedFields []v1.ManagedFieldsEntry, oursEntry v1.ManagedFieldsEntry) (newManagedFields []v1.ManagedFieldsEntry) {
