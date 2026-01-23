@@ -1149,7 +1149,7 @@ func deletePolicies(meta *spec.ResourceMeta) []common.DeletePolicy {
 	return deletePolicies
 }
 
-func manualInternalDependencies(meta *spec.ResourceMeta) []*InternalDependency {
+func manualInternalDeployDependencies(meta *spec.ResourceMeta) []*InternalDependency {
 	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
 		return nil
 	}
@@ -1203,6 +1203,71 @@ func manualInternalDependencies(meta *spec.ResourceMeta) []*InternalDependency {
 		for key, value := range annotations {
 			matches := common.AnnotationKeyPatternDeployDependency.FindStringSubmatch(key)
 			idSubexpIndex := common.AnnotationKeyPatternDeployDependency.SubexpIndex("id")
+			depID := matches[idSubexpIndex]
+			properties := lo.Must(util.ParseProperties(context.TODO(), value))
+
+			var depNames []string
+			if depName, found := properties["name"]; found {
+				depNames = []string{depName.(string)}
+			}
+
+			var depNamespaces []string
+			if depNamespace, found := properties["namespace"]; found {
+				depNamespaces = []string{depNamespace.(string)}
+			}
+
+			var depGroups []string
+			if depGroup, found := properties["group"]; found {
+				depGroups = []string{depGroup.(string)}
+			}
+
+			var depVersions []string
+			if depVersion, found := properties["version"]; found {
+				depVersions = []string{depVersion.(string)}
+			}
+
+			var depKinds []string
+			if depKind, found := properties["kind"]; found {
+				depKinds = []string{depKind.(string)}
+			}
+
+			var depState common.ResourceState
+			if s := properties["state"].(string); s != "" {
+				depState = common.ResourceState(s)
+			} else {
+				depState = common.ResourceStatePresent
+			}
+
+			dep := &InternalDependency{
+				ResourceMatcher: &spec.ResourceMatcher{
+					Names:      depNames,
+					Namespaces: depNamespaces,
+					Groups:     depGroups,
+					Versions:   depVersions,
+					Kinds:      depKinds,
+				},
+				ResourceState: depState,
+			}
+			deps[depID] = dep
+		}
+	}
+
+	return lo.Values(deps)
+}
+
+func manualInternalDeleteDependencies(meta *spec.ResourceMeta) []*InternalDependency {
+	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
+		// TODO: Should we remove it?
+		return nil
+	}
+
+	deps := map[string]*InternalDependency{}
+
+	// TODO: Maybe it is better to move to new func
+	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteDependency); found {
+		for key, value := range annotations {
+			matches := common.AnnotationKeyPatternDeleteDependency.FindStringSubmatch(key)
+			idSubexpIndex := common.AnnotationKeyPatternDeleteDependency.SubexpIndex("id")
 			depID := matches[idSubexpIndex]
 			properties := lo.Must(util.ParseProperties(context.TODO(), value))
 

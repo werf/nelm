@@ -117,7 +117,7 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 		return nil, fmt.Errorf("get external dependencies: %w", err)
 	}
 
-	manIntDeps := manualInternalDependencies(res.ResourceMeta)
+	manIntDeps := manualInternalDeployDependencies(res.ResourceMeta)
 
 	return &InstallableResource{
 		ResourceSpec:                           res,
@@ -192,11 +192,16 @@ func NewDeletableResource(spec *spec.ResourceSpec, releaseNamespace string, opts
 		delPropagation = deletePropagation(spec.ResourceMeta, opts.DefaultDeletePropagation)
 	}
 
+	// TODO: make validation for delete-deps
+
+	manIntDeps := manualInternalDeleteDependencies(spec.ResourceMeta)
+
 	return &DeletableResource{
-		ResourceMeta:      spec.ResourceMeta,
-		Ownership:         owner,
-		KeepOnDelete:      keep,
-		DeletePropagation: delPropagation,
+		ResourceMeta:               spec.ResourceMeta,
+		Ownership:                  owner,
+		KeepOnDelete:               keep,
+		DeletePropagation:          delPropagation,
+		ManualInternalDependencies: manIntDeps,
 	}
 }
 

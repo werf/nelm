@@ -102,7 +102,9 @@ func internalDeployDependencies(unstruct *unstructured.Unstructured) []*Internal
 	return dependencies
 }
 
-func externalDeployDependences() {}
+func internalDeleteDependencies() {
+	// TODO: Will it be copy of func above?
+}
 
 func parsePod(unstruct *unstructured.Unstructured, pod interface{}) (dependencies []*InternalDependency, found bool) {
 	containers, _ := nestedSlice(pod, "spec", "containers")

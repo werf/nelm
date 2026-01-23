@@ -48,6 +48,10 @@ func BuildPlan(installableInfos []*InstallableResourceInfo, deletableInfos []*De
 		return plan, fmt.Errorf("connect internal dependencies: %w", err)
 	}
 
+	if err := connectInternalDeleteDependencies(plan, deletableInfos); err != nil {
+		return plan, fmt.Errorf("connect internal delete dependencies: %w", err)
+	}
+
 	if err := plan.Optimize(opts.NoFinalTracking); err != nil {
 		return plan, fmt.Errorf("optimize plan: %w", err)
 	}
@@ -669,6 +673,53 @@ func getDeployOp(plan *Plan, info *InstallableResourceInfo, iteration int) (op *
 	return lo.Must(plan.Operation(deployOpID)), true
 }
 
+func connectInternalDeleteDependencies(plan *Plan, infos []*DeletableResourceInfo) error {
+	for _, info := range infos {
+		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualInternalDependencies)
+		if len(internalDeps) == 0 {
+			continue
+		}
+
+		operationID := OperationID(OperationTypeDelete, OperationVersionDelete, OperationIteration(0), info.ID())
+		deleteOp := lo.Must(plan.Operation(operationID))
+
+		// TODO: remove
+		fmt.Println(deleteOp)
+
+		for _, dep := range internalDeps {
+			var (
+				dependUponOp      *Operation
+				dependUponOpFound bool
+			)
+
+			// TODO: more states?
+			switch dep.ResourceState {
+			case common.ResourceStateAbsent:
+				trackOps := getAllFirstIterationTrackAbsenceOps(plan)
+
+				dependUponOp, dependUponOpFound = lo.Find(trackOps, func(op *Operation) bool {
+					return dep.Match(getOpMeta(op))
+				})
+			default:
+				panic("unexpected internal dependency resource state")
+			}
+
+			if !dependUponOpFound {
+				continue
+			}
+
+			// TODO: remove
+			fmt.Println(dep.ResourceState, dependUponOp.IDHuman())
+
+			if err := plan.Connect(dependUponOp.ID(), deleteOp.ID()); err != nil {
+				return fmt.Errorf("depend %q from %q: %w", deleteOp.ID(), dependUponOp.ID(), err)
+			}
+		}
+	}
+
+	return nil
+}
+
 func getAllFirstIterationDeployOps(plan *Plan) []*Operation {
 	var deployOps []*Operation
 	for _, op := range plan.Operations() {
@@ -699,6 +750,25 @@ func getAllFirstIterationTrackReadinessOps(plan *Plan) []*Operation {
 
 		switch op.Type {
 		case OperationTypeTrackReadiness:
+			trackOps = append(trackOps, op)
+		default:
+			continue
+		}
+	}
+
+	return trackOps
+}
+
+func getAllFirstIterationTrackAbsenceOps(plan *Plan) []*Operation {
+	var trackOps []*Operation
+	for _, op := range plan.Operations() {
+		if op.Iteration != 0 {
+			// TODO: to check about iterations
+			continue
+		}
+
+		switch op.Type {
+		case OperationTypeTrackAbsence:
 			trackOps = append(trackOps, op)
 		default:
 			continue
