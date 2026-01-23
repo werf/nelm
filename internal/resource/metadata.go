@@ -916,24 +916,15 @@ func deleteOnFailed(meta *spec.ResourceMeta) bool {
 	return lo.Contains(deletePolicies, common.DeletePolicyFailed)
 }
 
-func getWebhookStage(hasManualInternalDeps bool) common.Stage {
-	if hasManualInternalDeps {
-		return common.StageInstall
-	}
-
-	return common.StagePostPostInstall
-}
-
 func deployConditions(meta *spec.ResourceMeta, hasManualInternalDeps bool) map[common.On][]common.Stage {
 	if conditions := deployConditionsForAnnotation(meta, common.AnnotationKeyPatternDeployOn); len(conditions) > 0 {
 		if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
 			for on := range conditions {
 				conditions[on] = []common.Stage{common.StagePrePreInstall}
 			}
-		} else if spec.IsWebhook(meta.GroupVersionKind.GroupKind()) {
-			stage := getWebhookStage(hasManualInternalDeps)
+		} else if spec.IsWebhook(meta.GroupVersionKind.GroupKind()) && !hasManualInternalDeps {
 			for on := range conditions {
-				conditions[on] = []common.Stage{stage}
+				conditions[on] = []common.Stage{common.StagePostPostInstall}
 			}
 		}
 
@@ -946,10 +937,9 @@ func deployConditions(meta *spec.ResourceMeta, hasManualInternalDeps bool) map[c
 				for on := range conditions {
 					conditions[on] = []common.Stage{common.StagePrePreInstall}
 				}
-			} else if spec.IsWebhook(meta.GroupVersionKind.GroupKind()) {
-				stage := getWebhookStage(hasManualInternalDeps)
+			} else if spec.IsWebhook(meta.GroupVersionKind.GroupKind()) && !hasManualInternalDeps {
 				for on := range conditions {
-					conditions[on] = []common.Stage{stage}
+					conditions[on] = []common.Stage{common.StagePostPostInstall}
 				}
 			}
 
@@ -963,13 +953,11 @@ func deployConditions(meta *spec.ResourceMeta, hasManualInternalDeps bool) map[c
 			common.InstallOnUpgrade:  {common.StagePrePreInstall},
 			common.InstallOnRollback: {common.StagePrePreInstall},
 		}
-	} else if spec.IsWebhook(meta.GroupVersionKind.GroupKind()) {
-		stage := getWebhookStage(hasManualInternalDeps)
-
+	} else if spec.IsWebhook(meta.GroupVersionKind.GroupKind()) && !hasManualInternalDeps {
 		return map[common.On][]common.Stage{
-			common.InstallOnInstall:  {stage},
-			common.InstallOnUpgrade:  {stage},
-			common.InstallOnRollback: {stage},
+			common.InstallOnInstall:  {common.StagePostPostInstall},
+			common.InstallOnUpgrade:  {common.StagePostPostInstall},
+			common.InstallOnRollback: {common.StagePostPostInstall},
 		}
 	}
 
