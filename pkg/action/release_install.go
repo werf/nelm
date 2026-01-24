@@ -509,7 +509,8 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		progressPrinter.Start(ctx, opts.ProgressTablePrintInterval)
 	}
 
-	var criticalErrs, nonCriticalErrs []error
+	criticalErrs := &util.MultiError{}
+	nonCriticalErrs := &util.MultiError{}
 
 	log.Default.Debug(ctx, "Execute release install plan")
 
@@ -518,7 +519,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		NetworkParallelism: opts.NetworkParallelism,
 	})
 	if executePlanErr != nil {
-		criticalErrs = append(criticalErrs, fmt.Errorf("execute release install plan: %w", executePlanErr))
+		criticalErrs.Add(fmt.Errorf("execute release install plan: %w", executePlanErr))
 	}
 
 	resourceOps := lo.Filter(installPlan.Operations(), func(op *plan.Operation, _ int) bool {
@@ -543,8 +544,8 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			NetworkParallelism: opts.NetworkParallelism,
 		})
 
-		criticalErrs = append(criticalErrs, critErrs...)
-		nonCriticalErrs = append(nonCriticalErrs, nonCritErrs...)
+		criticalErrs.Add(critErrs)
+		nonCriticalErrs.Add(nonCritErrs)
 
 		if runFailurePlanResult != nil {
 			completedResourceOps = append(completedResourceOps, runFailurePlanResult.CompletedResourceOps...)
@@ -569,8 +570,8 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 				ResourceValidationOptions: opts.ResourceValidationOptions,
 			})
 
-			criticalErrs = append(criticalErrs, critErrs...)
-			nonCriticalErrs = append(nonCriticalErrs, nonCritErrs...)
+			criticalErrs.Add(critErrs)
+			nonCriticalErrs.Add(nonCritErrs)
 
 			if runRollbackPlanResult != nil {
 				completedResourceOps = append(completedResourceOps, runRollbackPlanResult.CompletedResourceOps...)
@@ -616,18 +617,21 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	if opts.InstallReportPath != "" {
 		if err := saveReport(opts.InstallReportPath, report); err != nil {
-			nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("save release install report: %w", err))
+			nonCriticalErrs.Add(fmt.Errorf("save release install report: %w", err))
 		}
 	}
 
-	if len(criticalErrs) == 0 && !opts.NoShowNotes {
+	if !criticalErrs.HasErrors() && !opts.NoShowNotes {
 		printNotes(ctx, renderChartResult.Notes)
 	}
 
-	if len(criticalErrs) > 0 {
-		return util.Multierrorf("failed release %q (namespace: %q)", append(criticalErrs, nonCriticalErrs...), releaseName, releaseNamespace)
-	} else if len(nonCriticalErrs) > 0 {
-		return util.Multierrorf("succeeded release %q (namespace: %q), but non-critical errors encountered", nonCriticalErrs, releaseName, releaseNamespace)
+	if criticalErrs.HasErrors() {
+		allErrs := &util.MultiError{}
+		allErrs.Add(criticalErrs, nonCriticalErrs)
+
+		return fmt.Errorf("failed release %q (namespace: %q): %w", releaseName, releaseNamespace, allErrs)
+	} else if nonCriticalErrs.HasErrors() {
+		return fmt.Errorf("succeeded release %q (namespace: %q), but non-critical errors encountered: %w", releaseName, releaseNamespace, nonCriticalErrs)
 	} else {
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Succeeded release %q (namespace: %q)", releaseName, releaseNamespace)))
 
@@ -744,12 +748,15 @@ type runRollbackPlanResult struct {
 	FailedResourceOps    []*plan.Operation
 }
 
-func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, failedRelease, prevDeployedRelease *helmrelease.Release, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history *release.History, clientFactory *kube.ClientFactory, opts runRollbackPlanOptions) (result *runRollbackPlanResult, nonCritErrs, critErrs []error) {
+func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, failedRelease, prevDeployedRelease *helmrelease.Release, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history *release.History, clientFactory *kube.ClientFactory, opts runRollbackPlanOptions) (result *runRollbackPlanResult, nonCritErrs, critErrs *util.MultiError) {
+	critErrs = &util.MultiError{}
+	nonCritErrs = &util.MultiError{}
+
 	log.Default.Debug(ctx, "Convert prev deployed release to resource specs")
 
 	resSpecs, err := release.ReleaseToResourceSpecs(prevDeployedRelease, releaseNamespace, false)
 	if err != nil {
-		return nil, nonCritErrs, append(critErrs, fmt.Errorf("convert previous deployed release to resource specs: %w", err))
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert previous deployed release to resource specs: %w", err))
 	}
 
 	log.Default.Debug(ctx, "Build transformed resource specs")
@@ -759,7 +766,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		spec.NewDropInvalidAnnotationsAndLabelsTransformer(),
 	})
 	if err != nil {
-		return nil, nonCritErrs, append(critErrs, fmt.Errorf("build transformed resource specs: %w", err))
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build transformed resource specs: %w", err))
 	}
 
 	log.Default.Debug(ctx, "Build releasable resource specs")
@@ -775,7 +782,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patchers)
 	if err != nil {
-		return nil, nonCritErrs, append(critErrs, fmt.Errorf("build releasable resource specs: %w", err))
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build releasable resource specs: %w", err))
 	}
 
 	newRelease, err := release.NewRelease(releaseName, releaseNamespace, failedRelease.Version+1, common.DeployTypeRollback, releasableResSpecs, prevDeployedRelease.Chart, prevDeployedRelease.Config, release.ReleaseOptions{
@@ -784,21 +791,21 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		Notes:           prevDeployedRelease.Info.Notes,
 	})
 	if err != nil {
-		return nil, nonCritErrs, append(critErrs, fmt.Errorf("construct new release: %w", err))
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("construct new release: %w", err))
 	}
 
 	log.Default.Debug(ctx, "Convert failed release to resource specs")
 
 	failedRelResSpecs, err := release.ReleaseToResourceSpecs(failedRelease, releaseNamespace, false)
 	if err != nil {
-		return nil, nonCritErrs, append(critErrs, fmt.Errorf("convert previous release to resource specs: %w", err))
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert previous release to resource specs: %w", err))
 	}
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
 	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace, false)
 	if err != nil {
-		return nil, nonCritErrs, append(critErrs, fmt.Errorf("convert new release to resource specs: %w", err))
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert new release to resource specs: %w", err))
 	}
 
 	log.Default.Debug(ctx, "Build resources")
@@ -811,13 +818,13 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 	})
 	if err != nil {
-		return nil, nonCritErrs, append(critErrs, fmt.Errorf("build resources: %w", err))
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build resources: %w", err))
 	}
 
 	log.Default.Debug(ctx, "Locally validate resources")
 
 	if err := resource.ValidateLocal(ctx, releaseNamespace, instResources, opts.ResourceValidationOptions); err != nil {
-		return nil, nonCritErrs, append(critErrs, fmt.Errorf("locally validate resources: %w", err))
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("locally validate resources: %w", err))
 	}
 
 	log.Default.Debug(ctx, "Build resource infos")
@@ -827,13 +834,13 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		NoRemoveManualChanges: opts.NoRemoveManualChanges,
 	})
 	if err != nil {
-		return nil, nonCritErrs, append(critErrs, fmt.Errorf("build resource infos: %w", err))
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build resource infos: %w", err))
 	}
 
 	log.Default.Debug(ctx, "Remotely validate resources")
 
 	if err := plan.ValidateRemote(releaseName, releaseNamespace, instResInfos, opts.ForceAdoption); err != nil {
-		return nil, nonCritErrs, append(critErrs, fmt.Errorf("remotely validate resources: %w", err))
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("remotely validate resources: %w", err))
 	}
 
 	releases := history.Releases()
@@ -842,7 +849,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	relInfos, err := plan.BuildReleaseInfos(ctx, common.DeployTypeRollback, releases, newRelease)
 	if err != nil {
-		return nil, nonCritErrs, append(critErrs, fmt.Errorf("build release infos: %w", err))
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build release infos: %w", err))
 	}
 
 	log.Default.Debug(ctx, "Build rollback plan")
@@ -851,18 +858,18 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		NoFinalTracking: opts.NoFinalTracking,
 	})
 	if err != nil {
-		return nil, nonCritErrs, append(critErrs, fmt.Errorf("build rollback plan: %w", err))
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build rollback plan: %w", err))
 	}
 
 	if opts.RollbackGraphPath != "" {
 		if err := savePlanAsDot(rollbackPlan, opts.RollbackGraphPath); err != nil {
-			return nil, nonCritErrs, append(critErrs, fmt.Errorf("save rollback graph: %w", err))
+			return nil, nonCritErrs, critErrs.Add(fmt.Errorf("save rollback graph: %w", err))
 		}
 	}
 
 	releaseIsUpToDate, err := release.IsReleaseUpToDate(failedRelease, newRelease)
 	if err != nil {
-		return nil, nonCritErrs, append(critErrs, fmt.Errorf("check if release is up to date: %w", err))
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("check if release is up to date: %w", err))
 	}
 
 	planIsUseless := lo.NoneBy(rollbackPlan.Operations(), func(op *plan.Operation) bool {
@@ -887,7 +894,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		NetworkParallelism: opts.NetworkParallelism,
 	})
 	if executePlanErr != nil {
-		critErrs = append(critErrs, fmt.Errorf("execute rollback plan: %w", executePlanErr))
+		critErrs.Add(fmt.Errorf("execute rollback plan: %w", executePlanErr))
 	}
 
 	resourceOps := lo.Filter(rollbackPlan.Operations(), func(op *plan.Operation, _ int) bool {
@@ -912,8 +919,8 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 			NetworkParallelism: opts.NetworkParallelism,
 		})
 
-		critErrs = append(critErrs, crErrs...)
-		nonCritErrs = append(nonCritErrs, nonCrErrs...)
+		critErrs.Add(crErrs)
+		nonCritErrs.Add(nonCrErrs)
 
 		if runFailurePlanResult != nil {
 			completedResourceOps = append(completedResourceOps, runFailurePlanResult.CompletedResourceOps...)

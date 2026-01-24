@@ -24,19 +24,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-type KubeConformValidationError struct {
-	Errors []error
-}
-
-// Error for interface compatibility
-func (e KubeConformValidationError) Error() string {
-	err := util.Multierrorf("validation error", e.Errors)
-	if err != nil {
-		return err.Error()
-	}
-
-	return "validation error"
-}
+var errDecode = errors.New("decode")
 
 // Can be called even without cluster access.
 func ValidateLocal(ctx context.Context, releaseNamespace string, transformedResources []*InstallableResource,
@@ -65,7 +53,7 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 		return fmt.Errorf("get schema validator: %w", err)
 	}
 
-	var errs []error
+	validationErrs := &util.MultiError{}
 
 	for _, res := range resources {
 		if ok, err := shouldSkipValidation(ctx, opts.ValidationSkip, releaseNamespace, res.ResourceMeta); err != nil {
@@ -77,27 +65,32 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 		}
 
 		if err := validateResourceSchemaWithKubeConform(ctx, resValidator, res); err != nil {
-			var kubeConformValidationError *KubeConformValidationError
+			e := fmt.Errorf("validate %s: %w", res.IDHuman(), err)
 
-			if errors.As(err, &kubeConformValidationError) {
-				errs = append(errs, kubeConformValidationError.Errors...)
+			var vErr *validator.ValidationError
+			if errors.As(err, &vErr) {
+				validationErrs.Add(e)
 
 				continue
 			}
 
-			return fmt.Errorf("validate resource %s: %w", res.IDHuman(), err)
+			return e
 		}
 
 		if err := validateResourceWithCodec(res); err != nil {
-			errs = append(errs, fmt.Errorf("validate resource %s: %w", res.IDHuman(), err))
+			e := fmt.Errorf("validate %s: %w", res.IDHuman(), err)
+
+			if errors.Is(err, errDecode) {
+				validationErrs.Add(e)
+
+				continue
+			}
+
+			return e
 		}
 	}
 
-	if len(errs) == 0 {
-		return nil
-	}
-
-	return util.Multierrorf("schema validation failed", errs)
+	return validationErrs.OrNilIfNoErrs()
 }
 
 func getKubeConformValidator(ctx context.Context, kubeVersion string) (validator.Validator, error) {
@@ -244,7 +237,7 @@ func validateResourceSchemaWithKubeConform(ctx context.Context, kubeConformValid
 
 	resCh, errCh := resource.FromStream(ctx, res.FilePath, bytes.NewReader(yamlBytes))
 
-	var validationErrs []error
+	validationErrs := &util.MultiError{}
 
 	for validationResource := range resCh {
 		validationResult := kubeConformValidator.ValidateResource(validationResource)
@@ -255,9 +248,8 @@ func validateResourceSchemaWithKubeConform(ctx context.Context, kubeConformValid
 		case validator.Skipped:
 			log.Default.Debug(ctx, "Skip validation for resource: %s", res.IDHuman())
 		case validator.Invalid:
-			for _, validationError := range validationResult.ValidationErrors {
-				validationErrs = append(validationErrs,
-					fmt.Errorf("validation %s: %s: %s", res.IDHuman(), validationError.Path, validationError.Msg))
+			for _, validationErr := range validationResult.ValidationErrors {
+				validationErrs.Add(fmt.Errorf("%s: %w", validationErr.Path, &validationErr))
 			}
 		case validator.Empty, validator.Valid:
 			continue
@@ -273,11 +265,7 @@ func validateResourceSchemaWithKubeConform(ctx context.Context, kubeConformValid
 		}
 	}
 
-	if len(validationErrs) > 0 {
-		return &KubeConformValidationError{Errors: validationErrs}
-	}
-
-	return nil
+	return validationErrs.OrNilIfNoErrs()
 }
 
 func validateResourceWithCodec(res *InstallableResource) error {
@@ -291,9 +279,12 @@ func validateResourceWithCodec(res *InstallableResource) error {
 
 	decoder := scheme.Codecs.UniversalDecoder(gvk.GroupVersion())
 
-	if _, _, err = decoder.Decode(jsonBytes, &gvk, nil); err != nil &&
-		!strings.Contains(err.Error(), fmt.Sprintf("no kind %q is registered", res.GroupVersionKind.Kind)) {
-		return fmt.Errorf("decoder decode: %w", err)
+	if _, _, err = decoder.Decode(jsonBytes, &gvk, nil); err != nil {
+		if strings.Contains(err.Error(), fmt.Sprintf("no kind %q is registered", res.GroupVersionKind.Kind)) {
+			return nil
+		}
+
+		return fmt.Errorf("%w: %w", errDecode, err)
 	}
 
 	return nil

@@ -23,7 +23,7 @@ func ValidateRemote(releaseName, releaseNamespace string, installableResourceInf
 }
 
 func validateAdoptableResources(releaseName, releaseNamespace string, resourceInfos []*InstallableResourceInfo) error {
-	var errs []error
+	validationErrs := &util.MultiError{}
 	for _, info := range resourceInfos {
 		if info.GetResult == nil {
 			continue
@@ -34,11 +34,11 @@ func validateAdoptableResources(releaseName, releaseNamespace string, resourceIn
 		}
 
 		if adoptable, nonAdoptableReason := adoptableBy(info.GetResult, releaseName, releaseNamespace); !adoptable {
-			errs = append(errs, fmt.Errorf("resource %q is not adoptable: %s", info.IDHuman(), nonAdoptableReason))
+			validationErrs.Add(fmt.Errorf("adopt %q: %s", info.IDHuman(), nonAdoptableReason))
 		}
 	}
 
-	return util.Multierrorf("adoption validation failed", errs)
+	return validationErrs.OrNilIfNoErrs()
 }
 
 func adoptableBy(unstruct *unstructured.Unstructured, releaseName, releaseNamespace string) (adoptable bool, nonAdoptableReason string) {
