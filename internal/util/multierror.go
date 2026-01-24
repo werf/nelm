@@ -98,8 +98,8 @@ func flattenErrorWithPrefix(err error, prefix string) []string {
 
 func extractWrapperPrefix(outer error, inner *MultiError) string {
 	var prefixes []string
-	current := outer
 
+	current := outer
 	for current != nil {
 		if m, ok := current.(*MultiError); ok && m == inner {
 			break
@@ -120,7 +120,7 @@ func extractWrapperPrefix(outer error, inner *MultiError) string {
 	return strings.Join(prefixes, ": ")
 }
 
-func extractSingleWrapperPrefix(wrapper error, wrapped error) string {
+func extractSingleWrapperPrefix(wrapper, wrapped error) string {
 	wrapperStr := wrapper.Error()
 	wrappedStr := wrapped.Error()
 

@@ -1,13 +1,15 @@
-package util
+package util_test
 
 import (
 	"errors"
 	"fmt"
 	"testing"
+
+	"github.com/werf/nelm/internal/util"
 )
 
 func TestMultiError_Empty(t *testing.T) {
-	m := &MultiError{}
+	m := &util.MultiError{}
 
 	if m.HasErrors() {
 		t.Error("expected HasErrors() to be false for empty MultiError")
@@ -23,7 +25,7 @@ func TestMultiError_Empty(t *testing.T) {
 }
 
 func TestMultiError_SingleError(t *testing.T) {
-	m := &MultiError{}
+	m := &util.MultiError{}
 	m.Add(errors.New("single error"))
 
 	if !m.HasErrors() {
@@ -41,7 +43,7 @@ func TestMultiError_SingleError(t *testing.T) {
 }
 
 func TestMultiError_MultipleErrors(t *testing.T) {
-	m := &MultiError{}
+	m := &util.MultiError{}
 	m.Add(errors.New("error one"))
 	m.Add(errors.New("error two"))
 	m.Add(errors.New("error three"))
@@ -57,13 +59,13 @@ func TestMultiError_MultipleErrors(t *testing.T) {
 }
 
 func TestMultiError_AddNil(t *testing.T) {
-	m := &MultiError{}
+	m := &util.MultiError{}
 	m.Add(nil)
 	m.Add(errors.New("real error"))
 	m.Add(nil)
 
-	if len(m.errs) != 1 {
-		t.Errorf("expected 1 error, got %d", len(m.errs))
+	if len(m.Unwrap()) != 1 {
+		t.Errorf("expected 1 error, got %d", len(m.Unwrap()))
 	}
 
 	expected := "real error"
@@ -73,10 +75,10 @@ func TestMultiError_AddNil(t *testing.T) {
 }
 
 func TestMultiError_AddMultiError(t *testing.T) {
-	inner := &MultiError{}
+	inner := &util.MultiError{}
 	inner.Add(errors.New("inner error"))
 
-	outer := &MultiError{}
+	outer := &util.MultiError{}
 	outer.Add(inner)
 
 	expected := "inner error"
@@ -86,11 +88,11 @@ func TestMultiError_AddMultiError(t *testing.T) {
 }
 
 func TestMultiError_NestedWithPrefix(t *testing.T) {
-	inner := &MultiError{}
+	inner := &util.MultiError{}
 	inner.Add(errors.New("field1: invalid"))
 	inner.Add(errors.New("field2: required"))
 
-	outer := &MultiError{}
+	outer := &util.MultiError{}
 	outer.Add(fmt.Errorf("validate Resource/foo: %w", inner))
 
 	expected := `2 errors occurred:
@@ -103,13 +105,13 @@ func TestMultiError_NestedWithPrefix(t *testing.T) {
 }
 
 func TestMultiError_DeeplyNested(t *testing.T) {
-	level3 := &MultiError{}
+	level3 := &util.MultiError{}
 	level3.Add(errors.New("deep error"))
 
-	level2 := &MultiError{}
+	level2 := &util.MultiError{}
 	level2.Add(fmt.Errorf("level2: %w", level3))
 
-	level1 := &MultiError{}
+	level1 := &util.MultiError{}
 	level1.Add(fmt.Errorf("level1: %w", level2))
 
 	expected := "level1: level2: deep error"
@@ -119,11 +121,11 @@ func TestMultiError_DeeplyNested(t *testing.T) {
 }
 
 func TestMultiError_MixedNestedAndRegular(t *testing.T) {
-	inner := &MultiError{}
+	inner := &util.MultiError{}
 	inner.Add(errors.New("inner1"))
 	inner.Add(errors.New("inner2"))
 
-	outer := &MultiError{}
+	outer := &util.MultiError{}
 	outer.Add(errors.New("regular error"))
 	outer.Add(fmt.Errorf("wrapped: %w", inner))
 	outer.Add(errors.New("another regular"))
@@ -140,7 +142,7 @@ func TestMultiError_MixedNestedAndRegular(t *testing.T) {
 }
 
 func TestMultiError_Unwrap(t *testing.T) {
-	m := &MultiError{}
+	m := &util.MultiError{}
 	err1 := errors.New("error 1")
 	err2 := errors.New("error 2")
 	m.Add(err1, err2)
@@ -158,7 +160,7 @@ func TestMultiError_Unwrap(t *testing.T) {
 func TestMultiError_ErrorsIs(t *testing.T) {
 	sentinel := errors.New("sentinel")
 
-	m := &MultiError{}
+	m := &util.MultiError{}
 	m.Add(fmt.Errorf("wrapped: %w", sentinel))
 
 	if !errors.Is(m, sentinel) {
@@ -177,7 +179,7 @@ func (e *customError) Error() string {
 func TestMultiError_ErrorsAs(t *testing.T) {
 	custom := &customError{Code: 42}
 
-	m := &MultiError{}
+	m := &util.MultiError{}
 	m.Add(fmt.Errorf("wrapped: %w", custom))
 
 	var target *customError
@@ -191,20 +193,20 @@ func TestMultiError_ErrorsAs(t *testing.T) {
 }
 
 func TestMultiError_ChainedAdd(t *testing.T) {
-	m := &MultiError{}
+	m := &util.MultiError{}
 	m.Add(errors.New("one")).Add(errors.New("two")).Add(errors.New("three"))
 
-	if len(m.errs) != 3 {
-		t.Errorf("expected 3 errors, got %d", len(m.errs))
+	if len(m.Unwrap()) != 3 {
+		t.Errorf("expected 3 errors, got %d", len(m.Unwrap()))
 	}
 }
 
 func TestMultiError_NestedMultiErrorDirectlyAdded(t *testing.T) {
-	inner := &MultiError{}
+	inner := &util.MultiError{}
 	inner.Add(errors.New("a"))
 	inner.Add(errors.New("b"))
 
-	outer := &MultiError{}
+	outer := &util.MultiError{}
 	outer.Add(inner)
 	outer.Add(errors.New("c"))
 
@@ -219,12 +221,12 @@ func TestMultiError_NestedMultiErrorDirectlyAdded(t *testing.T) {
 }
 
 func TestMultiError_MultipleWrappersInChain(t *testing.T) {
-	inner := &MultiError{}
+	inner := &util.MultiError{}
 	inner.Add(errors.New("base error"))
 
 	wrapped := fmt.Errorf("wrapper1: %w", fmt.Errorf("wrapper2: %w", inner))
 
-	outer := &MultiError{}
+	outer := &util.MultiError{}
 	outer.Add(wrapped)
 
 	expected := "wrapper1: wrapper2: base error"
@@ -234,11 +236,11 @@ func TestMultiError_MultipleWrappersInChain(t *testing.T) {
 }
 
 func TestMultiError_RealWorldValidationScenario(t *testing.T) {
-	resourceErrs := &MultiError{}
+	resourceErrs := &util.MultiError{}
 	resourceErrs.Add(fmt.Errorf("/spec/replicas: %w", errors.New("expected integer or null, but got string")))
 	resourceErrs.Add(fmt.Errorf("/spec/selector/matchLabels/app: %w", errors.New("expected string or null, but got number")))
 
-	validationErrs := &MultiError{}
+	validationErrs := &util.MultiError{}
 	validationErrs.Add(fmt.Errorf("validate Deployment/my-app: %w", resourceErrs))
 	validationErrs.Add(fmt.Errorf("validate Deployment/my-app2: %w", errors.New("decode: unable to parse quantity's suffix")))
 
