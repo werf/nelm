@@ -1312,14 +1312,8 @@ func manualInternalDeployDependencies(meta *spec.ResourceMeta) []*InternalDepend
 }
 
 func manualInternalDeleteDependencies(meta *spec.ResourceMeta) []*InternalDependency {
-	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
-		// TODO: Should we remove it?
-		return nil
-	}
-
 	deps := map[string]*InternalDependency{}
 
-	// TODO: Maybe it is better to move to new func
 	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteDependency); found {
 		for key, value := range annotations {
 			matches := common.AnnotationKeyPatternDeleteDependency.FindStringSubmatch(key)
