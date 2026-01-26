@@ -102,8 +102,10 @@ func internalDeployDependencies(unstruct *unstructured.Unstructured) []*Internal
 	return dependencies
 }
 
-func internalDeleteDependencies() {
-	// TODO: Will it be copy of func above?
+func internalDeleteDependencies(_ *unstructured.Unstructured) []*InternalDependency {
+	var dependencies []*InternalDependency
+
+	return dependencies
 }
 
 func parsePod(unstruct *unstructured.Unstructured, pod interface{}) (dependencies []*InternalDependency, found bool) {

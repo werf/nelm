@@ -266,8 +266,7 @@ var (
 	AnnotationKeyHumanDeployDependency   = "werf.io/deploy-dependency-<name>"
 	AnnotationKeyPatternDeployDependency = regexp.MustCompile(`^werf.io/deploy-dependency-(?P<id>.+)$`)
 
-	AnnotationKeyHumanDeleteDependency = "werf.io/delete-dependency-<name>"
-	// FIXME(remove this comment): werf.io/delete-dependency-app: state=absent,kind=Deployment,group=apps,version=v1,name=app,namespace=app
+	AnnotationKeyHumanDeleteDependency   = "werf.io/delete-dependency-<name>"
 	AnnotationKeyPatternDeleteDependency = regexp.MustCompile(`^werf.io/delete-dependency-(?P<id>.+)$`)
 
 	// TODO(v2): get rid

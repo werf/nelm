@@ -683,16 +683,12 @@ func connectInternalDeleteDependencies(plan *Plan, infos []*DeletableResourceInf
 		operationID := OperationID(OperationTypeDelete, OperationVersionDelete, OperationIteration(0), info.ID())
 		deleteOp := lo.Must(plan.Operation(operationID))
 
-		// TODO: remove
-		fmt.Println(deleteOp)
-
 		for _, dep := range internalDeps {
 			var (
 				dependUponOp      *Operation
 				dependUponOpFound bool
 			)
 
-			// TODO: more states?
 			switch dep.ResourceState {
 			case common.ResourceStateAbsent:
 				trackOps := getAllFirstIterationTrackAbsenceOps(plan)
@@ -707,9 +703,6 @@ func connectInternalDeleteDependencies(plan *Plan, infos []*DeletableResourceInf
 			if !dependUponOpFound {
 				continue
 			}
-
-			// TODO: remove
-			fmt.Println(dep.ResourceState, dependUponOp.IDHuman())
 
 			if err := plan.Connect(dependUponOp.ID(), deleteOp.ID()); err != nil {
 				return fmt.Errorf("depend %q from %q: %w", deleteOp.ID(), dependUponOp.ID(), err)

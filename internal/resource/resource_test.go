@@ -1287,7 +1287,8 @@ func runDeletableResourceTest(tc deletableResourceTestCase, s *DeletableResource
 
 		resSpec := tc.inputFunc()
 
-		res := resource.NewDeletableResource(resSpec, s.releaseNamespace, resource.DeletableResourceOptions{})
+		res, err := resource.NewDeletableResource(resSpec, s.releaseNamespace, resource.DeletableResourceOptions{})
+		s.Require().NoError(err)
 
 		expectRes := tc.expectFunc(resSpec)
 

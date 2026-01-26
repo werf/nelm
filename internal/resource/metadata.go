@@ -696,6 +696,74 @@ func validateDeletePropagation(meta *spec.ResourceMeta) error {
 	return nil
 }
 
+func validateDeleteDependencies(meta *spec.ResourceMeta) error {
+	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteDependency); found {
+		for key, value := range annotations {
+			keyMatches := common.AnnotationKeyPatternDeleteDependency.FindStringSubmatch(key)
+			if keyMatches == nil {
+				return fmt.Errorf("invalid key for annotation %q", key)
+			}
+
+			idSubexpIndex := common.AnnotationKeyPatternDeleteDependency.SubexpIndex("id")
+			if idSubexpIndex == -1 {
+				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternDeleteDependency.String(), key)
+			}
+
+			if len(keyMatches) < idSubexpIndex+1 {
+				return fmt.Errorf("can't parse delete dependency id from annotation key %q", key)
+			}
+
+			if value == "" {
+				return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
+			}
+
+			properties, err := util.ParseProperties(context.TODO(), value)
+			if err != nil {
+				return fmt.Errorf("invalid value %q for annotation %q: %w", value, key, err)
+			}
+
+			if !lo.Some(lo.Keys(properties), []string{"group", "version", "kind", "name", "namespace"}) {
+				return fmt.Errorf("invalid value %q for annotation %q, target not specified", value, key)
+			}
+
+			for propKey, propVal := range properties {
+				switch propKey {
+				case "group", "version", "kind", "name", "namespace":
+					switch pv := propVal.(type) {
+					case string:
+						if pv == "" {
+							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
+						}
+					case bool:
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				case "state":
+					switch pv := propVal.(type) {
+					case string:
+						switch pv {
+						case "absent":
+						case "":
+							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
+						default:
+							return fmt.Errorf("unknown value %q for property %q", pv, propKey)
+						}
+					case bool:
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				default:
+					return fmt.Errorf("unknown property %q in value of annotation %q", propKey, key)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 func recreate(meta *spec.ResourceMeta) bool {
 	deletePolicies := deletePolicies(meta)
 	return lo.Contains(deletePolicies, common.DeletePolicyBeforeCreation)
