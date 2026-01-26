@@ -16,6 +16,7 @@ require (
 	github.com/evanphx/json-patch v5.8.0+incompatible
 	github.com/fluxcd/flagger v1.36.1
 	github.com/goccy/go-yaml v1.15.23
+	github.com/gofrs/flock v0.8.1
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/gookit/color v1.5.4
@@ -95,7 +96,6 @@ require (
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
-	github.com/gofrs/flock v0.8.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.1.2 // indirect

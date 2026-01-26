@@ -308,6 +308,13 @@ func AddResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceValidati
 		return fmt.Errorf("add flag: %w", err)
 	}
 
+	if err := cli.AddFlag(cmd, &cfg.NoResourceValidationKubeConform, "no-resource-validation-kubeconform", false, "Disable KubeConform resource validation", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                resourceValidationGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
 	if err := cli.AddFlag(cmd, &cfg.ValidationKubeVersion, "resource-validation-kube-version", common.DefaultResourceValidationKubeVersion, "Kubernetes schemas version to use during resource validation", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                resourceValidationGroup,
@@ -319,6 +326,41 @@ func AddResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceValidati
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                resourceValidationGroup,
 		NoSplitOnCommas:      true,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ValidationSchemaSource, "resource-validation-schema-source", common.DefaultResourceValidationKubeConformSchemasSource, "Default json schema sources to validate builtin Kubernetes resources. Must be a valid go template defining a http(s) URL, or an absolute path on local file system", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                resourceValidationGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ValidationExtraSchemaSource, "resource-validation-schema-source-extra", []string{}, "Extra json schema sources to validate builtin Kubernetes resources (preferred over default sources). Must be a valid go template defining a http(s) URL, or an absolute path on local file system", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                resourceValidationGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ValidationCRDSchemaSource, "resource-validation-crd-schema-source", common.DefaultResourceValidationKubeConformCRDSchemasSource, "Default json schema sources to validate Kubernetes CRD resources. Must be a valid go template defining a http(s) URL, or an absolute path on local file system", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                resourceValidationGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ValidationExtraCRDSchemaSource, "resource-validation-crd-schema-source-extra", []string{}, "Extra json schema sources to validate Kubernetes CRD resources (preferred over default CRD sources). Must be a valid go template defining a http(s) URL, or an absolute path on local file system", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                resourceValidationGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ValidationSchemaCacheLifetime, "resource-validation-schema-cache-lifetime", common.DefaultResourceValidationSchemaCacheLifetime, "How long local schema cache will be valid", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                resourceValidationGroup,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}

@@ -1,21 +1,14 @@
 package resource
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
-	"github.com/yannh/kubeconform/pkg/resource"
 	"github.com/yannh/kubeconform/pkg/validator"
 	"k8s.io/client-go/kubernetes/scheme"
-	"sigs.k8s.io/yaml"
 
 	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/util"
@@ -48,7 +41,11 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 		return nil
 	}
 
-	resValidator, err := getKubeConformValidator(ctx, opts.ValidationKubeVersion)
+	kubeConformValidator, err := NewKubeConformValidator(
+		opts.ValidationKubeVersion,
+		opts.ValidationSchemaCacheLifetime,
+		append(opts.ValidationExtraSchemaSource, opts.ValidationSchemaSource...),
+		append(opts.ValidationExtraCRDSchemaSource, opts.ValidationCRDSchemaSource...))
 	if err != nil {
 		return fmt.Errorf("get schema validator: %w", err)
 	}
@@ -64,7 +61,7 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 			continue
 		}
 
-		if err := validateResourceSchemaWithKubeConform(ctx, resValidator, res); err != nil {
+		if err := kubeConformValidator.Validate(ctx, res); err != nil {
 			e := fmt.Errorf("validate %s: %w", res.IDHuman(), err)
 
 			var vErr *validator.ValidationError
@@ -91,81 +88,6 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 	}
 
 	return validationErrs.OrNilIfNoErrs()
-}
-
-func getKubeConformValidator(ctx context.Context, kubeVersion string) (validator.Validator, error) {
-	kubeVersion = strings.TrimLeft(kubeVersion, "v")
-
-	if err := checkIfKubeConformSpecExists(ctx, kubeVersion); err != nil {
-		return nil, err
-	}
-
-	cacheDir, err := createKubeConformCacheDir(kubeVersion)
-	if err != nil {
-		return nil, fmt.Errorf("get schema cache dir: %w", err)
-	}
-
-	validatorOpts := validator.Opts{
-		Strict:               false, // Skip undefined params check
-		IgnoreMissingSchemas: true,
-		Cache:                cacheDir,
-		KubernetesVersion:    kubeVersion,
-	}
-
-	if log.Default.AcceptLevel(ctx, log.DebugLevel) {
-		validatorOpts.Debug = true
-	}
-
-	validatorInstance, err := validator.New(common.APIResourceValidationKubeConformSchemasLocation, validatorOpts)
-	if err != nil {
-		return nil, fmt.Errorf("create schema validator: %w", err)
-	}
-
-	return validatorInstance, nil
-}
-
-func checkIfKubeConformSpecExists(ctx context.Context, kubeVersion string) error {
-	// This file must exist to specific version. If it does not - version is not valid.
-	url := "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/v" + kubeVersion + "-standalone/all.json"
-
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
-	if err != nil {
-		return fmt.Errorf("connect to download schemas: %w", err)
-	}
-
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("download schemas: %w", err)
-	}
-
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("schemas for kube version %s not found", kubeVersion)
-	}
-
-	return nil
-}
-
-func createKubeConformCacheDir(version string) (string, error) {
-	path := filepath.Join(common.APIResourceValidationJSONSchemasCacheDir, version)
-
-	if stat, err := os.Stat(path); os.IsNotExist(err) {
-		if err := os.MkdirAll(path, 0o755); err != nil {
-			return "", fmt.Errorf("create cache dir %q: %w", path, err)
-		}
-
-		return path, nil
-	} else if err != nil {
-		return "", fmt.Errorf("stat cache dir %q: %w", path, err)
-	} else if !stat.IsDir() {
-		return "", fmt.Errorf("%s is not a directory", path)
-	}
-
-	return path, nil
 }
 
 func shouldSkipValidation(ctx context.Context, filters []string, releaseNamespace string, meta *spec.ResourceMeta) (bool, error) {
@@ -227,45 +149,6 @@ func validateNoDuplicates(releaseNamespace string, transformedResources []*Insta
 	})
 
 	return fmt.Errorf("duplicated resources found: %s", strings.Join(duplicatedIDHumans, ", "))
-}
-
-func validateResourceSchemaWithKubeConform(ctx context.Context, kubeConformValidator validator.Validator, res *InstallableResource) error {
-	yamlBytes, err := yaml.Marshal(res.Unstruct.Object)
-	if err != nil {
-		return fmt.Errorf("marshal resource to yaml: %w", err)
-	}
-
-	resCh, errCh := resource.FromStream(ctx, res.FilePath, bytes.NewReader(yamlBytes))
-
-	validationErrs := &util.MultiError{}
-
-	for validationResource := range resCh {
-		validationResult := kubeConformValidator.ValidateResource(validationResource)
-
-		switch validationResult.Status {
-		case validator.Error:
-			return validationResult.Err
-		case validator.Skipped:
-			log.Default.Debug(ctx, "Skip validation for resource: %s", res.IDHuman())
-		case validator.Invalid:
-			for _, validationErr := range validationResult.ValidationErrors {
-				validationErrs.Add(fmt.Errorf("%s: %w", validationErr.Path, &validationErr))
-			}
-		case validator.Empty, validator.Valid:
-			continue
-		default:
-			panic("unexpected validation status")
-		}
-	}
-
-	// Check for stream reading Errors
-	for err := range errCh {
-		if err != nil {
-			return fmt.Errorf("read resource stream: %w", err)
-		}
-	}
-
-	return validationErrs.OrNilIfNoErrs()
 }
 
 func validateResourceWithCodec(res *InstallableResource) error {
