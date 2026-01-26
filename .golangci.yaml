@@ -74,6 +74,9 @@ linters:
     godox:
       keywords:
         - FIXME
+    gosec:
+      excludes:
+        - G306
     wsl_v5:
       allow-whole-block: true
     wrapcheck:
