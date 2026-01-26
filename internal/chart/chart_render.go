@@ -256,7 +256,7 @@ func renderJSTemplates(
 
 	jsRenderedTemplates, err := jsEngine.RenderChartWithDependencies(ctx, chartPath, chart, renderedValues)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("render chart with dependencies: %w", err)
 	}
 
 	return jsRenderedTemplates, nil
