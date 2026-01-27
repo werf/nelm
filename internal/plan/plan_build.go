@@ -44,8 +44,12 @@ func BuildPlan(installableInfos []*InstallableResourceInfo, deletableInfos []*De
 		return plan, fmt.Errorf("add install resource operations: %w", err)
 	}
 
-	if err := connectInternalDependencies(plan, installableInfos); err != nil {
+	if err := connectInternalDeployDependencies(plan, installableInfos); err != nil {
 		return plan, fmt.Errorf("connect internal dependencies: %w", err)
+	}
+
+	if err := connectInternalDeleteDependencies(plan, deletableInfos); err != nil {
+		return plan, fmt.Errorf("connect internal delete dependencies: %w", err)
 	}
 
 	if err := plan.Optimize(opts.NoFinalTracking); err != nil {
@@ -601,7 +605,7 @@ func addFailureResourceOperations(failedPlan, plan *Plan, infos []*InstallableRe
 	return nil
 }
 
-func connectInternalDependencies(plan *Plan, infos []*InstallableResourceInfo) error {
+func connectInternalDeployDependencies(plan *Plan, infos []*InstallableResourceInfo) error {
 	for _, info := range infos {
 		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualInternalDependencies)
 		if len(internalDeps) == 0 {
@@ -669,6 +673,46 @@ func getDeployOp(plan *Plan, info *InstallableResourceInfo, iteration int) (op *
 	return lo.Must(plan.Operation(deployOpID)), true
 }
 
+func connectInternalDeleteDependencies(plan *Plan, infos []*DeletableResourceInfo) error {
+	for _, info := range infos {
+		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualInternalDependencies)
+		if len(internalDeps) == 0 {
+			continue
+		}
+
+		operationID := OperationID(OperationTypeDelete, OperationVersionDelete, OperationIteration(0), info.ID())
+		deleteOp := lo.Must(plan.Operation(operationID))
+
+		for _, dep := range internalDeps {
+			var (
+				dependUponOp      *Operation
+				dependUponOpFound bool
+			)
+
+			switch dep.ResourceState {
+			case common.ResourceStateAbsent:
+				trackOps := getAllFirstIterationTrackAbsenceOps(plan)
+
+				dependUponOp, dependUponOpFound = lo.Find(trackOps, func(op *Operation) bool {
+					return dep.Match(getOpMeta(op))
+				})
+			default:
+				panic("unexpected internal dependency resource state")
+			}
+
+			if !dependUponOpFound {
+				continue
+			}
+
+			if err := plan.Connect(dependUponOp.ID(), deleteOp.ID()); err != nil {
+				return fmt.Errorf("depend %q from %q: %w", deleteOp.ID(), dependUponOp.ID(), err)
+			}
+		}
+	}
+
+	return nil
+}
+
 func getAllFirstIterationDeployOps(plan *Plan) []*Operation {
 	var deployOps []*Operation
 	for _, op := range plan.Operations() {
@@ -699,6 +743,24 @@ func getAllFirstIterationTrackReadinessOps(plan *Plan) []*Operation {
 
 		switch op.Type {
 		case OperationTypeTrackReadiness:
+			trackOps = append(trackOps, op)
+		default:
+			continue
+		}
+	}
+
+	return trackOps
+}
+
+func getAllFirstIterationTrackAbsenceOps(plan *Plan) []*Operation {
+	var trackOps []*Operation
+	for _, op := range plan.Operations() {
+		if op.Iteration != 0 {
+			continue
+		}
+
+		switch op.Type {
+		case OperationTypeTrackAbsence:
 			trackOps = append(trackOps, op)
 		default:
 			continue

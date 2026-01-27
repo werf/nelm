@@ -696,6 +696,74 @@ func validateDeletePropagation(meta *spec.ResourceMeta) error {
 	return nil
 }
 
+func validateDeleteDependencies(meta *spec.ResourceMeta) error {
+	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteDependency); found {
+		for key, value := range annotations {
+			keyMatches := common.AnnotationKeyPatternDeleteDependency.FindStringSubmatch(key)
+			if keyMatches == nil {
+				return fmt.Errorf("invalid key for annotation %q", key)
+			}
+
+			idSubexpIndex := common.AnnotationKeyPatternDeleteDependency.SubexpIndex("id")
+			if idSubexpIndex == -1 {
+				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternDeleteDependency.String(), key)
+			}
+
+			if len(keyMatches) < idSubexpIndex+1 {
+				return fmt.Errorf("can't parse delete dependency id from annotation key %q", key)
+			}
+
+			if value == "" {
+				return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
+			}
+
+			properties, err := util.ParseProperties(context.TODO(), value)
+			if err != nil {
+				return fmt.Errorf("invalid value %q for annotation %q: %w", value, key, err)
+			}
+
+			if !lo.Some(lo.Keys(properties), []string{"group", "version", "kind", "name", "namespace"}) {
+				return fmt.Errorf("invalid value %q for annotation %q, target not specified", value, key)
+			}
+
+			for propKey, propVal := range properties {
+				switch propKey {
+				case "group", "version", "kind", "name", "namespace":
+					switch pv := propVal.(type) {
+					case string:
+						if pv == "" {
+							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
+						}
+					case bool:
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				case "state":
+					switch pv := propVal.(type) {
+					case string:
+						switch pv {
+						case "absent":
+						case "":
+							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
+						default:
+							return fmt.Errorf("unknown value %q for property %q", pv, propKey)
+						}
+					case bool:
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				default:
+					return fmt.Errorf("unknown property %q in value of annotation %q", propKey, key)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 func recreate(meta *spec.ResourceMeta) bool {
 	deletePolicies := deletePolicies(meta)
 	return lo.Contains(deletePolicies, common.DeletePolicyBeforeCreation)
@@ -1137,7 +1205,7 @@ func deletePolicies(meta *spec.ResourceMeta) []common.DeletePolicy {
 	return deletePolicies
 }
 
-func manualInternalDependencies(meta *spec.ResourceMeta) []*InternalDependency {
+func manualInternalDeployDependencies(meta *spec.ResourceMeta) []*InternalDependency {
 	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
 		return nil
 	}
@@ -1191,6 +1259,65 @@ func manualInternalDependencies(meta *spec.ResourceMeta) []*InternalDependency {
 		for key, value := range annotations {
 			matches := common.AnnotationKeyPatternDeployDependency.FindStringSubmatch(key)
 			idSubexpIndex := common.AnnotationKeyPatternDeployDependency.SubexpIndex("id")
+			depID := matches[idSubexpIndex]
+			properties := lo.Must(util.ParseProperties(context.TODO(), value))
+
+			var depNames []string
+			if depName, found := properties["name"]; found {
+				depNames = []string{depName.(string)}
+			}
+
+			var depNamespaces []string
+			if depNamespace, found := properties["namespace"]; found {
+				depNamespaces = []string{depNamespace.(string)}
+			}
+
+			var depGroups []string
+			if depGroup, found := properties["group"]; found {
+				depGroups = []string{depGroup.(string)}
+			}
+
+			var depVersions []string
+			if depVersion, found := properties["version"]; found {
+				depVersions = []string{depVersion.(string)}
+			}
+
+			var depKinds []string
+			if depKind, found := properties["kind"]; found {
+				depKinds = []string{depKind.(string)}
+			}
+
+			var depState common.ResourceState
+			if s := properties["state"].(string); s != "" {
+				depState = common.ResourceState(s)
+			} else {
+				depState = common.ResourceStatePresent
+			}
+
+			dep := &InternalDependency{
+				ResourceMatcher: &spec.ResourceMatcher{
+					Names:      depNames,
+					Namespaces: depNamespaces,
+					Groups:     depGroups,
+					Versions:   depVersions,
+					Kinds:      depKinds,
+				},
+				ResourceState: depState,
+			}
+			deps[depID] = dep
+		}
+	}
+
+	return lo.Values(deps)
+}
+
+func manualInternalDeleteDependencies(meta *spec.ResourceMeta) []*InternalDependency {
+	deps := map[string]*InternalDependency{}
+
+	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteDependency); found {
+		for key, value := range annotations {
+			matches := common.AnnotationKeyPatternDeleteDependency.FindStringSubmatch(key)
+			idSubexpIndex := common.AnnotationKeyPatternDeleteDependency.SubexpIndex("id")
 			depID := matches[idSubexpIndex]
 			properties := lo.Must(util.ParseProperties(context.TODO(), value))
 
