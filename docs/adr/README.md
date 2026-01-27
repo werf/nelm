@@ -31,17 +31,12 @@ Each ADR follows a standard format:
 
 **Status**: Proposed
 
-**Summary**: Implements a plan freezing mechanism that allows exporting a plan in binary format during `nelm release plan install` and applying that frozen plan during `nelm release install`, similar to Terraform's `terraform plan -out=plan.tfplan` and `terraform apply plan.tfplan` workflow.
+**Summary**: Implement a **plan freezing and verification mechanism** that exports a release install plan to a JSON artifact during `nelm release plan install` and then **rebuilds a fresh plan** during `nelm release install --plan-file=...`, comparing the two plans before deploying.
 
 **Key Features**:
-- Plan serialization in binary format
-- Plan encryption using Nelm's secret key mechanism
-- One-time-use protection to prevent accidental re-execution
-- CLI support for `--plan-file` flag in `release install`
-- `nelm release plan show` command for human-readable review
-- Sensitive data handling with `--show-sensitive` flag
-
-**Related**: See [ARCHITECTURE.md](../../ARCHITECTURE.md) for overall architecture documentation.
+- Plan serialization in JSON format
+- Release install considering previously reviewed plan
+- CLI support for `--plan-file` flag in `release plan install` and `release install` commands
 
 ## Contributing
 
