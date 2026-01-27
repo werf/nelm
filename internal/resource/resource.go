@@ -117,7 +117,7 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 		return nil, fmt.Errorf("get external dependencies: %w", err)
 	}
 
-	manIntDeps := manualInternalDependencies(res.ResourceMeta)
+	manIntDeps := manualInternalDeployDependencies(res.ResourceMeta)
 
 	return &InstallableResource{
 		ResourceSpec:                           res,
@@ -144,7 +144,7 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 		TrackTerminationMode:                   trackTerminationMode(res.ResourceMeta),
 		Weight:                                 weight(res.ResourceMeta, len(manIntDeps) > 0),
 		ManualInternalDependencies:             manIntDeps,
-		AutoInternalDependencies:               internalDependencies(res.Unstruct),
+		AutoInternalDependencies:               internalDeployDependencies(res.Unstruct),
 		ExternalDependencies:                   extDeps,
 		DeployConditions:                       deployConditions(res.ResourceMeta, len(manIntDeps) > 0),
 		DeletePropagation:                      deletePropagation(res.ResourceMeta, opts.DefaultDeletePropagation),
@@ -157,9 +157,11 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 type DeletableResource struct {
 	*spec.ResourceMeta
 
-	Ownership         common.Ownership
-	KeepOnDelete      bool
-	DeletePropagation metav1.DeletionPropagation
+	Ownership                  common.Ownership
+	KeepOnDelete               bool
+	DeletePropagation          metav1.DeletionPropagation
+	ManualInternalDependencies []*InternalDependency
+	AutoInternalDependencies   []*InternalDependency
 }
 
 type DeletableResourceOptions struct {
@@ -190,11 +192,18 @@ func NewDeletableResource(spec *spec.ResourceSpec, releaseNamespace string, opts
 		delPropagation = deletePropagation(spec.ResourceMeta, opts.DefaultDeletePropagation)
 	}
 
+	var manIntDeps []*InternalDependency
+	if err := validateDeleteDependencies(spec.ResourceMeta); err == nil {
+		manIntDeps = manualInternalDeleteDependencies(spec.ResourceMeta)
+	}
+
 	return &DeletableResource{
-		ResourceMeta:      spec.ResourceMeta,
-		Ownership:         owner,
-		KeepOnDelete:      keep,
-		DeletePropagation: delPropagation,
+		ResourceMeta:               spec.ResourceMeta,
+		Ownership:                  owner,
+		KeepOnDelete:               keep,
+		DeletePropagation:          delPropagation,
+		ManualInternalDependencies: manIntDeps,
+		AutoInternalDependencies:   internalDeleteDependencies(spec.Unstruct),
 	}
 }
 
@@ -212,6 +221,7 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 		deletableRes := NewDeletableResource(resSpec, releaseNamespace, DeletableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 		})
+
 		prevRelDelResources = append(prevRelDelResources, deletableRes)
 	}
 

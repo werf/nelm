@@ -23,7 +23,7 @@ type ExternalDependency struct {
 // Automatically detects internal dependencies on resources by examining specific fields in the
 // resource spec. As an example, examining "envFrom" in a Pod container spec produces an internal
 // dependency on a ConfigMap or a Secret.
-func internalDependencies(unstruct *unstructured.Unstructured) []*InternalDependency {
+func internalDeployDependencies(unstruct *unstructured.Unstructured) []*InternalDependency {
 	gvk := unstruct.GroupVersionKind()
 	gk := gvk.GroupKind()
 
@@ -98,6 +98,12 @@ func internalDependencies(unstruct *unstructured.Unstructured) []*InternalDepend
 			dependencies = append(dependencies, dep)
 		}
 	}
+
+	return dependencies
+}
+
+func internalDeleteDependencies(_ *unstructured.Unstructured) []*InternalDependency {
+	var dependencies []*InternalDependency
 
 	return dependencies
 }
