@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -16,7 +17,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/werf/3p-helm/pkg/action"
-	"github.com/werf/3p-helm/pkg/chart"
+	helmchart "github.com/werf/3p-helm/pkg/chart"
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/chartutil"
 	"github.com/werf/3p-helm/pkg/cli"
@@ -31,7 +32,9 @@ import (
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/resource/spec"
+	"github.com/werf/nelm/internal/tschart"
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -53,7 +56,7 @@ type RenderChartOptions struct {
 }
 
 type RenderChartResult struct {
-	Chart         *chart.Chart
+	Chart         *helmchart.Chart
 	Notes         string
 	ReleaseConfig map[string]interface{}
 	ResourceSpecs []*spec.ResourceSpec
@@ -147,6 +150,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	log.Default.TraceStruct(ctx, runtime, "Runtime:")
 
 	var isUpgrade bool
+
 	switch deployType {
 	case common.DeployTypeUpgrade, common.DeployTypeRollback:
 		isUpgrade = true
@@ -204,6 +208,17 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		return nil, fmt.Errorf("render resources for chart %q: %w", chart.Name(), err)
 	}
 
+	if featgate.FeatGateTypescript.Enabled() {
+		jsRenderedTemplates, err := renderJSTemplates(ctx, chartPath, chart, renderedValues)
+		if err != nil {
+			return nil, fmt.Errorf("render ts chart templates for chart %q: %w", chart.Name(), err)
+		}
+
+		if len(jsRenderedTemplates) > 0 {
+			maps.Copy(renderedTemplates, jsRenderedTemplates)
+		}
+	}
+
 	log.Default.TraceStruct(ctx, renderedTemplates, "Rendered contents of templates/:")
 
 	if r, err := renderedTemplatesToResourceSpecs(renderedTemplates, releaseNamespace, opts); err != nil {
@@ -229,7 +244,25 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	}, nil
 }
 
-func validateChart(ctx context.Context, chart *chart.Chart) error {
+func renderJSTemplates(
+	ctx context.Context,
+	chartPath string,
+	chart *helmchart.Chart,
+	renderedValues chartutil.Values,
+) (map[string]string, error) {
+	log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", chart.Name())
+
+	jsEngine := tschart.NewEngine()
+
+	jsRenderedTemplates, err := jsEngine.RenderChartWithDependencies(ctx, chartPath, chart, renderedValues)
+	if err != nil {
+		return nil, fmt.Errorf("render chart with dependencies: %w", err)
+	}
+
+	return jsRenderedTemplates, nil
+}
+
+func validateChart(ctx context.Context, chart *helmchart.Chart) error {
 	if chart == nil {
 		return fmt.Errorf("load chart: %w", action.ErrMissingChart())
 	}
@@ -253,6 +286,7 @@ func validateChart(ctx context.Context, chart *chart.Chart) error {
 
 func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, releaseNamespace string, opts RenderChartOptions) ([]*spec.ResourceSpec, error) {
 	var resources []*spec.ResourceSpec
+
 	for filePath, fileContent := range renderedTemplates {
 		if strings.HasPrefix(path.Base(filePath), "_") ||
 			strings.HasSuffix(filePath, action.NotesFileSuffix) ||

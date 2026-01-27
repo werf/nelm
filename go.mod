@@ -13,7 +13,10 @@ require (
 	github.com/docker/cli v25.0.5+incompatible
 	github.com/docker/docker v25.0.5+incompatible
 	github.com/dominikbraun/graph v0.23.0
+	github.com/dop251/goja v0.0.0-20251121114222-56b1242a5f86
+	github.com/dop251/goja_nodejs v0.0.0-20251015164255-5e94316bedaf
 	github.com/evanphx/json-patch v5.8.0+incompatible
+	github.com/evanw/esbuild v0.27.0
 	github.com/fluxcd/flagger v1.36.1
 	github.com/goccy/go-yaml v1.15.23
 	github.com/gofrs/flock v0.8.1
@@ -38,7 +41,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.5.0
-	github.com/werf/3p-helm v0.0.0-20251223091030-77130d200f5c
+	github.com/werf/3p-helm v0.0.0-20260126192610-be1be5f15846
 	github.com/werf/common-go v0.0.0-20251113140850-a1a98e909e9b
 	github.com/werf/kubedog v0.13.1-0.20260115171811-304218f24308
 	github.com/werf/lockgate v0.1.1
@@ -94,6 +97,7 @@ require (
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
+	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect

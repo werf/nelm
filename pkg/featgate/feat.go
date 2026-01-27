@@ -58,6 +58,11 @@ var (
 		"resource-validation",
 		"Validate chart resources against specific Kubernetes resources' schemas",
 	)
+
+	FeatGateTypescript = NewFeatGate(
+		"typescript",
+		`Enable TypeScript chart rendering from ts/ directory`,
+	)
 )
 
 // A feature gate, which enabled/disables a specific feature. Can be toggled via an env var or
