@@ -1,12 +1,14 @@
-package tschart
+package ts
 
 import (
 	"fmt"
 
 	"github.com/dop251/goja"
+	"github.com/dop251/goja_nodejs/console"
+	"github.com/dop251/goja_nodejs/require"
 )
 
-const RequireShim = `
+const requireShim = `
 (function() {
     var vendorRegistry = (typeof global !== 'undefined' && global.__NELM_VENDOR__) ||
                          (typeof __NELM_VENDOR__ !== 'undefined' && __NELM_VENDOR__) ||
@@ -24,20 +26,7 @@ const RequireShim = `
 })()
 `
 
-func createVM() (*goja.Runtime, error) {
-	vm := goja.New()
-
-	global := vm.NewObject()
-	if err := vm.Set("global", global); err != nil {
-		return nil, fmt.Errorf("set global: %w", err)
-	}
-
-	SetupConsoleGlobal(vm)
-
-	return vm, nil
-}
-
-func executeInGoja(vendorBundle, appBundle string, renderCtx map[string]interface{}) (interface{}, error) {
+func runBundle(vendorBundle, appBundle string, renderCtx map[string]any) (any, error) {
 	vm, err := createVM()
 	if err != nil {
 		return nil, fmt.Errorf("create VM: %w", err)
@@ -45,13 +34,13 @@ func executeInGoja(vendorBundle, appBundle string, renderCtx map[string]interfac
 
 	if vendorBundle != "" {
 		if _, err := vm.RunString(vendorBundle); err != nil {
-			return nil, fmt.Errorf("vendor bundle failed: %w", formatJSError(vm, err, "vendor/libs.js"))
+			return nil, fmt.Errorf("execute vendor bundle: %w", formatJSError(vm, err, "vendor/libs.js"))
 		}
 	}
 
-	requireFn, err := vm.RunString(RequireShim)
+	requireFn, err := vm.RunString(requireShim)
 	if err != nil {
-		return nil, fmt.Errorf("require shim failed: %w", err)
+		return nil, fmt.Errorf("execute require shim: %w", err)
 	}
 
 	if err := vm.Set("require", requireFn); err != nil {
@@ -74,27 +63,27 @@ func executeInGoja(vendorBundle, appBundle string, renderCtx map[string]interfac
 	}
 
 	if _, err := vm.RunString(appBundle); err != nil {
-		return nil, fmt.Errorf("app bundle failed: %w", formatJSError(vm, err, "app bundle"))
+		return nil, fmt.Errorf("execute app bundle: %w", formatJSError(vm, err, "app bundle"))
 	}
 
 	moduleExports := vm.Get("module").ToObject(vm).Get("exports")
 	if moduleExports == nil || goja.IsUndefined(moduleExports) || goja.IsNull(moduleExports) {
-		return nil, fmt.Errorf("bundle does not export anything")
+		return nil, fmt.Errorf("run bundle: no exports")
 	}
 
 	renderFn := moduleExports.ToObject(vm).Get("render")
 	if renderFn == nil || goja.IsUndefined(renderFn) || goja.IsNull(renderFn) {
-		return nil, fmt.Errorf("bundle does not export 'render' function")
+		return nil, fmt.Errorf("run bundle: no 'render' function exported")
 	}
 
 	callable, ok := goja.AssertFunction(renderFn)
 	if !ok {
-		return nil, fmt.Errorf("'render' export is not a function")
+		return nil, fmt.Errorf("run bundle: 'render' export is not a function")
 	}
 
 	result, err := callable(goja.Undefined(), vm.ToValue(renderCtx))
 	if err != nil {
-		return nil, fmt.Errorf("render failed: %w", formatJSError(vm, err, "render()"))
+		return nil, fmt.Errorf("call render function: %w", formatJSError(vm, err, "render()"))
 	}
 
 	if result == nil || goja.IsUndefined(result) || goja.IsNull(result) {
@@ -102,6 +91,19 @@ func executeInGoja(vendorBundle, appBundle string, renderCtx map[string]interfac
 	}
 
 	return result.Export(), nil
+}
+
+func createVM() (*goja.Runtime, error) {
+	vm := goja.New()
+
+	global := vm.NewObject()
+	if err := vm.Set("global", global); err != nil {
+		return nil, fmt.Errorf("set global: %w", err)
+	}
+
+	setupConsole(vm)
+
+	return vm, nil
 }
 
 func formatJSError(vm *goja.Runtime, err error, currentFile string) error {
@@ -124,4 +126,11 @@ func formatJSError(vm *goja.Runtime, err error, currentFile string) error {
 	stack := stackProp.String()
 
 	return fmt.Errorf("%s", stack)
+}
+
+func setupConsole(runtime *goja.Runtime) {
+	registry := require.NewRegistry()
+	registry.Enable(runtime)
+
+	console.Enable(runtime)
 }

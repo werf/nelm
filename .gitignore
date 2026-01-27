@@ -8,6 +8,10 @@
 /.ripgreprc
 /.zprofile
 /.zshrc
+/\*\*
+/.env
+/.env.\*
+/secrets
 
 *.swp
 *.test
