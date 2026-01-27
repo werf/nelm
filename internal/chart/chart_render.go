@@ -32,7 +32,7 @@ import (
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/resource/spec"
-	"github.com/werf/nelm/internal/tschart"
+	"github.com/werf/nelm/internal/ts"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
@@ -252,14 +252,12 @@ func renderJSTemplates(
 ) (map[string]string, error) {
 	log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", chart.Name())
 
-	jsEngine := tschart.NewEngine()
-
-	jsRenderedTemplates, err := jsEngine.RenderChartWithDependencies(ctx, chartPath, chart, renderedValues)
+	result, err := ts.RenderChart(ctx, chart, renderedValues)
 	if err != nil {
-		return nil, fmt.Errorf("render chart with dependencies: %w", err)
+		return nil, fmt.Errorf("render TypeScript: %w", err)
 	}
 
-	return jsRenderedTemplates, nil
+	return result, nil
 }
 
 func validateChart(ctx context.Context, chart *helmchart.Chart) error {

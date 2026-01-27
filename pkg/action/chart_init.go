@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/werf/nelm/internal/tschart"
+	"github.com/werf/nelm/internal/ts"
 	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
@@ -43,15 +43,15 @@ func ChartInit(ctx context.Context, opts ChartInitOptions) error {
 		return fmt.Errorf("create directory %s: %w", absPath, err)
 	}
 
-	if err := tschart.InitChartStructure(ctx, absPath, chartName); err != nil {
+	if err := ts.InitChartStructure(ctx, absPath, chartName); err != nil {
 		return fmt.Errorf("init chart structure: %w", err)
 	}
 
-	if err := tschart.InitTSBoilerplate(ctx, absPath, chartName); err != nil {
+	if err := ts.InitTSBoilerplate(ctx, absPath, chartName); err != nil {
 		return fmt.Errorf("init TypeScript boilerplate: %w", err)
 	}
 
-	if err := tschart.EnsureGitignore(absPath); err != nil {
+	if err := ts.EnsureGitignore(absPath); err != nil {
 		return fmt.Errorf("ensure .gitignore: %w", err)
 	}
 
