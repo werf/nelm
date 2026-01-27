@@ -44,7 +44,7 @@ func BuildPlan(installableInfos []*InstallableResourceInfo, deletableInfos []*De
 		return plan, fmt.Errorf("add install resource operations: %w", err)
 	}
 
-	if err := connectInternalDependencies(plan, installableInfos); err != nil {
+	if err := connectInternalDeployDependencies(plan, installableInfos); err != nil {
 		return plan, fmt.Errorf("connect internal dependencies: %w", err)
 	}
 
@@ -605,7 +605,7 @@ func addFailureResourceOperations(failedPlan, plan *Plan, infos []*InstallableRe
 	return nil
 }
 
-func connectInternalDependencies(plan *Plan, infos []*InstallableResourceInfo) error {
+func connectInternalDeployDependencies(plan *Plan, infos []*InstallableResourceInfo) error {
 	for _, info := range infos {
 		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualInternalDependencies)
 		if len(internalDeps) == 0 {

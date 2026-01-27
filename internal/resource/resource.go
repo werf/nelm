@@ -170,7 +170,7 @@ type DeletableResourceOptions struct {
 
 // Construct a DeletableResource from a ResourceSpec. Must never contact the cluster, because
 // this is called even when no cluster access allowed.
-func NewDeletableResource(spec *spec.ResourceSpec, releaseNamespace string, opts DeletableResourceOptions) (*DeletableResource, error) {
+func NewDeletableResource(spec *spec.ResourceSpec, releaseNamespace string, opts DeletableResourceOptions) *DeletableResource {
 	var keep bool
 	if err := ValidateResourcePolicy(spec.ResourceMeta); err != nil {
 		keep = true
@@ -192,11 +192,10 @@ func NewDeletableResource(spec *spec.ResourceSpec, releaseNamespace string, opts
 		delPropagation = deletePropagation(spec.ResourceMeta, opts.DefaultDeletePropagation)
 	}
 
-	if err := validateDeleteDependencies(spec.ResourceMeta); err != nil {
-		return nil, fmt.Errorf("validate delete dependencies: %w", err)
+	var manIntDeps []*InternalDependency
+	if err := validateDeleteDependencies(spec.ResourceMeta); err == nil {
+		manIntDeps = manualInternalDeleteDependencies(spec.ResourceMeta)
 	}
-
-	manIntDeps := manualInternalDeleteDependencies(spec.ResourceMeta)
 
 	return &DeletableResource{
 		ResourceMeta:               spec.ResourceMeta,
@@ -205,7 +204,7 @@ func NewDeletableResource(spec *spec.ResourceSpec, releaseNamespace string, opts
 		DeletePropagation:          delPropagation,
 		ManualInternalDependencies: manIntDeps,
 		AutoInternalDependencies:   internalDeleteDependencies(spec.Unstruct),
-	}, nil
+	}
 }
 
 type BuildResourcesOptions struct {
@@ -219,12 +218,9 @@ type BuildResourcesOptions struct {
 func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRelResSpecs, newRelResSpecs []*spec.ResourceSpec, patchers []spec.ResourcePatcher, clientFactory kube.ClientFactorier, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
 	var prevRelDelResources []*DeletableResource
 	for _, resSpec := range prevRelResSpecs {
-		deletableRes, err := NewDeletableResource(resSpec, releaseNamespace, DeletableResourceOptions{
+		deletableRes := NewDeletableResource(resSpec, releaseNamespace, DeletableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 		})
-		if err != nil {
-			return nil, nil, fmt.Errorf("construct deletable resource: %w", err)
-		}
 
 		prevRelDelResources = append(prevRelDelResources, deletableRes)
 	}
