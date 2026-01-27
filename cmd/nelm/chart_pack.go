@@ -11,7 +11,7 @@ import (
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/common-go/pkg/cli"
-	"github.com/werf/nelm/internal/tschart"
+	"github.com/werf/nelm/internal/ts"
 	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
@@ -37,10 +37,9 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 		loader.NoChartLockWarning = ""
 
 		if featgate.FeatGateTypescript.Enabled() {
-			transformer := tschart.NewTransformer()
 			for _, chartPath := range args {
-				if err := transformer.TransformChartDir(ctx, chartPath); err != nil {
-					return fmt.Errorf("transform TypeScript in %q: %w", chartPath, err)
+				if err := ts.BuildVendorBundleToDir(ctx, chartPath); err != nil {
+					return fmt.Errorf("build TypeScript vendor bundle in %q: %w", chartPath, err)
 				}
 			}
 		}
