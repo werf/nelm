@@ -756,7 +756,6 @@ func getAllFirstIterationTrackAbsenceOps(plan *Plan) []*Operation {
 	var trackOps []*Operation
 	for _, op := range plan.Operations() {
 		if op.Iteration != 0 {
-			// TODO: to check about iterations
 			continue
 		}
 
