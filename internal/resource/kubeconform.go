@@ -422,8 +422,6 @@ func (kc *KubeConformValidator) Validate(ctx context.Context, res *InstallableRe
 
 VALIDATOR:
 	for _, schemaValidator := range validators {
-		var schemaFound bool
-
 		validationErrs := &util.MultiError{}
 
 		resCh, errCh := resource.FromStream(ctx, res.FilePath, bytes.NewReader(yamlBytes))
@@ -440,8 +438,6 @@ VALIDATOR:
 				return validationResult.Err
 			case validator.Skipped:
 				log.Default.Debug(ctx, "Skip validation for resource: %s", res.IDHuman())
-
-				schemaFound = true
 			case validator.Invalid:
 				if !cachedEntryFound {
 					if err := schemaValidator.AddEntry(ctx, res.GroupVersionKind); err != nil {
@@ -452,16 +448,12 @@ VALIDATOR:
 				for _, validationErr := range validationResult.ValidationErrors {
 					validationErrs.Add(fmt.Errorf("%s: %w", validationErr.Path, &validationErr))
 				}
-
-				schemaFound = true
 			case validator.Empty, validator.Valid:
 				if !cachedEntryFound {
 					if err := schemaValidator.AddEntry(ctx, res.GroupVersionKind); err != nil {
 						return fmt.Errorf("add entry %s: %w", res.IDHuman(), err)
 					}
 				}
-
-				schemaFound = true
 
 				continue
 			default:
@@ -476,14 +468,7 @@ VALIDATOR:
 			}
 		}
 
-		if validationErrs.HasErrors() {
-			return validationErrs
-		}
-
-		// Schema found and resource is valid
-		if schemaFound {
-			return nil
-		}
+		return validationErrs.OrNilIfNoErrs()
 	}
 
 	return nil
