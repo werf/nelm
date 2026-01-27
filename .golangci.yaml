@@ -74,12 +74,18 @@ linters:
     godox:
       keywords:
         - FIXME
+    gosec:
+      excludes:
+        - G306
     wsl_v5:
       allow-whole-block: true
     wrapcheck:
       extra-ignore-sigs:
         - context.Cause(
-        - .Multierrorf(
+        - (*github.com/werf/nelm/internal/util.MultiError).OrNilIfNoErrs(
+    errcheck:
+      exclude-functions:
+        - (*github.com/werf/nelm/internal/util.MultiError).Add
   exclusions:
     generated: lax
     presets:

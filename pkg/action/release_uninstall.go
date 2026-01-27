@@ -264,7 +264,8 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			progressPrinter.Start(ctx, opts.ProgressTablePrintInterval)
 		}
 
-		var criticalErrs, nonCriticalErrs []error
+		criticalErrs := &util.MultiError{}
+		nonCriticalErrs := &util.MultiError{}
 
 		log.Default.Debug(ctx, "Execute release delete plan")
 		executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, deletePlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
@@ -272,7 +273,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			NetworkParallelism: opts.NetworkParallelism,
 		})
 		if executePlanErr != nil {
-			criticalErrs = append(criticalErrs, fmt.Errorf("execute release delete plan: %w", executePlanErr))
+			criticalErrs.Add(fmt.Errorf("execute release delete plan: %w", executePlanErr))
 		}
 
 		resourceOps := lo.Filter(deletePlan.Operations(), func(op *plan.Operation, _ int) bool {
@@ -297,8 +298,8 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 				NetworkParallelism: opts.NetworkParallelism,
 			})
 
-			criticalErrs = append(criticalErrs, critErrs...)
-			nonCriticalErrs = append(nonCriticalErrs, nonCritErrs...)
+			criticalErrs.Add(critErrs)
+			nonCriticalErrs.Add(nonCritErrs)
 			if runFailurePlanResult != nil {
 				completedResourceOps = append(completedResourceOps, runFailurePlanResult.CompletedResourceOps...)
 				canceledResourceOps = append(canceledResourceOps, runFailurePlanResult.CanceledResourceOps...)
@@ -342,14 +343,17 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 		if opts.UninstallReportPath != "" {
 			if err := saveReport(opts.UninstallReportPath, report); err != nil {
-				nonCriticalErrs = append(nonCriticalErrs, fmt.Errorf("save release delete report: %w", err))
+				nonCriticalErrs.Add(fmt.Errorf("save release delete report: %w", err))
 			}
 		}
 
-		if len(criticalErrs) > 0 {
-			return util.Multierrorf("uninstall failed for release %q (namespace: %q)", append(criticalErrs, nonCriticalErrs...), releaseName, releaseNamespace)
-		} else if len(nonCriticalErrs) > 0 {
-			return util.Multierrorf("uninstall succeeded for release %q (namespace: %q), but non-critical errors encountered", nonCriticalErrs, releaseName, releaseNamespace)
+		if criticalErrs.HasErrors() {
+			allErrs := &util.MultiError{}
+			allErrs.Add(criticalErrs, nonCriticalErrs)
+
+			return fmt.Errorf("uninstall failed for release %q (namespace: %q): %w", releaseName, releaseNamespace, allErrs)
+		} else if nonCriticalErrs.HasErrors() {
+			return fmt.Errorf("uninstall succeeded for release %q (namespace: %q), but non-critical errors encountered: %w", releaseName, releaseNamespace, nonCriticalErrs)
 		} else {
 			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Uninstalled release %q (namespace: %q)", releaseName, releaseNamespace)))
 

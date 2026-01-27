@@ -13,13 +13,15 @@ require (
 	github.com/docker/cli v25.0.5+incompatible
 	github.com/docker/docker v25.0.5+incompatible
 	github.com/dominikbraun/graph v0.23.0
+	github.com/dop251/goja v0.0.0-20251121114222-56b1242a5f86
+	github.com/dop251/goja_nodejs v0.0.0-20251015164255-5e94316bedaf
 	github.com/evanphx/json-patch v5.8.0+incompatible
+	github.com/evanw/esbuild v0.27.0
 	github.com/fluxcd/flagger v1.36.1
 	github.com/goccy/go-yaml v1.15.23
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/gookit/color v1.5.4
-	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hofstadter-io/cinful v1.0.0
 	github.com/jedib0t/go-pretty/v6 v6.5.5
 	github.com/jellydator/ttlcache/v3 v3.1.1
@@ -38,7 +40,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.5.0
-	github.com/werf/3p-helm v0.0.0-20251223091030-77130d200f5c
+	github.com/werf/3p-helm v0.0.0-20260126192610-be1be5f15846
 	github.com/werf/common-go v0.0.0-20251113140850-a1a98e909e9b
 	github.com/werf/kubedog v0.13.1-0.20260115171811-304218f24308
 	github.com/werf/lockgate v0.1.1
@@ -94,6 +96,7 @@ require (
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
+	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gofrs/flock v0.8.1 // indirect
@@ -110,6 +113,7 @@ require (
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
+	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.7 // indirect
 	github.com/huandu/xstrings v1.4.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect

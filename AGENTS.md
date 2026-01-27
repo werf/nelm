@@ -1,31 +1,41 @@
-## Project Context
+# Repository Guidelines
 
-This repository contains Nelm.
+Nelm is a Go-based Kubernetes deployment tool (Helm-compatible). For context and expectations, read `README.md`, `ARCHITECTURE.md`, and `CONTRIBUTING.md`.
 
-Always read these files to understand the project context:
-* README.md: Main Readme.
-* ARCHITECTURE.md: Architecture.
-* CONTRIBUTING.md: Contribution guidelines, code style, development workflow.
+## Documentation
 
-## Code Style
+- [README.md](README.md) - Project overview, features, CLI reference, annotations
+- [ARCHITECTURE.md](ARCHITECTURE.md) - Package structure, data types, transformation pipeline, deployment flow
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Development workflow, commit conventions, design and style guidelines
 
-Always enforce code style and design from CONTRIBUTING.md.
+## Build Commands
+
+Uses [Task](https://taskfile.dev/) as the build system. Requires `export TASK_X_REMOTE_TASKFILES=1`.
+
+```bash
+task                    # Run all checks: format, build, lint, unit tests
+task build              # Build binary for current OS/arch to ./bin/
+task format             # Run gci, gofumpt, prettier
+task lint               # Run golangci-lint and prettier checks
+task test:unit          # Run unit tests with ginkgo
+task test:unit paths="./pkg/action"  # Test specific package
+task clean              # Clean build artifacts
+task generate           # Run generators (e.g., Markdown TOCs)
+```
 
 ## Testing
 
-* build: `task build`
-* lint: `task lint`
-* format: `task format`
-* unit tests: `task test:unit`
+Uses Ginkgo v2 with Gomega matchers.
 
-## Workflow
-
-1. Edit: Make changes.
-2. Verify: Run build, format, lint, and unit tests locally.
+```bash
+task test:unit                           # Run all unit tests
+task test:unit paths="./internal/plan"   # Test specific package
+task test:ginkgo paths="./pkg" -- -v     # Pass flags to ginkgo
+```
 
 ## Additional PR review guidelines
 
 Require explicit approval from the reviewer for:
-* New external dependencies.
-* Breaking user-facing changes (not API changes), unless they are hidden behind a feature flag.
-* Changes that may compromise security.
+- New external dependencies.
+- Breaking user-facing changes (not API changes), unless they are hidden behind a feature flag.
+- Changes that may compromise security.

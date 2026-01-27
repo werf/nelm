@@ -48,6 +48,14 @@ tasks:
       - go build -o "{{.outputDir | default (printf "./dist/%s/%s-%s/bin" .version .targetOS .targetArch)}}/{{.brandSlug}}{{if (eq .targetOS "windows")}}.exe{{end}}"
         -ldflags="{{.ldFlags}}" -tags="{{.ctags}}" {{.extraGoBuildArgs}} {{.CLI_ARGS}} {{.pkg | default .package}}
 
+  _golangci-lint:
+    internal: true
+    run: once
+    cmds:
+      - golangci-lint run {{if eq .fix "true"}}--fix{{end}} --build-tags="{{.tags}}" {{.CLI_ARGS}} {{.paths | default "./..."}}
+    vars:
+      paths: "{{.paths}}"
+
   build:
     desc: "Build main dev binary."
     run: once
@@ -233,6 +241,7 @@ tasks:
       - task: format:gci
       - task: format:gofumpt
       - task: format:prettier
+      - task: format:golangci-lint
 
   format:gci:
     desc: 'Format code with gci. Important vars: "paths".'
@@ -243,6 +252,14 @@ tasks:
     desc: 'Format code with gofumpt. Important vars: "paths".'
     cmds:
       - gofumpt -extra -w {{.CLI_ARGS}} {{.paths | default "internal/ cmd/ pkg/"}}
+
+  format:golangci-lint:
+    desc: 'Format with golangci-lint. Important vars: "paths".'
+    cmds:
+      - task: _golangci-lint
+        vars:
+          fix: "true"
+          paths: "{{.paths}}"
 
   format:prettier:
     desc: "Format with prettier."
@@ -274,9 +291,10 @@ tasks:
   lint:golangci-lint:
     desc: 'Lint with golangci-lint. Important vars: "paths".'
     cmds:
-      - golangci-lint run --build-tags="{{.tags}}" {{.CLI_ARGS}} {{.paths | default "./..."}}
-    vars:
-      paths: "{{.paths}}"
+      - task: _golangci-lint
+        vars:
+          fix: "false"
+          paths: "{{.paths}}"
 
   lint:prettier:
     desc: "Check if prettier-formatted."
