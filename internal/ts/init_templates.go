@@ -7,7 +7,7 @@ const (
 name: %s
 version: 0.1.0
 `
-	deploymentTSContent = `import { RenderContext } from '@nelm/types';
+	deploymentTSContent = `import type { RenderContext } from '@nelm/chart-ts-sdk';
 import { getFullname, getLabels, getSelectorLabels } from './helpers';
 
 export function newDeployment($: RenderContext): object {
@@ -33,7 +33,7 @@ export function newDeployment($: RenderContext): object {
           containers: [
             {
               name: name,
-              image: ` + "`${$.Values.image?.repository}:${$.Values.image?.tag}`" + `,
+              image: ` + "($.Values.image?.repository ?? 'nginx') + ':' + ($.Values.image?.tag ?? 'latest')" + `,
               ports: [
                 {
                   name: 'http',
@@ -55,7 +55,7 @@ export function newDeployment($: RenderContext): object {
 # TypeScript chart files
 ts/dist/
 `
-	helpersTSContent = `import { RenderContext } from '@nelm/types';
+	helpersTSContent = `import type { RenderContext } from '@nelm/chart-ts-sdk';
 
 /**
  * Truncate string to max length, removing trailing hyphens.
@@ -97,7 +97,7 @@ export function getSelectorLabels($: RenderContext): Record<string, string> {
   };
 }
 `
-	indexTSContent = `import { RenderContext, RenderResult } from '@nelm/types';
+	indexTSContent = `import type { RenderContext, RenderResult } from '@nelm/chart-ts-sdk';
 import { newDeployment } from './deployment';
 import { newService } from './service';
 
@@ -119,7 +119,7 @@ export function render($: RenderContext): RenderResult {
   "description": "TypeScript chart for %s",
   "main": "src/index.ts",
   "scripts": {
-    "build": "npx tsc --noEmit",
+    "build": "npx tsc",
     "typecheck": "npx tsc --noEmit"
   },
   "keywords": [
@@ -130,14 +130,14 @@ export function render($: RenderContext): RenderResult {
   ],
   "license": "Apache-2.0",
   "dependencies": {
-    "@nelm/types": "^0.1.0"
+    "@nelm/chart-ts-sdk": "^0.1.2"
   },
   "devDependencies": {
     "typescript": "^5.0.0"
   }
 }
 `
-	serviceTSContent = `import { RenderContext } from '@nelm/types';
+	serviceTSContent = `import type { RenderContext } from '@nelm/chart-ts-sdk';
 import { getFullname, getLabels, getSelectorLabels } from './helpers';
 
 export function newService($: RenderContext): object {
