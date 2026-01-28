@@ -102,8 +102,16 @@ func internalDeployDependencies(unstruct *unstructured.Unstructured) []*Internal
 	return dependencies
 }
 
-func internalDeleteDependencies(_ *unstructured.Unstructured) []*InternalDependency {
+func internalDeleteDependencies(unstruct *unstructured.Unstructured) []*InternalDependency {
+	gvk := unstruct.GroupVersionKind()
+	gk := gvk.GroupKind()
+
 	var dependencies []*InternalDependency
+	if gk == (schema.GroupKind{Kind: "CustomResourceDefinition", Group: "apiextensions.k8s.io"}) {
+		if dep, found := parseCRD(unstruct); found {
+			dependencies = append(dependencies, dep)
+		}
+	}
 
 	return dependencies
 }
@@ -569,6 +577,34 @@ func parseRoleRef(unstruct unstructured.Unstructured) (dep *InternalDependency, 
 			Kinds:      []string{kind},
 		},
 		ResourceState: common.ResourceStatePresent,
+	}
+
+	return dep, true
+}
+
+func parseCRD(unstruct *unstructured.Unstructured) (dep *InternalDependency, found bool) {
+	kind, found := nestedString(unstruct.Object, "spec", "names", "kind")
+
+	if !found {
+		return nil, false
+	}
+
+	group, found := nestedString(unstruct.Object, "spec", "group")
+
+	if !found {
+		return nil, false
+	}
+
+	// TODO(maybe): consider versions
+
+	dep = &InternalDependency{
+		ResourceMatcher: &spec.ResourceMatcher{
+			Names:      []string{},
+			Namespaces: []string{unstruct.GetNamespace()},
+			Groups:     []string{group},
+			Kinds:      []string{kind},
+		},
+		ResourceState: common.ResourceStateAbsent,
 	}
 
 	return dep, true
