@@ -331,7 +331,7 @@ func AddResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceValidati
 	}
 
 	if err := cli.AddFlag(cmd, &cfg.ValidationSchema, "resource-validation-schema", common.DefaultResourceValidationSchema, "Default json schema sources to validate resources. Must be a valid go template defining a http(s) URL, or an absolute path on local file system", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalMultiEnvVarRegexes,
 		Group:                resourceValidationGroup,
 		NoSplitOnCommas:      true,
 	}); err != nil {
@@ -339,7 +339,7 @@ func AddResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceValidati
 	}
 
 	if err := cli.AddFlag(cmd, &cfg.ValidationExtraSchema, "resource-validation-extra-schema", []string{}, "Extra json schema sources to validate resources (preferred over default sources). Must be a valid go template defining a http(s) URL, or an absolute path on local file system", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalMultiEnvVarRegexes,
 		Group:                resourceValidationGroup,
 		NoSplitOnCommas:      true,
 	}); err != nil {

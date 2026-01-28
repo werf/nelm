@@ -27,6 +27,8 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
+const kubeConformCacheMetadataAPIVersion = "1"
+
 type kubeConformValidatorInstanceInterface interface {
 	AddEntry(ctx context.Context, gvk schema.GroupVersionKind) error
 	FindEntry(ctx context.Context, gvk schema.GroupVersionKind) (bool, error)
@@ -44,8 +46,8 @@ type kubeConformSchemaSourceParams struct {
 }
 
 type kubeConformCacheMetadata struct {
-	Entries map[string]time.Time `json:"entries"`
-	Version int                  `json:"version"`
+	APIVersion string               `json:"apiVersion"`
+	Entries    map[string]time.Time `json:"entries"`
 }
 
 type kubeConformLocalFSValidatorInstance struct {
@@ -73,19 +75,19 @@ func newKubeConformLocalFSValidatorInstance(ctx context.Context, source string) 
 	}, nil
 }
 
-func (v kubeConformLocalFSValidatorInstance) AddEntry(_ context.Context, _ schema.GroupVersionKind) error {
+func (v *kubeConformLocalFSValidatorInstance) AddEntry(_ context.Context, _ schema.GroupVersionKind) error {
 	return nil
 }
 
-func (v kubeConformLocalFSValidatorInstance) FindEntry(_ context.Context, _ schema.GroupVersionKind) (bool, error) {
+func (v *kubeConformLocalFSValidatorInstance) FindEntry(_ context.Context, _ schema.GroupVersionKind) (bool, error) {
 	return false, nil
 }
 
-func (v kubeConformLocalFSValidatorInstance) InvalidateEntries(_ context.Context) error {
+func (v *kubeConformLocalFSValidatorInstance) InvalidateEntries(_ context.Context) error {
 	return nil
 }
 
-func (v kubeConformLocalFSValidatorInstance) ValidateResource(_ context.Context, res resource.Resource) (*validator.Result, error) {
+func (v *kubeConformLocalFSValidatorInstance) ValidateResource(_ context.Context, res resource.Resource) (*validator.Result, error) {
 	result := v.validator.ValidateResource(res)
 
 	return &result, nil
@@ -130,22 +132,19 @@ func newKubeConformHTTPValidatorInstance(ctx context.Context, source string, cac
 		validator:     validatorInstance,
 	}
 
-	err = v.fileLock.Lock()
-	if err != nil {
+	if err := v.fileLock.Lock(); err != nil {
 		return nil, fmt.Errorf("acquire lock on schema validator %s: %w", lockFilePath, err)
 	}
 
 	defer func() {
-		err := v.fileLock.Unlock()
-		if err != nil {
+		if err := v.fileLock.Unlock(); err != nil {
 			log.Default.Error(ctx, "release lock on schema validator %s: %s", v.lockFilePath(), err)
 		}
 	}()
 
-	metadataFilePath := filepath.Join(cacheDir, "metadata.yaml")
+	metadataFilePath := filepath.Join(cacheDir, "metadata.json")
 
-	_, err = os.Stat(metadataFilePath)
-	if os.IsNotExist(err) {
+	if _, err := os.Stat(metadataFilePath); os.IsNotExist(err) {
 		metadataFile, err := os.OpenFile(metadataFilePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
 		if err != nil {
 			return nil, fmt.Errorf("unable to open metadata file: %w", err)
@@ -154,10 +153,12 @@ func newKubeConformHTTPValidatorInstance(ctx context.Context, source string, cac
 		defer metadataFile.Close()
 
 		meta := kubeConformCacheMetadata{
-			Entries: make(map[string]time.Time),
+			APIVersion: kubeConformCacheMetadataAPIVersion,
+			Entries:    make(map[string]time.Time),
 		}
 
 		encoder := json.NewEncoder(metadataFile)
+
 		if err := encoder.Encode(meta); err != nil {
 			return nil, fmt.Errorf("encode %s: %w", metadataFilePath, err)
 		}
@@ -176,29 +177,29 @@ func newKubeConformHTTPValidatorInstance(ctx context.Context, source string, cac
 
 	decoder := json.NewDecoder(metadataFile)
 
-	err = decoder.Decode(&v.metadata)
-	if err != nil {
+	if err := decoder.Decode(&v.metadata); err != nil {
 		return nil, fmt.Errorf("decode metadata from %s: %w", metadataFilePath, err)
+	}
+
+	if v.metadata.APIVersion != kubeConformCacheMetadataAPIVersion {
+		return nil, fmt.Errorf("invalid metadata API version %q found in %s", v.metadata.APIVersion, metadataFilePath)
 	}
 
 	return v, nil
 }
 
 func (v *kubeConformHTTPValidatorInstance) AddEntry(ctx context.Context, gvk schema.GroupVersionKind) error {
-	err := v.fileLock.Lock()
-	if err != nil {
+	if err := v.fileLock.Lock(); err != nil {
 		return fmt.Errorf("acquire lock on schema validator %s: %w", v.lockFilePath(), err)
 	}
 
 	defer func() {
-		err := v.fileLock.Unlock()
-		if err != nil {
+		if err := v.fileLock.Unlock(); err != nil {
 			log.Default.Error(ctx, "release lock on schema validator %s: %s", v.lockFilePath(), err)
 		}
 	}()
 
-	err = v.loadMetadataFromDisk()
-	if err != nil {
+	if err := v.loadMetadataFromDisk(); err != nil {
 		return fmt.Errorf("load metadata from %s: %w", v.metadataFilePath(), err)
 	}
 
@@ -212,20 +213,17 @@ func (v *kubeConformHTTPValidatorInstance) AddEntry(ctx context.Context, gvk sch
 }
 
 func (v *kubeConformHTTPValidatorInstance) FindEntry(ctx context.Context, gvk schema.GroupVersionKind) (bool, error) {
-	err := v.fileLock.Lock()
-	if err != nil {
+	if err := v.fileLock.Lock(); err != nil {
 		return false, fmt.Errorf("acquire lock on schema validator %s: %w", v.lockFilePath(), err)
 	}
 
 	defer func() {
-		err := v.fileLock.Unlock()
-		if err != nil {
+		if err := v.fileLock.Unlock(); err != nil {
 			log.Default.Error(ctx, "release lock on schema validator %s: %s", v.lockFilePath(), err)
 		}
 	}()
 
-	err = v.loadMetadataFromDisk()
-	if err != nil {
+	if err := v.loadMetadataFromDisk(); err != nil {
 		return false, fmt.Errorf("load metadata from %s: %w", v.metadataFilePath(), err)
 	}
 
@@ -240,20 +238,17 @@ func (v *kubeConformHTTPValidatorInstance) FindEntry(ctx context.Context, gvk sc
 }
 
 func (v *kubeConformHTTPValidatorInstance) InvalidateEntries(ctx context.Context) error {
-	err := v.fileLock.Lock()
-	if err != nil {
+	if err := v.fileLock.Lock(); err != nil {
 		return fmt.Errorf("acquire lock on schema validator %s: %w", v.lockFilePath(), err)
 	}
 
 	defer func() {
-		err := v.fileLock.Unlock()
-		if err != nil {
+		if err := v.fileLock.Unlock(); err != nil {
 			log.Default.Error(ctx, "release lock on schema validator %s: %s", v.lockFilePath(), err)
 		}
 	}()
 
-	err = v.loadMetadataFromDisk()
-	if err != nil {
+	if err := v.loadMetadataFromDisk(); err != nil {
 		return fmt.Errorf("refresh metadata from %s: %w", v.metadataFilePath(), err)
 	}
 
@@ -283,19 +278,13 @@ func (v *kubeConformHTTPValidatorInstance) InvalidateEntries(ctx context.Context
 	return nil
 }
 
-func (v *kubeConformHTTPValidatorInstance) Validator() validator.Validator {
-	return v.validator
-}
-
 func (v *kubeConformHTTPValidatorInstance) ValidateResource(ctx context.Context, res resource.Resource) (*validator.Result, error) {
-	err := v.fileLock.Lock()
-	if err != nil {
+	if err := v.fileLock.Lock(); err != nil {
 		return nil, fmt.Errorf("acquire lock on schema validator %s: %w", v.lockFilePath(), err)
 	}
 
 	defer func() {
-		err := v.fileLock.Unlock()
-		if err != nil {
+		if err := v.fileLock.Unlock(); err != nil {
 			log.Default.Error(ctx, "release lock on schema validator %s: %s", v.lockFilePath(), err)
 		}
 	}()
@@ -334,9 +323,12 @@ func (v *kubeConformHTTPValidatorInstance) loadMetadataFromDisk() error {
 
 	decoder := json.NewDecoder(metadataFile)
 
-	err = decoder.Decode(&persistedMetadata)
-	if err != nil {
+	if err := decoder.Decode(&persistedMetadata); err != nil {
 		return fmt.Errorf("decode persisted metadata %s: %w", v.metadataFilePath(), err)
+	}
+
+	if persistedMetadata.APIVersion != kubeConformCacheMetadataAPIVersion {
+		return fmt.Errorf("invalid metadata API version %q found in %s", persistedMetadata.APIVersion, v.metadataFilePath())
 	}
 
 	for key, value := range persistedMetadata.Entries {
@@ -351,7 +343,7 @@ func (v *kubeConformHTTPValidatorInstance) lockFilePath() string {
 }
 
 func (v *kubeConformHTTPValidatorInstance) metadataFilePath() string {
-	return filepath.Join(v.cacheDir, "metadata.yaml")
+	return filepath.Join(v.cacheDir, "metadata.json")
 }
 
 type kubeConformValidatorRegistry struct {
@@ -505,8 +497,7 @@ func (kc *KubeConformValidator) getValidatorInstances(ctx context.Context) ([]ku
 		return validators, nil
 	}
 
-	err := kc.validateSchemasSources(ctx)
-	if err != nil {
+	if err := kc.validateSchemasSources(ctx); err != nil {
 		return nil, fmt.Errorf("validate schema sources: %w", err)
 	}
 
@@ -558,8 +549,7 @@ func (kc *KubeConformValidator) validateSchemasSources(ctx context.Context) erro
 		}
 
 		if !strings.HasPrefix(schemaSource, "http://") && !strings.HasPrefix(schemaSource, "https://") {
-			_, err := os.Stat(schemaSource)
-			if err != nil {
+			if _, err := os.Stat(schemaSource); err != nil {
 				errs.Add(fmt.Errorf("open test schema %s: %w", patchedSource, err))
 
 				continue
@@ -657,7 +647,7 @@ func patchKubeConformSchemaSource(source string, params kubeConformSchemaSourceP
 		return "", fmt.Errorf("parse schema source: %w", err)
 	}
 
-	if err = tmpl.Execute(&buf, params); err != nil {
+	if err := tmpl.Execute(&buf, params); err != nil {
 		return "", fmt.Errorf("execute schema source template: %w", err)
 	}
 
