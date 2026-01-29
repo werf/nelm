@@ -259,7 +259,7 @@ type kubeConformValidatorInstance struct {
 	validator     validator.Validator
 }
 
-func newKubeConformValidatorInstance(ctx context.Context, source string, cacheDir string, kubeVersion string, cacheLifetime time.Duration) (*kubeConformValidatorInstance, error) {
+func newKubeConformValidatorInstance(ctx context.Context, source, cacheDir, kubeVersion string, cacheLifetime time.Duration) (*kubeConformValidatorInstance, error) {
 	validatorOpts := validator.Opts{
 		Strict:               false,
 		IgnoreMissingSchemas: false,
@@ -508,7 +508,7 @@ func (v *kubeConformValidatorInstance) metadataFilePath() string {
 	return filepath.Join(v.cacheDir, kubeConformCacheMetadataFilename)
 }
 
-func createKubeConformCacheDir(subDir string, source string) (string, error) {
+func createKubeConformCacheDir(subDir, source string) (string, error) {
 	sourceHash := getHash(source)
 
 	sourceDirName := "local-" + sourceHash[:7]
