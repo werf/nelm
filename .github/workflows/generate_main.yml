@@ -1,13 +1,9 @@
-name: generate-reference:main
+name: generate:main
 
 on:
   push:
     branches:
       - main
-    paths:
-      - "cmd/nelm/**"
-      - "pkg/featgate/**"
-      - "pkg/common/**"
   workflow_dispatch:
 
 env:
