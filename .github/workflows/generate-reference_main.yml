@@ -1,0 +1,56 @@
+name: generate-reference:main
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "cmd/nelm/**"
+      - "pkg/featgate/**"
+      - "pkg/common/**"
+  workflow_dispatch:
+
+env:
+  TASK_X_REMOTE_TASKFILES: "1"
+
+jobs:
+  generate-reference:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          cache: false
+          go-version-file: go.mod
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          repo-token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+
+      - name: Generate reference docs
+        run: task generate:reference
+
+      - name: Check for changes
+        id: changes
+        run: |
+          git diff --quiet docs/reference.md || echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Set up git config
+        if: steps.changes.outputs.changed == 'true'
+        uses: ./.github/actions/set-up-git-config
+
+      - name: Commit and push
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git add docs/reference.md
+          git commit -m "chore: regenerate CLI reference"
+          git push
