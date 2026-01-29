@@ -33,7 +33,10 @@ const (
 	kubeConformCacheLockFilename       = "lock"
 	kubeConformCacheMetadataAPIVersion = "1"
 	kubeConformCacheMetadataFilename   = "metadata.json"
+	kubeConformHTTPClientMaxRetry      = 3
 )
+
+var ErrResourceValidationSourceSanityCheck = errors.New("resource validation source sanity check")
 
 type kubeConformValidator struct {
 	kubeVersion         string
@@ -178,17 +181,20 @@ func (kc *kubeConformValidator) getValidatorInstances(ctx context.Context) ([]*k
 // every Kubernetes version has Deployment.apps/v1 schema. If at least one source statisfy to condition, the complete
 // source list considered to be valid, as it allows to validate native resources.
 func (kc *kubeConformValidator) validateSchemasSources(ctx context.Context) error {
+SOURCE:
 	for _, schemaSource := range kc.schemaSources {
 		patchedSource, err := patchKubeConformSchemaSource(schemaSource, "deployment",
 			"apps", "v1", false, kc.kubeVersion)
 		if err != nil {
-			log.Default.Debug(ctx, "Patch schema source with test resource: %w", err)
-
-			continue
+			return fmt.Errorf("%w: patch schema source %s: %w", ErrResourceValidationSourceSanityCheck, schemaSource, err)
 		}
 
 		if isLocalFSSource(patchedSource) {
 			if _, err := os.Stat(patchedSource); err != nil {
+				if !os.IsNotExist(err) {
+					return fmt.Errorf("%w: open test schema for Deployment/apps/v1 for kube version %s: %w", ErrResourceValidationSourceSanityCheck, kc.kubeVersion, err)
+				}
+
 				log.Default.Debug(ctx, "Test schema for Deployment/apps/v1 for kube version %s not found at %s: %w", kc.kubeVersion, patchedSource, err)
 
 				continue
@@ -197,42 +203,62 @@ func (kc *kubeConformValidator) validateSchemasSources(ctx context.Context) erro
 			return nil
 		}
 
-		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		var httpErr error
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodHead, patchedSource, nil)
-		if err != nil {
-			log.Default.Debug(ctx, "Cannot connect to download test schema for Deployment/apps/v1 by %s: %w", patchedSource, err)
+	RETRY:
+		for i := 1; i <= kubeConformHTTPClientMaxRetry; i++ {
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 
-			cancel()
+			defer cancel()
 
-			continue
+			req, err := http.NewRequestWithContext(ctx, http.MethodHead, patchedSource, nil)
+			if err != nil {
+				httpErr = fmt.Errorf("create request: %w", err)
+
+				log.Default.Debug(ctx, "Cannot connect to download test schema for deployment/apps/v1 by %s on retry %d: %s", patchedSource, i, httpErr)
+
+				continue RETRY
+			}
+
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				httpErr = fmt.Errorf("send request: %w", err)
+
+				log.Default.Debug(ctx, "Cannot download test schema for Deployment/apps/v1 by %s on retry %d: %s", patchedSource, i, httpErr)
+
+				continue RETRY
+			}
+
+			defer res.Body.Close()
+
+			switch res.StatusCode {
+			case http.StatusOK:
+				return nil
+			case http.StatusNotFound:
+				log.Default.Debug(ctx, "Test schema for Deployment/apps/v1 for kube version %s not found at %s",
+					kc.kubeVersion, patchedSource)
+
+				continue SOURCE
+			case http.StatusBadGateway, http.StatusGatewayTimeout, http.StatusTooManyRequests,
+				http.StatusRequestTimeout, http.StatusInternalServerError, http.StatusServiceUnavailable:
+				httpErr = fmt.Errorf("got unexpected status code %d on retry %d", res.StatusCode, i)
+
+				log.Default.Debug(ctx, "Cannot get test schema for Deployment/apps/v1 for kube version %s at %s. "+
+					"Got unexpected %s status code on retry %d.", kc.kubeVersion, patchedSource, res.StatusCode, i)
+
+				continue RETRY
+			default:
+				return fmt.Errorf("%w: cannot get test schema for deployment/apps/v1 for kube version %s at %s. "+
+					"got unexpected status code %d on retry %d",
+					ErrResourceValidationSourceSanityCheck, kc.kubeVersion, patchedSource, res.StatusCode, i)
+			}
 		}
 
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			log.Default.Debug(ctx, "Cannot download test schema for Deployment/apps/v1 by %s: %w", patchedSource, err)
-
-			cancel()
-
-			continue
-		}
-
-		defer res.Body.Close()
-
-		if res.StatusCode > http.StatusOK {
-			log.Default.Debug(ctx, "Test schema for Deployment/apps/v1 for kube version %s not found at %s", kc.kubeVersion, patchedSource)
-
-			cancel()
-
-			continue
-		}
-
-		cancel()
-
-		return nil
+		return fmt.Errorf("%w: cannot get test schema for deployment/apps/v1 for kube version %s at %s: %w",
+			ErrResourceValidationSourceSanityCheck, kc.kubeVersion, patchedSource, httpErr)
 	}
 
-	return errors.New("resource validation sanity check failed: no Deployment in apps/v1 found in any schema sources")
+	return fmt.Errorf("resource validation sanity check failed: unable to get Deployment/apps/v1 for kube version %s in any schema sources", kc.kubeVersion)
 }
 
 type kubeConformCacheMetadata struct {
