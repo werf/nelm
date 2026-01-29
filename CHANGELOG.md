@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.21.0](https://github.com/werf/nelm/compare/v1.20.1...v1.21.0) (2026-01-29)
+
+
+### Features
+
+* Add TypeScript chart rendering support ([00ef36a](https://github.com/werf/nelm/commit/00ef36a34c1d7a7dd5efb9c44e3b90efd6815cf7))
+* annotation `werf.io/delete-dependency-<id>` ([#539](https://github.com/werf/nelm/issues/539)) ([a0009f4](https://github.com/werf/nelm/commit/a0009f4d43259da6aecd968023dfcfc36be4bd95))
+* implement resource validation against api spec ([#530](https://github.com/werf/nelm/issues/530)) ([870efeb](https://github.com/werf/nelm/commit/870efeb9a5e3490f0251de305cc2e668c408d94b))
+* webhook configuration deploy dependency ([#538](https://github.com/werf/nelm/issues/538)) ([dcb818b](https://github.com/werf/nelm/commit/dcb818bfa4c86dee60eea4900b3396a7fe6832bf))
+
+
+### Bug Fixes
+
+* few fixes for typescript in charts ([#550](https://github.com/werf/nelm/issues/550)) ([d6b4b29](https://github.com/werf/nelm/commit/d6b4b29671d70c4596a53cb592752e16ab97e49a))
+
 ## [1.20.1](https://github.com/werf/nelm/compare/v1.20.0...v1.20.1) (2026-01-21)
 
 
