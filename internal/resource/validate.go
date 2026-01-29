@@ -41,7 +41,7 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 		return nil
 	}
 
-	kubeConformValidator, err := NewKubeConformValidator(
+	kubeConformValidator, err := newKubeConformValidator(
 		opts.ValidationKubeVersion,
 		opts.ValidationSchemaCacheLifetime,
 		append(opts.ValidationExtraSchema, opts.ValidationSchema...))
@@ -61,7 +61,7 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 		}
 
 		if !opts.LocalResourceValidation {
-			if err := kubeConformValidator.Validate(ctx, res); err != nil {
+			if err := kubeConformValidator.Validate(ctx, res.ResourceSpec); err != nil {
 				e := fmt.Errorf("validate %s: %w", res.IDHuman(), err)
 
 				var vErr *validator.ValidationError
