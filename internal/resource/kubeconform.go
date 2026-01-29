@@ -32,18 +32,11 @@ const (
 	kubeConformCacheMetadataFilename   = "metadata.json"
 )
 
-type kubeConformValidatorInstanceInterface interface {
-	AddCacheEntry(ctx context.Context, gvk schema.GroupVersionKind) error
-	FindCachedEntry(ctx context.Context, gvk schema.GroupVersionKind) (bool, error)
-	InvalidateCacheEntries(ctx context.Context) error
-	ValidateResource(ctx context.Context, res resource.Resource) (*validator.Result, error)
-}
-
 type KubeConformValidator struct {
 	kubeVersion         string
 	schemaCacheLifetime time.Duration
 	schemaSources       []string
-	validators          []kubeConformValidatorInstanceInterface
+	validators          []*kubeConformValidatorInstance
 }
 
 func NewKubeConformValidator(kubeVersion string, schemaCacheLifetime time.Duration, schemaSource []string) (*KubeConformValidator, error) {
@@ -70,7 +63,7 @@ func (kc *KubeConformValidator) Validate(ctx context.Context, res *InstallableRe
 		return fmt.Errorf("get validator: %w", err)
 	} else if found {
 		cachedEntryFound = true
-		validators = []kubeConformValidatorInstanceInterface{matchedValidator}
+		validators = []*kubeConformValidatorInstance{matchedValidator}
 	}
 
 VALIDATOR:
@@ -130,7 +123,7 @@ VALIDATOR:
 	return nil
 }
 
-func (kc *KubeConformValidator) findCachedEntry(ctx context.Context, gvk schema.GroupVersionKind) (kubeConformValidatorInstanceInterface, bool, error) {
+func (kc *KubeConformValidator) findCachedEntry(ctx context.Context, gvk schema.GroupVersionKind) (*kubeConformValidatorInstance, bool, error) {
 	for _, v := range kc.validators {
 		found, err := v.FindCachedEntry(ctx, gvk)
 		if err != nil {
@@ -145,7 +138,7 @@ func (kc *KubeConformValidator) findCachedEntry(ctx context.Context, gvk schema.
 	return nil, false, nil
 }
 
-func (kc *KubeConformValidator) getValidatorInstances(ctx context.Context) ([]kubeConformValidatorInstanceInterface, error) {
+func (kc *KubeConformValidator) getValidatorInstances(ctx context.Context) ([]*kubeConformValidatorInstance, error) {
 	if len(kc.validators) > 0 {
 		return kc.validators, nil
 	}
@@ -154,20 +147,17 @@ func (kc *KubeConformValidator) getValidatorInstances(ctx context.Context) ([]ku
 		return nil, fmt.Errorf("validate schema sources: %w", err)
 	}
 
+	// Generate top level directory name based on source combination, to avoid invalid cache hit on
+	// source combination change.
+	sourcesSubDirName := getHash(strings.Join(kc.schemaSources, "-"))
+
 	for _, source := range kc.schemaSources {
-		source, err := patchKubeConformSchemaSource(source, kubeConformSchemaSourceParams{
-			Group:                       "{{ .Group }}",
-			KindSuffix:                  "{{ .KindSuffix }}",
-			NormalizedKubernetesVersion: "v" + kc.kubeVersion,
-			ResourceAPIVersion:          "{{ .ResourceAPIVersion }}",
-			ResourceKind:                "{{ .ResourceKind }}",
-			StrictSuffix:                "{{ .StrictSuffix }}",
-		})
+		cacheDir, err := createKubeConformCacheDir(sourcesSubDirName, source)
 		if err != nil {
-			return nil, fmt.Errorf("patch source url: %w", err)
+			return nil, fmt.Errorf("get schema cache dir: %w", err)
 		}
 
-		validationInstance, err := newKubeConformValidatorInstance(ctx, source, kc.schemaCacheLifetime)
+		validationInstance, err := newKubeConformValidatorInstance(ctx, source, cacheDir, kc.kubeVersion, kc.schemaCacheLifetime)
 		if err != nil {
 			return nil, fmt.Errorf("get generic validator: %w", err)
 		}
@@ -182,6 +172,9 @@ func (kc *KubeConformValidator) getValidatorInstances(ctx context.Context) ([]ku
 	return kc.validators, nil
 }
 
+// validateSchemasSources validates source against Kubernetes version based on assumption that
+// every Kubernetes version has Deployment.apps/v1 schema. If at least one source statisfy to condition, the complete
+// source list considered to be valid, as it allows to validate native resources.
 func (kc *KubeConformValidator) validateSchemasSources(ctx context.Context) error {
 	schemaSourceParams := kubeConformSchemaSourceParams{
 		Group:                       "apps",
@@ -201,7 +194,7 @@ func (kc *KubeConformValidator) validateSchemasSources(ctx context.Context) erro
 			continue
 		}
 
-		if !strings.HasPrefix(schemaSource, "http://") && !strings.HasPrefix(schemaSource, "https://") {
+		if isLocalFSSource(schemaSource) {
 			if _, err := os.Stat(schemaSource); err != nil {
 				errs.Add(fmt.Errorf("open test schema %s: %w", patchedSource, err))
 
@@ -256,25 +249,27 @@ type kubeConformCacheMetadata struct {
 	Entries    map[string]time.Time `json:"entries"`
 }
 
-type kubeConformHTTPValidatorInstance struct {
+type kubeConformValidatorInstance struct {
 	cacheDir      string
 	cacheLifetime time.Duration
 	fileLock      *flock.Flock
 	metadata      kubeConformCacheMetadata
+	source        string
+	kubeVersion   string
 	validator     validator.Validator
 }
 
-func newKubeConformHTTPValidatorInstance(ctx context.Context, source string, cacheLifetime time.Duration) (*kubeConformHTTPValidatorInstance, error) {
-	cacheDir, err := createKubeConformCacheDir(source)
-	if err != nil {
-		return nil, fmt.Errorf("get schema cache dir: %w", err)
+func newKubeConformValidatorInstance(ctx context.Context, source string, cacheDir string, kubeVersion string, cacheLifetime time.Duration) (*kubeConformValidatorInstance, error) {
+	validatorOpts := validator.Opts{
+		Strict:               false,
+		IgnoreMissingSchemas: false,
+		KubernetesVersion:    kubeVersion,
+		Cache:                cacheDir,
 	}
 
-	validatorOpts := validator.Opts{
-		Strict:               false, // Skip undefined params check
-		IgnoreMissingSchemas: false,
-		Cache:                cacheDir,
-		KubernetesVersion:    "",
+	if isLocalFSSource(source) {
+		// Disable kubeconform integrated caching for local file system sources.
+		validatorOpts.Cache = ""
 	}
 
 	if log.Default.AcceptLevel(ctx, log.DebugLevel) {
@@ -288,10 +283,12 @@ func newKubeConformHTTPValidatorInstance(ctx context.Context, source string, cac
 
 	lockFilePath := filepath.Join(cacheDir, kubeConformCacheLockFilename)
 
-	v := &kubeConformHTTPValidatorInstance{
+	v := &kubeConformValidatorInstance{
 		cacheDir:      cacheDir,
 		cacheLifetime: cacheLifetime,
 		fileLock:      flock.New(lockFilePath),
+		kubeVersion:   kubeVersion,
+		source:        source,
 		validator:     validatorInstance,
 	}
 
@@ -351,7 +348,7 @@ func newKubeConformHTTPValidatorInstance(ctx context.Context, source string, cac
 	return v, nil
 }
 
-func (v *kubeConformHTTPValidatorInstance) AddCacheEntry(ctx context.Context, gvk schema.GroupVersionKind) error {
+func (v *kubeConformValidatorInstance) AddCacheEntry(ctx context.Context, gvk schema.GroupVersionKind) error {
 	if err := v.fileLock.Lock(); err != nil {
 		return fmt.Errorf("acquire lock on schema validator %s: %w", v.lockFilePath(), err)
 	}
@@ -366,7 +363,7 @@ func (v *kubeConformHTTPValidatorInstance) AddCacheEntry(ctx context.Context, gv
 		return fmt.Errorf("load metadata from %s: %w", v.metadataFilePath(), err)
 	}
 
-	v.metadata.Entries[getKubeConformEntryHash(gvk)] = time.Now().UTC()
+	v.metadata.Entries[getKubeConformEntryHash(v.kubeVersion, gvk)] = time.Now().UTC()
 
 	if err := v.dumpMetadata(); err != nil {
 		return fmt.Errorf("dump metadata %s: %w", v.metadataFilePath(), err)
@@ -375,7 +372,7 @@ func (v *kubeConformHTTPValidatorInstance) AddCacheEntry(ctx context.Context, gv
 	return nil
 }
 
-func (v *kubeConformHTTPValidatorInstance) FindCachedEntry(ctx context.Context, gvk schema.GroupVersionKind) (bool, error) {
+func (v *kubeConformValidatorInstance) FindCachedEntry(ctx context.Context, gvk schema.GroupVersionKind) (bool, error) {
 	if err := v.fileLock.Lock(); err != nil {
 		return false, fmt.Errorf("acquire lock on schema validator %s: %w", v.lockFilePath(), err)
 	}
@@ -392,7 +389,7 @@ func (v *kubeConformHTTPValidatorInstance) FindCachedEntry(ctx context.Context, 
 
 	// Do not invalidate cache to avoid connectivity issues that could lead
 	// to validation inability of remaining resources.
-	_, found := v.metadata.Entries[getKubeConformEntryHash(gvk)]
+	_, found := v.metadata.Entries[getKubeConformEntryHash(v.kubeVersion, gvk)]
 	if !found {
 		return false, nil
 	}
@@ -400,7 +397,7 @@ func (v *kubeConformHTTPValidatorInstance) FindCachedEntry(ctx context.Context, 
 	return found, nil
 }
 
-func (v *kubeConformHTTPValidatorInstance) InvalidateCacheEntries(ctx context.Context) error {
+func (v *kubeConformValidatorInstance) InvalidateCacheEntries(ctx context.Context) error {
 	if err := v.fileLock.Lock(); err != nil {
 		return fmt.Errorf("acquire lock on schema validator %s: %w", v.lockFilePath(), err)
 	}
@@ -421,8 +418,10 @@ func (v *kubeConformHTTPValidatorInstance) InvalidateCacheEntries(ctx context.Co
 		if timestamp.Add(v.cacheLifetime).Before(time.Now().UTC()) {
 			entryFilePath := filepath.Join(v.cacheDir, hash)
 
-			if err := os.Remove(entryFilePath); err != nil {
-				log.Default.Warn(ctx, "Cannot remove schema cache entry %s: %s", entryFilePath, err)
+			if !isLocalFSSource(v.source) {
+				if err := os.Remove(entryFilePath); err != nil {
+					log.Default.Warn(ctx, "Cannot remove schema cache entry %s: %s", entryFilePath, err)
+				}
 			}
 
 			log.Default.Debug(ctx, "Invalidating schema validator cache entry %s", entryFilePath)
@@ -441,7 +440,7 @@ func (v *kubeConformHTTPValidatorInstance) InvalidateCacheEntries(ctx context.Co
 	return nil
 }
 
-func (v *kubeConformHTTPValidatorInstance) ValidateResource(ctx context.Context, res resource.Resource) (*validator.Result, error) {
+func (v *kubeConformValidatorInstance) ValidateResource(ctx context.Context, res resource.Resource) (*validator.Result, error) {
 	if err := v.fileLock.Lock(); err != nil {
 		return nil, fmt.Errorf("acquire lock on schema validator %s: %w", v.lockFilePath(), err)
 	}
@@ -458,7 +457,7 @@ func (v *kubeConformHTTPValidatorInstance) ValidateResource(ctx context.Context,
 	return &result, nil
 }
 
-func (v *kubeConformHTTPValidatorInstance) dumpMetadata() error {
+func (v *kubeConformValidatorInstance) dumpMetadata() error {
 	metadataFile, err := os.OpenFile(v.metadataFilePath(), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", v.metadataFilePath(), err)
@@ -474,7 +473,7 @@ func (v *kubeConformHTTPValidatorInstance) dumpMetadata() error {
 	return nil
 }
 
-func (v *kubeConformHTTPValidatorInstance) loadMetadataFromDisk() error {
+func (v *kubeConformValidatorInstance) loadMetadataFromDisk() error {
 	var persistedMetadata kubeConformCacheMetadata
 
 	metadataFile, err := os.OpenFile(v.metadataFilePath(), os.O_RDONLY, 0o644)
@@ -501,66 +500,25 @@ func (v *kubeConformHTTPValidatorInstance) loadMetadataFromDisk() error {
 	return nil
 }
 
-func (v *kubeConformHTTPValidatorInstance) lockFilePath() string {
+func (v *kubeConformValidatorInstance) lockFilePath() string {
 	return filepath.Join(v.cacheDir, kubeConformCacheLockFilename)
 }
 
-func (v *kubeConformHTTPValidatorInstance) metadataFilePath() string {
+func (v *kubeConformValidatorInstance) metadataFilePath() string {
 	return filepath.Join(v.cacheDir, kubeConformCacheMetadataFilename)
 }
 
-type kubeConformLocalFSValidatorInstance struct {
-	validator validator.Validator
-}
+func createKubeConformCacheDir(subDir string, source string) (string, error) {
+	sourceHash := getHash(source)
 
-func newKubeConformLocalFSValidatorInstance(ctx context.Context, source string) (*kubeConformLocalFSValidatorInstance, error) {
-	validatorOpts := validator.Opts{
-		Strict:               false, // Skip undefined params check
-		IgnoreMissingSchemas: false,
-		KubernetesVersion:    "",
-	}
-
-	if log.Default.AcceptLevel(ctx, log.DebugLevel) {
-		validatorOpts.Debug = true
-	}
-
-	validatorInstance, err := validator.New([]string{source}, validatorOpts)
-	if err != nil {
-		return nil, fmt.Errorf("create schema validator: %w", err)
-	}
-
-	return &kubeConformLocalFSValidatorInstance{
-		validator: validatorInstance,
-	}, nil
-}
-
-func (v *kubeConformLocalFSValidatorInstance) AddCacheEntry(_ context.Context, _ schema.GroupVersionKind) error {
-	return nil
-}
-
-func (v *kubeConformLocalFSValidatorInstance) FindCachedEntry(_ context.Context, _ schema.GroupVersionKind) (bool, error) {
-	return false, nil
-}
-
-func (v *kubeConformLocalFSValidatorInstance) InvalidateCacheEntries(_ context.Context) error {
-	return nil
-}
-
-func (v *kubeConformLocalFSValidatorInstance) ValidateResource(_ context.Context, res resource.Resource) (*validator.Result, error) {
-	result := v.validator.ValidateResource(res)
-
-	return &result, nil
-}
-
-func createKubeConformCacheDir(source string) (string, error) {
-	subDirName := getHash(source)
+	sourceDirName := "local-" + sourceHash[:7]
 
 	u, err := url.Parse(source)
-	if err == nil {
-		subDirName = u.Hostname() + "-" + subDirName[:6]
+	if err == nil && u.Hostname() != "" {
+		sourceDirName = u.Hostname() + "-" + sourceHash[:7]
 	}
 
-	path := filepath.Join(common.APIResourceValidationJSONSchemasCacheDir, subDirName)
+	path := filepath.Join(common.APIResourceValidationJSONSchemasCacheDir, subDir, sourceDirName)
 
 	if stat, err := os.Stat(path); os.IsNotExist(err) {
 		if err := os.MkdirAll(path, 0o755); err != nil {
@@ -577,22 +535,14 @@ func createKubeConformCacheDir(source string) (string, error) {
 	return path, nil
 }
 
-func getKubeConformEntryHash(gvk schema.GroupVersionKind) string {
-	return getHash(fmt.Sprintf("%s-%s-master", gvk.Kind, gvk.GroupVersion()))
+func getKubeConformEntryHash(kubeVersion string, gvk schema.GroupVersionKind) string {
+	return getHash(fmt.Sprintf("%s-%s-%s", gvk.Kind, gvk.GroupVersion(), kubeVersion))
 }
 
 func getHash(s string) string {
 	digest := sha256.Sum256([]byte(s))
 
 	return hex.EncodeToString(digest[:])
-}
-
-func newKubeConformValidatorInstance(ctx context.Context, source string, cacheLifetime time.Duration) (kubeConformValidatorInstanceInterface, error) {
-	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
-		return newKubeConformHTTPValidatorInstance(ctx, source, cacheLifetime)
-	}
-
-	return newKubeConformLocalFSValidatorInstance(ctx, source)
 }
 
 func patchKubeConformSchemaSource(source string, params kubeConformSchemaSourceParams) (string, error) {
@@ -608,4 +558,8 @@ func patchKubeConformSchemaSource(source string, params kubeConformSchemaSourceP
 	}
 
 	return buf.String(), nil
+}
+
+func isLocalFSSource(source string) bool {
+	return !strings.HasPrefix(source, "https://") && !strings.HasPrefix(source, "http://")
 }

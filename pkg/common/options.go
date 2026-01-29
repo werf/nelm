@@ -221,14 +221,10 @@ type ResourceValidationOptions struct {
 	ValidationSkip []string
 	// ValidationSchemaCacheLifetime how long schema cache be valid.
 	ValidationSchemaCacheLifetime time.Duration
-	// ValidationSchema default schema source to validate builtin Kubernetes resources.
+	// ValidationSchema default schema source to validate Kubernetes resources.
 	ValidationSchema []string
-	// ValidationExtraSchema extra  schema source to validate builtin Kubernetes resources (preferred).
+	// ValidationExtraSchema extra schema source to validate Kubernetes resources (preferred).
 	ValidationExtraSchema []string
-	// ValidationCRDSchemaSource default schema source to validate Kubernetes CRD resources
-	ValidationCRDSchemaSource []string
-	// ValidationExtraCRDSchemaSource extra schema source to validate Kubernetes CRD resources (preferred).
-	ValidationExtraCRDSchemaSource []string
 }
 
 func (opts *ResourceValidationOptions) ApplyDefaults() {}
