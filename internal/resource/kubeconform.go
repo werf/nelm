@@ -258,7 +258,7 @@ SOURCE:
 			ErrResourceValidationSourceSanityCheck, kc.kubeVersion, patchedSource, httpErr)
 	}
 
-	return fmt.Errorf("resource validation sanity check failed: unable to get Deployment/apps/v1 for kube version %s in any schema sources", kc.kubeVersion)
+	return fmt.Errorf("%w: unable to get deployment/apps/v1 for kube version %s in any schema sources", ErrResourceValidationSourceSanityCheck, kc.kubeVersion)
 }
 
 type kubeConformCacheMetadata struct {
