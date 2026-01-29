@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -177,20 +178,18 @@ func (kc *kubeConformValidator) getValidatorInstances(ctx context.Context) ([]*k
 // every Kubernetes version has Deployment.apps/v1 schema. If at least one source statisfy to condition, the complete
 // source list considered to be valid, as it allows to validate native resources.
 func (kc *kubeConformValidator) validateSchemasSources(ctx context.Context) error {
-	errs := &util.MultiError{}
-
 	for _, schemaSource := range kc.schemaSources {
 		patchedSource, err := patchKubeConformSchemaSource(schemaSource, "deployment",
 			"apps", "v1", false, kc.kubeVersion)
 		if err != nil {
-			errs.Add(fmt.Errorf("patch schema source with test params: %w", err))
+			log.Default.Debug(ctx, "Patch schema source with test resource: %w", err)
 
 			continue
 		}
 
 		if isLocalFSSource(patchedSource) {
 			if _, err := os.Stat(patchedSource); err != nil {
-				errs.Add(fmt.Errorf("test schema %s for kube version %s not found: %w", patchedSource, kc.kubeVersion, err))
+				log.Default.Debug(ctx, "Test schema for Deployment/apps/v1 for kube version %s not found at %s: %w", kc.kubeVersion, patchedSource, err)
 
 				continue
 			}
@@ -202,7 +201,7 @@ func (kc *kubeConformValidator) validateSchemasSources(ctx context.Context) erro
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodHead, patchedSource, nil)
 		if err != nil {
-			errs.Add(fmt.Errorf("connect to download test schema: %w", err))
+			log.Default.Debug(ctx, "Cannot connect to download test schema for Deployment/apps/v1 by %s: %w", patchedSource, err)
 
 			cancel()
 
@@ -211,7 +210,7 @@ func (kc *kubeConformValidator) validateSchemasSources(ctx context.Context) erro
 
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
-			errs.Add(fmt.Errorf("download test schema: %w", err))
+			log.Default.Debug(ctx, "Cannot download test schema for Deployment/apps/v1 by %s: %w", patchedSource, err)
 
 			cancel()
 
@@ -221,7 +220,7 @@ func (kc *kubeConformValidator) validateSchemasSources(ctx context.Context) erro
 		defer res.Body.Close()
 
 		if res.StatusCode > http.StatusOK {
-			errs.Add(fmt.Errorf("test schema %s for kube version %s not found", patchedSource, kc.kubeVersion))
+			log.Default.Debug(ctx, "Test schema for Deployment/apps/v1 for kube version %s not found at %s", kc.kubeVersion, patchedSource)
 
 			cancel()
 
@@ -233,7 +232,7 @@ func (kc *kubeConformValidator) validateSchemasSources(ctx context.Context) erro
 		return nil
 	}
 
-	return errs
+	return errors.New("resource validation sanity check failed: no Deployment in apps/v1 found in any schema sources")
 }
 
 type kubeConformCacheMetadata struct {
