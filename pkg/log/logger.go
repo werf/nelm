@@ -53,3 +53,10 @@ const (
 )
 
 var LogColorModes = []string{LogColorModeAuto, LogColorModeOff, LogColorModeOn}
+
+type NopLogger struct{}
+
+func (l NopLogger) Errorf(format string, v ...interface{}) {}
+func (l NopLogger) Warnf(format string, v ...interface{})  {}
+func (l NopLogger) Debugf(format string, v ...interface{}) {}
+func (l NopLogger) Infof(format string, v ...interface{})  {}

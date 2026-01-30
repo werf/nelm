@@ -18,6 +18,7 @@ require (
 	github.com/evanphx/json-patch v5.8.0+incompatible
 	github.com/evanw/esbuild v0.27.0
 	github.com/fluxcd/flagger v1.36.1
+	github.com/go-resty/resty/v2 v2.17.1
 	github.com/goccy/go-yaml v1.15.23
 	github.com/gofrs/flock v0.8.1
 	github.com/google/go-cmp v0.6.0
@@ -49,7 +50,6 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e
 	github.com/yannh/kubeconform v0.6.7
 	golang.org/x/crypto v0.41.0
-	gopkg.in/resty.v1 v1.12.0
 	k8s.io/api v0.29.3
 	k8s.io/apiextensions-apiserver v0.29.0
 	k8s.io/apimachinery v0.29.3
