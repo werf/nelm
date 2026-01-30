@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"github.com/samber/lo"
 	"github.com/yannh/kubeconform/pkg/resource"
 	"github.com/yannh/kubeconform/pkg/validator"
+	"gopkg.in/resty.v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/yaml"
 
@@ -181,7 +183,20 @@ func (kc *kubeConformValidator) getValidatorInstances(ctx context.Context) ([]*k
 // every Kubernetes version has Deployment.apps/v1 schema. If at least one source statisfy to condition, the complete
 // source list considered to be valid, as it allows to validate native resources.
 func (kc *kubeConformValidator) validateSchemasSources(ctx context.Context) error {
-SOURCE:
+	httpClient := resty.New().
+		SetHTTPMode().
+		SetTimeout(5 * time.Second).
+		SetRetryCount(kubeConformHTTPClientMaxRetry).
+		AddRetryCondition(
+			func(r *resty.Response) (bool, error) {
+				return r.StatusCode() > 500, nil
+			},
+		)
+
+	if !log.Default.AcceptLevel(ctx, log.DebugLevel) {
+		httpClient.SetLogger(io.Discard)
+	}
+
 	for _, schemaSource := range kc.schemaSources {
 		patchedSource, err := patchKubeConformSchemaSource(schemaSource, "deployment",
 			"apps", "v1", false, kc.kubeVersion)
@@ -203,59 +218,22 @@ SOURCE:
 			return nil
 		}
 
-		var httpErr error
-
-	RETRY:
-		for i := 1; i <= kubeConformHTTPClientMaxRetry; i++ {
-			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-
-			defer cancel()
-
-			req, err := http.NewRequestWithContext(ctx, http.MethodHead, patchedSource, nil)
-			if err != nil {
-				httpErr = fmt.Errorf("create request: %w", err)
-
-				log.Default.Debug(ctx, "Cannot connect to download test schema for deployment/apps/v1 by %s on retry %d: %s", patchedSource, i, httpErr)
-
-				continue RETRY
-			}
-
-			res, err := http.DefaultClient.Do(req)
-			if err != nil {
-				httpErr = fmt.Errorf("send request: %w", err)
-
-				log.Default.Debug(ctx, "Cannot download test schema for Deployment/apps/v1 by %s on retry %d: %s", patchedSource, i, httpErr)
-
-				continue RETRY
-			}
-
-			defer res.Body.Close()
-
-			switch res.StatusCode {
-			case http.StatusOK:
-				return nil
-			case http.StatusNotFound:
-				log.Default.Debug(ctx, "Test schema for Deployment/apps/v1 for kube version %s not found at %s",
-					kc.kubeVersion, patchedSource)
-
-				continue SOURCE
-			case http.StatusBadGateway, http.StatusGatewayTimeout, http.StatusTooManyRequests,
-				http.StatusRequestTimeout, http.StatusInternalServerError, http.StatusServiceUnavailable:
-				httpErr = fmt.Errorf("got unexpected status code %d on retry %d", res.StatusCode, i)
-
-				log.Default.Debug(ctx, "Cannot get test schema for Deployment/apps/v1 for kube version %s at %s. "+
-					"Got unexpected %s status code on retry %d.", kc.kubeVersion, patchedSource, res.StatusCode, i)
-
-				continue RETRY
-			default:
-				return fmt.Errorf("%w: cannot get test schema for deployment/apps/v1 for kube version %s at %s. "+
-					"got unexpected status code %d on retry %d",
-					ErrResourceValidationSourceSanityCheck, kc.kubeVersion, patchedSource, res.StatusCode, i)
-			}
+		response, err := httpClient.R().SetContext(ctx).Head(patchedSource)
+		if err != nil {
+			return fmt.Errorf("%w: cannot get test schema for deployment/apps/v1 for kube version %s at %s: %w",
+				ErrResourceValidationSourceSanityCheck, kc.kubeVersion, patchedSource, err)
 		}
 
-		return fmt.Errorf("%w: cannot get test schema for deployment/apps/v1 for kube version %s at %s: %w",
-			ErrResourceValidationSourceSanityCheck, kc.kubeVersion, patchedSource, httpErr)
+		switch response.StatusCode() {
+		case http.StatusOK:
+			return nil
+		case http.StatusNotFound:
+			log.Default.Debug(ctx, "Test schema for Deployment/apps/v1 for kube version %s not found at %s not found", kc.kubeVersion, patchedSource)
+
+			continue
+		default:
+			return fmt.Errorf("%w: got unexpected status code %d", ErrResourceValidationSourceSanityCheck, response.StatusCode())
+		}
 	}
 
 	return fmt.Errorf("%w: unable to get deployment/apps/v1 for kube version %s in any schema sources", ErrResourceValidationSourceSanityCheck, kc.kubeVersion)
