@@ -24,6 +24,7 @@ import (
 const (
 	testKubeVersion      = "1.30.0"
 	testReleaseNamespace = "test-namespace"
+	schemaURLTemplate    = "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
 )
 
 func setupTestEnvironment(t *testing.T) {
@@ -32,10 +33,8 @@ func setupTestEnvironment(t *testing.T) {
 	featgate.FeatGateResourceValidation.Enable()
 }
 
-func setupSchemaServer(t *testing.T, schemas map[string]string) *httptest.Server {
-	t.Helper()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func newSchemaHandler(schemas map[string]string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/")
 
 		if schema, ok := schemas[path]; ok {
@@ -46,11 +45,14 @@ func setupSchemaServer(t *testing.T, schemas map[string]string) *httptest.Server
 		}
 
 		w.WriteHeader(http.StatusNotFound)
-	}))
-
-	t.Cleanup(func() {
-		server.Close()
 	})
+}
+
+func setupSchemaServer(t *testing.T, schemas map[string]string) *httptest.Server {
+	t.Helper()
+
+	server := httptest.NewServer(newSchemaHandler(schemas))
+	t.Cleanup(server.Close)
 
 	return server
 }
@@ -96,45 +98,19 @@ func assertValidationError(t *testing.T, err error, expectedSubstring string) {
 	require.Contains(t, err.Error(), expectedSubstring)
 }
 
-type requestCountingHandler struct {
-	handler      http.Handler
-	requestCount *int
-}
-
-func (h *requestCountingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	*h.requestCount++
-	h.handler.ServeHTTP(w, r)
-}
-
 func setupSchemaServerWithCounter(t *testing.T, schemas map[string]string) (*httptest.Server, *int) {
 	t.Helper()
 
 	requestCount := new(int)
-	*requestCount = 0
+	baseHandler := newSchemaHandler(schemas)
 
-	baseHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/")
-
-		if schema, ok := schemas[path]; ok {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(schema))
-			return
-		}
-
-		w.WriteHeader(http.StatusNotFound)
+	countingHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		*requestCount++
+		baseHandler.ServeHTTP(w, r)
 	})
-
-	countingHandler := &requestCountingHandler{
-		handler:      baseHandler,
-		requestCount: requestCount,
-	}
 
 	server := httptest.NewServer(countingHandler)
-
-	t.Cleanup(func() {
-		server.Close()
-	})
+	t.Cleanup(server.Close)
 
 	return server, requestCount
 }
@@ -162,4 +138,15 @@ func getDefaultSchemas(t *testing.T, kubeVersion string) map[string]string {
 		version + "-standalone/service-" + kubeVersion + ".json":   loadSchema(t, "service"),
 		version + "-standalone/pod-" + kubeVersion + ".json":       loadSchema(t, "pod"),
 	}
+}
+
+// setupDefaultSchemaServer sets up the test environment and returns a schema URL for the default schemas.
+func setupDefaultSchemaServer(t *testing.T) string {
+	t.Helper()
+	setupTestEnvironment(t)
+
+	schemas := getDefaultSchemas(t, testKubeVersion)
+	server := setupSchemaServer(t, schemas)
+
+	return server.URL + schemaURLTemplate
 }

@@ -221,11 +221,7 @@ func TestAI_ValidateLocal(t *testing.T) {
 
 	t.Run("validation_skip", func(t *testing.T) {
 		t.Run("skip_by_kind", func(t *testing.T) {
-			setupTestEnvironment(t)
-
-			schemas := getDefaultSchemas(t, testKubeVersion)
-			server := setupSchemaServer(t, schemas)
-			schemaURL := server.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL := setupDefaultSchemaServer(t)
 
 			invalidConfigMap := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "v1",
@@ -247,11 +243,7 @@ func TestAI_ValidateLocal(t *testing.T) {
 		})
 
 		t.Run("skip_by_name", func(t *testing.T) {
-			setupTestEnvironment(t)
-
-			schemas := getDefaultSchemas(t, testKubeVersion)
-			server := setupSchemaServer(t, schemas)
-			schemaURL := server.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL := setupDefaultSchemaServer(t)
 
 			invalidDeployment := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "apps/v1",

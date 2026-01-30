@@ -14,11 +14,7 @@ import (
 func TestAI_KubeConformValidator(t *testing.T) {
 	t.Run("valid_resources", func(t *testing.T) {
 		t.Run("valid_Deployment_passes", func(t *testing.T) {
-			setupTestEnvironment(t)
-
-			schemas := getDefaultSchemas(t, testKubeVersion)
-			server := setupSchemaServer(t, schemas)
-			schemaURL := server.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL := setupDefaultSchemaServer(t)
 
 			deployment := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "apps/v1",
@@ -59,11 +55,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 		})
 
 		t.Run("valid_ConfigMap_passes", func(t *testing.T) {
-			setupTestEnvironment(t)
-
-			schemas := getDefaultSchemas(t, testKubeVersion)
-			server := setupSchemaServer(t, schemas)
-			schemaURL := server.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL := setupDefaultSchemaServer(t)
 
 			configMap := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "v1",
@@ -85,11 +77,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 		})
 
 		t.Run("valid_Service_passes", func(t *testing.T) {
-			setupTestEnvironment(t)
-
-			schemas := getDefaultSchemas(t, testKubeVersion)
-			server := setupSchemaServer(t, schemas)
-			schemaURL := server.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL := setupDefaultSchemaServer(t)
 
 			service := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "v1",
@@ -118,11 +106,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 		})
 
 		t.Run("Deployment_with_extra_unknown_fields_passes", func(t *testing.T) {
-			setupTestEnvironment(t)
-
-			schemas := getDefaultSchemas(t, testKubeVersion)
-			server := setupSchemaServer(t, schemas)
-			schemaURL := server.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL := setupDefaultSchemaServer(t)
 
 			deployment := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "apps/v1",
@@ -150,11 +134,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 
 	t.Run("invalid_resources", func(t *testing.T) {
 		t.Run("Deployment_missing_spec_fails", func(t *testing.T) {
-			setupTestEnvironment(t)
-
-			schemas := getDefaultSchemas(t, testKubeVersion)
-			server := setupSchemaServer(t, schemas)
-			schemaURL := server.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL := setupDefaultSchemaServer(t)
 
 			deployment := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "apps/v1",
@@ -172,11 +152,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 		})
 
 		t.Run("Deployment_replicas_as_string_fails", func(t *testing.T) {
-			setupTestEnvironment(t)
-
-			schemas := getDefaultSchemas(t, testKubeVersion)
-			server := setupSchemaServer(t, schemas)
-			schemaURL := server.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL := setupDefaultSchemaServer(t)
 
 			deployment := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "apps/v1",
@@ -198,11 +174,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 		})
 
 		t.Run("Service_with_port_as_string_fails", func(t *testing.T) {
-			setupTestEnvironment(t)
-
-			schemas := getDefaultSchemas(t, testKubeVersion)
-			server := setupSchemaServer(t, schemas)
-			schemaURL := server.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL := setupDefaultSchemaServer(t)
 
 			service := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "v1",
@@ -228,11 +200,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 		})
 
 		t.Run("ConfigMap_with_non_string_data_fails", func(t *testing.T) {
-			setupTestEnvironment(t)
-
-			schemas := getDefaultSchemas(t, testKubeVersion)
-			server := setupSchemaServer(t, schemas)
-			schemaURL := server.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL := setupDefaultSchemaServer(t)
 
 			configMap := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "v1",
@@ -253,11 +221,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 		})
 
 		t.Run("multiple_errors_collected", func(t *testing.T) {
-			setupTestEnvironment(t)
-
-			schemas := getDefaultSchemas(t, testKubeVersion)
-			server := setupSchemaServer(t, schemas)
-			schemaURL := server.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL := setupDefaultSchemaServer(t)
 
 			deployment1 := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "apps/v1",
@@ -311,11 +275,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 		})
 
 		t.Run("http_source_works", func(t *testing.T) {
-			setupTestEnvironment(t)
-
-			schemas := getDefaultSchemas(t, testKubeVersion)
-			server := setupSchemaServer(t, schemas)
-			schemaURL := server.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL := setupDefaultSchemaServer(t)
 
 			deployment := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "apps/v1",
@@ -344,11 +304,11 @@ func TestAI_KubeConformValidator(t *testing.T) {
 				version + "-standalone/deployment-apps-v1.json": loadSchema(t, "deployment"),
 			}
 			server1 := setupSchemaServer(t, deploymentOnlySchemas)
-			schemaURL1 := server1.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL1 := server1.URL + schemaURLTemplate
 
 			allSchemas := getDefaultSchemas(t, testKubeVersion)
 			server2 := setupSchemaServer(t, allSchemas)
-			schemaURL2 := server2.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL2 := server2.URL + schemaURLTemplate
 
 			configMap := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "v1",
@@ -376,7 +336,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 				version + "-standalone/configmap-" + testKubeVersion + ".json": loadSchema(t, "configmap"),
 			}
 			server := setupSchemaServer(t, configMapOnlySchemas)
-			schemaURL := server.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL := server.URL + schemaURLTemplate
 
 			configMap := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "v1",
@@ -397,11 +357,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 		})
 
 		t.Run("resource_without_schema_skipped", func(t *testing.T) {
-			setupTestEnvironment(t)
-
-			schemas := getDefaultSchemas(t, testKubeVersion)
-			server := setupSchemaServer(t, schemas)
-			schemaURL := server.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL := setupDefaultSchemaServer(t)
 
 			crd := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "custom.example.com/v1",
@@ -428,7 +384,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 
 			schemas := getDefaultSchemas(t, testKubeVersion)
 			server, requestCount := setupSchemaServerWithCounter(t, schemas)
-			schemaURL := server.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL := server.URL + schemaURLTemplate
 
 			deployment1 := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "apps/v1",
@@ -471,11 +427,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 
 	t.Run("edge_cases", func(t *testing.T) {
 		t.Run("empty_resource_list_succeeds", func(t *testing.T) {
-			setupTestEnvironment(t)
-
-			schemas := getDefaultSchemas(t, testKubeVersion)
-			server := setupSchemaServer(t, schemas)
-			schemaURL := server.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL := setupDefaultSchemaServer(t)
 
 			ctx := context.Background()
 			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
@@ -485,11 +437,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 		})
 
 		t.Run("resource_with_special_characters_in_name", func(t *testing.T) {
-			setupTestEnvironment(t)
-
-			schemas := getDefaultSchemas(t, testKubeVersion)
-			server := setupSchemaServer(t, schemas)
-			schemaURL := server.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL := setupDefaultSchemaServer(t)
 
 			configMap := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "v1",
@@ -510,11 +458,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 		})
 
 		t.Run("multiple_valid_resources_pass", func(t *testing.T) {
-			setupTestEnvironment(t)
-
-			schemas := getDefaultSchemas(t, testKubeVersion)
-			server := setupSchemaServer(t, schemas)
-			schemaURL := server.URL + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+			schemaURL := setupDefaultSchemaServer(t)
 
 			deployment := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "apps/v1",
