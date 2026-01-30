@@ -684,28 +684,27 @@ func connectInternalDeleteDependencies(plan *Plan, infos []*DeletableResourceInf
 		deleteOp := lo.Must(plan.Operation(operationID))
 
 		for _, dep := range internalDeps {
-			var (
-				dependUponOp      *Operation
-				dependUponOpFound bool
-			)
+			var dependUponOps []*Operation
 
 			switch dep.ResourceState {
 			case common.ResourceStateAbsent:
 				trackOps := getAllFirstIterationTrackAbsenceOps(plan)
 
-				dependUponOp, dependUponOpFound = lo.Find(trackOps, func(op *Operation) bool {
+				dependUponOps = lo.Filter(trackOps, func(op *Operation, _ int) bool {
 					return dep.Match(getOpMeta(op))
 				})
 			default:
 				panic("unexpected internal dependency resource state")
 			}
 
-			if !dependUponOpFound {
+			if len(dependUponOps) == 0 {
 				continue
 			}
 
-			if err := plan.Connect(dependUponOp.ID(), deleteOp.ID()); err != nil {
-				return fmt.Errorf("depend %q from %q: %w", deleteOp.ID(), dependUponOp.ID(), err)
+			for _, dependUponOp := range dependUponOps {
+				if err := plan.Connect(dependUponOp.ID(), deleteOp.ID()); err != nil {
+					return fmt.Errorf("depend %q from %q: %w", deleteOp.ID(), dependUponOp.ID(), err)
+				}
 			}
 		}
 	}
