@@ -16,7 +16,6 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/go-resty/resty/v2"
 	"github.com/gofrs/flock"
 	"github.com/samber/lo"
 	"github.com/yannh/kubeconform/pkg/resource"
@@ -34,7 +33,6 @@ const (
 	kubeConformCacheLockFilename       = "lock"
 	kubeConformCacheMetadataAPIVersion = "v1"
 	kubeConformCacheMetadataFilename   = "metadata.json"
-	kubeConformHTTPClientMaxRetry      = 2
 )
 
 var ErrResourceValidationSourceSanityCheck = errors.New("resource validation source sanity check")
@@ -181,20 +179,7 @@ func (kc *kubeConformValidator) getValidatorInstances(ctx context.Context) ([]*k
 // every Kubernetes version has Deployment.apps/v1 schema. If at least one source statisfy to condition, the complete
 // source list considered to be valid, as it allows to validate native resources.
 func (kc *kubeConformValidator) validateSchemasSources(ctx context.Context) error {
-	httpClient := resty.New().
-		SetTimeout(5 * time.Second).
-		SetRetryCount(kubeConformHTTPClientMaxRetry).
-		SetRedirectPolicy(resty.FlexibleRedirectPolicy(5)).
-		AddRetryCondition(
-			func(r *resty.Response, err error) bool {
-				return err != nil || r.StatusCode() >= 500
-			},
-		)
-
-	if !log.Default.AcceptLevel(ctx, log.DebugLevel) {
-		httpClient.SetLogger(log.NopLogger{})
-		httpClient.SetDisableWarn(true)
-	}
+	httpClient := util.NewRestyClient(ctx)
 
 	for _, schemaSource := range kc.schemaSources {
 		patchedSource, err := patchKubeConformSchemaSource(schemaSource, "deployment",
@@ -238,9 +223,13 @@ func (kc *kubeConformValidator) validateSchemasSources(ctx context.Context) erro
 	return fmt.Errorf("%w: unable to get deployment/apps/v1 for kube version %s in any schema sources", ErrResourceValidationSourceSanityCheck, kc.kubeVersion)
 }
 
+type kubeConformCacheEntry struct {
+	Created time.Time `json:"created"`
+}
+
 type kubeConformCacheMetadata struct {
-	APIVersion string               `json:"apiVersion"`
-	Entries    map[string]time.Time `json:"entries"`
+	APIVersion string                           `json:"apiVersion"`
+	Entries    map[string]kubeConformCacheEntry `json:"entries"`
 }
 
 type kubeConformInstance struct {
@@ -301,7 +290,7 @@ func newKubeConformInstance(ctx context.Context, source, cacheDir, kubeVersion s
 	if _, err := os.Stat(metadataFilePath); os.IsNotExist(err) {
 		v.metadata = kubeConformCacheMetadata{
 			APIVersion: kubeConformCacheMetadataAPIVersion,
-			Entries:    make(map[string]time.Time),
+			Entries:    make(map[string]kubeConformCacheEntry),
 		}
 
 		if err := writeKubeConformCacheMetadata(metadataFilePath, v.metadata); err != nil {
@@ -339,7 +328,9 @@ func (v *kubeConformInstance) AddCacheEntry(ctx context.Context, gvk schema.Grou
 
 	v.metadata = *metadata
 
-	v.metadata.Entries[getKubeConformEntryHash(v.kubeVersion, gvk)] = time.Now().UTC()
+	v.metadata.Entries[getKubeConformEntryHash(v.kubeVersion, gvk)] = kubeConformCacheEntry{
+		Created: time.Now().UTC(),
+	}
 
 	if err := writeKubeConformCacheMetadata(v.metadataFilePath(), v.metadata); err != nil {
 		return fmt.Errorf("write metadata %s: %w", v.metadataFilePath(), err)
@@ -396,8 +387,8 @@ func (v *kubeConformInstance) InvalidateCacheEntries(ctx context.Context) error 
 
 	var changed bool
 
-	for hash, timestamp := range v.metadata.Entries {
-		if timestamp.Add(v.cacheLifetime).Before(time.Now().UTC()) {
+	for hash, entry := range v.metadata.Entries {
+		if entry.Created.Add(v.cacheLifetime).Before(time.Now().UTC()) {
 			entryFilePath := filepath.Join(v.cacheDir, hash)
 
 			if !isLocalFSSource(v.source) {
