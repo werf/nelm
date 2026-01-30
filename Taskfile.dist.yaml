@@ -274,13 +274,25 @@ tasks:
   generate:
     desc: 'Run all generators. Important vars: "paths".'
     run: once
-    deps:
-      - generate:doctoc
+    cmds:
+      - task: generate:reference
+      - task: generate:doctoc
+
+  generate:reference:
+    desc: "Generate CLI reference documentation with TOC."
+    cmds:
+      - go run {{.package}} generate-reference
+      - task: generate:doctoc
+        vars:
+          path: docs/reference.md
+          updateOnly: "false"
 
   generate:doctoc:
-    desc: "Generate Tables of Contents in Markdown files."
+    desc: 'Generate Tables of Contents in Markdown files. Important vars: "path", "updateOnly".'
+    vars:
+      updateOnly: '{{.updateOnly | default "true"}}'
     cmds:
-      - docker run --rm -v "$(pwd)":/work peterdavehello/npm-doctoc doctoc --update-only /work
+      - docker run --rm -v "$(pwd)":/work peterdavehello/npm-doctoc doctoc --notitle {{if eq .updateOnly "true"}}--update-only{{end}} /work/{{.path | default "."}}
 
   lint:
     desc: 'Run all linters in parallel. Important vars: "paths".'

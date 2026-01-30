@@ -271,7 +271,7 @@ func TestInitTSBoilerplate(t *testing.T) {
 		assert.Contains(t, string(serviceContent), "export function newService")
 	})
 
-	t.Run("includes @nelm/types dependency", func(t *testing.T) {
+	t.Run("includes @nelm/chart-ts-sdk dependency", func(t *testing.T) {
 		chartPath := filepath.Join(t.TempDir(), "test-chart")
 		require.NoError(t, os.MkdirAll(chartPath, 0o755))
 
@@ -280,7 +280,7 @@ func TestInitTSBoilerplate(t *testing.T) {
 
 		content, err := os.ReadFile(filepath.Join(chartPath, "ts", "package.json"))
 		require.NoError(t, err)
-		assert.Contains(t, string(content), `"@nelm/types"`)
+		assert.Contains(t, string(content), `"@nelm/chart-ts-sdk"`)
 	})
 
 	t.Run("includes correct tsconfig.json options", func(t *testing.T) {

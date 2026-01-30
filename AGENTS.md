@@ -1,12 +1,12 @@
 # Repository Guidelines
 
-Nelm is a Go-based Kubernetes deployment tool (Helm-compatible). For context and expectations, read `README.md`, `ARCHITECTURE.md`, and `CONTRIBUTING.md`.
+Nelm is a Go-based Kubernetes deployment tool (Helm-compatible). For context and expectations, read `README.md`, `CONTRIBUTING.md`, and `docs/summary/index.md`.
 
 ## Documentation
 
 - [README.md](README.md) - Project overview, features, CLI reference, annotations
-- [ARCHITECTURE.md](ARCHITECTURE.md) - Package structure, data types, transformation pipeline, deployment flow
 - [CONTRIBUTING.md](CONTRIBUTING.md) - Development workflow, commit conventions, design and style guidelines
+- [docs/summary/index.md](docs/summary/index.md) - AI-optimized knowledge base with codebase documentation
 
 ## Build Commands
 
@@ -32,6 +32,13 @@ task test:unit                           # Run all unit tests
 task test:unit paths="./internal/plan"   # Test specific package
 task test:ginkgo paths="./pkg" -- -v     # Pass flags to ginkgo
 ```
+
+## Work standards
+
+- Don't trade correctness for speed or tokens
+- Don't trade thoroughness for speed or tokens
+- Be exhaustive, thorough
+- Don't assume, verify
 
 ## Additional PR review guidelines
 
