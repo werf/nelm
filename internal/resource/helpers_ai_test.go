@@ -21,8 +21,10 @@ import (
 	"github.com/werf/nelm/pkg/featgate"
 )
 
-const testKubeVersion = "1.30.0"
-const testReleaseNamespace = "test-namespace"
+const (
+	testKubeVersion      = "1.30.0"
+	testReleaseNamespace = "test-namespace"
+)
 
 func setupTestEnvironment(t *testing.T) {
 	t.Helper()
