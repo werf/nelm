@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata"],
+  "properties": {
+    "apiVersion": {"type": "string"},
+    "kind": {"type": "string", "const": "Service"},
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {"type": "string"},
+        "namespace": {"type": "string"}
+      }
+    },
+    "spec": {
+      "type": "object",
+      "properties": {
+        "ports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+              "targetPort": {},
+              "protocol": {"type": "string", "enum": ["TCP", "UDP", "SCTP"]}
+            }
+          }
+        },
+        "selector": {"type": "object"}
+      }
+    }
+  },
+  "additionalProperties": true
+}
