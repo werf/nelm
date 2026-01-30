@@ -219,12 +219,12 @@ type ResourceValidationOptions struct {
 	ValidationKubeVersion string
 	// ValidationSkip Do not validate resources with specific attributes.
 	ValidationSkip []string
-	// ValidationSchemaCacheLifetime how long schema cache be valid.
+	// ValidationSchemaCacheLifetime how long the schema cache should be valid.
 	ValidationSchemaCacheLifetime time.Duration
-	// ValidationSchema default schema source to validate Kubernetes resources.
-	ValidationSchema []string
-	// ValidationExtraSchema extra schema source to validate Kubernetes resources (preferred).
-	ValidationExtraSchema []string
+	// ValidationSchemas default schema sources to validate Kubernetes resources.
+	ValidationSchemas []string
+	// ValidationExtraSchemas extra schema sources to validate Kubernetes resources (preferred).
+	ValidationExtraSchemas []string
 }
 
 func (opts *ResourceValidationOptions) ApplyDefaults() {}

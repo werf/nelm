@@ -44,7 +44,7 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 	kubeConformValidator, err := newKubeConformValidator(
 		opts.ValidationKubeVersion,
 		opts.ValidationSchemaCacheLifetime,
-		append(opts.ValidationExtraSchema, opts.ValidationSchema...))
+		append(opts.ValidationExtraSchemas, opts.ValidationSchemas...))
 	if err != nil {
 		return fmt.Errorf("get schema validator: %w", err)
 	}
