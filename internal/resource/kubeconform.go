@@ -388,20 +388,22 @@ func (v *kubeConformInstance) InvalidateCacheEntries(ctx context.Context) error 
 	var changed bool
 
 	for hash, entry := range v.metadata.Entries {
-		if entry.Created.Add(v.cacheLifetime).Before(time.Now().UTC()) {
-			entryFilePath := filepath.Join(v.cacheDir, hash)
-
-			if !isLocalFSSource(v.source) {
-				if err := os.Remove(entryFilePath); err != nil {
-					log.Default.Warn(ctx, "Cannot remove schema cache entry %s: %s", entryFilePath, err)
-				}
-			}
-
-			log.Default.Debug(ctx, "Invalidating schema validator cache entry %s", entryFilePath)
-			delete(v.metadata.Entries, hash)
-
-			changed = true
+		if entry.Created.Add(v.cacheLifetime).After(time.Now().UTC()) {
+			continue
 		}
+
+		entryFilePath := filepath.Join(v.cacheDir, hash)
+
+		if !isLocalFSSource(v.source) {
+			if err := os.Remove(entryFilePath); err != nil {
+				log.Default.Warn(ctx, "Cannot remove schema cache entry %s: %s", entryFilePath, err)
+			}
+		}
+
+		log.Default.Debug(ctx, "Invalidating schema validator cache entry %s", entryFilePath)
+		delete(v.metadata.Entries, hash)
+
+		changed = true
 	}
 
 	if changed {
