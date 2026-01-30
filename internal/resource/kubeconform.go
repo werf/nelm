@@ -189,7 +189,7 @@ func (kc *kubeConformValidator) validateSchemasSources(ctx context.Context) erro
 		SetRetryCount(kubeConformHTTPClientMaxRetry).
 		AddRetryCondition(
 			func(r *resty.Response) (bool, error) {
-				return r.StatusCode() > 500, nil
+				return r.StatusCode() >= 500, nil
 			},
 		)
 
