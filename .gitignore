@@ -1,18 +1,3 @@
-# remove this block when fixed: https://github.com/anthropics/claude-code/issues/17087
-/.bash_profile
-/.bashrc
-/.gitconfig
-/.gitmodules
-/.mcp.json
-/.profile
-/.ripgreprc
-/.zprofile
-/.zshrc
-/\*\*
-/.env
-/.env.\*
-/secrets
-
 *.swp
 *.test
 /.idea/

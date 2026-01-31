@@ -4,33 +4,28 @@ Nelm is a Go-based Kubernetes deployment tool (Helm-compatible). For context and
 
 ## Documentation
 
-- [README.md](README.md) - Project overview, features, CLI reference, annotations
-- [CONTRIBUTING.md](CONTRIBUTING.md) - Development workflow, commit conventions, design and style guidelines
-- [docs/summary/index.md](docs/summary/index.md) - AI-optimized knowledge base with codebase documentation
+- [README.md](README.md) - Project overview, features, CLI reference, annotations.
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Development workflow, commit conventions, design and style guidelines. Very important for AI.
+- [docs/summary/index.md](docs/summary/index.md) - AI-optimized knowledge base with codebase documentation.
 
-## Build Commands
+## Commands
 
 Uses [Task](https://taskfile.dev/) as the build system. Requires `export TASK_X_REMOTE_TASKFILES=1`.
 
 ```bash
-task                    # Run all checks: format, build, lint, unit tests
 task build              # Build binary for current OS/arch to ./bin/
-task format             # Run gci, gofumpt, prettier
+task build pkg=github.com/werf/nelm/cmd/nelm # Build binary for specific package
+task format             # Run all formatters
+task format paths="./pkg/action" # Run all formatters for specific package
 task lint               # Run golangci-lint and prettier checks
-task test:unit          # Run unit tests with ginkgo
-task test:unit paths="./pkg/action"  # Test specific package
+task lint paths="./pkg/action" # Run golangci-lint and prettier checks for specific package
+task lint:golangci-lint  # Run only golangci-lint checks
+task lint:golangci-lint paths="./pkg/action"  # Run golangci-lint checks for specific package
+task lint:prettier      # Run only prettier checks
+task test:unit          # Run all unit tests
+task test:unit paths="./pkg/action"  # Run unit tests for specific package
 task clean              # Clean build artifacts
 task generate           # Run generators (e.g., Markdown TOCs)
-```
-
-## Testing
-
-Uses Ginkgo v2 with Gomega matchers.
-
-```bash
-task test:unit                           # Run all unit tests
-task test:unit paths="./internal/plan"   # Test specific package
-task test:ginkgo paths="./pkg" -- -v     # Pass flags to ginkgo
 ```
 
 ## Work standards
