@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Nelm is a Go-based Kubernetes deployment tool (Helm-compatible). For context and expectations, read `README.md`, `CONTRIBUTING.md`, and `docs/summary/index.md`.
+Nelm is a Go-based Kubernetes deployment tool, which deploys Helm charts, is compatible with Helm releases, and is an alternative to Helm. For context and expectations, read `README.md`, `CONTRIBUTING.md`, and `docs/summary/index.md`.
 
 ## Documentation
 
