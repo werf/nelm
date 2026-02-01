@@ -53,3 +53,27 @@ const (
 )
 
 var LogColorModes = []string{LogColorModeAuto, LogColorModeOff, LogColorModeOn}
+
+type RestyLogger struct {
+	context context.Context
+}
+
+func NewRestyLogger(ctx context.Context) *RestyLogger {
+	return &RestyLogger{context: ctx}
+}
+
+func (l RestyLogger) Errorf(format string, v ...interface{}) {
+	Default.Debug(l.context, format, v...)
+}
+
+func (l RestyLogger) Warnf(format string, v ...interface{}) {
+	Default.Debug(l.context, format, v...)
+}
+
+func (l RestyLogger) Debugf(format string, v ...interface{}) {
+	Default.Trace(l.context, format, v...)
+}
+
+func (l RestyLogger) Infof(format string, v ...interface{}) {
+	Default.Debug(l.context, format, v...)
+}
