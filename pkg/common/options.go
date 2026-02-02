@@ -213,10 +213,18 @@ func (opts *TrackingOptions) ApplyDefaults() {
 type ResourceValidationOptions struct {
 	// NoResourceValidation Disable resource validation.
 	NoResourceValidation bool
+	// LocalResourceValidation Disable KubeConform resource validation.
+	LocalResourceValidation bool
 	// ValidationKubeVersion sets specific Kubernetes version and respective schemas to use on resource validation.
 	ValidationKubeVersion string
 	// ValidationSkip Do not validate resources with specific attributes.
 	ValidationSkip []string
+	// ValidationSchemaCacheLifetime how long the schema cache should be valid.
+	ValidationSchemaCacheLifetime time.Duration
+	// ValidationSchemas default schema sources to validate Kubernetes resources.
+	ValidationSchemas []string
+	// ValidationExtraSchemas extra schema sources to validate Kubernetes resources (preferred).
+	ValidationExtraSchemas []string
 }
 
 func (opts *ResourceValidationOptions) ApplyDefaults() {}
