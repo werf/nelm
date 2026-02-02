@@ -36,7 +36,7 @@ type OperationConfig interface {
 }
 
 type OperationConfigNoop struct {
-	OpID string `json:"opID"`
+	OpID string `json:"opId"`
 }
 
 func (c *OperationConfigNoop) ID() string {
@@ -146,9 +146,11 @@ func (c *OperationConfigTrackReadiness) PrepareForMarshal() {
 	if c.IgnoreLogsByRegex != nil {
 		c.IgnoreLogsByRegexStr = c.IgnoreLogsByRegex.String()
 	}
+
 	if c.SaveLogsByRegex != nil {
 		c.SaveLogsByRegexStr = c.SaveLogsByRegex.String()
 	}
+
 	if c.IgnoreLogsByRegexForContainers != nil {
 		c.IgnoreLogsByRegexForContainersStr = make(map[string]string, len(c.IgnoreLogsByRegexForContainers))
 		for k, v := range c.IgnoreLogsByRegexForContainers {
@@ -157,6 +159,7 @@ func (c *OperationConfigTrackReadiness) PrepareForMarshal() {
 			}
 		}
 	}
+
 	if c.SaveLogsByRegexForContainers != nil {
 		c.SaveLogsByRegexForContainersStr = make(map[string]string, len(c.SaveLogsByRegexForContainers))
 		for k, v := range c.SaveLogsByRegexForContainers {
@@ -173,41 +176,51 @@ func (c *OperationConfigTrackReadiness) RestoreFromUnmarshal() error {
 		if err != nil {
 			return fmt.Errorf("compile ignoreLogsByRegex: %w", err)
 		}
+
 		c.IgnoreLogsByRegex = r
 	}
+
 	if c.SaveLogsByRegexStr != "" {
 		r, err := regexp.Compile(c.SaveLogsByRegexStr)
 		if err != nil {
 			return fmt.Errorf("compile saveLogsByRegex: %w", err)
 		}
+
 		c.SaveLogsByRegex = r
 	}
+
 	if c.IgnoreLogsByRegexForContainersStr != nil {
 		c.IgnoreLogsByRegexForContainers = make(map[string]*regexp.Regexp, len(c.IgnoreLogsByRegexForContainersStr))
 		for k, v := range c.IgnoreLogsByRegexForContainersStr {
 			if v == "" {
 				continue
 			}
+
 			r, err := regexp.Compile(v)
 			if err != nil {
 				return fmt.Errorf("compile ignoreLogsByRegexForContainers[%q]: %w", k, err)
 			}
+
 			c.IgnoreLogsByRegexForContainers[k] = r
 		}
 	}
+
 	if c.SaveLogsByRegexForContainersStr != nil {
 		c.SaveLogsByRegexForContainers = make(map[string]*regexp.Regexp, len(c.SaveLogsByRegexForContainersStr))
 		for k, v := range c.SaveLogsByRegexForContainersStr {
 			if v == "" {
 				continue
 			}
+
 			r, err := regexp.Compile(v)
 			if err != nil {
 				return fmt.Errorf("compile saveLogsByRegexForContainers[%q]: %w", k, err)
 			}
+
 			c.SaveLogsByRegexForContainers[k] = r
 		}
 	}
+
 	return nil
 }
 

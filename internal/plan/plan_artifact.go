@@ -9,10 +9,10 @@ import (
 
 	"github.com/dominikbraun/graph"
 	"github.com/pkg/errors"
-	"github.com/werf/3p-helm/pkg/release"
-	"github.com/werf/nelm/pkg/common"
 
+	"github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/nelm/internal/resource/spec"
+	"github.com/werf/nelm/pkg/common"
 )
 
 const InstallPlanArtifactSchemeVersion = "v1"
@@ -145,8 +145,10 @@ func BuildInstallPlanArtifact(p *Plan, changes []*ResourceChange, release Instal
 }
 
 func buildInstallPlanArtifactDAG(p *Plan) (InstallPlanArtifactDAG, error) {
-	var operations []InstallPlanArtifactOp
-	var edges []InstallPlanArtifactEdge
+	var (
+		operations []InstallPlanArtifactOp
+		edges      []InstallPlanArtifactEdge
+	)
 
 	ops := p.Operations()
 
@@ -235,7 +237,7 @@ func encodeOperationConfig(cfg OperationConfig) (InstallPlanArtifactOpConfig, er
 }
 
 func MarshalInstallPlanArtifact(artifact *InstallPlanArtifact) ([]byte, error) {
-	data, err := json.MarshalIndent(artifact, "", "  ")
+	data, err := json.MarshalIndent(artifact, "", "  ") //nolint: musttag
 	if err != nil {
 		return nil, fmt.Errorf("marshal install plan artifact to json: %w", err)
 	}
@@ -253,7 +255,7 @@ func ReadInstallPlanArtifact(path string) (*InstallPlanArtifact, error) {
 
 	decoder := json.NewDecoder(installPlanFile)
 
-	if err = decoder.Decode(&artifact); err != nil {
+	if err = decoder.Decode(&artifact); err != nil { //nolint: musttag
 		return nil, fmt.Errorf("decode plan artifact: %w", err)
 	}
 
