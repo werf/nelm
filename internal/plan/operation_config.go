@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"fmt"
 	"regexp"
 	"time"
 
@@ -35,7 +36,7 @@ type OperationConfig interface {
 }
 
 type OperationConfigNoop struct {
-	OpID string
+	OpID string `json:"opId"`
 }
 
 func (c *OperationConfigNoop) ID() string {
@@ -47,8 +48,8 @@ func (c *OperationConfigNoop) IDHuman() string {
 }
 
 type OperationConfigCreate struct {
-	ResourceSpec  *spec.ResourceSpec
-	ForceReplicas *int
+	ResourceSpec  *spec.ResourceSpec `json:"resourceSpec"`
+	ForceReplicas *int               `json:"forceReplicas,omitempty"`
 }
 
 func (c *OperationConfigCreate) ID() string {
@@ -60,9 +61,9 @@ func (c *OperationConfigCreate) IDHuman() string {
 }
 
 type OperationConfigRecreate struct {
-	ResourceSpec      *spec.ResourceSpec
-	DeletePropagation metav1.DeletionPropagation
-	ForceReplicas     *int
+	ResourceSpec      *spec.ResourceSpec         `json:"resourceSpec"`
+	DeletePropagation metav1.DeletionPropagation `json:"deletePropagation"`
+	ForceReplicas     *int                       `json:"forceReplicas,omitempty"`
 }
 
 func (c *OperationConfigRecreate) ID() string {
@@ -74,7 +75,7 @@ func (c *OperationConfigRecreate) IDHuman() string {
 }
 
 type OperationConfigUpdate struct {
-	ResourceSpec *spec.ResourceSpec
+	ResourceSpec *spec.ResourceSpec `json:"resourceSpec"`
 }
 
 func (c *OperationConfigUpdate) ID() string {
@@ -86,7 +87,7 @@ func (c *OperationConfigUpdate) IDHuman() string {
 }
 
 type OperationConfigApply struct {
-	ResourceSpec *spec.ResourceSpec
+	ResourceSpec *spec.ResourceSpec `json:"resourceSpec"`
 }
 
 func (c *OperationConfigApply) ID() string {
@@ -98,34 +99,39 @@ func (c *OperationConfigApply) IDHuman() string {
 }
 
 type OperationConfigDelete struct {
-	ResourceMeta      *spec.ResourceMeta
-	DeletePropagation metav1.DeletionPropagation
+	ResourceSpec      *spec.ResourceSpec         `json:"resourceSpec"`
+	DeletePropagation metav1.DeletionPropagation `json:"deletePropagation"`
 }
 
 func (c *OperationConfigDelete) ID() string {
-	return c.ResourceMeta.ID()
+	return c.ResourceSpec.ID()
 }
 
 func (c *OperationConfigDelete) IDHuman() string {
-	return c.ResourceMeta.IDHuman()
+	return c.ResourceSpec.IDHuman()
 }
 
 type OperationConfigTrackReadiness struct {
-	ResourceMeta *spec.ResourceMeta
+	ResourceMeta *spec.ResourceMeta `json:"resourceMeta"`
 
-	FailMode                                 multitrack.FailMode
-	FailuresAllowed                          int
-	IgnoreLogs                               bool
-	IgnoreLogsForContainers                  []string
-	IgnoreLogsByRegex                        *regexp.Regexp
-	IgnoreLogsByRegexForContainers           map[string]*regexp.Regexp
-	IgnoreReadinessProbeFailsByContainerName map[string]time.Duration
-	NoActivityTimeout                        time.Duration
-	SaveEvents                               bool
-	SaveLogsByRegex                          *regexp.Regexp
-	SaveLogsByRegexForContainers             map[string]*regexp.Regexp
-	SaveLogsOnlyForContainers                []string
-	SaveLogsOnlyForNumberOfReplicas          int
+	FailMode                                 multitrack.FailMode       `json:"failMode"`
+	FailuresAllowed                          int                       `json:"failuresAllowed"`
+	IgnoreLogs                               bool                      `json:"ignoreLogs"`
+	IgnoreLogsForContainers                  []string                  `json:"ignoreLogsForContainers,omitempty"`
+	IgnoreLogsByRegex                        *regexp.Regexp            `json:"-"`
+	IgnoreLogsByRegexForContainers           map[string]*regexp.Regexp `json:"-"`
+	IgnoreReadinessProbeFailsByContainerName map[string]time.Duration  `json:"ignoreReadinessProbeFailsByContainerName,omitempty"`
+	NoActivityTimeout                        time.Duration             `json:"noActivityTimeout"`
+	SaveEvents                               bool                      `json:"saveEvents"`
+	SaveLogsByRegex                          *regexp.Regexp            `json:"-"`
+	SaveLogsByRegexForContainers             map[string]*regexp.Regexp `json:"-"`
+	SaveLogsOnlyForContainers                []string                  `json:"saveLogsOnlyForContainers,omitempty"`
+	SaveLogsOnlyForNumberOfReplicas          int                       `json:"saveLogsOnlyForNumberOfReplicas"`
+
+	IgnoreLogsByRegexStr              string            `json:"ignoreLogsByRegex,omitempty"`
+	IgnoreLogsByRegexForContainersStr map[string]string `json:"ignoreLogsByRegexForContainers,omitempty"`
+	SaveLogsByRegexStr                string            `json:"saveLogsByRegex,omitempty"`
+	SaveLogsByRegexForContainersStr   map[string]string `json:"saveLogsByRegexForContainers,omitempty"`
 }
 
 func (c *OperationConfigTrackReadiness) ID() string {
@@ -136,8 +142,90 @@ func (c *OperationConfigTrackReadiness) IDHuman() string {
 	return c.ResourceMeta.IDHuman()
 }
 
+func (c *OperationConfigTrackReadiness) PrepareForMarshal() {
+	if c.IgnoreLogsByRegex != nil {
+		c.IgnoreLogsByRegexStr = c.IgnoreLogsByRegex.String()
+	}
+
+	if c.SaveLogsByRegex != nil {
+		c.SaveLogsByRegexStr = c.SaveLogsByRegex.String()
+	}
+
+	if c.IgnoreLogsByRegexForContainers != nil {
+		c.IgnoreLogsByRegexForContainersStr = make(map[string]string, len(c.IgnoreLogsByRegexForContainers))
+		for k, v := range c.IgnoreLogsByRegexForContainers {
+			if v != nil {
+				c.IgnoreLogsByRegexForContainersStr[k] = v.String()
+			}
+		}
+	}
+
+	if c.SaveLogsByRegexForContainers != nil {
+		c.SaveLogsByRegexForContainersStr = make(map[string]string, len(c.SaveLogsByRegexForContainers))
+		for k, v := range c.SaveLogsByRegexForContainers {
+			if v != nil {
+				c.SaveLogsByRegexForContainersStr[k] = v.String()
+			}
+		}
+	}
+}
+
+func (c *OperationConfigTrackReadiness) RestoreFromUnmarshal() error {
+	if c.IgnoreLogsByRegexStr != "" {
+		r, err := regexp.Compile(c.IgnoreLogsByRegexStr)
+		if err != nil {
+			return fmt.Errorf("compile ignoreLogsByRegex: %w", err)
+		}
+
+		c.IgnoreLogsByRegex = r
+	}
+
+	if c.SaveLogsByRegexStr != "" {
+		r, err := regexp.Compile(c.SaveLogsByRegexStr)
+		if err != nil {
+			return fmt.Errorf("compile saveLogsByRegex: %w", err)
+		}
+
+		c.SaveLogsByRegex = r
+	}
+
+	if c.IgnoreLogsByRegexForContainersStr != nil {
+		c.IgnoreLogsByRegexForContainers = make(map[string]*regexp.Regexp, len(c.IgnoreLogsByRegexForContainersStr))
+		for k, v := range c.IgnoreLogsByRegexForContainersStr {
+			if v == "" {
+				continue
+			}
+
+			r, err := regexp.Compile(v)
+			if err != nil {
+				return fmt.Errorf("compile ignoreLogsByRegexForContainers[%q]: %w", k, err)
+			}
+
+			c.IgnoreLogsByRegexForContainers[k] = r
+		}
+	}
+
+	if c.SaveLogsByRegexForContainersStr != nil {
+		c.SaveLogsByRegexForContainers = make(map[string]*regexp.Regexp, len(c.SaveLogsByRegexForContainersStr))
+		for k, v := range c.SaveLogsByRegexForContainersStr {
+			if v == "" {
+				continue
+			}
+
+			r, err := regexp.Compile(v)
+			if err != nil {
+				return fmt.Errorf("compile saveLogsByRegexForContainers[%q]: %w", k, err)
+			}
+
+			c.SaveLogsByRegexForContainers[k] = r
+		}
+	}
+
+	return nil
+}
+
 type OperationConfigTrackPresence struct {
-	ResourceMeta *spec.ResourceMeta
+	ResourceMeta *spec.ResourceMeta `json:"resourceMeta"`
 }
 
 func (c *OperationConfigTrackPresence) ID() string {
@@ -149,7 +237,7 @@ func (c *OperationConfigTrackPresence) IDHuman() string {
 }
 
 type OperationConfigTrackAbsence struct {
-	ResourceMeta *spec.ResourceMeta
+	ResourceMeta *spec.ResourceMeta `json:"resourceMeta"`
 }
 
 func (c *OperationConfigTrackAbsence) ID() string {
@@ -161,7 +249,7 @@ func (c *OperationConfigTrackAbsence) IDHuman() string {
 }
 
 type OperationConfigCreateRelease struct {
-	Release *helmrelease.Release
+	Release *helmrelease.Release `json:"release"`
 }
 
 func (c *OperationConfigCreateRelease) ID() string {
@@ -173,7 +261,7 @@ func (c *OperationConfigCreateRelease) IDHuman() string {
 }
 
 type OperationConfigUpdateRelease struct {
-	Release *helmrelease.Release
+	Release *helmrelease.Release `json:"release"`
 }
 
 func (c *OperationConfigUpdateRelease) ID() string {
@@ -185,9 +273,9 @@ func (c *OperationConfigUpdateRelease) IDHuman() string {
 }
 
 type OperationConfigDeleteRelease struct {
-	ReleaseName      string
-	ReleaseNamespace string
-	ReleaseRevision  int
+	ReleaseName      string `json:"releaseName"`
+	ReleaseNamespace string `json:"releaseNamespace"`
+	ReleaseRevision  int    `json:"releaseRevision"`
 }
 
 func (c *OperationConfigDeleteRelease) ID() string {

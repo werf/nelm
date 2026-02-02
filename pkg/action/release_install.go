@@ -6,22 +6,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/gookit/color"
 	"github.com/samber/lo"
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-
 	"github.com/werf/3p-helm/pkg/registry"
-	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
-	"github.com/werf/kubedog/pkg/informer"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
-	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/internal/chart"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/lock"
@@ -29,10 +19,9 @@ import (
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/internal/resource/spec"
-	"github.com/werf/nelm/internal/track"
-	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
@@ -446,197 +435,29 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		return fmt.Errorf("build install plan: %w", err)
 	}
 
-	if opts.InstallGraphPath != "" {
-		if err := savePlanAsDot(installPlan, opts.InstallGraphPath); err != nil {
-			return fmt.Errorf("save release install graph: %w", err)
-		}
-	}
-
-	releaseIsUpToDate, err := release.IsReleaseUpToDate(prevRelease, newRelease)
-	if err != nil {
-		return fmt.Errorf("check if release is up to date: %w", err)
-	}
-
-	installPlanIsUseless := lo.NoneBy(installPlan.Operations(), func(op *plan.Operation) bool {
-		switch op.Category {
-		case plan.OperationCategoryResource, plan.OperationCategoryTrack:
-			return true
-		default:
-			return false
-		}
+	return runInstallPlan(ctx, ctxCancelFn, releaseName, releaseNamespace, installPlan, prevRelease, newRelease, clientFactory, history, instResInfos, relInfos, prevDeployedRelease, runInstallPlanOptions{
+		TrackingOptions: opts.TrackingOptions,
+		runRollbackPlanOptions: runRollbackPlanOptions{
+			DefaultDeletePropagation: opts.DefaultDeletePropagation,
+			ExtraAnnotations:         opts.ExtraAnnotations,
+			ExtraLabels:              opts.ExtraLabels,
+			ExtraRuntimeAnnotations:  opts.ExtraRuntimeAnnotations,
+			ExtraRuntimeLabels:       opts.ExtraRuntimeLabels,
+			ForceAdoption:            opts.ForceAdoption,
+			NetworkParallelism:       opts.NetworkParallelism,
+			NoRemoveManualChanges:    opts.NoRemoveManualChanges,
+			ReleaseInfoAnnotations:   opts.ReleaseInfoAnnotations,
+			ReleaseLabels:            opts.ReleaseLabels,
+			RollbackGraphPath:        opts.RollbackGraphPath,
+		},
+		AutoRollback:               opts.AutoRollback,
+		InstallGraphPath:           opts.InstallGraphPath,
+		InstallReportPath:          opts.InstallReportPath,
+		NoShowNotes:                opts.NoShowNotes,
+		NoProgressTablePrint:       opts.NoProgressTablePrint,
+		ProgressTablePrintInterval: opts.ProgressTablePrintInterval,
+		NetworkParallelism:         opts.NetworkParallelism,
 	})
-
-	if releaseIsUpToDate && installPlanIsUseless {
-		if opts.InstallReportPath != "" {
-			if err := saveReport(opts.InstallReportPath, &releaseReportV3{
-				Version:   3,
-				Release:   releaseName,
-				Namespace: releaseNamespace,
-				Revision:  newRelease.Version,
-				Status:    helmrelease.StatusSkipped,
-			}); err != nil {
-				return fmt.Errorf("save release install report: %w", err)
-			}
-		}
-
-		if !opts.NoShowNotes {
-			printNotes(ctx, renderChartResult.Notes)
-		}
-
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)))
-
-		return nil
-	}
-
-	taskStore := kdutil.NewConcurrent(statestore.NewTaskStore())
-	logStore := kdutil.NewConcurrent(logstore.NewLogStore())
-	watchErrCh := make(chan error, 1)
-	informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
-
-	log.Default.Debug(ctx, "Start tracking")
-
-	go func() {
-		if err := <-watchErrCh; err != nil {
-			ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
-		}
-	}()
-
-	var progressPrinter *track.ProgressTablesPrinter
-	if !opts.NoProgressTablePrint {
-		progressPrinter = track.NewProgressTablesPrinter(taskStore, logStore, track.ProgressTablesPrinterOptions{
-			DefaultNamespace: releaseNamespace,
-		})
-		progressPrinter.Start(ctx, opts.ProgressTablePrintInterval)
-	}
-
-	criticalErrs := &util.MultiError{}
-	nonCriticalErrs := &util.MultiError{}
-
-	log.Default.Debug(ctx, "Execute release install plan")
-
-	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, installPlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		TrackingOptions:    opts.TrackingOptions,
-		NetworkParallelism: opts.NetworkParallelism,
-	})
-	if executePlanErr != nil {
-		criticalErrs.Add(fmt.Errorf("execute release install plan: %w", executePlanErr))
-	}
-
-	resourceOps := lo.Filter(installPlan.Operations(), func(op *plan.Operation, _ int) bool {
-		return op.Category == plan.OperationCategoryResource
-	})
-
-	completedResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
-		return op.Status == plan.OperationStatusCompleted
-	})
-
-	canceledResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
-		return op.Status == plan.OperationStatusPending || op.Status == plan.OperationStatusUnknown
-	})
-
-	failedResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
-		return op.Status == plan.OperationStatusFailed
-	})
-
-	if executePlanErr != nil {
-		runFailurePlanResult, nonCritErrs, critErrs := runFailurePlan(ctx, releaseNamespace, installPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
-			TrackingOptions:    opts.TrackingOptions,
-			NetworkParallelism: opts.NetworkParallelism,
-		})
-
-		criticalErrs.Add(critErrs)
-		nonCriticalErrs.Add(nonCritErrs)
-
-		if runFailurePlanResult != nil {
-			completedResourceOps = append(completedResourceOps, runFailurePlanResult.CompletedResourceOps...)
-			canceledResourceOps = append(canceledResourceOps, runFailurePlanResult.CanceledResourceOps...)
-			failedResourceOps = append(failedResourceOps, runFailurePlanResult.FailedResourceOps...)
-		}
-
-		if opts.AutoRollback && prevDeployedRelease != nil {
-			runRollbackPlanResult, nonCritErrs, critErrs := runRollbackPlan(ctx, releaseName, releaseNamespace, newRelease, prevDeployedRelease, taskStore, logStore, informerFactory, history, clientFactory, runRollbackPlanOptions{
-				DefaultDeletePropagation:  opts.DefaultDeletePropagation,
-				TrackingOptions:           opts.TrackingOptions,
-				ExtraAnnotations:          opts.ExtraAnnotations,
-				ExtraLabels:               opts.ExtraLabels,
-				ExtraRuntimeAnnotations:   opts.ExtraRuntimeAnnotations,
-				ExtraRuntimeLabels:        opts.ExtraRuntimeLabels,
-				ForceAdoption:             opts.ForceAdoption,
-				NetworkParallelism:        opts.NetworkParallelism,
-				NoRemoveManualChanges:     opts.NoRemoveManualChanges,
-				ReleaseInfoAnnotations:    opts.ReleaseInfoAnnotations,
-				ReleaseLabels:             opts.ReleaseLabels,
-				RollbackGraphPath:         opts.RollbackGraphPath,
-				ResourceValidationOptions: opts.ResourceValidationOptions,
-			})
-
-			criticalErrs.Add(critErrs)
-			nonCriticalErrs.Add(nonCritErrs)
-
-			if runRollbackPlanResult != nil {
-				completedResourceOps = append(completedResourceOps, runRollbackPlanResult.CompletedResourceOps...)
-				canceledResourceOps = append(canceledResourceOps, runRollbackPlanResult.CanceledResourceOps...)
-				failedResourceOps = append(failedResourceOps, runRollbackPlanResult.FailedResourceOps...)
-			}
-		}
-	}
-
-	if !opts.NoProgressTablePrint {
-		progressPrinter.Stop()
-		progressPrinter.Wait()
-	}
-
-	reportCompletedOps := lo.Map(completedResourceOps, func(op *plan.Operation, _ int) string {
-		return op.IDHuman()
-	})
-
-	reportCanceledOps := lo.Map(canceledResourceOps, func(op *plan.Operation, _ int) string {
-		return op.IDHuman()
-	})
-
-	reportFailedOps := lo.Map(failedResourceOps, func(op *plan.Operation, _ int) string {
-		return op.IDHuman()
-	})
-
-	sort.Strings(reportCompletedOps)
-	sort.Strings(reportCanceledOps)
-	sort.Strings(reportFailedOps)
-
-	report := &releaseReportV3{
-		Version:             3,
-		Release:             releaseName,
-		Namespace:           releaseNamespace,
-		Revision:            newRelease.Version,
-		Status:              lo.Ternary(executePlanErr == nil, helmrelease.StatusDeployed, helmrelease.StatusFailed),
-		CompletedOperations: reportCompletedOps,
-		CanceledOperations:  reportCanceledOps,
-		FailedOperations:    reportFailedOps,
-	}
-
-	printReport(ctx, report)
-
-	if opts.InstallReportPath != "" {
-		if err := saveReport(opts.InstallReportPath, report); err != nil {
-			nonCriticalErrs.Add(fmt.Errorf("save release install report: %w", err))
-		}
-	}
-
-	if !criticalErrs.HasErrors() && !opts.NoShowNotes {
-		printNotes(ctx, renderChartResult.Notes)
-	}
-
-	if criticalErrs.HasErrors() {
-		allErrs := &util.MultiError{}
-		allErrs.Add(criticalErrs, nonCriticalErrs)
-
-		return fmt.Errorf("failed release %q (namespace: %q): %w", releaseName, releaseNamespace, allErrs)
-	} else if nonCriticalErrs.HasErrors() {
-		return fmt.Errorf("succeeded release %q (namespace: %q), but non-critical errors encountered: %w", releaseName, releaseNamespace, nonCriticalErrs)
-	} else {
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Succeeded release %q (namespace: %q)", releaseName, releaseNamespace)))
-
-		return nil
-	}
 }
 
 func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir, homeDir string) (ReleaseInstallOptions, error) {
@@ -692,246 +513,4 @@ func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir, 
 	}
 
 	return opts, nil
-}
-
-func createReleaseNamespace(ctx context.Context, clientFactory *kube.ClientFactory, releaseNamespace string) error {
-	unstruct := &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": "v1",
-			"kind":       "Namespace",
-			"metadata": map[string]interface{}{
-				"name": releaseNamespace,
-			},
-		},
-	}
-
-	resSpec := spec.NewResourceSpec(unstruct, releaseNamespace, spec.ResourceSpecOptions{})
-
-	if _, err := clientFactory.KubeClient().Get(ctx, resSpec.ResourceMeta, kube.KubeClientGetOptions{
-		TryCache: true,
-	}); err != nil {
-		if kube.IsNotFoundErr(err) {
-			log.Default.Debug(ctx, "Create release namespace %q", releaseNamespace)
-
-			if _, err := clientFactory.KubeClient().Create(ctx, resSpec, kube.KubeClientCreateOptions{}); err != nil {
-				return fmt.Errorf("create release namespace: %w", err)
-			}
-		} else if errors.IsForbidden(err) {
-		} else {
-			return fmt.Errorf("get release namespace: %w", err)
-		}
-	}
-
-	return nil
-}
-
-type runRollbackPlanOptions struct {
-	common.TrackingOptions
-	common.ResourceValidationOptions
-
-	DefaultDeletePropagation string
-	ExtraAnnotations         map[string]string
-	ExtraLabels              map[string]string
-	ExtraRuntimeAnnotations  map[string]string
-	ExtraRuntimeLabels       map[string]string
-	ForceAdoption            bool
-	NetworkParallelism       int
-	NoRemoveManualChanges    bool
-	ReleaseInfoAnnotations   map[string]string
-	ReleaseLabels            map[string]string
-	RollbackGraphPath        string
-}
-
-type runRollbackPlanResult struct {
-	CompletedResourceOps []*plan.Operation
-	CanceledResourceOps  []*plan.Operation
-	FailedResourceOps    []*plan.Operation
-}
-
-func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, failedRelease, prevDeployedRelease *helmrelease.Release, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history *release.History, clientFactory *kube.ClientFactory, opts runRollbackPlanOptions) (result *runRollbackPlanResult, nonCritErrs, critErrs *util.MultiError) {
-	critErrs = &util.MultiError{}
-	nonCritErrs = &util.MultiError{}
-
-	log.Default.Debug(ctx, "Convert prev deployed release to resource specs")
-
-	resSpecs, err := release.ReleaseToResourceSpecs(prevDeployedRelease, releaseNamespace, false)
-	if err != nil {
-		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert previous deployed release to resource specs: %w", err))
-	}
-
-	log.Default.Debug(ctx, "Build transformed resource specs")
-
-	transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, releaseNamespace, resSpecs, []spec.ResourceTransformer{
-		spec.NewResourceListsTransformer(),
-		spec.NewDropInvalidAnnotationsAndLabelsTransformer(),
-	})
-	if err != nil {
-		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build transformed resource specs: %w", err))
-	}
-
-	log.Default.Debug(ctx, "Build releasable resource specs")
-
-	patchers := []spec.ResourcePatcher{
-		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-		spec.NewSecretStringDataPatcher(),
-	}
-
-	if opts.LegacyHelmCompatibleTracking {
-		patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
-	}
-
-	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patchers)
-	if err != nil {
-		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build releasable resource specs: %w", err))
-	}
-
-	newRelease, err := release.NewRelease(releaseName, releaseNamespace, failedRelease.Version+1, common.DeployTypeRollback, releasableResSpecs, prevDeployedRelease.Chart, prevDeployedRelease.Config, release.ReleaseOptions{
-		InfoAnnotations: opts.ReleaseInfoAnnotations,
-		Labels:          opts.ReleaseLabels,
-		Notes:           prevDeployedRelease.Info.Notes,
-	})
-	if err != nil {
-		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("construct new release: %w", err))
-	}
-
-	log.Default.Debug(ctx, "Convert failed release to resource specs")
-
-	failedRelResSpecs, err := release.ReleaseToResourceSpecs(failedRelease, releaseNamespace, false)
-	if err != nil {
-		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert previous release to resource specs: %w", err))
-	}
-
-	log.Default.Debug(ctx, "Convert new release to resource specs")
-
-	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace, false)
-	if err != nil {
-		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert new release to resource specs: %w", err))
-	}
-
-	log.Default.Debug(ctx, "Build resources")
-
-	instResources, delResources, err := resource.BuildResources(ctx, common.DeployTypeRollback, releaseNamespace, failedRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
-		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
-		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
-	}, clientFactory, resource.BuildResourcesOptions{
-		Remote:                   true,
-		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
-	})
-	if err != nil {
-		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build resources: %w", err))
-	}
-
-	log.Default.Debug(ctx, "Locally validate resources")
-
-	if err := resource.ValidateLocal(ctx, releaseNamespace, instResources, opts.ResourceValidationOptions); err != nil {
-		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("locally validate resources: %w", err))
-	}
-
-	log.Default.Debug(ctx, "Build resource infos")
-
-	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, common.DeployTypeRollback, releaseName, releaseNamespace, instResources, delResources, true, clientFactory, plan.BuildResourceInfosOptions{
-		NetworkParallelism:    opts.NetworkParallelism,
-		NoRemoveManualChanges: opts.NoRemoveManualChanges,
-	})
-	if err != nil {
-		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build resource infos: %w", err))
-	}
-
-	log.Default.Debug(ctx, "Remotely validate resources")
-
-	if err := plan.ValidateRemote(releaseName, releaseNamespace, instResInfos, opts.ForceAdoption); err != nil {
-		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("remotely validate resources: %w", err))
-	}
-
-	releases := history.Releases()
-
-	log.Default.Debug(ctx, "Build release infos")
-
-	relInfos, err := plan.BuildReleaseInfos(ctx, common.DeployTypeRollback, releases, newRelease)
-	if err != nil {
-		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build release infos: %w", err))
-	}
-
-	log.Default.Debug(ctx, "Build rollback plan")
-
-	rollbackPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
-		NoFinalTracking: opts.NoFinalTracking,
-	})
-	if err != nil {
-		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build rollback plan: %w", err))
-	}
-
-	if opts.RollbackGraphPath != "" {
-		if err := savePlanAsDot(rollbackPlan, opts.RollbackGraphPath); err != nil {
-			return nil, nonCritErrs, critErrs.Add(fmt.Errorf("save rollback graph: %w", err))
-		}
-	}
-
-	releaseIsUpToDate, err := release.IsReleaseUpToDate(failedRelease, newRelease)
-	if err != nil {
-		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("check if release is up to date: %w", err))
-	}
-
-	planIsUseless := lo.NoneBy(rollbackPlan.Operations(), func(op *plan.Operation) bool {
-		switch op.Category {
-		case plan.OperationCategoryResource, plan.OperationCategoryTrack:
-			return true
-		default:
-			return false
-		}
-	})
-
-	if releaseIsUpToDate && planIsUseless {
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Skipped rollback release")+" %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)
-
-		return &runRollbackPlanResult{}, nonCritErrs, critErrs
-	}
-
-	log.Default.Debug(ctx, "Execute rollback plan")
-
-	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, rollbackPlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		TrackingOptions:    opts.TrackingOptions,
-		NetworkParallelism: opts.NetworkParallelism,
-	})
-	if executePlanErr != nil {
-		critErrs.Add(fmt.Errorf("execute rollback plan: %w", executePlanErr))
-	}
-
-	resourceOps := lo.Filter(rollbackPlan.Operations(), func(op *plan.Operation, _ int) bool {
-		return op.Category == plan.OperationCategoryResource
-	})
-
-	completedResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
-		return op.Status == plan.OperationStatusCompleted
-	})
-
-	canceledResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
-		return op.Status == plan.OperationStatusPending || op.Status == plan.OperationStatusUnknown
-	})
-
-	failedResourceOps := lo.Filter(resourceOps, func(op *plan.Operation, _ int) bool {
-		return op.Status == plan.OperationStatusFailed
-	})
-
-	if executePlanErr != nil {
-		runFailurePlanResult, nonCrErrs, crErrs := runFailurePlan(ctx, releaseNamespace, rollbackPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
-			TrackingOptions:    opts.TrackingOptions,
-			NetworkParallelism: opts.NetworkParallelism,
-		})
-
-		critErrs.Add(crErrs)
-		nonCritErrs.Add(nonCrErrs)
-
-		if runFailurePlanResult != nil {
-			completedResourceOps = append(completedResourceOps, runFailurePlanResult.CompletedResourceOps...)
-			canceledResourceOps = append(canceledResourceOps, runFailurePlanResult.CanceledResourceOps...)
-			failedResourceOps = append(failedResourceOps, runFailurePlanResult.FailedResourceOps...)
-		}
-	}
-
-	return &runRollbackPlanResult{
-		CompletedResourceOps: completedResourceOps,
-		CanceledResourceOps:  canceledResourceOps,
-		FailedResourceOps:    failedResourceOps,
-	}, nonCritErrs, critErrs
 }

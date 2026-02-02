@@ -140,7 +140,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 	})
 
 	sort.SliceStable(delResourceInfos, func(i, j int) bool {
-		return spec.ResourceMetaSortHandler(delResourceInfos[i].LocalResource.ResourceMeta, delResourceInfos[j].LocalResource.ResourceMeta)
+		return spec.ResourceMetaSortHandler(delResourceInfos[i].LocalResource.ResourceSpec.ResourceMeta, delResourceInfos[j].LocalResource.ResourceSpec.ResourceMeta)
 	})
 
 	iterateInstallableResourceInfos(instResourceInfos)
@@ -247,7 +247,7 @@ func buildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 	}
 
 	noDeleteInfo := &DeletableResourceInfo{
-		ResourceMeta:  localRes.ResourceMeta,
+		ResourceMeta:  localRes.ResourceSpec.ResourceMeta,
 		LocalResource: localRes,
 		Stage:         stage,
 	}
@@ -256,7 +256,7 @@ func buildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 		return noDeleteInfo, nil
 	}
 
-	getObj, getErr := clientFactory.KubeClient().Get(ctx, localRes.ResourceMeta, kube.KubeClientGetOptions{
+	getObj, getErr := clientFactory.KubeClient().Get(ctx, localRes.ResourceSpec.ResourceMeta, kube.KubeClientGetOptions{
 		DefaultNamespace: releaseNamespace,
 		TryCache:         true,
 	})
@@ -266,11 +266,11 @@ func buildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 		if kube.IsNotFoundErr(getErr) || kube.IsNoSuchKindErr(getErr) {
 			return noDeleteInfo, nil
 		} else {
-			return nil, fmt.Errorf("get resource %q: %w", localRes.IDHuman(), getErr)
+			return nil, fmt.Errorf("get resource %q: %w", localRes.ResourceSpec.IDHuman(), getErr)
 		}
 	}
 
-	getMeta := spec.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
+	getMeta := spec.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.ResourceSpec.FilePath)
 
 	if err := resource.ValidateResourcePolicy(getMeta); err != nil {
 		return noDeleteInfo, nil
@@ -285,7 +285,7 @@ func buildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 	}
 
 	return &DeletableResourceInfo{
-		ResourceMeta:  localRes.ResourceMeta,
+		ResourceMeta:  localRes.ResourceSpec.ResourceMeta,
 		LocalResource: localRes,
 		GetResult:     getObj,
 		MustDelete:    true,

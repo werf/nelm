@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/gookit/color"
@@ -22,7 +21,6 @@ import (
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/internal/resource/spec"
-	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
@@ -153,6 +151,9 @@ type ReleasePlanInstallOptions struct {
 	// ShowVerboseDiffs, when true, shows verbose diffs for resource create/delete operations.
 	// Defaults to true. When false, create/delete diffs are hidden with "<hidden verbose changes>".
 	ShowVerboseDiffs bool
+	// PlanArtifactPath, if specified, saves the install plan JSON artifact to this file path.
+	// The JSON schema is defined by ADR-0001 (Nelm plan freezing).
+	PlanArtifactPath string
 	// TempDirPath is the directory for temporary files during the operation.
 	// A temporary directory is created automatically if not specified.
 	TempDirPath string
@@ -469,7 +470,21 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		log.Default.Info(ctx, color.Style{color.Bold, color.Yellow}.Render(fmt.Sprintf("No resource changes planned, but still must install release %q (namespace: %q)", releaseName, releaseNamespace)))
 	}
 
-	logPlannedChanges(ctx, releaseName, releaseNamespace, changes)
+	if err := logPlannedChanges(ctx, releaseName, releaseNamespace, changes, plan.CalculatePlannedChangesOptions{
+		DiffContextLines:       opts.DiffContextLines,
+		ShowVerboseCRDDiffs:    opts.ShowVerboseCRDDiffs,
+		ShowVerboseDiffs:       opts.ShowVerboseDiffs,
+		ShowSensitiveDiffs:     opts.ShowSensitiveDiffs,
+		ShowInsignificantDiffs: opts.ShowInsignificantDiffs,
+	}); err != nil {
+		return fmt.Errorf("log planned changes: %w", err)
+	}
+
+	if opts.PlanArtifactPath != "" {
+		if err := saveInstallPlan(ctx, installPlan, changes, releaseName, releaseNamespace, newRelease.Version, opts.PlanArtifactPath, deployType, opts.DefaultDeletePropagation, opts.SecretKey, opts.SecretWorkDir); err != nil {
+			return fmt.Errorf("save install plan to %s: %w", opts.PlanArtifactPath, err)
+		}
+	}
 
 	if opts.ErrorIfChangesPlanned {
 		if featgate.FeatGateMoreDetailedExitCodeForPlan.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
@@ -542,63 +557,4 @@ func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, curr
 	}
 
 	return opts, nil
-}
-
-func logPlannedChanges(
-	ctx context.Context,
-	releaseName string,
-	releaseNamespace string,
-	changes []*plan.ResourceChange,
-) {
-	if len(changes) == 0 {
-		return
-	}
-
-	log.Default.Info(ctx, "")
-
-	for _, change := range changes {
-		log.Default.InfoBlock(ctx, log.BlockOptions{
-			BlockTitle: buildDiffHeader(change),
-		}, func() {
-			log.Default.Info(ctx, "%s", change.Udiff)
-
-			if change.Reason != "" {
-				log.Default.Info(ctx, "<%s reason: %s>", change.Type, change.Reason)
-			}
-		})
-	}
-
-	log.Default.Info(ctx, color.Bold.Render("Planned changes summary")+" for release %q (namespace: %q):", releaseName, releaseNamespace)
-
-	for _, changeType := range []string{"create", "recreate", "update", "blind apply", "delete"} {
-		logSummaryLine(ctx, changes, changeType)
-	}
-
-	log.Default.Info(ctx, "")
-}
-
-func buildDiffHeader(change *plan.ResourceChange) string {
-	header := change.TypeStyle.Render(util.Capitalize(change.Type))
-	header += " " + color.Style{color.Bold}.Render(change.ResourceMeta.IDHuman())
-
-	var headerOps []string
-	for _, op := range change.ExtraOperations {
-		headerOps = append(headerOps, color.Style{color.Bold}.Render(op))
-	}
-
-	if len(headerOps) > 0 {
-		header += ", then " + strings.Join(headerOps, ", ")
-	}
-
-	return header
-}
-
-func logSummaryLine(ctx context.Context, changes []*plan.ResourceChange, changeType string) {
-	filteredChanges := lo.Filter(changes, func(change *plan.ResourceChange, _ int) bool {
-		return change.Type == changeType
-	})
-
-	if len(filteredChanges) > 0 {
-		log.Default.Info(ctx, "- %s: %d resources", filteredChanges[0].TypeStyle.Render(changeType), len(filteredChanges))
-	}
 }

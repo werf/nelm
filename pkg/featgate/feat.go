@@ -59,6 +59,11 @@ var (
 		"Validate chart resources against specific Kubernetes resources' schemas",
 	)
 
+	FeatGatePlanFreezing = NewFeatGate(
+		"plan-freezing",
+		"Export release install plan artifact to execute it later",
+	)
+
 	FeatGateTypescript = NewFeatGate(
 		"typescript",
 		`Enable TypeScript chart rendering from ts/ directory`,

@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": {"type": "string"},
+    "kind": {"type": "string", "const": "Pod"},
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {"type": "string"},
+        "namespace": {"type": "string"}
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": ["containers"],
+      "properties": {
+        "containers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "image"],
+            "properties": {
+              "name": {"type": "string"},
+              "image": {"type": "string"}
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

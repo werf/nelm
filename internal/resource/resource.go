@@ -155,7 +155,7 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 // level than DeletableResourceInfo. If something can be computed on this level instead of doing
 // this on higher levels, it's better to do it here.
 type DeletableResource struct {
-	*spec.ResourceMeta
+	ResourceSpec *spec.ResourceSpec
 
 	Ownership                  common.Ownership
 	KeepOnDelete               bool
@@ -198,7 +198,7 @@ func NewDeletableResource(spec *spec.ResourceSpec, releaseNamespace string, opts
 	}
 
 	return &DeletableResource{
-		ResourceMeta:               spec.ResourceMeta,
+		ResourceSpec:               spec,
 		Ownership:                  owner,
 		KeepOnDelete:               keep,
 		DeletePropagation:          delPropagation,
@@ -264,7 +264,7 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 
 	delResources := lo.Filter(prevRelDelResources, func(delRes *DeletableResource, _ int) bool {
 		if _, isInstallable := lo.Find(filteredPrevRelInstResources, func(instRes *InstallableResource) bool {
-			return instRes.ID() == delRes.ID()
+			return instRes.ID() == delRes.ResourceSpec.ID()
 		}); isInstallable {
 			return false
 		}
@@ -353,7 +353,7 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	})
 
 	sort.SliceStable(delResources, func(i, j int) bool {
-		return spec.ResourceMetaSortHandler(delResources[i].ResourceMeta, delResources[j].ResourceMeta)
+		return spec.ResourceMetaSortHandler(delResources[i].ResourceSpec.ResourceMeta, delResources[j].ResourceSpec.ResourceMeta)
 	})
 
 	return instResources, delResources, nil

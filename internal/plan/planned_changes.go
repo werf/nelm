@@ -32,13 +32,63 @@ type CalculatePlannedChangesOptions struct {
 
 type ResourceChange struct {
 	// Any operations on the resource after the initial one.
-	ExtraOperations []string
+	ExtraOperations []string `json:"extraOperations"`
 	// The reason for the change.
-	Reason       string
+	Reason       string `json:"reason"`
 	ResourceMeta *spec.ResourceMeta
-	Type         string
-	TypeStyle    color.Style
-	Udiff        string
+	Type         string                     `json:"type"`
+	TypeStyle    color.Style                `json:"typeStyle"`
+	Before       *unstructured.Unstructured `json:"before"`
+	After        *unstructured.Unstructured `json:"after"`
+}
+
+func (c *ResourceChange) GetUDiff(opts CalculatePlannedChangesOptions) (string, error) {
+	sensitiveInfo := resource.GetSensitiveInfo(c.ResourceMeta.GroupVersionKind.GroupKind(), c.ResourceMeta.Annotations)
+
+	var uDiff string
+
+	if spec.IsCRD(c.ResourceMeta.GroupVersionKind.GroupKind()) &&
+		!opts.ShowVerboseCRDDiffs &&
+		(c.Before == nil || c.After == nil) {
+		uDiff = HiddenVerboseCRDChanges
+	} else if sensitiveInfo.FullySensitive() && !opts.ShowSensitiveDiffs {
+		uDiff = HiddenSensitiveChanges
+	} else if !opts.ShowVerboseDiffs && (c.Before == nil || c.After == nil) {
+		uDiff = HiddenVerboseChanges
+	} else {
+		var (
+			oldObjManifest string
+			newObjManifest string
+		)
+
+		if c.Before != nil {
+			oldUnstructClean := cleanUnstruct(c.Before, sensitiveInfo, opts)
+
+			if oldObjByte, err := yaml.MarshalContext(context.TODO(), oldUnstructClean.Object, yaml.UseLiteralStyleIfMultiline(true)); err != nil {
+				return "", fmt.Errorf("marshal old unstruct to yaml: %w", err)
+			} else {
+				oldObjManifest = string(oldObjByte)
+			}
+		}
+
+		if c.After != nil {
+			newUnstructClean := cleanUnstruct(c.After, sensitiveInfo, opts)
+
+			if newObjByte, err := yaml.MarshalContext(context.TODO(), newUnstructClean.Object, yaml.UseLiteralStyleIfMultiline(true)); err != nil {
+				return "", fmt.Errorf("marshal new unstruct to yaml: %w", err)
+			} else {
+				newObjManifest = string(newObjByte)
+			}
+		}
+
+		uDiff = util.ColoredUnifiedDiff(oldObjManifest, newObjManifest, opts.DiffContextLines)
+	}
+
+	if uDiff == "" {
+		uDiff = HiddenInsignificantChanges
+	}
+
+	return uDiff, nil
 }
 
 // Calculate planned changes for informational purposes. Doesn't need the full plan, just having
@@ -182,51 +232,8 @@ func buildDelChanges(delInfos []*DeletableResourceInfo, opts CalculatePlannedCha
 }
 
 func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *unstructured.Unstructured, deleteAfter bool, opType string, opTypeStyle color.Style, opts CalculatePlannedChangesOptions) (*ResourceChange, error) {
-	sensitiveInfo := resource.GetSensitiveInfo(resMeta.GroupVersionKind.GroupKind(), resMeta.Annotations)
-
-	var uDiff string
-	if spec.IsCRD(resMeta.GroupVersionKind.GroupKind()) &&
-		!opts.ShowVerboseCRDDiffs &&
-		(oldUnstruct == nil || newUnstruct == nil) {
-		uDiff = HiddenVerboseCRDChanges
-	} else if sensitiveInfo.FullySensitive() && !opts.ShowSensitiveDiffs {
-		uDiff = HiddenSensitiveChanges
-	} else if !opts.ShowVerboseDiffs && (oldUnstruct == nil || newUnstruct == nil) {
-		uDiff = HiddenVerboseChanges
-	} else {
-		var (
-			oldObjManifest string
-			newObjManifest string
-		)
-
-		if oldUnstruct != nil {
-			oldUnstructClean := cleanUnstruct(oldUnstruct, sensitiveInfo, opts)
-
-			if oldObjByte, err := yaml.MarshalContext(context.TODO(), oldUnstructClean.Object, yaml.UseLiteralStyleIfMultiline(true)); err != nil {
-				return nil, fmt.Errorf("marshal old unstruct to yaml: %w", err)
-			} else {
-				oldObjManifest = string(oldObjByte)
-			}
-		}
-
-		if newUnstruct != nil {
-			newUnstructClean := cleanUnstruct(newUnstruct, sensitiveInfo, opts)
-
-			if newObjByte, err := yaml.MarshalContext(context.TODO(), newUnstructClean.Object, yaml.UseLiteralStyleIfMultiline(true)); err != nil {
-				return nil, fmt.Errorf("marshal new unstruct to yaml: %w", err)
-			} else {
-				newObjManifest = string(newObjByte)
-			}
-		}
-
-		uDiff = util.ColoredUnifiedDiff(oldObjManifest, newObjManifest, opts.DiffContextLines)
-	}
-
-	if uDiff == "" {
-		uDiff = HiddenInsignificantChanges
-	}
-
 	var extraOps []string
+
 	if deleteAfter {
 		extraOps = append(extraOps, "delete")
 	}
@@ -235,8 +242,9 @@ func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *u
 		ResourceMeta:    resMeta,
 		Type:            opType,
 		TypeStyle:       opTypeStyle,
-		Udiff:           uDiff,
 		ExtraOperations: extraOps,
+		Before:          oldUnstruct,
+		After:           newUnstruct,
 	}, nil
 }
 

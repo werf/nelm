@@ -239,7 +239,7 @@ func execOpApply(ctx context.Context, op *Operation, releaseNamespace string, cl
 func execOpDelete(ctx context.Context, op *Operation, releaseNamespace string, clientFactory kube.ClientFactorier) error {
 	opConfig := op.Config.(*OperationConfigDelete)
 
-	if err := clientFactory.KubeClient().Delete(ctx, opConfig.ResourceMeta, kube.KubeClientDeleteOptions{
+	if err := clientFactory.KubeClient().Delete(ctx, opConfig.ResourceSpec.ResourceMeta, kube.KubeClientDeleteOptions{
 		DefaultNamespace:  releaseNamespace,
 		PropagationPolicy: opConfig.DeletePropagation,
 	}); err != nil {

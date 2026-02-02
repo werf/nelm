@@ -329,7 +329,7 @@ func addDeleteResourcesOps(plan *Plan, infos []*DeletableResourceInfo) error {
 				Version:  OperationVersionDelete,
 				Category: OperationCategoryResource,
 				Config: &OperationConfigDelete{
-					ResourceMeta:      info.ResourceMeta,
+					ResourceSpec:      info.LocalResource.ResourceSpec,
 					DeletePropagation: info.LocalResource.DeletePropagation,
 				},
 			}
@@ -522,7 +522,7 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 				Category:  OperationCategoryResource,
 				Iteration: OperationIteration(info.Iteration),
 				Config: &OperationConfigDelete{
-					ResourceMeta:      info.ResourceMeta,
+					ResourceSpec:      info.LocalResource.ResourceSpec,
 					DeletePropagation: info.LocalResource.DeletePropagation,
 				},
 			}
@@ -564,7 +564,7 @@ func addFailureResourceOperations(failedPlan, plan *Plan, infos []*InstallableRe
 			deleteOnSuccessfulInstallOp := lo.Must(lo.Find(failedPlan.Operations(), func(op *Operation) bool {
 				return op.Type == OperationTypeDelete &&
 					op.Iteration == OperationIteration(info.Iteration) &&
-					op.Config.(*OperationConfigDelete).ResourceMeta.ID() == info.ID()
+					op.Config.(*OperationConfigDelete).ResourceSpec.ID() == info.ID()
 			}))
 
 			if deleteOnSuccessfulInstallOp.Status == OperationStatusCompleted {
@@ -580,7 +580,7 @@ func addFailureResourceOperations(failedPlan, plan *Plan, infos []*InstallableRe
 			Category:  OperationCategoryResource,
 			Iteration: OperationIteration(info.Iteration),
 			Config: &OperationConfigDelete{
-				ResourceMeta:      info.ResourceMeta,
+				ResourceSpec:      info.LocalResource.ResourceSpec,
 				DeletePropagation: info.LocalResource.DeletePropagation,
 			},
 		}
@@ -781,7 +781,7 @@ func getOpMeta(op *Operation) *spec.ResourceMeta {
 	case *OperationConfigApply:
 		return cfg.ResourceSpec.ResourceMeta
 	case *OperationConfigDelete:
-		return cfg.ResourceMeta
+		return cfg.ResourceSpec.ResourceMeta
 	case *OperationConfigTrackReadiness:
 		return cfg.ResourceMeta
 	case *OperationConfigTrackPresence:

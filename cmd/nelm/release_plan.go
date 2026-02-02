@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/spf13/cobra"
+	"github.com/werf/nelm/pkg/featgate"
 
 	"github.com/werf/common-go/pkg/cli"
 )
@@ -19,6 +20,11 @@ func newPlanCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.C
 	)
 
 	cmd.AddCommand(newReleasePlanInstallCommand(ctx, afterAllCommandsBuiltFuncs))
+
+	if featgate.FeatGatePlanFreezing.Enabled() {
+		cmd.AddCommand(newReleasePlanExecuteCommand(ctx, afterAllCommandsBuiltFuncs))
+		cmd.AddCommand(newReleasePlanShowCommand(ctx, afterAllCommandsBuiltFuncs))
+	}
 
 	return cmd
 }
