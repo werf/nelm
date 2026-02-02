@@ -32,13 +32,13 @@ type CalculatePlannedChangesOptions struct {
 
 type ResourceChange struct {
 	// Any operations on the resource after the initial one.
-	ExtraOperations []string
+	ExtraOperations []string `json:"extraOperations"`
 	// The reason for the change.
-	Reason       string
+	Reason       string `json:"reason"`
 	ResourceMeta *spec.ResourceMeta
-	Type         string
-	TypeStyle    color.Style
-	Udiff        string
+	Type         string      `json:"type"`
+	TypeStyle    color.Style `json:"typeStyle"`
+	Udiff        string      `json:"udiff"`
 }
 
 // Calculate planned changes for informational purposes. Doesn't need the full plan, just having

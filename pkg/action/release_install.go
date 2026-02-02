@@ -121,6 +121,8 @@ type ReleaseInstallOptions struct {
 	// NoShowNotes, when true, suppresses printing of NOTES.txt after successful installation.
 	// NOTES.txt typically contains usage instructions and next steps.
 	NoShowNotes bool
+	// PlanArtifactPath is the path to pre-build install plan in JSON format to perform release install.
+	PlanArtifactPath string
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
 	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
 	// Used for authenticating to OCI registries when pulling charts.
@@ -413,8 +415,6 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		return fmt.Errorf("locally validate resources: %w", err)
 	}
 
-	log.Default.Debug(ctx, "Build resource infos")
-
 	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
 		NetworkParallelism:    opts.NetworkParallelism,
 		NoRemoveManualChanges: opts.NoRemoveManualChanges,
@@ -445,6 +445,30 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		handleBuildPlanErr(ctx, installPlan, err, opts.InstallGraphPath, opts.TempDirPath, "release-install-graph.dot")
 		return fmt.Errorf("build install plan: %w", err)
 	}
+
+	if opts.PlanArtifactPath != "" {
+		log.Default.Debug(ctx, "Read install plan artifact from %s", opts.PlanArtifactPath)
+
+		installPlanArtifact, err := plan.ReadInstallPlanArtifact(opts.PlanArtifactPath)
+		if err != nil {
+			return fmt.Errorf("read install plan artifact from %s: %w", opts.PlanArtifactPath, err)
+		}
+
+		log.Default.Debug(ctx, "Validate install plan artifact")
+
+		if err := plan.ValidateInstallPlanArtifact(installPlanArtifact, releaseName, releaseNamespace, newRelease, installPlan); err != nil {
+			return fmt.Errorf("validate install plan artifact: %w", err)
+		}
+
+		log.Default.Debug(ctx, "Replace install plan by install plan from artifact")
+
+		installPlan, err = installPlanArtifact.GetInstallPlan()
+		if err != nil {
+			return fmt.Errorf("get install plan from plan artifact: %w", err)
+		}
+	}
+
+	log.Default.Debug(ctx, "Build resource infos")
 
 	if opts.InstallGraphPath != "" {
 		if err := savePlanAsDot(installPlan, opts.InstallGraphPath); err != nil {
