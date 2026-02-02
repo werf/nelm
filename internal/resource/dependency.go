@@ -104,104 +104,29 @@ func internalDeployDependencies(unstruct *unstructured.Unstructured) []*Internal
 }
 
 func internalDeleteDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) []*InternalDependency {
-	gvk := unstruct.GroupVersionKind()
-	gk := gvk.GroupKind()
-
 	var dependencies []*InternalDependency
-	switch gk {
+	switch unstruct.GroupVersionKind().GroupKind() {
 	case schema.GroupKind{Kind: "CustomResourceDefinition", Group: "apiextensions.k8s.io"}:
 		if dep, found := parseCRD(unstruct); found {
 			dependencies = append(dependencies, dep)
 		}
 	case schema.GroupKind{Kind: "Namespace", Group: ""}:
-		dep := &InternalDependency{
-			ResourceMatcher: &spec.ResourceMatcher{
-				Namespaces: []string{unstruct.GetName()},
-			},
-			ResourceState: common.ResourceStateAbsent,
-		}
-		dependencies = append(dependencies, dep)
+		dependencies = append(dependencies, parseNamespace(unstruct))
 	case schema.GroupKind{Kind: "ClusterRole", Group: "rbac.authorization.k8s.io"}:
-		filtered := filterByGK(otherUnstructs,
-			schema.GroupKind{Kind: "RoleBinding", Group: "rbac.authorization.k8s.io"},
-			schema.GroupKind{Kind: "ClusterRoleBinding", Group: "rbac.authorization.k8s.io"},
-		)
-
-		for _, item := range filtered {
-			kind, found := nestedString(item.Object, "roleRef", "kind")
-
-			if !found || kind != "ClusterRole" {
-				continue
-			}
-
-			name, found := nestedString(item.Object, "roleRef", "name")
-
-			if !found || name != unstruct.GetName() {
-				continue
-			}
-
-			dep := &InternalDependency{
-				ResourceMatcher: newExactResourceMatcher(item),
-				ResourceState:   common.ResourceStateAbsent,
-			}
-			dependencies = append(dependencies, dep)
-
-			if item.GetKind() == "ClusterRoleBinding" {
-				dep.ResourceMatcher.Namespaces = nil
-			}
+		if deps, found := parseClusterRoleDependencies(unstruct, otherUnstructs); found {
+			dependencies = append(dependencies, deps...)
 		}
 	case schema.GroupKind{Kind: "Role", Group: "rbac.authorization.k8s.io"}:
-		filtered := filterByGK(otherUnstructs,
-			schema.GroupKind{Kind: "RoleBinding", Group: "rbac.authorization.k8s.io"},
-		)
-
-		for _, item := range filtered {
-			kind, found := nestedString(item.Object, "roleRef", "kind")
-
-			if !found || kind != "Role" {
-				continue
-			}
-
-			name, found := nestedString(item.Object, "roleRef", "name")
-
-			if !found || name != unstruct.GetName() {
-				continue
-			}
-
-			dep := &InternalDependency{
-				ResourceMatcher: newExactResourceMatcher(item),
-				ResourceState:   common.ResourceStateAbsent,
-			}
-			dependencies = append(dependencies, dep)
+		if deps, found := parseRoleDependencies(unstruct, otherUnstructs); found {
+			dependencies = append(dependencies, deps...)
 		}
 	case schema.GroupKind{Kind: "ServiceAccount", Group: ""}:
-		filtered := filterByGK(otherUnstructs,
-			schema.GroupKind{Kind: "Job", Group: "batch"},
-			schema.GroupKind{Kind: "Deployment", Group: "apps"},
-			schema.GroupKind{Kind: "DaemonSet", Group: "apps"},
-			schema.GroupKind{Kind: "StatefulSet", Group: "apps"},
-			schema.GroupKind{Kind: "Pod", Group: ""},
-		)
-
-		for _, item := range filtered {
-			var fields []string
-			if item.GroupVersionKind().Kind != "Pod" {
-				fields = []string{"spec", "template", "spec", "serviceAccountName"}
-			} else {
-				fields = []string{"spec", "serviceAccountName"}
-			}
-
-			serviceAccount, found := nestedString(item.Object, fields...)
-
-			if !found || serviceAccount != unstruct.GetName() {
-				continue
-			}
-
-			dep := &InternalDependency{
-				ResourceMatcher: newExactResourceMatcher(item),
-				ResourceState:   common.ResourceStateAbsent,
-			}
-			dependencies = append(dependencies, dep)
+		if deps, found := parseServiceAccountDependencies(unstruct, otherUnstructs); found {
+			dependencies = append(dependencies, deps...)
+		}
+	case schema.GroupKind{Kind: "YandexInstanceClass", Group: "deckhouse.io"}:
+		if deps, found := parseYandexInstanceClassDependencies(unstruct, otherUnstructs); found {
+			dependencies = append(dependencies, deps...)
 		}
 	}
 
@@ -676,25 +601,19 @@ func parseRoleRef(unstruct unstructured.Unstructured) (dep *InternalDependency, 
 
 func parseCRD(unstruct *unstructured.Unstructured) (dep *InternalDependency, found bool) {
 	kind, found := nestedString(unstruct.Object, "spec", "names", "kind")
-
 	if !found {
 		return nil, false
 	}
 
 	group, found := nestedString(unstruct.Object, "spec", "group")
-
 	if !found {
 		return nil, false
 	}
 
-	// TODO(maybe): consider versions
-
 	dep = &InternalDependency{
 		ResourceMatcher: &spec.ResourceMatcher{
-			Names:      []string{},
-			Namespaces: []string{unstruct.GetNamespace()},
-			Groups:     []string{group},
-			Kinds:      []string{kind},
+			Groups: []string{group},
+			Kinds:  []string{kind},
 		},
 		ResourceState: common.ResourceStateAbsent,
 	}
@@ -702,26 +621,156 @@ func parseCRD(unstruct *unstructured.Unstructured) (dep *InternalDependency, fou
 	return dep, true
 }
 
-func filterByGK(unstructs []*unstructured.Unstructured, gk ...schema.GroupKind) []*unstructured.Unstructured {
-	return lo.Filter(unstructs, func(item *unstructured.Unstructured, _ int) bool {
-		itmGK := item.GroupVersionKind().GroupKind()
-
-		for _, gk := range gk {
-			if itmGK == gk {
-				return true
-			}
-		}
-
-		return false
-	})
+func parseNamespace(unstruct *unstructured.Unstructured) *InternalDependency {
+	return &InternalDependency{
+		ResourceMatcher: &spec.ResourceMatcher{
+			Namespaces: []string{unstruct.GetName()},
+		},
+		ResourceState: common.ResourceStateAbsent,
+	}
 }
 
-func newExactResourceMatcher(item *unstructured.Unstructured) *spec.ResourceMatcher {
+func parseClusterRoleDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
+	bindingUnstructs := lo.Filter(otherUnstructs, func(unstruct *unstructured.Unstructured, _ int) bool {
+		switch unstruct.GroupVersionKind().GroupKind() {
+		case schema.GroupKind{Kind: "RoleBinding", Group: "rbac.authorization.k8s.io"},
+			schema.GroupKind{Kind: "ClusterRoleBinding", Group: "rbac.authorization.k8s.io"}:
+			return true
+		default:
+			return false
+		}
+	})
+
+	for _, bindingUnstruct := range bindingUnstructs {
+		kind, found := nestedString(bindingUnstruct.Object, "roleRef", "kind")
+		if !found || kind != "ClusterRole" {
+			continue
+		}
+
+		name, found := nestedString(bindingUnstruct.Object, "roleRef", "name")
+		if !found || name != unstruct.GetName() {
+			continue
+		}
+
+		var namespaces []string
+		if bindingUnstruct.GetKind() == "RoleBinding" {
+			namespaces = []string{bindingUnstruct.GetNamespace()}
+		}
+
+		dep := &InternalDependency{
+			ResourceMatcher: &spec.ResourceMatcher{
+				Names:      []string{bindingUnstruct.GetName()},
+				Namespaces: namespaces,
+				Groups:     []string{bindingUnstruct.GroupVersionKind().Group},
+				Kinds:      []string{bindingUnstruct.GetKind()},
+			},
+			ResourceState: common.ResourceStateAbsent,
+		}
+		dependencies = append(dependencies, dep)
+	}
+
+	return dependencies, len(dependencies) > 0
+}
+
+func parseRoleDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
+	bindingUnstructs := lo.Filter(otherUnstructs, func(unstruct *unstructured.Unstructured, _ int) bool {
+		return unstruct.GroupVersionKind().GroupKind() == (schema.GroupKind{Kind: "RoleBinding", Group: "rbac.authorization.k8s.io"})
+	})
+
+	for _, bindingUnstruct := range bindingUnstructs {
+		kind, found := nestedString(bindingUnstruct.Object, "roleRef", "kind")
+		if !found || kind != "Role" {
+			continue
+		}
+
+		name, found := nestedString(bindingUnstruct.Object, "roleRef", "name")
+		if !found || name != unstruct.GetName() {
+			continue
+		}
+
+		dep := &InternalDependency{
+			ResourceMatcher: newExactResourceMatcher(bindingUnstruct),
+			ResourceState:   common.ResourceStateAbsent,
+		}
+		dependencies = append(dependencies, dep)
+	}
+
+	return dependencies, len(dependencies) > 0
+}
+
+func parseServiceAccountDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
+	for _, otherUnstruct := range otherUnstructs {
+		var serviceAccountName string
+		// Get service account name for different resource kinds
+		if name, found := nestedString(otherUnstruct.Object, "spec", "serviceAccountName"); found { // Pod
+			serviceAccountName = name
+		} else if name, found = nestedString(otherUnstruct.Object, "spec", "template", "spec", "serviceAccountName"); found { // Controllers
+			serviceAccountName = name
+		} else if name, found = nestedString(otherUnstruct.Object, "spec", "jobTemplate", "spec", "template", "spec", "serviceAccountName"); found { // CronJob
+			serviceAccountName = name
+		} else {
+			continue
+		}
+
+		if serviceAccountName != unstruct.GetName() {
+			continue
+		}
+
+		dep := &InternalDependency{
+			ResourceMatcher: newExactResourceMatcher(otherUnstruct),
+			ResourceState:   common.ResourceStateAbsent,
+		}
+		dependencies = append(dependencies, dep)
+	}
+
+	return dependencies, len(dependencies) > 0
+}
+
+func parseYandexInstanceClassDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
+	ngUnstructs := lo.Filter(otherUnstructs, func(unstruct *unstructured.Unstructured, _ int) bool {
+		return unstruct.GroupVersionKind().GroupKind() == (schema.GroupKind{Kind: "NodeGroup", Group: "deckhouse.io"})
+	})
+
+	for _, ngUnstruct := range ngUnstructs {
+		instances, found := nestedSlice(ngUnstruct.Object, "spec", "cloudInstances")
+		if !found || len(instances) == 0 {
+			continue
+		}
+
+		_, found = lo.Find(instances, func(instance interface{}) bool {
+			kind, found := nestedString(instance, "classReference", "kind")
+			if !found || kind != "YandexInstanceClass" {
+				return false
+			}
+
+			name, found := nestedString(instance, "classReference", "name")
+			if !found || name != unstruct.GetName() {
+				return false
+			}
+
+			return true
+		})
+
+		if !found {
+			continue
+		}
+
+		dep := &InternalDependency{
+			ResourceMatcher: newExactResourceMatcher(ngUnstruct),
+			ResourceState:   common.ResourceStateAbsent,
+		}
+		dependencies = append(dependencies, dep)
+	}
+
+	return dependencies, len(dependencies) > 0
+}
+
+func newExactResourceMatcher(unstruct *unstructured.Unstructured) *spec.ResourceMatcher {
 	return &spec.ResourceMatcher{
-		Names:      []string{item.GetName()},
-		Namespaces: []string{item.GetNamespace()},
-		Groups:     []string{item.GroupVersionKind().Group},
-		Kinds:      []string{item.GetKind()},
+		Names:      []string{unstruct.GetName()},
+		Namespaces: []string{unstruct.GetNamespace()},
+		Groups:     []string{unstruct.GroupVersionKind().Group},
+		Kinds:      []string{unstruct.GetKind()},
 	}
 }
 

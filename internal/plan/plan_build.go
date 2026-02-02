@@ -697,10 +697,6 @@ func connectInternalDeleteDependencies(plan *Plan, infos []*DeletableResourceInf
 				panic("unexpected internal dependency resource state")
 			}
 
-			if len(dependUponOps) == 0 {
-				continue
-			}
-
 			for _, dependUponOp := range dependUponOps {
 				if err := plan.Connect(dependUponOp.ID(), deleteOp.ID()); err != nil {
 					return fmt.Errorf("depend %q from %q: %w", deleteOp.ID(), dependUponOp.ID(), err)

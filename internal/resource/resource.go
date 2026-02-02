@@ -197,10 +197,9 @@ func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []
 		manIntDeps = manualInternalDeleteDependencies(resourceSpec.ResourceMeta)
 	}
 
-	unstructList := lo.Map(otherResourceSpecs, func(itm *spec.ResourceSpec, _ int) *unstructured.Unstructured {
-		return itm.Unstruct
+	unstructList := lo.Map(otherResourceSpecs, func(resSpec *spec.ResourceSpec, _ int) *unstructured.Unstructured {
+		return resSpec.Unstruct
 	})
-	autoIntDeps := internalDeleteDependencies(resourceSpec.Unstruct, unstructList)
 
 	return &DeletableResource{
 		ResourceMeta:               resourceSpec.ResourceMeta,
@@ -208,7 +207,7 @@ func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []
 		KeepOnDelete:               keep,
 		DeletePropagation:          delPropagation,
 		ManualInternalDependencies: manIntDeps,
-		AutoInternalDependencies:   autoIntDeps,
+		AutoInternalDependencies:   internalDeleteDependencies(resourceSpec.Unstruct, unstructList),
 	}
 }
 
@@ -223,9 +222,7 @@ type BuildResourcesOptions struct {
 func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRelResSpecs, newRelResSpecs []*spec.ResourceSpec, patchers []spec.ResourcePatcher, clientFactory kube.ClientFactorier, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
 	var prevRelDelResources []*DeletableResource
 	for _, resSpec := range prevRelResSpecs {
-		otherResSpecs := lo.Without(prevRelResSpecs, resSpec)
-
-		deletableRes := NewDeletableResource(resSpec, otherResSpecs, releaseNamespace, DeletableResourceOptions{
+		deletableRes := NewDeletableResource(resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, DeletableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 		})
 
