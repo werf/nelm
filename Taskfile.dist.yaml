@@ -6,6 +6,23 @@ env:
   GO111MODULE: "on"
   CGO_ENABLED: "0"
 
+includes:
+  lint:
+    taskfile: https://raw.githubusercontent.com/werf/common-ci/chore/update-taskfile-for-nelm/Taskfile.format_lint.yml
+    flatten: true
+    vars:
+      golangciConfig: ".golangci_strict.yml"
+      golangciLintVersion: "v2.5.0"
+      golangciPaths: "./internal/... ./pkg/... ./cmd/..."
+      paths: "./internal/ ./pkg/ ./cmd/"
+      gciPrefix: '{{slice (splitList "/" .package) 0 2 | join "/"}}'
+      enableGolangciLintFormat: "true"
+  deps:
+    taskfile: https://raw.githubusercontent.com/werf/common-ci/main/Taskfile.deps.yml
+    flatten: true
+    vars:
+      golangciLintVersion: "v2.5.0"
+
 vars:
   brand: "Nelm"
   brandSlug: "nelm"
@@ -47,14 +64,6 @@ tasks:
     cmds:
       - go build -o "{{.outputDir | default (printf "./dist/%s/%s-%s/bin" .version .targetOS .targetArch)}}/{{.brandSlug}}{{if (eq .targetOS "windows")}}.exe{{end}}"
         -ldflags="{{.ldFlags}}" -tags="{{.ctags}}" {{.extraGoBuildArgs}} {{.CLI_ARGS}} {{.pkg | default .package}}
-
-  _golangci-lint:
-    internal: true
-    run: once
-    cmds:
-      - golangci-lint run {{if eq .fix "true"}}--fix{{end}} --build-tags="{{.tags}}" {{.CLI_ARGS}} {{.paths | default "./..."}}
-    vars:
-      paths: "{{.paths}}"
 
   build:
     desc: "Build main dev binary."
@@ -234,43 +243,6 @@ tasks:
     cmds:
       - ./scripts/verify-dist-binaries.sh {{.version}}
 
-  format:
-    desc: 'Run all code formatters. Important vars: "paths".'
-    run: once
-    cmds:
-      - task: format:gci
-      - task: format:gofumpt
-      - task: format:prettier
-      - task: format:golangci-lint
-
-  format:gci:
-    desc: 'Format code with gci. Important vars: "paths".'
-    cmds:
-      - gci write -s Standard -s Default -s 'Prefix({{slice (splitList "/" .package) 0 2 | join "/"}})' {{.CLI_ARGS}} {{.paths | default "internal/ pkg/ cmd/"}}
-
-  format:gofumpt:
-    desc: 'Format code with gofumpt. Important vars: "paths".'
-    cmds:
-      - gofumpt -extra -w {{.CLI_ARGS}} {{.paths | default "internal/ cmd/ pkg/"}}
-
-  format:golangci-lint:
-    desc: 'Format with golangci-lint. Important vars: "paths".'
-    cmds:
-      - task: _golangci-lint
-        vars:
-          fix: "true"
-          paths: "{{.paths}}"
-
-  format:prettier:
-    desc: "Format with prettier."
-    deps:
-      - format:prettier:yaml
-
-  format:prettier:yaml:
-    desc: "Format yaml files with prettier."
-    cmds:
-      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work tmknom/prettier -w "**/*.yaml" "**/*.yml"
-
   generate:
     desc: 'Run all generators. Important vars: "paths".'
     run: once
@@ -281,30 +253,6 @@ tasks:
     desc: "Generate Tables of Contents in Markdown files."
     cmds:
       - docker run --rm -v "$(pwd)":/work peterdavehello/npm-doctoc doctoc --update-only /work
-
-  lint:
-    desc: 'Run all linters in parallel. Important vars: "paths".'
-    deps:
-      - lint:golangci-lint
-      - lint:prettier
-
-  lint:golangci-lint:
-    desc: 'Lint with golangci-lint. Important vars: "paths".'
-    cmds:
-      - task: _golangci-lint
-        vars:
-          fix: "false"
-          paths: "{{.paths}}"
-
-  lint:prettier:
-    desc: "Check if prettier-formatted."
-    deps:
-      - lint:prettier:yaml
-
-  lint:prettier:yaml:
-    desc: "Check if yaml files are prettier-formatted."
-    cmds:
-      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work tmknom/prettier -c "**/*.yaml" "**/*.yml"
 
   github:dispatch:nelm:
     desc: 'Manually dispatch specified GitHub workflow. Important vars: "eventType", "githubToken".'
@@ -369,36 +317,6 @@ tasks:
     desc: "Clean built release binaries."
     cmds:
       - rm -rf ./dist
-
-  deps:install:
-    desc: "Install all dependencies"
-    deps:
-      - deps:install:gci
-      - deps:install:ginkgo
-      - deps:install:gofumpt
-      - deps:install:golangci-lint
-
-  deps:install:gci:
-    desc: "Install gci binary."
-    cmds:
-      - go install github.com/daixiang0/gci@v0.13.5
-
-  deps:install:ginkgo:
-    desc: "Install ginkgo binary."
-    cmds:
-      - |
-        version="$(go list -m -f '{{ printf `{{ .Version }}` }}' github.com/onsi/ginkgo/v2)"
-        go install {{.CLI_ARGS}} github.com/onsi/ginkgo/v2/ginkgo@${version}
-
-  deps:install:gofumpt:
-    desc: "Install gofumpt binary."
-    cmds:
-      - go install mvdan.cc/gofumpt@v0.7.0
-
-  deps:install:golangci-lint:
-    desc: "Install golangci-lint binary."
-    cmds:
-      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin {{.golangcilintVersion | default "v2.5.0"}}
 
   sign:
     desc: 'Sign last version tag + origin/main and push signatures. Important vars: "refs".'
