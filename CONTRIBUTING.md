@@ -18,10 +18,6 @@ For small changes, such as few lines bugfixes or documentation improvements, fee
 
 For easy first issues, check the [good first issue](https://github.com/werf/nelm/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22) tag.
 
-## Architecture
-
-See [ARCHITECTURE.md](ARCHITECTURE.md).
-
 ## Development
 
 1. Clone the repository.
@@ -102,7 +98,7 @@ Errors:
 * Always wrap errors with additional context using `fmt.Errorf("...: %w", err)`.
 * On programmer errors prefer panics, e.g. on an unexpected case in a switch.
 * Do one-line `if err := myfunc(); err != nil` wherever possible.
-* When wrapping errors with fmt.Errorf, describe what is being done, not what failed, e.g. `fmt.Errorf("reading config file: %w", err)` instead of `fmt.Errorf("cannot read config file: %w", err)`.
+* When wrapping errors with fmt.Errorf, describe what is being done, not what failed, e.g. `fmt.Errorf("read config file: %w", err)` instead of `fmt.Errorf("cannot read config file: %w", err)`.
 
 Concurrency:
 * Instead of raw mutexes use the transactional `Concurrent{}` helper.
