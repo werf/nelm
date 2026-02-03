@@ -28,6 +28,7 @@ func NewRootCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.C
 	cmd.AddCommand(newChartCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newRepoCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newVersionCommand(ctx, afterAllCommandsBuiltFuncs))
+	cmd.AddCommand(newGenerateReferenceCommand(ctx, afterAllCommandsBuiltFuncs))
 
 	return cmd
 }
