@@ -44,6 +44,7 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
 - [Reference](#reference)
   - [`werf.io/weight` annotation](#werfioweight-annotation)
   - [`werf.io/deploy-dependency-<id>` annotation](#werfiodeploy-dependency-id-annotation)
+  - [`werf.io/delete-dependency-<id>` annotation](#werfiodelete-dependency-id-annotation)
   - [`<id>.external-dependency.werf.io/resource` annotation](#idexternal-dependencywerfioresource-annotation)
   - [`<id>.external-dependency.werf.io/name` annotation](#idexternal-dependencywerfioname-annotation)
   - [`werf.io/ownership` annotation](#werfioownership-annotation)
@@ -361,6 +362,20 @@ werf.io/deploy-dependency-app: state=present,kind=Deployment,group=apps,version=
 Format:
 ```
 werf.io/deploy-dependency-<anything>: state=ready|present[,name=<name>][,namespace=<namespace>][,kind=<kind>][,group=<group>][,version=<version>]
+```
+
+### `werf.io/delete-dependency-<id>` annotation
+
+The resource will be deleted only after all of its dependencies are satisfied. It waits until the specified resource is `absent`. You can only point to resources in the release.
+
+Example:
+```yaml
+werf.io/delete-dependency-db: state=absent,kind=StatefulSet,name=postgres
+werf.io/delete-dependency-app: state=absent,kind=Deployment,group=apps,version=v1,name=app,namespace=app
+```
+Format:
+```
+werf.io/delete-dependency-<anything>: state=absent[,name=<name>][,namespace=<namespace>][,kind=<kind>][,group=<group>][,version=<version>]
 ```
 
 ### `<id>.external-dependency.werf.io/resource` annotation 
