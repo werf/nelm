@@ -732,26 +732,13 @@ func parseYandexInstanceClassDependencies(unstruct *unstructured.Unstructured, o
 	})
 
 	for _, ngUnstruct := range ngUnstructs {
-		instances, found := nestedSlice(ngUnstruct.Object, "spec", "cloudInstances")
-		if !found || len(instances) == 0 {
+		kind, found := nestedString(ngUnstruct.Object, "spec", "cloudInstances", "classReference", "kind")
+		if !found || kind != "YandexInstanceClass" {
 			continue
 		}
 
-		_, found = lo.Find(instances, func(instance interface{}) bool {
-			kind, found := nestedString(instance, "classReference", "kind")
-			if !found || kind != "YandexInstanceClass" {
-				return false
-			}
-
-			name, found := nestedString(instance, "classReference", "name")
-			if !found || name != unstruct.GetName() {
-				return false
-			}
-
-			return true
-		})
-
-		if !found {
+		name, found := nestedString(ngUnstruct.Object, "spec", "cloudInstances", "classReference", "name")
+		if !found || name != unstruct.GetName() {
 			continue
 		}
 
