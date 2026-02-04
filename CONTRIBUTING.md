@@ -2,7 +2,6 @@
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
 - [Before you start](#before-you-start)
-- [Architecture](#architecture)
 - [Development](#development)
 - [Commit/branch/PR naming](#commitbranchpr-naming)
 - [Design guidelines](#design-guidelines)
