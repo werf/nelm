@@ -17,6 +17,19 @@ import (
 	"github.com/werf/nelm/pkg/featgate"
 )
 
+func normalizePathForDocs(path string) string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+
+	if suffix, found := strings.CutPrefix(path, homeDir); found {
+		return "~" + suffix
+	}
+
+	return path
+}
+
 type generateReferenceConfig struct{}
 
 func newGenerateReferenceCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -193,7 +206,7 @@ func renderFlagMarkdown(flag *pflag.Flag) string {
 	var defValue string
 	switch flag.Value.Type() {
 	case "string":
-		defValue = fmt.Sprintf(`"%s"`, flag.DefValue)
+		defValue = fmt.Sprintf(`"%s"`, normalizePathForDocs(flag.DefValue))
 	case "stringToString":
 		v := strings.TrimPrefix(flag.DefValue, "[")
 		v = strings.TrimSuffix(v, "]")
