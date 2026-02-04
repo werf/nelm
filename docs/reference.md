@@ -350,7 +350,7 @@ nelm release install [options...] -n namespace -r release [chart-dir]
 
   Don't verify TLS certificates of chart repository\. Vars: \$NELM\_NO\_VERIFY\_CHART\_REPOS\_TLS, \$NELM\_RELEASE\_INSTALL\_NO\_VERIFY\_CHART\_REPOS\_TLS
 
-- `--oci-chart-repos-creds` (default: `"/home/runner/.docker/config.json"`)
+- `--oci-chart-repos-creds` (default: `"~/.docker/config.json"`)
 
   Credentials to access OCI chart repositories\. Vars: \$NELM\_OCI\_CHART\_REPOS\_CREDS, \$NELM\_RELEASE\_INSTALL\_OCI\_CHART\_REPOS\_CREDS
 
@@ -967,7 +967,7 @@ nelm release plan install [options...] -n namespace -r release [chart-dir]
 
   Don't verify TLS certificates of chart repository\. Vars: \$NELM\_NO\_VERIFY\_CHART\_REPOS\_TLS, \$NELM\_RELEASE\_PLAN\_INSTALL\_NO\_VERIFY\_CHART\_REPOS\_TLS
 
-- `--oci-chart-repos-creds` (default: `"/home/runner/.docker/config.json"`)
+- `--oci-chart-repos-creds` (default: `"~/.docker/config.json"`)
 
   Credentials to access OCI chart repositories\. Vars: \$NELM\_OCI\_CHART\_REPOS\_CREDS, \$NELM\_RELEASE\_PLAN\_INSTALL\_OCI\_CHART\_REPOS\_CREDS
 
@@ -1451,15 +1451,15 @@ nelm release list [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"/home/runner/.config/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
-- `--repository-cache` (default: `"/home/runner/.cache/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the file containing cached repository indexes
 
-- `--repository-config` (default: `"/home/runner/.config/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
@@ -1578,15 +1578,15 @@ nelm release history RELEASE_NAME [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"/home/runner/.config/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
-- `--repository-cache` (default: `"/home/runner/.cache/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the file containing cached repository indexes
 
-- `--repository-config` (default: `"/home/runner/.config/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
@@ -1948,7 +1948,7 @@ nelm chart lint [options...] [chart-dir]
 
   Don't verify TLS certificates of chart repository\. Vars: \$NELM\_NO\_VERIFY\_CHART\_REPOS\_TLS, \$NELM\_CHART\_LINT\_NO\_VERIFY\_CHART\_REPOS\_TLS
 
-- `--oci-chart-repos-creds` (default: `"/home/runner/.docker/config.json"`)
+- `--oci-chart-repos-creds` (default: `"~/.docker/config.json"`)
 
   Credentials to access OCI chart repositories\. Vars: \$NELM\_OCI\_CHART\_REPOS\_CREDS, \$NELM\_CHART\_LINT\_OCI\_CHART\_REPOS\_CREDS
 
@@ -2274,7 +2274,7 @@ nelm chart render [options...] [chart-dir]
 
   Don't verify TLS certificates of chart repository\. Vars: \$NELM\_NO\_VERIFY\_CHART\_REPOS\_TLS, \$NELM\_CHART\_RENDER\_NO\_VERIFY\_CHART\_REPOS\_TLS
 
-- `--oci-chart-repos-creds` (default: `"/home/runner/.docker/config.json"`)
+- `--oci-chart-repos-creds` (default: `"~/.docker/config.json"`)
 
   Credentials to access OCI chart repositories\. Vars: \$NELM\_OCI\_CHART\_REPOS\_CREDS, \$NELM\_CHART\_RENDER\_OCI\_CHART\_REPOS\_CREDS
 
@@ -2477,7 +2477,7 @@ nelm chart download [chart URL | repo/chartname] [...] [flags]
 
   identify HTTPS client using this SSL key file
 
-- `--keyring` (default: `"/home/runner/.gnupg/pubring.gpg"`)
+- `--keyring` (default: `"~/.gnupg/pubring.gpg"`)
 
   location of public keys used for verification
 
@@ -2541,7 +2541,7 @@ nelm chart download [chart URL | repo/chartname] [...] [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"/home/runner/.config/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
@@ -2549,11 +2549,11 @@ nelm chart download [chart URL | repo/chartname] [...] [flags]
 
   chart repository url where to locate the requested chart
 
-- `--repository-cache` (default: `"/home/runner/.cache/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the file containing cached repository indexes
 
-- `--repository-config` (default: `"/home/runner/.config/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
@@ -2667,15 +2667,15 @@ nelm chart upload [archive] [remote] [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"/home/runner/.config/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
-- `--repository-cache` (default: `"/home/runner/.cache/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the file containing cached repository indexes
 
-- `--repository-config` (default: `"/home/runner/.config/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
@@ -2730,7 +2730,7 @@ nelm chart pack [CHART_PATH] [...] [flags]
 
   name of the key to use when signing\. Used if \-\-sign is true
 
-- `--keyring` (default: `"/home/runner/.gnupg/pubring.gpg"`)
+- `--keyring` (default: `"~/.gnupg/pubring.gpg"`)
 
   location of a public keyring
 
@@ -2782,15 +2782,15 @@ nelm chart pack [CHART_PATH] [...] [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"/home/runner/.config/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
-- `--repository-cache` (default: `"/home/runner/.cache/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the file containing cached repository indexes
 
-- `--repository-config` (default: `"/home/runner/.config/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
@@ -3128,7 +3128,7 @@ nelm chart dependency download CHART [flags]
 
   enable verbose output
 
-- `--keyring` (default: `"/home/runner/.gnupg/pubring.gpg"`)
+- `--keyring` (default: `"~/.gnupg/pubring.gpg"`)
 
   keyring containing public keys
 
@@ -3176,15 +3176,15 @@ nelm chart dependency download CHART [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"/home/runner/.config/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
-- `--repository-cache` (default: `"/home/runner/.cache/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the file containing cached repository indexes
 
-- `--repository-config` (default: `"/home/runner/.config/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
@@ -3230,7 +3230,7 @@ nelm chart dependency update CHART [flags]
 
   enable verbose output
 
-- `--keyring` (default: `"/home/runner/.gnupg/pubring.gpg"`)
+- `--keyring` (default: `"~/.gnupg/pubring.gpg"`)
 
   keyring containing public keys
 
@@ -3278,15 +3278,15 @@ nelm chart dependency update CHART [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"/home/runner/.config/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
-- `--repository-cache` (default: `"/home/runner/.cache/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the file containing cached repository indexes
 
-- `--repository-config` (default: `"/home/runner/.config/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
@@ -3403,15 +3403,15 @@ nelm repo add [NAME] [URL] [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"/home/runner/.config/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
-- `--repository-cache` (default: `"/home/runner/.cache/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the file containing cached repository indexes
 
-- `--repository-config` (default: `"/home/runner/.config/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
@@ -3484,15 +3484,15 @@ nelm repo remove [REPO1 [REPO2 ...]] [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"/home/runner/.config/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
-- `--repository-cache` (default: `"/home/runner/.cache/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the file containing cached repository indexes
 
-- `--repository-config` (default: `"/home/runner/.config/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
@@ -3565,15 +3565,15 @@ nelm repo update [REPO1 [REPO2 ...]] [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"/home/runner/.config/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
-- `--repository-cache` (default: `"/home/runner/.cache/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the file containing cached repository indexes
 
-- `--repository-config` (default: `"/home/runner/.config/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
@@ -3666,15 +3666,15 @@ nelm repo login [host] [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"/home/runner/.config/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
-- `--repository-cache` (default: `"/home/runner/.cache/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the file containing cached repository indexes
 
-- `--repository-config` (default: `"/home/runner/.config/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
@@ -3747,15 +3747,15 @@ nelm repo logout [host] [flags]
 
   queries per second used when communicating with the Kubernetes API, not including bursting
 
-- `--registry-config` (default: `"/home/runner/.config/helm/registry/config.json"`)
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
 
   path to the registry config file
 
-- `--repository-cache` (default: `"/home/runner/.cache/helm/repository"`)
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
   path to the file containing cached repository indexes
 
-- `--repository-config` (default: `"/home/runner/.config/helm/repositories.yaml"`)
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
