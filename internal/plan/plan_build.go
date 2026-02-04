@@ -629,7 +629,10 @@ func connectInternalDeployDependencies(plan *Plan, instInfos []*InstallableResou
 			case common.ResourceStateReady:
 				dependUponOp, dependUponOpFound = findTrackReadinessOpInStage(plan, instInfos, dep, info.Stage)
 			case common.ResourceStateAbsent:
-				dependUponOp, dependUponOpFound = findTrackAbsenceOpInStage(plan, delInfos, instInfos, dep, info.Stage)
+				dependUponOps, dependUponOpFound := findTrackAbsenceOpInStage(plan, delInfos, instInfos, dep, info.Stage)
+				if dependUponOpFound && len(dependUponOps) > 0 {
+					dependUponOp = dependUponOps[0]
+				}
 			default:
 				panic("unexpected internal dependency resource state")
 			}
@@ -681,23 +684,25 @@ func connectInternalDeleteDependencies(plan *Plan, delInfos []*DeletableResource
 
 		for _, dep := range internalDeps {
 			var (
-				dependUponOp      *Operation
-				dependUponOpFound bool
+				dependUponOps      []*Operation
+				dependUponOpsFound bool
 			)
 
 			switch dep.ResourceState {
 			case common.ResourceStateAbsent:
-				dependUponOp, dependUponOpFound = findTrackAbsenceOpInStage(plan, delInfos, instInfos, dep, info.Stage)
+				dependUponOps, dependUponOpsFound = findTrackAbsenceOpInStage(plan, delInfos, instInfos, dep, info.Stage)
 			default:
 				panic("unexpected internal dependency resource state")
 			}
 
-			if !dependUponOpFound {
+			if !dependUponOpsFound {
 				continue
 			}
 
-			if err := plan.Connect(dependUponOp.ID(), deleteOp.ID()); err != nil {
-				return fmt.Errorf("depend %q from %q: %w", deleteOp.ID(), dependUponOp.ID(), err)
+			for _, dependUponOp := range dependUponOps {
+				if err := plan.Connect(dependUponOp.ID(), deleteOp.ID()); err != nil {
+					return fmt.Errorf("depend %q from %q: %w", deleteOp.ID(), dependUponOp.ID(), err)
+				}
 			}
 		}
 	}
@@ -757,7 +762,8 @@ func findTrackReadinessOpInStage(plan *Plan, instInfos []*InstallableResourceInf
 	return plan.Operation(opID)
 }
 
-func findTrackAbsenceOpInStage(plan *Plan, delInfos []*DeletableResourceInfo, instInfos []*InstallableResourceInfo, dep *resource.InternalDependency, sourceStage common.Stage) (*Operation, bool) {
+func findTrackAbsenceOpInStage(plan *Plan, delInfos []*DeletableResourceInfo, instInfos []*InstallableResourceInfo, dep *resource.InternalDependency, sourceStage common.Stage) ([]*Operation, bool) {
+	var foundOps []*Operation
 	for _, candidate := range delInfos {
 		if !candidate.MustTrackAbsence ||
 			candidate.Stage != sourceStage ||
@@ -767,7 +773,13 @@ func findTrackAbsenceOpInStage(plan *Plan, delInfos []*DeletableResourceInfo, in
 
 		opID := OperationID(OperationTypeTrackAbsence, OperationVersionTrackAbsence, 0, candidate.ID())
 
-		return plan.Operation(opID)
+		if op, found := plan.Operation(opID); found {
+			foundOps = append(foundOps, op)
+		}
+	}
+
+	if len(foundOps) > 0 {
+		return foundOps, len(foundOps) > 0
 	}
 
 	var match *InstallableResourceInfo
@@ -783,10 +795,14 @@ func findTrackAbsenceOpInStage(plan *Plan, delInfos []*DeletableResourceInfo, in
 	}
 
 	if match == nil {
-		return nil, false
+		return foundOps, false
 	}
 
 	opID := OperationID(OperationTypeTrackAbsence, OperationVersionTrackAbsence, OperationIteration(match.Iteration), match.ID())
 
-	return plan.Operation(opID)
+	if op, found := plan.Operation(opID); found {
+		foundOps = append(foundOps, op)
+	}
+
+	return foundOps, len(foundOps) > 0
 }
