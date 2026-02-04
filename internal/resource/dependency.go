@@ -110,8 +110,6 @@ func internalDeleteDependencies(unstruct *unstructured.Unstructured, otherUnstru
 		if dep, found := parseCRD(unstruct); found {
 			dependencies = append(dependencies, dep)
 		}
-	case schema.GroupKind{Kind: "Namespace", Group: ""}:
-		dependencies = append(dependencies, parseNamespace(unstruct))
 	case schema.GroupKind{Kind: "ClusterRole", Group: "rbac.authorization.k8s.io"}:
 		if deps, found := parseClusterRoleDependencies(unstruct, otherUnstructs); found {
 			dependencies = append(dependencies, deps...)
@@ -619,15 +617,6 @@ func parseCRD(unstruct *unstructured.Unstructured) (dep *InternalDependency, fou
 	}
 
 	return dep, true
-}
-
-func parseNamespace(unstruct *unstructured.Unstructured) *InternalDependency {
-	return &InternalDependency{
-		ResourceMatcher: &spec.ResourceMatcher{
-			Namespaces: []string{unstruct.GetName()},
-		},
-		ResourceState: common.ResourceStateAbsent,
-	}
 }
 
 func parseClusterRoleDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {

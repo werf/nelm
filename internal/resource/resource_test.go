@@ -1256,14 +1256,6 @@ func defaultReleaseNamespaceDeletableResource(resSpec *spec.ResourceSpec) *resou
 	res := defaultDeletableResource(resSpec.ResourceMeta)
 	res.Ownership = common.OwnershipAnyone
 	res.KeepOnDelete = true
-	res.AutoInternalDependencies = []*resource.InternalDependency{
-		{
-			ResourceMatcher: &spec.ResourceMatcher{
-				Namespaces: []string{resSpec.ResourceMeta.Name},
-			},
-			ResourceState: common.ResourceStateAbsent,
-		},
-	}
 
 	return res
 }
