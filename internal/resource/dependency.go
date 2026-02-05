@@ -689,19 +689,25 @@ func parseRoleDependencies(unstruct *unstructured.Unstructured, otherUnstructs [
 
 func parseServiceAccountDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
 	for _, otherUnstruct := range otherUnstructs {
-		var serviceAccountName string
-		// Get service account name for different resource kinds
-		if name, found := nestedString(otherUnstruct.Object, "spec", "serviceAccountName"); found { // Pod
-			serviceAccountName = name
-		} else if name, found = nestedString(otherUnstruct.Object, "spec", "template", "spec", "serviceAccountName"); found { // Controllers
-			serviceAccountName = name
-		} else if name, found = nestedString(otherUnstruct.Object, "spec", "jobTemplate", "spec", "template", "spec", "serviceAccountName"); found { // CronJob
-			serviceAccountName = name
-		} else {
+		var nestedPath []string
+		switch otherUnstruct.GroupVersionKind().GroupKind() {
+		case
+			schema.GroupKind{Kind: "Pod", Group: ""}:
+			nestedPath = []string{"spec", "serviceAccountName"}
+		case schema.GroupKind{Kind: "Deployment", Group: "apps"},
+			schema.GroupKind{Kind: "DaemonSet", Group: "apps"},
+			schema.GroupKind{Kind: "StatefulSet", Group: "apps"},
+			schema.GroupKind{Kind: "ReplicaSet", Group: "apps"},
+			schema.GroupKind{Kind: "ReplicationController", Group: ""},
+			schema.GroupKind{Kind: "Job", Group: "batch"}:
+			nestedPath = []string{"spec", "template", "spec", "serviceAccountName"}
+		case schema.GroupKind{Kind: "CronJob", Group: "batch"}:
+			nestedPath = []string{"spec", "jobTemplate", "spec", "template", "spec", "serviceAccountName"}
+		default:
 			continue
 		}
 
-		if serviceAccountName != unstruct.GetName() {
+		if name, ok := nestedString(otherUnstruct.Object, nestedPath...); !ok || name != unstruct.GetName() {
 			continue
 		}
 
