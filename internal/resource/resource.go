@@ -170,40 +170,44 @@ type DeletableResourceOptions struct {
 
 // Construct a DeletableResource from a ResourceSpec. Must never contact the cluster, because
 // this is called even when no cluster access allowed.
-func NewDeletableResource(spec *spec.ResourceSpec, releaseNamespace string, opts DeletableResourceOptions) *DeletableResource {
+func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []*spec.ResourceSpec, releaseNamespace string, opts DeletableResourceOptions) *DeletableResource {
 	var keep bool
-	if err := ValidateResourcePolicy(spec.ResourceMeta); err != nil {
+	if err := ValidateResourcePolicy(resourceSpec.ResourceMeta); err != nil {
 		keep = true
 	} else {
-		keep = KeepOnDelete(spec.ResourceMeta, releaseNamespace)
+		keep = KeepOnDelete(resourceSpec.ResourceMeta, releaseNamespace)
 	}
 
 	var owner common.Ownership
-	if err := validateOwnership(spec.ResourceMeta); err != nil {
+	if err := validateOwnership(resourceSpec.ResourceMeta); err != nil {
 		owner = common.OwnershipRelease
 	} else {
-		owner = ownership(spec.ResourceMeta, releaseNamespace, spec.StoreAs)
+		owner = ownership(resourceSpec.ResourceMeta, releaseNamespace, resourceSpec.StoreAs)
 	}
 
 	var delPropagation metav1.DeletionPropagation
-	if err := validateDeletePropagation(spec.ResourceMeta); err != nil {
+	if err := validateDeletePropagation(resourceSpec.ResourceMeta); err != nil {
 		delPropagation = common.DefaultDeletePropagation
 	} else {
-		delPropagation = deletePropagation(spec.ResourceMeta, opts.DefaultDeletePropagation)
+		delPropagation = deletePropagation(resourceSpec.ResourceMeta, opts.DefaultDeletePropagation)
 	}
 
 	var manIntDeps []*InternalDependency
-	if err := validateDeleteDependencies(spec.ResourceMeta); err == nil {
-		manIntDeps = manualInternalDeleteDependencies(spec.ResourceMeta)
+	if err := validateDeleteDependencies(resourceSpec.ResourceMeta); err == nil {
+		manIntDeps = manualInternalDeleteDependencies(resourceSpec.ResourceMeta)
 	}
 
+	unstructList := lo.Map(otherResourceSpecs, func(resSpec *spec.ResourceSpec, _ int) *unstructured.Unstructured {
+		return resSpec.Unstruct
+	})
+
 	return &DeletableResource{
-		ResourceMeta:               spec.ResourceMeta,
+		ResourceMeta:               resourceSpec.ResourceMeta,
 		Ownership:                  owner,
 		KeepOnDelete:               keep,
 		DeletePropagation:          delPropagation,
 		ManualInternalDependencies: manIntDeps,
-		AutoInternalDependencies:   internalDeleteDependencies(spec.Unstruct),
+		AutoInternalDependencies:   internalDeleteDependencies(resourceSpec.Unstruct, unstructList),
 	}
 }
 
@@ -218,7 +222,7 @@ type BuildResourcesOptions struct {
 func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRelResSpecs, newRelResSpecs []*spec.ResourceSpec, patchers []spec.ResourcePatcher, clientFactory kube.ClientFactorier, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
 	var prevRelDelResources []*DeletableResource
 	for _, resSpec := range prevRelResSpecs {
-		deletableRes := NewDeletableResource(resSpec, releaseNamespace, DeletableResourceOptions{
+		deletableRes := NewDeletableResource(resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, DeletableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 		})
 

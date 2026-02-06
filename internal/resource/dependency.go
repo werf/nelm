@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
@@ -102,8 +103,30 @@ func internalDeployDependencies(unstruct *unstructured.Unstructured) []*Internal
 	return dependencies
 }
 
-func internalDeleteDependencies(_ *unstructured.Unstructured) []*InternalDependency {
+func internalDeleteDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) []*InternalDependency {
 	var dependencies []*InternalDependency
+	switch unstruct.GroupVersionKind().GroupKind() {
+	case schema.GroupKind{Kind: "CustomResourceDefinition", Group: "apiextensions.k8s.io"}:
+		if dep, found := parseCRD(unstruct); found {
+			dependencies = append(dependencies, dep)
+		}
+	case schema.GroupKind{Kind: "ClusterRole", Group: "rbac.authorization.k8s.io"}:
+		if deps, found := parseClusterRoleDependencies(unstruct, otherUnstructs); found {
+			dependencies = append(dependencies, deps...)
+		}
+	case schema.GroupKind{Kind: "Role", Group: "rbac.authorization.k8s.io"}:
+		if deps, found := parseRoleDependencies(unstruct, otherUnstructs); found {
+			dependencies = append(dependencies, deps...)
+		}
+	case schema.GroupKind{Kind: "ServiceAccount", Group: ""}:
+		if deps, found := parseServiceAccountDependencies(unstruct, otherUnstructs); found {
+			dependencies = append(dependencies, deps...)
+		}
+	case schema.GroupKind{Kind: "YandexInstanceClass", Group: "deckhouse.io"}:
+		if deps, found := parseYandexInstanceClassDependencies(unstruct, otherUnstructs); found {
+			dependencies = append(dependencies, deps...)
+		}
+	}
 
 	return dependencies
 }
@@ -572,6 +595,165 @@ func parseRoleRef(unstruct unstructured.Unstructured) (dep *InternalDependency, 
 	}
 
 	return dep, true
+}
+
+func parseCRD(unstruct *unstructured.Unstructured) (dep *InternalDependency, found bool) {
+	kind, found := nestedString(unstruct.Object, "spec", "names", "kind")
+	if !found {
+		return nil, false
+	}
+
+	group, found := nestedString(unstruct.Object, "spec", "group")
+	if !found {
+		return nil, false
+	}
+
+	dep = &InternalDependency{
+		ResourceMatcher: &spec.ResourceMatcher{
+			Groups: []string{group},
+			Kinds:  []string{kind},
+		},
+		ResourceState: common.ResourceStateAbsent,
+	}
+
+	return dep, true
+}
+
+func parseClusterRoleDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
+	bindingUnstructs := lo.Filter(otherUnstructs, func(unstruct *unstructured.Unstructured, _ int) bool {
+		switch unstruct.GroupVersionKind().GroupKind() {
+		case schema.GroupKind{Kind: "RoleBinding", Group: "rbac.authorization.k8s.io"},
+			schema.GroupKind{Kind: "ClusterRoleBinding", Group: "rbac.authorization.k8s.io"}:
+			return true
+		default:
+			return false
+		}
+	})
+
+	for _, bindingUnstruct := range bindingUnstructs {
+		kind, found := nestedString(bindingUnstruct.Object, "roleRef", "kind")
+		if !found || kind != "ClusterRole" {
+			continue
+		}
+
+		name, found := nestedString(bindingUnstruct.Object, "roleRef", "name")
+		if !found || name != unstruct.GetName() {
+			continue
+		}
+
+		var namespaces []string
+		if bindingUnstruct.GetKind() == "RoleBinding" {
+			namespaces = []string{bindingUnstruct.GetNamespace()}
+		}
+
+		dep := &InternalDependency{
+			ResourceMatcher: &spec.ResourceMatcher{
+				Names:      []string{bindingUnstruct.GetName()},
+				Namespaces: namespaces,
+				Groups:     []string{bindingUnstruct.GroupVersionKind().Group},
+				Kinds:      []string{bindingUnstruct.GetKind()},
+			},
+			ResourceState: common.ResourceStateAbsent,
+		}
+		dependencies = append(dependencies, dep)
+	}
+
+	return dependencies, len(dependencies) > 0
+}
+
+func parseRoleDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
+	bindingUnstructs := lo.Filter(otherUnstructs, func(unstruct *unstructured.Unstructured, _ int) bool {
+		return unstruct.GroupVersionKind().GroupKind() == (schema.GroupKind{Kind: "RoleBinding", Group: "rbac.authorization.k8s.io"})
+	})
+
+	for _, bindingUnstruct := range bindingUnstructs {
+		kind, found := nestedString(bindingUnstruct.Object, "roleRef", "kind")
+		if !found || kind != "Role" {
+			continue
+		}
+
+		name, found := nestedString(bindingUnstruct.Object, "roleRef", "name")
+		if !found || name != unstruct.GetName() {
+			continue
+		}
+
+		dep := &InternalDependency{
+			ResourceMatcher: newExactResourceMatcher(bindingUnstruct),
+			ResourceState:   common.ResourceStateAbsent,
+		}
+		dependencies = append(dependencies, dep)
+	}
+
+	return dependencies, len(dependencies) > 0
+}
+
+func parseServiceAccountDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
+	for _, otherUnstruct := range otherUnstructs {
+		var nestedPath []string
+		switch otherUnstruct.GroupVersionKind().GroupKind() {
+		case
+			schema.GroupKind{Kind: "Pod", Group: ""}:
+			nestedPath = []string{"spec", "serviceAccountName"}
+		case schema.GroupKind{Kind: "Deployment", Group: "apps"},
+			schema.GroupKind{Kind: "DaemonSet", Group: "apps"},
+			schema.GroupKind{Kind: "StatefulSet", Group: "apps"},
+			schema.GroupKind{Kind: "ReplicaSet", Group: "apps"},
+			schema.GroupKind{Kind: "ReplicationController", Group: ""},
+			schema.GroupKind{Kind: "Job", Group: "batch"}:
+			nestedPath = []string{"spec", "template", "spec", "serviceAccountName"}
+		case schema.GroupKind{Kind: "CronJob", Group: "batch"}:
+			nestedPath = []string{"spec", "jobTemplate", "spec", "template", "spec", "serviceAccountName"}
+		default:
+			continue
+		}
+
+		if name, ok := nestedString(otherUnstruct.Object, nestedPath...); !ok || name != unstruct.GetName() {
+			continue
+		}
+
+		dep := &InternalDependency{
+			ResourceMatcher: newExactResourceMatcher(otherUnstruct),
+			ResourceState:   common.ResourceStateAbsent,
+		}
+		dependencies = append(dependencies, dep)
+	}
+
+	return dependencies, len(dependencies) > 0
+}
+
+func parseYandexInstanceClassDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
+	ngUnstructs := lo.Filter(otherUnstructs, func(unstruct *unstructured.Unstructured, _ int) bool {
+		return unstruct.GroupVersionKind().GroupKind() == (schema.GroupKind{Kind: "NodeGroup", Group: "deckhouse.io"})
+	})
+
+	for _, ngUnstruct := range ngUnstructs {
+		kind, found := nestedString(ngUnstruct.Object, "spec", "cloudInstances", "classReference", "kind")
+		if !found || kind != "YandexInstanceClass" {
+			continue
+		}
+
+		name, found := nestedString(ngUnstruct.Object, "spec", "cloudInstances", "classReference", "name")
+		if !found || name != unstruct.GetName() {
+			continue
+		}
+
+		dep := &InternalDependency{
+			ResourceMatcher: newExactResourceMatcher(ngUnstruct),
+			ResourceState:   common.ResourceStateAbsent,
+		}
+		dependencies = append(dependencies, dep)
+	}
+
+	return dependencies, len(dependencies) > 0
+}
+
+func newExactResourceMatcher(unstruct *unstructured.Unstructured) *spec.ResourceMatcher {
+	return &spec.ResourceMatcher{
+		Names:      []string{unstruct.GetName()},
+		Namespaces: []string{unstruct.GetNamespace()},
+		Groups:     []string{unstruct.GroupVersionKind().Group},
+		Kinds:      []string{unstruct.GetKind()},
+	}
 }
 
 func nestedSlice(object interface{}, fields ...string) (result []interface{}, found bool) {
