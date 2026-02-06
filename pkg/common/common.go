@@ -315,9 +315,11 @@ var (
 var SprigFuncs = sprig.TxtFuncMap()
 
 var (
-	APIResourceValidationJSONSchemasCacheDir        = helmpath.CachePath("nelm", "api-resource-json-schemas")
-	APIResourceValidationKubeConformSchemasLocation = []string{
-		"default",
+	DefaultResourceValidationSchema = []string{
+		"https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json",
 		"https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json",
 	}
+	DefaultResourceValidationCacheLifetime = 48 * time.Hour
+
+	APIResourceValidationJSONSchemasCacheDir = helmpath.CachePath("nelm", "api-resource-json-schemas")
 )
