@@ -882,6 +882,12 @@ For documentation on regular Helm features, see [Helm docs](https://helm.sh/docs
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Special thanks
+
+- Helm developers for the Helm codebase that Nelm is built upon.
+- [@DmitryBochkarev](https://github.com/DmitryBochkarev) for the [TypeScript support](https://github.com/werf/nelm/pull/502) in charts.
+- [@kuzaxak](https://github.com/kuzaxak) for the [werf.io/sensitive-paths](https://github.com/werf/nelm/pull/364) annotation.
+
 ## Future plans
 
 - [x] Nelm CLI.
