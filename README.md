@@ -894,6 +894,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [x] Nelm v1.
 - [x] Refactor, stabilize.
 - [x] Advanced resource lifecycle management.
+- [x] Advanced Kubeconform-based local validation.
 - [ ] Nelm v2.
 - [ ] Migration to Helm v4.
 - [ ] The Nelm operator, which can integrate with ArgoCD/Flux ([#494](https://github.com/werf/nelm/issues/494)).
