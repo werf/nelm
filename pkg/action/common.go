@@ -269,6 +269,28 @@ func savePlanAsDot(plan *plan.Plan, path string) error {
 	return nil
 }
 
+func saveInstallPlan(p *plan.Plan, changes []*plan.ResourceChange, releaseName, releaseNamespace string, releaseVersion int, path string) error {
+	artifact, err := plan.BuildInstallPlanArtifact(p, changes, plan.InstallPlanArtifactRelease{
+		Name:      releaseName,
+		Namespace: releaseNamespace,
+		Version:   releaseVersion,
+	})
+	if err != nil {
+		return fmt.Errorf("build install plan artifact: %w", err)
+	}
+
+	jsonData, err := plan.MarshalInstallPlanArtifact(artifact)
+	if err != nil {
+		return fmt.Errorf("marshal install plan artifact: %w", err)
+	}
+
+	if err := os.WriteFile(path, jsonData, 0o644); err != nil {
+		return fmt.Errorf("write install plan json at %q: %w", path, err)
+	}
+
+	return nil
+}
+
 func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr error, installGraphPath, tempDirPath, fallbackGraphFilename string) {
 	var graphPath string
 	if installGraphPath != "" {

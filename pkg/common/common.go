@@ -321,5 +321,6 @@ var (
 	}
 	DefaultResourceValidationCacheLifetime = 48 * time.Hour
 
+	APIPlanInstallArtifactLifetime           = 2 * time.Hour
 	APIResourceValidationJSONSchemasCacheDir = helmpath.CachePath("nelm", "api-resource-json-schemas")
 )

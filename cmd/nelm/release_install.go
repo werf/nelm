@@ -228,6 +228,14 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		if err := cli.AddFlag(cmd, &cfg.PlanArtifactPath, "plan-file", "", "Path to pre-build install plan artifact to perform release install", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagLocalEnvVarRegexes,
+			Group:                mainFlagGroup,
+			Type:                 cli.FlagTypeFile,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.ReleaseHistoryLimit, "release-history-limit", common.DefaultReleaseHistoryLimit, "Limit the number of releases in release history. When limit is exceeded the oldest releases are deleted. Release resources are not affected", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,

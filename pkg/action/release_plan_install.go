@@ -153,6 +153,9 @@ type ReleasePlanInstallOptions struct {
 	// ShowVerboseDiffs, when true, shows verbose diffs for resource create/delete operations.
 	// Defaults to true. When false, create/delete diffs are hidden with "<hidden verbose changes>".
 	ShowVerboseDiffs bool
+	// PlanArtifactPath, if specified, saves the install plan JSON artifact to this file path.
+	// The JSON schema is defined by ADR-0001 (Nelm plan freezing).
+	PlanArtifactPath string
 	// TempDirPath is the directory for temporary files during the operation.
 	// A temporary directory is created automatically if not specified.
 	TempDirPath string
@@ -470,6 +473,12 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	}
 
 	logPlannedChanges(ctx, releaseName, releaseNamespace, changes)
+
+	if opts.PlanArtifactPath != "" {
+		if err := saveInstallPlan(installPlan, changes, releaseName, releaseNamespace, newRelease.Version, opts.PlanArtifactPath); err != nil {
+			return fmt.Errorf("save install plan to %s: %w", opts.PlanArtifactPath, err)
+		}
+	}
 
 	if opts.ErrorIfChangesPlanned {
 		if featgate.FeatGateMoreDetailedExitCodeForPlan.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
