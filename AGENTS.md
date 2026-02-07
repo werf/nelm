@@ -4,8 +4,6 @@ Nelm is a Go-based Kubernetes deployment tool, which deploys Helm charts, is com
 
 ## Commands
 
-Set `export TASK_X_REMOTE_TASKFILES=1` before running any `task` command.
-
 - `task build` — Build binary for current OS/arch to `./bin/`. Accepts `pkg=...` to build a specific package.
 - `task format` — Run all formatters. Accepts `paths="./pkg/..."` to scope to a specific package.
 - `task lint` — Run golangci-lint and prettier checks. Accepts `paths="./pkg/..."`.
@@ -49,6 +47,8 @@ Set `export TASK_X_REMOTE_TASKFILES=1` before running any `task` command.
 - Always use `task` commands for build/test/lint/format — never raw `go build`, `go test`, `go fmt`, or `golangci-lint` directly.
 - When logging → use `log.Default` from `pkg/log`. Never use `fmt.Println`, `slog`, or `logrus` directly.
 - Read and strictly follow the project code style defined in [CODESTYLE.md](CODESTYLE.md).
+- Verify, don't assume — always check the actual state before making changes.
+- Don't leave TODOs, stubs, or partial implementations.
 
 ## PR review guidelines
 

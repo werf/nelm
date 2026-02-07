@@ -23,9 +23,3 @@ After making changes, verify them end-to-end against the local dev cluster:
 ## Code style
 
 - When writing or modifying Go code, strictly follow @CODESTYLE.md.
-
-## Work standards
-
-- Verify, don't assume — always check the actual state before making changes.
-- Don't cut corners to save tokens — complete the full task.
-- Don't leave TODOs, stubs, or partial implementations.
