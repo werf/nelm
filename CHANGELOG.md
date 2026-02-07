@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.22.0](https://github.com/werf/nelm/compare/v1.21.0...v1.22.0) (2026-02-07)
+
+
+### Features
+
+* automatically detect dependencies between resources on deletion ([#549](https://github.com/werf/nelm/issues/549)) ([22cd6a7](https://github.com/werf/nelm/commit/22cd6a73b85c8375dcbf272cc6293384208b023a))
+* werf giterminism for typescript charts ([#553](https://github.com/werf/nelm/issues/553)) ([2b6de4b](https://github.com/werf/nelm/commit/2b6de4b552ef70900aab21486df1570f5c4330b6))
+
 ## [1.21.0](https://github.com/werf/nelm/compare/v1.20.1...v1.21.0) (2026-02-04)
 
 
