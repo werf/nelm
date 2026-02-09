@@ -7,6 +7,8 @@ ALWAYS strictly follow @AGENTS.md for universal project guidelines.
 These are NOT suggestions — they are requirements. NEVER skip them in favor of Grep/Glob.
 
 - ALWAYS use **LSP** (`goToDefinition`, `findReferences`, `incomingCalls`/`outgoingCalls`, `workspaceSymbol`) to find definitions, references, callers, or implementations. NEVER use Grep for these — LSP is precise, Grep is a guess.
+  - To find a symbol's definition when you have a call site: use `goToDefinition` on the call site.
+  - To find a symbol's definition when you don't have a call site: use `workspaceSymbol` first. If that fails, fall back to Grep.
 - ALWAYS use **CodeAlive MCP** (`codebase_search`, `codebase_consultant`) to find code by intent or understand how something works. Call `get_data_sources` first. NEVER substitute this with Grep-based keyword searching when the query is semantic/intent-based.
 - Only fall back to **Grep/Glob** for simple literal pattern matching (e.g., finding a specific string, config key, or error message).
 - Only use **Task/Explore** subagent as a last resort when the above tools are insufficient.
