@@ -264,9 +264,9 @@ tasks:
   format:wormatter:
     desc: 'Format with wormatter. Important vars: "paths".'
     cmds:
-    - task: _wormatter
-      vars:
-        paths: "{{.paths}}"
+      - task: _wormatter
+        vars:
+          paths: "{{.paths}}"
 
   format:golangci-lint:
     desc: 'Format with golangci-lint. Important vars: "paths".'

@@ -27,7 +27,3 @@ After making changes, ALWAYS verify them end-to-end against the local dev cluste
 1. `task build` — build the binary.
 2. Run the built binary from `./bin/nelm` against the cluster to deploy/test.
 3. ALWAYS use **Kubernetes MCP tools** (`mcp__kubernetes__*`) to inspect the cluster state — get resources, describe them, check logs, exec into pods, etc. NEVER use raw `kubectl` via Bash when an MCP tool can do it.
-
-## Code style (MANDATORY)
-
-- ALWAYS strictly follow @CODESTYLE.md when writing or modifying Go code. Every rule in it is a requirement. Read it before writing any code if you haven't already in this session.

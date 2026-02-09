@@ -1,5 +1,3 @@
-> **AI agents**: all rules below are mandatory. NEVER deviate from them.
-
 ## Design
 
 * Prefer stupid and simple over abstract and extendable.
@@ -59,56 +57,7 @@
 
 ## Go standard guidelines
 
-Based on [Effective Go](https://go.dev/doc/effective_go) and [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments).
+Follow these two guides:
 
-### Naming
-
-* MixedCaps, not underscores: `ServerTimeout`, not `server_timeout`.
-* Initialisms are all-caps: `HTTPClient`, `userID`, not `HttpClient`, `userId`.
-* Package names: lowercase, single-word, no underscores or mixedCaps. Package name is part of the API: `http.Client`, not `http.HTTPClient`.
-* Interface names: single-method interfaces use method name + `-er` suffix: `Reader`, `Formatter`.
-* Receiver names: short (1-2 letters), consistent across methods, never `this` or `self`.
-
-### Comments
-
-* Exported names must have doc comments, starting with the name: `// Client represents ...`.
-* Comments are complete sentences, ending with a period.
-
-### Error handling
-
-* Never discard errors with `_`. Handle or explicitly document why it's safe to ignore.
-* Indent the error flow, not the happy path. The non-error path should stay at minimal indentation.
-
-### Function signatures
-
-* `context.Context` is always the first parameter.
-* Accept interfaces, return concrete types.
-* Avoid named return values except for godoc clarity on same-type returns.
-* Avoid naked returns.
-
-### Imports
-
-* Never use dot imports.
-
-### Getters
-
-* Getter: `Owner()`, not `GetOwner()`. Setter: `SetOwner()`.
-
-### Slices
-
-* Prefer `var s []string` (nil slice) over `s := []string{}` unless you specifically need non-nil.
-
-### Control flow
-
-* Prefer `switch` over long if-else chains.
-
-### Testing
-
-* Include actual vs expected in test failures: `got X, want Y`.
-* Include the input that caused the failure.
-
-### Miscellaneous
-
-* Prefer `var buf bytes.Buffer` over `buf := new(bytes.Buffer)` when zero value is useful.
-* Goroutine lifetimes: always make it clear when/how a goroutine exits.
-* Use `crypto/rand`, not `math/rand`, for anything security-related.
+* [Effective Go](https://go.dev/doc/effective_go)
+* [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments)
