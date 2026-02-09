@@ -1,8 +1,12 @@
 # Repository Guidelines
 
+All rules in this document are requirements — not suggestions. ALWAYS follow them.
+
 Nelm is a Go-based Kubernetes deployment tool, which deploys Helm charts, is compatible with Helm releases, and is an alternative to Helm. Nelm is built on top of a Helm fork ([werf/3p-helm](https://github.com/werf/3p-helm)) and is also used as the deployment engine of [werf](https://github.com/werf/werf).
 
-## Commands
+## Commands (MANDATORY)
+
+ALWAYS use these `task` commands. NEVER use raw `go build`, `go test`, `go fmt`, or `golangci-lint` directly.
 
 - `task build` — Build binary for current OS/arch to `./bin/`. Accepts `pkg=...` to build a specific package.
 - `task format` — Run all formatters. Accepts `paths="./pkg/..."` to scope to a specific package.
@@ -33,28 +37,28 @@ Nelm is a Go-based Kubernetes deployment tool, which deploys Helm charts, is com
 - `internal/ts/` — TypeScript support (bundling, rendering).
 - `internal/util/` — internal utility functions.
 
-## Testing
+## Testing (MANDATORY)
 
-- When writing new tests → use `testify` (`assert`, `require`, `suite`).
-- When writing tests as an AI agent → name the file `*_ai_test.go`, add `//go:build ai_tests` build tag, prefix test functions with `TestAI_`.
-- Place tests alongside source files, not in a separate directory.
+- ALWAYS use `testify` (`assert`, `require`) when writing new tests.
+- When writing tests as an AI agent → ALWAYS name the file `*_ai_test.go`, add `//go:build ai_tests` build tag, prefix test functions with `TestAI_`.
+- ALWAYS place tests alongside source files, not in a separate directory.
 - Test helpers go in `helpers_test.go` (or `helpers_ai_test.go` for AI-written helpers).
 - Test fixtures go in `testdata/` subdirectory next to the tests.
 - Shared test helpers are in `internal/test/`.
 
-## Work standards
+## Work standards (MANDATORY)
 
-- Always use `task` commands for build/test/lint/format — never raw `go build`, `go test`, `go fmt`, or `golangci-lint` directly.
-- When logging → use `log.Default` from `pkg/log`. Never use `fmt.Println`, `slog`, or `logrus` directly.
-- Read and strictly follow the project code style defined in [CODESTYLE.md](CODESTYLE.md).
-- Verify, don't assume — always check the actual state before making changes.
-- Don't leave TODOs, stubs, or partial implementations.
+- ALWAYS use `task` commands for build/test/lint/format — NEVER raw `go build`, `go test`, `go fmt`, or `golangci-lint` directly.
+- ALWAYS use `log.Default` from `pkg/log` for logging. NEVER use `fmt.Println`, `slog`, or `logrus` directly.
+- ALWAYS read and strictly follow the project code style defined in [CODESTYLE.md](CODESTYLE.md). Every rule in it is a requirement.
+- ALWAYS verify, don't assume — check the actual state before making changes.
+- NEVER leave TODOs, stubs, or partial implementations.
 
-## PR review guidelines
+## PR review guidelines (MANDATORY)
 
-- Do not add new external dependencies without flagging to the user first.
-- Do not introduce breaking user-facing changes (not API changes) unless they are hidden behind a feature flag. Flag to the user first.
-- Do not introduce changes that may compromise security. Flag to the user first.
+- NEVER add new external dependencies without flagging to the user first.
+- NEVER introduce breaking user-facing changes (not API changes) unless they are hidden behind a feature flag. Flag to the user first.
+- NEVER introduce changes that may compromise security. Flag to the user first.
 
 ## Related repositories
 

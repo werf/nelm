@@ -1,3 +1,5 @@
+> **AI agents**: all rules below are mandatory. NEVER deviate from them.
+
 ## Design
 
 * Prefer stupid and simple over abstract and extendable.
