@@ -15,7 +15,7 @@
 * Avoid global state.
 * Prefer simplicity over micro-optimizations.
 * For complex things use libraries instead of reinventing the wheel.
-* Document only public APIs or complex/weird code.
+* Document only non-obvious public APIs or complex/weird code.
 
 ## Conventions
 

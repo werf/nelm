@@ -83,6 +83,7 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
 - [More documentation](#more-documentation)
 - [Limitations](#limitations)
 - [Contributing](#contributing)
+- [Special thanks](#special-thanks)
 - [Future plans](#future-plans)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->

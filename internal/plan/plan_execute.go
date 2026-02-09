@@ -25,7 +25,8 @@ import (
 type ExecutePlanOptions struct {
 	common.TrackingOptions
 
-	NetworkParallelism int
+	LegacyProgressReporter *LegacyProgressReporter
+	NetworkParallelism     int
 }
 
 // Executes the given plan. It doesn't care what kind of plan it is (install, upgrade, failure plan,
@@ -37,6 +38,11 @@ func ExecutePlan(parentCtx context.Context, releaseNamespace string, plan *Plan,
 	defer ctxCancelFn(fmt.Errorf("context canceled: plan execution finished"))
 
 	opts.NetworkParallelism = lo.Max([]int{opts.NetworkParallelism, 1})
+
+	if opts.LegacyProgressReporter != nil {
+		resolvedNS := buildResolvedNamespaces(plan, releaseNamespace, clientFactory.Mapper())
+		opts.LegacyProgressReporter.startStage(plan, resolvedNS)
+	}
 
 	workerPool := pool.New().WithContext(ctx).WithMaxGoroutines(opts.NetworkParallelism).WithCancelOnError().WithFirstError()
 	completedOpsIDsCh := make(chan string, 100000)
@@ -71,7 +77,7 @@ func ExecutePlan(parentCtx context.Context, releaseNamespace string, plan *Plan,
 		executableOpsIDs := findExecutableOpsIDs(opsMap)
 		for _, opID := range executableOpsIDs {
 			delete(opsMap, opID)
-			execOperation(opID, releaseNamespace, completedOpsIDsCh, workerPool, plan, taskStore, logStore, informerFactory, history, clientFactory, ctxCancelFn, opts.TrackReadinessTimeout, opts.TrackCreationTimeout, opts.TrackDeletionTimeout)
+			execOperation(opID, releaseNamespace, completedOpsIDsCh, workerPool, plan, taskStore, logStore, informerFactory, history, clientFactory, ctxCancelFn, opts.TrackReadinessTimeout, opts.TrackCreationTimeout, opts.TrackDeletionTimeout, opts.LegacyProgressReporter)
 		}
 	}
 
@@ -88,7 +94,7 @@ func ExecutePlan(parentCtx context.Context, releaseNamespace string, plan *Plan,
 	return nil
 }
 
-func execOperation(opID, releaseNamespace string, completedOpsIDsCh chan string, workerPool *pool.ContextPool, plan *Plan, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history release.Historier, clientFactory kube.ClientFactorier, ctxCancelFn context.CancelCauseFunc, readinessTimeout, presenceTimeout, absenceTimeout time.Duration) {
+func execOperation(opID, releaseNamespace string, completedOpsIDsCh chan string, workerPool *pool.ContextPool, plan *Plan, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history release.Historier, clientFactory kube.ClientFactorier, ctxCancelFn context.CancelCauseFunc, readinessTimeout, presenceTimeout, absenceTimeout time.Duration, reporter *LegacyProgressReporter) {
 	workerPool.Go(func(ctx context.Context) error {
 		var err error
 		defer func() {
@@ -98,16 +104,16 @@ func execOperation(opID, releaseNamespace string, completedOpsIDsCh chan string,
 		}()
 
 		op := lo.Must(plan.Operation(opID))
-		op.Status = OperationStatusPending
+		reportOperationStatus(op, OperationStatusPending, reporter)
 
 		log.Default.Debug(ctx, util.Capitalize(op.IDHuman()))
 
 		if err = execOp(ctx, op, releaseNamespace, taskStore, logStore, informerFactory, history, clientFactory, readinessTimeout, presenceTimeout, absenceTimeout); err != nil {
-			op.Status = OperationStatusFailed
+			reportOperationStatus(op, OperationStatusFailed, reporter)
 			return fmt.Errorf("execute operation: %w", err)
 		}
 
-		op.Status = OperationStatusCompleted
+		reportOperationStatus(op, OperationStatusCompleted, reporter)
 
 		completedOpsIDsCh <- opID
 

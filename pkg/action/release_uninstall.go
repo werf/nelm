@@ -27,6 +27,7 @@ import (
 	"github.com/werf/nelm/internal/track"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/legacy/progrep"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -72,6 +73,11 @@ type ReleaseUninstallOptions struct {
 	// UninstallReportPath, if specified, saves a JSON report of the uninstallation results to this file path.
 	// The report includes lists of completed, canceled, and failed operations.
 	UninstallReportPath string
+	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
+	// Must be a buffered channel with capacity >= 1. The caller owns the channel and is responsible
+	// for its lifecycle. Intermediate reports may be dropped if the consumer is slow; the final
+	// report is guaranteed (blocking send). ReleaseUninstall does not close this channel.
+	LegacyProgressReportCh chan<- progrep.ProgressReport
 }
 
 // Uninstall the Helm release along with its resources from the cluster.
@@ -267,10 +273,16 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		criticalErrs := &util.MultiError{}
 		nonCriticalErrs := &util.MultiError{}
 
+		var reporter *plan.LegacyProgressReporter
+		if opts.LegacyProgressReportCh != nil {
+			reporter = plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
+		}
+
 		log.Default.Debug(ctx, "Execute release delete plan")
 		executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, deletePlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-			TrackingOptions:    opts.TrackingOptions,
-			NetworkParallelism: opts.NetworkParallelism,
+			LegacyProgressReporter: reporter,
+			TrackingOptions:        opts.TrackingOptions,
+			NetworkParallelism:     opts.NetworkParallelism,
 		})
 		if executePlanErr != nil {
 			criticalErrs.Add(fmt.Errorf("execute release delete plan: %w", executePlanErr))
@@ -294,8 +306,9 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 		if executePlanErr != nil {
 			runFailurePlanResult, nonCritErrs, critErrs := runFailurePlan(ctx, releaseNamespace, deletePlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
-				TrackingOptions:    opts.TrackingOptions,
-				NetworkParallelism: opts.NetworkParallelism,
+				LegacyProgressReporter: reporter,
+				TrackingOptions:        opts.TrackingOptions,
+				NetworkParallelism:     opts.NetworkParallelism,
 			})
 
 			criticalErrs.Add(critErrs)
@@ -310,6 +323,10 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		if !opts.NoProgressTablePrint {
 			progressPrinter.Stop()
 			progressPrinter.Wait()
+		}
+
+		if reporter != nil {
+			reporter.Stop(ctx)
 		}
 
 		reportCompletedOps := lo.Map(completedResourceOps, func(op *plan.Operation, _ int) string {
