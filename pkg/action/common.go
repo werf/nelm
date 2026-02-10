@@ -16,9 +16,6 @@ import (
 	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/gookit/color"
 	"github.com/samber/lo"
-	"github.com/werf/nelm/internal/resource"
-	"github.com/werf/nelm/internal/resource/spec"
-	"github.com/werf/nelm/internal/track"
 	"github.com/xo/terminfo"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,6 +29,9 @@ import (
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/release"
+	"github.com/werf/nelm/internal/resource"
+	"github.com/werf/nelm/internal/resource/spec"
+	"github.com/werf/nelm/internal/track"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
@@ -573,7 +573,7 @@ type runInstallPlanOptions struct {
 	NetworkParallelism         int
 }
 
-func runInstallPlan(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName string, releaseNamespace string, installPlan *plan.Plan, prevRelease *helmrelease.Release, newRelease *helmrelease.Release, clientFactory *kube.ClientFactory, history *release.History, instResInfos []*plan.InstallableResourceInfo, relInfos []*plan.ReleaseInfo, prevDeployedRelease *helmrelease.Release, opts runInstallPlanOptions) error {
+func runInstallPlan(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, installPlan *plan.Plan, prevRelease, newRelease *helmrelease.Release, clientFactory *kube.ClientFactory, history *release.History, instResInfos []*plan.InstallableResourceInfo, relInfos []*plan.ReleaseInfo, prevDeployedRelease *helmrelease.Release, opts runInstallPlanOptions) error {
 	if opts.InstallGraphPath != "" {
 		if err := savePlanAsDot(installPlan, opts.InstallGraphPath); err != nil {
 			return fmt.Errorf("save release install graph: %w", err)
@@ -797,7 +797,7 @@ func logPlannedChanges(
 
 			return nil
 		}); err != nil {
-			return err
+			return fmt.Errorf("log changes: %w", err)
 		}
 	}
 

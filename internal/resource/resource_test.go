@@ -1031,7 +1031,7 @@ func (s *DeletableResourceSuite) TestNewDeletableResourceForDefaults() {
 				return defaultResourceSpec(s.releaseNamespace)
 			},
 			expectFunc: func(resSpec *spec.ResourceSpec) *resource.DeletableResource {
-				return defaultDeletableResource(resSpec.ResourceMeta)
+				return defaultDeletableResource(resSpec)
 			},
 		},
 		{
@@ -1063,7 +1063,7 @@ func (s *DeletableResourceSuite) TestNewDeletableResourceForOwnership() {
 				return resSpec
 			},
 			expectFunc: func(resSpec *spec.ResourceSpec) *resource.DeletableResource {
-				res := defaultDeletableResource(resSpec.ResourceMeta)
+				res := defaultDeletableResource(resSpec)
 				res.Ownership = common.OwnershipAnyone
 
 				return res
@@ -1237,23 +1237,23 @@ func defaultHookInstallableResource(resSpec *spec.ResourceSpec) *resource.Instal
 	return res
 }
 
-func defaultDeletableResource(resMeta *spec.ResourceMeta) *resource.DeletableResource {
+func defaultDeletableResource(resMeta *spec.ResourceSpec) *resource.DeletableResource {
 	return &resource.DeletableResource{
-		ResourceMeta:      resMeta,
+		ResourceSpec:      resMeta,
 		Ownership:         common.OwnershipRelease,
 		DeletePropagation: metav1.DeletePropagationForeground,
 	}
 }
 
 func defaultHookDeletableResource(resSpec *spec.ResourceSpec) *resource.DeletableResource {
-	res := defaultDeletableResource(resSpec.ResourceMeta)
+	res := defaultDeletableResource(resSpec)
 	res.Ownership = common.OwnershipAnyone
 
 	return res
 }
 
 func defaultReleaseNamespaceDeletableResource(resSpec *spec.ResourceSpec) *resource.DeletableResource {
-	res := defaultDeletableResource(resSpec.ResourceMeta)
+	res := defaultDeletableResource(resSpec)
 	res.Ownership = common.OwnershipAnyone
 	res.KeepOnDelete = true
 

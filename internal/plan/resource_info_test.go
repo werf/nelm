@@ -570,7 +570,7 @@ func updatedInstallableResource(s *suite.Suite, releaseName, releaseNamespace st
 
 func defaultDeletableResource(releaseName, releaseNamespace string) *resource.DeletableResource {
 	return &resource.DeletableResource{
-		ResourceMeta: defaultResourceSpec(releaseName, releaseNamespace).ResourceMeta,
+		ResourceSpec: defaultResourceSpec(releaseName, releaseNamespace),
 		Ownership:    common.OwnershipRelease,
 	}
 }
@@ -587,7 +587,7 @@ func defaultInstallableResourceInfo(localRes *resource.InstallableResource) *pla
 
 func defaultDeletableResourceInfo(localRes *resource.DeletableResource, releaseName, releaseNamespace string) *plan.DeletableResourceInfo {
 	return &plan.DeletableResourceInfo{
-		ResourceMeta:     localRes.ResourceMeta,
+		ResourceMeta:     localRes.ResourceSpec.ResourceMeta,
 		GetResult:        defaultResourceSpec(releaseName, releaseNamespace).Unstruct,
 		LocalResource:    localRes,
 		MustDelete:       true,

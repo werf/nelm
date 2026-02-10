@@ -79,7 +79,7 @@ func newReleasePlanShowCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
-		
+
 		if err := cli.AddFlag(cmd, &cfg.SecretKey, "secret-key", "", "Secret key for decrypting the plan artifact", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,

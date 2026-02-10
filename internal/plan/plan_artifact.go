@@ -311,7 +311,7 @@ func encodeOperationConfig(cfg OperationConfig) (InstallPlanArtifactOpConfig, er
 }
 
 func MarshalInstallPlanArtifact(ctx context.Context, artifact *InstallPlanArtifact, secretKey, secretWorkDir string) ([]byte, error) {
-	dataJSON, err := json.Marshal(artifact.Data)
+	dataJSON, err := json.Marshal(artifact.Data) //nolint:musttag
 	if err != nil {
 		return nil, fmt.Errorf("marshal artifact data to json: %w", err)
 	}
@@ -337,7 +337,7 @@ func MarshalInstallPlanArtifact(ctx context.Context, artifact *InstallPlanArtifa
 		artifact.Encrypted = false
 	}
 
-	data, err := json.MarshalIndent(artifact, "", "  ") //nolint: musttag
+	data, err := json.MarshalIndent(artifact, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("marshal install plan artifact to json: %w", err)
 	}
@@ -352,7 +352,7 @@ func ReadInstallPlanArtifact(ctx context.Context, path, secretKey, secretWorkDir
 	}
 
 	var artifact InstallPlanArtifact
-	if err := json.Unmarshal(fileData, &artifact); err != nil { //nolint: musttag
+	if err := json.Unmarshal(fileData, &artifact); err != nil {
 		return nil, fmt.Errorf("decode plan artifact json: %w", err)
 	}
 
