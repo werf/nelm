@@ -142,12 +142,19 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		return nil, fmt.Errorf("chart requires kubeVersion: %s which is incompatible with Kubernetes %s", chart.Metadata.KubeVersion, caps.KubeVersion.String())
 	}
 
-	runtime, err := buildRuntime(opts.RuntimeSetJSON)
+	runtime, err := buildContextFromJSONSets(opts.RuntimeSetJSON)
 	if err != nil {
 		return nil, fmt.Errorf("build runtime: %w", err)
 	}
 
 	log.Default.TraceStruct(ctx, runtime, "Runtime:")
+
+	defaultRootContext, err := buildContextFromJSONSets(opts.RootSetJSON)
+	if err != nil {
+		return nil, fmt.Errorf("build default root context: %w", err)
+	}
+
+	log.Default.TraceStruct(ctx, defaultRootContext, "Default root context:")
 
 	var isUpgrade bool
 
@@ -168,7 +175,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		Revision:  revision,
 		IsInstall: !isUpgrade,
 		IsUpgrade: isUpgrade,
-	}, caps, runtime)
+	}, caps, runtime, defaultRootContext)
 	if err != nil {
 		return nil, fmt.Errorf("build rendered values for chart %q: %w", chart.Name(), err)
 	}
@@ -403,14 +410,14 @@ func buildChartCapabilities(ctx context.Context, clientFactory kube.ClientFactor
 	return capabilities, nil
 }
 
-func buildRuntime(jsonSets []string) (map[string]interface{}, error) {
-	runtime := map[string]interface{}{}
+func buildContextFromJSONSets(jsonSets []string) (map[string]interface{}, error) {
+	context := map[string]interface{}{}
 
 	for _, jsonSet := range jsonSets {
-		if err := strvals.ParseJSON(jsonSet, runtime); err != nil {
-			return nil, fmt.Errorf("parse runtime JSON set %q: %w", jsonSet, err)
+		if err := strvals.ParseJSON(jsonSet, context); err != nil {
+			return nil, fmt.Errorf("parse JSON set %q: %w", jsonSet, err)
 		}
 	}
 
-	return runtime, nil
+	return context, nil
 }
