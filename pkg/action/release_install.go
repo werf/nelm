@@ -32,6 +32,7 @@ import (
 	"github.com/werf/nelm/internal/track"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/legacy/progrep"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -103,6 +104,11 @@ type ReleaseInstallOptions struct {
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.
 	LegacyChartType helmopts.ChartType
+	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
+	// Must be a buffered channel with capacity >= 1. The caller owns the channel and is responsible
+	// for its lifecycle. Intermediate reports may be dropped if the consumer is slow; the final
+	// report is guaranteed (blocking send). ReleaseInstall does not close this channel.
+	LegacyProgressReportCh chan<- progrep.ProgressReport
 	// LegacyExtraValues provides additional values programmatically.
 	// Used internally for backward compatibility with werf integration.
 	LegacyExtraValues map[string]interface{}
@@ -512,11 +518,17 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	criticalErrs := &util.MultiError{}
 	nonCriticalErrs := &util.MultiError{}
 
+	var reporter *plan.LegacyProgressReporter
+	if opts.LegacyProgressReportCh != nil {
+		reporter = plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
+	}
+
 	log.Default.Debug(ctx, "Execute release install plan")
 
 	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, installPlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		TrackingOptions:    opts.TrackingOptions,
-		NetworkParallelism: opts.NetworkParallelism,
+		LegacyProgressReporter: reporter,
+		TrackingOptions:        opts.TrackingOptions,
+		NetworkParallelism:     opts.NetworkParallelism,
 	})
 	if executePlanErr != nil {
 		criticalErrs.Add(fmt.Errorf("execute release install plan: %w", executePlanErr))
@@ -540,8 +552,9 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	if executePlanErr != nil {
 		runFailurePlanResult, nonCritErrs, critErrs := runFailurePlan(ctx, releaseNamespace, installPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
-			TrackingOptions:    opts.TrackingOptions,
-			NetworkParallelism: opts.NetworkParallelism,
+			LegacyProgressReporter: reporter,
+			TrackingOptions:        opts.TrackingOptions,
+			NetworkParallelism:     opts.NetworkParallelism,
 		})
 
 		criticalErrs.Add(critErrs)
@@ -555,6 +568,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		if opts.AutoRollback && prevDeployedRelease != nil {
 			runRollbackPlanResult, nonCritErrs, critErrs := runRollbackPlan(ctx, releaseName, releaseNamespace, newRelease, prevDeployedRelease, taskStore, logStore, informerFactory, history, clientFactory, runRollbackPlanOptions{
+				LegacyProgressReporter:    reporter,
 				DefaultDeletePropagation:  opts.DefaultDeletePropagation,
 				TrackingOptions:           opts.TrackingOptions,
 				ExtraAnnotations:          opts.ExtraAnnotations,
@@ -584,6 +598,10 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	if !opts.NoProgressTablePrint {
 		progressPrinter.Stop()
 		progressPrinter.Wait()
+	}
+
+	if reporter != nil {
+		reporter.Stop(ctx)
 	}
 
 	reportCompletedOps := lo.Map(completedResourceOps, func(op *plan.Operation, _ int) string {
@@ -729,6 +747,7 @@ type runRollbackPlanOptions struct {
 	common.TrackingOptions
 	common.ResourceValidationOptions
 
+	LegacyProgressReporter   *plan.LegacyProgressReporter
 	DefaultDeletePropagation string
 	ExtraAnnotations         map[string]string
 	ExtraLabels              map[string]string
@@ -890,8 +909,9 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 	log.Default.Debug(ctx, "Execute rollback plan")
 
 	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, rollbackPlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		TrackingOptions:    opts.TrackingOptions,
-		NetworkParallelism: opts.NetworkParallelism,
+		LegacyProgressReporter: opts.LegacyProgressReporter,
+		TrackingOptions:        opts.TrackingOptions,
+		NetworkParallelism:     opts.NetworkParallelism,
 	})
 	if executePlanErr != nil {
 		critErrs.Add(fmt.Errorf("execute rollback plan: %w", executePlanErr))
@@ -915,8 +935,9 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	if executePlanErr != nil {
 		runFailurePlanResult, nonCrErrs, crErrs := runFailurePlan(ctx, releaseNamespace, rollbackPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
-			TrackingOptions:    opts.TrackingOptions,
-			NetworkParallelism: opts.NetworkParallelism,
+			LegacyProgressReporter: opts.LegacyProgressReporter,
+			TrackingOptions:        opts.TrackingOptions,
+			NetworkParallelism:     opts.NetworkParallelism,
 		})
 
 		critErrs.Add(crErrs)

@@ -179,7 +179,8 @@ func printReport(ctx context.Context, report *releaseReportV3) {
 type runFailureInstallPlanOptions struct {
 	common.TrackingOptions
 
-	NetworkParallelism int
+	LegacyProgressReporter *plan.LegacyProgressReporter
+	NetworkParallelism     int
 }
 
 type runFailurePlanResult struct {
@@ -227,8 +228,9 @@ func runFailurePlan(
 	log.Default.Debug(ctx, "Execute failure plan")
 
 	if err := plan.ExecutePlan(ctx, releaseNamespace, failurePlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		TrackingOptions:    opts.TrackingOptions,
-		NetworkParallelism: opts.NetworkParallelism,
+		LegacyProgressReporter: opts.LegacyProgressReporter,
+		TrackingOptions:        opts.TrackingOptions,
+		NetworkParallelism:     opts.NetworkParallelism,
 	}); err != nil {
 		critErrs.Add(fmt.Errorf("execute failure plan: %w", err))
 	}

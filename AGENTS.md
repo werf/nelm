@@ -28,7 +28,7 @@ Nelm is a Go-based Kubernetes deployment tool, which deploys Helm charts, is com
 - ALWAYS validate early, validate a lot. ALWAYS keep APIs stupid and minimal.
 - NEVER prefer global state. ALWAYS prefer simplicity over micro-optimizations.
 - ALWAYS use libraries for complex things instead of reinventing the wheel.
-- NEVER add comments unless they document a public API or explain genuinely non-obvious logic. NEVER add obvious/redundant comments, NEVER add comments restating what code does. When in doubt, don't comment.
+- NEVER add comments unless they document a non-obvious public API or explain genuinely non-obvious logic. NEVER add obvious/redundant comments, NEVER add comments restating what code does. When in doubt, don't comment.
 
 ### Conventions
 
