@@ -364,6 +364,14 @@ func AddValuesFlags(cmd *cobra.Command, cfg *common.ValuesOptions) error {
 		return fmt.Errorf("add flag: %w", err)
 	}
 
+	if err := cli.AddFlag(cmd, &cfg.RootSetJSON, "set-root-json", []string{}, "Set new keys in the global context ($), where the key is the value path and the value is JSON. This is meant to be generated inside the program, so use --set-json instead, unless you know what you are doing", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                valuesFlagGroup,
+		NoSplitOnCommas:      true,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
 	if err := cli.AddFlag(cmd, &cfg.RuntimeSetJSON, "set-runtime-json", []string{}, "Set new keys in $.Runtime, where the key is the value path and the value is JSON. This is meant to be generated inside the program, so use --set-json instead, unless you know what you are doing", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                valuesFlagGroup,
