@@ -252,7 +252,7 @@ type ReleaseGetResultV1 struct {
 	Chart      *ReleaseGetResultChart   `json:"chart"`
 	Notes      string                   `json:"notes,omitempty"`
 	Values     map[string]interface{}   `json:"values,omitempty"`
-	// TODO(v2): Join Hooks and Resources together as ResourceSpecs?
+	// TODO(major): Join Hooks and Resources together as ResourceSpecs?
 	Hooks     []map[string]interface{} `json:"hooks,omitempty"`
 	Resources []map[string]interface{} `json:"resources,omitempty"`
 }
@@ -267,7 +267,7 @@ type ReleaseGetResultRelease struct {
 	StorageLabels map[string]string           `json:"storageLabels"`
 }
 
-// TODO(v2): get rid
+// TODO(major): get rid
 type ReleaseGetResultDeployedAt struct {
 	Human string `json:"human"`
 	Unix  int    `json:"unix"`

@@ -57,7 +57,7 @@ func newReleaseListCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		// TODO(ilya-lesikov): restrict values
+		// TODO: restrict values
 		if err := cli.AddFlag(cmd, &cfg.OutputFormat, "output-format", action.DefaultReleaseListOutputFormat, "Result output format", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
@@ -73,7 +73,7 @@ func newReleaseListCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		// TODO(ilya-lesikov): restrict allowed values
+		// TODO: restrict allowed values
 		if err := cli.AddFlag(cmd, &cfg.ReleaseStorageDriver, "release-storage", "", "How releases should be stored", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,

@@ -80,20 +80,6 @@ func internalDeployDependencies(unstruct *unstructured.Unstructured) []*Internal
 				dependencies = append(dependencies, deps...)
 			}
 		}
-	case schema.GroupKind{Kind: "Endpoints", Group: ""}:
-		// TODO(ilya-lesikov):
-	case schema.GroupKind{Kind: "EndpointSlice", Group: ""}:
-		// TODO(ilya-lesikov):
-	case schema.GroupKind{Kind: "Ingress", Group: "networking.k8s.io"}:
-		// TODO(ilya-lesikov):
-	case schema.GroupKind{Kind: "IngressClass", Group: "networking.k8s.io"}:
-		// TODO(ilya-lesikov):
-	case schema.GroupKind{Kind: "PersistentVolumeClaim", Group: ""}:
-		// TODO(ilya-lesikov):
-	case schema.GroupKind{Kind: "VolumeAttachment", Group: "storage.k8s.io"}:
-		// TODO(ilya-lesikov):
-	case schema.GroupKind{Kind: "HorizontalPodAutoscaler", Group: "autoscaling"}:
-		// TODO(ilya-lesikov):
 	case schema.GroupKind{Kind: "ClusterRoleBinding", Group: "rbac.authorization.k8s.io"}, schema.GroupKind{Kind: "RoleBinding", Group: "rbac.authorization.k8s.io"}:
 		if dep, found := parseRoleRef(*unstruct); found {
 			dependencies = append(dependencies, dep)

@@ -246,7 +246,7 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		// TODO(ilya-lesikov): restrict allowed values
+		// TODO: restrict allowed values
 		if err := cli.AddFlag(cmd, &cfg.ReleaseStorageDriver, "release-storage", "", "How releases should be stored", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,
@@ -282,7 +282,7 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		// TODO(v2): get rid?
+		// TODO(major): get rid?
 		if err := cli.AddFlag(cmd, &cfg.ShowVerboseDiffs, "show-verbose-diffs", true, "Show verbose diff lines", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagLocalEnvVarRegexes,
 			Group:                mainFlagGroup,

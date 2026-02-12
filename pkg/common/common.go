@@ -39,15 +39,15 @@ var ChartTSEntryPoints = [...]string{ChartTSEntryPointTS, ChartTSEntryPointJS}
 
 const (
 	DefaultBurstLimit = 100
-	// TODO(v2): switch to if-possible
+	// TODO(major): switch to if-possible
 	DefaultChartProvenanceStrategy = "never"
-	// TODO(v2): reconsider?
+	// TODO(major): reconsider?
 	DefaultDeletePropagation = metav1.DeletePropagationForeground
 	DefaultDiffContextLines  = 3
 	DefaultFieldManager      = "helm"
 	// DefaultResourceValidationKubeVersion Kubernetes version to use during resource validation by kubeconform
 	DefaultResourceValidationKubeVersion = "1.35.0"
-	// TODO(v2): update to a more recent version? Not sure about backwards compatibility.
+	// TODO(major): update to a more recent version? Not sure about backwards compatibility.
 	DefaultLocalKubeVersion      = "1.20.0"
 	DefaultLogColorMode          = log.LogColorModeAuto
 	DefaultNetworkParallelism    = 30
@@ -283,7 +283,7 @@ var (
 	AnnotationKeyHumanDeleteDependency   = "werf.io/delete-dependency-<name>"
 	AnnotationKeyPatternDeleteDependency = regexp.MustCompile(`^werf.io/delete-dependency-(?P<id>.+)$`)
 
-	// TODO(v2): get rid
+	// TODO(major): get rid
 	AnnotationKeyHumanDependency   = "<name>.dependency.werf.io"
 	AnnotationKeyPatternDependency = regexp.MustCompile(`^(?P<id>.+).dependency.werf.io$`)
 

@@ -388,7 +388,7 @@ func AddValuesFlags(cmd *cobra.Command, cfg *common.ValuesOptions) error {
 		return fmt.Errorf("add flag: %w", err)
 	}
 
-	// TODO(v2): revise all flags in nelm/werf to make sure they are all parsed as it happens in
+	// TODO(major): revise all flags in nelm/werf to make sure they are all parsed as it happens in
 	// Helm (see https://github.com/werf/nelm/issues/337)
 	if err := cli.AddFlag(cmd, &cfg.ValuesSet, "set", []string{}, "Set new values, where the key is the value path and the value is the value", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,

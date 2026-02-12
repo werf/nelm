@@ -1439,7 +1439,7 @@ func externalDeps(resMeta *spec.ResourceMeta, releaseNamespace string) map[strin
 	return deps
 }
 
-// TODO(v2): get rid of legacy external deps
+// TODO(major): get rid of legacy external deps
 func legacyExternalDeps(resMeta *spec.ResourceMeta, releaseNamespace string, mapper apimeta.ResettableRESTMapper) (map[string]*ExternalDependency, error) {
 	deps := map[string]*ExternalDependency{}
 

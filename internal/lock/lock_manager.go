@@ -108,7 +108,6 @@ func (lockManager *LockManager) LockRelease(
 	ctx context.Context,
 	releaseName string,
 ) (lockgate.LockHandle, error) {
-	// TODO: add support of context into lockgate
 	lockManager.LockerWithRetry.Ctx = ctx
 
 	_, handle, err := lockManager.LockerWithRetry.Acquire(fmt.Sprintf("release/%s", releaseName), setupLockerDefaultOptions(ctx, lockgate.AcquireOptions{}))

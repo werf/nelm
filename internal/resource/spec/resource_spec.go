@@ -25,7 +25,7 @@ type ResourceSpec struct {
 
 type ResourceSpecOptions struct {
 	FilePath                string
-	LegacyNoCleanNullFields bool // TODO(v2): always clean
+	LegacyNoCleanNullFields bool // TODO(major): always clean
 	StoreAs                 common.StoreAs
 }
 
@@ -129,7 +129,7 @@ func BuildReleasableResourceSpecs(ctx context.Context, releaseNamespace string, 
 		for _, resPatcher := range patchers {
 			if matched, err := resPatcher.Match(ctx, &ResourcePatcherResourceInfo{
 				Obj: releasableRes.Unstruct,
-				// TODO(ilya-lesikov): get rid of ownership for releasable resources
+				// TODO: get rid of ownership for releasable resources
 				Ownership: "",
 			}); err != nil {
 				return nil, fmt.Errorf("match resource for patching by %q: %w", resPatcher.Type(), err)
@@ -147,7 +147,7 @@ func BuildReleasableResourceSpecs(ctx context.Context, releaseNamespace string, 
 
 			patchedObj, err := resPatcher.Patch(ctx, &ResourcePatcherResourceInfo{
 				Obj: unstruct,
-				// TODO(ilya-lesikov): get rid of ownership for releasable resources
+				// TODO: get rid of ownership for releasable resources
 				Ownership: "",
 			})
 			if err != nil {

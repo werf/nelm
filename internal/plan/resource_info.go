@@ -154,7 +154,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 	return instResourceInfos, delResourceInfos, nil
 }
 
-// TODO(v2): keep annotation should probably forbid resource recreations
+// TODO(major): keep annotation should probably forbid resource recreations
 func buildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed, noRemoveManualChanges bool, clientFactory kube.ClientFactorier) ([]*InstallableResourceInfo, error) {
 	var stages []common.Stage
 	switch deployType {

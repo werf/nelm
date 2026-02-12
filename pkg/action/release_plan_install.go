@@ -32,7 +32,7 @@ const (
 	DefaultReleasePlanInstallLogLevel = log.InfoLevel
 )
 
-// TODO(v2): get rid
+// TODO(major): get rid
 var (
 	ErrChangesPlanned         = errors.New("changes planned")
 	ErrResourceChangesPlanned = errors.New("resource changes planned")
@@ -54,7 +54,8 @@ type ReleasePlanInstallOptions struct {
 	// Used to set application version metadata without modifying the chart file.
 	ChartAppVersion string
 	// ChartDirPath is deprecated
-	ChartDirPath string // TODO(v2): get rid
+	// TODO(major): get rid
+	ChartDirPath string
 	// ChartProvenanceKeyring is the path to a keyring file containing public keys
 	// used to verify chart provenance signatures. Used with signed charts for security.
 	ChartProvenanceKeyring string

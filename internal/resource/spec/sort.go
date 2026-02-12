@@ -5,7 +5,7 @@ import "github.com/werf/nelm/pkg/common"
 func ResourceSpecSortHandler(r1, r2 *ResourceSpec) bool {
 	sortAs1 := r1.StoreAs
 	sortAs2 := r2.StoreAs
-	// TODO(v2): sorted based on sortAs for compatibility. In future should just probably sort
+	// TODO(major): sorted based on sortAs for compatibility. In future should just probably sort
 	// like this: first CRDs (any type), then helm.sh/hook hooks, then the rest
 	if sortAs1 != sortAs2 {
 		if sortAs1 == common.StoreAsNone {
