@@ -29,10 +29,10 @@ const (
 // Data class, which stores all info to make a decision on what to do with the release revision
 // in the plan.
 type ReleaseInfo struct {
-	Release *helmrelease.Release
+	Release *helmrelease.Release `json:"release"`
 
-	Must                   ReleaseType
-	MustFailOnFailedDeploy bool
+	Must                   ReleaseType `json:"must"`
+	MustFailOnFailedDeploy bool        `json:"mustFailOnFailedDeploy"`
 }
 
 // Build ReleaseInfos from Releases that we got from the cluster. Here we actually decide on what to
