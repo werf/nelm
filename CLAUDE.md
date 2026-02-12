@@ -22,8 +22,14 @@ These are NOT suggestions — they are requirements. NEVER skip them in favor of
 
 ## Verifying changes (MANDATORY)
 
-After making changes, ALWAYS verify them end-to-end against the local dev cluster:
+ALWAYS verify after making changes:
 
-1. `task build` — build the binary.
-2. Run the built binary from `./bin/nelm` against the cluster to deploy/test.
-3. ALWAYS use **Kubernetes MCP tools** (`mcp__kubernetes__*`) to inspect the cluster state — get resources, describe them, check logs, exec into pods, etc. NEVER use raw `kubectl` via Bash when an MCP tool can do it.
+- ALWAYS run `task build` — verify it compiles.
+- ALWAYS run `task format` — fix formatting.
+- ALWAYS run `task lint` — verify linting passes.
+- ALWAYS run `task test:unit` — verify tests pass.
+
+When changes affect runtime behavior, ALSO verify against the local dev cluster:
+
+- ALWAYS run `./bin/nelm` against the cluster to deploy/test.
+- ALWAYS use **Kubernetes MCP tools** (`mcp__kubernetes__*`) to inspect cluster state. NEVER use raw `kubectl` via Bash when an MCP tool can do it.
