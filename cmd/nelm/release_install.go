@@ -313,6 +313,23 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		if featgate.FeatGatePlanFreezing.Enabled() {
+			if err := cli.AddFlag(cmd, &cfg.PlanArtifactPath, "use-plan", "", "Use plan from specified path during release install", cli.AddFlagOptions{
+				GetEnvVarRegexesFunc: cli.GetFlagLocalEnvVarRegexes,
+				Group:                mainFlagGroup,
+				Type:                 cli.FlagTypeFile,
+			}); err != nil {
+				return fmt.Errorf("add flag: %w", err)
+			}
+
+			if err := cli.AddFlag(cmd, &cfg.PlanArtifactLifetime, "plan-lifetime", common.APIPlanArtifactLifetime, "How long plan artifact is valid", cli.AddFlagOptions{
+				GetEnvVarRegexesFunc: cli.GetFlagLocalEnvVarRegexes,
+				Group:                mainFlagGroup,
+			}); err != nil {
+				return fmt.Errorf("add flag: %w", err)
+			}
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.ReleaseName, "release", "", "The release name. Must be unique within the release namespace", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,

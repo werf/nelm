@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -100,4 +101,114 @@ func OperationIDHuman(t OperationType, iteration OperationIteration, configIDHum
 	}
 
 	return id
+}
+
+type operationJSON struct {
+	Type      OperationType          `json:"type"`
+	Version   OperationVersion       `json:"version"`
+	Category  OperationCategory      `json:"category"`
+	Iteration OperationIteration     `json:"iteration"`
+	Status    OperationStatus        `json:"status"`
+	Config    operationConfigPayload `json:"config"`
+}
+
+type operationConfigPayload struct {
+	Kind string          `json:"kind"`
+	Data json.RawMessage `json:"data"`
+}
+
+func (o *Operation) MarshalJSON() ([]byte, error) {
+	if o.Config == nil {
+		return nil, fmt.Errorf("operation config is nil")
+	}
+
+	configData, err := o.Config.MarshalJSON()
+	if err != nil {
+		return nil, fmt.Errorf("marshal operation config data: %w", err)
+	}
+
+	return json.Marshal(operationJSON{ //nolint:wrapcheck
+		Type:      o.Type,
+		Version:   o.Version,
+		Category:  o.Category,
+		Iteration: o.Iteration,
+		Status:    o.Status,
+		Config: operationConfigPayload{
+			Kind: o.Config.Kind(),
+			Data: configData,
+		},
+	})
+}
+
+func (o *Operation) UnmarshalJSON(data []byte) error {
+	var raw operationJSON
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("unmarshal operation: %w", err)
+	}
+
+	cfg, err := operationConfigByKind(raw.Config.Kind)
+	if err != nil {
+		return fmt.Errorf("resolve operation config by kind %q: %w", raw.Config.Kind, err)
+	}
+
+	if err := cfg.UnmarshalJSON(raw.Config.Data); err != nil {
+		return fmt.Errorf("unmarshal operation config data: %w", err)
+	}
+
+	o.Type = raw.Type
+	o.Version = raw.Version
+	o.Category = raw.Category
+	o.Iteration = raw.Iteration
+	o.Status = raw.Status
+	o.Config = cfg
+
+	return nil
+}
+
+var operationConfigConstructors = map[string]func() OperationConfig{
+	string(OperationTypeNoop): func() OperationConfig {
+		return &OperationConfigNoop{}
+	},
+	string(OperationTypeCreate): func() OperationConfig {
+		return &OperationConfigCreate{}
+	},
+	string(OperationTypeRecreate): func() OperationConfig {
+		return &OperationConfigRecreate{}
+	},
+	string(OperationTypeUpdate): func() OperationConfig {
+		return &OperationConfigUpdate{}
+	},
+	string(OperationTypeApply): func() OperationConfig {
+		return &OperationConfigApply{}
+	},
+	string(OperationTypeDelete): func() OperationConfig {
+		return &OperationConfigDelete{}
+	},
+	string(OperationTypeTrackReadiness): func() OperationConfig {
+		return &OperationConfigTrackReadiness{}
+	},
+	string(OperationTypeTrackPresence): func() OperationConfig {
+		return &OperationConfigTrackPresence{}
+	},
+	string(OperationTypeTrackAbsence): func() OperationConfig {
+		return &OperationConfigTrackAbsence{}
+	},
+	string(OperationTypeCreateRelease): func() OperationConfig {
+		return &OperationConfigCreateRelease{}
+	},
+	string(OperationTypeUpdateRelease): func() OperationConfig {
+		return &OperationConfigUpdateRelease{}
+	},
+	string(OperationTypeDeleteRelease): func() OperationConfig {
+		return &OperationConfigDeleteRelease{}
+	},
+}
+
+func operationConfigByKind(kind string) (OperationConfig, error) {
+	constructor, found := operationConfigConstructors[kind]
+	if !found {
+		return nil, fmt.Errorf("unsupported operation config kind %q", kind)
+	}
+
+	return constructor(), nil
 }

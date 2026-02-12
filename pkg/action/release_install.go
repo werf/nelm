@@ -127,6 +127,10 @@ type ReleaseInstallOptions struct {
 	// NoShowNotes, when true, suppresses printing of NOTES.txt after successful installation.
 	// NOTES.txt typically contains usage instructions and next steps.
 	NoShowNotes bool
+	// PlanArtifactLifetime, specifies how long plan artifact be valid.
+	PlanArtifactLifetime time.Duration
+	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
+	PlanArtifactPath string
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
 	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
 	// Used for authenticating to OCI registries when pulling charts.
@@ -166,6 +170,28 @@ type ReleaseInstallOptions struct {
 }
 
 func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseInstallOptions) error {
+	if opts.PlanArtifactPath != "" {
+		return ReleasePlanExecute(ctx, ReleasePlanExecuteOptions{
+			KubeConnectionOptions: opts.KubeConnectionOptions,
+			TrackingOptions:       opts.TrackingOptions,
+			AutoRollback:          opts.AutoRollback,
+			InstallGraphPath:      opts.InstallGraphPath,
+			InstallReportPath:     opts.InstallReportPath,
+			NetworkParallelism:    opts.NetworkParallelism,
+			NoShowNotes:           opts.NoShowNotes,
+			NoProgressTablePrint:  opts.NoProgressTablePrint,
+			PlanArtifactLifetime:  opts.PlanArtifactLifetime,
+			PlanArtifactPath:      opts.PlanArtifactPath,
+			ReleaseHistoryLimit:   opts.ReleaseHistoryLimit,
+			RollbackGraphPath:     opts.RollbackGraphPath,
+			SecretKey:             opts.SecretKey,
+			SecretWorkDir:         opts.SecretWorkDir,
+			ShowSubchartNotes:     opts.ShowSubchartNotes,
+			TempDirPath:           opts.TempDirPath,
+			Timeout:               opts.Timeout,
+		})
+	}
+
 	ctx, ctxCancelFn := context.WithCancelCause(ctx)
 
 	if opts.Timeout == 0 {
@@ -452,6 +478,86 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		return fmt.Errorf("build install plan: %w", err)
 	}
 
+	return runReleaseInstallPlan(ctx, ctxCancelFn, releaseName, releaseNamespace, installPlan, prevRelease, newRelease, clientFactory, history, instResInfos, relInfos, prevDeployedRelease, runReleaseInstallPlanOptions{
+		TrackingOptions:           opts.TrackingOptions,
+		ResourceValidationOptions: opts.ResourceValidationOptions,
+		AutoRollback:              opts.AutoRollback,
+		DefaultDeletePropagation:  opts.DefaultDeletePropagation,
+		ExtraAnnotations:          opts.ExtraAnnotations,
+		ExtraLabels:               opts.ExtraLabels,
+		ExtraRuntimeAnnotations:   opts.ExtraRuntimeAnnotations,
+		ExtraRuntimeLabels:        opts.ExtraRuntimeLabels,
+		ForceAdoption:             opts.ForceAdoption,
+		InstallGraphPath:          opts.InstallGraphPath,
+		InstallReportPath:         opts.InstallReportPath,
+		LegacyProgressReportCh:    opts.LegacyProgressReportCh,
+		NoRemoveManualChanges:     opts.NoRemoveManualChanges,
+		NoShowNotes:               opts.NoShowNotes,
+		NoProgressTablePrint:      opts.NoProgressTablePrint,
+		NetworkParallelism:        opts.NetworkParallelism,
+		ReleaseInfoAnnotations:    opts.ReleaseInfoAnnotations,
+		ReleaseLabels:             opts.ReleaseLabels,
+		RollbackGraphPath:         opts.RollbackGraphPath,
+	})
+}
+
+type runReleaseInstallPlanOptions struct {
+	common.TrackingOptions
+	common.ResourceValidationOptions
+
+	// AutoRollback, when true, automatically rolls back to the previous deployed release on installation failure.
+	// Only works if there is a previously successfully deployed release.
+	AutoRollback bool
+	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
+	DefaultDeletePropagation string
+	// ExtraAnnotations are additional Kubernetes annotations to add to all chart resources.
+	// These are added during chart rendering, before resources are stored in the release.
+	ExtraAnnotations map[string]string
+	// ExtraLabels are additional Kubernetes labels to add to all chart resources.
+	// These are added during chart rendering, before resources are stored in the release.
+	ExtraLabels map[string]string
+	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime.
+	// These are added during resource creation/update but not stored in the release.
+	ExtraRuntimeAnnotations map[string]string
+	// ExtraRuntimeLabels are additional labels to add to resources at runtime.
+	// These are added during resource creation/update but not stored in the release.
+	ExtraRuntimeLabels map[string]string
+	// ForceAdoption, when true, allows adopting resources that belong to a different Helm release.
+	// WARNING: This can lead to conflicts if resources are managed by multiple releases.
+	ForceAdoption bool
+	// InstallGraphPath, if specified, saves the Graphviz representation of the install plan to this file path.
+	// Useful for debugging and visualizing the dependency graph of resource operations.
+	InstallGraphPath string
+	// InstallReportPath, if specified, saves a JSON report of the installation results to this file path.
+	// The report includes the release status and lists of completed, canceled, and failed operations.
+	InstallReportPath string
+	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
+	// Must be a buffered channel with capacity >= 1. The caller owns the channel and is responsible
+	// for its lifecycle. Intermediate reports may be dropped if the consumer is slow; the final
+	// report is guaranteed (blocking send). ReleaseInstall does not close this channel.
+	LegacyProgressReportCh chan<- progrep.ProgressReport
+	// NoRemoveManualChanges, when true, preserves fields manually added to resources in the cluster
+	// that are not present in the chart manifests. By default, such fields are removed during updates.
+	NoRemoveManualChanges bool
+	// NoShowNotes, when true, suppresses printing of NOTES.txt after successful execution.
+	NoShowNotes bool
+	// NoProgressTablePrint, when true, disables real-time progress table printing during resource tracking.
+	NoProgressTablePrint bool
+	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
+	// Defaults to DefaultNetworkParallelism if not set or <= 0.
+	NetworkParallelism int
+	// ReleaseInfoAnnotations are custom annotations to add to the release metadata (stored in Secret/ConfigMap).
+	// These do not affect resources but can be used for tagging releases.
+	ReleaseInfoAnnotations map[string]string
+	// ReleaseLabels are labels to add to the release storage object (Secret/ConfigMap).
+	// Used for filtering and organizing releases in storage.
+	ReleaseLabels map[string]string
+	// RollbackGraphPath, if specified, saves the Graphviz representation of the rollback plan (if auto-rollback occurs)
+	// to this file path. Only used when AutoRollback is true and rollback is triggered.
+	RollbackGraphPath string
+}
+
+func runReleaseInstallPlan(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, installPlan *plan.Plan, prevRelease, newRelease *helmrelease.Release, clientFactory *kube.ClientFactory, history *release.History, instResInfos []*plan.InstallableResourceInfo, relInfos []*plan.ReleaseInfo, prevDeployedRelease *helmrelease.Release, opts runReleaseInstallPlanOptions) error {
 	if opts.InstallGraphPath != "" {
 		if err := savePlanAsDot(installPlan, opts.InstallGraphPath); err != nil {
 			return fmt.Errorf("save release install graph: %w", err)
@@ -486,7 +592,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}
 
 		if !opts.NoShowNotes {
-			printNotes(ctx, renderChartResult.Notes)
+			printNotes(ctx, newRelease.Info.Notes)
 		}
 
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)))
@@ -640,7 +746,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	if !criticalErrs.HasErrors() && !opts.NoShowNotes {
-		printNotes(ctx, renderChartResult.Notes)
+		printNotes(ctx, newRelease.Info.Notes)
 	}
 
 	if criticalErrs.HasErrors() {
@@ -650,11 +756,11 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		return fmt.Errorf("failed release %q (namespace: %q): %w", releaseName, releaseNamespace, allErrs)
 	} else if nonCriticalErrs.HasErrors() {
 		return fmt.Errorf("succeeded release %q (namespace: %q), but non-critical errors encountered: %w", releaseName, releaseNamespace, nonCriticalErrs)
-	} else {
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Succeeded release %q (namespace: %q)", releaseName, releaseNamespace)))
-
-		return nil
 	}
+
+	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Succeeded release %q (namespace: %q)", releaseName, releaseNamespace)))
+
+	return nil
 }
 
 func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir, homeDir string) (ReleaseInstallOptions, error) {

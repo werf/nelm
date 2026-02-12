@@ -53,21 +53,21 @@ func ResourceInstallTypeSortHandler(type1, type2 ResourceInstallType) bool {
 // A data class, which stores all info to make a decision on what to do with the to-be-installed
 // resource in the plan.
 type InstallableResourceInfo struct {
-	*spec.ResourceMeta
+	*spec.ResourceMeta `json:"resourceMeta"`
 
-	LocalResource  *resource.InstallableResource
-	GetResult      *unstructured.Unstructured
-	DryApplyResult *unstructured.Unstructured
-	DryApplyErr    error
+	LocalResource  *resource.InstallableResource `json:"localResource"`
+	GetResult      *unstructured.Unstructured    `json:"-"`
+	DryApplyResult *unstructured.Unstructured    `json:"-"`
+	DryApplyErr    error                         `json:"-"`
 
-	MustInstall                   ResourceInstallType
-	MustDeleteOnSuccessfulInstall bool
-	MustDeleteOnFailedInstall     bool
-	MustTrackReadiness            bool
+	MustInstall                   ResourceInstallType `json:"mustInstall"`
+	MustDeleteOnSuccessfulInstall bool                `json:"mustDeleteOnSuccessfulInstall"`
+	MustDeleteOnFailedInstall     bool                `json:"mustDeleteOnFailedInstall"`
+	MustTrackReadiness            bool                `json:"mustTrackReadiness"`
 
-	Stage                          common.Stage
-	StageDeleteOnSuccessfulInstall common.Stage
-	Iteration                      int
+	Stage                          common.Stage `json:"stage"`
+	StageDeleteOnSuccessfulInstall common.Stage `json:"stageDeleteOnSuccessfulInstall,omitempty"`
+	Iteration                      int          `json:"iteration"`
 }
 
 // A data class, which stores all info to make a decision on what to do with the to-be-deleted

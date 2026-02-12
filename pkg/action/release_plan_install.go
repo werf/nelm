@@ -153,6 +153,8 @@ type ReleasePlanInstallOptions struct {
 	// ShowVerboseDiffs, when true, shows verbose diffs for resource create/delete operations.
 	// Defaults to true. When false, create/delete diffs are hidden with "<hidden verbose changes>".
 	ShowVerboseDiffs bool
+	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
+	PlanArtifactPath string
 	// TempDirPath is the directory for temporary files during the operation.
 	// A temporary directory is created automatically if not specified.
 	TempDirPath string
@@ -469,7 +471,49 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		log.Default.Info(ctx, color.Style{color.Bold, color.Yellow}.Render(fmt.Sprintf("No resource changes planned, but still must install release %q (namespace: %q)", releaseName, releaseNamespace)))
 	}
 
-	logPlannedChanges(ctx, releaseName, releaseNamespace, changes)
+	if err := logPlannedChanges(ctx, releaseName, releaseNamespace, changes, plan.CalculatePlannedChangesOptions{
+		DiffContextLines:       opts.DiffContextLines,
+		ShowVerboseCRDDiffs:    opts.ShowVerboseCRDDiffs,
+		ShowVerboseDiffs:       opts.ShowVerboseDiffs,
+		ShowSensitiveDiffs:     opts.ShowSensitiveDiffs,
+		ShowInsignificantDiffs: opts.ShowInsignificantDiffs,
+	}); err != nil {
+		return fmt.Errorf("log planned changes: %w", err)
+	}
+
+	if opts.PlanArtifactPath != "" {
+		if err := plan.WritePlanArtifact(
+			ctx,
+			installPlan,
+			deployType,
+			changes,
+			releaseName,
+			releaseNamespace,
+			newRelease.Version,
+			opts.PlanArtifactPath,
+			opts.SecretKey,
+			opts.SecretWorkDir,
+			instResInfos,
+			relInfos,
+			plan.PlanArtifactOptions{
+				ResourceValidationOptions:   opts.ResourceValidationOptions,
+				DefaultDeletePropagation:    opts.DefaultDeletePropagation,
+				ExtraAnnotations:            opts.ExtraAnnotations,
+				ExtraLabels:                 opts.ExtraLabels,
+				ExtraRuntimeAnnotations:     opts.ExtraRuntimeAnnotations,
+				ExtraRuntimeLabels:          opts.ExtraRuntimeLabels,
+				ForceAdoption:               opts.ForceAdoption,
+				NoInstallStandaloneCRDs:     opts.NoInstallStandaloneCRDs,
+				NoRemoveManualChanges:       opts.NoRemoveManualChanges,
+				ReleaseInfoAnnotations:      opts.ReleaseInfoAnnotations,
+				ReleaseLabels:               opts.ReleaseLabels,
+				ReleaseStorageDriver:        opts.ReleaseStorageDriver,
+				ReleaseStorageSQLConnection: opts.ReleaseStorageSQLConnection,
+			},
+		); err != nil {
+			return fmt.Errorf("save install plan to %q: %w", opts.PlanArtifactPath, err)
+		}
+	}
 
 	if opts.ErrorIfChangesPlanned {
 		if featgate.FeatGateMoreDetailedExitCodeForPlan.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
@@ -549,23 +593,33 @@ func logPlannedChanges(
 	releaseName string,
 	releaseNamespace string,
 	changes []*plan.ResourceChange,
-) {
+	opts plan.CalculatePlannedChangesOptions,
+) error {
 	if len(changes) == 0 {
-		return
+		return nil
 	}
 
 	log.Default.Info(ctx, "")
 
 	for _, change := range changes {
-		log.Default.InfoBlock(ctx, log.BlockOptions{
+		if err := log.Default.InfoBlockErr(ctx, log.BlockOptions{
 			BlockTitle: buildDiffHeader(change),
-		}, func() {
-			log.Default.Info(ctx, "%s", change.Udiff)
+		}, func() error {
+			uDiff, err := change.GetUDiff(opts)
+			if err != nil {
+				return fmt.Errorf("calculate diff for resource %s: %w", change.ResourceMeta.IDHuman(), err)
+			}
+
+			log.Default.Info(ctx, "%s", uDiff)
 
 			if change.Reason != "" {
 				log.Default.Info(ctx, "<%s reason: %s>", change.Type, change.Reason)
 			}
-		})
+
+			return nil
+		}); err != nil {
+			return fmt.Errorf("log changes: %w", err)
+		}
 	}
 
 	log.Default.Info(ctx, color.Bold.Render("Planned changes summary")+" for release %q (namespace: %q):", releaseName, releaseNamespace)
@@ -575,6 +629,8 @@ func logPlannedChanges(
 	}
 
 	log.Default.Info(ctx, "")
+
+	return nil
 }
 
 func buildDiffHeader(change *plan.ResourceChange) string {
