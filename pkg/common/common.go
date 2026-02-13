@@ -26,12 +26,18 @@ var (
 const (
 	// ChartTSSourceDir is the directory containing TypeScript sources in a Helm chart.
 	ChartTSSourceDir = "ts/"
-	// ChartTSVendorBundleFile is the path to the vendor bundle file in a Helm chart.
-	ChartTSVendorBundleFile = ChartTSSourceDir + "vendor/libs.js"
+	// ChartTSVendorBundleDir is the path to the vendor bundle dir in a Helm chart.
+	ChartTSVendorBundleDir = ChartTSSourceDir + "dist/vendor/"
+	// ChartTSVendorMap is the path to the deno import mapping for the vendor bundle.
+	ChartTSVendorMap = "dist/vendor_map.json"
 	// ChartTSEntryPointTS is the TypeScript entry point path.
 	ChartTSEntryPointTS = "src/index.ts"
 	// ChartTSEntryPointJS is the JavaScript entry point path.
 	ChartTSEntryPointJS = "src/index.js"
+	// ChartTSRenderResultPrefix is the prefix for the rendered output.
+	ChartTSRenderResultPrefix = "NELM_RENDER_RESULT:"
+	// TODO: remove after deno implementation is ready, and use ChartTSVendorBundleDir instead
+	ChartTSVendorBundleFile = ChartTSSourceDir + "vendor/libs.js"
 )
 
 // ChartTSEntryPoints defines supported TypeScript/JavaScript entry points (in priority order).

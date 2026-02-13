@@ -3,6 +3,7 @@ package ts
 import (
 	"context"
 	"fmt"
+	"os"
 	"path"
 	"slices"
 	"strings"
@@ -15,20 +16,25 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values) (map[string]string, error) {
+func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, rebuildVendor bool) (map[string]string, error) {
 	allRendered := make(map[string]string)
 
-	if err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), allRendered); err != nil {
+	wd, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("get current working directory: %w", err)
+	}
+
+	if err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), wd, allRendered, rebuildVendor); err != nil {
 		return nil, err
 	}
 
 	return allRendered, nil
 }
 
-func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartutil.Values, pathPrefix string, results map[string]string) error {
+func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartutil.Values, pathPrefix, chartDir string, results map[string]string, rebuildVendor bool) error {
 	log.Default.Debug(ctx, "Rendering TypeScript for chart %q (path prefix: %s)", chart.Name(), pathPrefix)
 
-	rendered, err := renderFiles(ctx, chart, values)
+	rendered, err := renderDenoFiles(ctx, chart, values, chartDir, rebuildVendor)
 	if err != nil {
 		return fmt.Errorf("render files for chart %q: %w", chart.Name(), err)
 	}
@@ -48,7 +54,9 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 			dep,
 			scopeValuesForSubchart(values, depName, dep),
 			path.Join(pathPrefix, "charts", depName),
+			path.Join(chartDir, "charts", depName),
 			results,
+			rebuildVendor,
 		)
 		if err != nil {
 			return fmt.Errorf("render dependency %q: %w", depName, err)
@@ -58,6 +66,7 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 	return nil
 }
 
+// TODO: remove after finish the Deno implementation
 func renderFiles(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values) (map[string]string, error) {
 	mergedFiles := slices.Concat(chart.RuntimeFiles, chart.RuntimeDepsFiles)
 

@@ -53,6 +53,7 @@ type RenderChartOptions struct {
 	Remote                  bool
 	SubchartNotes           bool
 	TemplatesAllowDNS       bool
+	RebuildTsVendorBundle   bool
 }
 
 type RenderChartResult struct {
@@ -216,7 +217,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	}
 
 	if featgate.FeatGateTypescript.Enabled() {
-		jsRenderedTemplates, err := renderJSTemplates(ctx, chartPath, chart, renderedValues)
+		jsRenderedTemplates, err := renderJSTemplates(ctx, chartPath, chart, renderedValues, opts.RebuildTsVendorBundle)
 		if err != nil {
 			return nil, fmt.Errorf("render ts chart templates for chart %q: %w", chart.Name(), err)
 		}
@@ -256,10 +257,11 @@ func renderJSTemplates(
 	chartPath string,
 	chart *helmchart.Chart,
 	renderedValues chartutil.Values,
+	rebuildVendor bool,
 ) (map[string]string, error) {
 	log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", chart.Name())
 
-	result, err := ts.RenderChart(ctx, chart, renderedValues)
+	result, err := ts.RenderChart(ctx, chart, renderedValues, rebuildVendor)
 	if err != nil {
 		return nil, fmt.Errorf("render TypeScript: %w", err)
 	}
