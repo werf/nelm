@@ -218,6 +218,10 @@ nelm release install [options...] -n namespace -r release [chart-dir]
 
   Set new values, where the key is the value path and the value is the value\. The value will always become a literal string\. Vars: \$NELM\_SET\_LITERAL, \$NELM\_RELEASE\_INSTALL\_SET\_LITERAL
 
+- `--set-root-json` (default: `[]`)
+
+  Set new keys in the global context \(\$\), where the key is the value path and the value is JSON\. This is meant to be generated inside the program, so use \-\-set\-json instead, unless you know what you are doing\. Vars: \$NELM\_SET\_ROOT\_JSON, \$NELM\_RELEASE\_INSTALL\_SET\_ROOT\_JSON
+
 - `--set-runtime-json` (default: `[]`)
 
   Set new keys in \$\.Runtime, where the key is the value path and the value is JSON\. This is meant to be generated inside the program, so use \-\-set\-json instead, unless you know what you are doing\. Vars: \$NELM\_SET\_RUNTIME\_JSON, \$NELM\_RELEASE\_INSTALL\_SET\_RUNTIME\_JSON
@@ -858,6 +862,10 @@ nelm release plan install [options...] -n namespace -r release [chart-dir]
 - `--set-literal` (default: `[]`)
 
   Set new values, where the key is the value path and the value is the value\. The value will always become a literal string\. Vars: \$NELM\_SET\_LITERAL, \$NELM\_RELEASE\_PLAN\_INSTALL\_SET\_LITERAL
+
+- `--set-root-json` (default: `[]`)
+
+  Set new keys in the global context \(\$\), where the key is the value path and the value is JSON\. This is meant to be generated inside the program, so use \-\-set\-json instead, unless you know what you are doing\. Vars: \$NELM\_SET\_ROOT\_JSON, \$NELM\_RELEASE\_PLAN\_INSTALL\_SET\_ROOT\_JSON
 
 - `--set-runtime-json` (default: `[]`)
 
@@ -1840,6 +1848,10 @@ nelm chart lint [options...] [chart-dir]
 
   Set new values, where the key is the value path and the value is the value\. The value will always become a literal string\. Vars: \$NELM\_SET\_LITERAL, \$NELM\_CHART\_LINT\_SET\_LITERAL
 
+- `--set-root-json` (default: `[]`)
+
+  Set new keys in the global context \(\$\), where the key is the value path and the value is JSON\. This is meant to be generated inside the program, so use \-\-set\-json instead, unless you know what you are doing\. Vars: \$NELM\_SET\_ROOT\_JSON, \$NELM\_CHART\_LINT\_SET\_ROOT\_JSON
+
 - `--set-runtime-json` (default: `[]`)
 
   Set new keys in \$\.Runtime, where the key is the value path and the value is JSON\. This is meant to be generated inside the program, so use \-\-set\-json instead, unless you know what you are doing\. Vars: \$NELM\_SET\_RUNTIME\_JSON, \$NELM\_CHART\_LINT\_SET\_RUNTIME\_JSON
@@ -2176,6 +2188,10 @@ nelm chart render [options...] [chart-dir]
 - `--set-literal` (default: `[]`)
 
   Set new values, where the key is the value path and the value is the value\. The value will always become a literal string\. Vars: \$NELM\_SET\_LITERAL, \$NELM\_CHART\_RENDER\_SET\_LITERAL
+
+- `--set-root-json` (default: `[]`)
+
+  Set new keys in the global context \(\$\), where the key is the value path and the value is JSON\. This is meant to be generated inside the program, so use \-\-set\-json instead, unless you know what you are doing\. Vars: \$NELM\_SET\_ROOT\_JSON, \$NELM\_CHART\_RENDER\_SET\_ROOT\_JSON
 
 - `--set-runtime-json` (default: `[]`)
 
