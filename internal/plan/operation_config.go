@@ -1,8 +1,6 @@
 package plan
 
 import (
-	"encoding/json"
-	"fmt"
 	"regexp"
 	"time"
 
@@ -34,7 +32,6 @@ var (
 type OperationConfig interface {
 	ID() string
 	IDHuman() string
-	MarshalJSON() ([]byte, error)
 }
 
 type OperationConfigNoop struct {
@@ -49,17 +46,6 @@ func (c *OperationConfigNoop) IDHuman() string {
 	return c.OpID
 }
 
-func (c *OperationConfigNoop) MarshalJSON() ([]byte, error) {
-	type operationConfigNoopJSON OperationConfigNoop
-
-	data, err := json.Marshal((*operationConfigNoopJSON)(c))
-	if err != nil {
-		return nil, fmt.Errorf("marshal noop operation config: %w", err)
-	}
-
-	return data, nil
-}
-
 type OperationConfigCreate struct {
 	ResourceSpec  *spec.ResourceSpec `json:"resourceSpec"`
 	ForceReplicas *int               `json:"forceReplicas,omitempty"`
@@ -71,17 +57,6 @@ func (c *OperationConfigCreate) ID() string {
 
 func (c *OperationConfigCreate) IDHuman() string {
 	return c.ResourceSpec.IDHuman()
-}
-
-func (c *OperationConfigCreate) MarshalJSON() ([]byte, error) {
-	type operationConfigCreateJSON OperationConfigCreate
-
-	data, err := json.Marshal((*operationConfigCreateJSON)(c))
-	if err != nil {
-		return nil, fmt.Errorf("marshal create operation config: %w", err)
-	}
-
-	return data, nil
 }
 
 type OperationConfigRecreate struct {
@@ -98,17 +73,6 @@ func (c *OperationConfigRecreate) IDHuman() string {
 	return c.ResourceSpec.IDHuman()
 }
 
-func (c *OperationConfigRecreate) MarshalJSON() ([]byte, error) {
-	type operationConfigRecreateJSON OperationConfigRecreate
-
-	data, err := json.Marshal((*operationConfigRecreateJSON)(c))
-	if err != nil {
-		return nil, fmt.Errorf("marshal recreate operation config: %w", err)
-	}
-
-	return data, nil
-}
-
 type OperationConfigUpdate struct {
 	ResourceSpec *spec.ResourceSpec `json:"resourceSpec"`
 }
@@ -119,17 +83,6 @@ func (c *OperationConfigUpdate) ID() string {
 
 func (c *OperationConfigUpdate) IDHuman() string {
 	return c.ResourceSpec.IDHuman()
-}
-
-func (c *OperationConfigUpdate) MarshalJSON() ([]byte, error) {
-	type operationConfigUpdateJSON OperationConfigUpdate
-
-	data, err := json.Marshal((*operationConfigUpdateJSON)(c))
-	if err != nil {
-		return nil, fmt.Errorf("marshal update operation config: %w", err)
-	}
-
-	return data, nil
 }
 
 type OperationConfigApply struct {
@@ -144,17 +97,6 @@ func (c *OperationConfigApply) IDHuman() string {
 	return c.ResourceSpec.IDHuman()
 }
 
-func (c *OperationConfigApply) MarshalJSON() ([]byte, error) {
-	type operationConfigApplyJSON OperationConfigApply
-
-	data, err := json.Marshal((*operationConfigApplyJSON)(c))
-	if err != nil {
-		return nil, fmt.Errorf("marshal apply operation config: %w", err)
-	}
-
-	return data, nil
-}
-
 type OperationConfigDelete struct {
 	ResourceMeta      *spec.ResourceMeta         `json:"resourceMeta"`
 	DeletePropagation metav1.DeletionPropagation `json:"deletePropagation"`
@@ -166,17 +108,6 @@ func (c *OperationConfigDelete) ID() string {
 
 func (c *OperationConfigDelete) IDHuman() string {
 	return c.ResourceMeta.IDHuman()
-}
-
-func (c *OperationConfigDelete) MarshalJSON() ([]byte, error) {
-	type operationConfigDeleteJSON OperationConfigDelete
-
-	data, err := json.Marshal((*operationConfigDeleteJSON)(c))
-	if err != nil {
-		return nil, fmt.Errorf("marshal delete operation config: %w", err)
-	}
-
-	return data, nil
 }
 
 type OperationConfigTrackReadiness struct {
@@ -205,17 +136,6 @@ func (c *OperationConfigTrackReadiness) IDHuman() string {
 	return c.ResourceMeta.IDHuman()
 }
 
-func (c *OperationConfigTrackReadiness) MarshalJSON() ([]byte, error) {
-	type operationConfigTrackReadinessJSON OperationConfigTrackReadiness
-
-	data, err := json.Marshal((*operationConfigTrackReadinessJSON)(c))
-	if err != nil {
-		return nil, fmt.Errorf("marshal track readiness operation config: %w", err)
-	}
-
-	return data, nil
-}
-
 type OperationConfigTrackPresence struct {
 	ResourceMeta *spec.ResourceMeta `json:"resourceMeta"`
 }
@@ -226,17 +146,6 @@ func (c *OperationConfigTrackPresence) ID() string {
 
 func (c *OperationConfigTrackPresence) IDHuman() string {
 	return c.ResourceMeta.IDHuman()
-}
-
-func (c *OperationConfigTrackPresence) MarshalJSON() ([]byte, error) {
-	type operationConfigTrackPresenceJSON OperationConfigTrackPresence
-
-	data, err := json.Marshal((*operationConfigTrackPresenceJSON)(c))
-	if err != nil {
-		return nil, fmt.Errorf("marshal track presence operation config: %w", err)
-	}
-
-	return data, nil
 }
 
 type OperationConfigTrackAbsence struct {
@@ -251,17 +160,6 @@ func (c *OperationConfigTrackAbsence) IDHuman() string {
 	return c.ResourceMeta.IDHuman()
 }
 
-func (c *OperationConfigTrackAbsence) MarshalJSON() ([]byte, error) {
-	type operationConfigTrackAbsenceJSON OperationConfigTrackAbsence
-
-	data, err := json.Marshal((*operationConfigTrackAbsenceJSON)(c))
-	if err != nil {
-		return nil, fmt.Errorf("marshal track absence operation config: %w", err)
-	}
-
-	return data, nil
-}
-
 type OperationConfigCreateRelease struct {
 	Release *helmrelease.Release `json:"release"`
 }
@@ -272,17 +170,6 @@ func (c *OperationConfigCreateRelease) ID() string {
 
 func (c *OperationConfigCreateRelease) IDHuman() string {
 	return c.Release.IDHuman()
-}
-
-func (c *OperationConfigCreateRelease) MarshalJSON() ([]byte, error) {
-	type operationConfigCreateReleaseJSON OperationConfigCreateRelease
-
-	data, err := json.Marshal((*operationConfigCreateReleaseJSON)(c))
-	if err != nil {
-		return nil, fmt.Errorf("marshal create release operation config: %w", err)
-	}
-
-	return data, nil
 }
 
 type OperationConfigUpdateRelease struct {
@@ -297,17 +184,6 @@ func (c *OperationConfigUpdateRelease) IDHuman() string {
 	return c.Release.IDHuman()
 }
 
-func (c *OperationConfigUpdateRelease) MarshalJSON() ([]byte, error) {
-	type operationConfigUpdateReleaseJSON OperationConfigUpdateRelease
-
-	data, err := json.Marshal((*operationConfigUpdateReleaseJSON)(c))
-	if err != nil {
-		return nil, fmt.Errorf("marshal update release operation config: %w", err)
-	}
-
-	return data, nil
-}
-
 type OperationConfigDeleteRelease struct {
 	ReleaseName      string `json:"releaseName"`
 	ReleaseNamespace string `json:"releaseNamespace"`
@@ -320,15 +196,4 @@ func (c *OperationConfigDeleteRelease) ID() string {
 
 func (c *OperationConfigDeleteRelease) IDHuman() string {
 	return helmrelease.ReleaseIDHuman(c.ReleaseNamespace, c.ReleaseName, c.ReleaseRevision)
-}
-
-func (c *OperationConfigDeleteRelease) MarshalJSON() ([]byte, error) {
-	type operationConfigDeleteReleaseJSON OperationConfigDeleteRelease
-
-	data, err := json.Marshal((*operationConfigDeleteReleaseJSON)(c))
-	if err != nil {
-		return nil, fmt.Errorf("marshal delete release operation config: %w", err)
-	}
-
-	return data, nil
 }
