@@ -17,7 +17,7 @@ import (
 // Enough to create or update resources, as well as delete, get, etc. Use it when ResourceMeta is
 // not enough and you also need the actual resource spec.
 type ResourceSpec struct {
-	*ResourceMeta `json:"meta"`
+	*ResourceMeta `json:"resourceMeta"`
 
 	Unstruct *unstructured.Unstructured `json:"unstruct"`
 	StoreAs  common.StoreAs             `json:"storeAs"`

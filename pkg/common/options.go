@@ -217,19 +217,33 @@ func (opts *TrackingOptions) ApplyDefaults() {
 
 type ResourceValidationOptions struct {
 	// NoResourceValidation Disable resource validation.
-	NoResourceValidation bool
+	NoResourceValidation bool `json:"noResourceValidation"`
 	// LocalResourceValidation Disable KubeConform resource validation.
-	LocalResourceValidation bool
+	LocalResourceValidation bool `json:"localResourceValidation"`
 	// ValidationKubeVersion sets specific Kubernetes version and respective schemas to use on resource validation.
-	ValidationKubeVersion string
+	ValidationKubeVersion string `json:"validationKubeVersion"`
 	// ValidationSkip Do not validate resources with specific attributes.
-	ValidationSkip []string
+	ValidationSkip []string `json:"validationSkip"`
 	// ValidationSchemaCacheLifetime how long the schema cache should be valid.
-	ValidationSchemaCacheLifetime time.Duration
+	ValidationSchemaCacheLifetime time.Duration `json:"validationSchemaCacheLifetime"`
 	// ValidationSchemas default schema sources to validate Kubernetes resources.
-	ValidationSchemas []string
+	ValidationSchemas []string `json:"validationSchemas"`
 	// ValidationExtraSchemas extra schema sources to validate Kubernetes resources (preferred).
-	ValidationExtraSchemas []string
+	ValidationExtraSchemas []string `json:"validationExtraSchemas"`
 }
 
 func (opts *ResourceValidationOptions) ApplyDefaults() {}
+
+type ResourceChangeUDiffOptions struct {
+	DiffContextLines       int
+	ShowVerboseCRDDiffs    bool
+	ShowVerboseDiffs       bool
+	ShowSensitiveDiffs     bool
+	ShowInsignificantDiffs bool
+}
+
+func (opts *ResourceChangeUDiffOptions) ApplyDefaults() {
+	if opts.DiffContextLines <= 0 {
+		opts.DiffContextLines = DefaultDiffContextLines
+	}
+}

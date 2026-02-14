@@ -34,16 +34,16 @@ type InstallableResource struct {
 	FailMode                               multitrack.FailMode             `json:"failMode"`
 	FailuresAllowed                        int                             `json:"failuresAllowed"`
 	IgnoreReadinessProbeFailsForContainers map[string]time.Duration        `json:"ignoreReadinessProbeFailsForContainers,omitempty"`
-	LogRegex                               *regexp.Regexp                  `json:"-"`
-	LogRegexesForContainers                map[string]*regexp.Regexp       `json:"-"`
+	LogRegex                               *regexp.Regexp                  `json:"logRegex"`
+	LogRegexesForContainers                map[string]*regexp.Regexp       `json:"logRegexesForContainers"`
 	NoActivityTimeout                      time.Duration                   `json:"noActivityTimeout"`
 	ShowLogsOnlyForContainers              []string                        `json:"showLogsOnlyForContainers,omitempty"`
 	ShowServiceMessages                    bool                            `json:"showServiceMessages"`
 	ShowLogsOnlyForNumberOfReplicas        int                             `json:"showLogsOnlyForNumberOfReplicas"`
 	SkipLogs                               bool                            `json:"skipLogs"`
 	SkipLogsForContainers                  []string                        `json:"skipLogsForContainers,omitempty"`
-	SkipLogsRegex                          *regexp.Regexp                  `json:"-"`
-	SkipLogsRegexForContainers             map[string]*regexp.Regexp       `json:"-"`
+	SkipLogsRegex                          *regexp.Regexp                  `json:"skipLogsRegex"`
+	SkipLogsRegexForContainers             map[string]*regexp.Regexp       `json:"skipLogsRegexForContainers"`
 	TrackTerminationMode                   multitrack.TrackTerminationMode `json:"trackTerminationMode"`
 	Weight                                 *int                            `json:"weight,omitempty"`
 	ManualInternalDependencies             []*InternalDependency           `json:"manualInternalDependencies,omitempty"`
@@ -51,11 +51,6 @@ type InstallableResource struct {
 	ExternalDependencies                   []*ExternalDependency           `json:"externalDependencies,omitempty"`
 	DeployConditions                       map[common.On][]common.Stage    `json:"deployConditions"`
 	DeletePropagation                      metav1.DeletionPropagation      `json:"deletePropagation"`
-
-	LogRegexStr                   string            `json:"logRegex,omitempty"`
-	LogRegexesForContainersStr    map[string]string `json:"logRegexesForContainers,omitempty"`
-	SkipLogsRegexStr              string            `json:"skipLogsRegex,omitempty"`
-	SkipLogsRegexForContainersStr map[string]string `json:"skipLogsRegexForContainers,omitempty"`
 }
 
 type InstallableResourceOptions struct {
@@ -162,8 +157,6 @@ func (r *InstallableResource) MarshalJSON() ([]byte, error) {
 		return nil, fmt.Errorf("installable resource is nil")
 	}
 
-	r.prepareForMarshal()
-
 	type installableResourceJSON InstallableResource
 
 	data, err := json.Marshal((*installableResourceJSON)(r))
@@ -181,95 +174,8 @@ func (r *InstallableResource) UnmarshalJSON(data []byte) error {
 
 	type installableResourceJSON InstallableResource
 
-	aux := (*installableResourceJSON)(r)
-	if err := json.Unmarshal(data, aux); err != nil {
+	if err := json.Unmarshal(data, (*installableResourceJSON)(r)); err != nil {
 		return fmt.Errorf("unmarshal installable resource: %w", err)
-	}
-
-	if err := r.restoreFromUnmarshal(); err != nil {
-		return fmt.Errorf("restore installable resource from unmarshal: %w", err)
-	}
-
-	return nil
-}
-
-func (r *InstallableResource) prepareForMarshal() {
-	if r.LogRegex != nil {
-		r.LogRegexStr = r.LogRegex.String()
-	}
-
-	if r.LogRegexesForContainers != nil {
-		r.LogRegexesForContainersStr = make(map[string]string, len(r.LogRegexesForContainers))
-		for k, v := range r.LogRegexesForContainers {
-			if v != nil {
-				r.LogRegexesForContainersStr[k] = v.String()
-			}
-		}
-	}
-
-	if r.SkipLogsRegex != nil {
-		r.SkipLogsRegexStr = r.SkipLogsRegex.String()
-	}
-
-	if r.SkipLogsRegexForContainers != nil {
-		r.SkipLogsRegexForContainersStr = make(map[string]string, len(r.SkipLogsRegexForContainers))
-		for k, v := range r.SkipLogsRegexForContainers {
-			if v != nil {
-				r.SkipLogsRegexForContainersStr[k] = v.String()
-			}
-		}
-	}
-}
-
-func (r *InstallableResource) restoreFromUnmarshal() error {
-	if r.LogRegexStr != "" {
-		re, err := regexp.Compile(r.LogRegexStr)
-		if err != nil {
-			return fmt.Errorf("compile logRegex: %w", err)
-		}
-
-		r.LogRegex = re
-	}
-
-	if r.LogRegexesForContainersStr != nil {
-		r.LogRegexesForContainers = make(map[string]*regexp.Regexp, len(r.LogRegexesForContainersStr))
-		for k, v := range r.LogRegexesForContainersStr {
-			if v == "" {
-				continue
-			}
-
-			re, err := regexp.Compile(v)
-			if err != nil {
-				return fmt.Errorf("compile logRegexesForContainers[%q]: %w", k, err)
-			}
-
-			r.LogRegexesForContainers[k] = re
-		}
-	}
-
-	if r.SkipLogsRegexStr != "" {
-		re, err := regexp.Compile(r.SkipLogsRegexStr)
-		if err != nil {
-			return fmt.Errorf("compile skipLogsRegex: %w", err)
-		}
-
-		r.SkipLogsRegex = re
-	}
-
-	if r.SkipLogsRegexForContainersStr != nil {
-		r.SkipLogsRegexForContainers = make(map[string]*regexp.Regexp, len(r.SkipLogsRegexForContainersStr))
-		for k, v := range r.SkipLogsRegexForContainersStr {
-			if v == "" {
-				continue
-			}
-
-			re, err := regexp.Compile(v)
-			if err != nil {
-				return fmt.Errorf("compile skipLogsRegexForContainers[%q]: %w", k, err)
-			}
-
-			r.SkipLogsRegexForContainers[k] = re
-		}
 	}
 
 	return nil

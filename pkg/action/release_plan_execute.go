@@ -89,6 +89,8 @@ func ReleasePlanExecute(ctx context.Context, opts ReleasePlanExecuteOptions) err
 }
 
 func releasePlanExecute(ctx context.Context, ctxCancelFn context.CancelCauseFunc, opts ReleasePlanExecuteOptions) error {
+	log.Default.Info(ctx, "Using %s plan artifact", opts.PlanArtifactPath)
+
 	if opts.SecretKey != "" {
 		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
 	}
@@ -100,16 +102,12 @@ func releasePlanExecute(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		return fmt.Errorf("read plan artifact from %s: %w", opts.PlanArtifactPath, err)
 	}
 
-	installPlan := planArtifact.GetPlan()
+	planArtifactOptions := planArtifact.Data.Options
 
 	releaseNamespace := planArtifact.Release.Namespace
 	releaseName := planArtifact.Release.Name
-	// deployType := planArtifact.GetDeployType()
 
-	newRelease, err := planArtifact.GetRelease()
-	if err != nil {
-		return fmt.Errorf("get release from plan artifact: %w", err)
-	}
+	newRelease := planArtifact.Data.Release
 
 	currentDir, err := os.Getwd()
 	if err != nil {
@@ -139,9 +137,9 @@ func releasePlanExecute(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		return fmt.Errorf("construct kube client factory: %w", err)
 	}
 
-	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, planArtifact.Options.ReleaseStorageDriver, clientFactory, release.ReleaseStorageOptions{
+	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, planArtifactOptions.ReleaseStorageDriver, clientFactory, release.ReleaseStorageOptions{
 		HistoryLimit:  opts.ReleaseHistoryLimit,
-		SQLConnection: planArtifact.Options.ReleaseStorageSQLConnection,
+		SQLConnection: planArtifactOptions.ReleaseStorageSQLConnection,
 	})
 	if err != nil {
 		return fmt.Errorf("construct release storage: %w", err)
@@ -186,33 +184,30 @@ func releasePlanExecute(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		newRevision = prevRelease.Version + 1
 	}
 
-	instResInfos := planArtifact.GetInstallableResourceInfos()
-	relInfos := planArtifact.GetReleaseInfos()
-
 	log.Default.Debug(ctx, "Validate plan artifact")
 
 	if err := plan.ValidatePlanArtifact(planArtifact, newRevision, opts.PlanArtifactLifetime); err != nil {
 		return fmt.Errorf("validate plan artifact: %w", err)
 	}
 
-	return runReleaseInstallPlan(ctx, ctxCancelFn, releaseName, releaseNamespace, installPlan, prevRelease, newRelease, clientFactory, history, instResInfos, relInfos, prevDeployedRelease, runReleaseInstallPlanOptions{
+	return runReleaseInstallPlan(ctx, ctxCancelFn, releaseName, releaseNamespace, planArtifact.Data.Plan, prevRelease, newRelease, clientFactory, history, planArtifact.Data.InstallableResourceInfos, planArtifact.Data.ReleaseInfos, prevDeployedRelease, runReleaseInstallPlanOptions{
 		TrackingOptions:           opts.TrackingOptions,
-		ResourceValidationOptions: planArtifact.Options.ResourceValidationOptions,
+		ResourceValidationOptions: planArtifactOptions.ResourceValidationOptions,
 		AutoRollback:              opts.AutoRollback,
-		DefaultDeletePropagation:  planArtifact.Options.DefaultDeletePropagation,
-		ExtraAnnotations:          planArtifact.Options.ExtraAnnotations,
-		ExtraLabels:               planArtifact.Options.ExtraLabels,
-		ExtraRuntimeAnnotations:   planArtifact.Options.ExtraRuntimeAnnotations,
-		ExtraRuntimeLabels:        planArtifact.Options.ExtraRuntimeLabels,
-		ForceAdoption:             planArtifact.Options.ForceAdoption,
+		DefaultDeletePropagation:  planArtifactOptions.DefaultDeletePropagation,
+		ExtraAnnotations:          planArtifactOptions.ExtraAnnotations,
+		ExtraLabels:               planArtifactOptions.ExtraLabels,
+		ExtraRuntimeAnnotations:   planArtifactOptions.ExtraRuntimeAnnotations,
+		ExtraRuntimeLabels:        planArtifactOptions.ExtraRuntimeLabels,
+		ForceAdoption:             planArtifactOptions.ForceAdoption,
 		InstallGraphPath:          opts.InstallGraphPath,
 		InstallReportPath:         opts.InstallReportPath,
-		NoRemoveManualChanges:     planArtifact.Options.NoRemoveManualChanges,
+		NoRemoveManualChanges:     planArtifactOptions.NoRemoveManualChanges,
 		NoShowNotes:               opts.NoShowNotes,
 		NoProgressTablePrint:      opts.NoProgressTablePrint,
 		NetworkParallelism:        opts.NetworkParallelism,
-		ReleaseInfoAnnotations:    planArtifact.Options.ReleaseInfoAnnotations,
-		ReleaseLabels:             planArtifact.Options.ReleaseLabels,
+		ReleaseInfoAnnotations:    planArtifactOptions.ReleaseInfoAnnotations,
+		ReleaseLabels:             planArtifactOptions.ReleaseLabels,
 		RollbackGraphPath:         opts.RollbackGraphPath,
 	})
 }

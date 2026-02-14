@@ -315,6 +315,8 @@ var (
 var SprigFuncs = sprig.TxtFuncMap()
 
 var (
+	DefaultPlanArtifactLifetime = 2 * time.Hour
+
 	DefaultResourceValidationSchema = []string{
 		"https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json",
 		"https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json",
@@ -322,7 +324,4 @@ var (
 	DefaultResourceValidationCacheLifetime = 48 * time.Hour
 
 	APIResourceValidationJSONSchemasCacheDir = helmpath.CachePath("nelm", "api-resource-json-schemas")
-
-	// TODO: need to add CLI argument to configure this param on plan execution
-	APIPlanArtifactLifetime = 2 * time.Hour
 )

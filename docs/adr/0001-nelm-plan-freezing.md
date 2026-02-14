@@ -74,7 +74,6 @@ Given these constraints, we decided to implement a **plan freezing mechanism** t
 1. `nelm release plan install --save-plan=plan.gz`:
 - Builds a regular install plan (as today).
 - Exports the full plan DAG, operation configurations, calculated changes, installable resource infos, and release infos to a gzip-compressed JSON artifact.
-- Fails if a file or directory already exists at the target path.
 2. `nelm release install --use-plan=plan.gz`:
 - Reads the plan artifact.
 - Validates the artifact (lifetime, release version match, etc.).
@@ -120,16 +119,12 @@ Given these constraints, we decided to implement a **plan freezing mechanism** t
 - When encrypted, the `encrypted` field is set to `true` and the data payload in `dataRaw` is encrypted. Top-level metadata (release name, namespace, timestamps) remains visible.
 - The `--secret-work-dir` flag specifies the working directory for secret operations.
 
-5. **Feature Gate**:
-- The plan freezing feature is gated behind the `FeatGatePlanFreezing` feature gate.
-
-6. **Protection from Re-running the Same Plan**:
+5. **Protection from Re-running the Same Plan**:
 - Rely on the existing Nelm/Helm release locking mechanism (lock on Helm release ID) to protect from concurrent or duplicated runs.
 - The release version validation ensures that the artifact targets the correct next revision.
 
-7. **Backward Compatibility**:
+6. **Backward Compatibility**:
 - The `release install` command is completely unchanged and continues to work as before if `--use-plan` is not used.
-- Plan freezing is purely additive functionality available only when the feature gate is enabled.
 
 ### Data to Include in Plan Artifact
 
@@ -144,12 +139,12 @@ Top-level fields (always visible):
   - `namespace`: Release namespace.
   - `version`: Expected release revision number.
 - **deployType**: The type of deployment (initial, install, upgrade).
-- **options**: Options that will be used during plan execution.
 - **encrypted**: Boolean indicating whether the data payload is encrypted.
 - **dataRaw**: Serialized (and potentially encrypted) data payload.
 
 Data payload fields (inside `dataRaw`):
 
+- **options**: Options that will be used during plan execution.
 - **dag**:
   - `operations`: List of operations, each containing:
     - Operation ID, type, version, category, iteration, status.
@@ -205,7 +200,6 @@ nelm release install --use-plan=plan.gz --secret-key=mykey
 - Error when artifact is not a valid gzip-compressed JSON document
 - Error when artifact data is empty or cannot be deserialized
 - Error when DAG cannot be reconstructed from artifact operations
-- Error when saving artifact to a path that already exists
 
 ## References
 
@@ -215,4 +209,3 @@ nelm release install --use-plan=plan.gz --secret-key=mykey
 - Operation Implementation: `internal/plan/operation.go`
 - Plan Execute Action: `pkg/action/release_plan_execute.go`
 - Plan Show Action: `pkg/action/release_plan_show.go`
-- Feature Gate: `pkg/featgate/feat.go`

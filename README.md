@@ -80,7 +80,6 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [`NELM_FEAT_FIELD_SENSITIVE` environment variable](#nelm_feat_field_sensitive-environment-variable)
   - [`NELM_FEAT_CLEAN_NULL_FIELDS` environment variable](#nelm_feat_clean_null_fields-environment-variable)
   - [`NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN` environment variable](#nelm_feat_more_detailed_exit_code_for_plan-environment-variable)
-  - [`NELM_FEAT_PLAN_FREEZING` environment variable](#nelm_feat_plan_freezing-environment-variable)
 - [More documentation](#more-documentation)
 - [Limitations](#limitations)
 - [Contributing](#contributing)
@@ -869,25 +868,6 @@ Example:
 ```shell
 export NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN=true
 nelm release plan install -n myproject -r myproject --exit-code
-```
-
-### `NELM_FEAT_PLAN_FREEZING` environment variable
-
-When the `--save-plan` flag is specified for `nelm release plan install`, generated plan will be saved by specified path for future use by `nelm release install --use-plan`.
-
-Will be the default in the next major release.
-
-Example:
-```shell
-export NELM_FEAT_PLAN_FREEZING=true
-nelm release plan install -n myproject -r myproject --save-plan <path to plan file>
-nelm release install --use-plan <path to plan file>
-```
-
-If you wish to review changes in generated plan file, use the following command:
-```shell
-export NELM_FEAT_PLAN_FREEZING=true
-nelm release plan show <path to plan file>
 ```
 
 ## More documentation

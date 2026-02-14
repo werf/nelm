@@ -56,9 +56,9 @@ type InstallableResourceInfo struct {
 	*spec.ResourceMeta `json:"resourceMeta"`
 
 	LocalResource  *resource.InstallableResource `json:"localResource"`
-	GetResult      *unstructured.Unstructured    `json:"-"`
-	DryApplyResult *unstructured.Unstructured    `json:"-"`
-	DryApplyErr    error                         `json:"-"`
+	GetResult      *unstructured.Unstructured    `json:"getResult"`
+	DryApplyResult *unstructured.Unstructured    `json:"dryApplyResult"`
+	DryApplyErr    error                         `json:"dryApplyErr"`
 
 	MustInstall                   ResourceInstallType `json:"mustInstall"`
 	MustDeleteOnSuccessfulInstall bool                `json:"mustDeleteOnSuccessfulInstall"`

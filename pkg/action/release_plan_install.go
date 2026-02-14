@@ -42,6 +42,7 @@ var (
 type ReleasePlanInstallOptions struct {
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
+	common.ResourceChangeUDiffOptions
 	common.ResourceValidationOptions
 	common.ValuesOptions
 	common.SecretValuesOptions
@@ -75,9 +76,6 @@ type ReleasePlanInstallOptions struct {
 	DefaultChartVersion string
 	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
 	DefaultDeletePropagation string
-	// DiffContextLines specifies the number of context lines to show around diffs in the output.
-	// Defaults to DefaultDiffContextLines (3) if not set or < 0. Set to 0 to hide context.
-	DiffContextLines int
 	// ErrorIfChangesPlanned, when true, returns ErrChangesPlanned if any changes are detected.
 	// Used with --exit-code flag to return exit code 2 if changes are planned, 0 if no changes, 1 on error.
 	ErrorIfChangesPlanned bool
@@ -139,20 +137,6 @@ type ReleasePlanInstallOptions struct {
 	// ReleaseStorageSQLConnection is the SQL connection string when using SQL storage driver.
 	// Only used when ReleaseStorageDriver is "sql".
 	ReleaseStorageSQLConnection string
-	// ShowInsignificantDiffs, when true, includes insignificant changes in diff output.
-	// Insignificant changes include: Helm SHA annotations, werf.io annotations, and managedFields.
-	// By default, these are hidden to reduce noise in diffs.
-	ShowInsignificantDiffs bool
-	// ShowSensitiveDiffs, when true, shows diff content for sensitive resources (Secrets, resources with
-	// werf.io/sensitive="true" annotation, or fields matching werf.io/sensitive-paths).
-	// By default, sensitive data is redacted in diffs and shown as "<hidden N bytes, hash XXX>".
-	ShowSensitiveDiffs bool
-	// ShowVerboseCRDDiffs, when true, shows verbose diffs for CRD create/delete operations.
-	// By default, CRD diffs are hidden with "<hidden verbose CRD changes>" to reduce noise.
-	ShowVerboseCRDDiffs bool
-	// ShowVerboseDiffs, when true, shows verbose diffs for resource create/delete operations.
-	// Defaults to true. When false, create/delete diffs are hidden with "<hidden verbose changes>".
-	ShowVerboseDiffs bool
 	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
 	PlanArtifactPath string
 	// TempDirPath is the directory for temporary files during the operation.
@@ -454,13 +438,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Calculate planned changes")
 
-	changes, err := plan.CalculatePlannedChanges(instResInfos, delResInfos, plan.CalculatePlannedChangesOptions{
-		DiffContextLines:       opts.DiffContextLines,
-		ShowVerboseCRDDiffs:    opts.ShowVerboseCRDDiffs,
-		ShowVerboseDiffs:       opts.ShowVerboseDiffs,
-		ShowSensitiveDiffs:     opts.ShowSensitiveDiffs,
-		ShowInsignificantDiffs: opts.ShowInsignificantDiffs,
-	})
+	changes, err := plan.CalculatePlannedChanges(instResInfos, delResInfos)
 	if err != nil {
 		return fmt.Errorf("calculate planned changes: %w", err)
 	}
@@ -471,13 +449,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		log.Default.Info(ctx, color.Style{color.Bold, color.Yellow}.Render(fmt.Sprintf("No resource changes planned, but still must install release %q (namespace: %q)", releaseName, releaseNamespace)))
 	}
 
-	if err := logPlannedChanges(ctx, releaseName, releaseNamespace, changes, plan.CalculatePlannedChangesOptions{
-		DiffContextLines:       opts.DiffContextLines,
-		ShowVerboseCRDDiffs:    opts.ShowVerboseCRDDiffs,
-		ShowVerboseDiffs:       opts.ShowVerboseDiffs,
-		ShowSensitiveDiffs:     opts.ShowSensitiveDiffs,
-		ShowInsignificantDiffs: opts.ShowInsignificantDiffs,
-	}); err != nil {
+	if err := logPlannedChanges(ctx, releaseName, releaseNamespace, changes, opts.ResourceChangeUDiffOptions); err != nil {
 		return fmt.Errorf("log planned changes: %w", err)
 	}
 
@@ -487,9 +459,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 			installPlan,
 			deployType,
 			changes,
-			releaseName,
-			releaseNamespace,
-			newRelease.Version,
+			newRelease,
 			opts.PlanArtifactPath,
 			opts.SecretKey,
 			opts.SecretWorkDir,
@@ -546,6 +516,7 @@ func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, curr
 	opts.KubeConnectionOptions.ApplyDefaults(homeDir)
 	opts.ChartRepoConnectionOptions.ApplyDefaults()
 	opts.ValuesOptions.ApplyDefaults()
+	opts.ResourceChangeUDiffOptions.ApplyDefaults()
 	opts.SecretValuesOptions.ApplyDefaults(currentDir)
 
 	if opts.Chart == "" && opts.ChartDirPath != "" {
@@ -560,10 +531,6 @@ func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, curr
 
 	if opts.NetworkParallelism <= 0 {
 		opts.NetworkParallelism = common.DefaultNetworkParallelism
-	}
-
-	if opts.DiffContextLines < 0 {
-		opts.DiffContextLines = common.DefaultDiffContextLines
 	}
 
 	switch opts.ReleaseStorageDriver {
@@ -593,7 +560,7 @@ func logPlannedChanges(
 	releaseName string,
 	releaseNamespace string,
 	changes []*plan.ResourceChange,
-	opts plan.CalculatePlannedChangesOptions,
+	opts common.ResourceChangeUDiffOptions,
 ) error {
 	if len(changes) == 0 {
 		return nil
@@ -605,7 +572,7 @@ func logPlannedChanges(
 		if err := log.Default.InfoBlockErr(ctx, log.BlockOptions{
 			BlockTitle: buildDiffHeader(change),
 		}, func() error {
-			uDiff, err := change.GetUDiff(opts)
+			uDiff, err := change.UDiff(opts)
 			if err != nil {
 				return fmt.Errorf("calculate diff for resource %s: %w", change.ResourceMeta.IDHuman(), err)
 			}
