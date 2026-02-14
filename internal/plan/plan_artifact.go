@@ -88,7 +88,7 @@ func (a *PlanArtifact) MarshalJSON() ([]byte, error) {
 		Data:  a.dataRaw,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("marshal plan artifact: %s", err)
+		return nil, fmt.Errorf("marshal plan artifact: %w", err)
 	}
 
 	return data, nil
@@ -106,7 +106,7 @@ func (a *PlanArtifact) UnmarshalJSON(raw []byte) error {
 	}
 
 	if err := json.Unmarshal(raw, aux); err != nil {
-		return fmt.Errorf("unmarshal plan artifact: %s", err)
+		return fmt.Errorf("unmarshal plan artifact: %w", err)
 	}
 
 	a.dataRaw = aux.Data
