@@ -30,44 +30,13 @@ type PlanArtifact struct {
 	dataRaw string
 }
 
-type PlanArtifactOptions struct {
-	common.ResourceValidationOptions
-
-	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
-	DefaultDeletePropagation string `json:"defaultDeletePropagation"`
-	// ExtraAnnotations are additional Kubernetes annotations to add to all chart resources during rollback.
-	ExtraAnnotations map[string]string `json:"extraAnnotations"`
-	// ExtraLabels are additional Kubernetes labels to add to all chart resources during rollback.
-	ExtraLabels map[string]string `json:"extraLabels"`
-	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime during rollback.
-	ExtraRuntimeAnnotations map[string]string `json:"extraRuntimeAnnotations"`
-	// ExtraRuntimeLabels are additional labels to add to resources at runtime during rollback.
-	ExtraRuntimeLabels map[string]string `json:"extraRuntimeLabels"`
-	// ForceAdoption, when true, allows adopting resources that belong to a different Helm release during rollback.
-	ForceAdoption bool `json:"forceAdoption"`
-	// NoInstallStandaloneCRDs, when true, skips installation of CustomResourceDefinitions from the "crds/" directory.
-	// By default, CRDs are installed first before other chart resources.
-	NoInstallStandaloneCRDs bool `json:"noInstallStandaloneCrds"`
-	// NoRemoveManualChanges, when true, preserves fields manually added to resources in the cluster
-	// that are not present in the chart manifests. By default, such fields are removed during updates.
-	NoRemoveManualChanges bool `json:"noRemoveManualChanges"`
-	// ReleaseInfoAnnotations are annotations to add to the release metadata.
-	ReleaseInfoAnnotations map[string]string `json:"releaseInfoAnnotations"`
-	// ReleaseLabels are labels to add to the release metadata.
-	ReleaseLabels map[string]string `json:"releaseLabels"`
-	// ReleaseStorageDriver specifies where to store release metadata ("secrets" or "sql").
-	ReleaseStorageDriver string `json:"releaseStorageDriver"`
-	// ReleaseStorageSQLConnection is the SQL connection string when using SQL storage driver.
-	ReleaseStorageSQLConnection string `json:"releaseStorageSqlConnection"`
-}
-
 type PlanArtifactData struct {
-	Options                  PlanArtifactOptions        `json:"options"`
-	Changes                  []*ResourceChange          `json:"changes"`
-	Plan                     *Plan                      `json:"plan"`
-	Release                  *release.Release           `json:"release"`
-	InstallableResourceInfos []*InstallableResourceInfo `json:"installableResourceInfos"`
-	ReleaseInfos             []*ReleaseInfo             `json:"releaseInfos"`
+	Options                  common.ReleaseInstallRuntimeOptions `json:"options"`
+	Changes                  []*ResourceChange                   `json:"changes"`
+	Plan                     *Plan                               `json:"plan"`
+	Release                  *release.Release                    `json:"release"`
+	InstallableResourceInfos []*InstallableResourceInfo          `json:"installableResourceInfos"`
+	ReleaseInfos             []*ReleaseInfo                      `json:"releaseInfos"`
 }
 
 type PlanArtifactRelease struct {
@@ -114,17 +83,7 @@ func (a *PlanArtifact) UnmarshalJSON(raw []byte) error {
 	return nil
 }
 
-func WritePlanArtifact(ctx context.Context, p *Plan, deployType common.DeployType, changes []*ResourceChange, release *release.Release, path, secretKey, secretWorkDir string, instResInfos []*InstallableResourceInfo, relInfos []*ReleaseInfo, opts PlanArtifactOptions) error {
-	artifact := BuildPlanArtifact(
-		p,
-		deployType,
-		changes,
-		release,
-		instResInfos,
-		relInfos,
-		opts,
-	)
-
+func WritePlanArtifact(ctx context.Context, artifact *PlanArtifact, path, secretKey, secretWorkDir string) error {
 	dataJSON, err := json.Marshal(artifact.Data)
 	if err != nil {
 		return fmt.Errorf("marshal artifact data to json: %w", err)
@@ -174,28 +133,6 @@ func WritePlanArtifact(ctx context.Context, p *Plan, deployType common.DeployTyp
 	}
 
 	return nil
-}
-
-func BuildPlanArtifact(p *Plan, deployType common.DeployType, changes []*ResourceChange, release *release.Release, instResInfos []*InstallableResourceInfo, relInfos []*ReleaseInfo, opts PlanArtifactOptions) *PlanArtifact {
-	return &PlanArtifact{
-		APIVersion: PlanArtifactSchemeVersion,
-		Data: &PlanArtifactData{
-			Options:                  opts,
-			Release:                  release,
-			Plan:                     p,
-			Changes:                  changes,
-			InstallableResourceInfos: instResInfos,
-			ReleaseInfos:             relInfos,
-		},
-		DeployType: deployType,
-		Encrypted:  false,
-		Release: PlanArtifactRelease{
-			Name:      release.Name,
-			Namespace: release.Namespace,
-			Version:   release.Version,
-		},
-		Timestamp: time.Now().UTC(),
-	}
 }
 
 func ReadPlanArtifact(ctx context.Context, path, secretKey, secretWorkDir string) (*PlanArtifact, error) {

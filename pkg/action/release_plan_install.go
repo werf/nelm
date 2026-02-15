@@ -43,7 +43,7 @@ type ReleasePlanInstallOptions struct {
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
 	common.ResourceChangeUDiffOptions
-	common.ResourceValidationOptions
+	common.ReleaseInstallRuntimeOptions
 	common.ValuesOptions
 	common.SecretValuesOptions
 
@@ -74,26 +74,9 @@ type ReleasePlanInstallOptions struct {
 	DefaultChartName string
 	// DefaultChartVersion sets the default chart version when Chart.yaml doesn't specify one.
 	DefaultChartVersion string
-	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
-	DefaultDeletePropagation string
 	// ErrorIfChangesPlanned, when true, returns ErrChangesPlanned if any changes are detected.
 	// Used with --exit-code flag to return exit code 2 if changes are planned, 0 if no changes, 1 on error.
 	ErrorIfChangesPlanned bool
-	// ExtraAnnotations are additional Kubernetes annotations to add to all chart resources.
-	// These are added during chart rendering, before resources are stored in the release.
-	ExtraAnnotations map[string]string
-	// ExtraLabels are additional Kubernetes labels to add to all chart resources.
-	// These are added during chart rendering, before resources are stored in the release.
-	ExtraLabels map[string]string
-	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime.
-	// These are added during resource creation/update but not stored in the release.
-	ExtraRuntimeAnnotations map[string]string
-	// ExtraRuntimeLabels are additional labels to add to resources at runtime.
-	// These are added during resource creation/update but not stored in the release.
-	ExtraRuntimeLabels map[string]string
-	// ForceAdoption, when true, allows adopting resources that belong to a different Helm release.
-	// WARNING: This can lead to conflicts if resources are managed by multiple releases.
-	ForceAdoption bool
 	// InstallGraphPath, if specified, saves the Graphviz representation of the install plan to this file path.
 	// Useful for debugging and visualizing the dependency graph of resource operations.
 	InstallGraphPath string
@@ -114,31 +97,12 @@ type ReleasePlanInstallOptions struct {
 	// NoFinalTracking, when true, disables final tracking operations in the plan that have no
 	// create/update/delete resource operations after them. This speeds up plan generation.
 	NoFinalTracking bool
-	// NoInstallStandaloneCRDs, when true, skips installation of CustomResourceDefinitions from the "crds/" directory.
-	// By default, CRDs are installed first before other chart resources.
-	NoInstallStandaloneCRDs bool
-	// NoRemoveManualChanges, when true, preserves fields manually added to resources in the cluster
-	// that are not present in the chart manifests. By default, such fields are removed during updates.
-	NoRemoveManualChanges bool
+	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
+	PlanArtifactPath string
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
 	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
 	// Used for authenticating to OCI registries when pulling charts.
 	RegistryCredentialsPath string
-	// ReleaseInfoAnnotations are custom annotations to add to the release metadata (stored in Secret/ConfigMap).
-	// These do not affect resources but can be used for tagging releases.
-	ReleaseInfoAnnotations map[string]string
-	// ReleaseLabels are labels to add to the release storage object (Secret/ConfigMap).
-	// Used for filtering and organizing releases in storage.
-	ReleaseLabels map[string]string
-	// ReleaseStorageDriver specifies how release metadata is stored in Kubernetes.
-	// Valid values: "secret" (default), "configmap", "sql".
-	// Defaults to "secret" if not specified or set to "default".
-	ReleaseStorageDriver string
-	// ReleaseStorageSQLConnection is the SQL connection string when using SQL storage driver.
-	// Only used when ReleaseStorageDriver is "sql".
-	ReleaseStorageSQLConnection string
-	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
-	PlanArtifactPath string
 	// TempDirPath is the directory for temporary files during the operation.
 	// A temporary directory is created automatically if not specified.
 	TempDirPath string
@@ -454,33 +418,26 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	}
 
 	if opts.PlanArtifactPath != "" {
-		if err := plan.WritePlanArtifact(
-			ctx,
-			installPlan,
-			deployType,
-			changes,
-			newRelease,
-			opts.PlanArtifactPath,
-			opts.SecretKey,
-			opts.SecretWorkDir,
-			instResInfos,
-			relInfos,
-			plan.PlanArtifactOptions{
-				ResourceValidationOptions:   opts.ResourceValidationOptions,
-				DefaultDeletePropagation:    opts.DefaultDeletePropagation,
-				ExtraAnnotations:            opts.ExtraAnnotations,
-				ExtraLabels:                 opts.ExtraLabels,
-				ExtraRuntimeAnnotations:     opts.ExtraRuntimeAnnotations,
-				ExtraRuntimeLabels:          opts.ExtraRuntimeLabels,
-				ForceAdoption:               opts.ForceAdoption,
-				NoInstallStandaloneCRDs:     opts.NoInstallStandaloneCRDs,
-				NoRemoveManualChanges:       opts.NoRemoveManualChanges,
-				ReleaseInfoAnnotations:      opts.ReleaseInfoAnnotations,
-				ReleaseLabels:               opts.ReleaseLabels,
-				ReleaseStorageDriver:        opts.ReleaseStorageDriver,
-				ReleaseStorageSQLConnection: opts.ReleaseStorageSQLConnection,
+		planArtifact := &plan.PlanArtifact{
+			APIVersion: plan.PlanArtifactSchemeVersion,
+			Data: &plan.PlanArtifactData{
+				Options:                  opts.ReleaseInstallRuntimeOptions,
+				Release:                  newRelease,
+				Plan:                     installPlan,
+				Changes:                  changes,
+				InstallableResourceInfos: instResInfos,
+				ReleaseInfos:             relInfos,
 			},
-		); err != nil {
+			DeployType: deployType,
+			Release: plan.PlanArtifactRelease{
+				Name:      releaseName,
+				Namespace: releaseNamespace,
+				Version:   newRelease.Version,
+			},
+			Timestamp: time.Now().UTC(),
+		}
+
+		if err := plan.WritePlanArtifact(ctx, planArtifact, opts.PlanArtifactPath, opts.SecretKey, opts.SecretWorkDir); err != nil {
 			return fmt.Errorf("save install plan to %q: %w", opts.PlanArtifactPath, err)
 		}
 	}

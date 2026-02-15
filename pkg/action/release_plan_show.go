@@ -12,6 +12,10 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
+const (
+	DefaultReleasePlanShowLogLevel = log.InfoLevel
+)
+
 type ReleasePlanShowOptions struct {
 	common.ResourceChangeUDiffOptions
 

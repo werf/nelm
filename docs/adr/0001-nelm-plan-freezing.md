@@ -207,5 +207,5 @@ nelm release install --use-plan=plan.gz --secret-key=mykey
 - Plan Implementation: `internal/plan/plan.go`
 - Plan Artifact Implementation: `internal/plan/plan_artifact.go`
 - Operation Implementation: `internal/plan/operation.go`
-- Plan Execute Action: `pkg/action/release_plan_execute.go`
+- Release Install Action (includes plan execution): `pkg/action/release_install.go`
 - Plan Show Action: `pkg/action/release_plan_show.go`

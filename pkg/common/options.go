@@ -234,6 +234,51 @@ type ResourceValidationOptions struct {
 
 func (opts *ResourceValidationOptions) ApplyDefaults() {}
 
+type ReleaseInstallRuntimeOptions struct {
+	ResourceValidationOptions
+
+	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
+	DefaultDeletePropagation string `json:"defaultDeletePropagation"`
+	// ExtraAnnotations are additional Kubernetes annotations to add to all chart resources.
+	// These are added during chart rendering, before resources are stored in the release.
+	ExtraAnnotations map[string]string `json:"extraAnnotations"`
+	// ExtraLabels are additional Kubernetes labels to add to all chart resources.
+	// These are added during chart rendering, before resources are stored in the release.
+	ExtraLabels map[string]string `json:"extraLabels"`
+	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime.
+	// These are added during resource creation/update but not stored in the release.
+	ExtraRuntimeAnnotations map[string]string `json:"extraRuntimeAnnotations"`
+	// ExtraRuntimeLabels are additional labels to add to resources at runtime.
+	// These are added during resource creation/update but not stored in the release.
+	ExtraRuntimeLabels map[string]string `json:"extraRuntimeLabels"`
+	// ForceAdoption, when true, allows adopting resources that belong to a different Helm release.
+	// WARNING: This can lead to conflicts if resources are managed by multiple releases.
+	ForceAdoption bool `json:"forceAdoption"`
+	// NoInstallStandaloneCRDs, when true, skips installation of CustomResourceDefinitions from the "crds/" directory.
+	// By default, CRDs are installed first before other chart resources.
+	NoInstallStandaloneCRDs bool `json:"noInstallStandaloneCrds"`
+	// NoRemoveManualChanges, when true, preserves fields manually added to resources in the cluster
+	// that are not present in the chart manifests. By default, such fields are removed during updates.
+	NoRemoveManualChanges bool `json:"noRemoveManualChanges"`
+	// ReleaseHistoryLimit sets the maximum number of release revisions to keep in storage.
+	// When exceeded, the oldest revisions are deleted. Defaults to DefaultReleaseHistoryLimit if not set or <= 0.
+	// Note: Only release metadata is deleted; actual Kubernetes resources are not affected.
+	ReleaseHistoryLimit int `json:"releaseHistoryLimit"`
+	// ReleaseInfoAnnotations are custom annotations to add to the release metadata (stored in Secret/ConfigMap).
+	// These do not affect resources but can be used for tagging releases.
+	ReleaseInfoAnnotations map[string]string `json:"releaseInfoAnnotations"`
+	// ReleaseLabels are labels to add to the release storage object (Secret/ConfigMap).
+	// Used for filtering and organizing releases in storage.
+	ReleaseLabels map[string]string `json:"releaseLabels"`
+	// ReleaseStorageDriver specifies how release metadata is stored in Kubernetes.
+	// Valid values: "secret" (default), "configmap", "sql".
+	// Defaults to "secret" if not specified or set to "default".
+	ReleaseStorageDriver string `json:"releaseStorageDriver"`
+	// ReleaseStorageSQLConnection is the SQL connection string when using SQL storage driver.
+	// Only used when ReleaseStorageDriver is "sql".
+	ReleaseStorageSQLConnection string `json:"releaseStorageSqlConnection"`
+}
+
 type ResourceChangeUDiffOptions struct {
 	DiffContextLines       int
 	ShowVerboseCRDDiffs    bool
