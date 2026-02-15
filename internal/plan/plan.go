@@ -2,7 +2,9 @@ package plan
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/dominikbraun/graph"
@@ -115,6 +117,74 @@ func (p *Plan) ToDOT() ([]byte, error) {
 	}
 
 	return b.Bytes(), nil
+}
+
+type planJSON struct {
+	Operations []*Operation   `json:"operations"`
+	Edges      []planEdgeJSON `json:"edges"`
+}
+
+type planEdgeJSON struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+func (p *Plan) MarshalJSON() ([]byte, error) {
+	ops := p.Operations()
+
+	sort.Slice(ops, func(i, j int) bool {
+		return ops[i].ID() < ops[j].ID()
+	})
+
+	adjMap, err := p.Graph.AdjacencyMap()
+	if err != nil {
+		return nil, fmt.Errorf("get adjacency map: %w", err)
+	}
+
+	var edges []planEdgeJSON
+	for fromID, toMap := range adjMap {
+		for toID := range toMap {
+			edges = append(edges, planEdgeJSON{From: fromID, To: toID})
+		}
+	}
+
+	sort.Slice(edges, func(i, j int) bool {
+		if edges[i].From == edges[j].From {
+			return edges[i].To < edges[j].To
+		}
+
+		return edges[i].From < edges[j].From
+	})
+
+	return json.Marshal(planJSON{ //nolint:wrapcheck
+		Operations: ops,
+		Edges:      edges,
+	})
+}
+
+func (p *Plan) UnmarshalJSON(data []byte) error {
+	var raw planJSON
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("unmarshal plan: %w", err)
+	}
+
+	p.Graph = graph.New(func(t *Operation) string { return t.ID() }, graph.Acyclic(), graph.PreventCycles(), graph.Directed())
+
+	for _, op := range raw.Operations {
+		if err := p.Graph.AddVertex(op); err != nil {
+			if !errors.Is(err, graph.ErrVertexAlreadyExists) {
+				return fmt.Errorf("add vertex %q: %w", op.ID(), err)
+			}
+		}
+	}
+
+	for _, edge := range raw.Edges {
+		if err := p.Connect(edge.From, edge.To); err != nil {
+			return fmt.Errorf("connect edge from %q to %q: %w", edge.From, edge.To, err)
+		}
+	}
+
+	return nil
 }
 
 type planBuilderStep struct {

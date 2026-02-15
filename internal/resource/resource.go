@@ -2,6 +2,7 @@ package resource
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
@@ -21,35 +22,35 @@ import (
 // level than InstallableResourceInfo. If something can be computed on this level instead of doing
 // this on higher levels, it's better to do it here.
 type InstallableResource struct {
-	*spec.ResourceSpec
+	*spec.ResourceSpec `json:"resourceSpec"`
 
-	Ownership                              common.Ownership
-	Recreate                               bool
-	RecreateOnImmutable                    bool
-	DefaultReplicasOnCreation              *int
-	DeleteOnSucceeded                      bool
-	DeleteOnFailed                         bool
-	KeepOnDelete                           bool
-	FailMode                               multitrack.FailMode
-	FailuresAllowed                        int
-	IgnoreReadinessProbeFailsForContainers map[string]time.Duration
-	LogRegex                               *regexp.Regexp
-	LogRegexesForContainers                map[string]*regexp.Regexp
-	NoActivityTimeout                      time.Duration
-	ShowLogsOnlyForContainers              []string
-	ShowServiceMessages                    bool
-	ShowLogsOnlyForNumberOfReplicas        int
-	SkipLogs                               bool
-	SkipLogsForContainers                  []string
-	SkipLogsRegex                          *regexp.Regexp
-	SkipLogsRegexForContainers             map[string]*regexp.Regexp
-	TrackTerminationMode                   multitrack.TrackTerminationMode
-	Weight                                 *int
-	ManualInternalDependencies             []*InternalDependency
-	AutoInternalDependencies               []*InternalDependency
-	ExternalDependencies                   []*ExternalDependency
-	DeployConditions                       map[common.On][]common.Stage
-	DeletePropagation                      metav1.DeletionPropagation
+	Ownership                              common.Ownership                `json:"ownership"`
+	Recreate                               bool                            `json:"recreate"`
+	RecreateOnImmutable                    bool                            `json:"recreateOnImmutable"`
+	DefaultReplicasOnCreation              *int                            `json:"defaultReplicasOnCreation,omitempty"`
+	DeleteOnSucceeded                      bool                            `json:"deleteOnSucceeded"`
+	DeleteOnFailed                         bool                            `json:"deleteOnFailed"`
+	KeepOnDelete                           bool                            `json:"keepOnDelete"`
+	FailMode                               multitrack.FailMode             `json:"failMode"`
+	FailuresAllowed                        int                             `json:"failuresAllowed"`
+	IgnoreReadinessProbeFailsForContainers map[string]time.Duration        `json:"ignoreReadinessProbeFailsForContainers,omitempty"`
+	LogRegex                               *regexp.Regexp                  `json:"logRegex"`
+	LogRegexesForContainers                map[string]*regexp.Regexp       `json:"logRegexesForContainers"`
+	NoActivityTimeout                      time.Duration                   `json:"noActivityTimeout"`
+	ShowLogsOnlyForContainers              []string                        `json:"showLogsOnlyForContainers,omitempty"`
+	ShowServiceMessages                    bool                            `json:"showServiceMessages"`
+	ShowLogsOnlyForNumberOfReplicas        int                             `json:"showLogsOnlyForNumberOfReplicas"`
+	SkipLogs                               bool                            `json:"skipLogs"`
+	SkipLogsForContainers                  []string                        `json:"skipLogsForContainers,omitempty"`
+	SkipLogsRegex                          *regexp.Regexp                  `json:"skipLogsRegex"`
+	SkipLogsRegexForContainers             map[string]*regexp.Regexp       `json:"skipLogsRegexForContainers"`
+	TrackTerminationMode                   multitrack.TrackTerminationMode `json:"trackTerminationMode"`
+	Weight                                 *int                            `json:"weight,omitempty"`
+	ManualInternalDependencies             []*InternalDependency           `json:"manualInternalDependencies,omitempty"`
+	AutoInternalDependencies               []*InternalDependency           `json:"autoInternalDependencies,omitempty"`
+	ExternalDependencies                   []*ExternalDependency           `json:"externalDependencies,omitempty"`
+	DeployConditions                       map[common.On][]common.Stage    `json:"deployConditions"`
+	DeletePropagation                      metav1.DeletionPropagation      `json:"deletePropagation"`
 }
 
 type InstallableResourceOptions struct {
@@ -149,6 +150,35 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 		DeployConditions:                       deployConditions(res.ResourceMeta, len(manIntDeps) > 0),
 		DeletePropagation:                      deletePropagation(res.ResourceMeta, opts.DefaultDeletePropagation),
 	}, nil
+}
+
+func (r *InstallableResource) MarshalJSON() ([]byte, error) {
+	if r == nil {
+		return nil, fmt.Errorf("installable resource is nil")
+	}
+
+	type installableResourceJSON InstallableResource
+
+	data, err := json.Marshal((*installableResourceJSON)(r))
+	if err != nil {
+		return nil, fmt.Errorf("marshal installable resource: %w", err)
+	}
+
+	return data, nil
+}
+
+func (r *InstallableResource) UnmarshalJSON(data []byte) error {
+	if r == nil {
+		return fmt.Errorf("installable resource is nil")
+	}
+
+	type installableResourceJSON InstallableResource
+
+	if err := json.Unmarshal(data, (*installableResourceJSON)(r)); err != nil {
+		return fmt.Errorf("unmarshal installable resource: %w", err)
+	}
+
+	return nil
 }
 
 // Represent a Kubernetes resource that can be deleted. Higher level than ResourceMeta, but lower

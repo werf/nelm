@@ -1,11 +1,11 @@
 package spec
 
 type ResourceMatcher struct {
-	Names      []string
-	Namespaces []string
-	Groups     []string
-	Versions   []string
-	Kinds      []string
+	Names      []string `json:"names,omitempty"`
+	Namespaces []string `json:"namespaces,omitempty"`
+	Groups     []string `json:"groups,omitempty"`
+	Versions   []string `json:"versions,omitempty"`
+	Kinds      []string `json:"kinds,omitempty"`
 }
 
 func (s *ResourceMatcher) Match(resMeta *ResourceMeta) bool {

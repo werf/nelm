@@ -11,14 +11,14 @@ import (
 
 // Represents a dependency on a Kubernetes resource in the Helm release.
 type InternalDependency struct {
-	*spec.ResourceMatcher
+	*spec.ResourceMatcher `json:"resourceMatcher"`
 
-	ResourceState common.ResourceState
+	ResourceState common.ResourceState `json:"resourceState"`
 }
 
 // Represents a dependency on an external resource outside of the Helm release.
 type ExternalDependency struct {
-	*spec.ResourceMeta
+	*spec.ResourceMeta `json:"resourceMeta"`
 }
 
 // Automatically detects internal dependencies on resources by examining specific fields in the
