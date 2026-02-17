@@ -32,7 +32,6 @@ const (
 	DefaultReleasePlanInstallLogLevel = log.InfoLevel
 )
 
-// TODO(major): get rid
 var (
 	ErrChangesPlanned         = errors.New("changes planned")
 	ErrResourceChangesPlanned = errors.New("resource changes planned")

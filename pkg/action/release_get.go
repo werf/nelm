@@ -267,7 +267,6 @@ type ReleaseGetResultRelease struct {
 	StorageLabels map[string]string           `json:"storageLabels"`
 }
 
-// TODO(major): get rid
 type ReleaseGetResultDeployedAt struct {
 	Human string `json:"human"`
 	Unix  int    `json:"unix"`
