@@ -117,7 +117,9 @@ await runRender(render);
 `
 	denoJSONTmpl = `{
   "nodeModulesDir": "manual",
-  "vendor": true,
+  "tasks": {
+    "build": "deno run -A %s"
+  },
   "imports": {
     "@nelm/chart-ts-sdk": "npm:@nelm/chart-ts-sdk@^0.1.2",
     "esbuild-wasm": "npm:esbuild-wasm@0.25.0"
@@ -187,4 +189,8 @@ service:
 
 func chartYaml(chartName string) string {
 	return fmt.Sprintf(chartYamlTmpl, chartName)
+}
+
+func denoJSON(scriptPath string) string {
+	return fmt.Sprintf(denoJSONTmpl, scriptPath)
 }

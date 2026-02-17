@@ -19,7 +19,8 @@ type chartInitConfig struct {
 	LogLevel     string
 }
 
-func newChartInitCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
+// newChartInitCommand
+func _(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cfg := &chartInitConfig{}
 
 	cmd := cli.NewSubCommand(

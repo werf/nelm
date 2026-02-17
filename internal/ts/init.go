@@ -79,7 +79,7 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
 		{content: deploymentTSContent, path: filepath.Join(srcDir, "deployment.ts")},
 		{content: serviceTSContent, path: filepath.Join(srcDir, "service.ts")},
 		{content: tsconfigContent, path: filepath.Join(tsDir, "tsconfig.json")},
-		{content: denoJSONTmpl, path: filepath.Join(tsDir, "deno.json")},
+		{content: denoJSON(common.ChartTSBuildScript), path: filepath.Join(tsDir, "deno.json")},
 	}
 
 	if err := os.MkdirAll(srcDir, 0o755); err != nil {
