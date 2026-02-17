@@ -187,6 +187,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			return fmt.Errorf("read plan artifact from %s: %w", opts.PlanArtifactPath, err)
 		}
 
+		log.Default.Debug(ctx, "Validate plan artifact")
+
+		if err := plan.ValidatePlanArtifact(planArtifact, opts.PlanArtifactLifetime); err != nil {
+			return fmt.Errorf("validate plan artifact: %w", err)
+		}
+
 		releaseNamespace = planArtifact.Release.Namespace
 		releaseName = planArtifact.Release.Name
 
@@ -290,10 +296,9 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	)
 
 	if usePlan {
-		log.Default.Debug(ctx, "Validate plan artifact")
-
-		if err := plan.ValidatePlanArtifact(planArtifact, newRevision, opts.PlanArtifactLifetime); err != nil {
-			return fmt.Errorf("validate plan artifact: %w", err)
+		if planArtifact.Release.Revision != newRevision {
+			return fmt.Errorf("plan artifact release revision mismatch: expected %d, got %d",
+				planArtifact.Release.Revision, newRevision)
 		}
 
 		installPlan = planArtifact.Data.Plan

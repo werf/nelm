@@ -346,8 +346,6 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 
 		cmd.MarkFlagsOneRequired("use-plan", "release")
 		cmd.MarkFlagsOneRequired("use-plan", "namespace")
-		cmd.MarkFlagsMutuallyExclusive("use-plan", "release")
-		cmd.MarkFlagsMutuallyExclusive("use-plan", "namespace")
 
 		return nil
 	}

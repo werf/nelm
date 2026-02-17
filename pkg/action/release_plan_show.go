@@ -17,7 +17,7 @@ const (
 )
 
 type ReleasePlanShowOptions struct {
-	common.ResourceChangeUDiffOptions
+	common.ResourceDiffOptions
 
 	// PlanArtifactPath is the path to the plan artifact file to execute.
 	PlanArtifactPath string
@@ -51,7 +51,7 @@ func ReleasePlanShow(ctx context.Context, opts ReleasePlanShowOptions) error {
 		return fmt.Errorf("read plan artifact from %s: %w", opts.PlanArtifactPath, err)
 	}
 
-	if err := logPlannedChanges(ctx, planArtifact.Release.Name, planArtifact.Release.Namespace, planArtifact.Data.Changes, opts.ResourceChangeUDiffOptions); err != nil {
+	if err := logPlannedChanges(ctx, planArtifact.Release.Name, planArtifact.Release.Namespace, planArtifact.Data.Changes, opts.ResourceDiffOptions); err != nil {
 		return fmt.Errorf("log planned changes: %w", err)
 	}
 
@@ -72,7 +72,7 @@ func applyReleasePlanShowOptionsDefaults(opts ReleasePlanShowOptions, currentDir
 		opts.SecretWorkDir = currentDir
 	}
 
-	opts.ResourceChangeUDiffOptions.ApplyDefaults()
+	opts.ResourceDiffOptions.ApplyDefaults()
 
 	return opts, nil
 }

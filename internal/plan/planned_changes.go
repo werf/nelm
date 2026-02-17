@@ -35,7 +35,7 @@ type ResourceChange struct {
 	After        *unstructured.Unstructured `json:"after"`
 }
 
-func (c *ResourceChange) UDiff(opts common.ResourceChangeUDiffOptions) (string, error) {
+func (c *ResourceChange) UDiff(opts common.ResourceDiffOptions) (string, error) {
 	sensitiveInfo := resource.GetSensitiveInfo(c.ResourceMeta.GroupVersionKind.GroupKind(), c.ResourceMeta.Annotations)
 
 	var uDiff string
@@ -241,7 +241,7 @@ func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *u
 	}, nil
 }
 
-func cleanUnstruct(unstruct *unstructured.Unstructured, sensitiveInfo resource.SensitiveInfo, opts common.ResourceChangeUDiffOptions) *unstructured.Unstructured {
+func cleanUnstruct(unstruct *unstructured.Unstructured, sensitiveInfo resource.SensitiveInfo, opts common.ResourceDiffOptions) *unstructured.Unstructured {
 	var unstructClean *unstructured.Unstructured
 	if sensitiveInfo.IsSensitive && !opts.ShowSensitiveDiffs {
 		unstructClean = resource.RedactSensitiveData(unstruct, sensitiveInfo.SensitivePaths)

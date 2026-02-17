@@ -156,10 +156,15 @@ func (p *Plan) MarshalJSON() ([]byte, error) {
 		return edges[i].From < edges[j].From
 	})
 
-	return json.Marshal(planJSON{ //nolint:wrapcheck
+	data, err := json.Marshal(planJSON{
 		Operations: ops,
 		Edges:      edges,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal plan: %w", err)
+	}
+
+	return data, nil
 }
 
 func (p *Plan) UnmarshalJSON(data []byte) error {

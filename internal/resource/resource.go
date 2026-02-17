@@ -2,7 +2,6 @@ package resource
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
@@ -150,35 +149,6 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 		DeployConditions:                       deployConditions(res.ResourceMeta, len(manIntDeps) > 0),
 		DeletePropagation:                      deletePropagation(res.ResourceMeta, opts.DefaultDeletePropagation),
 	}, nil
-}
-
-func (r *InstallableResource) MarshalJSON() ([]byte, error) {
-	if r == nil {
-		return nil, fmt.Errorf("installable resource is nil")
-	}
-
-	type installableResourceJSON InstallableResource
-
-	data, err := json.Marshal((*installableResourceJSON)(r))
-	if err != nil {
-		return nil, fmt.Errorf("marshal installable resource: %w", err)
-	}
-
-	return data, nil
-}
-
-func (r *InstallableResource) UnmarshalJSON(data []byte) error {
-	if r == nil {
-		return fmt.Errorf("installable resource is nil")
-	}
-
-	type installableResourceJSON InstallableResource
-
-	if err := json.Unmarshal(data, (*installableResourceJSON)(r)); err != nil {
-		return fmt.Errorf("unmarshal installable resource: %w", err)
-	}
-
-	return nil
 }
 
 // Represent a Kubernetes resource that can be deleted. Higher level than ResourceMeta, but lower

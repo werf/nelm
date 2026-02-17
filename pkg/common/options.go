@@ -256,7 +256,7 @@ type ReleaseInstallRuntimeOptions struct {
 	ForceAdoption bool `json:"forceAdoption"`
 	// NoInstallStandaloneCRDs, when true, skips installation of CustomResourceDefinitions from the "crds/" directory.
 	// By default, CRDs are installed first before other chart resources.
-	NoInstallStandaloneCRDs bool `json:"noInstallStandaloneCrds"`
+	NoInstallStandaloneCRDs bool `json:"noInstallStandaloneCRDs"`
 	// NoRemoveManualChanges, when true, preserves fields manually added to resources in the cluster
 	// that are not present in the chart manifests. By default, such fields are removed during updates.
 	NoRemoveManualChanges bool `json:"noRemoveManualChanges"`
@@ -276,10 +276,10 @@ type ReleaseInstallRuntimeOptions struct {
 	ReleaseStorageDriver string `json:"releaseStorageDriver"`
 	// ReleaseStorageSQLConnection is the SQL connection string when using SQL storage driver.
 	// Only used when ReleaseStorageDriver is "sql".
-	ReleaseStorageSQLConnection string `json:"releaseStorageSqlConnection"`
+	ReleaseStorageSQLConnection string `json:"releaseStorageSQLConnection"`
 }
 
-type ResourceChangeUDiffOptions struct {
+type ResourceDiffOptions struct {
 	DiffContextLines       int
 	ShowVerboseCRDDiffs    bool
 	ShowVerboseDiffs       bool
@@ -287,7 +287,7 @@ type ResourceChangeUDiffOptions struct {
 	ShowInsignificantDiffs bool
 }
 
-func (opts *ResourceChangeUDiffOptions) ApplyDefaults() {
+func (opts *ResourceDiffOptions) ApplyDefaults() {
 	if opts.DiffContextLines <= 0 {
 		opts.DiffContextLines = DefaultDiffContextLines
 	}

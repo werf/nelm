@@ -35,7 +35,7 @@ type OperationConfig interface {
 }
 
 type OperationConfigNoop struct {
-	OpID string `json:"opId"`
+	OpID string `json:"opID"`
 }
 
 func (c *OperationConfigNoop) ID() string {

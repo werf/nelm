@@ -42,7 +42,7 @@ var (
 type ReleasePlanInstallOptions struct {
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
-	common.ResourceChangeUDiffOptions
+	common.ResourceDiffOptions
 	common.ReleaseInstallRuntimeOptions
 	common.ValuesOptions
 	common.SecretValuesOptions
@@ -413,7 +413,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		log.Default.Info(ctx, color.Style{color.Bold, color.Yellow}.Render(fmt.Sprintf("No resource changes planned, but still must install release %q (namespace: %q)", releaseName, releaseNamespace)))
 	}
 
-	if err := logPlannedChanges(ctx, releaseName, releaseNamespace, changes, opts.ResourceChangeUDiffOptions); err != nil {
+	if err := logPlannedChanges(ctx, releaseName, releaseNamespace, changes, opts.ResourceDiffOptions); err != nil {
 		return fmt.Errorf("log planned changes: %w", err)
 	}
 
@@ -432,7 +432,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 			Release: plan.PlanArtifactRelease{
 				Name:      releaseName,
 				Namespace: releaseNamespace,
-				Version:   newRelease.Version,
+				Revision:  newRelease.Version,
 			},
 			Timestamp: time.Now().UTC(),
 		}
@@ -473,7 +473,7 @@ func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, curr
 	opts.KubeConnectionOptions.ApplyDefaults(homeDir)
 	opts.ChartRepoConnectionOptions.ApplyDefaults()
 	opts.ValuesOptions.ApplyDefaults()
-	opts.ResourceChangeUDiffOptions.ApplyDefaults()
+	opts.ResourceDiffOptions.ApplyDefaults()
 	opts.SecretValuesOptions.ApplyDefaults(currentDir)
 
 	if opts.Chart == "" && opts.ChartDirPath != "" {
@@ -517,7 +517,7 @@ func logPlannedChanges(
 	releaseName string,
 	releaseNamespace string,
 	changes []*plan.ResourceChange,
-	opts common.ResourceChangeUDiffOptions,
+	opts common.ResourceDiffOptions,
 ) error {
 	if len(changes) == 0 {
 		return nil

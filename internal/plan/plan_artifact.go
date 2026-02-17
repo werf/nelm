@@ -22,12 +22,12 @@ const PlanArtifactSchemeVersion = "v1"
 type PlanArtifact struct {
 	APIVersion string              `json:"apiVersion"`
 	Data       *PlanArtifactData   `json:"-"`
+	DataRaw    string              `json:"dataRaw"`
 	DeployType common.DeployType   `json:"deployType"`
 	Encrypted  bool                `json:"encrypted"`
 	Release    PlanArtifactRelease `json:"release"`
-	Timestamp  time.Time           `json:"timestamp"`
 
-	dataRaw string
+	Timestamp time.Time `json:"timestamp"`
 }
 
 type PlanArtifactData struct {
@@ -42,45 +42,7 @@ type PlanArtifactData struct {
 type PlanArtifactRelease struct {
 	Name      string `json:"name"`
 	Namespace string `json:"namespace"`
-	Version   int    `json:"version"`
-}
-
-func (a *PlanArtifact) MarshalJSON() ([]byte, error) {
-	type Alias PlanArtifact
-
-	data, err := json.Marshal(&struct {
-		*Alias
-
-		Data string `json:"data,omitempty"`
-	}{
-		Alias: (*Alias)(a),
-		Data:  a.dataRaw,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("marshal plan artifact: %w", err)
-	}
-
-	return data, nil
-}
-
-func (a *PlanArtifact) UnmarshalJSON(raw []byte) error {
-	type Alias PlanArtifact
-
-	aux := &struct {
-		*Alias
-
-		Data string `json:"data"`
-	}{
-		Alias: (*Alias)(a),
-	}
-
-	if err := json.Unmarshal(raw, aux); err != nil {
-		return fmt.Errorf("unmarshal plan artifact: %w", err)
-	}
-
-	a.dataRaw = aux.Data
-
-	return nil
+	Revision  int    `json:"revision"`
 }
 
 func WritePlanArtifact(ctx context.Context, artifact *PlanArtifact, path, secretKey, secretWorkDir string) error {
@@ -102,10 +64,10 @@ func WritePlanArtifact(ctx context.Context, artifact *PlanArtifact, path, secret
 			return fmt.Errorf("encrypt artifact data: %w", err)
 		}
 
-		artifact.dataRaw = string(encryptedData)
+		artifact.DataRaw = string(encryptedData)
 		artifact.Encrypted = true
 	} else {
-		artifact.dataRaw = string(dataJSON)
+		artifact.DataRaw = string(dataJSON)
 		artifact.Encrypted = false
 	}
 
@@ -154,7 +116,7 @@ func ReadPlanArtifact(ctx context.Context, path, secretKey, secretWorkDir string
 		return nil, fmt.Errorf("decode plan artifact json: %w", err)
 	}
 
-	if artifact.dataRaw == "" {
+	if artifact.DataRaw == "" {
 		return nil, fmt.Errorf("artifact data is empty")
 	}
 
@@ -172,12 +134,12 @@ func ReadPlanArtifact(ctx context.Context, path, secretKey, secretWorkDir string
 			return nil, fmt.Errorf("get yaml encoder: %w", err)
 		}
 
-		dataJSON, err = encoder.Decrypt([]byte(artifact.dataRaw))
+		dataJSON, err = encoder.Decrypt([]byte(artifact.DataRaw))
 		if err != nil {
 			return nil, fmt.Errorf("decrypt artifact data: %w", err)
 		}
 	} else {
-		dataJSON = []byte(artifact.dataRaw)
+		dataJSON = []byte(artifact.DataRaw)
 	}
 
 	var data PlanArtifactData
@@ -191,7 +153,7 @@ func ReadPlanArtifact(ctx context.Context, path, secretKey, secretWorkDir string
 	return &artifact, nil
 }
 
-func ValidatePlanArtifact(artifact *PlanArtifact, expectedRevision int, lifetime time.Duration) error {
+func ValidatePlanArtifact(artifact *PlanArtifact, lifetime time.Duration) error {
 	if artifact == nil {
 		return errors.New("plan shouldn't be empty")
 	}
@@ -207,11 +169,6 @@ func ValidatePlanArtifact(artifact *PlanArtifact, expectedRevision int, lifetime
 
 	if artifact.Release.Name == "" {
 		return errors.New("release name is not set")
-	}
-
-	if artifact.Release.Version != expectedRevision {
-		return fmt.Errorf("plan artifact release version mismatch: expected %d, got %d",
-			artifact.Release.Version, expectedRevision)
 	}
 
 	if artifact.Data.Plan == nil {
