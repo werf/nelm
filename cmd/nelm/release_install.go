@@ -313,7 +313,7 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.RebuildTsVendorBundle, "rebuild-ts-vendor", false, "Rebuild the Deno vendor bundle even if it already exists.", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.RebuildTSVendorBundle, "rebuild-ts-vendor", false, "Rebuild the Deno vendor bundle even if it already exists.", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

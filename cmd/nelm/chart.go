@@ -18,7 +18,8 @@ func newChartCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.
 		cli.GroupCommandOptions{},
 	)
 
-	cmd.AddCommand(newChartInitCommand(ctx, afterAllCommandsBuiltFuncs))
+	// TODO: add chart init command when it's implemented
+	// cmd.AddCommand(newChartInitCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newChartRenderCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newChartDependencyCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newChartDownloadCommand(ctx, afterAllCommandsBuiltFuncs))
@@ -26,6 +27,7 @@ func newChartCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.
 	cmd.AddCommand(newChartPackCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newChartLintCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newChartSecretCommand(ctx, afterAllCommandsBuiltFuncs))
+	cmd.AddCommand(newChartTSCommand(ctx, afterAllCommandsBuiltFuncs))
 
 	return cmd
 }

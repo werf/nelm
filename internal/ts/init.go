@@ -50,7 +50,7 @@ func InitChartStructure(ctx context.Context, chartPath, chartName string) error 
 
 	// Handle .helmignore: create or enrich
 	helmignorePath := filepath.Join(chartPath, ".helmignore")
-	if err := ensureFileEntries(helmignorePath, helmignoreContent, []string{"ts/dist/"}); err != nil {
+	if err := ensureFileEntries(helmignorePath, helmignoreContent, []string{"ts/vendor/"}); err != nil {
 		return fmt.Errorf("ensure helmignore entries: %w", err)
 	}
 
@@ -79,7 +79,7 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
 		{content: deploymentTSContent, path: filepath.Join(srcDir, "deployment.ts")},
 		{content: serviceTSContent, path: filepath.Join(srcDir, "service.ts")},
 		{content: tsconfigContent, path: filepath.Join(tsDir, "tsconfig.json")},
-		{content: packageJSON(chartName), path: filepath.Join(tsDir, "package.json")},
+		{content: denoJSONTmpl, path: filepath.Join(tsDir, "deno.json")},
 	}
 
 	if err := os.MkdirAll(srcDir, 0o755); err != nil {

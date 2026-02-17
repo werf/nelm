@@ -8,27 +8,28 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/werf/common-go/pkg/cli"
+	"github.com/werf/nelm/pkg/action"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 )
 
-type chartInitConfig struct {
-	TempDirPath  string
-	ChartDirPath string
+type chartTSBuildConfig struct {
+	action.ChartTSBuildOptions
+
 	LogColorMode string
 	LogLevel     string
 }
 
-func newChartInitCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
-	cfg := &chartInitConfig{}
+func newChartTSBuildCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
+	cfg := &chartTSBuildConfig{}
 
 	cmd := cli.NewSubCommand(
 		ctx,
-		"init [PATH]",
-		"Initialize a new chart.",
-		"Initialize a new chart in the specified directory. If PATH is not specified, uses the current directory.",
+		"build [PATH]",
+		"Build vendor for typescript chart.",
+		"Build vendor for typescript chart in the specified directory. If PATH is not specified, uses the current directory.",
 		10, // priority for ordering in help
-		chartCmdGroup,
+		tsCmdGroup,
 		cli.SubCommandOptions{
 			Args: cobra.MaximumNArgs(1),
 			ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -44,21 +45,15 @@ func newChartInitCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 				cfg.ChartDirPath = args[0]
 			}
 
-			// TODO: implement chart init logic for non-TypeScript charts
+			if err := action.ChartTSBuild(ctx, cfg.ChartTSBuildOptions); err != nil {
+				return fmt.Errorf("chart build: %w", err)
+			}
 
 			return nil
 		},
 	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
-		if err := cli.AddFlag(cmd, &cfg.TempDirPath, "temp-dir", "", "The directory for temporary files. By default, create a new directory in the default system directory for temporary files", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
-			Group:                miscFlagGroup,
-			Type:                 cli.FlagTypeDir,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
 		if err := cli.AddFlag(cmd, &cfg.LogColorMode, "color-mode", common.DefaultLogColorMode, "Color mode for logs. "+allowedLogColorModesHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,

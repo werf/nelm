@@ -163,8 +163,8 @@ type ReleaseInstallOptions struct {
 	// Timeout is the maximum duration for the entire release installation operation.
 	// If 0, no timeout is applied and the operation runs until completion or error.
 	Timeout time.Duration
-	// RebuildTsVendorBundle, when true, forces rebuilding the Deno vendor bundle even if it already exists.
-	RebuildTsVendorBundle bool
+	// RebuildTSVendorBundle, when true, forces rebuilding the Deno vendor bundle even if it already exists.
+	RebuildTSVendorBundle bool
 }
 
 func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseInstallOptions) error {
@@ -345,7 +345,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		Remote:                     true,
 		SubchartNotes:              opts.ShowSubchartNotes,
 		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
-		RebuildTsVendorBundle:      opts.RebuildTsVendorBundle,
+		RebuildTSVendorBundle:      opts.RebuildTSVendorBundle,
 	})
 	if err != nil {
 		return fmt.Errorf("render chart: %w", err)
