@@ -38,7 +38,7 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 
 		if featgate.FeatGateTypescript.Enabled() {
 			for _, chartPath := range args {
-				if err := ts.BuildVendorBundle(ctx, chartPath); err != nil {
+				if err := ts.BuildBundleToFile(ctx, chartPath); err != nil {
 					return fmt.Errorf("build TypeScript vendor bundle in %q: %w", chartPath, err)
 				}
 			}

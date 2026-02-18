@@ -116,13 +116,11 @@ function render($: RenderContext): RenderResult {
 await runRender(render);
 `
 	denoJSONTmpl = `{
-  "nodeModulesDir": "manual",
   "tasks": {
-    "build": "deno run -A %s"
+    "build": "%s"
   },
   "imports": {
-    "@nelm/chart-ts-sdk": "npm:@nelm/chart-ts-sdk@^0.1.2",
-    "esbuild-wasm": "npm:esbuild-wasm@0.25.0"
+    "@nelm/chart-ts-sdk": "npm:@nelm/chart-ts-sdk@^0.1.2"
   }
 }
 `

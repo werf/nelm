@@ -2,11 +2,15 @@ package ts
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path"
 	"slices"
 	"strings"
 
+	"github.com/dustin/go-humanize"
+	"github.com/gookit/color"
+	"github.com/samber/lo"
 	"sigs.k8s.io/yaml"
 
 	helmchart "github.com/werf/3p-helm/pkg/chart"
@@ -15,20 +19,20 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, rebuildVendor bool, chartPath string) (map[string]string, error) {
+func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, rebuildBundle bool, chartPath string) (map[string]string, error) {
 	allRendered := make(map[string]string)
 
-	if err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), chartPath, allRendered, rebuildVendor); err != nil {
+	if err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), chartPath, allRendered, rebuildBundle); err != nil {
 		return nil, err
 	}
 
 	return allRendered, nil
 }
 
-func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartutil.Values, pathPrefix, chartPath string, results map[string]string, rebuildVendor bool) error {
+func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartutil.Values, pathPrefix, chartPath string, results map[string]string, rebuildBundle bool) error {
 	log.Default.Debug(ctx, "Rendering TypeScript for chart %q (path prefix: %s)", chart.Name(), pathPrefix)
 
-	rendered, err := renderDenoFiles(ctx, chart, values, chartPath, rebuildVendor)
+	rendered, err := renderFiles(ctx, chart, values, chartPath, rebuildBundle)
 	if err != nil {
 		return fmt.Errorf("render files for chart %q: %w", chart.Name(), err)
 	}
@@ -50,7 +54,7 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 			path.Join(pathPrefix, "charts", depName),
 			path.Join(chartPath, "charts", depName),
 			results,
-			rebuildVendor,
+			rebuildBundle,
 		)
 		if err != nil {
 			return fmt.Errorf("render dependency %q: %w", depName, err)
@@ -60,30 +64,8 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 	return nil
 }
 
-func renderDenoFiles(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, chartPath string, rebuildVendor bool) (map[string]string, error) {
+func renderFiles(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, chartPath string, rebuildBundle bool) (map[string]string, error) {
 	mergedFiles := slices.Concat(chart.RuntimeFiles, chart.RuntimeDepsFiles)
-
-	var (
-		hasNodeModules bool
-		useVendorMap   bool
-		vendorFiles    []*helmchart.File
-	)
-	for _, file := range mergedFiles {
-		if strings.HasPrefix(file.Name, common.ChartTSSourceDir+"node_modules/") {
-			hasNodeModules = true
-		} else if strings.HasPrefix(file.Name, common.ChartTSVendorBundleDir) {
-			vendorFiles = append(vendorFiles, file)
-		} else if file.Name == common.ChartTSSourceDir+common.ChartTSVendorMap {
-			useVendorMap = true
-		}
-	}
-
-	if hasNodeModules && (rebuildVendor || len(vendorFiles) == 0) {
-		err := BuildVendorBundle(ctx, chartPath)
-		if err != nil {
-			return nil, fmt.Errorf("build deno vendor bundle: %w", err)
-		}
-	}
 
 	sourceFiles := extractSourceFiles(mergedFiles)
 	if len(sourceFiles) == 0 {
@@ -95,7 +77,36 @@ func renderDenoFiles(ctx context.Context, chart *helmchart.Chart, renderedValues
 		return map[string]string{}, nil
 	}
 
-	result, err := runApp(ctx, chartPath, useVendorMap, entrypoint, buildRenderContext(renderedValues, chart))
+	bundleFile, foundBundle := lo.Find(mergedFiles, func(f *helmchart.File) bool {
+		return f.Name == common.ChartTSVendorBundleFile
+	})
+
+	var bundle []byte
+	if rebuildBundle || !foundBundle {
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Run bundle for ")+"%s", entrypoint)
+
+		bundleRes, err := buildBundle(ctx, chartPath, entrypoint)
+		if err != nil {
+			return nil, fmt.Errorf("build bundle for chart %q: %w", chart.Name(), err)
+		}
+
+		bundle = bundleRes
+
+		if err := saveBundleToFile(chartPath, bundle); err != nil {
+			return nil, fmt.Errorf("save bundle: %w", err)
+		}
+
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Bundled: ")+"%s - %s", "dist/bundle.js", humanize.Bytes(uint64(len(bundle))))
+	} else {
+		bundle = bundleFile.Data
+	}
+
+	renderCtx, err := buildRenderContext(renderedValues, chart)
+	if err != nil {
+		return nil, fmt.Errorf("build render context: %w", err)
+	}
+
+	result, err := runApp(ctx, chartPath, bundle, renderCtx)
 	if err != nil {
 		return nil, fmt.Errorf("run deno app: %w", err)
 	}
@@ -118,7 +129,7 @@ func renderDenoFiles(ctx context.Context, chart *helmchart.Chart, renderedValues
 	}, nil
 }
 
-func buildRenderContext(renderedValues chartutil.Values, chart *helmchart.Chart) map[string]any {
+func buildRenderContext(renderedValues chartutil.Values, chart *helmchart.Chart) (string, error) {
 	renderContext := renderedValues.AsMap()
 
 	if valuesInterface, ok := renderContext["Values"]; ok {
@@ -136,7 +147,12 @@ func buildRenderContext(renderedValues chartutil.Values, chart *helmchart.Chart)
 
 	renderContext["Files"] = files
 
-	return renderContext
+	jsonInput, err := json.Marshal(renderContext)
+	if err != nil {
+		return "", fmt.Errorf("marshal render context to json: %w", err)
+	}
+
+	return string(jsonInput), nil
 }
 
 func convertRenderResultToYAML(result any) (string, error) {

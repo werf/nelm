@@ -225,8 +225,7 @@ func TestInitTSBoilerplate(t *testing.T) {
 
 		content, err := os.ReadFile(filepath.Join(chartPath, "ts", "deno.json"))
 		require.NoError(t, err)
-		assert.Contains(t, string(content), `"nodeModulesDir": "manual"`)
-		assert.Contains(t, string(content), fmt.Sprintf(`"build": "deno run -A %s`, common.ChartTSBuildScript))
+		assert.Contains(t, string(content), fmt.Sprintf(`"build": "%s"`, common.ChartTSBuildScript))
 		assert.Contains(t, string(content), `"@nelm/chart-ts-sdk"`)
 	})
 

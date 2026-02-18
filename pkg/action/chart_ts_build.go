@@ -30,11 +30,11 @@ func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {
 		return fmt.Errorf("TypeScript charts feature is not enabled. Set NELM_FEAT_TYPESCRIPT=true to use this feature")
 	}
 
-	if err := ts.BuildVendorBundle(ctx, absPath); err != nil {
-		return fmt.Errorf("build TypeScript vendor bundle: %w", err)
+	if err := ts.BuildBundleToFile(ctx, absPath); err != nil {
+		return fmt.Errorf("build TypeScript bundle: %w", err)
 	}
 
-	log.Default.Info(ctx, "Built vendor for TypeScript chart in %s", absPath)
+	log.Default.Info(ctx, "TypeScript chart bundled in %s", absPath)
 
 	return nil
 }
