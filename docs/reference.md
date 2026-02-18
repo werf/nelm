@@ -16,6 +16,7 @@
   - [release list](#release-list)
   - [release history](#release-history)
   - [release get](#release-get)
+  - [release plan show](#release-plan-show)
   - [chart lint](#chart-lint)
   - [chart render](#chart-render)
   - [chart download](#chart-download)
@@ -67,6 +68,7 @@
 - [`nelm release list`](#release-list) — List all releases in a namespace\.
 - [`nelm release history`](#release-history) — Show release history\.
 - [`nelm release get`](#release-get) — Get information about a deployed release\.
+- [`nelm release plan show`](#release-plan-show) — Show plan artifact planned changes\.
 
 ### Chart commands
 
@@ -151,6 +153,10 @@ nelm release install [options...] -n namespace -r release [chart-dir]
 
   Don't remove fields added manually to the resource in the cluster if fields aren't present in the manifest\. Vars: \$NELM\_NO\_REMOVE\_MANUAL\_CHANGES, \$NELM\_RELEASE\_INSTALL\_NO\_REMOVE\_MANUAL\_CHANGES
 
+- `--plan-lifetime` (default: `2h0m0s`)
+
+  How long plan artifact is valid\. Var: \$NELM\_RELEASE\_INSTALL\_PLAN\_LIFETIME
+
 - `--provenance-keyring` (default: `""`)
 
   Path to keyring containing public keys to verify chart provenance\. Vars: \$NELM\_PROVENANCE\_KEYRING, \$NELM\_RELEASE\_INSTALL\_PROVENANCE\_KEYRING
@@ -194,6 +200,10 @@ nelm release install [options...] -n namespace -r release [chart-dir]
 - `--timeout` (default: `0s`)
 
   Fail if not finished in time\. Vars: \$NELM\_TIMEOUT, \$NELM\_RELEASE\_INSTALL\_TIMEOUT
+
+- `--use-plan` (default: `""`)
+
+  Use the gzip\-compressed JSON plan file from the specified path during release install\. Var: \$NELM\_RELEASE\_INSTALL\_USE\_PLAN
 
 
 **Values options:**
@@ -815,6 +825,10 @@ nelm release plan install [options...] -n namespace -r release [chart-dir]
 - `--save-graph-to` (default: `""`)
 
   Save the Graphviz install graph to a file\. Var: \$NELM\_RELEASE\_PLAN\_INSTALL\_SAVE\_GRAPH\_TO
+
+- `--save-plan` (default: `""`)
+
+  Save the gzip\-compressed JSON install plan to the specified file\. Var: \$NELM\_RELEASE\_PLAN\_INSTALL\_SAVE\_PLAN
 
 - `--show-insignificant-diffs` (default: `false`)
 
@@ -1767,6 +1781,58 @@ nelm release get [options...] -n namespace -r release [revision]
 - `--temp-dir` (default: `""`)
 
   The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
+
+
+### release plan show
+
+Show plan artifact planned changes\.
+
+**Usage:**
+
+```shell
+nelm release plan show [options...] plan.json
+```
+
+**Options:**
+
+- `--secret-key` (default: `""`)
+
+  Secret key for decrypting the plan artifact\. Vars: \$NELM\_SECRET\_KEY, \$NELM\_RELEASE\_PLAN\_SHOW\_SECRET\_KEY
+
+- `--secret-work-dir` (default: `""`)
+
+  Working directory for secret operations\. Vars: \$NELM\_SECRET\_WORK\_DIR, \$NELM\_RELEASE\_PLAN\_SHOW\_SECRET\_WORK\_DIR
+
+- `--show-insignificant-diffs` (default: `false`)
+
+  Show insignificant diff lines\. Var: \$NELM\_RELEASE\_PLAN\_SHOW\_SHOW\_INSIGNIFICANT\_DIFFS
+
+- `--show-sensitive-diffs` (default: `false`)
+
+  Show sensitive diff lines\. Var: \$NELM\_RELEASE\_PLAN\_SHOW\_SHOW\_SENSITIVE\_DIFFS
+
+- `--show-verbose-crd-diffs` (default: `false`)
+
+  Show verbose CRD diff lines\. Var: \$NELM\_RELEASE\_PLAN\_SHOW\_SHOW\_VERBOSE\_CRD\_DIFFS
+
+- `--show-verbose-diffs` (default: `true`)
+
+  Show verbose diff lines\. Var: \$NELM\_RELEASE\_PLAN\_SHOW\_SHOW\_VERBOSE\_DIFFS
+
+
+**Other options:**
+
+- `--color-mode` (default: `"auto"`)
+
+  Color mode for logs\. Allowed: auto, off, on\. Vars: \$NELM\_COLOR\_MODE, \$NELM\_RELEASE\_PLAN\_SHOW\_COLOR\_MODE
+
+- `--log-level` (default: `"info"`)
+
+  Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_RELEASE\_PLAN\_SHOW\_LOG\_LEVEL
+
+- `--temp-dir` (default: `""`)
+
+  Temporary directory for operation\. Vars: \$NELM\_TEMP\_DIR, \$NELM\_RELEASE\_PLAN\_SHOW\_TEMP\_DIR
 
 
 ### chart lint
