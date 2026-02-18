@@ -59,7 +59,7 @@ type ReleaseInstallOptions struct {
 	// Used to set application version metadata without modifying the chart file.
 	ChartAppVersion string
 	// ChartDirPath is deprecated
-	ChartDirPath string // TODO(v2): get rid
+	ChartDirPath string // TODO(major): get rid
 	// ChartProvenanceKeyring is the path to a keyring file containing public keys
 	// used to verify chart provenance signatures. Used with signed charts for security.
 	ChartProvenanceKeyring string

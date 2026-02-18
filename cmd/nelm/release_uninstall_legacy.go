@@ -113,7 +113,7 @@ func newLegacyReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuilt
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		// TODO(ilya-lesikov): restrict allowed values
+		// TODO: restrict allowed values
 		if err := cli.AddFlag(cmd, &cfg.ReleaseStorageDriver, "release-storage", "", "How releases should be stored", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,

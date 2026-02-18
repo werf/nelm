@@ -75,7 +75,7 @@ var syntaxHighlightTheme = fmt.Sprintf(`
 </style>
 `, syntaxHighlightThemeName)
 
-// TODO(v2): Version > APIVersion as string "v3"
+// TODO(major): Version > APIVersion as string "v3"
 type releaseReportV3 struct {
 	Version             int                `json:"version,omitempty"`
 	Release             string             `json:"release,omitempty"`

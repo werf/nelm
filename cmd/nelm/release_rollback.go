@@ -141,7 +141,7 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		// TODO(ilya-lesikov): restrict allowed values
+		// TODO: restrict allowed values
 		if err := cli.AddFlag(cmd, &cfg.ReleaseStorageDriver, "release-storage", "", "How releases should be stored", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,
@@ -156,7 +156,7 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		// TODO(v2): remove this duplicated flag
+		// TODO(major): remove this duplicated flag
 		if err := cli.AddFlag(cmd, &cfg.RollbackGraphPath, "save-rollback-graph-to", "", "Save the Graphviz rollback graph to a file", cli.AddFlagOptions{
 			Group: mainFlagGroup,
 			Type:  cli.FlagTypeFile,

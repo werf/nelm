@@ -17,7 +17,7 @@ These are NOT suggestions — they are requirements. NEVER skip them in favor of
 
 These are NOT suggestions — they are requirements. NEVER skip them in favor of Grep.
 
-- ALWAYS use **LSP** `hover` to look up documentation, type signatures, and godoc for any symbol in the codebase (including symbols from external dependencies).
+- ALWAYS use **LSP** `hover` to look up documentation, type signatures, and godoc for any symbol in the codebase (including symbols from external dependencies)
 - ALWAYS use **Context7 MCP** (`resolve-library-id` + `query-docs`) to look up broader documentation, guides, or examples for any technology, library, or tool. NEVER guess at APIs — look them up.
 
 ## Verifying changes (MANDATORY)

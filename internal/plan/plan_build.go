@@ -629,7 +629,7 @@ func connectInternalDeployDependencies(plan *Plan, instInfos []*InstallableResou
 			case common.ResourceStateReady:
 				dependUponOp, dependUponOpFound = findTrackReadinessOpInStage(plan, instInfos, dep, info.Stage)
 			case common.ResourceStateAbsent:
-				// TODO(v2): all deploy/delete dependencies must depend upon all matched operations, not a single one
+				// TODO(major): all deploy/delete dependencies must depend upon all matched operations, not a single one
 				dependUponOps := findTrackAbsenceOpInStage(plan, delInfos, instInfos, dep, info.Stage)
 				if len(dependUponOps) > 0 {
 					dependUponOp = dependUponOps[0]

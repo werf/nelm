@@ -18,7 +18,7 @@ func NewStagesSplitter() *StagesSplitter {
 	return &StagesSplitter{}
 }
 
-// TODO(v2): get rid
+// TODO(major): get rid
 type StagesSplitter struct{}
 
 func (s *StagesSplitter) Split(resources kube.ResourceList) (stages.SortedStageList, error) {

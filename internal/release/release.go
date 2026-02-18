@@ -201,7 +201,7 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 }
 
 // Constructs ResourceSpecs from a Release object.
-func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string, noCleanNullFields bool /* TODO(v2): get rid */) ([]*spec.ResourceSpec, error) {
+func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string, noCleanNullFields bool /* TODO(major): get rid */) ([]*spec.ResourceSpec, error) {
 	var resources []*spec.ResourceSpec
 	for _, manifest := range releaseutil.SplitManifestsToSlice(rel.UnstoredManifest) {
 		if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{

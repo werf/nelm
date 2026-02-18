@@ -80,9 +80,9 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		SkipUpdate:     opts.ChartRepoNoUpdate,
 		Getters:        getter.Providers{getter.HttpProvider, getter.OCIProvider},
 		RegistryClient: registryClient,
-		// TODO(v2): don't read HELM_REPOSITORY_CONFIG anymore
+		// TODO(major): don't read HELM_REPOSITORY_CONFIG anymore
 		RepositoryConfig: cli.EnvOr("HELM_REPOSITORY_CONFIG", helmpath.ConfigPath("repositories.yaml")),
-		// TODO(v2): don't read HELM_REPOSITORY_CACHE anymore
+		// TODO(major): don't read HELM_REPOSITORY_CACHE anymore
 		RepositoryCache:   cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
 		AllowMissingRepos: true,
 	}

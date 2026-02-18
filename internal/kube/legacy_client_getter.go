@@ -17,7 +17,7 @@ type LegacyClientGetter struct {
 	legacyClientConfig clientcmd.ClientConfig
 }
 
-// TODO(v2): get rid
+// TODO(major): get rid
 func NewLegacyClientGetter(discoveryClient discovery.CachedDiscoveryInterface, mapper meta.ResettableRESTMapper, restConfig *rest.Config, legacyClientConfig clientcmd.ClientConfig) *LegacyClientGetter {
 	return &LegacyClientGetter{
 		discoveryClient:    discoveryClient,

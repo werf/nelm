@@ -32,7 +32,7 @@ const (
 	TypeResourceListsTransformer                   ResourceTransformerType = "resource-lists-transformer"
 )
 
-// TODO(v2): remove this transformer. Replace it with proper early validation of resource Heads.
+// TODO(major): remove this transformer. Replace it with proper early validation of resource Heads.
 type DropInvalidAnnotationsAndLabelsTransformer struct{}
 
 func NewDropInvalidAnnotationsAndLabelsTransformer() *DropInvalidAnnotationsAndLabelsTransformer {

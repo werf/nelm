@@ -71,7 +71,7 @@ func (kc *kubeConformValidator) Validate(ctx context.Context, resourceSpec *spec
 	}
 
 validatorLoop:
-	// TODO(v2): if possible, we should use only a single yaml marshaller and a single json marshaller everywhere
+	// TODO(major): if possible, we should use only a single yaml marshaller and a single json marshaller everywhere
 	for _, schemaValidator := range validators {
 		validationErrs := &util.MultiError{}
 

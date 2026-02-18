@@ -49,9 +49,9 @@ func newChartDownloader(ctx context.Context, chartRef string, registryClient *he
 			helmgetter.WithTimeout(opts.ChartRepoRequestTimeout),
 		},
 		RegistryClient: registryClient,
-		// TODO(v2): get rid of HELM_ env vars support
+		// TODO(major): get rid of HELM_ env vars support
 		RepositoryConfig: cli.EnvOr("HELM_REPOSITORY_CONFIG", helmpath.ConfigPath("repositories.yaml")),
-		// TODO(v2): get rid of HELM_ env vars support
+		// TODO(major): get rid of HELM_ env vars support
 		RepositoryCache: cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
 	}
 
@@ -97,12 +97,12 @@ func downloadChart(ctx context.Context, chartPath string, registryClient *helmre
 			return "", fmt.Errorf("construct chart downloader: %w", err)
 		}
 
-		// TODO(v2): get rid of HELM_ env vars support
+		// TODO(major): get rid of HELM_ env vars support
 		if err := os.MkdirAll(cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")), 0o755); err != nil {
 			return "", fmt.Errorf("create repository cache directory: %w", err)
 		}
 
-		// TODO(v2): get rid of HELM_ env vars support
+		// TODO(major): get rid of HELM_ env vars support
 		chartPath, _, err = chartDownloader.DownloadTo(chartRef, opts.ChartVersion, cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")))
 		if err != nil {
 			return "", fmt.Errorf("download chart %q: %w", chartRef, err)

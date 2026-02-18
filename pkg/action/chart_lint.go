@@ -41,7 +41,7 @@ type ChartLintOptions struct {
 	// Used to set application version metadata without modifying the chart file.
 	ChartAppVersion string
 	// ChartDirPath is deprecated (TODO v2: remove). Use Chart instead.
-	ChartDirPath string // TODO(v2): get rid
+	ChartDirPath string
 	// ChartProvenanceKeyring is the path to a keyring file containing public keys
 	// used to verify chart provenance signatures. Used with signed charts for security.
 	ChartProvenanceKeyring string
@@ -415,7 +415,7 @@ func applyChartLintOptionsDefaults(opts ChartLintOptions, currentDir, homeDir st
 	}
 
 	if opts.LocalKubeVersion == "" {
-		// TODO(v3): update default local version
+		// TODO(major): update default local version
 		opts.LocalKubeVersion = common.DefaultLocalKubeVersion
 	}
 

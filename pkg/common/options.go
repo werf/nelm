@@ -127,7 +127,7 @@ type ValuesOptions struct {
 	// RuntimeSetJSON is a list of key-value pairs in "key=json" format to set in $.Runtime.
 	// This is meant to be generated programmatically. Users should prefer ValuesSetJSON.
 	// Example: ["runtime.env=dev", "runtime.timestamp=1234567890"]
-	// TODO(v2): get rid of it
+	// TODO(major): get rid of it
 	RuntimeSetJSON []string
 	// ValuesFiles is a list of paths to additional values files to merge with chart values.
 	// Files are merged in order, with later files overriding earlier ones.
