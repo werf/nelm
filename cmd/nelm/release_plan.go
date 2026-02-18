@@ -12,13 +12,14 @@ func newPlanCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.C
 	cmd := cli.NewGroupCommand(
 		ctx,
 		"plan",
-		"Show planned changes.",
-		"Show planned changes.",
+		"Create plan and/or review upcoming release changes.",
+		"Create plan and/or review upcoming release changes.",
 		releaseCmdGroup,
 		cli.GroupCommandOptions{},
 	)
 
 	cmd.AddCommand(newReleasePlanInstallCommand(ctx, afterAllCommandsBuiltFuncs))
+	cmd.AddCommand(newReleasePlanShowCommand(ctx, afterAllCommandsBuiltFuncs))
 
 	return cmd
 }

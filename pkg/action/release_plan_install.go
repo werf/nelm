@@ -32,7 +32,6 @@ const (
 	DefaultReleasePlanInstallLogLevel = log.InfoLevel
 )
 
-// TODO(major): get rid
 var (
 	ErrChangesPlanned         = errors.New("changes planned")
 	ErrResourceChangesPlanned = errors.New("resource changes planned")
@@ -42,7 +41,8 @@ var (
 type ReleasePlanInstallOptions struct {
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
-	common.ResourceValidationOptions
+	common.ResourceDiffOptions
+	common.ReleaseInstallRuntimeOptions
 	common.ValuesOptions
 	common.SecretValuesOptions
 
@@ -74,29 +74,9 @@ type ReleasePlanInstallOptions struct {
 	DefaultChartName string
 	// DefaultChartVersion sets the default chart version when Chart.yaml doesn't specify one.
 	DefaultChartVersion string
-	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
-	DefaultDeletePropagation string
-	// DiffContextLines specifies the number of context lines to show around diffs in the output.
-	// Defaults to DefaultDiffContextLines (3) if not set or < 0. Set to 0 to hide context.
-	DiffContextLines int
 	// ErrorIfChangesPlanned, when true, returns ErrChangesPlanned if any changes are detected.
 	// Used with --exit-code flag to return exit code 2 if changes are planned, 0 if no changes, 1 on error.
 	ErrorIfChangesPlanned bool
-	// ExtraAnnotations are additional Kubernetes annotations to add to all chart resources.
-	// These are added during chart rendering, before resources are stored in the release.
-	ExtraAnnotations map[string]string
-	// ExtraLabels are additional Kubernetes labels to add to all chart resources.
-	// These are added during chart rendering, before resources are stored in the release.
-	ExtraLabels map[string]string
-	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime.
-	// These are added during resource creation/update but not stored in the release.
-	ExtraRuntimeAnnotations map[string]string
-	// ExtraRuntimeLabels are additional labels to add to resources at runtime.
-	// These are added during resource creation/update but not stored in the release.
-	ExtraRuntimeLabels map[string]string
-	// ForceAdoption, when true, allows adopting resources that belong to a different Helm release.
-	// WARNING: This can lead to conflicts if resources are managed by multiple releases.
-	ForceAdoption bool
 	// InstallGraphPath, if specified, saves the Graphviz representation of the install plan to this file path.
 	// Useful for debugging and visualizing the dependency graph of resource operations.
 	InstallGraphPath string
@@ -117,43 +97,12 @@ type ReleasePlanInstallOptions struct {
 	// NoFinalTracking, when true, disables final tracking operations in the plan that have no
 	// create/update/delete resource operations after them. This speeds up plan generation.
 	NoFinalTracking bool
-	// NoInstallStandaloneCRDs, when true, skips installation of CustomResourceDefinitions from the "crds/" directory.
-	// By default, CRDs are installed first before other chart resources.
-	NoInstallStandaloneCRDs bool
-	// NoRemoveManualChanges, when true, preserves fields manually added to resources in the cluster
-	// that are not present in the chart manifests. By default, such fields are removed during updates.
-	NoRemoveManualChanges bool
+	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
+	PlanArtifactPath string
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
 	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
 	// Used for authenticating to OCI registries when pulling charts.
 	RegistryCredentialsPath string
-	// ReleaseInfoAnnotations are custom annotations to add to the release metadata (stored in Secret/ConfigMap).
-	// These do not affect resources but can be used for tagging releases.
-	ReleaseInfoAnnotations map[string]string
-	// ReleaseLabels are labels to add to the release storage object (Secret/ConfigMap).
-	// Used for filtering and organizing releases in storage.
-	ReleaseLabels map[string]string
-	// ReleaseStorageDriver specifies how release metadata is stored in Kubernetes.
-	// Valid values: "secret" (default), "configmap", "sql".
-	// Defaults to "secret" if not specified or set to "default".
-	ReleaseStorageDriver string
-	// ReleaseStorageSQLConnection is the SQL connection string when using SQL storage driver.
-	// Only used when ReleaseStorageDriver is "sql".
-	ReleaseStorageSQLConnection string
-	// ShowInsignificantDiffs, when true, includes insignificant changes in diff output.
-	// Insignificant changes include: Helm SHA annotations, werf.io annotations, and managedFields.
-	// By default, these are hidden to reduce noise in diffs.
-	ShowInsignificantDiffs bool
-	// ShowSensitiveDiffs, when true, shows diff content for sensitive resources (Secrets, resources with
-	// werf.io/sensitive="true" annotation, or fields matching werf.io/sensitive-paths).
-	// By default, sensitive data is redacted in diffs and shown as "<hidden N bytes, hash XXX>".
-	ShowSensitiveDiffs bool
-	// ShowVerboseCRDDiffs, when true, shows verbose diffs for CRD create/delete operations.
-	// By default, CRD diffs are hidden with "<hidden verbose CRD changes>" to reduce noise.
-	ShowVerboseCRDDiffs bool
-	// ShowVerboseDiffs, when true, shows verbose diffs for resource create/delete operations.
-	// Defaults to true. When false, create/delete diffs are hidden with "<hidden verbose changes>".
-	ShowVerboseDiffs bool
 	// TempDirPath is the directory for temporary files during the operation.
 	// A temporary directory is created automatically if not specified.
 	TempDirPath string
@@ -453,13 +402,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Calculate planned changes")
 
-	changes, err := plan.CalculatePlannedChanges(instResInfos, delResInfos, plan.CalculatePlannedChangesOptions{
-		DiffContextLines:       opts.DiffContextLines,
-		ShowVerboseCRDDiffs:    opts.ShowVerboseCRDDiffs,
-		ShowVerboseDiffs:       opts.ShowVerboseDiffs,
-		ShowSensitiveDiffs:     opts.ShowSensitiveDiffs,
-		ShowInsignificantDiffs: opts.ShowInsignificantDiffs,
-	})
+	changes, err := plan.CalculatePlannedChanges(instResInfos, delResInfos)
 	if err != nil {
 		return fmt.Errorf("calculate planned changes: %w", err)
 	}
@@ -470,7 +413,34 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		log.Default.Info(ctx, color.Style{color.Bold, color.Yellow}.Render(fmt.Sprintf("No resource changes planned, but still must install release %q (namespace: %q)", releaseName, releaseNamespace)))
 	}
 
-	logPlannedChanges(ctx, releaseName, releaseNamespace, changes)
+	if err := logPlannedChanges(ctx, releaseName, releaseNamespace, changes, opts.ResourceDiffOptions); err != nil {
+		return fmt.Errorf("log planned changes: %w", err)
+	}
+
+	if opts.PlanArtifactPath != "" {
+		planArtifact := &plan.PlanArtifact{
+			APIVersion: plan.PlanArtifactSchemeVersion,
+			Data: &plan.PlanArtifactData{
+				Options:                  opts.ReleaseInstallRuntimeOptions,
+				Release:                  newRelease,
+				Plan:                     installPlan,
+				Changes:                  changes,
+				InstallableResourceInfos: instResInfos,
+				ReleaseInfos:             relInfos,
+			},
+			DeployType: deployType,
+			Release: plan.PlanArtifactRelease{
+				Name:      releaseName,
+				Namespace: releaseNamespace,
+				Revision:  newRelease.Version,
+			},
+			Timestamp: time.Now().UTC(),
+		}
+
+		if err := plan.WritePlanArtifact(ctx, planArtifact, opts.PlanArtifactPath, opts.SecretKey, opts.SecretWorkDir); err != nil {
+			return fmt.Errorf("save install plan to %q: %w", opts.PlanArtifactPath, err)
+		}
+	}
 
 	if opts.ErrorIfChangesPlanned {
 		if featgate.FeatGateMoreDetailedExitCodeForPlan.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
@@ -503,6 +473,7 @@ func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, curr
 	opts.KubeConnectionOptions.ApplyDefaults(homeDir)
 	opts.ChartRepoConnectionOptions.ApplyDefaults()
 	opts.ValuesOptions.ApplyDefaults()
+	opts.ResourceDiffOptions.ApplyDefaults()
 	opts.SecretValuesOptions.ApplyDefaults(currentDir)
 
 	if opts.Chart == "" && opts.ChartDirPath != "" {
@@ -517,10 +488,6 @@ func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, curr
 
 	if opts.NetworkParallelism <= 0 {
 		opts.NetworkParallelism = common.DefaultNetworkParallelism
-	}
-
-	if opts.DiffContextLines < 0 {
-		opts.DiffContextLines = common.DefaultDiffContextLines
 	}
 
 	switch opts.ReleaseStorageDriver {
@@ -550,23 +517,33 @@ func logPlannedChanges(
 	releaseName string,
 	releaseNamespace string,
 	changes []*plan.ResourceChange,
-) {
+	opts common.ResourceDiffOptions,
+) error {
 	if len(changes) == 0 {
-		return
+		return nil
 	}
 
 	log.Default.Info(ctx, "")
 
 	for _, change := range changes {
-		log.Default.InfoBlock(ctx, log.BlockOptions{
+		if err := log.Default.InfoBlockErr(ctx, log.BlockOptions{
 			BlockTitle: buildDiffHeader(change),
-		}, func() {
-			log.Default.Info(ctx, "%s", change.Udiff)
+		}, func() error {
+			uDiff, err := change.UDiff(opts)
+			if err != nil {
+				return fmt.Errorf("calculate diff for resource %s: %w", change.ResourceMeta.IDHuman(), err)
+			}
+
+			log.Default.Info(ctx, "%s", uDiff)
 
 			if change.Reason != "" {
 				log.Default.Info(ctx, "<%s reason: %s>", change.Type, change.Reason)
 			}
-		})
+
+			return nil
+		}); err != nil {
+			return fmt.Errorf("log changes: %w", err)
+		}
 	}
 
 	log.Default.Info(ctx, color.Bold.Render("Planned changes summary")+" for release %q (namespace: %q):", releaseName, releaseNamespace)
@@ -576,6 +553,8 @@ func logPlannedChanges(
 	}
 
 	log.Default.Info(ctx, "")
+
+	return nil
 }
 
 func buildDiffHeader(change *plan.ResourceChange) string {

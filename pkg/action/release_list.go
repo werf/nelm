@@ -222,7 +222,6 @@ type ReleaseListResultRelease struct {
 	Chart       *ReleaseListResultChart      `json:"chart"`
 }
 
-// TODO(major): get rid
 type ReleaseListResultDeployedAt struct {
 	Human string `json:"human"`
 	Unix  int    `json:"unix"`

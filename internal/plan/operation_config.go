@@ -35,7 +35,7 @@ type OperationConfig interface {
 }
 
 type OperationConfigNoop struct {
-	OpID string
+	OpID string `json:"opID"`
 }
 
 func (c *OperationConfigNoop) ID() string {
@@ -47,8 +47,8 @@ func (c *OperationConfigNoop) IDHuman() string {
 }
 
 type OperationConfigCreate struct {
-	ResourceSpec  *spec.ResourceSpec
-	ForceReplicas *int
+	ResourceSpec  *spec.ResourceSpec `json:"resourceSpec"`
+	ForceReplicas *int               `json:"forceReplicas,omitempty"`
 }
 
 func (c *OperationConfigCreate) ID() string {
@@ -60,9 +60,9 @@ func (c *OperationConfigCreate) IDHuman() string {
 }
 
 type OperationConfigRecreate struct {
-	ResourceSpec      *spec.ResourceSpec
-	DeletePropagation metav1.DeletionPropagation
-	ForceReplicas     *int
+	ResourceSpec      *spec.ResourceSpec         `json:"resourceSpec"`
+	DeletePropagation metav1.DeletionPropagation `json:"deletePropagation"`
+	ForceReplicas     *int                       `json:"forceReplicas,omitempty"`
 }
 
 func (c *OperationConfigRecreate) ID() string {
@@ -74,7 +74,7 @@ func (c *OperationConfigRecreate) IDHuman() string {
 }
 
 type OperationConfigUpdate struct {
-	ResourceSpec *spec.ResourceSpec
+	ResourceSpec *spec.ResourceSpec `json:"resourceSpec"`
 }
 
 func (c *OperationConfigUpdate) ID() string {
@@ -86,7 +86,7 @@ func (c *OperationConfigUpdate) IDHuman() string {
 }
 
 type OperationConfigApply struct {
-	ResourceSpec *spec.ResourceSpec
+	ResourceSpec *spec.ResourceSpec `json:"resourceSpec"`
 }
 
 func (c *OperationConfigApply) ID() string {
@@ -98,8 +98,8 @@ func (c *OperationConfigApply) IDHuman() string {
 }
 
 type OperationConfigDelete struct {
-	ResourceMeta      *spec.ResourceMeta
-	DeletePropagation metav1.DeletionPropagation
+	ResourceMeta      *spec.ResourceMeta         `json:"resourceMeta"`
+	DeletePropagation metav1.DeletionPropagation `json:"deletePropagation"`
 }
 
 func (c *OperationConfigDelete) ID() string {
@@ -111,21 +111,21 @@ func (c *OperationConfigDelete) IDHuman() string {
 }
 
 type OperationConfigTrackReadiness struct {
-	ResourceMeta *spec.ResourceMeta
+	ResourceMeta *spec.ResourceMeta `json:"resourceMeta"`
 
-	FailMode                                 multitrack.FailMode
-	FailuresAllowed                          int
-	IgnoreLogs                               bool
-	IgnoreLogsForContainers                  []string
-	IgnoreLogsByRegex                        *regexp.Regexp
-	IgnoreLogsByRegexForContainers           map[string]*regexp.Regexp
-	IgnoreReadinessProbeFailsByContainerName map[string]time.Duration
-	NoActivityTimeout                        time.Duration
-	SaveEvents                               bool
-	SaveLogsByRegex                          *regexp.Regexp
-	SaveLogsByRegexForContainers             map[string]*regexp.Regexp
-	SaveLogsOnlyForContainers                []string
-	SaveLogsOnlyForNumberOfReplicas          int
+	FailMode                                 multitrack.FailMode       `json:"failMode"`
+	FailuresAllowed                          int                       `json:"failuresAllowed"`
+	IgnoreLogs                               bool                      `json:"ignoreLogs"`
+	IgnoreLogsForContainers                  []string                  `json:"ignoreLogsForContainers,omitempty"`
+	IgnoreLogsByRegex                        *regexp.Regexp            `json:"ignoreLogsByRegex"`
+	IgnoreLogsByRegexForContainers           map[string]*regexp.Regexp `json:"ignoreLogsByRegexForContainers"`
+	IgnoreReadinessProbeFailsByContainerName map[string]time.Duration  `json:"ignoreReadinessProbeFailsByContainerName,omitempty"`
+	NoActivityTimeout                        time.Duration             `json:"noActivityTimeout"`
+	SaveEvents                               bool                      `json:"saveEvents"`
+	SaveLogsByRegex                          *regexp.Regexp            `json:"saveLogsByRegex"`
+	SaveLogsByRegexForContainers             map[string]*regexp.Regexp `json:"saveLogsByRegexForContainers"`
+	SaveLogsOnlyForContainers                []string                  `json:"saveLogsOnlyForContainers,omitempty"`
+	SaveLogsOnlyForNumberOfReplicas          int                       `json:"saveLogsOnlyForNumberOfReplicas"`
 }
 
 func (c *OperationConfigTrackReadiness) ID() string {
@@ -137,7 +137,7 @@ func (c *OperationConfigTrackReadiness) IDHuman() string {
 }
 
 type OperationConfigTrackPresence struct {
-	ResourceMeta *spec.ResourceMeta
+	ResourceMeta *spec.ResourceMeta `json:"resourceMeta"`
 }
 
 func (c *OperationConfigTrackPresence) ID() string {
@@ -149,7 +149,7 @@ func (c *OperationConfigTrackPresence) IDHuman() string {
 }
 
 type OperationConfigTrackAbsence struct {
-	ResourceMeta *spec.ResourceMeta
+	ResourceMeta *spec.ResourceMeta `json:"resourceMeta"`
 }
 
 func (c *OperationConfigTrackAbsence) ID() string {
@@ -161,7 +161,7 @@ func (c *OperationConfigTrackAbsence) IDHuman() string {
 }
 
 type OperationConfigCreateRelease struct {
-	Release *helmrelease.Release
+	Release *helmrelease.Release `json:"release"`
 }
 
 func (c *OperationConfigCreateRelease) ID() string {
@@ -173,7 +173,7 @@ func (c *OperationConfigCreateRelease) IDHuman() string {
 }
 
 type OperationConfigUpdateRelease struct {
-	Release *helmrelease.Release
+	Release *helmrelease.Release `json:"release"`
 }
 
 func (c *OperationConfigUpdateRelease) ID() string {
@@ -185,9 +185,9 @@ func (c *OperationConfigUpdateRelease) IDHuman() string {
 }
 
 type OperationConfigDeleteRelease struct {
-	ReleaseName      string
-	ReleaseNamespace string
-	ReleaseRevision  int
+	ReleaseName      string `json:"releaseName"`
+	ReleaseNamespace string `json:"releaseNamespace"`
+	ReleaseRevision  int    `json:"releaseRevision"`
 }
 
 func (c *OperationConfigDeleteRelease) ID() string {

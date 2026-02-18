@@ -98,7 +98,7 @@ func (p *ReleaseMetadataPatcher) Type() ResourcePatcherType {
 	return TypeReleaseMetadataPatcher
 }
 
-// TODO(major): get rid of it when patching is implemented or when Kubedog compaitiblity with Helm charts improved
+// TODO: get rid of it when patching is implemented or when Kubedog compaitiblity with Helm charts improved
 type LegacyOnlyTrackJobsPatcher struct{}
 
 func NewLegacyOnlyTrackJobsPatcher() *LegacyOnlyTrackJobsPatcher {
