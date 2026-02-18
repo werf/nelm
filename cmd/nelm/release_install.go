@@ -313,10 +313,24 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		if err := cli.AddFlag(cmd, &cfg.PlanArtifactPath, "use-plan", "", "Use the gzip-compressed JSON plan file from the specified path during release install", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagLocalEnvVarRegexes,
+			Group:                mainFlagGroup,
+			Type:                 cli.FlagTypeFile,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.PlanArtifactLifetime, "plan-lifetime", common.DefaultPlanArtifactLifetime, "How long plan artifact is valid", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagLocalEnvVarRegexes,
+			Group:                mainFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.ReleaseName, "release", "", "The release name. Must be unique within the release namespace", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
-			Required:             true,
 			ShortName:            "r",
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
@@ -325,11 +339,13 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 		if err := cli.AddFlag(cmd, &cfg.ReleaseNamespace, "namespace", "", "The release namespace. Resources with no namespace will be deployed here", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
-			Required:             true,
 			ShortName:            "n",
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
+
+		cmd.MarkFlagsOneRequired("use-plan", "release")
+		cmd.MarkFlagsOneRequired("use-plan", "namespace")
 
 		return nil
 	}

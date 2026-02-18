@@ -290,6 +290,14 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		if err := cli.AddFlag(cmd, &cfg.PlanArtifactPath, "save-plan", "", "Save the gzip-compressed JSON install plan to the specified file", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagLocalEnvVarRegexes,
+			Group:                mainFlagGroup,
+			Type:                 cli.FlagTypeFile,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.TempDirPath, "temp-dir", "", "The directory for temporary files. By default, create a new directory in the default system directory for temporary files", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,

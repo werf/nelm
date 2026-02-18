@@ -43,7 +43,7 @@ const (
 type ReleaseInstallOptions struct {
 	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
-	common.ResourceValidationOptions
+	common.ReleaseInstallRuntimeOptions
 	common.ValuesOptions
 	common.SecretValuesOptions
 	common.TrackingOptions
@@ -78,23 +78,6 @@ type ReleaseInstallOptions struct {
 	DefaultChartName string
 	// DefaultChartVersion sets the default chart version when Chart.yaml doesn't specify one.
 	DefaultChartVersion string
-	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
-	DefaultDeletePropagation string
-	// ExtraAnnotations are additional Kubernetes annotations to add to all chart resources.
-	// These are added during chart rendering, before resources are stored in the release.
-	ExtraAnnotations map[string]string
-	// ExtraLabels are additional Kubernetes labels to add to all chart resources.
-	// These are added during chart rendering, before resources are stored in the release.
-	ExtraLabels map[string]string
-	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime.
-	// These are added during resource creation/update but not stored in the release.
-	ExtraRuntimeAnnotations map[string]string
-	// ExtraRuntimeLabels are additional labels to add to resources at runtime.
-	// These are added during resource creation/update but not stored in the release.
-	ExtraRuntimeLabels map[string]string
-	// ForceAdoption, when true, allows adopting resources that belong to a different Helm release.
-	// WARNING: This can lead to conflicts if resources are managed by multiple releases.
-	ForceAdoption bool
 	// InstallGraphPath, if specified, saves the Graphviz representation of the install plan to this file path.
 	// Useful for debugging and visualizing the dependency graph of resource operations.
 	InstallGraphPath string
@@ -118,36 +101,17 @@ type ReleaseInstallOptions struct {
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
-	// NoInstallStandaloneCRDs, when true, skips installation of CustomResourceDefinitions from the "crds/" directory.
-	// By default, CRDs are installed first before other chart resources.
-	NoInstallStandaloneCRDs bool
-	// NoRemoveManualChanges, when true, preserves fields manually added to resources in the cluster
-	// that are not present in the chart manifests. By default, such fields are removed during updates.
-	NoRemoveManualChanges bool
 	// NoShowNotes, when true, suppresses printing of NOTES.txt after successful installation.
 	// NOTES.txt typically contains usage instructions and next steps.
 	NoShowNotes bool
+	// PlanArtifactLifetime, specifies how long plan artifact be valid.
+	PlanArtifactLifetime time.Duration
+	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
+	PlanArtifactPath string
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
 	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
 	// Used for authenticating to OCI registries when pulling charts.
 	RegistryCredentialsPath string
-	// ReleaseHistoryLimit sets the maximum number of release revisions to keep in storage.
-	// When exceeded, the oldest revisions are deleted. Defaults to DefaultReleaseHistoryLimit if not set or <= 0.
-	// Note: Only release metadata is deleted; actual Kubernetes resources are not affected.
-	ReleaseHistoryLimit int
-	// ReleaseInfoAnnotations are custom annotations to add to the release metadata (stored in Secret/ConfigMap).
-	// These do not affect resources but can be used for tagging releases.
-	ReleaseInfoAnnotations map[string]string
-	// ReleaseLabels are labels to add to the release storage object (Secret/ConfigMap).
-	// Used for filtering and organizing releases in storage.
-	ReleaseLabels map[string]string
-	// ReleaseStorageDriver specifies how release metadata is stored in Kubernetes.
-	// Valid values: "secret" (default), "configmap", "sql".
-	// Defaults to "secret" if not specified or set to "default".
-	ReleaseStorageDriver string
-	// ReleaseStorageSQLConnection is the SQL connection string when using SQL storage driver.
-	// Only used when ReleaseStorageDriver is "sql".
-	ReleaseStorageSQLConnection string
 	// RollbackGraphPath, if specified, saves the Graphviz representation of the rollback plan (if auto-rollback occurs)
 	// to this file path. Only used when AutoRollback is true and rollback is triggered.
 	RollbackGraphPath string
@@ -191,6 +155,8 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 }
 
 func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, opts ReleaseInstallOptions) error {
+	usePlan := opts.PlanArtifactPath != ""
+
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)
@@ -208,6 +174,29 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	if opts.SecretKey != "" {
 		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
+	}
+
+	var planArtifact *plan.PlanArtifact
+	if usePlan {
+		log.Default.Info(ctx, "Using %s plan artifact", opts.PlanArtifactPath)
+
+		log.Default.Debug(ctx, "Read plan artifact")
+
+		planArtifact, err = plan.ReadPlanArtifact(ctx, opts.PlanArtifactPath, opts.SecretKey, opts.SecretWorkDir)
+		if err != nil {
+			return fmt.Errorf("read plan artifact from %s: %w", opts.PlanArtifactPath, err)
+		}
+
+		log.Default.Debug(ctx, "Validate plan artifact")
+
+		if err := plan.ValidatePlanArtifact(planArtifact, opts.PlanArtifactLifetime); err != nil {
+			return fmt.Errorf("validate plan artifact: %w", err)
+		}
+
+		releaseNamespace = planArtifact.Release.Namespace
+		releaseName = planArtifact.Release.Name
+
+		opts.ReleaseInstallRuntimeOptions = planArtifact.Data.Options
 	}
 
 	if len(opts.KubeConfigPaths) > 0 {
@@ -232,23 +221,25 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		return fmt.Errorf("construct kube client factory: %w", err)
 	}
 
-	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
-		// TODO(log):
-		registry.ClientOptWriter(opts.LegacyLogRegistryStreamOut),
-		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
-	}
+	var helmRegistryClient *registry.Client
+	if !usePlan {
+		helmRegistryClientOpts := []registry.ClientOption{
+			registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)), // TODO(log):
+			registry.ClientOptWriter(opts.LegacyLogRegistryStreamOut),
+			registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
+		}
 
-	if opts.ChartRepoInsecure {
-		helmRegistryClientOpts = append(
-			helmRegistryClientOpts,
-			registry.ClientOptPlainHTTP(),
-		)
-	}
+		if opts.ChartRepoInsecure {
+			helmRegistryClientOpts = append(
+				helmRegistryClientOpts,
+				registry.ClientOptPlainHTTP(),
+			)
+		}
 
-	helmRegistryClient, err := registry.NewClient(helmRegistryClientOpts...)
-	if err != nil {
-		return fmt.Errorf("construct registry client: %w", err)
+		helmRegistryClient, err = registry.NewClient(helmRegistryClientOpts...)
+		if err != nil {
+			return fmt.Errorf("construct registry client: %w", err)
+		}
 	}
 
 	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, clientFactory, release.ReleaseStorageOptions{
@@ -264,22 +255,6 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		return fmt.Errorf("construct lock manager: %w", err)
 	} else {
 		lockManager = m
-	}
-
-	helmOptions := helmopts.HelmOptions{
-		ChartLoadOpts: helmopts.ChartLoadOptions{
-			ChartAppVersion:            opts.ChartAppVersion,
-			ChartType:                  opts.LegacyChartType,
-			DefaultChartAPIVersion:     opts.DefaultChartAPIVersion,
-			DefaultChartName:           opts.DefaultChartName,
-			DefaultChartVersion:        opts.DefaultChartVersion,
-			DefaultSecretValuesDisable: opts.DefaultSecretValuesDisable,
-			DefaultValuesDisable:       opts.DefaultValuesDisable,
-			ExtraValues:                opts.LegacyExtraValues,
-			SecretKeyIgnore:            opts.SecretKeyIgnore,
-			SecretValuesFiles:          opts.SecretValuesFiles,
-			SecretWorkDir:              opts.SecretWorkDir,
-		},
 	}
 
 	if err := createReleaseNamespace(ctx, clientFactory, releaseNamespace); err != nil {
@@ -308,148 +283,180 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	prevRelease := lo.LastOrEmpty(releases)
 	prevDeployedRelease := lo.LastOrEmpty(deployedReleases)
 
-	var (
-		newRevision       int
-		prevReleaseFailed bool
-	)
-
+	newRevision := 1
 	if prevRelease != nil {
 		newRevision = prevRelease.Version + 1
-		prevReleaseFailed = prevRelease.IsStatusFailed()
-	} else {
-		newRevision = 1
 	}
 
-	var deployType common.DeployType
-	if prevDeployedRelease != nil {
-		deployType = common.DeployTypeUpgrade
-	} else if prevRelease != nil {
-		deployType = common.DeployTypeInstall
-	} else {
-		deployType = common.DeployTypeInitial
-	}
+	var (
+		installPlan  *plan.Plan
+		newRelease   *helmrelease.Release
+		instResInfos []*plan.InstallableResourceInfo
+		relInfos     []*plan.ReleaseInfo
+	)
 
-	log.Default.Debug(ctx, "Render chart")
-
-	renderChartResult, err := chart.RenderChart(ctx, opts.Chart, releaseName, releaseNamespace, newRevision, deployType, helmRegistryClient, clientFactory, chart.RenderChartOptions{
-		ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
-		ValuesOptions:              opts.ValuesOptions,
-		ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
-		ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
-		ChartRepoNoUpdate:          opts.ChartRepoSkipUpdate,
-		ChartVersion:               opts.ChartVersion,
-		HelmOptions:                helmOptions,
-		NoStandaloneCRDs:           opts.NoInstallStandaloneCRDs,
-		Remote:                     true,
-		SubchartNotes:              opts.ShowSubchartNotes,
-		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
-	})
-	if err != nil {
-		return fmt.Errorf("render chart: %w", err)
-	}
-
-	log.Default.Debug(ctx, "Build transformed resource specs")
-
-	transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, releaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
-		spec.NewResourceListsTransformer(),
-		spec.NewDropInvalidAnnotationsAndLabelsTransformer(),
-	})
-	if err != nil {
-		return fmt.Errorf("build transformed resource specs: %w", err)
-	}
-
-	log.Default.Debug(ctx, "Build releasable resource specs")
-
-	patchers := []spec.ResourcePatcher{
-		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-		spec.NewSecretStringDataPatcher(),
-	}
-
-	if opts.LegacyHelmCompatibleTracking {
-		patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
-	}
-
-	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patchers)
-	if err != nil {
-		return fmt.Errorf("build releasable resource specs: %w", err)
-	}
-
-	newRelease, err := release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, releasableResSpecs, renderChartResult.Chart, renderChartResult.ReleaseConfig, release.ReleaseOptions{
-		InfoAnnotations: opts.ReleaseInfoAnnotations,
-		Labels:          opts.ReleaseLabels,
-		Notes:           renderChartResult.Notes,
-	})
-	if err != nil {
-		return fmt.Errorf("construct new release: %w", err)
-	}
-
-	log.Default.Debug(ctx, "Convert previous release to resource specs")
-
-	var prevRelResSpecs []*spec.ResourceSpec
-	if prevRelease != nil {
-		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, releaseNamespace, false)
-		if err != nil {
-			return fmt.Errorf("convert previous release to resource specs: %w", err)
+	if usePlan {
+		if planArtifact.Release.Revision != newRevision {
+			return fmt.Errorf("plan artifact release revision mismatch: expected %d, got %d",
+				planArtifact.Release.Revision, newRevision)
 		}
-	}
 
-	log.Default.Debug(ctx, "Convert new release to resource specs")
+		installPlan = planArtifact.Data.Plan
+		newRelease = planArtifact.Data.Release
+		instResInfos = planArtifact.Data.InstallableResourceInfos
+		relInfos = planArtifact.Data.ReleaseInfos
+	} else {
+		prevReleaseFailed := prevRelease != nil && prevRelease.IsStatusFailed()
 
-	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace, false)
-	if err != nil {
-		return fmt.Errorf("convert new release to resource specs: %w", err)
-	}
+		var deployType common.DeployType
+		if prevDeployedRelease != nil {
+			deployType = common.DeployTypeUpgrade
+		} else if prevRelease != nil {
+			deployType = common.DeployTypeInstall
+		} else {
+			deployType = common.DeployTypeInitial
+		}
 
-	log.Default.Debug(ctx, "Build resources")
+		helmOptions := helmopts.HelmOptions{
+			ChartLoadOpts: helmopts.ChartLoadOptions{
+				ChartAppVersion:            opts.ChartAppVersion,
+				ChartType:                  opts.LegacyChartType,
+				DefaultChartAPIVersion:     opts.DefaultChartAPIVersion,
+				DefaultChartName:           opts.DefaultChartName,
+				DefaultChartVersion:        opts.DefaultChartVersion,
+				DefaultSecretValuesDisable: opts.DefaultSecretValuesDisable,
+				DefaultValuesDisable:       opts.DefaultValuesDisable,
+				ExtraValues:                opts.LegacyExtraValues,
+				SecretKeyIgnore:            opts.SecretKeyIgnore,
+				SecretValuesFiles:          opts.SecretValuesFiles,
+				SecretWorkDir:              opts.SecretWorkDir,
+			},
+		}
 
-	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
-		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
-		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
-	}, clientFactory, resource.BuildResourcesOptions{
-		Remote:                   true,
-		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
-	})
-	if err != nil {
-		return fmt.Errorf("build resources: %w", err)
-	}
+		log.Default.Debug(ctx, "Render chart")
 
-	log.Default.Debug(ctx, "Locally validate resources")
+		renderChartResult, err := chart.RenderChart(ctx, opts.Chart, releaseName, releaseNamespace, newRevision, deployType, helmRegistryClient, clientFactory, chart.RenderChartOptions{
+			ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
+			ValuesOptions:              opts.ValuesOptions,
+			ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
+			ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
+			ChartRepoNoUpdate:          opts.ChartRepoSkipUpdate,
+			ChartVersion:               opts.ChartVersion,
+			HelmOptions:                helmOptions,
+			NoStandaloneCRDs:           opts.NoInstallStandaloneCRDs,
+			Remote:                     true,
+			SubchartNotes:              opts.ShowSubchartNotes,
+			TemplatesAllowDNS:          opts.TemplatesAllowDNS,
+		})
+		if err != nil {
+			return fmt.Errorf("render chart: %w", err)
+		}
 
-	if err := resource.ValidateLocal(ctx, releaseNamespace, instResources, opts.ResourceValidationOptions); err != nil {
-		return fmt.Errorf("locally validate resources: %w", err)
-	}
+		log.Default.Debug(ctx, "Build transformed resource specs")
 
-	log.Default.Debug(ctx, "Build resource infos")
+		transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, releaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
+			spec.NewResourceListsTransformer(),
+			spec.NewDropInvalidAnnotationsAndLabelsTransformer(),
+		})
+		if err != nil {
+			return fmt.Errorf("build transformed resource specs: %w", err)
+		}
 
-	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
-		NetworkParallelism:    opts.NetworkParallelism,
-		NoRemoveManualChanges: opts.NoRemoveManualChanges,
-	})
-	if err != nil {
-		return fmt.Errorf("build resource infos: %w", err)
-	}
+		log.Default.Debug(ctx, "Build releasable resource specs")
 
-	log.Default.Debug(ctx, "Remotely validate resources")
+		patchers := []spec.ResourcePatcher{
+			spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+			spec.NewSecretStringDataPatcher(),
+		}
 
-	if err := plan.ValidateRemote(releaseName, releaseNamespace, instResInfos, opts.ForceAdoption); err != nil {
-		return fmt.Errorf("remotely validate resources: %w", err)
-	}
+		if opts.LegacyHelmCompatibleTracking {
+			patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
+		}
 
-	log.Default.Debug(ctx, "Build release infos")
+		releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patchers)
+		if err != nil {
+			return fmt.Errorf("build releasable resource specs: %w", err)
+		}
 
-	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, releases, newRelease)
-	if err != nil {
-		return fmt.Errorf("build release infos: %w", err)
-	}
+		newRelease, err = release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, releasableResSpecs, renderChartResult.Chart, renderChartResult.ReleaseConfig, release.ReleaseOptions{
+			InfoAnnotations: opts.ReleaseInfoAnnotations,
+			Labels:          opts.ReleaseLabels,
+			Notes:           renderChartResult.Notes,
+		})
+		if err != nil {
+			return fmt.Errorf("construct new release: %w", err)
+		}
 
-	log.Default.Debug(ctx, "Build install plan")
+		log.Default.Debug(ctx, "Convert previous release to resource specs")
 
-	installPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
-		NoFinalTracking: opts.NoFinalTracking,
-	})
-	if err != nil {
-		handleBuildPlanErr(ctx, installPlan, err, opts.InstallGraphPath, opts.TempDirPath, "release-install-graph.dot")
-		return fmt.Errorf("build install plan: %w", err)
+		var prevRelResSpecs []*spec.ResourceSpec
+		if prevRelease != nil {
+			prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, releaseNamespace, false)
+			if err != nil {
+				return fmt.Errorf("convert previous release to resource specs: %w", err)
+			}
+		}
+
+		log.Default.Debug(ctx, "Convert new release to resource specs")
+
+		newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace, false)
+		if err != nil {
+			return fmt.Errorf("convert new release to resource specs: %w", err)
+		}
+
+		log.Default.Debug(ctx, "Build resources")
+
+		instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
+			spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
+			spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
+		}, clientFactory, resource.BuildResourcesOptions{
+			Remote:                   true,
+			DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
+		})
+		if err != nil {
+			return fmt.Errorf("build resources: %w", err)
+		}
+
+		log.Default.Debug(ctx, "Locally validate resources")
+
+		if err := resource.ValidateLocal(ctx, releaseNamespace, instResources, opts.ResourceValidationOptions); err != nil {
+			return fmt.Errorf("locally validate resources: %w", err)
+		}
+
+		log.Default.Debug(ctx, "Build resource infos")
+
+		var delResInfos []*plan.DeletableResourceInfo
+
+		instResInfos, delResInfos, err = plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
+			NetworkParallelism:    opts.NetworkParallelism,
+			NoRemoveManualChanges: opts.NoRemoveManualChanges,
+		})
+		if err != nil {
+			return fmt.Errorf("build resource infos: %w", err)
+		}
+
+		log.Default.Debug(ctx, "Remotely validate resources")
+
+		if err := plan.ValidateRemote(releaseName, releaseNamespace, instResInfos, opts.ForceAdoption); err != nil {
+			return fmt.Errorf("remotely validate resources: %w", err)
+		}
+
+		log.Default.Debug(ctx, "Build release infos")
+
+		relInfos, err = plan.BuildReleaseInfos(ctx, deployType, releases, newRelease)
+		if err != nil {
+			return fmt.Errorf("build release infos: %w", err)
+		}
+
+		log.Default.Debug(ctx, "Build install plan")
+
+		installPlan, err = plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
+			NoFinalTracking: opts.NoFinalTracking,
+		})
+		if err != nil {
+			handleBuildPlanErr(ctx, installPlan, err, opts.InstallGraphPath, opts.TempDirPath, "release-install-graph.dot")
+			return fmt.Errorf("build install plan: %w", err)
+		}
 	}
 
 	if opts.InstallGraphPath != "" {
@@ -486,7 +493,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}
 
 		if !opts.NoShowNotes {
-			printNotes(ctx, renderChartResult.Notes)
+			printNotes(ctx, newRelease.Info.Notes)
 		}
 
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)))
@@ -568,20 +575,11 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		if opts.AutoRollback && prevDeployedRelease != nil {
 			runRollbackPlanResult, nonCritErrs, critErrs := runRollbackPlan(ctx, releaseName, releaseNamespace, newRelease, prevDeployedRelease, taskStore, logStore, informerFactory, history, clientFactory, runRollbackPlanOptions{
-				LegacyProgressReporter:    reporter,
-				DefaultDeletePropagation:  opts.DefaultDeletePropagation,
-				TrackingOptions:           opts.TrackingOptions,
-				ExtraAnnotations:          opts.ExtraAnnotations,
-				ExtraLabels:               opts.ExtraLabels,
-				ExtraRuntimeAnnotations:   opts.ExtraRuntimeAnnotations,
-				ExtraRuntimeLabels:        opts.ExtraRuntimeLabels,
-				ForceAdoption:             opts.ForceAdoption,
-				NetworkParallelism:        opts.NetworkParallelism,
-				NoRemoveManualChanges:     opts.NoRemoveManualChanges,
-				ReleaseInfoAnnotations:    opts.ReleaseInfoAnnotations,
-				ReleaseLabels:             opts.ReleaseLabels,
-				RollbackGraphPath:         opts.RollbackGraphPath,
-				ResourceValidationOptions: opts.ResourceValidationOptions,
+				ReleaseInstallRuntimeOptions: opts.ReleaseInstallRuntimeOptions,
+				TrackingOptions:              opts.TrackingOptions,
+				NetworkParallelism:           opts.NetworkParallelism,
+				LegacyProgressReporter:       reporter,
+				RollbackGraphPath:            opts.RollbackGraphPath,
 			})
 
 			criticalErrs.Add(critErrs)
@@ -640,7 +638,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	if !criticalErrs.HasErrors() && !opts.NoShowNotes {
-		printNotes(ctx, renderChartResult.Notes)
+		printNotes(ctx, newRelease.Info.Notes)
 	}
 
 	if criticalErrs.HasErrors() {
@@ -650,11 +648,11 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		return fmt.Errorf("failed release %q (namespace: %q): %w", releaseName, releaseNamespace, allErrs)
 	} else if nonCriticalErrs.HasErrors() {
 		return fmt.Errorf("succeeded release %q (namespace: %q), but non-critical errors encountered: %w", releaseName, releaseNamespace, nonCriticalErrs)
-	} else {
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Succeeded release %q (namespace: %q)", releaseName, releaseNamespace)))
-
-		return nil
 	}
+
+	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Succeeded release %q (namespace: %q)", releaseName, releaseNamespace)))
+
+	return nil
 }
 
 func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir, homeDir string) (ReleaseInstallOptions, error) {
@@ -744,21 +742,12 @@ func createReleaseNamespace(ctx context.Context, clientFactory *kube.ClientFacto
 }
 
 type runRollbackPlanOptions struct {
+	common.ReleaseInstallRuntimeOptions
 	common.TrackingOptions
-	common.ResourceValidationOptions
 
-	LegacyProgressReporter   *plan.LegacyProgressReporter
-	DefaultDeletePropagation string
-	ExtraAnnotations         map[string]string
-	ExtraLabels              map[string]string
-	ExtraRuntimeAnnotations  map[string]string
-	ExtraRuntimeLabels       map[string]string
-	ForceAdoption            bool
-	NetworkParallelism       int
-	NoRemoveManualChanges    bool
-	ReleaseInfoAnnotations   map[string]string
-	ReleaseLabels            map[string]string
-	RollbackGraphPath        string
+	NetworkParallelism     int
+	LegacyProgressReporter *plan.LegacyProgressReporter
+	RollbackGraphPath      string
 }
 
 type runRollbackPlanResult struct {

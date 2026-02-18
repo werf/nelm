@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -71,12 +72,12 @@ type OperationIteration int
 // operation ID must be unique: you can't have two operations with the same ID in the plan/graph.
 // Operation must be easily serializable.
 type Operation struct {
-	Type      OperationType
-	Version   OperationVersion
-	Category  OperationCategory
-	Iteration OperationIteration
-	Status    OperationStatus
-	Config    OperationConfig
+	Type      OperationType      `json:"type"`
+	Version   OperationVersion   `json:"version"`
+	Category  OperationCategory  `json:"category"`
+	Iteration OperationIteration `json:"iteration"`
+	Status    OperationStatus    `json:"status"`
+	Config    OperationConfig    `json:"config"`
 }
 
 func (o *Operation) ID() string {
@@ -100,4 +101,55 @@ func OperationIDHuman(t OperationType, iteration OperationIteration, configIDHum
 	}
 
 	return id
+}
+
+func (o *Operation) UnmarshalJSON(data []byte) error {
+	type Alias Operation
+
+	aux := &struct {
+		*Alias
+
+		Config json.RawMessage `json:"config"`
+	}{
+		Alias: (*Alias)(o),
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return fmt.Errorf("unmarshal operation json: %w", err)
+	}
+
+	switch o.Type {
+	case OperationTypeNoop:
+		o.Config = &OperationConfigNoop{}
+	case OperationTypeCreate:
+		o.Config = &OperationConfigCreate{}
+	case OperationTypeRecreate:
+		o.Config = &OperationConfigRecreate{}
+	case OperationTypeUpdate:
+		o.Config = &OperationConfigUpdate{}
+	case OperationTypeApply:
+		o.Config = &OperationConfigApply{}
+	case OperationTypeDelete:
+		o.Config = &OperationConfigDelete{}
+	case OperationTypeTrackReadiness:
+		o.Config = &OperationConfigTrackReadiness{}
+	case OperationTypeTrackPresence:
+		o.Config = &OperationConfigTrackPresence{}
+	case OperationTypeTrackAbsence:
+		o.Config = &OperationConfigTrackAbsence{}
+	case OperationTypeCreateRelease:
+		o.Config = &OperationConfigCreateRelease{}
+	case OperationTypeUpdateRelease:
+		o.Config = &OperationConfigUpdateRelease{}
+	case OperationTypeDeleteRelease:
+		o.Config = &OperationConfigDeleteRelease{}
+	default:
+		return fmt.Errorf("unknown operation type: %s", o.Type)
+	}
+
+	if err := json.Unmarshal(aux.Config, &o.Config); err != nil {
+		return fmt.Errorf("unmarshal %s operation config: %w", o.Type, err)
+	}
+
+	return nil
 }

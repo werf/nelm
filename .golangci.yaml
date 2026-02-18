@@ -40,7 +40,6 @@ linters:
     - nilnesserr
     - nilnil
     - predeclared
-    - tagliatelle
     - testifylint
     - testpackage
     - unconvert

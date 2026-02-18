@@ -14,12 +14,12 @@ import (
 // getting, deleting, tracking resources, when you don't care about the resource spec (or when it's
 // not available). If also the resource spec is needed, use ResourceSpec.
 type ResourceMeta struct {
-	Name             string
-	Namespace        string
-	GroupVersionKind schema.GroupVersionKind
-	FilePath         string
-	Annotations      map[string]string
-	Labels           map[string]string
+	Name             string                  `json:"name"`
+	Namespace        string                  `json:"namespace"`
+	GroupVersionKind schema.GroupVersionKind `json:"groupVersionKind"`
+	FilePath         string                  `json:"filePath"`
+	Annotations      map[string]string       `json:"annotations"`
+	Labels           map[string]string       `json:"labels"`
 }
 
 func NewResourceMeta(name, namespace, releaseNamespace, filePath string, gvk schema.GroupVersionKind, annotations, labels map[string]string) *ResourceMeta {

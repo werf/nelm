@@ -13,6 +13,7 @@ import (
 	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/pkg/common"
 )
 
 const (
@@ -22,32 +23,74 @@ const (
 	HiddenSensitiveChanges     = "<hidden sensitive changes>"
 )
 
-type CalculatePlannedChangesOptions struct {
-	DiffContextLines       int
-	ShowVerboseCRDDiffs    bool
-	ShowVerboseDiffs       bool
-	ShowSensitiveDiffs     bool
-	ShowInsignificantDiffs bool
-}
-
 type ResourceChange struct {
 	// Any operations on the resource after the initial one.
-	ExtraOperations []string
+	ExtraOperations []string `json:"extraOperations"`
 	// The reason for the change.
-	Reason       string
-	ResourceMeta *spec.ResourceMeta
-	Type         string
-	TypeStyle    color.Style
-	Udiff        string
+	Reason       string                     `json:"reason"`
+	ResourceMeta *spec.ResourceMeta         `json:"resourceMeta"`
+	Type         string                     `json:"type"`
+	TypeStyle    color.Style                `json:"typeStyle"`
+	Before       *unstructured.Unstructured `json:"before"`
+	After        *unstructured.Unstructured `json:"after"`
+}
+
+func (c *ResourceChange) UDiff(opts common.ResourceDiffOptions) (string, error) {
+	sensitiveInfo := resource.GetSensitiveInfo(c.ResourceMeta.GroupVersionKind.GroupKind(), c.ResourceMeta.Annotations)
+
+	var uDiff string
+
+	if spec.IsCRD(c.ResourceMeta.GroupVersionKind.GroupKind()) &&
+		!opts.ShowVerboseCRDDiffs &&
+		(c.Before == nil || c.After == nil) {
+		uDiff = HiddenVerboseCRDChanges
+	} else if sensitiveInfo.FullySensitive() && !opts.ShowSensitiveDiffs {
+		uDiff = HiddenSensitiveChanges
+	} else if !opts.ShowVerboseDiffs && (c.Before == nil || c.After == nil) {
+		uDiff = HiddenVerboseChanges
+	} else {
+		var (
+			oldObjManifest string
+			newObjManifest string
+		)
+
+		if c.Before != nil {
+			oldUnstructClean := cleanUnstruct(c.Before, sensitiveInfo, opts)
+
+			if oldObjByte, err := yaml.MarshalContext(context.TODO(), oldUnstructClean.Object, yaml.UseLiteralStyleIfMultiline(true)); err != nil {
+				return "", fmt.Errorf("marshal old unstruct to yaml: %w", err)
+			} else {
+				oldObjManifest = string(oldObjByte)
+			}
+		}
+
+		if c.After != nil {
+			newUnstructClean := cleanUnstruct(c.After, sensitiveInfo, opts)
+
+			if newObjByte, err := yaml.MarshalContext(context.TODO(), newUnstructClean.Object, yaml.UseLiteralStyleIfMultiline(true)); err != nil {
+				return "", fmt.Errorf("marshal new unstruct to yaml: %w", err)
+			} else {
+				newObjManifest = string(newObjByte)
+			}
+		}
+
+		uDiff = util.ColoredUnifiedDiff(oldObjManifest, newObjManifest, opts.DiffContextLines)
+	}
+
+	if uDiff == "" {
+		uDiff = HiddenInsignificantChanges
+	}
+
+	return uDiff, nil
 }
 
 // Calculate planned changes for informational purposes. Doesn't need the full plan, just having
 // Installable/DeletableResourceInfos is enough. Returns the structured result and shouldn't decide
 // on how to present this data.
-func CalculatePlannedChanges(installableInfos []*InstallableResourceInfo, deletableInfos []*DeletableResourceInfo, opts CalculatePlannedChangesOptions) ([]*ResourceChange, error) {
+func CalculatePlannedChanges(installableInfos []*InstallableResourceInfo, deletableInfos []*DeletableResourceInfo) ([]*ResourceChange, error) {
 	instInfosByIter := groupInstInfosByIter(installableInfos)
 
-	instChanges, err := buildInstChanges(instInfosByIter, opts)
+	instChanges, err := buildInstChanges(instInfosByIter)
 	if err != nil {
 		return nil, fmt.Errorf("build installable resource changes: %w", err)
 	}
@@ -56,7 +99,7 @@ func CalculatePlannedChanges(installableInfos []*InstallableResourceInfo, deleta
 		return spec.ResourceMetaSortHandler(deletableInfos[i].ResourceMeta, deletableInfos[j].ResourceMeta)
 	})
 
-	delChanges, err := buildDelChanges(deletableInfos, opts)
+	delChanges, err := buildDelChanges(deletableInfos)
 	if err != nil {
 		return nil, fmt.Errorf("build deletable resource changes: %w", err)
 	}
@@ -83,7 +126,7 @@ func groupInstInfosByIter(installableInfos []*InstallableResourceInfo) [][]*Inst
 	return instInfosByIter
 }
 
-func buildInstChanges(instInfosByIter [][]*InstallableResourceInfo, opts CalculatePlannedChangesOptions) ([]*ResourceChange, error) {
+func buildInstChanges(instInfosByIter [][]*InstallableResourceInfo) ([]*ResourceChange, error) {
 	var changes []*ResourceChange
 	for iter, instInfos := range instInfosByIter {
 		if iter == 0 {
@@ -93,28 +136,28 @@ func buildInstChanges(instInfosByIter [][]*InstallableResourceInfo, opts Calcula
 				case ResourceInstallTypeCreate:
 					var err error
 
-					change, err = buildResourceChange(info.ResourceMeta, nil, info.LocalResource.Unstruct, info.MustDeleteOnSuccessfulInstall, "create", color.Style{color.Bold, color.Green}, opts)
+					change, err = buildResourceChange(info.ResourceMeta, nil, info.LocalResource.Unstruct, info.MustDeleteOnSuccessfulInstall, "create", color.Style{color.Bold, color.Green})
 					if err != nil {
 						return nil, fmt.Errorf("build resource change for create: %w", err)
 					}
 				case ResourceInstallTypeRecreate:
 					var err error
 
-					change, err = buildResourceChange(info.ResourceMeta, nil, info.LocalResource.Unstruct, info.MustDeleteOnSuccessfulInstall, "recreate", color.Style{color.Bold, color.LightGreen}, opts)
+					change, err = buildResourceChange(info.ResourceMeta, nil, info.LocalResource.Unstruct, info.MustDeleteOnSuccessfulInstall, "recreate", color.Style{color.Bold, color.LightGreen})
 					if err != nil {
 						return nil, fmt.Errorf("build resource change for recreate: %w", err)
 					}
 				case ResourceInstallTypeUpdate:
 					var err error
 
-					change, err = buildResourceChange(info.ResourceMeta, info.GetResult, info.DryApplyResult, info.MustDeleteOnSuccessfulInstall, "update", color.Style{color.Bold, color.Yellow}, opts)
+					change, err = buildResourceChange(info.ResourceMeta, info.GetResult, info.DryApplyResult, info.MustDeleteOnSuccessfulInstall, "update", color.Style{color.Bold, color.Yellow})
 					if err != nil {
 						return nil, fmt.Errorf("build resource change for update: %w", err)
 					}
 				case ResourceInstallTypeApply:
 					var err error
 
-					change, err = buildResourceChange(info.ResourceMeta, nil, info.LocalResource.Unstruct, info.MustDeleteOnSuccessfulInstall, "blind apply", color.Style{color.Bold, color.LightYellow}, opts)
+					change, err = buildResourceChange(info.ResourceMeta, nil, info.LocalResource.Unstruct, info.MustDeleteOnSuccessfulInstall, "blind apply", color.Style{color.Bold, color.LightYellow})
 					if err != nil {
 						return nil, fmt.Errorf("build resource change for blind apply: %w", err)
 					}
@@ -163,14 +206,14 @@ func buildInstChanges(instInfosByIter [][]*InstallableResourceInfo, opts Calcula
 	return changes, nil
 }
 
-func buildDelChanges(delInfos []*DeletableResourceInfo, opts CalculatePlannedChangesOptions) ([]*ResourceChange, error) {
+func buildDelChanges(delInfos []*DeletableResourceInfo) ([]*ResourceChange, error) {
 	var changes []*ResourceChange
 	for _, info := range delInfos {
 		if !info.MustDelete {
 			continue
 		}
 
-		change, err := buildResourceChange(info.ResourceMeta, info.GetResult, nil, false, "delete", color.Style{color.Bold, color.Red}, opts)
+		change, err := buildResourceChange(info.ResourceMeta, info.GetResult, nil, false, "delete", color.Style{color.Bold, color.Red})
 		if err != nil {
 			return nil, fmt.Errorf("build resource change for delete: %w", err)
 		}
@@ -181,52 +224,9 @@ func buildDelChanges(delInfos []*DeletableResourceInfo, opts CalculatePlannedCha
 	return changes, nil
 }
 
-func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *unstructured.Unstructured, deleteAfter bool, opType string, opTypeStyle color.Style, opts CalculatePlannedChangesOptions) (*ResourceChange, error) {
-	sensitiveInfo := resource.GetSensitiveInfo(resMeta.GroupVersionKind.GroupKind(), resMeta.Annotations)
-
-	var uDiff string
-	if spec.IsCRD(resMeta.GroupVersionKind.GroupKind()) &&
-		!opts.ShowVerboseCRDDiffs &&
-		(oldUnstruct == nil || newUnstruct == nil) {
-		uDiff = HiddenVerboseCRDChanges
-	} else if sensitiveInfo.FullySensitive() && !opts.ShowSensitiveDiffs {
-		uDiff = HiddenSensitiveChanges
-	} else if !opts.ShowVerboseDiffs && (oldUnstruct == nil || newUnstruct == nil) {
-		uDiff = HiddenVerboseChanges
-	} else {
-		var (
-			oldObjManifest string
-			newObjManifest string
-		)
-
-		if oldUnstruct != nil {
-			oldUnstructClean := cleanUnstruct(oldUnstruct, sensitiveInfo, opts)
-
-			if oldObjByte, err := yaml.MarshalContext(context.TODO(), oldUnstructClean.Object, yaml.UseLiteralStyleIfMultiline(true)); err != nil {
-				return nil, fmt.Errorf("marshal old unstruct to yaml: %w", err)
-			} else {
-				oldObjManifest = string(oldObjByte)
-			}
-		}
-
-		if newUnstruct != nil {
-			newUnstructClean := cleanUnstruct(newUnstruct, sensitiveInfo, opts)
-
-			if newObjByte, err := yaml.MarshalContext(context.TODO(), newUnstructClean.Object, yaml.UseLiteralStyleIfMultiline(true)); err != nil {
-				return nil, fmt.Errorf("marshal new unstruct to yaml: %w", err)
-			} else {
-				newObjManifest = string(newObjByte)
-			}
-		}
-
-		uDiff = util.ColoredUnifiedDiff(oldObjManifest, newObjManifest, opts.DiffContextLines)
-	}
-
-	if uDiff == "" {
-		uDiff = HiddenInsignificantChanges
-	}
-
+func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *unstructured.Unstructured, deleteAfter bool, opType string, opTypeStyle color.Style) (*ResourceChange, error) {
 	var extraOps []string
+
 	if deleteAfter {
 		extraOps = append(extraOps, "delete")
 	}
@@ -235,12 +235,13 @@ func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *u
 		ResourceMeta:    resMeta,
 		Type:            opType,
 		TypeStyle:       opTypeStyle,
-		Udiff:           uDiff,
 		ExtraOperations: extraOps,
+		Before:          oldUnstruct,
+		After:           newUnstruct,
 	}, nil
 }
 
-func cleanUnstruct(unstruct *unstructured.Unstructured, sensitiveInfo resource.SensitiveInfo, opts CalculatePlannedChangesOptions) *unstructured.Unstructured {
+func cleanUnstruct(unstruct *unstructured.Unstructured, sensitiveInfo resource.SensitiveInfo, opts common.ResourceDiffOptions) *unstructured.Unstructured {
 	var unstructClean *unstructured.Unstructured
 	if sensitiveInfo.IsSensitive && !opts.ShowSensitiveDiffs {
 		unstructClean = resource.RedactSensitiveData(unstruct, sensitiveInfo.SensitivePaths)
