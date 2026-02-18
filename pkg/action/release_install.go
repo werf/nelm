@@ -337,23 +337,23 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		log.Default.Debug(ctx, "Render chart")
 
-	renderChartResult, err := chart.RenderChart(ctx, opts.Chart, releaseName, releaseNamespace, newRevision, deployType, helmRegistryClient, clientFactory, chart.RenderChartOptions{
-		ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
-		ValuesOptions:              opts.ValuesOptions,
-		ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
-		ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
-		ChartRepoNoUpdate:          opts.ChartRepoSkipUpdate,
-		ChartVersion:               opts.ChartVersion,
-		HelmOptions:                helmOptions,
-		NoStandaloneCRDs:           opts.NoInstallStandaloneCRDs,
-		Remote:                     true,
-		SubchartNotes:              opts.ShowSubchartNotes,
-		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
-		RebuildTSBundle:            opts.RebuildTSBundle,
-	})
-	if err != nil {
-		return fmt.Errorf("render chart: %w", err)
-	}
+		renderChartResult, err := chart.RenderChart(ctx, opts.Chart, releaseName, releaseNamespace, newRevision, deployType, helmRegistryClient, clientFactory, chart.RenderChartOptions{
+			ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
+			ValuesOptions:              opts.ValuesOptions,
+			ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
+			ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
+			ChartRepoNoUpdate:          opts.ChartRepoSkipUpdate,
+			ChartVersion:               opts.ChartVersion,
+			HelmOptions:                helmOptions,
+			NoStandaloneCRDs:           opts.NoInstallStandaloneCRDs,
+			Remote:                     true,
+			SubchartNotes:              opts.ShowSubchartNotes,
+			TemplatesAllowDNS:          opts.TemplatesAllowDNS,
+			RebuildTSBundle:            opts.RebuildTSBundle,
+		})
+		if err != nil {
+			return fmt.Errorf("render chart: %w", err)
+		}
 
 		log.Default.Debug(ctx, "Build transformed resource specs")
 
