@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.22.0](https://github.com/werf/nelm/compare/v1.21.0...v1.22.0) (2026-02-18)
+
+
+### Features
+
+* `--set-root-json` flag ([#563](https://github.com/werf/nelm/issues/563)) ([697eed6](https://github.com/werf/nelm/commit/697eed6dd07cd5800fbb93da069db1e60e682a5b))
+* add plan freezing support ([#564](https://github.com/werf/nelm/issues/564)) ([4bda483](https://github.com/werf/nelm/commit/4bda483d34eb2c81a24b1ad1e11ddd0eb5cc97c0))
+* automatically detect dependencies between resources on deletion ([#549](https://github.com/werf/nelm/issues/549)) ([22cd6a7](https://github.com/werf/nelm/commit/22cd6a73b85c8375dcbf272cc6293384208b023a))
+* werf giterminism for typescript charts ([#553](https://github.com/werf/nelm/issues/553)) ([2b6de4b](https://github.com/werf/nelm/commit/2b6de4b552ef70900aab21486df1570f5c4330b6))
+
 ## [1.21.0](https://github.com/werf/nelm/compare/v1.20.1...v1.21.0) (2026-02-04)
 
 
