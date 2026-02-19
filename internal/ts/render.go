@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
-	"slices"
 	"strings"
 
 	"github.com/dustin/go-humanize"
@@ -65,9 +64,7 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 }
 
 func renderFiles(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, chartPath string, rebuildBundle bool) (map[string]string, error) {
-	mergedFiles := slices.Concat(chart.RuntimeFiles, chart.RuntimeDepsFiles)
-
-	sourceFiles := extractSourceFiles(mergedFiles)
+	sourceFiles := extractSourceFiles(chart.RuntimeFiles)
 	if len(sourceFiles) == 0 {
 		return map[string]string{}, nil
 	}
@@ -77,7 +74,7 @@ func renderFiles(ctx context.Context, chart *helmchart.Chart, renderedValues cha
 		return map[string]string{}, nil
 	}
 
-	bundleFile, foundBundle := lo.Find(mergedFiles, func(f *helmchart.File) bool {
+	bundleFile, foundBundle := lo.Find(chart.RuntimeFiles, func(f *helmchart.File) bool {
 		return f.Name == common.ChartTSVendorBundleFile
 	})
 

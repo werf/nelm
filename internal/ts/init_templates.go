@@ -54,6 +54,7 @@ export function newDeployment($: RenderContext): object {
 
 # TypeScript chart files
 ts/vendor/
+ts/node_modules/
 `
 	helpersTSContent = `import type { RenderContext } from '@nelm/chart-ts-sdk';
 

@@ -50,7 +50,7 @@ func InitChartStructure(ctx context.Context, chartPath, chartName string) error 
 
 	// Handle .helmignore: create or enrich
 	helmignorePath := filepath.Join(chartPath, ".helmignore")
-	if err := ensureFileEntries(helmignorePath, helmignoreContent, []string{"ts/vendor/"}); err != nil {
+	if err := ensureFileEntries(helmignorePath, helmignoreContent, []string{"ts/vendor/", "ts/node_modules/"}); err != nil {
 		return fmt.Errorf("ensure helmignore entries: %w", err)
 	}
 

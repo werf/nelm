@@ -136,6 +136,7 @@ func TestInitChartStructure(t *testing.T) {
 		content, err := os.ReadFile(filepath.Join(chartPath, ".helmignore"))
 		require.NoError(t, err)
 		assert.Contains(t, string(content), "ts/vendor/")
+		assert.Contains(t, string(content), "ts/node_modules/")
 	})
 
 	t.Run("skips existing Chart.yaml", func(t *testing.T) {
@@ -183,6 +184,7 @@ func TestInitChartStructure(t *testing.T) {
 		assert.Contains(t, string(content), ".DS_Store")
 		assert.Contains(t, string(content), ".git/")
 		assert.Contains(t, string(content), "ts/vendor/")
+		assert.Contains(t, string(content), "ts/node_modules/")
 	})
 }
 

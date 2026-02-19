@@ -88,6 +88,7 @@ func saveBundleToFile(chartPath string, bundle []byte) error {
 func runApp(ctx context.Context, chartPath string, bundleData []byte, renderCtx string) (map[string]interface{}, error) {
 	args := []string{
 		"run",
+		"--no-remote",
 		"--deny-read",
 		"--deny-write",
 		"--deny-net",
