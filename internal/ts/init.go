@@ -7,15 +7,18 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/werf/nelm/pkg/common"
+	tsbundle "github.com/werf/3p-helm/pkg/werf/ts"
 	"github.com/werf/nelm/pkg/log"
 )
+
+// denoBuildScript task for manual bundle run.
+const denoBuildScript = "deno bundle --output=dist/bundle.js src/index.ts"
 
 // InitChartStructure creates Chart.yaml and values.yaml if they don't exist.
 // For .helmignore: creates if missing, or appends TS entries if exists.
 // Returns error if ts/ directory already exists.
 func InitChartStructure(ctx context.Context, chartPath, chartName string) error {
-	tsDir := filepath.Join(chartPath, common.ChartTSSourceDir)
+	tsDir := filepath.Join(chartPath, tsbundle.ChartTSSourceDir)
 	if _, err := os.Stat(tsDir); err == nil {
 		return fmt.Errorf("init chart structure: typescript directory already exists: %s", tsDir)
 	} else if !os.IsNotExist(err) {
@@ -61,7 +64,7 @@ func InitChartStructure(ctx context.Context, chartPath, chartName string) error 
 
 // InitTSBoilerplate creates TypeScript boilerplate files in ts/ directory.
 func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
-	tsDir := filepath.Join(chartPath, common.ChartTSSourceDir)
+	tsDir := filepath.Join(chartPath, tsbundle.ChartTSSourceDir)
 	srcDir := filepath.Join(tsDir, "src")
 
 	if _, err := os.Stat(tsDir); err == nil {
@@ -79,7 +82,7 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
 		{content: deploymentTSContent, path: filepath.Join(srcDir, "deployment.ts")},
 		{content: serviceTSContent, path: filepath.Join(srcDir, "service.ts")},
 		{content: tsconfigContent, path: filepath.Join(tsDir, "tsconfig.json")},
-		{content: denoJSON(common.ChartTSBuildScript), path: filepath.Join(tsDir, "deno.json")},
+		{content: denoJSON(denoBuildScript), path: filepath.Join(tsDir, "deno.json")},
 	}
 
 	if err := os.MkdirAll(srcDir, 0o755); err != nil {

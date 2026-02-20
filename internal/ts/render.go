@@ -7,19 +7,20 @@ import (
 	"path"
 	"strings"
 
-	"github.com/dustin/go-humanize"
-	"github.com/gookit/color"
-	"github.com/samber/lo"
 	"sigs.k8s.io/yaml"
 
 	helmchart "github.com/werf/3p-helm/pkg/chart"
 	"github.com/werf/3p-helm/pkg/chartutil"
-	"github.com/werf/nelm/pkg/common"
+	tsbundle "github.com/werf/3p-helm/pkg/werf/ts"
 	"github.com/werf/nelm/pkg/log"
 )
 
 func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, rebuildBundle bool, chartPath string) (map[string]string, error) {
 	allRendered := make(map[string]string)
+
+	if err := tsbundle.ProcessChartRecursive(ctx, chart, chartPath, false); err != nil {
+		return nil, fmt.Errorf("process chart for TypeScript rendering: %w", err)
+	}
 
 	if err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), chartPath, allRendered, rebuildBundle); err != nil {
 		return nil, err
@@ -64,38 +65,9 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 }
 
 func renderFiles(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, chartPath string, rebuildBundle bool) (map[string]string, error) {
-	sourceFiles := extractSourceFiles(chart.RuntimeFiles)
-	if len(sourceFiles) == 0 {
+	entrypoint, bundle := tsbundle.GetEntrypointAndBundle(chart.RuntimeFiles)
+	if entrypoint == "" || bundle == nil {
 		return map[string]string{}, nil
-	}
-
-	entrypoint := findEntrypointInFiles(sourceFiles)
-	if entrypoint == "" {
-		return map[string]string{}, nil
-	}
-
-	bundleFile, foundBundle := lo.Find(chart.RuntimeFiles, func(f *helmchart.File) bool {
-		return f.Name == common.ChartTSVendorBundleFile
-	})
-
-	var bundle []byte
-	if rebuildBundle || !foundBundle {
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Run bundle for ")+"%s", entrypoint)
-
-		bundleRes, err := buildBundle(ctx, chartPath, entrypoint)
-		if err != nil {
-			return nil, fmt.Errorf("build bundle for chart %q: %w", chart.Name(), err)
-		}
-
-		bundle = bundleRes
-
-		if err := saveBundleToFile(chartPath, bundle); err != nil {
-			return nil, fmt.Errorf("save bundle: %w", err)
-		}
-
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Bundled: ")+"%s - %s", "dist/bundle.js", humanize.Bytes(uint64(len(bundle))))
-	} else {
-		bundle = bundleFile.Data
 	}
 
 	renderCtx, err := buildRenderContext(renderedValues, chart)
@@ -122,7 +94,7 @@ func renderFiles(ctx context.Context, chart *helmchart.Chart, renderedValues cha
 	}
 
 	return map[string]string{
-		path.Join(common.ChartTSSourceDir, entrypoint): yamlOutput,
+		path.Join(tsbundle.ChartTSSourceDir, entrypoint): yamlOutput,
 	}, nil
 }
 

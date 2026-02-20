@@ -1,3 +1,3 @@
 package ts
 
-var ScopeValuesForSubchart = scopeValuesForSubchart
+var ChartTSBuildScript = denoBuildScript

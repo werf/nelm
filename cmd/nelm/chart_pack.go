@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/samber/lo"
@@ -10,8 +9,8 @@ import (
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/chart/loader"
+	"github.com/werf/3p-helm/pkg/werf/ts"
 	"github.com/werf/common-go/pkg/cli"
-	"github.com/werf/nelm/internal/ts"
 	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
@@ -37,11 +36,7 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 		loader.NoChartLockWarning = ""
 
 		if featgate.FeatGateTypescript.Enabled() {
-			for _, chartPath := range args {
-				if err := ts.BuildBundleToFile(ctx, chartPath); err != nil {
-					return fmt.Errorf("build TypeScript vendor bundle in %q: %w", chartPath, err)
-				}
-			}
+			tsbundle.BundleEnabled = true
 		}
 
 		if err := originalRunE(cmd, args); err != nil {

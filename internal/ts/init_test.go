@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/werf/nelm/internal/ts"
-	"github.com/werf/nelm/pkg/common"
 )
 
 func TestEnsureGitignore(t *testing.T) {
@@ -227,7 +226,7 @@ func TestInitTSBoilerplate(t *testing.T) {
 
 		content, err := os.ReadFile(filepath.Join(chartPath, "ts", "deno.json"))
 		require.NoError(t, err)
-		assert.Contains(t, string(content), fmt.Sprintf(`"build": "%s"`, common.ChartTSBuildScript))
+		assert.Contains(t, string(content), fmt.Sprintf(`"build": "%s"`, ts.ChartTSBuildScript))
 		assert.Contains(t, string(content), `"@nelm/chart-ts-sdk"`)
 	})
 
