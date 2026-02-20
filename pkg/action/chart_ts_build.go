@@ -39,9 +39,11 @@ func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {
 		return fmt.Errorf("TypeScript charts feature is not enabled. Set NELM_FEAT_TYPESCRIPT=true to use this feature")
 	}
 
+	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Run bundle for ")+"%s", absPath)
+
 	helmOpts := helmopts.HelmOptions{
 		ChartLoadOpts: helmopts.ChartLoadOptions{
-			ChartType: helmopts.ChartTypeSubchart,
+			ChartType: helmopts.ChartTypeChart,
 		},
 	}
 
@@ -50,7 +52,7 @@ func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {
 		return fmt.Errorf("load chart: %w", err)
 	}
 
-	if err = tsbundle.ProcessChartRecursive(ctx, chart, absPath, true); err != nil {
+	if err = tsbundle.BundleTSChartsRecursive(ctx, chart, absPath, true); err != nil {
 		return fmt.Errorf("process chart: %w", err)
 	}
 
@@ -74,10 +76,10 @@ func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {
 			return fmt.Errorf("write bundle to file %q: %w", bundlePath, err)
 		}
 
-		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Bundled: ")+"%s - %s", bundlePath, humanize.Bytes(uint64(len(bundle.Data))))
+		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Bundled: ")+"%s - %s", bundle.Name, humanize.Bytes(uint64(len(bundle.Data))))
 	}
 
-	log.Default.Info(ctx, "TypeScript chart bundled in %s", absPath)
+	log.Default.Info(ctx, "TypeScript chart bundled successfully")
 
 	return nil
 }

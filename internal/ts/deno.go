@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/werf/3p-helm/pkg/werf/ts"
@@ -20,7 +19,7 @@ const (
 	renderResultPrefix = "NELM_RENDER_RESULT:"
 )
 
-func runApp(ctx context.Context, chartPath string, bundleData []byte, renderCtx string) (map[string]interface{}, error) {
+func runApp(ctx context.Context, bundleData []byte, renderCtx string) (map[string]interface{}, error) {
 	args := []string{
 		"run",
 		"--no-remote",
@@ -36,7 +35,6 @@ func runApp(ctx context.Context, chartPath string, bundleData []byte, renderCtx 
 
 	denoBin := tsbundle.GetDenoBinary()
 	cmd := exec.CommandContext(ctx, denoBin, args...)
-	cmd.Dir = filepath.Join(chartPath, tsbundle.ChartTSSourceDir)
 	cmd.Stderr = os.Stderr
 
 	stdin, err := cmd.StdinPipe()

@@ -18,7 +18,7 @@ import (
 func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, rebuildBundle bool, chartPath string) (map[string]string, error) {
 	allRendered := make(map[string]string)
 
-	if err := tsbundle.ProcessChartRecursive(ctx, chart, chartPath, false); err != nil {
+	if err := tsbundle.BundleTSChartsRecursive(ctx, chart, chartPath, false); err != nil {
 		return nil, fmt.Errorf("process chart for TypeScript rendering: %w", err)
 	}
 
@@ -75,7 +75,7 @@ func renderFiles(ctx context.Context, chart *helmchart.Chart, renderedValues cha
 		return nil, fmt.Errorf("build render context: %w", err)
 	}
 
-	result, err := runApp(ctx, chartPath, bundle, renderCtx)
+	result, err := runApp(ctx, bundle.Data, renderCtx)
 	if err != nil {
 		return nil, fmt.Errorf("run deno app: %w", err)
 	}
