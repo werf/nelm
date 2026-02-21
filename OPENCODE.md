@@ -33,6 +33,7 @@ Tool priority order: `codealive_codebase_search` / `codealive_codebase_consultan
 - When you want architectural advice or explanations (e.g. "why is the DAG built this way?", "how do these packages relate?") — NEVER guess from reading a few files. ALWAYS use `codealive_codebase_consultant`. It has indexed the entire codebase and understands cross-cutting concerns.
 - When you want to find structural code patterns (e.g. all functions with a specific signature, all `fmt.Errorf(... %w ...)` calls, all interface implementations) — NEVER use `grep` with regex hacks. ALWAYS use `ast_grep_search`. It matches on the AST, not on text, so it won't be fooled by comments, strings, or formatting differences.
 - ONLY fall back to `grep`/`glob` for simple literal matching (specific strings, config keys, error messages, annotation names). This is the ONLY valid use of `grep` in this codebase.
+- When delegating code search to subagents — NEVER use `explore` for CodeAlive or LSP searches. The `explore` agent can only use grep/glob/ast_grep (OMO upstream limitation). ALWAYS use `task(category="quick")` or `task(category="deep")` for semantic search. The `librarian` agent has full CodeAlive/Context7 access and works correctly.
 
 ## External knowledge (MANDATORY)
 
