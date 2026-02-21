@@ -2,17 +2,18 @@
 
 - When you are about to use the wrong tool — STOP. Use the correct tool listed below. Do NOT proceed with the wrong tool even if it seems faster.
 - If you already used the wrong tool — STOP and redo the step with the correct tool. Do NOT continue with the result from the wrong tool.
+- NEVER use `explore` for intent-based or behavioral queries (e.g. "how does X work?", "find the orchestration flow for Y"). `explore` can only use grep/glob/ast_grep. For intent/behavior queries, ALWAYS use `codealive_codebase_search` directly or `task(category="quick"/"deep")`.
 
 ## Code navigation (MANDATORY)
 
 ALWAYS use **LSP** for navigating code. NEVER use `grep` for finding definitions, references, or implementations — LSP is semantically precise, `grep` matches strings blindly and gives false positives.
 
 Default action when unsure: ALWAYS use LSP.
-Tool priority order: `lsp` → `grep` (ONLY as a fallback when LSP returns no results).
+Tool priority order: `lsp(operation=...)` → `grep` (ONLY as a fallback when LSP returns no results).
 
-IMPORTANT: There are two sets of LSP tools — the `lsp(operation=...)` tool (OpenCode LSP, `OPENCODE_EXPERIMENTAL_LSP_TOOL=1`) and the `lsp_*` prefixed tools (OMO LSP). They use separate gopls instances. The OMO `lsp_*` tools may fail with "no views" errors if their gopls doesn't have the workspace configured. ALWAYS prefer the `lsp(operation=...)` tool. Fall back to `lsp_*` tools ONLY if the `lsp(operation=...)` tool is unavailable. NEVER use `lsp_*` tools without first trying `lsp(operation=...)`.
+IMPORTANT: OMO's built-in LSP tools (`lsp_goto_definition`, `lsp_find_references`, `lsp_symbols`, `lsp_diagnostics`, `lsp_prepare_rename`, `lsp_rename`) are DISABLED via `disabled_tools` in `oh-my-opencode.json` because they use a separate gopls instance that does not support `go.work` workspaces. ALWAYS use the OpenCode `lsp(operation=...)` tool instead. NEVER use `lsp_*` prefixed tools — they will not be available.
 
-- When you want to find where a function/type/variable is defined and you have a call site — NEVER `grep` for it. ALWAYS use `lsp` with `operation="goToDefinition"`. It jumps to the exact definition, even across packages.
+- When you want to find where a function/type/variable is defined and you have a call site — NEVER `grep` for it. ALWAYS use `lsp` with `operation="goToDefinition"`. It jumps to the exact definition, even across packages and `go.work` modules.
 - When you want to find where a symbol is defined but you don't have a call site — NEVER `grep` for it. ALWAYS use `lsp` with `operation="workspaceSymbol"`. Fall back to `grep` ONLY if LSP returns no results.
 - When you want to find all usages of a symbol — NEVER `grep` for the symbol name. ALWAYS use `lsp` with `operation="findReferences"`. Grep will match comments, strings, and unrelated identifiers with the same name.
 - When you want to understand what's in a file — NEVER scroll through it or `grep` for `func`. ALWAYS use `lsp` with `operation="documentSymbol"`. It returns the complete structure: functions, types, constants, variables.
@@ -20,8 +21,8 @@ IMPORTANT: There are two sets of LSP tools — the `lsp(operation=...)` tool (Op
 - When you want to find which types implement an interface — NEVER `grep` for type names. ALWAYS use `lsp` with `operation="goToImplementation"`. Grep cannot reliably find implicit Go interface implementations.
 - When you want to trace what calls a function — NEVER `grep` for the function name. ALWAYS use `lsp` → `prepareCallHierarchy` → `incomingCalls`. Grep will miss method calls, aliased imports, and interface dispatch.
 - When you want to trace what a function calls — NEVER read through the function body manually. ALWAYS use `lsp` → `prepareCallHierarchy` → `outgoingCalls`.
-- When you want to rename a symbol — NEVER find-and-replace. ALWAYS use `lsp_prepare_rename` to validate, then `lsp_rename` to apply. These are OMO-only operations with no `lsp(operation=...)` equivalent. If they fail with "no views", use `ast_grep_replace` as a fallback.
-- When you want to check for errors before building — NEVER skip this step. ALWAYS use `lsp_diagnostics`. This is an OMO-only operation with no `lsp(operation=...)` equivalent. If it fails with "no views", proceed to `task build` and `task lint:golangci-lint` instead.
+- When you want to rename a symbol — NEVER find-and-replace. ALWAYS use `ast_grep_replace` for safe AST-aware renaming.
+- When you want to check for errors before building — NEVER skip this step. ALWAYS run `task build` and `task lint:golangci-lint`.
 
 ## Code search (MANDATORY)
 
@@ -38,14 +39,33 @@ Tool priority order: `codealive_codebase_search` / `codealive_codebase_consultan
 - When delegating code search to subagents — NEVER use `explore` for CodeAlive or LSP searches. The `explore` agent can only use grep/glob/ast_grep (OMO upstream limitation). ALWAYS use `task(category="quick")` or `task(category="deep")` for semantic search. The `librarian` agent has full CodeAlive/Context7 access and works correctly.
 - NEVER use `explore` for intent-based or behavioral queries (e.g. "how does X work?", "find the orchestration flow for Y"). These require CodeAlive, which `explore` cannot access. ALWAYS use `task(category="quick")` or `task(category="deep")` instead, or do the `codealive_codebase_search` yourself. Reserve `explore` ONLY for literal pattern matching (specific identifiers, strings, config keys).
 
+## Subagent reliability (MANDATORY)
+
+Background subagents (`explore`, `librarian`) have known reliability issues. Tasks can silently vanish (task ID becomes unfetchable), stall (prompt received but no tool calls made), or crash without producing an error status. NEVER depend on a single background agent for critical information.
+
+- ALWAYS fire at least 2 `explore` agents when information is critical. Use different search strategies (e.g. one with grep, one with ast_grep + glob). If one fails, the other covers.
+- ALWAYS have a direct-tool fallback ready. After firing background agents, immediately start your own parallel search with `codealive_codebase_search`, `LSP`, or `grep`. Do NOT wait idle for agent results.
+- ALWAYS treat `background_output` returning "Task not found" as a silent failure, not a timing issue. The task is gone — move on to your fallback.
+- When an agent's task ID vanishes or shows `status: running` with only the initial prompt message after 30+ seconds, assume it stalled. Do NOT keep polling — use your own tools instead.
+- For this codebase, PREFER direct tools (`codealive_codebase_search` + `LSP` + `read`) over `explore` agents for targeted queries. Direct tools are 100% reliable and 3-10x faster. Reserve `explore` agents ONLY for broad multi-angle discovery where 3+ different search patterns are needed simultaneously.
+- When delegating to `librarian`, ALWAYS use maximally directive prompts that name the exact tools to call and the exact queries to run. Open-ended prompts cause the librarian to spend 40-50s "thinking" before making any tool calls. BAD: "Find the best approach for X." GOOD: "Use `context7_resolve-library-id` for 'helm', then `context7_query-docs` for 'hook lifecycle annotations helm.sh/hook'. Return the raw documentation."
+
+## Delegating with tool constraints (MANDATORY)
+
+Subagents are stateless — they do NOT read OPENCODE.md or AGENTS.md. They only know what you pass in the `prompt=` parameter. When delegating tasks that involve code search, navigation, or external lookups, ALWAYS include the relevant tool rules from this file in the delegation prompt. Without this, subagents will use wrong tools (e.g. `grep` instead of CodeAlive, guessing APIs instead of using Context7).
+
+- When delegating code search — ALWAYS include: "Use `codealive_codebase_search` for intent/behavioral queries. Call `codealive_get_data_sources` first. Use LSP `documentSymbol` to understand file structure. NEVER use grep for finding definitions or references."
+- When delegating external knowledge lookup — ALWAYS include: "Use `context7_resolve-library-id` + `context7_query-docs` for library docs. Use `grep_app_searchGitHub` for real-world usage patterns. Use `websearch_web_search_exa` for current information. NEVER guess APIs from training data."
+- When delegating to `librarian` — ALWAYS use directive prompts: "Search NOW for X and return results", not "Find the best approach for X". Librarian may get stuck planning instead of executing if the prompt is too open-ended.
+
 ## External knowledge (MANDATORY)
 
 NEVER guess at APIs — ALWAYS look them up. Using wrong API signatures wastes time on compilation errors and subtle bugs.
 
 Default action when unsure: ALWAYS use `context7_resolve-library-id` + `context7_query-docs`.
-Tool priority order: `lsp_goto_definition` → Context7 → `grep_app_searchGitHub` → `websearch_web_search_exa`. If you have a URL, ALWAYS use `webfetch`.
+Tool priority order: `lsp` with `operation="goToDefinition"` → Context7 → `grep_app_searchGitHub` → `websearch_web_search_exa`. If you have a URL, ALWAYS use `webfetch`.
 
-- When you want to check a Go type signature or read godoc for a dependency — NEVER guess from memory or training data. ALWAYS use `lsp_goto_definition` to navigate to the actual source (or `lsp` with `operation="goToDefinition"` — see "Code navigation" for which to prefer). Training data may be outdated or wrong.
+- When you want to check a Go type signature or read godoc for a dependency — NEVER guess from memory or training data. ALWAYS use `lsp` with `operation="goToDefinition"` to navigate to the actual source. Training data may be outdated or wrong.
 - When you want library documentation, guides, or API examples — NEVER rely on training data. ALWAYS use `context7_resolve-library-id` + `context7_query-docs`. Context7 has up-to-date docs; your training data may be stale.
 - When you want real-world usage patterns (how do other projects use this library?) — NEVER invent patterns. ALWAYS use `grep_app_searchGitHub`. It searches real code from real repositories.
 - When you need current information, recent changes, or anything that might have changed after your training cutoff — NEVER answer from memory. ALWAYS use `websearch_web_search_exa`.
