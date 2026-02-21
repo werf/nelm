@@ -24,20 +24,6 @@ var (
 )
 
 const (
-	// ChartTSSourceDir is the directory containing TypeScript sources in a Helm chart.
-	ChartTSSourceDir = "ts/"
-	// ChartTSVendorBundleFile is the path to the vendor bundle file in a Helm chart.
-	ChartTSVendorBundleFile = ChartTSSourceDir + "vendor/libs.js"
-	// ChartTSEntryPointTS is the TypeScript entry point path.
-	ChartTSEntryPointTS = "src/index.ts"
-	// ChartTSEntryPointJS is the JavaScript entry point path.
-	ChartTSEntryPointJS = "src/index.js"
-)
-
-// ChartTSEntryPoints defines supported TypeScript/JavaScript entry points (in priority order).
-var ChartTSEntryPoints = [...]string{ChartTSEntryPointTS, ChartTSEntryPointJS}
-
-const (
 	DefaultBurstLimit = 100
 	// TODO(major): switch to if-possible
 	DefaultChartProvenanceStrategy = "never"

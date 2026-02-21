@@ -2,33 +2,37 @@ package ts
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path"
-	"slices"
 	"strings"
 
 	"sigs.k8s.io/yaml"
 
 	helmchart "github.com/werf/3p-helm/pkg/chart"
 	"github.com/werf/3p-helm/pkg/chartutil"
-	"github.com/werf/nelm/pkg/common"
+	tsbundle "github.com/werf/3p-helm/pkg/werf/ts"
 	"github.com/werf/nelm/pkg/log"
 )
 
-func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values) (map[string]string, error) {
+func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, rebuildBundle bool, chartPath string) (map[string]string, error) {
 	allRendered := make(map[string]string)
 
-	if err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), allRendered); err != nil {
+	if err := tsbundle.BundleTSChartsRecursive(ctx, chart, chartPath, false); err != nil {
+		return nil, fmt.Errorf("process chart for TypeScript rendering: %w", err)
+	}
+
+	if err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), chartPath, allRendered, rebuildBundle); err != nil {
 		return nil, err
 	}
 
 	return allRendered, nil
 }
 
-func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartutil.Values, pathPrefix string, results map[string]string) error {
+func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartutil.Values, pathPrefix, chartPath string, results map[string]string, rebuildBundle bool) error {
 	log.Default.Debug(ctx, "Rendering TypeScript for chart %q (path prefix: %s)", chart.Name(), pathPrefix)
 
-	rendered, err := renderFiles(ctx, chart, values)
+	rendered, err := renderFiles(ctx, chart, values, chartPath, rebuildBundle)
 	if err != nil {
 		return fmt.Errorf("render files for chart %q: %w", chart.Name(), err)
 	}
@@ -48,7 +52,9 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 			dep,
 			scopeValuesForSubchart(values, depName, dep),
 			path.Join(pathPrefix, "charts", depName),
+			path.Join(chartPath, "charts", depName),
 			results,
+			rebuildBundle,
 		)
 		if err != nil {
 			return fmt.Errorf("render dependency %q: %w", depName, err)
@@ -58,32 +64,20 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 	return nil
 }
 
-func renderFiles(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values) (map[string]string, error) {
-	mergedFiles := slices.Concat(chart.RuntimeFiles, chart.RuntimeDepsFiles)
-
-	vendorBundle, packages, err := resolveVendorBundle(ctx, mergedFiles)
-	if err != nil {
-		return nil, fmt.Errorf("resolve vendor bundle: %w", err)
-	}
-
-	sourceFiles := extractSourceFiles(mergedFiles)
-	if len(sourceFiles) == 0 {
+func renderFiles(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, chartPath string, rebuildBundle bool) (map[string]string, error) {
+	entrypoint, bundle := tsbundle.GetEntrypointAndBundle(chart.RuntimeFiles)
+	if entrypoint == "" || bundle == nil {
 		return map[string]string{}, nil
 	}
 
-	entrypoint := findEntrypointInFiles(sourceFiles)
-	if entrypoint == "" {
-		return map[string]string{}, nil
+	renderCtx, err := buildRenderContext(renderedValues, chart)
+	if err != nil {
+		return nil, fmt.Errorf("build render context: %w", err)
 	}
 
-	appBundle, err := buildAppBundleFromFiles(ctx, sourceFiles, packages)
+	result, err := runApp(ctx, bundle.Data, renderCtx)
 	if err != nil {
-		return nil, fmt.Errorf("build app bundle: %w", err)
-	}
-
-	result, err := runBundle(vendorBundle, appBundle, buildRenderContext(renderedValues, chart))
-	if err != nil {
-		return nil, fmt.Errorf("run bundle: %w", err)
+		return nil, fmt.Errorf("run deno app: %w", err)
 	}
 
 	if result == nil {
@@ -100,11 +94,11 @@ func renderFiles(ctx context.Context, chart *helmchart.Chart, renderedValues cha
 	}
 
 	return map[string]string{
-		path.Join(common.ChartTSSourceDir, entrypoint): yamlOutput,
+		path.Join(tsbundle.ChartTSSourceDir, entrypoint): yamlOutput,
 	}, nil
 }
 
-func buildRenderContext(renderedValues chartutil.Values, chart *helmchart.Chart) map[string]any {
+func buildRenderContext(renderedValues chartutil.Values, chart *helmchart.Chart) (string, error) {
 	renderContext := renderedValues.AsMap()
 
 	if valuesInterface, ok := renderContext["Values"]; ok {
@@ -122,7 +116,12 @@ func buildRenderContext(renderedValues chartutil.Values, chart *helmchart.Chart)
 
 	renderContext["Files"] = files
 
-	return renderContext
+	jsonInput, err := json.Marshal(renderContext)
+	if err != nil {
+		return "", fmt.Errorf("marshal render context to json: %w", err)
+	}
+
+	return string(jsonInput), nil
 }
 
 func convertRenderResultToYAML(result any) (string, error) {

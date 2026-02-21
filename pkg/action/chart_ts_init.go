@@ -11,13 +11,12 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-type ChartInitOptions struct {
+type ChartTSInitOptions struct {
 	ChartDirPath string
-	TS           bool
-	TempDirPath  string
+	TempDirPath  string // TODO: remove this?
 }
 
-func ChartInit(ctx context.Context, opts ChartInitOptions) error {
+func ChartTSInit(ctx context.Context, opts ChartTSInitOptions) error {
 	chartPath := opts.ChartDirPath
 	if chartPath == "" {
 		chartPath = "."
@@ -29,10 +28,6 @@ func ChartInit(ctx context.Context, opts ChartInitOptions) error {
 	}
 
 	chartName := filepath.Base(absPath)
-
-	if !opts.TS {
-		return fmt.Errorf("non-TypeScript chart initialization not implemented yet, use --ts flag")
-	}
 
 	if !featgate.FeatGateTypescript.Enabled() {
 		log.Default.Warn(ctx, "TypeScript charts require NELM_FEAT_TYPESCRIPT=true environment variable")

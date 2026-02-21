@@ -313,6 +313,13 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		if err := cli.AddFlag(cmd, &cfg.RebuildTSBundle, "rebuild-ts", false, "Rebuild the typescript bundle even if it already exists.", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.PlanArtifactPath, "use-plan", "", "Use the gzip-compressed JSON plan file from the specified path during release install", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagLocalEnvVarRegexes,
 			Group:                mainFlagGroup,

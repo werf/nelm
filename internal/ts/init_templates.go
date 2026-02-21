@@ -8,7 +8,7 @@ name: %s
 version: 0.1.0
 `
 	deploymentTSContent = `import type { RenderContext } from '@nelm/chart-ts-sdk';
-import { getFullname, getLabels, getSelectorLabels } from './helpers';
+import { getFullname, getLabels, getSelectorLabels } from './helpers.ts';
 
 export function newDeployment($: RenderContext): object {
   const name = getFullname($);
@@ -53,7 +53,8 @@ export function newDeployment($: RenderContext): object {
 # negation (prefixed with !). Only one pattern per line.
 
 # TypeScript chart files
-ts/dist/
+ts/vendor/
+ts/node_modules/
 `
 	helpersTSContent = `import type { RenderContext } from '@nelm/chart-ts-sdk';
 
@@ -97,11 +98,11 @@ export function getSelectorLabels($: RenderContext): Record<string, string> {
   };
 }
 `
-	indexTSContent = `import type { RenderContext, RenderResult } from '@nelm/chart-ts-sdk';
-import { newDeployment } from './deployment';
-import { newService } from './service';
+	indexTSContent = `import { RenderContext, RenderResult, runRender } from '@nelm/chart-ts-sdk';
+import { newDeployment } from './deployment.ts';
+import { newService } from './service.ts';
 
-export function render($: RenderContext): RenderResult {
+function render($: RenderContext): RenderResult {
   const manifests: object[] = [];
 
   manifests.push(newDeployment($));
@@ -112,33 +113,20 @@ export function render($: RenderContext): RenderResult {
 
   return { manifests };
 }
+
+await runRender(render);
 `
-	packageJSONTmpl = `{
-  "name": "%s",
-  "version": "0.1.0",
-  "description": "TypeScript chart for %s",
-  "main": "src/index.ts",
-  "scripts": {
-    "build": "npx tsc",
-    "typecheck": "npx tsc --noEmit"
+	denoJSONTmpl = `{
+  "tasks": {
+    "build": "%s"
   },
-  "keywords": [
-    "helm",
-    "nelm",
-    "kubernetes",
-    "chart"
-  ],
-  "license": "Apache-2.0",
-  "dependencies": {
-    "@nelm/chart-ts-sdk": "^0.1.2"
-  },
-  "devDependencies": {
-    "typescript": "^5.0.0"
+  "imports": {
+    "@nelm/chart-ts-sdk": "npm:@nelm/chart-ts-sdk@^0.1.2"
   }
 }
 `
 	serviceTSContent = `import type { RenderContext } from '@nelm/chart-ts-sdk';
-import { getFullname, getLabels, getSelectorLabels } from './helpers';
+import { getFullname, getLabels, getSelectorLabels } from './helpers.ts';
 
 export function newService($: RenderContext): object {
   return {
@@ -175,10 +163,14 @@ export function newService($: RenderContext): object {
     "moduleResolution": "node",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "allowImportingTsExtensions": true,
     "outDir": "./dist"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }
 `
 	valuesYamlContent = `replicaCount: 1
@@ -198,6 +190,6 @@ func chartYaml(chartName string) string {
 	return fmt.Sprintf(chartYamlTmpl, chartName)
 }
 
-func packageJSON(chartName string) string {
-	return fmt.Sprintf(packageJSONTmpl, chartName, chartName)
+func denoJSON(scriptPath string) string {
+	return fmt.Sprintf(denoJSONTmpl, scriptPath)
 }
