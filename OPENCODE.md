@@ -8,18 +8,20 @@
 ALWAYS use **LSP** for navigating code. NEVER use `grep` for finding definitions, references, or implementations — LSP is semantically precise, `grep` matches strings blindly and gives false positives.
 
 Default action when unsure: ALWAYS use LSP.
-Tool priority order: `lsp_*` → `grep` (ONLY as a fallback when LSP returns no results).
+Tool priority order: `lsp` → `grep` (ONLY as a fallback when LSP returns no results).
 
-- When you want to find where a function/type/variable is defined and you have a call site — NEVER `grep` for it. ALWAYS use `lsp_goto_definition`. It jumps to the exact definition, even across packages.
-- When you want to find where a symbol is defined but you don't have a call site — NEVER `grep` for it. ALWAYS use `lsp_symbols` with `scope="workspace"`. Fall back to `grep` ONLY if LSP returns no results.
-- When you want to find all usages of a symbol — NEVER `grep` for the symbol name. ALWAYS use `lsp_find_references`. Grep will match comments, strings, and unrelated identifiers with the same name.
-- When you want to understand what's in a file — NEVER scroll through it or `grep` for `func`. ALWAYS use `lsp_symbols` with `scope="document"`. It returns the complete structure: functions, types, constants, variables.
+IMPORTANT: There are two sets of LSP tools — the `lsp(operation=...)` tool (OpenCode LSP, `OPENCODE_EXPERIMENTAL_LSP_TOOL=1`) and the `lsp_*` prefixed tools (OMO LSP). They use separate gopls instances. The OMO `lsp_*` tools may fail with "no views" errors if their gopls doesn't have the workspace configured. ALWAYS prefer the `lsp(operation=...)` tool. Fall back to `lsp_*` tools ONLY if the `lsp(operation=...)` tool is unavailable. NEVER use `lsp_*` tools without first trying `lsp(operation=...)`.
+
+- When you want to find where a function/type/variable is defined and you have a call site — NEVER `grep` for it. ALWAYS use `lsp` with `operation="goToDefinition"`. It jumps to the exact definition, even across packages.
+- When you want to find where a symbol is defined but you don't have a call site — NEVER `grep` for it. ALWAYS use `lsp` with `operation="workspaceSymbol"`. Fall back to `grep` ONLY if LSP returns no results.
+- When you want to find all usages of a symbol — NEVER `grep` for the symbol name. ALWAYS use `lsp` with `operation="findReferences"`. Grep will match comments, strings, and unrelated identifiers with the same name.
+- When you want to understand what's in a file — NEVER scroll through it or `grep` for `func`. ALWAYS use `lsp` with `operation="documentSymbol"`. It returns the complete structure: functions, types, constants, variables.
 - When you want to check a symbol's type or read its documentation — NEVER guess from context. ALWAYS use `lsp` with `operation="hover"`. It returns the exact type signature and godoc.
 - When you want to find which types implement an interface — NEVER `grep` for type names. ALWAYS use `lsp` with `operation="goToImplementation"`. Grep cannot reliably find implicit Go interface implementations.
 - When you want to trace what calls a function — NEVER `grep` for the function name. ALWAYS use `lsp` → `prepareCallHierarchy` → `incomingCalls`. Grep will miss method calls, aliased imports, and interface dispatch.
 - When you want to trace what a function calls — NEVER read through the function body manually. ALWAYS use `lsp` → `prepareCallHierarchy` → `outgoingCalls`.
-- When you want to rename a symbol — NEVER find-and-replace. ALWAYS use `lsp_prepare_rename` to validate, then `lsp_rename` to apply. Find-and-replace will break strings, comments, and unrelated identifiers.
-- When you want to check for errors before building — NEVER skip this step. ALWAYS use `lsp_diagnostics`. It catches type errors, unused imports, and other issues instantly without a full build.
+- When you want to rename a symbol — NEVER find-and-replace. ALWAYS use `lsp_prepare_rename` to validate, then `lsp_rename` to apply. These are OMO-only operations with no `lsp(operation=...)` equivalent. If they fail with "no views", use `ast_grep_replace` as a fallback.
+- When you want to check for errors before building — NEVER skip this step. ALWAYS use `lsp_diagnostics`. This is an OMO-only operation with no `lsp(operation=...)` equivalent. If it fails with "no views", proceed to `task build` and `task lint:golangci-lint` instead.
 
 ## Code search (MANDATORY)
 
@@ -34,6 +36,7 @@ Tool priority order: `codealive_codebase_search` / `codealive_codebase_consultan
 - When you want to find structural code patterns (e.g. all functions with a specific signature, all `fmt.Errorf(... %w ...)` calls, all interface implementations) — NEVER use `grep` with regex hacks. ALWAYS use `ast_grep_search`. It matches on the AST, not on text, so it won't be fooled by comments, strings, or formatting differences.
 - ONLY fall back to `grep`/`glob` for simple literal matching (specific strings, config keys, error messages, annotation names). This is the ONLY valid use of `grep` in this codebase.
 - When delegating code search to subagents — NEVER use `explore` for CodeAlive or LSP searches. The `explore` agent can only use grep/glob/ast_grep (OMO upstream limitation). ALWAYS use `task(category="quick")` or `task(category="deep")` for semantic search. The `librarian` agent has full CodeAlive/Context7 access and works correctly.
+- NEVER use `explore` for intent-based or behavioral queries (e.g. "how does X work?", "find the orchestration flow for Y"). These require CodeAlive, which `explore` cannot access. ALWAYS use `task(category="quick")` or `task(category="deep")` instead, or do the `codealive_codebase_search` yourself. Reserve `explore` ONLY for literal pattern matching (specific identifiers, strings, config keys).
 
 ## External knowledge (MANDATORY)
 
@@ -42,7 +45,7 @@ NEVER guess at APIs — ALWAYS look them up. Using wrong API signatures wastes t
 Default action when unsure: ALWAYS use `context7_resolve-library-id` + `context7_query-docs`.
 Tool priority order: `lsp_goto_definition` → Context7 → `grep_app_searchGitHub` → `websearch_web_search_exa`. If you have a URL, ALWAYS use `webfetch`.
 
-- When you want to check a Go type signature or read godoc for a dependency — NEVER guess from memory or training data. ALWAYS use `lsp_goto_definition` to navigate to the actual source. Training data may be outdated or wrong.
+- When you want to check a Go type signature or read godoc for a dependency — NEVER guess from memory or training data. ALWAYS use `lsp_goto_definition` to navigate to the actual source (or `lsp` with `operation="goToDefinition"` — see "Code navigation" for which to prefer). Training data may be outdated or wrong.
 - When you want library documentation, guides, or API examples — NEVER rely on training data. ALWAYS use `context7_resolve-library-id` + `context7_query-docs`. Context7 has up-to-date docs; your training data may be stale.
 - When you want real-world usage patterns (how do other projects use this library?) — NEVER invent patterns. ALWAYS use `grep_app_searchGitHub`. It searches real code from real repositories.
 - When you need current information, recent changes, or anything that might have changed after your training cutoff — NEVER answer from memory. ALWAYS use `websearch_web_search_exa`.
