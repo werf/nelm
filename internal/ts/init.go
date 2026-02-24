@@ -11,6 +11,21 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
+// EnsureGitignore adds TypeScript entries to .gitignore, creating if needed.
+func EnsureGitignore(chartPath string) error {
+	entries := []string{
+		"ts/node_modules/",
+		"ts/vendor/",
+		"ts/dist/",
+	}
+
+	return ensureFileEntries(
+		filepath.Join(chartPath, ".gitignore"),
+		strings.Join(entries, "\n")+"\n",
+		entries,
+	)
+}
+
 // InitChartStructure creates Chart.yaml and values.yaml if they don't exist.
 // For .helmignore: creates if missing, or appends TS entries if exists.
 // Returns error if ts/ directory already exists.
@@ -95,21 +110,6 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
 	}
 
 	return nil
-}
-
-// EnsureGitignore adds TypeScript entries to .gitignore, creating if needed.
-func EnsureGitignore(chartPath string) error {
-	entries := []string{
-		"ts/node_modules/",
-		"ts/vendor/",
-		"ts/dist/",
-	}
-
-	return ensureFileEntries(
-		filepath.Join(chartPath, ".gitignore"),
-		strings.Join(entries, "\n")+"\n",
-		entries,
-	)
 }
 
 // ensureFileEntries ensures a file contains all required entries.

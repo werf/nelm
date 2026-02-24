@@ -14,12 +14,12 @@ import (
 
 var metadataAccessor = meta.NewAccessor()
 
+// TODO(major): get rid
+type StagesSplitter struct{}
+
 func NewStagesSplitter() *StagesSplitter {
 	return &StagesSplitter{}
 }
-
-// TODO(major): get rid
-type StagesSplitter struct{}
 
 func (s *StagesSplitter) Split(resources kube.ResourceList) (stages.SortedStageList, error) {
 	stageList := stages.SortedStageList{}

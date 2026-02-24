@@ -14,64 +14,42 @@ import (
 	"github.com/werf/logboek/pkg/level"
 )
 
-var _ Logger = (*LogboekLogger)(nil)
-
 const LogboekLoggerCtxKeyName = "logboek_logger"
 
-type LogboekLogger struct {
-	traceStash *util.Concurrent[map[string][]string]
-	debugStash *util.Concurrent[map[string][]string]
-	infoStash  *util.Concurrent[map[string][]string]
-	warnStash  *util.Concurrent[map[string][]string]
-	errorStash *util.Concurrent[map[string][]string]
+var _ Logger = (*LogboekLogger)(nil)
 
-	level *util.Concurrent[*Level]
+type LogboekLogger struct {
+	debugStash *util.Concurrent[map[string][]string]
+	errorStash *util.Concurrent[map[string][]string]
+	infoStash  *util.Concurrent[map[string][]string]
+	level      *util.Concurrent[*Level]
+	traceStash *util.Concurrent[map[string][]string]
+	warnStash  *util.Concurrent[map[string][]string]
 }
 
 func NewLogboekLogger() *LogboekLogger {
 	return &LogboekLogger{
-		traceStash: util.NewConcurrent(make(map[string][]string)),
 		debugStash: util.NewConcurrent(make(map[string][]string)),
-		infoStash:  util.NewConcurrent(make(map[string][]string)),
-		warnStash:  util.NewConcurrent(make(map[string][]string)),
 		errorStash: util.NewConcurrent(make(map[string][]string)),
 
-		level: util.NewConcurrent(lo.ToPtr(InfoLevel)),
+		infoStash:  util.NewConcurrent(make(map[string][]string)),
+		level:      util.NewConcurrent(lo.ToPtr(InfoLevel)),
+		traceStash: util.NewConcurrent(make(map[string][]string)),
+		warnStash:  util.NewConcurrent(make(map[string][]string)),
 	}
 }
 
-func (l *LogboekLogger) Trace(ctx context.Context, format string, a ...interface{}) {
-	if !l.AcceptLevel(ctx, TraceLevel) {
-		return
-	}
+func (l *LogboekLogger) AcceptLevel(ctx context.Context, lvl Level) bool {
+	lvlI := slices.Index(Levels, lvl)
 
-	logboek.Context(ctx).Debug().LogF(format+"\n", a...)
+	currentLvl := l.Level(ctx)
+	currentLvlI := slices.Index(Levels, currentLvl)
+
+	return currentLvlI >= lvlI
 }
 
-func (l *LogboekLogger) TraceStruct(ctx context.Context, obj interface{}, format string, a ...interface{}) {
-	if !l.AcceptLevel(ctx, TraceLevel) {
-		return
-	}
-
-	dump := spew.Sdump(obj)
-
-	logboek.Context(ctx).Debug().LogF(fmt.Sprintf(format+"\n", a...) + dump + "\n")
-}
-
-func (l *LogboekLogger) TracePush(ctx context.Context, group, format string, a ...interface{}) {
-	l.traceStash.RWTransaction(func(stash map[string][]string) {
-		stash[group] = append(stash[group], fmt.Sprintf(format, a...))
-	})
-}
-
-func (l *LogboekLogger) TracePop(ctx context.Context, group string) {
-	l.traceStash.RWTransaction(func(stash map[string][]string) {
-		for _, msg := range stash[group] {
-			l.Trace(ctx, msg)
-		}
-
-		delete(stash, group)
-	})
+func (l *LogboekLogger) BlockContentWidth(ctx context.Context) int {
+	return logboek.Context(ctx).Streams().ContentWidth()
 }
 
 func (l *LogboekLogger) Debug(ctx context.Context, format string, a ...interface{}) {
@@ -80,12 +58,6 @@ func (l *LogboekLogger) Debug(ctx context.Context, format string, a ...interface
 	}
 
 	logboek.Context(ctx).Debug().LogF(format+"\n", a...)
-}
-
-func (l *LogboekLogger) DebugPush(ctx context.Context, group, format string, a ...interface{}) {
-	l.debugStash.RWTransaction(func(stash map[string][]string) {
-		stash[group] = append(stash[group], fmt.Sprintf(format, a...))
-	})
 }
 
 func (l *LogboekLogger) DebugPop(ctx context.Context, group string) {
@@ -98,51 +70,9 @@ func (l *LogboekLogger) DebugPop(ctx context.Context, group string) {
 	})
 }
 
-func (l *LogboekLogger) Info(ctx context.Context, format string, a ...interface{}) {
-	if !l.AcceptLevel(ctx, InfoLevel) {
-		return
-	}
-
-	logboek.Context(ctx).Default().LogF(format+"\n", a...)
-}
-
-func (l *LogboekLogger) InfoPush(ctx context.Context, group, format string, a ...interface{}) {
-	l.infoStash.RWTransaction(func(stash map[string][]string) {
+func (l *LogboekLogger) DebugPush(ctx context.Context, group, format string, a ...interface{}) {
+	l.debugStash.RWTransaction(func(stash map[string][]string) {
 		stash[group] = append(stash[group], fmt.Sprintf(format, a...))
-	})
-}
-
-func (l *LogboekLogger) InfoPop(ctx context.Context, group string) {
-	l.infoStash.RWTransaction(func(stash map[string][]string) {
-		for _, msg := range stash[group] {
-			l.Info(ctx, msg)
-		}
-
-		delete(stash, group)
-	})
-}
-
-func (l *LogboekLogger) Warn(ctx context.Context, format string, a ...interface{}) {
-	if !l.AcceptLevel(ctx, WarningLevel) {
-		return
-	}
-
-	logboek.Context(ctx).Warn().LogFWithCustomStyle(color.Style{color.FgRed}, format+"\n", a...)
-}
-
-func (l *LogboekLogger) WarnPush(ctx context.Context, group, format string, a ...interface{}) {
-	l.warnStash.RWTransaction(func(stash map[string][]string) {
-		stash[group] = append(stash[group], fmt.Sprintf(format, a...))
-	})
-}
-
-func (l *LogboekLogger) WarnPop(ctx context.Context, group string) {
-	l.warnStash.RWTransaction(func(stash map[string][]string) {
-		for _, msg := range stash[group] {
-			l.Warn(ctx, msg)
-		}
-
-		delete(stash, group)
 	})
 }
 
@@ -152,12 +82,6 @@ func (l *LogboekLogger) Error(ctx context.Context, format string, a ...interface
 	}
 
 	logboek.Context(ctx).Error().LogFWithCustomStyle(color.Style{color.FgRed, color.Bold}, format+"\n", a...)
-}
-
-func (l *LogboekLogger) ErrorPush(ctx context.Context, group, format string, a ...interface{}) {
-	l.errorStash.RWTransaction(func(stash map[string][]string) {
-		stash[group] = append(stash[group], fmt.Sprintf(format, a...))
-	})
 }
 
 func (l *LogboekLogger) ErrorPop(ctx context.Context, group string) {
@@ -170,6 +94,20 @@ func (l *LogboekLogger) ErrorPop(ctx context.Context, group string) {
 	})
 }
 
+func (l *LogboekLogger) ErrorPush(ctx context.Context, group, format string, a ...interface{}) {
+	l.errorStash.RWTransaction(func(stash map[string][]string) {
+		stash[group] = append(stash[group], fmt.Sprintf(format, a...))
+	})
+}
+
+func (l *LogboekLogger) Info(ctx context.Context, format string, a ...interface{}) {
+	if !l.AcceptLevel(ctx, InfoLevel) {
+		return
+	}
+
+	logboek.Context(ctx).Default().LogF(format+"\n", a...)
+}
+
 func (l *LogboekLogger) InfoBlock(ctx context.Context, opts BlockOptions, fn func()) {
 	logboek.Context(ctx).Default().LogBlock(opts.BlockTitle).Do(fn)
 }
@@ -178,8 +116,29 @@ func (l *LogboekLogger) InfoBlockErr(ctx context.Context, opts BlockOptions, fn 
 	return logboek.Context(ctx).Default().LogBlock(opts.BlockTitle).DoError(fn)
 }
 
-func (l *LogboekLogger) BlockContentWidth(ctx context.Context) int {
-	return logboek.Context(ctx).Streams().ContentWidth()
+func (l *LogboekLogger) InfoPop(ctx context.Context, group string) {
+	l.infoStash.RWTransaction(func(stash map[string][]string) {
+		for _, msg := range stash[group] {
+			l.Info(ctx, msg)
+		}
+
+		delete(stash, group)
+	})
+}
+
+func (l *LogboekLogger) InfoPush(ctx context.Context, group, format string, a ...interface{}) {
+	l.infoStash.RWTransaction(func(stash map[string][]string) {
+		stash[group] = append(stash[group], fmt.Sprintf(format, a...))
+	})
+}
+
+func (l *LogboekLogger) Level(ctx context.Context) Level {
+	var lv Level
+	l.level.RTransaction(func(l *Level) {
+		lv = *l
+	})
+
+	return lv
 }
 
 func (l *LogboekLogger) SetLevel(ctx context.Context, lvl Level) {
@@ -203,20 +162,60 @@ func (l *LogboekLogger) SetLevel(ctx context.Context, lvl Level) {
 	})
 }
 
-func (l *LogboekLogger) Level(ctx context.Context) Level {
-	var lv Level
-	l.level.RTransaction(func(l *Level) {
-		lv = *l
-	})
+func (l *LogboekLogger) Trace(ctx context.Context, format string, a ...interface{}) {
+	if !l.AcceptLevel(ctx, TraceLevel) {
+		return
+	}
 
-	return lv
+	logboek.Context(ctx).Debug().LogF(format+"\n", a...)
 }
 
-func (l *LogboekLogger) AcceptLevel(ctx context.Context, lvl Level) bool {
-	lvlI := slices.Index(Levels, lvl)
+func (l *LogboekLogger) TracePop(ctx context.Context, group string) {
+	l.traceStash.RWTransaction(func(stash map[string][]string) {
+		for _, msg := range stash[group] {
+			l.Trace(ctx, msg)
+		}
 
-	currentLvl := l.Level(ctx)
-	currentLvlI := slices.Index(Levels, currentLvl)
+		delete(stash, group)
+	})
+}
 
-	return currentLvlI >= lvlI
+func (l *LogboekLogger) TracePush(ctx context.Context, group, format string, a ...interface{}) {
+	l.traceStash.RWTransaction(func(stash map[string][]string) {
+		stash[group] = append(stash[group], fmt.Sprintf(format, a...))
+	})
+}
+
+func (l *LogboekLogger) TraceStruct(ctx context.Context, obj interface{}, format string, a ...interface{}) {
+	if !l.AcceptLevel(ctx, TraceLevel) {
+		return
+	}
+
+	dump := spew.Sdump(obj)
+
+	logboek.Context(ctx).Debug().LogF(fmt.Sprintf(format+"\n", a...) + dump + "\n")
+}
+
+func (l *LogboekLogger) Warn(ctx context.Context, format string, a ...interface{}) {
+	if !l.AcceptLevel(ctx, WarningLevel) {
+		return
+	}
+
+	logboek.Context(ctx).Warn().LogFWithCustomStyle(color.Style{color.FgRed}, format+"\n", a...)
+}
+
+func (l *LogboekLogger) WarnPop(ctx context.Context, group string) {
+	l.warnStash.RWTransaction(func(stash map[string][]string) {
+		for _, msg := range stash[group] {
+			l.Warn(ctx, msg)
+		}
+
+		delete(stash, group)
+	})
+}
+
+func (l *LogboekLogger) WarnPush(ctx context.Context, group, format string, a ...interface{}) {
+	l.warnStash.RWTransaction(func(stash map[string][]string) {
+		stash[group] = append(stash[group], fmt.Sprintf(format, a...))
+	})
 }

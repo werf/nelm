@@ -281,10 +281,10 @@ type ReleaseInstallRuntimeOptions struct {
 
 type ResourceDiffOptions struct {
 	DiffContextLines       int
+	ShowInsignificantDiffs bool
+	ShowSensitiveDiffs     bool
 	ShowVerboseCRDDiffs    bool
 	ShowVerboseDiffs       bool
-	ShowSensitiveDiffs     bool
-	ShowInsignificantDiffs bool
 }
 
 func (opts *ResourceDiffOptions) ApplyDefaults() {

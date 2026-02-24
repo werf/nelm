@@ -14,12 +14,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-func RotateSecretKey(
-	ctx context.Context,
-	helmChartDir string,
-	secretWorkingDir string,
-	secretValuesPaths ...string,
-) error {
+func RotateSecretKey(ctx context.Context, helmChartDir, secretWorkingDir string, secretValuesPaths ...string) error {
 	secretsManager := secrets_manager.Manager
 
 	newEncoder, err := secretsManager.GetYamlEncoder(ctx, secretWorkingDir, false)
@@ -35,12 +30,7 @@ func RotateSecretKey(
 	return secretsRegenerate(ctx, newEncoder, oldEncoder, helmChartDir, secretValuesPaths...)
 }
 
-func secretsRegenerate(
-	ctx context.Context,
-	newEncoder, oldEncoder *secret.YamlEncoder,
-	helmChartDir string,
-	secretValuesPaths ...string,
-) error {
+func secretsRegenerate(ctx context.Context, newEncoder, oldEncoder *secret.YamlEncoder, helmChartDir string, secretValuesPaths ...string) error {
 	var secretFilesPaths []string
 	var secretFilesData map[string][]byte
 	var secretValuesFilesData map[string][]byte
@@ -120,37 +110,8 @@ func secretsRegenerate(
 			BlockTitle: fmt.Sprintf("Saving file %q", filePath),
 		}, func() error {
 			fileData = append(bytes.TrimSpace(fileData), []byte("\n")...)
+
 			return ioutil.WriteFile(filePath, fileData, 0o644)
-		}); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func regenerateSecrets(
-	ctx context.Context,
-	filesData, regeneratedFilesData map[string][]byte,
-	decodeFunc, encodeFunc func([]byte) ([]byte, error),
-) error {
-	for filePath, fileData := range filesData {
-		if err := log.Default.InfoBlockErr(ctx, log.BlockOptions{
-			BlockTitle: fmt.Sprintf("Regenerating file %q", filePath),
-		}, func() error {
-			data, err := decodeFunc(fileData)
-			if err != nil {
-				return fmt.Errorf("check old encryption key and file data: %w", err)
-			}
-
-			resultData, err := encodeFunc(data)
-			if err != nil {
-				return err
-			}
-
-			regeneratedFilesData[filePath] = resultData
-
-			return nil
 		}); err != nil {
 			return err
 		}
@@ -178,4 +139,30 @@ func readFilesToDecode(filePaths []string, pwd string) (map[string][]byte, error
 	}
 
 	return filesData, nil
+}
+
+func regenerateSecrets(ctx context.Context, filesData, regeneratedFilesData map[string][]byte, decodeFunc, encodeFunc func([]byte) ([]byte, error)) error {
+	for filePath, fileData := range filesData {
+		if err := log.Default.InfoBlockErr(ctx, log.BlockOptions{
+			BlockTitle: fmt.Sprintf("Regenerating file %q", filePath),
+		}, func() error {
+			data, err := decodeFunc(fileData)
+			if err != nil {
+				return fmt.Errorf("check old encryption key and file data: %w", err)
+			}
+
+			resultData, err := encodeFunc(data)
+			if err != nil {
+				return err
+			}
+
+			regeneratedFilesData[filePath] = resultData
+
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

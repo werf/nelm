@@ -28,10 +28,6 @@ type ProgressTablesPrinter struct {
 	tablesBuilder *tablesBuilder
 }
 
-type ProgressTablesPrinterOptions struct {
-	DefaultNamespace string
-}
-
 func NewProgressTablesPrinter(taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], opts ProgressTablesPrinterOptions) *ProgressTablesPrinter {
 	return &ProgressTablesPrinter{
 		tablesBuilder: newTablesBuilder(taskStore, logStore, tablesBuilderOptions(opts)),
@@ -72,159 +68,38 @@ func (p *ProgressTablesPrinter) Wait() {
 	<-p.finishedCh
 }
 
-func printTables(
-	ctx context.Context,
-	tablesBuilder *tablesBuilder,
-) {
-	maxTableWidth := log.Default.BlockContentWidth(ctx) - 2
-	tablesBuilder.SetMaxTableWidth(maxTableWidth)
-
-	if tables, nonEmpty := tablesBuilder.BuildEventTables(); nonEmpty {
-		headers := lo.Keys(tables)
-		sort.Strings(headers)
-
-		for _, header := range headers {
-			log.Default.InfoBlock(ctx, log.BlockOptions{
-				BlockTitle: header,
-			}, func() {
-				log.Default.Info(ctx, tables[header].Render())
-			})
-		}
-	}
-
-	if tables, nonEmpty := tablesBuilder.BuildLogTables(); nonEmpty {
-		headers := lo.Keys(tables)
-		sort.Strings(headers)
-
-		for _, header := range headers {
-			log.Default.InfoBlock(ctx, log.BlockOptions{
-				BlockTitle: header,
-			}, func() {
-				log.Default.Info(ctx, tables[header].Render())
-			})
-		}
-	}
-
-	if table, nonEmpty := tablesBuilder.BuildProgressTable(); nonEmpty {
-		log.Default.InfoBlock(ctx, log.BlockOptions{
-			BlockTitle: color.Style{color.Bold, color.Blue}.Render("Progress status"),
-		}, func() {
-			log.Default.Info(ctx, table.Render())
-		})
-	}
+type ProgressTablesPrinterOptions struct {
+	DefaultNamespace string
 }
 
 type tablesBuilder struct {
-	taskStore *kdutil.Concurrent[*statestore.TaskStore]
-	logStore  *kdutil.Concurrent[*logstore.LogStore]
-
 	defaultNamespace      string
-	maxProgressTableWidth int
+	hideAbsenceTasks      map[string]bool
+	hidePresenceTasks     map[string]bool
+	hideReadinessTasks    map[string]bool
+	logStore              *kdutil.Concurrent[*logstore.LogStore]
 	maxLogEventTableWidth int
-
-	nextLogPointers    map[string]int
-	nextEventPointers  map[string]int
-	hideReadinessTasks map[string]bool
-	hidePresenceTasks  map[string]bool
-	hideAbsenceTasks   map[string]bool
-}
-
-type tablesBuilderOptions struct {
-	DefaultNamespace string
+	maxProgressTableWidth int
+	nextEventPointers     map[string]int
+	nextLogPointers       map[string]int
+	taskStore             *kdutil.Concurrent[*statestore.TaskStore]
 }
 
 func newTablesBuilder(taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], opts tablesBuilderOptions) *tablesBuilder {
 	defaultNamespace := lo.Compact([]string{opts.DefaultNamespace, v1.NamespaceDefault})[0]
 
 	builder := &tablesBuilder{
-		taskStore:          taskStore,
-		logStore:           logStore,
 		defaultNamespace:   defaultNamespace,
-		nextLogPointers:    make(map[string]int),
-		nextEventPointers:  make(map[string]int),
-		hideReadinessTasks: make(map[string]bool),
-		hidePresenceTasks:  make(map[string]bool),
 		hideAbsenceTasks:   make(map[string]bool),
+		hidePresenceTasks:  make(map[string]bool),
+		hideReadinessTasks: make(map[string]bool),
+		logStore:           logStore,
+		nextEventPointers:  make(map[string]int),
+		nextLogPointers:    make(map[string]int),
+		taskStore:          taskStore,
 	}
 
 	return builder
-}
-
-func (b *tablesBuilder) BuildProgressTable() (table prtable.Writer, notEmpty bool) {
-	table = prtable.NewWriter()
-	setProgressTableStyle(table, b.maxProgressTableWidth)
-
-	rowsGrouped := [][]prtable.Row{}
-
-	if progressRows := b.buildReadinessProgressRows(); len(progressRows) != 0 {
-		rowsGrouped = append(rowsGrouped, progressRows)
-	}
-
-	if presenceRows := b.buildPresenceProgressRows(); len(presenceRows) != 0 {
-		rowsGrouped = append(rowsGrouped, presenceRows)
-	}
-
-	if absenceRows := b.buildAbsenceProgressRows(); len(absenceRows) != 0 {
-		rowsGrouped = append(rowsGrouped, absenceRows)
-	}
-
-	if len(rowsGrouped) == 0 {
-		return nil, false
-	}
-
-	for i, rowGroup := range rowsGrouped {
-		if i != 0 {
-			table.AppendRow(prtable.Row{"", "", ""})
-		}
-
-		table.AppendRows(rowGroup)
-	}
-
-	return table, true
-}
-
-func (b *tablesBuilder) BuildLogTables() (tables map[string]prtable.Writer, nonEmpty bool) {
-	tables = make(map[string]prtable.Writer)
-
-	b.logStore.RTransaction(func(ls *logstore.LogStore) {
-		for _, crl := range ls.ResourcesLogs() {
-			crl.RTransaction(func(rl *logstore.ResourceLogs) {
-				for source, logLines := range rl.LogLines() {
-					table := prtable.NewWriter()
-					setLogTableStyle(table, b.maxLogEventTableWidth)
-
-					header := buildLogsHeader(rl, source, b.defaultNamespace)
-
-					nextLogPointer, found := b.nextLogPointers[header]
-					if !found {
-						nextLogPointer = 0
-					}
-
-					for i, logLine := range logLines {
-						if i < nextLogPointer {
-							continue
-						}
-
-						table.AppendRow(prtable.Row{logLine.Line})
-
-						nextLogPointer++
-					}
-
-					b.nextLogPointers[header] = nextLogPointer
-
-					if table.Length() != 0 {
-						tables[header] = table
-					}
-				}
-			})
-		}
-	})
-
-	if len(tables) == 0 {
-		return nil, false
-	}
-
-	return tables, true
 }
 
 func (b *tablesBuilder) BuildEventTables() (tables map[string]prtable.Writer, nonEmpty bool) {
@@ -278,6 +153,83 @@ func (b *tablesBuilder) BuildEventTables() (tables map[string]prtable.Writer, no
 	return tables, true
 }
 
+func (b *tablesBuilder) BuildLogTables() (tables map[string]prtable.Writer, nonEmpty bool) {
+	tables = make(map[string]prtable.Writer)
+
+	b.logStore.RTransaction(func(ls *logstore.LogStore) {
+		for _, crl := range ls.ResourcesLogs() {
+			crl.RTransaction(func(rl *logstore.ResourceLogs) {
+				for source, logLines := range rl.LogLines() {
+					table := prtable.NewWriter()
+					setLogTableStyle(table, b.maxLogEventTableWidth)
+
+					header := buildLogsHeader(rl, source, b.defaultNamespace)
+
+					nextLogPointer, found := b.nextLogPointers[header]
+					if !found {
+						nextLogPointer = 0
+					}
+
+					for i, logLine := range logLines {
+						if i < nextLogPointer {
+							continue
+						}
+
+						table.AppendRow(prtable.Row{logLine.Line})
+
+						nextLogPointer++
+					}
+
+					b.nextLogPointers[header] = nextLogPointer
+
+					if table.Length() != 0 {
+						tables[header] = table
+					}
+				}
+			})
+		}
+	})
+
+	if len(tables) == 0 {
+		return nil, false
+	}
+
+	return tables, true
+}
+
+func (b *tablesBuilder) BuildProgressTable() (table prtable.Writer, notEmpty bool) {
+	table = prtable.NewWriter()
+	setProgressTableStyle(table, b.maxProgressTableWidth)
+
+	rowsGrouped := [][]prtable.Row{}
+
+	if progressRows := b.buildReadinessProgressRows(); len(progressRows) != 0 {
+		rowsGrouped = append(rowsGrouped, progressRows)
+	}
+
+	if presenceRows := b.buildPresenceProgressRows(); len(presenceRows) != 0 {
+		rowsGrouped = append(rowsGrouped, presenceRows)
+	}
+
+	if absenceRows := b.buildAbsenceProgressRows(); len(absenceRows) != 0 {
+		rowsGrouped = append(rowsGrouped, absenceRows)
+	}
+
+	if len(rowsGrouped) == 0 {
+		return nil, false
+	}
+
+	for i, rowGroup := range rowsGrouped {
+		if i != 0 {
+			table.AppendRow(prtable.Row{"", "", ""})
+		}
+
+		table.AppendRows(rowGroup)
+	}
+
+	return table, true
+}
+
 func (b *tablesBuilder) SetMaxTableWidth(maxTableWidth int) {
 	var maxProgressTableWidth int
 	if maxTableWidth > 0 {
@@ -296,6 +248,100 @@ func (b *tablesBuilder) SetMaxTableWidth(maxTableWidth int) {
 	}
 
 	b.maxLogEventTableWidth = lo.Min([]int{maxLogEventTableWidth, 250})
+}
+
+func (b *tablesBuilder) buildAbsenceProgressRows() (rows []prtable.Row) {
+	b.taskStore.RTransaction(func(ts *statestore.TaskStore) {
+		catss := ts.AbsenceTasksStates()
+		sortAbsenceTaskStates(catss)
+
+		for _, cats := range catss {
+			cats.RTransaction(func(ats *statestore.AbsenceTaskState) {
+				if hide, ok := b.hideAbsenceTasks[ats.UUID()]; ok && hide {
+					return
+				}
+
+				ats.ResourceState().RTransaction(func(rs *statestore.ResourceState) {
+					stateCell := buildAbsenceRootResourceStateCell(ats)
+					resourceCell := buildRootResourceCell(rs)
+
+					var infoCell []string
+
+					if rs.Namespace() != "" && rs.Namespace() != b.defaultNamespace {
+						infoCell = append(infoCell, buildNamespaceInfo(rs))
+					}
+
+					if len(rs.Errors()) != 0 {
+						infoCell = append(
+							infoCell,
+							buildErrorsInfo(rs),
+							buildLastErrInfo(rs),
+						)
+					}
+
+					rows = append(rows, prtable.Row{resourceCell, stateCell, strings.Join(infoCell, "  ")})
+
+					if ats.Status() == statestore.AbsenceTaskStatusAbsent {
+						b.hideAbsenceTasks[ats.UUID()] = true
+					}
+				})
+			})
+		}
+	})
+
+	if len(rows) > 0 {
+		headerRow := buildAbsenceHeaderRow()
+		rows = append([]prtable.Row{headerRow}, rows...)
+	}
+
+	return rows
+}
+
+func (b *tablesBuilder) buildPresenceProgressRows() (rows []prtable.Row) {
+	b.taskStore.RTransaction(func(ts *statestore.TaskStore) {
+		cptss := ts.PresenceTasksStates()
+		sortPresenceTaskStates(cptss)
+
+		for _, cpts := range cptss {
+			cpts.RTransaction(func(pts *statestore.PresenceTaskState) {
+				if hide, ok := b.hidePresenceTasks[pts.UUID()]; ok && hide {
+					return
+				}
+
+				pts.ResourceState().RTransaction(func(rs *statestore.ResourceState) {
+					stateCell := buildPresenceRootResourceStateCell(pts)
+					resourceCell := buildRootResourceCell(rs)
+
+					var infoCell []string
+
+					if rs.Namespace() != "" && rs.Namespace() != b.defaultNamespace {
+						infoCell = append(infoCell, buildNamespaceInfo(rs))
+					}
+
+					if len(rs.Errors()) != 0 {
+						infoCell = append(
+							infoCell,
+							buildErrorsInfo(rs),
+							buildLastErrInfo(rs),
+						)
+					}
+
+					rows = append(rows, prtable.Row{resourceCell, stateCell, strings.Join(infoCell, "  ")})
+
+					if pts.Status() == statestore.PresenceTaskStatusPresent {
+						b.hidePresenceTasks[pts.UUID()] = true
+					}
+				})
+			})
+		}
+	})
+
+	if len(rows) > 0 {
+		headerRow := buildPresenceHeaderRow()
+		rows = append([]prtable.Row{headerRow}, rows...)
+	}
+
+	return rows
 }
 
 func (b *tablesBuilder) buildReadinessProgressRows() (rows []prtable.Row) {
@@ -374,114 +420,86 @@ func (b *tablesBuilder) buildReadinessProgressRows() (rows []prtable.Row) {
 	return rows
 }
 
-func (b *tablesBuilder) buildPresenceProgressRows() (rows []prtable.Row) {
-	b.taskStore.RTransaction(func(ts *statestore.TaskStore) {
-		cptss := ts.PresenceTasksStates()
-		sortPresenceTaskStates(cptss)
+type tablesBuilderOptions struct {
+	DefaultNamespace string
+}
 
-		for _, cpts := range cptss {
-			cpts.RTransaction(func(pts *statestore.PresenceTaskState) {
-				if hide, ok := b.hidePresenceTasks[pts.UUID()]; ok && hide {
+func buildChildResourceCell(resourceState *statestore.ResourceState) string {
+	return " • " + buildRootResourceCell(resourceState)
+}
+
+func sortAbsenceTaskStates(taskStates []*kdutil.Concurrent[*statestore.AbsenceTaskState]) {
+	sort.Slice(taskStates, func(i, j int) bool {
+		var less bool
+
+		taskStates[i].RTransaction(func(iats *statestore.AbsenceTaskState) {
+			taskStates[j].RTransaction(func(jats *statestore.AbsenceTaskState) {
+				less = compareKindNameNamespace(
+					iats.Name(),
+					iats.Namespace(),
+					iats.GroupVersionKind().Kind,
+					jats.Name(),
+					jats.Namespace(),
+					jats.GroupVersionKind().Kind,
+				)
+			})
+		})
+
+		return less
+	})
+}
+
+func sortPresenceTaskStates(taskStates []*kdutil.Concurrent[*statestore.PresenceTaskState]) {
+	sort.Slice(taskStates, func(i, j int) bool {
+		var less bool
+
+		taskStates[i].RTransaction(func(ipts *statestore.PresenceTaskState) {
+			taskStates[j].RTransaction(func(jpts *statestore.PresenceTaskState) {
+				less = compareKindNameNamespace(
+					ipts.Name(),
+					ipts.Namespace(),
+					ipts.GroupVersionKind().Kind,
+					jpts.Name(),
+					jpts.Namespace(),
+					jpts.GroupVersionKind().Kind,
+				)
+			})
+		})
+
+		return less
+	})
+}
+
+func sortReadinessTaskStates(taskStates []*kdutil.Concurrent[*statestore.ReadinessTaskState]) {
+	sort.Slice(taskStates, func(i, j int) bool {
+		var less bool
+
+		taskStates[i].RTransaction(func(irts *statestore.ReadinessTaskState) {
+			taskStates[j].RTransaction(func(jrts *statestore.ReadinessTaskState) {
+				iResourceStatesLen := len(irts.ResourceStates())
+
+				jResourceStatesLen := len(jrts.ResourceStates())
+				if iResourceStatesLen > jResourceStatesLen {
+					less = true
+
+					return
+				} else if iResourceStatesLen < jResourceStatesLen {
 					return
 				}
 
-				pts.ResourceState().RTransaction(func(rs *statestore.ResourceState) {
-					stateCell := buildPresenceRootResourceStateCell(pts)
-					resourceCell := buildRootResourceCell(rs)
-
-					var infoCell []string
-
-					if rs.Namespace() != "" && rs.Namespace() != b.defaultNamespace {
-						infoCell = append(infoCell, buildNamespaceInfo(rs))
-					}
-
-					if len(rs.Errors()) != 0 {
-						infoCell = append(
-							infoCell,
-							buildErrorsInfo(rs),
-							buildLastErrInfo(rs),
-						)
-					}
-
-					rows = append(rows, prtable.Row{resourceCell, stateCell, strings.Join(infoCell, "  ")})
-
-					if pts.Status() == statestore.PresenceTaskStatusPresent {
-						b.hidePresenceTasks[pts.UUID()] = true
-					}
-				})
+				less = compareKindNameNamespace(
+					irts.Name(),
+					irts.Namespace(),
+					irts.GroupVersionKind().Kind,
+					jrts.Name(),
+					jrts.Namespace(),
+					jrts.GroupVersionKind().Kind,
+				)
 			})
-		}
+		})
+
+		return less
 	})
-
-	if len(rows) > 0 {
-		headerRow := buildPresenceHeaderRow()
-		rows = append([]prtable.Row{headerRow}, rows...)
-	}
-
-	return rows
-}
-
-func (b *tablesBuilder) buildAbsenceProgressRows() (rows []prtable.Row) {
-	b.taskStore.RTransaction(func(ts *statestore.TaskStore) {
-		catss := ts.AbsenceTasksStates()
-		sortAbsenceTaskStates(catss)
-
-		for _, cats := range catss {
-			cats.RTransaction(func(ats *statestore.AbsenceTaskState) {
-				if hide, ok := b.hideAbsenceTasks[ats.UUID()]; ok && hide {
-					return
-				}
-
-				ats.ResourceState().RTransaction(func(rs *statestore.ResourceState) {
-					stateCell := buildAbsenceRootResourceStateCell(ats)
-					resourceCell := buildRootResourceCell(rs)
-
-					var infoCell []string
-
-					if rs.Namespace() != "" && rs.Namespace() != b.defaultNamespace {
-						infoCell = append(infoCell, buildNamespaceInfo(rs))
-					}
-
-					if len(rs.Errors()) != 0 {
-						infoCell = append(
-							infoCell,
-							buildErrorsInfo(rs),
-							buildLastErrInfo(rs),
-						)
-					}
-
-					rows = append(rows, prtable.Row{resourceCell, stateCell, strings.Join(infoCell, "  ")})
-
-					if ats.Status() == statestore.AbsenceTaskStatusAbsent {
-						b.hideAbsenceTasks[ats.UUID()] = true
-					}
-				})
-			})
-		}
-	})
-
-	if len(rows) > 0 {
-		headerRow := buildAbsenceHeaderRow()
-		rows = append([]prtable.Row{headerRow}, rows...)
-	}
-
-	return rows
-}
-
-func buildReadinessHeaderRow() prtable.Row {
-	return prtable.Row{
-		color.New(color.Bold).Sprintf("RESOURCE (→READY)"),
-		color.New(color.Bold).Sprintf("STATE"),
-		color.New(color.Bold).Sprintf("INFO"),
-	}
-}
-
-func buildPresenceHeaderRow() prtable.Row {
-	return prtable.Row{
-		color.New(color.Bold).Sprintf("RESOURCE (→PRESENT)"),
-		color.New(color.Bold).Sprintf("STATE"),
-		color.New(color.Bold).Sprintf("INFO"),
-	}
 }
 
 func buildAbsenceHeaderRow() prtable.Row {
@@ -492,29 +510,295 @@ func buildAbsenceHeaderRow() prtable.Row {
 	}
 }
 
-func setProgressTableStyle(table prtable.Writer, tableWidth int) {
+func buildAbsenceRootResourceStateCell(taskState *statestore.AbsenceTaskState) string {
+	var stateCell string
+
+	switch status := taskState.Status(); status {
+	case statestore.AbsenceTaskStatusAbsent:
+		stateCell = color.New(color.Green).Sprintf("%s", caps.ToUpper(string(status)))
+	case statestore.AbsenceTaskStatusProgressing:
+		stateCell = color.New(color.Yellow).Sprintf("WAITING")
+	case statestore.AbsenceTaskStatusFailed:
+		stateCell = color.New(color.Red).Sprintf("%s", caps.ToUpper(string(status)))
+	default:
+		panic("unexpected task status")
+	}
+
+	return stateCell
+}
+
+func buildErrorsInfo(resourceState *statestore.ResourceState) string {
+	var errsCount int
+	for _, errs := range resourceState.Errors() {
+		errsCount += len(errs)
+	}
+
+	return fmt.Sprintf("Errors:%d", errsCount)
+}
+
+func buildEventsHeader(resourceState *statestore.ResourceState, defaultNamespace string) string {
+	result := "Events for " + resourceState.GroupVersionKind().Kind + "/" + resourceState.Name()
+
+	if resourceState.Namespace() != defaultNamespace {
+		result += ", namespace: " + resourceState.Namespace()
+	}
+
+	return color.New(color.Bold, color.Blue).Sprintf("%s", result)
+}
+
+func buildGenericConditionInfo(resourceState *statestore.ResourceState) string {
+	var condition, current string
+	if attr, found := lo.Find(resourceState.Attributes(), func(attr statestore.Attributer) bool {
+		return attr.Name() == statestore.AttributeNameConditionTarget
+	}); found {
+		condition = attr.(*statestore.Attribute[string]).Value
+
+		if attr, found := lo.Find(resourceState.Attributes(), func(attr statestore.Attributer) bool {
+			return attr.Name() == statestore.AttributeNameConditionCurrentValue
+		}); found {
+			current = attr.(*statestore.Attribute[string]).Value
+		}
+	}
+
+	if condition == "" {
+		return ""
+	} else if current == "" {
+		return fmt.Sprintf("Tracking:%q", condition)
+	} else {
+		return fmt.Sprintf(`Tracking:"%s=%s"`, condition, current)
+	}
+}
+
+func buildLastErrInfo(resourceState *statestore.ResourceState) string {
+	var lastErr *statestore.Error
+	for _, errs := range resourceState.Errors() {
+		for _, err := range errs {
+			if lastErr == nil {
+				lastErr = err
+				continue
+			}
+
+			if err.Time.After(lastErr.Time) {
+				lastErr = err
+			}
+		}
+	}
+
+	return color.New(color.Red).Sprintf("LastError:%q", lastErr.Err.Error())
+}
+
+func buildLogsHeader(resourceLogs *logstore.ResourceLogs, source, defaultNamespace string) string {
+	result := "Logs for " + resourceLogs.GroupVersionKind().Kind + "/" + resourceLogs.Name() + ", " + source
+
+	if resourceLogs.Namespace() != defaultNamespace {
+		result += ", namespace: " + resourceLogs.Namespace()
+	}
+
+	return color.New(color.Bold, color.Blue).Sprintf("%s", result)
+}
+
+func buildNamespaceInfo(resourceState *statestore.ResourceState) string {
+	return fmt.Sprintf("Namespace:%s", resourceState.Namespace())
+}
+
+func buildPresenceHeaderRow() prtable.Row {
+	return prtable.Row{
+		color.New(color.Bold).Sprintf("RESOURCE (→PRESENT)"),
+		color.New(color.Bold).Sprintf("STATE"),
+		color.New(color.Bold).Sprintf("INFO"),
+	}
+}
+
+func buildPresenceRootResourceStateCell(taskState *statestore.PresenceTaskState) string {
+	var stateCell string
+
+	switch status := taskState.Status(); status {
+	case statestore.PresenceTaskStatusPresent:
+		stateCell = color.New(color.Green).Sprintf("%s", caps.ToUpper(string(status)))
+	case statestore.PresenceTaskStatusProgressing:
+		stateCell = color.New(color.Yellow).Sprintf("WAITING")
+	case statestore.PresenceTaskStatusFailed:
+		stateCell = color.New(color.Red).Sprintf("%s", caps.ToUpper(string(status)))
+	default:
+		panic("unexpected task status")
+	}
+
+	return stateCell
+}
+
+func buildReadinessChildResourceStateCell(resourceState *statestore.ResourceState) string {
+	var stateCell string
+
+	switch status := resourceState.Status(); status {
+	case statestore.ResourceStatusReady:
+		stateCell = color.New(color.Green).Sprintf("%s", caps.ToUpper(string(status)))
+	case statestore.ResourceStatusCreated, statestore.ResourceStatusDeleted, statestore.ResourceStatusUnknown:
+		stateCell = color.New(color.Yellow).Sprintf("%s", caps.ToUpper(string(status)))
+	case statestore.ResourceStatusFailed:
+		stateCell = color.New(color.Red).Sprintf("%s", caps.ToUpper(string(status)))
+	default:
+		panic("unexpected resource status")
+	}
+
+	return stateCell
+}
+
+func buildReadinessHeaderRow() prtable.Row {
+	return prtable.Row{
+		color.New(color.Bold).Sprintf("RESOURCE (→READY)"),
+		color.New(color.Bold).Sprintf("STATE"),
+		color.New(color.Bold).Sprintf("INFO"),
+	}
+}
+
+func buildReadinessRootResourceStateCell(taskState *statestore.ReadinessTaskState) string {
+	var stateCell string
+
+	switch status := taskState.Status(); status {
+	case statestore.ReadinessTaskStatusReady:
+		stateCell = color.New(color.Green).Sprintf("%s", caps.ToUpper(string(status)))
+	case statestore.ReadinessTaskStatusProgressing:
+		stateCell = color.New(color.Yellow).Sprintf("WAITING")
+	case statestore.ReadinessTaskStatusFailed:
+		stateCell = color.New(color.Red).Sprintf("%s", caps.ToUpper(string(status)))
+	default:
+		panic("unexpected task status")
+	}
+
+	return stateCell
+}
+
+func buildReadyPodsInfo(resourceState *statestore.ResourceState, readyPods int) string {
+	var info string
+	if attr, found := lo.Find(resourceState.Attributes(), func(attr statestore.Attributer) bool {
+		return attr.Name() == statestore.AttributeNameRequiredReplicas
+	}); found {
+		requiredReadyPods := attr.(*statestore.Attribute[int]).Value
+		info = fmt.Sprintf("Ready:%d/%d", readyPods, requiredReadyPods)
+	}
+
+	return info
+}
+
+func buildRootResourceCell(resourceState *statestore.ResourceState) string {
+	kind := color.New(color.Cyan).Sprintf("%s", resourceState.GroupVersionKind().Kind)
+
+	return fmt.Sprintf("%s/%s", kind, resourceState.Name())
+}
+
+func buildStatusInfo(resourceState *statestore.ResourceState) string {
+	var info string
+	if attr, found := lo.Find(resourceState.Attributes(), func(attr statestore.Attributer) bool {
+		return attr.Name() == statestore.AttributeNameStatus
+	}); found {
+		status := attr.(*statestore.Attribute[string]).Value
+		info = fmt.Sprintf("Status:%s", status)
+	}
+
+	return info
+}
+
+func calculateReadyPods(rts *statestore.ReadinessTaskState) *int {
+	var readyPods *int
+	for _, crs := range rts.ResourceStates() {
+		crs.RTransaction(func(rs *statestore.ResourceState) {
+			if rs.GroupVersionKind().GroupKind() == (schema.GroupKind{Group: "", Kind: "Pod"}) {
+				if readyPods == nil {
+					readyPods = new(int)
+				}
+
+				if rs.Status() == statestore.ResourceStatusReady {
+					*readyPods++
+				}
+			}
+		})
+	}
+
+	return readyPods
+}
+
+func compareKindNameNamespace(iName, iNamespace, iKind, jName, jNamespace, jKind string) bool {
+	if iKind < jKind {
+		return true
+	} else if iKind > jKind {
+		return false
+	}
+
+	if iNamespace < jNamespace {
+		return true
+	} else if iNamespace > jNamespace {
+		return false
+	}
+
+	if iName < jName {
+		return true
+	} else if iName > jName {
+		return false
+	}
+
+	if iNamespace < jNamespace {
+		return true
+	} else if iNamespace > jNamespace {
+		return false
+	}
+
+	return false
+}
+
+func printTables(ctx context.Context, tablesBuilder *tablesBuilder) {
+	maxTableWidth := log.Default.BlockContentWidth(ctx) - 2
+	tablesBuilder.SetMaxTableWidth(maxTableWidth)
+
+	if tables, nonEmpty := tablesBuilder.BuildEventTables(); nonEmpty {
+		headers := lo.Keys(tables)
+		sort.Strings(headers)
+
+		for _, header := range headers {
+			log.Default.InfoBlock(ctx, log.BlockOptions{
+				BlockTitle: header,
+			}, func() {
+				log.Default.Info(ctx, tables[header].Render())
+			})
+		}
+	}
+
+	if tables, nonEmpty := tablesBuilder.BuildLogTables(); nonEmpty {
+		headers := lo.Keys(tables)
+		sort.Strings(headers)
+
+		for _, header := range headers {
+			log.Default.InfoBlock(ctx, log.BlockOptions{
+				BlockTitle: header,
+			}, func() {
+				log.Default.Info(ctx, tables[header].Render())
+			})
+		}
+	}
+
+	if table, nonEmpty := tablesBuilder.BuildProgressTable(); nonEmpty {
+		log.Default.InfoBlock(ctx, log.BlockOptions{
+			BlockTitle: color.Style{color.Bold, color.Blue}.Render("Progress status"),
+		}, func() {
+			log.Default.Info(ctx, table.Render())
+		})
+	}
+}
+
+func setEventTableStyle(table prtable.Writer, tableWidth int) {
 	style := prtable.StyleBoxDefault
 	style.PaddingLeft = ""
-	style.PaddingRight = "  "
+	style.PaddingRight = ""
 
 	columnConfigs := []prtable.ColumnConfig{
 		{
 			Number: 1,
-		},
-		{
-			Number: 2,
-		},
-		{
-			Number: 3,
 		},
 	}
 
 	paddingsWidth := len(columnConfigs) * (len(style.PaddingLeft) + len(style.PaddingRight))
 	columnsWidth := tableWidth - paddingsWidth
 
-	columnConfigs[1].WidthMax = 7
-	columnConfigs[0].WidthMax = int(float64(columnsWidth-columnConfigs[1].WidthMax) * 0.6)
-	columnConfigs[2].WidthMax = int(float64(columnsWidth-columnConfigs[1].WidthMax) * 0.4)
+	columnConfigs[0].WidthMax = columnsWidth
 
 	table.SetColumnConfigs(columnConfigs)
 	table.SetStyle(prtable.Style{
@@ -556,21 +840,29 @@ func setLogTableStyle(table prtable.Writer, tableWidth int) {
 	table.SuppressTrailingSpaces()
 }
 
-func setEventTableStyle(table prtable.Writer, tableWidth int) {
+func setProgressTableStyle(table prtable.Writer, tableWidth int) {
 	style := prtable.StyleBoxDefault
 	style.PaddingLeft = ""
-	style.PaddingRight = ""
+	style.PaddingRight = "  "
 
 	columnConfigs := []prtable.ColumnConfig{
 		{
 			Number: 1,
+		},
+		{
+			Number: 2,
+		},
+		{
+			Number: 3,
 		},
 	}
 
 	paddingsWidth := len(columnConfigs) * (len(style.PaddingLeft) + len(style.PaddingRight))
 	columnsWidth := tableWidth - paddingsWidth
 
-	columnConfigs[0].WidthMax = columnsWidth
+	columnConfigs[1].WidthMax = 7
+	columnConfigs[0].WidthMax = int(float64(columnsWidth-columnConfigs[1].WidthMax) * 0.6)
+	columnConfigs[2].WidthMax = int(float64(columnsWidth-columnConfigs[1].WidthMax) * 0.4)
 
 	table.SetColumnConfigs(columnConfigs)
 	table.SetStyle(prtable.Style{
@@ -582,300 +874,4 @@ func setEventTableStyle(table prtable.Writer, tableWidth int) {
 		Title:   prtable.TitleOptionsDefault,
 	})
 	table.SuppressTrailingSpaces()
-}
-
-func buildLogsHeader(resourceLogs *logstore.ResourceLogs, source, defaultNamespace string) string {
-	result := "Logs for " + resourceLogs.GroupVersionKind().Kind + "/" + resourceLogs.Name() + ", " + source
-
-	if resourceLogs.Namespace() != defaultNamespace {
-		result += ", namespace: " + resourceLogs.Namespace()
-	}
-
-	return color.New(color.Bold, color.Blue).Sprintf("%s", result)
-}
-
-func buildEventsHeader(resourceState *statestore.ResourceState, defaultNamespace string) string {
-	result := "Events for " + resourceState.GroupVersionKind().Kind + "/" + resourceState.Name()
-
-	if resourceState.Namespace() != defaultNamespace {
-		result += ", namespace: " + resourceState.Namespace()
-	}
-
-	return color.New(color.Bold, color.Blue).Sprintf("%s", result)
-}
-
-func buildReadinessRootResourceStateCell(taskState *statestore.ReadinessTaskState) string {
-	var stateCell string
-
-	switch status := taskState.Status(); status {
-	case statestore.ReadinessTaskStatusReady:
-		stateCell = color.New(color.Green).Sprintf("%s", caps.ToUpper(string(status)))
-	case statestore.ReadinessTaskStatusProgressing:
-		stateCell = color.New(color.Yellow).Sprintf("WAITING")
-	case statestore.ReadinessTaskStatusFailed:
-		stateCell = color.New(color.Red).Sprintf("%s", caps.ToUpper(string(status)))
-	default:
-		panic("unexpected task status")
-	}
-
-	return stateCell
-}
-
-func buildReadinessChildResourceStateCell(resourceState *statestore.ResourceState) string {
-	var stateCell string
-
-	switch status := resourceState.Status(); status {
-	case statestore.ResourceStatusReady:
-		stateCell = color.New(color.Green).Sprintf("%s", caps.ToUpper(string(status)))
-	case statestore.ResourceStatusCreated, statestore.ResourceStatusDeleted, statestore.ResourceStatusUnknown:
-		stateCell = color.New(color.Yellow).Sprintf("%s", caps.ToUpper(string(status)))
-	case statestore.ResourceStatusFailed:
-		stateCell = color.New(color.Red).Sprintf("%s", caps.ToUpper(string(status)))
-	default:
-		panic("unexpected resource status")
-	}
-
-	return stateCell
-}
-
-func buildRootResourceCell(resourceState *statestore.ResourceState) string {
-	kind := color.New(color.Cyan).Sprintf("%s", resourceState.GroupVersionKind().Kind)
-
-	return fmt.Sprintf("%s/%s", kind, resourceState.Name())
-}
-
-func buildChildResourceCell(resourceState *statestore.ResourceState) string {
-	return " • " + buildRootResourceCell(resourceState)
-}
-
-func buildReadyPodsInfo(resourceState *statestore.ResourceState, readyPods int) string {
-	var info string
-	if attr, found := lo.Find(resourceState.Attributes(), func(attr statestore.Attributer) bool {
-		return attr.Name() == statestore.AttributeNameRequiredReplicas
-	}); found {
-		requiredReadyPods := attr.(*statestore.Attribute[int]).Value
-		info = fmt.Sprintf("Ready:%d/%d", readyPods, requiredReadyPods)
-	}
-
-	return info
-}
-
-func buildStatusInfo(resourceState *statestore.ResourceState) string {
-	var info string
-	if attr, found := lo.Find(resourceState.Attributes(), func(attr statestore.Attributer) bool {
-		return attr.Name() == statestore.AttributeNameStatus
-	}); found {
-		status := attr.(*statestore.Attribute[string]).Value
-		info = fmt.Sprintf("Status:%s", status)
-	}
-
-	return info
-}
-
-func buildNamespaceInfo(resourceState *statestore.ResourceState) string {
-	return fmt.Sprintf("Namespace:%s", resourceState.Namespace())
-}
-
-func buildGenericConditionInfo(resourceState *statestore.ResourceState) string {
-	var condition, current string
-	if attr, found := lo.Find(resourceState.Attributes(), func(attr statestore.Attributer) bool {
-		return attr.Name() == statestore.AttributeNameConditionTarget
-	}); found {
-		condition = attr.(*statestore.Attribute[string]).Value
-
-		if attr, found := lo.Find(resourceState.Attributes(), func(attr statestore.Attributer) bool {
-			return attr.Name() == statestore.AttributeNameConditionCurrentValue
-		}); found {
-			current = attr.(*statestore.Attribute[string]).Value
-		}
-	}
-
-	if condition == "" {
-		return ""
-	} else if current == "" {
-		return fmt.Sprintf("Tracking:%q", condition)
-	} else {
-		return fmt.Sprintf(`Tracking:"%s=%s"`, condition, current)
-	}
-}
-
-func buildErrorsInfo(resourceState *statestore.ResourceState) string {
-	var errsCount int
-	for _, errs := range resourceState.Errors() {
-		errsCount += len(errs)
-	}
-
-	return fmt.Sprintf("Errors:%d", errsCount)
-}
-
-func buildLastErrInfo(resourceState *statestore.ResourceState) string {
-	var lastErr *statestore.Error
-	for _, errs := range resourceState.Errors() {
-		for _, err := range errs {
-			if lastErr == nil {
-				lastErr = err
-				continue
-			}
-
-			if err.Time.After(lastErr.Time) {
-				lastErr = err
-			}
-		}
-	}
-
-	return color.New(color.Red).Sprintf("LastError:%q", lastErr.Err.Error())
-}
-
-func buildPresenceRootResourceStateCell(taskState *statestore.PresenceTaskState) string {
-	var stateCell string
-
-	switch status := taskState.Status(); status {
-	case statestore.PresenceTaskStatusPresent:
-		stateCell = color.New(color.Green).Sprintf("%s", caps.ToUpper(string(status)))
-	case statestore.PresenceTaskStatusProgressing:
-		stateCell = color.New(color.Yellow).Sprintf("WAITING")
-	case statestore.PresenceTaskStatusFailed:
-		stateCell = color.New(color.Red).Sprintf("%s", caps.ToUpper(string(status)))
-	default:
-		panic("unexpected task status")
-	}
-
-	return stateCell
-}
-
-func buildAbsenceRootResourceStateCell(taskState *statestore.AbsenceTaskState) string {
-	var stateCell string
-
-	switch status := taskState.Status(); status {
-	case statestore.AbsenceTaskStatusAbsent:
-		stateCell = color.New(color.Green).Sprintf("%s", caps.ToUpper(string(status)))
-	case statestore.AbsenceTaskStatusProgressing:
-		stateCell = color.New(color.Yellow).Sprintf("WAITING")
-	case statestore.AbsenceTaskStatusFailed:
-		stateCell = color.New(color.Red).Sprintf("%s", caps.ToUpper(string(status)))
-	default:
-		panic("unexpected task status")
-	}
-
-	return stateCell
-}
-
-func calculateReadyPods(rts *statestore.ReadinessTaskState) *int {
-	var readyPods *int
-	for _, crs := range rts.ResourceStates() {
-		crs.RTransaction(func(rs *statestore.ResourceState) {
-			if rs.GroupVersionKind().GroupKind() == (schema.GroupKind{Group: "", Kind: "Pod"}) {
-				if readyPods == nil {
-					readyPods = new(int)
-				}
-
-				if rs.Status() == statestore.ResourceStatusReady {
-					*readyPods++
-				}
-			}
-		})
-	}
-
-	return readyPods
-}
-
-func sortReadinessTaskStates(taskStates []*kdutil.Concurrent[*statestore.ReadinessTaskState]) {
-	sort.Slice(taskStates, func(i, j int) bool {
-		var less bool
-
-		taskStates[i].RTransaction(func(irts *statestore.ReadinessTaskState) {
-			taskStates[j].RTransaction(func(jrts *statestore.ReadinessTaskState) {
-				iResourceStatesLen := len(irts.ResourceStates())
-
-				jResourceStatesLen := len(jrts.ResourceStates())
-				if iResourceStatesLen > jResourceStatesLen {
-					less = true
-					return
-				} else if iResourceStatesLen < jResourceStatesLen {
-					return
-				}
-
-				less = compareKindNameNamespace(
-					irts.Name(),
-					irts.Namespace(),
-					irts.GroupVersionKind().Kind,
-					jrts.Name(),
-					jrts.Namespace(),
-					jrts.GroupVersionKind().Kind,
-				)
-			})
-		})
-
-		return less
-	})
-}
-
-func sortPresenceTaskStates(taskStates []*kdutil.Concurrent[*statestore.PresenceTaskState]) {
-	sort.Slice(taskStates, func(i, j int) bool {
-		var less bool
-
-		taskStates[i].RTransaction(func(ipts *statestore.PresenceTaskState) {
-			taskStates[j].RTransaction(func(jpts *statestore.PresenceTaskState) {
-				less = compareKindNameNamespace(
-					ipts.Name(),
-					ipts.Namespace(),
-					ipts.GroupVersionKind().Kind,
-					jpts.Name(),
-					jpts.Namespace(),
-					jpts.GroupVersionKind().Kind,
-				)
-			})
-		})
-
-		return less
-	})
-}
-
-func sortAbsenceTaskStates(taskStates []*kdutil.Concurrent[*statestore.AbsenceTaskState]) {
-	sort.Slice(taskStates, func(i, j int) bool {
-		var less bool
-
-		taskStates[i].RTransaction(func(iats *statestore.AbsenceTaskState) {
-			taskStates[j].RTransaction(func(jats *statestore.AbsenceTaskState) {
-				less = compareKindNameNamespace(
-					iats.Name(),
-					iats.Namespace(),
-					iats.GroupVersionKind().Kind,
-					jats.Name(),
-					jats.Namespace(),
-					jats.GroupVersionKind().Kind,
-				)
-			})
-		})
-
-		return less
-	})
-}
-
-func compareKindNameNamespace(iName, iNamespace, iKind, jName, jNamespace, jKind string) bool {
-	if iKind < jKind {
-		return true
-	} else if iKind > jKind {
-		return false
-	}
-
-	if iNamespace < jNamespace {
-		return true
-	} else if iNamespace > jNamespace {
-		return false
-	}
-
-	if iName < jName {
-		return true
-	} else if iName > jName {
-		return false
-	}
-
-	if iNamespace < jNamespace {
-		return true
-	} else if iNamespace > jNamespace {
-		return false
-	}
-
-	return false
 }

@@ -19,16 +19,6 @@ func extractSourceFiles(files []*helmchart.File) map[string][]byte {
 	return sourceFiles
 }
 
-func findEntrypointInFiles(files map[string][]byte) string {
-	for _, ep := range common.ChartTSEntryPoints {
-		if _, ok := files[ep]; ok {
-			return ep
-		}
-	}
-
-	return ""
-}
-
 func filterTSFiles(files []*file.ChartExtenderBufferedFile) map[string][]byte {
 	result := make(map[string][]byte)
 	for _, f := range files {
@@ -38,6 +28,16 @@ func filterTSFiles(files []*file.ChartExtenderBufferedFile) map[string][]byte {
 	}
 
 	return result
+}
+
+func findEntrypointInFiles(files map[string][]byte) string {
+	for _, ep := range common.ChartTSEntryPoints {
+		if _, ok := files[ep]; ok {
+			return ep
+		}
+	}
+
+	return ""
 }
 
 func hasNodeModules(files map[string][]byte) bool {

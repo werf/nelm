@@ -10,6 +10,83 @@ import (
 	"github.com/werf/nelm/pkg/featgate"
 )
 
+func AddChartRepoConnectionFlags(cmd *cobra.Command, cfg *common.ChartRepoConnectionOptions) error {
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoBasicAuthPassword, "chart-repo-basic-password", "", "Basic auth password to authenticate in chart repository", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                chartRepoFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoBasicAuthUsername, "chart-repo-basic-username", "", "Basic auth username to authenticate in chart repository", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                chartRepoFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoCAPath, "chart-repo-ca", "", "Path to TLS CA file for connecting to chart repository", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                chartRepoFlagGroup,
+		Type:                 cli.FlagTypeFile,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoCertPath, "chart-repo-cert", "", "Path to TLS client cert file for connecting to chart repository", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                chartRepoFlagGroup,
+		Type:                 cli.FlagTypeFile,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoInsecure, "insecure-chart-repos", false, "Allow insecure HTTP connections to chart repository", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                chartRepoFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoKeyPath, "chart-repo-key", "", "Path to TLS client key file for connecting to chart repository", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                chartRepoFlagGroup,
+		Type:                 cli.FlagTypeFile,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoPassCreds, "chart-repo-pass-creds", false, "Allow sending chart repository credentials to domains different from the chart repository domain when downloading charts", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                chartRepoFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoRequestTimeout, "chart-repo-request-timeout", 0, "Set timeout for all requests to chart repository", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                chartRepoFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoSkipTLSVerify, "no-verify-chart-repos-tls", false, "Don't verify TLS certificates of chart repository", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                chartRepoFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoURL, "chart-repo-url", "", "Set URL of chart repo to be used to look for chart", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                chartRepoFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	return nil
+}
+
 func AddKubeConnectionFlags(cmd *cobra.Command, cfg *common.KubeConnectionOptions) error {
 	if err := cli.AddFlag(cmd, &cfg.KubeAPIServerAddress, "kube-api-server", "", "Kubernetes API server address", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
@@ -219,83 +296,6 @@ func AddKubeConnectionFlags(cmd *cobra.Command, cfg *common.KubeConnectionOption
 	return nil
 }
 
-func AddChartRepoConnectionFlags(cmd *cobra.Command, cfg *common.ChartRepoConnectionOptions) error {
-	if err := cli.AddFlag(cmd, &cfg.ChartRepoBasicAuthPassword, "chart-repo-basic-password", "", "Basic auth password to authenticate in chart repository", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                chartRepoFlagGroup,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.ChartRepoBasicAuthUsername, "chart-repo-basic-username", "", "Basic auth username to authenticate in chart repository", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                chartRepoFlagGroup,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.ChartRepoCAPath, "chart-repo-ca", "", "Path to TLS CA file for connecting to chart repository", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                chartRepoFlagGroup,
-		Type:                 cli.FlagTypeFile,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.ChartRepoCertPath, "chart-repo-cert", "", "Path to TLS client cert file for connecting to chart repository", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                chartRepoFlagGroup,
-		Type:                 cli.FlagTypeFile,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.ChartRepoInsecure, "insecure-chart-repos", false, "Allow insecure HTTP connections to chart repository", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                chartRepoFlagGroup,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.ChartRepoKeyPath, "chart-repo-key", "", "Path to TLS client key file for connecting to chart repository", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                chartRepoFlagGroup,
-		Type:                 cli.FlagTypeFile,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.ChartRepoPassCreds, "chart-repo-pass-creds", false, "Allow sending chart repository credentials to domains different from the chart repository domain when downloading charts", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                chartRepoFlagGroup,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.ChartRepoRequestTimeout, "chart-repo-request-timeout", 0, "Set timeout for all requests to chart repository", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                chartRepoFlagGroup,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.ChartRepoSkipTLSVerify, "no-verify-chart-repos-tls", false, "Don't verify TLS certificates of chart repository", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                chartRepoFlagGroup,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.ChartRepoURL, "chart-repo-url", "", "Set URL of chart repo to be used to look for chart", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                chartRepoFlagGroup,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	return nil
-}
-
 func AddResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceValidationOptions) error {
 	if !featgate.FeatGateResourceValidation.Enabled() {
 		return nil
@@ -349,80 +349,6 @@ func AddResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceValidati
 	if err := cli.AddFlag(cmd, &cfg.ValidationSchemaCacheLifetime, "resource-validation-cache-lifetime", common.DefaultResourceValidationCacheLifetime, "How long local schema cache will be valid", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                resourceValidationGroup,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	return nil
-}
-
-func AddValuesFlags(cmd *cobra.Command, cfg *common.ValuesOptions) error {
-	if err := cli.AddFlag(cmd, &cfg.DefaultValuesDisable, "no-default-values", false, "Ignore values.yaml of the top-level chart", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                valuesFlagGroup,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.RootSetJSON, "set-root-json", []string{}, "Set new keys in the global context ($), where the key is the value path and the value is JSON. This is meant to be generated inside the program, so use --set-json instead, unless you know what you are doing", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                valuesFlagGroup,
-		NoSplitOnCommas:      true,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.RuntimeSetJSON, "set-runtime-json", []string{}, "Set new keys in $.Runtime, where the key is the value path and the value is JSON. This is meant to be generated inside the program, so use --set-json instead, unless you know what you are doing", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                valuesFlagGroup,
-		NoSplitOnCommas:      true,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.ValuesFiles, "values", []string{}, "Additional values files", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                valuesFlagGroup,
-		Type:                 cli.FlagTypeFile,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	// TODO(major): revise all flags in nelm/werf to make sure they are all parsed as it happens in
-	// Helm (see https://github.com/werf/nelm/issues/337)
-	if err := cli.AddFlag(cmd, &cfg.ValuesSet, "set", []string{}, "Set new values, where the key is the value path and the value is the value", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                valuesFlagGroup,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.ValuesSetFile, "set-file", []string{}, "Set new values, where the key is the value path and the value is the path to the file with the value content", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                valuesFlagGroup,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.ValuesSetJSON, "set-json", []string{}, "Set new values, where the key is the value path and the value is JSON", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                valuesFlagGroup,
-		NoSplitOnCommas:      true,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.ValuesSetLiteral, "set-literal", []string{}, "Set new values, where the key is the value path and the value is the value. The value will always become a literal string", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                valuesFlagGroup,
-		NoSplitOnCommas:      true,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.ValuesSetString, "set-string", []string{}, "Set new values, where the key is the value path and the value is the value. The value will always become a string", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                valuesFlagGroup,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}
@@ -509,6 +435,80 @@ func AddTrackingFlags(cmd *cobra.Command, cfg *common.TrackingOptions) error {
 	if err := cli.AddFlag(cmd, &cfg.TrackReadinessTimeout, "resource-readiness-timeout", 0, "Fail if resource readiness tracking did not finish in time", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                progressFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	return nil
+}
+
+func AddValuesFlags(cmd *cobra.Command, cfg *common.ValuesOptions) error {
+	if err := cli.AddFlag(cmd, &cfg.DefaultValuesDisable, "no-default-values", false, "Ignore values.yaml of the top-level chart", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                valuesFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.RootSetJSON, "set-root-json", []string{}, "Set new keys in the global context ($), where the key is the value path and the value is JSON. This is meant to be generated inside the program, so use --set-json instead, unless you know what you are doing", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                valuesFlagGroup,
+		NoSplitOnCommas:      true,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.RuntimeSetJSON, "set-runtime-json", []string{}, "Set new keys in $.Runtime, where the key is the value path and the value is JSON. This is meant to be generated inside the program, so use --set-json instead, unless you know what you are doing", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                valuesFlagGroup,
+		NoSplitOnCommas:      true,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ValuesFiles, "values", []string{}, "Additional values files", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                valuesFlagGroup,
+		Type:                 cli.FlagTypeFile,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	// TODO(major): revise all flags in nelm/werf to make sure they are all parsed as it happens in
+	// Helm (see https://github.com/werf/nelm/issues/337)
+	if err := cli.AddFlag(cmd, &cfg.ValuesSet, "set", []string{}, "Set new values, where the key is the value path and the value is the value", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                valuesFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ValuesSetFile, "set-file", []string{}, "Set new values, where the key is the value path and the value is the path to the file with the value content", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                valuesFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ValuesSetJSON, "set-json", []string{}, "Set new values, where the key is the value path and the value is JSON", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                valuesFlagGroup,
+		NoSplitOnCommas:      true,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ValuesSetLiteral, "set-literal", []string{}, "Set new values, where the key is the value path and the value is the value. The value will always become a literal string", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                valuesFlagGroup,
+		NoSplitOnCommas:      true,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.ValuesSetString, "set-string", []string{}, "Set new values, where the key is the value path and the value is the value. The value will always become a string", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                valuesFlagGroup,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}

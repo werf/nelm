@@ -75,40 +75,6 @@ func CleanUnstruct(unstruct *unstructured.Unstructured, opts CleanUnstructOption
 	return unstructCopy
 }
 
-func filterAnnosOrLabels(annosOrLabels map[string]string, regexes []*regexp.Regexp) map[string]string {
-	filtered := map[string]string{}
-
-annoOrLabelLoop:
-	for key, val := range annosOrLabels {
-		for _, regex := range regexes {
-			if regex.MatchString(key) {
-				continue annoOrLabelLoop
-			}
-		}
-
-		filtered[key] = val
-	}
-
-	return filtered
-}
-
-func cleanRuntimeDataFromUnstruct(unstruct *unstructured.Unstructured) {
-	unstruct.SetResourceVersion("")
-	unstruct.SetGeneration(0)
-	unstruct.SetUID("")
-	unstruct.SetCreationTimestamp(v1.Time{})
-	unstruct.SetSelfLink("")
-	unstruct.SetFinalizers(nil)
-	delete(unstruct.Object, "status")
-
-	managedFields := unstruct.GetManagedFields()
-	for i := 0; i < len(managedFields); i++ {
-		managedFields[i].Time = nil
-	}
-
-	unstruct.SetManagedFields(managedFields)
-}
-
 func cleanNulls(field interface{}) interface{} {
 	switch f := field.(type) {
 	case map[string]interface{}:
@@ -134,4 +100,38 @@ func cleanNulls(field interface{}) interface{} {
 	default:
 		return f
 	}
+}
+
+func cleanRuntimeDataFromUnstruct(unstruct *unstructured.Unstructured) {
+	unstruct.SetResourceVersion("")
+	unstruct.SetGeneration(0)
+	unstruct.SetUID("")
+	unstruct.SetCreationTimestamp(v1.Time{})
+	unstruct.SetSelfLink("")
+	unstruct.SetFinalizers(nil)
+	delete(unstruct.Object, "status")
+
+	managedFields := unstruct.GetManagedFields()
+	for i := 0; i < len(managedFields); i++ {
+		managedFields[i].Time = nil
+	}
+
+	unstruct.SetManagedFields(managedFields)
+}
+
+func filterAnnosOrLabels(annosOrLabels map[string]string, regexes []*regexp.Regexp) map[string]string {
+	filtered := map[string]string{}
+
+annoOrLabelLoop:
+	for key, val := range annosOrLabels {
+		for _, regex := range regexes {
+			if regex.MatchString(key) {
+				continue annoOrLabelLoop
+			}
+		}
+
+		filtered[key] = val
+	}
+
+	return filtered
 }

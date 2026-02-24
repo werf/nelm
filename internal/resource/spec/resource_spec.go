@@ -23,12 +23,6 @@ type ResourceSpec struct {
 	StoreAs  common.StoreAs             `json:"storeAs"`
 }
 
-type ResourceSpecOptions struct {
-	FilePath                string
-	LegacyNoCleanNullFields bool // TODO(major): always clean
-	StoreAs                 common.StoreAs
-}
-
 func NewResourceSpec(unstruct *unstructured.Unstructured, releaseNamespace string, opts ResourceSpecOptions) *ResourceSpec {
 	unstruct = CleanUnstruct(unstruct, CleanUnstructOptions{
 		CleanNullFields: (featgate.FeatGatePreviewV2.Enabled() || featgate.FeatGateCleanNullFields.Enabled()) && !opts.LegacyNoCleanNullFields,
@@ -48,8 +42,8 @@ func NewResourceSpec(unstruct *unstructured.Unstructured, releaseNamespace strin
 
 	return &ResourceSpec{
 		ResourceMeta: NewResourceMetaFromUnstructured(unstruct, releaseNamespace, opts.FilePath),
-		Unstruct:     unstruct,
 		StoreAs:      opts.StoreAs,
+		Unstruct:     unstruct,
 	}
 }
 
@@ -77,43 +71,10 @@ func (s *ResourceSpec) SetLabels(labels map[string]string) {
 	s.Labels = labels
 }
 
-// Transforms ResourceSpecs, which means specs can be added, deleted, expanded (like Lists). If you
-// just need to modify specs, use patchers in BuildReleasableResourceSpecs instead.
-func BuildTransformedResourceSpecs(ctx context.Context, releaseNamespace string, resources []*ResourceSpec, transformers []ResourceTransformer) ([]*ResourceSpec, error) {
-	transformedResources := resources
-	for _, transformer := range transformers {
-		var transfResources []*ResourceSpec
-		for _, res := range transformedResources {
-			if matched, err := transformer.Match(ctx, &ResourceTransformerResourceInfo{
-				Obj: res.Unstruct,
-			}); err != nil {
-				return nil, fmt.Errorf("match resource by %q: %w", transformer.Type(), err)
-			} else if !matched {
-				transfResources = append(transfResources, res)
-				continue
-			}
-
-			newObjs, err := transformer.Transform(ctx, &ResourceTransformerResourceInfo{
-				Obj: res.Unstruct,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("transform resource by %q: %w", transformer.Type(), err)
-			}
-
-			for _, newObj := range newObjs {
-				newRes := NewResourceSpec(newObj, releaseNamespace, ResourceSpecOptions{
-					StoreAs:  res.StoreAs,
-					FilePath: res.FilePath,
-				})
-
-				transfResources = append(transfResources, newRes)
-			}
-		}
-
-		transformedResources = transfResources
-	}
-
-	return transformedResources, nil
+type ResourceSpecOptions struct {
+	FilePath                string
+	LegacyNoCleanNullFields bool // TODO(major): always clean
+	StoreAs                 common.StoreAs
 }
 
 // Patch ResourceSpecs to make them releasable, after which they can be saved into the Helm release.
@@ -155,8 +116,8 @@ func BuildReleasableResourceSpecs(ctx context.Context, releaseNamespace string, 
 			}
 
 			releasableRes = NewResourceSpec(patchedObj, releaseNamespace, ResourceSpecOptions{
-				StoreAs:  res.StoreAs,
 				FilePath: res.FilePath,
+				StoreAs:  res.StoreAs,
 			})
 		}
 
@@ -168,4 +129,43 @@ func BuildReleasableResourceSpecs(ctx context.Context, releaseNamespace string, 
 	})
 
 	return releasableResources, nil
+}
+
+// Transforms ResourceSpecs, which means specs can be added, deleted, expanded (like Lists). If you
+// just need to modify specs, use patchers in BuildReleasableResourceSpecs instead.
+func BuildTransformedResourceSpecs(ctx context.Context, releaseNamespace string, resources []*ResourceSpec, transformers []ResourceTransformer) ([]*ResourceSpec, error) {
+	transformedResources := resources
+	for _, transformer := range transformers {
+		var transfResources []*ResourceSpec
+		for _, res := range transformedResources {
+			if matched, err := transformer.Match(ctx, &ResourceTransformerResourceInfo{
+				Obj: res.Unstruct,
+			}); err != nil {
+				return nil, fmt.Errorf("match resource by %q: %w", transformer.Type(), err)
+			} else if !matched {
+				transfResources = append(transfResources, res)
+				continue
+			}
+
+			newObjs, err := transformer.Transform(ctx, &ResourceTransformerResourceInfo{
+				Obj: res.Unstruct,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("transform resource by %q: %w", transformer.Type(), err)
+			}
+
+			for _, newObj := range newObjs {
+				newRes := NewResourceSpec(newObj, releaseNamespace, ResourceSpecOptions{
+					FilePath: res.FilePath,
+					StoreAs:  res.StoreAs,
+				})
+
+				transfResources = append(transfResources, newRes)
+			}
+		}
+
+		transformedResources = transfResources
+	}
+
+	return transformedResources, nil
 }

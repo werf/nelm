@@ -34,9 +34,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const (
-	DefaultLegacyReleaseUninstallLogLevel = log.InfoLevel
-)
+const DefaultLegacyReleaseUninstallLogLevel = log.InfoLevel
 
 var legacyUninstallLock sync.Mutex
 
@@ -44,9 +42,9 @@ type LegacyReleaseUninstallOptions struct {
 	common.KubeConnectionOptions
 	common.TrackingOptions
 
-	NoDeleteHooks          bool
 	DeleteReleaseNamespace bool
 	NetworkParallelism     int
+	NoDeleteHooks          bool
 	ReleaseHistoryLimit    int
 	ReleaseStorageDriver   string
 	TempDirPath            string
@@ -263,6 +261,23 @@ func legacyReleaseUninstall(ctx context.Context, releaseName, releaseNamespace s
 	return nil
 }
 
+func initKubedog(ctx context.Context) error {
+	flag.CommandLine.Parse([]string{})
+
+	display.SetOut(os.Stdout)
+	display.SetErr(os.Stderr)
+
+	if err := silenceKlog(ctx); err != nil {
+		return fmt.Errorf("silence klog: %w", err)
+	}
+
+	if err := silenceKlogV2(ctx); err != nil {
+		return fmt.Errorf("silence klog v2: %w", err)
+	}
+
+	return nil
+}
+
 func applyLegacyReleaseUninstallOptionsDefaults(opts LegacyReleaseUninstallOptions, currentDir, homeDir string) (LegacyReleaseUninstallOptions, error) {
 	var err error
 	if opts.TempDirPath == "" {
@@ -290,23 +305,6 @@ func applyLegacyReleaseUninstallOptionsDefaults(opts LegacyReleaseUninstallOptio
 	}
 
 	return opts, nil
-}
-
-func initKubedog(ctx context.Context) error {
-	flag.CommandLine.Parse([]string{})
-
-	display.SetOut(os.Stdout)
-	display.SetErr(os.Stderr)
-
-	if err := silenceKlog(ctx); err != nil {
-		return fmt.Errorf("silence klog: %w", err)
-	}
-
-	if err := silenceKlogV2(ctx); err != nil {
-		return fmt.Errorf("silence klog v2: %w", err)
-	}
-
-	return nil
 }
 
 func silenceKlog(ctx context.Context) error {

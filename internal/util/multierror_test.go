@@ -8,53 +8,24 @@ import (
 	"github.com/werf/nelm/internal/util"
 )
 
-func TestMultiError_Empty(t *testing.T) {
-	m := &util.MultiError{}
-
-	if m.HasErrors() {
-		t.Error("expected HasErrors() to be false for empty MultiError")
-	}
-
-	if m.OrNilIfNoErrs() != nil {
-		t.Error("expected OrNilIfNoErrs() to return nil for empty MultiError")
-	}
-
-	if m.Error() != "" {
-		t.Errorf("expected empty string, got %q", m.Error())
-	}
+type customError struct {
+	Code int
 }
 
-func TestMultiError_SingleError(t *testing.T) {
-	m := &util.MultiError{}
-	m.Add(errors.New("single error"))
-
-	if !m.HasErrors() {
-		t.Error("expected HasErrors() to be true")
-	}
-
-	if m.OrNilIfNoErrs() == nil {
-		t.Error("expected OrNilIfNoErrs() to return non-nil")
-	}
-
-	expected := "single error"
-	if m.Error() != expected {
-		t.Errorf("expected %q, got %q", expected, m.Error())
-	}
+func (e *customError) Error() string {
+	return fmt.Sprintf("custom error: %d", e.Code)
 }
 
-func TestMultiError_MultipleErrors(t *testing.T) {
-	m := &util.MultiError{}
-	m.Add(errors.New("error one"))
-	m.Add(errors.New("error two"))
-	m.Add(errors.New("error three"))
+func TestMultiError_AddMultiError(t *testing.T) {
+	inner := &util.MultiError{}
+	inner.Add(errors.New("inner error"))
 
-	expected := `3 errors occurred:
-  * error one
-  * error two
-  * error three`
+	outer := &util.MultiError{}
+	outer.Add(inner)
 
-	if m.Error() != expected {
-		t.Errorf("expected:\n%s\n\ngot:\n%s", expected, m.Error())
+	expected := "inner error"
+	if outer.Error() != expected {
+		t.Errorf("expected %q, got %q", expected, outer.Error())
 	}
 }
 
@@ -74,33 +45,12 @@ func TestMultiError_AddNil(t *testing.T) {
 	}
 }
 
-func TestMultiError_AddMultiError(t *testing.T) {
-	inner := &util.MultiError{}
-	inner.Add(errors.New("inner error"))
+func TestMultiError_ChainedAdd(t *testing.T) {
+	m := &util.MultiError{}
+	m.Add(errors.New("one")).Add(errors.New("two")).Add(errors.New("three"))
 
-	outer := &util.MultiError{}
-	outer.Add(inner)
-
-	expected := "inner error"
-	if outer.Error() != expected {
-		t.Errorf("expected %q, got %q", expected, outer.Error())
-	}
-}
-
-func TestMultiError_NestedWithPrefix(t *testing.T) {
-	inner := &util.MultiError{}
-	inner.Add(errors.New("field1: invalid"))
-	inner.Add(errors.New("field2: required"))
-
-	outer := &util.MultiError{}
-	outer.Add(fmt.Errorf("validate Resource/foo: %w", inner))
-
-	expected := `2 errors occurred:
-  * validate Resource/foo: field1: invalid
-  * validate Resource/foo: field2: required`
-
-	if outer.Error() != expected {
-		t.Errorf("expected:\n%s\n\ngot:\n%s", expected, outer.Error())
+	if len(m.Unwrap()) != 3 {
+		t.Errorf("expected 3 errors, got %d", len(m.Unwrap()))
 	}
 }
 
@@ -117,6 +67,49 @@ func TestMultiError_DeeplyNested(t *testing.T) {
 	expected := "level1: level2: deep error"
 	if level1.Error() != expected {
 		t.Errorf("expected %q, got %q", expected, level1.Error())
+	}
+}
+
+func TestMultiError_Empty(t *testing.T) {
+	m := &util.MultiError{}
+
+	if m.HasErrors() {
+		t.Error("expected HasErrors() to be false for empty MultiError")
+	}
+
+	if m.OrNilIfNoErrs() != nil {
+		t.Error("expected OrNilIfNoErrs() to return nil for empty MultiError")
+	}
+
+	if m.Error() != "" {
+		t.Errorf("expected empty string, got %q", m.Error())
+	}
+}
+
+func TestMultiError_ErrorsAs(t *testing.T) {
+	custom := &customError{Code: 42}
+
+	m := &util.MultiError{}
+	m.Add(fmt.Errorf("wrapped: %w", custom))
+
+	var target *customError
+	if !errors.As(m, &target) {
+		t.Error("expected errors.As to find custom error")
+	}
+
+	if target.Code != 42 {
+		t.Errorf("expected Code 42, got %d", target.Code)
+	}
+}
+
+func TestMultiError_ErrorsIs(t *testing.T) {
+	sentinel := errors.New("sentinel")
+
+	m := &util.MultiError{}
+	m.Add(fmt.Errorf("wrapped: %w", sentinel))
+
+	if !errors.Is(m, sentinel) {
+		t.Error("expected errors.Is to find sentinel error")
 	}
 }
 
@@ -141,63 +134,34 @@ func TestMultiError_MixedNestedAndRegular(t *testing.T) {
 	}
 }
 
-func TestMultiError_Unwrap(t *testing.T) {
+func TestMultiError_MultipleErrors(t *testing.T) {
 	m := &util.MultiError{}
-	err1 := errors.New("error 1")
-	err2 := errors.New("error 2")
-	m.Add(err1, err2)
+	m.Add(errors.New("error one"))
+	m.Add(errors.New("error two"))
+	m.Add(errors.New("error three"))
 
-	unwrapped := m.Unwrap()
-	if len(unwrapped) != 2 {
-		t.Errorf("expected 2 errors, got %d", len(unwrapped))
-	}
+	expected := `3 errors occurred:
+  * error one
+  * error two
+  * error three`
 
-	if unwrapped[0] != err1 || unwrapped[1] != err2 {
-		t.Error("unwrapped errors don't match added errors")
-	}
-}
-
-func TestMultiError_ErrorsIs(t *testing.T) {
-	sentinel := errors.New("sentinel")
-
-	m := &util.MultiError{}
-	m.Add(fmt.Errorf("wrapped: %w", sentinel))
-
-	if !errors.Is(m, sentinel) {
-		t.Error("expected errors.Is to find sentinel error")
+	if m.Error() != expected {
+		t.Errorf("expected:\n%s\n\ngot:\n%s", expected, m.Error())
 	}
 }
 
-type customError struct {
-	Code int
-}
+func TestMultiError_MultipleWrappersInChain(t *testing.T) {
+	inner := &util.MultiError{}
+	inner.Add(errors.New("base error"))
 
-func (e *customError) Error() string {
-	return fmt.Sprintf("custom error: %d", e.Code)
-}
+	wrapped := fmt.Errorf("wrapper1: %w", fmt.Errorf("wrapper2: %w", inner))
 
-func TestMultiError_ErrorsAs(t *testing.T) {
-	custom := &customError{Code: 42}
+	outer := &util.MultiError{}
+	outer.Add(wrapped)
 
-	m := &util.MultiError{}
-	m.Add(fmt.Errorf("wrapped: %w", custom))
-
-	var target *customError
-	if !errors.As(m, &target) {
-		t.Error("expected errors.As to find custom error")
-	}
-
-	if target.Code != 42 {
-		t.Errorf("expected Code 42, got %d", target.Code)
-	}
-}
-
-func TestMultiError_ChainedAdd(t *testing.T) {
-	m := &util.MultiError{}
-	m.Add(errors.New("one")).Add(errors.New("two")).Add(errors.New("three"))
-
-	if len(m.Unwrap()) != 3 {
-		t.Errorf("expected 3 errors, got %d", len(m.Unwrap()))
+	expected := "wrapper1: wrapper2: base error"
+	if outer.Error() != expected {
+		t.Errorf("expected %q, got %q", expected, outer.Error())
 	}
 }
 
@@ -220,18 +184,20 @@ func TestMultiError_NestedMultiErrorDirectlyAdded(t *testing.T) {
 	}
 }
 
-func TestMultiError_MultipleWrappersInChain(t *testing.T) {
+func TestMultiError_NestedWithPrefix(t *testing.T) {
 	inner := &util.MultiError{}
-	inner.Add(errors.New("base error"))
-
-	wrapped := fmt.Errorf("wrapper1: %w", fmt.Errorf("wrapper2: %w", inner))
+	inner.Add(errors.New("field1: invalid"))
+	inner.Add(errors.New("field2: required"))
 
 	outer := &util.MultiError{}
-	outer.Add(wrapped)
+	outer.Add(fmt.Errorf("validate Resource/foo: %w", inner))
 
-	expected := "wrapper1: wrapper2: base error"
+	expected := `2 errors occurred:
+  * validate Resource/foo: field1: invalid
+  * validate Resource/foo: field2: required`
+
 	if outer.Error() != expected {
-		t.Errorf("expected %q, got %q", expected, outer.Error())
+		t.Errorf("expected:\n%s\n\ngot:\n%s", expected, outer.Error())
 	}
 }
 
@@ -251,5 +217,39 @@ func TestMultiError_RealWorldValidationScenario(t *testing.T) {
 
 	if validationErrs.Error() != expected {
 		t.Errorf("expected:\n%s\n\ngot:\n%s", expected, validationErrs.Error())
+	}
+}
+
+func TestMultiError_SingleError(t *testing.T) {
+	m := &util.MultiError{}
+	m.Add(errors.New("single error"))
+
+	if !m.HasErrors() {
+		t.Error("expected HasErrors() to be true")
+	}
+
+	if m.OrNilIfNoErrs() == nil {
+		t.Error("expected OrNilIfNoErrs() to return non-nil")
+	}
+
+	expected := "single error"
+	if m.Error() != expected {
+		t.Errorf("expected %q, got %q", expected, m.Error())
+	}
+}
+
+func TestMultiError_Unwrap(t *testing.T) {
+	m := &util.MultiError{}
+	err1 := errors.New("error 1")
+	err2 := errors.New("error 2")
+	m.Add(err1, err2)
+
+	unwrapped := m.Unwrap()
+	if len(unwrapped) != 2 {
+		t.Errorf("expected 2 errors, got %d", len(unwrapped))
+	}
+
+	if unwrapped[0] != err1 || unwrapped[1] != err2 {
+		t.Error("unwrapped errors don't match added errors")
 	}
 }

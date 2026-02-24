@@ -8,13 +8,13 @@ import (
 	"k8s.io/client-go/util/homedir"
 )
 
+func init() {
+	genericclioptions.ErrEmptyConfig = clientcmd.NewEmptyConfigError("missing or incomplete kubeconfig")
+}
+
 var (
 	DefaultKubectlCacheDir      = filepath.Join(homedir.HomeDir(), ".kube", "cache")
 	KubectlCacheDirEnv          = "KUBECACHEDIR"
 	KubectlHTTPCacheSubdir      = "http"
 	KubectlDiscoveryCacheSubdir = "discovery"
 )
-
-func init() {
-	genericclioptions.ErrEmptyConfig = clientcmd.NewEmptyConfigError("missing or incomplete kubeconfig")
-}

@@ -4,6 +4,26 @@ import (
 	"context"
 )
 
+const (
+	LogColorModeAuto = "auto"
+	LogColorModeOff  = "off"
+	LogColorModeOn   = "on"
+
+	SilentLevel  Level = "silent"
+	ErrorLevel   Level = "error"
+	WarningLevel Level = "warning"
+	InfoLevel    Level = "info"
+	DebugLevel   Level = "debug"
+	TraceLevel   Level = "trace"
+)
+
+var (
+	Levels        = []Level{SilentLevel, ErrorLevel, WarningLevel, InfoLevel, DebugLevel, TraceLevel}
+	LogColorModes = []string{LogColorModeAuto, LogColorModeOff, LogColorModeOn}
+)
+
+type Level string
+
 type Logger interface {
 	Trace(ctx context.Context, format string, a ...interface{})
 	TraceStruct(ctx context.Context, obj interface{}, format string, a ...interface{})
@@ -29,30 +49,9 @@ type Logger interface {
 	AcceptLevel(ctx context.Context, lvl Level) bool
 }
 
-type Level string
-
-const (
-	SilentLevel  Level = "silent"
-	ErrorLevel   Level = "error"
-	WarningLevel Level = "warning"
-	InfoLevel    Level = "info"
-	DebugLevel   Level = "debug"
-	TraceLevel   Level = "trace"
-)
-
-var Levels = []Level{SilentLevel, ErrorLevel, WarningLevel, InfoLevel, DebugLevel, TraceLevel}
-
 type BlockOptions struct {
 	BlockTitle string
 }
-
-const (
-	LogColorModeAuto = "auto"
-	LogColorModeOff  = "off"
-	LogColorModeOn   = "on"
-)
-
-var LogColorModes = []string{LogColorModeAuto, LogColorModeOff, LogColorModeOn}
 
 type RestyLogger struct {
 	context context.Context
@@ -62,18 +61,18 @@ func NewRestyLogger(ctx context.Context) *RestyLogger {
 	return &RestyLogger{context: ctx}
 }
 
-func (l RestyLogger) Errorf(format string, v ...interface{}) {
-	Default.Debug(l.context, format, v...)
-}
-
-func (l RestyLogger) Warnf(format string, v ...interface{}) {
-	Default.Debug(l.context, format, v...)
-}
-
 func (l RestyLogger) Debugf(format string, v ...interface{}) {
 	Default.Trace(l.context, format, v...)
 }
 
+func (l RestyLogger) Errorf(format string, v ...interface{}) {
+	Default.Debug(l.context, format, v...)
+}
+
 func (l RestyLogger) Infof(format string, v ...interface{}) {
+	Default.Debug(l.context, format, v...)
+}
+
+func (l RestyLogger) Warnf(format string, v ...interface{}) {
 	Default.Debug(l.context, format, v...)
 }

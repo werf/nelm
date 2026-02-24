@@ -12,9 +12,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const (
-	DefaultSecretValuesFileEditLogLevel = log.ErrorLevel
-)
+const DefaultSecretValuesFileEditLogLevel = log.ErrorLevel
 
 type SecretValuesFileEditOptions struct {
 	SecretKey     string

@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	DefaultReleaseGetOutputFormat = common.OutputFormatYAML
 	DefaultReleaseGetLogLevel     = log.ErrorLevel
+	DefaultReleaseGetOutputFormat = common.OutputFormatYAML
 )
 
 type ReleaseGetOptions struct {
@@ -57,6 +57,38 @@ type ReleaseGetOptions struct {
 	// TempDirPath is the directory for temporary files during the operation.
 	// A temporary directory is created automatically if not specified.
 	TempDirPath string
+}
+
+type ReleaseGetResultV1 struct {
+	APIVersion string                   `json:"apiVersion"`
+	Release    *ReleaseGetResultRelease `json:"release"`
+	Chart      *ReleaseGetResultChart   `json:"chart"`
+	Notes      string                   `json:"notes,omitempty"`
+	Values     map[string]interface{}   `json:"values,omitempty"`
+	// TODO(major): Join Hooks and Resources together as ResourceSpecs?
+	Hooks     []map[string]interface{} `json:"hooks,omitempty"`
+	Resources []map[string]interface{} `json:"resources,omitempty"`
+}
+
+type ReleaseGetResultRelease struct {
+	Name          string                      `json:"name"`
+	Namespace     string                      `json:"namespace"`
+	Revision      int                         `json:"revision"`
+	Status        helmrelease.Status          `json:"status"`
+	DeployedAt    *ReleaseGetResultDeployedAt `json:"deployedAt"`
+	Annotations   map[string]string           `json:"annotations"`
+	StorageLabels map[string]string           `json:"storageLabels"`
+}
+
+type ReleaseGetResultDeployedAt struct {
+	Human string `json:"human"`
+	Unix  int    `json:"unix"`
+}
+
+type ReleaseGetResultChart struct {
+	Name       string `json:"name"`
+	Version    string `json:"version"`
+	AppVersion string `json:"appVersion"`
 }
 
 // Retrieves detailed information about the Helm release from the cluster.
@@ -140,6 +172,12 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 
 	result := &ReleaseGetResultV1{
 		APIVersion: "v1",
+		Chart: &ReleaseGetResultChart{
+			Name:       rel.Chart.Name(),
+			Version:    rel.Chart.Metadata.Version,
+			AppVersion: rel.Chart.Metadata.AppVersion,
+		},
+		Notes: rel.Info.Notes,
 		Release: &ReleaseGetResultRelease{
 			Name:      rel.Name,
 			Namespace: rel.Namespace,
@@ -152,12 +190,6 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 			Annotations:   rel.Info.Annotations,
 			StorageLabels: rel.Labels,
 		},
-		Chart: &ReleaseGetResultChart{
-			Name:       rel.Chart.Name(),
-			Version:    rel.Chart.Metadata.Version,
-			AppVersion: rel.Chart.Metadata.AppVersion,
-		},
-		Notes:  rel.Info.Notes,
 		Values: values,
 	}
 
@@ -244,36 +276,4 @@ func applyReleaseGetOptionsDefaults(opts ReleaseGetOptions, homeDir string) (Rel
 	}
 
 	return opts, nil
-}
-
-type ReleaseGetResultV1 struct {
-	APIVersion string                   `json:"apiVersion"`
-	Release    *ReleaseGetResultRelease `json:"release"`
-	Chart      *ReleaseGetResultChart   `json:"chart"`
-	Notes      string                   `json:"notes,omitempty"`
-	Values     map[string]interface{}   `json:"values,omitempty"`
-	// TODO(major): Join Hooks and Resources together as ResourceSpecs?
-	Hooks     []map[string]interface{} `json:"hooks,omitempty"`
-	Resources []map[string]interface{} `json:"resources,omitempty"`
-}
-
-type ReleaseGetResultRelease struct {
-	Name          string                      `json:"name"`
-	Namespace     string                      `json:"namespace"`
-	Revision      int                         `json:"revision"`
-	Status        helmrelease.Status          `json:"status"`
-	DeployedAt    *ReleaseGetResultDeployedAt `json:"deployedAt"`
-	Annotations   map[string]string           `json:"annotations"`
-	StorageLabels map[string]string           `json:"storageLabels"`
-}
-
-type ReleaseGetResultDeployedAt struct {
-	Human string `json:"human"`
-	Unix  int    `json:"unix"`
-}
-
-type ReleaseGetResultChart struct {
-	Name       string `json:"name"`
-	Version    string `json:"version"`
-	AppVersion string `json:"appVersion"`
 }

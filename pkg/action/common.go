@@ -34,9 +34,7 @@ func init() {
 	styles.Register(style)
 }
 
-const (
-	syntaxHighlightThemeName = "solarized-dark-customized"
-)
+const syntaxHighlightThemeName = "solarized-dark-customized"
 
 var syntaxHighlightTheme = fmt.Sprintf(`
 <style name=%q>
@@ -87,32 +85,34 @@ type releaseReportV3 struct {
 	FailedOperations    []string           `json:"failedOperations,omitempty"`
 }
 
-func writeWithSyntaxHighlight(outStream io.Writer, text, lang string, colorLevel terminfo.ColorLevel) error {
-	if colorLevel == color.LevelNo {
-		if _, err := outStream.Write([]byte(text)); err != nil {
-			return fmt.Errorf("write to output: %w", err)
-		}
+type runFailureInstallPlanOptions struct {
+	common.TrackingOptions
 
-		return nil
+	LegacyProgressReporter *plan.LegacyProgressReporter
+	NetworkParallelism     int
+}
+
+type runFailurePlanResult struct {
+	CanceledResourceOps  []*plan.Operation
+	CompletedResourceOps []*plan.Operation
+	FailedResourceOps    []*plan.Operation
+}
+
+func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr error, installGraphPath, tempDirPath, fallbackGraphFilename string) {
+	var graphPath string
+	if installGraphPath != "" {
+		graphPath = installGraphPath
+	} else {
+		graphPath = filepath.Join(tempDirPath, fallbackGraphFilename)
 	}
 
-	var formatterName string
-	switch colorLevel {
-	case color.Level16:
-		formatterName = "terminal16"
-	case color.Level256:
-		formatterName = "terminal256"
-	case color.LevelRgb:
-		formatterName = "terminal16m"
-	default:
-		panic(fmt.Sprintf("unexpected color level %d", colorLevel))
+	if err := savePlanAsDot(installPlan, graphPath); err != nil {
+		log.Default.Error(ctx, "Error: save plan graph: %s", err)
+
+		return
 	}
 
-	if err := quick.Highlight(outStream, text, lang, formatterName, syntaxHighlightThemeName); err != nil {
-		return fmt.Errorf("highlight and write to output: %w", err)
-	}
-
-	return nil
+	log.Default.Warn(ctx, "Plan graph saved to %q for debugging", graphPath)
 }
 
 func printNotes(ctx context.Context, notes string) {
@@ -125,19 +125,6 @@ func printNotes(ctx context.Context, notes string) {
 	}, func() {
 		log.Default.Info(ctx, notes)
 	})
-}
-
-func saveReport(reportPath string, report *releaseReportV3) error {
-	reportByte, err := json.MarshalIndent(report, "", "\t")
-	if err != nil {
-		return fmt.Errorf("marshal report: %w", err)
-	}
-
-	if err := os.WriteFile(reportPath, reportByte, 0o600); err != nil {
-		return fmt.Errorf("write report: %w", err)
-	}
-
-	return nil
 }
 
 func printReport(ctx context.Context, report *releaseReportV3) {
@@ -176,32 +163,7 @@ func printReport(ctx context.Context, report *releaseReportV3) {
 	}
 }
 
-type runFailureInstallPlanOptions struct {
-	common.TrackingOptions
-
-	LegacyProgressReporter *plan.LegacyProgressReporter
-	NetworkParallelism     int
-}
-
-type runFailurePlanResult struct {
-	CompletedResourceOps []*plan.Operation
-	CanceledResourceOps  []*plan.Operation
-	FailedResourceOps    []*plan.Operation
-}
-
-func runFailurePlan(
-	ctx context.Context,
-	releaseNamespace string,
-	failedPlan *plan.Plan,
-	installableInfos []*plan.InstallableResourceInfo,
-	releaseInfos []*plan.ReleaseInfo,
-	taskStore *kdutil.Concurrent[*statestore.TaskStore],
-	logStore *kdutil.Concurrent[*logstore.LogStore],
-	informerFactory *kdutil.Concurrent[*informer.InformerFactory],
-	history *release.History,
-	clientFactory *kube.ClientFactory,
-	opts runFailureInstallPlanOptions,
-) (result *runFailurePlanResult, nonCritErrs, critErrs *util.MultiError) {
+func runFailurePlan(ctx context.Context, releaseNamespace string, failedPlan *plan.Plan, installableInfos []*plan.InstallableResourceInfo, releaseInfos []*plan.ReleaseInfo, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history *release.History, clientFactory *kube.ClientFactory, opts runFailureInstallPlanOptions) (result *runFailurePlanResult, nonCritErrs, critErrs *util.MultiError) {
 	critErrs = &util.MultiError{}
 	nonCritErrs = &util.MultiError{}
 
@@ -252,8 +214,8 @@ func runFailurePlan(
 	})
 
 	return &runFailurePlanResult{
-		CompletedResourceOps: completedResourceOps,
 		CanceledResourceOps:  canceledResourceOps,
+		CompletedResourceOps: completedResourceOps,
 		FailedResourceOps:    failedResourceOps,
 	}, nonCritErrs, critErrs
 }
@@ -271,18 +233,43 @@ func savePlanAsDot(plan *plan.Plan, path string) error {
 	return nil
 }
 
-func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr error, installGraphPath, tempDirPath, fallbackGraphFilename string) {
-	var graphPath string
-	if installGraphPath != "" {
-		graphPath = installGraphPath
-	} else {
-		graphPath = filepath.Join(tempDirPath, fallbackGraphFilename)
+func saveReport(reportPath string, report *releaseReportV3) error {
+	reportByte, err := json.MarshalIndent(report, "", "\t")
+	if err != nil {
+		return fmt.Errorf("marshal report: %w", err)
 	}
 
-	if err := savePlanAsDot(installPlan, graphPath); err != nil {
-		log.Default.Error(ctx, "Error: save plan graph: %s", err)
-		return
+	if err := os.WriteFile(reportPath, reportByte, 0o600); err != nil {
+		return fmt.Errorf("write report: %w", err)
 	}
 
-	log.Default.Warn(ctx, "Plan graph saved to %q for debugging", graphPath)
+	return nil
+}
+
+func writeWithSyntaxHighlight(outStream io.Writer, text, lang string, colorLevel terminfo.ColorLevel) error {
+	if colorLevel == color.LevelNo {
+		if _, err := outStream.Write([]byte(text)); err != nil {
+			return fmt.Errorf("write to output: %w", err)
+		}
+
+		return nil
+	}
+
+	var formatterName string
+	switch colorLevel {
+	case color.Level16:
+		formatterName = "terminal16"
+	case color.Level256:
+		formatterName = "terminal256"
+	case color.LevelRgb:
+		formatterName = "terminal16m"
+	default:
+		panic(fmt.Sprintf("unexpected color level %d", colorLevel))
+	}
+
+	if err := quick.Highlight(outStream, text, lang, formatterName, syntaxHighlightThemeName); err != nil {
+		return fmt.Errorf("highlight and write to output: %w", err)
+	}
+
+	return nil
 }
