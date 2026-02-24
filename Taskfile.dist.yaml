@@ -59,7 +59,7 @@ tasks:
   _wormatter:
     internal: true
     cmds:
-      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work -w /work ghcr.io/werf/wormatter:1.3.4 {{if eq .onlyLint "true"}}-c{{end}} {{.paths | default "internal/ cmd/ pkg/"}}
+      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work -w /work ghcr.io/werf/wormatter:1.4.0 {{if eq .onlyLint "true"}}-c{{end}} {{.paths | default "internal/ cmd/ pkg/"}}
     vars:
       onlyLint: '{{.onlyLint | default "false"}}'
       paths: "{{.paths}}"
