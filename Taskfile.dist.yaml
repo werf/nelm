@@ -59,7 +59,7 @@ tasks:
   _wormatter:
     internal: true
     cmds:
-      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work -w /work ghcr.io/werf/wormatter:1.3.2 {{if eq .onlyLint "true"}}-c{{end}} {{.paths | default "internal/ cmd/ pkg/"}}
+      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work -w /work ghcr.io/werf/wormatter:1.3.4 {{if eq .onlyLint "true"}}-c{{end}} {{.paths | default "internal/ cmd/ pkg/"}}
     vars:
       onlyLint: '{{.onlyLint | default "false"}}'
       paths: "{{.paths}}"
@@ -246,20 +246,9 @@ tasks:
     desc: 'Run all code formatters. Important vars: "paths".'
     run: once
     cmds:
-      - task: format:gci
-      - task: format:gofumpt
+      - task: format:wormatter
       - task: format:prettier
       - task: format:golangci-lint
-
-  format:gci:
-    desc: 'Format code with gci. Important vars: "paths".'
-    cmds:
-      - gci write -s Standard -s Default -s 'Prefix({{slice (splitList "/" .package) 0 2 | join "/"}})' {{.CLI_ARGS}} {{.paths | default "internal/ pkg/ cmd/"}}
-
-  format:gofumpt:
-    desc: 'Format code with gofumpt. Important vars: "paths".'
-    cmds:
-      - gofumpt -extra -w {{.CLI_ARGS}} {{.paths | default "internal/ cmd/ pkg/"}}
 
   format:wormatter:
     desc: 'Format with wormatter. Important vars: "paths".'
@@ -312,8 +301,9 @@ tasks:
   lint:
     desc: 'Run all linters in parallel. Important vars: "paths".'
     deps:
-      - lint:golangci-lint
+      - lint:wormatter
       - lint:prettier
+      - lint:golangci-lint
 
   lint:golangci-lint:
     desc: 'Lint with golangci-lint. Important vars: "paths".'
@@ -408,15 +398,8 @@ tasks:
   deps:install:
     desc: "Install all dependencies"
     deps:
-      - deps:install:gci
       - deps:install:ginkgo
-      - deps:install:gofumpt
       - deps:install:golangci-lint
-
-  deps:install:gci:
-    desc: "Install gci binary."
-    cmds:
-      - go install github.com/daixiang0/gci@v0.13.5
 
   deps:install:ginkgo:
     desc: "Install ginkgo binary."
@@ -424,11 +407,6 @@ tasks:
       - |
         version="$(go list -m -f '{{ printf `{{ .Version }}` }}' github.com/onsi/ginkgo/v2)"
         go install {{.CLI_ARGS}} github.com/onsi/ginkgo/v2/ginkgo@${version}
-
-  deps:install:gofumpt:
-    desc: "Install gofumpt binary."
-    cmds:
-      - go install mvdan.cc/gofumpt@v0.7.0
 
   deps:install:golangci-lint:
     desc: "Install golangci-lint binary."
