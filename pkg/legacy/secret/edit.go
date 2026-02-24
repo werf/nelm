@@ -22,12 +22,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-func SecretEdit(
-	ctx context.Context,
-	m *secrets_manager.SecretsManager,
-	workingDir, tempDir, filePath string,
-	values bool,
-) error {
+func SecretEdit(ctx context.Context, m *secrets_manager.SecretsManager, workingDir, tempDir, filePath string, values bool) error {
 	var encoder *secret.YamlEncoder
 	if enc, err := m.GetYamlEncoder(ctx, workingDir, false); err != nil {
 		return err
@@ -124,42 +119,6 @@ func SecretEdit(
 	return nil
 }
 
-func readEditedFile(filePath string, values bool, encoder *secret.YamlEncoder) (
-	[]byte,
-	[]byte,
-	error,
-) {
-	var data, encodedData []byte
-
-	exist, err := util.FileExists(filePath)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if exist {
-		encodedData, err = ioutil.ReadFile(filePath)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		encodedData = bytes.TrimSpace(encodedData)
-
-		if values {
-			data, err = encoder.DecryptYamlData(encodedData)
-			if err != nil {
-				return nil, nil, err
-			}
-		} else {
-			data, err = encoder.Decrypt(encodedData)
-			if err != nil {
-				return nil, nil, err
-			}
-		}
-	}
-
-	return data, encodedData, nil
-}
-
 func askForConfirmation() (bool, error) {
 	r := os.Stdin
 
@@ -196,6 +155,7 @@ func createTmpEditedFile(filePath string, data []byte) error {
 	if err := SaveGeneratedData(filePath, data); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -205,6 +165,7 @@ func editor() (string, []string, error) {
 	editorValue := os.Getenv("EDITOR")
 	if editorValue != "" {
 		editorFields := strings.Fields(editorValue)
+
 		return editorFields[0], editorFields[1:], nil
 	}
 
@@ -224,4 +185,36 @@ func editor() (string, []string, error) {
 	}
 
 	return "", editorArgs, fmt.Errorf("editor not detected")
+}
+
+func readEditedFile(filePath string, values bool, encoder *secret.YamlEncoder) ([]byte, []byte, error) {
+	var data, encodedData []byte
+
+	exist, err := util.FileExists(filePath)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if exist {
+		encodedData, err = ioutil.ReadFile(filePath)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		encodedData = bytes.TrimSpace(encodedData)
+
+		if values {
+			data, err = encoder.DecryptYamlData(encodedData)
+			if err != nil {
+				return nil, nil, err
+			}
+		} else {
+			data, err = encoder.Decrypt(encodedData)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+	}
+
+	return data, encodedData, nil
 }

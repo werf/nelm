@@ -91,101 +91,6 @@ func loadTSFilesForVendorBundle(ctx context.Context, absChartPath string) (map[s
 	return loadTSFilesFromFilesystem(ctx, absChartPath)
 }
 
-func loadTSFilesFromGiterminism(ctx context.Context, absChartPath string) (map[string][]byte, error) {
-	isDir, err := file.ChartFileReader.ChartIsDir(absChartPath)
-	if err != nil {
-		return nil, fmt.Errorf("check directory %s: %w", absChartPath, err)
-	}
-
-	if !isDir {
-		log.Default.Debug(ctx, "Skipping vendor bundle: %s is not a directory", absChartPath)
-
-		return map[string][]byte{}, nil
-	}
-
-	chartFiles, err := file.ChartFileReader.LoadChartDir(ctx, absChartPath)
-	if err != nil {
-		return nil, fmt.Errorf("load chart dir: %w", err)
-	}
-
-	tsFiles := filterTSFiles(chartFiles)
-	if len(tsFiles) == 0 {
-		log.Default.Debug(ctx, "Skipping vendor bundle: no %s directory", common.ChartTSSourceDir)
-
-		return tsFiles, nil
-	}
-
-	return tsFiles, nil
-}
-
-func loadTSFilesFromFilesystem(ctx context.Context, absChartPath string) (map[string][]byte, error) {
-	stat, err := os.Stat(absChartPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			log.Default.Debug(ctx, "Skipping vendor bundle: chart path %s does not exist", absChartPath)
-
-			return map[string][]byte{}, nil
-		}
-
-		return nil, fmt.Errorf("stat %s: %w", absChartPath, err)
-	}
-
-	if !stat.IsDir() {
-		return nil, fmt.Errorf("build vendor bundle to dir: %s is not a directory", absChartPath)
-	}
-
-	tsDir := filepath.Join(absChartPath, common.ChartTSSourceDir)
-	if _, err := os.Stat(tsDir); err != nil {
-		if os.IsNotExist(err) {
-			log.Default.Debug(ctx, "Skipping vendor bundle: no %s directory", common.ChartTSSourceDir)
-
-			return map[string][]byte{}, nil
-		}
-
-		return nil, fmt.Errorf("stat %s: %w", tsDir, err)
-	}
-
-	tsFiles, err := loadTSFilesFromDir(tsDir)
-	if err != nil {
-		return nil, fmt.Errorf("load ts files from %s: %w", tsDir, err)
-	}
-
-	return tsFiles, nil
-}
-
-func loadTSFilesFromDir(tsDir string) (map[string][]byte, error) {
-	result := make(map[string][]byte)
-
-	err := filepath.WalkDir(tsDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if d.IsDir() {
-			return nil
-		}
-
-		relPath, err := filepath.Rel(tsDir, path)
-		if err != nil {
-			return fmt.Errorf("get relative path: %w", err)
-		}
-
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("read file %s: %w", path, err)
-		}
-
-		result[relPath] = data
-
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("walk dir %s: %w", tsDir, err)
-	}
-
-	return result, nil
-}
-
 func resolveVendorBundle(ctx context.Context, files []*helmchart.File) (string, []string, error) {
 	// Check if node_modules exists in files
 	hasNodeModules := false
@@ -245,6 +150,41 @@ func buildVendorBundleFromFiles(ctx context.Context, files map[string][]byte, en
 	return bundle, packages, nil
 }
 
+func loadTSFilesFromFilesystem(ctx context.Context, absChartPath string) (map[string][]byte, error) {
+	stat, err := os.Stat(absChartPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Default.Debug(ctx, "Skipping vendor bundle: chart path %s does not exist", absChartPath)
+
+			return map[string][]byte{}, nil
+		}
+
+		return nil, fmt.Errorf("stat %s: %w", absChartPath, err)
+	}
+
+	if !stat.IsDir() {
+		return nil, fmt.Errorf("build vendor bundle to dir: %s is not a directory", absChartPath)
+	}
+
+	tsDir := filepath.Join(absChartPath, common.ChartTSSourceDir)
+	if _, err := os.Stat(tsDir); err != nil {
+		if os.IsNotExist(err) {
+			log.Default.Debug(ctx, "Skipping vendor bundle: no %s directory", common.ChartTSSourceDir)
+
+			return map[string][]byte{}, nil
+		}
+
+		return nil, fmt.Errorf("stat %s: %w", tsDir, err)
+	}
+
+	tsFiles, err := loadTSFilesFromDir(tsDir)
+	if err != nil {
+		return nil, fmt.Errorf("load ts files from %s: %w", tsDir, err)
+	}
+
+	return tsFiles, nil
+}
+
 func buildAppBundleFromFiles(ctx context.Context, files map[string][]byte, externalPackages []string) (string, error) {
 	entrypoint := findEntrypointInFiles(files)
 	if entrypoint == "" {
@@ -260,6 +200,66 @@ func buildAppBundleFromFiles(ctx context.Context, files map[string][]byte, exter
 	opts.Plugins = []esbuild.Plugin{newVirtualFSPlugin(files, false)}
 
 	return runEsbuildBundle(opts)
+}
+
+func loadTSFilesFromDir(tsDir string) (map[string][]byte, error) {
+	result := make(map[string][]byte)
+
+	err := filepath.WalkDir(tsDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if d.IsDir() {
+			return nil
+		}
+
+		relPath, err := filepath.Rel(tsDir, path)
+		if err != nil {
+			return fmt.Errorf("get relative path: %w", err)
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read file %s: %w", path, err)
+		}
+
+		result[relPath] = data
+
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("walk dir %s: %w", tsDir, err)
+	}
+
+	return result, nil
+}
+
+func loadTSFilesFromGiterminism(ctx context.Context, absChartPath string) (map[string][]byte, error) {
+	isDir, err := file.ChartFileReader.ChartIsDir(absChartPath)
+	if err != nil {
+		return nil, fmt.Errorf("check directory %s: %w", absChartPath, err)
+	}
+
+	if !isDir {
+		log.Default.Debug(ctx, "Skipping vendor bundle: %s is not a directory", absChartPath)
+
+		return map[string][]byte{}, nil
+	}
+
+	chartFiles, err := file.ChartFileReader.LoadChartDir(ctx, absChartPath)
+	if err != nil {
+		return nil, fmt.Errorf("load chart dir: %w", err)
+	}
+
+	tsFiles := filterTSFiles(chartFiles)
+	if len(tsFiles) == 0 {
+		log.Default.Debug(ctx, "Skipping vendor bundle: no %s directory", common.ChartTSSourceDir)
+
+		return tsFiles, nil
+	}
+
+	return tsFiles, nil
 }
 
 func scanPackagesFromFiles(ctx context.Context, entrypoint string, plugin esbuild.Plugin) ([]string, error) {

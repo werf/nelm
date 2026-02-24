@@ -29,14 +29,12 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const (
-	DefaultReleaseRollbackLogLevel = log.InfoLevel
-)
+const DefaultReleaseRollbackLogLevel = log.InfoLevel
 
 type ReleaseRollbackOptions struct {
 	common.KubeConnectionOptions
-	common.TrackingOptions
 	common.ResourceValidationOptions
+	common.TrackingOptions
 
 	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
 	DefaultDeletePropagation string
@@ -317,6 +315,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	})
 	if err != nil {
 		handleBuildPlanErr(ctx, installPlan, err, opts.RollbackGraphPath, opts.TempDirPath, "release-rollback-graph.dot")
+
 		return fmt.Errorf("build install plan: %w", err)
 	}
 

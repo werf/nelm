@@ -24,8 +24,6 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-type ResourceInstallType string
-
 const (
 	ResourceInstallTypeNone     ResourceInstallType = "none"
 	ResourceInstallTypeCreate   ResourceInstallType = "create"
@@ -43,12 +41,7 @@ var OrderedResourceInstallTypes = []ResourceInstallType{
 	ResourceInstallTypeApply,
 }
 
-func ResourceInstallTypeSortHandler(type1, type2 ResourceInstallType) bool {
-	type1I := lo.IndexOf(OrderedResourceInstallTypes, type1)
-	type2I := lo.IndexOf(OrderedResourceInstallTypes, type2)
-
-	return type1I < type2I
-}
+type ResourceInstallType string
 
 // A data class, which stores all info to make a decision on what to do with the to-be-installed
 // resource in the plan.
@@ -75,13 +68,11 @@ type InstallableResourceInfo struct {
 type DeletableResourceInfo struct {
 	*spec.ResourceMeta
 
-	LocalResource *resource.DeletableResource
-	GetResult     *unstructured.Unstructured
-
+	GetResult        *unstructured.Unstructured
+	LocalResource    *resource.DeletableResource
 	MustDelete       bool
 	MustTrackAbsence bool
-
-	Stage common.Stage
+	Stage            common.Stage
 }
 
 type BuildResourceInfosOptions struct {
@@ -154,6 +145,13 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 	return instResourceInfos, delResourceInfos, nil
 }
 
+func ResourceInstallTypeSortHandler(type1, type2 ResourceInstallType) bool {
+	type1I := lo.IndexOf(OrderedResourceInstallTypes, type1)
+	type2I := lo.IndexOf(OrderedResourceInstallTypes, type2)
+
+	return type1I < type2I
+}
+
 // TODO(major): keep annotation should probably forbid resource recreations
 func buildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed, noRemoveManualChanges bool, clientFactory kube.ClientFactorier) ([]*InstallableResourceInfo, error) {
 	var stages []common.Stage
@@ -187,9 +185,9 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 				return &InstallableResourceInfo{
 					ResourceMeta:                   localRes.ResourceMeta,
 					LocalResource:                  localRes,
-					MustInstall:                    ResourceInstallTypeCreate,
-					MustDeleteOnSuccessfulInstall:  mustDeleteOnSuccess,
 					MustDeleteOnFailedInstall:      mustDeleteOnFailedDeploy(localRes, nil, ResourceInstallTypeCreate, releaseNamespace, trackReadiness),
+					MustDeleteOnSuccessfulInstall:  mustDeleteOnSuccess,
+					MustInstall:                    ResourceInstallTypeCreate,
 					MustTrackReadiness:             trackReadiness,
 					Stage:                          stg,
 					StageDeleteOnSuccessfulInstall: stageDeleteOnSuccessfulInstall(mustDeleteOnSuccess, stg),
@@ -224,264 +222,18 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 	return lo.Map(stages, func(stg common.Stage, _ int) *InstallableResourceInfo {
 		return &InstallableResourceInfo{
 			ResourceMeta:                   localRes.ResourceMeta,
-			LocalResource:                  localRes,
-			GetResult:                      getObj,
-			DryApplyResult:                 dryApplyObj,
 			DryApplyErr:                    dryApplyErr,
-			MustInstall:                    installType,
-			MustDeleteOnSuccessfulInstall:  mustDeleteOnSuccess,
+			DryApplyResult:                 dryApplyObj,
+			GetResult:                      getObj,
+			LocalResource:                  localRes,
 			MustDeleteOnFailedInstall:      mustDeleteOnFailedDeploy(localRes, getMeta, installType, releaseNamespace, trackReadiness),
+			MustDeleteOnSuccessfulInstall:  mustDeleteOnSuccess,
+			MustInstall:                    installType,
 			MustTrackReadiness:             trackReadiness,
 			Stage:                          stg,
 			StageDeleteOnSuccessfulInstall: stageDeleteOnSuccessfulInstall(mustDeleteOnSuccess, stg),
 		}
 	}), nil
-}
-
-func buildDeletableResourceInfo(ctx context.Context, localRes *resource.DeletableResource, deployType common.DeployType, releaseName, releaseNamespace string, clientFactory kube.ClientFactorier) (*DeletableResourceInfo, error) {
-	var stage common.Stage
-	if deployType == common.DeployTypeUninstall {
-		stage = common.StageUninstall
-	} else {
-		stage = common.StagePrePreUninstall
-	}
-
-	noDeleteInfo := &DeletableResourceInfo{
-		ResourceMeta:  localRes.ResourceMeta,
-		LocalResource: localRes,
-		Stage:         stage,
-	}
-
-	if localRes.KeepOnDelete || localRes.Ownership == common.OwnershipAnyone {
-		return noDeleteInfo, nil
-	}
-
-	getObj, getErr := clientFactory.KubeClient().Get(ctx, localRes.ResourceMeta, kube.KubeClientGetOptions{
-		DefaultNamespace: releaseNamespace,
-		TryCache:         true,
-	})
-
-	noDeleteInfo.GetResult = getObj
-	if getErr != nil {
-		if kube.IsNotFoundErr(getErr) || kube.IsNoSuchKindErr(getErr) {
-			return noDeleteInfo, nil
-		} else {
-			return nil, fmt.Errorf("get resource %q: %w", localRes.IDHuman(), getErr)
-		}
-	}
-
-	getMeta := spec.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
-
-	if err := resource.ValidateResourcePolicy(getMeta); err != nil {
-		return noDeleteInfo, nil
-	} else {
-		if keep := resource.KeepOnDelete(getMeta, releaseNamespace); keep {
-			return noDeleteInfo, nil
-		}
-	}
-
-	if orphaned(getMeta, releaseName, releaseNamespace) {
-		return noDeleteInfo, nil
-	}
-
-	return &DeletableResourceInfo{
-		ResourceMeta:  localRes.ResourceMeta,
-		LocalResource: localRes,
-		GetResult:     getObj,
-		MustDelete:    true,
-		// TODO: make switchable
-		MustTrackAbsence: true,
-		Stage:            stage,
-	}, nil
-}
-
-func filterDelResourcesPresentInInstResources(instResourceInfos []*InstallableResourceInfo, delResourceInfos []*DeletableResourceInfo) []*DeletableResourceInfo {
-	var instResourcesUIDs []types.UID
-	for _, instInfo := range instResourceInfos {
-		if instInfo.GetResult == nil {
-			continue
-		}
-
-		instResourcesUIDs = append(instResourcesUIDs, instInfo.GetResult.GetUID())
-	}
-
-	var filteredDelResourceInfos []*DeletableResourceInfo
-	for _, delInfo := range delResourceInfos {
-		if delInfo.GetResult != nil &&
-			lo.Contains(instResourcesUIDs, delInfo.GetResult.GetUID()) {
-			continue
-		}
-
-		filteredDelResourceInfos = append(filteredDelResourceInfos, delInfo)
-	}
-
-	return filteredDelResourceInfos
-}
-
-func iterateInstallableResourceInfos(infos []*InstallableResourceInfo) {
-	var seenInfos []*InstallableResourceInfo
-	for _, info := range infos {
-		seenInfo, seen := lo.Find(seenInfos, func(inf *InstallableResourceInfo) bool {
-			return info.ID() == inf.ID()
-		})
-		if seen {
-			info.Iteration = seenInfo.Iteration + 1
-		}
-
-		seenInfos = append(seenInfos, info)
-	}
-
-	var highestIteration int
-
-	nonZeroIterInfos := lo.Filter(infos, func(info *InstallableResourceInfo, _ int) bool {
-		highestIteration = lo.Max([]int{highestIteration, info.Iteration})
-		return info.Iteration > 0
-	})
-
-	if highestIteration == 0 {
-		return
-	}
-
-	for iter := 1; iter <= highestIteration; iter++ {
-		iterInfos := lo.Filter(nonZeroIterInfos, func(info *InstallableResourceInfo, _ int) bool {
-			return info.Iteration == iter
-		})
-
-		for _, iterInfo := range iterInfos {
-			if iterInfo.MustInstall == ResourceInstallTypeNone {
-				continue
-			}
-
-			prevIterInfo := lo.Must(lo.Find(infos, func(inf *InstallableResourceInfo) bool {
-				return iterInfo.ID() == inf.ID() && inf.Iteration == iterInfo.Iteration-1
-			}))
-
-			if prevIterInfo.MustDeleteOnSuccessfulInstall {
-				iterInfo.MustInstall = ResourceInstallTypeCreate
-			}
-		}
-	}
-}
-
-func deduplicateDeletableResourceInfos(infos []*DeletableResourceInfo) []*DeletableResourceInfo {
-	return lo.UniqBy(infos, func(info *DeletableResourceInfo) string {
-		return info.ID()
-	})
-}
-
-func resourceInstallType(ctx context.Context, localRes *resource.InstallableResource, getObj, dryApplyObj *unstructured.Unstructured, dryApplyErr error) (ResourceInstallType, error) {
-	isImmutable := dryApplyErr != nil && kube.IsImmutableErr(dryApplyErr)
-	if isImmutable && !localRes.Recreate && !localRes.RecreateOnImmutable {
-		return "", fmt.Errorf("immutable fields change in resource %q, but recreation is not requested: %w", localRes.IDHuman(), dryApplyErr)
-	}
-
-	if localRes.Recreate || (isImmutable && localRes.RecreateOnImmutable) {
-		return ResourceInstallTypeRecreate, nil
-	}
-
-	if dryApplyErr != nil {
-		return ResourceInstallTypeApply, nil
-	}
-
-	diffableGetObj := spec.CleanUnstruct(getObj, spec.CleanUnstructOptions{
-		CleanHelmShAnnos: true,
-		CleanWerfIoAnnos: true,
-		CleanRuntimeData: true,
-	})
-
-	diffableDryApplyObj := spec.CleanUnstruct(dryApplyObj, spec.CleanUnstructOptions{
-		CleanHelmShAnnos: true,
-		CleanWerfIoAnnos: true,
-		CleanRuntimeData: true,
-	})
-
-	if patch, err := jsondiff.Compare(diffableGetObj, diffableDryApplyObj); err != nil {
-		return "", fmt.Errorf("compare live and dry-apply versions of resource %q: %w", localRes.IDHuman(), err)
-	} else if len(patch) > 0 {
-		log.Default.Trace(ctx, "Get/DryApply patch for %q: %s", localRes.IDHuman(), patch.String())
-		return ResourceInstallTypeUpdate, nil
-	}
-
-	return ResourceInstallTypeNone, nil
-}
-
-func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMeta *spec.ResourceMeta, installType ResourceInstallType, releaseNamespace string) bool {
-	if !localRes.DeleteOnSucceeded || localRes.KeepOnDelete {
-		return false
-	}
-
-	if getMeta != nil {
-		if err := resource.ValidateResourcePolicy(getMeta); err != nil {
-			return false
-		} else {
-			if keep := resource.KeepOnDelete(getMeta, releaseNamespace); keep {
-				return false
-			}
-		}
-	}
-
-	if installType == ResourceInstallTypeNone {
-		return getMeta != nil
-	}
-
-	return true
-}
-
-func mustDeleteOnFailedDeploy(res *resource.InstallableResource, getMeta *spec.ResourceMeta, installType ResourceInstallType, releaseNamespace string, mustTrackReadiness bool) bool {
-	if !res.DeleteOnFailed ||
-		res.KeepOnDelete ||
-		installType == ResourceInstallTypeNone ||
-		!mustTrackReadiness {
-		return false
-	}
-
-	if getMeta != nil {
-		if err := resource.ValidateResourcePolicy(getMeta); err != nil {
-			return false
-		} else {
-			if keep := resource.KeepOnDelete(getMeta, releaseNamespace); keep {
-				return false
-			}
-		}
-	}
-
-	return true
-}
-
-func mustTrackReadiness(res *resource.InstallableResource, resInstallType ResourceInstallType, exists, prevRelFailed, mustDeleteOnSuccessfulInstall bool) bool {
-	if spec.IsCRD(res.Unstruct.GroupVersionKind().GroupKind()) ||
-		res.TrackTerminationMode == multitrack.NonBlocking {
-		return false
-	}
-
-	if resInstallType == ResourceInstallTypeNone {
-		if exists && (prevRelFailed || mustDeleteOnSuccessfulInstall) {
-			return true
-		}
-
-		return false
-	}
-
-	return true
-}
-
-func stageDeleteOnSuccessfulInstall(shouldDelete bool, installStg common.Stage) common.Stage {
-	if !shouldDelete {
-		return ""
-	}
-
-	switch installStg {
-	case common.StagePreInstall:
-		return common.StagePreUninstall
-	case common.StageInstall:
-		return common.StageUninstall
-	case common.StagePostInstall:
-		return common.StagePostUninstall
-	case common.StagePostPostInstall:
-		return common.StagePostPostUninstall
-	default:
-		panic("unexpected resource install stage")
-	}
 }
 
 func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, getObj *unstructured.Unstructured, localRes *resource.InstallableResource, noRemoveManualChanges bool, clientFactory kube.ClientFactorier) (*unstructured.Unstructured, error) {
@@ -576,57 +328,61 @@ func fixManagedFields(unstruct *unstructured.Unstructured, localRes *resource.In
 	return changed, nil
 }
 
-func getManagedFieldPathFromSpecPath(subPath []string) []string {
-	path := make([]string, len(subPath))
-
-	for i, s := range subPath {
-		path[i] = "f:" + s
+func buildDeletableResourceInfo(ctx context.Context, localRes *resource.DeletableResource, deployType common.DeployType, releaseName, releaseNamespace string, clientFactory kube.ClientFactorier) (*DeletableResourceInfo, error) {
+	var stage common.Stage
+	if deployType == common.DeployTypeUninstall {
+		stage = common.StageUninstall
+	} else {
+		stage = common.StagePrePreUninstall
 	}
 
-	return path
-}
-
-func isServiceAccountFieldManaged(entry v1.ManagedFieldsEntry, subPath []string) (bool, error) {
-	var fieldsV1 map[string]interface{}
-
-	if err := json.Unmarshal(entry.FieldsV1.Raw, &fieldsV1); err != nil {
-		return false, fmt.Errorf("unmarshal managed field: %w", err)
+	noDeleteInfo := &DeletableResourceInfo{
+		ResourceMeta:  localRes.ResourceMeta,
+		LocalResource: localRes,
+		Stage:         stage,
 	}
 
-	for _, v := range []string{"f:serviceAccount", "f:serviceAccountName"} {
-		if _, found, err := unstructured.NestedFieldNoCopy(fieldsV1, append(subPath, v)...); err != nil {
-			return false, fmt.Errorf("check if %q field is managed: %w", v, err)
-		} else if found {
-			return true, nil
+	if localRes.KeepOnDelete || localRes.Ownership == common.OwnershipAnyone {
+		return noDeleteInfo, nil
+	}
+
+	getObj, getErr := clientFactory.KubeClient().Get(ctx, localRes.ResourceMeta, kube.KubeClientGetOptions{
+		DefaultNamespace: releaseNamespace,
+		TryCache:         true,
+	})
+
+	noDeleteInfo.GetResult = getObj
+	if getErr != nil {
+		if kube.IsNotFoundErr(getErr) || kube.IsNoSuchKindErr(getErr) {
+			return noDeleteInfo, nil
+		} else {
+			return nil, fmt.Errorf("get resource %q: %w", localRes.IDHuman(), getErr)
 		}
 	}
 
-	return false, nil
-}
+	getMeta := spec.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
 
-func getServiceAccountSpecSubPath(gvk schema.GroupVersionKind) []string {
-	var path []string
-
-	switch gvk.Group {
-	case "":
-		if gvk.Kind == "Pod" {
-			path = []string{"spec"}
-		}
-	case "apps":
-		switch gvk.Kind {
-		case "Deployment", "StatefulSet", "DaemonSet":
-			path = []string{"spec", "template", "spec"}
-		}
-	case "batch":
-		switch gvk.Kind {
-		case "CronJob":
-			path = []string{"spec", "jobTemplate", "spec", "template", "spec"}
-		case "Job":
-			path = []string{"spec", "template", "spec"}
+	if err := resource.ValidateResourcePolicy(getMeta); err != nil {
+		return noDeleteInfo, nil
+	} else {
+		if keep := resource.KeepOnDelete(getMeta, releaseNamespace); keep {
+			return noDeleteInfo, nil
 		}
 	}
 
-	return path
+	if orphaned(getMeta, releaseName, releaseNamespace) {
+		return noDeleteInfo, nil
+	}
+
+	return &DeletableResourceInfo{
+		ResourceMeta:  localRes.ResourceMeta,
+		GetResult:     getObj,
+		LocalResource: localRes,
+		MustDelete:    true,
+		// TODO: make switchable
+		MustTrackAbsence: true,
+		Stage:            stage,
+	}, nil
 }
 
 func isServiceAccountManagedFieldFixRequired(localRes *unstructured.Unstructured, entry *v1.ManagedFieldsEntry) (bool, error) {
@@ -650,6 +406,79 @@ func isServiceAccountManagedFieldFixRequired(localRes *unstructured.Unstructured
 	}
 
 	return !found, nil
+}
+
+func deduplicateDeletableResourceInfos(infos []*DeletableResourceInfo) []*DeletableResourceInfo {
+	return lo.UniqBy(infos, func(info *DeletableResourceInfo) string {
+		return info.ID()
+	})
+}
+
+func differentSubresourceManagers(managedFields []v1.ManagedFieldsEntry, oursEntry v1.ManagedFieldsEntry) (newManagedFields []v1.ManagedFieldsEntry) {
+	for _, managedField := range managedFields {
+		if managedField.Subresource != oursEntry.Subresource {
+			newManagedFields = append(newManagedFields, managedField)
+			continue
+		}
+	}
+
+	return newManagedFields
+}
+
+func exclusiveOwnershipForOurManager(managedFields []v1.ManagedFieldsEntry, oursEntry v1.ManagedFieldsEntry) (newManagedFields []v1.ManagedFieldsEntry, changed bool) {
+	oursFieldsByte := lo.Must(json.Marshal(oursEntry.FieldsV1))
+
+	for _, managedField := range managedFields {
+		if managedField.Subresource != oursEntry.Subresource {
+			continue
+		}
+
+		fieldsByte := lo.Must(json.Marshal(managedField.FieldsV1))
+
+		if managedField.Manager == common.DefaultFieldManager ||
+			managedField.Manager == common.KubectlEditFieldManager ||
+			strings.HasPrefix(managedField.Manager, common.OldFieldManagerPrefix) {
+			continue
+		}
+
+		subtracted, subtractChanged := lo.Must2(util.SubtractJSON(fieldsByte, oursFieldsByte))
+		if !subtractChanged {
+			newManagedFields = append(newManagedFields, managedField)
+			continue
+		}
+
+		if string(subtracted) != "{}" {
+			lo.Must0(managedField.FieldsV1.UnmarshalJSON(subtracted))
+			newManagedFields = append(newManagedFields, managedField)
+		}
+
+		changed = true
+	}
+
+	return newManagedFields, changed
+}
+
+func filterDelResourcesPresentInInstResources(instResourceInfos []*InstallableResourceInfo, delResourceInfos []*DeletableResourceInfo) []*DeletableResourceInfo {
+	var instResourcesUIDs []types.UID
+	for _, instInfo := range instResourceInfos {
+		if instInfo.GetResult == nil {
+			continue
+		}
+
+		instResourcesUIDs = append(instResourcesUIDs, instInfo.GetResult.GetUID())
+	}
+
+	var filteredDelResourceInfos []*DeletableResourceInfo
+	for _, delInfo := range delResourceInfos {
+		if delInfo.GetResult != nil &&
+			lo.Contains(instResourcesUIDs, delInfo.GetResult.GetUID()) {
+			continue
+		}
+
+		filteredDelResourceInfos = append(filteredDelResourceInfos, delInfo)
+	}
+
+	return filteredDelResourceInfos
 }
 
 func findServiceAccountRefBySubPath(data map[string]interface{}, subPath []string) (bool, error) {
@@ -689,15 +518,179 @@ func fixServiceAccountManagedFields(entry *v1.ManagedFieldsEntry, subPath []stri
 	return nil
 }
 
-func differentSubresourceManagers(managedFields []v1.ManagedFieldsEntry, oursEntry v1.ManagedFieldsEntry) (newManagedFields []v1.ManagedFieldsEntry) {
-	for _, managedField := range managedFields {
-		if managedField.Subresource != oursEntry.Subresource {
-			newManagedFields = append(newManagedFields, managedField)
-			continue
+func getManagedFieldPathFromSpecPath(subPath []string) []string {
+	path := make([]string, len(subPath))
+
+	for i, s := range subPath {
+		path[i] = "f:" + s
+	}
+
+	return path
+}
+
+func getServiceAccountSpecSubPath(gvk schema.GroupVersionKind) []string {
+	var path []string
+
+	switch gvk.Group {
+	case "":
+		if gvk.Kind == "Pod" {
+			path = []string{"spec"}
+		}
+	case "apps":
+		switch gvk.Kind {
+		case "Deployment", "StatefulSet", "DaemonSet":
+			path = []string{"spec", "template", "spec"}
+		}
+	case "batch":
+		switch gvk.Kind {
+		case "CronJob":
+			path = []string{"spec", "jobTemplate", "spec", "template", "spec"}
+		case "Job":
+			path = []string{"spec", "template", "spec"}
 		}
 	}
 
-	return newManagedFields
+	return path
+}
+
+func isServiceAccountFieldManaged(entry v1.ManagedFieldsEntry, subPath []string) (bool, error) {
+	var fieldsV1 map[string]interface{}
+
+	if err := json.Unmarshal(entry.FieldsV1.Raw, &fieldsV1); err != nil {
+		return false, fmt.Errorf("unmarshal managed field: %w", err)
+	}
+
+	for _, v := range []string{"f:serviceAccount", "f:serviceAccountName"} {
+		if _, found, err := unstructured.NestedFieldNoCopy(fieldsV1, append(subPath, v)...); err != nil {
+			return false, fmt.Errorf("check if %q field is managed: %w", v, err)
+		} else if found {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func iterateInstallableResourceInfos(infos []*InstallableResourceInfo) {
+	var seenInfos []*InstallableResourceInfo
+	for _, info := range infos {
+		seenInfo, seen := lo.Find(seenInfos, func(inf *InstallableResourceInfo) bool {
+			return info.ID() == inf.ID()
+		})
+		if seen {
+			info.Iteration = seenInfo.Iteration + 1
+		}
+
+		seenInfos = append(seenInfos, info)
+	}
+
+	var highestIteration int
+
+	nonZeroIterInfos := lo.Filter(infos, func(info *InstallableResourceInfo, _ int) bool {
+		highestIteration = lo.Max([]int{highestIteration, info.Iteration})
+
+		return info.Iteration > 0
+	})
+
+	if highestIteration == 0 {
+		return
+	}
+
+	for iter := 1; iter <= highestIteration; iter++ {
+		iterInfos := lo.Filter(nonZeroIterInfos, func(info *InstallableResourceInfo, _ int) bool {
+			return info.Iteration == iter
+		})
+
+		for _, iterInfo := range iterInfos {
+			if iterInfo.MustInstall == ResourceInstallTypeNone {
+				continue
+			}
+
+			prevIterInfo := lo.Must(lo.Find(infos, func(inf *InstallableResourceInfo) bool {
+				return iterInfo.ID() == inf.ID() && inf.Iteration == iterInfo.Iteration-1
+			}))
+
+			if prevIterInfo.MustDeleteOnSuccessfulInstall {
+				iterInfo.MustInstall = ResourceInstallTypeCreate
+			}
+		}
+	}
+}
+
+func mustDeleteOnFailedDeploy(res *resource.InstallableResource, getMeta *spec.ResourceMeta, installType ResourceInstallType, releaseNamespace string, mustTrackReadiness bool) bool {
+	if !res.DeleteOnFailed ||
+		res.KeepOnDelete ||
+		installType == ResourceInstallTypeNone ||
+		!mustTrackReadiness {
+		return false
+	}
+
+	if getMeta != nil {
+		if err := resource.ValidateResourcePolicy(getMeta); err != nil {
+			return false
+		} else {
+			if keep := resource.KeepOnDelete(getMeta, releaseNamespace); keep {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMeta *spec.ResourceMeta, installType ResourceInstallType, releaseNamespace string) bool {
+	if !localRes.DeleteOnSucceeded || localRes.KeepOnDelete {
+		return false
+	}
+
+	if getMeta != nil {
+		if err := resource.ValidateResourcePolicy(getMeta); err != nil {
+			return false
+		} else {
+			if keep := resource.KeepOnDelete(getMeta, releaseNamespace); keep {
+				return false
+			}
+		}
+	}
+
+	if installType == ResourceInstallTypeNone {
+		return getMeta != nil
+	}
+
+	return true
+}
+
+func mustTrackReadiness(res *resource.InstallableResource, resInstallType ResourceInstallType, exists, prevRelFailed, mustDeleteOnSuccessfulInstall bool) bool {
+	if spec.IsCRD(res.Unstruct.GroupVersionKind().GroupKind()) ||
+		res.TrackTerminationMode == multitrack.NonBlocking {
+		return false
+	}
+
+	if resInstallType == ResourceInstallTypeNone {
+		if exists && (prevRelFailed || mustDeleteOnSuccessfulInstall) {
+			return true
+		}
+
+		return false
+	}
+
+	return true
+}
+
+func orphaned(meta *spec.ResourceMeta, releaseName, releaseNamespace string) bool {
+	if _, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternReleaseName); !found || value != releaseName {
+		return true
+	}
+
+	if _, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternReleaseNamespace); !found || value != releaseNamespace {
+		return true
+	}
+
+	if _, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Labels, common.LabelKeyPatternManagedBy); !found || value != "Helm" {
+		return true
+	}
+
+	return false
 }
 
 func removeUndesirableManagers(managedFields []v1.ManagedFieldsEntry, oursEntry v1.ManagedFieldsEntry, noRemoveManualChanges bool) (newManagedFields []v1.ManagedFieldsEntry, newOursEntry v1.ManagedFieldsEntry, changed bool) {
@@ -738,51 +731,58 @@ func removeUndesirableManagers(managedFields []v1.ManagedFieldsEntry, oursEntry 
 	return newManagedFields, newOursEntry, changed
 }
 
-func exclusiveOwnershipForOurManager(managedFields []v1.ManagedFieldsEntry, oursEntry v1.ManagedFieldsEntry) (newManagedFields []v1.ManagedFieldsEntry, changed bool) {
-	oursFieldsByte := lo.Must(json.Marshal(oursEntry.FieldsV1))
-
-	for _, managedField := range managedFields {
-		if managedField.Subresource != oursEntry.Subresource {
-			continue
-		}
-
-		fieldsByte := lo.Must(json.Marshal(managedField.FieldsV1))
-
-		if managedField.Manager == common.DefaultFieldManager ||
-			managedField.Manager == common.KubectlEditFieldManager ||
-			strings.HasPrefix(managedField.Manager, common.OldFieldManagerPrefix) {
-			continue
-		}
-
-		subtracted, subtractChanged := lo.Must2(util.SubtractJSON(fieldsByte, oursFieldsByte))
-		if !subtractChanged {
-			newManagedFields = append(newManagedFields, managedField)
-			continue
-		}
-
-		if string(subtracted) != "{}" {
-			lo.Must0(managedField.FieldsV1.UnmarshalJSON(subtracted))
-			newManagedFields = append(newManagedFields, managedField)
-		}
-
-		changed = true
+func resourceInstallType(ctx context.Context, localRes *resource.InstallableResource, getObj, dryApplyObj *unstructured.Unstructured, dryApplyErr error) (ResourceInstallType, error) {
+	isImmutable := dryApplyErr != nil && kube.IsImmutableErr(dryApplyErr)
+	if isImmutable && !localRes.Recreate && !localRes.RecreateOnImmutable {
+		return "", fmt.Errorf("immutable fields change in resource %q, but recreation is not requested: %w", localRes.IDHuman(), dryApplyErr)
 	}
 
-	return newManagedFields, changed
+	if localRes.Recreate || (isImmutable && localRes.RecreateOnImmutable) {
+		return ResourceInstallTypeRecreate, nil
+	}
+
+	if dryApplyErr != nil {
+		return ResourceInstallTypeApply, nil
+	}
+
+	diffableGetObj := spec.CleanUnstruct(getObj, spec.CleanUnstructOptions{
+		CleanHelmShAnnos: true,
+		CleanWerfIoAnnos: true,
+		CleanRuntimeData: true,
+	})
+
+	diffableDryApplyObj := spec.CleanUnstruct(dryApplyObj, spec.CleanUnstructOptions{
+		CleanHelmShAnnos: true,
+		CleanWerfIoAnnos: true,
+		CleanRuntimeData: true,
+	})
+
+	if patch, err := jsondiff.Compare(diffableGetObj, diffableDryApplyObj); err != nil {
+		return "", fmt.Errorf("compare live and dry-apply versions of resource %q: %w", localRes.IDHuman(), err)
+	} else if len(patch) > 0 {
+		log.Default.Trace(ctx, "Get/DryApply patch for %q: %s", localRes.IDHuman(), patch.String())
+
+		return ResourceInstallTypeUpdate, nil
+	}
+
+	return ResourceInstallTypeNone, nil
 }
 
-func orphaned(meta *spec.ResourceMeta, releaseName, releaseNamespace string) bool {
-	if _, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternReleaseName); !found || value != releaseName {
-		return true
+func stageDeleteOnSuccessfulInstall(shouldDelete bool, installStg common.Stage) common.Stage {
+	if !shouldDelete {
+		return ""
 	}
 
-	if _, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternReleaseNamespace); !found || value != releaseNamespace {
-		return true
+	switch installStg {
+	case common.StagePreInstall:
+		return common.StagePreUninstall
+	case common.StageInstall:
+		return common.StageUninstall
+	case common.StagePostInstall:
+		return common.StagePostUninstall
+	case common.StagePostPostInstall:
+		return common.StagePostPostUninstall
+	default:
+		panic("unexpected resource install stage")
 	}
-
-	if _, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Labels, common.LabelKeyPatternManagedBy); !found || value != "Helm" {
-		return true
-	}
-
-	return false
 }

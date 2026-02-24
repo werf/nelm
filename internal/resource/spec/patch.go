@@ -13,12 +13,21 @@ import (
 	"github.com/werf/nelm/pkg/common"
 )
 
+const (
+	TypeExtraMetadataPatcher    ResourcePatcherType = "extra-metadata-patcher"
+	TypeReleaseMetadataPatcher  ResourcePatcherType = "release-metadata-patcher"
+	TypeOnlyTrackJobsPatcher    ResourcePatcherType = "only-track-jobs-patcher"
+	TypeSecretStringDataPatcher ResourcePatcherType = "secret-string-data-patcher"
+)
+
 var (
 	_ ResourcePatcher = (*ExtraMetadataPatcher)(nil)
 	_ ResourcePatcher = (*ReleaseMetadataPatcher)(nil)
 	_ ResourcePatcher = (*LegacyOnlyTrackJobsPatcher)(nil)
 	_ ResourcePatcher = (*SecretStringDataPatcher)(nil)
 )
+
+type ResourcePatcherType string
 
 type ResourcePatcher interface {
 	Match(ctx context.Context, resourceInfo *ResourcePatcherResourceInfo) (matched bool, err error)
@@ -30,15 +39,6 @@ type ResourcePatcherResourceInfo struct {
 	Obj       *unstructured.Unstructured
 	Ownership common.Ownership
 }
-
-type ResourcePatcherType string
-
-const (
-	TypeExtraMetadataPatcher    ResourcePatcherType = "extra-metadata-patcher"
-	TypeReleaseMetadataPatcher  ResourcePatcherType = "release-metadata-patcher"
-	TypeOnlyTrackJobsPatcher    ResourcePatcherType = "only-track-jobs-patcher"
-	TypeSecretStringDataPatcher ResourcePatcherType = "secret-string-data-patcher"
-)
 
 type ExtraMetadataPatcher struct {
 	annotations map[string]string
@@ -58,6 +58,7 @@ func (p *ExtraMetadataPatcher) Match(ctx context.Context, info *ResourcePatcherR
 
 func (p *ExtraMetadataPatcher) Patch(ctx context.Context, info *ResourcePatcherResourceInfo) (*unstructured.Unstructured, error) {
 	setAnnotationsAndLabels(info.Obj, p.annotations, p.labels)
+
 	return info.Obj, nil
 }
 
@@ -180,4 +181,6 @@ func (p *SecretStringDataPatcher) Patch(ctx context.Context, info *ResourcePatch
 	return info.Obj, nil
 }
 
-func (p *SecretStringDataPatcher) Type() ResourcePatcherType { return TypeSecretStringDataPatcher }
+func (p *SecretStringDataPatcher) Type() ResourcePatcherType {
+	return TypeSecretStringDataPatcher
+}

@@ -12,11 +12,7 @@ import (
 	"github.com/werf/common-go/pkg/secrets_manager"
 )
 
-func SecretFileEncrypt(
-	ctx context.Context,
-	m *secrets_manager.SecretsManager,
-	workingDir, filePath, outputFilePath string,
-) error {
+func SecretFileEncrypt(ctx context.Context, m *secrets_manager.SecretsManager, workingDir, filePath, outputFilePath string) error {
 	options := &GenerateOptions{
 		FilePath:       filePath,
 		OutputFilePath: outputFilePath,
@@ -26,11 +22,7 @@ func SecretFileEncrypt(
 	return secretEncrypt(ctx, m, workingDir, options)
 }
 
-func SecretValuesEncrypt(
-	ctx context.Context,
-	m *secrets_manager.SecretsManager,
-	workingDir, filePath, outputFilePath string,
-) error {
+func SecretValuesEncrypt(ctx context.Context, m *secrets_manager.SecretsManager, workingDir, filePath, outputFilePath string) error {
 	options := &GenerateOptions{
 		FilePath:       filePath,
 		OutputFilePath: outputFilePath,
@@ -40,12 +32,7 @@ func SecretValuesEncrypt(
 	return secretEncrypt(ctx, m, workingDir, options)
 }
 
-func secretEncrypt(
-	ctx context.Context,
-	m *secrets_manager.SecretsManager,
-	workingDir string,
-	options *GenerateOptions,
-) error {
+func secretEncrypt(ctx context.Context, m *secrets_manager.SecretsManager, workingDir string, options *GenerateOptions) error {
 	var data []byte
 	var encodedData []byte
 	var err error

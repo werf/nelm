@@ -11,21 +11,8 @@ import (
 )
 
 type LegacyProgressReporter struct {
-	state    *kdutil.Concurrent[*progressReporterState]
 	reportCh chan<- progrep.ProgressReport
-}
-
-type progressReporterState struct {
-	frozen  []progrep.StageReport
-	ops     []opEntry
-	opIndex map[string]int
-}
-
-type opEntry struct {
-	ref         progrep.ObjectRef
-	typ         progrep.OperationType
-	status      progrep.OperationStatus
-	predIndices []int
+	state    *kdutil.Concurrent[*progressReporterState]
 }
 
 func NewLegacyProgressReporter(reportCh chan<- progrep.ProgressReport) *LegacyProgressReporter {
@@ -34,10 +21,10 @@ func NewLegacyProgressReporter(reportCh chan<- progrep.ProgressReport) *LegacyPr
 	}
 
 	return &LegacyProgressReporter{
+		reportCh: reportCh,
 		state: kdutil.NewConcurrent(&progressReporterState{
 			opIndex: make(map[string]int),
 		}),
-		reportCh: reportCh,
 	}
 }
 
@@ -93,8 +80,8 @@ func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[stri
 
 			entries = append(entries, opEntry{
 				ref:    ref,
-				typ:    typ,
 				status: progrep.OperationStatusPending,
+				typ:    typ,
 			})
 		}
 
@@ -122,19 +109,17 @@ func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[stri
 	})
 }
 
-func buildStageReport(ops []opEntry) progrep.StageReport {
-	operations := make([]progrep.Operation, len(ops))
-	for i, e := range ops {
-		operations[i] = progrep.Operation{
-			ObjectRef: e.ref,
-			Type:      e.typ,
-			Status:    e.status,
-		}
-	}
+type progressReporterState struct {
+	frozen  []progrep.StageReport
+	opIndex map[string]int
+	ops     []opEntry
+}
 
-	return progrep.StageReport{
-		Operations: operations,
-	}
+type opEntry struct {
+	predIndices []int
+	ref         progrep.ObjectRef
+	status      progrep.OperationStatus
+	typ         progrep.OperationType
 }
 
 func buildProgressReport(frozen []progrep.StageReport, ops []opEntry) progrep.ProgressReport {
@@ -168,6 +153,21 @@ func buildProgressReport(frozen []progrep.StageReport, ops []opEntry) progrep.Pr
 
 	return progrep.ProgressReport{
 		StageReports: stageReports,
+	}
+}
+
+func buildStageReport(ops []opEntry) progrep.StageReport {
+	operations := make([]progrep.Operation, len(ops))
+	for i, e := range ops {
+		operations[i] = progrep.Operation{
+			ObjectRef: e.ref,
+			Type:      e.typ,
+			Status:    e.status,
+		}
+	}
+
+	return progrep.StageReport{
+		Operations: operations,
 	}
 }
 

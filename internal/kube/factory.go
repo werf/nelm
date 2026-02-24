@@ -86,30 +86,30 @@ func NewClientFactory(ctx context.Context, kubeConfig *KubeConfig) (*ClientFacto
 	return clientFactory, nil
 }
 
-func (f *ClientFactory) KubeClient() KubeClienter {
-	return f.kubeClient
-}
-
-func (f *ClientFactory) Static() kubernetes.Interface {
-	return f.staticClient
+func (f *ClientFactory) Discovery() discovery.CachedDiscoveryInterface {
+	return f.discoveryClient
 }
 
 func (f *ClientFactory) Dynamic() dynamic.Interface {
 	return f.dynamicClient
 }
 
-func (f *ClientFactory) Discovery() discovery.CachedDiscoveryInterface {
-	return f.discoveryClient
+func (f *ClientFactory) KubeClient() KubeClienter {
+	return f.kubeClient
 }
 
-func (f *ClientFactory) Mapper() meta.ResettableRESTMapper {
-	return f.mapper
+func (f *ClientFactory) KubeConfig() *KubeConfig {
+	return f.kubeConfig
 }
 
 func (f *ClientFactory) LegacyClientGetter() *LegacyClientGetter {
 	return f.legacyClientGetter
 }
 
-func (f *ClientFactory) KubeConfig() *KubeConfig {
-	return f.kubeConfig
+func (f *ClientFactory) Mapper() meta.ResettableRESTMapper {
+	return f.mapper
+}
+
+func (f *ClientFactory) Static() kubernetes.Interface {
+	return f.staticClient
 }

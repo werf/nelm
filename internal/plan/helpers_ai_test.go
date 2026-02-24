@@ -12,8 +12,17 @@ import (
 	"github.com/werf/nelm/pkg/legacy/progrep"
 )
 
+var (
+	gvkConfigMap  = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ConfigMap"}
+	gvkService    = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Service"}
+	gvkDeployment = schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"}
+	gvkNamespace  = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Namespace"}
+	gvkCRD        = schema.GroupVersionKind{Group: "example.com", Version: "v1", Kind: "Widget"}
+)
+
 type fakeRESTMapper struct {
 	meta.RESTMapper
+
 	mappings map[schema.GroupKind]*meta.RESTMapping
 }
 
@@ -39,27 +48,11 @@ func (m *fakeRESTMapper) RESTMapping(gk schema.GroupKind, versions ...string) (*
 	return nil, fmt.Errorf("no mapping for %v", gk)
 }
 
-func makeResourceMeta(name, namespace string, gvk schema.GroupVersionKind) *spec.ResourceMeta {
-	return &spec.ResourceMeta{
-		Name:             name,
-		Namespace:        namespace,
-		GroupVersionKind: gvk,
-	}
-}
-
 func makeResourceSpec(name, namespace string, gvk schema.GroupVersionKind) *spec.ResourceSpec {
 	return &spec.ResourceSpec{
 		ResourceMeta: makeResourceMeta(name, namespace, gvk),
 	}
 }
-
-var (
-	gvkConfigMap  = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ConfigMap"}
-	gvkService    = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Service"}
-	gvkDeployment = schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"}
-	gvkNamespace  = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Namespace"}
-	gvkCRD        = schema.GroupVersionKind{Group: "example.com", Version: "v1", Kind: "Widget"}
-)
 
 func buildTestPlan(ops []*Operation, deps map[int][]int) *Plan {
 	p := NewPlan()
@@ -93,5 +86,13 @@ func drainChannel(ch <-chan progrep.ProgressReport) []progrep.ProgressReport {
 		default:
 			return reports
 		}
+	}
+}
+
+func makeResourceMeta(name, namespace string, gvk schema.GroupVersionKind) *spec.ResourceMeta {
+	return &spec.ResourceMeta{
+		Name:             name,
+		Namespace:        namespace,
+		GroupVersionKind: gvk,
 	}
 }

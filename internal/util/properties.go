@@ -14,9 +14,9 @@ import (
 
 const (
 	commaRune       = ','
+	doubleQuoteRune = '"'
 	equalsRune      = '='
 	singleQuoteRune = '\''
-	doubleQuoteRune = '"'
 )
 
 // This is a pretty well-thought-out properties parser using a finite state machine (FSM). We should

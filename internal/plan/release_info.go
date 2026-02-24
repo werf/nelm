@@ -7,8 +7,6 @@ import (
 	"github.com/werf/nelm/pkg/common"
 )
 
-type ReleaseType string
-
 const (
 	// No-op
 	ReleaseTypeNone ReleaseType = "none"
@@ -25,6 +23,8 @@ const (
 	// Release revision is to be dropped/deleted (its resources are untouched)
 	ReleaseTypeDelete ReleaseType = "delete"
 )
+
+type ReleaseType string
 
 // Data class, which stores all info to make a decision on what to do with the release revision
 // in the plan.
@@ -44,46 +44,46 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 	switch deployType {
 	case common.DeployTypeInitial, common.DeployTypeInstall:
 		infos = append(infos, &ReleaseInfo{
-			Release:                newRel,
 			Must:                   ReleaseTypeInstall,
 			MustFailOnFailedDeploy: true,
+			Release:                newRel,
 		})
 
 		for _, rel := range prevReleases {
 			if rel.Info.Status == helmrelease.StatusDeployed {
 				infos = append(infos, &ReleaseInfo{
-					Release: rel,
 					Must:    ReleaseTypeSupersede,
+					Release: rel,
 				})
 			}
 		}
 	case common.DeployTypeUpgrade:
 		infos = append(infos, &ReleaseInfo{
-			Release:                newRel,
 			Must:                   ReleaseTypeUpgrade,
 			MustFailOnFailedDeploy: true,
+			Release:                newRel,
 		})
 
 		for _, rel := range prevReleases {
 			if rel.Info.Status == helmrelease.StatusDeployed {
 				infos = append(infos, &ReleaseInfo{
-					Release: rel,
 					Must:    ReleaseTypeSupersede,
+					Release: rel,
 				})
 			}
 		}
 	case common.DeployTypeRollback:
 		infos = append(infos, &ReleaseInfo{
-			Release:                newRel,
 			Must:                   ReleaseTypeRollback,
 			MustFailOnFailedDeploy: true,
+			Release:                newRel,
 		})
 
 		for _, rel := range prevReleases {
 			if rel.Info.Status == helmrelease.StatusDeployed {
 				infos = append(infos, &ReleaseInfo{
-					Release: rel,
 					Must:    ReleaseTypeSupersede,
+					Release: rel,
 				})
 			}
 		}
@@ -102,9 +102,9 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 			}
 
 			infos = append(infos, &ReleaseInfo{
-				Release:                prevReleases[i],
 				Must:                   releaseType,
 				MustFailOnFailedDeploy: failOnFailedDeploy,
+				Release:                prevReleases[i],
 			})
 		}
 	default:

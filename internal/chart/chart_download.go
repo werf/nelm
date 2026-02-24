@@ -26,6 +26,33 @@ type chartDownloaderOptions struct {
 	ChartVersion            string
 }
 
+func downloadChart(ctx context.Context, chartPath string, registryClient *helmregistry.Client, opts RenderChartOptions) (string, error) {
+	if (featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled()) && !isLocalChart(chartPath) {
+		chartDownloader, chartRef, err := newChartDownloader(ctx, chartPath, registryClient, chartDownloaderOptions{
+			ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
+			ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
+			ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
+			ChartVersion:               opts.ChartVersion,
+		})
+		if err != nil {
+			return "", fmt.Errorf("construct chart downloader: %w", err)
+		}
+
+		// TODO(major): get rid of HELM_ env vars support
+		if err := os.MkdirAll(cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")), 0o755); err != nil {
+			return "", fmt.Errorf("create repository cache directory: %w", err)
+		}
+
+		// TODO(major): get rid of HELM_ env vars support
+		chartPath, _, err = chartDownloader.DownloadTo(chartRef, opts.ChartVersion, cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")))
+		if err != nil {
+			return "", fmt.Errorf("download chart %q: %w", chartRef, err)
+		}
+	}
+
+	return chartPath, nil
+}
+
 func newChartDownloader(ctx context.Context, chartRef string, registryClient *helmregistry.Client, opts chartDownloaderOptions) (*helmdownloader.ChartDownloader, string, error) {
 	var out io.Writer
 	if log.Default.AcceptLevel(ctx, log.WarningLevel) {
@@ -83,31 +110,4 @@ func newChartDownloader(ctx context.Context, chartRef string, registryClient *he
 	}
 
 	return downloader, chartRef, nil
-}
-
-func downloadChart(ctx context.Context, chartPath string, registryClient *helmregistry.Client, opts RenderChartOptions) (string, error) {
-	if (featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled()) && !isLocalChart(chartPath) {
-		chartDownloader, chartRef, err := newChartDownloader(ctx, chartPath, registryClient, chartDownloaderOptions{
-			ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
-			ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
-			ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
-			ChartVersion:               opts.ChartVersion,
-		})
-		if err != nil {
-			return "", fmt.Errorf("construct chart downloader: %w", err)
-		}
-
-		// TODO(major): get rid of HELM_ env vars support
-		if err := os.MkdirAll(cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")), 0o755); err != nil {
-			return "", fmt.Errorf("create repository cache directory: %w", err)
-		}
-
-		// TODO(major): get rid of HELM_ env vars support
-		chartPath, _, err = chartDownloader.DownloadTo(chartRef, opts.ChartVersion, cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")))
-		if err != nil {
-			return "", fmt.Errorf("download chart %q: %w", chartRef, err)
-		}
-	}
-
-	return chartPath, nil
 }

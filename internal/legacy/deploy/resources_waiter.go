@@ -34,60 +34,44 @@ import (
 	"github.com/werf/logboek"
 )
 
-const (
-	TrackTerminationModeAnnoName = "werf.io/track-termination-mode"
-
-	FailModeAnnoName                  = "werf.io/fail-mode"
-	FailuresAllowedPerReplicaAnnoName = "werf.io/failures-allowed-per-replica"
-
-	LogRegexAnnoName      = "werf.io/log-regex"
-	LogRegexForAnnoPrefix = "werf.io/log-regex-for-"
-
-	IgnoreReadinessProbeFailsForPrefix = "werf.io/ignore-readiness-probe-fails-for-"
-
-	NoActivityTimeoutName = "werf.io/no-activity-timeout"
-
-	SkipLogsAnnoName              = "werf.io/skip-logs"
-	SkipLogsForContainersAnnoName = "werf.io/skip-logs-for-containers"
-	ShowLogsOnlyForContainers     = "werf.io/show-logs-only-for-containers"
-	ShowLogsUntilAnnoName         = "werf.io/show-logs-until"
-
-	ShowEventsAnnoName = "werf.io/show-service-messages"
-
-	ReplicasOnCreationAnnoName = "werf.io/replicas-on-creation"
-
-	StageWeightAnnoName = "werf.io/weight"
-
-	ExternalDependencyResourceAnnoName  = "external-dependency.werf.io/resource"
-	ExternalDependencyNamespaceAnnoName = "external-dependency.werf.io/namespace"
-)
-
 func init() {
 	flaggerscheme.AddToScheme(scheme.Scheme)
 }
 
+const (
+	ExternalDependencyNamespaceAnnoName = "external-dependency.werf.io/namespace"
+	ExternalDependencyResourceAnnoName  = "external-dependency.werf.io/resource"
+	FailModeAnnoName                    = "werf.io/fail-mode"
+	FailuresAllowedPerReplicaAnnoName   = "werf.io/failures-allowed-per-replica"
+	IgnoreReadinessProbeFailsForPrefix  = "werf.io/ignore-readiness-probe-fails-for-"
+	LogRegexAnnoName                    = "werf.io/log-regex"
+	LogRegexForAnnoPrefix               = "werf.io/log-regex-for-"
+	NoActivityTimeoutName               = "werf.io/no-activity-timeout"
+	ReplicasOnCreationAnnoName          = "werf.io/replicas-on-creation"
+	ShowEventsAnnoName                  = "werf.io/show-service-messages"
+	ShowLogsOnlyForContainers           = "werf.io/show-logs-only-for-containers"
+	ShowLogsUntilAnnoName               = "werf.io/show-logs-until"
+	SkipLogsAnnoName                    = "werf.io/skip-logs"
+	SkipLogsForContainersAnnoName       = "werf.io/skip-logs-for-containers"
+	StageWeightAnnoName                 = "werf.io/weight"
+	TrackTerminationModeAnnoName        = "werf.io/track-termination-mode"
+)
+
 // TODO(major): get rid
 type ResourcesWaiter struct {
 	Client                    *helm_kube.Client
+	HooksStatusProgressPeriod time.Duration
 	LogsFromTime              time.Time
 	StatusProgressPeriod      time.Duration
-	HooksStatusProgressPeriod time.Duration
 }
 
 func NewResourcesWaiter(client *helm_kube.Client, logsFromTime time.Time, statusProgressPeriod, hooksStatusProgressPeriod time.Duration) *ResourcesWaiter {
 	return &ResourcesWaiter{
 		Client:                    client,
+		HooksStatusProgressPeriod: hooksStatusProgressPeriod,
 		LogsFromTime:              logsFromTime,
 		StatusProgressPeriod:      statusProgressPeriod,
-		HooksStatusProgressPeriod: hooksStatusProgressPeriod,
 	}
-}
-
-func extractSpecReplicas(specReplicas *int32) int {
-	if specReplicas != nil {
-		return int(*specReplicas)
-	}
-	return 1
 }
 
 func (waiter *ResourcesWaiter) Wait(ctx context.Context, resources helm_kube.ResourceList, timeout time.Duration) error {
@@ -102,6 +86,7 @@ func (waiter *ResourcesWaiter) Wait(ctx context.Context, resources helm_kube.Res
 
 	// NOTE: use context from resources-waiter object here, will be changed in helm 3
 	logboek.Context(ctx).LogOptionalLn()
+
 	return logboek.Context(ctx).LogProcess("Waiting for resources to become ready").
 		DoError(func() error {
 			return multitrack.Multitrack(kdkube.Client, *specs, multitrack.MultitrackOptions{
@@ -117,31 +102,211 @@ func (waiter *ResourcesWaiter) Wait(ctx context.Context, resources helm_kube.Res
 		})
 }
 
+func (waiter *ResourcesWaiter) WaitUntilDeleted(ctx context.Context, specs []*helm_kube.ResourcesWaiterDeleteResourceSpec, timeout time.Duration) error {
+	if len(specs) == 0 {
+		return nil
+	}
+
+	var eliminationSpecs []*elimination.EliminationTrackerSpec
+	for _, spec := range specs {
+		eliminationSpecs = append(eliminationSpecs, &elimination.EliminationTrackerSpec{
+			ResourceName:         spec.ResourceName,
+			Namespace:            spec.Namespace,
+			GroupVersionResource: spec.GroupVersionResource,
+		})
+	}
+
+	var resourcesDescParts []string
+	for _, spec := range specs {
+		resourcesDescParts = append(resourcesDescParts, fmt.Sprintf("%s/%s", strings.ToLower(spec.GroupVersionResource.Resource), spec.ResourceName))
+	}
+
+	return logboek.Context(ctx).Default().LogProcess("Waiting for resources elimination: %s", strings.Join(resourcesDescParts, ", ")).DoError(func() error {
+		return elimination.TrackUntilEliminated(ctx, kdkube.DynamicClient, eliminationSpecs, elimination.EliminationTrackerOptions{Timeout: timeout, StatusProgressPeriod: waiter.StatusProgressPeriod})
+	})
+}
+
+func (waiter *ResourcesWaiter) WatchUntilReady(ctx context.Context, resources helm_kube.ResourceList, timeout time.Duration) error {
+	if os.Getenv("WERF_DISABLE_RESOURCES_WAITER") == "1" {
+		return nil
+	}
+
+	specs, err := makeMultitrackSpecsFromResList(ctx, resources, timeout, waiter.HooksStatusProgressPeriod)
+	if err != nil {
+		return fmt.Errorf("error making multitrack specs: %w", err)
+	}
+
+	// NOTE: use context from resources-waiter object here, will be changed in helm 3
+	logboek.Context(ctx).LogOptionalLn()
+
+	return logboek.Context(ctx).LogProcess("Waiting for helm hooks termination").
+		DoError(func() error {
+			return multitrack.Multitrack(kdkube.Client, *specs, multitrack.MultitrackOptions{
+				StatusProgressPeriod: waiter.HooksStatusProgressPeriod,
+				Options: tracker.Options{
+					Timeout:      timeout,
+					LogsFromTime: waiter.LogsFromTime,
+				},
+				DynamicClient:   kdkube.DynamicClient,
+				DiscoveryClient: kdkube.CachedDiscoveryClient,
+				Mapper:          kdkube.Mapper,
+			})
+		})
+}
+
+type allowedFailuresCountOptions struct {
+	defaultPerReplica int
+	multiplier        int
+}
+
+func makeMultitrackSpecsFromResList(ctx context.Context, resources helm_kube.ResourceList, timeout, statusProgressPeriod time.Duration) (*multitrack.MultitrackSpecs, error) {
+	specs := &multitrack.MultitrackSpecs{}
+
+	for _, v := range resources {
+		switch value := asVersioned(v).(type) {
+		case *appsv1.Deployment:
+			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{defaultPerReplica: 1, multiplier: extractSpecReplicas(value.Spec.Replicas)}, "deploy")
+			if err != nil {
+				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
+			}
+			if spec != nil {
+				specs.Deployments = append(specs.Deployments, *spec)
+			}
+		case *appsv1beta1.Deployment:
+			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{defaultPerReplica: 1, multiplier: extractSpecReplicas(value.Spec.Replicas)}, "deploy")
+			if err != nil {
+				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
+			}
+			if spec != nil {
+				specs.Deployments = append(specs.Deployments, *spec)
+			}
+		case *appsv1beta2.Deployment:
+			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{defaultPerReplica: 1, multiplier: extractSpecReplicas(value.Spec.Replicas)}, "deploy")
+			if err != nil {
+				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
+			}
+			if spec != nil {
+				specs.Deployments = append(specs.Deployments, *spec)
+			}
+		case *extensions.Deployment:
+			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{defaultPerReplica: 1, multiplier: extractSpecReplicas(value.Spec.Replicas)}, "deploy")
+			if err != nil {
+				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
+			}
+			if spec != nil {
+				specs.Deployments = append(specs.Deployments, *spec)
+			}
+		case *extensions.DaemonSet:
+			// TODO: multiplier equals 3 because typically there are only 3 nodes in the cluster.
+			// TODO: It is better to fetch number of nodes dynamically, but in the most cases multiplier=3 will work ok.
+			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{defaultPerReplica: 1, multiplier: 3}, "ds")
+			if err != nil {
+				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
+			}
+			if spec != nil {
+				specs.DaemonSets = append(specs.DaemonSets, *spec)
+			}
+		case *appsv1.DaemonSet:
+			// TODO: multiplier equals 3 because typically there are only 3 nodes in the cluster.
+			// TODO: It is better to fetch number of nodes dynamically, but in the most cases multiplier=3 will work ok.
+			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{defaultPerReplica: 1, multiplier: 3}, "ds")
+			if err != nil {
+				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
+			}
+			if spec != nil {
+				specs.DaemonSets = append(specs.DaemonSets, *spec)
+			}
+		case *appsv1beta2.DaemonSet:
+			// TODO: multiplier equals 3 because typically there are only 3 nodes in the cluster.
+			// TODO: It is better to fetch number of nodes dynamically, but in the most cases multiplier=3 will work ok.
+			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{defaultPerReplica: 1, multiplier: 3}, "ds")
+			if err != nil {
+				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
+			}
+			if spec != nil {
+				specs.DaemonSets = append(specs.DaemonSets, *spec)
+			}
+		case *appsv1.StatefulSet:
+			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{defaultPerReplica: 1, multiplier: extractSpecReplicas(value.Spec.Replicas)}, "sts")
+			if err != nil {
+				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
+			}
+			if spec != nil {
+				specs.StatefulSets = append(specs.StatefulSets, *spec)
+			}
+		case *appsv1beta1.StatefulSet:
+			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{defaultPerReplica: 1, multiplier: extractSpecReplicas(value.Spec.Replicas)}, "sts")
+			if err != nil {
+				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
+			}
+			if spec != nil {
+				specs.StatefulSets = append(specs.StatefulSets, *spec)
+			}
+		case *appsv1beta2.StatefulSet:
+			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{defaultPerReplica: 1, multiplier: extractSpecReplicas(value.Spec.Replicas)}, "sts")
+			if err != nil {
+				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
+			}
+			if spec != nil {
+				specs.StatefulSets = append(specs.StatefulSets, *spec)
+			}
+		case *batchv1.Job:
+			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{defaultPerReplica: 0, multiplier: 1}, "job")
+			if err != nil {
+				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
+			}
+			if spec != nil {
+				specs.Jobs = append(specs.Jobs, *spec)
+			}
+		case *flaggerv1beta1.Canary:
+			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{defaultPerReplica: 0, multiplier: 1}, "canary")
+			if err != nil {
+				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
+			}
+			if spec != nil {
+				specs.Canaries = append(specs.Canaries, *spec)
+			}
+		default:
+			obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(v.Object)
+			if err != nil {
+				return nil, fmt.Errorf("error converting object to unstructured: %w", err)
+			}
+
+			object := unstructured.Unstructured{
+				Object: obj,
+			}
+
+			resourceID := resid.NewResourceID(object.GetName(), object.GroupVersionKind(), resid.NewResourceIDOptions{
+				Namespace: object.GetNamespace(),
+			})
+
+			if spec, err := makeGenericSpec(ctx, resourceID, statusProgressPeriod, timeout, object.GetAnnotations()); err != nil {
+				logboek.Context(ctx).Warn().LogLn()
+				logboek.Context(ctx).Warn().LogF("WARNING %s\n", err)
+			} else if spec != nil {
+				specs.Generics = append(specs.Generics, spec)
+			}
+		}
+	}
+
+	return specs, nil
+}
+
 func makeMultitrackSpec(ctx context.Context, objMeta *metav1.ObjectMeta, failuresCountOptions allowedFailuresCountOptions, kind string) (*multitrack.MultitrackSpec, error) {
 	multitrackSpec, err := prepareMultitrackSpec(objMeta.Name, kind, objMeta.Namespace, objMeta.Annotations, failuresCountOptions)
 	if err != nil {
 		logboek.Context(ctx).Warn().LogLn()
 		logboek.Context(ctx).Warn().LogF("WARNING %s\n", err)
+
 		return nil, nil
 	}
 
 	return multitrackSpec, nil
 }
 
-type allowedFailuresCountOptions struct {
-	multiplier        int
-	defaultPerReplica int
-}
-
-func applyAllowedFailuresCountMultiplier(value, multiplier int) int {
-	if multiplier > 0 {
-		return value * multiplier
-	}
-	return value
-}
-
 func prepareMultitrackSpec(metadataName, resourceNameOrKind, namespace string, annotations map[string]string, failuresCountOptions allowedFailuresCountOptions) (*multitrack.MultitrackSpec, error) {
 	defaultAllowFailuresCount := new(int)
+
 	// Allow 1 fail per replica by default
 	*defaultAllowFailuresCount = applyAllowedFailuresCountMultiplier(failuresCountOptions.defaultPerReplica, failuresCountOptions.multiplier)
 
@@ -277,6 +442,35 @@ mainLoop:
 	return multitrackSpec, nil
 }
 
+func applyAllowedFailuresCountMultiplier(value, multiplier int) int {
+	if multiplier > 0 {
+		return value * multiplier
+	}
+
+	return value
+}
+
+func asVersioned(info *resource.Info) runtime.Object {
+	convertor := runtime.ObjectConvertor(scheme.Scheme)
+	groupVersioner := runtime.GroupVersioner(schema.GroupVersions(scheme.Scheme.PrioritizedVersionsAllGroups()))
+	if info.Mapping != nil {
+		groupVersioner = info.Mapping.GroupVersionKind.GroupVersion()
+	}
+	if obj, err := convertor.ConvertToVersion(info.Object, groupVersioner); err == nil {
+		return obj
+	}
+
+	return info.Object
+}
+
+func extractSpecReplicas(specReplicas *int32) int {
+	if specReplicas != nil {
+		return int(*specReplicas)
+	}
+
+	return 1
+}
+
 func makeGenericSpec(ctx context.Context, resID *resid.ResourceID, statusProgressPeriod, timeout time.Duration, annotations map[string]string) (*generic.Spec, error) {
 	genericSpec := &generic.Spec{
 		ResourceID:           resID,
@@ -331,200 +525,4 @@ mainLoop:
 	}
 
 	return genericSpec, nil
-}
-
-func (waiter *ResourcesWaiter) WatchUntilReady(ctx context.Context, resources helm_kube.ResourceList, timeout time.Duration) error {
-	if os.Getenv("WERF_DISABLE_RESOURCES_WAITER") == "1" {
-		return nil
-	}
-
-	specs, err := makeMultitrackSpecsFromResList(ctx, resources, timeout, waiter.HooksStatusProgressPeriod)
-	if err != nil {
-		return fmt.Errorf("error making multitrack specs: %w", err)
-	}
-
-	// NOTE: use context from resources-waiter object here, will be changed in helm 3
-	logboek.Context(ctx).LogOptionalLn()
-	return logboek.Context(ctx).LogProcess("Waiting for helm hooks termination").
-		DoError(func() error {
-			return multitrack.Multitrack(kdkube.Client, *specs, multitrack.MultitrackOptions{
-				StatusProgressPeriod: waiter.HooksStatusProgressPeriod,
-				Options: tracker.Options{
-					Timeout:      timeout,
-					LogsFromTime: waiter.LogsFromTime,
-				},
-				DynamicClient:   kdkube.DynamicClient,
-				DiscoveryClient: kdkube.CachedDiscoveryClient,
-				Mapper:          kdkube.Mapper,
-			})
-		})
-}
-
-func asVersioned(info *resource.Info) runtime.Object {
-	convertor := runtime.ObjectConvertor(scheme.Scheme)
-	groupVersioner := runtime.GroupVersioner(schema.GroupVersions(scheme.Scheme.PrioritizedVersionsAllGroups()))
-	if info.Mapping != nil {
-		groupVersioner = info.Mapping.GroupVersionKind.GroupVersion()
-	}
-	if obj, err := convertor.ConvertToVersion(info.Object, groupVersioner); err == nil {
-		return obj
-	}
-	return info.Object
-}
-
-func (waiter *ResourcesWaiter) WaitUntilDeleted(ctx context.Context, specs []*helm_kube.ResourcesWaiterDeleteResourceSpec, timeout time.Duration) error {
-	if len(specs) == 0 {
-		return nil
-	}
-
-	var eliminationSpecs []*elimination.EliminationTrackerSpec
-	for _, spec := range specs {
-		eliminationSpecs = append(eliminationSpecs, &elimination.EliminationTrackerSpec{
-			ResourceName:         spec.ResourceName,
-			Namespace:            spec.Namespace,
-			GroupVersionResource: spec.GroupVersionResource,
-		})
-	}
-
-	var resourcesDescParts []string
-	for _, spec := range specs {
-		resourcesDescParts = append(resourcesDescParts, fmt.Sprintf("%s/%s", strings.ToLower(spec.GroupVersionResource.Resource), spec.ResourceName))
-	}
-
-	return logboek.Context(ctx).Default().LogProcess("Waiting for resources elimination: %s", strings.Join(resourcesDescParts, ", ")).DoError(func() error {
-		return elimination.TrackUntilEliminated(ctx, kdkube.DynamicClient, eliminationSpecs, elimination.EliminationTrackerOptions{Timeout: timeout, StatusProgressPeriod: waiter.StatusProgressPeriod})
-	})
-}
-
-func makeMultitrackSpecsFromResList(ctx context.Context, resources helm_kube.ResourceList, timeout, statusProgressPeriod time.Duration) (*multitrack.MultitrackSpecs, error) {
-	specs := &multitrack.MultitrackSpecs{}
-
-	for _, v := range resources {
-		switch value := asVersioned(v).(type) {
-		case *appsv1.Deployment:
-			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{multiplier: extractSpecReplicas(value.Spec.Replicas), defaultPerReplica: 1}, "deploy")
-			if err != nil {
-				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
-			}
-			if spec != nil {
-				specs.Deployments = append(specs.Deployments, *spec)
-			}
-		case *appsv1beta1.Deployment:
-			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{multiplier: extractSpecReplicas(value.Spec.Replicas), defaultPerReplica: 1}, "deploy")
-			if err != nil {
-				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
-			}
-			if spec != nil {
-				specs.Deployments = append(specs.Deployments, *spec)
-			}
-		case *appsv1beta2.Deployment:
-			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{multiplier: extractSpecReplicas(value.Spec.Replicas), defaultPerReplica: 1}, "deploy")
-			if err != nil {
-				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
-			}
-			if spec != nil {
-				specs.Deployments = append(specs.Deployments, *spec)
-			}
-		case *extensions.Deployment:
-			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{multiplier: extractSpecReplicas(value.Spec.Replicas), defaultPerReplica: 1}, "deploy")
-			if err != nil {
-				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
-			}
-			if spec != nil {
-				specs.Deployments = append(specs.Deployments, *spec)
-			}
-		case *extensions.DaemonSet:
-			// TODO: multiplier equals 3 because typically there are only 3 nodes in the cluster.
-			// TODO: It is better to fetch number of nodes dynamically, but in the most cases multiplier=3 will work ok.
-			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{multiplier: 3, defaultPerReplica: 1}, "ds")
-			if err != nil {
-				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
-			}
-			if spec != nil {
-				specs.DaemonSets = append(specs.DaemonSets, *spec)
-			}
-		case *appsv1.DaemonSet:
-			// TODO: multiplier equals 3 because typically there are only 3 nodes in the cluster.
-			// TODO: It is better to fetch number of nodes dynamically, but in the most cases multiplier=3 will work ok.
-			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{multiplier: 3, defaultPerReplica: 1}, "ds")
-			if err != nil {
-				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
-			}
-			if spec != nil {
-				specs.DaemonSets = append(specs.DaemonSets, *spec)
-			}
-		case *appsv1beta2.DaemonSet:
-			// TODO: multiplier equals 3 because typically there are only 3 nodes in the cluster.
-			// TODO: It is better to fetch number of nodes dynamically, but in the most cases multiplier=3 will work ok.
-			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{multiplier: 3, defaultPerReplica: 1}, "ds")
-			if err != nil {
-				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
-			}
-			if spec != nil {
-				specs.DaemonSets = append(specs.DaemonSets, *spec)
-			}
-		case *appsv1.StatefulSet:
-			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{multiplier: extractSpecReplicas(value.Spec.Replicas), defaultPerReplica: 1}, "sts")
-			if err != nil {
-				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
-			}
-			if spec != nil {
-				specs.StatefulSets = append(specs.StatefulSets, *spec)
-			}
-		case *appsv1beta1.StatefulSet:
-			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{multiplier: extractSpecReplicas(value.Spec.Replicas), defaultPerReplica: 1}, "sts")
-			if err != nil {
-				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
-			}
-			if spec != nil {
-				specs.StatefulSets = append(specs.StatefulSets, *spec)
-			}
-		case *appsv1beta2.StatefulSet:
-			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{multiplier: extractSpecReplicas(value.Spec.Replicas), defaultPerReplica: 1}, "sts")
-			if err != nil {
-				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
-			}
-			if spec != nil {
-				specs.StatefulSets = append(specs.StatefulSets, *spec)
-			}
-		case *batchv1.Job:
-			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{multiplier: 1, defaultPerReplica: 0}, "job")
-			if err != nil {
-				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
-			}
-			if spec != nil {
-				specs.Jobs = append(specs.Jobs, *spec)
-			}
-		case *flaggerv1beta1.Canary:
-			spec, err := makeMultitrackSpec(ctx, &value.ObjectMeta, allowedFailuresCountOptions{multiplier: 1, defaultPerReplica: 0}, "canary")
-			if err != nil {
-				return nil, fmt.Errorf("cannot track %s %s: %w", value.Kind, value.Name, err)
-			}
-			if spec != nil {
-				specs.Canaries = append(specs.Canaries, *spec)
-			}
-		default:
-			obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(v.Object)
-			if err != nil {
-				return nil, fmt.Errorf("error converting object to unstructured: %w", err)
-			}
-
-			object := unstructured.Unstructured{
-				Object: obj,
-			}
-
-			resourceID := resid.NewResourceID(object.GetName(), object.GroupVersionKind(), resid.NewResourceIDOptions{
-				Namespace: object.GetNamespace(),
-			})
-
-			if spec, err := makeGenericSpec(ctx, resourceID, statusProgressPeriod, timeout, object.GetAnnotations()); err != nil {
-				logboek.Context(ctx).Warn().LogLn()
-				logboek.Context(ctx).Warn().LogF("WARNING %s\n", err)
-			} else if spec != nil {
-				specs.Generics = append(specs.Generics, spec)
-			}
-		}
-	}
-
-	return specs, nil
 }

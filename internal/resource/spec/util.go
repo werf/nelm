@@ -13,35 +13,10 @@ import (
 	"github.com/werf/nelm/pkg/common"
 )
 
-func GVRtoGVK(gvr schema.GroupVersionResource, restMapper meta.RESTMapper) (schema.GroupVersionKind, error) {
-	var gvk schema.GroupVersionKind
-	if preferredKinds, err := restMapper.KindsFor(gvr); err != nil {
-		return gvk, fmt.Errorf("match GroupVersionResource %q: %w", gvr.String(), err)
-	} else if len(preferredKinds) == 0 {
-		return gvk, fmt.Errorf("no matches for %q", gvr.String())
-	} else {
-		gvk = preferredKinds[0]
-	}
+func IsHook(annotations map[string]string) bool {
+	_, _, found := FindAnnotationOrLabelByKeyPattern(annotations, common.AnnotationKeyPatternHook)
 
-	return gvk, nil
-}
-
-func GVKtoGVR(gvk schema.GroupVersionKind, mapper meta.RESTMapper) (gvr schema.GroupVersionResource, namespaced bool, err error) {
-	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
-	if err != nil {
-		return schema.GroupVersionResource{}, false, fmt.Errorf("get resource mapping for %q: %w", gvk.String(), err)
-	}
-
-	return mapping.Resource, mapping.Scope == meta.RESTScopeNamespace, nil
-}
-
-func Namespaced(gvk schema.GroupVersionKind, mapper meta.RESTMapper) (bool, error) {
-	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
-	if err != nil {
-		return false, fmt.Errorf("get resource mapping for %q: %w", gvk.String(), err)
-	}
-
-	return mapping.Scope == meta.RESTScopeNamespace, nil
+	return found
 }
 
 func ParseKubectlResourceStringtoGVK(resource string, restMapper meta.RESTMapper) (schema.GroupVersionKind, error) {
@@ -55,50 +30,6 @@ func ParseKubectlResourceStringtoGVK(resource string, restMapper meta.RESTMapper
 	}
 
 	return gvk, nil
-}
-
-func ParseKubectlResourceStringToGVR(resource string) schema.GroupVersionResource {
-	var result schema.GroupVersionResource
-	if gvr, gr := schema.ParseResourceArg(resource); gvr != nil {
-		result = *gvr
-	} else {
-		result = gr.WithVersion("")
-	}
-
-	return result
-}
-
-func IsCRD(groupKind schema.GroupKind) bool {
-	return groupKind == schema.GroupKind{
-		Group: "apiextensions.k8s.io",
-		Kind:  "CustomResourceDefinition",
-	}
-}
-
-func IsCRDFromGR(groupKind schema.GroupResource) bool {
-	return groupKind == schema.GroupResource{
-		Group:    "apiextensions.k8s.io",
-		Resource: "customresourcedefinitions",
-	}
-}
-
-func IsHook(annotations map[string]string) bool {
-	_, _, found := FindAnnotationOrLabelByKeyPattern(annotations, common.AnnotationKeyPatternHook)
-	return found
-}
-
-func IsWebhook(groupKind schema.GroupKind) bool {
-	return groupKind == schema.GroupKind{
-		Group: "admissionregistration.k8s.io",
-		Kind:  "MutatingWebhookConfiguration",
-	} || groupKind == schema.GroupKind{
-		Group: "admissionregistration.k8s.io",
-		Kind:  "ValidatingWebhookConfiguration",
-	}
-}
-
-func IsReleaseNamespace(resourceName string, resourceGVK schema.GroupVersionKind, releaseNamespace string) bool {
-	return resourceGVK.Group == "" && resourceGVK.Kind == "Namespace" && resourceName == releaseNamespace
 }
 
 func FindAnnotationOrLabelByKeyPattern(annotationsOrLabels map[string]string, pattern *regexp.Regexp) (key, value string, found bool) {
@@ -122,6 +53,76 @@ func FindAnnotationsOrLabelsByKeyPattern(annotationsOrLabels map[string]string, 
 	}
 
 	return result, len(result) > 0
+}
+
+func GVKtoGVR(gvk schema.GroupVersionKind, mapper meta.RESTMapper) (gvr schema.GroupVersionResource, namespaced bool, err error) {
+	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+	if err != nil {
+		return schema.GroupVersionResource{}, false, fmt.Errorf("get resource mapping for %q: %w", gvk.String(), err)
+	}
+
+	return mapping.Resource, mapping.Scope == meta.RESTScopeNamespace, nil
+}
+
+func GVRtoGVK(gvr schema.GroupVersionResource, restMapper meta.RESTMapper) (schema.GroupVersionKind, error) {
+	var gvk schema.GroupVersionKind
+	if preferredKinds, err := restMapper.KindsFor(gvr); err != nil {
+		return gvk, fmt.Errorf("match GroupVersionResource %q: %w", gvr.String(), err)
+	} else if len(preferredKinds) == 0 {
+		return gvk, fmt.Errorf("no matches for %q", gvr.String())
+	} else {
+		gvk = preferredKinds[0]
+	}
+
+	return gvk, nil
+}
+
+func IsCRD(groupKind schema.GroupKind) bool {
+	return groupKind == schema.GroupKind{
+		Group: "apiextensions.k8s.io",
+		Kind:  "CustomResourceDefinition",
+	}
+}
+
+func IsCRDFromGR(groupKind schema.GroupResource) bool {
+	return groupKind == schema.GroupResource{
+		Group:    "apiextensions.k8s.io",
+		Resource: "customresourcedefinitions",
+	}
+}
+
+func IsReleaseNamespace(resourceName string, resourceGVK schema.GroupVersionKind, releaseNamespace string) bool {
+	return resourceGVK.Group == "" && resourceGVK.Kind == "Namespace" && resourceName == releaseNamespace
+}
+
+func IsWebhook(groupKind schema.GroupKind) bool {
+	return groupKind == schema.GroupKind{
+		Group: "admissionregistration.k8s.io",
+		Kind:  "MutatingWebhookConfiguration",
+	} || groupKind == schema.GroupKind{
+		Group: "admissionregistration.k8s.io",
+		Kind:  "ValidatingWebhookConfiguration",
+	}
+}
+
+func Namespaced(gvk schema.GroupVersionKind, mapper meta.RESTMapper) (bool, error) {
+	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+	if err != nil {
+		return false, fmt.Errorf("get resource mapping for %q: %w", gvk.String(), err)
+	}
+
+	return mapping.Scope == meta.RESTScopeNamespace, nil
+}
+
+func ParseKubectlResourceStringToGVR(resource string) schema.GroupVersionResource {
+	var result schema.GroupVersionResource
+	if gvr, gr := schema.ParseResourceArg(resource); gvr != nil {
+		result = *gvr
+	} else {
+		result = gr.WithVersion("")
+	}
+
+	return result
 }
 
 func setAnnotationsAndLabels(res *unstructured.Unstructured, annotations, labels map[string]string) {

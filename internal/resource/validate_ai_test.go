@@ -12,120 +12,6 @@ import (
 	"github.com/werf/nelm/pkg/common"
 )
 
-func TestAI_ValidateResourceWithCodec(t *testing.T) {
-	t.Run("valid_Deployment_passes", func(t *testing.T) {
-		setupTestEnvironment(t)
-
-		deployment := makeInstallableResource(t, map[string]interface{}{
-			"apiVersion": "apps/v1",
-			"kind":       "Deployment",
-			"metadata": map[string]interface{}{
-				"name": "test-deployment",
-			},
-			"spec": map[string]interface{}{
-				"replicas": int64(1),
-				"selector": map[string]interface{}{
-					"matchLabels": map[string]interface{}{
-						"app": "test",
-					},
-				},
-				"template": map[string]interface{}{
-					"metadata": map[string]interface{}{
-						"labels": map[string]interface{}{
-							"app": "test",
-						},
-					},
-					"spec": map[string]interface{}{
-						"containers": []interface{}{
-							map[string]interface{}{
-								"name":  "app",
-								"image": "nginx:latest",
-							},
-						},
-					},
-				},
-			},
-		}, testReleaseNamespace)
-
-		ctx := context.Background()
-		opts := common.ResourceValidationOptions{
-			LocalResourceValidation: true,
-		}
-
-		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{deployment}, opts)
-		assert.NoError(t, err)
-	})
-
-	t.Run("valid_ConfigMap_passes", func(t *testing.T) {
-		setupTestEnvironment(t)
-
-		configMap := makeInstallableResource(t, map[string]interface{}{
-			"apiVersion": "v1",
-			"kind":       "ConfigMap",
-			"metadata": map[string]interface{}{
-				"name": "test-configmap",
-			},
-			"data": map[string]interface{}{
-				"key": "value",
-			},
-		}, testReleaseNamespace)
-
-		ctx := context.Background()
-		opts := common.ResourceValidationOptions{
-			LocalResourceValidation: true,
-		}
-
-		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{configMap}, opts)
-		assert.NoError(t, err)
-	})
-
-	t.Run("unknown_CRD_passes", func(t *testing.T) {
-		setupTestEnvironment(t)
-
-		crd := makeInstallableResource(t, map[string]interface{}{
-			"apiVersion": "custom.example.com/v1",
-			"kind":       "MyCustomResource",
-			"metadata": map[string]interface{}{
-				"name": "test-custom-resource",
-			},
-			"spec": map[string]interface{}{
-				"anyField": "anyValue",
-			},
-		}, testReleaseNamespace)
-
-		ctx := context.Background()
-		opts := common.ResourceValidationOptions{
-			LocalResourceValidation: true,
-		}
-
-		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{crd}, opts)
-		assert.NoError(t, err)
-	})
-
-	t.Run("invalid_field_type_fails", func(t *testing.T) {
-		setupTestEnvironment(t)
-
-		pod := makeInstallableResource(t, map[string]interface{}{
-			"apiVersion": "v1",
-			"kind":       "Pod",
-			"metadata": map[string]interface{}{
-				"name": "test-pod",
-			},
-			"spec": map[string]interface{}{
-				"containers": "should-be-array",
-			},
-		}, testReleaseNamespace)
-
-		ctx := context.Background()
-		opts := common.ResourceValidationOptions{
-			LocalResourceValidation: true,
-		}
-
-		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{pod}, opts)
-		assertValidationError(t, err, "decode")
-	})
-}
-
 func TestAI_ValidateLocal(t *testing.T) {
 	t.Run("duplicate_detection", func(t *testing.T) {
 		t.Run("duplicate_resources_detected", func(t *testing.T) {
@@ -305,5 +191,119 @@ func TestAI_ValidateLocal(t *testing.T) {
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{invalidPod}, opts)
 			assert.NoError(t, err)
 		})
+	})
+}
+
+func TestAI_ValidateResourceWithCodec(t *testing.T) {
+	t.Run("valid_Deployment_passes", func(t *testing.T) {
+		setupTestEnvironment(t)
+
+		deployment := makeInstallableResource(t, map[string]interface{}{
+			"apiVersion": "apps/v1",
+			"kind":       "Deployment",
+			"metadata": map[string]interface{}{
+				"name": "test-deployment",
+			},
+			"spec": map[string]interface{}{
+				"replicas": int64(1),
+				"selector": map[string]interface{}{
+					"matchLabels": map[string]interface{}{
+						"app": "test",
+					},
+				},
+				"template": map[string]interface{}{
+					"metadata": map[string]interface{}{
+						"labels": map[string]interface{}{
+							"app": "test",
+						},
+					},
+					"spec": map[string]interface{}{
+						"containers": []interface{}{
+							map[string]interface{}{
+								"name":  "app",
+								"image": "nginx:latest",
+							},
+						},
+					},
+				},
+			},
+		}, testReleaseNamespace)
+
+		ctx := context.Background()
+		opts := common.ResourceValidationOptions{
+			LocalResourceValidation: true,
+		}
+
+		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{deployment}, opts)
+		assert.NoError(t, err)
+	})
+
+	t.Run("valid_ConfigMap_passes", func(t *testing.T) {
+		setupTestEnvironment(t)
+
+		configMap := makeInstallableResource(t, map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+			"metadata": map[string]interface{}{
+				"name": "test-configmap",
+			},
+			"data": map[string]interface{}{
+				"key": "value",
+			},
+		}, testReleaseNamespace)
+
+		ctx := context.Background()
+		opts := common.ResourceValidationOptions{
+			LocalResourceValidation: true,
+		}
+
+		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{configMap}, opts)
+		assert.NoError(t, err)
+	})
+
+	t.Run("unknown_CRD_passes", func(t *testing.T) {
+		setupTestEnvironment(t)
+
+		crd := makeInstallableResource(t, map[string]interface{}{
+			"apiVersion": "custom.example.com/v1",
+			"kind":       "MyCustomResource",
+			"metadata": map[string]interface{}{
+				"name": "test-custom-resource",
+			},
+			"spec": map[string]interface{}{
+				"anyField": "anyValue",
+			},
+		}, testReleaseNamespace)
+
+		ctx := context.Background()
+		opts := common.ResourceValidationOptions{
+			LocalResourceValidation: true,
+		}
+
+		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{crd}, opts)
+		assert.NoError(t, err)
+	})
+
+	t.Run("invalid_field_type_fails", func(t *testing.T) {
+		setupTestEnvironment(t)
+
+		pod := makeInstallableResource(t, map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "Pod",
+			"metadata": map[string]interface{}{
+				"name": "test-pod",
+			},
+			"spec": map[string]interface{}{
+				"containers": "should-be-array",
+			},
+		}, testReleaseNamespace)
+
+		ctx := context.Background()
+		opts := common.ResourceValidationOptions{
+			LocalResourceValidation: true,
+		}
+
+		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{pod}, opts)
+		assertValidationError(t, err, "decode")
 	})
 }

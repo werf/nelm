@@ -28,9 +28,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const (
-	DefaultReleasePlanInstallLogLevel = log.InfoLevel
-)
+const DefaultReleasePlanInstallLogLevel = log.InfoLevel
 
 var (
 	ErrChangesPlanned         = errors.New("changes planned")
@@ -39,12 +37,12 @@ var (
 )
 
 type ReleasePlanInstallOptions struct {
-	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
-	common.ResourceDiffOptions
+	common.KubeConnectionOptions
 	common.ReleaseInstallRuntimeOptions
-	common.ValuesOptions
+	common.ResourceDiffOptions
 	common.SecretValuesOptions
+	common.ValuesOptions
 
 	// Chart specifies the chart to plan installation for. Can be a local directory path, chart archive,
 	// OCI registry URL (oci://registry/chart), or chart repository reference (repo/chart).
@@ -377,6 +375,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	})
 	if err != nil {
 		handleBuildPlanErr(ctx, installPlan, err, opts.InstallGraphPath, opts.TempDirPath, "release-install-graph.dot")
+
 		return fmt.Errorf("build install plan: %w", err)
 	}
 
@@ -461,6 +460,45 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	return nil
 }
 
+func logPlannedChanges(ctx context.Context, releaseName, releaseNamespace string, changes []*plan.ResourceChange, opts common.ResourceDiffOptions) error {
+	if len(changes) == 0 {
+		return nil
+	}
+
+	log.Default.Info(ctx, "")
+
+	for _, change := range changes {
+		if err := log.Default.InfoBlockErr(ctx, log.BlockOptions{
+			BlockTitle: buildDiffHeader(change),
+		}, func() error {
+			uDiff, err := change.UDiff(opts)
+			if err != nil {
+				return fmt.Errorf("calculate diff for resource %s: %w", change.ResourceMeta.IDHuman(), err)
+			}
+
+			log.Default.Info(ctx, "%s", uDiff)
+
+			if change.Reason != "" {
+				log.Default.Info(ctx, "<%s reason: %s>", change.Type, change.Reason)
+			}
+
+			return nil
+		}); err != nil {
+			return fmt.Errorf("log changes: %w", err)
+		}
+	}
+
+	log.Default.Info(ctx, color.Bold.Render("Planned changes summary")+" for release %q (namespace: %q):", releaseName, releaseNamespace)
+
+	for _, changeType := range []string{"create", "recreate", "update", "blind apply", "delete"} {
+		logSummaryLine(ctx, changes, changeType)
+	}
+
+	log.Default.Info(ctx, "")
+
+	return nil
+}
+
 func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, currentDir, homeDir string) (ReleasePlanInstallOptions, error) {
 	var err error
 	if opts.TempDirPath == "" {
@@ -510,51 +548,6 @@ func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, curr
 	}
 
 	return opts, nil
-}
-
-func logPlannedChanges(
-	ctx context.Context,
-	releaseName string,
-	releaseNamespace string,
-	changes []*plan.ResourceChange,
-	opts common.ResourceDiffOptions,
-) error {
-	if len(changes) == 0 {
-		return nil
-	}
-
-	log.Default.Info(ctx, "")
-
-	for _, change := range changes {
-		if err := log.Default.InfoBlockErr(ctx, log.BlockOptions{
-			BlockTitle: buildDiffHeader(change),
-		}, func() error {
-			uDiff, err := change.UDiff(opts)
-			if err != nil {
-				return fmt.Errorf("calculate diff for resource %s: %w", change.ResourceMeta.IDHuman(), err)
-			}
-
-			log.Default.Info(ctx, "%s", uDiff)
-
-			if change.Reason != "" {
-				log.Default.Info(ctx, "<%s reason: %s>", change.Type, change.Reason)
-			}
-
-			return nil
-		}); err != nil {
-			return fmt.Errorf("log changes: %w", err)
-		}
-	}
-
-	log.Default.Info(ctx, color.Bold.Render("Planned changes summary")+" for release %q (namespace: %q):", releaseName, releaseNamespace)
-
-	for _, changeType := range []string{"create", "recreate", "update", "blind apply", "delete"} {
-		logSummaryLine(ctx, changes, changeType)
-	}
-
-	log.Default.Info(ctx, "")
-
-	return nil
 }
 
 func buildDiffHeader(change *plan.ResourceChange) string {

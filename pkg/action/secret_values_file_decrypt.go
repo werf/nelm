@@ -12,9 +12,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const (
-	DefaultSecretValuesFileDecryptLogLevel = log.ErrorLevel
-)
+const DefaultSecretValuesFileDecryptLogLevel = log.ErrorLevel
 
 type SecretValuesFileDecryptOptions struct {
 	OutputFilePath string

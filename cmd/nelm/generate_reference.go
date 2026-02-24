@@ -17,43 +17,7 @@ import (
 	"github.com/werf/nelm/pkg/featgate"
 )
 
-func normalizePathForDocs(path string) string {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return path
-	}
-
-	if suffix, found := strings.CutPrefix(path, homeDir); found {
-		return "~" + suffix
-	}
-
-	return path
-}
-
 type generateReferenceConfig struct{}
-
-func newGenerateReferenceCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
-	_ = &generateReferenceConfig{}
-
-	cmd := cli.NewSubCommand(
-		ctx,
-		"generate-reference",
-		"Generate CLI reference documentation.",
-		"Generate CLI reference documentation.",
-		0,
-		miscCmdGroup,
-		cli.SubCommandOptions{},
-		runGenerateReference,
-	)
-
-	cmd.Hidden = true
-
-	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
-		return nil
-	}
-
-	return cmd
-}
 
 func runGenerateReference(cmd *cobra.Command, args []string) error {
 	rootCmd := cmd.Root()
@@ -101,31 +65,6 @@ func generateReferenceDoc(rootCmd *cobra.Command) string {
 	buf.WriteString(renderFeatGatesMarkdown())
 
 	return buf.String()
-}
-
-func renderCommandsOverview(groupsByPriority []cli.CommandGroup, groupedSubCommandInfos map[cli.CommandGroup][]*cmdInfo) string {
-	if len(groupsByPriority) == 0 {
-		return ""
-	}
-
-	var buf bytes.Buffer
-	buf.WriteString("## Commands Overview\n\n")
-
-	for _, group := range groupsByPriority {
-		buf.WriteString(fmt.Sprintf("### %s\n\n", strings.TrimSuffix(group.Title, ":")))
-
-		for _, cmdInfo := range groupedSubCommandInfos[group] {
-			buf.WriteString(fmt.Sprintf("- [`%s %s`](#%s) — %s\n", strings.ToLower(common.Brand), cmdInfo.commandPath, commandPathToAnchor(cmdInfo.commandPath), util.EscapeForMarkdownPreservingCodeSpans(cmdInfo.short)))
-		}
-
-		buf.WriteString("\n")
-	}
-
-	return buf.String()
-}
-
-func commandPathToAnchor(commandPath string) string {
-	return strings.ToLower(strings.ReplaceAll(commandPath, " ", "-"))
 }
 
 func renderCommandMarkdown(cmd *cobra.Command, commandPath string) string {
@@ -193,6 +132,27 @@ func renderFlagsMarkdown(fset *pflag.FlagSet) string {
 	return buf.String()
 }
 
+func renderCommandsOverview(groupsByPriority []cli.CommandGroup, groupedSubCommandInfos map[cli.CommandGroup][]*cmdInfo) string {
+	if len(groupsByPriority) == 0 {
+		return ""
+	}
+
+	var buf bytes.Buffer
+	buf.WriteString("## Commands Overview\n\n")
+
+	for _, group := range groupsByPriority {
+		buf.WriteString(fmt.Sprintf("### %s\n\n", strings.TrimSuffix(group.Title, ":")))
+
+		for _, cmdInfo := range groupedSubCommandInfos[group] {
+			buf.WriteString(fmt.Sprintf("- [`%s %s`](#%s) — %s\n", strings.ToLower(common.Brand), cmdInfo.commandPath, commandPathToAnchor(cmdInfo.commandPath), util.EscapeForMarkdownPreservingCodeSpans(cmdInfo.short)))
+		}
+
+		buf.WriteString("\n")
+	}
+
+	return buf.String()
+}
+
 func renderFlagMarkdown(flag *pflag.Flag) string {
 	var buf bytes.Buffer
 
@@ -219,6 +179,46 @@ func renderFlagMarkdown(flag *pflag.Flag) string {
 	buf.WriteString(fmt.Sprintf("  %s\n\n", util.EscapeForMarkdownPreservingCodeSpans(flag.Usage)))
 
 	return buf.String()
+}
+
+func commandPathToAnchor(commandPath string) string {
+	return strings.ToLower(strings.ReplaceAll(commandPath, " ", "-"))
+}
+
+func newGenerateReferenceCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
+	_ = &generateReferenceConfig{}
+
+	cmd := cli.NewSubCommand(
+		ctx,
+		"generate-reference",
+		"Generate CLI reference documentation.",
+		"Generate CLI reference documentation.",
+		0,
+		miscCmdGroup,
+		cli.SubCommandOptions{},
+		runGenerateReference,
+	)
+
+	cmd.Hidden = true
+
+	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
+		return nil
+	}
+
+	return cmd
+}
+
+func normalizePathForDocs(path string) string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+
+	if suffix, found := strings.CutPrefix(path, homeDir); found {
+		return "~" + suffix
+	}
+
+	return path
 }
 
 func renderFeatGatesMarkdown() string {

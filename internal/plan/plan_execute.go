@@ -110,6 +110,7 @@ func execOperation(opID, releaseNamespace string, completedOpsIDsCh chan string,
 
 		if err = execOp(ctx, op, releaseNamespace, taskStore, logStore, informerFactory, history, clientFactory, readinessTimeout, presenceTimeout, absenceTimeout); err != nil {
 			reportOperationStatus(op, OperationStatusFailed, reporter)
+
 			return fmt.Errorf("execute operation: %w", err)
 		}
 
@@ -119,17 +120,6 @@ func execOperation(opID, releaseNamespace string, completedOpsIDsCh chan string,
 
 		return nil
 	})
-}
-
-func findExecutableOpsIDs(opsMap map[string]map[string]graph.Edge[string]) []string {
-	var executableOpsIDs []string
-	for opID, edgeMap := range opsMap {
-		if len(edgeMap) == 0 {
-			executableOpsIDs = append(executableOpsIDs, opID)
-		}
-	}
-
-	return executableOpsIDs
 }
 
 func execOp(ctx context.Context, op *Operation, releaseNamespace string, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history release.Historier, clientFactory kube.ClientFactorier, readinessTimeout, presenceTimeout, absenceTimeout time.Duration) error {
@@ -159,19 +149,6 @@ func execOp(ctx context.Context, op *Operation, releaseNamespace string, taskSto
 	case OperationTypeNoop:
 	default:
 		panic("unexpected operation type")
-	}
-
-	return nil
-}
-
-func execOpCreate(ctx context.Context, op *Operation, releaseNamespace string, clientFactory kube.ClientFactorier) error {
-	opConfig := op.Config.(*OperationConfigCreate)
-
-	if _, err := clientFactory.KubeClient().Create(ctx, opConfig.ResourceSpec, kube.KubeClientCreateOptions{
-		DefaultNamespace: releaseNamespace,
-		ForceReplicas:    opConfig.ForceReplicas,
-	}); err != nil {
-		return fmt.Errorf("create resource: %w", err)
 	}
 
 	return nil
@@ -218,38 +195,55 @@ func execOpRecreate(ctx context.Context, op *Operation, releaseNamespace string,
 	return nil
 }
 
-func execOpUpdate(ctx context.Context, op *Operation, releaseNamespace string, clientFactory kube.ClientFactorier) error {
-	opConfig := op.Config.(*OperationConfigUpdate)
+func execOpTrackAbsence(ctx context.Context, op *Operation, releaseNamespace string, taskStore *kdutil.Concurrent[*statestore.TaskStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], timeout time.Duration, clientFactory kube.ClientFactorier) error {
+	opConfig := op.Config.(*OperationConfigTrackAbsence)
 
-	if _, err := clientFactory.KubeClient().Apply(ctx, opConfig.ResourceSpec, kube.KubeClientApplyOptions{
-		DefaultNamespace: releaseNamespace,
-	}); err != nil {
-		return fmt.Errorf("apply resource: %w", err)
+	namespace, err := getNamespace(opConfig.ResourceMeta, releaseNamespace, clientFactory)
+	if err != nil {
+		return fmt.Errorf("determine resource namespace: %w", err)
+	}
+
+	taskState := kdutil.NewConcurrent(
+		statestore.NewAbsenceTaskState(opConfig.ResourceMeta.Name, namespace, opConfig.ResourceMeta.GroupVersionKind, statestore.AbsenceTaskStateOptions{}),
+	)
+
+	taskStore.RWTransaction(func(ts *statestore.TaskStore) {
+		ts.AddAbsenceTaskState(taskState)
+	})
+
+	tracker := dyntracker.NewDynamicAbsenceTracker(taskState, informerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicAbsenceTrackerOptions{
+		Timeout: timeout,
+	})
+
+	if err := tracker.Track(ctx); err != nil {
+		return fmt.Errorf("track resource absence: %w", err)
 	}
 
 	return nil
 }
 
-func execOpApply(ctx context.Context, op *Operation, releaseNamespace string, clientFactory kube.ClientFactorier) error {
-	opConfig := op.Config.(*OperationConfigApply)
+func execOpTrackPresence(ctx context.Context, op *Operation, releaseNamespace string, taskStore *kdutil.Concurrent[*statestore.TaskStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], timeout time.Duration, clientFactory kube.ClientFactorier) error {
+	opConfig := op.Config.(*OperationConfigTrackPresence)
 
-	if _, err := clientFactory.KubeClient().Apply(ctx, opConfig.ResourceSpec, kube.KubeClientApplyOptions{
-		DefaultNamespace: releaseNamespace,
-	}); err != nil {
-		return fmt.Errorf("apply resource: %w", err)
+	namespace, err := getNamespace(opConfig.ResourceMeta, releaseNamespace, clientFactory)
+	if err != nil {
+		return fmt.Errorf("determine resource namespace: %w", err)
 	}
 
-	return nil
-}
+	taskState := kdutil.NewConcurrent(
+		statestore.NewPresenceTaskState(opConfig.ResourceMeta.Name, namespace, opConfig.ResourceMeta.GroupVersionKind, statestore.PresenceTaskStateOptions{}),
+	)
 
-func execOpDelete(ctx context.Context, op *Operation, releaseNamespace string, clientFactory kube.ClientFactorier) error {
-	opConfig := op.Config.(*OperationConfigDelete)
+	taskStore.RWTransaction(func(ts *statestore.TaskStore) {
+		ts.AddPresenceTaskState(taskState)
+	})
 
-	if err := clientFactory.KubeClient().Delete(ctx, opConfig.ResourceMeta, kube.KubeClientDeleteOptions{
-		DefaultNamespace:  releaseNamespace,
-		PropagationPolicy: opConfig.DeletePropagation,
-	}); err != nil {
-		return fmt.Errorf("delete resource: %w", err)
+	tracker := dyntracker.NewDynamicPresenceTracker(taskState, informerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicPresenceTrackerOptions{
+		Timeout: timeout,
+	})
+
+	if err := tracker.Track(ctx); err != nil {
+		return fmt.Errorf("track resource presence: %w", err)
 	}
 
 	return nil
@@ -299,55 +293,26 @@ func execOpTrackReadiness(ctx context.Context, op *Operation, releaseNamespace s
 	return nil
 }
 
-func execOpTrackPresence(ctx context.Context, op *Operation, releaseNamespace string, taskStore *kdutil.Concurrent[*statestore.TaskStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], timeout time.Duration, clientFactory kube.ClientFactorier) error {
-	opConfig := op.Config.(*OperationConfigTrackPresence)
+func execOpApply(ctx context.Context, op *Operation, releaseNamespace string, clientFactory kube.ClientFactorier) error {
+	opConfig := op.Config.(*OperationConfigApply)
 
-	namespace, err := getNamespace(opConfig.ResourceMeta, releaseNamespace, clientFactory)
-	if err != nil {
-		return fmt.Errorf("determine resource namespace: %w", err)
-	}
-
-	taskState := kdutil.NewConcurrent(
-		statestore.NewPresenceTaskState(opConfig.ResourceMeta.Name, namespace, opConfig.ResourceMeta.GroupVersionKind, statestore.PresenceTaskStateOptions{}),
-	)
-
-	taskStore.RWTransaction(func(ts *statestore.TaskStore) {
-		ts.AddPresenceTaskState(taskState)
-	})
-
-	tracker := dyntracker.NewDynamicPresenceTracker(taskState, informerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicPresenceTrackerOptions{
-		Timeout: timeout,
-	})
-
-	if err := tracker.Track(ctx); err != nil {
-		return fmt.Errorf("track resource presence: %w", err)
+	if _, err := clientFactory.KubeClient().Apply(ctx, opConfig.ResourceSpec, kube.KubeClientApplyOptions{
+		DefaultNamespace: releaseNamespace,
+	}); err != nil {
+		return fmt.Errorf("apply resource: %w", err)
 	}
 
 	return nil
 }
 
-func execOpTrackAbsence(ctx context.Context, op *Operation, releaseNamespace string, taskStore *kdutil.Concurrent[*statestore.TaskStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], timeout time.Duration, clientFactory kube.ClientFactorier) error {
-	opConfig := op.Config.(*OperationConfigTrackAbsence)
+func execOpCreate(ctx context.Context, op *Operation, releaseNamespace string, clientFactory kube.ClientFactorier) error {
+	opConfig := op.Config.(*OperationConfigCreate)
 
-	namespace, err := getNamespace(opConfig.ResourceMeta, releaseNamespace, clientFactory)
-	if err != nil {
-		return fmt.Errorf("determine resource namespace: %w", err)
-	}
-
-	taskState := kdutil.NewConcurrent(
-		statestore.NewAbsenceTaskState(opConfig.ResourceMeta.Name, namespace, opConfig.ResourceMeta.GroupVersionKind, statestore.AbsenceTaskStateOptions{}),
-	)
-
-	taskStore.RWTransaction(func(ts *statestore.TaskStore) {
-		ts.AddAbsenceTaskState(taskState)
-	})
-
-	tracker := dyntracker.NewDynamicAbsenceTracker(taskState, informerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicAbsenceTrackerOptions{
-		Timeout: timeout,
-	})
-
-	if err := tracker.Track(ctx); err != nil {
-		return fmt.Errorf("track resource absence: %w", err)
+	if _, err := clientFactory.KubeClient().Create(ctx, opConfig.ResourceSpec, kube.KubeClientCreateOptions{
+		DefaultNamespace: releaseNamespace,
+		ForceReplicas:    opConfig.ForceReplicas,
+	}); err != nil {
+		return fmt.Errorf("create resource: %w", err)
 	}
 
 	return nil
@@ -363,11 +328,14 @@ func execOpCreateRelease(ctx context.Context, op *Operation, history release.His
 	return nil
 }
 
-func execOpUpdateRelease(ctx context.Context, op *Operation, history release.Historier) error {
-	opConfig := op.Config.(*OperationConfigUpdateRelease)
+func execOpDelete(ctx context.Context, op *Operation, releaseNamespace string, clientFactory kube.ClientFactorier) error {
+	opConfig := op.Config.(*OperationConfigDelete)
 
-	if err := history.UpdateRelease(ctx, opConfig.Release); err != nil {
-		return fmt.Errorf("update release: %w", err)
+	if err := clientFactory.KubeClient().Delete(ctx, opConfig.ResourceMeta, kube.KubeClientDeleteOptions{
+		DefaultNamespace:  releaseNamespace,
+		PropagationPolicy: opConfig.DeletePropagation,
+	}); err != nil {
+		return fmt.Errorf("delete resource: %w", err)
 	}
 
 	return nil
@@ -381,6 +349,39 @@ func execOpDeleteRelease(ctx context.Context, op *Operation, history release.His
 	}
 
 	return nil
+}
+
+func execOpUpdate(ctx context.Context, op *Operation, releaseNamespace string, clientFactory kube.ClientFactorier) error {
+	opConfig := op.Config.(*OperationConfigUpdate)
+
+	if _, err := clientFactory.KubeClient().Apply(ctx, opConfig.ResourceSpec, kube.KubeClientApplyOptions{
+		DefaultNamespace: releaseNamespace,
+	}); err != nil {
+		return fmt.Errorf("apply resource: %w", err)
+	}
+
+	return nil
+}
+
+func execOpUpdateRelease(ctx context.Context, op *Operation, history release.Historier) error {
+	opConfig := op.Config.(*OperationConfigUpdateRelease)
+
+	if err := history.UpdateRelease(ctx, opConfig.Release); err != nil {
+		return fmt.Errorf("update release: %w", err)
+	}
+
+	return nil
+}
+
+func findExecutableOpsIDs(opsMap map[string]map[string]graph.Edge[string]) []string {
+	var executableOpsIDs []string
+	for opID, edgeMap := range opsMap {
+		if len(edgeMap) == 0 {
+			executableOpsIDs = append(executableOpsIDs, opID)
+		}
+	}
+
+	return executableOpsIDs
 }
 
 func getNamespace(resMeta *spec.ResourceMeta, releaseNamespace string, clientFactory kube.ClientFactorier) (string, error) {

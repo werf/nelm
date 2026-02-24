@@ -36,17 +36,15 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const (
-	DefaultReleaseInstallLogLevel = log.InfoLevel
-)
+const DefaultReleaseInstallLogLevel = log.InfoLevel
 
 type ReleaseInstallOptions struct {
-	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
+	common.KubeConnectionOptions
 	common.ReleaseInstallRuntimeOptions
-	common.ValuesOptions
 	common.SecretValuesOptions
 	common.TrackingOptions
+	common.ValuesOptions
 
 	// AutoRollback, when true, automatically rolls back to the previous deployed release on installation failure.
 	// Only works if there is a previously successfully deployed release.
@@ -87,17 +85,17 @@ type ReleaseInstallOptions struct {
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.
 	LegacyChartType helmopts.ChartType
-	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
-	// Must be a buffered channel with capacity >= 1. The caller owns the channel and is responsible
-	// for its lifecycle. Intermediate reports may be dropped if the consumer is slow; the final
-	// report is guaranteed (blocking send). ReleaseInstall does not close this channel.
-	LegacyProgressReportCh chan<- progrep.ProgressReport
 	// LegacyExtraValues provides additional values programmatically.
 	// Used internally for backward compatibility with werf integration.
 	LegacyExtraValues map[string]interface{}
 	// LegacyLogRegistryStreamOut is the output writer for Helm registry client logs.
 	// Defaults to io.Discard if not set. Used for debugging registry operations.
 	LegacyLogRegistryStreamOut io.Writer
+	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
+	// Must be a buffered channel with capacity >= 1. The caller owns the channel and is responsible
+	// for its lifecycle. Intermediate reports may be dropped if the consumer is slow; the final
+	// report is guaranteed (blocking send). ReleaseInstall does not close this channel.
+	LegacyProgressReportCh chan<- progrep.ProgressReport
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
@@ -127,6 +125,21 @@ type ReleaseInstallOptions struct {
 	// Timeout is the maximum duration for the entire release installation operation.
 	// If 0, no timeout is applied and the operation runs until completion or error.
 	Timeout time.Duration
+}
+
+type runRollbackPlanOptions struct {
+	common.ReleaseInstallRuntimeOptions
+	common.TrackingOptions
+
+	LegacyProgressReporter *plan.LegacyProgressReporter
+	NetworkParallelism     int
+	RollbackGraphPath      string
+}
+
+type runRollbackPlanResult struct {
+	CanceledResourceOps  []*plan.Operation
+	CompletedResourceOps []*plan.Operation
+	FailedResourceOps    []*plan.Operation
 }
 
 func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseInstallOptions) error {
@@ -455,6 +468,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		})
 		if err != nil {
 			handleBuildPlanErr(ctx, installPlan, err, opts.InstallGraphPath, opts.TempDirPath, "release-install-graph.dot")
+
 			return fmt.Errorf("build install plan: %w", err)
 		}
 	}
@@ -577,8 +591,8 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			runRollbackPlanResult, nonCritErrs, critErrs := runRollbackPlan(ctx, releaseName, releaseNamespace, newRelease, prevDeployedRelease, taskStore, logStore, informerFactory, history, clientFactory, runRollbackPlanOptions{
 				ReleaseInstallRuntimeOptions: opts.ReleaseInstallRuntimeOptions,
 				TrackingOptions:              opts.TrackingOptions,
-				NetworkParallelism:           opts.NetworkParallelism,
 				LegacyProgressReporter:       reporter,
+				NetworkParallelism:           opts.NetworkParallelism,
 				RollbackGraphPath:            opts.RollbackGraphPath,
 			})
 
@@ -739,21 +753,6 @@ func createReleaseNamespace(ctx context.Context, clientFactory *kube.ClientFacto
 	}
 
 	return nil
-}
-
-type runRollbackPlanOptions struct {
-	common.ReleaseInstallRuntimeOptions
-	common.TrackingOptions
-
-	NetworkParallelism     int
-	LegacyProgressReporter *plan.LegacyProgressReporter
-	RollbackGraphPath      string
-}
-
-type runRollbackPlanResult struct {
-	CompletedResourceOps []*plan.Operation
-	CanceledResourceOps  []*plan.Operation
-	FailedResourceOps    []*plan.Operation
 }
 
 func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, failedRelease, prevDeployedRelease *helmrelease.Release, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history *release.History, clientFactory *kube.ClientFactory, opts runRollbackPlanOptions) (result *runRollbackPlanResult, nonCritErrs, critErrs *util.MultiError) {
@@ -940,8 +939,8 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 	}
 
 	return &runRollbackPlanResult{
-		CompletedResourceOps: completedResourceOps,
 		CanceledResourceOps:  canceledResourceOps,
+		CompletedResourceOps: completedResourceOps,
 		FailedResourceOps:    failedResourceOps,
 	}, nonCritErrs, critErrs
 }

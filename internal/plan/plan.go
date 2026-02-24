@@ -26,6 +26,62 @@ func NewPlan() *Plan {
 	}
 }
 
+func (p *Plan) AddOperationChain() *planChainBuilder {
+	return &planChainBuilder{
+		plan: p,
+	}
+}
+
+func (p *Plan) Connect(fromID, toID string) error {
+	if err := p.Graph.AddEdge(fromID, toID); err != nil {
+		if errors.Is(err, graph.ErrEdgeAlreadyExists) {
+			return nil
+		} else {
+			return fmt.Errorf("add edge from %q to %q: %w", fromID, toID, err)
+		}
+	}
+
+	return nil
+}
+
+func (p *Plan) MarshalJSON() ([]byte, error) {
+	ops := p.Operations()
+
+	sort.Slice(ops, func(i, j int) bool {
+		return ops[i].ID() < ops[j].ID()
+	})
+
+	adjMap, err := p.Graph.AdjacencyMap()
+	if err != nil {
+		return nil, fmt.Errorf("get adjacency map: %w", err)
+	}
+
+	var edges []planEdgeJSON
+	for fromID, toMap := range adjMap {
+		for toID := range toMap {
+			edges = append(edges, planEdgeJSON{From: fromID, To: toID})
+		}
+	}
+
+	sort.Slice(edges, func(i, j int) bool {
+		if edges[i].From == edges[j].From {
+			return edges[i].To < edges[j].To
+		}
+
+		return edges[i].From < edges[j].From
+	})
+
+	data, err := json.Marshal(planJSON{
+		Edges:      edges,
+		Operations: ops,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal plan: %w", err)
+	}
+
+	return data, nil
+}
+
 func (p *Plan) Operation(id string) (op *Operation, found bool) {
 	vertex, err := p.Graph.Vertex(id)
 	if err != nil {
@@ -49,24 +105,6 @@ func (p *Plan) Operations() []*Operation {
 	}
 
 	return operations
-}
-
-func (p *Plan) AddOperationChain() *planChainBuilder {
-	return &planChainBuilder{
-		plan: p,
-	}
-}
-
-func (p *Plan) Connect(fromID, toID string) error {
-	if err := p.Graph.AddEdge(fromID, toID); err != nil {
-		if errors.Is(err, graph.ErrEdgeAlreadyExists) {
-			return nil
-		} else {
-			return fmt.Errorf("add edge from %q to %q: %w", fromID, toID, err)
-		}
-	}
-
-	return nil
 }
 
 func (p *Plan) Optimize(noFinalTracking bool) error {
@@ -119,54 +157,6 @@ func (p *Plan) ToDOT() ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-type planJSON struct {
-	Operations []*Operation   `json:"operations"`
-	Edges      []planEdgeJSON `json:"edges"`
-}
-
-type planEdgeJSON struct {
-	From string `json:"from"`
-	To   string `json:"to"`
-}
-
-func (p *Plan) MarshalJSON() ([]byte, error) {
-	ops := p.Operations()
-
-	sort.Slice(ops, func(i, j int) bool {
-		return ops[i].ID() < ops[j].ID()
-	})
-
-	adjMap, err := p.Graph.AdjacencyMap()
-	if err != nil {
-		return nil, fmt.Errorf("get adjacency map: %w", err)
-	}
-
-	var edges []planEdgeJSON
-	for fromID, toMap := range adjMap {
-		for toID := range toMap {
-			edges = append(edges, planEdgeJSON{From: fromID, To: toID})
-		}
-	}
-
-	sort.Slice(edges, func(i, j int) bool {
-		if edges[i].From == edges[j].From {
-			return edges[i].To < edges[j].To
-		}
-
-		return edges[i].From < edges[j].From
-	})
-
-	data, err := json.Marshal(planJSON{
-		Operations: ops,
-		Edges:      edges,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("marshal plan: %w", err)
-	}
-
-	return data, nil
-}
-
 func (p *Plan) UnmarshalJSON(data []byte) error {
 	var raw planJSON
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -192,6 +182,16 @@ func (p *Plan) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type planJSON struct {
+	Operations []*Operation   `json:"operations"`
+	Edges      []planEdgeJSON `json:"edges"`
+}
+
+type planEdgeJSON struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
 type planBuilderStep struct {
 	operation       *Operation
 	skipOnDuplicate bool
@@ -199,9 +199,9 @@ type planBuilderStep struct {
 }
 
 type planChainBuilder struct {
+	err   error
 	plan  *Plan
 	steps []*planBuilderStep
-	err   error
 }
 
 func (b *planChainBuilder) AddOperation(op *Operation) *planChainBuilder {
@@ -210,28 +210,6 @@ func (b *planChainBuilder) AddOperation(op *Operation) *planChainBuilder {
 	}
 
 	b.steps = append(b.steps, &planBuilderStep{operation: op})
-
-	return b
-}
-
-func (b *planChainBuilder) Stage(stage common.Stage) *planChainBuilder {
-	if b.err != nil {
-		return b
-	}
-
-	lastStep := lo.Must(lo.Last(b.steps))
-	lastStep.stage = stage
-
-	return b
-}
-
-func (b *planChainBuilder) SkipOnDuplicate() *planChainBuilder {
-	if b.err != nil {
-		return b
-	}
-
-	lastStep := lo.Must(lo.Last(b.steps))
-	lastStep.skipOnDuplicate = true
 
 	return b
 }
@@ -290,6 +268,46 @@ func (b *planChainBuilder) Do() error {
 	return nil
 }
 
+func (b *planChainBuilder) SkipOnDuplicate() *planChainBuilder {
+	if b.err != nil {
+		return b
+	}
+
+	lastStep := lo.Must(lo.Last(b.steps))
+	lastStep.skipOnDuplicate = true
+
+	return b
+}
+
+func (b *planChainBuilder) Stage(stage common.Stage) *planChainBuilder {
+	if b.err != nil {
+		return b
+	}
+
+	lastStep := lo.Must(lo.Last(b.steps))
+	lastStep.stage = stage
+
+	return b
+}
+
+func squashUselessMetaOperations(p *Plan) {
+	operationPairs := findMetaOperationPairs(p.Operations())
+	uselessOperationPairs := findUselessMetaOperations(operationPairs, lo.Must(p.Graph.AdjacencyMap()))
+
+	for _, pair := range uselessOperationPairs {
+		for _, op := range pair {
+			p.SquashOperation(op)
+		}
+	}
+
+	operationPairs = findMetaOperationPairs(p.Operations())
+	uselessOperationPairs = findUselessMetaOperations(operationPairs, lo.Must(p.Graph.AdjacencyMap()))
+
+	if len(uselessOperationPairs) > 0 {
+		squashUselessMetaOperations(p)
+	}
+}
+
 func findMetaOperationPairs(operations []*Operation) [][]*Operation {
 	var (
 		startOps []*Operation
@@ -342,24 +360,6 @@ func findUselessMetaOperations(operationPairs [][]*Operation, adjMap map[string]
 	return uselessPairs
 }
 
-func squashUselessMetaOperations(p *Plan) {
-	operationPairs := findMetaOperationPairs(p.Operations())
-	uselessOperationPairs := findUselessMetaOperations(operationPairs, lo.Must(p.Graph.AdjacencyMap()))
-
-	for _, pair := range uselessOperationPairs {
-		for _, op := range pair {
-			p.SquashOperation(op)
-		}
-	}
-
-	operationPairs = findMetaOperationPairs(p.Operations())
-	uselessOperationPairs = findUselessMetaOperations(operationPairs, lo.Must(p.Graph.AdjacencyMap()))
-
-	if len(uselessOperationPairs) > 0 {
-		squashUselessMetaOperations(p)
-	}
-}
-
 func squashFinalTrackingOperations(p *Plan) {
 	ops := p.Operations()
 	trackingOps := lo.Filter(ops, func(op *Operation, _ int) bool {
@@ -372,6 +372,7 @@ func squashFinalTrackingOperations(p *Plan) {
 			op := lo.Must(p.Operation(opID))
 			if op.Category == OperationCategoryResource {
 				foundDependentResourceOps = true
+
 				return true
 			}
 

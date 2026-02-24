@@ -22,6 +22,24 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
+func abort(ctx context.Context, err error, exitCode int) {
+	log.Default.WarnPop(ctx, "final")
+	log.Default.Error(ctx, "Error: %s", err)
+	os.Exit(exitCode)
+}
+
+func periodicStackTraces() {
+	go func() {
+		for {
+			buf := make([]byte, 1<<20)
+			runtime.Stack(buf, true)
+			fmt.Printf("%s", buf)
+
+			time.Sleep(time.Second * time.Duration(10))
+		}
+	}()
+}
+
 func main() {
 	if featgate.FeatGatePeriodicStackTraces.Enabled() {
 		periodicStackTraces()
@@ -68,22 +86,4 @@ func main() {
 
 		abort(ctx, err, exitCode)
 	}
-}
-
-func abort(ctx context.Context, err error, exitCode int) {
-	log.Default.WarnPop(ctx, "final")
-	log.Default.Error(ctx, "Error: %s", err)
-	os.Exit(exitCode)
-}
-
-func periodicStackTraces() {
-	go func() {
-		for {
-			buf := make([]byte, 1<<20)
-			runtime.Stack(buf, true)
-			fmt.Printf("%s", buf)
-
-			time.Sleep(time.Second * time.Duration(10))
-		}
-	}()
 }

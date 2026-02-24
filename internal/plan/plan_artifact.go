@@ -45,58 +45,6 @@ type PlanArtifactRelease struct {
 	Revision  int    `json:"revision"`
 }
 
-func WritePlanArtifact(ctx context.Context, artifact *PlanArtifact, path, secretKey, secretWorkDir string) error {
-	dataJSON, err := json.Marshal(artifact.Data)
-	if err != nil {
-		return fmt.Errorf("marshal artifact data to json: %w", err)
-	}
-
-	if secretKey != "" {
-		lo.Must0(os.Setenv("WERF_SECRET_KEY", secretKey))
-
-		encoder, err := secrets_manager.Manager.GetYamlEncoder(ctx, secretWorkDir, false)
-		if err != nil {
-			return fmt.Errorf("get yaml encoder: %w", err)
-		}
-
-		encryptedData, err := encoder.Encrypt(dataJSON)
-		if err != nil {
-			return fmt.Errorf("encrypt artifact data: %w", err)
-		}
-
-		artifact.DataRaw = string(encryptedData)
-		artifact.Encrypted = true
-	} else {
-		artifact.DataRaw = string(dataJSON)
-		artifact.Encrypted = false
-	}
-
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o644)
-	if err != nil {
-		return fmt.Errorf("create plan artifact file %q: %w", path, err)
-	}
-	defer file.Close()
-
-	gzipWriter := gzip.NewWriter(file)
-
-	enc := json.NewEncoder(gzipWriter)
-	enc.SetIndent("", "  ")
-
-	if err := enc.Encode(artifact); err != nil {
-		if err := gzipWriter.Close(); err != nil {
-			log.Default.Error(ctx, "Cannot close plan artifact gzip writer: %w", err)
-		}
-
-		return fmt.Errorf("marshal plan artifact to json: %w", err)
-	}
-
-	if err := gzipWriter.Close(); err != nil {
-		return fmt.Errorf("cannot close plan artifact gzip writer: %w", err)
-	}
-
-	return nil
-}
-
 func ReadPlanArtifact(ctx context.Context, path, secretKey, secretWorkDir string) (*PlanArtifact, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -181,6 +129,58 @@ func ValidatePlanArtifact(artifact *PlanArtifact, lifetime time.Duration) error 
 
 	if len(artifact.Data.ReleaseInfos) == 0 {
 		return errors.New("no release information objects found")
+	}
+
+	return nil
+}
+
+func WritePlanArtifact(ctx context.Context, artifact *PlanArtifact, path, secretKey, secretWorkDir string) error {
+	dataJSON, err := json.Marshal(artifact.Data)
+	if err != nil {
+		return fmt.Errorf("marshal artifact data to json: %w", err)
+	}
+
+	if secretKey != "" {
+		lo.Must0(os.Setenv("WERF_SECRET_KEY", secretKey))
+
+		encoder, err := secrets_manager.Manager.GetYamlEncoder(ctx, secretWorkDir, false)
+		if err != nil {
+			return fmt.Errorf("get yaml encoder: %w", err)
+		}
+
+		encryptedData, err := encoder.Encrypt(dataJSON)
+		if err != nil {
+			return fmt.Errorf("encrypt artifact data: %w", err)
+		}
+
+		artifact.DataRaw = string(encryptedData)
+		artifact.Encrypted = true
+	} else {
+		artifact.DataRaw = string(dataJSON)
+		artifact.Encrypted = false
+	}
+
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o644)
+	if err != nil {
+		return fmt.Errorf("create plan artifact file %q: %w", path, err)
+	}
+	defer file.Close()
+
+	gzipWriter := gzip.NewWriter(file)
+
+	enc := json.NewEncoder(gzipWriter)
+	enc.SetIndent("", "  ")
+
+	if err := enc.Encode(artifact); err != nil {
+		if err := gzipWriter.Close(); err != nil {
+			log.Default.Error(ctx, "Cannot close plan artifact gzip writer: %w", err)
+		}
+
+		return fmt.Errorf("marshal plan artifact to json: %w", err)
+	}
+
+	if err := gzipWriter.Close(); err != nil {
+		return fmt.Errorf("cannot close plan artifact gzip writer: %w", err)
 	}
 
 	return nil

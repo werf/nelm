@@ -23,12 +23,9 @@ import (
 )
 
 const (
-	flagsHelpIndent     = 10
 	featGatesHelpIndent = 10
-	minUsageWrapWidth   = 40
-)
-
-const helpTemplate = `
+	flagsHelpIndent     = 10
+	helpTemplate        = `
 {{- with (or .Long .Short)}}
 {{- . | trimTrailingWhitespaces}}
 {{- end}}
@@ -37,8 +34,8 @@ const helpTemplate = `
 {{- .UsageString}}
 {{- end }}
 `
-
-const usageTemplate = `
+	minUsageWrapWidth = 40
+	usageTemplate     = `
 {{- if (and .Runnable .HasParent) }}
 
 Usage:
@@ -72,6 +69,7 @@ Examples:
 {{ featGatesUsage | trimTrailingWhitespaces }}
 {{- end }}
 `
+)
 
 var templateFuncs = template.FuncMap{
 	"gt": cobra.Gt,
@@ -83,19 +81,33 @@ var templateFuncs = template.FuncMap{
 	"featGatesUsage": featGatesUsage,
 }
 
-func usageFunc(c *cobra.Command) error {
-	t := template.New("top")
-	t.Funcs(templateFuncs)
+type cmdInfo struct {
+	commandPath string
+	priority    int
+	short       string
+}
 
-	if _, err := t.Parse(c.UsageTemplate()); err != nil {
-		return fmt.Errorf("parse template: %w", err)
+func commandsUsage(command *cobra.Command) string {
+	if !command.HasAvailableSubCommands() {
+		return ""
 	}
 
-	if err := t.Execute(c.OutOrStderr(), c); err != nil {
-		return fmt.Errorf("execute template: %w", err)
+	subCommands := getSubCommandsRecurse(command)
+	groupsByPriority, groupedSubCommandInfos, longestCmdPathLen := groupCmdInfos(subCommands)
+	padding := longestCmdPathLen + 3
+	cmdIndent := 2
+
+	result := "\n"
+	for _, group := range groupsByPriority {
+		result += fmt.Sprintf("%s\n", group.Title)
+		for _, cmd := range groupedSubCommandInfos[group] {
+			result += fmt.Sprintf("%s%s%s\n", strings.Repeat(" ", cmdIndent), fmt.Sprintf("%-*s", padding, cmd.commandPath), cmd.short)
+		}
+
+		result += "\n"
 	}
 
-	return nil
+	return result
 }
 
 func flagsUsage(fset *pflag.FlagSet) string {
@@ -155,61 +167,38 @@ func flagsUsage(fset *pflag.FlagSet) string {
 	return buf.String()
 }
 
-func groupFlags(fset *pflag.FlagSet) ([]cli.FlagGroup, map[cli.FlagGroup][]*pflag.Flag) {
-	groupsByPriority := []cli.FlagGroup{}
-	groupedFlags := map[cli.FlagGroup][]*pflag.Flag{}
+func featGatesUsage() string {
+	terminalWidth := logboek.Streams().Width()
 
-	fset.VisitAll(func(f *pflag.Flag) {
-		var group *cli.FlagGroup
+	buf := new(bytes.Buffer)
+	lines := []string{}
 
-		if groupID, found := f.Annotations[cli.FlagGroupIDAnnotationName]; found {
-			groupTitle := f.Annotations[cli.FlagGroupTitleAnnotationName]
-			groupPriority := f.Annotations[cli.FlagGroupPriorityAnnotationName]
-			group = cli.NewFlagGroup(groupID[0], groupTitle[0], lo.Must1(strconv.Atoi(groupPriority[0])))
+	for i, featGate := range featgate.FeatGates {
+		if i == 0 {
+			lines = append(lines, "\nFeature gates:\n")
+		}
+
+		header := fmt.Sprintf("      $%s=%v", featGate.EnvVarName(), featGate.Default())
+
+		var help string
+		if terminalWidth > minUsageWrapWidth {
+			help = logboek.FitText(featGate.Help, types.FitTextOptions{
+				ExtraIndentWidth: featGatesHelpIndent,
+				Width:            terminalWidth,
+			})
 		} else {
-			group = miscFlagGroup
+			help = fmt.Sprintf("%s%s", strings.Repeat(" ", featGatesHelpIndent), featGate.Help)
 		}
 
-		groupsByPriority = append(groupsByPriority, *group)
-		groupedFlags[*group] = append(groupedFlags[*group], f)
-	})
-
-	sort.SliceStable(groupsByPriority, func(i, j int) bool {
-		return groupsByPriority[i].Priority > groupsByPriority[j].Priority
-	})
-
-	groupsByPriority = lo.Uniq(groupsByPriority)
-
-	for group := range groupedFlags {
-		slices.SortStableFunc(groupedFlags[group], func(aFlag, bFlag *pflag.Flag) int {
-			return strings.Compare(aFlag.Name, bFlag.Name)
-		})
+		line := fmt.Sprintf("%s\n%s", header, help)
+		lines = append(lines, line)
 	}
 
-	return groupsByPriority, groupedFlags
-}
-
-func commandsUsage(command *cobra.Command) string {
-	if !command.HasAvailableSubCommands() {
-		return ""
+	for _, line := range lines {
+		fmt.Fprintln(buf, line)
 	}
 
-	subCommands := getSubCommandsRecurse(command)
-	groupsByPriority, groupedSubCommandInfos, longestCmdPathLen := groupCmdInfos(subCommands)
-	padding := longestCmdPathLen + 3
-	cmdIndent := 2
-
-	result := "\n"
-	for _, group := range groupsByPriority {
-		result += fmt.Sprintf("%s\n", group.Title)
-		for _, cmd := range groupedSubCommandInfos[group] {
-			result += fmt.Sprintf("%s%s%s\n", strings.Repeat(" ", cmdIndent), fmt.Sprintf("%-*s", padding, cmd.commandPath), cmd.short)
-		}
-
-		result += "\n"
-	}
-
-	return result
+	return buf.String()
 }
 
 func getSubCommandsRecurse(cmd *cobra.Command) []*cobra.Command {
@@ -286,42 +275,51 @@ func groupCmdInfos(cmds []*cobra.Command) ([]cli.CommandGroup, map[cli.CommandGr
 	return groupsByPriority, groupedSubCommandInfos, longestCommandPath
 }
 
-type cmdInfo struct {
-	commandPath string
-	priority    int
-	short       string
+func groupFlags(fset *pflag.FlagSet) ([]cli.FlagGroup, map[cli.FlagGroup][]*pflag.Flag) {
+	groupsByPriority := []cli.FlagGroup{}
+	groupedFlags := map[cli.FlagGroup][]*pflag.Flag{}
+
+	fset.VisitAll(func(f *pflag.Flag) {
+		var group *cli.FlagGroup
+
+		if groupID, found := f.Annotations[cli.FlagGroupIDAnnotationName]; found {
+			groupTitle := f.Annotations[cli.FlagGroupTitleAnnotationName]
+			groupPriority := f.Annotations[cli.FlagGroupPriorityAnnotationName]
+			group = cli.NewFlagGroup(groupID[0], groupTitle[0], lo.Must1(strconv.Atoi(groupPriority[0])))
+		} else {
+			group = miscFlagGroup
+		}
+
+		groupsByPriority = append(groupsByPriority, *group)
+		groupedFlags[*group] = append(groupedFlags[*group], f)
+	})
+
+	sort.SliceStable(groupsByPriority, func(i, j int) bool {
+		return groupsByPriority[i].Priority > groupsByPriority[j].Priority
+	})
+
+	groupsByPriority = lo.Uniq(groupsByPriority)
+
+	for group := range groupedFlags {
+		slices.SortStableFunc(groupedFlags[group], func(aFlag, bFlag *pflag.Flag) int {
+			return strings.Compare(aFlag.Name, bFlag.Name)
+		})
+	}
+
+	return groupsByPriority, groupedFlags
 }
 
-func featGatesUsage() string {
-	terminalWidth := logboek.Streams().Width()
+func usageFunc(c *cobra.Command) error {
+	t := template.New("top")
+	t.Funcs(templateFuncs)
 
-	buf := new(bytes.Buffer)
-	lines := []string{}
-
-	for i, featGate := range featgate.FeatGates {
-		if i == 0 {
-			lines = append(lines, "\nFeature gates:\n")
-		}
-
-		header := fmt.Sprintf("      $%s=%v", featGate.EnvVarName(), featGate.Default())
-
-		var help string
-		if terminalWidth > minUsageWrapWidth {
-			help = logboek.FitText(featGate.Help, types.FitTextOptions{
-				ExtraIndentWidth: featGatesHelpIndent,
-				Width:            terminalWidth,
-			})
-		} else {
-			help = fmt.Sprintf("%s%s", strings.Repeat(" ", featGatesHelpIndent), featGate.Help)
-		}
-
-		line := fmt.Sprintf("%s\n%s", header, help)
-		lines = append(lines, line)
+	if _, err := t.Parse(c.UsageTemplate()); err != nil {
+		return fmt.Errorf("parse template: %w", err)
 	}
 
-	for _, line := range lines {
-		fmt.Fprintln(buf, line)
+	if err := t.Execute(c.OutOrStderr(), c); err != nil {
+		return fmt.Errorf("execute template: %w", err)
 	}
 
-	return buf.String()
+	return nil
 }
