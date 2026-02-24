@@ -17,48 +17,6 @@ import (
 )
 
 const (
-	// ChartTSEntryPointJS is the JavaScript entry point path.
-	ChartTSEntryPointJS = "src/index.js"
-	// ChartTSEntryPointTS is the TypeScript entry point path.
-	ChartTSEntryPointTS = "src/index.ts"
-	// ChartTSSourceDir is the directory containing TypeScript sources in a Helm chart.
-	ChartTSSourceDir = "ts/"
-	// ChartTSVendorBundleFile is the path to the vendor bundle file in a Helm chart.
-	ChartTSVendorBundleFile = ChartTSSourceDir + "vendor/libs.js"
-	DefaultBurstLimit       = 100
-	// TODO(major): switch to if-possible
-	DefaultChartProvenanceStrategy = "never"
-	// TODO(major): reconsider?
-	DefaultDeletePropagation = metav1.DeletePropagationForeground
-	DefaultDiffContextLines  = 3
-	DefaultFieldManager      = "helm"
-	// TODO(major): update to a more recent version? Not sure about backwards compatibility.
-	DefaultLocalKubeVersion      = "1.20.0"
-	DefaultLogColorMode          = log.LogColorModeAuto
-	DefaultNetworkParallelism    = 30
-	DefaultProgressPrintInterval = 5 * time.Second
-	DefaultQPSLimit              = 30
-	DefaultReleaseHistoryLimit   = 10
-	// DefaultResourceValidationKubeVersion Kubernetes version to use during resource validation by kubeconform
-	DefaultResourceValidationKubeVersion = "1.35.0"
-	KubectlEditFieldManager              = "kubectl-edit"
-	OldFieldManagerPrefix                = "werf"
-	OutputFormatJSON                     = "json"
-	OutputFormatTable                    = "table"
-	OutputFormatYAML                     = "yaml"
-	ReleaseStorageDriverConfigMap        = "configmap"
-	ReleaseStorageDriverConfigMaps       = "configmaps"
-	ReleaseStorageDriverDefault          = ""
-	ReleaseStorageDriverMemory           = "memory"
-	ReleaseStorageDriverSQL              = "sql"
-	ReleaseStorageDriverSecret           = "secret"
-	ReleaseStorageDriverSecrets          = "secrets"
-	StageEndSuffix                       = "end"
-	StagePrefix                          = "stage"
-	StageStartSuffix                     = "start"
-	StubReleaseName                      = "stub-release"
-	StubReleaseNamespace                 = "stub-namespace"
-
 	// Delete the resource after it is successfully deployed.
 	DeletePolicySucceeded DeletePolicy = "succeeded"
 	// Delete the resource after it fails to be deployed.
@@ -118,6 +76,48 @@ const (
 	StoreAsNone    StoreAs = "none"
 	StoreAsHook    StoreAs = "hook"
 	StoreAsRegular StoreAs = "regular"
+
+	// ChartTSEntryPointJS is the JavaScript entry point path.
+	ChartTSEntryPointJS = "src/index.js"
+	// ChartTSEntryPointTS is the TypeScript entry point path.
+	ChartTSEntryPointTS = "src/index.ts"
+	// ChartTSSourceDir is the directory containing TypeScript sources in a Helm chart.
+	ChartTSSourceDir = "ts/"
+	// ChartTSVendorBundleFile is the path to the vendor bundle file in a Helm chart.
+	ChartTSVendorBundleFile = ChartTSSourceDir + "vendor/libs.js"
+	DefaultBurstLimit       = 100
+	// TODO(major): switch to if-possible
+	DefaultChartProvenanceStrategy = "never"
+	// TODO(major): reconsider?
+	DefaultDeletePropagation = metav1.DeletePropagationForeground
+	DefaultDiffContextLines  = 3
+	DefaultFieldManager      = "helm"
+	// TODO(major): update to a more recent version? Not sure about backwards compatibility.
+	DefaultLocalKubeVersion      = "1.20.0"
+	DefaultLogColorMode          = log.LogColorModeAuto
+	DefaultNetworkParallelism    = 30
+	DefaultProgressPrintInterval = 5 * time.Second
+	DefaultQPSLimit              = 30
+	DefaultReleaseHistoryLimit   = 10
+	// DefaultResourceValidationKubeVersion Kubernetes version to use during resource validation by kubeconform
+	DefaultResourceValidationKubeVersion = "1.35.0"
+	KubectlEditFieldManager              = "kubectl-edit"
+	OldFieldManagerPrefix                = "werf"
+	OutputFormatJSON                     = "json"
+	OutputFormatTable                    = "table"
+	OutputFormatYAML                     = "yaml"
+	ReleaseStorageDriverConfigMap        = "configmap"
+	ReleaseStorageDriverConfigMaps       = "configmaps"
+	ReleaseStorageDriverDefault          = ""
+	ReleaseStorageDriverMemory           = "memory"
+	ReleaseStorageDriverSQL              = "sql"
+	ReleaseStorageDriverSecret           = "secret"
+	ReleaseStorageDriverSecrets          = "secrets"
+	StageEndSuffix                       = "end"
+	StagePrefix                          = "stage"
+	StageStartSuffix                     = "start"
+	StubReleaseName                      = "stub-release"
+	StubReleaseNamespace                 = "stub-namespace"
 )
 
 var (

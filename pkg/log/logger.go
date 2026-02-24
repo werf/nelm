@@ -5,16 +5,16 @@ import (
 )
 
 const (
-	LogColorModeAuto = "auto"
-	LogColorModeOff  = "off"
-	LogColorModeOn   = "on"
-
 	SilentLevel  Level = "silent"
 	ErrorLevel   Level = "error"
 	WarningLevel Level = "warning"
 	InfoLevel    Level = "info"
 	DebugLevel   Level = "debug"
 	TraceLevel   Level = "trace"
+
+	LogColorModeAuto = "auto"
+	LogColorModeOff  = "off"
+	LogColorModeOn   = "on"
 )
 
 var (
