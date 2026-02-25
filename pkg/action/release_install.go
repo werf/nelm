@@ -363,6 +363,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			SubchartNotes:              opts.ShowSubchartNotes,
 			TemplatesAllowDNS:          opts.TemplatesAllowDNS,
 			RebuildTSBundle:            opts.RebuildTSBundle,
+			TempDirPath:                opts.TempDirPath,
 		})
 		if err != nil {
 			return fmt.Errorf("render chart: %w", err)

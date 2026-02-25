@@ -267,6 +267,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		LocalKubeVersion:           opts.LocalKubeVersion,
 		Remote:                     opts.Remote,
 		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
+		TempDirPath:                opts.TempDirPath,
 	}
 
 	log.Default.Debug(ctx, "Render chart")

@@ -125,6 +125,58 @@ function render($: RenderContext): RenderResult {
 
 await runRender(render);
 `
+	inputExampleContent = `Capabilities:
+  APIVersions:
+    - v1
+  HelmVersion:
+    go_version: go1.25.5
+    version: v3.14
+  KubeVersion:
+    Major: "1"
+    Minor: "33"
+    Version: v1.33.6+k3s1
+Chart:
+  APIVersion: v2
+  Annotations:
+    app.kubernetes.io/managed-by: Helm
+  AppVersion: 1.27.4
+  Condition: nginx.enabled
+  Description: An example Helm chart for Kubernetes
+  Home: https://github.com/werf/nelm-chart-ts-sdk
+  Icon: https://helm.sh/img/helm.svg
+  Keywords:
+    - nginx
+    - webserver
+  Maintainers:
+    - Email: maintainer@example.com
+      Name: John Doe
+      URL: https://example.com
+  Name: %[1]s
+  Sources:
+    - https://github.com/werf/nelm-chart-ts-sdk
+  Tags: frontend
+  Type: application
+  Version: 0.1.0
+Files:
+  .gitignore: ""
+  .helmignore: ""
+Release:
+  IsInstall: false
+  IsUpgrade: true
+  Name: %[1]s
+  Namespace: %[1]s
+  Revision: 171
+  Service: Helm
+Values:
+  image:
+    repository: nginx
+    tag: latest
+  replicaCount: 1
+  service:
+    enabled: true
+    port: 80
+    type: ClusterIP
+`
 	serviceTSContent = `import type { RenderContext } from '@nelm/chart-ts-sdk';
 import { getFullname, getLabels, getSelectorLabels } from './helpers.ts';
 
@@ -192,4 +244,8 @@ func chartYaml(chartName string) string {
 
 func denoJSON(scriptPath string) string {
 	return fmt.Sprintf(denoJSONTmpl, scriptPath)
+}
+
+func inputExample(chartName string) string {
+	return fmt.Sprintf(inputExampleContent, chartName)
 }

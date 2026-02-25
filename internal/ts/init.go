@@ -96,6 +96,7 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
 		{content: serviceTSContent, path: filepath.Join(srcDir, "service.ts")},
 		{content: tsconfigContent, path: filepath.Join(tsDir, "tsconfig.json")},
 		{content: denoJSON(denoBuildScript), path: filepath.Join(tsDir, "deno.json")},
+		{content: inputExample(chartName), path: filepath.Join(tsDir, "input.example.yaml")},
 	}
 
 	if err := os.MkdirAll(srcDir, 0o755); err != nil {

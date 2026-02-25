@@ -269,6 +269,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		NoStandaloneCRDs:           opts.NoInstallStandaloneCRDs,
 		Remote:                     true,
 		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
+		TempDirPath:                opts.TempDirPath,
 	})
 	if err != nil {
 		return fmt.Errorf("render chart: %w", err)

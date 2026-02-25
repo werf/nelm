@@ -264,6 +264,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		LocalKubeVersion:           opts.LocalKubeVersion,
 		Remote:                     opts.Remote,
 		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
+		TempDirPath:                opts.TempDirPath,
 	}
 
 	log.Default.Debug(ctx, "Render chart")
