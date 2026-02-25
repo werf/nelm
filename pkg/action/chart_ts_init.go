@@ -13,7 +13,8 @@ import (
 
 type ChartTSInitOptions struct {
 	ChartDirPath string
-	TempDirPath  string // TODO: remove this?
+	ChartName    string
+	TempDirPath  string
 }
 
 func ChartTSInit(ctx context.Context, opts ChartTSInitOptions) error {
@@ -28,6 +29,9 @@ func ChartTSInit(ctx context.Context, opts ChartTSInitOptions) error {
 	}
 
 	chartName := filepath.Base(absPath)
+	if opts.ChartName != "" {
+		chartName = opts.ChartName
+	}
 
 	if !featgate.FeatGateTypescript.Enabled() {
 		log.Default.Warn(ctx, "TypeScript charts require NELM_FEAT_TYPESCRIPT=true environment variable")
