@@ -18,21 +18,21 @@ import (
 func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, rebuildBundle bool, chartPath string) (map[string]string, error) {
 	allRendered := make(map[string]string)
 
-	if err := tsbundle.BundleTSChartsRecursive(ctx, chart, chartPath, false); err != nil {
+	if err := tsbundle.BundleTSChartsRecursive(ctx, chart, chartPath, rebuildBundle); err != nil {
 		return nil, fmt.Errorf("process chart for TypeScript rendering: %w", err)
 	}
 
-	if err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), chartPath, allRendered, rebuildBundle); err != nil {
+	if err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), chartPath, allRendered); err != nil {
 		return nil, err
 	}
 
 	return allRendered, nil
 }
 
-func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartutil.Values, pathPrefix, chartPath string, results map[string]string, rebuildBundle bool) error {
+func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartutil.Values, pathPrefix, chartPath string, results map[string]string) error {
 	log.Default.Debug(ctx, "Rendering TypeScript for chart %q (path prefix: %s)", chart.Name(), pathPrefix)
 
-	rendered, err := renderFiles(ctx, chart, values, chartPath, rebuildBundle)
+	rendered, err := renderFiles(ctx, chart, values)
 	if err != nil {
 		return fmt.Errorf("render files for chart %q: %w", chart.Name(), err)
 	}
@@ -54,7 +54,6 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 			path.Join(pathPrefix, "charts", depName),
 			path.Join(chartPath, "charts", depName),
 			results,
-			rebuildBundle,
 		)
 		if err != nil {
 			return fmt.Errorf("render dependency %q: %w", depName, err)
@@ -64,7 +63,7 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 	return nil
 }
 
-func renderFiles(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, chartPath string, rebuildBundle bool) (map[string]string, error) {
+func renderFiles(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values) (map[string]string, error) {
 	entrypoint, bundle := tsbundle.GetEntrypointAndBundle(chart.RuntimeFiles)
 	if entrypoint == "" || bundle == nil {
 		return map[string]string{}, nil

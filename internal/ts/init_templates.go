@@ -7,6 +7,15 @@ const (
 name: %s
 version: 0.1.0
 `
+	denoJSONTmpl = `{
+  "tasks": {
+    "build": "%s"
+  },
+  "imports": {
+    "@nelm/chart-ts-sdk": "npm:@nelm/chart-ts-sdk@^0.1.2"
+  }
+}
+`
 	deploymentTSContent = `import type { RenderContext } from '@nelm/chart-ts-sdk';
 import { getFullname, getLabels, getSelectorLabels } from './helpers.ts';
 
@@ -115,15 +124,6 @@ function render($: RenderContext): RenderResult {
 }
 
 await runRender(render);
-`
-	denoJSONTmpl = `{
-  "tasks": {
-    "build": "%s"
-  },
-  "imports": {
-    "@nelm/chart-ts-sdk": "npm:@nelm/chart-ts-sdk@^0.1.2"
-  }
-}
 `
 	serviceTSContent = `import type { RenderContext } from '@nelm/chart-ts-sdk';
 import { getFullname, getLabels, getSelectorLabels } from './helpers.ts';

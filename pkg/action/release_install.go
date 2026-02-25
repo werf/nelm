@@ -106,6 +106,8 @@ type ReleaseInstallOptions struct {
 	PlanArtifactLifetime time.Duration
 	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
 	PlanArtifactPath string
+	// RebuildTSBundle, when true, forces rebuilding the Deno vendor bundle even if it already exists.
+	RebuildTSBundle bool
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
 	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
 	// Used for authenticating to OCI registries when pulling charts.
@@ -125,8 +127,6 @@ type ReleaseInstallOptions struct {
 	// Timeout is the maximum duration for the entire release installation operation.
 	// If 0, no timeout is applied and the operation runs until completion or error.
 	Timeout time.Duration
-	// RebuildTSBundle, when true, forces rebuilding the Deno vendor bundle even if it already exists.
-	RebuildTSBundle bool
 }
 
 type runRollbackPlanOptions struct {

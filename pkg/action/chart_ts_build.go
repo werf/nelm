@@ -36,6 +36,7 @@ func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {
 
 	if !featgate.FeatGateTypescript.Enabled() {
 		log.Default.Warn(ctx, "TypeScript charts require NELM_FEAT_TYPESCRIPT=true environment variable")
+
 		return fmt.Errorf("TypeScript charts feature is not enabled. Set NELM_FEAT_TYPESCRIPT=true to use this feature")
 	}
 

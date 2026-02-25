@@ -14,10 +14,9 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const (
-	// renderResultPrefix is the prefix for the rendered output.
-	renderResultPrefix = "NELM_RENDER_RESULT:"
-)
+const
+// renderResultPrefix is the prefix for the rendered output.
+renderResultPrefix = "NELM_RENDER_RESULT:"
 
 func runApp(ctx context.Context, bundleData []byte, renderCtx string) (map[string]interface{}, error) {
 	args := []string{
@@ -63,6 +62,7 @@ func runApp(ctx context.Context, bundleData []byte, renderCtx string) (map[strin
 
 	waitForJSONString := func() (string, error) {
 		scanner := bufio.NewScanner(reader)
+
 		// Increase buffer size to handle large JSON outputs (up to 10MB)
 		const maxScannerBuffer = 10 * 1024 * 1024
 		scanner.Buffer(make([]byte, 64*1024), maxScannerBuffer)

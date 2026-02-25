@@ -13,10 +13,10 @@ import (
 )
 
 type chartInitConfig struct {
-	TempDirPath  string
 	ChartDirPath string
 	LogColorMode string
 	LogLevel     string
+	TempDirPath  string
 }
 
 // newChartInitCommand
