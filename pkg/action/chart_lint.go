@@ -22,16 +22,14 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const (
-	DefaultChartLintLogLevel = log.InfoLevel
-)
+const DefaultChartLintLogLevel = log.InfoLevel
 
 type ChartLintOptions struct {
-	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
+	common.KubeConnectionOptions
 	common.ResourceValidationOptions
-	common.ValuesOptions
 	common.SecretValuesOptions
+	common.ValuesOptions
 
 	// Chart specifies the chart to lint. Can be a local directory path, chart archive,
 	// OCI registry URL (oci://registry/chart), or chart repository reference (repo/chart).

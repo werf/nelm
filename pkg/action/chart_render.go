@@ -25,15 +25,13 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const (
-	DefaultChartRenderLogLevel = log.ErrorLevel
-)
+const DefaultChartRenderLogLevel = log.ErrorLevel
 
 type ChartRenderOptions struct {
-	common.KubeConnectionOptions
 	common.ChartRepoConnectionOptions
-	common.ValuesOptions
+	common.KubeConnectionOptions
 	common.SecretValuesOptions
+	common.ValuesOptions
 
 	// Chart specifies the chart to render. Can be a local directory path, chart archive,
 	// OCI registry URL (oci://registry/chart), or chart repository reference (repo/chart).
@@ -128,6 +126,11 @@ type ChartRenderOptions struct {
 	// TemplatesAllowDNS, when true, enables DNS lookups in chart templates using template functions.
 	// WARNING: This can make template rendering non-deterministic and slower.
 	TemplatesAllowDNS bool
+}
+
+type ChartRenderResultV2 struct {
+	APIVersion string               `json:"apiVersion,omitempty"`
+	Resources  []*spec.ResourceSpec `json:"resources,omitempty"`
 }
 
 // Render the Helm chart.
@@ -457,9 +460,4 @@ func renderResource(unstruct *unstructured.Unstructured, path string, outStream 
 	}
 
 	return nil
-}
-
-type ChartRenderResultV2 struct {
-	APIVersion string               `json:"apiVersion,omitempty"`
-	Resources  []*spec.ResourceSpec `json:"resources,omitempty"`
 }

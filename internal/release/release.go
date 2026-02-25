@@ -28,90 +28,6 @@ type ReleaseOptions struct {
 	Notes           string
 }
 
-// Construct Helm release.
-func NewRelease(name, namespace string, revision int, deployType common.DeployType, resources []*spec.ResourceSpec, chart *helmchart.Chart, releaseConfig map[string]interface{}, opts ReleaseOptions) (*helmrelease.Release, error) {
-	if err := chartutil.ValidateReleaseName(name); err != nil {
-		return nil, fmt.Errorf("release name %q is not valid: %w", name, err)
-	}
-
-	var status helmrelease.Status
-	switch deployType {
-	case common.DeployTypeInitial,
-		common.DeployTypeInstall:
-		status = helmrelease.StatusPendingInstall
-	case common.DeployTypeUpgrade:
-		status = helmrelease.StatusPendingUpgrade
-	case common.DeployTypeRollback:
-		status = helmrelease.StatusPendingRollback
-	case common.DeployTypeUninstall:
-		status = helmrelease.StatusUninstalling
-	default:
-		panic("unexpected deploy type")
-	}
-
-	sort.SliceStable(resources, func(i, j int) bool {
-		return spec.ResourceSpecSortHandler(resources[i], resources[j])
-	})
-
-	var (
-		unstoredResources []string
-		regularResources  []string
-		hookResources     []*helmrelease.Hook
-	)
-
-	for _, res := range resources {
-		switch res.StoreAs {
-		case common.StoreAsHook:
-			manifest, err := resourceSpecToManifest(name, namespace, revision, res)
-			if err != nil {
-				return nil, fmt.Errorf("convert resource spec to manifest: %w", err)
-			}
-
-			hook, err := releaseutil.HookManifestToHook(manifest, res.FilePath)
-			if err != nil {
-				return nil, fmt.Errorf("convert hook manifest to hook: %w", err)
-			}
-
-			hookResources = append(hookResources, hook)
-		case common.StoreAsRegular:
-			manifest, err := resourceSpecToManifest(name, namespace, revision, res)
-			if err != nil {
-				return nil, fmt.Errorf("convert resource spec to manifest: %w", err)
-			}
-
-			regularResources = append(regularResources, manifest)
-		case common.StoreAsNone:
-			manifest, err := resourceSpecToManifest(name, namespace, revision, res)
-			if err != nil {
-				return nil, fmt.Errorf("convert resource spec to manifest: %w", err)
-			}
-
-			unstoredResources = append(unstoredResources, manifest)
-		default:
-			panic(fmt.Sprintf("unknown resource store type %q", res.StoreAs))
-		}
-	}
-
-	opts.Notes = strings.TrimRightFunc(opts.Notes, unicode.IsSpace)
-
-	return &helmrelease.Release{
-		Name: name,
-		Info: &helmrelease.Info{
-			Status:      status,
-			Notes:       opts.Notes,
-			Annotations: opts.InfoAnnotations,
-		},
-		Chart:            chart,
-		Config:           releaseConfig,
-		Manifest:         strings.Join(regularResources, "\n---\n"),
-		Hooks:            hookResources,
-		Version:          revision,
-		Namespace:        namespace,
-		Labels:           opts.Labels,
-		UnstoredManifest: strings.Join(unstoredResources, "\n---\n"),
-	}, nil
-}
-
 // Check if the new Release is up-to-date compared to the old Release. It doesn't check any
 // resources of the release in the cluster, just compares Release objects.
 func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
@@ -200,6 +116,90 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 	return true, nil
 }
 
+// Construct Helm release.
+func NewRelease(name, namespace string, revision int, deployType common.DeployType, resources []*spec.ResourceSpec, chart *helmchart.Chart, releaseConfig map[string]interface{}, opts ReleaseOptions) (*helmrelease.Release, error) {
+	if err := chartutil.ValidateReleaseName(name); err != nil {
+		return nil, fmt.Errorf("release name %q is not valid: %w", name, err)
+	}
+
+	var status helmrelease.Status
+	switch deployType {
+	case common.DeployTypeInitial,
+		common.DeployTypeInstall:
+		status = helmrelease.StatusPendingInstall
+	case common.DeployTypeUpgrade:
+		status = helmrelease.StatusPendingUpgrade
+	case common.DeployTypeRollback:
+		status = helmrelease.StatusPendingRollback
+	case common.DeployTypeUninstall:
+		status = helmrelease.StatusUninstalling
+	default:
+		panic("unexpected deploy type")
+	}
+
+	sort.SliceStable(resources, func(i, j int) bool {
+		return spec.ResourceSpecSortHandler(resources[i], resources[j])
+	})
+
+	var (
+		unstoredResources []string
+		regularResources  []string
+		hookResources     []*helmrelease.Hook
+	)
+
+	for _, res := range resources {
+		switch res.StoreAs {
+		case common.StoreAsHook:
+			manifest, err := resourceSpecToManifest(name, namespace, revision, res)
+			if err != nil {
+				return nil, fmt.Errorf("convert resource spec to manifest: %w", err)
+			}
+
+			hook, err := releaseutil.HookManifestToHook(manifest, res.FilePath)
+			if err != nil {
+				return nil, fmt.Errorf("convert hook manifest to hook: %w", err)
+			}
+
+			hookResources = append(hookResources, hook)
+		case common.StoreAsRegular:
+			manifest, err := resourceSpecToManifest(name, namespace, revision, res)
+			if err != nil {
+				return nil, fmt.Errorf("convert resource spec to manifest: %w", err)
+			}
+
+			regularResources = append(regularResources, manifest)
+		case common.StoreAsNone:
+			manifest, err := resourceSpecToManifest(name, namespace, revision, res)
+			if err != nil {
+				return nil, fmt.Errorf("convert resource spec to manifest: %w", err)
+			}
+
+			unstoredResources = append(unstoredResources, manifest)
+		default:
+			panic(fmt.Sprintf("unknown resource store type %q", res.StoreAs))
+		}
+	}
+
+	opts.Notes = strings.TrimRightFunc(opts.Notes, unicode.IsSpace)
+
+	return &helmrelease.Release{
+		Name: name,
+		Info: &helmrelease.Info{
+			Status:      status,
+			Notes:       opts.Notes,
+			Annotations: opts.InfoAnnotations,
+		},
+		Chart:            chart,
+		Config:           releaseConfig,
+		Manifest:         strings.Join(regularResources, "\n---\n"),
+		Hooks:            hookResources,
+		Version:          revision,
+		Namespace:        namespace,
+		Labels:           opts.Labels,
+		UnstoredManifest: strings.Join(unstoredResources, "\n---\n"),
+	}, nil
+}
+
 // Constructs ResourceSpecs from a Release object.
 func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string, noCleanNullFields bool /* TODO(major): get rid */) ([]*spec.ResourceSpec, error) {
 	var resources []*spec.ResourceSpec
@@ -239,6 +239,15 @@ func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string, n
 	return resources, nil
 }
 
+func cleanUnstruct(unstruct *unstructured.Unstructured) *unstructured.Unstructured {
+	return spec.CleanUnstruct(unstruct, spec.CleanUnstructOptions{
+		CleanManagedFields:      true,
+		CleanReleaseAnnosLabels: true,
+		CleanRuntimeData:        true,
+		CleanWerfIoRuntimeAnnos: true,
+	})
+}
+
 func resourceSpecToManifest(name, namespace string, revision int, res *spec.ResourceSpec) (string, error) {
 	manifestByte, err := yaml.Marshal(res.Unstruct.UnstructuredContent())
 	if err != nil {
@@ -263,13 +272,4 @@ func writeUnstructHash(unstruct *unstructured.Unstructured, hash hash.Hash32) er
 	}
 
 	return nil
-}
-
-func cleanUnstruct(unstruct *unstructured.Unstructured) *unstructured.Unstructured {
-	return spec.CleanUnstruct(unstruct, spec.CleanUnstructOptions{
-		CleanManagedFields:      true,
-		CleanReleaseAnnosLabels: true,
-		CleanRuntimeData:        true,
-		CleanWerfIoRuntimeAnnos: true,
-	})
 }

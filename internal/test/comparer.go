@@ -12,6 +12,30 @@ import (
 	"github.com/werf/nelm/internal/resource"
 )
 
+func CompareInternalDependencyOption() cmp.Option {
+	sp := &spew.ConfigState{
+		Indent:                  " ",
+		DisablePointerAddresses: true,
+		DisableCapacities:       true,
+		SortKeys:                true,
+		SpewKeys:                true,
+	}
+
+	return cmpopts.SortSlices(func(a, b *resource.InternalDependency) bool {
+		return sp.Sdump(a) < sp.Sdump(b)
+	})
+}
+
+func CompareRegexpOption() cmp.Option {
+	return cmp.Comparer(func(a, b *regexp.Regexp) bool {
+		if a == nil || b == nil {
+			return a == b
+		}
+
+		return a.String() == b.String()
+	})
+}
+
 func CompareResourceMetadataOption(releaseNamespace string) cmp.Option {
 	return cmp.FilterPath(func(p cmp.Path) bool {
 		if len(p) < 2 {
@@ -37,30 +61,6 @@ func CompareResourceMetadataOption(releaseNamespace string) cmp.Option {
 
 		return cleanMetadata
 	}))
-}
-
-func CompareInternalDependencyOption() cmp.Option {
-	sp := &spew.ConfigState{
-		Indent:                  " ",
-		DisablePointerAddresses: true,
-		DisableCapacities:       true,
-		SortKeys:                true,
-		SpewKeys:                true,
-	}
-
-	return cmpopts.SortSlices(func(a, b *resource.InternalDependency) bool {
-		return sp.Sdump(a) < sp.Sdump(b)
-	})
-}
-
-func CompareRegexpOption() cmp.Option {
-	return cmp.Comparer(func(a, b *regexp.Regexp) bool {
-		if a == nil || b == nil {
-			return a == b
-		}
-
-		return a.String() == b.String()
-	})
 }
 
 func IgnoreEdgeOption() cmp.Option {

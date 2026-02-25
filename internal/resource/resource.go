@@ -52,11 +52,6 @@ type InstallableResource struct {
 	DeletePropagation                      metav1.DeletionPropagation      `json:"deletePropagation"`
 }
 
-type InstallableResourceOptions struct {
-	Remote                   bool
-	DefaultDeletePropagation metav1.DeletionPropagation
-}
-
 // Construct an InstallableResource from a ResourceSpec. Must never contact the cluster, because
 // this is called even when no cluster access allowed.
 func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, clientFactory kube.ClientFactorier, opts InstallableResourceOptions) (*InstallableResource, error) {
@@ -121,34 +116,39 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 
 	return &InstallableResource{
 		ResourceSpec:                           res,
-		Recreate:                               recreate(res.ResourceMeta),
-		RecreateOnImmutable:                    recreateOnImmutable(res.ResourceMeta),
+		AutoInternalDependencies:               internalDeployDependencies(res.Unstruct),
 		DefaultReplicasOnCreation:              defaultReplicasOnCreation(res.ResourceMeta, releaseNamespace),
-		Ownership:                              ownership(res.ResourceMeta, releaseNamespace, res.StoreAs),
-		DeleteOnSucceeded:                      deleteOnSucceeded(res.ResourceMeta),
 		DeleteOnFailed:                         deleteOnFailed(res.ResourceMeta),
-		KeepOnDelete:                           KeepOnDelete(res.ResourceMeta, releaseNamespace),
+		DeleteOnSucceeded:                      deleteOnSucceeded(res.ResourceMeta),
+		DeletePropagation:                      deletePropagation(res.ResourceMeta, opts.DefaultDeletePropagation),
+		DeployConditions:                       deployConditions(res.ResourceMeta, len(manIntDeps) > 0),
+		ExternalDependencies:                   extDeps,
 		FailMode:                               failMode(res.ResourceMeta),
 		FailuresAllowed:                        failuresAllowed(res.Unstruct),
 		IgnoreReadinessProbeFailsForContainers: ignoreReadinessProbeFailsForContainers(res.ResourceMeta),
+		KeepOnDelete:                           KeepOnDelete(res.ResourceMeta, releaseNamespace),
 		LogRegex:                               logRegex(res.ResourceMeta),
 		LogRegexesForContainers:                logRegexesForContainers(res.ResourceMeta),
+		ManualInternalDependencies:             manIntDeps,
 		NoActivityTimeout:                      noActivityTimeout(res.ResourceMeta),
+		Ownership:                              ownership(res.ResourceMeta, releaseNamespace, res.StoreAs),
+		Recreate:                               recreate(res.ResourceMeta),
+		RecreateOnImmutable:                    recreateOnImmutable(res.ResourceMeta),
 		ShowLogsOnlyForContainers:              showLogsOnlyForContainers(res.ResourceMeta),
-		ShowServiceMessages:                    showServiceMessages(res.ResourceMeta),
 		ShowLogsOnlyForNumberOfReplicas:        showLogsOnlyForNumberOfReplicas(res.ResourceMeta),
+		ShowServiceMessages:                    showServiceMessages(res.ResourceMeta),
 		SkipLogs:                               skipLogs(res.ResourceMeta),
 		SkipLogsForContainers:                  skipLogsForContainers(res.ResourceMeta),
 		SkipLogsRegex:                          skipLogRegex(res.ResourceMeta),
 		SkipLogsRegexForContainers:             skipLogRegexesForContainers(res.ResourceMeta),
 		TrackTerminationMode:                   trackTerminationMode(res.ResourceMeta),
 		Weight:                                 weight(res.ResourceMeta, len(manIntDeps) > 0),
-		ManualInternalDependencies:             manIntDeps,
-		AutoInternalDependencies:               internalDeployDependencies(res.Unstruct),
-		ExternalDependencies:                   extDeps,
-		DeployConditions:                       deployConditions(res.ResourceMeta, len(manIntDeps) > 0),
-		DeletePropagation:                      deletePropagation(res.ResourceMeta, opts.DefaultDeletePropagation),
 	}, nil
+}
+
+type InstallableResourceOptions struct {
+	DefaultDeletePropagation metav1.DeletionPropagation
+	Remote                   bool
 }
 
 // Represent a Kubernetes resource that can be deleted. Higher level than ResourceMeta, but lower
@@ -157,15 +157,11 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 type DeletableResource struct {
 	*spec.ResourceMeta
 
-	Ownership                  common.Ownership
-	KeepOnDelete               bool
-	DeletePropagation          metav1.DeletionPropagation
-	ManualInternalDependencies []*InternalDependency
 	AutoInternalDependencies   []*InternalDependency
-}
-
-type DeletableResourceOptions struct {
-	DefaultDeletePropagation metav1.DeletionPropagation
+	DeletePropagation          metav1.DeletionPropagation
+	KeepOnDelete               bool
+	ManualInternalDependencies []*InternalDependency
+	Ownership                  common.Ownership
 }
 
 // Construct a DeletableResource from a ResourceSpec. Must never contact the cluster, because
@@ -203,17 +199,21 @@ func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []
 
 	return &DeletableResource{
 		ResourceMeta:               resourceSpec.ResourceMeta,
-		Ownership:                  owner,
-		KeepOnDelete:               keep,
-		DeletePropagation:          delPropagation,
-		ManualInternalDependencies: manIntDeps,
 		AutoInternalDependencies:   internalDeleteDependencies(resourceSpec.Unstruct, unstructList),
+		DeletePropagation:          delPropagation,
+		KeepOnDelete:               keep,
+		ManualInternalDependencies: manIntDeps,
+		Ownership:                  owner,
 	}
 }
 
-type BuildResourcesOptions struct {
-	Remote                   bool
+type DeletableResourceOptions struct {
 	DefaultDeletePropagation metav1.DeletionPropagation
+}
+
+type BuildResourcesOptions struct {
+	DefaultDeletePropagation metav1.DeletionPropagation
+	Remote                   bool
 }
 
 // Build Installable/DeletableResources from ResourceSpecs. Resulting Resources can be used to
@@ -232,8 +232,8 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	var prevRelInstResources []*InstallableResource
 	for _, resSpec := range prevRelResSpecs {
 		installableResource, err := NewInstallableResource(resSpec, releaseNamespace, clientFactory, InstallableResourceOptions{
-			Remote:                   opts.Remote,
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
+			Remote:                   opts.Remote,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct installable resource: %w", err)
@@ -245,8 +245,8 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	var newRelInstResources []*InstallableResource
 	for _, resSpec := range newRelResSpecs {
 		installableResource, err := NewInstallableResource(resSpec, releaseNamespace, clientFactory, InstallableResourceOptions{
-			Remote:                   opts.Remote,
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
+			Remote:                   opts.Remote,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct installable resource: %w", err)
@@ -341,8 +341,8 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 			})
 
 			instRes, err = NewInstallableResource(resSpec, releaseNamespace, clientFactory, InstallableResourceOptions{
-				Remote:                   opts.Remote,
 				DefaultDeletePropagation: opts.DefaultDeletePropagation,
+				Remote:                   opts.Remote,
 			})
 			if err != nil {
 				return nil, nil, fmt.Errorf("construct deployable resource from patched object by %q: %w", patcher.Type(), err)

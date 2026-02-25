@@ -10,10 +10,17 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
+const (
+	TypeDropInvalidAnnotationsAndLabelsTransformer ResourceTransformerType = "drop-invalid-annotations-and-labels-transformer"
+	TypeResourceListsTransformer                   ResourceTransformerType = "resource-lists-transformer"
+)
+
 var (
 	_ ResourceTransformer = (*DropInvalidAnnotationsAndLabelsTransformer)(nil)
 	_ ResourceTransformer = (*ResourceListsTransformer)(nil)
 )
+
+type ResourceTransformerType string
 
 type ResourceTransformer interface {
 	Match(ctx context.Context, resourceInfo *ResourceTransformerResourceInfo) (matched bool, err error)
@@ -24,13 +31,6 @@ type ResourceTransformer interface {
 type ResourceTransformerResourceInfo struct {
 	Obj *unstructured.Unstructured
 }
-
-type ResourceTransformerType string
-
-const (
-	TypeDropInvalidAnnotationsAndLabelsTransformer ResourceTransformerType = "drop-invalid-annotations-and-labels-transformer"
-	TypeResourceListsTransformer                   ResourceTransformerType = "resource-lists-transformer"
-)
 
 // TODO(major): remove this transformer. Replace it with proper early validation of resource Heads.
 type DropInvalidAnnotationsAndLabelsTransformer struct{}
@@ -96,6 +96,7 @@ func (t *ResourceListsTransformer) Transform(ctx context.Context, info *Resource
 	if err := info.Obj.EachListItem(
 		func(obj runtime.Object) error {
 			result = append(result, obj.(*unstructured.Unstructured))
+
 			return nil
 		},
 	); err != nil {

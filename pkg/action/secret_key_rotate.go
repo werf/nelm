@@ -11,9 +11,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const (
-	DefaultSecretKeyRotateLogLevel = log.InfoLevel
-)
+const DefaultSecretKeyRotateLogLevel = log.InfoLevel
 
 type SecretKeyRotateOptions struct {
 	ChartDirPath      string

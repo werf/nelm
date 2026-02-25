@@ -25,8 +25,8 @@ import (
 )
 
 const (
-	DefaultReleaseListOutputFormat = common.OutputFormatTable
 	DefaultReleaseListLogLevel     = log.ErrorLevel
+	DefaultReleaseListOutputFormat = common.OutputFormatTable
 )
 
 type ReleaseListOptions struct {
@@ -55,6 +55,32 @@ type ReleaseListOptions struct {
 	// TempDirPath is the directory for temporary files during the operation.
 	// A temporary directory is created automatically if not specified.
 	TempDirPath string
+}
+
+type ReleaseListResultV1 struct {
+	APIVersion string                      `json:"apiVersion"`
+	Releases   []*ReleaseListResultRelease `json:"releases"`
+}
+
+type ReleaseListResultRelease struct {
+	Name        string                       `json:"name"`
+	Namespace   string                       `json:"namespace"`
+	Revision    int                          `json:"revision"`
+	Status      helmrelease.Status           `json:"status"`
+	DeployedAt  *ReleaseListResultDeployedAt `json:"deployedAt"`
+	Annotations map[string]string            `json:"annotations"`
+	Chart       *ReleaseListResultChart      `json:"chart"`
+}
+
+type ReleaseListResultDeployedAt struct {
+	Human string `json:"human"`
+	Unix  int    `json:"unix"`
+}
+
+type ReleaseListResultChart struct {
+	Name       string `json:"name"`
+	Version    string `json:"version"`
+	AppVersion string `json:"appVersion"`
 }
 
 // Lists Helm releases from the cluster.
@@ -116,20 +142,20 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 		lastRelease := lo.LastOrEmpty(releases)
 
 		result.Releases = append(result.Releases, &ReleaseListResultRelease{
-			Name:      lastRelease.Name,
-			Namespace: lastRelease.Namespace,
-			Revision:  lastRelease.Version,
-			Status:    lastRelease.Info.Status,
-			DeployedAt: &ReleaseListResultDeployedAt{
-				Human: time.Time{}.String(),
-				Unix:  int(time.Time{}.Unix()),
-			},
 			Annotations: lastRelease.Info.Annotations,
 			Chart: &ReleaseListResultChart{
 				Name:       lastRelease.Chart.Name(),
 				Version:    lastRelease.Chart.Metadata.Version,
 				AppVersion: lastRelease.Chart.Metadata.AppVersion,
 			},
+			DeployedAt: &ReleaseListResultDeployedAt{
+				Human: time.Time{}.String(),
+				Unix:  int(time.Time{}.Unix()),
+			},
+			Name:      lastRelease.Name,
+			Namespace: lastRelease.Namespace,
+			Revision:  lastRelease.Version,
+			Status:    lastRelease.Info.Status,
 		})
 	}
 
@@ -181,58 +207,6 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 	return result, nil
 }
 
-func applyReleaseListOptionsDefaults(opts ReleaseListOptions, homeDir string) (ReleaseListOptions, error) {
-	var err error
-	if opts.TempDirPath == "" {
-		opts.TempDirPath, err = os.MkdirTemp("", "")
-		if err != nil {
-			return ReleaseListOptions{}, fmt.Errorf("create temp dir: %w", err)
-		}
-	}
-
-	opts.KubeConnectionOptions.ApplyDefaults(homeDir)
-
-	if opts.NetworkParallelism <= 0 {
-		opts.NetworkParallelism = common.DefaultNetworkParallelism
-	}
-
-	if opts.ReleaseStorageDriver == common.ReleaseStorageDriverDefault {
-		opts.ReleaseStorageDriver = common.ReleaseStorageDriverSecrets
-	}
-
-	if opts.OutputFormat == "" {
-		opts.OutputFormat = DefaultReleaseListOutputFormat
-	}
-
-	return opts, nil
-}
-
-type ReleaseListResultV1 struct {
-	APIVersion string                      `json:"apiVersion"`
-	Releases   []*ReleaseListResultRelease `json:"releases"`
-}
-
-type ReleaseListResultRelease struct {
-	Name        string                       `json:"name"`
-	Namespace   string                       `json:"namespace"`
-	Revision    int                          `json:"revision"`
-	Status      helmrelease.Status           `json:"status"`
-	DeployedAt  *ReleaseListResultDeployedAt `json:"deployedAt"`
-	Annotations map[string]string            `json:"annotations"`
-	Chart       *ReleaseListResultChart      `json:"chart"`
-}
-
-type ReleaseListResultDeployedAt struct {
-	Human string `json:"human"`
-	Unix  int    `json:"unix"`
-}
-
-type ReleaseListResultChart struct {
-	Name       string `json:"name"`
-	Version    string `json:"version"`
-	AppVersion string `json:"appVersion"`
-}
-
 func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV1, namespaced bool) prtable.Writer {
 	table := prtable.NewWriter()
 	setReleaseListOutputTableStyle(ctx, table)
@@ -272,6 +246,32 @@ func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV
 	}
 
 	return table
+}
+
+func applyReleaseListOptionsDefaults(opts ReleaseListOptions, homeDir string) (ReleaseListOptions, error) {
+	var err error
+	if opts.TempDirPath == "" {
+		opts.TempDirPath, err = os.MkdirTemp("", "")
+		if err != nil {
+			return ReleaseListOptions{}, fmt.Errorf("create temp dir: %w", err)
+		}
+	}
+
+	opts.KubeConnectionOptions.ApplyDefaults(homeDir)
+
+	if opts.NetworkParallelism <= 0 {
+		opts.NetworkParallelism = common.DefaultNetworkParallelism
+	}
+
+	if opts.ReleaseStorageDriver == common.ReleaseStorageDriverDefault {
+		opts.ReleaseStorageDriver = common.ReleaseStorageDriverSecrets
+	}
+
+	if opts.OutputFormat == "" {
+		opts.OutputFormat = DefaultReleaseListOutputFormat
+	}
+
+	return opts, nil
 }
 
 func setReleaseListOutputTableStyle(ctx context.Context, table prtable.Writer) {

@@ -22,30 +22,41 @@ import (
 )
 
 const (
+	schemaURLTemplate    = "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
 	testKubeVersion      = "1.30.0"
 	testReleaseNamespace = "test-namespace"
-	schemaURLTemplate    = "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
 )
 
-func setupTestEnvironment(t *testing.T) {
+// setupDefaultSchemaServer sets up the test environment and returns a schema URL for the default schemas.
+func setupDefaultSchemaServer(t *testing.T) string {
 	t.Helper()
-	common.APIResourceValidationJSONSchemasCacheDir = t.TempDir()
-	featgate.FeatGateResourceValidation.Enable()
+	setupTestEnvironment(t)
+
+	schemas := getDefaultSchemas(t, testKubeVersion)
+	server := setupSchemaServer(t, schemas)
+
+	return server.URL + schemaURLTemplate
 }
 
-func newSchemaHandler(schemas map[string]string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/")
+func getDefaultSchemas(t *testing.T, kubeVersion string) map[string]string {
+	t.Helper()
+	version := "v" + kubeVersion
 
-		if schema, ok := schemas[path]; ok {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(schema))
-			return
-		}
+	return map[string]string{
+		version + "-standalone/deployment-apps-v1.json":            loadSchema(t, "deployment"),
+		version + "-standalone/configmap-" + kubeVersion + ".json": loadSchema(t, "configmap"),
+		version + "-standalone/service-" + kubeVersion + ".json":   loadSchema(t, "service"),
+		version + "-standalone/pod-" + kubeVersion + ".json":       loadSchema(t, "pod"),
+	}
+}
 
-		w.WriteHeader(http.StatusNotFound)
-	})
+func loadSchema(t *testing.T, name string) string {
+	t.Helper()
+	path := filepath.Join(getTestdataPath(), "schemas", name+".json")
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	return string(data)
 }
 
 func setupSchemaServer(t *testing.T, schemas map[string]string) *httptest.Server {
@@ -57,19 +68,33 @@ func setupSchemaServer(t *testing.T, schemas map[string]string) *httptest.Server
 	return server
 }
 
-func setupLocalSchemaDir(t *testing.T, schemas map[string]string) string {
+func setupSchemaServerWithCounter(t *testing.T, schemas map[string]string) (*httptest.Server, *int) {
 	t.Helper()
 
-	schemaDir := t.TempDir()
+	requestCount := new(int)
+	baseHandler := newSchemaHandler(schemas)
 
-	for relPath, content := range schemas {
-		fullPath := filepath.Join(schemaDir, relPath)
-		parentDir := filepath.Dir(fullPath)
-		require.NoError(t, os.MkdirAll(parentDir, 0o755))
-		require.NoError(t, os.WriteFile(fullPath, []byte(content), 0o644))
-	}
+	countingHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		*requestCount++
+		baseHandler.ServeHTTP(w, r)
+	})
 
-	return schemaDir
+	server := httptest.NewServer(countingHandler)
+	t.Cleanup(server.Close)
+
+	return server, requestCount
+}
+
+func assertValidationError(t *testing.T, err error, expectedSubstring string) {
+	t.Helper()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), expectedSubstring)
+}
+
+func getTestdataPath() string {
+	_, filename, _, _ := runtime.Caller(0)
+
+	return filepath.Join(filepath.Dir(filename), "testdata")
 }
 
 func makeInstallableResource(t *testing.T, obj map[string]interface{}, releaseNamespace string) *resource.InstallableResource {
@@ -92,61 +117,39 @@ func makeValidationOptions(kubeVersion string, schemaURLs []string) common.Resou
 	}
 }
 
-func assertValidationError(t *testing.T, err error, expectedSubstring string) {
-	t.Helper()
-	require.Error(t, err)
-	require.Contains(t, err.Error(), expectedSubstring)
-}
+func newSchemaHandler(schemas map[string]string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/")
 
-func setupSchemaServerWithCounter(t *testing.T, schemas map[string]string) (*httptest.Server, *int) {
-	t.Helper()
+		if schema, ok := schemas[path]; ok {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(schema))
 
-	requestCount := new(int)
-	baseHandler := newSchemaHandler(schemas)
+			return
+		}
 
-	countingHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		*requestCount++
-		baseHandler.ServeHTTP(w, r)
+		w.WriteHeader(http.StatusNotFound)
 	})
-
-	server := httptest.NewServer(countingHandler)
-	t.Cleanup(server.Close)
-
-	return server, requestCount
 }
 
-func getTestdataPath() string {
-	_, filename, _, _ := runtime.Caller(0)
-	return filepath.Join(filepath.Dir(filename), "testdata")
-}
-
-func loadSchema(t *testing.T, name string) string {
+func setupLocalSchemaDir(t *testing.T, schemas map[string]string) string {
 	t.Helper()
-	path := filepath.Join(getTestdataPath(), "schemas", name+".json")
-	data, err := os.ReadFile(path)
-	require.NoError(t, err)
-	return string(data)
-}
 
-func getDefaultSchemas(t *testing.T, kubeVersion string) map[string]string {
-	t.Helper()
-	version := "v" + kubeVersion
+	schemaDir := t.TempDir()
 
-	return map[string]string{
-		version + "-standalone/deployment-apps-v1.json":            loadSchema(t, "deployment"),
-		version + "-standalone/configmap-" + kubeVersion + ".json": loadSchema(t, "configmap"),
-		version + "-standalone/service-" + kubeVersion + ".json":   loadSchema(t, "service"),
-		version + "-standalone/pod-" + kubeVersion + ".json":       loadSchema(t, "pod"),
+	for relPath, content := range schemas {
+		fullPath := filepath.Join(schemaDir, relPath)
+		parentDir := filepath.Dir(fullPath)
+		require.NoError(t, os.MkdirAll(parentDir, 0o755))
+		require.NoError(t, os.WriteFile(fullPath, []byte(content), 0o644))
 	}
+
+	return schemaDir
 }
 
-// setupDefaultSchemaServer sets up the test environment and returns a schema URL for the default schemas.
-func setupDefaultSchemaServer(t *testing.T) string {
+func setupTestEnvironment(t *testing.T) {
 	t.Helper()
-	setupTestEnvironment(t)
-
-	schemas := getDefaultSchemas(t, testKubeVersion)
-	server := setupSchemaServer(t, schemas)
-
-	return server.URL + schemaURLTemplate
+	common.APIResourceValidationJSONSchemasCacheDir = t.TempDir()
+	featgate.FeatGateResourceValidation.Enable()
 }

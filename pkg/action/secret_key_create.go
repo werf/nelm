@@ -9,9 +9,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const (
-	DefaultSecretKeyCreateLogLevel = log.ErrorLevel
-)
+const DefaultSecretKeyCreateLogLevel = log.ErrorLevel
 
 type SecretKeyCreateOptions struct {
 	OutputNoPrint bool

@@ -18,7 +18,7 @@ Nelm is a Go-based Kubernetes deployment tool, which deploys Helm charts, is com
 
 ### Design (MANDATORY)
 
-> NEVER edit rules below directly. Instead ALWAYS update [CODESTYLE.md](CODESTYLE.md) and ask AI to sync the section below with it.
+> The code style rules below are adapted from [CODESTYLE.md](CODESTYLE.md). If you are asked to update code style rules, update CODESTYLE.md first, then regenerate this section to match, using ALWAYS/NEVER/MUST phrasing.
 
 - ALWAYS prefer stupid and simple over abstract and extendable.
 - ALWAYS prefer a bit of duplication over complex abstractions.
@@ -34,7 +34,7 @@ Nelm is a Go-based Kubernetes deployment tool, which deploys Helm charts, is com
 
 ### Conventions (MANDATORY)
 
-> NEVER edit rules below directly. Instead ALWAYS update [CODESTYLE.md](CODESTYLE.md) and ask AI to sync the section below with it.
+> The code style rules below are adapted from [CODESTYLE.md](CODESTYLE.md). If you are asked to update code style rules, update CODESTYLE.md first, then regenerate this section to match, using ALWAYS/NEVER/MUST phrasing.
 
 - All public functions/methods MUST accept `context.Context` as the first parameter.
 - All arguments of a public function are required — passing nil not allowed.

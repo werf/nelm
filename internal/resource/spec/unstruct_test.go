@@ -25,31 +25,18 @@ func (s *UnstructSuite) SetupSuite() {
 	}
 }
 
-type cleanUnstructTestCase struct {
-	name   string
-	skip   bool
-	input  func() (*unstructured.Unstructured, spec.CleanUnstructOptions)
-	expect func() *unstructured.Unstructured
-}
-
 func (s *UnstructSuite) TestCleanUnstruct() {
 	testCases := []cleanUnstructTestCase{
 		{
-			name: `should not change anything`,
-			input: func() (*unstructured.Unstructured, spec.CleanUnstructOptions) {
-				return defaultUncleanUnstruct(), spec.CleanUnstructOptions{}
-			},
 			expect: func() *unstructured.Unstructured {
 				return defaultUncleanUnstruct()
 			},
+			input: func() (*unstructured.Unstructured, spec.CleanUnstructOptions) {
+				return defaultUncleanUnstruct(), spec.CleanUnstructOptions{}
+			},
+			name: `should not change anything`,
 		},
 		{
-			name: `should clean helm.sh annotations`,
-			input: func() (*unstructured.Unstructured, spec.CleanUnstructOptions) {
-				return defaultUncleanUnstruct(), spec.CleanUnstructOptions{
-					CleanHelmShAnnos: true,
-				}
-			},
 			expect: func() *unstructured.Unstructured {
 				unstruct := defaultUncleanUnstruct()
 				unstruct.SetAnnotations(lo.OmitByKeys(unstruct.GetAnnotations(), []string{
@@ -59,14 +46,14 @@ func (s *UnstructSuite) TestCleanUnstruct() {
 
 				return unstruct
 			},
-		},
-		{
-			name: `should clean werf.io annotations`,
 			input: func() (*unstructured.Unstructured, spec.CleanUnstructOptions) {
 				return defaultUncleanUnstruct(), spec.CleanUnstructOptions{
-					CleanWerfIoAnnos: true,
+					CleanHelmShAnnos: true,
 				}
 			},
+			name: `should clean helm.sh annotations`,
+		},
+		{
 			expect: func() *unstructured.Unstructured {
 				unstruct := defaultUncleanUnstruct()
 				unstruct.SetAnnotations(lo.OmitByKeys(unstruct.GetAnnotations(), []string{
@@ -78,14 +65,14 @@ func (s *UnstructSuite) TestCleanUnstruct() {
 
 				return unstruct
 			},
-		},
-		{
-			name: `should clean werf.io runtime annotations`,
 			input: func() (*unstructured.Unstructured, spec.CleanUnstructOptions) {
 				return defaultUncleanUnstruct(), spec.CleanUnstructOptions{
-					CleanWerfIoRuntimeAnnos: true,
+					CleanWerfIoAnnos: true,
 				}
 			},
+			name: `should clean werf.io annotations`,
+		},
+		{
 			expect: func() *unstructured.Unstructured {
 				unstruct := defaultUncleanUnstruct()
 				unstruct.SetAnnotations(lo.OmitByKeys(unstruct.GetAnnotations(), []string{
@@ -96,14 +83,14 @@ func (s *UnstructSuite) TestCleanUnstruct() {
 
 				return unstruct
 			},
-		},
-		{
-			name: `should clean release annotations and labels`,
 			input: func() (*unstructured.Unstructured, spec.CleanUnstructOptions) {
 				return defaultUncleanUnstruct(), spec.CleanUnstructOptions{
-					CleanReleaseAnnosLabels: true,
+					CleanWerfIoRuntimeAnnos: true,
 				}
 			},
+			name: `should clean werf.io runtime annotations`,
+		},
+		{
 			expect: func() *unstructured.Unstructured {
 				unstruct := defaultUncleanUnstruct()
 				unstruct.SetAnnotations(lo.OmitByKeys(unstruct.GetAnnotations(), []string{
@@ -116,28 +103,28 @@ func (s *UnstructSuite) TestCleanUnstruct() {
 
 				return unstruct
 			},
-		},
-		{
-			name: `should clean managed fields`,
 			input: func() (*unstructured.Unstructured, spec.CleanUnstructOptions) {
 				return defaultUncleanUnstruct(), spec.CleanUnstructOptions{
-					CleanManagedFields: true,
+					CleanReleaseAnnosLabels: true,
 				}
 			},
+			name: `should clean release annotations and labels`,
+		},
+		{
 			expect: func() *unstructured.Unstructured {
 				unstruct := defaultUncleanUnstruct()
 				unstruct.SetManagedFields(nil)
 
 				return unstruct
 			},
-		},
-		{
-			name: `should clean runtime data`,
 			input: func() (*unstructured.Unstructured, spec.CleanUnstructOptions) {
 				return defaultUncleanUnstruct(), spec.CleanUnstructOptions{
-					CleanRuntimeData: true,
+					CleanManagedFields: true,
 				}
 			},
+			name: `should clean managed fields`,
+		},
+		{
 			expect: func() *unstructured.Unstructured {
 				unstruct := defaultUncleanUnstruct()
 
@@ -158,12 +145,25 @@ func (s *UnstructSuite) TestCleanUnstruct() {
 
 				return unstruct
 			},
+			input: func() (*unstructured.Unstructured, spec.CleanUnstructOptions) {
+				return defaultUncleanUnstruct(), spec.CleanUnstructOptions{
+					CleanRuntimeData: true,
+				}
+			},
+			name: `should clean runtime data`,
 		},
 	}
 
 	for _, tc := range testCases {
 		s.Run(tc.name, runCleanUnstructTest(tc, s))
 	}
+}
+
+type cleanUnstructTestCase struct {
+	expect func() *unstructured.Unstructured
+	input  func() (*unstructured.Unstructured, spec.CleanUnstructOptions)
+	name   string
+	skip   bool
 }
 
 func TestUnstructSuites(t *testing.T) {

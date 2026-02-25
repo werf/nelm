@@ -6,8 +6,6 @@ import (
 	"strings"
 )
 
-type OperationCategory string
-
 const (
 	// Does nothing. Used for things like  grouping.
 	OperationCategoryMeta OperationCategory = "meta"
@@ -17,11 +15,12 @@ const (
 	OperationCategoryTrack OperationCategory = "track"
 	// Operations that mutate Helm releases in the cluster.
 	OperationCategoryRelease OperationCategory = "release"
-)
 
-type OperationType string
+	OperationStatusUnknown   OperationStatus = ""
+	OperationStatusPending   OperationStatus = "pending"
+	OperationStatusCompleted OperationStatus = "completed"
+	OperationStatusFailed    OperationStatus = "failed"
 
-const (
 	OperationTypeApply          OperationType = "apply"
 	OperationTypeCreate         OperationType = "create"
 	OperationTypeCreateRelease  OperationType = "create-release"
@@ -34,12 +33,7 @@ const (
 	OperationTypeTrackReadiness OperationType = "track-readiness"
 	OperationTypeUpdate         OperationType = "update"
 	OperationTypeUpdateRelease  OperationType = "update-release"
-)
 
-// Used to handle breaking changes in the Operation struct.
-type OperationVersion int
-
-const (
 	OperationVersionApply          OperationVersion = 1
 	OperationVersionCreate         OperationVersion = 1
 	OperationVersionCreateRelease  OperationVersion = 1
@@ -54,14 +48,14 @@ const (
 	OperationVersionUpdateRelease  OperationVersion = 1
 )
 
-type OperationStatus string
+type OperationCategory string
 
-const (
-	OperationStatusUnknown   OperationStatus = ""
-	OperationStatusPending   OperationStatus = "pending"
-	OperationStatusCompleted OperationStatus = "completed"
-	OperationStatusFailed    OperationStatus = "failed"
-)
+type OperationType string
+
+// Used to handle breaking changes in the Operation struct.
+type OperationVersion int
+
+type OperationStatus string
 
 // Helps to avoid operation ID collisions. Since you can't have two operations with the same ID in
 // the graph, you can increment the iteration to get a new unique ID for the operation. The higher
@@ -86,21 +80,6 @@ func (o *Operation) ID() string {
 
 func (o *Operation) IDHuman() string {
 	return OperationIDHuman(o.Type, o.Iteration, o.Config.IDHuman())
-}
-
-func OperationID(t OperationType, version OperationVersion, iteration OperationIteration, configID string) string {
-	return fmt.Sprintf("%s/%d/%d/%s", t, version, iteration, configID)
-}
-
-func OperationIDHuman(t OperationType, iteration OperationIteration, configIDHuman string) string {
-	id := fmt.Sprintf("%s: ", strings.ReplaceAll(string(t), "-", " "))
-
-	id += configIDHuman
-	if iteration > 0 {
-		id += fmt.Sprintf(" (iteration=%d)", iteration)
-	}
-
-	return id
 }
 
 func (o *Operation) UnmarshalJSON(data []byte) error {
@@ -152,4 +131,19 @@ func (o *Operation) UnmarshalJSON(data []byte) error {
 	}
 
 	return nil
+}
+
+func OperationID(t OperationType, version OperationVersion, iteration OperationIteration, configID string) string {
+	return fmt.Sprintf("%s/%d/%d/%s", t, version, iteration, configID)
+}
+
+func OperationIDHuman(t OperationType, iteration OperationIteration, configIDHuman string) string {
+	id := fmt.Sprintf("%s: ", strings.ReplaceAll(string(t), "-", " "))
+
+	id += configIDHuman
+	if iteration > 0 {
+		id += fmt.Sprintf(" (iteration=%d)", iteration)
+	}
+
+	return id
 }

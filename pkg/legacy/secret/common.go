@@ -49,6 +49,7 @@ func InputFromInteractiveStdin(prompt string) ([]byte, error) {
 				return err
 			}
 			restored = true
+
 			return nil
 		}, nil
 	}

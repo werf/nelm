@@ -21,12 +21,6 @@ type KubeConfig struct {
 	RestConfig         *rest.Config
 }
 
-type KubeConfigOptions struct {
-	common.KubeConnectionOptions
-
-	KubeContextNamespace string
-}
-
 func NewKubeConfig(ctx context.Context, kubeConfigPaths []string, opts KubeConfigOptions) (*KubeConfig, error) {
 	var authProviderConfig *api.AuthProviderConfig
 	if opts.KubeAuthProviderName != "" || len(opts.KubeAuthProviderConfig) != 0 {
@@ -115,6 +109,12 @@ func NewKubeConfig(ctx context.Context, kubeConfigPaths []string, opts KubeConfi
 	log.Default.TraceStruct(ctx, kubeConfig, "Constructed KubeConfig:")
 
 	return kubeConfig, nil
+}
+
+type KubeConfigOptions struct {
+	common.KubeConnectionOptions
+
+	KubeContextNamespace string
 }
 
 func loadKubeConfigBase64(kubeConfigBase64 string) (*api.Config, error) {

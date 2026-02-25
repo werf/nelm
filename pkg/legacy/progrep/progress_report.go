@@ -2,6 +2,26 @@ package progrep
 
 import "k8s.io/apimachinery/pkg/runtime/schema"
 
+const (
+	OperationStatusPending     OperationStatus = "Pending"
+	OperationStatusProgressing OperationStatus = "Progressing"
+	OperationStatusCompleted   OperationStatus = "Completed"
+	OperationStatusFailed      OperationStatus = "Failed"
+
+	OperationTypeCreate         OperationType = "Create"
+	OperationTypeUpdate         OperationType = "Update"
+	OperationTypeDelete         OperationType = "Delete"
+	OperationTypeApply          OperationType = "Apply"
+	OperationTypeRecreate       OperationType = "Recreate"
+	OperationTypeTrackReadiness OperationType = "TrackReadiness"
+	OperationTypeTrackPresence  OperationType = "TrackPresence"
+	OperationTypeTrackAbsence   OperationType = "TrackAbsence"
+)
+
+type OperationType string
+
+type OperationStatus string
+
 // ProgressReport contains stage reports ordered chronologically; the last element is the
 // currently active stage.
 type ProgressReport struct {
@@ -17,32 +37,10 @@ type StageReport struct {
 type Operation struct {
 	ObjectRef
 
-	Type       OperationType
 	Status     OperationStatus
+	Type       OperationType
 	WaitingFor []ObjectRef
 }
-
-type OperationType string
-
-const (
-	OperationTypeCreate         OperationType = "Create"
-	OperationTypeUpdate         OperationType = "Update"
-	OperationTypeDelete         OperationType = "Delete"
-	OperationTypeApply          OperationType = "Apply"
-	OperationTypeRecreate       OperationType = "Recreate"
-	OperationTypeTrackReadiness OperationType = "TrackReadiness"
-	OperationTypeTrackPresence  OperationType = "TrackPresence"
-	OperationTypeTrackAbsence   OperationType = "TrackAbsence"
-)
-
-type OperationStatus string
-
-const (
-	OperationStatusPending     OperationStatus = "Pending"
-	OperationStatusProgressing OperationStatus = "Progressing"
-	OperationStatusCompleted   OperationStatus = "Completed"
-	OperationStatusFailed      OperationStatus = "Failed"
-)
 
 type ObjectRef struct {
 	schema.GroupVersionKind

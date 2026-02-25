@@ -17,9 +17,7 @@ import (
 	"github.com/werf/nelm/pkg/featgate"
 )
 
-const (
-	HideAll = "$$HIDE_ALL$$"
-)
+const HideAll = "$$HIDE_ALL$$"
 
 type SensitiveInfo struct {
 	IsSensitive    bool
@@ -32,6 +30,7 @@ func (i *SensitiveInfo) FullySensitive() bool {
 
 func IsSensitive(groupKind schema.GroupKind, annotations map[string]string) bool {
 	info := GetSensitiveInfo(groupKind, annotations)
+
 	return info.IsSensitive
 }
 

@@ -236,9 +236,9 @@ type kubeConformInstance struct {
 	cacheDir      string
 	cacheLifetime time.Duration
 	fileLock      *flock.Flock
+	kubeVersion   string
 	metadata      kubeConformCacheMetadata
 	source        string
-	kubeVersion   string
 	validator     validator.Validator
 }
 
@@ -474,12 +474,6 @@ func getKubeConformEntryHash(kubeVersion string, gvk schema.GroupVersionKind) st
 	return getHash(fmt.Sprintf("%s-%s-%s", gvk.Kind, gvk.GroupVersion(), kubeVersion))
 }
 
-func getHash(s string) string {
-	digest := sha256.Sum256([]byte(s))
-
-	return hex.EncodeToString(digest[:])
-}
-
 func patchKubeConformSchemaSource(source, kind, group, apiVersion string, strict bool, kubeVersion string) (string, error) {
 	kindSuffix := "-" + group + "-" + apiVersion
 	if group == "" {
@@ -528,20 +522,14 @@ func patchKubeConformSchemaSource(source, kind, group, apiVersion string, strict
 	return buf.String(), nil
 }
 
-func writeKubeConformCacheMetadata(path string, metadata kubeConformCacheMetadata) error {
-	metadataFile, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err != nil {
-		return fmt.Errorf("open %s: %w", path, err)
-	}
+func getHash(s string) string {
+	digest := sha256.Sum256([]byte(s))
 
-	defer metadataFile.Close()
+	return hex.EncodeToString(digest[:])
+}
 
-	encoder := json.NewEncoder(metadataFile)
-	if err := encoder.Encode(metadata); err != nil {
-		return fmt.Errorf("update %s: %w", path, err)
-	}
-
-	return nil
+func isLocalFSSource(source string) bool {
+	return !strings.HasPrefix(source, "https://") && !strings.HasPrefix(source, "http://")
 }
 
 func readKubeConformMetadata(path string) (*kubeConformCacheMetadata, error) {
@@ -567,6 +555,18 @@ func readKubeConformMetadata(path string) (*kubeConformCacheMetadata, error) {
 	return &metadata, nil
 }
 
-func isLocalFSSource(source string) bool {
-	return !strings.HasPrefix(source, "https://") && !strings.HasPrefix(source, "http://")
+func writeKubeConformCacheMetadata(path string, metadata kubeConformCacheMetadata) error {
+	metadataFile, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", path, err)
+	}
+
+	defer metadataFile.Close()
+
+	encoder := json.NewEncoder(metadataFile)
+	if err := encoder.Encode(metadata); err != nil {
+		return fmt.Errorf("update %s: %w", path, err)
+	}
+
+	return nil
 }

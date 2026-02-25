@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	DefaultVersionOutputFormat = common.OutputFormatYAML
 	DefaultVersionLogLevel     = log.ErrorLevel
+	DefaultVersionOutputFormat = common.OutputFormatYAML
 )
 
 type VersionOptions struct {
@@ -33,6 +33,13 @@ type VersionOptions struct {
 	// TempDirPath is the directory for temporary files during the operation.
 	// A temporary directory is created automatically if not specified.
 	TempDirPath string
+}
+
+type VersionResult struct {
+	FullVersion  string `json:"full"`
+	MajorVersion int    `json:"major"`
+	MinorVersion int    `json:"minor"`
+	PatchVersion int    `json:"patch"`
 }
 
 func Version(ctx context.Context, opts VersionOptions) (*VersionResult, error) {
@@ -102,11 +109,4 @@ func applyVersionOptionsDefaults(opts VersionOptions) (VersionOptions, error) {
 	}
 
 	return opts, nil
-}
-
-type VersionResult struct {
-	FullVersion  string `json:"full"`
-	MajorVersion int    `json:"major"`
-	MinorVersion int    `json:"minor"`
-	PatchVersion int    `json:"patch"`
 }

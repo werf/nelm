@@ -17,63 +17,8 @@ import (
 
 // NOTE: LockManager for not is not multithreaded due to the lack of support of contexts in the lockgate library
 type LockManager struct {
-	Namespace       string
 	LockerWithRetry *locker_with_retry.LockerWithRetry
-}
-
-type ConfigMapLocker struct {
-	ConfigMapName, Namespace string
-
-	Locker lockgate.Locker
-
-	clientFactory    kube.ClientFactorier
-	releaseNamespace string
-	createNamespace  bool
-}
-
-type ConfigMapLockerOptions struct {
-	CreateNamespace bool
-}
-
-func NewConfigMapLocker(
-	configMapName, namespace, releaseNamespace string,
-	locker lockgate.Locker,
-	clientFactory kube.ClientFactorier,
-	options ConfigMapLockerOptions,
-) *ConfigMapLocker {
-	return &ConfigMapLocker{
-		ConfigMapName:    configMapName,
-		Namespace:        namespace,
-		Locker:           locker,
-		clientFactory:    clientFactory,
-		createNamespace:  options.CreateNamespace,
-		releaseNamespace: releaseNamespace,
-	}
-}
-
-func (locker *ConfigMapLocker) Acquire(lockName string, opts lockgate.AcquireOptions) (
-	bool,
-	lockgate.LockHandle,
-	error,
-) {
-	if err := getOrCreateConfigMapWithNamespaceIfNotExists(locker.clientFactory, locker.Namespace, locker.releaseNamespace, locker.ConfigMapName, locker.createNamespace); err != nil {
-		return false, lockgate.LockHandle{}, fmt.Errorf("unable to prepare kubernetes cm/%s in ns/%s: %w", locker.ConfigMapName, locker.Namespace, err)
-	}
-
-	acquired, handle, err := locker.Locker.Acquire(lockName, opts)
-	if err != nil {
-		return false, lockgate.LockHandle{}, fmt.Errorf("acquire lock: %w", err)
-	}
-
-	return acquired, handle, nil
-}
-
-func (locker *ConfigMapLocker) Release(lock lockgate.LockHandle) error {
-	if err := locker.Locker.Release(lock); err != nil {
-		return fmt.Errorf("release lock: %w", err)
-	}
-
-	return nil
+	Namespace       string
 }
 
 func NewLockManager(ctx context.Context, namespace string, createNamespace bool, clientFactory kube.ClientFactorier) (*LockManager, error) {
@@ -99,15 +44,12 @@ func NewLockManager(ctx context.Context, namespace string, createNamespace bool,
 	})
 
 	return &LockManager{
-		Namespace:       namespace,
 		LockerWithRetry: lockerWithRetry,
+		Namespace:       namespace,
 	}, nil
 }
 
-func (lockManager *LockManager) LockRelease(
-	ctx context.Context,
-	releaseName string,
-) (lockgate.LockHandle, error) {
+func (lockManager *LockManager) LockRelease(ctx context.Context, releaseName string) (lockgate.LockHandle, error) {
 	lockManager.LockerWithRetry.Ctx = ctx
 
 	_, handle, err := lockManager.LockerWithRetry.Acquire(fmt.Sprintf("release/%s", releaseName), setupLockerDefaultOptions(ctx, lockgate.AcquireOptions{}))
@@ -130,61 +72,49 @@ func (lockManager *LockManager) Unlock(handle lockgate.LockHandle) error {
 	return nil
 }
 
-func setupLockerDefaultOptions(
-	ctx context.Context,
-	opts lockgate.AcquireOptions,
-) lockgate.AcquireOptions {
-	if opts.OnWaitFunc == nil {
-		opts.OnWaitFunc = defaultLockerOnWait(ctx)
-	}
+type ConfigMapLocker struct {
+	ConfigMapName, Namespace string
+	Locker                   lockgate.Locker
 
-	if opts.OnLostLeaseFunc == nil {
-		opts.OnLostLeaseFunc = defaultLockerOnLostLease
-	}
-
-	return opts
+	clientFactory    kube.ClientFactorier
+	createNamespace  bool
+	releaseNamespace string
 }
 
-func defaultLockerOnWait(ctx context.Context) func(lockName string, doWait func() error) error {
-	return func(lockName string, doWait func() error) error {
-		log.Default.Info(ctx, fmt.Sprintf("Waiting for locked %q", lockName))
-		return doWait()
+func NewConfigMapLocker(configMapName, namespace, releaseNamespace string, locker lockgate.Locker, clientFactory kube.ClientFactorier, options ConfigMapLockerOptions) *ConfigMapLocker {
+	return &ConfigMapLocker{
+		ConfigMapName:    configMapName,
+		Locker:           locker,
+		clientFactory:    clientFactory,
+		createNamespace:  options.CreateNamespace,
+		releaseNamespace: releaseNamespace,
+		Namespace:        namespace,
 	}
 }
 
-func defaultLockerOnLostLease(lock lockgate.LockHandle) error {
-	return fmt.Errorf("locker has lost the lease for lock %q uuid %q. The process will stop immediately.\nPossible reasons:\n- Connection issues with Kubernetes API.\n- Network delays caused lease renewal requests to fail", lock.LockName, lock.UUID)
-}
-
-func createNamespaceIfNotExists(clientFactory kube.ClientFactorier, namespace, releaseNamespace string) error {
-	unstruct := &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": "v1",
-			"kind":       "Namespace",
-			"metadata": map[string]interface{}{
-				"name": namespace,
-			},
-		},
+func (locker *ConfigMapLocker) Acquire(lockName string, opts lockgate.AcquireOptions) (bool, lockgate.LockHandle, error) {
+	if err := getOrCreateConfigMapWithNamespaceIfNotExists(locker.clientFactory, locker.Namespace, locker.releaseNamespace, locker.ConfigMapName, locker.createNamespace); err != nil {
+		return false, lockgate.LockHandle{}, fmt.Errorf("unable to prepare kubernetes cm/%s in ns/%s: %w", locker.ConfigMapName, locker.Namespace, err)
 	}
 
-	resSpec := spec.NewResourceSpec(unstruct, releaseNamespace, spec.ResourceSpecOptions{})
+	acquired, handle, err := locker.Locker.Acquire(lockName, opts)
+	if err != nil {
+		return false, lockgate.LockHandle{}, fmt.Errorf("acquire lock: %w", err)
+	}
 
-	if _, err := clientFactory.KubeClient().Get(context.Background(), resSpec.ResourceMeta, kube.KubeClientGetOptions{
-		DefaultNamespace: releaseNamespace,
-		TryCache:         true,
-	}); err != nil {
-		if kube.IsNotFoundErr(err) {
-			if _, err := clientFactory.KubeClient().Create(context.Background(), resSpec, kube.KubeClientCreateOptions{
-				DefaultNamespace: releaseNamespace,
-			}); err != nil {
-				return fmt.Errorf("create namespace %q: %w", namespace, err)
-			}
-		}
+	return acquired, handle, nil
+}
 
-		return fmt.Errorf("get namespace %q: %w", namespace, err)
+func (locker *ConfigMapLocker) Release(lock lockgate.LockHandle) error {
+	if err := locker.Locker.Release(lock); err != nil {
+		return fmt.Errorf("release lock: %w", err)
 	}
 
 	return nil
+}
+
+type ConfigMapLockerOptions struct {
+	CreateNamespace bool
 }
 
 func getOrCreateConfigMapWithNamespaceIfNotExists(clientFactory kube.ClientFactorier, namespace, releaseNamespace, configMapName string, createNamespace bool) error {
@@ -224,4 +154,59 @@ func getOrCreateConfigMapWithNamespaceIfNotExists(clientFactory kube.ClientFacto
 	}
 
 	return nil
+}
+
+func setupLockerDefaultOptions(ctx context.Context, opts lockgate.AcquireOptions) lockgate.AcquireOptions {
+	if opts.OnWaitFunc == nil {
+		opts.OnWaitFunc = defaultLockerOnWait(ctx)
+	}
+
+	if opts.OnLostLeaseFunc == nil {
+		opts.OnLostLeaseFunc = defaultLockerOnLostLease
+	}
+
+	return opts
+}
+
+func createNamespaceIfNotExists(clientFactory kube.ClientFactorier, namespace, releaseNamespace string) error {
+	unstruct := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "Namespace",
+			"metadata": map[string]interface{}{
+				"name": namespace,
+			},
+		},
+	}
+
+	resSpec := spec.NewResourceSpec(unstruct, releaseNamespace, spec.ResourceSpecOptions{})
+
+	if _, err := clientFactory.KubeClient().Get(context.Background(), resSpec.ResourceMeta, kube.KubeClientGetOptions{
+		DefaultNamespace: releaseNamespace,
+		TryCache:         true,
+	}); err != nil {
+		if kube.IsNotFoundErr(err) {
+			if _, err := clientFactory.KubeClient().Create(context.Background(), resSpec, kube.KubeClientCreateOptions{
+				DefaultNamespace: releaseNamespace,
+			}); err != nil {
+				return fmt.Errorf("create namespace %q: %w", namespace, err)
+			}
+		}
+
+		return fmt.Errorf("get namespace %q: %w", namespace, err)
+	}
+
+	return nil
+}
+
+func defaultLockerOnLostLease(lock lockgate.LockHandle) error {
+	return fmt.Errorf("locker has lost the lease for lock %q uuid %q. The process will stop immediately.\nPossible reasons:\n- Connection issues with Kubernetes API.\n- Network delays caused lease renewal requests to fail", lock.LockName, lock.UUID)
+}
+
+func defaultLockerOnWait(ctx context.Context) func(lockName string, doWait func() error) error {
+	return func(lockName string, doWait func() error) error {
+		log.Default.Info(ctx, fmt.Sprintf("Waiting for locked %q", lockName))
+
+		return doWait()
+	}
 }

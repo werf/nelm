@@ -16,6 +16,33 @@ type BuildPlanOptions struct {
 	NoFinalTracking bool
 }
 
+type BuildFailurePlanOptions struct {
+	NoFinalTracking bool
+}
+
+// When the main plan fails, the failure plan must be built and executed.
+func BuildFailurePlan(failedPlan *Plan, installableInfos []*InstallableResourceInfo, releaseInfos []*ReleaseInfo, opts BuildFailurePlanOptions) (*Plan, error) {
+	plan := NewPlan()
+
+	if err := addMainStages(plan); err != nil {
+		return plan, fmt.Errorf("add main stages: %w", err)
+	}
+
+	if err := addFailureReleaseOperations(failedPlan, plan, releaseInfos); err != nil {
+		return plan, fmt.Errorf("add failure release operations: %w", err)
+	}
+
+	if err := addFailureResourceOperations(failedPlan, plan, installableInfos); err != nil {
+		return plan, fmt.Errorf("add failure resource operations: %w", err)
+	}
+
+	if err := plan.Optimize(opts.NoFinalTracking); err != nil {
+		return plan, fmt.Errorf("optimize plan: %w", err)
+	}
+
+	return plan, nil
+}
+
 // Builds any kind of a plan, be it for install, upgrade, rollback or uninstall. The only exception
 // is a failure plan (see BuildFailurePlan), because it's way too different. Any differences between
 // different kinds of plans must be figured out earlier, e.g. at BuildResourceInfos level. This
@@ -59,59 +86,79 @@ func BuildPlan(installableInfos []*InstallableResourceInfo, deletableInfos []*De
 	return plan, nil
 }
 
-type BuildFailurePlanOptions struct {
-	NoFinalTracking bool
+func connectInternalDeployDependencies(plan *Plan, instInfos []*InstallableResourceInfo, delInfos []*DeletableResourceInfo) error {
+	for _, info := range instInfos {
+		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualInternalDependencies)
+		if len(internalDeps) == 0 {
+			continue
+		}
+
+		deployOp, found := getDeployOp(plan, info)
+		if !found {
+			continue
+		}
+
+		for _, dep := range internalDeps {
+			var (
+				dependUponOp      *Operation
+				dependUponOpFound bool
+			)
+
+			switch dep.ResourceState {
+			case common.ResourceStatePresent:
+				dependUponOp, dependUponOpFound = findDeployOpInStage(plan, instInfos, dep, info.Stage)
+			case common.ResourceStateReady:
+				dependUponOp, dependUponOpFound = findTrackReadinessOpInStage(plan, instInfos, dep, info.Stage)
+			case common.ResourceStateAbsent:
+				// TODO(major): all deploy/delete dependencies must depend upon all matched operations, not a single one
+				dependUponOps := findTrackAbsenceOpInStage(plan, delInfos, instInfos, dep, info.Stage)
+				if len(dependUponOps) > 0 {
+					dependUponOp = dependUponOps[0]
+					dependUponOpFound = true
+				}
+			default:
+				panic("unexpected internal dependency resource state")
+			}
+
+			if !dependUponOpFound {
+				continue
+			}
+
+			if err := plan.Connect(dependUponOp.ID(), deployOp.ID()); err != nil {
+				return fmt.Errorf("depend %q from %q: %w", deployOp.ID(), dependUponOp.ID(), err)
+			}
+		}
+	}
+
+	return nil
 }
 
-// When the main plan fails, the failure plan must be built and executed.
-func BuildFailurePlan(failedPlan *Plan, installableInfos []*InstallableResourceInfo, releaseInfos []*ReleaseInfo, opts BuildFailurePlanOptions) (*Plan, error) {
-	plan := NewPlan()
-
-	if err := addMainStages(plan); err != nil {
-		return plan, fmt.Errorf("add main stages: %w", err)
-	}
-
-	if err := addFailureReleaseOperations(failedPlan, plan, releaseInfos); err != nil {
-		return plan, fmt.Errorf("add failure release operations: %w", err)
-	}
-
-	if err := addFailureResourceOperations(failedPlan, plan, installableInfos); err != nil {
-		return plan, fmt.Errorf("add failure resource operations: %w", err)
-	}
-
-	if err := plan.Optimize(opts.NoFinalTracking); err != nil {
-		return plan, fmt.Errorf("optimize plan: %w", err)
-	}
-
-	return plan, nil
-}
-
-func addMainStages(plan *Plan) error {
-	chain := plan.AddOperationChain()
-	for _, stage := range common.StagesOrdered {
-		startOp := &Operation{
-			Type:     OperationTypeNoop,
-			Version:  OperationVersionNoop,
-			Category: OperationCategoryMeta,
-			Config: &OperationConfigNoop{
-				OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, stage, common.StageStartSuffix),
-			},
+func addFailureReleaseOperations(failedPlan, plan *Plan, releaseInfos []*ReleaseInfo) error {
+	for _, info := range releaseInfos {
+		if !info.MustFailOnFailedDeploy {
+			continue
 		}
-		chain.AddOperation(startOp)
 
-		endOp := &Operation{
-			Type:     OperationTypeNoop,
-			Version:  OperationVersionNoop,
-			Category: OperationCategoryMeta,
-			Config: &OperationConfigNoop{
-				OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, stage, common.StageEndSuffix),
-			},
+		if _, releaseCreated := lo.Find(failedPlan.Operations(), func(op *Operation) bool {
+			if op.Status != OperationStatusCompleted {
+				return false
+			}
+
+			switch config := op.Config.(type) {
+			case *OperationConfigCreateRelease:
+				return config.Release.ID() == info.Release.ID()
+			case *OperationConfigUpdateRelease:
+				return config.Release.ID() == info.Release.ID()
+			default:
+				return false
+			}
+		}); !releaseCreated {
+			continue
 		}
-		chain.AddOperation(endOp)
-	}
 
-	if err := chain.Do(); err != nil {
-		return fmt.Errorf("do add chain operations: %w", err)
+		if err := addFailedReleaseOps(plan, info); err != nil {
+			return fmt.Errorf("add failed release ops for release: %w", err)
+		}
 	}
 
 	return nil
@@ -151,158 +198,57 @@ func addReleaseOperations(plan *Plan, releaseInfos []*ReleaseInfo) error {
 	return nil
 }
 
-func addFailureReleaseOperations(failedPlan, plan *Plan, releaseInfos []*ReleaseInfo) error {
-	for _, info := range releaseInfos {
-		if !info.MustFailOnFailedDeploy {
+func connectInternalDeleteDependencies(plan *Plan, delInfos []*DeletableResourceInfo, instInfos []*InstallableResourceInfo) error {
+	for _, info := range delInfos {
+		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualInternalDependencies)
+		if len(internalDeps) == 0 {
 			continue
 		}
 
-		if _, releaseCreated := lo.Find(failedPlan.Operations(), func(op *Operation) bool {
-			if op.Status != OperationStatusCompleted {
-				return false
-			}
+		deleteOp, found := getDeleteOp(plan, info)
+		if !found {
+			continue
+		}
 
-			switch config := op.Config.(type) {
-			case *OperationConfigCreateRelease:
-				return config.Release.ID() == info.Release.ID()
-			case *OperationConfigUpdateRelease:
-				return config.Release.ID() == info.Release.ID()
+		for _, dep := range internalDeps {
+			var dependUponOps []*Operation
+
+			switch dep.ResourceState {
+			case common.ResourceStateAbsent:
+				dependUponOps = findTrackAbsenceOpInStage(plan, delInfos, instInfos, dep, info.Stage)
 			default:
-				return false
+				panic("unexpected internal dependency resource state")
 			}
-		}); !releaseCreated {
+
+			for _, dependUponOp := range dependUponOps {
+				if err := plan.Connect(dependUponOp.ID(), deleteOp.ID()); err != nil {
+					return fmt.Errorf("depend %q from %q: %w", deleteOp.ID(), dependUponOp.ID(), err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func findDeployOpInStage(plan *Plan, instInfos []*InstallableResourceInfo, dep *resource.InternalDependency, sourceStage common.Stage) (*Operation, bool) {
+	var match *InstallableResourceInfo
+	for _, candidate := range instInfos {
+		if candidate.MustInstall == ResourceInstallTypeNone ||
+			candidate.Stage != sourceStage ||
+			!dep.Match(candidate.ResourceMeta) ||
+			(match != nil && candidate.Iteration >= match.Iteration) {
 			continue
 		}
 
-		if err := addFailedReleaseOps(plan, info); err != nil {
-			return fmt.Errorf("add failed release ops for release: %w", err)
-		}
+		match = candidate
 	}
 
-	return nil
-}
-
-func addPendingAndDeployedReleaseOps(plan *Plan, info *ReleaseInfo, pendingStatus helmrelease.Status) error {
-	var pendingRel *helmrelease.Release
-	if rel, err := copystructure.Copy(info.Release); err != nil {
-		return fmt.Errorf("deep copy release: %w", err)
-	} else {
-		pendingRel = rel.(*helmrelease.Release)
+	if match == nil {
+		return nil, false
 	}
 
-	pendingRel.Info.Status = pendingStatus
-
-	pendingOp := &Operation{
-		Type:     OperationTypeCreateRelease,
-		Version:  OperationVersionCreateRelease,
-		Category: OperationCategoryRelease,
-		Config: &OperationConfigCreateRelease{
-			Release: pendingRel,
-		},
-	}
-	lo.Must0(plan.AddOperationChain().AddOperation(pendingOp).Stage(common.StageInit).Do())
-
-	var succeededRel *helmrelease.Release
-	if rel, err := copystructure.Copy(pendingRel); err != nil {
-		return fmt.Errorf("deep copy release: %w", err)
-	} else {
-		succeededRel = rel.(*helmrelease.Release)
-	}
-
-	succeededRel.Info.Status = helmrelease.StatusDeployed
-
-	succeededOp := &Operation{
-		Type:     OperationTypeUpdateRelease,
-		Version:  OperationVersionUpdateRelease,
-		Category: OperationCategoryRelease,
-		Config: &OperationConfigUpdateRelease{
-			Release: succeededRel,
-		},
-	}
-	lo.Must0(plan.AddOperationChain().AddOperation(succeededOp).Stage(common.StageFinal).Do())
-
-	return nil
-}
-
-func addFailedReleaseOps(plan *Plan, info *ReleaseInfo) error {
-	var failedRel *helmrelease.Release
-	if rel, err := copystructure.Copy(info.Release); err != nil {
-		return fmt.Errorf("deep copy release: %w", err)
-	} else {
-		failedRel = rel.(*helmrelease.Release)
-	}
-
-	failedRel.Info.Status = helmrelease.StatusFailed
-
-	failedOp := &Operation{
-		Type:     OperationTypeUpdateRelease,
-		Version:  OperationVersionUpdateRelease,
-		Category: OperationCategoryRelease,
-		Config: &OperationConfigUpdateRelease{
-			Release: failedRel,
-		},
-	}
-	lo.Must0(plan.AddOperationChain().AddOperation(failedOp).Stage(common.StageInit).Do())
-
-	return nil
-}
-
-func addSupersedeReleaseOps(plan *Plan, info *ReleaseInfo) error {
-	var supersededRel *helmrelease.Release
-	if rel, err := copystructure.Copy(info.Release); err != nil {
-		return fmt.Errorf("deep copy release: %w", err)
-	} else {
-		supersededRel = rel.(*helmrelease.Release)
-	}
-
-	supersededRel.Info.Status = helmrelease.StatusSuperseded
-
-	supersedeOp := &Operation{
-		Type:     OperationTypeUpdateRelease,
-		Version:  OperationVersionUpdateRelease,
-		Category: OperationCategoryRelease,
-		Config: &OperationConfigUpdateRelease{
-			Release: supersededRel,
-		},
-	}
-	lo.Must0(plan.AddOperationChain().AddOperation(supersedeOp).Stage(common.StageFinal).Do())
-
-	return nil
-}
-
-func addUninstallReleaseOps(plan *Plan, info *ReleaseInfo) error {
-	var uninstallingRel *helmrelease.Release
-	if rel, err := copystructure.Copy(info.Release); err != nil {
-		return fmt.Errorf("deep copy release: %w", err)
-	} else {
-		uninstallingRel = rel.(*helmrelease.Release)
-	}
-
-	uninstallingRel.Info.Status = helmrelease.StatusUninstalling
-
-	uninstallingOp := &Operation{
-		Type:     OperationTypeUpdateRelease,
-		Version:  OperationVersionUpdateRelease,
-		Category: OperationCategoryRelease,
-		Config: &OperationConfigUpdateRelease{
-			Release: uninstallingRel,
-		},
-	}
-	lo.Must0(plan.AddOperationChain().AddOperation(uninstallingOp).Stage(common.StageInit).Do())
-
-	uninstalledOp := &Operation{
-		Type:     OperationTypeDeleteRelease,
-		Version:  OperationVersionDeleteRelease,
-		Category: OperationCategoryRelease,
-		Config: &OperationConfigDeleteRelease{
-			ReleaseName:      uninstallingRel.Name,
-			ReleaseNamespace: uninstallingRel.Namespace,
-			ReleaseRevision:  uninstallingRel.Version,
-		},
-	}
-	lo.Must0(plan.AddOperationChain().AddOperation(uninstalledOp).Stage(common.StageFinal).Do())
-
-	return nil
+	return getDeployOp(plan, match)
 }
 
 func addDeleteReleaseOps(plan *Plan, info *ReleaseInfo) {
@@ -357,51 +303,77 @@ func addDeleteResourcesOps(plan *Plan, infos []*DeletableResourceInfo) error {
 	return nil
 }
 
-func addWeightedSubStages(plan *Plan, infos []*InstallableResourceInfo) error {
-	stageWeights := map[common.Stage][]int{}
+func addFailedReleaseOps(plan *Plan, info *ReleaseInfo) error {
+	var failedRel *helmrelease.Release
+	if rel, err := copystructure.Copy(info.Release); err != nil {
+		return fmt.Errorf("deep copy release: %w", err)
+	} else {
+		failedRel = rel.(*helmrelease.Release)
+	}
+
+	failedRel.Info.Status = helmrelease.StatusFailed
+
+	failedOp := &Operation{
+		Type:     OperationTypeUpdateRelease,
+		Version:  OperationVersionUpdateRelease,
+		Category: OperationCategoryRelease,
+		Config: &OperationConfigUpdateRelease{
+			Release: failedRel,
+		},
+	}
+	lo.Must0(plan.AddOperationChain().AddOperation(failedOp).Stage(common.StageInit).Do())
+
+	return nil
+}
+
+func addFailureResourceOperations(failedPlan, plan *Plan, infos []*InstallableResourceInfo) error {
 	for _, info := range infos {
-		if info.LocalResource.Weight == nil {
+		if !info.MustDeleteOnFailedInstall {
 			continue
 		}
 
-		if _, found := stageWeights[info.Stage]; !found {
-			stageWeights[info.Stage] = []int{}
+		trackReadinessOp := lo.Must(failedPlan.Operation(OperationID(OperationTypeTrackReadiness, OperationVersionTrackReadiness, OperationIteration(info.Iteration), info.ID())))
+
+		if trackReadinessOp.Status != OperationStatusFailed {
+			continue
 		}
 
-		stageWeights[info.Stage] = append(stageWeights[info.Stage], *info.LocalResource.Weight)
-	}
+		if info.MustDeleteOnSuccessfulInstall {
+			deleteOnSuccessfulInstallOp := lo.Must(lo.Find(failedPlan.Operations(), func(op *Operation) bool {
+				return op.Type == OperationTypeDelete &&
+					op.Iteration == OperationIteration(info.Iteration) &&
+					op.Config.(*OperationConfigDelete).ResourceMeta.ID() == info.ID()
+			}))
 
-	for stage := range stageWeights {
-		sort.Ints(stageWeights[stage])
-		stageWeights[stage] = lo.Uniq(stageWeights[stage])
-	}
+			if deleteOnSuccessfulInstallOp.Status == OperationStatusCompleted {
+				continue
+			}
+		}
 
-	for stage, weights := range stageWeights {
 		chain := plan.AddOperationChain()
 
-		for _, weight := range weights {
-			weightedSubStage := common.SubStageWeighted(stage, weight)
-
-			startOp := &Operation{
-				Type:     OperationTypeNoop,
-				Version:  OperationVersionNoop,
-				Category: OperationCategoryMeta,
-				Config: &OperationConfigNoop{
-					OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, weightedSubStage, common.StageStartSuffix),
-				},
-			}
-			chain.AddOperation(startOp).Stage(stage)
-
-			endOp := &Operation{
-				Type:     OperationTypeNoop,
-				Version:  OperationVersionNoop,
-				Category: OperationCategoryMeta,
-				Config: &OperationConfigNoop{
-					OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, weightedSubStage, common.StageEndSuffix),
-				},
-			}
-			chain.AddOperation(endOp).Stage(stage)
+		deleteOp := &Operation{
+			Type:      OperationTypeDelete,
+			Version:   OperationVersionDelete,
+			Category:  OperationCategoryResource,
+			Iteration: OperationIteration(info.Iteration),
+			Config: &OperationConfigDelete{
+				ResourceMeta:      info.ResourceMeta,
+				DeletePropagation: info.LocalResource.DeletePropagation,
+			},
 		}
+		chain.AddOperation(deleteOp).Stage(common.StageUninstall)
+
+		trackAbsenceOp := &Operation{
+			Type:      OperationTypeTrackAbsence,
+			Version:   OperationVersionTrackAbsence,
+			Category:  OperationCategoryTrack,
+			Iteration: OperationIteration(info.Iteration),
+			Config: &OperationConfigTrackAbsence{
+				ResourceMeta: info.ResourceMeta,
+			},
+		}
+		chain.AddOperation(trackAbsenceOp).Stage(common.StageUninstall)
 
 		if err := chain.Do(); err != nil {
 			return fmt.Errorf("do add chain operations: %w", err)
@@ -548,54 +520,182 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 	return nil
 }
 
-func addFailureResourceOperations(failedPlan, plan *Plan, infos []*InstallableResourceInfo) error {
+func addMainStages(plan *Plan) error {
+	chain := plan.AddOperationChain()
+	for _, stage := range common.StagesOrdered {
+		startOp := &Operation{
+			Type:     OperationTypeNoop,
+			Version:  OperationVersionNoop,
+			Category: OperationCategoryMeta,
+			Config: &OperationConfigNoop{
+				OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, stage, common.StageStartSuffix),
+			},
+		}
+		chain.AddOperation(startOp)
+
+		endOp := &Operation{
+			Type:     OperationTypeNoop,
+			Version:  OperationVersionNoop,
+			Category: OperationCategoryMeta,
+			Config: &OperationConfigNoop{
+				OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, stage, common.StageEndSuffix),
+			},
+		}
+		chain.AddOperation(endOp)
+	}
+
+	if err := chain.Do(); err != nil {
+		return fmt.Errorf("do add chain operations: %w", err)
+	}
+
+	return nil
+}
+
+func addPendingAndDeployedReleaseOps(plan *Plan, info *ReleaseInfo, pendingStatus helmrelease.Status) error {
+	var pendingRel *helmrelease.Release
+	if rel, err := copystructure.Copy(info.Release); err != nil {
+		return fmt.Errorf("deep copy release: %w", err)
+	} else {
+		pendingRel = rel.(*helmrelease.Release)
+	}
+
+	pendingRel.Info.Status = pendingStatus
+
+	pendingOp := &Operation{
+		Type:     OperationTypeCreateRelease,
+		Version:  OperationVersionCreateRelease,
+		Category: OperationCategoryRelease,
+		Config: &OperationConfigCreateRelease{
+			Release: pendingRel,
+		},
+	}
+	lo.Must0(plan.AddOperationChain().AddOperation(pendingOp).Stage(common.StageInit).Do())
+
+	var succeededRel *helmrelease.Release
+	if rel, err := copystructure.Copy(pendingRel); err != nil {
+		return fmt.Errorf("deep copy release: %w", err)
+	} else {
+		succeededRel = rel.(*helmrelease.Release)
+	}
+
+	succeededRel.Info.Status = helmrelease.StatusDeployed
+
+	succeededOp := &Operation{
+		Type:     OperationTypeUpdateRelease,
+		Version:  OperationVersionUpdateRelease,
+		Category: OperationCategoryRelease,
+		Config: &OperationConfigUpdateRelease{
+			Release: succeededRel,
+		},
+	}
+	lo.Must0(plan.AddOperationChain().AddOperation(succeededOp).Stage(common.StageFinal).Do())
+
+	return nil
+}
+
+func addSupersedeReleaseOps(plan *Plan, info *ReleaseInfo) error {
+	var supersededRel *helmrelease.Release
+	if rel, err := copystructure.Copy(info.Release); err != nil {
+		return fmt.Errorf("deep copy release: %w", err)
+	} else {
+		supersededRel = rel.(*helmrelease.Release)
+	}
+
+	supersededRel.Info.Status = helmrelease.StatusSuperseded
+
+	supersedeOp := &Operation{
+		Type:     OperationTypeUpdateRelease,
+		Version:  OperationVersionUpdateRelease,
+		Category: OperationCategoryRelease,
+		Config: &OperationConfigUpdateRelease{
+			Release: supersededRel,
+		},
+	}
+	lo.Must0(plan.AddOperationChain().AddOperation(supersedeOp).Stage(common.StageFinal).Do())
+
+	return nil
+}
+
+func addUninstallReleaseOps(plan *Plan, info *ReleaseInfo) error {
+	var uninstallingRel *helmrelease.Release
+	if rel, err := copystructure.Copy(info.Release); err != nil {
+		return fmt.Errorf("deep copy release: %w", err)
+	} else {
+		uninstallingRel = rel.(*helmrelease.Release)
+	}
+
+	uninstallingRel.Info.Status = helmrelease.StatusUninstalling
+
+	uninstallingOp := &Operation{
+		Type:     OperationTypeUpdateRelease,
+		Version:  OperationVersionUpdateRelease,
+		Category: OperationCategoryRelease,
+		Config: &OperationConfigUpdateRelease{
+			Release: uninstallingRel,
+		},
+	}
+	lo.Must0(plan.AddOperationChain().AddOperation(uninstallingOp).Stage(common.StageInit).Do())
+
+	uninstalledOp := &Operation{
+		Type:     OperationTypeDeleteRelease,
+		Version:  OperationVersionDeleteRelease,
+		Category: OperationCategoryRelease,
+		Config: &OperationConfigDeleteRelease{
+			ReleaseName:      uninstallingRel.Name,
+			ReleaseNamespace: uninstallingRel.Namespace,
+			ReleaseRevision:  uninstallingRel.Version,
+		},
+	}
+	lo.Must0(plan.AddOperationChain().AddOperation(uninstalledOp).Stage(common.StageFinal).Do())
+
+	return nil
+}
+
+func addWeightedSubStages(plan *Plan, infos []*InstallableResourceInfo) error {
+	stageWeights := map[common.Stage][]int{}
 	for _, info := range infos {
-		if !info.MustDeleteOnFailedInstall {
+		if info.LocalResource.Weight == nil {
 			continue
 		}
 
-		trackReadinessOp := lo.Must(failedPlan.Operation(OperationID(OperationTypeTrackReadiness, OperationVersionTrackReadiness, OperationIteration(info.Iteration), info.ID())))
-
-		if trackReadinessOp.Status != OperationStatusFailed {
-			continue
+		if _, found := stageWeights[info.Stage]; !found {
+			stageWeights[info.Stage] = []int{}
 		}
 
-		if info.MustDeleteOnSuccessfulInstall {
-			deleteOnSuccessfulInstallOp := lo.Must(lo.Find(failedPlan.Operations(), func(op *Operation) bool {
-				return op.Type == OperationTypeDelete &&
-					op.Iteration == OperationIteration(info.Iteration) &&
-					op.Config.(*OperationConfigDelete).ResourceMeta.ID() == info.ID()
-			}))
+		stageWeights[info.Stage] = append(stageWeights[info.Stage], *info.LocalResource.Weight)
+	}
 
-			if deleteOnSuccessfulInstallOp.Status == OperationStatusCompleted {
-				continue
-			}
-		}
+	for stage := range stageWeights {
+		sort.Ints(stageWeights[stage])
+		stageWeights[stage] = lo.Uniq(stageWeights[stage])
+	}
 
+	for stage, weights := range stageWeights {
 		chain := plan.AddOperationChain()
 
-		deleteOp := &Operation{
-			Type:      OperationTypeDelete,
-			Version:   OperationVersionDelete,
-			Category:  OperationCategoryResource,
-			Iteration: OperationIteration(info.Iteration),
-			Config: &OperationConfigDelete{
-				ResourceMeta:      info.ResourceMeta,
-				DeletePropagation: info.LocalResource.DeletePropagation,
-			},
-		}
-		chain.AddOperation(deleteOp).Stage(common.StageUninstall)
+		for _, weight := range weights {
+			weightedSubStage := common.SubStageWeighted(stage, weight)
 
-		trackAbsenceOp := &Operation{
-			Type:      OperationTypeTrackAbsence,
-			Version:   OperationVersionTrackAbsence,
-			Category:  OperationCategoryTrack,
-			Iteration: OperationIteration(info.Iteration),
-			Config: &OperationConfigTrackAbsence{
-				ResourceMeta: info.ResourceMeta,
-			},
+			startOp := &Operation{
+				Type:     OperationTypeNoop,
+				Version:  OperationVersionNoop,
+				Category: OperationCategoryMeta,
+				Config: &OperationConfigNoop{
+					OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, weightedSubStage, common.StageStartSuffix),
+				},
+			}
+			chain.AddOperation(startOp).Stage(stage)
+
+			endOp := &Operation{
+				Type:     OperationTypeNoop,
+				Version:  OperationVersionNoop,
+				Category: OperationCategoryMeta,
+				Config: &OperationConfigNoop{
+					OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, weightedSubStage, common.StageEndSuffix),
+				},
+			}
+			chain.AddOperation(endOp).Stage(stage)
 		}
-		chain.AddOperation(trackAbsenceOp).Stage(common.StageUninstall)
 
 		if err := chain.Do(); err != nil {
 			return fmt.Errorf("do add chain operations: %w", err)
@@ -603,158 +703,6 @@ func addFailureResourceOperations(failedPlan, plan *Plan, infos []*InstallableRe
 	}
 
 	return nil
-}
-
-func connectInternalDeployDependencies(plan *Plan, instInfos []*InstallableResourceInfo, delInfos []*DeletableResourceInfo) error {
-	for _, info := range instInfos {
-		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualInternalDependencies)
-		if len(internalDeps) == 0 {
-			continue
-		}
-
-		deployOp, found := getDeployOp(plan, info)
-		if !found {
-			continue
-		}
-
-		for _, dep := range internalDeps {
-			var (
-				dependUponOp      *Operation
-				dependUponOpFound bool
-			)
-
-			switch dep.ResourceState {
-			case common.ResourceStatePresent:
-				dependUponOp, dependUponOpFound = findDeployOpInStage(plan, instInfos, dep, info.Stage)
-			case common.ResourceStateReady:
-				dependUponOp, dependUponOpFound = findTrackReadinessOpInStage(plan, instInfos, dep, info.Stage)
-			case common.ResourceStateAbsent:
-				// TODO(major): all deploy/delete dependencies must depend upon all matched operations, not a single one
-				dependUponOps := findTrackAbsenceOpInStage(plan, delInfos, instInfos, dep, info.Stage)
-				if len(dependUponOps) > 0 {
-					dependUponOp = dependUponOps[0]
-					dependUponOpFound = true
-				}
-			default:
-				panic("unexpected internal dependency resource state")
-			}
-
-			if !dependUponOpFound {
-				continue
-			}
-
-			if err := plan.Connect(dependUponOp.ID(), deployOp.ID()); err != nil {
-				return fmt.Errorf("depend %q from %q: %w", deployOp.ID(), dependUponOp.ID(), err)
-			}
-		}
-	}
-
-	return nil
-}
-
-func getDeployOp(plan *Plan, info *InstallableResourceInfo) (op *Operation, found bool) {
-	var deployOpID string
-	switch info.MustInstall {
-	case ResourceInstallTypeCreate:
-		deployOpID = OperationID(OperationTypeCreate, OperationVersionCreate, OperationIteration(info.Iteration), info.ID())
-	case ResourceInstallTypeRecreate:
-		deployOpID = OperationID(OperationTypeRecreate, OperationVersionRecreate, OperationIteration(info.Iteration), info.ID())
-	case ResourceInstallTypeUpdate:
-		deployOpID = OperationID(OperationTypeUpdate, OperationVersionUpdate, OperationIteration(info.Iteration), info.ID())
-	case ResourceInstallTypeApply:
-		deployOpID = OperationID(OperationTypeApply, OperationVersionApply, OperationIteration(info.Iteration), info.ID())
-	case ResourceInstallTypeNone:
-		return nil, false
-	default:
-		panic("unexpected resource must condition")
-	}
-
-	return lo.Must(plan.Operation(deployOpID)), true
-}
-
-func connectInternalDeleteDependencies(plan *Plan, delInfos []*DeletableResourceInfo, instInfos []*InstallableResourceInfo) error {
-	for _, info := range delInfos {
-		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualInternalDependencies)
-		if len(internalDeps) == 0 {
-			continue
-		}
-
-		deleteOp, found := getDeleteOp(plan, info)
-		if !found {
-			continue
-		}
-
-		for _, dep := range internalDeps {
-			var dependUponOps []*Operation
-
-			switch dep.ResourceState {
-			case common.ResourceStateAbsent:
-				dependUponOps = findTrackAbsenceOpInStage(plan, delInfos, instInfos, dep, info.Stage)
-			default:
-				panic("unexpected internal dependency resource state")
-			}
-
-			for _, dependUponOp := range dependUponOps {
-				if err := plan.Connect(dependUponOp.ID(), deleteOp.ID()); err != nil {
-					return fmt.Errorf("depend %q from %q: %w", deleteOp.ID(), dependUponOp.ID(), err)
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-func getDeleteOp(plan *Plan, info *DeletableResourceInfo) (*Operation, bool) {
-	if !info.MustDelete {
-		return nil, false
-	}
-
-	operationID := OperationID(OperationTypeDelete, OperationVersionDelete, OperationIteration(0), info.ID())
-
-	return lo.Must(plan.Operation(operationID)), true
-}
-
-func findDeployOpInStage(plan *Plan, instInfos []*InstallableResourceInfo, dep *resource.InternalDependency, sourceStage common.Stage) (*Operation, bool) {
-	var match *InstallableResourceInfo
-	for _, candidate := range instInfos {
-		if candidate.MustInstall == ResourceInstallTypeNone ||
-			candidate.Stage != sourceStage ||
-			!dep.Match(candidate.ResourceMeta) ||
-			(match != nil && candidate.Iteration >= match.Iteration) {
-			continue
-		}
-
-		match = candidate
-	}
-
-	if match == nil {
-		return nil, false
-	}
-
-	return getDeployOp(plan, match)
-}
-
-func findTrackReadinessOpInStage(plan *Plan, instInfos []*InstallableResourceInfo, dep *resource.InternalDependency, sourceStage common.Stage) (*Operation, bool) {
-	var match *InstallableResourceInfo
-	for _, candidate := range instInfos {
-		if !candidate.MustTrackReadiness ||
-			candidate.Stage != sourceStage ||
-			!dep.Match(candidate.ResourceMeta) ||
-			(match != nil && candidate.Iteration >= match.Iteration) {
-			continue
-		}
-
-		match = candidate
-	}
-
-	if match == nil {
-		return nil, false
-	}
-
-	opID := OperationID(OperationTypeTrackReadiness, OperationVersionTrackReadiness, OperationIteration(match.Iteration), match.ID())
-
-	return plan.Operation(opID)
 }
 
 func findTrackAbsenceOpInStage(plan *Plan, delInfos []*DeletableResourceInfo, instInfos []*InstallableResourceInfo, dep *resource.InternalDependency, sourceStage common.Stage) []*Operation {
@@ -801,4 +749,56 @@ func findTrackAbsenceOpInStage(plan *Plan, delInfos []*DeletableResourceInfo, in
 	}
 
 	return []*Operation{op}
+}
+
+func findTrackReadinessOpInStage(plan *Plan, instInfos []*InstallableResourceInfo, dep *resource.InternalDependency, sourceStage common.Stage) (*Operation, bool) {
+	var match *InstallableResourceInfo
+	for _, candidate := range instInfos {
+		if !candidate.MustTrackReadiness ||
+			candidate.Stage != sourceStage ||
+			!dep.Match(candidate.ResourceMeta) ||
+			(match != nil && candidate.Iteration >= match.Iteration) {
+			continue
+		}
+
+		match = candidate
+	}
+
+	if match == nil {
+		return nil, false
+	}
+
+	opID := OperationID(OperationTypeTrackReadiness, OperationVersionTrackReadiness, OperationIteration(match.Iteration), match.ID())
+
+	return plan.Operation(opID)
+}
+
+func getDeleteOp(plan *Plan, info *DeletableResourceInfo) (*Operation, bool) {
+	if !info.MustDelete {
+		return nil, false
+	}
+
+	operationID := OperationID(OperationTypeDelete, OperationVersionDelete, OperationIteration(0), info.ID())
+
+	return lo.Must(plan.Operation(operationID)), true
+}
+
+func getDeployOp(plan *Plan, info *InstallableResourceInfo) (op *Operation, found bool) {
+	var deployOpID string
+	switch info.MustInstall {
+	case ResourceInstallTypeCreate:
+		deployOpID = OperationID(OperationTypeCreate, OperationVersionCreate, OperationIteration(info.Iteration), info.ID())
+	case ResourceInstallTypeRecreate:
+		deployOpID = OperationID(OperationTypeRecreate, OperationVersionRecreate, OperationIteration(info.Iteration), info.ID())
+	case ResourceInstallTypeUpdate:
+		deployOpID = OperationID(OperationTypeUpdate, OperationVersionUpdate, OperationIteration(info.Iteration), info.ID())
+	case ResourceInstallTypeApply:
+		deployOpID = OperationID(OperationTypeApply, OperationVersionApply, OperationIteration(info.Iteration), info.ID())
+	case ResourceInstallTypeNone:
+		return nil, false
+	default:
+		panic("unexpected resource must condition")
+	}
+
+	return lo.Must(plan.Operation(deployOpID)), true
 }

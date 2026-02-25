@@ -10,6 +10,38 @@ import (
 	"github.com/werf/nelm/pkg/legacy/progrep"
 )
 
+func buildResolvedNamespaces(p *Plan, releaseNamespace string, mapper meta.RESTMapper) map[string]string {
+	resolved := make(map[string]string)
+
+	for _, op := range p.Operations() {
+		if op.Category != OperationCategoryResource && op.Category != OperationCategoryTrack {
+			continue
+		}
+
+		gvk, _, ns, ok := operationResourceMeta(op.Config)
+		if !ok {
+			continue
+		}
+
+		resolved[op.ID()] = resolveNamespace(gvk, ns, releaseNamespace, mapper)
+	}
+
+	return resolved
+}
+
+func extractObjectRef(op *Operation, resolvedNamespaces map[string]string) progrep.ObjectRef {
+	gvk, name, _, ok := operationResourceMeta(op.Config)
+	if !ok {
+		panic(fmt.Sprintf("unexpected operation config type %T for operation %s", op.Config, op.ID()))
+	}
+
+	return progrep.ObjectRef{
+		GroupVersionKind: gvk,
+		Name:             name,
+		Namespace:        resolvedNamespaces[op.ID()],
+	}
+}
+
 func reportOperationStatus(op *Operation, status OperationStatus, reporter *LegacyProgressReporter) {
 	op.Status = status
 
@@ -18,6 +50,44 @@ func reportOperationStatus(op *Operation, status OperationStatus, reporter *Lega
 	}
 
 	reporter.ReportStatus(op.ID(), mapOperationStatus(status))
+}
+
+func mapOperationStatus(s OperationStatus) progrep.OperationStatus {
+	switch s {
+	case OperationStatusUnknown:
+		return progrep.OperationStatusPending
+	case OperationStatusPending:
+		return progrep.OperationStatusProgressing
+	case OperationStatusCompleted:
+		return progrep.OperationStatusCompleted
+	case OperationStatusFailed:
+		return progrep.OperationStatusFailed
+	default:
+		return progrep.OperationStatusPending
+	}
+}
+
+func mapOperationType(t OperationType) progrep.OperationType {
+	switch t {
+	case OperationTypeCreate:
+		return progrep.OperationTypeCreate
+	case OperationTypeUpdate:
+		return progrep.OperationTypeUpdate
+	case OperationTypeDelete:
+		return progrep.OperationTypeDelete
+	case OperationTypeApply:
+		return progrep.OperationTypeApply
+	case OperationTypeRecreate:
+		return progrep.OperationTypeRecreate
+	case OperationTypeTrackReadiness:
+		return progrep.OperationTypeTrackReadiness
+	case OperationTypeTrackPresence:
+		return progrep.OperationTypeTrackPresence
+	case OperationTypeTrackAbsence:
+		return progrep.OperationTypeTrackAbsence
+	default:
+		panic(fmt.Sprintf("unexpected operation type %q", t))
+	}
 }
 
 // operationResourceMeta extracts GVK, name, and namespace from an operation's
@@ -46,25 +116,6 @@ func operationResourceMeta(config OperationConfig) (gvk schema.GroupVersionKind,
 	}
 }
 
-func buildResolvedNamespaces(p *Plan, releaseNamespace string, mapper meta.RESTMapper) map[string]string {
-	resolved := make(map[string]string)
-
-	for _, op := range p.Operations() {
-		if op.Category != OperationCategoryResource && op.Category != OperationCategoryTrack {
-			continue
-		}
-
-		gvk, _, ns, ok := operationResourceMeta(op.Config)
-		if !ok {
-			continue
-		}
-
-		resolved[op.ID()] = resolveNamespace(gvk, ns, releaseNamespace, mapper)
-	}
-
-	return resolved
-}
-
 func resolveNamespace(gvk schema.GroupVersionKind, ns, releaseNamespace string, mapper meta.RESTMapper) string {
 	namespaced, err := spec.Namespaced(gvk, mapper)
 	if err != nil {
@@ -85,55 +136,4 @@ func resolveNamespace(gvk schema.GroupVersionKind, ns, releaseNamespace string, 
 	}
 
 	return releaseNamespace
-}
-
-func extractObjectRef(op *Operation, resolvedNamespaces map[string]string) progrep.ObjectRef {
-	gvk, name, _, ok := operationResourceMeta(op.Config)
-	if !ok {
-		panic(fmt.Sprintf("unexpected operation config type %T for operation %s", op.Config, op.ID()))
-	}
-
-	return progrep.ObjectRef{
-		GroupVersionKind: gvk,
-		Name:             name,
-		Namespace:        resolvedNamespaces[op.ID()],
-	}
-}
-
-func mapOperationType(t OperationType) progrep.OperationType {
-	switch t {
-	case OperationTypeCreate:
-		return progrep.OperationTypeCreate
-	case OperationTypeUpdate:
-		return progrep.OperationTypeUpdate
-	case OperationTypeDelete:
-		return progrep.OperationTypeDelete
-	case OperationTypeApply:
-		return progrep.OperationTypeApply
-	case OperationTypeRecreate:
-		return progrep.OperationTypeRecreate
-	case OperationTypeTrackReadiness:
-		return progrep.OperationTypeTrackReadiness
-	case OperationTypeTrackPresence:
-		return progrep.OperationTypeTrackPresence
-	case OperationTypeTrackAbsence:
-		return progrep.OperationTypeTrackAbsence
-	default:
-		panic(fmt.Sprintf("unexpected operation type %q", t))
-	}
-}
-
-func mapOperationStatus(s OperationStatus) progrep.OperationStatus {
-	switch s {
-	case OperationStatusUnknown:
-		return progrep.OperationStatusPending
-	case OperationStatusPending:
-		return progrep.OperationStatusProgressing
-	case OperationStatusCompleted:
-		return progrep.OperationStatusCompleted
-	case OperationStatusFailed:
-		return progrep.OperationStatusFailed
-	default:
-		return progrep.OperationStatusPending
-	}
 }

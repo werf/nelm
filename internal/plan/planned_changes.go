@@ -17,10 +17,10 @@ import (
 )
 
 const (
-	HiddenVerboseCRDChanges    = "<hidden verbose CRD changes>"
-	HiddenVerboseChanges       = "<hidden verbose changes>"
 	HiddenInsignificantChanges = "<hidden insignificant changes>"
 	HiddenSensitiveChanges     = "<hidden sensitive changes>"
+	HiddenVerboseCRDChanges    = "<hidden verbose CRD changes>"
+	HiddenVerboseChanges       = "<hidden verbose changes>"
 )
 
 type ResourceChange struct {
@@ -107,23 +107,22 @@ func CalculatePlannedChanges(installableInfos []*InstallableResourceInfo, deleta
 	return append(instChanges, delChanges...), nil
 }
 
-func groupInstInfosByIter(installableInfos []*InstallableResourceInfo) [][]*InstallableResourceInfo {
-	var instInfosByIter [][]*InstallableResourceInfo
-	for _, instInfo := range installableInfos {
-		if len(instInfosByIter) < instInfo.Iteration+1 {
-			instInfosByIter = append(instInfosByIter, []*InstallableResourceInfo{})
+func buildDelChanges(delInfos []*DeletableResourceInfo) ([]*ResourceChange, error) {
+	var changes []*ResourceChange
+	for _, info := range delInfos {
+		if !info.MustDelete {
+			continue
 		}
 
-		instInfosByIter[instInfo.Iteration] = append(instInfosByIter[instInfo.Iteration], instInfo)
+		change, err := buildResourceChange(info.ResourceMeta, info.GetResult, nil, false, "delete", color.Style{color.Bold, color.Red})
+		if err != nil {
+			return nil, fmt.Errorf("build resource change for delete: %w", err)
+		}
+
+		changes = append(changes, change)
 	}
 
-	for _, instInfos := range instInfosByIter {
-		sort.SliceStable(instInfos, func(i, j int) bool {
-			return InstallableResourceInfoSortByMustInstallHandler(instInfos[i], instInfos[j])
-		})
-	}
-
-	return instInfosByIter
+	return changes, nil
 }
 
 func buildInstChanges(instInfosByIter [][]*InstallableResourceInfo) ([]*ResourceChange, error) {
@@ -206,24 +205,6 @@ func buildInstChanges(instInfosByIter [][]*InstallableResourceInfo) ([]*Resource
 	return changes, nil
 }
 
-func buildDelChanges(delInfos []*DeletableResourceInfo) ([]*ResourceChange, error) {
-	var changes []*ResourceChange
-	for _, info := range delInfos {
-		if !info.MustDelete {
-			continue
-		}
-
-		change, err := buildResourceChange(info.ResourceMeta, info.GetResult, nil, false, "delete", color.Style{color.Bold, color.Red})
-		if err != nil {
-			return nil, fmt.Errorf("build resource change for delete: %w", err)
-		}
-
-		changes = append(changes, change)
-	}
-
-	return changes, nil
-}
-
 func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *unstructured.Unstructured, deleteAfter bool, opType string, opTypeStyle color.Style) (*ResourceChange, error) {
 	var extraOps []string
 
@@ -232,12 +213,12 @@ func buildResourceChange(resMeta *spec.ResourceMeta, oldUnstruct, newUnstruct *u
 	}
 
 	return &ResourceChange{
+		After:           newUnstruct,
+		Before:          oldUnstruct,
+		ExtraOperations: extraOps,
 		ResourceMeta:    resMeta,
 		Type:            opType,
 		TypeStyle:       opTypeStyle,
-		ExtraOperations: extraOps,
-		Before:          oldUnstruct,
-		After:           newUnstruct,
 	}, nil
 }
 
@@ -262,4 +243,23 @@ func cleanUnstruct(unstruct *unstructured.Unstructured, sensitiveInfo resource.S
 	unstructClean = spec.CleanUnstruct(unstructClean, cleanUnstructOpts)
 
 	return unstructClean
+}
+
+func groupInstInfosByIter(installableInfos []*InstallableResourceInfo) [][]*InstallableResourceInfo {
+	var instInfosByIter [][]*InstallableResourceInfo
+	for _, instInfo := range installableInfos {
+		if len(instInfosByIter) < instInfo.Iteration+1 {
+			instInfosByIter = append(instInfosByIter, []*InstallableResourceInfo{})
+		}
+
+		instInfosByIter[instInfo.Iteration] = append(instInfosByIter[instInfo.Iteration], instInfo)
+	}
+
+	for _, instInfos := range instInfosByIter {
+		sort.SliceStable(instInfos, func(i, j int) bool {
+			return InstallableResourceInfoSortByMustInstallHandler(instInfos[i], instInfos[j])
+		})
+	}
+
+	return instInfosByIter
 }

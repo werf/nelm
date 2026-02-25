@@ -31,9 +31,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const (
-	DefaultReleaseUninstallLogLevel = log.InfoLevel
-)
+const DefaultReleaseUninstallLogLevel = log.InfoLevel
 
 type ReleaseUninstallOptions struct {
 	common.KubeConnectionOptions
@@ -44,6 +42,11 @@ type ReleaseUninstallOptions struct {
 	// DeleteReleaseNamespace, when true, deletes the release namespace after uninstalling the release.
 	// WARNING: This will delete the entire namespace including resources not managed by this release.
 	DeleteReleaseNamespace bool
+	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
+	// Must be a buffered channel with capacity >= 1. The caller owns the channel and is responsible
+	// for its lifecycle. Intermediate reports may be dropped if the consumer is slow; the final
+	// report is guaranteed (blocking send). ReleaseUninstall does not close this channel.
+	LegacyProgressReportCh chan<- progrep.ProgressReport
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
@@ -73,11 +76,6 @@ type ReleaseUninstallOptions struct {
 	// UninstallReportPath, if specified, saves a JSON report of the uninstallation results to this file path.
 	// The report includes lists of completed, canceled, and failed operations.
 	UninstallReportPath string
-	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
-	// Must be a buffered channel with capacity >= 1. The caller owns the channel and is responsible
-	// for its lifecycle. Intermediate reports may be dropped if the consumer is slow; the final
-	// report is guaranteed (blocking send). ReleaseUninstall does not close this channel.
-	LegacyProgressReportCh chan<- progrep.ProgressReport
 }
 
 // Uninstall the Helm release along with its resources from the cluster.
@@ -241,6 +239,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		})
 		if err != nil {
 			handleBuildPlanErr(ctx, deletePlan, err, opts.UninstallGraphPath, opts.TempDirPath, "release-uninstall-graph.dot")
+
 			return fmt.Errorf("build delete plan: %w", err)
 		}
 

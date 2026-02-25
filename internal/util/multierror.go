@@ -50,10 +50,6 @@ func (m *MultiError) Error() string {
 	return msg
 }
 
-func (m *MultiError) Unwrap() []error {
-	return m.errs
-}
-
 func (m *MultiError) HasErrors() bool {
 	return len(m.errs) > 0
 }
@@ -64,6 +60,10 @@ func (m *MultiError) OrNilIfNoErrs() error {
 	}
 
 	return nil
+}
+
+func (m *MultiError) Unwrap() []error {
+	return m.errs
 }
 
 func flattenErrorWithPrefix(err error, prefix string) []string {
@@ -130,6 +130,7 @@ func extractSingleWrapperPrefix(wrapper, wrapped error) string {
 
 	if strings.HasSuffix(wrapperStr, wrappedStr) {
 		prefix := wrapperStr[:len(wrapperStr)-len(wrappedStr)]
+
 		return strings.TrimSuffix(prefix, ": ")
 	}
 

@@ -36,21 +36,13 @@ func NewResourceMeta(name, namespace, releaseNamespace, filePath string, gvk sch
 	}
 
 	return &ResourceMeta{
+		Annotations:      annotations,
+		FilePath:         filePath,
+		GroupVersionKind: gvk,
+		Labels:           labels,
 		Name:             name,
 		Namespace:        namespace,
-		GroupVersionKind: gvk,
-		FilePath:         filePath,
-		Annotations:      annotations,
-		Labels:           labels,
 	}
-}
-
-func NewResourceMetaFromUnstructured(unstruct *unstructured.Unstructured, releaseNamespace, filePath string) *ResourceMeta {
-	return NewResourceMeta(unstruct.GetName(), unstruct.GetNamespace(), releaseNamespace, filePath, unstruct.GroupVersionKind(), unstruct.GetAnnotations(), unstruct.GetLabels())
-}
-
-func NewResourceMetaFromPartialMetadata(meta *v1.PartialObjectMetadata, releaseNamespace, filePath string) *ResourceMeta {
-	return NewResourceMeta(meta.GetName(), meta.GetNamespace(), releaseNamespace, filePath, meta.GroupVersionKind(), meta.GetAnnotations(), meta.GetLabels())
 }
 
 func NewResourceMetaFromManifest(manifest, releaseNamespace string) (*ResourceMeta, error) {
@@ -68,25 +60,29 @@ func NewResourceMetaFromManifest(manifest, releaseNamespace string) (*ResourceMe
 	return NewResourceMetaFromPartialMetadata(obj.(*v1.PartialObjectMetadata), releaseNamespace, filePath), nil
 }
 
+func NewResourceMetaFromPartialMetadata(meta *v1.PartialObjectMetadata, releaseNamespace, filePath string) *ResourceMeta {
+	return NewResourceMeta(meta.GetName(), meta.GetNamespace(), releaseNamespace, filePath, meta.GroupVersionKind(), meta.GetAnnotations(), meta.GetLabels())
+}
+
+func NewResourceMetaFromUnstructured(unstruct *unstructured.Unstructured, releaseNamespace, filePath string) *ResourceMeta {
+	return NewResourceMeta(unstruct.GetName(), unstruct.GetNamespace(), releaseNamespace, filePath, unstruct.GroupVersionKind(), unstruct.GetAnnotations(), unstruct.GetLabels())
+}
+
 // Uniquely identifies the resource.
 func (m *ResourceMeta) ID() string {
 	return ID(m.Name, m.Namespace, m.GroupVersionKind.Group, m.GroupVersionKind.Kind)
-}
-
-func (m *ResourceMeta) IDWithVersion() string {
-	return IDWithVersion(m.Name, m.Namespace, m.GroupVersionKind.Group, m.GroupVersionKind.Version, m.GroupVersionKind.Kind)
 }
 
 func (m *ResourceMeta) IDHuman() string {
 	return IDHuman(m.Name, m.Namespace, m.GroupVersionKind.Group, m.GroupVersionKind.Kind)
 }
 
-func ID(name, namespace, group, kind string) string {
-	return fmt.Sprintf("%s:%s:%s:%s", namespace, group, kind, name)
+func (m *ResourceMeta) IDWithVersion() string {
+	return IDWithVersion(m.Name, m.Namespace, m.GroupVersionKind.Group, m.GroupVersionKind.Version, m.GroupVersionKind.Kind)
 }
 
-func IDWithVersion(name, namespace, group, version, kind string) string {
-	return fmt.Sprintf("%s:%s:%s:%s:%s", namespace, group, version, kind, name)
+func ID(name, namespace, group, kind string) string {
+	return fmt.Sprintf("%s:%s:%s:%s", namespace, group, kind, name)
 }
 
 func IDHuman(name, namespace, group, kind string) string {
@@ -97,4 +93,8 @@ func IDHuman(name, namespace, group, kind string) string {
 	}
 
 	return id
+}
+
+func IDWithVersion(name, namespace, group, version, kind string) string {
+	return fmt.Sprintf("%s:%s:%s:%s:%s", namespace, group, version, kind, name)
 }

@@ -64,6 +64,12 @@ type RenderChartResult struct {
 	Values        map[string]interface{}
 }
 
+type buildChartCapabilitiesOptions struct {
+	ExtraAPIVersions []string
+	LocalKubeVersion string
+	Remote           bool
+}
+
 // Download chart and its dependencies, build and merge values, then render templates. Most of the
 // logic is in Helm SDK, in Nelm its mostly orchestration level.
 func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, registryClient *registry.Client, clientFactory kube.ClientFactorier, opts RenderChartOptions) (*RenderChartResult, error) {
@@ -252,115 +258,6 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	}, nil
 }
 
-func renderJSTemplates(
-	ctx context.Context,
-	chartPath string,
-	chart *helmchart.Chart,
-	renderedValues chartutil.Values,
-	rebuildBundle bool,
-) (map[string]string, error) {
-	log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", chart.Name())
-
-	result, err := ts.RenderChart(ctx, chart, renderedValues, rebuildBundle, chartPath)
-	if err != nil {
-		return nil, fmt.Errorf("render TypeScript: %w", err)
-	}
-
-	return result, nil
-}
-
-func validateChart(ctx context.Context, chart *helmchart.Chart) error {
-	if chart == nil {
-		return fmt.Errorf("load chart: %w", action.ErrMissingChart())
-	}
-
-	if chart.Metadata.Type != "" && chart.Metadata.Type != "application" {
-		return fmt.Errorf("chart %q of type %q can't be deployed", chart.Name(), chart.Metadata.Type)
-	}
-
-	if chart.Metadata.Dependencies != nil {
-		if err := action.CheckDependencies(chart, chart.Metadata.Dependencies); err != nil {
-			return fmt.Errorf("check chart dependencies for chart %q: %w", chart.Name(), err)
-		}
-	}
-
-	if chart.Metadata.Deprecated {
-		log.Default.Warn(ctx, `Chart "%s:%s" is deprecated`, chart.Name(), chart.Metadata.Version)
-	}
-
-	return nil
-}
-
-func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, releaseNamespace string, opts RenderChartOptions) ([]*spec.ResourceSpec, error) {
-	var resources []*spec.ResourceSpec
-
-	for filePath, fileContent := range renderedTemplates {
-		if strings.HasPrefix(path.Base(filePath), "_") ||
-			strings.HasSuffix(filePath, action.NotesFileSuffix) ||
-			strings.TrimSpace(fileContent) == "" {
-			continue
-		}
-
-		manifests := releaseutil.SplitManifestsToSlice(fileContent)
-
-		for _, manifest := range manifests {
-			var head releaseutil.SimpleHead
-			if err := yaml.Unmarshal([]byte(manifest), &head); err != nil {
-				return nil, fmt.Errorf("parse YAML for %q: %w", filePath, err)
-			}
-
-			if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
-				FilePath: filePath,
-			}); err != nil {
-				return nil, fmt.Errorf("construct resource spec for %q: %w", filePath, err)
-			} else {
-				resources = append(resources, res)
-			}
-		}
-	}
-
-	return resources, nil
-}
-
-func isLocalChart(path string) bool {
-	return filepath.IsAbs(path) || filepath.HasPrefix(path, "..") || filepath.HasPrefix(path, ".")
-}
-
-func buildChartNotes(chartName string, renderedTemplates map[string]string, renderSubchartNotes bool) string {
-	var resultBuf bytes.Buffer
-
-	for filePath, fileContent := range renderedTemplates {
-		if !strings.HasSuffix(filePath, action.NotesFileSuffix) {
-			continue
-		}
-
-		fileContent = strings.TrimRightFunc(fileContent, unicode.IsSpace)
-		if fileContent == "" {
-			continue
-		}
-
-		isTopLevelNotes := filePath == path.Join(chartName, "templates", action.NotesFileSuffix)
-
-		if !isTopLevelNotes && !renderSubchartNotes {
-			continue
-		}
-
-		if resultBuf.Len() > 0 {
-			resultBuf.WriteString("\n")
-		}
-
-		resultBuf.WriteString(fileContent)
-	}
-
-	return resultBuf.String()
-}
-
-type buildChartCapabilitiesOptions struct {
-	ExtraAPIVersions []string
-	LocalKubeVersion string
-	Remote           bool
-}
-
 func buildChartCapabilities(ctx context.Context, clientFactory kube.ClientFactorier, opts buildChartCapabilitiesOptions) (*chartutil.Capabilities, error) {
 	capabilities := &chartutil.Capabilities{
 		HelmVersion: chartutil.DefaultCapabilities.HelmVersion,
@@ -412,6 +309,35 @@ func buildChartCapabilities(ctx context.Context, clientFactory kube.ClientFactor
 	return capabilities, nil
 }
 
+func buildChartNotes(chartName string, renderedTemplates map[string]string, renderSubchartNotes bool) string {
+	var resultBuf bytes.Buffer
+
+	for filePath, fileContent := range renderedTemplates {
+		if !strings.HasSuffix(filePath, action.NotesFileSuffix) {
+			continue
+		}
+
+		fileContent = strings.TrimRightFunc(fileContent, unicode.IsSpace)
+		if fileContent == "" {
+			continue
+		}
+
+		isTopLevelNotes := filePath == path.Join(chartName, "templates", action.NotesFileSuffix)
+
+		if !isTopLevelNotes && !renderSubchartNotes {
+			continue
+		}
+
+		if resultBuf.Len() > 0 {
+			resultBuf.WriteString("\n")
+		}
+
+		resultBuf.WriteString(fileContent)
+	}
+
+	return resultBuf.String()
+}
+
 func buildContextFromJSONSets(jsonSets []string) (map[string]interface{}, error) {
 	context := map[string]interface{}{}
 
@@ -422,4 +348,78 @@ func buildContextFromJSONSets(jsonSets []string) (map[string]interface{}, error)
 	}
 
 	return context, nil
+}
+
+func isLocalChart(path string) bool {
+	return filepath.IsAbs(path) || filepath.HasPrefix(path, "..") || filepath.HasPrefix(path, ".")
+}
+
+func renderJSTemplates(
+	ctx context.Context,
+	chartPath string,
+	chart *helmchart.Chart,
+	renderedValues chartutil.Values,
+	rebuildBundle bool,
+) (map[string]string, error) {
+	log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", chart.Name())
+
+	result, err := ts.RenderChart(ctx, chart, renderedValues, rebuildBundle, chartPath)
+	if err != nil {
+		return nil, fmt.Errorf("render TypeScript: %w", err)
+	}
+
+	return result, nil
+}
+
+func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, releaseNamespace string, opts RenderChartOptions) ([]*spec.ResourceSpec, error) {
+	var resources []*spec.ResourceSpec
+
+	for filePath, fileContent := range renderedTemplates {
+		if strings.HasPrefix(path.Base(filePath), "_") ||
+			strings.HasSuffix(filePath, action.NotesFileSuffix) ||
+			strings.TrimSpace(fileContent) == "" {
+			continue
+		}
+
+		manifests := releaseutil.SplitManifestsToSlice(fileContent)
+
+		for _, manifest := range manifests {
+			var head releaseutil.SimpleHead
+			if err := yaml.Unmarshal([]byte(manifest), &head); err != nil {
+				return nil, fmt.Errorf("parse YAML for %q: %w", filePath, err)
+			}
+
+			if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
+				FilePath: filePath,
+			}); err != nil {
+				return nil, fmt.Errorf("construct resource spec for %q: %w", filePath, err)
+			} else {
+				resources = append(resources, res)
+			}
+		}
+	}
+
+	return resources, nil
+}
+
+func validateChart(ctx context.Context, chart *helmchart.Chart) error {
+	if chart == nil {
+		return fmt.Errorf("load chart: %w", action.ErrMissingChart())
+	}
+
+	if chart.Metadata.Type != "" && chart.Metadata.Type != "application" {
+		return fmt.Errorf("chart %q of type %q can't be deployed", chart.Name(), chart.Metadata.Type)
+	}
+
+	if chart.Metadata.Dependencies != nil {
+		if err := action.CheckDependencies(chart, chart.Metadata.Dependencies); err != nil {
+			return fmt.Errorf("check chart dependencies for chart %q: %w", chart.Name(), err)
+		}
+	}
+
+	if chart.Metadata.Deprecated {
+		log.Default.Warn(ctx, `Chart "%s:%s" is deprecated`, chart.Name(), chart.Metadata.Version)
+	}
+
+	return nil
 }
