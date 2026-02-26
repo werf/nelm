@@ -57,7 +57,7 @@ func downloadDeno(ctx context.Context, cacheDir, link string) error {
 	}
 
 	if err := verifyChecksum(zipFile, expectedHash); err != nil {
-		return err
+		return fmt.Errorf("verify checksum: %w", err)
 	}
 
 	reader, err := zip.OpenReader(zipFile)
@@ -78,7 +78,7 @@ func downloadDeno(ctx context.Context, cacheDir, link string) error {
 		}
 
 		if err := unzipBinary(tmpDir, file); err != nil {
-			return err
+			return fmt.Errorf("unzip binary: %w", err)
 		}
 
 		tmpBinaryPath := filepath.Join(tmpDir, filepath.Base(file.Name))
@@ -87,6 +87,8 @@ func downloadDeno(ctx context.Context, cacheDir, link string) error {
 		if err := os.Rename(tmpBinaryPath, finalPath); err != nil {
 			return fmt.Errorf("move Deno binary to cache: %w", err)
 		}
+
+		log.Default.Debug(ctx, "Unzipped Deno to %s", finalPath)
 
 		found = true
 
@@ -183,6 +185,10 @@ func unzipBinary(cacheDir string, file *zip.File) error {
 	if err != nil {
 		return fmt.Errorf("open file %s in Deno archive: %w", file.Name, err)
 	}
+
+	defer func() {
+		_ = fileReader.Close()
+	}()
 
 	limitReader := io.LimitReader(fileReader, 200*1024*1024)
 	if _, err := io.Copy(denoFile, limitReader); err != nil {

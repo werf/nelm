@@ -179,15 +179,13 @@ func (rt *DenoRuntime) RunApp(ctx context.Context, bundleData []byte, renderDir 
 }
 
 func (rt *DenoRuntime) ensureBinary(ctx context.Context) error {
-	if denoBin, ok := os.LookupEnv("NELM_DENO_BIN"); ok && denoBin != "" {
-		rt.setBinaryPath(denoBin)
-		log.Default.Debug(ctx, "Using Deno binary from NELM_DENO_BIN environment variable: %s", denoBin)
-
+	if denoBin := rt.getBinaryPath(); denoBin != "" {
 		return nil
 	}
 
-	if denoBin := rt.getBinaryPath(); denoBin != "" {
-		log.Default.Debug(ctx, "Using Deno binary: %s", denoBin)
+	if denoBin, ok := os.LookupEnv("NELM_DENO_BIN"); ok && denoBin != "" {
+		rt.setBinaryPath(denoBin)
+		log.Default.Debug(ctx, "Using Deno binary from NELM_DENO_BIN environment variable: %s", denoBin)
 
 		return nil
 	}
@@ -218,7 +216,9 @@ func (rt *DenoRuntime) ensureBinary(ctx context.Context) error {
 	}
 
 	defer func() {
-		_ = fileLock.Unlock()
+		if err := fileLock.Unlock(); err != nil {
+			log.Default.Error(ctx, "release lock on Deno cache: %v", err)
+		}
 	}()
 
 	if _, err := os.Stat(denoPath); err == nil {
@@ -229,11 +229,10 @@ func (rt *DenoRuntime) ensureBinary(ctx context.Context) error {
 	}
 
 	if err := downloadDeno(ctx, cacheDir, link); err != nil {
-		return err
+		return fmt.Errorf("download deno: %w", err)
 	}
 
 	rt.setBinaryPath(denoPath)
-	log.Default.Debug(ctx, "Deno binary downloaded to: %s", denoPath)
 
 	return nil
 }
