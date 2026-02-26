@@ -129,43 +129,41 @@ await runRender(render);
   APIVersions:
     - v1
   HelmVersion:
-    go_version: go1.25.5
-    version: v3.14
+    go_version: go1.25.0
+    version: v3.20
   KubeVersion:
     Major: "1"
-    Minor: "33"
-    Version: v1.33.6+k3s1
+    Minor: "35"
+    Version: v1.35.0
 Chart:
   APIVersion: v2
   Annotations:
-    app.kubernetes.io/managed-by: Helm
-  AppVersion: 1.27.4
-  Condition: nginx.enabled
-  Description: An example Helm chart for Kubernetes
-  Home: https://github.com/werf/nelm-chart-ts-sdk
-  Icon: https://helm.sh/img/helm.svg
+    anno: value
+  AppVersion: 1.0.0
+  Condition: %[1]s.enabled
+  Description: %[1]s description
+  Home: https://example.org/home
+  Icon: https://example.org/icon
   Keywords:
-    - nginx
-    - webserver
+    - %[1]s
   Maintainers:
-    - Email: maintainer@example.com
-      Name: John Doe
-      URL: https://example.com
+    - Email: john@example.com
+      Name: john
+      URL: https://example.com/john
   Name: %[1]s
   Sources:
-    - https://github.com/werf/nelm-chart-ts-sdk
-  Tags: frontend
+    - https://example.org/%[1]s
+  Tags: %[1]s
   Type: application
   Version: 0.1.0
 Files:
-  .gitignore: ""
-  .helmignore: ""
+  myfile: "content"
 Release:
   IsInstall: false
   IsUpgrade: true
   Name: %[1]s
   Namespace: %[1]s
-  Revision: 171
+  Revision: 2
   Service: Helm
 Values:
   image:

@@ -32,15 +32,19 @@ func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues cha
 func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartutil.Values, pathPrefix, chartPath string, results map[string]string, tempDirPath string) error {
 	log.Default.Debug(ctx, "Rendering TypeScript for chart %q (path prefix: %s)", chart.Name(), pathPrefix)
 
-	rendered, err := renderFiles(ctx, chart, values, tempDirPath)
-	if err != nil {
-		return fmt.Errorf("render files for chart %q: %w", chart.Name(), err)
-	}
+	entrypoint, bundle := tsbundle.GetEntrypointAndBundle(chart.RuntimeFiles)
 
-	for filename, content := range rendered {
-		outputPath := path.Join(pathPrefix, filename)
-		results[outputPath] = content
-		log.Default.Debug(ctx, "Rendered output: %s", outputPath)
+	if entrypoint != "" && bundle != nil {
+		content, err := renderChart(ctx, bundle, chart, values, tempDirPath)
+		if err != nil {
+			return fmt.Errorf("render files for chart %q: %w", chart.Name(), err)
+		}
+
+		if content != "" {
+			outputPath := path.Join(pathPrefix, tsbundle.ChartTSSourceDir, entrypoint)
+			results[outputPath] = content
+			log.Default.Debug(ctx, "Rendered output: %s", outputPath)
+		}
 	}
 
 	for _, dep := range chart.Dependencies() {
@@ -64,41 +68,28 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 	return nil
 }
 
-func renderFiles(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, tempDirPath string) (map[string]string, error) {
-	entrypoint, bundle := tsbundle.GetEntrypointAndBundle(chart.RuntimeFiles)
-	if entrypoint == "" || bundle == nil {
-		return map[string]string{}, nil
-	}
-
-	renderDir := path.Join(tempDirPath, "typescript-render", chart.Name())
+func renderChart(ctx context.Context, bundle *helmchart.File, chart *helmchart.Chart, renderedValues chartutil.Values, tempDirPath string) (string, error) {
+	renderDir := path.Join(tempDirPath, "typescript-render", chart.ChartFullPath())
 	if err := os.MkdirAll(renderDir, 0o755); err != nil {
-		return map[string]string{}, fmt.Errorf("create temp dir for render context: %w", err)
+		return "", fmt.Errorf("create temp dir for render context: %w", err)
 	}
 
 	err := writeInputRenderContext(renderedValues, chart, renderDir)
 	if err != nil {
-		return nil, fmt.Errorf("build render context: %w", err)
+		return "", fmt.Errorf("build render context: %w", err)
 	}
 
 	err = runApp(ctx, bundle.Data, renderDir)
 	if err != nil {
-		return nil, fmt.Errorf("run deno app: %w", err)
+		return "", fmt.Errorf("run deno app: %w", err)
 	}
 
 	resultBytes, err := os.ReadFile(path.Join(renderDir, renderOutputFileName))
 	if err != nil {
-		return nil, fmt.Errorf("read output file: %w", err)
+		return "", fmt.Errorf("read output file: %w", err)
 	}
 
-	result := string(resultBytes)
-
-	if strings.TrimSpace(result) == "" {
-		return map[string]string{}, nil
-	}
-
-	return map[string]string{
-		path.Join(tsbundle.ChartTSSourceDir, entrypoint): result,
-	}, nil
+	return strings.TrimSpace(string(resultBytes)), nil
 }
 
 func scopeValuesForSubchart(parentValues chartutil.Values, subchartName string, subchart *helmchart.Chart) chartutil.Values {
