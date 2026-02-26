@@ -38,7 +38,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.5.0
-	github.com/werf/3p-helm v0.0.0-20260220154239-5d04719baf9d
+	github.com/werf/3p-helm v0.0.0-20260226105203-2bf4ce55336e
 	github.com/werf/common-go v0.0.0-20251113140850-a1a98e909e9b
 	github.com/werf/kubedog v0.13.1-0.20260115171811-304218f24308
 	github.com/werf/lockgate v0.1.1
@@ -94,6 +94,7 @@ require (
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
+	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
