@@ -14,7 +14,7 @@ import (
 	helmchart "github.com/werf/3p-helm/pkg/chart"
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
-	tsbundle "github.com/werf/3p-helm/pkg/werf/ts"
+	"github.com/werf/nelm/pkg/deno"
 	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
@@ -53,12 +53,13 @@ func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {
 		return fmt.Errorf("load chart: %w", err)
 	}
 
-	if err = tsbundle.BundleTSChartsRecursive(ctx, chart, absPath, true); err != nil {
+	denoRuntime := deno.NewDenoRuntime(true)
+	if err = denoRuntime.BundleChartsRecursive(ctx, chart, absPath); err != nil {
 		return fmt.Errorf("process chart: %w", err)
 	}
 
 	bundles := lo.Filter(chart.Raw, func(file *helmchart.File, _ int) bool {
-		return strings.Contains(file.Name, tsbundle.ChartTSBundleFile)
+		return strings.Contains(file.Name, deno.ChartTSBundleFile)
 	})
 
 	if len(bundles) == 0 {

@@ -11,37 +11,38 @@ import (
 
 	helmchart "github.com/werf/3p-helm/pkg/chart"
 	"github.com/werf/3p-helm/pkg/chartutil"
-	tsbundle "github.com/werf/3p-helm/pkg/werf/ts"
+	"github.com/werf/nelm/pkg/deno"
 	"github.com/werf/nelm/pkg/log"
 )
 
 func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, rebuildBundle bool, chartPath, tempDirPath string) (map[string]string, error) {
 	allRendered := make(map[string]string)
 
-	if err := tsbundle.BundleTSChartsRecursive(ctx, chart, chartPath, rebuildBundle); err != nil {
+	denoRuntime := deno.NewDenoRuntime(rebuildBundle)
+	if err := denoRuntime.BundleChartsRecursive(ctx, chart, chartPath); err != nil {
 		return nil, fmt.Errorf("process chart for TypeScript rendering: %w", err)
 	}
 
-	if err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), chartPath, allRendered, tempDirPath); err != nil {
+	if err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), chartPath, allRendered, tempDirPath, denoRuntime); err != nil {
 		return nil, err
 	}
 
 	return allRendered, nil
 }
 
-func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartutil.Values, pathPrefix, chartPath string, results map[string]string, tempDirPath string) error {
+func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartutil.Values, pathPrefix, chartPath string, results map[string]string, tempDirPath string, denoRuntime *deno.DenoRuntime) error {
 	log.Default.Debug(ctx, "Rendering TypeScript for chart %q (path prefix: %s)", chart.Name(), pathPrefix)
 
-	entrypoint, bundle := tsbundle.GetEntrypointAndBundle(chart.RuntimeFiles)
+	entrypoint, bundle := deno.GetEntrypointAndBundle(chart.RuntimeFiles)
 
 	if entrypoint != "" && bundle != nil {
-		content, err := renderChart(ctx, bundle, chart, values, tempDirPath)
+		content, err := renderChart(ctx, bundle, chart, values, tempDirPath, denoRuntime)
 		if err != nil {
 			return fmt.Errorf("render files for chart %q: %w", chart.Name(), err)
 		}
 
 		if content != "" {
-			outputPath := path.Join(pathPrefix, tsbundle.ChartTSSourceDir, entrypoint)
+			outputPath := path.Join(pathPrefix, deno.ChartTSSourceDir, entrypoint)
 			results[outputPath] = content
 			log.Default.Debug(ctx, "Rendered output: %s", outputPath)
 		}
@@ -59,6 +60,7 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 			path.Join(chartPath, "charts", depName),
 			results,
 			tempDirPath,
+			denoRuntime,
 		)
 		if err != nil {
 			return fmt.Errorf("render dependency %q: %w", depName, err)
@@ -68,7 +70,7 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 	return nil
 }
 
-func renderChart(ctx context.Context, bundle *helmchart.File, chart *helmchart.Chart, renderedValues chartutil.Values, tempDirPath string) (string, error) {
+func renderChart(ctx context.Context, bundle *helmchart.File, chart *helmchart.Chart, renderedValues chartutil.Values, tempDirPath string, denoRuntime *deno.DenoRuntime) (string, error) {
 	renderDir := path.Join(tempDirPath, "typescript-render", chart.ChartFullPath())
 	if err := os.MkdirAll(renderDir, 0o755); err != nil {
 		return "", fmt.Errorf("create temp dir for render context: %w", err)
@@ -79,12 +81,12 @@ func renderChart(ctx context.Context, bundle *helmchart.File, chart *helmchart.C
 		return "", fmt.Errorf("build render context: %w", err)
 	}
 
-	err = runApp(ctx, bundle.Data, renderDir)
+	err = denoRuntime.RunApp(ctx, bundle.Data, renderDir)
 	if err != nil {
 		return "", fmt.Errorf("run deno app: %w", err)
 	}
 
-	resultBytes, err := os.ReadFile(path.Join(renderDir, renderOutputFileName))
+	resultBytes, err := os.ReadFile(path.Join(renderDir, deno.RenderOutputFileName))
 	if err != nil {
 		return "", fmt.Errorf("read output file: %w", err)
 	}
@@ -153,7 +155,7 @@ func writeInputRenderContext(renderedValues chartutil.Values, chart *helmchart.C
 		return fmt.Errorf("marshal render context to json: %w", err)
 	}
 
-	if err := os.WriteFile(path.Join(renderDir, renderInputFileName), yamlInput, 0o644); err != nil {
+	if err := os.WriteFile(path.Join(renderDir, deno.RenderInputFileName), yamlInput, 0o644); err != nil {
 		return fmt.Errorf("write render context to file: %w", err)
 	}
 

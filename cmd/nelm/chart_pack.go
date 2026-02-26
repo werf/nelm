@@ -11,6 +11,7 @@ import (
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/werf/ts"
 	"github.com/werf/common-go/pkg/cli"
+	"github.com/werf/nelm/pkg/deno"
 	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
@@ -36,7 +37,7 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 		loader.NoChartLockWarning = ""
 
 		if featgate.FeatGateTypescript.Enabled() {
-			tsbundle.BundleEnabled = true
+			tsruntime.TSRuntime = deno.NewDenoRuntime(true)
 		}
 
 		if err := originalRunE(cmd, args); err != nil {
