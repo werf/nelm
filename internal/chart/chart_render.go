@@ -155,12 +155,12 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 
 	log.Default.TraceStruct(ctx, runtime, "Runtime:")
 
-	defaultRootContext, err := buildContextFromJSONSets(opts.RootSetJSON)
+	opts.HelmOptions.ChartLoadOpts.DefaultRootContext, err = buildContextFromJSONSets(opts.RootSetJSON)
 	if err != nil {
 		return nil, fmt.Errorf("build default root context: %w", err)
 	}
 
-	log.Default.TraceStruct(ctx, defaultRootContext, "Default root context:")
+	log.Default.TraceStruct(ctx, opts.HelmOptions.ChartLoadOpts.DefaultRootContext, "Default root context:")
 
 	var isUpgrade bool
 
@@ -181,7 +181,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		Revision:  revision,
 		IsInstall: !isUpgrade,
 		IsUpgrade: isUpgrade,
-	}, caps, runtime, defaultRootContext)
+	}, caps, runtime, opts.HelmOptions.ChartLoadOpts.DefaultRootContext)
 	if err != nil {
 		return nil, fmt.Errorf("build rendered values for chart %q: %w", chart.Name(), err)
 	}
