@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.1](https://github.com/werf/nelm/compare/v1.22.0...v1.22.1) (2026-02-27)
+
+
+### Bug Fixes
+
+* --set-root-json not working ([08c8522](https://github.com/werf/nelm/commit/08c852246d1253dc9d5557be30a01e6ffc49dbbc))
+
 ## [1.22.0](https://github.com/werf/nelm/compare/v1.21.0...v1.22.0) (2026-02-18)
 
 
