@@ -17,6 +17,7 @@ var (
 	secretFlagGroup         = cli.NewFlagGroup("secret", "Secret options:", 80)
 	resourceValidationGroup = cli.NewFlagGroup("resource-validation", "Resource validation options:", 75)
 	patchFlagGroup          = cli.NewFlagGroup("patch", "Patch options:", 70)
+	tsFlagGroup             = cli.NewFlagGroup("typescript", "TypeScript options:", 67)
 	progressFlagGroup       = cli.NewFlagGroup("progress", "Progress options:", 65)
 	chartRepoFlagGroup      = cli.NewFlagGroup("chart-repo", "Chart repository options:", 60)
 	kubeConnectionFlagGroup = cli.NewFlagGroup("kube-connection", "Kubernetes connection options:", 50)

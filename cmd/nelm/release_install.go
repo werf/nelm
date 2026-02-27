@@ -315,7 +315,14 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 
 		if err := cli.AddFlag(cmd, &cfg.RebuildTSBundle, "rebuild-ts", false, "Rebuild the typescript bundle even if it already exists.", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                miscFlagGroup,
+			Group:                tsFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.DenoBinaryPath, "deno-binary-path", "", "Path to the Deno binary to use instead of auto-downloading.", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                tsFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

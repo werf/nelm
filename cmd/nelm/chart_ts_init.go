@@ -26,8 +26,8 @@ func newChartTSInitCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 	cmd := cli.NewSubCommand(
 		ctx,
 		"init [PATH]",
-		"Initialize a new typescript chart.",
-		"Initialize a new typescript chart in the specified directory. If PATH is not specified, uses the current directory.",
+		"Initialize a new TypeScript chart.",
+		"Initialize a new TypeScript chart in the specified directory. If PATH is not specified, uses the current directory.",
 		20, // priority for ordering in help
 		tsCmdGroup,
 		cli.SubCommandOptions{

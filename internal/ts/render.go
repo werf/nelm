@@ -16,10 +16,10 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, rebuildBundle bool, chartPath, tempDirPath string) (map[string]string, error) {
+func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, rebuildBundle bool, chartPath, tempDirPath, denoBinaryPath string) (map[string]string, error) {
 	allRendered := make(map[string]string)
 
-	denoRuntime := deno.NewDenoRuntime(rebuildBundle)
+	denoRuntime := deno.NewDenoRuntime(rebuildBundle, deno.DenoRuntimeOptions{BinaryPath: denoBinaryPath})
 	if err := denoRuntime.BundleChartsRecursive(ctx, chart, chartPath); err != nil {
 		return nil, fmt.Errorf("process chart for TypeScript rendering: %w", err)
 	}

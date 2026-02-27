@@ -26,8 +26,8 @@ func newChartTSBuildCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[
 	cmd := cli.NewSubCommand(
 		ctx,
 		"build [PATH]",
-		"Build vendor for typescript chart.",
-		"Build vendor for typescript chart in the specified directory. If PATH is not specified, uses the current directory.",
+		"Build TypeScript chart.",
+		"Build TypeScript chart in the specified directory. If PATH is not specified, uses the current directory.",
 		10, // priority for ordering in help
 		tsCmdGroup,
 		cli.SubCommandOptions{
@@ -64,6 +64,13 @@ func newChartTSBuildCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[
 		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", string(log.InfoLevel), "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.DenoBinaryPath, "deno-binary-path", "", "Path to the Deno binary to use instead of auto-downloading.", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                tsFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

@@ -46,8 +46,8 @@ type DenoRuntime struct {
 	rebuild bool
 }
 
-func NewDenoRuntime(rebuild bool) *DenoRuntime {
-	return &DenoRuntime{rebuild: rebuild}
+func NewDenoRuntime(rebuild bool, opts DenoRuntimeOptions) *DenoRuntime {
+	return &DenoRuntime{binPath: opts.BinaryPath, rebuild: rebuild}
 }
 
 func (rt *DenoRuntime) BundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path string) error {
@@ -98,6 +98,10 @@ func (rt *DenoRuntime) BundleChartsRecursive(ctx context.Context, chart *helmcha
 }
 
 func (rt *DenoRuntime) RunApp(ctx context.Context, bundleData []byte, renderDir string) error {
+	if err := rt.ensureBinary(ctx); err != nil {
+		return fmt.Errorf("ensure Deno is available: %w", err)
+	}
+
 	args := []string{
 		"run",
 		"--no-remote",
@@ -189,12 +193,9 @@ func (rt *DenoRuntime) RunApp(ctx context.Context, bundleData []byte, renderDir 
 
 func (rt *DenoRuntime) ensureBinary(ctx context.Context) error {
 	if denoBin := rt.getBinaryPath(); denoBin != "" {
-		return nil
-	}
-
-	if denoBin, ok := os.LookupEnv("NELM_DENO_BIN"); ok && denoBin != "" {
-		rt.setBinaryPath(denoBin)
-		log.Default.Debug(ctx, "Using Deno binary from NELM_DENO_BIN environment variable: %s", denoBin)
+		if _, err := os.Stat(denoBin); err != nil {
+			return fmt.Errorf("deno binary not found on path %q", denoBin)
+		}
 
 		return nil
 	}
@@ -276,6 +277,10 @@ func (rt *DenoRuntime) runDenoBundle(ctx context.Context, chartPath, entryPoint 
 
 func (rt *DenoRuntime) setBinaryPath(path string) {
 	rt.binPath = path
+}
+
+type DenoRuntimeOptions struct {
+	BinaryPath string
 }
 
 func GetEntrypointAndBundle(files []*helmchart.File) (string, *helmchart.File) {

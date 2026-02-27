@@ -20,7 +20,8 @@ import (
 )
 
 type ChartTSBuildOptions struct {
-	ChartDirPath string
+	ChartDirPath   string
+	DenoBinaryPath string
 }
 
 func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {
@@ -53,7 +54,7 @@ func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {
 		return fmt.Errorf("load chart: %w", err)
 	}
 
-	denoRuntime := deno.NewDenoRuntime(true)
+	denoRuntime := deno.NewDenoRuntime(true, deno.DenoRuntimeOptions{BinaryPath: opts.DenoBinaryPath})
 	if err = denoRuntime.BundleChartsRecursive(ctx, chart, absPath); err != nil {
 		return fmt.Errorf("process chart: %w", err)
 	}
