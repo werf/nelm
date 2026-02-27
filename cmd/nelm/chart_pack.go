@@ -10,8 +10,9 @@ import (
 
 	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/3p-helm/pkg/chart/loader"
+	"github.com/werf/3p-helm/pkg/werf/ts"
 	"github.com/werf/common-go/pkg/cli"
-	"github.com/werf/nelm/internal/ts"
+	"github.com/werf/nelm/pkg/deno"
 	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
@@ -28,6 +29,8 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 	cmd.Aliases = []string{}
 	cli.SetSubCommandAnnotations(cmd, 30, chartCmdGroup)
 
+	var denoBinaryPath string
+
 	originalRunE := cmd.RunE
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		helmSettings := helm_v3.Settings
@@ -37,15 +40,22 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 		loader.NoChartLockWarning = ""
 
 		if featgate.FeatGateTypescript.Enabled() {
-			for _, chartPath := range args {
-				if err := ts.BuildVendorBundleToDir(ctx, chartPath); err != nil {
-					return fmt.Errorf("build TypeScript vendor bundle in %q: %w", chartPath, err)
-				}
-			}
+			ts.DefaultBundler = deno.NewDenoRuntime(true, deno.DenoRuntimeOptions{BinaryPath: denoBinaryPath})
 		}
 
 		if err := originalRunE(cmd, args); err != nil {
 			return err
+		}
+
+		return nil
+	}
+
+	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
+		if err := cli.AddFlag(cmd, &denoBinaryPath, "deno-binary-path", "", "Path to the Deno binary to use instead of auto-downloading.", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                tsFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
 		}
 
 		return nil

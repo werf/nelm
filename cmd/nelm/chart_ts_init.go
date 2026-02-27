@@ -13,23 +13,23 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-type chartInitConfig struct {
-	action.ChartInitOptions
+type chartTSInitConfig struct {
+	action.ChartTSInitOptions
 
 	LogColorMode string
 	LogLevel     string
 }
 
-func newChartInitCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
-	cfg := &chartInitConfig{}
+func newChartTSInitCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
+	cfg := &chartTSInitConfig{}
 
 	cmd := cli.NewSubCommand(
 		ctx,
 		"init [PATH]",
-		"Initialize a new chart.",
-		"Initialize a new chart in the specified directory. If PATH is not specified, uses the current directory.",
-		10, // priority for ordering in help
-		chartCmdGroup,
+		"Initialize a new TypeScript chart.",
+		"Initialize a new TypeScript chart in the specified directory. If PATH is not specified, uses the current directory.",
+		20, // priority for ordering in help
+		tsCmdGroup,
 		cli.SubCommandOptions{
 			Args: cobra.MaximumNArgs(1),
 			ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -45,7 +45,7 @@ func newChartInitCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 				cfg.ChartDirPath = args[0]
 			}
 
-			if err := action.ChartInit(ctx, cfg.ChartInitOptions); err != nil {
+			if err := action.ChartTSInit(ctx, cfg.ChartTSInitOptions); err != nil {
 				return fmt.Errorf("chart init: %w", err)
 			}
 
@@ -54,12 +54,6 @@ func newChartInitCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
-		if err := cli.AddFlag(cmd, &cfg.TS, "ts", false, "Initialize TypeScript chart", cli.AddFlagOptions{
-			Group: mainFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
 		if err := cli.AddFlag(cmd, &cfg.TempDirPath, "temp-dir", "", "The directory for temporary files. By default, create a new directory in the default system directory for temporary files", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,

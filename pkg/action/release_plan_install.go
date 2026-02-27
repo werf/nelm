@@ -72,6 +72,8 @@ type ReleasePlanInstallOptions struct {
 	DefaultChartName string
 	// DefaultChartVersion sets the default chart version when Chart.yaml doesn't specify one.
 	DefaultChartVersion string
+	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
+	DenoBinaryPath string
 	// ErrorIfChangesPlanned, when true, returns ErrChangesPlanned if any changes are detected.
 	// Used with --exit-code flag to return exit code 2 if changes are planned, 0 if no changes, 1 on error.
 	ErrorIfChangesPlanned bool
@@ -97,6 +99,8 @@ type ReleasePlanInstallOptions struct {
 	NoFinalTracking bool
 	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
 	PlanArtifactPath string
+	// RebuildTSBundle, when true, forces rebuilding the Deno bundle even if it already exists.
+	RebuildTSBundle bool
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
 	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
 	// Used for authenticating to OCI registries when pulling charts.
@@ -269,6 +273,9 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		NoStandaloneCRDs:           opts.NoInstallStandaloneCRDs,
 		Remote:                     true,
 		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
+		TempDirPath:                opts.TempDirPath,
+		RebuildTSBundle:            opts.RebuildTSBundle,
+		DenoBinaryPath:             opts.DenoBinaryPath,
 	})
 	if err != nil {
 		return fmt.Errorf("render chart: %w", err)

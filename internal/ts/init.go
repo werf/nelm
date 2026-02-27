@@ -7,16 +7,17 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/deno"
 	"github.com/werf/nelm/pkg/log"
 )
+
+const denoBuildScript = "deno bundle --output=dist/bundle.js src/index.ts"
 
 // EnsureGitignore adds TypeScript entries to .gitignore, creating if needed.
 func EnsureGitignore(chartPath string) error {
 	entries := []string{
 		"ts/node_modules/",
 		"ts/vendor/",
-		"ts/dist/",
 	}
 
 	return ensureFileEntries(
@@ -30,7 +31,7 @@ func EnsureGitignore(chartPath string) error {
 // For .helmignore: creates if missing, or appends TS entries if exists.
 // Returns error if ts/ directory already exists.
 func InitChartStructure(ctx context.Context, chartPath, chartName string) error {
-	tsDir := filepath.Join(chartPath, common.ChartTSSourceDir)
+	tsDir := filepath.Join(chartPath, deno.ChartTSSourceDir)
 	if _, err := os.Stat(tsDir); err == nil {
 		return fmt.Errorf("init chart structure: typescript directory already exists: %s", tsDir)
 	} else if !os.IsNotExist(err) {
@@ -65,7 +66,7 @@ func InitChartStructure(ctx context.Context, chartPath, chartName string) error 
 
 	// Handle .helmignore: create or enrich
 	helmignorePath := filepath.Join(chartPath, ".helmignore")
-	if err := ensureFileEntries(helmignorePath, helmignoreContent, []string{"ts/dist/"}); err != nil {
+	if err := ensureFileEntries(helmignorePath, helmignoreContent, []string{"ts/vendor/", "ts/node_modules/"}); err != nil {
 		return fmt.Errorf("ensure helmignore entries: %w", err)
 	}
 
@@ -76,7 +77,7 @@ func InitChartStructure(ctx context.Context, chartPath, chartName string) error 
 
 // InitTSBoilerplate creates TypeScript boilerplate files in ts/ directory.
 func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
-	tsDir := filepath.Join(chartPath, common.ChartTSSourceDir)
+	tsDir := filepath.Join(chartPath, deno.ChartTSSourceDir)
 	srcDir := filepath.Join(tsDir, "src")
 
 	if _, err := os.Stat(tsDir); err == nil {
@@ -94,7 +95,8 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
 		{content: deploymentTSContent, path: filepath.Join(srcDir, "deployment.ts")},
 		{content: serviceTSContent, path: filepath.Join(srcDir, "service.ts")},
 		{content: tsconfigContent, path: filepath.Join(tsDir, "tsconfig.json")},
-		{content: packageJSON(chartName), path: filepath.Join(tsDir, "package.json")},
+		{content: denoJSON(denoBuildScript), path: filepath.Join(tsDir, "deno.json")},
+		{content: inputExample(chartName), path: filepath.Join(tsDir, "input.example.yaml")},
 	}
 
 	if err := os.MkdirAll(srcDir, 0o755); err != nil {

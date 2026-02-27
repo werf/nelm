@@ -60,6 +60,8 @@ type ChartLintOptions struct {
 	DefaultChartVersion string
 	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
 	DefaultDeletePropagation string
+	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
+	DenoBinaryPath string
 	// ExtraAPIVersions is a list of additional Kubernetes API versions to include during linting.
 	// Used by Capabilities.APIVersions in templates to check for API availability.
 	ExtraAPIVersions []string
@@ -98,6 +100,8 @@ type ChartLintOptions struct {
 	// NoRemoveManualChanges, when true, preserves fields during validation that would be manually added.
 	// Used in the validation dry-run to check resource compatibility.
 	NoRemoveManualChanges bool
+	// RebuildTSBundle, when true, forces rebuilding the Deno bundle even if it already exists.
+	RebuildTSBundle bool
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
 	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
 	// Used for authenticating to OCI registries when pulling charts.
@@ -264,6 +268,9 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		LocalKubeVersion:           opts.LocalKubeVersion,
 		Remote:                     opts.Remote,
 		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
+		TempDirPath:                opts.TempDirPath,
+		RebuildTSBundle:            opts.RebuildTSBundle,
+		DenoBinaryPath:             opts.DenoBinaryPath,
 	}
 
 	log.Default.Debug(ctx, "Render chart")

@@ -76,6 +76,8 @@ type ReleaseInstallOptions struct {
 	DefaultChartName string
 	// DefaultChartVersion sets the default chart version when Chart.yaml doesn't specify one.
 	DefaultChartVersion string
+	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
+	DenoBinaryPath string
 	// InstallGraphPath, if specified, saves the Graphviz representation of the install plan to this file path.
 	// Useful for debugging and visualizing the dependency graph of resource operations.
 	InstallGraphPath string
@@ -106,6 +108,8 @@ type ReleaseInstallOptions struct {
 	PlanArtifactLifetime time.Duration
 	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
 	PlanArtifactPath string
+	// RebuildTSBundle, when true, forces rebuilding the Deno bundle even if it already exists.
+	RebuildTSBundle bool
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
 	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
 	// Used for authenticating to OCI registries when pulling charts.
@@ -360,6 +364,9 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			Remote:                     true,
 			SubchartNotes:              opts.ShowSubchartNotes,
 			TemplatesAllowDNS:          opts.TemplatesAllowDNS,
+			RebuildTSBundle:            opts.RebuildTSBundle,
+			DenoBinaryPath:             opts.DenoBinaryPath,
+			TempDirPath:                opts.TempDirPath,
 		})
 		if err != nil {
 			return fmt.Errorf("render chart: %w", err)

@@ -2,6 +2,7 @@ package ts_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,7 +25,6 @@ func TestEnsureGitignore(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, string(content), "ts/node_modules/")
 		assert.Contains(t, string(content), "ts/vendor/")
-		assert.Contains(t, string(content), "ts/dist/")
 	})
 
 	t.Run("appends missing entries to existing .gitignore", func(t *testing.T) {
@@ -43,7 +43,6 @@ func TestEnsureGitignore(t *testing.T) {
 		assert.Contains(t, string(content), "*.log")
 		assert.Contains(t, string(content), "ts/node_modules/")
 		assert.Contains(t, string(content), "ts/vendor/")
-		assert.Contains(t, string(content), "ts/dist/")
 	})
 
 	t.Run("does not duplicate entries", func(t *testing.T) {
@@ -75,7 +74,6 @@ func TestEnsureGitignore(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, string(content), "ts/node_modules/")
 		assert.Contains(t, string(content), "ts/vendor/")
-		assert.Contains(t, string(content), "ts/dist/")
 	})
 }
 
@@ -133,7 +131,8 @@ func TestInitChartStructure(t *testing.T) {
 
 		content, err := os.ReadFile(filepath.Join(chartPath, ".helmignore"))
 		require.NoError(t, err)
-		assert.Contains(t, string(content), "ts/dist/")
+		assert.Contains(t, string(content), "ts/vendor/")
+		assert.Contains(t, string(content), "ts/node_modules/")
 	})
 
 	t.Run("skips existing Chart.yaml", func(t *testing.T) {
@@ -180,7 +179,8 @@ func TestInitChartStructure(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, string(content), ".DS_Store")
 		assert.Contains(t, string(content), ".git/")
-		assert.Contains(t, string(content), "ts/dist/")
+		assert.Contains(t, string(content), "ts/vendor/")
+		assert.Contains(t, string(content), "ts/node_modules/")
 	})
 }
 
@@ -200,7 +200,8 @@ func TestInitTSBoilerplate(t *testing.T) {
 
 		// Check ts/ root files
 		assert.FileExists(t, filepath.Join(chartPath, "ts", "tsconfig.json"))
-		assert.FileExists(t, filepath.Join(chartPath, "ts", "package.json"))
+		assert.FileExists(t, filepath.Join(chartPath, "ts", "deno.json"))
+		assert.FileExists(t, filepath.Join(chartPath, "ts", "input.example.yaml"))
 	})
 
 	t.Run("creates correct directory structure", func(t *testing.T) {
@@ -214,17 +215,17 @@ func TestInitTSBoilerplate(t *testing.T) {
 		assert.DirExists(t, filepath.Join(chartPath, "ts", "src"))
 	})
 
-	t.Run("substitutes chart name in package.json", func(t *testing.T) {
+	t.Run("includes correct deno.json config", func(t *testing.T) {
 		chartPath := filepath.Join(t.TempDir(), "my-custom-chart")
 		require.NoError(t, os.MkdirAll(chartPath, 0o755))
 
 		err := ts.InitTSBoilerplate(context.Background(), chartPath, "my-custom-chart")
 		require.NoError(t, err)
 
-		content, err := os.ReadFile(filepath.Join(chartPath, "ts", "package.json"))
+		content, err := os.ReadFile(filepath.Join(chartPath, "ts", "deno.json"))
 		require.NoError(t, err)
-		assert.Contains(t, string(content), `"name": "my-custom-chart"`)
-		assert.Contains(t, string(content), `"description": "TypeScript chart for my-custom-chart"`)
+		assert.Contains(t, string(content), fmt.Sprintf(`"build": "%s"`, ts.ChartTSBuildScript))
+		assert.Contains(t, string(content), `"@nelm/chart-ts-sdk"`)
 	})
 
 	t.Run("includes render function in index.ts", func(t *testing.T) {
@@ -236,9 +237,10 @@ func TestInitTSBoilerplate(t *testing.T) {
 
 		content, err := os.ReadFile(filepath.Join(chartPath, "ts", "src", "index.ts"))
 		require.NoError(t, err)
-		assert.Contains(t, string(content), "export function render")
+		assert.Contains(t, string(content), "function render")
 		assert.Contains(t, string(content), "RenderContext")
 		assert.Contains(t, string(content), "RenderResult")
+		assert.Contains(t, string(content), "runRender")
 	})
 
 	t.Run("includes helper functions in helpers.ts", func(t *testing.T) {
@@ -278,7 +280,7 @@ func TestInitTSBoilerplate(t *testing.T) {
 		err := ts.InitTSBoilerplate(context.Background(), chartPath, "test-chart")
 		require.NoError(t, err)
 
-		content, err := os.ReadFile(filepath.Join(chartPath, "ts", "package.json"))
+		content, err := os.ReadFile(filepath.Join(chartPath, "ts", "deno.json"))
 		require.NoError(t, err)
 		assert.Contains(t, string(content), `"@nelm/chart-ts-sdk"`)
 	})
@@ -296,6 +298,21 @@ func TestInitTSBoilerplate(t *testing.T) {
 		assert.Contains(t, string(content), `"module": "CommonJS"`)
 		assert.Contains(t, string(content), `"strict": true`)
 		assert.Contains(t, string(content), `"declaration": true`)
+	})
+
+	t.Run("includes chart name in input.example.yaml", func(t *testing.T) {
+		chartPath := filepath.Join(t.TempDir(), "my-custom-chart")
+		require.NoError(t, os.MkdirAll(chartPath, 0o755))
+
+		err := ts.InitTSBoilerplate(context.Background(), chartPath, "my-custom-chart")
+		require.NoError(t, err)
+
+		content, err := os.ReadFile(filepath.Join(chartPath, "ts", "input.example.yaml"))
+		require.NoError(t, err)
+		assert.Contains(t, string(content), "Name: my-custom-chart")
+		assert.Contains(t, string(content), "Namespace: my-custom-chart")
+		assert.Contains(t, string(content), "Values:")
+		assert.Contains(t, string(content), "Capabilities:")
 	})
 
 	t.Run("fails if ts/ directory already exists", func(t *testing.T) {
