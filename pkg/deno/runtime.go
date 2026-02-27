@@ -16,6 +16,7 @@ import (
 	"github.com/samber/lo"
 
 	helmchart "github.com/werf/3p-helm/pkg/chart"
+	"github.com/werf/3p-helm/pkg/werf/ts"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -27,12 +28,18 @@ const (
 	// ChartTSEntryPointTS is the TypeScript entry point path.
 	ChartTSEntryPointTS = "src/index.ts"
 	// ChartTSSourceDir is the directory containing TypeScript sources in a Helm chart.
-	ChartTSSourceDir     = "ts/"
-	RenderInputFileName  = "input.yaml"
+	ChartTSSourceDir = "ts/"
+	// RenderInputFileName is the name of the input file with context for the Deno app.
+	RenderInputFileName = "input.yaml"
+	// RenderOutputFileName is the name of the output file with rendered manifests from the Deno app.
 	RenderOutputFileName = "output.yaml"
 )
 
-var ChartTSEntryPoints = [...]string{ChartTSEntryPointTS, ChartTSEntryPointJS}
+var (
+	_ ts.Bundler = (*DenoRuntime)(nil)
+
+	ChartTSEntryPoints = [...]string{ChartTSEntryPointTS, ChartTSEntryPointJS}
+)
 
 type DenoRuntime struct {
 	binPath string
@@ -53,6 +60,8 @@ func (rt *DenoRuntime) BundleChartsRecursive(ctx context.Context, chart *helmcha
 		if err := rt.ensureBinary(ctx); err != nil {
 			return fmt.Errorf("ensure Deno is available: %w", err)
 		}
+
+		log.Default.Info(ctx, "Bundle TypeScript for chart %q (entrypoint: %s)", chart.Name(), entrypoint)
 
 		bundleRes, err := rt.runDenoBundle(ctx, path, entrypoint)
 		if err != nil {
@@ -210,7 +219,9 @@ func (rt *DenoRuntime) ensureBinary(ctx context.Context) error {
 		return nil
 	}
 
-	fileLock := flock.New(filepath.Join(cacheDir, "lock"))
+	lockFile := filepath.Join(cacheDir, "lock")
+
+	fileLock := flock.New(lockFile)
 	if err := fileLock.Lock(); err != nil {
 		return fmt.Errorf("acquire lock on Deno cache: %w", err)
 	}
@@ -218,6 +229,10 @@ func (rt *DenoRuntime) ensureBinary(ctx context.Context) error {
 	defer func() {
 		if err := fileLock.Unlock(); err != nil {
 			log.Default.Error(ctx, "release lock on Deno cache: %v", err)
+		}
+
+		if err := os.Remove(lockFile); err != nil {
+			log.Default.Error(ctx, "remove Deno cache lock file: %v", err)
 		}
 	}()
 

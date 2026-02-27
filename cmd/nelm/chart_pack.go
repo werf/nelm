@@ -37,7 +37,7 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 		loader.NoChartLockWarning = ""
 
 		if featgate.FeatGateTypescript.Enabled() {
-			tsruntime.TSRuntime = deno.NewDenoRuntime(true)
+			ts.DefaultBundler = deno.NewDenoRuntime(true)
 		}
 
 		if err := originalRunE(cmd, args); err != nil {
