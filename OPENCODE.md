@@ -71,13 +71,6 @@ Tool priority order: `lsp` with `operation="goToDefinition"` → Context7 → `g
 - When you need current information, recent changes, or anything that might have changed after your training cutoff — NEVER answer from memory. ALWAYS use `websearch_web_search_exa`.
 - When you have a specific URL to read (docs page, GitHub issue, PR) — NEVER summarize from memory. ALWAYS use `webfetch` to retrieve the actual content.
 
-## Cluster inspection (MANDATORY)
-
-Default action when unsure: ALWAYS use Kubernetes MCP tools.
-Tool priority order: Kubernetes MCP tools ONLY.
-
-- When you want to inspect Kubernetes cluster state (pods, deployments, services, logs, events) — NEVER run raw `kubectl` via Bash. ALWAYS use Kubernetes MCP tools (`kubernetes_kubectl_get`, `kubernetes_kubectl_describe`, `kubernetes_kubectl_logs`, etc.). MCP tools return structured data; raw kubectl output is harder to parse and error-prone.
-
 ## Verifying changes (MANDATORY)
 
 ALWAYS verify after making changes, in this order. NEVER skip steps. NEVER assume "it probably compiles."
@@ -95,4 +88,3 @@ Scope verification with `paths=` for focused changes (e.g. `task lint:golangci-l
 When changes affect CLI commands, deployment logic, or Kubernetes interactions, ALSO verify against the local dev cluster:
 
 - ALWAYS run `./bin/nelm` against the cluster to deploy/test.
-- ALWAYS use Kubernetes MCP tools to inspect cluster state (see "Cluster inspection" above).
