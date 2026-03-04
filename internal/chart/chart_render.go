@@ -232,7 +232,15 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		}
 	}
 
-	log.Default.TraceStruct(ctx, renderedTemplates, "Rendered contents of templates/:")
+	for filePath, fileContent := range renderedTemplates {
+		if strings.HasPrefix(path.Base(filePath), "_") ||
+			strings.HasSuffix(filePath, action.NotesFileSuffix) ||
+			strings.TrimSpace(fileContent) == "" {
+			continue
+		}
+
+		log.Default.Debug(ctx, "Rendered content of %q: \n%s\n", filePath, fileContent)
+	}
 
 	if r, err := renderedTemplatesToResourceSpecs(renderedTemplates, releaseNamespace, opts); err != nil {
 		return nil, fmt.Errorf("convert rendered templates to installable resources for chart at %q: %w", chartPath, err)
