@@ -261,7 +261,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.RebuildTSBundle, "rebuild-ts", false, "Rebuild the typescript bundle even if it already exists.", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.IgnoreBundleJS, "ignore-bundle-js", false, IgnoreBundleJSFlagDescription, cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                tsFlagGroup,
 		}); err != nil {

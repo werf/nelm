@@ -77,6 +77,8 @@ type ChartRenderOptions struct {
 	// ForceAdoption is currently unused in chart rendering.
 	// TODO(major): remove this useless field.
 	ForceAdoption bool
+	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources.
+	IgnoreBundleJS bool
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.
 	LegacyChartType helmopts.ChartType
@@ -97,8 +99,6 @@ type ChartRenderOptions struct {
 	// OutputNoPrint, when true, suppresses printing the rendered manifests to stdout.
 	// Useful when only the result data structure is needed.
 	OutputNoPrint bool
-	// RebuildTSBundle, when true, forces rebuilding the Deno bundle even if it already exists.
-	RebuildTSBundle bool
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
 	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
 	// Used for authenticating to OCI registries when pulling charts.
@@ -272,7 +272,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		Remote:                     opts.Remote,
 		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
 		TempDirPath:                opts.TempDirPath,
-		RebuildTSBundle:            opts.RebuildTSBundle,
+		IgnoreBundleJS:             opts.IgnoreBundleJS,
 		DenoBinaryPath:             opts.DenoBinaryPath,
 	}
 

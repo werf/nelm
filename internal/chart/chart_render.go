@@ -49,9 +49,9 @@ type RenderChartOptions struct {
 	DenoBinaryPath          string
 	ExtraAPIVersions        []string
 	HelmOptions             helmopts.HelmOptions
+	IgnoreBundleJS          bool
 	LocalKubeVersion        string
 	NoStandaloneCRDs        bool
-	RebuildTSBundle         bool
 	Remote                  bool
 	SubchartNotes           bool
 	TempDirPath             string
@@ -227,7 +227,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	if featgate.FeatGateTypescript.Enabled() {
 		log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", chart.Name())
 
-		jsRenderedTemplates, err := ts.RenderChart(ctx, chart, renderedValues, opts.RebuildTSBundle, chartPath, opts.TempDirPath, opts.DenoBinaryPath)
+		jsRenderedTemplates, err := ts.RenderChart(ctx, chart, renderedValues, opts.IgnoreBundleJS, chartPath, opts.TempDirPath, opts.DenoBinaryPath)
 		if err != nil {
 			return nil, fmt.Errorf("render TypeScript templates for chart %q: %w", chart.Name(), err)
 		}

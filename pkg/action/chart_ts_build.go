@@ -23,6 +23,7 @@ import (
 type ChartTSBuildOptions struct {
 	ChartDirPath   string
 	DenoBinaryPath string
+	TempDirPath    string
 }
 
 func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {

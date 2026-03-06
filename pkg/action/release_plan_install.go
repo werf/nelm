@@ -77,6 +77,8 @@ type ReleasePlanInstallOptions struct {
 	// ErrorIfChangesPlanned, when true, returns ErrChangesPlanned if any changes are detected.
 	// Used with --exit-code flag to return exit code 2 if changes are planned, 0 if no changes, 1 on error.
 	ErrorIfChangesPlanned bool
+	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources.
+	IgnoreBundleJS bool
 	// InstallGraphPath, if specified, saves the Graphviz representation of the install plan to this file path.
 	// Useful for debugging and visualizing the dependency graph of resource operations.
 	InstallGraphPath string
@@ -99,8 +101,6 @@ type ReleasePlanInstallOptions struct {
 	NoFinalTracking bool
 	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
 	PlanArtifactPath string
-	// RebuildTSBundle, when true, forces rebuilding the Deno bundle even if it already exists.
-	RebuildTSBundle bool
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
 	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
 	// Used for authenticating to OCI registries when pulling charts.
@@ -274,7 +274,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		Remote:                     true,
 		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
 		TempDirPath:                opts.TempDirPath,
-		RebuildTSBundle:            opts.RebuildTSBundle,
+		IgnoreBundleJS:             opts.IgnoreBundleJS,
 		DenoBinaryPath:             opts.DenoBinaryPath,
 	})
 	if err != nil {

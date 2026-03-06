@@ -75,6 +75,14 @@ func newChartTSBuildCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		if err := cli.AddFlag(cmd, &cfg.TempDirPath, "temp-dir", "", "The directory for temporary files. By default, create a new directory in the default system directory for temporary files", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
+			Group:                miscFlagGroup,
+			Type:                 cli.FlagTypeDir,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		return nil
 	}
 
