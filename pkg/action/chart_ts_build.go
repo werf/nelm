@@ -14,6 +14,7 @@ import (
 	helmchart "github.com/werf/3p-helm/pkg/chart"
 	"github.com/werf/3p-helm/pkg/chart/loader"
 	"github.com/werf/3p-helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/deno"
 	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
@@ -60,7 +61,7 @@ func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {
 	}
 
 	bundles := lo.Filter(chart.Raw, func(file *helmchart.File, _ int) bool {
-		return strings.Contains(file.Name, deno.ChartTSBundleFile)
+		return strings.Contains(file.Name, common.ChartTSBundleFile)
 	})
 
 	if len(bundles) == 0 {

@@ -46,7 +46,7 @@ func newChartTSInitCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			}
 
 			if err := action.ChartTSInit(ctx, cfg.ChartTSInitOptions); err != nil {
-				return fmt.Errorf("chart init: %w", err)
+				return fmt.Errorf("chart ts init: %w", err)
 			}
 
 			return nil

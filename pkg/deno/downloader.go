@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"os"
 	"path/filepath"
@@ -23,11 +24,9 @@ import (
 
 const version = "2.7.1"
 
-var nonAlphanumRegexp = regexp.MustCompile(`[^a-zA-Z0-9]+`)
-
 func downloadDeno(ctx context.Context, cacheDir, link string) error {
 	httpClient := util.NewRestyClient(ctx)
-	httpClient.SetTimeout(5 * time.Minute)
+	httpClient.SetTimeout(15 * time.Minute)
 
 	expectedHash, err := fetchExpectedChecksum(ctx, httpClient, link)
 	if err != nil {
@@ -40,7 +39,9 @@ func downloadDeno(ctx context.Context, cacheDir, link string) error {
 	}
 
 	defer func() {
-		_ = os.RemoveAll(tmpDir)
+		if err = os.RemoveAll(tmpDir); err != nil {
+			log.Default.Error(ctx, "failed to remove temporary directory %s: %s", tmpDir, err)
+		}
 	}()
 
 	zipFile := filepath.Join(tmpDir, "deno.zip")
@@ -53,10 +54,10 @@ func downloadDeno(ctx context.Context, cacheDir, link string) error {
 	}
 
 	if response.IsError() {
-		return fmt.Errorf("download Deno from %s: status code %d", link, response.StatusCode())
+		return fmt.Errorf("download Deno from %s: %s", link, response.Status())
 	}
 
-	if err := verifyChecksum(zipFile, expectedHash); err != nil {
+	if err := verifyChecksum(ctx, zipFile, expectedHash); err != nil {
 		return fmt.Errorf("verify checksum: %w", err)
 	}
 
@@ -66,18 +67,20 @@ func downloadDeno(ctx context.Context, cacheDir, link string) error {
 	}
 
 	defer func() {
-		_ = reader.Close()
+		if err = reader.Close(); err != nil {
+			log.Default.Error(ctx, "close downloaded Deno archive: %s", err)
+		}
 	}()
 
 	binaryName := lo.Ternary(runtime.GOOS == "windows", "deno.exe", "deno")
 
-	found := false
+	var binaryFound bool
 	for _, file := range reader.File {
 		if file.Name != binaryName {
 			continue
 		}
 
-		if err := unzipBinary(tmpDir, file); err != nil {
+		if err := unzipBinary(ctx, tmpDir, file); err != nil {
 			return fmt.Errorf("unzip binary: %w", err)
 		}
 
@@ -90,12 +93,12 @@ func downloadDeno(ctx context.Context, cacheDir, link string) error {
 
 		log.Default.Debug(ctx, "Unzipped Deno to %s", finalPath)
 
-		found = true
+		binaryFound = true
 
 		break
 	}
 
-	if !found {
+	if !binaryFound {
 		return fmt.Errorf("deno binary not found in archive")
 	}
 
@@ -113,28 +116,33 @@ func fetchExpectedChecksum(ctx context.Context, httpClient *resty.Client, archiv
 	}
 
 	if response.IsError() {
-		return "", fmt.Errorf("download checksum from %s: status code %d", checksumURL, response.StatusCode())
+		return "", fmt.Errorf("download checksum from %s: %s", checksumURL, response.Status())
 	}
 
 	hash, _, _ := strings.Cut(strings.TrimSpace(response.String()), " ")
 	if len(hash) != 64 {
-		return "", fmt.Errorf("unexpected checksum format from %s", checksumURL)
+		return "", fmt.Errorf("unexpected checksum format from %s: %s", checksumURL, hash)
 	}
 
 	return hash, nil
 }
 
 func getDenoFolder(downloadURL string) (string, error) {
-	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(downloadURL)))
+	hash := fnv.New32a()
+	if _, err := hash.Write([]byte(downloadURL)); err != nil {
+		return "", fmt.Errorf("calculate hash for Deno cache directory: %w", err)
+	}
+
+	hashStr := fmt.Sprintf("%x", hash.Sum32())
 
 	suffix := downloadURL
 	if len(suffix) > 15 {
 		suffix = suffix[len(suffix)-15:]
 	}
 
-	slug := strings.ToLower(strings.Trim(nonAlphanumRegexp.ReplaceAllString(suffix, "-"), "-"))
+	slug := strings.ToLower(strings.Trim(regexp.MustCompile(`[^a-zA-Z0-9]+`).ReplaceAllString(suffix, "-"), "-"))
 
-	dirName := hash + "-" + slug
+	dirName := hashStr + "-" + slug
 	cacheDir := helmpath.CachePath("nelm", "deno", dirName)
 
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
@@ -169,7 +177,7 @@ func getDownloadLink() (string, error) {
 	return url, nil
 }
 
-func unzipBinary(cacheDir string, file *zip.File) error {
+func unzipBinary(ctx context.Context, cacheDir string, file *zip.File) error {
 	destPath := filepath.Join(cacheDir, filepath.Base(file.Name))
 
 	denoFile, err := os.Create(destPath)
@@ -178,7 +186,9 @@ func unzipBinary(cacheDir string, file *zip.File) error {
 	}
 
 	defer func() {
-		_ = denoFile.Close()
+		if err = denoFile.Close(); err != nil {
+			log.Default.Error(ctx, "close file for Deno binary: %s", err)
+		}
 	}()
 
 	fileReader, err := file.Open()
@@ -187,7 +197,9 @@ func unzipBinary(cacheDir string, file *zip.File) error {
 	}
 
 	defer func() {
-		_ = fileReader.Close()
+		if err = fileReader.Close(); err != nil {
+			log.Default.Error(ctx, "close file %s in Deno archive: %s", file.Name, err)
+		}
 	}()
 
 	limitReader := io.LimitReader(fileReader, 200*1024*1024)
@@ -202,14 +214,16 @@ func unzipBinary(cacheDir string, file *zip.File) error {
 	return nil
 }
 
-func verifyChecksum(filePath, expectedHash string) error {
+func verifyChecksum(ctx context.Context, filePath, expectedHash string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("open file for checksum verification: %w", err)
 	}
 
 	defer func() {
-		_ = file.Close()
+		if err = file.Close(); err != nil {
+			log.Default.Error(ctx, "close file for checksum verification: %s", err)
+		}
 	}()
 
 	hash := sha256.New()

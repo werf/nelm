@@ -239,11 +239,3 @@ service:
 func chartYaml(chartName string) string {
 	return fmt.Sprintf(chartYamlTmpl, chartName)
 }
-
-func denoJSON(scriptPath string) string {
-	return fmt.Sprintf(denoJSONTmpl, scriptPath)
-}
-
-func inputExample(chartName string) string {
-	return fmt.Sprintf(inputExampleContent, chartName)
-}

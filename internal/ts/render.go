@@ -8,67 +8,69 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/samber/lo"
 	"sigs.k8s.io/yaml"
 
 	helmchart "github.com/werf/3p-helm/pkg/chart"
 	"github.com/werf/3p-helm/pkg/chartutil"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/deno"
 	"github.com/werf/nelm/pkg/log"
 )
 
 func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, rebuildBundle bool, chartPath, tempDirPath, denoBinaryPath string) (map[string]string, error) {
-	allRendered := make(map[string]string)
-
 	denoRuntime := deno.NewDenoRuntime(rebuildBundle, deno.DenoRuntimeOptions{BinaryPath: denoBinaryPath})
 	if err := denoRuntime.BundleChartsRecursive(ctx, chart, chartPath); err != nil {
-		return nil, fmt.Errorf("process chart for TypeScript rendering: %w", err)
+		return nil, fmt.Errorf("bundle chart recursive: %w", err)
 	}
 
-	if err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), chartPath, allRendered, tempDirPath, denoRuntime); err != nil {
+	allRendered, err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), chartPath, tempDirPath, denoRuntime)
+	if err != nil {
 		return nil, fmt.Errorf("render chart recursive: %w", err)
 	}
 
 	return allRendered, nil
 }
 
-func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartutil.Values, pathPrefix, chartPath string, results map[string]string, tempDirPath string, denoRuntime *deno.DenoRuntime) error {
+func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartutil.Values, pathPrefix, chartPath, tempDirPath string, denoRuntime *deno.DenoRuntime) (map[string]string, error) {
 	log.Default.Debug(ctx, "Rendering TypeScript for chart %q (path prefix: %s)", chart.Name(), pathPrefix)
 
+	results := make(map[string]string)
 	entrypoint, bundle := deno.GetEntrypointAndBundle(chart.RuntimeFiles)
 
-	if entrypoint != "" && bundle != nil {
+	if bundle != nil {
 		content, err := renderChart(ctx, bundle, chart, values, tempDirPath, denoRuntime)
 		if err != nil {
-			return fmt.Errorf("render files for chart %q: %w", chart.Name(), err)
+			return nil, fmt.Errorf("render files for chart %q: %w", chart.Name(), err)
 		}
 
 		if content != "" {
-			outputPath := path.Join(pathPrefix, deno.ChartTSSourceDir, entrypoint)
+			outputPath := path.Join(pathPrefix, common.ChartTSSourceDir, lo.CoalesceOrEmpty(entrypoint, bundle.Name))
 			results[outputPath] = content
-			log.Default.Debug(ctx, "Rendered output: %s", outputPath)
+			log.Default.Debug(ctx, "Rendered TypeScript output for chart %s: %s", chart.Name(), outputPath)
 		}
 	}
 
 	for _, dep := range chart.Dependencies() {
-		depName := dep.Name()
-		log.Default.Debug(ctx, "Processing dependency %q for chart %q", depName, chart.Name())
+		log.Default.Debug(ctx, "Processing dependency %q for chart %q", dep.Name(), chart.Name())
 
-		err := renderChartRecursive(
+		depResults, err := renderChartRecursive(
 			ctx,
 			dep,
-			scopeValuesForSubchart(values, depName, dep),
-			path.Join(pathPrefix, "charts", depName),
-			filepath.Join(chartPath, "charts", depName),
-			results,
+			scopeValuesForSubchart(values, dep.Name(), dep),
+			path.Join(pathPrefix, "charts", dep.Name()),
+			filepath.Join(chartPath, "charts", dep.Name()),
 			tempDirPath,
 			denoRuntime,
 		)
 		if err != nil {
-			return fmt.Errorf("render dependency %q: %w", depName, err)
+			return nil, fmt.Errorf("render dependency %q: %w", dep.Name(), err)
 		}
+
+		results = lo.Assign(results, depResults)
 	}
 
-	return nil
+	return results, nil
 }
 
 func renderChart(ctx context.Context, bundle *helmchart.File, chart *helmchart.Chart, renderedValues chartutil.Values, tempDirPath string, denoRuntime *deno.DenoRuntime) (string, error) {
@@ -78,14 +80,14 @@ func renderChart(ctx context.Context, bundle *helmchart.File, chart *helmchart.C
 	}
 
 	if err := writeInputRenderContext(renderedValues, chart, renderDir); err != nil {
-		return "", fmt.Errorf("build render context: %w", err)
+		return "", fmt.Errorf("write input render context: %w", err)
 	}
 
 	if err := denoRuntime.RunApp(ctx, bundle.Data, renderDir); err != nil {
 		return "", fmt.Errorf("run deno app: %w", err)
 	}
 
-	resultBytes, err := os.ReadFile(filepath.Join(renderDir, deno.RenderOutputFileName))
+	resultBytes, err := os.ReadFile(filepath.Join(renderDir, common.ChartTSOutputFile))
 	if err != nil {
 		return "", fmt.Errorf("read output file: %w", err)
 	}
@@ -154,7 +156,7 @@ func writeInputRenderContext(renderedValues chartutil.Values, chart *helmchart.C
 		return fmt.Errorf("marshal render context to yaml: %w", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(renderDir, deno.RenderInputFileName), yamlInput, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(renderDir, common.ChartTSInputFile), yamlInput, 0o644); err != nil {
 		return fmt.Errorf("write render context to file: %w", err)
 	}
 

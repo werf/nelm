@@ -225,9 +225,11 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	}
 
 	if featgate.FeatGateTypescript.Enabled() {
-		jsRenderedTemplates, err := renderJSTemplates(ctx, chartPath, chart, renderedValues, opts.RebuildTSBundle, opts.TempDirPath, opts.DenoBinaryPath)
+		log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", chart.Name())
+
+		jsRenderedTemplates, err := ts.RenderChart(ctx, chart, renderedValues, opts.RebuildTSBundle, chartPath, opts.TempDirPath, opts.DenoBinaryPath)
 		if err != nil {
-			return nil, fmt.Errorf("render ts chart templates for chart %q: %w", chart.Name(), err)
+			return nil, fmt.Errorf("render TypeScript templates for chart %q: %w", chart.Name(), err)
 		}
 
 		if len(jsRenderedTemplates) > 0 {
@@ -354,17 +356,6 @@ func buildContextFromJSONSets(jsonSets []string) (map[string]interface{}, error)
 
 func isLocalChart(path string) bool {
 	return filepath.IsAbs(path) || filepath.HasPrefix(path, "..") || filepath.HasPrefix(path, ".")
-}
-
-func renderJSTemplates(ctx context.Context, chartPath string, chart *helmchart.Chart, renderedValues chartutil.Values, rebuildBundle bool, tempDirPath, denoBinaryPath string) (map[string]string, error) {
-	log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", chart.Name())
-
-	result, err := ts.RenderChart(ctx, chart, renderedValues, rebuildBundle, chartPath, tempDirPath, denoBinaryPath)
-	if err != nil {
-		return nil, fmt.Errorf("render TypeScript: %w", err)
-	}
-
-	return result, nil
 }
 
 func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, releaseNamespace string, opts RenderChartOptions) ([]*spec.ResourceSpec, error) {

@@ -12,33 +12,18 @@ import (
 	"strings"
 
 	"github.com/gofrs/flock"
-	"github.com/gookit/color"
 	"github.com/samber/lo"
 
 	helmchart "github.com/werf/3p-helm/pkg/chart"
 	"github.com/werf/3p-helm/pkg/werf/ts"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
-)
-
-const (
-	// ChartTSBundleFile is the path to the bundle in a Helm chart.
-	ChartTSBundleFile = ChartTSSourceDir + "dist/bundle.js"
-	// ChartTSEntryPointJS is the JavaScript entry point path.
-	ChartTSEntryPointJS = "src/index.js"
-	// ChartTSEntryPointTS is the TypeScript entry point path.
-	ChartTSEntryPointTS = "src/index.ts"
-	// ChartTSSourceDir is the directory containing TypeScript sources in a Helm chart.
-	ChartTSSourceDir = "ts/"
-	// RenderInputFileName is the name of the input file with context for the Deno app.
-	RenderInputFileName = "input.yaml"
-	// RenderOutputFileName is the name of the output file with rendered manifests from the Deno app.
-	RenderOutputFileName = "output.yaml"
 )
 
 var (
 	_ ts.Bundler = (*DenoRuntime)(nil)
 
-	ChartTSEntryPoints = [...]string{ChartTSEntryPointTS, ChartTSEntryPointJS}
+	ChartTSEntryPoints = [...]string{common.ChartTSEntryPointTS, common.ChartTSEntryPointJS}
 )
 
 type DenoRuntime struct {
@@ -50,29 +35,29 @@ func NewDenoRuntime(rebuild bool, opts DenoRuntimeOptions) *DenoRuntime {
 	return &DenoRuntime{binPath: opts.BinaryPath, rebuild: rebuild}
 }
 
-func (rt *DenoRuntime) BundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path string) error {
+func (r *DenoRuntime) BundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path string) error {
 	entrypoint, bundle := GetEntrypointAndBundle(chart.RuntimeFiles)
 	if entrypoint == "" {
 		return nil
 	}
 
-	if bundle == nil || rt.rebuild {
-		if err := rt.ensureBinary(ctx); err != nil {
+	if bundle == nil || r.rebuild {
+		if err := r.ensureBinary(ctx); err != nil {
 			return fmt.Errorf("ensure Deno is available: %w", err)
 		}
 
 		log.Default.Info(ctx, "Bundle TypeScript for chart %q (entrypoint: %s)", chart.Name(), entrypoint)
 
-		bundleRes, err := rt.runDenoBundle(ctx, path, entrypoint)
+		bundleRes, err := r.runDenoBundle(ctx, path, entrypoint)
 		if err != nil {
 			return fmt.Errorf("build TypeScript bundle: %w", err)
 		}
 
-		if rt.rebuild && bundle != nil {
-			chart.RemoveRuntimeFile(ChartTSBundleFile)
+		if bundle != nil {
+			chart.RemoveRuntimeFile(common.ChartTSBundleFile)
 		}
 
-		chart.AddRuntimeFile(ChartTSBundleFile, bundleRes)
+		chart.AddRuntimeFile(common.ChartTSBundleFile, bundleRes)
 	}
 
 	deps := chart.Dependencies()
@@ -89,7 +74,7 @@ func (rt *DenoRuntime) BundleChartsRecursive(ctx context.Context, chart *helmcha
 			continue
 		}
 
-		if err := rt.BundleChartsRecursive(ctx, dep, depPath); err != nil {
+		if err := r.BundleChartsRecursive(ctx, dep, depPath); err != nil {
 			return fmt.Errorf("process dependency %q: %w", dep.Name(), err)
 		}
 	}
@@ -97,8 +82,8 @@ func (rt *DenoRuntime) BundleChartsRecursive(ctx context.Context, chart *helmcha
 	return nil
 }
 
-func (rt *DenoRuntime) RunApp(ctx context.Context, bundleData []byte, renderDir string) error {
-	if err := rt.ensureBinary(ctx); err != nil {
+func (r *DenoRuntime) RunApp(ctx context.Context, bundleData []byte, renderDir string) error {
+	if err := r.ensureBinary(ctx); err != nil {
 		return fmt.Errorf("ensure Deno is available: %w", err)
 	}
 
@@ -106,19 +91,19 @@ func (rt *DenoRuntime) RunApp(ctx context.Context, bundleData []byte, renderDir 
 		"run",
 		"--no-remote",
 		// deno permissions: allow read/write only for input and output files, deny all else.
-		"--allow-read=" + RenderInputFileName,
-		"--allow-write=" + RenderOutputFileName,
+		"--allow-read=" + common.ChartTSInputFile,
+		"--allow-write=" + common.ChartTSOutputFile,
 		"--deny-net",
 		"--deny-env",
 		"--deny-run",
 		// write bundle data to Stdin
 		"-",
 		// pass input and output file names as arguments
-		"--input-file=" + RenderInputFileName,
-		"--output-file=" + RenderOutputFileName,
+		"--input-file=" + common.ChartTSInputFile,
+		"--output-file=" + common.ChartTSOutputFile,
 	}
 
-	denoBin := rt.getBinaryPath()
+	denoBin := r.binPath
 	cmd := exec.CommandContext(ctx, denoBin, args...)
 	cmd.Dir = renderDir
 
@@ -166,7 +151,7 @@ func (rt *DenoRuntime) RunApp(ctx context.Context, bundleData []byte, renderDir 
 	go func() {
 		scanner := bufio.NewScanner(stderrPipe)
 		for scanner.Scan() {
-			log.Default.Debug(ctx, color.Style{color.Red}.Sprint(scanner.Text()))
+			log.Default.Error(ctx, "error from deno app: %s", scanner.Text())
 		}
 
 		stderrErrChan <- scanner.Err()
@@ -191,10 +176,10 @@ func (rt *DenoRuntime) RunApp(ctx context.Context, bundleData []byte, renderDir 
 	return nil
 }
 
-func (rt *DenoRuntime) ensureBinary(ctx context.Context) error {
-	if denoBin := rt.getBinaryPath(); denoBin != "" {
-		if _, err := os.Stat(denoBin); err != nil {
-			return fmt.Errorf("deno binary not found on path %q", denoBin)
+func (r *DenoRuntime) ensureBinary(ctx context.Context) error {
+	if r.binPath != "" {
+		if _, err := os.Stat(r.binPath); err != nil {
+			return fmt.Errorf("deno binary not found on path %q", r.binPath)
 		}
 
 		return nil
@@ -214,7 +199,7 @@ func (rt *DenoRuntime) ensureBinary(ctx context.Context) error {
 
 	denoPath := filepath.Join(cacheDir, binaryName)
 	if _, err := os.Stat(denoPath); err == nil {
-		rt.setBinaryPath(denoPath)
+		r.binPath = denoPath
 		log.Default.Debug(ctx, "Using cached Deno binary: %s", denoPath)
 
 		return nil
@@ -238,7 +223,7 @@ func (rt *DenoRuntime) ensureBinary(ctx context.Context) error {
 	}()
 
 	if _, err := os.Stat(denoPath); err == nil {
-		rt.setBinaryPath(denoPath)
+		r.binPath = denoPath
 		log.Default.Debug(ctx, "Using cached Deno binary: %s", denoPath)
 
 		return nil
@@ -248,35 +233,27 @@ func (rt *DenoRuntime) ensureBinary(ctx context.Context) error {
 		return fmt.Errorf("download deno: %w", err)
 	}
 
-	rt.setBinaryPath(denoPath)
+	r.binPath = denoPath
 
 	return nil
 }
 
-func (rt *DenoRuntime) getBinaryPath() string {
-	return rt.binPath
-}
-
-func (rt *DenoRuntime) runDenoBundle(ctx context.Context, chartPath, entryPoint string) ([]uint8, error) {
-	denoBin := rt.getBinaryPath()
+func (r *DenoRuntime) runDenoBundle(ctx context.Context, chartPath, entryPoint string) ([]uint8, error) {
+	denoBin := r.binPath
 	cmd := exec.CommandContext(ctx, denoBin, "bundle", entryPoint)
-	cmd.Dir = filepath.Join(chartPath, ChartTSSourceDir)
+	cmd.Dir = filepath.Join(chartPath, common.ChartTSSourceDir)
 
 	output, err := cmd.Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			_, _ = os.Stderr.Write(exitErr.Stderr)
+			log.Default.Error(ctx, "run deno bundle error: %s", exitErr)
 		}
 
 		return nil, fmt.Errorf("get deno build output: %w", err)
 	}
 
 	return output, nil
-}
-
-func (rt *DenoRuntime) setBinaryPath(path string) {
-	rt.binPath = path
 }
 
 type DenoRuntimeOptions struct {
@@ -290,7 +267,7 @@ func GetEntrypointAndBundle(files []*helmchart.File) (string, *helmchart.File) {
 	}
 
 	bundleFile, foundBundle := lo.Find(files, func(f *helmchart.File) bool {
-		return f.Name == ChartTSBundleFile
+		return f.Name == common.ChartTSBundleFile
 	})
 
 	if !foundBundle {
@@ -304,8 +281,8 @@ func findEntrypointInFiles(files []*helmchart.File) string {
 	sourceFiles := make(map[string][]byte)
 
 	for _, f := range files {
-		if strings.HasPrefix(f.Name, ChartTSSourceDir+"src/") {
-			sourceFiles[strings.TrimPrefix(f.Name, ChartTSSourceDir)] = f.Data
+		if strings.HasPrefix(f.Name, common.ChartTSSourceDir+"src/") {
+			sourceFiles[strings.TrimPrefix(f.Name, common.ChartTSSourceDir)] = f.Data
 		}
 	}
 

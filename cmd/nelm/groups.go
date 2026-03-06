@@ -9,7 +9,7 @@ var (
 	chartCmdGroup           = cli.NewCommandGroup("chart", "Chart commands:", 90)
 	secretCmdGroup          = cli.NewCommandGroup("secret", "Secret commands:", 80)
 	dependencyCmdGroup      = cli.NewCommandGroup("dependency", "Dependency commands:", 70)
-	tsCmdGroup              = cli.NewCommandGroup("ts", "TypeScript chart commands:", 60)
+	tsCmdGroup              = cli.NewCommandGroup("ts", "TypeScript commands:", 60)
 	repoCmdGroup            = cli.NewCommandGroup("repo", "Repo commands:", 60)
 	miscCmdGroup            = cli.NewCommandGroup("misc", "Other commands:", 0)
 	mainFlagGroup           = cli.NewFlagGroup("main", "Options:", 100)
