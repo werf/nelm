@@ -60,6 +60,8 @@ type ChartLintOptions struct {
 	DefaultChartVersion string
 	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
 	DefaultDeletePropagation string
+	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
+	DenoBinaryPath string
 	// ExtraAPIVersions is a list of additional Kubernetes API versions to include during linting.
 	// Used by Capabilities.APIVersions in templates to check for API availability.
 	ExtraAPIVersions []string
@@ -78,6 +80,8 @@ type ChartLintOptions struct {
 	// ForceAdoption, when true, allows adopting resources during validation that belong to a different Helm release.
 	// Used during the validation phase to check if resources could be adopted.
 	ForceAdoption bool
+	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources.
+	IgnoreBundleJS bool
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.
 	LegacyChartType helmopts.ChartType
@@ -264,6 +268,9 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		LocalKubeVersion:           opts.LocalKubeVersion,
 		Remote:                     opts.Remote,
 		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
+		TempDirPath:                opts.TempDirPath,
+		IgnoreBundleJS:             opts.IgnoreBundleJS,
+		DenoBinaryPath:             opts.DenoBinaryPath,
 	}
 
 	log.Default.Debug(ctx, "Render chart")

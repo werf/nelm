@@ -11,12 +11,13 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
+const denoBuildScript = "deno bundle --output=dist/bundle.js src/index.ts"
+
 // EnsureGitignore adds TypeScript entries to .gitignore, creating if needed.
 func EnsureGitignore(chartPath string) error {
 	entries := []string{
 		"ts/node_modules/",
 		"ts/vendor/",
-		"ts/dist/",
 	}
 
 	return ensureFileEntries(
@@ -65,7 +66,7 @@ func InitChartStructure(ctx context.Context, chartPath, chartName string) error 
 
 	// Handle .helmignore: create or enrich
 	helmignorePath := filepath.Join(chartPath, ".helmignore")
-	if err := ensureFileEntries(helmignorePath, helmignoreContent, []string{"ts/dist/"}); err != nil {
+	if err := ensureFileEntries(helmignorePath, helmignoreContent, []string{"ts/vendor/", "ts/node_modules/"}); err != nil {
 		return fmt.Errorf("ensure helmignore entries: %w", err)
 	}
 
@@ -94,7 +95,8 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
 		{content: deploymentTSContent, path: filepath.Join(srcDir, "deployment.ts")},
 		{content: serviceTSContent, path: filepath.Join(srcDir, "service.ts")},
 		{content: tsconfigContent, path: filepath.Join(tsDir, "tsconfig.json")},
-		{content: packageJSON(chartName), path: filepath.Join(tsDir, "package.json")},
+		{content: fmt.Sprintf(denoJSONTmpl, denoBuildScript), path: filepath.Join(tsDir, "deno.json")},
+		{content: fmt.Sprintf(inputExampleContent, chartName), path: filepath.Join(tsDir, "input.example.yaml")},
 	}
 
 	if err := os.MkdirAll(srcDir, 0o755); err != nil {
