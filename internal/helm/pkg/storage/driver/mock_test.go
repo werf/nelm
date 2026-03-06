@@ -31,7 +31,7 @@ import (
 	kblabels "k8s.io/apimachinery/pkg/labels"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 
-	rspb "github.com/werf/3p-helm/pkg/release"
+	rspb "github.com/werf/nelm/internal/helm/pkg/release"
 )
 
 func releaseStub(name string, vers int, namespace string, status rspb.Status) *rspb.Release {

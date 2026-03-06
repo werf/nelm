@@ -23,8 +23,8 @@ import (
 
 	"github.com/Masterminds/vcs"
 
-	"github.com/werf/3p-helm/internal/test/ensure"
-	"github.com/werf/3p-helm/pkg/helmpath"
+	"github.com/werf/nelm/internal/helm/internal/test/ensure"
+	"github.com/werf/nelm/internal/helm/pkg/helmpath"
 )
 
 var _ Installer = new(VCSInstaller)

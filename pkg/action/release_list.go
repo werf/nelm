@@ -16,8 +16,8 @@ import (
 	"github.com/jedib0t/go-pretty/v6/text"
 	"github.com/samber/lo"
 
-	"github.com/werf/3p-helm/pkg/chart/loader"
-	helmrelease "github.com/werf/3p-helm/pkg/release"
+	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
+	helmrelease "github.com/werf/nelm/internal/helm/pkg/release"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/pkg/common"

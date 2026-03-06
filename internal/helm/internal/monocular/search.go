@@ -24,8 +24,8 @@ import (
 	"path"
 	"time"
 
-	"github.com/werf/3p-helm/internal/version"
-	"github.com/werf/3p-helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/internal/version"
+	"github.com/werf/nelm/internal/helm/pkg/chart"
 )
 
 // SearchPath is the url path to the search API in monocular.

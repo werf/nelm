@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/werf/3p-helm/pkg/werf/file"
+	"github.com/werf/nelm/internal/helm/pkg/werf/file"
 	"github.com/werf/common-go/pkg/secret"
 	"github.com/werf/common-go/pkg/util"
 )

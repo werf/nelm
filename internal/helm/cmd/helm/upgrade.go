@@ -29,17 +29,17 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
-	"github.com/werf/3p-helm/cmd/helm/require"
-	"github.com/werf/3p-helm/pkg/action"
-	"github.com/werf/3p-helm/pkg/chart/loader"
-	"github.com/werf/3p-helm/pkg/cli/output"
-	"github.com/werf/3p-helm/pkg/cli/values"
-	"github.com/werf/3p-helm/pkg/downloader"
-	"github.com/werf/3p-helm/pkg/errs"
-	"github.com/werf/3p-helm/pkg/getter"
-	"github.com/werf/3p-helm/pkg/phases"
-	"github.com/werf/3p-helm/pkg/storage/driver"
-	"github.com/werf/3p-helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/internal/helm/cmd/helm/require"
+	"github.com/werf/nelm/internal/helm/pkg/action"
+	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
+	"github.com/werf/nelm/internal/helm/pkg/cli/output"
+	"github.com/werf/nelm/internal/helm/pkg/cli/values"
+	"github.com/werf/nelm/internal/helm/pkg/downloader"
+	"github.com/werf/nelm/internal/helm/pkg/errs"
+	"github.com/werf/nelm/internal/helm/pkg/getter"
+	"github.com/werf/nelm/internal/helm/pkg/phases"
+	"github.com/werf/nelm/internal/helm/pkg/storage/driver"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 )
 
 const upgradeDesc = `

@@ -26,10 +26,10 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/werf/3p-helm/internal/tlsutil"
-	"github.com/werf/3p-helm/pkg/chart/loader"
-	"github.com/werf/3p-helm/pkg/registry"
-	"github.com/werf/3p-helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/internal/helm/internal/tlsutil"
+	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
+	"github.com/werf/nelm/internal/helm/pkg/registry"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 )
 
 // OCIPusher is the default OCI backend handler

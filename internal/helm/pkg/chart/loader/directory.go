@@ -26,11 +26,11 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/werf/3p-helm/internal/sympath"
-	"github.com/werf/3p-helm/pkg/chart"
-	"github.com/werf/3p-helm/pkg/ignore"
-	"github.com/werf/3p-helm/pkg/werf/file"
-	"github.com/werf/3p-helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/internal/helm/internal/sympath"
+	"github.com/werf/nelm/internal/helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/ignore"
+	"github.com/werf/nelm/internal/helm/pkg/werf/file"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 )
 
 var utf8bom = []byte{0xEF, 0xBB, 0xBF}

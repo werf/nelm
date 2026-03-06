@@ -24,7 +24,7 @@ import (
 
 	"github.com/spf13/pflag"
 
-	"github.com/werf/3p-helm/internal/version"
+	"github.com/werf/nelm/internal/helm/internal/version"
 )
 
 func TestSetNamespace(t *testing.T) {

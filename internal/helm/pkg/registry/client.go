@@ -38,10 +38,10 @@ import (
 	registryremote "oras.land/oras-go/pkg/registry/remote"
 	registryauth "oras.land/oras-go/pkg/registry/remote/auth"
 
-	"github.com/werf/3p-helm/internal/version"
-	"github.com/werf/3p-helm/pkg/chart"
-	"github.com/werf/3p-helm/pkg/helmpath"
-	"github.com/werf/3p-helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/internal/helm/internal/version"
+	"github.com/werf/nelm/internal/helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/helmpath"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 )
 
 // See https://github.com/helm/helm/issues/10166

@@ -19,7 +19,7 @@ package releaseutil // import "helm.sh/helm/v3/pkg/releaseutil"
 import (
 	"sort"
 
-	rspb "github.com/werf/3p-helm/pkg/release"
+	rspb "github.com/werf/nelm/internal/helm/pkg/release"
 )
 
 type list []*rspb.Release

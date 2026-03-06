@@ -20,11 +20,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/werf/3p-helm/internal/test/ensure"
-	"github.com/werf/3p-helm/pkg/cli"
-	"github.com/werf/3p-helm/pkg/getter"
-	"github.com/werf/3p-helm/pkg/repo"
-	"github.com/werf/3p-helm/pkg/repo/repotest"
+	"github.com/werf/nelm/internal/helm/internal/test/ensure"
+	"github.com/werf/nelm/internal/helm/pkg/cli"
+	"github.com/werf/nelm/internal/helm/pkg/getter"
+	"github.com/werf/nelm/internal/helm/pkg/repo"
+	"github.com/werf/nelm/internal/helm/pkg/repo/repotest"
 )
 
 const (

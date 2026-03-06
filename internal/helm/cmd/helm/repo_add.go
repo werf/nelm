@@ -31,9 +31,9 @@ import (
 	"golang.org/x/term"
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/3p-helm/cmd/helm/require"
-	"github.com/werf/3p-helm/pkg/getter"
-	"github.com/werf/3p-helm/pkg/repo"
+	"github.com/werf/nelm/internal/helm/cmd/helm/require"
+	"github.com/werf/nelm/internal/helm/pkg/getter"
+	"github.com/werf/nelm/internal/helm/pkg/repo"
 )
 
 // Repositories that have been permanently deleted and no longer work

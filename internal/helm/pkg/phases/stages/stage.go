@@ -1,8 +1,8 @@
 package stages
 
 import (
-	"github.com/werf/3p-helm/pkg/kube"
-	"github.com/werf/3p-helm/pkg/phases/stages/externaldeps"
+	"github.com/werf/nelm/internal/helm/pkg/kube"
+	"github.com/werf/nelm/internal/helm/pkg/phases/stages/externaldeps"
 )
 
 type Stage struct {

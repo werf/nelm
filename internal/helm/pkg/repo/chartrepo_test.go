@@ -30,9 +30,9 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/3p-helm/pkg/chart"
-	"github.com/werf/3p-helm/pkg/cli"
-	"github.com/werf/3p-helm/pkg/getter"
+	"github.com/werf/nelm/internal/helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/cli"
+	"github.com/werf/nelm/internal/helm/pkg/getter"
 )
 
 const (

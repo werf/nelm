@@ -28,12 +28,12 @@ import (
 	"github.com/pkg/errors"
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/3p-helm/pkg/chart"
-	"github.com/werf/3p-helm/pkg/werf/chartextender"
-	"github.com/werf/3p-helm/pkg/werf/file"
-	"github.com/werf/3p-helm/pkg/werf/helmopts"
-	"github.com/werf/3p-helm/pkg/werf/secrets"
-	"github.com/werf/3p-helm/pkg/werf/secrets/runtimedata"
+	"github.com/werf/nelm/internal/helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/werf/chartextender"
+	"github.com/werf/nelm/internal/helm/pkg/werf/file"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/internal/helm/pkg/werf/secrets"
+	"github.com/werf/nelm/internal/helm/pkg/werf/secrets/runtimedata"
 	"github.com/werf/common-go/pkg/secrets_manager"
 )
 

@@ -25,7 +25,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 
-	helmversion "github.com/werf/3p-helm/internal/version"
+	helmversion "github.com/werf/nelm/internal/helm/internal/version"
 )
 
 var (

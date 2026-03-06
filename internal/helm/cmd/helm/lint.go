@@ -26,12 +26,12 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
-	"github.com/werf/3p-helm/pkg/action"
-	"github.com/werf/3p-helm/pkg/chartutil"
-	"github.com/werf/3p-helm/pkg/cli/values"
-	"github.com/werf/3p-helm/pkg/getter"
-	"github.com/werf/3p-helm/pkg/lint/support"
-	"github.com/werf/3p-helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/internal/helm/pkg/action"
+	"github.com/werf/nelm/internal/helm/pkg/chartutil"
+	"github.com/werf/nelm/internal/helm/pkg/cli/values"
+	"github.com/werf/nelm/internal/helm/pkg/getter"
+	"github.com/werf/nelm/internal/helm/pkg/lint/support"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 )
 
 var longLintHelp = `

@@ -1,6 +1,6 @@
 package chartextender
 
-import "github.com/werf/3p-helm/pkg/chart"
+import "github.com/werf/nelm/internal/helm/pkg/chart"
 
 type GetHelmChartMetadataOptions struct {
 	OverrideAppVersion string

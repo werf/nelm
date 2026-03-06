@@ -27,10 +27,10 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/3p-helm/pkg/helmpath"
-	"github.com/werf/3p-helm/pkg/helmpath/xdg"
-	"github.com/werf/3p-helm/pkg/repo"
-	"github.com/werf/3p-helm/pkg/repo/repotest"
+	"github.com/werf/nelm/internal/helm/pkg/helmpath"
+	"github.com/werf/nelm/internal/helm/pkg/helmpath/xdg"
+	"github.com/werf/nelm/internal/helm/pkg/repo"
+	"github.com/werf/nelm/internal/helm/pkg/repo/repotest"
 )
 
 func TestRepoAddCmd(t *testing.T) {

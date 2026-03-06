@@ -29,8 +29,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/werf/3p-helm/pkg/chart"
-	"github.com/werf/3p-helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/internal/helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 )
 
 // GlobalLoadOptions is a default set of options for testing

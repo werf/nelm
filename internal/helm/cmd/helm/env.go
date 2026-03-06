@@ -23,7 +23,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/werf/3p-helm/cmd/helm/require"
+	"github.com/werf/nelm/internal/helm/cmd/helm/require"
 )
 
 var envHelp = `

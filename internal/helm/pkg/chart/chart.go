@@ -20,7 +20,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/werf/3p-helm/pkg/werf/secrets/runtimedata"
+	"github.com/werf/nelm/internal/helm/pkg/werf/secrets/runtimedata"
 )
 
 // APIVersionV1 is the API version number for version 1.

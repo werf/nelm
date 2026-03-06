@@ -24,7 +24,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/werf/3p-helm/pkg/repo/repotest"
+	"github.com/werf/nelm/internal/helm/pkg/repo/repotest"
 )
 
 func TestPullCmd(t *testing.T) {

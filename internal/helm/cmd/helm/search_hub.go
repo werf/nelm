@@ -25,8 +25,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
-	"github.com/werf/3p-helm/internal/monocular"
-	"github.com/werf/3p-helm/pkg/cli/output"
+	"github.com/werf/nelm/internal/helm/internal/monocular"
+	"github.com/werf/nelm/internal/helm/pkg/cli/output"
 )
 
 const searchHubDesc = `

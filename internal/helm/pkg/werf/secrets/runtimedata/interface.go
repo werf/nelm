@@ -3,7 +3,7 @@ package runtimedata
 import (
 	"context"
 
-	"github.com/werf/3p-helm/pkg/werf/file"
+	"github.com/werf/nelm/internal/helm/pkg/werf/file"
 	"github.com/werf/common-go/pkg/secrets_manager"
 )
 

@@ -23,7 +23,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/werf/3p-helm/pkg/cli"
+	"github.com/werf/nelm/internal/helm/pkg/cli"
 )
 
 func checkCommand(p *Plugin, extraArgs []string, osStrCmp string, t *testing.T) {

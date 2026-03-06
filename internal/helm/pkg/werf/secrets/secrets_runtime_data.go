@@ -7,8 +7,8 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	werffile "github.com/werf/3p-helm/pkg/werf/file"
-	"github.com/werf/3p-helm/pkg/werf/secrets/runtimedata"
+	werffile "github.com/werf/nelm/internal/helm/pkg/werf/file"
+	"github.com/werf/nelm/internal/helm/pkg/werf/secrets/runtimedata"
 	"github.com/werf/common-go/pkg/secret"
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/common-go/pkg/secretvalues"

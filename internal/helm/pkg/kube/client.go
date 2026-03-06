@@ -31,7 +31,7 @@ import (
 
 	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/pkg/errors"
-	"github.com/werf/3p-helm/pkg/releaseutil"
+	"github.com/werf/nelm/internal/helm/pkg/releaseutil"
 	batch "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"

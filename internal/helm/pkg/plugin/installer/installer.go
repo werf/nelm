@@ -25,7 +25,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/werf/3p-helm/pkg/plugin"
+	"github.com/werf/nelm/internal/helm/pkg/plugin"
 )
 
 // ErrMissingMetadata indicates that plugin.yaml is missing.

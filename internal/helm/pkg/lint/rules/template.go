@@ -33,11 +33,11 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
-	"github.com/werf/3p-helm/pkg/chart/loader"
-	"github.com/werf/3p-helm/pkg/chartutil"
-	"github.com/werf/3p-helm/pkg/engine"
-	"github.com/werf/3p-helm/pkg/lint/support"
-	"github.com/werf/3p-helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
+	"github.com/werf/nelm/internal/helm/pkg/chartutil"
+	"github.com/werf/nelm/internal/helm/pkg/engine"
+	"github.com/werf/nelm/internal/helm/pkg/lint/support"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 )
 
 var (

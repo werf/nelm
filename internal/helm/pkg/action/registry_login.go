@@ -19,7 +19,7 @@ package action
 import (
 	"io"
 
-	"github.com/werf/3p-helm/pkg/registry"
+	"github.com/werf/nelm/internal/helm/pkg/registry"
 )
 
 // RegistryLogin performs a registry login operation.

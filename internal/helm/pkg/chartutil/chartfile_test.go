@@ -19,7 +19,7 @@ package chartutil
 import (
 	"testing"
 
-	"github.com/werf/3p-helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/chart"
 )
 
 const testfile = "testdata/chartfiletest.yaml"

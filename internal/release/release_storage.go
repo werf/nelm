@@ -6,10 +6,10 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 
-	helmaction "github.com/werf/3p-helm/pkg/action"
-	helmrelease "github.com/werf/3p-helm/pkg/release"
-	helmstorage "github.com/werf/3p-helm/pkg/storage"
-	helmdriver "github.com/werf/3p-helm/pkg/storage/driver"
+	helmaction "github.com/werf/nelm/internal/helm/pkg/action"
+	helmrelease "github.com/werf/nelm/internal/helm/pkg/release"
+	helmstorage "github.com/werf/nelm/internal/helm/pkg/storage"
+	helmdriver "github.com/werf/nelm/internal/helm/pkg/storage/driver"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/pkg/log"
 )

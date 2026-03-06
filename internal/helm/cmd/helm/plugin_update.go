@@ -24,8 +24,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
-	"github.com/werf/3p-helm/pkg/plugin"
-	"github.com/werf/3p-helm/pkg/plugin/installer"
+	"github.com/werf/nelm/internal/helm/pkg/plugin"
+	"github.com/werf/nelm/internal/helm/pkg/plugin/installer"
 )
 
 type pluginUpdateOptions struct {

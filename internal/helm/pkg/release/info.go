@@ -18,7 +18,7 @@ package release
 import (
 	"k8s.io/apimachinery/pkg/runtime"
 
-	"github.com/werf/3p-helm/pkg/time"
+	"github.com/werf/nelm/internal/helm/pkg/time"
 )
 
 // Info describes release information.

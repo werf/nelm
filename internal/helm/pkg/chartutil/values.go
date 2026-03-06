@@ -27,7 +27,7 @@ import (
 	"github.com/samber/lo"
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/3p-helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/chart"
 )
 
 // GlobalKey is the name of the Values key that is used for storing global vars.

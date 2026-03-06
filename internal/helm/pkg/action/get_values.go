@@ -17,7 +17,7 @@ limitations under the License.
 package action
 
 import (
-	"github.com/werf/3p-helm/pkg/chartutil"
+	"github.com/werf/nelm/internal/helm/pkg/chartutil"
 )
 
 // GetValues is the action for checking a given release's values.

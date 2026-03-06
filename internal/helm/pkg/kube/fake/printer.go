@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/cli-runtime/pkg/resource"
 
-	"github.com/werf/3p-helm/pkg/kube"
+	"github.com/werf/nelm/internal/helm/pkg/kube"
 )
 
 // PrintingKubeClient implements KubeClient, but simply prints the reader to

@@ -32,11 +32,11 @@ import (
 	"github.com/samber/lo"
 	"k8s.io/client-go/rest"
 
-	"github.com/werf/3p-helm/pkg/chart"
-	"github.com/werf/3p-helm/pkg/chartutil"
-	"github.com/werf/3p-helm/pkg/werf/helmopts"
-	"github.com/werf/3p-helm/pkg/werf/secrets/gotmplfunctions"
-	"github.com/werf/3p-helm/pkg/werf/secrets/runtimedata"
+	"github.com/werf/nelm/internal/helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/chartutil"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/internal/helm/pkg/werf/secrets/gotmplfunctions"
+	"github.com/werf/nelm/internal/helm/pkg/werf/secrets/runtimedata"
 	"github.com/werf/common-go/pkg/util"
 )
 

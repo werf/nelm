@@ -30,8 +30,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/werf/3p-helm/pkg/chart"
-	"github.com/werf/3p-helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/internal/helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 )
 
 var drivePathPattern = regexp.MustCompile(`^[a-zA-Z]:/`)

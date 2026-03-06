@@ -26,13 +26,13 @@ import (
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/werf/3p-helm/pkg/chartutil"
-	"github.com/werf/3p-helm/pkg/kube"
-	"github.com/werf/3p-helm/pkg/phases"
-	"github.com/werf/3p-helm/pkg/release"
-	"github.com/werf/3p-helm/pkg/releaseutil"
-	"github.com/werf/3p-helm/pkg/storage/driver"
-	helmtime "github.com/werf/3p-helm/pkg/time"
+	"github.com/werf/nelm/internal/helm/pkg/chartutil"
+	"github.com/werf/nelm/internal/helm/pkg/kube"
+	"github.com/werf/nelm/internal/helm/pkg/phases"
+	"github.com/werf/nelm/internal/helm/pkg/release"
+	"github.com/werf/nelm/internal/helm/pkg/releaseutil"
+	"github.com/werf/nelm/internal/helm/pkg/storage/driver"
+	helmtime "github.com/werf/nelm/internal/helm/pkg/time"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 

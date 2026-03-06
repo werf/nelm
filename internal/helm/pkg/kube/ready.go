@@ -35,7 +35,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 
-	deploymentutil "github.com/werf/3p-helm/internal/third_party/k8s.io/kubernetes/deployment/util"
+	deploymentutil "github.com/werf/nelm/internal/helm/internal/third_party/k8s.io/kubernetes/deployment/util"
 )
 
 // ReadyCheckerOption is a function that configures a ReadyChecker.

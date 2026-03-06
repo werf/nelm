@@ -6,7 +6,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/werf/3p-helm/pkg/werf/secrets/runtimedata"
+	"github.com/werf/nelm/internal/helm/pkg/werf/secrets/runtimedata"
 )
 
 func SetupWerfSecretFile(secretsRuntimeData runtimedata.RuntimeData, funcMap template.FuncMap) {

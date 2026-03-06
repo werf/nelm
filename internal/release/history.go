@@ -8,10 +8,10 @@ import (
 
 	"github.com/samber/lo"
 
-	helmrelease "github.com/werf/3p-helm/pkg/release"
-	"github.com/werf/3p-helm/pkg/releaseutil"
-	"github.com/werf/3p-helm/pkg/storage/driver"
-	helmtime "github.com/werf/3p-helm/pkg/time"
+	helmrelease "github.com/werf/nelm/internal/helm/pkg/release"
+	"github.com/werf/nelm/internal/helm/pkg/releaseutil"
+	"github.com/werf/nelm/internal/helm/pkg/storage/driver"
+	helmtime "github.com/werf/nelm/internal/helm/pkg/time"
 )
 
 var _ Historier = (*History)(nil)
