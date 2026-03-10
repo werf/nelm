@@ -52,14 +52,14 @@ tasks:
     internal: true
     run: once
     cmds:
-      - golangci-lint run {{if eq .fix "true"}}--fix{{end}} --build-tags="{{.tags}}" {{.CLI_ARGS}} {{.paths | default "./..."}}
+      - golangci-lint run {{if eq .fix "true"}}--fix{{end}} --build-tags="{{.tags}}" {{.CLI_ARGS}} {{.paths | default "$(find internal/ -mindepth 1 -maxdepth 1 -type d ! -name helm -printf './%p/... ') ./cmd/... ./pkg/..."}}
     vars:
       paths: "{{.paths}}"
 
   _wormatter:
     internal: true
     cmds:
-      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work -w /work ghcr.io/werf/wormatter:1.4.0 {{if eq .onlyLint "true"}}-c{{end}} {{.paths | default "internal/ cmd/ pkg/"}}
+      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work -w /work ghcr.io/werf/wormatter:1.5.0 {{if eq .onlyLint "true"}}-c{{end}} -e ^internal/helm/ {{.paths | default "internal/ cmd/ pkg/"}}
     vars:
       onlyLint: '{{.onlyLint | default "false"}}'
       paths: "{{.paths}}"
@@ -213,6 +213,7 @@ tasks:
     cmds:
       - |
         ginkgo {{if eq .parallel "true" }}-p{{end}} -r -ldflags="{{.ldFlags}}" -tags="{{.tags}}" \
+          {{if .skipPackage}}--skip-package="{{.skipPackage}}"{{end}} \
           {{if .labelFilter}}--label-filter="{{.labelFilter}}"{{end}} {{.CLI_ARGS}} {{.paths}}
     vars:
       parallel: '{{.parallel | default "true"}}'
@@ -226,6 +227,7 @@ tasks:
       - task: _test:ginkgo
         vars:
           paths: "{{.paths}}"
+          skipPackage: "{{.skipPackage}}"
           labelFilter: "{{.labelFilter}}"
           parallel: "{{.parallel}}"
 
@@ -235,6 +237,7 @@ tasks:
       - task: test:ginkgo
         vars:
           paths: '{{.paths | default "./internal ./pkg ./cmd"}}'
+          skipPackage: '{{.skipPackage | default "internal/helm"}}'
           parallel: "{{.parallel}}"
 
   verify:binaries:dist:all:
@@ -296,7 +299,7 @@ tasks:
     vars:
       updateOnly: '{{.updateOnly | default "true"}}'
     cmds:
-      - docker run --rm -v "$(pwd)":/work peterdavehello/npm-doctoc doctoc --notitle {{if eq .updateOnly "true"}}--update-only{{end}} /work/{{.path | default "."}}
+      - docker run --rm -v "$(pwd)":/work peterdavehello/npm-doctoc sh -c 'find /work/{{.path | default "."}} -name "*.md" -not -path "*/internal/helm/*" -not -path "*/.git/*" -exec doctoc --notitle {{if eq .updateOnly "true"}}--update-only{{end}} {} +'
 
   lint:
     desc: 'Run all linters in parallel. Important vars: "paths".'
@@ -412,6 +415,96 @@ tasks:
     desc: "Install golangci-lint binary."
     cmds:
       - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin {{.golangcilintVersion | default "v2.5.0"}}
+
+  fork:helm:sync:
+    desc: 'Prepare upstream helm ref for merging into internal/helm/ of the current branch. Important vars: "ref" (required, e.g. ref=v4.0.0).'
+    vars:
+      forkPrefix: "internal/helm"
+      forkRemoteName: "upstream-helm"
+      forkRemoteURL: "https://github.com/helm/helm.git"
+      forkOurModule: "github.com/werf/nelm/internal/helm"
+      forkSyncBranch: "_sync-upstream-helm-{{.ref}}"
+      forkSubtreeMergeCommit:
+        sh: git log --all --format="%H" --grep="^Merge commit .* as '{{.forkPrefix}}'" | tail -1
+      forkDirRenames: ""
+    requires:
+      vars:
+        - ref
+    cmds:
+      - |
+        set -euo pipefail
+
+        prefix="{{.forkPrefix}}"
+        remote_name="{{.forkRemoteName}}"
+        remote_url="{{.forkRemoteURL}}"
+        our_module="{{.forkOurModule}}"
+        sync_branch="{{.forkSyncBranch}}"
+        ref="{{.ref}}"
+        subtree_merge_commit="{{.forkSubtreeMergeCommit}}"
+        dir_renames="{{.forkDirRenames}}"
+        original_ref="$(git rev-parse HEAD)"
+
+        if ! git diff --quiet || ! git diff --cached --quiet; then
+          echo "ERROR: Working tree is dirty. Commit or stash changes first."
+          exit 1
+        fi
+
+        if [ -z "$subtree_merge_commit" ]; then
+          echo "ERROR: Could not find the subtree merge commit for '$prefix'."
+          exit 1
+        fi
+
+        deleted_files="$(git log -M --diff-filter=D --name-only --format="" "${subtree_merge_commit}..${original_ref}" -- "$prefix" | sort -u | sed "s|^${prefix}/||" | grep -v '^$' || true)"
+
+        if ! git remote get-url "$remote_name" &>/dev/null; then
+          git remote add "$remote_name" "$remote_url"
+        fi
+
+        git fetch "$remote_name" "$ref"
+        upstream_commit="$(git rev-parse FETCH_HEAD)"
+
+        git checkout -B "$sync_branch" "$upstream_commit" --no-track
+
+        upstream_module="$(head -1 go.mod | awk '{print $2}')"
+        if [ -z "$upstream_module" ]; then
+          echo "ERROR: Could not detect module path from upstream go.mod."
+          git checkout "${original_ref}"
+          exit 1
+        fi
+
+        find . -name '*.go' -not -path './.git/*' -exec sed -i "s|${upstream_module}|${our_module}|g" {} +
+
+        if [ -n "$dir_renames" ]; then
+          echo "$dir_renames" | tr ',' '\n' | while IFS=: read -r src dst; do
+            [ -z "$src" ] && continue
+            if [ -d "$src" ]; then
+              mkdir -p "$(dirname "$dst")"
+              mv "$src" "$dst"
+              find . -name '*.go' -not -path './.git/*' -exec sed -i "s|${our_module}/${src%/}|${our_module}/${dst%/}|g" {} +
+            fi
+          done
+        fi
+
+        if [ -n "$deleted_files" ]; then
+          echo "$deleted_files" | while IFS= read -r f; do
+            [ -e "$f" ] && rm -f "$f"
+          done
+          find . -type d -empty -not -path './.git/*' -delete 2>/dev/null || true
+        fi
+
+        git add -A
+        if ! git diff --cached --quiet; then
+          git commit -m "sync: adapt upstream $ref for merge into $prefix"
+        fi
+
+        git checkout "${original_ref}"
+
+        echo ""
+        echo "Sync branch '${sync_branch}' is ready to be merged in the current branch. To merge:"
+        echo ""
+        echo "  git subtree merge --prefix=${prefix} ${sync_branch} --squash"
+        echo ""
+        echo "Consider using mergiraf as a git merge driver and/or AI for conflict resolution."
 
   sign:
     desc: 'Sign last version tag + origin/main and push signatures. Important vars: "refs".'
