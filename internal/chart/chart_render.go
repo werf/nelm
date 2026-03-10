@@ -12,9 +12,9 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/goccy/go-yaml"
 	"github.com/samber/lo"
 	"k8s.io/client-go/discovery"
-	"sigs.k8s.io/yaml"
 
 	"github.com/werf/3p-helm/pkg/action"
 	helmchart "github.com/werf/3p-helm/pkg/chart"
@@ -376,10 +376,10 @@ func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, relea
 
 		manifests := releaseutil.SplitManifestsToSlice(fileContent)
 
-		for _, manifest := range manifests {
+		for idx, manifest := range manifests {
 			var head releaseutil.SimpleHead
 			if err := yaml.Unmarshal([]byte(manifest), &head); err != nil {
-				return nil, fmt.Errorf("parse YAML for %q: %w", filePath, err)
+				return nil, fmt.Errorf("parse YAML resource #%d for %q: %w", idx+1, filePath, err)
 			}
 
 			if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
