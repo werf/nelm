@@ -168,6 +168,15 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		return nil
 	}
 
+	watchErrCh := make(chan error, 1)
+	informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
+
+	go func() {
+		if err := <-watchErrCh; err != nil {
+			ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
+		}
+	}()
+
 	if err := func() error {
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Delete release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
@@ -252,16 +261,8 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 		taskStore := kdutil.NewConcurrent(statestore.NewTaskStore())
 		logStore := kdutil.NewConcurrent(logstore.NewLogStore())
-		watchErrCh := make(chan error, 1)
-		informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
 
 		log.Default.Debug(ctx, "Start tracking")
-		go func() {
-			if err := <-watchErrCh; err != nil {
-				ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
-			}
-		}()
-
 		var progressPrinter *track.ProgressTablesPrinter
 		if !opts.NoProgressTablePrint {
 			progressPrinter = track.NewProgressTablesPrinter(taskStore, logStore, track.ProgressTablesPrinterOptions{
@@ -392,17 +393,9 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		taskState := kdutil.NewConcurrent(
 			statestore.NewAbsenceTaskState(nsMeta.Name, "", nsMeta.GroupVersionKind, statestore.AbsenceTaskStateOptions{}),
 		)
-		watchErrCh := make(chan error, 1)
-		nsInformerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
-		tracker := dyntracker.NewDynamicAbsenceTracker(taskState, nsInformerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicAbsenceTrackerOptions{
+		tracker := dyntracker.NewDynamicAbsenceTracker(taskState, informerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicAbsenceTrackerOptions{
 			Timeout: opts.TrackDeletionTimeout,
 		})
-
-		go func() {
-			if err := <-watchErrCh; err != nil {
-				ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
-			}
-		}()
 
 		if err := tracker.Track(ctx); err != nil {
 			return fmt.Errorf("track release namespace absence: %w", err)
