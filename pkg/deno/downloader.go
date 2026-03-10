@@ -9,12 +9,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/gosimple/slug"
 	"github.com/samber/lo"
 
 	"github.com/werf/3p-helm/pkg/helmpath"
@@ -140,9 +140,7 @@ func getDenoFolder(downloadURL string) (string, error) {
 		suffix = suffix[len(suffix)-15:]
 	}
 
-	slug := strings.ToLower(strings.Trim(regexp.MustCompile(`[^a-zA-Z0-9]+`).ReplaceAllString(suffix, "-"), "-"))
-
-	dirName := hashStr + "-" + slug
+	dirName := hashStr + "-" + slug.Make(suffix)
 	cacheDir := helmpath.CachePath("nelm", "deno", dirName)
 
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
@@ -202,8 +200,7 @@ func unzipBinary(ctx context.Context, cacheDir string, file *zip.File) error {
 		}
 	}()
 
-	limitReader := io.LimitReader(fileReader, 200*1024*1024)
-	if _, err := io.Copy(denoFile, limitReader); err != nil {
+	if _, err := io.Copy(denoFile, fileReader); err != nil {
 		return fmt.Errorf("copy Deno binary to destination: %w", err)
 	}
 

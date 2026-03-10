@@ -85,7 +85,6 @@ func TestInitChartStructure(t *testing.T) {
 		err := ts.InitChartStructure(context.Background(), chartPath, "ts-only-chart")
 		require.NoError(t, err)
 
-		assert.FileExists(t, filepath.Join(chartPath, "Chart.yaml"))
 		assert.FileExists(t, filepath.Join(chartPath, "values.yaml"))
 		assert.FileExists(t, filepath.Join(chartPath, ".helmignore"))
 	})
@@ -108,18 +107,6 @@ func TestInitChartStructure(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.NoDirExists(t, filepath.Join(chartPath, "templates"))
-	})
-
-	t.Run("substitutes chart name in Chart.yaml", func(t *testing.T) {
-		chartPath := filepath.Join(t.TempDir(), "my-ts-chart")
-		require.NoError(t, os.MkdirAll(chartPath, 0o755))
-
-		err := ts.InitChartStructure(context.Background(), chartPath, "my-ts-chart")
-		require.NoError(t, err)
-
-		content, err := os.ReadFile(filepath.Join(chartPath, "Chart.yaml"))
-		require.NoError(t, err)
-		assert.Contains(t, string(content), "name: my-ts-chart")
 	})
 
 	t.Run("includes TS entries in .helmignore", func(t *testing.T) {

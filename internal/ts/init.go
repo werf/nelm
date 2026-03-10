@@ -38,30 +38,8 @@ func InitChartStructure(ctx context.Context, chartPath, chartName string) error 
 		return fmt.Errorf("stat %s: %w", tsDir, err)
 	}
 
-	skipIfExists := []struct {
-		content string
-		path    string
-	}{
-		{content: chartYaml(chartName), path: filepath.Join(chartPath, "Chart.yaml")},
-		{content: valuesYamlContent, path: filepath.Join(chartPath, "values.yaml")},
-	}
-
-	for _, f := range skipIfExists {
-		_, err := os.Stat(f.path)
-		if err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("stat %s: %w", f.path, err)
-		}
-
-		if err == nil {
-			log.Default.Debug(ctx, "Skipping existing file %s", f.path)
-			continue
-		}
-
-		if err := os.WriteFile(f.path, []byte(f.content), 0o644); err != nil {
-			return fmt.Errorf("write %s: %w", f.path, err)
-		}
-
-		log.Default.Debug(ctx, "Created %s", f.path)
+	if err := ensureValuesFile(ctx, chartPath); err != nil {
+		return fmt.Errorf("ensure values.yaml: %w", err)
 	}
 
 	// Handle .helmignore: create or enrich
@@ -73,6 +51,56 @@ func InitChartStructure(ctx context.Context, chartPath, chartName string) error 
 	log.Default.Debug(ctx, "Updated %s", helmignorePath)
 
 	return nil
+}
+
+func ensureValuesFile(ctx context.Context, chartPath string) error {
+	valuesPath := filepath.Join(chartPath, "values.yaml")
+
+	exists, err := fileExists(valuesPath)
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", valuesPath, err)
+	}
+
+	if !exists {
+		if err := os.WriteFile(valuesPath, []byte(valuesYamlContent), 0o644); err != nil {
+			return fmt.Errorf("write %s: %w", valuesPath, err)
+		}
+
+		log.Default.Debug(ctx, "Created %s", valuesPath)
+
+		return nil
+	}
+
+	examplePath := filepath.Join(chartPath, "values-ts-example.yaml")
+
+	exists, err = fileExists(examplePath)
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", examplePath, err)
+	}
+
+	if exists {
+		log.Default.Debug(ctx, "Skipping existing file %s", examplePath)
+		return nil
+	}
+
+	if err := os.WriteFile(examplePath, []byte(valuesYamlContent), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", examplePath, err)
+	}
+
+	log.Default.Warn(ctx, "values.yaml already exists, created values-ts-example.yaml instead")
+
+	return nil
+}
+
+func fileExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }
 
 // InitTSBoilerplate creates TypeScript boilerplate files in ts/ directory.

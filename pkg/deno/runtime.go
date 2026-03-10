@@ -36,50 +36,15 @@ func NewDenoRuntime(rebuild bool, opts DenoRuntimeOptions) *DenoRuntime {
 }
 
 func (r *DenoRuntime) BundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path string) error {
-	entrypoint, bundle := GetEntrypointAndBundle(chart.RuntimeFiles)
-	if entrypoint == "" {
+	if !hasTSFiles(chart) {
 		return nil
 	}
 
-	if bundle == nil || r.rebuild {
-		if err := r.ensureBinary(ctx); err != nil {
-			return fmt.Errorf("ensure Deno is available: %w", err)
-		}
-
-		log.Default.Info(ctx, "Bundle TypeScript for chart %q (entrypoint: %s)", chart.Name(), entrypoint)
-
-		bundleRes, err := r.runDenoBundle(ctx, path, entrypoint)
-		if err != nil {
-			return fmt.Errorf("build TypeScript bundle: %w", err)
-		}
-
-		if bundle != nil {
-			chart.RemoveRuntimeFile(common.ChartTSBundleFile)
-		}
-
-		chart.AddRuntimeFile(common.ChartTSBundleFile, bundleRes)
+	if err := r.ensureBinary(ctx); err != nil {
+		return fmt.Errorf("ensure Deno is available: %w", err)
 	}
 
-	deps := chart.Dependencies()
-	if len(deps) == 0 {
-		return nil
-	}
-
-	for _, dep := range deps {
-		depPath := filepath.Join(path, "charts", dep.Name())
-
-		if _, err := os.Stat(depPath); err != nil {
-			// Subchart loaded from .tgz or missing on disk — skip,
-			// deno bundle needs a real directory to work with.
-			continue
-		}
-
-		if err := r.BundleChartsRecursive(ctx, dep, depPath); err != nil {
-			return fmt.Errorf("process dependency %q: %w", dep.Name(), err)
-		}
-	}
-
-	return nil
+	return r.bundleChartsRecursive(ctx, chart, path)
 }
 
 func (r *DenoRuntime) RunApp(ctx context.Context, bundleData []byte, renderDir string) error {
@@ -171,6 +136,44 @@ func (r *DenoRuntime) RunApp(ctx context.Context, bundleData []byte, renderDir s
 
 	if err := <-stderrErrChan; err != nil {
 		return fmt.Errorf("read stderr: %w", err)
+	}
+
+	return nil
+}
+
+func (r *DenoRuntime) bundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path string) error {
+	entrypoint, bundle := GetEntrypointAndBundle(chart.RuntimeFiles)
+	if entrypoint == "" {
+		return nil
+	}
+
+	if bundle == nil || r.rebuild {
+		log.Default.Info(ctx, "Bundle TypeScript for chart %q (entrypoint: %s)", chart.Name(), entrypoint)
+
+		bundleRes, err := r.runDenoBundle(ctx, path, entrypoint)
+		if err != nil {
+			return fmt.Errorf("build TypeScript bundle: %w", err)
+		}
+
+		if bundle != nil {
+			chart.RemoveRuntimeFile(common.ChartTSBundleFile)
+		}
+
+		chart.AddRuntimeFile(common.ChartTSBundleFile, bundleRes)
+	}
+
+	for _, dep := range chart.Dependencies() {
+		depPath := filepath.Join(path, "charts", dep.Name())
+
+		if _, err := os.Stat(depPath); err != nil {
+			// Subchart loaded from .tgz or missing on disk — skip,
+			// deno bundle needs a real directory to work with.
+			continue
+		}
+
+		if err := r.bundleChartsRecursive(ctx, dep, depPath); err != nil {
+			return fmt.Errorf("process dependency %q: %w", dep.Name(), err)
+		}
 	}
 
 	return nil
@@ -275,6 +278,21 @@ func GetEntrypointAndBundle(files []*helmchart.File) (string, *helmchart.File) {
 	}
 
 	return entrypoint, bundleFile
+}
+
+func hasTSFiles(chart *helmchart.Chart) bool {
+	entrypoint := findEntrypointInFiles(chart.RuntimeFiles)
+	if entrypoint != "" {
+		return true
+	}
+
+	for _, dep := range chart.Dependencies() {
+		if hasTSFiles(dep) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func findEntrypointInFiles(files []*helmchart.File) string {
