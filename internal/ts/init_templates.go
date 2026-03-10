@@ -1,12 +1,6 @@
 package ts
 
-import "fmt"
-
 const (
-	chartYamlTmpl = `apiVersion: v2
-name: %s
-version: 0.1.0
-`
 	denoJSONTmpl = `{
   "tasks": {
     "build": "%s"
@@ -235,7 +229,3 @@ service:
   port: 80
 `
 )
-
-func chartYaml(chartName string) string {
-	return fmt.Sprintf(chartYamlTmpl, chartName)
-}

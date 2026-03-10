@@ -53,56 +53,6 @@ func InitChartStructure(ctx context.Context, chartPath, chartName string) error 
 	return nil
 }
 
-func ensureValuesFile(ctx context.Context, chartPath string) error {
-	valuesPath := filepath.Join(chartPath, "values.yaml")
-
-	exists, err := fileExists(valuesPath)
-	if err != nil {
-		return fmt.Errorf("stat %s: %w", valuesPath, err)
-	}
-
-	if !exists {
-		if err := os.WriteFile(valuesPath, []byte(valuesYamlContent), 0o644); err != nil {
-			return fmt.Errorf("write %s: %w", valuesPath, err)
-		}
-
-		log.Default.Debug(ctx, "Created %s", valuesPath)
-
-		return nil
-	}
-
-	examplePath := filepath.Join(chartPath, "values-ts-example.yaml")
-
-	exists, err = fileExists(examplePath)
-	if err != nil {
-		return fmt.Errorf("stat %s: %w", examplePath, err)
-	}
-
-	if exists {
-		log.Default.Debug(ctx, "Skipping existing file %s", examplePath)
-		return nil
-	}
-
-	if err := os.WriteFile(examplePath, []byte(valuesYamlContent), 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", examplePath, err)
-	}
-
-	log.Default.Warn(ctx, "values.yaml already exists, created values-ts-example.yaml instead")
-
-	return nil
-}
-
-func fileExists(path string) (bool, error) {
-	_, err := os.Stat(path)
-	if err == nil {
-		return true, nil
-	}
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	return false, err
-}
-
 // InitTSBoilerplate creates TypeScript boilerplate files in ts/ directory.
 func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
 	tsDir := filepath.Join(chartPath, common.ChartTSSourceDir)
@@ -142,6 +92,46 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
 	return nil
 }
 
+func ensureValuesFile(ctx context.Context, chartPath string) error {
+	valuesPath := filepath.Join(chartPath, "values.yaml")
+
+	exists, err := fileExists(valuesPath)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		if err := os.WriteFile(valuesPath, []byte(valuesYamlContent), 0o644); err != nil {
+			return fmt.Errorf("write %s: %w", valuesPath, err)
+		}
+
+		log.Default.Debug(ctx, "Created %s", valuesPath)
+
+		return nil
+	}
+
+	examplePath := filepath.Join(chartPath, "values-ts-example.yaml")
+
+	exists, err = fileExists(examplePath)
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		log.Default.Debug(ctx, "Skipping existing file %s", examplePath)
+
+		return nil
+	}
+
+	if err := os.WriteFile(examplePath, []byte(valuesYamlContent), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", examplePath, err)
+	}
+
+	log.Default.Warn(ctx, "values.yaml already exists, created values-ts-example.yaml instead")
+
+	return nil
+}
+
 // ensureFileEntries ensures a file contains all required entries.
 // If file doesn't exist, creates it with defaultContent.
 // If file exists, appends any missing entries.
@@ -177,4 +167,17 @@ func ensureFileEntries(filePath, defaultContent string, requiredEntries []string
 	}
 
 	return nil
+}
+
+func fileExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+
+	return false, fmt.Errorf("stat %s: %w", path, err)
 }
