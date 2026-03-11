@@ -17,14 +17,15 @@ package action
 
 import (
 	"bytes"
+	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
-
-	"helm.sh/helm/v3/pkg/kube"
-	"helm.sh/helm/v3/pkg/release"
-	helmtime "helm.sh/helm/v3/pkg/time"
+	"github.com/werf/nelm/internal/helm/pkg/kube"
+	"github.com/werf/nelm/internal/helm/pkg/release"
+	helmtime "github.com/werf/nelm/internal/helm/pkg/time"
 )
 
 // execHook executes all of the hooks for the given hook event.
@@ -42,7 +43,7 @@ func (cfg *Configuration) execHook(rl *release.Release, hook release.HookEvent, 
 	// hooke are pre-ordered by kind, so keep order stable
 	sort.Stable(hookByWeight(executingHooks))
 
-	for _, h := range executingHooks {
+	for i, h := range executingHooks {
 		// Set default delete policy to before-hook-creation
 		if h.DeletePolicies == nil || len(h.DeletePolicies) == 0 {
 			// TODO(jlegrone): Only apply before-hook-creation delete policy to run to completion
@@ -66,7 +67,10 @@ func (cfg *Configuration) execHook(rl *release.Release, hook release.HookEvent, 
 			StartedAt: helmtime.Now(),
 			Phase:     release.HookPhaseRunning,
 		}
-		cfg.recordRelease(rl)
+
+		if err := cfg.Releases.Update(release.SetHookPhaseStageInfo(rl, i, hook)); err != nil {
+			return fmt.Errorf("error recording release: %w", err)
+		}
 
 		// As long as the implementation of WatchUntilReady does not panic, HookPhaseFailed or HookPhaseSucceeded
 		// should always be set by this function. If we fail to do that for any reason, then HookPhaseUnknown is
@@ -74,7 +78,7 @@ func (cfg *Configuration) execHook(rl *release.Release, hook release.HookEvent, 
 		h.LastRun.Phase = release.HookPhaseUnknown
 
 		// Create hook resources
-		if _, err := cfg.KubeClient.Create(resources); err != nil {
+		if _, err := cfg.KubeClient.Create(resources, kube.CreateOptions{}); err != nil {
 			h.LastRun.CompletedAt = helmtime.Now()
 			h.LastRun.Phase = release.HookPhaseFailed
 			return errors.Wrapf(err, "warning: Hook %s %s failed", hook, h.Path)
@@ -132,12 +136,12 @@ func (cfg *Configuration) deleteHookByPolicy(h *release.Hook, policy release.Hoo
 		if err != nil {
 			return errors.Wrapf(err, "unable to build kubernetes object for deleting hook %s", h.Path)
 		}
-		_, errs := cfg.KubeClient.Delete(resources)
+		_, errs := cfg.KubeClient.Delete(resources, kube.DeleteOptions{Wait: true})
 		if len(errs) > 0 {
 			return errors.New(joinErrors(errs))
 		}
 
-		//wait for resources until they are deleted to avoid conflicts
+		// wait for resources until they are deleted to avoid conflicts
 		if kubeClient, ok := cfg.KubeClient.(kube.InterfaceExt); ok {
 			if err := kubeClient.WaitForDelete(resources, timeout); err != nil {
 				return err
@@ -156,4 +160,22 @@ func hookHasDeletePolicy(h *release.Hook, policy release.HookDeletePolicy) bool 
 		}
 	}
 	return false
+}
+
+func (cfg *Configuration) deleteHooks(hooks []*release.Hook) error {
+	var manifests []string
+	for _, h := range hooks {
+		manifests = append(manifests, h.Manifest)
+	}
+
+	manifestsStr := strings.Join(manifests, "\n---\n")
+	resources, err := cfg.KubeClient.Build(bytes.NewBufferString(manifestsStr), false)
+	if err != nil {
+		return errors.Wrapf(err, "unable to build kubernetes objects for deleting hooks")
+	}
+	_, errs := cfg.KubeClient.Delete(resources, kube.DeleteOptions{Wait: true})
+	if len(errs) > 0 {
+		return errors.New(joinErrors(errs))
+	}
+	return nil
 }

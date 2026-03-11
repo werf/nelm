@@ -26,9 +26,10 @@ import (
 
 	"github.com/pkg/errors"
 
-	"helm.sh/helm/v3/internal/tlsutil"
-	"helm.sh/helm/v3/pkg/chart/loader"
-	"helm.sh/helm/v3/pkg/registry"
+	"github.com/werf/nelm/internal/helm/internal/tlsutil"
+	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
+	"github.com/werf/nelm/internal/helm/pkg/registry"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 )
 
 // OCIPusher is the default OCI backend handler
@@ -37,14 +38,14 @@ type OCIPusher struct {
 }
 
 // Push performs a Push from repo.Pusher.
-func (pusher *OCIPusher) Push(chartRef, href string, options ...Option) error {
+func (pusher *OCIPusher) Push(chartRef, href string, opts helmopts.HelmOptions, options ...Option) error {
 	for _, opt := range options {
 		opt(&pusher.opts)
 	}
-	return pusher.push(chartRef, href)
+	return pusher.push(chartRef, href, opts)
 }
 
-func (pusher *OCIPusher) push(chartRef, href string) error {
+func (pusher *OCIPusher) push(chartRef, href string, opts helmopts.HelmOptions) error {
 	stat, err := os.Stat(chartRef)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -56,7 +57,7 @@ func (pusher *OCIPusher) push(chartRef, href string) error {
 		return errors.New("cannot push directory, must provide chart archive (.tgz)")
 	}
 
-	meta, err := loader.Load(chartRef)
+	meta, err := loader.Load(chartRef, opts)
 	if err != nil {
 		return err
 	}
@@ -89,7 +90,7 @@ func (pusher *OCIPusher) push(chartRef, href string) error {
 		path.Join(strings.TrimPrefix(href, fmt.Sprintf("%s://", registry.OCIScheme)), meta.Metadata.Name),
 		meta.Metadata.Version)
 
-	_, err = client.Push(chartBytes, ref, pushOpts...)
+	_, err = client.Push(chartBytes, ref, opts, pushOpts...)
 	return err
 }
 

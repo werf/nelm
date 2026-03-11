@@ -17,6 +17,7 @@ limitations under the License.
 package kube
 
 import (
+	"context"
 	"io"
 	"time"
 
@@ -30,7 +31,7 @@ import (
 // A KubernetesClient must be concurrency safe.
 type Interface interface {
 	// Create creates one or more resources.
-	Create(resources ResourceList) (*Result, error)
+	Create(resources ResourceList, opts CreateOptions) (*Result, error)
 
 	// Wait waits up to the given timeout for the specified resources to be ready.
 	Wait(resources ResourceList, timeout time.Duration) error
@@ -39,7 +40,8 @@ type Interface interface {
 	WaitWithJobs(resources ResourceList, timeout time.Duration) error
 
 	// Delete destroys one or more resources.
-	Delete(resources ResourceList) (*Result, []error)
+	Delete(resources ResourceList, opts DeleteOptions) (*Result, []error)
+	DeleteNamespace(ctx context.Context, namespace string, opts DeleteOptions) error
 
 	// WatchUntilReady watches the resources given and waits until it is ready.
 	//
@@ -54,7 +56,7 @@ type Interface interface {
 
 	// Update updates one or more resources or creates the resource
 	// if it doesn't exist.
-	Update(original, target ResourceList, force bool) (*Result, error)
+	Update(original, target ResourceList, force bool, opts UpdateOptions) (*Result, error)
 
 	// Build creates a resource list from a Reader.
 	//
@@ -85,7 +87,7 @@ type InterfaceExt interface {
 // TODO Helm 4: Remove InterfaceDeletionPropagation and integrate its method(s) into the Interface.
 type InterfaceDeletionPropagation interface {
 	// Delete destroys one or more resources. The deletion propagation is handled as per the given deletion propagation value.
-	DeleteWithPropagationPolicy(resources ResourceList, policy metav1.DeletionPropagation) (*Result, []error)
+	DeleteWithPropagationPolicy(resources ResourceList, policy metav1.DeletionPropagation, opts DeleteOptions) (*Result, []error)
 }
 
 // InterfaceResources is introduced to avoid breaking backwards compatibility for Interface implementers.
@@ -114,3 +116,21 @@ var _ Interface = (*Client)(nil)
 var _ InterfaceExt = (*Client)(nil)
 var _ InterfaceDeletionPropagation = (*Client)(nil)
 var _ InterfaceResources = (*Client)(nil)
+
+type CreateOptions struct {
+	SkipIfAlreadyExists bool
+}
+
+type UpdateOptions struct {
+	SkipDeleteIfInvalidOwnership bool
+	ReleaseName                  string // Required if SkipDeleteIfInvalidOwnership == true
+	ReleaseNamespace             string // Required if SkipDeleteIfInvalidOwnership == true
+}
+
+type DeleteOptions struct {
+	Wait                   bool
+	WaitTimeout            time.Duration
+	SkipIfInvalidOwnership bool
+	ReleaseName            string // Required if SkipIfInvalidOwnership == true
+	ReleaseNamespace       string // Required if SkipIfInvalidOwnership == true
+}

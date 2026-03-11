@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package helm
 
 import (
 	"fmt"
@@ -25,10 +25,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
-	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/cli/values"
-	"helm.sh/helm/v3/pkg/downloader"
-	"helm.sh/helm/v3/pkg/getter"
+	"github.com/werf/nelm/internal/helm/pkg/action"
+	"github.com/werf/nelm/internal/helm/pkg/cli/values"
+	"github.com/werf/nelm/internal/helm/pkg/downloader"
+	"github.com/werf/nelm/internal/helm/pkg/getter"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 )
 
 const packageDesc = `
@@ -67,10 +68,17 @@ func newPackageCmd(cfg *action.Configuration, out io.Writer) *cobra.Command {
 					return errors.New("--keyring is required for signing a package")
 				}
 			}
+
+			opts := helmopts.HelmOptions{
+				ChartLoadOpts: helmopts.ChartLoadOptions{
+					NoSecrets: true,
+				},
+			}
+
 			client.RepositoryConfig = settings.RepositoryConfig
 			client.RepositoryCache = settings.RepositoryCache
 			p := getter.All(settings)
-			vals, err := valueOpts.MergeValues(p)
+			vals, err := valueOpts.MergeValues(p, opts)
 			if err != nil {
 				return err
 			}
@@ -96,11 +104,14 @@ func newPackageCmd(cfg *action.Configuration, out io.Writer) *cobra.Command {
 						RepositoryCache:  settings.RepositoryCache,
 					}
 
-					if err := downloadManager.Update(); err != nil {
+					opts.ChartLoadOpts.DepDownloader = downloadManager
+
+					if err := downloadManager.Update(opts); err != nil {
 						return err
 					}
 				}
-				p, err := client.Run(path, vals)
+
+				p, err := client.Run(path, vals, opts)
 				if err != nil {
 					return err
 				}

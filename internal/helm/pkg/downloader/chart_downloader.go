@@ -26,13 +26,13 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/pkg/errors"
 
-	"helm.sh/helm/v3/internal/fileutil"
-	"helm.sh/helm/v3/internal/urlutil"
-	"helm.sh/helm/v3/pkg/getter"
-	"helm.sh/helm/v3/pkg/helmpath"
-	"helm.sh/helm/v3/pkg/provenance"
-	"helm.sh/helm/v3/pkg/registry"
-	"helm.sh/helm/v3/pkg/repo"
+	"github.com/werf/nelm/internal/helm/internal/fileutil"
+	"github.com/werf/nelm/internal/helm/internal/urlutil"
+	"github.com/werf/nelm/internal/helm/pkg/getter"
+	"github.com/werf/nelm/internal/helm/pkg/helmpath"
+	"github.com/werf/nelm/internal/helm/pkg/provenance"
+	"github.com/werf/nelm/internal/helm/pkg/registry"
+	"github.com/werf/nelm/internal/helm/pkg/repo"
 )
 
 // VerificationStrategy describes a strategy for determining whether to verify a chart.
@@ -403,4 +403,28 @@ func loadRepoConfig(file string) (*repo.File, error) {
 		return nil, err
 	}
 	return r, nil
+}
+
+type VerificationStrategyString string
+
+const (
+	VerificationStrategyStringNever      VerificationStrategyString = "never"
+	VerificationStrategyStringIfPossible VerificationStrategyString = "if-possible"
+	VerificationStrategyStringAlways     VerificationStrategyString = "always"
+	VerificationStrategyStringLater      VerificationStrategyString = "later"
+)
+
+func (s VerificationStrategyString) ToVerificationStrategy() VerificationStrategy {
+	switch s {
+	case VerificationStrategyStringNever:
+		return VerifyNever
+	case VerificationStrategyStringIfPossible:
+		return VerifyIfPossible
+	case VerificationStrategyStringAlways:
+		return VerifyAlways
+	case VerificationStrategyStringLater:
+		return VerifyLater
+	default:
+		panic("unknown VerificationStrategyString value")
+	}
 }

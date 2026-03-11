@@ -31,11 +31,12 @@ import (
 	"github.com/pkg/errors"
 	"sigs.k8s.io/yaml"
 
-	"helm.sh/helm/v3/internal/fileutil"
-	"helm.sh/helm/v3/internal/urlutil"
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chart/loader"
-	"helm.sh/helm/v3/pkg/provenance"
+	"github.com/werf/nelm/internal/helm/internal/fileutil"
+	"github.com/werf/nelm/internal/helm/internal/urlutil"
+	"github.com/werf/nelm/internal/helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
+	"github.com/werf/nelm/internal/helm/pkg/provenance"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 )
 
 var indexPath = "index.yaml"
@@ -295,7 +296,7 @@ type ChartVersion struct {
 // It indexes only charts that have been packaged (*.tgz).
 //
 // The index returned will be in an unsorted state
-func IndexDirectory(dir, baseURL string) (*IndexFile, error) {
+func IndexDirectory(dir, baseURL string, opts helmopts.HelmOptions) (*IndexFile, error) {
 	archives, err := filepath.Glob(filepath.Join(dir, "*.tgz"))
 	if err != nil {
 		return nil, err
@@ -322,7 +323,7 @@ func IndexDirectory(dir, baseURL string) (*IndexFile, error) {
 			parentURL = path.Join(baseURL, parentDir)
 		}
 
-		c, err := loader.Load(arch)
+		c, err := loader.Load(arch, opts)
 		if err != nil {
 			// Assume this is not a chart.
 			continue

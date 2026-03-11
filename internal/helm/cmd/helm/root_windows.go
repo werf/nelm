@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package helm
 
 func checkPerms() {
 	// Not yet implemented on Windows. If you know how to do a comprehensive perms

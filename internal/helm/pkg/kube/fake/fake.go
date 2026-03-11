@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/cli-runtime/pkg/resource"
 
-	"helm.sh/helm/v3/pkg/kube"
+	"github.com/werf/nelm/internal/helm/pkg/kube"
 )
 
 // FailingKubeClient implements KubeClient for testing purposes. It also has
@@ -50,11 +50,11 @@ type FailingKubeClient struct {
 }
 
 // Create returns the configured error if set or prints
-func (f *FailingKubeClient) Create(resources kube.ResourceList) (*kube.Result, error) {
+func (f *FailingKubeClient) Create(resources kube.ResourceList, opts kube.CreateOptions) (*kube.Result, error) {
 	if f.CreateError != nil {
 		return nil, f.CreateError
 	}
-	return f.PrintingKubeClient.Create(resources)
+	return f.PrintingKubeClient.Create(resources, opts)
 }
 
 // Get returns the configured error if set or prints
@@ -91,11 +91,11 @@ func (f *FailingKubeClient) WaitForDelete(resources kube.ResourceList, d time.Du
 }
 
 // Delete returns the configured error if set or prints
-func (f *FailingKubeClient) Delete(resources kube.ResourceList) (*kube.Result, []error) {
+func (f *FailingKubeClient) Delete(resources kube.ResourceList, opts kube.DeleteOptions) (*kube.Result, []error) {
 	if f.DeleteError != nil {
 		return nil, []error{f.DeleteError}
 	}
-	return f.PrintingKubeClient.Delete(resources)
+	return f.PrintingKubeClient.Delete(resources, opts)
 }
 
 // WatchUntilReady returns the configured error if set or prints
@@ -107,11 +107,11 @@ func (f *FailingKubeClient) WatchUntilReady(resources kube.ResourceList, d time.
 }
 
 // Update returns the configured error if set or prints
-func (f *FailingKubeClient) Update(r, modified kube.ResourceList, ignoreMe bool) (*kube.Result, error) {
+func (f *FailingKubeClient) Update(r, modified kube.ResourceList, force bool, opts kube.UpdateOptions) (*kube.Result, error) {
 	if f.UpdateError != nil {
 		return &kube.Result{}, f.UpdateError
 	}
-	return f.PrintingKubeClient.Update(r, modified, ignoreMe)
+	return f.PrintingKubeClient.Update(r, modified, force, opts)
 }
 
 // Build returns the configured error if set or prints
@@ -142,11 +142,11 @@ func (f *FailingKubeClient) WaitAndGetCompletedPodPhase(s string, d time.Duratio
 }
 
 // DeleteWithPropagationPolicy returns the configured error if set or prints
-func (f *FailingKubeClient) DeleteWithPropagationPolicy(resources kube.ResourceList, policy metav1.DeletionPropagation) (*kube.Result, []error) {
+func (f *FailingKubeClient) DeleteWithPropagationPolicy(resources kube.ResourceList, policy metav1.DeletionPropagation, opts kube.DeleteOptions) (*kube.Result, []error) {
 	if f.DeleteWithPropagationError != nil {
 		return nil, []error{f.DeleteWithPropagationError}
 	}
-	return f.PrintingKubeClient.DeleteWithPropagationPolicy(resources, policy)
+	return f.PrintingKubeClient.DeleteWithPropagationPolicy(resources, policy, opts)
 }
 
 func createDummyResourceList() kube.ResourceList {

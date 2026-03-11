@@ -22,9 +22,9 @@ import (
 
 	"github.com/pkg/errors"
 
-	rspb "helm.sh/helm/v3/pkg/release"
-	relutil "helm.sh/helm/v3/pkg/releaseutil"
-	"helm.sh/helm/v3/pkg/storage/driver"
+	rspb "github.com/werf/nelm/internal/helm/pkg/release"
+	relutil "github.com/werf/nelm/internal/helm/pkg/releaseutil"
+	"github.com/werf/nelm/internal/helm/pkg/storage/driver"
 )
 
 // HelmStorageType is the type field of the Kubernetes storage object which stores the Helm release
@@ -263,4 +263,23 @@ func Init(d driver.Driver) *Storage {
 		Driver: d,
 		Log:    func(_ string, _ ...interface{}) {},
 	}
+}
+
+func (s *Storage) HistoryUntilRevision(name string, ignoreSinceRevision int) ([]*rspb.Release, error) {
+	history, err := s.History(name)
+	if err != nil {
+		return nil, fmt.Errorf("error getting release history: %w", err)
+	}
+
+	relutil.SortByRevision(history)
+
+	resultLength := len(history)
+	for i, release := range history {
+		if release.Version == ignoreSinceRevision {
+			resultLength = i
+			break
+		}
+	}
+
+	return history[:resultLength], nil
 }

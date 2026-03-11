@@ -30,7 +30,7 @@ import (
 	// Import pq for postgres dialect
 	_ "github.com/lib/pq"
 
-	rspb "helm.sh/helm/v3/pkg/release"
+	rspb "github.com/werf/nelm/internal/helm/pkg/release"
 )
 
 var _ Driver = (*SQL)(nil)

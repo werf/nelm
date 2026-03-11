@@ -27,8 +27,9 @@ import (
 	"github.com/pkg/errors"
 	"sigs.k8s.io/yaml"
 
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chart/loader"
+	"github.com/werf/nelm/internal/helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 )
 
 // chartName is a regular expression for testing the supplied name of a chart.
@@ -547,8 +548,8 @@ spec:
 var Stderr io.Writer = os.Stderr
 
 // CreateFrom creates a new chart, but scaffolds it from the src chart.
-func CreateFrom(chartfile *chart.Metadata, dest, src string) error {
-	schart, err := loader.Load(src)
+func CreateFrom(chartfile *chart.Metadata, dest, src string, opts helmopts.HelmOptions) error {
+	schart, err := loader.Load(src, opts)
 	if err != nil {
 		return errors.Wrapf(err, "could not load %s", src)
 	}

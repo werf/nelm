@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package helm
 
 import (
 	"io"
@@ -23,7 +23,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
-	"helm.sh/helm/v3/cmd/helm/require"
+	"github.com/werf/nelm/internal/helm/cmd/helm/require"
 )
 
 var repoHelm = `
@@ -41,9 +41,7 @@ func newRepoCmd(out io.Writer) *cobra.Command {
 	}
 
 	cmd.AddCommand(newRepoAddCmd(out))
-	cmd.AddCommand(newRepoListCmd(out))
 	cmd.AddCommand(newRepoRemoveCmd(out))
-	cmd.AddCommand(newRepoIndexCmd(out))
 	cmd.AddCommand(newRepoUpdateCmd(out))
 
 	return cmd

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main // import "helm.sh/helm/v3/cmd/helm"
+package helm // import "helm.sh/helm/v3/cmd/helm"
 
 import (
 	"context"
@@ -29,9 +29,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/registry"
-	"helm.sh/helm/v3/pkg/repo"
+	"github.com/werf/nelm/internal/helm/pkg/action"
+	"github.com/werf/nelm/internal/helm/pkg/registry"
+	"github.com/werf/nelm/internal/helm/pkg/repo"
 )
 
 var globalUsage = `The Kubernetes package manager
@@ -151,7 +151,7 @@ func newRootCmd(actionConfig *action.Configuration, out io.Writer, args []string
 	// This call is required to gather configuration information prior to
 	// execution.
 	flags.ParseErrorsWhitelist.UnknownFlags = true
-	flags.Parse(args)
+	// flags.Parse(args)
 
 	registryClient, err := newDefaultRegistryClient(false)
 	if err != nil {
@@ -161,45 +161,24 @@ func newRootCmd(actionConfig *action.Configuration, out io.Writer, args []string
 
 	// Add subcommands
 	cmd.AddCommand(
-		// chart commands
-		newCreateCmd(out),
 		newDependencyCmd(actionConfig, out),
 		newPullCmd(actionConfig, out),
-		newShowCmd(actionConfig, out),
-		newLintCmd(out),
 		newPackageCmd(actionConfig, out),
 		newRepoCmd(out),
 		newSearchCmd(out),
 		newVerifyCmd(out),
 
-		// release commands
-		newGetCmd(actionConfig, out),
 		newHistoryCmd(actionConfig, out),
-		newInstallCmd(actionConfig, out),
 		newListCmd(actionConfig, out),
-		newReleaseTestCmd(actionConfig, out),
-		newRollbackCmd(actionConfig, out),
-		newStatusCmd(actionConfig, out),
-		newTemplateCmd(actionConfig, out),
-		newUninstallCmd(actionConfig, out),
-		newUpgradeCmd(actionConfig, out),
 
 		newCompletionCmd(out),
-		newEnvCmd(out),
-		newPluginCmd(out),
-		newVersionCmd(out),
 
-		// Hidden documentation generator command: 'helm docs'
-		newDocsCmd(out),
-	)
-
-	cmd.AddCommand(
 		newRegistryCmd(actionConfig, out),
 		newPushCmd(actionConfig, out),
 	)
 
 	// Find and add plugins
-	loadPlugins(cmd, out)
+	// loadPlugins(cmd, out)
 
 	// Check permissions on critical files
 	checkPerms()

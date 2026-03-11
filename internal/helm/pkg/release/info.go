@@ -18,7 +18,7 @@ package release
 import (
 	"k8s.io/apimachinery/pkg/runtime"
 
-	"helm.sh/helm/v3/pkg/time"
+	"github.com/werf/nelm/internal/helm/pkg/time"
 )
 
 // Info describes release information.
@@ -37,4 +37,8 @@ type Info struct {
 	Notes string `json:"notes,omitempty"`
 	// Contains the deployed resources information
 	Resources map[string][]runtime.Object `json:"resources,omitempty"`
+
+	LastPhase   *Phase            `json:"last_phase,omitempty"`
+	LastStage   *int              `json:"last_stage,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
 }

@@ -20,7 +20,7 @@ import (
 	"sort"
 	"strconv"
 
-	rspb "helm.sh/helm/v3/pkg/release"
+	rspb "github.com/werf/nelm/internal/helm/pkg/release"
 )
 
 // records holds a list of in-memory release records

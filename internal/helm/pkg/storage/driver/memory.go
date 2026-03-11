@@ -21,7 +21,7 @@ import (
 	"strings"
 	"sync"
 
-	rspb "helm.sh/helm/v3/pkg/release"
+	rspb "github.com/werf/nelm/internal/helm/pkg/release"
 )
 
 var _ Driver = (*Memory)(nil)

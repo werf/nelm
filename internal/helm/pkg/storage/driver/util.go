@@ -23,7 +23,7 @@ import (
 	"encoding/json"
 	"io"
 
-	rspb "helm.sh/helm/v3/pkg/release"
+	rspb "github.com/werf/nelm/internal/helm/pkg/release"
 )
 
 var b64 = base64.StdEncoding

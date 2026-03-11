@@ -19,6 +19,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/werf/nelm/internal/helm/pkg/werf/secrets/runtimedata"
 )
 
 // APIVersionV1 is the API version number for version 1.
@@ -37,23 +39,30 @@ type Chart struct {
 	//
 	// This should not be used except in special cases like `helm show values`,
 	// where we want to display the raw values, comments and all.
-	Raw []*File `json:"-"`
+	Raw []*File `json:"-" copy:"shallow"`
 	// Metadata is the contents of the Chartfile.
 	Metadata *Metadata `json:"metadata"`
 	// Lock is the contents of Chart.lock.
 	Lock *Lock `json:"lock"`
 	// Templates for this chart.
-	Templates []*File `json:"templates"`
+	Templates []*File `json:"templates" copy:"shallow"`
 	// Values are default config for this chart.
 	Values map[string]interface{} `json:"values"`
 	// Schema is an optional JSON schema for imposing structure on Values
 	Schema []byte `json:"schema"`
 	// Files are miscellaneous files in a chart archive,
 	// e.g. README, LICENSE, etc.
-	Files []*File `json:"files"`
+	Files []*File `json:"files" copy:"shallow"`
+	// Files that are used at runtime, but should not be saved to secret/configmap.
+	RuntimeFiles []*File `json:"-" copy:"shallow"`
+	// Dependencies for RuntimeFiles that are used at runtime, but should not be saved to secret/configmap and not added to packaged chart.
+	RuntimeDepsFiles []*File `json:"-" copy:"shallow"`
 
 	parent       *Chart
 	dependencies []*Chart
+
+	SecretsRuntimeData runtimedata.RuntimeData `json:"-"`
+	ExtraValues        map[string]interface{}  `json:"-"`
 }
 
 type CRD struct {

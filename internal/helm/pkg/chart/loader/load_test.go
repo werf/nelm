@@ -29,15 +29,19 @@ import (
 	"testing"
 	"time"
 
-	"helm.sh/helm/v3/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 )
+
+// GlobalLoadOptions is a default set of options for testing
+var GlobalLoadOptions = &helmopts.HelmOptions{}
 
 func TestLoadDir(t *testing.T) {
 	l, err := Loader("testdata/frobnitz")
 	if err != nil {
 		t.Fatalf("Failed to load testdata: %s", err)
 	}
-	c, err := l.Load()
+	c, err := l.Load(*GlobalLoadOptions)
 	if err != nil {
 		t.Fatalf("Failed to load testdata: %s", err)
 	}
@@ -56,7 +60,7 @@ func TestLoadDirWithDevNull(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to load testdata: %s", err)
 	}
-	if _, err := l.Load(); err == nil {
+	if _, err := l.Load(*GlobalLoadOptions); err == nil {
 		t.Errorf("packages with an irregular file (/dev/null) should not load")
 	}
 }
@@ -76,7 +80,7 @@ func TestLoadDirWithSymlink(t *testing.T) {
 		t.Fatalf("Failed to load testdata: %s", err)
 	}
 
-	c, err := l.Load()
+	c, err := l.Load(*GlobalLoadOptions)
 	if err != nil {
 		t.Fatalf("Failed to load testdata: %s", err)
 	}
@@ -139,7 +143,7 @@ func TestLoadDirWithUTFBOM(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to load testdata: %s", err)
 	}
-	c, err := l.Load()
+	c, err := l.Load(*GlobalLoadOptions)
 	if err != nil {
 		t.Fatalf("Failed to load testdata: %s", err)
 	}
@@ -155,7 +159,7 @@ func TestLoadArchiveWithUTFBOM(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to load testdata: %s", err)
 	}
-	c, err := l.Load()
+	c, err := l.Load(*GlobalLoadOptions)
 	if err != nil {
 		t.Fatalf("Failed to load testdata: %s", err)
 	}
@@ -171,7 +175,7 @@ func TestLoadV1(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to load testdata: %s", err)
 	}
-	c, err := l.Load()
+	c, err := l.Load(*GlobalLoadOptions)
 	if err != nil {
 		t.Fatalf("Failed to load testdata: %s", err)
 	}
@@ -184,7 +188,7 @@ func TestLoadFileV1(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to load testdata: %s", err)
 	}
-	c, err := l.Load()
+	c, err := l.Load(*GlobalLoadOptions)
 	if err != nil {
 		t.Fatalf("Failed to load testdata: %s", err)
 	}
@@ -197,7 +201,7 @@ func TestLoadFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to load testdata: %s", err)
 	}
-	c, err := l.Load()
+	c, err := l.Load(*GlobalLoadOptions)
 	if err != nil {
 		t.Fatalf("Failed to load testdata: %s", err)
 	}
@@ -222,7 +226,7 @@ func TestLoadFiles_BadCases(t *testing.T) {
 			},
 			expectError: "validation: chart.metadata.apiVersion is required"},
 	} {
-		_, err := LoadFiles(tt.bufferedFiles)
+		_, err := LoadFiles(tt.bufferedFiles, *GlobalLoadOptions)
 		if err == nil {
 			t.Fatal("expected error when load illegal files")
 		}
@@ -273,7 +277,7 @@ icon: https://example.com/64x64.png
 		},
 	}
 
-	c, err := LoadFiles(goodFiles)
+	c, err := LoadFiles(goodFiles, *GlobalLoadOptions)
 	if err != nil {
 		t.Errorf("Expected good files to be loaded, got %v", err)
 	}
@@ -298,7 +302,7 @@ icon: https://example.com/64x64.png
 		t.Errorf("Expected number of templates == 2, got %d", len(c.Templates))
 	}
 
-	if _, err = LoadFiles([]*BufferedFile{}); err == nil {
+	if _, err = LoadFiles([]*BufferedFile{}, *GlobalLoadOptions); err == nil {
 		t.Fatal("Expected err to be non-nil")
 	}
 	if err.Error() != "Chart.yaml file is missing" {
@@ -362,7 +366,7 @@ icon: https://example.com/64x64.png
 		log.SetOutput(stderr)
 	}()
 
-	_, err = LoadFiles(goodFiles)
+	_, err = LoadFiles(goodFiles, *GlobalLoadOptions)
 	if err != nil {
 		t.Errorf("Expected good files to be loaded, got %v", err)
 	}
@@ -379,7 +383,7 @@ icon: https://example.com/64x64.png
 // Packaging the chart on a Windows machine will produce an
 // archive that has \\ as delimiters. Test that we support these archives
 func TestLoadFileBackslash(t *testing.T) {
-	c, err := Load("testdata/frobnitz_backslash-1.2.3.tgz")
+	c, err := Load("testdata/frobnitz_backslash-1.2.3.tgz", *GlobalLoadOptions)
 	if err != nil {
 		t.Fatalf("Failed to load testdata: %s", err)
 	}
@@ -393,7 +397,7 @@ func TestLoadV2WithReqs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to load testdata: %s", err)
 	}
-	c, err := l.Load()
+	c, err := l.Load(*GlobalLoadOptions)
 	if err != nil {
 		t.Fatalf("Failed to load testdata: %s", err)
 	}
@@ -454,7 +458,7 @@ func TestLoadInvalidArchive(t *testing.T) {
 	} {
 		illegalChart := filepath.Join(tmpdir, tt.chartname)
 		writeTar(illegalChart, tt.internal, []byte("hello: world"))
-		_, err := Load(illegalChart)
+		_, err := Load(illegalChart, *GlobalLoadOptions)
 		if err == nil {
 			t.Fatal("expected error when unpacking illegal files")
 		}
@@ -466,7 +470,7 @@ func TestLoadInvalidArchive(t *testing.T) {
 	// Make sure that absolute path gets interpreted as relative
 	illegalChart := filepath.Join(tmpdir, "abs-path.tgz")
 	writeTar(illegalChart, "/Chart.yaml", []byte("hello: world"))
-	_, err := Load(illegalChart)
+	_, err := Load(illegalChart, *GlobalLoadOptions)
 	if err.Error() != "validation: chart.metadata.name is required" {
 		t.Error(err)
 	}
@@ -474,7 +478,7 @@ func TestLoadInvalidArchive(t *testing.T) {
 	// And just to validate that the above was not spurious
 	illegalChart = filepath.Join(tmpdir, "abs-path2.tgz")
 	writeTar(illegalChart, "files/whatever.yaml", []byte("hello: world"))
-	_, err = Load(illegalChart)
+	_, err = Load(illegalChart, *GlobalLoadOptions)
 	if err.Error() != "Chart.yaml file is missing" {
 		t.Errorf("Unexpected error message: %s", err)
 	}
@@ -482,7 +486,7 @@ func TestLoadInvalidArchive(t *testing.T) {
 	// Finally, test that drive letter gets stripped off on Windows
 	illegalChart = filepath.Join(tmpdir, "abs-winpath.tgz")
 	writeTar(illegalChart, "c:\\Chart.yaml", []byte("hello: world"))
-	_, err = Load(illegalChart)
+	_, err = Load(illegalChart, *GlobalLoadOptions)
 	if err.Error() != "validation: chart.metadata.name is required" {
 		t.Error(err)
 	}
@@ -644,5 +648,91 @@ func verifyBomStripped(t *testing.T, files []*chart.File) {
 		if bytes.HasPrefix(file.Data, utf8bom) {
 			t.Errorf("Byte Order Mark still present in processed file %s", file.Name)
 		}
+	}
+}
+
+func TestLoadFilesRuntimeFiles(t *testing.T) {
+	files := []*BufferedFile{
+		{
+			Name: "Chart.yaml",
+			Data: []byte(`apiVersion: v2
+name: test-chart
+version: "1.0.0"
+`),
+		},
+		{
+			Name: "ts/runtime.ts",
+			Data: []byte("console.log('runtime');"),
+		},
+		{
+			Name: "ts/utils/helper.ts",
+			Data: []byte("export function helper() {}"),
+		},
+		{
+			Name: "templates/deployment.yaml",
+			Data: []byte("some deployment"),
+		},
+		{
+			Name: "values.yaml",
+			Data: []byte("key: value"),
+		},
+	}
+
+	c, err := LoadFiles(files, *GlobalLoadOptions)
+	if err != nil {
+		t.Fatalf("Expected files to be loaded, got %v", err)
+	}
+
+	// Verify RuntimeFiles are loaded correctly
+	if len(c.RuntimeFiles) != 2 {
+		t.Errorf("Expected 2 runtime files, got %d", len(c.RuntimeFiles))
+	}
+
+	expectedRuntimeFiles := map[string][]byte{
+		"ts/runtime.ts":      []byte("console.log('runtime');"),
+		"ts/utils/helper.ts": []byte("export function helper() {}"),
+	}
+
+	for _, rf := range c.RuntimeFiles {
+		expected, ok := expectedRuntimeFiles[rf.Name]
+		if !ok {
+			t.Errorf("Unexpected runtime file: %s", rf.Name)
+			continue
+		}
+		if !bytes.Equal(rf.Data, expected) {
+			t.Errorf("Runtime file %s has unexpected content", rf.Name)
+		}
+	}
+
+	// Verify runtime files are NOT in Files collection
+	for _, f := range c.Files {
+		if strings.HasPrefix(f.Name, "ts/") {
+			t.Errorf("Runtime file %s should not be in Files collection", f.Name)
+		}
+	}
+
+	// Verify runtime files are NOT in Templates collection
+	for _, f := range c.Templates {
+		if strings.HasPrefix(f.Name, "ts/") {
+			t.Errorf("Runtime file %s should not be in Templates collection", f.Name)
+		}
+	}
+
+	// Verify other files are loaded correctly
+	// Note: default ChartTypeChart adds _werf_helpers.tpl template, so we expect 2 templates
+	if len(c.Templates) != 2 {
+		t.Errorf("Expected 2 templates, got %d", len(c.Templates))
+	}
+
+	// Verify the user template is present
+	foundDeployment := false
+	for _, tmpl := range c.Templates {
+		if tmpl.Name == "templates/deployment.yaml" {
+			foundDeployment = true
+			break
+		}
+	}
+	if !foundDeployment {
+		t.Error("Expected to find templates/deployment.yaml template")
 	}
 }

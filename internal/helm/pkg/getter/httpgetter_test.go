@@ -30,9 +30,9 @@ import (
 
 	"github.com/pkg/errors"
 
-	"helm.sh/helm/v3/internal/tlsutil"
-	"helm.sh/helm/v3/internal/version"
-	"helm.sh/helm/v3/pkg/cli"
+	"github.com/werf/nelm/internal/helm/internal/tlsutil"
+	"github.com/werf/nelm/internal/helm/internal/version"
+	"github.com/werf/nelm/internal/helm/pkg/cli"
 )
 
 func TestHTTPGetter(t *testing.T) {
@@ -370,11 +370,11 @@ func TestHTTPGetterTarDownload(t *testing.T) {
 
 		b := make([]byte, 512)
 		f.Read(b)
-		//Get the file size
+		// Get the file size
 		FileStat, _ := f.Stat()
 		FileSize := strconv.FormatInt(FileStat.Size(), 10)
 
-		//Simulating improper header values from bitbucket
+		// Simulating improper header values from bitbucket
 		w.Header().Set("Content-Type", "application/x-tar")
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Header().Set("Content-Length", FileSize)

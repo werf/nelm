@@ -27,7 +27,7 @@ import (
 	"github.com/pkg/errors"
 	"sigs.k8s.io/yaml"
 
-	"helm.sh/helm/v3/pkg/cli"
+	"github.com/werf/nelm/internal/helm/pkg/cli"
 )
 
 const PluginFileName = "plugin.yaml"

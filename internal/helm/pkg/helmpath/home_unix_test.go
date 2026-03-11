@@ -20,7 +20,7 @@ import (
 	"runtime"
 	"testing"
 
-	"helm.sh/helm/v3/pkg/helmpath/xdg"
+	"github.com/werf/nelm/internal/helm/pkg/helmpath/xdg"
 )
 
 func TestHelmHome(t *testing.T) {

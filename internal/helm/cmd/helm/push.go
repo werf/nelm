@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package helm
 
 import (
 	"fmt"
@@ -22,9 +22,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"helm.sh/helm/v3/cmd/helm/require"
-	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/pusher"
+	"github.com/werf/nelm/internal/helm/cmd/helm/require"
+	"github.com/werf/nelm/internal/helm/pkg/action"
+	"github.com/werf/nelm/internal/helm/pkg/pusher"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 )
 
 const pushDesc = `
@@ -81,7 +82,14 @@ func newPushCmd(cfg *action.Configuration, out io.Writer) *cobra.Command {
 				action.WithPlainHTTP(o.plainHTTP),
 				action.WithPushOptWriter(out))
 			client.Settings = settings
-			output, err := client.Run(chartRef, remote)
+
+			opts := helmopts.HelmOptions{
+				ChartLoadOpts: helmopts.ChartLoadOptions{
+					NoSecrets: true,
+				},
+			}
+
+			output, err := client.Run(chartRef, remote, opts)
 			if err != nil {
 				return err
 			}

@@ -18,7 +18,7 @@ package installer // import "helm.sh/helm/v3/pkg/plugin/installer"
 import (
 	"path/filepath"
 
-	"helm.sh/helm/v3/pkg/cli"
+	"github.com/werf/nelm/internal/helm/pkg/cli"
 )
 
 type base struct {

@@ -19,8 +19,11 @@ package releaseutil
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/samber/lo"
 )
 
 // SimpleHead defines what the structure of the head of a manifest file
@@ -33,7 +36,7 @@ type SimpleHead struct {
 	} `json:"metadata,omitempty"`
 }
 
-var sep = regexp.MustCompile("(?:^|\\s*\n)---\\s*")
+var sep = regexp.MustCompile(`(?m)^---\s*`)
 
 // SplitManifests takes a string of manifest and returns a map contains individual manifests
 func SplitManifests(bigFile string) map[string]string {
@@ -48,11 +51,27 @@ func SplitManifests(bigFile string) map[string]string {
 	docs := sep.Split(bigFileTmp, -1)
 	var count int
 	for _, d := range docs {
+		d = strings.TrimSpace(d)
+
 		if d == "" {
 			continue
 		}
 
-		d = strings.TrimSpace(d)
+		var contentFound bool
+		for _, line := range strings.Split(d, "\n") {
+			trimmedLine := strings.TrimSpace(line)
+			if trimmedLine != "" && !strings.HasPrefix(trimmedLine, "#") {
+				contentFound = true
+				break
+			}
+		}
+
+		if !contentFound {
+			continue
+		}
+
+		d += "\n"
+
 		res[fmt.Sprintf(tpl, count)] = d
 		count = count + 1
 	}
@@ -70,3 +89,14 @@ func (a BySplitManifestsOrder) Less(i, j int) bool {
 	return anum < bnum
 }
 func (a BySplitManifestsOrder) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+
+func SplitManifestsToSlice(manifests string) []string {
+	splitManifests := SplitManifests(manifests)
+
+	keys := lo.Keys(splitManifests)
+	sort.Strings(keys)
+
+	return lo.Map(keys, func(k string, _ int) string {
+		return splitManifests[k]
+	})
+}

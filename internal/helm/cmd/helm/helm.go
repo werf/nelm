@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main // import "helm.sh/helm/v3/cmd/helm"
+package helm // import "helm.sh/helm/v3/cmd/helm"
 
 import (
 	"fmt"
@@ -29,12 +29,12 @@ import (
 	// Import to initialize client auth plugins.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/cli"
-	"helm.sh/helm/v3/pkg/kube"
-	kubefake "helm.sh/helm/v3/pkg/kube/fake"
-	"helm.sh/helm/v3/pkg/release"
-	"helm.sh/helm/v3/pkg/storage/driver"
+	"github.com/werf/nelm/internal/helm/pkg/action"
+	"github.com/werf/nelm/internal/helm/pkg/cli"
+	"github.com/werf/nelm/internal/helm/pkg/kube"
+	kubefake "github.com/werf/nelm/internal/helm/pkg/kube/fake"
+	"github.com/werf/nelm/internal/helm/pkg/release"
+	"github.com/werf/nelm/internal/helm/pkg/storage/driver"
 )
 
 var settings = cli.New()
@@ -127,4 +127,44 @@ func loadReleasesInMemory(actionConfig *action.Configuration) {
 	}
 	// Must reset namespace to the proper one
 	mem.SetNamespace(settings.Namespace())
+}
+
+func Init() (*cobra.Command, error) {
+	kube.ManagedFieldsManager = "helm"
+
+	actionConfig := new(action.Configuration)
+	cmd, err := newRootCmd(actionConfig, os.Stdout, os.Args[1:])
+	if err != nil {
+		return nil, err
+	}
+
+	setCmdPreRun(cmd, actionConfig)
+
+	return cmd, nil
+}
+
+func setCmdPreRun(cmd *cobra.Command, actionConfig *action.Configuration) {
+	originalPersistentPreRunE := cmd.PreRunE
+	cmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+		if originalPersistentPreRunE != nil {
+			if err := originalPersistentPreRunE(cmd, args); err != nil {
+				return err
+			}
+		}
+
+		helmDriver := os.Getenv("HELM_DRIVER")
+		if err := actionConfig.Init(settings.RESTClientGetter(), settings.Namespace(), helmDriver, debug); err != nil {
+			return err
+		}
+
+		if helmDriver == "memory" {
+			loadReleasesInMemory(actionConfig)
+		}
+
+		return nil
+	}
+
+	for _, cmd := range cmd.Commands() {
+		setCmdPreRun(cmd, actionConfig)
+	}
 }

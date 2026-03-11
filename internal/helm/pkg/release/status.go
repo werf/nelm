@@ -47,3 +47,7 @@ func (x Status) String() string { return string(x) }
 func (x Status) IsPending() bool {
 	return x == StatusPendingInstall || x == StatusPendingUpgrade || x == StatusPendingRollback
 }
+
+const (
+	StatusSkipped Status = "skipped"
+)

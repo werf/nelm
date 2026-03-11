@@ -25,13 +25,14 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"golang.org/x/crypto/openpgp"           //nolint
-	"golang.org/x/crypto/openpgp/clearsign" //nolint
-	"golang.org/x/crypto/openpgp/packet"    //nolint
+	"golang.org/x/crypto/openpgp"           // nolint
+	"golang.org/x/crypto/openpgp/clearsign" // nolint
+	"golang.org/x/crypto/openpgp/packet"    // nolint
 	"sigs.k8s.io/yaml"
 
-	hapi "helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chart/loader"
+	hapi "github.com/werf/nelm/internal/helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 )
 
 var defaultPGPConfig = packet.Config{
@@ -202,7 +203,7 @@ func (s *Signatory) DecryptKey(fn PassphraseFetcher) error {
 //
 // The Signatory must have a valid Entity.PrivateKey for this to work. If it does
 // not, an error will be returned.
-func (s *Signatory) ClearSign(chartpath string) (string, error) {
+func (s *Signatory) ClearSign(chartpath string, opts helmopts.HelmOptions) (string, error) {
 	if s.Entity == nil {
 		return "", errors.New("private key not found")
 	} else if s.Entity.PrivateKey == nil {
@@ -217,7 +218,7 @@ func (s *Signatory) ClearSign(chartpath string) (string, error) {
 
 	out := bytes.NewBuffer(nil)
 
-	b, err := messageBlock(chartpath)
+	b, err := messageBlock(chartpath, opts)
 	if err != nil {
 		return "", err
 	}
@@ -319,7 +320,7 @@ func (s *Signatory) verifySignature(block *clearsign.Block) (*openpgp.Entity, er
 	)
 }
 
-func messageBlock(chartpath string) (*bytes.Buffer, error) {
+func messageBlock(chartpath string, opts helmopts.HelmOptions) (*bytes.Buffer, error) {
 	var b *bytes.Buffer
 	// Checksum the archive
 	chash, err := DigestFile(chartpath)
@@ -335,7 +336,7 @@ func messageBlock(chartpath string) (*bytes.Buffer, error) {
 	}
 
 	// Load the archive into memory.
-	chart, err := loader.LoadFile(chartpath)
+	chart, err := loader.LoadFile(chartpath, opts)
 	if err != nil {
 		return b, err
 	}

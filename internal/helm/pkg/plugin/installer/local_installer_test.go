@@ -20,7 +20,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"helm.sh/helm/v3/pkg/helmpath"
+	"github.com/werf/nelm/internal/helm/pkg/helmpath"
 )
 
 var _ Installer = new(LocalInstaller)

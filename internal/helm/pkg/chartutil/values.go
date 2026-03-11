@@ -19,13 +19,15 @@ package chartutil
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/samber/lo"
 	"sigs.k8s.io/yaml"
 
-	"helm.sh/helm/v3/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/chart"
 )
 
 // GlobalKey is the name of the Values key that is used for storing global vars.
@@ -134,10 +136,11 @@ type ReleaseOptions struct {
 // ToRenderValues composes the struct from the data coming from the Releases, Charts and Values files
 //
 // This takes both ReleaseOptions and Capabilities to merge into the render values.
-func ToRenderValues(chrt *chart.Chart, chrtVals map[string]interface{}, options ReleaseOptions, caps *Capabilities) (Values, error) {
+func ToRenderValues(chrt *chart.Chart, chrtVals map[string]interface{}, options ReleaseOptions, caps *Capabilities, runtime, defaultRootContext map[string]interface{}) (Values, error) {
 	if caps == nil {
 		caps = DefaultCapabilities
 	}
+
 	top := map[string]interface{}{
 		"Chart":        chrt.Metadata,
 		"Capabilities": caps,
@@ -149,7 +152,10 @@ func ToRenderValues(chrt *chart.Chart, chrtVals map[string]interface{}, options 
 			"Revision":  options.Revision,
 			"Service":   "Helm",
 		},
+		"Runtime": runtime,
 	}
+
+	top = lo.Assign(defaultRootContext, top)
 
 	vals, err := CoalesceValues(chrt, chrtVals)
 	if err != nil {
@@ -158,7 +164,12 @@ func ToRenderValues(chrt *chart.Chart, chrtVals map[string]interface{}, options 
 
 	if err := ValidateAgainstSchema(chrt, vals); err != nil {
 		errFmt := "values don't meet the specifications of the schema(s) in the following chart(s):\n%s"
-		return top, fmt.Errorf(errFmt, err.Error())
+
+		if strings.Contains(err.Error(), "(root): Additional property werf is not allowed") {
+			log.Printf("Warning: %s", fmt.Sprintf(errFmt, err.Error()))
+		} else {
+			return top, fmt.Errorf(errFmt, err.Error())
+		}
 	}
 
 	top["Values"] = vals

@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"helm.sh/helm/v3/pkg/registry"
+	"github.com/werf/nelm/internal/helm/pkg/registry"
 )
 
 func TestOCIGetter(t *testing.T) {

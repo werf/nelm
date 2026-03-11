@@ -17,7 +17,7 @@ limitations under the License.
 package releaseutil
 
 import (
-	"log"
+	"fmt"
 	"path"
 	"sort"
 	"strconv"
@@ -26,8 +26,8 @@ import (
 	"github.com/pkg/errors"
 	"sigs.k8s.io/yaml"
 
-	"helm.sh/helm/v3/pkg/chartutil"
-	"helm.sh/helm/v3/pkg/release"
+	"github.com/werf/nelm/internal/helm/pkg/chartutil"
+	"github.com/werf/nelm/internal/helm/pkg/release"
 )
 
 // Manifest represents a manifest file, which has a name and some content.
@@ -177,20 +177,13 @@ func (file *manifestFile) sort(result *result) error {
 			DeletePolicies: []release.HookDeletePolicy{},
 		}
 
-		isUnknownHook := false
 		for _, hookType := range strings.Split(hookTypes, ",") {
 			hookType = strings.ToLower(strings.TrimSpace(hookType))
 			e, ok := events[hookType]
 			if !ok {
-				isUnknownHook = true
-				break
+				continue
 			}
 			h.Events = append(h.Events, e)
-		}
-
-		if isUnknownHook {
-			log.Printf("info: skipping unknown hook: %q", hookTypes)
-			continue
 		}
 
 		result.hooks = append(result.hooks, h)
@@ -230,4 +223,20 @@ func operateAnnotationValues(entry SimpleHead, annotation string, operate func(p
 			operate(dp)
 		}
 	}
+}
+
+func HookManifestToHook(manifest, filePath string) (*release.Hook, error) {
+	manifestFile := &manifestFile{
+		entries: map[string]string{
+			"0": manifest,
+		},
+		path: filePath,
+	}
+
+	res := &result{}
+	if err := manifestFile.sort(res); err != nil {
+		return nil, fmt.Errorf("sort hook manifest file: %w", err)
+	}
+
+	return res.hooks[0], nil
 }
