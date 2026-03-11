@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/samber/lo"
@@ -232,6 +233,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		}
 	}
 
+	var once sync.Once
 	for filePath, fileContent := range renderedTemplates {
 		if strings.HasPrefix(path.Base(filePath), "_") ||
 			strings.HasSuffix(filePath, action.NotesFileSuffix) ||
@@ -239,7 +241,10 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 			continue
 		}
 
-		log.Default.Debug(ctx, "Rendered content of %q: \n%s\n", filePath, fileContent)
+		once.Do(func() {
+			log.Default.Debug(ctx, "Rendered content:")
+		})
+		log.Default.Debug(ctx, "---\n# Source: %s\n%s\n", filePath, fileContent)
 	}
 
 	if r, err := renderedTemplatesToResourceSpecs(renderedTemplates, releaseNamespace, opts); err != nil {
