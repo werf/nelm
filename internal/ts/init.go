@@ -27,8 +27,8 @@ func EnsureGitignore(chartPath string) error {
 	)
 }
 
-// InitChartStructure creates Chart.yaml and values.yaml if they don't exist.
-// For .helmignore: creates if missing, or appends TS entries if exists.
+// InitChartStructure creates values.yaml and .helmignore if they don't exist.
+// If values.yaml already exists, creates values-ts-example.yaml instead.
 // Returns error if ts/ directory already exists.
 func InitChartStructure(ctx context.Context, chartPath, chartName string) error {
 	tsDir := filepath.Join(chartPath, common.ChartTSSourceDir)
