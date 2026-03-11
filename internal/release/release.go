@@ -14,10 +14,10 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/yaml"
 
-	helmchart "github.com/werf/3p-helm/pkg/chart"
-	"github.com/werf/3p-helm/pkg/chartutil"
-	helmrelease "github.com/werf/3p-helm/pkg/release"
-	"github.com/werf/3p-helm/pkg/releaseutil"
+	helmchart "github.com/werf/nelm/internal/helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/chartutil"
+	helmrelease "github.com/werf/nelm/internal/helm/pkg/release"
+	"github.com/werf/nelm/internal/helm/pkg/releaseutil"
 	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/pkg/common"
 )

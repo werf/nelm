@@ -13,9 +13,9 @@ import (
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 
-	helm_v3 "github.com/werf/3p-helm/cmd/helm"
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/logboek"
+	helm_v3 "github.com/werf/nelm/internal/helm/cmd/helm"
 	"github.com/werf/nelm/pkg/action"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
