@@ -13,9 +13,9 @@ import (
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 
-	"github.com/werf/3p-helm/pkg/chart/loader"
-	"github.com/werf/3p-helm/pkg/chartutil"
-	helmrelease "github.com/werf/3p-helm/pkg/release"
+	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
+	"github.com/werf/nelm/internal/helm/pkg/chartutil"
+	helmrelease "github.com/werf/nelm/internal/helm/pkg/release"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/internal/resource/spec"

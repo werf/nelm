@@ -9,8 +9,8 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	helmchart "github.com/werf/3p-helm/pkg/chart"
-	"github.com/werf/3p-helm/pkg/chartutil"
+	helmchart "github.com/werf/nelm/internal/helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/chartutil"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 )

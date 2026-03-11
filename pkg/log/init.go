@@ -18,9 +18,9 @@ import (
 	"k8s.io/klog"
 	klogv2 "k8s.io/klog/v2"
 
-	"github.com/werf/3p-helm/pkg/engine"
 	"github.com/werf/kubedog/pkg/tracker/debug"
 	"github.com/werf/logboek"
+	"github.com/werf/nelm/internal/helm/pkg/engine"
 )
 
 var Default Logger = NewLogboekLogger()

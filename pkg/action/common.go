@@ -16,11 +16,11 @@ import (
 	"github.com/samber/lo"
 	"github.com/xo/terminfo"
 
-	helmrelease "github.com/werf/3p-helm/pkg/release"
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
+	helmrelease "github.com/werf/nelm/internal/helm/pkg/release"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/release"

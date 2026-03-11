@@ -7,7 +7,7 @@ import (
 	"github.com/mitchellh/copystructure"
 	"github.com/samber/lo"
 
-	helmrelease "github.com/werf/3p-helm/pkg/release"
+	helmrelease "github.com/werf/nelm/internal/helm/pkg/release"
 	"github.com/werf/nelm/internal/resource"
 	"github.com/werf/nelm/pkg/common"
 )

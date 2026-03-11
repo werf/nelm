@@ -52,14 +52,14 @@ tasks:
     internal: true
     run: once
     cmds:
-      - golangci-lint run {{if eq .fix "true"}}--fix{{end}} --build-tags="{{.tags}}" {{.CLI_ARGS}} {{.paths | default "./..."}}
+      - golangci-lint run {{if eq .fix "true"}}--fix{{end}} --build-tags="{{.tags}}" {{.CLI_ARGS}} {{.paths | default "$(find internal/ -mindepth 1 -maxdepth 1 -type d ! -name helm -printf './%p/... ') ./cmd/... ./pkg/..."}}
     vars:
       paths: "{{.paths}}"
 
   _wormatter:
     internal: true
     cmds:
-      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work -w /work ghcr.io/werf/wormatter:1.4.0 {{if eq .onlyLint "true"}}-c{{end}} {{.paths | default "internal/ cmd/ pkg/"}}
+      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work -w /work ghcr.io/werf/wormatter:1.5.0 {{if eq .onlyLint "true"}}-c{{end}} -e ^internal/helm/ {{.paths | default "internal/ cmd/ pkg/"}}
     vars:
       onlyLint: '{{.onlyLint | default "false"}}'
       paths: "{{.paths}}"
@@ -213,6 +213,7 @@ tasks:
     cmds:
       - |
         ginkgo {{if eq .parallel "true" }}-p{{end}} -r -ldflags="{{.ldFlags}}" -tags="{{.tags}}" \
+          {{if .skipPackage}}--skip-package="{{.skipPackage}}"{{end}} \
           {{if .labelFilter}}--label-filter="{{.labelFilter}}"{{end}} {{.CLI_ARGS}} {{.paths}}
     vars:
       parallel: '{{.parallel | default "true"}}'
@@ -226,6 +227,7 @@ tasks:
       - task: _test:ginkgo
         vars:
           paths: "{{.paths}}"
+          skipPackage: "{{.skipPackage}}"
           labelFilter: "{{.labelFilter}}"
           parallel: "{{.parallel}}"
 
@@ -235,6 +237,7 @@ tasks:
       - task: test:ginkgo
         vars:
           paths: '{{.paths | default "./internal ./pkg ./cmd"}}'
+          skipPackage: '{{.skipPackage | default "internal/helm"}}'
           parallel: "{{.parallel}}"
 
   verify:binaries:dist:all:
@@ -296,7 +299,7 @@ tasks:
     vars:
       updateOnly: '{{.updateOnly | default "true"}}'
     cmds:
-      - docker run --rm -v "$(pwd)":/work peterdavehello/npm-doctoc doctoc --notitle {{if eq .updateOnly "true"}}--update-only{{end}} /work/{{.path | default "."}}
+      - docker run --rm -v "$(pwd)":/work peterdavehello/npm-doctoc sh -c 'find /work/{{.path | default "."}} -name "*.md" -not -path "*/internal/helm/*" -not -path "*/.git/*" -exec doctoc --notitle {{if eq .updateOnly "true"}}--update-only{{end}} {} +'
 
   lint:
     desc: 'Run all linters in parallel. Important vars: "paths".'
@@ -412,6 +415,73 @@ tasks:
     desc: "Install golangci-lint binary."
     cmds:
       - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin {{.golangcilintVersion | default "v2.5.0"}}
+
+  fork:helm:sync:
+    desc: 'Prepare upstream helm ref for merging into internal/helm/ of a current branch via a /tmp snapshot. Important vars: "ref" (required, e.g. ref=v4.1.1).'
+    vars:
+      forkPrefix: "internal/helm"
+      forkUpstreamURL: "https://github.com/helm/helm.git"
+      forkUpstreamModulePattern: 'helm\.sh/helm/v[0-9]+'
+      forkOurModule: "github.com/werf/nelm/internal/helm"
+      forkSyncBranch: "_sync-upstream-helm-{{.ref}}"
+      forkSnapshotDir: "/tmp/upstream-helm"
+      forkTempRemote: "_fork-upstream-helm-temp"
+    requires:
+      vars:
+        - ref
+    cmds:
+      - |
+        set -euo pipefail
+
+        original_ref="$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse HEAD)"
+
+        if ! git diff --quiet || ! git diff --cached --quiet; then
+          echo "ERROR: Working tree is dirty. Commit or stash changes first."
+          exit 1
+        fi
+
+        rm -rf "{{.forkSnapshotDir}}"
+        git clone --branch "{{.ref}}" --depth 1 "{{.forkUpstreamURL}}" "{{.forkSnapshotDir}}"
+
+        matched_files="$(find "{{.forkSnapshotDir}}" -not -path '*/.git/*' -type f \
+          -exec grep -rlE '{{.forkUpstreamModulePattern}}' {} + 2>/dev/null || true)"
+        if [ -n "$matched_files" ]; then
+          echo "$matched_files" | xargs sed -i -E 's|{{.forkUpstreamModulePattern}}|{{.forkOurModule}}|g'
+        fi
+
+        git -C "{{.forkSnapshotDir}}" add -A
+        git -C "{{.forkSnapshotDir}}" -c user.name="sync" -c user.email="sync@local" \
+          commit -m "prepare: rewrite imports for nelm subtree merge"
+        git -C "{{.forkSnapshotDir}}" checkout -b prepared
+
+        git remote remove "{{.forkTempRemote}}" 2>/dev/null || true
+        git remote add "{{.forkTempRemote}}" "{{.forkSnapshotDir}}"
+        git fetch "{{.forkTempRemote}}" prepared
+        git checkout -B "{{.forkSyncBranch}}" FETCH_HEAD --no-track
+
+        stripped=0
+        while IFS= read -r sync_path; do
+          if ! git -c core.quotePath=false ls-tree --name-only "${original_ref}" -- "{{.forkPrefix}}/${sync_path}" | grep -q .; then
+            git rm -rf -- "$sync_path"
+            stripped=$((stripped + 1))
+          fi
+        done < <(git ls-tree --name-only HEAD)
+
+        if ! git diff --cached --quiet; then
+          git commit -m "sync: strip paths not kept in {{.forkPrefix}}"
+        fi
+
+        git checkout "${original_ref}"
+        git remote remove "{{.forkTempRemote}}"
+        rm -rf "{{.forkSnapshotDir}}"
+
+        echo ""
+        echo "========================================================================"
+        echo "  READY. Run this to merge into the current branch:"
+        echo ""
+        echo "  git -c merge.conflictStyle=merge -c merge.renames=false \\"
+        echo "    subtree merge --prefix={{.forkPrefix}} {{.forkSyncBranch}} --squash"
+        echo "========================================================================"
 
   sign:
     desc: 'Sign last version tag + origin/main and push signatures. Important vars: "refs".'
