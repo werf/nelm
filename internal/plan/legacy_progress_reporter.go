@@ -79,9 +79,10 @@ func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[stri
 			entryIndex[op.ID()] = idx
 
 			entries = append(entries, opEntry{
-				ref:    ref,
-				status: progrep.OperationStatusPending,
-				typ:    typ,
+				iteration: int(op.Iteration),
+				ref:       ref,
+				status:    progrep.OperationStatusPending,
+				typ:       typ,
 			})
 		}
 
@@ -116,6 +117,7 @@ type progressReporterState struct {
 }
 
 type opEntry struct {
+	iteration   int
 	predIndices []int
 	ref         progrep.ObjectRef
 	status      progrep.OperationStatus
@@ -133,17 +135,24 @@ func buildProgressReport(frozen []progrep.StageReport, ops []opEntry) progrep.Pr
 
 	operations := make([]progrep.Operation, len(ops))
 	for i, e := range ops {
-		var waitingFor []progrep.ObjectRef
+		var waitingFor []progrep.OperationRef
 
 		for _, predIdx := range e.predIndices {
 			if ops[predIdx].status != progrep.OperationStatusCompleted {
-				waitingFor = append(waitingFor, ops[predIdx].ref)
+				waitingFor = append(waitingFor, progrep.OperationRef{
+					ObjectRef: ops[predIdx].ref,
+					Type:      ops[predIdx].typ,
+					Iteration: ops[predIdx].iteration,
+				})
 			}
 		}
 
 		operations[i] = progrep.Operation{
-			ObjectRef:  e.ref,
-			Type:       e.typ,
+			OperationRef: progrep.OperationRef{
+				ObjectRef: e.ref,
+				Type:      e.typ,
+				Iteration: e.iteration,
+			},
 			Status:     e.status,
 			WaitingFor: waitingFor,
 		}
@@ -160,9 +169,12 @@ func buildStageReport(ops []opEntry) progrep.StageReport {
 	operations := make([]progrep.Operation, len(ops))
 	for i, e := range ops {
 		operations[i] = progrep.Operation{
-			ObjectRef: e.ref,
-			Type:      e.typ,
-			Status:    e.status,
+			OperationRef: progrep.OperationRef{
+				ObjectRef: e.ref,
+				Type:      e.typ,
+				Iteration: e.iteration,
+			},
+			Status: e.status,
 		}
 	}
 
