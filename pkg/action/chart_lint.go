@@ -10,9 +10,9 @@ import (
 	"github.com/samber/lo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/werf/3p-helm/pkg/registry"
-	"github.com/werf/3p-helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/internal/chart"
+	"github.com/werf/nelm/internal/helm/pkg/registry"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/internal/release"

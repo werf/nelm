@@ -8,10 +8,9 @@ import (
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 
-	helm_v3 "github.com/werf/3p-helm/cmd/helm"
-	"github.com/werf/3p-helm/pkg/chart/loader"
-	"github.com/werf/3p-helm/pkg/werf/ts"
 	"github.com/werf/common-go/pkg/cli"
+	helm_v3 "github.com/werf/nelm/internal/helm/cmd/helm"
+	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
 	"github.com/werf/nelm/pkg/deno"
 	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"

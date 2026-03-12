@@ -25,26 +25,32 @@ type OperationStatus string
 // ProgressReport contains stage reports ordered chronologically; the last element is the
 // currently active stage.
 type ProgressReport struct {
-	StageReports []StageReport
+	StageReports []StageReport `json:"stageReports"`
 }
 
 // StageReport contains ALL operations in the plan -- from the very first report, every
 // operation is present (initially as Pending).
 type StageReport struct {
-	Operations []Operation
+	Operations []Operation `json:"operations"`
 }
 
 type Operation struct {
+	OperationRef
+
+	Status     OperationStatus `json:"status"`
+	WaitingFor []OperationRef  `json:"waitingFor"`
+}
+
+type OperationRef struct {
 	ObjectRef
 
-	Status     OperationStatus
-	Type       OperationType
-	WaitingFor []ObjectRef
+	Type      OperationType `json:"type"`
+	Iteration int           `json:"iteration"`
 }
 
 type ObjectRef struct {
 	schema.GroupVersionKind
 
-	Name      string
-	Namespace string
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
 }

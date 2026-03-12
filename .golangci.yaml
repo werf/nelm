@@ -102,6 +102,7 @@ linters:
       - pkg/legacy
       - internal/legacy
       - pkg/action/release_uninstall_legacy.go$
+      - internal/helm
     rules:
       - path: '.+/log/.+\.go'
         linters:
@@ -130,6 +131,7 @@ formatters:
       - third_party$
       - builtin$
       - examples$
+      - internal/helm
 
 issues:
   max-issues-per-linter: 0
