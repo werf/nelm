@@ -237,7 +237,7 @@ tasks:
       - task: test:ginkgo
         vars:
           paths: '{{.paths | default "./internal ./pkg ./cmd"}}'
-          skipPackage: '{{.skipPackage | default "internal/helm"}}'
+          skipPackage: 'internal/helm{{if .skipPackage}},{{.skipPackage}}{{end}}'
           parallel: "{{.parallel}}"
 
   verify:binaries:dist:all:
