@@ -444,21 +444,21 @@ tasks:
         git clone --branch "{{.ref}}" --depth 1 "{{.forkUpstreamURL}}" "{{.forkSnapshotDir}}"
 
         rewrite_rule="$(mktemp)"
-        cat > "$rewrite_rule" <<SGRULE
+        cat > "$rewrite_rule" <<'SGRULE'
         id: rewrite-imports
         language: Go
         rule:
-          pattern: '"\\$PATH"'
+          pattern: '"$PATH"'
           inside:
             kind: import_spec
           regex: '{{.forkUpstreamModulePattern}}'
         transform:
           NEW_PATH:
             replace:
-              source: \\$PATH
+              source: $PATH
               replace: '{{.forkUpstreamModulePattern}}'
               by: '{{.forkOurModule}}'
-        fix: '"\\$NEW_PATH"'
+        fix: '"$NEW_PATH"'
         SGRULE
         sg scan --rule "$rewrite_rule" -U "{{.forkSnapshotDir}}"
         rm -f "$rewrite_rule"
