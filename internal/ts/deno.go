@@ -25,7 +25,7 @@ var (
 	chartTSEntryPoints = [...]string{common.ChartTSEntryPointTS, common.ChartTSEntryPointJS}
 )
 
-func BundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path string, rebuild bool, binaryPath string) error {
+func BundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path string, rebuildBundle bool, binaryPath string) error {
 	if !hasTSFiles(chart) {
 		return nil
 	}
@@ -35,16 +35,16 @@ func BundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path str
 		return fmt.Errorf("ensure Deno is available: %w", err)
 	}
 
-	return bundleChartsRecursive(ctx, chart, path, rebuild, denoBin)
+	return bundleChartsRecursive(ctx, chart, path, rebuildBundle, denoBin)
 }
 
-func bundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path string, rebuild bool, denoBin string) error {
+func bundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path string, rebuildBundle bool, denoBin string) error {
 	entrypoint, bundle := getEntrypointAndBundle(chart.RuntimeFiles)
 	if entrypoint == "" {
 		return nil
 	}
 
-	if bundle == nil || rebuild {
+	if bundle == nil || rebuildBundle {
 		log.Default.Info(ctx, "Bundle TypeScript for chart %q (entrypoint: %s)", chart.Name(), entrypoint)
 
 		bundleRes, err := runDenoBundle(ctx, path, entrypoint, denoBin)
@@ -68,7 +68,7 @@ func bundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path str
 			continue
 		}
 
-		if err := bundleChartsRecursive(ctx, dep, depPath, rebuild, denoBin); err != nil {
+		if err := bundleChartsRecursive(ctx, dep, depPath, rebuildBundle, denoBin); err != nil {
 			return fmt.Errorf("process dependency %q: %w", dep.Name(), err)
 		}
 	}

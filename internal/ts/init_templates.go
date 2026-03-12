@@ -6,7 +6,7 @@ const (
     "build": "%s"
   },
   "imports": {
-    "@nelm/chart-ts-sdk": "npm:@nelm/chart-ts-sdk@^0.1.2"
+    "@nelm/chart-ts-sdk": "npm:@nelm/chart-ts-sdk@^0.1.3"
   }
 }
 `

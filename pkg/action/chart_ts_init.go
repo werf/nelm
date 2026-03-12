@@ -55,7 +55,7 @@ func ChartTSInit(ctx context.Context, opts ChartTSInitOptions) error {
 		return fmt.Errorf("ensure .gitignore: %w", err)
 	}
 
-	log.Default.Info(ctx, "Initialized TypeScript chart in %s", absPath)
+	log.Default.Info(ctx, "Initialized TypeScript files in %s", absPath)
 
 	return nil
 }
