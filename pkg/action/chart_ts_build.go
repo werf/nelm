@@ -10,12 +10,12 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/gookit/color"
 	"github.com/samber/lo"
+
 	helmchart "github.com/werf/nelm/internal/helm/pkg/chart"
 	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
 	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
-
+	"github.com/werf/nelm/internal/ts"
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/deno"
 	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
@@ -56,8 +56,7 @@ func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {
 		return fmt.Errorf("load chart: %w", err)
 	}
 
-	denoRuntime := deno.NewDenoRuntime(true, deno.DenoRuntimeOptions{BinaryPath: opts.DenoBinaryPath})
-	if err = denoRuntime.BundleChartsRecursive(ctx, chart, absPath); err != nil {
+	if err = ts.BundleChartsRecursive(ctx, chart, absPath, true, opts.DenoBinaryPath); err != nil {
 		return fmt.Errorf("process chart: %w", err)
 	}
 

@@ -25,14 +25,13 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/pkg/errors"
-	"github.com/werf/nelm/internal/ts"
 	"golang.org/x/term"
 
 	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
 	"github.com/werf/nelm/internal/helm/pkg/chartutil"
 	"github.com/werf/nelm/internal/helm/pkg/provenance"
 	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
-	"github.com/werf/nelm/pkg/deno"
+	"github.com/werf/nelm/internal/ts"
 	"github.com/werf/nelm/pkg/featgate"
 )
 
@@ -66,7 +65,7 @@ func (p *Package) Run(path string, _ map[string]interface{}, opts helmopts.HelmO
 	}
 
 	if featgate.FeatGateTypescript.Enabled() {
-		if err := deno.NewDenoRuntime(true, deno.DenoRuntimeOptions{BinaryPath: ts.DefaultDenoBinaryPath}).BundleChartsRecursive(context.Background(), ch, path); err != nil {
+		if err := ts.BundleChartsRecursive(context.Background(), ch, path, true, ts.DefaultDenoBinaryPath); err != nil {
 			return "", errors.Wrap(err, "unable to process TypeScript files in chart")
 		}
 	}

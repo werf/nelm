@@ -14,17 +14,24 @@ import (
 	helmchart "github.com/werf/nelm/internal/helm/pkg/chart"
 	"github.com/werf/nelm/internal/helm/pkg/chartutil"
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/deno"
 	"github.com/werf/nelm/pkg/log"
 )
 
 func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, rebuildBundle bool, chartPath, tempDirPath, denoBinaryPath string) (map[string]string, error) {
-	denoRuntime := deno.NewDenoRuntime(rebuildBundle, deno.DenoRuntimeOptions{BinaryPath: denoBinaryPath})
-	if err := denoRuntime.BundleChartsRecursive(ctx, chart, chartPath); err != nil {
+	if !hasTSFiles(chart) {
+		return map[string]string{}, nil
+	}
+
+	denoBin, err := getDenoBinary(ctx, denoBinaryPath)
+	if err != nil {
+		return nil, fmt.Errorf("ensure Deno is available: %w", err)
+	}
+
+	if err := bundleChartsRecursive(ctx, chart, chartPath, rebuildBundle, denoBin); err != nil {
 		return nil, fmt.Errorf("bundle chart recursive: %w", err)
 	}
 
-	allRendered, err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), chartPath, tempDirPath, denoRuntime)
+	allRendered, err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), chartPath, tempDirPath, denoBin)
 	if err != nil {
 		return nil, fmt.Errorf("render chart recursive: %w", err)
 	}
@@ -32,14 +39,14 @@ func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues cha
 	return allRendered, nil
 }
 
-func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartutil.Values, pathPrefix, chartPath, tempDirPath string, denoRuntime *deno.DenoRuntime) (map[string]string, error) {
+func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartutil.Values, pathPrefix, chartPath, tempDirPath, denoBin string) (map[string]string, error) {
 	log.Default.Debug(ctx, "Rendering TypeScript for chart %q (path prefix: %s)", chart.Name(), pathPrefix)
 
 	results := make(map[string]string)
-	entrypoint, bundle := deno.GetEntrypointAndBundle(chart.RuntimeFiles)
+	entrypoint, bundle := getEntrypointAndBundle(chart.RuntimeFiles)
 
 	if bundle != nil {
-		content, err := renderChart(ctx, bundle, chart, values, tempDirPath, denoRuntime)
+		content, err := renderChart(ctx, bundle, chart, values, tempDirPath, denoBin)
 		if err != nil {
 			return nil, fmt.Errorf("render files for chart %q: %w", chart.Name(), err)
 		}
@@ -61,7 +68,7 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 			path.Join(pathPrefix, "charts", dep.Name()),
 			filepath.Join(chartPath, "charts", dep.Name()),
 			tempDirPath,
-			denoRuntime,
+			denoBin,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("render dependency %q: %w", dep.Name(), err)
@@ -73,7 +80,7 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 	return results, nil
 }
 
-func renderChart(ctx context.Context, bundle *helmchart.File, chart *helmchart.Chart, renderedValues chartutil.Values, tempDirPath string, denoRuntime *deno.DenoRuntime) (string, error) {
+func renderChart(ctx context.Context, bundle *helmchart.File, chart *helmchart.Chart, renderedValues chartutil.Values, tempDirPath, denoBin string) (string, error) {
 	renderDir := filepath.Join(tempDirPath, "typescript-render", chart.ChartFullPath())
 	if err := os.MkdirAll(renderDir, 0o755); err != nil {
 		return "", fmt.Errorf("create temp dir for render context: %w", err)
@@ -83,7 +90,7 @@ func renderChart(ctx context.Context, bundle *helmchart.File, chart *helmchart.C
 		return "", fmt.Errorf("write input render context: %w", err)
 	}
 
-	if err := denoRuntime.RunApp(ctx, bundle.Data, renderDir); err != nil {
+	if err := runApp(ctx, bundle.Data, renderDir, denoBin); err != nil {
 		return "", fmt.Errorf("run deno app: %w", err)
 	}
 

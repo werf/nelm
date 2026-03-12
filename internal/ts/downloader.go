@@ -1,4 +1,4 @@
-package deno
+package ts
 
 import (
 	"archive/zip"
@@ -16,13 +16,13 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/gosimple/slug"
 	"github.com/samber/lo"
-	"github.com/werf/nelm/internal/helm/pkg/helmpath"
 
+	"github.com/werf/nelm/internal/helm/pkg/helmpath"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/log"
 )
 
-const version = "2.7.1"
+const denoVersion = "2.7.1"
 
 func downloadDeno(ctx context.Context, cacheDir, link string) error {
 	httpClient := util.NewRestyClient(ctx)
@@ -170,7 +170,7 @@ func getDownloadLink() (string, error) {
 		return "", fmt.Errorf("unsupported platform: %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
 
-	url := fmt.Sprintf("https://github.com/denoland/deno/releases/download/v%s/deno-%s.zip", version, target)
+	url := fmt.Sprintf("https://github.com/denoland/deno/releases/download/v%s/deno-%s.zip", denoVersion, target)
 
 	return url, nil
 }
