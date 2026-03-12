@@ -20,6 +20,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/samber/lo"
+
 	"github.com/werf/nelm/internal/helm/pkg/werf/secrets/runtimedata"
 )
 
@@ -55,8 +57,6 @@ type Chart struct {
 	Files []*File `json:"files" copy:"shallow"`
 	// Files that are used at runtime, but should not be saved to secret/configmap.
 	RuntimeFiles []*File `json:"-" copy:"shallow"`
-	// Dependencies for RuntimeFiles that are used at runtime, but should not be saved to secret/configmap and not added to packaged chart.
-	RuntimeDepsFiles []*File `json:"-" copy:"shallow"`
 
 	parent       *Chart
 	dependencies []*Chart
@@ -179,4 +179,37 @@ func (ch *Chart) CRDObjects() []CRD {
 func hasManifestExtension(fname string) bool {
 	ext := filepath.Ext(fname)
 	return strings.EqualFold(ext, ".yaml") || strings.EqualFold(ext, ".yml") || strings.EqualFold(ext, ".json")
+}
+
+func (ch *Chart) AddRuntimeFile(name string, data []byte) {
+	ch.Raw = append(ch.Raw, &File{Name: name, Data: data})
+
+	ch.RuntimeFiles = append(ch.RuntimeFiles, &File{Name: name, Data: data})
+	if !ch.IsRoot() {
+		root := ch.Root()
+		rawName := getRootRawFileName(ch, name)
+		root.Raw = append(root.Raw, &File{Name: rawName, Data: data})
+	}
+}
+
+func (ch *Chart) RemoveRuntimeFile(name string) {
+	ch.Raw = lo.Reject(ch.Raw, func(f *File, _ int) bool {
+		return f.Name == name
+	})
+
+	ch.RuntimeFiles = lo.Reject(ch.RuntimeFiles, func(f *File, _ int) bool {
+		return f.Name == name
+	})
+
+	if !ch.IsRoot() {
+		root := ch.Root()
+		rawName := getRootRawFileName(ch, name)
+		root.Raw = lo.Reject(root.Raw, func(f *File, _ int) bool {
+			return f.Name == rawName
+		})
+	}
+}
+
+func getRootRawFileName(ch *Chart, name string) string {
+	return filepath.Join(strings.TrimPrefix(ch.ChartFullPath(), ch.Root().Name()+"/"), name)
 }

@@ -16,8 +16,8 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/gosimple/slug"
 	"github.com/samber/lo"
+	"github.com/werf/nelm/internal/helm/pkg/helmpath"
 
-	"github.com/werf/3p-helm/pkg/helmpath"
 	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/log"
 )

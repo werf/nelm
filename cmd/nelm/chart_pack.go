@@ -11,8 +11,7 @@ import (
 	"github.com/werf/common-go/pkg/cli"
 	helm_v3 "github.com/werf/nelm/internal/helm/cmd/helm"
 	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
-	"github.com/werf/nelm/pkg/deno"
-	"github.com/werf/nelm/pkg/featgate"
+	"github.com/werf/nelm/internal/ts"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -28,8 +27,6 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 	cmd.Aliases = []string{}
 	cli.SetSubCommandAnnotations(cmd, 30, chartCmdGroup)
 
-	var denoBinaryPath string
-
 	originalRunE := cmd.RunE
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		helmSettings := helm_v3.Settings
@@ -37,10 +34,6 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 		ctx = log.SetupLogging(ctx, lo.Ternary(helmSettings.Debug, log.DebugLevel, log.InfoLevel), log.SetupLoggingOptions{})
 
 		loader.NoChartLockWarning = ""
-
-		if featgate.FeatGateTypescript.Enabled() {
-			ts.DefaultBundler = deno.NewDenoRuntime(true, deno.DenoRuntimeOptions{BinaryPath: denoBinaryPath})
-		}
 
 		if err := originalRunE(cmd, args); err != nil {
 			return err
@@ -50,7 +43,7 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 	}
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
-		if err := cli.AddFlag(cmd, &denoBinaryPath, "deno-binary-path", "", "Path to the Deno binary to use instead of auto-downloading.", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &ts.DefaultDenoBinaryPath, "deno-binary-path", "", "Path to the Deno binary to use instead of auto-downloading.", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                tsFlagGroup,
 		}); err != nil {

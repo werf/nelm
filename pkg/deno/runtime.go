@@ -14,17 +14,12 @@ import (
 	"github.com/gofrs/flock"
 	"github.com/samber/lo"
 
-	helmchart "github.com/werf/3p-helm/pkg/chart"
-	"github.com/werf/3p-helm/pkg/werf/ts"
+	helmchart "github.com/werf/nelm/internal/helm/pkg/chart"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 )
 
-var (
-	_ ts.Bundler = (*DenoRuntime)(nil)
-
-	ChartTSEntryPoints = [...]string{common.ChartTSEntryPointTS, common.ChartTSEntryPointJS}
-)
+var ChartTSEntryPoints = [...]string{common.ChartTSEntryPointTS, common.ChartTSEntryPointJS}
 
 type DenoRuntime struct {
 	binPath string

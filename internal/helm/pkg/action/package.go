@@ -18,18 +18,22 @@ package action
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"syscall"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/pkg/errors"
+	"github.com/werf/nelm/internal/ts"
 	"golang.org/x/term"
 
 	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
 	"github.com/werf/nelm/internal/helm/pkg/chartutil"
 	"github.com/werf/nelm/internal/helm/pkg/provenance"
 	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/pkg/deno"
+	"github.com/werf/nelm/pkg/featgate"
 )
 
 // Package is the action for packaging a chart.
@@ -59,6 +63,12 @@ func (p *Package) Run(path string, _ map[string]interface{}, opts helmopts.HelmO
 	ch, err := loader.LoadDir(path, opts)
 	if err != nil {
 		return "", err
+	}
+
+	if featgate.FeatGateTypescript.Enabled() {
+		if err := deno.NewDenoRuntime(true, deno.DenoRuntimeOptions{BinaryPath: ts.DefaultDenoBinaryPath}).BundleChartsRecursive(context.Background(), ch, path); err != nil {
+			return "", errors.Wrap(err, "unable to process TypeScript files in chart")
+		}
 	}
 
 	// If version is set, modify the version.
@@ -137,7 +147,7 @@ func (p *Package) Clearsign(filename string, opts helmopts.HelmOptions) error {
 		return err
 	}
 
-	return os.WriteFile(filename+".prov", []byte(sig), 0644)
+	return os.WriteFile(filename+".prov", []byte(sig), 0o644)
 }
 
 // promptUser implements provenance.PassphraseFetcher

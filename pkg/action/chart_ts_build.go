@@ -10,10 +10,10 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/gookit/color"
 	"github.com/samber/lo"
+	helmchart "github.com/werf/nelm/internal/helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 
-	helmchart "github.com/werf/3p-helm/pkg/chart"
-	"github.com/werf/3p-helm/pkg/chart/loader"
-	"github.com/werf/3p-helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/deno"
 	"github.com/werf/nelm/pkg/featgate"
