@@ -39,24 +39,12 @@ Tool priority order: `codealive_codebase_search` / `codealive_codebase_consultan
 - When delegating code search to subagents — NEVER use `explore` for CodeAlive or LSP searches. The `explore` agent can only use grep/glob/ast_grep (OMO upstream limitation). ALWAYS use `task(category="quick")` or `task(category="deep")` for semantic search. The `librarian` agent has full CodeAlive/Context7 access and works correctly.
 - NEVER use `explore` for intent-based or behavioral queries (e.g. "how does X work?", "find the orchestration flow for Y"). These require CodeAlive, which `explore` cannot access. ALWAYS use `task(category="quick")` or `task(category="deep")` instead, or do the `codealive_codebase_search` yourself. Reserve `explore` ONLY for literal pattern matching (specific identifiers, strings, config keys).
 
-## Subagent reliability (MANDATORY)
+## Subagent tool capabilities (MANDATORY)
 
-Background subagents (`explore`, `librarian`) have known reliability issues. Tasks can silently vanish (task ID becomes unfetchable), stall (prompt received but no tool calls made), or crash without producing an error status. NEVER depend on a single background agent for critical information.
-
-- ALWAYS fire at least 2 `explore` agents when information is critical. Use different search strategies (e.g. one with grep, one with ast_grep + glob). If one fails, the other covers.
-- ALWAYS have a direct-tool fallback ready. After firing background agents, immediately start your own parallel search with `codealive_codebase_search`, `LSP`, or `grep`. Do NOT wait idle for agent results.
-- ALWAYS treat `background_output` returning "Task not found" as a silent failure, not a timing issue. The task is gone — move on to your fallback.
-- When an agent's task ID vanishes or shows `status: running` with only the initial prompt message after 30+ seconds, assume it stalled. Do NOT keep polling — use your own tools instead.
-- For this codebase, PREFER direct tools (`codealive_codebase_search` + `LSP` + `read`) over `explore` agents for targeted queries. Direct tools are 100% reliable and 3-10x faster. Reserve `explore` agents ONLY for broad multi-angle discovery where 3+ different search patterns are needed simultaneously.
-- When delegating to `librarian`, ALWAYS use maximally directive prompts that name the exact tools to call and the exact queries to run. Open-ended prompts cause the librarian to spend 40-50s "thinking" before making any tool calls. BAD: "Find the best approach for X." GOOD: "Use `context7_resolve-library-id` for 'helm', then `context7_query-docs` for 'hook lifecycle annotations helm.sh/hook'. Return the raw documentation."
-
-## Delegating with tool constraints (MANDATORY)
-
-Subagents are stateless — they do NOT read OPENCODE.md or AGENTS.md. They only know what you pass in the `prompt=` parameter. When delegating tasks that involve code search, navigation, or external lookups, ALWAYS include the relevant tool rules from this file in the delegation prompt. Without this, subagents will use wrong tools (e.g. `grep` instead of CodeAlive, guessing APIs instead of using Context7).
-
-- When delegating code search — ALWAYS include: "Use `codealive_codebase_search` for intent/behavioral queries. Call `codealive_get_data_sources` first. Use LSP `documentSymbol` to understand file structure. NEVER use grep for finding definitions or references."
-- When delegating external knowledge lookup — ALWAYS include: "Use `context7_resolve-library-id` + `context7_query-docs` for library docs. Use `grep_app_searchGitHub` for real-world usage patterns. Use `websearch_web_search_exa` for current information. NEVER guess APIs from training data."
-- When delegating to `librarian` — ALWAYS use directive prompts: "Search NOW for X and return results", not "Find the best approach for X". Librarian may get stuck planning instead of executing if the prompt is too open-ended.
+- `explore` agent can ONLY use grep/glob/ast_grep. It CANNOT use CodeAlive, LSP, or Context7. NEVER delegate intent-based or behavioral queries to `explore` — it will fail silently or return irrelevant grep matches.
+- For semantic/intent-based code search, ALWAYS use `task(category="quick"/"deep")` or do `codealive_codebase_search` directly. NEVER use `explore` as a substitute.
+- Tool rules for subagents are injected via `prompt_append` in `oh-my-opencode.json` — NEVER copy-paste tool rules into delegation prompts.
+- ALWAYS PREFER direct tools (`codealive_codebase_search` + `LSP` + `read`) over `explore` agents for targeted queries. Direct tools are faster and 100% reliable. Reserve `explore` ONLY for broad multi-angle discovery where 3+ different literal search patterns are needed simultaneously.
 
 ## External knowledge (MANDATORY)
 
