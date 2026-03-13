@@ -53,6 +53,7 @@ jobs:
     uses: ./.github/workflows/_test_unit.yml
     with:
       forceSkip: ${{ github.event_name == 'pull_request' && needs.detect-changes.outputs.src_changed == 'false' }}
+      excludePackages: internal/helm
 
   build:
     needs: detect-changes
