@@ -28,13 +28,13 @@ import (
 	"github.com/pkg/errors"
 	"sigs.k8s.io/yaml"
 
+	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/internal/helm/pkg/chart"
 	"github.com/werf/nelm/internal/helm/pkg/werf/chartextender"
 	"github.com/werf/nelm/internal/helm/pkg/werf/file"
 	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/internal/helm/pkg/werf/secrets"
 	"github.com/werf/nelm/internal/helm/pkg/werf/secrets/runtimedata"
-	"github.com/werf/common-go/pkg/secrets_manager"
 )
 
 // ChartLoader loads a chart.
@@ -173,9 +173,7 @@ func LoadFiles(files []*BufferedFile, opts helmopts.HelmOptions) (*chart.Chart, 
 			fname := strings.TrimPrefix(f.Name, "charts/")
 			cname := strings.SplitN(fname, "/", 2)[0]
 			subcharts[cname] = append(subcharts[cname], &BufferedFile{Name: fname, Data: f.Data})
-		case strings.HasPrefix(f.Name, "ts/node_modules/"):
-			c.RuntimeDepsFiles = append(c.RuntimeDepsFiles, &chart.File{Name: f.Name, Data: f.Data})
-		case strings.HasPrefix(f.Name, "ts/"):
+		case strings.HasPrefix(f.Name, "ts/") && !strings.HasPrefix(f.Name, "ts/node_modules/"):
 			c.RuntimeFiles = append(c.RuntimeFiles, &chart.File{Name: f.Name, Data: f.Data})
 		default:
 			c.Files = append(c.Files, &chart.File{Name: f.Name, Data: f.Data})

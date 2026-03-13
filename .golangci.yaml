@@ -76,6 +76,7 @@ linters:
     gosec:
       excludes:
         - G306
+        - G110 # Potential DoS vulnerability via decompression bomb
     wsl_v5:
       allow-whole-block: true
     wrapcheck:

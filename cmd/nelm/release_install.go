@@ -313,6 +313,20 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		if err := cli.AddFlag(cmd, &cfg.IgnoreBundleJS, "ignore-bundle-js", false, IgnoreBundleJSFlagDescription, cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                tsFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.DenoBinaryPath, "deno-binary-path", "", "Path to the Deno binary to use instead of auto-downloading.", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                tsFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.PlanArtifactPath, "use-plan", "", "Use the gzip-compressed JSON plan file from the specified path during release install", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
