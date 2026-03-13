@@ -19,11 +19,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-var (
-	DefaultDenoBinaryPath string
-
-	chartTSEntryPoints = [...]string{common.ChartTSEntryPointTS, common.ChartTSEntryPointJS}
-)
+var chartTSEntryPoints = [...]string{common.ChartTSEntryPointTS, common.ChartTSEntryPointJS}
 
 func BundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path string, rebuildBundle bool, binaryPath string) error {
 	if !hasTSFiles(chart) {

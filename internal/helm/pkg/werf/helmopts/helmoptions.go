@@ -1,7 +1,8 @@
 package helmopts
 
 type HelmOptions struct {
-	ChartLoadOpts ChartLoadOptions
+	ChartLoadOpts  ChartLoadOptions
+	TypeScriptOpts TypeScriptOptions
 }
 
 type ChartLoadOptions struct {
@@ -19,6 +20,10 @@ type ChartLoadOptions struct {
 	SecretValuesFiles          []string
 	SecretWorkDir              string
 	DefaultRootContext         map[string]interface{}
+}
+
+type TypeScriptOptions struct {
+	DenoBinaryPath string
 }
 
 type ChartType string

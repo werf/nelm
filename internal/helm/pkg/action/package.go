@@ -65,7 +65,7 @@ func (p *Package) Run(path string, _ map[string]interface{}, opts helmopts.HelmO
 	}
 
 	if featgate.FeatGateTypescript.Enabled() {
-		if err := ts.BundleChartsRecursive(context.Background(), ch, path, true, ts.DefaultDenoBinaryPath); err != nil {
+		if err := ts.BundleChartsRecursive(context.Background(), ch, path, true, opts.TypeScriptOpts.DenoBinaryPath); err != nil {
 			return "", errors.Wrap(err, "unable to process TypeScript files in chart")
 		}
 	}
