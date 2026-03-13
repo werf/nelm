@@ -233,6 +233,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	}
 
 	log.Default.Debug(ctx, "Rendered content:")
+
 	for filePath, fileContent := range renderedTemplates {
 		if strings.HasPrefix(path.Base(filePath), "_") ||
 			strings.HasSuffix(filePath, action.NotesFileSuffix) ||
