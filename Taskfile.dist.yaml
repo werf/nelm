@@ -237,7 +237,7 @@ tasks:
       - task: test:ginkgo
         vars:
           paths: '{{.paths | default "./internal ./pkg ./cmd"}}'
-          skipPackage: '{{.skipPackage | default "internal/helm"}}'
+          skipPackage: 'internal/helm{{if .skipPackage}},{{.skipPackage}}{{end}}'
           parallel: "{{.parallel}}"
 
   verify:binaries:dist:all:
@@ -443,11 +443,25 @@ tasks:
         rm -rf "{{.forkSnapshotDir}}"
         git clone --branch "{{.ref}}" --depth 1 "{{.forkUpstreamURL}}" "{{.forkSnapshotDir}}"
 
-        matched_files="$(find "{{.forkSnapshotDir}}" -not -path '*/.git/*' -type f \
-          -exec grep -rlE '{{.forkUpstreamModulePattern}}' {} + 2>/dev/null || true)"
-        if [ -n "$matched_files" ]; then
-          echo "$matched_files" | xargs sed -i -E 's|{{.forkUpstreamModulePattern}}|{{.forkOurModule}}|g'
-        fi
+        rewrite_rule="$(mktemp)"
+        cat > "$rewrite_rule" <<'SGRULE'
+        id: rewrite-imports
+        language: Go
+        rule:
+          pattern: '"$PATH"'
+          inside:
+            kind: import_spec
+          regex: '{{.forkUpstreamModulePattern}}'
+        transform:
+          NEW_PATH:
+            replace:
+              source: $PATH
+              replace: '{{.forkUpstreamModulePattern}}'
+              by: '{{.forkOurModule}}'
+        fix: '"$NEW_PATH"'
+        SGRULE
+        sg scan --rule "$rewrite_rule" -U "{{.forkSnapshotDir}}"
+        rm -f "$rewrite_rule"
 
         git -C "{{.forkSnapshotDir}}" add -A
         git -C "{{.forkSnapshotDir}}" -c user.name="sync" -c user.email="sync@local" \
