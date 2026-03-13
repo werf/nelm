@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package helm_v3 // import "helm.sh/helm/v3/cmd/helm"
+package helm // import "helm.sh/helm/v3/cmd/helm"
 
 import (
 	"fmt"

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package helm_v3 // import "helm.sh/helm/v3/cmd/helm"
+package helm // import "helm.sh/helm/v3/cmd/helm"
 
 import (
 	"context"
@@ -161,39 +161,18 @@ func newRootCmd(actionConfig *action.Configuration, out io.Writer, args []string
 
 	// Add subcommands
 	cmd.AddCommand(
-		// chart commands
-		newCreateCmd(out),
 		newDependencyCmd(actionConfig, out),
 		newPullCmd(actionConfig, out),
-		newShowCmd(actionConfig, out),
-		newLintCmd(out),
 		newPackageCmd(actionConfig, out),
 		newRepoCmd(out),
 		newSearchCmd(out),
 		newVerifyCmd(out),
 
-		// release commands
-		newGetCmd(actionConfig, out),
 		newHistoryCmd(actionConfig, out),
-		newInstallCmd(actionConfig, out),
 		newListCmd(actionConfig, out),
-		newReleaseTestCmd(actionConfig, out),
-		newRollbackCmd(actionConfig, out),
-		newStatusCmd(actionConfig, out),
-		newTemplateCmd(actionConfig, out),
-		newUninstallCmd(actionConfig, out),
-		newUpgradeCmd(actionConfig, out),
 
 		newCompletionCmd(out),
-		newEnvCmd(out),
-		newPluginCmd(out),
-		newVersionCmd(out),
 
-		// Hidden documentation generator command: 'helm docs'
-		newDocsCmd(out),
-	)
-
-	cmd.AddCommand(
 		newRegistryCmd(actionConfig, out),
 		newPushCmd(actionConfig, out),
 	)

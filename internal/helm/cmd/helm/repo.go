@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package helm_v3
+package helm
 
 import (
 	"io"
@@ -41,9 +41,7 @@ func newRepoCmd(out io.Writer) *cobra.Command {
 	}
 
 	cmd.AddCommand(newRepoAddCmd(out))
-	cmd.AddCommand(newRepoListCmd(out))
 	cmd.AddCommand(newRepoRemoveCmd(out))
-	cmd.AddCommand(newRepoIndexCmd(out))
 	cmd.AddCommand(newRepoUpdateCmd(out))
 
 	return cmd
