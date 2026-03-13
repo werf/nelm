@@ -56,10 +56,10 @@ jobs:
       - name: Test
         run: |
           if ${{ inputs.coverage }}; then
-            task -p test:unit paths="$(echo ${{ inputs.packages }} | tr , ' ')" -- --coverprofile="$(openssl rand -hex 6)-coverage.out" --keep-going --skip-package '${{ inputs.excludePackages }}'
+            task -p test:unit paths="$(echo ${{ inputs.packages }} | tr , ' ')" skipPackage="${{ inputs.excludePackages }}" -- --coverprofile="$(openssl rand -hex 6)-coverage.out" --keep-going
             mv *-coverage.out "$GITHUB_WORKSPACE/coverage/"
           else
-            task -p test:unit paths="$(echo ${{ inputs.packages }} | tr , ' ')" -- --keep-going --skip-package '${{ inputs.excludePackages }}'
+            task -p test:unit paths="$(echo ${{ inputs.packages }} | tr , ' ')" skipPackage="${{ inputs.excludePackages }}" -- --keep-going
           fi
           echo loadavg: $(cat /proc/loadavg)
 
