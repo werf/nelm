@@ -12,9 +12,9 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/goccy/go-yaml"
 	"github.com/samber/lo"
 	"k8s.io/client-go/discovery"
-	"sigs.k8s.io/yaml"
 
 	"github.com/werf/nelm/internal/helm/pkg/action"
 	helmchart "github.com/werf/nelm/internal/helm/pkg/chart"
@@ -237,7 +237,17 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		}
 	}
 
-	log.Default.TraceStruct(ctx, renderedTemplates, "Rendered contents of templates/:")
+	log.Default.Debug(ctx, "Rendered content:")
+
+	for filePath, fileContent := range renderedTemplates {
+		if strings.HasPrefix(path.Base(filePath), "_") ||
+			strings.HasSuffix(filePath, action.NotesFileSuffix) ||
+			strings.TrimSpace(fileContent) == "" {
+			continue
+		}
+
+		log.Default.Debug(ctx, "---\n# Source: %s\n%s\n", filePath, fileContent)
+	}
 
 	if r, err := renderedTemplatesToResourceSpecs(renderedTemplates, releaseNamespace, opts); err != nil {
 		return nil, fmt.Errorf("convert rendered templates to installable resources for chart at %q: %w", chartPath, err)
@@ -370,10 +380,10 @@ func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, relea
 
 		manifests := releaseutil.SplitManifestsToSlice(fileContent)
 
-		for _, manifest := range manifests {
+		for idx, manifest := range manifests {
 			var head releaseutil.SimpleHead
 			if err := yaml.Unmarshal([]byte(manifest), &head); err != nil {
-				return nil, fmt.Errorf("parse YAML for %q: %w", filePath, err)
+				return nil, fmt.Errorf("parse YAML resource #%d for %q: %w", idx+1, filePath, err)
 			}
 
 			if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
