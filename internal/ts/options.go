@@ -1,24 +1,24 @@
 package ts
 
-import "context"
+import (
+	"context"
+
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
+)
 
 var tsOptionsKey chartTSOptionsKey
 
 type chartTSOptionsKey struct{}
 
-type ChartTSOptions struct {
-	DenoBinaryPath string
-}
-
-func GetTSOptionsFromContext(ctx context.Context) ChartTSOptions {
-	opts, ok := ctx.Value(tsOptionsKey).(ChartTSOptions)
+func GetTSOptionsFromContext(ctx context.Context) helmopts.TypeScriptOptions {
+	opts, ok := ctx.Value(tsOptionsKey).(helmopts.TypeScriptOptions)
 	if !ok {
-		return ChartTSOptions{}
+		return helmopts.TypeScriptOptions{}
 	}
 
 	return opts
 }
 
-func NewContextWithTSOptions(ctx context.Context, opts ChartTSOptions) context.Context {
+func NewContextWithTSOptions(ctx context.Context, opts helmopts.TypeScriptOptions) context.Context {
 	return context.WithValue(ctx, tsOptionsKey, opts)
 }

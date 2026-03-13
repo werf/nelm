@@ -11,12 +11,13 @@ import (
 	"github.com/werf/common-go/pkg/cli"
 	helm_v3 "github.com/werf/nelm/internal/helm/cmd/helm"
 	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/internal/ts"
 	"github.com/werf/nelm/pkg/log"
 )
 
 func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
-	opts := ts.ChartTSOptions{}
+	opts := helmopts.TypeScriptOptions{}
 	cmd := lo.Must(lo.Find(helmRootCmd.Commands(), func(c *cobra.Command) bool {
 		return strings.HasPrefix(c.Use, "package")
 	}))
