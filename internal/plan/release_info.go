@@ -3,7 +3,7 @@ package plan
 import (
 	"context"
 
-	helmrelease "github.com/werf/3p-helm/pkg/release"
+	helmrelease "github.com/werf/nelm/internal/helm/pkg/release"
 	"github.com/werf/nelm/pkg/common"
 )
 

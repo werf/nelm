@@ -3,8 +3,8 @@ package ts
 import (
 	"strings"
 
-	helmchart "github.com/werf/3p-helm/pkg/chart"
-	"github.com/werf/3p-helm/pkg/werf/file"
+	helmchart "github.com/werf/nelm/internal/helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/werf/file"
 	"github.com/werf/nelm/pkg/common"
 )
 

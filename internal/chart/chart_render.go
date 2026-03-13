@@ -16,20 +16,20 @@ import (
 	"k8s.io/client-go/discovery"
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/3p-helm/pkg/action"
-	helmchart "github.com/werf/3p-helm/pkg/chart"
-	"github.com/werf/3p-helm/pkg/chart/loader"
-	"github.com/werf/3p-helm/pkg/chartutil"
-	"github.com/werf/3p-helm/pkg/cli"
-	"github.com/werf/3p-helm/pkg/cli/values"
-	helmdownloader "github.com/werf/3p-helm/pkg/downloader"
-	helmengine "github.com/werf/3p-helm/pkg/engine"
-	"github.com/werf/3p-helm/pkg/getter"
-	"github.com/werf/3p-helm/pkg/helmpath"
-	"github.com/werf/3p-helm/pkg/registry"
-	"github.com/werf/3p-helm/pkg/releaseutil"
-	"github.com/werf/3p-helm/pkg/strvals"
-	"github.com/werf/3p-helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/internal/helm/pkg/action"
+	helmchart "github.com/werf/nelm/internal/helm/pkg/chart"
+	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
+	"github.com/werf/nelm/internal/helm/pkg/chartutil"
+	"github.com/werf/nelm/internal/helm/pkg/cli"
+	"github.com/werf/nelm/internal/helm/pkg/cli/values"
+	helmdownloader "github.com/werf/nelm/internal/helm/pkg/downloader"
+	helmengine "github.com/werf/nelm/internal/helm/pkg/engine"
+	"github.com/werf/nelm/internal/helm/pkg/getter"
+	"github.com/werf/nelm/internal/helm/pkg/helmpath"
+	"github.com/werf/nelm/internal/helm/pkg/registry"
+	"github.com/werf/nelm/internal/helm/pkg/releaseutil"
+	"github.com/werf/nelm/internal/helm/pkg/strvals"
+	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/internal/kube"
 	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/internal/ts"
@@ -232,7 +232,17 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		}
 	}
 
-	log.Default.TraceStruct(ctx, renderedTemplates, "Rendered contents of templates/:")
+	log.Default.Debug(ctx, "Rendered content:")
+
+	for filePath, fileContent := range renderedTemplates {
+		if strings.HasPrefix(path.Base(filePath), "_") ||
+			strings.HasSuffix(filePath, action.NotesFileSuffix) ||
+			strings.TrimSpace(fileContent) == "" {
+			continue
+		}
+
+		log.Default.Debug(ctx, "---\n# Source: %s\n%s\n", filePath, fileContent)
+	}
 
 	if r, err := renderedTemplatesToResourceSpecs(renderedTemplates, releaseNamespace, opts); err != nil {
 		return nil, fmt.Errorf("convert rendered templates to installable resources for chart at %q: %w", chartPath, err)

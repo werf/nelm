@@ -369,6 +369,8 @@ func TestAI_ReportStatus_WaitingForPopulation(t *testing.T) {
 	require.NotNil(t, opBReport, "expected svc1 in operations")
 	require.Len(t, opBReport.WaitingFor, 1, "svc1 should be waiting for cm1")
 	assert.Equal(t, "cm1", opBReport.WaitingFor[0].Name)
+	assert.Equal(t, progrep.OperationTypeCreate, opBReport.WaitingFor[0].Type)
+	assert.Equal(t, 0, opBReport.WaitingFor[0].Iteration)
 
 	reporter.ReportStatus(opA.ID(), progrep.OperationStatusCompleted)
 	reports = drainChannel(ch)
