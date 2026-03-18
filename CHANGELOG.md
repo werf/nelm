@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.23.0](https://github.com/werf/nelm/compare/v1.22.0...v1.23.0) (2026-03-13)
+
+
+### Features
+
+* switch to goccy/go-yaml and improve parse error context ([#572](https://github.com/werf/nelm/issues/572)) ([826a6f7](https://github.com/werf/nelm/commit/826a6f789be40b5a3f1cd9b877d8a41057e71ce9))
+
+
+### Bug Fixes
+
+* --set-root-json not working ([08c8522](https://github.com/werf/nelm/commit/08c852246d1253dc9d5557be30a01e6ffc49dbbc))
+* print engine.Render() result on debug level ([#570](https://github.com/werf/nelm/issues/570)) ([9a7591e](https://github.com/werf/nelm/commit/9a7591e58b8329ebdaa3471e926ee68f5dabd265))
+* tracking absence for release namespace deletion ([#571](https://github.com/werf/nelm/issues/571)) ([ed6e23e](https://github.com/werf/nelm/commit/ed6e23e80acd1a88f2aac4a25b0124535b1c5a45))
+
 ## [1.22.0](https://github.com/werf/nelm/compare/v1.21.0...v1.22.0) (2026-02-18)
 
 
