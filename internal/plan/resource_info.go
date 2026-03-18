@@ -315,6 +315,8 @@ func fixManagedFields(unstruct *unstructured.Unstructured, localRes *resource.In
 	if newManagedFields, chngd := exclusiveOwnershipForOurManager(managedFields, oursEntry); chngd {
 		fixedManagedFields = append(fixedManagedFields, newManagedFields...)
 		changed = true
+	} else {
+		fixedManagedFields = append(fixedManagedFields, newManagedFields...)
 	}
 
 	if string(oursEntry.FieldsV1.Raw) != "{}" {
