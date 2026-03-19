@@ -347,20 +347,20 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Build resource infos")
 
-	lastAppliedRelease := lo.Ternary(prevDeployedRelease != nil, prevDeployedRelease, prevRelease)
+	lastDeployedOrLastRelease := lo.Ternary(prevDeployedRelease != nil, prevDeployedRelease, prevRelease)
 
-	var lastAppliedRelResSpecs []*spec.ResourceSpec
-	if lastAppliedRelease != nil {
-		lastAppliedRelResSpecs, err = release.ReleaseToResourceSpecs(lastAppliedRelease, releaseNamespace, false)
+	var lastDeployedOrLastRelResSpecs []*spec.ResourceSpec
+	if lastDeployedOrLastRelease != nil {
+		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(lastDeployedOrLastRelease, releaseNamespace, false)
 		if err != nil {
-			return fmt.Errorf("convert last applied release to resource specs: %w", err)
+			return fmt.Errorf("convert last deployed or last release to resource specs: %w", err)
 		}
 	}
 
 	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
-		NetworkParallelism:          opts.NetworkParallelism,
-		NoRemoveManualChanges:       opts.NoRemoveManualChanges,
-		LastAppliedRelResourceSpecs: lastAppliedRelResSpecs,
+		NetworkParallelism:                 opts.NetworkParallelism,
+		NoRemoveManualChanges:              opts.NoRemoveManualChanges,
+		LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,
 	})
 	if err != nil {
 		return fmt.Errorf("build resource infos: %w", err)

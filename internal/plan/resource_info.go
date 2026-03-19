@@ -76,9 +76,9 @@ type DeletableResourceInfo struct {
 }
 
 type BuildResourceInfosOptions struct {
-	LastAppliedRelResourceSpecs []*spec.ResourceSpec
-	NetworkParallelism          int
-	NoRemoveManualChanges       bool
+	LastDeployedOrLastRelResourceSpecs []*spec.ResourceSpec
+	NetworkParallelism                 int
+	NoRemoveManualChanges              bool
 }
 
 // From Installable/DeletableResource builds Installable/DeletableResourceInfo. If you can do
@@ -93,7 +93,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 	instResourcesPool := pool.NewWithResults[[]*InstallableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range instResources {
 		instResourcesPool.Go(func(ctx context.Context) ([]*InstallableResourceInfo, error) {
-			infos, err := buildInstallableResourceInfo(ctx, res, deployType, releaseNamespace, prevReleaseFailed, opts.NoRemoveManualChanges, clientFactory, opts.LastAppliedRelResourceSpecs)
+			infos, err := buildInstallableResourceInfo(ctx, res, deployType, releaseNamespace, prevReleaseFailed, opts.NoRemoveManualChanges, clientFactory, opts.LastDeployedOrLastRelResourceSpecs)
 			if err != nil {
 				return nil, fmt.Errorf("build installable resource info: %w", err)
 			}
@@ -154,7 +154,7 @@ func ResourceInstallTypeSortHandler(type1, type2 ResourceInstallType) bool {
 }
 
 // TODO(major): keep annotation should probably forbid resource recreations
-func buildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed, noRemoveManualChanges bool, clientFactory kube.ClientFactorier, lastAppliedRelResSpecs []*spec.ResourceSpec) ([]*InstallableResourceInfo, error) {
+func buildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed, noRemoveManualChanges bool, clientFactory kube.ClientFactorier, lastDeployedOrLastRelResSpecs []*spec.ResourceSpec) ([]*InstallableResourceInfo, error) {
 	var stages []common.Stage
 	switch deployType {
 	case common.DeployTypeInitial, common.DeployTypeInstall:
@@ -201,7 +201,7 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 
 	var err error
 
-	getObj, err = fixManagedFieldsInCluster(ctx, releaseNamespace, getObj, localRes, noRemoveManualChanges, clientFactory, lastAppliedRelResSpecs)
+	getObj, err = fixManagedFieldsInCluster(ctx, releaseNamespace, getObj, localRes, noRemoveManualChanges, clientFactory, lastDeployedOrLastRelResSpecs)
 	if err != nil {
 		return nil, fmt.Errorf("fix managed fields for resource %q: %w", localRes.IDHuman(), err)
 	}
@@ -237,8 +237,8 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 	}), nil
 }
 
-func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, getObj *unstructured.Unstructured, localRes *resource.InstallableResource, noRemoveManualChanges bool, clientFactory kube.ClientFactorier, lastAppliedRelResSpecs []*spec.ResourceSpec) (*unstructured.Unstructured, error) {
-	if changed, err := fixManagedFields(ctx, getObj, localRes, noRemoveManualChanges, releaseNamespace, clientFactory, lastAppliedRelResSpecs); err != nil {
+func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, getObj *unstructured.Unstructured, localRes *resource.InstallableResource, noRemoveManualChanges bool, clientFactory kube.ClientFactorier, lastDeployedOrLastRelResSpecs []*spec.ResourceSpec) (*unstructured.Unstructured, error) {
+	if changed, err := fixManagedFields(ctx, getObj, localRes, noRemoveManualChanges, releaseNamespace, clientFactory, lastDeployedOrLastRelResSpecs); err != nil {
 		return nil, fmt.Errorf("fix managed fields for resource %q: %w", localRes.IDHuman(), err)
 	} else if !changed {
 		return getObj, nil
@@ -268,7 +268,7 @@ func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, get
 	return patchedObj, nil
 }
 
-func fixManagedFields(ctx context.Context, unstruct *unstructured.Unstructured, localRes *resource.InstallableResource, noRemoveManualChanges bool, releaseNamespace string, clientFactory kube.ClientFactorier, lastAppliedRelResSpecs []*spec.ResourceSpec) (changed bool, err error) {
+func fixManagedFields(ctx context.Context, unstruct *unstructured.Unstructured, localRes *resource.InstallableResource, noRemoveManualChanges bool, releaseNamespace string, clientFactory kube.ClientFactorier, lastDeployedOrLastRelResSpecs []*spec.ResourceSpec) (changed bool, err error) {
 	managedFields := unstruct.GetManagedFields()
 	if len(managedFields) == 0 {
 		return false, nil
@@ -293,7 +293,7 @@ func fixManagedFields(ctx context.Context, unstruct *unstructured.Unstructured, 
 	if _, found := lo.Find(managedFields, func(e v1.ManagedFieldsEntry) bool {
 		return e.Manager == common.DefaultFieldManager && e.Operation == v1.ManagedFieldsOperationUpdate
 	}); found {
-		if newFields, fixed, err := fixHelmUpdateManagedFields(ctx, localRes, releaseNamespace, clientFactory, oursEntry.FieldsV1, lastAppliedRelResSpecs); err != nil {
+		if newFields, fixed, err := fixHelmUpdateManagedFields(ctx, localRes, releaseNamespace, clientFactory, oursEntry.FieldsV1, lastDeployedOrLastRelResSpecs); err != nil {
 			return false, err
 		} else if fixed {
 			oursEntry.FieldsV1 = newFields
@@ -507,8 +507,8 @@ func findServiceAccountRefBySubPath(data map[string]interface{}, subPath []strin
 	return false, nil
 }
 
-func fixHelmUpdateManagedFields(ctx context.Context, localRes *resource.InstallableResource, releaseNamespace string, clientFactory kube.ClientFactorier, origFields *v1.FieldsV1, lastAppliedRelResSpecs []*spec.ResourceSpec) (*v1.FieldsV1, bool, error) {
-	prevRelResSpec, found := lo.Find(lastAppliedRelResSpecs, func(s *spec.ResourceSpec) bool {
+func fixHelmUpdateManagedFields(ctx context.Context, localRes *resource.InstallableResource, releaseNamespace string, clientFactory kube.ClientFactorier, origFields *v1.FieldsV1, lastDeployedOrLastRelResSpecs []*spec.ResourceSpec) (*v1.FieldsV1, bool, error) {
+	prevRelResSpec, found := lo.Find(lastDeployedOrLastRelResSpecs, func(s *spec.ResourceSpec) bool {
 		return s.ID() == localRes.ID()
 	})
 	if !found {
