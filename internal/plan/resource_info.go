@@ -253,8 +253,6 @@ func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, get
 
 	log.Default.Debug(ctx, "Fixing managed fields for resource %q", localRes.IDHuman())
 
-	return nil, fmt.Errorf("Fuck!")
-
 	patchedObj, err := clientFactory.KubeClient().MergePatch(ctx, localRes.ResourceMeta, patch, kube.KubeClientMergePatchOptions{
 		DefaultNamespace: releaseNamespace,
 	})
