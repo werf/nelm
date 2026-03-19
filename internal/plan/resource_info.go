@@ -327,6 +327,8 @@ func fixManagedFields(ctx context.Context, unstruct *unstructured.Unstructured, 
 	if newManagedFields, chngd := exclusiveOwnershipForOurManager(managedFields, oursEntry); chngd {
 		fixedManagedFields = append(fixedManagedFields, newManagedFields...)
 		changed = true
+	} else {
+		fixedManagedFields = append(fixedManagedFields, newManagedFields...)
 	}
 
 	if string(oursEntry.FieldsV1.Raw) != "{}" {
