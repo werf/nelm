@@ -384,14 +384,14 @@ func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, relea
 			continue
 		}
 
+		var head releaseutil.SimpleHead
+		if err := yaml.Unmarshal([]byte(fileContent), &head); err != nil {
+			return nil, fmt.Errorf("parse YAML for %q: %w", filePath, err)
+		}
+
 		manifests := releaseutil.SplitManifestsToSlice(fileContent)
 
-		for idx, manifest := range manifests {
-			var head releaseutil.SimpleHead
-			if err := yaml.Unmarshal([]byte(manifest), &head); err != nil {
-				return nil, fmt.Errorf("parse YAML resource #%d for %q: %w", idx+1, filePath, err)
-			}
-
+		for _, manifest := range manifests {
 			if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
 				FilePath: filePath,
 			}); err != nil {
