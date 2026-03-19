@@ -340,9 +340,20 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Build resource infos")
 
+	lastDeployedOrLastRelease := lo.Ternary(prevDeployedRelease != nil, prevDeployedRelease, prevRelease)
+
+	var lastDeployedOrLastRelResSpecs []*spec.ResourceSpec
+	if lastDeployedOrLastRelease != nil {
+		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(lastDeployedOrLastRelease, opts.ReleaseNamespace, false)
+		if err != nil {
+			return fmt.Errorf("convert last deployed or last release to resource specs: %w", err)
+		}
+	}
+
 	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, opts.ReleaseName, opts.ReleaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
-		NetworkParallelism:    opts.NetworkParallelism,
-		NoRemoveManualChanges: opts.NoRemoveManualChanges,
+		NetworkParallelism:                 opts.NetworkParallelism,
+		NoRemoveManualChanges:              opts.NoRemoveManualChanges,
+		LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,
 	})
 	if err != nil {
 		return fmt.Errorf("build resource infos: %w", err)
