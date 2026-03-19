@@ -237,7 +237,7 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 }
 
 func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, getObj *unstructured.Unstructured, localRes *resource.InstallableResource, noRemoveManualChanges bool, clientFactory kube.ClientFactorier) (*unstructured.Unstructured, error) {
-	if changed, err := fixManagedFields(getObj, localRes, noRemoveManualChanges); err != nil {
+	if changed, err := fixManagedFields(ctx, getObj, localRes, noRemoveManualChanges, releaseNamespace, clientFactory); err != nil {
 		return nil, fmt.Errorf("fix managed fields for resource %q: %w", localRes.IDHuman(), err)
 	} else if !changed {
 		return getObj, nil
@@ -253,6 +253,8 @@ func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, get
 
 	log.Default.Debug(ctx, "Fixing managed fields for resource %q", localRes.IDHuman())
 
+	return nil, fmt.Errorf("Fuck!")
+
 	patchedObj, err := clientFactory.KubeClient().MergePatch(ctx, localRes.ResourceMeta, patch, kube.KubeClientMergePatchOptions{
 		DefaultNamespace: releaseNamespace,
 	})
@@ -267,7 +269,7 @@ func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, get
 	return patchedObj, nil
 }
 
-func fixManagedFields(unstruct *unstructured.Unstructured, localRes *resource.InstallableResource, noRemoveManualChanges bool) (changed bool, err error) {
+func fixManagedFields(ctx context.Context, unstruct *unstructured.Unstructured, localRes *resource.InstallableResource, noRemoveManualChanges bool, releaseNamespace string, clientFactory kube.ClientFactorier) (changed bool, err error) {
 	managedFields := unstruct.GetManagedFields()
 	if len(managedFields) == 0 {
 		return false, nil
@@ -286,6 +288,16 @@ func fixManagedFields(unstruct *unstructured.Unstructured, localRes *resource.In
 			Time:       lo.ToPtr(v1.Now()),
 			FieldsType: "FieldsV1",
 			FieldsV1:   &v1.FieldsV1{Raw: []byte("{}")},
+		}
+	}
+
+	if _, found := lo.Find(managedFields, func(e v1.ManagedFieldsEntry) bool {
+		return e.Manager == common.DefaultFieldManager && e.Operation == v1.ManagedFieldsOperationUpdate
+	}); found {
+		if newFields, fixed, err := fixHelmUpdateManagedFields(ctx, unstruct, localRes, releaseNamespace, clientFactory, oursEntry.FieldsV1); err != nil {
+			return false, err
+		} else if fixed {
+			oursEntry.FieldsV1 = newFields
 		}
 	}
 
@@ -491,6 +503,41 @@ func findServiceAccountRefBySubPath(data map[string]interface{}, subPath []strin
 	}
 
 	return false, nil
+}
+
+func fixHelmUpdateManagedFields(ctx context.Context, unstruct *unstructured.Unstructured, localRes *resource.InstallableResource, releaseNamespace string, clientFactory kube.ClientFactorier, origFields *v1.FieldsV1) (*v1.FieldsV1, bool, error) {
+	newFields := origFields.DeepCopy()
+
+	cleanObj := spec.CleanUnstruct(unstruct, spec.CleanUnstructOptions{
+		CleanRuntimeData:   true,
+		CleanManagedFields: true,
+	})
+	prevRelSpec := spec.NewResourceSpec(cleanObj, releaseNamespace, spec.ResourceSpecOptions{FilePath: localRes.FilePath})
+
+	dryApplyObj, dryApplyErr := clientFactory.KubeClient().Apply(ctx, prevRelSpec, kube.KubeClientApplyOptions{
+		DefaultNamespace: releaseNamespace,
+		DryRun:           true,
+	})
+	if dryApplyErr != nil {
+		return newFields, false, fmt.Errorf("fix helm managed fields by dry-run apply: %w", dryApplyErr)
+	}
+
+	fixedManagedFields, found := lo.Find(dryApplyObj.GetManagedFields(), func(e v1.ManagedFieldsEntry) bool {
+		return e.Manager == common.DefaultFieldManager && e.Operation == v1.ManagedFieldsOperationApply
+	})
+	if !found {
+		return newFields, false, fmt.Errorf("failed to find fixed managed fields for helm")
+	}
+
+	resurrectedFieldsBytes := lo.Must(json.Marshal(fixedManagedFields.FieldsV1))
+	oursFieldsBytes := lo.Must(json.Marshal(origFields))
+
+	merged, mergeChanged := lo.Must2(util.MergeJSON(resurrectedFieldsBytes, oursFieldsBytes))
+	if mergeChanged {
+		lo.Must0(newFields.UnmarshalJSON(merged))
+	}
+
+	return newFields, mergeChanged, nil
 }
 
 func fixServiceAccountManagedFields(entry *v1.ManagedFieldsEntry, subPath []string) error {
