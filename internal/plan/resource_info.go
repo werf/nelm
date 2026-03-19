@@ -296,6 +296,7 @@ func fixManagedFields(ctx context.Context, unstruct *unstructured.Unstructured, 
 			return false, err
 		} else if fixed {
 			oursEntry.FieldsV1 = newFields
+			changed = true
 		}
 	}
 
@@ -506,38 +507,52 @@ func findServiceAccountRefBySubPath(data map[string]interface{}, subPath []strin
 }
 
 func fixHelmUpdateManagedFields(ctx context.Context, unstruct *unstructured.Unstructured, localRes *resource.InstallableResource, releaseNamespace string, clientFactory kube.ClientFactorier, origFields *v1.FieldsV1) (*v1.FieldsV1, bool, error) {
-	newFields := origFields.DeepCopy()
-
 	cleanObj := spec.CleanUnstruct(unstruct, spec.CleanUnstructOptions{
 		CleanRuntimeData:   true,
 		CleanManagedFields: true,
 	})
 	prevRelSpec := spec.NewResourceSpec(cleanObj, releaseNamespace, spec.ResourceSpecOptions{FilePath: localRes.FilePath})
 
-	dryApplyObj, dryApplyErr := clientFactory.KubeClient().Apply(ctx, prevRelSpec, kube.KubeClientApplyOptions{
+	dryApplyObj, err := clientFactory.KubeClient().Apply(ctx, prevRelSpec, kube.KubeClientApplyOptions{
 		DefaultNamespace: releaseNamespace,
 		DryRun:           true,
 	})
-	if dryApplyErr != nil {
-		return newFields, false, fmt.Errorf("fix helm managed fields by dry-run apply: %w", dryApplyErr)
+	if err != nil {
+		return nil, false, fmt.Errorf("dry-run apply for helm managed fields fix: %w", err)
 	}
 
-	fixedManagedFields, found := lo.Find(dryApplyObj.GetManagedFields(), func(e v1.ManagedFieldsEntry) bool {
+	fixedEntry, found := lo.Find(dryApplyObj.GetManagedFields(), func(e v1.ManagedFieldsEntry) bool {
 		return e.Manager == common.DefaultFieldManager && e.Operation == v1.ManagedFieldsOperationApply
 	})
 	if !found {
-		return newFields, false, fmt.Errorf("failed to find fixed managed fields for helm")
+		return nil, false, fmt.Errorf("find apply managed fields entry in dry-run result")
 	}
 
-	resurrectedFieldsBytes := lo.Must(json.Marshal(fixedManagedFields.FieldsV1))
-	oursFieldsBytes := lo.Must(json.Marshal(origFields))
-
-	merged, mergeChanged := lo.Must2(util.MergeJSON(resurrectedFieldsBytes, oursFieldsBytes))
-	if mergeChanged {
-		lo.Must0(newFields.UnmarshalJSON(merged))
+	resurrectedFieldsBytes, err := json.Marshal(fixedEntry.FieldsV1)
+	if err != nil {
+		return nil, false, fmt.Errorf("marshal resurrected managed fields: %w", err)
 	}
 
-	return newFields, mergeChanged, nil
+	oursFieldsBytes, err := json.Marshal(origFields)
+	if err != nil {
+		return nil, false, fmt.Errorf("marshal original managed fields: %w", err)
+	}
+
+	merged, mergeChanged, err := util.MergeJSON(resurrectedFieldsBytes, oursFieldsBytes)
+	if err != nil {
+		return nil, false, fmt.Errorf("merge managed fields: %w", err)
+	}
+
+	if !mergeChanged {
+		return origFields, false, nil
+	}
+
+	newFields := origFields.DeepCopy()
+	if err := newFields.UnmarshalJSON(merged); err != nil {
+		return nil, false, fmt.Errorf("unmarshal merged managed fields: %w", err)
+	}
+
+	return newFields, true, nil
 }
 
 func fixServiceAccountManagedFields(entry *v1.ManagedFieldsEntry, subPath []string) error {
