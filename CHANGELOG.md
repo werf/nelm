@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.23.1](https://github.com/werf/nelm/compare/v1.23.0...v1.23.1) (2026-03-23)
+
+
+### Bug Fixes
+
+* accidental removal of unknown resource field managers ([#580](https://github.com/werf/nelm/issues/580)) ([16b6e4c](https://github.com/werf/nelm/commit/16b6e4c6051e9bd696b20cbd0ee1917c619a8fbe))
+* adopt managed fields after migration from helm to nelm ([#582](https://github.com/werf/nelm/issues/582)) ([b9a9895](https://github.com/werf/nelm/commit/b9a98951ca4988835e11b0ede77e424810da7409))
+* pass option for yaml validator to allow duplicate map key ([#584](https://github.com/werf/nelm/issues/584)) ([cd34ead](https://github.com/werf/nelm/commit/cd34ead6f9a18ccbc99caf501d4d740a916cf0ef))
+
 ## [1.23.0](https://github.com/werf/nelm/compare/v1.22.0...v1.23.0) (2026-03-13)
 
 
