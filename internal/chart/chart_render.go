@@ -388,7 +388,12 @@ func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, relea
 
 		for idx, manifest := range manifests {
 			var head releaseutil.SimpleHead
-			if err := yaml.Unmarshal([]byte(manifest), &head); err != nil {
+			if err := yaml.UnmarshalWithOptions(
+				[]byte(manifest),
+				&head,
+				// TODO(major): remove
+				yaml.AllowDuplicateMapKey(),
+			); err != nil {
 				return nil, fmt.Errorf("parse YAML resource #%d for %q: %w", idx+1, filePath, err)
 			}
 
