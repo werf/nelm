@@ -18,9 +18,9 @@ import (
 	"k8s.io/klog"
 	klogv2 "k8s.io/klog/v2"
 
-	"github.com/werf/kubedog/pkg/tracker/debug"
+	kdlog "github.com/werf/kubedog/pkg/log"
 	"github.com/werf/logboek"
-	"github.com/werf/nelm/internal/helm/pkg/engine"
+	"github.com/werf/nelm/pkg/helm/pkg/engine"
 )
 
 var Default Logger = NewLogboekLogger()
@@ -67,7 +67,7 @@ func SetupLogging(ctx context.Context, logLevel Level, opts SetupLoggingOptions)
 
 		engine.Debug = false
 
-		debug.SetDebug(false)
+		kdlog.SetDebug(false)
 	case DebugLevel:
 		stdlog.SetOutput(os.Stdout)
 
@@ -89,7 +89,7 @@ func SetupLogging(ctx context.Context, logLevel Level, opts SetupLoggingOptions)
 
 		engine.Debug = true
 
-		debug.SetDebug(true)
+		kdlog.SetDebug(true)
 	case TraceLevel:
 		stdlog.SetOutput(os.Stdout)
 
@@ -111,7 +111,7 @@ func SetupLogging(ctx context.Context, logLevel Level, opts SetupLoggingOptions)
 
 		engine.Debug = true
 
-		debug.SetDebug(true)
+		kdlog.SetDebug(true)
 	default:
 		panic(fmt.Sprintf("unknown log level %q", logLevel))
 	}

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -16,12 +15,12 @@ import (
 	"github.com/jedib0t/go-pretty/v6/text"
 	"github.com/samber/lo"
 
-	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
-	helmrelease "github.com/werf/nelm/internal/helm/pkg/release"
-	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/release"
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/release"
 )
 
 const (
@@ -95,16 +94,7 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 		return nil, fmt.Errorf("build release list options: %w", err)
 	}
 
-	if len(opts.KubeConfigPaths) > 0 {
-		var splitPaths []string
-		for _, path := range opts.KubeConfigPaths {
-			splitPaths = append(splitPaths, filepath.SplitList(path)...)
-		}
-
-		opts.KubeConfigPaths = lo.Compact(splitPaths)
-	}
-
-	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+	kubeConfig, err := kube.NewKubeConfig(ctx, kube.KubeConfigOptions{
 		KubeConnectionOptions: opts.KubeConnectionOptions,
 		KubeContextNamespace:  opts.ReleaseNamespace, // TODO: unset it everywhere
 	})

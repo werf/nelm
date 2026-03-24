@@ -74,7 +74,14 @@ type KubeConnectionOptions struct {
 }
 
 func (opts *KubeConnectionOptions) ApplyDefaults(homeDir string) {
-	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
+	if len(lo.Compact(opts.KubeConfigPaths)) > 0 {
+		var splitPaths []string
+		for _, path := range opts.KubeConfigPaths {
+			splitPaths = append(splitPaths, filepath.SplitList(path)...)
+		}
+
+		opts.KubeConfigPaths = lo.Compact(splitPaths)
+	} else if opts.KubeConfigBase64 == "" {
 		opts.KubeConfigPaths = []string{filepath.Join(homeDir, ".kube", "config")}
 	}
 

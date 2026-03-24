@@ -25,7 +25,6 @@ require (
 	github.com/dop251/goja_nodejs v0.0.0-20251015164255-5e94316bedaf
 	github.com/evanphx/json-patch v5.8.0+incompatible
 	github.com/evanw/esbuild v0.27.0
-	github.com/fluxcd/flagger v1.36.1
 	github.com/foxcpp/go-mockdns v1.0.0
 	github.com/go-resty/resty/v2 v2.17.1
 	github.com/gobwas/glob v0.2.3
@@ -59,7 +58,7 @@ require (
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.5.0
 	github.com/werf/common-go v0.0.0-20251113140850-a1a98e909e9b
-	github.com/werf/kubedog v0.13.1-0.20260115171811-304218f24308
+	github.com/werf/kubedog v0.13.1-0.20260320165832-7d97aaf7aab9
 	github.com/werf/lockgate v0.1.1
 	github.com/werf/logboek v0.6.1
 	github.com/xeipuuv/gojsonschema v1.2.0
@@ -86,7 +85,6 @@ require (
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Microsoft/hcsshim v0.12.2 // indirect
-	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d // indirect
 	github.com/avelino/slugify v0.0.0-20180501145920-855f152bd774 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bshuster-repo/logrus-logstash-hook v1.1.0 // indirect
@@ -111,6 +109,7 @@ require (
 	github.com/exponent-io/jsonpath v0.0.0-20210407135951-1de76d718b3f // indirect
 	github.com/fatih/color v1.16.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
+	github.com/fluxcd/flagger v1.36.1 // indirect
 	github.com/go-errors/errors v1.5.1 // indirect
 	github.com/go-gorp/gorp/v3 v3.1.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect

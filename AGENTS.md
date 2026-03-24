@@ -2,7 +2,7 @@
 
 All rules in this document are requirements — not suggestions. ALWAYS follow them.
 
-Nelm is a Go-based Kubernetes deployment tool, which deploys Helm charts, is compatible with Helm releases, and is an alternative to Helm. Nelm is built on top of a Helm fork ([werf/3p-helm](https://github.com/werf/3p-helm)) and is also used as the deployment engine of [werf](https://github.com/werf/werf).
+Nelm is a Go-based Kubernetes deployment tool, which deploys Helm charts, is compatible with Helm releases, and is an alternative to Helm. Nelm is built on top of a Helm fork and is also used as the deployment engine of [werf](https://github.com/werf/werf).
 
 ## Highest-priority rule (MANDATORY)
 
@@ -75,7 +75,7 @@ ALWAYS use these `task` commands. NEVER use raw `go build`, `go test`, `go fmt`,
 - ALWAYS place tests alongside source files, not in a separate directory.
 - Test helpers go in `helpers_test.go` (or `helpers_ai_test.go` for AI-written helpers).
 - Test fixtures go in `testdata/` subdirectory next to the tests.
-- Shared test helpers are in `internal/test/`.
+- Shared test helpers are in `pkg/test/`.
 
 ## PR review guidelines (MANDATORY)
 
@@ -85,7 +85,6 @@ ALWAYS use these `task` commands. NEVER use raw `go build`, `go test`, `go fmt`,
 
 ## Related repositories
 
-- [werf/3p-helm](https://github.com/werf/3p-helm) — Helm fork. Provides chart loading, rendering, and release primitives. Changes to Helm internals go here, not in nelm.
-- [werf/kubedog](https://github.com/werf/kubedog) — Kubernetes resource tracking library. Used by `internal/track/`.
+- [werf/kubedog](https://github.com/werf/kubedog) — Kubernetes resource tracking library. Used by `pkg/track/`.
 - [werf/common-go](https://github.com/werf/common-go) — Shared Go libraries (secrets, CLI utilities, locking).
 - [werf/werf](https://github.com/werf/werf) — CI/CD tool that uses nelm as its deployment engine.

@@ -16,17 +16,17 @@ import (
 	"github.com/samber/lo"
 	"github.com/xo/terminfo"
 
+	"github.com/werf/kubedog/pkg/dyntracker/logstore"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
+	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/kubedog/pkg/informer"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
-	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
-	helmrelease "github.com/werf/nelm/internal/helm/pkg/release"
-	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/plan"
-	"github.com/werf/nelm/internal/release"
-	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/common"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/plan"
+	"github.com/werf/nelm/pkg/release"
+	"github.com/werf/nelm/pkg/util"
 )
 
 func init() {

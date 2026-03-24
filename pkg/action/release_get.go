@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -13,14 +12,14 @@ import (
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 
-	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
-	"github.com/werf/nelm/internal/helm/pkg/chartutil"
-	helmrelease "github.com/werf/nelm/internal/helm/pkg/release"
-	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/release"
-	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
+	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/release"
+	"github.com/werf/nelm/pkg/resource/spec"
 )
 
 const (
@@ -103,16 +102,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		return nil, fmt.Errorf("build release get options: %w", err)
 	}
 
-	if len(opts.KubeConfigPaths) > 0 {
-		var splitPaths []string
-		for _, path := range opts.KubeConfigPaths {
-			splitPaths = append(splitPaths, filepath.SplitList(path)...)
-		}
-
-		opts.KubeConfigPaths = lo.Compact(splitPaths)
-	}
-
-	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+	kubeConfig, err := kube.NewKubeConfig(ctx, kube.KubeConfigOptions{
 		KubeConnectionOptions: opts.KubeConnectionOptions,
 		KubeContextNamespace:  releaseNamespace, // TODO: unset it everywhere
 	})

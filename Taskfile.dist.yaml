@@ -52,14 +52,14 @@ tasks:
     internal: true
     run: once
     cmds:
-      - golangci-lint run {{if eq .fix "true"}}--fix{{end}} --build-tags="{{.tags}}" {{.CLI_ARGS}} {{.paths | default "$(find internal/ -mindepth 1 -maxdepth 1 -type d ! -name helm -printf './%p/... ') ./cmd/... ./pkg/..."}}
+      - golangci-lint run {{if eq .fix "true"}}--fix{{end}} --build-tags="{{.tags}}" {{.CLI_ARGS}} {{.paths | default "$(find pkg/ -mindepth 1 -maxdepth 1 -type d ! -name helm -printf './%p/... ') ./cmd/..."}}
     vars:
       paths: "{{.paths}}"
 
   _wormatter:
     internal: true
     cmds:
-      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work -w /work ghcr.io/werf/wormatter:1.5.0 {{if eq .onlyLint "true"}}-c{{end}} -e ^internal/helm/ {{.paths | default "internal/ cmd/ pkg/"}}
+      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work -w /work ghcr.io/werf/wormatter:1.5.0 {{if eq .onlyLint "true"}}-c{{end}} -e ^pkg/helm/ {{.paths | default "cmd/ pkg/"}}
     vars:
       onlyLint: '{{.onlyLint | default "false"}}'
       paths: "{{.paths}}"
@@ -236,8 +236,8 @@ tasks:
     cmds:
       - task: test:ginkgo
         vars:
-          paths: '{{.paths | default "./internal ./pkg ./cmd"}}'
-          skipPackage: 'internal/helm{{if .skipPackage}},{{.skipPackage}}{{end}}'
+          paths: '{{.paths | default "./pkg ./cmd"}}'
+          skipPackage: "pkg/helm{{if .skipPackage}},{{.skipPackage}}{{end}}"
           parallel: "{{.parallel}}"
 
   verify:binaries:dist:all:
@@ -299,7 +299,7 @@ tasks:
     vars:
       updateOnly: '{{.updateOnly | default "true"}}'
     cmds:
-      - docker run --rm -v "$(pwd)":/work peterdavehello/npm-doctoc sh -c 'find /work/{{.path | default "."}} -name "*.md" -not -path "*/internal/helm/*" -not -path "*/.git/*" -exec doctoc --notitle {{if eq .updateOnly "true"}}--update-only{{end}} {} +'
+      - docker run --rm -v "$(pwd)":/work peterdavehello/npm-doctoc sh -c 'find /work/{{.path | default "."}} -name "*.md" -not -path "*/pkg/helm/*" -not -path "*/.git/*" -exec doctoc --notitle {{if eq .updateOnly "true"}}--update-only{{end}} {} +'
 
   lint:
     desc: 'Run all linters in parallel. Important vars: "paths".'
@@ -417,12 +417,12 @@ tasks:
       - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin {{.golangcilintVersion | default "v2.5.0"}}
 
   fork:helm:sync:
-    desc: 'Prepare upstream helm ref for merging into internal/helm/ of a current branch via a /tmp snapshot. Important vars: "ref" (required, e.g. ref=v4.1.1).'
+    desc: 'Prepare upstream helm ref for merging into pkg/helm/ of a current branch via a /tmp snapshot. Important vars: "ref" (required, e.g. ref=v4.1.1).'
     vars:
-      forkPrefix: "internal/helm"
+      forkPrefix: "pkg/helm"
       forkUpstreamURL: "https://github.com/helm/helm.git"
       forkUpstreamModulePattern: 'helm\.sh/helm/v[0-9]+'
-      forkOurModule: "github.com/werf/nelm/internal/helm"
+      forkOurModule: "github.com/werf/nelm/pkg/helm"
       forkSyncBranch: "_sync-upstream-helm-{{.ref}}"
       forkSnapshotDir: "/tmp/upstream-helm"
       forkTempRemote: "_fork-upstream-helm-temp"
@@ -441,7 +441,7 @@ tasks:
         fi
 
         rm -rf "{{.forkSnapshotDir}}"
-        git clone --branch "{{.ref}}" --depth 1 "{{.forkUpstreamURL}}" "{{.forkSnapshotDir}}"
+        git clone --branch "{{.ref}}" "{{.forkUpstreamURL}}" "{{.forkSnapshotDir}}"
 
         rewrite_rule="$(mktemp)"
         cat > "$rewrite_rule" <<'SGRULE'

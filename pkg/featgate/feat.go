@@ -17,17 +17,9 @@ var (
 		"remote-charts",
 		`Allow not only local, but also remote charts as an argument to cli commands. Also adds the "--chart-version" option`,
 	)
-	FeatGateNativeReleaseList = NewFeatGate(
-		"native-release-list",
-		`Use the native "release list" command instead of "helm list" exposed as "release list"`,
-	)
 	FeatGatePeriodicStackTraces = NewFeatGate(
 		"periodic-stack-traces",
 		`Print stack traces periodically to help with debugging deadlocks and other issues`,
-	)
-	FeatGateNativeReleaseUninstall = NewFeatGate(
-		"native-release-uninstall",
-		`Use the new "release uninstall" command implementation (not fully backwards compatible)`,
 	)
 	FeatGateFieldSensitive = NewFeatGate(
 		"field-sensitive",

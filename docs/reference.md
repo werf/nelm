@@ -45,9 +45,7 @@
   - [version](#version)
 - [Feature Gates](#feature-gates)
   - [NELM_FEAT_REMOTE_CHARTS](#nelm_feat_remote_charts)
-  - [NELM_FEAT_NATIVE_RELEASE_LIST](#nelm_feat_native_release_list)
   - [NELM_FEAT_PERIODIC_STACK_TRACES](#nelm_feat_periodic_stack_traces)
-  - [NELM_FEAT_NATIVE_RELEASE_UNINSTALL](#nelm_feat_native_release_uninstall)
   - [NELM_FEAT_FIELD_SENSITIVE](#nelm_feat_field_sensitive)
   - [NELM_FEAT_PREVIEW_V2](#nelm_feat_preview_v2)
   - [NELM_FEAT_CLEAN_NULL_FIELDS](#nelm_feat_clean_null_fields)
@@ -65,7 +63,7 @@
 - [`nelm release rollback`](#release-rollback) — Rollback to a previously deployed release\.
 - [`nelm release plan install`](#release-plan-install) — Plan a release install to Kubernetes\.
 - [`nelm release uninstall`](#release-uninstall) — Uninstall a Helm Release from Kubernetes\.
-- [`nelm release list`](#release-list) — List all releases in a namespace\.
+- [`nelm release list`](#release-list) — List all deployed releases\.
 - [`nelm release history`](#release-history) — Show release history\.
 - [`nelm release get`](#release-get) — Get information about a deployed release\.
 - [`nelm release plan show`](#release-plan-show) — Show plan artifact planned changes\.
@@ -1151,17 +1149,29 @@ nelm release uninstall [options...] -n namespace -r release
 
   Delete the release namespace\. Var: \$NELM\_RELEASE\_UNINSTALL\_DELETE\_NAMESPACE
 
+- `--delete-propagation` (default: `"Foreground"`)
+
+  Default delete propagation strategy\. Vars: \$NELM\_DELETE\_PROPAGATION, \$NELM\_RELEASE\_UNINSTALL\_DELETE\_PROPAGATION
+
 - `-n`, `--namespace` (default: `""`)
 
   The release namespace\. Resources with no namespace will be deployed here\. Vars: \$NELM\_NAMESPACE, \$NELM\_RELEASE\_UNINSTALL\_NAMESPACE
 
-- `--no-delete-hooks` (default: `false`)
+- `--no-remove-manual-changes` (default: `false`)
 
-  Do not remove release hooks\. Var: \$NELM\_RELEASE\_UNINSTALL\_NO\_DELETE\_HOOKS
+  Don't remove fields added manually to the resource in the cluster if fields aren't present in the manifest\. Vars: \$NELM\_NO\_REMOVE\_MANUAL\_CHANGES, \$NELM\_RELEASE\_UNINSTALL\_NO\_REMOVE\_MANUAL\_CHANGES
 
 - `-r`, `--release` (default: `""`)
 
   The release name\. Must be unique within the release namespace\. Vars: \$NELM\_RELEASE, \$NELM\_RELEASE\_UNINSTALL\_RELEASE
+
+- `--save-graph-to` (default: `""`)
+
+  Save the Graphviz uninstall graph to a file\. Var: \$NELM\_RELEASE\_UNINSTALL\_SAVE\_GRAPH\_TO
+
+- `--save-report-to` (default: `""`)
+
+  Save the uninstall report to a file\. Var: \$NELM\_RELEASE\_UNINSTALL\_SAVE\_REPORT\_TO
 
 - `--timeout` (default: `0s`)
 
@@ -1335,6 +1345,10 @@ nelm release uninstall [options...] -n namespace -r release
 
   How releases should be stored\. Var: \$NELM\_RELEASE\_STORAGE
 
+- `--release-storage-sql-connection` (default: `""`)
+
+  SQL connection string for MySQL release storage driver\. Var: \$NELM\_RELEASE\_STORAGE\_SQL\_CONNECTION
+
 - `--temp-dir` (default: `""`)
 
   The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
@@ -1342,176 +1356,164 @@ nelm release uninstall [options...] -n namespace -r release
 
 ### release list
 
-
-This command lists all of the releases for a specified namespace \(uses current namespace context if namespace not specified\)\.
-
-By default, it lists only releases that are deployed or failed\. Flags like
-'\-\-uninstalled' and '\-\-all' will alter this behavior\. Such flags can be combined:
-'\-\-uninstalled \-\-failed'\.
-
-By default, items are sorted alphabetically\. Use the '\-d' flag to sort by
-release date\.
-
-If the \-\-filter flag is provided, it will be treated as a filter\. Filters are
-regular expressions \(Perl compatible\) that are applied to the list of releases\.
-Only items that match the filter will be returned\.
-
-    $ helm list --filter 'ara[a-z]+'
-    NAME                UPDATED                                  CHART
-    maudlin-arachnid    2020-06-18 14:17:46.125134977 +0000 UTC  alpine-0.1.0
-
-If no results are found, 'helm list' will exit 0, but with no output \(or in
-the case of no '\-q' flag, only headers\)\.
-
-By default, up to 256 items may be returned\. To limit this, use the '\-\-max' flag\.
-Setting '\-\-max' to 0 will not return all results\. Rather, it will return the
-server's default, which may be much higher than 256\. Pairing the '\-\-max'
-flag with the '\-\-offset' flag allows you to page through results\.
-
+List all deployed releases\.
 
 **Usage:**
 
 ```shell
-nelm release list [flags]
+nelm release list [options...] [-n namespace]
 ```
 
-**Other options:**
-
-- `-a`, `--all` (default: `false`)
-
-  show all releases without any filter applied
-
-- `-A`, `--all-namespaces` (default: `false`)
-
-  list releases across all namespaces
-
-- `--burst-limit` (default: `100`)
-
-  client\-side default throttling limit
-
-- `-d`, `--date` (default: `false`)
-
-  sort by release date
-
-- `--debug` (default: `false`)
-
-  enable verbose output
-
-- `--deployed` (default: `false`)
-
-  show deployed releases\. If no other is specified, this will be automatically enabled
-
-- `--failed` (default: `false`)
-
-  show failed releases
-
-- `-f`, `--filter` (default: `""`)
-
-  a regular expression \(Perl compatible\)\. Any releases that match the expression will be included in the results
-
-- `--kube-apiserver` (default: `""`)
-
-  the address and the port for the Kubernetes API server
-
-- `--kube-as-group` (default: `[]`)
-
-  group to impersonate for the operation, this flag can be repeated to specify multiple groups\.
-
-- `--kube-as-user` (default: `""`)
-
-  username to impersonate for the operation
-
-- `--kube-ca-file` (default: `""`)
-
-  the certificate authority file for the Kubernetes API server connection
-
-- `--kube-context` (default: `""`)
-
-  name of the kubeconfig context to use
-
-- `--kube-insecure-skip-tls-verify` (default: `false`)
-
-  if true, the Kubernetes API server's certificate will not be checked for validity\. This will make your HTTPS connections insecure
-
-- `--kube-tls-server-name` (default: `""`)
-
-  server name to use for Kubernetes API server certificate validation\. If it is not provided, the hostname used to contact the server is used
-
-- `--kube-token` (default: `""`)
-
-  bearer token used for authentication
-
-- `--kubeconfig` (default: `""`)
-
-  path to the kubeconfig file
-
-- `-m`, `--max` (default: `256`)
-
-  maximum number of releases to fetch
+**Options:**
 
 - `-n`, `--namespace` (default: `""`)
 
-  namespace scope for this request
+  The release namespace\. Query all namespaces if not specified\. Vars: \$NELM\_NAMESPACE, \$NELM\_RELEASE\_LIST\_NAMESPACE
 
-- `--no-headers` (default: `false`)
 
-  don't print headers when using the default output format
+**Kubernetes connection options:**
 
-- `--offset` (default: `0`)
+- `--kube-api-server` (default: `""`)
 
-  next release index in the list, used to offset from start value
+  Kubernetes API server address\. Vars: \$NELM\_KUBE\_API\_SERVER, \$NELM\_RELEASE\_LIST\_KUBE\_API\_SERVER
 
-- `-o`, `--output` (default: `table`)
+- `--kube-api-server-tls-name` (default: `""`)
 
-  prints the output in the specified format\. Allowed values: table, json, yaml
+  Server name for Kubernetes API TLS validation, if different from the hostname of Kubernetes API server\. Vars: \$NELM\_KUBE\_API\_SERVER\_TLS\_NAME, \$NELM\_RELEASE\_LIST\_KUBE\_API\_SERVER\_TLS\_NAME
 
-- `--pending` (default: `false`)
+- `--kube-auth-password` (default: `""`)
 
-  show pending releases
+  Basic auth password for Kubernetes API\. Vars: \$NELM\_KUBE\_AUTH\_PASSWORD, \$NELM\_RELEASE\_LIST\_KUBE\_AUTH\_PASSWORD
 
-- `--qps` (default: `0`)
+- `--kube-auth-provider` (default: `""`)
 
-  queries per second used when communicating with the Kubernetes API, not including bursting
+  Auth provider name for authentication in Kubernetes\. Vars: \$NELM\_KUBE\_AUTH\_PROVIDER, \$NELM\_RELEASE\_LIST\_KUBE\_AUTH\_PROVIDER
 
-- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
+- `--kube-auth-provider-config` (default: `{}`)
 
-  path to the registry config file
+  Auth provider config for authentication in Kubernetes API\. Vars: \$NELM\_KUBE\_AUTH\_PROVIDER\_CONFIG, \$NELM\_RELEASE\_LIST\_KUBE\_AUTH\_PROVIDER\_CONFIG
 
-- `--repository-cache` (default: `"~/.cache/helm/repository"`)
+- `--kube-auth-username` (default: `""`)
 
-  path to the file containing cached repository indexes
+  Basic auth username for Kubernetes API\. Vars: \$NELM\_KUBE\_AUTH\_USERNAME, \$NELM\_RELEASE\_LIST\_KUBE\_AUTH\_USERNAME
 
-- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
+- `--kube-ca` (default: `""`)
 
-  path to the file containing repository names and URLs
+  Path to Kubernetes API server TLS CA file\. Vars: \$NELM\_KUBE\_CA, \$NELM\_RELEASE\_LIST\_KUBE\_CA
 
-- `-r`, `--reverse` (default: `false`)
+- `--kube-ca-data` (default: `""`)
 
-  reverse the sort order
+  Pass Kubernetes API server TLS CA data\. Vars: \$NELM\_KUBE\_CA\_DATA, \$NELM\_RELEASE\_LIST\_KUBE\_CA\_DATA
 
-- `-l`, `--selector` (default: `""`)
+- `--kube-cert` (default: `""`)
 
-  Selector \(label query\) to filter on, supports '=', '==', and '\!='\.\(e\.g\. \-l key1=value1,key2=value2\)\. Works only for secret\(default\) and configmap storage backends\.
+  Path to PEM\-encoded TLS client cert for connecting to Kubernetes API\. Vars: \$NELM\_KUBE\_CERT, \$NELM\_RELEASE\_LIST\_KUBE\_CERT
 
-- `-q`, `--short` (default: `false`)
+- `--kube-cert-data` (default: `""`)
 
-  output short \(quiet\) listing format
+  Pass PEM\-encoded TLS client cert for connecting to Kubernetes API\. Vars: \$NELM\_KUBE\_CERT\_DATA, \$NELM\_RELEASE\_LIST\_KUBE\_CERT\_DATA
 
-- `--superseded` (default: `false`)
+- `--kube-config` (default: `[]`)
 
-  show superseded releases
+  Kubeconfig path\(s\)\. If multiple specified, their contents are merged\. Vars: \$KUBECONFIG, \$NELM\_KUBE\_CONFIG\_\*, \$NELM\_RELEASE\_LIST\_KUBE\_CONFIG\_\*
 
-- `--time-format` (default: `""`)
+- `--kube-config-base64` (default: `""`)
 
-  format time using golang time formatter\. Example: \-\-time\-format "2006\-01\-02 15:04:05Z0700"
+  Pass Kubeconfig file content encoded as base64\. Vars: \$NELM\_KUBE\_CONFIG\_BASE\_64, \$NELM\_RELEASE\_LIST\_KUBE\_CONFIG\_BASE\_64
 
-- `--uninstalled` (default: `false`)
+- `--kube-context` (default: `""`)
 
-  show uninstalled releases \(if 'helm uninstall \-\-keep\-history' was used\)
+  Use specified Kubeconfig context\. Vars: \$NELM\_KUBE\_CONTEXT, \$NELM\_RELEASE\_LIST\_KUBE\_CONTEXT
 
-- `--uninstalling` (default: `false`)
+- `--kube-context-cluster` (default: `""`)
 
-  show releases that are currently being uninstalled
+  Use cluster from Kubeconfig for current context\. Vars: \$NELM\_KUBE\_CONTEXT\_CLUSTER, \$NELM\_RELEASE\_LIST\_KUBE\_CONTEXT\_CLUSTER
+
+- `--kube-context-user` (default: `""`)
+
+  Use user from Kubeconfig for current context\. Vars: \$NELM\_KUBE\_CONTEXT\_USER, \$NELM\_RELEASE\_LIST\_KUBE\_CONTEXT\_USER
+
+- `--kube-impersonate-group` (default: `[]`)
+
+  Sets Impersonate\-Group headers when authenticating in Kubernetes\. Vars: \$NELM\_KUBE\_IMPERSONATE\_GROUP, \$NELM\_RELEASE\_LIST\_KUBE\_IMPERSONATE\_GROUP
+
+- `--kube-impersonate-uid` (default: `""`)
+
+  Sets Impersonate\-Uid header when authenticating in Kubernetes\. Vars: \$NELM\_KUBE\_IMPERSONATE\_UID, \$NELM\_RELEASE\_LIST\_KUBE\_IMPERSONATE\_UID
+
+- `--kube-impersonate-user` (default: `""`)
+
+  Sets Impersonate\-User header when authenticating in Kubernetes\. Vars: \$NELM\_KUBE\_IMPERSONATE\_USER, \$NELM\_RELEASE\_LIST\_KUBE\_IMPERSONATE\_USER
+
+- `--kube-key` (default: `""`)
+
+  Path to PEM\-encoded TLS client key for connecting to Kubernetes API\. Vars: \$NELM\_KUBE\_KEY, \$NELM\_RELEASE\_LIST\_KUBE\_KEY
+
+- `--kube-key-data` (default: `""`)
+
+  Pass PEM\-encoded TLS client key for connecting to Kubernetes API\. Vars: \$NELM\_KUBE\_KEY\_DATA, \$NELM\_RELEASE\_LIST\_KUBE\_KEY\_DATA
+
+- `--kube-proxy-url` (default: `""`)
+
+  Proxy URL to use for proxying all requests to Kubernetes API\. Vars: \$NELM\_KUBE\_PROXY\_URL, \$NELM\_RELEASE\_LIST\_KUBE\_PROXY\_URL
+
+- `--kube-request-timeout` (default: `0s`)
+
+  Timeout for all requests to Kubernetes API\. Vars: \$NELM\_KUBE\_REQUEST\_TIMEOUT, \$NELM\_RELEASE\_LIST\_KUBE\_REQUEST\_TIMEOUT
+
+- `--kube-token` (default: `""`)
+
+  Bearer token for authentication in Kubernetes\. Vars: \$NELM\_KUBE\_TOKEN, \$NELM\_RELEASE\_LIST\_KUBE\_TOKEN
+
+- `--kube-token-path` (default: `""`)
+
+  Path to file with bearer token for authentication in Kubernetes\. Vars: \$NELM\_KUBE\_TOKEN\_PATH, \$NELM\_RELEASE\_LIST\_KUBE\_TOKEN\_PATH
+
+- `--no-verify-kube-tls` (default: `false`)
+
+  Don't verify TLS certificates of Kubernetes API\. Vars: \$NELM\_NO\_VERIFY\_KUBE\_TLS, \$NELM\_RELEASE\_LIST\_NO\_VERIFY\_KUBE\_TLS
+
+
+**Performance options:**
+
+- `--kube-burst-limit` (default: `100`)
+
+  Burst limit for requests to Kubernetes\. Vars: \$NELM\_KUBE\_BURST\_LIMIT, \$NELM\_RELEASE\_LIST\_KUBE\_BURST\_LIMIT
+
+- `--kube-qps-limit` (default: `30`)
+
+  Queries Per Second limit for requests to Kubernetes\. Vars: \$NELM\_KUBE\_QPS\_LIMIT, \$NELM\_RELEASE\_LIST\_KUBE\_QPS\_LIMIT
+
+- `--network-parallelism` (default: `30`)
+
+  Limit of network\-related tasks to run in parallel\. Vars: \$NELM\_NETWORK\_PARALLELISM, \$NELM\_RELEASE\_LIST\_NETWORK\_PARALLELISM
+
+
+**Other options:**
+
+- `--color-mode` (default: `"auto"`)
+
+  Color mode for logs\. Allowed: auto, off, on\. Vars: \$NELM\_COLOR\_MODE, \$NELM\_RELEASE\_LIST\_COLOR\_MODE
+
+- `--log-level` (default: `"error"`)
+
+  Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_RELEASE\_LIST\_LOG\_LEVEL
+
+- `--output-format` (default: `"table"`)
+
+  Result output format\. Vars: \$NELM\_OUTPUT\_FORMAT, \$NELM\_RELEASE\_LIST\_OUTPUT\_FORMAT
+
+- `--release-storage` (default: `""`)
+
+  How releases should be stored\. Var: \$NELM\_RELEASE\_STORAGE
+
+- `--release-storage-sql-connection` (default: `""`)
+
+  SQL connection string for MySQL release storage driver\. Var: \$NELM\_RELEASE\_STORAGE\_SQL\_CONNECTION
+
+- `--temp-dir` (default: `""`)
+
+  The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
 
 
 ### release history
@@ -4010,23 +4012,11 @@ Feature gates are experimental features that can be enabled via environment vari
 
 Allow not only local, but also remote charts as an argument to cli commands\. Also adds the "\-\-chart\-version" option
 
-### NELM_FEAT_NATIVE_RELEASE_LIST
-
-**Default:** `false`
-
-Use the native "release list" command instead of "helm list" exposed as "release list"
-
 ### NELM_FEAT_PERIODIC_STACK_TRACES
 
 **Default:** `false`
 
 Print stack traces periodically to help with debugging deadlocks and other issues
-
-### NELM_FEAT_NATIVE_RELEASE_UNINSTALL
-
-**Default:** `false`
-
-Use the new "release uninstall" command implementation \(not fully backwards compatible\)
 
 ### NELM_FEAT_FIELD_SENSITIVE
 
