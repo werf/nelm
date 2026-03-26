@@ -17,20 +17,20 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const PlanArtifactSchemeVersion = "v1"
+const ArtifactSchemeVersion = "v1"
 
-type PlanArtifact struct {
-	APIVersion string              `json:"apiVersion"`
-	Data       *PlanArtifactData   `json:"-"`
-	DataRaw    string              `json:"dataRaw"`
-	DeployType common.DeployType   `json:"deployType"`
-	Encrypted  bool                `json:"encrypted"`
-	Release    PlanArtifactRelease `json:"release"`
+type Artifact struct {
+	APIVersion string            `json:"apiVersion"`
+	Data       *ArtifactData     `json:"-"`
+	DataRaw    string            `json:"dataRaw"`
+	DeployType common.DeployType `json:"deployType"`
+	Encrypted  bool              `json:"encrypted"`
+	Release    ArtifactRelease   `json:"release"`
 
 	Timestamp time.Time `json:"timestamp"`
 }
 
-type PlanArtifactData struct {
+type ArtifactData struct {
 	Options                  common.ReleaseInstallRuntimeOptions `json:"options"`
 	Changes                  []*ResourceChange                   `json:"changes"`
 	Plan                     *Plan                               `json:"plan"`
@@ -39,13 +39,13 @@ type PlanArtifactData struct {
 	ReleaseInfos             []*ReleaseInfo                      `json:"releaseInfos"`
 }
 
-type PlanArtifactRelease struct {
+type ArtifactRelease struct {
 	Name      string `json:"name"`
 	Namespace string `json:"namespace"`
 	Revision  int    `json:"revision"`
 }
 
-func ReadPlanArtifact(ctx context.Context, path, secretKey, secretWorkDir string) (*PlanArtifact, error) {
+func ReadArtifact(ctx context.Context, path, secretKey, secretWorkDir string) (*Artifact, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open plan artifact file: %w", err)
@@ -58,7 +58,7 @@ func ReadPlanArtifact(ctx context.Context, path, secretKey, secretWorkDir string
 	}
 	defer gzipReader.Close()
 
-	var artifact PlanArtifact
+	var artifact Artifact
 
 	if err := json.NewDecoder(gzipReader).Decode(&artifact); err != nil {
 		return nil, fmt.Errorf("decode plan artifact json: %w", err)
@@ -90,7 +90,7 @@ func ReadPlanArtifact(ctx context.Context, path, secretKey, secretWorkDir string
 		dataJSON = []byte(artifact.DataRaw)
 	}
 
-	var data PlanArtifactData
+	var data ArtifactData
 
 	if err := json.Unmarshal(dataJSON, &data); err != nil {
 		return nil, fmt.Errorf("decode artifact data json: %w", err)
@@ -101,7 +101,7 @@ func ReadPlanArtifact(ctx context.Context, path, secretKey, secretWorkDir string
 	return &artifact, nil
 }
 
-func ValidatePlanArtifact(artifact *PlanArtifact, lifetime time.Duration) error {
+func ValidateArtifact(artifact *Artifact, lifetime time.Duration) error {
 	if artifact == nil {
 		return errors.New("plan shouldn't be empty")
 	}
@@ -134,7 +134,7 @@ func ValidatePlanArtifact(artifact *PlanArtifact, lifetime time.Duration) error 
 	return nil
 }
 
-func WritePlanArtifact(ctx context.Context, artifact *PlanArtifact, path, secretKey, secretWorkDir string) error {
+func WriteArtifact(ctx context.Context, artifact *Artifact, path, secretKey, secretWorkDir string) error {
 	dataJSON, err := json.Marshal(artifact.Data)
 	if err != nil {
 		return fmt.Errorf("marshal artifact data to json: %w", err)

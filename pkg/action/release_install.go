@@ -88,6 +88,8 @@ type ReleaseInstallOptions struct {
 	// LegacyLogRegistryStreamOut is the output writer for Helm registry client logs.
 	// Defaults to io.Discard if not set. Used for debugging registry operations.
 	LegacyLogRegistryStreamOut io.Writer
+	// LegacyPlanArtifact provides plan artifact as a result of the release plan install action.
+	LegacyPlanArtifact *plan.Artifact
 	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
 	// Must be a buffered channel with capacity >= 1. The caller owns the channel and is responsible
 	// for its lifecycle. Intermediate reports may be dropped if the consumer is slow; the final
@@ -165,8 +167,6 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 }
 
 func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, opts ReleaseInstallOptions) error {
-	usePlan := opts.PlanArtifactPath != ""
-
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)
@@ -186,20 +186,27 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
 	}
 
-	var planArtifact *plan.PlanArtifact
-	if usePlan {
+	var planArtifact *plan.Artifact
+
+	if opts.PlanArtifactPath != "" {
 		log.Default.Info(ctx, "Using %s plan artifact", opts.PlanArtifactPath)
 
 		log.Default.Debug(ctx, "Read plan artifact")
 
-		planArtifact, err = plan.ReadPlanArtifact(ctx, opts.PlanArtifactPath, opts.SecretKey, opts.SecretWorkDir)
+		planArtifact, err = plan.ReadArtifact(ctx, opts.PlanArtifactPath, opts.SecretKey, opts.SecretWorkDir)
 		if err != nil {
 			return fmt.Errorf("read plan artifact from %s: %w", opts.PlanArtifactPath, err)
 		}
+	} else {
+		planArtifact = opts.LegacyPlanArtifact
+	}
 
+	usePlan := planArtifact != nil
+
+	if usePlan {
 		log.Default.Debug(ctx, "Validate plan artifact")
 
-		if err := plan.ValidatePlanArtifact(planArtifact, opts.PlanArtifactLifetime); err != nil {
+		if err := plan.ValidateArtifact(planArtifact, opts.PlanArtifactLifetime); err != nil {
 			return fmt.Errorf("validate plan artifact: %w", err)
 		}
 
