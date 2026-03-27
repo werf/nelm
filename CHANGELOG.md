@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.23.2](https://github.com/werf/nelm/compare/v1.23.1...v1.23.2) (2026-03-27)
+
+
+### Bug Fixes
+
+* goroutine leak in watch error channel consumer for ReleaseInstall, ReleaseUninstall and ReleaseRollback ([#585](https://github.com/werf/nelm/issues/585)) ([9fd804c](https://github.com/werf/nelm/commit/9fd804c04354eadc949dee88838bb5c42ad318b7))
+* release had pending status after error instead of failed ([#587](https://github.com/werf/nelm/issues/587)) ([ead2882](https://github.com/werf/nelm/commit/ead28823369d9a011506b52da57c1a672d6aa90c))
+
 ## [1.23.1](https://github.com/werf/nelm/compare/v1.23.0...v1.23.1) (2026-03-23)
 
 
