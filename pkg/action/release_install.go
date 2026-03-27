@@ -534,8 +534,15 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	log.Default.Debug(ctx, "Start tracking")
 
 	go func() {
-		if err := <-watchErrCh; err != nil {
-			ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
+		for {
+			select {
+			case err := <-watchErrCh:
+				if err != nil {
+					ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
+				}
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 

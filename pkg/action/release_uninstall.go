@@ -172,8 +172,15 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 	informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
 
 	go func() {
-		if err := <-watchErrCh; err != nil {
-			ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
+		for {
+			select {
+			case err := <-watchErrCh:
+				if err != nil {
+					ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
+				}
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
