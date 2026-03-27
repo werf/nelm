@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/helm/pkg/chart"
-	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
+	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
 	"github.com/werf/nelm/pkg/ts"
 )
 
@@ -27,9 +27,9 @@ var __NELM_VENDOR_BUNDLE__ = (function() {
     return { __NELM_VENDOR__: __NELM_VENDOR__ };
 })();
 `
-		ch := &chart.Chart{
-			Metadata: &chart.Metadata{Name: "test", Version: "1.0.0"},
-			RuntimeFiles: []*chart.File{
+		ch := &helmchart.Chart{
+			Metadata: &helmchart.Metadata{Name: "test", Version: "1.0.0"},
+			RuntimeFiles: []*chartcommon.File{
 				{Name: common.ChartTSVendorBundleFile, Data: []byte(vendorBundle)},
 				{Name: "ts/src/index.ts", Data: []byte(`
 const utils = require('@myorg/utils');
@@ -45,7 +45,7 @@ export function render(ctx: any) {
 `)},
 			},
 		}
-		values := chartutil.Values{"Release": map[string]any{"Name": "scoped-test"}}
+		values := chartcommon.Values{"Release": map[string]any{"Name": "scoped-test"}}
 
 		result, err := ts.RenderFiles(context.Background(), ch, values)
 		require.NoError(t, err)
@@ -69,9 +69,9 @@ var __NELM_VENDOR_BUNDLE__ = (function() {
     return { __NELM_VENDOR__: __NELM_VENDOR__ };
 })();
 `
-		ch := &chart.Chart{
-			Metadata: &chart.Metadata{Name: "test", Version: "1.0.0"},
-			RuntimeFiles: []*chart.File{
+		ch := &helmchart.Chart{
+			Metadata: &helmchart.Metadata{Name: "test", Version: "1.0.0"},
+			RuntimeFiles: []*chartcommon.File{
 				{Name: common.ChartTSVendorBundleFile, Data: []byte(vendorBundle)},
 				{Name: "ts/src/index.ts", Data: []byte(`
 const _ = require('lodash');
@@ -92,7 +92,7 @@ export function render(ctx: any) {
 `)},
 			},
 		}
-		values := chartutil.Values{"Values": map[string]any{"labels": map[string]any{"env": "prod"}}}
+		values := chartcommon.Values{"Values": map[string]any{"labels": map[string]any{"env": "prod"}}}
 
 		result, err := ts.RenderFiles(context.Background(), ch, values)
 		require.NoError(t, err)
@@ -116,9 +116,9 @@ var __NELM_VENDOR_BUNDLE__ = (function() {
     return { __NELM_VENDOR__: __NELM_VENDOR__ };
 })();
 `
-		ch := &chart.Chart{
-			Metadata: &chart.Metadata{Name: "test", Version: "1.0.0"},
-			RuntimeFiles: []*chart.File{
+		ch := &helmchart.Chart{
+			Metadata: &helmchart.Metadata{Name: "test", Version: "1.0.0"},
+			RuntimeFiles: []*chartcommon.File{
 				{Name: common.ChartTSVendorBundleFile, Data: []byte(vendorBundle)},
 				{Name: "ts/src/index.ts", Data: []byte(`
 const core = require('mylib/core');
@@ -136,7 +136,7 @@ export function render(ctx: any) {
 `)},
 			},
 		}
-		values := chartutil.Values{"Release": map[string]any{"Name": "subpath"}}
+		values := chartcommon.Values{"Release": map[string]any{"Name": "subpath"}}
 
 		result, err := ts.RenderFiles(context.Background(), ch, values)
 		require.NoError(t, err)
@@ -144,9 +144,9 @@ export function render(ctx: any) {
 	})
 
 	t.Run("missing package gives clear error", func(t *testing.T) {
-		ch := &chart.Chart{
-			Metadata: &chart.Metadata{Name: "test", Version: "1.0.0"},
-			RuntimeFiles: []*chart.File{
+		ch := &helmchart.Chart{
+			Metadata: &helmchart.Metadata{Name: "test", Version: "1.0.0"},
+			RuntimeFiles: []*chartcommon.File{
 				{Name: "ts/src/index.ts", Data: []byte(`
 const missing = require('nonexistent-package');
 export function render(ctx: any) {
@@ -156,7 +156,7 @@ export function render(ctx: any) {
 			},
 		}
 
-		_, err := ts.RenderFiles(context.Background(), ch, chartutil.Values{})
+		_, err := ts.RenderFiles(context.Background(), ch, chartcommon.Values{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "nonexistent-package")
 	})
@@ -188,9 +188,9 @@ var __NELM_VENDOR_BUNDLE__ = (function() {
     return { __NELM_VENDOR__: __NELM_VENDOR__ };
 })();
 `
-		ch := &chart.Chart{
-			Metadata: &chart.Metadata{Name: "test", Version: "2.0.0"},
-			RuntimeFiles: []*chart.File{
+		ch := &helmchart.Chart{
+			Metadata: &helmchart.Metadata{Name: "test", Version: "2.0.0"},
+			RuntimeFiles: []*chartcommon.File{
 				{Name: common.ChartTSVendorBundleFile, Data: []byte(vendorBundle)},
 				{Name: "ts/src/index.ts", Data: []byte(`
 const k8s = require('k8s-helpers');
@@ -205,7 +205,7 @@ export function render(ctx: any) {
 `)},
 			},
 		}
-		values := chartutil.Values{
+		values := chartcommon.Values{
 			"Release": map[string]any{"Name": "nested-vendor"},
 		}
 
@@ -231,9 +231,9 @@ var __NELM_VENDOR_BUNDLE__ = (function() {
     return { __NELM_VENDOR__: __NELM_VENDOR__ };
 })();
 `
-		ch := &chart.Chart{
-			Metadata: &chart.Metadata{Name: "test", Version: "1.0.0"},
-			RuntimeFiles: []*chart.File{
+		ch := &helmchart.Chart{
+			Metadata: &helmchart.Metadata{Name: "test", Version: "1.0.0"},
+			RuntimeFiles: []*chartcommon.File{
 				{Name: common.ChartTSVendorBundleFile, Data: []byte(vendorBundle)},
 				{Name: "ts/src/index.ts", Data: []byte(`
 const cjsModule = require('cjs-module');
@@ -255,7 +255,7 @@ export function render(ctx: any) {
 			},
 		}
 
-		result, err := ts.RenderFiles(context.Background(), ch, chartutil.Values{})
+		result, err := ts.RenderFiles(context.Background(), ch, chartcommon.Values{})
 		require.NoError(t, err)
 		yaml := result[common.ChartTSSourceDir+common.ChartTSEntryPointTS]
 		assert.Contains(t, yaml, "configName: cjs-config")

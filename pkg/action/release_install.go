@@ -21,8 +21,8 @@ import (
 	"github.com/werf/nelm/pkg/chart"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
+	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/legacy/progrep"
 	"github.com/werf/nelm/pkg/lock"
@@ -83,7 +83,7 @@ type ReleaseInstallOptions struct {
 	InstallReportPath string
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.
-	LegacyChartType helmopts.ChartType
+	LegacyChartType common.LegacyChartType
 	// LegacyExtraValues provides additional values programmatically.
 	// Used internally for backward compatibility with werf integration.
 	LegacyExtraValues map[string]interface{}
@@ -309,7 +309,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		instResInfos = planArtifact.Data.InstallableResourceInfos
 		relInfos = planArtifact.Data.ReleaseInfos
 	} else {
-		prevReleaseFailed := prevRelease != nil && prevRelease.IsStatusFailed()
+		prevReleaseFailed := prevRelease != nil && prevRelease.Info.Status == helmreleasestatus.StatusFailed
 
 		var deployType common.DeployType
 		if prevDeployedRelease != nil {
@@ -320,8 +320,8 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			deployType = common.DeployTypeInitial
 		}
 
-		helmOptions := helmopts.HelmOptions{
-			ChartLoadOpts: helmopts.ChartLoadOptions{
+		helmOptions := common.HelmOptions{
+			ChartLoadOpts: common.ChartLoadOptions{
 				ChartAppVersion:            opts.ChartAppVersion,
 				ChartType:                  opts.LegacyChartType,
 				DefaultChartAPIVersion:     opts.DefaultChartAPIVersion,
@@ -485,12 +485,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	if releaseIsUpToDate && installPlanIsUseless {
 		if opts.InstallReportPath != "" {
-			if err := saveReport(opts.InstallReportPath, &releaseReportV3{
+			if err := saveReport(opts.InstallReportPath, &ReleaseReportV3{
 				Version:   3,
 				Release:   releaseName,
 				Namespace: releaseNamespace,
 				Revision:  newRelease.Version,
-				Status:    helmrelease.StatusSkipped,
+				Status:    helmreleasestatus.Status("skipped"),
 			}); err != nil {
 				return fmt.Errorf("save release install report: %w", err)
 			}
@@ -622,12 +622,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	sort.Strings(reportCanceledOps)
 	sort.Strings(reportFailedOps)
 
-	report := &releaseReportV3{
+	report := &ReleaseReportV3{
 		Version:             3,
 		Release:             releaseName,
 		Namespace:           releaseNamespace,
 		Revision:            newRelease.Version,
-		Status:              lo.Ternary(executePlanErr == nil, helmrelease.StatusDeployed, helmrelease.StatusFailed),
+		Status:              lo.Ternary(executePlanErr == nil, helmreleasestatus.StatusDeployed, helmreleasestatus.StatusFailed),
 		CompletedOperations: reportCompletedOps,
 		CanceledOperations:  reportCanceledOps,
 		FailedOperations:    reportFailedOps,

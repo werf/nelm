@@ -17,7 +17,7 @@ import (
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/legacy/progrep"
 	"github.com/werf/nelm/pkg/lock"
@@ -182,7 +182,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		prevRelease := lo.LastOrEmpty(releases)
-		prevReleaseFailed := prevRelease.IsStatusFailed()
+		prevReleaseFailed := prevRelease.Info.Status == helmreleasestatus.StatusFailed
 		deployType := common.DeployTypeUninstall
 
 		log.Default.Debug(ctx, "Convert previous release to resource specs")
@@ -334,12 +334,12 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		sort.Strings(reportCanceledOps)
 		sort.Strings(reportFailedOps)
 
-		report := &releaseReportV3{
+		report := &ReleaseReportV3{
 			Version:             3,
 			Release:             releaseName,
 			Namespace:           releaseNamespace,
 			Revision:            prevRelease.Version,
-			Status:              helmrelease.StatusUninstalled,
+			Status:              helmreleasestatus.StatusUninstalled,
 			CompletedOperations: reportCompletedOps,
 			CanceledOperations:  reportCanceledOps,
 			FailedOperations:    reportFailedOps,

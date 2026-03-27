@@ -17,19 +17,19 @@ limitations under the License.
 package values
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/url"
 	"os"
 	"strings"
 
-	"github.com/pkg/errors"
-	"sigs.k8s.io/yaml"
-
+	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/loader"
 	"github.com/werf/nelm/pkg/helm/pkg/getter"
 	"github.com/werf/nelm/pkg/helm/pkg/strvals"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/file"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 )
 
 // Options captures the different ways to specify values
@@ -44,51 +44,61 @@ type Options struct {
 
 // MergeValues merges values from files specified via -f/--values and directly
 // via --set-json, --set, --set-string, or --set-file, marshaling them to YAML
-func (opts *Options) MergeValues(p getter.Providers, options helmopts.HelmOptions) (map[string]interface{}, error) {
+func (opts *Options) MergeValues(ctx context.Context, p getter.Providers) (map[string]interface{}, error) {
 	base := map[string]interface{}{}
+
+	ho := common.HelmOptionsFromContext(ctx)
 
 	// User specified a values files via -f/--values
 	for _, filePath := range opts.ValueFiles {
-		currentMap := map[string]interface{}{}
-
-		var bytes []byte
+		var raw []byte
 		var err error
-		if options.ChartLoadOpts.ChartType == helmopts.ChartTypeChart && file.ChartFileReader != nil {
-			bytes, err = file.ChartFileReader.ReadChartFile(context.Background(), filePath)
-			if err != nil {
-				return nil, err
-			}
-		} else if data, err := readFile(filePath, p); err != nil {
-			return nil, err
+		if ho.ChartLoadOpts.ChartType == common.LegacyChartTypeChart && common.ChartFileReader != nil {
+			raw, err = common.ChartFileReader.ReadChartFile(ctx, filePath)
 		} else {
-			bytes = data
+			raw, err = readFile(filePath, p)
+		}
+		if err != nil {
+			return nil, err
 		}
 
-		if err := yaml.Unmarshal(bytes, &currentMap); err != nil {
-			return nil, errors.Wrapf(err, "failed to parse %s", filePath)
+		currentMap, err := loader.LoadValues(bytes.NewReader(raw))
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse %s: %w", filePath, err)
 		}
 		// Merge with the previous map
-		base = mergeMaps(base, currentMap)
+		base = loader.MergeMaps(base, currentMap)
 	}
 
 	// User specified a value via --set-json
 	for _, value := range opts.JSONValues {
-		if err := strvals.ParseJSON(value, base); err != nil {
-			return nil, errors.Errorf("failed parsing --set-json data %s", value)
+		trimmedValue := strings.TrimSpace(value)
+		if len(trimmedValue) > 0 && trimmedValue[0] == '{' {
+			// If value is JSON object format, parse it as map
+			var jsonMap map[string]interface{}
+			if err := json.Unmarshal([]byte(trimmedValue), &jsonMap); err != nil {
+				return nil, fmt.Errorf("failed parsing --set-json data JSON: %s", value)
+			}
+			base = loader.MergeMaps(base, jsonMap)
+		} else {
+			// Otherwise, parse it as key=value format
+			if err := strvals.ParseJSON(value, base); err != nil {
+				return nil, fmt.Errorf("failed parsing --set-json data %s", value)
+			}
 		}
 	}
 
 	// User specified a value via --set
 	for _, value := range opts.Values {
 		if err := strvals.ParseInto(value, base); err != nil {
-			return nil, errors.Wrap(err, "failed parsing --set data")
+			return nil, fmt.Errorf("failed parsing --set data: %w", err)
 		}
 	}
 
 	// User specified a value via --set-string
 	for _, value := range opts.StringValues {
 		if err := strvals.ParseIntoString(value, base); err != nil {
-			return nil, errors.Wrap(err, "failed parsing --set-string data")
+			return nil, fmt.Errorf("failed parsing --set-string data: %w", err)
 		}
 	}
 
@@ -97,8 +107,8 @@ func (opts *Options) MergeValues(p getter.Providers, options helmopts.HelmOption
 		reader := func(rs []rune) (interface{}, error) {
 			var bytes []byte
 			var err error
-			if options.ChartLoadOpts.ChartType == helmopts.ChartTypeChart && file.ChartFileReader != nil {
-				bytes, err = file.ChartFileReader.ReadChartFile(context.Background(), string(rs))
+			if ho.ChartLoadOpts.ChartType == common.LegacyChartTypeChart && common.ChartFileReader != nil {
+				bytes, err = common.ChartFileReader.ReadChartFile(ctx, string(rs))
 			} else {
 				bytes, err = readFile(string(rs), p)
 			}
@@ -109,37 +119,18 @@ func (opts *Options) MergeValues(p getter.Providers, options helmopts.HelmOption
 			return string(bytes), nil
 		}
 		if err := strvals.ParseIntoFile(value, base, reader); err != nil {
-			return nil, errors.Wrap(err, "failed parsing --set-file data")
+			return nil, fmt.Errorf("failed parsing --set-file data: %w", err)
 		}
 	}
 
 	// User specified a value via --set-literal
 	for _, value := range opts.LiteralValues {
 		if err := strvals.ParseLiteralInto(value, base); err != nil {
-			return nil, errors.Wrap(err, "failed parsing --set-literal data")
+			return nil, fmt.Errorf("failed parsing --set-literal data: %w", err)
 		}
 	}
 
 	return base, nil
-}
-
-func mergeMaps(a, b map[string]interface{}) map[string]interface{} {
-	out := make(map[string]interface{}, len(a))
-	for k, v := range a {
-		out[k] = v
-	}
-	for k, v := range b {
-		if v, ok := v.(map[string]interface{}); ok {
-			if bv, ok := out[k]; ok {
-				if bv, ok := bv.(map[string]interface{}); ok {
-					out[k] = mergeMaps(bv, v)
-					continue
-				}
-			}
-		}
-		out[k] = v
-	}
-	return out
 }
 
 // readFile load a file from stdin, the local directory, or a remote file with a url.
@@ -161,5 +152,5 @@ func readFile(filePath string, p getter.Providers) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return data.Bytes(), err
+	return data.Bytes(), nil
 }

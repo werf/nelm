@@ -1,13 +1,14 @@
 package plan
 
 import (
+	"fmt"
 	"regexp"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/werf/kubedog/pkg/dyntracker/statestore"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/resource/spec"
 )
 
@@ -165,11 +166,11 @@ type OperationConfigCreateRelease struct {
 }
 
 func (c *OperationConfigCreateRelease) ID() string {
-	return c.Release.ID()
+	return releaseID(c.Release.Namespace, c.Release.Name, c.Release.Version)
 }
 
 func (c *OperationConfigCreateRelease) IDHuman() string {
-	return c.Release.IDHuman()
+	return releaseIDHuman(c.Release.Namespace, c.Release.Name, c.Release.Version)
 }
 
 type OperationConfigUpdateRelease struct {
@@ -177,11 +178,11 @@ type OperationConfigUpdateRelease struct {
 }
 
 func (c *OperationConfigUpdateRelease) ID() string {
-	return c.Release.ID()
+	return releaseID(c.Release.Namespace, c.Release.Name, c.Release.Version)
 }
 
 func (c *OperationConfigUpdateRelease) IDHuman() string {
-	return c.Release.IDHuman()
+	return releaseIDHuman(c.Release.Namespace, c.Release.Name, c.Release.Version)
 }
 
 type OperationConfigDeleteRelease struct {
@@ -191,9 +192,17 @@ type OperationConfigDeleteRelease struct {
 }
 
 func (c *OperationConfigDeleteRelease) ID() string {
-	return helmrelease.ReleaseID(c.ReleaseNamespace, c.ReleaseName, c.ReleaseRevision)
+	return releaseID(c.ReleaseNamespace, c.ReleaseName, c.ReleaseRevision)
 }
 
 func (c *OperationConfigDeleteRelease) IDHuman() string {
-	return helmrelease.ReleaseIDHuman(c.ReleaseNamespace, c.ReleaseName, c.ReleaseRevision)
+	return releaseIDHuman(c.ReleaseNamespace, c.ReleaseName, c.ReleaseRevision)
+}
+
+func releaseID(namespace, name string, revision int) string {
+	return fmt.Sprintf("%s:%s:%d", namespace, name, revision)
+}
+
+func releaseIDHuman(namespace, name string, revision int) string {
+	return fmt.Sprintf("%s/%d (namespace=%s)", name, revision, namespace)
 }

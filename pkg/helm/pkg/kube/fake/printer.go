@@ -17,6 +17,7 @@ limitations under the License.
 package fake
 
 import (
+	"fmt"
 	"io"
 	"strings"
 	"time"
@@ -32,8 +33,17 @@ import (
 // PrintingKubeClient implements KubeClient, but simply prints the reader to
 // the given output.
 type PrintingKubeClient struct {
-	Out io.Writer
+	Out       io.Writer
+	LogOutput io.Writer
 }
+
+// PrintingKubeWaiter implements kube.Waiter, but simply prints the reader to the given output
+type PrintingKubeWaiter struct {
+	Out       io.Writer
+	LogOutput io.Writer
+}
+
+var _ kube.Interface = &PrintingKubeClient{}
 
 // IsReachable checks if the cluster is reachable
 func (p *PrintingKubeClient) IsReachable() error {
@@ -41,7 +51,7 @@ func (p *PrintingKubeClient) IsReachable() error {
 }
 
 // Create prints the values of what would be created with a real KubeClient.
-func (p *PrintingKubeClient) Create(resources kube.ResourceList, _ kube.CreateOptions) (*kube.Result, error) {
+func (p *PrintingKubeClient) Create(resources kube.ResourceList, _ ...kube.ClientCreateOption) (*kube.Result, error) {
 	_, err := io.Copy(p.Out, bufferize(resources))
 	if err != nil {
 		return nil, err
@@ -57,17 +67,23 @@ func (p *PrintingKubeClient) Get(resources kube.ResourceList, _ bool) (map[strin
 	return make(map[string][]runtime.Object), nil
 }
 
-func (p *PrintingKubeClient) Wait(resources kube.ResourceList, _ time.Duration) error {
+func (p *PrintingKubeWaiter) Wait(resources kube.ResourceList, _ time.Duration) error {
 	_, err := io.Copy(p.Out, bufferize(resources))
 	return err
 }
 
-func (p *PrintingKubeClient) WaitWithJobs(resources kube.ResourceList, _ time.Duration) error {
+func (p *PrintingKubeWaiter) WaitWithJobs(resources kube.ResourceList, _ time.Duration) error {
 	_, err := io.Copy(p.Out, bufferize(resources))
 	return err
 }
 
-func (p *PrintingKubeClient) WaitForDelete(resources kube.ResourceList, _ time.Duration) error {
+func (p *PrintingKubeWaiter) WaitForDelete(resources kube.ResourceList, _ time.Duration) error {
+	_, err := io.Copy(p.Out, bufferize(resources))
+	return err
+}
+
+// WatchUntilReady implements KubeClient WatchUntilReady.
+func (p *PrintingKubeWaiter) WatchUntilReady(resources kube.ResourceList, _ time.Duration) error {
 	_, err := io.Copy(p.Out, bufferize(resources))
 	return err
 }
@@ -75,7 +91,7 @@ func (p *PrintingKubeClient) WaitForDelete(resources kube.ResourceList, _ time.D
 // Delete implements KubeClient delete.
 //
 // It only prints out the content to be deleted.
-func (p *PrintingKubeClient) Delete(resources kube.ResourceList, _ kube.DeleteOptions) (*kube.Result, []error) {
+func (p *PrintingKubeClient) Delete(resources kube.ResourceList, _ metav1.DeletionPropagation) (*kube.Result, []error) {
 	_, err := io.Copy(p.Out, bufferize(resources))
 	if err != nil {
 		return nil, []error{err}
@@ -83,14 +99,8 @@ func (p *PrintingKubeClient) Delete(resources kube.ResourceList, _ kube.DeleteOp
 	return &kube.Result{Deleted: resources}, nil
 }
 
-// WatchUntilReady implements KubeClient WatchUntilReady.
-func (p *PrintingKubeClient) WatchUntilReady(resources kube.ResourceList, _ time.Duration) error {
-	_, err := io.Copy(p.Out, bufferize(resources))
-	return err
-}
-
 // Update implements KubeClient Update.
-func (p *PrintingKubeClient) Update(_, modified kube.ResourceList, force bool, _ kube.UpdateOptions) (*kube.Result, error) {
+func (p *PrintingKubeClient) Update(_, modified kube.ResourceList, _ ...kube.ClientUpdateOption) (*kube.Result, error) {
 	_, err := io.Copy(p.Out, bufferize(modified))
 	if err != nil {
 		return nil, err
@@ -116,15 +126,34 @@ func (p *PrintingKubeClient) WaitAndGetCompletedPodPhase(_ string, _ time.Durati
 	return v1.PodSucceeded, nil
 }
 
+// GetPodList implements KubeClient GetPodList.
+func (p *PrintingKubeClient) GetPodList(_ string, _ metav1.ListOptions) (*v1.PodList, error) {
+	return &v1.PodList{}, nil
+}
+
+// OutputContainerLogsForPodList implements KubeClient OutputContainerLogsForPodList.
+func (p *PrintingKubeClient) OutputContainerLogsForPodList(_ *v1.PodList, someNamespace string, _ func(namespace, pod, container string) io.Writer) error {
+	_, err := io.Copy(p.LogOutput, strings.NewReader(fmt.Sprintf("attempted to output logs for namespace: %s", someNamespace)))
+	return err
+}
+
 // DeleteWithPropagationPolicy implements KubeClient delete.
 //
 // It only prints out the content to be deleted.
-func (p *PrintingKubeClient) DeleteWithPropagationPolicy(resources kube.ResourceList, _ metav1.DeletionPropagation, _ kube.DeleteOptions) (*kube.Result, []error) {
+func (p *PrintingKubeClient) DeleteWithPropagationPolicy(resources kube.ResourceList, _ metav1.DeletionPropagation) (*kube.Result, []error) {
 	_, err := io.Copy(p.Out, bufferize(resources))
 	if err != nil {
 		return nil, []error{err}
 	}
 	return &kube.Result{Deleted: resources}, nil
+}
+
+func (p *PrintingKubeClient) GetWaiter(ws kube.WaitStrategy) (kube.Waiter, error) {
+	return p.GetWaiterWithOptions(ws)
+}
+
+func (p *PrintingKubeClient) GetWaiterWithOptions(_ kube.WaitStrategy, _ ...kube.WaitOption) (kube.Waiter, error) {
+	return &PrintingKubeWaiter{Out: p.Out, LogOutput: p.LogOutput}, nil
 }
 
 func bufferize(resources kube.ResourceList) io.Reader {

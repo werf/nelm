@@ -8,8 +8,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/werf/common-go/pkg/cli"
-	helm_v3 "github.com/werf/nelm/pkg/helm/cmd/helm"
+	"github.com/werf/nelm/pkg/action"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
+	helmcmd "github.com/werf/nelm/pkg/helm/pkg/cmd"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -26,9 +27,9 @@ func newChartUploadCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 
 	originalRunE := cmd.RunE
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		helmSettings := helm_v3.Settings
+		helmSettings := helmcmd.Settings
 
-		ctx = log.SetupLogging(ctx, lo.Ternary(helmSettings.Debug, log.DebugLevel, log.InfoLevel), log.SetupLoggingOptions{})
+		ctx = action.SetupLogging(ctx, lo.Ternary(helmSettings.Debug, log.DebugLevel, log.InfoLevel), action.SetupLoggingOptions{})
 
 		loader.NoChartLockWarning = ""
 

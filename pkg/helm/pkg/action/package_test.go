@@ -22,15 +22,17 @@ import (
 	"testing"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/stretchr/testify/require"
 
-	"github.com/werf/nelm/pkg/helm/internal/test/ensure"
+	"github.com/werf/nelm/pkg/helm/intern/test/ensure"
 )
 
 func TestPassphraseFileFetcher(t *testing.T) {
 	secret := "secret"
 	directory := ensure.TempFile(t, "passphrase-file", []byte(secret))
+	testPkg := NewPackage()
 
-	fetcher, err := passphraseFileFetcher(path.Join(directory, "passphrase-file"), nil)
+	fetcher, err := testPkg.passphraseFileFetcher(path.Join(directory, "passphrase-file"), nil)
 	if err != nil {
 		t.Fatal("Unable to create passphraseFileFetcher", err)
 	}
@@ -48,8 +50,9 @@ func TestPassphraseFileFetcher(t *testing.T) {
 func TestPassphraseFileFetcher_WithLineBreak(t *testing.T) {
 	secret := "secret"
 	directory := ensure.TempFile(t, "passphrase-file", []byte(secret+"\n\n."))
+	testPkg := NewPackage()
 
-	fetcher, err := passphraseFileFetcher(path.Join(directory, "passphrase-file"), nil)
+	fetcher, err := testPkg.passphraseFileFetcher(path.Join(directory, "passphrase-file"), nil)
 	if err != nil {
 		t.Fatal("Unable to create passphraseFileFetcher", err)
 	}
@@ -66,14 +69,46 @@ func TestPassphraseFileFetcher_WithLineBreak(t *testing.T) {
 
 func TestPassphraseFileFetcher_WithInvalidStdin(t *testing.T) {
 	directory := t.TempDir()
+	testPkg := NewPackage()
 
 	stdin, err := os.CreateTemp(directory, "non-existing")
 	if err != nil {
 		t.Fatal("Unable to create test file", err)
 	}
 
-	if _, err := passphraseFileFetcher("-", stdin); err == nil {
+	if _, err := testPkg.passphraseFileFetcher("-", stdin); err == nil {
 		t.Error("Expected passphraseFileFetcher returning an error")
+	}
+}
+
+func TestPassphraseFileFetcher_WithStdinAndMultipleFetches(t *testing.T) {
+	testPkg := NewPackage()
+	stdin, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal("Unable to create pipe", err)
+	}
+
+	passphrase := "secret-from-stdin"
+
+	go func() {
+		_, err = w.Write([]byte(passphrase + "\n"))
+		require.NoError(t, err)
+	}()
+
+	for range 4 {
+		fetcher, err := testPkg.passphraseFileFetcher("-", stdin)
+		if err != nil {
+			t.Errorf("Expected passphraseFileFetcher to not return an error, but got %v", err)
+		}
+
+		pass, err := fetcher("key")
+		if err != nil {
+			t.Errorf("Expected passphraseFileFetcher invocation to succeed, failed with %v", err)
+		}
+
+		if string(pass) != string(passphrase) {
+			t.Errorf("Expected multiple passphrase fetch to return %q, got %q", passphrase, pass)
+		}
 	}
 }
 
@@ -118,4 +153,19 @@ func TestValidateVersion(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRun_ErrorPath(t *testing.T) {
+	client := NewPackage()
+	_, err := client.Run("err-path", nil)
+	require.Error(t, err)
+}
+
+func TestRun(t *testing.T) {
+	chartPath := "testdata/charts/chart-with-schema"
+	client := NewPackage()
+	filename, err := client.Run(chartPath, nil)
+	require.NoError(t, err)
+	require.Equal(t, "empty-0.1.0.tgz", filename)
+	require.NoError(t, os.Remove(filename))
 }

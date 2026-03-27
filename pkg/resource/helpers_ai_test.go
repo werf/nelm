@@ -150,6 +150,6 @@ func setupLocalSchemaDir(t *testing.T, schemas map[string]string) string {
 
 func setupTestEnvironment(t *testing.T) {
 	t.Helper()
-	common.APIResourceValidationJSONSchemasCacheDir = t.TempDir()
+	t.Setenv("HELM_CACHE_HOME", t.TempDir())
 	featgate.FeatGateResourceValidation.Enable()
 }

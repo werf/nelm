@@ -8,7 +8,8 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/resource"
 )
 
@@ -146,9 +147,13 @@ func addFailureReleaseOperations(failedPlan, plan *Plan, releaseInfos []*Release
 
 			switch config := op.Config.(type) {
 			case *OperationConfigCreateRelease:
-				return config.Release.ID() == info.Release.ID()
+				return config.Release.Namespace == info.Release.Namespace &&
+					config.Release.Name == info.Release.Name &&
+					config.Release.Version == info.Release.Version
 			case *OperationConfigUpdateRelease:
-				return config.Release.ID() == info.Release.ID()
+				return config.Release.Namespace == info.Release.Namespace &&
+					config.Release.Name == info.Release.Name &&
+					config.Release.Version == info.Release.Version
 			default:
 				return false
 			}
@@ -168,15 +173,15 @@ func addReleaseOperations(plan *Plan, releaseInfos []*ReleaseInfo) error {
 	for _, info := range releaseInfos {
 		switch info.Must {
 		case ReleaseTypeInstall:
-			if err := addPendingAndDeployedReleaseOps(plan, info, helmrelease.StatusPendingInstall); err != nil {
+			if err := addPendingAndDeployedReleaseOps(plan, info, helmreleasecommon.StatusPendingInstall); err != nil {
 				return fmt.Errorf("add pending/deployed ops for release install: %w", err)
 			}
 		case ReleaseTypeUpgrade:
-			if err := addPendingAndDeployedReleaseOps(plan, info, helmrelease.StatusPendingUpgrade); err != nil {
+			if err := addPendingAndDeployedReleaseOps(plan, info, helmreleasecommon.StatusPendingUpgrade); err != nil {
 				return fmt.Errorf("add pending/deployed ops for release upgrade: %w", err)
 			}
 		case ReleaseTypeRollback:
-			if err := addPendingAndDeployedReleaseOps(plan, info, helmrelease.StatusPendingRollback); err != nil {
+			if err := addPendingAndDeployedReleaseOps(plan, info, helmreleasecommon.StatusPendingRollback); err != nil {
 				return fmt.Errorf("add pending/deployed ops for release rollback: %w", err)
 			}
 		case ReleaseTypeSupersede:
@@ -311,7 +316,7 @@ func addFailedReleaseOps(plan *Plan, info *ReleaseInfo) error {
 		failedRel = rel.(*helmrelease.Release)
 	}
 
-	failedRel.Info.Status = helmrelease.StatusFailed
+	failedRel.Info.Status = helmreleasecommon.StatusFailed
 
 	failedOp := &Operation{
 		Type:     OperationTypeUpdateRelease,
@@ -551,7 +556,7 @@ func addMainStages(plan *Plan) error {
 	return nil
 }
 
-func addPendingAndDeployedReleaseOps(plan *Plan, info *ReleaseInfo, pendingStatus helmrelease.Status) error {
+func addPendingAndDeployedReleaseOps(plan *Plan, info *ReleaseInfo, pendingStatus helmreleasecommon.Status) error {
 	var pendingRel *helmrelease.Release
 	if rel, err := copystructure.Copy(info.Release); err != nil {
 		return fmt.Errorf("deep copy release: %w", err)
@@ -578,7 +583,7 @@ func addPendingAndDeployedReleaseOps(plan *Plan, info *ReleaseInfo, pendingStatu
 		succeededRel = rel.(*helmrelease.Release)
 	}
 
-	succeededRel.Info.Status = helmrelease.StatusDeployed
+	succeededRel.Info.Status = helmreleasecommon.StatusDeployed
 
 	succeededOp := &Operation{
 		Type:     OperationTypeUpdateRelease,
@@ -601,7 +606,7 @@ func addSupersedeReleaseOps(plan *Plan, info *ReleaseInfo) error {
 		supersededRel = rel.(*helmrelease.Release)
 	}
 
-	supersededRel.Info.Status = helmrelease.StatusSuperseded
+	supersededRel.Info.Status = helmreleasecommon.StatusSuperseded
 
 	supersedeOp := &Operation{
 		Type:     OperationTypeUpdateRelease,
@@ -624,7 +629,7 @@ func addUninstallReleaseOps(plan *Plan, info *ReleaseInfo) error {
 		uninstallingRel = rel.(*helmrelease.Release)
 	}
 
-	uninstallingRel.Info.Status = helmrelease.StatusUninstalling
+	uninstallingRel.Info.Status = helmreleasecommon.StatusUninstalling
 
 	uninstallingOp := &Operation{
 		Type:     OperationTypeUpdateRelease,

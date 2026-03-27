@@ -24,6 +24,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/util"
@@ -453,7 +454,7 @@ func createKubeConformCacheDir(subDir, source string) (string, error) {
 		sourceDirName = u.Hostname() + "-" + sourceHash[:7]
 	}
 
-	path := filepath.Join(common.APIResourceValidationJSONSchemasCacheDir, subDir, sourceDirName)
+	path := filepath.Join(helmpath.CachePath(common.CacheDirAPIResourceJSONSchemas), subDir, sourceDirName)
 
 	if stat, err := os.Stat(path); os.IsNotExist(err) {
 		if err := os.MkdirAll(path, 0o755); err != nil {

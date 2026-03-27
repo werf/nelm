@@ -15,11 +15,13 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/werf/nelm/pkg/common"
-	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
-	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
-	"github.com/werf/nelm/pkg/helm/pkg/releaseutil"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+	chartv2util "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
+	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	releaseutil "github.com/werf/nelm/pkg/helm/pkg/release/v1/util"
 	"github.com/werf/nelm/pkg/resource/spec"
+	"github.com/werf/nelm/pkg/util"
 )
 
 type ReleaseOptions struct {
@@ -39,7 +41,7 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 		cmpopts.EquateEmpty(),
 	}
 
-	if oldRel.Info.Status != helmrelease.StatusDeployed ||
+	if oldRel.Info.Status != helmreleasecommon.StatusDeployed ||
 		oldRel.Info.Notes != newRel.Info.Notes ||
 		!cmp.Equal(oldRel.Config, newRel.Config, cmpOpts) {
 		return false, nil
@@ -77,7 +79,7 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 		return false, nil
 	}
 
-	oldRelManifests := releaseutil.SplitManifestsToSlice(oldRel.Manifest)
+	oldRelManifests := util.SplitManifests(oldRel.Manifest)
 
 	oldRegularResourcesHash := fnv.New32a()
 	for _, manifest := range oldRelManifests {
@@ -93,7 +95,7 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 		}
 	}
 
-	newRelManifests := releaseutil.SplitManifestsToSlice(newRel.Manifest)
+	newRelManifests := util.SplitManifests(newRel.Manifest)
 
 	newRegularResourcesHash := fnv.New32a()
 	for _, manifest := range newRelManifests {
@@ -118,21 +120,21 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 
 // Construct Helm release.
 func NewRelease(name, namespace string, revision int, deployType common.DeployType, resources []*spec.ResourceSpec, chart *helmchart.Chart, releaseConfig map[string]interface{}, opts ReleaseOptions) (*helmrelease.Release, error) {
-	if err := chartutil.ValidateReleaseName(name); err != nil {
+	if err := chartv2util.ValidateReleaseName(name); err != nil {
 		return nil, fmt.Errorf("release name %q is not valid: %w", name, err)
 	}
 
-	var status helmrelease.Status
+	var status helmreleasecommon.Status
 	switch deployType {
 	case common.DeployTypeInitial,
 		common.DeployTypeInstall:
-		status = helmrelease.StatusPendingInstall
+		status = helmreleasecommon.StatusPendingInstall
 	case common.DeployTypeUpgrade:
-		status = helmrelease.StatusPendingUpgrade
+		status = helmreleasecommon.StatusPendingUpgrade
 	case common.DeployTypeRollback:
-		status = helmrelease.StatusPendingRollback
+		status = helmreleasecommon.StatusPendingRollback
 	case common.DeployTypeUninstall:
-		status = helmrelease.StatusUninstalling
+		status = helmreleasecommon.StatusUninstalling
 	default:
 		panic("unexpected deploy type")
 	}
@@ -203,7 +205,7 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 // Constructs ResourceSpecs from a Release object.
 func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string, noCleanNullFields bool /* TODO(major): get rid */) ([]*spec.ResourceSpec, error) {
 	var resources []*spec.ResourceSpec
-	for _, manifest := range releaseutil.SplitManifestsToSlice(rel.UnstoredManifest) {
+	for _, manifest := range util.SplitManifests(rel.UnstoredManifest) {
 		if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
 			StoreAs:                 common.StoreAsNone,
 			LegacyNoCleanNullFields: noCleanNullFields,
@@ -214,7 +216,7 @@ func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string, n
 		}
 	}
 
-	for _, manifest := range releaseutil.SplitManifestsToSlice(rel.Manifest) {
+	for _, manifest := range util.SplitManifests(rel.Manifest) {
 		if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
 			StoreAs:                 common.StoreAsRegular,
 			LegacyNoCleanNullFields: noCleanNullFields,

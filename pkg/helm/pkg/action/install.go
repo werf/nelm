@@ -17,40 +17,38 @@ limitations under the License.
 package action
 
 import (
-	"bytes"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
-	"text/template"
 
-	"github.com/Masterminds/sprig/v3"
-	"github.com/pkg/errors"
-
-	"github.com/werf/nelm/pkg/helm/pkg/chart"
+	ci "github.com/werf/nelm/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/pkg/helm/pkg/cli"
 	"github.com/werf/nelm/pkg/helm/pkg/downloader"
 	"github.com/werf/nelm/pkg/helm/pkg/getter"
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	"github.com/werf/nelm/pkg/helm/pkg/repo"
+	ri "github.com/werf/nelm/pkg/helm/pkg/release"
+	release "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/pkg/helm/pkg/repo/v1"
 )
 
-// NOTESFILE_SUFFIX that we want to treat special. It goes through the templating engine
-// but it's not a yaml file (resource) hence can't have hooks, etc. And the user actually
+// notesFileSuffix that we want to treat specially. It goes through the templating engine
+// but it's not a YAML file (resource) hence can't have hooks, etc. And the user actually
 // wants to see this file after rendering in the status command. However, it must be a suffix
 // since there can be filepath in front of it.
 const notesFileSuffix = "NOTES.txt"
 
-const defaultDirectoryPermission = 0o755
+const defaultDirectoryPermission = 0755
 
 // ChartPathOptions captures common options used for controlling chart paths
 type ChartPathOptions struct {
 	CaFile                string // --ca-file
 	CertFile              string // --cert-file
 	KeyFile               string // --key-file
-	InsecureSkipTLSverify bool   // --insecure-skip-verify
+	InsecureSkipTLSVerify bool   // --insecure-skip-verify
 	PlainHTTP             bool   // --plain-http
 	Keyring               string // --keyring
 	Password              string // --password
@@ -65,8 +63,30 @@ type ChartPathOptions struct {
 	registryClient *registry.Client
 }
 
-// write the <data> to <output-dir>/<name>. <append> controls if the file is created or content will be appended
-func writeToFile(outputDir string, name string, data string, append bool) error {
+func releaseListToV1List(ls []ri.Releaser) ([]*release.Release, error) {
+	rls := make([]*release.Release, 0, len(ls))
+	for _, val := range ls {
+		rel, err := releaserToV1Release(val)
+		if err != nil {
+			return nil, err
+		}
+		rls = append(rls, rel)
+	}
+
+	return rls, nil
+}
+
+func releaseV1ListToReleaserList(ls []*release.Release) ([]ri.Releaser, error) {
+	rls := make([]ri.Releaser, 0, len(ls))
+	for _, val := range ls {
+		rls = append(rls, val)
+	}
+
+	return rls, nil
+}
+
+// write the <data> to <output-dir>/<name>. <appendData> controls if the file is created or content will be appended
+func writeToFile(outputDir string, name string, data string, appendData bool) error {
 	outfileName := strings.Join([]string{outputDir, name}, string(filepath.Separator))
 
 	err := ensureDirectoryForFile(outfileName)
@@ -74,14 +94,15 @@ func writeToFile(outputDir string, name string, data string, append bool) error 
 		return err
 	}
 
-	f, err := createOrOpenFile(outfileName, append)
+	f, err := createOrOpenFile(outfileName, appendData)
 	if err != nil {
 		return err
 	}
 
 	defer f.Close()
 
-	_, err = f.WriteString(fmt.Sprintf("---\n# Source: %s\n%s\n", name, data))
+	_, err = fmt.Fprintf(f, "---\n# Source: %s\n%s\n", name, data)
+
 	if err != nil {
 		return err
 	}
@@ -90,60 +111,74 @@ func writeToFile(outputDir string, name string, data string, append bool) error 
 	return nil
 }
 
-func createOrOpenFile(filename string, append bool) (*os.File, error) {
-	if append {
-		return os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0o600)
+func createOrOpenFile(filename string, appendData bool) (*os.File, error) {
+	if appendData {
+		return os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0600)
 	}
 	return os.Create(filename)
 }
 
-// check if the directory exists to create file. creates if don't exists
+// check if the directory exists to create file. creates if doesn't exist
 func ensureDirectoryForFile(file string) error {
-	baseDir := path.Dir(file)
+	baseDir := filepath.Dir(file)
 	_, err := os.Stat(baseDir)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 
 	return os.MkdirAll(baseDir, defaultDirectoryPermission)
 }
 
-// TemplateName renders a name template, returning the name or an error.
-func TemplateName(nameTemplate string) (string, error) {
-	if nameTemplate == "" {
-		return "", nil
-	}
-
-	t, err := template.New("name-template").Funcs(sprig.TxtFuncMap()).Parse(nameTemplate)
-	if err != nil {
-		return "", err
-	}
-	var b bytes.Buffer
-	if err := t.Execute(&b, nil); err != nil {
-		return "", err
-	}
-
-	return b.String(), nil
-}
-
 // CheckDependencies checks the dependencies for a chart.
-func CheckDependencies(ch *chart.Chart, reqs []*chart.Dependency) error {
+func CheckDependencies(ch ci.Charter, reqs []ci.Dependency) error {
+	ac, err := ci.NewAccessor(ch)
+	if err != nil {
+		return err
+	}
+
 	var missing []string
 
 OUTER:
 	for _, r := range reqs {
-		for _, d := range ch.Dependencies() {
-			if d.Name() == r.Name {
+		rac, err := ci.NewDependencyAccessor(r)
+		if err != nil {
+			return err
+		}
+		for _, d := range ac.Dependencies() {
+			dac, err := ci.NewAccessor(d)
+			if err != nil {
+				return err
+			}
+			if dac.Name() == rac.Name() {
 				continue OUTER
 			}
 		}
-		missing = append(missing, r.Name)
+		missing = append(missing, rac.Name())
 	}
 
 	if len(missing) > 0 {
-		return errors.Errorf("found in Chart.yaml, but missing in charts/ directory: %s", strings.Join(missing, ", "))
+		return fmt.Errorf("found in Chart.yaml, but missing in charts/ directory: %s", strings.Join(missing, ", "))
 	}
 	return nil
+}
+
+func portOrDefault(u *url.URL) string {
+	if p := u.Port(); p != "" {
+		return p
+	}
+
+	switch u.Scheme {
+	case "http":
+		return "80"
+	case "https":
+		return "443"
+	default:
+		return ""
+	}
+}
+
+func urlEqual(u1, u2 *url.URL) bool {
+	return u1.Scheme == u2.Scheme && u1.Hostname() == u2.Hostname() && portOrDefault(u1) == portOrDefault(u2)
 }
 
 // LocateChart looks for a chart directory in known places, and returns either the full path or an error.
@@ -151,7 +186,7 @@ OUTER:
 // This does not ensure that the chart is well-formed; only that the requested filename exists.
 //
 // Order of resolution:
-// - relative to current working directory
+// - relative to current working directory when --repo flag is not presented
 // - if path is absolute or begins with '.', error out here
 // - URL
 //
@@ -164,20 +199,22 @@ func (c *ChartPathOptions) LocateChart(name string, settings *cli.EnvSettings) (
 	name = strings.TrimSpace(name)
 	version := strings.TrimSpace(c.Version)
 
-	if _, err := os.Stat(name); err == nil {
-		abs, err := filepath.Abs(name)
-		if err != nil {
-			return abs, err
-		}
-		if c.Verify {
-			if _, err := downloader.VerifyChart(abs, c.Keyring); err != nil {
-				return "", err
+	if c.RepoURL == "" {
+		if _, err := os.Stat(name); err == nil {
+			abs, err := filepath.Abs(name)
+			if err != nil {
+				return abs, err
 			}
+			if c.Verify {
+				if _, err := downloader.VerifyChart(abs, abs+".prov", c.Keyring); err != nil {
+					return "", err
+				}
+			}
+			return abs, nil
 		}
-		return abs, nil
-	}
-	if filepath.IsAbs(name) || strings.HasPrefix(name, ".") {
-		return name, errors.Errorf("path %q not found", name)
+		if filepath.IsAbs(name) || strings.HasPrefix(name, ".") {
+			return name, fmt.Errorf("path %q not found", name)
+		}
 	}
 
 	dl := downloader.ChartDownloader{
@@ -187,11 +224,13 @@ func (c *ChartPathOptions) LocateChart(name string, settings *cli.EnvSettings) (
 		Options: []getter.Option{
 			getter.WithPassCredentialsAll(c.PassCredentialsAll),
 			getter.WithTLSClientConfig(c.CertFile, c.KeyFile, c.CaFile),
-			getter.WithInsecureSkipVerifyTLS(c.InsecureSkipTLSverify),
+			getter.WithInsecureSkipVerifyTLS(c.InsecureSkipTLSVerify),
 			getter.WithPlainHTTP(c.PlainHTTP),
+			getter.WithBasicAuth(c.Username, c.Password),
 		},
 		RepositoryConfig: settings.RepositoryConfig,
 		RepositoryCache:  settings.RepositoryCache,
+		ContentCache:     settings.ContentCache,
 		RegistryClient:   c.registryClient,
 	}
 
@@ -203,8 +242,16 @@ func (c *ChartPathOptions) LocateChart(name string, settings *cli.EnvSettings) (
 		dl.Verify = downloader.VerifyAlways
 	}
 	if c.RepoURL != "" {
-		chartURL, err := repo.FindChartInAuthAndTLSAndPassRepoURL(c.RepoURL, c.Username, c.Password, name, version,
-			c.CertFile, c.KeyFile, c.CaFile, c.InsecureSkipTLSverify, c.PassCredentialsAll, getter.All(settings))
+		chartURL, err := repo.FindChartInRepoURL(
+			c.RepoURL,
+			name,
+			getter.All(settings),
+			repo.WithChartVersion(version),
+			repo.WithClientTLS(c.CertFile, c.KeyFile, c.CaFile),
+			repo.WithUsernamePassword(c.Username, c.Password),
+			repo.WithInsecureSkipTLSVerify(c.InsecureSkipTLSVerify),
+			repo.WithPassCredentialsAll(c.PassCredentialsAll),
+		)
 		if err != nil {
 			return "", err
 		}
@@ -224,7 +271,7 @@ func (c *ChartPathOptions) LocateChart(name string, settings *cli.EnvSettings) (
 		// Host on URL (returned from url.Parse) contains the port if present.
 		// This check ensures credentials are not passed between different
 		// services on different ports.
-		if c.PassCredentialsAll || (u1.Scheme == u2.Scheme && u1.Host == u2.Host) {
+		if c.PassCredentialsAll || urlEqual(u1, u2) {
 			dl.Options = append(dl.Options, getter.WithBasicAuth(c.Username, c.Password))
 		} else {
 			dl.Options = append(dl.Options, getter.WithBasicAuth("", ""))
@@ -233,11 +280,11 @@ func (c *ChartPathOptions) LocateChart(name string, settings *cli.EnvSettings) (
 		dl.Options = append(dl.Options, getter.WithBasicAuth(c.Username, c.Password))
 	}
 
-	if err := os.MkdirAll(settings.RepositoryCache, 0o755); err != nil {
+	if err := os.MkdirAll(settings.RepositoryCache, 0755); err != nil {
 		return "", err
 	}
 
-	filename, _, err := dl.DownloadTo(name, version, settings.RepositoryCache)
+	filename, _, err := dl.DownloadToCache(name, version)
 	if err != nil {
 		return "", err
 	}
@@ -247,8 +294,4 @@ func (c *ChartPathOptions) LocateChart(name string, settings *cli.EnvSettings) (
 		return filename, err
 	}
 	return lname, nil
-}
-
-func (c *ChartPathOptions) SetRegistryClient(cli *registry.Client) {
-	c.registryClient = cli
 }

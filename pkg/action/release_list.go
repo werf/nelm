@@ -17,7 +17,7 @@ import (
 
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -65,7 +65,7 @@ type ReleaseListResultRelease struct {
 	Name        string                       `json:"name"`
 	Namespace   string                       `json:"namespace"`
 	Revision    int                          `json:"revision"`
-	Status      helmrelease.Status           `json:"status"`
+	Status      helmreleasestatus.Status     `json:"status"`
 	DeployedAt  *ReleaseListResultDeployedAt `json:"deployedAt"`
 	Annotations map[string]string            `json:"annotations"`
 	Chart       *ReleaseListResultChart      `json:"chart"`
@@ -215,9 +215,9 @@ func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV
 	for _, release := range result.Releases {
 		var statusColor color.Color
 		switch release.Status {
-		case helmrelease.StatusDeployed, helmrelease.StatusSuperseded:
+		case helmreleasestatus.StatusDeployed, helmreleasestatus.StatusSuperseded:
 			statusColor = color.Green
-		case helmrelease.StatusFailed:
+		case helmreleasestatus.StatusFailed:
 			statusColor = color.LightRed
 		default:
 			statusColor = color.LightYellow

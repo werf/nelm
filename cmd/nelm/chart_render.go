@@ -45,7 +45,7 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = log.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultChartRenderLogLevel), log.SetupLoggingOptions{
+			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultChartRenderLogLevel), action.SetupLoggingOptions{
 				ColorMode:      cfg.LogColorMode,
 				LogIsParseable: true,
 			})

@@ -9,12 +9,11 @@ import (
 
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
-	"github.com/werf/nelm/pkg/helm/pkg/cli"
 	helmdownloader "github.com/werf/nelm/pkg/helm/pkg/downloader"
 	helmgetter "github.com/werf/nelm/pkg/helm/pkg/getter"
 	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
 	helmregistry "github.com/werf/nelm/pkg/helm/pkg/registry"
-	helmrepo "github.com/werf/nelm/pkg/helm/pkg/repo"
+	helmrepo "github.com/werf/nelm/pkg/helm/pkg/repo/v1"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -39,12 +38,12 @@ func downloadChart(ctx context.Context, chartPath string, registryClient *helmre
 		}
 
 		// TODO(major): get rid of HELM_ env vars support
-		if err := os.MkdirAll(cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")), 0o755); err != nil {
+		if err := os.MkdirAll(envOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")), 0o755); err != nil {
 			return "", fmt.Errorf("create repository cache directory: %w", err)
 		}
 
 		// TODO(major): get rid of HELM_ env vars support
-		chartPath, _, err = chartDownloader.DownloadTo(chartRef, opts.ChartVersion, cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")))
+		chartPath, _, err = chartDownloader.DownloadTo(chartRef, opts.ChartVersion, envOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")))
 		if err != nil {
 			return "", fmt.Errorf("download chart %q: %w", chartRef, err)
 		}
@@ -64,9 +63,9 @@ func newChartDownloader(ctx context.Context, chartRef string, registryClient *he
 
 	downloader := &helmdownloader.ChartDownloader{
 		Out:     out,
-		Verify:  helmdownloader.VerificationStrategyString(opts.ChartProvenanceStrategy).ToVerificationStrategy(),
+		Verify:  parseVerificationStrategy(opts.ChartProvenanceStrategy),
 		Keyring: opts.ChartProvenanceKeyring,
-		Getters: helmgetter.Providers{helmgetter.HttpProvider, helmgetter.OCIProvider},
+		Getters: helmgetter.Getters(),
 		Options: []helmgetter.Option{
 			helmgetter.WithPassCredentialsAll(opts.ChartRepoPassCreds),
 			helmgetter.WithTLSClientConfig(opts.ChartRepoCertPath, opts.ChartRepoKeyPath, opts.ChartRepoCAPath),
@@ -77,13 +76,19 @@ func newChartDownloader(ctx context.Context, chartRef string, registryClient *he
 		},
 		RegistryClient: registryClient,
 		// TODO(major): get rid of HELM_ env vars support
-		RepositoryConfig: cli.EnvOr("HELM_REPOSITORY_CONFIG", helmpath.ConfigPath("repositories.yaml")),
+		RepositoryConfig: envOr("HELM_REPOSITORY_CONFIG", helmpath.ConfigPath("repositories.yaml")),
 		// TODO(major): get rid of HELM_ env vars support
-		RepositoryCache: cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
+		RepositoryCache: envOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
 	}
 
 	if opts.ChartRepoURL != "" {
-		chartURL, err := helmrepo.FindChartInAuthAndTLSAndPassRepoURL(opts.ChartRepoURL, opts.ChartRepoBasicAuthUsername, opts.ChartRepoBasicAuthPassword, chartRef, opts.ChartVersion, opts.ChartRepoCertPath, opts.ChartRepoKeyPath, opts.ChartRepoCAPath, opts.ChartRepoSkipTLSVerify, opts.ChartRepoPassCreds, helmgetter.Providers{helmgetter.HttpProvider, helmgetter.OCIProvider})
+		chartURL, err := helmrepo.FindChartInRepoURL(opts.ChartRepoURL, chartRef, helmgetter.Getters(),
+			helmrepo.WithChartVersion(opts.ChartVersion),
+			helmrepo.WithUsernamePassword(opts.ChartRepoBasicAuthUsername, opts.ChartRepoBasicAuthPassword),
+			helmrepo.WithClientTLS(opts.ChartRepoCertPath, opts.ChartRepoKeyPath, opts.ChartRepoCAPath),
+			helmrepo.WithInsecureSkipTLSVerify(opts.ChartRepoSkipTLSVerify),
+			helmrepo.WithPassCredentialsAll(opts.ChartRepoPassCreds),
+		)
 		if err != nil {
 			return nil, "", fmt.Errorf("get chart URL: %w", err)
 		}

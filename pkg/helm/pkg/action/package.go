@@ -18,18 +18,22 @@ package action
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"syscall"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/pkg/errors"
 	"golang.org/x/term"
+	"sigs.k8s.io/yaml"
 
+	ci "github.com/werf/nelm/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
-	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
+	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+	chartutil "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
 	"github.com/werf/nelm/pkg/helm/pkg/provenance"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 )
 
 // Package is the action for packaging a chart.
@@ -40,14 +44,26 @@ type Package struct {
 	Key              string
 	Keyring          string
 	PassphraseFile   string
+	cachedPassphrase []byte
 	Version          string
 	AppVersion       string
 	Destination      string
 	DependencyUpdate bool
 
-	RepositoryConfig string
-	RepositoryCache  string
+	RepositoryConfig      string
+	RepositoryCache       string
+	PlainHTTP             bool
+	Username              string
+	Password              string
+	CertFile              string
+	KeyFile               string
+	CaFile                string
+	InsecureSkipTLSVerify bool
 }
+
+const (
+	passPhraseFileStdin = "-"
+)
 
 // NewPackage creates a new Package object with the given configuration.
 func NewPackage() *Package {
@@ -55,8 +71,22 @@ func NewPackage() *Package {
 }
 
 // Run executes 'helm package' against the given chart and returns the path to the packaged chart.
-func (p *Package) Run(path string, _ map[string]interface{}, opts helmopts.HelmOptions) (string, error) {
-	ch, err := loader.LoadDir(path, opts)
+func (p *Package) Run(path string, _ map[string]interface{}) (string, error) {
+	chrt, err := loader.LoadDir(context.Background(), path)
+	if err != nil {
+		return "", err
+	}
+	var ch *chart.Chart
+	switch c := chrt.(type) {
+	case *chart.Chart:
+		ch = c
+	case chart.Chart:
+		ch = &c
+	default:
+		return "", errors.New("invalid chart apiVersion")
+	}
+
+	ac, err := ci.NewAccessor(ch)
 	if err != nil {
 		return "", err
 	}
@@ -74,7 +104,7 @@ func (p *Package) Run(path string, _ map[string]interface{}, opts helmopts.HelmO
 		ch.Metadata.AppVersion = p.AppVersion
 	}
 
-	if reqs := ch.Metadata.Dependencies; reqs != nil {
+	if reqs := ac.MetaDependencies(); len(reqs) > 0 {
 		if err := CheckDependencies(ch, reqs); err != nil {
 			return "", err
 		}
@@ -94,11 +124,11 @@ func (p *Package) Run(path string, _ map[string]interface{}, opts helmopts.HelmO
 
 	name, err := chartutil.Save(ch, dest)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to save")
+		return "", fmt.Errorf("failed to save: %w", err)
 	}
 
 	if p.Sign {
-		err = p.Clearsign(name, opts)
+		err = p.Clearsign(name)
 	}
 
 	return name, err
@@ -113,7 +143,7 @@ func validateVersion(ver string) error {
 }
 
 // Clearsign signs a chart
-func (p *Package) Clearsign(filename string, opts helmopts.HelmOptions) error {
+func (p *Package) Clearsign(filename string) error {
 	// Load keyring
 	signer, err := provenance.NewFromKeyring(p.Keyring, p.Key)
 	if err != nil {
@@ -122,7 +152,7 @@ func (p *Package) Clearsign(filename string, opts helmopts.HelmOptions) error {
 
 	passphraseFetcher := promptUser
 	if p.PassphraseFile != "" {
-		passphraseFetcher, err = passphraseFileFetcher(p.PassphraseFile, os.Stdin)
+		passphraseFetcher, err = p.passphraseFileFetcher(p.PassphraseFile, os.Stdin)
 		if err != nil {
 			return err
 		}
@@ -132,7 +162,35 @@ func (p *Package) Clearsign(filename string, opts helmopts.HelmOptions) error {
 		return err
 	}
 
-	sig, err := signer.ClearSign(filename, opts)
+	// Load the chart archive to extract metadata
+	chrt, err := loader.LoadFile(context.Background(), filename)
+	if err != nil {
+		return fmt.Errorf("failed to load chart for signing: %w", err)
+	}
+	var ch *chart.Chart
+	switch c := chrt.(type) {
+	case *chart.Chart:
+		ch = c
+	case chart.Chart:
+		ch = &c
+	default:
+		return errors.New("invalid chart apiVersion")
+	}
+
+	// Marshal chart metadata to YAML bytes
+	metadataBytes, err := yaml.Marshal(ch.Metadata)
+	if err != nil {
+		return fmt.Errorf("failed to marshal chart metadata: %w", err)
+	}
+
+	// Read the chart archive file
+	archiveData, err := os.ReadFile(filename)
+	if err != nil {
+		return fmt.Errorf("failed to read chart archive: %w", err)
+	}
+
+	// Use the generic provenance signing function
+	sig, err := signer.ClearSign(archiveData, filepath.Base(filename), metadataBytes)
 	if err != nil {
 		return err
 	}
@@ -150,25 +208,42 @@ func promptUser(name string) ([]byte, error) {
 	return pw, err
 }
 
-func passphraseFileFetcher(passphraseFile string, stdin *os.File) (provenance.PassphraseFetcher, error) {
-	file, err := openPassphraseFile(passphraseFile, stdin)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
+func (p *Package) passphraseFileFetcher(passphraseFile string, stdin *os.File) (provenance.PassphraseFetcher, error) {
+	// When reading from stdin we cache the passphrase here. If we are
+	// packaging multiple charts, we reuse the cached passphrase. This
+	// allows giving the passphrase once on stdin without failing with
+	// complaints about stdin already being closed.
+	//
+	// An alternative to this would be to omit file.Close() for stdin
+	// below and require the user to provide the same passphrase once
+	// per chart on stdin, but that does not seem very user-friendly.
 
-	reader := bufio.NewReader(file)
-	passphrase, _, err := reader.ReadLine()
-	if err != nil {
-		return nil, err
+	if p.cachedPassphrase == nil {
+		file, err := openPassphraseFile(passphraseFile, stdin)
+		if err != nil {
+			return nil, err
+		}
+		defer file.Close()
+
+		reader := bufio.NewReader(file)
+		passphrase, _, err := reader.ReadLine()
+		if err != nil {
+			return nil, err
+		}
+		p.cachedPassphrase = passphrase
+
+		return func(_ string) ([]byte, error) {
+			return passphrase, nil
+		}, nil
 	}
-	return func(name string) ([]byte, error) {
-		return passphrase, nil
+
+	return func(_ string) ([]byte, error) {
+		return p.cachedPassphrase, nil
 	}, nil
 }
 
 func openPassphraseFile(passphraseFile string, stdin *os.File) (*os.File, error) {
-	if passphraseFile == "-" {
+	if passphraseFile == passPhraseFileStdin {
 		stat, err := stdin.Stat()
 		if err != nil {
 			return nil, err

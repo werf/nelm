@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/helm/pkg/chart"
-	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
+	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
 	"github.com/werf/nelm/pkg/ts"
 )
 
@@ -26,7 +26,7 @@ func TestRenderChartWithDependencies(t *testing.T) {
 }`,
 		)
 
-		values := chartutil.Values{
+		values := chartcommon.Values{
 			"Values": map[string]any{
 				"rootMessage": "Hello from root",
 				"ts-subchart": map[string]any{"subMessage": "Hello from subchart"},
@@ -54,9 +54,9 @@ func TestRenderChartWithDependencies(t *testing.T) {
 	})
 
 	t.Run("classic root with TS subchart only", func(t *testing.T) {
-		subchart := &chart.Chart{
-			Metadata: &chart.Metadata{Name: "ts-subchart", Version: "0.1.0"},
-			RuntimeFiles: []*chart.File{
+		subchart := &helmchart.Chart{
+			Metadata: &helmchart.Metadata{Name: "ts-subchart", Version: "0.1.0"},
+			RuntimeFiles: []*chartcommon.File{
 				{Name: "ts/src/index.ts", Data: []byte(`
 export function render(context: any) {
     return { manifests: [{ apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: 'ts-subchart-only' },
@@ -65,13 +65,13 @@ export function render(context: any) {
 `)},
 			},
 		}
-		rootChart := &chart.Chart{
-			Metadata:     &chart.Metadata{Name: "classic-root", Version: "1.0.0"},
-			RuntimeFiles: []*chart.File{}, // No TypeScript in root
+		rootChart := &helmchart.Chart{
+			Metadata:     &helmchart.Metadata{Name: "classic-root", Version: "1.0.0"},
+			RuntimeFiles: []*chartcommon.File{}, // No TypeScript in root
 		}
 		rootChart.SetDependencies(subchart)
 
-		values := chartutil.Values{
+		values := chartcommon.Values{
 			"Values":       map[string]any{"ts-subchart": map[string]any{}},
 			"Release":      map[string]any{"Name": "my-release", "Namespace": "default"},
 			"Capabilities": map[string]any{},
@@ -89,23 +89,23 @@ export function render(context: any) {
 	})
 
 	t.Run("nested dependencies (3 levels)", func(t *testing.T) {
-		sub2 := &chart.Chart{
-			Metadata:     &chart.Metadata{Name: "sub2", Version: "0.1.0"},
-			RuntimeFiles: []*chart.File{{Name: "ts/src/index.ts", Data: []byte(`export function render(c: any) { return { manifests: [{ apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: 'sub2' }, data: { level: 'sub2' } }] }; }`)}},
+		sub2 := &helmchart.Chart{
+			Metadata:     &helmchart.Metadata{Name: "sub2", Version: "0.1.0"},
+			RuntimeFiles: []*chartcommon.File{{Name: "ts/src/index.ts", Data: []byte(`export function render(c: any) { return { manifests: [{ apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: 'sub2' }, data: { level: 'sub2' } }] }; }`)}},
 		}
-		sub1 := &chart.Chart{
-			Metadata:     &chart.Metadata{Name: "sub1", Version: "0.1.0"},
-			RuntimeFiles: []*chart.File{{Name: "ts/src/index.ts", Data: []byte(`export function render(c: any) { return { manifests: [{ apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: 'sub1' }, data: { level: 'sub1' } }] }; }`)}},
+		sub1 := &helmchart.Chart{
+			Metadata:     &helmchart.Metadata{Name: "sub1", Version: "0.1.0"},
+			RuntimeFiles: []*chartcommon.File{{Name: "ts/src/index.ts", Data: []byte(`export function render(c: any) { return { manifests: [{ apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: 'sub1' }, data: { level: 'sub1' } }] }; }`)}},
 		}
 		sub1.SetDependencies(sub2)
 
-		rootChart := &chart.Chart{
-			Metadata:     &chart.Metadata{Name: "nested-root", Version: "1.0.0"},
-			RuntimeFiles: []*chart.File{{Name: "ts/src/index.ts", Data: []byte(`export function render(c: any) { return { manifests: [{ apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: 'root' }, data: { level: 'root' } }] }; }`)}},
+		rootChart := &helmchart.Chart{
+			Metadata:     &helmchart.Metadata{Name: "nested-root", Version: "1.0.0"},
+			RuntimeFiles: []*chartcommon.File{{Name: "ts/src/index.ts", Data: []byte(`export function render(c: any) { return { manifests: [{ apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: 'root' }, data: { level: 'root' } }] }; }`)}},
 		}
 		rootChart.SetDependencies(sub1)
 
-		values := chartutil.Values{
+		values := chartcommon.Values{
 			"Values":       map[string]any{"sub1": map[string]any{"sub2": map[string]any{}}},
 			"Release":      map[string]any{"Name": "test"},
 			"Capabilities": map[string]any{},
@@ -130,7 +130,7 @@ export function render(context: any) {
 			`export function render(c: any) { const x: any = null; x.foo.bar; return { manifests: [] }; }`,
 		)
 
-		values := chartutil.Values{
+		values := chartcommon.Values{
 			"Values":       map[string]any{"ts-subchart": map[string]any{}},
 			"Release":      map[string]any{"Name": "test"},
 			"Capabilities": map[string]any{},
@@ -145,7 +145,7 @@ export function render(context: any) {
 func TestRenderFiles(t *testing.T) {
 	t.Run("no TypeScript source returns empty", func(t *testing.T) {
 		ch := newTestChart(nil)
-		result, err := ts.RenderFiles(context.Background(), ch, chartutil.Values{})
+		result, err := ts.RenderFiles(context.Background(), ch, chartcommon.Values{})
 		require.NoError(t, err)
 		assert.Empty(t, result)
 	})
@@ -166,7 +166,7 @@ export function render(context: any) {
     };
 }
 `)
-		values := chartutil.Values{
+		values := chartcommon.Values{
 			"Values":  map[string]any{"replicas": 3},
 			"Release": map[string]any{"Name": "test-release", "Namespace": "default"},
 		}
@@ -193,7 +193,7 @@ export function render(context: any) {
     };
 }
 `)
-		values := chartutil.Values{"Release": map[string]any{"Name": "test"}}
+		values := chartcommon.Values{"Release": map[string]any{"Name": "test"}}
 
 		result, err := ts.RenderFiles(context.Background(), ch, values)
 		require.NoError(t, err)
@@ -211,7 +211,7 @@ export function render(context: any) {
     return { manifests: [{ apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: 'test' } }] };
 }
 `)
-		values := chartutil.Values{"Values": map[string]any{"enabled": false}}
+		values := chartcommon.Values{"Values": map[string]any{"enabled": false}}
 
 		result, err := ts.RenderFiles(context.Background(), ch, values)
 		require.NoError(t, err)
@@ -224,7 +224,7 @@ module.exports.render = function(context: any) {
     return { manifests: [{ apiVersion: 'v1', kind: 'ConfigMap', metadata: { name: 'module-exports-test' } }] };
 };
 `)
-		result, err := ts.RenderFiles(context.Background(), ch, chartutil.Values{})
+		result, err := ts.RenderFiles(context.Background(), ch, chartcommon.Values{})
 		require.NoError(t, err)
 
 		yaml := result[common.ChartTSSourceDir+common.ChartTSEntryPointTS]
@@ -239,7 +239,7 @@ module.exports = {
     }
 };
 `)
-		result, err := ts.RenderFiles(context.Background(), ch, chartutil.Values{})
+		result, err := ts.RenderFiles(context.Background(), ch, chartcommon.Values{})
 		require.NoError(t, err)
 
 		yaml := result[common.ChartTSSourceDir+common.ChartTSEntryPointTS]
@@ -260,7 +260,7 @@ export const render = (context: any) => {
     return { manifests: resources };
 };
 `)
-		values := chartutil.Values{"Release": map[string]any{"Name": "my-app"}}
+		values := chartcommon.Values{"Release": map[string]any{"Name": "my-app"}}
 
 		result, err := ts.RenderFiles(context.Background(), ch, values)
 		require.NoError(t, err)
@@ -295,7 +295,7 @@ export function render(context: RenderContext) {
     return { manifests: [manifest] };
 }
 `)
-		values := chartutil.Values{
+		values := chartcommon.Values{
 			"Release": map[string]any{"Name": "typed-app", "Namespace": "production"},
 			"Values":  map[string]any{"replicas": 5},
 		}
@@ -328,7 +328,7 @@ export function createConfigMap(name: string) {
 }
 `,
 		})
-		values := chartutil.Values{"Release": map[string]any{"Name": "multi-file-app"}}
+		values := chartcommon.Values{"Release": map[string]any{"Name": "multi-file-app"}}
 
 		result, err := ts.RenderFiles(context.Background(), ch, values)
 		require.NoError(t, err)
@@ -341,7 +341,7 @@ export function createConfigMap(name: string) {
 	t.Run("error when render function missing", func(t *testing.T) {
 		ch := newChartWithTS(`export function notRender(context: any) { return { manifests: [] }; }`)
 
-		_, err := ts.RenderFiles(context.Background(), ch, chartutil.Values{})
+		_, err := ts.RenderFiles(context.Background(), ch, chartcommon.Values{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no 'render' function exported")
 	})
@@ -354,7 +354,7 @@ export function render(context: any) {
     return { manifests: [] };
 }
 `)
-		_, err := ts.RenderFiles(context.Background(), ch, chartutil.Values{})
+		_, err := ts.RenderFiles(context.Background(), ch, chartcommon.Values{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "index.ts")
 	})
@@ -372,9 +372,9 @@ var __NELM_VENDOR_BUNDLE__ = (function() {
     return { __NELM_VENDOR__: __NELM_VENDOR__ };
 })();
 `
-		ch := &chart.Chart{
-			Metadata: &chart.Metadata{Name: "test-chart", Version: "1.0.0"},
-			RuntimeFiles: []*chart.File{
+		ch := &helmchart.Chart{
+			Metadata: &helmchart.Metadata{Name: "test-chart", Version: "1.0.0"},
+			RuntimeFiles: []*chartcommon.File{
 				{Name: common.ChartTSVendorBundleFile, Data: []byte(vendorBundle)},
 				{Name: "ts/src/index.ts", Data: []byte(`
 const fakeLib = require('fake-lib');
@@ -384,7 +384,7 @@ export function render(context: any) {
 `)},
 			},
 		}
-		values := chartutil.Values{"Release": map[string]any{"Name": "vendor-test"}}
+		values := chartcommon.Values{"Release": map[string]any{"Name": "vendor-test"}}
 
 		result, err := ts.RenderFiles(context.Background(), ch, values)
 		require.NoError(t, err)
@@ -394,9 +394,9 @@ export function render(context: any) {
 	})
 
 	t.Run("node_modules in RuntimeDepsFiles", func(t *testing.T) {
-		ch := &chart.Chart{
-			Metadata: &chart.Metadata{Name: "test-chart", Version: "1.0.0"},
-			RuntimeFiles: []*chart.File{
+		ch := &helmchart.Chart{
+			Metadata: &helmchart.Metadata{Name: "test-chart", Version: "1.0.0"},
+			RuntimeFiles: []*chartcommon.File{
 				{Name: "ts/src/index.ts", Data: []byte(`
 import { helper } from 'fake-lib';
 export function render(context: any) {
@@ -404,7 +404,7 @@ export function render(context: any) {
 }
 `)},
 			},
-			RuntimeDepsFiles: []*chart.File{
+			RuntimeDepsFiles: []*chartcommon.File{
 				{Name: "ts/node_modules/fake-lib/package.json", Data: []byte(`{"name": "fake-lib", "version": "1.0.0", "main": "index.js"}`)},
 				{Name: "ts/node_modules/fake-lib/index.js", Data: []byte(`
 module.exports.helper = function(name) {
@@ -413,7 +413,7 @@ module.exports.helper = function(name) {
 `)},
 			},
 		}
-		values := chartutil.Values{"Release": map[string]any{"Name": "npm-test"}}
+		values := chartcommon.Values{"Release": map[string]any{"Name": "npm-test"}}
 
 		result, err := ts.RenderFiles(context.Background(), ch, values)
 		require.NoError(t, err)
@@ -425,12 +425,12 @@ module.exports.helper = function(name) {
 
 func TestScopeValuesForSubchart(t *testing.T) {
 	t.Run("scopes values correctly", func(t *testing.T) {
-		subchart := &chart.Chart{
-			Metadata: &chart.Metadata{Name: "my-subchart", Version: "2.0.0", AppVersion: "1.5.0", Description: "Test subchart"},
-			Files:    []*chart.File{{Name: "README.md", Data: []byte("# Subchart")}},
+		subchart := &helmchart.Chart{
+			Metadata: &helmchart.Metadata{Name: "my-subchart", Version: "2.0.0", AppVersion: "1.5.0", Description: "Test subchart"},
+			Files:    []*chartcommon.File{{Name: "README.md", Data: []byte("# Subchart")}},
 		}
 
-		parentValues := chartutil.Values{
+		parentValues := chartcommon.Values{
 			"Values": map[string]any{
 				"rootKey": "rootValue",
 				"my-subchart": map[string]any{
@@ -468,8 +468,8 @@ func TestScopeValuesForSubchart(t *testing.T) {
 	})
 
 	t.Run("missing subchart values returns empty map", func(t *testing.T) {
-		subchart := &chart.Chart{Metadata: &chart.Metadata{Name: "missing-values-subchart", Version: "1.0.0"}}
-		parentValues := chartutil.Values{
+		subchart := &helmchart.Chart{Metadata: &helmchart.Metadata{Name: "missing-values-subchart", Version: "1.0.0"}}
+		parentValues := chartcommon.Values{
 			"Values":  map[string]any{"other-subchart": map[string]any{"key": "value"}},
 			"Release": map[string]any{"Name": "test"},
 		}
@@ -481,49 +481,49 @@ func TestScopeValuesForSubchart(t *testing.T) {
 	})
 }
 
-func createChartWithTSFiles(files map[string]string) *chart.Chart {
-	var runtimeFiles []*chart.File
+func createChartWithTSFiles(files map[string]string) *helmchart.Chart {
+	var runtimeFiles []*chartcommon.File
 	for name, content := range files {
-		runtimeFiles = append(runtimeFiles, &chart.File{Name: "ts/" + name, Data: []byte(content)})
+		runtimeFiles = append(runtimeFiles, &chartcommon.File{Name: "ts/" + name, Data: []byte(content)})
 	}
 
-	return &chart.Chart{
-		Metadata:     &chart.Metadata{Name: "test-chart", Version: "1.0.0"},
+	return &helmchart.Chart{
+		Metadata:     &helmchart.Metadata{Name: "test-chart", Version: "1.0.0"},
 		RuntimeFiles: runtimeFiles,
 	}
 }
 
-func createTestChartWithSubchart(rootContent, subchartContent string) *chart.Chart {
-	subchart := &chart.Chart{
-		Metadata:     &chart.Metadata{Name: "ts-subchart", Version: "0.1.0"},
-		RuntimeFiles: []*chart.File{{Name: "ts/src/index.ts", Data: []byte(subchartContent)}},
+func createTestChartWithSubchart(rootContent, subchartContent string) *helmchart.Chart {
+	subchart := &helmchart.Chart{
+		Metadata:     &helmchart.Metadata{Name: "ts-subchart", Version: "0.1.0"},
+		RuntimeFiles: []*chartcommon.File{{Name: "ts/src/index.ts", Data: []byte(subchartContent)}},
 	}
-	rootChart := &chart.Chart{
-		Metadata:     &chart.Metadata{Name: "root-chart", Version: "1.0.0"},
-		RuntimeFiles: []*chart.File{{Name: "ts/src/index.ts", Data: []byte(rootContent)}},
+	rootChart := &helmchart.Chart{
+		Metadata:     &helmchart.Metadata{Name: "root-chart", Version: "1.0.0"},
+		RuntimeFiles: []*chartcommon.File{{Name: "ts/src/index.ts", Data: []byte(rootContent)}},
 	}
 	rootChart.SetDependencies(subchart)
 
 	return rootChart
 }
 
-func newChartWithTS(sourceContent string) *chart.Chart {
-	return &chart.Chart{
-		Metadata:     &chart.Metadata{Name: "test-chart", Version: "1.0.0"},
-		RuntimeFiles: []*chart.File{{Name: "ts/src/index.ts", Data: []byte(sourceContent)}},
+func newChartWithTS(sourceContent string) *helmchart.Chart {
+	return &helmchart.Chart{
+		Metadata:     &helmchart.Metadata{Name: "test-chart", Version: "1.0.0"},
+		RuntimeFiles: []*chartcommon.File{{Name: "ts/src/index.ts", Data: []byte(sourceContent)}},
 	}
 }
 
 // Test helpers
 
-func newTestChart(files map[string]string) *chart.Chart {
-	var runtimeFiles []*chart.File
+func newTestChart(files map[string]string) *helmchart.Chart {
+	var runtimeFiles []*chartcommon.File
 	for name, content := range files {
-		runtimeFiles = append(runtimeFiles, &chart.File{Name: name, Data: []byte(content)})
+		runtimeFiles = append(runtimeFiles, &chartcommon.File{Name: name, Data: []byte(content)})
 	}
 
-	return &chart.Chart{
-		Metadata:     &chart.Metadata{Name: "test-chart", Version: "1.0.0"},
+	return &helmchart.Chart{
+		Metadata:     &helmchart.Metadata{Name: "test-chart", Version: "1.0.0"},
 		RuntimeFiles: runtimeFiles,
 	}
 }

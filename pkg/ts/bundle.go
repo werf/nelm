@@ -10,8 +10,7 @@ import (
 	esbuild "github.com/evanw/esbuild/pkg/api"
 
 	"github.com/werf/nelm/pkg/common"
-	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/file"
+	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -61,8 +60,8 @@ func BuildVendorBundleToDir(ctx context.Context, chartPath string) error {
 
 	log.Default.Info(ctx, "Bundled %d npm packages: %s", len(packages), strings.Join(packages, ", "))
 
-	if file.ChartFileWriter != nil {
-		if err := file.ChartFileWriter.WriteChartFile(ctx, common.ChartTSVendorBundleFile, []byte(vendorBundle)); err != nil {
+	if common.ChartFileWriter != nil {
+		if err := common.ChartFileWriter.WriteChartFile(ctx, common.ChartTSVendorBundleFile, []byte(vendorBundle)); err != nil {
 			return fmt.Errorf("write vendor bundle: %w", err)
 		}
 	} else {
@@ -84,14 +83,14 @@ func BuildVendorBundleToDir(ctx context.Context, chartPath string) error {
 // loadTSFilesForVendorBundle loads TypeScript files for vendor bundle building.
 // Returns empty map if the path should be skipped (doesn't exist, not a directory, or no ts/ dir).
 func loadTSFilesForVendorBundle(ctx context.Context, absChartPath string) (map[string][]byte, error) {
-	if file.ChartFileReader != nil {
+	if common.ChartFileReader != nil {
 		return loadTSFilesFromGiterminism(ctx, absChartPath)
 	}
 
 	return loadTSFilesFromFilesystem(ctx, absChartPath)
 }
 
-func resolveVendorBundle(ctx context.Context, files []*helmchart.File) (string, []string, error) {
+func resolveVendorBundle(ctx context.Context, files []*chartcommon.File) (string, []string, error) {
 	// Check if node_modules exists in files
 	hasNodeModules := false
 	for _, f := range files {
@@ -236,7 +235,7 @@ func loadTSFilesFromDir(tsDir string) (map[string][]byte, error) {
 }
 
 func loadTSFilesFromGiterminism(ctx context.Context, absChartPath string) (map[string][]byte, error) {
-	isDir, err := file.ChartFileReader.ChartIsDir(absChartPath)
+	isDir, err := common.ChartFileReader.ChartIsDir(absChartPath)
 	if err != nil {
 		return nil, fmt.Errorf("check directory %s: %w", absChartPath, err)
 	}
@@ -247,7 +246,7 @@ func loadTSFilesFromGiterminism(ctx context.Context, absChartPath string) (map[s
 		return map[string][]byte{}, nil
 	}
 
-	chartFiles, err := file.ChartFileReader.LoadChartDir(ctx, absChartPath)
+	chartFiles, err := common.ChartFileReader.LoadChartDir(ctx, absChartPath)
 	if err != nil {
 		return nil, fmt.Errorf("load chart dir: %w", err)
 	}

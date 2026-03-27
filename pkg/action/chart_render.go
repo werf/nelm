@@ -18,7 +18,6 @@ import (
 	"github.com/werf/nelm/pkg/chart"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -77,7 +76,7 @@ type ChartRenderOptions struct {
 	ForceAdoption bool
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.
-	LegacyChartType helmopts.ChartType
+	LegacyChartType common.LegacyChartType
 	// LegacyExtraValues provides additional values programmatically.
 	// Used internally for backward compatibility with werf integration.
 	LegacyExtraValues map[string]interface{}
@@ -202,8 +201,8 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		return nil, fmt.Errorf("construct release storage: %w", err)
 	}
 
-	helmOptions := helmopts.HelmOptions{
-		ChartLoadOpts: helmopts.ChartLoadOptions{
+	helmOptions := common.HelmOptions{
+		ChartLoadOpts: common.ChartLoadOptions{
 			ChartAppVersion:            opts.ChartAppVersion,
 			ChartType:                  opts.LegacyChartType,
 			DefaultChartAPIVersion:     opts.DefaultChartAPIVersion,

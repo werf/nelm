@@ -47,9 +47,7 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = log.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultReleaseInstallLogLevel), log.SetupLoggingOptions{
-				ColorMode: cfg.LogColorMode,
-			})
+			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultReleaseInstallLogLevel), action.SetupLoggingOptions{ColorMode: cfg.LogColorMode})
 
 			if len(args) > 0 {
 				if featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled() {

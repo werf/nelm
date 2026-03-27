@@ -91,7 +91,7 @@ master:
     ## Persistent Volume Access Mode
     ##
     accessModes:
-      - ReadWriteOnce
+    - ReadWriteOnce
     ## Persistent Volume size
     ##
     size: 8Gi
@@ -160,7 +160,7 @@ slave:
     # storageClass: "-"
     annotations:
     accessModes:
-      - ReadWriteOnce
+    - ReadWriteOnce
     ## Persistent Volume size
     ##
     size: 8Gi

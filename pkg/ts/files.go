@@ -4,11 +4,10 @@ import (
 	"strings"
 
 	"github.com/werf/nelm/pkg/common"
-	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/file"
+	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
 )
 
-func extractSourceFiles(files []*helmchart.File) map[string][]byte {
+func extractSourceFiles(files []*chartcommon.File) map[string][]byte {
 	sourceFiles := make(map[string][]byte)
 	for _, f := range files {
 		if strings.HasPrefix(f.Name, common.ChartTSSourceDir+"src/") {
@@ -19,7 +18,7 @@ func extractSourceFiles(files []*helmchart.File) map[string][]byte {
 	return sourceFiles
 }
 
-func filterTSFiles(files []*file.ChartExtenderBufferedFile) map[string][]byte {
+func filterTSFiles(files []*common.BufferedFile) map[string][]byte {
 	result := make(map[string][]byte)
 	for _, f := range files {
 		if strings.HasPrefix(f.Name, common.ChartTSSourceDir) {

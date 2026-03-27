@@ -10,12 +10,12 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/werf/nelm/pkg/common"
-	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
-	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
+	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
 	"github.com/werf/nelm/pkg/log"
 )
 
-func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values) (map[string]string, error) {
+func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartcommon.Values) (map[string]string, error) {
 	allRendered := make(map[string]string)
 
 	if err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), allRendered); err != nil {
@@ -25,7 +25,7 @@ func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues cha
 	return allRendered, nil
 }
 
-func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartutil.Values, pathPrefix string, results map[string]string) error {
+func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartcommon.Values, pathPrefix string, results map[string]string) error {
 	log.Default.Debug(ctx, "Rendering TypeScript for chart %q (path prefix: %s)", chart.Name(), pathPrefix)
 
 	rendered, err := renderFiles(ctx, chart, values)
@@ -58,7 +58,7 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 	return nil
 }
 
-func renderFiles(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values) (map[string]string, error) {
+func renderFiles(ctx context.Context, chart *helmchart.Chart, renderedValues chartcommon.Values) (map[string]string, error) {
 	mergedFiles := slices.Concat(chart.RuntimeFiles, chart.RuntimeDepsFiles)
 
 	vendorBundle, packages, err := resolveVendorBundle(ctx, mergedFiles)
@@ -104,11 +104,11 @@ func renderFiles(ctx context.Context, chart *helmchart.Chart, renderedValues cha
 	}, nil
 }
 
-func buildRenderContext(renderedValues chartutil.Values, chart *helmchart.Chart) map[string]any {
+func buildRenderContext(renderedValues chartcommon.Values, chart *helmchart.Chart) map[string]any {
 	renderContext := renderedValues.AsMap()
 
 	if valuesInterface, ok := renderContext["Values"]; ok {
-		if chartValues, ok := valuesInterface.(chartutil.Values); ok {
+		if chartValues, ok := valuesInterface.(chartcommon.Values); ok {
 			renderContext["Values"] = chartValues.AsMap()
 		}
 	}
@@ -139,8 +139,8 @@ func convertRenderResultToYAML(result any) (string, error) {
 	return marshalManifests(manifests)
 }
 
-func scopeValuesForSubchart(parentValues chartutil.Values, subchartName string, subchart *helmchart.Chart) chartutil.Values {
-	scoped := chartutil.Values{
+func scopeValuesForSubchart(parentValues chartcommon.Values, subchartName string, subchart *helmchart.Chart) chartcommon.Values {
+	scoped := chartcommon.Values{
 		"Chart":  buildChartMetadata(subchart),
 		"Values": map[string]any{},
 	}
@@ -156,7 +156,7 @@ func scopeValuesForSubchart(parentValues chartutil.Values, subchartName string, 
 		switch v := parentVals.(type) {
 		case map[string]any:
 			valuesMap = v
-		case chartutil.Values:
+		case chartcommon.Values:
 			valuesMap = v
 		}
 

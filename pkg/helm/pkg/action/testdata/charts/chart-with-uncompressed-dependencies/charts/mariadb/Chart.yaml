@@ -6,16 +6,16 @@ engine: gotpl
 home: https://mariadb.org
 icon: https://bitnami.com/assets/stacks/mariadb/img/mariadb-stack-220x234.png
 keywords:
-  - mariadb
-  - mysql
-  - database
-  - sql
-  - prometheus
+- mariadb
+- mysql
+- database
+- sql
+- prometheus
 maintainers:
-  - email: containers@bitnami.com
-    name: bitnami-bot
+- email: containers@bitnami.com
+  name: bitnami-bot
 name: mariadb
 sources:
-  - https://github.com/bitnami/bitnami-docker-mariadb
-  - https://github.com/prometheus/mysqld_exporter
+- https://github.com/bitnami/bitnami-docker-mariadb
+- https://github.com/prometheus/mysqld_exporter
 version: 4.3.1

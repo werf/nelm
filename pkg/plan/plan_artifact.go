@@ -13,7 +13,7 @@ import (
 
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/helm/pkg/release"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -34,7 +34,7 @@ type PlanArtifactData struct {
 	Options                  common.ReleaseInstallRuntimeOptions `json:"options"`
 	Changes                  []*ResourceChange                   `json:"changes"`
 	Plan                     *Plan                               `json:"plan"`
-	Release                  *release.Release                    `json:"release"`
+	Release                  *helmrelease.Release                `json:"release"`
 	InstallableResourceInfos []*InstallableResourceInfo          `json:"installableResourceInfos"`
 	ReleaseInfos             []*ReleaseInfo                      `json:"releaseInfos"`
 }

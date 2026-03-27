@@ -34,8 +34,9 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/rest"
 
-	"github.com/werf/nelm/pkg/helm/internal/version"
+	"github.com/werf/nelm/pkg/helm/intern/version"
 	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
+	"github.com/werf/nelm/pkg/helm/pkg/kube"
 )
 
 // defaultMaxHistory sets the maximum number of releases to 0: unlimited
@@ -44,13 +45,13 @@ const defaultMaxHistory = 10
 // defaultBurstLimit sets the default client-side throttling limit
 const defaultBurstLimit = 100
 
-// defaultQPS sets the default QPS value to 0 to to use library defaults unless specified
+// defaultQPS sets the default QPS value to 0 to use library defaults unless specified
 const defaultQPS = float32(0)
 
 // EnvSettings describes all of the environment settings.
 type EnvSettings struct {
 	namespace string
-	config    genericclioptions.RESTClientGetter
+	config    *genericclioptions.ConfigFlags
 
 	// KubeConfig is the path to the kubeconfig file
 	KubeConfig string
@@ -88,12 +89,17 @@ type EnvSettings struct {
 	BurstLimit int
 	// QPS is queries per second which may be used to avoid throttling.
 	QPS float32
+	// ColorMode controls colorized output (never, auto, always)
+	ColorMode string
+	// ContentCache is the location where cached charts are stored
+	ContentCache string
 }
 
 func New() *EnvSettings {
 	env := &EnvSettings{
 		namespace:                 os.Getenv("HELM_NAMESPACE"),
 		MaxHistory:                envIntOr("HELM_MAX_HISTORY", defaultMaxHistory),
+		KubeConfig:                os.Getenv("KUBECONFIG"),
 		KubeContext:               os.Getenv("HELM_KUBECONTEXT"),
 		KubeToken:                 os.Getenv("HELM_KUBETOKEN"),
 		KubeAsUser:                os.Getenv("HELM_KUBEASUSER"),
@@ -106,13 +112,15 @@ func New() *EnvSettings {
 		RegistryConfig:            envOr("HELM_REGISTRY_CONFIG", helmpath.ConfigPath("registry/config.json")),
 		RepositoryConfig:          envOr("HELM_REPOSITORY_CONFIG", helmpath.ConfigPath("repositories.yaml")),
 		RepositoryCache:           envOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
+		ContentCache:              envOr("HELM_CONTENT_CACHE", helmpath.CachePath("content")),
 		BurstLimit:                envIntOr("HELM_BURST_LIMIT", defaultBurstLimit),
 		QPS:                       envFloat32Or("HELM_QPS", defaultQPS),
+		ColorMode:                 envColorMode(),
 	}
 	env.Debug, _ = strconv.ParseBool(os.Getenv("HELM_DEBUG"))
 
 	// bind to kubernetes config flags
-	env.config = &genericclioptions.ConfigFlags{
+	config := &genericclioptions.ConfigFlags{
 		Namespace:        &env.namespace,
 		Context:          &env.KubeContext,
 		BearerToken:      &env.KubeToken,
@@ -127,12 +135,17 @@ func New() *EnvSettings {
 			config.Burst = env.BurstLimit
 			config.QPS = env.QPS
 			config.Wrap(func(rt http.RoundTripper) http.RoundTripper {
-				return &retryingRoundTripper{wrapped: rt}
+				return &kube.RetryingRoundTripper{Wrapped: rt}
 			})
 			config.UserAgent = version.GetUserAgent()
 			return config
 		},
 	}
+	if env.BurstLimit != defaultBurstLimit {
+		config = config.WithDiscoveryBurst(env.BurstLimit)
+	}
+	env.config = config
+
 	return env
 }
 
@@ -151,9 +164,12 @@ func (s *EnvSettings) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.Debug, "debug", s.Debug, "enable verbose output")
 	fs.StringVar(&s.RegistryConfig, "registry-config", s.RegistryConfig, "path to the registry config file")
 	fs.StringVar(&s.RepositoryConfig, "repository-config", s.RepositoryConfig, "path to the file containing repository names and URLs")
-	fs.StringVar(&s.RepositoryCache, "repository-cache", s.RepositoryCache, "path to the file containing cached repository indexes")
+	fs.StringVar(&s.RepositoryCache, "repository-cache", s.RepositoryCache, "path to the directory containing cached repository indexes")
+	fs.StringVar(&s.ContentCache, "content-cache", s.ContentCache, "path to the directory containing cached content (e.g. charts)")
 	fs.IntVar(&s.BurstLimit, "burst-limit", s.BurstLimit, "client-side default throttling limit")
 	fs.Float32Var(&s.QPS, "qps", s.QPS, "queries per second used when communicating with the Kubernetes API, not including bursting")
+	fs.StringVar(&s.ColorMode, "color", s.ColorMode, "use colored output (never, auto, always)")
+	fs.StringVar(&s.ColorMode, "colour", s.ColorMode, "use colored output (never, auto, always)")
 }
 
 func envOr(name, def string) string {
@@ -207,6 +223,23 @@ func envCSV(name string) (ls []string) {
 	return
 }
 
+func envColorMode() string {
+	// Check NO_COLOR environment variable first (standard)
+	if v, ok := os.LookupEnv("NO_COLOR"); ok && v != "" {
+		return "never"
+	}
+	// Check HELM_COLOR environment variable
+	if v, ok := os.LookupEnv("HELM_COLOR"); ok {
+		v = strings.ToLower(v)
+		switch v {
+		case "never", "auto", "always":
+			return v
+		}
+	}
+	// Default to auto
+	return "auto"
+}
+
 func (s *EnvSettings) EnvVars() map[string]string {
 	envvars := map[string]string{
 		"HELM_BIN":               os.Args[0],
@@ -217,6 +250,7 @@ func (s *EnvSettings) EnvVars() map[string]string {
 		"HELM_PLUGINS":           s.PluginsDirectory,
 		"HELM_REGISTRY_CONFIG":   s.RegistryConfig,
 		"HELM_REPOSITORY_CACHE":  s.RepositoryCache,
+		"HELM_CONTENT_CACHE":     s.ContentCache,
 		"HELM_REPOSITORY_CONFIG": s.RepositoryConfig,
 		"HELM_NAMESPACE":         s.Namespace(),
 		"HELM_MAX_HISTORY":       strconv.Itoa(s.MaxHistory),
@@ -241,12 +275,13 @@ func (s *EnvSettings) EnvVars() map[string]string {
 
 // Namespace gets the namespace from the configuration
 func (s *EnvSettings) Namespace() string {
+	if s.config != nil {
+		if ns, _, err := s.config.ToRawKubeConfigLoader().Namespace(); err == nil {
+			return ns
+		}
+	}
 	if s.namespace != "" {
 		return s.namespace
-	}
-
-	if ns, _, err := s.config.ToRawKubeConfigLoader().Namespace(); err == nil {
-		return ns
 	}
 	return "default"
 }
@@ -259,4 +294,10 @@ func (s *EnvSettings) SetNamespace(namespace string) {
 // RESTClientGetter gets the kubeconfig from EnvSettings
 func (s *EnvSettings) RESTClientGetter() genericclioptions.RESTClientGetter {
 	return s.config
+}
+
+// ShouldDisableColor returns true if color output should be disabled.
+// Color is only enabled when ColorMode is explicitly set to "always".
+func (s *EnvSettings) ShouldDisableColor() bool {
+	return s.ColorMode != "always"
 }

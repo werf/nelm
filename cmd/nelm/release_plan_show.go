@@ -37,9 +37,7 @@ func newReleasePlanShowCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = log.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultReleasePlanShowLogLevel), log.SetupLoggingOptions{
-				ColorMode: cfg.LogColorMode,
-			})
+			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultReleasePlanShowLogLevel), action.SetupLoggingOptions{ColorMode: cfg.LogColorMode})
 
 			cfg.PlanArtifactPath = args[0]
 

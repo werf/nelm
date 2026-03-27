@@ -21,7 +21,7 @@ import (
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/plan"
@@ -74,15 +74,15 @@ var syntaxHighlightTheme = fmt.Sprintf(`
 `, syntaxHighlightThemeName)
 
 // TODO(major): Version > APIVersion as string "v3"
-type releaseReportV3 struct {
-	Version             int                `json:"version,omitempty"`
-	Release             string             `json:"release,omitempty"`
-	Namespace           string             `json:"namespace,omitempty"`
-	Revision            int                `json:"revision,omitempty"`
-	Status              helmrelease.Status `json:"status,omitempty"`
-	CompletedOperations []string           `json:"completedOperations,omitempty"`
-	CanceledOperations  []string           `json:"canceledOperations,omitempty"`
-	FailedOperations    []string           `json:"failedOperations,omitempty"`
+type ReleaseReportV3 struct {
+	Version             int                      `json:"version,omitempty"`
+	Release             string                   `json:"release,omitempty"`
+	Namespace           string                   `json:"namespace,omitempty"`
+	Revision            int                      `json:"revision,omitempty"`
+	Status              helmreleasestatus.Status `json:"status,omitempty"`
+	CompletedOperations []string                 `json:"completedOperations,omitempty"`
+	CanceledOperations  []string                 `json:"canceledOperations,omitempty"`
+	FailedOperations    []string                 `json:"failedOperations,omitempty"`
 }
 
 type runFailureInstallPlanOptions struct {
@@ -127,7 +127,7 @@ func printNotes(ctx context.Context, notes string) {
 	})
 }
 
-func printReport(ctx context.Context, report *releaseReportV3) {
+func printReport(ctx context.Context, report *ReleaseReportV3) {
 	if totalOpsLen := len(report.CompletedOperations) + len(report.CanceledOperations) + len(report.FailedOperations); totalOpsLen == 0 {
 		return
 	}
@@ -233,7 +233,7 @@ func savePlanAsDot(plan *plan.Plan, path string) error {
 	return nil
 }
 
-func saveReport(reportPath string, report *releaseReportV3) error {
+func saveReport(reportPath string, report *ReleaseReportV3) error {
 	reportByte, err := json.MarshalIndent(report, "", "\t")
 	if err != nil {
 		return fmt.Errorf("marshal report: %w", err)

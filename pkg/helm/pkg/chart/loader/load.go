@@ -17,38 +17,36 @@ limitations under the License.
 package loader
 
 import (
-	"bytes"
+	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
-	"log"
+	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
-	"github.com/pkg/errors"
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/common-go/pkg/secrets_manager"
+	nelmcommon "github.com/werf/nelm/pkg/common"
+	c3 "github.com/werf/nelm/pkg/helm/intern/chart/v3"
+	c3load "github.com/werf/nelm/pkg/helm/intern/chart/v3/loader"
 	"github.com/werf/nelm/pkg/helm/pkg/chart"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/chartextender"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/file"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/secrets"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/secrets/runtimedata"
+	"github.com/werf/nelm/pkg/helm/pkg/chart/loader/archive"
+	c2 "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+	c2load "github.com/werf/nelm/pkg/helm/pkg/chart/v2/loader"
 )
 
 // ChartLoader loads a chart.
 type ChartLoader interface {
-	Load(options helmopts.HelmOptions) (*chart.Chart, error)
+	Load(ctx context.Context) (chart.Charter, error)
 }
 
 // Loader returns a new ChartLoader appropriate for the given chart name
 func Loader(name string) (ChartLoader, error) {
 	isDir, err := loader(name)
 	if err != nil {
-		return nil, errors.Wrapf(err, "error checking if %s is a directory", name)
+		return nil, err
 	}
-
 	if isDir {
 		return DirLoader(name), nil
 	}
@@ -56,17 +54,16 @@ func Loader(name string) (ChartLoader, error) {
 }
 
 func loader(name string) (bool, error) {
-	if file.ChartFileReader == nil {
+	if nelmcommon.ChartFileReader == nil {
 		fi, err := os.Stat(name)
 		if err != nil {
 			return false, err
 		}
-		if fi.IsDir() {
-			return true, nil
-		}
-		return false, nil
+
+		return fi.IsDir(), nil
 	}
-	return file.ChartFileReader.ChartIsDir(name)
+
+	return nelmcommon.ChartFileReader.ChartIsDir(name)
 }
 
 // Load takes a string name, tries to resolve it to a file or directory, and then loads it.
@@ -75,290 +72,227 @@ func loader(name string) (bool, error) {
 // and hand off to the appropriate chart reader.
 //
 // If a .helmignore file is present, the directory loader will skip loading any files
-// matching it.
-func Load(name string, opts helmopts.HelmOptions) (*chart.Chart, error) {
+// matching it. But .helmignore is not evaluated when reading out of an archive.
+func Load(ctx context.Context, name string) (chart.Charter, error) {
 	l, err := Loader(name)
 	if err != nil {
 		return nil, err
 	}
-	return l.Load(opts)
+
+	return l.Load(ctx)
 }
 
-// BufferedFile represents an archive file buffered for later processing.
-type BufferedFile struct {
-	Name string
-	Data []byte
+// DirLoader loads a chart from a directory
+type DirLoader string
+
+// Load loads the chart
+func (l DirLoader) Load(ctx context.Context) (chart.Charter, error) {
+	return LoadDir(ctx, string(l))
 }
 
-// LoadFiles loads from in-memory files.
-func LoadFiles(files []*BufferedFile, opts helmopts.HelmOptions) (*chart.Chart, error) {
-	c := new(chart.Chart)
-	subcharts := make(map[string][]*BufferedFile)
-
-	c.SecretsRuntimeData = secrets.NewSecretsRuntimeData()
-
-	// do not rely on assumed ordering of files in the chart and crash
-	// if Chart.yaml was not coming early enough to initialize metadata
-	for _, f := range files {
-		c.Raw = append(c.Raw, &chart.File{Name: f.Name, Data: f.Data})
-		if f.Name == "Chart.yaml" {
-			if c.Metadata == nil {
-				c.Metadata = new(chart.Metadata)
-			}
-			if err := yaml.Unmarshal(f.Data, c.Metadata); err != nil {
-				return c, errors.Wrap(err, "cannot load Chart.yaml")
-			}
-			// NOTE(bacongobbler): while the chart specification says that APIVersion must be set,
-			// Helm 2 accepted charts that did not provide an APIVersion in their chart metadata.
-			// Because of that, if APIVersion is unset, we should assume we're loading a v1 chart.
-			if c.Metadata.APIVersion == "" {
-				c.Metadata.APIVersion = chart.APIVersionV1
-			}
-		}
-	}
-	for _, f := range files {
-		switch {
-		case f.Name == "Chart.yaml":
-			// already processed
-			continue
-		case f.Name == "Chart.lock":
-			c.Lock = new(chart.Lock)
-			if err := yaml.Unmarshal(f.Data, &c.Lock); err != nil {
-				return c, errors.Wrap(err, "cannot load Chart.lock")
-			}
-		case f.Name == "values.yaml":
-			c.Values = make(map[string]interface{})
-			if err := yaml.Unmarshal(f.Data, &c.Values); err != nil {
-				return c, errors.Wrap(err, "cannot load values.yaml")
-			}
-		case f.Name == "values.schema.json":
-			c.Schema = f.Data
-
-		// Deprecated: requirements.yaml is deprecated use Chart.yaml.
-		// We will handle it for you because we are nice people
-		case f.Name == "requirements.yaml":
-			if c.Metadata == nil {
-				c.Metadata = new(chart.Metadata)
-			}
-			if c.Metadata.APIVersion != chart.APIVersionV1 {
-				log.Printf("Warning: Dependencies are handled in Chart.yaml since apiVersion \"v2\". We recommend migrating dependencies to Chart.yaml.")
-			}
-			if err := yaml.Unmarshal(f.Data, c.Metadata); err != nil {
-				return c, errors.Wrap(err, "cannot load requirements.yaml")
-			}
-			if c.Metadata.APIVersion == chart.APIVersionV1 {
-				c.Files = append(c.Files, &chart.File{Name: f.Name, Data: f.Data})
-			}
-		// Deprecated: requirements.lock is deprecated use Chart.lock.
-		case f.Name == "requirements.lock":
-			c.Lock = new(chart.Lock)
-			if err := yaml.Unmarshal(f.Data, &c.Lock); err != nil {
-				return c, errors.Wrap(err, "cannot load requirements.lock")
-			}
-			if c.Metadata == nil {
-				c.Metadata = new(chart.Metadata)
-			}
-			if c.Metadata.APIVersion == chart.APIVersionV1 {
-				c.Files = append(c.Files, &chart.File{Name: f.Name, Data: f.Data})
-			}
-
-		case strings.HasPrefix(f.Name, "templates/"):
-			c.Templates = append(c.Templates, &chart.File{Name: f.Name, Data: f.Data})
-		case strings.HasPrefix(f.Name, "charts/"):
-			if filepath.Ext(f.Name) == ".prov" {
-				c.Files = append(c.Files, &chart.File{Name: f.Name, Data: f.Data})
-				continue
-			}
-
-			fname := strings.TrimPrefix(f.Name, "charts/")
-			cname := strings.SplitN(fname, "/", 2)[0]
-			subcharts[cname] = append(subcharts[cname], &BufferedFile{Name: fname, Data: f.Data})
-		case strings.HasPrefix(f.Name, "ts/node_modules/"):
-			c.RuntimeDepsFiles = append(c.RuntimeDepsFiles, &chart.File{Name: f.Name, Data: f.Data})
-		case strings.HasPrefix(f.Name, "ts/"):
-			c.RuntimeFiles = append(c.RuntimeFiles, &chart.File{Name: f.Name, Data: f.Data})
-		default:
-			c.Files = append(c.Files, &chart.File{Name: f.Name, Data: f.Data})
-		}
+func LoadDir(ctx context.Context, dir string) (chart.Charter, error) {
+	if nelmcommon.HasHelmOptions(ctx) {
+		return loadDirWerf(ctx, dir)
 	}
 
-	switch opts.ChartLoadOpts.ChartType {
-	case helmopts.ChartTypeBundle:
-		c.ExtraValues = opts.ChartLoadOpts.ExtraValues
+	return loadDirVanilla(ctx, dir)
+}
 
-		if !opts.ChartLoadOpts.NoSecrets {
-			if err := c.SecretsRuntimeData.DecodeAndLoadSecrets(
-				context.Background(),
-				convertBufferedFilesForChartExtender(files),
-				secrets_manager.Manager,
-				runtimedata.DecodeAndLoadSecretsOptions{
-					CustomSecretValueFiles:     opts.ChartLoadOpts.SecretValuesFiles,
-					LoadFromLocalFilesystem:    true,
-					NoDecryptSecrets:           opts.ChartLoadOpts.SecretKeyIgnore,
-					SecretsWorkingDir:          opts.ChartLoadOpts.SecretWorkDir,
-					WithoutDefaultSecretValues: opts.ChartLoadOpts.DefaultSecretValuesDisable,
-				},
-			); err != nil {
-				return nil, fmt.Errorf("error decoding secrets: %w", err)
-			}
-		}
+func loadDirVanilla(ctx context.Context, dir string) (chart.Charter, error) {
+	topdir, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
 
-		if opts.ChartLoadOpts.DefaultValuesDisable {
-			c.Values = nil
-		}
-	case helmopts.ChartTypeChart:
-		c.ExtraValues = opts.ChartLoadOpts.ExtraValues
+	name := filepath.Join(topdir, "Chart.yaml")
 
-		if !opts.ChartLoadOpts.NoSecrets {
-			if err := c.SecretsRuntimeData.DecodeAndLoadSecrets(
-				context.Background(),
-				convertBufferedFilesForChartExtender(files),
-				secrets_manager.Manager,
-				runtimedata.DecodeAndLoadSecretsOptions{
-					CustomSecretValueFiles:     opts.ChartLoadOpts.SecretValuesFiles,
-					LoadFromLocalFilesystem:    file.ChartFileReader == nil,
-					NoDecryptSecrets:           opts.ChartLoadOpts.SecretKeyIgnore,
-					SecretsWorkingDir:          opts.ChartLoadOpts.SecretWorkDir,
-					WithoutDefaultSecretValues: opts.ChartLoadOpts.DefaultSecretValuesDisable,
-				},
-			); err != nil {
-				return nil, fmt.Errorf("error decoding secrets: %w", err)
-			}
-		}
+	data, err := os.ReadFile(name)
+	if err != nil {
+		return nil, fmt.Errorf("unable to detect chart at %s: %w", name, err)
+	}
 
-		c.Metadata = chartextender.AutosetChartMetadata(
-			c.Metadata,
-			chartextender.GetHelmChartMetadataOptions{
-				DefaultAPIVersion:  opts.ChartLoadOpts.DefaultChartAPIVersion,
-				DefaultName:        opts.ChartLoadOpts.DefaultChartName,
-				DefaultVersion:     opts.ChartLoadOpts.DefaultChartVersion,
-				OverrideAppVersion: opts.ChartLoadOpts.ChartAppVersion,
-			},
-		)
+	c := new(chartBase)
+	if err = yaml.Unmarshal(data, c); err != nil {
+		return nil, fmt.Errorf("cannot load Chart.yaml: %w", err)
+	}
 
-		c.Templates = append(c.Templates, &chart.File{
-			Name: "templates/_werf_helpers.tpl",
-		})
-
-		if opts.ChartLoadOpts.DefaultValuesDisable {
-			c.Values = nil
-		}
-	case helmopts.ChartTypeSubchart:
-		if !opts.ChartLoadOpts.NoSecrets {
-			if err := c.SecretsRuntimeData.DecodeAndLoadSecrets(
-				context.Background(),
-				convertBufferedFilesForChartExtender(files),
-				secrets_manager.Manager,
-				runtimedata.DecodeAndLoadSecretsOptions{
-					LoadFromLocalFilesystem:    file.ChartFileReader == nil,
-					NoDecryptSecrets:           opts.ChartLoadOpts.SecretKeyIgnore,
-					SecretsWorkingDir:          opts.ChartLoadOpts.SecretWorkDir,
-					WithoutDefaultSecretValues: opts.ChartLoadOpts.DefaultSecretValuesDisable,
-				},
-			); err != nil {
-				return nil, fmt.Errorf("error decoding secrets: %w", err)
-			}
-		}
-	case helmopts.ChartTypeChartStub:
-		if !opts.ChartLoadOpts.NoSecrets {
-			if err := c.SecretsRuntimeData.DecodeAndLoadSecrets(
-				context.Background(),
-				convertBufferedFilesForChartExtender(files),
-				secrets_manager.Manager,
-				runtimedata.DecodeAndLoadSecretsOptions{
-					LoadFromLocalFilesystem:    true,
-					NoDecryptSecrets:           opts.ChartLoadOpts.SecretKeyIgnore,
-					SecretsWorkingDir:          opts.ChartLoadOpts.SecretWorkDir,
-					WithoutDefaultSecretValues: opts.ChartLoadOpts.DefaultSecretValuesDisable,
-				},
-			); err != nil {
-				return nil, fmt.Errorf("error decoding secrets: %w", err)
-			}
-		}
-
-		c.Metadata = chartextender.AutosetChartMetadata(
-			c.Metadata,
-			chartextender.GetHelmChartMetadataOptions{
-				DefaultAPIVersion: chart.APIVersionV2,
-				DefaultName:       "stubchartname",
-				DefaultVersion:    "1.0.0",
-			},
-		)
-
-		c.Templates = append(c.Templates, &chart.File{
-			Name: "templates/_werf_helpers.tpl",
-		})
+	switch c.APIVersion {
+	case c2.APIVersionV1, c2.APIVersionV2, "":
+		return c2load.Load(ctx, dir)
+	case c3.APIVersionV3:
+		return c3load.Load(ctx, dir)
 	default:
-		panic("unexpected type")
+		return nil, errors.New("unsupported chart version")
 	}
+}
 
-	if c.Metadata == nil {
-		return c, errors.New("Chart.yaml file is missing")
-	}
+func loadDirWerf(ctx context.Context, dir string) (chart.Charter, error) {
+	helmOpts := nelmcommon.HelmOptionsFromContext(ctx)
 
-	if err := c.Validate(); err != nil {
-		return c, err
-	}
-
-	for n, files := range subcharts {
-		var sc *chart.Chart
-		var err error
-		switch {
-		case strings.IndexAny(n, "_.") == 0:
-			continue
-		case filepath.Ext(n) == ".tgz":
-			file := files[0]
-			if file.Name != n {
-				return c, errors.Errorf("error unpacking tar in %s: expected %s, got %s", c.Name(), n, file.Name)
+	var chartFiles []*nelmcommon.BufferedFile
+	switch helmOpts.ChartLoadOpts.ChartType {
+	case nelmcommon.LegacyChartTypeChart:
+		if nelmcommon.ChartFileReader != nil {
+			var err error
+			chartFiles, err = nelmcommon.ChartFileReader.LoadChartDir(ctx, dir)
+			if err != nil {
+				return nil, fmt.Errorf("load chart dir: %w", err)
+			}
+		} else {
+			localFiles, err := getFilesFromLocalFilesystem(dir)
+			if err != nil {
+				return nil, fmt.Errorf("load chart dir from filesystem: %w", err)
 			}
 
-			opts.ChartLoadOpts.ChartType = helmopts.ChartTypeSubchart
-
-			// Untar the chart and add to c.Dependencies
-			sc, err = LoadArchive(bytes.NewBuffer(file.Data), opts)
-		default:
-			// We have to trim the prefix off of every file, and ignore any file
-			// that is in charts/, but isn't actually a chart.
-			buff := make([]*BufferedFile, 0, len(files))
-			for _, f := range files {
-				parts := strings.SplitN(f.Name, "/", 2)
-				if len(parts) < 2 {
-					continue
-				}
-				f.Name = parts[1]
-				buff = append(buff, f)
-			}
-
-			opts.ChartLoadOpts.ChartType = helmopts.ChartTypeSubchart
-
-			sc, err = LoadFiles(buff, opts)
+			chartFiles = localFiles
 		}
-
+	case nelmcommon.LegacyChartTypeBundle, nelmcommon.LegacyChartTypeSubchart, nelmcommon.LegacyChartTypeChartStub:
+		localFiles, err := getFilesFromLocalFilesystem(dir)
 		if err != nil {
-			return c, errors.Wrapf(err, "error unpacking %s in %s", n, c.Name())
+			return nil, fmt.Errorf("load chart dir from filesystem: %w", err)
 		}
-		c.AddDependency(sc)
+
+		chartFiles = localFiles
+	default:
+		return nil, fmt.Errorf("unexpected chart type: %q", helmOpts.ChartLoadOpts.ChartType)
 	}
 
-	return c, nil
+	switch helmOpts.ChartLoadOpts.ChartType {
+	case nelmcommon.LegacyChartTypeChart, nelmcommon.LegacyChartTypeBundle:
+		var loadChartDirFunc func(ctx context.Context, dir string) ([]*nelmcommon.BufferedFile, error)
+		if nelmcommon.ChartFileReader != nil {
+			loadChartDirFunc = nelmcommon.ChartFileReader.LoadChartDir
+		} else {
+			loadChartDirFunc = func(ctx context.Context, dir string) ([]*nelmcommon.BufferedFile, error) {
+				return getFilesFromLocalFilesystem(dir)
+			}
+		}
+
+		var err error
+		chartFiles, err = LoadChartDependencies(ctx, loadChartDirFunc, dir, chartFiles, helmOpts)
+		if err != nil {
+			return nil, fmt.Errorf("load chart dependencies: %w", err)
+		}
+	}
+
+	files := make([]*archive.BufferedFile, 0, len(chartFiles))
+	for _, f := range chartFiles {
+		files = append(files, &archive.BufferedFile{Name: f.Name, Data: f.Data})
+	}
+
+	apiVersion := detectAPIVersion(chartFiles)
+
+	switch apiVersion {
+	case c2.APIVersionV1, c2.APIVersionV2, "":
+		return c2load.LoadFiles(ctx, files)
+	case c3.APIVersionV3:
+		return c3load.LoadFiles(ctx, files)
+	default:
+		return nil, fmt.Errorf("unsupported chart version: %s", apiVersion)
+	}
 }
 
-func convertBufferedFilesForChartExtender(files []*BufferedFile) []*file.ChartExtenderBufferedFile {
-	var res []*file.ChartExtenderBufferedFile
+func detectAPIVersion(files []*nelmcommon.BufferedFile) string {
 	for _, f := range files {
-		f1 := new(file.ChartExtenderBufferedFile)
-		*f1 = file.ChartExtenderBufferedFile(*f)
-		res = append(res, f1)
+		if f.Name == "Chart.yaml" {
+			c := new(chartBase)
+			if err := yaml.Unmarshal(f.Data, c); err == nil {
+				return c.APIVersion
+			}
+		}
 	}
-	return res
+
+	return ""
 }
 
-func convertChartExtenderFilesToBufferedFiles(files []*file.ChartExtenderBufferedFile) []*BufferedFile {
-	var res []*BufferedFile
-	for _, f := range files {
-		f1 := new(BufferedFile)
-		*f1 = BufferedFile(*f)
-		res = append(res, f1)
+// FileLoader loads a chart from a file
+type FileLoader string
+
+// Load loads a chart
+func (l FileLoader) Load(ctx context.Context) (chart.Charter, error) {
+	return LoadFile(ctx, string(l))
+}
+
+func LoadFile(ctx context.Context, name string) (chart.Charter, error) {
+	if fi, err := os.Stat(name); err != nil {
+		return nil, err
+	} else if fi.IsDir() {
+		return nil, errors.New("cannot load a directory")
 	}
-	return res
+
+	raw, err := os.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer raw.Close()
+
+	err = archive.EnsureArchive(name, raw)
+	if err != nil {
+		return nil, err
+	}
+
+	files, err := archive.LoadArchiveFiles(raw)
+	if err != nil {
+		if errors.Is(err, gzip.ErrHeader) {
+			return nil, fmt.Errorf("file '%s' does not appear to be a valid chart file (details: %w)", name, err)
+		}
+		return nil, errors.New("unable to load chart archive")
+	}
+
+	for _, f := range files {
+		if f.Name == "Chart.yaml" {
+			c := new(chartBase)
+			if err := yaml.Unmarshal(f.Data, c); err != nil {
+				return c, fmt.Errorf("cannot load Chart.yaml: %w", err)
+			}
+			switch c.APIVersion {
+			case c2.APIVersionV1, c2.APIVersionV2, "":
+				return c2load.Load(ctx, name)
+			case c3.APIVersionV3:
+				return c3load.Load(ctx, name)
+			default:
+				return nil, errors.New("unsupported chart version")
+			}
+		}
+	}
+
+	return nil, errors.New("unable to detect chart version, no Chart.yaml found")
+}
+
+// LoadArchive loads from a reader containing a compressed tar archive.
+func LoadArchive(ctx context.Context, in io.Reader) (chart.Charter, error) {
+	// Note: This function is for use by SDK users such as Flux.
+
+	files, err := archive.LoadArchiveFiles(in)
+	if err != nil {
+		if errors.Is(err, gzip.ErrHeader) {
+			return nil, fmt.Errorf("stream does not appear to be a valid chart file (details: %w)", err)
+		}
+		return nil, fmt.Errorf("unable to load chart archive: %w", err)
+	}
+
+	for _, f := range files {
+		if f.Name == "Chart.yaml" {
+			c := new(chartBase)
+			if err := yaml.Unmarshal(f.Data, c); err != nil {
+				return c, fmt.Errorf("cannot load Chart.yaml: %w", err)
+			}
+			switch c.APIVersion {
+			case c2.APIVersionV1, c2.APIVersionV2, "":
+				return c2load.LoadFiles(ctx, files)
+			case c3.APIVersionV3:
+				return c3load.LoadFiles(ctx, files)
+			default:
+				return nil, errors.New("unsupported chart version")
+			}
+		}
+	}
+
+	return nil, errors.New("unable to detect chart version, no Chart.yaml found")
+}
+
+// chartBase is used to detect the API Version for the chart to run it through the
+// loader for that type.
+type chartBase struct {
+	APIVersion string `json:"apiVersion,omitempty"`
 }

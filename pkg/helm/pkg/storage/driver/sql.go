@@ -14,10 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package driver // import "helm.sh/helm/v3/pkg/storage/driver"
+package driver // import "github.com/werf/nelm/pkg/helm/pkg/storage/driver"
 
 import (
 	"fmt"
+	"log/slog"
+	"maps"
 	"sort"
 	"strconv"
 	"time"
@@ -30,7 +32,9 @@ import (
 	// Import pq for postgres dialect
 	_ "github.com/lib/pq"
 
-	rspb "github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/nelm/pkg/helm/intern/logging"
+	"github.com/werf/nelm/pkg/helm/pkg/release"
+	rspb "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 )
 
 var _ Driver = (*SQL)(nil)
@@ -72,8 +76,8 @@ const (
 
 // Following limits based on k8s labels limits - https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set
 const (
-	sqlCustomLabelsTableKeyMaxLenght   = 253 + 1 + 63
-	sqlCustomLabelsTableValueMaxLenght = 63
+	sqlCustomLabelsTableKeyMaxLength   = 253 + 1 + 63
+	sqlCustomLabelsTableValueMaxLength = 63
 )
 
 const (
@@ -86,8 +90,8 @@ type SQL struct {
 	db               *sqlx.DB
 	namespace        string
 	statementBuilder sq.StatementBuilderType
-
-	Log func(string, ...interface{})
+	// Embed a LogHolder to provide logger functionality
+	logging.LogHolder
 }
 
 // Name returns the name of the driver.
@@ -98,9 +102,9 @@ func (s *SQL) Name() string {
 // Check if all migrations al
 func (s *SQL) checkAlreadyApplied(migrations []*migrate.Migration) bool {
 	// make map (set) of ids for fast search
-	migrationsIds := make(map[string]struct{})
+	migrationsIDs := make(map[string]struct{})
 	for _, migration := range migrations {
-		migrationsIds[migration.Id] = struct{}{}
+		migrationsIDs[migration.Id] = struct{}{}
 	}
 
 	// get list of applied migrations
@@ -108,21 +112,21 @@ func (s *SQL) checkAlreadyApplied(migrations []*migrate.Migration) bool {
 	records, err := migrate.GetMigrationRecords(s.db.DB, postgreSQLDialect)
 	migrate.SetDisableCreateTable(false)
 	if err != nil {
-		s.Log("checkAlreadyApplied: failed to get migration records: %v", err)
+		s.Logger().Debug("failed to get migration records", slog.Any("error", err))
 		return false
 	}
 
 	for _, record := range records {
-		if _, ok := migrationsIds[record.Id]; ok {
-			s.Log("checkAlreadyApplied: found previous migration (Id: %v) applied at %v", record.Id, record.AppliedAt)
-			delete(migrationsIds, record.Id)
+		if _, ok := migrationsIDs[record.Id]; ok {
+			s.Logger().Debug("found previous migration", "id", record.Id, "appliedAt", record.AppliedAt)
+			delete(migrationsIDs, record.Id)
 		}
 	}
 
-	// check if all migrations appliyed
-	if len(migrationsIds) != 0 {
-		for id := range migrationsIds {
-			s.Log("checkAlreadyApplied: find unapplied migration (id: %v)", id)
+	// check if all migrations applied
+	if len(migrationsIDs) != 0 {
+		for id := range migrationsIDs {
+			s.Logger().Debug("find unapplied migration", "id", id)
 		}
 		return false
 	}
@@ -156,9 +160,9 @@ func (s *SQL) ensureDBSetup() error {
 						CREATE INDEX ON %s (%s);
 						CREATE INDEX ON %s (%s);
 						CREATE INDEX ON %s (%s);
-	
+
 						GRANT ALL ON %s TO PUBLIC;
-	
+
 						ALTER TABLE %s ENABLE ROW LEVEL SECURITY;
 					`,
 						sqlReleaseTableName,
@@ -204,11 +208,11 @@ func (s *SQL) ensureDBSetup() error {
 						CREATE TABLE %s (
 							%s VARCHAR(64),
 							%s VARCHAR(67),
-							%s VARCHAR(%d), 
+							%s VARCHAR(%d),
 							%s VARCHAR(%d)
 						);
 						CREATE INDEX ON %s (%s, %s);
-						
+
 						GRANT ALL ON %s TO PUBLIC;
 						ALTER TABLE %s ENABLE ROW LEVEL SECURITY;
 					`,
@@ -216,9 +220,9 @@ func (s *SQL) ensureDBSetup() error {
 						sqlCustomLabelsTableReleaseKeyColumn,
 						sqlCustomLabelsTableReleaseNamespaceColumn,
 						sqlCustomLabelsTableKeyColumn,
-						sqlCustomLabelsTableKeyMaxLenght,
+						sqlCustomLabelsTableKeyMaxLength,
 						sqlCustomLabelsTableValueColumn,
-						sqlCustomLabelsTableValueMaxLenght,
+						sqlCustomLabelsTableValueMaxLength,
 						sqlCustomLabelsTableName,
 						sqlCustomLabelsTableReleaseKeyColumn,
 						sqlCustomLabelsTableReleaseNamespaceColumn,
@@ -276,7 +280,7 @@ type SQLReleaseCustomLabelWrapper struct {
 }
 
 // NewSQL initializes a new sql driver.
-func NewSQL(connectionString string, logger func(string, ...interface{}), namespace string) (*SQL, error) {
+func NewSQL(connectionString string, namespace string) (*SQL, error) {
 	db, err := sqlx.Connect(postgreSQLDialect, connectionString)
 	if err != nil {
 		return nil, err
@@ -284,7 +288,6 @@ func NewSQL(connectionString string, logger func(string, ...interface{}), namesp
 
 	driver := &SQL{
 		db:               db,
-		Log:              logger,
 		statementBuilder: sq.StatementBuilder.PlaceholderFormat(sq.Dollar),
 	}
 
@@ -293,12 +296,13 @@ func NewSQL(connectionString string, logger func(string, ...interface{}), namesp
 	}
 
 	driver.namespace = namespace
+	driver.SetLogger(slog.Default().Handler())
 
 	return driver, nil
 }
 
 // Get returns the release named by key.
-func (s *SQL) Get(key string) (*rspb.Release, error) {
+func (s *SQL) Get(key string) (release.Releaser, error) {
 	var record SQLReleaseWrapper
 
 	qb := s.statementBuilder.
@@ -309,24 +313,29 @@ func (s *SQL) Get(key string) (*rspb.Release, error) {
 
 	query, args, err := qb.ToSql()
 	if err != nil {
-		s.Log("failed to build query: %v", err)
+		s.Logger().Debug("failed to build query", slog.Any("error", err))
 		return nil, err
 	}
 
 	// Get will return an error if the result is empty
 	if err := s.db.Get(&record, query, args...); err != nil {
-		s.Log("got SQL error when getting release %s: %v", key, err)
+		s.Logger().Debug("got SQL error when getting release", slog.String("key", key), slog.Any("error", err))
 		return nil, ErrReleaseNotFound
 	}
 
 	release, err := decodeRelease(record.Body)
 	if err != nil {
-		s.Log("get: failed to decode data %q: %v", key, err)
+		s.Logger().Debug("failed to decode data", slog.String("key", key), slog.Any("error", err))
 		return nil, err
 	}
 
 	if release.Labels, err = s.getReleaseCustomLabels(key, s.namespace); err != nil {
-		s.Log("failed to get release %s/%s custom labels: %v", s.namespace, key, err)
+		s.Logger().Debug(
+			"failed to get release custom labels",
+			slog.String("namespace", s.namespace),
+			slog.String("key", key),
+			slog.Any("error", err),
+		)
 		return nil, err
 	}
 
@@ -334,7 +343,7 @@ func (s *SQL) Get(key string) (*rspb.Release, error) {
 }
 
 // List returns the list of all releases such that filter(release) == true
-func (s *SQL) List(filter func(*rspb.Release) bool) ([]*rspb.Release, error) {
+func (s *SQL) List(filter func(release.Releaser) bool) ([]release.Releaser, error) {
 	sb := s.statementBuilder.
 		Select(sqlReleaseTableKeyColumn, sqlReleaseTableNamespaceColumn, sqlReleaseTableBodyColumn).
 		From(sqlReleaseTableName).
@@ -347,31 +356,34 @@ func (s *SQL) List(filter func(*rspb.Release) bool) ([]*rspb.Release, error) {
 
 	query, args, err := sb.ToSql()
 	if err != nil {
-		s.Log("failed to build query: %v", err)
+		s.Logger().Debug("failed to build query", slog.Any("error", err))
 		return nil, err
 	}
 
 	var records = []SQLReleaseWrapper{}
 	if err := s.db.Select(&records, query, args...); err != nil {
-		s.Log("list: failed to list: %v", err)
+		s.Logger().Debug("failed to list", slog.Any("error", err))
 		return nil, err
 	}
 
-	var releases []*rspb.Release
+	var releases []release.Releaser
 	for _, record := range records {
 		release, err := decodeRelease(record.Body)
 		if err != nil {
-			s.Log("list: failed to decode release: %v: %v", record, err)
+			s.Logger().Debug("failed to decode release", slog.Any("record", record), slog.Any("error", err))
 			continue
 		}
 
 		if release.Labels, err = s.getReleaseCustomLabels(record.Key, record.Namespace); err != nil {
-			s.Log("failed to get release %s/%s custom labels: %v", record.Namespace, record.Key, err)
+			s.Logger().Debug(
+				"failed to get release custom labels",
+				slog.String("namespace", record.Namespace),
+				slog.String("key", record.Key),
+				slog.Any("error", err),
+			)
 			return nil, err
 		}
-		for k, v := range getReleaseSystemLabels(release) {
-			release.Labels[k] = v
-		}
+		maps.Copy(release.Labels, getReleaseSystemLabels(release))
 
 		if filter(release) {
 			releases = append(releases, release)
@@ -382,7 +394,7 @@ func (s *SQL) List(filter func(*rspb.Release) bool) ([]*rspb.Release, error) {
 }
 
 // Query returns the set of releases that match the provided set of labels.
-func (s *SQL) Query(labels map[string]string) ([]*rspb.Release, error) {
+func (s *SQL) Query(labels map[string]string) ([]release.Releaser, error) {
 	sb := s.statementBuilder.
 		Select(sqlReleaseTableKeyColumn, sqlReleaseTableNamespaceColumn, sqlReleaseTableBodyColumn).
 		From(sqlReleaseTableName)
@@ -396,7 +408,7 @@ func (s *SQL) Query(labels map[string]string) ([]*rspb.Release, error) {
 		if _, ok := labelMap[key]; ok {
 			sb = sb.Where(sq.Eq{key: labels[key]})
 		} else {
-			s.Log("unknown label %s", key)
+			s.Logger().Debug("unknown label", "key", key)
 			return nil, fmt.Errorf("unknown label %s", key)
 		}
 	}
@@ -409,13 +421,13 @@ func (s *SQL) Query(labels map[string]string) ([]*rspb.Release, error) {
 	// Build our query
 	query, args, err := sb.ToSql()
 	if err != nil {
-		s.Log("failed to build query: %v", err)
+		s.Logger().Debug("failed to build query", slog.Any("error", err))
 		return nil, err
 	}
 
 	var records = []SQLReleaseWrapper{}
 	if err := s.db.Select(&records, query, args...); err != nil {
-		s.Log("list: failed to query with labels: %v", err)
+		s.Logger().Debug("failed to query with labels", slog.Any("error", err))
 		return nil, err
 	}
 
@@ -423,16 +435,21 @@ func (s *SQL) Query(labels map[string]string) ([]*rspb.Release, error) {
 		return nil, ErrReleaseNotFound
 	}
 
-	var releases []*rspb.Release
+	var releases []release.Releaser
 	for _, record := range records {
 		release, err := decodeRelease(record.Body)
 		if err != nil {
-			s.Log("list: failed to decode release: %v: %v", record, err)
+			s.Logger().Debug("failed to decode release", slog.Any("record", record), slog.Any("error", err))
 			continue
 		}
 
 		if release.Labels, err = s.getReleaseCustomLabels(record.Key, record.Namespace); err != nil {
-			s.Log("failed to get release %s/%s custom labels: %v", record.Namespace, record.Key, err)
+			s.Logger().Debug(
+				"failed to get release custom labels",
+				slog.String("namespace", record.Namespace),
+				slog.String("key", record.Key),
+				slog.Any("error", err),
+			)
 			return nil, err
 		}
 
@@ -447,7 +464,12 @@ func (s *SQL) Query(labels map[string]string) ([]*rspb.Release, error) {
 }
 
 // Create creates a new release.
-func (s *SQL) Create(key string, rls *rspb.Release) error {
+func (s *SQL) Create(key string, rel release.Releaser) error {
+	rls, err := releaserToV1Release(rel)
+	if err != nil {
+		return err
+	}
+
 	namespace := rls.Namespace
 	if namespace == "" {
 		namespace = defaultNamespace
@@ -456,13 +478,13 @@ func (s *SQL) Create(key string, rls *rspb.Release) error {
 
 	body, err := encodeRelease(rls)
 	if err != nil {
-		s.Log("failed to encode release: %v", err)
+		s.Logger().Debug("failed to encode release", slog.Any("error", err))
 		return err
 	}
 
 	transaction, err := s.db.Beginx()
 	if err != nil {
-		s.Log("failed to start SQL transaction: %v", err)
+		s.Logger().Debug("failed to start SQL transaction", slog.Any("error", err))
 		return fmt.Errorf("error beginning transaction: %v", err)
 	}
 
@@ -491,7 +513,7 @@ func (s *SQL) Create(key string, rls *rspb.Release) error {
 			int(time.Now().Unix()),
 		).ToSql()
 	if err != nil {
-		s.Log("failed to build insert query: %v", err)
+		s.Logger().Debug("failed to build insert query", slog.Any("error", err))
 		return err
 	}
 
@@ -505,17 +527,17 @@ func (s *SQL) Create(key string, rls *rspb.Release) error {
 			Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace}).
 			ToSql()
 		if buildErr != nil {
-			s.Log("failed to build select query: %v", buildErr)
+			s.Logger().Debug("failed to build select query", "error", buildErr)
 			return err
 		}
 
 		var record SQLReleaseWrapper
 		if err := transaction.Get(&record, selectQuery, args...); err == nil {
-			s.Log("release %s already exists", key)
+			s.Logger().Debug("release already exists", slog.String("key", key))
 			return ErrReleaseExists
 		}
 
-		s.Log("failed to store release %s in SQL database: %v", key, err)
+		s.Logger().Debug("failed to store release in SQL database", slog.String("key", key), slog.Any("error", err))
 		return err
 	}
 
@@ -538,13 +560,13 @@ func (s *SQL) Create(key string, rls *rspb.Release) error {
 
 		if err != nil {
 			defer transaction.Rollback()
-			s.Log("failed to build insert query: %v", err)
+			s.Logger().Debug("failed to build insert query", slog.Any("error", err))
 			return err
 		}
 
 		if _, err := transaction.Exec(insertLabelsQuery, args...); err != nil {
 			defer transaction.Rollback()
-			s.Log("failed to write Labels: %v", err)
+			s.Logger().Debug("failed to write Labels", slog.Any("error", err))
 			return err
 		}
 	}
@@ -554,7 +576,11 @@ func (s *SQL) Create(key string, rls *rspb.Release) error {
 }
 
 // Update updates a release.
-func (s *SQL) Update(key string, rls *rspb.Release) error {
+func (s *SQL) Update(key string, rel release.Releaser) error {
+	rls, err := releaserToV1Release(rel)
+	if err != nil {
+		return err
+	}
 	namespace := rls.Namespace
 	if namespace == "" {
 		namespace = defaultNamespace
@@ -563,7 +589,7 @@ func (s *SQL) Update(key string, rls *rspb.Release) error {
 
 	body, err := encodeRelease(rls)
 	if err != nil {
-		s.Log("failed to encode release: %v", err)
+		s.Logger().Debug("failed to encode release", slog.Any("error", err))
 		return err
 	}
 
@@ -580,12 +606,12 @@ func (s *SQL) Update(key string, rls *rspb.Release) error {
 		ToSql()
 
 	if err != nil {
-		s.Log("failed to build update query: %v", err)
+		s.Logger().Debug("failed to build update query", slog.Any("error", err))
 		return err
 	}
 
 	if _, err := s.db.Exec(query, args...); err != nil {
-		s.Log("failed to update release %s in SQL database: %v", key, err)
+		s.Logger().Debug("failed to update release in SQL database", slog.String("key", key), slog.Any("error", err))
 		return err
 	}
 
@@ -593,10 +619,10 @@ func (s *SQL) Update(key string, rls *rspb.Release) error {
 }
 
 // Delete deletes a release or returns ErrReleaseNotFound.
-func (s *SQL) Delete(key string) (*rspb.Release, error) {
+func (s *SQL) Delete(key string) (release.Releaser, error) {
 	transaction, err := s.db.Beginx()
 	if err != nil {
-		s.Log("failed to start SQL transaction: %v", err)
+		s.Logger().Debug("failed to start SQL transaction", slog.Any("error", err))
 		return nil, fmt.Errorf("error beginning transaction: %v", err)
 	}
 
@@ -607,20 +633,20 @@ func (s *SQL) Delete(key string) (*rspb.Release, error) {
 		Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace}).
 		ToSql()
 	if err != nil {
-		s.Log("failed to build select query: %v", err)
+		s.Logger().Debug("failed to build select query", slog.Any("error", err))
 		return nil, err
 	}
 
 	var record SQLReleaseWrapper
 	err = transaction.Get(&record, selectQuery, args...)
 	if err != nil {
-		s.Log("release %s not found: %v", key, err)
+		s.Logger().Debug("release not found", slog.String("key", key), slog.Any("error", err))
 		return nil, ErrReleaseNotFound
 	}
 
 	release, err := decodeRelease(record.Body)
 	if err != nil {
-		s.Log("failed to decode release %s: %v", key, err)
+		s.Logger().Debug("failed to decode release", slog.String("key", key), slog.Any("error", err))
 		transaction.Rollback()
 		return nil, err
 	}
@@ -632,18 +658,22 @@ func (s *SQL) Delete(key string) (*rspb.Release, error) {
 		Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace}).
 		ToSql()
 	if err != nil {
-		s.Log("failed to build delete query: %v", err)
+		s.Logger().Debug("failed to build delete query", slog.Any("error", err))
 		return nil, err
 	}
 
 	_, err = transaction.Exec(deleteQuery, args...)
 	if err != nil {
-		s.Log("failed perform delete query: %v", err)
+		s.Logger().Debug("failed perform delete query", slog.Any("error", err))
 		return release, err
 	}
 
 	if release.Labels, err = s.getReleaseCustomLabels(key, s.namespace); err != nil {
-		s.Log("failed to get release %s/%s custom labels: %v", s.namespace, key, err)
+		s.Logger().Debug(
+			"failed to get release custom labels",
+			slog.String("namespace", s.namespace),
+			slog.String("key", key),
+			slog.Any("error", err))
 		return nil, err
 	}
 
@@ -654,7 +684,7 @@ func (s *SQL) Delete(key string) (*rspb.Release, error) {
 		ToSql()
 
 	if err != nil {
-		s.Log("failed to build delete Labels query: %v", err)
+		s.Logger().Debug("failed to build delete Labels query", slog.Any("error", err))
 		return nil, err
 	}
 	_, err = transaction.Exec(deleteCustomLabelsQuery, args...)

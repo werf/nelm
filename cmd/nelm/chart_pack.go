@@ -9,9 +9,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/werf/common-go/pkg/cli"
+	"github.com/werf/nelm/pkg/action"
 	"github.com/werf/nelm/pkg/featgate"
-	helm_v3 "github.com/werf/nelm/pkg/helm/cmd/helm"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
+	helmcmd "github.com/werf/nelm/pkg/helm/pkg/cmd"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/ts"
 )
@@ -30,10 +31,10 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 
 	originalRunE := cmd.RunE
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		helmSettings := helm_v3.Settings
+		helmSettings := helmcmd.Settings
 
 		// FIXME(major): should we do it like that everywhere, setting the context?
-		ctx := log.SetupLogging(cmd.Context(), lo.Ternary(helmSettings.Debug, log.DebugLevel, log.InfoLevel), log.SetupLoggingOptions{})
+		ctx := action.SetupLogging(cmd.Context(), lo.Ternary(helmSettings.Debug, log.DebugLevel, log.InfoLevel), action.SetupLoggingOptions{})
 		cmd.SetContext(ctx)
 
 		loader.NoChartLockWarning = ""

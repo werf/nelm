@@ -17,7 +17,7 @@ import (
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
+	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/plan"
@@ -79,7 +79,7 @@ type ReleasePlanInstallOptions struct {
 	InstallGraphPath string
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.
-	LegacyChartType helmopts.ChartType
+	LegacyChartType common.LegacyChartType
 	// LegacyExtraValues provides additional values programmatically.
 	// Used internally for backward compatibility with werf integration.
 	LegacyExtraValues map[string]interface{}
@@ -195,8 +195,8 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		return fmt.Errorf("construct release storage: %w", err)
 	}
 
-	helmOptions := helmopts.HelmOptions{
-		ChartLoadOpts: helmopts.ChartLoadOptions{
+	helmOptions := common.HelmOptions{
+		ChartLoadOpts: common.ChartLoadOptions{
 			ChartAppVersion:            opts.ChartAppVersion,
 			ChartType:                  opts.LegacyChartType,
 			DefaultChartAPIVersion:     opts.DefaultChartAPIVersion,
@@ -232,7 +232,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	if prevRelease != nil {
 		newRevision = prevRelease.Version + 1
-		prevReleaseFailed = prevRelease.IsStatusFailed()
+		prevReleaseFailed = prevRelease.Info.Status == helmreleasestatus.StatusFailed
 	} else {
 		newRevision = 1
 	}

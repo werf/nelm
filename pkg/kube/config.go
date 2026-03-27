@@ -72,10 +72,15 @@ func NewKubeConfig(ctx context.Context, opts KubeConfigOptions) (*KubeConfig, er
 
 		clientConfig = clientcmd.NewDefaultClientConfig(*config, overrides)
 	} else {
-		loadingRules := &clientcmd.ClientConfigLoadingRules{
-			Precedence:          opts.KubeConfigPaths,
-			MigrationRules:      clientcmd.NewDefaultClientConfigLoadingRules().MigrationRules,
-			DefaultClientConfig: &clientcmd.DefaultClientConfig,
+		var loadingRules *clientcmd.ClientConfigLoadingRules
+		if len(opts.KubeConfigPaths) > 0 {
+			loadingRules = &clientcmd.ClientConfigLoadingRules{
+				Precedence:          opts.KubeConfigPaths,
+				MigrationRules:      clientcmd.NewDefaultClientConfigLoadingRules().MigrationRules,
+				DefaultClientConfig: &clientcmd.DefaultClientConfig,
+			}
+		} else {
+			loadingRules = clientcmd.NewDefaultClientConfigLoadingRules()
 		}
 
 		clientConfig = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)

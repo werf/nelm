@@ -12,7 +12,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/plan"
 	"github.com/werf/nelm/pkg/resource"
 	"github.com/werf/nelm/pkg/resource/spec"
@@ -229,7 +230,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 				s.Require().NoError(err)
 
 				updatedRel := updatedRelRaw.(*helmrelease.Release)
-				updatedRel.Info.Status = helmrelease.StatusDeployed
+				updatedRel.Info.Status = helmreleasestatus.StatusDeployed
 
 				updateReleaseOp := &plan.Operation{
 					Type:     plan.OperationTypeUpdateRelease,
@@ -1415,7 +1416,7 @@ func defaultRelease(releaseName, releaseNamespace string) *helmrelease.Release {
 		Name:      releaseName,
 		Namespace: releaseNamespace,
 		Info: &helmrelease.Info{
-			Status: helmrelease.StatusPendingInstall,
+			Status: helmreleasestatus.StatusPendingInstall,
 		},
 		Version: 1,
 	}

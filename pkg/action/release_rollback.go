@@ -16,7 +16,8 @@ import (
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/lock"
 	"github.com/werf/nelm/pkg/log"
@@ -213,7 +214,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	if prevRelease != nil {
 		newRevision = prevRelease.Version + 1
-		prevReleaseFailed = prevRelease.IsStatusFailed()
+		prevReleaseFailed = prevRelease.Info.Status == helmreleasestatus.StatusFailed
 	} else {
 		newRevision = 1
 	}
@@ -228,7 +229,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	}
 
 	newRelease, err := release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, rollbackReleaseResSpecs, rollbackRelease.Chart, rollbackRelease.Config, release.ReleaseOptions{
-		InfoAnnotations: lo.Assign(rollbackRelease.Info.Annotations, opts.ReleaseInfoAnnotations),
+		InfoAnnotations: opts.ReleaseInfoAnnotations,
 		Labels:          lo.Assign(rollbackRelease.Labels, opts.ReleaseLabels),
 		Notes:           rollbackRelease.Info.Notes,
 	})
@@ -331,12 +332,12 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	if releaseIsUpToDate && installPlanIsUseless {
 		if opts.RollbackReportPath != "" {
-			if err := saveReport(opts.RollbackReportPath, &releaseReportV3{
+			if err := saveReport(opts.RollbackReportPath, &ReleaseReportV3{
 				Version:   3,
 				Release:   releaseName,
 				Namespace: releaseNamespace,
 				Revision:  newRelease.Version,
-				Status:    helmrelease.StatusSkipped,
+				Status:    helmreleasestatus.Status("skipped"),
 			}); err != nil {
 				return fmt.Errorf("save release install report: %w", err)
 			}
@@ -438,12 +439,12 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	sort.Strings(reportCanceledOps)
 	sort.Strings(reportFailedOps)
 
-	report := &releaseReportV3{
+	report := &ReleaseReportV3{
 		Version:             3,
 		Release:             releaseName,
 		Namespace:           releaseNamespace,
 		Revision:            newRelease.Version,
-		Status:              helmrelease.StatusDeployed,
+		Status:              helmreleasestatus.StatusDeployed,
 		CompletedOperations: reportCompletedOps,
 		CanceledOperations:  reportCanceledOps,
 		FailedOperations:    reportFailedOps,

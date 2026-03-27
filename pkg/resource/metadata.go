@@ -20,7 +20,7 @@ import (
 
 	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/util"
@@ -256,13 +256,13 @@ func deployConditionsForAnnotation(meta *spec.ResourceMeta, annoPattern *regexp.
 			result[common.InstallOnDelete] = append(result[common.InstallOnDelete], common.StagePostInstall)
 		case string(helmrelease.HookTest), "test-success":
 			result[common.InstallOnTest] = append(result[common.InstallOnTest], common.StageInstall)
-		case string(helmrelease.HookInstall):
+		case string(common.InstallOnInstall):
 			result[common.InstallOnInstall] = append(result[common.InstallOnInstall], common.StageInstall)
-		case string(helmrelease.HookUpgrade):
+		case string(common.InstallOnUpgrade):
 			result[common.InstallOnUpgrade] = append(result[common.InstallOnUpgrade], common.StageInstall)
-		case string(helmrelease.HookRollback):
+		case string(common.InstallOnRollback):
 			result[common.InstallOnRollback] = append(result[common.InstallOnRollback], common.StageInstall)
-		case string(helmrelease.HookDelete):
+		case string(common.InstallOnDelete):
 			result[common.InstallOnDelete] = append(result[common.InstallOnDelete], common.StageInstall)
 		default:
 			panic(fmt.Sprintf("unknown value %q for %s", value, key))
@@ -979,10 +979,10 @@ func validateDeployOn(meta *spec.ResourceMeta) error {
 				string(helmrelease.HookPreDelete),
 				string(helmrelease.HookPostDelete),
 				string(helmrelease.HookTest),
-				string(helmrelease.HookInstall),
-				string(helmrelease.HookUpgrade),
-				string(helmrelease.HookRollback),
-				string(helmrelease.HookDelete),
+				string(common.InstallOnInstall),
+				string(common.InstallOnUpgrade),
+				string(common.InstallOnRollback),
+				string(common.InstallOnDelete),
 				"test-success":
 			default:
 				return fmt.Errorf("value %q for annotation %q is not supported", value, key)

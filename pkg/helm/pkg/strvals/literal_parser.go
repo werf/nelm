@@ -17,11 +17,10 @@ package strvals
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
-
-	"github.com/pkg/errors"
 )
 
 // ParseLiteral parses a set line interpreting the value as a literal string.
@@ -68,7 +67,7 @@ func (t *literalParser) parse() error {
 		if err == nil {
 			continue
 		}
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		return err
@@ -102,7 +101,7 @@ func (t *literalParser) key(data map[string]interface{}, nestedNameLevel int) (r
 			if len(key) == 0 {
 				return err
 			}
-			return errors.Errorf("key %q has no value", string(key))
+			return fmt.Errorf("key %q has no value", string(key))
 
 		case lastRune == '=':
 			// found end of key: swallow the '=' and get the value
@@ -129,7 +128,7 @@ func (t *literalParser) key(data map[string]interface{}, nestedNameLevel int) (r
 			// recurse on sub-tree with remaining data
 			err := t.key(inner, nestedNameLevel)
 			if err == nil && len(inner) == 0 {
-				return errors.Errorf("key map %q has no value", string(key))
+				return fmt.Errorf("key map %q has no value", string(key))
 			}
 			if len(inner) != 0 {
 				set(data, string(key), inner)
@@ -140,7 +139,7 @@ func (t *literalParser) key(data map[string]interface{}, nestedNameLevel int) (r
 			// We are in a list index context, so we need to set an index.
 			i, err := t.keyIndex()
 			if err != nil {
-				return errors.Wrap(err, "error parsing index")
+				return fmt.Errorf("error parsing index: %w", err)
 			}
 			kk := string(key)
 
@@ -178,14 +177,14 @@ func (t *literalParser) listItem(list []interface{}, i, nestedNameLevel int) ([]
 
 	switch key, lastRune, err := runesUntilLiteral(t.sc, stop); {
 	case len(key) > 0:
-		return list, errors.Errorf("unexpected data at end of array index: %q", key)
+		return list, fmt.Errorf("unexpected data at end of array index: %q", key)
 
 	case err != nil:
 		return list, err
 
 	case lastRune == '=':
 		value, err := t.val()
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			return list, err
 		}
 		return setIndex(list, i, string(value))
@@ -214,7 +213,7 @@ func (t *literalParser) listItem(list []interface{}, i, nestedNameLevel int) ([]
 		// now we have a nested list. Read the index and handle.
 		nextI, err := t.keyIndex()
 		if err != nil {
-			return list, errors.Wrap(err, "error parsing index")
+			return list, fmt.Errorf("error parsing index: %w", err)
 		}
 		var crtList []interface{}
 		if len(list) > i {
@@ -233,7 +232,7 @@ func (t *literalParser) listItem(list []interface{}, i, nestedNameLevel int) ([]
 		return setIndex(list, i, list2)
 
 	default:
-		return nil, errors.Errorf("parse error: unexpected token %v", lastRune)
+		return nil, fmt.Errorf("parse error: unexpected token %v", lastRune)
 	}
 }
 

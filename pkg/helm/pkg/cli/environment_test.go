@@ -24,7 +24,7 @@ import (
 
 	"github.com/spf13/pflag"
 
-	"github.com/werf/nelm/pkg/helm/internal/version"
+	"github.com/werf/nelm/pkg/helm/intern/version"
 )
 
 func TestSetNamespace(t *testing.T) {
@@ -38,7 +38,6 @@ func TestSetNamespace(t *testing.T) {
 	if settings.namespace != "testns" {
 		t.Errorf("Expected namespace testns, got %s", settings.namespace)
 	}
-
 }
 
 func TestEnvSettings(t *testing.T) {
@@ -111,6 +110,14 @@ func TestEnvSettings(t *testing.T) {
 			kubeTLSServer: "example.org",
 			kubeInsecure:  true,
 		},
+		{
+			name:       "invalid kubeconfig",
+			ns:         "testns",
+			args:       "--namespace=testns --kubeconfig=/path/to/fake/file",
+			maxhistory: defaultMaxHistory,
+			burstLimit: defaultBurstLimit,
+			qps:        defaultQPS,
+		},
 	}
 
 	for _, tt := range tests {
@@ -118,7 +125,7 @@ func TestEnvSettings(t *testing.T) {
 			defer resetEnv()()
 
 			for k, v := range tt.envvars {
-				os.Setenv(k, v)
+				t.Setenv(k, v)
 			}
 
 			flags := pflag.NewFlagSet("testing", pflag.ContinueOnError)
@@ -225,10 +232,7 @@ func TestEnvOrBool(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.env != "" {
-				t.Cleanup(func() {
-					os.Unsetenv(tt.env)
-				})
-				os.Setenv(tt.env, tt.val)
+				t.Setenv(tt.env, tt.val)
 			}
 			actual := envBoolOr(tt.env, tt.def)
 			if actual != tt.expected {
