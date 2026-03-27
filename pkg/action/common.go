@@ -176,7 +176,7 @@ func runFailurePlan(ctx context.Context, releaseNamespace string, failedPlan *pl
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build failure plan: %w", err))
 	}
 
-	if _, planIsUseless := lo.Find(failurePlan.Operations(), func(op *plan.Operation) bool {
+	if planIsUseless := lo.NoneBy(failurePlan.Operations(), func(op *plan.Operation) bool {
 		switch op.Category {
 		case plan.OperationCategoryResource, plan.OperationCategoryTrack, plan.OperationCategoryRelease:
 			return true
