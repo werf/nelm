@@ -31,13 +31,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"helm.sh/helm/v3/internal/test"
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chartutil"
-	kubefake "helm.sh/helm/v3/pkg/kube/fake"
-	"helm.sh/helm/v3/pkg/release"
-	"helm.sh/helm/v3/pkg/storage/driver"
-	helmtime "helm.sh/helm/v3/pkg/time"
+	"github.com/werf/nelm/pkg/helm/intern/test"
+	"github.com/werf/nelm/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
+	kubefake "github.com/werf/nelm/pkg/helm/pkg/kube/fake"
+	"github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/nelm/pkg/helm/pkg/storage/driver"
+	helmtime "github.com/werf/nelm/pkg/helm/pkg/time"
 )
 
 type nameTemplateTestCase struct {
@@ -48,7 +48,7 @@ type nameTemplateTestCase struct {
 
 func installAction(t *testing.T) *Install {
 	config := actionConfigFixture(t)
-	instAction := NewInstall(config)
+	instAction := NewInstall(config, nil, nil)
 	instAction.Namespace = "spaced"
 	instAction.ReleaseName = "test-install-release"
 

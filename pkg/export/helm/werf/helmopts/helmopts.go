@@ -1,6 +1,6 @@
 package helmopts
 
-import internal "github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
+import internal "github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 
 const ChartTypeBundle = internal.ChartTypeBundle
 

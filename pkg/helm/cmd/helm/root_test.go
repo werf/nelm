@@ -14,16 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package helm
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
-	"helm.sh/helm/v3/internal/test/ensure"
-	"helm.sh/helm/v3/pkg/helmpath"
-	"helm.sh/helm/v3/pkg/helmpath/xdg"
+	"github.com/werf/nelm/pkg/helm/intern/test/ensure"
+	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
+	"github.com/werf/nelm/pkg/helm/pkg/helmpath/xdg"
 )
 
 func TestRootCmd(t *testing.T) {

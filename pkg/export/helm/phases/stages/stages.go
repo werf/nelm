@@ -1,6 +1,6 @@
 package stages
 
-import internal "github.com/werf/nelm/internal/helm/pkg/phases/stages"
+import internal "github.com/werf/nelm/pkg/helm/pkg/phases/stages"
 
 type SortedStageList = internal.SortedStageList
 

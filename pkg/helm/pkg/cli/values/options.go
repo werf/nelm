@@ -17,6 +17,7 @@ limitations under the License.
 package values
 
 import (
+	"context"
 	"io"
 	"net/url"
 	"os"
@@ -25,8 +26,10 @@ import (
 	"github.com/pkg/errors"
 	"sigs.k8s.io/yaml"
 
-	"helm.sh/helm/v3/pkg/getter"
-	"helm.sh/helm/v3/pkg/strvals"
+	"github.com/werf/nelm/pkg/helm/pkg/getter"
+	"github.com/werf/nelm/pkg/helm/pkg/strvals"
+	"github.com/werf/nelm/pkg/helm/pkg/werf/file"
+	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 )
 
 // Options captures the different ways to specify values
@@ -41,16 +44,24 @@ type Options struct {
 
 // MergeValues merges values from files specified via -f/--values and directly
 // via --set-json, --set, --set-string, or --set-file, marshaling them to YAML
-func (opts *Options) MergeValues(p getter.Providers) (map[string]interface{}, error) {
+func (opts *Options) MergeValues(p getter.Providers, options helmopts.HelmOptions) (map[string]interface{}, error) {
 	base := map[string]interface{}{}
 
 	// User specified a values files via -f/--values
 	for _, filePath := range opts.ValueFiles {
 		currentMap := map[string]interface{}{}
 
-		bytes, err := readFile(filePath, p)
-		if err != nil {
+		var bytes []byte
+		var err error
+		if options.ChartLoadOpts.ChartType == helmopts.ChartTypeChart && file.ChartFileReader != nil {
+			bytes, err = file.ChartFileReader.ReadChartFile(context.Background(), filePath)
+			if err != nil {
+				return nil, err
+			}
+		} else if data, err := readFile(filePath, p); err != nil {
 			return nil, err
+		} else {
+			bytes = data
 		}
 
 		if err := yaml.Unmarshal(bytes, &currentMap); err != nil {
@@ -84,11 +95,18 @@ func (opts *Options) MergeValues(p getter.Providers) (map[string]interface{}, er
 	// User specified a value via --set-file
 	for _, value := range opts.FileValues {
 		reader := func(rs []rune) (interface{}, error) {
-			bytes, err := readFile(string(rs), p)
+			var bytes []byte
+			var err error
+			if options.ChartLoadOpts.ChartType == helmopts.ChartTypeChart && file.ChartFileReader != nil {
+				bytes, err = file.ChartFileReader.ReadChartFile(context.Background(), string(rs))
+			} else {
+				bytes, err = readFile(string(rs), p)
+			}
 			if err != nil {
 				return nil, err
 			}
-			return string(bytes), err
+
+			return string(bytes), nil
 		}
 		if err := strvals.ParseIntoFile(value, base, reader); err != nil {
 			return nil, errors.Wrap(err, "failed parsing --set-file data")

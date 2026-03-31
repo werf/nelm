@@ -22,8 +22,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	"helm.sh/helm/v3/pkg/chartutil"
-	"helm.sh/helm/v3/pkg/lint/support"
+	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
+	"github.com/werf/nelm/pkg/helm/pkg/lint/support"
 )
 
 // Values lints a chart's values.yaml file.

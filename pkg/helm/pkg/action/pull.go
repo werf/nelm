@@ -24,12 +24,12 @@ import (
 
 	"github.com/pkg/errors"
 
-	"helm.sh/helm/v3/pkg/chartutil"
-	"helm.sh/helm/v3/pkg/cli"
-	"helm.sh/helm/v3/pkg/downloader"
-	"helm.sh/helm/v3/pkg/getter"
-	"helm.sh/helm/v3/pkg/registry"
-	"helm.sh/helm/v3/pkg/repo"
+	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
+	"github.com/werf/nelm/pkg/helm/pkg/cli"
+	"github.com/werf/nelm/pkg/helm/pkg/downloader"
+	"github.com/werf/nelm/pkg/helm/pkg/getter"
+	"github.com/werf/nelm/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/pkg/helm/pkg/repo"
 )
 
 // Pull is the action for checking a given release's information.

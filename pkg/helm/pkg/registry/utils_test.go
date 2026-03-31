@@ -40,7 +40,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"golang.org/x/crypto/bcrypt"
 
-	"helm.sh/helm/v3/internal/tlsutil"
+	"github.com/werf/nelm/pkg/helm/intern/tlsutil"
 )
 
 const (

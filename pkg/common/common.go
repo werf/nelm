@@ -12,7 +12,7 @@ import (
 	"github.com/samber/lo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/werf/nelm/internal/helm/pkg/helmpath"
+	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
 	"github.com/werf/nelm/pkg/log"
 )
 

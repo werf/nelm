@@ -17,6 +17,8 @@ limitations under the License.
 package action
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -24,11 +26,14 @@ import (
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"helm.sh/helm/v3/pkg/chartutil"
-	"helm.sh/helm/v3/pkg/kube"
-	"helm.sh/helm/v3/pkg/release"
-	"helm.sh/helm/v3/pkg/releaseutil"
-	helmtime "helm.sh/helm/v3/pkg/time"
+	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
+	"github.com/werf/nelm/pkg/helm/pkg/kube"
+	"github.com/werf/nelm/pkg/helm/pkg/phases"
+	"github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/nelm/pkg/helm/pkg/releaseutil"
+	"github.com/werf/nelm/pkg/helm/pkg/storage/driver"
+	helmtime "github.com/werf/nelm/pkg/helm/pkg/time"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 // Uninstall is the action for uninstalling releases.
@@ -45,12 +50,23 @@ type Uninstall struct {
 	DeletionPropagation string
 	Timeout             time.Duration
 	Description         string
+
+	DeleteHooks     bool
+	DeleteNamespace bool
+	Namespace       string
+	StagesSplitter  phases.Splitter
 }
 
 // NewUninstall creates a new Uninstall object with the given configuration.
-func NewUninstall(cfg *Configuration) *Uninstall {
+func NewUninstall(cfg *Configuration, stagesSplitter phases.Splitter) *Uninstall {
+	if stagesSplitter == nil {
+		stagesSplitter = &phases.SingleStageSplitter{}
+	}
+
 	return &Uninstall{
 		cfg: cfg,
+
+		StagesSplitter: stagesSplitter,
 	}
 }
 
@@ -64,6 +80,11 @@ func (u *Uninstall) Run(name string) (*release.UninstallReleaseResponse, error) 
 		// In the dry run case, just see if the release exists
 		r, err := u.cfg.releaseContent(name, 0)
 		if err != nil {
+			if apierrors.IsNotFound(err) && u.IgnoreNotFound {
+				u.cfg.Log("No such release %q", name)
+				return &release.UninstallReleaseResponse{}, nil
+			}
+
 			return &release.UninstallReleaseResponse{}, err
 		}
 		return &release.UninstallReleaseResponse{Release: r}, nil
@@ -75,7 +96,19 @@ func (u *Uninstall) Run(name string) (*release.UninstallReleaseResponse, error) 
 
 	rels, err := u.cfg.Releases.History(name)
 	if err != nil {
-		if u.IgnoreNotFound {
+		if u.IgnoreNotFound && errors.Is(err, driver.ErrReleaseNotFound) {
+			u.cfg.Log("No such release %q", name)
+
+			if u.DeleteNamespace && !u.KeepHistory {
+				if err := u.cfg.KubeClient.DeleteNamespace(context.Background(), u.Namespace, kube.DeleteOptions{Wait: true, WaitTimeout: u.Timeout}); err != nil {
+					if kube.IsNotFound(err) {
+						u.cfg.Log("No such namespace %q", u.Namespace)
+						return &release.UninstallReleaseResponse{}, nil
+					}
+					return nil, errors.Wrapf(err, "unable to delete namespace %s", u.Namespace)
+				}
+			}
+
 			return nil, nil
 		}
 		return nil, errors.Wrapf(err, "uninstall: Release not loaded: %s", name)
@@ -90,6 +123,9 @@ func (u *Uninstall) Run(name string) (*release.UninstallReleaseResponse, error) 
 	// TODO: Are there any cases where we want to force a delete even if it's
 	// already marked deleted?
 	if rel.Info.Status == release.StatusUninstalled {
+		if u.IgnoreNotFound {
+			return &release.UninstallReleaseResponse{Release: rel}, nil
+		}
 		if !u.KeepHistory {
 			if err := u.purgeReleases(rels...); err != nil {
 				return nil, errors.Wrap(err, "uninstall: Failed to purge the release")
@@ -113,13 +149,21 @@ func (u *Uninstall) Run(name string) (*release.UninstallReleaseResponse, error) 
 		u.cfg.Log("delete hooks disabled for %s", name)
 	}
 
+	deployedResourcesCalculator := phases.NewDeployedResourcesCalculator(rels, u.StagesSplitter, u.cfg.KubeClient)
+	deployedResources, err := deployedResourcesCalculator.Calculate()
+	if err != nil {
+		return nil, fmt.Errorf("error calculating deployed resources: %w", err)
+	}
+
+	release.SetUninstallPhaseStageInfo(rel)
+
 	// From here on out, the release is currently considered to be in StatusUninstalling
 	// state.
 	if err := u.cfg.Releases.Update(rel); err != nil {
 		u.cfg.Log("uninstall: Failed to store updated release: %s", err)
 	}
 
-	deletedResources, kept, errs := u.deleteRelease(rel)
+	deletedResources, kept, errs := u.deleteRelease(rel, deployedResources)
 	if errs != nil {
 		u.cfg.Log("uninstall: Failed to delete release: %s", errs)
 		return nil, errors.Errorf("failed to delete release: %s", name)
@@ -144,6 +188,18 @@ func (u *Uninstall) Run(name string) (*release.UninstallReleaseResponse, error) 
 		}
 	}
 
+	if u.DeleteHooks {
+		var hooksFromAllReleases []*release.Hook
+		for _, r := range rels {
+			hooksFromAllReleases = append(hooksFromAllReleases, r.Hooks...)
+		}
+		if len(hooksFromAllReleases) > 0 {
+			if err := u.cfg.deleteHooks(hooksFromAllReleases); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+
 	rel.Info.Status = release.StatusUninstalled
 	if len(u.Description) > 0 {
 		rel.Info.Description = u.Description
@@ -161,6 +217,12 @@ func (u *Uninstall) Run(name string) (*release.UninstallReleaseResponse, error) 
 		// Return the errors that occurred while deleting the release, if any
 		if len(errs) > 0 {
 			return res, errors.Errorf("uninstallation completed with %d error(s): %s", len(errs), joinErrors(errs))
+		}
+
+		if u.DeleteNamespace {
+			if err := u.cfg.KubeClient.DeleteNamespace(context.Background(), u.Namespace, kube.DeleteOptions{Wait: true, WaitTimeout: u.Timeout}); err != nil {
+				return res, errors.Wrapf(err, "unable to delete namespace %s", u.Namespace)
+			}
 		}
 
 		return res, nil
@@ -194,21 +256,26 @@ func joinErrors(errs []error) string {
 }
 
 // deleteRelease deletes the release and returns list of delete resources and manifests that were kept in the deletion process
-func (u *Uninstall) deleteRelease(rel *release.Release) (kube.ResourceList, string, []error) {
+func (u *Uninstall) deleteRelease(rel *release.Release, res kube.ResourceList) (kube.ResourceList, string, []error) {
+	manifestsStr, err := res.ToYamlDocs()
+	if err != nil {
+		return nil, "", []error{fmt.Errorf("error converting resource list to yaml manifests: %w", err)}
+	}
+
 	var errs []error
 	caps, err := u.cfg.getCapabilities()
 	if err != nil {
-		return nil, rel.Manifest, []error{errors.Wrap(err, "could not get apiVersions from Kubernetes")}
+		return nil, manifestsStr, []error{errors.Wrap(err, "could not get apiVersions from Kubernetes")}
 	}
 
-	manifests := releaseutil.SplitManifests(rel.Manifest)
+	manifests := releaseutil.SplitManifests(manifestsStr)
 	_, files, err := releaseutil.SortManifests(manifests, caps.APIVersions, releaseutil.UninstallOrder)
 	if err != nil {
 		// We could instead just delete everything in no particular order.
 		// FIXME: One way to delete at this point would be to try a label-based
 		// deletion. The problem with this is that we could get a false positive
 		// and delete something that was not legitimately part of this release.
-		return nil, rel.Manifest, []error{errors.Wrap(err, "corrupted release record. You must manually delete the resources")}
+		return nil, manifestsStr, []error{errors.Wrap(err, "corrupted release record. You must manually delete the resources")}
 	}
 
 	filesToKeep, filesToDelete := filterManifestsToKeep(files)
@@ -228,10 +295,21 @@ func (u *Uninstall) deleteRelease(rel *release.Release) (kube.ResourceList, stri
 	}
 	if len(resources) > 0 {
 		if kubeClient, ok := u.cfg.KubeClient.(kube.InterfaceDeletionPropagation); ok {
-			_, errs = kubeClient.DeleteWithPropagationPolicy(resources, parseCascadingFlag(u.cfg, u.DeletionPropagation))
+			_, errs = kubeClient.DeleteWithPropagationPolicy(resources, parseCascadingFlag(u.cfg, u.DeletionPropagation), kube.DeleteOptions{
+				Wait:                   true,
+				SkipIfInvalidOwnership: true,
+				ReleaseName:            rel.Name,
+				ReleaseNamespace:       rel.Namespace,
+			})
 			return resources, kept, errs
 		}
-		_, errs = u.cfg.KubeClient.Delete(resources)
+
+		_, errs = u.cfg.KubeClient.Delete(resources, kube.DeleteOptions{
+			Wait:                   true,
+			SkipIfInvalidOwnership: true,
+			ReleaseName:            rel.Name,
+			ReleaseNamespace:       rel.Namespace,
+		})
 	}
 	return resources, kept, errs
 }

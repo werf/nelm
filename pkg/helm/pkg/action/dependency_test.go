@@ -24,9 +24,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"helm.sh/helm/v3/internal/test"
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chartutil"
+	"github.com/werf/nelm/pkg/helm/intern/test"
+	"github.com/werf/nelm/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
 )
 
 func TestList(t *testing.T) {

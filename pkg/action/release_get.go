@@ -13,14 +13,14 @@ import (
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 
-	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
-	"github.com/werf/nelm/internal/helm/pkg/chartutil"
-	helmrelease "github.com/werf/nelm/internal/helm/pkg/release"
-	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/release"
-	"github.com/werf/nelm/internal/resource/spec"
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
+	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/release"
+	"github.com/werf/nelm/pkg/resource/spec"
 )
 
 const (

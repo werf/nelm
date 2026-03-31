@@ -9,11 +9,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/werf/common-go/pkg/cli"
-	helm_v3 "github.com/werf/nelm/internal/helm/cmd/helm"
-	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
-	"github.com/werf/nelm/internal/ts"
 	"github.com/werf/nelm/pkg/featgate"
+	helm_v3 "github.com/werf/nelm/pkg/helm/cmd/helm"
+	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
 	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/ts"
 )
 
 func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {

@@ -15,7 +15,11 @@ limitations under the License.
 
 package release
 
-import "helm.sh/helm/v3/pkg/chart"
+import (
+	"fmt"
+
+	"github.com/werf/nelm/pkg/helm/pkg/chart"
+)
 
 // Release describes a deployment of a chart, together with the chart
 // and the variables used to deploy that chart.
@@ -40,10 +44,53 @@ type Release struct {
 	// Labels of the release.
 	// Disabled encoding into Json cause labels are stored in storage driver metadata field.
 	Labels map[string]string `json:"-"`
+
+	UnstoredManifest string `json:"-"`
 }
 
 // SetStatus is a helper for setting the status on a release.
 func (r *Release) SetStatus(status Status, msg string) {
 	r.Info.Status = status
 	r.Info.Description = msg
+}
+
+func (r *Release) IsStatusSucceeded() bool {
+	switch r.Info.Status {
+	case StatusDeployed,
+		StatusSuperseded,
+		StatusUninstalled:
+		return true
+	default:
+		return false
+	}
+}
+
+func (r *Release) IsStatusFailed() bool {
+	switch r.Info.Status {
+	case StatusFailed,
+		StatusUnknown,
+		StatusPendingInstall,
+		StatusPendingUpgrade,
+		StatusPendingRollback,
+		StatusUninstalling:
+		return true
+	default:
+		return false
+	}
+}
+
+func (r *Release) ID() string {
+	return ReleaseID(r.Namespace, r.Name, r.Version)
+}
+
+func (r *Release) IDHuman() string {
+	return ReleaseIDHuman(r.Namespace, r.Name, r.Version)
+}
+
+func ReleaseID(namespace, name string, revision int) string {
+	return fmt.Sprintf("%s:%s:%d", namespace, name, revision)
+}
+
+func ReleaseIDHuman(namespace, name string, revision int) string {
+	return fmt.Sprintf("%s/%d (namespace=%s)", name, revision, namespace)
 }

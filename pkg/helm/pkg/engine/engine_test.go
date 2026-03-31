@@ -30,8 +30,8 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/fake"
 
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chartutil"
+	"github.com/werf/nelm/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
 )
 
 func TestSortTemplates(t *testing.T) {
@@ -188,7 +188,7 @@ func TestRenderInternals(t *testing.T) {
 		"three": {tpl: `{{template "two" dict "Value" "three"}}`, vals: vals},
 	}
 
-	out, err := new(Engine).render(tpls)
+	out, err := new(Engine).render(tpls, nil)
 	if err != nil {
 		t.Fatalf("Failed template rendering: %s", err)
 	}
@@ -432,7 +432,7 @@ func TestParallelRenderInternals(t *testing.T) {
 					vals: map[string]interface{}{"val": tt},
 				},
 			}
-			out, err := e.render(tpls)
+			out, err := e.render(tpls, nil)
 			if err != nil {
 				t.Errorf("Failed to render %s: %s", tt, err)
 			}
@@ -451,7 +451,7 @@ func TestParseErrors(t *testing.T) {
 	tplsUndefinedFunction := map[string]renderable{
 		"undefined_function": {tpl: `{{foo}}`, vals: vals},
 	}
-	_, err := new(Engine).render(tplsUndefinedFunction)
+	_, err := new(Engine).render(tplsUndefinedFunction, nil)
 	if err == nil {
 		t.Fatalf("Expected failures while rendering: %s", err)
 	}
@@ -514,7 +514,7 @@ linebreak`,
 
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := new(Engine).render(tt.tpls)
+			_, err := new(Engine).render(tt.tpls, nil)
 			if err == nil {
 				t.Fatalf("Expected failures while rendering: %s", err)
 			}
@@ -532,7 +532,7 @@ func TestFailErrors(t *testing.T) {
 	tplsFailed := map[string]renderable{
 		"failtpl": {tpl: failtpl, vals: vals},
 	}
-	_, err := new(Engine).render(tplsFailed)
+	_, err := new(Engine).render(tplsFailed, nil)
 	if err == nil {
 		t.Fatalf("Expected failures while rendering: %s", err)
 	}
@@ -543,7 +543,7 @@ func TestFailErrors(t *testing.T) {
 
 	var e Engine
 	e.LintMode = true
-	out, err := e.render(tplsFailed)
+	out, err := e.render(tplsFailed, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

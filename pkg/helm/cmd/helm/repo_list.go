@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package helm
 
 import (
 	"fmt"
@@ -24,9 +24,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
-	"helm.sh/helm/v3/cmd/helm/require"
-	"helm.sh/helm/v3/pkg/cli/output"
-	"helm.sh/helm/v3/pkg/repo"
+	"github.com/werf/nelm/pkg/helm/cmd/helm/require"
+	"github.com/werf/nelm/pkg/helm/pkg/cli/output"
+	"github.com/werf/nelm/pkg/helm/pkg/repo"
 )
 
 func newRepoListCmd(out io.Writer) *cobra.Command {

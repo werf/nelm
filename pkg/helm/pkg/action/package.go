@@ -26,9 +26,10 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/term"
 
-	"helm.sh/helm/v3/pkg/chart/loader"
-	"helm.sh/helm/v3/pkg/chartutil"
-	"helm.sh/helm/v3/pkg/provenance"
+	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
+	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
+	"github.com/werf/nelm/pkg/helm/pkg/provenance"
+	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 )
 
 // Package is the action for packaging a chart.
@@ -54,8 +55,8 @@ func NewPackage() *Package {
 }
 
 // Run executes 'helm package' against the given chart and returns the path to the packaged chart.
-func (p *Package) Run(path string, _ map[string]interface{}) (string, error) {
-	ch, err := loader.LoadDir(path)
+func (p *Package) Run(path string, _ map[string]interface{}, opts helmopts.HelmOptions) (string, error) {
+	ch, err := loader.LoadDir(path, opts)
 	if err != nil {
 		return "", err
 	}
@@ -97,7 +98,7 @@ func (p *Package) Run(path string, _ map[string]interface{}) (string, error) {
 	}
 
 	if p.Sign {
-		err = p.Clearsign(name)
+		err = p.Clearsign(name, opts)
 	}
 
 	return name, err
@@ -112,7 +113,7 @@ func validateVersion(ver string) error {
 }
 
 // Clearsign signs a chart
-func (p *Package) Clearsign(filename string) error {
+func (p *Package) Clearsign(filename string, opts helmopts.HelmOptions) error {
 	// Load keyring
 	signer, err := provenance.NewFromKeyring(p.Keyring, p.Key)
 	if err != nil {
@@ -131,7 +132,7 @@ func (p *Package) Clearsign(filename string) error {
 		return err
 	}
 
-	sig, err := signer.ClearSign(filename)
+	sig, err := signer.ClearSign(filename, opts)
 	if err != nil {
 		return err
 	}

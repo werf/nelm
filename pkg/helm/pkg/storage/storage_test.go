@@ -23,8 +23,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	rspb "helm.sh/helm/v3/pkg/release"
-	"helm.sh/helm/v3/pkg/storage/driver"
+	rspb "github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/nelm/pkg/helm/pkg/storage/driver"
 )
 
 func TestStorageCreate(t *testing.T) {
@@ -310,7 +310,7 @@ func (d *MaxHistoryMockDriver) Name() string {
 }
 
 func TestMaxHistoryErrorHandling(t *testing.T) {
-	//func TestStorageRemoveLeastRecentWithError(t *testing.T) {
+	// func TestStorageRemoveLeastRecentWithError(t *testing.T) {
 	storage := Init(NewMaxHistoryMockDriver(driver.NewMemory()))
 	storage.Log = t.Logf
 

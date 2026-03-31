@@ -17,7 +17,7 @@ limitations under the License.
 package release
 
 import (
-	"helm.sh/helm/v3/pkg/time"
+	"github.com/werf/nelm/pkg/helm/pkg/time"
 )
 
 // HookEvent specifies the hook event
@@ -104,3 +104,10 @@ const (
 
 // String converts a hook phase to a printable string
 func (x HookPhase) String() string { return string(x) }
+
+const (
+	HookInstall  HookEvent = "install"
+	HookUpgrade  HookEvent = "upgrade"
+	HookRollback HookEvent = "rollback"
+	HookDelete   HookEvent = "delete"
+)

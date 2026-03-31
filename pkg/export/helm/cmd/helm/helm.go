@@ -1,6 +1,6 @@
 package helm
 
-import internal "github.com/werf/nelm/internal/helm/cmd/helm"
+import internal "github.com/werf/nelm/pkg/helm/cmd/helm"
 
 var Settings = internal.Settings
 

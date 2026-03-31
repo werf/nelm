@@ -18,6 +18,7 @@ package registry // import "helm.sh/helm/v3/pkg/registry"
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -37,9 +38,10 @@ import (
 	registryremote "oras.land/oras-go/pkg/registry/remote"
 	registryauth "oras.land/oras-go/pkg/registry/remote/auth"
 
-	"helm.sh/helm/v3/internal/version"
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/helmpath"
+	"github.com/werf/nelm/pkg/helm/intern/version"
+	"github.com/werf/nelm/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
+	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 )
 
 // See https://github.com/helm/helm/issues/10166
@@ -104,7 +106,16 @@ func NewClient(options ...ClientOption) (*Client, error) {
 		}
 		if client.plainHTTP {
 			opts = append(opts, auth.WithResolverPlainHTTP())
+
+			opts = append(opts, func(settings *auth.ResolverSettings) {
+				settings.Client.Transport = &http.Transport{
+					TLSClientConfig: &tls.Config{
+						InsecureSkipVerify: true,
+					},
+				}
+			})
 		}
+
 		resolver, err := client.authorizer.ResolverWithOpts(opts...)
 		if err != nil {
 			return nil, err
@@ -534,7 +545,7 @@ type (
 )
 
 // Push uploads a chart to a registry.
-func (c *Client) Push(data []byte, ref string, options ...PushOption) (*PushResult, error) {
+func (c *Client) Push(data []byte, ref string, opts helmopts.HelmOptions, options ...PushOption) (*PushResult, error) {
 	parsedRef, err := parseReference(ref)
 	if err != nil {
 		return nil, err
@@ -546,7 +557,7 @@ func (c *Client) Push(data []byte, ref string, options ...PushOption) (*PushResu
 	for _, option := range options {
 		option(operation)
 	}
-	meta, err := extractChartMeta(data)
+	meta, err := extractChartMeta(data, opts)
 	if err != nil {
 		return nil, err
 	}

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package helm
 
 import (
 	"bufio"
@@ -30,10 +30,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
-	"helm.sh/helm/v3/cmd/helm/search"
-	"helm.sh/helm/v3/pkg/cli/output"
-	"helm.sh/helm/v3/pkg/helmpath"
-	"helm.sh/helm/v3/pkg/repo"
+	"github.com/werf/nelm/pkg/helm/cmd/helm/search"
+	"github.com/werf/nelm/pkg/helm/pkg/cli/output"
+	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
+	"github.com/werf/nelm/pkg/helm/pkg/repo"
 )
 
 const searchRepoDesc = `

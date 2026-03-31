@@ -30,7 +30,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	"helm.sh/helm/v3/pkg/chart"
+	"github.com/werf/nelm/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 )
 
 var drivePathPattern = regexp.MustCompile(`^[a-zA-Z]:/`)
@@ -39,12 +40,12 @@ var drivePathPattern = regexp.MustCompile(`^[a-zA-Z]:/`)
 type FileLoader string
 
 // Load loads a chart
-func (l FileLoader) Load() (*chart.Chart, error) {
-	return LoadFile(string(l))
+func (l FileLoader) Load(opts helmopts.HelmOptions) (*chart.Chart, error) {
+	return LoadFile(string(l), opts)
 }
 
 // LoadFile loads from an archive file.
-func LoadFile(name string) (*chart.Chart, error) {
+func LoadFile(name string, opts helmopts.HelmOptions) (*chart.Chart, error) {
 	if fi, err := os.Stat(name); err != nil {
 		return nil, err
 	} else if fi.IsDir() {
@@ -62,7 +63,7 @@ func LoadFile(name string) (*chart.Chart, error) {
 		return nil, err
 	}
 
-	c, err := LoadArchive(raw)
+	c, err := LoadArchive(raw, opts)
 	if err != nil {
 		if err == gzip.ErrHeader {
 			return nil, fmt.Errorf("file '%s' does not appear to be a valid chart file (details: %s)", name, err)
@@ -195,11 +196,11 @@ func LoadArchiveFiles(in io.Reader) ([]*BufferedFile, error) {
 }
 
 // LoadArchive loads from a reader containing a compressed tar archive.
-func LoadArchive(in io.Reader) (*chart.Chart, error) {
+func LoadArchive(in io.Reader, opts helmopts.HelmOptions) (*chart.Chart, error) {
 	files, err := LoadArchiveFiles(in)
 	if err != nil {
 		return nil, err
 	}
 
-	return LoadFiles(files)
+	return LoadFiles(files, opts)
 }

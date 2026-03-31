@@ -18,6 +18,7 @@ package loader
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,9 +26,11 @@ import (
 
 	"github.com/pkg/errors"
 
-	"helm.sh/helm/v3/internal/sympath"
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/ignore"
+	"github.com/werf/nelm/pkg/helm/intern/sympath"
+	"github.com/werf/nelm/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/pkg/helm/pkg/ignore"
+	"github.com/werf/nelm/pkg/helm/pkg/werf/file"
+	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 )
 
 var utf8bom = []byte{0xEF, 0xBB, 0xBF}
@@ -36,28 +39,121 @@ var utf8bom = []byte{0xEF, 0xBB, 0xBF}
 type DirLoader string
 
 // Load loads the chart
-func (l DirLoader) Load() (*chart.Chart, error) {
-	return LoadDir(string(l))
+func (l DirLoader) Load(opts helmopts.HelmOptions) (*chart.Chart, error) {
+	return LoadDir(string(l), opts)
 }
 
 // LoadDir loads from a directory.
 //
 // This loads charts only from directories.
-func LoadDir(dir string) (*chart.Chart, error) {
+func LoadDir(dir string, opts helmopts.HelmOptions) (*chart.Chart, error) {
+	ctx := context.Background()
+
+	var files []*BufferedFile
+	switch opts.ChartLoadOpts.ChartType {
+	case helmopts.ChartTypeChart:
+		var chartTreeFiles []*file.ChartExtenderBufferedFile
+		if file.ChartFileReader != nil {
+			chartFiles, err := file.ChartFileReader.LoadChartDir(ctx, dir)
+			if err != nil {
+				return nil, fmt.Errorf("load chart dir: %w", err)
+			}
+
+			chartTreeFiles, err = LoadChartDependencies(
+				ctx,
+				file.ChartFileReader.LoadChartDir,
+				dir,
+				chartFiles,
+				opts,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("load chart dependencies: %w", err)
+			}
+		} else {
+			var chartFiles []*file.ChartExtenderBufferedFile
+			if files, err := GetFilesFromLocalFilesystem(dir); err != nil {
+				return nil, fmt.Errorf("load files from filesystem: %w", err)
+			} else {
+				chartFiles = convertBufferedFilesForChartExtender(files)
+			}
+
+			var err error
+			chartTreeFiles, err = LoadChartDependencies(
+				ctx,
+				func(ctx context.Context, dir string) ([]*file.ChartExtenderBufferedFile, error) {
+					files, err := GetFilesFromLocalFilesystem(dir)
+					if err != nil {
+						return nil, fmt.Errorf("load files from filesystem: %w", err)
+					}
+
+					return convertBufferedFilesForChartExtender(files), nil
+				},
+				dir,
+				chartFiles,
+				opts,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("load chart dependencies: %w", err)
+			}
+		}
+
+		files = convertChartExtenderFilesToBufferedFiles(chartTreeFiles)
+	case helmopts.ChartTypeSubchart:
+		var err error
+		files, err = GetFilesFromLocalFilesystem(dir)
+		if err != nil {
+			return &chart.Chart{}, err
+		}
+	case helmopts.ChartTypeChartStub:
+		var err error
+		files, err = GetFilesFromLocalFilesystem(dir)
+		if err != nil {
+			return &chart.Chart{}, err
+		}
+	case helmopts.ChartTypeBundle:
+		chartFiles, err := GetFilesFromLocalFilesystem(dir)
+		if err != nil {
+			return nil, fmt.Errorf("load files from filesystem: %w", err)
+		}
+
+		chartTreeFiles, err := LoadChartDependencies(
+			ctx,
+			func(ctx context.Context, dir string) ([]*file.ChartExtenderBufferedFile, error) {
+				files, err := GetFilesFromLocalFilesystem(dir)
+				if err != nil {
+					return nil, fmt.Errorf("load files from filesystem: %w", err)
+				}
+
+				return convertBufferedFilesForChartExtender(files), nil
+			},
+			dir,
+			convertBufferedFilesForChartExtender(chartFiles),
+			opts,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("load chart dependencies: %w", err)
+		}
+
+		files = convertChartExtenderFilesToBufferedFiles(chartTreeFiles)
+	default:
+		panic("unexpected type")
+	}
+
+	return LoadFiles(files, opts)
+}
+
+func GetFilesFromLocalFilesystem(dir string) ([]*BufferedFile, error) {
 	topdir, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
 	}
-
-	// Just used for errors.
-	c := &chart.Chart{}
 
 	rules := ignore.Empty()
 	ifile := filepath.Join(topdir, ignore.HelmIgnore)
 	if _, err := os.Stat(ifile); err == nil {
 		r, err := ignore.ParseFile(ifile)
 		if err != nil {
-			return c, err
+			return nil, err
 		}
 		rules = r
 	}
@@ -112,8 +208,8 @@ func LoadDir(dir string) (*chart.Chart, error) {
 		return nil
 	}
 	if err = sympath.Walk(topdir, walk); err != nil {
-		return c, err
+		return nil, err
 	}
 
-	return LoadFiles(files)
+	return files, nil
 }

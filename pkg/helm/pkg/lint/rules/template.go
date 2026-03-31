@@ -33,10 +33,11 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
-	"helm.sh/helm/v3/pkg/chart/loader"
-	"helm.sh/helm/v3/pkg/chartutil"
-	"helm.sh/helm/v3/pkg/engine"
-	"helm.sh/helm/v3/pkg/lint/support"
+	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
+	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
+	"github.com/werf/nelm/pkg/helm/pkg/engine"
+	"github.com/werf/nelm/pkg/helm/pkg/lint/support"
+	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 )
 
 var (
@@ -45,12 +46,12 @@ var (
 )
 
 // Templates lints the templates in the Linter.
-func Templates(linter *support.Linter, values map[string]interface{}, namespace string, _ bool) {
-	TemplatesWithKubeVersion(linter, values, namespace, nil)
+func Templates(linter *support.Linter, values map[string]interface{}, namespace string, _ bool, opts helmopts.HelmOptions) {
+	TemplatesWithKubeVersion(linter, values, namespace, nil, opts)
 }
 
 // TemplatesWithKubeVersion lints the templates in the Linter, allowing to specify the kubernetes version.
-func TemplatesWithKubeVersion(linter *support.Linter, values map[string]interface{}, namespace string, kubeVersion *chartutil.KubeVersion) {
+func TemplatesWithKubeVersion(linter *support.Linter, values map[string]interface{}, namespace string, kubeVersion *chartutil.KubeVersion, opts helmopts.HelmOptions) {
 	fpath := "templates/"
 	templatesPath := filepath.Join(linter.ChartDir, fpath)
 
@@ -62,7 +63,7 @@ func TemplatesWithKubeVersion(linter *support.Linter, values map[string]interfac
 	}
 
 	// Load chart and parse templates
-	chart, err := loader.Load(linter.ChartDir)
+	chart, err := loader.Load(linter.ChartDir, opts)
 
 	chartLoaded := linter.RunLinterRule(support.ErrorSev, fpath, err)
 
@@ -82,7 +83,7 @@ func TemplatesWithKubeVersion(linter *support.Linter, values map[string]interfac
 
 	// lint ignores import-values
 	// See https://github.com/helm/helm/issues/9658
-	if err := chartutil.ProcessDependenciesWithMerge(chart, values); err != nil {
+	if err := chartutil.ProcessDependenciesWithMerge(chart, &values); err != nil {
 		return
 	}
 
@@ -91,14 +92,14 @@ func TemplatesWithKubeVersion(linter *support.Linter, values map[string]interfac
 		return
 	}
 
-	valuesToRender, err := chartutil.ToRenderValues(chart, cvals, options, caps)
+	valuesToRender, err := chartutil.ToRenderValues(chart, cvals, options, caps, nil, nil)
 	if err != nil {
 		linter.RunLinterRule(support.ErrorSev, fpath, err)
 		return
 	}
 	var e engine.Engine
 	e.LintMode = true
-	renderedContentMap, err := e.Render(chart, valuesToRender)
+	renderedContentMap, err := e.Render(chart, valuesToRender, opts)
 
 	renderOk := linter.RunLinterRule(support.ErrorSev, fpath, err)
 

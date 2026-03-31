@@ -16,7 +16,11 @@ limitations under the License.
 
 package support
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/werf/nelm/pkg/helm/pkg/errs"
+)
 
 // Severity indicates the severity of a Message.
 const (
@@ -66,7 +70,7 @@ func (l *Linter) RunLinterRule(severity int, path string, err error) bool {
 	}
 
 	if err != nil {
-		l.Messages = append(l.Messages, NewMessage(severity, path, err))
+		l.Messages = append(l.Messages, NewMessage(severity, path, errs.FormatTemplatingError(err)))
 
 		if severity > l.HighestSeverity {
 			l.HighestSeverity = severity

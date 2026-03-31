@@ -17,13 +17,15 @@ limitations under the License.
 package chartutil
 
 import (
+	"context"
 	"fmt"
 	"log"
 
 	"github.com/mitchellh/copystructure"
 	"github.com/pkg/errors"
 
-	"helm.sh/helm/v3/pkg/chart"
+	"github.com/werf/nelm/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/pkg/helm/pkg/werf/secrets"
 )
 
 func concatPrefix(a, b string) string {
@@ -43,6 +45,11 @@ func concatPrefix(a, b string) string {
 //   - A chart has access to all of the variables for it, as well as all of
 //     the values destined for its dependencies.
 func CoalesceValues(chrt *chart.Chart, vals map[string]interface{}) (Values, error) {
+	vals, err := makeValues(chrt, vals)
+	if err != nil {
+		return vals, err
+	}
+
 	valsCopy, err := copyValues(vals)
 	if err != nil {
 		return vals, err
@@ -65,6 +72,11 @@ func CoalesceValues(chrt *chart.Chart, vals map[string]interface{}) (Values, err
 // logic need to retain them for when Coalescing will happen again later in the
 // business logic.
 func MergeValues(chrt *chart.Chart, vals map[string]interface{}) (Values, error) {
+	vals, err := makeValues(chrt, vals)
+	if err != nil {
+		return vals, err
+	}
+
 	valsCopy, err := copyValues(vals)
 	if err != nil {
 		return vals, err
@@ -290,4 +302,46 @@ func coalesceTablesFullKey(printf printFn, dst, src map[string]interface{}, pref
 		}
 	}
 	return dst
+}
+
+func makeValues(chrt *chart.Chart, vals map[string]interface{}) (map[string]interface{}, error) {
+	var decryptedSecretValues map[string]interface{}
+	if chrt.SecretsRuntimeData != nil {
+		decryptedSecretValues = chrt.SecretsRuntimeData.GetDecryptedSecretValues()
+	}
+
+	var extraValues map[string]interface{}
+	if chrt.ExtraValues != nil {
+		extraValues = chrt.ExtraValues
+	}
+
+	result, err := MergeInternal(
+		context.Background(),
+		vals,
+		extraValues,
+		decryptedSecretValues,
+	)
+	if err != nil {
+		return vals, err
+	}
+
+	return result, nil
+}
+
+func MergeInternal(ctx context.Context, inputVals, serviceVals map[string]interface{}, decryptedSecretValues map[string]interface{}) (map[string]interface{}, error) {
+	vals := make(map[string]interface{})
+
+	CoalesceTables(vals, serviceVals) // NOTE: service values will not be saved into the marshalled release
+
+	if decryptedSecretValues != nil {
+		CoalesceTables(vals, decryptedSecretValues)
+	}
+
+	CoalesceTables(vals, inputVals)
+
+	return vals, nil
+}
+
+func init() {
+	secrets.CoalesceTablesFunc = CoalesceTables
 }

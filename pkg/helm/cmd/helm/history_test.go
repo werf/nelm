@@ -14,13 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package helm
 
 import (
 	"fmt"
 	"testing"
 
-	"helm.sh/helm/v3/pkg/release"
+	"github.com/werf/nelm/pkg/helm/pkg/release"
 )
 
 func TestHistoryCmd(t *testing.T) {

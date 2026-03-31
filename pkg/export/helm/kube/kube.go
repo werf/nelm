@@ -1,6 +1,6 @@
 package kube
 
-import internal "github.com/werf/nelm/internal/helm/pkg/kube"
+import internal "github.com/werf/nelm/pkg/helm/pkg/kube"
 
 type Client = internal.Client
 

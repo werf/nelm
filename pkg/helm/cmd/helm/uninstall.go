@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package helm
 
 import (
 	"fmt"
@@ -22,9 +22,9 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-
-	"helm.sh/helm/v3/cmd/helm/require"
-	"helm.sh/helm/v3/pkg/action"
+	"github.com/werf/nelm/pkg/helm/cmd/helm/require"
+	"github.com/werf/nelm/pkg/helm/pkg/action"
+	"github.com/werf/nelm/pkg/helm/pkg/phases"
 )
 
 const uninstallDesc = `
@@ -37,8 +37,8 @@ Use the '--dry-run' flag to see which releases will be uninstalled without actua
 uninstalling them.
 `
 
-func newUninstallCmd(cfg *action.Configuration, out io.Writer) *cobra.Command {
-	client := action.NewUninstall(cfg)
+func NewUninstallCmd(cfg *action.Configuration, out io.Writer, opts UninstallCmdOptions) *cobra.Command {
+	client := action.NewUninstall(cfg, opts.StagesSplitter)
 
 	cmd := &cobra.Command{
 		Use:        "uninstall RELEASE_NAME [...]",
@@ -55,6 +55,19 @@ func newUninstallCmd(cfg *action.Configuration, out io.Writer) *cobra.Command {
 			if validationErr != nil {
 				return validationErr
 			}
+
+			if opts.DeleteHooks != nil {
+				client.DeleteHooks = *opts.DeleteHooks
+			}
+			if opts.DeleteNamespace != nil {
+				client.DeleteNamespace = *opts.DeleteNamespace
+			}
+			if opts.DontFailIfNoRelease != nil {
+				client.IgnoreNotFound = *opts.DontFailIfNoRelease
+			}
+
+			client.Namespace = Settings.Namespace()
+
 			for i := 0; i < len(args); i++ {
 
 				res, err := client.Run(args[i])
@@ -89,4 +102,16 @@ func validateCascadeFlag(client *action.Uninstall) error {
 		return fmt.Errorf("invalid cascade value (%s). Must be \"background\", \"foreground\", or \"orphan\"", client.DeletionPropagation)
 	}
 	return nil
+}
+
+func newUninstallCmd(cfg *action.Configuration, out io.Writer) *cobra.Command {
+	return NewUninstallCmd(cfg, out, UninstallCmdOptions{})
+}
+
+type UninstallCmdOptions struct {
+	StagesSplitter  phases.Splitter
+	DeleteNamespace *bool
+	DeleteHooks     *bool
+
+	DontFailIfNoRelease *bool
 }

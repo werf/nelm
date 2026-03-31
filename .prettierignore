@@ -4,4 +4,4 @@
 werf*.yaml
 werf*.yml
 **/templates
-internal/helm
+pkg/helm

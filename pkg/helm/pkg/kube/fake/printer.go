@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/cli-runtime/pkg/resource"
 
-	"helm.sh/helm/v3/pkg/kube"
+	"github.com/werf/nelm/pkg/helm/pkg/kube"
 )
 
 // PrintingKubeClient implements KubeClient, but simply prints the reader to
@@ -41,7 +41,7 @@ func (p *PrintingKubeClient) IsReachable() error {
 }
 
 // Create prints the values of what would be created with a real KubeClient.
-func (p *PrintingKubeClient) Create(resources kube.ResourceList) (*kube.Result, error) {
+func (p *PrintingKubeClient) Create(resources kube.ResourceList, _ kube.CreateOptions) (*kube.Result, error) {
 	_, err := io.Copy(p.Out, bufferize(resources))
 	if err != nil {
 		return nil, err
@@ -75,7 +75,7 @@ func (p *PrintingKubeClient) WaitForDelete(resources kube.ResourceList, _ time.D
 // Delete implements KubeClient delete.
 //
 // It only prints out the content to be deleted.
-func (p *PrintingKubeClient) Delete(resources kube.ResourceList) (*kube.Result, []error) {
+func (p *PrintingKubeClient) Delete(resources kube.ResourceList, _ kube.DeleteOptions) (*kube.Result, []error) {
 	_, err := io.Copy(p.Out, bufferize(resources))
 	if err != nil {
 		return nil, []error{err}
@@ -90,7 +90,7 @@ func (p *PrintingKubeClient) WatchUntilReady(resources kube.ResourceList, _ time
 }
 
 // Update implements KubeClient Update.
-func (p *PrintingKubeClient) Update(_, modified kube.ResourceList, _ bool) (*kube.Result, error) {
+func (p *PrintingKubeClient) Update(_, modified kube.ResourceList, force bool, _ kube.UpdateOptions) (*kube.Result, error) {
 	_, err := io.Copy(p.Out, bufferize(modified))
 	if err != nil {
 		return nil, err
@@ -119,7 +119,7 @@ func (p *PrintingKubeClient) WaitAndGetCompletedPodPhase(_ string, _ time.Durati
 // DeleteWithPropagationPolicy implements KubeClient delete.
 //
 // It only prints out the content to be deleted.
-func (p *PrintingKubeClient) DeleteWithPropagationPolicy(resources kube.ResourceList, _ metav1.DeletionPropagation) (*kube.Result, []error) {
+func (p *PrintingKubeClient) DeleteWithPropagationPolicy(resources kube.ResourceList, _ metav1.DeletionPropagation, _ kube.DeleteOptions) (*kube.Result, []error) {
 	_, err := io.Copy(p.Out, bufferize(resources))
 	if err != nil {
 		return nil, []error{err}

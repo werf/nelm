@@ -23,20 +23,20 @@ import (
 	"testing"
 	"time"
 
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/storage/driver"
+	"github.com/werf/nelm/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/pkg/helm/pkg/storage/driver"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	kubefake "helm.sh/helm/v3/pkg/kube/fake"
-	"helm.sh/helm/v3/pkg/release"
-	helmtime "helm.sh/helm/v3/pkg/time"
+	kubefake "github.com/werf/nelm/pkg/helm/pkg/kube/fake"
+	"github.com/werf/nelm/pkg/helm/pkg/release"
+	helmtime "github.com/werf/nelm/pkg/helm/pkg/time"
 )
 
 func upgradeAction(t *testing.T) *Upgrade {
 	config := actionConfigFixture(t)
-	upAction := NewUpgrade(config)
+	upAction := NewUpgrade(config, UpgradeOptions{})
 	upAction.Namespace = "spaced"
 
 	return upAction

@@ -1,6 +1,6 @@
 package engine
 
-import internal "github.com/werf/nelm/internal/helm/pkg/engine"
+import internal "github.com/werf/nelm/pkg/helm/pkg/engine"
 
 func GetDebug() bool {
 	return internal.Debug
