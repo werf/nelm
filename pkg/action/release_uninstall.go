@@ -9,6 +9,7 @@ import (
 
 	"github.com/gookit/color"
 	"github.com/samber/lo"
+	"github.com/werf/kubedog/pkg/dyntracker"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
@@ -157,6 +158,22 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		return nil
 	}
 
+	watchErrCh := make(chan error, 1)
+	informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
+
+	go func() {
+		for {
+			select {
+			case err := <-watchErrCh:
+				if err != nil {
+					ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
 	if err := func() error {
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Delete release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
@@ -210,8 +227,9 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 		log.Default.Debug(ctx, "Build resource infos")
 		instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
-			NetworkParallelism:    opts.NetworkParallelism,
-			NoRemoveManualChanges: opts.NoRemoveManualChanges,
+			NetworkParallelism:                 opts.NetworkParallelism,
+			NoRemoveManualChanges:              opts.NoRemoveManualChanges,
+			LastDeployedOrLastRelResourceSpecs: prevRelResSpecs,
 		})
 		if err != nil {
 			return fmt.Errorf("build resource infos: %w", err)
@@ -241,16 +259,8 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 		taskStore := kdutil.NewConcurrent(statestore.NewTaskStore())
 		logStore := kdutil.NewConcurrent(logstore.NewLogStore())
-		watchErrCh := make(chan error, 1)
-		informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
 
 		log.Default.Debug(ctx, "Start tracking")
-		go func() {
-			if err := <-watchErrCh; err != nil {
-				ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
-			}
-		}()
-
 		var progressPrinter *track.ProgressTablesPrinter
 		if !opts.NoProgressTablePrint {
 			progressPrinter = track.NewProgressTablesPrinter(taskStore, logStore, track.ProgressTablesPrinterOptions{
@@ -372,8 +382,21 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 	if opts.DeleteReleaseNamespace {
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Delete release namespace %q", nsMeta.Name)))
 
-		if err := clientFactory.KubeClient().Delete(ctx, nsMeta, kube.KubeClientDeleteOptions{}); err != nil {
+		if err := clientFactory.KubeClient().Delete(ctx, nsMeta, kube.KubeClientDeleteOptions{
+			PropagationPolicy: metav1.DeletePropagationForeground,
+		}); err != nil {
 			return fmt.Errorf("delete release namespace: %w", err)
+		}
+
+		taskState := kdutil.NewConcurrent(
+			statestore.NewAbsenceTaskState(nsMeta.Name, "", nsMeta.GroupVersionKind, statestore.AbsenceTaskStateOptions{}),
+		)
+		tracker := dyntracker.NewDynamicAbsenceTracker(taskState, informerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicAbsenceTrackerOptions{
+			Timeout: opts.TrackDeletionTimeout,
+		})
+
+		if err := tracker.Track(ctx); err != nil {
+			return fmt.Errorf("track release namespace absence: %w", err)
 		}
 
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleted release namespace %q", nsMeta.Name)))

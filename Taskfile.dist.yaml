@@ -52,7 +52,7 @@ tasks:
     internal: true
     run: once
     cmds:
-      - golangci-lint run {{if eq .fix "true"}}--fix{{end}} --build-tags="{{.tags}}" {{.CLI_ARGS}} {{.paths | default "$(find pkg/ -mindepth 1 -maxdepth 1 -type d ! -name helm -printf './%p/... ') ./cmd/..."}}
+      - golangci-lint run {{if eq .fix "true"}}--fix{{end}} --build-tags="{{.tags}}" {{.CLI_ARGS}} {{.paths | default "$(find pkg/ -mindepth 1 -maxdepth 1 -type d ! -name helm -printf './%p/... ' 2>/dev/null || find pkg/ -mindepth 1 -maxdepth 1 -type d ! -name helm | xargs -I{} echo './{}/...') ./cmd/..."}}
     vars:
       paths: "{{.paths}}"
 
@@ -488,7 +488,7 @@ tasks:
         rm -f "$intern_rule"
 
         rm -f "{{.forkSnapshotDir}}/cmd/helm/helm.go"
-        find "{{.forkSnapshotDir}}/cmd/helm" -name "*.go" -exec sed -i 's/^package main$/package helm/' {} +
+        find "{{.forkSnapshotDir}}/cmd/helm" -name "*.go" -exec perl -i -p -e 's/^package main$/package helm/' {} +
 
         git -C "{{.forkSnapshotDir}}" add -A
         git -C "{{.forkSnapshotDir}}" -c user.name="sync" -c user.email="sync@local" \

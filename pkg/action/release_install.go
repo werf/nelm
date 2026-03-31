@@ -430,9 +430,20 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		var delResInfos []*plan.DeletableResourceInfo
 
+		lastDeployedOrLastRelease := lo.Ternary(prevDeployedRelease != nil, prevDeployedRelease, prevRelease)
+
+		var lastDeployedOrLastRelResSpecs []*spec.ResourceSpec
+		if lastDeployedOrLastRelease != nil {
+			lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(lastDeployedOrLastRelease, releaseNamespace, false)
+			if err != nil {
+				return fmt.Errorf("convert last deployed or last release to resource specs: %w", err)
+			}
+		}
+
 		instResInfos, delResInfos, err = plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
-			NetworkParallelism:    opts.NetworkParallelism,
-			NoRemoveManualChanges: opts.NoRemoveManualChanges,
+			NetworkParallelism:                 opts.NetworkParallelism,
+			NoRemoveManualChanges:              opts.NoRemoveManualChanges,
+			LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,
 		})
 		if err != nil {
 			return fmt.Errorf("build resource infos: %w", err)
@@ -513,8 +524,15 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	log.Default.Debug(ctx, "Start tracking")
 
 	go func() {
-		if err := <-watchErrCh; err != nil {
-			ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
+		for {
+			select {
+			case err := <-watchErrCh:
+				if err != nil {
+					ctxCancelFn(fmt.Errorf("context canceled: watch error: %w", err))
+				}
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
@@ -826,9 +844,15 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Build resource infos")
 
+	lastDeployedOrLastRelResSpecs, err := release.ReleaseToResourceSpecs(prevDeployedRelease, releaseNamespace, false)
+	if err != nil {
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert last deployed or last release to resource specs: %w", err))
+	}
+
 	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, common.DeployTypeRollback, releaseName, releaseNamespace, instResources, delResources, true, clientFactory, plan.BuildResourceInfosOptions{
-		NetworkParallelism:    opts.NetworkParallelism,
-		NoRemoveManualChanges: opts.NoRemoveManualChanges,
+		NetworkParallelism:                 opts.NetworkParallelism,
+		NoRemoveManualChanges:              opts.NoRemoveManualChanges,
+		LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,
 	})
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build resource infos: %w", err))
