@@ -10,7 +10,6 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
 )
 
 // Contains all generic information about the resource, e.g. its name, namespace, GVK and its spec.
@@ -25,7 +24,7 @@ type ResourceSpec struct {
 
 func NewResourceSpec(unstruct *unstructured.Unstructured, releaseNamespace string, opts ResourceSpecOptions) *ResourceSpec {
 	unstruct = CleanUnstruct(unstruct, CleanUnstructOptions{
-		CleanNullFields: (featgate.FeatGatePreviewV2.Enabled() || featgate.FeatGateCleanNullFields.Enabled()) && !opts.LegacyNoCleanNullFields,
+		CleanNullFields: !opts.LegacyNoCleanNullFields,
 	})
 
 	if opts.StoreAs == "" {

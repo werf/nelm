@@ -10,7 +10,6 @@ import (
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -27,11 +26,7 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 	cfg := &releaseInstallConfig{}
 
 	use := "install [options...] -n namespace -r release"
-	if featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
-		use += " [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]"
-	} else {
-		use += " [chart-dir]"
-	}
+	use += " [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]"
 
 	cmd := cli.NewSubCommand(
 		ctx,
@@ -50,11 +45,7 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultReleaseInstallLogLevel), action.SetupLoggingOptions{ColorMode: cfg.LogColorMode})
 
 			if len(args) > 0 {
-				if featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
-					cfg.Chart = args[0]
-				} else {
-					cfg.ChartDirPath = args[0]
-				}
+				cfg.Chart = args[0]
 			}
 
 			if err := action.ReleaseInstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, cfg.ReleaseInstallOptions); err != nil {
@@ -126,13 +117,11 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
-			if err := cli.AddFlag(cmd, &cfg.ChartVersion, "chart-version", "", "Choose a remote chart version, otherwise the latest version is used", cli.AddFlagOptions{
-				GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-				Group:                mainFlagGroup,
-			}); err != nil {
-				return fmt.Errorf("add flag: %w", err)
-			}
+		if err := cli.AddFlag(cmd, &cfg.ChartVersion, "chart-version", "", "Choose a remote chart version, otherwise the latest version is used", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                mainFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
 		}
 
 		// TODO: restrict allowed values
@@ -258,13 +247,6 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 		if err := cli.AddFlag(cmd, &cfg.ReleaseStorageSQLConnection, "release-storage-sql-connection", "", "SQL connection string for MySQL release storage driver", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.RollbackGraphPath, "save-rollback-graph-to", "", "Save the Graphviz rollback graph to a file", cli.AddFlagOptions{
-			Group: mainFlagGroup,
-			Type:  cli.FlagTypeFile,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

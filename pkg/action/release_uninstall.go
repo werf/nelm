@@ -9,10 +9,10 @@ import (
 
 	"github.com/gookit/color"
 	"github.com/samber/lo"
-	"github.com/werf/kubedog/pkg/dyntracker"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	"github.com/werf/kubedog/pkg/dyntracker"
 	"github.com/werf/kubedog/pkg/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"

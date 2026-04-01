@@ -7,7 +7,6 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
 )
 
 func AddChartRepoConnectionFlags(cmd *cobra.Command, cfg *common.ChartRepoConnectionOptions) error {
@@ -297,10 +296,6 @@ func AddKubeConnectionFlags(cmd *cobra.Command, cfg *common.KubeConnectionOption
 }
 
 func AddResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceValidationOptions) error {
-	if !featgate.FeatGateResourceValidation.Enabled() {
-		return nil
-	}
-
 	if err := cli.AddFlag(cmd, &cfg.NoResourceValidation, "no-resource-validation", false, "Disable resource validation", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                resourceValidationGroup,
@@ -451,14 +446,6 @@ func AddValuesFlags(cmd *cobra.Command, cfg *common.ValuesOptions) error {
 	}
 
 	if err := cli.AddFlag(cmd, &cfg.RootSetJSON, "set-root-json", []string{}, "Set new keys in the global context ($), where the key is the value path and the value is JSON. This is meant to be generated inside the program, so use --set-json instead, unless you know what you are doing", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                valuesFlagGroup,
-		NoSplitOnCommas:      true,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.RuntimeSetJSON, "set-runtime-json", []string{}, "Set new keys in $.Runtime, where the key is the value path and the value is JSON. This is meant to be generated inside the program, so use --set-json instead, unless you know what you are doing", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                valuesFlagGroup,
 		NoSplitOnCommas:      true,

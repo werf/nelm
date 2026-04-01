@@ -10,7 +10,6 @@ import (
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -25,11 +24,7 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 	cfg := &chartRenderConfig{}
 
 	use := "render [options...]"
-	if featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
-		use += " [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]"
-	} else {
-		use += " [chart-dir]"
-	}
+	use += " [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]"
 
 	cmd := cli.NewSubCommand(
 		ctx,
@@ -51,11 +46,7 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			})
 
 			if len(args) > 0 {
-				if featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
-					cfg.Chart = args[0]
-				} else {
-					cfg.ChartDirPath = args[0]
-				}
+				cfg.Chart = args[0]
 			}
 
 			if _, err := action.ChartRender(ctx, cfg.ChartRenderOptions); err != nil {
@@ -113,13 +104,11 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
-			if err := cli.AddFlag(cmd, &cfg.ChartVersion, "chart-version", "", "Choose a remote chart version, otherwise the latest version is used", cli.AddFlagOptions{
-				GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-				Group:                mainFlagGroup,
-			}); err != nil {
-				return fmt.Errorf("add flag: %w", err)
-			}
+		if err := cli.AddFlag(cmd, &cfg.ChartVersion, "chart-version", "", "Choose a remote chart version, otherwise the latest version is used", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                mainFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
 		}
 
 		if err := cli.AddFlag(cmd, &cfg.ExtraAPIVersions, "extra-apiversions", nil, "Extra Kubernetes API versions passed to $.Capabilities.APIVersions", cli.AddFlagOptions{
@@ -146,13 +135,6 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 		if err := cli.AddFlag(cmd, &cfg.ExtraRuntimeAnnotations, "runtime-annotations", map[string]string{}, "Add annotations which will not trigger resource updates to all resources", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalMultiEnvVarRegexes,
 			Group:                patchFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.ForceAdoption, "force-adoption", false, "Always adopt resources, even if they belong to a different Helm release", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                mainFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

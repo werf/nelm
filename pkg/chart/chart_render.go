@@ -187,13 +187,6 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		return nil, fmt.Errorf("chart requires kubeVersion: %s which is incompatible with Kubernetes %s", chartKubeVersion, caps.KubeVersion.String())
 	}
 
-	runtime, err := buildContextFromJSONSets(opts.RuntimeSetJSON)
-	if err != nil {
-		return nil, fmt.Errorf("build runtime: %w", err)
-	}
-
-	log.Default.TraceStruct(ctx, runtime, "Runtime:")
-
 	defaultRootContext, err := buildContextFromJSONSets(opts.RootSetJSON)
 	if err != nil {
 		return nil, fmt.Errorf("build default root context: %w", err)
@@ -224,8 +217,6 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	if err != nil {
 		return nil, fmt.Errorf("build rendered values for chart %q: %w", chartAccessor.Name(), err)
 	}
-
-	renderedValues["Runtime"] = runtime
 
 	for k, v := range defaultRootContext {
 		if _, exists := renderedValues[k]; !exists {

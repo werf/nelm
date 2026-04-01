@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
 	helmdownloader "github.com/werf/nelm/pkg/helm/pkg/downloader"
 	helmgetter "github.com/werf/nelm/pkg/helm/pkg/getter"
 	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
@@ -26,7 +25,7 @@ type chartDownloaderOptions struct {
 }
 
 func downloadChart(ctx context.Context, chartPath string, registryClient *helmregistry.Client, opts RenderChartOptions) (string, error) {
-	if (featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled()) && !isLocalChart(chartPath) {
+	if !isLocalChart(chartPath) {
 		chartDownloader, chartRef, err := newChartDownloader(ctx, chartPath, registryClient, chartDownloaderOptions{
 			ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
 			ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,

@@ -16,7 +16,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/resource"
 	"github.com/werf/nelm/pkg/resource/spec"
 )
@@ -151,5 +150,4 @@ func setupLocalSchemaDir(t *testing.T, schemas map[string]string) string {
 func setupTestEnvironment(t *testing.T) {
 	t.Helper()
 	t.Setenv("HELM_CACHE_HOME", t.TempDir())
-	featgate.FeatGateResourceValidation.Enable()
 }
