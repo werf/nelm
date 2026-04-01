@@ -15,7 +15,6 @@ import (
 
 	"github.com/werf/nelm/pkg/chart"
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
@@ -443,19 +442,13 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	}
 
 	if opts.ErrorIfChangesPlanned {
-		if featgate.FeatGateMoreDetailedExitCodeForPlan.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
-			if releaseIsUpToDate && installPlanIsUseless {
-				return nil
-			} else if installPlanIsUseless || len(changes) == 0 {
-				return ErrReleaseInstallPlanned
-			} else {
-				return ErrResourceChangesPlanned
-			}
-		} else {
-			if !releaseIsUpToDate || !installPlanIsUseless {
-				return ErrChangesPlanned
-			}
+		if releaseIsUpToDate && installPlanIsUseless {
+			return nil
+		} else if installPlanIsUseless || len(changes) == 0 {
+			return ErrReleaseInstallPlanned
 		}
+
+		return ErrResourceChangesPlanned
 	}
 
 	return nil

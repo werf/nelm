@@ -18,7 +18,6 @@ import (
 
 const (
 	HiddenInsignificantChanges = "<hidden insignificant changes>"
-	HiddenSensitiveChanges     = "<hidden sensitive changes>"
 	HiddenVerboseCRDChanges    = "<hidden verbose CRD changes>"
 	HiddenVerboseChanges       = "<hidden verbose changes>"
 )
@@ -44,8 +43,6 @@ func (c *ResourceChange) UDiff(opts common.ResourceDiffOptions) (string, error) 
 		!opts.ShowVerboseCRDDiffs &&
 		(c.Before == nil || c.After == nil) {
 		uDiff = HiddenVerboseCRDChanges
-	} else if sensitiveInfo.FullySensitive() && !opts.ShowSensitiveDiffs {
-		uDiff = HiddenSensitiveChanges
 	} else if !opts.ShowVerboseDiffs && (c.Before == nil || c.After == nil) {
 		uDiff = HiddenVerboseChanges
 	} else {

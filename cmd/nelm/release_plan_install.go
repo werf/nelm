@@ -10,7 +10,6 @@ import (
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -27,11 +26,7 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 	cfg := &releasePlanInstallConfig{}
 
 	use := "install [options...] -n namespace -r release"
-	if featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
-		use += " [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]"
-	} else {
-		use += " [chart-dir]"
-	}
+	use += " [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]"
 
 	cmd := cli.NewSubCommand(
 		ctx,
@@ -50,11 +45,7 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultReleasePlanInstallLogLevel), action.SetupLoggingOptions{ColorMode: cfg.LogColorMode})
 
 			if len(args) > 0 {
-				if featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
-					cfg.Chart = args[0]
-				} else {
-					cfg.ChartDirPath = args[0]
-				}
+				cfg.Chart = args[0]
 			}
 
 			if err := action.ReleasePlanInstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, cfg.ReleasePlanInstallOptions); err != nil {
@@ -116,13 +107,11 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
-			if err := cli.AddFlag(cmd, &cfg.ChartVersion, "chart-version", "", "Choose a remote chart version, otherwise the latest version is used", cli.AddFlagOptions{
-				GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-				Group:                mainFlagGroup,
-			}); err != nil {
-				return fmt.Errorf("add flag: %w", err)
-			}
+		if err := cli.AddFlag(cmd, &cfg.ChartVersion, "chart-version", "", "Choose a remote chart version, otherwise the latest version is used", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                mainFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
 		}
 
 		// TODO: restrict allowed values
@@ -140,14 +129,7 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		var desc string
-		if featgate.FeatGateMoreDetailedExitCodeForPlan.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
-			desc = "Return exit code 0 if no changes, 1 if error, 2 if resource changes planned, 3 if no resource changes planned, but release still should be installed"
-		} else {
-			desc = "Return exit code 0 if no changes, 1 if error, 2 if any changes planned"
-		}
-
-		if err := cli.AddFlag(cmd, &cfg.ErrorIfChangesPlanned, "exit-code", false, desc, cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.ErrorIfChangesPlanned, "exit-code", false, "Return exit code 0 if no changes, 1 if error, 2 if resource changes planned, 3 if no resource changes planned, but release still should be installed", cli.AddFlagOptions{
 			Group: mainFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)

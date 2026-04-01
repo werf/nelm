@@ -10,7 +10,6 @@ import (
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -25,11 +24,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 	cfg := &chartLintConfig{}
 
 	use := "lint [options...]"
-	if featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
-		use += " [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]"
-	} else {
-		use += " [chart-dir]"
-	}
+	use += " [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]"
 
 	cmd := cli.NewSubCommand(
 		ctx,
@@ -48,11 +43,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultChartLintLogLevel), action.SetupLoggingOptions{ColorMode: cfg.LogColorMode})
 
 			if len(args) > 0 {
-				if featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
-					cfg.Chart = args[0]
-				} else {
-					cfg.ChartDirPath = args[0]
-				}
+				cfg.Chart = args[0]
 			}
 
 			if err := action.ChartLint(ctx, cfg.ChartLintOptions); err != nil {
@@ -114,13 +105,11 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if featgate.FeatGateRemoteCharts.Enabled() || featgate.FeatGatePreviewV2.Enabled() {
-			if err := cli.AddFlag(cmd, &cfg.ChartVersion, "chart-version", "", "Choose a remote chart version, otherwise the latest version is used", cli.AddFlagOptions{
-				GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-				Group:                mainFlagGroup,
-			}); err != nil {
-				return fmt.Errorf("add flag: %w", err)
-			}
+		if err := cli.AddFlag(cmd, &cfg.ChartVersion, "chart-version", "", "Choose a remote chart version, otherwise the latest version is used", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                mainFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
 		}
 
 		// TODO: restrict allowed values
