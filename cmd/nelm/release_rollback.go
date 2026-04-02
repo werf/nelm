@@ -154,14 +154,6 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		// TODO(major): remove this duplicated flag
-		if err := cli.AddFlag(cmd, &cfg.RollbackGraphPath, "save-rollback-graph-to", "", "Save the Graphviz rollback graph to a file", cli.AddFlagOptions{
-			Group: mainFlagGroup,
-			Type:  cli.FlagTypeFile,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
 		if err := cli.AddFlag(cmd, &cfg.RollbackGraphPath, "save-graph-to", "", "Save the Graphviz rollback graph to a file", cli.AddFlagOptions{
 			Group: mainFlagGroup,
 			Type:  cli.FlagTypeFile,

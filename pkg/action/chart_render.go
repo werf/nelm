@@ -71,9 +71,6 @@ type ChartRenderOptions struct {
 	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime.
 	// TODO(major): remove or implement custom logic for this field.
 	ExtraRuntimeAnnotations map[string]string
-	// ForceAdoption is currently unused in chart rendering.
-	// TODO(major): remove this useless field.
-	ForceAdoption bool
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.
 	LegacyChartType common.LegacyChartType

@@ -43,7 +43,7 @@ func (c *ResourceChange) UDiff(opts common.ResourceDiffOptions) (string, error) 
 		!opts.ShowVerboseCRDDiffs &&
 		(c.Before == nil || c.After == nil) {
 		uDiff = HiddenVerboseCRDChanges
-	} else if !opts.ShowVerboseDiffs && (c.Before == nil || c.After == nil) {
+	} else if c.Before == nil || c.After == nil {
 		uDiff = HiddenVerboseChanges
 	} else {
 		var (

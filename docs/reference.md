@@ -183,10 +183,6 @@ nelm release install [options...] -n namespace -r release [chart-dir]
 
   Save the install report to a file\. Var: \$NELM\_RELEASE\_INSTALL\_SAVE\_REPORT\_TO
 
-- `--save-rollback-graph-to` (default: `""`)
-
-  Save the Graphviz rollback graph to a file\. Var: \$NELM\_RELEASE\_INSTALL\_SAVE\_ROLLBACK\_GRAPH\_TO
-
 - `--show-subchart-notes` (default: `false`)
 
   Show NOTES\.txt of subcharts after the release\. Var: \$NELM\_RELEASE\_INSTALL\_SHOW\_SUBCHART\_NOTES
@@ -564,10 +560,6 @@ nelm release rollback [options...] -n namespace -r release [revision]
 
   Save the rollback report to a file\. Var: \$NELM\_RELEASE\_ROLLBACK\_SAVE\_REPORT\_TO
 
-- `--save-rollback-graph-to` (default: `""`)
-
-  Save the Graphviz rollback graph to a file\. Var: \$NELM\_RELEASE\_ROLLBACK\_SAVE\_ROLLBACK\_GRAPH\_TO
-
 - `--timeout` (default: `0s`)
 
   Fail if not finished in time\. Vars: \$NELM\_TIMEOUT, \$NELM\_RELEASE\_ROLLBACK\_TIMEOUT
@@ -839,10 +831,6 @@ nelm release plan install [options...] -n namespace -r release [chart-dir]
 - `--show-verbose-crd-diffs` (default: `false`)
 
   Show verbose CRD diff lines\. Var: \$NELM\_RELEASE\_PLAN\_INSTALL\_SHOW\_VERBOSE\_CRD\_DIFFS
-
-- `--show-verbose-diffs` (default: `true`)
-
-  Show verbose diff lines\. Var: \$NELM\_RELEASE\_PLAN\_INSTALL\_SHOW\_VERBOSE\_DIFFS
 
 - `--templates-allow-dns` (default: `false`)
 
@@ -1817,10 +1805,6 @@ nelm release plan show [options...] plan.json
 
   Show verbose CRD diff lines\. Var: \$NELM\_RELEASE\_PLAN\_SHOW\_SHOW\_VERBOSE\_CRD\_DIFFS
 
-- `--show-verbose-diffs` (default: `true`)
-
-  Show verbose diff lines\. Var: \$NELM\_RELEASE\_PLAN\_SHOW\_SHOW\_VERBOSE\_DIFFS
-
 
 **Other options:**
 
@@ -2189,10 +2173,6 @@ nelm chart render [options...] [chart-dir]
 - `--extra-apiversions` (default: `[]`)
 
   Extra Kubernetes API versions passed to \$\.Capabilities\.APIVersions\. Vars: \$NELM\_EXTRA\_APIVERSIONS\_\*, \$NELM\_CHART\_RENDER\_EXTRA\_APIVERSIONS\_\*
-
-- `--force-adoption` (default: `false`)
-
-  Always adopt resources, even if they belong to a different Helm release\. Vars: \$NELM\_FORCE\_ADOPTION, \$NELM\_CHART\_RENDER\_FORCE\_ADOPTION
 
 - `--kube-version` (default: `"1.20.0"`)
 

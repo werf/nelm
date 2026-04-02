@@ -139,13 +139,6 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.ForceAdoption, "force-adoption", false, "Always adopt resources, even if they belong to a different Helm release", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-			Group:                mainFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
 		if err := cli.AddFlag(cmd, &cfg.LocalKubeVersion, "kube-version", common.DefaultLocalKubeVersion, "Kubernetes version stub for non-remote mode", cli.AddFlagOptions{
 			Group: mainFlagGroup,
 		}); err != nil {
