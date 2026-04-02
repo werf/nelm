@@ -14,7 +14,7 @@ import (
 const DefaultSecretKeyRotateLogLevel = log.InfoLevel
 
 type SecretKeyRotateOptions struct {
-	ChartDirPath      string
+	Chart             string
 	NewSecretKey      string
 	OldSecretKey      string
 	SecretValuesFiles []string
@@ -41,7 +41,7 @@ func SecretKeyRotate(ctx context.Context, opts SecretKeyRotateOptions) error {
 		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.NewSecretKey))
 	}
 
-	if err := secret.RotateSecretKey(ctx, opts.ChartDirPath, opts.SecretWorkDir, opts.SecretValuesFiles...); err != nil {
+	if err := secret.RotateSecretKey(ctx, opts.Chart, opts.SecretWorkDir, opts.SecretValuesFiles...); err != nil {
 		return fmt.Errorf("rotate secret key: %w", err)
 	}
 
@@ -57,8 +57,8 @@ func applySecretKeyRotateOptionsDefaults(opts SecretKeyRotateOptions, currentDir
 		}
 	}
 
-	if opts.ChartDirPath == "" {
-		opts.ChartDirPath = currentDir
+	if opts.Chart == "" {
+		opts.Chart = currentDir
 	}
 
 	if opts.SecretWorkDir == "" {

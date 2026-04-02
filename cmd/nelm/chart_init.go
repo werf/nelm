@@ -40,7 +40,7 @@ func newChartInitCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), log.InfoLevel), action.SetupLoggingOptions{ColorMode: cfg.LogColorMode})
 
 			if len(args) > 0 {
-				cfg.ChartDirPath = args[0]
+				cfg.Chart = args[0]
 			}
 
 			if err := action.ChartInit(ctx, cfg.ChartInitOptions); err != nil {

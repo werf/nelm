@@ -40,7 +40,7 @@ func newChartSecretKeyRotateCommand(ctx context.Context, afterAllCommandsBuiltFu
 			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultSecretKeyRotateLogLevel), action.SetupLoggingOptions{ColorMode: cfg.LogColorMode})
 
 			if len(args) > 0 {
-				cfg.ChartDirPath = args[0]
+				cfg.Chart = args[0]
 			}
 
 			if err := action.SecretKeyRotate(ctx, cfg.SecretKeyRotateOptions); err != nil {

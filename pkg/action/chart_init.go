@@ -12,13 +12,13 @@ import (
 )
 
 type ChartInitOptions struct {
-	ChartDirPath string
-	TS           bool
-	TempDirPath  string
+	Chart       string
+	TS          bool
+	TempDirPath string
 }
 
 func ChartInit(ctx context.Context, opts ChartInitOptions) error {
-	chartPath := opts.ChartDirPath
+	chartPath := opts.Chart
 	if chartPath == "" {
 		chartPath = "."
 	}
