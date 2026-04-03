@@ -200,8 +200,6 @@ var (
 	AnnotationKeyHumanDeleteDependency                  = "werf.io/delete-dependency-<name>"
 	AnnotationKeyPatternDeleteDependency                = regexp.MustCompile(`^werf.io/delete-dependency-(?P<id>.+)$`)
 	// TODO(major): get rid
-	AnnotationKeyHumanDependency                          = "<name>.dependency.werf.io"
-	AnnotationKeyPatternDependency                        = regexp.MustCompile(`^(?P<id>.+).dependency.werf.io$`)
 	AnnotationKeyHumanExternalDependency                  = "<name>.external-dependency.werf.io"
 	AnnotationKeyPatternExternalDependency                = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io$`)
 	AnnotationKeyHumanLegacyExternalDependencyResource    = "<name>.external-dependency.werf.io/resource"
