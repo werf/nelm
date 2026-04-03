@@ -534,49 +534,6 @@ func manualInternalDeployDependencies(meta *spec.ResourceMeta) []*InternalDepend
 
 	deps := map[string]*InternalDependency{}
 
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDependency); found {
-		for key, value := range annotations {
-			matches := common.AnnotationKeyPatternDependency.FindStringSubmatch(key)
-			idSubexpIndex := common.AnnotationKeyPatternDependency.SubexpIndex("id")
-			depID := matches[idSubexpIndex]
-			valParts := strings.Split(value, ":")
-			depAPIVersionParts := strings.SplitN(valParts[0], "/", 2)
-
-			var gvk schema.GroupVersionKind
-			if len(depAPIVersionParts) == 1 {
-				gvk = schema.GroupVersionKind{
-					Version: depAPIVersionParts[0],
-					Kind:    valParts[1],
-				}
-			} else {
-				gvk = schema.GroupVersionKind{
-					Group:   depAPIVersionParts[0],
-					Version: depAPIVersionParts[1],
-					Kind:    valParts[1],
-				}
-			}
-
-			var depNamespace string
-			if len(valParts) == 4 {
-				depNamespace = valParts[2]
-			}
-
-			depName := valParts[len(valParts)-1]
-
-			dep := &InternalDependency{
-				ResourceMatcher: &spec.ResourceMatcher{
-					Names:      []string{depName},
-					Namespaces: []string{depNamespace},
-					Groups:     []string{gvk.Group},
-					Versions:   []string{gvk.Version},
-					Kinds:      []string{gvk.Kind},
-				},
-				ResourceState: common.ResourceStatePresent,
-			}
-			deps[depID] = dep
-		}
-	}
-
 	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeployDependency); found {
 		for key, value := range annotations {
 			matches := common.AnnotationKeyPatternDeployDependency.FindStringSubmatch(key)
@@ -1110,36 +1067,6 @@ func validateHook(meta *spec.ResourceMeta) error {
 				"test-success":
 			default:
 				return fmt.Errorf("value %q for annotation %q is not supported", value, key)
-			}
-		}
-	}
-
-	return nil
-}
-
-func validateInternalDependencies(meta *spec.ResourceMeta) error {
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDependency); found {
-		for key, value := range annotations {
-			keyMatches := common.AnnotationKeyPatternDependency.FindStringSubmatch(key)
-			if keyMatches == nil {
-				return fmt.Errorf("invalid key for annotation %q", key)
-			}
-
-			idSubexpIndex := common.AnnotationKeyPatternDependency.SubexpIndex("id")
-			if idSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternDependency.String(), key)
-			}
-
-			if len(keyMatches) < idSubexpIndex+1 {
-				return fmt.Errorf("can't parse dependency id from annotation key %q", key)
-			}
-
-			if value != "" {
-				valueElems := strings.Split(value, ":")
-
-				if len(valueElems) != 3 && len(valueElems) != 4 {
-					return fmt.Errorf(`invalid format of value %q for annotation %q, should be: apiVersion:kind[:namespace]:name or empty`, value, key)
-				}
 			}
 		}
 	}

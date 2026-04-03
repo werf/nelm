@@ -83,10 +83,6 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 		return nil, fmt.Errorf("validate deploy dependencies: %w", err)
 	}
 
-	if err := validateInternalDependencies(res.ResourceMeta); err != nil {
-		return nil, fmt.Errorf("validate internal dependencies: %w", err)
-	}
-
 	if err := validateExternalDependencies(res.ResourceMeta); err != nil {
 		return nil, fmt.Errorf("validate external dependencies: %w", err)
 	}
