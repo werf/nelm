@@ -233,4 +233,4 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.2 // indirect
 )
 
-replace github.com/spf13/cobra => github.com/andremueller/cobra v0.0.0-20241025091859-0d550c15a8a4 // remove when merged: https://github.com/spf13/cobra/pull/2167
+replace github.com/spf13/cobra => github.com/werf/3p-cobra v0.0.0-20260403075225-552c82797324 // adds EnableErrorOnUnknownSubcommand, not yet in upstream
