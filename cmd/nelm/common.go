@@ -9,8 +9,6 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const IgnoreBundleJSFlagDescription = "Do not use the existing bundle.js file. Requires TypeScript source files and Deno to rebuild."
-
 var helmRootCmd *cobra.Command
 
 func allowedLogColorModesHelp() string {

@@ -313,7 +313,7 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.IgnoreBundleJS, "ignore-bundle-js", false, IgnoreBundleJSFlagDescription, cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.IgnoreBundleJS, "ignore-bundle-js", false, "Do not use the existing bundle.js file. Requires TypeScript source files and Deno to rebuild.", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                tsFlagGroup,
 		}); err != nil {
