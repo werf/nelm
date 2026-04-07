@@ -11,13 +11,13 @@ import (
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 
-	helmchart "github.com/werf/nelm/internal/helm/pkg/chart"
-	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
-	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
-	"github.com/werf/nelm/internal/ts"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
+	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/ts"
 )
 
 type ChartTSBuildOptions struct {

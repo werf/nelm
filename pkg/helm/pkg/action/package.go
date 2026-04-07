@@ -27,12 +27,12 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/term"
 
+	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
 	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
 	"github.com/werf/nelm/pkg/helm/pkg/provenance"
 	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
-	"github.com/werf/nelm/internal/ts"
-	"github.com/werf/nelm/pkg/featgate"
+	"github.com/werf/nelm/pkg/ts"
 )
 
 // Package is the action for packaging a chart.

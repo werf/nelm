@@ -17,9 +17,9 @@ import (
 	"github.com/gosimple/slug"
 	"github.com/samber/lo"
 
-	"github.com/werf/nelm/internal/helm/pkg/helmpath"
-	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
 	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/util"
 )
 
 const denoVersion = "2.7.1"

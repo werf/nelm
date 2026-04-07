@@ -3,7 +3,7 @@ package ts
 import (
 	"context"
 
-	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 )
 
 var tsOptionsKey chartTSOptionsKey

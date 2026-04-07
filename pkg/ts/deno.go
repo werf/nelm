@@ -14,8 +14,8 @@ import (
 	"github.com/gofrs/flock"
 	"github.com/samber/lo"
 
-	helmchart "github.com/werf/nelm/internal/helm/pkg/chart"
 	"github.com/werf/nelm/pkg/common"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/pkg/log"
 )
 
