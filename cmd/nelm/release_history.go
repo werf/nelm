@@ -69,7 +69,7 @@ func newReleaseHistoryCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.Max, "max", 0, "Maximum number of revisions to show. 0 means no limit", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.RevisionsLimit, "revisions-limit", 0, "Maximum number of revisions to show. 0 means no limit", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
 		}); err != nil {

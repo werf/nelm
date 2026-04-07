@@ -30,8 +30,6 @@ const (
 type ReleaseHistoryOptions struct {
 	common.KubeConnectionOptions
 
-	// Max limits the number of revisions returned. 0 means no limit.
-	Max int
 	// OutputFormat specifies the output format for the release history.
 	// Valid values: "table" (default), "yaml", "json".
 	// Defaults to DefaultReleaseHistoryOutputFormat (table) if not specified.
@@ -46,6 +44,8 @@ type ReleaseHistoryOptions struct {
 	// ReleaseStorageSQLConnection is the SQL connection string when using SQL storage driver.
 	// Only used when ReleaseStorageDriver is "sql".
 	ReleaseStorageSQLConnection string
+	// RevisionsLimit limits the number of revisions returned. 0 means no limit.
+	RevisionsLimit int
 	// TempDirPath is the directory for temporary files during the operation.
 	// A temporary directory is created automatically if not specified.
 	TempDirPath string
@@ -57,20 +57,18 @@ type ReleaseHistoryResultV1 struct {
 }
 
 type ReleaseHistoryResultRelease struct {
-	Name        string                       `json:"name"`
-	Namespace   string                       `json:"namespace"`
-	Revision    int                          `json:"revision"`
-	Status      helmreleasestatus.Status     `json:"status"`
-	Updated     *ReleaseHistoryResultUpdated `json:"updated"`
-	Annotations map[string]string            `json:"annotations"`
-	Chart       *ReleaseHistoryResultChart   `json:"chart"`
-	Description string                       `json:"description"`
+	Name        string                          `json:"name"`
+	Namespace   string                          `json:"namespace"`
+	Revision    int                             `json:"revision"`
+	Status      helmreleasestatus.Status        `json:"status"`
+	DeployedAt  *ReleaseHistoryResultDeployedAt `json:"deployedAt"`
+	Annotations map[string]string               `json:"annotations"`
+	Chart       *ReleaseHistoryResultChart      `json:"chart"`
 }
 
-type ReleaseHistoryResultUpdated struct {
-	Human      string `json:"human"`
-	HumanTable string `json:"-" yaml:"-"`
-	Unix       int    `json:"unix"`
+type ReleaseHistoryResultDeployedAt struct {
+	Human string `json:"human"`
+	Unix  int    `json:"unix"`
 }
 
 type ReleaseHistoryResultChart struct {
@@ -140,16 +138,14 @@ func ReleaseHistory(ctx context.Context, releaseName, releaseNamespace string, o
 				Version:    release.Chart.Metadata.Version,
 				AppVersion: release.Chart.Metadata.AppVersion,
 			},
-			Description: release.Info.Description,
-			Name:        release.Name,
-			Namespace:   release.Namespace,
-			Revision:    release.Version,
-			Status:      release.Info.Status,
-			Updated: &ReleaseHistoryResultUpdated{
-				Human:      release.Info.LastDeployed.String(),
-				HumanTable: release.Info.LastDeployed.Format(time.ANSIC),
-				Unix:       int(release.Info.LastDeployed.Unix()),
+			DeployedAt: &ReleaseHistoryResultDeployedAt{
+				Human: release.Info.LastDeployed.String(),
+				Unix:  int(release.Info.LastDeployed.Unix()),
 			},
+			Name:      release.Name,
+			Namespace: release.Namespace,
+			Revision:  release.Version,
+			Status:    release.Info.Status,
 		})
 	}
 
@@ -157,8 +153,8 @@ func ReleaseHistory(ctx context.Context, releaseName, releaseNamespace string, o
 		return result.Releases[i].Revision < result.Releases[j].Revision
 	})
 
-	if opts.Max > 0 && len(result.Releases) > opts.Max {
-		result.Releases = result.Releases[len(result.Releases)-opts.Max:]
+	if opts.RevisionsLimit > 0 && len(result.Releases) > opts.RevisionsLimit {
+		result.Releases = result.Releases[len(result.Releases)-opts.RevisionsLimit:]
 	}
 
 	if opts.OutputNoPrint {
@@ -207,11 +203,11 @@ func buildReleaseHistoryOutputTable(ctx context.Context, result *ReleaseHistoryR
 
 	headerRow := prtable.Row{
 		color.New(color.Bold).Sprintf("REVISION"),
-		color.New(color.Bold).Sprintf("UPDATED"),
 		color.New(color.Bold).Sprintf("STATUS"),
+		color.New(color.Bold).Sprintf("DEPLOYED"),
 		color.New(color.Bold).Sprintf("CHART"),
+		color.New(color.Bold).Sprintf("CHART VERSION"),
 		color.New(color.Bold).Sprintf("APP VERSION"),
-		color.New(color.Bold).Sprintf("DESCRIPTION"),
 	}
 
 	table.AppendHeader(headerRow)
@@ -229,11 +225,11 @@ func buildReleaseHistoryOutputTable(ctx context.Context, result *ReleaseHistoryR
 
 		row := prtable.Row{
 			release.Revision,
-			release.Updated.HumanTable,
 			color.New(statusColor).Sprint(release.Status),
-			color.New(color.Cyan).Sprintf("%s-%s", release.Chart.Name, release.Chart.Version),
+			time.Unix(int64(release.DeployedAt.Unix), 0).Format(time.RFC822),
+			release.Chart.Name,
+			release.Chart.Version,
 			release.Chart.AppVersion,
-			release.Description,
 		}
 
 		table.AppendRow(row)
@@ -303,14 +299,12 @@ func setReleaseHistoryOutputTableStyle(ctx context.Context, table prtable.Writer
 		tableWidth = 200
 	}
 
-	paddingsWidth := len(columnConfigs) * (len(style.PaddingLeft) + len(style.PaddingRight))
-
 	columnConfigs[0].WidthMax = 10
-	columnConfigs[1].WidthMax = 25
-	columnConfigs[2].WidthMax = 12
+	columnConfigs[1].WidthMax = 12
+	columnConfigs[2].WidthMax = 25
 	columnConfigs[3].WidthMax = 24
 	columnConfigs[4].WidthMax = 16
-	columnConfigs[5].WidthMax = tableWidth - paddingsWidth - columnConfigs[0].WidthMax - columnConfigs[1].WidthMax - columnConfigs[2].WidthMax - columnConfigs[3].WidthMax - columnConfigs[4].WidthMax
+	columnConfigs[5].WidthMax = 16
 
 	table.SetColumnConfigs(columnConfigs)
 	table.SetStyle(prtable.Style{
