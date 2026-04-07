@@ -46,12 +46,15 @@ type RenderChartOptions struct {
 	ChartProvenanceStrategy string
 	ChartRepoNoUpdate       bool
 	ChartVersion            string
+	DenoBinaryPath          string
 	ExtraAPIVersions        []string
 	HelmOptions             helmopts.HelmOptions
+	IgnoreBundleJS          bool
 	LocalKubeVersion        string
 	NoStandaloneCRDs        bool
 	Remote                  bool
 	SubchartNotes           bool
+	TempDirPath             string
 	TemplatesAllowDNS       bool
 }
 
@@ -222,9 +225,11 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	}
 
 	if featgate.FeatGateTypescript.Enabled() {
-		jsRenderedTemplates, err := renderJSTemplates(ctx, chartPath, chart, renderedValues)
+		log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", chart.Name())
+
+		jsRenderedTemplates, err := ts.RenderChart(ctx, chart, renderedValues, opts.IgnoreBundleJS, chartPath, opts.TempDirPath, opts.DenoBinaryPath)
 		if err != nil {
-			return nil, fmt.Errorf("render ts chart templates for chart %q: %w", chart.Name(), err)
+			return nil, fmt.Errorf("render TypeScript templates for chart %q: %w", chart.Name(), err)
 		}
 
 		if len(jsRenderedTemplates) > 0 {
@@ -361,17 +366,6 @@ func buildContextFromJSONSets(jsonSets []string) (map[string]interface{}, error)
 
 func isLocalChart(path string) bool {
 	return filepath.IsAbs(path) || filepath.HasPrefix(path, "..") || filepath.HasPrefix(path, ".")
-}
-
-func renderJSTemplates(ctx context.Context, chartPath string, chart *helmchart.Chart, renderedValues chartutil.Values) (map[string]string, error) {
-	log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", chart.Name())
-
-	result, err := ts.RenderChart(ctx, chart, renderedValues)
-	if err != nil {
-		return nil, fmt.Errorf("render TypeScript: %w", err)
-	}
-
-	return result, nil
 }
 
 func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, releaseNamespace string, opts RenderChartOptions) ([]*spec.ResourceSpec, error) {

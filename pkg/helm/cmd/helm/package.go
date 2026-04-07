@@ -30,6 +30,7 @@ import (
 	"github.com/werf/nelm/pkg/helm/pkg/downloader"
 	"github.com/werf/nelm/pkg/helm/pkg/getter"
 	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/pkg/ts"
 )
 
 const packageDesc = `
@@ -69,9 +70,14 @@ func newPackageCmd(cfg *action.Configuration, out io.Writer) *cobra.Command {
 				}
 			}
 
+			tsOpts := ts.GetTSOptionsFromContext(cmd.Context())
+
 			opts := helmopts.HelmOptions{
 				ChartLoadOpts: helmopts.ChartLoadOptions{
 					NoSecrets: true,
+				},
+				TypeScriptOpts: helmopts.TypeScriptOptions{
+					DenoBinaryPath: tsOpts.DenoBinaryPath,
 				},
 			}
 

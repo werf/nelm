@@ -6,6 +6,7 @@
   - [Chart commands](#chart-commands)
   - [Secret commands](#secret-commands)
   - [Dependency commands](#dependency-commands)
+  - [TypeScript commands](#typescript-commands)
   - [Repo commands](#repo-commands)
   - [Other commands](#other-commands)
 - [Commands](#commands)
@@ -22,7 +23,6 @@
   - [chart download](#chart-download)
   - [chart upload](#chart-upload)
   - [chart pack](#chart-pack)
-  - [chart init](#chart-init)
   - [chart secret key create](#chart-secret-key-create)
   - [chart secret key rotate](#chart-secret-key-rotate)
   - [chart secret values-file edit](#chart-secret-values-file-edit)
@@ -33,6 +33,8 @@
   - [chart secret file decrypt](#chart-secret-file-decrypt)
   - [chart dependency download](#chart-dependency-download)
   - [chart dependency update](#chart-dependency-update)
+  - [chart ts init](#chart-ts-init)
+  - [chart ts build](#chart-ts-build)
   - [repo add](#repo-add)
   - [repo remove](#repo-remove)
   - [repo update](#repo-update)
@@ -77,7 +79,6 @@
 - [`nelm chart download`](#chart-download) — Download a chart from a repository\.
 - [`nelm chart upload`](#chart-upload) — Upload a chart archive to a repository\.
 - [`nelm chart pack`](#chart-pack) — Pack a chart into an archive to distribute via a repository\.
-- [`nelm chart init`](#chart-init) — Initialize a new chart\.
 
 ### Secret commands
 
@@ -94,6 +95,11 @@
 
 - [`nelm chart dependency download`](#chart-dependency-download) — Download chart dependencies from Chart\.lock\.
 - [`nelm chart dependency update`](#chart-dependency-update) — Update Chart\.lock and download chart dependencies\.
+
+### TypeScript commands
+
+- [`nelm chart ts init`](#chart-ts-init) — Initialize the files needed to render manifests using TypeScript\.
+- [`nelm chart ts build`](#chart-ts-build) — Build TypeScript chart\.
 
 ### Repo commands
 
@@ -285,6 +291,17 @@ nelm release install [options...] -n namespace -r release [chart-dir]
 - `--runtime-labels` (default: `{}`)
 
   Add labels which will not trigger resource updates to all resources\. Vars: \$NELM\_RUNTIME\_LABELS\_\*, \$NELM\_RELEASE\_INSTALL\_RUNTIME\_LABELS\_\*
+
+
+**TypeScript options:**
+
+- `--deno-binary-path` (default: `""`)
+
+  Path to the Deno binary to use instead of auto\-downloading\. Vars: \$NELM\_DENO\_BINARY\_PATH, \$NELM\_RELEASE\_INSTALL\_DENO\_BINARY\_PATH
+
+- `--ignore-bundle-js` (default: `false`)
+
+  Do not use the existing bundle\.js file\. Requires TypeScript source files and Deno to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_RELEASE\_INSTALL\_IGNORE\_BUNDLE\_JS
 
 
 **Progress options:**
@@ -934,6 +951,17 @@ nelm release plan install [options...] -n namespace -r release [chart-dir]
 - `--runtime-labels` (default: `{}`)
 
   Add labels which will not trigger resource updates to all resources\. Vars: \$NELM\_RUNTIME\_LABELS\_\*, \$NELM\_RELEASE\_PLAN\_INSTALL\_RUNTIME\_LABELS\_\*
+
+
+**TypeScript options:**
+
+- `--deno-binary-path` (default: `""`)
+
+  Path to the Deno binary to use instead of auto\-downloading\. Vars: \$NELM\_DENO\_BINARY\_PATH, \$NELM\_RELEASE\_PLAN\_INSTALL\_DENO\_BINARY\_PATH
+
+- `--ignore-bundle-js` (default: `false`)
+
+  Do not use the existing bundle\.js file\. Requires TypeScript source files and Deno to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_RELEASE\_PLAN\_INSTALL\_IGNORE\_BUNDLE\_JS
 
 
 **Progress options:**
@@ -1973,6 +2001,17 @@ nelm chart lint [options...] [chart-dir]
   Add labels which will not trigger resource updates to all resources\. Vars: \$NELM\_RUNTIME\_LABELS\_\*, \$NELM\_CHART\_LINT\_RUNTIME\_LABELS\_\*
 
 
+**TypeScript options:**
+
+- `--deno-binary-path` (default: `""`)
+
+  Path to the Deno binary to use instead of auto\-downloading\. Vars: \$NELM\_DENO\_BINARY\_PATH, \$NELM\_CHART\_LINT\_DENO\_BINARY\_PATH
+
+- `--ignore-bundle-js` (default: `false`)
+
+  Do not use the existing bundle\.js file\. Requires TypeScript source files and Deno to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_CHART\_LINT\_IGNORE\_BUNDLE\_JS
+
+
 **Progress options:**
 
 - `--no-final-tracking` (default: `false`)
@@ -2308,6 +2347,17 @@ nelm chart render [options...] [chart-dir]
 - `--runtime-annotations` (default: `{}`)
 
   Add annotations which will not trigger resource updates to all resources\. Vars: \$NELM\_RUNTIME\_ANNOTATIONS\_\*, \$NELM\_CHART\_RENDER\_RUNTIME\_ANNOTATIONS\_\*
+
+
+**TypeScript options:**
+
+- `--deno-binary-path` (default: `""`)
+
+  Path to the Deno binary to use instead of auto\-downloading\. Vars: \$NELM\_DENO\_BINARY\_PATH, \$NELM\_CHART\_RENDER\_DENO\_BINARY\_PATH
+
+- `--ignore-bundle-js` (default: `false`)
+
+  Do not use the existing bundle\.js file\. Requires TypeScript source files and Deno to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_CHART\_RENDER\_IGNORE\_BUNDLE\_JS
 
 
 **Chart repository options:**
@@ -2786,6 +2836,13 @@ unless your environment is otherwise configured\.
 nelm chart pack [CHART_PATH] [...] [flags]
 ```
 
+**TypeScript options:**
+
+- `--deno-binary-path` (default: `""`)
+
+  Path to the Deno binary to use instead of auto\-downloading\. Vars: \$NELM\_DENO\_BINARY\_PATH, \$NELM\_CHART\_PACK\_DENO\_BINARY\_PATH
+
+
 **Other options:**
 
 - `--app-version` (default: `""`)
@@ -2883,38 +2940,6 @@ nelm chart pack [CHART_PATH] [...] [flags]
 - `--version` (default: `""`)
 
   set the version on the chart to this semver version
-
-
-### chart init
-
-Initialize a new chart in the specified directory\. If PATH is not specified, uses the current directory\.
-
-**Usage:**
-
-```shell
-nelm chart init [PATH]
-```
-
-**Options:**
-
-- `--ts` (default: `false`)
-
-  Initialize TypeScript chart\. Var: \$NELM\_CHART\_INIT\_TS
-
-
-**Other options:**
-
-- `--color-mode` (default: `"auto"`)
-
-  Color mode for logs\. Allowed: auto, off, on\. Vars: \$NELM\_COLOR\_MODE, \$NELM\_CHART\_INIT\_COLOR\_MODE
-
-- `--log-level` (default: `"info"`)
-
-  Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_INIT\_LOG\_LEVEL
-
-- `--temp-dir` (default: `""`)
-
-  The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
 
 
 ### chart secret key create
@@ -3379,6 +3404,63 @@ nelm chart dependency update CHART [flags]
 - `--verify` (default: `false`)
 
   verify the packages against signatures
+
+
+### chart ts init
+
+Initialize the files needed to render manifests using TypeScript\. If PATH is not specified, uses the current directory\.
+
+**Usage:**
+
+```shell
+nelm chart ts init [PATH]
+```
+
+**Other options:**
+
+- `--color-mode` (default: `"auto"`)
+
+  Color mode for logs\. Allowed: auto, off, on\. Vars: \$NELM\_COLOR\_MODE, \$NELM\_CHART\_TS\_INIT\_COLOR\_MODE
+
+- `--log-level` (default: `"info"`)
+
+  Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_TS\_INIT\_LOG\_LEVEL
+
+- `--temp-dir` (default: `""`)
+
+  The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
+
+
+### chart ts build
+
+Build TypeScript chart in the specified directory\. If PATH is not specified, uses the current directory\.
+
+**Usage:**
+
+```shell
+nelm chart ts build [PATH]
+```
+
+**TypeScript options:**
+
+- `--deno-binary-path` (default: `""`)
+
+  Path to the Deno binary to use instead of auto\-downloading\. Vars: \$NELM\_DENO\_BINARY\_PATH, \$NELM\_CHART\_TS\_BUILD\_DENO\_BINARY\_PATH
+
+
+**Other options:**
+
+- `--color-mode` (default: `"auto"`)
+
+  Color mode for logs\. Allowed: auto, off, on\. Vars: \$NELM\_COLOR\_MODE, \$NELM\_CHART\_TS\_BUILD\_COLOR\_MODE
+
+- `--log-level` (default: `"info"`)
+
+  Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_TS\_BUILD\_LOG\_LEVEL
+
+- `--temp-dir` (default: `""`)
+
+  The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
 
 
 ### repo add
