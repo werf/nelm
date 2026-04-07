@@ -1,6 +1,6 @@
 package chart
 
-import internal "github.com/werf/nelm/internal/helm/pkg/chart"
+import internal "github.com/werf/nelm/pkg/helm/pkg/chart"
 
 const APIVersionV2 = internal.APIVersionV2
 

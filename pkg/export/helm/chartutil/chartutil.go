@@ -1,6 +1,6 @@
 package chartutil
 
-import internal "github.com/werf/nelm/internal/helm/pkg/chartutil"
+import internal "github.com/werf/nelm/pkg/helm/pkg/chartutil"
 
 const ValuesfileName = internal.ValuesfileName
 

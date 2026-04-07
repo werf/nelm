@@ -20,13 +20,13 @@ import (
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
-	helmrelease "github.com/werf/nelm/internal/helm/pkg/release"
-	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/plan"
-	"github.com/werf/nelm/internal/release"
-	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/common"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/plan"
+	"github.com/werf/nelm/pkg/release"
+	"github.com/werf/nelm/pkg/util"
 )
 
 func init() {
@@ -176,7 +176,7 @@ func runFailurePlan(ctx context.Context, releaseNamespace string, failedPlan *pl
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build failure plan: %w", err))
 	}
 
-	if _, planIsUseless := lo.Find(failurePlan.Operations(), func(op *plan.Operation) bool {
+	if planIsUseless := lo.NoneBy(failurePlan.Operations(), func(op *plan.Operation) bool {
 		switch op.Category {
 		case plan.OperationCategoryResource, plan.OperationCategoryTrack, plan.OperationCategoryRelease:
 			return true

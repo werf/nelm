@@ -15,14 +15,14 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/nelm/internal/chart"
-	"github.com/werf/nelm/internal/helm/pkg/registry"
-	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
-	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/release"
-	"github.com/werf/nelm/internal/resource/spec"
+	"github.com/werf/nelm/pkg/chart"
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/release"
+	"github.com/werf/nelm/pkg/resource/spec"
 )
 
 const DefaultChartRenderLogLevel = log.ErrorLevel

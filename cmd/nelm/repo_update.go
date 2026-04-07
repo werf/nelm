@@ -8,8 +8,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/werf/common-go/pkg/cli"
-	helm_v3 "github.com/werf/nelm/internal/helm/cmd/helm"
-	"github.com/werf/nelm/internal/helm/pkg/chart/loader"
+	helm_v3 "github.com/werf/nelm/pkg/helm/cmd/helm"
+	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
 	"github.com/werf/nelm/pkg/log"
 )
 

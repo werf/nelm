@@ -1,6 +1,6 @@
 package file
 
-import internal "github.com/werf/nelm/internal/helm/pkg/werf/file"
+import internal "github.com/werf/nelm/pkg/helm/pkg/werf/file"
 
 type ChartExtenderBufferedFile = internal.ChartExtenderBufferedFile
 

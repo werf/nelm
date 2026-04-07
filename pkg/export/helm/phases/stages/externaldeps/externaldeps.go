@@ -1,6 +1,6 @@
 package externaldeps
 
-import internal "github.com/werf/nelm/internal/helm/pkg/phases/stages/externaldeps"
+import internal "github.com/werf/nelm/pkg/helm/pkg/phases/stages/externaldeps"
 
 var NewExternalDependency = internal.NewExternalDependency
 

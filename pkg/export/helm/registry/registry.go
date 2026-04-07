@@ -1,6 +1,6 @@
 package registry
 
-import internal "github.com/werf/nelm/internal/helm/pkg/registry"
+import internal "github.com/werf/nelm/pkg/helm/pkg/registry"
 
 var (
 	NewClient                = internal.NewClient

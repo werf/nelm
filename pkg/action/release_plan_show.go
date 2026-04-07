@@ -7,9 +7,9 @@ import (
 
 	"github.com/samber/lo"
 
-	"github.com/werf/nelm/internal/plan"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/plan"
 )
 
 const DefaultReleasePlanShowLogLevel = log.InfoLevel

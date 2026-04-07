@@ -1,6 +1,6 @@
 package loader
 
-import internal "github.com/werf/nelm/internal/helm/pkg/chart/loader"
+import internal "github.com/werf/nelm/pkg/helm/pkg/chart/loader"
 
 var (
 	Load               = internal.Load

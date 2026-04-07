@@ -20,7 +20,7 @@ import (
 
 	"github.com/werf/kubedog/pkg/tracker/debug"
 	"github.com/werf/logboek"
-	"github.com/werf/nelm/internal/helm/pkg/engine"
+	"github.com/werf/nelm/pkg/helm/pkg/engine"
 )
 
 var Default Logger = NewLogboekLogger()

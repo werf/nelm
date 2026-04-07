@@ -1,6 +1,6 @@
 package release
 
-import internal "github.com/werf/nelm/internal/helm/pkg/release"
+import internal "github.com/werf/nelm/pkg/helm/pkg/release"
 
 const (
 	StatusDeployed = internal.StatusDeployed

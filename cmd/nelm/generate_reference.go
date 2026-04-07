@@ -12,9 +12,9 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/werf/common-go/pkg/cli"
-	"github.com/werf/nelm/internal/util"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
+	"github.com/werf/nelm/pkg/util"
 )
 
 type generateReferenceConfig struct{}

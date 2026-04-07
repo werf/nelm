@@ -14,18 +14,18 @@ import (
 	"github.com/samber/lo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/werf/nelm/internal/chart"
-	"github.com/werf/nelm/internal/helm/pkg/registry"
-	"github.com/werf/nelm/internal/helm/pkg/werf/helmopts"
-	"github.com/werf/nelm/internal/kube"
-	"github.com/werf/nelm/internal/plan"
-	"github.com/werf/nelm/internal/release"
-	"github.com/werf/nelm/internal/resource"
-	"github.com/werf/nelm/internal/resource/spec"
-	"github.com/werf/nelm/internal/util"
+	"github.com/werf/nelm/pkg/chart"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
+	"github.com/werf/nelm/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/plan"
+	"github.com/werf/nelm/pkg/release"
+	"github.com/werf/nelm/pkg/resource"
+	"github.com/werf/nelm/pkg/resource/spec"
+	"github.com/werf/nelm/pkg/util"
 )
 
 const DefaultReleasePlanInstallLogLevel = log.InfoLevel
@@ -354,9 +354,20 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Build resource infos")
 
+	lastDeployedOrLastRelease := lo.Ternary(prevDeployedRelease != nil, prevDeployedRelease, prevRelease)
+
+	var lastDeployedOrLastRelResSpecs []*spec.ResourceSpec
+	if lastDeployedOrLastRelease != nil {
+		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(lastDeployedOrLastRelease, releaseNamespace, false)
+		if err != nil {
+			return fmt.Errorf("convert last deployed or last release to resource specs: %w", err)
+		}
+	}
+
 	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
-		NetworkParallelism:    opts.NetworkParallelism,
-		NoRemoveManualChanges: opts.NoRemoveManualChanges,
+		NetworkParallelism:                 opts.NetworkParallelism,
+		NoRemoveManualChanges:              opts.NoRemoveManualChanges,
+		LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,
 	})
 	if err != nil {
 		return fmt.Errorf("build resource infos: %w", err)

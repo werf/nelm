@@ -82,10 +82,10 @@ linters:
     wrapcheck:
       extra-ignore-sigs:
         - context.Cause(
-        - (*github.com/werf/nelm/internal/util.MultiError).OrNilIfNoErrs(
+        - (*github.com/werf/nelm/pkg/util.MultiError).OrNilIfNoErrs(
     errcheck:
       exclude-functions:
-        - (*github.com/werf/nelm/internal/util.MultiError).Add
+        - (*github.com/werf/nelm/pkg/util.MultiError).Add
   exclusions:
     generated: lax
     presets:
@@ -100,9 +100,8 @@ linters:
       - builtin$
       - examples$
       - pkg/legacy
-      - internal/legacy
       - pkg/action/release_uninstall_legacy.go$
-      - internal/helm
+      - pkg/helm
     rules:
       - path: '.+/log/.+\.go'
         linters:
@@ -131,7 +130,7 @@ formatters:
       - third_party$
       - builtin$
       - examples$
-      - internal/helm
+      - pkg/helm
 
 issues:
   max-issues-per-linter: 0

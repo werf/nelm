@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.23.2](https://github.com/werf/nelm/compare/v1.23.1...v1.23.2) (2026-03-27)
+
+
+### Bug Fixes
+
+* goroutine leak in watch error channel consumer for ReleaseInstall, ReleaseUninstall and ReleaseRollback ([#585](https://github.com/werf/nelm/issues/585)) ([9fd804c](https://github.com/werf/nelm/commit/9fd804c04354eadc949dee88838bb5c42ad318b7))
+* release had pending status after error instead of failed ([#587](https://github.com/werf/nelm/issues/587)) ([ead2882](https://github.com/werf/nelm/commit/ead28823369d9a011506b52da57c1a672d6aa90c))
+
+## [1.23.1](https://github.com/werf/nelm/compare/v1.23.0...v1.23.1) (2026-03-23)
+
+
+### Bug Fixes
+
+* accidental removal of unknown resource field managers ([#580](https://github.com/werf/nelm/issues/580)) ([16b6e4c](https://github.com/werf/nelm/commit/16b6e4c6051e9bd696b20cbd0ee1917c619a8fbe))
+* adopt managed fields after migration from helm to nelm ([#582](https://github.com/werf/nelm/issues/582)) ([b9a9895](https://github.com/werf/nelm/commit/b9a98951ca4988835e11b0ede77e424810da7409))
+* pass option for yaml validator to allow duplicate map key ([#584](https://github.com/werf/nelm/issues/584)) ([cd34ead](https://github.com/werf/nelm/commit/cd34ead6f9a18ccbc99caf501d4d740a916cf0ef))
+
+## [1.23.0](https://github.com/werf/nelm/compare/v1.22.0...v1.23.0) (2026-03-13)
+
+
+### Features
+
+* switch to goccy/go-yaml and improve parse error context ([#572](https://github.com/werf/nelm/issues/572)) ([826a6f7](https://github.com/werf/nelm/commit/826a6f789be40b5a3f1cd9b877d8a41057e71ce9))
+
+
+### Bug Fixes
+
+* --set-root-json not working ([08c8522](https://github.com/werf/nelm/commit/08c852246d1253dc9d5557be30a01e6ffc49dbbc))
+* print engine.Render() result on debug level ([#570](https://github.com/werf/nelm/issues/570)) ([9a7591e](https://github.com/werf/nelm/commit/9a7591e58b8329ebdaa3471e926ee68f5dabd265))
+* tracking absence for release namespace deletion ([#571](https://github.com/werf/nelm/issues/571)) ([ed6e23e](https://github.com/werf/nelm/commit/ed6e23e80acd1a88f2aac4a25b0124535b1c5a45))
+
 ## [1.22.0](https://github.com/werf/nelm/compare/v1.21.0...v1.22.0) (2026-02-18)
 
 
