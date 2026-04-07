@@ -7,12 +7,12 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/gookit/color"
 	prtable "github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
-	"github.com/samber/lo"
 
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
@@ -23,26 +23,22 @@ import (
 )
 
 const (
-	DefaultReleaseListLogLevel     = log.ErrorLevel
-	DefaultReleaseListOutputFormat = common.OutputFormatTable
+	DefaultReleaseHistoryLogLevel     = log.ErrorLevel
+	DefaultReleaseHistoryOutputFormat = common.OutputFormatTable
 )
 
-type ReleaseListOptions struct {
+type ReleaseHistoryOptions struct {
 	common.KubeConnectionOptions
 
-	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
-	// Defaults to DefaultNetworkParallelism if not set or <= 0.
-	NetworkParallelism int
-	// OutputFormat specifies the output format for the release list.
+	// Max limits the number of revisions returned. 0 means no limit.
+	Max int
+	// OutputFormat specifies the output format for the release history.
 	// Valid values: "table" (default), "yaml", "json".
-	// Defaults to DefaultReleaseListOutputFormat (table) if not specified.
+	// Defaults to DefaultReleaseHistoryOutputFormat (table) if not specified.
 	OutputFormat string
 	// OutputNoPrint, when true, suppresses printing the output and only returns the result data structure.
 	// Useful when calling this programmatically.
 	OutputNoPrint bool
-	// ReleaseNamespace specifies the namespace to list releases from.
-	// If empty, uses the namespace from kubeconfig context.
-	ReleaseNamespace string
 	// ReleaseStorageDriver specifies how release metadata is stored in Kubernetes.
 	// Valid values: "secret" (default), "configmap", "sql".
 	// Defaults to "secret" if not specified or set to "default".
@@ -55,47 +51,49 @@ type ReleaseListOptions struct {
 	TempDirPath string
 }
 
-type ReleaseListResultV1 struct {
-	APIVersion string                      `json:"apiVersion"`
-	Releases   []*ReleaseListResultRelease `json:"releases"`
+type ReleaseHistoryResultV1 struct {
+	APIVersion string                         `json:"apiVersion"`
+	Releases   []*ReleaseHistoryResultRelease `json:"releases"`
 }
 
-type ReleaseListResultRelease struct {
+type ReleaseHistoryResultRelease struct {
 	Name        string                       `json:"name"`
 	Namespace   string                       `json:"namespace"`
 	Revision    int                          `json:"revision"`
 	Status      helmreleasestatus.Status     `json:"status"`
-	DeployedAt  *ReleaseListResultDeployedAt `json:"deployedAt"`
+	Updated     *ReleaseHistoryResultUpdated `json:"updated"`
 	Annotations map[string]string            `json:"annotations"`
-	Chart       *ReleaseListResultChart      `json:"chart"`
+	Chart       *ReleaseHistoryResultChart   `json:"chart"`
+	Description string                       `json:"description"`
 }
 
-type ReleaseListResultDeployedAt struct {
-	Human string `json:"human"`
-	Unix  int    `json:"unix"`
+type ReleaseHistoryResultUpdated struct {
+	Human      string `json:"human"`
+	HumanTable string `json:"-" yaml:"-"`
+	Unix       int    `json:"unix"`
 }
 
-type ReleaseListResultChart struct {
+type ReleaseHistoryResultChart struct {
 	Name       string `json:"name"`
 	Version    string `json:"version"`
 	AppVersion string `json:"appVersion"`
 }
 
-// Lists Helm releases from the cluster.
-func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResultV1, error) {
+// Lists Helm release history from the cluster.
+func ReleaseHistory(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseHistoryOptions) (*ReleaseHistoryResultV1, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("get home directory: %w", err)
 	}
 
-	opts, err = applyReleaseListOptionsDefaults(opts, homeDir)
+	opts, err = applyReleaseHistoryOptionsDefaults(opts, homeDir)
 	if err != nil {
-		return nil, fmt.Errorf("build release list options: %w", err)
+		return nil, fmt.Errorf("build release history options: %w", err)
 	}
 
 	kubeConfig, err := kube.NewKubeConfig(ctx, kube.KubeConfigOptions{
 		KubeConnectionOptions: opts.KubeConnectionOptions,
-		KubeContextNamespace:  opts.ReleaseNamespace, // TODO: unset it everywhere
+		KubeContextNamespace:  releaseNamespace, // TODO: unset it everywhere
 	})
 	if err != nil {
 		return nil, fmt.Errorf("construct kube config: %w", err)
@@ -106,7 +104,7 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 		return nil, fmt.Errorf("construct kube client factory: %w", err)
 	}
 
-	releaseStorage, err := release.NewReleaseStorage(ctx, opts.ReleaseNamespace, opts.ReleaseStorageDriver, clientFactory, release.ReleaseStorageOptions{
+	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, clientFactory, release.ReleaseStorageOptions{
 		SQLConnection: opts.ReleaseStorageSQLConnection,
 	})
 	if err != nil {
@@ -115,46 +113,53 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 
 	loader.NoChartLockWarning = ""
 
-	log.Default.Info(ctx, "Build release histories")
+	log.Default.Info(ctx, "Build release history")
 
-	histories, err := release.BuildHistories(releaseStorage, release.HistoryOptions{})
+	history, err := release.BuildHistory(releaseName, releaseStorage, release.HistoryOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("build release histories: %w", err)
+		return nil, fmt.Errorf("build release history: %w", err)
 	}
 
-	result := &ReleaseListResultV1{
+	result := &ReleaseHistoryResultV1{
 		APIVersion: "v1",
 	}
 
-	for _, history := range histories {
-		releases := history.Releases()
-		lastRelease := lo.LastOrEmpty(releases)
+	releases := history.Releases()
+	if len(releases) == 0 {
+		return nil, &ReleaseNotFoundError{
+			ReleaseName:      releaseName,
+			ReleaseNamespace: releaseNamespace,
+		}
+	}
 
-		result.Releases = append(result.Releases, &ReleaseListResultRelease{
-			Annotations: lastRelease.Info.Annotations,
-			Chart: &ReleaseListResultChart{
-				Name:       lastRelease.Chart.Name(),
-				Version:    lastRelease.Chart.Metadata.Version,
-				AppVersion: lastRelease.Chart.Metadata.AppVersion,
+	for _, release := range releases {
+		result.Releases = append(result.Releases, &ReleaseHistoryResultRelease{
+			Annotations: release.Info.Annotations,
+			Chart: &ReleaseHistoryResultChart{
+				Name:       release.Chart.Name(),
+				Version:    release.Chart.Metadata.Version,
+				AppVersion: release.Chart.Metadata.AppVersion,
 			},
-			DeployedAt: &ReleaseListResultDeployedAt{
-				Human: lastRelease.Info.LastDeployed.String(),
-				Unix:  int(lastRelease.Info.LastDeployed.Unix()),
+			Description: release.Info.Description,
+			Name:        release.Name,
+			Namespace:   release.Namespace,
+			Revision:    release.Version,
+			Status:      release.Info.Status,
+			Updated: &ReleaseHistoryResultUpdated{
+				Human:      release.Info.LastDeployed.String(),
+				HumanTable: release.Info.LastDeployed.Format(time.ANSIC),
+				Unix:       int(release.Info.LastDeployed.Unix()),
 			},
-			Name:      lastRelease.Name,
-			Namespace: lastRelease.Namespace,
-			Revision:  lastRelease.Version,
-			Status:    lastRelease.Info.Status,
 		})
 	}
 
 	sort.SliceStable(result.Releases, func(i, j int) bool {
-		if result.Releases[i].Namespace != result.Releases[j].Namespace {
-			return result.Releases[i].Namespace < result.Releases[j].Namespace
-		}
-
-		return result.Releases[i].Name < result.Releases[j].Name
+		return result.Releases[i].Revision < result.Releases[j].Revision
 	})
+
+	if opts.Max > 0 && len(result.Releases) > opts.Max {
+		result.Releases = result.Releases[len(result.Releases)-opts.Max:]
+	}
 
 	if opts.OutputNoPrint {
 		return result, nil
@@ -164,7 +169,7 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 
 	switch opts.OutputFormat {
 	case common.OutputFormatTable:
-		table := buildReleaseListOutputTable(ctx, result, opts.ReleaseNamespace != "")
+		table := buildReleaseHistoryOutputTable(ctx, result)
 		resultMessage = table.Render() + "\n"
 	case common.OutputFormatJSON:
 		b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
@@ -196,17 +201,17 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 	return result, nil
 }
 
-func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV1, namespaced bool) prtable.Writer {
+func buildReleaseHistoryOutputTable(ctx context.Context, result *ReleaseHistoryResultV1) prtable.Writer {
 	table := prtable.NewWriter()
-	setReleaseListOutputTableStyle(ctx, table)
+	setReleaseHistoryOutputTableStyle(ctx, table)
 
 	headerRow := prtable.Row{
-		color.New(color.Bold).Sprintf("NAME"),
-		color.New(color.Bold).Sprintf("STATUS"),
 		color.New(color.Bold).Sprintf("REVISION"),
-	}
-	if !namespaced {
-		headerRow = append([]interface{}{color.New(color.Bold).Sprintf("NAMESPACE")}, headerRow...)
+		color.New(color.Bold).Sprintf("UPDATED"),
+		color.New(color.Bold).Sprintf("STATUS"),
+		color.New(color.Bold).Sprintf("CHART"),
+		color.New(color.Bold).Sprintf("APP VERSION"),
+		color.New(color.Bold).Sprintf("DESCRIPTION"),
 	}
 
 	table.AppendHeader(headerRow)
@@ -223,12 +228,12 @@ func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV
 		}
 
 		row := prtable.Row{
-			color.New(color.Cyan).Sprintf("%s", release.Name),
-			color.New(statusColor).Sprintf("%s", string(release.Status)),
 			release.Revision,
-		}
-		if !namespaced {
-			row = append([]interface{}{release.Namespace}, row...)
+			release.Updated.HumanTable,
+			color.New(statusColor).Sprint(release.Status),
+			color.New(color.Cyan).Sprintf("%s-%s", release.Chart.Name, release.Chart.Version),
+			release.Chart.AppVersion,
+			release.Description,
 		}
 
 		table.AppendRow(row)
@@ -237,33 +242,29 @@ func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV
 	return table
 }
 
-func applyReleaseListOptionsDefaults(opts ReleaseListOptions, homeDir string) (ReleaseListOptions, error) {
+func applyReleaseHistoryOptionsDefaults(opts ReleaseHistoryOptions, homeDir string) (ReleaseHistoryOptions, error) {
 	var err error
 	if opts.TempDirPath == "" {
 		opts.TempDirPath, err = os.MkdirTemp("", "")
 		if err != nil {
-			return ReleaseListOptions{}, fmt.Errorf("create temp dir: %w", err)
+			return ReleaseHistoryOptions{}, fmt.Errorf("create temp dir: %w", err)
 		}
 	}
 
 	opts.KubeConnectionOptions.ApplyDefaults(homeDir)
-
-	if opts.NetworkParallelism <= 0 {
-		opts.NetworkParallelism = common.DefaultNetworkParallelism
-	}
 
 	if opts.ReleaseStorageDriver == common.ReleaseStorageDriverDefault {
 		opts.ReleaseStorageDriver = common.ReleaseStorageDriverSecrets
 	}
 
 	if opts.OutputFormat == "" {
-		opts.OutputFormat = DefaultReleaseListOutputFormat
+		opts.OutputFormat = DefaultReleaseHistoryOutputFormat
 	}
 
 	return opts, nil
 }
 
-func setReleaseListOutputTableStyle(ctx context.Context, table prtable.Writer) {
+func setReleaseHistoryOutputTableStyle(ctx context.Context, table prtable.Writer) {
 	style := prtable.StyleBoxDefault
 	style.PaddingLeft = ""
 	style.PaddingRight = "  "
@@ -289,6 +290,10 @@ func setReleaseListOutputTableStyle(ctx context.Context, table prtable.Writer) {
 			Number: 5,
 			Align:  text.AlignLeft,
 		},
+		{
+			Number: 6,
+			Align:  text.AlignLeft,
+		},
 	}
 
 	tableWidth := log.Default.BlockContentWidth(ctx)
@@ -299,13 +304,13 @@ func setReleaseListOutputTableStyle(ctx context.Context, table prtable.Writer) {
 	}
 
 	paddingsWidth := len(columnConfigs) * (len(style.PaddingLeft) + len(style.PaddingRight))
-	columnsWidth := tableWidth - paddingsWidth
 
-	columnConfigs[2].WidthMax = 16
-	columnConfigs[3].WidthMax = 8
-	columnConfigs[0].WidthMax = int(float64(columnsWidth-columnConfigs[2].WidthMax-columnConfigs[3].WidthMax) * 0.3)
-	columnConfigs[1].WidthMax = int(float64(columnsWidth-columnConfigs[2].WidthMax-columnConfigs[3].WidthMax) * 0.4)
-	columnConfigs[4].WidthMax = int(float64(columnsWidth-columnConfigs[2].WidthMax-columnConfigs[3].WidthMax) * 0.4)
+	columnConfigs[0].WidthMax = 10
+	columnConfigs[1].WidthMax = 25
+	columnConfigs[2].WidthMax = 12
+	columnConfigs[3].WidthMax = 24
+	columnConfigs[4].WidthMax = 16
+	columnConfigs[5].WidthMax = tableWidth - paddingsWidth - columnConfigs[0].WidthMax - columnConfigs[1].WidthMax - columnConfigs[2].WidthMax - columnConfigs[3].WidthMax - columnConfigs[4].WidthMax
 
 	table.SetColumnConfigs(columnConfigs)
 	table.SetStyle(prtable.Style{
