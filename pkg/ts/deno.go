@@ -36,23 +36,22 @@ func BundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path str
 
 func bundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path string, rebuildBundle bool, denoBin string) error {
 	entrypoint, bundle := getEntrypointAndBundle(chart.RuntimeFiles)
-	if entrypoint == "" {
-		return nil
-	}
 
-	if bundle == nil || rebuildBundle {
-		log.Default.Info(ctx, "Bundle TypeScript for chart %q (entrypoint: %s)", chart.Name(), entrypoint)
+	if entrypoint != "" {
+		if bundle == nil || rebuildBundle {
+			log.Default.Info(ctx, "Bundle TypeScript for chart %q (entrypoint: %s)", chart.Name(), entrypoint)
 
-		bundleRes, err := runDenoBundle(ctx, path, entrypoint, denoBin)
-		if err != nil {
-			return fmt.Errorf("build TypeScript bundle: %w", err)
+			bundleRes, err := runDenoBundle(ctx, path, entrypoint, denoBin)
+			if err != nil {
+				return fmt.Errorf("build TypeScript bundle: %w", err)
+			}
+
+			if bundle != nil {
+				chart.RemoveRuntimeFile(common.ChartTSBundleFile)
+			}
+
+			chart.AddRuntimeFile(common.ChartTSBundleFile, bundleRes)
 		}
-
-		if bundle != nil {
-			chart.RemoveRuntimeFile(common.ChartTSBundleFile)
-		}
-
-		chart.AddRuntimeFile(common.ChartTSBundleFile, bundleRes)
 	}
 
 	for _, dep := range chart.Dependencies() {
