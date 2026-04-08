@@ -1,4 +1,4 @@
-package plan
+package action
 
 import (
 	"compress/gzip"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/samber/lo"
+	"github.com/werf/nelm/pkg/plan"
 
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/pkg/common"
@@ -32,11 +33,11 @@ type PlanArtifact struct {
 
 type PlanArtifactData struct {
 	Options                  common.ReleaseInstallRuntimeOptions `json:"options"`
-	Changes                  []*ResourceChange                   `json:"changes"`
-	Plan                     *Plan                               `json:"plan"`
+	Changes                  []*plan.ResourceChange              `json:"changes"`
+	Plan                     *plan.Plan                          `json:"plan"`
 	Release                  *helmrelease.Release                `json:"release"`
-	InstallableResourceInfos []*InstallableResourceInfo          `json:"installableResourceInfos"`
-	ReleaseInfos             []*ReleaseInfo                      `json:"releaseInfos"`
+	InstallableResourceInfos []*plan.InstallableResourceInfo     `json:"installableResourceInfos"`
+	ReleaseInfos             []*plan.ReleaseInfo                 `json:"releaseInfos"`
 }
 
 type PlanArtifactRelease struct {
