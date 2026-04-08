@@ -108,7 +108,7 @@ type ReleasePlanInstallOptions struct {
 }
 
 // Plans the next release installation without applying changes to the cluster.
-func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleasePlanInstallOptions) (*plan.Artifact, error) {
+func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleasePlanInstallOptions) (*PlanArtifact, error) {
 	ctx, ctxCancelFn := context.WithCancelCause(ctx)
 
 	if opts.Timeout == 0 {
@@ -119,7 +119,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 	defer ctxCancelFn(fmt.Errorf("context canceled: action finished"))
 
 	type actionResult struct {
-		artifact *plan.Artifact // Replace with your actual type
+		artifact *PlanArtifact // Replace with your actual type
 		err      error
 	}
 
@@ -139,7 +139,7 @@ func ReleasePlanInstall(ctx context.Context, releaseName, releaseNamespace strin
 	}
 }
 
-func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, opts ReleasePlanInstallOptions) (*plan.Artifact, error) {
+func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, opts ReleasePlanInstallOptions) (*PlanArtifact, error) {
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("get current working directory: %w", err)
@@ -415,9 +415,9 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		log.Default.Info(ctx, color.Style{color.Bold, color.Yellow}.Render(fmt.Sprintf("No resource changes planned, but still must install release %q (namespace: %q)", releaseName, releaseNamespace)))
 	}
 
-	planArtifact := &plan.Artifact{
-		APIVersion: plan.ArtifactSchemeVersion,
-		Data: &plan.ArtifactData{
+	planArtifact := &PlanArtifact{
+		APIVersion: PlanArtifactSchemeVersion,
+		Data: &PlanArtifactData{
 			Options:                  opts.ReleaseInstallRuntimeOptions,
 			Release:                  newRelease,
 			Plan:                     installPlan,
@@ -426,7 +426,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 			ReleaseInfos:             relInfos,
 		},
 		DeployType: deployType,
-		Release: plan.ArtifactRelease{
+		Release: PlanArtifactRelease{
 			Name:      releaseName,
 			Namespace: releaseNamespace,
 			Revision:  newRelease.Version,
@@ -439,7 +439,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	}
 
 	if opts.PlanArtifactPath != "" {
-		if err := plan.WriteArtifact(ctx, planArtifact, opts.PlanArtifactPath, opts.SecretKey, opts.SecretWorkDir); err != nil {
+		if err := WritePlanArtifact(ctx, planArtifact, opts.PlanArtifactPath, opts.SecretKey, opts.SecretWorkDir); err != nil {
 			return nil, fmt.Errorf("save install plan to %q: %w", opts.PlanArtifactPath, err)
 		}
 	}
@@ -457,7 +457,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	return planArtifact, nil
 }
 
-func logPlannedChanges(ctx context.Context, planArtifact *plan.Artifact, opts common.ResourceDiffOptions) error {
+func logPlannedChanges(ctx context.Context, planArtifact *PlanArtifact, opts common.ResourceDiffOptions) error {
 	if len(planArtifact.Data.Changes) == 0 {
 		return nil
 	}

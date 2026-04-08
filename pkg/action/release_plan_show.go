@@ -9,7 +9,6 @@ import (
 
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/plan"
 )
 
 const DefaultReleasePlanShowLogLevel = log.InfoLevel
@@ -18,7 +17,7 @@ type ReleasePlanShowOptions struct {
 	common.ResourceDiffOptions
 
 	// LegacyPlanArtifact provides plan artifact to review changes.
-	LegacyPlanArtifact *plan.Artifact
+	LegacyPlanArtifact *PlanArtifact
 	// PlanArtifactPath is the path to the plan artifact file to review changes.
 	PlanArtifactPath string
 	// SecretKey is the encryption/decryption key for the plan artifact file.
@@ -44,7 +43,7 @@ func ReleasePlanShow(ctx context.Context, opts ReleasePlanShowOptions) error {
 		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
 	}
 
-	var planArtifact *plan.Artifact
+	var planArtifact *PlanArtifact
 
 	if opts.LegacyPlanArtifact != nil {
 		planArtifact = opts.LegacyPlanArtifact
@@ -53,7 +52,7 @@ func ReleasePlanShow(ctx context.Context, opts ReleasePlanShowOptions) error {
 
 		log.Default.Debug(ctx, "Read plan artifact")
 
-		planArtifact, err = plan.ReadArtifact(ctx, opts.PlanArtifactPath, opts.SecretKey, opts.SecretWorkDir)
+		planArtifact, err = ReadPlanArtifact(ctx, opts.PlanArtifactPath, opts.SecretKey, opts.SecretWorkDir)
 		if err != nil {
 			return fmt.Errorf("read plan artifact from %s: %w", opts.PlanArtifactPath, err)
 		}

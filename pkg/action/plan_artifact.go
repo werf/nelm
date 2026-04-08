@@ -1,4 +1,4 @@
-package plan
+package action
 
 import (
 	"compress/gzip"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/samber/lo"
+	"github.com/werf/nelm/pkg/plan"
 
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/pkg/common"
@@ -17,35 +18,35 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const ArtifactSchemeVersion = "v1"
+const PlanArtifactSchemeVersion = "v1"
 
-type Artifact struct {
-	APIVersion string            `json:"apiVersion"`
-	Data       *ArtifactData     `json:"-"`
-	DataRaw    string            `json:"dataRaw"`
-	DeployType common.DeployType `json:"deployType"`
-	Encrypted  bool              `json:"encrypted"`
-	Release    ArtifactRelease   `json:"release"`
+type PlanArtifact struct {
+	APIVersion string              `json:"apiVersion"`
+	Data       *PlanArtifactData   `json:"-"`
+	DataRaw    string              `json:"dataRaw"`
+	DeployType common.DeployType   `json:"deployType"`
+	Encrypted  bool                `json:"encrypted"`
+	Release    PlanArtifactRelease `json:"release"`
 
 	Timestamp time.Time `json:"timestamp"`
 }
 
-type ArtifactData struct {
+type PlanArtifactData struct {
 	Options                  common.ReleaseInstallRuntimeOptions `json:"options"`
-	Changes                  []*ResourceChange                   `json:"changes"`
-	Plan                     *Plan                               `json:"plan"`
+	Changes                  []*plan.ResourceChange              `json:"changes"`
+	Plan                     *plan.Plan                          `json:"plan"`
 	Release                  *helmrelease.Release                `json:"release"`
-	InstallableResourceInfos []*InstallableResourceInfo          `json:"installableResourceInfos"`
-	ReleaseInfos             []*ReleaseInfo                      `json:"releaseInfos"`
+	InstallableResourceInfos []*plan.InstallableResourceInfo     `json:"installableResourceInfos"`
+	ReleaseInfos             []*plan.ReleaseInfo                 `json:"releaseInfos"`
 }
 
-type ArtifactRelease struct {
+type PlanArtifactRelease struct {
 	Name      string `json:"name"`
 	Namespace string `json:"namespace"`
 	Revision  int    `json:"revision"`
 }
 
-func ReadArtifact(ctx context.Context, path, secretKey, secretWorkDir string) (*Artifact, error) {
+func ReadPlanArtifact(ctx context.Context, path, secretKey, secretWorkDir string) (*PlanArtifact, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open plan artifact file: %w", err)
@@ -58,7 +59,7 @@ func ReadArtifact(ctx context.Context, path, secretKey, secretWorkDir string) (*
 	}
 	defer gzipReader.Close()
 
-	var artifact Artifact
+	var artifact PlanArtifact
 
 	if err := json.NewDecoder(gzipReader).Decode(&artifact); err != nil {
 		return nil, fmt.Errorf("decode plan artifact json: %w", err)
@@ -90,7 +91,7 @@ func ReadArtifact(ctx context.Context, path, secretKey, secretWorkDir string) (*
 		dataJSON = []byte(artifact.DataRaw)
 	}
 
-	var data ArtifactData
+	var data PlanArtifactData
 
 	if err := json.Unmarshal(dataJSON, &data); err != nil {
 		return nil, fmt.Errorf("decode artifact data json: %w", err)
@@ -101,7 +102,7 @@ func ReadArtifact(ctx context.Context, path, secretKey, secretWorkDir string) (*
 	return &artifact, nil
 }
 
-func ValidateArtifact(artifact *Artifact, lifetime time.Duration) error {
+func ValidatePlanArtifact(artifact *PlanArtifact, lifetime time.Duration) error {
 	if artifact == nil {
 		return errors.New("plan shouldn't be empty")
 	}
@@ -134,7 +135,7 @@ func ValidateArtifact(artifact *Artifact, lifetime time.Duration) error {
 	return nil
 }
 
-func WriteArtifact(ctx context.Context, artifact *Artifact, path, secretKey, secretWorkDir string) error {
+func WritePlanArtifact(ctx context.Context, artifact *PlanArtifact, path, secretKey, secretWorkDir string) error {
 	dataJSON, err := json.Marshal(artifact.Data)
 	if err != nil {
 		return fmt.Errorf("marshal artifact data to json: %w", err)

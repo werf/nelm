@@ -89,7 +89,7 @@ type ReleaseInstallOptions struct {
 	// Defaults to io.Discard if not set. Used for debugging registry operations.
 	LegacyLogRegistryStreamOut io.Writer
 	// LegacyPlanArtifact provides plan artifact as a result of the release plan install action.
-	LegacyPlanArtifact *plan.Artifact
+	LegacyPlanArtifact *PlanArtifact
 	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
 	// Must be a buffered channel with capacity >= 1. The caller owns the channel and is responsible
 	// for its lifecycle. Intermediate reports may be dropped if the consumer is slow; the final
@@ -186,14 +186,14 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
 	}
 
-	var planArtifact *plan.Artifact
+	var planArtifact *PlanArtifact
 
 	if opts.PlanArtifactPath != "" {
 		log.Default.Info(ctx, "Using %s plan artifact", opts.PlanArtifactPath)
 
 		log.Default.Debug(ctx, "Read plan artifact")
 
-		planArtifact, err = plan.ReadArtifact(ctx, opts.PlanArtifactPath, opts.SecretKey, opts.SecretWorkDir)
+		planArtifact, err = ReadPlanArtifact(ctx, opts.PlanArtifactPath, opts.SecretKey, opts.SecretWorkDir)
 		if err != nil {
 			return fmt.Errorf("read plan artifact from %s: %w", opts.PlanArtifactPath, err)
 		}
@@ -206,7 +206,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	if usePlan {
 		log.Default.Debug(ctx, "Validate plan artifact")
 
-		if err := plan.ValidateArtifact(planArtifact, opts.PlanArtifactLifetime); err != nil {
+		if err := ValidatePlanArtifact(planArtifact, opts.PlanArtifactLifetime); err != nil {
 			return fmt.Errorf("validate plan artifact: %w", err)
 		}
 
