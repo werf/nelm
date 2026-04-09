@@ -491,8 +491,7 @@ tasks:
         sg scan --rule "$intern_rule" -U "{{.forkSnapshotDir}}"
         rm -f "$intern_rule"
 
-        rm -f "{{.forkSnapshotDir}}/cmd/helm/helm.go"
-        find "{{.forkSnapshotDir}}/cmd/helm" -name "*.go" -exec perl -i -p -e 's/^package main$/package helm/' {} +
+        rm -rf "{{.forkSnapshotDir}}/cmd"
 
         git -C "{{.forkSnapshotDir}}" add -A
         git -C "{{.forkSnapshotDir}}" -c user.name="sync" -c user.email="sync@local" \
@@ -504,7 +503,7 @@ tasks:
         git fetch "{{.forkTempRemote}}" prepared
         git checkout -B "{{.forkSyncBranch}}" FETCH_HEAD --no-track
 
-        prev_split=$(git log --grep="git-subtree-dir: {{.forkPrefix}}" --format="%b" "${original_ref}" | grep -m1 "^git-subtree-split:" | cut -d' ' -f2)
+        prev_split=$(git log --grep="git-subtree-dir: {{.forkPrefix}}" --format="%b" "${original_ref}" | grep "^git-subtree-split:" | head -n1 | cut -d' ' -f2)
         if [ -z "$prev_split" ]; then
           echo "WARNING: no previous subtree split found for {{.forkPrefix}}, skipping file stripping"
         else

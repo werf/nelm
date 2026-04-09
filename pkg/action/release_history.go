@@ -299,12 +299,16 @@ func setReleaseHistoryOutputTableStyle(ctx context.Context, table prtable.Writer
 		tableWidth = 200
 	}
 
+	paddingsWidth := len(columnConfigs) * (len(style.PaddingLeft) + len(style.PaddingRight))
+
 	columnConfigs[0].WidthMax = 10
-	columnConfigs[1].WidthMax = 12
-	columnConfigs[2].WidthMax = 25
-	columnConfigs[3].WidthMax = 24
+	columnConfigs[1].WidthMax = 16
+	columnConfigs[2].WidthMax = 30
 	columnConfigs[4].WidthMax = 16
 	columnConfigs[5].WidthMax = 16
+
+	fixedWidth := columnConfigs[0].WidthMax + columnConfigs[1].WidthMax + columnConfigs[2].WidthMax + columnConfigs[4].WidthMax + columnConfigs[5].WidthMax
+	columnConfigs[3].WidthMax = tableWidth - paddingsWidth - fixedWidth
 
 	table.SetColumnConfigs(columnConfigs)
 	table.SetStyle(prtable.Style{
