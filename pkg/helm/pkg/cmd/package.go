@@ -30,6 +30,7 @@ import (
 	"github.com/werf/nelm/pkg/helm/pkg/cli/values"
 	"github.com/werf/nelm/pkg/helm/pkg/downloader"
 	"github.com/werf/nelm/pkg/helm/pkg/getter"
+	"github.com/werf/nelm/pkg/ts"
 )
 
 const packageDesc = `
@@ -56,7 +57,7 @@ func newPackageCmd(out io.Writer) *cobra.Command {
 		Use:   "package [CHART_PATH] [...]",
 		Short: "package a chart directory into a chart archive",
 		Long:  packageDesc,
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return fmt.Errorf("need at least one argument, the path to the chart")
 			}
@@ -68,6 +69,8 @@ func newPackageCmd(out io.Writer) *cobra.Command {
 					return errors.New("--keyring is required for signing a package")
 				}
 			}
+
+			client.TypeScriptOps = ts.GetTSOptionsFromContext(cmd.Context())
 			client.RepositoryConfig = settings.RepositoryConfig
 			client.RepositoryCache = settings.RepositoryCache
 			p := getter.All(settings)

@@ -57,6 +57,8 @@ type ChartRenderOptions struct {
 	DefaultChartName string
 	// DefaultChartVersion sets the default chart version when Chart.yaml doesn't specify one.
 	DefaultChartVersion string
+	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
+	DenoBinaryPath string
 	// ExtraAPIVersions is a list of additional Kubernetes API versions to include when rendering.
 	// Used by Capabilities.APIVersions in templates to check for API availability.
 	ExtraAPIVersions []string
@@ -69,6 +71,8 @@ type ChartRenderOptions struct {
 	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime.
 	// TODO(major): remove or implement custom logic for this field.
 	ExtraRuntimeAnnotations map[string]string
+	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources.
+	IgnoreBundleJS bool
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.
 	LegacyChartType common.LegacyChartType
@@ -252,6 +256,9 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		LocalKubeVersion:           opts.LocalKubeVersion,
 		Remote:                     opts.Remote,
 		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
+		TempDirPath:                opts.TempDirPath,
+		IgnoreBundleJS:             opts.IgnoreBundleJS,
+		DenoBinaryPath:             opts.DenoBinaryPath,
 	}
 
 	log.Default.Debug(ctx, "Render chart")

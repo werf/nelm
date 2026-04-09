@@ -10,7 +10,7 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/action"
-	"github.com/werf/nelm/pkg/featgate"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
 	helmcmd "github.com/werf/nelm/pkg/helm/pkg/cmd"
 	"github.com/werf/nelm/pkg/log"
@@ -18,6 +18,7 @@ import (
 )
 
 func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
+	opts := common.TypeScriptOptions{}
 	cmd := lo.Must(lo.Find(helmRootCmd.Commands(), func(c *cobra.Command) bool {
 		return strings.HasPrefix(c.Use, "package")
 	}))
@@ -34,21 +35,25 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 		helmSettings := helmcmd.Settings
 
 		// FIXME(major): should we do it like that everywhere, setting the context?
-		ctx := action.SetupLogging(cmd.Context(), lo.Ternary(helmSettings.Debug, log.DebugLevel, log.InfoLevel), action.SetupLoggingOptions{})
+		ctx = action.SetupLogging(cmd.Context(), lo.Ternary(helmSettings.Debug, log.DebugLevel, log.InfoLevel), action.SetupLoggingOptions{})
+		ctx = ts.NewContextWithTSOptions(ctx, opts)
 		cmd.SetContext(ctx)
 
 		loader.NoChartLockWarning = ""
 
-		if featgate.FeatGateTypescript.Enabled() {
-			for _, chartPath := range args {
-				if err := ts.BuildVendorBundleToDir(ctx, chartPath); err != nil {
-					return fmt.Errorf("build TypeScript vendor bundle in %q: %w", chartPath, err)
-				}
-			}
-		}
-
 		if err := originalRunE(cmd, args); err != nil {
 			return err
+		}
+
+		return nil
+	}
+
+	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
+		if err := cli.AddFlag(cmd, &opts.DenoBinaryPath, "deno-binary-path", "", "Path to the Deno binary to use instead of auto-downloading.", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                tsFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
 		}
 
 		return nil

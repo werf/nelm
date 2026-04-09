@@ -21,6 +21,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/samber/lo"
+
 	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
 )
 
@@ -60,7 +62,6 @@ type Chart struct {
 	ModTime time.Time `json:"modtime,omitzero"`
 
 	RuntimeFiles       []*common.File         `json:"-"`
-	RuntimeDepsFiles   []*common.File         `json:"-"`
 	ExtraValues        map[string]interface{} `json:"-"`
 	SecretsRuntimeData common.RuntimeData     `json:"-"`
 
@@ -184,4 +185,37 @@ func (ch *Chart) CRDObjects() []CRD {
 func hasManifestExtension(fname string) bool {
 	ext := filepath.Ext(fname)
 	return strings.EqualFold(ext, ".yaml") || strings.EqualFold(ext, ".yml") || strings.EqualFold(ext, ".json")
+}
+
+func (ch *Chart) AddRuntimeFile(name string, data []byte) {
+	ch.Raw = append(ch.Raw, &common.File{Name: name, Data: data})
+
+	ch.RuntimeFiles = append(ch.RuntimeFiles, &common.File{Name: name, Data: data})
+	if !ch.IsRoot() {
+		root := ch.Root()
+		rawName := getRootRawFileName(ch, name)
+		root.Raw = append(root.Raw, &common.File{Name: rawName, Data: data})
+	}
+}
+
+func (ch *Chart) RemoveRuntimeFile(name string) {
+	ch.Raw = lo.Reject(ch.Raw, func(f *common.File, _ int) bool {
+		return f.Name == name
+	})
+
+	ch.RuntimeFiles = lo.Reject(ch.RuntimeFiles, func(f *common.File, _ int) bool {
+		return f.Name == name
+	})
+
+	if !ch.IsRoot() {
+		root := ch.Root()
+		rawName := getRootRawFileName(ch, name)
+		root.Raw = lo.Reject(root.Raw, func(f *common.File, _ int) bool {
+			return f.Name == rawName
+		})
+	}
+}
+
+func getRootRawFileName(ch *Chart, name string) string {
+	return filepath.Join(strings.TrimPrefix(ch.ChartFullPath(), ch.Root().Name()+"/"), name)
 }

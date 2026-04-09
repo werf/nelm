@@ -80,15 +80,19 @@ const (
 
 	CacheDirAPIResourceJSONSchemas = CacheSubdirNelm + "/api-resource-json-schemas"
 	CacheSubdirNelm                = "nelm"
+	// ChartTSBundleFile is the path to the bundle in a Helm chart.
+	ChartTSBundleFile = ChartTSSourceDir + "dist/bundle.js"
 	// ChartTSEntryPointJS is the JavaScript entry point path.
 	ChartTSEntryPointJS = "src/index.js"
 	// ChartTSEntryPointTS is the TypeScript entry point path.
 	ChartTSEntryPointTS = "src/index.ts"
+	// ChartTSInputFile is the name of the input file with context for the Deno app.
+	ChartTSInputFile = "input.yaml"
+	// ChartTSOutputFile is the name of the output file with rendered manifests from the Deno app.
+	ChartTSOutputFile = "output.yaml"
 	// ChartTSSourceDir is the directory containing TypeScript sources in a Helm chart.
-	ChartTSSourceDir = "ts/"
-	// ChartTSVendorBundleFile is the path to the vendor bundle file in a Helm chart.
-	ChartTSVendorBundleFile = ChartTSSourceDir + "vendor/libs.js"
-	DefaultBurstLimit       = 100
+	ChartTSSourceDir  = "ts/"
+	DefaultBurstLimit = 100
 	// TODO(major): switch to if-possible
 	DefaultChartProvenanceStrategy = "never"
 	// TODO(major): reconsider?
@@ -247,7 +251,8 @@ type ResourceState string
 type StoreAs string
 
 type HelmOptions struct {
-	ChartLoadOpts ChartLoadOptions
+	ChartLoadOpts  ChartLoadOptions
+	TypeScriptOpts TypeScriptOptions
 }
 
 type ChartLoadOptions struct {
@@ -264,6 +269,10 @@ type ChartLoadOptions struct {
 	SecretKeyIgnore            bool
 	SecretValuesFiles          []string
 	SecretWorkDir              string
+}
+
+type TypeScriptOptions struct {
+	DenoBinaryPath string
 }
 
 type helmOptionsContextKey struct{}

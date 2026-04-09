@@ -13,23 +13,23 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-type chartInitConfig struct {
-	action.ChartInitOptions
+type chartTSInitConfig struct {
+	action.ChartTSInitOptions
 
 	LogColorMode string
 	LogLevel     string
 }
 
-func newChartInitCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
-	cfg := &chartInitConfig{}
+func newChartTSInitCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
+	cfg := &chartTSInitConfig{}
 
 	cmd := cli.NewSubCommand(
 		ctx,
 		"init [PATH]",
-		"Initialize a new chart.",
-		"Initialize a new chart in the specified directory. If PATH is not specified, uses the current directory.",
-		10, // priority for ordering in help
-		chartCmdGroup,
+		"Initialize the files needed to render manifests using TypeScript.",
+		"Initialize the files needed to render manifests using TypeScript. If PATH is not specified, uses the current directory.",
+		20, // priority for ordering in help
+		tsCmdGroup,
 		cli.SubCommandOptions{
 			Args: cobra.MaximumNArgs(1),
 			ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -37,14 +37,16 @@ func newChartInitCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), log.InfoLevel), action.SetupLoggingOptions{ColorMode: cfg.LogColorMode})
+			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), log.InfoLevel), action.SetupLoggingOptions{
+				ColorMode: cfg.LogColorMode,
+			})
 
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]
 			}
 
-			if err := action.ChartInit(ctx, cfg.ChartInitOptions); err != nil {
-				return fmt.Errorf("chart init: %w", err)
+			if err := action.ChartTSInit(ctx, cfg.ChartTSInitOptions); err != nil {
+				return fmt.Errorf("chart ts init: %w", err)
 			}
 
 			return nil
@@ -52,12 +54,6 @@ func newChartInitCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 	)
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
-		if err := cli.AddFlag(cmd, &cfg.TS, "ts", false, "Initialize TypeScript chart", cli.AddFlagOptions{
-			Group: mainFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
 		if err := cli.AddFlag(cmd, &cfg.TempDirPath, "temp-dir", "", "The directory for temporary files. By default, create a new directory in the default system directory for temporary files", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
 			Group:                miscFlagGroup,

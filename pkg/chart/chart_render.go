@@ -50,12 +50,15 @@ type RenderChartOptions struct {
 	ChartProvenanceStrategy string
 	ChartRepoNoUpdate       bool
 	ChartVersion            string
+	DenoBinaryPath          string
 	ExtraAPIVersions        []string
 	HelmOptions             common.HelmOptions
+	IgnoreBundleJS          bool
 	LocalKubeVersion        string
 	NoStandaloneCRDs        bool
 	Remote                  bool
 	SubchartNotes           bool
+	TempDirPath             string
 	TemplatesAllowDNS       bool
 }
 
@@ -285,9 +288,11 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 			tsChart = convertV3ToV2(chartV3)
 		}
 
-		jsRenderedTemplates, err := renderJSTemplates(ctx, chartPath, tsChart, renderedValues)
+		log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", tsChart.Name())
+
+		jsRenderedTemplates, err := ts.RenderChart(ctx, tsChart, renderedValues, opts.IgnoreBundleJS, chartPath, opts.TempDirPath, opts.DenoBinaryPath)
 		if err != nil {
-			return nil, fmt.Errorf("render ts chart templates for chart %q: %w", chartAccessor.Name(), err)
+			return nil, fmt.Errorf("render TypeScript templates for chart %q: %w", chartAccessor.Name(), err)
 		}
 
 		if len(jsRenderedTemplates) > 0 {
@@ -348,7 +353,6 @@ func convertV3ToV2(src *v3chart.Chart) *v2chart.Chart {
 		Files:              src.Files,
 		ModTime:            src.ModTime,
 		RuntimeFiles:       src.RuntimeFiles,
-		RuntimeDepsFiles:   src.RuntimeDepsFiles,
 		ExtraValues:        src.ExtraValues,
 		SecretsRuntimeData: src.SecretsRuntimeData,
 	}
@@ -543,17 +547,6 @@ func parseVerificationStrategy(s string) helmdownloader.VerificationStrategy {
 	default:
 		return helmdownloader.VerifyNever
 	}
-}
-
-func renderJSTemplates(ctx context.Context, chartPath string, chart *v2chart.Chart, renderedValues chartcommon.Values) (map[string]string, error) {
-	log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", chart.Name())
-
-	result, err := ts.RenderChart(ctx, chart, renderedValues)
-	if err != nil {
-		return nil, fmt.Errorf("render TypeScript: %w", err)
-	}
-
-	return result, nil
 }
 
 func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, releaseNamespace string, opts RenderChartOptions) ([]*spec.ResourceSpec, error) {

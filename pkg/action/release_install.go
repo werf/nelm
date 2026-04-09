@@ -73,6 +73,10 @@ type ReleaseInstallOptions struct {
 	DefaultChartName string
 	// DefaultChartVersion sets the default chart version when Chart.yaml doesn't specify one.
 	DefaultChartVersion string
+	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
+	DenoBinaryPath string
+	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources.
+	IgnoreBundleJS bool
 	// InstallGraphPath, if specified, saves the Graphviz representation of the install plan to this file path.
 	// Useful for debugging and visualizing the dependency graph of resource operations.
 	InstallGraphPath string
@@ -355,6 +359,9 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			Remote:                     true,
 			SubchartNotes:              opts.ShowSubchartNotes,
 			TemplatesAllowDNS:          opts.TemplatesAllowDNS,
+			IgnoreBundleJS:             opts.IgnoreBundleJS,
+			DenoBinaryPath:             opts.DenoBinaryPath,
+			TempDirPath:                opts.TempDirPath,
 		})
 		if err != nil {
 			return fmt.Errorf("render chart: %w", err)

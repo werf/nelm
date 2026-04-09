@@ -29,11 +29,14 @@ import (
 	"golang.org/x/term"
 	"sigs.k8s.io/yaml"
 
+	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/featgate"
 	ci "github.com/werf/nelm/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
 	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
 	chartutil "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
 	"github.com/werf/nelm/pkg/helm/pkg/provenance"
+	"github.com/werf/nelm/pkg/ts"
 )
 
 // Package is the action for packaging a chart.
@@ -59,6 +62,8 @@ type Package struct {
 	KeyFile               string
 	CaFile                string
 	InsecureSkipTLSVerify bool
+
+	TypeScriptOps common.TypeScriptOptions
 }
 
 const (
@@ -89,6 +94,12 @@ func (p *Package) Run(path string, _ map[string]interface{}) (string, error) {
 	ac, err := ci.NewAccessor(ch)
 	if err != nil {
 		return "", err
+	}
+
+	if featgate.FeatGateTypescript.Enabled() {
+		if err := ts.BundleChartsRecursive(context.Background(), ch, path, true, p.TypeScriptOps.DenoBinaryPath); err != nil {
+			return "", fmt.Errorf("unable to process TypeScript files in chart: %w", err)
+		}
 	}
 
 	// If version is set, modify the version.
@@ -195,7 +206,7 @@ func (p *Package) Clearsign(filename string) error {
 		return err
 	}
 
-	return os.WriteFile(filename+".prov", []byte(sig), 0644)
+	return os.WriteFile(filename+".prov", []byte(sig), 0o644)
 }
 
 // promptUser implements provenance.PassphraseFetcher

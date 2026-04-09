@@ -19,11 +19,9 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/distribution/distribution/v3 v3.0.0
 	github.com/dominikbraun/graph v0.23.0
-	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c
-	github.com/dop251/goja_nodejs v0.0.0-20260212111938-1f56ff5bcf14
+	github.com/dustin/go-humanize v1.0.1
 	github.com/evanphx/json-patch v5.9.11+incompatible
 	github.com/evanphx/json-patch/v5 v5.9.11
-	github.com/evanw/esbuild v0.27.4
 	github.com/fatih/color v1.19.0
 	github.com/fluxcd/cli-utils v0.37.2-flux.1
 	github.com/foxcpp/go-mockdns v1.2.0
@@ -34,6 +32,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/gookit/color v1.6.0
+	github.com/gosimple/slug v1.15.0
 	github.com/gosuri/uitable v0.0.4
 	github.com/hofstadter-io/cinful v1.0.0
 	github.com/jedib0t/go-pretty/v6 v6.7.8
@@ -126,12 +125,12 @@ require (
 	github.com/go-openapi/swag/stringutils v0.25.5 // indirect
 	github.com/go-openapi/swag/typeutils v0.25.5 // indirect
 	github.com/go-openapi/swag/yamlutils v0.25.5 // indirect
-	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/pprof v0.0.0-20260302011040-a15ffb7f9dcc // indirect
 	github.com/gorilla/handlers v1.5.2 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
+	github.com/gosimple/unidecode v1.0.1 // indirect
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect

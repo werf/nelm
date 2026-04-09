@@ -138,9 +138,7 @@ func LoadFiles(ctx context.Context, files []*archive.BufferedFile) (*chart.Chart
 				subChartsKeys = append(subChartsKeys, cname)
 			}
 			subcharts[cname] = append(subcharts[cname], &archive.BufferedFile{Name: fname, ModTime: f.ModTime, Data: f.Data})
-		case applyWerfExtensions && strings.HasPrefix(f.Name, "ts/node_modules/"):
-			c.RuntimeDepsFiles = append(c.RuntimeDepsFiles, &chartcommon.File{Name: f.Name, ModTime: f.ModTime, Data: f.Data})
-		case applyWerfExtensions && strings.HasPrefix(f.Name, "ts/"):
+		case applyWerfExtensions && strings.HasPrefix(f.Name, "ts/") && !strings.HasPrefix(f.Name, "ts/node_modules/"):
 			c.RuntimeFiles = append(c.RuntimeFiles, &chartcommon.File{Name: f.Name, ModTime: f.ModTime, Data: f.Data})
 		default:
 			c.Files = append(c.Files, &chartcommon.File{Name: f.Name, ModTime: f.ModTime, Data: f.Data})

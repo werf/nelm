@@ -3,10 +3,12 @@ package ts
 import (
 	"context"
 	"fmt"
+	"os"
 	"path"
-	"slices"
+	"path/filepath"
 	"strings"
 
+	"github.com/samber/lo"
 	"sigs.k8s.io/yaml"
 
 	"github.com/werf/nelm/pkg/common"
@@ -15,128 +17,89 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartcommon.Values) (map[string]string, error) {
-	allRendered := make(map[string]string)
+func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartcommon.Values, rebuildBundle bool, chartPath, tempDirPath, denoBinaryPath string) (map[string]string, error) {
+	if !hasTSFiles(chart) {
+		return map[string]string{}, nil
+	}
 
-	if err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), allRendered); err != nil {
-		return nil, err
+	denoBin, err := getDenoBinary(ctx, denoBinaryPath)
+	if err != nil {
+		return nil, fmt.Errorf("ensure Deno is available: %w", err)
+	}
+
+	if err := bundleChartsRecursive(ctx, chart, chartPath, rebuildBundle, denoBin); err != nil {
+		return nil, fmt.Errorf("bundle chart recursive: %w", err)
+	}
+
+	allRendered, err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), chartPath, tempDirPath, denoBin)
+	if err != nil {
+		return nil, fmt.Errorf("render chart recursive: %w", err)
 	}
 
 	return allRendered, nil
 }
 
-func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartcommon.Values, pathPrefix string, results map[string]string) error {
+func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartcommon.Values, pathPrefix, chartPath, tempDirPath, denoBin string) (map[string]string, error) {
 	log.Default.Debug(ctx, "Rendering TypeScript for chart %q (path prefix: %s)", chart.Name(), pathPrefix)
 
-	rendered, err := renderFiles(ctx, chart, values)
-	if err != nil {
-		return fmt.Errorf("render files for chart %q: %w", chart.Name(), err)
-	}
+	results := make(map[string]string)
+	entrypoint, bundle := getEntrypointAndBundle(chart.RuntimeFiles)
 
-	for filename, content := range rendered {
-		outputPath := path.Join(pathPrefix, filename)
-		results[outputPath] = content
-		log.Default.Debug(ctx, "Rendered output: %s", outputPath)
+	if bundle != nil {
+		content, err := renderChart(ctx, bundle, chart, values, tempDirPath, denoBin)
+		if err != nil {
+			return nil, fmt.Errorf("render files for chart %q: %w", chart.Name(), err)
+		}
+
+		if content != "" {
+			outputPath := path.Join(pathPrefix, common.ChartTSSourceDir, lo.CoalesceOrEmpty(entrypoint, bundle.Name))
+			results[outputPath] = content
+			log.Default.Debug(ctx, "Rendered TypeScript output for chart %s: %s", chart.Name(), outputPath)
+		}
 	}
 
 	for _, dep := range chart.Dependencies() {
-		depName := dep.Name()
-		log.Default.Debug(ctx, "Processing dependency %q for chart %q", depName, chart.Name())
+		log.Default.Debug(ctx, "Processing dependency %q for chart %q", dep.Name(), chart.Name())
 
-		err := renderChartRecursive(
+		depResults, err := renderChartRecursive(
 			ctx,
 			dep,
-			scopeValuesForSubchart(values, depName, dep),
-			path.Join(pathPrefix, "charts", depName),
-			results,
+			scopeValuesForSubchart(values, dep.Name(), dep),
+			path.Join(pathPrefix, "charts", dep.Name()),
+			filepath.Join(chartPath, "charts", dep.Name()),
+			tempDirPath,
+			denoBin,
 		)
 		if err != nil {
-			return fmt.Errorf("render dependency %q: %w", depName, err)
+			return nil, fmt.Errorf("render dependency %q: %w", dep.Name(), err)
 		}
+
+		results = lo.Assign(results, depResults)
 	}
 
-	return nil
+	return results, nil
 }
 
-func renderFiles(ctx context.Context, chart *helmchart.Chart, renderedValues chartcommon.Values) (map[string]string, error) {
-	mergedFiles := slices.Concat(chart.RuntimeFiles, chart.RuntimeDepsFiles)
+func renderChart(ctx context.Context, bundle *chartcommon.File, chart *helmchart.Chart, renderedValues chartcommon.Values, tempDirPath, denoBin string) (string, error) {
+	renderDir := filepath.Join(tempDirPath, "typescript-render", chart.ChartFullPath())
+	if err := os.MkdirAll(renderDir, 0o755); err != nil {
+		return "", fmt.Errorf("create temp dir for render context: %w", err)
+	}
 
-	vendorBundle, packages, err := resolveVendorBundle(ctx, mergedFiles)
+	if err := writeInputRenderContext(renderedValues, chart, renderDir); err != nil {
+		return "", fmt.Errorf("write input render context: %w", err)
+	}
+
+	if err := runApp(ctx, bundle.Data, renderDir, denoBin); err != nil {
+		return "", fmt.Errorf("run deno app: %w", err)
+	}
+
+	resultBytes, err := os.ReadFile(filepath.Join(renderDir, common.ChartTSOutputFile))
 	if err != nil {
-		return nil, fmt.Errorf("resolve vendor bundle: %w", err)
+		return "", fmt.Errorf("read output file: %w", err)
 	}
 
-	sourceFiles := extractSourceFiles(mergedFiles)
-	if len(sourceFiles) == 0 {
-		return map[string]string{}, nil
-	}
-
-	entrypoint := findEntrypointInFiles(sourceFiles)
-	if entrypoint == "" {
-		return map[string]string{}, nil
-	}
-
-	appBundle, err := buildAppBundleFromFiles(ctx, sourceFiles, packages)
-	if err != nil {
-		return nil, fmt.Errorf("build app bundle: %w", err)
-	}
-
-	result, err := runBundle(vendorBundle, appBundle, buildRenderContext(renderedValues, chart))
-	if err != nil {
-		return nil, fmt.Errorf("run bundle: %w", err)
-	}
-
-	if result == nil {
-		return map[string]string{}, nil
-	}
-
-	yamlOutput, err := convertRenderResultToYAML(result)
-	if err != nil {
-		return nil, fmt.Errorf("convert render result to yaml: %w", err)
-	}
-
-	if strings.TrimSpace(yamlOutput) == "" {
-		return map[string]string{}, nil
-	}
-
-	return map[string]string{
-		path.Join(common.ChartTSSourceDir, entrypoint): yamlOutput,
-	}, nil
-}
-
-func buildRenderContext(renderedValues chartcommon.Values, chart *helmchart.Chart) map[string]any {
-	renderContext := renderedValues.AsMap()
-
-	if valuesInterface, ok := renderContext["Values"]; ok {
-		if chartValues, ok := valuesInterface.(chartcommon.Values); ok {
-			renderContext["Values"] = chartValues.AsMap()
-		}
-	}
-
-	renderContext["Chart"] = buildChartMetadata(chart)
-
-	files := make(map[string]any, len(chart.Files))
-	for _, file := range chart.Files {
-		files[file.Name] = file.Data
-	}
-
-	renderContext["Files"] = files
-
-	return renderContext
-}
-
-func convertRenderResultToYAML(result any) (string, error) {
-	resultMap, ok := result.(map[string]any)
-	if !ok {
-		return "", fmt.Errorf("convert render result to yaml: unexpected type %T", result)
-	}
-
-	manifests, exists := resultMap["manifests"]
-	if !exists {
-		return "", fmt.Errorf("convert render result to yaml: missing 'manifests' field")
-	}
-
-	return marshalManifests(manifests)
+	return strings.TrimSpace(string(resultBytes)), nil
 }
 
 func scopeValuesForSubchart(parentValues chartcommon.Values, subchartName string, subchart *helmchart.Chart) chartcommon.Values {
@@ -177,6 +140,36 @@ func scopeValuesForSubchart(parentValues chartcommon.Values, subchartName string
 	return scoped
 }
 
+func writeInputRenderContext(renderedValues chartcommon.Values, chart *helmchart.Chart, renderDir string) error {
+	renderContext := renderedValues.AsMap()
+
+	if valuesInterface, ok := renderContext["Values"]; ok {
+		if chartValues, ok := valuesInterface.(chartcommon.Values); ok {
+			renderContext["Values"] = chartValues.AsMap()
+		}
+	}
+
+	renderContext["Chart"] = buildChartMetadata(chart)
+
+	files := make(map[string]any, len(chart.Files))
+	for _, file := range chart.Files {
+		files[file.Name] = file.Data
+	}
+
+	renderContext["Files"] = files
+
+	yamlInput, err := yaml.Marshal(renderContext)
+	if err != nil {
+		return fmt.Errorf("marshal render context to yaml: %w", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(renderDir, common.ChartTSInputFile), yamlInput, 0o644); err != nil {
+		return fmt.Errorf("write render context to file: %w", err)
+	}
+
+	return nil
+}
+
 func buildChartMetadata(chart *helmchart.Chart) map[string]any {
 	metadata := map[string]any{
 		"Name":    chart.Name(),
@@ -215,32 +208,4 @@ func buildChartMetadata(chart *helmchart.Chart) map[string]any {
 	}
 
 	return metadata
-}
-
-func marshalManifests(value any) (string, error) {
-	arr, ok := value.([]any)
-	if !ok {
-		yamlBytes, err := yaml.Marshal(value)
-		if err != nil {
-			return "", fmt.Errorf("marshal resource: %w", err)
-		}
-
-		return string(yamlBytes), nil
-	}
-
-	var results []string
-	for _, item := range arr {
-		if item == nil {
-			continue
-		}
-
-		yamlBytes, err := yaml.Marshal(item)
-		if err != nil {
-			return "", fmt.Errorf("marshal manifest: %w", err)
-		}
-
-		results = append(results, string(yamlBytes))
-	}
-
-	return strings.Join(results, "---\n"), nil
 }
