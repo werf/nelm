@@ -11,7 +11,10 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const denoBuildScript = "deno bundle --output=dist/bundle.js src/index.ts"
+const (
+	denoBuildScript          = "deno bundle --output=dist/bundle.js src/index.ts"
+	defaultRenderContextType = "RenderContext"
+)
 
 // EnsureGitignore adds TypeScript entries to .gitignore, creating if needed.
 func EnsureGitignore(chartPath string) error {
@@ -53,8 +56,11 @@ func InitChartStructure(ctx context.Context, chartPath, chartName string) error 
 	return nil
 }
 
-// InitTSBoilerplate creates TypeScript boilerplate files in ts/ directory.
-func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
+type InitTSBoilerplateOptions struct {
+	RenderContextType string
+}
+
+func InitTSBoilerplate(ctx context.Context, chartPath, chartName string, opts InitTSBoilerplateOptions) error {
 	tsDir := filepath.Join(chartPath, common.ChartTSSourceDir)
 	srcDir := filepath.Join(tsDir, "src")
 
@@ -64,14 +70,19 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
 		return fmt.Errorf("stat %s: %w", tsDir, err)
 	}
 
+	ctxType := defaultRenderContextType
+	if opts.RenderContextType != "" {
+		ctxType = opts.RenderContextType
+	}
+
 	files := []struct {
 		content string
 		path    string
 	}{
-		{content: indexTSContent, path: filepath.Join(srcDir, "index.ts")},
-		{content: helpersTSContent, path: filepath.Join(srcDir, "helpers.ts")},
-		{content: deploymentTSContent, path: filepath.Join(srcDir, "deployment.ts")},
-		{content: serviceTSContent, path: filepath.Join(srcDir, "service.ts")},
+		{content: strings.ReplaceAll(indexTSTmpl, renderContextTypePlaceholder, ctxType), path: filepath.Join(srcDir, "index.ts")},
+		{content: strings.ReplaceAll(helpersTSTmpl, renderContextTypePlaceholder, ctxType), path: filepath.Join(srcDir, "helpers.ts")},
+		{content: strings.ReplaceAll(deploymentTSTmpl, renderContextTypePlaceholder, ctxType), path: filepath.Join(srcDir, "deployment.ts")},
+		{content: strings.ReplaceAll(serviceTSTmpl, renderContextTypePlaceholder, ctxType), path: filepath.Join(srcDir, "service.ts")},
 		{content: tsconfigContent, path: filepath.Join(tsDir, "tsconfig.json")},
 		{content: fmt.Sprintf(denoJSONTmpl, denoBuildScript), path: filepath.Join(tsDir, "deno.json")},
 		{content: fmt.Sprintf(inputExampleContent, chartName), path: filepath.Join(tsDir, "input.example.yaml")},

@@ -12,9 +12,10 @@ import (
 )
 
 type ChartTSInitOptions struct {
-	ChartDirPath string
-	ChartName    string
-	TempDirPath  string
+	ChartDirPath      string
+	ChartName         string
+	TempDirPath       string
+	RenderContextType string
 }
 
 func ChartTSInit(ctx context.Context, opts ChartTSInitOptions) error {
@@ -47,7 +48,9 @@ func ChartTSInit(ctx context.Context, opts ChartTSInitOptions) error {
 		return fmt.Errorf("init chart structure: %w", err)
 	}
 
-	if err := ts.InitTSBoilerplate(ctx, absPath, chartName); err != nil {
+	if err := ts.InitTSBoilerplate(ctx, absPath, chartName, ts.InitTSBoilerplateOptions{
+		RenderContextType: opts.RenderContextType,
+	}); err != nil {
 		return fmt.Errorf("init TypeScript boilerplate: %w", err)
 	}
 
