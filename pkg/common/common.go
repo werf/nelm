@@ -88,10 +88,8 @@ const (
 	// ChartTSOutputFile is the name of the output file with rendered manifests from the Deno app.
 	ChartTSOutputFile = "output.yaml"
 	// ChartTSSourceDir is the directory containing TypeScript sources in a Helm chart.
-	ChartTSSourceDir = "ts/"
-	// WerfRenderContextType is the TypeScript render context type name for werf charts.
-	WerfRenderContextType = "WerfRenderContext"
-	DefaultBurstLimit     = 100
+	ChartTSSourceDir  = "ts/"
+	DefaultBurstLimit = 100
 	// TODO(major): switch to if-possible
 	DefaultChartProvenanceStrategy = "never"
 	// TODO(major): reconsider?
@@ -124,6 +122,8 @@ const (
 	StageStartSuffix                     = "start"
 	StubReleaseName                      = "stub-release"
 	StubReleaseNamespace                 = "stub-namespace"
+	// WerfRenderContextType is the TypeScript render context type name for werf charts.
+	WerfRenderContextType = "WerfRenderContext"
 )
 
 var (

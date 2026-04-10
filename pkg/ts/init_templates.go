@@ -10,8 +10,6 @@ const (
   }
 }
 `
-	renderContextTypePlaceholder = "{{RenderContextType}}"
-
 	deploymentTSTmpl = `import type { {{RenderContextType}} } from '@nelm/chart-ts-sdk';
 import { getFullname, getLabels, getSelectorLabels } from './helpers.ts';
 
@@ -171,7 +169,8 @@ Values:
     port: 80
     type: ClusterIP
 `
-	serviceTSTmpl = `import type { {{RenderContextType}} } from '@nelm/chart-ts-sdk';
+	renderContextTypePlaceholder = "{{RenderContextType}}"
+	serviceTSTmpl                = `import type { {{RenderContextType}} } from '@nelm/chart-ts-sdk';
 import { getFullname, getLabels, getSelectorLabels } from './helpers.ts';
 
 export function newService($: {{RenderContextType}}): object {

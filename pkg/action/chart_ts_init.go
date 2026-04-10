@@ -14,8 +14,8 @@ import (
 type ChartTSInitOptions struct {
 	ChartDirPath      string
 	ChartName         string
-	TempDirPath       string
 	RenderContextType string
+	TempDirPath       string
 }
 
 func ChartTSInit(ctx context.Context, opts ChartTSInitOptions) error {

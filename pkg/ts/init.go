@@ -12,9 +12,13 @@ import (
 )
 
 const (
-	denoBuildScript          = "deno bundle --output=dist/bundle.js src/index.ts"
 	defaultRenderContextType = "RenderContext"
+	denoBuildScript          = "deno bundle --output=dist/bundle.js src/index.ts"
 )
+
+type InitTSBoilerplateOptions struct {
+	RenderContextType string
+}
 
 // EnsureGitignore adds TypeScript entries to .gitignore, creating if needed.
 func EnsureGitignore(chartPath string) error {
@@ -54,10 +58,6 @@ func InitChartStructure(ctx context.Context, chartPath, chartName string) error 
 	log.Default.Debug(ctx, "Updated %s", helmignorePath)
 
 	return nil
-}
-
-type InitTSBoilerplateOptions struct {
-	RenderContextType string
 }
 
 func InitTSBoilerplate(ctx context.Context, chartPath, chartName string, opts InitTSBoilerplateOptions) error {
