@@ -1,17 +1,29 @@
 package ts
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
 
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 )
 
 const denoBuildScript = "deno bundle --output=dist/bundle.js src/index.ts"
+
+type InitTSBoilerplateOptions struct {
+	RenderContextType string
+}
+
+type initTmplData struct {
+	BuildScript       string
+	ChartName         string
+	RenderContextType string
+}
 
 // EnsureGitignore adds TypeScript entries to .gitignore, creating if needed.
 func EnsureGitignore(chartPath string) error {
@@ -53,8 +65,7 @@ func InitChartStructure(ctx context.Context, chartPath, chartName string) error 
 	return nil
 }
 
-// InitTSBoilerplate creates TypeScript boilerplate files in ts/ directory.
-func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
+func InitTSBoilerplate(ctx context.Context, chartPath, chartName string, opts InitTSBoilerplateOptions) error {
 	tsDir := filepath.Join(chartPath, common.ChartTSSourceDir)
 	srcDir := filepath.Join(tsDir, "src")
 
@@ -64,17 +75,28 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
 		return fmt.Errorf("stat %s: %w", tsDir, err)
 	}
 
+	ctxType := common.TSDefaultRenderContextType
+	if opts.RenderContextType != "" {
+		ctxType = opts.RenderContextType
+	}
+
+	data := initTmplData{
+		BuildScript:       denoBuildScript,
+		ChartName:         chartName,
+		RenderContextType: ctxType,
+	}
+
 	files := []struct {
-		content string
-		path    string
+		tmpl string
+		path string
 	}{
-		{content: indexTSContent, path: filepath.Join(srcDir, "index.ts")},
-		{content: helpersTSContent, path: filepath.Join(srcDir, "helpers.ts")},
-		{content: deploymentTSContent, path: filepath.Join(srcDir, "deployment.ts")},
-		{content: serviceTSContent, path: filepath.Join(srcDir, "service.ts")},
-		{content: tsconfigContent, path: filepath.Join(tsDir, "tsconfig.json")},
-		{content: fmt.Sprintf(denoJSONTmpl, denoBuildScript), path: filepath.Join(tsDir, "deno.json")},
-		{content: fmt.Sprintf(inputExampleContent, chartName), path: filepath.Join(tsDir, "input.example.yaml")},
+		{tmpl: indexTSTmpl, path: filepath.Join(srcDir, "index.ts")},
+		{tmpl: helpersTSTmpl, path: filepath.Join(srcDir, "helpers.ts")},
+		{tmpl: deploymentTSTmpl, path: filepath.Join(srcDir, "deployment.ts")},
+		{tmpl: serviceTSTmpl, path: filepath.Join(srcDir, "service.ts")},
+		{tmpl: tsconfigContent, path: filepath.Join(tsDir, "tsconfig.json")},
+		{tmpl: denoJSONTmpl, path: filepath.Join(tsDir, "deno.json")},
+		{tmpl: inputExampleTmpl, path: filepath.Join(tsDir, "input.example.yaml")},
 	}
 
 	if err := os.MkdirAll(srcDir, 0o755); err != nil {
@@ -82,7 +104,12 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string) error {
 	}
 
 	for _, f := range files {
-		if err := os.WriteFile(f.path, []byte(f.content), 0o644); err != nil {
+		content, err := renderTemplate(f.tmpl, data)
+		if err != nil {
+			return fmt.Errorf("render template for %s: %w", f.path, err)
+		}
+
+		if err := os.WriteFile(f.path, []byte(content), 0o644); err != nil {
 			return fmt.Errorf("write %s: %w", f.path, err)
 		}
 
@@ -180,4 +207,18 @@ func fileExists(path string) (bool, error) {
 	}
 
 	return false, fmt.Errorf("stat %s: %w", path, err)
+}
+
+func renderTemplate(tmplStr string, data initTmplData) (string, error) {
+	t, err := template.New("").Parse(tmplStr)
+	if err != nil {
+		return "", fmt.Errorf("parse template: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := t.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("execute template: %w", err)
+	}
+
+	return buf.String(), nil
 }
