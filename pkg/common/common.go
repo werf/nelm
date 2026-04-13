@@ -122,8 +122,11 @@ const (
 	StageStartSuffix                     = "start"
 	StubReleaseName                      = "stub-release"
 	StubReleaseNamespace                 = "stub-namespace"
-	// WerfRenderContextType is the TypeScript render context type name for werf charts.
-	WerfRenderContextType = "WerfRenderContext"
+	TSDefaultRenderContextType           = TSGenericRenderContextType
+	// TSGenericRenderContextType is the TypeScript render context type name for nelm charts.
+	TSGenericRenderContextType = "RenderContext"
+	// TSWerfRenderContextType is the TypeScript render context type name for werf charts.
+	TSWerfRenderContextType = "WerfRenderContext"
 )
 
 var (
