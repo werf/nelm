@@ -193,30 +193,6 @@ export function newService($: {{ .RenderContextType }}): object {
   };
 }
 `
-	tsconfigContent = `{
-  "compilerOptions": {
-    "target": "ES2015",
-    "module": "CommonJS",
-    "declaration": true,
-    "declarationMap": true,
-    "inlineSourceMap": true,
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "allowImportingTsExtensions": true,
-    "outDir": "./dist"
-  },
-  "include": ["src/**/*"],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
-}
-`
 	valuesYamlContent = `replicaCount: 1
 
 image:

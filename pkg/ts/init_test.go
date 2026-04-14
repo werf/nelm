@@ -184,7 +184,6 @@ func TestInitTSBoilerplate(t *testing.T) {
 		assert.FileExists(t, filepath.Join(chartPath, "ts", "src", "deployment.ts"))
 		assert.FileExists(t, filepath.Join(chartPath, "ts", "src", "service.ts"))
 
-		assert.FileExists(t, filepath.Join(chartPath, "ts", "tsconfig.json"))
 		assert.FileExists(t, filepath.Join(chartPath, "ts", "deno.json"))
 		assert.FileExists(t, filepath.Join(chartPath, "ts", "input.example.yaml"))
 	})
@@ -286,21 +285,6 @@ func TestInitTSBoilerplate(t *testing.T) {
 		content, err := os.ReadFile(filepath.Join(chartPath, "ts", "deno.json"))
 		require.NoError(t, err)
 		assert.Contains(t, string(content), `"@nelm/chart-ts-sdk"`)
-	})
-
-	t.Run("includes correct tsconfig.json options", func(t *testing.T) {
-		chartPath := filepath.Join(t.TempDir(), "test-chart")
-		require.NoError(t, os.MkdirAll(chartPath, 0o755))
-
-		err := ts.InitTSBoilerplate(context.Background(), chartPath, "test-chart", ts.InitTSBoilerplateOptions{})
-		require.NoError(t, err)
-
-		content, err := os.ReadFile(filepath.Join(chartPath, "ts", "tsconfig.json"))
-		require.NoError(t, err)
-		assert.Contains(t, string(content), `"target": "ES2015"`)
-		assert.Contains(t, string(content), `"module": "CommonJS"`)
-		assert.Contains(t, string(content), `"strict": true`)
-		assert.Contains(t, string(content), `"declaration": true`)
 	})
 
 	t.Run("includes chart name in input.example.yaml", func(t *testing.T) {

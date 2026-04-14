@@ -94,7 +94,6 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string, opts In
 		{tmpl: helpersTSTmpl, path: filepath.Join(srcDir, "helpers.ts")},
 		{tmpl: deploymentTSTmpl, path: filepath.Join(srcDir, "deployment.ts")},
 		{tmpl: serviceTSTmpl, path: filepath.Join(srcDir, "service.ts")},
-		{tmpl: tsconfigContent, path: filepath.Join(tsDir, "tsconfig.json")},
 		{tmpl: denoJSONTmpl, path: filepath.Join(tsDir, "deno.json")},
 		{tmpl: inputExampleTmpl, path: filepath.Join(tsDir, "input.example.yaml")},
 	}
