@@ -3,10 +3,21 @@ package ts
 const (
 	denoJSONTmpl = `{
   "tasks": {
-    "build": "{{ .BuildScript }}"
+    "build": {
+      "description": "Run deno build",
+      "command": "{{ .BuildScript }}"
+	},
+	"dev": {
+       "description": "Run in development mode",
+       "command": "{{ .DevScript }}"
+	},
+	"start": {
+      "description": "Run the bundled dist/bundle.js",
+	  "command": "{{ .StartScript }}"
+	}
   },
   "imports": {
-    "@nelm/chart-ts-sdk": "npm:@nelm/chart-ts-sdk@^0.1.4"
+    "@nelm/chart-ts-sdk": "npm:@nelm/chart-ts-sdk@^0.1.5"
   }
 }
 `
@@ -160,6 +171,35 @@ Release:
   Revision: 2
   Service: Helm
 Values:
+{{- if .IsWerfChart }}
+  global:
+    werf:
+      name: myapp
+      version: v2.35.0
+      repo: example.org/mycompany/myapp
+      env: production
+      images:
+        app:
+          registry: example.org
+          namespace: mycompany
+          name: myapp
+          tag: a1b2c3d4-1234567890
+          digest: "sha256:abcdef1234567890"
+          tag_digest: "a1b2c3d4-1234567890@sha256:abcdef1234567890"
+          image: example.org/mycompany/myapp
+          repository: mycompany/myapp
+          ref: "example.org/mycompany/myapp:a1b2c3d4-1234567890@sha256:abcdef1234567890"
+          ref_tag: "example.org/mycompany/myapp:a1b2c3d4-1234567890"
+          repository_ref: "mycompany/myapp:a1b2c3d4-1234567890@sha256:abcdef1234567890"
+          repository_tag: "mycompany/myapp:a1b2c3d4-1234567890"
+          name_ref: "myapp:a1b2c3d4-1234567890@sha256:abcdef1234567890"
+          name_tag: "myapp:a1b2c3d4-1234567890"
+      commit:
+        date:
+          human: "2025-01-15 12:00:00 +0000"
+          unix: 1736942400
+        hash: a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
+{{- end }}
   image:
     repository: nginx
     tag: latest

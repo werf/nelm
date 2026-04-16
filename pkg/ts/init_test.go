@@ -208,8 +208,12 @@ func TestInitTSBoilerplate(t *testing.T) {
 
 		content, err := os.ReadFile(filepath.Join(chartPath, "ts", "deno.json"))
 		require.NoError(t, err)
-		assert.Contains(t, string(content), fmt.Sprintf(`"build": "%s"`, ts.ChartTSBuildScript))
-		assert.Contains(t, string(content), `"@nelm/chart-ts-sdk"`)
+
+		s := string(content)
+		assert.Contains(t, s, fmt.Sprintf(`"command": "%s"`, ts.ChartTSBuildScript))
+		assert.Contains(t, s, fmt.Sprintf(`"command": "%s"`, ts.ChartTSDevScript))
+		assert.Contains(t, s, fmt.Sprintf(`"command": "%s"`, ts.ChartTSStartScript))
+		assert.Contains(t, s, `"@nelm/chart-ts-sdk"`)
 	})
 
 	t.Run("uses RenderContext by default", func(t *testing.T) {
@@ -296,10 +300,33 @@ func TestInitTSBoilerplate(t *testing.T) {
 
 		content, err := os.ReadFile(filepath.Join(chartPath, "ts", "input.example.yaml"))
 		require.NoError(t, err)
-		assert.Contains(t, string(content), "Name: my-custom-chart")
-		assert.Contains(t, string(content), "Namespace: my-custom-chart")
-		assert.Contains(t, string(content), "Values:")
-		assert.Contains(t, string(content), "Capabilities:")
+
+		s := string(content)
+		assert.Contains(t, s, "Name: my-custom-chart")
+		assert.Contains(t, s, "Namespace: my-custom-chart")
+		assert.Contains(t, s, "Values:")
+		assert.Contains(t, s, "Capabilities:")
+		assert.NotContains(t, s, "global:")
+		assert.NotContains(t, s, "werf:")
+	})
+
+	t.Run("includes werf values in input.example.yaml for WerfRenderContext", func(t *testing.T) {
+		chartPath := filepath.Join(t.TempDir(), "my-werf-chart")
+		require.NoError(t, os.MkdirAll(chartPath, 0o755))
+
+		err := ts.InitTSBoilerplate(context.Background(), chartPath, "my-werf-chart", ts.InitTSBoilerplateOptions{
+			RenderContextType: "WerfRenderContext",
+		})
+		require.NoError(t, err)
+
+		content, err := os.ReadFile(filepath.Join(chartPath, "ts", "input.example.yaml"))
+		require.NoError(t, err)
+
+		s := string(content)
+		assert.Contains(t, s, "Name: my-werf-chart")
+		assert.Contains(t, s, "global:")
+		assert.Contains(t, s, "werf:")
+		assert.Contains(t, s, "images:")
 	})
 
 	t.Run("fails if ts/ directory already exists", func(t *testing.T) {

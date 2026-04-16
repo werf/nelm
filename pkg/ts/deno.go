@@ -212,6 +212,8 @@ func runApp(ctx context.Context, bundleData []byte, renderDir, denoBin string) e
 		// deno permissions: allow read/write only for input and output files, deny all else.
 		"--allow-read=" + common.ChartTSInputFile,
 		"--allow-write=" + common.ChartTSOutputFile,
+		"--deny-read",
+		"--deny-write",
 		"--deny-net",
 		"--deny-env",
 		"--deny-run",

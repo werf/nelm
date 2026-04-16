@@ -1,3 +1,7 @@
 package ts
 
-var ChartTSBuildScript = denoBuildScript
+var (
+	ChartTSBuildScript = denoBuildScript
+	ChartTSDevScript   = denoDevScript
+	ChartTSStartScript = denoStartScript
+)
