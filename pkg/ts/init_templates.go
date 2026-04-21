@@ -3,17 +3,28 @@ package ts
 const (
 	denoJSONTmpl = `{
   "tasks": {
-    "build": "%s"
+    "build": {
+      "description": "Run deno build",
+      "command": "{{ .BuildScript }}"
+	},
+	"dev": {
+       "description": "Run in development mode",
+       "command": "{{ .DevScript }}"
+	},
+	"start": {
+      "description": "Run the bundled dist/bundle.js",
+	  "command": "{{ .StartScript }}"
+	}
   },
   "imports": {
-    "@nelm/chart-ts-sdk": "npm:@nelm/chart-ts-sdk@^0.1.3"
+    "@nelm/chart-ts-sdk": "npm:@nelm/chart-ts-sdk@^0.1.5"
   }
 }
 `
-	deploymentTSContent = `import type { RenderContext } from '@nelm/chart-ts-sdk';
+	deploymentTSTmpl = `import type { {{ .RenderContextType }} } from '@nelm/chart-ts-sdk';
 import { getFullname, getLabels, getSelectorLabels } from './helpers.ts';
 
-export function newDeployment($: RenderContext): object {
+export function newDeployment($: {{ .RenderContextType }}): object {
   const name = getFullname($);
 
   return {
@@ -59,7 +70,7 @@ export function newDeployment($: RenderContext): object {
 ts/vendor/
 ts/node_modules/
 `
-	helpersTSContent = `import type { RenderContext } from '@nelm/chart-ts-sdk';
+	helpersTSTmpl = `import type { {{ .RenderContextType }} } from '@nelm/chart-ts-sdk';
 
 /**
  * Truncate string to max length, removing trailing hyphens.
@@ -73,7 +84,7 @@ export function trunc(str: string, max: number): string {
  * Get the fully qualified app name.
  * Truncated at 63 chars (DNS naming spec limit).
  */
-export function getFullname($: RenderContext): string {
+export function getFullname($: {{ .RenderContextType }}): string {
   if ($.Values.fullnameOverride) {
     return trunc($.Values.fullnameOverride, 63);
   }
@@ -87,25 +98,25 @@ export function getFullname($: RenderContext): string {
   return trunc(` + "`${$.Release.Name}-${chartName}`" + `, 63);
 }
 
-export function getLabels($: RenderContext): Record<string, string> {
+export function getLabels($: {{ .RenderContextType }}): Record<string, string> {
   return {
     'app.kubernetes.io/name': $.Chart.Name,
     'app.kubernetes.io/instance': $.Release.Name,
   };
 }
 
-export function getSelectorLabels($: RenderContext): Record<string, string> {
+export function getSelectorLabels($: {{ .RenderContextType }}): Record<string, string> {
   return {
     'app.kubernetes.io/name': $.Chart.Name,
     'app.kubernetes.io/instance': $.Release.Name,
   };
 }
 `
-	indexTSContent = `import { RenderContext, RenderResult, runRender } from '@nelm/chart-ts-sdk';
+	indexTSTmpl = `import { {{ .RenderContextType }}, RenderResult, render } from '@nelm/chart-ts-sdk';
 import { newDeployment } from './deployment.ts';
 import { newService } from './service.ts';
 
-function render($: RenderContext): RenderResult {
+function generate($: {{ .RenderContextType }}): RenderResult {
   const manifests: object[] = [];
 
   manifests.push(newDeployment($));
@@ -117,9 +128,9 @@ function render($: RenderContext): RenderResult {
   return { manifests };
 }
 
-await runRender(render);
+await render(generate);
 `
-	inputExampleContent = `Capabilities:
+	inputExampleTmpl = `Capabilities:
   APIVersions:
     - v1
   HelmVersion:
@@ -134,20 +145,20 @@ Chart:
   Annotations:
     anno: value
   AppVersion: 1.0.0
-  Condition: %[1]s.enabled
-  Description: %[1]s description
+  Condition: {{ .ChartName }}.enabled
+  Description: {{ .ChartName }} description
   Home: https://example.org/home
   Icon: https://example.org/icon
   Keywords:
-    - %[1]s
+    - {{ .ChartName }}
   Maintainers:
     - Email: john@example.com
       Name: john
       URL: https://example.com/john
-  Name: %[1]s
+  Name: {{ .ChartName }}
   Sources:
-    - https://example.org/%[1]s
-  Tags: %[1]s
+    - https://example.org/{{ .ChartName }}
+  Tags: {{ .ChartName }}
   Type: application
   Version: 0.1.0
 Files:
@@ -155,11 +166,40 @@ Files:
 Release:
   IsInstall: false
   IsUpgrade: true
-  Name: %[1]s
-  Namespace: %[1]s
+  Name: {{ .ChartName }}
+  Namespace: {{ .ChartName }}
   Revision: 2
   Service: Helm
 Values:
+{{- if .IsWerfChart }}
+  global:
+    werf:
+      name: myapp
+      version: v2.35.0
+      repo: example.org/mycompany/myapp
+      env: production
+      images:
+        app:
+          registry: example.org
+          namespace: mycompany
+          name: myapp
+          tag: a1b2c3d4-1234567890
+          digest: "sha256:abcdef1234567890"
+          tag_digest: "a1b2c3d4-1234567890@sha256:abcdef1234567890"
+          image: example.org/mycompany/myapp
+          repository: mycompany/myapp
+          ref: "example.org/mycompany/myapp:a1b2c3d4-1234567890@sha256:abcdef1234567890"
+          ref_tag: "example.org/mycompany/myapp:a1b2c3d4-1234567890"
+          repository_ref: "mycompany/myapp:a1b2c3d4-1234567890@sha256:abcdef1234567890"
+          repository_tag: "mycompany/myapp:a1b2c3d4-1234567890"
+          name_ref: "myapp:a1b2c3d4-1234567890@sha256:abcdef1234567890"
+          name_tag: "myapp:a1b2c3d4-1234567890"
+      commit:
+        date:
+          human: "2025-01-15 12:00:00 +0000"
+          unix: 1736942400
+        hash: a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
+{{- end }}
   image:
     repository: nginx
     tag: latest
@@ -169,10 +209,10 @@ Values:
     port: 80
     type: ClusterIP
 `
-	serviceTSContent = `import type { RenderContext } from '@nelm/chart-ts-sdk';
+	serviceTSTmpl = `import type { {{ .RenderContextType }} } from '@nelm/chart-ts-sdk';
 import { getFullname, getLabels, getSelectorLabels } from './helpers.ts';
 
-export function newService($: RenderContext): object {
+export function newService($: {{ .RenderContextType }}): object {
   return {
     apiVersion: 'v1',
     kind: 'Service',
@@ -191,30 +231,6 @@ export function newService($: RenderContext): object {
       selector: getSelectorLabels($),
     },
   };
-}
-`
-	tsconfigContent = `{
-  "compilerOptions": {
-    "target": "ES2015",
-    "module": "CommonJS",
-    "declaration": true,
-    "declarationMap": true,
-    "inlineSourceMap": true,
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "allowImportingTsExtensions": true,
-    "outDir": "./dist"
-  },
-  "include": ["src/**/*"],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
 }
 `
 	valuesYamlContent = `replicaCount: 1

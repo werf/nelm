@@ -3398,6 +3398,13 @@ Initialize the files needed to render manifests using TypeScript\. If PATH is no
 nelm chart ts init [PATH]
 ```
 
+**TypeScript options:**
+
+- `--deno-binary-path` (default: `""`)
+
+  Path to the Deno binary to use instead of auto\-downloading\. Vars: \$NELM\_DENO\_BINARY\_PATH, \$NELM\_CHART\_TS\_INIT\_DENO\_BINARY\_PATH
+
+
 **Other options:**
 
 - `--color-mode` (default: `"auto"`)
