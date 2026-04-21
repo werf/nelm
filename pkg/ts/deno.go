@@ -34,6 +34,28 @@ func BundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path str
 	return bundleChartsRecursive(ctx, chart, path, rebuildBundle, denoBin)
 }
 
+func RunDenoInstall(ctx context.Context, chartPath, binaryPath string) error {
+	denoBin, err := getDenoBinary(ctx, binaryPath)
+	if err != nil {
+		return fmt.Errorf("ensure Deno is available: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, denoBin, "install")
+	cmd.Dir = filepath.Join(chartPath, common.ChartTSSourceDir)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			log.Default.Error(ctx, "deno install error: %s", string(output))
+		}
+
+		return fmt.Errorf("run deno install: %w", err)
+	}
+
+	return nil
+}
+
 func bundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path string, rebuildBundle bool, denoBin string) error {
 	entrypoint, bundle := getEntrypointAndBundle(chart.RuntimeFiles)
 
@@ -190,6 +212,8 @@ func runApp(ctx context.Context, bundleData []byte, renderDir, denoBin string) e
 		// deno permissions: allow read/write only for input and output files, deny all else.
 		"--allow-read=" + common.ChartTSInputFile,
 		"--allow-write=" + common.ChartTSOutputFile,
+		"--deny-read",
+		"--deny-write",
 		"--deny-net",
 		"--deny-env",
 		"--deny-run",

@@ -13,7 +13,11 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-const denoBuildScript = "deno bundle --output=dist/bundle.js src/index.ts"
+const (
+	denoBuildScript = "deno bundle --output=dist/bundle.js src/index.ts"
+	denoDevScript   = "deno run --no-remote --deny-read --deny-write --deny-net --deny-env --deny-run --allow-read=input.example.yaml src/index.ts --input-file ./input.example.yaml"
+	denoStartScript = "deno run --no-remote --deny-read --deny-write --deny-net --deny-env --deny-run --allow-read=input.example.yaml dist/bundle.js --input-file ./input.example.yaml"
+)
 
 type InitTSBoilerplateOptions struct {
 	RenderContextType string
@@ -22,7 +26,10 @@ type InitTSBoilerplateOptions struct {
 type initTmplData struct {
 	BuildScript       string
 	ChartName         string
+	DevScript         string
+	IsWerfChart       bool
 	RenderContextType string
+	StartScript       string
 }
 
 // EnsureGitignore adds TypeScript entries to .gitignore, creating if needed.
@@ -83,7 +90,10 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string, opts In
 	data := initTmplData{
 		BuildScript:       denoBuildScript,
 		ChartName:         chartName,
+		DevScript:         denoDevScript,
+		IsWerfChart:       ctxType == common.TSWerfRenderContextType,
 		RenderContextType: ctxType,
+		StartScript:       denoStartScript,
 	}
 
 	files := []struct {
@@ -94,7 +104,6 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string, opts In
 		{tmpl: helpersTSTmpl, path: filepath.Join(srcDir, "helpers.ts")},
 		{tmpl: deploymentTSTmpl, path: filepath.Join(srcDir, "deployment.ts")},
 		{tmpl: serviceTSTmpl, path: filepath.Join(srcDir, "service.ts")},
-		{tmpl: tsconfigContent, path: filepath.Join(tsDir, "tsconfig.json")},
 		{tmpl: denoJSONTmpl, path: filepath.Join(tsDir, "deno.json")},
 		{tmpl: inputExampleTmpl, path: filepath.Join(tsDir, "input.example.yaml")},
 	}
