@@ -87,13 +87,21 @@ type ReleaseStorageOptions struct {
 func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, clientFactory kube.ClientFactorier, opts ReleaseStorageOptions) (ReleaseStorager, error) {
 	var storage *helmstorage.Storage
 
-	clientset := clientFactory.Static().(*kubernetes.Clientset)
-
 	switch storageDriver {
 	case common.ReleaseStorageDriverSecret, common.ReleaseStorageDriverSecrets, common.ReleaseStorageDriverDefault:
+		if clientFactory == nil {
+			return nil, fmt.Errorf("kube client factory is required for %q storage driver", storageDriver)
+		}
+
+		clientset := clientFactory.Static().(*kubernetes.Clientset)
 		d := helmdriver.NewSecrets(clientset.CoreV1().Secrets(namespace))
 		storage = helmstorage.Init(d)
 	case common.ReleaseStorageDriverConfigMap, common.ReleaseStorageDriverConfigMaps:
+		if clientFactory == nil {
+			return nil, fmt.Errorf("kube client factory is required for %q storage driver", storageDriver)
+		}
+
+		clientset := clientFactory.Static().(*kubernetes.Clientset)
 		d := helmdriver.NewConfigMaps(clientset.CoreV1().ConfigMaps(namespace))
 		storage = helmstorage.Init(d)
 	case common.ReleaseStorageDriverMemory:
