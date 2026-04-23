@@ -5,7 +5,7 @@
 
 **Nelm** is a Helm 4 alternative. It is a Kubernetes deployment tool that manages Helm Charts and deploys them to Kubernetes. It is also the deployment engine of [werf](https://github.com/werf/werf). Nelm does everything that Helm does, but better, and even quite some on top of it. Nelm is based on an improved and partially rewritten Helm codebase, to introduce:
 
-* `terraform plan`-like capabilities;
+* `terraform plan`-like capabilities with two-stage deployment support;
 * improved CRD management;
 * out-of-the-box secrets management;
 * advanced resource ordering capabilities;
@@ -35,7 +35,7 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [Advanced resource lifecycle capabilities](#advanced-resource-lifecycle-capabilities)
   - [Resource state tracking](#resource-state-tracking)
   - [Printing logs and events during deploy](#printing-logs-and-events-during-deploy)
-  - [Release planning](#release-planning)
+  - [Release planning and two-stage deployment support](#release-planning-and-two-stage-deployment-workflow-support)
   - [Encrypted values and encrypted files](#encrypted-values-and-encrypted-files)
   - [Improved CRD management](#improved-crd-management)
 - [Usage](#usage)
@@ -244,11 +244,22 @@ Nelm has powerful resource tracking built from the ground up, much more advanced
 
 During the deployment, Nelm finds Pods of deploying resources and periodically prints their container logs. With annotation `werf.io/show-service-messages: "true"`, resource events are also printed. Can be configured with CLI flags and annotations.
 
-### Release planning
+### Release planning and two-stage deployment workflow support
 
-`nelm release plan install` shows exactly what's going to happen in the cluster on the next release. It shows 100% accurate diffs between current and to-be resource versions, utilizing robust dry-run Server-Side Apply instead of client-side trickery.
+`nelm release plan install` shows exactly what's going to happen in the cluster on the next release. It shows diffs between the current and to-be resource versions, utilizing robust dry-run Kubernetes Server-Side Apply capabilities.
 
 ![planning](resources/images/nelm-release-plan-install.png)
+
+To ensure that these exact changes will be applied during the release install, you can utilize a two-stage deployment workflow:
+
+1. **Plan:** Generate, review, and save a plan artifact using the `--save-plan` flag:
+```
+nelm release plan install --save-plan=plan.gz
+```
+2. **Apply:** Perform the release install rapidly using the pre-generated reviewed plan:
+```
+nelm release install --use-plan=plan.gz
+```
 
 ### Encrypted values and encrypted files
 
