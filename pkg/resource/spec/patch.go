@@ -9,7 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	"github.com/werf/nelm/pkg/common"
 )
 
@@ -127,8 +127,8 @@ func (p *LegacyOnlyTrackJobsPatcher) Match(ctx context.Context, info *ResourcePa
 
 func (p *LegacyOnlyTrackJobsPatcher) Patch(ctx context.Context, info *ResourcePatcherResourceInfo) (*unstructured.Unstructured, error) {
 	annos := map[string]string{}
-	annos["werf.io/fail-mode"] = string(multitrack.IgnoreAndContinueDeployProcess)
-	annos["werf.io/track-termination-mode"] = string(multitrack.NonBlocking)
+	annos["werf.io/fail-mode"] = string(statestore.IgnoreAndContinueDeployProcess)
+	annos["werf.io/track-termination-mode"] = string(statestore.NonBlocking)
 
 	setAnnotationsAndLabels(info.Obj, annos, nil)
 

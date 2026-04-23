@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"time"
 
@@ -12,12 +11,13 @@ import (
 	"github.com/samber/lo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/werf/kubedog/pkg/dyntracker/logstore"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
+	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/kubedog/pkg/informer"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
-	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/lock"
 	"github.com/werf/nelm/pkg/log"
@@ -127,16 +127,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		return fmt.Errorf("build release rollback options: %w", err)
 	}
 
-	if len(opts.KubeConfigPaths) > 0 {
-		var splitPaths []string
-		for _, path := range opts.KubeConfigPaths {
-			splitPaths = append(splitPaths, filepath.SplitList(path)...)
-		}
-
-		opts.KubeConfigPaths = lo.Compact(splitPaths)
-	}
-
-	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+	kubeConfig, err := kube.NewKubeConfig(ctx, kube.KubeConfigOptions{
 		KubeConnectionOptions: opts.KubeConnectionOptions,
 		KubeContextNamespace:  releaseNamespace, // TODO: unset it everywhere
 	})
@@ -223,7 +214,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	if prevRelease != nil {
 		newRevision = prevRelease.Version + 1
-		prevReleaseFailed = prevRelease.IsStatusFailed()
+		prevReleaseFailed = prevRelease.Info.Status == helmreleasestatus.StatusFailed
 	} else {
 		newRevision = 1
 	}
@@ -238,7 +229,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	}
 
 	newRelease, err := release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, rollbackReleaseResSpecs, rollbackRelease.Chart, rollbackRelease.Config, release.ReleaseOptions{
-		InfoAnnotations: lo.Assign(rollbackRelease.Info.Annotations, opts.ReleaseInfoAnnotations),
+		InfoAnnotations: opts.ReleaseInfoAnnotations,
 		Labels:          lo.Assign(rollbackRelease.Labels, opts.ReleaseLabels),
 		Notes:           rollbackRelease.Info.Notes,
 	})
@@ -352,12 +343,12 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	if releaseIsUpToDate && installPlanIsUseless {
 		if opts.RollbackReportPath != "" {
-			if err := saveReport(opts.RollbackReportPath, &releaseReportV3{
+			if err := saveReport(opts.RollbackReportPath, &ReleaseReportV3{
 				Version:   3,
 				Release:   releaseName,
 				Namespace: releaseNamespace,
 				Revision:  newRelease.Version,
-				Status:    helmrelease.StatusSkipped,
+				Status:    helmreleasestatus.Status("skipped"),
 			}); err != nil {
 				return fmt.Errorf("save release install report: %w", err)
 			}
@@ -466,12 +457,12 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	sort.Strings(reportCanceledOps)
 	sort.Strings(reportFailedOps)
 
-	report := &releaseReportV3{
+	report := &ReleaseReportV3{
 		Version:             3,
 		Release:             releaseName,
 		Namespace:           releaseNamespace,
 		Revision:            newRelease.Version,
-		Status:              helmrelease.StatusDeployed,
+		Status:              helmreleasestatus.StatusDeployed,
 		CompletedOperations: reportCompletedOps,
 		CanceledOperations:  reportCanceledOps,
 		FailedOperations:    reportFailedOps,

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"time"
 
@@ -13,13 +12,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	"github.com/werf/kubedog/pkg/dyntracker"
+	"github.com/werf/kubedog/pkg/dyntracker/logstore"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
+	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/kubedog/pkg/informer"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
-	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/legacy/progrep"
 	"github.com/werf/nelm/pkg/lock"
@@ -121,16 +120,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		return fmt.Errorf("build  release uninstall options: %w", err)
 	}
 
-	if len(opts.KubeConfigPaths) > 0 {
-		var splitPaths []string
-		for _, path := range opts.KubeConfigPaths {
-			splitPaths = append(splitPaths, filepath.SplitList(path)...)
-		}
-
-		opts.KubeConfigPaths = lo.Compact(splitPaths)
-	}
-
-	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+	kubeConfig, err := kube.NewKubeConfig(ctx, kube.KubeConfigOptions{
 		KubeConnectionOptions: opts.KubeConnectionOptions,
 		KubeContextNamespace:  releaseNamespace, // TODO: unset it everywhere
 	})
@@ -209,7 +199,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		prevRelease := lo.LastOrEmpty(releases)
-		prevReleaseFailed := prevRelease.IsStatusFailed()
+		prevReleaseFailed := prevRelease.Info.Status == helmreleasestatus.StatusFailed
 		deployType := common.DeployTypeUninstall
 
 		log.Default.Debug(ctx, "Convert previous release to resource specs")
@@ -354,12 +344,12 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		sort.Strings(reportCanceledOps)
 		sort.Strings(reportFailedOps)
 
-		report := &releaseReportV3{
+		report := &ReleaseReportV3{
 			Version:             3,
 			Release:             releaseName,
 			Namespace:           releaseNamespace,
 			Revision:            prevRelease.Version,
-			Status:              helmrelease.StatusUninstalled,
+			Status:              helmreleasestatus.StatusUninstalled,
 			CompletedOperations: reportCompletedOps,
 			CanceledOperations:  reportCanceledOps,
 			FailedOperations:    reportFailedOps,

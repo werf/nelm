@@ -18,24 +18,28 @@ import (
 
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
+	v3chart "github.com/werf/nelm/pkg/helm/intern/chart/v3"
+	chartv3util "github.com/werf/nelm/pkg/helm/intern/chart/v3/util"
 	"github.com/werf/nelm/pkg/helm/pkg/action"
 	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
+	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
+	chartcommonutil "github.com/werf/nelm/pkg/helm/pkg/chart/common/util"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
-	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
-	"github.com/werf/nelm/pkg/helm/pkg/cli"
+	v2chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+	chartv2util "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
 	"github.com/werf/nelm/pkg/helm/pkg/cli/values"
 	helmdownloader "github.com/werf/nelm/pkg/helm/pkg/downloader"
 	helmengine "github.com/werf/nelm/pkg/helm/pkg/engine"
 	"github.com/werf/nelm/pkg/helm/pkg/getter"
 	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	"github.com/werf/nelm/pkg/helm/pkg/releaseutil"
+	releaseutil "github.com/werf/nelm/pkg/helm/pkg/release/v1/util"
 	"github.com/werf/nelm/pkg/helm/pkg/strvals"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/ts"
+	"github.com/werf/nelm/pkg/util"
 )
 
 type RenderChartOptions struct {
@@ -48,7 +52,7 @@ type RenderChartOptions struct {
 	ChartVersion            string
 	DenoBinaryPath          string
 	ExtraAPIVersions        []string
-	HelmOptions             helmopts.HelmOptions
+	HelmOptions             common.HelmOptions
 	IgnoreBundleJS          bool
 	LocalKubeVersion        string
 	NoStandaloneCRDs        bool
@@ -59,7 +63,7 @@ type RenderChartOptions struct {
 }
 
 type RenderChartResult struct {
-	Chart         *helmchart.Chart
+	Chart         *v2chart.Chart
 	Notes         string
 	ReleaseConfig map[string]interface{}
 	ResourceSpecs []*spec.ResourceSpec
@@ -83,20 +87,23 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	depDownloader := &helmdownloader.Manager{
 		Out:            os.Stdout,
 		ChartPath:      chartPath,
-		Verify:         helmdownloader.VerificationStrategyString(opts.ChartProvenanceStrategy).ToVerificationStrategy(),
+		Verify:         parseVerificationStrategy(opts.ChartProvenanceStrategy),
 		Debug:          log.Default.AcceptLevel(ctx, log.DebugLevel),
 		Keyring:        opts.ChartProvenanceKeyring,
 		SkipUpdate:     opts.ChartRepoNoUpdate,
-		Getters:        getter.Providers{getter.HttpProvider, getter.OCIProvider},
+		Getters:        getter.Getters(),
 		RegistryClient: registryClient,
 		// TODO(major): don't read HELM_REPOSITORY_CONFIG anymore
-		RepositoryConfig: cli.EnvOr("HELM_REPOSITORY_CONFIG", helmpath.ConfigPath("repositories.yaml")),
+		RepositoryConfig: envOr("HELM_REPOSITORY_CONFIG", helmpath.ConfigPath("repositories.yaml")),
 		// TODO(major): don't read HELM_REPOSITORY_CACHE anymore
-		RepositoryCache:   cli.EnvOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
+		RepositoryCache:   envOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
+		ContentCache:      envOr("HELM_CONTENT_CACHE", helmpath.CachePath("content")),
 		AllowMissingRepos: true,
 	}
 
-	opts.HelmOptions.ChartLoadOpts.DepDownloader = depDownloader
+	opts.HelmOptions.ChartLoadOpts.ChartDepsDownloader = depDownloader
+
+	ctx = common.ContextWithHelmOptions(ctx, opts.HelmOptions)
 
 	overrideValuesOpts := &values.Options{
 		ValueFiles:    opts.ValuesFiles,
@@ -110,7 +117,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	log.Default.TraceStruct(ctx, overrideValuesOpts, "Override values options:")
 	log.Default.Debug(ctx, "Merging override values for chart at %q", chartPath)
 
-	overrideValues, err := overrideValuesOpts.MergeValues(getter.Providers{getter.HttpProvider, getter.OCIProvider}, opts.HelmOptions)
+	overrideValues, err := overrideValuesOpts.MergeValues(ctx, getter.Getters())
 	if err != nil {
 		return nil, fmt.Errorf("merge override values for chart at %q: %w", chartPath, err)
 	}
@@ -118,23 +125,55 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	log.Default.TraceStruct(ctx, overrideValues, "Merged override values:")
 	log.Default.Debug(ctx, "Loading chart at %q", chartPath)
 
-	chart, err := loader.Load(chartPath, opts.HelmOptions)
+	loadedChart, err := loader.Load(ctx, chartPath)
 	if err != nil {
 		return nil, fmt.Errorf("load chart at %q: %w", chartPath, err)
 	}
 
-	if err := validateChart(ctx, chart); err != nil {
+	var (
+		chartV2 *v2chart.Chart
+		chartV3 *v3chart.Chart
+	)
+
+	switch c := loadedChart.(type) {
+	case *v2chart.Chart:
+		chartV2 = c
+	case *v3chart.Chart:
+		chartV3 = c
+	default:
+		return nil, fmt.Errorf("loaded chart has unexpected type %T", loadedChart)
+	}
+
+	chartAccessor, err := helmchart.NewAccessor(loadedChart)
+	if err != nil {
+		return nil, fmt.Errorf("create chart accessor: %w", err)
+	}
+
+	if err := validateChart(ctx, loadedChart, chartAccessor); err != nil {
 		return nil, fmt.Errorf("validate chart at %q: %w", chartPath, err)
 	}
 
-	log.Default.TraceStruct(ctx, chart, "Chart:")
+	log.Default.TraceStruct(ctx, loadedChart, "Chart:")
 
-	if err := chartutil.ProcessDependenciesWithMerge(chart, &overrideValues); err != nil {
-		return nil, fmt.Errorf("process chart %q dependencies: %w", chart.Name(), err)
+	if chartV2 != nil {
+		if err := chartv2util.ProcessDependencies(chartV2, &overrideValues); err != nil {
+			return nil, fmt.Errorf("process chart %q dependencies: %w", chartV2.Name(), err)
+		}
+	} else {
+		if err := chartv3util.ProcessDependencies(chartV3, overrideValues); err != nil {
+			return nil, fmt.Errorf("process chart %q dependencies: %w", chartV3.Name(), err)
+		}
 	}
 
-	log.Default.TraceStruct(ctx, chart, "Chart after processing dependencies:")
+	log.Default.TraceStruct(ctx, loadedChart, "Chart after processing dependencies:")
 	log.Default.TraceStruct(ctx, overrideValues, "Merged override values after processing dependencies:")
+
+	var chartKubeVersion string
+	if chartV2 != nil {
+		chartKubeVersion = chartV2.Metadata.KubeVersion
+	} else {
+		chartKubeVersion = chartV3.Metadata.KubeVersion
+	}
 
 	caps, err := buildChartCapabilities(ctx, clientFactory, buildChartCapabilitiesOptions{
 		ExtraAPIVersions: opts.ExtraAPIVersions,
@@ -142,28 +181,21 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		Remote:           opts.Remote,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("build capabilities for chart %q: %w", chart.Name(), err)
+		return nil, fmt.Errorf("build capabilities for chart %q: %w", chartAccessor.Name(), err)
 	}
 
 	log.Default.TraceStruct(ctx, caps, "Capabilities:")
 
-	if chart.Metadata.KubeVersion != "" && !chartutil.IsCompatibleRange(chart.Metadata.KubeVersion, caps.KubeVersion.String()) {
-		return nil, fmt.Errorf("chart requires kubeVersion: %s which is incompatible with Kubernetes %s", chart.Metadata.KubeVersion, caps.KubeVersion.String())
+	if chartKubeVersion != "" && !chartv2util.IsCompatibleRange(chartKubeVersion, caps.KubeVersion.String()) {
+		return nil, fmt.Errorf("chart requires kubeVersion: %s which is incompatible with Kubernetes %s", chartKubeVersion, caps.KubeVersion.String())
 	}
 
-	runtime, err := buildContextFromJSONSets(opts.RuntimeSetJSON)
-	if err != nil {
-		return nil, fmt.Errorf("build runtime: %w", err)
-	}
-
-	log.Default.TraceStruct(ctx, runtime, "Runtime:")
-
-	opts.HelmOptions.ChartLoadOpts.DefaultRootContext, err = buildContextFromJSONSets(opts.RootSetJSON)
+	defaultRootContext, err := buildContextFromJSONSets(opts.RootSetJSON)
 	if err != nil {
 		return nil, fmt.Errorf("build default root context: %w", err)
 	}
 
-	log.Default.TraceStruct(ctx, opts.HelmOptions.ChartLoadOpts.DefaultRootContext, "Default root context:")
+	log.Default.TraceStruct(ctx, defaultRootContext, "Default root context:")
 
 	var isUpgrade bool
 
@@ -178,15 +210,21 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 
 	log.Default.Debug(ctx, "Rendering values for chart at %q", chartPath)
 
-	renderedValues, err := chartutil.ToRenderValues(chart, overrideValues, chartutil.ReleaseOptions{
+	renderedValues, err := chartcommonutil.ToRenderValues(loadedChart, overrideValues, chartcommon.ReleaseOptions{
 		Name:      releaseName,
 		Namespace: releaseNamespace,
 		Revision:  revision,
 		IsInstall: !isUpgrade,
 		IsUpgrade: isUpgrade,
-	}, caps, runtime, opts.HelmOptions.ChartLoadOpts.DefaultRootContext)
+	}, caps)
 	if err != nil {
-		return nil, fmt.Errorf("build rendered values for chart %q: %w", chart.Name(), err)
+		return nil, fmt.Errorf("build rendered values for chart %q: %w", chartAccessor.Name(), err)
+	}
+
+	for k, v := range defaultRootContext {
+		if _, exists := renderedValues[k]; !exists {
+			renderedValues[k] = v
+		}
 	}
 
 	log.Default.TraceStruct(ctx, renderedValues.AsMap(), "Rendered values:")
@@ -205,11 +243,28 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	var resources []*spec.ResourceSpec
 
 	if !opts.NoStandaloneCRDs {
-		for _, crd := range chart.CRDObjects() {
-			for _, manifest := range releaseutil.SplitManifestsToSlice(string(crd.File.Data)) {
+		type crdRef struct {
+			data     []byte
+			filename string
+		}
+
+		var crds []crdRef
+
+		if chartV2 != nil {
+			for _, crd := range chartV2.CRDObjects() {
+				crds = append(crds, crdRef{data: crd.File.Data, filename: crd.Filename})
+			}
+		} else {
+			for _, crd := range chartV3.CRDObjects() {
+				crds = append(crds, crdRef{data: crd.File.Data, filename: crd.Filename})
+			}
+		}
+
+		for _, crd := range crds {
+			for _, manifest := range util.SplitManifests(string(crd.data)) {
 				if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
 					StoreAs:  common.StoreAsNone,
-					FilePath: crd.Filename,
+					FilePath: crd.filename,
 				}); err != nil {
 					return nil, fmt.Errorf("construct standalone CRD for chart at %q: %w", chartPath, err)
 				} else {
@@ -219,17 +274,25 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		}
 	}
 
-	renderedTemplates, err := engine.Render(chart, renderedValues, opts.HelmOptions)
+	renderedTemplates, err := engine.Render(ctx, loadedChart, renderedValues)
 	if err != nil {
-		return nil, fmt.Errorf("render resources for chart %q: %w", chart.Name(), err)
+		return nil, fmt.Errorf("render resources for chart %q: %w", chartAccessor.Name(), err)
 	}
 
 	if featgate.FeatGateTypescript.Enabled() {
-		log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", chart.Name())
+		var tsChart *v2chart.Chart
+		if chartV2 != nil {
+			tsChart = chartV2
+		} else {
+			// TODO(major): refactor to allow native v3 chart handling in TypeScript rendering
+			tsChart = convertV3ToV2(chartV3)
+		}
 
-		jsRenderedTemplates, err := ts.RenderChart(ctx, chart, renderedValues, opts.IgnoreBundleJS, chartPath, opts.TempDirPath, opts.DenoBinaryPath)
+		log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", tsChart.Name())
+
+		jsRenderedTemplates, err := ts.RenderChart(ctx, tsChart, renderedValues, opts.IgnoreBundleJS, chartPath, opts.TempDirPath, opts.DenoBinaryPath)
 		if err != nil {
-			return nil, fmt.Errorf("render TypeScript templates for chart %q: %w", chart.Name(), err)
+			return nil, fmt.Errorf("render TypeScript templates for chart %q: %w", chartAccessor.Name(), err)
 		}
 
 		if len(jsRenderedTemplates) > 0 {
@@ -241,7 +304,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 
 	for filePath, fileContent := range renderedTemplates {
 		if strings.HasPrefix(path.Base(filePath), "_") ||
-			strings.HasSuffix(filePath, action.NotesFileSuffix) ||
+			strings.HasSuffix(filePath, "NOTES.txt") ||
 			strings.TrimSpace(fileContent) == "" {
 			continue
 		}
@@ -255,7 +318,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		resources = append(resources, r...)
 	}
 
-	notes := buildChartNotes(chart.Name(), renderedTemplates, opts.SubchartNotes)
+	notes := buildChartNotes(chartAccessor.Name(), renderedTemplates, opts.SubchartNotes)
 
 	log.Default.TraceStruct(ctx, notes, "Rendered notes:")
 
@@ -263,8 +326,16 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		return spec.ResourceSpecSortHandler(resources[i], resources[j])
 	})
 
+	var resultChart *v2chart.Chart
+	if chartV2 != nil {
+		resultChart = chartV2
+	} else {
+		// TODO(major): refactor to allow native v3 chart handling in nelm
+		resultChart = convertV3ToV2(chartV3)
+	}
+
 	return &RenderChartResult{
-		Chart:         chart,
+		Chart:         resultChart,
 		Notes:         notes,
 		ReleaseConfig: overrideValues,
 		ResourceSpecs: resources,
@@ -272,9 +343,85 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	}, nil
 }
 
-func buildChartCapabilities(ctx context.Context, clientFactory kube.ClientFactorier, opts buildChartCapabilitiesOptions) (*chartutil.Capabilities, error) {
-	capabilities := &chartutil.Capabilities{
-		HelmVersion: chartutil.DefaultCapabilities.HelmVersion,
+func convertV3ToV2(src *v3chart.Chart) *v2chart.Chart {
+	dst := &v2chart.Chart{
+		Raw:                src.Raw,
+		Templates:          src.Templates,
+		Values:             src.Values,
+		Schema:             src.Schema,
+		SchemaModTime:      src.SchemaModTime,
+		Files:              src.Files,
+		ModTime:            src.ModTime,
+		RuntimeFiles:       src.RuntimeFiles,
+		ExtraValues:        src.ExtraValues,
+		SecretsRuntimeData: src.SecretsRuntimeData,
+	}
+
+	if src.Metadata != nil {
+		dst.Metadata = convertV3MetadataToV2(src.Metadata)
+	}
+
+	if src.Lock != nil {
+		dst.Lock = convertV3LockToV2(src.Lock)
+	}
+
+	for _, dep := range src.Dependencies() {
+		dst.AddDependency(convertV3ToV2(dep))
+	}
+
+	return dst
+}
+
+func convertV3LockToV2(src *v3chart.Lock) *v2chart.Lock {
+	dst := &v2chart.Lock{
+		Generated: src.Generated,
+		Digest:    src.Digest,
+	}
+
+	for _, dependency := range src.Dependencies {
+		dst.Dependencies = append(dst.Dependencies, convertV3DependencyToV2(dependency))
+	}
+
+	return dst
+}
+
+func convertV3MetadataToV2(src *v3chart.Metadata) *v2chart.Metadata {
+	dst := &v2chart.Metadata{
+		Name:        src.Name,
+		Home:        src.Home,
+		Sources:     src.Sources,
+		Version:     src.Version,
+		Description: src.Description,
+		Keywords:    src.Keywords,
+		Icon:        src.Icon,
+		APIVersion:  src.APIVersion,
+		Condition:   src.Condition,
+		Tags:        src.Tags,
+		AppVersion:  src.AppVersion,
+		Deprecated:  src.Deprecated,
+		Annotations: src.Annotations,
+		KubeVersion: src.KubeVersion,
+		Type:        src.Type,
+	}
+
+	for _, maintainer := range src.Maintainers {
+		dst.Maintainers = append(dst.Maintainers, &v2chart.Maintainer{
+			Name:  maintainer.Name,
+			Email: maintainer.Email,
+			URL:   maintainer.URL,
+		})
+	}
+
+	for _, dependency := range src.Dependencies {
+		dst.Dependencies = append(dst.Dependencies, convertV3DependencyToV2(dependency))
+	}
+
+	return dst
+}
+
+func buildChartCapabilities(ctx context.Context, clientFactory kube.ClientFactorier, opts buildChartCapabilitiesOptions) (*chartcommon.Capabilities, error) {
+	capabilities := &chartcommon.Capabilities{
+		HelmVersion: chartcommon.DefaultCapabilities.HelmVersion,
 	}
 
 	if opts.Remote {
@@ -285,7 +432,7 @@ func buildChartCapabilities(ctx context.Context, clientFactory kube.ClientFactor
 			return nil, fmt.Errorf("get kubernetes server version: %w", err)
 		}
 
-		capabilities.KubeVersion = chartutil.KubeVersion{
+		capabilities.KubeVersion = chartcommon.KubeVersion{
 			Version: kubeVersion.GitVersion,
 			Major:   kubeVersion.Major,
 			Minor:   kubeVersion.Minor,
@@ -303,21 +450,21 @@ func buildChartCapabilities(ctx context.Context, clientFactory kube.ClientFactor
 		capabilities.APIVersions = apiVersions
 	} else {
 		if opts.LocalKubeVersion != "" {
-			kubeVersion, err := chartutil.ParseKubeVersion(opts.LocalKubeVersion)
+			kubeVersion, err := chartcommon.ParseKubeVersion(opts.LocalKubeVersion)
 			if err != nil {
 				return nil, fmt.Errorf("parse kube version %q: %w", opts.LocalKubeVersion, err)
 			}
 
 			capabilities.KubeVersion = *kubeVersion
 		} else {
-			capabilities.KubeVersion = chartutil.DefaultCapabilities.KubeVersion
+			capabilities.KubeVersion = chartcommon.DefaultCapabilities.KubeVersion
 		}
 
-		capabilities.APIVersions = chartutil.DefaultCapabilities.APIVersions
+		capabilities.APIVersions = chartcommon.DefaultCapabilities.APIVersions
 	}
 
 	if opts.ExtraAPIVersions != nil {
-		capabilities.APIVersions = append(capabilities.APIVersions, chartutil.VersionSet(opts.ExtraAPIVersions)...)
+		capabilities.APIVersions = append(capabilities.APIVersions, chartcommon.VersionSet(opts.ExtraAPIVersions)...)
 	}
 
 	return capabilities, nil
@@ -327,7 +474,7 @@ func buildChartNotes(chartName string, renderedTemplates map[string]string, rend
 	var resultBuf bytes.Buffer
 
 	for filePath, fileContent := range renderedTemplates {
-		if !strings.HasSuffix(filePath, action.NotesFileSuffix) {
+		if !strings.HasSuffix(filePath, "NOTES.txt") {
 			continue
 		}
 
@@ -336,7 +483,7 @@ func buildChartNotes(chartName string, renderedTemplates map[string]string, rend
 			continue
 		}
 
-		isTopLevelNotes := filePath == path.Join(chartName, "templates", action.NotesFileSuffix)
+		isTopLevelNotes := filePath == path.Join(chartName, "templates", "NOTES.txt")
 
 		if !isTopLevelNotes && !renderSubchartNotes {
 			continue
@@ -364,8 +511,42 @@ func buildContextFromJSONSets(jsonSets []string) (map[string]interface{}, error)
 	return context, nil
 }
 
+func convertV3DependencyToV2(src *v3chart.Dependency) *v2chart.Dependency {
+	return &v2chart.Dependency{
+		Name:         src.Name,
+		Version:      src.Version,
+		Repository:   src.Repository,
+		Condition:    src.Condition,
+		Tags:         src.Tags,
+		Enabled:      src.Enabled,
+		ImportValues: src.ImportValues,
+		Alias:        src.Alias,
+	}
+}
+
+func envOr(envVar, defaultVal string) string {
+	if v := os.Getenv(envVar); v != "" {
+		return v
+	}
+
+	return defaultVal
+}
+
 func isLocalChart(path string) bool {
 	return filepath.IsAbs(path) || filepath.HasPrefix(path, "..") || filepath.HasPrefix(path, ".")
+}
+
+func parseVerificationStrategy(s string) helmdownloader.VerificationStrategy {
+	switch s {
+	case "verify":
+		return helmdownloader.VerifyAlways
+	case "verify-if-possible":
+		return helmdownloader.VerifyIfPossible
+	case "later":
+		return helmdownloader.VerifyLater
+	default:
+		return helmdownloader.VerifyNever
+	}
 }
 
 func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, releaseNamespace string, opts RenderChartOptions) ([]*spec.ResourceSpec, error) {
@@ -373,12 +554,12 @@ func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, relea
 
 	for filePath, fileContent := range renderedTemplates {
 		if strings.HasPrefix(path.Base(filePath), "_") ||
-			strings.HasSuffix(filePath, action.NotesFileSuffix) ||
+			strings.HasSuffix(filePath, "NOTES.txt") ||
 			strings.TrimSpace(fileContent) == "" {
 			continue
 		}
 
-		manifests := releaseutil.SplitManifestsToSlice(fileContent)
+		manifests := util.SplitManifests(fileContent)
 
 		for idx, manifest := range manifests {
 			var head releaseutil.SimpleHead
@@ -404,23 +585,27 @@ func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, relea
 	return resources, nil
 }
 
-func validateChart(ctx context.Context, chart *helmchart.Chart) error {
-	if chart == nil {
-		return fmt.Errorf("load chart: %w", action.ErrMissingChart())
+func validateChart(ctx context.Context, chrt helmchart.Charter, acc helmchart.Accessor) error {
+	if chrt == nil {
+		return fmt.Errorf("load chart: missing chart")
 	}
 
-	if chart.Metadata.Type != "" && chart.Metadata.Type != "application" {
-		return fmt.Errorf("chart %q of type %q can't be deployed", chart.Name(), chart.Metadata.Type)
+	meta := acc.MetadataAsMap()
+
+	chartType, _ := meta["Type"].(string)
+	if chartType != "" && chartType != "application" {
+		return fmt.Errorf("chart %q of type %q can't be deployed", acc.Name(), chartType)
 	}
 
-	if chart.Metadata.Dependencies != nil {
-		if err := action.CheckDependencies(chart, chart.Metadata.Dependencies); err != nil {
-			return fmt.Errorf("check chart dependencies for chart %q: %w", chart.Name(), err)
+	if metaDeps := acc.MetaDependencies(); len(metaDeps) > 0 {
+		if err := action.CheckDependencies(chrt, metaDeps); err != nil {
+			return fmt.Errorf("check chart dependencies for chart %q: %w", acc.Name(), err)
 		}
 	}
 
-	if chart.Metadata.Deprecated {
-		log.Default.Warn(ctx, `Chart "%s:%s" is deprecated`, chart.Name(), chart.Metadata.Version)
+	if acc.Deprecated() {
+		chartVersion, _ := meta["Version"].(string)
+		log.Default.Warn(ctx, `Chart "%s:%s" is deprecated`, acc.Name(), chartVersion)
 	}
 
 	return nil

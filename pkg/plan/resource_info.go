@@ -15,7 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/json"
 
-	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
@@ -726,7 +726,7 @@ func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMet
 
 func mustTrackReadiness(res *resource.InstallableResource, resInstallType ResourceInstallType, exists, prevRelFailed, mustDeleteOnSuccessfulInstall bool) bool {
 	if spec.IsCRD(res.Unstruct.GroupVersionKind().GroupKind()) ||
-		res.TrackTerminationMode == multitrack.NonBlocking {
+		res.TrackTerminationMode == statestore.NonBlocking {
 		return false
 	}
 

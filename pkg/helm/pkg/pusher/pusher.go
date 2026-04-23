@@ -17,11 +17,11 @@ limitations under the License.
 package pusher
 
 import (
-	"github.com/pkg/errors"
+	"fmt"
+	"slices"
 
 	"github.com/werf/nelm/pkg/helm/pkg/cli"
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 )
 
 // options are generic parameters to be provided to the pusher during instantiation.
@@ -32,7 +32,7 @@ type options struct {
 	certFile              string
 	keyFile               string
 	caFile                string
-	insecureSkipTLSverify bool
+	insecureSkipTLSVerify bool
 	plainHTTP             bool
 }
 
@@ -59,7 +59,7 @@ func WithTLSClientConfig(certFile, keyFile, caFile string) Option {
 // WithInsecureSkipTLSVerify determines if a TLS Certificate will be checked
 func WithInsecureSkipTLSVerify(insecureSkipTLSVerify bool) Option {
 	return func(opts *options) {
-		opts.insecureSkipTLSverify = insecureSkipTLSVerify
+		opts.insecureSkipTLSVerify = insecureSkipTLSVerify
 	}
 }
 
@@ -72,7 +72,7 @@ func WithPlainHTTP(plainHTTP bool) Option {
 // Pusher is an interface to support upload to the specified URL.
 type Pusher interface {
 	// Push file content by url string
-	Push(chartRef, url string, opts helmopts.HelmOptions, options ...Option) error
+	Push(chartRef, url string, options ...Option) error
 }
 
 // Constructor is the function for every pusher which creates a specific instance
@@ -87,12 +87,7 @@ type Provider struct {
 
 // Provides returns true if the given scheme is supported by this Provider.
 func (p Provider) Provides(scheme string) bool {
-	for _, i := range p.Schemes {
-		if i == scheme {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(p.Schemes, scheme)
 }
 
 // Providers is a collection of Provider objects.
@@ -107,7 +102,7 @@ func (p Providers) ByScheme(scheme string) (Pusher, error) {
 			return pp.New()
 		}
 	}
-	return nil, errors.Errorf("scheme %q not supported", scheme)
+	return nil, fmt.Errorf("scheme %q not supported", scheme)
 }
 
 var ociProvider = Provider{

@@ -14,7 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/kube/fake"
@@ -874,7 +874,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForTracking() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.FailMode = multitrack.IgnoreAndContinueDeployProcess
+				res.FailMode = statestore.IgnoreAndContinueDeployProcess
 
 				return res
 			},
@@ -974,7 +974,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForTracking() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.TrackTerminationMode = multitrack.NonBlocking
+				res.TrackTerminationMode = statestore.NonBlocking
 
 				return res
 			},
@@ -1207,10 +1207,10 @@ func defaultInstallableResource(resSpec *spec.ResourceSpec) *resource.Installabl
 	return &resource.InstallableResource{
 		ResourceSpec:                    resSpec,
 		Ownership:                       common.OwnershipRelease,
-		FailMode:                        multitrack.FailWholeDeployProcessImmediately,
+		FailMode:                        statestore.FailWholeDeployProcessImmediately,
 		NoActivityTimeout:               4 * time.Minute,
 		ShowLogsOnlyForNumberOfReplicas: 1,
-		TrackTerminationMode:            multitrack.WaitUntilResourceReady,
+		TrackTerminationMode:            statestore.WaitUntilResourceReady,
 		Weight:                          lo.ToPtr(0),
 		DeployConditions: map[common.On][]common.Stage{
 			common.InstallOnInstall:  {common.StageInstall},

@@ -38,7 +38,7 @@ func newChartSecretFileDecryptCommand(ctx context.Context, afterAllCommandsBuilt
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = log.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultSecretFileDecryptLogLevel), log.SetupLoggingOptions{
+			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultSecretFileDecryptLogLevel), action.SetupLoggingOptions{
 				ColorMode:      cfg.LogColorMode,
 				LogIsParseable: true,
 			})

@@ -12,12 +12,12 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/werf/nelm/pkg/common"
-	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
-	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
+	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
 	"github.com/werf/nelm/pkg/log"
 )
 
-func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, rebuildBundle bool, chartPath, tempDirPath, denoBinaryPath string) (map[string]string, error) {
+func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartcommon.Values, rebuildBundle bool, chartPath, tempDirPath, denoBinaryPath string) (map[string]string, error) {
 	if !hasTSFiles(chart) {
 		return map[string]string{}, nil
 	}
@@ -39,7 +39,7 @@ func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues cha
 	return allRendered, nil
 }
 
-func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartutil.Values, pathPrefix, chartPath, tempDirPath, denoBin string) (map[string]string, error) {
+func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartcommon.Values, pathPrefix, chartPath, tempDirPath, denoBin string) (map[string]string, error) {
 	log.Default.Debug(ctx, "Rendering TypeScript for chart %q (path prefix: %s)", chart.Name(), pathPrefix)
 
 	results := make(map[string]string)
@@ -80,7 +80,7 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 	return results, nil
 }
 
-func renderChart(ctx context.Context, bundle *helmchart.File, chart *helmchart.Chart, renderedValues chartutil.Values, tempDirPath, denoBin string) (string, error) {
+func renderChart(ctx context.Context, bundle *chartcommon.File, chart *helmchart.Chart, renderedValues chartcommon.Values, tempDirPath, denoBin string) (string, error) {
 	renderDir := filepath.Join(tempDirPath, "typescript-render", chart.ChartFullPath())
 	if err := os.MkdirAll(renderDir, 0o755); err != nil {
 		return "", fmt.Errorf("create temp dir for render context: %w", err)
@@ -102,8 +102,8 @@ func renderChart(ctx context.Context, bundle *helmchart.File, chart *helmchart.C
 	return strings.TrimSpace(string(resultBytes)), nil
 }
 
-func scopeValuesForSubchart(parentValues chartutil.Values, subchartName string, subchart *helmchart.Chart) chartutil.Values {
-	scoped := chartutil.Values{
+func scopeValuesForSubchart(parentValues chartcommon.Values, subchartName string, subchart *helmchart.Chart) chartcommon.Values {
+	scoped := chartcommon.Values{
 		"Chart":  buildChartMetadata(subchart),
 		"Values": map[string]any{},
 	}
@@ -119,7 +119,7 @@ func scopeValuesForSubchart(parentValues chartutil.Values, subchartName string, 
 		switch v := parentVals.(type) {
 		case map[string]any:
 			valuesMap = v
-		case chartutil.Values:
+		case chartcommon.Values:
 			valuesMap = v
 		}
 
@@ -140,11 +140,11 @@ func scopeValuesForSubchart(parentValues chartutil.Values, subchartName string, 
 	return scoped
 }
 
-func writeInputRenderContext(renderedValues chartutil.Values, chart *helmchart.Chart, renderDir string) error {
+func writeInputRenderContext(renderedValues chartcommon.Values, chart *helmchart.Chart, renderDir string) error {
 	renderContext := renderedValues.AsMap()
 
 	if valuesInterface, ok := renderContext["Values"]; ok {
-		if chartValues, ok := valuesInterface.(chartutil.Values); ok {
+		if chartValues, ok := valuesInterface.(chartcommon.Values); ok {
 			renderContext["Values"] = chartValues.AsMap()
 		}
 	}

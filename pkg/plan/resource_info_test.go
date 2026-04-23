@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/kube/fake"
@@ -539,10 +539,10 @@ func defaultInstallableResource(releaseName, releaseNamespace string) *resource.
 	return &resource.InstallableResource{
 		ResourceSpec:                    defaultResourceSpec(releaseName, releaseNamespace),
 		Ownership:                       common.OwnershipRelease,
-		FailMode:                        multitrack.FailWholeDeployProcessImmediately,
+		FailMode:                        statestore.FailWholeDeployProcessImmediately,
 		NoActivityTimeout:               4 * time.Minute,
 		ShowLogsOnlyForNumberOfReplicas: 1,
-		TrackTerminationMode:            multitrack.WaitUntilResourceReady,
+		TrackTerminationMode:            statestore.WaitUntilResourceReady,
 		Weight:                          lo.ToPtr(0),
 		DeployConditions: map[common.On][]common.Stage{
 			common.InstallOnInstall:  {common.StageInstall},

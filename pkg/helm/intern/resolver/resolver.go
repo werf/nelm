@@ -17,23 +17,24 @@ package resolver
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/pkg/errors"
 
-	"github.com/werf/nelm/pkg/helm/pkg/chart"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
+	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/loader"
 	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
 	"github.com/werf/nelm/pkg/helm/pkg/provenance"
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	"github.com/werf/nelm/pkg/helm/pkg/repo"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
+	"github.com/werf/nelm/pkg/helm/pkg/repo/v1"
 )
 
 // Resolver resolves dependencies from semantic version ranges to a particular version.
@@ -53,7 +54,7 @@ func New(chartpath, cachepath string, registryClient *registry.Client) *Resolver
 }
 
 // Resolve resolves dependencies and returns a lock file with the resolution.
-func (r *Resolver) Resolve(reqs []*chart.Dependency, repoNames map[string]string, opts helmopts.HelmOptions) (*chart.Lock, error) {
+func (r *Resolver) Resolve(ctx context.Context, reqs []*chart.Dependency, repoNames map[string]string) (*chart.Lock, error) {
 
 	// Now we clone the dependencies, locking as we go.
 	locked := make([]*chart.Dependency, len(reqs))
@@ -61,7 +62,7 @@ func (r *Resolver) Resolve(reqs []*chart.Dependency, repoNames map[string]string
 	for i, d := range reqs {
 		constraint, err := semver.NewConstraint(d.Version)
 		if err != nil {
-			return nil, errors.Wrapf(err, "dependency %q has an invalid version/constraint format", d.Name)
+			return nil, fmt.Errorf("dependency %q has an invalid version/constraint format: %w", d.Name, err)
 		}
 
 		if d.Repository == "" {
@@ -78,13 +79,12 @@ func (r *Resolver) Resolve(reqs []*chart.Dependency, repoNames map[string]string
 			continue
 		}
 		if strings.HasPrefix(d.Repository, "file://") {
-
 			chartpath, err := GetLocalPath(d.Repository, r.chartpath)
 			if err != nil {
 				return nil, err
 			}
 
-			ch, err := loader.LoadDir(chartpath, opts)
+			ch, err := loader.LoadDir(ctx, chartpath)
 			if err != nil {
 				return nil, err
 			}
@@ -96,7 +96,7 @@ func (r *Resolver) Resolve(reqs []*chart.Dependency, repoNames map[string]string
 			}
 
 			if !constraint.Check(v) {
-				missing = append(missing, d.Name)
+				missing = append(missing, fmt.Sprintf("%q (repository %q, version %q)", d.Name, d.Repository, d.Version))
 				continue
 			}
 
@@ -126,12 +126,12 @@ func (r *Resolver) Resolve(reqs []*chart.Dependency, repoNames map[string]string
 		if !registry.IsOCI(d.Repository) {
 			repoIndex, err := repo.LoadIndexFile(filepath.Join(r.cachepath, helmpath.CacheIndexFile(repoName)))
 			if err != nil {
-				return nil, errors.Wrapf(err, "no cached repository for %s found. (try 'helm repo update')", repoName)
+				return nil, fmt.Errorf("no cached repository for %s found. (try 'helm repo update'): %w", repoName, err)
 			}
 
 			vs, ok = repoIndex.Entries[d.Name]
 			if !ok {
-				return nil, errors.Errorf("%s chart not found in repo %s", d.Name, d.Repository)
+				return nil, fmt.Errorf("%s chart not found in repo %s", d.Name, d.Repository)
 			}
 			found = false
 		} else {
@@ -153,7 +153,7 @@ func (r *Resolver) Resolve(reqs []*chart.Dependency, repoNames map[string]string
 				ref := fmt.Sprintf("%s/%s", strings.TrimPrefix(d.Repository, fmt.Sprintf("%s://", registry.OCIScheme)), d.Name)
 				tags, err := r.registryClient.Tags(ref)
 				if err != nil {
-					return nil, errors.Wrapf(err, "could not retrieve list of tags for repository %s", d.Repository)
+					return nil, fmt.Errorf("could not retrieve list of tags for repository %s: %w", d.Repository, err)
 				}
 
 				vs = make(repo.ChartVersions, len(tags))
@@ -174,7 +174,7 @@ func (r *Resolver) Resolve(reqs []*chart.Dependency, repoNames map[string]string
 			Repository: d.Repository,
 			Version:    version,
 		}
-		// The version are already sorted and hence the first one to satisfy the constraint is used
+		// The versions are already sorted and hence the first one to satisfy the constraint is used
 		for _, ver := range vs {
 			v, err := semver.NewVersion(ver.Version)
 			// OCI does not need URLs
@@ -190,11 +190,11 @@ func (r *Resolver) Resolve(reqs []*chart.Dependency, repoNames map[string]string
 		}
 
 		if !found {
-			missing = append(missing, d.Name)
+			missing = append(missing, fmt.Sprintf("%q (repository %q, version %q)", d.Name, d.Repository, d.Version))
 		}
 	}
 	if len(missing) > 0 {
-		return nil, errors.Errorf("can't get a valid version for repositories %s. Try changing the version constraint in Chart.yaml", strings.Join(missing, ", "))
+		return nil, fmt.Errorf("can't get a valid version for %d subchart(s): %s. Make sure a matching chart version exists in the repo, or change the version constraint in Chart.yaml", len(missing), strings.Join(missing, ", "))
 	}
 
 	digest, err := HashReq(reqs, locked)
@@ -254,8 +254,8 @@ func GetLocalPath(repo, chartpath string) (string, error) {
 		depPath = filepath.Join(chartpath, p)
 	}
 
-	if _, err = os.Stat(depPath); os.IsNotExist(err) {
-		return "", errors.Errorf("directory %s not found", depPath)
+	if _, err = os.Stat(depPath); errors.Is(err, fs.ErrNotExist) {
+		return "", fmt.Errorf("directory %s not found", depPath)
 	} else if err != nil {
 		return "", err
 	}

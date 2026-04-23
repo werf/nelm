@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,9 +13,10 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/werf/nelm/pkg/common"
+	chartcommonutil "github.com/werf/nelm/pkg/helm/pkg/chart/common/util"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
-	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -74,7 +74,7 @@ type ReleaseGetResultRelease struct {
 	Name          string                      `json:"name"`
 	Namespace     string                      `json:"namespace"`
 	Revision      int                         `json:"revision"`
-	Status        helmrelease.Status          `json:"status"`
+	Status        helmreleasestatus.Status    `json:"status"`
 	DeployedAt    *ReleaseGetResultDeployedAt `json:"deployedAt"`
 	Annotations   map[string]string           `json:"annotations"`
 	StorageLabels map[string]string           `json:"storageLabels"`
@@ -103,16 +103,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		return nil, fmt.Errorf("build release get options: %w", err)
 	}
 
-	if len(opts.KubeConfigPaths) > 0 {
-		var splitPaths []string
-		for _, path := range opts.KubeConfigPaths {
-			splitPaths = append(splitPaths, filepath.SplitList(path)...)
-		}
-
-		opts.KubeConfigPaths = lo.Compact(splitPaths)
-	}
-
-	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+	kubeConfig, err := kube.NewKubeConfig(ctx, kube.KubeConfigOptions{
 		KubeConnectionOptions: opts.KubeConnectionOptions,
 		KubeContextNamespace:  releaseNamespace, // TODO: unset it everywhere
 	})
@@ -165,7 +156,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		}
 	}
 
-	values, err := chartutil.CoalesceValues(rel.Chart, rel.Config)
+	values, err := chartcommonutil.CoalesceValues(rel.Chart, rel.Config)
 	if err != nil {
 		return nil, fmt.Errorf("coalesce release values: %w", err)
 	}

@@ -21,7 +21,7 @@ type KubeConfig struct {
 	RestConfig         *rest.Config
 }
 
-func NewKubeConfig(ctx context.Context, kubeConfigPaths []string, opts KubeConfigOptions) (*KubeConfig, error) {
+func NewKubeConfig(ctx context.Context, opts KubeConfigOptions) (*KubeConfig, error) {
 	var authProviderConfig *api.AuthProviderConfig
 	if opts.KubeAuthProviderName != "" || len(opts.KubeAuthProviderConfig) != 0 {
 		authProviderConfig = &api.AuthProviderConfig{
@@ -72,10 +72,15 @@ func NewKubeConfig(ctx context.Context, kubeConfigPaths []string, opts KubeConfi
 
 		clientConfig = clientcmd.NewDefaultClientConfig(*config, overrides)
 	} else {
-		loadingRules := &clientcmd.ClientConfigLoadingRules{
-			Precedence:          kubeConfigPaths,
-			MigrationRules:      clientcmd.NewDefaultClientConfigLoadingRules().MigrationRules,
-			DefaultClientConfig: &clientcmd.DefaultClientConfig,
+		var loadingRules *clientcmd.ClientConfigLoadingRules
+		if len(opts.KubeConfigPaths) > 0 {
+			loadingRules = &clientcmd.ClientConfigLoadingRules{
+				Precedence:          opts.KubeConfigPaths,
+				MigrationRules:      clientcmd.NewDefaultClientConfigLoadingRules().MigrationRules,
+				DefaultClientConfig: &clientcmd.DefaultClientConfig,
+			}
+		} else {
+			loadingRules = clientcmd.NewDefaultClientConfigLoadingRules()
 		}
 
 		clientConfig = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)

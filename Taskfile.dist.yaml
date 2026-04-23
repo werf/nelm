@@ -52,7 +52,7 @@ tasks:
     internal: true
     run: once
     cmds:
-      - golangci-lint run {{if eq .fix "true"}}--fix{{end}} --build-tags="{{.tags}}" {{.CLI_ARGS}} {{.paths | default "$(find pkg/ -mindepth 1 -maxdepth 1 -type d ! -name helm -printf './%p/... ' 2>/dev/null || find pkg/ -mindepth 1 -maxdepth 1 -type d ! -name helm | xargs -I{} echo './{}/...') ./cmd/..."}}
+      - golangci-lint run {{if eq .fix "true"}}--fix{{end}} --build-tags="{{.tags}}" {{.CLI_ARGS}} {{.paths | default "$(find pkg/ -mindepth 1 -maxdepth 1 -type d ! -name helm -printf './%p/... ') ./cmd/..."}}
     vars:
       paths: "{{.paths}}"
 
@@ -237,7 +237,7 @@ tasks:
       - task: test:ginkgo
         vars:
           paths: '{{.paths | default "./pkg ./cmd"}}'
-          skipPackage: "pkg/helm{{if .skipPackage}},{{.skipPackage}}{{end}}"
+          skipPackage: "{{.skipPackage}}"
           parallel: "{{.parallel}}"
 
   verify:binaries:dist:all:
@@ -491,8 +491,7 @@ tasks:
         sg scan --rule "$intern_rule" -U "{{.forkSnapshotDir}}"
         rm -f "$intern_rule"
 
-        rm -f "{{.forkSnapshotDir}}/cmd/helm/helm.go"
-        find "{{.forkSnapshotDir}}/cmd/helm" -name "*.go" -exec perl -i -p -e 's/^package main$/package helm/' {} +
+        rm -rf "{{.forkSnapshotDir}}/cmd"
 
         git -C "{{.forkSnapshotDir}}" add -A
         git -C "{{.forkSnapshotDir}}" -c user.name="sync" -c user.email="sync@local" \
@@ -504,13 +503,21 @@ tasks:
         git fetch "{{.forkTempRemote}}" prepared
         git checkout -B "{{.forkSyncBranch}}" FETCH_HEAD --no-track
 
-        stripped=0
-        while IFS= read -r sync_path; do
-          if ! git -c core.quotePath=false ls-tree --name-only "${original_ref}" -- "{{.forkPrefix}}/${sync_path}" | grep -q .; then
-            git rm -rf -- "$sync_path"
-            stripped=$((stripped + 1))
-          fi
-        done < <(git ls-tree --name-only HEAD)
+        prev_split=$(git log --grep="git-subtree-dir: {{.forkPrefix}}" --format="%b" "${original_ref}" | grep "^git-subtree-split:" | head -n1 | cut -d' ' -f2)
+        if [ -z "$prev_split" ]; then
+          echo "WARNING: no previous subtree split found for {{.forkPrefix}}, skipping file stripping"
+        else
+          stripped=0
+          while IFS= read -r sync_path; do
+            if ! git -c core.quotePath=false ls-tree "${original_ref}" -- "{{.forkPrefix}}/${sync_path}" | grep -q .; then
+              if git -c core.quotePath=false ls-tree "$prev_split" -- "$sync_path" | grep -q .; then
+                git rm -rf -- "$sync_path"
+                stripped=$((stripped + 1))
+              fi
+            fi
+          done < <(git -c core.quotePath=false ls-tree -r --name-only HEAD)
+          echo "Stripped $stripped files that were removed from our fork"
+        fi
 
         if ! git diff --cached --quiet; then
           git commit -m "sync: strip paths not kept in {{.forkPrefix}}"

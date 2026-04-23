@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/gookit/color"
@@ -18,7 +16,7 @@ import (
 
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -66,7 +64,7 @@ type ReleaseListResultRelease struct {
 	Name        string                       `json:"name"`
 	Namespace   string                       `json:"namespace"`
 	Revision    int                          `json:"revision"`
-	Status      helmrelease.Status           `json:"status"`
+	Status      helmreleasestatus.Status     `json:"status"`
 	DeployedAt  *ReleaseListResultDeployedAt `json:"deployedAt"`
 	Annotations map[string]string            `json:"annotations"`
 	Chart       *ReleaseListResultChart      `json:"chart"`
@@ -95,16 +93,7 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 		return nil, fmt.Errorf("build release list options: %w", err)
 	}
 
-	if len(opts.KubeConfigPaths) > 0 {
-		var splitPaths []string
-		for _, path := range opts.KubeConfigPaths {
-			splitPaths = append(splitPaths, filepath.SplitList(path)...)
-		}
-
-		opts.KubeConfigPaths = lo.Compact(splitPaths)
-	}
-
-	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+	kubeConfig, err := kube.NewKubeConfig(ctx, kube.KubeConfigOptions{
 		KubeConnectionOptions: opts.KubeConnectionOptions,
 		KubeContextNamespace:  opts.ReleaseNamespace, // TODO: unset it everywhere
 	})
@@ -149,8 +138,8 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 				AppVersion: lastRelease.Chart.Metadata.AppVersion,
 			},
 			DeployedAt: &ReleaseListResultDeployedAt{
-				Human: time.Time{}.String(),
-				Unix:  int(time.Time{}.Unix()),
+				Human: lastRelease.Info.LastDeployed.String(),
+				Unix:  int(lastRelease.Info.LastDeployed.Unix()),
 			},
 			Name:      lastRelease.Name,
 			Namespace: lastRelease.Namespace,
@@ -225,9 +214,9 @@ func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV
 	for _, release := range result.Releases {
 		var statusColor color.Color
 		switch release.Status {
-		case helmrelease.StatusDeployed, helmrelease.StatusSuperseded:
+		case helmreleasestatus.StatusDeployed, helmreleasestatus.StatusSuperseded:
 			statusColor = color.Green
-		case helmrelease.StatusFailed:
+		case helmreleasestatus.StatusFailed:
 			statusColor = color.LightRed
 		default:
 			statusColor = color.LightYellow

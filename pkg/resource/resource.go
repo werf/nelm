@@ -11,7 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/resource/spec"
@@ -30,7 +30,7 @@ type InstallableResource struct {
 	DeleteOnSucceeded                      bool                            `json:"deleteOnSucceeded"`
 	DeleteOnFailed                         bool                            `json:"deleteOnFailed"`
 	KeepOnDelete                           bool                            `json:"keepOnDelete"`
-	FailMode                               multitrack.FailMode             `json:"failMode"`
+	FailMode                               statestore.FailMode             `json:"failMode"`
 	FailuresAllowed                        int                             `json:"failuresAllowed"`
 	IgnoreReadinessProbeFailsForContainers map[string]time.Duration        `json:"ignoreReadinessProbeFailsForContainers,omitempty"`
 	LogRegex                               *regexp.Regexp                  `json:"logRegex"`
@@ -43,7 +43,7 @@ type InstallableResource struct {
 	SkipLogsForContainers                  []string                        `json:"skipLogsForContainers,omitempty"`
 	SkipLogsRegex                          *regexp.Regexp                  `json:"skipLogsRegex"`
 	SkipLogsRegexForContainers             map[string]*regexp.Regexp       `json:"skipLogsRegexForContainers"`
-	TrackTerminationMode                   multitrack.TrackTerminationMode `json:"trackTerminationMode"`
+	TrackTerminationMode                   statestore.TrackTerminationMode `json:"trackTerminationMode"`
 	Weight                                 *int                            `json:"weight,omitempty"`
 	ManualInternalDependencies             []*InternalDependency           `json:"manualInternalDependencies,omitempty"`
 	AutoInternalDependencies               []*InternalDependency           `json:"autoInternalDependencies,omitempty"`
@@ -81,10 +81,6 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 
 	if err := validateDeployDependencies(res.ResourceMeta); err != nil {
 		return nil, fmt.Errorf("validate deploy dependencies: %w", err)
-	}
-
-	if err := validateInternalDependencies(res.ResourceMeta); err != nil {
-		return nil, fmt.Errorf("validate internal dependencies: %w", err)
 	}
 
 	if err := validateExternalDependencies(res.ResourceMeta); err != nil {

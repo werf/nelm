@@ -32,7 +32,7 @@ func newReleaseListCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 		releaseCmdGroup,
 		cli.SubCommandOptions{},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = log.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultReleaseListLogLevel), log.SetupLoggingOptions{
+			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultReleaseListLogLevel), action.SetupLoggingOptions{
 				ColorMode:      cfg.LogColorMode,
 				LogIsParseable: true,
 			})

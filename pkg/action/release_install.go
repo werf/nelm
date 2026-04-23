@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
 	"time"
 
@@ -15,15 +14,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
+	"github.com/werf/kubedog/pkg/dyntracker/logstore"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
+	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/kubedog/pkg/informer"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
-	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/pkg/chart"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
+	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/legacy/progrep"
 	"github.com/werf/nelm/pkg/lock"
@@ -56,8 +55,6 @@ type ReleaseInstallOptions struct {
 	// ChartAppVersion overrides the appVersion field in Chart.yaml.
 	// Used to set application version metadata without modifying the chart file.
 	ChartAppVersion string
-	// ChartDirPath is deprecated
-	ChartDirPath string // TODO(major): get rid
 	// ChartProvenanceKeyring is the path to a keyring file containing public keys
 	// used to verify chart provenance signatures. Used with signed charts for security.
 	ChartProvenanceKeyring string
@@ -88,13 +85,15 @@ type ReleaseInstallOptions struct {
 	InstallReportPath string
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.
-	LegacyChartType helmopts.ChartType
+	LegacyChartType common.LegacyChartType
 	// LegacyExtraValues provides additional values programmatically.
 	// Used internally for backward compatibility with werf integration.
 	LegacyExtraValues map[string]interface{}
 	// LegacyLogRegistryStreamOut is the output writer for Helm registry client logs.
 	// Defaults to io.Discard if not set. Used for debugging registry operations.
 	LegacyLogRegistryStreamOut io.Writer
+	// LegacyPlanArtifact provides plan artifact as a result of the release plan install action.
+	LegacyPlanArtifact *PlanArtifact
 	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
 	// Must be a buffered channel with capacity >= 1. The caller owns the channel and is responsible
 	// for its lifecycle. Intermediate reports may be dropped if the consumer is slow; the final
@@ -172,8 +171,6 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 }
 
 func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, opts ReleaseInstallOptions) error {
-	usePlan := opts.PlanArtifactPath != ""
-
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)
@@ -193,20 +190,27 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
 	}
 
-	var planArtifact *plan.PlanArtifact
-	if usePlan {
+	var planArtifact *PlanArtifact
+
+	if opts.PlanArtifactPath != "" {
 		log.Default.Info(ctx, "Using %s plan artifact", opts.PlanArtifactPath)
 
 		log.Default.Debug(ctx, "Read plan artifact")
 
-		planArtifact, err = plan.ReadPlanArtifact(ctx, opts.PlanArtifactPath, opts.SecretKey, opts.SecretWorkDir)
+		planArtifact, err = ReadPlanArtifact(ctx, opts.PlanArtifactPath, opts.SecretKey, opts.SecretWorkDir)
 		if err != nil {
 			return fmt.Errorf("read plan artifact from %s: %w", opts.PlanArtifactPath, err)
 		}
+	} else {
+		planArtifact = opts.LegacyPlanArtifact
+	}
 
+	usePlan := planArtifact != nil
+
+	if usePlan {
 		log.Default.Debug(ctx, "Validate plan artifact")
 
-		if err := plan.ValidatePlanArtifact(planArtifact, opts.PlanArtifactLifetime); err != nil {
+		if err := ValidatePlanArtifact(planArtifact, opts.PlanArtifactLifetime); err != nil {
 			return fmt.Errorf("validate plan artifact: %w", err)
 		}
 
@@ -216,16 +220,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		opts.ReleaseInstallRuntimeOptions = planArtifact.Data.Options
 	}
 
-	if len(opts.KubeConfigPaths) > 0 {
-		var splitPaths []string
-		for _, path := range opts.KubeConfigPaths {
-			splitPaths = append(splitPaths, filepath.SplitList(path)...)
-		}
-
-		opts.KubeConfigPaths = lo.Compact(splitPaths)
-	}
-
-	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+	kubeConfig, err := kube.NewKubeConfig(ctx, kube.KubeConfigOptions{
 		KubeConnectionOptions: opts.KubeConnectionOptions,
 		KubeContextNamespace:  releaseNamespace, // TODO: unset it everywhere
 	})
@@ -323,7 +318,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		instResInfos = planArtifact.Data.InstallableResourceInfos
 		relInfos = planArtifact.Data.ReleaseInfos
 	} else {
-		prevReleaseFailed := prevRelease != nil && prevRelease.IsStatusFailed()
+		prevReleaseFailed := prevRelease != nil && prevRelease.Info.Status == helmreleasestatus.StatusFailed
 
 		var deployType common.DeployType
 		if prevDeployedRelease != nil {
@@ -334,8 +329,8 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			deployType = common.DeployTypeInitial
 		}
 
-		helmOptions := helmopts.HelmOptions{
-			ChartLoadOpts: helmopts.ChartLoadOptions{
+		helmOptions := common.HelmOptions{
+			ChartLoadOpts: common.ChartLoadOptions{
 				ChartAppVersion:            opts.ChartAppVersion,
 				ChartType:                  opts.LegacyChartType,
 				DefaultChartAPIVersion:     opts.DefaultChartAPIVersion,
@@ -513,12 +508,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	if releaseIsUpToDate && installPlanIsUseless {
 		if opts.InstallReportPath != "" {
-			if err := saveReport(opts.InstallReportPath, &releaseReportV3{
+			if err := saveReport(opts.InstallReportPath, &ReleaseReportV3{
 				Version:   3,
 				Release:   releaseName,
 				Namespace: releaseNamespace,
 				Revision:  newRelease.Version,
-				Status:    helmrelease.StatusSkipped,
+				Status:    helmreleasestatus.Status("skipped"),
 			}); err != nil {
 				return fmt.Errorf("save release install report: %w", err)
 			}
@@ -657,12 +652,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	sort.Strings(reportCanceledOps)
 	sort.Strings(reportFailedOps)
 
-	report := &releaseReportV3{
+	report := &ReleaseReportV3{
 		Version:             3,
 		Release:             releaseName,
 		Namespace:           releaseNamespace,
 		Revision:            newRelease.Version,
-		Status:              lo.Ternary(executePlanErr == nil, helmrelease.StatusDeployed, helmrelease.StatusFailed),
+		Status:              lo.Ternary(executePlanErr == nil, helmreleasestatus.StatusDeployed, helmreleasestatus.StatusFailed),
 		CompletedOperations: reportCompletedOps,
 		CanceledOperations:  reportCanceledOps,
 		FailedOperations:    reportFailedOps,
@@ -709,9 +704,7 @@ func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir, 
 	opts.SecretValuesOptions.ApplyDefaults(currentDir)
 	opts.TrackingOptions.ApplyDefaults()
 
-	if opts.Chart == "" && opts.ChartDirPath != "" {
-		opts.Chart = opts.ChartDirPath
-	} else if opts.ChartDirPath == "" && opts.Chart == "" {
+	if opts.Chart == "" {
 		opts.Chart = currentDir
 	}
 

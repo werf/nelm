@@ -17,6 +17,7 @@ limitations under the License.
 package action
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -26,19 +27,25 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/gosuri/uitable"
 
-	"github.com/werf/nelm/pkg/helm/pkg/chart"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
+	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/loader"
 )
 
 // Dependency is the action for building a given chart's dependency tree.
 //
 // It provides the implementation of 'helm dependency' and its respective subcommands.
 type Dependency struct {
-	Verify      bool
-	Keyring     string
-	SkipRefresh bool
-	ColumnWidth uint
+	Verify                bool
+	Keyring               string
+	SkipRefresh           bool
+	ColumnWidth           uint
+	Username              string
+	Password              string
+	CertFile              string
+	KeyFile               string
+	CaFile                string
+	InsecureSkipTLSVerify bool
+	PlainHTTP             bool
 }
 
 // NewDependency creates a new Dependency object with the given configuration.
@@ -49,8 +56,8 @@ func NewDependency() *Dependency {
 }
 
 // List executes 'helm dependency list'.
-func (d *Dependency) List(chartpath string, out io.Writer, opts helmopts.HelmOptions) error {
-	c, err := loader.Load(chartpath, opts)
+func (d *Dependency) List(chartpath string, out io.Writer) error {
+	c, err := loader.Load(context.Background(), chartpath)
 	if err != nil {
 		return err
 	}
@@ -60,14 +67,14 @@ func (d *Dependency) List(chartpath string, out io.Writer, opts helmopts.HelmOpt
 		return nil
 	}
 
-	d.printDependencies(chartpath, out, c, opts)
+	d.printDependencies(chartpath, out, c)
 	fmt.Fprintln(out)
-	d.printMissing(chartpath, out, c.Metadata.Dependencies, opts)
+	d.printMissing(chartpath, out, c.Metadata.Dependencies)
 	return nil
 }
 
 // dependencyStatus returns a string describing the status of a dependency viz a viz the parent chart.
-func (d *Dependency) dependencyStatus(chartpath string, dep *chart.Dependency, parent *chart.Chart, opts helmopts.HelmOptions) string {
+func (d *Dependency) dependencyStatus(chartpath string, dep *chart.Dependency, parent *chart.Chart) string {
 	filename := fmt.Sprintf("%s-%s.tgz", dep.Name, "*")
 
 	// If a chart is unpacked, this will check the unpacked chart's `charts/` directory for tarballs.
@@ -97,7 +104,7 @@ func (d *Dependency) dependencyStatus(chartpath string, dep *chart.Dependency, p
 
 		if l := len(found); l == 1 {
 			// If we get here, we do the same thing as in len(archives) == 1.
-			if r := statArchiveForStatus(found[0], dep, opts); r != "" {
+			if r := statArchiveForStatus(found[0], dep); r != "" {
 				return r
 			}
 
@@ -111,7 +118,7 @@ func (d *Dependency) dependencyStatus(chartpath string, dep *chart.Dependency, p
 
 	case len(archives) == 1:
 		archive := archives[0]
-		if r := statArchiveForStatus(archive, dep, opts); r != "" {
+		if r := statArchiveForStatus(archive, dep); r != "" {
 			return r
 		}
 
@@ -152,9 +159,9 @@ func (d *Dependency) dependencyStatus(chartpath string, dep *chart.Dependency, p
 //
 // This is a refactor of the code originally in dependencyStatus. It is here to
 // support legacy behavior, and should be removed in Helm 4.
-func statArchiveForStatus(archive string, dep *chart.Dependency, opts helmopts.HelmOptions) string {
+func statArchiveForStatus(archive string, dep *chart.Dependency) string {
 	if _, err := os.Stat(archive); err == nil {
-		c, err := loader.Load(archive, opts)
+		c, err := loader.Load(context.Background(), archive)
 		if err != nil {
 			return "corrupt"
 		}
@@ -183,19 +190,19 @@ func statArchiveForStatus(archive string, dep *chart.Dependency, opts helmopts.H
 }
 
 // printDependencies prints all of the dependencies in the yaml file.
-func (d *Dependency) printDependencies(chartpath string, out io.Writer, c *chart.Chart, opts helmopts.HelmOptions) {
+func (d *Dependency) printDependencies(chartpath string, out io.Writer, c *chart.Chart) {
 	table := uitable.New()
 	table.MaxColWidth = d.ColumnWidth
 	table.AddRow("NAME", "VERSION", "REPOSITORY", "STATUS")
 	for _, row := range c.Metadata.Dependencies {
-		table.AddRow(row.Name, row.Version, row.Repository, d.dependencyStatus(chartpath, row, c, opts))
+		table.AddRow(row.Name, row.Version, row.Repository, d.dependencyStatus(chartpath, row, c))
 	}
 	fmt.Fprintln(out, table)
 }
 
 // printMissing prints warnings about charts that are present on disk, but are
 // not in Chart.yaml.
-func (d *Dependency) printMissing(chartpath string, out io.Writer, reqs []*chart.Dependency, opts helmopts.HelmOptions) {
+func (d *Dependency) printMissing(chartpath string, out io.Writer, reqs []*chart.Dependency) {
 	folder := filepath.Join(chartpath, "charts/*")
 	files, err := filepath.Glob(folder)
 	if err != nil {
@@ -212,7 +219,7 @@ func (d *Dependency) printMissing(chartpath string, out io.Writer, reqs []*chart
 		if !fi.IsDir() && filepath.Ext(f) != ".tgz" {
 			continue
 		}
-		c, err := loader.Load(f, opts)
+		c, err := loader.Load(context.Background(), f)
 		if err != nil {
 			fmt.Fprintf(out, "WARNING: %q is not a chart.\n", f)
 			continue

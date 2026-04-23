@@ -13,9 +13,9 @@ import (
 
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
-	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
+	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
+	v2chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/ts"
 )
@@ -45,22 +45,29 @@ func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Run bundle for ")+"%s", absPath)
 
-	helmOpts := helmopts.HelmOptions{
-		ChartLoadOpts: helmopts.ChartLoadOptions{
-			ChartType: helmopts.ChartTypeChart,
+	helmOpts := common.HelmOptions{
+		ChartLoadOpts: common.ChartLoadOptions{
+			ChartType: common.LegacyChartTypeChart,
 		},
 	}
 
-	chart, err := loader.Load(absPath, helmOpts)
+	ctx = common.ContextWithHelmOptions(ctx, helmOpts)
+
+	loadedChart, err := loader.Load(ctx, absPath)
 	if err != nil {
 		return fmt.Errorf("load chart: %w", err)
+	}
+
+	chart, ok := loadedChart.(*v2chart.Chart)
+	if !ok {
+		return fmt.Errorf("unsupported chart type %T", loadedChart)
 	}
 
 	if err = ts.BundleChartsRecursive(ctx, chart, absPath, true, opts.DenoBinaryPath); err != nil {
 		return fmt.Errorf("process chart: %w", err)
 	}
 
-	bundles := lo.Filter(chart.Raw, func(file *helmchart.File, _ int) bool {
+	bundles := lo.Filter(chart.Raw, func(file *chartcommon.File, _ int) bool {
 		return strings.Contains(file.Name, common.ChartTSBundleFile)
 	})
 

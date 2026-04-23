@@ -18,9 +18,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/util"
@@ -256,13 +256,13 @@ func deployConditionsForAnnotation(meta *spec.ResourceMeta, annoPattern *regexp.
 			result[common.InstallOnDelete] = append(result[common.InstallOnDelete], common.StagePostInstall)
 		case string(helmrelease.HookTest), "test-success":
 			result[common.InstallOnTest] = append(result[common.InstallOnTest], common.StageInstall)
-		case string(helmrelease.HookInstall):
+		case string(common.InstallOnInstall):
 			result[common.InstallOnInstall] = append(result[common.InstallOnInstall], common.StageInstall)
-		case string(helmrelease.HookUpgrade):
+		case string(common.InstallOnUpgrade):
 			result[common.InstallOnUpgrade] = append(result[common.InstallOnUpgrade], common.StageInstall)
-		case string(helmrelease.HookRollback):
+		case string(common.InstallOnRollback):
 			result[common.InstallOnRollback] = append(result[common.InstallOnRollback], common.StageInstall)
-		case string(helmrelease.HookDelete):
+		case string(common.InstallOnDelete):
 			result[common.InstallOnDelete] = append(result[common.InstallOnDelete], common.StageInstall)
 		default:
 			panic(fmt.Sprintf("unknown value %q for %s", value, key))
@@ -321,13 +321,13 @@ func externalDeps(resMeta *spec.ResourceMeta, releaseNamespace string) map[strin
 	return deps
 }
 
-func failMode(meta *spec.ResourceMeta) multitrack.FailMode {
+func failMode(meta *spec.ResourceMeta) statestore.FailMode {
 	_, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternFailMode)
 	if !found {
-		return multitrack.FailWholeDeployProcessImmediately
+		return statestore.FailWholeDeployProcessImmediately
 	}
 
-	return multitrack.FailMode(value)
+	return statestore.FailMode(value)
 }
 
 func failuresAllowed(unstruct *unstructured.Unstructured) int {
@@ -534,49 +534,6 @@ func manualInternalDeployDependencies(meta *spec.ResourceMeta) []*InternalDepend
 
 	deps := map[string]*InternalDependency{}
 
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDependency); found {
-		for key, value := range annotations {
-			matches := common.AnnotationKeyPatternDependency.FindStringSubmatch(key)
-			idSubexpIndex := common.AnnotationKeyPatternDependency.SubexpIndex("id")
-			depID := matches[idSubexpIndex]
-			valParts := strings.Split(value, ":")
-			depAPIVersionParts := strings.SplitN(valParts[0], "/", 2)
-
-			var gvk schema.GroupVersionKind
-			if len(depAPIVersionParts) == 1 {
-				gvk = schema.GroupVersionKind{
-					Version: depAPIVersionParts[0],
-					Kind:    valParts[1],
-				}
-			} else {
-				gvk = schema.GroupVersionKind{
-					Group:   depAPIVersionParts[0],
-					Version: depAPIVersionParts[1],
-					Kind:    valParts[1],
-				}
-			}
-
-			var depNamespace string
-			if len(valParts) == 4 {
-				depNamespace = valParts[2]
-			}
-
-			depName := valParts[len(valParts)-1]
-
-			dep := &InternalDependency{
-				ResourceMatcher: &spec.ResourceMatcher{
-					Names:      []string{depName},
-					Namespaces: []string{depNamespace},
-					Groups:     []string{gvk.Group},
-					Versions:   []string{gvk.Version},
-					Kinds:      []string{gvk.Kind},
-				},
-				ResourceState: common.ResourceStatePresent,
-			}
-			deps[depID] = dep
-		}
-	}
-
 	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeployDependency); found {
 		for key, value := range annotations {
 			matches := common.AnnotationKeyPatternDeployDependency.FindStringSubmatch(key)
@@ -749,13 +706,13 @@ func skipLogsForContainers(meta *spec.ResourceMeta) []string {
 	return containers
 }
 
-func trackTerminationMode(meta *spec.ResourceMeta) multitrack.TrackTerminationMode {
+func trackTerminationMode(meta *spec.ResourceMeta) statestore.TrackTerminationMode {
 	_, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternTrackTerminationMode)
 	if !found {
-		return multitrack.WaitUntilResourceReady
+		return statestore.WaitUntilResourceReady
 	}
 
-	return multitrack.TrackTerminationMode(value)
+	return statestore.TrackTerminationMode(value)
 }
 
 func validateDeleteDependencies(meta *spec.ResourceMeta) error {
@@ -979,10 +936,10 @@ func validateDeployOn(meta *spec.ResourceMeta) error {
 				string(helmrelease.HookPreDelete),
 				string(helmrelease.HookPostDelete),
 				string(helmrelease.HookTest),
-				string(helmrelease.HookInstall),
-				string(helmrelease.HookUpgrade),
-				string(helmrelease.HookRollback),
-				string(helmrelease.HookDelete),
+				string(common.InstallOnInstall),
+				string(common.InstallOnUpgrade),
+				string(common.InstallOnRollback),
+				string(common.InstallOnDelete),
 				"test-success":
 			default:
 				return fmt.Errorf("value %q for annotation %q is not supported", value, key)
@@ -1117,36 +1074,6 @@ func validateHook(meta *spec.ResourceMeta) error {
 	return nil
 }
 
-func validateInternalDependencies(meta *spec.ResourceMeta) error {
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDependency); found {
-		for key, value := range annotations {
-			keyMatches := common.AnnotationKeyPatternDependency.FindStringSubmatch(key)
-			if keyMatches == nil {
-				return fmt.Errorf("invalid key for annotation %q", key)
-			}
-
-			idSubexpIndex := common.AnnotationKeyPatternDependency.SubexpIndex("id")
-			if idSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternDependency.String(), key)
-			}
-
-			if len(keyMatches) < idSubexpIndex+1 {
-				return fmt.Errorf("can't parse dependency id from annotation key %q", key)
-			}
-
-			if value != "" {
-				valueElems := strings.Split(value, ":")
-
-				if len(valueElems) != 3 && len(valueElems) != 4 {
-					return fmt.Errorf(`invalid format of value %q for annotation %q, should be: apiVersion:kind[:namespace]:name or empty`, value, key)
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
 func validateOwnership(meta *spec.ResourceMeta) error {
 	if key, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternOwnership); found {
 		if value == "" {
@@ -1225,9 +1152,9 @@ func validateTrack(meta *spec.ResourceMeta) error {
 		}
 
 		switch value {
-		case string(multitrack.IgnoreAndContinueDeployProcess):
-		case string(multitrack.FailWholeDeployProcessImmediately):
-		case string(multitrack.LegacyHopeUntilEndOfDeployProcess):
+		case string(statestore.IgnoreAndContinueDeployProcess):
+		case string(statestore.FailWholeDeployProcessImmediately):
+		case string(statestore.LegacyHopeUntilEndOfDeployProcess):
 		default:
 			return fmt.Errorf("invalid unknown value %q for annotation %q", value, key)
 		}
@@ -1431,8 +1358,8 @@ func validateTrack(meta *spec.ResourceMeta) error {
 		}
 
 		switch value {
-		case string(multitrack.WaitUntilResourceReady):
-		case string(multitrack.NonBlocking):
+		case string(statestore.WaitUntilResourceReady):
+		case string(statestore.NonBlocking):
 		default:
 			return fmt.Errorf("invalid unknown value %q for annotation %q", value, key)
 		}

@@ -1,18 +1,19 @@
 package common
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/user"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"time"
 
 	"github.com/Masterminds/sprig/v3"
-	"github.com/docker/cli/cli/config"
-	"github.com/docker/docker/pkg/homedir"
 	"github.com/samber/lo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -77,6 +78,8 @@ const (
 	StoreAsHook    StoreAs = "hook"
 	StoreAsRegular StoreAs = "regular"
 
+	CacheDirAPIResourceJSONSchemas = CacheSubdirNelm + "/api-resource-json-schemas"
+	CacheSubdirNelm                = "nelm"
 	// ChartTSBundleFile is the path to the bundle in a Helm chart.
 	ChartTSBundleFile = ChartTSSourceDir + "dist/bundle.js"
 	// ChartTSEntryPointJS is the JavaScript entry point path.
@@ -150,8 +153,9 @@ var (
 		StagePostPostUninstall,
 		StageFinal,
 	}
-	OrderedStoreAs                                      = []StoreAs{StoreAsNone, StoreAsHook, StoreAsRegular}
-	DefaultRegistryCredentialsPath                      = filepath.Join(homedir.Get(), ".docker", config.ConfigFileName)
+	OrderedStoreAs = []StoreAs{StoreAsNone, StoreAsHook, StoreAsRegular}
+	// TODO(major): now it respects DOCKER_CONFIG? Is it a breaking change? Anyways, I feel like it shouldn't be a constant, but a proper option for actions
+	DefaultRegistryCredentialsPath                      = filepath.Join(dockerConfigDir(), "config.json")
 	LabelKeyHumanManagedBy                              = "app.kubernetes.io/managed-by"
 	LabelKeyPatternManagedBy                            = regexp.MustCompile(`^app.kubernetes.io/managed-by$`)
 	AnnotationKeyHumanReleaseName                       = "meta.helm.sh/release-name"
@@ -205,8 +209,6 @@ var (
 	AnnotationKeyHumanDeleteDependency                  = "werf.io/delete-dependency-<name>"
 	AnnotationKeyPatternDeleteDependency                = regexp.MustCompile(`^werf.io/delete-dependency-(?P<id>.+)$`)
 	// TODO(major): get rid
-	AnnotationKeyHumanDependency                          = "<name>.dependency.werf.io"
-	AnnotationKeyPatternDependency                        = regexp.MustCompile(`^(?P<id>.+).dependency.werf.io$`)
 	AnnotationKeyHumanExternalDependency                  = "<name>.external-dependency.werf.io"
 	AnnotationKeyPatternExternalDependency                = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io$`)
 	AnnotationKeyHumanLegacyExternalDependencyResource    = "<name>.external-dependency.werf.io/resource"
@@ -229,8 +231,7 @@ var (
 		"https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json",
 		"https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json",
 	}
-	DefaultResourceValidationCacheLifetime   = 48 * time.Hour
-	APIResourceValidationJSONSchemasCacheDir = helmpath.CachePath("nelm", "api-resource-json-schemas")
+	DefaultResourceValidationCacheLifetime = 48 * time.Hour
 )
 
 // Type of the current operation.
@@ -254,6 +255,49 @@ type ResourceState string
 // How the resource should be stored in the Helm release.
 type StoreAs string
 
+type HelmOptions struct {
+	ChartLoadOpts  ChartLoadOptions
+	TypeScriptOpts TypeScriptOptions
+}
+
+type ChartLoadOptions struct {
+	ChartAppVersion            string
+	ChartDepsDownloader        ChartDepsDownloader
+	ChartType                  LegacyChartType
+	DefaultChartAPIVersion     string
+	DefaultChartName           string
+	DefaultChartVersion        string
+	DefaultSecretValuesDisable bool
+	DefaultValuesDisable       bool
+	ExtraValues                map[string]interface{}
+	NoSecrets                  bool
+	SecretKeyIgnore            bool
+	SecretValuesFiles          []string
+	SecretWorkDir              string
+}
+
+type TypeScriptOptions struct {
+	DenoBinaryPath string
+}
+
+type helmOptionsContextKey struct{}
+
+func ContextWithHelmOptions(ctx context.Context, opts HelmOptions) context.Context {
+	return context.WithValue(ctx, helmOptionsContextKey{}, opts)
+}
+
+func HasHelmOptions(ctx context.Context) bool {
+	_, ok := ctx.Value(helmOptionsContextKey{}).(HelmOptions)
+
+	return ok
+}
+
+func HelmOptionsFromContext(ctx context.Context) HelmOptions {
+	opts, _ := ctx.Value(helmOptionsContextKey{}).(HelmOptions)
+
+	return opts
+}
+
 func StagesSortHandler(stage1, stage2 Stage) bool {
 	index1 := lo.IndexOf(StagesOrdered, stage1)
 	index2 := lo.IndexOf(StagesOrdered, stage2)
@@ -263,4 +307,23 @@ func StagesSortHandler(stage1, stage2 Stage) bool {
 
 func SubStageWeighted(stage Stage, weight int) Stage {
 	return Stage(fmt.Sprintf("%s/weight:%d", stage, weight))
+}
+
+func dockerConfigDir() string {
+	if d := os.Getenv("DOCKER_CONFIG"); d != "" {
+		return d
+	}
+
+	return filepath.Join(userHomeDir(), ".docker")
+}
+
+func userHomeDir() string {
+	home, _ := os.UserHomeDir()
+	if home == "" && runtime.GOOS != "windows" {
+		if u, err := user.Current(); err == nil {
+			return u.HomeDir
+		}
+	}
+
+	return home
 }

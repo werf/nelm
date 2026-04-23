@@ -11,7 +11,6 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/util"
@@ -25,7 +24,7 @@ func ValidateLocal(ctx context.Context, releaseNamespace string, transformedReso
 		return fmt.Errorf("validate for no duplicated resources: %w", err)
 	}
 
-	if featgate.FeatGateResourceValidation.Enabled() && !opts.NoResourceValidation {
+	if !opts.NoResourceValidation {
 		if err := validateResourceSchemas(ctx, releaseNamespace, transformedResources, opts); err != nil {
 			return fmt.Errorf("validate resource schemas: %w", err)
 		}

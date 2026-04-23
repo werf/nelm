@@ -4,7 +4,8 @@ import (
 	"context"
 
 	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 )
 
 const (
@@ -50,7 +51,7 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 		})
 
 		for _, rel := range prevReleases {
-			if rel.Info.Status == helmrelease.StatusDeployed {
+			if rel.Info.Status == helmreleasecommon.StatusDeployed {
 				infos = append(infos, &ReleaseInfo{
 					Must:    ReleaseTypeSupersede,
 					Release: rel,
@@ -65,7 +66,7 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 		})
 
 		for _, rel := range prevReleases {
-			if rel.Info.Status == helmrelease.StatusDeployed {
+			if rel.Info.Status == helmreleasecommon.StatusDeployed {
 				infos = append(infos, &ReleaseInfo{
 					Must:    ReleaseTypeSupersede,
 					Release: rel,
@@ -80,7 +81,7 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 		})
 
 		for _, rel := range prevReleases {
-			if rel.Info.Status == helmrelease.StatusDeployed {
+			if rel.Info.Status == helmreleasecommon.StatusDeployed {
 				infos = append(infos, &ReleaseInfo{
 					Must:    ReleaseTypeSupersede,
 					Release: rel,

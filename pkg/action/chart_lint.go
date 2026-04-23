@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
 	"github.com/samber/lo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -13,7 +12,7 @@ import (
 	"github.com/werf/nelm/pkg/chart"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
+	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/plan"
@@ -38,8 +37,6 @@ type ChartLintOptions struct {
 	// ChartAppVersion overrides the appVersion field in Chart.yaml.
 	// Used to set application version metadata without modifying the chart file.
 	ChartAppVersion string
-	// ChartDirPath is deprecated (TODO v2: remove). Use Chart instead.
-	ChartDirPath string
 	// ChartProvenanceKeyring is the path to a keyring file containing public keys
 	// used to verify chart provenance signatures. Used with signed charts for security.
 	ChartProvenanceKeyring string
@@ -84,7 +81,7 @@ type ChartLintOptions struct {
 	IgnoreBundleJS bool
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.
-	LegacyChartType helmopts.ChartType
+	LegacyChartType common.LegacyChartType
 	// LegacyExtraValues provides additional values programmatically.
 	// Used internally for backward compatibility with werf integration.
 	LegacyExtraValues map[string]interface{}
@@ -157,16 +154,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	var clientFactory *kube.ClientFactory
 	if opts.Remote {
-		if len(opts.KubeConfigPaths) > 0 {
-			var splitPaths []string
-			for _, path := range opts.KubeConfigPaths {
-				splitPaths = append(splitPaths, filepath.SplitList(path)...)
-			}
-
-			opts.KubeConfigPaths = lo.Compact(splitPaths)
-		}
-
-		kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+		kubeConfig, err := kube.NewKubeConfig(ctx, kube.KubeConfigOptions{
 			KubeConnectionOptions: opts.KubeConnectionOptions,
 			KubeContextNamespace:  opts.ReleaseNamespace, // TODO: unset it everywhere
 		})
@@ -207,8 +195,8 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		return fmt.Errorf("construct release storage: %w", err)
 	}
 
-	helmOptions := helmopts.HelmOptions{
-		ChartLoadOpts: helmopts.ChartLoadOptions{
+	helmOptions := common.HelmOptions{
+		ChartLoadOpts: common.ChartLoadOptions{
 			ChartAppVersion:            opts.ChartAppVersion,
 			ChartType:                  opts.LegacyChartType,
 			DefaultChartAPIVersion:     opts.DefaultChartAPIVersion,
@@ -242,7 +230,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	if prevRelease != nil {
 		newRevision = prevRelease.Version + 1
-		prevReleaseFailed = prevRelease.IsStatusFailed()
+		prevReleaseFailed = prevRelease.Info.Status == helmreleasestatus.StatusFailed
 	} else {
 		newRevision = 1
 	}
@@ -404,9 +392,7 @@ func applyChartLintOptionsDefaults(opts ChartLintOptions, currentDir, homeDir st
 	opts.ValuesOptions.ApplyDefaults()
 	opts.SecretValuesOptions.ApplyDefaults(currentDir)
 
-	if opts.Chart == "" && opts.ChartDirPath != "" {
-		opts.Chart = opts.ChartDirPath
-	} else if opts.ChartDirPath == "" && opts.Chart == "" {
+	if opts.Chart == "" {
 		opts.Chart = currentDir
 	}
 

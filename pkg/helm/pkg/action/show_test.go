@@ -18,23 +18,30 @@ package action
 
 import (
 	"testing"
+	"time"
 
-	"github.com/werf/nelm/pkg/helm/pkg/chart"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
+	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/pkg/helm/pkg/registry"
 )
 
 func TestShow(t *testing.T) {
 	config := actionConfigFixture(t)
-	client := NewShowWithConfig(ShowAll, config)
+	client := NewShow(ShowAll, config)
+	modTime := time.Now()
 	client.chart = &chart.Chart{
 		Metadata: &chart.Metadata{Name: "alpine"},
-		Files: []*chart.File{
-			{Name: "README.md", Data: []byte("README\n")},
-			{Name: "crds/ignoreme.txt", Data: []byte("error")},
-			{Name: "crds/foo.yaml", Data: []byte("---\nfoo\n")},
-			{Name: "crds/bar.json", Data: []byte("---\nbar\n")},
+		Files: []*common.File{
+			{Name: "README.md", ModTime: modTime, Data: []byte("README\n")},
+			{Name: "crds/ignoreme.txt", ModTime: modTime, Data: []byte("error")},
+			{Name: "crds/foo.yaml", ModTime: modTime, Data: []byte("---\nfoo\n")},
+			{Name: "crds/bar.json", ModTime: modTime, Data: []byte("---\nbar\n")},
+			{Name: "crds/baz.yaml", ModTime: modTime, Data: []byte("baz\n")},
 		},
-		Raw: []*chart.File{
-			{Name: "values.yaml", Data: []byte("VALUES\n")},
+		Raw: []*common.File{
+			{Name: "values.yaml", ModTime: modTime, Data: []byte("VALUES\n")},
 		},
 		Values: map[string]interface{}{},
 	}
@@ -58,6 +65,9 @@ foo
 ---
 bar
 
+---
+baz
+
 `
 	if output != expect {
 		t.Errorf("Expected\n%q\nGot\n%q\n", expect, output)
@@ -65,7 +75,8 @@ bar
 }
 
 func TestShowNoValues(t *testing.T) {
-	client := NewShow(ShowAll)
+	config := actionConfigFixture(t)
+	client := NewShow(ShowAll, config)
 	client.chart = new(chart.Chart)
 
 	// Regression tests for missing values. See issue #1024.
@@ -81,7 +92,8 @@ func TestShowNoValues(t *testing.T) {
 }
 
 func TestShowValuesByJsonPathFormat(t *testing.T) {
-	client := NewShow(ShowValues)
+	config := actionConfigFixture(t)
+	client := NewShow(ShowValues, config)
 	client.JSONPathTemplate = "{$.nestedKey.simpleKey}"
 	client.chart = buildChart(withSampleValues())
 	output, err := client.Run("")
@@ -95,13 +107,16 @@ func TestShowValuesByJsonPathFormat(t *testing.T) {
 }
 
 func TestShowCRDs(t *testing.T) {
-	client := NewShow(ShowCRDs)
+	config := actionConfigFixture(t)
+	client := NewShow(ShowCRDs, config)
+	modTime := time.Now()
 	client.chart = &chart.Chart{
 		Metadata: &chart.Metadata{Name: "alpine"},
-		Files: []*chart.File{
-			{Name: "crds/ignoreme.txt", Data: []byte("error")},
-			{Name: "crds/foo.yaml", Data: []byte("---\nfoo\n")},
-			{Name: "crds/bar.json", Data: []byte("---\nbar\n")},
+		Files: []*common.File{
+			{Name: "crds/ignoreme.txt", ModTime: modTime, Data: []byte("error")},
+			{Name: "crds/foo.yaml", ModTime: modTime, Data: []byte("---\nfoo\n")},
+			{Name: "crds/bar.json", ModTime: modTime, Data: []byte("---\nbar\n")},
+			{Name: "crds/baz.yaml", ModTime: modTime, Data: []byte("baz\n")},
 		},
 	}
 
@@ -116,6 +131,9 @@ foo
 ---
 bar
 
+---
+baz
+
 `
 	if output != expect {
 		t.Errorf("Expected\n%q\nGot\n%q\n", expect, output)
@@ -123,13 +141,15 @@ bar
 }
 
 func TestShowNoReadme(t *testing.T) {
-	client := NewShow(ShowAll)
+	config := actionConfigFixture(t)
+	client := NewShow(ShowAll, config)
+	modTime := time.Now()
 	client.chart = &chart.Chart{
 		Metadata: &chart.Metadata{Name: "alpine"},
-		Files: []*chart.File{
-			{Name: "crds/ignoreme.txt", Data: []byte("error")},
-			{Name: "crds/foo.yaml", Data: []byte("---\nfoo\n")},
-			{Name: "crds/bar.json", Data: []byte("---\nbar\n")},
+		Files: []*common.File{
+			{Name: "crds/ignoreme.txt", ModTime: modTime, Data: []byte("error")},
+			{Name: "crds/foo.yaml", ModTime: modTime, Data: []byte("---\nfoo\n")},
+			{Name: "crds/bar.json", ModTime: modTime, Data: []byte("---\nbar\n")},
 		},
 	}
 
@@ -150,4 +170,13 @@ bar
 	if output != expect {
 		t.Errorf("Expected\n%q\nGot\n%q\n", expect, output)
 	}
+}
+
+func TestShowSetRegistryClient(t *testing.T) {
+	config := actionConfigFixture(t)
+	client := NewShow(ShowAll, config)
+
+	registryClient := &registry.Client{}
+	client.SetRegistryClient(registryClient)
+	assert.Equal(t, registryClient, client.registryClient)
 }
