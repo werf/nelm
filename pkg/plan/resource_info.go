@@ -258,7 +258,9 @@ func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, get
 		DefaultNamespace: releaseNamespace,
 	})
 	if err != nil {
-		if kube.IsNotFoundErr(err) {
+		if kube.IsNotFoundErr(err) || kube.IsWebhookErr(err) {
+			log.Default.Debug(ctx, "Skipping managed fields fix for resource %q due to transient error: %s", localRes.IDHuman(), err)
+
 			return getObj, nil
 		}
 

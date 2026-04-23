@@ -186,8 +186,9 @@ func execOpRecreate(ctx context.Context, op *Operation, releaseNamespace string,
 	}
 
 	if _, err := clientFactory.KubeClient().Create(ctx, opConfig.ResourceSpec, kube.KubeClientCreateOptions{
-		DefaultNamespace: releaseNamespace,
-		ForceReplicas:    opConfig.ForceReplicas,
+		DefaultNamespace:    releaseNamespace,
+		ForceReplicas:       opConfig.ForceReplicas,
+		RetryOnWebhookError: true,
 	}); err != nil {
 		return fmt.Errorf("create resource: %w", err)
 	}
@@ -297,7 +298,8 @@ func execOpApply(ctx context.Context, op *Operation, releaseNamespace string, cl
 	opConfig := op.Config.(*OperationConfigApply)
 
 	if _, err := clientFactory.KubeClient().Apply(ctx, opConfig.ResourceSpec, kube.KubeClientApplyOptions{
-		DefaultNamespace: releaseNamespace,
+		DefaultNamespace:    releaseNamespace,
+		RetryOnWebhookError: true,
 	}); err != nil {
 		return fmt.Errorf("apply resource: %w", err)
 	}
@@ -309,8 +311,9 @@ func execOpCreate(ctx context.Context, op *Operation, releaseNamespace string, c
 	opConfig := op.Config.(*OperationConfigCreate)
 
 	if _, err := clientFactory.KubeClient().Create(ctx, opConfig.ResourceSpec, kube.KubeClientCreateOptions{
-		DefaultNamespace: releaseNamespace,
-		ForceReplicas:    opConfig.ForceReplicas,
+		DefaultNamespace:    releaseNamespace,
+		ForceReplicas:       opConfig.ForceReplicas,
+		RetryOnWebhookError: true,
 	}); err != nil {
 		return fmt.Errorf("create resource: %w", err)
 	}
@@ -355,7 +358,8 @@ func execOpUpdate(ctx context.Context, op *Operation, releaseNamespace string, c
 	opConfig := op.Config.(*OperationConfigUpdate)
 
 	if _, err := clientFactory.KubeClient().Apply(ctx, opConfig.ResourceSpec, kube.KubeClientApplyOptions{
-		DefaultNamespace: releaseNamespace,
+		DefaultNamespace:    releaseNamespace,
+		RetryOnWebhookError: true,
 	}); err != nil {
 		return fmt.Errorf("apply resource: %w", err)
 	}

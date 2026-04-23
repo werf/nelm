@@ -19,3 +19,7 @@ func IsNoSuchKindErr(err error) bool {
 func IsNotFoundErr(err error) bool {
 	return err != nil && errors.IsNotFound(err)
 }
+
+func IsWebhookErr(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "failed calling webhook")
+}
