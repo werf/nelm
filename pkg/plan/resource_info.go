@@ -216,8 +216,10 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 		return nil, fmt.Errorf("determine install type for resource %q: %w", localRes.IDHuman(), err)
 	}
 
-	if _, found := localRes.Annotations[common.AnnotationKeyHumanResourcePolicy]; found {
-		return nil, fmt.Errorf("resource %q deletion prohibited", localRes.IDHuman())
+	if installType == ResourceInstallTypeRecreate {
+		if _, found := localRes.Annotations[common.AnnotationKeyHumanResourcePolicy]; found {
+			return nil, fmt.Errorf("resource %q deletion prohibited", localRes.IDHuman())
+		}
 	}
 
 	getMeta := spec.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
