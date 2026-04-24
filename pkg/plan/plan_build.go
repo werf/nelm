@@ -8,7 +8,6 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/werf/nelm/pkg/common"
-	helmkube "github.com/werf/nelm/pkg/helm/pkg/kube"
 	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/resource"
@@ -426,10 +425,6 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 			}
 			chain.AddOperation(createOp).Stage(stg)
 		case ResourceInstallTypeRecreate:
-			if _, found := info.LocalResource.Annotations[helmkube.ResourcePolicyAnno]; found {
-				return fmt.Errorf("%s re-creation is prohibited due to %q annotation set", info.IDHuman(), helmkube.ResourcePolicyAnno)
-			}
-
 			recreateOp := &Operation{
 				Type:      OperationTypeRecreate,
 				Version:   OperationVersionRecreate,
