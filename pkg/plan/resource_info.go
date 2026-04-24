@@ -216,6 +216,12 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 		return nil, fmt.Errorf("determine install type for resource %q: %w", localRes.IDHuman(), err)
 	}
 
+	if installType == ResourceInstallTypeRecreate {
+		if _, found := localRes.Annotations[common.AnnotationKeyHumanResourcePolicy]; found {
+			return nil, fmt.Errorf("cannot recreate the resource %q because its deletion is prohibited", localRes.IDHuman())
+		}
+	}
+
 	getMeta := spec.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
 	mustDeleteOnSuccess := mustDeleteOnSuccessfulDeploy(localRes, getMeta, installType, releaseNamespace)
 	trackReadiness := mustTrackReadiness(localRes, installType, true, prevRelFailed, mustDeleteOnSuccess)
