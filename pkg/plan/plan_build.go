@@ -429,6 +429,7 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 			if _, found := info.LocalResource.Annotations[helmkube.ResourcePolicyAnno]; found {
 				return fmt.Errorf("%s re-creation is prohibited due to %q annotation set", info.IDHuman(), helmkube.ResourcePolicyAnno)
 			}
+
 			recreateOp := &Operation{
 				Type:      OperationTypeRecreate,
 				Version:   OperationVersionRecreate,
