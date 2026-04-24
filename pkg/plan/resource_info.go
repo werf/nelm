@@ -218,7 +218,7 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 
 	if installType == ResourceInstallTypeRecreate {
 		if _, found := localRes.Annotations[common.AnnotationKeyHumanResourcePolicy]; found {
-			return nil, fmt.Errorf("resource %q deletion prohibited", localRes.IDHuman())
+			return nil, fmt.Errorf("cannot recreate the resource %q because its deletion is prohibited", localRes.IDHuman())
 		}
 	}
 
