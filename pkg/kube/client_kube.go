@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/samber/lo"
@@ -12,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	kvwait "k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -78,11 +80,29 @@ func (c *KubeClient) Apply(ctx context.Context, resSpec *spec.ResourceSpec, opts
 
 	log.Default.Debug(ctx, "Server-side %sapplying resource %q", lo.Ternary(opts.DryRun, "dry-run ", ""), resSpec.IDHuman())
 
-	resultObj, err := clientResource.Apply(ctx, resSpec.Name, resSpec.Unstruct, metav1.ApplyOptions{
-		DryRun:       dryRun,
-		Force:        true,
-		FieldManager: common.DefaultFieldManager,
-	})
+	var resultObj *unstructured.Unstructured
+
+	applyFn := func() error {
+		var applyErr error
+
+		resultObj, applyErr = clientResource.Apply(ctx, resSpec.Name, resSpec.Unstruct, metav1.ApplyOptions{
+			DryRun:       dryRun,
+			Force:        true,
+			FieldManager: common.DefaultFieldManager,
+		})
+		if applyErr != nil {
+			return fmt.Errorf("server-side apply: %w", applyErr)
+		}
+
+		return nil
+	}
+
+	if opts.RetryOnWebhookError {
+		err = retryOnWebhookErr(ctx, applyFn)
+	} else {
+		err = applyFn()
+	}
+
 	if err != nil {
 		if !opts.DryRun {
 			c.clusterCache.Set(resSpec.IDWithVersion(), &clusterCacheEntry{err: err}, 0)
@@ -125,10 +145,28 @@ func (c *KubeClient) Create(ctx context.Context, resSpec *spec.ResourceSpec, opt
 
 	log.Default.Debug(ctx, "Server-side applying resource %q", resSpec.IDHuman())
 
-	resultObj, err := clientResource.Apply(ctx, resSpec.Name, resSpec.Unstruct, metav1.ApplyOptions{
-		Force:        true,
-		FieldManager: common.DefaultFieldManager,
-	})
+	var resultObj *unstructured.Unstructured
+
+	createFn := func() error {
+		var createErr error
+
+		resultObj, createErr = clientResource.Apply(ctx, resSpec.Name, resSpec.Unstruct, metav1.ApplyOptions{
+			Force:        true,
+			FieldManager: common.DefaultFieldManager,
+		})
+		if createErr != nil {
+			return fmt.Errorf("server-side apply: %w", createErr)
+		}
+
+		return nil
+	}
+
+	if opts.RetryOnWebhookError {
+		err = retryOnWebhookErr(ctx, createFn)
+	} else {
+		err = createFn()
+	}
+
 	if err != nil {
 		c.clusterCache.Set(resSpec.IDWithVersion(), &clusterCacheEntry{err: err}, 0)
 
@@ -285,13 +323,15 @@ type KubeClientGetOptions struct {
 }
 
 type KubeClientCreateOptions struct {
-	DefaultNamespace string
-	ForceReplicas    *int
+	DefaultNamespace    string
+	ForceReplicas       *int
+	RetryOnWebhookError bool
 }
 
 type KubeClientApplyOptions struct {
-	DefaultNamespace string
-	DryRun           bool
+	DefaultNamespace    string
+	DryRun              bool
+	RetryOnWebhookError bool
 }
 
 type KubeClientMergePatchOptions struct {
@@ -306,4 +346,27 @@ type KubeClientDeleteOptions struct {
 type clusterCacheEntry struct {
 	err error
 	obj *unstructured.Unstructured
+}
+
+func retryOnWebhookErr(ctx context.Context, fn func() error) error {
+	retryCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+
+	if err := kvwait.PollUntilContextCancel(retryCtx, 2*time.Second, true, func(ctx context.Context) (bool, error) {
+		if err := fn(); err != nil {
+			if IsWebhookErr(err) {
+				log.Default.Debug(ctx, "Retrying due to webhook error: %s", err)
+
+				return false, nil
+			}
+
+			return false, err
+		}
+
+		return true, nil
+	}); err != nil {
+		return fmt.Errorf("retry on webhook error: %w", err)
+	}
+
+	return nil
 }

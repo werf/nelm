@@ -35,7 +35,7 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [Advanced resource lifecycle capabilities](#advanced-resource-lifecycle-capabilities)
   - [Resource state tracking](#resource-state-tracking)
   - [Printing logs and events during deploy](#printing-logs-and-events-during-deploy)
-  - [Release planning and two-stage deployment support](#release-planning-and-two-stage-deployment-workflow-support)
+  - [Release planning and two-stage deployment workflow support](#release-planning-and-two-stage-deployment-workflow-support)
   - [Encrypted values and encrypted files](#encrypted-values-and-encrypted-files)
   - [Improved CRD management](#improved-crd-management)
 - [Usage](#usage)
