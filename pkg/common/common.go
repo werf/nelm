@@ -284,6 +284,14 @@ func ContextWithHelmOptions(ctx context.Context, opts HelmOptions) context.Conte
 	return context.WithValue(ctx, helmOptionsContextKey{}, opts)
 }
 
+func DefaultDockerConfig() string {
+	if d := os.Getenv("DOCKER_CONFIG"); d != "" {
+		return d
+	}
+
+	return filepath.Join(userHomeDir(), ".docker")
+}
+
 func HasHelmOptions(ctx context.Context) bool {
 	_, ok := ctx.Value(helmOptionsContextKey{}).(HelmOptions)
 
@@ -305,14 +313,6 @@ func StagesSortHandler(stage1, stage2 Stage) bool {
 
 func SubStageWeighted(stage Stage, weight int) Stage {
 	return Stage(fmt.Sprintf("%s/weight:%d", stage, weight))
-}
-
-func DefaultDockerConfig() string {
-	if d := os.Getenv("DOCKER_CONFIG"); d != "" {
-		return d
-	}
-
-	return filepath.Join(userHomeDir(), ".docker")
 }
 
 func userHomeDir() string {
