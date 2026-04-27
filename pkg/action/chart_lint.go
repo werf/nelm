@@ -384,7 +384,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	if _, err := plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
 		NoFinalTracking: opts.NoFinalTracking,
 	}); err != nil {
-		return fmt.Errorf("build install plan: %w", err)
+		return fmt.Errorf("%w: install: %w", ErrBuildPlan, err)
 	}
 
 	return nil
