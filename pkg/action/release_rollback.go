@@ -327,7 +327,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	if err != nil {
 		handleBuildPlanErr(ctx, installPlan, err, opts.RollbackGraphPath, opts.TempDirPath, "release-rollback-graph.dot")
 
-		return fmt.Errorf("build install plan: %w", err)
+		return fmt.Errorf("%w: install: %w", ErrBuildPlan, err)
 	}
 
 	if opts.RollbackGraphPath != "" {

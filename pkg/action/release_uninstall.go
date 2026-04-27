@@ -258,7 +258,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		if err != nil {
 			handleBuildPlanErr(ctx, deletePlan, err, opts.UninstallGraphPath, opts.TempDirPath, "release-uninstall-graph.dot")
 
-			return fmt.Errorf("build delete plan: %w", err)
+			return fmt.Errorf("%w: delete: %w", ErrBuildPlan, err)
 		}
 
 		if opts.UninstallGraphPath != "" {

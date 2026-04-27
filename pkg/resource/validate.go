@@ -17,12 +17,16 @@ import (
 	"github.com/werf/nelm/pkg/util"
 )
 
-var errDecode = errors.New("decode")
+var (
+	ErrResourceDuplicatesFound = errors.New("validate for no duplicated resources")
+
+	errDecode = errors.New("decode")
+)
 
 // Can be called even without cluster access.
 func ValidateLocal(ctx context.Context, releaseNamespace string, transformedResources []*InstallableResource, opts common.ResourceValidationOptions) error {
 	if err := validateNoDuplicates(releaseNamespace, transformedResources); err != nil {
-		return fmt.Errorf("validate for no duplicated resources: %w", err)
+		return fmt.Errorf("%w: %w", ErrResourceDuplicatesFound, err)
 	}
 
 	if featgate.FeatGateResourceValidation.Enabled() && !opts.NoResourceValidation {
