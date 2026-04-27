@@ -153,9 +153,7 @@ var (
 		StagePostPostUninstall,
 		StageFinal,
 	}
-	OrderedStoreAs = []StoreAs{StoreAsNone, StoreAsHook, StoreAsRegular}
-	// TODO(major): now it respects DOCKER_CONFIG? Is it a breaking change? Anyways, I feel like it shouldn't be a constant, but a proper option for actions
-	DefaultRegistryCredentialsPath                      = filepath.Join(dockerConfigDir(), "config.json")
+	OrderedStoreAs                                      = []StoreAs{StoreAsNone, StoreAsHook, StoreAsRegular}
 	LabelKeyHumanManagedBy                              = "app.kubernetes.io/managed-by"
 	LabelKeyPatternManagedBy                            = regexp.MustCompile(`^app.kubernetes.io/managed-by$`)
 	AnnotationKeyHumanReleaseName                       = "meta.helm.sh/release-name"
@@ -309,7 +307,7 @@ func SubStageWeighted(stage Stage, weight int) Stage {
 	return Stage(fmt.Sprintf("%s/weight:%d", stage, weight))
 }
 
-func dockerConfigDir() string {
+func DefaultDockerConfig() string {
 	if d := os.Getenv("DOCKER_CONFIG"); d != "" {
 		return d
 	}
