@@ -285,10 +285,6 @@ func ContextWithHelmOptions(ctx context.Context, opts HelmOptions) context.Conte
 }
 
 func DefaultDockerConfig() string {
-	if d := os.Getenv("DOCKER_CONFIG"); d != "" {
-		return d
-	}
-
 	return filepath.Join(userHomeDir(), ".docker")
 }
 
