@@ -345,7 +345,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		sort.Strings(reportFailedOps)
 
 		report := &ReleaseReportV3{
-			Version:             3,
+			APIVersion:          "v3",
 			Release:             releaseName,
 			Namespace:           releaseNamespace,
 			Revision:            prevRelease.Version,

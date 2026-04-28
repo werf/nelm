@@ -509,11 +509,11 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	if releaseIsUpToDate && installPlanIsUseless {
 		if opts.InstallReportPath != "" {
 			if err := saveReport(opts.InstallReportPath, &ReleaseReportV3{
-				Version:   3,
-				Release:   releaseName,
-				Namespace: releaseNamespace,
-				Revision:  newRelease.Version,
-				Status:    helmreleasestatus.Status("skipped"),
+				APIVersion: "v3",
+				Release:    releaseName,
+				Namespace:  releaseNamespace,
+				Revision:   newRelease.Version,
+				Status:     helmreleasestatus.Status("skipped"),
 			}); err != nil {
 				return fmt.Errorf("save release install report: %w", err)
 			}
@@ -653,7 +653,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	sort.Strings(reportFailedOps)
 
 	report := &ReleaseReportV3{
-		Version:             3,
+		APIVersion:          "v3",
 		Release:             releaseName,
 		Namespace:           releaseNamespace,
 		Revision:            newRelease.Version,
