@@ -344,11 +344,11 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	if releaseIsUpToDate && installPlanIsUseless {
 		if opts.RollbackReportPath != "" {
 			if err := saveReport(opts.RollbackReportPath, &ReleaseReportV3{
-				Version:   3,
-				Release:   releaseName,
-				Namespace: releaseNamespace,
-				Revision:  newRelease.Version,
-				Status:    helmreleasestatus.Status("skipped"),
+				APIVersion: "v3",
+				Release:    releaseName,
+				Namespace:  releaseNamespace,
+				Revision:   newRelease.Version,
+				Status:     helmreleasestatus.Status("skipped"),
 			}); err != nil {
 				return fmt.Errorf("save release install report: %w", err)
 			}
@@ -458,7 +458,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	sort.Strings(reportFailedOps)
 
 	report := &ReleaseReportV3{
-		Version:             3,
+		APIVersion:          "v3",
 		Release:             releaseName,
 		Namespace:           releaseNamespace,
 		Revision:            newRelease.Version,
