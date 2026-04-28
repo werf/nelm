@@ -27,6 +27,6 @@ jobs:
         uses: qltysh/qlty-action/coverage@v2
         with:
           token: ${{secrets.QLTY_COVERAGE_TOKEN}}
-          files: coverage/coverage-*/*.out
+          files: coverage/*.out,coverage/coverage-*/*.out
           skip-errors: false
           validate: false
