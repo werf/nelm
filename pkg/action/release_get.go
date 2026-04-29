@@ -60,14 +60,12 @@ type ReleaseGetOptions struct {
 }
 
 type ReleaseGetResultV1 struct {
-	APIVersion string                   `json:"apiVersion"`
-	Release    *ReleaseGetResultRelease `json:"release"`
-	Chart      *ReleaseGetResultChart   `json:"chart"`
-	Notes      string                   `json:"notes,omitempty"`
-	Values     map[string]interface{}   `json:"values,omitempty"`
-	// TODO(major): Join Hooks and Resources together as ResourceSpecs?
-	Hooks     []map[string]interface{} `json:"hooks,omitempty"`
-	Resources []map[string]interface{} `json:"resources,omitempty"`
+	APIVersion    string                   `json:"apiVersion"`
+	Release       *ReleaseGetResultRelease `json:"release"`
+	Chart         *ReleaseGetResultChart   `json:"chart"`
+	Notes         string                   `json:"notes,omitempty"`
+	Values        map[string]interface{}   `json:"values,omitempty"`
+	ResourceSpecs []*spec.ResourceSpec     `json:"resourceSpecs,omitempty"`
 }
 
 type ReleaseGetResultRelease struct {
@@ -190,11 +188,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 	}
 
 	for _, res := range resSpecs {
-		if spec.IsHook(res.Annotations) {
-			result.Hooks = append(result.Hooks, res.Unstruct.Object)
-		} else {
-			result.Resources = append(result.Resources, res.Unstruct.Object)
-		}
+		result.ResourceSpecs = append(result.ResourceSpecs, res)
 	}
 
 	if opts.OutputNoPrint {
