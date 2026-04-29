@@ -86,6 +86,28 @@ func AddChartRepoConnectionFlags(cmd *cobra.Command, cfg *common.ChartRepoConnec
 	return nil
 }
 
+func AddDockerConfigFlag(cmd *cobra.Command, dockerConfig *string) error {
+	if err := cli.AddFlag(cmd, dockerConfig, "docker-config", "", "Docker config directory path", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: func(cmd *cobra.Command, flagName string) ([]*cli.FlagRegexExpr, error) {
+			regexes := []*cli.FlagRegexExpr{cli.NewFlagRegexExpr("^DOCKER_CONFIG$", "$DOCKER_CONFIG")}
+
+			if r, err := cli.GetFlagGlobalAndLocalEnvVarRegexes(cmd, flagName); err != nil {
+				return nil, fmt.Errorf("get env var regexes: %w", err)
+			} else {
+				regexes = append(regexes, r...)
+			}
+
+			return regexes, nil
+		},
+		Group: chartRepoFlagGroup,
+		Type:  cli.FlagTypeDir,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	return nil
+}
+
 func AddKubeConnectionFlags(cmd *cobra.Command, cfg *common.KubeConnectionOptions) error {
 	if err := cli.AddFlag(cmd, &cfg.KubeAPIServerAddress, "kube-api-server", "", "Kubernetes API server address", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,

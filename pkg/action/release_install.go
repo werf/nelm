@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"time"
 
@@ -75,6 +76,8 @@ type ReleaseInstallOptions struct {
 	DefaultChartVersion string
 	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
 	DenoBinaryPath string
+	// DockerConfig is the path to the Docker configuration directory (e.g., ~/.docker).
+	DockerConfig string
 	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources.
 	IgnoreBundleJS bool
 	// InstallGraphPath, if specified, saves the Graphviz representation of the install plan to this file path.
@@ -110,7 +113,7 @@ type ReleaseInstallOptions struct {
 	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
 	PlanArtifactPath string
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
-	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
+	// Defaults to DockerConfig/config.json if not set.
 	// Used for authenticating to OCI registries when pulling charts.
 	RegistryCredentialsPath string
 	// RollbackGraphPath, if specified, saves the Graphviz representation of the rollback plan (if auto-rollback occurs)
@@ -727,8 +730,12 @@ func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir, 
 		return ReleaseInstallOptions{}, fmt.Errorf("memory release storage driver is not supported")
 	}
 
+	if opts.DockerConfig == "" {
+		opts.DockerConfig = common.DefaultDockerConfig()
+	}
+
 	if opts.RegistryCredentialsPath == "" {
-		opts.RegistryCredentialsPath = common.DefaultRegistryCredentialsPath
+		opts.RegistryCredentialsPath = filepath.Join(opts.DockerConfig, "config.json")
 	}
 
 	if opts.ChartProvenanceStrategy == "" {
