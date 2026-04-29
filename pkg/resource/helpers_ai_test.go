@@ -149,5 +149,4 @@ func setupLocalSchemaDir(t *testing.T, schemas map[string]string) string {
 
 func setupTestEnvironment(t *testing.T) {
 	t.Helper()
-	t.Setenv("HELM_CACHE_HOME", t.TempDir())
 }

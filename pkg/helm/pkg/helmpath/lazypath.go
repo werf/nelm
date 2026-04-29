@@ -37,17 +37,8 @@ const (
 // lazypath is a lazy-loaded path buffer for the XDG base directory specification.
 type lazypath string
 
-func (l lazypath) path(helmEnvVar, xdgEnvVar string, defaultFn func() string, elem ...string) string {
-
-	// There is an order to checking for a path.
-	// 1. See if a Helm specific environment variable has been set.
-	// 2. Check if an XDG environment variable is set
-	// 3. Fall back to a default
-	base := os.Getenv(helmEnvVar)
-	if base != "" {
-		return filepath.Join(base, filepath.Join(elem...))
-	}
-	base = os.Getenv(xdgEnvVar)
+func (l lazypath) path(_, xdgEnvVar string, defaultFn func() string, elem ...string) string {
+	base := os.Getenv(xdgEnvVar)
 	if base == "" {
 		base = defaultFn()
 	}
