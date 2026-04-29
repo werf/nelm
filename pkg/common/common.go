@@ -99,8 +99,7 @@ const (
 	DefaultDeletePropagation = metav1.DeletePropagationForeground
 	DefaultDiffContextLines  = 3
 	DefaultFieldManager      = "helm"
-	// TODO(major): update to a more recent version? Not sure about backwards compatibility.
-	DefaultLocalKubeVersion      = "1.20.0"
+	DefaultLocalKubeVersion      = "1.36.0"
 	DefaultLogColorMode          = log.LogColorModeAuto
 	DefaultNetworkParallelism    = 30
 	DefaultProgressPrintInterval = 5 * time.Second
