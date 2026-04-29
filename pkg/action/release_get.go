@@ -187,9 +187,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		return nil, fmt.Errorf("convert release to resource specs: %w", err)
 	}
 
-	for _, res := range resSpecs {
-		result.ResourceSpecs = append(result.ResourceSpecs, res)
-	}
+	result.ResourceSpecs = append(result.ResourceSpecs, resSpecs...)
 
 	if opts.OutputNoPrint {
 		return result, nil
