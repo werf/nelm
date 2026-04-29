@@ -71,7 +71,7 @@ func main() {
 	})
 
 	if unsupportedEnvVars := lo.Without(cli.FindUndefinedFlagEnvVarsInEnviron(), featGatesEnvVars...); len(unsupportedEnvVars) > 0 {
-		abort(ctx, fmt.Errorf("unsupported environment variable(s): %s", strings.Join(unsupportedEnvVars, ",")), 1)
+		log.Default.Warn(ctx, "Unsupported environment variable(s): %s", strings.Join(unsupportedEnvVars, ","))
 	}
 
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
