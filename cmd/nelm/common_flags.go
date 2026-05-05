@@ -461,11 +461,10 @@ func AddValuesFlags(cmd *cobra.Command, cfg *common.ValuesOptions) error {
 		return fmt.Errorf("add flag: %w", err)
 	}
 
-	// TODO(major): revise all flags in nelm/werf to make sure they are all parsed as it happens in
-	// Helm (see https://github.com/werf/nelm/issues/337)
 	if err := cli.AddFlag(cmd, &cfg.ValuesSet, "set", []string{}, "Set new values, where the key is the value path and the value is the value", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                valuesFlagGroup,
+		NoSplitOnCommas:      true,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}
@@ -473,6 +472,7 @@ func AddValuesFlags(cmd *cobra.Command, cfg *common.ValuesOptions) error {
 	if err := cli.AddFlag(cmd, &cfg.ValuesSetFile, "set-file", []string{}, "Set new values, where the key is the value path and the value is the path to the file with the value content", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                valuesFlagGroup,
+		NoSplitOnCommas:      true,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}
@@ -496,6 +496,7 @@ func AddValuesFlags(cmd *cobra.Command, cfg *common.ValuesOptions) error {
 	if err := cli.AddFlag(cmd, &cfg.ValuesSetString, "set-string", []string{}, "Set new values, where the key is the value path and the value is the value. The value will always become a string", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                valuesFlagGroup,
+		NoSplitOnCommas:      true,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}
