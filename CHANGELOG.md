@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.24.0](https://github.com/werf/nelm/compare/v1.23.2...v1.24.0) (2026-05-05)
+
+
+### Features
+
+* ability to init ts files with WerfRenderContext type ([#593](https://github.com/werf/nelm/issues/593)) ([4b90254](https://github.com/werf/nelm/commit/4b90254854087286ab615da8ace1381037ceca31))
+* adopt `chart ts init` for werf ([#594](https://github.com/werf/nelm/issues/594)) ([671cf54](https://github.com/werf/nelm/commit/671cf545c12d6e05e4ce5d2dfac91ca01f1ac153))
+* bump default local kube version for rendering to 1.36.0 ([2159f96](https://github.com/werf/nelm/commit/2159f962147e50f6ad8e33b9d24039799a8947d0))
+* deno runtime for typescript ([#565](https://github.com/werf/nelm/issues/565)) ([942d8aa](https://github.com/werf/nelm/commit/942d8aad2341079757e2130fd5402106201bc9d6))
+* expose plan artifact in actions api ([#586](https://github.com/werf/nelm/issues/586)) ([1a42481](https://github.com/werf/nelm/commit/1a42481cfbb2251db7b36fc98f47296389c14874))
+* forbid resource recreation if helm.sh/resource-policy set ([d1b6297](https://github.com/werf/nelm/commit/d1b62972befb7ca750ac84ec4f9f5760e862314f))
+* new release history ([074d350](https://github.com/werf/nelm/commit/074d3505764f00bc8a4d0f863b88bf988a44da74))
+
+
+### Bug Fixes
+
+* --set/set-file/set-string flags incorrectly split on commas ([64ef060](https://github.com/werf/nelm/commit/64ef06036d51cff11a43819a1191bc6329ce7e51))
+* clientFactory=nil breaks werf tests ([7a758a4](https://github.com/werf/nelm/commit/7a758a486e9daef4d1b33342916af0591dfd7b1d))
+* don't hard-fail on unsupported env vars ([3651474](https://github.com/werf/nelm/commit/365147407ec5e9d1624c2132062b45695615d39c))
+* remove support for all legacy HELM_* env vars ([#611](https://github.com/werf/nelm/issues/611)) ([3a2264e](https://github.com/werf/nelm/commit/3a2264e5ca5bdeed6734a9f6cdcbb1c0cceb3a20))
+* simpler sorting for resources ([55bc462](https://github.com/werf/nelm/commit/55bc4628d79e77d9fc5a82cee24d293aeb50ddcd))
+* use v3 util for Chart.yaml load ([1e1068f](https://github.com/werf/nelm/commit/1e1068f13d2401dca4ec7396d2fb17948e33e3b6))
+
 ## [1.23.2](https://github.com/werf/nelm/compare/v1.23.1...v1.23.2) (2026-03-27)
 
 
