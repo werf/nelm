@@ -59,7 +59,7 @@ type ReleaseGetOptions struct {
 	TempDirPath string
 }
 
-type ReleaseGetResultV1 struct {
+type ReleaseGetResultV2 struct {
 	APIVersion    string                   `json:"apiVersion"`
 	Release       *ReleaseGetResultRelease `json:"release"`
 	Chart         *ReleaseGetResultChart   `json:"chart"`
@@ -90,7 +90,7 @@ type ReleaseGetResultChart struct {
 }
 
 // Retrieves detailed information about the Helm release from the cluster.
-func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseGetOptions) (*ReleaseGetResultV1, error) {
+func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseGetOptions) (*ReleaseGetResultV2, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("get home directory: %w", err)
@@ -159,8 +159,8 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		return nil, fmt.Errorf("coalesce release values: %w", err)
 	}
 
-	result := &ReleaseGetResultV1{
-		APIVersion: "v1",
+	result := &ReleaseGetResultV2{
+		APIVersion: "v2",
 		Chart: &ReleaseGetResultChart{
 			Name:       rel.Chart.Name(),
 			Version:    rel.Chart.Metadata.Version,
