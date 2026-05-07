@@ -8,13 +8,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-const (
-	TypeResourceListsTransformer ResourceTransformerType = "resource-lists-transformer"
-)
+const TypeResourceListsTransformer ResourceTransformerType = "resource-lists-transformer"
 
-var (
-	_ ResourceTransformer = (*ResourceListsTransformer)(nil)
-)
+var _ ResourceTransformer = (*ResourceListsTransformer)(nil)
 
 type ResourceTransformerType string
 
