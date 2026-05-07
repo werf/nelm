@@ -85,19 +85,17 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	}
 
 	depDownloader := &helmdownloader.Manager{
-		Out:            os.Stdout,
-		ChartPath:      chartPath,
-		Verify:         parseVerificationStrategy(opts.ChartProvenanceStrategy),
-		Debug:          log.Default.AcceptLevel(ctx, log.DebugLevel),
-		Keyring:        opts.ChartProvenanceKeyring,
-		SkipUpdate:     opts.ChartRepoNoUpdate,
-		Getters:        getter.Getters(),
-		RegistryClient: registryClient,
-		// TODO(major): don't read HELM_REPOSITORY_CONFIG anymore
-		RepositoryConfig: envOr("HELM_REPOSITORY_CONFIG", helmpath.ConfigPath("repositories.yaml")),
-		// TODO(major): don't read HELM_REPOSITORY_CACHE anymore
-		RepositoryCache:   envOr("HELM_REPOSITORY_CACHE", helmpath.CachePath("repository")),
-		ContentCache:      envOr("HELM_CONTENT_CACHE", helmpath.CachePath("content")),
+		Out:               os.Stdout,
+		ChartPath:         chartPath,
+		Verify:            parseVerificationStrategy(opts.ChartProvenanceStrategy),
+		Debug:             log.Default.AcceptLevel(ctx, log.DebugLevel),
+		Keyring:           opts.ChartProvenanceKeyring,
+		SkipUpdate:        opts.ChartRepoNoUpdate,
+		Getters:           getter.Getters(),
+		RegistryClient:    registryClient,
+		RepositoryConfig:  helmpath.ConfigPath("repositories.yaml"),
+		RepositoryCache:   helmpath.CachePath("repository"),
+		ContentCache:      helmpath.CachePath("content"),
 		AllowMissingRepos: true,
 	}
 
@@ -522,14 +520,6 @@ func convertV3DependencyToV2(src *v3chart.Dependency) *v2chart.Dependency {
 		ImportValues: src.ImportValues,
 		Alias:        src.Alias,
 	}
-}
-
-func envOr(envVar, defaultVal string) string {
-	if v := os.Getenv(envVar); v != "" {
-		return v
-	}
-
-	return defaultVal
 }
 
 func isLocalChart(path string) bool {

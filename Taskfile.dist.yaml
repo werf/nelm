@@ -288,6 +288,7 @@ tasks:
   generate:reference:
     desc: "Generate CLI reference documentation with TOC."
     env:
+      # TODO(major): not supported anymore
       HELM_CONFIG_HOME: "~/.config/helm"
       HELM_CACHE_HOME: "~/.cache/helm"
       HELM_DATA_HOME: "~/.local/share/helm"

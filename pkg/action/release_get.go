@@ -59,15 +59,13 @@ type ReleaseGetOptions struct {
 	TempDirPath string
 }
 
-type ReleaseGetResultV1 struct {
-	APIVersion string                   `json:"apiVersion"`
-	Release    *ReleaseGetResultRelease `json:"release"`
-	Chart      *ReleaseGetResultChart   `json:"chart"`
-	Notes      string                   `json:"notes,omitempty"`
-	Values     map[string]interface{}   `json:"values,omitempty"`
-	// TODO(major): Join Hooks and Resources together as ResourceSpecs?
-	Hooks     []map[string]interface{} `json:"hooks,omitempty"`
-	Resources []map[string]interface{} `json:"resources,omitempty"`
+type ReleaseGetResultV2 struct {
+	APIVersion    string                   `json:"apiVersion"`
+	Release       *ReleaseGetResultRelease `json:"release"`
+	Chart         *ReleaseGetResultChart   `json:"chart"`
+	Notes         string                   `json:"notes,omitempty"`
+	Values        map[string]interface{}   `json:"values,omitempty"`
+	ResourceSpecs []*spec.ResourceSpec     `json:"resourceSpecs,omitempty"`
 }
 
 type ReleaseGetResultRelease struct {
@@ -92,7 +90,7 @@ type ReleaseGetResultChart struct {
 }
 
 // Retrieves detailed information about the Helm release from the cluster.
-func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseGetOptions) (*ReleaseGetResultV1, error) {
+func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseGetOptions) (*ReleaseGetResultV2, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("get home directory: %w", err)
@@ -161,8 +159,8 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		return nil, fmt.Errorf("coalesce release values: %w", err)
 	}
 
-	result := &ReleaseGetResultV1{
-		APIVersion: "v1",
+	result := &ReleaseGetResultV2{
+		APIVersion: "v2",
 		Chart: &ReleaseGetResultChart{
 			Name:       rel.Chart.Name(),
 			Version:    rel.Chart.Metadata.Version,
@@ -189,13 +187,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		return nil, fmt.Errorf("convert release to resource specs: %w", err)
 	}
 
-	for _, res := range resSpecs {
-		if spec.IsHook(res.Annotations) {
-			result.Hooks = append(result.Hooks, res.Unstruct.Object)
-		} else {
-			result.Resources = append(result.Resources, res.Unstruct.Object)
-		}
-	}
+	result.ResourceSpecs = append(result.ResourceSpecs, resSpecs...)
 
 	if opts.OutputNoPrint {
 		return result, nil
