@@ -540,10 +540,6 @@ func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, curr
 		return ReleasePlanInstallOptions{}, fmt.Errorf("memory release storage driver is not supported")
 	}
 
-	if opts.DockerConfig == "" {
-		opts.DockerConfig = common.DefaultDockerConfig()
-	}
-
 	if opts.RegistryCredentialsPath == "" {
 		opts.RegistryCredentialsPath = filepath.Join(opts.DockerConfig, "config.json")
 	}

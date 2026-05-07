@@ -422,10 +422,6 @@ func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir, homeDi
 		opts.LocalKubeVersion = common.DefaultLocalKubeVersion
 	}
 
-	if opts.DockerConfig == "" {
-		opts.DockerConfig = common.DefaultDockerConfig()
-	}
-
 	if opts.RegistryCredentialsPath == "" {
 		opts.RegistryCredentialsPath = filepath.Join(opts.DockerConfig, "config.json")
 	}

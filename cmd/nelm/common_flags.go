@@ -87,7 +87,7 @@ func AddChartRepoConnectionFlags(cmd *cobra.Command, cfg *common.ChartRepoConnec
 }
 
 func AddDockerConfigFlag(cmd *cobra.Command, dockerConfig *string) error {
-	if err := cli.AddFlag(cmd, dockerConfig, "docker-config", "", "Docker config directory path", cli.AddFlagOptions{
+	if err := cli.AddFlag(cmd, dockerConfig, "docker-config", common.DefaultDockerConfig, "Docker config directory path", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: func(cmd *cobra.Command, flagName string) ([]*cli.FlagRegexExpr, error) {
 			regexes := []*cli.FlagRegexExpr{cli.NewFlagRegexExpr("^DOCKER_CONFIG$", "$DOCKER_CONFIG")}
 

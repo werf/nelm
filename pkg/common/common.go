@@ -223,6 +223,7 @@ var (
 	AnnotationKeyHumanDeletePropagation                   = "werf.io/delete-propagation"
 	AnnotationKeyPatternDeletePropagation                 = regexp.MustCompile(`^werf.io/delete-propagation$`)
 	SprigFuncs                                            = sprig.TxtFuncMap()
+	DefaultDockerConfig                                   = filepath.Join(userHomeDir(), ".docker")
 	DefaultPlanArtifactLifetime                           = 2 * time.Hour
 	DefaultResourceValidationSchema                       = []string{
 		"https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json",
@@ -281,10 +282,6 @@ type helmOptionsContextKey struct{}
 
 func ContextWithHelmOptions(ctx context.Context, opts HelmOptions) context.Context {
 	return context.WithValue(ctx, helmOptionsContextKey{}, opts)
-}
-
-func DefaultDockerConfig() string {
-	return filepath.Join(userHomeDir(), ".docker")
 }
 
 func HasHelmOptions(ctx context.Context) bool {
