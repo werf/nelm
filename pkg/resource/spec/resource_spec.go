@@ -57,7 +57,17 @@ func NewResourceSpecFromManifest(manifest, releaseNamespace string, opts Resourc
 		return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
 	}
 
-	return NewResourceSpec(obj.(*unstructured.Unstructured), releaseNamespace, opts), nil
+	unstruct := obj.(*unstructured.Unstructured)
+
+	if _, _, err := unstructured.NestedNullCoercingStringMap(unstruct.Object, "metadata", "annotations"); err != nil {
+		return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
+	}
+
+	if _, _, err := unstructured.NestedNullCoercingStringMap(unstruct.Object, "metadata", "labels"); err != nil {
+		return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
+	}
+
+	return NewResourceSpec(unstruct, releaseNamespace, opts), nil
 }
 
 func (s *ResourceSpec) SetAnnotations(annotations map[string]string) {

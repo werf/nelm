@@ -371,7 +371,6 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, releaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
 			spec.NewResourceListsTransformer(),
-			spec.NewDropInvalidAnnotationsAndLabelsTransformer(),
 		})
 		if err != nil {
 			return fmt.Errorf("build transformed resource specs: %w", err)
@@ -788,7 +787,6 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, releaseNamespace, resSpecs, []spec.ResourceTransformer{
 		spec.NewResourceListsTransformer(),
-		spec.NewDropInvalidAnnotationsAndLabelsTransformer(),
 	})
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build transformed resource specs: %w", err))

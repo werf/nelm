@@ -272,7 +272,6 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, opts.ReleaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
 		spec.NewResourceListsTransformer(),
-		spec.NewDropInvalidAnnotationsAndLabelsTransformer(),
 	})
 	if err != nil {
 		return fmt.Errorf("build transformed resource specs: %w", err)
