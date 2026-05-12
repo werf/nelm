@@ -131,6 +131,7 @@ annoOrLabelLoop:
 		if _, found := excludeMap[key]; found {
 			continue annoOrLabelLoop
 		}
+
 		for _, regex := range regexes {
 			if regex.MatchString(key) {
 				continue annoOrLabelLoop
