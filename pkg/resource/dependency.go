@@ -9,13 +9,19 @@ import (
 	"github.com/werf/nelm/pkg/resource/spec"
 )
 
+// TODO(major): rename to Dependency
 // Represents a dependency on a Kubernetes resource in the Helm release.
 type InternalDependency struct {
 	*spec.ResourceMatcher `json:"resourceMatcher"`
 
+	ResourceMeta  *spec.ResourceMeta   `json:"resourceMeta"`
 	ResourceState common.ResourceState `json:"resourceState"`
+	External      bool                 `json:"external"`
+	MinMatches    int                  `json:"minMatches"`
+	MaxMatches    int                  `json:"maxMatches"`
 }
 
+// TODO(major): remove with external dependency annotations
 // Represents a dependency on an external resource outside of the Helm release.
 type ExternalDependency struct {
 	*spec.ResourceMeta `json:"resourceMeta"`

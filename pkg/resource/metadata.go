@@ -119,6 +119,7 @@ func deployConditions(meta *spec.ResourceMeta, hasManualInternalDeps bool) map[c
 	}
 }
 
+// TODO(major): use deploy/delete deps instead
 func externalDependencies(meta *spec.ResourceMeta, releaseNamespace string, clientFactory kube.ClientFactorier, remote bool) ([]*ExternalDependency, error) {
 	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
 		return nil, nil
@@ -468,7 +469,7 @@ func logRegexesForContainers(meta *spec.ResourceMeta) map[string]*regexp.Regexp 
 	return regexByContainer
 }
 
-func manualInternalDeleteDependencies(meta *spec.ResourceMeta) []*InternalDependency {
+func manualDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta, releaseNamespace string) ([]*InternalDependency, error) {
 	deps := map[string]*InternalDependency{}
 
 	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteDependency); found {
@@ -520,16 +521,60 @@ func manualInternalDeleteDependencies(meta *spec.ResourceMeta) []*InternalDepend
 				},
 				ResourceState: depState,
 			}
+
+			matched := lo.Filter(otherResMeta, func(resMeta *spec.ResourceMeta, _ int) bool {
+				return dep.Match(resMeta)
+			})
+
+			dep.External = len(matched) == 0
+
+			if depExt, found := properties["external"]; found {
+				switch v := depExt.(type) {
+				case bool:
+					dep.External = v
+				case string:
+					dep.External = lo.Must(strconv.ParseBool(v))
+				}
+			}
+
+			if dep.External {
+				dep.MinMatches = 1
+				dep.MaxMatches = 30
+
+				if len(depNames) == 0 {
+					return nil, fmt.Errorf("external delete dependency %q must have \"name\" property set", depID)
+				}
+
+				if len(depKinds) == 0 {
+					return nil, fmt.Errorf("external delete dependency %q must have \"kind\" property set", depID)
+				}
+
+				if len(depVersions) == 0 {
+					return nil, fmt.Errorf("external delete dependency %q must have \"version\" property set", depID)
+				}
+
+				var namespace string
+				if len(depNamespaces) > 0 {
+					namespace = depNamespaces[0]
+				}
+
+				dep.ResourceMeta = spec.NewResourceMeta(depNames[0], namespace, releaseNamespace, "", schema.GroupVersionKind{
+					Group:   lo.FirstOrEmpty(depGroups),
+					Version: lo.FirstOrEmpty(depVersions),
+					Kind:    lo.FirstOrEmpty(depKinds),
+				}, nil, nil)
+			}
+
 			deps[depID] = dep
 		}
 	}
 
-	return lo.Values(deps)
+	return lo.Values(deps), nil
 }
 
-func manualInternalDeployDependencies(meta *spec.ResourceMeta) []*InternalDependency {
+func manualDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta, releaseNamespace string) ([]*InternalDependency, error) {
 	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
-		return nil
+		return nil, nil
 	}
 
 	deps := map[string]*InternalDependency{}
@@ -583,11 +628,55 @@ func manualInternalDeployDependencies(meta *spec.ResourceMeta) []*InternalDepend
 				},
 				ResourceState: depState,
 			}
+
+			matched := lo.Filter(otherResMeta, func(resMeta *spec.ResourceMeta, _ int) bool {
+				return dep.Match(resMeta)
+			})
+
+			dep.External = len(matched) == 0
+
+			if depExt, found := properties["external"]; found {
+				switch v := depExt.(type) {
+				case bool:
+					dep.External = v
+				case string:
+					dep.External = lo.Must(strconv.ParseBool(v))
+				}
+			}
+
+			if dep.External {
+				dep.MinMatches = 1
+				dep.MaxMatches = 30
+
+				if len(depNames) == 0 {
+					return nil, fmt.Errorf("external deploy dependency %q must have \"name\" property set", depID)
+				}
+
+				if len(depKinds) == 0 {
+					return nil, fmt.Errorf("external deploy dependency %q must have \"kind\" property set", depID)
+				}
+
+				if len(depVersions) == 0 {
+					return nil, fmt.Errorf("external deploy dependency %q must have \"version\" property set", depID)
+				}
+
+				var namespace string
+				if len(depNamespaces) > 0 {
+					namespace = depNamespaces[0]
+				}
+
+				dep.ResourceMeta = spec.NewResourceMeta(depNames[0], namespace, releaseNamespace, "", schema.GroupVersionKind{
+					Group:   lo.FirstOrEmpty(depGroups),
+					Version: lo.FirstOrEmpty(depVersions),
+					Kind:    lo.FirstOrEmpty(depKinds),
+				}, nil, nil)
+			}
+
 			deps[depID] = dep
 		}
 	}
 
-	return lo.Values(deps)
+	return lo.Values(deps), nil
 }
 
 func noActivityTimeout(meta *spec.ResourceMeta) time.Duration {
@@ -773,6 +862,16 @@ func validateDeleteDependencies(meta *spec.ResourceMeta) error {
 					default:
 						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
 					}
+				case "external":
+					switch pv := propVal.(type) {
+					case string:
+						if _, err := strconv.ParseBool(pv); err != nil {
+							return fmt.Errorf("invalid value %q for property %q, expected boolean value", pv, propKey)
+						}
+					case bool:
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
 				default:
 					return fmt.Errorf("unknown property %q in value of annotation %q", propKey, key)
 				}
@@ -901,6 +1000,16 @@ func validateDeployDependencies(meta *spec.ResourceMeta) error {
 						}
 					case bool:
 						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				case "external":
+					switch pv := propVal.(type) {
+					case string:
+						if _, err := strconv.ParseBool(pv); err != nil {
+							return fmt.Errorf("invalid value %q for property %q, expected boolean value", pv, propKey)
+						}
+					case bool:
 					default:
 						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
 					}

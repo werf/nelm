@@ -1,6 +1,7 @@
 package plan_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -1430,7 +1431,7 @@ func runBuildPlanTest(tc buildPlanTestCase, s *BuildPlanSuite) func() {
 
 		instInfos, delInfos, relInfos, opts := tc.input()
 
-		plan, err := plan.BuildPlan(instInfos, delInfos, relInfos, opts)
+		plan, err := plan.BuildPlan(context.Background(), instInfos, delInfos, relInfos, opts)
 		s.Require().NoError(err)
 
 		operations := plan.Operations()
