@@ -262,6 +262,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		ChartRepoNoUpdate:          opts.ChartRepoSkipUpdate,
 		ChartVersion:               opts.ChartVersion,
 		HelmOptions:                helmOptions,
+		NoValuesSchemaValidation:   opts.NoValuesSchemaValidation,
 		NoStandaloneCRDs:           opts.NoInstallStandaloneCRDs,
 		Remote:                     true,
 		TemplatesAllowDNS:          opts.TemplatesAllowDNS,

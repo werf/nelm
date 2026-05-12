@@ -355,6 +355,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			ChartRepoNoUpdate:          opts.ChartRepoSkipUpdate,
 			ChartVersion:               opts.ChartVersion,
 			HelmOptions:                helmOptions,
+			NoValuesSchemaValidation:   opts.NoValuesSchemaValidation,
 			NoStandaloneCRDs:           opts.NoInstallStandaloneCRDs,
 			Remote:                     true,
 			SubchartNotes:              opts.ShowSubchartNotes,

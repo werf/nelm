@@ -254,6 +254,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		ExtraAPIVersions:           opts.ExtraAPIVersions,
 		HelmOptions:                helmOptions,
 		LocalKubeVersion:           opts.LocalKubeVersion,
+		NoValuesSchemaValidation:   opts.NoValuesSchemaValidation,
 		Remote:                     opts.Remote,
 		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
 		TempDirPath:                opts.TempDirPath,
