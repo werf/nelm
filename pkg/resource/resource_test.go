@@ -375,7 +375,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.ManualInternalDependencies = []*resource.InternalDependency{
+				res.ManualDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names: []string{"backend"},
@@ -401,7 +401,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.ManualInternalDependencies = []*resource.InternalDependency{
+				res.ManualDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{"backend"},
@@ -441,7 +441,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultHookInstallableResource(resSpec)
-				res.ManualInternalDependencies = []*resource.InternalDependency{
+				res.ManualDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names: []string{"backend"},
@@ -468,7 +468,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultDeploymentInstallableResource(resSpec)
-				res.AutoInternalDependencies = []*resource.InternalDependency{
+				res.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{"configmap-envs"},

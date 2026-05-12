@@ -477,7 +477,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 				dependentResSpec := defaultInstallableResource(s.releaseName, s.releaseNamespace)
 				dependentResSpec.Name = "dependent-resource"
 				dependentResSpec.Unstruct.SetName("dependent-resource")
-				dependentResSpec.AutoInternalDependencies = []*resource.InternalDependency{
+				dependentResSpec.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{resInfo.Name},
@@ -594,7 +594,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 				dependentResSpec.Name = "dependent-resource"
 				dependentResSpec.Unstruct.SetName("dependent-resource")
 				dependentResSpec.Weight = nil
-				dependentResSpec.ManualInternalDependencies = []*resource.InternalDependency{
+				dependentResSpec.ManualDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{resInfo.Name},
@@ -734,7 +734,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 				dependentResSpec.Name = "dependent-resource"
 				dependentResSpec.Unstruct.SetName("dependent-resource")
 				dependentResSpec.Weight = nil
-				dependentResSpec.ManualInternalDependencies = []*resource.InternalDependency{
+				dependentResSpec.ManualDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{resInfo.Name},

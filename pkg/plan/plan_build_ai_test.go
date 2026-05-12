@@ -112,7 +112,7 @@ func (s *BuildPlanAISuite) TestAI_BuildPlanConnectsAllMatchingDependencies() {
 				dependentRes.Unstruct.SetKind("Secret")
 				dependentRes.GroupVersionKind.Kind = "Secret"
 				dependentRes.Weight = nil
-				dependentRes.AutoInternalDependencies = []*resource.InternalDependency{
+				dependentRes.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Kinds: []string{"ConfigMap"},
@@ -273,7 +273,7 @@ func (s *BuildPlanAISuite) TestAI_BuildPlanConnectsAllMatchingDependencies() {
 				dependentRes.Unstruct.SetKind("Secret")
 				dependentRes.GroupVersionKind.Kind = "Secret"
 				dependentRes.Weight = nil
-				dependentRes.AutoInternalDependencies = []*resource.InternalDependency{
+				dependentRes.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Kinds: []string{"ConfigMap"},
@@ -412,7 +412,7 @@ func (s *BuildPlanAISuite) TestAI_BuildPlanConnectsAllMatchingDependencies() {
 				dependentRes.Unstruct.SetKind("Secret")
 				dependentRes.GroupVersionKind.Kind = "Secret"
 				dependentRes.Weight = nil
-				dependentRes.AutoInternalDependencies = []*resource.InternalDependency{
+				dependentRes.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Kinds: []string{"ConfigMap"},
@@ -554,7 +554,7 @@ func (s *BuildPlanAISuite) TestAI_BuildPlanConnectsAllMatchingDependencies() {
 				dependentDelRes := defaultDeletableResource(s.releaseName, s.releaseNamespace)
 				dependentDelRes.Name = "dependent-secret"
 				dependentDelRes.GroupVersionKind.Kind = "Secret"
-				dependentDelRes.AutoInternalDependencies = []*resource.InternalDependency{
+				dependentDelRes.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Kinds: []string{"ConfigMap"},
@@ -655,7 +655,7 @@ func (s *BuildPlanAISuite) TestAI_BuildPlanConnectsOnlySpecificMatchingDependenc
 				dependentRes.Unstruct.SetKind("Secret")
 				dependentRes.GroupVersionKind.Kind = "Secret"
 				dependentRes.Weight = nil
-				dependentRes.AutoInternalDependencies = []*resource.InternalDependency{{
+				dependentRes.AutoInternalDependencies = []*resource.Dependency{{
 					ResourceMatcher: &spec.ResourceMatcher{Names: []string{"test-configmap-1", "test-configmap-2"}, Kinds: []string{"ConfigMap"}},
 					ResourceState:   common.ResourceStatePresent,
 				}}
@@ -730,7 +730,7 @@ func (s *BuildPlanAISuite) TestAI_BuildPlanConnectsOnlySpecificMatchingDependenc
 				dependentRes.Unstruct.SetKind("Secret")
 				dependentRes.GroupVersionKind.Kind = "Secret"
 				dependentRes.Weight = nil
-				dependentRes.AutoInternalDependencies = []*resource.InternalDependency{{
+				dependentRes.AutoInternalDependencies = []*resource.Dependency{{
 					ResourceMatcher: &spec.ResourceMatcher{Names: []string{"test-configmap-1", "test-configmap-2"}, Kinds: []string{"ConfigMap"}},
 					ResourceState:   common.ResourceStateReady,
 				}}
@@ -797,7 +797,7 @@ func (s *BuildPlanAISuite) TestAI_BuildPlanConnectsOnlySpecificMatchingDependenc
 				dependentRes.Unstruct.SetKind("Secret")
 				dependentRes.GroupVersionKind.Kind = "Secret"
 				dependentRes.Weight = nil
-				dependentRes.AutoInternalDependencies = []*resource.InternalDependency{{
+				dependentRes.AutoInternalDependencies = []*resource.Dependency{{
 					ResourceMatcher: &spec.ResourceMatcher{Names: []string{"test-configmap-1", "test-configmap-2"}, Kinds: []string{"ConfigMap"}},
 					ResourceState:   common.ResourceStateAbsent,
 				}}
@@ -852,7 +852,7 @@ func (s *BuildPlanAISuite) TestAI_BuildPlanConnectsOnlySpecificMatchingDependenc
 				dependentDelRes := defaultDeletableResource(s.releaseName, s.releaseNamespace)
 				dependentDelRes.Name = "dependent-secret"
 				dependentDelRes.GroupVersionKind.Kind = "Secret"
-				dependentDelRes.AutoInternalDependencies = []*resource.InternalDependency{{
+				dependentDelRes.AutoInternalDependencies = []*resource.Dependency{{
 					ResourceMatcher: &spec.ResourceMatcher{Names: []string{"test-configmap-1", "test-configmap-2"}, Kinds: []string{"ConfigMap"}},
 					ResourceState:   common.ResourceStateAbsent,
 				}}

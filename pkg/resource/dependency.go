@@ -9,9 +9,8 @@ import (
 	"github.com/werf/nelm/pkg/resource/spec"
 )
 
-// TODO(major): rename to Dependency
 // Represents a dependency on a Kubernetes resource in the Helm release.
-type InternalDependency struct {
+type Dependency struct {
 	*spec.ResourceMatcher `json:"resourceMatcher"`
 
 	ResourceMeta  *spec.ResourceMeta   `json:"resourceMeta"`
@@ -30,11 +29,11 @@ type ExternalDependency struct {
 // Automatically detects internal dependencies on resources by examining specific fields in the
 // resource spec. As an example, examining "envFrom" in a Pod container spec produces an internal
 // dependency on a ConfigMap or a Secret.
-func internalDeployDependencies(unstruct *unstructured.Unstructured) []*InternalDependency {
+func internalDeployDependencies(unstruct *unstructured.Unstructured) []*Dependency {
 	gvk := unstruct.GroupVersionKind()
 	gk := gvk.GroupKind()
 
-	var dependencies []*InternalDependency
+	var dependencies []*Dependency
 	switch gk {
 	case schema.GroupKind{Kind: "Deployment", Group: "apps"}:
 		if pod, found := nestedMap(unstruct.Object, "spec", "template"); found {
@@ -95,7 +94,7 @@ func internalDeployDependencies(unstruct *unstructured.Unstructured) []*Internal
 	return dependencies
 }
 
-func parsePod(unstruct *unstructured.Unstructured, pod interface{}) (dependencies []*InternalDependency, found bool) {
+func parsePod(unstruct *unstructured.Unstructured, pod interface{}) (dependencies []*Dependency, found bool) {
 	containers, _ := nestedSlice(pod, "spec", "containers")
 	for _, container := range containers {
 		if deps, found := parseContainer(unstruct, container); found {
@@ -161,8 +160,8 @@ func parsePod(unstruct *unstructured.Unstructured, pod interface{}) (dependencie
 	return dependencies, len(dependencies) > 0
 }
 
-func internalDeleteDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) []*InternalDependency {
-	var dependencies []*InternalDependency
+func internalDeleteDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) []*Dependency {
+	var dependencies []*Dependency
 	switch unstruct.GroupVersionKind().GroupKind() {
 	case schema.GroupKind{Kind: "CustomResourceDefinition", Group: "apiextensions.k8s.io"}:
 		if dep, found := parseCRD(unstruct); found {
@@ -189,7 +188,7 @@ func internalDeleteDependencies(unstruct *unstructured.Unstructured, otherUnstru
 	return dependencies
 }
 
-func parseContainer(unstruct *unstructured.Unstructured, container interface{}) (dependencies []*InternalDependency, found bool) {
+func parseContainer(unstruct *unstructured.Unstructured, container interface{}) (dependencies []*Dependency, found bool) {
 	envs, _ := nestedSlice(container, "env")
 	for _, env := range envs {
 		if dep, found := parseConfigMapKeyRef(unstruct, env); found {
@@ -211,7 +210,7 @@ func parseContainer(unstruct *unstructured.Unstructured, container interface{}) 
 	return dependencies, len(dependencies) > 0
 }
 
-func parseCRD(unstruct *unstructured.Unstructured) (dep *InternalDependency, found bool) {
+func parseCRD(unstruct *unstructured.Unstructured) (dep *Dependency, found bool) {
 	kind, found := nestedString(unstruct.Object, "spec", "names", "kind")
 	if !found {
 		return nil, false
@@ -222,7 +221,7 @@ func parseCRD(unstruct *unstructured.Unstructured) (dep *InternalDependency, fou
 		return nil, false
 	}
 
-	dep = &InternalDependency{
+	dep = &Dependency{
 		ResourceMatcher: &spec.ResourceMatcher{
 			Groups: []string{group},
 			Kinds:  []string{kind},
@@ -233,7 +232,7 @@ func parseCRD(unstruct *unstructured.Unstructured) (dep *InternalDependency, fou
 	return dep, true
 }
 
-func parseClusterRoleDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
+func parseClusterRoleDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) (dependencies []*Dependency, found bool) {
 	bindingUnstructs := lo.Filter(otherUnstructs, func(unstruct *unstructured.Unstructured, _ int) bool {
 		switch unstruct.GroupVersionKind().GroupKind() {
 		case schema.GroupKind{Kind: "RoleBinding", Group: "rbac.authorization.k8s.io"},
@@ -260,7 +259,7 @@ func parseClusterRoleDependencies(unstruct *unstructured.Unstructured, otherUnst
 			namespaces = []string{bindingUnstruct.GetNamespace()}
 		}
 
-		dep := &InternalDependency{
+		dep := &Dependency{
 			ResourceMatcher: &spec.ResourceMatcher{
 				Names:      []string{bindingUnstruct.GetName()},
 				Namespaces: namespaces,
@@ -275,7 +274,7 @@ func parseClusterRoleDependencies(unstruct *unstructured.Unstructured, otherUnst
 	return dependencies, len(dependencies) > 0
 }
 
-func parseConfigMapKeyRef(unstruct *unstructured.Unstructured, env interface{}) (dep *InternalDependency, found bool) {
+func parseConfigMapKeyRef(unstruct *unstructured.Unstructured, env interface{}) (dep *Dependency, found bool) {
 	configMapKeyRef, found := nestedMap(env, "valueFrom", "configMapKeyRef")
 	if !found {
 		return nil, false
@@ -291,7 +290,7 @@ func parseConfigMapKeyRef(unstruct *unstructured.Unstructured, env interface{}) 
 		return nil, false
 	}
 
-	dep = &InternalDependency{
+	dep = &Dependency{
 		ResourceMatcher: &spec.ResourceMatcher{
 			Names:      []string{name},
 			Namespaces: []string{unstruct.GetNamespace()},
@@ -304,7 +303,7 @@ func parseConfigMapKeyRef(unstruct *unstructured.Unstructured, env interface{}) 
 	return dep, true
 }
 
-func parseConfigMapRef(unstruct *unstructured.Unstructured, env interface{}) (dep *InternalDependency, found bool) {
+func parseConfigMapRef(unstruct *unstructured.Unstructured, env interface{}) (dep *Dependency, found bool) {
 	configMapKeyRef, found := nestedMap(env, "valueFrom", "configMapRef")
 	if !found {
 		return nil, false
@@ -320,7 +319,7 @@ func parseConfigMapRef(unstruct *unstructured.Unstructured, env interface{}) (de
 		return nil, false
 	}
 
-	dep = &InternalDependency{
+	dep = &Dependency{
 		ResourceMatcher: &spec.ResourceMatcher{
 			Names:      []string{name},
 			Namespaces: []string{unstruct.GetNamespace()},
@@ -333,13 +332,13 @@ func parseConfigMapRef(unstruct *unstructured.Unstructured, env interface{}) (de
 	return dep, true
 }
 
-func parseImagePullSecret(unstruct *unstructured.Unstructured, secret interface{}) (dep *InternalDependency, found bool) {
+func parseImagePullSecret(unstruct *unstructured.Unstructured, secret interface{}) (dep *Dependency, found bool) {
 	name, found := nestedStringNotEmpty(secret, "name")
 	if !found {
 		return nil, false
 	}
 
-	dep = &InternalDependency{
+	dep = &Dependency{
 		ResourceMatcher: &spec.ResourceMatcher{
 			Names:      []string{name},
 			Namespaces: []string{unstruct.GetNamespace()},
@@ -352,13 +351,13 @@ func parseImagePullSecret(unstruct *unstructured.Unstructured, secret interface{
 	return dep, true
 }
 
-func parseNodeName(pod interface{}) (dep *InternalDependency, found bool) {
+func parseNodeName(pod interface{}) (dep *Dependency, found bool) {
 	nodeName, found := nestedStringNotEmpty(pod, "spec", "nodeName")
 	if !found {
 		return nil, false
 	}
 
-	dep = &InternalDependency{
+	dep = &Dependency{
 		ResourceMatcher: &spec.ResourceMatcher{
 			Names:  []string{nodeName},
 			Groups: []string{""},
@@ -370,13 +369,13 @@ func parseNodeName(pod interface{}) (dep *InternalDependency, found bool) {
 	return dep, true
 }
 
-func parsePriorityClassName(unstruct *unstructured.Unstructured, pod interface{}) (dep *InternalDependency, found bool) {
+func parsePriorityClassName(unstruct *unstructured.Unstructured, pod interface{}) (dep *Dependency, found bool) {
 	priorityClassName, found := nestedStringNotEmpty(pod, "spec", "priorityClassName")
 	if !found {
 		return nil, false
 	}
 
-	dep = &InternalDependency{
+	dep = &Dependency{
 		ResourceMatcher: &spec.ResourceMatcher{
 			Names:  []string{priorityClassName},
 			Groups: []string{"scheduling.k8s.io"},
@@ -388,7 +387,7 @@ func parsePriorityClassName(unstruct *unstructured.Unstructured, pod interface{}
 	return dep, true
 }
 
-func parseResourceClaim(unstruct *unstructured.Unstructured, claim interface{}) (dep *InternalDependency, found bool) {
+func parseResourceClaim(unstruct *unstructured.Unstructured, claim interface{}) (dep *Dependency, found bool) {
 	source, found := nestedMap(claim, "source")
 	if !found {
 		return nil, false
@@ -396,7 +395,7 @@ func parseResourceClaim(unstruct *unstructured.Unstructured, claim interface{}) 
 
 	resourceClaimName, resourceClaimNameFound := nestedStringNotEmpty(source, "resourceClaimName")
 	if resourceClaimNameFound {
-		dep = &InternalDependency{
+		dep = &Dependency{
 			ResourceMatcher: &spec.ResourceMatcher{
 				Names:      []string{resourceClaimName},
 				Namespaces: []string{unstruct.GetNamespace()},
@@ -411,7 +410,7 @@ func parseResourceClaim(unstruct *unstructured.Unstructured, claim interface{}) 
 
 	resourceClaimNameTemplate, resourceClaimNameTemplateFound := nestedStringNotEmpty(source, "resourceClaimNameTemplate")
 	if resourceClaimNameTemplateFound {
-		dep = &InternalDependency{
+		dep = &Dependency{
 			ResourceMatcher: &spec.ResourceMatcher{
 				Names:      []string{resourceClaimNameTemplate},
 				Namespaces: []string{unstruct.GetNamespace()},
@@ -427,7 +426,7 @@ func parseResourceClaim(unstruct *unstructured.Unstructured, claim interface{}) 
 	return nil, false
 }
 
-func parseRoleDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
+func parseRoleDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) (dependencies []*Dependency, found bool) {
 	bindingUnstructs := lo.Filter(otherUnstructs, func(unstruct *unstructured.Unstructured, _ int) bool {
 		return unstruct.GroupVersionKind().GroupKind() == (schema.GroupKind{Kind: "RoleBinding", Group: "rbac.authorization.k8s.io"})
 	})
@@ -443,7 +442,7 @@ func parseRoleDependencies(unstruct *unstructured.Unstructured, otherUnstructs [
 			continue
 		}
 
-		dep := &InternalDependency{
+		dep := &Dependency{
 			ResourceMatcher: newExactResourceMatcher(bindingUnstruct),
 			ResourceState:   common.ResourceStateAbsent,
 		}
@@ -453,7 +452,7 @@ func parseRoleDependencies(unstruct *unstructured.Unstructured, otherUnstructs [
 	return dependencies, len(dependencies) > 0
 }
 
-func parseRoleRef(unstruct unstructured.Unstructured) (dep *InternalDependency, found bool) {
+func parseRoleRef(unstruct unstructured.Unstructured) (dep *Dependency, found bool) {
 	roleRef, found := nestedMap(unstruct.Object, "roleRef")
 	if !found {
 		return nil, false
@@ -479,7 +478,7 @@ func parseRoleRef(unstruct unstructured.Unstructured) (dep *InternalDependency, 
 		namespaces = []string{unstruct.GetNamespace()}
 	}
 
-	dep = &InternalDependency{
+	dep = &Dependency{
 		ResourceMatcher: &spec.ResourceMatcher{
 			Names:      []string{name},
 			Namespaces: namespaces,
@@ -492,13 +491,13 @@ func parseRoleRef(unstruct unstructured.Unstructured) (dep *InternalDependency, 
 	return dep, true
 }
 
-func parseRuntimeClassName(pod interface{}) (dep *InternalDependency, found bool) {
+func parseRuntimeClassName(pod interface{}) (dep *Dependency, found bool) {
 	runtimeClassName, found := nestedStringNotEmpty(pod, "spec", "runtimeClassName")
 	if !found {
 		return nil, false
 	}
 
-	dep = &InternalDependency{
+	dep = &Dependency{
 		ResourceMatcher: &spec.ResourceMatcher{
 			Names:  []string{runtimeClassName},
 			Groups: []string{"node.k8s.io"},
@@ -510,7 +509,7 @@ func parseRuntimeClassName(pod interface{}) (dep *InternalDependency, found bool
 	return dep, true
 }
 
-func parseSecretKeyRef(unstruct *unstructured.Unstructured, env interface{}) (dep *InternalDependency, found bool) {
+func parseSecretKeyRef(unstruct *unstructured.Unstructured, env interface{}) (dep *Dependency, found bool) {
 	secretKeyRef, found := nestedMap(env, "valueFrom", "secretKeyRef")
 	if !found {
 		return nil, false
@@ -526,7 +525,7 @@ func parseSecretKeyRef(unstruct *unstructured.Unstructured, env interface{}) (de
 		return nil, false
 	}
 
-	dep = &InternalDependency{
+	dep = &Dependency{
 		ResourceMatcher: &spec.ResourceMatcher{
 			Names:      []string{name},
 			Namespaces: []string{unstruct.GetNamespace()},
@@ -539,7 +538,7 @@ func parseSecretKeyRef(unstruct *unstructured.Unstructured, env interface{}) (de
 	return dep, true
 }
 
-func parseSecretRef(unstruct *unstructured.Unstructured, env interface{}) (dep *InternalDependency, found bool) {
+func parseSecretRef(unstruct *unstructured.Unstructured, env interface{}) (dep *Dependency, found bool) {
 	secretKeyRef, found := nestedMap(env, "valueFrom", "secretRef")
 	if !found {
 		return nil, false
@@ -555,7 +554,7 @@ func parseSecretRef(unstruct *unstructured.Unstructured, env interface{}) (dep *
 		return nil, false
 	}
 
-	dep = &InternalDependency{
+	dep = &Dependency{
 		ResourceMatcher: &spec.ResourceMatcher{
 			Names:      []string{name},
 			Namespaces: []string{unstruct.GetNamespace()},
@@ -568,13 +567,13 @@ func parseSecretRef(unstruct *unstructured.Unstructured, env interface{}) (dep *
 	return dep, true
 }
 
-func parseServiceAccount(unstruct *unstructured.Unstructured, pod interface{}) (dep *InternalDependency, found bool) {
+func parseServiceAccount(unstruct *unstructured.Unstructured, pod interface{}) (dep *Dependency, found bool) {
 	serviceAccount, found := nestedStringNotEmpty(pod, "spec", "serviceAccount")
 	if !found {
 		return nil, false
 	}
 
-	dep = &InternalDependency{
+	dep = &Dependency{
 		ResourceMatcher: &spec.ResourceMatcher{
 			Names:      []string{serviceAccount},
 			Namespaces: []string{unstruct.GetNamespace()},
@@ -587,7 +586,7 @@ func parseServiceAccount(unstruct *unstructured.Unstructured, pod interface{}) (
 	return dep, true
 }
 
-func parseServiceAccountDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
+func parseServiceAccountDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) (dependencies []*Dependency, found bool) {
 	for _, otherUnstruct := range otherUnstructs {
 		var nestedPath []string
 		switch otherUnstruct.GroupVersionKind().GroupKind() {
@@ -611,7 +610,7 @@ func parseServiceAccountDependencies(unstruct *unstructured.Unstructured, otherU
 			continue
 		}
 
-		dep := &InternalDependency{
+		dep := &Dependency{
 			ResourceMatcher: newExactResourceMatcher(otherUnstruct),
 			ResourceState:   common.ResourceStateAbsent,
 		}
@@ -621,13 +620,13 @@ func parseServiceAccountDependencies(unstruct *unstructured.Unstructured, otherU
 	return dependencies, len(dependencies) > 0
 }
 
-func parseServiceAccountName(unstruct *unstructured.Unstructured, pod interface{}) (dep *InternalDependency, found bool) {
+func parseServiceAccountName(unstruct *unstructured.Unstructured, pod interface{}) (dep *Dependency, found bool) {
 	serviceAccountName, found := nestedStringNotEmpty(pod, "spec", "serviceAccountName")
 	if !found {
 		return nil, false
 	}
 
-	dep = &InternalDependency{
+	dep = &Dependency{
 		ResourceMatcher: &spec.ResourceMatcher{
 			Names:      []string{serviceAccountName},
 			Namespaces: []string{unstruct.GetNamespace()},
@@ -640,13 +639,13 @@ func parseServiceAccountName(unstruct *unstructured.Unstructured, pod interface{
 	return dep, true
 }
 
-func parseServiceName(unstruct *unstructured.Unstructured, resSpec interface{}) (dep *InternalDependency, found bool) {
+func parseServiceName(unstruct *unstructured.Unstructured, resSpec interface{}) (dep *Dependency, found bool) {
 	name, found := nestedStringNotEmpty(resSpec, "serviceName")
 	if !found {
 		return nil, false
 	}
 
-	dep = &InternalDependency{
+	dep = &Dependency{
 		ResourceMatcher: &spec.ResourceMatcher{
 			Names:      []string{name},
 			Namespaces: []string{unstruct.GetNamespace()},
@@ -659,7 +658,7 @@ func parseServiceName(unstruct *unstructured.Unstructured, resSpec interface{}) 
 	return dep, true
 }
 
-func parseVolume(unstruct *unstructured.Unstructured, volume interface{}) (dep *InternalDependency, found bool) {
+func parseVolume(unstruct *unstructured.Unstructured, volume interface{}) (dep *Dependency, found bool) {
 	configMap, found := nestedMap(volume, "configMap")
 	if found {
 		name, found := nestedStringNotEmpty(configMap, "name")
@@ -672,7 +671,7 @@ func parseVolume(unstruct *unstructured.Unstructured, volume interface{}) (dep *
 			return nil, false
 		}
 
-		dep = &InternalDependency{
+		dep = &Dependency{
 			ResourceMatcher: &spec.ResourceMatcher{
 				Names:      []string{name},
 				Namespaces: []string{unstruct.GetNamespace()},
@@ -697,7 +696,7 @@ func parseVolume(unstruct *unstructured.Unstructured, volume interface{}) (dep *
 			return nil, false
 		}
 
-		dep = &InternalDependency{
+		dep = &Dependency{
 			ResourceMatcher: &spec.ResourceMatcher{
 				Names:      []string{name},
 				Namespaces: []string{unstruct.GetNamespace()},
@@ -713,7 +712,7 @@ func parseVolume(unstruct *unstructured.Unstructured, volume interface{}) (dep *
 	return nil, false
 }
 
-func parseYandexInstanceClassDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
+func parseYandexInstanceClassDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) (dependencies []*Dependency, found bool) {
 	ngUnstructs := lo.Filter(otherUnstructs, func(unstruct *unstructured.Unstructured, _ int) bool {
 		return unstruct.GroupVersionKind().GroupKind() == (schema.GroupKind{Kind: "NodeGroup", Group: "deckhouse.io"})
 	})
@@ -729,7 +728,7 @@ func parseYandexInstanceClassDependencies(unstruct *unstructured.Unstructured, o
 			continue
 		}
 
-		dep := &InternalDependency{
+		dep := &Dependency{
 			ResourceMatcher: newExactResourceMatcher(ngUnstruct),
 			ResourceState:   common.ResourceStateAbsent,
 		}

@@ -45,8 +45,8 @@ type InstallableResource struct {
 	SkipLogsRegexForContainers             map[string]*regexp.Regexp       `json:"skipLogsRegexForContainers"`
 	TrackTerminationMode                   statestore.TrackTerminationMode `json:"trackTerminationMode"`
 	Weight                                 *int                            `json:"weight,omitempty"`
-	ManualInternalDependencies             []*InternalDependency           `json:"manualInternalDependencies,omitempty"`
-	AutoInternalDependencies               []*InternalDependency           `json:"autoInternalDependencies,omitempty"`
+	ManualDependencies                     []*Dependency                   `json:"manualDependencies,omitempty"`
+	AutoInternalDependencies               []*Dependency                   `json:"autoInternalDependencies,omitempty"`
 	ExternalDependencies                   []*ExternalDependency           `json:"externalDependencies,omitempty"`
 	DeployConditions                       map[common.On][]common.Stage    `json:"deployConditions"`
 	DeletePropagation                      metav1.DeletionPropagation      `json:"deletePropagation"`
@@ -117,7 +117,7 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResourceSpecs []*spec.R
 		return nil, fmt.Errorf("get manual dependencies: %w", err)
 	}
 
-	internalDeps := lo.Filter(manDeps, func(item *InternalDependency, _ int) bool {
+	internalDeps := lo.Filter(manDeps, func(item *Dependency, _ int) bool {
 		return !item.External
 	})
 
@@ -145,21 +145,20 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResourceSpecs []*spec.R
 		KeepOnDelete:                           KeepOnDelete(res.ResourceMeta, releaseNamespace),
 		LogRegex:                               logRegex(res.ResourceMeta),
 		LogRegexesForContainers:                logRegexesForContainers(res.ResourceMeta),
-		// TODO(major): rename to ManualDependencies
-		ManualInternalDependencies:      manDeps,
-		NoActivityTimeout:               noActivityTimeout(res.ResourceMeta),
-		Ownership:                       ownership(res.ResourceMeta, releaseNamespace, res.StoreAs),
-		Recreate:                        recreate(res.ResourceMeta),
-		RecreateOnImmutable:             recreateOnImmutable(res.ResourceMeta),
-		ShowLogsOnlyForContainers:       showLogsOnlyForContainers(res.ResourceMeta),
-		ShowLogsOnlyForNumberOfReplicas: showLogsOnlyForNumberOfReplicas(res.ResourceMeta),
-		ShowServiceMessages:             showServiceMessages(res.ResourceMeta),
-		SkipLogs:                        skipLogs(res.ResourceMeta),
-		SkipLogsForContainers:           skipLogsForContainers(res.ResourceMeta),
-		SkipLogsRegex:                   skipLogRegex(res.ResourceMeta),
-		SkipLogsRegexForContainers:      skipLogRegexesForContainers(res.ResourceMeta),
-		TrackTerminationMode:            trackTerminationMode(res.ResourceMeta),
-		Weight:                          weight(res.ResourceMeta, len(internalDeps) > 0),
+		ManualDependencies:                     manDeps,
+		NoActivityTimeout:                      noActivityTimeout(res.ResourceMeta),
+		Ownership:                              ownership(res.ResourceMeta, releaseNamespace, res.StoreAs),
+		Recreate:                               recreate(res.ResourceMeta),
+		RecreateOnImmutable:                    recreateOnImmutable(res.ResourceMeta),
+		ShowLogsOnlyForContainers:              showLogsOnlyForContainers(res.ResourceMeta),
+		ShowLogsOnlyForNumberOfReplicas:        showLogsOnlyForNumberOfReplicas(res.ResourceMeta),
+		ShowServiceMessages:                    showServiceMessages(res.ResourceMeta),
+		SkipLogs:                               skipLogs(res.ResourceMeta),
+		SkipLogsForContainers:                  skipLogsForContainers(res.ResourceMeta),
+		SkipLogsRegex:                          skipLogRegex(res.ResourceMeta),
+		SkipLogsRegexForContainers:             skipLogRegexesForContainers(res.ResourceMeta),
+		TrackTerminationMode:                   trackTerminationMode(res.ResourceMeta),
+		Weight:                                 weight(res.ResourceMeta, len(internalDeps) > 0),
 	}, nil
 }
 
@@ -174,11 +173,11 @@ type InstallableResourceOptions struct {
 type DeletableResource struct {
 	*spec.ResourceMeta
 
-	AutoInternalDependencies   []*InternalDependency
-	DeletePropagation          metav1.DeletionPropagation
-	KeepOnDelete               bool
-	ManualInternalDependencies []*InternalDependency
-	Ownership                  common.Ownership
+	AutoInternalDependencies []*Dependency
+	DeletePropagation        metav1.DeletionPropagation
+	KeepOnDelete             bool
+	ManualDependencies       []*Dependency
+	Ownership                common.Ownership
 }
 
 // Construct a DeletableResource from a ResourceSpec. Must never contact the cluster, because
@@ -209,9 +208,9 @@ func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []
 		return resSpec.ResourceMeta
 	})
 
-	var manIntDeps []*InternalDependency
+	var manDeps []*Dependency
 	if err := validateDeleteDependencies(resourceSpec.ResourceMeta); err == nil {
-		manIntDeps, _ = manualDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList, releaseNamespace)
+		manDeps, _ = manualDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList, releaseNamespace)
 	}
 
 	unstructList := lo.Map(otherResourceSpecs, func(resSpec *spec.ResourceSpec, _ int) *unstructured.Unstructured {
@@ -219,12 +218,12 @@ func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []
 	})
 
 	return &DeletableResource{
-		ResourceMeta:               resourceSpec.ResourceMeta,
-		AutoInternalDependencies:   internalDeleteDependencies(resourceSpec.Unstruct, unstructList),
-		DeletePropagation:          delPropagation,
-		KeepOnDelete:               keep,
-		ManualInternalDependencies: manIntDeps,
-		Ownership:                  owner,
+		ResourceMeta:             resourceSpec.ResourceMeta,
+		AutoInternalDependencies: internalDeleteDependencies(resourceSpec.Unstruct, unstructList),
+		DeletePropagation:        delPropagation,
+		KeepOnDelete:             keep,
+		ManualDependencies:       manDeps,
+		Ownership:                owner,
 	}
 }
 

@@ -469,8 +469,8 @@ func logRegexesForContainers(meta *spec.ResourceMeta) map[string]*regexp.Regexp 
 	return regexByContainer
 }
 
-func manualDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta, releaseNamespace string) ([]*InternalDependency, error) {
-	deps := map[string]*InternalDependency{}
+func manualDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta, releaseNamespace string) ([]*Dependency, error) {
+	deps := map[string]*Dependency{}
 
 	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteDependency); found {
 		for key, value := range annotations {
@@ -511,7 +511,7 @@ func manualDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Reso
 				depState = common.ResourceStatePresent
 			}
 
-			dep := &InternalDependency{
+			dep := &Dependency{
 				ResourceMatcher: &spec.ResourceMatcher{
 					Names:      depNames,
 					Namespaces: depNamespaces,
@@ -572,12 +572,12 @@ func manualDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Reso
 	return lo.Values(deps), nil
 }
 
-func manualDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta, releaseNamespace string) ([]*InternalDependency, error) {
+func manualDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta, releaseNamespace string) ([]*Dependency, error) {
 	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
 		return nil, nil
 	}
 
-	deps := map[string]*InternalDependency{}
+	deps := map[string]*Dependency{}
 
 	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeployDependency); found {
 		for key, value := range annotations {
@@ -618,7 +618,7 @@ func manualDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Reso
 				depState = common.ResourceStatePresent
 			}
 
-			dep := &InternalDependency{
+			dep := &Dependency{
 				ResourceMatcher: &spec.ResourceMatcher{
 					Names:      depNames,
 					Namespaces: depNamespaces,

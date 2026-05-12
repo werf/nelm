@@ -99,7 +99,7 @@ func BuildPlan(ctx context.Context, installableInfos []*InstallableResourceInfo,
 
 func connectInternalDeleteDependencies(ctx context.Context, plan *Plan, delInfos []*DeletableResourceInfo, instInfos []*InstallableResourceInfo) error {
 	for _, info := range delInfos {
-		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualInternalDependencies)
+		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualDependencies)
 		if len(internalDeps) == 0 {
 			continue
 		}
@@ -139,7 +139,7 @@ func connectInternalDeleteDependencies(ctx context.Context, plan *Plan, delInfos
 
 func connectInternalDeployDependencies(ctx context.Context, plan *Plan, instInfos []*InstallableResourceInfo, delInfos []*DeletableResourceInfo) error {
 	for _, info := range instInfos {
-		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualInternalDependencies)
+		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualDependencies)
 		if len(internalDeps) == 0 {
 			continue
 		}
@@ -250,7 +250,7 @@ func addReleaseOperations(plan *Plan, releaseInfos []*ReleaseInfo) error {
 	return nil
 }
 
-func resolveDeployOpInStage(ctx context.Context, plan *Plan, instInfos []*InstallableResourceInfo, dep *resource.InternalDependency, sourceStage common.Stage) ([]*Operation, error) {
+func resolveDeployOpInStage(ctx context.Context, plan *Plan, instInfos []*InstallableResourceInfo, dep *resource.Dependency, sourceStage common.Stage) ([]*Operation, error) {
 	if dep.External {
 		opID := OperationID(OperationTypeTrackPresence, OperationVersionTrackPresence, OperationIteration(0), dep.ResourceMeta.ID())
 		if op, found := plan.Operation(opID); found {
@@ -319,7 +319,7 @@ func resolveDeployOpInStage(ctx context.Context, plan *Plan, instInfos []*Instal
 	return foundOps, nil
 }
 
-func resolveTrackAbsenceOpInStage(ctx context.Context, plan *Plan, delInfos []*DeletableResourceInfo, instInfos []*InstallableResourceInfo, dep *resource.InternalDependency, sourceStage common.Stage) ([]*Operation, error) {
+func resolveTrackAbsenceOpInStage(ctx context.Context, plan *Plan, delInfos []*DeletableResourceInfo, instInfos []*InstallableResourceInfo, dep *resource.Dependency, sourceStage common.Stage) ([]*Operation, error) {
 	if dep.External {
 		opID := OperationID(OperationTypeTrackAbsence, OperationVersionTrackAbsence, OperationIteration(0), dep.ResourceMeta.ID())
 		if op, found := plan.Operation(opID); found {
@@ -413,7 +413,7 @@ func resolveTrackAbsenceOpInStage(ctx context.Context, plan *Plan, delInfos []*D
 	return foundOps, nil
 }
 
-func resolveTrackReadinessOpInStage(ctx context.Context, plan *Plan, instInfos []*InstallableResourceInfo, dep *resource.InternalDependency, sourceStage common.Stage) ([]*Operation, error) {
+func resolveTrackReadinessOpInStage(ctx context.Context, plan *Plan, instInfos []*InstallableResourceInfo, dep *resource.Dependency, sourceStage common.Stage) ([]*Operation, error) {
 	if dep.External {
 		opID := OperationID(OperationTypeTrackReadiness, OperationVersionTrackReadiness, OperationIteration(0), dep.ResourceMeta.ID())
 		if op, found := plan.Operation(opID); found {
@@ -973,7 +973,7 @@ func getDeployOp(plan *Plan, info *InstallableResourceInfo) (op *Operation, foun
 	return lo.Must(plan.Operation(deployOpID)), true
 }
 
-func truncateDeletableMatches(ctx context.Context, matched []*matchedDeletableResource, dep *resource.InternalDependency) ([]*matchedDeletableResource, error) {
+func truncateDeletableMatches(ctx context.Context, matched []*matchedDeletableResource, dep *resource.Dependency) ([]*matchedDeletableResource, error) {
 	if len(matched) < dep.MinMatches {
 		return nil, errors.New("matched resources count is less than minimum required")
 	}
@@ -991,7 +991,7 @@ func truncateDeletableMatches(ctx context.Context, matched []*matchedDeletableRe
 	return matched, nil
 }
 
-func truncateInstallableMatches(ctx context.Context, matched []*InstallableResourceInfo, dep *resource.InternalDependency) ([]*InstallableResourceInfo, error) {
+func truncateInstallableMatches(ctx context.Context, matched []*InstallableResourceInfo, dep *resource.Dependency) ([]*InstallableResourceInfo, error) {
 	if len(matched) < dep.MinMatches {
 		return nil, errors.New("matched resources count is less than minimum required")
 	}
