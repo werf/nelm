@@ -159,9 +159,14 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.RegistryCredentialsPath, "oci-chart-repos-creds", common.DefaultRegistryCredentialsPath, "Credentials to access OCI chart repositories", cli.AddFlagOptions{
+		if err := AddDockerConfigFlag(cmd, &cfg.DockerConfig); err != nil {
+			return fmt.Errorf("add docker config flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.RegistryCredentialsPath, "oci-chart-repos-creds", "", "Credentials to access OCI chart repositories", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                chartRepoFlagGroup,
+			Type:                 cli.FlagTypeFile,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
