@@ -91,6 +91,8 @@ type ReleasePlanInstallOptions struct {
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
+	// DropInvalidAnnotationsAndLabels disables strict annotations and labels validation.
+	DropInvalidAnnotationsAndLabels bool
 	// NoFinalTracking, when true, disables final tracking operations in the plan that have no
 	// create/update/delete resource operations after them. This speeds up plan generation.
 	NoFinalTracking bool
@@ -255,19 +257,20 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	log.Default.Debug(ctx, "Render chart")
 
 	renderChartResult, err := chart.RenderChart(ctx, opts.Chart, releaseName, releaseNamespace, newRevision, deployType, helmRegistryClient, clientFactory, chart.RenderChartOptions{
-		ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
-		ValuesOptions:              opts.ValuesOptions,
-		ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
-		ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
-		ChartRepoNoUpdate:          opts.ChartRepoSkipUpdate,
-		ChartVersion:               opts.ChartVersion,
-		HelmOptions:                helmOptions,
-		NoStandaloneCRDs:           opts.NoInstallStandaloneCRDs,
-		Remote:                     true,
-		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
-		TempDirPath:                opts.TempDirPath,
-		IgnoreBundleJS:             opts.IgnoreBundleJS,
-		DenoBinaryPath:             opts.DenoBinaryPath,
+		ChartRepoConnectionOptions:      opts.ChartRepoConnectionOptions,
+		ValuesOptions:                   opts.ValuesOptions,
+		ChartProvenanceKeyring:          opts.ChartProvenanceKeyring,
+		ChartProvenanceStrategy:         opts.ChartProvenanceStrategy,
+		ChartRepoNoUpdate:               opts.ChartRepoSkipUpdate,
+		ChartVersion:                    opts.ChartVersion,
+		HelmOptions:                     helmOptions,
+		DropInvalidAnnotationsAndLabels: opts.DropInvalidAnnotationsAndLabels,
+		NoStandaloneCRDs:                opts.NoInstallStandaloneCRDs,
+		Remote:                          true,
+		TemplatesAllowDNS:               opts.TemplatesAllowDNS,
+		TempDirPath:                     opts.TempDirPath,
+		IgnoreBundleJS:                  opts.IgnoreBundleJS,
+		DenoBinaryPath:                  opts.DenoBinaryPath,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("render chart: %w", err)

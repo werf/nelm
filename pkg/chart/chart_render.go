@@ -46,20 +46,21 @@ type RenderChartOptions struct {
 	common.ChartRepoConnectionOptions
 	common.ValuesOptions
 
-	ChartProvenanceKeyring  string
-	ChartProvenanceStrategy string
-	ChartRepoNoUpdate       bool
-	ChartVersion            string
-	DenoBinaryPath          string
-	ExtraAPIVersions        []string
-	HelmOptions             common.HelmOptions
-	IgnoreBundleJS          bool
-	LocalKubeVersion        string
-	NoStandaloneCRDs        bool
-	Remote                  bool
-	SubchartNotes           bool
-	TempDirPath             string
-	TemplatesAllowDNS       bool
+	ChartProvenanceKeyring          string
+	ChartProvenanceStrategy         string
+	ChartRepoNoUpdate               bool
+	ChartVersion                    string
+	DenoBinaryPath                  string
+	ExtraAPIVersions                []string
+	HelmOptions                     common.HelmOptions
+	IgnoreBundleJS                  bool
+	LocalKubeVersion                string
+	DropInvalidAnnotationsAndLabels bool
+	NoStandaloneCRDs                bool
+	Remote                          bool
+	SubchartNotes                   bool
+	TempDirPath                     string
+	TemplatesAllowDNS               bool
 }
 
 type RenderChartResult struct {
@@ -261,8 +262,9 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		for _, crd := range crds {
 			for _, manifest := range util.SplitManifests(string(crd.data)) {
 				if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
-					StoreAs:  common.StoreAsNone,
-					FilePath: crd.filename,
+					StoreAs:                         common.StoreAsNone,
+					FilePath:                        crd.filename,
+					DropInvalidAnnotationsAndLabels: opts.DropInvalidAnnotationsAndLabels,
 				}); err != nil {
 					return nil, fmt.Errorf("construct standalone CRD for chart at %q: %w", chartPath, err)
 				} else {
@@ -563,7 +565,8 @@ func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, relea
 			}
 
 			if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
-				FilePath: filePath,
+				FilePath:                        filePath,
+				DropInvalidAnnotationsAndLabels: opts.DropInvalidAnnotationsAndLabels,
 			}); err != nil {
 				return nil, fmt.Errorf("construct resource spec for %q: %w", filePath, err)
 			} else {

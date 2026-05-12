@@ -59,12 +59,17 @@ func NewResourceSpecFromManifest(manifest, releaseNamespace string, opts Resourc
 
 	unstruct := obj.(*unstructured.Unstructured)
 
-	if _, _, err := unstructured.NestedNullCoercingStringMap(unstruct.Object, "metadata", "annotations"); err != nil {
-		return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
-	}
+	if !opts.DropInvalidAnnotationsAndLabels {
+		if _, _, err := unstructured.NestedNullCoercingStringMap(unstruct.Object, "metadata", "annotations"); err != nil {
+			return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
+		}
 
-	if _, _, err := unstructured.NestedNullCoercingStringMap(unstruct.Object, "metadata", "labels"); err != nil {
-		return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
+		if _, _, err := unstructured.NestedNullCoercingStringMap(unstruct.Object, "metadata", "labels"); err != nil {
+			return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
+		}
+	} else {
+		unstruct.SetAnnotations(stripInvalidEntries(opts.FilePath, unstruct.Object, "metadata", "annotations"))
+		unstruct.SetLabels(stripInvalidEntries(opts.FilePath, unstruct.Object, "metadata", "labels"))
 	}
 
 	return NewResourceSpec(unstruct, releaseNamespace, opts), nil
@@ -81,9 +86,10 @@ func (s *ResourceSpec) SetLabels(labels map[string]string) {
 }
 
 type ResourceSpecOptions struct {
-	FilePath                string
-	LegacyNoCleanNullFields bool // TODO(major): always clean
-	StoreAs                 common.StoreAs
+	FilePath                        string
+	LegacyNoCleanNullFields         bool // TODO(major): always clean
+	DropInvalidAnnotationsAndLabels bool
+	StoreAs                         common.StoreAs
 }
 
 // Patch ResourceSpecs to make them releasable, after which they can be saved into the Helm release.

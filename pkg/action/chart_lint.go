@@ -94,6 +94,8 @@ type ChartLintOptions struct {
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
+	// DropInvalidAnnotationsAndLabels disables strict annotations and labels validation.
+	DropInvalidAnnotationsAndLabels bool
 	// NoFinalTracking, when true, disables final tracking operations during validation to speed up linting.
 	NoFinalTracking bool
 	// NoRemoveManualChanges, when true, preserves fields during validation that would be manually added.
@@ -245,20 +247,21 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	}
 
 	chartTreeOptions := chart.RenderChartOptions{
-		ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
-		ValuesOptions:              opts.ValuesOptions,
-		ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
-		ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
-		ChartRepoNoUpdate:          opts.ChartRepoSkipUpdate,
-		ChartVersion:               opts.ChartVersion,
-		ExtraAPIVersions:           opts.ExtraAPIVersions,
-		HelmOptions:                helmOptions,
-		LocalKubeVersion:           opts.LocalKubeVersion,
-		Remote:                     opts.Remote,
-		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
-		TempDirPath:                opts.TempDirPath,
-		IgnoreBundleJS:             opts.IgnoreBundleJS,
-		DenoBinaryPath:             opts.DenoBinaryPath,
+		ChartRepoConnectionOptions:       opts.ChartRepoConnectionOptions,
+		ValuesOptions:                    opts.ValuesOptions,
+		ChartProvenanceKeyring:           opts.ChartProvenanceKeyring,
+		ChartProvenanceStrategy:          opts.ChartProvenanceStrategy,
+		ChartRepoNoUpdate:                opts.ChartRepoSkipUpdate,
+		ChartVersion:                     opts.ChartVersion,
+		ExtraAPIVersions:                 opts.ExtraAPIVersions,
+		HelmOptions:                      helmOptions,
+		LocalKubeVersion:                 opts.LocalKubeVersion,
+		DropInvalidAnnotationsAndLabels: opts.DropInvalidAnnotationsAndLabels,
+		Remote:                           opts.Remote,
+		TemplatesAllowDNS:                opts.TemplatesAllowDNS,
+		TempDirPath:                      opts.TempDirPath,
+		IgnoreBundleJS:                   opts.IgnoreBundleJS,
+		DenoBinaryPath:                   opts.DenoBinaryPath,
 	}
 
 	log.Default.Debug(ctx, "Render chart")

@@ -207,8 +207,9 @@ func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string, n
 	var resources []*spec.ResourceSpec
 	for _, manifest := range util.SplitManifests(rel.UnstoredManifest) {
 		if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
-			StoreAs:                 common.StoreAsNone,
-			LegacyNoCleanNullFields: noCleanNullFields,
+			StoreAs:                         common.StoreAsNone,
+			LegacyNoCleanNullFields:         noCleanNullFields,
+			DropInvalidAnnotationsAndLabels: true,
 		}); err != nil {
 			return nil, fmt.Errorf("construct resource spec from unstored manifest: %w", err)
 		} else {
@@ -218,8 +219,9 @@ func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string, n
 
 	for _, manifest := range util.SplitManifests(rel.Manifest) {
 		if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
-			StoreAs:                 common.StoreAsRegular,
-			LegacyNoCleanNullFields: noCleanNullFields,
+			StoreAs:                         common.StoreAsRegular,
+			LegacyNoCleanNullFields:         noCleanNullFields,
+			DropInvalidAnnotationsAndLabels: true,
 		}); err != nil {
 			return nil, fmt.Errorf("construct resource spec from regular manifest: %w", err)
 		} else {
@@ -229,8 +231,9 @@ func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string, n
 
 	for _, hook := range rel.Hooks {
 		if res, err := spec.NewResourceSpecFromManifest(hook.Manifest, releaseNamespace, spec.ResourceSpecOptions{
-			StoreAs:                 common.StoreAsHook,
-			LegacyNoCleanNullFields: noCleanNullFields,
+			StoreAs:                         common.StoreAsHook,
+			LegacyNoCleanNullFields:         noCleanNullFields,
+			DropInvalidAnnotationsAndLabels: true,
 		}); err != nil {
 			return nil, fmt.Errorf("construct resource spec from hook manifest: %w", err)
 		} else {
