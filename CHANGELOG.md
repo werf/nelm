@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.24.1](https://github.com/werf/nelm/compare/v1.24.0...v1.24.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* don't hard-fail on unsupported env vars ([7bc4769](https://github.com/werf/nelm/commit/7bc47694c107205e8519a82f21b65a4e88cc6e33))
+* retry on webhooks unavailable error ([#600](https://github.com/werf/nelm/issues/600)) ([ccde5a1](https://github.com/werf/nelm/commit/ccde5a15521e33010f4aebcc7059b7ca2c2dcc35))
+
 ## [1.24.0](https://github.com/werf/nelm/compare/v1.23.2...v1.24.0) (2026-04-21)
 
 
