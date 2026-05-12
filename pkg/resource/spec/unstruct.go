@@ -17,6 +17,9 @@ type CleanUnstructOptions struct {
 	CleanRuntimeData        bool
 	CleanWerfIoAnnos        bool
 	CleanWerfIoRuntimeAnnos bool
+
+	ExcludeAnnotations map[string]string
+	ExcludeLabels      map[string]string
 }
 
 // Clean an Unstructured object from things like managed fields, non-deterministic runtime data,
@@ -46,7 +49,8 @@ func CleanUnstruct(unstruct *unstructured.Unstructured, opts CleanUnstructOption
 	}
 
 	if opts.CleanWerfIoRuntimeAnnos {
-		cleanAnnotationsRegexes = append(cleanAnnotationsRegexes,
+		cleanAnnotationsRegexes = append(
+			cleanAnnotationsRegexes,
 			regexp.MustCompile(`.*ci\.werf\.io/.+`),
 			regexp.MustCompile(`^project\.werf\.io/.+`),
 			regexp.MustCompile(`^werf\.io/version$`), regexp.MustCompile(`^werf\.io/release-channel$`),
@@ -59,12 +63,12 @@ func CleanUnstruct(unstruct *unstructured.Unstructured, opts CleanUnstructOption
 	}
 
 	if annos := unstructCopy.GetAnnotations(); len(annos) > 0 {
-		filteredAnnos := filterAnnosOrLabels(annos, cleanAnnotationsRegexes)
+		filteredAnnos := filterAnnosOrLabels(annos, cleanAnnotationsRegexes, opts.ExcludeAnnotations)
 		unstructCopy.SetAnnotations(filteredAnnos)
 	}
 
 	if labels := unstructCopy.GetLabels(); len(labels) > 0 {
-		filteredLabels := filterAnnosOrLabels(labels, cleanLabelsRegexes)
+		filteredLabels := filterAnnosOrLabels(labels, cleanLabelsRegexes, opts.ExcludeLabels)
 		unstructCopy.SetLabels(filteredLabels)
 	}
 
@@ -119,11 +123,14 @@ func cleanRuntimeDataFromUnstruct(unstruct *unstructured.Unstructured) {
 	unstruct.SetManagedFields(managedFields)
 }
 
-func filterAnnosOrLabels(annosOrLabels map[string]string, regexes []*regexp.Regexp) map[string]string {
+func filterAnnosOrLabels(annosOrLabels map[string]string, regexes []*regexp.Regexp, excludeMap map[string]string) map[string]string {
 	filtered := map[string]string{}
 
 annoOrLabelLoop:
 	for key, val := range annosOrLabels {
+		if _, found := excludeMap[key]; found {
+			continue annoOrLabelLoop
+		}
 		for _, regex := range regexes {
 			if regex.MatchString(key) {
 				continue annoOrLabelLoop

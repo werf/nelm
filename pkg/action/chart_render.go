@@ -69,8 +69,8 @@ type ChartRenderOptions struct {
 	// These are added during chart rendering.
 	ExtraLabels map[string]string
 	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime.
-	// TODO(major): remove or implement custom logic for this field.
 	ExtraRuntimeAnnotations map[string]string
+	ExtraRuntimeLabels      map[string]string
 	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources.
 	IgnoreBundleJS bool
 	// LegacyChartType specifies the chart type for legacy compatibility.
@@ -282,6 +282,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
 		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 		spec.NewSecretStringDataPatcher(),
 	})
 	if err != nil {
