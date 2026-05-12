@@ -76,12 +76,11 @@ type DeletableResourceInfo struct {
 }
 
 type BuildResourceInfosOptions struct {
+	ExtraRuntimeAnnotations            map[string]string
+	ExtraRuntimeLabels                 map[string]string
 	LastDeployedOrLastRelResourceSpecs []*spec.ResourceSpec
 	NetworkParallelism                 int
 	NoRemoveManualChanges              bool
-
-	ExtraRuntimeAnnotations map[string]string
-	ExtraRuntimeLabels      map[string]string
 }
 
 // From Installable/DeletableResource builds Installable/DeletableResourceInfo. If you can do
@@ -819,19 +818,19 @@ func resourceInstallType(ctx context.Context, localRes *resource.InstallableReso
 	}
 
 	diffableGetObj := spec.CleanUnstruct(getObj, spec.CleanUnstructOptions{
-		CleanHelmShAnnos:   true,
-		CleanWerfIoAnnos:   true,
-		CleanRuntimeData:   true,
-		ExcludeAnnotations: extraRuntimeAnnotations,
-		ExcludeLabels:      extraRuntimeLabels,
+		CleanHelmShAnnos: true,
+		CleanWerfIoAnnos: true,
+		CleanRuntimeData: true,
+		CleanAnnotations: extraRuntimeAnnotations,
+		CleanLabels:      extraRuntimeLabels,
 	})
 
 	diffableDryApplyObj := spec.CleanUnstruct(dryApplyObj, spec.CleanUnstructOptions{
-		CleanHelmShAnnos:   true,
-		CleanWerfIoAnnos:   true,
-		CleanRuntimeData:   true,
-		ExcludeAnnotations: extraRuntimeAnnotations,
-		ExcludeLabels:      extraRuntimeLabels,
+		CleanHelmShAnnos: true,
+		CleanWerfIoAnnos: true,
+		CleanRuntimeData: true,
+		CleanAnnotations: extraRuntimeAnnotations,
+		CleanLabels:      extraRuntimeLabels,
 	})
 
 	if patch, err := jsondiff.Compare(diffableGetObj, diffableDryApplyObj); err != nil {

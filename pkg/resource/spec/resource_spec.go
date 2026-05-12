@@ -79,7 +79,7 @@ type ResourceSpecOptions struct {
 // Patch ResourceSpecs to make them releasable, after which they can be saved into the Helm release.
 // Don't try to add/delete/expand specs here, use transformers in BuildTransformedResourceSpecs
 // instead.
-func BuildReleasableResourceSpecs(ctx context.Context, releaseNamespace string, transformedResources []*ResourceSpec, patchers []ResourcePatcher) ([]*ResourceSpec, error) {
+func BuildPatchedResourceSpecs(ctx context.Context, releaseNamespace string, transformedResources []*ResourceSpec, patchers []ResourcePatcher) ([]*ResourceSpec, error) {
 	var releasableResources []*ResourceSpec
 
 	for _, res := range transformedResources {

@@ -10,16 +10,15 @@ import (
 )
 
 type CleanUnstructOptions struct {
+	CleanAnnotations        map[string]string
 	CleanHelmShAnnos        bool
+	CleanLabels             map[string]string
 	CleanManagedFields      bool
 	CleanNullFields         bool
 	CleanReleaseAnnosLabels bool
 	CleanRuntimeData        bool
 	CleanWerfIoAnnos        bool
 	CleanWerfIoRuntimeAnnos bool
-
-	ExcludeAnnotations map[string]string
-	ExcludeLabels      map[string]string
 }
 
 // Clean an Unstructured object from things like managed fields, non-deterministic runtime data,
@@ -63,12 +62,12 @@ func CleanUnstruct(unstruct *unstructured.Unstructured, opts CleanUnstructOption
 	}
 
 	if annos := unstructCopy.GetAnnotations(); len(annos) > 0 {
-		filteredAnnos := filterAnnosOrLabels(annos, cleanAnnotationsRegexes, opts.ExcludeAnnotations)
+		filteredAnnos := filterAnnosOrLabels(annos, cleanAnnotationsRegexes, opts.CleanAnnotations)
 		unstructCopy.SetAnnotations(filteredAnnos)
 	}
 
 	if labels := unstructCopy.GetLabels(); len(labels) > 0 {
-		filteredLabels := filterAnnosOrLabels(labels, cleanLabelsRegexes, opts.ExcludeLabels)
+		filteredLabels := filterAnnosOrLabels(labels, cleanLabelsRegexes, opts.CleanLabels)
 		unstructCopy.SetLabels(filteredLabels)
 	}
 
