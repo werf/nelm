@@ -147,6 +147,84 @@ func externalDependencies(meta *spec.ResourceMeta, releaseNamespace string, clie
 	return uniqResult, nil
 }
 
+func manualDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta) []*Dependency {
+	deps := map[string]*Dependency{}
+
+	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteDependency); found {
+		for key, value := range annotations {
+			matches := common.AnnotationKeyPatternDeleteDependency.FindStringSubmatch(key)
+			idSubexpIndex := common.AnnotationKeyPatternDeleteDependency.SubexpIndex("id")
+			depID := matches[idSubexpIndex]
+			properties := lo.Must(util.ParseProperties(context.TODO(), value))
+
+			var depState common.ResourceState
+			if s := properties["state"].(string); s != "" {
+				depState = common.ResourceState(s)
+			} else {
+				depState = common.ResourceStateAbsent
+			}
+
+			dep := &Dependency{
+				ResourceMatcher: dependencyMatcher(properties),
+				ResourceState:   depState,
+			}
+
+			depExternal := lo.ValueOr(properties, "external", common.DefaultDependencyExternal).(string)
+			dep.External = isExternalDependency(dep.ResourceMatcher, otherResMeta, depExternal)
+
+			if dep.External {
+				dep.MinMatches = common.DefaultExternalDependencyMinMatches
+				dep.MaxMatches = common.DefaultExternalDependencyMaxMatches
+			}
+
+			deps[depID] = dep
+		}
+	}
+
+	return lo.Values(deps)
+}
+
+func manualDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta) []*Dependency {
+	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
+		return nil
+	}
+
+	deps := map[string]*Dependency{}
+
+	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeployDependency); found {
+		for key, value := range annotations {
+			matches := common.AnnotationKeyPatternDeployDependency.FindStringSubmatch(key)
+			idSubexpIndex := common.AnnotationKeyPatternDeployDependency.SubexpIndex("id")
+			depID := matches[idSubexpIndex]
+			properties := lo.Must(util.ParseProperties(context.TODO(), value))
+
+			var depState common.ResourceState
+			if s := properties["state"].(string); s != "" {
+				depState = common.ResourceState(s)
+			} else {
+				depState = common.ResourceStatePresent
+			}
+
+			dep := &Dependency{
+				ResourceMatcher: dependencyMatcher(properties),
+				ResourceState:   depState,
+			}
+
+			depExternal := lo.ValueOr(properties, "external", common.DefaultDependencyExternal).(string)
+			dep.External = isExternalDependency(dep.ResourceMatcher, otherResMeta, depExternal)
+
+			if dep.External {
+				dep.MinMatches = common.DefaultExternalDependencyMinMatches
+				dep.MaxMatches = common.DefaultExternalDependencyMaxMatches
+			}
+
+			deps[depID] = dep
+		}
+	}
+
+	return lo.Values(deps)
+}
+
 func recreate(meta *spec.ResourceMeta) bool {
 	deletePolicies := deletePolicies(meta)
 
@@ -157,6 +235,210 @@ func recreateOnImmutable(meta *spec.ResourceMeta) bool {
 	deletePolicies := deletePolicies(meta)
 
 	return lo.Contains(deletePolicies, common.DeletePolicyBeforeCreationIfImmutable)
+}
+
+func validateDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta) error {
+	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteDependency); found {
+		for key, value := range annotations {
+			keyMatches := common.AnnotationKeyPatternDeleteDependency.FindStringSubmatch(key)
+			if keyMatches == nil {
+				return fmt.Errorf("invalid key for annotation %q", key)
+			}
+
+			idSubexpIndex := common.AnnotationKeyPatternDeleteDependency.SubexpIndex("id")
+			if idSubexpIndex == -1 {
+				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternDeleteDependency.String(), key)
+			}
+
+			if len(keyMatches) < idSubexpIndex+1 {
+				return fmt.Errorf("can't parse delete dependency id from annotation key %q", key)
+			}
+
+			if value == "" {
+				return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
+			}
+
+			properties, err := util.ParseProperties(context.TODO(), value)
+			if err != nil {
+				return fmt.Errorf("invalid value %q for annotation %q: %w", value, key, err)
+			}
+
+			if !lo.Some(lo.Keys(properties), []string{"group", "version", "kind", "name", "namespace"}) {
+				return fmt.Errorf("invalid value %q for annotation %q, target not specified", value, key)
+			}
+
+			for propKey, propVal := range properties {
+				switch propKey {
+				case "group", "version", "kind", "name", "namespace":
+					switch pv := propVal.(type) {
+					case string:
+						if pv == "" {
+							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
+						}
+					case bool:
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				case "state":
+					switch pv := propVal.(type) {
+					case string:
+						switch pv {
+						case "absent":
+						case "":
+							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
+						default:
+							return fmt.Errorf("unknown value %q for property %q", pv, propKey)
+						}
+					case bool:
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				case "external":
+					switch pv := propVal.(type) {
+					case string:
+						switch pv {
+						case common.DependencyExternalAuto, common.DependencyExternalTrue, common.DependencyExternalFalse:
+						default:
+							return fmt.Errorf("invalid value %q for property %q, expected %q, %q or %q", pv, propKey, common.DependencyExternalAuto, common.DependencyExternalTrue, common.DependencyExternalFalse)
+						}
+					case bool:
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				default:
+					return fmt.Errorf("unknown property %q in value of annotation %q", propKey, key)
+				}
+			}
+
+			depExternal := lo.ValueOr(properties, "external", common.DefaultDependencyExternal).(string)
+			matcher := dependencyMatcher(properties)
+
+			if isExternalDependency(matcher, otherResMeta, depExternal) {
+				depID := keyMatches[idSubexpIndex]
+
+				if len(matcher.Names) == 0 {
+					return fmt.Errorf("external delete dependency %q must have \"name\" property set", depID)
+				}
+
+				if len(matcher.Kinds) == 0 {
+					return fmt.Errorf("external delete dependency %q must have \"kind\" property set", depID)
+				}
+
+				if len(matcher.Versions) == 0 {
+					return fmt.Errorf("external delete dependency %q must have \"version\" property set", depID)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func validateDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta) error {
+	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeployDependency); found {
+		for key, value := range annotations {
+			keyMatches := common.AnnotationKeyPatternDeployDependency.FindStringSubmatch(key)
+			if keyMatches == nil {
+				return fmt.Errorf("invalid key for annotation %q", key)
+			}
+
+			idSubexpIndex := common.AnnotationKeyPatternDeployDependency.SubexpIndex("id")
+			if idSubexpIndex == -1 {
+				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternDeployDependency.String(), key)
+			}
+
+			if len(keyMatches) < idSubexpIndex+1 {
+				return fmt.Errorf("can't parse deploy dependency id from annotation key %q", key)
+			}
+
+			if value == "" {
+				return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
+			}
+
+			properties, err := util.ParseProperties(context.TODO(), value)
+			if err != nil {
+				return fmt.Errorf("invalid value %q for annotation %q: %w", value, key, err)
+			}
+
+			if !lo.Some(lo.Keys(properties), []string{"group", "version", "kind", "name", "namespace"}) {
+				return fmt.Errorf("invalid value %q for annotation %q, target not specified", value, key)
+			}
+
+			if _, found := properties["state"]; !found {
+				return fmt.Errorf(`invalid value %q for annotation %q, "state" property must be set`, value, key)
+			}
+
+			for propKey, propVal := range properties {
+				switch propKey {
+				case "group", "version", "kind", "name", "namespace":
+					switch pv := propVal.(type) {
+					case string:
+						if pv == "" {
+							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
+						}
+					case bool:
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				case "state":
+					switch pv := propVal.(type) {
+					case string:
+						switch pv {
+						case "present", "ready":
+						case "":
+							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
+						default:
+							return fmt.Errorf("unknown value %q for property %q", pv, propKey)
+						}
+					case bool:
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				case "external":
+					switch pv := propVal.(type) {
+					case string:
+						switch pv {
+						case common.DependencyExternalAuto, common.DependencyExternalTrue, common.DependencyExternalFalse:
+						default:
+							return fmt.Errorf("invalid value %q for property %q, expected %q, %q or %q", pv, propKey, common.DependencyExternalAuto, common.DependencyExternalTrue, common.DependencyExternalFalse)
+						}
+					case bool:
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				default:
+					return fmt.Errorf("unknown property %q in value of annotation %q", propKey, key)
+				}
+			}
+
+			depExternal := lo.ValueOr(properties, "external", common.DefaultDependencyExternal).(string)
+			matcher := dependencyMatcher(properties)
+
+			if isExternalDependency(matcher, otherResMeta, depExternal) {
+				depID := keyMatches[idSubexpIndex]
+
+				if len(matcher.Names) == 0 {
+					return fmt.Errorf("external deploy dependency %q must have \"name\" property set", depID)
+				}
+
+				if len(matcher.Kinds) == 0 {
+					return fmt.Errorf("external deploy dependency %q must have \"kind\" property set", depID)
+				}
+
+				if len(matcher.Versions) == 0 {
+					return fmt.Errorf("external deploy dependency %q must have \"version\" property set", depID)
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func defaultReplicasOnCreation(meta *spec.ResourceMeta, releaseNamespace string) *int {
@@ -224,6 +506,41 @@ func deletePropagation(meta *spec.ResourceMeta, defaultDeletePropagation apiv1.D
 	}
 
 	return common.DefaultDeletePropagation
+}
+
+func dependencyMatcher(properties map[string]any) *spec.ResourceMatcher {
+	var depNames []string
+	if depName, found := properties["name"]; found {
+		depNames = []string{depName.(string)}
+	}
+
+	var depNamespaces []string
+	if depNamespace, found := properties["namespace"]; found {
+		depNamespaces = []string{depNamespace.(string)}
+	}
+
+	var depGroups []string
+	if depGroup, found := properties["group"]; found {
+		depGroups = []string{depGroup.(string)}
+	}
+
+	var depVersions []string
+	if depVersion, found := properties["version"]; found {
+		depVersions = []string{depVersion.(string)}
+	}
+
+	var depKinds []string
+	if depKind, found := properties["kind"]; found {
+		depKinds = []string{depKind.(string)}
+	}
+
+	return &spec.ResourceMatcher{
+		Names:      depNames,
+		Namespaces: depNamespaces,
+		Groups:     depGroups,
+		Versions:   depVersions,
+		Kinds:      depKinds,
+	}
 }
 
 func deployConditionsForAnnotation(meta *spec.ResourceMeta, annoPattern *regexp.Regexp) map[common.On][]common.Stage {
@@ -386,6 +703,23 @@ func ignoreReadinessProbeFailsForContainers(meta *spec.ResourceMeta) map[string]
 	return durationByContainer
 }
 
+func isExternalDependency(matcher *spec.ResourceMatcher, otherResMeta []*spec.ResourceMeta, external string) bool {
+	switch external {
+	case common.DependencyExternalAuto:
+		matched := lo.Filter(otherResMeta, func(resMeta *spec.ResourceMeta, _ int) bool {
+			return matcher.Match(resMeta)
+		})
+
+		return len(matched) == 0
+	case common.DependencyExternalTrue:
+		return true
+	case common.DependencyExternalFalse:
+		return false
+	default:
+		panic(fmt.Sprintf("unexpected external dependency value: %q", external))
+	}
+}
+
 // TODO(major): get rid of legacy external deps
 func legacyExternalDeps(resMeta *spec.ResourceMeta, releaseNamespace string, mapper apimeta.ResettableRESTMapper) (map[string]*ExternalDependency, error) {
 	deps := map[string]*ExternalDependency{}
@@ -467,228 +801,6 @@ func logRegexesForContainers(meta *spec.ResourceMeta) map[string]*regexp.Regexp 
 	}
 
 	return regexByContainer
-}
-
-func manualDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta, releaseNamespace string) ([]*Dependency, error) {
-	deps := map[string]*Dependency{}
-
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteDependency); found {
-		for key, value := range annotations {
-			matches := common.AnnotationKeyPatternDeleteDependency.FindStringSubmatch(key)
-			idSubexpIndex := common.AnnotationKeyPatternDeleteDependency.SubexpIndex("id")
-			depID := matches[idSubexpIndex]
-			properties := lo.Must(util.ParseProperties(context.TODO(), value))
-
-			var depNames []string
-			if depName, found := properties["name"]; found {
-				depNames = []string{depName.(string)}
-			}
-
-			var depNamespaces []string
-			if depNamespace, found := properties["namespace"]; found {
-				depNamespaces = []string{depNamespace.(string)}
-			}
-
-			var depGroups []string
-			if depGroup, found := properties["group"]; found {
-				depGroups = []string{depGroup.(string)}
-			}
-
-			var depVersions []string
-			if depVersion, found := properties["version"]; found {
-				depVersions = []string{depVersion.(string)}
-			}
-
-			var depKinds []string
-			if depKind, found := properties["kind"]; found {
-				depKinds = []string{depKind.(string)}
-			}
-
-			var depState common.ResourceState
-			if s := properties["state"].(string); s != "" {
-				depState = common.ResourceState(s)
-			} else {
-				depState = common.ResourceStatePresent
-			}
-
-			dep := &Dependency{
-				ResourceMatcher: &spec.ResourceMatcher{
-					Names:      depNames,
-					Namespaces: depNamespaces,
-					Groups:     depGroups,
-					Versions:   depVersions,
-					Kinds:      depKinds,
-				},
-				ResourceState: depState,
-			}
-
-			depExternal := "auto"
-			if depExt, found := properties["external"]; found {
-				depExternal = depExt.(string)
-			}
-
-			switch depExternal {
-			case "auto":
-				matched := lo.Filter(otherResMeta, func(resMeta *spec.ResourceMeta, _ int) bool {
-					return dep.Match(resMeta)
-				})
-
-				dep.External = len(matched) == 0
-			default:
-				val, err := strconv.ParseBool(depExternal)
-				if err != nil {
-					return nil, fmt.Errorf("invalid value for \"external\" property of dependency %q: %w", depID, err)
-				}
-
-				dep.External = val
-			}
-
-			if dep.External {
-				dep.MinMatches = 1
-				dep.MaxMatches = 30
-
-				if len(depNames) == 0 {
-					return nil, fmt.Errorf("external delete dependency %q must have \"name\" property set", depID)
-				}
-
-				if len(depKinds) == 0 {
-					return nil, fmt.Errorf("external delete dependency %q must have \"kind\" property set", depID)
-				}
-
-				if len(depVersions) == 0 {
-					return nil, fmt.Errorf("external delete dependency %q must have \"version\" property set", depID)
-				}
-
-				var namespace string
-				if len(depNamespaces) > 0 {
-					namespace = depNamespaces[0]
-				}
-
-				dep.ResourceMeta = spec.NewResourceMeta(depNames[0], namespace, releaseNamespace, "", schema.GroupVersionKind{
-					Group:   lo.FirstOrEmpty(depGroups),
-					Version: lo.FirstOrEmpty(depVersions),
-					Kind:    lo.FirstOrEmpty(depKinds),
-				}, nil, nil)
-			}
-
-			deps[depID] = dep
-		}
-	}
-
-	return lo.Values(deps), nil
-}
-
-func manualDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta, releaseNamespace string) ([]*Dependency, error) {
-	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
-		return nil, nil
-	}
-
-	deps := map[string]*Dependency{}
-
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeployDependency); found {
-		for key, value := range annotations {
-			matches := common.AnnotationKeyPatternDeployDependency.FindStringSubmatch(key)
-			idSubexpIndex := common.AnnotationKeyPatternDeployDependency.SubexpIndex("id")
-			depID := matches[idSubexpIndex]
-			properties := lo.Must(util.ParseProperties(context.TODO(), value))
-
-			var depNames []string
-			if depName, found := properties["name"]; found {
-				depNames = []string{depName.(string)}
-			}
-
-			var depNamespaces []string
-			if depNamespace, found := properties["namespace"]; found {
-				depNamespaces = []string{depNamespace.(string)}
-			}
-
-			var depGroups []string
-			if depGroup, found := properties["group"]; found {
-				depGroups = []string{depGroup.(string)}
-			}
-
-			var depVersions []string
-			if depVersion, found := properties["version"]; found {
-				depVersions = []string{depVersion.(string)}
-			}
-
-			var depKinds []string
-			if depKind, found := properties["kind"]; found {
-				depKinds = []string{depKind.(string)}
-			}
-
-			var depState common.ResourceState
-			if s := properties["state"].(string); s != "" {
-				depState = common.ResourceState(s)
-			} else {
-				depState = common.ResourceStatePresent
-			}
-
-			dep := &Dependency{
-				ResourceMatcher: &spec.ResourceMatcher{
-					Names:      depNames,
-					Namespaces: depNamespaces,
-					Groups:     depGroups,
-					Versions:   depVersions,
-					Kinds:      depKinds,
-				},
-				ResourceState: depState,
-			}
-
-			depExternal := "auto"
-			if depExt, found := properties["external"]; found {
-				depExternal = depExt.(string)
-			}
-
-			switch depExternal {
-			case "auto":
-				matched := lo.Filter(otherResMeta, func(resMeta *spec.ResourceMeta, _ int) bool {
-					return dep.Match(resMeta)
-				})
-
-				dep.External = len(matched) == 0
-			default:
-				val, err := strconv.ParseBool(depExternal)
-				if err != nil {
-					return nil, fmt.Errorf("invalid value for \"external\" property of dependency %q: %w", depID, err)
-				}
-
-				dep.External = val
-			}
-
-			if dep.External {
-				dep.MinMatches = 1
-				dep.MaxMatches = 30
-
-				if len(depNames) == 0 {
-					return nil, fmt.Errorf("external deploy dependency %q must have \"name\" property set", depID)
-				}
-
-				if len(depKinds) == 0 {
-					return nil, fmt.Errorf("external deploy dependency %q must have \"kind\" property set", depID)
-				}
-
-				if len(depVersions) == 0 {
-					return nil, fmt.Errorf("external deploy dependency %q must have \"version\" property set", depID)
-				}
-
-				var namespace string
-				if len(depNamespaces) > 0 {
-					namespace = depNamespaces[0]
-				}
-
-				dep.ResourceMeta = spec.NewResourceMeta(depNames[0], namespace, releaseNamespace, "", schema.GroupVersionKind{
-					Group:   lo.FirstOrEmpty(depGroups),
-					Version: lo.FirstOrEmpty(depVersions),
-					Kind:    lo.FirstOrEmpty(depKinds),
-				}, nil, nil)
-			}
-
-			deps[depID] = dep
-		}
-	}
-
-	return lo.Values(deps), nil
 }
 
 func noActivityTimeout(meta *spec.ResourceMeta) time.Duration {
@@ -816,87 +928,6 @@ func trackTerminationMode(meta *spec.ResourceMeta) statestore.TrackTerminationMo
 	return statestore.TrackTerminationMode(value)
 }
 
-func validateDeleteDependencies(meta *spec.ResourceMeta) error {
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteDependency); found {
-		for key, value := range annotations {
-			keyMatches := common.AnnotationKeyPatternDeleteDependency.FindStringSubmatch(key)
-			if keyMatches == nil {
-				return fmt.Errorf("invalid key for annotation %q", key)
-			}
-
-			idSubexpIndex := common.AnnotationKeyPatternDeleteDependency.SubexpIndex("id")
-			if idSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternDeleteDependency.String(), key)
-			}
-
-			if len(keyMatches) < idSubexpIndex+1 {
-				return fmt.Errorf("can't parse delete dependency id from annotation key %q", key)
-			}
-
-			if value == "" {
-				return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
-			}
-
-			properties, err := util.ParseProperties(context.TODO(), value)
-			if err != nil {
-				return fmt.Errorf("invalid value %q for annotation %q: %w", value, key, err)
-			}
-
-			if !lo.Some(lo.Keys(properties), []string{"group", "version", "kind", "name", "namespace"}) {
-				return fmt.Errorf("invalid value %q for annotation %q, target not specified", value, key)
-			}
-
-			for propKey, propVal := range properties {
-				switch propKey {
-				case "group", "version", "kind", "name", "namespace":
-					switch pv := propVal.(type) {
-					case string:
-						if pv == "" {
-							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
-						}
-					case bool:
-						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
-					default:
-						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
-					}
-				case "state":
-					switch pv := propVal.(type) {
-					case string:
-						switch pv {
-						case "absent":
-						case "":
-							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
-						default:
-							return fmt.Errorf("unknown value %q for property %q", pv, propKey)
-						}
-					case bool:
-						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
-					default:
-						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
-					}
-				case "external":
-					switch pv := propVal.(type) {
-					case string:
-						switch pv {
-						case "auto", "true", "false":
-						default:
-							return fmt.Errorf("invalid value %q for property %q, expected \"auto\", \"true\" or \"false\"", pv, propKey)
-						}
-					case bool:
-						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
-					default:
-						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
-					}
-				default:
-					return fmt.Errorf("unknown property %q in value of annotation %q", propKey, key)
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
 func validateDeletePolicy(meta *spec.ResourceMeta) error {
 	annotations := meta.Annotations
 
@@ -950,91 +981,6 @@ func validateDeletePropagation(meta *spec.ResourceMeta) error {
 		case apiv1.DeletePropagationForeground, apiv1.DeletePropagationBackground, apiv1.DeletePropagationOrphan:
 		default:
 			return fmt.Errorf("invalid unknown value %q for annotation %q", value, key)
-		}
-	}
-
-	return nil
-}
-
-func validateDeployDependencies(meta *spec.ResourceMeta) error {
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeployDependency); found {
-		for key, value := range annotations {
-			keyMatches := common.AnnotationKeyPatternDeployDependency.FindStringSubmatch(key)
-			if keyMatches == nil {
-				return fmt.Errorf("invalid key for annotation %q", key)
-			}
-
-			idSubexpIndex := common.AnnotationKeyPatternDeployDependency.SubexpIndex("id")
-			if idSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternDeployDependency.String(), key)
-			}
-
-			if len(keyMatches) < idSubexpIndex+1 {
-				return fmt.Errorf("can't parse deploy dependency id from annotation key %q", key)
-			}
-
-			if value == "" {
-				return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
-			}
-
-			properties, err := util.ParseProperties(context.TODO(), value)
-			if err != nil {
-				return fmt.Errorf("invalid value %q for annotation %q: %w", value, key, err)
-			}
-
-			if !lo.Some(lo.Keys(properties), []string{"group", "version", "kind", "name", "namespace"}) {
-				return fmt.Errorf("invalid value %q for annotation %q, target not specified", value, key)
-			}
-
-			if _, found := properties["state"]; !found {
-				return fmt.Errorf(`invalid value %q for annotation %q, "state" property must be set`, value, key)
-			}
-
-			for propKey, propVal := range properties {
-				switch propKey {
-				case "group", "version", "kind", "name", "namespace":
-					switch pv := propVal.(type) {
-					case string:
-						if pv == "" {
-							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
-						}
-					case bool:
-						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
-					default:
-						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
-					}
-				case "state":
-					switch pv := propVal.(type) {
-					case string:
-						switch pv {
-						case "present", "ready":
-						case "":
-							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
-						default:
-							return fmt.Errorf("unknown value %q for property %q", pv, propKey)
-						}
-					case bool:
-						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
-					default:
-						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
-					}
-				case "external":
-					switch pv := propVal.(type) {
-					case string:
-						switch pv {
-						case "auto", "true", "false":
-						default:
-							return fmt.Errorf("invalid value %q for property %q, expected \"auto\", \"true\" or \"false\"", pv, propKey)
-						}
-					case bool:
-						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
-					default:
-						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
-					}
-				default:
-					return fmt.Errorf("unknown property %q in value of annotation %q", propKey, key)
-				}
-			}
 		}
 	}
 

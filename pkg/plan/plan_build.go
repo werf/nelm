@@ -59,7 +59,7 @@ func BuildFailurePlan(failedPlan *Plan, installableInfos []*InstallableResourceI
 // different kinds of plans must be figured out earlier, e.g. at BuildResourceInfos level. This
 // generic design must be preserved. Keep it simple: if something can be done on earlier stages, do
 // it there.
-func BuildPlan(ctx context.Context, installableInfos []*InstallableResourceInfo, deletableInfos []*DeletableResourceInfo, releaseInfos []*ReleaseInfo, opts BuildPlanOptions) (*Plan, error) {
+func BuildPlan(ctx context.Context, installableInfos []*InstallableResourceInfo, deletableInfos []*DeletableResourceInfo, releaseInfos []*ReleaseInfo, releaseNamespace string, opts BuildPlanOptions) (*Plan, error) {
 	plan := NewPlan()
 
 	if err := addMainStages(plan); err != nil {
@@ -82,11 +82,11 @@ func BuildPlan(ctx context.Context, installableInfos []*InstallableResourceInfo,
 		return plan, fmt.Errorf("add install resource operations: %w", err)
 	}
 
-	if err := connectInternalDeployDependencies(ctx, plan, installableInfos, deletableInfos); err != nil {
+	if err := connectInternalDeployDependencies(ctx, plan, installableInfos, deletableInfos, releaseNamespace); err != nil {
 		return plan, fmt.Errorf("connect internal dependencies: %w", err)
 	}
 
-	if err := connectInternalDeleteDependencies(ctx, plan, deletableInfos, installableInfos); err != nil {
+	if err := connectInternalDeleteDependencies(ctx, plan, deletableInfos, installableInfos, releaseNamespace); err != nil {
 		return plan, fmt.Errorf("connect internal delete dependencies: %w", err)
 	}
 
@@ -97,7 +97,7 @@ func BuildPlan(ctx context.Context, installableInfos []*InstallableResourceInfo,
 	return plan, nil
 }
 
-func connectInternalDeleteDependencies(ctx context.Context, plan *Plan, delInfos []*DeletableResourceInfo, instInfos []*InstallableResourceInfo) error {
+func connectInternalDeleteDependencies(ctx context.Context, plan *Plan, delInfos []*DeletableResourceInfo, instInfos []*InstallableResourceInfo, releaseNamespace string) error {
 	for _, info := range delInfos {
 		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualDependencies)
 		if len(internalDeps) == 0 {
@@ -117,7 +117,7 @@ func connectInternalDeleteDependencies(ctx context.Context, plan *Plan, delInfos
 
 			switch dep.ResourceState {
 			case common.ResourceStateAbsent:
-				dependUponOps, err = resolveTrackAbsenceOpInStage(ctx, plan, delInfos, instInfos, dep, info.Stage)
+				dependUponOps, err = resolveTrackAbsenceOpInStage(ctx, plan, delInfos, instInfos, dep, info.Stage, releaseNamespace)
 			default:
 				panic("unexpected internal dependency resource state")
 			}
@@ -137,7 +137,7 @@ func connectInternalDeleteDependencies(ctx context.Context, plan *Plan, delInfos
 	return nil
 }
 
-func connectInternalDeployDependencies(ctx context.Context, plan *Plan, instInfos []*InstallableResourceInfo, delInfos []*DeletableResourceInfo) error {
+func connectInternalDeployDependencies(ctx context.Context, plan *Plan, instInfos []*InstallableResourceInfo, delInfos []*DeletableResourceInfo, releaseNamespace string) error {
 	for _, info := range instInfos {
 		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualDependencies)
 		if len(internalDeps) == 0 {
@@ -157,11 +157,11 @@ func connectInternalDeployDependencies(ctx context.Context, plan *Plan, instInfo
 
 			switch dep.ResourceState {
 			case common.ResourceStatePresent:
-				dependUponOps, err = resolveDeployOpInStage(ctx, plan, instInfos, dep, info.Stage)
+				dependUponOps, err = resolveDeployOpInStage(ctx, plan, instInfos, dep, info.Stage, releaseNamespace)
 			case common.ResourceStateReady:
-				dependUponOps, err = resolveTrackReadinessOpInStage(ctx, plan, instInfos, dep, info.Stage)
+				dependUponOps, err = resolveTrackReadinessOpInStage(ctx, plan, instInfos, dep, info.Stage, releaseNamespace)
 			case common.ResourceStateAbsent:
-				dependUponOps, err = resolveTrackAbsenceOpInStage(ctx, plan, delInfos, instInfos, dep, info.Stage)
+				dependUponOps, err = resolveTrackAbsenceOpInStage(ctx, plan, delInfos, instInfos, dep, info.Stage, releaseNamespace)
 			default:
 				panic("unexpected internal dependency resource state")
 			}
@@ -250,9 +250,11 @@ func addReleaseOperations(plan *Plan, releaseInfos []*ReleaseInfo) error {
 	return nil
 }
 
-func resolveDeployOpInStage(ctx context.Context, plan *Plan, instInfos []*InstallableResourceInfo, dep *resource.Dependency, sourceStage common.Stage) ([]*Operation, error) {
+func resolveDeployOpInStage(ctx context.Context, plan *Plan, instInfos []*InstallableResourceInfo, dep *resource.Dependency, sourceStage common.Stage, releaseNamespace string) ([]*Operation, error) {
 	if dep.External {
-		opID := OperationID(OperationTypeTrackPresence, OperationVersionTrackPresence, OperationIteration(0), dep.ResourceMeta.ID())
+		resMeta := resource.NewResourceMetaFromDependency(dep, releaseNamespace)
+
+		opID := OperationID(OperationTypeTrackPresence, OperationVersionTrackPresence, OperationIteration(0), resMeta.ID())
 		if op, found := plan.Operation(opID); found {
 			return []*Operation{op}, nil
 		}
@@ -262,7 +264,7 @@ func resolveDeployOpInStage(ctx context.Context, plan *Plan, instInfos []*Instal
 			Version:  OperationVersionTrackPresence,
 			Category: OperationCategoryTrack,
 			Config: &OperationConfigTrackPresence{
-				ResourceMeta: dep.ResourceMeta,
+				ResourceMeta: resMeta,
 			},
 		}
 
@@ -319,9 +321,11 @@ func resolveDeployOpInStage(ctx context.Context, plan *Plan, instInfos []*Instal
 	return foundOps, nil
 }
 
-func resolveTrackAbsenceOpInStage(ctx context.Context, plan *Plan, delInfos []*DeletableResourceInfo, instInfos []*InstallableResourceInfo, dep *resource.Dependency, sourceStage common.Stage) ([]*Operation, error) {
+func resolveTrackAbsenceOpInStage(ctx context.Context, plan *Plan, delInfos []*DeletableResourceInfo, instInfos []*InstallableResourceInfo, dep *resource.Dependency, sourceStage common.Stage, releaseNamespace string) ([]*Operation, error) {
 	if dep.External {
-		opID := OperationID(OperationTypeTrackAbsence, OperationVersionTrackAbsence, OperationIteration(0), dep.ResourceMeta.ID())
+		resMeta := resource.NewResourceMetaFromDependency(dep, releaseNamespace)
+
+		opID := OperationID(OperationTypeTrackAbsence, OperationVersionTrackAbsence, OperationIteration(0), resMeta.ID())
 		if op, found := plan.Operation(opID); found {
 			return []*Operation{op}, nil
 		}
@@ -331,7 +335,7 @@ func resolveTrackAbsenceOpInStage(ctx context.Context, plan *Plan, delInfos []*D
 			Version:  OperationVersionTrackAbsence,
 			Category: OperationCategoryTrack,
 			Config: &OperationConfigTrackAbsence{
-				ResourceMeta: dep.ResourceMeta,
+				ResourceMeta: resMeta,
 			},
 		}
 
@@ -413,9 +417,11 @@ func resolveTrackAbsenceOpInStage(ctx context.Context, plan *Plan, delInfos []*D
 	return foundOps, nil
 }
 
-func resolveTrackReadinessOpInStage(ctx context.Context, plan *Plan, instInfos []*InstallableResourceInfo, dep *resource.Dependency, sourceStage common.Stage) ([]*Operation, error) {
+func resolveTrackReadinessOpInStage(ctx context.Context, plan *Plan, instInfos []*InstallableResourceInfo, dep *resource.Dependency, sourceStage common.Stage, releaseNamespace string) ([]*Operation, error) {
 	if dep.External {
-		opID := OperationID(OperationTypeTrackReadiness, OperationVersionTrackReadiness, OperationIteration(0), dep.ResourceMeta.ID())
+		resMeta := resource.NewResourceMetaFromDependency(dep, releaseNamespace)
+
+		opID := OperationID(OperationTypeTrackReadiness, OperationVersionTrackReadiness, OperationIteration(0), resMeta.ID())
 		if op, found := plan.Operation(opID); found {
 			return []*Operation{op}, nil
 		}
@@ -425,7 +431,7 @@ func resolveTrackReadinessOpInStage(ctx context.Context, plan *Plan, instInfos [
 			Version:  OperationVersionTrackReadiness,
 			Category: OperationCategoryTrack,
 			Config: &OperationConfigTrackReadiness{
-				ResourceMeta: dep.ResourceMeta,
+				ResourceMeta: resMeta,
 			},
 		}
 

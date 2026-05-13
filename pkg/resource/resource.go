@@ -55,6 +55,10 @@ type InstallableResource struct {
 // Construct an InstallableResource from a ResourceSpec. Must never contact the cluster, because
 // this is called even when no cluster access allowed.
 func NewInstallableResource(res *spec.ResourceSpec, otherResourceSpecs []*spec.ResourceSpec, releaseNamespace string, clientFactory kube.ClientFactorier, opts InstallableResourceOptions) (*InstallableResource, error) {
+	otherResourceMetaList := lo.Map(otherResourceSpecs, func(resSpec *spec.ResourceSpec, _ int) *spec.ResourceMeta {
+		return resSpec.ResourceMeta
+	})
+
 	if err := validateHook(res.ResourceMeta); err != nil {
 		return nil, fmt.Errorf("validate hook configuration: %w", err)
 	}
@@ -79,8 +83,12 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResourceSpecs []*spec.R
 		return nil, fmt.Errorf("validate weight: %w", err)
 	}
 
-	if err := validateDeployDependencies(res.ResourceMeta); err != nil {
+	if err := validateDeployDependencies(res.ResourceMeta, otherResourceMetaList); err != nil {
 		return nil, fmt.Errorf("validate deploy dependencies: %w", err)
+	}
+
+	if err := validateDeleteDependencies(res.ResourceMeta, otherResourceMetaList); err != nil {
+		return nil, fmt.Errorf("validate delete dependencies: %w", err)
 	}
 
 	if err := validateExternalDependencies(res.ResourceMeta); err != nil {
@@ -108,27 +116,10 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResourceSpecs []*spec.R
 		return nil, fmt.Errorf("get external dependencies: %w", err)
 	}
 
-	otherResourceMetaList := lo.Map(otherResourceSpecs, func(resSpec *spec.ResourceSpec, _ int) *spec.ResourceMeta {
-		return resSpec.ResourceMeta
-	})
-
-	manDeps, err := manualDeployDependencies(res.ResourceMeta, otherResourceMetaList, releaseNamespace)
-	if err != nil {
-		return nil, fmt.Errorf("get manual dependencies: %w", err)
-	}
-
+	manDeps := manualDeployDependencies(res.ResourceMeta, otherResourceMetaList)
 	internalDeps := lo.Filter(manDeps, func(item *Dependency, _ int) bool {
 		return !item.External
 	})
-
-	if err := validateDeleteDependencies(res.ResourceMeta); err != nil {
-		return nil, fmt.Errorf("validate delete dependencies: %w", err)
-	}
-
-	// Catches validation error for External delete dependencies
-	if _, err := manualDeleteDependencies(res.ResourceMeta, otherResourceMetaList, releaseNamespace); err != nil {
-		return nil, fmt.Errorf("validate manual delete dependencies: %w", err)
-	}
 
 	return &InstallableResource{
 		ResourceSpec:                           res,
@@ -209,8 +200,8 @@ func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []
 	})
 
 	var manDeps []*Dependency
-	if err := validateDeleteDependencies(resourceSpec.ResourceMeta); err == nil {
-		manDeps, _ = manualDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList, releaseNamespace)
+	if err := validateDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList); err == nil {
+		manDeps = manualDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList)
 	}
 
 	unstructList := lo.Map(otherResourceSpecs, func(resSpec *spec.ResourceSpec, _ int) *unstructured.Unstructured {

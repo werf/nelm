@@ -13,7 +13,6 @@ import (
 type Dependency struct {
 	*spec.ResourceMatcher `json:"resourceMatcher"`
 
-	ResourceMeta  *spec.ResourceMeta   `json:"resourceMeta"`
 	ResourceState common.ResourceState `json:"resourceState"`
 	External      bool                 `json:"external"`
 	MinMatches    int                  `json:"minMatches"`
@@ -24,6 +23,14 @@ type Dependency struct {
 // Represents a dependency on an external resource outside of the Helm release.
 type ExternalDependency struct {
 	*spec.ResourceMeta `json:"resourceMeta"`
+}
+
+func NewResourceMetaFromDependency(dep *Dependency, releaseNamespace string) *spec.ResourceMeta {
+	return spec.NewResourceMeta(dep.Names[0], lo.FirstOrEmpty(dep.Namespaces), releaseNamespace, "", schema.GroupVersionKind{
+		Group:   lo.FirstOrEmpty(dep.Groups),
+		Version: lo.FirstOrEmpty(dep.Versions),
+		Kind:    lo.FirstOrEmpty(dep.Kinds),
+	}, nil, nil)
 }
 
 // Automatically detects internal dependencies on resources by examining specific fields in the

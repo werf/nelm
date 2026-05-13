@@ -383,7 +383,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Build install plan")
 
-	installPlan, err := plan.BuildPlan(ctx, instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
+	installPlan, err := plan.BuildPlan(ctx, instResInfos, delResInfos, relInfos, releaseNamespace, plan.BuildPlanOptions{
 		NoFinalTracking: opts.NoFinalTracking,
 	})
 	if err != nil {
