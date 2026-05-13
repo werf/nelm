@@ -46,7 +46,7 @@ func NewResourceSpec(unstruct *unstructured.Unstructured, releaseNamespace strin
 	}
 }
 
-func NewResourceSpecFromManifest(manifest, releaseNamespace string, opts ResourceSpecOptions) (*ResourceSpec, error) {
+func NewResourceSpecFromManifest(ctx context.Context, manifest, releaseNamespace string, opts ResourceSpecOptions) (*ResourceSpec, error) {
 	if opts.FilePath == "" && strings.HasPrefix(manifest, "# Source: ") {
 		firstLine := strings.TrimSpace(strings.Split(manifest, "\n")[0])
 		opts.FilePath = strings.TrimPrefix(firstLine, "# Source: ")
@@ -57,7 +57,22 @@ func NewResourceSpecFromManifest(manifest, releaseNamespace string, opts Resourc
 		return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
 	}
 
-	return NewResourceSpec(obj.(*unstructured.Unstructured), releaseNamespace, opts), nil
+	unstruct := obj.(*unstructured.Unstructured)
+
+	if opts.DropInvalidAnnotationsAndLabels {
+		unstruct.SetAnnotations(stripInvalidEntries(ctx, opts.FilePath, unstruct.Object, "metadata", "annotations"))
+		unstruct.SetLabels(stripInvalidEntries(ctx, opts.FilePath, unstruct.Object, "metadata", "labels"))
+	} else {
+		if _, _, err := unstructured.NestedNullCoercingStringMap(unstruct.Object, "metadata", "annotations"); err != nil {
+			return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
+		}
+
+		if _, _, err := unstructured.NestedNullCoercingStringMap(unstruct.Object, "metadata", "labels"); err != nil {
+			return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
+		}
+	}
+
+	return NewResourceSpec(unstruct, releaseNamespace, opts), nil
 }
 
 func (s *ResourceSpec) SetAnnotations(annotations map[string]string) {
@@ -71,9 +86,10 @@ func (s *ResourceSpec) SetLabels(labels map[string]string) {
 }
 
 type ResourceSpecOptions struct {
-	FilePath                string
-	LegacyNoCleanNullFields bool // TODO(major): always clean
-	StoreAs                 common.StoreAs
+	DropInvalidAnnotationsAndLabels bool
+	FilePath                        string
+	LegacyNoCleanNullFields         bool // TODO(major): always clean
+	StoreAs                         common.StoreAs
 }
 
 // Patch ResourceSpecs to make them releasable, after which they can be saved into the Helm release.
