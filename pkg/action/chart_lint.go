@@ -283,7 +283,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Build releasable resource specs")
 
-	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
+	releasableResSpecs, err := spec.BuildPatchedResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
 		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 		spec.NewSecretStringDataPatcher(),
 	})
@@ -352,6 +352,8 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		NetworkParallelism:                 opts.NetworkParallelism,
 		NoRemoveManualChanges:              opts.NoRemoveManualChanges,
 		LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,
+		ExtraRuntimeAnnotations:            opts.ExtraRuntimeAnnotations,
+		ExtraRuntimeLabels:                 opts.ExtraRuntimeLabels,
 	})
 	if err != nil {
 		return fmt.Errorf("build resource infos: %w", err)

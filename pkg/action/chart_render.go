@@ -71,8 +71,8 @@ type ChartRenderOptions struct {
 	// These are added during chart rendering.
 	ExtraLabels map[string]string
 	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime.
-	// TODO(major): remove or implement custom logic for this field.
 	ExtraRuntimeAnnotations map[string]string
+	ExtraRuntimeLabels      map[string]string
 	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources.
 	IgnoreBundleJS bool
 	// LegacyChartType specifies the chart type for legacy compatibility.
@@ -282,24 +282,13 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	log.Default.Debug(ctx, "Build releasable resource specs")
 
-	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
+	resSpecs, err := spec.BuildPatchedResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
 		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 		spec.NewSecretStringDataPatcher(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build releasable resource specs: %w", err)
-	}
-
-	newRelease, err := release.NewRelease(opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, releasableResSpecs, renderChartResult.Chart, renderChartResult.ReleaseConfig, release.ReleaseOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("construct new release: %w", err)
-	}
-
-	log.Default.Debug(ctx, "Convert new release to resource specs")
-
-	resSpecs, err := release.ReleaseToResourceSpecs(newRelease, opts.ReleaseNamespace, true)
-	if err != nil {
-		return nil, fmt.Errorf("convert new release to resource specs: %w", err)
 	}
 
 	var showFiles []string

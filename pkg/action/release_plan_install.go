@@ -297,7 +297,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
 	}
 
-	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patchers)
+	releasableResSpecs, err := spec.BuildPatchedResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patchers)
 	if err != nil {
 		return nil, fmt.Errorf("build releasable resource specs: %w", err)
 	}
@@ -363,6 +363,8 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		NetworkParallelism:                 opts.NetworkParallelism,
 		NoRemoveManualChanges:              opts.NoRemoveManualChanges,
 		LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,
+		ExtraRuntimeAnnotations:            opts.ExtraRuntimeAnnotations,
+		ExtraRuntimeLabels:                 opts.ExtraRuntimeLabels,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build resource infos: %w", err)

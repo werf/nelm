@@ -76,6 +76,8 @@ type DeletableResourceInfo struct {
 }
 
 type BuildResourceInfosOptions struct {
+	ExtraRuntimeAnnotations            map[string]string
+	ExtraRuntimeLabels                 map[string]string
 	LastDeployedOrLastRelResourceSpecs []*spec.ResourceSpec
 	NetworkParallelism                 int
 	NoRemoveManualChanges              bool
@@ -93,7 +95,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 	instResourcesPool := pool.NewWithResults[[]*InstallableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range instResources {
 		instResourcesPool.Go(func(ctx context.Context) ([]*InstallableResourceInfo, error) {
-			infos, err := buildInstallableResourceInfo(ctx, res, deployType, releaseNamespace, prevReleaseFailed, opts.NoRemoveManualChanges, clientFactory, opts.LastDeployedOrLastRelResourceSpecs)
+			infos, err := buildInstallableResourceInfo(ctx, res, deployType, releaseNamespace, prevReleaseFailed, opts.NoRemoveManualChanges, clientFactory, opts)
 			if err != nil {
 				return nil, fmt.Errorf("build installable resource info: %w", err)
 			}
@@ -154,7 +156,7 @@ func ResourceInstallTypeSortHandler(type1, type2 ResourceInstallType) bool {
 }
 
 // TODO(major): keep annotation should probably forbid resource recreations
-func buildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed, noRemoveManualChanges bool, clientFactory kube.ClientFactorier, lastDeployedOrLastRelResSpecs []*spec.ResourceSpec) ([]*InstallableResourceInfo, error) {
+func buildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed, noRemoveManualChanges bool, clientFactory kube.ClientFactorier, opts BuildResourceInfosOptions) ([]*InstallableResourceInfo, error) {
 	var stages []common.Stage
 	switch deployType {
 	case common.DeployTypeInitial, common.DeployTypeInstall:
@@ -201,7 +203,7 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 
 	var err error
 
-	getObj, err = fixManagedFieldsInCluster(ctx, releaseNamespace, getObj, localRes, noRemoveManualChanges, clientFactory, lastDeployedOrLastRelResSpecs)
+	getObj, err = fixManagedFieldsInCluster(ctx, releaseNamespace, getObj, localRes, noRemoveManualChanges, clientFactory, opts.LastDeployedOrLastRelResourceSpecs)
 	if err != nil {
 		return nil, fmt.Errorf("fix managed fields for resource %q: %w", localRes.IDHuman(), err)
 	}
@@ -211,7 +213,7 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 		DryRun:           true,
 	})
 
-	installType, err := resourceInstallType(ctx, localRes, getObj, dryApplyObj, dryApplyErr)
+	installType, err := resourceInstallType(ctx, localRes, getObj, dryApplyObj, dryApplyErr, opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels)
 	if err != nil {
 		return nil, fmt.Errorf("determine install type for resource %q: %w", localRes.IDHuman(), err)
 	}
@@ -801,7 +803,7 @@ func removeUndesirableManagers(managedFields []v1.ManagedFieldsEntry, oursEntry 
 	return newManagedFields, newOursEntry, changed
 }
 
-func resourceInstallType(ctx context.Context, localRes *resource.InstallableResource, getObj, dryApplyObj *unstructured.Unstructured, dryApplyErr error) (ResourceInstallType, error) {
+func resourceInstallType(ctx context.Context, localRes *resource.InstallableResource, getObj, dryApplyObj *unstructured.Unstructured, dryApplyErr error, extraRuntimeAnnotations, extraRuntimeLabels map[string]string) (ResourceInstallType, error) {
 	isImmutable := dryApplyErr != nil && kube.IsImmutableErr(dryApplyErr)
 	if isImmutable && !localRes.Recreate && !localRes.RecreateOnImmutable {
 		return "", fmt.Errorf("immutable fields change in resource %q, but recreation is not requested: %w", localRes.IDHuman(), dryApplyErr)
@@ -819,12 +821,16 @@ func resourceInstallType(ctx context.Context, localRes *resource.InstallableReso
 		CleanHelmShAnnos: true,
 		CleanWerfIoAnnos: true,
 		CleanRuntimeData: true,
+		CleanAnnotations: extraRuntimeAnnotations,
+		CleanLabels:      extraRuntimeLabels,
 	})
 
 	diffableDryApplyObj := spec.CleanUnstruct(dryApplyObj, spec.CleanUnstructOptions{
 		CleanHelmShAnnos: true,
 		CleanWerfIoAnnos: true,
 		CleanRuntimeData: true,
+		CleanAnnotations: extraRuntimeAnnotations,
+		CleanLabels:      extraRuntimeLabels,
 	})
 
 	if patch, err := jsondiff.Compare(diffableGetObj, diffableDryApplyObj); err != nil {
