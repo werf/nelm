@@ -56,8 +56,8 @@ type RenderChartOptions struct {
 	HelmOptions                     common.HelmOptions
 	IgnoreBundleJS                  bool
 	LocalKubeVersion                string
-	NoValuesSchemaValidation        bool
 	NoStandaloneCRDs                bool
+	NoValuesSchemaValidation        bool
 	Remote                          bool
 	SubchartNotes                   bool
 	TempDirPath                     string
