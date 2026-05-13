@@ -577,3 +577,52 @@ func TestAI_Stop_SkipsOnCanceledContext(t *testing.T) {
 
 	assert.Len(t, ch, 1)
 }
+
+func TestAI_SendNonBlocking_DoesNotPanicOnClosedChannel(t *testing.T) {
+	ch := make(chan progrep.ProgressReport, 1)
+	close(ch)
+
+	assert.NotPanics(t, func() {
+		sendNonBlocking(ch, progrep.ProgressReport{})
+	})
+}
+
+func TestAI_Stop_DoesNotPanicOnClosedChannel(t *testing.T) {
+	ch := make(chan progrep.ProgressReport, 1)
+	reporter := NewLegacyProgressReporter(ch)
+
+	ops := []*Operation{
+		{
+			Type: OperationTypeCreate, Version: OperationVersionCreate, Category: OperationCategoryResource,
+			Config: &OperationConfigCreate{ResourceSpec: makeResourceSpec("cm1", "", gvkConfigMap)},
+		},
+	}
+	p := buildTestPlan(ops, nil)
+	reporter.startStage(p, map[string]string{ops[0].ID(): "default"})
+
+	close(ch)
+
+	assert.NotPanics(t, func() {
+		reporter.Stop(context.Background())
+	})
+}
+
+func TestAI_ReportStatus_DoesNotPanicOnClosedChannel(t *testing.T) {
+	ch := make(chan progrep.ProgressReport, 1)
+	reporter := NewLegacyProgressReporter(ch)
+
+	ops := []*Operation{
+		{
+			Type: OperationTypeCreate, Version: OperationVersionCreate, Category: OperationCategoryResource,
+			Config: &OperationConfigCreate{ResourceSpec: makeResourceSpec("cm1", "", gvkConfigMap)},
+		},
+	}
+	p := buildTestPlan(ops, nil)
+	reporter.startStage(p, map[string]string{ops[0].ID(): "default"})
+
+	close(ch)
+
+	assert.NotPanics(t, func() {
+		reporter.ReportStatus(ops[0].ID(), progrep.OperationStatusCompleted)
+	})
+}

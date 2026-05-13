@@ -49,10 +49,14 @@ func (r *LegacyProgressReporter) Stop(ctx context.Context) {
 		report = buildProgressReport(s.frozen, s.ops)
 	})
 
-	select {
-	case r.reportCh <- report:
-	case <-ctx.Done():
-	}
+	func() {
+		defer func() { _ = recover() }()
+
+		select {
+		case r.reportCh <- report:
+		case <-ctx.Done():
+		}
+	}()
 }
 
 func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[string]string) {
@@ -183,9 +187,19 @@ func buildStageReport(ops []opEntry) progrep.StageReport {
 	}
 }
 
-func sendNonBlocking(ch chan<- progrep.ProgressReport, report progrep.ProgressReport) {
+func safeSend(ch chan<- progrep.ProgressReport, report progrep.ProgressReport) (sent bool) {
+	defer func() {
+		_ = recover()
+	}()
+
 	select {
 	case ch <- report:
+		return true
 	default:
+		return false
 	}
+}
+
+func sendNonBlocking(ch chan<- progrep.ProgressReport, report progrep.ProgressReport) {
+	safeSend(ch, report)
 }
