@@ -46,20 +46,22 @@ type RenderChartOptions struct {
 	common.ChartRepoConnectionOptions
 	common.ValuesOptions
 
-	ChartProvenanceKeyring  string
-	ChartProvenanceStrategy string
-	ChartRepoNoUpdate       bool
-	ChartVersion            string
-	DenoBinaryPath          string
-	ExtraAPIVersions        []string
-	HelmOptions             common.HelmOptions
-	IgnoreBundleJS          bool
-	LocalKubeVersion        string
-	NoStandaloneCRDs        bool
-	Remote                  bool
-	SubchartNotes           bool
-	TempDirPath             string
-	TemplatesAllowDNS       bool
+	ChartProvenanceKeyring          string
+	ChartProvenanceStrategy         string
+	ChartRepoNoUpdate               bool
+	ChartVersion                    string
+	DenoBinaryPath                  string
+	DropInvalidAnnotationsAndLabels bool
+	ExtraAPIVersions                []string
+	HelmOptions                     common.HelmOptions
+	IgnoreBundleJS                  bool
+	LocalKubeVersion                string
+	NoStandaloneCRDs                bool
+	NoValuesSchemaValidation        bool
+	Remote                          bool
+	SubchartNotes                   bool
+	TempDirPath                     string
+	TemplatesAllowDNS               bool
 }
 
 type RenderChartResult struct {
@@ -208,13 +210,13 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 
 	log.Default.Debug(ctx, "Rendering values for chart at %q", chartPath)
 
-	renderedValues, err := chartcommonutil.ToRenderValues(loadedChart, overrideValues, chartcommon.ReleaseOptions{
+	renderedValues, err := chartcommonutil.ToRenderValuesWithSchemaValidation(loadedChart, overrideValues, chartcommon.ReleaseOptions{
 		Name:      releaseName,
 		Namespace: releaseNamespace,
 		Revision:  revision,
 		IsInstall: !isUpgrade,
 		IsUpgrade: isUpgrade,
-	}, caps)
+	}, caps, opts.NoValuesSchemaValidation)
 	if err != nil {
 		return nil, fmt.Errorf("build rendered values for chart %q: %w", chartAccessor.Name(), err)
 	}
@@ -260,9 +262,10 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 
 		for _, crd := range crds {
 			for _, manifest := range util.SplitManifests(string(crd.data)) {
-				if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
-					StoreAs:  common.StoreAsNone,
-					FilePath: crd.filename,
+				if res, err := spec.NewResourceSpecFromManifest(ctx, manifest, releaseNamespace, spec.ResourceSpecOptions{
+					StoreAs:                         common.StoreAsNone,
+					FilePath:                        crd.filename,
+					DropInvalidAnnotationsAndLabels: opts.DropInvalidAnnotationsAndLabels,
 				}); err != nil {
 					return nil, fmt.Errorf("construct standalone CRD for chart at %q: %w", chartPath, err)
 				} else {
@@ -310,7 +313,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		log.Default.Debug(ctx, "---\n# Source: %s\n%s\n", filePath, fileContent)
 	}
 
-	if r, err := renderedTemplatesToResourceSpecs(renderedTemplates, releaseNamespace, opts); err != nil {
+	if r, err := renderedTemplatesToResourceSpecs(ctx, renderedTemplates, releaseNamespace, opts); err != nil {
 		return nil, fmt.Errorf("convert rendered templates to installable resources for chart at %q: %w", chartPath, err)
 	} else {
 		resources = append(resources, r...)
@@ -539,7 +542,7 @@ func parseVerificationStrategy(s string) helmdownloader.VerificationStrategy {
 	}
 }
 
-func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, releaseNamespace string, opts RenderChartOptions) ([]*spec.ResourceSpec, error) {
+func renderedTemplatesToResourceSpecs(ctx context.Context, renderedTemplates map[string]string, releaseNamespace string, opts RenderChartOptions) ([]*spec.ResourceSpec, error) {
 	var resources []*spec.ResourceSpec
 
 	for filePath, fileContent := range renderedTemplates {
@@ -562,8 +565,9 @@ func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, relea
 				return nil, fmt.Errorf("parse YAML resource #%d for %q: %w", idx+1, filePath, err)
 			}
 
-			if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
-				FilePath: filePath,
+			if res, err := spec.NewResourceSpecFromManifest(ctx, manifest, releaseNamespace, spec.ResourceSpecOptions{
+				FilePath:                        filePath,
+				DropInvalidAnnotationsAndLabels: opts.DropInvalidAnnotationsAndLabels,
 			}); err != nil {
 				return nil, fmt.Errorf("construct resource spec for %q: %w", filePath, err)
 			} else {
