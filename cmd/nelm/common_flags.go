@@ -325,6 +325,13 @@ func AddResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceValidati
 		return fmt.Errorf("add flag: %w", err)
 	}
 
+	if err := cli.AddFlag(cmd, &cfg.NoValuesSchemaValidation, "no-values-schema-validation", false, "Disable values validation against JSON schema", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                resourceValidationGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
 	if err := cli.AddFlag(cmd, &cfg.LocalResourceValidation, "local-resource-validation", false, "Do not use external json schema sources", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                resourceValidationGroup,

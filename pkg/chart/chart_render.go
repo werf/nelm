@@ -57,6 +57,7 @@ type RenderChartOptions struct {
 	IgnoreBundleJS                  bool
 	LocalKubeVersion                string
 	NoStandaloneCRDs                bool
+	NoValuesSchemaValidation        bool
 	Remote                          bool
 	SubchartNotes                   bool
 	TempDirPath                     string
@@ -209,13 +210,13 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 
 	log.Default.Debug(ctx, "Rendering values for chart at %q", chartPath)
 
-	renderedValues, err := chartcommonutil.ToRenderValues(loadedChart, overrideValues, chartcommon.ReleaseOptions{
+	renderedValues, err := chartcommonutil.ToRenderValuesWithSchemaValidation(loadedChart, overrideValues, chartcommon.ReleaseOptions{
 		Name:      releaseName,
 		Namespace: releaseNamespace,
 		Revision:  revision,
 		IsInstall: !isUpgrade,
 		IsUpgrade: isUpgrade,
-	}, caps)
+	}, caps, opts.NoValuesSchemaValidation)
 	if err != nil {
 		return nil, fmt.Errorf("build rendered values for chart %q: %w", chartAccessor.Name(), err)
 	}
