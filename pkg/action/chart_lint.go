@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/samber/lo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -59,6 +60,10 @@ type ChartLintOptions struct {
 	DefaultDeletePropagation string
 	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
 	DenoBinaryPath string
+	// DockerConfig is the path to the Docker configuration directory (e.g., ~/.docker).
+	DockerConfig string
+	// DropInvalidAnnotationsAndLabels disables strict annotations and labels validation.
+	DropInvalidAnnotationsAndLabels bool
 	// ExtraAPIVersions is a list of additional Kubernetes API versions to include during linting.
 	// Used by Capabilities.APIVersions in templates to check for API availability.
 	ExtraAPIVersions []string
@@ -100,7 +105,7 @@ type ChartLintOptions struct {
 	// Used in the validation dry-run to check resource compatibility.
 	NoRemoveManualChanges bool
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
-	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
+	// Defaults to DockerConfig/config.json if not set.
 	// Used for authenticating to OCI registries when pulling charts.
 	RegistryCredentialsPath string
 	// ReleaseName is the name of the release to use for linting.
@@ -245,21 +250,22 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	}
 
 	chartTreeOptions := chart.RenderChartOptions{
-		ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
-		ValuesOptions:              opts.ValuesOptions,
-		ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
-		ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
-		ChartRepoNoUpdate:          opts.ChartRepoSkipUpdate,
-		ChartVersion:               opts.ChartVersion,
-		ExtraAPIVersions:           opts.ExtraAPIVersions,
-		HelmOptions:                helmOptions,
-		LocalKubeVersion:           opts.LocalKubeVersion,
-		NoValuesSchemaValidation:   opts.NoValuesSchemaValidation,
-		Remote:                     opts.Remote,
-		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
-		TempDirPath:                opts.TempDirPath,
-		IgnoreBundleJS:             opts.IgnoreBundleJS,
-		DenoBinaryPath:             opts.DenoBinaryPath,
+		ChartRepoConnectionOptions:      opts.ChartRepoConnectionOptions,
+		ValuesOptions:                   opts.ValuesOptions,
+		ChartProvenanceKeyring:          opts.ChartProvenanceKeyring,
+		ChartProvenanceStrategy:         opts.ChartProvenanceStrategy,
+		ChartRepoNoUpdate:               opts.ChartRepoSkipUpdate,
+		ChartVersion:                    opts.ChartVersion,
+		DropInvalidAnnotationsAndLabels: opts.DropInvalidAnnotationsAndLabels,
+		ExtraAPIVersions:                opts.ExtraAPIVersions,
+		HelmOptions:                     helmOptions,
+		LocalKubeVersion:                opts.LocalKubeVersion,
+		NoValuesSchemaValidation:        opts.NoValuesSchemaValidation,
+		Remote:                          opts.Remote,
+		TemplatesAllowDNS:               opts.TemplatesAllowDNS,
+		TempDirPath:                     opts.TempDirPath,
+		IgnoreBundleJS:                  opts.IgnoreBundleJS,
+		DenoBinaryPath:                  opts.DenoBinaryPath,
 	}
 
 	log.Default.Debug(ctx, "Render chart")
@@ -273,7 +279,6 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, opts.ReleaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
 		spec.NewResourceListsTransformer(),
-		spec.NewDropInvalidAnnotationsAndLabelsTransformer(),
 	})
 	if err != nil {
 		return fmt.Errorf("build transformed resource specs: %w", err)
@@ -281,7 +286,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Build releasable resource specs")
 
-	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
+	releasableResSpecs, err := spec.BuildPatchedResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
 		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 		spec.NewSecretStringDataPatcher(),
 	})
@@ -298,7 +303,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	var prevRelResSpecs []*spec.ResourceSpec
 	if prevRelease != nil {
-		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, opts.ReleaseNamespace, false)
+		prevRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, prevRelease, opts.ReleaseNamespace, false)
 		if err != nil {
 			return fmt.Errorf("convert previous release to resource specs: %w", err)
 		}
@@ -306,7 +311,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
-	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, opts.ReleaseNamespace, false)
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, opts.ReleaseNamespace, false)
 	if err != nil {
 		return fmt.Errorf("convert new release to resource specs: %w", err)
 	}
@@ -340,7 +345,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	var lastDeployedOrLastRelResSpecs []*spec.ResourceSpec
 	if lastDeployedOrLastRelease != nil {
-		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(lastDeployedOrLastRelease, opts.ReleaseNamespace, false)
+		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, lastDeployedOrLastRelease, opts.ReleaseNamespace, false)
 		if err != nil {
 			return fmt.Errorf("convert last deployed or last release to resource specs: %w", err)
 		}
@@ -350,6 +355,8 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		NetworkParallelism:                 opts.NetworkParallelism,
 		NoRemoveManualChanges:              opts.NoRemoveManualChanges,
 		LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,
+		ExtraRuntimeAnnotations:            opts.ExtraRuntimeAnnotations,
+		ExtraRuntimeLabels:                 opts.ExtraRuntimeLabels,
 	})
 	if err != nil {
 		return fmt.Errorf("build resource infos: %w", err)
@@ -423,7 +430,7 @@ func applyChartLintOptionsDefaults(opts ChartLintOptions, currentDir, homeDir st
 	}
 
 	if opts.RegistryCredentialsPath == "" {
-		opts.RegistryCredentialsPath = common.DefaultRegistryCredentialsPath
+		opts.RegistryCredentialsPath = filepath.Join(opts.DockerConfig, "config.json")
 	}
 
 	if opts.ChartProvenanceStrategy == "" {

@@ -404,6 +404,8 @@ github.com/werf/3p-cobra v0.0.0-20260403075225-552c82797324 h1:aqEM5aboMpBfsILja
 github.com/werf/3p-cobra v0.0.0-20260403075225-552c82797324/go.mod h1:7C1pvHqHw5A4vrJfjNwvOdzYu0Gml16OCs2GRiTUUS4=
 github.com/werf/common-go v0.0.0-20260212174520-adf7d95a1579 h1:LojMRgEoMNrUnfsbDG5GT4M5HXC9LAYH+5DWBY3p4uU=
 github.com/werf/common-go v0.0.0-20260212174520-adf7d95a1579/go.mod h1:MXS0JR9zut+oR9oEM8PEkdXXoEbKDILTmWopt0z1eZs=
+github.com/werf/common-go v0.0.0-20260428201303-b0dcadceca5c h1:4/qKB2licflIlCZGX4U1o4Ij/oraYyuNc2cWFiutZ10=
+github.com/werf/common-go v0.0.0-20260428201303-b0dcadceca5c/go.mod h1:DlN/hD9tXLxYgdAMkulQdzHkiaPrvs3MzgPZvjluea4=
 github.com/werf/kubedog v0.13.1-0.20260320165832-7d97aaf7aab9 h1:N+XKTPiXT5pf5lxThhaQQPARLUpZTlYJeMNoNtn+540=
 github.com/werf/kubedog v0.13.1-0.20260320165832-7d97aaf7aab9/go.mod h1:93L6aIdpj7iIhL30Obkv7bWgUyTeuxas1ijtzjmyb4Q=
 github.com/werf/lockgate v0.1.1 h1:S400JFYjtWfE4i4LY9FA8zx0fMdfui9DPrBiTciCrx4=

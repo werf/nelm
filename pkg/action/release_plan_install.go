@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -69,6 +70,10 @@ type ReleasePlanInstallOptions struct {
 	DefaultChartVersion string
 	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
 	DenoBinaryPath string
+	// DockerConfig is the path to the Docker configuration directory (e.g., ~/.docker).
+	DockerConfig string
+	// DropInvalidAnnotationsAndLabels disables strict annotations and labels validation.
+	DropInvalidAnnotationsAndLabels bool
 	// ErrorIfChangesPlanned, when true, returns ErrChangesPlanned if any changes are detected.
 	// Used with --exit-code flag to return exit code 2 if changes are planned, 0 if no changes, 1 on error.
 	ErrorIfChangesPlanned bool
@@ -97,7 +102,7 @@ type ReleasePlanInstallOptions struct {
 	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
 	PlanArtifactPath string
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
-	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
+	// Defaults to DockerConfig/config.json if not set.
 	// Used for authenticating to OCI registries when pulling charts.
 	RegistryCredentialsPath string
 	// TempDirPath is the directory for temporary files during the operation.
@@ -255,20 +260,21 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	log.Default.Debug(ctx, "Render chart")
 
 	renderChartResult, err := chart.RenderChart(ctx, opts.Chart, releaseName, releaseNamespace, newRevision, deployType, helmRegistryClient, clientFactory, chart.RenderChartOptions{
-		ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
-		ValuesOptions:              opts.ValuesOptions,
-		ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
-		ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
-		ChartRepoNoUpdate:          opts.ChartRepoSkipUpdate,
-		ChartVersion:               opts.ChartVersion,
-		HelmOptions:                helmOptions,
-		NoValuesSchemaValidation:   opts.NoValuesSchemaValidation,
-		NoStandaloneCRDs:           opts.NoInstallStandaloneCRDs,
-		Remote:                     true,
-		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
-		TempDirPath:                opts.TempDirPath,
-		IgnoreBundleJS:             opts.IgnoreBundleJS,
-		DenoBinaryPath:             opts.DenoBinaryPath,
+		ChartRepoConnectionOptions:      opts.ChartRepoConnectionOptions,
+		ValuesOptions:                   opts.ValuesOptions,
+		ChartProvenanceKeyring:          opts.ChartProvenanceKeyring,
+		ChartProvenanceStrategy:         opts.ChartProvenanceStrategy,
+		ChartRepoNoUpdate:               opts.ChartRepoSkipUpdate,
+		ChartVersion:                    opts.ChartVersion,
+		DropInvalidAnnotationsAndLabels: opts.DropInvalidAnnotationsAndLabels,
+		HelmOptions:                     helmOptions,
+		NoValuesSchemaValidation:        opts.NoValuesSchemaValidation,
+		NoStandaloneCRDs:                opts.NoInstallStandaloneCRDs,
+		Remote:                          true,
+		TemplatesAllowDNS:               opts.TemplatesAllowDNS,
+		TempDirPath:                     opts.TempDirPath,
+		IgnoreBundleJS:                  opts.IgnoreBundleJS,
+		DenoBinaryPath:                  opts.DenoBinaryPath,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("render chart: %w", err)
@@ -278,7 +284,6 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, releaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
 		spec.NewResourceListsTransformer(),
-		spec.NewDropInvalidAnnotationsAndLabelsTransformer(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build transformed resource specs: %w", err)
@@ -295,7 +300,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
 	}
 
-	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patchers)
+	releasableResSpecs, err := spec.BuildPatchedResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patchers)
 	if err != nil {
 		return nil, fmt.Errorf("build releasable resource specs: %w", err)
 	}
@@ -313,7 +318,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	var prevRelResSpecs []*spec.ResourceSpec
 	if prevRelease != nil {
-		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, releaseNamespace, false)
+		prevRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, prevRelease, releaseNamespace, false)
 		if err != nil {
 			return nil, fmt.Errorf("convert previous release to resource specs: %w", err)
 		}
@@ -321,7 +326,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
-	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace, false)
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, releaseNamespace, false)
 	if err != nil {
 		return nil, fmt.Errorf("convert new release to resource specs: %w", err)
 	}
@@ -351,7 +356,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	var lastDeployedOrLastRelResSpecs []*spec.ResourceSpec
 	if lastDeployedOrLastRelease != nil {
-		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(lastDeployedOrLastRelease, releaseNamespace, false)
+		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, lastDeployedOrLastRelease, releaseNamespace, false)
 		if err != nil {
 			return nil, fmt.Errorf("convert last deployed or last release to resource specs: %w", err)
 		}
@@ -361,6 +366,8 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		NetworkParallelism:                 opts.NetworkParallelism,
 		NoRemoveManualChanges:              opts.NoRemoveManualChanges,
 		LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,
+		ExtraRuntimeAnnotations:            opts.ExtraRuntimeAnnotations,
+		ExtraRuntimeLabels:                 opts.ExtraRuntimeLabels,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build resource infos: %w", err)
@@ -539,7 +546,7 @@ func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, curr
 	}
 
 	if opts.RegistryCredentialsPath == "" {
-		opts.RegistryCredentialsPath = common.DefaultRegistryCredentialsPath
+		opts.RegistryCredentialsPath = filepath.Join(opts.DockerConfig, "config.json")
 	}
 
 	if opts.ChartProvenanceStrategy == "" {
