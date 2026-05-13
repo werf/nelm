@@ -69,6 +69,8 @@ type ReleasePlanInstallOptions struct {
 	DefaultChartVersion string
 	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
 	DenoBinaryPath string
+	// DropInvalidAnnotationsAndLabels disables strict annotations and labels validation.
+	DropInvalidAnnotationsAndLabels bool
 	// ErrorIfChangesPlanned, when true, returns ErrChangesPlanned if any changes are detected.
 	// Used with --exit-code flag to return exit code 2 if changes are planned, 0 if no changes, 1 on error.
 	ErrorIfChangesPlanned bool
@@ -91,8 +93,6 @@ type ReleasePlanInstallOptions struct {
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
-	// DropInvalidAnnotationsAndLabels disables strict annotations and labels validation.
-	DropInvalidAnnotationsAndLabels bool
 	// NoFinalTracking, when true, disables final tracking operations in the plan that have no
 	// create/update/delete resource operations after them. This speeds up plan generation.
 	NoFinalTracking bool
@@ -314,7 +314,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	var prevRelResSpecs []*spec.ResourceSpec
 	if prevRelease != nil {
-		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, releaseNamespace, false)
+		prevRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, prevRelease, releaseNamespace, false)
 		if err != nil {
 			return nil, fmt.Errorf("convert previous release to resource specs: %w", err)
 		}
@@ -322,7 +322,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
-	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace, false)
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, releaseNamespace, false)
 	if err != nil {
 		return nil, fmt.Errorf("convert new release to resource specs: %w", err)
 	}
@@ -352,7 +352,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	var lastDeployedOrLastRelResSpecs []*spec.ResourceSpec
 	if lastDeployedOrLastRelease != nil {
-		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(lastDeployedOrLastRelease, releaseNamespace, false)
+		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, lastDeployedOrLastRelease, releaseNamespace, false)
 		if err != nil {
 			return nil, fmt.Errorf("convert last deployed or last release to resource specs: %w", err)
 		}

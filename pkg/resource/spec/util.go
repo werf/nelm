@@ -11,7 +11,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/werf/logboek"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/log"
 )
@@ -156,14 +155,13 @@ func setAnnotationsAndLabels(res *unstructured.Unstructured, annotations, labels
 	}
 }
 
-func stripInvalidEntries(filePath string, obj map[string]interface{}, fields ...string) map[string]string {
+func stripInvalidEntries(ctx context.Context, filePath string, obj map[string]interface{}, fields ...string) map[string]string {
 	result := make(map[string]string)
-
-	ctx := logboek.NewContext(context.Background(), logboek.DefaultLogger())
 
 	data, _, err := unstructured.NestedMap(obj, fields...)
 	if err != nil {
 		log.Default.Warn(ctx, "decode resource file (%s): %q data was stripped due to invalid format", filePath, strings.Join(fields, "."))
+
 		return result
 	}
 

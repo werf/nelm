@@ -205,7 +205,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 		log.Default.Debug(ctx, "Convert previous release to resource specs")
 
-		prevRelResSpecs, err := release.ReleaseToResourceSpecs(prevRelease, releaseNamespace, false)
+		prevRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, prevRelease, releaseNamespace, false)
 		if err != nil {
 			return fmt.Errorf("convert previous release to resource specs: %w", err)
 		}

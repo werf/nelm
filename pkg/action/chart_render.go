@@ -59,6 +59,8 @@ type ChartRenderOptions struct {
 	DefaultChartVersion string
 	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
 	DenoBinaryPath string
+	// DropInvalidAnnotationsAndLabels disables strict annotations and labels validation.
+	DropInvalidAnnotationsAndLabels bool
 	// ExtraAPIVersions is a list of additional Kubernetes API versions to include when rendering.
 	// Used by Capabilities.APIVersions in templates to check for API availability.
 	ExtraAPIVersions []string
@@ -88,8 +90,6 @@ type ChartRenderOptions struct {
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
-	// DropInvalidAnnotationsAndLabels disables strict annotations and labels validation.
-	DropInvalidAnnotationsAndLabels bool
 	// OutputFilePath, if specified, writes the rendered manifests to this file instead of stdout.
 	OutputFilePath string
 	// OutputNoPrint, when true, suppresses printing the rendered manifests to stdout.
@@ -297,7 +297,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
-	resSpecs, err := release.ReleaseToResourceSpecs(newRelease, opts.ReleaseNamespace, true)
+	resSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, opts.ReleaseNamespace, true)
 	if err != nil {
 		return nil, fmt.Errorf("convert new release to resource specs: %w", err)
 	}

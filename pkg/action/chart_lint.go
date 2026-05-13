@@ -59,6 +59,8 @@ type ChartLintOptions struct {
 	DefaultDeletePropagation string
 	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
 	DenoBinaryPath string
+	// DropInvalidAnnotationsAndLabels disables strict annotations and labels validation.
+	DropInvalidAnnotationsAndLabels bool
 	// ExtraAPIVersions is a list of additional Kubernetes API versions to include during linting.
 	// Used by Capabilities.APIVersions in templates to check for API availability.
 	ExtraAPIVersions []string
@@ -94,8 +96,6 @@ type ChartLintOptions struct {
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
-	// DropInvalidAnnotationsAndLabels disables strict annotations and labels validation.
-	DropInvalidAnnotationsAndLabels bool
 	// NoFinalTracking, when true, disables final tracking operations during validation to speed up linting.
 	NoFinalTracking bool
 	// NoRemoveManualChanges, when true, preserves fields during validation that would be manually added.
@@ -247,21 +247,21 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	}
 
 	chartTreeOptions := chart.RenderChartOptions{
-		ChartRepoConnectionOptions:       opts.ChartRepoConnectionOptions,
-		ValuesOptions:                    opts.ValuesOptions,
-		ChartProvenanceKeyring:           opts.ChartProvenanceKeyring,
-		ChartProvenanceStrategy:          opts.ChartProvenanceStrategy,
-		ChartRepoNoUpdate:                opts.ChartRepoSkipUpdate,
-		ChartVersion:                     opts.ChartVersion,
-		ExtraAPIVersions:                 opts.ExtraAPIVersions,
-		HelmOptions:                      helmOptions,
-		LocalKubeVersion:                 opts.LocalKubeVersion,
+		ChartRepoConnectionOptions:      opts.ChartRepoConnectionOptions,
+		ValuesOptions:                   opts.ValuesOptions,
+		ChartProvenanceKeyring:          opts.ChartProvenanceKeyring,
+		ChartProvenanceStrategy:         opts.ChartProvenanceStrategy,
+		ChartRepoNoUpdate:               opts.ChartRepoSkipUpdate,
+		ChartVersion:                    opts.ChartVersion,
+		ExtraAPIVersions:                opts.ExtraAPIVersions,
+		HelmOptions:                     helmOptions,
+		LocalKubeVersion:                opts.LocalKubeVersion,
 		DropInvalidAnnotationsAndLabels: opts.DropInvalidAnnotationsAndLabels,
-		Remote:                           opts.Remote,
-		TemplatesAllowDNS:                opts.TemplatesAllowDNS,
-		TempDirPath:                      opts.TempDirPath,
-		IgnoreBundleJS:                   opts.IgnoreBundleJS,
-		DenoBinaryPath:                   opts.DenoBinaryPath,
+		Remote:                          opts.Remote,
+		TemplatesAllowDNS:               opts.TemplatesAllowDNS,
+		TempDirPath:                     opts.TempDirPath,
+		IgnoreBundleJS:                  opts.IgnoreBundleJS,
+		DenoBinaryPath:                  opts.DenoBinaryPath,
 	}
 
 	log.Default.Debug(ctx, "Render chart")
@@ -299,7 +299,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	var prevRelResSpecs []*spec.ResourceSpec
 	if prevRelease != nil {
-		prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, opts.ReleaseNamespace, false)
+		prevRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, prevRelease, opts.ReleaseNamespace, false)
 		if err != nil {
 			return fmt.Errorf("convert previous release to resource specs: %w", err)
 		}
@@ -307,7 +307,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
-	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, opts.ReleaseNamespace, false)
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, opts.ReleaseNamespace, false)
 	if err != nil {
 		return fmt.Errorf("convert new release to resource specs: %w", err)
 	}
@@ -341,7 +341,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	var lastDeployedOrLastRelResSpecs []*spec.ResourceSpec
 	if lastDeployedOrLastRelease != nil {
-		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(lastDeployedOrLastRelease, opts.ReleaseNamespace, false)
+		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, lastDeployedOrLastRelease, opts.ReleaseNamespace, false)
 		if err != nil {
 			return fmt.Errorf("convert last deployed or last release to resource specs: %w", err)
 		}

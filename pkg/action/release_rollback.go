@@ -223,7 +223,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	log.Default.Debug(ctx, "Convert release to resource specs")
 
-	rollbackReleaseResSpecs, err := release.ReleaseToResourceSpecs(rollbackRelease, releaseNamespace, false)
+	rollbackReleaseResSpecs, err := release.ReleaseToResourceSpecs(ctx, rollbackRelease, releaseNamespace, false)
 	if err != nil {
 		return fmt.Errorf("convert release to rollback to resource specs: %w", err)
 	}
@@ -239,14 +239,14 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	log.Default.Debug(ctx, "Convert previous release to resource specs")
 
-	prevRelResSpecs, err := release.ReleaseToResourceSpecs(prevRelease, releaseNamespace, false)
+	prevRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, prevRelease, releaseNamespace, false)
 	if err != nil {
 		return fmt.Errorf("convert previous release to resource specs: %w", err)
 	}
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
-	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace, false)
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, releaseNamespace, false)
 	if err != nil {
 		return fmt.Errorf("convert new release to resource specs: %w", err)
 	}
@@ -282,7 +282,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	var lastDeployedOrLastRelResSpecs []*spec.ResourceSpec
 	if lastDeployedOrLastRelease != nil {
-		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(lastDeployedOrLastRelease, releaseNamespace, false)
+		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, lastDeployedOrLastRelease, releaseNamespace, false)
 		if err != nil {
 			return fmt.Errorf("convert last deployed or last release to resource specs: %w", err)
 		}

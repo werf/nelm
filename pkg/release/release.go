@@ -1,6 +1,7 @@
 package release
 
 import (
+	"context"
 	"fmt"
 	"hash"
 	"hash/fnv"
@@ -203,10 +204,10 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 }
 
 // Constructs ResourceSpecs from a Release object.
-func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string, noCleanNullFields bool /* TODO(major): get rid */) ([]*spec.ResourceSpec, error) {
+func ReleaseToResourceSpecs(ctx context.Context, rel *helmrelease.Release, releaseNamespace string, noCleanNullFields bool) ([]*spec.ResourceSpec, error) {
 	var resources []*spec.ResourceSpec
 	for _, manifest := range util.SplitManifests(rel.UnstoredManifest) {
-		if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
+		if res, err := spec.NewResourceSpecFromManifest(ctx, manifest, releaseNamespace, spec.ResourceSpecOptions{
 			StoreAs:                         common.StoreAsNone,
 			LegacyNoCleanNullFields:         noCleanNullFields,
 			DropInvalidAnnotationsAndLabels: true,
@@ -218,7 +219,7 @@ func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string, n
 	}
 
 	for _, manifest := range util.SplitManifests(rel.Manifest) {
-		if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
+		if res, err := spec.NewResourceSpecFromManifest(ctx, manifest, releaseNamespace, spec.ResourceSpecOptions{
 			StoreAs:                         common.StoreAsRegular,
 			LegacyNoCleanNullFields:         noCleanNullFields,
 			DropInvalidAnnotationsAndLabels: true,
@@ -230,7 +231,7 @@ func ReleaseToResourceSpecs(rel *helmrelease.Release, releaseNamespace string, n
 	}
 
 	for _, hook := range rel.Hooks {
-		if res, err := spec.NewResourceSpecFromManifest(hook.Manifest, releaseNamespace, spec.ResourceSpecOptions{
+		if res, err := spec.NewResourceSpecFromManifest(ctx, hook.Manifest, releaseNamespace, spec.ResourceSpecOptions{
 			StoreAs:                         common.StoreAsHook,
 			LegacyNoCleanNullFields:         noCleanNullFields,
 			DropInvalidAnnotationsAndLabels: true,
