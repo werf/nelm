@@ -221,7 +221,7 @@ type ResourceValidationOptions struct {
 	// NoResourceValidation Disable resource validation.
 	NoResourceValidation bool `json:"noResourceValidation"`
 	// NoValuesSchemaValidation disables values validation against json schema.
-	NoValuesSchemaValidation bool
+	NoValuesSchemaValidation bool `json:"noValuesSchemaValidation"`
 	// LocalResourceValidation Disable KubeConform resource validation.
 	LocalResourceValidation bool `json:"localResourceValidation"`
 	// ValidationKubeVersion sets specific Kubernetes version and respective schemas to use on resource validation.
