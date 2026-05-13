@@ -522,19 +522,25 @@ func manualDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Reso
 				ResourceState: depState,
 			}
 
-			matched := lo.Filter(otherResMeta, func(resMeta *spec.ResourceMeta, _ int) bool {
-				return dep.Match(resMeta)
-			})
-
-			dep.External = len(matched) == 0
-
+			depExternal := "auto"
 			if depExt, found := properties["external"]; found {
-				switch v := depExt.(type) {
-				case bool:
-					dep.External = v
-				case string:
-					dep.External = lo.Must(strconv.ParseBool(v))
+				depExternal = depExt.(string)
+			}
+
+			switch depExternal {
+			case "auto":
+				matched := lo.Filter(otherResMeta, func(resMeta *spec.ResourceMeta, _ int) bool {
+					return dep.Match(resMeta)
+				})
+
+				dep.External = len(matched) == 0
+			default:
+				val, err := strconv.ParseBool(depExternal)
+				if err != nil {
+					return nil, fmt.Errorf("invalid value for \"external\" property of dependency %q: %w", depID, err)
 				}
+
+				dep.External = val
 			}
 
 			if dep.External {
@@ -629,19 +635,25 @@ func manualDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Reso
 				ResourceState: depState,
 			}
 
-			matched := lo.Filter(otherResMeta, func(resMeta *spec.ResourceMeta, _ int) bool {
-				return dep.Match(resMeta)
-			})
-
-			dep.External = len(matched) == 0
-
+			depExternal := "auto"
 			if depExt, found := properties["external"]; found {
-				switch v := depExt.(type) {
-				case bool:
-					dep.External = v
-				case string:
-					dep.External = lo.Must(strconv.ParseBool(v))
+				depExternal = depExt.(string)
+			}
+
+			switch depExternal {
+			case "auto":
+				matched := lo.Filter(otherResMeta, func(resMeta *spec.ResourceMeta, _ int) bool {
+					return dep.Match(resMeta)
+				})
+
+				dep.External = len(matched) == 0
+			default:
+				val, err := strconv.ParseBool(depExternal)
+				if err != nil {
+					return nil, fmt.Errorf("invalid value for \"external\" property of dependency %q: %w", depID, err)
 				}
+
+				dep.External = val
 			}
 
 			if dep.External {
@@ -865,10 +877,13 @@ func validateDeleteDependencies(meta *spec.ResourceMeta) error {
 				case "external":
 					switch pv := propVal.(type) {
 					case string:
-						if _, err := strconv.ParseBool(pv); err != nil {
-							return fmt.Errorf("invalid value %q for property %q, expected boolean value", pv, propKey)
+						switch pv {
+						case "auto", "true", "false":
+						default:
+							return fmt.Errorf("invalid value %q for property %q, expected \"auto\", \"true\" or \"false\"", pv, propKey)
 						}
 					case bool:
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
 					default:
 						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
 					}
@@ -1006,10 +1021,13 @@ func validateDeployDependencies(meta *spec.ResourceMeta) error {
 				case "external":
 					switch pv := propVal.(type) {
 					case string:
-						if _, err := strconv.ParseBool(pv); err != nil {
-							return fmt.Errorf("invalid value %q for property %q, expected boolean value", pv, propKey)
+						switch pv {
+						case "auto", "true", "false":
+						default:
+							return fmt.Errorf("invalid value %q for property %q, expected \"auto\", \"true\" or \"false\"", pv, propKey)
 						}
 					case bool:
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
 					default:
 						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
 					}
