@@ -114,12 +114,16 @@ func SetupLogging(ctx context.Context, logLevel log.Level, opts SetupLoggingOpti
 		panic(fmt.Sprintf("unknown log level %q", logLevel))
 	}
 
+	SetupColorLevel(opts)
+
+	return ctx
+}
+
+func SetupColorLevel(opts SetupLoggingOptions) {
 	colorLevel := getColorLevel(opts.ColorMode, opts.LogIsParseable)
 
 	color.Enable = colorLevel != terminfo.ColorLevelNone
 	color.ForceSetColorLevel(colorLevel)
-
-	return ctx
 }
 
 func getColorLevel(mode string, logIsParseable bool) terminfo.ColorLevel {
