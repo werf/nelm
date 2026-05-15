@@ -682,7 +682,11 @@ func skipLogRegexesForContainers(meta *spec.ResourceMeta) map[string]*regexp.Reg
 	return regexByContainer
 }
 
-func skipLogs(meta *spec.ResourceMeta) bool {
+func skipLogs(meta *spec.ResourceMeta, noPodLogs bool) bool {
+	if noPodLogs {
+		return true
+	}
+
 	_, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternSkipLogs)
 	if !found {
 		return false
