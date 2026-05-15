@@ -128,6 +128,10 @@ type opEntry struct {
 	typ         progrep.OperationType
 }
 
+func sendNonBlocking(ch chan<- progrep.ProgressReport, report progrep.ProgressReport) {
+	safeSend(ch, report)
+}
+
 func buildProgressReport(frozen []progrep.StageReport, ops []opEntry) progrep.ProgressReport {
 	stageReports := make([]progrep.StageReport, 0, len(frozen)+1)
 
@@ -198,8 +202,4 @@ func safeSend(ch chan<- progrep.ProgressReport, report progrep.ProgressReport) (
 	default:
 		return false
 	}
-}
-
-func sendNonBlocking(ch chan<- progrep.ProgressReport, report progrep.ProgressReport) {
-	safeSend(ch, report)
 }
