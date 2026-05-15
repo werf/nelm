@@ -432,6 +432,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}, clientFactory, resource.BuildResourcesOptions{
 			Remote:                   true,
 			DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
+			NoPodLogs:                opts.NoPodLogs,
 		})
 		if err != nil {
 			return fmt.Errorf("build resources: %w", err)
@@ -848,6 +849,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 	}, clientFactory, resource.BuildResourcesOptions{
 		Remote:                   true,
 		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
+		NoPodLogs:                opts.NoPodLogs,
 	})
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build resources: %w", err))
