@@ -196,6 +196,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		log.Default.Debug(ctx, "Build release history")
+
 		history, err := release.BuildHistory(releaseName, releaseStorage, release.HistoryOptions{})
 		if err != nil {
 			return fmt.Errorf("build release history: %w", err)
@@ -213,6 +214,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		deployType := common.DeployTypeUninstall
 
 		log.Default.Debug(ctx, "Convert previous release to resource specs")
+
 		prevRelResSpecs, err := release.ReleaseToResourceSpecs(prevRelease, releaseNamespace, false)
 		if err != nil {
 			return fmt.Errorf("convert previous release to resource specs: %w", err)
@@ -227,6 +229,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		log.Default.Debug(ctx, "Build resources")
+
 		instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, nil, patchers, clientFactory, resource.BuildResourcesOptions{
 			Remote:                   true,
 			DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
@@ -237,6 +240,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		log.Default.Debug(ctx, "Build resource infos")
+
 		instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
 			NetworkParallelism:                 opts.NetworkParallelism,
 			NoRemoveManualChanges:              opts.NoRemoveManualChanges,
@@ -247,12 +251,14 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		log.Default.Debug(ctx, "Build release infos")
+
 		relInfos, err := plan.BuildReleaseInfos(ctx, deployType, releases, nil)
 		if err != nil {
 			return fmt.Errorf("build release infos: %w", err)
 		}
 
 		log.Default.Debug(ctx, "Build delete plan")
+
 		deletePlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
 			NoFinalTracking: opts.NoFinalTracking,
 		})
@@ -272,6 +278,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		logStore := kdutil.NewConcurrent(logstore.NewLogStore())
 
 		log.Default.Debug(ctx, "Start tracking")
+
 		var progressPrinter *track.ProgressTablesPrinter
 		if !opts.NoProgressTablePrint {
 			progressPrinter = track.NewProgressTablesPrinter(taskStore, logStore, track.ProgressTablesPrinterOptions{
@@ -289,6 +296,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		log.Default.Debug(ctx, "Execute release delete plan")
+
 		executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, deletePlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
 			LegacyProgressReporter: reporter,
 			TrackingOptions:        opts.TrackingOptions,
@@ -323,6 +331,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 			criticalErrs.Add(critErrs)
 			nonCriticalErrs.Add(nonCritErrs)
+
 			if runFailurePlanResult != nil {
 				completedResourceOps = append(completedResourceOps, runFailurePlanResult.CompletedResourceOps...)
 				canceledResourceOps = append(canceledResourceOps, runFailurePlanResult.CanceledResourceOps...)
