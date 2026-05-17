@@ -361,7 +361,8 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	for _, resSpec := range patchedResSpecs {
 		instRes, err := NewInstallableResource(resSpec, lo.Without(patchedResSpecs, resSpec), releaseNamespace, clientFactory, InstallableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
-			NoPodLogs:                opts.NoPodLogs,Remote:                   opts.Remote,
+			NoPodLogs:                opts.NoPodLogs,
+			Remote:                   opts.Remote,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct deployable resource: %w", err)
