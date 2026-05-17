@@ -144,7 +144,7 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResourceSpecs []*spec.R
 		ShowLogsOnlyForContainers:              showLogsOnlyForContainers(res.ResourceMeta),
 		ShowLogsOnlyForNumberOfReplicas:        showLogsOnlyForNumberOfReplicas(res.ResourceMeta),
 		ShowServiceMessages:                    showServiceMessages(res.ResourceMeta),
-		SkipLogs:                               skipLogs(res.ResourceMeta),
+		SkipLogs:                               skipLogs(res.ResourceMeta, opts.NoPodLogs),
 		SkipLogsForContainers:                  skipLogsForContainers(res.ResourceMeta),
 		SkipLogsRegex:                          skipLogRegex(res.ResourceMeta),
 		SkipLogsRegexForContainers:             skipLogRegexesForContainers(res.ResourceMeta),
@@ -155,6 +155,7 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResourceSpecs []*spec.R
 
 type InstallableResourceOptions struct {
 	DefaultDeletePropagation metav1.DeletionPropagation
+	NoPodLogs                bool
 	Remote                   bool
 }
 
@@ -224,6 +225,7 @@ type DeletableResourceOptions struct {
 
 type BuildResourcesOptions struct {
 	DefaultDeletePropagation metav1.DeletionPropagation
+	NoPodLogs                bool
 	Remote                   bool
 }
 
@@ -244,6 +246,7 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	for _, resSpec := range prevRelResSpecs {
 		installableResource, err := NewInstallableResource(resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, clientFactory, InstallableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
+			NoPodLogs:                opts.NoPodLogs,
 			Remote:                   opts.Remote,
 		})
 		if err != nil {
@@ -257,6 +260,7 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	for _, resSpec := range newRelResSpecs {
 		installableResource, err := NewInstallableResource(resSpec, lo.Without(newRelResSpecs, resSpec), releaseNamespace, clientFactory, InstallableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
+			NoPodLogs:                opts.NoPodLogs,
 			Remote:                   opts.Remote,
 		})
 		if err != nil {
@@ -357,7 +361,7 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	for _, resSpec := range patchedResSpecs {
 		instRes, err := NewInstallableResource(resSpec, lo.Without(patchedResSpecs, resSpec), releaseNamespace, clientFactory, InstallableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
-			Remote:                   opts.Remote,
+			NoPodLogs:                opts.NoPodLogs,Remote:                   opts.Remote,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct deployable resource: %w", err)

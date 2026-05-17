@@ -265,6 +265,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, patchers, clientFactory, resource.BuildResourcesOptions{
 		Remote:                   true,
 		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
+		NoPodLogs:                opts.NoPodLogs,
 	})
 	if err != nil {
 		return fmt.Errorf("build resources: %w", err)
