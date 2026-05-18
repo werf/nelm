@@ -389,9 +389,10 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 			},
 			input: func() *spec.ResourceSpec {
 				resSpec := defaultResourceSpec(s.releaseNamespace)
-				resSpec.SetAnnotations(lo.Assign(resSpec.Annotations, map[string]string{
-					"werf.io/deploy-dependency-backend": "state=present,name=backend",
-				},
+				resSpec.SetAnnotations(lo.Assign(
+					resSpec.Annotations, map[string]string{
+						"werf.io/deploy-dependency-backend": "state=present,name=backend",
+					},
 				))
 
 				return resSpec
@@ -1184,7 +1185,7 @@ func defaultDeletableResource(resMeta *spec.ResourceMeta) *resource.DeletableRes
 	return &resource.DeletableResource{
 		ResourceMeta:      resMeta,
 		Ownership:         common.OwnershipRelease,
-		DeletePropagation: metav1.DeletePropagationForeground,
+		DeletePropagation: metav1.DeletePropagationBackground,
 	}
 }
 
@@ -1217,7 +1218,7 @@ func defaultInstallableResource(resSpec *spec.ResourceSpec) *resource.Installabl
 			common.InstallOnUpgrade:  {common.StageInstall},
 			common.InstallOnRollback: {common.StageInstall},
 		},
-		DeletePropagation: metav1.DeletePropagationForeground,
+		DeletePropagation: metav1.DeletePropagationBackground,
 	}
 }
 
