@@ -228,7 +228,31 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		return fmt.Errorf("convert release to rollback to resource specs: %w", err)
 	}
 
-	newRelease, err := release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, rollbackReleaseResSpecs, rollbackRelease.Chart, rollbackRelease.Config, release.ReleaseOptions{
+	log.Default.Debug(ctx, "Build transformed resource specs")
+
+	transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, releaseNamespace, rollbackReleaseResSpecs, []spec.ResourceTransformer{
+		spec.NewResourceListsTransformer(),
+	})
+	if err != nil {
+		return fmt.Errorf("build transformed resource specs: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Build releasable resource specs")
+
+	patchers := []spec.ResourcePatcher{
+		spec.NewSecretStringDataPatcher(),
+	}
+
+	if opts.LegacyHelmCompatibleTracking {
+		patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
+	}
+
+	releasableResSpecs, err := spec.BuildPatchedResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patchers)
+	if err != nil {
+		return fmt.Errorf("build releasable resource specs: %w", err)
+	}
+
+	newRelease, err := release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, releasableResSpecs, rollbackRelease.Chart, rollbackRelease.Config, release.ReleaseOptions{
 		InfoAnnotations: opts.ReleaseInfoAnnotations,
 		Labels:          lo.Assign(rollbackRelease.Labels, opts.ReleaseLabels),
 		Notes:           rollbackRelease.Info.Notes,
@@ -253,16 +277,10 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	log.Default.Debug(ctx, "Build resources")
 
-	patchers := []spec.ResourcePatcher{
+	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
 		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
-	}
-
-	if opts.LegacyHelmCompatibleTracking {
-		patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
-	}
-
-	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, patchers, clientFactory, resource.BuildResourcesOptions{
+	}, clientFactory, resource.BuildResourcesOptions{
 		Remote:                   true,
 		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 	})
