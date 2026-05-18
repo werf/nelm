@@ -315,7 +315,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	log.Default.Debug(ctx, "Build install plan")
 
-	installPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
+	installPlan, err := plan.BuildPlan(ctx, instResInfos, delResInfos, relInfos, releaseNamespace, plan.BuildPlanOptions{
 		NoFinalTracking: opts.NoFinalTracking,
 	})
 	if err != nil {

@@ -375,7 +375,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.ManualInternalDependencies = []*resource.InternalDependency{
+				res.ManualDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names: []string{"backend"},
@@ -391,18 +391,18 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 				resSpec := defaultResourceSpec(s.releaseNamespace)
 				resSpec.SetAnnotations(lo.Assign(
 					resSpec.Annotations, map[string]string{
-						"werf.io/deploy-dependency-backend": "state=present,name=backend",
+						"werf.io/deploy-dependency-backend": "state=present,name=backend,external=false",
 					},
 				))
 
 				return resSpec
 			},
-			name: `for resource with werf.io/deploy-dependency-backend="state=present,name=backend"`,
+			name: `for resource with werf.io/deploy-dependency-backend="state=present,name=backend,external=false"`,
 		},
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.ManualInternalDependencies = []*resource.InternalDependency{
+				res.ManualDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{"backend"},
@@ -431,8 +431,8 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 			input: func() *spec.ResourceSpec {
 				resSpec := defaultResourceSpec(s.releaseNamespace)
 				resSpec.SetAnnotations(lo.Assign(resSpec.Annotations, map[string]string{
-					"werf.io/deploy-dependency-backend":  "state=ready,kind=Deployment,group=apps,version=v1,name=backend,namespace=app",
-					"werf.io/deploy-dependency-frontend": "state=ready,kind=StatefulSet,group=apps,version=v1,name=frontend,namespace=app",
+					"werf.io/deploy-dependency-backend":  "state=ready,kind=Deployment,group=apps,version=v1,name=backend,namespace=app,external=false",
+					"werf.io/deploy-dependency-frontend": "state=ready,kind=StatefulSet,group=apps,version=v1,name=frontend,namespace=app,external=false",
 				}))
 
 				return resSpec
@@ -442,7 +442,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultHookInstallableResource(resSpec)
-				res.ManualInternalDependencies = []*resource.InternalDependency{
+				res.ManualDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names: []string{"backend"},
@@ -457,19 +457,19 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 			input: func() *spec.ResourceSpec {
 				resSpec := defaultHookResourceSpec(s.releaseNamespace)
 				resSpec.SetAnnotations(lo.Assign(resSpec.Annotations, map[string]string{
-					"werf.io/deploy-dependency-backend": "state=ready,name=backend",
+					"werf.io/deploy-dependency-backend": "state=ready,name=backend,external=false",
 					"werf.io/weight":                    "10",
 					"helm.sh/hook-weight":               "20",
 				}))
 
 				return resSpec
 			},
-			name: `for hook resource with werf.io/deploy-dependency-backend="state=ready,name=backend" and werf.io/weight="10" and helm.sh/hook-weight="20"`,
+			name: `for hook resource with werf.io/deploy-dependency-backend="state=ready,name=backend,external=false" and werf.io/weight="10" and helm.sh/hook-weight="20"`,
 		},
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultDeploymentInstallableResource(resSpec)
-				res.AutoInternalDependencies = []*resource.InternalDependency{
+				res.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{"configmap-envs"},
@@ -1270,7 +1270,7 @@ func runDeletableResourceTest(tc deletableResourceTestCase, s *DeletableResource
 
 		resSpec := tc.inputFunc()
 
-		res := resource.NewDeletableResource(resSpec, []*spec.ResourceSpec{}, s.releaseNamespace, resource.DeletableResourceOptions{})
+		res, _ := resource.NewDeletableResource(resSpec, []*spec.ResourceSpec{}, s.releaseNamespace, resource.DeletableResourceOptions{})
 
 		expectRes := tc.expectFunc(resSpec)
 
@@ -1288,7 +1288,7 @@ func runInstallableResourceTest(tc installableResourceTestCase, s *InstallableRe
 
 		resSpec := tc.input()
 
-		res, err := resource.NewInstallableResource(resSpec, s.releaseNamespace, s.clientFactory, resource.InstallableResourceOptions{})
+		res, err := resource.NewInstallableResource(resSpec, nil, s.releaseNamespace, s.clientFactory, resource.InstallableResourceOptions{})
 		s.Require().NoError(err)
 
 		expectRes := tc.expect(resSpec)

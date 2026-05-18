@@ -29,6 +29,10 @@ const (
 	// updating it.
 	DeletePolicyBeforeCreationIfImmutable DeletePolicy = "before-creation-if-immutable"
 
+	DependencyExternalAuto  DependencyExternal = "auto"
+	DependencyExternalFalse DependencyExternal = "false"
+	DependencyExternalTrue  DependencyExternal = "true"
+
 	// Installing revision number 1 of the release always considered "Initial".
 	DeployTypeInitial DeployType = "Initial"
 	// Revision number > 1 with no successful revisions between revision 1 and the last revision
@@ -94,16 +98,19 @@ const (
 	ChartTSSourceDir  = "ts/"
 	DefaultBurstLimit = 100
 	// TODO(major): switch to if-possible
-	DefaultChartProvenanceStrategy = "never"
-	DefaultDeletePropagation       = metav1.DeletePropagationBackground
-	DefaultDiffContextLines        = 3
-	DefaultFieldManager            = "helm"
-	DefaultLocalKubeVersion        = "1.36.0"
-	DefaultLogColorMode            = log.LogColorModeAuto
-	DefaultNetworkParallelism      = 30
-	DefaultProgressPrintInterval   = 5 * time.Second
-	DefaultQPSLimit                = 30
-	DefaultReleaseHistoryLimit     = 10
+	DefaultChartProvenanceStrategy      = "never"
+	DefaultDeletePropagation            = metav1.DeletePropagationBackground
+	DefaultDependencyExternal           = DependencyExternalAuto
+	DefaultDiffContextLines             = 3
+	DefaultExternalDependencyMaxMatches = 30
+	DefaultExternalDependencyMinMatches = 1
+	DefaultFieldManager                 = "helm"
+	DefaultLocalKubeVersion             = "1.36.0"
+	DefaultLogColorMode                 = log.LogColorModeAuto
+	DefaultNetworkParallelism           = 30
+	DefaultProgressPrintInterval        = 5 * time.Second
+	DefaultQPSLimit                     = 30
+	DefaultReleaseHistoryLimit          = 10
 	// DefaultResourceValidationKubeVersion Kubernetes version to use during resource validation by kubeconform
 	DefaultResourceValidationKubeVersion = "1.35.0"
 	KubectlEditFieldManager              = "kubectl-edit"
@@ -233,6 +240,9 @@ var (
 
 // Type of the current operation.
 type DeployType string
+
+// External dependency mode.
+type DependencyExternal string
 
 // Configures resource deletions during deployment of this resource.
 type DeletePolicy string

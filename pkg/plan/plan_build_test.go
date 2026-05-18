@@ -1,6 +1,7 @@
 package plan_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -476,7 +477,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 				dependentResSpec := defaultInstallableResource(s.releaseName, s.releaseNamespace)
 				dependentResSpec.Name = "dependent-resource"
 				dependentResSpec.Unstruct.SetName("dependent-resource")
-				dependentResSpec.AutoInternalDependencies = []*resource.InternalDependency{
+				dependentResSpec.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{resInfo.Name},
@@ -593,7 +594,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 				dependentResSpec.Name = "dependent-resource"
 				dependentResSpec.Unstruct.SetName("dependent-resource")
 				dependentResSpec.Weight = nil
-				dependentResSpec.ManualInternalDependencies = []*resource.InternalDependency{
+				dependentResSpec.ManualDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{resInfo.Name},
@@ -733,7 +734,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 				dependentResSpec.Name = "dependent-resource"
 				dependentResSpec.Unstruct.SetName("dependent-resource")
 				dependentResSpec.Weight = nil
-				dependentResSpec.ManualInternalDependencies = []*resource.InternalDependency{
+				dependentResSpec.ManualDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{resInfo.Name},
@@ -1430,7 +1431,7 @@ func runBuildPlanTest(tc buildPlanTestCase, s *BuildPlanSuite) func() {
 
 		instInfos, delInfos, relInfos, opts := tc.input()
 
-		plan, err := plan.BuildPlan(instInfos, delInfos, relInfos, opts)
+		plan, err := plan.BuildPlan(context.Background(), instInfos, delInfos, relInfos, s.releaseNamespace, opts)
 		s.Require().NoError(err)
 
 		operations := plan.Operations()

@@ -249,7 +249,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 		log.Default.Debug(ctx, "Build delete plan")
 
-		deletePlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
+		deletePlan, err := plan.BuildPlan(ctx, instResInfos, delResInfos, relInfos, releaseNamespace, plan.BuildPlanOptions{
 			NoFinalTracking: opts.NoFinalTracking,
 		})
 		if err != nil {

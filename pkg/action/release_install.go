@@ -485,7 +485,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		log.Default.Debug(ctx, "Build install plan")
 
-		installPlan, err = plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
+		installPlan, err = plan.BuildPlan(ctx, instResInfos, delResInfos, relInfos, releaseNamespace, plan.BuildPlanOptions{
 			NoFinalTracking: opts.NoFinalTracking,
 		})
 		if err != nil {
@@ -896,7 +896,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Build rollback plan")
 
-	rollbackPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
+	rollbackPlan, err := plan.BuildPlan(ctx, instResInfos, delResInfos, relInfos, releaseNamespace, plan.BuildPlanOptions{
 		NoFinalTracking: opts.NoFinalTracking,
 	})
 	if err != nil {
