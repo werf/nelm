@@ -174,7 +174,7 @@ type DeletableResource struct {
 
 // Construct a DeletableResource from a ResourceSpec. Must never contact the cluster, because
 // this is called even when no cluster access allowed.
-func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []*spec.ResourceSpec, releaseNamespace string, opts DeletableResourceOptions) *DeletableResource {
+func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []*spec.ResourceSpec, releaseNamespace string, opts DeletableResourceOptions) (*DeletableResource, error) {
 	var keep bool
 	if err := ValidateResourcePolicy(resourceSpec.ResourceMeta); err != nil {
 		keep = true
@@ -200,9 +200,8 @@ func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []
 		return resSpec.ResourceMeta
 	})
 
-	var manDeps []*Dependency
-	if err := validateDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList); err == nil {
-		manDeps = manualDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList)
+	if err := validateDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList); err != nil {
+		return nil, fmt.Errorf("validate delete dependencies: %w", err)
 	}
 
 	unstructList := lo.Map(otherResourceSpecs, func(resSpec *spec.ResourceSpec, _ int) *unstructured.Unstructured {
@@ -214,9 +213,9 @@ func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []
 		AutoInternalDependencies: internalDeleteDependencies(resourceSpec.Unstruct, unstructList),
 		DeletePropagation:        delPropagation,
 		KeepOnDelete:             keep,
-		ManualDependencies:       manDeps,
+		ManualDependencies:       manualDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList),
 		Ownership:                owner,
-	}
+	}, nil
 }
 
 type DeletableResourceOptions struct {
@@ -235,9 +234,12 @@ type BuildResourcesOptions struct {
 func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRelResSpecs, newRelResSpecs []*spec.ResourceSpec, patchers []spec.ResourcePatcher, clientFactory kube.ClientFactorier, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
 	var prevRelDelResources []*DeletableResource
 	for _, resSpec := range prevRelResSpecs {
-		deletableRes := NewDeletableResource(resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, DeletableResourceOptions{
+		deletableRes, err := NewDeletableResource(resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, DeletableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("construct deletable resource: %w", err)
+		}
 
 		prevRelDelResources = append(prevRelDelResources, deletableRes)
 	}

@@ -29,6 +29,10 @@ const (
 	// updating it.
 	DeletePolicyBeforeCreationIfImmutable DeletePolicy = "before-creation-if-immutable"
 
+	DependencyExternalAuto  DependencyExternal = "auto"
+	DependencyExternalFalse DependencyExternal = "false"
+	DependencyExternalTrue  DependencyExternal = "true"
+
 	// Installing revision number 1 of the release always considered "Initial".
 	DeployTypeInitial DeployType = "Initial"
 	// Revision number > 1 with no successful revisions between revision 1 and the last revision
@@ -94,8 +98,7 @@ const (
 	ChartTSSourceDir  = "ts/"
 	DefaultBurstLimit = 100
 	// TODO(major): switch to if-possible
-	DefaultChartProvenanceStrategy = "never"
-
+	DefaultChartProvenanceStrategy      = "never"
 	DefaultDeletePropagation            = metav1.DeletePropagationBackground
 	DefaultDependencyExternal           = DependencyExternalAuto
 	DefaultDiffContextLines             = 3
@@ -110,9 +113,6 @@ const (
 	DefaultReleaseHistoryLimit          = 10
 	// DefaultResourceValidationKubeVersion Kubernetes version to use during resource validation by kubeconform
 	DefaultResourceValidationKubeVersion = "1.35.0"
-	DependencyExternalAuto               = "auto"
-	DependencyExternalFalse              = "false"
-	DependencyExternalTrue               = "true"
 	KubectlEditFieldManager              = "kubectl-edit"
 	OldFieldManagerPrefix                = "werf"
 	OutputFormatJSON                     = "json"
@@ -240,6 +240,9 @@ var (
 
 // Type of the current operation.
 type DeployType string
+
+// External dependency mode.
+type DependencyExternal string
 
 // Configures resource deletions during deployment of this resource.
 type DeletePolicy string

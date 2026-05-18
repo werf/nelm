@@ -169,7 +169,11 @@ func manualDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Reso
 				ResourceState:   depState,
 			}
 
-			depExternal := lo.ValueOr(properties, "external", common.DefaultDependencyExternal).(string)
+			depExternal := common.DefaultDependencyExternal
+			if ext := properties["external"]; ext != nil {
+				depExternal = common.DependencyExternal(ext.(string))
+			}
+
 			dep.External = isExternalDependency(dep.ResourceMatcher, otherResMeta, depExternal)
 
 			if dep.External {
@@ -210,7 +214,11 @@ func manualDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Reso
 				ResourceState:   depState,
 			}
 
-			depExternal := lo.ValueOr(properties, "external", common.DefaultDependencyExternal).(string)
+			depExternal := common.DefaultDependencyExternal
+			if ext := properties["external"]; ext != nil {
+				depExternal = common.DependencyExternal(ext.(string))
+			}
+
 			dep.External = isExternalDependency(dep.ResourceMatcher, otherResMeta, depExternal)
 
 			if dep.External {
@@ -298,7 +306,7 @@ func validateDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Re
 				case "external":
 					switch pv := propVal.(type) {
 					case string:
-						switch pv {
+						switch common.DependencyExternal(pv) {
 						case common.DependencyExternalAuto, common.DependencyExternalTrue, common.DependencyExternalFalse:
 						default:
 							return fmt.Errorf("invalid value %q for property %q, expected %q, %q or %q", pv, propKey, common.DependencyExternalAuto, common.DependencyExternalTrue, common.DependencyExternalFalse)
@@ -313,7 +321,11 @@ func validateDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Re
 				}
 			}
 
-			depExternal := lo.ValueOr(properties, "external", common.DefaultDependencyExternal).(string)
+			depExternal := common.DefaultDependencyExternal
+			if ext := properties["external"]; ext != nil {
+				depExternal = common.DependencyExternal(ext.(string))
+			}
+
 			matcher := dependencyMatcher(properties)
 
 			if isExternalDependency(matcher, otherResMeta, depExternal) {
@@ -402,7 +414,7 @@ func validateDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Re
 				case "external":
 					switch pv := propVal.(type) {
 					case string:
-						switch pv {
+						switch common.DependencyExternal(pv) {
 						case common.DependencyExternalAuto, common.DependencyExternalTrue, common.DependencyExternalFalse:
 						default:
 							return fmt.Errorf("invalid value %q for property %q, expected %q, %q or %q", pv, propKey, common.DependencyExternalAuto, common.DependencyExternalTrue, common.DependencyExternalFalse)
@@ -417,7 +429,11 @@ func validateDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Re
 				}
 			}
 
-			depExternal := lo.ValueOr(properties, "external", common.DefaultDependencyExternal).(string)
+			depExternal := common.DefaultDependencyExternal
+			if ext := properties["external"]; ext != nil {
+				depExternal = common.DependencyExternal(ext.(string))
+			}
+
 			matcher := dependencyMatcher(properties)
 
 			if isExternalDependency(matcher, otherResMeta, depExternal) {
@@ -703,7 +719,7 @@ func ignoreReadinessProbeFailsForContainers(meta *spec.ResourceMeta) map[string]
 	return durationByContainer
 }
 
-func isExternalDependency(matcher *spec.ResourceMatcher, otherResMeta []*spec.ResourceMeta, external string) bool {
+func isExternalDependency(matcher *spec.ResourceMatcher, otherResMeta []*spec.ResourceMeta, external common.DependencyExternal) bool {
 	switch external {
 	case common.DependencyExternalAuto:
 		matched := lo.Filter(otherResMeta, func(resMeta *spec.ResourceMeta, _ int) bool {
