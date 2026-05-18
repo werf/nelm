@@ -262,8 +262,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
 	}
 
-	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, patchers, clientFactory, resource.BuildResourcesOptions{
-		Remote:                   true,
+	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, patchers, resource.BuildResourcesOptions{
 		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 		NoPodLogs:                opts.NoPodLogs,
 	})

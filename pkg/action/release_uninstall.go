@@ -220,8 +220,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 		log.Default.Debug(ctx, "Build resources")
 
-		instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, nil, patchers, clientFactory, resource.BuildResourcesOptions{
-			Remote:                   true,
+		instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, nil, patchers, resource.BuildResourcesOptions{
 			DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 			NoPodLogs:                opts.NoPodLogs,
 		})

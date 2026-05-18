@@ -211,27 +211,20 @@ var (
 	AnnotationKeyPatternDeployDependency                = regexp.MustCompile(`^werf.io/deploy-dependency-(?P<id>.+)$`)
 	AnnotationKeyHumanDeleteDependency                  = "werf.io/delete-dependency-<name>"
 	AnnotationKeyPatternDeleteDependency                = regexp.MustCompile(`^werf.io/delete-dependency-(?P<id>.+)$`)
-	// TODO(major): get rid
-	AnnotationKeyHumanExternalDependency                  = "<name>.external-dependency.werf.io"
-	AnnotationKeyPatternExternalDependency                = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io$`)
-	AnnotationKeyHumanLegacyExternalDependencyResource    = "<name>.external-dependency.werf.io/resource"
-	AnnotationKeyPatternLegacyExternalDependencyResource  = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io/resource$`)
-	AnnotationKeyHumanLegacyExternalDependencyNamespace   = "<name>.external-dependency.werf.io/namespace"
-	AnnotationKeyPatternLegacyExternalDependencyNamespace = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io/namespace$`)
-	AnnotationKeyHumanSensitive                           = "werf.io/sensitive"
-	AnnotationKeyPatternSensitive                         = regexp.MustCompile(`^werf.io/sensitive$`)
-	AnnotationKeyHumanSensitivePaths                      = "werf.io/sensitive-paths"
-	AnnotationKeyPatternSensitivePaths                    = regexp.MustCompile(`^werf.io/sensitive-paths$`)
-	AnnotationKeyHumanDeployOn                            = "werf.io/deploy-on"
-	AnnotationKeyPatternDeployOn                          = regexp.MustCompile(`^werf.io/deploy-on$`)
-	AnnotationKeyHumanOwnership                           = "werf.io/ownership"
-	AnnotationKeyPatternOwnership                         = regexp.MustCompile(`^werf.io/ownership$`)
-	AnnotationKeyHumanDeletePropagation                   = "werf.io/delete-propagation"
-	AnnotationKeyPatternDeletePropagation                 = regexp.MustCompile(`^werf.io/delete-propagation$`)
-	SprigFuncs                                            = sprig.TxtFuncMap()
-	DefaultDockerConfig                                   = filepath.Join(userHomeDir(), ".docker")
-	DefaultPlanArtifactLifetime                           = 2 * time.Hour
-	DefaultResourceValidationSchema                       = []string{
+	AnnotationKeyHumanSensitive                         = "werf.io/sensitive"
+	AnnotationKeyPatternSensitive                       = regexp.MustCompile(`^werf.io/sensitive$`)
+	AnnotationKeyHumanSensitivePaths                    = "werf.io/sensitive-paths"
+	AnnotationKeyPatternSensitivePaths                  = regexp.MustCompile(`^werf.io/sensitive-paths$`)
+	AnnotationKeyHumanDeployOn                          = "werf.io/deploy-on"
+	AnnotationKeyPatternDeployOn                        = regexp.MustCompile(`^werf.io/deploy-on$`)
+	AnnotationKeyHumanOwnership                         = "werf.io/ownership"
+	AnnotationKeyPatternOwnership                       = regexp.MustCompile(`^werf.io/ownership$`)
+	AnnotationKeyHumanDeletePropagation                 = "werf.io/delete-propagation"
+	AnnotationKeyPatternDeletePropagation               = regexp.MustCompile(`^werf.io/delete-propagation$`)
+	SprigFuncs                                          = sprig.TxtFuncMap()
+	DefaultDockerConfig                                 = filepath.Join(userHomeDir(), ".docker")
+	DefaultPlanArtifactLifetime                         = 2 * time.Hour
+	DefaultResourceValidationSchema                     = []string{
 		"https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json",
 		"https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json",
 	}

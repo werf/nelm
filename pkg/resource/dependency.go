@@ -19,12 +19,6 @@ type Dependency struct {
 	MaxMatches    int                  `json:"maxMatches"`
 }
 
-// TODO(major): remove with external dependency annotations
-// Represents a dependency on an external resource outside of the Helm release.
-type ExternalDependency struct {
-	*spec.ResourceMeta `json:"resourceMeta"`
-}
-
 func NewResourceMetaFromDependency(dep *Dependency, releaseNamespace string) *spec.ResourceMeta {
 	return spec.NewResourceMeta(dep.Names[0], lo.FirstOrEmpty(dep.Namespaces), releaseNamespace, "", schema.GroupVersionKind{
 		Group:   lo.FirstOrEmpty(dep.Groups),
