@@ -95,16 +95,15 @@ const (
 	DefaultBurstLimit = 100
 	// TODO(major): switch to if-possible
 	DefaultChartProvenanceStrategy = "never"
-	// TODO(major): reconsider?
-	DefaultDeletePropagation     = metav1.DeletePropagationForeground
-	DefaultDiffContextLines      = 3
-	DefaultFieldManager          = "helm"
-	DefaultLocalKubeVersion      = "1.36.0"
-	DefaultLogColorMode          = log.LogColorModeAuto
-	DefaultNetworkParallelism    = 30
-	DefaultProgressPrintInterval = 5 * time.Second
-	DefaultQPSLimit              = 30
-	DefaultReleaseHistoryLimit   = 10
+	DefaultDeletePropagation       = metav1.DeletePropagationBackground
+	DefaultDiffContextLines        = 3
+	DefaultFieldManager            = "helm"
+	DefaultLocalKubeVersion        = "1.36.0"
+	DefaultLogColorMode            = log.LogColorModeAuto
+	DefaultNetworkParallelism      = 30
+	DefaultProgressPrintInterval   = 5 * time.Second
+	DefaultQPSLimit                = 30
+	DefaultReleaseHistoryLimit     = 10
 	// DefaultResourceValidationKubeVersion Kubernetes version to use during resource validation by kubeconform
 	DefaultResourceValidationKubeVersion = "1.35.0"
 	KubectlEditFieldManager              = "kubectl-edit"
