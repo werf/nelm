@@ -95,8 +95,8 @@ const (
 	DefaultBurstLimit = 100
 	// TODO(major): switch to if-possible
 	DefaultChartProvenanceStrategy = "never"
-	// TODO(major): reconsider?
-	DefaultDeletePropagation            = metav1.DeletePropagationForeground
+
+	DefaultDeletePropagation            = metav1.DeletePropagationBackground
 	DefaultDependencyExternal           = DependencyExternalAuto
 	DefaultDiffContextLines             = 3
 	DefaultExternalDependencyMaxMatches = 30
