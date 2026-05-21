@@ -264,7 +264,8 @@ func resolveDeployOpInStage(ctx context.Context, plan *Plan, instInfos []*Instal
 			Version:  OperationVersionTrackPresence,
 			Category: OperationCategoryTrack,
 			Config: &OperationConfigTrackPresence{
-				ResourceMeta: resMeta,
+				ResourceMeta:               resMeta,
+				CaseInsensitiveGVKMatching: true,
 			},
 		}
 
@@ -335,7 +336,8 @@ func resolveTrackAbsenceOpInStage(ctx context.Context, plan *Plan, delInfos []*D
 			Version:  OperationVersionTrackAbsence,
 			Category: OperationCategoryTrack,
 			Config: &OperationConfigTrackAbsence{
-				ResourceMeta: resMeta,
+				ResourceMeta:               resMeta,
+				CaseInsensitiveGVKMatching: true,
 			},
 		}
 
@@ -431,7 +433,8 @@ func resolveTrackReadinessOpInStage(ctx context.Context, plan *Plan, instInfos [
 			Version:  OperationVersionTrackReadiness,
 			Category: OperationCategoryTrack,
 			Config: &OperationConfigTrackReadiness{
-				ResourceMeta: resMeta,
+				ResourceMeta:               resMeta,
+				CaseInsensitiveGVKMatching: true,
 			},
 		}
 
