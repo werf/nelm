@@ -20,6 +20,7 @@ import (
 	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	"github.com/werf/nelm/pkg/common"
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/util"
 )
@@ -722,18 +723,6 @@ func ownership(meta *spec.ResourceMeta, releaseNamespace string, storeAs common.
 	}
 }
 
-func rejectDeprecatedExternalDependencies(meta *spec.ResourceMeta) error {
-	deprecatedAnnotationPattern := regexp.MustCompile(`^(?P<id>.+)\.external-dependency\.werf\.io(/resource|/namespace)?$`)
-
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, deprecatedAnnotationPattern); found {
-		for key := range annotations {
-			return fmt.Errorf("annotation %q in resource %q is no longer supported, use %q or %q instead", key, meta.IDHuman(), common.AnnotationKeyHumanDeployDependency, common.AnnotationKeyHumanDeleteDependency)
-		}
-	}
-
-	return nil
-}
-
 func showLogsOnlyForContainers(meta *spec.ResourceMeta) []string {
 	_, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternShowLogsOnlyForContainers)
 	if !found {
@@ -1275,6 +1264,16 @@ func validateWeight(meta *spec.ResourceMeta) error {
 	}
 
 	return nil
+}
+
+func warnDeprecatedExternalDependencies(ctx context.Context, meta *spec.ResourceMeta) {
+	deprecatedAnnotationPattern := regexp.MustCompile(`^(?P<id>.+)\.external-dependency\.werf\.io(/resource|/namespace)?$`)
+
+	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, deprecatedAnnotationPattern); found {
+		for key := range annotations {
+			log.Default.Warn(ctx, "annotation %q in resource %q is no longer supported, use %q or %q instead", key, meta.IDHuman(), common.AnnotationKeyHumanDeployDependency, common.AnnotationKeyHumanDeleteDependency)
+		}
+	}
 }
 
 func weight(meta *spec.ResourceMeta, hasManualInternalDeps bool) *int {

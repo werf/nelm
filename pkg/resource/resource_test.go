@@ -1,6 +1,7 @@
 package resource_test
 
 import (
+	"context"
 	"regexp"
 	"testing"
 	"time"
@@ -1277,7 +1278,7 @@ func runInstallableResourceTest(tc installableResourceTestCase, s *InstallableRe
 
 		resSpec := tc.input()
 
-		res, err := resource.NewInstallableResource(resSpec, nil, s.releaseNamespace, resource.InstallableResourceOptions{})
+		res, err := resource.NewInstallableResource(context.Background(), resSpec, nil, s.releaseNamespace, resource.InstallableResourceOptions{})
 		s.Require().NoError(err)
 
 		expectRes := tc.expect(resSpec)
