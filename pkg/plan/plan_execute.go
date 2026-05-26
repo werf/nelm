@@ -164,7 +164,7 @@ func execOpRecreate(ctx context.Context, op *Operation, releaseNamespace string,
 		return fmt.Errorf("delete resource: %w", err)
 	}
 
-	namespace, err := getNamespace(opConfig.ResourceSpec.ResourceMeta, releaseNamespace, clientFactory, false)
+	namespace, err := getNamespace(opConfig.ResourceSpec.ResourceMeta, releaseNamespace, clientFactory)
 	if err != nil {
 		return fmt.Errorf("determine resource namespace: %w", err)
 	}
@@ -178,7 +178,8 @@ func execOpRecreate(ctx context.Context, op *Operation, releaseNamespace string,
 	})
 
 	tracker := dyntracker.NewDynamicAbsenceTracker(taskState, informerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicAbsenceTrackerOptions{
-		Timeout: absenceTimeout,
+		Timeout:                    absenceTimeout,
+		CaseInsensitiveGVKMatching: true,
 	})
 
 	if err := tracker.Track(ctx); err != nil {
@@ -198,7 +199,7 @@ func execOpRecreate(ctx context.Context, op *Operation, releaseNamespace string,
 func execOpTrackAbsence(ctx context.Context, op *Operation, releaseNamespace string, taskStore *kdutil.Concurrent[*statestore.TaskStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], timeout time.Duration, clientFactory kube.ClientFactorier) error {
 	opConfig := op.Config.(*OperationConfigTrackAbsence)
 
-	namespace, err := getNamespace(opConfig.ResourceMeta, releaseNamespace, clientFactory, opConfig.CaseInsensitiveGVKMatching)
+	namespace, err := getNamespace(opConfig.ResourceMeta, releaseNamespace, clientFactory)
 	if err != nil {
 		return fmt.Errorf("determine resource namespace: %w", err)
 	}
@@ -213,7 +214,7 @@ func execOpTrackAbsence(ctx context.Context, op *Operation, releaseNamespace str
 
 	tracker := dyntracker.NewDynamicAbsenceTracker(taskState, informerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicAbsenceTrackerOptions{
 		Timeout:                    timeout,
-		CaseInsensitiveGVKMatching: opConfig.CaseInsensitiveGVKMatching,
+		CaseInsensitiveGVKMatching: true,
 	})
 
 	if err := tracker.Track(ctx); err != nil {
@@ -226,7 +227,7 @@ func execOpTrackAbsence(ctx context.Context, op *Operation, releaseNamespace str
 func execOpTrackPresence(ctx context.Context, op *Operation, releaseNamespace string, taskStore *kdutil.Concurrent[*statestore.TaskStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], timeout time.Duration, clientFactory kube.ClientFactorier) error {
 	opConfig := op.Config.(*OperationConfigTrackPresence)
 
-	namespace, err := getNamespace(opConfig.ResourceMeta, releaseNamespace, clientFactory, opConfig.CaseInsensitiveGVKMatching)
+	namespace, err := getNamespace(opConfig.ResourceMeta, releaseNamespace, clientFactory)
 	if err != nil {
 		return fmt.Errorf("determine resource namespace: %w", err)
 	}
@@ -241,7 +242,7 @@ func execOpTrackPresence(ctx context.Context, op *Operation, releaseNamespace st
 
 	tracker := dyntracker.NewDynamicPresenceTracker(taskState, informerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicPresenceTrackerOptions{
 		Timeout:                    timeout,
-		CaseInsensitiveGVKMatching: opConfig.CaseInsensitiveGVKMatching,
+		CaseInsensitiveGVKMatching: true,
 	})
 
 	if err := tracker.Track(ctx); err != nil {
@@ -254,7 +255,7 @@ func execOpTrackPresence(ctx context.Context, op *Operation, releaseNamespace st
 func execOpTrackReadiness(ctx context.Context, op *Operation, releaseNamespace string, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], timeout time.Duration, clientFactory kube.ClientFactorier) error {
 	opConfig := op.Config.(*OperationConfigTrackReadiness)
 
-	namespace, err := getNamespace(opConfig.ResourceMeta, releaseNamespace, clientFactory, opConfig.CaseInsensitiveGVKMatching)
+	namespace, err := getNamespace(opConfig.ResourceMeta, releaseNamespace, clientFactory)
 	if err != nil {
 		return fmt.Errorf("determine resource namespace: %w", err)
 	}
@@ -274,6 +275,7 @@ func execOpTrackReadiness(ctx context.Context, op *Operation, releaseNamespace s
 		Timeout:                                  timeout,
 		NoActivityTimeout:                        opConfig.NoActivityTimeout,
 		IgnoreReadinessProbeFailsByContainerName: opConfig.IgnoreReadinessProbeFailsByContainerName,
+		CaseInsensitiveGVKMatching:               true,
 		SaveLogsOnlyForNumberOfReplicas:          opConfig.SaveLogsOnlyForNumberOfReplicas,
 		SaveLogsOnlyForContainers:                opConfig.SaveLogsOnlyForContainers,
 		SaveLogsByRegex:                          opConfig.SaveLogsByRegex,
@@ -283,7 +285,6 @@ func execOpTrackReadiness(ctx context.Context, op *Operation, releaseNamespace s
 		IgnoreLogsByRegex:                        opConfig.IgnoreLogsByRegex,
 		IgnoreLogsByRegexForContainers:           opConfig.IgnoreLogsByRegexForContainers,
 		SaveEvents:                               opConfig.SaveEvents,
-		CaseInsensitiveGVKMatching:               opConfig.CaseInsensitiveGVKMatching,
 	})
 	if err != nil {
 		return fmt.Errorf("construct dynamic readiness tracker: %w", err)
@@ -387,11 +388,8 @@ func findExecutableOpsIDs(opsMap map[string]map[string]graph.Edge[string]) []str
 	return executableOpsIDs
 }
 
-func getNamespace(resMeta *spec.ResourceMeta, releaseNamespace string, clientFactory kube.ClientFactorier, caseInsensitiveGVKMatching bool) (string, error) {
-	gvk := resMeta.GroupVersionKind
-	if caseInsensitiveGVKMatching {
-		gvk = kdutil.LowercaseGVK(gvk)
-	}
+func getNamespace(resMeta *spec.ResourceMeta, releaseNamespace string, clientFactory kube.ClientFactorier) (string, error) {
+	gvk := kdutil.LowercaseGVK(resMeta.GroupVersionKind)
 
 	var namespace string
 	if namespaced, err := spec.Namespaced(gvk, clientFactory.Mapper()); err != nil {

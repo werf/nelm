@@ -112,8 +112,7 @@ func (c *OperationConfigDelete) IDHuman() string {
 }
 
 type OperationConfigTrackReadiness struct {
-	ResourceMeta               *spec.ResourceMeta `json:"resourceMeta"`
-	CaseInsensitiveGVKMatching bool               `json:"caseInsensitiveGVKMatching"`
+	ResourceMeta *spec.ResourceMeta `json:"resourceMeta"`
 
 	FailMode                                 statestore.FailMode       `json:"failMode"`
 	FailuresAllowed                          int                       `json:"failuresAllowed"`
@@ -139,8 +138,7 @@ func (c *OperationConfigTrackReadiness) IDHuman() string {
 }
 
 type OperationConfigTrackPresence struct {
-	ResourceMeta               *spec.ResourceMeta `json:"resourceMeta"`
-	CaseInsensitiveGVKMatching bool               `json:"caseInsensitiveGVKMatching"`
+	ResourceMeta *spec.ResourceMeta `json:"resourceMeta"`
 }
 
 func (c *OperationConfigTrackPresence) ID() string {
@@ -152,8 +150,7 @@ func (c *OperationConfigTrackPresence) IDHuman() string {
 }
 
 type OperationConfigTrackAbsence struct {
-	ResourceMeta               *spec.ResourceMeta `json:"resourceMeta"`
-	CaseInsensitiveGVKMatching bool               `json:"caseInsensitiveGVKMatching"`
+	ResourceMeta *spec.ResourceMeta `json:"resourceMeta"`
 }
 
 func (c *OperationConfigTrackAbsence) ID() string {
