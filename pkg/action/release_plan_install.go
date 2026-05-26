@@ -336,8 +336,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
 		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
-	}, clientFactory, resource.BuildResourcesOptions{
-		Remote:                   true,
+	}, resource.BuildResourcesOptions{
 		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 	})
 	if err != nil {

@@ -13,7 +13,6 @@ import (
 
 	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/resource/spec"
 )
 
@@ -47,14 +46,13 @@ type InstallableResource struct {
 	Weight                                 *int                            `json:"weight,omitempty"`
 	ManualDependencies                     []*Dependency                   `json:"manualDependencies,omitempty"`
 	AutoInternalDependencies               []*Dependency                   `json:"autoInternalDependencies,omitempty"`
-	ExternalDependencies                   []*ExternalDependency           `json:"externalDependencies,omitempty"`
 	DeployConditions                       map[common.On][]common.Stage    `json:"deployConditions"`
 	DeletePropagation                      metav1.DeletionPropagation      `json:"deletePropagation"`
 }
 
 // Construct an InstallableResource from a ResourceSpec. Must never contact the cluster, because
 // this is called even when no cluster access allowed.
-func NewInstallableResource(res *spec.ResourceSpec, otherResourceSpecs []*spec.ResourceSpec, releaseNamespace string, clientFactory kube.ClientFactorier, opts InstallableResourceOptions) (*InstallableResource, error) {
+func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherResourceSpecs []*spec.ResourceSpec, releaseNamespace string, opts InstallableResourceOptions) (*InstallableResource, error) {
 	otherResourceMetaList := lo.Map(otherResourceSpecs, func(resSpec *spec.ResourceSpec, _ int) *spec.ResourceMeta {
 		return resSpec.ResourceMeta
 	})
@@ -91,9 +89,7 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResourceSpecs []*spec.R
 		return nil, fmt.Errorf("validate delete dependencies: %w", err)
 	}
 
-	if err := validateExternalDependencies(res.ResourceMeta); err != nil {
-		return nil, fmt.Errorf("validate external dependencies: %w", err)
-	}
+	warnDeprecatedExternalDependencies(ctx, res.ResourceMeta)
 
 	if err := validateSensitive(res.ResourceMeta); err != nil {
 		return nil, fmt.Errorf("validate sensitive: %w", err)
@@ -111,11 +107,6 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResourceSpecs []*spec.R
 		return nil, fmt.Errorf("validate delete propagation: %w", err)
 	}
 
-	extDeps, err := externalDependencies(res.ResourceMeta, releaseNamespace, clientFactory, opts.Remote)
-	if err != nil {
-		return nil, fmt.Errorf("get external dependencies: %w", err)
-	}
-
 	manDeps := manualDeployDependencies(res.ResourceMeta, otherResourceMetaList)
 	internalDeps := lo.Filter(manDeps, func(item *Dependency, _ int) bool {
 		return !item.External
@@ -129,7 +120,6 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResourceSpecs []*spec.R
 		DeleteOnSucceeded:                      deleteOnSucceeded(res.ResourceMeta),
 		DeletePropagation:                      deletePropagation(res.ResourceMeta, opts.DefaultDeletePropagation),
 		DeployConditions:                       deployConditions(res.ResourceMeta, len(internalDeps) > 0),
-		ExternalDependencies:                   extDeps,
 		FailMode:                               failMode(res.ResourceMeta),
 		FailuresAllowed:                        failuresAllowed(res.Unstruct),
 		IgnoreReadinessProbeFailsForContainers: ignoreReadinessProbeFailsForContainers(res.ResourceMeta),
@@ -156,7 +146,6 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResourceSpecs []*spec.R
 type InstallableResourceOptions struct {
 	DefaultDeletePropagation metav1.DeletionPropagation
 	NoPodLogs                bool
-	Remote                   bool
 }
 
 // Represent a Kubernetes resource that can be deleted. Higher level than ResourceMeta, but lower
@@ -225,13 +214,12 @@ type DeletableResourceOptions struct {
 type BuildResourcesOptions struct {
 	DefaultDeletePropagation metav1.DeletionPropagation
 	NoPodLogs                bool
-	Remote                   bool
 }
 
 // Build Installable/DeletableResources from ResourceSpecs. Resulting Resources can be used to
 // construct Installable/DeletableResourceInfos later. Must never contact the cluster, because this
 // is called even when no cluster access allowed.
-func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRelResSpecs, newRelResSpecs []*spec.ResourceSpec, patchers []spec.ResourcePatcher, clientFactory kube.ClientFactorier, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
+func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRelResSpecs, newRelResSpecs []*spec.ResourceSpec, patchers []spec.ResourcePatcher, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
 	var prevRelDelResources []*DeletableResource
 	for _, resSpec := range prevRelResSpecs {
 		deletableRes, err := NewDeletableResource(resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, DeletableResourceOptions{
@@ -246,10 +234,9 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 
 	var prevRelInstResources []*InstallableResource
 	for _, resSpec := range prevRelResSpecs {
-		installableResource, err := NewInstallableResource(resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, clientFactory, InstallableResourceOptions{
+		installableResource, err := NewInstallableResource(ctx, resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 			NoPodLogs:                opts.NoPodLogs,
-			Remote:                   opts.Remote,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct installable resource: %w", err)
@@ -260,10 +247,9 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 
 	var newRelInstResources []*InstallableResource
 	for _, resSpec := range newRelResSpecs {
-		installableResource, err := NewInstallableResource(resSpec, lo.Without(newRelResSpecs, resSpec), releaseNamespace, clientFactory, InstallableResourceOptions{
+		installableResource, err := NewInstallableResource(ctx, resSpec, lo.Without(newRelResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 			NoPodLogs:                opts.NoPodLogs,
-			Remote:                   opts.Remote,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct installable resource: %w", err)
@@ -361,10 +347,9 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 
 	var instResources []*InstallableResource
 	for _, resSpec := range patchedResSpecs {
-		instRes, err := NewInstallableResource(resSpec, lo.Without(patchedResSpecs, resSpec), releaseNamespace, clientFactory, InstallableResourceOptions{
+		instRes, err := NewInstallableResource(ctx, resSpec, lo.Without(patchedResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 			NoPodLogs:                opts.NoPodLogs,
-			Remote:                   opts.Remote,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct deployable resource: %w", err)

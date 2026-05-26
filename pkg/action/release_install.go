@@ -430,8 +430,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
 			spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 			spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
-		}, clientFactory, resource.BuildResourcesOptions{
-			Remote:                   true,
+		}, resource.BuildResourcesOptions{
 			DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 			NoPodLogs:                opts.NoPodLogs,
 		})
@@ -846,8 +845,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 	instResources, delResources, err := resource.BuildResources(ctx, common.DeployTypeRollback, releaseNamespace, failedRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
 		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
-	}, clientFactory, resource.BuildResourcesOptions{
-		Remote:                   true,
+	}, resource.BuildResourcesOptions{
 		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 		NoPodLogs:                opts.NoPodLogs,
 	})

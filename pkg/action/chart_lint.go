@@ -321,8 +321,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	instResources, delResources, err := resource.BuildResources(ctx, deployType, opts.ReleaseNamespace, prevRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
 		spec.NewReleaseMetadataPatcher(opts.ReleaseName, opts.ReleaseNamespace),
 		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
-	}, clientFactory, resource.BuildResourcesOptions{
-		Remote:                   opts.Remote,
+	}, resource.BuildResourcesOptions{
 		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 	})
 	if err != nil {

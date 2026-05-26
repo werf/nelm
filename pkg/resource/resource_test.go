@@ -16,8 +16,6 @@ import (
 
 	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/kube"
-	"github.com/werf/nelm/pkg/kube/fake"
 	"github.com/werf/nelm/pkg/resource"
 	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/test"
@@ -26,25 +24,17 @@ import (
 type InstallableResourceSuite struct {
 	suite.Suite
 
-	clientFactory    kube.ClientFactorier
 	cmpOpts          cmp.Options
 	releaseNamespace string
 }
 
 func (s *InstallableResourceSuite) SetupSuite() {
-	ctx := context.Background()
-
 	s.releaseNamespace = "test-namespace"
 	s.cmpOpts = cmp.Options{
 		cmpopts.EquateEmpty(),
 		test.CompareRegexpOption(),
 		test.CompareInternalDependencyOption(),
 	}
-
-	var err error
-
-	s.clientFactory, err = fake.NewClientFactory(ctx)
-	s.Require().NoError(err)
 }
 
 func (s *InstallableResourceSuite) TestNewInstallableResourceForDefaults() {
@@ -1288,7 +1278,7 @@ func runInstallableResourceTest(tc installableResourceTestCase, s *InstallableRe
 
 		resSpec := tc.input()
 
-		res, err := resource.NewInstallableResource(resSpec, nil, s.releaseNamespace, s.clientFactory, resource.InstallableResourceOptions{})
+		res, err := resource.NewInstallableResource(context.Background(), resSpec, nil, s.releaseNamespace, resource.InstallableResourceOptions{})
 		s.Require().NoError(err)
 
 		expectRes := tc.expect(resSpec)

@@ -641,20 +641,6 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 			stg = info.Stage
 		}
 
-		if info.MustInstall != ResourceInstallTypeNone {
-			for _, extDep := range info.LocalResource.ExternalDependencies {
-				trackOp := &Operation{
-					Type:     OperationTypeTrackPresence,
-					Version:  OperationVersionTrackPresence,
-					Category: OperationCategoryTrack,
-					Config: &OperationConfigTrackPresence{
-						ResourceMeta: extDep.ResourceMeta,
-					},
-				}
-				chain.AddOperation(trackOp).Stage(stg).SkipOnDuplicate()
-			}
-		}
-
 		switch info.MustInstall {
 		case ResourceInstallTypeCreate:
 			createOp := &Operation{
