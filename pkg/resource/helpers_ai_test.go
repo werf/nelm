@@ -3,6 +3,7 @@
 package resource_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -102,7 +103,7 @@ func makeInstallableResource(t *testing.T, obj map[string]interface{}, releaseNa
 	unstruct := &unstructured.Unstructured{Object: obj}
 	resSpec := spec.NewResourceSpec(unstruct, releaseNamespace, spec.ResourceSpecOptions{})
 
-	instRes, err := resource.NewInstallableResource(resSpec, releaseNamespace, nil, resource.InstallableResourceOptions{})
+	instRes, err := resource.NewInstallableResource(context.Background(), resSpec, nil, releaseNamespace, resource.InstallableResourceOptions{})
 	require.NoError(t, err)
 
 	return instRes

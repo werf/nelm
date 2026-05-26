@@ -13,7 +13,6 @@ import (
 	"github.com/ohler55/ojg/jp"
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	apiv1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -21,7 +20,7 @@ import (
 	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	"github.com/werf/nelm/pkg/common"
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
-	"github.com/werf/nelm/pkg/kube"
+	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/util"
 )
@@ -117,34 +116,6 @@ func deployConditions(meta *spec.ResourceMeta, hasManualInternalDeps bool) map[c
 		common.InstallOnUpgrade:  {common.StageInstall},
 		common.InstallOnRollback: {common.StageInstall},
 	}
-}
-
-// TODO(major): use deploy/delete deps instead
-func externalDependencies(meta *spec.ResourceMeta, releaseNamespace string, clientFactory kube.ClientFactorier, remote bool) ([]*ExternalDependency, error) {
-	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
-		return nil, nil
-	}
-
-	deps := externalDeps(meta, releaseNamespace)
-
-	legacyExtDeps := map[string]*ExternalDependency{}
-
-	// Pretend that we don't have any external dependencies when we don't have cluster access, since we need cluster access to map GVR to GVK.
-	if remote {
-		var err error
-
-		legacyExtDeps, err = legacyExternalDeps(meta, releaseNamespace, clientFactory.Mapper())
-		if err != nil {
-			return nil, fmt.Errorf("get legacy external dependencies: %w", err)
-		}
-	}
-
-	duplResult := lo.Values(lo.Assign(legacyExtDeps, deps))
-	uniqResult := lo.UniqBy(duplResult, func(d *ExternalDependency) string {
-		return d.ID()
-	})
-
-	return uniqResult, nil
 }
 
 func manualDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta) []*Dependency {
@@ -612,49 +583,6 @@ func deployConditionsForAnnotation(meta *spec.ResourceMeta, annoPattern *regexp.
 	return result
 }
 
-func externalDeps(resMeta *spec.ResourceMeta, releaseNamespace string) map[string]*ExternalDependency {
-	deps := map[string]*ExternalDependency{}
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(resMeta.Annotations, common.AnnotationKeyPatternExternalDependency); found {
-		for key, value := range annotations {
-			matches := common.AnnotationKeyPatternExternalDependency.FindStringSubmatch(key)
-			idSubexpIndex := common.AnnotationKeyPatternExternalDependency.SubexpIndex("id")
-			depID := matches[idSubexpIndex]
-			valParts := strings.Split(value, ":")
-			depAPIVersionParts := strings.SplitN(valParts[0], "/", 2)
-
-			var gvk schema.GroupVersionKind
-			if len(depAPIVersionParts) == 1 {
-				gvk = schema.GroupVersionKind{
-					Version: depAPIVersionParts[0],
-					Kind:    valParts[1],
-				}
-			} else {
-				gvk = schema.GroupVersionKind{
-					Group:   depAPIVersionParts[0],
-					Version: depAPIVersionParts[1],
-					Kind:    valParts[1],
-				}
-			}
-
-			var depNamespace string
-			if len(valParts) == 4 {
-				depNamespace = valParts[2]
-			}
-
-			depName := valParts[len(valParts)-1]
-
-			resMeta := spec.NewResourceMeta(depName, depNamespace, releaseNamespace, "", gvk, nil, nil)
-			dep := &ExternalDependency{
-				ResourceMeta: resMeta,
-			}
-
-			deps[depID] = dep
-		}
-	}
-
-	return deps
-}
-
 func failMode(meta *spec.ResourceMeta) statestore.FailMode {
 	_, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternFailMode)
 	if !found {
@@ -734,63 +662,6 @@ func isExternalDependency(matcher *spec.ResourceMatcher, otherResMeta []*spec.Re
 	default:
 		panic(fmt.Sprintf("unexpected external dependency value: %q", external))
 	}
-}
-
-// TODO(major): get rid of legacy external deps
-func legacyExternalDeps(resMeta *spec.ResourceMeta, releaseNamespace string, mapper apimeta.ResettableRESTMapper) (map[string]*ExternalDependency, error) {
-	deps := map[string]*ExternalDependency{}
-
-	type DepInfo struct {
-		Name      string
-		Namespace string
-		Type      string
-	}
-
-	extDepInfos := map[string]*DepInfo{}
-
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(resMeta.Annotations, common.AnnotationKeyPatternLegacyExternalDependencyResource); found {
-		for key, value := range annotations {
-			matches := common.AnnotationKeyPatternLegacyExternalDependencyResource.FindStringSubmatch(key)
-			idSubexpIndex := common.AnnotationKeyPatternLegacyExternalDependencyResource.SubexpIndex("id")
-			extDepID := matches[idSubexpIndex]
-			extDepType := strings.Split(value, "/")[0]
-			extDepName := strings.Split(value, "/")[1]
-
-			extDepInfos[extDepID] = &DepInfo{
-				Name: extDepName,
-				Type: extDepType,
-			}
-		}
-	}
-
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(resMeta.Annotations, common.AnnotationKeyPatternLegacyExternalDependencyNamespace); found {
-		for key, value := range annotations {
-			matches := common.AnnotationKeyPatternLegacyExternalDependencyNamespace.FindStringSubmatch(key)
-			idSubexpIndex := common.AnnotationKeyPatternLegacyExternalDependencyNamespace.SubexpIndex("id")
-			extDepID := matches[idSubexpIndex]
-			extDepNamespace := value
-
-			if extDepInfo, hasKey := extDepInfos[extDepID]; hasKey {
-				extDepInfo.Namespace = extDepNamespace
-			}
-		}
-	}
-
-	for extDepID, extDepInfo := range extDepInfos {
-		gvk, err := spec.ParseKubectlResourceStringtoGVK(extDepInfo.Type, mapper)
-		if err != nil {
-			return nil, fmt.Errorf("parse external dependency resource type %q for dependency %q (namespace: %q): %w", extDepInfo.Type, extDepInfo.Name, extDepInfo.Namespace, err)
-		}
-
-		resMeta := spec.NewResourceMeta(extDepInfo.Name, extDepInfo.Namespace, releaseNamespace, "", gvk, nil, nil)
-		dep := &ExternalDependency{
-			ResourceMeta: resMeta,
-		}
-
-		deps[extDepID] = dep
-	}
-
-	return deps, nil
 }
 
 func logRegex(meta *spec.ResourceMeta) *regexp.Regexp {
@@ -1036,98 +907,6 @@ func validateDeployOn(meta *spec.ResourceMeta) error {
 				"test-success":
 			default:
 				return fmt.Errorf("value %q for annotation %q is not supported", value, key)
-			}
-		}
-	}
-
-	return nil
-}
-
-func validateExternalDependencies(meta *spec.ResourceMeta) error {
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternExternalDependency); found {
-		for key, value := range annotations {
-			keyMatches := common.AnnotationKeyPatternExternalDependency.FindStringSubmatch(key)
-			if keyMatches == nil {
-				return fmt.Errorf("invalid key for annotation %q", key)
-			}
-
-			idSubexpIndex := common.AnnotationKeyPatternExternalDependency.SubexpIndex("id")
-			if idSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternExternalDependency.String(), key)
-			}
-
-			if len(keyMatches) < idSubexpIndex+1 {
-				return fmt.Errorf("can't parse external dependency id from annotation key %q", key)
-			}
-
-			valueElems := strings.Split(value, ":")
-
-			if len(valueElems) != 3 && len(valueElems) != 4 {
-				return fmt.Errorf(`invalid format of value %q for annotation %q, should be: apiVersion:kind[:namespace]:name`, value, key)
-			}
-		}
-	}
-
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternLegacyExternalDependencyResource); found {
-		for key, value := range annotations {
-			keyMatches := common.AnnotationKeyPatternLegacyExternalDependencyResource.FindStringSubmatch(key)
-			if keyMatches == nil {
-				return fmt.Errorf("invalid key for annotation %q", key)
-			}
-
-			idSubexpIndex := common.AnnotationKeyPatternLegacyExternalDependencyResource.SubexpIndex("id")
-			if idSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternLegacyExternalDependencyResource.String(), key)
-			}
-
-			if len(keyMatches) < idSubexpIndex+1 {
-				return fmt.Errorf("can't parse external dependency id from annotation key %q", key)
-			}
-
-			valueElems := strings.Split(value, "/")
-
-			if len(valueElems) != 2 {
-				return fmt.Errorf(`invalid format of value %q for annotation %q, should be: type/name`, value, key)
-			}
-
-			switch valueElems[0] {
-			case "":
-				return fmt.Errorf("value %q of annotation %q can't have empty resource type", value, key)
-			case "all":
-				return fmt.Errorf(`"all" resource type in value %q of annotation %q is not allowed`, value, key)
-			}
-
-			resourceTypeParts := strings.Split(valueElems[0], ".")
-			for _, part := range resourceTypeParts {
-				if part == "" {
-					return fmt.Errorf("resource type in value %q of annotation %q should have dots (.) delimiting only non-empty resource.version.group", value, key)
-				}
-			}
-
-			if valueElems[1] == "" {
-				return fmt.Errorf("in value %q of annotation %q resource name can't be empty", value, key)
-			}
-		}
-	}
-
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternLegacyExternalDependencyNamespace); found {
-		for key, value := range annotations {
-			keyMatches := common.AnnotationKeyPatternLegacyExternalDependencyNamespace.FindStringSubmatch(key)
-			if keyMatches == nil {
-				return fmt.Errorf("invalid key for annotation %q", key)
-			}
-
-			idSubexpIndex := common.AnnotationKeyPatternLegacyExternalDependencyNamespace.SubexpIndex("id")
-			if idSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternLegacyExternalDependencyNamespace.String(), key)
-			}
-
-			if len(keyMatches) < idSubexpIndex+1 {
-				return fmt.Errorf("can't parse external dependency id from annotation key %q", key)
-			}
-
-			if value == "" {
-				return fmt.Errorf("invalid value %q for annotation %q, value must not be empty", value, key)
 			}
 		}
 	}
@@ -1485,6 +1264,16 @@ func validateWeight(meta *spec.ResourceMeta) error {
 	}
 
 	return nil
+}
+
+func warnDeprecatedExternalDependencies(ctx context.Context, meta *spec.ResourceMeta) {
+	deprecatedAnnotationPattern := regexp.MustCompile(`^(?P<id>.+)\.external-dependency\.werf\.io(/resource|/namespace)?$`)
+
+	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, deprecatedAnnotationPattern); found {
+		for key := range annotations {
+			log.Default.Warn(ctx, "annotation %q in resource %q is no longer supported, use %q or %q instead", key, meta.IDHuman(), common.AnnotationKeyHumanDeployDependency, common.AnnotationKeyHumanDeleteDependency)
+		}
+	}
 }
 
 func weight(meta *spec.ResourceMeta, hasManualInternalDeps bool) *int {
