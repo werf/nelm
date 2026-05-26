@@ -401,7 +401,8 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			statestore.NewAbsenceTaskState(nsMeta.Name, "", nsMeta.GroupVersionKind, statestore.AbsenceTaskStateOptions{}),
 		)
 		tracker := dyntracker.NewDynamicAbsenceTracker(taskState, informerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicAbsenceTrackerOptions{
-			Timeout: opts.TrackDeletionTimeout,
+			Timeout:                    opts.TrackDeletionTimeout,
+			CaseInsensitiveGVKMatching: true,
 		})
 
 		if err := tracker.Track(ctx); err != nil {

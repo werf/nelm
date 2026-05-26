@@ -1,5 +1,7 @@
 package spec
 
+import "strings"
+
 type ResourceMatcher struct {
 	Names      []string `json:"names,omitempty"`
 	Namespaces []string `json:"namespaces,omitempty"`
@@ -46,7 +48,7 @@ func (s *ResourceMatcher) Match(resMeta *ResourceMeta) bool {
 		groupMatch = true
 	} else {
 		for _, group := range s.Groups {
-			if resMeta.GroupVersionKind.Group == group {
+			if strings.EqualFold(resMeta.GroupVersionKind.Group, group) {
 				groupMatch = true
 				break
 			}
@@ -62,7 +64,7 @@ func (s *ResourceMatcher) Match(resMeta *ResourceMeta) bool {
 		versionMatch = true
 	} else {
 		for _, version := range s.Versions {
-			if resMeta.GroupVersionKind.Version == version {
+			if strings.EqualFold(resMeta.GroupVersionKind.Version, version) {
 				versionMatch = true
 				break
 			}
@@ -78,7 +80,7 @@ func (s *ResourceMatcher) Match(resMeta *ResourceMeta) bool {
 		kindMatch = true
 	} else {
 		for _, kind := range s.Kinds {
-			if resMeta.GroupVersionKind.Kind == kind {
+			if strings.EqualFold(resMeta.GroupVersionKind.Kind, kind) {
 				kindMatch = true
 				break
 			}

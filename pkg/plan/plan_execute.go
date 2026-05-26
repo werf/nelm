@@ -178,7 +178,8 @@ func execOpRecreate(ctx context.Context, op *Operation, releaseNamespace string,
 	})
 
 	tracker := dyntracker.NewDynamicAbsenceTracker(taskState, informerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicAbsenceTrackerOptions{
-		Timeout: absenceTimeout,
+		Timeout:                    absenceTimeout,
+		CaseInsensitiveGVKMatching: true,
 	})
 
 	if err := tracker.Track(ctx); err != nil {
@@ -212,7 +213,8 @@ func execOpTrackAbsence(ctx context.Context, op *Operation, releaseNamespace str
 	})
 
 	tracker := dyntracker.NewDynamicAbsenceTracker(taskState, informerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicAbsenceTrackerOptions{
-		Timeout: timeout,
+		Timeout:                    timeout,
+		CaseInsensitiveGVKMatching: true,
 	})
 
 	if err := tracker.Track(ctx); err != nil {
@@ -239,7 +241,8 @@ func execOpTrackPresence(ctx context.Context, op *Operation, releaseNamespace st
 	})
 
 	tracker := dyntracker.NewDynamicPresenceTracker(taskState, informerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicPresenceTrackerOptions{
-		Timeout: timeout,
+		Timeout:                    timeout,
+		CaseInsensitiveGVKMatching: true,
 	})
 
 	if err := tracker.Track(ctx); err != nil {
@@ -272,6 +275,7 @@ func execOpTrackReadiness(ctx context.Context, op *Operation, releaseNamespace s
 		Timeout:                                  timeout,
 		NoActivityTimeout:                        opConfig.NoActivityTimeout,
 		IgnoreReadinessProbeFailsByContainerName: opConfig.IgnoreReadinessProbeFailsByContainerName,
+		CaseInsensitiveGVKMatching:               true,
 		SaveLogsOnlyForNumberOfReplicas:          opConfig.SaveLogsOnlyForNumberOfReplicas,
 		SaveLogsOnlyForContainers:                opConfig.SaveLogsOnlyForContainers,
 		SaveLogsByRegex:                          opConfig.SaveLogsByRegex,
@@ -385,8 +389,10 @@ func findExecutableOpsIDs(opsMap map[string]map[string]graph.Edge[string]) []str
 }
 
 func getNamespace(resMeta *spec.ResourceMeta, releaseNamespace string, clientFactory kube.ClientFactorier) (string, error) {
+	gvk := kdutil.LowercaseGVK(resMeta.GroupVersionKind)
+
 	var namespace string
-	if namespaced, err := spec.Namespaced(resMeta.GroupVersionKind, clientFactory.Mapper()); err != nil {
+	if namespaced, err := spec.Namespaced(gvk, clientFactory.Mapper()); err != nil {
 		return "", fmt.Errorf("check if resource is namespaced: %w", err)
 	} else if namespaced {
 		if resMeta.Namespace != "" {
