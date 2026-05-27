@@ -18,10 +18,9 @@ package action
 
 import (
 	"bytes"
-	"errors"
 
-	"helm.sh/helm/v3/pkg/kube"
-	"helm.sh/helm/v3/pkg/release"
+	"github.com/werf/nelm/pkg/helm/pkg/kube"
+	ri "github.com/werf/nelm/pkg/helm/pkg/release"
 )
 
 // Status is the action for checking the deployment status of releases.
@@ -31,15 +30,6 @@ type Status struct {
 	cfg *Configuration
 
 	Version int
-
-	// If true, display description to output format,
-	// only affect print type table.
-	// TODO Helm 4: Remove this flag and output the description by default.
-	ShowDescription bool
-
-	// ShowResources sets if the resources should be retrieved with the status.
-	// TODO Helm 4: Remove this flag and output the resources by default.
-	ShowResources bool
 
 	// ShowResourcesTable is used with ShowResources. When true this will cause
 	// the resulting objects to be retrieved as a kind=table.
@@ -54,42 +44,40 @@ func NewStatus(cfg *Configuration) *Status {
 }
 
 // Run executes 'helm status' against the given release.
-func (s *Status) Run(name string) (*release.Release, error) {
+func (s *Status) Run(name string) (ri.Releaser, error) {
 	if err := s.cfg.KubeClient.IsReachable(); err != nil {
 		return nil, err
 	}
 
-	if !s.ShowResources {
-		return s.cfg.releaseContent(name, s.Version)
-	}
-
-	rel, err := s.cfg.releaseContent(name, s.Version)
+	reli, err := s.cfg.releaseContent(name, s.Version)
 	if err != nil {
 		return nil, err
 	}
 
-	if kubeClient, ok := s.cfg.KubeClient.(kube.InterfaceResources); ok {
-		var resources kube.ResourceList
-		if s.ShowResourcesTable {
-			resources, err = kubeClient.BuildTable(bytes.NewBufferString(rel.Manifest), false)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			resources, err = s.cfg.KubeClient.Build(bytes.NewBufferString(rel.Manifest), false)
-			if err != nil {
-				return nil, err
-			}
-		}
+	rel, err := releaserToV1Release(reli)
+	if err != nil {
+		return nil, err
+	}
 
-		resp, err := kubeClient.Get(resources, true)
+	var resources kube.ResourceList
+	if s.ShowResourcesTable {
+		resources, err = s.cfg.KubeClient.BuildTable(bytes.NewBufferString(rel.Manifest), false)
 		if err != nil {
 			return nil, err
 		}
-
-		rel.Info.Resources = resp
-
-		return rel, nil
+	} else {
+		resources, err = s.cfg.KubeClient.Build(bytes.NewBufferString(rel.Manifest), false)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return nil, errors.New("unable to get kubeClient with interface InterfaceResources")
+
+	resp, err := s.cfg.KubeClient.Get(resources, true)
+	if err != nil {
+		return nil, err
+	}
+
+	rel.Info.Resources = resp
+
+	return rel, nil
 }

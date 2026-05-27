@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package kube // import "helm.sh/helm/v3/pkg/kube"
+package kube // import "helm.sh/helm/v4/pkg/kube"
 
 import "k8s.io/cli-runtime/pkg/resource"
 
@@ -26,7 +26,7 @@ func (r *ResourceList) Append(val *resource.Info) {
 	*r = append(*r, val)
 }
 
-// Visit implements resource.Visitor.
+// Visit implements resource.Visitor. The visitor stops if fn returns an error.
 func (r ResourceList) Visit(fn resource.VisitorFunc) error {
 	for _, i := range r {
 		if err := fn(i, nil); err != nil {
@@ -79,7 +79,14 @@ func (r ResourceList) Intersect(rs ResourceList) ResourceList {
 	return r.Filter(rs.Contains)
 }
 
-// isMatchingInfo returns true if infos match on Name and GroupVersionKind.
+// isMatchingInfo returns true if infos match on Name, Namespace, Group and Kind.
+//
+// IMPORTANT: Version is intentionally excluded from the comparison. Resources
+// served by the same CRD at different API versions (e.g. v2beta1 vs v2beta2)
+// share the same underlying storage in the Kubernetes API server. Comparing
+// the full GroupVersionKind causes Difference() to treat a version change as
+// a resource removal + addition, which makes Helm delete the resource it just
+// created during upgrades. See https://github.com/helm/helm/issues/31768
 func isMatchingInfo(a, b *resource.Info) bool {
-	return a.Name == b.Name && a.Namespace == b.Namespace && a.Mapping.GroupVersionKind.Kind == b.Mapping.GroupVersionKind.Kind
+	return a.Name == b.Name && a.Namespace == b.Namespace && a.Mapping.GroupVersionKind.GroupKind() == b.Mapping.GroupVersionKind.GroupKind()
 }

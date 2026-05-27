@@ -19,7 +19,7 @@ import (
 	"os"
 	"testing"
 
-	"helm.sh/helm/v3/pkg/helmpath/xdg"
+	"github.com/werf/nelm/pkg/helm/pkg/helmpath/xdg"
 )
 
 func TestHelmHome(t *testing.T) {

@@ -1,0 +1,12 @@
+---
+apiVersion: v1
+name: shortenv
+type: cli/v1
+runtime: subprocess
+config:
+  shortHelp: "env stuff"
+  longHelp: "show the env"
+  ignoreFlags: false
+runtimeConfig:
+  platformCommand:
+  - command: ${HELM_PLUGIN_DIR}/plugin-name.sh

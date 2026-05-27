@@ -17,6 +17,7 @@ package strvals
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"sigs.k8s.io/yaml"
@@ -626,7 +627,7 @@ func TestParseJSON(t *testing.T) {
 			},
 			err: false,
 		},
-		{ // null assigment, and no value assigned (equivalent to null)
+		{ // null assignment, and no value assigned (equivalent to null)
 			input: "outer.inner1=,outer.inner3={\"aa\":\"1\",\"bb\":2,\"cc\":[1,2,3]},outer.inner3.cc[1]=null",
 			got: map[string]interface{}{
 				"outer": map[string]interface{}{
@@ -757,13 +758,13 @@ func TestToYAML(t *testing.T) {
 }
 
 func TestParseSetNestedLevels(t *testing.T) {
-	var keyMultipleNestedLevels string
+	var keyMultipleNestedLevels strings.Builder
 	for i := 1; i <= MaxNestedNameLevel+2; i++ {
 		tmpStr := fmt.Sprintf("name%d", i)
 		if i <= MaxNestedNameLevel+1 {
 			tmpStr = tmpStr + "."
 		}
-		keyMultipleNestedLevels += tmpStr
+		keyMultipleNestedLevels.WriteString(tmpStr)
 	}
 	tests := []struct {
 		str    string
@@ -778,7 +779,7 @@ func TestParseSetNestedLevels(t *testing.T) {
 			"",
 		},
 		{
-			str: keyMultipleNestedLevels + "=value",
+			str: keyMultipleNestedLevels.String() + "=value",
 			err: true,
 			errStr: fmt.Sprintf("value name nested level is greater than maximum supported nested level of %d",
 				MaxNestedNameLevel),

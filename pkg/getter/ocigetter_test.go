@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"helm.sh/helm/v3/pkg/registry"
+	"github.com/werf/nelm/pkg/helm/pkg/registry"
 )
 
 func TestOCIGetter(t *testing.T) {
@@ -42,7 +42,7 @@ func TestOCIGetter(t *testing.T) {
 	insecureSkipVerifyTLS := false
 	plainHTTP := false
 
-	// Test with options
+	// Test with getterOptions
 	g, err = NewOCIGetter(
 		WithBasicAuth("I", "Am"),
 		WithTLSClientConfig(pub, priv, ca),

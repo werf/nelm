@@ -16,7 +16,9 @@ limitations under the License.
 package pusher
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -24,11 +26,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
-
-	"helm.sh/helm/v3/internal/tlsutil"
-	"helm.sh/helm/v3/pkg/chart/loader"
-	"helm.sh/helm/v3/pkg/registry"
+	"github.com/werf/nelm/pkg/helm/intern/tlsutil"
+	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/loader"
+	"github.com/werf/nelm/pkg/helm/pkg/registry"
 )
 
 // OCIPusher is the default OCI backend handler
@@ -47,8 +47,8 @@ func (pusher *OCIPusher) Push(chartRef, href string, options ...Option) error {
 func (pusher *OCIPusher) push(chartRef, href string) error {
 	stat, err := os.Stat(chartRef)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return errors.Errorf("%s: no such file", chartRef)
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("%s: no such file", chartRef)
 		}
 		return err
 	}
@@ -89,6 +89,10 @@ func (pusher *OCIPusher) push(chartRef, href string) error {
 		path.Join(strings.TrimPrefix(href, fmt.Sprintf("%s://", registry.OCIScheme)), meta.Metadata.Name),
 		meta.Metadata.Version)
 
+	// The time the chart was "created" is semantically the time the chart archive file was last written(modified)
+	chartArchiveFileCreatedTime := stat.ModTime()
+	pushOpts = append(pushOpts, registry.PushOptCreationTime(chartArchiveFileCreatedTime.Format(time.RFC3339)))
+
 	_, err = client.Push(chartBytes, ref, pushOpts...)
 	return err
 }
@@ -105,10 +109,14 @@ func NewOCIPusher(ops ...Option) (Pusher, error) {
 }
 
 func (pusher *OCIPusher) newRegistryClient() (*registry.Client, error) {
-	if (pusher.opts.certFile != "" && pusher.opts.keyFile != "") || pusher.opts.caFile != "" || pusher.opts.insecureSkipTLSverify {
-		tlsConf, err := tlsutil.NewClientTLS(pusher.opts.certFile, pusher.opts.keyFile, pusher.opts.caFile, pusher.opts.insecureSkipTLSverify)
+	if (pusher.opts.certFile != "" && pusher.opts.keyFile != "") || pusher.opts.caFile != "" || pusher.opts.insecureSkipTLSVerify {
+		tlsConf, err := tlsutil.NewTLSConfig(
+			tlsutil.WithInsecureSkipVerify(pusher.opts.insecureSkipTLSVerify),
+			tlsutil.WithCertKeyPairFiles(pusher.opts.certFile, pusher.opts.keyFile),
+			tlsutil.WithCAFile(pusher.opts.caFile),
+		)
 		if err != nil {
-			return nil, errors.Wrap(err, "can't create TLS config for client")
+			return nil, fmt.Errorf("can't create TLS config for client: %w", err)
 		}
 
 		registryClient, err := registry.NewClient(

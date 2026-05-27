@@ -20,10 +20,10 @@ import (
 	"io"
 	"strings"
 
-	"helm.sh/helm/v3/pkg/cli"
-	"helm.sh/helm/v3/pkg/pusher"
-	"helm.sh/helm/v3/pkg/registry"
-	"helm.sh/helm/v3/pkg/uploader"
+	"github.com/werf/nelm/pkg/helm/pkg/cli"
+	"github.com/werf/nelm/pkg/helm/pkg/pusher"
+	"github.com/werf/nelm/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/pkg/helm/pkg/uploader"
 )
 
 // Push is the action for uploading a chart.
@@ -35,7 +35,7 @@ type Push struct {
 	certFile              string
 	keyFile               string
 	caFile                string
-	insecureSkipTLSverify bool
+	insecureSkipTLSVerify bool
 	plainHTTP             bool
 	out                   io.Writer
 }
@@ -62,7 +62,7 @@ func WithTLSClientConfig(certFile, keyFile, caFile string) PushOpt {
 // WithInsecureSkipTLSVerify determines if a TLS Certificate will be checked
 func WithInsecureSkipTLSVerify(insecureSkipTLSVerify bool) PushOpt {
 	return func(p *Push) {
-		p.insecureSkipTLSverify = insecureSkipTLSVerify
+		p.insecureSkipTLSVerify = insecureSkipTLSVerify
 	}
 }
 
@@ -73,7 +73,7 @@ func WithPlainHTTP(plainHTTP bool) PushOpt {
 	}
 }
 
-// WithOptWriter sets the registryOut field on the push configuration object.
+// WithPushOptWriter sets the registryOut field on the push configuration object.
 func WithPushOptWriter(out io.Writer) PushOpt {
 	return func(p *Push) {
 		p.out = out
@@ -98,7 +98,7 @@ func (p *Push) Run(chartRef string, remote string) (string, error) {
 		Pushers: pusher.All(p.Settings),
 		Options: []pusher.Option{
 			pusher.WithTLSClientConfig(p.certFile, p.keyFile, p.caFile),
-			pusher.WithInsecureSkipTLSVerify(p.insecureSkipTLSverify),
+			pusher.WithInsecureSkipTLSVerify(p.insecureSkipTLSVerify),
 			pusher.WithPlainHTTP(p.plainHTTP),
 		},
 	}
