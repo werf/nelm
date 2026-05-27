@@ -141,7 +141,7 @@ func TestCreate_Overwrite(t *testing.T) {
 	}
 
 	if errlog.Len() == 0 {
-		t.Errorf("Expected warnings about overwriting files.")
+		t.Error("Expected warnings about overwriting files.")
 	}
 }
 

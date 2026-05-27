@@ -145,8 +145,8 @@ func warnWrap(warn string) string {
 
 // 'include' needs to be defined in the scope of a 'tpl' template as
 // well as regular file-loaded templates.
-func includeFun(t *template.Template, includedNames map[string]int) func(string, interface{}) (string, error) {
-	return func(name string, data interface{}) (string, error) {
+func includeFun(t *template.Template, includedNames map[string]int) func(string, any) (string, error) {
+	return func(name string, data any) (string, error) {
 		var buf strings.Builder
 		if v, ok := includedNames[name]; ok {
 			if v > recursionMaxNums {
@@ -172,8 +172,8 @@ func includeFun(t *template.Template, includedNames map[string]int) func(string,
 
 // As does 'tpl', so that nested calls to 'tpl' see the templates
 // defined by their enclosing contexts.
-func tplFun(parent *template.Template, includedNames map[string]int, strict bool) func(string, interface{}) (string, error) {
-	return func(tpl string, vals interface{}) (string, error) {
+func tplFun(parent *template.Template, includedNames map[string]int, strict bool) func(string, any) (string, error) {
+	return func(tpl string, vals any) (string, error) {
 		t, err := parent.Clone()
 		if err != nil {
 			return "", fmt.Errorf("cannot clone template: %w", err)
@@ -268,7 +268,7 @@ func (e Engine) initFunMap(ctx context.Context, t *template.Template) {
 	}
 
 	// Add the `required` function here so we can use lintMode
-	funcMap["required"] = func(warn string, val interface{}) (interface{}, error) {
+	funcMap["required"] = func(warn string, val any) (any, error) {
 		if val == nil {
 			if e.LintMode {
 				// Don't fail on missing required values when linting
@@ -389,7 +389,7 @@ func cleanupParseError(filename string, err error) error {
 	tokens := strings.Split(err.Error(), ": ")
 	if len(tokens) == 1 {
 		// This might happen if a non-templating error occurs
-		return fmt.Errorf("parse error in (%s): %s", filename, err)
+		return fmt.Errorf("parse error in (%s): %w", filename, err)
 	}
 	// The first token is "template"
 	// The second token is either "filename:lineno" or "filename:lineNo:columnNo"
@@ -480,9 +480,7 @@ func parseTemplateSimpleErrorString(remainder string) (TraceableError, bool) {
 // Executing form: "<templateName>: executing \"<funcName>\" at <<location>>: <errMsg>[ template:...]"
 // Matches https://cs.opensource.google/go/go/+/refs/tags/go1.23.6:src/text/template/exec.go;l=141
 func parseTemplateExecutingAtErrorType(remainder string) (TraceableError, bool) {
-	if idx := strings.Index(remainder, ": executing "); idx != -1 {
-		templateName := remainder[:idx]
-		after := remainder[idx+len(": executing "):]
+	if templateName, after, found := strings.Cut(remainder, ": executing "); found {
 		if len(after) == 0 || after[0] != '"' {
 			return TraceableError{}, false
 		}
@@ -501,12 +499,10 @@ func parseTemplateExecutingAtErrorType(remainder string) (TraceableError, bool) 
 			return TraceableError{}, false
 		}
 		afterAt := afterFunc[len(atPrefix):]
-		endLoc := strings.Index(afterAt, ">: ")
-		if endLoc == -1 {
+		locationName, errMsg, found := strings.Cut(afterAt, ">: ")
+		if !found {
 			return TraceableError{}, false
 		}
-		locationName := afterAt[:endLoc]
-		errMsg := afterAt[endLoc+len(">: "):]
 
 		// trim chained next error starting with space + "template:" if present
 		if cut := strings.Index(errMsg, " template:"); cut != -1 {
@@ -536,7 +532,7 @@ func reformatExecErrorMsg(filename string, err error) error {
 	tokens := strings.SplitN(err.Error(), ": ", 3)
 	if len(tokens) != 3 {
 		// This might happen if a non-templating error occurs
-		return fmt.Errorf("execution error in (%s): %s", filename, err)
+		return fmt.Errorf("execution error in (%s): %w", filename, err)
 	}
 
 	// The first token is "template"
@@ -744,9 +740,9 @@ func allTemplates(c ci.Charter, vals chartcommon.Values) map[string]renderable {
 //
 // As it recurses, it also sets the values to be appropriate for the template
 // scope.
-func recAllTpls(c ci.Charter, templates map[string]renderable, values chartcommon.Values) map[string]interface{} {
+func recAllTpls(c ci.Charter, templates map[string]renderable, values chartcommon.Values) map[string]any {
 	vals := values.AsMap()
-	subCharts := make(map[string]interface{})
+	subCharts := make(map[string]any)
 	accessor, err := ci.NewAccessor(c)
 	if err != nil {
 		slog.Error("error accessing chart", "error", err)
@@ -754,7 +750,7 @@ func recAllTpls(c ci.Charter, templates map[string]renderable, values chartcommo
 	chartMetaData := accessor.MetadataAsMap()
 	chartMetaData["IsRoot"] = accessor.IsRoot()
 
-	next := map[string]interface{}{
+	next := map[string]any{
 		"Chart":        chartMetaData,
 		"Files":        newFiles(accessor.Files()),
 		"Release":      vals["Release"],

@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -419,7 +418,25 @@ func TestUpdate(t *testing.T) {
 				"/namespaces/default/pods/forbidden:GET",
 				"/namespaces/default/pods/forbidden:DELETE",
 			),
-			ExpectedError: "failed to delete resource forbidden:",
+			ExpectedError: "failed to delete resource namespace=default, name=forbidden, kind=Pod:",
+		},
+		"rollback after failed upgrade with removed resource": {
+			// Simulates rollback scenario:
+			// - Revision 1 had "newpod"
+			// - Revision 2 removed "newpod" but upgrade failed (OriginalPods is empty)
+			// - Cluster still has "newpod" from Revision 1
+			// - Rolling back to Revision 1 (TargetPods with "newpod") should succeed
+			OriginalPods:                 v1.PodList{},         // Revision 2 (failed) - resource was removed
+			TargetPods:                   newPodList("newpod"), // Revision 1 - rolling back to this
+			ThreeWayMergeForUnstructured: false,
+			ServerSideApply:              true,
+			ExpectedActions: []string{
+				"/namespaces/default/pods/newpod:GET",   // Check if resource exists
+				"/namespaces/default/pods/newpod:GET",   // Get current state (first call in update path)
+				"/namespaces/default/pods/newpod:GET",   // Get current cluster state to use as baseline
+				"/namespaces/default/pods/newpod:PATCH", // Update using cluster state as baseline
+			},
+			ExpectedError: "",
 		},
 	}
 
@@ -436,6 +453,10 @@ func TestUpdate(t *testing.T) {
 				p, m := req.URL.Path, req.Method
 
 				switch {
+				case p == "/namespaces/default/pods/newpod" && m == http.MethodGet:
+					return newResponse(http.StatusOK, &listTarget.Items[0])
+				case p == "/namespaces/default/pods/newpod" && m == http.MethodPatch:
+					return newResponse(http.StatusOK, &listTarget.Items[0])
 				case p == "/namespaces/default/pods/starfish" && m == http.MethodGet:
 					return newResponse(http.StatusOK, &listOriginal.Items[0])
 				case p == "/namespaces/default/pods/otter" && m == http.MethodGet:
@@ -527,9 +548,23 @@ func TestUpdate(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			assert.Len(t, result.Created, 1, "expected 1 resource created, got %d", len(result.Created))
-			assert.Len(t, result.Updated, 2, "expected 2 resource updated, got %d", len(result.Updated))
-			assert.Len(t, result.Deleted, 1, "expected 1 resource deleted, got %d", len(result.Deleted))
+			// Special handling for the rollback test case
+			if name == "rollback after failed upgrade with removed resource" {
+				assert.Len(t, result.Created, 0, "expected 0 resource created, got %d", len(result.Created))
+				assert.Len(t, result.Updated, 1, "expected 1 resource updated, got %d", len(result.Updated))
+				assert.Len(t, result.Deleted, 0, "expected 0 resource deleted, got %d", len(result.Deleted))
+			} else {
+				assert.Len(t, result.Created, 1, "expected 1 resource created, got %d", len(result.Created))
+				assert.Len(t, result.Updated, 2, "expected 2 resource updated, got %d", len(result.Updated))
+				assert.Len(t, result.Deleted, 1, "expected 1 resource deleted, got %d", len(result.Deleted))
+			}
+
+			if tc.ExpectedError != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.ExpectedError)
+			} else {
+				require.NoError(t, err)
+			}
 
 			actions := []string{}
 			for _, action := range client.Actions {
@@ -937,6 +972,7 @@ func TestGetPodList(t *testing.T) {
 	podList, err := c.GetPodList(namespace, metav1.ListOptions{})
 	clientAssertions := assert.New(t)
 	clientAssertions.NoError(err)
+	podList.ResourceVersion = ""
 	clientAssertions.Equal(&responsePodList, podList)
 }
 
@@ -1398,7 +1434,7 @@ func TestIsIncompatibleServerError(t *testing.T) {
 			Want: false,
 		},
 		"Generic error": {
-			Err:  fmt.Errorf("some generic error"),
+			Err:  errors.New("some generic error"),
 			Want: false,
 		},
 	}
@@ -1766,6 +1802,23 @@ func TestPatchResourceServerSide(t *testing.T) {
 				}, nil
 			},
 			ExpectedErrorContains: "the server reported a conflict",
+		},
+		"generic server-side apply error": {
+			Pods:                     newPodList("whale"),
+			DryRun:                   false,
+			ForceConflicts:           false,
+			FieldValidationDirective: FieldValidationDirectiveStrict,
+			Callback: func(t *testing.T, _ testCase, _ []RequestResponseAction, _ *http.Request) (*http.Response, error) {
+				t.Helper()
+
+				return newResponse(http.StatusBadRequest, &metav1.Status{
+					Status:  metav1.StatusFailure,
+					Message: `failed to create typed patch object: .spec.template.spec.containers[name="test"].env: duplicate entries for key [name="SERVER_CONTEXT_PATH"]`,
+					Reason:  metav1.StatusReasonBadRequest,
+					Code:    http.StatusBadRequest,
+				})
+			},
+			ExpectedErrorContains: "server-side apply failed for object default/whale /v1, Kind=Pod: failed to create typed patch object",
 		},
 	}
 

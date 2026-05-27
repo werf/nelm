@@ -24,7 +24,6 @@ These dependencies are expressed as interfaces so that alternate implementations
 package cli
 
 import (
-	"fmt"
 	"net/http"
 	"os"
 	"strconv"
@@ -36,7 +35,7 @@ import (
 
 	"github.com/werf/nelm/pkg/helm/intern/version"
 	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
-	"github.com/werf/nelm/pkg/helm/pkg/kube"
+	"github.com/werf/nelm/pkg/helm/pkg/kubeenv"
 )
 
 // defaultMaxHistory sets the maximum number of releases to 0: unlimited
@@ -135,7 +134,7 @@ func New() *EnvSettings {
 			config.Burst = env.BurstLimit
 			config.QPS = env.QPS
 			config.Wrap(func(rt http.RoundTripper) http.RoundTripper {
-				return &kube.RetryingRoundTripper{Wrapped: rt}
+				return &kubeenv.RetryingRoundTripper{Wrapped: rt}
 			})
 			config.UserAgent = version.GetUserAgent()
 			return config
@@ -246,7 +245,7 @@ func (s *EnvSettings) EnvVars() map[string]string {
 		"HELM_CACHE_HOME":        helmpath.CachePath(""),
 		"HELM_CONFIG_HOME":       helmpath.ConfigPath(""),
 		"HELM_DATA_HOME":         helmpath.DataPath(""),
-		"HELM_DEBUG":             fmt.Sprint(s.Debug),
+		"HELM_DEBUG":             strconv.FormatBool(s.Debug),
 		"HELM_PLUGINS":           s.PluginsDirectory,
 		"HELM_REGISTRY_CONFIG":   s.RegistryConfig,
 		"HELM_REPOSITORY_CACHE":  s.RepositoryCache,

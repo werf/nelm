@@ -54,7 +54,7 @@ type ErrRepoNotFound struct {
 
 // Error implements the error interface.
 func (e ErrRepoNotFound) Error() string {
-	return fmt.Sprintf("no repository definition for %s", strings.Join(e.Repos, ", "))
+	return "no repository definition for " + strings.Join(e.Repos, ", ")
 }
 
 // Manager handles the lifecycle of fetching, resolving, and storing dependencies.
@@ -138,7 +138,7 @@ func (m *Manager) Build(ctx context.Context) error {
 				return errors.New("the lock file (requirements.lock) is out of sync with the dependencies file (requirements.yaml). Please update the dependencies")
 			}
 		} else {
-			return errors.New("the lock file (Chart.lock) is out of sync with the dependencies file (Chart.yaml). Please update the dependencies")
+			return errors.New("the lock file (Chart.lock) is out of sync with the dependencies file (Chart.yaml). Please update the dependencies with 'helm dependency update'")
 		}
 	}
 
