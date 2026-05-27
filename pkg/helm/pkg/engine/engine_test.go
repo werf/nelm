@@ -1552,7 +1552,7 @@ func TestRenderSubchartDefaultNilNoStringify(t *testing.T) {
 		},
 	}
 
-	out, err := Render(parent, inject)
+	out, err := Render(context.Background(), parent, inject)
 	if err != nil {
 		t.Fatalf("Failed to render templates: %s", err)
 	}
