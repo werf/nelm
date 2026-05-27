@@ -29,8 +29,8 @@ import (
 	"slices"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/api/validate/content"
 	"k8s.io/apimachinery/pkg/api/validation"
+	apipath "k8s.io/apimachinery/pkg/api/validation/path"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
@@ -324,7 +324,7 @@ func validateMetadataNameFunc(obj *k8sYamlStruct) validation.ValidateNameFunc {
 	case "role", "clusterrole", "rolebinding", "clusterrolebinding":
 		// https://github.com/kubernetes/kubernetes/blob/v1.20.0/pkg/apis/rbac/validation/validation.go#L32-L34
 		return func(name string, _ bool) []string {
-			return content.IsPathSegmentName(name)
+			return apipath.IsValidPathSegmentName(name)
 		}
 	default:
 		return validation.NameIsDNSSubdomain
