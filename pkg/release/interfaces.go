@@ -22,9 +22,9 @@ import (
 	"github.com/werf/nelm/pkg/helm/pkg/chart"
 )
 
-type Releaser interface{}
+type Releaser any
 
-type Hook interface{}
+type Hook any
 
 type Accessor interface {
 	Name() string
