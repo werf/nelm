@@ -505,6 +505,7 @@ tasks:
         git checkout -B "{{.forkSyncBranch}}" FETCH_HEAD --no-track
 
         prev_split=$(git log --grep="git-subtree-dir: {{.forkPrefix}}" --format="%b" "${original_ref}" | grep "^git-subtree-split:" | head -n1 | cut -d' ' -f2)
+        git fetch "{{.forkTempRemote}}" "$prev_split"
         if [ -z "$prev_split" ]; then
           echo "WARNING: no previous subtree split found for {{.forkPrefix}}, skipping file stripping"
         else
