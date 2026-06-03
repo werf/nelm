@@ -84,6 +84,10 @@ func IsCRD(groupKind schema.GroupKind) bool {
 	}
 }
 
+func IsNamespace(gvk schema.GroupVersionKind) bool {
+	return gvk.Group == "" && gvk.Version == "" && gvk.Kind == "Namespace"
+}
+
 func IsCRDFromGR(groupKind schema.GroupResource) bool {
 	return groupKind == schema.GroupResource{
 		Group:    "apiextensions.k8s.io",

@@ -90,6 +90,14 @@ func deployConditions(meta *spec.ResourceMeta, hasManualInternalDeps bool) map[c
 		}
 	}
 
+	if spec.IsNamespace(meta.GroupVersionKind) {
+		return map[common.On][]common.Stage{
+			common.InstallOnInstall:  {common.StagePrePreInstall},
+			common.InstallOnUpgrade:  {common.StagePrePreInstall},
+			common.InstallOnRollback: {common.StagePrePreInstall},
+		}
+	}
+
 	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
 		return map[common.On][]common.Stage{
 			common.InstallOnInstall:  {common.StagePrePreInstall},
@@ -1460,6 +1468,10 @@ func validateWeight(meta *spec.ResourceMeta) error {
 func weight(meta *spec.ResourceMeta, hasManualInternalDeps bool) *int {
 	if hasManualInternalDeps {
 		return nil
+	}
+
+	if spec.IsNamespace(meta.GroupVersionKind) {
+		return lo.ToPtr(-99)
 	}
 
 	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
