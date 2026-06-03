@@ -1471,7 +1471,7 @@ func weight(meta *spec.ResourceMeta, hasManualInternalDeps bool) *int {
 	}
 
 	if spec.IsNamespace(meta.GroupVersionKind) {
-		return lo.ToPtr(-99)
+		return lo.ToPtr(0)
 	}
 
 	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
