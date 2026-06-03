@@ -69,7 +69,7 @@ func deleteOnSucceeded(meta *spec.ResourceMeta) bool {
 
 func deployConditions(meta *spec.ResourceMeta, hasManualInternalDeps bool) map[common.On][]common.Stage {
 	if conditions := deployConditionsForAnnotation(meta, common.AnnotationKeyPatternDeployOn); len(conditions) > 0 {
-		if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
+		if spec.IsCRD(meta.GroupVersionKind.GroupKind()) || spec.IsNamespace(meta.GroupVersionKind) {
 			for on := range conditions {
 				conditions[on] = []common.Stage{common.StagePrePreInstall}
 			}
@@ -80,7 +80,7 @@ func deployConditions(meta *spec.ResourceMeta, hasManualInternalDeps bool) map[c
 
 	if spec.IsHook(meta.Annotations) {
 		if conditions := deployConditionsForAnnotation(meta, common.AnnotationKeyPatternHook); len(conditions) > 0 {
-			if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
+			if spec.IsCRD(meta.GroupVersionKind.GroupKind()) || spec.IsNamespace(meta.GroupVersionKind) {
 				for on := range conditions {
 					conditions[on] = []common.Stage{common.StagePrePreInstall}
 				}

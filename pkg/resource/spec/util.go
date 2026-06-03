@@ -92,7 +92,7 @@ func IsCRDFromGR(groupKind schema.GroupResource) bool {
 }
 
 func IsNamespace(gvk schema.GroupVersionKind) bool {
-	return gvk.Group == "" && gvk.Version == "" && gvk.Kind == "Namespace"
+	return gvk.Group == "" && gvk.Kind == "Namespace"
 }
 
 func IsReleaseNamespace(resourceName string, resourceGVK schema.GroupVersionKind, releaseNamespace string) bool {
