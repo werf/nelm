@@ -349,7 +349,7 @@ type clusterCacheEntry struct {
 }
 
 func retryOnWebhookErr(ctx context.Context, fn func() error) error {
-	retryCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	retryCtx, cancel := context.WithTimeoutCause(ctx, common.DefaultWebhookRetryTimeout, fmt.Errorf("context timed out: webhook retry timed out after %s", common.DefaultWebhookRetryTimeout.String()))
 	defer cancel()
 
 	if err := kvwait.PollUntilContextCancel(retryCtx, 2*time.Second, true, func(ctx context.Context) (bool, error) {
@@ -365,6 +365,10 @@ func retryOnWebhookErr(ctx context.Context, fn func() error) error {
 
 		return true, nil
 	}); err != nil {
+		if retryCtx.Err() != nil {
+			return fmt.Errorf("retryable on webhook error: %w", context.Cause(retryCtx))
+		}
+
 		return fmt.Errorf("retryable on webhook error: %w", err)
 	}
 
