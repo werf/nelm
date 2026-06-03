@@ -365,7 +365,7 @@ func retryOnWebhookErr(ctx context.Context, fn func() error) error {
 
 		return true, nil
 	}); err != nil {
-		return fmt.Errorf("retry on webhook error: %w", err)
+		return fmt.Errorf("retryable on webhook error: %w", err)
 	}
 
 	return nil
