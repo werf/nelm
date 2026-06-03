@@ -389,9 +389,10 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 			},
 			input: func() *spec.ResourceSpec {
 				resSpec := defaultResourceSpec(s.releaseNamespace)
-				resSpec.SetAnnotations(lo.Assign(resSpec.Annotations, map[string]string{
-					"werf.io/deploy-dependency-backend": "state=present,name=backend",
-				},
+				resSpec.SetAnnotations(lo.Assign(
+					resSpec.Annotations, map[string]string{
+						"werf.io/deploy-dependency-backend": "state=present,name=backend",
+					},
 				))
 
 				return resSpec
@@ -1161,6 +1162,11 @@ func defaultReleaseNamespaceInstallableResource(resSpec *spec.ResourceSpec) *res
 	res := defaultInstallableResource(resSpec)
 	res.Ownership = common.OwnershipAnyone
 	res.KeepOnDelete = true
+	res.DeployConditions = map[common.On][]common.Stage{
+		common.InstallOnInstall:  {common.StagePrePreInstall},
+		common.InstallOnUpgrade:  {common.StagePrePreInstall},
+		common.InstallOnRollback: {common.StagePrePreInstall},
+	}
 
 	return res
 }
