@@ -1,5 +1,41 @@
 # Changelog
 
+## [1.24.0](https://github.com/werf/nelm/compare/v1.23.2...v1.24.0) (2026-06-04)
+
+
+### Features
+
+* ability to init ts files with WerfRenderContext type ([#593](https://github.com/werf/nelm/issues/593)) ([4b90254](https://github.com/werf/nelm/commit/4b90254854087286ab615da8ace1381037ceca31))
+* add DockerConfig flag ([#605](https://github.com/werf/nelm/issues/605)) ([d0b1f53](https://github.com/werf/nelm/commit/d0b1f53ad8413973d67045b330288892c07e2770))
+* adopt `chart ts init` for werf ([#594](https://github.com/werf/nelm/issues/594)) ([671cf54](https://github.com/werf/nelm/commit/671cf545c12d6e05e4ce5d2dfac91ca01f1ac153))
+* allow to disable values schema validation ([#616](https://github.com/werf/nelm/issues/616)) ([ec40944](https://github.com/werf/nelm/commit/ec40944e34248a4c86bdffdfdf93a4f21dded69e))
+* bump default local kube version for rendering to 1.36.0 ([2159f96](https://github.com/werf/nelm/commit/2159f962147e50f6ad8e33b9d24039799a8947d0))
+* case insensitive group/version/kind for `deploy/delete-dependency` ([#626](https://github.com/werf/nelm/issues/626)) ([adf8a42](https://github.com/werf/nelm/commit/adf8a42899d5bbd523883ad4a0594fe67d16ccf7))
+* deno runtime for typescript ([#565](https://github.com/werf/nelm/issues/565)) ([942d8aa](https://github.com/werf/nelm/commit/942d8aad2341079757e2130fd5402106201bc9d6))
+* expose plan artifact in actions api ([#586](https://github.com/werf/nelm/issues/586)) ([1a42481](https://github.com/werf/nelm/commit/1a42481cfbb2251db7b36fc98f47296389c14874))
+* fail on invalid annotations or labels ([#614](https://github.com/werf/nelm/issues/614)) ([a8c983f](https://github.com/werf/nelm/commit/a8c983f5ba6874303988438204d50b1ceb917fef))
+* forbid resource recreation if helm.sh/resource-policy set ([d1b6297](https://github.com/werf/nelm/commit/d1b62972befb7ca750ac84ec4f9f5760e862314f))
+* improve runtime annotations and labels handling ([#615](https://github.com/werf/nelm/issues/615)) ([73d4a88](https://github.com/werf/nelm/commit/73d4a88af39e19e57ac4e5762260ae20c6363f1c))
+* new release history ([074d350](https://github.com/werf/nelm/commit/074d3505764f00bc8a4d0f863b88bf988a44da74))
+* remove deprecated external dependencies annotations ([#625](https://github.com/werf/nelm/issues/625)) ([8528a0a](https://github.com/werf/nelm/commit/8528a0abf3f90d97560ab59b557499c412a4dfdb))
+* set default delete propagation policy to backgound ([#623](https://github.com/werf/nelm/issues/623)) ([4a0b1e8](https://github.com/werf/nelm/commit/4a0b1e832649640fd1546e1675364eff98e1263a))
+* support external dependencies for deploy-dependency and delete-dependency annotations ([#617](https://github.com/werf/nelm/issues/617)) ([581acf9](https://github.com/werf/nelm/commit/581acf90db86251e22fad8e9e8e933ce89f83336))
+* upgrade to helm v4.2.0 ([#627](https://github.com/werf/nelm/issues/627)) ([ea85faf](https://github.com/werf/nelm/commit/ea85faf1e8c8209d9b58879bcc952583b02e9d82))
+* use transformers and patchers on rollback ([#624](https://github.com/werf/nelm/issues/624)) ([18ad551](https://github.com/werf/nelm/commit/18ad551d41f5acfd7cee25762b91cdc103764814))
+
+
+### Bug Fixes
+
+* --set/set-file/set-string flags incorrectly split on commas ([64ef060](https://github.com/werf/nelm/commit/64ef06036d51cff11a43819a1191bc6329ce7e51))
+* add SetupColorLevel function for enhanced logging color configuration (for werf) ([#620](https://github.com/werf/nelm/issues/620)) ([438a1e2](https://github.com/werf/nelm/commit/438a1e2b230532fcc45a2ed6bfcff348c009938f))
+* clientFactory=nil breaks werf tests ([7a758a4](https://github.com/werf/nelm/commit/7a758a486e9daef4d1b33342916af0591dfd7b1d))
+* correct fork:helm:sync task ([74d3ea4](https://github.com/werf/nelm/commit/74d3ea4ff724173eddb4ded8f33efc5194e50902))
+* don't hard-fail on unsupported env vars ([3651474](https://github.com/werf/nelm/commit/365147407ec5e9d1624c2132062b45695615d39c))
+* pass NoPodLogs to kubedog ([#621](https://github.com/werf/nelm/issues/621)) ([46e98e9](https://github.com/werf/nelm/commit/46e98e9ce2cf08cdaf879c6606754b8acb47badc))
+* remove support for all legacy HELM_* env vars ([#611](https://github.com/werf/nelm/issues/611)) ([3a2264e](https://github.com/werf/nelm/commit/3a2264e5ca5bdeed6734a9f6cdcbb1c0cceb3a20))
+* simpler sorting for resources ([55bc462](https://github.com/werf/nelm/commit/55bc4628d79e77d9fc5a82cee24d293aeb50ddcd))
+* use v3 util for Chart.yaml load ([1e1068f](https://github.com/werf/nelm/commit/1e1068f13d2401dca4ec7396d2fb17948e33e3b6))
+
 ## [1.23.2](https://github.com/werf/nelm/compare/v1.23.1...v1.23.2) (2026-03-27)
 
 
