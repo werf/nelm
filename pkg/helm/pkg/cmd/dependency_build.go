@@ -17,6 +17,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -77,7 +78,8 @@ func newDependencyBuildCmd(out io.Writer) *cobra.Command {
 				man.Verify = downloader.VerifyIfPossible
 			}
 			err = man.Build(context.Background())
-			if e, ok := err.(downloader.ErrRepoNotFound); ok {
+			var e downloader.ErrRepoNotFound
+			if errors.As(err, &e) {
 				return fmt.Errorf("%s. Please add the missing repos via 'helm repo add'", e.Error())
 			}
 			return err

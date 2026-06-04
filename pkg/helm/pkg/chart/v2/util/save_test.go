@@ -17,13 +17,13 @@ limitations under the License.
 package util
 
 import (
-	"context"
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path"
@@ -91,7 +91,7 @@ func TestSave(t *testing.T) {
 				t.Fatalf("Schema data did not match.\nExpected:\n%s\nActual:\n%s", formattedExpected, formattedActual)
 			}
 			if _, err := Save(&chartWithInvalidJSON, dest); err == nil {
-				t.Fatalf("Invalid JSON was not caught while saving chart")
+				t.Fatal("Invalid JSON was not caught while saving chart")
 			}
 
 			c.Metadata.APIVersion = chart.APIVersionV2
@@ -158,7 +158,7 @@ func TestSavePreservesTimestamps(t *testing.T) {
 			Version:    "1.2.3",
 		},
 		ModTime: initialCreateTime,
-		Values: map[string]interface{}{
+		Values: map[string]any{
 			"imageName": "testimage",
 			"imageId":   42,
 		},
@@ -243,7 +243,7 @@ func TestSaveDir(t *testing.T) {
 		t.Fatalf("Failed to save: %s", err)
 	}
 
-	c2, err := loader.LoadDir(context.Background(), tmp + "/ahab")
+	c2, err := loader.LoadDir(context.Background(), tmp+"/ahab")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,5 +358,5 @@ func sha256Sum(filePath string) (string, error) {
 		return "", err
 	}
 
-	return fmt.Sprintf("%x", h.Sum(nil)), nil
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
