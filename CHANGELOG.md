@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.24.2](https://github.com/werf/nelm/compare/v1.24.1...v1.24.2) (2026-06-04)
+
+
+### Bug Fixes
+
+* better error message when kube client request timed out ([dc11213](https://github.com/werf/nelm/commit/dc11213b4fa89a749b5f7c5fb1199c611d646484))
+* close LegacyReportCh on action return ([#629](https://github.com/werf/nelm/issues/629)) ([78033c6](https://github.com/werf/nelm/commit/78033c656d87290b24c540ec292608bf3a21fb66))
+* deploy ns on pre-pre-install stage ([#630](https://github.com/werf/nelm/issues/630)) ([816d8c1](https://github.com/werf/nelm/commit/816d8c1fbc9610609bfdc61084b3b0848606b20d))
+* panic if channel for legacy progress reporter closed ([#618](https://github.com/werf/nelm/issues/618)) ([0e6945c](https://github.com/werf/nelm/commit/0e6945ce047c67c6e23a52de7ba06372ffcf383b))
+* pass NoPodLogs to kubedog ([#622](https://github.com/werf/nelm/issues/622)) ([069609f](https://github.com/werf/nelm/commit/069609f63b214323d7ca1ebc9818e200818888ca))
+
 ## [1.24.1](https://github.com/werf/nelm/compare/v1.24.0...v1.24.1) (2026-04-29)
 
 
