@@ -507,6 +507,137 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 			},
 			name: `for Deployment resource with auto internal dependency on configmap`,
 		},
+		{
+			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
+				res := defaultInstallableResource(resSpec)
+				res.AutoInternalDependencies = []*resource.InternalDependency{
+					{
+						ResourceMatcher: &spec.ResourceMatcher{
+							Names:      []string{"test-statefulset"},
+							Namespaces: []string{""},
+							Groups:     []string{"apps"},
+							Kinds:      []string{"StatefulSet"},
+						},
+						ResourceState: common.ResourceStatePresent,
+					},
+				}
+
+				return res
+			},
+			input: func() *spec.ResourceSpec {
+				return spec.NewResourceSpec(&unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "keda.sh/v1alpha1",
+						"kind":       "ScaledObject",
+						"metadata": map[string]interface{}{
+							"name": "test-scaledobject",
+						},
+						"spec": map[string]interface{}{
+							"scaleTargetRef": map[string]interface{}{
+								"name":       "test-statefulset",
+								"kind":       "StatefulSet",
+								"apiVersion": "apps/v1",
+							},
+						},
+					},
+				}, s.releaseNamespace, spec.ResourceSpecOptions{})
+			},
+			name: `for ScaledObject resource with auto internal dependency on scale target`,
+		},
+		{
+			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
+				res := defaultInstallableResource(resSpec)
+				res.AutoInternalDependencies = []*resource.InternalDependency{
+					{
+						ResourceMatcher: &spec.ResourceMatcher{
+							Names:      []string{"test-deployment"},
+							Namespaces: []string{""},
+							Groups:     []string{"apps"},
+							Kinds:      []string{"Deployment"},
+						},
+						ResourceState: common.ResourceStatePresent,
+					},
+				}
+
+				return res
+			},
+			input: func() *spec.ResourceSpec {
+				return spec.NewResourceSpec(&unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "keda.sh/v1alpha1",
+						"kind":       "ScaledObject",
+						"metadata": map[string]interface{}{
+							"name": "test-scaledobject",
+						},
+						"spec": map[string]interface{}{
+							"scaleTargetRef": map[string]interface{}{
+								"name": "test-deployment",
+							},
+						},
+					},
+				}, s.releaseNamespace, spec.ResourceSpecOptions{})
+			},
+			name: `for ScaledObject resource with auto internal dependency on scale target with default kind and apiVersion`,
+		},
+		{
+			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
+				return defaultInstallableResource(resSpec)
+			},
+			input: func() *spec.ResourceSpec {
+				return spec.NewResourceSpec(&unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "keda.sh/v1alpha1",
+						"kind":       "ScaledObject",
+						"metadata": map[string]interface{}{
+							"name": "test-scaledobject",
+						},
+						"spec": map[string]interface{}{
+							"scaleTargetRef": map[string]interface{}{
+								"kind": "Deployment",
+							},
+						},
+					},
+				}, s.releaseNamespace, spec.ResourceSpecOptions{})
+			},
+			name: `for ScaledObject resource without scaleTargetRef name and therefore without auto internal dependency`,
+		},
+		{
+			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
+				res := defaultInstallableResource(resSpec)
+				res.AutoInternalDependencies = []*resource.InternalDependency{
+					{
+						ResourceMatcher: &spec.ResourceMatcher{
+							Names:      []string{"test-rollout"},
+							Namespaces: []string{""},
+							Groups:     []string{"argoproj.io"},
+							Kinds:      []string{"Rollout"},
+						},
+						ResourceState: common.ResourceStatePresent,
+					},
+				}
+
+				return res
+			},
+			input: func() *spec.ResourceSpec {
+				return spec.NewResourceSpec(&unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "keda.sh/v1alpha1",
+						"kind":       "ScaledObject",
+						"metadata": map[string]interface{}{
+							"name": "test-scaledobject",
+						},
+						"spec": map[string]interface{}{
+							"scaleTargetRef": map[string]interface{}{
+								"name":       "test-rollout",
+								"kind":       "Rollout",
+								"apiVersion": "argoproj.io/v1alpha1",
+							},
+						},
+					},
+				}, s.releaseNamespace, spec.ResourceSpecOptions{})
+			},
+			name: `for ScaledObject resource with auto internal dependency on custom resource scale target`,
+		},
 	}
 
 	for _, tc := range testCases {
