@@ -293,6 +293,9 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		var reporter *plan.LegacyProgressReporter
 		if opts.LegacyProgressReportCh != nil {
 			reporter = plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
+			defer func() {
+				close(opts.LegacyProgressReportCh)
+			}()
 		}
 
 		log.Default.Debug(ctx, "Execute release delete plan")

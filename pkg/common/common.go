@@ -103,9 +103,9 @@ const (
 	DefaultProgressPrintInterval = 5 * time.Second
 	DefaultQPSLimit              = 30
 	DefaultReleaseHistoryLimit   = 10
-	DefaultWebhookRetryTimeout   = 2 * time.Minute
 	// DefaultResourceValidationKubeVersion Kubernetes version to use during resource validation by kubeconform
 	DefaultResourceValidationKubeVersion = "1.35.0"
+	DefaultWebhookRetryTimeout           = 2 * time.Minute
 	KubectlEditFieldManager              = "kubectl-edit"
 	OldFieldManagerPrefix                = "werf"
 	OutputFormatJSON                     = "json"
