@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="resources/images/nelm-logo.png" style="max-height:100%;" height="100">
+</p>
+
 <!-- <p align="center">
   <a href="https://godoc.org/github.com/werf/nelm"><img src="https://godoc.org/github.com/werf/nelm?status.svg" alt="GoDoc"></a>
   <a href="https://qlty.sh/gh/werf/projects/nelm"><img src="https://qlty.sh/gh/werf/projects/nelm/coverage.svg" alt="Code Coverage" /></a>
