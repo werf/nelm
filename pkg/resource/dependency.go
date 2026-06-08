@@ -84,9 +84,42 @@ func internalDeployDependencies(unstruct *unstructured.Unstructured) []*Internal
 		if dep, found := parseRoleRef(*unstruct); found {
 			dependencies = append(dependencies, dep)
 		}
+
+		if deps, found := parseBindingSubjects(unstruct); found {
+			dependencies = append(dependencies, deps...)
+		}
 	}
 
 	return dependencies
+}
+
+func parseBindingSubjects(unstruct *unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
+	subjects, _ := nestedSlice(unstruct.Object, "subjects")
+	for _, subj := range subjects {
+		kind, found := nestedString(subj, "kind")
+		if !found || kind != "ServiceAccount" {
+			continue
+		}
+
+		serviceAccountName, found := nestedString(subj, "name")
+		if !found {
+			continue
+		}
+
+		dep := &InternalDependency{
+			ResourceMatcher: &spec.ResourceMatcher{
+				Names:      []string{serviceAccountName},
+				Namespaces: []string{unstruct.GetNamespace()},
+				Groups:     []string{""},
+				Kinds:      []string{"ServiceAccount"},
+			},
+			ResourceState: common.ResourceStatePresent,
+		}
+
+		dependencies = append(dependencies, dep)
+	}
+
+	return dependencies, len(dependencies) > 0
 }
 
 func parsePod(unstruct *unstructured.Unstructured, pod interface{}) (dependencies []*InternalDependency, found bool) {
@@ -597,6 +630,30 @@ func parseServiceAccountDependencies(unstruct *unstructured.Unstructured, otherU
 			nestedPath = []string{"spec", "template", "spec", "serviceAccountName"}
 		case schema.GroupKind{Kind: "CronJob", Group: "batch"}:
 			nestedPath = []string{"spec", "jobTemplate", "spec", "template", "spec", "serviceAccountName"}
+		case schema.GroupKind{Kind: "ClusterRoleBinding", Group: "rbac.authorization.k8s.io"},
+			schema.GroupKind{Kind: "RoleBinding", Group: "rbac.authorization.k8s.io"}:
+			subjects, _ := nestedSlice(otherUnstruct.Object, "subjects")
+			for _, subj := range subjects {
+				kind, ok := nestedString(subj, "kind")
+				if !ok || kind != "ServiceAccount" {
+					continue
+				}
+
+				name, ok := nestedString(subj, "name")
+				if !ok || name != unstruct.GetName() {
+					continue
+				}
+
+				dep := &InternalDependency{
+					ResourceMatcher: newExactResourceMatcher(otherUnstruct),
+					ResourceState:   common.ResourceStateAbsent,
+				}
+				dependencies = append(dependencies, dep)
+
+				break
+			}
+
+			continue
 		default:
 			continue
 		}
