@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.24.3](https://github.com/werf/nelm/compare/v1.24.2...v1.24.3) (2026-06-08)
+
+
+### Bug Fixes
+
+* autodetection of ServiceAccount dependencies for ClusterRoleBinding and RoleBinding resources ([#632](https://github.com/werf/nelm/issues/632)) ([e9ea5da](https://github.com/werf/nelm/commit/e9ea5da1e1ef7606979aab5a45ea058b48837476))
+* make pods/controllers depend on rolebindings ([#634](https://github.com/werf/nelm/issues/634)) ([233e123](https://github.com/werf/nelm/commit/233e1232890bff0682ba9bb2c1638657aff17297))
+
 ## [1.24.2](https://github.com/werf/nelm/compare/v1.24.1...v1.24.2) (2026-06-04)
 
 
