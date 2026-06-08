@@ -54,7 +54,7 @@ type InstallableResource struct {
 
 // Construct an InstallableResource from a ResourceSpec. Must never contact the cluster, because
 // this is called even when no cluster access allowed.
-func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, clientFactory kube.ClientFactorier, opts InstallableResourceOptions) (*InstallableResource, error) {
+func NewInstallableResource(res *spec.ResourceSpec, otherResSpecs []*spec.ResourceSpec, releaseNamespace string, clientFactory kube.ClientFactorier, opts InstallableResourceOptions) (*InstallableResource, error) {
 	if err := validateHook(res.ResourceMeta); err != nil {
 		return nil, fmt.Errorf("validate hook configuration: %w", err)
 	}
@@ -114,9 +114,13 @@ func NewInstallableResource(res *spec.ResourceSpec, releaseNamespace string, cli
 
 	manIntDeps := manualInternalDeployDependencies(res.ResourceMeta)
 
+	otherUnstructs := lo.Map(otherResSpecs, func(resSpec *spec.ResourceSpec, _ int) *unstructured.Unstructured {
+		return resSpec.Unstruct
+	})
+
 	return &InstallableResource{
 		ResourceSpec:                           res,
-		AutoInternalDependencies:               internalDeployDependencies(res.Unstruct),
+		AutoInternalDependencies:               internalDeployDependencies(res.Unstruct, otherUnstructs),
 		DefaultReplicasOnCreation:              defaultReplicasOnCreation(res.ResourceMeta, releaseNamespace),
 		DeleteOnFailed:                         deleteOnFailed(res.ResourceMeta),
 		DeleteOnSucceeded:                      deleteOnSucceeded(res.ResourceMeta),
@@ -233,7 +237,7 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 
 	var prevRelInstResources []*InstallableResource
 	for _, resSpec := range prevRelResSpecs {
-		installableResource, err := NewInstallableResource(resSpec, releaseNamespace, clientFactory, InstallableResourceOptions{
+		installableResource, err := NewInstallableResource(resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, clientFactory, InstallableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 			NoPodLogs:                opts.NoPodLogs,
 			Remote:                   opts.Remote,
@@ -247,7 +251,7 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 
 	var newRelInstResources []*InstallableResource
 	for _, resSpec := range newRelResSpecs {
-		installableResource, err := NewInstallableResource(resSpec, releaseNamespace, clientFactory, InstallableResourceOptions{
+		installableResource, err := NewInstallableResource(resSpec, lo.Without(newRelResSpecs, resSpec), releaseNamespace, clientFactory, InstallableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 			NoPodLogs:                opts.NoPodLogs,
 			Remote:                   opts.Remote,
@@ -344,7 +348,7 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 				FilePath: instRes.FilePath,
 			})
 
-			instRes, err = NewInstallableResource(resSpec, releaseNamespace, clientFactory, InstallableResourceOptions{
+			instRes, err = NewInstallableResource(resSpec, newRelResSpecs, releaseNamespace, clientFactory, InstallableResourceOptions{
 				DefaultDeletePropagation: opts.DefaultDeletePropagation,
 				NoPodLogs:                opts.NoPodLogs,
 				Remote:                   opts.Remote,
