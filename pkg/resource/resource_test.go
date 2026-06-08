@@ -507,6 +507,56 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 			},
 			name: `for Deployment resource with auto internal dependency on configmap`,
 		},
+		{
+			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
+				res := defaultInstallableResource(resSpec)
+				res.AutoInternalDependencies = []*resource.InternalDependency{
+					{
+						ResourceMatcher: &spec.ResourceMatcher{
+							Names:  []string{"test-cr"},
+							Groups: []string{"rbac.authorization.k8s.io"},
+							Kinds:  []string{"ClusterRole"},
+						},
+						ResourceState: common.ResourceStatePresent,
+					},
+					{
+						ResourceMatcher: &spec.ResourceMatcher{
+							Names:      []string{"test-sa"},
+							Namespaces: []string{""},
+							Groups:     []string{""},
+							Kinds:      []string{"ServiceAccount"},
+						},
+						ResourceState: common.ResourceStatePresent,
+					},
+				}
+
+				return res
+			},
+			input: func() *spec.ResourceSpec {
+				return spec.NewResourceSpec(&unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "rbac.authorization.k8s.io/v1",
+						"kind":       "ClusterRoleBinding",
+						"metadata": map[string]interface{}{
+							"name": "test-crb",
+						},
+						"subjects": []interface{}{
+							map[string]interface{}{
+								"kind":      "ServiceAccount",
+								"name":      "test-sa",
+								"namespace": "test-namespace",
+							},
+						},
+						"roleRef": map[string]interface{}{
+							"apiGroup": "rbac.authorization.k8s.io",
+							"kind":     "ClusterRole",
+							"name":     "test-cr",
+						},
+					},
+				}, s.releaseNamespace, spec.ResourceSpecOptions{})
+			},
+			name: `for ClusterRoleBinding resource with auto internal dependency on ServiceAccount from subjects`,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -1087,11 +1137,74 @@ func (s *DeletableResourceSuite) TestNewDeletableResourceForOwnership() {
 	}
 }
 
+func (s *DeletableResourceSuite) TestNewDeletableResourceForAutoDependencies() {
+	testCases := []deletableResourceTestCase{
+		{
+			expectFunc: func(resSpec *spec.ResourceSpec) *resource.DeletableResource {
+				res := defaultDeletableResource(resSpec.ResourceMeta)
+				res.AutoInternalDependencies = []*resource.InternalDependency{
+					{
+						ResourceMatcher: &spec.ResourceMatcher{
+							Names:      []string{"test-crb"},
+							Namespaces: []string{""},
+							Groups:     []string{"rbac.authorization.k8s.io"},
+							Kinds:      []string{"ClusterRoleBinding"},
+						},
+						ResourceState: common.ResourceStateAbsent,
+					},
+				}
+
+				return res
+			},
+			inputFunc: func() *spec.ResourceSpec {
+				return spec.NewResourceSpec(&unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "v1",
+						"kind":       "ServiceAccount",
+						"metadata": map[string]interface{}{
+							"name": "test-sa",
+						},
+					},
+				}, s.releaseNamespace, spec.ResourceSpecOptions{})
+			},
+			otherInputSpec: []*spec.ResourceSpec{
+				spec.NewResourceSpec(&unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"apiVersion": "rbac.authorization.k8s.io/v1",
+						"kind":       "ClusterRoleBinding",
+						"metadata": map[string]interface{}{
+							"name": "test-crb",
+						},
+						"subjects": []interface{}{
+							map[string]interface{}{
+								"kind":      "ServiceAccount",
+								"name":      "test-sa",
+								"namespace": "test-namespace",
+							},
+						},
+						"roleRef": map[string]interface{}{
+							"apiGroup": "rbac.authorization.k8s.io",
+							"kind":     "ClusterRole",
+							"name":     "test-cr",
+						},
+					},
+				}, s.releaseNamespace, spec.ResourceSpecOptions{}),
+			},
+			name: "for ServiceAccount resource with auto internal delete dependency on ClusterRoleBinding from subjects",
+		},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, runDeletableResourceTest(tc, s))
+	}
+}
+
 type deletableResourceTestCase struct {
-	expectFunc func(resSpec *spec.ResourceSpec) *resource.DeletableResource
-	inputFunc  func() *spec.ResourceSpec
-	name       string
-	skip       bool
+	expectFunc     func(resSpec *spec.ResourceSpec) *resource.DeletableResource
+	inputFunc      func() *spec.ResourceSpec
+	otherInputSpec []*spec.ResourceSpec
+	name           string
+	skip           bool
 }
 
 func TestResourceSuites(t *testing.T) {
@@ -1275,7 +1388,12 @@ func runDeletableResourceTest(tc deletableResourceTestCase, s *DeletableResource
 
 		resSpec := tc.inputFunc()
 
-		res := resource.NewDeletableResource(resSpec, []*spec.ResourceSpec{}, s.releaseNamespace, resource.DeletableResourceOptions{})
+		otherSpecs := tc.otherInputSpec
+		if otherSpecs == nil {
+			otherSpecs = []*spec.ResourceSpec{}
+		}
+
+		res := resource.NewDeletableResource(resSpec, otherSpecs, s.releaseNamespace, resource.DeletableResourceOptions{})
 
 		expectRes := tc.expectFunc(resSpec)
 
