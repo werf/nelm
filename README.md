@@ -1,9 +1,9 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/nelm-logo-white.svg">
-    <source media="(prefers-color-scheme: light)" srcset="assets/nelm-logo-black.svg">
-    <img alt="Nelm logo" src="assets/nelm-logo-white.svg" height="100">
+    <source media="(prefers-color-scheme: dark)" srcset="resources/images/nelm-logo-white.svg">
+    <source media="(prefers-color-scheme: light)" srcset="resources/images/nelm-logo-black.svg">
+    <img alt="Nelm logo" src="resources/images/nelm-logo-white.svg" height="100">
   </picture>
 </p>
 
