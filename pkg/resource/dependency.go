@@ -24,7 +24,7 @@ type ExternalDependency struct {
 // Automatically detects internal dependencies on resources by examining specific fields in the
 // resource spec. As an example, examining "envFrom" in a Pod container spec produces an internal
 // dependency on a ConfigMap or a Secret.
-func internalDeployDependencies(unstruct *unstructured.Unstructured) []*InternalDependency {
+func internalDeployDependencies(unstruct *unstructured.Unstructured, otherUnstructs []*unstructured.Unstructured) []*InternalDependency {
 	gvk := unstruct.GroupVersionKind()
 	gk := gvk.GroupKind()
 
@@ -32,41 +32,41 @@ func internalDeployDependencies(unstruct *unstructured.Unstructured) []*Internal
 	switch gk {
 	case schema.GroupKind{Kind: "Deployment", Group: "apps"}:
 		if pod, found := nestedMap(unstruct.Object, "spec", "template"); found {
-			if deps, found := parsePod(unstruct, pod); found {
+			if deps, found := parsePod(unstruct, pod, otherUnstructs); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
 	case schema.GroupKind{Kind: "CronJob", Group: "batch"}:
 		if pod, found := nestedMap(unstruct.Object, "spec", "jobTemplate", "spec", "template"); found {
-			if deps, found := parsePod(unstruct, pod); found {
+			if deps, found := parsePod(unstruct, pod, otherUnstructs); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
 	case schema.GroupKind{Kind: "DaemonSet", Group: "apps"}:
 		if pod, found := nestedMap(unstruct.Object, "spec", "template"); found {
-			if deps, found := parsePod(unstruct, pod); found {
+			if deps, found := parsePod(unstruct, pod, otherUnstructs); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
 	case schema.GroupKind{Kind: "Job", Group: "batch"}:
 		if pod, found := nestedMap(unstruct.Object, "spec", "template"); found {
-			if deps, found := parsePod(unstruct, pod); found {
+			if deps, found := parsePod(unstruct, pod, otherUnstructs); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
 	case schema.GroupKind{Kind: "Pod", Group: ""}:
-		if deps, found := parsePod(unstruct, unstruct.Object); found {
+		if deps, found := parsePod(unstruct, unstruct.Object, otherUnstructs); found {
 			dependencies = append(dependencies, deps...)
 		}
 	case schema.GroupKind{Kind: "ReplicaSet", Group: "apps"}:
 		if pod, found := nestedMap(unstruct.Object, "spec", "template"); found {
-			if deps, found := parsePod(unstruct, pod); found {
+			if deps, found := parsePod(unstruct, pod, otherUnstructs); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
 	case schema.GroupKind{Kind: "ReplicationController", Group: ""}:
 		if pod, found := nestedMap(unstruct.Object, "spec", "template"); found {
-			if deps, found := parsePod(unstruct, pod); found {
+			if deps, found := parsePod(unstruct, pod, otherUnstructs); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
@@ -76,13 +76,17 @@ func internalDeployDependencies(unstruct *unstructured.Unstructured) []*Internal
 		}
 
 		if pod, found := nestedMap(unstruct.Object, "spec", "template"); found {
-			if deps, found := parsePod(unstruct, pod); found {
+			if deps, found := parsePod(unstruct, pod, otherUnstructs); found {
 				dependencies = append(dependencies, deps...)
 			}
 		}
 	case schema.GroupKind{Kind: "ClusterRoleBinding", Group: "rbac.authorization.k8s.io"}, schema.GroupKind{Kind: "RoleBinding", Group: "rbac.authorization.k8s.io"}:
 		if dep, found := parseRoleRef(*unstruct); found {
 			dependencies = append(dependencies, dep)
+		}
+
+		if deps, found := parseBindingSubjects(unstruct); found {
+			dependencies = append(dependencies, deps...)
 		}
 	case schema.GroupKind{Kind: "ScaledObject", Group: "keda.sh"}:
 		if dep, found := parseScaleTargetRef(unstruct); found {
@@ -93,7 +97,7 @@ func internalDeployDependencies(unstruct *unstructured.Unstructured) []*Internal
 	return dependencies
 }
 
-func parsePod(unstruct *unstructured.Unstructured, pod interface{}) (dependencies []*InternalDependency, found bool) {
+func parsePod(unstruct *unstructured.Unstructured, pod interface{}, otherUnstructs []*unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
 	containers, _ := nestedSlice(pod, "spec", "containers")
 	for _, container := range containers {
 		if deps, found := parseContainer(unstruct, container); found {
@@ -147,6 +151,10 @@ func parsePod(unstruct *unstructured.Unstructured, pod interface{}) (dependencie
 
 	if dep, found := parseServiceAccountName(unstruct, pod); found {
 		dependencies = append(dependencies, dep)
+	}
+
+	if deps, found := parseBindingDependenciesForWorkload(pod, otherUnstructs); found {
+		dependencies = append(dependencies, deps...)
 	}
 
 	volumes, _ := nestedSlice(pod, "spec", "volumes")
@@ -204,6 +212,81 @@ func parseContainer(unstruct *unstructured.Unstructured, container interface{}) 
 		} else if dep, found := parseSecretRef(unstruct, env); found {
 			dependencies = append(dependencies, dep)
 		}
+	}
+
+	return dependencies, len(dependencies) > 0
+}
+
+func parseBindingDependenciesForWorkload(pod interface{}, otherUnstructs []*unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
+	serviceAccountName, _ := nestedStringNotEmpty(pod, "spec", "serviceAccountName")
+	if serviceAccountName == "" {
+		serviceAccountName, _ = nestedStringNotEmpty(pod, "spec", "serviceAccount")
+	}
+
+	if serviceAccountName == "" {
+		return nil, false
+	}
+
+	bindingUnstructs := lo.Filter(otherUnstructs, func(u *unstructured.Unstructured, _ int) bool {
+		switch u.GroupVersionKind().GroupKind() {
+		case schema.GroupKind{Kind: "RoleBinding", Group: "rbac.authorization.k8s.io"},
+			schema.GroupKind{Kind: "ClusterRoleBinding", Group: "rbac.authorization.k8s.io"}:
+			return true
+		default:
+			return false
+		}
+	})
+
+	for _, bindingUnstruct := range bindingUnstructs {
+		subjects, _ := nestedSlice(bindingUnstruct.Object, "subjects")
+		for _, subj := range subjects {
+			kind, ok := nestedString(subj, "kind")
+			if !ok || kind != "ServiceAccount" {
+				continue
+			}
+
+			name, ok := nestedString(subj, "name")
+			if !ok || name != serviceAccountName {
+				continue
+			}
+
+			dep := &InternalDependency{
+				ResourceMatcher: newExactResourceMatcher(bindingUnstruct),
+				ResourceState:   common.ResourceStatePresent,
+			}
+			dependencies = append(dependencies, dep)
+
+			break
+		}
+	}
+
+	return dependencies, len(dependencies) > 0
+}
+
+func parseBindingSubjects(unstruct *unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
+	subjects, _ := nestedSlice(unstruct.Object, "subjects")
+	for _, subj := range subjects {
+		kind, found := nestedString(subj, "kind")
+		if !found || kind != "ServiceAccount" {
+			continue
+		}
+
+		serviceAccountName, found := nestedString(subj, "name")
+		if !found {
+			continue
+		}
+
+		dep := &InternalDependency{
+			ResourceMatcher: &spec.ResourceMatcher{
+				Names:      []string{serviceAccountName},
+				Namespaces: []string{unstruct.GetNamespace()},
+				Groups:     []string{""},
+				Kinds:      []string{"ServiceAccount"},
+			},
+			ResourceState: common.ResourceStatePresent,
+		}
+
+		dependencies = append(dependencies, dep)
 	}
 
 	return dependencies, len(dependencies) > 0
@@ -635,6 +718,30 @@ func parseServiceAccountDependencies(unstruct *unstructured.Unstructured, otherU
 			nestedPath = []string{"spec", "template", "spec", "serviceAccountName"}
 		case schema.GroupKind{Kind: "CronJob", Group: "batch"}:
 			nestedPath = []string{"spec", "jobTemplate", "spec", "template", "spec", "serviceAccountName"}
+		case schema.GroupKind{Kind: "ClusterRoleBinding", Group: "rbac.authorization.k8s.io"},
+			schema.GroupKind{Kind: "RoleBinding", Group: "rbac.authorization.k8s.io"}:
+			subjects, _ := nestedSlice(otherUnstruct.Object, "subjects")
+			for _, subj := range subjects {
+				kind, ok := nestedString(subj, "kind")
+				if !ok || kind != "ServiceAccount" {
+					continue
+				}
+
+				name, ok := nestedString(subj, "name")
+				if !ok || name != unstruct.GetName() {
+					continue
+				}
+
+				dep := &InternalDependency{
+					ResourceMatcher: newExactResourceMatcher(otherUnstruct),
+					ResourceState:   common.ResourceStateAbsent,
+				}
+				dependencies = append(dependencies, dep)
+
+				break
+			}
+
+			continue
 		default:
 			continue
 		}
