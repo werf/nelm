@@ -1,5 +1,10 @@
+
 <p align="center">
-  <img src="resources/images/nelm-logo.png" style="max-height:100%;" height="100">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/nelm-logo-white.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/nelm-logo-black.svg">
+    <img alt="Nelm logo" src="assets/nelm-logo-white.svg" height="100">
+  </picture>
 </p>
 
 <!-- <p align="center">
