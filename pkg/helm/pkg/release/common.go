@@ -112,6 +112,18 @@ func (a *v1Accessor) DeployedAt() time.Time {
 	return a.rel.Info.LastDeployed
 }
 
+func (a *v1Accessor) Config() map[string]any {
+	return a.rel.Config
+}
+
+func (a *v1Accessor) UnstoredManifest() string {
+	return a.rel.UnstoredManifest
+}
+
+func (a *v1Accessor) Releaser() Releaser {
+	return a.rel
+}
+
 type v1HookAccessor struct {
 	hook *v1release.Hook
 }
@@ -174,6 +186,18 @@ func (a *v2Accessor) ApplyMethod() string {
 
 func (a *v2Accessor) DeployedAt() time.Time {
 	return a.rel.Info.LastDeployed
+}
+
+func (a *v2Accessor) Config() map[string]any {
+	return a.rel.Config
+}
+
+func (a *v2Accessor) UnstoredManifest() string {
+	return a.rel.UnstoredManifest
+}
+
+func (a *v2Accessor) Releaser() Releaser {
+	return a.rel
 }
 
 type v2HookAccessor struct {

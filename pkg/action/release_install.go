@@ -21,7 +21,9 @@ import (
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/nelm/pkg/chart"
 	"github.com/werf/nelm/pkg/common"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
+	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/kube"
@@ -302,12 +304,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	newRevision := 1
 	if prevRelease != nil {
-		newRevision = prevRelease.Version + 1
+		newRevision = prevRelease.Version() + 1
 	}
 
 	var (
 		installPlan  *plan.Plan
-		newRelease   *helmrelease.Release
+		newRelease   helmrel.Accessor
 		instResInfos []*plan.InstallableResourceInfo
 		relInfos     []*plan.ReleaseInfo
 	)
@@ -319,11 +321,26 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}
 
 		installPlan = planArtifact.Data.Plan
-		newRelease = planArtifact.Data.Release
+
+		if planArtifact.Data.ReleaseVersion == release.ReleaseVersionV2 {
+			v2rel, convErr := release.V1ReleaseToV2Release(planArtifact.Data.Release)
+			if convErr != nil {
+				return fmt.Errorf("convert release for plan artifact: %w", convErr)
+			}
+
+			newRelease, err = helmrel.NewAccessor(v2rel)
+		} else {
+			newRelease, err = helmrel.NewAccessor(planArtifact.Data.Release)
+		}
+
+		if err != nil {
+			return fmt.Errorf("create release accessor: %w", err)
+		}
+
 		instResInfos = planArtifact.Data.InstallableResourceInfos
 		relInfos = planArtifact.Data.ReleaseInfos
 	} else {
-		prevReleaseFailed := prevRelease != nil && prevRelease.Info.Status == helmreleasestatus.StatusFailed
+		prevReleaseFailed := prevRelease != nil && prevRelease.Status() == helmreleasestatus.StatusFailed.String()
 
 		var deployType common.DeployType
 		if prevDeployedRelease != nil {
@@ -477,7 +494,14 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		log.Default.Debug(ctx, "Build release infos")
 
-		relInfos, err = plan.BuildReleaseInfos(ctx, deployType, releases, newRelease)
+		newReleaseV1, err := release.ReleaserToV1Release(newRelease.Releaser())
+		if err != nil {
+			return fmt.Errorf("convert new release for release infos: %w", err)
+		}
+
+		relInfos, err = plan.BuildReleaseInfos(ctx, deployType, lo.Map(releases, func(rel helmrel.Accessor, _ int) *helmrelease.Release {
+			return rel.Releaser().(*helmrelease.Release)
+		}), newReleaseV1)
 		if err != nil {
 			return fmt.Errorf("build release infos: %w", err)
 		}
@@ -520,7 +544,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 				APIVersion: "v3",
 				Release:    releaseName,
 				Namespace:  releaseNamespace,
-				Revision:   newRelease.Version,
+				Revision:   newRelease.Version(),
 				Status:     helmreleasestatus.Status("skipped"),
 			}); err != nil {
 				return fmt.Errorf("save release install report: %w", err)
@@ -528,7 +552,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}
 
 		if !opts.NoShowNotes {
-			printNotes(ctx, newRelease.Info.Notes)
+			printNotes(ctx, newRelease.Notes())
 		}
 
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)))
@@ -664,7 +688,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		APIVersion:          "v3",
 		Release:             releaseName,
 		Namespace:           releaseNamespace,
-		Revision:            newRelease.Version,
+		Revision:            newRelease.Version(),
 		Status:              lo.Ternary(executePlanErr == nil, helmreleasestatus.StatusDeployed, helmreleasestatus.StatusFailed),
 		CompletedOperations: reportCompletedOps,
 		CanceledOperations:  reportCanceledOps,
@@ -680,7 +704,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	if !criticalErrs.HasErrors() && !opts.NoShowNotes {
-		printNotes(ctx, newRelease.Info.Notes)
+		printNotes(ctx, newRelease.Notes())
 	}
 
 	if criticalErrs.HasErrors() {
@@ -781,7 +805,7 @@ func createReleaseNamespace(ctx context.Context, clientFactory *kube.ClientFacto
 	return nil
 }
 
-func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, failedRelease, prevDeployedRelease *helmrelease.Release, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history *release.History, clientFactory *kube.ClientFactory, opts runRollbackPlanOptions) (result *runRollbackPlanResult, nonCritErrs, critErrs *util.MultiError) {
+func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, failedRelease, prevDeployedRelease helmrel.Accessor, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history *release.History, clientFactory *kube.ClientFactory, opts runRollbackPlanOptions) (result *runRollbackPlanResult, nonCritErrs, critErrs *util.MultiError) {
 	critErrs = &util.MultiError{}
 	nonCritErrs = &util.MultiError{}
 
@@ -817,10 +841,15 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build releasable resource specs: %w", err))
 	}
 
-	newRelease, err := release.NewRelease(releaseName, releaseNamespace, failedRelease.Version+1, common.DeployTypeRollback, releasableResSpecs, prevDeployedRelease.Chart, prevDeployedRelease.Config, release.ReleaseOptions{
+	chartAccessor, err := helmchart.NewAccessor(prevDeployedRelease.Chart())
+	if err != nil {
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("create chart accessor: %w", err))
+	}
+
+	newRelease, err := release.NewRelease(releaseName, releaseNamespace, failedRelease.Version()+1, common.DeployTypeRollback, releasableResSpecs, chartAccessor, prevDeployedRelease.Config(), release.ReleaseOptions{
 		InfoAnnotations: opts.ReleaseInfoAnnotations,
 		Labels:          opts.ReleaseLabels,
-		Notes:           prevDeployedRelease.Info.Notes,
+		Notes:           prevDeployedRelease.Notes(),
 	})
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("construct new release: %w", err))
@@ -887,7 +916,14 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	relInfos, err := plan.BuildReleaseInfos(ctx, common.DeployTypeRollback, releases, newRelease)
+	newReleaseV1, err := release.ReleaserToV1Release(newRelease.Releaser())
+	if err != nil {
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert new release for release infos: %w", err))
+	}
+
+	relInfos, err := plan.BuildReleaseInfos(ctx, common.DeployTypeRollback, lo.Map(releases, func(rel helmrel.Accessor, _ int) *helmrelease.Release {
+		return rel.Releaser().(*helmrelease.Release)
+	}), newReleaseV1)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build release infos: %w", err))
 	}

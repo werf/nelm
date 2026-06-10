@@ -38,6 +38,9 @@ type Accessor interface {
 	Status() string
 	ApplyMethod() string
 	DeployedAt() time.Time
+	Config() map[string]any
+	UnstoredManifest() string
+	Releaser() Releaser
 }
 
 type HookAccessor interface {

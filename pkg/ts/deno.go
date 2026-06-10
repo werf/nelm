@@ -15,14 +15,14 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/werf/nelm/pkg/common"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	v2chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
 	"github.com/werf/nelm/pkg/log"
 )
 
 var chartTSEntryPoints = [...]string{common.ChartTSEntryPointTS, common.ChartTSEntryPointJS}
 
-func BundleChartsRecursive(ctx context.Context, chart *v2chart.Chart, path string, rebuildBundle bool, binaryPath string) error {
+func BundleChartsRecursive(ctx context.Context, chart helmchart.Accessor, path string, rebuildBundle bool, binaryPath string) error {
 	if !hasTSFiles(chart) {
 		return nil
 	}
@@ -57,8 +57,8 @@ func RunDenoInstall(ctx context.Context, chartPath, binaryPath string) error {
 	return nil
 }
 
-func bundleChartsRecursive(ctx context.Context, chart *v2chart.Chart, path string, rebuildBundle bool, denoBin string) error {
-	entrypoint, bundle := getEntrypointAndBundle(chart.RuntimeFiles)
+func bundleChartsRecursive(ctx context.Context, chart helmchart.Accessor, path string, rebuildBundle bool, denoBin string) error {
+	entrypoint, bundle := getEntrypointAndBundle(chart.RuntimeFiles())
 
 	if entrypoint != "" {
 		if bundle == nil || rebuildBundle {
@@ -78,7 +78,12 @@ func bundleChartsRecursive(ctx context.Context, chart *v2chart.Chart, path strin
 	}
 
 	for _, dep := range chart.Dependencies() {
-		depPath := filepath.Join(path, "charts", dep.Name())
+		depAcc, err := helmchart.NewAccessor(dep)
+		if err != nil {
+			return fmt.Errorf("create accessor for dependency: %w", err)
+		}
+
+		depPath := filepath.Join(path, "charts", depAcc.Name())
 
 		if _, err := os.Stat(depPath); err != nil {
 			// Subchart loaded from .tgz or missing on disk — skip,
@@ -86,8 +91,8 @@ func bundleChartsRecursive(ctx context.Context, chart *v2chart.Chart, path strin
 			continue
 		}
 
-		if err := bundleChartsRecursive(ctx, dep, depPath, rebuildBundle, denoBin); err != nil {
-			return fmt.Errorf("process dependency %q: %w", dep.Name(), err)
+		if err := bundleChartsRecursive(ctx, depAcc, depPath, rebuildBundle, denoBin); err != nil {
+			return fmt.Errorf("process dependency %q: %w", depAcc.Name(), err)
 		}
 	}
 
@@ -111,14 +116,19 @@ func getEntrypointAndBundle(files []*chartcommon.File) (string, *chartcommon.Fil
 	return entrypoint, bundleFile
 }
 
-func hasTSFiles(chart *v2chart.Chart) bool {
-	entrypoint := findEntrypointInFiles(chart.RuntimeFiles)
+func hasTSFiles(chart helmchart.Accessor) bool {
+	entrypoint := findEntrypointInFiles(chart.RuntimeFiles())
 	if entrypoint != "" {
 		return true
 	}
 
 	for _, dep := range chart.Dependencies() {
-		if hasTSFiles(dep) {
+		depAcc, err := helmchart.NewAccessor(dep)
+		if err != nil {
+			continue
+		}
+
+		if hasTSFiles(depAcc) {
 			return true
 		}
 	}

@@ -18,7 +18,7 @@ import (
 	"github.com/werf/nelm/pkg/plan"
 )
 
-const PlanArtifactSchemeVersion = "v1"
+const PlanArtifactSchemeVersion = "v2"
 
 type PlanArtifact struct {
 	APIVersion string              `json:"apiVersion"`
@@ -35,6 +35,7 @@ type PlanArtifactData struct {
 	Options                  common.ReleaseInstallRuntimeOptions `json:"options"`
 	Changes                  []*plan.ResourceChange              `json:"changes"`
 	Plan                     *plan.Plan                          `json:"plan"`
+	ReleaseVersion           string                              `json:"releaseVersion"`
 	Release                  *helmrelease.Release                `json:"release"`
 	InstallableResourceInfos []*plan.InstallableResourceInfo     `json:"installableResourceInfos"`
 	ReleaseInfos             []*plan.ReleaseInfo                 `json:"releaseInfos"`

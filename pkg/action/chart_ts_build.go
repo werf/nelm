@@ -13,6 +13,8 @@ import (
 
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
+	v3chart "github.com/werf/nelm/pkg/helm/intern/chart/v3"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
 	v2chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
@@ -58,16 +60,26 @@ func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {
 		return fmt.Errorf("load chart: %w", err)
 	}
 
-	chart, ok := loadedChart.(*v2chart.Chart)
-	if !ok {
-		return fmt.Errorf("unsupported chart type %T", loadedChart)
+	chartAccessor, err := helmchart.NewAccessor(loadedChart)
+	if err != nil {
+		return fmt.Errorf("create chart accessor: %w", err)
 	}
 
-	if err = ts.BundleChartsRecursive(ctx, chart, absPath, true, opts.DenoBinaryPath); err != nil {
+	if err = ts.BundleChartsRecursive(ctx, chartAccessor, absPath, true, opts.DenoBinaryPath); err != nil {
 		return fmt.Errorf("process chart: %w", err)
 	}
 
-	bundles := lo.Filter(chart.Raw, func(file *chartcommon.File, _ int) bool {
+	var rawFiles []*chartcommon.File
+	switch c := loadedChart.(type) {
+	case *v2chart.Chart:
+		rawFiles = c.Raw
+	case *v3chart.Chart:
+		rawFiles = c.Raw
+	default:
+		return fmt.Errorf("unsupported chart type %T", loadedChart)
+	}
+
+	bundles := lo.Filter(rawFiles, func(file *chartcommon.File, _ int) bool {
 		return strings.Contains(file.Name, common.ChartTSBundleFile)
 	})
 

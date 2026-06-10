@@ -15,6 +15,7 @@ import (
 	"github.com/werf/nelm/pkg/common"
 	chartcommonutil "github.com/werf/nelm/pkg/helm/pkg/chart/common/util"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
+	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/kube"
@@ -138,13 +139,13 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		}
 	}
 
-	var rel *helmrelease.Release
+	var relAccessor helmrel.Accessor
 	if opts.Revision == 0 {
-		rel = lo.LastOrEmpty(releases)
+		relAccessor = lo.LastOrEmpty(releases)
 	} else {
 		var revisionFound bool
 
-		rel, revisionFound = history.FindRevision(opts.Revision)
+		relAccessor, revisionFound = history.FindRevision(opts.Revision)
 		if !revisionFound {
 			return nil, &ReleaseRevisionNotFoundError{
 				ReleaseName:      releaseName,
@@ -153,6 +154,8 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 			}
 		}
 	}
+
+	rel := relAccessor.Releaser().(*helmrelease.Release)
 
 	values, err := chartcommonutil.CoalesceValues(rel.Chart, rel.Config)
 	if err != nil {
@@ -182,7 +185,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		Values: values,
 	}
 
-	resSpecs, err := release.ReleaseToResourceSpecs(ctx, rel, releaseNamespace, false)
+	resSpecs, err := release.ReleaseToResourceSpecs(ctx, relAccessor, releaseNamespace, false)
 	if err != nil {
 		return nil, fmt.Errorf("convert release to resource specs: %w", err)
 	}

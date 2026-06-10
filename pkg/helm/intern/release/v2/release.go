@@ -50,7 +50,8 @@ type Release struct {
 	Labels map[string]string `json:"-"`
 	// ApplyMethod stores whether server-side or client-side apply was used for the release
 	// Unset (empty string) should be treated as the default of client-side apply
-	ApplyMethod string `json:"apply_method,omitempty"` // "ssa" | "csa"
+	ApplyMethod      string `json:"apply_method,omitempty"` // "ssa" | "csa"
+	UnstoredManifest string `json:"unstored_manifest,omitempty"`
 }
 
 // SetStatus is a helper for setting the status on a release.

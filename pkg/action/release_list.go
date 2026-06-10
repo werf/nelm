@@ -17,6 +17,7 @@ import (
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -128,7 +129,7 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 
 	for _, history := range histories {
 		releases := history.Releases()
-		lastRelease := lo.LastOrEmpty(releases)
+		lastRelease := lo.LastOrEmpty(releases).Releaser().(*helmrelease.Release)
 
 		result.Releases = append(result.Releases, &ReleaseListResultRelease{
 			Annotations: lastRelease.Info.Annotations,
