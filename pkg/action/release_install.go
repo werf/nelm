@@ -322,19 +322,9 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		installPlan = planArtifact.Data.Plan
 
-		if planArtifact.Data.ReleaseVersion == release.ReleaseVersionV2 {
-			v2rel, convErr := release.V1ReleaseToV2Release(planArtifact.Data.Release)
-			if convErr != nil {
-				return fmt.Errorf("convert release for plan artifact: %w", convErr)
-			}
-
-			newRelease, err = helmrel.NewAccessor(v2rel)
-		} else {
-			newRelease, err = helmrel.NewAccessor(planArtifact.Data.Release)
-		}
-
+		newRelease, err = planArtifact.GetReleaseAccessor()
 		if err != nil {
-			return fmt.Errorf("create release accessor: %w", err)
+			return fmt.Errorf("get release accessor from plan artifact: %w", err)
 		}
 
 		instResInfos = planArtifact.Data.InstallableResourceInfos

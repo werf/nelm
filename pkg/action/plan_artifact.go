@@ -13,9 +13,11 @@ import (
 
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/pkg/common"
+	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/plan"
+	"github.com/werf/nelm/pkg/release"
 )
 
 const PlanArtifactSchemeVersion = "v2"
@@ -29,6 +31,30 @@ type PlanArtifact struct {
 	Release    PlanArtifactRelease `json:"release"`
 
 	Timestamp time.Time `json:"timestamp"`
+}
+
+func (a *PlanArtifact) GetReleaseAccessor() (helmrel.Accessor, error) {
+	var (
+		accessor helmrel.Accessor
+		err      error
+	)
+
+	if a.Data.ReleaseVersion == release.ReleaseVersionV2 {
+		v2rel, convErr := release.V1ReleaseToV2Release(a.Data.Release)
+		if convErr != nil {
+			return nil, fmt.Errorf("convert release for plan artifact: %w", convErr)
+		}
+
+		accessor, err = helmrel.NewAccessor(v2rel)
+	} else {
+		accessor, err = helmrel.NewAccessor(a.Data.Release)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("create release accessor: %w", err)
+	}
+
+	return accessor, nil
 }
 
 type PlanArtifactData struct {
