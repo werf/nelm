@@ -242,8 +242,8 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	)
 
 	if prevRelease != nil {
-		newRevision = prevRelease.Version + 1
-		prevReleaseFailed = prevRelease.Info.Status == helmreleasestatus.StatusFailed
+		newRevision = prevRelease.Version() + 1
+		prevReleaseFailed = prevRelease.Status() == helmreleasestatus.StatusFailed.String()
 	} else {
 		newRevision = 1
 	}
@@ -433,7 +433,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		APIVersion: PlanArtifactSchemeVersion,
 		Data: &PlanArtifactData{
 			Options:                  opts.ReleaseInstallRuntimeOptions,
-			Release:                  newRelease,
+			Release:                  &release.StoredRelease{Releaser: newRelease.Releaser()},
 			Plan:                     installPlan,
 			Changes:                  changes,
 			InstallableResourceInfos: instResInfos,
@@ -443,7 +443,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		Release: PlanArtifactRelease{
 			Name:      releaseName,
 			Namespace: releaseNamespace,
-			Revision:  newRelease.Version,
+			Revision:  newRelease.Version(),
 		},
 		Timestamp: time.Now().UTC(),
 	}

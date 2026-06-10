@@ -16,6 +16,7 @@ import (
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/plan"
+	"github.com/werf/nelm/pkg/release"
 	"github.com/werf/nelm/pkg/resource"
 	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/test"
@@ -227,7 +228,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 					},
 				}
 
-				updatedRelRaw, err := copystructure.Copy(releaseInfos[0].Release)
+				updatedRelRaw, err := copystructure.Copy(releaseInfos[0].Release.Releaser)
 				s.Require().NoError(err)
 
 				updatedRel := updatedRelRaw.(*helmrelease.Release)
@@ -238,7 +239,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 					Version:  plan.OperationVersionUpdateRelease,
 					Category: plan.OperationCategoryRelease,
 					Config: &plan.OperationConfigUpdateRelease{
-						Release: updatedRel,
+						Release: &release.StoredRelease{Releaser: updatedRel},
 					},
 				}
 
@@ -1406,7 +1407,7 @@ func TestBuildPlanSuites(t *testing.T) {
 
 func defaultReleaseInfo(releaseName, releaseNamespace string) *plan.ReleaseInfo {
 	return &plan.ReleaseInfo{
-		Release:                defaultRelease(releaseName, releaseNamespace),
+		Release:                &release.StoredRelease{Releaser: defaultRelease(releaseName, releaseNamespace)},
 		Must:                   plan.ReleaseTypeInstall,
 		MustFailOnFailedDeploy: true,
 	}

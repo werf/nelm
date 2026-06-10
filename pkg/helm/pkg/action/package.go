@@ -97,7 +97,7 @@ func (p *Package) Run(path string, _ map[string]any) (string, error) {
 	}
 
 	if featgate.FeatGateTypescript.Enabled() {
-		if err := ts.BundleChartsRecursive(context.Background(), ch, path, true, p.TypeScriptOps.DenoBinaryPath); err != nil {
+		if err := ts.BundleChartsRecursive(context.Background(), ac, path, true, p.TypeScriptOps.DenoBinaryPath); err != nil {
 			return "", fmt.Errorf("unable to process TypeScript files in chart: %w", err)
 		}
 	}

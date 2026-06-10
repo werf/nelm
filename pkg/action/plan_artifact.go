@@ -13,12 +13,13 @@ import (
 
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/plan"
+	"github.com/werf/nelm/pkg/release"
 )
 
-const PlanArtifactSchemeVersion = "v1"
+const PlanArtifactSchemeVersion = "v2"
 
 type PlanArtifact struct {
 	APIVersion string              `json:"apiVersion"`
@@ -31,11 +32,20 @@ type PlanArtifact struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+func (a *PlanArtifact) GetReleaseAccessor() (helmrel.Accessor, error) {
+	accessor, err := helmrel.NewAccessor(a.Data.Release.Releaser)
+	if err != nil {
+		return nil, fmt.Errorf("create release accessor: %w", err)
+	}
+
+	return accessor, nil
+}
+
 type PlanArtifactData struct {
 	Options                  common.ReleaseInstallRuntimeOptions `json:"options"`
 	Changes                  []*plan.ResourceChange              `json:"changes"`
 	Plan                     *plan.Plan                          `json:"plan"`
-	Release                  *helmrelease.Release                `json:"release"`
+	Release                  *release.StoredRelease              `json:"release"`
 	InstallableResourceInfos []*plan.InstallableResourceInfo     `json:"installableResourceInfos"`
 	ReleaseInfos             []*plan.ReleaseInfo                 `json:"releaseInfos"`
 }
@@ -63,6 +73,10 @@ func ReadPlanArtifact(ctx context.Context, path, secretKey, secretWorkDir string
 
 	if err := json.NewDecoder(gzipReader).Decode(&artifact); err != nil {
 		return nil, fmt.Errorf("decode plan artifact json: %w", err)
+	}
+
+	if artifact.APIVersion != PlanArtifactSchemeVersion {
+		return nil, fmt.Errorf("plan artifact %s is not supported by the current version", artifact.APIVersion)
 	}
 
 	if artifact.DataRaw == "" {

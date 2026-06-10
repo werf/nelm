@@ -15,6 +15,7 @@ import (
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/nelm/pkg/common"
+	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -325,7 +326,12 @@ func execOpCreate(ctx context.Context, op *Operation, releaseNamespace string, c
 func execOpCreateRelease(ctx context.Context, op *Operation, history release.Historier) error {
 	opConfig := op.Config.(*OperationConfigCreateRelease)
 
-	if err := history.CreateRelease(ctx, opConfig.Release); err != nil {
+	rel, err := helmrel.NewAccessor(opConfig.Release.Releaser)
+	if err != nil {
+		return fmt.Errorf("get release accessor: %w", err)
+	}
+
+	if err := history.CreateRelease(ctx, rel); err != nil {
 		return fmt.Errorf("create release: %w", err)
 	}
 
@@ -370,7 +376,12 @@ func execOpUpdate(ctx context.Context, op *Operation, releaseNamespace string, c
 func execOpUpdateRelease(ctx context.Context, op *Operation, history release.Historier) error {
 	opConfig := op.Config.(*OperationConfigUpdateRelease)
 
-	if err := history.UpdateRelease(ctx, opConfig.Release); err != nil {
+	rel, err := helmrel.NewAccessor(opConfig.Release.Releaser)
+	if err != nil {
+		return fmt.Errorf("get release accessor: %w", err)
+	}
+
+	if err := history.UpdateRelease(ctx, rel); err != nil {
 		return fmt.Errorf("update release: %w", err)
 	}
 

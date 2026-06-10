@@ -36,6 +36,10 @@ type Accessor interface {
 	Values() map[string]any
 	Schema() []byte
 	Deprecated() bool
+	RuntimeFiles() []*common.File
+	AddRuntimeFile(name string, data []byte)
+	RemoveRuntimeFile(name string)
+	Charter() Charter
 }
 
 type DependencyAccessor interface {

@@ -65,7 +65,7 @@ type RenderChartOptions struct {
 }
 
 type RenderChartResult struct {
-	Chart         *v2chart.Chart
+	Chart         helmchart.Accessor
 	Notes         string
 	ReleaseConfig map[string]interface{}
 	ResourceSpecs []*spec.ResourceSpec
@@ -281,17 +281,9 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	}
 
 	if featgate.FeatGateTypescript.Enabled() {
-		var tsChart *v2chart.Chart
-		if chartV2 != nil {
-			tsChart = chartV2
-		} else {
-			// TODO(major): refactor to allow native v3 chart handling in TypeScript rendering
-			tsChart = convertV3ToV2(chartV3)
-		}
+		log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", chartAccessor.Name())
 
-		log.Default.Debug(ctx, "Rendering TypeScript resources for chart %q and its dependencies", tsChart.Name())
-
-		jsRenderedTemplates, err := ts.RenderChart(ctx, tsChart, renderedValues, opts.IgnoreBundleJS, chartPath, opts.TempDirPath, opts.DenoBinaryPath)
+		jsRenderedTemplates, err := ts.RenderChart(ctx, chartAccessor, renderedValues, opts.IgnoreBundleJS, chartPath, opts.TempDirPath, opts.DenoBinaryPath)
 		if err != nil {
 			return nil, fmt.Errorf("render TypeScript templates for chart %q: %w", chartAccessor.Name(), err)
 		}
@@ -327,97 +319,13 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		return spec.ResourceSpecSortHandler(resources[i], resources[j])
 	})
 
-	var resultChart *v2chart.Chart
-	if chartV2 != nil {
-		resultChart = chartV2
-	} else {
-		// TODO(major): refactor to allow native v3 chart handling in nelm
-		resultChart = convertV3ToV2(chartV3)
-	}
-
 	return &RenderChartResult{
-		Chart:         resultChart,
+		Chart:         chartAccessor,
 		Notes:         notes,
 		ReleaseConfig: overrideValues,
 		ResourceSpecs: resources,
 		Values:        renderedValues.AsMap(),
 	}, nil
-}
-
-func convertV3ToV2(src *v3chart.Chart) *v2chart.Chart {
-	dst := &v2chart.Chart{
-		Raw:                src.Raw,
-		Templates:          src.Templates,
-		Values:             src.Values,
-		Schema:             src.Schema,
-		SchemaModTime:      src.SchemaModTime,
-		Files:              src.Files,
-		ModTime:            src.ModTime,
-		RuntimeFiles:       src.RuntimeFiles,
-		ExtraValues:        src.ExtraValues,
-		SecretsRuntimeData: src.SecretsRuntimeData,
-	}
-
-	if src.Metadata != nil {
-		dst.Metadata = convertV3MetadataToV2(src.Metadata)
-	}
-
-	if src.Lock != nil {
-		dst.Lock = convertV3LockToV2(src.Lock)
-	}
-
-	for _, dep := range src.Dependencies() {
-		dst.AddDependency(convertV3ToV2(dep))
-	}
-
-	return dst
-}
-
-func convertV3LockToV2(src *v3chart.Lock) *v2chart.Lock {
-	dst := &v2chart.Lock{
-		Generated: src.Generated,
-		Digest:    src.Digest,
-	}
-
-	for _, dependency := range src.Dependencies {
-		dst.Dependencies = append(dst.Dependencies, convertV3DependencyToV2(dependency))
-	}
-
-	return dst
-}
-
-func convertV3MetadataToV2(src *v3chart.Metadata) *v2chart.Metadata {
-	dst := &v2chart.Metadata{
-		Name:        src.Name,
-		Home:        src.Home,
-		Sources:     src.Sources,
-		Version:     src.Version,
-		Description: src.Description,
-		Keywords:    src.Keywords,
-		Icon:        src.Icon,
-		APIVersion:  src.APIVersion,
-		Condition:   src.Condition,
-		Tags:        src.Tags,
-		AppVersion:  src.AppVersion,
-		Deprecated:  src.Deprecated,
-		Annotations: src.Annotations,
-		KubeVersion: src.KubeVersion,
-		Type:        src.Type,
-	}
-
-	for _, maintainer := range src.Maintainers {
-		dst.Maintainers = append(dst.Maintainers, &v2chart.Maintainer{
-			Name:  maintainer.Name,
-			Email: maintainer.Email,
-			URL:   maintainer.URL,
-		})
-	}
-
-	for _, dependency := range src.Dependencies {
-		dst.Dependencies = append(dst.Dependencies, convertV3DependencyToV2(dependency))
-	}
-
-	return dst
 }
 
 func buildChartCapabilities(ctx context.Context, clientFactory kube.ClientFactorier, opts buildChartCapabilitiesOptions) (*chartcommon.Capabilities, error) {
@@ -510,19 +418,6 @@ func buildContextFromJSONSets(jsonSets []string) (map[string]interface{}, error)
 	}
 
 	return context, nil
-}
-
-func convertV3DependencyToV2(src *v3chart.Dependency) *v2chart.Dependency {
-	return &v2chart.Dependency{
-		Name:         src.Name,
-		Version:      src.Version,
-		Repository:   src.Repository,
-		Condition:    src.Condition,
-		Tags:         src.Tags,
-		Enabled:      src.Enabled,
-		ImportValues: src.ImportValues,
-		Alias:        src.Alias,
-	}
 }
 
 func isLocalChart(path string) bool {
