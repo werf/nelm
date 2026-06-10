@@ -200,7 +200,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		prevRelease := lo.LastOrEmpty(releases)
-		prevReleaseFailed := prevRelease.Info.Status == helmreleasestatus.StatusFailed
+		prevReleaseFailed := prevRelease.Status() == helmreleasestatus.StatusFailed.String()
 		deployType := common.DeployTypeUninstall
 
 		log.Default.Debug(ctx, "Convert previous release to resource specs")
@@ -357,7 +357,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			APIVersion:          "v3",
 			Release:             releaseName,
 			Namespace:           releaseNamespace,
-			Revision:            prevRelease.Version,
+			Revision:            prevRelease.Version(),
 			Status:              helmreleasestatus.StatusUninstalled,
 			CompletedOperations: reportCompletedOps,
 			CanceledOperations:  reportCanceledOps,

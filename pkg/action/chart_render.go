@@ -234,7 +234,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	var newRevision int
 	if prevRelease != nil {
-		newRevision = prevRelease.Version + 1
+		newRevision = prevRelease.Version() + 1
 	} else {
 		newRevision = 1
 	}

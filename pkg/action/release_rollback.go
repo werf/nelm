@@ -16,8 +16,9 @@ import (
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/nelm/pkg/common"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
+	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/lock"
 	"github.com/werf/nelm/pkg/log"
@@ -181,13 +182,13 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	prevRelease := lo.LastOrEmpty(releases)
 	prevDeployedRelease := lo.LastOrEmpty(deployedReleases)
 
-	var rollbackRelease *helmrelease.Release
+	var rollbackRelease helmrel.Accessor
 	if opts.Revision == 0 {
 		if len(deployedReleases) == 0 {
 			return fmt.Errorf("not found successfully deployed release %q (namespace: %q)", releaseName, releaseNamespace)
 		}
 
-		if prevDeployedRelease.Version != prevRelease.Version {
+		if prevDeployedRelease.Version() != prevRelease.Version() {
 			rollbackRelease = prevDeployedRelease
 		} else {
 			if len(deployedReleases) < 2 {
@@ -199,8 +200,8 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	} else {
 		var found bool
 
-		rollbackRelease, found = lo.Find(releases, func(rel *helmrelease.Release) bool {
-			return rel.Version == opts.Revision
+		rollbackRelease, found = lo.Find(releases, func(rel helmrel.Accessor) bool {
+			return rel.Version() == opts.Revision
 		})
 		if !found {
 			return fmt.Errorf("not found revision %d for release %q (namespace: %q)", opts.Revision, releaseName, releaseNamespace)
@@ -213,8 +214,8 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	)
 
 	if prevRelease != nil {
-		newRevision = prevRelease.Version + 1
-		prevReleaseFailed = prevRelease.Info.Status == helmreleasestatus.StatusFailed
+		newRevision = prevRelease.Version() + 1
+		prevReleaseFailed = prevRelease.Status() == helmreleasestatus.StatusFailed.String()
 	} else {
 		newRevision = 1
 	}
@@ -252,10 +253,15 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		return fmt.Errorf("build releasable resource specs: %w", err)
 	}
 
-	newRelease, err := release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, releasableResSpecs, rollbackRelease.Chart, rollbackRelease.Config, release.ReleaseOptions{
+	chartAccessor, err := helmchart.NewAccessor(rollbackRelease.Chart())
+	if err != nil {
+		return fmt.Errorf("create chart accessor: %w", err)
+	}
+
+	newRelease, err := release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, releasableResSpecs, chartAccessor, rollbackRelease.Config(), release.ReleaseOptions{
 		InfoAnnotations: opts.ReleaseInfoAnnotations,
-		Labels:          lo.Assign(rollbackRelease.Labels, opts.ReleaseLabels),
-		Notes:           rollbackRelease.Info.Notes,
+		Labels:          lo.Assign(rollbackRelease.Labels(), opts.ReleaseLabels),
+		Notes:           rollbackRelease.Notes(),
 	})
 	if err != nil {
 		return fmt.Errorf("construct new release: %w", err)
@@ -367,7 +373,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 				APIVersion: "v3",
 				Release:    releaseName,
 				Namespace:  releaseNamespace,
-				Revision:   newRelease.Version,
+				Revision:   newRelease.Version(),
 				Status:     helmreleasestatus.Status("skipped"),
 			}); err != nil {
 				return fmt.Errorf("save release install report: %w", err)
@@ -375,7 +381,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		}
 
 		if !opts.NoShowNotes {
-			printNotes(ctx, newRelease.Info.Notes)
+			printNotes(ctx, newRelease.Notes())
 		}
 
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped rollback of release %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)))
@@ -481,7 +487,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		APIVersion:          "v3",
 		Release:             releaseName,
 		Namespace:           releaseNamespace,
-		Revision:            newRelease.Version,
+		Revision:            newRelease.Version(),
 		Status:              helmreleasestatus.StatusDeployed,
 		CompletedOperations: reportCompletedOps,
 		CanceledOperations:  reportCanceledOps,
@@ -497,7 +503,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	}
 
 	if !criticalErrs.HasErrors() && !opts.NoShowNotes {
-		printNotes(ctx, newRelease.Info.Notes)
+		printNotes(ctx, newRelease.Notes())
 	}
 
 	if criticalErrs.HasErrors() {

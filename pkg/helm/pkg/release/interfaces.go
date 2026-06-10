@@ -34,10 +34,14 @@ type Accessor interface {
 	Manifest() string
 	Notes() string
 	Labels() map[string]string
+	Annotations() map[string]string
 	Chart() chart.Charter
 	Status() string
 	ApplyMethod() string
 	DeployedAt() time.Time
+	Config() map[string]any
+	UnstoredManifest() string
+	Releaser() Releaser
 }
 
 type HookAccessor interface {
