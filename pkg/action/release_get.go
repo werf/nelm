@@ -13,11 +13,11 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/werf/nelm/pkg/common"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	chartcommonutil "github.com/werf/nelm/pkg/helm/pkg/chart/common/util"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
 	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -155,32 +155,39 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		}
 	}
 
-	rel := relAccessor.Releaser().(*helmrelease.Release)
+	chartAccessor, err := helmchart.NewAccessor(relAccessor.Chart())
+	if err != nil {
+		return nil, fmt.Errorf("construct chart accessor: %w", err)
+	}
 
-	values, err := chartcommonutil.CoalesceValues(rel.Chart, rel.Config)
+	values, err := chartcommonutil.CoalesceValues(relAccessor.Chart(), relAccessor.Config())
 	if err != nil {
 		return nil, fmt.Errorf("coalesce release values: %w", err)
 	}
 
+	chartMetadata := chartAccessor.MetadataAsMap()
+	chartVersion, _ := chartMetadata["Version"].(string)
+	chartAppVersion, _ := chartMetadata["AppVersion"].(string)
+
 	result := &ReleaseGetResultV2{
 		APIVersion: "v2",
 		Chart: &ReleaseGetResultChart{
-			Name:       rel.Chart.Name(),
-			Version:    rel.Chart.Metadata.Version,
-			AppVersion: rel.Chart.Metadata.AppVersion,
+			Name:       chartAccessor.Name(),
+			Version:    chartVersion,
+			AppVersion: chartAppVersion,
 		},
-		Notes: rel.Info.Notes,
+		Notes: relAccessor.Notes(),
 		Release: &ReleaseGetResultRelease{
-			Name:      rel.Name,
-			Namespace: rel.Namespace,
-			Revision:  rel.Version,
-			Status:    rel.Info.Status,
+			Name:      relAccessor.Name(),
+			Namespace: relAccessor.Namespace(),
+			Revision:  relAccessor.Version(),
+			Status:    helmreleasestatus.Status(relAccessor.Status()),
 			DeployedAt: &ReleaseGetResultDeployedAt{
 				Human: time.Time{}.String(),
 				Unix:  int(time.Time{}.Unix()),
 			},
-			Annotations:   rel.Info.Annotations,
-			StorageLabels: rel.Labels,
+			Annotations:   relAccessor.Annotations(),
+			StorageLabels: relAccessor.Labels(),
 		},
 		Values: values,
 	}

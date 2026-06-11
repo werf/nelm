@@ -15,9 +15,9 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/werf/nelm/pkg/common"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -129,23 +129,32 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 
 	for _, history := range histories {
 		releases := history.Releases()
-		lastRelease := lo.LastOrEmpty(releases).Releaser().(*helmrelease.Release)
+		lastRelease := lo.LastOrEmpty(releases)
+
+		chartAccessor, err := helmchart.NewAccessor(lastRelease.Chart())
+		if err != nil {
+			return nil, fmt.Errorf("construct chart accessor: %w", err)
+		}
+
+		chartMetadata := chartAccessor.MetadataAsMap()
+		chartVersion, _ := chartMetadata["Version"].(string)
+		chartAppVersion, _ := chartMetadata["AppVersion"].(string)
 
 		result.Releases = append(result.Releases, &ReleaseListResultRelease{
-			Annotations: lastRelease.Info.Annotations,
+			Annotations: lastRelease.Annotations(),
 			Chart: &ReleaseListResultChart{
-				Name:       lastRelease.Chart.Name(),
-				Version:    lastRelease.Chart.Metadata.Version,
-				AppVersion: lastRelease.Chart.Metadata.AppVersion,
+				Name:       chartAccessor.Name(),
+				Version:    chartVersion,
+				AppVersion: chartAppVersion,
 			},
 			DeployedAt: &ReleaseListResultDeployedAt{
-				Human: lastRelease.Info.LastDeployed.String(),
-				Unix:  int(lastRelease.Info.LastDeployed.Unix()),
+				Human: lastRelease.DeployedAt().String(),
+				Unix:  int(lastRelease.DeployedAt().Unix()),
 			},
-			Name:      lastRelease.Name,
-			Namespace: lastRelease.Namespace,
-			Revision:  lastRelease.Version,
-			Status:    lastRelease.Info.Status,
+			Name:      lastRelease.Name(),
+			Namespace: lastRelease.Namespace(),
+			Revision:  lastRelease.Version(),
+			Status:    helmreleasestatus.Status(lastRelease.Status()),
 		})
 	}
 

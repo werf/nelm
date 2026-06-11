@@ -96,6 +96,10 @@ func (a *v1Accessor) Labels() map[string]string {
 	return a.rel.Labels
 }
 
+func (a *v1Accessor) Annotations() map[string]string {
+	return a.rel.Info.Annotations
+}
+
 func (a *v1Accessor) Chart() chart.Charter {
 	return a.rel.Chart
 }
@@ -170,6 +174,10 @@ func (a *v2Accessor) Notes() string {
 
 func (a *v2Accessor) Labels() map[string]string {
 	return a.rel.Labels
+}
+
+func (a *v2Accessor) Annotations() map[string]string {
+	return nil
 }
 
 func (a *v2Accessor) Chart() chart.Charter {
