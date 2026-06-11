@@ -15,6 +15,7 @@ import (
 	"github.com/jedib0t/go-pretty/v6/text"
 
 	"github.com/werf/nelm/pkg/common"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
@@ -130,22 +131,31 @@ func ReleaseHistory(ctx context.Context, releaseName, releaseNamespace string, o
 		}
 	}
 
-	for _, release := range releases {
+	for _, releaseAccessor := range releases {
+		chartAccessor, err := helmchart.NewAccessor(releaseAccessor.Chart())
+		if err != nil {
+			return nil, fmt.Errorf("construct chart accessor: %w", err)
+		}
+
+		chartMetadata := chartAccessor.MetadataAsMap()
+		chartVersion, _ := chartMetadata["Version"].(string)
+		chartAppVersion, _ := chartMetadata["AppVersion"].(string)
+
 		result.Releases = append(result.Releases, &ReleaseHistoryResultRelease{
-			Annotations: release.Info.Annotations,
+			Annotations: releaseAccessor.Annotations(),
 			Chart: &ReleaseHistoryResultChart{
-				Name:       release.Chart.Name(),
-				Version:    release.Chart.Metadata.Version,
-				AppVersion: release.Chart.Metadata.AppVersion,
+				Name:       chartAccessor.Name(),
+				Version:    chartVersion,
+				AppVersion: chartAppVersion,
 			},
 			DeployedAt: &ReleaseHistoryResultDeployedAt{
-				Human: release.Info.LastDeployed.String(),
-				Unix:  int(release.Info.LastDeployed.Unix()),
+				Human: releaseAccessor.DeployedAt().String(),
+				Unix:  int(releaseAccessor.DeployedAt().Unix()),
 			},
-			Name:      release.Name,
-			Namespace: release.Namespace,
-			Revision:  release.Version,
-			Status:    release.Info.Status,
+			Name:      releaseAccessor.Name(),
+			Namespace: releaseAccessor.Namespace(),
+			Revision:  releaseAccessor.Version(),
+			Status:    helmreleasestatus.Status(releaseAccessor.Status()),
 		})
 	}
 

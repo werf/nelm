@@ -96,6 +96,10 @@ func (a *v1Accessor) Labels() map[string]string {
 	return a.rel.Labels
 }
 
+func (a *v1Accessor) Annotations() map[string]string {
+	return a.rel.Info.Annotations
+}
+
 func (a *v1Accessor) Chart() chart.Charter {
 	return a.rel.Chart
 }
@@ -110,6 +114,18 @@ func (a *v1Accessor) ApplyMethod() string {
 
 func (a *v1Accessor) DeployedAt() time.Time {
 	return a.rel.Info.LastDeployed
+}
+
+func (a *v1Accessor) Config() map[string]any {
+	return a.rel.Config
+}
+
+func (a *v1Accessor) UnstoredManifest() string {
+	return a.rel.UnstoredManifest
+}
+
+func (a *v1Accessor) Releaser() Releaser {
+	return a.rel
 }
 
 type v1HookAccessor struct {
@@ -160,6 +176,10 @@ func (a *v2Accessor) Labels() map[string]string {
 	return a.rel.Labels
 }
 
+func (a *v2Accessor) Annotations() map[string]string {
+	return nil
+}
+
 func (a *v2Accessor) Chart() chart.Charter {
 	return a.rel.Chart
 }
@@ -174,6 +194,18 @@ func (a *v2Accessor) ApplyMethod() string {
 
 func (a *v2Accessor) DeployedAt() time.Time {
 	return a.rel.Info.LastDeployed
+}
+
+func (a *v2Accessor) Config() map[string]any {
+	return a.rel.Config
+}
+
+func (a *v2Accessor) UnstoredManifest() string {
+	return a.rel.UnstoredManifest
+}
+
+func (a *v2Accessor) Releaser() Releaser {
+	return a.rel
 }
 
 type v2HookAccessor struct {

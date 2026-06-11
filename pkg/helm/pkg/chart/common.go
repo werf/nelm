@@ -112,6 +112,22 @@ func (r *v2Accessor) Deprecated() bool {
 	return r.chrt.Metadata.Deprecated
 }
 
+func (r *v2Accessor) RuntimeFiles() []*common.File {
+	return r.chrt.RuntimeFiles
+}
+
+func (r *v2Accessor) AddRuntimeFile(name string, data []byte) {
+	r.chrt.AddRuntimeFile(name, data)
+}
+
+func (r *v2Accessor) RemoveRuntimeFile(name string) {
+	r.chrt.RemoveRuntimeFile(name)
+}
+
+func (r *v2Accessor) Charter() Charter {
+	return r.chrt
+}
+
 type v3Accessor struct {
 	chrt *v3chart.Chart
 }
@@ -179,6 +195,22 @@ func (r *v3Accessor) Schema() []byte {
 
 func (r *v3Accessor) Deprecated() bool {
 	return r.chrt.Metadata.Deprecated
+}
+
+func (r *v3Accessor) RuntimeFiles() []*common.File {
+	return r.chrt.RuntimeFiles
+}
+
+func (r *v3Accessor) AddRuntimeFile(name string, data []byte) {
+	r.chrt.AddRuntimeFile(name, data)
+}
+
+func (r *v3Accessor) RemoveRuntimeFile(name string) {
+	r.chrt.RemoveRuntimeFile(name)
+}
+
+func (r *v3Accessor) Charter() Charter {
+	return r.chrt
 }
 
 func structToMap(obj any) (map[string]any, error) {

@@ -2,66 +2,81 @@ package release
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
+	"github.com/mitchellh/copystructure"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/werf/nelm/pkg/common"
+	v2release "github.com/werf/nelm/pkg/helm/intern/release/v2"
+	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	helmstorage "github.com/werf/nelm/pkg/helm/pkg/storage"
 	helmdriver "github.com/werf/nelm/pkg/helm/pkg/storage/driver"
 	"github.com/werf/nelm/pkg/kube"
 )
 
+const (
+	ReleaseVersionV1 = "v1"
+	ReleaseVersionV2 = "v2"
+)
+
 var _ ReleaseStorager = (*storageAdapter)(nil)
 
 type ReleaseStorager interface {
-	Create(rls *helmrelease.Release) error
-	Update(rls *helmrelease.Release) error
-	Delete(name string, version int) (*helmrelease.Release, error)
-	Query(labels map[string]string) ([]*helmrelease.Release, error)
+	Create(rls helmrel.Accessor) error
+	Update(rls helmrel.Accessor) error
+	Delete(name string, version int) (helmrel.Accessor, error)
+	Query(labels map[string]string) ([]helmrel.Accessor, error)
 }
 
 type storageAdapter struct {
 	storage *helmstorage.Storage
 }
 
-func (a *storageAdapter) Create(rls *helmrelease.Release) error {
-	if err := a.storage.Create(rls); err != nil {
+func (a *storageAdapter) Create(rls helmrel.Accessor) error {
+	releaser, err := ReleaserToV1Release(rls.Releaser())
+	if err != nil {
+		return fmt.Errorf("prepare release for storage: %w", err)
+	}
+
+	if err := a.storage.Create(releaser); err != nil {
 		return fmt.Errorf("create release: %w", err)
 	}
 
 	return nil
 }
 
-func (a *storageAdapter) Delete(name string, version int) (*helmrelease.Release, error) {
+func (a *storageAdapter) Delete(name string, version int) (helmrel.Accessor, error) {
 	rel, err := a.storage.Delete(name, version)
 	if err != nil {
 		return nil, fmt.Errorf("delete release: %w", err)
 	}
 
-	r, ok := rel.(*helmrelease.Release)
-	if !ok {
-		return nil, fmt.Errorf("unexpected release type: %T", rel)
+	acc, err := helmrel.NewAccessor(rel)
+	if err != nil {
+		return nil, fmt.Errorf("wrap release: %w", err)
 	}
 
-	return r, nil
+	return acc, nil
 }
 
-func (a *storageAdapter) Query(labels map[string]string) ([]*helmrelease.Release, error) {
+func (a *storageAdapter) Query(labels map[string]string) ([]helmrel.Accessor, error) {
 	releasers, err := a.storage.Query(labels)
 	if err != nil {
 		return nil, fmt.Errorf("query releases: %w", err)
 	}
 
-	result := make([]*helmrelease.Release, 0, len(releasers))
+	result := make([]helmrel.Accessor, 0, len(releasers))
 	for _, rel := range releasers {
-		r, ok := rel.(*helmrelease.Release)
-		if !ok {
-			return nil, fmt.Errorf("unexpected release type: %T", rel)
+		acc, err := helmrel.NewAccessor(rel)
+		if err != nil {
+			return nil, fmt.Errorf("wrap release: %w", err)
 		}
 
-		result = append(result, r)
+		result = append(result, acc)
 	}
 
 	return result, nil
@@ -71,8 +86,13 @@ func (a *storageAdapter) Storage() *helmstorage.Storage {
 	return a.storage
 }
 
-func (a *storageAdapter) Update(rls *helmrelease.Release) error {
-	if err := a.storage.Update(rls); err != nil {
+func (a *storageAdapter) Update(rls helmrel.Accessor) error {
+	releaser, err := ReleaserToV1Release(rls.Releaser())
+	if err != nil {
+		return fmt.Errorf("prepare release for storage: %w", err)
+	}
+
+	if err := a.storage.Update(releaser); err != nil {
 		return fmt.Errorf("update release: %w", err)
 	}
 
@@ -82,6 +102,24 @@ func (a *storageAdapter) Update(rls *helmrelease.Release) error {
 type ReleaseStorageOptions struct {
 	HistoryLimit  int
 	SQLConnection string
+}
+
+func CopyReleaserWithStatus(releaser helmrel.Releaser, status helmreleasecommon.Status) (helmrel.Releaser, error) {
+	copied, err := copystructure.Copy(releaser)
+	if err != nil {
+		return nil, fmt.Errorf("deep copy release: %w", err)
+	}
+
+	switch r := copied.(type) {
+	case *helmrelease.Release:
+		r.Info.Status = status
+		return r, nil
+	case *v2release.Release:
+		r.Info.Status = status
+		return r, nil
+	default:
+		return nil, fmt.Errorf("unexpected release type: %T", copied)
+	}
 }
 
 func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, clientFactory kube.ClientFactorier, opts ReleaseStorageOptions) (ReleaseStorager, error) {
@@ -122,4 +160,47 @@ func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, cli
 	storage.MaxHistory = opts.HistoryLimit
 
 	return &storageAdapter{storage: storage}, nil
+}
+
+func ReleaserToV1Release(releaser helmrel.Releaser) (*helmrelease.Release, error) {
+	switch r := releaser.(type) {
+	case *helmrelease.Release:
+		return r, nil
+	case *v2release.Release:
+		v1rel, err := v2ReleaseToV1Release(r)
+		if err != nil {
+			return nil, fmt.Errorf("convert v2 release to v1 release: %w", err)
+		}
+
+		return v1rel, nil
+	default:
+		return nil, fmt.Errorf("unexpected release type: %T", releaser)
+	}
+}
+
+func ReleaserVersion(releaser helmrel.Releaser) string {
+	switch releaser.(type) {
+	case *helmrelease.Release:
+		return ReleaseVersionV1
+	case *v2release.Release:
+		return ReleaseVersionV2
+	default:
+		panic(fmt.Sprintf("unexpected release type: %T", releaser))
+	}
+}
+
+func v2ReleaseToV1Release(rel *v2release.Release) (*helmrelease.Release, error) {
+	data, err := json.Marshal(rel)
+	if err != nil {
+		return nil, fmt.Errorf("marshal v2 release: %w", err)
+	}
+
+	v1rel := &helmrelease.Release{}
+	if err := json.Unmarshal(data, v1rel); err != nil {
+		return nil, fmt.Errorf("unmarshal into v1 release: %w", err)
+	}
+
+	v1rel.Labels = rel.Labels
+
+	return v1rel, nil
 }

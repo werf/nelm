@@ -11,13 +11,18 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/yaml"
 
 	"github.com/werf/nelm/pkg/common"
+	v3chart "github.com/werf/nelm/pkg/helm/intern/chart/v3"
+	v2release "github.com/werf/nelm/pkg/helm/intern/release/v2"
+	chart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
 	chartv2util "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
+	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	releaseutil "github.com/werf/nelm/pkg/helm/pkg/release/v1/util"
@@ -33,7 +38,7 @@ type ReleaseOptions struct {
 
 // Check if the new Release is up-to-date compared to the old Release. It doesn't check any
 // resources of the release in the cluster, just compares Release objects.
-func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
+func IsReleaseUpToDate(oldRel, newRel helmrel.Accessor) (bool, error) {
 	if oldRel == nil {
 		return false, nil
 	}
@@ -42,15 +47,20 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 		cmpopts.EquateEmpty(),
 	}
 
-	if oldRel.Info.Status != helmreleasecommon.StatusDeployed ||
-		oldRel.Info.Notes != newRel.Info.Notes ||
-		!cmp.Equal(oldRel.Config, newRel.Config, cmpOpts) {
+	if oldRel.Status() != helmreleasecommon.StatusDeployed.String() ||
+		oldRel.Notes() != newRel.Notes() ||
+		!cmp.Equal(oldRel.Config(), newRel.Config(), cmpOpts) {
 		return false, nil
 	}
 
 	oldHookResourcesHash := fnv.New32a()
-	for _, oldHook := range oldRel.Hooks {
-		obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(oldHook.Manifest), nil, &unstructured.Unstructured{})
+	for _, oldHook := range oldRel.Hooks() {
+		hookAcc, err := helmrel.NewHookAccessor(oldHook)
+		if err != nil {
+			return false, fmt.Errorf("get old hook accessor: %w", err)
+		}
+
+		obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(hookAcc.Manifest()), nil, &unstructured.Unstructured{})
 		if err != nil {
 			return false, fmt.Errorf("decode old hook: %w", err)
 		}
@@ -63,8 +73,13 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 	}
 
 	newHookResourcesHash := fnv.New32a()
-	for _, newHook := range newRel.Hooks {
-		obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(newHook.Manifest), nil, &unstructured.Unstructured{})
+	for _, newHook := range newRel.Hooks() {
+		hookAcc, err := helmrel.NewHookAccessor(newHook)
+		if err != nil {
+			return false, fmt.Errorf("get new hook accessor: %w", err)
+		}
+
+		obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(hookAcc.Manifest()), nil, &unstructured.Unstructured{})
 		if err != nil {
 			return false, fmt.Errorf("decode new hook: %w", err)
 		}
@@ -80,7 +95,7 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 		return false, nil
 	}
 
-	oldRelManifests := util.SplitManifests(oldRel.Manifest)
+	oldRelManifests := util.SplitManifests(oldRel.Manifest())
 
 	oldRegularResourcesHash := fnv.New32a()
 	for _, manifest := range oldRelManifests {
@@ -96,7 +111,7 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 		}
 	}
 
-	newRelManifests := util.SplitManifests(newRel.Manifest)
+	newRelManifests := util.SplitManifests(newRel.Manifest())
 
 	newRegularResourcesHash := fnv.New32a()
 	for _, manifest := range newRelManifests {
@@ -120,7 +135,7 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, error) {
 }
 
 // Construct Helm release.
-func NewRelease(name, namespace string, revision int, deployType common.DeployType, resources []*spec.ResourceSpec, chart *helmchart.Chart, releaseConfig map[string]interface{}, opts ReleaseOptions) (*helmrelease.Release, error) {
+func NewRelease(name, namespace string, revision int, deployType common.DeployType, resources []*spec.ResourceSpec, chrt chart.Accessor, releaseConfig map[string]interface{}, opts ReleaseOptions) (helmrel.Accessor, error) {
 	if err := chartv2util.ValidateReleaseName(name); err != nil {
 		return nil, fmt.Errorf("release name %q is not valid: %w", name, err)
 	}
@@ -185,28 +200,59 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 
 	opts.Notes = strings.TrimRightFunc(opts.Notes, unicode.IsSpace)
 
-	return &helmrelease.Release{
-		Name: name,
-		Info: &helmrelease.Info{
-			Status:      status,
-			Notes:       opts.Notes,
-			Annotations: opts.InfoAnnotations,
-		},
-		Chart:            chart,
-		Config:           releaseConfig,
-		Manifest:         strings.Join(regularResources, "\n---\n"),
-		Hooks:            hookResources,
-		Version:          revision,
-		Namespace:        namespace,
-		Labels:           opts.Labels,
-		UnstoredManifest: strings.Join(unstoredResources, "\n---\n"),
-	}, nil
+	var releaser helmrel.Releaser
+	switch chartObj := chrt.Charter().(type) {
+	case *helmchart.Chart:
+		releaser = &helmrelease.Release{
+			Name: name,
+			Info: &helmrelease.Info{
+				Status:      status,
+				Notes:       opts.Notes,
+				Annotations: opts.InfoAnnotations,
+			},
+			Chart:            chartObj,
+			Config:           releaseConfig,
+			Manifest:         strings.Join(regularResources, "\n---\n"),
+			Hooks:            hookResources,
+			Version:          revision,
+			Namespace:        namespace,
+			Labels:           opts.Labels,
+			UnstoredManifest: strings.Join(unstoredResources, "\n---\n"),
+		}
+	case *v3chart.Chart:
+		releaser = &v2release.Release{
+			Name: name,
+			Info: &v2release.Info{
+				Status: status,
+				Notes:  opts.Notes,
+			},
+			Chart:    chartObj,
+			Config:   releaseConfig,
+			Manifest: strings.Join(regularResources, "\n---\n"),
+			Hooks: lo.Map(hookResources, func(h *helmrelease.Hook, _ int) *v2release.Hook {
+				return v1HookToV2Hook(h)
+			}),
+			Version:          revision,
+			Namespace:        namespace,
+			Labels:           opts.Labels,
+			UnstoredManifest: strings.Join(unstoredResources, "\n---\n"),
+		}
+	default:
+		return nil, fmt.Errorf("unexpected chart type: %T", chrt.Charter())
+	}
+
+	acc, err := helmrel.NewAccessor(releaser)
+	if err != nil {
+		return nil, fmt.Errorf("wrap release: %w", err)
+	}
+
+	return acc, nil
 }
 
 // Constructs ResourceSpecs from a Release object.
-func ReleaseToResourceSpecs(ctx context.Context, rel *helmrelease.Release, releaseNamespace string, noCleanNullFields bool) ([]*spec.ResourceSpec, error) {
+func ReleaseToResourceSpecs(ctx context.Context, rel helmrel.Accessor, releaseNamespace string, noCleanNullFields bool) ([]*spec.ResourceSpec, error) {
 	var resources []*spec.ResourceSpec
-	for _, manifest := range util.SplitManifests(rel.UnstoredManifest) {
+	for _, manifest := range util.SplitManifests(rel.UnstoredManifest()) {
 		if res, err := spec.NewResourceSpecFromManifest(ctx, manifest, releaseNamespace, spec.ResourceSpecOptions{
 			StoreAs:                         common.StoreAsNone,
 			LegacyNoCleanNullFields:         noCleanNullFields,
@@ -218,7 +264,7 @@ func ReleaseToResourceSpecs(ctx context.Context, rel *helmrelease.Release, relea
 		}
 	}
 
-	for _, manifest := range util.SplitManifests(rel.Manifest) {
+	for _, manifest := range util.SplitManifests(rel.Manifest()) {
 		if res, err := spec.NewResourceSpecFromManifest(ctx, manifest, releaseNamespace, spec.ResourceSpecOptions{
 			StoreAs:                         common.StoreAsRegular,
 			LegacyNoCleanNullFields:         noCleanNullFields,
@@ -230,8 +276,13 @@ func ReleaseToResourceSpecs(ctx context.Context, rel *helmrelease.Release, relea
 		}
 	}
 
-	for _, hook := range rel.Hooks {
-		if res, err := spec.NewResourceSpecFromManifest(ctx, hook.Manifest, releaseNamespace, spec.ResourceSpecOptions{
+	for _, hook := range rel.Hooks() {
+		hookAcc, err := helmrel.NewHookAccessor(hook)
+		if err != nil {
+			return nil, fmt.Errorf("get hook accessor: %w", err)
+		}
+
+		if res, err := spec.NewResourceSpecFromManifest(ctx, hookAcc.Manifest(), releaseNamespace, spec.ResourceSpecOptions{
 			StoreAs:                         common.StoreAsHook,
 			LegacyNoCleanNullFields:         noCleanNullFields,
 			DropInvalidAnnotationsAndLabels: true,
@@ -268,6 +319,30 @@ func resourceSpecToManifest(name, namespace string, revision int, res *spec.Reso
 	}
 
 	return manifest, nil
+}
+
+func v1HookToV2Hook(h *helmrelease.Hook) *v2release.Hook {
+	return &v2release.Hook{
+		Name:     h.Name,
+		Kind:     h.Kind,
+		Path:     h.Path,
+		Manifest: h.Manifest,
+		Events: lo.Map(h.Events, func(e helmrelease.HookEvent, _ int) v2release.HookEvent {
+			return v2release.HookEvent(e)
+		}),
+		LastRun: v2release.HookExecution{
+			StartedAt:   h.LastRun.StartedAt,
+			CompletedAt: h.LastRun.CompletedAt,
+			Phase:       v2release.HookPhase(h.LastRun.Phase),
+		},
+		Weight: h.Weight,
+		DeletePolicies: lo.Map(h.DeletePolicies, func(p helmrelease.HookDeletePolicy, _ int) v2release.HookDeletePolicy {
+			return v2release.HookDeletePolicy(p)
+		}),
+		OutputLogPolicies: lo.Map(h.OutputLogPolicies, func(p helmrelease.HookOutputLogPolicy, _ int) v2release.HookOutputLogPolicy {
+			return v2release.HookOutputLogPolicy(p)
+		}),
+	}
 }
 
 func writeUnstructHash(unstruct *unstructured.Unstructured, hash hash.Hash32) error {
