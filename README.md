@@ -3,7 +3,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="resources/images/nelm-logo-white.svg">
     <source media="(prefers-color-scheme: light)" srcset="resources/images/nelm-logo-black.svg">
-    <img alt="Nelm logo" src="resources/images/nelm-logo-white.svg" height="100">
+    <img alt="Nelm logo" src="resources/images/nelm-logo-white.svg" height="70">
   </picture>
 </p>
 
