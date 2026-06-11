@@ -13,9 +13,7 @@ import (
 	"github.com/werf/nelm/pkg/chart"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/plan"
@@ -371,14 +369,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	newReleaseV1, err := release.ReleaserToV1Release(newRelease.Releaser())
-	if err != nil {
-		return fmt.Errorf("convert new release for release infos: %w", err)
-	}
-
-	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, lo.Map(releases, func(rel helmrel.Accessor, _ int) *helmrelease.Release {
-		return rel.Releaser().(*helmrelease.Release)
-	}), newReleaseV1)
+	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, releases, newRelease)
 	if err != nil {
 		return fmt.Errorf("build release infos: %w", err)
 	}

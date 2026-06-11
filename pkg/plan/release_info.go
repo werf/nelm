@@ -4,8 +4,9 @@ import (
 	"context"
 
 	"github.com/werf/nelm/pkg/common"
+	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/pkg/release"
 )
 
 const (
@@ -30,7 +31,7 @@ type ReleaseType string
 // Data class, which stores all info to make a decision on what to do with the release revision
 // in the plan.
 type ReleaseInfo struct {
-	Release *helmrelease.Release `json:"release"`
+	Release *release.StoredRelease `json:"release"`
 
 	Must                   ReleaseType `json:"must"`
 	MustFailOnFailedDeploy bool        `json:"mustFailOnFailedDeploy"`
@@ -40,21 +41,21 @@ type ReleaseInfo struct {
 // do with each release revision. Compute here as much as you can: Release shouldn't be used for
 // decision making (its just a JSON representation of a Helm release) and BuildPlan is complex
 // enough already.
-func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevReleases []*helmrelease.Release, newRel *helmrelease.Release) ([]*ReleaseInfo, error) {
+func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevReleases []helmrel.Accessor, newRel helmrel.Accessor) ([]*ReleaseInfo, error) {
 	var infos []*ReleaseInfo
 	switch deployType {
 	case common.DeployTypeInitial, common.DeployTypeInstall:
 		infos = append(infos, &ReleaseInfo{
 			Must:                   ReleaseTypeInstall,
 			MustFailOnFailedDeploy: true,
-			Release:                newRel,
+			Release:                &release.StoredRelease{Releaser: newRel.Releaser()},
 		})
 
 		for _, rel := range prevReleases {
-			if rel.Info.Status == helmreleasecommon.StatusDeployed {
+			if rel.Status() == helmreleasecommon.StatusDeployed.String() {
 				infos = append(infos, &ReleaseInfo{
 					Must:    ReleaseTypeSupersede,
-					Release: rel,
+					Release: &release.StoredRelease{Releaser: rel.Releaser()},
 				})
 			}
 		}
@@ -62,14 +63,14 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 		infos = append(infos, &ReleaseInfo{
 			Must:                   ReleaseTypeUpgrade,
 			MustFailOnFailedDeploy: true,
-			Release:                newRel,
+			Release:                &release.StoredRelease{Releaser: newRel.Releaser()},
 		})
 
 		for _, rel := range prevReleases {
-			if rel.Info.Status == helmreleasecommon.StatusDeployed {
+			if rel.Status() == helmreleasecommon.StatusDeployed.String() {
 				infos = append(infos, &ReleaseInfo{
 					Must:    ReleaseTypeSupersede,
-					Release: rel,
+					Release: &release.StoredRelease{Releaser: rel.Releaser()},
 				})
 			}
 		}
@@ -77,14 +78,14 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 		infos = append(infos, &ReleaseInfo{
 			Must:                   ReleaseTypeRollback,
 			MustFailOnFailedDeploy: true,
-			Release:                newRel,
+			Release:                &release.StoredRelease{Releaser: newRel.Releaser()},
 		})
 
 		for _, rel := range prevReleases {
-			if rel.Info.Status == helmreleasecommon.StatusDeployed {
+			if rel.Status() == helmreleasecommon.StatusDeployed.String() {
 				infos = append(infos, &ReleaseInfo{
 					Must:    ReleaseTypeSupersede,
-					Release: rel,
+					Release: &release.StoredRelease{Releaser: rel.Releaser()},
 				})
 			}
 		}
@@ -105,7 +106,7 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 			infos = append(infos, &ReleaseInfo{
 				Must:                   releaseType,
 				MustFailOnFailedDeploy: failOnFailedDeploy,
-				Release:                prevReleases[i],
+				Release:                &release.StoredRelease{Releaser: prevReleases[i].Releaser()},
 			})
 		}
 	default:

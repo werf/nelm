@@ -25,7 +25,6 @@ import (
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
 	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/legacy/progrep"
 	"github.com/werf/nelm/pkg/lock"
@@ -484,14 +483,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		log.Default.Debug(ctx, "Build release infos")
 
-		newReleaseV1, err := release.ReleaserToV1Release(newRelease.Releaser())
-		if err != nil {
-			return fmt.Errorf("convert new release for release infos: %w", err)
-		}
-
-		relInfos, err = plan.BuildReleaseInfos(ctx, deployType, lo.Map(releases, func(rel helmrel.Accessor, _ int) *helmrelease.Release {
-			return rel.Releaser().(*helmrelease.Release)
-		}), newReleaseV1)
+		relInfos, err = plan.BuildReleaseInfos(ctx, deployType, releases, newRelease)
 		if err != nil {
 			return fmt.Errorf("build release infos: %w", err)
 		}
@@ -906,14 +898,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	newReleaseV1, err := release.ReleaserToV1Release(newRelease.Releaser())
-	if err != nil {
-		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert new release for release infos: %w", err))
-	}
-
-	relInfos, err := plan.BuildReleaseInfos(ctx, common.DeployTypeRollback, lo.Map(releases, func(rel helmrel.Accessor, _ int) *helmrelease.Release {
-		return rel.Releaser().(*helmrelease.Release)
-	}), newReleaseV1)
+	relInfos, err := plan.BuildReleaseInfos(ctx, common.DeployTypeRollback, releases, newRelease)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build release infos: %w", err))
 	}

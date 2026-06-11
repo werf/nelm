@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/mitchellh/copystructure"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/werf/nelm/pkg/common"
 	v2release "github.com/werf/nelm/pkg/helm/intern/release/v2"
 	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	helmstorage "github.com/werf/nelm/pkg/helm/pkg/storage"
 	helmdriver "github.com/werf/nelm/pkg/helm/pkg/storage/driver"
@@ -102,6 +104,24 @@ type ReleaseStorageOptions struct {
 	SQLConnection string
 }
 
+func CopyReleaserWithStatus(releaser helmrel.Releaser, status helmreleasecommon.Status) (helmrel.Releaser, error) {
+	copied, err := copystructure.Copy(releaser)
+	if err != nil {
+		return nil, fmt.Errorf("deep copy release: %w", err)
+	}
+
+	switch r := copied.(type) {
+	case *helmrelease.Release:
+		r.Info.Status = status
+		return r, nil
+	case *v2release.Release:
+		r.Info.Status = status
+		return r, nil
+	default:
+		return nil, fmt.Errorf("unexpected release type: %T", copied)
+	}
+}
+
 func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, clientFactory kube.ClientFactorier, opts ReleaseStorageOptions) (ReleaseStorager, error) {
 	var storage *helmstorage.Storage
 
@@ -167,22 +187,6 @@ func ReleaserVersion(releaser helmrel.Releaser) string {
 	default:
 		panic(fmt.Sprintf("unexpected release type: %T", releaser))
 	}
-}
-
-func V1ReleaseToV2Release(rel *helmrelease.Release) (*v2release.Release, error) {
-	data, err := json.Marshal(rel)
-	if err != nil {
-		return nil, fmt.Errorf("marshal v1 release: %w", err)
-	}
-
-	v2rel := &v2release.Release{}
-	if err := json.Unmarshal(data, v2rel); err != nil {
-		return nil, fmt.Errorf("unmarshal into v2 release: %w", err)
-	}
-
-	v2rel.Labels = rel.Labels
-
-	return v2rel, nil
 }
 
 func v2ReleaseToV1Release(rel *v2release.Release) (*helmrelease.Release, error) {

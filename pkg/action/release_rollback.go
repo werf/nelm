@@ -19,7 +19,6 @@ import (
 	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/lock"
 	"github.com/werf/nelm/pkg/log"
@@ -332,14 +331,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	newReleaseV1, err := release.ReleaserToV1Release(newRelease.Releaser())
-	if err != nil {
-		return fmt.Errorf("convert new release for release infos: %w", err)
-	}
-
-	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, lo.Map(releases, func(rel helmrel.Accessor, _ int) *helmrelease.Release {
-		return rel.Releaser().(*helmrelease.Release)
-	}), newReleaseV1)
+	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, releases, newRelease)
 	if err != nil {
 		return fmt.Errorf("build release infos: %w", err)
 	}

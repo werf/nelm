@@ -18,9 +18,7 @@ import (
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/nelm/pkg/common"
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/legacy/progrep"
 	"github.com/werf/nelm/pkg/lock"
@@ -243,9 +241,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 		log.Default.Debug(ctx, "Build release infos")
 
-		relInfos, err := plan.BuildReleaseInfos(ctx, deployType, lo.Map(releases, func(rel helmrel.Accessor, _ int) *helmrelease.Release {
-			return rel.Releaser().(*helmrelease.Release)
-		}), nil)
+		relInfos, err := plan.BuildReleaseInfos(ctx, deployType, releases, nil)
 		if err != nil {
 			return fmt.Errorf("build release infos: %w", err)
 		}

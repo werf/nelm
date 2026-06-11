@@ -326,7 +326,7 @@ func execOpCreate(ctx context.Context, op *Operation, releaseNamespace string, c
 func execOpCreateRelease(ctx context.Context, op *Operation, history release.Historier) error {
 	opConfig := op.Config.(*OperationConfigCreateRelease)
 
-	rel, err := helmrel.NewAccessor(opConfig.Release)
+	rel, err := helmrel.NewAccessor(opConfig.Release.Releaser)
 	if err != nil {
 		return fmt.Errorf("get release accessor: %w", err)
 	}
@@ -376,7 +376,7 @@ func execOpUpdate(ctx context.Context, op *Operation, releaseNamespace string, c
 func execOpUpdateRelease(ctx context.Context, op *Operation, history release.Historier) error {
 	opConfig := op.Config.(*OperationConfigUpdateRelease)
 
-	rel, err := helmrel.NewAccessor(opConfig.Release)
+	rel, err := helmrel.NewAccessor(opConfig.Release.Releaser)
 	if err != nil {
 		return fmt.Errorf("get release accessor: %w", err)
 	}
