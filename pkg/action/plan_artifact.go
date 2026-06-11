@@ -19,7 +19,7 @@ import (
 	"github.com/werf/nelm/pkg/release"
 )
 
-const PlanArtifactSchemeVersion = "v3"
+const PlanArtifactSchemeVersion = "v2"
 
 type PlanArtifact struct {
 	APIVersion string              `json:"apiVersion"`
@@ -73,6 +73,10 @@ func ReadPlanArtifact(ctx context.Context, path, secretKey, secretWorkDir string
 
 	if err := json.NewDecoder(gzipReader).Decode(&artifact); err != nil {
 		return nil, fmt.Errorf("decode plan artifact json: %w", err)
+	}
+
+	if artifact.APIVersion != PlanArtifactSchemeVersion {
+		return nil, fmt.Errorf("plan artifact %s is not supported by the current version", artifact.APIVersion)
 	}
 
 	if artifact.DataRaw == "" {
