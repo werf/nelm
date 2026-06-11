@@ -88,6 +88,10 @@ func internalDeployDependencies(unstruct *unstructured.Unstructured, otherUnstru
 		if deps, found := parseBindingSubjects(unstruct); found {
 			dependencies = append(dependencies, deps...)
 		}
+	case schema.GroupKind{Kind: "ScaledObject", Group: "keda.sh"}:
+		if dep, found := parseScaleTargetRef(unstruct); found {
+			dependencies = append(dependencies, dep)
+		}
 	}
 
 	return dependencies
@@ -580,6 +584,40 @@ func parseRuntimeClassName(pod interface{}) (dep *InternalDependency, found bool
 			Names:  []string{runtimeClassName},
 			Groups: []string{"node.k8s.io"},
 			Kinds:  []string{"RuntimeClass"},
+		},
+		ResourceState: common.ResourceStatePresent,
+	}
+
+	return dep, true
+}
+
+func parseScaleTargetRef(unstruct *unstructured.Unstructured) (dep *InternalDependency, found bool) {
+	name, found := nestedStringNotEmpty(unstruct.Object, "spec", "scaleTargetRef", "name")
+	if !found {
+		return nil, false
+	}
+
+	kind, found := nestedStringNotEmpty(unstruct.Object, "spec", "scaleTargetRef", "kind")
+	if !found {
+		kind = "Deployment"
+	}
+
+	apiVersion, found := nestedStringNotEmpty(unstruct.Object, "spec", "scaleTargetRef", "apiVersion")
+	if !found {
+		apiVersion = "apps/v1"
+	}
+
+	gv, err := schema.ParseGroupVersion(apiVersion)
+	if err != nil {
+		return nil, false
+	}
+
+	dep = &InternalDependency{
+		ResourceMatcher: &spec.ResourceMatcher{
+			Names:      []string{name},
+			Namespaces: []string{unstruct.GetNamespace()},
+			Groups:     []string{gv.Group},
+			Kinds:      []string{kind},
 		},
 		ResourceState: common.ResourceStatePresent,
 	}
