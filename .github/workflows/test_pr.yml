@@ -86,7 +86,7 @@ jobs:
             ${{ runner.os }}-go-${{ steps.setup-go.outputs.go-version }}-
 
       - name: Install Task
-        uses: arduino/setup-task@v2
+        uses: go-task/setup-task@v2
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
