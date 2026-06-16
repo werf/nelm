@@ -214,6 +214,7 @@ Generally, the migration from Helm to Nelm should be as simple as changing Helm 
 The resource deployment subsystem of Helm is rewritten from scratch in Nelm. During the deployment, Nelm builds the Directed Acyclic Graph (DAG) of all operations we want to perform in the cluster to do the release, then the DAG is executed. The DAG allowed us to implement advanced resource ordering capabilities, such as:
 * The `werf.io/weight` annotation: similar to `helm.sh/hook-weight`, but also works for non-hook resources. Resources with the same weight deployed in parallel.
 * The `werf.io/deploy-dependency-<id>` annotation: do not deploy the annotated resource until the dependency is present or ready. Works for both release resources and external cluster resources (e.g. resources created by a third-party operator). This is the most powerful and effective way to enforce deployment order in Nelm.
+* The `werf.io/delete-dependency-<id>` annotation: do not delete the annotated resource until the dependency is absent. Works for both release resources and external cluster resources.
 * Helm Hooks and their weights are supported, too.
 
 ![ordering](resources/images/graph.png)
