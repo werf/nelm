@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/werf/nelm/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/pkg/helm/pkg/release/common"
 )
 
 type Releaser any
@@ -42,6 +43,10 @@ type Accessor interface {
 	Config() map[string]any
 	UnstoredManifest() string
 	Releaser() Releaser
+	SetStatus(status common.Status)
+	SetFirstDeployed(t time.Time)
+	SetLastDeployed(t time.Time)
+	Copy() (Accessor, error)
 }
 
 type HookAccessor interface {

@@ -321,10 +321,11 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		installPlan = planArtifact.Data.Plan
 
-		newRelease, err = planArtifact.GetReleaseAccessor()
-		if err != nil {
-			return fmt.Errorf("get release accessor from plan artifact: %w", err)
+		if planArtifact.Data.Release == nil || planArtifact.Data.Release.Accessor == nil {
+			return fmt.Errorf("plan artifact has no release")
 		}
+
+		newRelease = planArtifact.Data.Release.Accessor
 
 		instResInfos = planArtifact.Data.InstallableResourceInfos
 		relInfos = planArtifact.Data.ReleaseInfos

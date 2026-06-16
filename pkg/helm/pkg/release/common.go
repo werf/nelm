@@ -21,8 +21,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/mitchellh/copystructure"
+
 	v2release "github.com/werf/nelm/pkg/helm/intern/release/v2"
 	"github.com/werf/nelm/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/pkg/helm/pkg/release/common"
 	v1release "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 )
 
@@ -128,6 +131,27 @@ func (a *v1Accessor) Releaser() Releaser {
 	return a.rel
 }
 
+func (a *v1Accessor) SetStatus(status common.Status) {
+	a.rel.Info.Status = status
+}
+
+func (a *v1Accessor) SetFirstDeployed(t time.Time) {
+	a.rel.Info.FirstDeployed = t
+}
+
+func (a *v1Accessor) SetLastDeployed(t time.Time) {
+	a.rel.Info.LastDeployed = t
+}
+
+func (a *v1Accessor) Copy() (Accessor, error) {
+	copied, err := copystructure.Copy(a.rel)
+	if err != nil {
+		return nil, fmt.Errorf("deep copy release: %w", err)
+	}
+
+	return NewAccessor(copied)
+}
+
 type v1HookAccessor struct {
 	hook *v1release.Hook
 }
@@ -206,6 +230,27 @@ func (a *v2Accessor) UnstoredManifest() string {
 
 func (a *v2Accessor) Releaser() Releaser {
 	return a.rel
+}
+
+func (a *v2Accessor) SetStatus(status common.Status) {
+	a.rel.Info.Status = status
+}
+
+func (a *v2Accessor) SetFirstDeployed(t time.Time) {
+	a.rel.Info.FirstDeployed = t
+}
+
+func (a *v2Accessor) SetLastDeployed(t time.Time) {
+	a.rel.Info.LastDeployed = t
+}
+
+func (a *v2Accessor) Copy() (Accessor, error) {
+	copied, err := copystructure.Copy(a.rel)
+	if err != nil {
+		return nil, fmt.Errorf("deep copy release: %w", err)
+	}
+
+	return NewAccessor(copied)
 }
 
 type v2HookAccessor struct {

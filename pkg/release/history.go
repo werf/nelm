@@ -11,10 +11,8 @@ import (
 
 	"github.com/samber/lo"
 
-	v2release "github.com/werf/nelm/pkg/helm/intern/release/v2"
 	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/helm/pkg/storage/driver"
 )
 
@@ -52,9 +50,9 @@ func (h *History) CreateRelease(ctx context.Context, rel helmrel.Accessor) error
 	h.updateLock.Lock()
 	defer h.updateLock.Unlock()
 
-	if err := touchReleaseDeployTimes(rel.Releaser(), time.Now()); err != nil {
-		return fmt.Errorf("touch release deploy times: %w", err)
-	}
+	now := time.Now()
+	rel.SetFirstDeployed(now)
+	rel.SetLastDeployed(now)
 
 	if err := h.storage.Create(rel); err != nil {
 		return fmt.Errorf("create release %q (namespace: %q, revision: %d): %w", rel.Name(), rel.Namespace(), rel.Version(), err)
@@ -122,9 +120,9 @@ func (h *History) UpdateRelease(ctx context.Context, rel helmrel.Accessor) error
 	h.updateLock.Lock()
 	defer h.updateLock.Unlock()
 
-	if err := touchReleaseDeployTimes(rel.Releaser(), time.Now()); err != nil {
-		return fmt.Errorf("touch release deploy times: %w", err)
-	}
+	now := time.Now()
+	rel.SetFirstDeployed(now)
+	rel.SetLastDeployed(now)
 
 	if err := h.storage.Update(rel); err != nil {
 		return fmt.Errorf("update release %q (namespace: %q, revision: %d): %w", rel.Name(), rel.Namespace(), rel.Version(), err)
@@ -191,19 +189,4 @@ func BuildHistory(releaseName string, historyStorage ReleaseStorager, opts Histo
 		historyStorage,
 		opts,
 	), nil
-}
-
-func touchReleaseDeployTimes(releaser helmrel.Releaser, t time.Time) error {
-	switch r := releaser.(type) {
-	case *helmrelease.Release:
-		r.Info.FirstDeployed = t
-		r.Info.LastDeployed = t
-	case *v2release.Release:
-		r.Info.FirstDeployed = t
-		r.Info.LastDeployed = t
-	default:
-		return fmt.Errorf("unexpected release type: %T", releaser)
-	}
-
-	return nil
 }

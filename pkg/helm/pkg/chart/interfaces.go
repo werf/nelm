@@ -28,6 +28,7 @@ type Accessor interface {
 	IsRoot() bool
 	MetadataAsMap() map[string]any
 	Files() []*common.File
+	RawFiles() []*common.File
 	Templates() []*common.File
 	ChartFullPath() string
 	IsLibraryChart() bool

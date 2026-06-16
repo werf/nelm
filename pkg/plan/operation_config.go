@@ -5,11 +5,9 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/samber/lo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/werf/kubedog/pkg/dyntracker/statestore"
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	"github.com/werf/nelm/pkg/release"
 	"github.com/werf/nelm/pkg/resource/spec"
 )
@@ -164,35 +162,27 @@ func (c *OperationConfigTrackAbsence) IDHuman() string {
 }
 
 type OperationConfigCreateRelease struct {
-	Release *release.StoredRelease `json:"release"`
+	Release *release.VersionedRelease `json:"release"`
 }
 
 func (c *OperationConfigCreateRelease) ID() string {
-	acc := lo.Must(helmrel.NewAccessor(c.Release.Releaser))
-
-	return releaseID(acc.Namespace(), acc.Name(), acc.Version())
+	return releaseID(c.Release.Accessor.Namespace(), c.Release.Accessor.Name(), c.Release.Accessor.Version())
 }
 
 func (c *OperationConfigCreateRelease) IDHuman() string {
-	acc := lo.Must(helmrel.NewAccessor(c.Release.Releaser))
-
-	return releaseIDHuman(acc.Namespace(), acc.Name(), acc.Version())
+	return releaseIDHuman(c.Release.Accessor.Namespace(), c.Release.Accessor.Name(), c.Release.Accessor.Version())
 }
 
 type OperationConfigUpdateRelease struct {
-	Release *release.StoredRelease `json:"release"`
+	Release *release.VersionedRelease `json:"release"`
 }
 
 func (c *OperationConfigUpdateRelease) ID() string {
-	acc := lo.Must(helmrel.NewAccessor(c.Release.Releaser))
-
-	return releaseID(acc.Namespace(), acc.Name(), acc.Version())
+	return releaseID(c.Release.Accessor.Namespace(), c.Release.Accessor.Name(), c.Release.Accessor.Version())
 }
 
 func (c *OperationConfigUpdateRelease) IDHuman() string {
-	acc := lo.Must(helmrel.NewAccessor(c.Release.Releaser))
-
-	return releaseIDHuman(acc.Namespace(), acc.Name(), acc.Version())
+	return releaseIDHuman(c.Release.Accessor.Namespace(), c.Release.Accessor.Name(), c.Release.Accessor.Version())
 }
 
 type OperationConfigDeleteRelease struct {

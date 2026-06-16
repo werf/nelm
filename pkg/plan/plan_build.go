@@ -9,7 +9,6 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/werf/nelm/pkg/common"
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -187,7 +186,7 @@ func addFailureReleaseOperations(failedPlan, plan *Plan, releaseInfos []*Release
 			continue
 		}
 
-		infoAcc := lo.Must(helmrel.NewAccessor(info.Release.Releaser))
+		infoRel := info.Release.Accessor
 
 		if _, releaseCreated := lo.Find(failedPlan.Operations(), func(op *Operation) bool {
 			if op.Status != OperationStatusCompleted {
@@ -196,17 +195,17 @@ func addFailureReleaseOperations(failedPlan, plan *Plan, releaseInfos []*Release
 
 			switch config := op.Config.(type) {
 			case *OperationConfigCreateRelease:
-				configAcc := lo.Must(helmrel.NewAccessor(config.Release.Releaser))
+				configRel := config.Release.Accessor
 
-				return configAcc.Namespace() == infoAcc.Namespace() &&
-					configAcc.Name() == infoAcc.Name() &&
-					configAcc.Version() == infoAcc.Version()
+				return configRel.Namespace() == infoRel.Namespace() &&
+					configRel.Name() == infoRel.Name() &&
+					configRel.Version() == infoRel.Version()
 			case *OperationConfigUpdateRelease:
-				configAcc := lo.Must(helmrel.NewAccessor(config.Release.Releaser))
+				configRel := config.Release.Accessor
 
-				return configAcc.Namespace() == infoAcc.Namespace() &&
-					configAcc.Name() == infoAcc.Name() &&
-					configAcc.Version() == infoAcc.Version()
+				return configRel.Namespace() == infoRel.Namespace() &&
+					configRel.Name() == infoRel.Name() &&
+					configRel.Version() == infoRel.Version()
 			default:
 				return false
 			}
@@ -502,16 +501,16 @@ func resolveTrackReadinessOpInStage(ctx context.Context, plan *Plan, instInfos [
 }
 
 func addDeleteReleaseOps(plan *Plan, info *ReleaseInfo) {
-	acc := lo.Must(helmrel.NewAccessor(info.Release.Releaser))
+	rel := info.Release.Accessor
 
 	deletedOp := &Operation{
 		Type:     OperationTypeDeleteRelease,
 		Version:  OperationVersionDeleteRelease,
 		Category: OperationCategoryRelease,
 		Config: &OperationConfigDeleteRelease{
-			ReleaseName:      acc.Name(),
-			ReleaseNamespace: acc.Namespace(),
-			ReleaseRevision:  acc.Version(),
+			ReleaseName:      rel.Name(),
+			ReleaseNamespace: rel.Namespace(),
+			ReleaseRevision:  rel.Version(),
 		},
 	}
 	lo.Must0(plan.AddOperationChain().AddOperation(deletedOp).Stage(common.StageFinal).Do())
@@ -556,17 +555,19 @@ func addDeleteResourcesOps(plan *Plan, infos []*DeletableResourceInfo) error {
 }
 
 func addFailedReleaseOps(plan *Plan, info *ReleaseInfo) error {
-	failedReleaser, err := release.CopyReleaserWithStatus(info.Release.Releaser, helmreleasecommon.StatusFailed)
+	failedRel, err := info.Release.Accessor.Copy()
 	if err != nil {
-		return fmt.Errorf("copy release with status: %w", err)
+		return fmt.Errorf("copy release: %w", err)
 	}
+
+	failedRel.SetStatus(helmreleasecommon.StatusFailed)
 
 	failedOp := &Operation{
 		Type:     OperationTypeUpdateRelease,
 		Version:  OperationVersionUpdateRelease,
 		Category: OperationCategoryRelease,
 		Config: &OperationConfigUpdateRelease{
-			Release: &release.StoredRelease{Releaser: failedReleaser},
+			Release: &release.VersionedRelease{Accessor: failedRel},
 		},
 	}
 	lo.Must0(plan.AddOperationChain().AddOperation(failedOp).Stage(common.StageInit).Do())
@@ -786,32 +787,36 @@ func addMainStages(plan *Plan) error {
 }
 
 func addPendingAndDeployedReleaseOps(plan *Plan, info *ReleaseInfo, pendingStatus helmreleasecommon.Status) error {
-	pendingReleaser, err := release.CopyReleaserWithStatus(info.Release.Releaser, pendingStatus)
+	pendingRel, err := info.Release.Accessor.Copy()
 	if err != nil {
-		return fmt.Errorf("copy release with status: %w", err)
+		return fmt.Errorf("copy release: %w", err)
 	}
+
+	pendingRel.SetStatus(pendingStatus)
 
 	pendingOp := &Operation{
 		Type:     OperationTypeCreateRelease,
 		Version:  OperationVersionCreateRelease,
 		Category: OperationCategoryRelease,
 		Config: &OperationConfigCreateRelease{
-			Release: &release.StoredRelease{Releaser: pendingReleaser},
+			Release: &release.VersionedRelease{Accessor: pendingRel},
 		},
 	}
 	lo.Must0(plan.AddOperationChain().AddOperation(pendingOp).Stage(common.StageInit).Do())
 
-	succeededReleaser, err := release.CopyReleaserWithStatus(pendingReleaser, helmreleasecommon.StatusDeployed)
+	succeededRel, err := pendingRel.Copy()
 	if err != nil {
-		return fmt.Errorf("copy release with status: %w", err)
+		return fmt.Errorf("copy release: %w", err)
 	}
+
+	succeededRel.SetStatus(helmreleasecommon.StatusDeployed)
 
 	succeededOp := &Operation{
 		Type:     OperationTypeUpdateRelease,
 		Version:  OperationVersionUpdateRelease,
 		Category: OperationCategoryRelease,
 		Config: &OperationConfigUpdateRelease{
-			Release: &release.StoredRelease{Releaser: succeededReleaser},
+			Release: &release.VersionedRelease{Accessor: succeededRel},
 		},
 	}
 	lo.Must0(plan.AddOperationChain().AddOperation(succeededOp).Stage(common.StageFinal).Do())
@@ -820,17 +825,19 @@ func addPendingAndDeployedReleaseOps(plan *Plan, info *ReleaseInfo, pendingStatu
 }
 
 func addSupersedeReleaseOps(plan *Plan, info *ReleaseInfo) error {
-	supersededReleaser, err := release.CopyReleaserWithStatus(info.Release.Releaser, helmreleasecommon.StatusSuperseded)
+	supersededRel, err := info.Release.Accessor.Copy()
 	if err != nil {
-		return fmt.Errorf("copy release with status: %w", err)
+		return fmt.Errorf("copy release: %w", err)
 	}
+
+	supersededRel.SetStatus(helmreleasecommon.StatusSuperseded)
 
 	supersedeOp := &Operation{
 		Type:     OperationTypeUpdateRelease,
 		Version:  OperationVersionUpdateRelease,
 		Category: OperationCategoryRelease,
 		Config: &OperationConfigUpdateRelease{
-			Release: &release.StoredRelease{Releaser: supersededReleaser},
+			Release: &release.VersionedRelease{Accessor: supersededRel},
 		},
 	}
 	lo.Must0(plan.AddOperationChain().AddOperation(supersedeOp).Stage(common.StageFinal).Do())
@@ -839,31 +846,31 @@ func addSupersedeReleaseOps(plan *Plan, info *ReleaseInfo) error {
 }
 
 func addUninstallReleaseOps(plan *Plan, info *ReleaseInfo) error {
-	uninstallingReleaser, err := release.CopyReleaserWithStatus(info.Release.Releaser, helmreleasecommon.StatusUninstalling)
+	uninstallingRel, err := info.Release.Accessor.Copy()
 	if err != nil {
-		return fmt.Errorf("copy release with status: %w", err)
+		return fmt.Errorf("copy release: %w", err)
 	}
+
+	uninstallingRel.SetStatus(helmreleasecommon.StatusUninstalling)
 
 	uninstallingOp := &Operation{
 		Type:     OperationTypeUpdateRelease,
 		Version:  OperationVersionUpdateRelease,
 		Category: OperationCategoryRelease,
 		Config: &OperationConfigUpdateRelease{
-			Release: &release.StoredRelease{Releaser: uninstallingReleaser},
+			Release: &release.VersionedRelease{Accessor: uninstallingRel},
 		},
 	}
 	lo.Must0(plan.AddOperationChain().AddOperation(uninstallingOp).Stage(common.StageInit).Do())
-
-	uninstallingAcc := lo.Must(helmrel.NewAccessor(uninstallingReleaser))
 
 	uninstalledOp := &Operation{
 		Type:     OperationTypeDeleteRelease,
 		Version:  OperationVersionDeleteRelease,
 		Category: OperationCategoryRelease,
 		Config: &OperationConfigDeleteRelease{
-			ReleaseName:      uninstallingAcc.Name(),
-			ReleaseNamespace: uninstallingAcc.Namespace(),
-			ReleaseRevision:  uninstallingAcc.Version(),
+			ReleaseName:      uninstallingRel.Name(),
+			ReleaseNamespace: uninstallingRel.Namespace(),
+			ReleaseRevision:  uninstallingRel.Version(),
 		},
 	}
 	lo.Must0(plan.AddOperationChain().AddOperation(uninstalledOp).Stage(common.StageFinal).Do())

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/werf/nelm/pkg/common"
+	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/plan"
@@ -37,6 +38,9 @@ func (s *BuildPlanSuite) SetupSuite() {
 	s.cmpOpts = cmp.Options{
 		cmpopts.EquateEmpty(),
 		test.IgnoreEdgeOption(),
+		cmp.Comparer(func(a, b helmrel.Accessor) bool {
+			return cmp.Equal(a.Releaser(), b.Releaser())
+		}),
 		cmpopts.SortSlices(func(a, b *plan.Operation) bool {
 			return a.ID() < b.ID()
 		}),
@@ -228,7 +232,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 					},
 				}
 
-				updatedRelRaw, err := copystructure.Copy(releaseInfos[0].Release.Releaser)
+				updatedRelRaw, err := copystructure.Copy(releaseInfos[0].Release.Accessor.Releaser())
 				s.Require().NoError(err)
 
 				updatedRel := updatedRelRaw.(*helmrelease.Release)
@@ -239,7 +243,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 					Version:  plan.OperationVersionUpdateRelease,
 					Category: plan.OperationCategoryRelease,
 					Config: &plan.OperationConfigUpdateRelease{
-						Release: &release.StoredRelease{Releaser: updatedRel},
+						Release: &release.VersionedRelease{Accessor: lo.Must(helmrel.NewAccessor(updatedRel))},
 					},
 				}
 
@@ -1407,7 +1411,7 @@ func TestBuildPlanSuites(t *testing.T) {
 
 func defaultReleaseInfo(releaseName, releaseNamespace string) *plan.ReleaseInfo {
 	return &plan.ReleaseInfo{
-		Release:                &release.StoredRelease{Releaser: defaultRelease(releaseName, releaseNamespace)},
+		Release:                &release.VersionedRelease{Accessor: lo.Must(helmrel.NewAccessor(defaultRelease(releaseName, releaseNamespace)))},
 		Must:                   plan.ReleaseTypeInstall,
 		MustFailOnFailedDeploy: true,
 	}

@@ -9,43 +9,46 @@ import (
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 )
 
-type StoredRelease struct {
-	Releaser helmrel.Releaser
+type VersionedRelease struct {
+	Accessor helmrel.Accessor
 }
 
-func (s *StoredRelease) MarshalJSON() ([]byte, error) {
-	if s == nil || s.Releaser == nil {
+func (r *VersionedRelease) MarshalJSON() ([]byte, error) {
+	if r == nil || r.Accessor == nil {
 		return []byte("null"), nil
 	}
 
-	payload, err := json.Marshal(s.Releaser)
+	releaser := r.Accessor.Releaser()
+
+	payload, err := json.Marshal(releaser)
 	if err != nil {
 		return nil, fmt.Errorf("marshal release payload: %w", err)
 	}
 
-	data, err := json.Marshal(storedReleaseEnvelope{
+	data, err := json.Marshal(versionedReleaseEnvelope{
 		Release: payload,
-		Version: ReleaserVersion(s.Releaser),
+		Version: ReleaserVersion(releaser),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("marshal stored release envelope: %w", err)
+		return nil, fmt.Errorf("marshal versioned release envelope: %w", err)
 	}
 
 	return data, nil
 }
 
-func (s *StoredRelease) UnmarshalJSON(data []byte) error {
+func (r *VersionedRelease) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
-		s.Releaser = nil
+		r.Accessor = nil
 
 		return nil
 	}
 
-	var env storedReleaseEnvelope
+	var env versionedReleaseEnvelope
 	if err := json.Unmarshal(data, &env); err != nil {
-		return fmt.Errorf("unmarshal stored release envelope: %w", err)
+		return fmt.Errorf("unmarshal versioned release envelope: %w", err)
 	}
 
+	var releaser helmrel.Releaser
 	switch env.Version {
 	case ReleaseVersionV1:
 		rel := &helmrelease.Release{}
@@ -53,22 +56,29 @@ func (s *StoredRelease) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("unmarshal v1 release: %w", err)
 		}
 
-		s.Releaser = rel
+		releaser = rel
 	case ReleaseVersionV2:
 		rel := &v2release.Release{}
 		if err := json.Unmarshal(env.Release, rel); err != nil {
 			return fmt.Errorf("unmarshal v2 release: %w", err)
 		}
 
-		s.Releaser = rel
+		releaser = rel
 	default:
 		return fmt.Errorf("unknown release version %q", env.Version)
 	}
 
+	acc, err := helmrel.NewAccessor(releaser)
+	if err != nil {
+		return fmt.Errorf("wrap release: %w", err)
+	}
+
+	r.Accessor = acc
+
 	return nil
 }
 
-type storedReleaseEnvelope struct {
+type versionedReleaseEnvelope struct {
 	Version string          `json:"version"`
 	Release json.RawMessage `json:"release"`
 }

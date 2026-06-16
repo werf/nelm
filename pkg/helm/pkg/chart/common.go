@@ -72,6 +72,10 @@ func (r *v2Accessor) Files() []*common.File {
 	return r.chrt.Files
 }
 
+func (r *v2Accessor) RawFiles() []*common.File {
+	return r.chrt.Raw
+}
+
 func (r *v2Accessor) Templates() []*common.File {
 	return r.chrt.Templates
 }
@@ -155,6 +159,10 @@ func (r *v3Accessor) MetadataAsMap() map[string]any {
 
 func (r *v3Accessor) Files() []*common.File {
 	return r.chrt.Files
+}
+
+func (r *v3Accessor) RawFiles() []*common.File {
+	return r.chrt.Raw
 }
 
 func (r *v3Accessor) Templates() []*common.File {

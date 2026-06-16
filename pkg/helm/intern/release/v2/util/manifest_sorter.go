@@ -242,3 +242,19 @@ func operateAnnotationValues(entry SimpleHead, annotation string, operate func(p
 		}
 	}
 }
+
+func HookManifestToHook(manifest, filePath string) (*v2.Hook, error) {
+	manifestFile := &manifestFile{
+		entries: map[string]string{
+			"0": manifest,
+		},
+		path: filePath,
+	}
+
+	res := &result{}
+	if err := manifestFile.sort(res); err != nil {
+		return nil, fmt.Errorf("sort hook manifest file: %w", err)
+	}
+
+	return res.hooks[0], nil
+}
