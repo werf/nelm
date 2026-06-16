@@ -213,7 +213,7 @@ Generally, the migration from Helm to Nelm should be as simple as changing Helm 
 
 The resource deployment subsystem of Helm is rewritten from scratch in Nelm. During the deployment, Nelm builds the Directed Acyclic Graph (DAG) of all operations we want to perform in the cluster to do the release, then the DAG is executed. The DAG allowed us to implement advanced resource ordering capabilities, such as:
 * The `werf.io/weight` annotation: similar to `helm.sh/hook-weight`, but also works for non-hook resources. Resources with the same weight deployed in parallel.
-* The `werf.io/deploy-dependency-<id>` annotation: do not deploy the annotated resource until the dependency is present or ready. This is the most powerful and effective way to enforce deployment order in Nelm.
+* The `werf.io/deploy-dependency-<id>` annotation: do not deploy the annotated resource until the dependency is present or ready. Works for both release resources and external cluster resources (e.g. resources created by a third-party operator). This is the most powerful and effective way to enforce deployment order in Nelm.
 * Helm Hooks and their weights are supported, too.
 
 ![ordering](resources/images/graph.png)
@@ -362,30 +362,36 @@ Default:
 
 ### `werf.io/deploy-dependency-<id>` annotation 
 
-The resource will deploy only after all of its dependencies are satisfied. It waits until the specified resource is just `present` or is also `ready`. It serves as a more powerful alternative to hooks and `werf.io/weight`. You can only point to resources in the release. This annotation has higher priority than `werf.io/weight` and `helm.sh/hook-weight`. This annotation has no effect if the resource on which we depend upon is outside the stage (pre, main, post, ...) of the resource with the annotation.
+The resource will deploy only after all of its dependencies are satisfied. It waits until the specified resource is just `present` or is also `ready`. It serves as a more powerful alternative to hooks and `werf.io/weight`. This annotation has higher priority than `werf.io/weight` and `helm.sh/hook-weight`. This annotation has no effect on internal (release) dependencies if the resource on which we depend upon is outside the stage (pre, main, post, ...) of the resource with the annotation.
+
+By default (`external=auto`), the dependency is treated as external if no matching resource is found in the release — Nelm will then wait for it in the cluster. Set `external=true` to always treat the dependency as external, or `external=false` to always treat it as internal. When a dependency is external, `name`, `kind`, and `version` must all be specified.
 
 Example:
 ```yaml
 werf.io/deploy-dependency-db: state=ready,kind=StatefulSet,name=postgres
 werf.io/deploy-dependency-app: state=present,kind=Deployment,group=apps,version=v1,name=app,namespace=app
+werf.io/deploy-dependency-secret: state=ready,kind=Secret,version=v1,name=my-vault-secret,external=true
 ```
 Format:
 ```
-werf.io/deploy-dependency-<anything>: state=ready|present[,name=<name>][,namespace=<namespace>][,kind=<kind>][,group=<group>][,version=<version>]
+werf.io/deploy-dependency-<anything>: state=ready|present[,name=<name>][,namespace=<namespace>][,kind=<kind>][,group=<group>][,version=<version>][,external=auto|true|false]
 ```
 
 ### `werf.io/delete-dependency-<id>` annotation
 
-The resource will be deleted only after all of its dependencies are satisfied. It waits until the specified resource is `absent`. You can only point to resources in the release. This annotation has no effect if the resource on which we depend upon is outside the stage (pre, main, post, ...) of the resource with the annotation.
+The resource will be deleted only after all of its dependencies are satisfied. It waits until the specified resource is `absent`. This annotation has no effect on internal (release) dependencies if the resource on which we depend upon is outside the stage (pre, main, post, ...) of the resource with the annotation.
+
+By default (`external=auto`), the dependency is treated as external if no matching resource is found in the release — Nelm will then wait for it to be deleted from the cluster. Set `external=true` to always treat the dependency as external, or `external=false` to always treat it as internal. When a dependency is external, `name`, `kind`, and `version` must all be specified.
 
 Example:
 ```yaml
 werf.io/delete-dependency-db: state=absent,kind=StatefulSet,name=postgres
 werf.io/delete-dependency-app: state=absent,kind=Deployment,group=apps,version=v1,name=app,namespace=app
+werf.io/delete-dependency-secret: state=absent,kind=Secret,version=v1,name=my-vault-secret,external=true
 ```
 Format:
 ```
-werf.io/delete-dependency-<anything>: state=absent[,name=<name>][,namespace=<namespace>][,kind=<kind>][,group=<group>][,version=<version>]
+werf.io/delete-dependency-<anything>: state=absent[,name=<name>][,namespace=<namespace>][,kind=<kind>][,group=<group>][,version=<version>][,external=auto|true|false]
 ```
 
 
