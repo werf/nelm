@@ -13,7 +13,6 @@ import (
 
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/pkg/common"
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/plan"
 	"github.com/werf/nelm/pkg/release"
@@ -32,20 +31,11 @@ type PlanArtifact struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-func (a *PlanArtifact) GetReleaseAccessor() (helmrel.Accessor, error) {
-	accessor, err := helmrel.NewAccessor(a.Data.Release.Releaser)
-	if err != nil {
-		return nil, fmt.Errorf("create release accessor: %w", err)
-	}
-
-	return accessor, nil
-}
-
 type PlanArtifactData struct {
 	Options                  common.ReleaseInstallRuntimeOptions `json:"options"`
 	Changes                  []*plan.ResourceChange              `json:"changes"`
 	Plan                     *plan.Plan                          `json:"plan"`
-	Release                  *release.StoredRelease              `json:"release"`
+	Release                  *release.VersionedRelease           `json:"release"`
 	InstallableResourceInfos []*plan.InstallableResourceInfo     `json:"installableResourceInfos"`
 	ReleaseInfos             []*plan.ReleaseInfo                 `json:"releaseInfos"`
 }

@@ -433,7 +433,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		APIVersion: PlanArtifactSchemeVersion,
 		Data: &PlanArtifactData{
 			Options:                  opts.ReleaseInstallRuntimeOptions,
-			Release:                  &release.StoredRelease{Releaser: newRelease.Releaser()},
+			Release:                  &release.VersionedRelease{Accessor: newRelease},
 			Plan:                     installPlan,
 			Changes:                  changes,
 			InstallableResourceInfos: instResInfos,

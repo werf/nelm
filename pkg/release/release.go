@@ -11,7 +11,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/yaml"
@@ -19,6 +18,7 @@ import (
 	"github.com/werf/nelm/pkg/common"
 	v3chart "github.com/werf/nelm/pkg/helm/intern/chart/v3"
 	v2release "github.com/werf/nelm/pkg/helm/intern/release/v2"
+	v2releaseutil "github.com/werf/nelm/pkg/helm/intern/release/v2/util"
 	chart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
 	chartv2util "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
@@ -159,10 +159,13 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 		return spec.ResourceSpecSortHandler(resources[i], resources[j])
 	})
 
+	_, isV3 := chrt.Charter().(*v3chart.Chart)
+
 	var (
 		unstoredResources []string
 		regularResources  []string
-		hookResources     []*helmrelease.Hook
+		v1HookResources   []*helmrelease.Hook
+		v2HookResources   []*v2release.Hook
 	)
 
 	for _, res := range resources {
@@ -173,12 +176,21 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 				return nil, fmt.Errorf("convert resource spec to manifest: %w", err)
 			}
 
-			hook, err := releaseutil.HookManifestToHook(manifest, res.FilePath)
-			if err != nil {
-				return nil, fmt.Errorf("convert hook manifest to hook: %w", err)
-			}
+			if isV3 {
+				hook, err := v2releaseutil.HookManifestToHook(manifest, res.FilePath)
+				if err != nil {
+					return nil, fmt.Errorf("convert hook manifest to hook: %w", err)
+				}
 
-			hookResources = append(hookResources, hook)
+				v2HookResources = append(v2HookResources, hook)
+			} else {
+				hook, err := releaseutil.HookManifestToHook(manifest, res.FilePath)
+				if err != nil {
+					return nil, fmt.Errorf("convert hook manifest to hook: %w", err)
+				}
+
+				v1HookResources = append(v1HookResources, hook)
+			}
 		case common.StoreAsRegular:
 			manifest, err := resourceSpecToManifest(name, namespace, revision, res)
 			if err != nil {
@@ -213,7 +225,7 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 			Chart:            chartObj,
 			Config:           releaseConfig,
 			Manifest:         strings.Join(regularResources, "\n---\n"),
-			Hooks:            hookResources,
+			Hooks:            v1HookResources,
 			Version:          revision,
 			Namespace:        namespace,
 			Labels:           opts.Labels,
@@ -226,12 +238,10 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 				Status: status,
 				Notes:  opts.Notes,
 			},
-			Chart:    chartObj,
-			Config:   releaseConfig,
-			Manifest: strings.Join(regularResources, "\n---\n"),
-			Hooks: lo.Map(hookResources, func(h *helmrelease.Hook, _ int) *v2release.Hook {
-				return v1HookToV2Hook(h)
-			}),
+			Chart:            chartObj,
+			Config:           releaseConfig,
+			Manifest:         strings.Join(regularResources, "\n---\n"),
+			Hooks:            v2HookResources,
 			Version:          revision,
 			Namespace:        namespace,
 			Labels:           opts.Labels,
@@ -319,30 +329,6 @@ func resourceSpecToManifest(name, namespace string, revision int, res *spec.Reso
 	}
 
 	return manifest, nil
-}
-
-func v1HookToV2Hook(h *helmrelease.Hook) *v2release.Hook {
-	return &v2release.Hook{
-		Name:     h.Name,
-		Kind:     h.Kind,
-		Path:     h.Path,
-		Manifest: h.Manifest,
-		Events: lo.Map(h.Events, func(e helmrelease.HookEvent, _ int) v2release.HookEvent {
-			return v2release.HookEvent(e)
-		}),
-		LastRun: v2release.HookExecution{
-			StartedAt:   h.LastRun.StartedAt,
-			CompletedAt: h.LastRun.CompletedAt,
-			Phase:       v2release.HookPhase(h.LastRun.Phase),
-		},
-		Weight: h.Weight,
-		DeletePolicies: lo.Map(h.DeletePolicies, func(p helmrelease.HookDeletePolicy, _ int) v2release.HookDeletePolicy {
-			return v2release.HookDeletePolicy(p)
-		}),
-		OutputLogPolicies: lo.Map(h.OutputLogPolicies, func(p helmrelease.HookOutputLogPolicy, _ int) v2release.HookOutputLogPolicy {
-			return v2release.HookOutputLogPolicy(p)
-		}),
-	}
 }
 
 func writeUnstructHash(unstruct *unstructured.Unstructured, hash hash.Hash32) error {

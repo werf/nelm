@@ -5,13 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/mitchellh/copystructure"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/werf/nelm/pkg/common"
 	v2release "github.com/werf/nelm/pkg/helm/intern/release/v2"
 	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
-	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	helmstorage "github.com/werf/nelm/pkg/helm/pkg/storage"
 	helmdriver "github.com/werf/nelm/pkg/helm/pkg/storage/driver"
@@ -37,6 +35,7 @@ type storageAdapter struct {
 }
 
 func (a *storageAdapter) Create(rls helmrel.Accessor) error {
+	// XXX: must convert to v1 for now, since support of v2 releases in storage drivers doesn't yet exist
 	releaser, err := ReleaserToV1Release(rls.Releaser())
 	if err != nil {
 		return fmt.Errorf("prepare release for storage: %w", err)
@@ -87,6 +86,7 @@ func (a *storageAdapter) Storage() *helmstorage.Storage {
 }
 
 func (a *storageAdapter) Update(rls helmrel.Accessor) error {
+	// XXX: must convert to v1 for now, since support of v2 releases in storage drivers doesn't yet exist
 	releaser, err := ReleaserToV1Release(rls.Releaser())
 	if err != nil {
 		return fmt.Errorf("prepare release for storage: %w", err)
@@ -102,24 +102,6 @@ func (a *storageAdapter) Update(rls helmrel.Accessor) error {
 type ReleaseStorageOptions struct {
 	HistoryLimit  int
 	SQLConnection string
-}
-
-func CopyReleaserWithStatus(releaser helmrel.Releaser, status helmreleasecommon.Status) (helmrel.Releaser, error) {
-	copied, err := copystructure.Copy(releaser)
-	if err != nil {
-		return nil, fmt.Errorf("deep copy release: %w", err)
-	}
-
-	switch r := copied.(type) {
-	case *helmrelease.Release:
-		r.Info.Status = status
-		return r, nil
-	case *v2release.Release:
-		r.Info.Status = status
-		return r, nil
-	default:
-		return nil, fmt.Errorf("unexpected release type: %T", copied)
-	}
 }
 
 func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, clientFactory kube.ClientFactorier, opts ReleaseStorageOptions) (ReleaseStorager, error) {

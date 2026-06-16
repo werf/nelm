@@ -9,17 +9,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	v2release "github.com/werf/nelm/pkg/helm/intern/release/v2"
+	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 )
 
-func TestAI_CopyReleaserWithStatus_UnexpectedTypeFails(t *testing.T) {
-	_, err := CopyReleaserWithStatus("not-a-release", helmreleasecommon.StatusFailed)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unexpected release type")
-}
-
-func TestAI_CopyReleaserWithStatus_V1PreservesDescriptionAndOriginal(t *testing.T) {
+func TestAI_AccessorCopyAndSetStatus_V1PreservesDescriptionAndOriginal(t *testing.T) {
 	original := &helmrelease.Release{
 		Name: "myrelease",
 		Info: &helmrelease.Info{
@@ -28,10 +23,14 @@ func TestAI_CopyReleaserWithStatus_V1PreservesDescriptionAndOriginal(t *testing.
 		},
 	}
 
-	copied, err := CopyReleaserWithStatus(original, helmreleasecommon.StatusFailed)
+	acc, err := helmrel.NewAccessor(original)
 	require.NoError(t, err)
 
-	copiedRel, ok := copied.(*helmrelease.Release)
+	copied, err := acc.Copy()
+	require.NoError(t, err)
+	copied.SetStatus(helmreleasecommon.StatusFailed)
+
+	copiedRel, ok := copied.Releaser().(*helmrelease.Release)
 	require.True(t, ok)
 	assert.Equal(t, helmreleasecommon.StatusFailed, copiedRel.Info.Status)
 	assert.Equal(t, "original description", copiedRel.Info.Description)
@@ -39,7 +38,7 @@ func TestAI_CopyReleaserWithStatus_V1PreservesDescriptionAndOriginal(t *testing.
 	assert.Equal(t, helmreleasecommon.StatusDeployed, original.Info.Status, "original must not be mutated")
 }
 
-func TestAI_CopyReleaserWithStatus_V2PreservesDescriptionAndOriginal(t *testing.T) {
+func TestAI_AccessorCopyAndSetStatus_V2PreservesDescriptionAndOriginal(t *testing.T) {
 	original := &v2release.Release{
 		Name: "myrelease",
 		Info: &v2release.Info{
@@ -48,10 +47,14 @@ func TestAI_CopyReleaserWithStatus_V2PreservesDescriptionAndOriginal(t *testing.
 		},
 	}
 
-	copied, err := CopyReleaserWithStatus(original, helmreleasecommon.StatusFailed)
+	acc, err := helmrel.NewAccessor(original)
 	require.NoError(t, err)
 
-	copiedRel, ok := copied.(*v2release.Release)
+	copied, err := acc.Copy()
+	require.NoError(t, err)
+	copied.SetStatus(helmreleasecommon.StatusFailed)
+
+	copiedRel, ok := copied.Releaser().(*v2release.Release)
 	require.True(t, ok)
 	assert.Equal(t, helmreleasecommon.StatusFailed, copiedRel.Info.Status)
 	assert.Equal(t, "original description", copiedRel.Info.Description)
