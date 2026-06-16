@@ -172,11 +172,11 @@ Dependency commands:
   chart dependency update            Update Chart.lock and download chart dependencies.
 
 Repo commands:
-  repo add                           Set up a new chart repository.
-  repo remove                        Remove a chart repository.
-  repo update                        Update info about available charts for all chart repositories.
-  repo login                         Log in to an OCI registry with charts.
-  repo logout                        Log out from an OCI registry with charts.
+  chart repo add                     Set up a new chart repository.
+  chart repo remove                  Remove a chart repository.
+  chart repo update                  Update info about available charts for all chart repositories.
+  chart repo login                   Log in to an OCI registry with charts.
+  chart repo logout                  Log out from an OCI registry with charts.
 
 Other commands:
   completion bash                    Generate the autocompletion script for bash
