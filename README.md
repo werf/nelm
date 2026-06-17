@@ -365,7 +365,7 @@ Default:
 
 The resource will deploy only after all of its dependencies are satisfied. It waits until the specified resource is just `present` or is also `ready`. It serves as a more powerful alternative to hooks and `werf.io/weight`. This annotation has higher priority than `werf.io/weight` and `helm.sh/hook-weight`. This annotation has no effect on internal (release) dependencies if the resource on which we depend upon is outside the stage (pre, main, post, ...) of the resource with the annotation.
 
-By default (`external=auto`), the dependency is treated as external if no matching resource is found in the release — Nelm will then wait for it in the cluster. Set `external=true` to always treat the dependency as external, or `external=false` to always treat it as internal. When a dependency is external, `name`, `kind`, and `version` must all be specified.
+If `external=false` or `external=auto` and the dependency is not found in the release, then the dependency is treated as external to the release: `name`, `kind` and `version` must be specified.
 
 Example:
 ```yaml
