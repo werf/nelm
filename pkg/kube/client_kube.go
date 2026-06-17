@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	kvwait "k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -31,32 +32,43 @@ type KubeClienter interface {
 	Apply(ctx context.Context, spec *spec.ResourceSpec, opts KubeClientApplyOptions) (*unstructured.Unstructured, error)
 	MergePatch(ctx context.Context, meta *spec.ResourceMeta, patch []byte, opts KubeClientMergePatchOptions) (*unstructured.Unstructured, error)
 	Delete(ctx context.Context, meta *spec.ResourceMeta, opts KubeClientDeleteOptions) error
+	GVKToGVR(ctx context.Context, gvk schema.GroupVersionKind) (schema.GroupVersionResource, bool, error)
+	Namespaced(ctx context.Context, gvk schema.GroupVersionKind) (bool, error)
+	ResetDiscoveryCache(ctx context.Context) error
+	ServerVersion(ctx context.Context) (*version.Info, error)
+	ResetAndRetryOnUnknownGVR(ctx context.Context, fn func() error) error
 }
 
 // High-level Kubernetes Client. Always prefer using it instead of static/dynamic Kubernetes
 // go-client directly. Provides caching, which works as long as there is no other client or other
 // program modifying Kubernetes resources that we work with through this client.
 type KubeClient struct {
-	clusterCache    *ttlcache.Cache[string, *clusterCacheEntry]
-	discoveryClient discovery.CachedDiscoveryInterface
-	dynamicClient   dynamic.Interface
-	mapper          apimeta.ResettableRESTMapper
-	resourceLocks   *sync.Map
-	staticClient    kubernetes.Interface
+	clusterCache               *ttlcache.Cache[string, *clusterCacheEntry]
+	discoveryClient            discovery.CachedDiscoveryInterface
+	dynamicClient              dynamic.Interface
+	mapper                     apimeta.ResettableRESTMapper
+	mapperNoMatchRetryInterval time.Duration
+	mapperNoMatchRetryTimeout  time.Duration
+	mapperRefreshLock          *sync.RWMutex
+	resourceLocks              *sync.Map
+	staticClient               kubernetes.Interface
 }
 
 func NewKubeClient(staticClient kubernetes.Interface, dynamicClient dynamic.Interface, discoveryClient discovery.CachedDiscoveryInterface, mapper apimeta.ResettableRESTMapper) *KubeClient {
-	clusterCache := ttlcache.New[string, *clusterCacheEntry](
+	clusterCache := ttlcache.New(
 		ttlcache.WithDisableTouchOnHit[string, *clusterCacheEntry](),
 	)
 
 	return &KubeClient{
-		clusterCache:    clusterCache,
-		discoveryClient: discoveryClient,
-		dynamicClient:   dynamicClient,
-		mapper:          mapper,
-		resourceLocks:   &sync.Map{},
-		staticClient:    staticClient,
+		clusterCache:               clusterCache,
+		discoveryClient:            discoveryClient,
+		dynamicClient:              dynamicClient,
+		mapper:                     mapper,
+		mapperNoMatchRetryInterval: common.DefaultMapperNoMatchRetryInterval,
+		mapperNoMatchRetryTimeout:  common.DefaultMapperNoMatchRetryTimeout,
+		mapperRefreshLock:          &sync.RWMutex{},
+		resourceLocks:              &sync.Map{},
+		staticClient:               staticClient,
 	}
 }
 
@@ -66,8 +78,18 @@ func (c *KubeClient) Apply(ctx context.Context, resSpec *spec.ResourceSpec, opts
 	lock.Lock()
 	defer lock.Unlock()
 
-	gvr, namespaced, err := spec.GVKtoGVR(resSpec.GroupVersionKind, c.mapper)
-	if err != nil {
+	var (
+		gvr        schema.GroupVersionResource
+		namespaced bool
+		err        error
+	)
+	if err := c.ResetAndRetryOnUnknownGVR(ctx, func() error {
+		var err error
+
+		gvr, namespaced, err = c.GVKToGVR(ctx, resSpec.GroupVersionKind)
+
+		return err
+	}); err != nil {
 		return nil, fmt.Errorf("convert GVK to GVR: %w", err)
 	}
 
@@ -116,7 +138,9 @@ func (c *KubeClient) Apply(ctx context.Context, resSpec *spec.ResourceSpec, opts
 	}
 
 	if spec.IsCRDFromGR(gvr.GroupResource()) && !opts.DryRun {
-		c.mapper.Reset()
+		if err := c.waitForCRDDiscoverability(ctx, resSpec); err != nil {
+			return nil, fmt.Errorf("wait for CRD discoverability: %w", err)
+		}
 	}
 
 	log.Default.TraceStruct(ctx, resultObj, "Server-side %sapplied resource %q via Kubernetes API:", lo.Ternary(opts.DryRun, "dry-run ", ""), resSpec.IDHuman())
@@ -130,8 +154,18 @@ func (c *KubeClient) Create(ctx context.Context, resSpec *spec.ResourceSpec, opt
 	lock.Lock()
 	defer lock.Unlock()
 
-	gvr, namespaced, err := spec.GVKtoGVR(resSpec.GroupVersionKind, c.mapper)
-	if err != nil {
+	var (
+		gvr        schema.GroupVersionResource
+		namespaced bool
+		err        error
+	)
+	if err := c.ResetAndRetryOnUnknownGVR(ctx, func() error {
+		var err error
+
+		gvr, namespaced, err = c.GVKToGVR(ctx, resSpec.GroupVersionKind)
+
+		return err
+	}); err != nil {
 		return nil, fmt.Errorf("convert GVK to GVR: %w", err)
 	}
 
@@ -176,7 +210,9 @@ func (c *KubeClient) Create(ctx context.Context, resSpec *spec.ResourceSpec, opt
 	c.clusterCache.Set(resSpec.IDWithVersion(), &clusterCacheEntry{obj: resultObj.DeepCopy()}, 0)
 
 	if spec.IsCRDFromGR(gvr.GroupResource()) {
-		c.mapper.Reset()
+		if err := c.waitForCRDDiscoverability(ctx, resSpec); err != nil {
+			return nil, fmt.Errorf("wait for CRD discoverability: %w", err)
+		}
 	}
 
 	log.Default.TraceStruct(ctx, resultObj, "Created resource %q via Kubernetes API:", resSpec.IDHuman())
@@ -190,8 +226,18 @@ func (c *KubeClient) Delete(ctx context.Context, resMeta *spec.ResourceMeta, opt
 	lock.Lock()
 	defer lock.Unlock()
 
-	gvr, namespaced, err := spec.GVKtoGVR(resMeta.GroupVersionKind, c.mapper)
-	if err != nil {
+	var (
+		gvr        schema.GroupVersionResource
+		namespaced bool
+	)
+
+	if err := c.ResetAndRetryOnUnknownGVR(ctx, func() error {
+		var err error
+
+		gvr, namespaced, err = c.GVKToGVR(ctx, resMeta.GroupVersionKind)
+
+		return err
+	}); err != nil {
 		return fmt.Errorf("convert GVK to GVR: %w", err)
 	}
 
@@ -223,6 +269,18 @@ func (c *KubeClient) Delete(ctx context.Context, resMeta *spec.ResourceMeta, opt
 	return nil
 }
 
+func (c *KubeClient) GVKToGVR(_ context.Context, gvk schema.GroupVersionKind) (schema.GroupVersionResource, bool, error) {
+	c.mapperRefreshLock.RLock()
+	defer c.mapperRefreshLock.RUnlock()
+
+	gvr, namespaced, err := spec.GVKtoGVR(gvk, c.mapper)
+	if err != nil {
+		return schema.GroupVersionResource{}, false, fmt.Errorf("get GVK to GVR mapping: %w", err)
+	}
+
+	return gvr, namespaced, nil
+}
+
 func (c *KubeClient) Get(ctx context.Context, resMeta *spec.ResourceMeta, opts KubeClientGetOptions) (*unstructured.Unstructured, error) {
 	lock := c.resourceLock(resMeta)
 
@@ -243,8 +301,18 @@ func (c *KubeClient) Get(ctx context.Context, resMeta *spec.ResourceMeta, opts K
 		}
 	}
 
-	gvr, namespaced, err := spec.GVKtoGVR(resMeta.GroupVersionKind, c.mapper)
-	if err != nil {
+	var (
+		gvr        schema.GroupVersionResource
+		namespaced bool
+	)
+
+	if err := c.ResetAndRetryOnUnknownGVR(ctx, func() error {
+		var err error
+
+		gvr, namespaced, err = c.GVKToGVR(ctx, resMeta.GroupVersionKind)
+
+		return err
+	}); err != nil {
 		return nil, fmt.Errorf("convert GVK to GVR: %w", err)
 	}
 
@@ -272,8 +340,18 @@ func (c *KubeClient) MergePatch(ctx context.Context, resMeta *spec.ResourceMeta,
 	lock.Lock()
 	defer lock.Unlock()
 
-	gvr, namespaced, err := spec.GVKtoGVR(resMeta.GroupVersionKind, c.mapper)
-	if err != nil {
+	var (
+		gvr        schema.GroupVersionResource
+		namespaced bool
+	)
+
+	if err := c.ResetAndRetryOnUnknownGVR(ctx, func() error {
+		var err error
+
+		gvr, namespaced, err = c.GVKToGVR(ctx, resMeta.GroupVersionKind)
+
+		return err
+	}); err != nil {
 		return nil, fmt.Errorf("convert GVK to GVR: %w", err)
 	}
 
@@ -299,6 +377,95 @@ func (c *KubeClient) MergePatch(ctx context.Context, resMeta *spec.ResourceMeta,
 	return resultObj, nil
 }
 
+func (c *KubeClient) Namespaced(_ context.Context, gvk schema.GroupVersionKind) (bool, error) {
+	c.mapperRefreshLock.RLock()
+	defer c.mapperRefreshLock.RUnlock()
+
+	namespaced, err := spec.Namespaced(gvk, c.mapper)
+	if err != nil {
+		return false, fmt.Errorf("check resource scope: %w", err)
+	}
+
+	return namespaced, nil
+}
+
+func (c *KubeClient) ResetAndRetryOnUnknownGVR(ctx context.Context, fn func() error) error {
+	firstErr := fn()
+	if firstErr == nil {
+		return nil
+	}
+
+	if !apimeta.IsNoMatchError(firstErr) {
+		return firstErr
+	}
+
+	var resultErr error
+
+	func() {
+		retryCtx, cancel := context.WithTimeout(ctx, c.mapperNoMatchRetryTimeout)
+		defer cancel()
+
+		lastErr := firstErr
+
+		if err := c.ResetDiscoveryCache(retryCtx); err != nil {
+			resultErr = fmt.Errorf("reset discovery cache after mapper NoMatch: %w", err)
+
+			return
+		}
+
+		if err := kvwait.PollUntilContextCancel(retryCtx, c.mapperNoMatchRetryInterval, false, func(ctx context.Context) (bool, error) {
+			if err := fn(); err != nil {
+				lastErr = err
+				if apimeta.IsNoMatchError(err) {
+					if err := c.ResetDiscoveryCache(ctx); err != nil {
+						return false, fmt.Errorf("reset discovery cache after mapper NoMatch: %w", err)
+					}
+
+					return false, nil
+				}
+
+				return false, err
+			}
+
+			return true, nil
+		}); err != nil {
+			if retryCtx.Err() != nil {
+				if ctx.Err() != nil {
+					resultErr = fmt.Errorf("retry mapper NoMatch: %w", context.Cause(ctx))
+
+					return
+				}
+
+				resultErr = fmt.Errorf("retry mapper NoMatch timed out after %s: %w", c.mapperNoMatchRetryTimeout.String(), lastErr)
+
+				return
+			}
+
+			resultErr = err
+		}
+	}()
+
+	return resultErr
+}
+
+func (c *KubeClient) ResetDiscoveryCache(_ context.Context) error {
+	c.mapperRefreshLock.Lock()
+	defer c.mapperRefreshLock.Unlock()
+
+	c.resetDiscoveryCacheNoLock()
+
+	return nil
+}
+
+func (c *KubeClient) ServerVersion(_ context.Context) (*version.Info, error) {
+	versionInfo, err := c.discoveryClient.ServerVersion()
+	if err != nil {
+		return nil, fmt.Errorf("get kubernetes server version: %w", err)
+	}
+
+	return versionInfo, nil
+}
+
 func (c *KubeClient) clientResource(gvr schema.GroupVersionResource, namespace, defaultNamespace string, namespaced bool) dynamic.ResourceInterface {
 	if namespaced {
 		if namespace == "" {
@@ -311,10 +478,38 @@ func (c *KubeClient) clientResource(gvr schema.GroupVersionResource, namespace, 
 	return c.dynamicClient.Resource(gvr)
 }
 
+func (c *KubeClient) resetDiscoveryCacheNoLock() {
+	c.discoveryClient.Invalidate()
+	c.mapper.Reset()
+}
+
 func (c *KubeClient) resourceLock(meta *spec.ResourceMeta) *sync.Mutex {
 	lock, _ := c.resourceLocks.LoadOrStore(meta.IDWithVersion(), &sync.Mutex{})
 
 	return lock.(*sync.Mutex)
+}
+
+func (c *KubeClient) waitForCRDDiscoverability(ctx context.Context, resSpec *spec.ResourceSpec) error {
+	servedGVKs, err := servedCRDGVKs(resSpec.Unstruct)
+	if err != nil {
+		return fmt.Errorf("extract served GVKs: %w", err)
+	}
+
+	if err := c.ResetDiscoveryCache(ctx); err != nil {
+		return fmt.Errorf("refresh discovery: %w", err)
+	}
+
+	for _, gvk := range servedGVKs {
+		if err := c.ResetAndRetryOnUnknownGVR(ctx, func() error {
+			_, _, err := c.GVKToGVR(ctx, gvk)
+
+			return err
+		}); err != nil {
+			return fmt.Errorf("resolve served GVK %q: %w", gvk.String(), err)
+		}
+	}
+
+	return nil
 }
 
 type KubeClientGetOptions struct {
@@ -373,4 +568,71 @@ func retryOnWebhookErr(ctx context.Context, fn func() error) error {
 	}
 
 	return nil
+}
+
+func servedCRDGVKs(obj *unstructured.Unstructured) ([]schema.GroupVersionKind, error) {
+	group, found, err := unstructured.NestedString(obj.UnstructuredContent(), "spec", "group")
+	if err != nil {
+		return nil, fmt.Errorf("get spec.group: %w", err)
+	}
+
+	if !found || group == "" {
+		return nil, fmt.Errorf("get spec.group: value not found")
+	}
+
+	kind, found, err := unstructured.NestedString(obj.UnstructuredContent(), "spec", "names", "kind")
+	if err != nil {
+		return nil, fmt.Errorf("get spec.names.kind: %w", err)
+	}
+
+	if !found || kind == "" {
+		return nil, fmt.Errorf("get spec.names.kind: value not found")
+	}
+
+	var result []schema.GroupVersionKind
+
+	versions, found, err := unstructured.NestedSlice(obj.UnstructuredContent(), "spec", "versions")
+	if err != nil {
+		return nil, fmt.Errorf("get spec.versions: %w", err)
+	}
+
+	if found {
+		for i, rawVersion := range versions {
+			versionMap, ok := rawVersion.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("get spec.versions[%d]: expected object", i)
+			}
+
+			served, _, err := unstructured.NestedBool(versionMap, "served")
+			if err != nil {
+				return nil, fmt.Errorf("get spec.versions[%d].served: %w", i, err)
+			}
+
+			if !served {
+				continue
+			}
+
+			version, found, err := unstructured.NestedString(versionMap, "name")
+			if err != nil {
+				return nil, fmt.Errorf("get spec.versions[%d].name: %w", i, err)
+			}
+
+			if !found || version == "" {
+				return nil, fmt.Errorf("get spec.versions[%d].name: value not found", i)
+			}
+
+			result = append(result, schema.GroupVersionKind{Group: group, Version: version, Kind: kind})
+		}
+	} else {
+		version, found, err := unstructured.NestedString(obj.UnstructuredContent(), "spec", "version")
+		if err != nil {
+			return nil, fmt.Errorf("get spec.version: %w", err)
+		}
+
+		if found && version != "" {
+			result = append(result, schema.GroupVersionKind{Group: group, Version: version, Kind: kind})
+		}
+	}
+
+	return result, nil
 }

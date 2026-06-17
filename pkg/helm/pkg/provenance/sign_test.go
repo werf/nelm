@@ -25,6 +25,8 @@ import (
 	"testing"
 
 	pgperrors "golang.org/x/crypto/openpgp/errors" //nolint
+
+	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 )
 
 const (
@@ -76,7 +78,7 @@ files:
 `
 
 func TestMessageBlock(t *testing.T) {
-	out, err := messageBlock(testChartfile)
+	out, err := messageBlock(testChartfile, helmopts.HelmOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +223,7 @@ func TestClearSign(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sig, err := signer.ClearSign(testChartfile)
+	sig, err := signer.ClearSign(testChartfile, helmopts.HelmOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +254,7 @@ func TestClearSignError(t *testing.T) {
 	// ensure that signing always fails
 	signer.Entity.PrivateKey.PrivateKey = failSigner{}
 
-	sig, err := signer.ClearSign(testChartfile)
+	sig, err := signer.ClearSign(testChartfile, helmopts.HelmOptions{})
 	if err == nil {
 		t.Fatal("didn't get an error from ClearSign but expected one")
 	}
@@ -271,7 +273,7 @@ func TestDecodeSignature(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sig, err := signer.ClearSign(testChartfile)
+	sig, err := signer.ClearSign(testChartfile, helmopts.HelmOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

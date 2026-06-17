@@ -5,6 +5,7 @@ package plan
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -464,6 +465,16 @@ func TestAI_ResolveNamespace(t *testing.T) {
 			assert.Equal(t, tt.expected, got)
 		})
 	}
+}
+
+func TestAI_ResolveNamespace_UnknownGVKFallbackIsFast(t *testing.T) {
+	mapper := newFakeRESTMapper()
+	startedAt := time.Now()
+
+	got := resolveNamespace(gvkCRD, "", "release-ns", mapper)
+
+	assert.Equal(t, "release-ns", got)
+	assert.Less(t, time.Since(startedAt), 100*time.Millisecond)
 }
 
 func TestAI_SendNonBlocking_DoesNotPanicOnClosedChannel(t *testing.T) {

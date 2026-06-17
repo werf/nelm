@@ -97,12 +97,14 @@ const (
 	DefaultDiffContextLines  = 3
 	DefaultFieldManager      = "helm"
 	// TODO(major): update to a more recent version? Not sure about backwards compatibility.
-	DefaultLocalKubeVersion      = "1.20.0"
-	DefaultLogColorMode          = log.LogColorModeAuto
-	DefaultNetworkParallelism    = 30
-	DefaultProgressPrintInterval = 5 * time.Second
-	DefaultQPSLimit              = 30
-	DefaultReleaseHistoryLimit   = 10
+	DefaultLocalKubeVersion           = "1.20.0"
+	DefaultLogColorMode               = log.LogColorModeAuto
+	DefaultMapperNoMatchRetryInterval = 500 * time.Millisecond
+	DefaultMapperNoMatchRetryTimeout  = 10 * time.Second
+	DefaultNetworkParallelism         = 30
+	DefaultProgressPrintInterval      = 5 * time.Second
+	DefaultQPSLimit                   = 30
+	DefaultReleaseHistoryLimit        = 10
 	// DefaultResourceValidationKubeVersion Kubernetes version to use during resource validation by kubeconform
 	DefaultResourceValidationKubeVersion = "1.35.0"
 	DefaultWebhookRetryTimeout           = 2 * time.Minute
