@@ -382,7 +382,7 @@ werf.io/deploy-dependency-<anything>: state=ready|present[,name=<name>][,namespa
 
 The resource will be deleted only after all of its dependencies are satisfied. It waits until the specified resource is `absent`. This annotation has no effect on internal (release) dependencies if the resource on which we depend upon is outside the stage (pre, main, post, ...) of the resource with the annotation.
 
-By default (`external=auto`), the dependency is treated as external if no matching resource is found in the release — Nelm will then wait for it to be deleted from the cluster. Set `external=true` to always treat the dependency as external, or `external=false` to always treat it as internal. When a dependency is external, `name`, `kind`, and `version` must all be specified.
+If `external=false` or `external=auto` and the dependency is not found in the release, then the dependency is treated as external to the release: `name`, `kind` and `version` must be specified.
 
 Example:
 ```yaml
