@@ -14,20 +14,19 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-func newRepoLogoutCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
-	registryCmd := lo.Must(lo.Find(helmRootCmd.Commands(), func(c *cobra.Command) bool {
-		return strings.HasPrefix(c.Use, "registry")
+func newChartRepoRemoveCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
+	repoCmd := lo.Must(lo.Find(helmRootCmd.Commands(), func(c *cobra.Command) bool {
+		return strings.HasPrefix(c.Use, "repo")
 	}))
 
-	cmd := lo.Must(lo.Find(registryCmd.Commands(), func(c *cobra.Command) bool {
-		return strings.HasPrefix(c.Use, "logout")
+	cmd := lo.Must(lo.Find(repoCmd.Commands(), func(c *cobra.Command) bool {
+		return strings.HasPrefix(c.Use, "remove")
 	}))
 
 	cmd.LocalFlags().AddFlagSet(cmd.InheritedFlags())
-	cmd.Short = "Log out from an OCI registry with charts."
-	cmd.Long = ""
+	cmd.Short = "Remove a chart repository."
 	cmd.Aliases = []string{}
-	cli.SetSubCommandAnnotations(cmd, 20, repoCmdGroup)
+	cli.SetSubCommandAnnotations(cmd, 50, repoCmdGroup)
 
 	originalRunE := cmd.RunE
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {

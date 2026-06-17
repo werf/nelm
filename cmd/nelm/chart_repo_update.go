@@ -14,7 +14,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 )
 
-func newRepoUpdateCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
+func newChartRepoUpdateCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	repoCmd := lo.Must(lo.Find(helmRootCmd.Commands(), func(c *cobra.Command) bool {
 		return strings.HasPrefix(c.Use, "repo")
 	}))
