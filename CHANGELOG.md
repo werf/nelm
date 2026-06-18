@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.25.0](https://github.com/werf/nelm/compare/v1.24.3...v1.25.0) (2026-06-18)
+
+
+### Features
+
+* add automatic deploy dependency detection for KEDA ScaledObjects ([#631](https://github.com/werf/nelm/issues/631)) ([6ccf7ec](https://github.com/werf/nelm/commit/6ccf7ec6c431394225c1bf6524fd18cf8022f1fd)), closes [#456](https://github.com/werf/nelm/issues/456)
+
+
+### Bug Fixes
+
+* hangs on very long pod log lines ([#638](https://github.com/werf/nelm/issues/638)) ([6e75224](https://github.com/werf/nelm/commit/6e75224d27d1ad2fef1620bbf10e72868ca9ca2b))
+* no more "no match for resource kind" errors ([679e6ec](https://github.com/werf/nelm/commit/679e6ec795cc08823ef783e288c15ac5668b7e3b))
+* retry also on conversion webhooks unavailability ([7f5713b](https://github.com/werf/nelm/commit/7f5713b2721944e08e5f65e58a85d6a85c695289))
+* show actual error if webhook retries fail ([17a4604](https://github.com/werf/nelm/commit/17a460431ed09474064dd4f1b23b29d6ef915f02))
+
 ## [1.24.3](https://github.com/werf/nelm/compare/v1.24.2...v1.24.3) (2026-06-08)
 
 
