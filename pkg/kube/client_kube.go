@@ -547,21 +547,23 @@ func retryOnWebhookErr(ctx context.Context, fn func() error) error {
 	retryCtx, cancel := context.WithTimeoutCause(ctx, common.DefaultWebhookRetryTimeout, fmt.Errorf("context timed out: webhook retry timed out after %s", common.DefaultWebhookRetryTimeout.String()))
 	defer cancel()
 
+	var lastErr error
 	if err := kvwait.PollUntilContextCancel(retryCtx, 2*time.Second, true, func(ctx context.Context) (bool, error) {
-		if err := fn(); err != nil {
-			if IsWebhookErr(err) {
-				log.Default.Debug(ctx, "Retrying due to webhook error: %s", err)
+		lastErr = fn()
+		if lastErr != nil {
+			if IsWebhookErr(lastErr) {
+				log.Default.Debug(ctx, "Retrying due to webhook error: %s", lastErr)
 
 				return false, nil
 			}
 
-			return false, err
+			return false, lastErr
 		}
 
 		return true, nil
 	}); err != nil {
 		if retryCtx.Err() != nil {
-			return fmt.Errorf("retryable on webhook error: %w", context.Cause(retryCtx))
+			return fmt.Errorf("retryable on webhook error: %w due to: %w", context.Cause(retryCtx), lastErr)
 		}
 
 		return fmt.Errorf("retryable on webhook error: %w", err)
