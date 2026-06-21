@@ -16,15 +16,15 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
 
       - name: Download coverage artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           path: coverage
 
       - name: Format and upload coverage report
-        uses: qltysh/qlty-action/coverage@v2
+        uses: qltysh/qlty-action/coverage@fd52dc852530a708d68c3b7342f8d33d1df4cd55
         with:
           token: ${{secrets.QLTY_COVERAGE_TOKEN}}
           files: coverage/*.out,coverage/coverage-*/*.out
