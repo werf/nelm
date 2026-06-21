@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Notify
-        uses: mattermost/action-mattermost-notify@master
+        uses: mattermost/action-mattermost-notify@ae31bb6f9e26a54336e79696f108a2c91cf55b4e
         with:
           MATTERMOST_WEBHOOK_URL: ${{ secrets.LOOP_NOTIFICATION_WEBHOOK }}
           MATTERMOST_CHANNEL: ${{ vars.LOOP_NOTIFICATION_CHANNEL }}
@@ -21,7 +21,7 @@ jobs:
             ${{ vars.LOOP_NOTIFICATION_GROUP }} [${{ github.workflow }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) nelm task sign pls
 
       - name: Release with retry
-        uses: werf/trdl-vault-actions/release@main
+        uses: werf/trdl-vault-actions/release@92e6e6d13b6927c9fa0ad1dfa90fdded4c474581
         with:
           vault-addr: ${{ secrets.TRDL_VAULT_ADDR }}
           project-name: nelm
@@ -31,7 +31,7 @@ jobs:
           vault-secret-id: ${{ secrets.TRDL_VAULT_SECRET_ID }}
 
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           fetch-depth: 0
           fetch-tags: true
