@@ -508,7 +508,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}
 	}
 
-	releaseIsUpToDate, err := release.IsReleaseUpToDate(prevRelease, newRelease)
+	releaseIsUpToDate, _, err := release.IsReleaseUpToDate(prevRelease, newRelease)
 	if err != nil {
 		return fmt.Errorf("check if release is up to date: %w", err)
 	}
@@ -948,7 +948,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		}
 	}
 
-	releaseIsUpToDate, err := release.IsReleaseUpToDate(failedRelease, newRelease)
+	releaseIsUpToDate, _, err := release.IsReleaseUpToDate(failedRelease, newRelease)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("check if release is up to date: %w", err))
 	}
