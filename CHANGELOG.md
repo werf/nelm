@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.2](https://github.com/werf/nelm/compare/v1.25.1...v1.25.2) (2026-06-23)
+
+
+### Bug Fixes
+
+* increase default webhook retry timeout ([594eb86](https://github.com/werf/nelm/commit/594eb8622a7f7408d18d4618128d014e6110ed93))
+
 ## [1.25.1](https://github.com/werf/nelm/compare/v1.25.0...v1.25.1) (2026-06-23)
 
 
