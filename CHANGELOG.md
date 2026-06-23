@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.1](https://github.com/werf/nelm/compare/v1.25.0...v1.25.1) (2026-06-23)
+
+
+### Bug Fixes
+
+* match more webhook errors to retry on them ([6f90689](https://github.com/werf/nelm/commit/6f9068971c32c9ed44d882e61405c935f73270a3))
+
 ## [1.25.0](https://github.com/werf/nelm/compare/v1.24.3...v1.25.0) (2026-06-18)
 
 
