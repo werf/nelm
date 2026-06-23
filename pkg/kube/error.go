@@ -22,6 +22,6 @@ func IsNotFoundErr(err error) bool {
 
 func IsWebhookErr(err error) bool {
 	return err != nil &&
-		(strings.Contains(err.Error(), "Internal error occurred: failed calling webhook") ||
-			strings.Contains(err.Error(), "Internal error occurred: conversion webhook for"))
+		(strings.Contains(err.Error(), "failed calling webhook") ||
+			strings.Contains(err.Error(), "conversion webhook for"))
 }
