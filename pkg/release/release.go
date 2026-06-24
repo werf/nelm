@@ -40,11 +40,16 @@ type ReleaseOptions struct {
 	Notes           string
 }
 
+type IsReleaseUpToDateResult struct {
+	Reason   ReleaseOutdatedReason
+	UpToDate bool
+}
+
 // Check if the new Release is up-to-date compared to the old Release. It doesn't check any
 // resources of the release in the cluster, just compares Release objects.
-func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, ReleaseOutdatedReason, error) {
+func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (IsReleaseUpToDateResult, error) {
 	if oldRel == nil {
-		return false, ReleaseOutdatedReasonNoPreviousRelease, nil
+		return IsReleaseUpToDateResult{Reason: ReleaseOutdatedReasonNoPreviousRelease}, nil
 	}
 
 	cmpOpts := cmp.Options{
@@ -52,28 +57,28 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, ReleaseOutdat
 	}
 
 	if oldRel.Info.Status != helmrelease.StatusDeployed {
-		return false, ReleaseOutdatedReasonReleaseStatusNotDeployed, nil
+		return IsReleaseUpToDateResult{Reason: ReleaseOutdatedReasonReleaseStatusNotDeployed}, nil
 	}
 
 	if oldRel.Info.Notes != newRel.Info.Notes {
-		return false, ReleaseOutdatedReasonNotesChanged, nil
+		return IsReleaseUpToDateResult{Reason: ReleaseOutdatedReasonNotesChanged}, nil
 	}
 
 	if !cmp.Equal(oldRel.Config, newRel.Config, cmpOpts) {
-		return false, ReleaseOutdatedReasonValuesChanged, nil
+		return IsReleaseUpToDateResult{Reason: ReleaseOutdatedReasonValuesChanged}, nil
 	}
 
 	oldHookResourcesHash := fnv.New32a()
 	for _, oldHook := range oldRel.Hooks {
 		obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(oldHook.Manifest), nil, &unstructured.Unstructured{})
 		if err != nil {
-			return false, ReleaseOutdatedReasonNone, fmt.Errorf("decode old hook: %w", err)
+			return IsReleaseUpToDateResult{}, fmt.Errorf("decode old hook: %w", err)
 		}
 
 		unstruct := cleanUnstruct(obj.(*unstructured.Unstructured))
 
 		if err := writeUnstructHash(unstruct, oldHookResourcesHash); err != nil {
-			return false, ReleaseOutdatedReasonNone, fmt.Errorf("write old hook hash: %w", err)
+			return IsReleaseUpToDateResult{}, fmt.Errorf("write old hook hash: %w", err)
 		}
 	}
 
@@ -81,18 +86,18 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, ReleaseOutdat
 	for _, newHook := range newRel.Hooks {
 		obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(newHook.Manifest), nil, &unstructured.Unstructured{})
 		if err != nil {
-			return false, ReleaseOutdatedReasonNone, fmt.Errorf("decode new hook: %w", err)
+			return IsReleaseUpToDateResult{}, fmt.Errorf("decode new hook: %w", err)
 		}
 
 		unstruct := cleanUnstruct(obj.(*unstructured.Unstructured))
 
 		if err := writeUnstructHash(unstruct, newHookResourcesHash); err != nil {
-			return false, ReleaseOutdatedReasonNone, fmt.Errorf("write new hook hash: %w", err)
+			return IsReleaseUpToDateResult{}, fmt.Errorf("write new hook hash: %w", err)
 		}
 	}
 
 	if oldHookResourcesHash.Sum32() != newHookResourcesHash.Sum32() {
-		return false, ReleaseOutdatedReasonHooksChanged, nil
+		return IsReleaseUpToDateResult{Reason: ReleaseOutdatedReasonHooksChanged}, nil
 	}
 
 	oldRelManifests := releaseutil.SplitManifestsToSlice(oldRel.Manifest)
@@ -101,13 +106,13 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, ReleaseOutdat
 	for _, manifest := range oldRelManifests {
 		obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(manifest), nil, &unstructured.Unstructured{})
 		if err != nil {
-			return false, ReleaseOutdatedReasonNone, fmt.Errorf("decode old regular resource: %w", err)
+			return IsReleaseUpToDateResult{}, fmt.Errorf("decode old regular resource: %w", err)
 		}
 
 		unstruct := cleanUnstruct(obj.(*unstructured.Unstructured))
 
 		if err := writeUnstructHash(unstruct, oldRegularResourcesHash); err != nil {
-			return false, ReleaseOutdatedReasonNone, fmt.Errorf("write old regular resource hash: %w", err)
+			return IsReleaseUpToDateResult{}, fmt.Errorf("write old regular resource hash: %w", err)
 		}
 	}
 
@@ -117,21 +122,21 @@ func IsReleaseUpToDate(oldRel, newRel *helmrelease.Release) (bool, ReleaseOutdat
 	for _, manifest := range newRelManifests {
 		obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(manifest), nil, &unstructured.Unstructured{})
 		if err != nil {
-			return false, ReleaseOutdatedReasonNone, fmt.Errorf("decode new regular resource: %w", err)
+			return IsReleaseUpToDateResult{}, fmt.Errorf("decode new regular resource: %w", err)
 		}
 
 		unstruct := cleanUnstruct(obj.(*unstructured.Unstructured))
 
 		if err := writeUnstructHash(unstruct, newRegularResourcesHash); err != nil {
-			return false, ReleaseOutdatedReasonNone, fmt.Errorf("write new regular resource hash: %w", err)
+			return IsReleaseUpToDateResult{}, fmt.Errorf("write new regular resource hash: %w", err)
 		}
 	}
 
 	if oldRegularResourcesHash.Sum32() != newRegularResourcesHash.Sum32() {
-		return false, ReleaseOutdatedReasonManifestsChanged, nil
+		return IsReleaseUpToDateResult{Reason: ReleaseOutdatedReasonManifestsChanged}, nil
 	}
 
-	return true, ReleaseOutdatedReasonNone, nil
+	return IsReleaseUpToDateResult{UpToDate: true}, nil
 }
 
 // Construct Helm release.
