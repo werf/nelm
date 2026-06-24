@@ -145,10 +145,10 @@ data:
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			upToDate, reason, err := release.IsReleaseUpToDate(tt.oldRel, tt.newRel)
+			result, err := release.IsReleaseUpToDate(tt.oldRel, tt.newRel)
 			require.NoError(t, err)
-			assert.Equal(t, tt.expectedUpToDate, upToDate)
-			assert.Equal(t, tt.expectedReason, reason)
+			assert.Equal(t, tt.expectedUpToDate, result.UpToDate)
+			assert.Equal(t, tt.expectedReason, result.Reason)
 		})
 	}
 }
