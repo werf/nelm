@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.25.3](https://github.com/werf/nelm/compare/v1.25.2...v1.25.3) (2026-06-24)
+
+
+### Bug Fixes
+
+* HelmCompatibleTracking mode should allow annotations override ([6c7e6f4](https://github.com/werf/nelm/commit/6c7e6f429c37126160f0bb657904966ef4bef618))
+
+## [1.25.3](https://github.com/werf/nelm/compare/v1.25.2...v1.25.3) (2026-06-24)
+
+
+### Bug Fixes
+
+* HelmCompatibleTracking mode should allow annotations override ([6c7e6f4](https://github.com/werf/nelm/commit/6c7e6f429c37126160f0bb657904966ef4bef618))
+
 ## [1.25.2](https://github.com/werf/nelm/compare/v1.25.1...v1.25.2) (2026-06-23)
 
 
