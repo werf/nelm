@@ -1172,7 +1172,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForResourcePolicies
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.KeepOnDelete = true
+				res.ResourcePolicies = []common.ResourcePolicy{common.ResourcePolicySkipDelete}
 
 				return res
 			},
@@ -1185,6 +1185,80 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForResourcePolicies
 				return resSpec
 			},
 			name: `for resource with helm.sh/resource-policy="keep"`,
+		},
+		{
+			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
+				res := defaultInstallableResource(resSpec)
+				res.ResourcePolicies = []common.ResourcePolicy{common.ResourcePolicySkipDelete}
+
+				return res
+			},
+			input: func() *spec.ResourceSpec {
+				resSpec := defaultResourceSpec(s.releaseNamespace)
+				resSpec.SetAnnotations(lo.Assign(resSpec.Annotations, map[string]string{
+					"werf.io/resource-policy": "keep",
+				}))
+
+				return resSpec
+			},
+			name: `for resource with werf.io/resource-policy="keep"`,
+		},
+		{
+			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
+				res := defaultInstallableResource(resSpec)
+				res.ResourcePolicies = []common.ResourcePolicy{common.ResourcePolicySkipDelete}
+
+				return res
+			},
+			input: func() *spec.ResourceSpec {
+				resSpec := defaultResourceSpec(s.releaseNamespace)
+				resSpec.SetAnnotations(lo.Assign(resSpec.Annotations, map[string]string{
+					"werf.io/resource-policy": "skip-delete",
+				}))
+
+				return resSpec
+			},
+			name: `for resource with werf.io/resource-policy="skip-delete"`,
+		},
+		{
+			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
+				res := defaultInstallableResource(resSpec)
+				res.ResourcePolicies = []common.ResourcePolicy{
+					common.ResourcePolicySkipCreate,
+					common.ResourcePolicySkipUpdate,
+					common.ResourcePolicySkipRecreate,
+					common.ResourcePolicySkipDelete,
+				}
+
+				return res
+			},
+			input: func() *spec.ResourceSpec {
+				resSpec := defaultResourceSpec(s.releaseNamespace)
+				resSpec.SetAnnotations(lo.Assign(resSpec.Annotations, map[string]string{
+					"werf.io/resource-policy": "skip-create, skip-update, skip-recreate, skip-delete",
+				}))
+
+				return resSpec
+			},
+			name: `for resource with werf.io/resource-policy listing all skip directives`,
+		},
+		{
+			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
+				res := defaultInstallableResource(resSpec)
+				res.ResourcePolicies = []common.ResourcePolicy{common.ResourcePolicySkipUpdate}
+
+				return res
+			},
+			input: func() *spec.ResourceSpec {
+				resSpec := defaultResourceSpec(s.releaseNamespace)
+				resSpec.SetAnnotations(lo.Assign(resSpec.Annotations, map[string]string{
+					"helm.sh/resource-policy": "keep",
+					"werf.io/resource-policy": "skip-update",
+				}))
+
+				return resSpec
+			},
+			name: `for resource where werf.io/resource-policy overrides helm.sh/resource-policy`,
 		},
 	}
 
@@ -1554,7 +1628,7 @@ func defaultJobInstallableResource(resSpec *spec.ResourceSpec) *resource.Install
 func defaultReleaseNamespaceDeletableResource(resSpec *spec.ResourceSpec) *resource.DeletableResource {
 	res := defaultDeletableResource(resSpec.ResourceMeta)
 	res.Ownership = common.OwnershipAnyone
-	res.KeepOnDelete = true
+	res.ResourcePolicies = []common.ResourcePolicy{common.ResourcePolicySkipDelete}
 
 	return res
 }
@@ -1562,7 +1636,7 @@ func defaultReleaseNamespaceDeletableResource(resSpec *spec.ResourceSpec) *resou
 func defaultReleaseNamespaceInstallableResource(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 	res := defaultInstallableResource(resSpec)
 	res.Ownership = common.OwnershipAnyone
-	res.KeepOnDelete = true
+	res.ResourcePolicies = []common.ResourcePolicy{common.ResourcePolicySkipDelete}
 	res.DeployConditions = map[common.On][]common.Stage{
 		common.InstallOnInstall:  {common.StagePrePreInstall},
 		common.InstallOnUpgrade:  {common.StagePrePreInstall},

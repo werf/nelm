@@ -91,7 +91,7 @@ func (s *ResourceInfoSuite) TestBuildDeletableResourceInfo() {
 			},
 			input: func() (*resource.DeletableResource, common.DeployType) {
 				localRes := defaultDeletableResource(s.releaseName, s.releaseNamespace)
-				localRes.KeepOnDelete = true
+				localRes.ResourcePolicies = []common.ResourcePolicy{common.ResourcePolicySkipDelete}
 
 				return localRes, common.DeployTypeUninstall
 			},
@@ -428,6 +428,71 @@ func (s *ResourceInfoSuite) TestBuildInstallableResourceInfo() {
 				return defaultInstallableResource(s.releaseName, s.releaseNamespace), common.DeployTypeUninstall, false
 			},
 			name: `for non-existing resource, uninstall deploy`,
+		},
+		{
+			expect: func(localRes *resource.InstallableResource) []*plan.InstallableResourceInfo {
+				info := defaultInstallableResourceInfo(localRes)
+				info.MustInstall = plan.ResourceInstallTypeNone
+				info.MustTrackReadiness = false
+
+				return []*plan.InstallableResourceInfo{info}
+			},
+			input: func() (*resource.InstallableResource, common.DeployType, bool) {
+				localRes := defaultInstallableResource(s.releaseName, s.releaseNamespace)
+				localRes.ResourcePolicies = []common.ResourcePolicy{common.ResourcePolicySkipCreate}
+
+				return localRes, common.DeployTypeInitial, false
+			},
+			name: `for non-existing resource with skip-create, initial deploy`,
+		},
+		{
+			expect: func(localRes *resource.InstallableResource) []*plan.InstallableResourceInfo {
+				info := defaultInstallableResourceInfo(localRes)
+				info.GetResult = defaultResourceSpec(s.releaseName, s.releaseNamespace).Unstruct
+				info.DryApplyResult = updatedResourceSpec(&s.Suite, s.releaseName, s.releaseNamespace).Unstruct
+				info.MustInstall = plan.ResourceInstallTypeNone
+				info.MustTrackReadiness = false
+
+				return []*plan.InstallableResourceInfo{info}
+			},
+			input: func() (*resource.InstallableResource, common.DeployType, bool) {
+				localRes := updatedInstallableResource(&s.Suite, s.releaseName, s.releaseNamespace)
+				localRes.ResourcePolicies = []common.ResourcePolicy{common.ResourcePolicySkipUpdate}
+
+				return localRes, common.DeployTypeInitial, false
+			},
+			name: `for outdated resource with skip-update, initial deploy`,
+			prepare: func() {
+				_, err := s.clientFactory.KubeClient().Create(context.Background(), defaultResourceSpec(s.releaseName, s.releaseNamespace), kube.KubeClientCreateOptions{
+					DefaultNamespace: s.releaseNamespace,
+				})
+				s.Require().NoError(err)
+			},
+		},
+		{
+			expect: func(localRes *resource.InstallableResource) []*plan.InstallableResourceInfo {
+				info := defaultInstallableResourceInfo(localRes)
+				info.GetResult = defaultResourceSpec(s.releaseName, s.releaseNamespace).Unstruct
+				info.DryApplyResult = updatedResourceSpec(&s.Suite, s.releaseName, s.releaseNamespace).Unstruct
+				info.MustInstall = plan.ResourceInstallTypeNone
+				info.MustTrackReadiness = false
+
+				return []*plan.InstallableResourceInfo{info}
+			},
+			input: func() (*resource.InstallableResource, common.DeployType, bool) {
+				localRes := updatedInstallableResource(&s.Suite, s.releaseName, s.releaseNamespace)
+				localRes.Recreate = true
+				localRes.ResourcePolicies = []common.ResourcePolicy{common.ResourcePolicySkipRecreate}
+
+				return localRes, common.DeployTypeInitial, false
+			},
+			name: `for outdated resource with skip-recreate, initial deploy`,
+			prepare: func() {
+				_, err := s.clientFactory.KubeClient().Create(context.Background(), defaultResourceSpec(s.releaseName, s.releaseNamespace), kube.KubeClientCreateOptions{
+					DefaultNamespace: s.releaseNamespace,
+				})
+				s.Require().NoError(err)
+			},
 		},
 	}
 
