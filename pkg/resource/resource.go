@@ -26,10 +26,10 @@ type InstallableResource struct {
 	Ownership                              common.Ownership                `json:"ownership"`
 	Recreate                               bool                            `json:"recreate"`
 	RecreateOnImmutable                    bool                            `json:"recreateOnImmutable"`
+	ResourcePolicies                       []common.ResourcePolicy         `json:"resourcePolicies"`
 	DefaultReplicasOnCreation              *int                            `json:"defaultReplicasOnCreation,omitempty"`
 	DeleteOnSucceeded                      bool                            `json:"deleteOnSucceeded"`
 	DeleteOnFailed                         bool                            `json:"deleteOnFailed"`
-	KeepOnDelete                           bool                            `json:"keepOnDelete"`
 	FailMode                               multitrack.FailMode             `json:"failMode"`
 	FailuresAllowed                        int                             `json:"failuresAllowed"`
 	IgnoreReadinessProbeFailsForContainers map[string]time.Duration        `json:"ignoreReadinessProbeFailsForContainers,omitempty"`
@@ -130,7 +130,6 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResSpecs []*spec.Resour
 		FailMode:                               failMode(res.ResourceMeta),
 		FailuresAllowed:                        failuresAllowed(res.Unstruct),
 		IgnoreReadinessProbeFailsForContainers: ignoreReadinessProbeFailsForContainers(res.ResourceMeta),
-		KeepOnDelete:                           KeepOnDelete(res.ResourceMeta, releaseNamespace),
 		LogRegex:                               logRegex(res.ResourceMeta),
 		LogRegexesForContainers:                logRegexesForContainers(res.ResourceMeta),
 		ManualInternalDependencies:             manIntDeps,
@@ -138,6 +137,7 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResSpecs []*spec.Resour
 		Ownership:                              ownership(res.ResourceMeta, releaseNamespace, res.StoreAs),
 		Recreate:                               recreate(res.ResourceMeta),
 		RecreateOnImmutable:                    recreateOnImmutable(res.ResourceMeta),
+		ResourcePolicies:                       ResourcePolicies(res.ResourceMeta, releaseNamespace),
 		ShowLogsOnlyForContainers:              showLogsOnlyForContainers(res.ResourceMeta),
 		ShowLogsOnlyForNumberOfReplicas:        showLogsOnlyForNumberOfReplicas(res.ResourceMeta),
 		ShowServiceMessages:                    showServiceMessages(res.ResourceMeta),
@@ -148,6 +148,14 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResSpecs []*spec.Resour
 		TrackTerminationMode:                   trackTerminationMode(res.ResourceMeta),
 		Weight:                                 weight(res.ResourceMeta, len(manIntDeps) > 0),
 	}, nil
+}
+
+func ResolveResourcePolicies(localRes *InstallableResource, liveMeta *spec.ResourceMeta, releaseNamespace string) []common.ResourcePolicy {
+	if len(localRes.ResourcePolicies) > 0 || liveMeta == nil {
+		return localRes.ResourcePolicies
+	}
+
+	return ResourcePolicies(liveMeta, releaseNamespace)
 }
 
 type InstallableResourceOptions struct {
@@ -164,7 +172,7 @@ type DeletableResource struct {
 
 	AutoInternalDependencies   []*InternalDependency
 	DeletePropagation          metav1.DeletionPropagation
-	KeepOnDelete               bool
+	ResourcePolicies           []common.ResourcePolicy
 	ManualInternalDependencies []*InternalDependency
 	Ownership                  common.Ownership
 }
@@ -172,11 +180,11 @@ type DeletableResource struct {
 // Construct a DeletableResource from a ResourceSpec. Must never contact the cluster, because
 // this is called even when no cluster access allowed.
 func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []*spec.ResourceSpec, releaseNamespace string, opts DeletableResourceOptions) *DeletableResource {
-	var keep bool
+	var policies []common.ResourcePolicy
 	if err := ValidateResourcePolicy(resourceSpec.ResourceMeta); err != nil {
-		keep = true
+		policies = []common.ResourcePolicy{common.ResourcePolicySkipDelete}
 	} else {
-		keep = KeepOnDelete(resourceSpec.ResourceMeta, releaseNamespace)
+		policies = ResourcePolicies(resourceSpec.ResourceMeta, releaseNamespace)
 	}
 
 	var owner common.Ownership
@@ -206,7 +214,7 @@ func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []
 		ResourceMeta:               resourceSpec.ResourceMeta,
 		AutoInternalDependencies:   internalDeleteDependencies(resourceSpec.Unstruct, unstructList),
 		DeletePropagation:          delPropagation,
-		KeepOnDelete:               keep,
+		ResourcePolicies:           policies,
 		ManualInternalDependencies: manIntDeps,
 		Ownership:                  owner,
 	}
@@ -281,7 +289,7 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 			return false
 		}
 
-		if delRes.KeepOnDelete {
+		if lo.Contains(delRes.ResourcePolicies, common.ResourcePolicySkipDelete) {
 			return false
 		}
 
