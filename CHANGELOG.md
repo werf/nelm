@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.26.0](https://github.com/werf/nelm/compare/v1.25.3...v1.26.0) (2026-07-03)
+
+
+### Features
+
+* add `werf.io/resource-policy` annotation ([5a2517f](https://github.com/werf/nelm/commit/5a2517f7c0817716f0686de8fa26e97f23c95609))
+
 ## [1.25.3](https://github.com/werf/nelm/compare/v1.25.2...v1.25.3) (2026-06-24)
 
 
