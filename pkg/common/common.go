@@ -28,17 +28,6 @@ const (
 	// updating it.
 	DeletePolicyBeforeCreationIfImmutable DeletePolicy = "before-creation-if-immutable"
 
-	// Skip creating the resource if it does not exist in the cluster.
-	ResourcePolicySkipCreate ResourcePolicy = "skip-create"
-	// Skip updating the resource if it already exists in the cluster.
-	ResourcePolicySkipUpdate ResourcePolicy = "skip-update"
-	// Skip recreating the resource when a recreation would otherwise be required.
-	ResourcePolicySkipRecreate ResourcePolicy = "skip-recreate"
-	// Skip deleting the resource (protect it from deletion). Alias: keep.
-	ResourcePolicySkipDelete ResourcePolicy = "skip-delete"
-	// Alias for skipDelete, matching the legacy helm.sh/resource-policy value.
-	ResourcePolicyKeep ResourcePolicy = "keep"
-
 	// Installing revision number 1 of the release always considered "Initial".
 	DeployTypeInitial DeployType = "Initial"
 	// Revision number > 1 with no successful revisions between revision 1 and the last revision
@@ -66,6 +55,17 @@ const (
 	OwnershipAnyone Ownership = "anyone"
 	// The resource is owned by a single release.
 	OwnershipRelease Ownership = "release"
+
+	// Skip creating the resource if it does not exist in the cluster.
+	ResourcePolicySkipCreate ResourcePolicy = "skip-create"
+	// Skip updating the resource if it already exists in the cluster.
+	ResourcePolicySkipUpdate ResourcePolicy = "skip-update"
+	// Skip recreating the resource when a recreation would otherwise be required.
+	ResourcePolicySkipRecreate ResourcePolicy = "skip-recreate"
+	// Skip deleting the resource (protect it from deletion). Alias: keep.
+	ResourcePolicySkipDelete ResourcePolicy = "skip-delete"
+	// Alias for skipDelete, matching the legacy helm.sh/resource-policy value.
+	ResourcePolicyKeep ResourcePolicy = "keep"
 
 	ResourceStateAbsent  ResourceState = "absent"
 	ResourceStatePresent ResourceState = "present"

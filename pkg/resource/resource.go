@@ -150,14 +150,6 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResSpecs []*spec.Resour
 	}, nil
 }
 
-func ResolveResourcePolicies(localRes *InstallableResource, liveMeta *spec.ResourceMeta, releaseNamespace string) []common.ResourcePolicy {
-	if len(localRes.ResourcePolicies) > 0 || liveMeta == nil {
-		return localRes.ResourcePolicies
-	}
-
-	return ResourcePolicies(liveMeta, releaseNamespace)
-}
-
 type InstallableResourceOptions struct {
 	DefaultDeletePropagation metav1.DeletionPropagation
 	NoPodLogs                bool
@@ -172,9 +164,9 @@ type DeletableResource struct {
 
 	AutoInternalDependencies   []*InternalDependency
 	DeletePropagation          metav1.DeletionPropagation
-	ResourcePolicies           []common.ResourcePolicy
 	ManualInternalDependencies []*InternalDependency
 	Ownership                  common.Ownership
+	ResourcePolicies           []common.ResourcePolicy
 }
 
 // Construct a DeletableResource from a ResourceSpec. Must never contact the cluster, because
@@ -214,9 +206,9 @@ func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []
 		ResourceMeta:               resourceSpec.ResourceMeta,
 		AutoInternalDependencies:   internalDeleteDependencies(resourceSpec.Unstruct, unstructList),
 		DeletePropagation:          delPropagation,
-		ResourcePolicies:           policies,
 		ManualInternalDependencies: manIntDeps,
 		Ownership:                  owner,
+		ResourcePolicies:           policies,
 	}
 }
 
@@ -378,4 +370,12 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	})
 
 	return instResources, delResources, nil
+}
+
+func ResolveResourcePolicies(localRes *InstallableResource, liveMeta *spec.ResourceMeta, releaseNamespace string) []common.ResourcePolicy {
+	if len(localRes.ResourcePolicies) > 0 || liveMeta == nil {
+		return localRes.ResourcePolicies
+	}
+
+	return ResourcePolicies(liveMeta, releaseNamespace)
 }

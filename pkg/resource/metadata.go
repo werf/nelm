@@ -41,25 +41,6 @@ func ResourcePolicies(meta *spec.ResourceMeta, releaseNamespace string) []common
 	return policies
 }
 
-func parseResourcePolicies(value string) []common.ResourcePolicy {
-	var policies []common.ResourcePolicy
-	for _, p := range strings.Split(value, ",") {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-
-		policy := common.ResourcePolicy(p)
-		if policy == common.ResourcePolicyKeep {
-			policy = common.ResourcePolicySkipDelete
-		}
-
-		policies = append(policies, policy)
-	}
-
-	return policies
-}
-
 func ValidateResourcePolicy(meta *spec.ResourceMeta) error {
 	if key, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternWerfResourcePolicy); found {
 		if value == "" {
@@ -704,6 +685,25 @@ func ownership(meta *spec.ResourceMeta, releaseNamespace string, storeAs common.
 	default:
 		panic("unexpected storeAs value")
 	}
+}
+
+func parseResourcePolicies(value string) []common.ResourcePolicy {
+	var policies []common.ResourcePolicy
+	for _, p := range strings.Split(value, ",") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+
+		policy := common.ResourcePolicy(p)
+		if policy == common.ResourcePolicyKeep {
+			policy = common.ResourcePolicySkipDelete
+		}
+
+		policies = append(policies, policy)
+	}
+
+	return policies
 }
 
 func showLogsOnlyForContainers(meta *spec.ResourceMeta) []string {

@@ -189,6 +189,7 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 	)
 	if getErr == nil {
 		var err error
+
 		getObj, err = fixManagedFieldsInCluster(ctx, releaseNamespace, getObj, localRes, noRemoveManualChanges, clientFactory, lastDeployedOrLastRelResSpecs)
 		if err != nil {
 			return nil, fmt.Errorf("fix managed fields for resource %q: %w", localRes.IDHuman(), err)
