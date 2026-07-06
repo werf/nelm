@@ -377,5 +377,13 @@ func ResolveResourcePolicies(localRes *InstallableResource, liveMeta *spec.Resou
 		return localRes.ResourcePolicies
 	}
 
-	return ResourcePolicies(liveMeta, releaseNamespace)
+	// TODO(major): in the next major keep/skip-delete should also be read/respected only from the manifest, not the cluster.
+	livePolicies := lo.Filter(ResourcePolicies(liveMeta, releaseNamespace), func(p common.ResourcePolicy, _ int) bool {
+		return p == common.ResourcePolicySkipDelete
+	})
+	if len(livePolicies) == 0 {
+		return nil
+	}
+
+	return livePolicies
 }

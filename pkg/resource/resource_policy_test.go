@@ -41,9 +41,32 @@ func TestResolveResourcePolicies(t *testing.T) {
 			want:    []common.ResourcePolicy{common.ResourcePolicySkipCreate, common.ResourcePolicySkipUpdate, common.ResourcePolicySkipRecreate},
 		},
 		{
-			name: "live used when chart absent",
+			name: "live skip-update dropped when chart absent",
 			live: map[string]string{"werf.io/resource-policy": "skip-update"},
-			want: []common.ResourcePolicy{common.ResourcePolicySkipUpdate},
+		},
+		{
+			name: "live install skips dropped when chart absent",
+			live: map[string]string{"werf.io/resource-policy": "skip-create,skip-update,skip-recreate"},
+		},
+		{
+			name: "live skip-delete retained when chart absent",
+			live: map[string]string{"werf.io/resource-policy": "skip-delete"},
+			want: []common.ResourcePolicy{common.ResourcePolicySkipDelete},
+		},
+		{
+			name: "live werf.io keep retained as skip-delete when chart absent",
+			live: map[string]string{"werf.io/resource-policy": "keep"},
+			want: []common.ResourcePolicy{common.ResourcePolicySkipDelete},
+		},
+		{
+			name: "live helm.sh keep retained as skip-delete when chart absent",
+			live: map[string]string{"helm.sh/resource-policy": "keep"},
+			want: []common.ResourcePolicy{common.ResourcePolicySkipDelete},
+		},
+		{
+			name: "live mixed policies filtered to skip-delete when chart absent",
+			live: map[string]string{"werf.io/resource-policy": "skip-update,skip-delete"},
+			want: []common.ResourcePolicy{common.ResourcePolicySkipDelete},
 		},
 		{
 			name:  "chart present takes precedence over live (no merge)",
