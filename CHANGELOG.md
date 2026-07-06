@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.26.1](https://github.com/werf/nelm/compare/v1.26.0...v1.26.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* `werf.io/resource-policy` should only respect skip-delete from live ([ddfb620](https://github.com/werf/nelm/commit/ddfb620f23e2caae4c27c44bb85ebd4f82f0c4db))
+
 ## [1.26.0](https://github.com/werf/nelm/compare/v1.25.3...v1.26.0) (2026-07-03)
 
 
