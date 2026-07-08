@@ -35,7 +35,7 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [Advanced resource lifecycle capabilities](#advanced-resource-lifecycle-capabilities)
   - [Resource state tracking](#resource-state-tracking)
   - [Printing logs and events during deploy](#printing-logs-and-events-during-deploy)
-  - [Release planning and two-stage deployment support](#release-planning-and-two-stage-deployment-workflow-support)
+  - [Release planning and two-stage deployment workflow support](#release-planning-and-two-stage-deployment-workflow-support)
   - [Encrypted values and encrypted files](#encrypted-values-and-encrypted-files)
   - [Improved CRD management](#improved-crd-management)
 - [Usage](#usage)
@@ -45,7 +45,6 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [`werf.io/weight` annotation](#werfioweight-annotation)
   - [`werf.io/deploy-dependency-<id>` annotation](#werfiodeploy-dependency-id-annotation)
   - [`werf.io/delete-dependency-<id>` annotation](#werfiodelete-dependency-id-annotation)
-
   - [`werf.io/ownership` annotation](#werfioownership-annotation)
   - [`werf.io/deploy-on` annotation](#werfiodeploy-on-annotation)
   - [`werf.io/delete-policy` annotation](#werfiodelete-policy-annotation)
