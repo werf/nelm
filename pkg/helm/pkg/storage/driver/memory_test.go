@@ -238,6 +238,35 @@ func TestMemoryUpdate(t *testing.T) {
 	}
 }
 
+func TestMemoryUpdateLabels(t *testing.T) {
+	ts := tsFixtureMemory(t)
+	ts.SetNamespace("default")
+
+	key := testKey("rls-a", 4)
+	if err := ts.UpdateLabels(key, map[string]string{"owned-by": "operator", "key1": "changed"}); err != nil {
+		t.Fatalf("Failed to update labels: %s\n", err)
+	}
+
+	r, err := ts.Get(key)
+	if err != nil {
+		t.Fatalf("Failed to get: %s\n", err)
+	}
+	rls := r.(*rspb.Release)
+	if rls.Labels["owned-by"] != "operator" {
+		t.Fatalf("Expected merged label owned-by=operator, got %q\n", rls.Labels["owned-by"])
+	}
+	if rls.Labels["key1"] != "changed" {
+		t.Fatalf("Expected overwritten label key1=changed, got %q\n", rls.Labels["key1"])
+	}
+	if rls.Labels["key2"] != "val2" {
+		t.Fatalf("Expected preserved label key2=val2, got %q\n", rls.Labels["key2"])
+	}
+
+	if err := ts.UpdateLabels(testKey("rls-missing", 1), map[string]string{"owned-by": "operator"}); err != ErrReleaseNotFound {
+		t.Fatalf("Expected ErrReleaseNotFound, got %v\n", err)
+	}
+}
+
 func TestMemoryDelete(t *testing.T) {
 	var tests = []struct {
 		desc      string

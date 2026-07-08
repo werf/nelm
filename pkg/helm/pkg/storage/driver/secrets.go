@@ -217,6 +217,31 @@ func (secrets *Secrets) Update(key string, rel release.Releaser) error {
 	return nil
 }
 
+// UpdateLabels merges the given custom labels into the Secret holding the
+// release named by key without creating a new revision. System labels in the
+// map are ignored to avoid corrupting release metadata.
+func (secrets *Secrets) UpdateLabels(key string, lbls map[string]string) error {
+	obj, err := secrets.impl.Get(context.Background(), key, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return ErrReleaseNotFound
+		}
+		return fmt.Errorf("update labels: failed to get %q: %w", key, err)
+	}
+
+	if obj.Labels == nil {
+		obj.Labels = map[string]string{}
+	}
+	for k, v := range filterSystemLabels(lbls) {
+		obj.Labels[k] = v
+	}
+
+	if _, err := secrets.impl.Update(context.Background(), obj, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("update labels: failed to update %q: %w", key, err)
+	}
+	return nil
+}
+
 // Delete deletes the Secret holding the release named by key.
 func (secrets *Secrets) Delete(key string) (rls release.Releaser, err error) {
 	// fetch the release to check existence

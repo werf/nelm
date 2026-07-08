@@ -307,6 +307,9 @@ func (d *MaxHistoryMockDriver) Create(key string, rls release.Releaser) error {
 func (d *MaxHistoryMockDriver) Update(key string, rls release.Releaser) error {
 	return d.Driver.Update(key, rls)
 }
+func (d *MaxHistoryMockDriver) UpdateLabels(key string, labels map[string]string) error {
+	return d.Driver.UpdateLabels(key, labels)
+}
 func (d *MaxHistoryMockDriver) Delete(_ string) (release.Releaser, error) {
 	return nil, errMaxHistoryMockDriverSomethingHappened
 }

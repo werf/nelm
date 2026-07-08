@@ -226,6 +226,40 @@ func TestSecretUpdate(t *testing.T) {
 	}
 }
 
+func TestSecretUpdateLabels(t *testing.T) {
+	vers := 1
+	name := "smug-pigeon"
+	namespace := "default"
+	key := testKey(name, vers)
+	rel := releaseStub(name, vers, namespace, common.StatusDeployed)
+
+	secrets := newTestFixtureSecrets(t, []*rspb.Release{rel}...)
+
+	if err := secrets.UpdateLabels(key, map[string]string{"owned-by": "operator", "key1": "changed"}); err != nil {
+		t.Fatalf("Failed to update labels: %s", err)
+	}
+
+	goti, err := secrets.Get(key)
+	if err != nil {
+		t.Fatalf("Failed to get release with key %q: %s", key, err)
+	}
+	got := convertReleaserToV1(t, goti)
+
+	if got.Labels["owned-by"] != "operator" {
+		t.Errorf("Expected merged label owned-by=operator, got %q", got.Labels["owned-by"])
+	}
+	if got.Labels["key1"] != "changed" {
+		t.Errorf("Expected overwritten label key1=changed, got %q", got.Labels["key1"])
+	}
+	if got.Labels["key2"] != "val2" {
+		t.Errorf("Expected preserved label key2=val2, got %q", got.Labels["key2"])
+	}
+
+	if err := secrets.UpdateLabels("nonexistent", map[string]string{"owned-by": "operator"}); !errors.Is(err, ErrReleaseNotFound) {
+		t.Fatalf("Expected ErrReleaseNotFound, got %v", err)
+	}
+}
+
 func TestSecretDelete(t *testing.T) {
 	vers := 1
 	name := "smug-pigeon"

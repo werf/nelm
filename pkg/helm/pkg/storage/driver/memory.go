@@ -210,6 +210,37 @@ func (mem *Memory) Update(key string, rel release.Releaser) error {
 	return ErrReleaseNotFound
 }
 
+// UpdateLabels merges the given custom labels into the stored release named by
+// key without creating a new revision. Returns ErrReleaseNotFound if the
+// release does not exist.
+func (mem *Memory) UpdateLabels(key string, lbls map[string]string) error {
+	defer unlock(mem.wlock())
+
+	keyWithoutPrefix := strings.TrimPrefix(key, "sh.helm.release.v1.")
+	elems := strings.Split(keyWithoutPrefix, ".v")
+	if len(elems) != 2 {
+		return ErrInvalidKey
+	}
+	name := elems[0]
+
+	recs, ok := mem.cache[mem.namespace][name]
+	if !ok {
+		return ErrReleaseNotFound
+	}
+	r := recs.Get(key)
+	if r == nil {
+		return ErrReleaseNotFound
+	}
+
+	if r.rls.Labels == nil {
+		r.rls.Labels = map[string]string{}
+	}
+	for k, v := range filterSystemLabels(lbls) {
+		r.rls.Labels[k] = v
+	}
+	return nil
+}
+
 // Delete deletes a release or returns ErrReleaseNotFound.
 func (mem *Memory) Delete(key string) (release.Releaser, error) {
 	defer unlock(mem.wlock())
