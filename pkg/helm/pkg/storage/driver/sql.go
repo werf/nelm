@@ -618,6 +618,79 @@ func (s *SQL) Update(key string, rel release.Releaser) error {
 	return nil
 }
 
+// UpdateLabels merges the given custom labels into the release named by key
+// without creating a new revision, by upserting rows in the custom labels
+// table. System labels in the map are ignored to avoid corrupting release
+// metadata. Returns ErrReleaseNotFound if the release does not exist.
+func (s *SQL) UpdateLabels(key string, lbls map[string]string) error {
+	selectQuery, selectArgs, err := s.statementBuilder.
+		Select(sqlReleaseTableKeyColumn).
+		From(sqlReleaseTableName).
+		Where(sq.Eq{sqlReleaseTableKeyColumn: key}).
+		Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace}).
+		ToSql()
+	if err != nil {
+		s.Logger().Debug("failed to build select query", slog.Any("error", err))
+		return err
+	}
+
+	transaction, err := s.db.Beginx()
+	if err != nil {
+		s.Logger().Debug("failed to start SQL transaction", slog.Any("error", err))
+		return fmt.Errorf("error beginning transaction: %v", err)
+	}
+
+	var existingKey string
+	if err := transaction.Get(&existingKey, selectQuery, selectArgs...); err != nil {
+		transaction.Rollback()
+		return ErrReleaseNotFound
+	}
+
+	for k, v := range filterSystemLabels(lbls) {
+		deleteQuery, deleteArgs, err := s.statementBuilder.
+			Delete(sqlCustomLabelsTableName).
+			Where(sq.Eq{
+				sqlCustomLabelsTableReleaseKeyColumn:       key,
+				sqlCustomLabelsTableReleaseNamespaceColumn: s.namespace,
+				sqlCustomLabelsTableKeyColumn:              k,
+			}).
+			ToSql()
+		if err != nil {
+			transaction.Rollback()
+			s.Logger().Debug("failed to build delete labels query", slog.Any("error", err))
+			return err
+		}
+		if _, err := transaction.Exec(deleteQuery, deleteArgs...); err != nil {
+			transaction.Rollback()
+			s.Logger().Debug("failed to delete existing label", slog.Any("error", err))
+			return err
+		}
+
+		insertQuery, insertArgs, err := s.statementBuilder.
+			Insert(sqlCustomLabelsTableName).
+			Columns(
+				sqlCustomLabelsTableReleaseKeyColumn,
+				sqlCustomLabelsTableReleaseNamespaceColumn,
+				sqlCustomLabelsTableKeyColumn,
+				sqlCustomLabelsTableValueColumn,
+			).
+			Values(key, s.namespace, k, v).
+			ToSql()
+		if err != nil {
+			transaction.Rollback()
+			s.Logger().Debug("failed to build insert labels query", slog.Any("error", err))
+			return err
+		}
+		if _, err := transaction.Exec(insertQuery, insertArgs...); err != nil {
+			transaction.Rollback()
+			s.Logger().Debug("failed to insert label", slog.Any("error", err))
+			return err
+		}
+	}
+
+	return transaction.Commit()
+}
+
 // Delete deletes a release or returns ErrReleaseNotFound.
 func (s *SQL) Delete(key string) (release.Releaser, error) {
 	transaction, err := s.db.Beginx()

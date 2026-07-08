@@ -359,6 +359,61 @@ func TestSqlUpdate(t *testing.T) {
 	}
 }
 
+func TestSqlUpdateLabels(t *testing.T) {
+	vers := 1
+	name := "smug-pigeon"
+	namespace := "default"
+	key := testKey(name, vers)
+
+	sqlDriver, mock := newTestFixtureSQL(t)
+
+	selectQuery := fmt.Sprintf(
+		"SELECT %s FROM %s WHERE %s = $1 AND %s = $2",
+		sqlReleaseTableKeyColumn,
+		sqlReleaseTableName,
+		sqlReleaseTableKeyColumn,
+		sqlReleaseTableNamespaceColumn,
+	)
+	deleteQuery := fmt.Sprintf(
+		"DELETE FROM %s WHERE %s = $1 AND %s = $2 AND %s = $3",
+		sqlCustomLabelsTableName,
+		sqlCustomLabelsTableKeyColumn,
+		sqlCustomLabelsTableReleaseKeyColumn,
+		sqlCustomLabelsTableReleaseNamespaceColumn,
+	)
+	insertQuery := fmt.Sprintf(
+		"INSERT INTO %s (%s,%s,%s,%s) VALUES ($1,$2,$3,$4)",
+		sqlCustomLabelsTableName,
+		sqlCustomLabelsTableReleaseKeyColumn,
+		sqlCustomLabelsTableReleaseNamespaceColumn,
+		sqlCustomLabelsTableKeyColumn,
+		sqlCustomLabelsTableValueColumn,
+	)
+
+	mock.ExpectBegin()
+	mock.
+		ExpectQuery(regexp.QuoteMeta(selectQuery)).
+		WithArgs(key, namespace).
+		WillReturnRows(sqlmock.NewRows([]string{sqlReleaseTableKeyColumn}).AddRow(key))
+	mock.
+		ExpectExec(regexp.QuoteMeta(deleteQuery)).
+		WithArgs("owned-by", key, namespace).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.
+		ExpectExec(regexp.QuoteMeta(insertQuery)).
+		WithArgs(key, namespace, "owned-by", "operator").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	if err := sqlDriver.UpdateLabels(key, map[string]string{"owned-by": "operator"}); err != nil {
+		t.Fatalf("failed to update labels with key %s: %v", key, err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("sql expectations weren't met: %v", err)
+	}
+}
+
 func TestSqlQuery(t *testing.T) {
 	// Reflect actual use cases in ../storage.go
 	labelSetUnknown := map[string]string{

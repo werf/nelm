@@ -26,6 +26,7 @@ var _ ReleaseStorager = (*storageAdapter)(nil)
 type ReleaseStorager interface {
 	Create(rls helmrel.Accessor) error
 	Update(rls helmrel.Accessor) error
+	UpdateLabels(name string, version int, labels map[string]string) error
 	Delete(name string, version int) (helmrel.Accessor, error)
 	Query(labels map[string]string) ([]helmrel.Accessor, error)
 }
@@ -94,6 +95,14 @@ func (a *storageAdapter) Update(rls helmrel.Accessor) error {
 
 	if err := a.storage.Update(releaser); err != nil {
 		return fmt.Errorf("update release: %w", err)
+	}
+
+	return nil
+}
+
+func (a *storageAdapter) UpdateLabels(name string, version int, labels map[string]string) error {
+	if err := a.storage.UpdateLabels(name, version, labels); err != nil {
+		return fmt.Errorf("update release labels: %w", err)
 	}
 
 	return nil

@@ -89,6 +89,14 @@ func (s *Storage) Update(rls release.Releaser) error {
 	return s.Driver.Update(makeKey(rac.Name(), rac.Version()), rls)
 }
 
+// UpdateLabels merges the given custom labels into the stored release identified
+// by name and version without creating a new revision. An error is returned if
+// the storage backend fails or the release does not exist.
+func (s *Storage) UpdateLabels(name string, version int, labels map[string]string) error {
+	s.Logger().Debug("updating release labels", "key", makeKey(name, version))
+	return s.Driver.UpdateLabels(makeKey(name, version), labels)
+}
+
 // Delete deletes the release from storage. An error is returned if
 // the storage backend fails to delete the release or if the release
 // does not exist.
