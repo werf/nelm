@@ -86,7 +86,8 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 		return releaseUninstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts)
 	}
 
-	ctx, _ = context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
+	ctx, timeoutCancel := context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
+	defer timeoutCancel()
 	defer ctxCancelFn(fmt.Errorf("context canceled: action finished"))
 
 	actionCh := make(chan error, 1)
@@ -254,7 +255,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		if err != nil {
 			handleBuildPlanErr(ctx, deletePlan, err, opts.UninstallGraphPath, opts.TempDirPath, "release-uninstall-graph.dot")
 
-			return fmt.Errorf("build delete plan: %w", err)
+			return fmt.Errorf("%w: delete: %w", ErrBuildPlan, err)
 		}
 
 		if opts.UninstallGraphPath != "" {
@@ -282,6 +283,9 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		var reporter *plan.LegacyProgressReporter
 		if opts.LegacyProgressReportCh != nil {
 			reporter = plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
+			defer func() {
+				close(opts.LegacyProgressReportCh)
+			}()
 		}
 
 		log.Default.Debug(ctx, "Execute release delete plan")
@@ -400,6 +404,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		taskState := kdutil.NewConcurrent(
 			statestore.NewAbsenceTaskState(nsMeta.Name, "", nsMeta.GroupVersionKind, statestore.AbsenceTaskStateOptions{}),
 		)
+
 		tracker := dyntracker.NewDynamicAbsenceTracker(taskState, informerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicAbsenceTrackerOptions{
 			Timeout:                    opts.TrackDeletionTimeout,
 			CaseInsensitiveGVKMatching: true,

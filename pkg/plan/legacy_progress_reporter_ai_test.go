@@ -5,6 +5,7 @@ package plan
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -267,6 +268,26 @@ func TestAI_ReportOperationStatus_SetsStatusWithoutReporter(t *testing.T) {
 	assert.Equal(t, OperationStatusCompleted, op.Status)
 }
 
+func TestAI_ReportStatus_DoesNotPanicOnClosedChannel(t *testing.T) {
+	ch := make(chan progrep.ProgressReport, 1)
+	reporter := NewLegacyProgressReporter(ch)
+
+	ops := []*Operation{
+		{
+			Type: OperationTypeCreate, Version: OperationVersionCreate, Category: OperationCategoryResource,
+			Config: &OperationConfigCreate{ResourceSpec: makeResourceSpec("cm1", "", gvkConfigMap)},
+		},
+	}
+	p := buildTestPlan(ops, nil)
+	reporter.startStage(p, map[string]string{ops[0].ID(): "default"})
+
+	close(ch)
+
+	assert.NotPanics(t, func() {
+		reporter.ReportStatus(ops[0].ID(), progrep.OperationStatusCompleted)
+	})
+}
+
 func TestAI_ReportStatus_SendsSnapshot(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
@@ -446,6 +467,25 @@ func TestAI_ResolveNamespace(t *testing.T) {
 	}
 }
 
+func TestAI_ResolveNamespace_UnknownGVKFallbackIsFast(t *testing.T) {
+	mapper := newFakeRESTMapper()
+	startedAt := time.Now()
+
+	got := resolveNamespace(gvkCRD, "", "release-ns", mapper)
+
+	assert.Equal(t, "release-ns", got)
+	assert.Less(t, time.Since(startedAt), 100*time.Millisecond)
+}
+
+func TestAI_SendNonBlocking_DoesNotPanicOnClosedChannel(t *testing.T) {
+	ch := make(chan progrep.ProgressReport, 1)
+	close(ch)
+
+	assert.NotPanics(t, func() {
+		sendNonBlocking(ch, progrep.ProgressReport{})
+	})
+}
+
 func TestAI_SendNonBlocking_DropsWhenFull(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 1)
 
@@ -526,6 +566,26 @@ func TestAI_StartStage_FreezesPreviousStage(t *testing.T) {
 	require.Len(t, activeOps, 1)
 	assert.Equal(t, "svc1", activeOps[0].Name)
 	assert.Equal(t, progrep.OperationStatusPending, activeOps[0].Status)
+}
+
+func TestAI_Stop_DoesNotPanicOnClosedChannel(t *testing.T) {
+	ch := make(chan progrep.ProgressReport, 1)
+	reporter := NewLegacyProgressReporter(ch)
+
+	ops := []*Operation{
+		{
+			Type: OperationTypeCreate, Version: OperationVersionCreate, Category: OperationCategoryResource,
+			Config: &OperationConfigCreate{ResourceSpec: makeResourceSpec("cm1", "", gvkConfigMap)},
+		},
+	}
+	p := buildTestPlan(ops, nil)
+	reporter.startStage(p, map[string]string{ops[0].ID(): "default"})
+
+	close(ch)
+
+	assert.NotPanics(t, func() {
+		reporter.Stop(context.Background())
+	})
 }
 
 func TestAI_Stop_SendsFinalReport(t *testing.T) {

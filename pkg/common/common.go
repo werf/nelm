@@ -61,6 +61,17 @@ const (
 	// The resource is owned by a single release.
 	OwnershipRelease Ownership = "release"
 
+	// Skip creating the resource if it does not exist in the cluster.
+	ResourcePolicySkipCreate ResourcePolicy = "skip-create"
+	// Skip updating the resource if it already exists in the cluster.
+	ResourcePolicySkipUpdate ResourcePolicy = "skip-update"
+	// Skip recreating the resource when a recreation would otherwise be required.
+	ResourcePolicySkipRecreate ResourcePolicy = "skip-recreate"
+	// Skip deleting the resource (protect it from deletion). Alias: keep.
+	ResourcePolicySkipDelete ResourcePolicy = "skip-delete"
+	// Alias for skipDelete, matching the legacy helm.sh/resource-policy value.
+	ResourcePolicyKeep ResourcePolicy = "keep"
+
 	ResourceStateAbsent  ResourceState = "absent"
 	ResourceStatePresent ResourceState = "present"
 	ResourceStateReady   ResourceState = "ready"
@@ -107,12 +118,14 @@ const (
 	DefaultFieldManager                 = "helm"
 	DefaultLocalKubeVersion             = "1.36.0"
 	DefaultLogColorMode                 = log.LogColorModeAuto
-	DefaultNetworkParallelism           = 30
+	DefaultMapperNoMatchRetryInterval = 500 * time.Millisecond
+	DefaultMapperNoMatchRetryTimeout  = 10 * time.SecondDefaultNetworkParallelism           = 30
 	DefaultProgressPrintInterval        = 5 * time.Second
 	DefaultQPSLimit                     = 30
 	DefaultReleaseHistoryLimit          = 10
 	// DefaultResourceValidationKubeVersion Kubernetes version to use during resource validation by kubeconform
 	DefaultResourceValidationKubeVersion = "1.35.0"
+	DefaultWebhookRetryTimeout           = 4 * time.Minute
 	KubectlEditFieldManager              = "kubectl-edit"
 	OldFieldManagerPrefix                = "werf"
 	OutputFormatJSON                     = "json"
@@ -169,6 +182,8 @@ var (
 	AnnotationKeyPatternHook                            = regexp.MustCompile(`^helm.sh/hook$`)
 	AnnotationKeyHumanResourcePolicy                    = "helm.sh/resource-policy"
 	AnnotationKeyPatternResourcePolicy                  = regexp.MustCompile(`^helm.sh/resource-policy$`)
+	AnnotationKeyHumanWerfResourcePolicy                = "werf.io/resource-policy"
+	AnnotationKeyPatternWerfResourcePolicy              = regexp.MustCompile(`^werf.io/resource-policy$`)
 	AnnotationKeyHumanDeletePolicy                      = "werf.io/delete-policy"
 	AnnotationKeyPatternDeletePolicy                    = regexp.MustCompile(`^werf.io/delete-policy$`)
 	AnnotationKeyHumanHookDeletePolicy                  = "helm.sh/hook-delete-policy"
@@ -239,6 +254,9 @@ type DependencyExternal string
 
 // Configures resource deletions during deployment of this resource.
 type DeletePolicy string
+
+// Configures which lifecycle operations are allowed for this resource.
+type ResourcePolicy string
 
 // Resource ownership.
 type Ownership string

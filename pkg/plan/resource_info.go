@@ -179,41 +179,34 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 		DefaultNamespace: releaseNamespace,
 		TryCache:         true,
 	})
-	if getErr != nil {
-		if kube.IsNotFoundErr(getErr) || kube.IsNoSuchKindErr(getErr) {
-			mustDeleteOnSuccess := mustDeleteOnSuccessfulDeploy(localRes, nil, ResourceInstallTypeCreate, releaseNamespace)
-			trackReadiness := mustTrackReadiness(localRes, ResourceInstallTypeCreate, false, prevRelFailed, mustDeleteOnSuccess)
+	if getErr != nil && !kube.IsNotFoundErr(getErr) && !kube.IsNoSuchKindErr(getErr) {
+		return nil, fmt.Errorf("get resource %q: %w", localRes.IDHuman(), getErr)
+	}
 
-			return lo.Map(stages, func(stg common.Stage, _ int) *InstallableResourceInfo {
-				return &InstallableResourceInfo{
-					ResourceMeta:                   localRes.ResourceMeta,
-					LocalResource:                  localRes,
-					MustDeleteOnFailedInstall:      mustDeleteOnFailedDeploy(localRes, nil, ResourceInstallTypeCreate, releaseNamespace, trackReadiness),
-					MustDeleteOnSuccessfulInstall:  mustDeleteOnSuccess,
-					MustInstall:                    ResourceInstallTypeCreate,
-					MustTrackReadiness:             trackReadiness,
-					Stage:                          stg,
-					StageDeleteOnSuccessfulInstall: stageDeleteOnSuccessfulInstall(mustDeleteOnSuccess, stg),
-				}
-			}), nil
-		} else {
-			return nil, fmt.Errorf("get resource %q: %w", localRes.IDHuman(), getErr)
+	var (
+		getMeta          *spec.ResourceMeta
+		dryApplyObj      *unstructured.Unstructured
+		dryApplyErr      error
+		resourcePolicies = localRes.ResourcePolicies
+	)
+	if getErr == nil {
+		var err error
+
+		getObj, err = fixManagedFieldsInCluster(ctx, releaseNamespace, getObj, localRes, noRemoveManualChanges, clientFactory, opts.LastDeployedOrLastRelResourceSpecs)
+		if err != nil {
+			return nil, fmt.Errorf("fix managed fields for resource %q: %w", localRes.IDHuman(), err)
 		}
+
+		getMeta = spec.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
+		resourcePolicies = resource.ResolveResourcePolicies(localRes, getMeta, releaseNamespace)
+
+		dryApplyObj, dryApplyErr = clientFactory.KubeClient().Apply(ctx, localRes.ResourceSpec, kube.KubeClientApplyOptions{
+			DefaultNamespace: releaseNamespace,
+			DryRun:           true,
+		})
 	}
 
-	var err error
-
-	getObj, err = fixManagedFieldsInCluster(ctx, releaseNamespace, getObj, localRes, noRemoveManualChanges, clientFactory, opts.LastDeployedOrLastRelResourceSpecs)
-	if err != nil {
-		return nil, fmt.Errorf("fix managed fields for resource %q: %w", localRes.IDHuman(), err)
-	}
-
-	dryApplyObj, dryApplyErr := clientFactory.KubeClient().Apply(ctx, localRes.ResourceSpec, kube.KubeClientApplyOptions{
-		DefaultNamespace: releaseNamespace,
-		DryRun:           true,
-	})
-
-	installType, err := resourceInstallType(ctx, localRes, getObj, dryApplyObj, dryApplyErr, opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels)
+	installType, skippedByPolicy, err := resourceInstallType(ctx, localRes, getObj, dryApplyObj, dryApplyErr, opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels, resourcePolicies)
 	if err != nil {
 		return nil, fmt.Errorf("determine install type for resource %q: %w", localRes.IDHuman(), err)
 	}
@@ -224,9 +217,8 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 		}
 	}
 
-	getMeta := spec.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
-	mustDeleteOnSuccess := mustDeleteOnSuccessfulDeploy(localRes, getMeta, installType, releaseNamespace)
-	trackReadiness := mustTrackReadiness(localRes, installType, true, prevRelFailed, mustDeleteOnSuccess)
+	mustDeleteOnSuccess := mustDeleteOnSuccessfulDeploy(localRes, getMeta, installType, releaseNamespace, skippedByPolicy)
+	trackReadiness := mustTrackReadiness(localRes, installType, getObj != nil, prevRelFailed, mustDeleteOnSuccess, skippedByPolicy)
 
 	return lo.Map(stages, func(stg common.Stage, _ int) *InstallableResourceInfo {
 		return &InstallableResourceInfo{
@@ -235,7 +227,7 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 			DryApplyResult:                 dryApplyObj,
 			GetResult:                      getObj,
 			LocalResource:                  localRes,
-			MustDeleteOnFailedInstall:      mustDeleteOnFailedDeploy(localRes, getMeta, installType, releaseNamespace, trackReadiness),
+			MustDeleteOnFailedInstall:      mustDeleteOnFailedDeploy(localRes, getMeta, installType, releaseNamespace, trackReadiness, skippedByPolicy),
 			MustDeleteOnSuccessfulInstall:  mustDeleteOnSuccess,
 			MustInstall:                    installType,
 			MustTrackReadiness:             trackReadiness,
@@ -266,7 +258,9 @@ func fixManagedFieldsInCluster(ctx context.Context, releaseNamespace string, get
 		DefaultNamespace: releaseNamespace,
 	})
 	if err != nil {
-		if kube.IsNotFoundErr(err) {
+		if kube.IsNotFoundErr(err) || kube.IsWebhookErr(err) {
+			log.Default.Debug(ctx, "Skipping managed fields fix for resource %q due to transient error: %s", localRes.IDHuman(), err)
+
 			return getObj, nil
 		}
 
@@ -364,7 +358,7 @@ func buildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 		Stage:         stage,
 	}
 
-	if localRes.KeepOnDelete || localRes.Ownership == common.OwnershipAnyone {
+	if lo.Contains(localRes.ResourcePolicies, common.ResourcePolicySkipDelete) || localRes.Ownership == common.OwnershipAnyone {
 		return noDeleteInfo, nil
 	}
 
@@ -386,10 +380,8 @@ func buildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 
 	if err := resource.ValidateResourcePolicy(getMeta); err != nil {
 		return noDeleteInfo, nil
-	} else {
-		if keep := resource.KeepOnDelete(getMeta, releaseNamespace); keep {
-			return noDeleteInfo, nil
-		}
+	} else if lo.Contains(resource.ResourcePolicies(getMeta, releaseNamespace), common.ResourcePolicySkipDelete) {
+		return noDeleteInfo, nil
 	}
 
 	if orphaned(getMeta, releaseName, releaseNamespace) {
@@ -682,16 +674,17 @@ func iterateInstallableResourceInfos(infos []*InstallableResourceInfo) {
 				return iterInfo.ID() == inf.ID() && inf.Iteration == iterInfo.Iteration-1
 			}))
 
-			if prevIterInfo.MustDeleteOnSuccessfulInstall {
+			if prevIterInfo.MustDeleteOnSuccessfulInstall && !lo.Contains(iterInfo.LocalResource.ResourcePolicies, common.ResourcePolicySkipCreate) {
 				iterInfo.MustInstall = ResourceInstallTypeCreate
 			}
 		}
 	}
 }
 
-func mustDeleteOnFailedDeploy(res *resource.InstallableResource, getMeta *spec.ResourceMeta, installType ResourceInstallType, releaseNamespace string, mustTrackReadiness bool) bool {
-	if !res.DeleteOnFailed ||
-		res.KeepOnDelete ||
+func mustDeleteOnFailedDeploy(res *resource.InstallableResource, getMeta *spec.ResourceMeta, installType ResourceInstallType, releaseNamespace string, mustTrackReadiness, skippedByPolicy bool) bool {
+	if skippedByPolicy ||
+		!res.DeleteOnFailed ||
+		lo.Contains(res.ResourcePolicies, common.ResourcePolicySkipDelete) ||
 		installType == ResourceInstallTypeNone ||
 		!mustTrackReadiness {
 		return false
@@ -700,28 +693,26 @@ func mustDeleteOnFailedDeploy(res *resource.InstallableResource, getMeta *spec.R
 	if getMeta != nil {
 		if err := resource.ValidateResourcePolicy(getMeta); err != nil {
 			return false
-		} else {
-			if keep := resource.KeepOnDelete(getMeta, releaseNamespace); keep {
-				return false
-			}
+		} else if lo.Contains(resource.ResourcePolicies(getMeta, releaseNamespace), common.ResourcePolicySkipDelete) {
+			return false
 		}
 	}
 
 	return true
 }
 
-func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMeta *spec.ResourceMeta, installType ResourceInstallType, releaseNamespace string) bool {
-	if !localRes.DeleteOnSucceeded || localRes.KeepOnDelete {
+func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMeta *spec.ResourceMeta, installType ResourceInstallType, releaseNamespace string, skippedByPolicy bool) bool {
+	if skippedByPolicy ||
+		!localRes.DeleteOnSucceeded ||
+		lo.Contains(localRes.ResourcePolicies, common.ResourcePolicySkipDelete) {
 		return false
 	}
 
 	if getMeta != nil {
 		if err := resource.ValidateResourcePolicy(getMeta); err != nil {
 			return false
-		} else {
-			if keep := resource.KeepOnDelete(getMeta, releaseNamespace); keep {
-				return false
-			}
+		} else if lo.Contains(resource.ResourcePolicies(getMeta, releaseNamespace), common.ResourcePolicySkipDelete) {
+			return false
 		}
 	}
 
@@ -732,8 +723,9 @@ func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMet
 	return true
 }
 
-func mustTrackReadiness(res *resource.InstallableResource, resInstallType ResourceInstallType, exists, prevRelFailed, mustDeleteOnSuccessfulInstall bool) bool {
-	if spec.IsCRD(res.Unstruct.GroupVersionKind().GroupKind()) ||
+func mustTrackReadiness(res *resource.InstallableResource, resInstallType ResourceInstallType, exists, prevRelFailed, mustDeleteOnSuccessfulInstall, skippedByPolicy bool) bool {
+	if skippedByPolicy ||
+		spec.IsCRD(res.Unstruct.GroupVersionKind().GroupKind()) ||
 		res.TrackTerminationMode == statestore.NonBlocking {
 		return false
 	}
@@ -803,18 +795,39 @@ func removeUndesirableManagers(managedFields []v1.ManagedFieldsEntry, oursEntry 
 	return newManagedFields, newOursEntry, changed
 }
 
-func resourceInstallType(ctx context.Context, localRes *resource.InstallableResource, getObj, dryApplyObj *unstructured.Unstructured, dryApplyErr error, extraRuntimeAnnotations, extraRuntimeLabels map[string]string) (ResourceInstallType, error) {
+func resourceInstallType(ctx context.Context, localRes *resource.InstallableResource, getObj, dryApplyObj *unstructured.Unstructured, dryApplyErr error, extraRuntimeAnnotations, extraRuntimeLabels map[string]string, resourcePolicies []common.ResourcePolicy) (installType ResourceInstallType, skippedByPolicy bool, err error) {
+	skipCreate := lo.Contains(resourcePolicies, common.ResourcePolicySkipCreate)
+	skipUpdate := lo.Contains(resourcePolicies, common.ResourcePolicySkipUpdate)
+	skipRecreate := lo.Contains(resourcePolicies, common.ResourcePolicySkipRecreate)
+
+	if getObj == nil {
+		if skipCreate {
+			return ResourceInstallTypeNone, true, nil
+		}
+
+		return ResourceInstallTypeCreate, false, nil
+	}
+
 	isImmutable := dryApplyErr != nil && kube.IsImmutableErr(dryApplyErr)
+
+	if skipRecreate && (localRes.Recreate || (isImmutable && (localRes.RecreateOnImmutable || !localRes.Recreate))) {
+		return ResourceInstallTypeNone, true, nil
+	}
+
 	if isImmutable && !localRes.Recreate && !localRes.RecreateOnImmutable {
-		return "", fmt.Errorf("immutable fields change in resource %q, but recreation is not requested: %w", localRes.IDHuman(), dryApplyErr)
+		return "", false, fmt.Errorf("immutable fields change in resource %q, but recreation is not requested: %w", localRes.IDHuman(), dryApplyErr)
 	}
 
 	if localRes.Recreate || (isImmutable && localRes.RecreateOnImmutable) {
-		return ResourceInstallTypeRecreate, nil
+		return ResourceInstallTypeRecreate, false, nil
 	}
 
 	if dryApplyErr != nil {
-		return ResourceInstallTypeApply, nil
+		if skipCreate || skipUpdate {
+			return ResourceInstallTypeNone, true, nil
+		}
+
+		return ResourceInstallTypeApply, false, nil
 	}
 
 	diffableGetObj := spec.CleanUnstruct(getObj, spec.CleanUnstructOptions{
@@ -834,14 +847,18 @@ func resourceInstallType(ctx context.Context, localRes *resource.InstallableReso
 	})
 
 	if patch, err := jsondiff.Compare(diffableGetObj, diffableDryApplyObj); err != nil {
-		return "", fmt.Errorf("compare live and dry-apply versions of resource %q: %w", localRes.IDHuman(), err)
+		return "", false, fmt.Errorf("compare live and dry-apply versions of resource %q: %w", localRes.IDHuman(), err)
 	} else if len(patch) > 0 {
+		if skipUpdate {
+			return ResourceInstallTypeNone, true, nil
+		}
+
 		log.Default.Trace(ctx, "Get/DryApply patch for %q: %s", localRes.IDHuman(), patch.String())
 
-		return ResourceInstallTypeUpdate, nil
+		return ResourceInstallTypeUpdate, false, nil
 	}
 
-	return ResourceInstallTypeNone, nil
+	return ResourceInstallTypeNone, false, nil
 }
 
 func stageDeleteOnSuccessfulInstall(shouldDelete bool, installStg common.Stage) common.Stage {

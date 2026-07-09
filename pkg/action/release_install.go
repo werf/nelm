@@ -497,7 +497,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		if err != nil {
 			handleBuildPlanErr(ctx, installPlan, err, opts.InstallGraphPath, opts.TempDirPath, "release-install-graph.dot")
 
-			return fmt.Errorf("build install plan: %w", err)
+			return fmt.Errorf("%w: install: %w", ErrBuildPlan, err)
 		}
 	}
 
@@ -577,6 +577,9 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	var reporter *plan.LegacyProgressReporter
 	if opts.LegacyProgressReportCh != nil {
 		reporter = plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
+		defer func() {
+			close(opts.LegacyProgressReportCh)
+		}()
 	}
 
 	log.Default.Debug(ctx, "Execute release install plan")
@@ -910,7 +913,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		NoFinalTracking: opts.NoFinalTracking,
 	})
 	if err != nil {
-		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build rollback plan: %w", err))
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("%w: rollback: %w", ErrBuildPlan, err))
 	}
 
 	if opts.RollbackGraphPath != "" {

@@ -1,5 +1,98 @@
 # Changelog
 
+## [1.26.1](https://github.com/werf/nelm/compare/v1.26.0...v1.26.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* `werf.io/resource-policy` should only respect skip-delete from live ([ddfb620](https://github.com/werf/nelm/commit/ddfb620f23e2caae4c27c44bb85ebd4f82f0c4db))
+
+## [1.26.0](https://github.com/werf/nelm/compare/v1.25.3...v1.26.0) (2026-07-03)
+
+
+### Features
+
+* add `werf.io/resource-policy` annotation ([5a2517f](https://github.com/werf/nelm/commit/5a2517f7c0817716f0686de8fa26e97f23c95609))
+
+## [1.25.3](https://github.com/werf/nelm/compare/v1.25.2...v1.25.3) (2026-06-24)
+
+
+### Bug Fixes
+
+* HelmCompatibleTracking mode should allow annotations override ([6c7e6f4](https://github.com/werf/nelm/commit/6c7e6f429c37126160f0bb657904966ef4bef618))
+
+## [1.25.3](https://github.com/werf/nelm/compare/v1.25.2...v1.25.3) (2026-06-24)
+
+
+### Bug Fixes
+
+* HelmCompatibleTracking mode should allow annotations override ([6c7e6f4](https://github.com/werf/nelm/commit/6c7e6f429c37126160f0bb657904966ef4bef618))
+
+## [1.25.2](https://github.com/werf/nelm/compare/v1.25.1...v1.25.2) (2026-06-23)
+
+
+### Bug Fixes
+
+* increase default webhook retry timeout ([594eb86](https://github.com/werf/nelm/commit/594eb8622a7f7408d18d4618128d014e6110ed93))
+
+## [1.25.1](https://github.com/werf/nelm/compare/v1.25.0...v1.25.1) (2026-06-23)
+
+
+### Bug Fixes
+
+* match more webhook errors to retry on them ([6f90689](https://github.com/werf/nelm/commit/6f9068971c32c9ed44d882e61405c935f73270a3))
+
+## [1.25.0](https://github.com/werf/nelm/compare/v1.24.3...v1.25.0) (2026-06-18)
+
+
+### Features
+
+* add automatic deploy dependency detection for KEDA ScaledObjects ([#631](https://github.com/werf/nelm/issues/631)) ([6ccf7ec](https://github.com/werf/nelm/commit/6ccf7ec6c431394225c1bf6524fd18cf8022f1fd)), closes [#456](https://github.com/werf/nelm/issues/456)
+
+
+### Bug Fixes
+
+* hangs on very long pod log lines ([#638](https://github.com/werf/nelm/issues/638)) ([6e75224](https://github.com/werf/nelm/commit/6e75224d27d1ad2fef1620bbf10e72868ca9ca2b))
+* no more "no match for resource kind" errors ([679e6ec](https://github.com/werf/nelm/commit/679e6ec795cc08823ef783e288c15ac5668b7e3b))
+* retry also on conversion webhooks unavailability ([7f5713b](https://github.com/werf/nelm/commit/7f5713b2721944e08e5f65e58a85d6a85c695289))
+* show actual error if webhook retries fail ([17a4604](https://github.com/werf/nelm/commit/17a460431ed09474064dd4f1b23b29d6ef915f02))
+
+## [1.24.3](https://github.com/werf/nelm/compare/v1.24.2...v1.24.3) (2026-06-08)
+
+
+### Bug Fixes
+
+* autodetection of ServiceAccount dependencies for ClusterRoleBinding and RoleBinding resources ([#632](https://github.com/werf/nelm/issues/632)) ([e9ea5da](https://github.com/werf/nelm/commit/e9ea5da1e1ef7606979aab5a45ea058b48837476))
+* make pods/controllers depend on rolebindings ([#634](https://github.com/werf/nelm/issues/634)) ([233e123](https://github.com/werf/nelm/commit/233e1232890bff0682ba9bb2c1638657aff17297))
+
+## [1.24.2](https://github.com/werf/nelm/compare/v1.24.1...v1.24.2) (2026-06-04)
+
+
+### Bug Fixes
+
+* better error message when kube client request timed out ([dc11213](https://github.com/werf/nelm/commit/dc11213b4fa89a749b5f7c5fb1199c611d646484))
+* close LegacyReportCh on action return ([#629](https://github.com/werf/nelm/issues/629)) ([78033c6](https://github.com/werf/nelm/commit/78033c656d87290b24c540ec292608bf3a21fb66))
+* deploy ns on pre-pre-install stage ([#630](https://github.com/werf/nelm/issues/630)) ([816d8c1](https://github.com/werf/nelm/commit/816d8c1fbc9610609bfdc61084b3b0848606b20d))
+* panic if channel for legacy progress reporter closed ([#618](https://github.com/werf/nelm/issues/618)) ([0e6945c](https://github.com/werf/nelm/commit/0e6945ce047c67c6e23a52de7ba06372ffcf383b))
+* pass NoPodLogs to kubedog ([#622](https://github.com/werf/nelm/issues/622)) ([069609f](https://github.com/werf/nelm/commit/069609f63b214323d7ca1ebc9818e200818888ca))
+
+## [1.24.1](https://github.com/werf/nelm/compare/v1.24.0...v1.24.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* don't hard-fail on unsupported env vars ([7bc4769](https://github.com/werf/nelm/commit/7bc47694c107205e8519a82f21b65a4e88cc6e33))
+* retry on webhooks unavailable error ([#600](https://github.com/werf/nelm/issues/600)) ([ccde5a1](https://github.com/werf/nelm/commit/ccde5a15521e33010f4aebcc7059b7ca2c2dcc35))
+
+## [1.24.0](https://github.com/werf/nelm/compare/v1.23.2...v1.24.0) (2026-04-21)
+
+
+### Features
+
+* ability to init ts files with WerfRenderContext type ([#593](https://github.com/werf/nelm/issues/593)) ([4b90254](https://github.com/werf/nelm/commit/4b90254854087286ab615da8ace1381037ceca31))
+* adopt `chart ts init` for werf ([#594](https://github.com/werf/nelm/issues/594)) ([671cf54](https://github.com/werf/nelm/commit/671cf545c12d6e05e4ce5d2dfac91ca01f1ac153))
+* deno runtime for typescript ([#565](https://github.com/werf/nelm/issues/565)) ([942d8aa](https://github.com/werf/nelm/commit/942d8aad2341079757e2130fd5402106201bc9d6))
+
 ## [1.23.2](https://github.com/werf/nelm/compare/v1.23.1...v1.23.2) (2026-03-27)
 
 

@@ -126,9 +126,16 @@ func (p *LegacyOnlyTrackJobsPatcher) Match(ctx context.Context, info *ResourcePa
 }
 
 func (p *LegacyOnlyTrackJobsPatcher) Patch(ctx context.Context, info *ResourcePatcherResourceInfo) (*unstructured.Unstructured, error) {
+	existing := info.Obj.GetAnnotations()
+
 	annos := map[string]string{}
-	annos["werf.io/fail-mode"] = string(statestore.IgnoreAndContinueDeployProcess)
-	annos["werf.io/track-termination-mode"] = string(statestore.NonBlocking)
+	if !lo.HasKey(existing, common.AnnotationKeyHumanFailMode) {
+		annos[common.AnnotationKeyHumanFailMode] = string(statestore.IgnoreAndContinueDeployProcess)
+	}
+
+	if !lo.HasKey(existing, common.AnnotationKeyHumanTrackTerminationMode) {
+		annos[common.AnnotationKeyHumanTrackTerminationMode] = string(statestore.NonBlocking)
+	}
 
 	setAnnotationsAndLabels(info.Obj, annos, nil)
 

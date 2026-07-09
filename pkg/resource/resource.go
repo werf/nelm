@@ -25,10 +25,10 @@ type InstallableResource struct {
 	Ownership                              common.Ownership                `json:"ownership"`
 	Recreate                               bool                            `json:"recreate"`
 	RecreateOnImmutable                    bool                            `json:"recreateOnImmutable"`
+	ResourcePolicies                       []common.ResourcePolicy         `json:"resourcePolicies"`
 	DefaultReplicasOnCreation              *int                            `json:"defaultReplicasOnCreation,omitempty"`
 	DeleteOnSucceeded                      bool                            `json:"deleteOnSucceeded"`
 	DeleteOnFailed                         bool                            `json:"deleteOnFailed"`
-	KeepOnDelete                           bool                            `json:"keepOnDelete"`
 	FailMode                               statestore.FailMode             `json:"failMode"`
 	FailuresAllowed                        int                             `json:"failuresAllowed"`
 	IgnoreReadinessProbeFailsForContainers map[string]time.Duration        `json:"ignoreReadinessProbeFailsForContainers,omitempty"`
@@ -52,11 +52,10 @@ type InstallableResource struct {
 
 // Construct an InstallableResource from a ResourceSpec. Must never contact the cluster, because
 // this is called even when no cluster access allowed.
-func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherResourceSpecs []*spec.ResourceSpec, releaseNamespace string, opts InstallableResourceOptions) (*InstallableResource, error) {
+func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherResourceSpecs []*spec.ResourceSpec, otherResSpecs []*spec.ResourceSpec, releaseNamespace string, opts InstallableResourceOptions) (*InstallableResource, error) {
 	otherResourceMetaList := lo.Map(otherResourceSpecs, func(resSpec *spec.ResourceSpec, _ int) *spec.ResourceMeta {
 		return resSpec.ResourceMeta
 	})
-
 	if err := validateHook(res.ResourceMeta); err != nil {
 		return nil, fmt.Errorf("validate hook configuration: %w", err)
 	}
@@ -112,9 +111,13 @@ func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherRe
 		return !item.External
 	})
 
+	otherUnstructs := lo.Map(otherResSpecs, func(resSpec *spec.ResourceSpec, _ int) *unstructured.Unstructured {
+		return resSpec.Unstruct
+	})
+
 	return &InstallableResource{
 		ResourceSpec:                           res,
-		AutoInternalDependencies:               internalDeployDependencies(res.Unstruct),
+		AutoInternalDependencies:               internalDeployDependencies(res.Unstruct, otherUnstructs),
 		DefaultReplicasOnCreation:              defaultReplicasOnCreation(res.ResourceMeta, releaseNamespace),
 		DeleteOnFailed:                         deleteOnFailed(res.ResourceMeta),
 		DeleteOnSucceeded:                      deleteOnSucceeded(res.ResourceMeta),
@@ -123,7 +126,6 @@ func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherRe
 		FailMode:                               failMode(res.ResourceMeta),
 		FailuresAllowed:                        failuresAllowed(res.Unstruct),
 		IgnoreReadinessProbeFailsForContainers: ignoreReadinessProbeFailsForContainers(res.ResourceMeta),
-		KeepOnDelete:                           KeepOnDelete(res.ResourceMeta, releaseNamespace),
 		LogRegex:                               logRegex(res.ResourceMeta),
 		LogRegexesForContainers:                logRegexesForContainers(res.ResourceMeta),
 		ManualDependencies:                     manDeps,
@@ -131,6 +133,7 @@ func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherRe
 		Ownership:                              ownership(res.ResourceMeta, releaseNamespace, res.StoreAs),
 		Recreate:                               recreate(res.ResourceMeta),
 		RecreateOnImmutable:                    recreateOnImmutable(res.ResourceMeta),
+		ResourcePolicies:                       ResourcePolicies(res.ResourceMeta, releaseNamespace),
 		ShowLogsOnlyForContainers:              showLogsOnlyForContainers(res.ResourceMeta),
 		ShowLogsOnlyForNumberOfReplicas:        showLogsOnlyForNumberOfReplicas(res.ResourceMeta),
 		ShowServiceMessages:                    showServiceMessages(res.ResourceMeta),
@@ -159,16 +162,17 @@ type DeletableResource struct {
 	KeepOnDelete             bool
 	ManualDependencies       []*Dependency
 	Ownership                common.Ownership
+	ResourcePolicies         []common.ResourcePolicy
 }
 
 // Construct a DeletableResource from a ResourceSpec. Must never contact the cluster, because
 // this is called even when no cluster access allowed.
 func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []*spec.ResourceSpec, releaseNamespace string, opts DeletableResourceOptions) (*DeletableResource, error) {
-	var keep bool
+	var policies []common.ResourcePolicy
 	if err := ValidateResourcePolicy(resourceSpec.ResourceMeta); err != nil {
-		keep = true
+		policies = []common.ResourcePolicy{common.ResourcePolicySkipDelete}
 	} else {
-		keep = KeepOnDelete(resourceSpec.ResourceMeta, releaseNamespace)
+		policies = ResourcePolicies(resourceSpec.ResourceMeta, releaseNamespace)
 	}
 
 	var owner common.Ownership
@@ -204,6 +208,7 @@ func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []
 		KeepOnDelete:             keep,
 		ManualDependencies:       manualDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList),
 		Ownership:                owner,
+		ResourcePolicies:         policies,
 	}, nil
 }
 
@@ -234,7 +239,7 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 
 	var prevRelInstResources []*InstallableResource
 	for _, resSpec := range prevRelResSpecs {
-		installableResource, err := NewInstallableResource(ctx, resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
+		installableResource, err := NewInstallableResource(ctx, resSpec, lo.Without(prevRelResSpecs, resSpec), lo.Without(prevRelResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 			NoPodLogs:                opts.NoPodLogs,
 		})
@@ -247,7 +252,7 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 
 	var newRelInstResources []*InstallableResource
 	for _, resSpec := range newRelResSpecs {
-		installableResource, err := NewInstallableResource(ctx, resSpec, lo.Without(newRelResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
+		installableResource, err := NewInstallableResource(ctx, resSpec, lo.Without(newRelResSpecs, resSpec), lo.Without(newRelResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 			NoPodLogs:                opts.NoPodLogs,
 		})
@@ -276,7 +281,7 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 			return false
 		}
 
-		if delRes.KeepOnDelete {
+		if lo.Contains(delRes.ResourcePolicies, common.ResourcePolicySkipDelete) {
 			return false
 		}
 
@@ -347,8 +352,9 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 
 	var instResources []*InstallableResource
 	for _, resSpec := range patchedResSpecs {
-		instRes, err := NewInstallableResource(ctx, resSpec, lo.Without(patchedResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
+		instRes, err := NewInstallableResource(ctx, resSpec, lo.Without(patchedResSpecs, resSpec), newRelResSpecs, releaseNamespace, InstallableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
+				NoPodLogs:                opts.NoPodLogs,
 			NoPodLogs:                opts.NoPodLogs,
 		})
 		if err != nil {
@@ -367,4 +373,20 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	})
 
 	return instResources, delResources, nil
+}
+
+func ResolveResourcePolicies(localRes *InstallableResource, liveMeta *spec.ResourceMeta, releaseNamespace string) []common.ResourcePolicy {
+	if len(localRes.ResourcePolicies) > 0 || liveMeta == nil {
+		return localRes.ResourcePolicies
+	}
+
+	// TODO(major): in the next major keep/skip-delete should also be read/respected only from the manifest, not the cluster.
+	livePolicies := lo.Filter(ResourcePolicies(liveMeta, releaseNamespace), func(p common.ResourcePolicy, _ int) bool {
+		return p == common.ResourcePolicySkipDelete
+	})
+	if len(livePolicies) == 0 {
+		return nil
+	}
+
+	return livePolicies
 }

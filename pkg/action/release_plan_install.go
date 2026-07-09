@@ -393,7 +393,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	if err != nil {
 		handleBuildPlanErr(ctx, installPlan, err, opts.InstallGraphPath, opts.TempDirPath, "release-install-graph.dot")
 
-		return nil, fmt.Errorf("build install plan: %w", err)
+		return nil, fmt.Errorf("%w: install: %w", ErrBuildPlan, err)
 	}
 
 	if opts.InstallGraphPath != "" {

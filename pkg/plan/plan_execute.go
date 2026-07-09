@@ -164,7 +164,7 @@ func execOpRecreate(ctx context.Context, op *Operation, releaseNamespace string,
 		return fmt.Errorf("delete resource: %w", err)
 	}
 
-	namespace, err := getNamespace(opConfig.ResourceSpec.ResourceMeta, releaseNamespace, clientFactory)
+	namespace, err := getNamespace(ctx, opConfig.ResourceSpec.ResourceMeta, releaseNamespace, clientFactory)
 	if err != nil {
 		return fmt.Errorf("determine resource namespace: %w", err)
 	}
@@ -187,8 +187,9 @@ func execOpRecreate(ctx context.Context, op *Operation, releaseNamespace string,
 	}
 
 	if _, err := clientFactory.KubeClient().Create(ctx, opConfig.ResourceSpec, kube.KubeClientCreateOptions{
-		DefaultNamespace: releaseNamespace,
-		ForceReplicas:    opConfig.ForceReplicas,
+		DefaultNamespace:    releaseNamespace,
+		ForceReplicas:       opConfig.ForceReplicas,
+		RetryOnWebhookError: true,
 	}); err != nil {
 		return fmt.Errorf("create resource: %w", err)
 	}
@@ -199,7 +200,7 @@ func execOpRecreate(ctx context.Context, op *Operation, releaseNamespace string,
 func execOpTrackAbsence(ctx context.Context, op *Operation, releaseNamespace string, taskStore *kdutil.Concurrent[*statestore.TaskStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], timeout time.Duration, clientFactory kube.ClientFactorier) error {
 	opConfig := op.Config.(*OperationConfigTrackAbsence)
 
-	namespace, err := getNamespace(opConfig.ResourceMeta, releaseNamespace, clientFactory)
+	namespace, err := getNamespace(ctx, opConfig.ResourceMeta, releaseNamespace, clientFactory)
 	if err != nil {
 		return fmt.Errorf("determine resource namespace: %w", err)
 	}
@@ -227,7 +228,7 @@ func execOpTrackAbsence(ctx context.Context, op *Operation, releaseNamespace str
 func execOpTrackPresence(ctx context.Context, op *Operation, releaseNamespace string, taskStore *kdutil.Concurrent[*statestore.TaskStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], timeout time.Duration, clientFactory kube.ClientFactorier) error {
 	opConfig := op.Config.(*OperationConfigTrackPresence)
 
-	namespace, err := getNamespace(opConfig.ResourceMeta, releaseNamespace, clientFactory)
+	namespace, err := getNamespace(ctx, opConfig.ResourceMeta, releaseNamespace, clientFactory)
 	if err != nil {
 		return fmt.Errorf("determine resource namespace: %w", err)
 	}
@@ -255,7 +256,7 @@ func execOpTrackPresence(ctx context.Context, op *Operation, releaseNamespace st
 func execOpTrackReadiness(ctx context.Context, op *Operation, releaseNamespace string, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], timeout time.Duration, clientFactory kube.ClientFactorier) error {
 	opConfig := op.Config.(*OperationConfigTrackReadiness)
 
-	namespace, err := getNamespace(opConfig.ResourceMeta, releaseNamespace, clientFactory)
+	namespace, err := getNamespace(ctx, opConfig.ResourceMeta, releaseNamespace, clientFactory)
 	if err != nil {
 		return fmt.Errorf("determine resource namespace: %w", err)
 	}
@@ -301,7 +302,8 @@ func execOpApply(ctx context.Context, op *Operation, releaseNamespace string, cl
 	opConfig := op.Config.(*OperationConfigApply)
 
 	if _, err := clientFactory.KubeClient().Apply(ctx, opConfig.ResourceSpec, kube.KubeClientApplyOptions{
-		DefaultNamespace: releaseNamespace,
+		DefaultNamespace:    releaseNamespace,
+		RetryOnWebhookError: true,
 	}); err != nil {
 		return fmt.Errorf("apply resource: %w", err)
 	}
@@ -313,8 +315,9 @@ func execOpCreate(ctx context.Context, op *Operation, releaseNamespace string, c
 	opConfig := op.Config.(*OperationConfigCreate)
 
 	if _, err := clientFactory.KubeClient().Create(ctx, opConfig.ResourceSpec, kube.KubeClientCreateOptions{
-		DefaultNamespace: releaseNamespace,
-		ForceReplicas:    opConfig.ForceReplicas,
+		DefaultNamespace:    releaseNamespace,
+		ForceReplicas:       opConfig.ForceReplicas,
+		RetryOnWebhookError: true,
 	}); err != nil {
 		return fmt.Errorf("create resource: %w", err)
 	}
@@ -359,7 +362,8 @@ func execOpUpdate(ctx context.Context, op *Operation, releaseNamespace string, c
 	opConfig := op.Config.(*OperationConfigUpdate)
 
 	if _, err := clientFactory.KubeClient().Apply(ctx, opConfig.ResourceSpec, kube.KubeClientApplyOptions{
-		DefaultNamespace: releaseNamespace,
+		DefaultNamespace:    releaseNamespace,
+		RetryOnWebhookError: true,
 	}); err != nil {
 		return fmt.Errorf("apply resource: %w", err)
 	}
@@ -388,11 +392,24 @@ func findExecutableOpsIDs(opsMap map[string]map[string]graph.Edge[string]) []str
 	return executableOpsIDs
 }
 
-func getNamespace(resMeta *spec.ResourceMeta, releaseNamespace string, clientFactory kube.ClientFactorier) (string, error) {
+func getNamespace(ctx context.Context, resMeta *spec.ResourceMeta, releaseNamespace string, clientFactory kube.ClientFactorier) (string, error) {
 	gvk := kdutil.LowercaseGVK(resMeta.GroupVersionKind)
 
-	var namespace string
-	if namespaced, err := spec.Namespaced(gvk, clientFactory.Mapper()); err != nil {
+	var (
+		namespace  string
+		namespaced bool
+	)
+
+	if err := clientFactory.KubeClient().ResetAndRetryOnUnknownGVR(ctx, func() error {
+		var err error
+
+		namespaced, err = clientFactory.KubeClient().Namespaced(ctx, gvk)
+		if err != nil {
+			return fmt.Errorf("check resource scope: %w", err)
+		}
+
+		return nil
+	}); err != nil {
 		return "", fmt.Errorf("check if resource is namespaced: %w", err)
 	} else if namespaced {
 		if resMeta.Namespace != "" {

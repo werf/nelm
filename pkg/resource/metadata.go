@@ -25,27 +25,54 @@ import (
 	"github.com/werf/nelm/pkg/util"
 )
 
-func KeepOnDelete(meta *spec.ResourceMeta, releaseNamespace string) bool {
-	if spec.IsReleaseNamespace(meta.Name, meta.GroupVersionKind, releaseNamespace) {
-		return true
+func ResourcePolicies(meta *spec.ResourceMeta, releaseNamespace string) []common.ResourcePolicy {
+	var policies []common.ResourcePolicy
+	if _, value, ok := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternWerfResourcePolicy); ok {
+		policies = parseResourcePolicies(value)
+	} else if _, value, ok := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternResourcePolicy); ok {
+		policies = parseResourcePolicies(value)
 	}
 
-	_, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternResourcePolicy)
-	if !found {
-		return false
+	if spec.IsReleaseNamespace(meta.Name, meta.GroupVersionKind, releaseNamespace) && !lo.Contains(policies, common.ResourcePolicySkipDelete) {
+		policies = append(policies, common.ResourcePolicySkipDelete)
 	}
 
-	return value == "keep"
+	return policies
 }
 
 func ValidateResourcePolicy(meta *spec.ResourceMeta) error {
+	if key, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternWerfResourcePolicy); found {
+		if value == "" {
+			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
+		}
+
+		for _, policy := range strings.Split(value, ",") {
+			policy = strings.TrimSpace(policy)
+			if policy == "" {
+				return fmt.Errorf("invalid value %q for annotation %q, one of the comma-separated values is empty", value, key)
+			}
+
+			switch common.ResourcePolicy(policy) {
+			case common.ResourcePolicySkipCreate,
+				common.ResourcePolicySkipUpdate,
+				common.ResourcePolicySkipRecreate,
+				common.ResourcePolicySkipDelete,
+				common.ResourcePolicyKeep:
+			default:
+				return fmt.Errorf("invalid unknown value %q for annotation %q", policy, key)
+			}
+		}
+
+		return nil
+	}
+
 	if key, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternResourcePolicy); found {
 		if value == "" {
 			return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
 		}
 
-		switch value {
-		case "keep":
+		switch common.ResourcePolicy(value) {
+		case common.ResourcePolicyKeep:
 		default:
 			return fmt.Errorf("invalid unknown value %q for annotation %q", value, key)
 		}
@@ -68,13 +95,9 @@ func deleteOnSucceeded(meta *spec.ResourceMeta) bool {
 
 func deployConditions(meta *spec.ResourceMeta, hasManualInternalDeps bool) map[common.On][]common.Stage {
 	if conditions := deployConditionsForAnnotation(meta, common.AnnotationKeyPatternDeployOn); len(conditions) > 0 {
-		if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
+		if spec.IsCRD(meta.GroupVersionKind.GroupKind()) || spec.IsNamespace(meta.GroupVersionKind) {
 			for on := range conditions {
 				conditions[on] = []common.Stage{common.StagePrePreInstall}
-			}
-		} else if spec.IsWebhook(meta.GroupVersionKind.GroupKind()) && !hasManualInternalDeps {
-			for on := range conditions {
-				conditions[on] = []common.Stage{common.StagePostPostInstall}
 			}
 		}
 
@@ -83,17 +106,21 @@ func deployConditions(meta *spec.ResourceMeta, hasManualInternalDeps bool) map[c
 
 	if spec.IsHook(meta.Annotations) {
 		if conditions := deployConditionsForAnnotation(meta, common.AnnotationKeyPatternHook); len(conditions) > 0 {
-			if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
+			if spec.IsCRD(meta.GroupVersionKind.GroupKind()) || spec.IsNamespace(meta.GroupVersionKind) {
 				for on := range conditions {
 					conditions[on] = []common.Stage{common.StagePrePreInstall}
-				}
-			} else if spec.IsWebhook(meta.GroupVersionKind.GroupKind()) && !hasManualInternalDeps {
-				for on := range conditions {
-					conditions[on] = []common.Stage{common.StagePostPostInstall}
 				}
 			}
 
 			return conditions
+		}
+	}
+
+	if spec.IsNamespace(meta.GroupVersionKind) {
+		return map[common.On][]common.Stage{
+			common.InstallOnInstall:  {common.StagePrePreInstall},
+			common.InstallOnUpgrade:  {common.StagePrePreInstall},
+			common.InstallOnRollback: {common.StagePrePreInstall},
 		}
 	}
 
@@ -102,12 +129,6 @@ func deployConditions(meta *spec.ResourceMeta, hasManualInternalDeps bool) map[c
 			common.InstallOnInstall:  {common.StagePrePreInstall},
 			common.InstallOnUpgrade:  {common.StagePrePreInstall},
 			common.InstallOnRollback: {common.StagePrePreInstall},
-		}
-	} else if spec.IsWebhook(meta.GroupVersionKind.GroupKind()) && !hasManualInternalDeps {
-		return map[common.On][]common.Stage{
-			common.InstallOnInstall:  {common.StagePostPostInstall},
-			common.InstallOnUpgrade:  {common.StagePostPostInstall},
-			common.InstallOnRollback: {common.StagePostPostInstall},
 		}
 	}
 
@@ -723,6 +744,25 @@ func ownership(meta *spec.ResourceMeta, releaseNamespace string, storeAs common.
 	}
 }
 
+func parseResourcePolicies(value string) []common.ResourcePolicy {
+	var policies []common.ResourcePolicy
+	for _, p := range strings.Split(value, ",") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+
+		policy := common.ResourcePolicy(p)
+		if policy == common.ResourcePolicyKeep {
+			policy = common.ResourcePolicySkipDelete
+		}
+
+		policies = append(policies, policy)
+	}
+
+	return policies
+}
+
 func showLogsOnlyForContainers(meta *spec.ResourceMeta) []string {
 	_, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternShowLogsOnlyForContainers)
 	if !found {
@@ -1281,7 +1321,7 @@ func weight(meta *spec.ResourceMeta, hasManualInternalDeps bool) *int {
 		return nil
 	}
 
-	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
+	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) || spec.IsNamespace(meta.GroupVersionKind) {
 		return lo.ToPtr(0)
 	}
 

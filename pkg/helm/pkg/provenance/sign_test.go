@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/loader"
+	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 )
 
 const (
@@ -111,7 +112,7 @@ func TestMessageBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := messageBlock(archiveData, filepath.Base(testChartfile), metadataBytes)
+	out, err := messageBlock(archiveData, filepath.Base(testChartfile, helmopts.HelmOptions{}), metadataBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +263,7 @@ func TestClearSign(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sig, err := signer.ClearSign(archiveData, filepath.Base(testChartfile), metadataBytes)
+	sig, err := signer.ClearSign(archiveData, filepath.Base(testChartfile, helmopts.HelmOptions{}), metadataBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +352,7 @@ func TestClearSignError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sig, err := signer.ClearSign(archiveData, filepath.Base(testChartfile), metadataBytes)
+	sig, err := signer.ClearSign(archiveData, filepath.Base(testChartfile, helmopts.HelmOptions{}), metadataBytes)
 	if err == nil {
 		t.Fatal("didn't get an error from ClearSign but expected one")
 	}
@@ -368,7 +369,7 @@ func TestVerify(t *testing.T) {
 	}
 
 	// Read the chart file data
-	archiveData, err := os.ReadFile(testChartfile)
+	archiveData, err := os.ReadFile(testChartfile, helmopts.HelmOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

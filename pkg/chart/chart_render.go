@@ -334,9 +334,11 @@ func buildChartCapabilities(ctx context.Context, clientFactory kube.ClientFactor
 	}
 
 	if opts.Remote {
-		clientFactory.Discovery().Invalidate()
+		if err := clientFactory.KubeClient().ResetDiscoveryCache(ctx); err != nil {
+			return nil, fmt.Errorf("refresh discovery: %w", err)
+		}
 
-		kubeVersion, err := clientFactory.Discovery().ServerVersion()
+		kubeVersion, err := clientFactory.KubeClient().ServerVersion(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("get kubernetes server version: %w", err)
 		}

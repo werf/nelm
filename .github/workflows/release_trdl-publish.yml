@@ -41,7 +41,7 @@ jobs:
       - publish
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -62,7 +62,7 @@ jobs:
 
           process_releases() {
             echo "Processing releases based on trdl_channels.yaml..."
-            
+
             declare -A VERSION_CHANNELS
             declare -A GROUP_VERSIONS
 
@@ -88,7 +88,7 @@ jobs:
               version="${key#*:}"
               group="${key%:*}"
               tag="v$version"
-              
+
               if check_release_exists "$version"; then
                 channels="${VERSION_CHANNELS[$key]}"
                 expected_title="$tag [$channels]"
@@ -117,9 +117,9 @@ jobs:
             gh release list --json name | jq -r '.[] | select(.name | test("\\[[a-zA-Z,-]+\\]")) | .name' | while read -r full_name; do
               tag="${full_name%% *}"
               version="${tag#v}"
-              
+
               [[ -n "${GROUP_VERSIONS[$version]}" ]] && continue
-              
+
               echo "Resetting $tag to plain version title (no channels in config)"
               gh release edit "$tag" --title "$tag" --prerelease=false || true
             done

@@ -1,6 +1,11 @@
 package action
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+var ErrBuildPlan = errors.New("build plan")
 
 type ReleaseNotFoundError struct {
 	ReleaseName      string
