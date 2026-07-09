@@ -52,8 +52,8 @@ type InstallableResource struct {
 
 // Construct an InstallableResource from a ResourceSpec. Must never contact the cluster, because
 // this is called even when no cluster access allowed.
-func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherResourceSpecs []*spec.ResourceSpec, otherResSpecs []*spec.ResourceSpec, releaseNamespace string, opts InstallableResourceOptions) (*InstallableResource, error) {
-	otherResourceMetaList := lo.Map(otherResourceSpecs, func(resSpec *spec.ResourceSpec, _ int) *spec.ResourceMeta {
+func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherResSpecs []*spec.ResourceSpec, releaseNamespace string, opts InstallableResourceOptions) (*InstallableResource, error) {
+	otherResourceMetaList := lo.Map(otherResSpecs, func(resSpec *spec.ResourceSpec, _ int) *spec.ResourceMeta {
 		return resSpec.ResourceMeta
 	})
 	if err := validateHook(res.ResourceMeta); err != nil {
@@ -159,7 +159,6 @@ type DeletableResource struct {
 
 	AutoInternalDependencies []*Dependency
 	DeletePropagation        metav1.DeletionPropagation
-	KeepOnDelete             bool
 	ManualDependencies       []*Dependency
 	Ownership                common.Ownership
 	ResourcePolicies         []common.ResourcePolicy
@@ -205,7 +204,6 @@ func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []
 		ResourceMeta:             resourceSpec.ResourceMeta,
 		AutoInternalDependencies: internalDeleteDependencies(resourceSpec.Unstruct, unstructList),
 		DeletePropagation:        delPropagation,
-		KeepOnDelete:             keep,
 		ManualDependencies:       manualDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList),
 		Ownership:                owner,
 		ResourcePolicies:         policies,
@@ -239,7 +237,7 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 
 	var prevRelInstResources []*InstallableResource
 	for _, resSpec := range prevRelResSpecs {
-		installableResource, err := NewInstallableResource(ctx, resSpec, lo.Without(prevRelResSpecs, resSpec), lo.Without(prevRelResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
+		installableResource, err := NewInstallableResource(ctx, resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 			NoPodLogs:                opts.NoPodLogs,
 		})
@@ -252,7 +250,7 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 
 	var newRelInstResources []*InstallableResource
 	for _, resSpec := range newRelResSpecs {
-		installableResource, err := NewInstallableResource(ctx, resSpec, lo.Without(newRelResSpecs, resSpec), lo.Without(newRelResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
+		installableResource, err := NewInstallableResource(ctx, resSpec, lo.Without(newRelResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 			NoPodLogs:                opts.NoPodLogs,
 		})
@@ -352,9 +350,8 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 
 	var instResources []*InstallableResource
 	for _, resSpec := range patchedResSpecs {
-		instRes, err := NewInstallableResource(ctx, resSpec, lo.Without(patchedResSpecs, resSpec), newRelResSpecs, releaseNamespace, InstallableResourceOptions{
+		instRes, err := NewInstallableResource(ctx, resSpec, lo.Without(patchedResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
-				NoPodLogs:                opts.NoPodLogs,
 			NoPodLogs:                opts.NoPodLogs,
 		})
 		if err != nil {

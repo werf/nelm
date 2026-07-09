@@ -500,7 +500,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.AutoInternalDependencies = []*resource.InternalDependency{
+				res.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:  []string{"test-cr"},
@@ -550,7 +550,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultDeploymentInstallableResource(resSpec)
-				res.AutoInternalDependencies = []*resource.InternalDependency{
+				res.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{"my-sa"},
@@ -611,7 +611,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultDeploymentInstallableResource(resSpec)
-				res.AutoInternalDependencies = []*resource.InternalDependency{
+				res.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{"my-sa"},
@@ -706,7 +706,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.AutoInternalDependencies = []*resource.InternalDependency{
+				res.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{"test-statefulset"},
@@ -743,7 +743,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.AutoInternalDependencies = []*resource.InternalDependency{
+				res.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{"test-deployment"},
@@ -800,7 +800,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.AutoInternalDependencies = []*resource.InternalDependency{
+				res.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{"test-rollout"},
@@ -1424,7 +1424,7 @@ func (s *DeletableResourceSuite) TestNewDeletableResourceForAutoDependencies() {
 		{
 			expectFunc: func(resSpec *spec.ResourceSpec) *resource.DeletableResource {
 				res := defaultDeletableResource(resSpec.ResourceMeta)
-				res.AutoInternalDependencies = []*resource.InternalDependency{
+				res.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{"test-crb"},

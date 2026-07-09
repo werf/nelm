@@ -118,8 +118,9 @@ const (
 	DefaultFieldManager                 = "helm"
 	DefaultLocalKubeVersion             = "1.36.0"
 	DefaultLogColorMode                 = log.LogColorModeAuto
-	DefaultMapperNoMatchRetryInterval = 500 * time.Millisecond
-	DefaultMapperNoMatchRetryTimeout  = 10 * time.SecondDefaultNetworkParallelism           = 30
+	DefaultMapperNoMatchRetryInterval   = 500 * time.Millisecond
+	DefaultMapperNoMatchRetryTimeout    = 10 * time.Second
+	DefaultNetworkParallelism           = 30
 	DefaultProgressPrintInterval        = 5 * time.Second
 	DefaultQPSLimit                     = 30
 	DefaultReleaseHistoryLimit          = 10

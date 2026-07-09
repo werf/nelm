@@ -223,7 +223,7 @@ func parseContainer(unstruct *unstructured.Unstructured, container interface{}) 
 	return dependencies, len(dependencies) > 0
 }
 
-func parseBindingDependenciesForWorkload(pod interface{}, otherUnstructs []*unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
+func parseBindingDependenciesForWorkload(pod interface{}, otherUnstructs []*unstructured.Unstructured) (dependencies []*Dependency, found bool) {
 	serviceAccountName, _ := nestedStringNotEmpty(pod, "spec", "serviceAccountName")
 	if serviceAccountName == "" {
 		serviceAccountName, _ = nestedStringNotEmpty(pod, "spec", "serviceAccount")
@@ -256,7 +256,7 @@ func parseBindingDependenciesForWorkload(pod interface{}, otherUnstructs []*unst
 				continue
 			}
 
-			dep := &InternalDependency{
+			dep := &Dependency{
 				ResourceMatcher: newExactResourceMatcher(bindingUnstruct),
 				ResourceState:   common.ResourceStatePresent,
 			}
@@ -269,7 +269,7 @@ func parseBindingDependenciesForWorkload(pod interface{}, otherUnstructs []*unst
 	return dependencies, len(dependencies) > 0
 }
 
-func parseBindingSubjects(unstruct *unstructured.Unstructured) (dependencies []*InternalDependency, found bool) {
+func parseBindingSubjects(unstruct *unstructured.Unstructured) (dependencies []*Dependency, found bool) {
 	subjects, _ := nestedSlice(unstruct.Object, "subjects")
 	for _, subj := range subjects {
 		kind, found := nestedString(subj, "kind")
@@ -282,7 +282,7 @@ func parseBindingSubjects(unstruct *unstructured.Unstructured) (dependencies []*
 			continue
 		}
 
-		dep := &InternalDependency{
+		dep := &Dependency{
 			ResourceMatcher: &spec.ResourceMatcher{
 				Names:      []string{serviceAccountName},
 				Namespaces: []string{unstruct.GetNamespace()},
@@ -597,7 +597,7 @@ func parseRuntimeClassName(pod interface{}) (dep *Dependency, found bool) {
 	return dep, true
 }
 
-func parseScaleTargetRef(unstruct *unstructured.Unstructured) (dep *InternalDependency, found bool) {
+func parseScaleTargetRef(unstruct *unstructured.Unstructured) (dep *Dependency, found bool) {
 	name, found := nestedStringNotEmpty(unstruct.Object, "spec", "scaleTargetRef", "name")
 	if !found {
 		return nil, false
@@ -618,7 +618,7 @@ func parseScaleTargetRef(unstruct *unstructured.Unstructured) (dep *InternalDepe
 		return nil, false
 	}
 
-	dep = &InternalDependency{
+	dep = &Dependency{
 		ResourceMatcher: &spec.ResourceMatcher{
 			Names:      []string{name},
 			Namespaces: []string{unstruct.GetNamespace()},
@@ -738,7 +738,7 @@ func parseServiceAccountDependencies(unstruct *unstructured.Unstructured, otherU
 					continue
 				}
 
-				dep := &InternalDependency{
+				dep := &Dependency{
 					ResourceMatcher: newExactResourceMatcher(otherUnstruct),
 					ResourceState:   common.ResourceStateAbsent,
 				}
