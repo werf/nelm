@@ -18,6 +18,7 @@ import (
 	"github.com/werf/nelm/pkg/chart"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/pkg/helm/pkg/releaseutil"
 	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
@@ -91,6 +92,10 @@ type ChartRenderOptions struct {
 	// LocalKubeVersion specifies the Kubernetes version to use for template rendering when not connected to a cluster.
 	// Format: "major.minor.patch" (e.g., "1.28.0"). Defaults to DefaultLocalKubeVersion if not set.
 	LocalKubeVersion string
+	// LocalLookupResourcesPaths are paths to YAML/JSON manifest files whose resources the "lookup"
+	// template function resolves against in local mode (Remote=false), instead of a live cluster.
+	// Not allowed together with Remote.
+	LocalLookupResourcesPaths []string
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
@@ -156,6 +161,15 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	if opts.SecretKey != "" {
 		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
+	}
+
+	if opts.Remote && len(opts.LocalLookupResourcesPaths) > 0 {
+		return nil, fmt.Errorf("local lookup resources are not allowed together with remote mode")
+	}
+
+	localLookupResources, err := parseLocalLookupResources(opts.LocalLookupResourcesPaths)
+	if err != nil {
+		return nil, fmt.Errorf("parse local lookup resources: %w", err)
 	}
 
 	if !opts.Remote {
@@ -269,6 +283,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		ExtraAPIVersions:           opts.ExtraAPIVersions,
 		HelmOptions:                helmOptions,
 		LocalKubeVersion:           opts.LocalKubeVersion,
+		LocalLookupResources:       localLookupResources,
 		Remote:                     opts.Remote,
 		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
 		TempDirPath:                opts.TempDirPath,
@@ -446,6 +461,27 @@ func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir, homeDi
 	}
 
 	return opts, nil
+}
+
+func parseLocalLookupResources(paths []string) ([]*unstructured.Unstructured, error) {
+	var resources []*unstructured.Unstructured
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read file %q: %w", path, err)
+		}
+
+		for i, manifest := range releaseutil.SplitManifestsToSlice(string(content)) {
+			obj := &unstructured.Unstructured{}
+			if err := yaml.Unmarshal([]byte(manifest), &obj.Object); err != nil {
+				return nil, fmt.Errorf("parse file %q (document %d): %w", path, i, err)
+			}
+
+			resources = append(resources, obj)
+		}
+	}
+
+	return resources, nil
 }
 
 func renderResource(unstruct *unstructured.Unstructured, path string, outStream io.Writer, colorLevel color.Level) error {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/samber/lo"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/discovery"
 
 	"github.com/werf/nelm/pkg/common"
@@ -34,6 +35,7 @@ import (
 	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/lookup"
 	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/ts"
 )
@@ -51,6 +53,7 @@ type RenderChartOptions struct {
 	HelmOptions             helmopts.HelmOptions
 	IgnoreBundleJS          bool
 	LocalKubeVersion        string
+	LocalLookupResources    []*unstructured.Unstructured
 	NoStandaloneCRDs        bool
 	Remote                  bool
 	SubchartNotes           bool
@@ -196,6 +199,9 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		engine = lo.ToPtr(helmengine.New(clientFactory.KubeConfig().RestConfig))
 	} else {
 		engine = lo.ToPtr(helmengine.Engine{})
+		if len(opts.LocalLookupResources) > 0 {
+			engine.SetClientProvider(lookup.NewLocalClientProvider(opts.LocalLookupResources))
+		}
 	}
 
 	engine.EnableDNS = opts.TemplatesAllowDNS
