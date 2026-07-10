@@ -18,6 +18,7 @@ import (
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/nelm/pkg/common"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/legacy/progrep"
@@ -39,6 +40,10 @@ type ReleaseUninstallOptions struct {
 
 	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
 	DefaultDeletePropagation string
+	// DefaultPatchesDisable, when true, ignores chart-shipped patches.yaml files
+	// (from the top-level chart and subcharts of the uninstalled release). Diff
+	// patches only affect drift detection of surviving pre-delete hooks.
+	DefaultPatchesDisable bool
 	// DeleteReleaseNamespace, when true, deletes the release namespace after uninstalling the release.
 	// WARNING: This will delete the entire namespace including resources not managed by this release.
 	DeleteReleaseNamespace bool
@@ -53,6 +58,9 @@ type ReleaseUninstallOptions struct {
 	// NoRemoveManualChanges, when true, preserves fields manually added to resources in the cluster
 	// that are not present in the chart manifests. By default, such fields are removed during deletion.
 	NoRemoveManualChanges bool
+	// PatchesFiles are paths to additional patches files (diff patches for drift
+	// detection) applied on top of chart-shipped ones during the uninstall plan.
+	PatchesFiles []string
 	// ReleaseHistoryLimit sets the maximum number of release revisions to keep in storage.
 	// Defaults to DefaultReleaseHistoryLimit if not set or <= 0.
 	// After uninstall, only the uninstall record itself is kept.
@@ -231,7 +239,18 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 		log.Default.Debug(ctx, "Build resource infos")
 
+		uninstallChart, err := helmchart.NewAccessor(prevRelease.Chart())
+		if err != nil {
+			return fmt.Errorf("access chart of previous release: %w", err)
+		}
+
+		diffPatches, err := resolveDiffPatches(uninstallChart, opts.DefaultPatchesDisable, opts.PatchesFiles)
+		if err != nil {
+			return fmt.Errorf("resolve diff patches: %w", err)
+		}
+
 		instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
+			DiffPatches:                        diffPatches,
 			NetworkParallelism:                 opts.NetworkParallelism,
 			NoRemoveManualChanges:              opts.NoRemoveManualChanges,
 			LastDeployedOrLastRelResourceSpecs: prevRelResSpecs,

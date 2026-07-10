@@ -243,6 +243,17 @@ type ReleaseInstallRuntimeOptions struct {
 
 	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
 	DefaultDeletePropagation string `json:"defaultDeletePropagation"`
+	// PatchesFiles are paths to patches files (same format as a chart-shipped
+	// patches.yaml) whose diff patch rules are applied on top of chart-shipped
+	// ones. Diff patches affect ONLY drift detection: each matching rule's jq
+	// transform is applied identically to the live and the dry-apply object before
+	// comparison, so normalized-away fields never produce a diff. They never change
+	// what is rendered or applied. These rules are UNSCOPED (they may match any
+	// resource), unlike chart-shipped rules which are scoped to their chart subtree.
+	PatchesFiles []string `json:"patchesFiles"`
+	// DefaultPatchesDisable, when true, ignores chart-shipped patches.yaml files
+	// (from the top-level chart and subcharts).
+	DefaultPatchesDisable bool `json:"defaultPatchesDisable"`
 	// ExtraAnnotations are additional Kubernetes annotations to add to all chart resources.
 	// These are added during chart rendering, before resources are stored in the release.
 	ExtraAnnotations map[string]string `json:"extraAnnotations"`

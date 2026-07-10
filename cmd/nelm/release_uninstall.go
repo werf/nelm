@@ -53,6 +53,10 @@ func newReleaseUninstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs 
 			return fmt.Errorf("add tracking flags: %w", err)
 		}
 
+		if err := AddPatchesFlags(cmd, &cfg.PatchesFiles, &cfg.DefaultPatchesDisable); err != nil {
+			return fmt.Errorf("add patches flags: %w", err)
+		}
+
 		// TODO: restrict allowed values
 		if err := cli.AddFlag(cmd, &cfg.DefaultDeletePropagation, "delete-propagation", string(common.DefaultDeletePropagation), "Default delete propagation strategy", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,

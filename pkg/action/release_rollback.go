@@ -39,6 +39,9 @@ type ReleaseRollbackOptions struct {
 
 	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
 	DefaultDeletePropagation string
+	// DefaultPatchesDisable, when true, ignores chart-shipped patches.yaml files
+	// (from the top-level chart and subcharts of the rolled-back revision).
+	DefaultPatchesDisable bool
 	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime during rollback.
 	// These are added during resource creation/update but not stored in the release.
 	ExtraRuntimeAnnotations map[string]string
@@ -57,6 +60,9 @@ type ReleaseRollbackOptions struct {
 	// NoShowNotes, when true, suppresses printing of NOTES.txt after successful rollback.
 	// NOTES.txt typically contains usage instructions and next steps.
 	NoShowNotes bool
+	// PatchesFiles are paths to additional patches files (diff patches for drift
+	// detection) applied on top of chart-shipped ones during the rollback plan.
+	PatchesFiles []string
 	// ReleaseHistoryLimit sets the maximum number of release revisions to keep in storage.
 	// When exceeded, the oldest revisions are deleted. Defaults to DefaultReleaseHistoryLimit if not set or <= 0.
 	// Note: Only release metadata is deleted; actual Kubernetes resources are not affected.
@@ -312,7 +318,13 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		}
 	}
 
+	diffPatches, err := resolveDiffPatches(chartAccessor, opts.DefaultPatchesDisable, opts.PatchesFiles)
+	if err != nil {
+		return fmt.Errorf("resolve diff patches: %w", err)
+	}
+
 	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
+		DiffPatches:                        diffPatches,
 		NetworkParallelism:                 opts.NetworkParallelism,
 		NoRemoveManualChanges:              opts.NoRemoveManualChanges,
 		LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,

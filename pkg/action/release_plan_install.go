@@ -361,7 +361,13 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		}
 	}
 
+	diffPatches, err := resolveDiffPatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles)
+	if err != nil {
+		return nil, fmt.Errorf("resolve diff patches: %w", err)
+	}
+
 	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
+		DiffPatches:                        diffPatches,
 		NetworkParallelism:                 opts.NetworkParallelism,
 		NoRemoveManualChanges:              opts.NoRemoveManualChanges,
 		LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,

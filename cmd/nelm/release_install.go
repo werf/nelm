@@ -77,6 +77,10 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add secret values flags: %w", err)
 		}
 
+		if err := AddPatchesFlags(cmd, &cfg.PatchesFiles, &cfg.DefaultPatchesDisable); err != nil {
+			return fmt.Errorf("add patches flags: %w", err)
+		}
+
 		if err := AddTrackingFlags(cmd, &cfg.TrackingOptions); err != nil {
 			return fmt.Errorf("add tracking flags: %w", err)
 		}

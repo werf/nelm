@@ -317,6 +317,25 @@ func AddKubeConnectionFlags(cmd *cobra.Command, cfg *common.KubeConnectionOption
 	return nil
 }
 
+func AddPatchesFlags(cmd *cobra.Command, patchesFiles *[]string, defaultPatchesDisable *bool) error {
+	if err := cli.AddFlag(cmd, patchesFiles, "patches", []string{}, "Additional patches files (diff patches for drift detection)", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                patchFlagGroup,
+		Type:                 cli.FlagTypeFile,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, defaultPatchesDisable, "no-default-patches", false, "Ignore patches.yaml of the top-level chart and subcharts", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                patchFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	return nil
+}
+
 func AddResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceValidationOptions) error {
 	if err := cli.AddFlag(cmd, &cfg.NoResourceValidation, "no-resource-validation", false, "Disable resource validation", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,

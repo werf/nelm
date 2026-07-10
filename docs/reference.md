@@ -307,6 +307,14 @@ nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-
 
   Add labels to all resources\. Vars: \$NELM\_LABELS\_\*, \$NELM\_RELEASE\_INSTALL\_LABELS\_\*
 
+- `--no-default-patches` (default: `false`)
+
+  Ignore patches\.yaml of the top\-level chart and subcharts\. Vars: \$NELM\_NO\_DEFAULT\_PATCHES, \$NELM\_RELEASE\_INSTALL\_NO\_DEFAULT\_PATCHES
+
+- `--patches` (default: `[]`)
+
+  Additional patches files \(diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_INSTALL\_PATCHES
+
 - `--runtime-annotations` (default: `{}`)
 
   Add annotations which will not trigger resource updates to all resources\. Vars: \$NELM\_RUNTIME\_ANNOTATIONS\_\*, \$NELM\_RELEASE\_INSTALL\_RUNTIME\_ANNOTATIONS\_\*
@@ -651,6 +659,14 @@ nelm release rollback [options...] -n namespace -r release [revision]
 
 
 **Patch options:**
+
+- `--no-default-patches` (default: `false`)
+
+  Ignore patches\.yaml of the top\-level chart and subcharts\. Vars: \$NELM\_NO\_DEFAULT\_PATCHES, \$NELM\_RELEASE\_ROLLBACK\_NO\_DEFAULT\_PATCHES
+
+- `--patches` (default: `[]`)
+
+  Additional patches files \(diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_ROLLBACK\_PATCHES
 
 - `--runtime-annotations` (default: `{}`)
 
@@ -1033,6 +1049,14 @@ nelm release plan install [options...] -n namespace -r release [chart-dir|chart-
 
   Add labels to all resources\. Vars: \$NELM\_LABELS\_\*, \$NELM\_RELEASE\_PLAN\_INSTALL\_LABELS\_\*
 
+- `--no-default-patches` (default: `false`)
+
+  Ignore patches\.yaml of the top\-level chart and subcharts\. Vars: \$NELM\_NO\_DEFAULT\_PATCHES, \$NELM\_RELEASE\_PLAN\_INSTALL\_NO\_DEFAULT\_PATCHES
+
+- `--patches` (default: `[]`)
+
+  Additional patches files \(diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_PLAN\_INSTALL\_PATCHES
+
 - `--runtime-annotations` (default: `{}`)
 
   Add annotations which will not trigger resource updates to all resources\. Vars: \$NELM\_RUNTIME\_ANNOTATIONS\_\*, \$NELM\_RELEASE\_PLAN\_INSTALL\_RUNTIME\_ANNOTATIONS\_\*
@@ -1299,6 +1323,17 @@ nelm release uninstall [options...] -n namespace -r release
 - `--timeout` (default: `0s`)
 
   Fail if not finished in time\. Vars: \$NELM\_TIMEOUT, \$NELM\_RELEASE\_UNINSTALL\_TIMEOUT
+
+
+**Patch options:**
+
+- `--no-default-patches` (default: `false`)
+
+  Ignore patches\.yaml of the top\-level chart and subcharts\. Vars: \$NELM\_NO\_DEFAULT\_PATCHES, \$NELM\_RELEASE\_UNINSTALL\_NO\_DEFAULT\_PATCHES
+
+- `--patches` (default: `[]`)
+
+  Additional patches files \(diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_UNINSTALL\_PATCHES
 
 
 **Progress options:**

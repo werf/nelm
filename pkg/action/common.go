@@ -21,11 +21,13 @@ import (
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/nelm/pkg/common"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/plan"
 	"github.com/werf/nelm/pkg/release"
+	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/util"
 )
 
@@ -160,6 +162,26 @@ func printReport(ctx context.Context, report *ReleaseReportV3) {
 			}
 		})
 	}
+}
+
+func resolveDiffPatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string) ([]spec.DiffPatch, error) {
+	var patches []spec.DiffPatch
+
+	if !defaultDisable {
+		chartPatches, err := spec.CollectChartPatches(chart)
+		if err != nil {
+			return nil, fmt.Errorf("collect chart patches: %w", err)
+		}
+
+		patches = append(patches, chartPatches...)
+	}
+
+	filePatches, err := spec.LoadPatchesFiles(patchesFiles)
+	if err != nil {
+		return nil, fmt.Errorf("load patches files: %w", err)
+	}
+
+	return append(patches, filePatches...), nil
 }
 
 func runFailurePlan(ctx context.Context, releaseNamespace string, failedPlan *plan.Plan, installableInfos []*plan.InstallableResourceInfo, releaseInfos []*plan.ReleaseInfo, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history *release.History, clientFactory *kube.ClientFactory, opts runFailureInstallPlanOptions) (result *runFailurePlanResult, nonCritErrs, critErrs *util.MultiError) {
