@@ -76,6 +76,7 @@ type DeletableResourceInfo struct {
 }
 
 type BuildResourceInfosOptions struct {
+	DiffPatches                        []spec.DiffPatch
 	ExtraRuntimeAnnotations            map[string]string
 	ExtraRuntimeLabels                 map[string]string
 	LastDeployedOrLastRelResourceSpecs []*spec.ResourceSpec
@@ -88,6 +89,11 @@ type BuildResourceInfosOptions struct {
 // more info, and here we actually decide what to do with each resource. Initially all this logic
 // was in BuildPlan, but it became way too complex, so we extracted it here.
 func BuildResourceInfos(ctx context.Context, deployType common.DeployType, releaseName, releaseNamespace string, instResources []*resource.InstallableResource, delResources []*resource.DeletableResource, prevReleaseFailed bool, clientFactory kube.ClientFactorier, opts BuildResourceInfosOptions) (instResourceInfos []*InstallableResourceInfo, delResourceInfos []*DeletableResourceInfo, err error) {
+	diffPatches, err := spec.CompileDiffPatches(opts.DiffPatches)
+	if err != nil {
+		return nil, nil, fmt.Errorf("compile diff patches: %w", err)
+	}
+
 	totalResourcesCount := len(instResources) + len(delResources)
 
 	routines := lo.Max([]int{len(instResources) / lo.Max([]int{totalResourcesCount, 1}) * opts.NetworkParallelism, 1})
@@ -95,7 +101,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 	instResourcesPool := pool.NewWithResults[[]*InstallableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range instResources {
 		instResourcesPool.Go(func(ctx context.Context) ([]*InstallableResourceInfo, error) {
-			infos, err := buildInstallableResourceInfo(ctx, res, deployType, releaseNamespace, prevReleaseFailed, opts.NoRemoveManualChanges, clientFactory, opts)
+			infos, err := buildInstallableResourceInfo(ctx, res, deployType, releaseNamespace, prevReleaseFailed, opts.NoRemoveManualChanges, clientFactory, opts, diffPatches)
 			if err != nil {
 				return nil, fmt.Errorf("build installable resource info: %w", err)
 			}
@@ -156,7 +162,7 @@ func ResourceInstallTypeSortHandler(type1, type2 ResourceInstallType) bool {
 }
 
 // TODO(major): keep annotation should probably forbid resource recreations
-func buildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed, noRemoveManualChanges bool, clientFactory kube.ClientFactorier, opts BuildResourceInfosOptions) ([]*InstallableResourceInfo, error) {
+func buildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed, noRemoveManualChanges bool, clientFactory kube.ClientFactorier, opts BuildResourceInfosOptions, diffPatches []*spec.CompiledDiffPatch) ([]*InstallableResourceInfo, error) {
 	var stages []common.Stage
 	switch deployType {
 	case common.DeployTypeInitial, common.DeployTypeInstall:
@@ -206,7 +212,7 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 		})
 	}
 
-	installType, skippedByPolicy, err := resourceInstallType(ctx, localRes, getObj, dryApplyObj, dryApplyErr, opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels, resourcePolicies)
+	installType, skippedByPolicy, err := resourceInstallType(ctx, localRes, getObj, dryApplyObj, dryApplyErr, opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels, resourcePolicies, diffPatches)
 	if err != nil {
 		return nil, fmt.Errorf("determine install type for resource %q: %w", localRes.IDHuman(), err)
 	}
@@ -795,7 +801,7 @@ func removeUndesirableManagers(managedFields []v1.ManagedFieldsEntry, oursEntry 
 	return newManagedFields, newOursEntry, changed
 }
 
-func resourceInstallType(ctx context.Context, localRes *resource.InstallableResource, getObj, dryApplyObj *unstructured.Unstructured, dryApplyErr error, extraRuntimeAnnotations, extraRuntimeLabels map[string]string, resourcePolicies []common.ResourcePolicy) (installType ResourceInstallType, skippedByPolicy bool, err error) {
+func resourceInstallType(ctx context.Context, localRes *resource.InstallableResource, getObj, dryApplyObj *unstructured.Unstructured, dryApplyErr error, extraRuntimeAnnotations, extraRuntimeLabels map[string]string, resourcePolicies []common.ResourcePolicy, diffPatches []*spec.CompiledDiffPatch) (installType ResourceInstallType, skippedByPolicy bool, err error) {
 	skipCreate := lo.Contains(resourcePolicies, common.ResourcePolicySkipCreate)
 	skipUpdate := lo.Contains(resourcePolicies, common.ResourcePolicySkipUpdate)
 	skipRecreate := lo.Contains(resourcePolicies, common.ResourcePolicySkipRecreate)
@@ -830,7 +836,26 @@ func resourceInstallType(ctx context.Context, localRes *resource.InstallableReso
 		return ResourceInstallTypeApply, false, nil
 	}
 
-	diffableGetObj := spec.CleanUnstruct(getObj, spec.CleanUnstructOptions{
+	patchedGetObj := getObj
+
+	patchedDryApplyObj := dryApplyObj
+	if len(diffPatches) > 0 {
+		// getObj is non-nil here and carries the resource's true namespace, which is
+		// empty only for genuinely cluster-scoped resources (unlike the blanked
+		// ResourceMeta.Namespace), so it is the authoritative value for the
+		// namespace selector dimension.
+		namespace := getObj.GetNamespace()
+
+		if patchedGetObj, err = spec.ApplyDiffPatches(diffPatches, localRes.ResourceMeta, namespace, getObj); err != nil {
+			return "", false, fmt.Errorf("apply diff patches to live version of resource %q: %w", localRes.IDHuman(), err)
+		}
+
+		if patchedDryApplyObj, err = spec.ApplyDiffPatches(diffPatches, localRes.ResourceMeta, namespace, dryApplyObj); err != nil {
+			return "", false, fmt.Errorf("apply diff patches to dry-apply version of resource %q: %w", localRes.IDHuman(), err)
+		}
+	}
+
+	diffableGetObj := spec.CleanUnstruct(patchedGetObj, spec.CleanUnstructOptions{
 		CleanHelmShAnnos: true,
 		CleanWerfIoAnnos: true,
 		CleanRuntimeData: true,
@@ -838,7 +863,7 @@ func resourceInstallType(ctx context.Context, localRes *resource.InstallableReso
 		CleanLabels:      extraRuntimeLabels,
 	})
 
-	diffableDryApplyObj := spec.CleanUnstruct(dryApplyObj, spec.CleanUnstructOptions{
+	diffableDryApplyObj := spec.CleanUnstruct(patchedDryApplyObj, spec.CleanUnstructOptions{
 		CleanHelmShAnnos: true,
 		CleanWerfIoAnnos: true,
 		CleanRuntimeData: true,

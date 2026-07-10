@@ -35,6 +35,7 @@ require (
 	github.com/gosimple/slug v1.15.0
 	github.com/gosuri/uitable v0.0.4
 	github.com/hofstadter-io/cinful v1.0.0
+	github.com/itchyny/gojq v0.12.19
 	github.com/jedib0t/go-pretty/v6 v6.7.8
 	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/jmoiron/sqlx v1.4.0
@@ -139,6 +140,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/itchyny/timefmt-go v0.1.8 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.5 // indirect

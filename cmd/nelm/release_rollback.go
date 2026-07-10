@@ -65,6 +65,10 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 			return fmt.Errorf("add tracking flags: %w", err)
 		}
 
+		if err := AddPatchesFlags(cmd, &cfg.PatchesFiles, &cfg.DefaultPatchesDisable); err != nil {
+			return fmt.Errorf("add patches flags: %w", err)
+		}
+
 		if err := AddResourceValidationFlags(cmd, &cfg.ResourceValidationOptions); err != nil {
 			return fmt.Errorf("add resource validation flags: %w", err)
 		}
