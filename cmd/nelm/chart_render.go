@@ -157,7 +157,7 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.LocalLookupResourcesPaths, "lookup-resources", nil, "Paths to manifest files with resources for the lookup template function to resolve against in non-remote mode", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LocalLookupResourcesPaths, "lookup-resources", nil, "Manifest files used as a cluster stub for the lookup template function in non-remote mode", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalMultiEnvVarRegexes,
 			Group:                mainFlagGroup,
 			Type:                 cli.FlagTypeFile,
