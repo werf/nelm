@@ -18,7 +18,6 @@ import (
 	"github.com/werf/nelm/pkg/chart"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	"github.com/werf/nelm/pkg/helm/pkg/releaseutil"
 	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
@@ -461,27 +460,6 @@ func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir, homeDi
 	}
 
 	return opts, nil
-}
-
-func parseLocalLookupResources(paths []string) ([]*unstructured.Unstructured, error) {
-	var resources []*unstructured.Unstructured
-	for _, path := range paths {
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("read file %q: %w", path, err)
-		}
-
-		for i, manifest := range releaseutil.SplitManifestsToSlice(string(content)) {
-			obj := &unstructured.Unstructured{}
-			if err := yaml.Unmarshal([]byte(manifest), &obj.Object); err != nil {
-				return nil, fmt.Errorf("parse file %q (document %d): %w", path, i, err)
-			}
-
-			resources = append(resources, obj)
-		}
-	}
-
-	return resources, nil
 }
 
 func renderResource(unstruct *unstructured.Unstructured, path string, outStream io.Writer, colorLevel color.Level) error {

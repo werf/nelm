@@ -12,9 +12,11 @@ import (
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/quick"
 	"github.com/alecthomas/chroma/v2/styles"
+	"github.com/goccy/go-yaml"
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 	"github.com/xo/terminfo"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
@@ -22,6 +24,7 @@ import (
 	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/pkg/common"
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/nelm/pkg/helm/pkg/releaseutil"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/plan"
@@ -113,6 +116,27 @@ func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr err
 	}
 
 	log.Default.Warn(ctx, "Plan graph saved to %q for debugging", graphPath)
+}
+
+func parseLocalLookupResources(paths []string) ([]*unstructured.Unstructured, error) {
+	var resources []*unstructured.Unstructured
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read file %q: %w", path, err)
+		}
+
+		for i, manifest := range releaseutil.SplitManifestsToSlice(string(content)) {
+			obj := &unstructured.Unstructured{}
+			if err := yaml.Unmarshal([]byte(manifest), &obj.Object); err != nil {
+				return nil, fmt.Errorf("parse file %q (document %d): %w", path, i, err)
+			}
+
+			resources = append(resources, obj)
+		}
+	}
+
+	return resources, nil
 }
 
 func printNotes(ctx context.Context, notes string) {
