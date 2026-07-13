@@ -198,7 +198,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	if opts.Remote && clientFactory.KubeClient() != nil {
 		engine = lo.ToPtr(helmengine.New(clientFactory.KubeConfig().RestConfig))
 	} else {
-		engine = lo.ToPtr(helmengine.Engine{})
+		engine = &helmengine.Engine{}
 		if len(opts.LocalLookupResources) > 0 {
 			engine.SetClientProvider(lookup.NewLocalClientProvider(opts.LocalLookupResources))
 		}

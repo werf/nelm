@@ -94,6 +94,10 @@ type ChartLintOptions struct {
 	// LocalKubeVersion specifies the Kubernetes version to use for linting when not connected to a cluster.
 	// Format: "major.minor.patch" (e.g., "1.28.0"). Defaults to DefaultLocalKubeVersion if not set.
 	LocalKubeVersion string
+	// LocalLookupResourcesPaths are paths to YAML/JSON manifest files whose resources the "lookup"
+	// template function resolves against in local mode (Remote=false), instead of a live cluster.
+	// Not allowed together with Remote.
+	LocalLookupResourcesPaths []string
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
@@ -149,6 +153,15 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	if opts.SecretKey != "" {
 		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
+	}
+
+	if opts.Remote && len(opts.LocalLookupResourcesPaths) > 0 {
+		return fmt.Errorf("local lookup resources are not allowed together with remote mode")
+	}
+
+	localLookupResources, err := parseLocalLookupResources(opts.LocalLookupResourcesPaths)
+	if err != nil {
+		return fmt.Errorf("parse local lookup resources: %w", err)
 	}
 
 	if !opts.Remote {
@@ -266,6 +279,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		ExtraAPIVersions:           opts.ExtraAPIVersions,
 		HelmOptions:                helmOptions,
 		LocalKubeVersion:           opts.LocalKubeVersion,
+		LocalLookupResources:       localLookupResources,
 		Remote:                     opts.Remote,
 		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
 		TempDirPath:                opts.TempDirPath,
