@@ -94,9 +94,11 @@ type ChartLintOptions struct {
 	// LocalKubeVersion specifies the Kubernetes version to use for linting when not connected to a cluster.
 	// Format: "major.minor.patch" (e.g., "1.28.0"). Defaults to DefaultLocalKubeVersion if not set.
 	LocalKubeVersion string
-	// LocalLookupResourcesPaths are paths to YAML/JSON manifest files whose resources the "lookup"
+	// LocalLookupResourcesPaths are paths to YAML or JSON manifest files whose resources the "lookup"
 	// template function resolves against in local mode (Remote=false), instead of a live cluster.
-	// Not allowed together with Remote.
+	// Each file may hold multiple documents separated by "---" and/or a kind: List (or typed *List)
+	// wrapper whose items are expanded; a bare top-level JSON array is not supported. Duplicate
+	// resources are rejected. Not allowed together with Remote.
 	LocalLookupResourcesPaths []string
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
