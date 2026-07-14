@@ -82,6 +82,46 @@ func TestAI_LocalClientProviderLookup(t *testing.T) {
 	}
 }
 
+func TestAI_LocalClientProviderUnstubbedListEmptyProvider(t *testing.T) {
+	provider := NewLocalClientProvider(nil)
+
+	c := &chart.Chart{
+		Metadata: &chart.Metadata{Name: "moby", Version: "1.2.3"},
+		Templates: []*chart.File{
+			{Name: "templates/list", Data: []byte(`{{ (lookup "v1" "Pod" "" "").items | len }}`)},
+		},
+		Values: map[string]any{},
+	}
+
+	vals, err := chartutil.CoalesceValues(c, map[string]any{"Values": map[string]any{}})
+	require.NoError(t, err)
+
+	out, err := engine.RenderWithClientProvider(c, vals, provider, helmopts.HelmOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "0", out["moby/templates/list"])
+}
+
+func TestAI_LocalClientProviderUnstubbedListOtherKind(t *testing.T) {
+	provider := NewLocalClientProvider([]*unstructured.Unstructured{
+		makeUnstructured("v1", "Pod", "pod1", "default"),
+	})
+
+	c := &chart.Chart{
+		Metadata: &chart.Metadata{Name: "moby", Version: "1.2.3"},
+		Templates: []*chart.File{
+			{Name: "templates/list", Data: []byte(`{{ (lookup "v1" "ConfigMap" "" "").items | len }}`)},
+		},
+		Values: map[string]any{},
+	}
+
+	vals, err := chartutil.CoalesceValues(c, map[string]any{"Values": map[string]any{}})
+	require.NoError(t, err)
+
+	out, err := engine.RenderWithClientProvider(c, vals, provider, helmopts.HelmOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "0", out["moby/templates/list"])
+}
+
 func makeUnstructured(apiVersion, kind, name, namespace string) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": apiVersion,
