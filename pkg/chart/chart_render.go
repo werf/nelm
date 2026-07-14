@@ -285,6 +285,57 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	}, nil
 }
 
+func parseLocalLookupResources(paths []string) ([]*unstructured.Unstructured, error) {
+	var resources []*unstructured.Unstructured
+
+	seen := make(map[string]bool)
+
+	for _, filePath := range paths {
+		content, err := os.ReadFile(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("read file %q: %w", filePath, err)
+		}
+
+		for i, manifest := range releaseutil.SplitManifestsToSlice(string(content)) {
+			obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(manifest), nil, &unstructured.Unstructured{})
+			if err != nil {
+				return nil, fmt.Errorf("decode resource #%d for %q: %w", i+1, filePath, err)
+			}
+
+			unstruct := obj.(*unstructured.Unstructured)
+
+			if unstruct.IsList() {
+				item := 0
+
+				if err := unstruct.EachListItem(func(o runtime.Object) error {
+					res, err := collectLocalLookupResource(o.(*unstructured.Unstructured), seen)
+					if err != nil {
+						return err
+					}
+
+					item++
+					resources = append(resources, res)
+
+					return nil
+				}); err != nil {
+					return nil, fmt.Errorf("collect resource #%d for %q (item %d): %w", i+1, filePath, item, err)
+				}
+
+				continue
+			}
+
+			res, err := collectLocalLookupResource(unstruct, seen)
+			if err != nil {
+				return nil, fmt.Errorf("collect resource #%d for %q: %w", i+1, filePath, err)
+			}
+
+			resources = append(resources, res)
+		}
+	}
+
+	return resources, nil
+}
+
 func buildChartCapabilities(ctx context.Context, clientFactory kube.ClientFactorier, opts buildChartCapabilitiesOptions) (*chartutil.Capabilities, error) {
 	capabilities := &chartutil.Capabilities{
 		HelmVersion: chartutil.DefaultCapabilities.HelmVersion,
@@ -379,6 +430,23 @@ func buildContextFromJSONSets(jsonSets []string) (map[string]interface{}, error)
 	return context, nil
 }
 
+func collectLocalLookupResource(unstruct *unstructured.Unstructured, seen map[string]bool) (*unstructured.Unstructured, error) {
+	if unstruct.GetAPIVersion() == "" {
+		return nil, fmt.Errorf("apiVersion is missing")
+	}
+
+	gvk := unstruct.GroupVersionKind()
+	id := spec.IDWithVersion(unstruct.GetName(), unstruct.GetNamespace(), gvk.Group, gvk.Version, gvk.Kind)
+
+	if seen[id] {
+		return nil, fmt.Errorf("duplicate resource %s", spec.IDHuman(unstruct.GetName(), unstruct.GetNamespace(), gvk.Group, gvk.Kind))
+	}
+
+	seen[id] = true
+
+	return unstruct, nil
+}
+
 func isLocalChart(path string) bool {
 	return filepath.IsAbs(path) || filepath.HasPrefix(path, "..") || filepath.HasPrefix(path, ".")
 }
@@ -439,72 +507,4 @@ func validateChart(ctx context.Context, chart *helmchart.Chart) error {
 	}
 
 	return nil
-}
-
-func parseLocalLookupResources(paths []string) ([]*unstructured.Unstructured, error) {
-	var resources []*unstructured.Unstructured
-
-	seen := make(map[string]bool)
-
-	for _, path := range paths {
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("read file %q: %w", path, err)
-		}
-
-		for i, manifest := range releaseutil.SplitManifestsToSlice(string(content)) {
-			obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(manifest), nil, &unstructured.Unstructured{})
-			if err != nil {
-				return nil, fmt.Errorf("parse file %q (document %d): %w", path, i, err)
-			}
-
-			unstruct := obj.(*unstructured.Unstructured)
-
-			if unstruct.IsList() {
-				item := 0
-
-				if err := unstruct.EachListItem(func(o runtime.Object) error {
-					res, err := collectLocalLookupResource(o.(*unstructured.Unstructured), seen)
-					if err != nil {
-						return err
-					}
-
-					item++
-					resources = append(resources, res)
-
-					return nil
-				}); err != nil {
-					return nil, fmt.Errorf("parse file %q (document %d, item %d): %w", path, i, item, err)
-				}
-
-				continue
-			}
-
-			res, err := collectLocalLookupResource(unstruct, seen)
-			if err != nil {
-				return nil, fmt.Errorf("parse file %q (document %d): %w", path, i, err)
-			}
-
-			resources = append(resources, res)
-		}
-	}
-
-	return resources, nil
-}
-
-func collectLocalLookupResource(unstruct *unstructured.Unstructured, seen map[string]bool) (*unstructured.Unstructured, error) {
-	if unstruct.GetAPIVersion() == "" {
-		return nil, fmt.Errorf("apiVersion is missing")
-	}
-
-	gvk := unstruct.GroupVersionKind()
-	id := spec.IDWithVersion(unstruct.GetName(), unstruct.GetNamespace(), gvk.Group, gvk.Version, gvk.Kind)
-
-	if seen[id] {
-		return nil, fmt.Errorf("duplicate resource %s", spec.IDHuman(unstruct.GetName(), unstruct.GetNamespace(), gvk.Group, gvk.Kind))
-	}
-
-	seen[id] = true
-
-	return unstruct, nil
 }
