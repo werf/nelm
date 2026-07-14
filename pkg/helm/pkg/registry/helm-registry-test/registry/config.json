@@ -1,0 +1,7 @@
+{
+	"auths": {
+		"helm-test-registry:42459": {
+			"auth": "bXl1c2VyOm15cGFzcw=="
+		}
+	}
+}
