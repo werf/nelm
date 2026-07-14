@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/gookit/color"
@@ -17,8 +15,9 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/werf/nelm/pkg/common"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -66,7 +65,7 @@ type ReleaseListResultRelease struct {
 	Name        string                       `json:"name"`
 	Namespace   string                       `json:"namespace"`
 	Revision    int                          `json:"revision"`
-	Status      helmrelease.Status           `json:"status"`
+	Status      helmreleasestatus.Status     `json:"status"`
 	DeployedAt  *ReleaseListResultDeployedAt `json:"deployedAt"`
 	Annotations map[string]string            `json:"annotations"`
 	Chart       *ReleaseListResultChart      `json:"chart"`
@@ -95,16 +94,7 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 		return nil, fmt.Errorf("build release list options: %w", err)
 	}
 
-	if len(opts.KubeConfigPaths) > 0 {
-		var splitPaths []string
-		for _, path := range opts.KubeConfigPaths {
-			splitPaths = append(splitPaths, filepath.SplitList(path)...)
-		}
-
-		opts.KubeConfigPaths = lo.Compact(splitPaths)
-	}
-
-	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+	kubeConfig, err := kube.NewKubeConfig(ctx, kube.KubeConfigOptions{
 		KubeConnectionOptions: opts.KubeConnectionOptions,
 		KubeContextNamespace:  opts.ReleaseNamespace, // TODO: unset it everywhere
 	})
@@ -141,21 +131,30 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 		releases := history.Releases()
 		lastRelease := lo.LastOrEmpty(releases)
 
+		chartAccessor, err := helmchart.NewAccessor(lastRelease.Chart())
+		if err != nil {
+			return nil, fmt.Errorf("construct chart accessor: %w", err)
+		}
+
+		chartMetadata := chartAccessor.MetadataAsMap()
+		chartVersion, _ := chartMetadata["Version"].(string)
+		chartAppVersion, _ := chartMetadata["AppVersion"].(string)
+
 		result.Releases = append(result.Releases, &ReleaseListResultRelease{
-			Annotations: lastRelease.Info.Annotations,
+			Annotations: lastRelease.Annotations(),
 			Chart: &ReleaseListResultChart{
-				Name:       lastRelease.Chart.Name(),
-				Version:    lastRelease.Chart.Metadata.Version,
-				AppVersion: lastRelease.Chart.Metadata.AppVersion,
+				Name:       chartAccessor.Name(),
+				Version:    chartVersion,
+				AppVersion: chartAppVersion,
 			},
 			DeployedAt: &ReleaseListResultDeployedAt{
-				Human: time.Time{}.String(),
-				Unix:  int(time.Time{}.Unix()),
+				Human: lastRelease.DeployedAt().String(),
+				Unix:  int(lastRelease.DeployedAt().Unix()),
 			},
-			Name:      lastRelease.Name,
-			Namespace: lastRelease.Namespace,
-			Revision:  lastRelease.Version,
-			Status:    lastRelease.Info.Status,
+			Name:      lastRelease.Name(),
+			Namespace: lastRelease.Namespace(),
+			Revision:  lastRelease.Version(),
+			Status:    helmreleasestatus.Status(lastRelease.Status()),
 		})
 	}
 
@@ -225,9 +224,9 @@ func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV
 	for _, release := range result.Releases {
 		var statusColor color.Color
 		switch release.Status {
-		case helmrelease.StatusDeployed, helmrelease.StatusSuperseded:
+		case helmreleasestatus.StatusDeployed, helmreleasestatus.StatusSuperseded:
 			statusColor = color.Green
-		case helmrelease.StatusFailed:
+		case helmreleasestatus.StatusFailed:
 			statusColor = color.LightRed
 		default:
 			statusColor = color.LightYellow

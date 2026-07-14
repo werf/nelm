@@ -10,7 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/kube/fake"
 	"github.com/werf/nelm/pkg/resource"
 	"github.com/werf/nelm/pkg/resource/spec"
 )
@@ -170,10 +169,7 @@ func chartInstallableResource(t *testing.T, annotations map[string]string) *reso
 		resSpec.SetAnnotations(annotations)
 	}
 
-	clientFactory, err := fake.NewClientFactory(context.Background())
-	require.NoError(t, err)
-
-	localRes, err := resource.NewInstallableResource(resSpec, nil, resourcePolicyTestNamespace, clientFactory, resource.InstallableResourceOptions{})
+	localRes, err := resource.NewInstallableResource(context.Background(), resSpec, nil, resourcePolicyTestNamespace, resource.InstallableResourceOptions{})
 	require.NoError(t, err)
 
 	return localRes

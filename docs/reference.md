@@ -6,16 +6,16 @@
   - [Chart commands](#chart-commands)
   - [Secret commands](#secret-commands)
   - [Dependency commands](#dependency-commands)
-  - [TypeScript commands](#typescript-commands)
   - [Repo commands](#repo-commands)
+  - [TypeScript commands](#typescript-commands)
   - [Other commands](#other-commands)
 - [Commands](#commands)
   - [release install](#release-install)
   - [release rollback](#release-rollback)
   - [release plan install](#release-plan-install)
   - [release uninstall](#release-uninstall)
-  - [release list](#release-list)
   - [release history](#release-history)
+  - [release list](#release-list)
   - [release get](#release-get)
   - [release plan show](#release-plan-show)
   - [chart lint](#chart-lint)
@@ -33,28 +33,20 @@
   - [chart secret file decrypt](#chart-secret-file-decrypt)
   - [chart dependency download](#chart-dependency-download)
   - [chart dependency update](#chart-dependency-update)
+  - [chart repo add](#chart-repo-add)
+  - [chart repo remove](#chart-repo-remove)
+  - [chart repo update](#chart-repo-update)
+  - [chart repo login](#chart-repo-login)
+  - [chart repo logout](#chart-repo-logout)
   - [chart ts init](#chart-ts-init)
   - [chart ts build](#chart-ts-build)
-  - [repo add](#repo-add)
-  - [repo remove](#repo-remove)
-  - [repo update](#repo-update)
-  - [repo login](#repo-login)
-  - [repo logout](#repo-logout)
   - [completion bash](#completion-bash)
   - [completion fish](#completion-fish)
   - [completion powershell](#completion-powershell)
   - [completion zsh](#completion-zsh)
   - [version](#version)
 - [Feature Gates](#feature-gates)
-  - [NELM_FEAT_REMOTE_CHARTS](#nelm_feat_remote_charts)
-  - [NELM_FEAT_NATIVE_RELEASE_LIST](#nelm_feat_native_release_list)
   - [NELM_FEAT_PERIODIC_STACK_TRACES](#nelm_feat_periodic_stack_traces)
-  - [NELM_FEAT_NATIVE_RELEASE_UNINSTALL](#nelm_feat_native_release_uninstall)
-  - [NELM_FEAT_FIELD_SENSITIVE](#nelm_feat_field_sensitive)
-  - [NELM_FEAT_PREVIEW_V2](#nelm_feat_preview_v2)
-  - [NELM_FEAT_CLEAN_NULL_FIELDS](#nelm_feat_clean_null_fields)
-  - [NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN](#nelm_feat_more_detailed_exit_code_for_plan)
-  - [NELM_FEAT_RESOURCE_VALIDATION](#nelm_feat_resource_validation)
   - [NELM_FEAT_TYPESCRIPT](#nelm_feat_typescript)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -67,8 +59,8 @@
 - [`nelm release rollback`](#release-rollback) — Rollback to a previously deployed release\.
 - [`nelm release plan install`](#release-plan-install) — Plan a release install to Kubernetes\.
 - [`nelm release uninstall`](#release-uninstall) — Uninstall a Helm Release from Kubernetes\.
-- [`nelm release list`](#release-list) — List all releases in a namespace\.
 - [`nelm release history`](#release-history) — Show release history\.
+- [`nelm release list`](#release-list) — List all deployed releases\.
 - [`nelm release get`](#release-get) — Get information about a deployed release\.
 - [`nelm release plan show`](#release-plan-show) — Show plan artifact planned changes\.
 
@@ -96,18 +88,18 @@
 - [`nelm chart dependency download`](#chart-dependency-download) — Download chart dependencies from Chart\.lock\.
 - [`nelm chart dependency update`](#chart-dependency-update) — Update Chart\.lock and download chart dependencies\.
 
+### Repo commands
+
+- [`nelm chart repo add`](#chart-repo-add) — Set up a new chart repository\.
+- [`nelm chart repo remove`](#chart-repo-remove) — Remove a chart repository\.
+- [`nelm chart repo update`](#chart-repo-update) — Update info about available charts for all chart repositories\.
+- [`nelm chart repo login`](#chart-repo-login) — Log in to an OCI registry with charts\.
+- [`nelm chart repo logout`](#chart-repo-logout) — Log out from an OCI registry with charts\.
+
 ### TypeScript commands
 
 - [`nelm chart ts init`](#chart-ts-init) — Initialize the files needed to render manifests using TypeScript\.
 - [`nelm chart ts build`](#chart-ts-build) — Build TypeScript chart\.
-
-### Repo commands
-
-- [`nelm repo add`](#repo-add) — Set up a new chart repository\.
-- [`nelm repo remove`](#repo-remove) — Remove a chart repository\.
-- [`nelm repo update`](#repo-update) — Update info about available charts for all chart repositories\.
-- [`nelm repo login`](#repo-login) — Log in to an OCI registry with charts\.
-- [`nelm repo logout`](#repo-logout) — Log out from an OCI registry with charts\.
 
 ### Other commands
 
@@ -126,7 +118,7 @@ Deploy a chart to Kubernetes\.
 **Usage:**
 
 ```shell
-nelm release install [options...] -n namespace -r release [chart-dir]
+nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]
 ```
 
 **Options:**
@@ -135,7 +127,11 @@ nelm release install [options...] -n namespace -r release [chart-dir]
 
   Automatically rollback the release on failure\. Var: \$NELM\_RELEASE\_INSTALL\_AUTO\_ROLLBACK
 
-- `--delete-propagation` (default: `"Foreground"`)
+- `--chart-version` (default: `""`)
+
+  Choose a remote chart version, otherwise the latest version is used\. Vars: \$NELM\_CHART\_VERSION, \$NELM\_RELEASE\_INSTALL\_CHART\_VERSION
+
+- `--delete-propagation` (default: `"Background"`)
 
   Default delete propagation strategy\. Vars: \$NELM\_DELETE\_PROPAGATION, \$NELM\_RELEASE\_INSTALL\_DELETE\_PROPAGATION
 
@@ -191,10 +187,6 @@ nelm release install [options...] -n namespace -r release [chart-dir]
 
   Save the install report to a file\. Var: \$NELM\_RELEASE\_INSTALL\_SAVE\_REPORT\_TO
 
-- `--save-rollback-graph-to` (default: `""`)
-
-  Save the Graphviz rollback graph to a file\. Var: \$NELM\_RELEASE\_INSTALL\_SAVE\_ROLLBACK\_GRAPH\_TO
-
 - `--show-subchart-notes` (default: `false`)
 
   Show NOTES\.txt of subcharts after the release\. Var: \$NELM\_RELEASE\_INSTALL\_SHOW\_SUBCHART\_NOTES
@@ -238,10 +230,6 @@ nelm release install [options...] -n namespace -r release [chart-dir]
 
   Set new keys in the global context \(\$\), where the key is the value path and the value is JSON\. This is meant to be generated inside the program, so use \-\-set\-json instead, unless you know what you are doing\. Vars: \$NELM\_SET\_ROOT\_JSON, \$NELM\_RELEASE\_INSTALL\_SET\_ROOT\_JSON
 
-- `--set-runtime-json` (default: `[]`)
-
-  Set new keys in \$\.Runtime, where the key is the value path and the value is JSON\. This is meant to be generated inside the program, so use \-\-set\-json instead, unless you know what you are doing\. Vars: \$NELM\_SET\_RUNTIME\_JSON, \$NELM\_RELEASE\_INSTALL\_SET\_RUNTIME\_JSON
-
 - `--set-string` (default: `[]`)
 
   Set new values, where the key is the value path and the value is the value\. The value will always become a string\. Vars: \$NELM\_SET\_STRING, \$NELM\_RELEASE\_INSTALL\_SET\_STRING
@@ -270,6 +258,41 @@ nelm release install [options...] -n namespace -r release [chart-dir]
   Secret values files paths\. Vars: \$NELM\_SECRET\_VALUES, \$NELM\_RELEASE\_INSTALL\_SECRET\_VALUES
 
 
+**Resource validation options:**
+
+- `--local-resource-validation` (default: `false`)
+
+  Do not use external json schema sources\. Vars: \$NELM\_LOCAL\_RESOURCE\_VALIDATION, \$NELM\_RELEASE\_INSTALL\_LOCAL\_RESOURCE\_VALIDATION
+
+- `--no-resource-validation` (default: `false`)
+
+  Disable resource validation\. Vars: \$NELM\_NO\_RESOURCE\_VALIDATION, \$NELM\_RELEASE\_INSTALL\_NO\_RESOURCE\_VALIDATION
+
+- `--no-values-schema-validation` (default: `false`)
+
+  Disable values validation against JSON schema\. Vars: \$NELM\_NO\_VALUES\_SCHEMA\_VALIDATION, \$NELM\_RELEASE\_INSTALL\_NO\_VALUES\_SCHEMA\_VALIDATION
+
+- `--resource-validation-cache-lifetime` (default: `48h0m0s`)
+
+  How long local schema cache will be valid\. Vars: \$NELM\_RESOURCE\_VALIDATION\_CACHE\_LIFETIME, \$NELM\_RELEASE\_INSTALL\_RESOURCE\_VALIDATION\_CACHE\_LIFETIME
+
+- `--resource-validation-extra-schema` (default: `[]`)
+
+  Extra json schema sources to validate resources \(preferred over default sources\)\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Vars: \$NELM\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*, \$NELM\_RELEASE\_INSTALL\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*
+
+- `--resource-validation-kube-version` (default: `"1.35.0"`)
+
+  Kubernetes schemas version to use during resource validation\. Vars: \$NELM\_RESOURCE\_VALIDATION\_KUBE\_VERSION, \$NELM\_RELEASE\_INSTALL\_RESOURCE\_VALIDATION\_KUBE\_VERSION
+
+- `--resource-validation-schema` (default: `[https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json,https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json]`)
+
+  Default json schema sources to validate resources\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Vars: \$NELM\_RESOURCE\_VALIDATION\_SCHEMA\_\*, \$NELM\_RELEASE\_INSTALL\_RESOURCE\_VALIDATION\_SCHEMA\_\*
+
+- `--resource-validation-skip` (default: `[]`)
+
+  Skip resource validation for resources with specified attributes\. Format: key1=value1,key2=value2\. Supported keys: group, version, kind, name, namespace\. Example: kind=Deployment,name=my\-app\. Vars: \$NELM\_RESOURCE\_VALIDATION\_SKIP, \$NELM\_RELEASE\_INSTALL\_RESOURCE\_VALIDATION\_SKIP
+
+
 **Patch options:**
 
 - `--annotations` (default: `{}`)
@@ -283,6 +306,14 @@ nelm release install [options...] -n namespace -r release [chart-dir]
 - `--labels` (default: `{}`)
 
   Add labels to all resources\. Vars: \$NELM\_LABELS\_\*, \$NELM\_RELEASE\_INSTALL\_LABELS\_\*
+
+- `--no-default-patches` (default: `false`)
+
+  Ignore patches\.yaml of the top\-level chart and subcharts\. Vars: \$NELM\_NO\_DEFAULT\_PATCHES, \$NELM\_RELEASE\_INSTALL\_NO\_DEFAULT\_PATCHES
+
+- `--patches` (default: `[]`)
+
+  Additional patches files \(diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_INSTALL\_PATCHES
 
 - `--runtime-annotations` (default: `{}`)
 
@@ -369,6 +400,10 @@ nelm release install [options...] -n namespace -r release [chart-dir]
 
   Set URL of chart repo to be used to look for chart\. Vars: \$NELM\_CHART\_REPO\_URL, \$NELM\_RELEASE\_INSTALL\_CHART\_REPO\_URL
 
+- `--docker-config` (default: `"~/.docker"`)
+
+  Docker config directory path\. Vars: \$DOCKER\_CONFIG, \$NELM\_DOCKER\_CONFIG, \$NELM\_RELEASE\_INSTALL\_DOCKER\_CONFIG
+
 - `--insecure-chart-repos` (default: `false`)
 
   Allow insecure HTTP connections to chart repository\. Vars: \$NELM\_INSECURE\_CHART\_REPOS, \$NELM\_RELEASE\_INSTALL\_INSECURE\_CHART\_REPOS
@@ -381,7 +416,7 @@ nelm release install [options...] -n namespace -r release [chart-dir]
 
   Don't verify TLS certificates of chart repository\. Vars: \$NELM\_NO\_VERIFY\_CHART\_REPOS\_TLS, \$NELM\_RELEASE\_INSTALL\_NO\_VERIFY\_CHART\_REPOS\_TLS
 
-- `--oci-chart-repos-creds` (default: `"~/.docker/config.json"`)
+- `--oci-chart-repos-creds` (default: `""`)
 
   Credentials to access OCI chart repositories\. Vars: \$NELM\_OCI\_CHART\_REPOS\_CREDS, \$NELM\_RELEASE\_INSTALL\_OCI\_CHART\_REPOS\_CREDS
 
@@ -543,7 +578,7 @@ nelm release rollback [options...] -n namespace -r release [revision]
 
 **Options:**
 
-- `--delete-propagation` (default: `"Foreground"`)
+- `--delete-propagation` (default: `"Background"`)
 
   Default delete propagation strategy\. Vars: \$NELM\_DELETE\_PROPAGATION, \$NELM\_RELEASE\_ROLLBACK\_DELETE\_PROPAGATION
 
@@ -583,16 +618,55 @@ nelm release rollback [options...] -n namespace -r release [revision]
 
   Save the rollback report to a file\. Var: \$NELM\_RELEASE\_ROLLBACK\_SAVE\_REPORT\_TO
 
-- `--save-rollback-graph-to` (default: `""`)
-
-  Save the Graphviz rollback graph to a file\. Var: \$NELM\_RELEASE\_ROLLBACK\_SAVE\_ROLLBACK\_GRAPH\_TO
-
 - `--timeout` (default: `0s`)
 
   Fail if not finished in time\. Vars: \$NELM\_TIMEOUT, \$NELM\_RELEASE\_ROLLBACK\_TIMEOUT
 
 
+**Resource validation options:**
+
+- `--local-resource-validation` (default: `false`)
+
+  Do not use external json schema sources\. Vars: \$NELM\_LOCAL\_RESOURCE\_VALIDATION, \$NELM\_RELEASE\_ROLLBACK\_LOCAL\_RESOURCE\_VALIDATION
+
+- `--no-resource-validation` (default: `false`)
+
+  Disable resource validation\. Vars: \$NELM\_NO\_RESOURCE\_VALIDATION, \$NELM\_RELEASE\_ROLLBACK\_NO\_RESOURCE\_VALIDATION
+
+- `--no-values-schema-validation` (default: `false`)
+
+  Disable values validation against JSON schema\. Vars: \$NELM\_NO\_VALUES\_SCHEMA\_VALIDATION, \$NELM\_RELEASE\_ROLLBACK\_NO\_VALUES\_SCHEMA\_VALIDATION
+
+- `--resource-validation-cache-lifetime` (default: `48h0m0s`)
+
+  How long local schema cache will be valid\. Vars: \$NELM\_RESOURCE\_VALIDATION\_CACHE\_LIFETIME, \$NELM\_RELEASE\_ROLLBACK\_RESOURCE\_VALIDATION\_CACHE\_LIFETIME
+
+- `--resource-validation-extra-schema` (default: `[]`)
+
+  Extra json schema sources to validate resources \(preferred over default sources\)\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Vars: \$NELM\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*, \$NELM\_RELEASE\_ROLLBACK\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*
+
+- `--resource-validation-kube-version` (default: `"1.35.0"`)
+
+  Kubernetes schemas version to use during resource validation\. Vars: \$NELM\_RESOURCE\_VALIDATION\_KUBE\_VERSION, \$NELM\_RELEASE\_ROLLBACK\_RESOURCE\_VALIDATION\_KUBE\_VERSION
+
+- `--resource-validation-schema` (default: `[https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json,https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json]`)
+
+  Default json schema sources to validate resources\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Vars: \$NELM\_RESOURCE\_VALIDATION\_SCHEMA\_\*, \$NELM\_RELEASE\_ROLLBACK\_RESOURCE\_VALIDATION\_SCHEMA\_\*
+
+- `--resource-validation-skip` (default: `[]`)
+
+  Skip resource validation for resources with specified attributes\. Format: key1=value1,key2=value2\. Supported keys: group, version, kind, name, namespace\. Example: kind=Deployment,name=my\-app\. Vars: \$NELM\_RESOURCE\_VALIDATION\_SKIP, \$NELM\_RELEASE\_ROLLBACK\_RESOURCE\_VALIDATION\_SKIP
+
+
 **Patch options:**
+
+- `--no-default-patches` (default: `false`)
+
+  Ignore patches\.yaml of the top\-level chart and subcharts\. Vars: \$NELM\_NO\_DEFAULT\_PATCHES, \$NELM\_RELEASE\_ROLLBACK\_NO\_DEFAULT\_PATCHES
+
+- `--patches` (default: `[]`)
+
+  Additional patches files \(diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_ROLLBACK\_PATCHES
 
 - `--runtime-annotations` (default: `{}`)
 
@@ -786,12 +860,16 @@ Plan a release install to Kubernetes\.
 **Usage:**
 
 ```shell
-nelm release plan install [options...] -n namespace -r release [chart-dir]
+nelm release plan install [options...] -n namespace -r release [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]
 ```
 
 **Options:**
 
-- `--delete-propagation` (default: `"Foreground"`)
+- `--chart-version` (default: `""`)
+
+  Choose a remote chart version, otherwise the latest version is used\. Vars: \$NELM\_CHART\_VERSION, \$NELM\_RELEASE\_PLAN\_INSTALL\_CHART\_VERSION
+
+- `--delete-propagation` (default: `"Background"`)
 
   Default delete propagation strategy\. Vars: \$NELM\_DELETE\_PROPAGATION, \$NELM\_RELEASE\_PLAN\_INSTALL\_DELETE\_PROPAGATION
 
@@ -801,7 +879,7 @@ nelm release plan install [options...] -n namespace -r release [chart-dir]
 
 - `--exit-code` (default: `false`)
 
-  Return exit code 0 if no changes, 1 if error, 2 if any changes planned\. Var: \$NELM\_RELEASE\_PLAN\_INSTALL\_EXIT\_CODE
+  Return exit code 0 if no changes, 1 if error, 2 if resource changes planned, 3 if no resource changes planned, but release still should be installed\. Var: \$NELM\_RELEASE\_PLAN\_INSTALL\_EXIT\_CODE
 
 - `--force-adoption` (default: `false`)
 
@@ -859,10 +937,6 @@ nelm release plan install [options...] -n namespace -r release [chart-dir]
 
   Show verbose CRD diff lines\. Var: \$NELM\_RELEASE\_PLAN\_INSTALL\_SHOW\_VERBOSE\_CRD\_DIFFS
 
-- `--show-verbose-diffs` (default: `true`)
-
-  Show verbose diff lines\. Var: \$NELM\_RELEASE\_PLAN\_INSTALL\_SHOW\_VERBOSE\_DIFFS
-
 - `--templates-allow-dns` (default: `false`)
 
   Allow performing DNS requests in templating\. Vars: \$NELM\_TEMPLATES\_ALLOW\_DNS, \$NELM\_RELEASE\_PLAN\_INSTALL\_TEMPLATES\_ALLOW\_DNS
@@ -898,10 +972,6 @@ nelm release plan install [options...] -n namespace -r release [chart-dir]
 
   Set new keys in the global context \(\$\), where the key is the value path and the value is JSON\. This is meant to be generated inside the program, so use \-\-set\-json instead, unless you know what you are doing\. Vars: \$NELM\_SET\_ROOT\_JSON, \$NELM\_RELEASE\_PLAN\_INSTALL\_SET\_ROOT\_JSON
 
-- `--set-runtime-json` (default: `[]`)
-
-  Set new keys in \$\.Runtime, where the key is the value path and the value is JSON\. This is meant to be generated inside the program, so use \-\-set\-json instead, unless you know what you are doing\. Vars: \$NELM\_SET\_RUNTIME\_JSON, \$NELM\_RELEASE\_PLAN\_INSTALL\_SET\_RUNTIME\_JSON
-
 - `--set-string` (default: `[]`)
 
   Set new values, where the key is the value path and the value is the value\. The value will always become a string\. Vars: \$NELM\_SET\_STRING, \$NELM\_RELEASE\_PLAN\_INSTALL\_SET\_STRING
@@ -930,6 +1000,41 @@ nelm release plan install [options...] -n namespace -r release [chart-dir]
   Secret values files paths\. Vars: \$NELM\_SECRET\_VALUES, \$NELM\_RELEASE\_PLAN\_INSTALL\_SECRET\_VALUES
 
 
+**Resource validation options:**
+
+- `--local-resource-validation` (default: `false`)
+
+  Do not use external json schema sources\. Vars: \$NELM\_LOCAL\_RESOURCE\_VALIDATION, \$NELM\_RELEASE\_PLAN\_INSTALL\_LOCAL\_RESOURCE\_VALIDATION
+
+- `--no-resource-validation` (default: `false`)
+
+  Disable resource validation\. Vars: \$NELM\_NO\_RESOURCE\_VALIDATION, \$NELM\_RELEASE\_PLAN\_INSTALL\_NO\_RESOURCE\_VALIDATION
+
+- `--no-values-schema-validation` (default: `false`)
+
+  Disable values validation against JSON schema\. Vars: \$NELM\_NO\_VALUES\_SCHEMA\_VALIDATION, \$NELM\_RELEASE\_PLAN\_INSTALL\_NO\_VALUES\_SCHEMA\_VALIDATION
+
+- `--resource-validation-cache-lifetime` (default: `48h0m0s`)
+
+  How long local schema cache will be valid\. Vars: \$NELM\_RESOURCE\_VALIDATION\_CACHE\_LIFETIME, \$NELM\_RELEASE\_PLAN\_INSTALL\_RESOURCE\_VALIDATION\_CACHE\_LIFETIME
+
+- `--resource-validation-extra-schema` (default: `[]`)
+
+  Extra json schema sources to validate resources \(preferred over default sources\)\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Vars: \$NELM\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*, \$NELM\_RELEASE\_PLAN\_INSTALL\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*
+
+- `--resource-validation-kube-version` (default: `"1.35.0"`)
+
+  Kubernetes schemas version to use during resource validation\. Vars: \$NELM\_RESOURCE\_VALIDATION\_KUBE\_VERSION, \$NELM\_RELEASE\_PLAN\_INSTALL\_RESOURCE\_VALIDATION\_KUBE\_VERSION
+
+- `--resource-validation-schema` (default: `[https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json,https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json]`)
+
+  Default json schema sources to validate resources\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Vars: \$NELM\_RESOURCE\_VALIDATION\_SCHEMA\_\*, \$NELM\_RELEASE\_PLAN\_INSTALL\_RESOURCE\_VALIDATION\_SCHEMA\_\*
+
+- `--resource-validation-skip` (default: `[]`)
+
+  Skip resource validation for resources with specified attributes\. Format: key1=value1,key2=value2\. Supported keys: group, version, kind, name, namespace\. Example: kind=Deployment,name=my\-app\. Vars: \$NELM\_RESOURCE\_VALIDATION\_SKIP, \$NELM\_RELEASE\_PLAN\_INSTALL\_RESOURCE\_VALIDATION\_SKIP
+
+
 **Patch options:**
 
 - `--annotations` (default: `{}`)
@@ -943,6 +1048,14 @@ nelm release plan install [options...] -n namespace -r release [chart-dir]
 - `--labels` (default: `{}`)
 
   Add labels to all resources\. Vars: \$NELM\_LABELS\_\*, \$NELM\_RELEASE\_PLAN\_INSTALL\_LABELS\_\*
+
+- `--no-default-patches` (default: `false`)
+
+  Ignore patches\.yaml of the top\-level chart and subcharts\. Vars: \$NELM\_NO\_DEFAULT\_PATCHES, \$NELM\_RELEASE\_PLAN\_INSTALL\_NO\_DEFAULT\_PATCHES
+
+- `--patches` (default: `[]`)
+
+  Additional patches files \(diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_PLAN\_INSTALL\_PATCHES
 
 - `--runtime-annotations` (default: `{}`)
 
@@ -1005,6 +1118,10 @@ nelm release plan install [options...] -n namespace -r release [chart-dir]
 
   Set URL of chart repo to be used to look for chart\. Vars: \$NELM\_CHART\_REPO\_URL, \$NELM\_RELEASE\_PLAN\_INSTALL\_CHART\_REPO\_URL
 
+- `--docker-config` (default: `"~/.docker"`)
+
+  Docker config directory path\. Vars: \$DOCKER\_CONFIG, \$NELM\_DOCKER\_CONFIG, \$NELM\_RELEASE\_PLAN\_INSTALL\_DOCKER\_CONFIG
+
 - `--insecure-chart-repos` (default: `false`)
 
   Allow insecure HTTP connections to chart repository\. Vars: \$NELM\_INSECURE\_CHART\_REPOS, \$NELM\_RELEASE\_PLAN\_INSTALL\_INSECURE\_CHART\_REPOS
@@ -1017,7 +1134,7 @@ nelm release plan install [options...] -n namespace -r release [chart-dir]
 
   Don't verify TLS certificates of chart repository\. Vars: \$NELM\_NO\_VERIFY\_CHART\_REPOS\_TLS, \$NELM\_RELEASE\_PLAN\_INSTALL\_NO\_VERIFY\_CHART\_REPOS\_TLS
 
-- `--oci-chart-repos-creds` (default: `"~/.docker/config.json"`)
+- `--oci-chart-repos-creds` (default: `""`)
 
   Credentials to access OCI chart repositories\. Vars: \$NELM\_OCI\_CHART\_REPOS\_CREDS, \$NELM\_RELEASE\_PLAN\_INSTALL\_OCI\_CHART\_REPOS\_CREDS
 
@@ -1179,21 +1296,44 @@ nelm release uninstall [options...] -n namespace -r release
 
   Delete the release namespace\. Var: \$NELM\_RELEASE\_UNINSTALL\_DELETE\_NAMESPACE
 
+- `--delete-propagation` (default: `"Background"`)
+
+  Default delete propagation strategy\. Vars: \$NELM\_DELETE\_PROPAGATION, \$NELM\_RELEASE\_UNINSTALL\_DELETE\_PROPAGATION
+
 - `-n`, `--namespace` (default: `""`)
 
   The release namespace\. Resources with no namespace will be deployed here\. Vars: \$NELM\_NAMESPACE, \$NELM\_RELEASE\_UNINSTALL\_NAMESPACE
 
-- `--no-delete-hooks` (default: `false`)
+- `--no-remove-manual-changes` (default: `false`)
 
-  Do not remove release hooks\. Var: \$NELM\_RELEASE\_UNINSTALL\_NO\_DELETE\_HOOKS
+  Don't remove fields added manually to the resource in the cluster if fields aren't present in the manifest\. Vars: \$NELM\_NO\_REMOVE\_MANUAL\_CHANGES, \$NELM\_RELEASE\_UNINSTALL\_NO\_REMOVE\_MANUAL\_CHANGES
 
 - `-r`, `--release` (default: `""`)
 
   The release name\. Must be unique within the release namespace\. Vars: \$NELM\_RELEASE, \$NELM\_RELEASE\_UNINSTALL\_RELEASE
 
+- `--save-graph-to` (default: `""`)
+
+  Save the Graphviz uninstall graph to a file\. Var: \$NELM\_RELEASE\_UNINSTALL\_SAVE\_GRAPH\_TO
+
+- `--save-report-to` (default: `""`)
+
+  Save the uninstall report to a file\. Var: \$NELM\_RELEASE\_UNINSTALL\_SAVE\_REPORT\_TO
+
 - `--timeout` (default: `0s`)
 
   Fail if not finished in time\. Vars: \$NELM\_TIMEOUT, \$NELM\_RELEASE\_UNINSTALL\_TIMEOUT
+
+
+**Patch options:**
+
+- `--no-default-patches` (default: `false`)
+
+  Ignore patches\.yaml of the top\-level chart and subcharts\. Vars: \$NELM\_NO\_DEFAULT\_PATCHES, \$NELM\_RELEASE\_UNINSTALL\_NO\_DEFAULT\_PATCHES
+
+- `--patches` (default: `[]`)
+
+  Additional patches files \(diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_UNINSTALL\_PATCHES
 
 
 **Progress options:**
@@ -1363,6 +1503,176 @@ nelm release uninstall [options...] -n namespace -r release
 
   How releases should be stored\. Var: \$NELM\_RELEASE\_STORAGE
 
+- `--release-storage-sql-connection` (default: `""`)
+
+  SQL connection string for MySQL release storage driver\. Var: \$NELM\_RELEASE\_STORAGE\_SQL\_CONNECTION
+
+- `--temp-dir` (default: `""`)
+
+  The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
+
+
+### release history
+
+Show release history\.
+
+**Usage:**
+
+```shell
+nelm release history [options...] -n namespace -r release 
+```
+
+**Options:**
+
+- `-n`, `--namespace` (default: `""`)
+
+  The release namespace\. Resources with no namespace will be deployed here\. Vars: \$NELM\_NAMESPACE, \$NELM\_RELEASE\_HISTORY\_NAMESPACE
+
+- `-r`, `--release` (default: `""`)
+
+  The release name\. Must be unique within the release namespace\. Vars: \$NELM\_RELEASE, \$NELM\_RELEASE\_HISTORY\_RELEASE
+
+- `--revisions-limit` (default: `0`)
+
+  Maximum number of revisions to show\. 0 means no limit\. Vars: \$NELM\_REVISIONS\_LIMIT, \$NELM\_RELEASE\_HISTORY\_REVISIONS\_LIMIT
+
+
+**Kubernetes connection options:**
+
+- `--kube-api-server` (default: `""`)
+
+  Kubernetes API server address\. Vars: \$NELM\_KUBE\_API\_SERVER, \$NELM\_RELEASE\_HISTORY\_KUBE\_API\_SERVER
+
+- `--kube-api-server-tls-name` (default: `""`)
+
+  Server name for Kubernetes API TLS validation, if different from the hostname of Kubernetes API server\. Vars: \$NELM\_KUBE\_API\_SERVER\_TLS\_NAME, \$NELM\_RELEASE\_HISTORY\_KUBE\_API\_SERVER\_TLS\_NAME
+
+- `--kube-auth-password` (default: `""`)
+
+  Basic auth password for Kubernetes API\. Vars: \$NELM\_KUBE\_AUTH\_PASSWORD, \$NELM\_RELEASE\_HISTORY\_KUBE\_AUTH\_PASSWORD
+
+- `--kube-auth-provider` (default: `""`)
+
+  Auth provider name for authentication in Kubernetes\. Vars: \$NELM\_KUBE\_AUTH\_PROVIDER, \$NELM\_RELEASE\_HISTORY\_KUBE\_AUTH\_PROVIDER
+
+- `--kube-auth-provider-config` (default: `{}`)
+
+  Auth provider config for authentication in Kubernetes API\. Vars: \$NELM\_KUBE\_AUTH\_PROVIDER\_CONFIG, \$NELM\_RELEASE\_HISTORY\_KUBE\_AUTH\_PROVIDER\_CONFIG
+
+- `--kube-auth-username` (default: `""`)
+
+  Basic auth username for Kubernetes API\. Vars: \$NELM\_KUBE\_AUTH\_USERNAME, \$NELM\_RELEASE\_HISTORY\_KUBE\_AUTH\_USERNAME
+
+- `--kube-ca` (default: `""`)
+
+  Path to Kubernetes API server TLS CA file\. Vars: \$NELM\_KUBE\_CA, \$NELM\_RELEASE\_HISTORY\_KUBE\_CA
+
+- `--kube-ca-data` (default: `""`)
+
+  Pass Kubernetes API server TLS CA data\. Vars: \$NELM\_KUBE\_CA\_DATA, \$NELM\_RELEASE\_HISTORY\_KUBE\_CA\_DATA
+
+- `--kube-cert` (default: `""`)
+
+  Path to PEM\-encoded TLS client cert for connecting to Kubernetes API\. Vars: \$NELM\_KUBE\_CERT, \$NELM\_RELEASE\_HISTORY\_KUBE\_CERT
+
+- `--kube-cert-data` (default: `""`)
+
+  Pass PEM\-encoded TLS client cert for connecting to Kubernetes API\. Vars: \$NELM\_KUBE\_CERT\_DATA, \$NELM\_RELEASE\_HISTORY\_KUBE\_CERT\_DATA
+
+- `--kube-config` (default: `[]`)
+
+  Kubeconfig path\(s\)\. If multiple specified, their contents are merged\. Vars: \$KUBECONFIG, \$NELM\_KUBE\_CONFIG\_\*, \$NELM\_RELEASE\_HISTORY\_KUBE\_CONFIG\_\*
+
+- `--kube-config-base64` (default: `""`)
+
+  Pass Kubeconfig file content encoded as base64\. Vars: \$NELM\_KUBE\_CONFIG\_BASE\_64, \$NELM\_RELEASE\_HISTORY\_KUBE\_CONFIG\_BASE\_64
+
+- `--kube-context` (default: `""`)
+
+  Use specified Kubeconfig context\. Vars: \$NELM\_KUBE\_CONTEXT, \$NELM\_RELEASE\_HISTORY\_KUBE\_CONTEXT
+
+- `--kube-context-cluster` (default: `""`)
+
+  Use cluster from Kubeconfig for current context\. Vars: \$NELM\_KUBE\_CONTEXT\_CLUSTER, \$NELM\_RELEASE\_HISTORY\_KUBE\_CONTEXT\_CLUSTER
+
+- `--kube-context-user` (default: `""`)
+
+  Use user from Kubeconfig for current context\. Vars: \$NELM\_KUBE\_CONTEXT\_USER, \$NELM\_RELEASE\_HISTORY\_KUBE\_CONTEXT\_USER
+
+- `--kube-impersonate-group` (default: `[]`)
+
+  Sets Impersonate\-Group headers when authenticating in Kubernetes\. Vars: \$NELM\_KUBE\_IMPERSONATE\_GROUP, \$NELM\_RELEASE\_HISTORY\_KUBE\_IMPERSONATE\_GROUP
+
+- `--kube-impersonate-uid` (default: `""`)
+
+  Sets Impersonate\-Uid header when authenticating in Kubernetes\. Vars: \$NELM\_KUBE\_IMPERSONATE\_UID, \$NELM\_RELEASE\_HISTORY\_KUBE\_IMPERSONATE\_UID
+
+- `--kube-impersonate-user` (default: `""`)
+
+  Sets Impersonate\-User header when authenticating in Kubernetes\. Vars: \$NELM\_KUBE\_IMPERSONATE\_USER, \$NELM\_RELEASE\_HISTORY\_KUBE\_IMPERSONATE\_USER
+
+- `--kube-key` (default: `""`)
+
+  Path to PEM\-encoded TLS client key for connecting to Kubernetes API\. Vars: \$NELM\_KUBE\_KEY, \$NELM\_RELEASE\_HISTORY\_KUBE\_KEY
+
+- `--kube-key-data` (default: `""`)
+
+  Pass PEM\-encoded TLS client key for connecting to Kubernetes API\. Vars: \$NELM\_KUBE\_KEY\_DATA, \$NELM\_RELEASE\_HISTORY\_KUBE\_KEY\_DATA
+
+- `--kube-proxy-url` (default: `""`)
+
+  Proxy URL to use for proxying all requests to Kubernetes API\. Vars: \$NELM\_KUBE\_PROXY\_URL, \$NELM\_RELEASE\_HISTORY\_KUBE\_PROXY\_URL
+
+- `--kube-request-timeout` (default: `0s`)
+
+  Timeout for all requests to Kubernetes API\. Vars: \$NELM\_KUBE\_REQUEST\_TIMEOUT, \$NELM\_RELEASE\_HISTORY\_KUBE\_REQUEST\_TIMEOUT
+
+- `--kube-token` (default: `""`)
+
+  Bearer token for authentication in Kubernetes\. Vars: \$NELM\_KUBE\_TOKEN, \$NELM\_RELEASE\_HISTORY\_KUBE\_TOKEN
+
+- `--kube-token-path` (default: `""`)
+
+  Path to file with bearer token for authentication in Kubernetes\. Vars: \$NELM\_KUBE\_TOKEN\_PATH, \$NELM\_RELEASE\_HISTORY\_KUBE\_TOKEN\_PATH
+
+- `--no-verify-kube-tls` (default: `false`)
+
+  Don't verify TLS certificates of Kubernetes API\. Vars: \$NELM\_NO\_VERIFY\_KUBE\_TLS, \$NELM\_RELEASE\_HISTORY\_NO\_VERIFY\_KUBE\_TLS
+
+
+**Performance options:**
+
+- `--kube-burst-limit` (default: `100`)
+
+  Burst limit for requests to Kubernetes\. Vars: \$NELM\_KUBE\_BURST\_LIMIT, \$NELM\_RELEASE\_HISTORY\_KUBE\_BURST\_LIMIT
+
+- `--kube-qps-limit` (default: `30`)
+
+  Queries Per Second limit for requests to Kubernetes\. Vars: \$NELM\_KUBE\_QPS\_LIMIT, \$NELM\_RELEASE\_HISTORY\_KUBE\_QPS\_LIMIT
+
+
+**Other options:**
+
+- `--color-mode` (default: `"auto"`)
+
+  Color mode for logs\. Allowed: auto, off, on\. Vars: \$NELM\_COLOR\_MODE, \$NELM\_RELEASE\_HISTORY\_COLOR\_MODE
+
+- `--log-level` (default: `"error"`)
+
+  Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_RELEASE\_HISTORY\_LOG\_LEVEL
+
+- `--output-format` (default: `"table"`)
+
+  Result output format\. Vars: \$NELM\_OUTPUT\_FORMAT, \$NELM\_RELEASE\_HISTORY\_OUTPUT\_FORMAT
+
+- `--release-storage` (default: `""`)
+
+  How releases should be stored\. Var: \$NELM\_RELEASE\_STORAGE
+
+- `--release-storage-sql-connection` (default: `""`)
+
+  SQL connection string for MySQL release storage driver\. Var: \$NELM\_RELEASE\_STORAGE\_SQL\_CONNECTION
+
 - `--temp-dir` (default: `""`)
 
   The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
@@ -1370,275 +1680,164 @@ nelm release uninstall [options...] -n namespace -r release
 
 ### release list
 
-
-This command lists all of the releases for a specified namespace \(uses current namespace context if namespace not specified\)\.
-
-By default, it lists only releases that are deployed or failed\. Flags like
-'\-\-uninstalled' and '\-\-all' will alter this behavior\. Such flags can be combined:
-'\-\-uninstalled \-\-failed'\.
-
-By default, items are sorted alphabetically\. Use the '\-d' flag to sort by
-release date\.
-
-If the \-\-filter flag is provided, it will be treated as a filter\. Filters are
-regular expressions \(Perl compatible\) that are applied to the list of releases\.
-Only items that match the filter will be returned\.
-
-    $ helm list --filter 'ara[a-z]+'
-    NAME                UPDATED                                  CHART
-    maudlin-arachnid    2020-06-18 14:17:46.125134977 +0000 UTC  alpine-0.1.0
-
-If no results are found, 'helm list' will exit 0, but with no output \(or in
-the case of no '\-q' flag, only headers\)\.
-
-By default, up to 256 items may be returned\. To limit this, use the '\-\-max' flag\.
-Setting '\-\-max' to 0 will not return all results\. Rather, it will return the
-server's default, which may be much higher than 256\. Pairing the '\-\-max'
-flag with the '\-\-offset' flag allows you to page through results\.
-
+List all deployed releases\.
 
 **Usage:**
 
 ```shell
-nelm release list [flags]
+nelm release list [options...] [-n namespace]
 ```
 
-**Other options:**
-
-- `-a`, `--all` (default: `false`)
-
-  show all releases without any filter applied
-
-- `-A`, `--all-namespaces` (default: `false`)
-
-  list releases across all namespaces
-
-- `--burst-limit` (default: `100`)
-
-  client\-side default throttling limit
-
-- `-d`, `--date` (default: `false`)
-
-  sort by release date
-
-- `--debug` (default: `false`)
-
-  enable verbose output
-
-- `--deployed` (default: `false`)
-
-  show deployed releases\. If no other is specified, this will be automatically enabled
-
-- `--failed` (default: `false`)
-
-  show failed releases
-
-- `-f`, `--filter` (default: `""`)
-
-  a regular expression \(Perl compatible\)\. Any releases that match the expression will be included in the results
-
-- `--kube-apiserver` (default: `""`)
-
-  the address and the port for the Kubernetes API server
-
-- `--kube-as-group` (default: `[]`)
-
-  group to impersonate for the operation, this flag can be repeated to specify multiple groups\.
-
-- `--kube-as-user` (default: `""`)
-
-  username to impersonate for the operation
-
-- `--kube-ca-file` (default: `""`)
-
-  the certificate authority file for the Kubernetes API server connection
-
-- `--kube-context` (default: `""`)
-
-  name of the kubeconfig context to use
-
-- `--kube-insecure-skip-tls-verify` (default: `false`)
-
-  if true, the Kubernetes API server's certificate will not be checked for validity\. This will make your HTTPS connections insecure
-
-- `--kube-tls-server-name` (default: `""`)
-
-  server name to use for Kubernetes API server certificate validation\. If it is not provided, the hostname used to contact the server is used
-
-- `--kube-token` (default: `""`)
-
-  bearer token used for authentication
-
-- `--kubeconfig` (default: `""`)
-
-  path to the kubeconfig file
-
-- `-m`, `--max` (default: `256`)
-
-  maximum number of releases to fetch
+**Options:**
 
 - `-n`, `--namespace` (default: `""`)
 
-  namespace scope for this request
-
-- `--no-headers` (default: `false`)
-
-  don't print headers when using the default output format
-
-- `--offset` (default: `0`)
-
-  next release index in the list, used to offset from start value
-
-- `-o`, `--output` (default: `table`)
-
-  prints the output in the specified format\. Allowed values: table, json, yaml
-
-- `--pending` (default: `false`)
-
-  show pending releases
-
-- `--qps` (default: `0`)
-
-  queries per second used when communicating with the Kubernetes API, not including bursting
-
-- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
-
-  path to the registry config file
-
-- `--repository-cache` (default: `"~/.cache/helm/repository"`)
-
-  path to the file containing cached repository indexes
-
-- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
-
-  path to the file containing repository names and URLs
-
-- `-r`, `--reverse` (default: `false`)
-
-  reverse the sort order
-
-- `-l`, `--selector` (default: `""`)
-
-  Selector \(label query\) to filter on, supports '=', '==', and '\!='\.\(e\.g\. \-l key1=value1,key2=value2\)\. Works only for secret\(default\) and configmap storage backends\.
-
-- `-q`, `--short` (default: `false`)
-
-  output short \(quiet\) listing format
-
-- `--superseded` (default: `false`)
-
-  show superseded releases
-
-- `--time-format` (default: `""`)
-
-  format time using golang time formatter\. Example: \-\-time\-format "2006\-01\-02 15:04:05Z0700"
-
-- `--uninstalled` (default: `false`)
-
-  show uninstalled releases \(if 'helm uninstall \-\-keep\-history' was used\)
-
-- `--uninstalling` (default: `false`)
-
-  show releases that are currently being uninstalled
+  The release namespace\. Query all namespaces if not specified\. Vars: \$NELM\_NAMESPACE, \$NELM\_RELEASE\_LIST\_NAMESPACE
 
 
-### release history
+**Kubernetes connection options:**
 
+- `--kube-api-server` (default: `""`)
 
-History prints historical revisions for a given release\.
+  Kubernetes API server address\. Vars: \$NELM\_KUBE\_API\_SERVER, \$NELM\_RELEASE\_LIST\_KUBE\_API\_SERVER
 
-A default maximum of 256 revisions will be returned\. Setting '\-\-max'
-configures the maximum length of the revision list returned\.
+- `--kube-api-server-tls-name` (default: `""`)
 
-The historical release set is printed as a formatted table, e\.g:
+  Server name for Kubernetes API TLS validation, if different from the hostname of Kubernetes API server\. Vars: \$NELM\_KUBE\_API\_SERVER\_TLS\_NAME, \$NELM\_RELEASE\_LIST\_KUBE\_API\_SERVER\_TLS\_NAME
 
-    $ helm history angry-bird
-    REVISION    UPDATED                     STATUS          CHART             APP VERSION     DESCRIPTION
-    1           Mon Oct 3 10:15:13 2016     superseded      alpine-0.1.0      1.0             Initial install
-    2           Mon Oct 3 10:15:13 2016     superseded      alpine-0.1.0      1.0             Upgraded successfully
-    3           Mon Oct 3 10:15:13 2016     superseded      alpine-0.1.0      1.0             Rolled back to 2
-    4           Mon Oct 3 10:15:13 2016     deployed        alpine-0.1.0      1.0             Upgraded successfully
+- `--kube-auth-password` (default: `""`)
 
+  Basic auth password for Kubernetes API\. Vars: \$NELM\_KUBE\_AUTH\_PASSWORD, \$NELM\_RELEASE\_LIST\_KUBE\_AUTH\_PASSWORD
 
-**Usage:**
+- `--kube-auth-provider` (default: `""`)
 
-```shell
-nelm release history RELEASE_NAME [flags]
-```
+  Auth provider name for authentication in Kubernetes\. Vars: \$NELM\_KUBE\_AUTH\_PROVIDER, \$NELM\_RELEASE\_LIST\_KUBE\_AUTH\_PROVIDER
 
-**Other options:**
+- `--kube-auth-provider-config` (default: `{}`)
 
-- `--burst-limit` (default: `100`)
+  Auth provider config for authentication in Kubernetes API\. Vars: \$NELM\_KUBE\_AUTH\_PROVIDER\_CONFIG, \$NELM\_RELEASE\_LIST\_KUBE\_AUTH\_PROVIDER\_CONFIG
 
-  client\-side default throttling limit
+- `--kube-auth-username` (default: `""`)
 
-- `--debug` (default: `false`)
+  Basic auth username for Kubernetes API\. Vars: \$NELM\_KUBE\_AUTH\_USERNAME, \$NELM\_RELEASE\_LIST\_KUBE\_AUTH\_USERNAME
 
-  enable verbose output
+- `--kube-ca` (default: `""`)
 
-- `--kube-apiserver` (default: `""`)
+  Path to Kubernetes API server TLS CA file\. Vars: \$NELM\_KUBE\_CA, \$NELM\_RELEASE\_LIST\_KUBE\_CA
 
-  the address and the port for the Kubernetes API server
+- `--kube-ca-data` (default: `""`)
 
-- `--kube-as-group` (default: `[]`)
+  Pass Kubernetes API server TLS CA data\. Vars: \$NELM\_KUBE\_CA\_DATA, \$NELM\_RELEASE\_LIST\_KUBE\_CA\_DATA
 
-  group to impersonate for the operation, this flag can be repeated to specify multiple groups\.
+- `--kube-cert` (default: `""`)
 
-- `--kube-as-user` (default: `""`)
+  Path to PEM\-encoded TLS client cert for connecting to Kubernetes API\. Vars: \$NELM\_KUBE\_CERT, \$NELM\_RELEASE\_LIST\_KUBE\_CERT
 
-  username to impersonate for the operation
+- `--kube-cert-data` (default: `""`)
 
-- `--kube-ca-file` (default: `""`)
+  Pass PEM\-encoded TLS client cert for connecting to Kubernetes API\. Vars: \$NELM\_KUBE\_CERT\_DATA, \$NELM\_RELEASE\_LIST\_KUBE\_CERT\_DATA
 
-  the certificate authority file for the Kubernetes API server connection
+- `--kube-config` (default: `[]`)
+
+  Kubeconfig path\(s\)\. If multiple specified, their contents are merged\. Vars: \$KUBECONFIG, \$NELM\_KUBE\_CONFIG\_\*, \$NELM\_RELEASE\_LIST\_KUBE\_CONFIG\_\*
+
+- `--kube-config-base64` (default: `""`)
+
+  Pass Kubeconfig file content encoded as base64\. Vars: \$NELM\_KUBE\_CONFIG\_BASE\_64, \$NELM\_RELEASE\_LIST\_KUBE\_CONFIG\_BASE\_64
 
 - `--kube-context` (default: `""`)
 
-  name of the kubeconfig context to use
+  Use specified Kubeconfig context\. Vars: \$NELM\_KUBE\_CONTEXT, \$NELM\_RELEASE\_LIST\_KUBE\_CONTEXT
 
-- `--kube-insecure-skip-tls-verify` (default: `false`)
+- `--kube-context-cluster` (default: `""`)
 
-  if true, the Kubernetes API server's certificate will not be checked for validity\. This will make your HTTPS connections insecure
+  Use cluster from Kubeconfig for current context\. Vars: \$NELM\_KUBE\_CONTEXT\_CLUSTER, \$NELM\_RELEASE\_LIST\_KUBE\_CONTEXT\_CLUSTER
 
-- `--kube-tls-server-name` (default: `""`)
+- `--kube-context-user` (default: `""`)
 
-  server name to use for Kubernetes API server certificate validation\. If it is not provided, the hostname used to contact the server is used
+  Use user from Kubeconfig for current context\. Vars: \$NELM\_KUBE\_CONTEXT\_USER, \$NELM\_RELEASE\_LIST\_KUBE\_CONTEXT\_USER
+
+- `--kube-impersonate-group` (default: `[]`)
+
+  Sets Impersonate\-Group headers when authenticating in Kubernetes\. Vars: \$NELM\_KUBE\_IMPERSONATE\_GROUP, \$NELM\_RELEASE\_LIST\_KUBE\_IMPERSONATE\_GROUP
+
+- `--kube-impersonate-uid` (default: `""`)
+
+  Sets Impersonate\-Uid header when authenticating in Kubernetes\. Vars: \$NELM\_KUBE\_IMPERSONATE\_UID, \$NELM\_RELEASE\_LIST\_KUBE\_IMPERSONATE\_UID
+
+- `--kube-impersonate-user` (default: `""`)
+
+  Sets Impersonate\-User header when authenticating in Kubernetes\. Vars: \$NELM\_KUBE\_IMPERSONATE\_USER, \$NELM\_RELEASE\_LIST\_KUBE\_IMPERSONATE\_USER
+
+- `--kube-key` (default: `""`)
+
+  Path to PEM\-encoded TLS client key for connecting to Kubernetes API\. Vars: \$NELM\_KUBE\_KEY, \$NELM\_RELEASE\_LIST\_KUBE\_KEY
+
+- `--kube-key-data` (default: `""`)
+
+  Pass PEM\-encoded TLS client key for connecting to Kubernetes API\. Vars: \$NELM\_KUBE\_KEY\_DATA, \$NELM\_RELEASE\_LIST\_KUBE\_KEY\_DATA
+
+- `--kube-proxy-url` (default: `""`)
+
+  Proxy URL to use for proxying all requests to Kubernetes API\. Vars: \$NELM\_KUBE\_PROXY\_URL, \$NELM\_RELEASE\_LIST\_KUBE\_PROXY\_URL
+
+- `--kube-request-timeout` (default: `0s`)
+
+  Timeout for all requests to Kubernetes API\. Vars: \$NELM\_KUBE\_REQUEST\_TIMEOUT, \$NELM\_RELEASE\_LIST\_KUBE\_REQUEST\_TIMEOUT
 
 - `--kube-token` (default: `""`)
 
-  bearer token used for authentication
+  Bearer token for authentication in Kubernetes\. Vars: \$NELM\_KUBE\_TOKEN, \$NELM\_RELEASE\_LIST\_KUBE\_TOKEN
 
-- `--kubeconfig` (default: `""`)
+- `--kube-token-path` (default: `""`)
 
-  path to the kubeconfig file
+  Path to file with bearer token for authentication in Kubernetes\. Vars: \$NELM\_KUBE\_TOKEN\_PATH, \$NELM\_RELEASE\_LIST\_KUBE\_TOKEN\_PATH
 
-- `--max` (default: `256`)
+- `--no-verify-kube-tls` (default: `false`)
 
-  maximum number of revision to include in history
+  Don't verify TLS certificates of Kubernetes API\. Vars: \$NELM\_NO\_VERIFY\_KUBE\_TLS, \$NELM\_RELEASE\_LIST\_NO\_VERIFY\_KUBE\_TLS
 
-- `-n`, `--namespace` (default: `""`)
 
-  namespace scope for this request
+**Performance options:**
 
-- `-o`, `--output` (default: `table`)
+- `--kube-burst-limit` (default: `100`)
 
-  prints the output in the specified format\. Allowed values: table, json, yaml
+  Burst limit for requests to Kubernetes\. Vars: \$NELM\_KUBE\_BURST\_LIMIT, \$NELM\_RELEASE\_LIST\_KUBE\_BURST\_LIMIT
 
-- `--qps` (default: `0`)
+- `--kube-qps-limit` (default: `30`)
 
-  queries per second used when communicating with the Kubernetes API, not including bursting
+  Queries Per Second limit for requests to Kubernetes\. Vars: \$NELM\_KUBE\_QPS\_LIMIT, \$NELM\_RELEASE\_LIST\_KUBE\_QPS\_LIMIT
 
-- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
+- `--network-parallelism` (default: `30`)
 
-  path to the registry config file
+  Limit of network\-related tasks to run in parallel\. Vars: \$NELM\_NETWORK\_PARALLELISM, \$NELM\_RELEASE\_LIST\_NETWORK\_PARALLELISM
 
-- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
-  path to the file containing cached repository indexes
+**Other options:**
 
-- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
+- `--color-mode` (default: `"auto"`)
 
-  path to the file containing repository names and URLs
+  Color mode for logs\. Allowed: auto, off, on\. Vars: \$NELM\_COLOR\_MODE, \$NELM\_RELEASE\_LIST\_COLOR\_MODE
+
+- `--log-level` (default: `"error"`)
+
+  Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_RELEASE\_LIST\_LOG\_LEVEL
+
+- `--output-format` (default: `"table"`)
+
+  Result output format\. Vars: \$NELM\_OUTPUT\_FORMAT, \$NELM\_RELEASE\_LIST\_OUTPUT\_FORMAT
+
+- `--release-storage` (default: `""`)
+
+  How releases should be stored\. Var: \$NELM\_RELEASE\_STORAGE
+
+- `--release-storage-sql-connection` (default: `""`)
+
+  SQL connection string for MySQL release storage driver\. Var: \$NELM\_RELEASE\_STORAGE\_SQL\_CONNECTION
+
+- `--temp-dir` (default: `""`)
+
+  The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
 
 
 ### release get
@@ -1843,10 +2042,6 @@ nelm release plan show [options...] plan.json
 
   Show verbose CRD diff lines\. Var: \$NELM\_RELEASE\_PLAN\_SHOW\_SHOW\_VERBOSE\_CRD\_DIFFS
 
-- `--show-verbose-diffs` (default: `true`)
-
-  Show verbose diff lines\. Var: \$NELM\_RELEASE\_PLAN\_SHOW\_SHOW\_VERBOSE\_DIFFS
-
 
 **Other options:**
 
@@ -1870,12 +2065,16 @@ Lint a chart\.
 **Usage:**
 
 ```shell
-nelm chart lint [options...] [chart-dir]
+nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]
 ```
 
 **Options:**
 
-- `--delete-propagation` (default: `"Foreground"`)
+- `--chart-version` (default: `""`)
+
+  Choose a remote chart version, otherwise the latest version is used\. Vars: \$NELM\_CHART\_VERSION, \$NELM\_CHART\_LINT\_CHART\_VERSION
+
+- `--delete-propagation` (default: `"Background"`)
 
   Default delete propagation strategy\. Vars: \$NELM\_DELETE\_PROPAGATION, \$NELM\_CHART\_LINT\_DELETE\_PROPAGATION
 
@@ -1887,7 +2086,7 @@ nelm chart lint [options...] [chart-dir]
 
   Always adopt resources, even if they belong to a different Helm release\. Vars: \$NELM\_FORCE\_ADOPTION, \$NELM\_CHART\_LINT\_FORCE\_ADOPTION
 
-- `--kube-version` (default: `"1.20.0"`)
+- `--kube-version` (default: `"1.36.0"`)
 
   Kubernetes version stub for non\-remote mode\. Var: \$NELM\_CHART\_LINT\_KUBE\_VERSION
 
@@ -1946,10 +2145,6 @@ nelm chart lint [options...] [chart-dir]
 
   Set new keys in the global context \(\$\), where the key is the value path and the value is JSON\. This is meant to be generated inside the program, so use \-\-set\-json instead, unless you know what you are doing\. Vars: \$NELM\_SET\_ROOT\_JSON, \$NELM\_CHART\_LINT\_SET\_ROOT\_JSON
 
-- `--set-runtime-json` (default: `[]`)
-
-  Set new keys in \$\.Runtime, where the key is the value path and the value is JSON\. This is meant to be generated inside the program, so use \-\-set\-json instead, unless you know what you are doing\. Vars: \$NELM\_SET\_RUNTIME\_JSON, \$NELM\_CHART\_LINT\_SET\_RUNTIME\_JSON
-
 - `--set-string` (default: `[]`)
 
   Set new values, where the key is the value path and the value is the value\. The value will always become a string\. Vars: \$NELM\_SET\_STRING, \$NELM\_CHART\_LINT\_SET\_STRING
@@ -1976,6 +2171,41 @@ nelm chart lint [options...] [chart-dir]
 - `--secret-values` (default: `[]`)
 
   Secret values files paths\. Vars: \$NELM\_SECRET\_VALUES, \$NELM\_CHART\_LINT\_SECRET\_VALUES
+
+
+**Resource validation options:**
+
+- `--local-resource-validation` (default: `false`)
+
+  Do not use external json schema sources\. Vars: \$NELM\_LOCAL\_RESOURCE\_VALIDATION, \$NELM\_CHART\_LINT\_LOCAL\_RESOURCE\_VALIDATION
+
+- `--no-resource-validation` (default: `false`)
+
+  Disable resource validation\. Vars: \$NELM\_NO\_RESOURCE\_VALIDATION, \$NELM\_CHART\_LINT\_NO\_RESOURCE\_VALIDATION
+
+- `--no-values-schema-validation` (default: `false`)
+
+  Disable values validation against JSON schema\. Vars: \$NELM\_NO\_VALUES\_SCHEMA\_VALIDATION, \$NELM\_CHART\_LINT\_NO\_VALUES\_SCHEMA\_VALIDATION
+
+- `--resource-validation-cache-lifetime` (default: `48h0m0s`)
+
+  How long local schema cache will be valid\. Vars: \$NELM\_RESOURCE\_VALIDATION\_CACHE\_LIFETIME, \$NELM\_CHART\_LINT\_RESOURCE\_VALIDATION\_CACHE\_LIFETIME
+
+- `--resource-validation-extra-schema` (default: `[]`)
+
+  Extra json schema sources to validate resources \(preferred over default sources\)\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Vars: \$NELM\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*, \$NELM\_CHART\_LINT\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*
+
+- `--resource-validation-kube-version` (default: `"1.35.0"`)
+
+  Kubernetes schemas version to use during resource validation\. Vars: \$NELM\_RESOURCE\_VALIDATION\_KUBE\_VERSION, \$NELM\_CHART\_LINT\_RESOURCE\_VALIDATION\_KUBE\_VERSION
+
+- `--resource-validation-schema` (default: `[https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json,https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json]`)
+
+  Default json schema sources to validate resources\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Vars: \$NELM\_RESOURCE\_VALIDATION\_SCHEMA\_\*, \$NELM\_CHART\_LINT\_RESOURCE\_VALIDATION\_SCHEMA\_\*
+
+- `--resource-validation-skip` (default: `[]`)
+
+  Skip resource validation for resources with specified attributes\. Format: key1=value1,key2=value2\. Supported keys: group, version, kind, name, namespace\. Example: kind=Deployment,name=my\-app\. Vars: \$NELM\_RESOURCE\_VALIDATION\_SKIP, \$NELM\_CHART\_LINT\_RESOURCE\_VALIDATION\_SKIP
 
 
 **Patch options:**
@@ -2053,6 +2283,10 @@ nelm chart lint [options...] [chart-dir]
 
   Set URL of chart repo to be used to look for chart\. Vars: \$NELM\_CHART\_REPO\_URL, \$NELM\_CHART\_LINT\_CHART\_REPO\_URL
 
+- `--docker-config` (default: `"~/.docker"`)
+
+  Docker config directory path\. Vars: \$DOCKER\_CONFIG, \$NELM\_DOCKER\_CONFIG, \$NELM\_CHART\_LINT\_DOCKER\_CONFIG
+
 - `--insecure-chart-repos` (default: `false`)
 
   Allow insecure HTTP connections to chart repository\. Vars: \$NELM\_INSECURE\_CHART\_REPOS, \$NELM\_CHART\_LINT\_INSECURE\_CHART\_REPOS
@@ -2065,7 +2299,7 @@ nelm chart lint [options...] [chart-dir]
 
   Don't verify TLS certificates of chart repository\. Vars: \$NELM\_NO\_VERIFY\_CHART\_REPOS\_TLS, \$NELM\_CHART\_LINT\_NO\_VERIFY\_CHART\_REPOS\_TLS
 
-- `--oci-chart-repos-creds` (default: `"~/.docker/config.json"`)
+- `--oci-chart-repos-creds` (default: `""`)
 
   Credentials to access OCI chart repositories\. Vars: \$NELM\_OCI\_CHART\_REPOS\_CREDS, \$NELM\_CHART\_LINT\_OCI\_CHART\_REPOS\_CREDS
 
@@ -2218,20 +2452,20 @@ Render a chart\.
 **Usage:**
 
 ```shell
-nelm chart render [options...] [chart-dir]
+nelm chart render [options...] [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]
 ```
 
 **Options:**
+
+- `--chart-version` (default: `""`)
+
+  Choose a remote chart version, otherwise the latest version is used\. Vars: \$NELM\_CHART\_VERSION, \$NELM\_CHART\_RENDER\_CHART\_VERSION
 
 - `--extra-apiversions` (default: `[]`)
 
   Extra Kubernetes API versions passed to \$\.Capabilities\.APIVersions\. Vars: \$NELM\_EXTRA\_APIVERSIONS\_\*, \$NELM\_CHART\_RENDER\_EXTRA\_APIVERSIONS\_\*
 
-- `--force-adoption` (default: `false`)
-
-  Always adopt resources, even if they belong to a different Helm release\. Vars: \$NELM\_FORCE\_ADOPTION, \$NELM\_CHART\_RENDER\_FORCE\_ADOPTION
-
-- `--kube-version` (default: `"1.20.0"`)
+- `--kube-version` (default: `"1.36.0"`)
 
   Kubernetes version stub for non\-remote mode\. Var: \$NELM\_CHART\_RENDER\_KUBE\_VERSION
 
@@ -2297,10 +2531,6 @@ nelm chart render [options...] [chart-dir]
 - `--set-root-json` (default: `[]`)
 
   Set new keys in the global context \(\$\), where the key is the value path and the value is JSON\. This is meant to be generated inside the program, so use \-\-set\-json instead, unless you know what you are doing\. Vars: \$NELM\_SET\_ROOT\_JSON, \$NELM\_CHART\_RENDER\_SET\_ROOT\_JSON
-
-- `--set-runtime-json` (default: `[]`)
-
-  Set new keys in \$\.Runtime, where the key is the value path and the value is JSON\. This is meant to be generated inside the program, so use \-\-set\-json instead, unless you know what you are doing\. Vars: \$NELM\_SET\_RUNTIME\_JSON, \$NELM\_CHART\_RENDER\_SET\_RUNTIME\_JSON
 
 - `--set-string` (default: `[]`)
 
@@ -2394,6 +2624,10 @@ nelm chart render [options...] [chart-dir]
 
   Set URL of chart repo to be used to look for chart\. Vars: \$NELM\_CHART\_REPO\_URL, \$NELM\_CHART\_RENDER\_CHART\_REPO\_URL
 
+- `--docker-config` (default: `"~/.docker"`)
+
+  Docker config directory path\. Vars: \$DOCKER\_CONFIG, \$NELM\_DOCKER\_CONFIG, \$NELM\_CHART\_RENDER\_DOCKER\_CONFIG
+
 - `--insecure-chart-repos` (default: `false`)
 
   Allow insecure HTTP connections to chart repository\. Vars: \$NELM\_INSECURE\_CHART\_REPOS, \$NELM\_CHART\_RENDER\_INSECURE\_CHART\_REPOS
@@ -2406,7 +2640,7 @@ nelm chart render [options...] [chart-dir]
 
   Don't verify TLS certificates of chart repository\. Vars: \$NELM\_NO\_VERIFY\_CHART\_REPOS\_TLS, \$NELM\_CHART\_RENDER\_NO\_VERIFY\_CHART\_REPOS\_TLS
 
-- `--oci-chart-repos-creds` (default: `"~/.docker/config.json"`)
+- `--oci-chart-repos-creds` (default: `""`)
 
   Credentials to access OCI chart repositories\. Vars: \$NELM\_OCI\_CHART\_REPOS\_CREDS, \$NELM\_CHART\_RENDER\_OCI\_CHART\_REPOS\_CREDS
 
@@ -2589,6 +2823,18 @@ nelm chart download [chart URL | repo/chartname] [...] [flags]
 
   identify HTTPS client using this SSL certificate file
 
+- `--color` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--colour` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--content-cache` (default: `"~/.cache/helm/content"`)
+
+  path to the directory containing cached content \(e\.g\. charts\)
+
 - `--debug` (default: `false`)
 
   enable verbose output
@@ -2683,7 +2929,7 @@ nelm chart download [chart URL | repo/chartname] [...] [flags]
 
 - `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
-  path to the file containing cached repository indexes
+  path to the directory containing cached repository indexes
 
 - `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
@@ -2739,6 +2985,18 @@ nelm chart upload [archive] [remote] [flags]
 
   identify registry client using this SSL certificate file
 
+- `--color` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--colour` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--content-cache` (default: `"~/.cache/helm/content"`)
+
+  path to the directory containing cached content \(e\.g\. charts\)
+
 - `--debug` (default: `false`)
 
   enable verbose output
@@ -2791,6 +3049,10 @@ nelm chart upload [archive] [remote] [flags]
 
   namespace scope for this request
 
+- `--password` (default: `""`)
+
+  chart repository password where to locate the requested chart
+
 - `--plain-http` (default: `false`)
 
   use insecure HTTP connections for the chart upload
@@ -2805,11 +3067,15 @@ nelm chart upload [archive] [remote] [flags]
 
 - `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
-  path to the file containing cached repository indexes
+  path to the directory containing cached repository indexes
 
 - `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
+
+- `--username` (default: `""`)
+
+  chart repository username where to locate the requested chart
 
 
 ### chart pack
@@ -2853,6 +3119,26 @@ nelm chart pack [CHART_PATH] [...] [flags]
 
   client\-side default throttling limit
 
+- `--ca-file` (default: `""`)
+
+  verify certificates of HTTPS\-enabled servers using this CA bundle
+
+- `--cert-file` (default: `""`)
+
+  identify HTTPS client using this SSL certificate file
+
+- `--color` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--colour` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--content-cache` (default: `"~/.cache/helm/content"`)
+
+  path to the directory containing cached content \(e\.g\. charts\)
+
 - `--debug` (default: `false`)
 
   enable verbose output
@@ -2865,9 +3151,17 @@ nelm chart pack [CHART_PATH] [...] [flags]
 
   location to write the chart\.
 
+- `--insecure-skip-tls-verify` (default: `false`)
+
+  skip tls certificate checks for the chart download
+
 - `--key` (default: `""`)
 
   name of the key to use when signing\. Used if \-\-sign is true
+
+- `--key-file` (default: `""`)
+
+  identify HTTPS client using this SSL key file
 
 - `--keyring` (default: `"~/.gnupg/pubring.gpg"`)
 
@@ -2917,6 +3211,14 @@ nelm chart pack [CHART_PATH] [...] [flags]
 
   location of a file which contains the passphrase for the signing key\. Use "\-" in order to read from stdin\.
 
+- `--password` (default: `""`)
+
+  chart repository password where to locate the requested chart
+
+- `--plain-http` (default: `false`)
+
+  use insecure HTTP connections for the chart download
+
 - `--qps` (default: `0`)
 
   queries per second used when communicating with the Kubernetes API, not including bursting
@@ -2927,7 +3229,7 @@ nelm chart pack [CHART_PATH] [...] [flags]
 
 - `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
-  path to the file containing cached repository indexes
+  path to the directory containing cached repository indexes
 
 - `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
@@ -2936,6 +3238,10 @@ nelm chart pack [CHART_PATH] [...] [flags]
 - `--sign` (default: `false`)
 
   use a PGP private key to sign this package
+
+- `--username` (default: `""`)
+
+  chart repository username where to locate the requested chart
 
 - `--version` (default: `""`)
 
@@ -3231,9 +3537,37 @@ nelm chart dependency download CHART [flags]
 
   client\-side default throttling limit
 
+- `--ca-file` (default: `""`)
+
+  verify certificates of HTTPS\-enabled servers using this CA bundle
+
+- `--cert-file` (default: `""`)
+
+  identify HTTPS client using this SSL certificate file
+
+- `--color` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--colour` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--content-cache` (default: `"~/.cache/helm/content"`)
+
+  path to the directory containing cached content \(e\.g\. charts\)
+
 - `--debug` (default: `false`)
 
   enable verbose output
+
+- `--insecure-skip-tls-verify` (default: `false`)
+
+  skip tls certificate checks for the chart download
+
+- `--key-file` (default: `""`)
+
+  identify HTTPS client using this SSL key file
 
 - `--keyring` (default: `"~/.gnupg/pubring.gpg"`)
 
@@ -3279,6 +3613,14 @@ nelm chart dependency download CHART [flags]
 
   namespace scope for this request
 
+- `--password` (default: `""`)
+
+  chart repository password where to locate the requested chart
+
+- `--plain-http` (default: `false`)
+
+  use insecure HTTP connections for the chart download
+
 - `--qps` (default: `0`)
 
   queries per second used when communicating with the Kubernetes API, not including bursting
@@ -3289,7 +3631,7 @@ nelm chart dependency download CHART [flags]
 
 - `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
-  path to the file containing cached repository indexes
+  path to the directory containing cached repository indexes
 
 - `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
@@ -3298,6 +3640,10 @@ nelm chart dependency download CHART [flags]
 - `--skip-refresh` (default: `false`)
 
   do not refresh the local repository cache
+
+- `--username` (default: `""`)
+
+  chart repository username where to locate the requested chart
 
 - `--verify` (default: `false`)
 
@@ -3333,13 +3679,283 @@ nelm chart dependency update CHART [flags]
 
   client\-side default throttling limit
 
+- `--ca-file` (default: `""`)
+
+  verify certificates of HTTPS\-enabled servers using this CA bundle
+
+- `--cert-file` (default: `""`)
+
+  identify HTTPS client using this SSL certificate file
+
+- `--color` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--colour` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--content-cache` (default: `"~/.cache/helm/content"`)
+
+  path to the directory containing cached content \(e\.g\. charts\)
+
 - `--debug` (default: `false`)
 
   enable verbose output
 
+- `--insecure-skip-tls-verify` (default: `false`)
+
+  skip tls certificate checks for the chart download
+
+- `--key-file` (default: `""`)
+
+  identify HTTPS client using this SSL key file
+
 - `--keyring` (default: `"~/.gnupg/pubring.gpg"`)
 
   keyring containing public keys
+
+- `--kube-apiserver` (default: `""`)
+
+  the address and the port for the Kubernetes API server
+
+- `--kube-as-group` (default: `[]`)
+
+  group to impersonate for the operation, this flag can be repeated to specify multiple groups\.
+
+- `--kube-as-user` (default: `""`)
+
+  username to impersonate for the operation
+
+- `--kube-ca-file` (default: `""`)
+
+  the certificate authority file for the Kubernetes API server connection
+
+- `--kube-context` (default: `""`)
+
+  name of the kubeconfig context to use
+
+- `--kube-insecure-skip-tls-verify` (default: `false`)
+
+  if true, the Kubernetes API server's certificate will not be checked for validity\. This will make your HTTPS connections insecure
+
+- `--kube-tls-server-name` (default: `""`)
+
+  server name to use for Kubernetes API server certificate validation\. If it is not provided, the hostname used to contact the server is used
+
+- `--kube-token` (default: `""`)
+
+  bearer token used for authentication
+
+- `--kubeconfig` (default: `""`)
+
+  path to the kubeconfig file
+
+- `-n`, `--namespace` (default: `""`)
+
+  namespace scope for this request
+
+- `--password` (default: `""`)
+
+  chart repository password where to locate the requested chart
+
+- `--plain-http` (default: `false`)
+
+  use insecure HTTP connections for the chart download
+
+- `--qps` (default: `0`)
+
+  queries per second used when communicating with the Kubernetes API, not including bursting
+
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
+
+  path to the registry config file
+
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
+
+  path to the directory containing cached repository indexes
+
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
+
+  path to the file containing repository names and URLs
+
+- `--skip-refresh` (default: `false`)
+
+  do not refresh the local repository cache
+
+- `--username` (default: `""`)
+
+  chart repository username where to locate the requested chart
+
+- `--verify` (default: `false`)
+
+  verify the packages against signatures
+
+
+### chart repo add
+
+Set up a new chart repository\.
+
+**Usage:**
+
+```shell
+nelm chart repo add [NAME] [URL] [flags]
+```
+
+**Other options:**
+
+- `--allow-deprecated-repos` (default: `false`)
+
+  by default, this command will not allow adding official repos that have been permanently deleted\. This disables that behavior
+
+- `--burst-limit` (default: `100`)
+
+  client\-side default throttling limit
+
+- `--ca-file` (default: `""`)
+
+  verify certificates of HTTPS\-enabled servers using this CA bundle
+
+- `--cert-file` (default: `""`)
+
+  identify HTTPS client using this SSL certificate file
+
+- `--color` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--colour` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--content-cache` (default: `"~/.cache/helm/content"`)
+
+  path to the directory containing cached content \(e\.g\. charts\)
+
+- `--debug` (default: `false`)
+
+  enable verbose output
+
+- `--force-update` (default: `false`)
+
+  replace \(overwrite\) the repo if it already exists
+
+- `--insecure-skip-tls-verify` (default: `false`)
+
+  skip tls certificate checks for the repository
+
+- `--key-file` (default: `""`)
+
+  identify HTTPS client using this SSL key file
+
+- `--kube-apiserver` (default: `""`)
+
+  the address and the port for the Kubernetes API server
+
+- `--kube-as-group` (default: `[]`)
+
+  group to impersonate for the operation, this flag can be repeated to specify multiple groups\.
+
+- `--kube-as-user` (default: `""`)
+
+  username to impersonate for the operation
+
+- `--kube-ca-file` (default: `""`)
+
+  the certificate authority file for the Kubernetes API server connection
+
+- `--kube-context` (default: `""`)
+
+  name of the kubeconfig context to use
+
+- `--kube-insecure-skip-tls-verify` (default: `false`)
+
+  if true, the Kubernetes API server's certificate will not be checked for validity\. This will make your HTTPS connections insecure
+
+- `--kube-tls-server-name` (default: `""`)
+
+  server name to use for Kubernetes API server certificate validation\. If it is not provided, the hostname used to contact the server is used
+
+- `--kube-token` (default: `""`)
+
+  bearer token used for authentication
+
+- `--kubeconfig` (default: `""`)
+
+  path to the kubeconfig file
+
+- `-n`, `--namespace` (default: `""`)
+
+  namespace scope for this request
+
+- `--pass-credentials` (default: `false`)
+
+  pass credentials to all domains
+
+- `--password` (default: `""`)
+
+  chart repository password
+
+- `--password-stdin` (default: `false`)
+
+  read chart repository password from stdin
+
+- `--qps` (default: `0`)
+
+  queries per second used when communicating with the Kubernetes API, not including bursting
+
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
+
+  path to the registry config file
+
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
+
+  path to the directory containing cached repository indexes
+
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
+
+  path to the file containing repository names and URLs
+
+- `--timeout` (default: `2m0s`)
+
+  time to wait for the index file download to complete
+
+- `--username` (default: `""`)
+
+  chart repository username
+
+
+### chart repo remove
+
+Remove a chart repository\.
+
+**Usage:**
+
+```shell
+nelm chart repo remove [REPO1 [REPO2 ...]] [flags]
+```
+
+**Other options:**
+
+- `--burst-limit` (default: `100`)
+
+  client\-side default throttling limit
+
+- `--color` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--colour` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--content-cache` (default: `"~/.cache/helm/content"`)
+
+  path to the directory containing cached content \(e\.g\. charts\)
+
+- `--debug` (default: `false`)
+
+  enable verbose output
 
 - `--kube-apiserver` (default: `""`)
 
@@ -3391,19 +4007,314 @@ nelm chart dependency update CHART [flags]
 
 - `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
-  path to the file containing cached repository indexes
+  path to the directory containing cached repository indexes
 
 - `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
 
   path to the file containing repository names and URLs
 
-- `--skip-refresh` (default: `false`)
 
-  do not refresh the local repository cache
+### chart repo update
 
-- `--verify` (default: `false`)
+Update info about available charts for all chart repositories\.
 
-  verify the packages against signatures
+**Usage:**
+
+```shell
+nelm chart repo update [REPO1 [REPO2 ...]] [flags]
+```
+
+**Other options:**
+
+- `--burst-limit` (default: `100`)
+
+  client\-side default throttling limit
+
+- `--color` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--colour` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--content-cache` (default: `"~/.cache/helm/content"`)
+
+  path to the directory containing cached content \(e\.g\. charts\)
+
+- `--debug` (default: `false`)
+
+  enable verbose output
+
+- `--kube-apiserver` (default: `""`)
+
+  the address and the port for the Kubernetes API server
+
+- `--kube-as-group` (default: `[]`)
+
+  group to impersonate for the operation, this flag can be repeated to specify multiple groups\.
+
+- `--kube-as-user` (default: `""`)
+
+  username to impersonate for the operation
+
+- `--kube-ca-file` (default: `""`)
+
+  the certificate authority file for the Kubernetes API server connection
+
+- `--kube-context` (default: `""`)
+
+  name of the kubeconfig context to use
+
+- `--kube-insecure-skip-tls-verify` (default: `false`)
+
+  if true, the Kubernetes API server's certificate will not be checked for validity\. This will make your HTTPS connections insecure
+
+- `--kube-tls-server-name` (default: `""`)
+
+  server name to use for Kubernetes API server certificate validation\. If it is not provided, the hostname used to contact the server is used
+
+- `--kube-token` (default: `""`)
+
+  bearer token used for authentication
+
+- `--kubeconfig` (default: `""`)
+
+  path to the kubeconfig file
+
+- `-n`, `--namespace` (default: `""`)
+
+  namespace scope for this request
+
+- `--qps` (default: `0`)
+
+  queries per second used when communicating with the Kubernetes API, not including bursting
+
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
+
+  path to the registry config file
+
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
+
+  path to the directory containing cached repository indexes
+
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
+
+  path to the file containing repository names and URLs
+
+- `--timeout` (default: `2m0s`)
+
+  time to wait for the index file download to complete
+
+
+### chart repo login
+
+Log in to an OCI registry with charts\.
+
+**Usage:**
+
+```shell
+nelm chart repo login [host] [flags]
+```
+
+**Other options:**
+
+- `--burst-limit` (default: `100`)
+
+  client\-side default throttling limit
+
+- `--ca-file` (default: `""`)
+
+  verify certificates of HTTPS\-enabled servers using this CA bundle
+
+- `--cert-file` (default: `""`)
+
+  identify registry client using this SSL certificate file
+
+- `--color` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--colour` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--content-cache` (default: `"~/.cache/helm/content"`)
+
+  path to the directory containing cached content \(e\.g\. charts\)
+
+- `--debug` (default: `false`)
+
+  enable verbose output
+
+- `--insecure` (default: `false`)
+
+  allow connections to TLS registry without certs
+
+- `--key-file` (default: `""`)
+
+  identify registry client using this SSL key file
+
+- `--kube-apiserver` (default: `""`)
+
+  the address and the port for the Kubernetes API server
+
+- `--kube-as-group` (default: `[]`)
+
+  group to impersonate for the operation, this flag can be repeated to specify multiple groups\.
+
+- `--kube-as-user` (default: `""`)
+
+  username to impersonate for the operation
+
+- `--kube-ca-file` (default: `""`)
+
+  the certificate authority file for the Kubernetes API server connection
+
+- `--kube-context` (default: `""`)
+
+  name of the kubeconfig context to use
+
+- `--kube-insecure-skip-tls-verify` (default: `false`)
+
+  if true, the Kubernetes API server's certificate will not be checked for validity\. This will make your HTTPS connections insecure
+
+- `--kube-tls-server-name` (default: `""`)
+
+  server name to use for Kubernetes API server certificate validation\. If it is not provided, the hostname used to contact the server is used
+
+- `--kube-token` (default: `""`)
+
+  bearer token used for authentication
+
+- `--kubeconfig` (default: `""`)
+
+  path to the kubeconfig file
+
+- `-n`, `--namespace` (default: `""`)
+
+  namespace scope for this request
+
+- `-p`, `--password` (default: `""`)
+
+  registry password or identity token
+
+- `--password-stdin` (default: `false`)
+
+  read password or identity token from stdin
+
+- `--plain-http` (default: `false`)
+
+  use insecure HTTP connections for the chart upload
+
+- `--qps` (default: `0`)
+
+  queries per second used when communicating with the Kubernetes API, not including bursting
+
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
+
+  path to the registry config file
+
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
+
+  path to the directory containing cached repository indexes
+
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
+
+  path to the file containing repository names and URLs
+
+- `-u`, `--username` (default: `""`)
+
+  registry username
+
+
+### chart repo logout
+
+Log out from an OCI registry with charts\.
+
+**Usage:**
+
+```shell
+nelm chart repo logout [host] [flags]
+```
+
+**Other options:**
+
+- `--burst-limit` (default: `100`)
+
+  client\-side default throttling limit
+
+- `--color` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--colour` (default: `"auto"`)
+
+  use colored output \(never, auto, always\)
+
+- `--content-cache` (default: `"~/.cache/helm/content"`)
+
+  path to the directory containing cached content \(e\.g\. charts\)
+
+- `--debug` (default: `false`)
+
+  enable verbose output
+
+- `--kube-apiserver` (default: `""`)
+
+  the address and the port for the Kubernetes API server
+
+- `--kube-as-group` (default: `[]`)
+
+  group to impersonate for the operation, this flag can be repeated to specify multiple groups\.
+
+- `--kube-as-user` (default: `""`)
+
+  username to impersonate for the operation
+
+- `--kube-ca-file` (default: `""`)
+
+  the certificate authority file for the Kubernetes API server connection
+
+- `--kube-context` (default: `""`)
+
+  name of the kubeconfig context to use
+
+- `--kube-insecure-skip-tls-verify` (default: `false`)
+
+  if true, the Kubernetes API server's certificate will not be checked for validity\. This will make your HTTPS connections insecure
+
+- `--kube-tls-server-name` (default: `""`)
+
+  server name to use for Kubernetes API server certificate validation\. If it is not provided, the hostname used to contact the server is used
+
+- `--kube-token` (default: `""`)
+
+  bearer token used for authentication
+
+- `--kubeconfig` (default: `""`)
+
+  path to the kubeconfig file
+
+- `-n`, `--namespace` (default: `""`)
+
+  namespace scope for this request
+
+- `--qps` (default: `0`)
+
+  queries per second used when communicating with the Kubernetes API, not including bursting
+
+- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
+
+  path to the registry config file
+
+- `--repository-cache` (default: `"~/.cache/helm/repository"`)
+
+  path to the directory containing cached repository indexes
+
+- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
+
+  path to the file containing repository names and URLs
 
 
 ### chart ts init
@@ -3468,467 +4379,6 @@ nelm chart ts build [PATH]
 - `--temp-dir` (default: `""`)
 
   The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
-
-
-### repo add
-
-Set up a new chart repository\.
-
-**Usage:**
-
-```shell
-nelm repo add [NAME] [URL] [flags]
-```
-
-**Other options:**
-
-- `--allow-deprecated-repos` (default: `false`)
-
-  by default, this command will not allow adding official repos that have been permanently deleted\. This disables that behavior
-
-- `--burst-limit` (default: `100`)
-
-  client\-side default throttling limit
-
-- `--ca-file` (default: `""`)
-
-  verify certificates of HTTPS\-enabled servers using this CA bundle
-
-- `--cert-file` (default: `""`)
-
-  identify HTTPS client using this SSL certificate file
-
-- `--debug` (default: `false`)
-
-  enable verbose output
-
-- `--force-update` (default: `false`)
-
-  replace \(overwrite\) the repo if it already exists
-
-- `--insecure-skip-tls-verify` (default: `false`)
-
-  skip tls certificate checks for the repository
-
-- `--key-file` (default: `""`)
-
-  identify HTTPS client using this SSL key file
-
-- `--kube-apiserver` (default: `""`)
-
-  the address and the port for the Kubernetes API server
-
-- `--kube-as-group` (default: `[]`)
-
-  group to impersonate for the operation, this flag can be repeated to specify multiple groups\.
-
-- `--kube-as-user` (default: `""`)
-
-  username to impersonate for the operation
-
-- `--kube-ca-file` (default: `""`)
-
-  the certificate authority file for the Kubernetes API server connection
-
-- `--kube-context` (default: `""`)
-
-  name of the kubeconfig context to use
-
-- `--kube-insecure-skip-tls-verify` (default: `false`)
-
-  if true, the Kubernetes API server's certificate will not be checked for validity\. This will make your HTTPS connections insecure
-
-- `--kube-tls-server-name` (default: `""`)
-
-  server name to use for Kubernetes API server certificate validation\. If it is not provided, the hostname used to contact the server is used
-
-- `--kube-token` (default: `""`)
-
-  bearer token used for authentication
-
-- `--kubeconfig` (default: `""`)
-
-  path to the kubeconfig file
-
-- `-n`, `--namespace` (default: `""`)
-
-  namespace scope for this request
-
-- `--no-update` (default: `false`)
-
-  Ignored\. Formerly, it would disabled forced updates\. It is deprecated by force\-update\.
-
-- `--pass-credentials` (default: `false`)
-
-  pass credentials to all domains
-
-- `--password` (default: `""`)
-
-  chart repository password
-
-- `--password-stdin` (default: `false`)
-
-  read chart repository password from stdin
-
-- `--qps` (default: `0`)
-
-  queries per second used when communicating with the Kubernetes API, not including bursting
-
-- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
-
-  path to the registry config file
-
-- `--repository-cache` (default: `"~/.cache/helm/repository"`)
-
-  path to the file containing cached repository indexes
-
-- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
-
-  path to the file containing repository names and URLs
-
-- `--username` (default: `""`)
-
-  chart repository username
-
-
-### repo remove
-
-Remove a chart repository\.
-
-**Usage:**
-
-```shell
-nelm repo remove [REPO1 [REPO2 ...]] [flags]
-```
-
-**Other options:**
-
-- `--burst-limit` (default: `100`)
-
-  client\-side default throttling limit
-
-- `--debug` (default: `false`)
-
-  enable verbose output
-
-- `--kube-apiserver` (default: `""`)
-
-  the address and the port for the Kubernetes API server
-
-- `--kube-as-group` (default: `[]`)
-
-  group to impersonate for the operation, this flag can be repeated to specify multiple groups\.
-
-- `--kube-as-user` (default: `""`)
-
-  username to impersonate for the operation
-
-- `--kube-ca-file` (default: `""`)
-
-  the certificate authority file for the Kubernetes API server connection
-
-- `--kube-context` (default: `""`)
-
-  name of the kubeconfig context to use
-
-- `--kube-insecure-skip-tls-verify` (default: `false`)
-
-  if true, the Kubernetes API server's certificate will not be checked for validity\. This will make your HTTPS connections insecure
-
-- `--kube-tls-server-name` (default: `""`)
-
-  server name to use for Kubernetes API server certificate validation\. If it is not provided, the hostname used to contact the server is used
-
-- `--kube-token` (default: `""`)
-
-  bearer token used for authentication
-
-- `--kubeconfig` (default: `""`)
-
-  path to the kubeconfig file
-
-- `-n`, `--namespace` (default: `""`)
-
-  namespace scope for this request
-
-- `--qps` (default: `0`)
-
-  queries per second used when communicating with the Kubernetes API, not including bursting
-
-- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
-
-  path to the registry config file
-
-- `--repository-cache` (default: `"~/.cache/helm/repository"`)
-
-  path to the file containing cached repository indexes
-
-- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
-
-  path to the file containing repository names and URLs
-
-
-### repo update
-
-Update info about available charts for all chart repositories\.
-
-**Usage:**
-
-```shell
-nelm repo update [REPO1 [REPO2 ...]] [flags]
-```
-
-**Other options:**
-
-- `--burst-limit` (default: `100`)
-
-  client\-side default throttling limit
-
-- `--debug` (default: `false`)
-
-  enable verbose output
-
-- `--fail-on-repo-update-fail` (default: `false`)
-
-  update fails if any of the repository updates fail
-
-- `--kube-apiserver` (default: `""`)
-
-  the address and the port for the Kubernetes API server
-
-- `--kube-as-group` (default: `[]`)
-
-  group to impersonate for the operation, this flag can be repeated to specify multiple groups\.
-
-- `--kube-as-user` (default: `""`)
-
-  username to impersonate for the operation
-
-- `--kube-ca-file` (default: `""`)
-
-  the certificate authority file for the Kubernetes API server connection
-
-- `--kube-context` (default: `""`)
-
-  name of the kubeconfig context to use
-
-- `--kube-insecure-skip-tls-verify` (default: `false`)
-
-  if true, the Kubernetes API server's certificate will not be checked for validity\. This will make your HTTPS connections insecure
-
-- `--kube-tls-server-name` (default: `""`)
-
-  server name to use for Kubernetes API server certificate validation\. If it is not provided, the hostname used to contact the server is used
-
-- `--kube-token` (default: `""`)
-
-  bearer token used for authentication
-
-- `--kubeconfig` (default: `""`)
-
-  path to the kubeconfig file
-
-- `-n`, `--namespace` (default: `""`)
-
-  namespace scope for this request
-
-- `--qps` (default: `0`)
-
-  queries per second used when communicating with the Kubernetes API, not including bursting
-
-- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
-
-  path to the registry config file
-
-- `--repository-cache` (default: `"~/.cache/helm/repository"`)
-
-  path to the file containing cached repository indexes
-
-- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
-
-  path to the file containing repository names and URLs
-
-
-### repo login
-
-Log in to an OCI registry with charts\.
-
-**Usage:**
-
-```shell
-nelm repo login [host] [flags]
-```
-
-**Other options:**
-
-- `--burst-limit` (default: `100`)
-
-  client\-side default throttling limit
-
-- `--ca-file` (default: `""`)
-
-  verify certificates of HTTPS\-enabled servers using this CA bundle
-
-- `--cert-file` (default: `""`)
-
-  identify registry client using this SSL certificate file
-
-- `--debug` (default: `false`)
-
-  enable verbose output
-
-- `--insecure` (default: `false`)
-
-  allow connections to TLS registry without certs
-
-- `--key-file` (default: `""`)
-
-  identify registry client using this SSL key file
-
-- `--kube-apiserver` (default: `""`)
-
-  the address and the port for the Kubernetes API server
-
-- `--kube-as-group` (default: `[]`)
-
-  group to impersonate for the operation, this flag can be repeated to specify multiple groups\.
-
-- `--kube-as-user` (default: `""`)
-
-  username to impersonate for the operation
-
-- `--kube-ca-file` (default: `""`)
-
-  the certificate authority file for the Kubernetes API server connection
-
-- `--kube-context` (default: `""`)
-
-  name of the kubeconfig context to use
-
-- `--kube-insecure-skip-tls-verify` (default: `false`)
-
-  if true, the Kubernetes API server's certificate will not be checked for validity\. This will make your HTTPS connections insecure
-
-- `--kube-tls-server-name` (default: `""`)
-
-  server name to use for Kubernetes API server certificate validation\. If it is not provided, the hostname used to contact the server is used
-
-- `--kube-token` (default: `""`)
-
-  bearer token used for authentication
-
-- `--kubeconfig` (default: `""`)
-
-  path to the kubeconfig file
-
-- `-n`, `--namespace` (default: `""`)
-
-  namespace scope for this request
-
-- `-p`, `--password` (default: `""`)
-
-  registry password or identity token
-
-- `--password-stdin` (default: `false`)
-
-  read password or identity token from stdin
-
-- `--qps` (default: `0`)
-
-  queries per second used when communicating with the Kubernetes API, not including bursting
-
-- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
-
-  path to the registry config file
-
-- `--repository-cache` (default: `"~/.cache/helm/repository"`)
-
-  path to the file containing cached repository indexes
-
-- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
-
-  path to the file containing repository names and URLs
-
-- `-u`, `--username` (default: `""`)
-
-  registry username
-
-
-### repo logout
-
-Log out from an OCI registry with charts\.
-
-**Usage:**
-
-```shell
-nelm repo logout [host] [flags]
-```
-
-**Other options:**
-
-- `--burst-limit` (default: `100`)
-
-  client\-side default throttling limit
-
-- `--debug` (default: `false`)
-
-  enable verbose output
-
-- `--kube-apiserver` (default: `""`)
-
-  the address and the port for the Kubernetes API server
-
-- `--kube-as-group` (default: `[]`)
-
-  group to impersonate for the operation, this flag can be repeated to specify multiple groups\.
-
-- `--kube-as-user` (default: `""`)
-
-  username to impersonate for the operation
-
-- `--kube-ca-file` (default: `""`)
-
-  the certificate authority file for the Kubernetes API server connection
-
-- `--kube-context` (default: `""`)
-
-  name of the kubeconfig context to use
-
-- `--kube-insecure-skip-tls-verify` (default: `false`)
-
-  if true, the Kubernetes API server's certificate will not be checked for validity\. This will make your HTTPS connections insecure
-
-- `--kube-tls-server-name` (default: `""`)
-
-  server name to use for Kubernetes API server certificate validation\. If it is not provided, the hostname used to contact the server is used
-
-- `--kube-token` (default: `""`)
-
-  bearer token used for authentication
-
-- `--kubeconfig` (default: `""`)
-
-  path to the kubeconfig file
-
-- `-n`, `--namespace` (default: `""`)
-
-  namespace scope for this request
-
-- `--qps` (default: `0`)
-
-  queries per second used when communicating with the Kubernetes API, not including bursting
-
-- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
-
-  path to the registry config file
-
-- `--repository-cache` (default: `"~/.cache/helm/repository"`)
-
-  path to the file containing cached repository indexes
-
-- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
-
-  path to the file containing repository names and URLs
 
 
 ### completion bash
@@ -4093,59 +4543,11 @@ nelm version [options...]
 
 Feature gates are experimental features that can be enabled via environment variables.
 
-### NELM_FEAT_REMOTE_CHARTS
-
-**Default:** `false`
-
-Allow not only local, but also remote charts as an argument to cli commands\. Also adds the "\-\-chart\-version" option
-
-### NELM_FEAT_NATIVE_RELEASE_LIST
-
-**Default:** `false`
-
-Use the native "release list" command instead of "helm list" exposed as "release list"
-
 ### NELM_FEAT_PERIODIC_STACK_TRACES
 
 **Default:** `false`
 
 Print stack traces periodically to help with debugging deadlocks and other issues
-
-### NELM_FEAT_NATIVE_RELEASE_UNINSTALL
-
-**Default:** `false`
-
-Use the new "release uninstall" command implementation \(not fully backwards compatible\)
-
-### NELM_FEAT_FIELD_SENSITIVE
-
-**Default:** `false`
-
-Enable JSONPath\-based selective sensitive field redaction
-
-### NELM_FEAT_PREVIEW_V2
-
-**Default:** `false`
-
-Activate all feature gates that will be enabled by default in Nelm v2
-
-### NELM_FEAT_CLEAN_NULL_FIELDS
-
-**Default:** `false`
-
-Enable cleaning of null fields from resource manifests for better Helm chart compatibility
-
-### NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN
-
-**Default:** `false`
-
-Make the "plan" command with the flag "\-\-exit\-code" return an exit code 3 instead of 2 when no resource changes, but still must install the release
-
-### NELM_FEAT_RESOURCE_VALIDATION
-
-**Default:** `false`
-
-Validate chart resources against specific Kubernetes resources' schemas
 
 ### NELM_FEAT_TYPESCRIPT
 

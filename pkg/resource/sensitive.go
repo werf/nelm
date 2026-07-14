@@ -13,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/resource/spec"
 )
 
@@ -22,16 +21,6 @@ const HideAll = "$$HIDE_ALL$$"
 type SensitiveInfo struct {
 	IsSensitive    bool
 	SensitivePaths []string
-}
-
-func (i *SensitiveInfo) FullySensitive() bool {
-	return i.IsSensitive && len(i.SensitivePaths) == 1 && i.SensitivePaths[0] == HideAll
-}
-
-func IsSensitive(groupKind schema.GroupKind, annotations map[string]string) bool {
-	info := GetSensitiveInfo(groupKind, annotations)
-
-	return info.IsSensitive
 }
 
 func GetSensitiveInfo(groupKind schema.GroupKind, annotations map[string]string) SensitiveInfo {
@@ -43,33 +32,18 @@ func GetSensitiveInfo(groupKind schema.GroupKind, annotations map[string]string)
 		}
 	}
 
-	useNewBehavior := featgate.FeatGateFieldSensitive.Enabled() || featgate.FeatGatePreviewV2.Enabled()
-
 	// Check for werf.io/sensitive annotation
 	if _, value, found := spec.FindAnnotationOrLabelByKeyPattern(annotations, common.AnnotationKeyPatternSensitive); found {
-		sensitive := lo.Must(strconv.ParseBool(value))
-		if sensitive {
-			if useNewBehavior {
-				// V2 behavior: only hide data.* and stringData.*
-				return SensitiveInfo{IsSensitive: true, SensitivePaths: []string{"data.*", "stringData.*"}}
-			} else {
-				// V1 behavior: hide everything
-				return SensitiveInfo{IsSensitive: true, SensitivePaths: []string{HideAll}}
-			}
-		} else {
-			return SensitiveInfo{IsSensitive: false, SensitivePaths: nil}
+		if lo.Must(strconv.ParseBool(value)) {
+			return SensitiveInfo{IsSensitive: true, SensitivePaths: []string{"data.*", "stringData.*"}}
 		}
+
+		return SensitiveInfo{IsSensitive: false, SensitivePaths: nil}
 	}
 
 	// Default behavior for Secrets
 	if groupKind == (schema.GroupKind{Group: "", Kind: "Secret"}) {
-		if useNewBehavior {
-			// V2 behavior: only hide data.* and stringData.*
-			return SensitiveInfo{IsSensitive: true, SensitivePaths: []string{"data.*", "stringData.*"}}
-		} else {
-			// V1 behavior: hide everything
-			return SensitiveInfo{IsSensitive: true, SensitivePaths: []string{HideAll}}
-		}
+		return SensitiveInfo{IsSensitive: true, SensitivePaths: []string{"data.*", "stringData.*"}}
 	}
 
 	return SensitiveInfo{IsSensitive: false, SensitivePaths: nil}
@@ -122,6 +96,7 @@ func RedactSensitiveData(unstruct *unstructured.Unstructured, sensitivePaths []s
 
 func redactSensitiveData(unstruct *unstructured.Unstructured, sensitivePaths []string) *unstructured.Unstructured {
 	for _, pathExpr := range sensitivePaths {
+		// TODO(major): should we remove this?
 		if pathExpr == HideAll {
 			return &unstructured.Unstructured{Object: map[string]interface{}{
 				"apiVersion": unstruct.GetAPIVersion(),

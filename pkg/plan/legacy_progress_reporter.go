@@ -6,7 +6,7 @@ import (
 
 	"github.com/samber/lo"
 
-	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
+	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/nelm/pkg/legacy/progrep"
 )
 

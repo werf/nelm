@@ -1,15 +1,19 @@
 package plan
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sort"
 
-	"github.com/mitchellh/copystructure"
 	"github.com/samber/lo"
 
 	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/release"
 	"github.com/werf/nelm/pkg/resource"
+	"github.com/werf/nelm/pkg/resource/spec"
 )
 
 type BuildPlanOptions struct {
@@ -18,6 +22,12 @@ type BuildPlanOptions struct {
 
 type BuildFailurePlanOptions struct {
 	NoFinalTracking bool
+}
+
+type matchedDeletableResource struct {
+	*spec.ResourceMeta
+
+	Iteration int
 }
 
 // When the main plan fails, the failure plan must be built and executed.
@@ -48,7 +58,7 @@ func BuildFailurePlan(failedPlan *Plan, installableInfos []*InstallableResourceI
 // different kinds of plans must be figured out earlier, e.g. at BuildResourceInfos level. This
 // generic design must be preserved. Keep it simple: if something can be done on earlier stages, do
 // it there.
-func BuildPlan(installableInfos []*InstallableResourceInfo, deletableInfos []*DeletableResourceInfo, releaseInfos []*ReleaseInfo, opts BuildPlanOptions) (*Plan, error) {
+func BuildPlan(ctx context.Context, installableInfos []*InstallableResourceInfo, deletableInfos []*DeletableResourceInfo, releaseInfos []*ReleaseInfo, releaseNamespace string, opts BuildPlanOptions) (*Plan, error) {
 	plan := NewPlan()
 
 	if err := addMainStages(plan); err != nil {
@@ -71,11 +81,11 @@ func BuildPlan(installableInfos []*InstallableResourceInfo, deletableInfos []*De
 		return plan, fmt.Errorf("add install resource operations: %w", err)
 	}
 
-	if err := connectInternalDeployDependencies(plan, installableInfos, deletableInfos); err != nil {
+	if err := connectInternalDeployDependencies(ctx, plan, installableInfos, deletableInfos, releaseNamespace); err != nil {
 		return plan, fmt.Errorf("connect internal dependencies: %w", err)
 	}
 
-	if err := connectInternalDeleteDependencies(plan, deletableInfos, installableInfos); err != nil {
+	if err := connectInternalDeleteDependencies(ctx, plan, deletableInfos, installableInfos, releaseNamespace); err != nil {
 		return plan, fmt.Errorf("connect internal delete dependencies: %w", err)
 	}
 
@@ -86,9 +96,49 @@ func BuildPlan(installableInfos []*InstallableResourceInfo, deletableInfos []*De
 	return plan, nil
 }
 
-func connectInternalDeployDependencies(plan *Plan, instInfos []*InstallableResourceInfo, delInfos []*DeletableResourceInfo) error {
+func connectInternalDeleteDependencies(ctx context.Context, plan *Plan, delInfos []*DeletableResourceInfo, instInfos []*InstallableResourceInfo, releaseNamespace string) error {
+	for _, info := range delInfos {
+		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualDependencies)
+		if len(internalDeps) == 0 {
+			continue
+		}
+
+		deleteOp, found := getDeleteOp(plan, info)
+		if !found {
+			continue
+		}
+
+		for _, dep := range internalDeps {
+			var (
+				dependUponOps []*Operation
+				err           error
+			)
+
+			switch dep.ResourceState {
+			case common.ResourceStateAbsent:
+				dependUponOps, err = resolveTrackAbsenceOpInStage(ctx, plan, delInfos, instInfos, dep, info.Stage, releaseNamespace)
+			default:
+				panic("unexpected internal dependency resource state")
+			}
+
+			if err != nil {
+				return fmt.Errorf("find internal dependency ops: %w", err)
+			}
+
+			for _, dependUponOp := range dependUponOps {
+				if err := plan.Connect(dependUponOp.ID(), deleteOp.ID()); err != nil {
+					return fmt.Errorf("depend %q from %q: %w", deleteOp.ID(), dependUponOp.ID(), err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func connectInternalDeployDependencies(ctx context.Context, plan *Plan, instInfos []*InstallableResourceInfo, delInfos []*DeletableResourceInfo, releaseNamespace string) error {
 	for _, info := range instInfos {
-		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualInternalDependencies)
+		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualDependencies)
 		if len(internalDeps) == 0 {
 			continue
 		}
@@ -100,32 +150,29 @@ func connectInternalDeployDependencies(plan *Plan, instInfos []*InstallableResou
 
 		for _, dep := range internalDeps {
 			var (
-				dependUponOp      *Operation
-				dependUponOpFound bool
+				dependUponOps []*Operation
+				err           error
 			)
 
 			switch dep.ResourceState {
 			case common.ResourceStatePresent:
-				dependUponOp, dependUponOpFound = findDeployOpInStage(plan, instInfos, dep, info.Stage)
+				dependUponOps, err = resolveDeployOpInStage(ctx, plan, instInfos, dep, info.Stage, releaseNamespace)
 			case common.ResourceStateReady:
-				dependUponOp, dependUponOpFound = findTrackReadinessOpInStage(plan, instInfos, dep, info.Stage)
+				dependUponOps, err = resolveTrackReadinessOpInStage(ctx, plan, instInfos, dep, info.Stage, releaseNamespace)
 			case common.ResourceStateAbsent:
-				// TODO(major): all deploy/delete dependencies must depend upon all matched operations, not a single one
-				dependUponOps := findTrackAbsenceOpInStage(plan, delInfos, instInfos, dep, info.Stage)
-				if len(dependUponOps) > 0 {
-					dependUponOp = dependUponOps[0]
-					dependUponOpFound = true
-				}
+				dependUponOps, err = resolveTrackAbsenceOpInStage(ctx, plan, delInfos, instInfos, dep, info.Stage, releaseNamespace)
 			default:
 				panic("unexpected internal dependency resource state")
 			}
 
-			if !dependUponOpFound {
-				continue
+			if err != nil {
+				return fmt.Errorf("find internal dependency ops: %w", err)
 			}
 
-			if err := plan.Connect(dependUponOp.ID(), deployOp.ID()); err != nil {
-				return fmt.Errorf("depend %q from %q: %w", deployOp.ID(), dependUponOp.ID(), err)
+			for _, dependUponOp := range dependUponOps {
+				if err := plan.Connect(dependUponOp.ID(), deployOp.ID()); err != nil {
+					return fmt.Errorf("depend %q from %q: %w", deployOp.ID(), dependUponOp.ID(), err)
+				}
 			}
 		}
 	}
@@ -139,6 +186,8 @@ func addFailureReleaseOperations(failedPlan, plan *Plan, releaseInfos []*Release
 			continue
 		}
 
+		infoRel := info.Release.Accessor
+
 		if _, releaseCreated := lo.Find(failedPlan.Operations(), func(op *Operation) bool {
 			if op.Status != OperationStatusCompleted {
 				return false
@@ -146,9 +195,17 @@ func addFailureReleaseOperations(failedPlan, plan *Plan, releaseInfos []*Release
 
 			switch config := op.Config.(type) {
 			case *OperationConfigCreateRelease:
-				return config.Release.ID() == info.Release.ID()
+				configRel := config.Release.Accessor
+
+				return configRel.Namespace() == infoRel.Namespace() &&
+					configRel.Name() == infoRel.Name() &&
+					configRel.Version() == infoRel.Version()
 			case *OperationConfigUpdateRelease:
-				return config.Release.ID() == info.Release.ID()
+				configRel := config.Release.Accessor
+
+				return configRel.Namespace() == infoRel.Namespace() &&
+					configRel.Name() == infoRel.Name() &&
+					configRel.Version() == infoRel.Version()
 			default:
 				return false
 			}
@@ -168,15 +225,15 @@ func addReleaseOperations(plan *Plan, releaseInfos []*ReleaseInfo) error {
 	for _, info := range releaseInfos {
 		switch info.Must {
 		case ReleaseTypeInstall:
-			if err := addPendingAndDeployedReleaseOps(plan, info, helmrelease.StatusPendingInstall); err != nil {
+			if err := addPendingAndDeployedReleaseOps(plan, info, helmreleasecommon.StatusPendingInstall); err != nil {
 				return fmt.Errorf("add pending/deployed ops for release install: %w", err)
 			}
 		case ReleaseTypeUpgrade:
-			if err := addPendingAndDeployedReleaseOps(plan, info, helmrelease.StatusPendingUpgrade); err != nil {
+			if err := addPendingAndDeployedReleaseOps(plan, info, helmreleasecommon.StatusPendingUpgrade); err != nil {
 				return fmt.Errorf("add pending/deployed ops for release upgrade: %w", err)
 			}
 		case ReleaseTypeRollback:
-			if err := addPendingAndDeployedReleaseOps(plan, info, helmrelease.StatusPendingRollback); err != nil {
+			if err := addPendingAndDeployedReleaseOps(plan, info, helmreleasecommon.StatusPendingRollback); err != nil {
 				return fmt.Errorf("add pending/deployed ops for release rollback: %w", err)
 			}
 		case ReleaseTypeSupersede:
@@ -198,68 +255,262 @@ func addReleaseOperations(plan *Plan, releaseInfos []*ReleaseInfo) error {
 	return nil
 }
 
-func connectInternalDeleteDependencies(plan *Plan, delInfos []*DeletableResourceInfo, instInfos []*InstallableResourceInfo) error {
-	for _, info := range delInfos {
-		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualInternalDependencies)
-		if len(internalDeps) == 0 {
+func resolveDeployOpInStage(ctx context.Context, plan *Plan, instInfos []*InstallableResourceInfo, dep *resource.Dependency, sourceStage common.Stage, releaseNamespace string) ([]*Operation, error) {
+	if dep.External {
+		resMeta := resource.NewResourceMetaFromDependency(dep, releaseNamespace)
+
+		opID := OperationID(OperationTypeTrackPresence, OperationVersionTrackPresence, OperationIteration(0), resMeta.ID())
+		if op, found := plan.Operation(opID); found {
+			return []*Operation{op}, nil
+		}
+
+		trackOp := &Operation{
+			Type:     OperationTypeTrackPresence,
+			Version:  OperationVersionTrackPresence,
+			Category: OperationCategoryTrack,
+			Config: &OperationConfigTrackPresence{
+				ResourceMeta: resMeta,
+			},
+		}
+
+		if err := plan.AddOperationChain().AddOperation(trackOp).Stage(sourceStage).SkipOnDuplicate().Do(); err != nil {
+			return nil, fmt.Errorf("add track presence operation: %w", err)
+		}
+
+		return []*Operation{trackOp}, nil
+	}
+
+	matchByID := make(map[string]*InstallableResourceInfo)
+	for _, candidate := range instInfos {
+		match, found := matchByID[candidate.ID()]
+		if candidate.Stage != sourceStage ||
+			!dep.Match(candidate.ResourceMeta) ||
+			(found && candidate.Iteration >= match.Iteration) {
 			continue
 		}
 
-		deleteOp, found := getDeleteOp(plan, info)
-		if !found {
-			continue
-		}
+		matchByID[candidate.ID()] = candidate
+	}
 
-		for _, dep := range internalDeps {
-			var dependUponOps []*Operation
+	matched, err := truncateInstallableMatches(ctx, lo.Values(matchByID), dep)
+	if err != nil {
+		return nil, err
+	}
 
-			switch dep.ResourceState {
-			case common.ResourceStateAbsent:
-				dependUponOps = findTrackAbsenceOpInStage(plan, delInfos, instInfos, dep, info.Stage)
-			default:
-				panic("unexpected internal dependency resource state")
+	if len(matched) == 0 {
+		return nil, nil
+	}
+
+	var foundOps []*Operation
+	for _, match := range matched {
+		if op, found := getDeployOp(plan, match); found {
+			foundOps = append(foundOps, op)
+		} else {
+			trackOp := &Operation{
+				Type:     OperationTypeTrackPresence,
+				Version:  OperationVersionTrackPresence,
+				Category: OperationCategoryTrack,
+				Config: &OperationConfigTrackPresence{
+					ResourceMeta: match.ResourceMeta,
+				},
 			}
 
-			for _, dependUponOp := range dependUponOps {
-				if err := plan.Connect(dependUponOp.ID(), deleteOp.ID()); err != nil {
-					return fmt.Errorf("depend %q from %q: %w", deleteOp.ID(), dependUponOp.ID(), err)
-				}
+			if err := plan.AddOperationChain().AddOperation(trackOp).Stage(sourceStage).SkipOnDuplicate().Do(); err != nil {
+				return nil, fmt.Errorf("add track presence operation: %w", err)
 			}
+
+			foundOps = append(foundOps, trackOp)
 		}
 	}
 
-	return nil
+	return foundOps, nil
 }
 
-func findDeployOpInStage(plan *Plan, instInfos []*InstallableResourceInfo, dep *resource.InternalDependency, sourceStage common.Stage) (*Operation, bool) {
-	var match *InstallableResourceInfo
-	for _, candidate := range instInfos {
-		if candidate.MustInstall == ResourceInstallTypeNone ||
-			candidate.Stage != sourceStage ||
-			!dep.Match(candidate.ResourceMeta) ||
-			(match != nil && candidate.Iteration >= match.Iteration) {
+func resolveTrackAbsenceOpInStage(ctx context.Context, plan *Plan, delInfos []*DeletableResourceInfo, instInfos []*InstallableResourceInfo, dep *resource.Dependency, sourceStage common.Stage, releaseNamespace string) ([]*Operation, error) {
+	if dep.External {
+		resMeta := resource.NewResourceMetaFromDependency(dep, releaseNamespace)
+
+		opID := OperationID(OperationTypeTrackAbsence, OperationVersionTrackAbsence, OperationIteration(0), resMeta.ID())
+		if op, found := plan.Operation(opID); found {
+			return []*Operation{op}, nil
+		}
+
+		trackOp := &Operation{
+			Type:     OperationTypeTrackAbsence,
+			Version:  OperationVersionTrackAbsence,
+			Category: OperationCategoryTrack,
+			Config: &OperationConfigTrackAbsence{
+				ResourceMeta: resMeta,
+			},
+		}
+
+		if err := plan.AddOperationChain().AddOperation(trackOp).Stage(sourceStage).SkipOnDuplicate().Do(); err != nil {
+			return nil, fmt.Errorf("add track absence operation: %w", err)
+		}
+
+		return []*Operation{trackOp}, nil
+	}
+
+	matchByID := make(map[string]*matchedDeletableResource)
+	for _, candidate := range delInfos {
+		if candidate.Stage != sourceStage ||
+			!dep.Match(candidate.ResourceMeta) {
 			continue
 		}
 
-		match = candidate
+		matchByID[candidate.ID()] = &matchedDeletableResource{
+			ResourceMeta: candidate.ResourceMeta,
+			Iteration:    0,
+		}
 	}
 
-	if match == nil {
-		return nil, false
+	for _, candidate := range instInfos {
+		match, found := matchByID[candidate.ID()]
+		if !candidate.MustDeleteOnSuccessfulInstall ||
+			candidate.StageDeleteOnSuccessfulInstall != sourceStage ||
+			!dep.Match(candidate.ResourceMeta) ||
+			(found && candidate.Iteration >= match.Iteration) {
+			continue
+		}
+
+		matchByID[candidate.ID()] = &matchedDeletableResource{
+			ResourceMeta: candidate.ResourceMeta,
+			Iteration:    candidate.Iteration,
+		}
 	}
 
-	return getDeployOp(plan, match)
+	matched, err := truncateDeletableMatches(ctx, lo.Values(matchByID), dep)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(matched) == 0 {
+		return nil, nil
+	}
+
+	var foundOps []*Operation
+	for _, match := range matched {
+		opID := OperationID(OperationTypeTrackAbsence, OperationVersionTrackAbsence, OperationIteration(match.Iteration), match.ID())
+
+		if op, found := plan.Operation(opID); found {
+			foundOps = append(foundOps, op)
+		} else {
+			trackOp := &Operation{
+				Type:     OperationTypeTrackAbsence,
+				Version:  OperationVersionTrackAbsence,
+				Category: OperationCategoryTrack,
+				Config: &OperationConfigTrackAbsence{
+					ResourceMeta: match.ResourceMeta,
+				},
+			}
+
+			if err := plan.AddOperationChain().AddOperation(trackOp).Stage(sourceStage).SkipOnDuplicate().Do(); err != nil {
+				return nil, fmt.Errorf("add track absence operation: %w", err)
+			}
+
+			deleteOpID := OperationID(OperationTypeDelete, OperationVersionDelete, OperationIteration(match.Iteration), match.ID())
+			if deleteOp, deleteFound := plan.Operation(deleteOpID); deleteFound {
+				if err := plan.Connect(deleteOp.ID(), trackOp.ID()); err != nil {
+					return nil, fmt.Errorf("connect delete to track absence: %w", err)
+				}
+			}
+
+			foundOps = append(foundOps, trackOp)
+		}
+	}
+
+	return foundOps, nil
+}
+
+func resolveTrackReadinessOpInStage(ctx context.Context, plan *Plan, instInfos []*InstallableResourceInfo, dep *resource.Dependency, sourceStage common.Stage, releaseNamespace string) ([]*Operation, error) {
+	if dep.External {
+		resMeta := resource.NewResourceMetaFromDependency(dep, releaseNamespace)
+
+		opID := OperationID(OperationTypeTrackReadiness, OperationVersionTrackReadiness, OperationIteration(0), resMeta.ID())
+		if op, found := plan.Operation(opID); found {
+			return []*Operation{op}, nil
+		}
+
+		trackOp := &Operation{
+			Type:     OperationTypeTrackReadiness,
+			Version:  OperationVersionTrackReadiness,
+			Category: OperationCategoryTrack,
+			Config: &OperationConfigTrackReadiness{
+				ResourceMeta: resMeta,
+			},
+		}
+
+		if err := plan.AddOperationChain().AddOperation(trackOp).Stage(sourceStage).SkipOnDuplicate().Do(); err != nil {
+			return nil, fmt.Errorf("add track readiness operation: %w", err)
+		}
+
+		return []*Operation{trackOp}, nil
+	}
+
+	matchByID := make(map[string]*InstallableResourceInfo)
+	for _, candidate := range instInfos {
+		match, found := matchByID[candidate.ID()]
+		if candidate.Stage != sourceStage ||
+			!dep.Match(candidate.ResourceMeta) ||
+			(found && candidate.Iteration >= match.Iteration) {
+			continue
+		}
+
+		matchByID[candidate.ID()] = candidate
+	}
+
+	matched, err := truncateInstallableMatches(ctx, lo.Values(matchByID), dep)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(matched) == 0 {
+		return nil, nil
+	}
+
+	var foundOps []*Operation
+	for _, match := range matched {
+		opID := OperationID(OperationTypeTrackReadiness, OperationVersionTrackReadiness, OperationIteration(match.Iteration), match.ID())
+		if op, found := plan.Operation(opID); found {
+			foundOps = append(foundOps, op)
+		} else {
+			trackOp := &Operation{
+				Type:     OperationTypeTrackReadiness,
+				Version:  OperationVersionTrackReadiness,
+				Category: OperationCategoryTrack,
+				Config: &OperationConfigTrackReadiness{
+					ResourceMeta: match.ResourceMeta,
+				},
+			}
+
+			if err := plan.AddOperationChain().AddOperation(trackOp).Stage(sourceStage).SkipOnDuplicate().Do(); err != nil {
+				return nil, fmt.Errorf("add track readiness operation: %w", err)
+			}
+
+			if deployOp, deployFound := getDeployOp(plan, match); deployFound {
+				if err := plan.Connect(deployOp.ID(), trackOp.ID()); err != nil {
+					return nil, fmt.Errorf("connect deploy to track readiness: %w", err)
+				}
+			}
+
+			foundOps = append(foundOps, trackOp)
+		}
+	}
+
+	return foundOps, nil
 }
 
 func addDeleteReleaseOps(plan *Plan, info *ReleaseInfo) {
+	rel := info.Release.Accessor
+
 	deletedOp := &Operation{
 		Type:     OperationTypeDeleteRelease,
 		Version:  OperationVersionDeleteRelease,
 		Category: OperationCategoryRelease,
 		Config: &OperationConfigDeleteRelease{
-			ReleaseName:      info.Release.Name,
-			ReleaseNamespace: info.Release.Namespace,
-			ReleaseRevision:  info.Release.Version,
+			ReleaseName:      rel.Name(),
+			ReleaseNamespace: rel.Namespace(),
+			ReleaseRevision:  rel.Version(),
 		},
 	}
 	lo.Must0(plan.AddOperationChain().AddOperation(deletedOp).Stage(common.StageFinal).Do())
@@ -304,21 +555,19 @@ func addDeleteResourcesOps(plan *Plan, infos []*DeletableResourceInfo) error {
 }
 
 func addFailedReleaseOps(plan *Plan, info *ReleaseInfo) error {
-	var failedRel *helmrelease.Release
-	if rel, err := copystructure.Copy(info.Release); err != nil {
-		return fmt.Errorf("deep copy release: %w", err)
-	} else {
-		failedRel = rel.(*helmrelease.Release)
+	failedRel, err := info.Release.Accessor.Copy()
+	if err != nil {
+		return fmt.Errorf("copy release: %w", err)
 	}
 
-	failedRel.Info.Status = helmrelease.StatusFailed
+	failedRel.SetStatus(helmreleasecommon.StatusFailed)
 
 	failedOp := &Operation{
 		Type:     OperationTypeUpdateRelease,
 		Version:  OperationVersionUpdateRelease,
 		Category: OperationCategoryRelease,
 		Config: &OperationConfigUpdateRelease{
-			Release: failedRel,
+			Release: &release.VersionedRelease{Accessor: failedRel},
 		},
 	}
 	lo.Must0(plan.AddOperationChain().AddOperation(failedOp).Stage(common.StageInit).Do())
@@ -392,20 +641,6 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 			stg = common.SubStageWeighted(info.Stage, *info.LocalResource.Weight)
 		} else {
 			stg = info.Stage
-		}
-
-		if info.MustInstall != ResourceInstallTypeNone {
-			for _, extDep := range info.LocalResource.ExternalDependencies {
-				trackOp := &Operation{
-					Type:     OperationTypeTrackPresence,
-					Version:  OperationVersionTrackPresence,
-					Category: OperationCategoryTrack,
-					Config: &OperationConfigTrackPresence{
-						ResourceMeta: extDep.ResourceMeta,
-					},
-				}
-				chain.AddOperation(trackOp).Stage(stg).SkipOnDuplicate()
-			}
 		}
 
 		switch info.MustInstall {
@@ -551,41 +786,37 @@ func addMainStages(plan *Plan) error {
 	return nil
 }
 
-func addPendingAndDeployedReleaseOps(plan *Plan, info *ReleaseInfo, pendingStatus helmrelease.Status) error {
-	var pendingRel *helmrelease.Release
-	if rel, err := copystructure.Copy(info.Release); err != nil {
-		return fmt.Errorf("deep copy release: %w", err)
-	} else {
-		pendingRel = rel.(*helmrelease.Release)
+func addPendingAndDeployedReleaseOps(plan *Plan, info *ReleaseInfo, pendingStatus helmreleasecommon.Status) error {
+	pendingRel, err := info.Release.Accessor.Copy()
+	if err != nil {
+		return fmt.Errorf("copy release: %w", err)
 	}
 
-	pendingRel.Info.Status = pendingStatus
+	pendingRel.SetStatus(pendingStatus)
 
 	pendingOp := &Operation{
 		Type:     OperationTypeCreateRelease,
 		Version:  OperationVersionCreateRelease,
 		Category: OperationCategoryRelease,
 		Config: &OperationConfigCreateRelease{
-			Release: pendingRel,
+			Release: &release.VersionedRelease{Accessor: pendingRel},
 		},
 	}
 	lo.Must0(plan.AddOperationChain().AddOperation(pendingOp).Stage(common.StageInit).Do())
 
-	var succeededRel *helmrelease.Release
-	if rel, err := copystructure.Copy(pendingRel); err != nil {
-		return fmt.Errorf("deep copy release: %w", err)
-	} else {
-		succeededRel = rel.(*helmrelease.Release)
+	succeededRel, err := pendingRel.Copy()
+	if err != nil {
+		return fmt.Errorf("copy release: %w", err)
 	}
 
-	succeededRel.Info.Status = helmrelease.StatusDeployed
+	succeededRel.SetStatus(helmreleasecommon.StatusDeployed)
 
 	succeededOp := &Operation{
 		Type:     OperationTypeUpdateRelease,
 		Version:  OperationVersionUpdateRelease,
 		Category: OperationCategoryRelease,
 		Config: &OperationConfigUpdateRelease{
-			Release: succeededRel,
+			Release: &release.VersionedRelease{Accessor: succeededRel},
 		},
 	}
 	lo.Must0(plan.AddOperationChain().AddOperation(succeededOp).Stage(common.StageFinal).Do())
@@ -594,21 +825,19 @@ func addPendingAndDeployedReleaseOps(plan *Plan, info *ReleaseInfo, pendingStatu
 }
 
 func addSupersedeReleaseOps(plan *Plan, info *ReleaseInfo) error {
-	var supersededRel *helmrelease.Release
-	if rel, err := copystructure.Copy(info.Release); err != nil {
-		return fmt.Errorf("deep copy release: %w", err)
-	} else {
-		supersededRel = rel.(*helmrelease.Release)
+	supersededRel, err := info.Release.Accessor.Copy()
+	if err != nil {
+		return fmt.Errorf("copy release: %w", err)
 	}
 
-	supersededRel.Info.Status = helmrelease.StatusSuperseded
+	supersededRel.SetStatus(helmreleasecommon.StatusSuperseded)
 
 	supersedeOp := &Operation{
 		Type:     OperationTypeUpdateRelease,
 		Version:  OperationVersionUpdateRelease,
 		Category: OperationCategoryRelease,
 		Config: &OperationConfigUpdateRelease{
-			Release: supersededRel,
+			Release: &release.VersionedRelease{Accessor: supersededRel},
 		},
 	}
 	lo.Must0(plan.AddOperationChain().AddOperation(supersedeOp).Stage(common.StageFinal).Do())
@@ -617,21 +846,19 @@ func addSupersedeReleaseOps(plan *Plan, info *ReleaseInfo) error {
 }
 
 func addUninstallReleaseOps(plan *Plan, info *ReleaseInfo) error {
-	var uninstallingRel *helmrelease.Release
-	if rel, err := copystructure.Copy(info.Release); err != nil {
-		return fmt.Errorf("deep copy release: %w", err)
-	} else {
-		uninstallingRel = rel.(*helmrelease.Release)
+	uninstallingRel, err := info.Release.Accessor.Copy()
+	if err != nil {
+		return fmt.Errorf("copy release: %w", err)
 	}
 
-	uninstallingRel.Info.Status = helmrelease.StatusUninstalling
+	uninstallingRel.SetStatus(helmreleasecommon.StatusUninstalling)
 
 	uninstallingOp := &Operation{
 		Type:     OperationTypeUpdateRelease,
 		Version:  OperationVersionUpdateRelease,
 		Category: OperationCategoryRelease,
 		Config: &OperationConfigUpdateRelease{
-			Release: uninstallingRel,
+			Release: &release.VersionedRelease{Accessor: uninstallingRel},
 		},
 	}
 	lo.Must0(plan.AddOperationChain().AddOperation(uninstallingOp).Stage(common.StageInit).Do())
@@ -641,9 +868,9 @@ func addUninstallReleaseOps(plan *Plan, info *ReleaseInfo) error {
 		Version:  OperationVersionDeleteRelease,
 		Category: OperationCategoryRelease,
 		Config: &OperationConfigDeleteRelease{
-			ReleaseName:      uninstallingRel.Name,
-			ReleaseNamespace: uninstallingRel.Namespace,
-			ReleaseRevision:  uninstallingRel.Version,
+			ReleaseName:      uninstallingRel.Name(),
+			ReleaseNamespace: uninstallingRel.Namespace(),
+			ReleaseRevision:  uninstallingRel.Version(),
 		},
 	}
 	lo.Must0(plan.AddOperationChain().AddOperation(uninstalledOp).Stage(common.StageFinal).Do())
@@ -705,74 +932,6 @@ func addWeightedSubStages(plan *Plan, infos []*InstallableResourceInfo) error {
 	return nil
 }
 
-func findTrackAbsenceOpInStage(plan *Plan, delInfos []*DeletableResourceInfo, instInfos []*InstallableResourceInfo, dep *resource.InternalDependency, sourceStage common.Stage) []*Operation {
-	var foundOps []*Operation
-	for _, candidate := range delInfos {
-		if !candidate.MustTrackAbsence ||
-			candidate.Stage != sourceStage ||
-			!dep.Match(candidate.ResourceMeta) {
-			continue
-		}
-
-		opID := OperationID(OperationTypeTrackAbsence, OperationVersionTrackAbsence, 0, candidate.ID())
-
-		if op, found := plan.Operation(opID); found {
-			foundOps = append(foundOps, op)
-		}
-	}
-
-	if len(foundOps) > 0 {
-		return foundOps
-	}
-
-	var match *InstallableResourceInfo
-	for _, candidate := range instInfos {
-		if !candidate.MustDeleteOnSuccessfulInstall ||
-			candidate.StageDeleteOnSuccessfulInstall != sourceStage ||
-			!dep.Match(candidate.ResourceMeta) ||
-			(match != nil && candidate.Iteration >= match.Iteration) {
-			continue
-		}
-
-		match = candidate
-	}
-
-	if match == nil {
-		return nil
-	}
-
-	opID := OperationID(OperationTypeTrackAbsence, OperationVersionTrackAbsence, OperationIteration(match.Iteration), match.ID())
-
-	op, found := plan.Operation(opID)
-	if !found {
-		return nil
-	}
-
-	return []*Operation{op}
-}
-
-func findTrackReadinessOpInStage(plan *Plan, instInfos []*InstallableResourceInfo, dep *resource.InternalDependency, sourceStage common.Stage) (*Operation, bool) {
-	var match *InstallableResourceInfo
-	for _, candidate := range instInfos {
-		if !candidate.MustTrackReadiness ||
-			candidate.Stage != sourceStage ||
-			!dep.Match(candidate.ResourceMeta) ||
-			(match != nil && candidate.Iteration >= match.Iteration) {
-			continue
-		}
-
-		match = candidate
-	}
-
-	if match == nil {
-		return nil, false
-	}
-
-	opID := OperationID(OperationTypeTrackReadiness, OperationVersionTrackReadiness, OperationIteration(match.Iteration), match.ID())
-
-	return plan.Operation(opID)
-}
-
 func getDeleteOp(plan *Plan, info *DeletableResourceInfo) (*Operation, bool) {
 	if !info.MustDelete {
 		return nil, false
@@ -801,4 +960,40 @@ func getDeployOp(plan *Plan, info *InstallableResourceInfo) (op *Operation, foun
 	}
 
 	return lo.Must(plan.Operation(deployOpID)), true
+}
+
+func truncateDeletableMatches(ctx context.Context, matched []*matchedDeletableResource, dep *resource.Dependency) ([]*matchedDeletableResource, error) {
+	if len(matched) < dep.MinMatches {
+		return nil, errors.New("matched resources count is less than minimum required")
+	}
+
+	if dep.MaxMatches > 0 && len(matched) > dep.MaxMatches {
+		log.Default.Warn(ctx, "Dependency matched %d resources, but maxMatches is %d, only first %d will be used", len(matched), dep.MaxMatches, dep.MaxMatches)
+
+		sort.SliceStable(matched, func(i, j int) bool {
+			return spec.ResourceMetaSortHandler(matched[i].ResourceMeta, matched[j].ResourceMeta)
+		})
+
+		matched = matched[:dep.MaxMatches]
+	}
+
+	return matched, nil
+}
+
+func truncateInstallableMatches(ctx context.Context, matched []*InstallableResourceInfo, dep *resource.Dependency) ([]*InstallableResourceInfo, error) {
+	if len(matched) < dep.MinMatches {
+		return nil, errors.New("matched resources count is less than minimum required")
+	}
+
+	if dep.MaxMatches > 0 && len(matched) > dep.MaxMatches {
+		log.Default.Warn(ctx, "Dependency matched %d resources, but maxMatches is %d, only first %d will be used", len(matched), dep.MaxMatches, dep.MaxMatches)
+
+		sort.SliceStable(matched, func(i, j int) bool {
+			return spec.ResourceMetaSortHandler(matched[i].ResourceMeta, matched[j].ResourceMeta)
+		})
+
+		matched = matched[:dep.MaxMatches]
+	}
+
+	return matched, nil
 }

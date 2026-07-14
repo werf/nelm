@@ -7,7 +7,6 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
 )
 
 func AddChartRepoConnectionFlags(cmd *cobra.Command, cfg *common.ChartRepoConnectionOptions) error {
@@ -80,6 +79,28 @@ func AddChartRepoConnectionFlags(cmd *cobra.Command, cfg *common.ChartRepoConnec
 	if err := cli.AddFlag(cmd, &cfg.ChartRepoURL, "chart-repo-url", "", "Set URL of chart repo to be used to look for chart", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                chartRepoFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	return nil
+}
+
+func AddDockerConfigFlag(cmd *cobra.Command, dockerConfig *string) error {
+	if err := cli.AddFlag(cmd, dockerConfig, "docker-config", common.DefaultDockerConfig, "Docker config directory path", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: func(cmd *cobra.Command, flagName string) ([]*cli.FlagRegexExpr, error) {
+			regexes := []*cli.FlagRegexExpr{cli.NewFlagRegexExpr("^DOCKER_CONFIG$", "$DOCKER_CONFIG")}
+
+			if r, err := cli.GetFlagGlobalAndLocalEnvVarRegexes(cmd, flagName); err != nil {
+				return nil, fmt.Errorf("get env var regexes: %w", err)
+			} else {
+				regexes = append(regexes, r...)
+			}
+
+			return regexes, nil
+		},
+		Group: chartRepoFlagGroup,
+		Type:  cli.FlagTypeDir,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}
@@ -296,12 +317,34 @@ func AddKubeConnectionFlags(cmd *cobra.Command, cfg *common.KubeConnectionOption
 	return nil
 }
 
-func AddResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceValidationOptions) error {
-	if !featgate.FeatGateResourceValidation.Enabled() {
-		return nil
+func AddPatchesFlags(cmd *cobra.Command, patchesFiles *[]string, defaultPatchesDisable *bool) error {
+	if err := cli.AddFlag(cmd, patchesFiles, "patches", []string{}, "Additional patches files (diff patches for drift detection)", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                patchFlagGroup,
+		Type:                 cli.FlagTypeFile,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
 	}
 
+	if err := cli.AddFlag(cmd, defaultPatchesDisable, "no-default-patches", false, "Ignore patches.yaml of the top-level chart and subcharts", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                patchFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	return nil
+}
+
+func AddResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceValidationOptions) error {
 	if err := cli.AddFlag(cmd, &cfg.NoResourceValidation, "no-resource-validation", false, "Disable resource validation", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                resourceValidationGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
+	if err := cli.AddFlag(cmd, &cfg.NoValuesSchemaValidation, "no-values-schema-validation", false, "Disable values validation against JSON schema", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                resourceValidationGroup,
 	}); err != nil {
@@ -458,14 +501,6 @@ func AddValuesFlags(cmd *cobra.Command, cfg *common.ValuesOptions) error {
 		return fmt.Errorf("add flag: %w", err)
 	}
 
-	if err := cli.AddFlag(cmd, &cfg.RuntimeSetJSON, "set-runtime-json", []string{}, "Set new keys in $.Runtime, where the key is the value path and the value is JSON. This is meant to be generated inside the program, so use --set-json instead, unless you know what you are doing", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                valuesFlagGroup,
-		NoSplitOnCommas:      true,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
 	if err := cli.AddFlag(cmd, &cfg.ValuesFiles, "values", []string{}, "Additional values files", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                valuesFlagGroup,
@@ -474,11 +509,10 @@ func AddValuesFlags(cmd *cobra.Command, cfg *common.ValuesOptions) error {
 		return fmt.Errorf("add flag: %w", err)
 	}
 
-	// TODO(major): revise all flags in nelm/werf to make sure they are all parsed as it happens in
-	// Helm (see https://github.com/werf/nelm/issues/337)
 	if err := cli.AddFlag(cmd, &cfg.ValuesSet, "set", []string{}, "Set new values, where the key is the value path and the value is the value", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                valuesFlagGroup,
+		NoSplitOnCommas:      true,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}
@@ -486,6 +520,7 @@ func AddValuesFlags(cmd *cobra.Command, cfg *common.ValuesOptions) error {
 	if err := cli.AddFlag(cmd, &cfg.ValuesSetFile, "set-file", []string{}, "Set new values, where the key is the value path and the value is the path to the file with the value content", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                valuesFlagGroup,
+		NoSplitOnCommas:      true,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}
@@ -509,6 +544,7 @@ func AddValuesFlags(cmd *cobra.Command, cfg *common.ValuesOptions) error {
 	if err := cli.AddFlag(cmd, &cfg.ValuesSetString, "set-string", []string{}, "Set new values, where the key is the value path and the value is the value. The value will always become a string", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                valuesFlagGroup,
+		NoSplitOnCommas:      true,
 	}); err != nil {
 		return fmt.Errorf("add flag: %w", err)
 	}

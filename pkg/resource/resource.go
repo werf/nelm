@@ -11,9 +11,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/resource/spec"
 )
 
@@ -30,7 +29,7 @@ type InstallableResource struct {
 	DefaultReplicasOnCreation              *int                            `json:"defaultReplicasOnCreation,omitempty"`
 	DeleteOnSucceeded                      bool                            `json:"deleteOnSucceeded"`
 	DeleteOnFailed                         bool                            `json:"deleteOnFailed"`
-	FailMode                               multitrack.FailMode             `json:"failMode"`
+	FailMode                               statestore.FailMode             `json:"failMode"`
 	FailuresAllowed                        int                             `json:"failuresAllowed"`
 	IgnoreReadinessProbeFailsForContainers map[string]time.Duration        `json:"ignoreReadinessProbeFailsForContainers,omitempty"`
 	LogRegex                               *regexp.Regexp                  `json:"logRegex"`
@@ -43,18 +42,20 @@ type InstallableResource struct {
 	SkipLogsForContainers                  []string                        `json:"skipLogsForContainers,omitempty"`
 	SkipLogsRegex                          *regexp.Regexp                  `json:"skipLogsRegex"`
 	SkipLogsRegexForContainers             map[string]*regexp.Regexp       `json:"skipLogsRegexForContainers"`
-	TrackTerminationMode                   multitrack.TrackTerminationMode `json:"trackTerminationMode"`
+	TrackTerminationMode                   statestore.TrackTerminationMode `json:"trackTerminationMode"`
 	Weight                                 *int                            `json:"weight,omitempty"`
-	ManualInternalDependencies             []*InternalDependency           `json:"manualInternalDependencies,omitempty"`
-	AutoInternalDependencies               []*InternalDependency           `json:"autoInternalDependencies,omitempty"`
-	ExternalDependencies                   []*ExternalDependency           `json:"externalDependencies,omitempty"`
+	ManualDependencies                     []*Dependency                   `json:"manualDependencies,omitempty"`
+	AutoInternalDependencies               []*Dependency                   `json:"autoInternalDependencies,omitempty"`
 	DeployConditions                       map[common.On][]common.Stage    `json:"deployConditions"`
 	DeletePropagation                      metav1.DeletionPropagation      `json:"deletePropagation"`
 }
 
 // Construct an InstallableResource from a ResourceSpec. Must never contact the cluster, because
 // this is called even when no cluster access allowed.
-func NewInstallableResource(res *spec.ResourceSpec, otherResSpecs []*spec.ResourceSpec, releaseNamespace string, clientFactory kube.ClientFactorier, opts InstallableResourceOptions) (*InstallableResource, error) {
+func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherResSpecs []*spec.ResourceSpec, releaseNamespace string, opts InstallableResourceOptions) (*InstallableResource, error) {
+	otherResourceMetaList := lo.Map(otherResSpecs, func(resSpec *spec.ResourceSpec, _ int) *spec.ResourceMeta {
+		return resSpec.ResourceMeta
+	})
 	if err := validateHook(res.ResourceMeta); err != nil {
 		return nil, fmt.Errorf("validate hook configuration: %w", err)
 	}
@@ -79,17 +80,15 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResSpecs []*spec.Resour
 		return nil, fmt.Errorf("validate weight: %w", err)
 	}
 
-	if err := validateDeployDependencies(res.ResourceMeta); err != nil {
+	if err := validateDeployDependencies(res.ResourceMeta, otherResourceMetaList); err != nil {
 		return nil, fmt.Errorf("validate deploy dependencies: %w", err)
 	}
 
-	if err := validateInternalDependencies(res.ResourceMeta); err != nil {
-		return nil, fmt.Errorf("validate internal dependencies: %w", err)
+	if err := validateDeleteDependencies(res.ResourceMeta, otherResourceMetaList); err != nil {
+		return nil, fmt.Errorf("validate delete dependencies: %w", err)
 	}
 
-	if err := validateExternalDependencies(res.ResourceMeta); err != nil {
-		return nil, fmt.Errorf("validate external dependencies: %w", err)
-	}
+	warnDeprecatedExternalDependencies(ctx, res.ResourceMeta)
 
 	if err := validateSensitive(res.ResourceMeta); err != nil {
 		return nil, fmt.Errorf("validate sensitive: %w", err)
@@ -107,12 +106,10 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResSpecs []*spec.Resour
 		return nil, fmt.Errorf("validate delete propagation: %w", err)
 	}
 
-	extDeps, err := externalDependencies(res.ResourceMeta, releaseNamespace, clientFactory, opts.Remote)
-	if err != nil {
-		return nil, fmt.Errorf("get external dependencies: %w", err)
-	}
-
-	manIntDeps := manualInternalDeployDependencies(res.ResourceMeta)
+	manDeps := manualDeployDependencies(res.ResourceMeta, otherResourceMetaList)
+	internalDeps := lo.Filter(manDeps, func(item *Dependency, _ int) bool {
+		return !item.External
+	})
 
 	otherUnstructs := lo.Map(otherResSpecs, func(resSpec *spec.ResourceSpec, _ int) *unstructured.Unstructured {
 		return resSpec.Unstruct
@@ -125,14 +122,13 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResSpecs []*spec.Resour
 		DeleteOnFailed:                         deleteOnFailed(res.ResourceMeta),
 		DeleteOnSucceeded:                      deleteOnSucceeded(res.ResourceMeta),
 		DeletePropagation:                      deletePropagation(res.ResourceMeta, opts.DefaultDeletePropagation),
-		DeployConditions:                       deployConditions(res.ResourceMeta, len(manIntDeps) > 0),
-		ExternalDependencies:                   extDeps,
+		DeployConditions:                       deployConditions(res.ResourceMeta, len(internalDeps) > 0),
 		FailMode:                               failMode(res.ResourceMeta),
 		FailuresAllowed:                        failuresAllowed(res.Unstruct),
 		IgnoreReadinessProbeFailsForContainers: ignoreReadinessProbeFailsForContainers(res.ResourceMeta),
 		LogRegex:                               logRegex(res.ResourceMeta),
 		LogRegexesForContainers:                logRegexesForContainers(res.ResourceMeta),
-		ManualInternalDependencies:             manIntDeps,
+		ManualDependencies:                     manDeps,
 		NoActivityTimeout:                      noActivityTimeout(res.ResourceMeta),
 		Ownership:                              ownership(res.ResourceMeta, releaseNamespace, res.StoreAs),
 		Recreate:                               recreate(res.ResourceMeta),
@@ -146,14 +142,13 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResSpecs []*spec.Resour
 		SkipLogsRegex:                          skipLogRegex(res.ResourceMeta),
 		SkipLogsRegexForContainers:             skipLogRegexesForContainers(res.ResourceMeta),
 		TrackTerminationMode:                   trackTerminationMode(res.ResourceMeta),
-		Weight:                                 weight(res.ResourceMeta, len(manIntDeps) > 0),
+		Weight:                                 weight(res.ResourceMeta, len(internalDeps) > 0),
 	}, nil
 }
 
 type InstallableResourceOptions struct {
 	DefaultDeletePropagation metav1.DeletionPropagation
 	NoPodLogs                bool
-	Remote                   bool
 }
 
 // Represent a Kubernetes resource that can be deleted. Higher level than ResourceMeta, but lower
@@ -162,16 +157,16 @@ type InstallableResourceOptions struct {
 type DeletableResource struct {
 	*spec.ResourceMeta
 
-	AutoInternalDependencies   []*InternalDependency
-	DeletePropagation          metav1.DeletionPropagation
-	ManualInternalDependencies []*InternalDependency
-	Ownership                  common.Ownership
-	ResourcePolicies           []common.ResourcePolicy
+	AutoInternalDependencies []*Dependency
+	DeletePropagation        metav1.DeletionPropagation
+	ManualDependencies       []*Dependency
+	Ownership                common.Ownership
+	ResourcePolicies         []common.ResourcePolicy
 }
 
 // Construct a DeletableResource from a ResourceSpec. Must never contact the cluster, because
 // this is called even when no cluster access allowed.
-func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []*spec.ResourceSpec, releaseNamespace string, opts DeletableResourceOptions) *DeletableResource {
+func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []*spec.ResourceSpec, releaseNamespace string, opts DeletableResourceOptions) (*DeletableResource, error) {
 	var policies []common.ResourcePolicy
 	if err := ValidateResourcePolicy(resourceSpec.ResourceMeta); err != nil {
 		policies = []common.ResourcePolicy{common.ResourcePolicySkipDelete}
@@ -193,9 +188,12 @@ func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []
 		delPropagation = deletePropagation(resourceSpec.ResourceMeta, opts.DefaultDeletePropagation)
 	}
 
-	var manIntDeps []*InternalDependency
-	if err := validateDeleteDependencies(resourceSpec.ResourceMeta); err == nil {
-		manIntDeps = manualInternalDeleteDependencies(resourceSpec.ResourceMeta)
+	otherResourceMetaList := lo.Map(otherResourceSpecs, func(resSpec *spec.ResourceSpec, _ int) *spec.ResourceMeta {
+		return resSpec.ResourceMeta
+	})
+
+	if err := validateDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList); err != nil {
+		return nil, fmt.Errorf("validate delete dependencies: %w", err)
 	}
 
 	unstructList := lo.Map(otherResourceSpecs, func(resSpec *spec.ResourceSpec, _ int) *unstructured.Unstructured {
@@ -203,13 +201,13 @@ func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []
 	})
 
 	return &DeletableResource{
-		ResourceMeta:               resourceSpec.ResourceMeta,
-		AutoInternalDependencies:   internalDeleteDependencies(resourceSpec.Unstruct, unstructList),
-		DeletePropagation:          delPropagation,
-		ManualInternalDependencies: manIntDeps,
-		Ownership:                  owner,
-		ResourcePolicies:           policies,
-	}
+		ResourceMeta:             resourceSpec.ResourceMeta,
+		AutoInternalDependencies: internalDeleteDependencies(resourceSpec.Unstruct, unstructList),
+		DeletePropagation:        delPropagation,
+		ManualDependencies:       manualDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList),
+		Ownership:                owner,
+		ResourcePolicies:         policies,
+	}, nil
 }
 
 type DeletableResourceOptions struct {
@@ -219,28 +217,29 @@ type DeletableResourceOptions struct {
 type BuildResourcesOptions struct {
 	DefaultDeletePropagation metav1.DeletionPropagation
 	NoPodLogs                bool
-	Remote                   bool
 }
 
 // Build Installable/DeletableResources from ResourceSpecs. Resulting Resources can be used to
 // construct Installable/DeletableResourceInfos later. Must never contact the cluster, because this
 // is called even when no cluster access allowed.
-func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRelResSpecs, newRelResSpecs []*spec.ResourceSpec, patchers []spec.ResourcePatcher, clientFactory kube.ClientFactorier, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
+func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRelResSpecs, newRelResSpecs []*spec.ResourceSpec, patchers []spec.ResourcePatcher, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
 	var prevRelDelResources []*DeletableResource
 	for _, resSpec := range prevRelResSpecs {
-		deletableRes := NewDeletableResource(resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, DeletableResourceOptions{
+		deletableRes, err := NewDeletableResource(resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, DeletableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("construct deletable resource: %w", err)
+		}
 
 		prevRelDelResources = append(prevRelDelResources, deletableRes)
 	}
 
 	var prevRelInstResources []*InstallableResource
 	for _, resSpec := range prevRelResSpecs {
-		installableResource, err := NewInstallableResource(resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, clientFactory, InstallableResourceOptions{
+		installableResource, err := NewInstallableResource(ctx, resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 			NoPodLogs:                opts.NoPodLogs,
-			Remote:                   opts.Remote,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct installable resource: %w", err)
@@ -251,10 +250,9 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 
 	var newRelInstResources []*InstallableResource
 	for _, resSpec := range newRelResSpecs {
-		installableResource, err := NewInstallableResource(resSpec, lo.Without(newRelResSpecs, resSpec), releaseNamespace, clientFactory, InstallableResourceOptions{
+		installableResource, err := NewInstallableResource(ctx, resSpec, lo.Without(newRelResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 			NoPodLogs:                opts.NoPodLogs,
-			Remote:                   opts.Remote,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct installable resource: %w", err)
@@ -312,50 +310,52 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 		}
 	})
 
-	var instResources []*InstallableResource
+	var patchedResSpecs []*spec.ResourceSpec
 	for _, r := range append(filteredPrevRelInstResources, filteredNewRelInstResources...) {
-		instRes := r
+		unstruct := r.Unstruct
 
 		var deepCopied bool
 		for _, patcher := range patchers {
 			if matched, err := patcher.Match(ctx, &spec.ResourcePatcherResourceInfo{
-				Obj:       instRes.Unstruct,
-				Ownership: instRes.Ownership,
+				Obj:       unstruct,
+				Ownership: r.Ownership,
 			}); err != nil {
 				return nil, nil, fmt.Errorf("match deployable resource for patching by %q: %w", patcher.Type(), err)
 			} else if !matched {
 				continue
 			}
 
-			var unstruct *unstructured.Unstructured
-			if deepCopied {
-				unstruct = instRes.Unstruct
-			} else {
-				unstruct = instRes.Unstruct.DeepCopy()
+			if !deepCopied {
+				unstruct = unstruct.DeepCopy()
 				deepCopied = true
 			}
 
 			patchedObj, err := patcher.Patch(ctx, &spec.ResourcePatcherResourceInfo{
 				Obj:       unstruct,
-				Ownership: instRes.Ownership,
+				Ownership: r.Ownership,
 			})
 			if err != nil {
 				return nil, nil, fmt.Errorf("patch deployable resource by %q: %w", patcher.Type(), err)
 			}
 
-			resSpec := spec.NewResourceSpec(patchedObj, releaseNamespace, spec.ResourceSpecOptions{
-				StoreAs:  instRes.StoreAs,
-				FilePath: instRes.FilePath,
-			})
+			unstruct = patchedObj
+		}
 
-			instRes, err = NewInstallableResource(resSpec, newRelResSpecs, releaseNamespace, clientFactory, InstallableResourceOptions{
-				DefaultDeletePropagation: opts.DefaultDeletePropagation,
-				NoPodLogs:                opts.NoPodLogs,
-				Remote:                   opts.Remote,
-			})
-			if err != nil {
-				return nil, nil, fmt.Errorf("construct deployable resource from patched object by %q: %w", patcher.Type(), err)
-			}
+		resSpec := spec.NewResourceSpec(unstruct, releaseNamespace, spec.ResourceSpecOptions{
+			StoreAs:  r.StoreAs,
+			FilePath: r.FilePath,
+		})
+		patchedResSpecs = append(patchedResSpecs, resSpec)
+	}
+
+	var instResources []*InstallableResource
+	for _, resSpec := range patchedResSpecs {
+		instRes, err := NewInstallableResource(ctx, resSpec, lo.Without(patchedResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
+			DefaultDeletePropagation: opts.DefaultDeletePropagation,
+			NoPodLogs:                opts.NoPodLogs,
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("construct deployable resource: %w", err)
 		}
 
 		instResources = append(instResources, instRes)

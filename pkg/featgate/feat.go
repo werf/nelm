@@ -12,42 +12,10 @@ import (
 var (
 	FeatGateEnvVarsPrefix = caps.ToScreamingSnake(common.Brand) + "_FEAT_"
 	// Contains all defined feature gates.
-	FeatGates            = []*FeatGate{}
-	FeatGateRemoteCharts = NewFeatGate(
-		"remote-charts",
-		`Allow not only local, but also remote charts as an argument to cli commands. Also adds the "--chart-version" option`,
-	)
-	FeatGateNativeReleaseList = NewFeatGate(
-		"native-release-list",
-		`Use the native "release list" command instead of "helm list" exposed as "release list"`,
-	)
+	FeatGates                   = []*FeatGate{}
 	FeatGatePeriodicStackTraces = NewFeatGate(
 		"periodic-stack-traces",
 		`Print stack traces periodically to help with debugging deadlocks and other issues`,
-	)
-	FeatGateNativeReleaseUninstall = NewFeatGate(
-		"native-release-uninstall",
-		`Use the new "release uninstall" command implementation (not fully backwards compatible)`,
-	)
-	FeatGateFieldSensitive = NewFeatGate(
-		"field-sensitive",
-		`Enable JSONPath-based selective sensitive field redaction`,
-	)
-	FeatGatePreviewV2 = NewFeatGate(
-		"preview-v2",
-		`Activate all feature gates that will be enabled by default in Nelm v2`,
-	)
-	FeatGateCleanNullFields = NewFeatGate(
-		"clean-null-fields",
-		`Enable cleaning of null fields from resource manifests for better Helm chart compatibility`,
-	)
-	FeatGateMoreDetailedExitCodeForPlan = NewFeatGate(
-		"more-detailed-exit-code-for-plan",
-		`Make the "plan" command with the flag "--exit-code" return an exit code 3 instead of 2 when no resource changes, but still must install the release`,
-	)
-	FeatGateResourceValidation = NewFeatGate(
-		"resource-validation",
-		"Validate chart resources against specific Kubernetes resources' schemas",
 	)
 	FeatGateTypescript = NewFeatGate(
 		"typescript",

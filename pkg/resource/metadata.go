@@ -13,15 +13,14 @@ import (
 	"github.com/ohler55/ojg/jp"
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	apiv1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
-	"github.com/werf/nelm/pkg/kube"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/util"
 )
@@ -140,31 +139,90 @@ func deployConditions(meta *spec.ResourceMeta, hasManualInternalDeps bool) map[c
 	}
 }
 
-func externalDependencies(meta *spec.ResourceMeta, releaseNamespace string, clientFactory kube.ClientFactorier, remote bool) ([]*ExternalDependency, error) {
-	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
-		return nil, nil
-	}
+func manualDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta) []*Dependency {
+	deps := map[string]*Dependency{}
 
-	deps := externalDeps(meta, releaseNamespace)
+	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteDependency); found {
+		for key, value := range annotations {
+			matches := common.AnnotationKeyPatternDeleteDependency.FindStringSubmatch(key)
+			idSubexpIndex := common.AnnotationKeyPatternDeleteDependency.SubexpIndex("id")
+			depID := matches[idSubexpIndex]
+			properties := lo.Must(util.ParseProperties(context.TODO(), value))
 
-	legacyExtDeps := map[string]*ExternalDependency{}
+			var depState common.ResourceState
+			if s := properties["state"].(string); s != "" {
+				depState = common.ResourceState(s)
+			} else {
+				depState = common.ResourceStateAbsent
+			}
 
-	// Pretend that we don't have any external dependencies when we don't have cluster access, since we need cluster access to map GVR to GVK.
-	if remote {
-		var err error
+			dep := &Dependency{
+				ResourceMatcher: dependencyMatcher(properties),
+				ResourceState:   depState,
+			}
 
-		legacyExtDeps, err = legacyExternalDeps(meta, releaseNamespace, clientFactory.Mapper())
-		if err != nil {
-			return nil, fmt.Errorf("get legacy external dependencies: %w", err)
+			depExternal := common.DefaultDependencyExternal
+			if ext := properties["external"]; ext != nil {
+				depExternal = common.DependencyExternal(ext.(string))
+			}
+
+			dep.External = isExternalDependency(dep.ResourceMatcher, otherResMeta, depExternal)
+
+			if dep.External {
+				dep.MinMatches = common.DefaultExternalDependencyMinMatches
+				dep.MaxMatches = common.DefaultExternalDependencyMaxMatches
+			}
+
+			deps[depID] = dep
 		}
 	}
 
-	duplResult := lo.Values(lo.Assign(legacyExtDeps, deps))
-	uniqResult := lo.UniqBy(duplResult, func(d *ExternalDependency) string {
-		return d.ID()
-	})
+	return lo.Values(deps)
+}
 
-	return uniqResult, nil
+func manualDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta) []*Dependency {
+	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
+		return nil
+	}
+
+	deps := map[string]*Dependency{}
+
+	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeployDependency); found {
+		for key, value := range annotations {
+			matches := common.AnnotationKeyPatternDeployDependency.FindStringSubmatch(key)
+			idSubexpIndex := common.AnnotationKeyPatternDeployDependency.SubexpIndex("id")
+			depID := matches[idSubexpIndex]
+			properties := lo.Must(util.ParseProperties(context.TODO(), value))
+
+			var depState common.ResourceState
+			if s := properties["state"].(string); s != "" {
+				depState = common.ResourceState(s)
+			} else {
+				depState = common.ResourceStatePresent
+			}
+
+			dep := &Dependency{
+				ResourceMatcher: dependencyMatcher(properties),
+				ResourceState:   depState,
+			}
+
+			depExternal := common.DefaultDependencyExternal
+			if ext := properties["external"]; ext != nil {
+				depExternal = common.DependencyExternal(ext.(string))
+			}
+
+			dep.External = isExternalDependency(dep.ResourceMatcher, otherResMeta, depExternal)
+
+			if dep.External {
+				dep.MinMatches = common.DefaultExternalDependencyMinMatches
+				dep.MaxMatches = common.DefaultExternalDependencyMaxMatches
+			}
+
+			deps[depID] = dep
+		}
+	}
+
+	return lo.Values(deps)
 }
 
 func recreate(meta *spec.ResourceMeta) bool {
@@ -177,6 +235,218 @@ func recreateOnImmutable(meta *spec.ResourceMeta) bool {
 	deletePolicies := deletePolicies(meta)
 
 	return lo.Contains(deletePolicies, common.DeletePolicyBeforeCreationIfImmutable)
+}
+
+func validateDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta) error {
+	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteDependency); found {
+		for key, value := range annotations {
+			keyMatches := common.AnnotationKeyPatternDeleteDependency.FindStringSubmatch(key)
+			if keyMatches == nil {
+				return fmt.Errorf("invalid key for annotation %q", key)
+			}
+
+			idSubexpIndex := common.AnnotationKeyPatternDeleteDependency.SubexpIndex("id")
+			if idSubexpIndex == -1 {
+				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternDeleteDependency.String(), key)
+			}
+
+			if len(keyMatches) < idSubexpIndex+1 {
+				return fmt.Errorf("can't parse delete dependency id from annotation key %q", key)
+			}
+
+			if value == "" {
+				return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
+			}
+
+			properties, err := util.ParseProperties(context.TODO(), value)
+			if err != nil {
+				return fmt.Errorf("invalid value %q for annotation %q: %w", value, key, err)
+			}
+
+			if !lo.Some(lo.Keys(properties), []string{"group", "version", "kind", "name", "namespace"}) {
+				return fmt.Errorf("invalid value %q for annotation %q, target not specified", value, key)
+			}
+
+			for propKey, propVal := range properties {
+				switch propKey {
+				case "group", "version", "kind", "name", "namespace":
+					switch pv := propVal.(type) {
+					case string:
+						if pv == "" {
+							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
+						}
+					case bool:
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				case "state":
+					switch pv := propVal.(type) {
+					case string:
+						switch pv {
+						case "absent":
+						case "":
+							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
+						default:
+							return fmt.Errorf("unknown value %q for property %q", pv, propKey)
+						}
+					case bool:
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				case "external":
+					switch pv := propVal.(type) {
+					case string:
+						switch common.DependencyExternal(pv) {
+						case common.DependencyExternalAuto, common.DependencyExternalTrue, common.DependencyExternalFalse:
+						default:
+							return fmt.Errorf("invalid value %q for property %q, expected %q, %q or %q", pv, propKey, common.DependencyExternalAuto, common.DependencyExternalTrue, common.DependencyExternalFalse)
+						}
+					case bool:
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				default:
+					return fmt.Errorf("unknown property %q in value of annotation %q", propKey, key)
+				}
+			}
+
+			depExternal := common.DefaultDependencyExternal
+			if ext := properties["external"]; ext != nil {
+				depExternal = common.DependencyExternal(ext.(string))
+			}
+
+			matcher := dependencyMatcher(properties)
+
+			if isExternalDependency(matcher, otherResMeta, depExternal) {
+				depID := keyMatches[idSubexpIndex]
+
+				if len(matcher.Names) == 0 {
+					return fmt.Errorf("external delete dependency %q must have \"name\" property set", depID)
+				}
+
+				if len(matcher.Kinds) == 0 {
+					return fmt.Errorf("external delete dependency %q must have \"kind\" property set", depID)
+				}
+
+				if len(matcher.Versions) == 0 {
+					return fmt.Errorf("external delete dependency %q must have \"version\" property set", depID)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func validateDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta) error {
+	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeployDependency); found {
+		for key, value := range annotations {
+			keyMatches := common.AnnotationKeyPatternDeployDependency.FindStringSubmatch(key)
+			if keyMatches == nil {
+				return fmt.Errorf("invalid key for annotation %q", key)
+			}
+
+			idSubexpIndex := common.AnnotationKeyPatternDeployDependency.SubexpIndex("id")
+			if idSubexpIndex == -1 {
+				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternDeployDependency.String(), key)
+			}
+
+			if len(keyMatches) < idSubexpIndex+1 {
+				return fmt.Errorf("can't parse deploy dependency id from annotation key %q", key)
+			}
+
+			if value == "" {
+				return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
+			}
+
+			properties, err := util.ParseProperties(context.TODO(), value)
+			if err != nil {
+				return fmt.Errorf("invalid value %q for annotation %q: %w", value, key, err)
+			}
+
+			if !lo.Some(lo.Keys(properties), []string{"group", "version", "kind", "name", "namespace"}) {
+				return fmt.Errorf("invalid value %q for annotation %q, target not specified", value, key)
+			}
+
+			if _, found := properties["state"]; !found {
+				return fmt.Errorf(`invalid value %q for annotation %q, "state" property must be set`, value, key)
+			}
+
+			for propKey, propVal := range properties {
+				switch propKey {
+				case "group", "version", "kind", "name", "namespace":
+					switch pv := propVal.(type) {
+					case string:
+						if pv == "" {
+							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
+						}
+					case bool:
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				case "state":
+					switch pv := propVal.(type) {
+					case string:
+						switch pv {
+						case "present", "ready":
+						case "":
+							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
+						default:
+							return fmt.Errorf("unknown value %q for property %q", pv, propKey)
+						}
+					case bool:
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				case "external":
+					switch pv := propVal.(type) {
+					case string:
+						switch common.DependencyExternal(pv) {
+						case common.DependencyExternalAuto, common.DependencyExternalTrue, common.DependencyExternalFalse:
+						default:
+							return fmt.Errorf("invalid value %q for property %q, expected %q, %q or %q", pv, propKey, common.DependencyExternalAuto, common.DependencyExternalTrue, common.DependencyExternalFalse)
+						}
+					case bool:
+						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
+					default:
+						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
+					}
+				default:
+					return fmt.Errorf("unknown property %q in value of annotation %q", propKey, key)
+				}
+			}
+
+			depExternal := common.DefaultDependencyExternal
+			if ext := properties["external"]; ext != nil {
+				depExternal = common.DependencyExternal(ext.(string))
+			}
+
+			matcher := dependencyMatcher(properties)
+
+			if isExternalDependency(matcher, otherResMeta, depExternal) {
+				depID := keyMatches[idSubexpIndex]
+
+				if len(matcher.Names) == 0 {
+					return fmt.Errorf("external deploy dependency %q must have \"name\" property set", depID)
+				}
+
+				if len(matcher.Kinds) == 0 {
+					return fmt.Errorf("external deploy dependency %q must have \"kind\" property set", depID)
+				}
+
+				if len(matcher.Versions) == 0 {
+					return fmt.Errorf("external deploy dependency %q must have \"version\" property set", depID)
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func defaultReplicasOnCreation(meta *spec.ResourceMeta, releaseNamespace string) *int {
@@ -246,6 +516,41 @@ func deletePropagation(meta *spec.ResourceMeta, defaultDeletePropagation apiv1.D
 	return common.DefaultDeletePropagation
 }
 
+func dependencyMatcher(properties map[string]any) *spec.ResourceMatcher {
+	var depNames []string
+	if depName, found := properties["name"]; found {
+		depNames = []string{depName.(string)}
+	}
+
+	var depNamespaces []string
+	if depNamespace, found := properties["namespace"]; found {
+		depNamespaces = []string{depNamespace.(string)}
+	}
+
+	var depGroups []string
+	if depGroup, found := properties["group"]; found {
+		depGroups = []string{depGroup.(string)}
+	}
+
+	var depVersions []string
+	if depVersion, found := properties["version"]; found {
+		depVersions = []string{depVersion.(string)}
+	}
+
+	var depKinds []string
+	if depKind, found := properties["kind"]; found {
+		depKinds = []string{depKind.(string)}
+	}
+
+	return &spec.ResourceMatcher{
+		Names:      depNames,
+		Namespaces: depNamespaces,
+		Groups:     depGroups,
+		Versions:   depVersions,
+		Kinds:      depKinds,
+	}
+}
+
 func deployConditionsForAnnotation(meta *spec.ResourceMeta, annoPattern *regexp.Regexp) map[common.On][]common.Stage {
 	key, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, annoPattern)
 	if !found {
@@ -277,13 +582,13 @@ func deployConditionsForAnnotation(meta *spec.ResourceMeta, annoPattern *regexp.
 			result[common.InstallOnDelete] = append(result[common.InstallOnDelete], common.StagePostInstall)
 		case string(helmrelease.HookTest), "test-success":
 			result[common.InstallOnTest] = append(result[common.InstallOnTest], common.StageInstall)
-		case string(helmrelease.HookInstall):
+		case string(common.InstallOnInstall):
 			result[common.InstallOnInstall] = append(result[common.InstallOnInstall], common.StageInstall)
-		case string(helmrelease.HookUpgrade):
+		case string(common.InstallOnUpgrade):
 			result[common.InstallOnUpgrade] = append(result[common.InstallOnUpgrade], common.StageInstall)
-		case string(helmrelease.HookRollback):
+		case string(common.InstallOnRollback):
 			result[common.InstallOnRollback] = append(result[common.InstallOnRollback], common.StageInstall)
-		case string(helmrelease.HookDelete):
+		case string(common.InstallOnDelete):
 			result[common.InstallOnDelete] = append(result[common.InstallOnDelete], common.StageInstall)
 		default:
 			panic(fmt.Sprintf("unknown value %q for %s", value, key))
@@ -299,56 +604,13 @@ func deployConditionsForAnnotation(meta *spec.ResourceMeta, annoPattern *regexp.
 	return result
 }
 
-func externalDeps(resMeta *spec.ResourceMeta, releaseNamespace string) map[string]*ExternalDependency {
-	deps := map[string]*ExternalDependency{}
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(resMeta.Annotations, common.AnnotationKeyPatternExternalDependency); found {
-		for key, value := range annotations {
-			matches := common.AnnotationKeyPatternExternalDependency.FindStringSubmatch(key)
-			idSubexpIndex := common.AnnotationKeyPatternExternalDependency.SubexpIndex("id")
-			depID := matches[idSubexpIndex]
-			valParts := strings.Split(value, ":")
-			depAPIVersionParts := strings.SplitN(valParts[0], "/", 2)
-
-			var gvk schema.GroupVersionKind
-			if len(depAPIVersionParts) == 1 {
-				gvk = schema.GroupVersionKind{
-					Version: depAPIVersionParts[0],
-					Kind:    valParts[1],
-				}
-			} else {
-				gvk = schema.GroupVersionKind{
-					Group:   depAPIVersionParts[0],
-					Version: depAPIVersionParts[1],
-					Kind:    valParts[1],
-				}
-			}
-
-			var depNamespace string
-			if len(valParts) == 4 {
-				depNamespace = valParts[2]
-			}
-
-			depName := valParts[len(valParts)-1]
-
-			resMeta := spec.NewResourceMeta(depName, depNamespace, releaseNamespace, "", gvk, nil, nil)
-			dep := &ExternalDependency{
-				ResourceMeta: resMeta,
-			}
-
-			deps[depID] = dep
-		}
-	}
-
-	return deps
-}
-
-func failMode(meta *spec.ResourceMeta) multitrack.FailMode {
+func failMode(meta *spec.ResourceMeta) statestore.FailMode {
 	_, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternFailMode)
 	if !found {
-		return multitrack.FailWholeDeployProcessImmediately
+		return statestore.FailWholeDeployProcessImmediately
 	}
 
-	return multitrack.FailMode(value)
+	return statestore.FailMode(value)
 }
 
 func failuresAllowed(unstruct *unstructured.Unstructured) int {
@@ -406,61 +668,21 @@ func ignoreReadinessProbeFailsForContainers(meta *spec.ResourceMeta) map[string]
 	return durationByContainer
 }
 
-// TODO(major): get rid of legacy external deps
-func legacyExternalDeps(resMeta *spec.ResourceMeta, releaseNamespace string, mapper apimeta.ResettableRESTMapper) (map[string]*ExternalDependency, error) {
-	deps := map[string]*ExternalDependency{}
+func isExternalDependency(matcher *spec.ResourceMatcher, otherResMeta []*spec.ResourceMeta, external common.DependencyExternal) bool {
+	switch external {
+	case common.DependencyExternalAuto:
+		matched := lo.Filter(otherResMeta, func(resMeta *spec.ResourceMeta, _ int) bool {
+			return matcher.Match(resMeta)
+		})
 
-	type DepInfo struct {
-		Name      string
-		Namespace string
-		Type      string
+		return len(matched) == 0
+	case common.DependencyExternalTrue:
+		return true
+	case common.DependencyExternalFalse:
+		return false
+	default:
+		panic(fmt.Sprintf("unexpected external dependency value: %q", external))
 	}
-
-	extDepInfos := map[string]*DepInfo{}
-
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(resMeta.Annotations, common.AnnotationKeyPatternLegacyExternalDependencyResource); found {
-		for key, value := range annotations {
-			matches := common.AnnotationKeyPatternLegacyExternalDependencyResource.FindStringSubmatch(key)
-			idSubexpIndex := common.AnnotationKeyPatternLegacyExternalDependencyResource.SubexpIndex("id")
-			extDepID := matches[idSubexpIndex]
-			extDepType := strings.Split(value, "/")[0]
-			extDepName := strings.Split(value, "/")[1]
-
-			extDepInfos[extDepID] = &DepInfo{
-				Name: extDepName,
-				Type: extDepType,
-			}
-		}
-	}
-
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(resMeta.Annotations, common.AnnotationKeyPatternLegacyExternalDependencyNamespace); found {
-		for key, value := range annotations {
-			matches := common.AnnotationKeyPatternLegacyExternalDependencyNamespace.FindStringSubmatch(key)
-			idSubexpIndex := common.AnnotationKeyPatternLegacyExternalDependencyNamespace.SubexpIndex("id")
-			extDepID := matches[idSubexpIndex]
-			extDepNamespace := value
-
-			if extDepInfo, hasKey := extDepInfos[extDepID]; hasKey {
-				extDepInfo.Namespace = extDepNamespace
-			}
-		}
-	}
-
-	for extDepID, extDepInfo := range extDepInfos {
-		gvk, err := spec.ParseKubectlResourceStringtoGVK(extDepInfo.Type, mapper)
-		if err != nil {
-			return nil, fmt.Errorf("parse external dependency resource type %q for dependency %q (namespace: %q): %w", extDepInfo.Type, extDepInfo.Name, extDepInfo.Namespace, err)
-		}
-
-		resMeta := spec.NewResourceMeta(extDepInfo.Name, extDepInfo.Namespace, releaseNamespace, "", gvk, nil, nil)
-		dep := &ExternalDependency{
-			ResourceMeta: resMeta,
-		}
-
-		deps[extDepID] = dep
-	}
-
-	return deps, nil
 }
 
 func logRegex(meta *spec.ResourceMeta) *regexp.Regexp {
@@ -487,171 +709,6 @@ func logRegexesForContainers(meta *spec.ResourceMeta) map[string]*regexp.Regexp 
 	}
 
 	return regexByContainer
-}
-
-func manualInternalDeleteDependencies(meta *spec.ResourceMeta) []*InternalDependency {
-	deps := map[string]*InternalDependency{}
-
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteDependency); found {
-		for key, value := range annotations {
-			matches := common.AnnotationKeyPatternDeleteDependency.FindStringSubmatch(key)
-			idSubexpIndex := common.AnnotationKeyPatternDeleteDependency.SubexpIndex("id")
-			depID := matches[idSubexpIndex]
-			properties := lo.Must(util.ParseProperties(context.TODO(), value))
-
-			var depNames []string
-			if depName, found := properties["name"]; found {
-				depNames = []string{depName.(string)}
-			}
-
-			var depNamespaces []string
-			if depNamespace, found := properties["namespace"]; found {
-				depNamespaces = []string{depNamespace.(string)}
-			}
-
-			var depGroups []string
-			if depGroup, found := properties["group"]; found {
-				depGroups = []string{depGroup.(string)}
-			}
-
-			var depVersions []string
-			if depVersion, found := properties["version"]; found {
-				depVersions = []string{depVersion.(string)}
-			}
-
-			var depKinds []string
-			if depKind, found := properties["kind"]; found {
-				depKinds = []string{depKind.(string)}
-			}
-
-			var depState common.ResourceState
-			if s := properties["state"].(string); s != "" {
-				depState = common.ResourceState(s)
-			} else {
-				depState = common.ResourceStatePresent
-			}
-
-			dep := &InternalDependency{
-				ResourceMatcher: &spec.ResourceMatcher{
-					Names:      depNames,
-					Namespaces: depNamespaces,
-					Groups:     depGroups,
-					Versions:   depVersions,
-					Kinds:      depKinds,
-				},
-				ResourceState: depState,
-			}
-			deps[depID] = dep
-		}
-	}
-
-	return lo.Values(deps)
-}
-
-func manualInternalDeployDependencies(meta *spec.ResourceMeta) []*InternalDependency {
-	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
-		return nil
-	}
-
-	deps := map[string]*InternalDependency{}
-
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDependency); found {
-		for key, value := range annotations {
-			matches := common.AnnotationKeyPatternDependency.FindStringSubmatch(key)
-			idSubexpIndex := common.AnnotationKeyPatternDependency.SubexpIndex("id")
-			depID := matches[idSubexpIndex]
-			valParts := strings.Split(value, ":")
-			depAPIVersionParts := strings.SplitN(valParts[0], "/", 2)
-
-			var gvk schema.GroupVersionKind
-			if len(depAPIVersionParts) == 1 {
-				gvk = schema.GroupVersionKind{
-					Version: depAPIVersionParts[0],
-					Kind:    valParts[1],
-				}
-			} else {
-				gvk = schema.GroupVersionKind{
-					Group:   depAPIVersionParts[0],
-					Version: depAPIVersionParts[1],
-					Kind:    valParts[1],
-				}
-			}
-
-			var depNamespace string
-			if len(valParts) == 4 {
-				depNamespace = valParts[2]
-			}
-
-			depName := valParts[len(valParts)-1]
-
-			dep := &InternalDependency{
-				ResourceMatcher: &spec.ResourceMatcher{
-					Names:      []string{depName},
-					Namespaces: []string{depNamespace},
-					Groups:     []string{gvk.Group},
-					Versions:   []string{gvk.Version},
-					Kinds:      []string{gvk.Kind},
-				},
-				ResourceState: common.ResourceStatePresent,
-			}
-			deps[depID] = dep
-		}
-	}
-
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeployDependency); found {
-		for key, value := range annotations {
-			matches := common.AnnotationKeyPatternDeployDependency.FindStringSubmatch(key)
-			idSubexpIndex := common.AnnotationKeyPatternDeployDependency.SubexpIndex("id")
-			depID := matches[idSubexpIndex]
-			properties := lo.Must(util.ParseProperties(context.TODO(), value))
-
-			var depNames []string
-			if depName, found := properties["name"]; found {
-				depNames = []string{depName.(string)}
-			}
-
-			var depNamespaces []string
-			if depNamespace, found := properties["namespace"]; found {
-				depNamespaces = []string{depNamespace.(string)}
-			}
-
-			var depGroups []string
-			if depGroup, found := properties["group"]; found {
-				depGroups = []string{depGroup.(string)}
-			}
-
-			var depVersions []string
-			if depVersion, found := properties["version"]; found {
-				depVersions = []string{depVersion.(string)}
-			}
-
-			var depKinds []string
-			if depKind, found := properties["kind"]; found {
-				depKinds = []string{depKind.(string)}
-			}
-
-			var depState common.ResourceState
-			if s := properties["state"].(string); s != "" {
-				depState = common.ResourceState(s)
-			} else {
-				depState = common.ResourceStatePresent
-			}
-
-			dep := &InternalDependency{
-				ResourceMatcher: &spec.ResourceMatcher{
-					Names:      depNames,
-					Namespaces: depNamespaces,
-					Groups:     depGroups,
-					Versions:   depVersions,
-					Kinds:      depKinds,
-				},
-				ResourceState: depState,
-			}
-			deps[depID] = dep
-		}
-	}
-
-	return lo.Values(deps)
 }
 
 func noActivityTimeout(meta *spec.ResourceMeta) time.Duration {
@@ -793,81 +850,13 @@ func skipLogsForContainers(meta *spec.ResourceMeta) []string {
 	return containers
 }
 
-func trackTerminationMode(meta *spec.ResourceMeta) multitrack.TrackTerminationMode {
+func trackTerminationMode(meta *spec.ResourceMeta) statestore.TrackTerminationMode {
 	_, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternTrackTerminationMode)
 	if !found {
-		return multitrack.WaitUntilResourceReady
+		return statestore.WaitUntilResourceReady
 	}
 
-	return multitrack.TrackTerminationMode(value)
-}
-
-func validateDeleteDependencies(meta *spec.ResourceMeta) error {
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteDependency); found {
-		for key, value := range annotations {
-			keyMatches := common.AnnotationKeyPatternDeleteDependency.FindStringSubmatch(key)
-			if keyMatches == nil {
-				return fmt.Errorf("invalid key for annotation %q", key)
-			}
-
-			idSubexpIndex := common.AnnotationKeyPatternDeleteDependency.SubexpIndex("id")
-			if idSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternDeleteDependency.String(), key)
-			}
-
-			if len(keyMatches) < idSubexpIndex+1 {
-				return fmt.Errorf("can't parse delete dependency id from annotation key %q", key)
-			}
-
-			if value == "" {
-				return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
-			}
-
-			properties, err := util.ParseProperties(context.TODO(), value)
-			if err != nil {
-				return fmt.Errorf("invalid value %q for annotation %q: %w", value, key, err)
-			}
-
-			if !lo.Some(lo.Keys(properties), []string{"group", "version", "kind", "name", "namespace"}) {
-				return fmt.Errorf("invalid value %q for annotation %q, target not specified", value, key)
-			}
-
-			for propKey, propVal := range properties {
-				switch propKey {
-				case "group", "version", "kind", "name", "namespace":
-					switch pv := propVal.(type) {
-					case string:
-						if pv == "" {
-							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
-						}
-					case bool:
-						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
-					default:
-						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
-					}
-				case "state":
-					switch pv := propVal.(type) {
-					case string:
-						switch pv {
-						case "absent":
-						case "":
-							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
-						default:
-							return fmt.Errorf("unknown value %q for property %q", pv, propKey)
-						}
-					case bool:
-						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
-					default:
-						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
-					}
-				default:
-					return fmt.Errorf("unknown property %q in value of annotation %q", propKey, key)
-				}
-			}
-		}
-	}
-
-	return nil
+	return statestore.TrackTerminationMode(value)
 }
 
 func validateDeletePolicy(meta *spec.ResourceMeta) error {
@@ -929,78 +918,6 @@ func validateDeletePropagation(meta *spec.ResourceMeta) error {
 	return nil
 }
 
-func validateDeployDependencies(meta *spec.ResourceMeta) error {
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeployDependency); found {
-		for key, value := range annotations {
-			keyMatches := common.AnnotationKeyPatternDeployDependency.FindStringSubmatch(key)
-			if keyMatches == nil {
-				return fmt.Errorf("invalid key for annotation %q", key)
-			}
-
-			idSubexpIndex := common.AnnotationKeyPatternDeployDependency.SubexpIndex("id")
-			if idSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternDeployDependency.String(), key)
-			}
-
-			if len(keyMatches) < idSubexpIndex+1 {
-				return fmt.Errorf("can't parse deploy dependency id from annotation key %q", key)
-			}
-
-			if value == "" {
-				return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
-			}
-
-			properties, err := util.ParseProperties(context.TODO(), value)
-			if err != nil {
-				return fmt.Errorf("invalid value %q for annotation %q: %w", value, key, err)
-			}
-
-			if !lo.Some(lo.Keys(properties), []string{"group", "version", "kind", "name", "namespace"}) {
-				return fmt.Errorf("invalid value %q for annotation %q, target not specified", value, key)
-			}
-
-			if _, found := properties["state"]; !found {
-				return fmt.Errorf(`invalid value %q for annotation %q, "state" property must be set`, value, key)
-			}
-
-			for propKey, propVal := range properties {
-				switch propKey {
-				case "group", "version", "kind", "name", "namespace":
-					switch pv := propVal.(type) {
-					case string:
-						if pv == "" {
-							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
-						}
-					case bool:
-						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
-					default:
-						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
-					}
-				case "state":
-					switch pv := propVal.(type) {
-					case string:
-						switch pv {
-						case "present", "ready":
-						case "":
-							return fmt.Errorf("invalid value %q for property %q, expected non-empty string value", pv, propKey)
-						default:
-							return fmt.Errorf("unknown value %q for property %q", pv, propKey)
-						}
-					case bool:
-						return fmt.Errorf("invalid boolean value %t for property %q, expected string value", pv, propKey)
-					default:
-						panic(fmt.Sprintf("unexpected type %T for property %q", pv, propKey))
-					}
-				default:
-					return fmt.Errorf("unknown property %q in value of annotation %q", propKey, key)
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
 func validateDeployOn(meta *spec.ResourceMeta) error {
 	if key, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeployOn); found {
 		if value == "" {
@@ -1023,105 +940,13 @@ func validateDeployOn(meta *spec.ResourceMeta) error {
 				string(helmrelease.HookPreDelete),
 				string(helmrelease.HookPostDelete),
 				string(helmrelease.HookTest),
-				string(helmrelease.HookInstall),
-				string(helmrelease.HookUpgrade),
-				string(helmrelease.HookRollback),
-				string(helmrelease.HookDelete),
+				string(common.InstallOnInstall),
+				string(common.InstallOnUpgrade),
+				string(common.InstallOnRollback),
+				string(common.InstallOnDelete),
 				"test-success":
 			default:
 				return fmt.Errorf("value %q for annotation %q is not supported", value, key)
-			}
-		}
-	}
-
-	return nil
-}
-
-func validateExternalDependencies(meta *spec.ResourceMeta) error {
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternExternalDependency); found {
-		for key, value := range annotations {
-			keyMatches := common.AnnotationKeyPatternExternalDependency.FindStringSubmatch(key)
-			if keyMatches == nil {
-				return fmt.Errorf("invalid key for annotation %q", key)
-			}
-
-			idSubexpIndex := common.AnnotationKeyPatternExternalDependency.SubexpIndex("id")
-			if idSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternExternalDependency.String(), key)
-			}
-
-			if len(keyMatches) < idSubexpIndex+1 {
-				return fmt.Errorf("can't parse external dependency id from annotation key %q", key)
-			}
-
-			valueElems := strings.Split(value, ":")
-
-			if len(valueElems) != 3 && len(valueElems) != 4 {
-				return fmt.Errorf(`invalid format of value %q for annotation %q, should be: apiVersion:kind[:namespace]:name`, value, key)
-			}
-		}
-	}
-
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternLegacyExternalDependencyResource); found {
-		for key, value := range annotations {
-			keyMatches := common.AnnotationKeyPatternLegacyExternalDependencyResource.FindStringSubmatch(key)
-			if keyMatches == nil {
-				return fmt.Errorf("invalid key for annotation %q", key)
-			}
-
-			idSubexpIndex := common.AnnotationKeyPatternLegacyExternalDependencyResource.SubexpIndex("id")
-			if idSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternLegacyExternalDependencyResource.String(), key)
-			}
-
-			if len(keyMatches) < idSubexpIndex+1 {
-				return fmt.Errorf("can't parse external dependency id from annotation key %q", key)
-			}
-
-			valueElems := strings.Split(value, "/")
-
-			if len(valueElems) != 2 {
-				return fmt.Errorf(`invalid format of value %q for annotation %q, should be: type/name`, value, key)
-			}
-
-			switch valueElems[0] {
-			case "":
-				return fmt.Errorf("value %q of annotation %q can't have empty resource type", value, key)
-			case "all":
-				return fmt.Errorf(`"all" resource type in value %q of annotation %q is not allowed`, value, key)
-			}
-
-			resourceTypeParts := strings.Split(valueElems[0], ".")
-			for _, part := range resourceTypeParts {
-				if part == "" {
-					return fmt.Errorf("resource type in value %q of annotation %q should have dots (.) delimiting only non-empty resource.version.group", value, key)
-				}
-			}
-
-			if valueElems[1] == "" {
-				return fmt.Errorf("in value %q of annotation %q resource name can't be empty", value, key)
-			}
-		}
-	}
-
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternLegacyExternalDependencyNamespace); found {
-		for key, value := range annotations {
-			keyMatches := common.AnnotationKeyPatternLegacyExternalDependencyNamespace.FindStringSubmatch(key)
-			if keyMatches == nil {
-				return fmt.Errorf("invalid key for annotation %q", key)
-			}
-
-			idSubexpIndex := common.AnnotationKeyPatternLegacyExternalDependencyNamespace.SubexpIndex("id")
-			if idSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternLegacyExternalDependencyNamespace.String(), key)
-			}
-
-			if len(keyMatches) < idSubexpIndex+1 {
-				return fmt.Errorf("can't parse external dependency id from annotation key %q", key)
-			}
-
-			if value == "" {
-				return fmt.Errorf("invalid value %q for annotation %q, value must not be empty", value, key)
 			}
 		}
 	}
@@ -1154,36 +979,6 @@ func validateHook(meta *spec.ResourceMeta) error {
 				"test-success":
 			default:
 				return fmt.Errorf("value %q for annotation %q is not supported", value, key)
-			}
-		}
-	}
-
-	return nil
-}
-
-func validateInternalDependencies(meta *spec.ResourceMeta) error {
-	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDependency); found {
-		for key, value := range annotations {
-			keyMatches := common.AnnotationKeyPatternDependency.FindStringSubmatch(key)
-			if keyMatches == nil {
-				return fmt.Errorf("invalid key for annotation %q", key)
-			}
-
-			idSubexpIndex := common.AnnotationKeyPatternDependency.SubexpIndex("id")
-			if idSubexpIndex == -1 {
-				return fmt.Errorf("invalid regexp pattern %q for annotation %q", common.AnnotationKeyPatternDependency.String(), key)
-			}
-
-			if len(keyMatches) < idSubexpIndex+1 {
-				return fmt.Errorf("can't parse dependency id from annotation key %q", key)
-			}
-
-			if value != "" {
-				valueElems := strings.Split(value, ":")
-
-				if len(valueElems) != 3 && len(valueElems) != 4 {
-					return fmt.Errorf(`invalid format of value %q for annotation %q, should be: apiVersion:kind[:namespace]:name or empty`, value, key)
-				}
 			}
 		}
 	}
@@ -1269,9 +1064,9 @@ func validateTrack(meta *spec.ResourceMeta) error {
 		}
 
 		switch value {
-		case string(multitrack.IgnoreAndContinueDeployProcess):
-		case string(multitrack.FailWholeDeployProcessImmediately):
-		case string(multitrack.LegacyHopeUntilEndOfDeployProcess):
+		case string(statestore.IgnoreAndContinueDeployProcess):
+		case string(statestore.FailWholeDeployProcessImmediately):
+		case string(statestore.LegacyHopeUntilEndOfDeployProcess):
 		default:
 			return fmt.Errorf("invalid unknown value %q for annotation %q", value, key)
 		}
@@ -1475,8 +1270,8 @@ func validateTrack(meta *spec.ResourceMeta) error {
 		}
 
 		switch value {
-		case string(multitrack.WaitUntilResourceReady):
-		case string(multitrack.NonBlocking):
+		case string(statestore.WaitUntilResourceReady):
+		case string(statestore.NonBlocking):
 		default:
 			return fmt.Errorf("invalid unknown value %q for annotation %q", value, key)
 		}
@@ -1509,6 +1304,16 @@ func validateWeight(meta *spec.ResourceMeta) error {
 	}
 
 	return nil
+}
+
+func warnDeprecatedExternalDependencies(ctx context.Context, meta *spec.ResourceMeta) {
+	deprecatedAnnotationPattern := regexp.MustCompile(`^(?P<id>.+)\.external-dependency\.werf\.io(/resource|/namespace)?$`)
+
+	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, deprecatedAnnotationPattern); found {
+		for key := range annotations {
+			log.Default.Warn(ctx, "annotation %q in resource %q is no longer supported, use %q or %q instead", key, meta.IDHuman(), common.AnnotationKeyHumanDeployDependency, common.AnnotationKeyHumanDeleteDependency)
+		}
+	}
 }
 
 func weight(meta *spec.ResourceMeta, hasManualInternalDeps bool) *int {

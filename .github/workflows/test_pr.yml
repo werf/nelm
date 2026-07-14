@@ -35,6 +35,7 @@ jobs:
               - 'go.mod'
               - 'go.sum'
               - 'cmd/nelm/**'
+              - 'internal/**'
               - 'pkg/**'
               - 'scripts/**'
             lint:

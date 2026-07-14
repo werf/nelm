@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/kube/fake"
@@ -547,6 +547,55 @@ func (s *ResourceInfoSuite) TestBuildResourceInfos() {
 	}
 }
 
+func (s *ResourceInfoSuite) TestBuildResourceInfosDiffPatches() {
+	s.Run(`outdated resource yields update without a diff patch`, func() {
+		_, err := s.clientFactory.KubeClient().Create(context.Background(), defaultResourceSpec(s.releaseName, s.releaseNamespace), kube.KubeClientCreateOptions{
+			DefaultNamespace: s.releaseNamespace,
+		})
+		s.Require().NoError(err)
+
+		localRes := updatedInstallableResource(&s.Suite, s.releaseName, s.releaseNamespace)
+
+		instResInfos, _, err := plan.BuildResourceInfos(context.Background(), common.DeployTypeInitial, s.releaseName, s.releaseNamespace, []*resource.InstallableResource{localRes}, nil, false, s.clientFactory, plan.BuildResourceInfosOptions{
+			NetworkParallelism: 10,
+		})
+		s.Require().NoError(err)
+		s.Require().Len(instResInfos, 1)
+		s.Require().Equal(plan.ResourceInstallTypeUpdate, instResInfos[0].MustInstall)
+	})
+
+	s.Run(`matching diff patch cancels the drift`, func() {
+		_, err := s.clientFactory.KubeClient().Create(context.Background(), defaultResourceSpec(s.releaseName, s.releaseNamespace), kube.KubeClientCreateOptions{
+			DefaultNamespace: s.releaseNamespace,
+		})
+		s.Require().NoError(err)
+
+		localRes := updatedInstallableResource(&s.Suite, s.releaseName, s.releaseNamespace)
+
+		instResInfos, _, err := plan.BuildResourceInfos(context.Background(), common.DeployTypeInitial, s.releaseName, s.releaseNamespace, []*resource.InstallableResource{localRes}, nil, false, s.clientFactory, plan.BuildResourceInfosOptions{
+			NetworkParallelism: 10,
+			DiffPatches: []spec.DiffPatch{
+				{Patch: `del(.data.key2)`},
+			},
+		})
+		s.Require().NoError(err)
+		s.Require().Len(instResInfos, 1)
+		s.Require().Equal(plan.ResourceInstallTypeNone, instResInfos[0].MustInstall)
+	})
+
+	s.Run(`invalid diff patch fails closed`, func() {
+		localRes := defaultInstallableResource(s.releaseName, s.releaseNamespace)
+
+		_, _, err := plan.BuildResourceInfos(context.Background(), common.DeployTypeInitial, s.releaseName, s.releaseNamespace, []*resource.InstallableResource{localRes}, nil, false, s.clientFactory, plan.BuildResourceInfosOptions{
+			NetworkParallelism: 10,
+			DiffPatches: []spec.DiffPatch{
+				{Patch: `del(.data.key2`},
+			},
+		})
+		s.Require().Error(err)
+	})
+}
+
 type buildInstallableResourceInfoTestCase struct {
 	expect  func(*resource.InstallableResource) []*plan.InstallableResourceInfo
 	input   func() (localRes *resource.InstallableResource, deployType common.DeployType, prevRelFailed bool)
@@ -604,10 +653,10 @@ func defaultInstallableResource(releaseName, releaseNamespace string) *resource.
 	return &resource.InstallableResource{
 		ResourceSpec:                    defaultResourceSpec(releaseName, releaseNamespace),
 		Ownership:                       common.OwnershipRelease,
-		FailMode:                        multitrack.FailWholeDeployProcessImmediately,
+		FailMode:                        statestore.FailWholeDeployProcessImmediately,
 		NoActivityTimeout:               4 * time.Minute,
 		ShowLogsOnlyForNumberOfReplicas: 1,
-		TrackTerminationMode:            multitrack.WaitUntilResourceReady,
+		TrackTerminationMode:            statestore.WaitUntilResourceReady,
 		Weight:                          lo.ToPtr(0),
 		DeployConditions: map[common.On][]common.Stage{
 			common.InstallOnInstall:  {common.StageInstall},
@@ -696,7 +745,7 @@ func runBuildInstallableResourceInfoTest(tc buildInstallableResourceInfoTestCase
 
 		localRes, deployType, prevRelFailed := tc.input()
 
-		resInfos, err := plan.BuildInstallableResourceInfo(context.Background(), localRes, deployType, s.releaseNamespace, prevRelFailed, true, s.clientFactory, nil)
+		resInfos, err := plan.BuildInstallableResourceInfo(context.Background(), localRes, deployType, s.releaseNamespace, prevRelFailed, true, s.clientFactory, plan.BuildResourceInfosOptions{}, nil)
 		s.Require().NoError(err)
 
 		expectResInfos := tc.expect(localRes)

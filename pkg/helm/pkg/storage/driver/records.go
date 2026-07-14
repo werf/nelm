@@ -14,13 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package driver // import "helm.sh/helm/v3/pkg/storage/driver"
+package driver // import "github.com/werf/nelm/pkg/helm/pkg/storage/driver"
 
 import (
 	"sort"
 	"strconv"
 
-	rspb "github.com/werf/nelm/pkg/helm/pkg/release"
+	rspb "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 )
 
 // records holds a list of in-memory release records

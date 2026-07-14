@@ -3,6 +3,7 @@
 package resource_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/resource"
 	"github.com/werf/nelm/pkg/resource/spec"
 )
@@ -103,7 +103,7 @@ func makeInstallableResource(t *testing.T, obj map[string]interface{}, releaseNa
 	unstruct := &unstructured.Unstructured{Object: obj}
 	resSpec := spec.NewResourceSpec(unstruct, releaseNamespace, spec.ResourceSpecOptions{})
 
-	instRes, err := resource.NewInstallableResource(resSpec, nil, releaseNamespace, nil, resource.InstallableResourceOptions{})
+	instRes, err := resource.NewInstallableResource(context.Background(), resSpec, nil, releaseNamespace, resource.InstallableResourceOptions{})
 	require.NoError(t, err)
 
 	return instRes
@@ -150,6 +150,4 @@ func setupLocalSchemaDir(t *testing.T, schemas map[string]string) string {
 
 func setupTestEnvironment(t *testing.T) {
 	t.Helper()
-	common.APIResourceValidationJSONSchemasCacheDir = t.TempDir()
-	featgate.FeatGateResourceValidation.Enable()
 }

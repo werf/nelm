@@ -74,7 +74,14 @@ type KubeConnectionOptions struct {
 }
 
 func (opts *KubeConnectionOptions) ApplyDefaults(homeDir string) {
-	if opts.KubeConfigBase64 == "" && len(lo.Compact(opts.KubeConfigPaths)) == 0 {
+	if len(lo.Compact(opts.KubeConfigPaths)) > 0 {
+		var splitPaths []string
+		for _, path := range opts.KubeConfigPaths {
+			splitPaths = append(splitPaths, filepath.SplitList(path)...)
+		}
+
+		opts.KubeConfigPaths = lo.Compact(splitPaths)
+	} else if opts.KubeConfigBase64 == "" {
 		opts.KubeConfigPaths = []string{filepath.Join(homeDir, ".kube", "config")}
 	}
 
@@ -124,11 +131,6 @@ type ValuesOptions struct {
 	// arbitrary things in the global root context ("$"). This is meant to be
 	// generated programmatically. Do not use it unless you know what you are doing.
 	RootSetJSON []string
-	// RuntimeSetJSON is a list of key-value pairs in "key=json" format to set in $.Runtime.
-	// This is meant to be generated programmatically. Users should prefer ValuesSetJSON.
-	// Example: ["runtime.env=dev", "runtime.timestamp=1234567890"]
-	// TODO(major): get rid of it
-	RuntimeSetJSON []string
 	// ValuesFiles is a list of paths to additional values files to merge with chart values.
 	// Files are merged in order, with later files overriding earlier ones.
 	ValuesFiles []string
@@ -218,6 +220,8 @@ func (opts *TrackingOptions) ApplyDefaults() {
 type ResourceValidationOptions struct {
 	// NoResourceValidation Disable resource validation.
 	NoResourceValidation bool `json:"noResourceValidation"`
+	// NoValuesSchemaValidation disables values validation against json schema.
+	NoValuesSchemaValidation bool `json:"noValuesSchemaValidation"`
 	// LocalResourceValidation Disable KubeConform resource validation.
 	LocalResourceValidation bool `json:"localResourceValidation"`
 	// ValidationKubeVersion sets specific Kubernetes version and respective schemas to use on resource validation.
@@ -239,6 +243,17 @@ type ReleaseInstallRuntimeOptions struct {
 
 	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
 	DefaultDeletePropagation string `json:"defaultDeletePropagation"`
+	// PatchesFiles are paths to patches files (same format as a chart-shipped
+	// patches.yaml) whose diff patch rules are applied on top of chart-shipped
+	// ones. Diff patches affect ONLY drift detection: each matching rule's jq
+	// transform is applied identically to the live and the dry-apply object before
+	// comparison, so normalized-away fields never produce a diff. They never change
+	// what is rendered or applied. These rules are UNSCOPED (they may match any
+	// resource), unlike chart-shipped rules which are scoped to their chart subtree.
+	PatchesFiles []string `json:"patchesFiles"`
+	// DefaultPatchesDisable, when true, ignores chart-shipped patches.yaml files
+	// (from the top-level chart and subcharts).
+	DefaultPatchesDisable bool `json:"defaultPatchesDisable"`
 	// ExtraAnnotations are additional Kubernetes annotations to add to all chart resources.
 	// These are added during chart rendering, before resources are stored in the release.
 	ExtraAnnotations map[string]string `json:"extraAnnotations"`
@@ -284,7 +299,6 @@ type ResourceDiffOptions struct {
 	ShowInsignificantDiffs bool
 	ShowSensitiveDiffs     bool
 	ShowVerboseCRDDiffs    bool
-	ShowVerboseDiffs       bool
 }
 
 func (opts *ResourceDiffOptions) ApplyDefaults() {

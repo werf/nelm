@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,9 +13,11 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/werf/nelm/pkg/common"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
+	chartcommonutil "github.com/werf/nelm/pkg/helm/pkg/chart/common/util"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
-	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -59,22 +60,20 @@ type ReleaseGetOptions struct {
 	TempDirPath string
 }
 
-type ReleaseGetResultV1 struct {
-	APIVersion string                   `json:"apiVersion"`
-	Release    *ReleaseGetResultRelease `json:"release"`
-	Chart      *ReleaseGetResultChart   `json:"chart"`
-	Notes      string                   `json:"notes,omitempty"`
-	Values     map[string]interface{}   `json:"values,omitempty"`
-	// TODO(major): Join Hooks and Resources together as ResourceSpecs?
-	Hooks     []map[string]interface{} `json:"hooks,omitempty"`
-	Resources []map[string]interface{} `json:"resources,omitempty"`
+type ReleaseGetResultV2 struct {
+	APIVersion    string                   `json:"apiVersion"`
+	Release       *ReleaseGetResultRelease `json:"release"`
+	Chart         *ReleaseGetResultChart   `json:"chart"`
+	Notes         string                   `json:"notes,omitempty"`
+	Values        map[string]interface{}   `json:"values,omitempty"`
+	ResourceSpecs []*spec.ResourceSpec     `json:"resourceSpecs,omitempty"`
 }
 
 type ReleaseGetResultRelease struct {
 	Name          string                      `json:"name"`
 	Namespace     string                      `json:"namespace"`
 	Revision      int                         `json:"revision"`
-	Status        helmrelease.Status          `json:"status"`
+	Status        helmreleasestatus.Status    `json:"status"`
 	DeployedAt    *ReleaseGetResultDeployedAt `json:"deployedAt"`
 	Annotations   map[string]string           `json:"annotations"`
 	StorageLabels map[string]string           `json:"storageLabels"`
@@ -92,7 +91,7 @@ type ReleaseGetResultChart struct {
 }
 
 // Retrieves detailed information about the Helm release from the cluster.
-func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseGetOptions) (*ReleaseGetResultV1, error) {
+func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseGetOptions) (*ReleaseGetResultV2, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("get home directory: %w", err)
@@ -103,16 +102,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		return nil, fmt.Errorf("build release get options: %w", err)
 	}
 
-	if len(opts.KubeConfigPaths) > 0 {
-		var splitPaths []string
-		for _, path := range opts.KubeConfigPaths {
-			splitPaths = append(splitPaths, filepath.SplitList(path)...)
-		}
-
-		opts.KubeConfigPaths = lo.Compact(splitPaths)
-	}
-
-	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+	kubeConfig, err := kube.NewKubeConfig(ctx, kube.KubeConfigOptions{
 		KubeConnectionOptions: opts.KubeConnectionOptions,
 		KubeContextNamespace:  releaseNamespace, // TODO: unset it everywhere
 	})
@@ -149,13 +139,13 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		}
 	}
 
-	var rel *helmrelease.Release
+	var relAccessor helmrel.Accessor
 	if opts.Revision == 0 {
-		rel = lo.LastOrEmpty(releases)
+		relAccessor = lo.LastOrEmpty(releases)
 	} else {
 		var revisionFound bool
 
-		rel, revisionFound = history.FindRevision(opts.Revision)
+		relAccessor, revisionFound = history.FindRevision(opts.Revision)
 		if !revisionFound {
 			return nil, &ReleaseRevisionNotFoundError{
 				ReleaseName:      releaseName,
@@ -165,46 +155,49 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		}
 	}
 
-	values, err := chartutil.CoalesceValues(rel.Chart, rel.Config)
+	chartAccessor, err := helmchart.NewAccessor(relAccessor.Chart())
+	if err != nil {
+		return nil, fmt.Errorf("construct chart accessor: %w", err)
+	}
+
+	values, err := chartcommonutil.CoalesceValues(relAccessor.Chart(), relAccessor.Config())
 	if err != nil {
 		return nil, fmt.Errorf("coalesce release values: %w", err)
 	}
 
-	result := &ReleaseGetResultV1{
-		APIVersion: "v1",
+	chartMetadata := chartAccessor.MetadataAsMap()
+	chartVersion, _ := chartMetadata["Version"].(string)
+	chartAppVersion, _ := chartMetadata["AppVersion"].(string)
+
+	result := &ReleaseGetResultV2{
+		APIVersion: "v2",
 		Chart: &ReleaseGetResultChart{
-			Name:       rel.Chart.Name(),
-			Version:    rel.Chart.Metadata.Version,
-			AppVersion: rel.Chart.Metadata.AppVersion,
+			Name:       chartAccessor.Name(),
+			Version:    chartVersion,
+			AppVersion: chartAppVersion,
 		},
-		Notes: rel.Info.Notes,
+		Notes: relAccessor.Notes(),
 		Release: &ReleaseGetResultRelease{
-			Name:      rel.Name,
-			Namespace: rel.Namespace,
-			Revision:  rel.Version,
-			Status:    rel.Info.Status,
+			Name:      relAccessor.Name(),
+			Namespace: relAccessor.Namespace(),
+			Revision:  relAccessor.Version(),
+			Status:    helmreleasestatus.Status(relAccessor.Status()),
 			DeployedAt: &ReleaseGetResultDeployedAt{
 				Human: time.Time{}.String(),
 				Unix:  int(time.Time{}.Unix()),
 			},
-			Annotations:   rel.Info.Annotations,
-			StorageLabels: rel.Labels,
+			Annotations:   relAccessor.Annotations(),
+			StorageLabels: relAccessor.Labels(),
 		},
 		Values: values,
 	}
 
-	resSpecs, err := release.ReleaseToResourceSpecs(rel, releaseNamespace, false)
+	resSpecs, err := release.ReleaseToResourceSpecs(ctx, relAccessor, releaseNamespace, false)
 	if err != nil {
 		return nil, fmt.Errorf("convert release to resource specs: %w", err)
 	}
 
-	for _, res := range resSpecs {
-		if spec.IsHook(res.Annotations) {
-			result.Hooks = append(result.Hooks, res.Unstruct.Object)
-		} else {
-			result.Resources = append(result.Resources, res.Unstruct.Object)
-		}
-	}
+	result.ResourceSpecs = append(result.ResourceSpecs, resSpecs...)
 
 	if opts.OutputNoPrint {
 		return result, nil

@@ -15,72 +15,50 @@ limitations under the License.
 
 package chart
 
-import "time"
+import (
+	"errors"
 
-// Dependency describes a chart upon which another chart depends.
-//
-// Dependencies can be used to express developer intent, or to capture the state
-// of a chart.
-type Dependency struct {
-	// Name is the name of the dependency.
-	//
-	// This must mach the name in the dependency's Chart.yaml.
-	Name string `json:"name"`
-	// Version is the version (range) of this chart.
-	//
-	// A lock file will always produce a single version, while a dependency
-	// may contain a semantic version range.
-	Version string `json:"version,omitempty"`
-	// The URL to the repository.
-	//
-	// Appending `index.yaml` to this string should result in a URL that can be
-	// used to fetch the repository index.
-	Repository string `json:"repository"`
-	// A yaml path that resolves to a boolean, used for enabling/disabling charts (e.g. subchart1.enabled )
-	Condition string `json:"condition,omitempty"`
-	// Tags can be used to group charts for enabling/disabling together
-	Tags []string `json:"tags,omitempty"`
-	// Enabled bool determines if chart should be loaded
-	Enabled bool `json:"enabled,omitempty"`
-	// ImportValues holds the mapping of source values to parent key to be imported. Each item can be a
-	// string or pair of child/parent sublist items.
-	ImportValues []interface{} `json:"import-values,omitempty"`
-	// Alias usable alias to be used for the chart
-	Alias string `json:"alias,omitempty"`
+	v3chart "github.com/werf/nelm/pkg/helm/intern/chart/v3"
+	v2chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+)
 
-	// ExportValues holds the mapping of parent values to child key to be exported. Each item can be a
-	// string or pair of parent/child sublist items.
-	ExportValues []interface{} `json:"export-values,omitempty"`
+var NewDependencyAccessor func(dep Dependency) (DependencyAccessor, error) = NewDefaultDependencyAccessor //nolint:revive
+
+func NewDefaultDependencyAccessor(dep Dependency) (DependencyAccessor, error) {
+	switch v := dep.(type) {
+	case v2chart.Dependency:
+		return &v2DependencyAccessor{&v}, nil
+	case *v2chart.Dependency:
+		return &v2DependencyAccessor{v}, nil
+	case v3chart.Dependency:
+		return &v3DependencyAccessor{&v}, nil
+	case *v3chart.Dependency:
+		return &v3DependencyAccessor{v}, nil
+	default:
+		return nil, errors.New("unsupported chart dependency type")
+	}
 }
 
-// Validate checks for common problems with the dependency datastructure in
-// the chart. This check must be done at load time before the dependency's charts are
-// loaded.
-func (d *Dependency) Validate() error {
-	if d == nil {
-		return ValidationError("dependencies must not contain empty or null nodes")
-	}
-	d.Name = sanitizeString(d.Name)
-	d.Version = sanitizeString(d.Version)
-	d.Repository = sanitizeString(d.Repository)
-	d.Condition = sanitizeString(d.Condition)
-	for i := range d.Tags {
-		d.Tags[i] = sanitizeString(d.Tags[i])
-	}
-	if d.Alias != "" && !aliasNameFormat.MatchString(d.Alias) {
-		return ValidationErrorf("dependency %q has disallowed characters in the alias", d.Name)
-	}
-	return nil
+type v2DependencyAccessor struct {
+	dep *v2chart.Dependency
 }
 
-// Lock is a lock file for dependencies.
-//
-// It represents the state that the dependencies should be in.
-type Lock struct {
-	// Generated is the date the lock file was last generated.
-	Generated time.Time `json:"generated"`
-	// Digest is a hash of the dependencies in Chart.yaml.
-	Digest string `json:"digest"`
-	// Dependencies is the list of dependencies that this lock file has locked.
-	Dependencies []*Dependency `json:"dependencies"`
+func (r *v2DependencyAccessor) Name() string {
+	return r.dep.Name
+}
+
+func (r *v2DependencyAccessor) Alias() string {
+	return r.dep.Alias
+}
+
+type v3DependencyAccessor struct {
+	dep *v3chart.Dependency
+}
+
+func (r *v3DependencyAccessor) Name() string {
+	return r.dep.Name
+}
+
+func (r *v3DependencyAccessor) Alias() string {
+	return r.dep.Alias
 }

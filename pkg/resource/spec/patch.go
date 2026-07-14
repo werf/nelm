@@ -9,7 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	"github.com/werf/nelm/pkg/common"
 )
 
@@ -130,11 +130,11 @@ func (p *LegacyOnlyTrackJobsPatcher) Patch(ctx context.Context, info *ResourcePa
 
 	annos := map[string]string{}
 	if !lo.HasKey(existing, common.AnnotationKeyHumanFailMode) {
-		annos[common.AnnotationKeyHumanFailMode] = string(multitrack.IgnoreAndContinueDeployProcess)
+		annos[common.AnnotationKeyHumanFailMode] = string(statestore.IgnoreAndContinueDeployProcess)
 	}
 
 	if !lo.HasKey(existing, common.AnnotationKeyHumanTrackTerminationMode) {
-		annos[common.AnnotationKeyHumanTrackTerminationMode] = string(multitrack.NonBlocking)
+		annos[common.AnnotationKeyHumanTrackTerminationMode] = string(statestore.NonBlocking)
 	}
 
 	setAnnotationsAndLabels(info.Obj, annos, nil)

@@ -14,10 +14,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/kube"
-	"github.com/werf/nelm/pkg/kube/fake"
 	"github.com/werf/nelm/pkg/resource"
 	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/test"
@@ -26,25 +24,17 @@ import (
 type InstallableResourceSuite struct {
 	suite.Suite
 
-	clientFactory    kube.ClientFactorier
 	cmpOpts          cmp.Options
 	releaseNamespace string
 }
 
 func (s *InstallableResourceSuite) SetupSuite() {
-	ctx := context.Background()
-
 	s.releaseNamespace = "test-namespace"
 	s.cmpOpts = cmp.Options{
 		cmpopts.EquateEmpty(),
 		test.CompareRegexpOption(),
 		test.CompareInternalDependencyOption(),
 	}
-
-	var err error
-
-	s.clientFactory, err = fake.NewClientFactory(ctx)
-	s.Require().NoError(err)
 }
 
 func (s *InstallableResourceSuite) TestNewInstallableResourceForDefaults() {
@@ -375,7 +365,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.ManualInternalDependencies = []*resource.InternalDependency{
+				res.ManualDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names: []string{"backend"},
@@ -391,18 +381,18 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 				resSpec := defaultResourceSpec(s.releaseNamespace)
 				resSpec.SetAnnotations(lo.Assign(
 					resSpec.Annotations, map[string]string{
-						"werf.io/deploy-dependency-backend": "state=present,name=backend",
+						"werf.io/deploy-dependency-backend": "state=present,name=backend,external=false",
 					},
 				))
 
 				return resSpec
 			},
-			name: `for resource with werf.io/deploy-dependency-backend="state=present,name=backend"`,
+			name: `for resource with werf.io/deploy-dependency-backend="state=present,name=backend,external=false"`,
 		},
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.ManualInternalDependencies = []*resource.InternalDependency{
+				res.ManualDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{"backend"},
@@ -431,8 +421,8 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 			input: func() *spec.ResourceSpec {
 				resSpec := defaultResourceSpec(s.releaseNamespace)
 				resSpec.SetAnnotations(lo.Assign(resSpec.Annotations, map[string]string{
-					"werf.io/deploy-dependency-backend":  "state=ready,kind=Deployment,group=apps,version=v1,name=backend,namespace=app",
-					"werf.io/deploy-dependency-frontend": "state=ready,kind=StatefulSet,group=apps,version=v1,name=frontend,namespace=app",
+					"werf.io/deploy-dependency-backend":  "state=ready,kind=Deployment,group=apps,version=v1,name=backend,namespace=app,external=false",
+					"werf.io/deploy-dependency-frontend": "state=ready,kind=StatefulSet,group=apps,version=v1,name=frontend,namespace=app,external=false",
 				}))
 
 				return resSpec
@@ -442,7 +432,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultHookInstallableResource(resSpec)
-				res.ManualInternalDependencies = []*resource.InternalDependency{
+				res.ManualDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names: []string{"backend"},
@@ -457,19 +447,19 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 			input: func() *spec.ResourceSpec {
 				resSpec := defaultHookResourceSpec(s.releaseNamespace)
 				resSpec.SetAnnotations(lo.Assign(resSpec.Annotations, map[string]string{
-					"werf.io/deploy-dependency-backend": "state=ready,name=backend",
+					"werf.io/deploy-dependency-backend": "state=ready,name=backend,external=false",
 					"werf.io/weight":                    "10",
 					"helm.sh/hook-weight":               "20",
 				}))
 
 				return resSpec
 			},
-			name: `for hook resource with werf.io/deploy-dependency-backend="state=ready,name=backend" and werf.io/weight="10" and helm.sh/hook-weight="20"`,
+			name: `for hook resource with werf.io/deploy-dependency-backend="state=ready,name=backend,external=false" and werf.io/weight="10" and helm.sh/hook-weight="20"`,
 		},
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultDeploymentInstallableResource(resSpec)
-				res.AutoInternalDependencies = []*resource.InternalDependency{
+				res.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{"configmap-envs"},
@@ -510,7 +500,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.AutoInternalDependencies = []*resource.InternalDependency{
+				res.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:  []string{"test-cr"},
@@ -560,7 +550,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultDeploymentInstallableResource(resSpec)
-				res.AutoInternalDependencies = []*resource.InternalDependency{
+				res.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{"my-sa"},
@@ -621,7 +611,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultDeploymentInstallableResource(resSpec)
-				res.AutoInternalDependencies = []*resource.InternalDependency{
+				res.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{"my-sa"},
@@ -716,7 +706,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.AutoInternalDependencies = []*resource.InternalDependency{
+				res.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{"test-statefulset"},
@@ -753,7 +743,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.AutoInternalDependencies = []*resource.InternalDependency{
+				res.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{"test-deployment"},
@@ -810,7 +800,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForDependencies() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.AutoInternalDependencies = []*resource.InternalDependency{
+				res.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{"test-rollout"},
@@ -1286,7 +1276,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForTracking() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.FailMode = multitrack.IgnoreAndContinueDeployProcess
+				res.FailMode = statestore.IgnoreAndContinueDeployProcess
 
 				return res
 			},
@@ -1386,7 +1376,7 @@ func (s *InstallableResourceSuite) TestNewInstallableResourceForTracking() {
 		{
 			expect: func(resSpec *spec.ResourceSpec) *resource.InstallableResource {
 				res := defaultInstallableResource(resSpec)
-				res.TrackTerminationMode = multitrack.NonBlocking
+				res.TrackTerminationMode = statestore.NonBlocking
 
 				return res
 			},
@@ -1434,7 +1424,7 @@ func (s *DeletableResourceSuite) TestNewDeletableResourceForAutoDependencies() {
 		{
 			expectFunc: func(resSpec *spec.ResourceSpec) *resource.DeletableResource {
 				res := defaultDeletableResource(resSpec.ResourceMeta)
-				res.AutoInternalDependencies = []*resource.InternalDependency{
+				res.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{"test-crb"},
@@ -1665,7 +1655,7 @@ func defaultDeletableResource(resMeta *spec.ResourceMeta) *resource.DeletableRes
 	return &resource.DeletableResource{
 		ResourceMeta:      resMeta,
 		Ownership:         common.OwnershipRelease,
-		DeletePropagation: metav1.DeletePropagationForeground,
+		DeletePropagation: metav1.DeletePropagationBackground,
 	}
 }
 
@@ -1688,17 +1678,17 @@ func defaultInstallableResource(resSpec *spec.ResourceSpec) *resource.Installabl
 	return &resource.InstallableResource{
 		ResourceSpec:                    resSpec,
 		Ownership:                       common.OwnershipRelease,
-		FailMode:                        multitrack.FailWholeDeployProcessImmediately,
+		FailMode:                        statestore.FailWholeDeployProcessImmediately,
 		NoActivityTimeout:               4 * time.Minute,
 		ShowLogsOnlyForNumberOfReplicas: 1,
-		TrackTerminationMode:            multitrack.WaitUntilResourceReady,
+		TrackTerminationMode:            statestore.WaitUntilResourceReady,
 		Weight:                          lo.ToPtr(0),
 		DeployConditions: map[common.On][]common.Stage{
 			common.InstallOnInstall:  {common.StageInstall},
 			common.InstallOnUpgrade:  {common.StageInstall},
 			common.InstallOnRollback: {common.StageInstall},
 		},
-		DeletePropagation: metav1.DeletePropagationForeground,
+		DeletePropagation: metav1.DeletePropagationBackground,
 	}
 }
 
@@ -1755,7 +1745,7 @@ func runDeletableResourceTest(tc deletableResourceTestCase, s *DeletableResource
 			otherSpecs = []*spec.ResourceSpec{}
 		}
 
-		res := resource.NewDeletableResource(resSpec, otherSpecs, s.releaseNamespace, resource.DeletableResourceOptions{})
+		res, _ := resource.NewDeletableResource(resSpec, otherSpecs, s.releaseNamespace, resource.DeletableResourceOptions{})
 
 		expectRes := tc.expectFunc(resSpec)
 
@@ -1778,7 +1768,7 @@ func runInstallableResourceTest(tc installableResourceTestCase, s *InstallableRe
 			otherResSpecs = tc.otherInput()
 		}
 
-		res, err := resource.NewInstallableResource(resSpec, otherResSpecs, s.releaseNamespace, s.clientFactory, resource.InstallableResourceOptions{})
+		res, err := resource.NewInstallableResource(context.Background(), resSpec, otherResSpecs, s.releaseNamespace, resource.InstallableResourceOptions{})
 		s.Require().NoError(err)
 
 		expectRes := tc.expect(resSpec)

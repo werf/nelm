@@ -14,6 +14,8 @@ limitations under the License.
 package driver
 
 import (
+	"database/sql/driver"
+	"errors"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -23,8 +25,37 @@ import (
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 	migrate "github.com/rubenv/sql-migrate"
 
-	rspb "github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/nelm/pkg/helm/pkg/release/common"
+	rspb "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 )
+
+const recentTimestampTolerance = time.Second
+
+func recentUnixTimestamp() sqlmock.Argument {
+	return recentUnixTimestampArgument{}
+}
+
+type recentUnixTimestampArgument struct{}
+
+func (recentUnixTimestampArgument) Match(value driver.Value) bool {
+	var ts int64
+	switch v := value.(type) {
+	case int:
+		ts = int64(v)
+	case int64:
+		ts = v
+	default:
+		return false
+	}
+
+	diff := time.Since(time.Unix(ts, 0))
+	if diff < 0 {
+		diff = -diff
+	}
+
+	return diff <= recentTimestampTolerance
+}
 
 func TestSQLName(t *testing.T) {
 	sqlDriver, _ := newTestFixtureSQL(t)
@@ -38,7 +69,7 @@ func TestSQLGet(t *testing.T) {
 	name := "smug-pigeon"
 	namespace := "default"
 	key := testKey(name, vers)
-	rel := releaseStub(name, vers, namespace, rspb.StatusDeployed)
+	rel := releaseStub(name, vers, namespace, common.StatusDeployed)
 
 	body, _ := encodeRelease(rel)
 
@@ -81,16 +112,16 @@ func TestSQLGet(t *testing.T) {
 
 func TestSQLList(t *testing.T) {
 	releases := []*rspb.Release{}
-	releases = append(releases, releaseStub("key-1", 1, "default", rspb.StatusUninstalled))
-	releases = append(releases, releaseStub("key-2", 1, "default", rspb.StatusUninstalled))
-	releases = append(releases, releaseStub("key-3", 1, "default", rspb.StatusDeployed))
-	releases = append(releases, releaseStub("key-4", 1, "default", rspb.StatusDeployed))
-	releases = append(releases, releaseStub("key-5", 1, "default", rspb.StatusSuperseded))
-	releases = append(releases, releaseStub("key-6", 1, "default", rspb.StatusSuperseded))
+	releases = append(releases, releaseStub("key-1", 1, "default", common.StatusUninstalled))
+	releases = append(releases, releaseStub("key-2", 1, "default", common.StatusUninstalled))
+	releases = append(releases, releaseStub("key-3", 1, "default", common.StatusDeployed))
+	releases = append(releases, releaseStub("key-4", 1, "default", common.StatusDeployed))
+	releases = append(releases, releaseStub("key-5", 1, "default", common.StatusSuperseded))
+	releases = append(releases, releaseStub("key-6", 1, "default", common.StatusSuperseded))
 
 	sqlDriver, mock := newTestFixtureSQL(t)
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		query := fmt.Sprintf(
 			"SELECT %s, %s, %s FROM %s WHERE %s = $1 AND %s = $2",
 			sqlReleaseTableKeyColumn,
@@ -119,8 +150,9 @@ func TestSQLList(t *testing.T) {
 	}
 
 	// list all deleted releases
-	del, err := sqlDriver.List(func(rel *rspb.Release) bool {
-		return rel.Info.Status == rspb.StatusUninstalled
+	del, err := sqlDriver.List(func(rel release.Releaser) bool {
+		rls := convertReleaserToV1(t, rel)
+		return rls.Info.Status == common.StatusUninstalled
 	})
 	// check
 	if err != nil {
@@ -131,8 +163,9 @@ func TestSQLList(t *testing.T) {
 	}
 
 	// list all deployed releases
-	dpl, err := sqlDriver.List(func(rel *rspb.Release) bool {
-		return rel.Info.Status == rspb.StatusDeployed
+	dpl, err := sqlDriver.List(func(rel release.Releaser) bool {
+		rls := convertReleaserToV1(t, rel)
+		return rls.Info.Status == common.StatusDeployed
 	})
 	// check
 	if err != nil {
@@ -143,8 +176,9 @@ func TestSQLList(t *testing.T) {
 	}
 
 	// list all superseded releases
-	ssd, err := sqlDriver.List(func(rel *rspb.Release) bool {
-		return rel.Info.Status == rspb.StatusSuperseded
+	ssd, err := sqlDriver.List(func(rel release.Releaser) bool {
+		rls := convertReleaserToV1(t, rel)
+		return rls.Info.Status == common.StatusSuperseded
 	})
 	// check
 	if err != nil {
@@ -159,7 +193,7 @@ func TestSQLList(t *testing.T) {
 	}
 
 	// Check if release having both system and custom labels, this is needed to ensure that selector filtering would work.
-	rls := ssd[0]
+	rls := convertReleaserToV1(t, ssd[0])
 	_, ok := rls.Labels["name"]
 	if !ok {
 		t.Fatalf("Expected 'name' label in results, actual %v", rls.Labels)
@@ -175,7 +209,7 @@ func TestSqlCreate(t *testing.T) {
 	name := "smug-pigeon"
 	namespace := "default"
 	key := testKey(name, vers)
-	rel := releaseStub(name, vers, namespace, rspb.StatusDeployed)
+	rel := releaseStub(name, vers, namespace, common.StatusDeployed)
 
 	sqlDriver, mock := newTestFixtureSQL(t)
 	body, _ := encodeRelease(rel)
@@ -197,7 +231,7 @@ func TestSqlCreate(t *testing.T) {
 	mock.ExpectBegin()
 	mock.
 		ExpectExec(regexp.QuoteMeta(query)).
-		WithArgs(key, sqlReleaseDefaultType, body, rel.Name, rel.Namespace, int(rel.Version), rel.Info.Status.String(), sqlReleaseDefaultOwner, int(time.Now().Unix())).
+		WithArgs(key, sqlReleaseDefaultType, body, rel.Name, rel.Namespace, int(rel.Version), rel.Info.Status.String(), sqlReleaseDefaultOwner, recentUnixTimestamp()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	labelsQuery := fmt.Sprintf(
@@ -232,7 +266,7 @@ func TestSqlCreateAlreadyExists(t *testing.T) {
 	name := "smug-pigeon"
 	namespace := "default"
 	key := testKey(name, vers)
-	rel := releaseStub(name, vers, namespace, rspb.StatusDeployed)
+	rel := releaseStub(name, vers, namespace, common.StatusDeployed)
 
 	sqlDriver, mock := newTestFixtureSQL(t)
 	body, _ := encodeRelease(rel)
@@ -255,8 +289,8 @@ func TestSqlCreateAlreadyExists(t *testing.T) {
 	mock.ExpectBegin()
 	mock.
 		ExpectExec(regexp.QuoteMeta(insertQuery)).
-		WithArgs(key, sqlReleaseDefaultType, body, rel.Name, rel.Namespace, int(rel.Version), rel.Info.Status.String(), sqlReleaseDefaultOwner, int(time.Now().Unix())).
-		WillReturnError(fmt.Errorf("dialect dependent SQL error"))
+		WithArgs(key, sqlReleaseDefaultType, body, rel.Name, rel.Namespace, int(rel.Version), rel.Info.Status.String(), sqlReleaseDefaultOwner, recentUnixTimestamp()).
+		WillReturnError(errors.New("dialect dependent SQL error"))
 
 	selectQuery := fmt.Sprintf(
 		regexp.QuoteMeta("SELECT %s FROM %s WHERE %s = $1 AND %s = $2"),
@@ -293,7 +327,7 @@ func TestSqlUpdate(t *testing.T) {
 	name := "smug-pigeon"
 	namespace := "default"
 	key := testKey(name, vers)
-	rel := releaseStub(name, vers, namespace, rspb.StatusDeployed)
+	rel := releaseStub(name, vers, namespace, common.StatusDeployed)
 
 	sqlDriver, mock := newTestFixtureSQL(t)
 	body, _ := encodeRelease(rel)
@@ -313,11 +347,66 @@ func TestSqlUpdate(t *testing.T) {
 
 	mock.
 		ExpectExec(regexp.QuoteMeta(query)).
-		WithArgs(body, rel.Name, int(rel.Version), rel.Info.Status.String(), sqlReleaseDefaultOwner, int(time.Now().Unix()), key, namespace).
+		WithArgs(body, rel.Name, int(rel.Version), rel.Info.Status.String(), sqlReleaseDefaultOwner, recentUnixTimestamp(), key, namespace).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	if err := sqlDriver.Update(key, rel); err != nil {
 		t.Fatalf("failed to update release with key %s: %v", key, err)
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("sql expectations weren't met: %v", err)
+	}
+}
+
+func TestSqlUpdateLabels(t *testing.T) {
+	vers := 1
+	name := "smug-pigeon"
+	namespace := "default"
+	key := testKey(name, vers)
+
+	sqlDriver, mock := newTestFixtureSQL(t)
+
+	selectQuery := fmt.Sprintf(
+		"SELECT %s FROM %s WHERE %s = $1 AND %s = $2",
+		sqlReleaseTableKeyColumn,
+		sqlReleaseTableName,
+		sqlReleaseTableKeyColumn,
+		sqlReleaseTableNamespaceColumn,
+	)
+	deleteQuery := fmt.Sprintf(
+		"DELETE FROM %s WHERE %s = $1 AND %s = $2 AND %s = $3",
+		sqlCustomLabelsTableName,
+		sqlCustomLabelsTableKeyColumn,
+		sqlCustomLabelsTableReleaseKeyColumn,
+		sqlCustomLabelsTableReleaseNamespaceColumn,
+	)
+	insertQuery := fmt.Sprintf(
+		"INSERT INTO %s (%s,%s,%s,%s) VALUES ($1,$2,$3,$4)",
+		sqlCustomLabelsTableName,
+		sqlCustomLabelsTableReleaseKeyColumn,
+		sqlCustomLabelsTableReleaseNamespaceColumn,
+		sqlCustomLabelsTableKeyColumn,
+		sqlCustomLabelsTableValueColumn,
+	)
+
+	mock.ExpectBegin()
+	mock.
+		ExpectQuery(regexp.QuoteMeta(selectQuery)).
+		WithArgs(key, namespace).
+		WillReturnRows(sqlmock.NewRows([]string{sqlReleaseTableKeyColumn}).AddRow(key))
+	mock.
+		ExpectExec(regexp.QuoteMeta(deleteQuery)).
+		WithArgs("owned-by", key, namespace).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.
+		ExpectExec(regexp.QuoteMeta(insertQuery)).
+		WithArgs(key, namespace, "owned-by", "operator").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	if err := sqlDriver.UpdateLabels(key, map[string]string{"owned-by": "operator"}); err != nil {
+		t.Fatalf("failed to update labels with key %s: %v", key, err)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -342,9 +431,9 @@ func TestSqlQuery(t *testing.T) {
 		"owner": sqlReleaseDefaultOwner,
 	}
 
-	supersededRelease := releaseStub("smug-pigeon", 1, "default", rspb.StatusSuperseded)
+	supersededRelease := releaseStub("smug-pigeon", 1, "default", common.StatusSuperseded)
 	supersededReleaseBody, _ := encodeRelease(supersededRelease)
-	deployedRelease := releaseStub("smug-pigeon", 2, "default", rspb.StatusDeployed)
+	deployedRelease := releaseStub("smug-pigeon", 2, "default", common.StatusDeployed)
 	deployedReleaseBody, _ := encodeRelease(deployedRelease)
 
 	// Let's actually start our test
@@ -414,7 +503,7 @@ func TestSqlQuery(t *testing.T) {
 	_, err := sqlDriver.Query(labelSetUnknown)
 	if err == nil {
 		t.Errorf("Expected error {%v}, got nil", ErrReleaseNotFound)
-	} else if err != ErrReleaseNotFound {
+	} else if !errors.Is(err, ErrReleaseNotFound) {
 		t.Fatalf("failed to query for unknown smug-pigeon release: %v", err)
 	}
 
@@ -454,7 +543,7 @@ func TestSqlDelete(t *testing.T) {
 	name := "smug-pigeon"
 	namespace := "default"
 	key := testKey(name, vers)
-	rel := releaseStub(name, vers, namespace, rspb.StatusDeployed)
+	rel := releaseStub(name, vers, namespace, common.StatusDeployed)
 
 	body, _ := encodeRelease(rel)
 
@@ -543,34 +632,34 @@ func mockGetReleaseCustomLabels(mock sqlmock.Sqlmock, key string, namespace stri
 	eq.WillReturnRows(returnRows).RowsWillBeClosed()
 }
 
-func TestSqlChechkAppliedMigrations(t *testing.T) {
+func TestSqlCheckAppliedMigrations(t *testing.T) {
 	cases := []struct {
 		migrationsToApply    []*migrate.Migration
-		appliedMigrationsIds []string
+		appliedMigrationsIDs []string
 		expectedResult       bool
 		errorExplanation     string
 	}{
 		{
 			migrationsToApply:    []*migrate.Migration{{Id: "init1"}, {Id: "init2"}, {Id: "init3"}},
-			appliedMigrationsIds: []string{"1", "2", "init1", "3", "init2", "4", "5"},
+			appliedMigrationsIDs: []string{"1", "2", "init1", "3", "init2", "4", "5"},
 			expectedResult:       false,
 			errorExplanation:     "Has found one migration id \"init3\" as applied, that was not applied",
 		},
 		{
 			migrationsToApply:    []*migrate.Migration{{Id: "init1"}, {Id: "init2"}, {Id: "init3"}},
-			appliedMigrationsIds: []string{"1", "2", "init1", "3", "init2", "4", "init3", "5"},
+			appliedMigrationsIDs: []string{"1", "2", "init1", "3", "init2", "4", "init3", "5"},
 			expectedResult:       true,
 			errorExplanation:     "Has not found one or more migration ids, that was applied",
 		},
 		{
 			migrationsToApply:    []*migrate.Migration{{Id: "init"}},
-			appliedMigrationsIds: []string{"1", "2", "3", "inits", "4", "tinit", "5"},
+			appliedMigrationsIDs: []string{"1", "2", "3", "inits", "4", "tinit", "5"},
 			expectedResult:       false,
 			errorExplanation:     "Has found single \"init\", that was not applied",
 		},
 		{
 			migrationsToApply:    []*migrate.Migration{{Id: "init"}},
-			appliedMigrationsIds: []string{"1", "2", "init", "3", "init2", "4", "init3", "5"},
+			appliedMigrationsIDs: []string{"1", "2", "init", "3", "init2", "4", "init3", "5"},
 			expectedResult:       true,
 			errorExplanation:     "Has not found single migration id \"init\", that was applied",
 		},
@@ -578,7 +667,7 @@ func TestSqlChechkAppliedMigrations(t *testing.T) {
 	for i, c := range cases {
 		sqlDriver, mock := newTestFixtureSQL(t)
 		rows := sqlmock.NewRows([]string{"id", "applied_at"})
-		for _, id := range c.appliedMigrationsIds {
+		for _, id := range c.appliedMigrationsIDs {
 			rows.AddRow(id, time.Time{})
 		}
 		mock.

@@ -18,7 +18,6 @@ import (
 	"github.com/werf/nelm/pkg/chart"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -40,8 +39,6 @@ type ChartRenderOptions struct {
 	// ChartAppVersion overrides the appVersion field in Chart.yaml.
 	// Used to set application version metadata without modifying the chart file.
 	ChartAppVersion string
-	// ChartDirPath is deprecated (TODO v2: remove). Use Chart instead.
-	ChartDirPath string
 	// ChartProvenanceKeyring is the path to a keyring file containing public keys
 	// used to verify chart provenance signatures. Used with signed charts for security.
 	ChartProvenanceKeyring string
@@ -62,6 +59,10 @@ type ChartRenderOptions struct {
 	DefaultChartVersion string
 	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
 	DenoBinaryPath string
+	// DockerConfig is the path to the Docker configuration directory (e.g., ~/.docker).
+	DockerConfig string
+	// DropInvalidAnnotationsAndLabels disables strict annotations and labels validation.
+	DropInvalidAnnotationsAndLabels bool
 	// ExtraAPIVersions is a list of additional Kubernetes API versions to include when rendering.
 	// Used by Capabilities.APIVersions in templates to check for API availability.
 	ExtraAPIVersions []string
@@ -72,16 +73,13 @@ type ChartRenderOptions struct {
 	// These are added during chart rendering.
 	ExtraLabels map[string]string
 	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime.
-	// TODO(major): remove or implement custom logic for this field.
 	ExtraRuntimeAnnotations map[string]string
-	// ForceAdoption is currently unused in chart rendering.
-	// TODO(major): remove this useless field.
-	ForceAdoption bool
+	ExtraRuntimeLabels      map[string]string
 	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources.
 	IgnoreBundleJS bool
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.
-	LegacyChartType helmopts.ChartType
+	LegacyChartType common.LegacyChartType
 	// LegacyExtraValues provides additional values programmatically.
 	// Used internally for backward compatibility with werf integration.
 	LegacyExtraValues map[string]interface{}
@@ -100,7 +98,7 @@ type ChartRenderOptions struct {
 	// Useful when only the result data structure is needed.
 	OutputNoPrint bool
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
-	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
+	// Defaults to DockerConfig/config.json if not set.
 	// Used for authenticating to OCI registries when pulling charts.
 	RegistryCredentialsPath string
 	// ReleaseName is the name of the release to use in templates.
@@ -165,16 +163,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	var clientFactory *kube.ClientFactory
 
 	if opts.Remote {
-		if len(opts.KubeConfigPaths) > 0 {
-			var splitPaths []string
-			for _, path := range opts.KubeConfigPaths {
-				splitPaths = append(splitPaths, filepath.SplitList(path)...)
-			}
-
-			opts.KubeConfigPaths = lo.Compact(splitPaths)
-		}
-
-		kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+		kubeConfig, err := kube.NewKubeConfig(ctx, kube.KubeConfigOptions{
 			KubeConnectionOptions: opts.KubeConnectionOptions,
 			KubeContextNamespace:  opts.ReleaseNamespace, // TODO: unset it everywhere
 		})
@@ -215,8 +204,8 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		return nil, fmt.Errorf("construct release storage: %w", err)
 	}
 
-	helmOptions := helmopts.HelmOptions{
-		ChartLoadOpts: helmopts.ChartLoadOptions{
+	helmOptions := common.HelmOptions{
+		ChartLoadOpts: common.ChartLoadOptions{
 			ChartAppVersion:            opts.ChartAppVersion,
 			ChartType:                  opts.LegacyChartType,
 			DefaultChartAPIVersion:     opts.DefaultChartAPIVersion,
@@ -245,7 +234,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	var newRevision int
 	if prevRelease != nil {
-		newRevision = prevRelease.Version + 1
+		newRevision = prevRelease.Version() + 1
 	} else {
 		newRevision = 1
 	}
@@ -260,20 +249,21 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	}
 
 	chartTreeOptions := chart.RenderChartOptions{
-		ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
-		ValuesOptions:              opts.ValuesOptions,
-		ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
-		ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
-		ChartRepoNoUpdate:          opts.ChartRepoSkipUpdate,
-		ChartVersion:               opts.ChartVersion,
-		ExtraAPIVersions:           opts.ExtraAPIVersions,
-		HelmOptions:                helmOptions,
-		LocalKubeVersion:           opts.LocalKubeVersion,
-		Remote:                     opts.Remote,
-		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
-		TempDirPath:                opts.TempDirPath,
-		IgnoreBundleJS:             opts.IgnoreBundleJS,
-		DenoBinaryPath:             opts.DenoBinaryPath,
+		ChartRepoConnectionOptions:      opts.ChartRepoConnectionOptions,
+		ValuesOptions:                   opts.ValuesOptions,
+		ChartProvenanceKeyring:          opts.ChartProvenanceKeyring,
+		ChartProvenanceStrategy:         opts.ChartProvenanceStrategy,
+		ChartRepoNoUpdate:               opts.ChartRepoSkipUpdate,
+		ChartVersion:                    opts.ChartVersion,
+		ExtraAPIVersions:                opts.ExtraAPIVersions,
+		HelmOptions:                     helmOptions,
+		LocalKubeVersion:                opts.LocalKubeVersion,
+		DropInvalidAnnotationsAndLabels: opts.DropInvalidAnnotationsAndLabels,
+		Remote:                          opts.Remote,
+		TemplatesAllowDNS:               opts.TemplatesAllowDNS,
+		TempDirPath:                     opts.TempDirPath,
+		IgnoreBundleJS:                  opts.IgnoreBundleJS,
+		DenoBinaryPath:                  opts.DenoBinaryPath,
 	}
 
 	log.Default.Debug(ctx, "Render chart")
@@ -287,7 +277,6 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, opts.ReleaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
 		spec.NewResourceListsTransformer(),
-		spec.NewDropInvalidAnnotationsAndLabelsTransformer(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build transformed resource specs: %w", err)
@@ -295,24 +284,13 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	log.Default.Debug(ctx, "Build releasable resource specs")
 
-	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
+	resSpecs, err := spec.BuildPatchedResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
 		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 		spec.NewSecretStringDataPatcher(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build releasable resource specs: %w", err)
-	}
-
-	newRelease, err := release.NewRelease(opts.ReleaseName, opts.ReleaseNamespace, newRevision, deployType, releasableResSpecs, renderChartResult.Chart, renderChartResult.ReleaseConfig, release.ReleaseOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("construct new release: %w", err)
-	}
-
-	log.Default.Debug(ctx, "Convert new release to resource specs")
-
-	resSpecs, err := release.ReleaseToResourceSpecs(newRelease, opts.ReleaseNamespace, true)
-	if err != nil {
-		return nil, fmt.Errorf("convert new release to resource specs: %w", err)
 	}
 
 	var showFiles []string
@@ -406,9 +384,7 @@ func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir, homeDi
 	opts.ValuesOptions.ApplyDefaults()
 	opts.SecretValuesOptions.ApplyDefaults(currentDir)
 
-	if opts.Chart == "" && opts.ChartDirPath != "" {
-		opts.Chart = opts.ChartDirPath
-	} else if opts.ChartDirPath == "" && opts.Chart == "" {
+	if opts.Chart == "" {
 		opts.Chart = currentDir
 	}
 
@@ -438,7 +414,7 @@ func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir, homeDi
 	}
 
 	if opts.RegistryCredentialsPath == "" {
-		opts.RegistryCredentialsPath = common.DefaultRegistryCredentialsPath
+		opts.RegistryCredentialsPath = filepath.Join(opts.DockerConfig, "config.json")
 	}
 
 	if opts.ChartProvenanceStrategy == "" {

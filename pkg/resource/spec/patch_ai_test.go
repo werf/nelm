@@ -9,14 +9,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/resource/spec"
 )
 
 func TestAI_LegacyOnlyTrackJobsPatcher_Patch(t *testing.T) {
-	defaultFailMode := string(multitrack.IgnoreAndContinueDeployProcess)
-	defaultTrackTermination := string(multitrack.NonBlocking)
+	defaultFailMode := string(statestore.IgnoreAndContinueDeployProcess)
+	defaultTrackTermination := string(statestore.NonBlocking)
 
 	tests := []struct {
 		name     string
@@ -34,32 +34,32 @@ func TestAI_LegacyOnlyTrackJobsPatcher_Patch(t *testing.T) {
 		{
 			name: "preserves both user-set values",
 			input: map[string]string{
-				common.AnnotationKeyHumanFailMode:             string(multitrack.FailWholeDeployProcessImmediately),
-				common.AnnotationKeyHumanTrackTerminationMode: string(multitrack.WaitUntilResourceReady),
+				common.AnnotationKeyHumanFailMode:             string(statestore.FailWholeDeployProcessImmediately),
+				common.AnnotationKeyHumanTrackTerminationMode: string(statestore.WaitUntilResourceReady),
 			},
 			expected: map[string]string{
-				common.AnnotationKeyHumanFailMode:             string(multitrack.FailWholeDeployProcessImmediately),
-				common.AnnotationKeyHumanTrackTerminationMode: string(multitrack.WaitUntilResourceReady),
+				common.AnnotationKeyHumanFailMode:             string(statestore.FailWholeDeployProcessImmediately),
+				common.AnnotationKeyHumanTrackTerminationMode: string(statestore.WaitUntilResourceReady),
 			},
 		},
 		{
 			name: "preserves fail-mode override and injects track-termination default",
 			input: map[string]string{
-				common.AnnotationKeyHumanFailMode: string(multitrack.FailWholeDeployProcessImmediately),
+				common.AnnotationKeyHumanFailMode: string(statestore.FailWholeDeployProcessImmediately),
 			},
 			expected: map[string]string{
-				common.AnnotationKeyHumanFailMode:             string(multitrack.FailWholeDeployProcessImmediately),
+				common.AnnotationKeyHumanFailMode:             string(statestore.FailWholeDeployProcessImmediately),
 				common.AnnotationKeyHumanTrackTerminationMode: defaultTrackTermination,
 			},
 		},
 		{
 			name: "preserves track-termination override and injects fail-mode default",
 			input: map[string]string{
-				common.AnnotationKeyHumanTrackTerminationMode: string(multitrack.WaitUntilResourceReady),
+				common.AnnotationKeyHumanTrackTerminationMode: string(statestore.WaitUntilResourceReady),
 			},
 			expected: map[string]string{
 				common.AnnotationKeyHumanFailMode:             defaultFailMode,
-				common.AnnotationKeyHumanTrackTerminationMode: string(multitrack.WaitUntilResourceReady),
+				common.AnnotationKeyHumanTrackTerminationMode: string(statestore.WaitUntilResourceReady),
 			},
 		},
 		{

@@ -18,11 +18,11 @@ package output
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 
 	"github.com/gosuri/uitable"
-	"github.com/pkg/errors"
 	"sigs.k8s.io/yaml"
 )
 
@@ -51,7 +51,7 @@ func FormatsWithDesc() map[string]string {
 }
 
 // ErrInvalidFormatType is returned when an unsupported format type is used
-var ErrInvalidFormatType = fmt.Errorf("invalid format type")
+var ErrInvalidFormatType = errors.New("invalid format type")
 
 // String returns the string representation of the Format
 func (o Format) String() string {
@@ -73,7 +73,7 @@ func (o Format) Write(out io.Writer, w Writer) error {
 }
 
 // ParseFormat takes a raw string and returns the matching Format.
-// If the format does not exists, ErrInvalidFormatType is returned
+// If the format does not exist, ErrInvalidFormatType is returned
 func ParseFormat(s string) (out Format, err error) {
 	switch s {
 	case Table.String():
@@ -103,26 +103,26 @@ type Writer interface {
 
 // EncodeJSON is a helper function to decorate any error message with a bit more
 // context and avoid writing the same code over and over for printers.
-func EncodeJSON(out io.Writer, obj interface{}) error {
+func EncodeJSON(out io.Writer, obj any) error {
 	enc := json.NewEncoder(out)
 	err := enc.Encode(obj)
 	if err != nil {
-		return errors.Wrap(err, "unable to write JSON output")
+		return fmt.Errorf("unable to write JSON output: %w", err)
 	}
 	return nil
 }
 
 // EncodeYAML is a helper function to decorate any error message with a bit more
 // context and avoid writing the same code over and over for printers
-func EncodeYAML(out io.Writer, obj interface{}) error {
+func EncodeYAML(out io.Writer, obj any) error {
 	raw, err := yaml.Marshal(obj)
 	if err != nil {
-		return errors.Wrap(err, "unable to write YAML output")
+		return fmt.Errorf("unable to write YAML output: %w", err)
 	}
 
 	_, err = out.Write(raw)
 	if err != nil {
-		return errors.Wrap(err, "unable to write YAML output")
+		return fmt.Errorf("unable to write YAML output: %w", err)
 	}
 	return nil
 }
@@ -134,7 +134,7 @@ func EncodeTable(out io.Writer, table *uitable.Table) error {
 	raw = append(raw, []byte("\n")...)
 	_, err := out.Write(raw)
 	if err != nil {
-		return errors.Wrap(err, "unable to write table output")
+		return fmt.Errorf("unable to write table output: %w", err)
 	}
 	return nil
 }
