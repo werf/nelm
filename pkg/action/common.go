@@ -16,6 +16,7 @@ import (
 	"github.com/samber/lo"
 	"github.com/xo/terminfo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 
 	"github.com/werf/kubedog/pkg/informer"
@@ -138,24 +139,53 @@ func parseLocalLookupResources(paths []string) ([]*unstructured.Unstructured, er
 
 			unstruct := obj.(*unstructured.Unstructured)
 
-			if unstruct.GetAPIVersion() == "" {
-				return nil, fmt.Errorf("parse file %q (document %d): apiVersion is missing", path, i)
+			if unstruct.IsList() {
+				item := 0
+
+				if err := unstruct.EachListItem(func(o runtime.Object) error {
+					res, err := collectLocalLookupResource(o.(*unstructured.Unstructured), seen)
+					if err != nil {
+						return err
+					}
+
+					item++
+					resources = append(resources, res)
+
+					return nil
+				}); err != nil {
+					return nil, fmt.Errorf("parse file %q (document %d, item %d): %w", path, i, item, err)
+				}
+
+				continue
 			}
 
-			gvk := unstruct.GroupVersionKind()
-			id := spec.IDWithVersion(unstruct.GetName(), unstruct.GetNamespace(), gvk.Group, gvk.Version, gvk.Kind)
-
-			if seen[id] {
-				return nil, fmt.Errorf("parse file %q (document %d): duplicate resource %s", path, i, spec.IDHuman(unstruct.GetName(), unstruct.GetNamespace(), gvk.Group, gvk.Kind))
+			res, err := collectLocalLookupResource(unstruct, seen)
+			if err != nil {
+				return nil, fmt.Errorf("parse file %q (document %d): %w", path, i, err)
 			}
 
-			seen[id] = true
-
-			resources = append(resources, unstruct)
+			resources = append(resources, res)
 		}
 	}
 
 	return resources, nil
+}
+
+func collectLocalLookupResource(unstruct *unstructured.Unstructured, seen map[string]bool) (*unstructured.Unstructured, error) {
+	if unstruct.GetAPIVersion() == "" {
+		return nil, fmt.Errorf("apiVersion is missing")
+	}
+
+	gvk := unstruct.GroupVersionKind()
+	id := spec.IDWithVersion(unstruct.GetName(), unstruct.GetNamespace(), gvk.Group, gvk.Version, gvk.Kind)
+
+	if seen[id] {
+		return nil, fmt.Errorf("duplicate resource %s", spec.IDHuman(unstruct.GetName(), unstruct.GetNamespace(), gvk.Group, gvk.Kind))
+	}
+
+	seen[id] = true
+
+	return unstruct, nil
 }
 
 func printNotes(ctx context.Context, notes string) {
