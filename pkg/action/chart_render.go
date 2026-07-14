@@ -166,11 +166,6 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		return nil, fmt.Errorf("local lookup resources are not allowed together with remote mode")
 	}
 
-	localLookupResources, err := parseLocalLookupResources(opts.LocalLookupResourcesPaths)
-	if err != nil {
-		return nil, fmt.Errorf("parse local lookup resources: %w", err)
-	}
-
 	if !opts.Remote {
 		opts.ReleaseStorageDriver = common.ReleaseStorageDriverMemory
 	}
@@ -282,7 +277,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		ExtraAPIVersions:           opts.ExtraAPIVersions,
 		HelmOptions:                helmOptions,
 		LocalKubeVersion:           opts.LocalKubeVersion,
-		LocalLookupResources:       localLookupResources,
+		LocalLookupResourcesPaths:  opts.LocalLookupResourcesPaths,
 		Remote:                     opts.Remote,
 		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
 		TempDirPath:                opts.TempDirPath,

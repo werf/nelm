@@ -67,7 +67,7 @@ type emptyListResource struct {
 }
 
 func (r *emptyListResource) List(ctx context.Context, opts metav1.ListOptions) (*unstructured.UnstructuredList, error) {
-	return listOrEmpty(r.NamespaceableResourceInterface, r.listGVK, ctx, opts)
+	return listOrEmpty(ctx, r.NamespaceableResourceInterface, r.listGVK, opts)
 }
 
 func (r *emptyListResource) Namespace(namespace string) dynamic.ResourceInterface {
@@ -84,10 +84,10 @@ type emptyListNamespacedResource struct {
 }
 
 func (r *emptyListNamespacedResource) List(ctx context.Context, opts metav1.ListOptions) (*unstructured.UnstructuredList, error) {
-	return listOrEmpty(r.ResourceInterface, r.listGVK, ctx, opts)
+	return listOrEmpty(ctx, r.ResourceInterface, r.listGVK, opts)
 }
 
-func listOrEmpty(delegate dynamic.ResourceInterface, listGVK schema.GroupVersionKind, ctx context.Context, opts metav1.ListOptions) (list *unstructured.UnstructuredList, err error) {
+func listOrEmpty(ctx context.Context, delegate dynamic.ResourceInterface, listGVK schema.GroupVersionKind, opts metav1.ListOptions) (list *unstructured.UnstructuredList, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			msg, ok := rec.(string)

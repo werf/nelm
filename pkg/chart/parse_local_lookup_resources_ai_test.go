@@ -1,6 +1,6 @@
 //go:build ai_tests
 
-package action
+package chart
 
 import (
 	"os"
