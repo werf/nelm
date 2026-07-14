@@ -12,11 +12,11 @@ import (
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/quick"
 	"github.com/alecthomas/chroma/v2/styles"
-	"github.com/goccy/go-yaml"
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 	"github.com/xo/terminfo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/kubernetes/scheme"
 
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
@@ -29,6 +29,7 @@ import (
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/plan"
 	"github.com/werf/nelm/pkg/release"
+	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/util"
 )
 
@@ -120,6 +121,9 @@ func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr err
 
 func parseLocalLookupResources(paths []string) ([]*unstructured.Unstructured, error) {
 	var resources []*unstructured.Unstructured
+
+	seen := make(map[string]bool)
+
 	for _, path := range paths {
 		content, err := os.ReadFile(path)
 		if err != nil {
@@ -127,12 +131,27 @@ func parseLocalLookupResources(paths []string) ([]*unstructured.Unstructured, er
 		}
 
 		for i, manifest := range releaseutil.SplitManifestsToSlice(string(content)) {
-			obj := &unstructured.Unstructured{}
-			if err := yaml.Unmarshal([]byte(manifest), &obj.Object); err != nil {
+			obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(manifest), nil, &unstructured.Unstructured{})
+			if err != nil {
 				return nil, fmt.Errorf("parse file %q (document %d): %w", path, i, err)
 			}
 
-			resources = append(resources, obj)
+			unstruct := obj.(*unstructured.Unstructured)
+
+			if unstruct.GetAPIVersion() == "" {
+				return nil, fmt.Errorf("parse file %q (document %d): apiVersion is missing", path, i)
+			}
+
+			gvk := unstruct.GroupVersionKind()
+			id := spec.IDWithVersion(unstruct.GetName(), unstruct.GetNamespace(), gvk.Group, gvk.Version, gvk.Kind)
+
+			if seen[id] {
+				return nil, fmt.Errorf("parse file %q (document %d): duplicate resource %s", path, i, spec.IDHuman(unstruct.GetName(), unstruct.GetNamespace(), gvk.Group, gvk.Kind))
+			}
+
+			seen[id] = true
+
+			resources = append(resources, unstruct)
 		}
 	}
 
