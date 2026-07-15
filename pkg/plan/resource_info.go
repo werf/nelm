@@ -57,6 +57,7 @@ type InstallableResourceInfo struct {
 	MustDeleteOnSuccessfulInstall bool                `json:"mustDeleteOnSuccessfulInstall"`
 	MustDeleteOnFailedInstall     bool                `json:"mustDeleteOnFailedInstall"`
 	MustTrackReadiness            bool                `json:"mustTrackReadiness"`
+	FailMode                      multitrack.FailMode `json:"failMode"`
 
 	Stage                          common.Stage `json:"stage"`
 	StageDeleteOnSuccessfulInstall common.Stage `json:"stageDeleteOnSuccessfulInstall,omitempty"`
@@ -126,6 +127,8 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 	if err != nil {
 		return nil, nil, fmt.Errorf("wait for prev release resource pool: %w", err)
 	}
+
+	forceReadinessTrackingForReadyDependencyTargets(instResourceInfos)
 
 	sort.SliceStable(instResourceInfos, func(i, j int) bool {
 		return InstallableResourceInfoSortByStageHandler(instResourceInfos[i], instResourceInfos[j])
@@ -217,6 +220,7 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 			ResourceMeta:                   localRes.ResourceMeta,
 			DryApplyErr:                    dryApplyErr,
 			DryApplyResult:                 dryApplyObj,
+			FailMode:                       localRes.FailMode,
 			GetResult:                      getObj,
 			LocalResource:                  localRes,
 			MustDeleteOnFailedInstall:      mustDeleteOnFailedDeploy(localRes, getMeta, installType, releaseNamespace, trackReadiness, skippedByPolicy),
@@ -572,6 +576,46 @@ func fixServiceAccountManagedFields(entry *v1.ManagedFieldsEntry, subPath []stri
 	}
 
 	return nil
+}
+
+func forceReadinessTrackingForReadyDependencyTargets(infos []*InstallableResourceInfo) {
+	type readyMatcher struct {
+		matcher *spec.ResourceMatcher
+		stage   common.Stage
+	}
+
+	var readyMatchers []readyMatcher
+	for _, info := range infos {
+		for _, dep := range info.LocalResource.ManualInternalDependencies {
+			if dep.ResourceState == common.ResourceStateReady {
+				readyMatchers = append(readyMatchers, readyMatcher{matcher: dep.ResourceMatcher, stage: info.Stage})
+			}
+		}
+	}
+
+	if len(readyMatchers) == 0 {
+		return
+	}
+
+	for _, info := range infos {
+		if spec.IsCRD(info.GroupVersionKind.GroupKind()) {
+			continue
+		}
+
+		if info.MustInstall == ResourceInstallTypeNone && info.GetResult == nil {
+			continue
+		}
+
+		matched := lo.SomeBy(readyMatchers, func(rm readyMatcher) bool {
+			return rm.stage == info.Stage && rm.matcher.Match(info.ResourceMeta)
+		})
+		if !matched {
+			continue
+		}
+
+		info.MustTrackReadiness = true
+		info.FailMode = multitrack.FailWholeDeployProcessImmediately
+	}
 }
 
 func getManagedFieldPathFromSpecPath(subPath []string) []string {

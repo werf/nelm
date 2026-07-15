@@ -632,6 +632,7 @@ func defaultInstallableResourceInfo(localRes *resource.InstallableResource) *pla
 		LocalResource:      localRes,
 		MustInstall:        plan.ResourceInstallTypeCreate,
 		MustTrackReadiness: true,
+		FailMode:           localRes.FailMode,
 		Stage:              common.StageInstall,
 	}
 }

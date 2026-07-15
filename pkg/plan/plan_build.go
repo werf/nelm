@@ -469,7 +469,7 @@ func addInstallResourceOps(plan *Plan, infos []*InstallableResourceInfo) error {
 				Iteration: OperationIteration(info.Iteration),
 				Config: &OperationConfigTrackReadiness{
 					ResourceMeta:                             info.ResourceMeta,
-					FailMode:                                 info.LocalResource.FailMode,
+					FailMode:                                 info.FailMode,
 					FailuresAllowed:                          info.LocalResource.FailuresAllowed,
 					IgnoreLogs:                               info.LocalResource.SkipLogs,
 					IgnoreLogsForContainers:                  info.LocalResource.SkipLogsForContainers,
