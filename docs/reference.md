@@ -1893,7 +1893,7 @@ nelm chart lint [options...] [chart-dir]
 
 - `--lookup-resources` (default: `[]`)
 
-  Manifest files used as a cluster stub for the lookup template function in non\-remote mode\. Multi\-document and kind:List supported\. Vars: \$NELM\_LOOKUP\_RESOURCES\_\*, \$NELM\_CHART\_LINT\_LOOKUP\_RESOURCES\_\*
+  Manifest files used as a cluster stub for the lookup template function in non\-remote mode\. Multi\-document and kind:List supported\. Namespaced resources must set metadata\.namespace, otherwise namespace\-scoped lookups ignore the requested namespace\. Vars: \$NELM\_LOOKUP\_RESOURCES\_\*, \$NELM\_CHART\_LINT\_LOOKUP\_RESOURCES\_\*
 
 - `-n`, `--namespace` (default: `"stub-namespace"`)
 
@@ -2241,7 +2241,7 @@ nelm chart render [options...] [chart-dir]
 
 - `--lookup-resources` (default: `[]`)
 
-  Manifest files used as a cluster stub for the lookup template function in non\-remote mode\. Multi\-document and kind:List supported\. Vars: \$NELM\_LOOKUP\_RESOURCES\_\*, \$NELM\_CHART\_RENDER\_LOOKUP\_RESOURCES\_\*
+  Manifest files used as a cluster stub for the lookup template function in non\-remote mode\. Multi\-document and kind:List supported\. Namespaced resources must set metadata\.namespace, otherwise namespace\-scoped lookups ignore the requested namespace\. Vars: \$NELM\_LOOKUP\_RESOURCES\_\*, \$NELM\_CHART\_RENDER\_LOOKUP\_RESOURCES\_\*
 
 - `-n`, `--namespace` (default: `"stub-namespace"`)
 
