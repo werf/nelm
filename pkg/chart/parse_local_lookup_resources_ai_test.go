@@ -31,7 +31,7 @@ items:
 	_, err := parseLocalLookupResources([]string{path})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "duplicate resource")
-	require.Contains(t, err.Error(), "item 0")
+	require.Contains(t, err.Error(), "item 1")
 }
 
 func TestAI_ParseLocalLookupResourcesListExpansion(t *testing.T) {
@@ -75,7 +75,7 @@ items:
 	_, err := parseLocalLookupResources([]string{path})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "apiVersion is missing")
-	require.Contains(t, err.Error(), "item 0")
+	require.Contains(t, err.Error(), "item 1")
 }
 
 func TestAI_ParseLocalLookupResourcesMultiDoc(t *testing.T) {

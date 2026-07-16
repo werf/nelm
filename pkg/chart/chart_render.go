@@ -37,9 +37,9 @@ import (
 	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/lookup"
 	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/ts"
+	"github.com/werf/nelm/pkg/util"
 )
 
 type RenderChartOptions struct {
@@ -207,7 +207,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 				return nil, fmt.Errorf("parse local lookup resources: %w", err)
 			}
 
-			engine.SetClientProvider(lookup.NewLocalClientProvider(localLookupResources))
+			engine.SetClientProvider(newLocalClientProvider(localLookupResources))
 		}
 	}
 
@@ -296,7 +296,11 @@ func parseLocalLookupResources(paths []string) ([]*unstructured.Unstructured, er
 			return nil, fmt.Errorf("read file %q: %w", filePath, err)
 		}
 
-		for i, manifest := range releaseutil.SplitManifestsToSlice(string(content)) {
+		for i, manifest := range util.SplitManifestsKeepingEmpty(string(content)) {
+			if manifest == "" {
+				continue
+			}
+
 			obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(manifest), nil, &unstructured.Unstructured{})
 			if err != nil {
 				return nil, fmt.Errorf("decode resource #%d for %q: %w", i+1, filePath, err)
@@ -318,7 +322,7 @@ func parseLocalLookupResources(paths []string) ([]*unstructured.Unstructured, er
 
 					return nil
 				}); err != nil {
-					return nil, fmt.Errorf("collect resource #%d for %q (item %d): %w", i+1, filePath, item, err)
+					return nil, fmt.Errorf("collect resource #%d for %q (item %d): %w", i+1, filePath, item+1, err)
 				}
 
 				continue

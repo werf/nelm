@@ -175,7 +175,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.LocalLookupResourcesPaths, "lookup-resources", nil, "Manifest files used as a cluster stub for the lookup template function in non-remote mode. Multi-document and kind:List supported", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.LocalLookupResourcesPaths, "lookup-resources", nil, "Manifest files used as a cluster stub for the lookup template function in non-remote mode. Multi-document and kind:List supported. Namespaced resources must set metadata.namespace, otherwise namespace-scoped lookups ignore the requested namespace", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalMultiEnvVarRegexes,
 			Group:                mainFlagGroup,
 			Type:                 cli.FlagTypeFile,

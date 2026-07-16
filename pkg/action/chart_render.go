@@ -95,7 +95,9 @@ type ChartRenderOptions struct {
 	// template function resolves against in local mode (Remote=false), instead of a live cluster.
 	// Each file may hold multiple documents separated by "---" and/or a kind: List (or typed *List)
 	// wrapper whose items are expanded; a bare top-level JSON array is not supported. Duplicate
-	// resources are rejected. Not allowed together with Remote.
+	// resources are rejected. Not allowed together with Remote. Namespace scope is inferred from
+	// whether a resource sets metadata.namespace; namespaced resources must set it, otherwise
+	// namespace-scoped lookups ignore the requested namespace and match the resource regardless.
 	LocalLookupResourcesPaths []string
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
@@ -162,10 +164,6 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	if opts.SecretKey != "" {
 		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
-	}
-
-	if opts.Remote && len(opts.LocalLookupResourcesPaths) > 0 {
-		return nil, fmt.Errorf("local lookup resources are not allowed together with remote mode")
 	}
 
 	if !opts.Remote {

@@ -1,6 +1,6 @@
 //go:build ai_tests
 
-package lookup
+package chart
 
 import (
 	"path"
@@ -9,18 +9,18 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/werf/nelm/pkg/helm/pkg/chart"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
 	"github.com/werf/nelm/pkg/helm/pkg/engine"
 	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 )
 
 func TestAI_LocalClientProviderEmpty(t *testing.T) {
-	provider := NewLocalClientProvider(nil)
+	provider := newLocalClientProvider(nil)
 
-	c := &chart.Chart{
-		Metadata: &chart.Metadata{Name: "moby", Version: "1.2.3"},
-		Templates: []*chart.File{
+	c := &helmchart.Chart{
+		Metadata: &helmchart.Metadata{Name: "moby", Version: "1.2.3"},
+		Templates: []*helmchart.File{
 			{Name: "templates/empty", Data: []byte(`{{ (lookup "v1" "Pod" "default" "pod1") }}`)},
 		},
 		Values: map[string]any{},
@@ -35,7 +35,7 @@ func TestAI_LocalClientProviderEmpty(t *testing.T) {
 }
 
 func TestAI_LocalClientProviderLookup(t *testing.T) {
-	provider := NewLocalClientProvider([]*unstructured.Unstructured{
+	provider := newLocalClientProvider([]*unstructured.Unstructured{
 		makeUnstructured("v1", "Namespace", "default", ""),
 		makeUnstructured("v1", "Pod", "pod1", "default"),
 		makeUnstructured("v1", "Pod", "pod2", "ns1"),
@@ -57,13 +57,52 @@ func TestAI_LocalClientProviderLookup(t *testing.T) {
 		"missing-get":     "map[]",
 	}
 
-	c := &chart.Chart{
-		Metadata: &chart.Metadata{Name: "moby", Version: "1.2.3"},
+	c := &helmchart.Chart{
+		Metadata: &helmchart.Metadata{Name: "moby", Version: "1.2.3"},
 		Values:   map[string]any{},
 	}
 
 	for name, tpl := range templates {
-		c.Templates = append(c.Templates, &chart.File{
+		c.Templates = append(c.Templates, &helmchart.File{
+			Name: path.Join("templates", name),
+			Data: []byte(tpl),
+		})
+	}
+
+	vals, err := chartutil.CoalesceValues(c, map[string]any{"Values": map[string]any{}})
+	require.NoError(t, err)
+
+	out, err := engine.RenderWithClientProvider(c, vals, provider, helmopts.HelmOptions{})
+	require.NoError(t, err)
+
+	for name, want := range expected {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, want, out[path.Join("moby/templates", name)])
+		})
+	}
+}
+
+func TestAI_LocalClientProviderNamespaceIsolation(t *testing.T) {
+	provider := newLocalClientProvider([]*unstructured.Unstructured{
+		makeUnstructured("v1", "Pod", "pod1", "default"),
+	})
+
+	templates := map[string]string{
+		"same-ns-get":  `{{ (lookup "v1" "Pod" "default" "pod1").metadata.name }}`,
+		"other-ns-get": `{{ (lookup "v1" "Pod" "other" "pod1") }}`,
+	}
+	expected := map[string]string{
+		"same-ns-get":  "pod1",
+		"other-ns-get": "map[]",
+	}
+
+	c := &helmchart.Chart{
+		Metadata: &helmchart.Metadata{Name: "moby", Version: "1.2.3"},
+		Values:   map[string]any{},
+	}
+
+	for name, tpl := range templates {
+		c.Templates = append(c.Templates, &helmchart.File{
 			Name: path.Join("templates", name),
 			Data: []byte(tpl),
 		})
@@ -83,11 +122,11 @@ func TestAI_LocalClientProviderLookup(t *testing.T) {
 }
 
 func TestAI_LocalClientProviderUnstubbedListEmptyProvider(t *testing.T) {
-	provider := NewLocalClientProvider(nil)
+	provider := newLocalClientProvider(nil)
 
-	c := &chart.Chart{
-		Metadata: &chart.Metadata{Name: "moby", Version: "1.2.3"},
-		Templates: []*chart.File{
+	c := &helmchart.Chart{
+		Metadata: &helmchart.Metadata{Name: "moby", Version: "1.2.3"},
+		Templates: []*helmchart.File{
 			{Name: "templates/list", Data: []byte(`{{ (lookup "v1" "Pod" "" "").items | len }}`)},
 		},
 		Values: map[string]any{},
@@ -102,13 +141,13 @@ func TestAI_LocalClientProviderUnstubbedListEmptyProvider(t *testing.T) {
 }
 
 func TestAI_LocalClientProviderUnstubbedListOtherKind(t *testing.T) {
-	provider := NewLocalClientProvider([]*unstructured.Unstructured{
+	provider := newLocalClientProvider([]*unstructured.Unstructured{
 		makeUnstructured("v1", "Pod", "pod1", "default"),
 	})
 
-	c := &chart.Chart{
-		Metadata: &chart.Metadata{Name: "moby", Version: "1.2.3"},
-		Templates: []*chart.File{
+	c := &helmchart.Chart{
+		Metadata: &helmchart.Metadata{Name: "moby", Version: "1.2.3"},
+		Templates: []*helmchart.File{
 			{Name: "templates/list", Data: []byte(`{{ (lookup "v1" "ConfigMap" "" "").items | len }}`)},
 		},
 		Values: map[string]any{},

@@ -1,4 +1,4 @@
-package lookup
+package chart
 
 import (
 	"context"
@@ -25,10 +25,10 @@ type LocalClientProvider struct {
 	registered map[schema.GroupVersionKind]bool
 }
 
-// NewLocalClientProvider returns an engine.ClientProvider that resolves lookup calls against the
+// newLocalClientProvider returns an engine.ClientProvider that resolves lookup calls against the
 // provided in-memory set of Kubernetes objects instead of a live cluster. An empty set makes
 // every lookup return an empty result, matching the offline stub behavior.
-func NewLocalClientProvider(objects []*unstructured.Unstructured) *LocalClientProvider {
+func newLocalClientProvider(objects []*unstructured.Unstructured) *LocalClientProvider {
 	runtimeObjects := make([]runtime.Object, 0, len(objects))
 
 	registered := make(map[schema.GroupVersionKind]bool)
