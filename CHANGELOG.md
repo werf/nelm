@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.26.2](https://github.com/werf/nelm/compare/v1.26.1...v1.26.2) (2026-07-16)
+
+
+### Bug Fixes
+
+* `werf.io/deploy-dependency` didn't work if no readiness operation in plan or if `namespace=releasens` ([4c9dd90](https://github.com/werf/nelm/commit/4c9dd90629b9e49563f74773c6df41ae504e23c6))
+
 ## [1.26.1](https://github.com/werf/nelm/compare/v1.26.0...v1.26.1) (2026-07-06)
 
 
