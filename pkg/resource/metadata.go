@@ -548,7 +548,7 @@ func manualInternalDeleteDependencies(meta *spec.ResourceMeta) []*InternalDepend
 	return lo.Values(deps)
 }
 
-func manualInternalDeployDependencies(meta *spec.ResourceMeta) []*InternalDependency {
+func manualInternalDeployDependencies(meta *spec.ResourceMeta, releaseNamespace string) []*InternalDependency {
 	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
 		return nil
 	}
@@ -582,6 +582,10 @@ func manualInternalDeployDependencies(meta *spec.ResourceMeta) []*InternalDepend
 				depNamespace = valParts[2]
 			}
 
+			if depNamespace == releaseNamespace {
+				depNamespace = ""
+			}
+
 			depName := valParts[len(valParts)-1]
 
 			dep := &InternalDependency{
@@ -612,7 +616,12 @@ func manualInternalDeployDependencies(meta *spec.ResourceMeta) []*InternalDepend
 
 			var depNamespaces []string
 			if depNamespace, found := properties["namespace"]; found {
-				depNamespaces = []string{depNamespace.(string)}
+				ns := depNamespace.(string)
+				if ns == releaseNamespace {
+					ns = ""
+				}
+
+				depNamespaces = []string{ns}
 			}
 
 			var depGroups []string

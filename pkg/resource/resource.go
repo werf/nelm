@@ -112,7 +112,7 @@ func NewInstallableResource(res *spec.ResourceSpec, otherResSpecs []*spec.Resour
 		return nil, fmt.Errorf("get external dependencies: %w", err)
 	}
 
-	manIntDeps := manualInternalDeployDependencies(res.ResourceMeta)
+	manIntDeps := manualInternalDeployDependencies(res.ResourceMeta, releaseNamespace)
 
 	otherUnstructs := lo.Map(otherResSpecs, func(resSpec *spec.ResourceSpec, _ int) *unstructured.Unstructured {
 		return resSpec.Unstruct
