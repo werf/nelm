@@ -95,7 +95,7 @@ type ChartRenderOptions struct {
 	// template function resolves against in local mode (Remote=false), instead of a live cluster.
 	// Each file may hold multiple documents separated by "---" and/or a kind: List (or typed *List)
 	// wrapper whose items are expanded; a bare top-level JSON array is not supported. Duplicate
-	// resources are rejected. Not allowed together with Remote. Namespace scope is inferred from
+	// resources are rejected. Ignored if Remote is true. Namespace scope is inferred from
 	// whether a resource sets metadata.namespace; namespaced resources must set it, otherwise
 	// namespace-scoped lookups ignore the requested namespace and match the resource regardless.
 	LocalLookupResourcesPaths []string

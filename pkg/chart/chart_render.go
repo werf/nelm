@@ -439,6 +439,10 @@ func collectLocalLookupResource(unstruct *unstructured.Unstructured, seen map[st
 		return nil, fmt.Errorf("apiVersion is missing")
 	}
 
+	if unstruct.GetName() == "" {
+		return nil, fmt.Errorf("name is missing")
+	}
+
 	gvk := unstruct.GroupVersionKind()
 	id := spec.IDWithVersion(unstruct.GetName(), unstruct.GetNamespace(), gvk.Group, gvk.Version, gvk.Kind)
 
