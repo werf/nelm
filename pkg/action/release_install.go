@@ -95,6 +95,8 @@ type ReleaseInstallOptions struct {
 	// LegacyLogRegistryStreamOut is the output writer for Helm registry client logs.
 	// Defaults to io.Discard if not set. Used for debugging registry operations.
 	LegacyLogRegistryStreamOut io.Writer
+	// LegacyNoReleaseLock, when true, disables acquiring the werf-synchronization release lock in the cluster.
+	LegacyNoReleaseLock bool
 	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
 	// Must be a buffered channel with capacity >= 1. The caller owns the channel and is responsible
 	// for its lifecycle. Intermediate reports may be dropped if the consumer is slow; the final
@@ -268,10 +270,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	var lockManager *lock.LockManager
-	if m, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory); err != nil {
-		return fmt.Errorf("construct lock manager: %w", err)
-	} else {
-		lockManager = m
+	if !opts.LegacyNoReleaseLock {
+		if m, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory); err != nil {
+			return fmt.Errorf("construct lock manager: %w", err)
+		} else {
+			lockManager = m
+		}
 	}
 
 	if err := createReleaseNamespace(ctx, clientFactory, releaseNamespace); err != nil {
@@ -280,12 +284,14 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Start release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-	if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
-		return fmt.Errorf("lock release: %w", err)
-	} else {
-		defer func() {
-			_ = lockManager.Unlock(lock)
-		}()
+	if lockManager != nil {
+		if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
+			return fmt.Errorf("lock release: %w", err)
+		} else {
+			defer func() {
+				_ = lockManager.Unlock(lock)
+			}()
+		}
 	}
 
 	log.Default.Debug(ctx, "Build release history")
