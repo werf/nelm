@@ -43,6 +43,8 @@ type ReleaseUninstallOptions struct {
 	// DeleteReleaseNamespace, when true, deletes the release namespace after uninstalling the release.
 	// WARNING: This will delete the entire namespace including resources not managed by this release.
 	DeleteReleaseNamespace bool
+	// LegacyNoReleaseLock, when true, disables acquiring the werf-synchronization release lock in the cluster.
+	LegacyNoReleaseLock bool
 	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
 	// Must be a buffered channel with capacity >= 1. The caller owns the channel and is responsible
 	// for its lifecycle. Intermediate reports may be dropped if the consumer is slow; the final
@@ -153,10 +155,12 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 	}
 
 	var lockManager *lock.LockManager
-	if m, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory); err != nil {
-		return fmt.Errorf("construct lock manager: %w", err)
-	} else {
-		lockManager = m
+	if !opts.LegacyNoReleaseLock {
+		if m, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory); err != nil {
+			return fmt.Errorf("construct lock manager: %w", err)
+		} else {
+			lockManager = m
+		}
 	}
 
 	nsMeta := spec.NewResourceMeta(releaseNamespace, "", releaseNamespace, "", schema.GroupVersionKind{Version: "v1", Kind: "Namespace"}, nil, nil)
@@ -188,12 +192,14 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 	if err := func() error {
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Delete release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-		if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
-			return fmt.Errorf("lock release: %w", err)
-		} else {
-			defer func() {
-				_ = lockManager.Unlock(lock)
-			}()
+		if lockManager != nil {
+			if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
+				return fmt.Errorf("lock release: %w", err)
+			} else {
+				defer func() {
+					_ = lockManager.Unlock(lock)
+				}()
+			}
 		}
 
 		log.Default.Debug(ctx, "Build release history")

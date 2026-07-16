@@ -43,6 +43,7 @@ type LegacyReleaseUninstallOptions struct {
 	common.TrackingOptions
 
 	DeleteReleaseNamespace bool
+	LegacyNoReleaseLock    bool
 	NetworkParallelism     int
 	NoDeleteHooks          bool
 	ReleaseHistoryLimit    int
@@ -215,16 +216,20 @@ func legacyReleaseUninstall(ctx context.Context, releaseName, releaseNamespace s
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Deleting release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
 		var lockManager *lock.LockManager
-		if m, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory); err != nil {
-			return fmt.Errorf("construct lock manager: %w", err)
-		} else {
-			lockManager = m
+		if !opts.LegacyNoReleaseLock {
+			if m, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory); err != nil {
+				return fmt.Errorf("construct lock manager: %w", err)
+			} else {
+				lockManager = m
+			}
 		}
 
-		if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
-			return fmt.Errorf("lock release: %w", err)
-		} else {
-			defer lockManager.Unlock(lock)
+		if lockManager != nil {
+			if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
+				return fmt.Errorf("lock release: %w", err)
+			} else {
+				defer lockManager.Unlock(lock)
+			}
 		}
 
 		helmUninstallCmd := helmv3.NewUninstallCmd(
