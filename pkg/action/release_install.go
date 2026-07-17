@@ -760,7 +760,18 @@ func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir, 
 }
 
 func createReleaseNamespace(ctx context.Context, clientFactory *kube.ClientFactory, releaseNamespace string) error {
-	unstruct := &unstructured.Unstructured{
+	cmUnstruct := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+			"metadata": map[string]interface{}{
+				"name":      "werf-synchronization",
+				"namespace": releaseNamespace,
+			},
+		},
+	}
+
+	nsUnstruct := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
@@ -770,21 +781,38 @@ func createReleaseNamespace(ctx context.Context, clientFactory *kube.ClientFacto
 		},
 	}
 
-	resSpec := spec.NewResourceSpec(unstruct, releaseNamespace, spec.ResourceSpecOptions{})
+	cmResSpec := spec.NewResourceSpec(cmUnstruct, releaseNamespace, spec.ResourceSpecOptions{})
+	nsResSpec := spec.NewResourceSpec(nsUnstruct, releaseNamespace, spec.ResourceSpecOptions{})
 
-	if _, err := clientFactory.KubeClient().Get(ctx, resSpec.ResourceMeta, kube.KubeClientGetOptions{
-		TryCache: true,
-	}); err != nil {
-		if kube.IsNotFoundErr(err) {
-			log.Default.Debug(ctx, "Create release namespace %q", releaseNamespace)
+	_, cmApplyErr := clientFactory.KubeClient().Apply(ctx, cmResSpec, kube.KubeClientApplyOptions{
+		DefaultNamespace: releaseNamespace,
+		DryRun:           true,
+	})
+	if cmApplyErr == nil {
+		return nil
+	}
 
-			if _, err := clientFactory.KubeClient().Create(ctx, resSpec, kube.KubeClientCreateOptions{}); err != nil {
-				return fmt.Errorf("create release namespace: %w", err)
-			}
-		} else if errors.IsForbidden(err) {
-		} else {
-			return fmt.Errorf("get release namespace: %w", err)
+	if !errors.IsForbidden(cmApplyErr) && !errors.IsNotFound(cmApplyErr) {
+		return fmt.Errorf("dry-run apply release lock configmap: %w", cmApplyErr)
+	}
+
+	if _, nsApplyErr := clientFactory.KubeClient().Apply(ctx, nsResSpec, kube.KubeClientApplyOptions{
+		DefaultNamespace: releaseNamespace,
+		DryRun:           true,
+	}); nsApplyErr != nil {
+		if errors.IsForbidden(nsApplyErr) || errors.IsNotFound(nsApplyErr) {
+			allErr := &util.MultiError{}
+
+			return fmt.Errorf("unable to ensure release namespace %q exists (no access to namespace or synchronization configmap): %w", releaseNamespace, allErr.Add(cmApplyErr, nsApplyErr))
 		}
+
+		return fmt.Errorf("dry-run apply release namespace: %w", nsApplyErr)
+	}
+
+	log.Default.Debug(ctx, "Create release namespace %q", releaseNamespace)
+
+	if _, err := clientFactory.KubeClient().Create(ctx, nsResSpec, kube.KubeClientCreateOptions{}); err != nil {
+		return fmt.Errorf("create release namespace: %w", err)
 	}
 
 	return nil
