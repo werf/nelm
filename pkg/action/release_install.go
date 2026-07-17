@@ -759,7 +759,7 @@ func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir, 
 	return opts, nil
 }
 
-func createReleaseNamespace(ctx context.Context, clientFactory *kube.ClientFactory, releaseNamespace string) error {
+func createReleaseNamespace(ctx context.Context, clientFactory kube.ClientFactorier, releaseNamespace string) error {
 	cmUnstruct := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "v1",
@@ -793,7 +793,7 @@ func createReleaseNamespace(ctx context.Context, clientFactory *kube.ClientFacto
 	}
 
 	if !errors.IsForbidden(cmApplyErr) && !errors.IsNotFound(cmApplyErr) {
-		return fmt.Errorf("dry-run apply release lock configmap: %w", cmApplyErr)
+		return fmt.Errorf("dry-run apply release synchronization configmap: %w", cmApplyErr)
 	}
 
 	if _, nsApplyErr := clientFactory.KubeClient().Apply(ctx, nsResSpec, kube.KubeClientApplyOptions{
