@@ -809,7 +809,7 @@ func createReleaseNamespace(ctx context.Context, clientFactory kube.ClientFactor
 		return fmt.Errorf("dry-run apply release namespace: %w", nsApplyErr)
 	}
 
-	log.Default.Debug(ctx, "Create release namespace %q", releaseNamespace)
+	log.Default.Debug(ctx, "Ensure release namespace %q", releaseNamespace)
 
 	if _, err := clientFactory.KubeClient().Create(ctx, nsResSpec, kube.KubeClientCreateOptions{}); err != nil {
 		return fmt.Errorf("create release namespace: %w", err)
