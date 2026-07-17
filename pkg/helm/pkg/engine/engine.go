@@ -61,6 +61,12 @@ func New(config *rest.Config) Engine {
 	}
 }
 
+// SetClientProvider sets the ClientProvider used to resolve lookup calls. It allows resolving
+// lookups against a custom source, such as an in-memory set of objects in offline mode.
+func (e *Engine) SetClientProvider(clientProvider ClientProvider) {
+	e.clientProvider = &clientProvider
+}
+
 // Render takes a chart, optional values, and value overrides, and attempts to render the Go templates.
 //
 // Render can be called repeatedly on the same engine.
