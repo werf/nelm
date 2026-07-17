@@ -14,7 +14,10 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/samber/lo"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/kubernetes/scheme"
 
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
@@ -36,26 +39,28 @@ import (
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/ts"
+	"github.com/werf/nelm/pkg/util"
 )
 
 type RenderChartOptions struct {
 	common.ChartRepoConnectionOptions
 	common.ValuesOptions
 
-	ChartProvenanceKeyring  string
-	ChartProvenanceStrategy string
-	ChartRepoNoUpdate       bool
-	ChartVersion            string
-	DenoBinaryPath          string
-	ExtraAPIVersions        []string
-	HelmOptions             helmopts.HelmOptions
-	IgnoreBundleJS          bool
-	LocalKubeVersion        string
-	NoStandaloneCRDs        bool
-	Remote                  bool
-	SubchartNotes           bool
-	TempDirPath             string
-	TemplatesAllowDNS       bool
+	ChartProvenanceKeyring    string
+	ChartProvenanceStrategy   string
+	ChartRepoNoUpdate         bool
+	ChartVersion              string
+	DenoBinaryPath            string
+	ExtraAPIVersions          []string
+	HelmOptions               helmopts.HelmOptions
+	IgnoreBundleJS            bool
+	LocalKubeVersion          string
+	LocalLookupResourcesPaths []string
+	NoStandaloneCRDs          bool
+	Remote                    bool
+	SubchartNotes             bool
+	TempDirPath               string
+	TemplatesAllowDNS         bool
 }
 
 type RenderChartResult struct {
@@ -195,7 +200,15 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	if opts.Remote && clientFactory.KubeClient() != nil {
 		engine = lo.ToPtr(helmengine.New(clientFactory.KubeConfig().RestConfig))
 	} else {
-		engine = lo.ToPtr(helmengine.Engine{})
+		engine = &helmengine.Engine{}
+		if len(opts.LocalLookupResourcesPaths) > 0 {
+			localLookupResources, err := parseLocalLookupResources(opts.LocalLookupResourcesPaths)
+			if err != nil {
+				return nil, fmt.Errorf("parse local lookup resources: %w", err)
+			}
+
+			engine.SetClientProvider(newLocalClientProvider(localLookupResources))
+		}
 	}
 
 	engine.EnableDNS = opts.TemplatesAllowDNS
@@ -270,6 +283,61 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		ResourceSpecs: resources,
 		Values:        renderedValues.AsMap(),
 	}, nil
+}
+
+func parseLocalLookupResources(paths []string) ([]*unstructured.Unstructured, error) {
+	var resources []*unstructured.Unstructured
+
+	seen := make(map[string]bool)
+
+	for _, filePath := range paths {
+		content, err := os.ReadFile(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("read file %q: %w", filePath, err)
+		}
+
+		for i, manifest := range util.SplitManifestsKeepingEmpty(string(content)) {
+			if manifest == "" {
+				continue
+			}
+
+			obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(manifest), nil, &unstructured.Unstructured{})
+			if err != nil {
+				return nil, fmt.Errorf("decode resource #%d for %q: %w", i+1, filePath, err)
+			}
+
+			unstruct := obj.(*unstructured.Unstructured)
+
+			if unstruct.IsList() {
+				item := 0
+
+				if err := unstruct.EachListItem(func(o runtime.Object) error {
+					res, err := collectLocalLookupResource(o.(*unstructured.Unstructured), seen)
+					if err != nil {
+						return err
+					}
+
+					item++
+					resources = append(resources, res)
+
+					return nil
+				}); err != nil {
+					return nil, fmt.Errorf("collect resource #%d for %q (item %d): %w", i+1, filePath, item+1, err)
+				}
+
+				continue
+			}
+
+			res, err := collectLocalLookupResource(unstruct, seen)
+			if err != nil {
+				return nil, fmt.Errorf("collect resource #%d for %q: %w", i+1, filePath, err)
+			}
+
+			resources = append(resources, res)
+		}
+	}
+
+	return resources, nil
 }
 
 func buildChartCapabilities(ctx context.Context, clientFactory kube.ClientFactorier, opts buildChartCapabilitiesOptions) (*chartutil.Capabilities, error) {
@@ -364,6 +432,27 @@ func buildContextFromJSONSets(jsonSets []string) (map[string]interface{}, error)
 	}
 
 	return context, nil
+}
+
+func collectLocalLookupResource(unstruct *unstructured.Unstructured, seen map[string]bool) (*unstructured.Unstructured, error) {
+	if unstruct.GetAPIVersion() == "" {
+		return nil, fmt.Errorf("apiVersion is missing")
+	}
+
+	if unstruct.GetName() == "" {
+		return nil, fmt.Errorf("name is missing")
+	}
+
+	gvk := unstruct.GroupVersionKind()
+	id := spec.IDWithVersion(unstruct.GetName(), unstruct.GetNamespace(), gvk.Group, gvk.Version, gvk.Kind)
+
+	if seen[id] {
+		return nil, fmt.Errorf("duplicate resource %s", spec.IDHuman(unstruct.GetName(), unstruct.GetNamespace(), gvk.Group, gvk.Kind))
+	}
+
+	seen[id] = true
+
+	return unstruct, nil
 }
 
 func isLocalChart(path string) bool {

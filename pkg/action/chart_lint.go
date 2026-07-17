@@ -94,6 +94,14 @@ type ChartLintOptions struct {
 	// LocalKubeVersion specifies the Kubernetes version to use for linting when not connected to a cluster.
 	// Format: "major.minor.patch" (e.g., "1.28.0"). Defaults to DefaultLocalKubeVersion if not set.
 	LocalKubeVersion string
+	// LocalLookupResourcesPaths are paths to YAML or JSON manifest files whose resources the "lookup"
+	// template function resolves against in local mode (Remote=false), instead of a live cluster.
+	// Each file may hold multiple documents separated by "---" and/or a kind: List (or typed *List)
+	// wrapper whose items are expanded; a bare top-level JSON array is not supported. Duplicate
+	// resources are rejected. Ignored if Remote is true. Namespace scope is inferred from
+	// whether a resource sets metadata.namespace; namespaced resources must set it, otherwise
+	// namespace-scoped lookups ignore the requested namespace and match the resource regardless.
+	LocalLookupResourcesPaths []string
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
@@ -266,6 +274,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		ExtraAPIVersions:           opts.ExtraAPIVersions,
 		HelmOptions:                helmOptions,
 		LocalKubeVersion:           opts.LocalKubeVersion,
+		LocalLookupResourcesPaths:  opts.LocalLookupResourcesPaths,
 		Remote:                     opts.Remote,
 		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
 		TempDirPath:                opts.TempDirPath,

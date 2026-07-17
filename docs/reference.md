@@ -1891,6 +1891,10 @@ nelm chart lint [options...] [chart-dir]
 
   Kubernetes version stub for non\-remote mode\. Var: \$NELM\_CHART\_LINT\_KUBE\_VERSION
 
+- `--lookup-resources` (default: `[]`)
+
+  Manifest files used as a cluster stub for the lookup template function in non\-remote mode\. Multi\-document and kind:List supported\. Namespaced resources must set metadata\.namespace, otherwise namespace\-scoped lookups ignore the requested namespace\. Vars: \$NELM\_LOOKUP\_RESOURCES\_\*, \$NELM\_CHART\_LINT\_LOOKUP\_RESOURCES\_\*
+
 - `-n`, `--namespace` (default: `"stub-namespace"`)
 
   The release namespace\. Resources with no namespace will be deployed here\. Vars: \$NELM\_NAMESPACE, \$NELM\_CHART\_LINT\_NAMESPACE
@@ -2234,6 +2238,10 @@ nelm chart render [options...] [chart-dir]
 - `--kube-version` (default: `"1.20.0"`)
 
   Kubernetes version stub for non\-remote mode\. Var: \$NELM\_CHART\_RENDER\_KUBE\_VERSION
+
+- `--lookup-resources` (default: `[]`)
+
+  Manifest files used as a cluster stub for the lookup template function in non\-remote mode\. Multi\-document and kind:List supported\. Namespaced resources must set metadata\.namespace, otherwise namespace\-scoped lookups ignore the requested namespace\. Vars: \$NELM\_LOOKUP\_RESOURCES\_\*, \$NELM\_CHART\_RENDER\_LOOKUP\_RESOURCES\_\*
 
 - `-n`, `--namespace` (default: `"stub-namespace"`)
 
