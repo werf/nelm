@@ -147,6 +147,10 @@ nelm release install [options...] -n namespace -r release [chart-dir]
 
   The release namespace\. Resources with no namespace will be deployed here\. Vars: \$NELM\_NAMESPACE, \$NELM\_RELEASE\_INSTALL\_NAMESPACE
 
+- `--no-create-namespace` (default: `false`)
+
+  Don't create the release namespace\. Vars: \$NELM\_NO\_CREATE\_NAMESPACE, \$NELM\_RELEASE\_INSTALL\_NO\_CREATE\_NAMESPACE
+
 - `--no-install-crds` (default: `false`)
 
   Don't install CRDs from "crds/" directories of installed charts\. Var: \$NELM\_RELEASE\_INSTALL\_NO\_INSTALL\_CRDS

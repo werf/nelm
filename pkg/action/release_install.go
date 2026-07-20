@@ -105,6 +105,8 @@ type ReleaseInstallOptions struct {
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
+	// NoCreateNamespace, when true, skips creating the release namespace entirely.
+	NoCreateNamespace bool
 	// NoShowNotes, when true, suppresses printing of NOTES.txt after successful installation.
 	// NOTES.txt typically contains usage instructions and next steps.
 	NoShowNotes bool
@@ -278,8 +280,10 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}
 	}
 
-	if err := createReleaseNamespace(ctx, clientFactory, releaseNamespace); err != nil {
-		return fmt.Errorf("create release namespace: %w", err)
+	if !opts.NoCreateNamespace {
+		if err := createReleaseNamespace(ctx, clientFactory, releaseNamespace); err != nil {
+			return fmt.Errorf("create release namespace: %w", err)
+		}
 	}
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Start release")+" %q (namespace: %q)", releaseName, releaseNamespace)
@@ -759,8 +763,19 @@ func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir, 
 	return opts, nil
 }
 
-func createReleaseNamespace(ctx context.Context, clientFactory *kube.ClientFactory, releaseNamespace string) error {
-	unstruct := &unstructured.Unstructured{
+func createReleaseNamespace(ctx context.Context, clientFactory kube.ClientFactorier, releaseNamespace string) error {
+	cmUnstruct := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+			"metadata": map[string]interface{}{
+				"name":      common.LockConfigMapName,
+				"namespace": releaseNamespace,
+			},
+		},
+	}
+
+	nsUnstruct := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
@@ -770,21 +785,38 @@ func createReleaseNamespace(ctx context.Context, clientFactory *kube.ClientFacto
 		},
 	}
 
-	resSpec := spec.NewResourceSpec(unstruct, releaseNamespace, spec.ResourceSpecOptions{})
+	cmResSpec := spec.NewResourceSpec(cmUnstruct, releaseNamespace, spec.ResourceSpecOptions{})
+	nsResSpec := spec.NewResourceSpec(nsUnstruct, releaseNamespace, spec.ResourceSpecOptions{})
 
-	if _, err := clientFactory.KubeClient().Get(ctx, resSpec.ResourceMeta, kube.KubeClientGetOptions{
-		TryCache: true,
-	}); err != nil {
-		if kube.IsNotFoundErr(err) {
-			log.Default.Debug(ctx, "Create release namespace %q", releaseNamespace)
+	_, cmApplyErr := clientFactory.KubeClient().Apply(ctx, cmResSpec, kube.KubeClientApplyOptions{
+		DefaultNamespace: releaseNamespace,
+		DryRun:           true,
+	})
+	if cmApplyErr == nil {
+		return nil
+	}
 
-			if _, err := clientFactory.KubeClient().Create(ctx, resSpec, kube.KubeClientCreateOptions{}); err != nil {
-				return fmt.Errorf("create release namespace: %w", err)
-			}
-		} else if errors.IsForbidden(err) {
-		} else {
-			return fmt.Errorf("get release namespace: %w", err)
+	if !errors.IsForbidden(cmApplyErr) && !errors.IsNotFound(cmApplyErr) {
+		return fmt.Errorf("dry-run apply release synchronization configmap: %w", cmApplyErr)
+	}
+
+	if _, nsApplyErr := clientFactory.KubeClient().Apply(ctx, nsResSpec, kube.KubeClientApplyOptions{
+		DefaultNamespace: releaseNamespace,
+		DryRun:           true,
+	}); nsApplyErr != nil {
+		if errors.IsForbidden(nsApplyErr) || errors.IsNotFound(nsApplyErr) {
+			allErr := &util.MultiError{}
+
+			return fmt.Errorf("can't apply ConfigMap for locking, and can't apply release namespace (in case ConfigMap apply error caused by non-existent namespace): %w", allErr.Add(cmApplyErr, nsApplyErr))
 		}
+
+		return fmt.Errorf("dry-run apply release namespace: %w", nsApplyErr)
+	}
+
+	log.Default.Debug(ctx, "Ensure release namespace %q", releaseNamespace)
+
+	if _, err := clientFactory.KubeClient().Create(ctx, nsResSpec, kube.KubeClientCreateOptions{}); err != nil {
+		return fmt.Errorf("create release namespace: %w", err)
 	}
 
 	return nil
