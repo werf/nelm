@@ -127,6 +127,7 @@ const (
 	DefaultResourceValidationKubeVersion = "1.35.0"
 	DefaultWebhookRetryTimeout           = 4 * time.Minute
 	KubectlEditFieldManager              = "kubectl-edit"
+	LockConfigMapName                    = "werf-synchronization"
 	OldFieldManagerPrefix                = "werf"
 	OutputFormatJSON                     = "json"
 	OutputFormatTable                    = "table"
