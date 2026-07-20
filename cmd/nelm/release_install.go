@@ -215,6 +215,13 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		if err := cli.AddFlag(cmd, &cfg.NoCreateNamespace, "no-create-namespace", false, "Don't create the release namespace", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                mainFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.NoShowNotes, "no-notes", false, "Don't show release notes at the end of the release", cli.AddFlagOptions{
 			Group: mainFlagGroup,
 		}); err != nil {

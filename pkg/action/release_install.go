@@ -105,6 +105,8 @@ type ReleaseInstallOptions struct {
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
+	// NoCreateNamespace, when true, skips creating the release namespace entirely.
+	NoCreateNamespace bool
 	// NoShowNotes, when true, suppresses printing of NOTES.txt after successful installation.
 	// NOTES.txt typically contains usage instructions and next steps.
 	NoShowNotes bool
@@ -278,8 +280,10 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}
 	}
 
-	if err := createReleaseNamespace(ctx, clientFactory, releaseNamespace); err != nil {
-		return fmt.Errorf("create release namespace: %w", err)
+	if !opts.NoCreateNamespace {
+		if err := createReleaseNamespace(ctx, clientFactory, releaseNamespace); err != nil {
+			return fmt.Errorf("create release namespace: %w", err)
+		}
 	}
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Start release")+" %q (namespace: %q)", releaseName, releaseNamespace)
@@ -801,9 +805,7 @@ func createReleaseNamespace(ctx context.Context, clientFactory kube.ClientFactor
 		DryRun:           true,
 	}); nsApplyErr != nil {
 		if errors.IsForbidden(nsApplyErr) || errors.IsNotFound(nsApplyErr) {
-			allErr := &util.MultiError{}
-
-			return fmt.Errorf("unable to ensure release namespace %q exists (no access to namespace or synchronization configmap): %w", releaseNamespace, allErr.Add(cmApplyErr, nsApplyErr))
+			return fmt.Errorf("can't apply ConfigMap for locking, and can't apply release namespace (in case ConfigMap apply error caused by non-existent namespace):\n\n  * %w\n  * %w", cmApplyErr, nsApplyErr)
 		}
 
 		return fmt.Errorf("dry-run apply release namespace: %w", nsApplyErr)

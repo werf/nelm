@@ -133,7 +133,7 @@ func TestAI_CreateReleaseNamespaceBothProbesForbiddenAggregates(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorIs(t, err, cmErr)
 	require.ErrorIs(t, err, nsErr)
-	assert.Contains(t, err.Error(), "unable to ensure release namespace \"my-namespace\" exists")
+	assert.Contains(t, err.Error(), "can't apply ConfigMap for locking, and can't apply release namespace")
 
 	require.Len(t, kubeClient.calls, 2)
 	assert.Equal(t, createNamespaceCall{dryRun: true, kind: "ConfigMap"}, kubeClient.calls[0])
