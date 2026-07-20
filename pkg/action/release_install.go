@@ -769,7 +769,7 @@ func createReleaseNamespace(ctx context.Context, clientFactory kube.ClientFactor
 			"apiVersion": "v1",
 			"kind":       "ConfigMap",
 			"metadata": map[string]interface{}{
-				"name":      "werf-synchronization",
+				"name":      common.LockConfigMapName,
 				"namespace": releaseNamespace,
 			},
 		},
@@ -805,7 +805,9 @@ func createReleaseNamespace(ctx context.Context, clientFactory kube.ClientFactor
 		DryRun:           true,
 	}); nsApplyErr != nil {
 		if errors.IsForbidden(nsApplyErr) || errors.IsNotFound(nsApplyErr) {
-			return fmt.Errorf("can't apply ConfigMap for locking, and can't apply release namespace (in case ConfigMap apply error caused by non-existent namespace):\n\n  * %w\n  * %w", cmApplyErr, nsApplyErr)
+			allErr := &util.MultiError{}
+
+			return fmt.Errorf("can't apply ConfigMap for locking, and can't apply release namespace (in case ConfigMap apply error caused by non-existent namespace): %w", allErr.Add(cmApplyErr, nsApplyErr))
 		}
 
 		return fmt.Errorf("dry-run apply release namespace: %w", nsApplyErr)
