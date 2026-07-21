@@ -59,7 +59,7 @@ func (r *LegacyProgressReporter) Stop(ctx context.Context) {
 	}()
 }
 
-func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[string]string) {
+func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[string]string, untouched []*InstallableResourceInfo, untouchedResolvedNamespaces map[string]string) {
 	r.state.RWTransaction(func(s *progressReporterState) {
 		if len(s.ops) > 0 {
 			s.frozen = append(s.frozen, buildStageReport(s.ops))
@@ -71,6 +71,7 @@ func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[stri
 		var entries []opEntry
 
 		entryIndex := make(map[string]int)
+		seenRefs := make(map[progrep.ObjectRef]struct{})
 
 		for _, op := range ops {
 			if op.Category != OperationCategoryResource && op.Category != OperationCategoryTrack {
@@ -81,12 +82,34 @@ func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[stri
 			typ := mapOperationType(op.Type)
 			idx := len(entries)
 			entryIndex[op.ID()] = idx
+			seenRefs[ref] = struct{}{}
 
 			entries = append(entries, opEntry{
 				iteration: int(op.Iteration),
 				ref:       ref,
 				status:    progrep.OperationStatusPending,
 				typ:       typ,
+			})
+		}
+
+		for _, info := range untouched {
+			ref := progrep.ObjectRef{
+				GroupVersionKind: info.GroupVersionKind,
+				Name:             info.Name,
+				Namespace:        untouchedResolvedNamespaces[info.ID()],
+			}
+
+			if _, ok := seenRefs[ref]; ok {
+				continue
+			}
+
+			seenRefs[ref] = struct{}{}
+
+			entries = append(entries, opEntry{
+				iteration: 0,
+				ref:       ref,
+				status:    progrep.OperationStatusCompleted,
+				typ:       progrep.OperationTypeUpdate,
 			})
 		}
 

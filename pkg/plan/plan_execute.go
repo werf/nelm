@@ -27,6 +27,7 @@ type ExecutePlanOptions struct {
 
 	LegacyProgressReporter *LegacyProgressReporter
 	NetworkParallelism     int
+	UntouchedResourceInfos []*InstallableResourceInfo
 }
 
 // Executes the given plan. It doesn't care what kind of plan it is (install, upgrade, failure plan,
@@ -40,8 +41,15 @@ func ExecutePlan(parentCtx context.Context, releaseNamespace string, plan *Plan,
 	opts.NetworkParallelism = lo.Max([]int{opts.NetworkParallelism, 1})
 
 	if opts.LegacyProgressReporter != nil {
-		resolvedNS := buildResolvedNamespaces(plan, releaseNamespace, clientFactory.Mapper())
-		opts.LegacyProgressReporter.startStage(plan, resolvedNS)
+		mapper := clientFactory.Mapper()
+		resolvedNS := buildResolvedNamespaces(plan, releaseNamespace, mapper)
+
+		untouchedResolvedNS := make(map[string]string, len(opts.UntouchedResourceInfos))
+		for _, info := range opts.UntouchedResourceInfos {
+			untouchedResolvedNS[info.ID()] = resolveNamespace(info.GroupVersionKind, info.Namespace, releaseNamespace, mapper)
+		}
+
+		opts.LegacyProgressReporter.startStage(plan, resolvedNS, opts.UntouchedResourceInfos, untouchedResolvedNS)
 	}
 
 	workerPool := pool.New().WithContext(ctx).WithMaxGoroutines(opts.NetworkParallelism).WithCancelOnError().WithFirstError()

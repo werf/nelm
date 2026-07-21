@@ -591,6 +591,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		LegacyProgressReporter: reporter,
 		TrackingOptions:        opts.TrackingOptions,
 		NetworkParallelism:     opts.NetworkParallelism,
+		UntouchedResourceInfos: instResInfos,
 	})
 	if executePlanErr != nil {
 		criticalErrs.Add(fmt.Errorf("execute release install plan: %w", executePlanErr))
@@ -978,6 +979,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		LegacyProgressReporter: opts.LegacyProgressReporter,
 		TrackingOptions:        opts.TrackingOptions,
 		NetworkParallelism:     opts.NetworkParallelism,
+		UntouchedResourceInfos: instResInfos,
 	})
 	if executePlanErr != nil {
 		critErrs.Add(fmt.Errorf("execute rollback plan: %w", executePlanErr))
