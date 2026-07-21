@@ -415,8 +415,9 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	log.Default.Debug(ctx, "Execute release install plan")
 
 	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, installPlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		TrackingOptions:    opts.TrackingOptions,
-		NetworkParallelism: opts.NetworkParallelism,
+		TrackingOptions:          opts.TrackingOptions,
+		NetworkParallelism:       opts.NetworkParallelism,
+		InstallableResourceInfos: instResInfos,
 	})
 	if executePlanErr != nil {
 		criticalErrs.Add(fmt.Errorf("execute release install plan: %w", executePlanErr))
