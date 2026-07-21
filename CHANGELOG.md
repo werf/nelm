@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.27.0](https://github.com/werf/nelm/compare/v1.26.1...v1.27.0) (2026-07-21)
+
+
+### Features
+
+* add --diff-patches and patches.yaml support ([9241ea8](https://github.com/werf/nelm/commit/9241ea8a51d07fbe6c8b6f41c470752eda8e2a15))
+
+
+### Bug Fixes
+
+* cleanup TODOs for major ([#663](https://github.com/werf/nelm/issues/663)) ([8f85359](https://github.com/werf/nelm/commit/8f85359dc1d45dacb3b4cb0b3e4d7de807d5966e))
+* resolve issues after conflicts ([d414ee7](https://github.com/werf/nelm/commit/d414ee7a2972ec38663203f52c6f55836debc20e))
+
 ## [1.26.1](https://github.com/werf/nelm/compare/v1.26.0...v1.26.1) (2026-07-06)
 
 
