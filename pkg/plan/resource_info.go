@@ -161,7 +161,6 @@ func ResourceInstallTypeSortHandler(type1, type2 ResourceInstallType) bool {
 	return type1I < type2I
 }
 
-// TODO(major): keep annotation should probably forbid resource recreations
 func buildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed, noRemoveManualChanges bool, clientFactory kube.ClientFactorier, opts BuildResourceInfosOptions, diffPatches []*spec.CompiledDiffPatch) ([]*InstallableResourceInfo, error) {
 	var stages []common.Stage
 	switch deployType {

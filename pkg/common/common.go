@@ -106,9 +106,8 @@ const (
 	// ChartTSOutputFile is the name of the output file with rendered manifests from the Deno app.
 	ChartTSOutputFile = "output.yaml"
 	// ChartTSSourceDir is the directory containing TypeScript sources in a Helm chart.
-	ChartTSSourceDir  = "ts/"
-	DefaultBurstLimit = 100
-	// TODO(major): switch to if-possible
+	ChartTSSourceDir                    = "ts/"
+	DefaultBurstLimit                   = 100
 	DefaultChartProvenanceStrategy      = "never"
 	DefaultDeletePropagation            = metav1.DeletePropagationBackground
 	DefaultDependencyExternal           = DependencyExternalAuto

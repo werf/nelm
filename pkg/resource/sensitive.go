@@ -96,7 +96,7 @@ func RedactSensitiveData(unstruct *unstructured.Unstructured, sensitivePaths []s
 
 func redactSensitiveData(unstruct *unstructured.Unstructured, sensitivePaths []string) *unstructured.Unstructured {
 	for _, pathExpr := range sensitivePaths {
-		// TODO(major): should we remove this?
+		// TODO: should we remove this?
 		if pathExpr == HideAll {
 			return &unstructured.Unstructured{Object: map[string]interface{}{
 				"apiVersion": unstruct.GetAPIVersion(),
