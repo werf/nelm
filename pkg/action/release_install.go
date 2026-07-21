@@ -508,10 +508,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}
 	}
 
-	releaseIsUpToDate, err := release.IsReleaseUpToDate(prevRelease, newRelease)
+	result, err := release.IsReleaseUpToDate(prevRelease, newRelease)
 	if err != nil {
 		return fmt.Errorf("check if release is up to date: %w", err)
 	}
+
+	releaseIsUpToDate := result.UpToDate
 
 	installPlanIsUseless := lo.NoneBy(installPlan.Operations(), func(op *plan.Operation) bool {
 		switch op.Category {
@@ -948,10 +950,12 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		}
 	}
 
-	releaseIsUpToDate, err := release.IsReleaseUpToDate(failedRelease, newRelease)
+	releaseUpToDateResult, err := release.IsReleaseUpToDate(failedRelease, newRelease)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("check if release is up to date: %w", err))
 	}
+
+	releaseIsUpToDate := releaseUpToDateResult.UpToDate
 
 	planIsUseless := lo.NoneBy(rollbackPlan.Operations(), func(op *plan.Operation) bool {
 		switch op.Category {
