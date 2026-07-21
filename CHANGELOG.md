@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.27.0](https://github.com/werf/nelm/compare/v1.26.2...v1.27.0) (2026-07-21)
+
+
+### Features
+
+* add --lookup-resources flag for offline lookup in render/lint commands ([#657](https://github.com/werf/nelm/issues/657)) ([a984242](https://github.com/werf/nelm/commit/a984242ee37ecc17dfa711450102955ed571a907))
+* add option `LegacyNoReleaseLock` to install/uninstall/rollback actions ([#656](https://github.com/werf/nelm/issues/656)) ([da9a86a](https://github.com/werf/nelm/commit/da9a86ab9e1c2d9af5e33d469c888ba976ed29cf))
+* explain required install with no planned resource changes ([cdbacfd](https://github.com/werf/nelm/commit/cdbacfdd1f06c3e4abaaeeb6d0e65992a0bb6966))
+* explain required install with no planned resource changes ([#645](https://github.com/werf/nelm/issues/645)) ([cdbacfd](https://github.com/werf/nelm/commit/cdbacfdd1f06c3e4abaaeeb6d0e65992a0bb6966))
+
+
+### Bug Fixes
+
+* create release namespace under strict RBAC, `--no-create-namespace` flag ([#662](https://github.com/werf/nelm/issues/662)) ([3d389ef](https://github.com/werf/nelm/commit/3d389efe5cbc46a514af521f9072075f538acf68))
+
 ## [1.26.2](https://github.com/werf/nelm/compare/v1.26.1...v1.26.2) (2026-07-16)
 
 
