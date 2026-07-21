@@ -409,7 +409,6 @@ func applyChartRenderOptionsDefaults(opts ChartRenderOptions, currentDir, homeDi
 	}
 
 	if opts.LocalKubeVersion == "" {
-		// TODO(major): update default local version
 		opts.LocalKubeVersion = common.DefaultLocalKubeVersion
 	}
 

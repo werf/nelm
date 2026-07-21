@@ -424,7 +424,6 @@ func applyChartLintOptionsDefaults(opts ChartLintOptions, currentDir, homeDir st
 	}
 
 	if opts.LocalKubeVersion == "" {
-		// TODO(major): update default local version
 		opts.LocalKubeVersion = common.DefaultLocalKubeVersion
 	}
 

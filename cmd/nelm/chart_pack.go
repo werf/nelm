@@ -34,7 +34,6 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		helmSettings := helmcmd.Settings
 
-		// TODO(major): should we do it like that everywhere, setting the context?
 		ctx = action.SetupLogging(cmd.Context(), lo.Ternary(helmSettings.Debug, log.DebugLevel, log.InfoLevel), action.SetupLoggingOptions{})
 		ctx = ts.NewContextWithTSOptions(ctx, opts)
 		cmd.SetContext(ctx)

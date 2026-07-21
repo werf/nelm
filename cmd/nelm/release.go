@@ -26,7 +26,5 @@ func newReleaseCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobr
 	cmd.AddCommand(newReleaseGetCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newPlanCommand(ctx, afterAllCommandsBuiltFuncs))
 
-	// TODO(major): in v1 don't fail on unknown env var, maybe warning (which can be disabled)?
-
 	return cmd
 }

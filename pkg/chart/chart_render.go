@@ -456,7 +456,6 @@ func renderedTemplatesToResourceSpecs(ctx context.Context, renderedTemplates map
 			if err := yaml.UnmarshalWithOptions(
 				[]byte(manifest),
 				&head,
-				// TODO(major): remove
 				yaml.AllowDuplicateMapKey(),
 			); err != nil {
 				return nil, fmt.Errorf("parse YAML resource #%d for %q: %w", idx+1, filePath, err)
