@@ -12,12 +12,20 @@ func IsImmutableErr(err error) bool {
 	return err != nil && errors.IsInvalid(err) && strings.Contains(err.Error(), validation.FieldImmutableErrorMsg)
 }
 
+func IsInvalidErr(err error) bool {
+	return err != nil && errors.IsInvalid(err)
+}
+
 func IsNoSuchKindErr(err error) bool {
 	return err != nil && meta.IsNoMatchError(err)
 }
 
 func IsNotFoundErr(err error) bool {
 	return err != nil && errors.IsNotFound(err)
+}
+
+func IsTypedObjectErr(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "failed to create typed patch object")
 }
 
 func IsWebhookErr(err error) bool {

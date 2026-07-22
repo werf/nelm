@@ -516,6 +516,12 @@ func fixHelmUpdateManagedFields(ctx context.Context, localRes *resource.Installa
 		DryRun:           true,
 	})
 	if err != nil {
+		if kube.IsInvalidErr(err) || kube.IsTypedObjectErr(err) {
+			log.Default.Warn(ctx, "Skipping Helm managed fields reconstruction for resource %q: previously deployed manifest is invalid: %s", localRes.IDHuman(), err)
+
+			return origFields, false, nil
+		}
+
 		return nil, false, fmt.Errorf("dry-run apply for helm managed fields fix: %w", err)
 	}
 
