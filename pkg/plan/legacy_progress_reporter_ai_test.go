@@ -611,6 +611,36 @@ func TestAI_StartStage_ReportStatusNeverAffectsUntouchedEntry(t *testing.T) {
 	assert.Equal(t, progrep.OperationStatusCompleted, statuses["cm2"], "untouched entry must remain Completed")
 }
 
+func TestAI_StartStage_UntouchedAbsentResourceOmitted(t *testing.T) {
+	ch := make(chan progrep.ProgressReport, 64)
+	reporter := NewLegacyProgressReporter(ch)
+
+	op := &Operation{
+		Type: OperationTypeCreate, Version: OperationVersionCreate, Category: OperationCategoryResource,
+		Config: &OperationConfigCreate{ResourceSpec: makeResourceSpec("cm1", "default", gvkConfigMap)},
+	}
+	p := buildTestPlan([]*Operation{op}, nil)
+
+	untouched := &InstallableResourceInfo{
+		ResourceMeta: makeResourceMeta("cm2", "default", gvkConfigMap),
+		MustInstall:  ResourceInstallTypeNone,
+	}
+
+	reporter.startStage(
+		p,
+		map[string]string{op.ID(): "default"},
+		[]*InstallableResourceInfo{untouched},
+		map[string]string{untouched.ID(): "default"},
+	)
+
+	reports := drainChannel(ch)
+	require.NotEmpty(t, reports)
+
+	activeOps := reports[len(reports)-1].StageReports[0].Operations
+	require.Len(t, activeOps, 1, "untouched resource absent from cluster must not be emitted")
+	assert.Equal(t, "cm1", activeOps[0].Name)
+}
+
 func TestAI_StartStage_UntouchedDeduplicatedAgainstPlanOp(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
@@ -872,34 +902,4 @@ func makeUntouchedInfo(name, namespace string, gvk schema.GroupVersionKind) *Ins
 		MustInstall:  ResourceInstallTypeNone,
 		GetResult:    obj,
 	}
-}
-
-func TestAI_StartStage_UntouchedAbsentResourceOmitted(t *testing.T) {
-	ch := make(chan progrep.ProgressReport, 64)
-	reporter := NewLegacyProgressReporter(ch)
-
-	op := &Operation{
-		Type: OperationTypeCreate, Version: OperationVersionCreate, Category: OperationCategoryResource,
-		Config: &OperationConfigCreate{ResourceSpec: makeResourceSpec("cm1", "default", gvkConfigMap)},
-	}
-	p := buildTestPlan([]*Operation{op}, nil)
-
-	untouched := &InstallableResourceInfo{
-		ResourceMeta: makeResourceMeta("cm2", "default", gvkConfigMap),
-		MustInstall:  ResourceInstallTypeNone,
-	}
-
-	reporter.startStage(
-		p,
-		map[string]string{op.ID(): "default"},
-		[]*InstallableResourceInfo{untouched},
-		map[string]string{untouched.ID(): "default"},
-	)
-
-	reports := drainChannel(ch)
-	require.NotEmpty(t, reports)
-
-	activeOps := reports[len(reports)-1].StageReports[0].Operations
-	require.Len(t, activeOps, 1, "untouched resource absent from cluster must not be emitted")
-	assert.Equal(t, "cm1", activeOps[0].Name)
 }

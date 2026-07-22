@@ -25,9 +25,9 @@ import (
 type ExecutePlanOptions struct {
 	common.TrackingOptions
 
+	InstallableResourceInfos []*InstallableResourceInfo
 	LegacyProgressReporter   *LegacyProgressReporter
 	NetworkParallelism       int
-	InstallableResourceInfos []*InstallableResourceInfo
 }
 
 // Executes the given plan. It doesn't care what kind of plan it is (install, upgrade, failure plan,
