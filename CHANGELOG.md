@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.27.1](https://github.com/werf/nelm/compare/v1.27.0...v1.27.1) (2026-07-22)
+
+
+### Bug Fixes
+
+* don't block deploy when Helm managed fields reconstruction hits incompatible historical manifest ([b684451](https://github.com/werf/nelm/commit/b684451bcb4689225c96589fecec53753d886481))
+
 ## [1.27.0](https://github.com/werf/nelm/compare/v1.26.2...v1.27.0) (2026-07-21)
 
 
