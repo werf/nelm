@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/werf/nelm/pkg/legacy/progrep"
@@ -861,8 +862,44 @@ func TestAI_Stop_SkipsOnCanceledContext(t *testing.T) {
 }
 
 func makeUntouchedInfo(name, namespace string, gvk schema.GroupVersionKind) *InstallableResourceInfo {
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(gvk)
+	obj.SetName(name)
+	obj.SetNamespace(namespace)
+
 	return &InstallableResourceInfo{
 		ResourceMeta: makeResourceMeta(name, namespace, gvk),
 		MustInstall:  ResourceInstallTypeNone,
+		GetResult:    obj,
 	}
+}
+
+func TestAI_StartStage_UntouchedAbsentResourceOmitted(t *testing.T) {
+	ch := make(chan progrep.ProgressReport, 64)
+	reporter := NewLegacyProgressReporter(ch)
+
+	op := &Operation{
+		Type: OperationTypeCreate, Version: OperationVersionCreate, Category: OperationCategoryResource,
+		Config: &OperationConfigCreate{ResourceSpec: makeResourceSpec("cm1", "default", gvkConfigMap)},
+	}
+	p := buildTestPlan([]*Operation{op}, nil)
+
+	untouched := &InstallableResourceInfo{
+		ResourceMeta: makeResourceMeta("cm2", "default", gvkConfigMap),
+		MustInstall:  ResourceInstallTypeNone,
+	}
+
+	reporter.startStage(
+		p,
+		map[string]string{op.ID(): "default"},
+		[]*InstallableResourceInfo{untouched},
+		map[string]string{untouched.ID(): "default"},
+	)
+
+	reports := drainChannel(ch)
+	require.NotEmpty(t, reports)
+
+	activeOps := reports[len(reports)-1].StageReports[0].Operations
+	require.Len(t, activeOps, 1, "untouched resource absent from cluster must not be emitted")
+	assert.Equal(t, "cm1", activeOps[0].Name)
 }

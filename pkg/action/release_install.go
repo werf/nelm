@@ -588,10 +588,10 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	log.Default.Debug(ctx, "Execute release install plan")
 
 	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, installPlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		LegacyProgressReporter: reporter,
-		TrackingOptions:        opts.TrackingOptions,
-		NetworkParallelism:     opts.NetworkParallelism,
-		UntouchedResourceInfos: instResInfos,
+		LegacyProgressReporter:   reporter,
+		TrackingOptions:          opts.TrackingOptions,
+		NetworkParallelism:       opts.NetworkParallelism,
+		InstallableResourceInfos: instResInfos,
 	})
 	if executePlanErr != nil {
 		criticalErrs.Add(fmt.Errorf("execute release install plan: %w", executePlanErr))
@@ -976,10 +976,10 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 	log.Default.Debug(ctx, "Execute rollback plan")
 
 	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, rollbackPlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		LegacyProgressReporter: opts.LegacyProgressReporter,
-		TrackingOptions:        opts.TrackingOptions,
-		NetworkParallelism:     opts.NetworkParallelism,
-		UntouchedResourceInfos: instResInfos,
+		LegacyProgressReporter:   opts.LegacyProgressReporter,
+		TrackingOptions:          opts.TrackingOptions,
+		NetworkParallelism:       opts.NetworkParallelism,
+		InstallableResourceInfos: instResInfos,
 	})
 	if executePlanErr != nil {
 		critErrs.Add(fmt.Errorf("execute rollback plan: %w", executePlanErr))

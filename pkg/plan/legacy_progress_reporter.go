@@ -93,6 +93,10 @@ func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[stri
 		}
 
 		for _, info := range untouched {
+			if info.GetResult == nil {
+				continue
+			}
+
 			ref := progrep.ObjectRef{
 				GroupVersionKind: info.GroupVersionKind,
 				Name:             info.Name,
