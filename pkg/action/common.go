@@ -190,9 +190,10 @@ func runFailurePlan(ctx context.Context, releaseNamespace string, failedPlan *pl
 	log.Default.Debug(ctx, "Execute failure plan")
 
 	if err := plan.ExecutePlan(ctx, releaseNamespace, failurePlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		LegacyProgressReporter: opts.LegacyProgressReporter,
-		TrackingOptions:        opts.TrackingOptions,
-		NetworkParallelism:     opts.NetworkParallelism,
+		LegacyProgressReporter:   opts.LegacyProgressReporter,
+		TrackingOptions:          opts.TrackingOptions,
+		NetworkParallelism:       opts.NetworkParallelism,
+		InstallableResourceInfos: installableInfos,
 	}); err != nil {
 		critErrs.Add(fmt.Errorf("execute failure plan: %w", err))
 	}
