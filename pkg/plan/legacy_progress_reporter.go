@@ -113,7 +113,9 @@ func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[stri
 				iteration: 0,
 				ref:       ref,
 				status:    progrep.OperationStatusCompleted,
-				typ:       progrep.OperationTypeUpdate,
+				// Untouched resources have no real operation (MustInstall==None); Update is a
+				// neutral label for an already-present, unchanged resource shown as Completed.
+				typ: progrep.OperationTypeUpdate,
 			})
 		}
 
