@@ -29,8 +29,9 @@ type ProgressReport struct {
 	StageReports []StageReport `json:"stageReports"`
 }
 
-// StageReport contains ALL operations in the plan -- from the very first report, every
-// operation is present (initially as Pending).
+// StageReport contains ALL operations in the plan, plus untouched resources reported as
+// NoOp with status Completed -- from the very first report, every operation is present
+// (initially as Pending).
 type StageReport struct {
 	Operations []Operation `json:"operations"`
 }
