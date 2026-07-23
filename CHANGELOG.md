@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.27.2](https://github.com/werf/nelm/compare/v1.27.1...v1.27.2) (2026-07-23)
+
+
+### Bug Fixes
+
+* optimize `release get` ([6707d35](https://github.com/werf/nelm/commit/6707d353c5ab1f3dc0c01c9c3fb074564d76b047))
+
 ## [1.27.1](https://github.com/werf/nelm/compare/v1.27.0...v1.27.1) (2026-07-22)
 
 
