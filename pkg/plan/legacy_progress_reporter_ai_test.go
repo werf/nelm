@@ -821,6 +821,81 @@ func TestAI_StartStage_UntouchedScopedToStageAndFrozen(t *testing.T) {
 	assert.Len(t, last.StageReports[1].Operations, 1)
 }
 
+func TestAI_StartStage_UntouchedReemittedAcrossStages(t *testing.T) {
+	ch := make(chan progrep.ProgressReport, 64)
+	reporter := NewLegacyProgressReporter(ch)
+
+	untouched := []*InstallableResourceInfo{
+		makeUntouchedInfo("cm-untouched", "default", gvkConfigMap),
+		makeUntouchedInfo("svc-shared", "default", gvkService),
+	}
+	untouchedNamespaces := map[string]string{
+		untouched[0].ID(): "default",
+		untouched[1].ID(): "default",
+	}
+
+	mainOp := &Operation{
+		Type: OperationTypeCreate, Version: OperationVersionCreate, Category: OperationCategoryResource,
+		Config: &OperationConfigCreate{ResourceSpec: makeResourceSpec("cm-main", "default", gvkConfigMap)},
+	}
+	mainPlan := buildTestPlan([]*Operation{mainOp}, nil)
+
+	reporter.startStage(
+		mainPlan,
+		map[string]string{mainOp.ID(): "default"},
+		untouched,
+		untouchedNamespaces,
+	)
+	drainChannel(ch)
+
+	failureOp := &Operation{
+		Type: OperationTypeDelete, Version: OperationVersionDelete, Category: OperationCategoryResource,
+		Config: &OperationConfigDelete{ResourceMeta: makeResourceMeta("svc-shared", "default", gvkService)},
+	}
+	failurePlan := buildTestPlan([]*Operation{failureOp}, nil)
+
+	reporter.startStage(
+		failurePlan,
+		map[string]string{failureOp.ID(): "default"},
+		untouched,
+		untouchedNamespaces,
+	)
+
+	reports := drainChannel(ch)
+	require.NotEmpty(t, reports)
+
+	last := reports[len(reports)-1]
+	require.Len(t, last.StageReports, 2)
+
+	frozen := map[string]progrep.Operation{}
+	for _, o := range last.StageReports[0].Operations {
+		frozen[o.Name] = o
+	}
+	assert.Contains(t, frozen, "cm-untouched", "untouched entry must be retained in the frozen prior stage")
+	assert.Equal(t, progrep.OperationStatusCompleted, frozen["cm-untouched"].Status)
+	assert.Equal(t, progrep.OperationTypeNoOp, frozen["cm-untouched"].Type)
+
+	active := last.StageReports[1].Operations
+	activeByName := map[string]progrep.Operation{}
+	for _, o := range active {
+		activeByName[o.Name] = o
+	}
+
+	require.Contains(t, activeByName, "cm-untouched", "untouched entry must be re-emitted into the new active stage")
+	assert.Equal(t, progrep.OperationStatusCompleted, activeByName["cm-untouched"].Status)
+	assert.Equal(t, progrep.OperationTypeNoOp, activeByName["cm-untouched"].Type)
+
+	sharedCount := 0
+	for _, o := range active {
+		if o.Name == "svc-shared" {
+			sharedCount++
+		}
+	}
+	assert.Equal(t, 1, sharedCount, "untouched resource matching a plan operation must appear exactly once")
+	assert.Equal(t, progrep.OperationTypeDelete, activeByName["svc-shared"].Type, "the shared resource must be represented by its plan operation, not the NoOp untouched entry")
+	assert.Len(t, active, 2, "active stage must contain the plan op plus the non-duplicated untouched entry")
+}
+
 func TestAI_Stop_DoesNotPanicOnClosedChannel(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 1)
 	reporter := NewLegacyProgressReporter(ch)
