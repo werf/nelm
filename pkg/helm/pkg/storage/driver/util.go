@@ -19,9 +19,16 @@ package driver // import "helm.sh/helm/v3/pkg/storage/driver"
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"strconv"
+
+	"github.com/pkg/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/metadata"
 
 	rspb "github.com/werf/nelm/pkg/helm/pkg/release"
 )
@@ -31,6 +38,35 @@ var b64 = base64.StdEncoding
 var magicGzip = []byte{0x1f, 0x8b, 0x08}
 
 var systemLabels = []string{"name", "owner", "status", "version", "createdAt", "modifiedAt"}
+
+// lastVersionFromMetadata resolves the highest release revision matching selector
+// using a metadata-only list. It transfers only object metadata (labels), never
+// the release bodies stored in the objects' data, so it does not scale with
+// release size or history depth.
+func lastVersionFromMetadata(ctx context.Context, client metadata.Interface, gvr schema.GroupVersionResource, namespace, selector string) (int, error) {
+	list, err := client.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return 0, errors.Wrap(err, "list release metadata")
+	}
+
+	latest := 0
+	for _, item := range list.Items {
+		version, err := strconv.Atoi(item.Labels["version"])
+		if err != nil {
+			continue
+		}
+
+		if version > latest {
+			latest = version
+		}
+	}
+
+	if latest == 0 {
+		return 0, ErrReleaseNotFound
+	}
+
+	return latest, nil
+}
 
 // encodeRelease encodes a release returning a base64 encoded
 // gzipped string representation, or error.

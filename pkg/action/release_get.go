@@ -3,6 +3,7 @@ package action
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
 	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/nelm/pkg/helm/pkg/storage/driver"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -134,34 +136,32 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 
 	loader.NoChartLockWarning = ""
 
-	log.Default.Debug(ctx, "Build release history")
+	log.Default.Debug(ctx, "Get release")
 
-	history, err := release.BuildHistory(releaseName, releaseStorage, release.HistoryOptions{})
+	rel, err := releaseStorage.GetRelease(releaseName, opts.Revision)
 	if err != nil {
-		return nil, fmt.Errorf("build release history: %w", err)
-	}
+		if !errors.Is(err, driver.ErrReleaseNotFound) {
+			return nil, fmt.Errorf("get release: %w", err)
+		}
 
-	releases := history.Releases()
-	if len(releases) == 0 {
+		if opts.Revision != 0 {
+			_, existsErr := releaseStorage.GetRelease(releaseName, 0)
+			if existsErr == nil {
+				return nil, &ReleaseRevisionNotFoundError{
+					ReleaseName:      releaseName,
+					ReleaseNamespace: releaseNamespace,
+					Revision:         opts.Revision,
+				}
+			}
+
+			if !errors.Is(existsErr, driver.ErrReleaseNotFound) {
+				return nil, fmt.Errorf("check release existence: %w", existsErr)
+			}
+		}
+
 		return nil, &ReleaseNotFoundError{
 			ReleaseName:      releaseName,
 			ReleaseNamespace: releaseNamespace,
-		}
-	}
-
-	var rel *helmrelease.Release
-	if opts.Revision == 0 {
-		rel = lo.LastOrEmpty(releases)
-	} else {
-		var revisionFound bool
-
-		rel, revisionFound = history.FindRevision(opts.Revision)
-		if !revisionFound {
-			return nil, &ReleaseRevisionNotFoundError{
-				ReleaseName:      releaseName,
-				ReleaseNamespace: releaseNamespace,
-				Revision:         opts.Revision,
-			}
 		}
 	}
 

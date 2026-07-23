@@ -27,13 +27,17 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kblabels "k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/metadata"
 
 	rspb "github.com/werf/nelm/pkg/helm/pkg/release"
 )
 
 var _ Driver = (*Secrets)(nil)
+
+var secretsGVR = schema.GroupVersionResource{Version: "v1", Resource: "secrets"}
 
 // SecretsDriverName is the string name of the driver.
 const SecretsDriverName = "Secret"
@@ -43,6 +47,12 @@ const SecretsDriverName = "Secret"
 type Secrets struct {
 	impl corev1.SecretInterface
 	Log  func(string, ...interface{})
+
+	// MetadataClient, when set, lets LastVersion resolve the highest revision via a
+	// metadata-only list that transfers no release bodies. Namespace is the
+	// namespace it lists in and is required whenever MetadataClient is set.
+	MetadataClient metadata.Interface
+	Namespace      string
 }
 
 // NewSecrets initializes a new Secrets wrapping an implementation of
@@ -57,6 +67,42 @@ func NewSecrets(impl corev1.SecretInterface) *Secrets {
 // Name returns the name of the driver.
 func (secrets *Secrets) Name() string {
 	return SecretsDriverName
+}
+
+// LastVersion returns the highest revision of the named release, or
+// ErrReleaseNotFound if the release does not exist. It reads only label
+// metadata and decodes no release body.
+func (secrets *Secrets) LastVersion(name string) (int, error) {
+	selector := kblabels.Set{"owner": "helm", "name": name}.AsSelector().String()
+
+	if secrets.MetadataClient != nil {
+		return lastVersionFromMetadata(context.Background(), secrets.MetadataClient, secretsGVR, secrets.Namespace, selector)
+	}
+
+	// Safety net without a metadata client: a typed list still avoids decoding
+	// release bodies, but unlike the metadata path it transfers them over the wire.
+	list, err := secrets.impl.List(context.Background(), metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return 0, errors.Wrap(err, "last version: failed to list")
+	}
+
+	latest := 0
+	for _, item := range list.Items {
+		version, err := strconv.Atoi(item.Labels["version"])
+		if err != nil {
+			continue
+		}
+
+		if version > latest {
+			latest = version
+		}
+	}
+
+	if latest == 0 {
+		return 0, ErrReleaseNotFound
+	}
+
+	return latest, nil
 }
 
 // Get fetches the release named by key. The corresponding release is returned

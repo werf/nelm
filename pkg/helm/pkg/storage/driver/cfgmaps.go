@@ -27,13 +27,17 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kblabels "k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/metadata"
 
 	rspb "github.com/werf/nelm/pkg/helm/pkg/release"
 )
 
 var _ Driver = (*ConfigMaps)(nil)
+
+var configMapsGVR = schema.GroupVersionResource{Version: "v1", Resource: "configmaps"}
 
 // ConfigMapsDriverName is the string name of the driver.
 const ConfigMapsDriverName = "ConfigMap"
@@ -43,6 +47,12 @@ const ConfigMapsDriverName = "ConfigMap"
 type ConfigMaps struct {
 	impl corev1.ConfigMapInterface
 	Log  func(string, ...interface{})
+
+	// MetadataClient, when set, lets LastVersion resolve the highest revision via a
+	// metadata-only list that transfers no release bodies. Namespace is the
+	// namespace it lists in and is required whenever MetadataClient is set.
+	MetadataClient metadata.Interface
+	Namespace      string
 }
 
 // NewConfigMaps initializes a new ConfigMaps wrapping an implementation of
@@ -57,6 +67,42 @@ func NewConfigMaps(impl corev1.ConfigMapInterface) *ConfigMaps {
 // Name returns the name of the driver.
 func (cfgmaps *ConfigMaps) Name() string {
 	return ConfigMapsDriverName
+}
+
+// LastVersion returns the highest revision of the named release, or
+// ErrReleaseNotFound if the release does not exist. It reads only label
+// metadata and decodes no release body.
+func (cfgmaps *ConfigMaps) LastVersion(name string) (int, error) {
+	selector := kblabels.Set{"owner": "helm", "name": name}.AsSelector().String()
+
+	if cfgmaps.MetadataClient != nil {
+		return lastVersionFromMetadata(context.Background(), cfgmaps.MetadataClient, configMapsGVR, cfgmaps.Namespace, selector)
+	}
+
+	// Safety net without a metadata client: a typed list still avoids decoding
+	// release bodies, but unlike the metadata path it transfers them over the wire.
+	list, err := cfgmaps.impl.List(context.Background(), metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return 0, errors.Wrap(err, "last version: failed to list")
+	}
+
+	latest := 0
+	for _, item := range list.Items {
+		version, err := strconv.Atoi(item.Labels["version"])
+		if err != nil {
+			continue
+		}
+
+		if version > latest {
+			latest = version
+		}
+	}
+
+	if latest == 0 {
+		return 0, ErrReleaseNotFound
+	}
+
+	return latest, nil
 }
 
 // Get fetches the release named by key. The corresponding release is returned

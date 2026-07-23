@@ -18,6 +18,7 @@ package storage // import "helm.sh/helm/v3/pkg/storage"
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -52,6 +53,83 @@ type Storage struct {
 func (s *Storage) Get(name string, version int) (*rspb.Release, error) {
 	s.Log("getting release %q", makeKey(name, version))
 	return s.Driver.Get(makeKey(name, version))
+}
+
+// lastVersioner is an optional driver capability that returns the highest
+// revision of a release cheaply, without decoding release bodies.
+type lastVersioner interface {
+	LastVersion(name string) (int, error)
+}
+
+// GetRelease returns a single release revision without decoding the whole
+// history. version == 0 resolves the latest revision (via the driver's
+// LastVersion capability, falling back to decoding the history). The revision is
+// always fetched via Query, so the returned release keeps its unfiltered storage
+// labels; Get is deliberately not used because it strips system labels through
+// filterSystemLabels.
+func (s *Storage) GetRelease(name string, version int) (*rspb.Release, error) {
+	if version != 0 {
+		return s.queryRevision(name, version)
+	}
+
+	target, err := s.resolveLastVersion(name)
+	if err != nil {
+		return nil, err
+	}
+
+	rel, err := s.queryRevision(name, target)
+	if err == nil {
+		return rel, nil
+	}
+
+	if !errors.Is(err, driver.ErrReleaseNotFound) {
+		return nil, err
+	}
+
+	// The resolved revision was trimmed between resolve and fetch (TOCTOU);
+	// re-resolve and refetch once.
+	target, err = s.resolveLastVersion(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.queryRevision(name, target)
+}
+
+func (s *Storage) queryRevision(name string, version int) (*rspb.Release, error) {
+	rels, err := s.Driver.Query(map[string]string{
+		"name":    name,
+		"owner":   "helm",
+		"version": strconv.Itoa(version),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(rels) == 0 {
+		return nil, driver.ErrReleaseNotFound
+	}
+
+	return rels[0], nil
+}
+
+func (s *Storage) resolveLastVersion(name string) (int, error) {
+	if lv, ok := s.Driver.(lastVersioner); ok {
+		return lv.LastVersion(name)
+	}
+
+	h, err := s.History(name)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(h) == 0 {
+		return 0, driver.ErrReleaseNotFound
+	}
+
+	relutil.Reverse(h, relutil.SortByRevision)
+
+	return h[0].Version, nil
 }
 
 // Create creates a new storage entry holding the release. An
