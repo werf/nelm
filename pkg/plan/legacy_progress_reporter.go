@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/samber/lo"
+	"k8s.io/apimachinery/pkg/api/meta"
 
 	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/pkg/legacy/progrep"
@@ -40,6 +41,17 @@ func (r *LegacyProgressReporter) ReportStatus(opID string, status progrep.Operat
 		report := buildProgressReport(s.frozen, s.ops)
 		sendNonBlocking(r.reportCh, report)
 	})
+}
+
+func (r *LegacyProgressReporter) StartStage(p *Plan, releaseNamespace string, installableResourceInfos []*InstallableResourceInfo, mapper meta.RESTMapper) {
+	resolvedNamespaces := buildResolvedNamespaces(p, releaseNamespace, mapper)
+
+	untouchedResolvedNamespaces := make(map[string]string, len(installableResourceInfos))
+	for _, info := range installableResourceInfos {
+		untouchedResolvedNamespaces[info.ID()] = resolveNamespace(info.GroupVersionKind, info.Namespace, releaseNamespace, mapper)
+	}
+
+	r.startStage(p, resolvedNamespaces, installableResourceInfos, untouchedResolvedNamespaces)
 }
 
 func (r *LegacyProgressReporter) Stop(ctx context.Context) {

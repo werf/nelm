@@ -541,6 +541,13 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			printNotes(ctx, newRelease.Info.Notes)
 		}
 
+		if opts.LegacyProgressReportCh != nil {
+			reporter := plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
+			reporter.StartStage(installPlan, releaseNamespace, instResInfos, clientFactory.Mapper())
+			reporter.Stop(ctx)
+			close(opts.LegacyProgressReportCh)
+		}
+
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)))
 
 		return nil

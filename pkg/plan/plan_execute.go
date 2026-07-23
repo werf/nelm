@@ -41,15 +41,7 @@ func ExecutePlan(parentCtx context.Context, releaseNamespace string, plan *Plan,
 	opts.NetworkParallelism = lo.Max([]int{opts.NetworkParallelism, 1})
 
 	if opts.LegacyProgressReporter != nil {
-		mapper := clientFactory.Mapper()
-		resolvedNS := buildResolvedNamespaces(plan, releaseNamespace, mapper)
-
-		untouchedResolvedNS := make(map[string]string, len(opts.InstallableResourceInfos))
-		for _, info := range opts.InstallableResourceInfos {
-			untouchedResolvedNS[info.ID()] = resolveNamespace(info.GroupVersionKind, info.Namespace, releaseNamespace, mapper)
-		}
-
-		opts.LegacyProgressReporter.startStage(plan, resolvedNS, opts.InstallableResourceInfos, untouchedResolvedNS)
+		opts.LegacyProgressReporter.StartStage(plan, releaseNamespace, opts.InstallableResourceInfos, clientFactory.Mapper())
 	}
 
 	workerPool := pool.New().WithContext(ctx).WithMaxGoroutines(opts.NetworkParallelism).WithCancelOnError().WithFirstError()
