@@ -975,6 +975,10 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 	})
 
 	if releaseIsUpToDate && planIsUseless {
+		if opts.LegacyProgressReporter != nil {
+			opts.LegacyProgressReporter.StartStage(rollbackPlan, releaseNamespace, instResInfos, clientFactory.Mapper())
+		}
+
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Skipped rollback release")+" %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)
 
 		return &runRollbackPlanResult{}, nonCritErrs, critErrs

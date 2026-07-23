@@ -125,7 +125,7 @@ func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[stri
 				iteration: 0,
 				ref:       ref,
 				status:    progrep.OperationStatusCompleted,
-				// Untouched resources have no real operation (MustInstall==None); NoOp is a
+				// Untouched resources have no real operation; NoOp is a
 				// neutral label for an already-present, unchanged resource shown as Completed.
 				typ: progrep.OperationTypeNoOp,
 			})
