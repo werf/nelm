@@ -13,6 +13,7 @@ const (
 	OperationTypeDelete         OperationType = "Delete"
 	OperationTypeApply          OperationType = "Apply"
 	OperationTypeRecreate       OperationType = "Recreate"
+	OperationTypeNoOp           OperationType = "NoOp"
 	OperationTypeTrackReadiness OperationType = "TrackReadiness"
 	OperationTypeTrackPresence  OperationType = "TrackPresence"
 	OperationTypeTrackAbsence   OperationType = "TrackAbsence"

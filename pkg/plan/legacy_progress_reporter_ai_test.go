@@ -764,7 +764,7 @@ func TestAI_StartStage_UntouchedResourceCompletedFromFirstSnapshot(t *testing.T)
 
 	require.NotNil(t, untouchedOp, "untouched resource must appear in stage report")
 	assert.Equal(t, progrep.OperationStatusCompleted, untouchedOp.Status)
-	assert.Equal(t, progrep.OperationTypeUpdate, untouchedOp.Type)
+	assert.Equal(t, progrep.OperationTypeNoOp, untouchedOp.Type)
 	assert.Equal(t, gvkConfigMap, untouchedOp.GroupVersionKind)
 	assert.Equal(t, "default", untouchedOp.Namespace)
 	assert.Empty(t, untouchedOp.WaitingFor)
