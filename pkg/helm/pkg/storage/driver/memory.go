@@ -149,6 +149,30 @@ func (mem *Memory) Query(keyvals map[string]string) ([]*rspb.Release, error) {
 	return ls, nil
 }
 
+// LastVersion returns the highest revision number for the named release, or
+// ErrReleaseNotFound if the release does not exist.
+func (mem *Memory) LastVersion(name string) (int, error) {
+	defer unlock(mem.rlock())
+
+	recs, ok := mem.cache[mem.namespace][name]
+	if !ok || len(recs) == 0 {
+		return 0, ErrReleaseNotFound
+	}
+
+	latest := 0
+	for _, rec := range recs {
+		if rec != nil && rec.rls.Version > latest {
+			latest = rec.rls.Version
+		}
+	}
+
+	if latest == 0 {
+		return 0, ErrReleaseNotFound
+	}
+
+	return latest, nil
+}
+
 // Create creates a new release or returns ErrReleaseExists.
 func (mem *Memory) Create(key string, rls *rspb.Release) error {
 	defer unlock(mem.wlock())
