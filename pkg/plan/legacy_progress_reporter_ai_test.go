@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/werf/nelm/pkg/legacy/progrep"
@@ -243,7 +244,7 @@ func TestAI_ReportOperationStatus_SetsStatusAndReports(t *testing.T) {
 		Config: &OperationConfigCreate{ResourceSpec: makeResourceSpec("cm1", "", gvkConfigMap)},
 	}
 	p := buildTestPlan([]*Operation{op}, nil)
-	reporter.startStage(p, map[string]string{op.ID(): "default"})
+	reporter.startStage(p, map[string]string{op.ID(): "default"}, nil, nil)
 	drainChannel(ch)
 
 	reportOperationStatus(op, OperationStatusPending, reporter)
@@ -279,7 +280,7 @@ func TestAI_ReportStatus_DoesNotPanicOnClosedChannel(t *testing.T) {
 		},
 	}
 	p := buildTestPlan(ops, nil)
-	reporter.startStage(p, map[string]string{ops[0].ID(): "default"})
+	reporter.startStage(p, map[string]string{ops[0].ID(): "default"}, nil, nil)
 
 	close(ch)
 
@@ -309,7 +310,7 @@ func TestAI_ReportStatus_SendsSnapshot(t *testing.T) {
 		ops[1].ID(): "default",
 	}
 
-	reporter.startStage(p, resolvedNS)
+	reporter.startStage(p, resolvedNS, nil, nil)
 	drainChannel(ch)
 
 	reporter.ReportStatus(ops[0].ID(), progrep.OperationStatusCompleted)
@@ -344,7 +345,7 @@ func TestAI_ReportStatus_UnknownOpIDIsIgnored(t *testing.T) {
 	}
 	p := buildTestPlan(ops, nil)
 
-	reporter.startStage(p, map[string]string{ops[0].ID(): "default"})
+	reporter.startStage(p, map[string]string{ops[0].ID(): "default"}, nil, nil)
 	drainChannel(ch)
 
 	reporter.ReportStatus("nonexistent/op/id", progrep.OperationStatusCompleted)
@@ -372,7 +373,7 @@ func TestAI_ReportStatus_WaitingForPopulation(t *testing.T) {
 		opA.ID(): "default",
 		opB.ID(): "default",
 	}
-	reporter.startStage(p, resolvedNS)
+	reporter.startStage(p, resolvedNS, nil, nil)
 
 	reports := drainChannel(ch)
 	require.NotEmpty(t, reports)
@@ -514,7 +515,7 @@ func TestAI_StartStage_FiltersNonResourceOps(t *testing.T) {
 		},
 	}
 	p := buildTestPlan(ops, nil)
-	reporter.startStage(p, map[string]string{ops[0].ID(): "default"})
+	reporter.startStage(p, map[string]string{ops[0].ID(): "default"}, nil, nil)
 
 	reports := drainChannel(ch)
 	require.NotEmpty(t, reports)
@@ -537,7 +538,7 @@ func TestAI_StartStage_FreezesPreviousStage(t *testing.T) {
 		},
 	}
 	p1 := buildTestPlan(ops1, nil)
-	reporter.startStage(p1, map[string]string{ops1[0].ID(): "default"})
+	reporter.startStage(p1, map[string]string{ops1[0].ID(): "default"}, nil, nil)
 
 	reporter.ReportStatus(ops1[0].ID(), progrep.OperationStatusCompleted)
 	drainChannel(ch)
@@ -549,7 +550,7 @@ func TestAI_StartStage_FreezesPreviousStage(t *testing.T) {
 		},
 	}
 	p2 := buildTestPlan(ops2, nil)
-	reporter.startStage(p2, map[string]string{ops2[0].ID(): "default"})
+	reporter.startStage(p2, map[string]string{ops2[0].ID(): "default"}, nil, nil)
 
 	reports := drainChannel(ch)
 	require.NotEmpty(t, reports)
@@ -568,6 +569,333 @@ func TestAI_StartStage_FreezesPreviousStage(t *testing.T) {
 	assert.Equal(t, progrep.OperationStatusPending, activeOps[0].Status)
 }
 
+func TestAI_StartStage_ReportStatusNeverAffectsUntouchedEntry(t *testing.T) {
+	ch := make(chan progrep.ProgressReport, 64)
+	reporter := NewLegacyProgressReporter(ch)
+
+	op := &Operation{
+		Type: OperationTypeCreate, Version: OperationVersionCreate, Category: OperationCategoryResource,
+		Config: &OperationConfigCreate{ResourceSpec: makeResourceSpec("cm1", "default", gvkConfigMap)},
+	}
+	p := buildTestPlan([]*Operation{op}, nil)
+
+	untouched := makeUntouchedInfo("cm2", "default", gvkConfigMap)
+
+	reporter.startStage(
+		p,
+		map[string]string{op.ID(): "default"},
+		[]*InstallableResourceInfo{untouched},
+		map[string]string{untouched.ID(): "default"},
+	)
+	drainChannel(ch)
+
+	reporter.ReportStatus(untouched.ID(), progrep.OperationStatusFailed)
+
+	noReports := drainChannel(ch)
+	assert.Empty(t, noReports, "untouched entry ID must not be addressable by ReportStatus")
+
+	reporter.ReportStatus(op.ID(), progrep.OperationStatusCompleted)
+
+	reports := drainChannel(ch)
+	require.NotEmpty(t, reports)
+
+	activeOps := reports[len(reports)-1].StageReports[0].Operations
+	require.Len(t, activeOps, 2)
+
+	statuses := map[string]progrep.OperationStatus{}
+	for _, o := range activeOps {
+		statuses[o.Name] = o.Status
+	}
+
+	assert.Equal(t, progrep.OperationStatusCompleted, statuses["cm1"])
+	assert.Equal(t, progrep.OperationStatusCompleted, statuses["cm2"], "untouched entry must remain Completed")
+}
+
+func TestAI_StartStage_UntouchedAbsentResourceOmitted(t *testing.T) {
+	ch := make(chan progrep.ProgressReport, 64)
+	reporter := NewLegacyProgressReporter(ch)
+
+	op := &Operation{
+		Type: OperationTypeCreate, Version: OperationVersionCreate, Category: OperationCategoryResource,
+		Config: &OperationConfigCreate{ResourceSpec: makeResourceSpec("cm1", "default", gvkConfigMap)},
+	}
+	p := buildTestPlan([]*Operation{op}, nil)
+
+	untouched := &InstallableResourceInfo{
+		ResourceMeta: makeResourceMeta("cm2", "default", gvkConfigMap),
+		MustInstall:  ResourceInstallTypeNone,
+	}
+
+	reporter.startStage(
+		p,
+		map[string]string{op.ID(): "default"},
+		[]*InstallableResourceInfo{untouched},
+		map[string]string{untouched.ID(): "default"},
+	)
+
+	reports := drainChannel(ch)
+	require.NotEmpty(t, reports)
+
+	activeOps := reports[len(reports)-1].StageReports[0].Operations
+	require.Len(t, activeOps, 1, "untouched resource absent from cluster must not be emitted")
+	assert.Equal(t, "cm1", activeOps[0].Name)
+}
+
+func TestAI_StartStage_UntouchedDeduplicatedAgainstPlanOp(t *testing.T) {
+	ch := make(chan progrep.ProgressReport, 64)
+	reporter := NewLegacyProgressReporter(ch)
+
+	op := &Operation{
+		Type: OperationTypeTrackReadiness, Version: OperationVersionTrackReadiness, Category: OperationCategoryTrack,
+		Config: &OperationConfigTrackReadiness{ResourceMeta: makeResourceMeta("dep1", "default", gvkDeployment)},
+	}
+	p := buildTestPlan([]*Operation{op}, nil)
+
+	untouched := makeUntouchedInfo("dep1", "default", gvkDeployment)
+
+	reporter.startStage(
+		p,
+		map[string]string{op.ID(): "default"},
+		[]*InstallableResourceInfo{untouched},
+		map[string]string{untouched.ID(): "default"},
+	)
+
+	reports := drainChannel(ch)
+	require.NotEmpty(t, reports)
+
+	activeOps := reports[len(reports)-1].StageReports[0].Operations
+	require.Len(t, activeOps, 1, "force-tracked untouched resource must appear exactly once via its plan op")
+	assert.Equal(t, "dep1", activeOps[0].Name)
+	assert.Equal(t, progrep.OperationStatusPending, activeOps[0].Status)
+}
+
+func TestAI_StartStage_UntouchedInventoryDeduplicated(t *testing.T) {
+	ch := make(chan progrep.ProgressReport, 64)
+	reporter := NewLegacyProgressReporter(ch)
+
+	p := buildTestPlan(nil, nil)
+
+	untouched1 := makeUntouchedInfo("cm1", "default", gvkConfigMap)
+	untouched2 := makeUntouchedInfo("cm1", "default", gvkConfigMap)
+
+	reporter.startStage(
+		p,
+		map[string]string{},
+		[]*InstallableResourceInfo{untouched1, untouched2},
+		map[string]string{untouched1.ID(): "default"},
+	)
+
+	reports := drainChannel(ch)
+	require.NotEmpty(t, reports)
+
+	activeOps := reports[len(reports)-1].StageReports[0].Operations
+	require.Len(t, activeOps, 1, "duplicate untouched infos must be emitted once")
+	assert.Equal(t, "cm1", activeOps[0].Name)
+}
+
+func TestAI_StartStage_UntouchedNamespaceResolution(t *testing.T) {
+	ch := make(chan progrep.ProgressReport, 64)
+	reporter := NewLegacyProgressReporter(ch)
+
+	mapper := newFakeRESTMapper()
+	releaseNS := "release-ns"
+
+	explicit := makeUntouchedInfo("cm1", "custom-ns", gvkConfigMap)
+	defaulted := makeUntouchedInfo("cm2", "", gvkConfigMap)
+	clusterScoped := makeUntouchedInfo("my-ns", "", gvkNamespace)
+
+	infos := []*InstallableResourceInfo{explicit, defaulted, clusterScoped}
+
+	untouchedResolvedNS := map[string]string{}
+	for _, info := range infos {
+		untouchedResolvedNS[info.ID()] = resolveNamespace(info.GroupVersionKind, info.Namespace, releaseNS, mapper)
+	}
+
+	p := buildTestPlan(nil, nil)
+	reporter.startStage(p, map[string]string{}, infos, untouchedResolvedNS)
+
+	reports := drainChannel(ch)
+	require.NotEmpty(t, reports)
+
+	activeOps := reports[len(reports)-1].StageReports[0].Operations
+	require.Len(t, activeOps, 3)
+
+	namespaces := map[string]string{}
+	for _, o := range activeOps {
+		namespaces[o.Name] = o.Namespace
+	}
+
+	assert.Equal(t, "custom-ns", namespaces["cm1"])
+	assert.Equal(t, releaseNS, namespaces["cm2"])
+	assert.Empty(t, namespaces["my-ns"])
+}
+
+func TestAI_StartStage_UntouchedReemittedAcrossStages(t *testing.T) {
+	ch := make(chan progrep.ProgressReport, 64)
+	reporter := NewLegacyProgressReporter(ch)
+
+	untouched := []*InstallableResourceInfo{
+		makeUntouchedInfo("cm-untouched", "default", gvkConfigMap),
+		makeUntouchedInfo("svc-shared", "default", gvkService),
+	}
+	untouchedNamespaces := map[string]string{
+		untouched[0].ID(): "default",
+		untouched[1].ID(): "default",
+	}
+
+	mainOp := &Operation{
+		Type: OperationTypeCreate, Version: OperationVersionCreate, Category: OperationCategoryResource,
+		Config: &OperationConfigCreate{ResourceSpec: makeResourceSpec("cm-main", "default", gvkConfigMap)},
+	}
+	mainPlan := buildTestPlan([]*Operation{mainOp}, nil)
+
+	reporter.startStage(
+		mainPlan,
+		map[string]string{mainOp.ID(): "default"},
+		untouched,
+		untouchedNamespaces,
+	)
+	drainChannel(ch)
+
+	failureOp := &Operation{
+		Type: OperationTypeDelete, Version: OperationVersionDelete, Category: OperationCategoryResource,
+		Config: &OperationConfigDelete{ResourceMeta: makeResourceMeta("svc-shared", "default", gvkService)},
+	}
+	failurePlan := buildTestPlan([]*Operation{failureOp}, nil)
+
+	reporter.startStage(
+		failurePlan,
+		map[string]string{failureOp.ID(): "default"},
+		untouched,
+		untouchedNamespaces,
+	)
+
+	reports := drainChannel(ch)
+	require.NotEmpty(t, reports)
+
+	last := reports[len(reports)-1]
+	require.Len(t, last.StageReports, 2)
+
+	frozen := map[string]progrep.Operation{}
+	for _, o := range last.StageReports[0].Operations {
+		frozen[o.Name] = o
+	}
+	assert.Contains(t, frozen, "cm-untouched", "untouched entry must be retained in the frozen prior stage")
+	assert.Equal(t, progrep.OperationStatusCompleted, frozen["cm-untouched"].Status)
+	assert.Equal(t, progrep.OperationTypeNoOp, frozen["cm-untouched"].Type)
+
+	active := last.StageReports[1].Operations
+	activeByName := map[string]progrep.Operation{}
+	for _, o := range active {
+		activeByName[o.Name] = o
+	}
+
+	require.Contains(t, activeByName, "cm-untouched", "untouched entry must be re-emitted into the new active stage")
+	assert.Equal(t, progrep.OperationStatusCompleted, activeByName["cm-untouched"].Status)
+	assert.Equal(t, progrep.OperationTypeNoOp, activeByName["cm-untouched"].Type)
+
+	sharedCount := 0
+	for _, o := range active {
+		if o.Name == "svc-shared" {
+			sharedCount++
+		}
+	}
+	assert.Equal(t, 1, sharedCount, "untouched resource matching a plan operation must appear exactly once")
+	assert.Equal(t, progrep.OperationTypeDelete, activeByName["svc-shared"].Type, "the shared resource must be represented by its plan operation, not the NoOp untouched entry")
+	assert.Len(t, active, 2, "active stage must contain the plan op plus the non-duplicated untouched entry")
+}
+
+func TestAI_StartStage_UntouchedResourceCompletedFromFirstSnapshot(t *testing.T) {
+	ch := make(chan progrep.ProgressReport, 64)
+	reporter := NewLegacyProgressReporter(ch)
+
+	op := &Operation{
+		Type: OperationTypeCreate, Version: OperationVersionCreate, Category: OperationCategoryResource,
+		Config: &OperationConfigCreate{ResourceSpec: makeResourceSpec("cm1", "default", gvkConfigMap)},
+	}
+	p := buildTestPlan([]*Operation{op}, nil)
+
+	untouched := makeUntouchedInfo("cm2", "default", gvkConfigMap)
+
+	reporter.startStage(
+		p,
+		map[string]string{op.ID(): "default"},
+		[]*InstallableResourceInfo{untouched},
+		map[string]string{untouched.ID(): "default"},
+	)
+
+	reports := drainChannel(ch)
+	require.NotEmpty(t, reports)
+
+	activeOps := reports[len(reports)-1].StageReports[0].Operations
+	require.Len(t, activeOps, 2)
+
+	var untouchedOp *progrep.Operation
+	for i := range activeOps {
+		if activeOps[i].Name == "cm2" {
+			untouchedOp = &activeOps[i]
+		}
+	}
+
+	require.NotNil(t, untouchedOp, "untouched resource must appear in stage report")
+	assert.Equal(t, progrep.OperationStatusCompleted, untouchedOp.Status)
+	assert.Equal(t, progrep.OperationTypeNoOp, untouchedOp.Type)
+	assert.Equal(t, gvkConfigMap, untouchedOp.GroupVersionKind)
+	assert.Equal(t, "default", untouchedOp.Namespace)
+	assert.Empty(t, untouchedOp.WaitingFor)
+}
+
+func TestAI_StartStage_UntouchedScopedToStageAndFrozen(t *testing.T) {
+	ch := make(chan progrep.ProgressReport, 64)
+	reporter := NewLegacyProgressReporter(ch)
+
+	op1 := &Operation{
+		Type: OperationTypeCreate, Version: OperationVersionCreate, Category: OperationCategoryResource,
+		Config: &OperationConfigCreate{ResourceSpec: makeResourceSpec("cm1", "default", gvkConfigMap)},
+	}
+	p1 := buildTestPlan([]*Operation{op1}, nil)
+
+	untouched := makeUntouchedInfo("cm2", "default", gvkConfigMap)
+
+	reporter.startStage(
+		p1,
+		map[string]string{op1.ID(): "default"},
+		[]*InstallableResourceInfo{untouched},
+		map[string]string{untouched.ID(): "default"},
+	)
+	drainChannel(ch)
+
+	op2 := &Operation{
+		Type: OperationTypeDelete, Version: OperationVersionDelete, Category: OperationCategoryResource,
+		Config: &OperationConfigDelete{ResourceMeta: makeResourceMeta("svc1", "default", gvkService)},
+	}
+	p2 := buildTestPlan([]*Operation{op2}, nil)
+
+	reporter.startStage(p2, map[string]string{op2.ID(): "default"}, nil, nil)
+
+	reports := drainChannel(ch)
+	require.NotEmpty(t, reports)
+
+	last := reports[len(reports)-1]
+	require.Len(t, last.StageReports, 2)
+
+	frozenNames := map[string]bool{}
+	for _, o := range last.StageReports[0].Operations {
+		frozenNames[o.Name] = true
+	}
+
+	assert.True(t, frozenNames["cm2"], "untouched entry must be retained in the frozen prior stage")
+
+	activeNames := map[string]bool{}
+	for _, o := range last.StageReports[1].Operations {
+		activeNames[o.Name] = true
+	}
+
+	assert.False(t, activeNames["cm2"], "untouched entry must not leak into the new active stage")
+	assert.True(t, activeNames["svc1"])
+	assert.Len(t, last.StageReports[1].Operations, 1)
+}
+
 func TestAI_Stop_DoesNotPanicOnClosedChannel(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 1)
 	reporter := NewLegacyProgressReporter(ch)
@@ -579,7 +907,7 @@ func TestAI_Stop_DoesNotPanicOnClosedChannel(t *testing.T) {
 		},
 	}
 	p := buildTestPlan(ops, nil)
-	reporter.startStage(p, map[string]string{ops[0].ID(): "default"})
+	reporter.startStage(p, map[string]string{ops[0].ID(): "default"}, nil, nil)
 
 	close(ch)
 
@@ -599,7 +927,7 @@ func TestAI_Stop_SendsFinalReport(t *testing.T) {
 		},
 	}
 	p := buildTestPlan(ops, nil)
-	reporter.startStage(p, map[string]string{ops[0].ID(): "default"})
+	reporter.startStage(p, map[string]string{ops[0].ID(): "default"}, nil, nil)
 	reporter.ReportStatus(ops[0].ID(), progrep.OperationStatusCompleted)
 
 	drainChannel(ch)
@@ -628,7 +956,7 @@ func TestAI_Stop_SkipsOnCanceledContext(t *testing.T) {
 		},
 	}
 	p := buildTestPlan(ops, nil)
-	reporter.startStage(p, map[string]string{ops[0].ID(): "default"})
+	reporter.startStage(p, map[string]string{ops[0].ID(): "default"}, nil, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -636,4 +964,17 @@ func TestAI_Stop_SkipsOnCanceledContext(t *testing.T) {
 	reporter.Stop(ctx)
 
 	assert.Len(t, ch, 1)
+}
+
+func makeUntouchedInfo(name, namespace string, gvk schema.GroupVersionKind) *InstallableResourceInfo {
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(gvk)
+	obj.SetName(name)
+	obj.SetNamespace(namespace)
+
+	return &InstallableResourceInfo{
+		ResourceMeta: makeResourceMeta(name, namespace, gvk),
+		MustInstall:  ResourceInstallTypeNone,
+		GetResult:    obj,
+	}
 }

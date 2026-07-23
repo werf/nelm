@@ -541,6 +541,13 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			printNotes(ctx, newRelease.Info.Notes)
 		}
 
+		if opts.LegacyProgressReportCh != nil {
+			reporter := plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
+			reporter.StartStage(installPlan, releaseNamespace, instResInfos, clientFactory.Mapper())
+			reporter.Stop(ctx)
+			close(opts.LegacyProgressReportCh)
+		}
+
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)))
 
 		return nil
@@ -588,9 +595,10 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	log.Default.Debug(ctx, "Execute release install plan")
 
 	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, installPlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		LegacyProgressReporter: reporter,
-		TrackingOptions:        opts.TrackingOptions,
-		NetworkParallelism:     opts.NetworkParallelism,
+		LegacyProgressReporter:   reporter,
+		TrackingOptions:          opts.TrackingOptions,
+		NetworkParallelism:       opts.NetworkParallelism,
+		InstallableResourceInfos: instResInfos,
 	})
 	if executePlanErr != nil {
 		criticalErrs.Add(fmt.Errorf("execute release install plan: %w", executePlanErr))
@@ -967,6 +975,10 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 	})
 
 	if releaseIsUpToDate && planIsUseless {
+		if opts.LegacyProgressReporter != nil {
+			opts.LegacyProgressReporter.StartStage(rollbackPlan, releaseNamespace, instResInfos, clientFactory.Mapper())
+		}
+
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Skipped rollback release")+" %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)
 
 		return &runRollbackPlanResult{}, nonCritErrs, critErrs
@@ -975,9 +987,10 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 	log.Default.Debug(ctx, "Execute rollback plan")
 
 	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, rollbackPlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		LegacyProgressReporter: opts.LegacyProgressReporter,
-		TrackingOptions:        opts.TrackingOptions,
-		NetworkParallelism:     opts.NetworkParallelism,
+		LegacyProgressReporter:   opts.LegacyProgressReporter,
+		TrackingOptions:          opts.TrackingOptions,
+		NetworkParallelism:       opts.NetworkParallelism,
+		InstallableResourceInfos: instResInfos,
 	})
 	if executePlanErr != nil {
 		critErrs.Add(fmt.Errorf("execute rollback plan: %w", executePlanErr))
