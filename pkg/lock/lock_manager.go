@@ -10,6 +10,7 @@ import (
 	"github.com/werf/common-go/pkg/locker_with_retry"
 	"github.com/werf/lockgate"
 	"github.com/werf/lockgate/pkg/distributed_locker"
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/resource/spec"
@@ -22,16 +23,14 @@ type LockManager struct {
 }
 
 func NewLockManager(ctx context.Context, namespace string, createNamespace bool, clientFactory kube.ClientFactorier) (*LockManager, error) {
-	configMapName := "werf-synchronization"
-
 	locker := distributed_locker.NewKubernetesLocker(
 		clientFactory.Dynamic(), schema.GroupVersionResource{
 			Group:    "",
 			Version:  "v1",
 			Resource: "configmaps",
-		}, configMapName, namespace,
+		}, common.LockConfigMapName, namespace,
 	)
-	cmLocker := NewConfigMapLocker(configMapName, namespace, namespace, locker, clientFactory, ConfigMapLockerOptions{CreateNamespace: createNamespace})
+	cmLocker := NewConfigMapLocker(common.LockConfigMapName, namespace, namespace, locker, clientFactory, ConfigMapLockerOptions{CreateNamespace: createNamespace})
 	lockerWithRetry := locker_with_retry.NewLockerWithRetry(ctx, cmLocker, locker_with_retry.LockerWithRetryOptions{
 		MaxAcquireAttempts: 10,
 		MaxReleaseAttempts: 10,
