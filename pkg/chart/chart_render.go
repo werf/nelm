@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/goccy/go-yaml"
 	"github.com/samber/lo"
@@ -42,25 +43,28 @@ import (
 	"github.com/werf/nelm/pkg/util"
 )
 
+const binaryManifestPlaceholderByte = '_'
+
 type RenderChartOptions struct {
 	common.ChartRepoConnectionOptions
 	common.ValuesOptions
 
-	ChartProvenanceKeyring    string
-	ChartProvenanceStrategy   string
-	ChartRepoNoUpdate         bool
-	ChartVersion              string
-	DenoBinaryPath            string
-	ExtraAPIVersions          []string
-	HelmOptions               helmopts.HelmOptions
-	IgnoreBundleJS            bool
-	LocalKubeVersion          string
-	LocalLookupResourcesPaths []string
-	NoStandaloneCRDs          bool
-	Remote                    bool
-	SubchartNotes             bool
-	TempDirPath               string
-	TemplatesAllowDNS         bool
+	ChartProvenanceKeyring       string
+	ChartProvenanceStrategy      string
+	ChartRepoNoUpdate            bool
+	ChartVersion                 string
+	DenoBinaryPath               string
+	ExtraAPIVersions             []string
+	HelmOptions                  helmopts.HelmOptions
+	IgnoreBundleJS               bool
+	LegacySanitizeBinaryManifest bool
+	LocalKubeVersion             string
+	LocalLookupResourcesPaths    []string
+	NoStandaloneCRDs             bool
+	Remote                       bool
+	SubchartNotes                bool
+	TempDirPath                  string
+	TemplatesAllowDNS            bool
 }
 
 type RenderChartResult struct {
@@ -262,7 +266,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		log.Default.Debug(ctx, "---\n# Source: %s\n%s\n", filePath, fileContent)
 	}
 
-	if r, err := renderedTemplatesToResourceSpecs(renderedTemplates, releaseNamespace, opts); err != nil {
+	if r, err := renderedTemplatesToResourceSpecs(ctx, renderedTemplates, releaseNamespace, opts); err != nil {
 		return nil, fmt.Errorf("convert rendered templates to installable resources for chart at %q: %w", chartPath, err)
 	} else {
 		resources = append(resources, r...)
@@ -331,6 +335,47 @@ func parseLocalLookupResources(paths []string) ([]*unstructured.Unstructured, er
 			res, err := collectLocalLookupResource(unstruct, seen)
 			if err != nil {
 				return nil, fmt.Errorf("collect resource #%d for %q: %w", i+1, filePath, err)
+			}
+
+			resources = append(resources, res)
+		}
+	}
+
+	return resources, nil
+}
+
+func renderedTemplatesToResourceSpecs(ctx context.Context, renderedTemplates map[string]string, releaseNamespace string, opts RenderChartOptions) ([]*spec.ResourceSpec, error) {
+	var resources []*spec.ResourceSpec
+
+	for filePath, fileContent := range renderedTemplates {
+		if strings.HasPrefix(path.Base(filePath), "_") ||
+			strings.HasSuffix(filePath, action.NotesFileSuffix) ||
+			strings.TrimSpace(fileContent) == "" {
+			continue
+		}
+
+		manifests := releaseutil.SplitManifestsToSlice(fileContent)
+
+		for idx, manifest := range manifests {
+			res, err := manifestToResourceSpec(manifest, releaseNamespace, filePath, idx)
+			if err != nil {
+				// Linters render charts with synthetic placeholder values, which templates decode
+				// (e.g. via b64dec/b32dec) into arbitrary binary data, producing a manifest that is
+				// not valid UTF-8 or contains control characters. That is an artifact of the
+				// synthetic values, not a chart defect, so replace the offending bytes and retry
+				// instead of failing the whole render.
+				if !opts.LegacySanitizeBinaryManifest || !isBinaryManifest([]byte(manifest)) {
+					return nil, err
+				}
+
+				sanitized := string(sanitizeBinaryManifest([]byte(manifest)))
+
+				res, err = manifestToResourceSpec(sanitized, releaseNamespace, filePath, idx)
+				if err != nil {
+					log.Default.Debug(ctx, "Skipping rendered resource #%d for %q with unrecoverable binary content: %s", idx+1, filePath, err)
+
+					continue
+				}
 			}
 
 			resources = append(resources, res)
@@ -455,44 +500,74 @@ func collectLocalLookupResource(unstruct *unstructured.Unstructured, seen map[st
 	return unstruct, nil
 }
 
+func isBinaryManifest(b []byte) bool {
+	if !utf8.Valid(b) {
+		return true
+	}
+
+	for _, r := range string(b) {
+		switch r {
+		case '\t', '\n', '\r':
+			continue
+		}
+
+		if r < 0x20 || r == 0x7f {
+			return true
+		}
+	}
+
+	return false
+}
+
 func isLocalChart(path string) bool {
 	return filepath.IsAbs(path) || filepath.HasPrefix(path, "..") || filepath.HasPrefix(path, ".")
 }
 
-func renderedTemplatesToResourceSpecs(renderedTemplates map[string]string, releaseNamespace string, opts RenderChartOptions) ([]*spec.ResourceSpec, error) {
-	var resources []*spec.ResourceSpec
+func manifestToResourceSpec(manifest, releaseNamespace, filePath string, idx int) (*spec.ResourceSpec, error) {
+	var head releaseutil.SimpleHead
+	if err := yaml.UnmarshalWithOptions(
+		[]byte(manifest),
+		&head,
+		// TODO(major): remove
+		yaml.AllowDuplicateMapKey(),
+	); err != nil {
+		return nil, fmt.Errorf("parse YAML resource #%d for %q: %w", idx+1, filePath, err)
+	}
 
-	for filePath, fileContent := range renderedTemplates {
-		if strings.HasPrefix(path.Base(filePath), "_") ||
-			strings.HasSuffix(filePath, action.NotesFileSuffix) ||
-			strings.TrimSpace(fileContent) == "" {
-			continue
-		}
+	if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
+		FilePath: filePath,
+	}); err != nil {
+		return nil, fmt.Errorf("construct resource spec for %q: %w", filePath, err)
+	} else {
+		return res, nil
+	}
+}
 
-		manifests := releaseutil.SplitManifestsToSlice(fileContent)
+// Tabs, newlines and carriage returns are preserved to keep the document layout, and thus its YAML
+// structure, intact. The placeholder byte is printable and YAML-neutral for the same reason.
+func sanitizeBinaryManifest(b []byte) []byte {
+	out := make([]byte, 0, len(b))
 
-		for idx, manifest := range manifests {
-			var head releaseutil.SimpleHead
-			if err := yaml.UnmarshalWithOptions(
-				[]byte(manifest),
-				&head,
-				// TODO(major): remove
-				yaml.AllowDuplicateMapKey(),
-			); err != nil {
-				return nil, fmt.Errorf("parse YAML resource #%d for %q: %w", idx+1, filePath, err)
-			}
+	for i := 0; i < len(b); {
+		r, size := utf8.DecodeRune(b[i:])
 
-			if res, err := spec.NewResourceSpecFromManifest(manifest, releaseNamespace, spec.ResourceSpecOptions{
-				FilePath: filePath,
-			}); err != nil {
-				return nil, fmt.Errorf("construct resource spec for %q: %w", filePath, err)
-			} else {
-				resources = append(resources, res)
-			}
+		switch {
+		case r == utf8.RuneError && size <= 1:
+			out = append(out, binaryManifestPlaceholderByte)
+			i++
+		case r == '\t' || r == '\n' || r == '\r':
+			out = append(out, b[i:i+size]...)
+			i += size
+		case r < 0x20 || r == 0x7f:
+			out = append(out, binaryManifestPlaceholderByte)
+			i += size
+		default:
+			out = append(out, b[i:i+size]...)
+			i += size
 		}
 	}
 
-	return resources, nil
+	return out
 }
 
 func validateChart(ctx context.Context, chart *helmchart.Chart) error {

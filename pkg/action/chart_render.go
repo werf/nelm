@@ -88,6 +88,12 @@ type ChartRenderOptions struct {
 	// LegacyLogRegistryStreamOut is the output writer for Helm registry client logs.
 	// Defaults to io.Discard if not set. Used for debugging registry operations.
 	LegacyLogRegistryStreamOut io.Writer
+	// LegacySanitizeBinaryManifest, when true, retries a rendered manifest that failed to parse and
+	// contains bytes disallowed in a valid YAML manifest (invalid UTF-8 sequences or control
+	// characters) with those bytes replaced by a printable placeholder. Manifests that stay
+	// unparseable after that are skipped instead of failing the whole render. Used by linters that
+	// render charts with synthetic placeholder values, which templates decode into binary data.
+	LegacySanitizeBinaryManifest bool
 	// LocalKubeVersion specifies the Kubernetes version to use for template rendering when not connected to a cluster.
 	// Format: "major.minor.patch" (e.g., "1.28.0"). Defaults to DefaultLocalKubeVersion if not set.
 	LocalKubeVersion string
@@ -268,21 +274,22 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	}
 
 	chartTreeOptions := chart.RenderChartOptions{
-		ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
-		ValuesOptions:              opts.ValuesOptions,
-		ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
-		ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
-		ChartRepoNoUpdate:          opts.ChartRepoSkipUpdate,
-		ChartVersion:               opts.ChartVersion,
-		ExtraAPIVersions:           opts.ExtraAPIVersions,
-		HelmOptions:                helmOptions,
-		LocalKubeVersion:           opts.LocalKubeVersion,
-		LocalLookupResourcesPaths:  opts.LocalLookupResourcesPaths,
-		Remote:                     opts.Remote,
-		TemplatesAllowDNS:          opts.TemplatesAllowDNS,
-		TempDirPath:                opts.TempDirPath,
-		IgnoreBundleJS:             opts.IgnoreBundleJS,
-		DenoBinaryPath:             opts.DenoBinaryPath,
+		ChartRepoConnectionOptions:   opts.ChartRepoConnectionOptions,
+		ValuesOptions:                opts.ValuesOptions,
+		ChartProvenanceKeyring:       opts.ChartProvenanceKeyring,
+		ChartProvenanceStrategy:      opts.ChartProvenanceStrategy,
+		ChartRepoNoUpdate:            opts.ChartRepoSkipUpdate,
+		ChartVersion:                 opts.ChartVersion,
+		ExtraAPIVersions:             opts.ExtraAPIVersions,
+		HelmOptions:                  helmOptions,
+		LegacySanitizeBinaryManifest: opts.LegacySanitizeBinaryManifest,
+		LocalKubeVersion:             opts.LocalKubeVersion,
+		LocalLookupResourcesPaths:    opts.LocalLookupResourcesPaths,
+		Remote:                       opts.Remote,
+		TemplatesAllowDNS:            opts.TemplatesAllowDNS,
+		TempDirPath:                  opts.TempDirPath,
+		IgnoreBundleJS:               opts.IgnoreBundleJS,
+		DenoBinaryPath:               opts.DenoBinaryPath,
 	}
 
 	log.Default.Debug(ctx, "Render chart")

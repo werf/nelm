@@ -5,6 +5,7 @@ package chart
 import (
 	"context"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -155,4 +156,93 @@ func TestAI_BuildChartCapabilitiesRefreshesKubeClientDiscovery(t *testing.T) {
 	assert.Equal(t, 1, fakeKubeClient.refreshCount)
 	assert.Equal(t, "v1.34.0", capabilities.KubeVersion.Version)
 	assert.True(t, fakeKubeClient.serverVersionSawRefresh)
+}
+
+func TestAI_IsBinaryManifest(t *testing.T) {
+	tests := []struct {
+		name string
+		data []byte
+		want bool
+	}{
+		{
+			name: "clean yaml",
+			data: []byte("apiVersion: v1\nkind: Secret\ndata:\n  cni: Y2lsaXVt\n"),
+			want: false,
+		},
+		{
+			name: "multibyte utf-8 is allowed",
+			data: []byte("metadata:\n  name: тест\n"),
+			want: false,
+		},
+		{
+			name: "invalid leading utf-8 octet",
+			data: []byte{'d', 'a', 't', 'a', ':', '\n', ' ', ' ', 0x68, 0x1d, 0xf1, 0x63, 0xdc, 0xca},
+			want: true,
+		},
+		{
+			name: "disallowed control character",
+			data: []byte("data:\n  value\x00here\n"),
+			want: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, isBinaryManifest(test.data))
+		})
+	}
+}
+
+func TestAI_RenderedTemplatesToResourceSpecsBinaryManifest(t *testing.T) {
+	binaryManifest := "apiVersion: v1\nkind: Secret\nmetadata:\n  name: test\ndata:\n  key: value\x01\x02\x03\n"
+	renderedTemplates := map[string]string{"chart/templates/secret.yaml": binaryManifest}
+
+	t.Run("fails without the option", func(t *testing.T) {
+		_, err := renderedTemplatesToResourceSpecs(context.Background(), renderedTemplates, "ns", RenderChartOptions{})
+		require.ErrorContains(t, err, "control characters are not allowed")
+	})
+
+	t.Run("sanitizes with the option", func(t *testing.T) {
+		resources, err := renderedTemplatesToResourceSpecs(context.Background(), renderedTemplates, "ns", RenderChartOptions{
+			LegacySanitizeBinaryManifest: true,
+		})
+		require.NoError(t, err)
+		require.Len(t, resources, 1)
+
+		assert.Equal(t, "Secret", resources[0].GroupVersionKind.Kind)
+		assert.Equal(t, "value___", resources[0].Unstruct.Object["data"].(map[string]interface{})["key"])
+	})
+
+	t.Run("skips manifest that stays unparseable after sanitizing", func(t *testing.T) {
+		resources, err := renderedTemplatesToResourceSpecs(context.Background(), map[string]string{
+			"chart/templates/broken.yaml": "apiVersion: v1\nkind: Secret\n\x00data: [unclosed\n",
+		}, "ns", RenderChartOptions{LegacySanitizeBinaryManifest: true})
+		require.NoError(t, err)
+		assert.Empty(t, resources)
+	})
+}
+
+func TestAI_SanitizeBinaryManifest(t *testing.T) {
+	t.Run("preserves clean content", func(t *testing.T) {
+		in := []byte("apiVersion: v1\nkind: Secret\nmetadata:\n  name: тест\n")
+		assert.Equal(t, in, sanitizeBinaryManifest(in))
+	})
+
+	t.Run("replaces invalid utf-8 and keeps layout", func(t *testing.T) {
+		in := []byte("apiVersion: v1\nkind: Secret\nmetadata:\n  name: test\ndata:\n  key: ")
+		in = append(in, 0x68, 0x1d, 0xf1, 0x63, 0xdc, 0xca)
+		in = append(in, '\n')
+
+		out := sanitizeBinaryManifest(in)
+
+		require.True(t, utf8.Valid(out))
+		assert.Equal(t, "apiVersion: v1\nkind: Secret\nmetadata:\n  name: test\ndata:\n  key: h__c__\n", string(out))
+	})
+
+	t.Run("replaces control characters", func(t *testing.T) {
+		out := sanitizeBinaryManifest([]byte("data:\n  value\x01\x02\x03\n"))
+
+		require.True(t, utf8.Valid(out))
+		assert.Equal(t, "data:\n  value___\n", string(out))
+	})
 }
