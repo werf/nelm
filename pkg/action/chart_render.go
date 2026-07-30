@@ -280,6 +280,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		ChartVersion:               opts.ChartVersion,
 		ExtraAPIVersions:           opts.ExtraAPIVersions,
 		HelmOptions:                helmOptions,
+		LintMode:                   opts.LintMode,
 		LocalKubeVersion:           opts.LocalKubeVersion,
 		LocalLookupResourcesPaths:  opts.LocalLookupResourcesPaths,
 		Remote:                     opts.Remote,
