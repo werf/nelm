@@ -7,6 +7,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -184,6 +185,11 @@ func TestAI_IsBinaryManifest(t *testing.T) {
 			data: []byte("data:\n  value\x00here\n"),
 			want: true,
 		},
+		{
+			name: "encoded replacement character is allowed",
+			data: []byte("data:\n  key: \uFFFD\n"),
+			want: false,
+		},
 	}
 
 	for _, test := range tests {
@@ -219,6 +225,42 @@ func TestAI_RenderedTemplatesToResourceSpecsBinaryManifest(t *testing.T) {
 		}, "ns", RenderChartOptions{LegacySanitizeBinaryManifest: true})
 		require.NoError(t, err)
 		assert.Empty(t, resources)
+	})
+
+	t.Run("fails on non-binary yaml error with the option", func(t *testing.T) {
+		brokenManifest := "apiVersion: v1\nkind: Secret\ndata: [unclosed\n"
+		require.False(t, isBinaryManifest([]byte(brokenManifest)))
+
+		_, err := renderedTemplatesToResourceSpecs(context.Background(), map[string]string{
+			"chart/templates/broken.yaml": brokenManifest,
+		}, "ns", RenderChartOptions{LegacySanitizeBinaryManifest: true})
+		require.ErrorContains(t, err, "parse YAML resource")
+	})
+
+	t.Run("keeps valid manifest alongside a sanitized one", func(t *testing.T) {
+		resources, err := renderedTemplatesToResourceSpecs(context.Background(), map[string]string{
+			"chart/templates/multi.yaml": binaryManifest +
+				"---\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: valid\n",
+		}, "ns", RenderChartOptions{LegacySanitizeBinaryManifest: true})
+		require.NoError(t, err)
+		require.Len(t, resources, 2)
+
+		kinds := lo.Map(resources, func(res *spec.ResourceSpec, _ int) string {
+			return res.GroupVersionKind.Kind
+		})
+		assert.ElementsMatch(t, []string{"Secret", "ConfigMap"}, kinds)
+	})
+
+	t.Run("keeps valid manifest alongside a skipped one", func(t *testing.T) {
+		resources, err := renderedTemplatesToResourceSpecs(context.Background(), map[string]string{
+			"chart/templates/multi.yaml": "apiVersion: v1\nkind: Secret\n\x00data: [unclosed\n" +
+				"---\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: valid\n",
+		}, "ns", RenderChartOptions{LegacySanitizeBinaryManifest: true})
+		require.NoError(t, err)
+		require.Len(t, resources, 1)
+
+		assert.Equal(t, "ConfigMap", resources[0].GroupVersionKind.Kind)
+		assert.Equal(t, "valid", resources[0].Unstruct.GetName())
 	})
 }
 
