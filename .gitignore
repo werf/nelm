@@ -1,5 +1,6 @@
 *.swp
 *.test
+.task
 /.idea/
 /.vscode/
 /Taskfile.yaml
@@ -9,5 +10,7 @@
 /go.work
 /go.work.sum
 node_modules/
+/pkg/ts/embed/*/*/deno.gz
+/pkg/ts/embed/*/*/deno.sha256
 /.opencode/
 /.sisyphus

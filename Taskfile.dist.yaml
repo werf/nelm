@@ -15,6 +15,7 @@ vars:
   package: "github.com/werf/nelm/cmd/nelm"
 
   tags: ""
+  buildTags: '{{trim (printf "%s embeddeno" .tags)}}'
   ldFlags: "-s -w -X github.com/werf/nelm/pkg/common.Brand={{.brand}} -X github.com/werf/nelm/pkg/common.Version={{.version}}"
 
 tasks:
@@ -34,7 +35,7 @@ tasks:
   _build:dev: &build_dev
     cmds:
       - go build {{if eq .raceDetectorEnabled "true" }}-race{{end}} -o "{{.outputDir | default (printf "./build/%s-%s" .targetOS .targetArch)}}/{{.brandSlug}}{{if (eq .targetOS "windows")}}.exe{{end}}"
-        -ldflags="{{.ldFlags}}" -tags="{{.ctags}}" {{.extraGoBuildArgs}} {{.CLI_ARGS}} {{.pkg | default .package}}
+        -ldflags="{{.ldFlags}}" -tags="{{.tags}}" {{.extraGoBuildArgs}} {{.CLI_ARGS}} {{.pkg | default .package}}
     env:
       GOOS: "{{.targetOS}}"
       GOARCH: "{{.targetArch}}"
@@ -46,7 +47,7 @@ tasks:
     <<: *build_dev
     cmds:
       - go build -o "{{.outputDir | default (printf "./dist/%s/%s-%s/bin" .version .targetOS .targetArch)}}/{{.brandSlug}}{{if (eq .targetOS "windows")}}.exe{{end}}"
-        -ldflags="{{.ldFlags}}" -tags="{{.ctags}}" {{.extraGoBuildArgs}} {{.CLI_ARGS}} {{.pkg | default .package}}
+        -ldflags="{{.ldFlags}}" -tags="{{.buildTags}}" {{.extraGoBuildArgs}} {{.CLI_ARGS}} {{.pkg | default .package}}
 
   _golangci-lint:
     internal: true
@@ -105,6 +106,10 @@ tasks:
 
   build:dist:linux:amd64:
     desc: 'Build main release binary for linux/amd64. Important vars: "version".'
+    deps:
+      - task: deno:embed
+        vars:
+          platform: "linux/amd64"
     cmds:
       - task: _build:dist
         vars:
@@ -126,6 +131,10 @@ tasks:
 
   build:dist:linux:arm64:
     desc: 'Build main release binary for linux/arm64. Important vars: "version".'
+    deps:
+      - task: deno:embed
+        vars:
+          platform: "linux/arm64"
     cmds:
       - task: _build:dist
         vars:
@@ -147,6 +156,10 @@ tasks:
 
   build:dist:darwin:amd64:
     desc: 'Build main release binary for darwin/amd64. Important vars: "version".'
+    deps:
+      - task: deno:embed
+        vars:
+          platform: "darwin/amd64"
     cmds:
       - task: _build:dist
         vars:
@@ -167,6 +180,10 @@ tasks:
 
   build:dist:darwin:arm64:
     desc: 'Build main release binary for darwin/arm64. Important vars: "version".'
+    deps:
+      - task: deno:embed
+        vars:
+          platform: "darwin/arm64"
     cmds:
       - task: _build:dist
         vars:
@@ -187,6 +204,10 @@ tasks:
 
   build:dist:windows:amd64:
     desc: 'Build main release binary for windows/amd64. Important vars: "version".'
+    deps:
+      - task: deno:embed
+        vars:
+          platform: "windows/amd64"
     cmds:
       - task: _build:dist
         vars:
@@ -277,6 +298,19 @@ tasks:
     desc: "Format yaml files with prettier."
     cmds:
       - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work tmknom/prettier -w "**/*.yaml" "**/*.yml"
+
+  deno:embed:
+    desc: 'Download and embed the Deno binary for one platform. Important vars: "platform".'
+    run: when_changed
+    vars:
+      platform: '{{.platform | default (printf "%s/%s" .os .arch)}}'
+    sources:
+      - pkg/ts/downloader.go
+    generates:
+      - pkg/ts/embed/{{.platform}}/deno.gz
+      - pkg/ts/embed/{{.platform}}/deno.sha256
+    cmds:
+      - env -u GOOS -u GOARCH DENO_EMBED_PLATFORM="{{.platform}}" go run ./cmd/embed-deno
 
   generate:
     desc: 'Run all generators. Important vars: "paths".'

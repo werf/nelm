@@ -167,7 +167,16 @@ func getDenoBinary(ctx context.Context, binaryPath string) (string, error) {
 		return binaryPath, nil
 	}
 
-	link, err := getDownloadLink()
+	embeddedPath, embedded, err := embeddedDenoBinary(ctx)
+	if err != nil {
+		return "", fmt.Errorf("get embedded Deno binary: %w", err)
+	}
+
+	if embedded {
+		return embeddedPath, nil
+	}
+
+	link, err := getDownloadLink(runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return "", fmt.Errorf("get download link: %w", err)
 	}
@@ -177,9 +186,7 @@ func getDenoBinary(ctx context.Context, binaryPath string) (string, error) {
 		return "", fmt.Errorf("get Deno cache folder: %w", err)
 	}
 
-	binaryName := lo.Ternary(runtime.GOOS == "windows", "deno.exe", "deno")
-
-	denoPath := filepath.Join(cacheDir, binaryName)
+	denoPath := filepath.Join(cacheDir, denoBinaryName(runtime.GOOS))
 	if _, err := os.Stat(denoPath); err == nil {
 		log.Default.Debug(ctx, "Using cached Deno binary: %s", denoPath)
 
@@ -209,7 +216,7 @@ func getDenoBinary(ctx context.Context, binaryPath string) (string, error) {
 		return denoPath, nil
 	}
 
-	if err := downloadDeno(ctx, cacheDir, link); err != nil {
+	if err := downloadDeno(ctx, cacheDir, link, runtime.GOOS); err != nil {
 		return "", fmt.Errorf("download deno: %w", err)
 	}
 
