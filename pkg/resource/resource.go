@@ -56,6 +56,7 @@ func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherRe
 	otherResourceMetaList := lo.Map(otherResSpecs, func(resSpec *spec.ResourceSpec, _ int) *spec.ResourceMeta {
 		return resSpec.ResourceMeta
 	})
+
 	if err := validateHook(res.ResourceMeta); err != nil {
 		return nil, fmt.Errorf("validate hook configuration: %w", err)
 	}
