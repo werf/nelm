@@ -372,7 +372,7 @@ func renderedTemplatesToResourceSpecs(ctx context.Context, renderedTemplates map
 
 				res, err = manifestToResourceSpec(sanitized, releaseNamespace, filePath, idx)
 				if err != nil {
-					log.Default.Debug(ctx, "Skipping rendered resource #%d for %q with unrecoverable binary content: %s", idx+1, filePath, err)
+					log.Default.Warn(ctx, "Skipping rendered resource #%d for %q with unrecoverable binary content: %s", idx+1, filePath, err)
 
 					continue
 				}
