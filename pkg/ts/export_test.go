@@ -4,4 +4,5 @@ var (
 	ChartTSBuildScript = denoBuildScript
 	ChartTSDevScript   = denoDevScript
 	ChartTSStartScript = denoStartScript
+	FindChecksum       = findChecksum
 )

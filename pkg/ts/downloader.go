@@ -4,12 +4,12 @@ import (
 	"archive/zip"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"hash/fnv"
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -24,7 +24,26 @@ import (
 
 const denoVersion = "2.7.1"
 
-func downloadDeno(ctx context.Context, cacheDir, link string) error {
+// DownloadDenoForPlatform downloads the pinned Deno release for an arbitrary
+// target platform into destDir and returns the path of the extracted binary.
+func DownloadDenoForPlatform(ctx context.Context, goos, goarch, destDir string) (string, error) {
+	link, err := getDownloadLink(goos, goarch)
+	if err != nil {
+		return "", fmt.Errorf("get download link: %w", err)
+	}
+
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return "", fmt.Errorf("create destination directory: %w", err)
+	}
+
+	if err := downloadDeno(ctx, destDir, link, goos); err != nil {
+		return "", fmt.Errorf("download deno: %w", err)
+	}
+
+	return filepath.Join(destDir, denoBinaryName(goos)), nil
+}
+
+func downloadDeno(ctx context.Context, cacheDir, link, goos string) error {
 	httpClient := util.NewRestyClient(ctx)
 	httpClient.SetTimeout(15 * time.Minute)
 
@@ -72,7 +91,7 @@ func downloadDeno(ctx context.Context, cacheDir, link string) error {
 		}
 	}()
 
-	binaryName := lo.Ternary(runtime.GOOS == "windows", "deno.exe", "deno")
+	binaryName := denoBinaryName(goos)
 
 	var binaryFound bool
 	for _, file := range reader.File {
@@ -119,12 +138,36 @@ func fetchExpectedChecksum(ctx context.Context, httpClient *resty.Client, archiv
 		return "", fmt.Errorf("download checksum from %s: %s", checksumURL, response.Status())
 	}
 
-	hash, _, _ := strings.Cut(strings.TrimSpace(response.String()), " ")
-	if len(hash) != 64 {
-		return "", fmt.Errorf("unexpected checksum format from %s: %s", checksumURL, hash)
+	hash, found := findChecksum(response.String())
+	if !found {
+		return "", fmt.Errorf("unexpected checksum format from %s: %s", checksumURL, strings.TrimSpace(response.String()))
 	}
 
 	return hash, nil
+}
+
+func denoBinaryName(goos string) string {
+	return lo.Ternary(goos == "windows", "deno.exe", "deno")
+}
+
+// findChecksum extracts a sha256 hex digest from a checksum file. Deno
+// publishes plain "<hex>  <file>" for unix targets, but PowerShell
+// Get-FileHash output ("Hash : <UPPERCASE HEX>") for windows ones, so the
+// digest is located by shape rather than by field position.
+func findChecksum(body string) (string, bool) {
+	for _, field := range strings.Fields(body) {
+		if len(field) != 64 {
+			continue
+		}
+
+		if _, err := hex.DecodeString(field); err != nil {
+			continue
+		}
+
+		return strings.ToLower(field), true
+	}
+
+	return "", false
 }
 
 func getDenoFolder(downloadURL string) (string, error) {
@@ -150,24 +193,24 @@ func getDenoFolder(downloadURL string) (string, error) {
 	return cacheDir, nil
 }
 
-func getDownloadLink() (string, error) {
+func getDownloadLink(goos, goarch string) (string, error) {
 	var target string
 
 	switch {
-	case runtime.GOOS == "linux" && runtime.GOARCH == "amd64":
+	case goos == "linux" && goarch == "amd64":
 		target = "x86_64-unknown-linux-gnu"
-	case runtime.GOOS == "linux" && runtime.GOARCH == "arm64":
+	case goos == "linux" && goarch == "arm64":
 		target = "aarch64-unknown-linux-gnu"
-	case runtime.GOOS == "darwin" && runtime.GOARCH == "amd64":
+	case goos == "darwin" && goarch == "amd64":
 		target = "x86_64-apple-darwin"
-	case runtime.GOOS == "darwin" && runtime.GOARCH == "arm64":
+	case goos == "darwin" && goarch == "arm64":
 		target = "aarch64-apple-darwin"
-	case runtime.GOOS == "windows" && runtime.GOARCH == "amd64":
+	case goos == "windows" && goarch == "amd64":
 		target = "x86_64-pc-windows-msvc"
-	case runtime.GOOS == "windows" && runtime.GOARCH == "arm64":
+	case goos == "windows" && goarch == "arm64":
 		target = "aarch64-pc-windows-msvc"
 	default:
-		return "", fmt.Errorf("unsupported platform: %s/%s", runtime.GOOS, runtime.GOARCH)
+		return "", fmt.Errorf("unsupported platform: %s/%s", goos, goarch)
 	}
 
 	url := fmt.Sprintf("https://github.com/denoland/deno/releases/download/v%s/deno-%s.zip", denoVersion, target)
