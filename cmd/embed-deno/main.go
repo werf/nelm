@@ -1,29 +1,22 @@
+// Command embed-deno downloads the pinned Deno release for one platform and compresses it into
+// pkg/ts/embed/<os>/<arch>/deno.gz, which the embeddeno build tag compiles into the release binary.
+// The blob is not committed, so what makes it the Deno this repository pinned is pkg/ts/denolock,
+// which both the download here and the extraction at run time verify against.
 package main
 
 import (
 	"compress/gzip"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/samber/lo"
-
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/ts"
+	"github.com/werf/nelm/pkg/ts/denolock"
 )
-
-var platforms = [][2]string{
-	{"linux", "amd64"},
-	{"linux", "arm64"},
-	{"darwin", "amd64"},
-	{"darwin", "arm64"},
-	{"windows", "amd64"},
-}
 
 func run() error {
 	embedRoot := os.Getenv("DENO_EMBED_ROOT")
@@ -41,8 +34,8 @@ func run() error {
 		return fmt.Errorf("parse DENO_EMBED_PLATFORM %q: want <os>/<arch>", platform)
 	}
 
-	if !lo.ContainsBy(platforms, func(p [2]string) bool { return p[0] == goos && p[1] == goarch }) {
-		return fmt.Errorf("unsupported DENO_EMBED_PLATFORM %q", platform)
+	if _, err := denolock.Get(goos, goarch); err != nil {
+		return fmt.Errorf("unsupported DENO_EMBED_PLATFORM %q: %w", platform, err)
 	}
 
 	if err := embedPlatform(context.Background(), goos, goarch, embedRoot); err != nil {
@@ -78,7 +71,6 @@ func embedPlatform(ctx context.Context, goos, goarch, embedRoot string) error {
 	defer binaryFile.Close()
 
 	gzPath := filepath.Join(platformDir, "deno.gz")
-	sha256Path := filepath.Join(platformDir, "deno.sha256")
 
 	gzTmpFile, err := os.CreateTemp(platformDir, "deno.gz.*.tmp")
 	if err != nil {
@@ -88,10 +80,9 @@ func embedPlatform(ctx context.Context, goos, goarch, embedRoot string) error {
 	gzTmpPath := gzTmpFile.Name()
 	defer os.Remove(gzTmpPath)
 
-	hasher := sha256.New()
 	gzWriter := gzip.NewWriter(gzTmpFile)
 
-	if _, err := io.Copy(io.MultiWriter(gzWriter, hasher), binaryFile); err != nil {
+	if _, err := io.Copy(gzWriter, binaryFile); err != nil {
 		gzTmpFile.Close()
 
 		return fmt.Errorf("compress deno: %w", err)
@@ -107,32 +98,25 @@ func embedPlatform(ctx context.Context, goos, goarch, embedRoot string) error {
 		return fmt.Errorf("close %s: %w", gzTmpPath, err)
 	}
 
-	decompressedSha256 := hex.EncodeToString(hasher.Sum(nil))
-
-	sha256TmpPath := sha256Path + ".tmp"
-	if err := os.WriteFile(sha256TmpPath, []byte(decompressedSha256+"\n"), 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", sha256TmpPath, err)
-	}
-
-	defer os.Remove(sha256TmpPath)
-
 	if err := os.Remove(gzPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove %s: %w", gzPath, err)
-	}
-
-	if err := os.Remove(sha256Path); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("remove %s: %w", sha256Path, err)
 	}
 
 	if err := os.Rename(gzTmpPath, gzPath); err != nil {
 		return fmt.Errorf("rename %s to %s: %w", gzTmpPath, gzPath, err)
 	}
 
-	if err := os.Rename(sha256TmpPath, sha256Path); err != nil {
-		return fmt.Errorf("rename %s to %s: %w", sha256TmpPath, sha256Path, err)
+	// Written by an older embed-deno, replaced by pkg/ts/denolock.
+	if err := os.Remove(filepath.Join(platformDir, "deno.sha256")); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove %s: %w", filepath.Join(platformDir, "deno.sha256"), err)
 	}
 
-	log.Default.Info(ctx, "Embedded deno for %s/%s (sha256 %s)", goos, goarch, decompressedSha256)
+	version, err := denolock.Version()
+	if err != nil {
+		return fmt.Errorf("get the pinned Deno version: %w", err)
+	}
+
+	log.Default.Info(ctx, "Embedded Deno %s for %s/%s", version, goos, goarch)
 
 	return nil
 }

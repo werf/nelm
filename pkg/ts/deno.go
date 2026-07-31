@@ -221,7 +221,7 @@ func getDenoBinary(ctx context.Context, binaryPath string) (string, error) {
 		return denoPath, nil
 	}
 
-	if err := downloadDeno(ctx, cacheDir, link, runtime.GOOS); err != nil {
+	if err := downloadDeno(ctx, cacheDir, runtime.GOOS, runtime.GOARCH); err != nil {
 		return "", fmt.Errorf("download deno: %w", err)
 	}
 

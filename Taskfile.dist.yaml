@@ -62,7 +62,9 @@ tasks:
   _wormatter:
     internal: true
     cmds:
-      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work -w /work ghcr.io/werf/wormatter:1.5.0 {{if eq .onlyLint "true"}}-c{{end}} -e ^pkg/helm/ {{.paths | default "cmd/ pkg/"}}
+      # pkg/ts/embed_ is excluded because wormatter drops the //go:embed directive of a single var
+      # declaration, which would silently produce a binary with an empty embedded Deno.
+      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work -w /work ghcr.io/werf/wormatter:1.5.0 {{if eq .onlyLint "true"}}-c{{end}} -e ^pkg/helm/ -e ^pkg/ts/embed_ {{.paths | default "cmd/ pkg/"}}
     vars:
       onlyLint: '{{.onlyLint | default "false"}}'
       paths: "{{.paths}}"
@@ -309,12 +311,18 @@ tasks:
       platform: '{{.platform | default (printf "%s/%s" .os .arch)}}'
     sources:
       - pkg/ts/downloader.go
+      - pkg/ts/denolock/data/lock.json
       - cmd/embed-deno/main.go
     generates:
       - pkg/ts/embed/{{.platform}}/deno.gz
-      - pkg/ts/embed/{{.platform}}/deno.sha256
     cmds:
       - env -u GOOS -u GOARCH DENO_EMBED_PLATFORM="{{.platform}}" go run ./cmd/embed-deno
+
+  deno:lock:
+    desc: "Re-pin the Deno release nelm downloads and embeds, and commit the result. Bump with: task deno:lock -- -version 2.8.0."
+    cmds:
+      # Takes the version to pin from the lock itself, so it needs no vars.
+      - go run ./scripts/denolock {{.CLI_ARGS}}
 
   generate:
     desc: 'Run all generators. Important vars: "paths".'
@@ -358,17 +366,28 @@ tasks:
       - lint:prettier
       - lint:golangci-lint
       - lint:validation-schemas
+      - lint:deno-lock
 
   lint:validation-schemas:
     desc: 'Check that the committed embedded JSON schema archives match their index and the pinned Kubernetes version. Runs offline. Important vars: "kubeconformValidationSchemasUpstreamKubeVersion".'
     cmds:
       - go run ./scripts/schemagen -kube-version {{.kubeconformValidationSchemasUpstreamKubeVersion}} -verify {{.CLI_ARGS}}
 
+  lint:deno-lock:
+    desc: "Check that the committed Deno lock is well formed and covers the platforms nelm builds for. Runs offline."
+    cmds:
+      - go run ./scripts/denolock -verify {{.CLI_ARGS}}
+
   check:validation-schemas-upstream:
     desc: "Report whether upstream has schemas the committed archives do not. Needs network, so it is not part of lint: run it on a schedule."
     cmds:
       # Takes the repositories, refs and versions to compare from the index, so it needs no vars.
       - go run ./scripts/schemagen -check-upstream {{.CLI_ARGS}}
+
+  check:deno-lock-upstream:
+    desc: "Report whether the Deno release assets the lock pins still hash to what it records. Needs network, so it is not part of lint: run it before a bump, or when a release build fails on a checksum."
+    cmds:
+      - go run ./scripts/denolock -check-upstream {{.CLI_ARGS}}
 
   lint:golangci-lint:
     desc: 'Lint with golangci-lint. Important vars: "paths".'
