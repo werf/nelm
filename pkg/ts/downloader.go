@@ -207,8 +207,6 @@ func getDownloadLink(goos, goarch string) (string, error) {
 		target = "aarch64-apple-darwin"
 	case goos == "windows" && goarch == "amd64":
 		target = "x86_64-pc-windows-msvc"
-	case goos == "windows" && goarch == "arm64":
-		target = "aarch64-pc-windows-msvc"
 	default:
 		return "", fmt.Errorf("unsupported platform: %s/%s", goos, goarch)
 	}
