@@ -26,6 +26,11 @@ var platforms = [][2]string{
 }
 
 func run() error {
+	embedRoot := os.Getenv("DENO_EMBED_ROOT")
+	if embedRoot == "" {
+		embedRoot = filepath.Join("pkg", "ts", "embed")
+	}
+
 	platform := os.Getenv("DENO_EMBED_PLATFORM")
 	if platform == "" {
 		return fmt.Errorf("DENO_EMBED_PLATFORM is required: want <os>/<arch>")
@@ -40,7 +45,7 @@ func run() error {
 		return fmt.Errorf("unsupported DENO_EMBED_PLATFORM %q", platform)
 	}
 
-	if err := embedPlatform(context.Background(), goos, goarch, filepath.Join("pkg", "ts", "embed")); err != nil {
+	if err := embedPlatform(context.Background(), goos, goarch, embedRoot); err != nil {
 		return fmt.Errorf("embed %s/%s: %w", goos, goarch, err)
 	}
 
