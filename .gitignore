@@ -12,5 +12,7 @@
 node_modules/
 /pkg/ts/embed/*/*/deno.gz
 /pkg/ts/embed/*/*/deno.sha256
+/pkg/ts/embed/*/*/deno.gz.*.tmp
+/pkg/ts/embed/*/*/deno.sha256.tmp
 /.opencode/
 /.sisyphus
