@@ -167,6 +167,15 @@ func getDenoBinary(ctx context.Context, binaryPath string) (string, error) {
 		return binaryPath, nil
 	}
 
+	if opts := GetTSOptionsFromContext(ctx); len(opts.EmbeddedDenoCompressed) > 0 || opts.EmbeddedDenoSHA256 != "" {
+		path, err := ExtractEmbeddedDeno(ctx, opts.EmbeddedDenoCompressed, opts.EmbeddedDenoSHA256)
+		if err != nil {
+			return "", fmt.Errorf("extract embedded Deno binary: %w", err)
+		}
+
+		return path, nil
+	}
+
 	embeddedPath, embedded, err := embeddedDenoBinary(ctx)
 	if err != nil {
 		return "", fmt.Errorf("get embedded Deno binary: %w", err)

@@ -298,7 +298,9 @@ type ChartLoadOptions struct {
 }
 
 type TypeScriptOptions struct {
-	DenoBinaryPath string
+	DenoBinaryPath         string
+	EmbeddedDenoCompressed []byte
+	EmbeddedDenoSHA256     string
 }
 
 type helmOptionsContextKey struct{}
