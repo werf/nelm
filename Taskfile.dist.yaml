@@ -17,7 +17,7 @@ vars:
   kubeconformValidationSchemasUpstreamKubeVersion: "1.36.3"
 
   tags: ""
-  buildTags: '{{if .tags}}{{.tags}},{{end}}embeddeno'
+  buildTags: "{{if .tags}}{{.tags}},{{end}}embeddeno"
   ldFlags: "-s -w -X github.com/werf/nelm/pkg/common.Brand={{.brand}} -X github.com/werf/nelm/pkg/common.Version={{.version}}"
 
 tasks:
@@ -303,7 +303,7 @@ tasks:
 
   deno:embed:
     desc: 'Download and embed the Deno binary for one platform. Important vars: "platform".'
-    label: 'deno:embed {{.platform}}'
+    label: "deno:embed {{.platform}}"
     run: when_changed
     vars:
       platform: '{{.platform | default (printf "%s/%s" .os .arch)}}'
