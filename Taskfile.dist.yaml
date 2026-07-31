@@ -308,6 +308,7 @@ tasks:
       platform: '{{.platform | default (printf "%s/%s" .os .arch)}}'
     sources:
       - pkg/ts/downloader.go
+      - cmd/embed-deno/main.go
     generates:
       - pkg/ts/embed/{{.platform}}/deno.gz
       - pkg/ts/embed/{{.platform}}/deno.sha256

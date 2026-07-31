@@ -49,10 +49,6 @@ func ExtractEmbeddedDeno(ctx context.Context, compressedDeno []byte, expectedSHA
 		if err := fileLock.Unlock(); err != nil {
 			log.Default.Error(ctx, "release lock on embedded deno cache: %v", err)
 		}
-
-		if err := os.Remove(lockFile); err != nil {
-			log.Default.Error(ctx, "remove embedded deno cache lock file: %v", err)
-		}
 	}()
 
 	if _, err := os.Stat(denoPath); err == nil {
