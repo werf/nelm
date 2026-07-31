@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/gofrs/flock"
 
@@ -22,7 +23,8 @@ import (
 // directory keyed by expectedSHA256 and returns the path of the extracted
 // binary. expectedSHA256 must be the checksum of the decompressed binary.
 func ExtractEmbeddedDeno(ctx context.Context, compressedDeno []byte, expectedSHA256 string) (string, error) {
-	if len(expectedSHA256) != 64 {
+	expectedSHA256 = strings.ToLower(strings.TrimSpace(expectedSHA256))
+	if _, err := hex.DecodeString(expectedSHA256); err != nil || len(expectedSHA256) != 64 {
 		return "", fmt.Errorf("unexpected embedded deno checksum format: %q", expectedSHA256)
 	}
 

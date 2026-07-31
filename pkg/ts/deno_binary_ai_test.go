@@ -88,6 +88,10 @@ func TestAI_GetDenoBinaryCtxEmbeddedData(t *testing.T) {
 	})
 
 	t.Run("empty ctx options fall through to download cache", func(t *testing.T) {
+		if embeddedDenoEnabled {
+			t.Skip("embedded deno blob takes priority over the download cache")
+		}
+
 		cacheHome := t.TempDir()
 		t.Setenv("XDG_CACHE_HOME", cacheHome)
 
