@@ -43,9 +43,9 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 	}
 
 	kubeConformValidator, err := newKubeConformValidator(
-		opts.ValidationKubeVersion,
 		opts.ValidationSchemaCacheLifetime,
-		append(opts.ValidationExtraSchemas, opts.ValidationSchemas...))
+		opts.ValidationExtraSchemas,
+		opts.LocalResourceValidation)
 	if err != nil {
 		return fmt.Errorf("get schema validator: %w", err)
 	}
@@ -61,19 +61,17 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 			continue
 		}
 
-		if !opts.LocalResourceValidation {
-			if err := kubeConformValidator.Validate(ctx, res.ResourceSpec); err != nil {
-				e := fmt.Errorf("validate %s: %w", res.IDHuman(), err)
+		if err := kubeConformValidator.Validate(ctx, res.ResourceSpec); err != nil {
+			e := fmt.Errorf("validate %s: %w", res.IDHuman(), err)
 
-				var vErr *validator.ValidationError
-				if errors.As(err, &vErr) {
-					validationErrs.Add(e)
+			var vErr *validator.ValidationError
+			if errors.As(err, &vErr) {
+				validationErrs.Add(e)
 
-					continue
-				}
-
-				return e
+				continue
 			}
+
+			return e
 		}
 
 		if err := validateResourceWithCodec(res); err != nil {

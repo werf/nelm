@@ -266,7 +266,7 @@ nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-
 
 - `--local-resource-validation` (default: `false`)
 
-  Do not use external json schema sources\. Vars: \$NELM\_LOCAL\_RESOURCE\_VALIDATION, \$NELM\_RELEASE\_INSTALL\_LOCAL\_RESOURCE\_VALIDATION
+  Do not use external json schema sources, validate against the json schemas embedded into the binary instead\. Vars: \$NELM\_LOCAL\_RESOURCE\_VALIDATION, \$NELM\_RELEASE\_INSTALL\_LOCAL\_RESOURCE\_VALIDATION
 
 - `--no-resource-validation` (default: `false`)
 
@@ -282,15 +282,7 @@ nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-
 
 - `--resource-validation-extra-schema` (default: `[]`)
 
-  Extra json schema sources to validate resources \(preferred over default sources\)\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Vars: \$NELM\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*, \$NELM\_RELEASE\_INSTALL\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*
-
-- `--resource-validation-kube-version` (default: `"1.35.0"`)
-
-  Kubernetes schemas version to use during resource validation\. Vars: \$NELM\_RESOURCE\_VALIDATION\_KUBE\_VERSION, \$NELM\_RELEASE\_INSTALL\_RESOURCE\_VALIDATION\_KUBE\_VERSION
-
-- `--resource-validation-schema` (default: `[https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json,https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json]`)
-
-  Default json schema sources to validate resources\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Vars: \$NELM\_RESOURCE\_VALIDATION\_SCHEMA\_\*, \$NELM\_RELEASE\_INSTALL\_RESOURCE\_VALIDATION\_SCHEMA\_\*
+  Extra json schema sources to validate resources, preferred over the json schemas embedded into the binary\. Which source served a resource kind is cached for \-\-resource\-validation\-cache\-lifetime, so a schema that only appears in these sources later takes over once that entry expires, whereas changing this option resets the cache at once\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Example: https://raw\.githubusercontent\.com/yannh/kubernetes\-json\-schema/master/\{\{ \.NormalizedKubernetesVersion \}\}\-standalone\{\{ \.StrictSuffix \}\}/\{\{ \.ResourceKind \}\}\{\{ \.KindSuffix \}\}\.json\. Vars: \$NELM\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*, \$NELM\_RELEASE\_INSTALL\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*
 
 - `--resource-validation-skip` (default: `[]`)
 
@@ -631,7 +623,7 @@ nelm release rollback [options...] -n namespace -r release [revision]
 
 - `--local-resource-validation` (default: `false`)
 
-  Do not use external json schema sources\. Vars: \$NELM\_LOCAL\_RESOURCE\_VALIDATION, \$NELM\_RELEASE\_ROLLBACK\_LOCAL\_RESOURCE\_VALIDATION
+  Do not use external json schema sources, validate against the json schemas embedded into the binary instead\. Vars: \$NELM\_LOCAL\_RESOURCE\_VALIDATION, \$NELM\_RELEASE\_ROLLBACK\_LOCAL\_RESOURCE\_VALIDATION
 
 - `--no-resource-validation` (default: `false`)
 
@@ -647,15 +639,7 @@ nelm release rollback [options...] -n namespace -r release [revision]
 
 - `--resource-validation-extra-schema` (default: `[]`)
 
-  Extra json schema sources to validate resources \(preferred over default sources\)\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Vars: \$NELM\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*, \$NELM\_RELEASE\_ROLLBACK\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*
-
-- `--resource-validation-kube-version` (default: `"1.35.0"`)
-
-  Kubernetes schemas version to use during resource validation\. Vars: \$NELM\_RESOURCE\_VALIDATION\_KUBE\_VERSION, \$NELM\_RELEASE\_ROLLBACK\_RESOURCE\_VALIDATION\_KUBE\_VERSION
-
-- `--resource-validation-schema` (default: `[https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json,https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json]`)
-
-  Default json schema sources to validate resources\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Vars: \$NELM\_RESOURCE\_VALIDATION\_SCHEMA\_\*, \$NELM\_RELEASE\_ROLLBACK\_RESOURCE\_VALIDATION\_SCHEMA\_\*
+  Extra json schema sources to validate resources, preferred over the json schemas embedded into the binary\. Which source served a resource kind is cached for \-\-resource\-validation\-cache\-lifetime, so a schema that only appears in these sources later takes over once that entry expires, whereas changing this option resets the cache at once\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Example: https://raw\.githubusercontent\.com/yannh/kubernetes\-json\-schema/master/\{\{ \.NormalizedKubernetesVersion \}\}\-standalone\{\{ \.StrictSuffix \}\}/\{\{ \.ResourceKind \}\}\{\{ \.KindSuffix \}\}\.json\. Vars: \$NELM\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*, \$NELM\_RELEASE\_ROLLBACK\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*
 
 - `--resource-validation-skip` (default: `[]`)
 
@@ -1008,7 +992,7 @@ nelm release plan install [options...] -n namespace -r release [chart-dir|chart-
 
 - `--local-resource-validation` (default: `false`)
 
-  Do not use external json schema sources\. Vars: \$NELM\_LOCAL\_RESOURCE\_VALIDATION, \$NELM\_RELEASE\_PLAN\_INSTALL\_LOCAL\_RESOURCE\_VALIDATION
+  Do not use external json schema sources, validate against the json schemas embedded into the binary instead\. Vars: \$NELM\_LOCAL\_RESOURCE\_VALIDATION, \$NELM\_RELEASE\_PLAN\_INSTALL\_LOCAL\_RESOURCE\_VALIDATION
 
 - `--no-resource-validation` (default: `false`)
 
@@ -1024,15 +1008,7 @@ nelm release plan install [options...] -n namespace -r release [chart-dir|chart-
 
 - `--resource-validation-extra-schema` (default: `[]`)
 
-  Extra json schema sources to validate resources \(preferred over default sources\)\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Vars: \$NELM\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*, \$NELM\_RELEASE\_PLAN\_INSTALL\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*
-
-- `--resource-validation-kube-version` (default: `"1.35.0"`)
-
-  Kubernetes schemas version to use during resource validation\. Vars: \$NELM\_RESOURCE\_VALIDATION\_KUBE\_VERSION, \$NELM\_RELEASE\_PLAN\_INSTALL\_RESOURCE\_VALIDATION\_KUBE\_VERSION
-
-- `--resource-validation-schema` (default: `[https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json,https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json]`)
-
-  Default json schema sources to validate resources\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Vars: \$NELM\_RESOURCE\_VALIDATION\_SCHEMA\_\*, \$NELM\_RELEASE\_PLAN\_INSTALL\_RESOURCE\_VALIDATION\_SCHEMA\_\*
+  Extra json schema sources to validate resources, preferred over the json schemas embedded into the binary\. Which source served a resource kind is cached for \-\-resource\-validation\-cache\-lifetime, so a schema that only appears in these sources later takes over once that entry expires, whereas changing this option resets the cache at once\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Example: https://raw\.githubusercontent\.com/yannh/kubernetes\-json\-schema/master/\{\{ \.NormalizedKubernetesVersion \}\}\-standalone\{\{ \.StrictSuffix \}\}/\{\{ \.ResourceKind \}\}\{\{ \.KindSuffix \}\}\.json\. Vars: \$NELM\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*, \$NELM\_RELEASE\_PLAN\_INSTALL\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*
 
 - `--resource-validation-skip` (default: `[]`)
 
@@ -2185,7 +2161,7 @@ nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive
 
 - `--local-resource-validation` (default: `false`)
 
-  Do not use external json schema sources\. Vars: \$NELM\_LOCAL\_RESOURCE\_VALIDATION, \$NELM\_CHART\_LINT\_LOCAL\_RESOURCE\_VALIDATION
+  Do not use external json schema sources, validate against the json schemas embedded into the binary instead\. Vars: \$NELM\_LOCAL\_RESOURCE\_VALIDATION, \$NELM\_CHART\_LINT\_LOCAL\_RESOURCE\_VALIDATION
 
 - `--no-resource-validation` (default: `false`)
 
@@ -2201,15 +2177,7 @@ nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive
 
 - `--resource-validation-extra-schema` (default: `[]`)
 
-  Extra json schema sources to validate resources \(preferred over default sources\)\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Vars: \$NELM\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*, \$NELM\_CHART\_LINT\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*
-
-- `--resource-validation-kube-version` (default: `"1.35.0"`)
-
-  Kubernetes schemas version to use during resource validation\. Vars: \$NELM\_RESOURCE\_VALIDATION\_KUBE\_VERSION, \$NELM\_CHART\_LINT\_RESOURCE\_VALIDATION\_KUBE\_VERSION
-
-- `--resource-validation-schema` (default: `[https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json,https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json]`)
-
-  Default json schema sources to validate resources\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Vars: \$NELM\_RESOURCE\_VALIDATION\_SCHEMA\_\*, \$NELM\_CHART\_LINT\_RESOURCE\_VALIDATION\_SCHEMA\_\*
+  Extra json schema sources to validate resources, preferred over the json schemas embedded into the binary\. Which source served a resource kind is cached for \-\-resource\-validation\-cache\-lifetime, so a schema that only appears in these sources later takes over once that entry expires, whereas changing this option resets the cache at once\. Must be a valid go template defining a http\(s\) URL, or an absolute path on local file system\. Example: https://raw\.githubusercontent\.com/yannh/kubernetes\-json\-schema/master/\{\{ \.NormalizedKubernetesVersion \}\}\-standalone\{\{ \.StrictSuffix \}\}/\{\{ \.ResourceKind \}\}\{\{ \.KindSuffix \}\}\.json\. Vars: \$NELM\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*, \$NELM\_CHART\_LINT\_RESOURCE\_VALIDATION\_EXTRA\_SCHEMA\_\*
 
 - `--resource-validation-skip` (default: `[]`)
 
