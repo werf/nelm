@@ -16,7 +16,7 @@ func embeddedDenoBinary(ctx context.Context) (string, bool, error) {
 		return "", false, fmt.Errorf("get the pinned Deno release: %w", err)
 	}
 
-	path, err := ExtractEmbeddedDeno(ctx, embeddedDeno, pinned.BinarySHA256)
+	path, err := extractEmbeddedDeno(ctx, embeddedDeno, pinned.BinarySHA256)
 	if err != nil {
 		return "", false, err
 	}

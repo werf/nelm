@@ -22,7 +22,7 @@ import (
 
 func TestAI_GetDenoBinaryCtxEmbeddedData(t *testing.T) {
 	payload := []byte("#!/bin/sh\necho fake-deno\n")
-	compressed, sha := gzipPayload(t, payload)
+	compressed, _ := gzipPayload(t, payload)
 
 	t.Run("explicit binary path wins over ctx data without extraction", func(t *testing.T) {
 		cacheHome := t.TempDir()
@@ -33,7 +33,6 @@ func TestAI_GetDenoBinaryCtxEmbeddedData(t *testing.T) {
 
 		ctx := ts.NewContextWithTSOptions(context.Background(), common.TypeScriptOptions{
 			EmbeddedDenoCompressed: compressed,
-			EmbeddedDenoSHA256:     sha,
 		})
 
 		path, err := ts.GetDenoBinary(ctx, explicit)
@@ -42,38 +41,9 @@ func TestAI_GetDenoBinaryCtxEmbeddedData(t *testing.T) {
 		assertNoEmbeddedCacheDirs(t, cacheHome)
 	})
 
-	t.Run("complete ctx data extracts to content-addressed path", func(t *testing.T) {
-		t.Setenv("XDG_CACHE_HOME", t.TempDir())
-
-		ctx := ts.NewContextWithTSOptions(context.Background(), common.TypeScriptOptions{
-			EmbeddedDenoCompressed: compressed,
-			EmbeddedDenoSHA256:     sha,
-		})
-
-		path, err := ts.GetDenoBinary(ctx, "")
-		require.NoError(t, err)
-		assert.Contains(t, path, "embedded-"+sha[:16])
-
-		content, err := os.ReadFile(path)
-		require.NoError(t, err)
-		assert.Equal(t, payload, content)
-	})
-
-	t.Run("sha without bytes errors instead of downloading", func(t *testing.T) {
-		cacheHome := t.TempDir()
-		t.Setenv("XDG_CACHE_HOME", cacheHome)
-
-		ctx := ts.NewContextWithTSOptions(context.Background(), common.TypeScriptOptions{
-			EmbeddedDenoSHA256: sha,
-		})
-
-		path, err := ts.GetDenoBinary(ctx, "")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "extract embedded Deno binary")
-		assert.Empty(t, path)
-	})
-
-	t.Run("bytes without sha errors mentioning checksum format", func(t *testing.T) {
+	// An embedder can only hand over the release the lock pins, so bytes that are not it are rejected
+	// rather than run.
+	t.Run("ctx bytes that are not the pinned release are rejected", func(t *testing.T) {
 		cacheHome := t.TempDir()
 		t.Setenv("XDG_CACHE_HOME", cacheHome)
 
@@ -83,7 +53,7 @@ func TestAI_GetDenoBinaryCtxEmbeddedData(t *testing.T) {
 
 		path, err := ts.GetDenoBinary(ctx, "")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "checksum format")
+		assert.Contains(t, err.Error(), "integrity check failed")
 		assert.Empty(t, path)
 	})
 
@@ -116,7 +86,6 @@ func TestAI_GetDenoBinaryCtxEmbeddedData(t *testing.T) {
 
 		ctx := ts.NewContextWithTSOptions(context.Background(), common.TypeScriptOptions{
 			EmbeddedDenoCompressed: []byte("not gzip at all"),
-			EmbeddedDenoSHA256:     "short-and-invalid",
 		})
 
 		chrt := &v2chart.Chart{Metadata: &v2chart.Metadata{Name: "no-ts", Version: "0.1.0", APIVersion: "v2"}}

@@ -312,11 +312,11 @@ tasks:
     sources:
       - pkg/ts/downloader.go
       - pkg/ts/denolock/data/lock.json
-      - cmd/embed-deno/main.go
+      - scripts/embed-deno/main.go
     generates:
       - pkg/ts/embed/{{.platform}}/deno.gz
     cmds:
-      - env -u GOOS -u GOARCH DENO_EMBED_PLATFORM="{{.platform}}" go run ./cmd/embed-deno
+      - env -u GOOS -u GOARCH DENO_EMBED_PLATFORM="{{.platform}}" go run ./scripts/embed-deno
 
   deno:lock:
     desc: "Re-pin the Deno release nelm downloads and embeds, and commit the result. Bump with: task deno:lock -- -version 2.8.0."
