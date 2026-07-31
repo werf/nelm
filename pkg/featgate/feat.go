@@ -53,6 +53,10 @@ var (
 		"typescript",
 		`Enable TypeScript chart rendering from ts/ directory`,
 	)
+	FeatGateAdoptDeckhouseControllerFields = NewFeatGate(
+		"adopt-deckhouse-controller-fields",
+		`Adopt managed fields owned by the legacy "deckhouse-controller" field manager (the pre-nelm Helm 3 engine). Unsafe if any resource still has hook-owned "deckhouse-controller" entries`,
+	)
 )
 
 // A feature gate, which enabled/disables a specific feature. Can be toggled via an env var or
