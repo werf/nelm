@@ -298,9 +298,10 @@ type ChartLoadOptions struct {
 }
 
 type TypeScriptOptions struct {
-	DenoBinaryPath         string
+	DenoBinaryPath string
+	// EmbeddedDenoCompressed is a gzipped Deno binary an embedder ships instead of letting nelm
+	// download one. It must be the release pkg/ts/denolock pins, which is what it is checked against.
 	EmbeddedDenoCompressed []byte
-	EmbeddedDenoSHA256     string
 }
 
 type helmOptionsContextKey struct{}

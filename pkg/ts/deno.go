@@ -18,6 +18,7 @@ import (
 	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
 	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/ts/denolock"
 )
 
 var chartTSEntryPoints = [...]string{common.ChartTSEntryPointTS, common.ChartTSEntryPointJS}
@@ -167,8 +168,13 @@ func getDenoBinary(ctx context.Context, binaryPath string) (string, error) {
 		return binaryPath, nil
 	}
 
-	if opts := GetTSOptionsFromContext(ctx); len(opts.EmbeddedDenoCompressed) > 0 || opts.EmbeddedDenoSHA256 != "" {
-		path, err := ExtractEmbeddedDeno(ctx, opts.EmbeddedDenoCompressed, opts.EmbeddedDenoSHA256)
+	if opts := GetTSOptionsFromContext(ctx); len(opts.EmbeddedDenoCompressed) > 0 {
+		pinned, err := denolock.Get(runtime.GOOS, runtime.GOARCH)
+		if err != nil {
+			return "", fmt.Errorf("get the pinned Deno release: %w", err)
+		}
+
+		path, err := extractEmbeddedDeno(ctx, opts.EmbeddedDenoCompressed, pinned.BinarySHA256)
 		if err != nil {
 			return "", fmt.Errorf("extract embedded Deno binary: %w", err)
 		}
