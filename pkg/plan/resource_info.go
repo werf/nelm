@@ -17,6 +17,7 @@ import (
 
 	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/resource"
@@ -447,6 +448,7 @@ func exclusiveOwnershipForOurManager(managedFields []v1.ManagedFieldsEntry, ours
 
 		if managedField.Manager == common.DefaultFieldManager ||
 			managedField.Manager == common.KubectlEditFieldManager ||
+			(featgate.FeatGateAdoptDeckhouseControllerFields.Enabled() && managedField.Manager == common.OldDeckhouseControllerManager) ||
 			strings.HasPrefix(managedField.Manager, common.OldFieldManagerPrefix) {
 			continue
 		}
@@ -823,6 +825,7 @@ func removeUndesirableManagers(managedFields []v1.ManagedFieldsEntry, oursEntry 
 
 			changed = true
 		} else if (!noRemoveManualChanges && managedField.Manager == common.KubectlEditFieldManager) ||
+			(featgate.FeatGateAdoptDeckhouseControllerFields.Enabled() && managedField.Manager == common.OldDeckhouseControllerManager) ||
 			strings.HasPrefix(managedField.Manager, common.OldFieldManagerPrefix) {
 			merged, mergeChanged := lo.Must2(util.MergeJSON(fieldsByte, oursFieldsByte))
 			if mergeChanged {
