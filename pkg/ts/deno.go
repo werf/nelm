@@ -213,10 +213,6 @@ func getDenoBinary(ctx context.Context, binaryPath string) (string, error) {
 		if err := fileLock.Unlock(); err != nil {
 			log.Default.Error(ctx, "release lock on Deno cache: %v", err)
 		}
-
-		if err := os.Remove(lockFile); err != nil {
-			log.Default.Error(ctx, "remove Deno cache lock file: %v", err)
-		}
 	}()
 
 	if _, err := os.Stat(denoPath); err == nil {

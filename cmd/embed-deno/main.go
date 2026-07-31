@@ -11,6 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/samber/lo"
+
+	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/ts"
 )
 
@@ -23,41 +26,22 @@ var platforms = [][2]string{
 }
 
 func run() error {
-	embedRoot := os.Getenv("DENO_EMBED_ROOT")
-	if embedRoot == "" {
-		embedRoot = filepath.Join("pkg", "ts", "embed")
+	platform := os.Getenv("DENO_EMBED_PLATFORM")
+	if platform == "" {
+		return fmt.Errorf("DENO_EMBED_PLATFORM is required: want <os>/<arch>")
 	}
 
-	requested := platforms
-
-	if platform := os.Getenv("DENO_EMBED_PLATFORM"); platform != "" {
-		goos, goarch, found := strings.Cut(platform, "/")
-		if !found {
-			return fmt.Errorf("parse DENO_EMBED_PLATFORM %q: want <os>/<arch>", platform)
-		}
-
-		known := false
-		for _, p := range platforms {
-			if p[0] == goos && p[1] == goarch {
-				known = true
-
-				break
-			}
-		}
-
-		if !known {
-			return fmt.Errorf("unsupported DENO_EMBED_PLATFORM %q", platform)
-		}
-
-		requested = [][2]string{{goos, goarch}}
+	goos, goarch, found := strings.Cut(platform, "/")
+	if !found {
+		return fmt.Errorf("parse DENO_EMBED_PLATFORM %q: want <os>/<arch>", platform)
 	}
 
-	ctx := context.Background()
+	if !lo.ContainsBy(platforms, func(p [2]string) bool { return p[0] == goos && p[1] == goarch }) {
+		return fmt.Errorf("unsupported DENO_EMBED_PLATFORM %q", platform)
+	}
 
-	for _, platform := range requested {
-		if err := embedPlatform(ctx, platform[0], platform[1], embedRoot); err != nil {
-			return fmt.Errorf("embed %s/%s: %w", platform[0], platform[1], err)
-		}
+	if err := embedPlatform(context.Background(), goos, goarch, filepath.Join("pkg", "ts", "embed")); err != nil {
+		return fmt.Errorf("embed %s/%s: %w", goos, goarch, err)
 	}
 
 	return nil
@@ -127,6 +111,14 @@ func embedPlatform(ctx context.Context, goos, goarch, embedRoot string) error {
 
 	defer os.Remove(sha256TmpPath)
 
+	if err := os.Remove(gzPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove %s: %w", gzPath, err)
+	}
+
+	if err := os.Remove(sha256Path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove %s: %w", sha256Path, err)
+	}
+
 	if err := os.Rename(gzTmpPath, gzPath); err != nil {
 		return fmt.Errorf("rename %s to %s: %w", gzTmpPath, gzPath, err)
 	}
@@ -135,14 +127,14 @@ func embedPlatform(ctx context.Context, goos, goarch, embedRoot string) error {
 		return fmt.Errorf("rename %s to %s: %w", sha256TmpPath, sha256Path, err)
 	}
 
-	fmt.Printf("Embedded deno for %s/%s (sha256 %s)\n", goos, goarch, decompressedSha256)
+	log.Default.Info(ctx, "Embedded deno for %s/%s (sha256 %s)", goos, goarch, decompressedSha256)
 
 	return nil
 }
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintf(os.Stderr, "embed-deno: %v\n", err)
+		log.Default.Error(context.Background(), "embed-deno: %v", err)
 		os.Exit(1)
 	}
 }
