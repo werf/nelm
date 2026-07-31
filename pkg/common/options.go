@@ -222,17 +222,15 @@ type ResourceValidationOptions struct {
 	NoResourceValidation bool `json:"noResourceValidation"`
 	// NoValuesSchemaValidation disables values validation against json schema.
 	NoValuesSchemaValidation bool `json:"noValuesSchemaValidation"`
-	// LocalResourceValidation Disable KubeConform resource validation.
+	// LocalResourceValidation validates by using kubeconform embedded schemas and client-go codec only.
 	LocalResourceValidation bool `json:"localResourceValidation"`
-	// ValidationKubeVersion sets specific Kubernetes version and respective schemas to use on resource validation.
-	ValidationKubeVersion string `json:"validationKubeVersion"`
 	// ValidationSkip Do not validate resources with specific attributes.
 	ValidationSkip []string `json:"validationSkip"`
 	// ValidationSchemaCacheLifetime how long the schema cache should be valid.
 	ValidationSchemaCacheLifetime time.Duration `json:"validationSchemaCacheLifetime"`
-	// ValidationSchemas default schema sources to validate Kubernetes resources.
-	ValidationSchemas []string `json:"validationSchemas"`
-	// ValidationExtraSchemas extra schema sources to validate Kubernetes resources (preferred).
+	// ValidationExtraSchemas are additional schema sources to validate Kubernetes resources
+	// against. They are preferred over the json schemas embedded into the binary, which are used
+	// for whatever these sources have no schema for.
 	ValidationExtraSchemas []string `json:"validationExtraSchemas"`
 }
 

@@ -351,14 +351,7 @@ func AddResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceValidati
 		return fmt.Errorf("add flag: %w", err)
 	}
 
-	if err := cli.AddFlag(cmd, &cfg.LocalResourceValidation, "local-resource-validation", false, "Do not use external json schema sources", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                resourceValidationGroup,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.ValidationKubeVersion, "resource-validation-kube-version", common.DefaultResourceValidationKubeVersion, "Kubernetes schemas version to use during resource validation", cli.AddFlagOptions{
+	if err := cli.AddFlag(cmd, &cfg.LocalResourceValidation, "local-resource-validation", false, "Do not use external json schema sources, validate against the json schemas embedded into the binary instead", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                resourceValidationGroup,
 	}); err != nil {
@@ -373,15 +366,7 @@ func AddResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceValidati
 		return fmt.Errorf("add flag: %w", err)
 	}
 
-	if err := cli.AddFlag(cmd, &cfg.ValidationSchemas, "resource-validation-schema", common.DefaultResourceValidationSchema, "Default json schema sources to validate resources. Must be a valid go template defining a http(s) URL, or an absolute path on local file system", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalMultiEnvVarRegexes,
-		Group:                resourceValidationGroup,
-		NoSplitOnCommas:      true,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
-	if err := cli.AddFlag(cmd, &cfg.ValidationExtraSchemas, "resource-validation-extra-schema", []string{}, "Extra json schema sources to validate resources (preferred over default sources). Must be a valid go template defining a http(s) URL, or an absolute path on local file system", cli.AddFlagOptions{
+	if err := cli.AddFlag(cmd, &cfg.ValidationExtraSchemas, "resource-validation-extra-schema", []string{}, "Extra json schema sources to validate resources, preferred over the json schemas embedded into the binary. Which source served a resource kind is cached for --resource-validation-cache-lifetime, so a schema that only appears in these sources later takes over once that entry expires, whereas changing this option resets the cache at once. Must be a valid go template defining a http(s) URL, or an absolute path on local file system. Example: https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalMultiEnvVarRegexes,
 		Group:                resourceValidationGroup,
 		NoSplitOnCommas:      true,

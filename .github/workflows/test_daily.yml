@@ -11,6 +11,9 @@ jobs:
   lint:
     uses: ./.github/workflows/_lint.yml
 
+  check_validation_schemas_upstream:
+    uses: ./.github/workflows/_check_validation_schemas_upstream.yml
+
   unit:
     uses: ./.github/workflows/_test_unit.yml
     with:
@@ -26,6 +29,7 @@ jobs:
     if: always()
     needs:
       - lint
+      - check_validation_schemas_upstream
       - coverage_report
     uses: werf/common-ci/.github/workflows/notification.yml@main
     secrets:

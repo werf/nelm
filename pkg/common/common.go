@@ -93,8 +93,16 @@ const (
 	StoreAsHook    StoreAs = "hook"
 	StoreAsRegular StoreAs = "regular"
 
+	// CacheDirAPIResourceJSONSchemas is where the JSON schemas downloaded from the schema sources
+	// configured by the user are cached. Unchanged on purpose: moving it would orphan the schemas
+	// every existing installation has already downloaded, with nothing to clean them up afterwards.
 	CacheDirAPIResourceJSONSchemas = CacheSubdirNelm + "/api-resource-json-schemas"
-	CacheSubdirNelm                = "nelm"
+	// CacheDirEmbeddedAPIResourceJSONSchemas is where the JSON schemas embedded into the binary are
+	// unpacked to, so that they are validated against from disk instead of from memory. It nests under
+	// the directory above, which holds nothing but hash named per source directories, so a new name
+	// cannot collide with one of those.
+	CacheDirEmbeddedAPIResourceJSONSchemas = CacheDirAPIResourceJSONSchemas + "/embedded"
+	CacheSubdirNelm                        = "nelm"
 	// ChartTSBundleFile is the path to the bundle in a Helm chart.
 	ChartTSBundleFile = ChartTSSourceDir + "dist/bundle.js"
 	// ChartTSEntryPointJS is the JavaScript entry point path.
@@ -123,28 +131,26 @@ const (
 	DefaultProgressPrintInterval        = 5 * time.Second
 	DefaultQPSLimit                     = 30
 	DefaultReleaseHistoryLimit          = 10
-	// DefaultResourceValidationKubeVersion Kubernetes version to use during resource validation by kubeconform
-	DefaultResourceValidationKubeVersion = "1.35.0"
-	DefaultWebhookRetryTimeout           = 4 * time.Minute
-	KubectlEditFieldManager              = "kubectl-edit"
-	LockConfigMapName                    = "werf-synchronization"
-	OldFieldManagerPrefix                = "werf"
-	OutputFormatJSON                     = "json"
-	OutputFormatTable                    = "table"
-	OutputFormatYAML                     = "yaml"
-	ReleaseStorageDriverConfigMap        = "configmap"
-	ReleaseStorageDriverConfigMaps       = "configmaps"
-	ReleaseStorageDriverDefault          = ""
-	ReleaseStorageDriverMemory           = "memory"
-	ReleaseStorageDriverSQL              = "sql"
-	ReleaseStorageDriverSecret           = "secret"
-	ReleaseStorageDriverSecrets          = "secrets"
-	StageEndSuffix                       = "end"
-	StagePrefix                          = "stage"
-	StageStartSuffix                     = "start"
-	StubReleaseName                      = "stub-release"
-	StubReleaseNamespace                 = "stub-namespace"
-	TSDefaultRenderContextType           = TSGenericRenderContextType
+	DefaultWebhookRetryTimeout          = 4 * time.Minute
+	KubectlEditFieldManager             = "kubectl-edit"
+	LockConfigMapName                   = "werf-synchronization"
+	OldFieldManagerPrefix               = "werf"
+	OutputFormatJSON                    = "json"
+	OutputFormatTable                   = "table"
+	OutputFormatYAML                    = "yaml"
+	ReleaseStorageDriverConfigMap       = "configmap"
+	ReleaseStorageDriverConfigMaps      = "configmaps"
+	ReleaseStorageDriverDefault         = ""
+	ReleaseStorageDriverMemory          = "memory"
+	ReleaseStorageDriverSQL             = "sql"
+	ReleaseStorageDriverSecret          = "secret"
+	ReleaseStorageDriverSecrets         = "secrets"
+	StageEndSuffix                      = "end"
+	StagePrefix                         = "stage"
+	StageStartSuffix                    = "start"
+	StubReleaseName                     = "stub-release"
+	StubReleaseNamespace                = "stub-namespace"
+	TSDefaultRenderContextType          = TSGenericRenderContextType
 	// TSGenericRenderContextType is the TypeScript render context type name for nelm charts.
 	TSGenericRenderContextType = "RenderContext"
 	// TSWerfRenderContextType is the TypeScript render context type name for werf charts.
@@ -240,11 +246,7 @@ var (
 	SprigFuncs                                          = sprig.TxtFuncMap()
 	DefaultDockerConfig                                 = filepath.Join(userHomeDir(), ".docker")
 	DefaultPlanArtifactLifetime                         = 2 * time.Hour
-	DefaultResourceValidationSchema                     = []string{
-		"https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json",
-		"https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json",
-	}
-	DefaultResourceValidationCacheLifetime = 48 * time.Hour
+	DefaultResourceValidationCacheLifetime              = 48 * time.Hour
 )
 
 // Type of the current operation.
