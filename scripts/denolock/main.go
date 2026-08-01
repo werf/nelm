@@ -11,7 +11,6 @@ import (
 	"flag"
 	"fmt"
 	"maps"
-	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -20,9 +19,11 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/go-resty/resty/v2"
 
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/ts/denolock"
+	"github.com/werf/nelm/pkg/util"
 )
 
 const (
@@ -63,7 +64,8 @@ func run(ctx context.Context) error {
 		return verifyLock(ctx, opts)
 	}
 
-	client := &http.Client{Timeout: requestTimeout}
+	client := util.NewRestyClient(ctx)
+	client.SetTimeout(requestTimeout)
 
 	if opts.checkUpstream {
 		return checkUpstream(ctx, client, opts)
@@ -77,7 +79,7 @@ func run(ctx context.Context) error {
 	return generate(ctx, client, opts)
 }
 
-func generate(ctx context.Context, client *http.Client, opts options) error {
+func generate(ctx context.Context, client *resty.Client, opts options) error {
 	version, err := resolveVersion(opts)
 	if err != nil {
 		return err
@@ -145,14 +147,14 @@ func generate(ctx context.Context, client *http.Client, opts options) error {
 	return nil
 }
 
-func pinPlatform(ctx context.Context, client *http.Client, version, platform string) (*platformResult, error) {
+func pinPlatform(ctx context.Context, client *resty.Client, version, platform string) (*platformResult, error) {
 	goos, _, _ := strings.Cut(platform, "/")
 	target := targets[platform]
 	archiveURL := denolock.ArchiveURLFor(version, target)
 
 	log.Default.Info(ctx, "Downloading %s", archiveURL)
 
-	archive, err := download(ctx, client, archiveURL)
+	archive, err := get(ctx, client, archiveURL)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +193,7 @@ func pinPlatform(ctx context.Context, client *http.Client, version, platform str
 // GitHub lets an asset be replaced without moving its tag. It compares the published checksums
 // rather than downloading a few hundred megabytes, which is enough to notice a swap but is not
 // verification — that is the lock's job.
-func checkUpstream(ctx context.Context, client *http.Client, opts options) error {
+func checkUpstream(ctx context.Context, client *resty.Client, opts options) error {
 	lock, err := readLock(opts.outputPath)
 	if err != nil {
 		return err

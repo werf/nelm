@@ -9,51 +9,32 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
-	"os"
 	"strings"
-	"time"
+
+	"github.com/go-resty/resty/v2"
 
 	"github.com/werf/nelm/pkg/ts/denolock"
 )
 
-const (
-	downloadAttempts = 3
-	retryDelay       = 3 * time.Second
-	sha256HexLen     = 64
-)
+const sha256HexLen = 64
 
-func download(ctx context.Context, client *http.Client, url string) ([]byte, error) {
-	var lastErr error
-
-	for attempt := 1; attempt <= downloadAttempts; attempt++ {
-		body, retriable, err := getOnce(ctx, client, url)
-		if err == nil {
-			return body, nil
-		}
-
-		lastErr = err
-
-		if !retriable || ctx.Err() != nil {
-			break
-		}
-
-		if attempt < downloadAttempts {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(retryDelay):
-			}
-		}
+func get(ctx context.Context, client *resty.Client, url string) ([]byte, error) {
+	response, err := client.R().SetContext(ctx).Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("get %s: %w", url, err)
 	}
 
-	return nil, lastErr
+	if response.IsError() {
+		return nil, fmt.Errorf("get %s: %s", url, response.Status())
+	}
+
+	return response.Body(), nil
 }
 
-func fetchUpstreamChecksum(ctx context.Context, client *http.Client, archiveURL string) (string, error) {
+func fetchUpstreamChecksum(ctx context.Context, client *resty.Client, archiveURL string) (string, error) {
 	checksumURL := archiveURL + denolock.ChecksumURLSuffix
 
-	body, err := download(ctx, client, checksumURL)
+	body, err := get(ctx, client, checksumURL)
 	if err != nil {
 		return "", err
 	}
@@ -119,8 +100,8 @@ func extractDenoBinary(archive []byte, goos string) ([]byte, error) {
 	return nil, fmt.Errorf("no %s in archive", binaryName)
 }
 
-func latestVersion(ctx context.Context, client *http.Client) (string, error) {
-	body, err := download(ctx, client, latestReleaseURL)
+func latestVersion(ctx context.Context, client *resty.Client) (string, error) {
+	body, err := get(ctx, client, latestReleaseURL)
 	if err != nil {
 		return "", err
 	}
@@ -144,36 +125,4 @@ func sha256Hex(data []byte) string {
 	digest := sha256.Sum256(data)
 
 	return hex.EncodeToString(digest[:])
-}
-
-func getOnce(ctx context.Context, client *http.Client, url string) ([]byte, bool, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, false, fmt.Errorf("create request for %s: %w", url, err)
-	}
-
-	// Authenticating lifts the GitHub API rate limit, which is easy to hit on shared CI runners.
-	if token := os.Getenv("GITHUB_TOKEN"); token != "" && strings.HasPrefix(url, "https://api.github.com/") {
-		request.Header.Set("Authorization", "Bearer "+token)
-	}
-
-	response, err := client.Do(request)
-	if err != nil {
-		return nil, true, fmt.Errorf("get %s: %w", url, err)
-	}
-
-	defer response.Body.Close()
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, true, fmt.Errorf("read response of %s: %w", url, err)
-	}
-
-	if response.StatusCode != http.StatusOK {
-		retriable := response.StatusCode >= http.StatusInternalServerError || response.StatusCode == http.StatusTooManyRequests
-
-		return nil, retriable, fmt.Errorf("get %s: unexpected status %s", url, response.Status)
-	}
-
-	return body, false, nil
 }
