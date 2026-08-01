@@ -19,7 +19,7 @@ history. It is the same reason `go.sum` and `Cargo.lock` exist. Changing what ne
 a commit rather than control of a download.
 
 What this does not cover: a release that was already malicious when it was pinned. Against that only
-upstream provenance helps, which Deno does not publish — the v2.7.1 assets are archives and
+upstream provenance helps, which Deno does not publish — the v2.9.4 assets are archives and
 `.sha256sum` files, nothing signed.
 
 ## Regenerating
