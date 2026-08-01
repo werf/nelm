@@ -10,6 +10,8 @@ import (
 	"github.com/werf/nelm/pkg/ts/denolock"
 )
 
+// There is a blob only for the platforms denolock pins, so a tagged build for any other one fails
+// with "undefined: embeddedDeno".
 func embeddedDenoBinary(ctx context.Context) (string, bool, error) {
 	pinned, err := denolock.Get(runtime.GOOS, runtime.GOARCH)
 	if err != nil {
