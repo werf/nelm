@@ -41,8 +41,6 @@ func TestAI_GetDenoBinaryCtxEmbeddedData(t *testing.T) {
 		assertNoEmbeddedCacheDirs(t, cacheHome)
 	})
 
-	// An embedder can only hand over the release the lock pins, so bytes that are not it are rejected
-	// rather than run.
 	t.Run("ctx bytes that are not the pinned release are rejected", func(t *testing.T) {
 		cacheHome := t.TempDir()
 		t.Setenv("XDG_CACHE_HOME", cacheHome)
