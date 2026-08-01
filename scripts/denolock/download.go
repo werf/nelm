@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/go-resty/resty/v2"
@@ -101,10 +102,24 @@ func extractDenoBinary(archive []byte, goos string) ([]byte, error) {
 }
 
 func latestVersion(ctx context.Context, client *resty.Client) (string, error) {
-	body, err := get(ctx, client, latestReleaseURL)
-	if err != nil {
-		return "", err
+	request := client.R().SetContext(ctx)
+
+	// The only call that hits the GitHub API, and the drift check runs daily from shared CI runners,
+	// where the unauthenticated rate limit is easy to hit.
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		request.SetHeader("Authorization", "Bearer "+token)
 	}
+
+	response, err := request.Get(latestReleaseURL)
+	if err != nil {
+		return "", fmt.Errorf("get %s: %w", latestReleaseURL, err)
+	}
+
+	if response.IsError() {
+		return "", fmt.Errorf("get %s: %s", latestReleaseURL, response.Status())
+	}
+
+	body := response.Body()
 
 	var release struct {
 		TagName string `json:"tag_name"`

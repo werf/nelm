@@ -14,6 +14,9 @@ jobs:
   check_validation_schemas_upstream:
     uses: ./.github/workflows/_check_validation_schemas_upstream.yml
 
+  check_deno_lock_upstream:
+    uses: ./.github/workflows/_check_deno_lock_upstream.yml
+
   unit:
     uses: ./.github/workflows/_test_unit.yml
     with:
@@ -30,6 +33,7 @@ jobs:
     needs:
       - lint
       - check_validation_schemas_upstream
+      - check_deno_lock_upstream
       - coverage_report
     uses: werf/common-ci/.github/workflows/notification.yml@main
     secrets:

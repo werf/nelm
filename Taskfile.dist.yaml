@@ -385,7 +385,7 @@ tasks:
       - go run ./scripts/schemagen -check-upstream {{.CLI_ARGS}}
 
   check:deno-lock-upstream:
-    desc: "Report whether the Deno release assets the lock pins still hash to what it records. Needs network, so it is not part of lint: run it before a bump, or when a release build fails on a checksum."
+    desc: "Report whether the Deno release assets the lock pins still hash to what it records. Needs network, so it is not part of lint: it runs on a schedule."
     cmds:
       - go run ./scripts/denolock -check-upstream {{.CLI_ARGS}}
 
