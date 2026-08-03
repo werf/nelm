@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.28.0](https://github.com/werf/nelm/compare/v1.27.2...v1.28.0) (2026-08-03)
+
+
+### Features
+
+* add feat gate to own deckhouse-controller fields ([6092c11](https://github.com/werf/nelm/commit/6092c11447c48613b98a647a861186febc432a18))
+
 ## [1.27.2](https://github.com/werf/nelm/compare/v1.27.1...v1.27.2) (2026-07-23)
 
 
