@@ -372,19 +372,3 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 
 	return instResources, delResources, nil
 }
-
-func ResolveResourcePolicies(localRes *InstallableResource, liveMeta *spec.ResourceMeta, releaseNamespace string) []common.ResourcePolicy {
-	if len(localRes.ResourcePolicies) > 0 || liveMeta == nil {
-		return localRes.ResourcePolicies
-	}
-
-	// TODO(major): in the next major keep/skip-delete should also be read/respected only from the manifest, not the cluster.
-	livePolicies := lo.Filter(ResourcePolicies(liveMeta, releaseNamespace), func(p common.ResourcePolicy, _ int) bool {
-		return p == common.ResourcePolicySkipDelete
-	})
-	if len(livePolicies) == 0 {
-		return nil
-	}
-
-	return livePolicies
-}
