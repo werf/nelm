@@ -13,6 +13,7 @@ import (
 	"unicode"
 
 	"github.com/goccy/go-yaml"
+	"github.com/mitchellh/copystructure"
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -159,6 +160,11 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 
 	log.Default.TraceStruct(ctx, loadedChart, "Chart:")
 
+	pristineOverrideValues, err := deepCopyValues(overrideValues)
+	if err != nil {
+		return nil, fmt.Errorf("copy override values for chart %q: %w", chartAccessor.Name(), err)
+	}
+
 	if chartV2 != nil {
 		if err := chartv2util.ProcessDependencies(chartV2, &overrideValues); err != nil {
 			return nil, fmt.Errorf("process chart %q dependencies: %w", chartV2.Name(), err)
@@ -214,13 +220,15 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 
 	log.Default.Debug(ctx, "Rendering values for chart at %q", chartPath)
 
-	renderedValues, err := chartcommonutil.ToRenderValuesWithSchemaValidation(loadedChart, overrideValues, chartcommon.ReleaseOptions{
+	releaseOptions := chartcommon.ReleaseOptions{
 		Name:      releaseName,
 		Namespace: releaseNamespace,
 		Revision:  revision,
 		IsInstall: !isUpgrade,
 		IsUpgrade: isUpgrade,
-	}, caps, opts.NoValuesSchemaValidation)
+	}
+
+	renderedValues, err := renderValuesToleratingServiceValues(ctx, chartPath, loadedChart, overrideValues, pristineOverrideValues, releaseOptions, caps, opts.NoValuesSchemaValidation)
 	if err != nil {
 		return nil, fmt.Errorf("build rendered values for chart %q: %w", chartAccessor.Name(), err)
 	}
@@ -340,6 +348,102 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	}, nil
 }
 
+// renderValuesToleratingServiceValues coalesces and schema-validates the chart values,
+// tolerating the werf/nelm service values (werf, global, dockerconfigjson) that are injected
+// into every chart via ExtraValues. A chart whose values.schema.json rejects unknown keys
+// (e.g. additionalProperties:false) would otherwise fail validation solely because of those
+// injected keys, even when the user's own values are valid — the regression fixed here.
+//
+// On a validation failure, and only when the chart actually carries service values, the chart
+// is re-loaded from disk with ExtraValues cleared, its dependencies are re-processed from the
+// pristine (pre-processing) override values, and the service-free values are validated instead.
+// If those pass, the failure was caused only by the injected service values, so the render
+// proceeds with the original (service-merged) values and a debug message is logged. If they
+// still fail, the service-free error is returned, so the message never names keys the user did
+// not write.
+//
+// The fallback re-loads and re-validates because ProcessDependencies bakes the service values
+// into the chart's (and subcharts') coalesced defaults before this point, so suppressing them
+// after the fact is not possible without re-deriving from a pristine chart state.
+//
+// The fallback is only trusted when the service-free chart resolves the SAME dependency graph
+// as the rendered one: dependency conditions are evaluated against coalesced values that
+// include the service values (e.g. a `condition: werf.is_stub`), so clearing them could enable
+// or disable a subchart and make the validated graph differ from the rendered one. When the
+// graphs differ, the fallback is refused and the original error is returned pointing at the
+// explicit escape hatch.
+//
+// The accept path re-coalesces the original chart rather than reusing the first result. This
+// is exact for the service values werf injects, which never contain explicit nil leaves; a nil
+// leaf inside ExtraValues could in theory make the re-coalesce diverge from the first one, but
+// werf's GetServiceValues never produces one.
+func renderValuesToleratingServiceValues(ctx context.Context, chartPath string, loadedChart helmchart.Charter, overrideValues, pristineOverrideValues map[string]interface{}, releaseOptions chartcommon.ReleaseOptions, caps *chartcommon.Capabilities, skipSchemaValidation bool) (chartcommon.Values, error) {
+	renderedValues, err := chartcommonutil.ToRenderValuesWithSchemaValidation(loadedChart, overrideValues, releaseOptions, caps, skipSchemaValidation)
+	if err == nil {
+		return renderedValues, nil
+	}
+
+	if skipSchemaValidation || !chartHasExtraValues(loadedChart) {
+		return nil, fmt.Errorf("render values: %w", err)
+	}
+
+	serviceFreeChart, serviceFreeOverrideValues, loadErr := loadServiceFreeChart(ctx, chartPath, pristineOverrideValues)
+	if loadErr != nil {
+		return nil, fmt.Errorf("validate service-free values: %w (original schema validation error: %w)", loadErr, err)
+	}
+
+	if !sameDependencyGraph(loadedChart, serviceFreeChart) {
+		return nil, fmt.Errorf("service values affect which subcharts are enabled, so values cannot be validated without them; re-run with --no-values-schema-validation to skip values schema validation: %w", err)
+	}
+
+	if _, serviceFreeErr := chartcommonutil.ToRenderValuesWithSchemaValidation(serviceFreeChart, serviceFreeOverrideValues, releaseOptions, caps, false); serviceFreeErr != nil {
+		return nil, fmt.Errorf("render values: %w", serviceFreeErr)
+	}
+
+	log.Default.Debug(ctx, "Values schema validation failed only for injected service values; tolerating them for chart at %q", chartPath)
+
+	renderedValues, err = chartcommonutil.ToRenderValuesWithSchemaValidation(loadedChart, overrideValues, releaseOptions, caps, true)
+	if err != nil {
+		return nil, fmt.Errorf("render values: %w", err)
+	}
+
+	return renderedValues, nil
+}
+
+// loadServiceFreeChart re-loads the chart from disk with its service values (ExtraValues)
+// cleared and re-processes its dependencies from the pristine override values, so the returned
+// chart and override values represent what the user authored without the injected werf/global
+// keys. Only infrastructure errors (reload, copy, dependency processing) are returned; schema
+// validation of the result is done by the caller.
+func loadServiceFreeChart(ctx context.Context, chartPath string, pristineOverrideValues map[string]interface{}) (helmchart.Charter, map[string]interface{}, error) {
+	freshChart, err := loader.Load(ctx, chartPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reload chart at %q: %w", chartPath, err)
+	}
+
+	overrideValues, err := deepCopyValues(pristineOverrideValues)
+	if err != nil {
+		return nil, nil, fmt.Errorf("copy override values for chart at %q: %w", chartPath, err)
+	}
+
+	switch c := freshChart.(type) {
+	case *v2chart.Chart:
+		c.ExtraValues = nil
+		if err := chartv2util.ProcessDependencies(c, &overrideValues); err != nil {
+			return nil, nil, fmt.Errorf("process chart %q dependencies: %w", c.Name(), err)
+		}
+	case *v3chart.Chart:
+		c.ExtraValues = nil
+		if err := chartv3util.ProcessDependencies(c, overrideValues); err != nil {
+			return nil, nil, fmt.Errorf("process chart %q dependencies: %w", c.Name(), err)
+		}
+	default:
+		return nil, nil, fmt.Errorf("reloaded chart at %q has unexpected type %T", chartPath, freshChart)
+	}
+
+	return freshChart, overrideValues, nil
+}
+
 func parseLocalLookupResources(paths []string) ([]*unstructured.Unstructured, error) {
 	var resources []*unstructured.Unstructured
 
@@ -393,6 +497,32 @@ func parseLocalLookupResources(paths []string) ([]*unstructured.Unstructured, er
 	}
 
 	return resources, nil
+}
+
+// sameDependencyGraph reports whether two processed charts resolve to the same set of enabled
+// subcharts (compared by each node's full chart path, recursively).
+func sameDependencyGraph(a, b helmchart.Charter) bool {
+	sigA, err := dependencyGraphSignature(a)
+	if err != nil {
+		return false
+	}
+
+	sigB, err := dependencyGraphSignature(b)
+	if err != nil {
+		return false
+	}
+
+	if len(sigA) != len(sigB) {
+		return false
+	}
+
+	for i := range sigA {
+		if sigA[i] != sigB[i] {
+			return false
+		}
+	}
+
+	return true
 }
 
 func buildChartCapabilities(ctx context.Context, clientFactory kube.ClientFactorier, opts buildChartCapabilitiesOptions) (*chartcommon.Capabilities, error) {
@@ -489,6 +619,17 @@ func buildContextFromJSONSets(jsonSets []string) (map[string]interface{}, error)
 	return context, nil
 }
 
+func chartHasExtraValues(chrt helmchart.Charter) bool {
+	switch c := chrt.(type) {
+	case *v2chart.Chart:
+		return len(c.ExtraValues) > 0
+	case *v3chart.Chart:
+		return len(c.ExtraValues) > 0
+	default:
+		return false
+	}
+}
+
 func collectLocalLookupResource(unstruct *unstructured.Unstructured, seen map[string]bool) (*unstructured.Unstructured, error) {
 	if unstruct.GetAPIVersion() == "" {
 		return nil, fmt.Errorf("apiVersion is missing")
@@ -508,6 +649,47 @@ func collectLocalLookupResource(unstruct *unstructured.Unstructured, seen map[st
 	seen[id] = true
 
 	return unstruct, nil
+}
+
+func deepCopyValues(vals map[string]interface{}) (map[string]interface{}, error) {
+	if vals == nil {
+		return map[string]interface{}{}, nil
+	}
+
+	copied, err := copystructure.Copy(vals)
+	if err != nil {
+		return nil, fmt.Errorf("deep copy values: %w", err)
+	}
+
+	return copied.(map[string]interface{}), nil
+}
+
+func dependencyGraphSignature(chrt helmchart.Charter) ([]string, error) {
+	acc, err := helmchart.NewAccessor(chrt)
+	if err != nil {
+		return nil, fmt.Errorf("create chart accessor: %w", err)
+	}
+
+	var paths []string
+	for _, dep := range acc.Dependencies() {
+		depAcc, err := helmchart.NewAccessor(dep)
+		if err != nil {
+			return nil, fmt.Errorf("create dependency accessor: %w", err)
+		}
+
+		paths = append(paths, depAcc.ChartFullPath())
+
+		subPaths, err := dependencyGraphSignature(dep)
+		if err != nil {
+			return nil, err
+		}
+
+		paths = append(paths, subPaths...)
+	}
+
+	sort.Strings(paths)
+
+	return paths, nil
 }
 
 func isLocalChart(path string) bool {
