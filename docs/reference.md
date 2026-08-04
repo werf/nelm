@@ -2540,6 +2540,13 @@ nelm chart render [options...] [chart-dir|chart-repo-name/chart-name|chart-archi
   Secret values files paths\. Vars: \$NELM\_SECRET\_VALUES, \$NELM\_CHART\_RENDER\_SECRET\_VALUES
 
 
+**Resource validation options:**
+
+- `--no-values-schema-validation` (default: `false`)
+
+  Disable values validation against JSON schema\. Vars: \$NELM\_NO\_VALUES\_SCHEMA\_VALIDATION, \$NELM\_CHART\_RENDER\_NO\_VALUES\_SCHEMA\_VALIDATION
+
+
 **Patch options:**
 
 - `--annotations` (default: `{}`)

@@ -100,6 +100,8 @@ type ChartRenderOptions struct {
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
+	// NoValuesSchemaValidation disables validation of values against the chart's JSON schema.
+	NoValuesSchemaValidation bool
 	// OutputFilePath, if specified, writes the rendered manifests to this file instead of stdout.
 	OutputFilePath string
 	// OutputNoPrint, when true, suppresses printing the rendered manifests to stdout.
@@ -273,6 +275,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		IgnoreBundleJS:                  opts.IgnoreBundleJS,
 		DenoBinaryPath:                  opts.DenoBinaryPath,
 		LocalLookupResourcesPaths:       opts.LocalLookupResourcesPaths,
+		NoValuesSchemaValidation:        opts.NoValuesSchemaValidation,
 	}
 
 	log.Default.Debug(ctx, "Render chart")
