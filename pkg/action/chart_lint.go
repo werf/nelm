@@ -312,7 +312,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	var prevRelResSpecs []*spec.ResourceSpec
 	if prevRelease != nil {
-		prevRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, prevRelease, opts.ReleaseNamespace, false)
+		prevRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, prevRelease, opts.ReleaseNamespace)
 		if err != nil {
 			return fmt.Errorf("convert previous release to resource specs: %w", err)
 		}
@@ -320,7 +320,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
-	newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, opts.ReleaseNamespace, false)
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, opts.ReleaseNamespace)
 	if err != nil {
 		return fmt.Errorf("convert new release to resource specs: %w", err)
 	}
@@ -353,7 +353,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	var lastDeployedOrLastRelResSpecs []*spec.ResourceSpec
 	if lastDeployedOrLastRelease != nil {
-		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, lastDeployedOrLastRelease, opts.ReleaseNamespace, false)
+		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, lastDeployedOrLastRelease, opts.ReleaseNamespace)
 		if err != nil {
 			return fmt.Errorf("convert last deployed or last release to resource specs: %w", err)
 		}

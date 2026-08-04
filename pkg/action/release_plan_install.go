@@ -318,7 +318,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	var prevRelResSpecs []*spec.ResourceSpec
 	if prevRelease != nil {
-		prevRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, prevRelease, releaseNamespace, false)
+		prevRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, prevRelease, releaseNamespace)
 		if err != nil {
 			return nil, fmt.Errorf("convert previous release to resource specs: %w", err)
 		}
@@ -326,7 +326,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
-	newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, releaseNamespace, false)
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, releaseNamespace)
 	if err != nil {
 		return nil, fmt.Errorf("convert new release to resource specs: %w", err)
 	}
@@ -355,7 +355,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	var lastDeployedOrLastRelResSpecs []*spec.ResourceSpec
 	if lastDeployedOrLastRelease != nil {
-		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, lastDeployedOrLastRelease, releaseNamespace, false)
+		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, lastDeployedOrLastRelease, releaseNamespace)
 		if err != nil {
 			return nil, fmt.Errorf("convert last deployed or last release to resource specs: %w", err)
 		}

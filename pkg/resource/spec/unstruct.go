@@ -14,7 +14,6 @@ type CleanUnstructOptions struct {
 	CleanHelmShAnnos        bool
 	CleanLabels             map[string]string
 	CleanManagedFields      bool
-	CleanNullFields         bool
 	CleanReleaseAnnosLabels bool
 	CleanRuntimeData        bool
 	CleanWerfIoAnnos        bool
@@ -69,10 +68,6 @@ func CleanUnstruct(unstruct *unstructured.Unstructured, opts CleanUnstructOption
 	if labels := unstructCopy.GetLabels(); len(labels) > 0 {
 		filteredLabels := filterAnnosOrLabels(labels, cleanLabelsRegexes, opts.CleanLabels)
 		unstructCopy.SetLabels(filteredLabels)
-	}
-
-	if opts.CleanNullFields {
-		unstructCopy.Object = cleanNulls(unstructCopy.Object).(map[string]interface{})
 	}
 
 	return unstructCopy

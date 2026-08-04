@@ -260,12 +260,11 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 }
 
 // Constructs ResourceSpecs from a Release object.
-func ReleaseToResourceSpecs(ctx context.Context, rel helmrel.Accessor, releaseNamespace string, noCleanNullFields bool) ([]*spec.ResourceSpec, error) {
+func ReleaseToResourceSpecs(ctx context.Context, rel helmrel.Accessor, releaseNamespace string) ([]*spec.ResourceSpec, error) {
 	var resources []*spec.ResourceSpec
 	for _, manifest := range util.SplitManifests(rel.UnstoredManifest()) {
 		if res, err := spec.NewResourceSpecFromManifest(ctx, manifest, releaseNamespace, spec.ResourceSpecOptions{
 			StoreAs:                         common.StoreAsNone,
-			LegacyNoCleanNullFields:         noCleanNullFields,
 			DropInvalidAnnotationsAndLabels: true,
 		}); err != nil {
 			return nil, fmt.Errorf("construct resource spec from unstored manifest: %w", err)
@@ -277,7 +276,6 @@ func ReleaseToResourceSpecs(ctx context.Context, rel helmrel.Accessor, releaseNa
 	for _, manifest := range util.SplitManifests(rel.Manifest()) {
 		if res, err := spec.NewResourceSpecFromManifest(ctx, manifest, releaseNamespace, spec.ResourceSpecOptions{
 			StoreAs:                         common.StoreAsRegular,
-			LegacyNoCleanNullFields:         noCleanNullFields,
 			DropInvalidAnnotationsAndLabels: true,
 		}); err != nil {
 			return nil, fmt.Errorf("construct resource spec from regular manifest: %w", err)
@@ -294,7 +292,6 @@ func ReleaseToResourceSpecs(ctx context.Context, rel helmrel.Accessor, releaseNa
 
 		if res, err := spec.NewResourceSpecFromManifest(ctx, hookAcc.Manifest(), releaseNamespace, spec.ResourceSpecOptions{
 			StoreAs:                         common.StoreAsHook,
-			LegacyNoCleanNullFields:         noCleanNullFields,
 			DropInvalidAnnotationsAndLabels: true,
 		}); err != nil {
 			return nil, fmt.Errorf("construct resource spec from hook manifest: %w", err)
