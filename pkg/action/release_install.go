@@ -423,7 +423,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		var prevRelResSpecs []*spec.ResourceSpec
 		if prevRelease != nil {
-			prevRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, prevRelease, releaseNamespace, false)
+			prevRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, prevRelease, releaseNamespace)
 			if err != nil {
 				return fmt.Errorf("convert previous release to resource specs: %w", err)
 			}
@@ -431,7 +431,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		log.Default.Debug(ctx, "Convert new release to resource specs")
 
-		newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, releaseNamespace, false)
+		newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, releaseNamespace)
 		if err != nil {
 			return fmt.Errorf("convert new release to resource specs: %w", err)
 		}
@@ -463,7 +463,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		var lastDeployedOrLastRelResSpecs []*spec.ResourceSpec
 		if lastDeployedOrLastRelease != nil {
-			lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, lastDeployedOrLastRelease, releaseNamespace, false)
+			lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, lastDeployedOrLastRelease, releaseNamespace)
 			if err != nil {
 				return fmt.Errorf("convert last deployed or last release to resource specs: %w", err)
 			}
@@ -835,7 +835,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Convert prev deployed release to resource specs")
 
-	resSpecs, err := release.ReleaseToResourceSpecs(ctx, prevDeployedRelease, releaseNamespace, false)
+	resSpecs, err := release.ReleaseToResourceSpecs(ctx, prevDeployedRelease, releaseNamespace)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert previous deployed release to resource specs: %w", err))
 	}
@@ -881,14 +881,14 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Convert failed release to resource specs")
 
-	failedRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, failedRelease, releaseNamespace, false)
+	failedRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, failedRelease, releaseNamespace)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert previous release to resource specs: %w", err))
 	}
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
-	newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, releaseNamespace, false)
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, releaseNamespace)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert new release to resource specs: %w", err))
 	}
@@ -914,7 +914,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Build resource infos")
 
-	lastDeployedOrLastRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, prevDeployedRelease, releaseNamespace, false)
+	lastDeployedOrLastRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, prevDeployedRelease, releaseNamespace)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert last deployed or last release to resource specs: %w", err))
 	}

@@ -85,7 +85,6 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [`NELM_FEAT_NATIVE_RELEASE_UNINSTALL` environment variable](#nelm_feat_native_release_uninstall-environment-variable)
   - [`NELM_FEAT_PERIODIC_STACK_TRACES` environment variable](#nelm_feat_periodic_stack_traces-environment-variable)
   - [`NELM_FEAT_FIELD_SENSITIVE` environment variable](#nelm_feat_field_sensitive-environment-variable)
-  - [`NELM_FEAT_CLEAN_NULL_FIELDS` environment variable](#nelm_feat_clean_null_fields-environment-variable)
   - [`NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN` environment variable](#nelm_feat_more_detailed_exit_code_for_plan-environment-variable)
 - [More documentation](#more-documentation)
 - [Limitations](#limitations)
@@ -843,18 +842,6 @@ Example:
 ```shell
 export NELM_FEAT_FIELD_SENSITIVE=true
 nelm release plan install -n myproject -r myproject
-```
-
-### `NELM_FEAT_CLEAN_NULL_FIELDS` environment variable
-
-Improve Helm chart compatibility. When rendering charts, remove keys with `null` values from the rendered resource manifests, before applying them. Otherwise, SSA often fail on `null` values, which didn't happen with 3WM.
-
-Will be the default in the next major release.
-
-Example:
-```shell
-export NELM_FEAT_CLEAN_NULL_FIELDS=true
-nelm release install -n myproject -r myproject
 ```
 
 ### `NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN` environment variable

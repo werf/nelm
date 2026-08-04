@@ -23,9 +23,8 @@ type ResourceSpec struct {
 }
 
 func NewResourceSpec(unstruct *unstructured.Unstructured, releaseNamespace string, opts ResourceSpecOptions) *ResourceSpec {
-	unstruct = CleanUnstruct(unstruct, CleanUnstructOptions{
-		CleanNullFields: !opts.LegacyNoCleanNullFields,
-	})
+	unstruct = unstruct.DeepCopy()
+	unstruct.Object = cleanNulls(unstruct.Object).(map[string]interface{})
 
 	if opts.StoreAs == "" {
 		if IsHook(unstruct.GetAnnotations()) {
@@ -88,7 +87,6 @@ func (s *ResourceSpec) SetLabels(labels map[string]string) {
 type ResourceSpecOptions struct {
 	DropInvalidAnnotationsAndLabels bool
 	FilePath                        string
-	LegacyNoCleanNullFields         bool // TODO(major): always clean
 	StoreAs                         common.StoreAs
 }
 
