@@ -264,10 +264,6 @@ nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-
 
 **Resource validation options:**
 
-- `--local-resource-validation` (default: `false`)
-
-  Do not use external json schema sources, validate against the json schemas embedded into the binary instead\. Vars: \$NELM\_LOCAL\_RESOURCE\_VALIDATION, \$NELM\_RELEASE\_INSTALL\_LOCAL\_RESOURCE\_VALIDATION
-
 - `--no-resource-validation` (default: `false`)
 
   Disable resource validation\. Vars: \$NELM\_NO\_RESOURCE\_VALIDATION, \$NELM\_RELEASE\_INSTALL\_NO\_RESOURCE\_VALIDATION
@@ -620,10 +616,6 @@ nelm release rollback [options...] -n namespace -r release [revision]
 
 
 **Resource validation options:**
-
-- `--local-resource-validation` (default: `false`)
-
-  Do not use external json schema sources, validate against the json schemas embedded into the binary instead\. Vars: \$NELM\_LOCAL\_RESOURCE\_VALIDATION, \$NELM\_RELEASE\_ROLLBACK\_LOCAL\_RESOURCE\_VALIDATION
 
 - `--no-resource-validation` (default: `false`)
 
@@ -989,10 +981,6 @@ nelm release plan install [options...] -n namespace -r release [chart-dir|chart-
 
 
 **Resource validation options:**
-
-- `--local-resource-validation` (default: `false`)
-
-  Do not use external json schema sources, validate against the json schemas embedded into the binary instead\. Vars: \$NELM\_LOCAL\_RESOURCE\_VALIDATION, \$NELM\_RELEASE\_PLAN\_INSTALL\_LOCAL\_RESOURCE\_VALIDATION
 
 - `--no-resource-validation` (default: `false`)
 
@@ -2158,10 +2146,6 @@ nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive
 
 
 **Resource validation options:**
-
-- `--local-resource-validation` (default: `false`)
-
-  Do not use external json schema sources, validate against the json schemas embedded into the binary instead\. Vars: \$NELM\_LOCAL\_RESOURCE\_VALIDATION, \$NELM\_CHART\_LINT\_LOCAL\_RESOURCE\_VALIDATION
 
 - `--no-resource-validation` (default: `false`)
 

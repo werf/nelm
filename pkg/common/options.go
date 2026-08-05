@@ -222,8 +222,6 @@ type ResourceValidationOptions struct {
 	NoResourceValidation bool `json:"noResourceValidation"`
 	// NoValuesSchemaValidation disables values validation against json schema.
 	NoValuesSchemaValidation bool `json:"noValuesSchemaValidation"`
-	// LocalResourceValidation validates by using kubeconform embedded schemas and client-go codec only.
-	LocalResourceValidation bool `json:"localResourceValidation"`
 	// ValidationSkip Do not validate resources with specific attributes.
 	ValidationSkip []string `json:"validationSkip"`
 	// ValidationSchemaCacheLifetime how long the schema cache should be valid.
