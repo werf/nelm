@@ -351,13 +351,6 @@ func AddResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceValidati
 		return fmt.Errorf("add flag: %w", err)
 	}
 
-	if err := cli.AddFlag(cmd, &cfg.LocalResourceValidation, "local-resource-validation", false, "Do not use external json schema sources, validate against the json schemas embedded into the binary instead", cli.AddFlagOptions{
-		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
-		Group:                resourceValidationGroup,
-	}); err != nil {
-		return fmt.Errorf("add flag: %w", err)
-	}
-
 	if err := cli.AddFlag(cmd, &cfg.ValidationSkip, "resource-validation-skip", []string{}, "Skip resource validation for resources with specified attributes. Format: key1=value1,key2=value2. Supported keys: group, version, kind, name, namespace. Example: kind=Deployment,name=my-app", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                resourceValidationGroup,

@@ -44,7 +44,7 @@ type kubeConformValidator struct {
 	validators          []*kubeConformInstance
 }
 
-func newKubeConformValidator(schemaCacheLifetime time.Duration, schemaSources []string, embeddedSchemasOnly bool) (*kubeConformValidator, error) {
+func newKubeConformValidator(schemaCacheLifetime time.Duration, schemaSources []string) (*kubeConformValidator, error) {
 	kubernetesSource, err := schemas.KubernetesSource()
 	if err != nil {
 		return nil, fmt.Errorf("get embedded Kubernetes schemas: %w", err)
@@ -53,10 +53,6 @@ func newKubeConformValidator(schemaCacheLifetime time.Duration, schemaSources []
 	crdsSource, err := schemas.CRDsSource()
 	if err != nil {
 		return nil, fmt.Errorf("get embedded CRD schemas: %w", err)
-	}
-
-	if embeddedSchemasOnly {
-		schemaSources = nil
 	}
 
 	cacheSubDirName := getHash(strings.Join(schemaSources, "-"))
