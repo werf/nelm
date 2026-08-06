@@ -57,6 +57,7 @@
   - [NELM_FEAT_RESOURCE_VALIDATION](#nelm_feat_resource_validation)
   - [NELM_FEAT_TYPESCRIPT](#nelm_feat_typescript)
   - [NELM_FEAT_ADOPT_DECKHOUSE_CONTROLLER_FIELDS](#nelm_feat_adopt_deckhouse_controller_fields)
+  - [NELM_FEAT_CASE_INSENSITIVE_CONDITION_TRACKING](#nelm_feat_case_insensitive_condition_tracking)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -4171,4 +4172,10 @@ Enable TypeScript chart rendering from ts/ directory
 **Default:** `false`
 
 Adopt managed fields owned by the legacy "deckhouse\-controller" field manager \(the pre\-nelm Helm 3 engine\)\. Unsafe if any resource still has hook\-owned "deckhouse\-controller" entries
+
+### NELM_FEAT_CASE_INSENSITIVE_CONDITION_TRACKING
+
+**Default:** `false`
+
+Match custom resource status condition types case\-insensitively when detecting readiness \(e\.g\. "Ready" in addition to "ready"\)
 
