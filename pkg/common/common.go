@@ -134,6 +134,7 @@ const (
 	DefaultWebhookRetryTimeout          = 4 * time.Minute
 	KubectlEditFieldManager             = "kubectl-edit"
 	LockConfigMapName                   = "werf-synchronization"
+	OldDeckhouseControllerManager       = "deckhouse-controller"
 	OldFieldManagerPrefix               = "werf"
 	OutputFormatJSON                    = "json"
 	OutputFormatTable                   = "table"

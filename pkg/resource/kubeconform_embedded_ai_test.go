@@ -67,7 +67,6 @@ func TestAI_EmbeddedSchemasFallback(t *testing.T) {
 
 		// Sanity check: the embedded schemas do reject this resource.
 		embeddedOnlyOpts := makeValidationOptions(nil)
-		embeddedOnlyOpts.LocalResourceValidation = true
 
 		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{invalidDeployment}, embeddedOnlyOpts)
 		assertValidationError(t, err, "selector")
@@ -187,21 +186,6 @@ func TestAI_EmbeddedSchemasNotUnpackedWhenNotNeeded(t *testing.T) {
 }
 
 func TestAI_EmbeddedSchemasOnly(t *testing.T) {
-	t.Run("ignores_configured_sources", func(t *testing.T) {
-		setupTestEnvironment(t)
-
-		validDeployment := makeInstallableResource(t, validDeploymentObject(), testReleaseNamespace)
-
-		ctx := context.Background()
-
-		// Nothing is listening on this port: if the configured sources were consulted at all, looking
-		// the Deployment schema up would fail the run.
-		opts := makeValidationOptions([]string{"http://127.0.0.1:1/{{ .ResourceKind }}{{ .KindSuffix }}.json"})
-		opts.LocalResourceValidation = true
-
-		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{validDeployment}, opts)
-		assert.NoError(t, err)
-	})
 
 	t.Run("validates_invalid_resources", func(t *testing.T) {
 		setupTestEnvironment(t)
@@ -211,7 +195,7 @@ func TestAI_EmbeddedSchemasOnly(t *testing.T) {
 		invalidDeployment := makeInstallableResource(t, object, testReleaseNamespace)
 
 		ctx := context.Background()
-		opts := common.ResourceValidationOptions{LocalResourceValidation: true}
+		opts := common.ResourceValidationOptions{}
 
 		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{invalidDeployment}, opts)
 		assertValidationError(t, err, "/spec/template")
@@ -235,7 +219,7 @@ func TestAI_EmbeddedSchemasOnly(t *testing.T) {
 		// The path in the error is what tells the two validators apart: the schema reports
 		// "/spec/maxExpirationSeconds", the client-go codec would report "spec.maxExpirationSeconds".
 		ctx := context.Background()
-		opts := common.ResourceValidationOptions{LocalResourceValidation: true}
+		opts := common.ResourceValidationOptions{}
 
 		valid := makeInstallableResource(t, podCertificateRequestObject(int64(3600)), testReleaseNamespace)
 		require.NoError(t, resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{valid}, opts))
@@ -252,7 +236,7 @@ func TestAI_EmbeddedSchemasOnly(t *testing.T) {
 		validDeployment := makeInstallableResource(t, validDeploymentObject(), testReleaseNamespace)
 
 		ctx := context.Background()
-		opts := common.ResourceValidationOptions{LocalResourceValidation: true}
+		opts := common.ResourceValidationOptions{}
 
 		for range 2 {
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{validDeployment}, opts)

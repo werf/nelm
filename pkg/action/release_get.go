@@ -3,6 +3,7 @@ package action
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -10,14 +11,13 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/gookit/color"
-	"github.com/samber/lo"
 
 	"github.com/werf/nelm/pkg/common"
 	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	chartcommonutil "github.com/werf/nelm/pkg/helm/pkg/chart/common/util"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/pkg/helm/pkg/storage/driver"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -124,34 +124,32 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 
 	loader.NoChartLockWarning = ""
 
-	log.Default.Debug(ctx, "Build release history")
+	log.Default.Debug(ctx, "Get release")
 
-	history, err := release.BuildHistory(releaseName, releaseStorage, release.HistoryOptions{})
+	relAccessor, err := releaseStorage.GetRelease(releaseName, opts.Revision)
 	if err != nil {
-		return nil, fmt.Errorf("build release history: %w", err)
-	}
+		if !errors.Is(err, driver.ErrReleaseNotFound) {
+			return nil, fmt.Errorf("get release: %w", err)
+		}
 
-	releases := history.Releases()
-	if len(releases) == 0 {
+		if opts.Revision != 0 {
+			_, existsErr := releaseStorage.GetRelease(releaseName, 0)
+			if existsErr == nil {
+				return nil, &ReleaseRevisionNotFoundError{
+					ReleaseName:      releaseName,
+					ReleaseNamespace: releaseNamespace,
+					Revision:         opts.Revision,
+				}
+			}
+
+			if !errors.Is(existsErr, driver.ErrReleaseNotFound) {
+				return nil, fmt.Errorf("check release existence: %w", existsErr)
+			}
+		}
+
 		return nil, &ReleaseNotFoundError{
 			ReleaseName:      releaseName,
 			ReleaseNamespace: releaseNamespace,
-		}
-	}
-
-	var relAccessor helmrel.Accessor
-	if opts.Revision == 0 {
-		relAccessor = lo.LastOrEmpty(releases)
-	} else {
-		var revisionFound bool
-
-		relAccessor, revisionFound = history.FindRevision(opts.Revision)
-		if !revisionFound {
-			return nil, &ReleaseRevisionNotFoundError{
-				ReleaseName:      releaseName,
-				ReleaseNamespace: releaseNamespace,
-				Revision:         opts.Revision,
-			}
 		}
 	}
 

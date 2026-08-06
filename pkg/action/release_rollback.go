@@ -51,6 +51,8 @@ type ReleaseRollbackOptions struct {
 	// ForceAdoption, when true, allows adopting resources that belong to a different Helm release.
 	// WARNING: This can lead to conflicts if resources are managed by multiple releases.
 	ForceAdoption bool
+	// LegacyNoReleaseLock, when true, disables acquiring the werf-synchronization release lock in the cluster.
+	LegacyNoReleaseLock bool
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
@@ -156,20 +158,24 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	}
 
 	var lockManager *lock.LockManager
-	if m, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory); err != nil {
-		return fmt.Errorf("construct lock manager: %w", err)
-	} else {
-		lockManager = m
+	if !opts.LegacyNoReleaseLock {
+		if m, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory); err != nil {
+			return fmt.Errorf("construct lock manager: %w", err)
+		} else {
+			lockManager = m
+		}
 	}
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Start rollback of release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-	if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
-		return fmt.Errorf("lock release: %w", err)
-	} else {
-		defer func() {
-			_ = lockManager.Unlock(lock)
-		}()
+	if lockManager != nil {
+		if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
+			return fmt.Errorf("lock release: %w", err)
+		} else {
+			defer func() {
+				_ = lockManager.Unlock(lock)
+			}()
+		}
 	}
 
 	log.Default.Debug(ctx, "Build release history")
@@ -365,10 +371,12 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		}
 	}
 
-	releaseIsUpToDate, err := release.IsReleaseUpToDate(prevRelease, newRelease)
+	result, err := release.IsReleaseUpToDate(prevRelease, newRelease)
 	if err != nil {
 		return fmt.Errorf("check if release is up to date: %w", err)
 	}
+
+	releaseIsUpToDate := result.UpToDate
 
 	installPlanIsUseless := lo.NoneBy(installPlan.Operations(), func(op *plan.Operation) bool {
 		switch op.Category {

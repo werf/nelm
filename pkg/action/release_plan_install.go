@@ -408,10 +408,12 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		}
 	}
 
-	releaseIsUpToDate, err := release.IsReleaseUpToDate(prevRelease, newRelease)
+	result, err := release.IsReleaseUpToDate(prevRelease, newRelease)
 	if err != nil {
 		return nil, fmt.Errorf("check if release is up to date: %w", err)
 	}
+
+	releaseIsUpToDate := result.UpToDate
 
 	installPlanIsUseless := lo.NoneBy(installPlan.Operations(), func(op *plan.Operation) bool {
 		switch op.Category {
@@ -432,7 +434,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	if releaseIsUpToDate && installPlanIsUseless {
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("No changes planned for release %q (namespace: %q)", releaseName, releaseNamespace)))
 	} else if installPlanIsUseless || len(changes) == 0 {
-		log.Default.Info(ctx, color.Style{color.Bold, color.Yellow}.Render(fmt.Sprintf("No resource changes planned, but still must install release %q (namespace: %q)", releaseName, releaseNamespace)))
+		log.Default.Info(ctx, color.Style{color.Bold, color.Yellow}.Render(releaseMustInstallMessage(releaseName, releaseNamespace, result.Reason)))
 	}
 
 	planArtifact := &PlanArtifact{
@@ -589,4 +591,13 @@ func logSummaryLine(ctx context.Context, changes []*plan.ResourceChange, changeT
 	if len(filteredChanges) > 0 {
 		log.Default.Info(ctx, "- %s: %d resources", filteredChanges[0].TypeStyle.Render(changeType), len(filteredChanges))
 	}
+}
+
+func releaseMustInstallMessage(releaseName, releaseNamespace string, reason release.ReleaseOutdatedReason) string {
+	msg := fmt.Sprintf("No resource changes planned, but still must install release %q (namespace: %q)", releaseName, releaseNamespace)
+	if reason != release.ReleaseOutdatedReasonNone {
+		msg += " because " + string(reason)
+	}
+
+	return msg
 }

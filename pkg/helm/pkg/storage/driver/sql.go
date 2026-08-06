@@ -17,6 +17,7 @@ limitations under the License.
 package driver // import "github.com/werf/nelm/pkg/helm/pkg/storage/driver"
 
 import (
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -299,6 +300,39 @@ func NewSQL(connectionString string, namespace string) (*SQL, error) {
 	driver.SetLogger(slog.Default().Handler())
 
 	return driver, nil
+}
+
+// LastVersion returns the highest revision number for the named release, or
+// ErrReleaseNotFound if the release does not exist. It reads only the version
+// column and decodes no release body.
+func (s *SQL) LastVersion(name string) (int, error) {
+	qb := s.statementBuilder.
+		Select("MAX(" + sqlReleaseTableVersionColumn + ")").
+		From(sqlReleaseTableName).
+		Where(sq.Eq{sqlReleaseTableNameColumn: name}).
+		Where(sq.Eq{sqlReleaseTableOwnerColumn: sqlReleaseDefaultOwner})
+
+	if s.namespace != "" {
+		qb = qb.Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace})
+	}
+
+	query, args, err := qb.ToSql()
+	if err != nil {
+		s.Logger().Debug("failed to build query", slog.Any("error", err))
+		return 0, err
+	}
+
+	var version sql.NullInt64
+	if err := s.db.Get(&version, query, args...); err != nil {
+		s.Logger().Debug("got SQL error when getting last version of release", slog.String("name", name), slog.Any("error", err))
+		return 0, err
+	}
+
+	if !version.Valid || version.Int64 <= 0 {
+		return 0, ErrReleaseNotFound
+	}
+
+	return int(version.Int64), nil
 }
 
 // Get returns the release named by key.

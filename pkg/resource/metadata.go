@@ -157,7 +157,7 @@ func manualDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Reso
 			}
 
 			dep := &Dependency{
-				ResourceMatcher: dependencyMatcher(properties),
+				ResourceMatcher: dependencyMatcher(properties, ""),
 				ResourceState:   depState,
 			}
 
@@ -180,7 +180,7 @@ func manualDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Reso
 	return lo.Values(deps)
 }
 
-func manualDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta) []*Dependency {
+func manualDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta, releaseNamespace string) []*Dependency {
 	if spec.IsCRD(meta.GroupVersionKind.GroupKind()) {
 		return nil
 	}
@@ -202,7 +202,7 @@ func manualDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Reso
 			}
 
 			dep := &Dependency{
-				ResourceMatcher: dependencyMatcher(properties),
+				ResourceMatcher: dependencyMatcher(properties, releaseNamespace),
 				ResourceState:   depState,
 			}
 
@@ -318,7 +318,7 @@ func validateDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Re
 				depExternal = common.DependencyExternal(ext.(string))
 			}
 
-			matcher := dependencyMatcher(properties)
+			matcher := dependencyMatcher(properties, "")
 
 			if isExternalDependency(matcher, otherResMeta, depExternal) {
 				depID := keyMatches[idSubexpIndex]
@@ -341,7 +341,7 @@ func validateDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Re
 	return nil
 }
 
-func validateDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta) error {
+func validateDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta, releaseNamespace string) error {
 	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeployDependency); found {
 		for key, value := range annotations {
 			keyMatches := common.AnnotationKeyPatternDeployDependency.FindStringSubmatch(key)
@@ -426,7 +426,7 @@ func validateDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Re
 				depExternal = common.DependencyExternal(ext.(string))
 			}
 
-			matcher := dependencyMatcher(properties)
+			matcher := dependencyMatcher(properties, releaseNamespace)
 
 			if isExternalDependency(matcher, otherResMeta, depExternal) {
 				depID := keyMatches[idSubexpIndex]
@@ -516,7 +516,7 @@ func deletePropagation(meta *spec.ResourceMeta, defaultDeletePropagation apiv1.D
 	return common.DefaultDeletePropagation
 }
 
-func dependencyMatcher(properties map[string]any) *spec.ResourceMatcher {
+func dependencyMatcher(properties map[string]any, releaseNamespace string) *spec.ResourceMatcher {
 	var depNames []string
 	if depName, found := properties["name"]; found {
 		depNames = []string{depName.(string)}
@@ -524,7 +524,12 @@ func dependencyMatcher(properties map[string]any) *spec.ResourceMatcher {
 
 	var depNamespaces []string
 	if depNamespace, found := properties["namespace"]; found {
-		depNamespaces = []string{depNamespace.(string)}
+		ns := depNamespace.(string)
+		if ns == releaseNamespace {
+			ns = ""
+		}
+
+		depNamespaces = []string{ns}
 	}
 
 	var depGroups []string

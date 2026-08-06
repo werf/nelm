@@ -98,6 +98,8 @@ type ReleaseInstallOptions struct {
 	// LegacyLogRegistryStreamOut is the output writer for Helm registry client logs.
 	// Defaults to io.Discard if not set. Used for debugging registry operations.
 	LegacyLogRegistryStreamOut io.Writer
+	// LegacyNoReleaseLock, when true, disables acquiring the werf-synchronization release lock in the cluster.
+	LegacyNoReleaseLock bool
 	// LegacyPlanArtifact provides plan artifact as a result of the release plan install action.
 	LegacyPlanArtifact *PlanArtifact
 	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
@@ -271,10 +273,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	var lockManager *lock.LockManager
-	if m, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory); err != nil {
-		return fmt.Errorf("construct lock manager: %w", err)
-	} else {
-		lockManager = m
+	if !opts.LegacyNoReleaseLock {
+		if m, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory); err != nil {
+			return fmt.Errorf("construct lock manager: %w", err)
+		} else {
+			lockManager = m
+		}
 	}
 
 	if !opts.NoCreateNamespace {
@@ -285,12 +289,14 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Start release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-	if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
-		return fmt.Errorf("lock release: %w", err)
-	} else {
-		defer func() {
-			_ = lockManager.Unlock(lock)
-		}()
+	if lockManager != nil {
+		if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
+			return fmt.Errorf("lock release: %w", err)
+		} else {
+			defer func() {
+				_ = lockManager.Unlock(lock)
+			}()
+		}
 	}
 
 	log.Default.Debug(ctx, "Build release history")
@@ -517,10 +523,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}
 	}
 
-	releaseIsUpToDate, err := release.IsReleaseUpToDate(prevRelease, newRelease)
+	result, err := release.IsReleaseUpToDate(prevRelease, newRelease)
 	if err != nil {
 		return fmt.Errorf("check if release is up to date: %w", err)
 	}
+
+	releaseIsUpToDate := result.UpToDate
 
 	installPlanIsUseless := lo.NoneBy(installPlan.Operations(), func(op *plan.Operation) bool {
 		switch op.Category {
@@ -966,10 +974,12 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		}
 	}
 
-	releaseIsUpToDate, err := release.IsReleaseUpToDate(failedRelease, newRelease)
+	releaseUpToDateResult, err := release.IsReleaseUpToDate(failedRelease, newRelease)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("check if release is up to date: %w", err))
 	}
+
+	releaseIsUpToDate := releaseUpToDateResult.UpToDate
 
 	planIsUseless := lo.NoneBy(rollbackPlan.Operations(), func(op *plan.Operation) bool {
 		switch op.Category {

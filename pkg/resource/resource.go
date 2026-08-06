@@ -81,7 +81,7 @@ func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherRe
 		return nil, fmt.Errorf("validate weight: %w", err)
 	}
 
-	if err := validateDeployDependencies(res.ResourceMeta, otherResourceMetaList); err != nil {
+	if err := validateDeployDependencies(res.ResourceMeta, otherResourceMetaList, releaseNamespace); err != nil {
 		return nil, fmt.Errorf("validate deploy dependencies: %w", err)
 	}
 
@@ -107,7 +107,7 @@ func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherRe
 		return nil, fmt.Errorf("validate delete propagation: %w", err)
 	}
 
-	manDeps := manualDeployDependencies(res.ResourceMeta, otherResourceMetaList)
+	manDeps := manualDeployDependencies(res.ResourceMeta, otherResourceMetaList, releaseNamespace)
 	internalDeps := lo.Filter(manDeps, func(item *Dependency, _ int) bool {
 		return !item.External
 	})

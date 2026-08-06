@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/metadata"
 
 	"github.com/werf/nelm/pkg/common"
 	v2release "github.com/werf/nelm/pkg/helm/intern/release/v2"
@@ -29,6 +30,8 @@ type ReleaseStorager interface {
 	UpdateLabels(name string, version int, labels map[string]string) error
 	Delete(name string, version int) (helmrel.Accessor, error)
 	Query(labels map[string]string) ([]helmrel.Accessor, error)
+	// GetRelease returns a single release revision. version == 0 means the latest revision.
+	GetRelease(name string, version int) (helmrel.Accessor, error)
 }
 
 type storageAdapter struct {
@@ -53,6 +56,20 @@ func (a *storageAdapter) Delete(name string, version int) (helmrel.Accessor, err
 	rel, err := a.storage.Delete(name, version)
 	if err != nil {
 		return nil, fmt.Errorf("delete release: %w", err)
+	}
+
+	acc, err := helmrel.NewAccessor(rel)
+	if err != nil {
+		return nil, fmt.Errorf("wrap release: %w", err)
+	}
+
+	return acc, nil
+}
+
+func (a *storageAdapter) GetRelease(name string, version int) (helmrel.Accessor, error) {
+	rel, err := a.storage.GetRelease(name, version)
+	if err != nil {
+		return nil, fmt.Errorf("get release: %w", err)
 	}
 
 	acc, err := helmrel.NewAccessor(rel)
@@ -122,16 +139,30 @@ func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, cli
 			return nil, fmt.Errorf("kube client factory is required for %q storage driver", storageDriver)
 		}
 
+		metadataClient, err := metadata.NewForConfig(clientFactory.KubeConfig().RestConfig)
+		if err != nil {
+			return nil, fmt.Errorf("construct release metadata client: %w", err)
+		}
+
 		clientset := clientFactory.Static().(*kubernetes.Clientset)
 		d := helmdriver.NewSecrets(clientset.CoreV1().Secrets(namespace))
+		d.MetadataClient = metadataClient
+		d.Namespace = namespace
 		storage = helmstorage.Init(d)
 	case common.ReleaseStorageDriverConfigMap, common.ReleaseStorageDriverConfigMaps:
 		if clientFactory == nil {
 			return nil, fmt.Errorf("kube client factory is required for %q storage driver", storageDriver)
 		}
 
+		metadataClient, err := metadata.NewForConfig(clientFactory.KubeConfig().RestConfig)
+		if err != nil {
+			return nil, fmt.Errorf("construct release metadata client: %w", err)
+		}
+
 		clientset := clientFactory.Static().(*kubernetes.Clientset)
 		d := helmdriver.NewConfigMaps(clientset.CoreV1().ConfigMaps(namespace))
+		d.MetadataClient = metadataClient
+		d.Namespace = namespace
 		storage = helmstorage.Init(d)
 	case common.ReleaseStorageDriverMemory:
 		d := helmdriver.NewMemory()

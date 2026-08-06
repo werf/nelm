@@ -26,11 +26,19 @@ func (s *stubStorager) Delete(name string, version int) (helmrel.Accessor, error
 	return s.deleteRel, s.deleteErr
 }
 
+func (s *stubStorager) GetRelease(name string, version int) (helmrel.Accessor, error) {
+	return nil, nil
+}
+
 func (s *stubStorager) Query(labels map[string]string) ([]helmrel.Accessor, error) {
 	return nil, nil
 }
 
 func (s *stubStorager) Update(rls helmrel.Accessor) error {
+	return nil
+}
+
+func (s *stubStorager) UpdateLabels(name string, version int, labels map[string]string) error {
 	return nil
 }
 

@@ -149,7 +149,7 @@ func TestAI_ValidateLocal(t *testing.T) {
 	})
 
 	t.Run("integration", func(t *testing.T) {
-		t.Run("LocalResourceValidation_validates_against_embedded_schemas", func(t *testing.T) {
+		t.Run("validates_against_embedded_schemas", func(t *testing.T) {
 			setupTestEnvironment(t)
 
 			// No schema sources are configured and nothing is reachable over the network, so this
@@ -166,9 +166,7 @@ func TestAI_ValidateLocal(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := common.ResourceValidationOptions{
-				LocalResourceValidation: true,
-			}
+			opts := common.ResourceValidationOptions{}
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{invalidDeployment}, opts)
 			assertValidationError(t, err, "/spec/replicas")
@@ -235,9 +233,7 @@ func TestAI_ValidateResourceWithCodec(t *testing.T) {
 		}, testReleaseNamespace)
 
 		ctx := context.Background()
-		opts := common.ResourceValidationOptions{
-			LocalResourceValidation: true,
-		}
+		opts := common.ResourceValidationOptions{}
 
 		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{deployment}, opts)
 		assert.NoError(t, err)
@@ -258,9 +254,7 @@ func TestAI_ValidateResourceWithCodec(t *testing.T) {
 		}, testReleaseNamespace)
 
 		ctx := context.Background()
-		opts := common.ResourceValidationOptions{
-			LocalResourceValidation: true,
-		}
+		opts := common.ResourceValidationOptions{}
 
 		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{configMap}, opts)
 		assert.NoError(t, err)
@@ -281,9 +275,7 @@ func TestAI_ValidateResourceWithCodec(t *testing.T) {
 		}, testReleaseNamespace)
 
 		ctx := context.Background()
-		opts := common.ResourceValidationOptions{
-			LocalResourceValidation: true,
-		}
+		opts := common.ResourceValidationOptions{}
 
 		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{crd}, opts)
 		assert.NoError(t, err)
@@ -304,11 +296,9 @@ func TestAI_ValidateResourceWithCodec(t *testing.T) {
 		}, testReleaseNamespace)
 
 		ctx := context.Background()
-		opts := common.ResourceValidationOptions{
-			LocalResourceValidation: true,
-		}
+		opts := common.ResourceValidationOptions{}
 
-		// Since LocalResourceValidation validates against the embedded schemas instead of skipping
+		// Since validation uses the embedded schemas instead of skipping
 		// schema validation, this is now caught by the schema before the codec ever sees it.
 		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{pod}, opts)
 		assertValidationError(t, err, "/spec/containers")
@@ -341,9 +331,7 @@ func TestAI_ValidateResourceWithCodec(t *testing.T) {
 		}, testReleaseNamespace)
 
 		ctx := context.Background()
-		opts := common.ResourceValidationOptions{
-			LocalResourceValidation: true,
-		}
+		opts := common.ResourceValidationOptions{}
 
 		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{pod}, opts)
 		assertValidationError(t, err, "decode")
