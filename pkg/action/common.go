@@ -24,6 +24,7 @@ import (
 	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
+	"github.com/werf/nelm/pkg/lock"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/plan"
 	"github.com/werf/nelm/pkg/release"
@@ -293,4 +294,19 @@ func writeWithSyntaxHighlight(outStream io.Writer, text, lang string, colorLevel
 	}
 
 	return nil
+}
+
+// Reports enabled=false when release locking is disabled, in which case callers must skip acquiring
+// the lock entirely.
+func newReleaseLockManager(ctx context.Context, releaseNamespace string, clientFactory kube.ClientFactorier, legacyNoReleaseLock bool) (*lock.LockManager, bool, error) {
+	if legacyNoReleaseLock {
+		return nil, false, nil
+	}
+
+	lockManager, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory)
+	if err != nil {
+		return nil, false, fmt.Errorf("construct lock manager: %w", err)
+	}
+
+	return lockManager, true, nil
 }

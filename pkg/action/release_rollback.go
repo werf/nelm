@@ -20,7 +20,6 @@ import (
 	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
-	"github.com/werf/nelm/pkg/lock"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/plan"
 	"github.com/werf/nelm/pkg/release"
@@ -157,18 +156,14 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		return fmt.Errorf("construct release storage: %w", err)
 	}
 
-	var lockManager *lock.LockManager
-	if !opts.LegacyNoReleaseLock {
-		if m, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory); err != nil {
-			return fmt.Errorf("construct lock manager: %w", err)
-		} else {
-			lockManager = m
-		}
+	lockManager, lockEnabled, err := newReleaseLockManager(ctx, releaseNamespace, clientFactory, opts.LegacyNoReleaseLock)
+	if err != nil {
+		return err
 	}
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Start rollback of release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-	if lockManager != nil {
+	if lockEnabled {
 		if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
 			return fmt.Errorf("lock release: %w", err)
 		} else {

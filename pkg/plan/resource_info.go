@@ -600,6 +600,13 @@ func forceReadinessTrackingForReadyDependencyTargets(infos []*InstallableResourc
 	var readyMatchers []readyMatcher
 	for _, info := range infos {
 		for _, dep := range info.LocalResource.ManualDependencies {
+			// External dependencies get their own track-readiness operation keyed on the
+			// dependency itself, so forcing a same-named local resource would not serve the
+			// edge and would silently override its chart-authored fail mode.
+			if dep.External {
+				continue
+			}
+
 			if dep.ResourceState == common.ResourceStateReady {
 				readyMatchers = append(readyMatchers, readyMatcher{matcher: dep.ResourceMatcher, stage: info.Stage})
 			}

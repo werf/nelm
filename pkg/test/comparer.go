@@ -12,7 +12,7 @@ import (
 	"github.com/werf/nelm/pkg/resource"
 )
 
-func CompareInternalDependencyOption() cmp.Option {
+func CompareDependencyOption() cmp.Option {
 	sp := &spew.ConfigState{
 		Indent:                  " ",
 		DisablePointerAddresses: true,

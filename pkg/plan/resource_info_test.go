@@ -44,7 +44,7 @@ func (s *ResourceInfoSuite) SetupSuite() {
 	s.cmpOpts = cmp.Options{
 		cmpopts.EquateEmpty(),
 		test.CompareRegexpOption(),
-		test.CompareInternalDependencyOption(),
+		test.CompareDependencyOption(),
 		test.CompareResourceMetadataOption(s.releaseNamespace),
 	}
 }

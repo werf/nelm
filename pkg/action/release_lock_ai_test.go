@@ -16,7 +16,6 @@ import (
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/kube/fake"
-	"github.com/werf/nelm/pkg/lock"
 )
 
 const (
@@ -26,8 +25,8 @@ const (
 
 var lockConfigMapGVR = schema.GroupVersionResource{Version: "v1", Resource: "configmaps"}
 
-// The release actions gate locking behind LegacyNoReleaseLock by leaving lockManager nil, so what
-// distinguishes the two paths is whether the lock ConfigMap is ever touched in the cluster.
+// Exercises newReleaseLockManager, the seam all three release actions use to gate locking behind
+// LegacyNoReleaseLock: a nil manager means the caller skips acquiring the lock entirely.
 func TestAI_ReleaseLockAcquiredWhenLegacyNoReleaseLockDisabled(t *testing.T) {
 	ctx := context.Background()
 
@@ -36,7 +35,9 @@ func TestAI_ReleaseLockAcquiredWhenLegacyNoReleaseLockDisabled(t *testing.T) {
 
 	require.False(t, lockConfigMapExists(t, ctx, clientFactory), "lock ConfigMap must not exist before locking")
 
-	lockManager := newLockManagerForOptions(t, ctx, clientFactory, false)
+	lockManager, lockEnabled, err := newReleaseLockManager(ctx, lockTestReleaseNamespace, clientFactory, false)
+	require.NoError(t, err)
+	require.True(t, lockEnabled, "locking must be reported enabled")
 	require.NotNil(t, lockManager, "lock manager must be constructed when locking is enabled")
 
 	handle, err := lockManager.LockRelease(ctx, lockTestReleaseName)
@@ -53,7 +54,9 @@ func TestAI_ReleaseLockSkippedWhenLegacyNoReleaseLockEnabled(t *testing.T) {
 	clientFactory, err := fake.NewClientFactory(ctx)
 	require.NoError(t, err)
 
-	lockManager := newLockManagerForOptions(t, ctx, clientFactory, true)
+	lockManager, lockEnabled, err := newReleaseLockManager(ctx, lockTestReleaseNamespace, clientFactory, true)
+	require.NoError(t, err)
+	assert.False(t, lockEnabled, "locking must be reported disabled so callers skip acquiring")
 	assert.Nil(t, lockManager, "lock manager must not be constructed when locking is disabled")
 
 	assert.False(t, lockConfigMapExists(t, ctx, clientFactory), "disabling the release lock must not touch the lock ConfigMap")
@@ -65,7 +68,8 @@ func TestAI_ReleaseLockIsExclusiveWhenLegacyNoReleaseLockDisabled(t *testing.T) 
 	clientFactory, err := fake.NewClientFactory(ctx)
 	require.NoError(t, err)
 
-	lockManager := newLockManagerForOptions(t, ctx, clientFactory, false)
+	lockManager, _, err := newReleaseLockManager(ctx, lockTestReleaseNamespace, clientFactory, false)
+	require.NoError(t, err)
 	require.NotNil(t, lockManager)
 
 	handle, err := lockManager.LockRelease(ctx, lockTestReleaseName)
@@ -88,21 +92,6 @@ func TestAI_ReleaseLockIsExclusiveWhenLegacyNoReleaseLockDisabled(t *testing.T) 
 	assert.True(t, acquired, "the release lock must be grantable again after unlock")
 
 	require.NoError(t, lockManager.Unlock(secondHandle))
-}
-
-// Mirrors the lock-manager construction guard shared by ReleaseInstall, ReleaseRollback and
-// ReleaseUninstall, whose full action bodies need a real cluster.
-func newLockManagerForOptions(t *testing.T, ctx context.Context, clientFactory kube.ClientFactorier, legacyNoReleaseLock bool) *lock.LockManager {
-	t.Helper()
-
-	if legacyNoReleaseLock {
-		return nil
-	}
-
-	lockManager, err := lock.NewLockManager(ctx, lockTestReleaseNamespace, false, clientFactory)
-	require.NoError(t, err)
-
-	return lockManager
 }
 
 func lockConfigMapExists(t *testing.T, ctx context.Context, clientFactory kube.ClientFactorier) bool {

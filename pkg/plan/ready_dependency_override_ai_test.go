@@ -63,6 +63,43 @@ func TestAI_ReadyDependencyCrossStageDoesNotForceTracking(t *testing.T) {
 		"fail mode must remain the resource's own value when not forced")
 }
 
+func TestAI_ReadyDependencyDoesNotForceExternalDependencyTarget(t *testing.T) {
+	target := readyDepInstallableResource(
+		readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil),
+		statestore.NonBlocking,
+		statestore.IgnoreAndContinueDeployProcess,
+	)
+
+	dependent := readyDepInstallableResource(
+		readyDepConfigMapSpec("dependent", readyDepReleaseNamespace, nil),
+		statestore.WaitUntilResourceReady,
+		statestore.FailWholeDeployProcessImmediately,
+	)
+	dependent.ManualDependencies = []*resource.Dependency{
+		{
+			ResourceMatcher: &spec.ResourceMatcher{
+				Names:      []string{"target"},
+				Namespaces: []string{""},
+				Groups:     []string{""},
+				Versions:   []string{"v1"},
+				Kinds:      []string{"ConfigMap"},
+			},
+			ResourceState: common.ResourceStateReady,
+			External:      true,
+			MinMatches:    common.DefaultExternalDependencyMinMatches,
+			MaxMatches:    common.DefaultExternalDependencyMaxMatches,
+		},
+	}
+
+	infos := buildReadyDepInfos(t, target, dependent, nil)
+
+	targetInfo := findInfo(t, infos, "target")
+	require.False(t, targetInfo.MustTrackReadiness,
+		"an external ready-dependency is tracked by its own operation and must not force a same-named local resource")
+	require.Equal(t, statestore.IgnoreAndContinueDeployProcess, targetInfo.FailMode,
+		"the local resource must keep its chart-authored fail mode")
+}
+
 func TestAI_ReadyDependencyDoesNotForceCRDTarget(t *testing.T) {
 	crdInfo := &plan.InstallableResourceInfo{
 		ResourceMeta: &spec.ResourceMeta{

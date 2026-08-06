@@ -33,7 +33,7 @@ func (s *InstallableResourceSuite) SetupSuite() {
 	s.cmpOpts = cmp.Options{
 		cmpopts.EquateEmpty(),
 		test.CompareRegexpOption(),
-		test.CompareInternalDependencyOption(),
+		test.CompareDependencyOption(),
 	}
 }
 

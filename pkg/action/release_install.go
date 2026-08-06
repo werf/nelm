@@ -27,7 +27,6 @@ import (
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/legacy/progrep"
-	"github.com/werf/nelm/pkg/lock"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/plan"
 	"github.com/werf/nelm/pkg/release"
@@ -272,13 +271,9 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		return fmt.Errorf("construct release storage: %w", err)
 	}
 
-	var lockManager *lock.LockManager
-	if !opts.LegacyNoReleaseLock {
-		if m, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory); err != nil {
-			return fmt.Errorf("construct lock manager: %w", err)
-		} else {
-			lockManager = m
-		}
+	lockManager, lockEnabled, err := newReleaseLockManager(ctx, releaseNamespace, clientFactory, opts.LegacyNoReleaseLock)
+	if err != nil {
+		return err
 	}
 
 	if !opts.NoCreateNamespace {
@@ -289,7 +284,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Start release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-	if lockManager != nil {
+	if lockEnabled {
 		if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
 			return fmt.Errorf("lock release: %w", err)
 		} else {
