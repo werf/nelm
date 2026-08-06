@@ -15,6 +15,7 @@ import (
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -277,6 +278,7 @@ func execOpTrackReadiness(ctx context.Context, op *Operation, releaseNamespace s
 		NoActivityTimeout:                        opConfig.NoActivityTimeout,
 		IgnoreReadinessProbeFailsByContainerName: opConfig.IgnoreReadinessProbeFailsByContainerName,
 		CaseInsensitiveGVKMatching:               true,
+		CaseInsensitiveConditionTracking:         featgate.FeatGateCaseInsensitiveConditionTracking.Enabled(),
 		SaveLogsOnlyForNumberOfReplicas:          opConfig.SaveLogsOnlyForNumberOfReplicas,
 		SaveLogsOnlyForContainers:                opConfig.SaveLogsOnlyForContainers,
 		SaveLogsByRegex:                          opConfig.SaveLogsByRegex,
