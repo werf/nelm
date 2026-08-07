@@ -25,10 +25,6 @@ var (
 		"adopt-deckhouse-controller-fields",
 		`Adopt managed fields owned by the legacy "deckhouse-controller" field manager (the pre-nelm Helm 3 engine). Unsafe if any resource still has hook-owned "deckhouse-controller" entries`,
 	)
-	FeatGateCaseInsensitiveConditionTracking = NewFeatGate(
-		"case-insensitive-condition-tracking",
-		`Match custom resource status condition types case-insensitively when detecting readiness (e.g. "Ready" in addition to "ready")`,
-	)
 )
 
 // A feature gate, which enabled/disables a specific feature. Can be toggled via an env var or
