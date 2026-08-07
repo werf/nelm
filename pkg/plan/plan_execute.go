@@ -9,12 +9,13 @@ import (
 	"github.com/samber/lo"
 	"github.com/sourcegraph/conc/pool"
 
+	"github.com/werf/kubedog/pkg/dyntracker"
+	"github.com/werf/kubedog/pkg/dyntracker/logstore"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
+	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/kubedog/pkg/informer"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
-	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -178,7 +179,8 @@ func execOpRecreate(ctx context.Context, op *Operation, releaseNamespace string,
 	})
 
 	tracker := dyntracker.NewDynamicAbsenceTracker(taskState, informerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicAbsenceTrackerOptions{
-		Timeout: absenceTimeout,
+		Timeout:                    absenceTimeout,
+		CaseInsensitiveGVKMatching: true,
 	})
 
 	if err := tracker.Track(ctx); err != nil {
@@ -213,7 +215,8 @@ func execOpTrackAbsence(ctx context.Context, op *Operation, releaseNamespace str
 	})
 
 	tracker := dyntracker.NewDynamicAbsenceTracker(taskState, informerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicAbsenceTrackerOptions{
-		Timeout: timeout,
+		Timeout:                    timeout,
+		CaseInsensitiveGVKMatching: true,
 	})
 
 	if err := tracker.Track(ctx); err != nil {
@@ -240,7 +243,8 @@ func execOpTrackPresence(ctx context.Context, op *Operation, releaseNamespace st
 	})
 
 	tracker := dyntracker.NewDynamicPresenceTracker(taskState, informerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicPresenceTrackerOptions{
-		Timeout: timeout,
+		Timeout:                    timeout,
+		CaseInsensitiveGVKMatching: true,
 	})
 
 	if err := tracker.Track(ctx); err != nil {
@@ -273,6 +277,8 @@ func execOpTrackReadiness(ctx context.Context, op *Operation, releaseNamespace s
 		Timeout:                                  timeout,
 		NoActivityTimeout:                        opConfig.NoActivityTimeout,
 		IgnoreReadinessProbeFailsByContainerName: opConfig.IgnoreReadinessProbeFailsByContainerName,
+		CaseInsensitiveGVKMatching:               true,
+		CaseInsensitiveConditionTracking:         featgate.FeatGateCaseInsensitiveConditionTracking.Enabled(),
 		SaveLogsOnlyForNumberOfReplicas:          opConfig.SaveLogsOnlyForNumberOfReplicas,
 		SaveLogsOnlyForContainers:                opConfig.SaveLogsOnlyForContainers,
 		SaveLogsByRegex:                          opConfig.SaveLogsByRegex,
@@ -324,7 +330,7 @@ func execOpCreate(ctx context.Context, op *Operation, releaseNamespace string, c
 func execOpCreateRelease(ctx context.Context, op *Operation, history release.Historier) error {
 	opConfig := op.Config.(*OperationConfigCreateRelease)
 
-	if err := history.CreateRelease(ctx, opConfig.Release); err != nil {
+	if err := history.CreateRelease(ctx, opConfig.Release.Accessor); err != nil {
 		return fmt.Errorf("create release: %w", err)
 	}
 
@@ -370,7 +376,7 @@ func execOpUpdate(ctx context.Context, op *Operation, releaseNamespace string, c
 func execOpUpdateRelease(ctx context.Context, op *Operation, history release.Historier) error {
 	opConfig := op.Config.(*OperationConfigUpdateRelease)
 
-	if err := history.UpdateRelease(ctx, opConfig.Release); err != nil {
+	if err := history.UpdateRelease(ctx, opConfig.Release.Accessor); err != nil {
 		return fmt.Errorf("update release: %w", err)
 	}
 
@@ -389,6 +395,8 @@ func findExecutableOpsIDs(opsMap map[string]map[string]graph.Edge[string]) []str
 }
 
 func getNamespace(ctx context.Context, resMeta *spec.ResourceMeta, releaseNamespace string, clientFactory kube.ClientFactorier) (string, error) {
+	gvk := kdutil.LowercaseGVK(resMeta.GroupVersionKind)
+
 	var (
 		namespace  string
 		namespaced bool
@@ -397,7 +405,7 @@ func getNamespace(ctx context.Context, resMeta *spec.ResourceMeta, releaseNamesp
 	if err := clientFactory.KubeClient().ResetAndRetryOnUnknownGVR(ctx, func() error {
 		var err error
 
-		namespaced, err = clientFactory.KubeClient().Namespaced(ctx, resMeta.GroupVersionKind)
+		namespaced, err = clientFactory.KubeClient().Namespaced(ctx, gvk)
 		if err != nil {
 			return fmt.Errorf("check resource scope: %w", err)
 		}

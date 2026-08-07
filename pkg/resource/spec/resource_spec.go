@@ -10,7 +10,6 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
 )
 
 // Contains all generic information about the resource, e.g. its name, namespace, GVK and its spec.
@@ -24,9 +23,8 @@ type ResourceSpec struct {
 }
 
 func NewResourceSpec(unstruct *unstructured.Unstructured, releaseNamespace string, opts ResourceSpecOptions) *ResourceSpec {
-	unstruct = CleanUnstruct(unstruct, CleanUnstructOptions{
-		CleanNullFields: (featgate.FeatGatePreviewV2.Enabled() || featgate.FeatGateCleanNullFields.Enabled()) && !opts.LegacyNoCleanNullFields,
-	})
+	unstruct = unstruct.DeepCopy()
+	unstruct.Object = cleanNulls(unstruct.Object).(map[string]interface{})
 
 	if opts.StoreAs == "" {
 		if IsHook(unstruct.GetAnnotations()) {
@@ -47,7 +45,7 @@ func NewResourceSpec(unstruct *unstructured.Unstructured, releaseNamespace strin
 	}
 }
 
-func NewResourceSpecFromManifest(manifest, releaseNamespace string, opts ResourceSpecOptions) (*ResourceSpec, error) {
+func NewResourceSpecFromManifest(ctx context.Context, manifest, releaseNamespace string, opts ResourceSpecOptions) (*ResourceSpec, error) {
 	if opts.FilePath == "" && strings.HasPrefix(manifest, "# Source: ") {
 		firstLine := strings.TrimSpace(strings.Split(manifest, "\n")[0])
 		opts.FilePath = strings.TrimPrefix(firstLine, "# Source: ")
@@ -58,7 +56,22 @@ func NewResourceSpecFromManifest(manifest, releaseNamespace string, opts Resourc
 		return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
 	}
 
-	return NewResourceSpec(obj.(*unstructured.Unstructured), releaseNamespace, opts), nil
+	unstruct := obj.(*unstructured.Unstructured)
+
+	if opts.DropInvalidAnnotationsAndLabels {
+		unstruct.SetAnnotations(stripInvalidEntries(ctx, opts.FilePath, unstruct.Object, "metadata", "annotations"))
+		unstruct.SetLabels(stripInvalidEntries(ctx, opts.FilePath, unstruct.Object, "metadata", "labels"))
+	} else {
+		if _, _, err := unstructured.NestedNullCoercingStringMap(unstruct.Object, "metadata", "annotations"); err != nil {
+			return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
+		}
+
+		if _, _, err := unstructured.NestedNullCoercingStringMap(unstruct.Object, "metadata", "labels"); err != nil {
+			return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
+		}
+	}
+
+	return NewResourceSpec(unstruct, releaseNamespace, opts), nil
 }
 
 func (s *ResourceSpec) SetAnnotations(annotations map[string]string) {
@@ -72,15 +85,15 @@ func (s *ResourceSpec) SetLabels(labels map[string]string) {
 }
 
 type ResourceSpecOptions struct {
-	FilePath                string
-	LegacyNoCleanNullFields bool // TODO(major): always clean
-	StoreAs                 common.StoreAs
+	DropInvalidAnnotationsAndLabels bool
+	FilePath                        string
+	StoreAs                         common.StoreAs
 }
 
 // Patch ResourceSpecs to make them releasable, after which they can be saved into the Helm release.
 // Don't try to add/delete/expand specs here, use transformers in BuildTransformedResourceSpecs
 // instead.
-func BuildReleasableResourceSpecs(ctx context.Context, releaseNamespace string, transformedResources []*ResourceSpec, patchers []ResourcePatcher) ([]*ResourceSpec, error) {
+func BuildPatchedResourceSpecs(ctx context.Context, releaseNamespace string, transformedResources []*ResourceSpec, patchers []ResourcePatcher) ([]*ResourceSpec, error) {
 	var releasableResources []*ResourceSpec
 
 	for _, res := range transformedResources {

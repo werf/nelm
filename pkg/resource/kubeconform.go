@@ -6,12 +6,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"text/template"
 	"time"
@@ -24,7 +23,9 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
 	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/resource/schemas"
 	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/util"
 )
@@ -35,20 +36,40 @@ const (
 	kubeConformCacheMetadataFilename   = "metadata.json"
 )
 
-var ErrResourceValidationSourceSanityCheck = errors.New("resource validation source sanity check")
-
 type kubeConformValidator struct {
-	kubeVersion         string
+	cacheSubDirName     string
+	embeddedSources     map[string]*schemas.Source
 	schemaCacheLifetime time.Duration
 	schemaSources       []string
 	validators          []*kubeConformInstance
 }
 
-func newKubeConformValidator(kubeVersion string, schemaCacheLifetime time.Duration, schemaSource []string) (*kubeConformValidator, error) {
+func newKubeConformValidator(schemaCacheLifetime time.Duration, schemaSources []string) (*kubeConformValidator, error) {
+	kubernetesSource, err := schemas.KubernetesSource()
+	if err != nil {
+		return nil, fmt.Errorf("get embedded Kubernetes schemas: %w", err)
+	}
+
+	crdsSource, err := schemas.CRDsSource()
+	if err != nil {
+		return nil, fmt.Errorf("get embedded CRD schemas: %w", err)
+	}
+
+	cacheSubDirName := getHash(strings.Join(schemaSources, "-"))
+
+	sources := slices.Clone(schemaSources)
+	embeddedByTemplate := make(map[string]*schemas.Source, 2)
+
+	for _, embeddedSource := range []*schemas.Source{kubernetesSource, crdsSource} {
+		sources = append(sources, embeddedSource.Template)
+		embeddedByTemplate[embeddedSource.Template] = embeddedSource
+	}
+
 	return &kubeConformValidator{
-		kubeVersion:         strings.TrimLeft(kubeVersion, "v"),
+		cacheSubDirName:     cacheSubDirName,
+		embeddedSources:     embeddedByTemplate,
 		schemaCacheLifetime: schemaCacheLifetime,
-		schemaSources:       schemaSource,
+		schemaSources:       sources,
 	}, nil
 }
 
@@ -71,7 +92,6 @@ func (kc *kubeConformValidator) Validate(ctx context.Context, resourceSpec *spec
 	}
 
 validatorLoop:
-	// TODO(major): if possible, we should use only a single yaml marshaller and a single json marshaller everywhere
 	for _, schemaValidator := range validators {
 		validationErrs := &util.MultiError{}
 
@@ -146,21 +166,20 @@ func (kc *kubeConformValidator) getValidatorInstances(ctx context.Context) ([]*k
 		return kc.validators, nil
 	}
 
-	if err := kc.validateSchemasSources(ctx); err != nil {
-		return nil, fmt.Errorf("validate schema sources: %w", err)
+	// Not configurable: it is what the embedded schemas were generated for. kubeconform resolves
+	// "{{ .NormalizedKubernetesVersion }}" with it, and it keys the cache entries.
+	kubeVersion, err := schemas.KubeVersion()
+	if err != nil {
+		return nil, fmt.Errorf("get Kubernetes version of the embedded schemas: %w", err)
 	}
 
-	// Generate top level directory name based on source combination, to avoid invalid cache hit on
-	// source combination change.
-	sourcesSubDirName := getHash(strings.Join(kc.schemaSources, "-"))
-
 	for _, source := range kc.schemaSources {
-		cacheDir, err := createKubeConformCacheDir(sourcesSubDirName, source)
+		cacheDir, err := createKubeConformCacheDir(kc.cacheSubDirName, source)
 		if err != nil {
 			return nil, fmt.Errorf("get schema cache dir: %w", err)
 		}
 
-		validationInstance, err := newKubeConformInstance(ctx, source, cacheDir, kc.kubeVersion, kc.schemaCacheLifetime)
+		validationInstance, err := newKubeConformInstance(ctx, source, cacheDir, kubeVersion, kc.schemaCacheLifetime, kc.embeddedSources[source])
 		if err != nil {
 			return nil, fmt.Errorf("get generic validator: %w", err)
 		}
@@ -175,56 +194,9 @@ func (kc *kubeConformValidator) getValidatorInstances(ctx context.Context) ([]*k
 	return kc.validators, nil
 }
 
-// validateSchemasSources validates source against Kubernetes version based on assumption that
-// every Kubernetes version has Deployment.apps/v1 schema. If at least one source statisfy to condition, the complete
-// source list considered to be valid, as it allows to validate native resources.
-func (kc *kubeConformValidator) validateSchemasSources(ctx context.Context) error {
-	httpClient := util.NewRestyClient(ctx)
-
-	for _, schemaSource := range kc.schemaSources {
-		patchedSource, err := patchKubeConformSchemaSource(schemaSource, "deployment",
-			"apps", "v1", false, kc.kubeVersion)
-		if err != nil {
-			return fmt.Errorf("%w: patch schema source %s: %w", ErrResourceValidationSourceSanityCheck, schemaSource, err)
-		}
-
-		if isLocalFSSource(patchedSource) {
-			if _, err := os.Stat(patchedSource); err != nil {
-				if !os.IsNotExist(err) {
-					return fmt.Errorf("%w: open test schema for Deployment/apps/v1 for kube version %s: %w", ErrResourceValidationSourceSanityCheck, kc.kubeVersion, err)
-				}
-
-				log.Default.Debug(ctx, "Test schema for Deployment/apps/v1 for kube version %s not found at %s: %w", kc.kubeVersion, patchedSource, err)
-
-				continue
-			}
-
-			return nil
-		}
-
-		response, err := httpClient.R().SetContext(ctx).Head(patchedSource)
-		if err != nil {
-			return fmt.Errorf("%w: cannot get test schema for deployment/apps/v1 for kube version %s at %s: %w",
-				ErrResourceValidationSourceSanityCheck, kc.kubeVersion, patchedSource, err)
-		}
-
-		switch response.StatusCode() {
-		case http.StatusOK:
-			return nil
-		case http.StatusNotFound:
-			log.Default.Debug(ctx, "Test schema for Deployment/apps/v1 for kube version %s not found at %s not found", kc.kubeVersion, patchedSource)
-
-			continue
-		default:
-			return fmt.Errorf("%w: got unexpected status code %d", ErrResourceValidationSourceSanityCheck, response.StatusCode())
-		}
-	}
-
-	return fmt.Errorf("%w: unable to get deployment/apps/v1 for kube version %s in any schema sources", ErrResourceValidationSourceSanityCheck, kc.kubeVersion)
-}
-
 type kubeConformCacheEntry struct {
-	Created time.Time `json:"created"`
+	Created    time.Time `json:"created"`
+	SchemaFile string    `json:"schemaFile,omitempty"`
 }
 
 type kubeConformCacheMetadata struct {
@@ -232,17 +204,25 @@ type kubeConformCacheMetadata struct {
 	Entries    map[string]kubeConformCacheEntry `json:"entries"`
 }
 
-type kubeConformInstance struct {
-	cacheDir      string
-	cacheLifetime time.Duration
-	fileLock      *flock.Flock
-	kubeVersion   string
-	metadata      kubeConformCacheMetadata
-	source        string
-	validator     validator.Validator
+func newKubeConformCacheMetadata() *kubeConformCacheMetadata {
+	return &kubeConformCacheMetadata{
+		APIVersion: kubeConformCacheMetadataAPIVersion,
+		Entries:    make(map[string]kubeConformCacheEntry),
+	}
 }
 
-func newKubeConformInstance(ctx context.Context, source, cacheDir, kubeVersion string, cacheLifetime time.Duration) (*kubeConformInstance, error) {
+type kubeConformInstance struct {
+	cacheDir       string
+	cacheLifetime  time.Duration
+	embeddedSource *schemas.Source
+	fileLock       *flock.Flock
+	kubeVersion    string
+	metadata       kubeConformCacheMetadata
+	source         string
+	validator      validator.Validator
+}
+
+func newKubeConformInstance(ctx context.Context, source, cacheDir, kubeVersion string, cacheLifetime time.Duration, embeddedSource *schemas.Source) (*kubeConformInstance, error) {
 	validatorOpts := validator.Opts{
 		Strict:               false,
 		IgnoreMissingSchemas: false,
@@ -267,12 +247,13 @@ func newKubeConformInstance(ctx context.Context, source, cacheDir, kubeVersion s
 	lockFilePath := filepath.Join(cacheDir, kubeConformCacheLockFilename)
 
 	v := &kubeConformInstance{
-		cacheDir:      cacheDir,
-		cacheLifetime: cacheLifetime,
-		fileLock:      flock.New(lockFilePath),
-		kubeVersion:   kubeVersion,
-		source:        source,
-		validator:     validatorInstance,
+		cacheDir:       cacheDir,
+		cacheLifetime:  cacheLifetime,
+		embeddedSource: embeddedSource,
+		fileLock:       flock.New(lockFilePath),
+		kubeVersion:    kubeVersion,
+		source:         source,
+		validator:      validatorInstance,
 	}
 
 	if err := v.fileLock.Lock(); err != nil {
@@ -285,22 +266,7 @@ func newKubeConformInstance(ctx context.Context, source, cacheDir, kubeVersion s
 		}
 	}()
 
-	metadataFilePath := filepath.Join(cacheDir, kubeConformCacheMetadataFilename)
-
-	if _, err := os.Stat(metadataFilePath); os.IsNotExist(err) {
-		v.metadata = kubeConformCacheMetadata{
-			APIVersion: kubeConformCacheMetadataAPIVersion,
-			Entries:    make(map[string]kubeConformCacheEntry),
-		}
-
-		if err := writeKubeConformCacheMetadata(metadataFilePath, v.metadata); err != nil {
-			return nil, fmt.Errorf("write kube conform cache metadata: %w", err)
-		}
-
-		return v, nil
-	}
-
-	metadata, err := readKubeConformMetadata(metadataFilePath)
+	metadata, err := readKubeConformMetadata(ctx, v.metadataFilePath())
 	if err != nil {
 		return nil, fmt.Errorf("read kube conform metadata: %w", err)
 	}
@@ -321,15 +287,21 @@ func (v *kubeConformInstance) AddCacheEntry(ctx context.Context, gvk schema.Grou
 		}
 	}()
 
-	metadata, err := readKubeConformMetadata(v.metadataFilePath())
+	metadata, err := readKubeConformMetadata(ctx, v.metadataFilePath())
 	if err != nil {
 		return fmt.Errorf("load metadata from %s: %w", v.metadataFilePath(), err)
 	}
 
 	v.metadata = *metadata
 
+	schemaFile, err := v.schemaCacheFileName(gvk)
+	if err != nil {
+		return fmt.Errorf("get schema cache file name for %s: %w", gvk, err)
+	}
+
 	v.metadata.Entries[getKubeConformEntryHash(v.kubeVersion, gvk)] = kubeConformCacheEntry{
-		Created: time.Now().UTC(),
+		Created:    time.Now().UTC(),
+		SchemaFile: schemaFile,
 	}
 
 	if err := writeKubeConformCacheMetadata(v.metadataFilePath(), v.metadata); err != nil {
@@ -350,7 +322,7 @@ func (v *kubeConformInstance) FindCachedEntry(ctx context.Context, gvk schema.Gr
 		}
 	}()
 
-	metadata, err := readKubeConformMetadata(v.metadataFilePath())
+	metadata, err := readKubeConformMetadata(ctx, v.metadataFilePath())
 	if err != nil {
 		return false, fmt.Errorf("load metadata from %s: %w", v.metadataFilePath(), err)
 	}
@@ -378,7 +350,7 @@ func (v *kubeConformInstance) InvalidateCacheEntries(ctx context.Context) error 
 		}
 	}()
 
-	metadata, err := readKubeConformMetadata(v.metadataFilePath())
+	metadata, err := readKubeConformMetadata(ctx, v.metadataFilePath())
 	if err != nil {
 		return fmt.Errorf("refresh metadata from %s: %w", v.metadataFilePath(), err)
 	}
@@ -392,15 +364,22 @@ func (v *kubeConformInstance) InvalidateCacheEntries(ctx context.Context) error 
 			continue
 		}
 
-		entryFilePath := filepath.Join(v.cacheDir, hash)
+		// Dropping the file is what makes the lifetime mean anything: kubeconform never overwrites a
+		// schema it has cached, so while the file is there it is reused no matter how old.
+		if entry.SchemaFile != "" {
+			schemaFilePath := filepath.Join(v.cacheDir, entry.SchemaFile)
 
-		if !isLocalFSSource(v.source) {
-			if err := os.Remove(entryFilePath); err != nil {
-				log.Default.Warn(ctx, "Cannot remove schema cache entry %s: %s", entryFilePath, err)
+			if err := os.Remove(schemaFilePath); err != nil {
+				if os.IsNotExist(err) {
+					// Normal: another process may have evicted it, or this source never had the schema.
+					log.Default.Debug(ctx, "Cached schema %s is already gone, nothing to evict", schemaFilePath)
+				} else {
+					log.Default.Warn(ctx, "Cannot remove cached schema %s: %s", schemaFilePath, err)
+				}
 			}
 		}
 
-		log.Default.Debug(ctx, "Invalidating schema validator cache entry %s", entryFilePath)
+		log.Default.Debug(ctx, "Invalidating schema validator cache entry %s", hash)
 		delete(v.metadata.Entries, hash)
 
 		changed = true
@@ -416,6 +395,10 @@ func (v *kubeConformInstance) InvalidateCacheEntries(ctx context.Context) error 
 }
 
 func (v *kubeConformInstance) ValidateResource(ctx context.Context, res resource.Resource) (*validator.Result, error) {
+	if err := v.ensureReady(ctx); err != nil {
+		return nil, err
+	}
+
 	if err := v.fileLock.Lock(); err != nil {
 		return nil, fmt.Errorf("acquire lock on schema validator %s: %w", v.lockFilePath(), err)
 	}
@@ -429,12 +412,40 @@ func (v *kubeConformInstance) ValidateResource(ctx context.Context, res resource
 	return lo.ToPtr(v.validator.ValidateResource(res)), nil
 }
 
+// ensureReady unpacks the embedded bundle right before it is first read. A no-op for other sources.
+func (v *kubeConformInstance) ensureReady(ctx context.Context) error {
+	if v.embeddedSource == nil {
+		return nil
+	}
+
+	if err := v.embeddedSource.EnsureExtracted(ctx); err != nil {
+		return fmt.Errorf("unpack embedded schemas: %w", err)
+	}
+
+	return nil
+}
+
 func (v *kubeConformInstance) lockFilePath() string {
 	return filepath.Join(v.cacheDir, kubeConformCacheLockFilename)
 }
 
 func (v *kubeConformInstance) metadataFilePath() string {
 	return filepath.Join(v.cacheDir, kubeConformCacheMetadataFilename)
+}
+
+// schemaCacheFileName returns the file kubeconform caches this resource's schema in, which is the hash
+// of the schema location. Local sources are read in place and never cached, so they get no name.
+func (v *kubeConformInstance) schemaCacheFileName(gvk schema.GroupVersionKind) (string, error) {
+	if isLocalFSSource(v.source) {
+		return "", nil
+	}
+
+	schemaLocation, err := patchKubeConformSchemaSource(v.source, gvk, false, v.kubeVersion)
+	if err != nil {
+		return "", fmt.Errorf("patch schema source %s: %w", v.source, err)
+	}
+
+	return getHash(schemaLocation), nil
 }
 
 func createKubeConformCacheDir(subDir, source string) (string, error) {
@@ -453,7 +464,7 @@ func createKubeConformCacheDir(subDir, source string) (string, error) {
 		sourceDirName = u.Hostname() + "-" + sourceHash[:7]
 	}
 
-	path := filepath.Join(common.APIResourceValidationJSONSchemasCacheDir, subDir, sourceDirName)
+	path := filepath.Join(helmpath.CachePath(common.CacheDirAPIResourceJSONSchemas), subDir, sourceDirName)
 
 	if stat, err := os.Stat(path); os.IsNotExist(err) {
 		if err := os.MkdirAll(path, 0o755); err != nil {
@@ -474,10 +485,26 @@ func getKubeConformEntryHash(kubeVersion string, gvk schema.GroupVersionKind) st
 	return getHash(fmt.Sprintf("%s-%s-%s", gvk.Kind, gvk.GroupVersion(), kubeVersion))
 }
 
-func patchKubeConformSchemaSource(source, kind, group, apiVersion string, strict bool, kubeVersion string) (string, error) {
-	kindSuffix := "-" + group + "-" + apiVersion
-	if group == "" {
-		kindSuffix = "-" + kubeVersion
+func getHash(s string) string {
+	digest := sha256.Sum256([]byte(s))
+
+	return hex.EncodeToString(digest[:])
+}
+
+func isLocalFSSource(source string) bool {
+	return !strings.HasPrefix(source, "https://") && !strings.HasPrefix(source, "http://")
+}
+
+// patchKubeConformSchemaSource renders a source template into the schema location for a resource. It
+// mirrors the unexported schemaPath of kubeconform's registry, byte for byte.
+func patchKubeConformSchemaSource(source string, gvk schema.GroupVersionKind, strict bool, kubeVersion string) (string, error) {
+	// Recombined the way kubeconform sees it, as a raw apiVersion: "apps/v1", or "v1" for core.
+	groupParts := strings.Split(gvk.GroupVersion().String(), "/")
+	versionParts := strings.Split(groupParts[0], ".")
+
+	kindSuffix := "-" + strings.ToLower(versionParts[0])
+	if len(groupParts) > 1 {
+		kindSuffix += "-" + strings.ToLower(groupParts[1])
 	}
 
 	params := struct {
@@ -488,10 +515,10 @@ func patchKubeConformSchemaSource(source, kind, group, apiVersion string, strict
 		StrictSuffix                string
 		KindSuffix                  string
 	}{
-		Group:                       group,
+		Group:                       groupParts[0],
 		NormalizedKubernetesVersion: kubeVersion,
-		ResourceAPIVersion:          apiVersion,
-		ResourceKind:                kind,
+		ResourceAPIVersion:          groupParts[len(groupParts)-1],
+		ResourceKind:                strings.ToLower(gvk.Kind),
 		KindSuffix:                  kindSuffix,
 	}
 
@@ -503,9 +530,11 @@ func patchKubeConformSchemaSource(source, kind, group, apiVersion string, strict
 		params.StrictSuffix = "-strict"
 	}
 
-	if isLocalFSSource(source) && !strings.HasSuffix(source, ".json") {
-		// This local path adjustments match the default kubeconform logic.
-		source = strings.TrimRight(source, "/") + "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
+	// kubeconform appends its own layout to any source not already pointing at a file, remote and local
+	// alike. Skipping that here would make the cache entry name a file that does not exist, and the
+	// expiry then drops nothing. Mirrored verbatim, trailing slash and all.
+	if !strings.HasSuffix(source, "json") {
+		source += "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
 	}
 
 	tmpl, err := template.New("tpl").Parse(source)
@@ -522,50 +551,76 @@ func patchKubeConformSchemaSource(source, kind, group, apiVersion string, strict
 	return buf.String(), nil
 }
 
-func getHash(s string) string {
-	digest := sha256.Sum256([]byte(s))
-
-	return hex.EncodeToString(digest[:])
-}
-
-func isLocalFSSource(source string) bool {
-	return !strings.HasPrefix(source, "https://") && !strings.HasPrefix(source, "http://")
-}
-
-func readKubeConformMetadata(path string) (*kubeConformCacheMetadata, error) {
-	var metadata kubeConformCacheMetadata
-
-	metadataFile, err := os.OpenFile(path, os.O_RDONLY, 0o644)
+// readKubeConformMetadata falls back to an empty metadata whenever the file cannot be made sense of:
+// it is a pure optimization, so a broken one must cost a few extra lookups, not fail the run.
+func readKubeConformMetadata(ctx context.Context, path string) (*kubeConformCacheMetadata, error) {
+	metadataBytes, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", path, err)
+		// Anything but a missing file points at the environment, not at the cache contents.
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("read %s: %w", path, err)
+		}
+
+		return newKubeConformCacheMetadata(), nil
 	}
 
-	defer metadataFile.Close()
+	var metadata kubeConformCacheMetadata
 
-	decoder := json.NewDecoder(metadataFile)
+	if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
+		log.Default.Warn(ctx, "Resetting unreadable schema cache metadata %s: %s", path, err)
 
-	if err := decoder.Decode(&metadata); err != nil {
-		return nil, fmt.Errorf("decode persisted metadata %s: %w", path, err)
+		return newKubeConformCacheMetadata(), nil
 	}
 
 	if metadata.APIVersion != kubeConformCacheMetadataAPIVersion {
-		return nil, fmt.Errorf("invalid metadata API version %q found in %s", metadata.APIVersion, path)
+		log.Default.Warn(ctx, "Resetting schema cache metadata %s written in unsupported format %q", path, metadata.APIVersion)
+
+		return newKubeConformCacheMetadata(), nil
+	}
+
+	// A metadata file with no entries at all decodes into a nil map, which is not writable.
+	if metadata.Entries == nil {
+		metadata.Entries = make(map[string]kubeConformCacheEntry)
 	}
 
 	return &metadata, nil
 }
 
+// writeKubeConformCacheMetadata writes in full and moves into place, so an interrupted write leaves
+// the previous metadata intact instead of a truncated file for the next run to choke on.
 func writeKubeConformCacheMetadata(path string, metadata kubeConformCacheMetadata) error {
-	metadataFile, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o644)
+	metadataBytes, err := json.Marshal(metadata)
 	if err != nil {
-		return fmt.Errorf("open %s: %w", path, err)
+		return fmt.Errorf("encode metadata for %s: %w", path, err)
 	}
 
-	defer metadataFile.Close()
+	tmpFile, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temp file for %s: %w", path, err)
+	}
 
-	encoder := json.NewEncoder(metadataFile)
-	if err := encoder.Encode(metadata); err != nil {
-		return fmt.Errorf("update %s: %w", path, err)
+	tmpPath := tmpFile.Name()
+
+	defer func() {
+		_ = os.Remove(tmpPath)
+	}()
+
+	if _, err := tmpFile.Write(metadataBytes); err != nil {
+		tmpFile.Close()
+
+		return fmt.Errorf("write %s: %w", tmpPath, err)
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("close %s: %w", tmpPath, err)
+	}
+
+	if err := os.Chmod(tmpPath, 0o644); err != nil {
+		return fmt.Errorf("chmod %s: %w", tmpPath, err)
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("move %s to %s: %w", tmpPath, path, err)
 	}
 
 	return nil

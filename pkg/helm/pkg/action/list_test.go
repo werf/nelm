@@ -17,11 +17,16 @@ limitations under the License.
 package action
 
 import (
+	"errors"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/werf/nelm/pkg/helm/pkg/release"
+	kubefake "github.com/werf/nelm/pkg/helm/pkg/kube/fake"
+	ri "github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/nelm/pkg/helm/pkg/release/common"
+	release "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/helm/pkg/storage"
 )
 
@@ -64,13 +69,14 @@ func TestList_Empty(t *testing.T) {
 }
 
 func newListFixture(t *testing.T) *List {
+	t.Helper()
 	return NewList(actionConfigFixture(t))
 }
 
 func TestList_OneNamespace(t *testing.T) {
 	is := assert.New(t)
 	lister := newListFixture(t)
-	makeMeSomeReleases(lister.cfg.Releases, t)
+	makeMeSomeReleases(t, lister.cfg.Releases)
 	list, err := lister.Run()
 	is.NoError(err)
 	is.Len(list, 3)
@@ -79,7 +85,7 @@ func TestList_OneNamespace(t *testing.T) {
 func TestList_AllNamespaces(t *testing.T) {
 	is := assert.New(t)
 	lister := newListFixture(t)
-	makeMeSomeReleases(lister.cfg.Releases, t)
+	makeMeSomeReleases(t, lister.cfg.Releases)
 	lister.AllNamespaces = true
 	lister.SetStateMask()
 	list, err := lister.Run()
@@ -91,9 +97,12 @@ func TestList_Sort(t *testing.T) {
 	is := assert.New(t)
 	lister := newListFixture(t)
 	lister.Sort = ByNameDesc // Other sorts are tested elsewhere
-	makeMeSomeReleases(lister.cfg.Releases, t)
-	list, err := lister.Run()
+	makeMeSomeReleases(t, lister.cfg.Releases)
+	l, err := lister.Run()
 	is.NoError(err)
+	list, err := releaseListToV1List(l)
+	is.NoError(err)
+
 	is.Len(list, 3)
 	is.Equal("two", list[0].Name)
 	is.Equal("three", list[1].Name)
@@ -104,8 +113,10 @@ func TestList_Limit(t *testing.T) {
 	is := assert.New(t)
 	lister := newListFixture(t)
 	lister.Limit = 2
-	makeMeSomeReleases(lister.cfg.Releases, t)
-	list, err := lister.Run()
+	makeMeSomeReleases(t, lister.cfg.Releases)
+	l, err := lister.Run()
+	is.NoError(err)
+	list, err := releaseListToV1List(l)
 	is.NoError(err)
 	is.Len(list, 2)
 	// Lex order means one, three, two
@@ -117,8 +128,10 @@ func TestList_BigLimit(t *testing.T) {
 	is := assert.New(t)
 	lister := newListFixture(t)
 	lister.Limit = 20
-	makeMeSomeReleases(lister.cfg.Releases, t)
-	list, err := lister.Run()
+	makeMeSomeReleases(t, lister.cfg.Releases)
+	l, err := lister.Run()
+	is.NoError(err)
+	list, err := releaseListToV1List(l)
 	is.NoError(err)
 	is.Len(list, 3)
 
@@ -133,8 +146,10 @@ func TestList_LimitOffset(t *testing.T) {
 	lister := newListFixture(t)
 	lister.Limit = 2
 	lister.Offset = 1
-	makeMeSomeReleases(lister.cfg.Releases, t)
-	list, err := lister.Run()
+	makeMeSomeReleases(t, lister.cfg.Releases)
+	l, err := lister.Run()
+	is.NoError(err)
+	list, err := releaseListToV1List(l)
 	is.NoError(err)
 	is.Len(list, 2)
 
@@ -148,7 +163,7 @@ func TestList_LimitOffsetOutOfBounds(t *testing.T) {
 	lister := newListFixture(t)
 	lister.Limit = 2
 	lister.Offset = 3 // Last item is index 2
-	makeMeSomeReleases(lister.cfg.Releases, t)
+	makeMeSomeReleases(t, lister.cfg.Releases)
 	list, err := lister.Run()
 	is.NoError(err)
 	is.Len(list, 0)
@@ -163,24 +178,46 @@ func TestList_LimitOffsetOutOfBounds(t *testing.T) {
 func TestList_StateMask(t *testing.T) {
 	is := assert.New(t)
 	lister := newListFixture(t)
-	makeMeSomeReleases(lister.cfg.Releases, t)
-	one, err := lister.cfg.Releases.Get("one", 1)
+	makeMeSomeReleases(t, lister.cfg.Releases)
+	oner, err := lister.cfg.Releases.Get("one", 1)
 	is.NoError(err)
-	one.SetStatus(release.StatusUninstalled, "uninstalled")
+
+	var one release.Release
+	switch v := oner.(type) {
+	case release.Release:
+		one = v
+	case *release.Release:
+		one = *v
+	default:
+		t.Fatal("unsupported release type")
+	}
+
+	one.SetStatus(common.StatusUninstalled, "uninstalled")
 	err = lister.cfg.Releases.Update(one)
 	is.NoError(err)
 
 	res, err := lister.Run()
 	is.NoError(err)
-	is.Len(res, 2)
-	is.Equal("three", res[0].Name)
-	is.Equal("two", res[1].Name)
+	is.Len(res, 3)
+
+	ac0, err := ri.NewAccessor(res[0])
+	is.NoError(err)
+	ac1, err := ri.NewAccessor(res[1])
+	is.NoError(err)
+	ac2, err := ri.NewAccessor(res[2])
+	is.NoError(err)
+
+	is.Equal("one", ac0.Name())
+	is.Equal("three", ac1.Name())
+	is.Equal("two", ac2.Name())
 
 	lister.StateMask = ListUninstalled
 	res, err = lister.Run()
 	is.NoError(err)
 	is.Len(res, 1)
-	is.Equal("one", res[0].Name)
+	ac0, err = ri.NewAccessor(res[0])
+	is.NoError(err)
+	is.Equal("one", ac0.Name())
 
 	lister.StateMask |= ListDeployed
 	res, err = lister.Run()
@@ -193,7 +230,7 @@ func TestList_StateMaskWithStaleRevisions(t *testing.T) {
 	lister := newListFixture(t)
 	lister.StateMask = ListFailed
 
-	makeMeSomeReleasesWithStaleFailure(lister.cfg.Releases, t)
+	makeMeSomeReleasesWithStaleFailure(t, lister.cfg.Releases)
 
 	res, err := lister.Run()
 
@@ -202,28 +239,30 @@ func TestList_StateMaskWithStaleRevisions(t *testing.T) {
 
 	// "dirty" release should _not_ be present as most recent
 	// release is deployed despite failed release in past
-	is.Equal("failed", res[0].Name)
+	ac0, err := ri.NewAccessor(res[0])
+	is.NoError(err)
+	is.Equal("failed", ac0.Name())
 }
 
-func makeMeSomeReleasesWithStaleFailure(store *storage.Storage, t *testing.T) {
+func makeMeSomeReleasesWithStaleFailure(t *testing.T, store *storage.Storage) {
 	t.Helper()
-	one := namedReleaseStub("clean", release.StatusDeployed)
+	one := namedReleaseStub("clean", common.StatusDeployed)
 	one.Namespace = "default"
 	one.Version = 1
 
-	two := namedReleaseStub("dirty", release.StatusDeployed)
+	two := namedReleaseStub("dirty", common.StatusDeployed)
 	two.Namespace = "default"
 	two.Version = 1
 
-	three := namedReleaseStub("dirty", release.StatusFailed)
+	three := namedReleaseStub("dirty", common.StatusFailed)
 	three.Namespace = "default"
 	three.Version = 2
 
-	four := namedReleaseStub("dirty", release.StatusDeployed)
+	four := namedReleaseStub("dirty", common.StatusDeployed)
 	four.Namespace = "default"
 	four.Version = 3
 
-	five := namedReleaseStub("failed", release.StatusFailed)
+	five := namedReleaseStub("failed", common.StatusFailed)
 	five.Namespace = "default"
 	five.Version = 1
 
@@ -242,25 +281,27 @@ func TestList_Filter(t *testing.T) {
 	is := assert.New(t)
 	lister := newListFixture(t)
 	lister.Filter = "th."
-	makeMeSomeReleases(lister.cfg.Releases, t)
+	makeMeSomeReleases(t, lister.cfg.Releases)
 
 	res, err := lister.Run()
 	is.NoError(err)
 	is.Len(res, 1)
-	is.Equal("three", res[0].Name)
+	ac0, err := ri.NewAccessor(res[0])
+	is.NoError(err)
+	is.Equal("three", ac0.Name())
 }
 
 func TestList_FilterFailsCompile(t *testing.T) {
 	is := assert.New(t)
 	lister := newListFixture(t)
 	lister.Filter = "t[h.{{{"
-	makeMeSomeReleases(lister.cfg.Releases, t)
+	makeMeSomeReleases(t, lister.cfg.Releases)
 
 	_, err := lister.Run()
 	is.Error(err)
 }
 
-func makeMeSomeReleases(store *storage.Storage, t *testing.T) {
+func makeMeSomeReleases(t *testing.T, store *storage.Storage) {
 	t.Helper()
 	one := releaseStub()
 	one.Name = "one"
@@ -365,4 +406,17 @@ func TestSelectorList(t *testing.T) {
 		expectedFilteredList := []*release.Release{r2, r3}
 		assert.ElementsMatch(t, expectedFilteredList, res)
 	})
+}
+
+func TestListRun_UnreachableKubeClient(t *testing.T) {
+	config := actionConfigFixture(t)
+	failingKubeClient := kubefake.FailingKubeClient{PrintingKubeClient: kubefake.PrintingKubeClient{Out: io.Discard}, DummyResources: nil}
+	failingKubeClient.ConnectionError = errors.New("connection refused")
+	config.KubeClient = &failingKubeClient
+
+	lister := NewList(config)
+	result, err := lister.Run()
+
+	assert.Nil(t, result)
+	assert.ErrorContains(t, err, "connection refused")
 }

@@ -2,6 +2,7 @@ package plan
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -13,9 +14,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/json"
 
-	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/kube"
@@ -58,7 +58,7 @@ type InstallableResourceInfo struct {
 	MustDeleteOnSuccessfulInstall bool                `json:"mustDeleteOnSuccessfulInstall"`
 	MustDeleteOnFailedInstall     bool                `json:"mustDeleteOnFailedInstall"`
 	MustTrackReadiness            bool                `json:"mustTrackReadiness"`
-	FailMode                      multitrack.FailMode `json:"failMode"`
+	FailMode                      statestore.FailMode `json:"failMode"`
 
 	Stage                          common.Stage `json:"stage"`
 	StageDeleteOnSuccessfulInstall common.Stage `json:"stageDeleteOnSuccessfulInstall,omitempty"`
@@ -78,6 +78,9 @@ type DeletableResourceInfo struct {
 }
 
 type BuildResourceInfosOptions struct {
+	DiffPatches                        []spec.DiffPatch
+	ExtraRuntimeAnnotations            map[string]string
+	ExtraRuntimeLabels                 map[string]string
 	LastDeployedOrLastRelResourceSpecs []*spec.ResourceSpec
 	NetworkParallelism                 int
 	NoRemoveManualChanges              bool
@@ -88,6 +91,11 @@ type BuildResourceInfosOptions struct {
 // more info, and here we actually decide what to do with each resource. Initially all this logic
 // was in BuildPlan, but it became way too complex, so we extracted it here.
 func BuildResourceInfos(ctx context.Context, deployType common.DeployType, releaseName, releaseNamespace string, instResources []*resource.InstallableResource, delResources []*resource.DeletableResource, prevReleaseFailed bool, clientFactory kube.ClientFactorier, opts BuildResourceInfosOptions) (instResourceInfos []*InstallableResourceInfo, delResourceInfos []*DeletableResourceInfo, err error) {
+	diffPatches, err := spec.CompileDiffPatches(opts.DiffPatches)
+	if err != nil {
+		return nil, nil, fmt.Errorf("compile diff patches: %w", err)
+	}
+
 	totalResourcesCount := len(instResources) + len(delResources)
 
 	routines := lo.Max([]int{len(instResources) / lo.Max([]int{totalResourcesCount, 1}) * opts.NetworkParallelism, 1})
@@ -95,7 +103,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 	instResourcesPool := pool.NewWithResults[[]*InstallableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range instResources {
 		instResourcesPool.Go(func(ctx context.Context) ([]*InstallableResourceInfo, error) {
-			infos, err := buildInstallableResourceInfo(ctx, res, deployType, releaseNamespace, prevReleaseFailed, opts.NoRemoveManualChanges, clientFactory, opts.LastDeployedOrLastRelResourceSpecs)
+			infos, err := buildInstallableResourceInfo(ctx, res, deployType, releaseNamespace, prevReleaseFailed, opts.NoRemoveManualChanges, clientFactory, opts, diffPatches)
 			if err != nil {
 				return nil, fmt.Errorf("build installable resource info: %w", err)
 			}
@@ -157,8 +165,7 @@ func ResourceInstallTypeSortHandler(type1, type2 ResourceInstallType) bool {
 	return type1I < type2I
 }
 
-// TODO(major): keep annotation should probably forbid resource recreations
-func buildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed, noRemoveManualChanges bool, clientFactory kube.ClientFactorier, lastDeployedOrLastRelResSpecs []*spec.ResourceSpec) ([]*InstallableResourceInfo, error) {
+func buildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed, noRemoveManualChanges bool, clientFactory kube.ClientFactorier, opts BuildResourceInfosOptions, diffPatches []*spec.CompiledDiffPatch) ([]*InstallableResourceInfo, error) {
 	var stages []common.Stage
 	switch deployType {
 	case common.DeployTypeInitial, common.DeployTypeInstall:
@@ -186,21 +193,19 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 	}
 
 	var (
-		getMeta          *spec.ResourceMeta
-		dryApplyObj      *unstructured.Unstructured
-		dryApplyErr      error
-		resourcePolicies = localRes.ResourcePolicies
+		getMeta     *spec.ResourceMeta
+		dryApplyObj *unstructured.Unstructured
+		dryApplyErr error
 	)
 	if getErr == nil {
 		var err error
 
-		getObj, err = fixManagedFieldsInCluster(ctx, releaseNamespace, getObj, localRes, noRemoveManualChanges, clientFactory, lastDeployedOrLastRelResSpecs)
+		getObj, err = fixManagedFieldsInCluster(ctx, releaseNamespace, getObj, localRes, noRemoveManualChanges, clientFactory, opts.LastDeployedOrLastRelResourceSpecs)
 		if err != nil {
 			return nil, fmt.Errorf("fix managed fields for resource %q: %w", localRes.IDHuman(), err)
 		}
 
 		getMeta = spec.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
-		resourcePolicies = resource.ResolveResourcePolicies(localRes, getMeta, releaseNamespace)
 
 		dryApplyObj, dryApplyErr = clientFactory.KubeClient().Apply(ctx, localRes.ResourceSpec, kube.KubeClientApplyOptions{
 			DefaultNamespace: releaseNamespace,
@@ -208,12 +213,18 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 		})
 	}
 
-	installType, skippedByPolicy, err := resourceInstallType(ctx, localRes, getObj, dryApplyObj, dryApplyErr, resourcePolicies)
+	installType, skippedByPolicy, err := resourceInstallType(ctx, localRes, getObj, dryApplyObj, dryApplyErr, opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels, localRes.ResourcePolicies, diffPatches)
 	if err != nil {
 		return nil, fmt.Errorf("determine install type for resource %q: %w", localRes.IDHuman(), err)
 	}
 
-	mustDeleteOnSuccess := mustDeleteOnSuccessfulDeploy(localRes, getMeta, installType, releaseNamespace, skippedByPolicy)
+	if installType == ResourceInstallTypeRecreate {
+		if _, found := localRes.Annotations[common.AnnotationKeyHumanResourcePolicy]; found {
+			return nil, fmt.Errorf("cannot recreate the resource %q because its deletion is prohibited", localRes.IDHuman())
+		}
+	}
+
+	mustDeleteOnSuccess := mustDeleteOnSuccessfulDeploy(localRes, getMeta, installType, skippedByPolicy)
 	trackReadiness := mustTrackReadiness(localRes, installType, getObj != nil, prevRelFailed, mustDeleteOnSuccess, skippedByPolicy)
 
 	return lo.Map(stages, func(stg common.Stage, _ int) *InstallableResourceInfo {
@@ -224,7 +235,7 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 			FailMode:                       localRes.FailMode,
 			GetResult:                      getObj,
 			LocalResource:                  localRes,
-			MustDeleteOnFailedInstall:      mustDeleteOnFailedDeploy(localRes, getMeta, installType, releaseNamespace, trackReadiness, skippedByPolicy),
+			MustDeleteOnFailedInstall:      mustDeleteOnFailedDeploy(localRes, installType, trackReadiness, skippedByPolicy),
 			MustDeleteOnSuccessfulInstall:  mustDeleteOnSuccess,
 			MustInstall:                    installType,
 			MustTrackReadiness:             trackReadiness,
@@ -374,12 +385,6 @@ func buildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 	}
 
 	getMeta := spec.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
-
-	if err := resource.ValidateResourcePolicy(getMeta); err != nil {
-		return noDeleteInfo, nil
-	} else if lo.Contains(resource.ResourcePolicies(getMeta, releaseNamespace), common.ResourcePolicySkipDelete) {
-		return noDeleteInfo, nil
-	}
 
 	if orphaned(getMeta, releaseName, releaseNamespace) {
 		return noDeleteInfo, nil
@@ -594,7 +599,14 @@ func forceReadinessTrackingForReadyDependencyTargets(infos []*InstallableResourc
 
 	var readyMatchers []readyMatcher
 	for _, info := range infos {
-		for _, dep := range info.LocalResource.ManualInternalDependencies {
+		for _, dep := range info.LocalResource.ManualDependencies {
+			// External dependencies get their own track-readiness operation keyed on the
+			// dependency itself, so forcing a same-named local resource would not serve the
+			// edge and would silently override its chart-authored fail mode.
+			if dep.External {
+				continue
+			}
+
 			if dep.ResourceState == common.ResourceStateReady {
 				readyMatchers = append(readyMatchers, readyMatcher{matcher: dep.ResourceMatcher, stage: info.Stage})
 			}
@@ -622,7 +634,7 @@ func forceReadinessTrackingForReadyDependencyTargets(infos []*InstallableResourc
 		}
 
 		info.MustTrackReadiness = true
-		info.FailMode = multitrack.FailWholeDeployProcessImmediately
+		info.FailMode = statestore.FailWholeDeployProcessImmediately
 	}
 }
 
@@ -725,7 +737,7 @@ func iterateInstallableResourceInfos(infos []*InstallableResourceInfo) {
 	}
 }
 
-func mustDeleteOnFailedDeploy(res *resource.InstallableResource, getMeta *spec.ResourceMeta, installType ResourceInstallType, releaseNamespace string, mustTrackReadiness, skippedByPolicy bool) bool {
+func mustDeleteOnFailedDeploy(res *resource.InstallableResource, installType ResourceInstallType, mustTrackReadiness, skippedByPolicy bool) bool {
 	if skippedByPolicy ||
 		!res.DeleteOnFailed ||
 		lo.Contains(res.ResourcePolicies, common.ResourcePolicySkipDelete) ||
@@ -734,30 +746,14 @@ func mustDeleteOnFailedDeploy(res *resource.InstallableResource, getMeta *spec.R
 		return false
 	}
 
-	if getMeta != nil {
-		if err := resource.ValidateResourcePolicy(getMeta); err != nil {
-			return false
-		} else if lo.Contains(resource.ResourcePolicies(getMeta, releaseNamespace), common.ResourcePolicySkipDelete) {
-			return false
-		}
-	}
-
 	return true
 }
 
-func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMeta *spec.ResourceMeta, installType ResourceInstallType, releaseNamespace string, skippedByPolicy bool) bool {
+func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMeta *spec.ResourceMeta, installType ResourceInstallType, skippedByPolicy bool) bool {
 	if skippedByPolicy ||
 		!localRes.DeleteOnSucceeded ||
 		lo.Contains(localRes.ResourcePolicies, common.ResourcePolicySkipDelete) {
 		return false
-	}
-
-	if getMeta != nil {
-		if err := resource.ValidateResourcePolicy(getMeta); err != nil {
-			return false
-		} else if lo.Contains(resource.ResourcePolicies(getMeta, releaseNamespace), common.ResourcePolicySkipDelete) {
-			return false
-		}
 	}
 
 	if installType == ResourceInstallTypeNone {
@@ -770,7 +766,7 @@ func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMet
 func mustTrackReadiness(res *resource.InstallableResource, resInstallType ResourceInstallType, exists, prevRelFailed, mustDeleteOnSuccessfulInstall, skippedByPolicy bool) bool {
 	if skippedByPolicy ||
 		spec.IsCRD(res.Unstruct.GroupVersionKind().GroupKind()) ||
-		res.TrackTerminationMode == multitrack.NonBlocking {
+		res.TrackTerminationMode == statestore.NonBlocking {
 		return false
 	}
 
@@ -840,7 +836,7 @@ func removeUndesirableManagers(managedFields []v1.ManagedFieldsEntry, oursEntry 
 	return newManagedFields, newOursEntry, changed
 }
 
-func resourceInstallType(ctx context.Context, localRes *resource.InstallableResource, getObj, dryApplyObj *unstructured.Unstructured, dryApplyErr error, resourcePolicies []common.ResourcePolicy) (installType ResourceInstallType, skippedByPolicy bool, err error) {
+func resourceInstallType(ctx context.Context, localRes *resource.InstallableResource, getObj, dryApplyObj *unstructured.Unstructured, dryApplyErr error, extraRuntimeAnnotations, extraRuntimeLabels map[string]string, resourcePolicies []common.ResourcePolicy, diffPatches []*spec.CompiledDiffPatch) (installType ResourceInstallType, skippedByPolicy bool, err error) {
 	skipCreate := lo.Contains(resourcePolicies, common.ResourcePolicySkipCreate)
 	skipUpdate := lo.Contains(resourcePolicies, common.ResourcePolicySkipUpdate)
 	skipRecreate := lo.Contains(resourcePolicies, common.ResourcePolicySkipRecreate)
@@ -875,16 +871,39 @@ func resourceInstallType(ctx context.Context, localRes *resource.InstallableReso
 		return ResourceInstallTypeApply, false, nil
 	}
 
-	diffableGetObj := spec.CleanUnstruct(getObj, spec.CleanUnstructOptions{
+	patchedGetObj := getObj
+
+	patchedDryApplyObj := dryApplyObj
+	if len(diffPatches) > 0 {
+		// getObj is non-nil here and carries the resource's true namespace, which is
+		// empty only for genuinely cluster-scoped resources (unlike the blanked
+		// ResourceMeta.Namespace), so it is the authoritative value for the
+		// namespace selector dimension.
+		namespace := getObj.GetNamespace()
+
+		if patchedGetObj, err = spec.ApplyDiffPatches(diffPatches, localRes.ResourceMeta, namespace, getObj); err != nil {
+			return "", false, fmt.Errorf("apply diff patches to live version of resource %q: %w", localRes.IDHuman(), err)
+		}
+
+		if patchedDryApplyObj, err = spec.ApplyDiffPatches(diffPatches, localRes.ResourceMeta, namespace, dryApplyObj); err != nil {
+			return "", false, fmt.Errorf("apply diff patches to dry-apply version of resource %q: %w", localRes.IDHuman(), err)
+		}
+	}
+
+	diffableGetObj := spec.CleanUnstruct(patchedGetObj, spec.CleanUnstructOptions{
 		CleanHelmShAnnos: true,
 		CleanWerfIoAnnos: true,
 		CleanRuntimeData: true,
+		CleanAnnotations: extraRuntimeAnnotations,
+		CleanLabels:      extraRuntimeLabels,
 	})
 
-	diffableDryApplyObj := spec.CleanUnstruct(dryApplyObj, spec.CleanUnstructOptions{
+	diffableDryApplyObj := spec.CleanUnstruct(patchedDryApplyObj, spec.CleanUnstructOptions{
 		CleanHelmShAnnos: true,
 		CleanWerfIoAnnos: true,
 		CleanRuntimeData: true,
+		CleanAnnotations: extraRuntimeAnnotations,
+		CleanLabels:      extraRuntimeLabels,
 	})
 
 	if patch, err := jsondiff.Compare(diffableGetObj, diffableDryApplyObj); err != nil {

@@ -18,7 +18,7 @@ import (
 	"github.com/werf/nelm/pkg/action"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
-	helm_v3 "github.com/werf/nelm/pkg/helm/cmd/helm"
+	helmcmd "github.com/werf/nelm/pkg/helm/pkg/cmd"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -53,9 +53,9 @@ func main() {
 	// Needed for embedding original Helm 3 commands.
 	var err error
 
-	helmRootCmd, err = helm_v3.Init()
+	helmRootCmd, err = helmcmd.NewRootCmd(os.Stdout, os.Args[1:], helmcmd.SetupLogging)
 	if err != nil {
-		abort(ctx, fmt.Errorf("init helm: %w", err), 1)
+		abort(ctx, fmt.Errorf("new helm root command: %w", err), 1)
 	}
 
 	rootCmd := NewRootCommand(ctx, afterAllCommandsBuiltFuncs)

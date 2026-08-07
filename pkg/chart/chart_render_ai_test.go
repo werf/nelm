@@ -49,10 +49,6 @@ func (f *chartCapabilitiesClientFactory) KubeConfig() *kube.KubeConfig {
 	panic("not implemented")
 }
 
-func (f *chartCapabilitiesClientFactory) LegacyClientGetter() *kube.LegacyClientGetter {
-	panic("not implemented")
-}
-
 func (f *chartCapabilitiesClientFactory) Mapper() apimeta.ResettableRESTMapper {
 	panic("not implemented")
 }

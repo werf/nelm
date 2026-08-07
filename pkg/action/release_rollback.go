@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"time"
 
@@ -12,14 +11,15 @@ import (
 	"github.com/samber/lo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/werf/kubedog/pkg/dyntracker/logstore"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
+	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/kubedog/pkg/informer"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
-	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
+	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
-	"github.com/werf/nelm/pkg/lock"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/plan"
 	"github.com/werf/nelm/pkg/release"
@@ -38,6 +38,9 @@ type ReleaseRollbackOptions struct {
 
 	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
 	DefaultDeletePropagation string
+	// DefaultPatchesDisable, when true, ignores chart-shipped patches.yaml files
+	// (from the top-level chart and subcharts of the rolled-back revision).
+	DefaultPatchesDisable bool
 	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime during rollback.
 	// These are added during resource creation/update but not stored in the release.
 	ExtraRuntimeAnnotations map[string]string
@@ -58,6 +61,9 @@ type ReleaseRollbackOptions struct {
 	// NoShowNotes, when true, suppresses printing of NOTES.txt after successful rollback.
 	// NOTES.txt typically contains usage instructions and next steps.
 	NoShowNotes bool
+	// PatchesFiles are paths to additional patches files (diff patches for drift
+	// detection) applied on top of chart-shipped ones during the rollback plan.
+	PatchesFiles []string
 	// ReleaseHistoryLimit sets the maximum number of release revisions to keep in storage.
 	// When exceeded, the oldest revisions are deleted. Defaults to DefaultReleaseHistoryLimit if not set or <= 0.
 	// Note: Only release metadata is deleted; actual Kubernetes resources are not affected.
@@ -129,16 +135,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		return fmt.Errorf("build release rollback options: %w", err)
 	}
 
-	if len(opts.KubeConfigPaths) > 0 {
-		var splitPaths []string
-		for _, path := range opts.KubeConfigPaths {
-			splitPaths = append(splitPaths, filepath.SplitList(path)...)
-		}
-
-		opts.KubeConfigPaths = lo.Compact(splitPaths)
-	}
-
-	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+	kubeConfig, err := kube.NewKubeConfig(ctx, kube.KubeConfigOptions{
 		KubeConnectionOptions: opts.KubeConnectionOptions,
 		KubeContextNamespace:  releaseNamespace, // TODO: unset it everywhere
 	})
@@ -159,18 +156,14 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		return fmt.Errorf("construct release storage: %w", err)
 	}
 
-	var lockManager *lock.LockManager
-	if !opts.LegacyNoReleaseLock {
-		if m, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory); err != nil {
-			return fmt.Errorf("construct lock manager: %w", err)
-		} else {
-			lockManager = m
-		}
+	lockManager, lockEnabled, err := newReleaseLockManager(ctx, releaseNamespace, clientFactory, opts.LegacyNoReleaseLock)
+	if err != nil {
+		return err
 	}
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Start rollback of release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-	if lockManager != nil {
+	if lockEnabled {
 		if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
 			return fmt.Errorf("lock release: %w", err)
 		} else {
@@ -196,13 +189,13 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	prevRelease := lo.LastOrEmpty(releases)
 	prevDeployedRelease := lo.LastOrEmpty(deployedReleases)
 
-	var rollbackRelease *helmrelease.Release
+	var rollbackRelease helmrel.Accessor
 	if opts.Revision == 0 {
 		if len(deployedReleases) == 0 {
 			return fmt.Errorf("not found successfully deployed release %q (namespace: %q)", releaseName, releaseNamespace)
 		}
 
-		if prevDeployedRelease.Version != prevRelease.Version {
+		if prevDeployedRelease.Version() != prevRelease.Version() {
 			rollbackRelease = prevDeployedRelease
 		} else {
 			if len(deployedReleases) < 2 {
@@ -214,8 +207,8 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	} else {
 		var found bool
 
-		rollbackRelease, found = lo.Find(releases, func(rel *helmrelease.Release) bool {
-			return rel.Version == opts.Revision
+		rollbackRelease, found = lo.Find(releases, func(rel helmrel.Accessor) bool {
+			return rel.Version() == opts.Revision
 		})
 		if !found {
 			return fmt.Errorf("not found revision %d for release %q (namespace: %q)", opts.Revision, releaseName, releaseNamespace)
@@ -228,8 +221,8 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	)
 
 	if prevRelease != nil {
-		newRevision = prevRelease.Version + 1
-		prevReleaseFailed = prevRelease.IsStatusFailed()
+		newRevision = prevRelease.Version() + 1
+		prevReleaseFailed = prevRelease.Status() == helmreleasestatus.StatusFailed.String()
 	} else {
 		newRevision = 1
 	}
@@ -238,15 +231,44 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	log.Default.Debug(ctx, "Convert release to resource specs")
 
-	rollbackReleaseResSpecs, err := release.ReleaseToResourceSpecs(rollbackRelease, releaseNamespace, false)
+	rollbackReleaseResSpecs, err := release.ReleaseToResourceSpecs(ctx, rollbackRelease, releaseNamespace)
 	if err != nil {
 		return fmt.Errorf("convert release to rollback to resource specs: %w", err)
 	}
 
-	newRelease, err := release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, rollbackReleaseResSpecs, rollbackRelease.Chart, rollbackRelease.Config, release.ReleaseOptions{
-		InfoAnnotations: lo.Assign(rollbackRelease.Info.Annotations, opts.ReleaseInfoAnnotations),
-		Labels:          lo.Assign(rollbackRelease.Labels, opts.ReleaseLabels),
-		Notes:           rollbackRelease.Info.Notes,
+	log.Default.Debug(ctx, "Build transformed resource specs")
+
+	transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, releaseNamespace, rollbackReleaseResSpecs, []spec.ResourceTransformer{
+		spec.NewResourceListsTransformer(),
+	})
+	if err != nil {
+		return fmt.Errorf("build transformed resource specs: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Build releasable resource specs")
+
+	patchers := []spec.ResourcePatcher{
+		spec.NewSecretStringDataPatcher(),
+	}
+
+	if opts.LegacyHelmCompatibleTracking {
+		patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
+	}
+
+	releasableResSpecs, err := spec.BuildPatchedResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patchers)
+	if err != nil {
+		return fmt.Errorf("build releasable resource specs: %w", err)
+	}
+
+	chartAccessor, err := helmchart.NewAccessor(rollbackRelease.Chart())
+	if err != nil {
+		return fmt.Errorf("create chart accessor: %w", err)
+	}
+
+	newRelease, err := release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, releasableResSpecs, chartAccessor, rollbackRelease.Config(), release.ReleaseOptions{
+		InfoAnnotations: opts.ReleaseInfoAnnotations,
+		Labels:          lo.Assign(rollbackRelease.Labels(), opts.ReleaseLabels),
+		Notes:           rollbackRelease.Notes(),
 	})
 	if err != nil {
 		return fmt.Errorf("construct new release: %w", err)
@@ -254,31 +276,24 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	log.Default.Debug(ctx, "Convert previous release to resource specs")
 
-	prevRelResSpecs, err := release.ReleaseToResourceSpecs(prevRelease, releaseNamespace, false)
+	prevRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, prevRelease, releaseNamespace)
 	if err != nil {
 		return fmt.Errorf("convert previous release to resource specs: %w", err)
 	}
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
-	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace, false)
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, releaseNamespace)
 	if err != nil {
 		return fmt.Errorf("convert new release to resource specs: %w", err)
 	}
 
 	log.Default.Debug(ctx, "Build resources")
 
-	patchers := []spec.ResourcePatcher{
+	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
 		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
-	}
-
-	if opts.LegacyHelmCompatibleTracking {
-		patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
-	}
-
-	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, patchers, clientFactory, resource.BuildResourcesOptions{
-		Remote:                   true,
+	}, resource.BuildResourcesOptions{
 		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 		NoPodLogs:                opts.NoPodLogs,
 	})
@@ -298,16 +313,24 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	var lastDeployedOrLastRelResSpecs []*spec.ResourceSpec
 	if lastDeployedOrLastRelease != nil {
-		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(lastDeployedOrLastRelease, releaseNamespace, false)
+		lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, lastDeployedOrLastRelease, releaseNamespace)
 		if err != nil {
 			return fmt.Errorf("convert last deployed or last release to resource specs: %w", err)
 		}
 	}
 
+	diffPatches, err := resolveDiffPatches(chartAccessor, opts.DefaultPatchesDisable, opts.PatchesFiles)
+	if err != nil {
+		return fmt.Errorf("resolve diff patches: %w", err)
+	}
+
 	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
+		DiffPatches:                        diffPatches,
 		NetworkParallelism:                 opts.NetworkParallelism,
 		NoRemoveManualChanges:              opts.NoRemoveManualChanges,
 		LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,
+		ExtraRuntimeAnnotations:            opts.ExtraRuntimeAnnotations,
+		ExtraRuntimeLabels:                 opts.ExtraRuntimeLabels,
 	})
 	if err != nil {
 		return fmt.Errorf("build resource infos: %w", err)
@@ -328,7 +351,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	log.Default.Debug(ctx, "Build install plan")
 
-	installPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
+	installPlan, err := plan.BuildPlan(ctx, instResInfos, delResInfos, relInfos, releaseNamespace, plan.BuildPlanOptions{
 		NoFinalTracking: opts.NoFinalTracking,
 	})
 	if err != nil {
@@ -361,19 +384,19 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	if releaseIsUpToDate && installPlanIsUseless {
 		if opts.RollbackReportPath != "" {
-			if err := saveReport(opts.RollbackReportPath, &releaseReportV3{
-				Version:   3,
-				Release:   releaseName,
-				Namespace: releaseNamespace,
-				Revision:  newRelease.Version,
-				Status:    helmrelease.StatusSkipped,
+			if err := saveReport(opts.RollbackReportPath, &ReleaseReportV3{
+				APIVersion: "v3",
+				Release:    releaseName,
+				Namespace:  releaseNamespace,
+				Revision:   newRelease.Version(),
+				Status:     helmreleasestatus.Status("skipped"),
 			}); err != nil {
 				return fmt.Errorf("save release install report: %w", err)
 			}
 		}
 
 		if !opts.NoShowNotes {
-			printNotes(ctx, newRelease.Info.Notes)
+			printNotes(ctx, newRelease.Notes())
 		}
 
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped rollback of release %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)))
@@ -475,12 +498,12 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	sort.Strings(reportCanceledOps)
 	sort.Strings(reportFailedOps)
 
-	report := &releaseReportV3{
-		Version:             3,
+	report := &ReleaseReportV3{
+		APIVersion:          "v3",
 		Release:             releaseName,
 		Namespace:           releaseNamespace,
-		Revision:            newRelease.Version,
-		Status:              helmrelease.StatusDeployed,
+		Revision:            newRelease.Version(),
+		Status:              helmreleasestatus.StatusDeployed,
 		CompletedOperations: reportCompletedOps,
 		CanceledOperations:  reportCanceledOps,
 		FailedOperations:    reportFailedOps,
@@ -495,7 +518,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	}
 
 	if !criticalErrs.HasErrors() && !opts.NoShowNotes {
-		printNotes(ctx, newRelease.Info.Notes)
+		printNotes(ctx, newRelease.Notes())
 	}
 
 	if criticalErrs.HasErrors() {

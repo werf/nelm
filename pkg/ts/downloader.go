@@ -9,29 +9,44 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
-	"strings"
 	"time"
 
-	"github.com/go-resty/resty/v2"
 	"github.com/gosimple/slug"
 	"github.com/samber/lo"
 
 	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
 	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/ts/denolock"
 	"github.com/werf/nelm/pkg/util"
 )
 
-const denoVersion = "2.7.1"
+// DownloadDenoForPlatform downloads the pinned Deno release for an arbitrary
+// target platform into destDir and returns the path of the extracted binary.
+func DownloadDenoForPlatform(ctx context.Context, goos, goarch, destDir string) (string, error) {
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return "", fmt.Errorf("create destination directory: %w", err)
+	}
 
-func downloadDeno(ctx context.Context, cacheDir, link string) error {
+	if err := downloadDeno(ctx, destDir, goos, goarch); err != nil {
+		return "", fmt.Errorf("download deno: %w", err)
+	}
+
+	return filepath.Join(destDir, denoBinaryName(goos)), nil
+}
+
+func downloadDeno(ctx context.Context, cacheDir, goos, goarch string) error {
+	pinned, err := denolock.Get(goos, goarch)
+	if err != nil {
+		return fmt.Errorf("get the pinned Deno release: %w", err)
+	}
+
+	link, err := denolock.ArchiveURL(goos, goarch)
+	if err != nil {
+		return fmt.Errorf("get the pinned Deno release URL: %w", err)
+	}
+
 	httpClient := util.NewRestyClient(ctx)
 	httpClient.SetTimeout(15 * time.Minute)
-
-	expectedHash, err := fetchExpectedChecksum(ctx, httpClient, link)
-	if err != nil {
-		return fmt.Errorf("fetch checksum: %w", err)
-	}
 
 	tmpDir, err := os.MkdirTemp(cacheDir, "download-*")
 	if err != nil {
@@ -57,8 +72,8 @@ func downloadDeno(ctx context.Context, cacheDir, link string) error {
 		return fmt.Errorf("download Deno from %s: %s", link, response.Status())
 	}
 
-	if err := verifyChecksum(ctx, zipFile, expectedHash); err != nil {
-		return fmt.Errorf("verify checksum: %w", err)
+	if err := verifyChecksum(ctx, zipFile, pinned.ArchiveSHA256); err != nil {
+		return fmt.Errorf("verify downloaded archive against the digest pinned for %s/%s: %w", goos, goarch, err)
 	}
 
 	reader, err := zip.OpenReader(zipFile)
@@ -72,7 +87,7 @@ func downloadDeno(ctx context.Context, cacheDir, link string) error {
 		}
 	}()
 
-	binaryName := lo.Ternary(runtime.GOOS == "windows", "deno.exe", "deno")
+	binaryName := denoBinaryName(goos)
 
 	var binaryFound bool
 	for _, file := range reader.File {
@@ -86,6 +101,12 @@ func downloadDeno(ctx context.Context, cacheDir, link string) error {
 
 		tmpBinaryPath := filepath.Join(tmpDir, filepath.Base(file.Name))
 		finalPath := filepath.Join(cacheDir, filepath.Base(file.Name))
+
+		// Redundant after the archive matched, but it is the digest the embedded blob is checked
+		// against, so a mismatch here would mean the two ways of getting Deno disagree.
+		if err := verifyChecksum(ctx, tmpBinaryPath, pinned.BinarySHA256); err != nil {
+			return fmt.Errorf("verify unpacked binary against the digest pinned for %s/%s: %w", goos, goarch, err)
+		}
 
 		if err := os.Rename(tmpBinaryPath, finalPath); err != nil {
 			return fmt.Errorf("move Deno binary to cache: %w", err)
@@ -105,26 +126,8 @@ func downloadDeno(ctx context.Context, cacheDir, link string) error {
 	return nil
 }
 
-func fetchExpectedChecksum(ctx context.Context, httpClient *resty.Client, archiveURL string) (string, error) {
-	checksumURL := archiveURL + ".sha256sum"
-
-	log.Default.Debug(ctx, "Fetching Deno checksum from %s", checksumURL)
-
-	response, err := httpClient.R().SetContext(ctx).Get(checksumURL)
-	if err != nil {
-		return "", fmt.Errorf("download checksum from %s: %w", checksumURL, err)
-	}
-
-	if response.IsError() {
-		return "", fmt.Errorf("download checksum from %s: %s", checksumURL, response.Status())
-	}
-
-	hash, _, _ := strings.Cut(strings.TrimSpace(response.String()), " ")
-	if len(hash) != 64 {
-		return "", fmt.Errorf("unexpected checksum format from %s: %s", checksumURL, hash)
-	}
-
-	return hash, nil
+func denoBinaryName(goos string) string {
+	return lo.Ternary(goos == "windows", "deno.exe", "deno")
 }
 
 func getDenoFolder(downloadURL string) (string, error) {
@@ -150,29 +153,13 @@ func getDenoFolder(downloadURL string) (string, error) {
 	return cacheDir, nil
 }
 
-func getDownloadLink() (string, error) {
-	var target string
-
-	switch {
-	case runtime.GOOS == "linux" && runtime.GOARCH == "amd64":
-		target = "x86_64-unknown-linux-gnu"
-	case runtime.GOOS == "linux" && runtime.GOARCH == "arm64":
-		target = "aarch64-unknown-linux-gnu"
-	case runtime.GOOS == "darwin" && runtime.GOARCH == "amd64":
-		target = "x86_64-apple-darwin"
-	case runtime.GOOS == "darwin" && runtime.GOARCH == "arm64":
-		target = "aarch64-apple-darwin"
-	case runtime.GOOS == "windows" && runtime.GOARCH == "amd64":
-		target = "x86_64-pc-windows-msvc"
-	case runtime.GOOS == "windows" && runtime.GOARCH == "arm64":
-		target = "aarch64-pc-windows-msvc"
-	default:
-		return "", fmt.Errorf("unsupported platform: %s/%s", runtime.GOOS, runtime.GOARCH)
+func getDownloadLink(goos, goarch string) (string, error) {
+	link, err := denolock.ArchiveURL(goos, goarch)
+	if err != nil {
+		return "", fmt.Errorf("get the pinned Deno release URL: %w", err)
 	}
 
-	url := fmt.Sprintf("https://github.com/denoland/deno/releases/download/v%s/deno-%s.zip", denoVersion, target)
-
-	return url, nil
+	return link, nil
 }
 
 func unzipBinary(ctx context.Context, cacheDir string, file *zip.File) error {

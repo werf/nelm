@@ -1,114 +1,67 @@
 package resource_test
 
 import (
-	"os"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/resource"
 )
 
 func TestGetSensitiveInfo(t *testing.T) {
-	// Save original env and restore after test
-	originalEnv := os.Getenv(featgate.FeatGateFieldSensitive.EnvVarName())
-	defer func() {
-		if originalEnv != "" {
-			t.Setenv(featgate.FeatGateFieldSensitive.EnvVarName(), originalEnv)
-		}
-	}()
-
 	tests := []struct {
-		name          string
-		enableFeature bool
-		groupKind     schema.GroupKind
-		annotations   map[string]string
-		expected      resource.SensitiveInfo
+		name        string
+		groupKind   schema.GroupKind
+		annotations map[string]string
+		expected    resource.SensitiveInfo
 	}{
 		{
-			name:          "regular resource not sensitive",
-			enableFeature: true,
-			groupKind:     schema.GroupKind{Group: "apps", Kind: "Deployment"},
-			annotations:   map[string]string{},
-			expected:      resource.SensitiveInfo{IsSensitive: false, SensitivePaths: nil},
+			name:        "regular resource not sensitive",
+			groupKind:   schema.GroupKind{Group: "apps", Kind: "Deployment"},
+			annotations: map[string]string{},
+			expected:    resource.SensitiveInfo{IsSensitive: false, SensitivePaths: nil},
 		},
 		{
-			name:          "secret resource automatically sensitive - legacy behavior",
-			enableFeature: false,
-			groupKind:     schema.GroupKind{Group: "", Kind: "Secret"},
-			annotations:   map[string]string{},
-			expected:      resource.SensitiveInfo{IsSensitive: true, SensitivePaths: []string{"$$HIDE_ALL$$"}},
+			name:        "secret with sensitive annotation set to false",
+			groupKind:   schema.GroupKind{Group: "", Kind: "Secret"},
+			annotations: map[string]string{"werf.io/sensitive": "false"},
+			expected:    resource.SensitiveInfo{IsSensitive: false, SensitivePaths: nil},
 		},
 		{
-			name:          "secret resource with annotation - legacy behavior",
-			enableFeature: false,
-			groupKind:     schema.GroupKind{Group: "", Kind: "Secret"},
-			annotations: map[string]string{
-				"werf.io/sensitive": "false",
-			},
-			expected: resource.SensitiveInfo{IsSensitive: false, SensitivePaths: nil},
+			name:        "secret resource automatically sensitive",
+			groupKind:   schema.GroupKind{Group: "", Kind: "Secret"},
+			annotations: map[string]string{},
+			expected:    resource.SensitiveInfo{IsSensitive: true, SensitivePaths: []string{"data.*", "stringData.*"}},
 		},
 		{
-			name:          "secret with sensitive annotation set to false",
-			enableFeature: true,
-			groupKind:     schema.GroupKind{Group: "", Kind: "Secret"},
-			annotations: map[string]string{
-				"werf.io/sensitive": "false",
-			},
-			expected: resource.SensitiveInfo{IsSensitive: false, SensitivePaths: nil},
-		},
-		{
-			name:          "secret resource automatically sensitive - new behavior",
-			enableFeature: true,
-			groupKind:     schema.GroupKind{Group: "", Kind: "Secret"},
-			annotations:   map[string]string{},
-			expected:      resource.SensitiveInfo{IsSensitive: true, SensitivePaths: []string{"data.*", "stringData.*"}},
-		},
-		{
-			name:          "resource with sensitive annotation set to true - legacy behavior",
-			enableFeature: false,
-			groupKind:     schema.GroupKind{Group: "apps", Kind: "Deployment"},
-			annotations: map[string]string{
-				"werf.io/sensitive": "true",
-			},
-			expected: resource.SensitiveInfo{IsSensitive: true, SensitivePaths: []string{resource.HideAll}},
-		},
-		{
-			name:          "resource with sensitive annotation set to true - new behavior",
-			enableFeature: true,
-			groupKind:     schema.GroupKind{Group: "apps", Kind: "Deployment"},
+			name:      "resource with sensitive annotation set to true",
+			groupKind: schema.GroupKind{Group: "apps", Kind: "Deployment"},
 			annotations: map[string]string{
 				"werf.io/sensitive": "true",
 			},
 			expected: resource.SensitiveInfo{IsSensitive: true, SensitivePaths: []string{"data.*", "stringData.*"}},
 		},
 		{
-			name:          "resource with comma-separated sensitive-paths annotation",
-			enableFeature: true,
-			groupKind:     schema.GroupKind{Group: "apps", Kind: "Deployment"},
+			name:      "resource with comma-separated sensitive-paths annotation",
+			groupKind: schema.GroupKind{Group: "apps", Kind: "Deployment"},
 			annotations: map[string]string{
 				"werf.io/sensitive-paths": "spec.template.spec.containers.*.env.*.value,data.password",
 			},
 			expected: resource.SensitiveInfo{IsSensitive: true, SensitivePaths: []string{"spec.template.spec.containers.*.env.*.value", "data.password"}},
 		},
 		{
-			name:          "resource with escaped comma in sensitive-paths",
-			enableFeature: true,
-			groupKind:     schema.GroupKind{Group: "apps", Kind: "Deployment"},
+			name:      "resource with escaped comma in sensitive-paths",
+			groupKind: schema.GroupKind{Group: "apps", Kind: "Deployment"},
 			annotations: map[string]string{
 				"werf.io/sensitive-paths": "data.field\\,with\\,commas,spec.other",
 			},
 			expected: resource.SensitiveInfo{IsSensitive: true, SensitivePaths: []string{"data.field,with,commas", "spec.other"}},
 		},
 		{
-			name:          "resource with both sensitive and sensitive-paths annotations - sensitive path precedence in v2",
-			enableFeature: true,
-			groupKind:     schema.GroupKind{Group: "apps", Kind: "Deployment"},
+			name:      "resource with both sensitive and sensitive-paths annotations - sensitive path precedence in v2",
+			groupKind: schema.GroupKind{Group: "apps", Kind: "Deployment"},
 			annotations: map[string]string{
 				"werf.io/sensitive":       "true",
 				"werf.io/sensitive-paths": "data.password",
@@ -116,32 +69,17 @@ func TestGetSensitiveInfo(t *testing.T) {
 			expected: resource.SensitiveInfo{IsSensitive: true, SensitivePaths: []string{"data.password"}},
 		},
 		{
-			name:          "resource with empty sensitive-paths annotation",
-			enableFeature: true,
-			groupKind:     schema.GroupKind{Group: "apps", Kind: "Deployment"},
+			name:      "resource with empty sensitive-paths annotation",
+			groupKind: schema.GroupKind{Group: "apps", Kind: "Deployment"},
 			annotations: map[string]string{
 				"werf.io/sensitive-paths": "",
 			},
 			expected: resource.SensitiveInfo{IsSensitive: false, SensitivePaths: nil},
 		},
-		{
-			name:          "resource with sensitive-paths annotation - feature flag disabled",
-			enableFeature: false,
-			groupKind:     schema.GroupKind{Group: "v1", Kind: "ConfigMap"},
-			annotations: map[string]string{
-				"werf.io/sensitive-paths": "$.data[*]",
-			},
-			expected: resource.SensitiveInfo{IsSensitive: true, SensitivePaths: []string{"$.data[*]"}},
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set feature gate
-			if tt.enableFeature {
-				t.Setenv(featgate.FeatGateFieldSensitive.EnvVarName(), "true")
-			}
-
 			result := resource.GetSensitiveInfo(tt.groupKind, tt.annotations)
 
 			assert.Equal(t, tt.expected, result, "behavior should match expected")
@@ -206,16 +144,6 @@ func TestParseSensitivePaths(t *testing.T) {
 }
 
 func TestRedactAtJSONPath(t *testing.T) {
-	// Enable feature gate
-	originalEnv := os.Getenv(featgate.FeatGateFieldSensitive.EnvVarName())
-	defer func() {
-		if originalEnv != "" {
-			t.Setenv(featgate.FeatGateFieldSensitive.EnvVarName(), originalEnv)
-		}
-	}()
-
-	t.Setenv(featgate.FeatGateFieldSensitive.EnvVarName(), "true")
-
 	tests := []struct {
 		name           string
 		input          *unstructured.Unstructured
@@ -585,61 +513,14 @@ func TestRedactAtJSONPath(t *testing.T) {
 }
 
 func TestRedactSensitiveData(t *testing.T) {
-	// Save original env and restore after test
-	originalEnv := os.Getenv(featgate.FeatGateFieldSensitive.EnvVarName())
-	defer func() {
-		if originalEnv != "" {
-			t.Setenv(featgate.FeatGateFieldSensitive.EnvVarName(), originalEnv)
-		}
-	}()
-
 	tests := []struct {
 		name           string
-		enableFeature  bool
 		input          *unstructured.Unstructured
 		sensitivePaths []string
 		checkFunc      func(t *testing.T, result *unstructured.Unstructured)
 	}{
 		{
-			name:          "bug: sensitive-paths ignored when feature flag disabled",
-			enableFeature: false,
-			input: &unstructured.Unstructured{
-				Object: map[string]interface{}{
-					"apiVersion": "v1",
-					"kind":       "ConfigMap",
-					"metadata": map[string]interface{}{
-						"name":      "test-config",
-						"namespace": "default",
-					},
-					"data": map[string]interface{}{
-						"key1": "sensitive-value-1",
-						"key2": "sensitive-value-2",
-					},
-				},
-			},
-			sensitivePaths: []string{"data.*"},
-			checkFunc: func(t *testing.T, result *unstructured.Unstructured) {
-				// The bug is that when feature flag is disabled, the entire data section
-				// is removed instead of redacting only the specified sensitive paths
-				data, found, err := unstructured.NestedMap(result.Object, "data")
-				require.NoError(t, err)
-
-				if !found {
-					t.Errorf("data section was completely removed instead of being redacted")
-				} else {
-					// If data exists, it should be redacted
-					for key, value := range data {
-						valueStr, ok := value.(string)
-						if ok && !strings.Contains(valueStr, "sensitive") {
-							t.Errorf("Expected data.%s to be redacted but got: %s", key, valueStr)
-						}
-					}
-				}
-			},
-		},
-		{
-			name:          "no sensitive paths",
-			enableFeature: true,
+			name: "no sensitive paths",
 			input: &unstructured.Unstructured{
 				Object: map[string]interface{}{
 					"apiVersion": "v1",
@@ -662,8 +543,7 @@ func TestRedactSensitiveData(t *testing.T) {
 			},
 		},
 		{
-			name:          "hide all with feature gate",
-			enableFeature: true,
+			name: "hide all",
 			input: &unstructured.Unstructured{
 				Object: map[string]interface{}{
 					"apiVersion": "v1",
@@ -689,8 +569,7 @@ func TestRedactSensitiveData(t *testing.T) {
 			},
 		},
 		{
-			name:          "redact data fields with wildcard - new behavior",
-			enableFeature: true,
+			name: "redact data fields with wildcard",
 			input: &unstructured.Unstructured{
 				Object: map[string]interface{}{
 					"apiVersion": "v1",
@@ -723,8 +602,7 @@ func TestRedactSensitiveData(t *testing.T) {
 			},
 		},
 		{
-			name:          "redact specific field",
-			enableFeature: true,
+			name: "redact specific field",
 			input: &unstructured.Unstructured{
 				Object: map[string]interface{}{
 					"apiVersion": "v1",
@@ -753,8 +631,7 @@ func TestRedactSensitiveData(t *testing.T) {
 			},
 		},
 		{
-			name:          "type change handling - string to slice",
-			enableFeature: true,
+			name: "type change handling - string to slice",
 			input: &unstructured.Unstructured{
 				Object: map[string]interface{}{
 					"apiVersion": "apps/v1",
@@ -797,11 +674,6 @@ func TestRedactSensitiveData(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set feature gate
-			if tt.enableFeature {
-				t.Setenv(featgate.FeatGateFieldSensitive.EnvVarName(), "true")
-			}
-
 			result := resource.RedactSensitiveData(tt.input, tt.sensitivePaths)
 
 			// Ensure original object is not modified
@@ -813,16 +685,6 @@ func TestRedactSensitiveData(t *testing.T) {
 }
 
 func TestRedactSensitiveDataEdgeCases(t *testing.T) {
-	// Enable feature gate
-	originalEnv := os.Getenv(featgate.FeatGateFieldSensitive.EnvVarName())
-	defer func() {
-		if originalEnv != "" {
-			t.Setenv(featgate.FeatGateFieldSensitive.EnvVarName(), originalEnv)
-		}
-	}()
-
-	t.Setenv(featgate.FeatGateFieldSensitive.EnvVarName(), "true")
-
 	tests := []struct {
 		name           string
 		input          *unstructured.Unstructured
@@ -867,16 +729,6 @@ func TestRedactSensitiveDataEdgeCases(t *testing.T) {
 }
 
 func TestSHA256HashingConsistency(t *testing.T) {
-	// Enable feature gate
-	originalEnv := os.Getenv(featgate.FeatGateFieldSensitive.EnvVarName())
-	defer func() {
-		if originalEnv != "" {
-			t.Setenv(featgate.FeatGateFieldSensitive.EnvVarName(), originalEnv)
-		}
-	}()
-
-	t.Setenv(featgate.FeatGateFieldSensitive.EnvVarName(), "true")
-
 	input1 := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"data": map[string]interface{}{

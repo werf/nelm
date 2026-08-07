@@ -11,7 +11,6 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/util"
@@ -29,7 +28,7 @@ func ValidateLocal(ctx context.Context, releaseNamespace string, transformedReso
 		return fmt.Errorf("%w: %w", ErrResourceDuplicatesFound, err)
 	}
 
-	if featgate.FeatGateResourceValidation.Enabled() && !opts.NoResourceValidation {
+	if !opts.NoResourceValidation {
 		if err := validateResourceSchemas(ctx, releaseNamespace, transformedResources, opts); err != nil {
 			return fmt.Errorf("validate resource schemas: %w", err)
 		}
@@ -44,9 +43,9 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 	}
 
 	kubeConformValidator, err := newKubeConformValidator(
-		opts.ValidationKubeVersion,
 		opts.ValidationSchemaCacheLifetime,
-		append(opts.ValidationExtraSchemas, opts.ValidationSchemas...))
+		opts.ValidationExtraSchemas,
+	)
 	if err != nil {
 		return fmt.Errorf("get schema validator: %w", err)
 	}
@@ -62,19 +61,17 @@ func validateResourceSchemas(ctx context.Context, releaseNamespace string, resou
 			continue
 		}
 
-		if !opts.LocalResourceValidation {
-			if err := kubeConformValidator.Validate(ctx, res.ResourceSpec); err != nil {
-				e := fmt.Errorf("validate %s: %w", res.IDHuman(), err)
+		if err := kubeConformValidator.Validate(ctx, res.ResourceSpec); err != nil {
+			e := fmt.Errorf("validate %s: %w", res.IDHuman(), err)
 
-				var vErr *validator.ValidationError
-				if errors.As(err, &vErr) {
-					validationErrs.Add(e)
+			var vErr *validator.ValidationError
+			if errors.As(err, &vErr) {
+				validationErrs.Add(e)
 
-					continue
-				}
-
-				return e
+				continue
 			}
+
+			return e
 		}
 
 		if err := validateResourceWithCodec(res); err != nil {

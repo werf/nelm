@@ -70,10 +70,6 @@ func (f *ClientFactory) KubeConfig() *kube.KubeConfig {
 	panic("not implemented yet")
 }
 
-func (f *ClientFactory) LegacyClientGetter() *kube.LegacyClientGetter {
-	panic("not implemented yet")
-}
-
 func (f *ClientFactory) Mapper() meta.ResettableRESTMapper {
 	return f.mapper
 }

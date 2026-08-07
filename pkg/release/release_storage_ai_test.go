@@ -14,7 +14,10 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	metadatafake "k8s.io/client-go/metadata/fake"
 
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	v2release "github.com/werf/nelm/pkg/helm/intern/release/v2"
+	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	helmstorage "github.com/werf/nelm/pkg/helm/pkg/storage"
 	helmdriver "github.com/werf/nelm/pkg/helm/pkg/storage/driver"
 )
@@ -22,6 +25,54 @@ import (
 const testNamespace = "test-ns"
 
 var secretsGVR = schema.GroupVersionResource{Version: "v1", Resource: "secrets"}
+
+func TestAI_AccessorCopyAndSetStatus_V1PreservesDescriptionAndOriginal(t *testing.T) {
+	original := &helmrelease.Release{
+		Name: "myrelease",
+		Info: &helmrelease.Info{
+			Status:      helmreleasecommon.StatusDeployed,
+			Description: "original description",
+		},
+	}
+
+	acc, err := helmrel.NewAccessor(original)
+	require.NoError(t, err)
+
+	copied, err := acc.Copy()
+	require.NoError(t, err)
+	copied.SetStatus(helmreleasecommon.StatusFailed)
+
+	copiedRel, ok := copied.Releaser().(*helmrelease.Release)
+	require.True(t, ok)
+	assert.Equal(t, helmreleasecommon.StatusFailed, copiedRel.Info.Status)
+	assert.Equal(t, "original description", copiedRel.Info.Description)
+
+	assert.Equal(t, helmreleasecommon.StatusDeployed, original.Info.Status, "original must not be mutated")
+}
+
+func TestAI_AccessorCopyAndSetStatus_V2PreservesDescriptionAndOriginal(t *testing.T) {
+	original := &v2release.Release{
+		Name: "myrelease",
+		Info: &v2release.Info{
+			Status:      helmreleasecommon.StatusDeployed,
+			Description: "original description",
+		},
+	}
+
+	acc, err := helmrel.NewAccessor(original)
+	require.NoError(t, err)
+
+	copied, err := acc.Copy()
+	require.NoError(t, err)
+	copied.SetStatus(helmreleasecommon.StatusFailed)
+
+	copiedRel, ok := copied.Releaser().(*v2release.Release)
+	require.True(t, ok)
+	assert.Equal(t, helmreleasecommon.StatusFailed, copiedRel.Info.Status)
+	assert.Equal(t, "original description", copiedRel.Info.Description)
+
+	assert.Equal(t, helmreleasecommon.StatusDeployed, original.Info.Status, "original must not be mutated")
+}
 
 func TestAI_StorageGetRelease_LatestViaMetadata(t *testing.T) {
 	const relName = "myrel"
@@ -117,10 +168,13 @@ func TestAI_StorageGetRelease_SpecificRevisionPreservesSystemLabels(t *testing.T
 	assert.Equal(t, "2", rel.Labels["version"])
 	assert.Equal(t, "bbb", rel.Labels["moduleChecksum"])
 
-	stripped, err := storage.Get(relName, 2)
+	strippedReleaser, err := storage.Get(relName, 2)
 	require.NoError(t, err)
-	assert.NotContains(t, stripped.Labels, "owner", "Storage.Get strips system labels; GetRelease must fetch via Query instead")
-	assert.Equal(t, "bbb", stripped.Labels["moduleChecksum"])
+
+	strippedAcc, err := helmrel.NewAccessor(strippedReleaser)
+	require.NoError(t, err)
+	assert.NotContains(t, strippedAcc.Labels(), "owner", "Storage.Get strips system labels; GetRelease must fetch via Query instead")
+	assert.Equal(t, "bbb", strippedAcc.Labels()["moduleChecksum"])
 }
 
 func TestAI_StorageGetRelease_TypedListFallbackWhenNoMetadataClient(t *testing.T) {
@@ -197,7 +251,7 @@ func newTestRelease(name string, version int, labels map[string]string) *helmrel
 		Name:      name,
 		Namespace: testNamespace,
 		Version:   version,
-		Info:      &helmrelease.Info{Status: helmrelease.StatusDeployed},
+		Info:      &helmrelease.Info{Status: helmreleasecommon.StatusDeployed},
 		Labels:    labels,
 	}
 }

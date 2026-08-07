@@ -16,12 +16,14 @@ import (
 
 	"github.com/werf/nelm/pkg/common"
 	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
+	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
 	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/pkg/ts/denolock"
 )
 
 var chartTSEntryPoints = [...]string{common.ChartTSEntryPointTS, common.ChartTSEntryPointJS}
 
-func BundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path string, rebuildBundle bool, binaryPath string) error {
+func BundleChartsRecursive(ctx context.Context, chart helmchart.Accessor, path string, rebuildBundle bool, binaryPath string) error {
 	if !hasTSFiles(chart) {
 		return nil
 	}
@@ -56,8 +58,8 @@ func RunDenoInstall(ctx context.Context, chartPath, binaryPath string) error {
 	return nil
 }
 
-func bundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path string, rebuildBundle bool, denoBin string) error {
-	entrypoint, bundle := getEntrypointAndBundle(chart.RuntimeFiles)
+func bundleChartsRecursive(ctx context.Context, chart helmchart.Accessor, path string, rebuildBundle bool, denoBin string) error {
+	entrypoint, bundle := getEntrypointAndBundle(chart.RuntimeFiles())
 
 	if entrypoint != "" {
 		if bundle == nil || rebuildBundle {
@@ -77,7 +79,12 @@ func bundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path str
 	}
 
 	for _, dep := range chart.Dependencies() {
-		depPath := filepath.Join(path, "charts", dep.Name())
+		depAcc, err := helmchart.NewAccessor(dep)
+		if err != nil {
+			return fmt.Errorf("create accessor for dependency: %w", err)
+		}
+
+		depPath := filepath.Join(path, "charts", depAcc.Name())
 
 		if _, err := os.Stat(depPath); err != nil {
 			// Subchart loaded from .tgz or missing on disk — skip,
@@ -85,21 +92,21 @@ func bundleChartsRecursive(ctx context.Context, chart *helmchart.Chart, path str
 			continue
 		}
 
-		if err := bundleChartsRecursive(ctx, dep, depPath, rebuildBundle, denoBin); err != nil {
-			return fmt.Errorf("process dependency %q: %w", dep.Name(), err)
+		if err := bundleChartsRecursive(ctx, depAcc, depPath, rebuildBundle, denoBin); err != nil {
+			return fmt.Errorf("process dependency %q: %w", depAcc.Name(), err)
 		}
 	}
 
 	return nil
 }
 
-func getEntrypointAndBundle(files []*helmchart.File) (string, *helmchart.File) {
+func getEntrypointAndBundle(files []*chartcommon.File) (string, *chartcommon.File) {
 	entrypoint := findEntrypointInFiles(files)
 	if entrypoint == "" {
 		return "", nil
 	}
 
-	bundleFile, foundBundle := lo.Find(files, func(f *helmchart.File) bool {
+	bundleFile, foundBundle := lo.Find(files, func(f *chartcommon.File) bool {
 		return f.Name == common.ChartTSBundleFile
 	})
 
@@ -110,14 +117,19 @@ func getEntrypointAndBundle(files []*helmchart.File) (string, *helmchart.File) {
 	return entrypoint, bundleFile
 }
 
-func hasTSFiles(chart *helmchart.Chart) bool {
-	entrypoint := findEntrypointInFiles(chart.RuntimeFiles)
+func hasTSFiles(chart helmchart.Accessor) bool {
+	entrypoint := findEntrypointInFiles(chart.RuntimeFiles())
 	if entrypoint != "" {
 		return true
 	}
 
 	for _, dep := range chart.Dependencies() {
-		if hasTSFiles(dep) {
+		depAcc, err := helmchart.NewAccessor(dep)
+		if err != nil {
+			continue
+		}
+
+		if hasTSFiles(depAcc) {
 			return true
 		}
 	}
@@ -125,7 +137,7 @@ func hasTSFiles(chart *helmchart.Chart) bool {
 	return false
 }
 
-func findEntrypointInFiles(files []*helmchart.File) string {
+func findEntrypointInFiles(files []*chartcommon.File) string {
 	sourceFiles := make(map[string][]byte)
 
 	for _, f := range files {
@@ -156,7 +168,30 @@ func getDenoBinary(ctx context.Context, binaryPath string) (string, error) {
 		return binaryPath, nil
 	}
 
-	link, err := getDownloadLink()
+	if opts := GetTSOptionsFromContext(ctx); len(opts.EmbeddedDenoCompressed) > 0 {
+		pinned, err := denolock.Get(runtime.GOOS, runtime.GOARCH)
+		if err != nil {
+			return "", fmt.Errorf("get the pinned Deno release: %w", err)
+		}
+
+		path, err := extractEmbeddedDeno(ctx, opts.EmbeddedDenoCompressed, pinned.BinarySHA256)
+		if err != nil {
+			return "", fmt.Errorf("extract embedded Deno binary: %w", err)
+		}
+
+		return path, nil
+	}
+
+	embeddedPath, embedded, err := embeddedDenoBinary(ctx)
+	if err != nil {
+		return "", fmt.Errorf("get embedded Deno binary: %w", err)
+	}
+
+	if embedded {
+		return embeddedPath, nil
+	}
+
+	link, err := getDownloadLink(runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return "", fmt.Errorf("get download link: %w", err)
 	}
@@ -166,9 +201,7 @@ func getDenoBinary(ctx context.Context, binaryPath string) (string, error) {
 		return "", fmt.Errorf("get Deno cache folder: %w", err)
 	}
 
-	binaryName := lo.Ternary(runtime.GOOS == "windows", "deno.exe", "deno")
-
-	denoPath := filepath.Join(cacheDir, binaryName)
+	denoPath := filepath.Join(cacheDir, denoBinaryName(runtime.GOOS))
 	if _, err := os.Stat(denoPath); err == nil {
 		log.Default.Debug(ctx, "Using cached Deno binary: %s", denoPath)
 
@@ -186,10 +219,6 @@ func getDenoBinary(ctx context.Context, binaryPath string) (string, error) {
 		if err := fileLock.Unlock(); err != nil {
 			log.Default.Error(ctx, "release lock on Deno cache: %v", err)
 		}
-
-		if err := os.Remove(lockFile); err != nil {
-			log.Default.Error(ctx, "remove Deno cache lock file: %v", err)
-		}
 	}()
 
 	if _, err := os.Stat(denoPath); err == nil {
@@ -198,7 +227,7 @@ func getDenoBinary(ctx context.Context, binaryPath string) (string, error) {
 		return denoPath, nil
 	}
 
-	if err := downloadDeno(ctx, cacheDir, link); err != nil {
+	if err := downloadDeno(ctx, cacheDir, runtime.GOOS, runtime.GOARCH); err != nil {
 		return "", fmt.Errorf("download deno: %w", err)
 	}
 

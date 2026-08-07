@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package driver // import "helm.sh/helm/v3/pkg/storage/driver"
+package driver // import "github.com/werf/nelm/pkg/helm/pkg/storage/driver"
 
 import (
 	"bytes"
@@ -22,15 +22,16 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
+	"slices"
 	"strconv"
 
-	"github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/metadata"
 
-	rspb "github.com/werf/nelm/pkg/helm/pkg/release"
+	rspb "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 )
 
 var b64 = base64.StdEncoding
@@ -46,7 +47,7 @@ var systemLabels = []string{"name", "owner", "status", "version", "createdAt", "
 func lastVersionFromMetadata(ctx context.Context, client metadata.Interface, gvr schema.GroupVersionResource, namespace, selector string) (int, error) {
 	list, err := client.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
 	if err != nil {
-		return 0, errors.Wrap(err, "list release metadata")
+		return 0, fmt.Errorf("list release metadata: %w", err)
 	}
 
 	latest := 0
@@ -124,12 +125,7 @@ func decodeRelease(data string) (*rspb.Release, error) {
 
 // Checks if label is system
 func isSystemLabel(key string) bool {
-	for _, v := range GetSystemLabels() {
-		if key == v {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(GetSystemLabels(), key)
 }
 
 // Removes system labels from labels map
