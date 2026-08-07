@@ -41,7 +41,6 @@ func TestAI_ManualDeployDependencyNormalizesReleaseNamespace(t *testing.T) {
 
 		require.Empty(t, dep.Namespaces)
 	})
-
 }
 
 func manualDeployDep(t *testing.T, releaseNamespace string, annotations map[string]string) *resource.Dependency {

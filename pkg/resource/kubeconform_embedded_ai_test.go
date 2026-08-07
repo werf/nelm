@@ -186,7 +186,6 @@ func TestAI_EmbeddedSchemasNotUnpackedWhenNotNeeded(t *testing.T) {
 }
 
 func TestAI_EmbeddedSchemasOnly(t *testing.T) {
-
 	t.Run("validates_invalid_resources", func(t *testing.T) {
 		setupTestEnvironment(t)
 

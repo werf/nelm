@@ -117,6 +117,21 @@ func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr err
 	log.Default.Warn(ctx, "Plan graph saved to %q for debugging", graphPath)
 }
 
+// Reports enabled=false when release locking is disabled, in which case callers must skip acquiring
+// the lock entirely.
+func newReleaseLockManager(ctx context.Context, releaseNamespace string, clientFactory kube.ClientFactorier, legacyNoReleaseLock bool) (*lock.LockManager, bool, error) {
+	if legacyNoReleaseLock {
+		return nil, false, nil
+	}
+
+	lockManager, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory)
+	if err != nil {
+		return nil, false, fmt.Errorf("construct lock manager: %w", err)
+	}
+
+	return lockManager, true, nil
+}
+
 func printNotes(ctx context.Context, notes string) {
 	if notes == "" {
 		return
@@ -294,19 +309,4 @@ func writeWithSyntaxHighlight(outStream io.Writer, text, lang string, colorLevel
 	}
 
 	return nil
-}
-
-// Reports enabled=false when release locking is disabled, in which case callers must skip acquiring
-// the lock entirely.
-func newReleaseLockManager(ctx context.Context, releaseNamespace string, clientFactory kube.ClientFactorier, legacyNoReleaseLock bool) (*lock.LockManager, bool, error) {
-	if legacyNoReleaseLock {
-		return nil, false, nil
-	}
-
-	lockManager, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory)
-	if err != nil {
-		return nil, false, fmt.Errorf("construct lock manager: %w", err)
-	}
-
-	return lockManager, true, nil
 }

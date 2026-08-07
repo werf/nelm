@@ -8,11 +8,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/werf/lockgate"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	"github.com/werf/lockgate"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/kube/fake"
@@ -48,20 +48,6 @@ func TestAI_ReleaseLockAcquiredWhenLegacyNoReleaseLockDisabled(t *testing.T) {
 	require.NoError(t, lockManager.Unlock(handle))
 }
 
-func TestAI_ReleaseLockSkippedWhenLegacyNoReleaseLockEnabled(t *testing.T) {
-	ctx := context.Background()
-
-	clientFactory, err := fake.NewClientFactory(ctx)
-	require.NoError(t, err)
-
-	lockManager, lockEnabled, err := newReleaseLockManager(ctx, lockTestReleaseNamespace, clientFactory, true)
-	require.NoError(t, err)
-	assert.False(t, lockEnabled, "locking must be reported disabled so callers skip acquiring")
-	assert.Nil(t, lockManager, "lock manager must not be constructed when locking is disabled")
-
-	assert.False(t, lockConfigMapExists(t, ctx, clientFactory), "disabling the release lock must not touch the lock ConfigMap")
-}
-
 func TestAI_ReleaseLockIsExclusiveWhenLegacyNoReleaseLockDisabled(t *testing.T) {
 	ctx := context.Background()
 
@@ -92,6 +78,20 @@ func TestAI_ReleaseLockIsExclusiveWhenLegacyNoReleaseLockDisabled(t *testing.T) 
 	assert.True(t, acquired, "the release lock must be grantable again after unlock")
 
 	require.NoError(t, lockManager.Unlock(secondHandle))
+}
+
+func TestAI_ReleaseLockSkippedWhenLegacyNoReleaseLockEnabled(t *testing.T) {
+	ctx := context.Background()
+
+	clientFactory, err := fake.NewClientFactory(ctx)
+	require.NoError(t, err)
+
+	lockManager, lockEnabled, err := newReleaseLockManager(ctx, lockTestReleaseNamespace, clientFactory, true)
+	require.NoError(t, err)
+	assert.False(t, lockEnabled, "locking must be reported disabled so callers skip acquiring")
+	assert.Nil(t, lockManager, "lock manager must not be constructed when locking is disabled")
+
+	assert.False(t, lockConfigMapExists(t, ctx, clientFactory), "disabling the release lock must not touch the lock ConfigMap")
 }
 
 func lockConfigMapExists(t *testing.T, ctx context.Context, clientFactory kube.ClientFactorier) bool {
