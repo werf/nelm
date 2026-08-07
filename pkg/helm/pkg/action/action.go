@@ -724,6 +724,9 @@ func (cfg *Configuration) Init(getter genericclioptions.RESTClientGetter, namesp
 
 // SetHookOutputFunc sets the HookOutputFunc on the Configuration.
 func (cfg *Configuration) SetHookOutputFunc(hookOutputFunc func(_, _, _ string) io.Writer) {
+	cfg.mutex.Lock()
+	defer cfg.mutex.Unlock()
+
 	cfg.HookOutputFunc = hookOutputFunc
 }
 

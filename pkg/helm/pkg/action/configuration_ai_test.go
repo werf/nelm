@@ -3,6 +3,7 @@
 package action
 
 import (
+	"io"
 	"sync"
 	"testing"
 
@@ -10,25 +11,29 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 )
 
-func TestAIConfigurationInitConcurrent(t *testing.T) {
+func TestAIConfigurationInitAndSetHookOutputFuncConcurrent(t *testing.T) {
 	cfg := NewConfiguration()
 	getter := genericclioptions.NewConfigFlags(true)
-	errs := make(chan error, 2)
+	start := make(chan struct{})
+	errs := make(chan error, 1)
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	for range 2 {
-		go func() {
-			defer wg.Done()
-			errs <- cfg.Init(getter, "default", "memory")
-		}()
-	}
+	go func() {
+		defer wg.Done()
+		<-start
+		errs <- cfg.Init(getter, "default", "memory")
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		cfg.SetHookOutputFunc(func(_, _, _ string) io.Writer { return io.Discard })
+	}()
 
+	close(start)
 	wg.Wait()
-	close(errs)
 
-	for err := range errs {
-		require.NoError(t, err)
-	}
+	require.NoError(t, <-errs)
 	require.NotNil(t, cfg.Releases)
+	require.NotNil(t, cfg.HookOutputFunc)
 }
