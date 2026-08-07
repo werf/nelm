@@ -663,6 +663,9 @@ func (cfg *Configuration) recordRelease(r *release.Release) {
 
 // Init initializes the action configuration
 func (cfg *Configuration) Init(getter genericclioptions.RESTClientGetter, namespace, helmDriver string) error {
+	cfg.mutex.Lock()
+	defer cfg.mutex.Unlock()
+
 	kc := kube.New(getter)
 	kc.SetLogger(cfg.Logger().Handler())
 
