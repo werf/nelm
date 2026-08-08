@@ -35,10 +35,10 @@ func NewProgressTablesPrinter(taskStore *kdutil.Concurrent[*statestore.TaskStore
 }
 
 func (p *ProgressTablesPrinter) Start(ctx context.Context, interval time.Duration) {
-	go func() {
-		p.finishedCh = make(chan struct{})
+	p.finishedCh = make(chan struct{})
+	ctx, p.ctxCancelFn = context.WithCancelCause(ctx)
 
-		ctx, p.ctxCancelFn = context.WithCancelCause(ctx)
+	go func() {
 		defer func() {
 			p.ctxCancelFn(fmt.Errorf("context canceled: table printer finished"))
 
