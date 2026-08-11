@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.29.0](https://github.com/werf/nelm/compare/v1.28.0...v1.29.0) (2026-08-11)
+
+
+### Features
+
+* add case-insensitive-condition-tracking feature gate ([3d2d2d0](https://github.com/werf/nelm/commit/3d2d2d0bdfaa69ec64383ec7829ee351712758a0))
+* track managed-services.deckhouse.io resources ([2dc75a3](https://github.com/werf/nelm/commit/2dc75a38f2b05c4cf6c7a66e92e2c018d7756c0f))
+
 ## [1.28.0](https://github.com/werf/nelm/compare/v1.27.2...v1.28.0) (2026-08-03)
 
 
