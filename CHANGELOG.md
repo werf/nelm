@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.1](https://github.com/werf/nelm/compare/v1.29.0...v1.29.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* noop resources sent to legacyprogressreporter too ([cb25490](https://github.com/werf/nelm/commit/cb254907c5499a7c47f5034e7797aeeb64f828b8))
+
 ## [1.29.0](https://github.com/werf/nelm/compare/v1.28.0...v1.29.0) (2026-08-11)
 
 
