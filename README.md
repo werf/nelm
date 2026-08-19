@@ -59,6 +59,7 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [`werf.io/ownership` annotation](#werfioownership-annotation)
   - [`werf.io/deploy-on` annotation](#werfiodeploy-on-annotation)
   - [`werf.io/delete-policy` annotation](#werfiodelete-policy-annotation)
+  - [`werf.io/resource-policy` annotation](#werfioresource-policy-annotation)
   - [`werf.io/delete-propagation` annotation](#werfiodelete-propagation-annotation)
   - [`werf.io/track-termination-mode` annotation](#werfiotrack-termination-mode-annotation)
   - [`werf.io/fail-mode` annotation](#werfiofail-mode-annotation)
@@ -235,6 +236,7 @@ Helm doesn't offer any resource lifecycle capabilities, except `helm.sh/resource
 * The `werf.io/delete-policy` annotation. Inspired by `helm.sh/hook-delete-policy`, but works for any resource. Set `before-creation` to always recreate the resource, `before-creation-if-immutable` to only recreate if the resource is immutable, `succeeded` or `failed` to delete the resource on success or failure. 
 * The `werf.io/ownership` annotation. `anyone` allows to get Hook-like behavior for regular resources: don't delete the resource if it is removed from the Chart or when the whole release is removed, and never check or apply release annotations.
 * The `werf.io/deploy-on` annotation. Inspired by `helm.sh/hook`. Render and deploy the resource only on install/upgrade/rollback/uninstall in a pre/main/post stage.
+* The `werf.io/resource-policy` annotation. Inspired by `helm.sh/resource-policy`, but adds more options: set `skip-create`, `skip-update`, `skip-recreate` or `skip-delete` to skip the corresponding operation.
 
 These annotations make Helm Hooks obsolete: regular resources can do all the same things now.
 
@@ -477,6 +479,32 @@ werf.io/delete-policy: [before-creation][,before-creation-if-immutable][,succeed
 Default:
 ```
 nothing for general resources (unless Job, then "before-creation-if-immutable"), mapped from "helm.sh/hook-delete-policy" for hooks
+```
+
+### `werf.io/resource-policy` annotation
+
+Inspired by `helm.sh/resource-policy`. Define which operations Nelm may perform on the resource — creation, update, recreation and deletion. Has precedence over `helm.sh/resource-policy`. Allowed values:
+* `skip-create`: don't create the resource if it is absent in the cluster.
+* `skip-update`: don't update the resource if it is already present in the cluster.
+* `skip-recreate`: don't recreate the resource.
+* `skip-delete`: don't delete the resource if it is removed from the chart or when the release is uninstalled.
+* `keep`: a Helm-compatible alias for `skip-delete`.
+
+Recreations caused by `werf.io/delete-policy` or `helm.sh/hook-delete-policy` are skipped by `skip-recreate`, and deletions caused by them are skipped by `skip-delete`.
+
+`skip-create`, `skip-update` and `skip-recreate` only work if set in the chart, while `skip-delete` also works if set on the resource in the cluster.
+
+Example:
+```yaml
+werf.io/resource-policy: skip-update,skip-delete
+```
+Format:
+```
+werf.io/resource-policy: [skip-create][,skip-update][,skip-recreate][,skip-delete][,keep]
+```
+Default:
+```
+nothing for general resources, "skip-delete" for the release Namespace, mapped from "helm.sh/resource-policy" if set
 ```
 
 ### `werf.io/delete-propagation` annotation
