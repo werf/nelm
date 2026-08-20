@@ -15,6 +15,7 @@ import (
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -25,8 +26,9 @@ import (
 type ExecutePlanOptions struct {
 	common.TrackingOptions
 
-	LegacyProgressReporter *LegacyProgressReporter
-	NetworkParallelism     int
+	InstallableResourceInfos []*InstallableResourceInfo
+	LegacyProgressReporter   *LegacyProgressReporter
+	NetworkParallelism       int
 }
 
 // Executes the given plan. It doesn't care what kind of plan it is (install, upgrade, failure plan,
@@ -40,8 +42,7 @@ func ExecutePlan(parentCtx context.Context, releaseNamespace string, plan *Plan,
 	opts.NetworkParallelism = lo.Max([]int{opts.NetworkParallelism, 1})
 
 	if opts.LegacyProgressReporter != nil {
-		resolvedNS := buildResolvedNamespaces(plan, releaseNamespace, clientFactory.Mapper())
-		opts.LegacyProgressReporter.startStage(plan, resolvedNS)
+		opts.LegacyProgressReporter.StartStage(plan, releaseNamespace, opts.InstallableResourceInfos, clientFactory.Mapper())
 	}
 
 	workerPool := pool.New().WithContext(ctx).WithMaxGoroutines(opts.NetworkParallelism).WithCancelOnError().WithFirstError()
@@ -273,6 +274,7 @@ func execOpTrackReadiness(ctx context.Context, op *Operation, releaseNamespace s
 		Timeout:                                  timeout,
 		NoActivityTimeout:                        opConfig.NoActivityTimeout,
 		IgnoreReadinessProbeFailsByContainerName: opConfig.IgnoreReadinessProbeFailsByContainerName,
+		CaseInsensitiveConditionTracking:         featgate.FeatGateCaseInsensitiveConditionTracking.Enabled(),
 		SaveLogsOnlyForNumberOfReplicas:          opConfig.SaveLogsOnlyForNumberOfReplicas,
 		SaveLogsOnlyForContainers:                opConfig.SaveLogsOnlyForContainers,
 		SaveLogsByRegex:                          opConfig.SaveLogsByRegex,

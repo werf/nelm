@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.29.1](https://github.com/werf/nelm/compare/v1.29.0...v1.29.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* noop resources sent to legacyprogressreporter too ([cb25490](https://github.com/werf/nelm/commit/cb254907c5499a7c47f5034e7797aeeb64f828b8))
+
+## [1.29.0](https://github.com/werf/nelm/compare/v1.28.0...v1.29.0) (2026-08-11)
+
+
+### Features
+
+* add case-insensitive-condition-tracking feature gate ([3d2d2d0](https://github.com/werf/nelm/commit/3d2d2d0bdfaa69ec64383ec7829ee351712758a0))
+* track managed-services.deckhouse.io resources ([2dc75a3](https://github.com/werf/nelm/commit/2dc75a38f2b05c4cf6c7a66e92e2c018d7756c0f))
+
+## [1.28.0](https://github.com/werf/nelm/compare/v1.27.2...v1.28.0) (2026-08-03)
+
+
+### Features
+
+* add feat gate to own deckhouse-controller fields ([6092c11](https://github.com/werf/nelm/commit/6092c11447c48613b98a647a861186febc432a18))
+
 ## [1.27.2](https://github.com/werf/nelm/compare/v1.27.1...v1.27.2) (2026-07-23)
 
 
