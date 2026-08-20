@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.29.0](https://github.com/werf/nelm/compare/v1.28.0...v1.29.0) (2026-08-20)
+
+
+### Features
+
+* add case-insensitive-condition-tracking feature gate ([5647588](https://github.com/werf/nelm/commit/56475887b199ac2ca35c30b1c7ae16089cefdc89))
+* always track resource conditions case-insensitively ([0585a1f](https://github.com/werf/nelm/commit/0585a1f4041e9e12b429ba02806ccb4490b8e93c))
+* clean null fields in rendered manifests by default for better compat ([e9bbd6e](https://github.com/werf/nelm/commit/e9bbd6e25a02ac304d2d14ec82425724161fba02))
+* embed deno binary into release binaries behind embeddeno tag ([cb96a15](https://github.com/werf/nelm/commit/cb96a15b9c26a41ea452287709e25265b8a0aede))
+* enhance Deno embedding process and sync platform lists ([615df53](https://github.com/werf/nelm/commit/615df530ca9d2bbcde6b2e15e58cb6bdb4e2cefa))
+
+
+### Bug Fixes
+
+* exclude external dependencies from readiness forcing ([b4771c6](https://github.com/werf/nelm/commit/b4771c646edee72cbf26757fb027e70d389ea4d6))
+* format taskfile ([ee84ed7](https://github.com/werf/nelm/commit/ee84ed77ac0d5cde679fc66a6d27d87c851e3b80))
+* harden deno embedding per review findings ([62d593f](https://github.com/werf/nelm/commit/62d593ff8fb413e6dcd1e9dc13b749fec90f1375))
+* **helm:** serialize action configuration initialization ([#686](https://github.com/werf/nelm/issues/686)) ([ec98995](https://github.com/werf/nelm/commit/ec98995b35c2efc2460cc6451a3d608833951e5f))
+* ignore helm.sh(werf.io)/resource-policy: keep from cluster ([79ce86a](https://github.com/werf/nelm/commit/79ce86ac06dea4f891a4f19d3ad888fa723a53b1))
+* injected service values might break values.schema.json ([1c5d25e](https://github.com/werf/nelm/commit/1c5d25ec2a2768aa7e45b6d08367e58694a6c836))
+* optimize validation args ([9d04918](https://github.com/werf/nelm/commit/9d049189ce4e8ba2035cf26837dde4c831c34e34))
+* pin deno digests in the repository instead of fetching them ([4c91c3a](https://github.com/werf/nelm/commit/4c91c3a739c5db511f06003cb19495c8a824543e))
+* prevent concurrent Helm configuration races ([#688](https://github.com/werf/nelm/issues/688)) ([6f46733](https://github.com/werf/nelm/commit/6f46733610da6a3a2722c7f95d8ea275d0c34123))
+* prevent progress printer race ([#690](https://github.com/werf/nelm/issues/690)) ([0609686](https://github.com/werf/nelm/commit/06096861c10698f1dcb23bba0629be7d6edb8c2b))
+* remove unsupported os/arch from getDownloadLink ([3abafee](https://github.com/werf/nelm/commit/3abafee7837e7fab412f2c47287a4e626b7a35ad))
+* restore DENO_EMBED_ROOT for werf ([9b5af8d](https://github.com/werf/nelm/commit/9b5af8d8c453d76234095247b3f05e4fd57d86cb))
+
 ## [1.28.0](https://github.com/werf/nelm/compare/v1.27.2...v1.28.0) (2026-08-03)
 
 
