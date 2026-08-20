@@ -74,6 +74,10 @@ func newChartRenderCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			return fmt.Errorf("add secret values flags: %w", err)
 		}
 
+		if err := AddPatchesFlags(cmd, &cfg.PatchesFiles, &cfg.DefaultPatchesDisable); err != nil {
+			return fmt.Errorf("add patches flags: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.NoValuesSchemaValidation, "no-values-schema-validation", false, "Disable values validation against JSON schema", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                resourceValidationGroup,

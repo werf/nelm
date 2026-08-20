@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/kubernetes/scheme"
 
@@ -144,6 +145,40 @@ func BuildPatchedResourceSpecs(ctx context.Context, releaseNamespace string, tra
 	return releasableResources, nil
 }
 
+// Patch ResourceSpecs with render patches, i.e. right after the chart is rendered. Unlike diff
+// patches, the result is what gets released and applied to the cluster, so a patch must not change
+// the resource identity. StoreAs is re-derived, because a patch can add or remove the Helm hook
+// annotation.
+func BuildRenderPatchedResourceSpecs(ctx context.Context, releaseNamespace string, resources []*ResourceSpec, patches []*CompiledPatch) ([]*ResourceSpec, error) {
+	if len(patches) == 0 {
+		return resources, nil
+	}
+
+	patchedResources := make([]*ResourceSpec, 0, len(resources))
+
+	for _, res := range resources {
+		// There is no live object at render time to take the true namespace from, and namespaced
+		// resources without an explicit namespace end up in the release namespace, so
+		// cluster-scoped resources are indistinguishable from them here.
+		namespace := lo.Ternary(res.Unstruct.GetNamespace() == "", releaseNamespace, res.Unstruct.GetNamespace())
+
+		patchedUnstruct, err := ApplyPatches(patches, res.ResourceMeta, namespace, res.Unstruct)
+		if err != nil {
+			return nil, fmt.Errorf("apply render patches to resource %q: %w", res.IDHuman(), err)
+		}
+
+		if err := validateSameResourceIdentity(res.Unstruct, patchedUnstruct, releaseNamespace); err != nil {
+			return nil, fmt.Errorf("apply render patches to resource %q: %w", res.IDHuman(), err)
+		}
+
+		patchedResources = append(patchedResources, NewResourceSpec(patchedUnstruct, releaseNamespace, ResourceSpecOptions{
+			FilePath: res.FilePath,
+		}))
+	}
+
+	return patchedResources, nil
+}
+
 // Transforms ResourceSpecs, which means specs can be added, deleted, expanded (like Lists). If you
 // just need to modify specs, use patchers in BuildReleasableResourceSpecs instead.
 func BuildTransformedResourceSpecs(ctx context.Context, releaseNamespace string, resources []*ResourceSpec, transformers []ResourceTransformer) ([]*ResourceSpec, error) {
@@ -181,4 +216,25 @@ func BuildTransformedResourceSpecs(ctx context.Context, releaseNamespace string,
 	}
 
 	return transformedResources, nil
+}
+
+func validateSameResourceIdentity(original, patched *unstructured.Unstructured, releaseNamespace string) error {
+	if patched.GetAPIVersion() == "" || patched.GetKind() == "" || patched.GetName() == "" {
+		return fmt.Errorf("patch output is not a resource: apiVersion, kind or name is missing")
+	}
+
+	originalNamespace := lo.Ternary(original.GetNamespace() == "", releaseNamespace, original.GetNamespace())
+	patchedNamespace := lo.Ternary(patched.GetNamespace() == "", releaseNamespace, patched.GetNamespace())
+
+	if original.GetAPIVersion() == patched.GetAPIVersion() &&
+		original.GetKind() == patched.GetKind() &&
+		original.GetName() == patched.GetName() &&
+		originalNamespace == patchedNamespace {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"patch changed resource identity to apiVersion %q, kind %q, name %q, namespace %q, which is not allowed",
+		patched.GetAPIVersion(), patched.GetKind(), patched.GetName(), patchedNamespace,
+	)
 }

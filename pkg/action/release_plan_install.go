@@ -280,6 +280,13 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		return nil, fmt.Errorf("render chart: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Resolve patches")
+
+	patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles)
+	if err != nil {
+		return nil, fmt.Errorf("resolve patches: %w", err)
+	}
+
 	log.Default.Debug(ctx, "Build transformed resource specs")
 
 	transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, releaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
@@ -287,6 +294,13 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build transformed resource specs: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Build render patched resource specs")
+
+	renderPatchedResSpecs, err := spec.BuildRenderPatchedResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patches.Render)
+	if err != nil {
+		return nil, fmt.Errorf("build render patched resource specs: %w", err)
 	}
 
 	log.Default.Debug(ctx, "Build releasable resource specs")
@@ -300,7 +314,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
 	}
 
-	releasableResSpecs, err := spec.BuildPatchedResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patchers)
+	releasableResSpecs, err := spec.BuildPatchedResourceSpecs(ctx, releaseNamespace, renderPatchedResSpecs, patchers)
 	if err != nil {
 		return nil, fmt.Errorf("build releasable resource specs: %w", err)
 	}
@@ -361,13 +375,8 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		}
 	}
 
-	diffPatches, err := resolveDiffPatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles)
-	if err != nil {
-		return nil, fmt.Errorf("resolve diff patches: %w", err)
-	}
-
 	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
-		DiffPatches:                        diffPatches,
+		DiffPatches:                        patches.Diff,
 		NetworkParallelism:                 opts.NetworkParallelism,
 		NoRemoveManualChanges:              opts.NoRemoveManualChanges,
 		LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,

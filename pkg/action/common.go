@@ -180,24 +180,40 @@ func printReport(ctx context.Context, report *ReleaseReportV3) {
 	}
 }
 
-func resolveDiffPatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string) ([]spec.DiffPatch, error) {
-	var patches []spec.DiffPatch
+// Chart-shipped rules are scoped to their own chart subtree, rules from patches files are not.
+// Both kinds are compiled right away, so an invalid rule fails before anything is applied.
+func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string) (spec.CompiledPatches, error) {
+	var patches spec.Patches
 
 	if !defaultDisable {
 		chartPatches, err := spec.CollectChartPatches(chart)
 		if err != nil {
-			return nil, fmt.Errorf("collect chart patches: %w", err)
+			return spec.CompiledPatches{}, fmt.Errorf("collect chart patches: %w", err)
 		}
 
-		patches = append(patches, chartPatches...)
+		patches.Diff = append(patches.Diff, chartPatches.Diff...)
+		patches.Render = append(patches.Render, chartPatches.Render...)
 	}
 
 	filePatches, err := spec.LoadPatchesFiles(patchesFiles)
 	if err != nil {
-		return nil, fmt.Errorf("load patches files: %w", err)
+		return spec.CompiledPatches{}, fmt.Errorf("load patches files: %w", err)
 	}
 
-	return append(patches, filePatches...), nil
+	patches.Diff = append(patches.Diff, filePatches.Diff...)
+	patches.Render = append(patches.Render, filePatches.Render...)
+
+	diffPatches, err := spec.CompilePatches(patches.Diff)
+	if err != nil {
+		return spec.CompiledPatches{}, fmt.Errorf("compile diff patches: %w", err)
+	}
+
+	renderPatches, err := spec.CompilePatches(patches.Render)
+	if err != nil {
+		return spec.CompiledPatches{}, fmt.Errorf("compile render patches: %w", err)
+	}
+
+	return spec.CompiledPatches{Diff: diffPatches, Render: renderPatches}, nil
 }
 
 func runFailurePlan(ctx context.Context, releaseNamespace string, failedPlan *plan.Plan, installableInfos []*plan.InstallableResourceInfo, releaseInfos []*plan.ReleaseInfo, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history *release.History, clientFactory *kube.ClientFactory, opts runFailureInstallPlanOptions) (result *runFailurePlanResult, nonCritErrs, critErrs *util.MultiError) {

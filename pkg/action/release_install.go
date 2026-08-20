@@ -386,6 +386,13 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			return fmt.Errorf("render chart: %w", err)
 		}
 
+		log.Default.Debug(ctx, "Resolve patches")
+
+		patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles)
+		if err != nil {
+			return fmt.Errorf("resolve patches: %w", err)
+		}
+
 		log.Default.Debug(ctx, "Build transformed resource specs")
 
 		transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, releaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
@@ -393,6 +400,13 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		})
 		if err != nil {
 			return fmt.Errorf("build transformed resource specs: %w", err)
+		}
+
+		log.Default.Debug(ctx, "Build render patched resource specs")
+
+		renderPatchedResSpecs, err := spec.BuildRenderPatchedResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patches.Render)
+		if err != nil {
+			return fmt.Errorf("build render patched resource specs: %w", err)
 		}
 
 		log.Default.Debug(ctx, "Build releasable resource specs")
@@ -406,7 +420,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
 		}
 
-		releasableResSpecs, err := spec.BuildPatchedResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patchers)
+		releasableResSpecs, err := spec.BuildPatchedResourceSpecs(ctx, releaseNamespace, renderPatchedResSpecs, patchers)
 		if err != nil {
 			return fmt.Errorf("build releasable resource specs: %w", err)
 		}
@@ -470,13 +484,8 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			}
 		}
 
-		diffPatches, err := resolveDiffPatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles)
-		if err != nil {
-			return fmt.Errorf("resolve diff patches: %w", err)
-		}
-
 		instResInfos, delResInfos, err = plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
-			DiffPatches:                        diffPatches,
+			DiffPatches:                        patches.Diff,
 			NetworkParallelism:                 opts.NetworkParallelism,
 			NoRemoveManualChanges:              opts.NoRemoveManualChanges,
 			LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,
@@ -922,13 +931,13 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert last deployed or last release to resource specs: %w", err))
 	}
 
-	diffPatches, err := resolveDiffPatches(chartAccessor, opts.DefaultPatchesDisable, opts.PatchesFiles)
+	patches, err := resolvePatches(chartAccessor, opts.DefaultPatchesDisable, opts.PatchesFiles)
 	if err != nil {
-		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("resolve diff patches: %w", err))
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("resolve patches: %w", err))
 	}
 
 	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, common.DeployTypeRollback, releaseName, releaseNamespace, instResources, delResources, true, clientFactory, plan.BuildResourceInfosOptions{
-		DiffPatches:                        diffPatches,
+		DiffPatches:                        patches.Diff,
 		NetworkParallelism:                 opts.NetworkParallelism,
 		NoRemoveManualChanges:              opts.NoRemoveManualChanges,
 		LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,

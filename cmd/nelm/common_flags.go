@@ -318,7 +318,7 @@ func AddKubeConnectionFlags(cmd *cobra.Command, cfg *common.KubeConnectionOption
 }
 
 func AddPatchesFlags(cmd *cobra.Command, patchesFiles *[]string, defaultPatchesDisable *bool) error {
-	if err := cli.AddFlag(cmd, patchesFiles, "patches", []string{}, "Additional patches files (diff patches for drift detection)", cli.AddFlagOptions{
+	if err := cli.AddFlag(cmd, patchesFiles, "patches", []string{}, "Additional patches files (render patches and diff patches for drift detection)", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                patchFlagGroup,
 		Type:                 cli.FlagTypeFile,

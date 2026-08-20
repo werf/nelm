@@ -59,8 +59,9 @@ type ReleaseUninstallOptions struct {
 	// NoRemoveManualChanges, when true, preserves fields manually added to resources in the cluster
 	// that are not present in the chart manifests. By default, such fields are removed during deletion.
 	NoRemoveManualChanges bool
-	// PatchesFiles are paths to additional patches files (diff patches for drift
-	// detection) applied on top of chart-shipped ones during the uninstall plan.
+	// PatchesFiles are paths to additional patches files applied on top of
+	// chart-shipped ones during the uninstall plan. Nothing is rendered during an
+	// uninstall, so only diff patches (drift detection) have an effect here.
 	PatchesFiles []string
 	// ReleaseHistoryLimit sets the maximum number of release revisions to keep in storage.
 	// Defaults to DefaultReleaseHistoryLimit if not set or <= 0.
@@ -245,13 +246,13 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			return fmt.Errorf("access chart of previous release: %w", err)
 		}
 
-		diffPatches, err := resolveDiffPatches(uninstallChart, opts.DefaultPatchesDisable, opts.PatchesFiles)
+		patches, err := resolvePatches(uninstallChart, opts.DefaultPatchesDisable, opts.PatchesFiles)
 		if err != nil {
-			return fmt.Errorf("resolve diff patches: %w", err)
+			return fmt.Errorf("resolve patches: %w", err)
 		}
 
 		instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
-			DiffPatches:                        diffPatches,
+			DiffPatches:                        patches.Diff,
 			NetworkParallelism:                 opts.NetworkParallelism,
 			NoRemoveManualChanges:              opts.NoRemoveManualChanges,
 			LastDeployedOrLastRelResourceSpecs: prevRelResSpecs,

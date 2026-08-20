@@ -306,7 +306,7 @@ nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-
 
 - `--patches` (default: `[]`)
 
-  Additional patches files \(diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_INSTALL\_PATCHES
+  Additional patches files \(render patches and diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_INSTALL\_PATCHES
 
 - `--runtime-annotations` (default: `{}`)
 
@@ -647,7 +647,7 @@ nelm release rollback [options...] -n namespace -r release [revision]
 
 - `--patches` (default: `[]`)
 
-  Additional patches files \(diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_ROLLBACK\_PATCHES
+  Additional patches files \(render patches and diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_ROLLBACK\_PATCHES
 
 - `--runtime-annotations` (default: `{}`)
 
@@ -1024,7 +1024,7 @@ nelm release plan install [options...] -n namespace -r release [chart-dir|chart-
 
 - `--patches` (default: `[]`)
 
-  Additional patches files \(diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_PLAN\_INSTALL\_PATCHES
+  Additional patches files \(render patches and diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_PLAN\_INSTALL\_PATCHES
 
 - `--runtime-annotations` (default: `{}`)
 
@@ -1302,7 +1302,7 @@ nelm release uninstall [options...] -n namespace -r release
 
 - `--patches` (default: `[]`)
 
-  Additional patches files \(diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_UNINSTALL\_PATCHES
+  Additional patches files \(render patches and diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_UNINSTALL\_PATCHES
 
 
 **Progress options:**
@@ -2183,6 +2183,14 @@ nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive
 
   Add labels to all resources\. Vars: \$NELM\_LABELS\_\*, \$NELM\_CHART\_LINT\_LABELS\_\*
 
+- `--no-default-patches` (default: `false`)
+
+  Ignore patches\.yaml of the top\-level chart and subcharts\. Vars: \$NELM\_NO\_DEFAULT\_PATCHES, \$NELM\_CHART\_LINT\_NO\_DEFAULT\_PATCHES
+
+- `--patches` (default: `[]`)
+
+  Additional patches files \(render patches and diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_CHART\_LINT\_PATCHES
+
 - `--runtime-annotations` (default: `{}`)
 
   Add annotations which will not trigger resource updates to all resources\. Vars: \$NELM\_RUNTIME\_ANNOTATIONS\_\*, \$NELM\_CHART\_LINT\_RUNTIME\_ANNOTATIONS\_\*
@@ -2545,6 +2553,14 @@ nelm chart render [options...] [chart-dir|chart-repo-name/chart-name|chart-archi
 - `--labels` (default: `{}`)
 
   Add labels to all resources\. Vars: \$NELM\_LABELS\_\*, \$NELM\_CHART\_RENDER\_LABELS\_\*
+
+- `--no-default-patches` (default: `false`)
+
+  Ignore patches\.yaml of the top\-level chart and subcharts\. Vars: \$NELM\_NO\_DEFAULT\_PATCHES, \$NELM\_CHART\_RENDER\_NO\_DEFAULT\_PATCHES
+
+- `--patches` (default: `[]`)
+
+  Additional patches files \(render patches and diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_CHART\_RENDER\_PATCHES
 
 - `--runtime-annotations` (default: `{}`)
 
