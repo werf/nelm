@@ -88,6 +88,10 @@ type ChartRenderOptions struct {
 	// LegacyLogRegistryStreamOut is the output writer for Helm registry client logs.
 	// Defaults to io.Discard if not set. Used for debugging registry operations.
 	LegacyLogRegistryStreamOut io.Writer
+	// LintMode renders templates leniently: missing `required` values and
+	// `fail` calls produce warnings instead of errors, and recoverable
+	// template execution errors yield partially rendered output.
+	LintMode bool
 	// LocalKubeVersion specifies the Kubernetes version to use for template rendering when not connected to a cluster.
 	// Format: "major.minor.patch" (e.g., "1.28.0"). Defaults to DefaultLocalKubeVersion if not set.
 	LocalKubeVersion string
@@ -276,6 +280,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		ChartVersion:               opts.ChartVersion,
 		ExtraAPIVersions:           opts.ExtraAPIVersions,
 		HelmOptions:                helmOptions,
+		LintMode:                   opts.LintMode,
 		LocalKubeVersion:           opts.LocalKubeVersion,
 		LocalLookupResourcesPaths:  opts.LocalLookupResourcesPaths,
 		Remote:                     opts.Remote,
