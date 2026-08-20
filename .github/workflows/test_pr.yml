@@ -13,7 +13,6 @@ concurrency:
 jobs:
   detect-changes:
     name: Detect changed file groups
-    if: ${{ github.event_name != 'pull_request' || !startsWith(github.event.pull_request.head.ref, 'release-please--') }}
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:
@@ -46,13 +45,13 @@ jobs:
     needs: detect-changes
     uses: ./.github/workflows/_lint.yml
     with:
-      forceSkip: ${{ github.event_name == 'pull_request' && needs.detect-changes.outputs.lint_changed == 'false' }}
+      forceSkip: ${{ github.event_name == 'pull_request' && (needs.detect-changes.outputs.lint_changed == 'false' || startsWith(github.event.pull_request.head.ref, 'release-please--')) }}
 
   unit:
     needs: detect-changes
     uses: ./.github/workflows/_test_unit.yml
     with:
-      forceSkip: ${{ github.event_name == 'pull_request' && needs.detect-changes.outputs.src_changed == 'false' }}
+      forceSkip: ${{ github.event_name == 'pull_request' && (needs.detect-changes.outputs.src_changed == 'false' || startsWith(github.event.pull_request.head.ref, 'release-please--')) }}
 
   build:
     needs: detect-changes
