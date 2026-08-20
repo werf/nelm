@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.30.0](https://github.com/werf/nelm/compare/v1.29.1...v1.30.0) (2026-08-20)
+
+
+### Features
+
+* add LintMode in chart render options and pass it to the Helm engine ([#695](https://github.com/werf/nelm/issues/695)) ([f5cff5a](https://github.com/werf/nelm/commit/f5cff5ada8b94b2c7cac0c023b861e894517b607))
+
 ## [1.29.1](https://github.com/werf/nelm/compare/v1.29.0...v1.29.1) (2026-08-11)
 
 
