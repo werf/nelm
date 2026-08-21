@@ -70,33 +70,38 @@ func (p *ProgressTablesPrinter) Wait() {
 
 type ProgressTablesPrinterOptions struct {
 	DefaultNamespace string
+	// MaxTableWidth sets a fixed maximum width in characters for all tables.
+	// When 0, the width is auto-detected from the terminal.
+	MaxTableWidth int
 }
 
 type tablesBuilder struct {
-	defaultNamespace      string
-	hideAbsenceTasks      map[string]bool
-	hidePresenceTasks     map[string]bool
-	hideReadinessTasks    map[string]bool
-	logStore              *kdutil.Concurrent[*logstore.LogStore]
-	maxLogEventTableWidth int
-	maxProgressTableWidth int
-	nextEventPointers     map[string]int
-	nextLogPointers       map[string]int
-	taskStore             *kdutil.Concurrent[*statestore.TaskStore]
+	configuredMaxTableWidth int
+	defaultNamespace        string
+	hideAbsenceTasks        map[string]bool
+	hidePresenceTasks       map[string]bool
+	hideReadinessTasks      map[string]bool
+	logStore                *kdutil.Concurrent[*logstore.LogStore]
+	maxLogEventTableWidth   int
+	maxProgressTableWidth   int
+	nextEventPointers       map[string]int
+	nextLogPointers         map[string]int
+	taskStore               *kdutil.Concurrent[*statestore.TaskStore]
 }
 
 func newTablesBuilder(taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], opts tablesBuilderOptions) *tablesBuilder {
 	defaultNamespace := lo.Compact([]string{opts.DefaultNamespace, v1.NamespaceDefault})[0]
 
 	builder := &tablesBuilder{
-		defaultNamespace:   defaultNamespace,
-		hideAbsenceTasks:   make(map[string]bool),
-		hidePresenceTasks:  make(map[string]bool),
-		hideReadinessTasks: make(map[string]bool),
-		logStore:           logStore,
-		nextEventPointers:  make(map[string]int),
-		nextLogPointers:    make(map[string]int),
-		taskStore:          taskStore,
+		configuredMaxTableWidth: opts.MaxTableWidth,
+		defaultNamespace:        defaultNamespace,
+		hideAbsenceTasks:        make(map[string]bool),
+		hidePresenceTasks:       make(map[string]bool),
+		hideReadinessTasks:      make(map[string]bool),
+		logStore:                logStore,
+		nextEventPointers:       make(map[string]int),
+		nextLogPointers:         make(map[string]int),
+		taskStore:               taskStore,
 	}
 
 	return builder
@@ -231,23 +236,13 @@ func (b *tablesBuilder) BuildProgressTable() (table prtable.Writer, notEmpty boo
 }
 
 func (b *tablesBuilder) SetMaxTableWidth(maxTableWidth int) {
-	var maxProgressTableWidth int
 	if maxTableWidth > 0 {
-		maxProgressTableWidth = maxTableWidth
+		b.maxProgressTableWidth = maxTableWidth
+		b.maxLogEventTableWidth = maxTableWidth
 	} else {
-		maxProgressTableWidth = 140
+		b.maxProgressTableWidth = 140
+		b.maxLogEventTableWidth = 140
 	}
-
-	b.maxProgressTableWidth = lo.Min([]int{maxProgressTableWidth, 200})
-
-	var maxLogEventTableWidth int
-	if maxTableWidth > 0 {
-		maxLogEventTableWidth = maxTableWidth
-	} else {
-		maxLogEventTableWidth = 140
-	}
-
-	b.maxLogEventTableWidth = lo.Min([]int{maxLogEventTableWidth, 250})
 }
 
 func (b *tablesBuilder) buildAbsenceProgressRows() (rows []prtable.Row) {
@@ -422,6 +417,7 @@ func (b *tablesBuilder) buildReadinessProgressRows() (rows []prtable.Row) {
 
 type tablesBuilderOptions struct {
 	DefaultNamespace string
+	MaxTableWidth    int
 }
 
 func buildChildResourceCell(resourceState *statestore.ResourceState) string {
@@ -745,9 +741,16 @@ func compareKindNameNamespace(iName, iNamespace, iKind, jName, jNamespace, jKind
 	return false
 }
 
+func resolveMaxTableWidth(configuredWidth, autoWidth int) int {
+	if configuredWidth > 0 {
+		return min(configuredWidth, autoWidth)
+	}
+	return autoWidth
+}
+
 func printTables(ctx context.Context, tablesBuilder *tablesBuilder) {
-	maxTableWidth := log.Default.BlockContentWidth(ctx) - 2
-	tablesBuilder.SetMaxTableWidth(maxTableWidth)
+	autoWidth := log.Default.BlockContentWidth(ctx) - 2
+	tablesBuilder.SetMaxTableWidth(resolveMaxTableWidth(tablesBuilder.configuredMaxTableWidth, autoWidth))
 
 	if tables, nonEmpty := tablesBuilder.BuildEventTables(); nonEmpty {
 		headers := lo.Keys(tables)
@@ -861,8 +864,8 @@ func setProgressTableStyle(table prtable.Writer, tableWidth int) {
 	columnsWidth := tableWidth - paddingsWidth
 
 	columnConfigs[1].WidthMax = 7
-	columnConfigs[0].WidthMax = int(float64(columnsWidth-columnConfigs[1].WidthMax) * 0.6)
-	columnConfigs[2].WidthMax = int(float64(columnsWidth-columnConfigs[1].WidthMax) * 0.4)
+	columnConfigs[0].WidthMax = int(float64(columnsWidth-columnConfigs[1].WidthMax) * 0.25)
+	columnConfigs[2].WidthMax = columnsWidth - columnConfigs[1].WidthMax - columnConfigs[0].WidthMax
 
 	table.SetColumnConfigs(columnConfigs)
 	table.SetStyle(prtable.Style{
