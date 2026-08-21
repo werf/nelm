@@ -70,33 +70,38 @@ func (p *ProgressTablesPrinter) Wait() {
 
 type ProgressTablesPrinterOptions struct {
 	DefaultNamespace string
+	// MaxTableWidth sets a fixed maximum width in characters for all tables.
+	// When 0, the width is auto-detected from the terminal.
+	MaxTableWidth int
 }
 
 type tablesBuilder struct {
-	defaultNamespace      string
-	hideAbsenceTasks      map[string]bool
-	hidePresenceTasks     map[string]bool
-	hideReadinessTasks    map[string]bool
-	logStore              *kdutil.Concurrent[*logstore.LogStore]
-	maxLogEventTableWidth int
-	maxProgressTableWidth int
-	nextEventPointers     map[string]int
-	nextLogPointers       map[string]int
-	taskStore             *kdutil.Concurrent[*statestore.TaskStore]
+	configuredMaxTableWidth int
+	defaultNamespace        string
+	hideAbsenceTasks        map[string]bool
+	hidePresenceTasks       map[string]bool
+	hideReadinessTasks      map[string]bool
+	logStore                *kdutil.Concurrent[*logstore.LogStore]
+	maxLogEventTableWidth   int
+	maxProgressTableWidth   int
+	nextEventPointers       map[string]int
+	nextLogPointers         map[string]int
+	taskStore               *kdutil.Concurrent[*statestore.TaskStore]
 }
 
 func newTablesBuilder(taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], opts tablesBuilderOptions) *tablesBuilder {
 	defaultNamespace := lo.Compact([]string{opts.DefaultNamespace, v1.NamespaceDefault})[0]
 
 	builder := &tablesBuilder{
-		defaultNamespace:   defaultNamespace,
-		hideAbsenceTasks:   make(map[string]bool),
-		hidePresenceTasks:  make(map[string]bool),
-		hideReadinessTasks: make(map[string]bool),
-		logStore:           logStore,
-		nextEventPointers:  make(map[string]int),
-		nextLogPointers:    make(map[string]int),
-		taskStore:          taskStore,
+		configuredMaxTableWidth: opts.MaxTableWidth,
+		defaultNamespace:        defaultNamespace,
+		hideAbsenceTasks:        make(map[string]bool),
+		hidePresenceTasks:       make(map[string]bool),
+		hideReadinessTasks:      make(map[string]bool),
+		logStore:                logStore,
+		nextEventPointers:       make(map[string]int),
+		nextLogPointers:         make(map[string]int),
+		taskStore:               taskStore,
 	}
 
 	return builder
@@ -422,6 +427,7 @@ func (b *tablesBuilder) buildReadinessProgressRows() (rows []prtable.Row) {
 
 type tablesBuilderOptions struct {
 	DefaultNamespace string
+	MaxTableWidth    int
 }
 
 func buildChildResourceCell(resourceState *statestore.ResourceState) string {
@@ -746,7 +752,12 @@ func compareKindNameNamespace(iName, iNamespace, iKind, jName, jNamespace, jKind
 }
 
 func printTables(ctx context.Context, tablesBuilder *tablesBuilder) {
-	maxTableWidth := log.Default.BlockContentWidth(ctx) - 2
+	var maxTableWidth int
+	if tablesBuilder.configuredMaxTableWidth > 0 {
+		maxTableWidth = tablesBuilder.configuredMaxTableWidth
+	} else {
+		maxTableWidth = log.Default.BlockContentWidth(ctx) - 2
+	}
 	tablesBuilder.SetMaxTableWidth(maxTableWidth)
 
 	if tables, nonEmpty := tablesBuilder.BuildEventTables(); nonEmpty {
