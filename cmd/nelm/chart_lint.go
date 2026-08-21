@@ -75,7 +75,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			return fmt.Errorf("add secret values flags: %w", err)
 		}
 
-		if err := AddPatchesFlags(cmd, &cfg.PatchesFiles, &cfg.DefaultPatchesDisable); err != nil {
+		if err := AddPatchesFlags(cmd, &cfg.PatchesFiles, &cfg.DefaultPatchesDisable, AddPatchesFlagsOptions{}); err != nil {
 			return fmt.Errorf("add patches flags: %w", err)
 		}
 

@@ -306,7 +306,7 @@ nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-
 
 - `--patches` (default: `[]`)
 
-  Additional patches files \(render patches and diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_INSTALL\_PATCHES
+  Additional patches files \(render patches for rendered resources, diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_INSTALL\_PATCHES
 
 - `--runtime-annotations` (default: `{}`)
 
@@ -647,7 +647,7 @@ nelm release rollback [options...] -n namespace -r release [revision]
 
 - `--patches` (default: `[]`)
 
-  Additional patches files \(render patches and diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_ROLLBACK\_PATCHES
+  Additional patches files \(diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_ROLLBACK\_PATCHES
 
 - `--runtime-annotations` (default: `{}`)
 
@@ -1024,7 +1024,7 @@ nelm release plan install [options...] -n namespace -r release [chart-dir|chart-
 
 - `--patches` (default: `[]`)
 
-  Additional patches files \(render patches and diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_PLAN\_INSTALL\_PATCHES
+  Additional patches files \(render patches for rendered resources, diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_PLAN\_INSTALL\_PATCHES
 
 - `--runtime-annotations` (default: `{}`)
 
@@ -1302,7 +1302,7 @@ nelm release uninstall [options...] -n namespace -r release
 
 - `--patches` (default: `[]`)
 
-  Additional patches files \(render patches and diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_UNINSTALL\_PATCHES
+  Additional patches files \(diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_RELEASE\_UNINSTALL\_PATCHES
 
 
 **Progress options:**
@@ -2189,7 +2189,7 @@ nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive
 
 - `--patches` (default: `[]`)
 
-  Additional patches files \(render patches and diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_CHART\_LINT\_PATCHES
+  Additional patches files \(render patches for rendered resources, diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_CHART\_LINT\_PATCHES
 
 - `--runtime-annotations` (default: `{}`)
 
@@ -2560,7 +2560,7 @@ nelm chart render [options...] [chart-dir|chart-repo-name/chart-name|chart-archi
 
 - `--patches` (default: `[]`)
 
-  Additional patches files \(render patches and diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_CHART\_RENDER\_PATCHES
+  Additional patches files \(render patches for rendered resources, diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_CHART\_RENDER\_PATCHES
 
 - `--runtime-annotations` (default: `{}`)
 

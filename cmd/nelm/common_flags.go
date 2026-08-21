@@ -3,11 +3,17 @@ package main
 import (
 	"fmt"
 
+	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/pkg/common"
 )
+
+type AddPatchesFlagsOptions struct {
+	// NoRender marks a command that renders nothing, so render patches have no effect.
+	NoRender bool
+}
 
 func AddChartRepoConnectionFlags(cmd *cobra.Command, cfg *common.ChartRepoConnectionOptions) error {
 	if err := cli.AddFlag(cmd, &cfg.ChartRepoBasicAuthPassword, "chart-repo-basic-password", "", "Basic auth password to authenticate in chart repository", cli.AddFlagOptions{
@@ -317,8 +323,14 @@ func AddKubeConnectionFlags(cmd *cobra.Command, cfg *common.KubeConnectionOption
 	return nil
 }
 
-func AddPatchesFlags(cmd *cobra.Command, patchesFiles *[]string, defaultPatchesDisable *bool) error {
-	if err := cli.AddFlag(cmd, patchesFiles, "patches", []string{}, "Additional patches files (render patches and diff patches for drift detection)", cli.AddFlagOptions{
+func AddPatchesFlags(cmd *cobra.Command, patchesFiles *[]string, defaultPatchesDisable *bool, opts AddPatchesFlagsOptions) error {
+	description := lo.Ternary(
+		opts.NoRender,
+		"Additional patches files (diff patches for drift detection)",
+		"Additional patches files (render patches for rendered resources, diff patches for drift detection)",
+	)
+
+	if err := cli.AddFlag(cmd, patchesFiles, "patches", []string{}, description, cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                patchFlagGroup,
 		Type:                 cli.FlagTypeFile,

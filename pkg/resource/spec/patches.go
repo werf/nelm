@@ -353,7 +353,7 @@ func normalizeNumbers(value interface{}) (interface{}, error) {
 			return f, nil
 		}
 
-		return v.String(), nil
+		return nil, fmt.Errorf("number %s cannot be represented as int64 or float64", v.String())
 	default:
 		return value, nil
 	}

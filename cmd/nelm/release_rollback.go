@@ -65,7 +65,7 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 			return fmt.Errorf("add tracking flags: %w", err)
 		}
 
-		if err := AddPatchesFlags(cmd, &cfg.PatchesFiles, &cfg.DefaultPatchesDisable); err != nil {
+		if err := AddPatchesFlags(cmd, &cfg.PatchesFiles, &cfg.DefaultPatchesDisable, AddPatchesFlagsOptions{NoRender: true}); err != nil {
 			return fmt.Errorf("add patches flags: %w", err)
 		}
 

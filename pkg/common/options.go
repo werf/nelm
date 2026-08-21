@@ -241,12 +241,12 @@ type ReleaseInstallRuntimeOptions struct {
 	DefaultDeletePropagation string `json:"defaultDeletePropagation"`
 	// PatchesFiles are paths to patches files (same format as a chart-shipped
 	// patches.yaml) whose rules are applied on top of chart-shipped ones. Render
-	// patches are applied to the rendered resources, so they change what is released
-	// and applied. Diff patches affect ONLY
-	// drift detection: each matching rule's jq transform is applied identically to
-	// the live and the dry-apply object before comparison, so normalized-away fields
-	// never produce a diff. Rules from these files are UNSCOPED (they may match any
-	// resource), unlike chart-shipped rules which are scoped to their chart subtree.
+	// patches are applied to the rendered resources, so they change what is
+	// released and applied. Diff patches affect ONLY drift detection: each
+	// matching rule's jq transform is applied identically to the live and the
+	// dry-apply object before comparison, so normalized-away fields never produce
+	// a diff. Rules from these files are UNSCOPED (they may match any resource),
+	// unlike chart-shipped rules which are scoped to their chart subtree.
 	PatchesFiles []string `json:"patchesFiles"`
 	// DefaultPatchesDisable, when true, ignores chart-shipped patches.yaml files
 	// (from the top-level chart and subcharts).
