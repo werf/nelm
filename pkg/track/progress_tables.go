@@ -236,23 +236,13 @@ func (b *tablesBuilder) BuildProgressTable() (table prtable.Writer, notEmpty boo
 }
 
 func (b *tablesBuilder) SetMaxTableWidth(maxTableWidth int) {
-	var maxProgressTableWidth int
 	if maxTableWidth > 0 {
-		maxProgressTableWidth = maxTableWidth
+		b.maxProgressTableWidth = maxTableWidth
+		b.maxLogEventTableWidth = maxTableWidth
 	} else {
-		maxProgressTableWidth = 140
+		b.maxProgressTableWidth = 140
+		b.maxLogEventTableWidth = 140
 	}
-
-	b.maxProgressTableWidth = lo.Min([]int{maxProgressTableWidth, 200})
-
-	var maxLogEventTableWidth int
-	if maxTableWidth > 0 {
-		maxLogEventTableWidth = maxTableWidth
-	} else {
-		maxLogEventTableWidth = 140
-	}
-
-	b.maxLogEventTableWidth = lo.Min([]int{maxLogEventTableWidth, 250})
 }
 
 func (b *tablesBuilder) buildAbsenceProgressRows() (rows []prtable.Row) {
@@ -872,8 +862,8 @@ func setProgressTableStyle(table prtable.Writer, tableWidth int) {
 	columnsWidth := tableWidth - paddingsWidth
 
 	columnConfigs[1].WidthMax = 7
-	columnConfigs[0].WidthMax = int(float64(columnsWidth-columnConfigs[1].WidthMax) * 0.6)
-	columnConfigs[2].WidthMax = int(float64(columnsWidth-columnConfigs[1].WidthMax) * 0.4)
+	columnConfigs[0].WidthMax = int(float64(columnsWidth-columnConfigs[1].WidthMax) * 0.25)
+	columnConfigs[2].WidthMax = columnsWidth - columnConfigs[1].WidthMax - columnConfigs[0].WidthMax
 
 	table.SetColumnConfigs(columnConfigs)
 	table.SetStyle(prtable.Style{
