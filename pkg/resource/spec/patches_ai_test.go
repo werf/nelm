@@ -4,6 +4,7 @@ package spec_test
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -102,6 +103,17 @@ func TestAI_BuildRenderPatchedResourceSpecs_ContractViolations(t *testing.T) {
 			require.ErrorContains(t, err, "apply render patches to resource")
 		})
 	}
+}
+
+func TestAI_BuildRenderPatchedResourceSpecs_IntegerOverflowErrorContext(t *testing.T) {
+	res := renderedSpec(t, "web", "", "myapp/templates/web.yaml", nil)
+
+	patches, err := spec.CompilePatches([]spec.Patch{{Patch: `.spec.replicas = 9223372036854775807 + 10`}})
+	require.NoError(t, err)
+
+	_, err = spec.BuildRenderPatchedResourceSpecs(context.Background(), "prod", []*spec.ResourceSpec{res}, patches)
+	require.ErrorContains(t, err, "apply render patches to resource")
+	require.ErrorContains(t, err, "overflows int64")
 }
 
 func TestAI_BuildRenderPatchedResourceSpecs_NamespaceSelector(t *testing.T) {
@@ -257,6 +269,37 @@ func TestAI_BuildRenderPatchedResourceSpecs_RejectsNonStringMetadata(t *testing.
 			require.ErrorContains(t, err, "expected string")
 		})
 	}
+}
+
+func TestAI_CompiledPatch_Transform_KeepsFractional(t *testing.T) {
+	obj := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "apps/v1",
+		"kind":       "Deployment",
+		"metadata":   map[string]interface{}{"name": "web"},
+		"spec":       map[string]interface{}{},
+	}}
+
+	c, err := spec.CompilePatch(spec.Patch{Patch: `.spec.ratio = 0.5`})
+	require.NoError(t, err)
+
+	out, err := c.Transform(obj)
+	require.NoError(t, err)
+	require.Equal(t, float64(0.5), out.Object["spec"].(map[string]interface{})["ratio"])
+}
+
+func TestAI_CompiledPatch_Transform_RejectsIntegerOverflow(t *testing.T) {
+	obj := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "apps/v1",
+		"kind":       "Deployment",
+		"metadata":   map[string]interface{}{"name": "web"},
+		"spec":       map[string]interface{}{"big": int64(math.MaxInt64)},
+	}}
+
+	c, err := spec.CompilePatch(spec.Patch{Patch: `.spec.big += 10`})
+	require.NoError(t, err)
+
+	_, err = c.Transform(obj)
+	require.ErrorContains(t, err, "overflows int64")
 }
 
 func renderedSpec(t *testing.T, name, namespace, filePath string, annotations map[string]interface{}) *spec.ResourceSpec {

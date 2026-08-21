@@ -272,7 +272,12 @@ func fromJQOutput(value interface{}) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("decode: %w", err)
 	}
 
-	normalized, ok := normalizeNumbers(decoded).(map[string]interface{})
+	result, err := normalizeNumbers(decoded)
+	if err != nil {
+		return nil, fmt.Errorf("normalize jq output numbers: %w", err)
+	}
+
+	normalized, ok := result.(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("jq program output is not an object")
 	}
@@ -311,32 +316,46 @@ func compilePatch(patch Patch) (*CompiledPatch, error) {
 	return &CompiledPatch{chartScope: patch.ChartScope, code: code, matcher: patch.Match}, nil
 }
 
-func normalizeNumbers(value interface{}) interface{} {
+func normalizeNumbers(value interface{}) (interface{}, error) {
 	switch v := value.(type) {
 	case map[string]interface{}:
 		for key, elem := range v {
-			v[key] = normalizeNumbers(elem)
+			normalized, err := normalizeNumbers(elem)
+			if err != nil {
+				return nil, err
+			}
+
+			v[key] = normalized
 		}
 
-		return v
+		return v, nil
 	case []interface{}:
 		for i, elem := range v {
-			v[i] = normalizeNumbers(elem)
+			normalized, err := normalizeNumbers(elem)
+			if err != nil {
+				return nil, err
+			}
+
+			v[i] = normalized
 		}
 
-		return v
+		return v, nil
 	case json.Number:
 		if i, err := v.Int64(); err == nil {
-			return i
+			return i, nil
+		}
+
+		if s := v.String(); !strings.ContainsAny(s, ".eE") {
+			return nil, fmt.Errorf("integer %s overflows int64 and cannot be represented exactly", s)
 		}
 
 		if f, err := v.Float64(); err == nil {
-			return f
+			return f, nil
 		}
 
-		return v.String()
+		return v.String(), nil
 	default:
-		return value
+		return value, nil
 	}
 }
 
