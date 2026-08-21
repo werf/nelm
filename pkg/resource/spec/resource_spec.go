@@ -62,14 +62,8 @@ func NewResourceSpecFromManifest(ctx context.Context, manifest, releaseNamespace
 	if opts.DropInvalidAnnotationsAndLabels {
 		unstruct.SetAnnotations(stripInvalidEntries(ctx, opts.FilePath, unstruct.Object, "metadata", "annotations"))
 		unstruct.SetLabels(stripInvalidEntries(ctx, opts.FilePath, unstruct.Object, "metadata", "labels"))
-	} else {
-		if _, _, err := unstructured.NestedNullCoercingStringMap(unstruct.Object, "metadata", "annotations"); err != nil {
-			return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
-		}
-
-		if _, _, err := unstructured.NestedNullCoercingStringMap(unstruct.Object, "metadata", "labels"); err != nil {
-			return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
-		}
+	} else if err := validateMetadataStringMaps(unstruct); err != nil {
+		return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
 	}
 
 	return NewResourceSpec(unstruct, releaseNamespace, opts), nil
@@ -148,7 +142,7 @@ func BuildPatchedResourceSpecs(ctx context.Context, releaseNamespace string, tra
 // Patch ResourceSpecs with render patches, i.e. right after the chart is rendered. Unlike diff
 // patches, the result is what gets released and applied to the cluster, so a patch must not change
 // the resource identity. StoreAs is re-derived, because a patch can add or remove the Helm hook
-// annotation.
+// annotation, except for StoreAsNone, which is not releasable at all and must survive patching.
 func BuildRenderPatchedResourceSpecs(ctx context.Context, releaseNamespace string, resources []*ResourceSpec, patches []*CompiledPatch) ([]*ResourceSpec, error) {
 	if len(patches) == 0 {
 		return resources, nil
@@ -157,14 +151,30 @@ func BuildRenderPatchedResourceSpecs(ctx context.Context, releaseNamespace strin
 	patchedResources := make([]*ResourceSpec, 0, len(resources))
 
 	for _, res := range resources {
-		// There is no live object at render time to take the true namespace from, and namespaced
-		// resources without an explicit namespace end up in the release namespace, so
-		// cluster-scoped resources are indistinguishable from them here.
-		namespace := lo.Ternary(res.Unstruct.GetNamespace() == "", releaseNamespace, res.Unstruct.GetNamespace())
+		patchedUnstruct := res.Unstruct
+		patchedMeta := res.ResourceMeta
 
-		patchedUnstruct, err := ApplyPatches(patches, res.ResourceMeta, namespace, res.Unstruct)
-		if err != nil {
-			return nil, fmt.Errorf("apply render patches to resource %q: %w", res.IDHuman(), err)
+		for i, patch := range patches {
+			// There is no live object at render time to take the true namespace from, and
+			// namespaced resources without an explicit namespace end up in the release namespace,
+			// so cluster-scoped resources are indistinguishable from them here.
+			namespace := lo.Ternary(patchedUnstruct.GetNamespace() == "", releaseNamespace, patchedUnstruct.GetNamespace())
+
+			if !patch.Match(patchedMeta, namespace) {
+				continue
+			}
+
+			out, err := patch.transform(patchedUnstruct)
+			if err != nil {
+				return nil, fmt.Errorf("apply render patches to resource %q: patch #%d: %w", res.IDHuman(), i+1, err)
+			}
+
+			if err := validateMetadataStringMaps(out); err != nil {
+				return nil, fmt.Errorf("apply render patches to resource %q: patch #%d: %w", res.IDHuman(), i+1, err)
+			}
+
+			patchedUnstruct = out
+			patchedMeta = NewResourceMetaFromUnstructured(patchedUnstruct, releaseNamespace, res.FilePath)
 		}
 
 		if err := validateSameResourceIdentity(res.Unstruct, patchedUnstruct, releaseNamespace); err != nil {
@@ -173,6 +183,7 @@ func BuildRenderPatchedResourceSpecs(ctx context.Context, releaseNamespace strin
 
 		patchedResources = append(patchedResources, NewResourceSpec(patchedUnstruct, releaseNamespace, ResourceSpecOptions{
 			FilePath: res.FilePath,
+			StoreAs:  lo.Ternary(res.StoreAs == common.StoreAsNone, common.StoreAsNone, common.StoreAs("")),
 		}))
 	}
 
@@ -216,6 +227,18 @@ func BuildTransformedResourceSpecs(ctx context.Context, releaseNamespace string,
 	}
 
 	return transformedResources, nil
+}
+
+// Annotations and labels are read via apimachinery accessors, which silently discard non-string
+// values, so anything but a string map must be rejected before the resource is used.
+func validateMetadataStringMaps(unstruct *unstructured.Unstructured) error {
+	for _, field := range []string{"annotations", "labels"} {
+		if _, _, err := unstructured.NestedNullCoercingStringMap(unstruct.Object, "metadata", field); err != nil {
+			return fmt.Errorf("validate resource metadata: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func validateSameResourceIdentity(original, patched *unstructured.Unstructured, releaseNamespace string) error {

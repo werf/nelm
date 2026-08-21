@@ -41,6 +41,23 @@ func TestAI_BuildRenderPatchedResourceSpecs_ChainsRules(t *testing.T) {
 	require.Equal(t, int64(6), replicas)
 }
 
+func TestAI_BuildRenderPatchedResourceSpecs_ChainsRulesByMetadata(t *testing.T) {
+	res := renderedSpec(t, "web", "", "myapp/templates/web.yaml", nil)
+
+	patches, err := spec.CompilePatches([]spec.Patch{
+		{Patch: `.metadata.labels = {"tier": "backend"}`},
+		{Match: spec.ResourceMatcher{Labels: map[string]string{"tier": "backend"}}, Patch: `.spec.replicas = 7`},
+	})
+	require.NoError(t, err)
+
+	out, err := spec.BuildRenderPatchedResourceSpecs(context.Background(), "prod", []*spec.ResourceSpec{res}, patches)
+	require.NoError(t, err)
+
+	replicas, _, err := unstructured.NestedInt64(out[0].Unstruct.Object, "spec", "replicas")
+	require.NoError(t, err)
+	require.Equal(t, int64(7), replicas)
+}
+
 func TestAI_BuildRenderPatchedResourceSpecs_ChartScope(t *testing.T) {
 	inScope := renderedSpec(t, "cached", "", "myapp/charts/cache/templates/web.yaml", nil)
 	outOfScope := renderedSpec(t, "web", "", "myapp/templates/web.yaml", nil)
@@ -152,6 +169,24 @@ func TestAI_BuildRenderPatchedResourceSpecs_PatchesMatchedOnly(t *testing.T) {
 	require.Equal(t, int64(3), inputReplicas)
 }
 
+func TestAI_BuildRenderPatchedResourceSpecs_PreservesStoreAsNone(t *testing.T) {
+	res := renderedSpec(t, "web", "", "myapp/templates/web.yaml", nil)
+	crd := spec.NewResourceSpec(res.Unstruct, "prod", spec.ResourceSpecOptions{
+		FilePath: "myapp/crds/foo.yaml",
+		StoreAs:  common.StoreAsNone,
+	})
+
+	patches, err := spec.CompilePatches([]spec.Patch{
+		{Match: spec.ResourceMatcher{Names: []string{"nonexistent"}}, Patch: `.spec.replicas = 5`},
+		{Patch: `.metadata.annotations["helm.sh/hook"] = "post-install"`},
+	})
+	require.NoError(t, err)
+
+	out, err := spec.BuildRenderPatchedResourceSpecs(context.Background(), "prod", []*spec.ResourceSpec{crd}, patches)
+	require.NoError(t, err)
+	require.Equal(t, common.StoreAsNone, out[0].StoreAs)
+}
+
 func TestAI_BuildRenderPatchedResourceSpecs_RederivesStoreAs(t *testing.T) {
 	t.Run("adding the hook annotation turns a regular resource into a hook", func(t *testing.T) {
 		res := renderedSpec(t, "web", "", "myapp/templates/web.yaml", nil)
@@ -198,6 +233,28 @@ func TestAI_BuildRenderPatchedResourceSpecs_RejectsIdentityChange(t *testing.T) 
 
 			_, err = spec.BuildRenderPatchedResourceSpecs(context.Background(), "prod", []*spec.ResourceSpec{res}, patches)
 			require.ErrorContains(t, err, "changed resource identity")
+		})
+	}
+}
+
+func TestAI_BuildRenderPatchedResourceSpecs_RejectsNonStringMetadata(t *testing.T) {
+	tests := []struct {
+		name    string
+		program string
+	}{
+		{name: "annotations", program: `.metadata.annotations = {"werf.io/weight": 10}`},
+		{name: "labels", program: `.metadata.labels = {"app": true}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res := renderedSpec(t, "web", "", "myapp/templates/web.yaml", nil)
+
+			patches, err := spec.CompilePatches([]spec.Patch{{Patch: tt.program}})
+			require.NoError(t, err)
+
+			_, err = spec.BuildRenderPatchedResourceSpecs(context.Background(), "prod", []*spec.ResourceSpec{res}, patches)
+			require.ErrorContains(t, err, "expected string")
 		})
 	}
 }
