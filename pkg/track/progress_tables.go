@@ -741,14 +741,16 @@ func compareKindNameNamespace(iName, iNamespace, iKind, jName, jNamespace, jKind
 	return false
 }
 
-func printTables(ctx context.Context, tablesBuilder *tablesBuilder) {
-	var maxTableWidth int
-	if tablesBuilder.configuredMaxTableWidth > 0 {
-		maxTableWidth = tablesBuilder.configuredMaxTableWidth
-	} else {
-		maxTableWidth = log.Default.BlockContentWidth(ctx) - 2
+func resolveMaxTableWidth(configuredWidth, autoWidth int) int {
+	if configuredWidth > 0 {
+		return min(configuredWidth, autoWidth)
 	}
-	tablesBuilder.SetMaxTableWidth(maxTableWidth)
+	return autoWidth
+}
+
+func printTables(ctx context.Context, tablesBuilder *tablesBuilder) {
+	autoWidth := log.Default.BlockContentWidth(ctx) - 2
+	tablesBuilder.SetMaxTableWidth(resolveMaxTableWidth(tablesBuilder.configuredMaxTableWidth, autoWidth))
 
 	if tables, nonEmpty := tablesBuilder.BuildEventTables(); nonEmpty {
 		headers := lo.Keys(tables)

@@ -118,6 +118,28 @@ func TestAI_SetProgressTableStyle_NarrowTerminal_InfoStillPositive(t *testing.T)
 	assert.Greater(t, infoWidth, 0, "INFO column must have positive width even on narrow terminal")
 }
 
+// resolveMaxTableWidth
+
+func TestAI_ResolveMaxTableWidth_ZeroConfiguredUsesAuto(t *testing.T) {
+	assert.Equal(t, 198, resolveMaxTableWidth(0, 198))
+}
+
+func TestAI_ResolveMaxTableWidth_ConfiguredBelowAutoUsesConfigured(t *testing.T) {
+	assert.Equal(t, 120, resolveMaxTableWidth(120, 198))
+}
+
+func TestAI_ResolveMaxTableWidth_ConfiguredAboveAutoUsesAuto(t *testing.T) {
+	assert.Equal(t, 198, resolveMaxTableWidth(300, 198))
+}
+
+func TestAI_ResolveMaxTableWidth_ConfiguredEqualsAutoUsesConfigured(t *testing.T) {
+	assert.Equal(t, 198, resolveMaxTableWidth(198, 198))
+}
+
+func TestAI_ResolveMaxTableWidth_NegativeConfiguredUsesAuto(t *testing.T) {
+	assert.Equal(t, 198, resolveMaxTableWidth(-1, 198))
+}
+
 // measureProgressColumnWidths measures RESOURCE and INFO column widths from
 // the rendered table by finding the first non-header content line.
 func measureProgressColumnWidths(lines []string) (resourceWidth, infoWidth int) {
