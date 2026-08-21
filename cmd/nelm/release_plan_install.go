@@ -77,7 +77,7 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			return fmt.Errorf("add secret values flags: %w", err)
 		}
 
-		if err := AddPatchesFlags(cmd, &cfg.PatchesFiles, &cfg.DefaultPatchesDisable); err != nil {
+		if err := AddPatchesFlags(cmd, &cfg.PatchesFiles, &cfg.DefaultPatchesDisable, AddPatchesFlagsOptions{}); err != nil {
 			return fmt.Errorf("add patches flags: %w", err)
 		}
 

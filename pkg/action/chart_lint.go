@@ -58,6 +58,9 @@ type ChartLintOptions struct {
 	DefaultChartVersion string
 	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
 	DefaultDeletePropagation string
+	// DefaultPatchesDisable, when true, ignores chart-shipped patches.yaml files
+	// (from the top-level chart and subcharts).
+	DefaultPatchesDisable bool
 	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
 	DenoBinaryPath string
 	// DockerConfig is the path to the Docker configuration directory (e.g., ~/.docker).
@@ -112,6 +115,11 @@ type ChartLintOptions struct {
 	// NoRemoveManualChanges, when true, preserves fields during validation that would be manually added.
 	// Used in the validation dry-run to check resource compatibility.
 	NoRemoveManualChanges bool
+	// PatchesFiles are paths to patches files (same format as a chart-shipped
+	// patches.yaml) whose rules are applied on top of chart-shipped ones. Rules from
+	// these files are UNSCOPED (they may match any resource), unlike chart-shipped
+	// rules which are scoped to their chart subtree.
+	PatchesFiles []string
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
 	// Defaults to DockerConfig/config.json if not set.
 	// Used for authenticating to OCI registries when pulling charts.
@@ -284,6 +292,13 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		return fmt.Errorf("render chart: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Resolve patches")
+
+	patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles)
+	if err != nil {
+		return fmt.Errorf("resolve patches: %w", err)
+	}
+
 	log.Default.Debug(ctx, "Build transformed resource specs")
 
 	transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, opts.ReleaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
@@ -293,9 +308,16 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		return fmt.Errorf("build transformed resource specs: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Build render patched resource specs")
+
+	renderPatchedResSpecs, err := spec.BuildRenderPatchedResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, patches.Render)
+	if err != nil {
+		return fmt.Errorf("build render patched resource specs: %w", err)
+	}
+
 	log.Default.Debug(ctx, "Build releasable resource specs")
 
-	releasableResSpecs, err := spec.BuildPatchedResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
+	releasableResSpecs, err := spec.BuildPatchedResourceSpecs(ctx, opts.ReleaseNamespace, renderPatchedResSpecs, []spec.ResourcePatcher{
 		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 		spec.NewSecretStringDataPatcher(),
 	})
@@ -360,6 +382,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	}
 
 	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, opts.ReleaseName, opts.ReleaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
+		DiffPatches:                        patches.Diff,
 		NetworkParallelism:                 opts.NetworkParallelism,
 		NoRemoveManualChanges:              opts.NoRemoveManualChanges,
 		LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,

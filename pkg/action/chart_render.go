@@ -57,6 +57,9 @@ type ChartRenderOptions struct {
 	DefaultChartName string
 	// DefaultChartVersion sets the default chart version when Chart.yaml doesn't specify one.
 	DefaultChartVersion string
+	// DefaultPatchesDisable, when true, ignores chart-shipped patches.yaml files
+	// (from the top-level chart and subcharts).
+	DefaultPatchesDisable bool
 	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
 	DenoBinaryPath string
 	// DockerConfig is the path to the Docker configuration directory (e.g., ~/.docker).
@@ -107,6 +110,11 @@ type ChartRenderOptions struct {
 	// OutputNoPrint, when true, suppresses printing the rendered manifests to stdout.
 	// Useful when only the result data structure is needed.
 	OutputNoPrint bool
+	// PatchesFiles are paths to patches files (same format as a chart-shipped
+	// patches.yaml) whose rules are applied on top of chart-shipped ones. Rules from
+	// these files are UNSCOPED (they may match any resource), unlike chart-shipped
+	// rules which are scoped to their chart subtree.
+	PatchesFiles []string
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
 	// Defaults to DockerConfig/config.json if not set.
 	// Used for authenticating to OCI registries when pulling charts.
@@ -285,6 +293,13 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		return nil, fmt.Errorf("render chart: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Resolve patches")
+
+	patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles)
+	if err != nil {
+		return nil, fmt.Errorf("resolve patches: %w", err)
+	}
+
 	log.Default.Debug(ctx, "Build transformed resource specs")
 
 	transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, opts.ReleaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
@@ -294,9 +309,16 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		return nil, fmt.Errorf("build transformed resource specs: %w", err)
 	}
 
+	log.Default.Debug(ctx, "Build render patched resource specs")
+
+	renderPatchedResSpecs, err := spec.BuildRenderPatchedResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, patches.Render)
+	if err != nil {
+		return nil, fmt.Errorf("build render patched resource specs: %w", err)
+	}
+
 	log.Default.Debug(ctx, "Build releasable resource specs")
 
-	resSpecs, err := spec.BuildPatchedResourceSpecs(ctx, opts.ReleaseNamespace, transformedResSpecs, []spec.ResourcePatcher{
+	resSpecs, err := spec.BuildPatchedResourceSpecs(ctx, opts.ReleaseNamespace, renderPatchedResSpecs, []spec.ResourcePatcher{
 		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
 		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 		spec.NewSecretStringDataPatcher(),
