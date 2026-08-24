@@ -78,7 +78,7 @@ type DeletableResourceInfo struct {
 }
 
 type BuildResourceInfosOptions struct {
-	DiffPatches                        []spec.DiffPatch
+	DiffPatches                        []*spec.CompiledPatch
 	ExtraRuntimeAnnotations            map[string]string
 	ExtraRuntimeLabels                 map[string]string
 	LastDeployedOrLastRelResourceSpecs []*spec.ResourceSpec
@@ -91,11 +91,6 @@ type BuildResourceInfosOptions struct {
 // more info, and here we actually decide what to do with each resource. Initially all this logic
 // was in BuildPlan, but it became way too complex, so we extracted it here.
 func BuildResourceInfos(ctx context.Context, deployType common.DeployType, releaseName, releaseNamespace string, instResources []*resource.InstallableResource, delResources []*resource.DeletableResource, prevReleaseFailed bool, clientFactory kube.ClientFactorier, opts BuildResourceInfosOptions) (instResourceInfos []*InstallableResourceInfo, delResourceInfos []*DeletableResourceInfo, err error) {
-	diffPatches, err := spec.CompileDiffPatches(opts.DiffPatches)
-	if err != nil {
-		return nil, nil, fmt.Errorf("compile diff patches: %w", err)
-	}
-
 	totalResourcesCount := len(instResources) + len(delResources)
 
 	routines := lo.Max([]int{len(instResources) / lo.Max([]int{totalResourcesCount, 1}) * opts.NetworkParallelism, 1})
@@ -103,7 +98,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 	instResourcesPool := pool.NewWithResults[[]*InstallableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range instResources {
 		instResourcesPool.Go(func(ctx context.Context) ([]*InstallableResourceInfo, error) {
-			infos, err := buildInstallableResourceInfo(ctx, res, deployType, releaseNamespace, prevReleaseFailed, opts.NoRemoveManualChanges, clientFactory, opts, diffPatches)
+			infos, err := buildInstallableResourceInfo(ctx, res, deployType, releaseNamespace, prevReleaseFailed, opts.NoRemoveManualChanges, clientFactory, opts, opts.DiffPatches)
 			if err != nil {
 				return nil, fmt.Errorf("build installable resource info: %w", err)
 			}
@@ -165,7 +160,7 @@ func ResourceInstallTypeSortHandler(type1, type2 ResourceInstallType) bool {
 	return type1I < type2I
 }
 
-func buildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed, noRemoveManualChanges bool, clientFactory kube.ClientFactorier, opts BuildResourceInfosOptions, diffPatches []*spec.CompiledDiffPatch) ([]*InstallableResourceInfo, error) {
+func buildInstallableResourceInfo(ctx context.Context, localRes *resource.InstallableResource, deployType common.DeployType, releaseNamespace string, prevRelFailed, noRemoveManualChanges bool, clientFactory kube.ClientFactorier, opts BuildResourceInfosOptions, diffPatches []*spec.CompiledPatch) ([]*InstallableResourceInfo, error) {
 	var stages []common.Stage
 	switch deployType {
 	case common.DeployTypeInitial, common.DeployTypeInstall:
@@ -836,7 +831,7 @@ func removeUndesirableManagers(managedFields []v1.ManagedFieldsEntry, oursEntry 
 	return newManagedFields, newOursEntry, changed
 }
 
-func resourceInstallType(ctx context.Context, localRes *resource.InstallableResource, getObj, dryApplyObj *unstructured.Unstructured, dryApplyErr error, extraRuntimeAnnotations, extraRuntimeLabels map[string]string, resourcePolicies []common.ResourcePolicy, diffPatches []*spec.CompiledDiffPatch) (installType ResourceInstallType, skippedByPolicy bool, err error) {
+func resourceInstallType(ctx context.Context, localRes *resource.InstallableResource, getObj, dryApplyObj *unstructured.Unstructured, dryApplyErr error, extraRuntimeAnnotations, extraRuntimeLabels map[string]string, resourcePolicies []common.ResourcePolicy, diffPatches []*spec.CompiledPatch) (installType ResourceInstallType, skippedByPolicy bool, err error) {
 	skipCreate := lo.Contains(resourcePolicies, common.ResourcePolicySkipCreate)
 	skipUpdate := lo.Contains(resourcePolicies, common.ResourcePolicySkipUpdate)
 	skipRecreate := lo.Contains(resourcePolicies, common.ResourcePolicySkipRecreate)
@@ -881,11 +876,11 @@ func resourceInstallType(ctx context.Context, localRes *resource.InstallableReso
 		// namespace selector dimension.
 		namespace := getObj.GetNamespace()
 
-		if patchedGetObj, err = spec.ApplyDiffPatches(diffPatches, localRes.ResourceMeta, namespace, getObj); err != nil {
+		if patchedGetObj, err = spec.ApplyPatches(ctx, diffPatches, localRes.ResourceMeta, namespace, getObj); err != nil {
 			return "", false, fmt.Errorf("apply diff patches to live version of resource %q: %w", localRes.IDHuman(), err)
 		}
 
-		if patchedDryApplyObj, err = spec.ApplyDiffPatches(diffPatches, localRes.ResourceMeta, namespace, dryApplyObj); err != nil {
+		if patchedDryApplyObj, err = spec.ApplyPatches(ctx, diffPatches, localRes.ResourceMeta, namespace, dryApplyObj); err != nil {
 			return "", false, fmt.Errorf("apply diff patches to dry-apply version of resource %q: %w", localRes.IDHuman(), err)
 		}
 	}

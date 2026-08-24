@@ -61,8 +61,9 @@ type ReleaseRollbackOptions struct {
 	// NoShowNotes, when true, suppresses printing of NOTES.txt after successful rollback.
 	// NOTES.txt typically contains usage instructions and next steps.
 	NoShowNotes bool
-	// PatchesFiles are paths to additional patches files (diff patches for drift
-	// detection) applied on top of chart-shipped ones during the rollback plan.
+	// PatchesFiles are paths to additional patches files applied on top of
+	// chart-shipped ones during the rollback plan. Nothing is rendered during a
+	// rollback, so only diff patches (drift detection) have an effect here.
 	PatchesFiles []string
 	// ReleaseHistoryLimit sets the maximum number of release revisions to keep in storage.
 	// When exceeded, the oldest revisions are deleted. Defaults to DefaultReleaseHistoryLimit if not set or <= 0.
@@ -319,13 +320,13 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		}
 	}
 
-	diffPatches, err := resolveDiffPatches(chartAccessor, opts.DefaultPatchesDisable, opts.PatchesFiles)
+	patches, err := resolvePatches(chartAccessor, opts.DefaultPatchesDisable, opts.PatchesFiles)
 	if err != nil {
-		return fmt.Errorf("resolve diff patches: %w", err)
+		return fmt.Errorf("resolve patches: %w", err)
 	}
 
 	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
-		DiffPatches:                        diffPatches,
+		DiffPatches:                        patches.Diff,
 		NetworkParallelism:                 opts.NetworkParallelism,
 		NoRemoveManualChanges:              opts.NoRemoveManualChanges,
 		LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,

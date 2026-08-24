@@ -1,6 +1,7 @@
 package spec_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,7 +16,7 @@ import (
 	"github.com/werf/nelm/pkg/resource/spec"
 )
 
-func TestApplyDiffPatches(t *testing.T) {
+func TestApplyPatches(t *testing.T) {
 	obj := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "apps/v1",
 		"kind":       "Deployment",
@@ -25,31 +26,31 @@ func TestApplyDiffPatches(t *testing.T) {
 	meta := metaFor("Deployment", "apps", "v1", "web", "", "myapp/templates/web.yaml", nil, nil)
 
 	t.Run("no rules returns unchanged deep copy", func(t *testing.T) {
-		out, err := spec.ApplyDiffPatches(nil, meta, "prod", obj)
+		out, err := spec.ApplyPatches(context.Background(), nil, meta, "prod", obj)
 		require.NoError(t, err)
 		require.Equal(t, obj.Object, out.Object)
 		require.NotSame(t, &obj.Object, &out.Object)
 	})
 
 	t.Run("non-matching rule leaves object unchanged", func(t *testing.T) {
-		c, err := spec.CompileDiffPatch(spec.DiffPatch{
+		c, err := spec.CompilePatch(spec.Patch{
 			Match: spec.ResourceMatcher{Names: []string{"other"}},
 			Patch: "del(.spec.replicas)",
 		})
 		require.NoError(t, err)
 
-		out, err := spec.ApplyDiffPatches([]*spec.CompiledDiffPatch{c}, meta, "prod", obj)
+		out, err := spec.ApplyPatches(context.Background(), []*spec.CompiledPatch{c}, meta, "prod", obj)
 		require.NoError(t, err)
 		require.Equal(t, int64(3), out.Object["spec"].(map[string]interface{})["replicas"])
 	})
 
 	t.Run("matching rules chain in order", func(t *testing.T) {
-		c1, err := spec.CompileDiffPatch(spec.DiffPatch{Patch: "del(.spec.replicas)"})
+		c1, err := spec.CompilePatch(spec.Patch{Patch: "del(.spec.replicas)"})
 		require.NoError(t, err)
-		c2, err := spec.CompileDiffPatch(spec.DiffPatch{Patch: `.metadata.name = "patched"`})
+		c2, err := spec.CompilePatch(spec.Patch{Patch: `.metadata.name = "patched"`})
 		require.NoError(t, err)
 
-		out, err := spec.ApplyDiffPatches([]*spec.CompiledDiffPatch{c1, c2}, meta, "prod", obj)
+		out, err := spec.ApplyPatches(context.Background(), []*spec.CompiledPatch{c1, c2}, meta, "prod", obj)
 		require.NoError(t, err)
 
 		_, hasReplicas := out.Object["spec"].(map[string]interface{})["replicas"]
@@ -61,56 +62,62 @@ func TestApplyDiffPatches(t *testing.T) {
 func TestCollectChartPatches_NilChart(t *testing.T) {
 	patches, err := spec.CollectChartPatches(nil)
 	require.NoError(t, err)
-	require.Empty(t, patches)
+	require.Empty(t, patches.Diff)
+	require.Empty(t, patches.Render)
 }
 
 func TestCollectChartPatches_ScopingAndOrder(t *testing.T) {
 	// Tree: app (root) -> [cache subchart]
-	cache := chartWithPatches("cache", "diffPatches:\n- patch: del(.cacheField)\n")
-	app := chartWithPatches("app", "diffPatches:\n- patch: del(.appField)\n", cache)
+	cache := chartWithPatches("cache", "diffPatches:\n- patch: del(.cacheField)\nrenderPatches:\n- patch: del(.cacheRendered)\n")
+	app := chartWithPatches("app", "diffPatches:\n- patch: del(.appField)\nrenderPatches:\n- patch: del(.appRendered)\n", cache)
 
 	accessor, err := helmchart.NewAccessor(app)
 	require.NoError(t, err)
 
 	patches, err := spec.CollectChartPatches(accessor)
 	require.NoError(t, err)
-	require.Len(t, patches, 2)
+	require.Len(t, patches.Diff, 2)
+	require.Len(t, patches.Render, 2)
 
 	// Leaf-first ordering: subchart (cache) rule before parent (app) rule.
-	require.Equal(t, "del(.cacheField)", patches[0].Patch)
-	require.Equal(t, "del(.appField)", patches[1].Patch)
+	require.Equal(t, "del(.cacheField)", patches.Diff[0].Patch)
+	require.Equal(t, "del(.appField)", patches.Diff[1].Patch)
+	require.Equal(t, "del(.cacheRendered)", patches.Render[0].Patch)
+	require.Equal(t, "del(.appRendered)", patches.Render[1].Patch)
 
 	// Scoping: subchart rule constrained to its subtree; parent rule to the root.
-	require.Equal(t, "app/charts/cache", patches[0].ChartScope)
-	require.Equal(t, "app", patches[1].ChartScope)
+	require.Equal(t, "app/charts/cache", patches.Diff[0].ChartScope)
+	require.Equal(t, "app", patches.Diff[1].ChartScope)
+	require.Equal(t, "app/charts/cache", patches.Render[0].ChartScope)
+	require.Equal(t, "app", patches.Render[1].ChartScope)
 }
 
-func TestCompileDiffPatch_DefaultsType(t *testing.T) {
-	c, err := spec.CompileDiffPatch(spec.DiffPatch{Patch: "."})
+func TestCompilePatch_DefaultsType(t *testing.T) {
+	c, err := spec.CompilePatch(spec.Patch{Patch: "."})
 	require.NoError(t, err)
 	require.NotNil(t, c)
 }
 
-func TestCompileDiffPatch_FailsClosed(t *testing.T) {
+func TestCompilePatch_FailsClosed(t *testing.T) {
 	tests := []struct {
 		name  string
-		patch spec.DiffPatch
+		patch spec.Patch
 	}{
 		{
 			name:  "invalid jq program",
-			patch: spec.DiffPatch{Patch: "del(.spec.replicas"},
+			patch: spec.Patch{Patch: "del(.spec.replicas"},
 		},
 		{
 			name:  "empty patch body",
-			patch: spec.DiffPatch{Patch: "   "},
+			patch: spec.Patch{Patch: "   "},
 		},
 		{
 			name:  "unsupported type",
-			patch: spec.DiffPatch{Type: "jsonPointer", Patch: "."},
+			patch: spec.Patch{Type: "jsonPointer", Patch: "."},
 		},
 		{
 			name: "invalid regexp in selector",
-			patch: spec.DiffPatch{
+			patch: spec.Patch{
 				Match: spec.ResourceMatcher{Names: []string{"/(/"}},
 				Patch: ".",
 			},
@@ -119,13 +126,13 @@ func TestCompileDiffPatch_FailsClosed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := spec.CompileDiffPatch(tt.patch)
+			_, err := spec.CompilePatch(tt.patch)
 			require.Error(t, err)
 		})
 	}
 }
 
-func TestCompiledDiffPatch_ChartScope(t *testing.T) {
+func TestCompiledPatch_ChartScope(t *testing.T) {
 	scope := "app/charts/cache"
 	tests := []struct {
 		name     string
@@ -141,7 +148,7 @@ func TestCompiledDiffPatch_ChartScope(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c, err := spec.CompileDiffPatch(spec.DiffPatch{ChartScope: scope, Patch: "."})
+			c, err := spec.CompilePatch(spec.Patch{ChartScope: scope, Patch: "."})
 			require.NoError(t, err)
 
 			meta := metaFor("Deployment", "apps", "v1", "web", "", tt.filePath, nil, nil)
@@ -150,7 +157,7 @@ func TestCompiledDiffPatch_ChartScope(t *testing.T) {
 	}
 }
 
-func TestCompiledDiffPatch_Match(t *testing.T) {
+func TestCompiledPatch_Match(t *testing.T) {
 	tests := []struct {
 		name      string
 		selector  spec.ResourceMatcher
@@ -339,14 +346,14 @@ func TestCompiledDiffPatch_Match(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c, err := spec.CompileDiffPatch(spec.DiffPatch{Match: tt.selector, Patch: "."})
+			c, err := spec.CompilePatch(spec.Patch{Match: tt.selector, Patch: "."})
 			require.NoError(t, err)
 			require.Equal(t, tt.want, c.Match(tt.meta, tt.namespace))
 		})
 	}
 }
 
-func TestCompiledDiffPatch_Transform(t *testing.T) {
+func TestCompiledPatch_Transform(t *testing.T) {
 	obj := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "apps/v1",
 		"kind":       "Deployment",
@@ -357,10 +364,10 @@ func TestCompiledDiffPatch_Transform(t *testing.T) {
 	}}
 
 	t.Run("happy path removes field without mutating input", func(t *testing.T) {
-		c, err := spec.CompileDiffPatch(spec.DiffPatch{Patch: "del(.spec.replicas)"})
+		c, err := spec.CompilePatch(spec.Patch{Patch: "del(.spec.replicas)"})
 		require.NoError(t, err)
 
-		out, err := c.Transform(obj)
+		out, err := c.Transform(context.Background(), obj)
 		require.NoError(t, err)
 
 		outSpec := out.Object["spec"].(map[string]interface{})
@@ -388,10 +395,10 @@ func TestCompiledDiffPatch_Transform(t *testing.T) {
 
 	for _, tt := range numeric {
 		t.Run("numeric "+tt.name, func(t *testing.T) {
-			c, err := spec.CompileDiffPatch(spec.DiffPatch{Patch: tt.program})
+			c, err := spec.CompilePatch(spec.Patch{Patch: tt.program})
 			require.NoError(t, err)
 
-			out, err := c.Transform(obj)
+			out, err := c.Transform(context.Background(), obj)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, out.Object["spec"].(map[string]interface{})["replicas"])
 		})
@@ -410,10 +417,10 @@ func TestCompiledDiffPatch_Transform(t *testing.T) {
 
 	for _, tt := range failures {
 		t.Run("rejects "+tt.name, func(t *testing.T) {
-			c, err := spec.CompileDiffPatch(spec.DiffPatch{Patch: tt.program})
+			c, err := spec.CompilePatch(spec.Patch{Patch: tt.program})
 			require.NoError(t, err)
 
-			_, err = c.Transform(obj)
+			_, err = c.Transform(context.Background(), obj)
 			require.Error(t, err)
 		})
 	}
@@ -424,33 +431,41 @@ func TestLoadPatchesFiles(t *testing.T) {
 	a := filepath.Join(dir, "a.yaml")
 	b := filepath.Join(dir, "b.yaml")
 
-	require.NoError(t, os.WriteFile(a, []byte("diffPatches:\n- patch: del(.a)\n"), 0o644))
+	require.NoError(t, os.WriteFile(a, []byte("diffPatches:\n- patch: del(.a)\nrenderPatches:\n- patch: del(.renderedA)\n"), 0o644))
 	require.NoError(t, os.WriteFile(b, []byte("diffPatches:\n- patch: del(.b)\n"), 0o644))
 
 	patches, err := spec.LoadPatchesFiles([]string{a, b})
 	require.NoError(t, err)
-	require.Len(t, patches, 2)
-	require.Equal(t, "del(.a)", patches[0].Patch)
-	require.Equal(t, "del(.b)", patches[1].Patch)
+	require.Len(t, patches.Diff, 2)
+	require.Equal(t, "del(.a)", patches.Diff[0].Patch)
+	require.Equal(t, "del(.b)", patches.Diff[1].Patch)
+	require.Len(t, patches.Render, 1)
+	require.Equal(t, "del(.renderedA)", patches.Render[0].Patch)
 
 	_, err = spec.LoadPatchesFiles([]string{filepath.Join(dir, "missing.yaml")})
 	require.Error(t, err)
 }
 
 func TestParsePatchesFile(t *testing.T) {
-	t.Run("parses diffPatches", func(t *testing.T) {
+	t.Run("parses both patch kinds", func(t *testing.T) {
 		data := []byte(`
 diffPatches:
 - match:
     kinds: [Deployment]
   patch: del(.spec.replicas)
 - patch: del(.data.foo)
+renderPatches:
+- match:
+    kinds: [StatefulSet]
+  patch: del(.spec.template.spec.nodeSelector)
 `)
 		patches, err := spec.ParsePatchesFile(data)
 		require.NoError(t, err)
-		require.Len(t, patches, 2)
-		require.Equal(t, []string{"Deployment"}, patches[0].Match.Kinds)
-		require.Equal(t, "del(.spec.replicas)", patches[0].Patch)
+		require.Len(t, patches.Diff, 2)
+		require.Equal(t, []string{"Deployment"}, patches.Diff[0].Match.Kinds)
+		require.Equal(t, "del(.spec.replicas)", patches.Diff[0].Patch)
+		require.Len(t, patches.Render, 1)
+		require.Equal(t, []string{"StatefulSet"}, patches.Render[0].Match.Kinds)
 	})
 
 	t.Run("rejects unknown top-level key", func(t *testing.T) {
@@ -461,7 +476,8 @@ diffPatches:
 	t.Run("empty file yields no patches", func(t *testing.T) {
 		patches, err := spec.ParsePatchesFile([]byte("{}\n"))
 		require.NoError(t, err)
-		require.Empty(t, patches)
+		require.Empty(t, patches.Diff)
+		require.Empty(t, patches.Render)
 	})
 }
 
