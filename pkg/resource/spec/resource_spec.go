@@ -164,7 +164,7 @@ func BuildRenderPatchedResourceSpecs(ctx context.Context, releaseNamespace strin
 				continue
 			}
 
-			out, err := patch.transform(patchedUnstruct)
+			out, err := patch.transform(ctx, patchedUnstruct)
 			if err != nil {
 				return nil, fmt.Errorf("apply render patches to resource %q: patch #%d: %w", res.IDHuman(), i+1, err)
 			}

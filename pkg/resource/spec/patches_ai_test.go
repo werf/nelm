@@ -14,6 +14,24 @@ import (
 	"github.com/werf/nelm/pkg/resource/spec"
 )
 
+func TestAI_ApplyPatches_CancelledContextStopsInfiniteProgram(t *testing.T) {
+	obj := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "apps/v1",
+		"kind":       "Deployment",
+		"metadata":   map[string]interface{}{"name": "web"},
+	}}
+	meta := metaFor("Deployment", "apps", "v1", "web", "", "myapp/templates/web.yaml", nil, nil)
+
+	c, err := spec.CompilePatch(spec.Patch{Patch: `last(repeat(.))`})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err = spec.ApplyPatches(ctx, []*spec.CompiledPatch{c}, meta, "prod", obj)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 func TestAI_BuildRenderPatchedResourceSpecs_AllowsExplicitReleaseNamespace(t *testing.T) {
 	res := renderedSpec(t, "web", "", "myapp/templates/web.yaml", nil)
 
@@ -23,6 +41,19 @@ func TestAI_BuildRenderPatchedResourceSpecs_AllowsExplicitReleaseNamespace(t *te
 	out, err := spec.BuildRenderPatchedResourceSpecs(context.Background(), "prod", []*spec.ResourceSpec{res}, patches)
 	require.NoError(t, err)
 	require.Empty(t, out[0].Unstruct.GetNamespace())
+}
+
+func TestAI_BuildRenderPatchedResourceSpecs_CancelledContextStopsInfiniteProgram(t *testing.T) {
+	res := renderedSpec(t, "web", "", "myapp/templates/web.yaml", nil)
+
+	patches, err := spec.CompilePatches([]spec.Patch{{Patch: `def f: f; f`}})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err = spec.BuildRenderPatchedResourceSpecs(ctx, "prod", []*spec.ResourceSpec{res}, patches)
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestAI_BuildRenderPatchedResourceSpecs_ChainsRules(t *testing.T) {
@@ -271,6 +302,23 @@ func TestAI_BuildRenderPatchedResourceSpecs_RejectsNonStringMetadata(t *testing.
 	}
 }
 
+func TestAI_CompiledPatch_Transform_CancelledContextStopsInfiniteProgram(t *testing.T) {
+	obj := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "apps/v1",
+		"kind":       "Deployment",
+		"metadata":   map[string]interface{}{"name": "web"},
+	}}
+
+	c, err := spec.CompilePatch(spec.Patch{Patch: `def f: f; f`})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err = c.Transform(ctx, obj)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 func TestAI_CompiledPatch_Transform_KeepsFractional(t *testing.T) {
 	obj := &unstructured.Unstructured{Object: map[string]interface{}{
 		"apiVersion": "apps/v1",
@@ -282,7 +330,7 @@ func TestAI_CompiledPatch_Transform_KeepsFractional(t *testing.T) {
 	c, err := spec.CompilePatch(spec.Patch{Patch: `.spec.ratio = 0.5`})
 	require.NoError(t, err)
 
-	out, err := c.Transform(obj)
+	out, err := c.Transform(context.Background(), obj)
 	require.NoError(t, err)
 	require.Equal(t, float64(0.5), out.Object["spec"].(map[string]interface{})["ratio"])
 }
@@ -298,28 +346,6 @@ func TestAI_CompiledPatch_Transform_RejectsIntegerOverflow(t *testing.T) {
 	c, err := spec.CompilePatch(spec.Patch{Patch: `.spec.big += 10`})
 	require.NoError(t, err)
 
-	_, err = c.Transform(obj)
+	_, err = c.Transform(context.Background(), obj)
 	require.ErrorContains(t, err, "overflows int64")
-}
-
-func renderedSpec(t *testing.T, name, namespace, filePath string, annotations map[string]interface{}) *spec.ResourceSpec {
-	t.Helper()
-
-	metadata := map[string]interface{}{"name": name}
-	if namespace != "" {
-		metadata["namespace"] = namespace
-	}
-
-	if annotations != nil {
-		metadata["annotations"] = annotations
-	}
-
-	unstruct := &unstructured.Unstructured{Object: map[string]interface{}{
-		"apiVersion": "apps/v1",
-		"kind":       "Deployment",
-		"metadata":   metadata,
-		"spec":       map[string]interface{}{"replicas": int64(3)},
-	}}
-
-	return spec.NewResourceSpec(unstruct, "prod", spec.ResourceSpecOptions{FilePath: filePath})
 }

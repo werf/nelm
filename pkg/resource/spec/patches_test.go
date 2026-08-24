@@ -1,6 +1,7 @@
 package spec_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -25,7 +26,7 @@ func TestApplyPatches(t *testing.T) {
 	meta := metaFor("Deployment", "apps", "v1", "web", "", "myapp/templates/web.yaml", nil, nil)
 
 	t.Run("no rules returns unchanged deep copy", func(t *testing.T) {
-		out, err := spec.ApplyPatches(nil, meta, "prod", obj)
+		out, err := spec.ApplyPatches(context.Background(), nil, meta, "prod", obj)
 		require.NoError(t, err)
 		require.Equal(t, obj.Object, out.Object)
 		require.NotSame(t, &obj.Object, &out.Object)
@@ -38,7 +39,7 @@ func TestApplyPatches(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		out, err := spec.ApplyPatches([]*spec.CompiledPatch{c}, meta, "prod", obj)
+		out, err := spec.ApplyPatches(context.Background(), []*spec.CompiledPatch{c}, meta, "prod", obj)
 		require.NoError(t, err)
 		require.Equal(t, int64(3), out.Object["spec"].(map[string]interface{})["replicas"])
 	})
@@ -49,7 +50,7 @@ func TestApplyPatches(t *testing.T) {
 		c2, err := spec.CompilePatch(spec.Patch{Patch: `.metadata.name = "patched"`})
 		require.NoError(t, err)
 
-		out, err := spec.ApplyPatches([]*spec.CompiledPatch{c1, c2}, meta, "prod", obj)
+		out, err := spec.ApplyPatches(context.Background(), []*spec.CompiledPatch{c1, c2}, meta, "prod", obj)
 		require.NoError(t, err)
 
 		_, hasReplicas := out.Object["spec"].(map[string]interface{})["replicas"]
@@ -366,7 +367,7 @@ func TestCompiledPatch_Transform(t *testing.T) {
 		c, err := spec.CompilePatch(spec.Patch{Patch: "del(.spec.replicas)"})
 		require.NoError(t, err)
 
-		out, err := c.Transform(obj)
+		out, err := c.Transform(context.Background(), obj)
 		require.NoError(t, err)
 
 		outSpec := out.Object["spec"].(map[string]interface{})
@@ -397,7 +398,7 @@ func TestCompiledPatch_Transform(t *testing.T) {
 			c, err := spec.CompilePatch(spec.Patch{Patch: tt.program})
 			require.NoError(t, err)
 
-			out, err := c.Transform(obj)
+			out, err := c.Transform(context.Background(), obj)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, out.Object["spec"].(map[string]interface{})["replicas"])
 		})
@@ -419,7 +420,7 @@ func TestCompiledPatch_Transform(t *testing.T) {
 			c, err := spec.CompilePatch(spec.Patch{Patch: tt.program})
 			require.NoError(t, err)
 
-			_, err = c.Transform(obj)
+			_, err = c.Transform(context.Background(), obj)
 			require.Error(t, err)
 		})
 	}

@@ -2,6 +2,7 @@ package spec
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -90,7 +91,7 @@ func (c *CompiledPatch) Match(resMeta *ResourceMeta, namespace string) bool {
 // transform runs the compiled jq program over a deep copy of the object and
 // returns the single object output. Zero, multiple, or non-object output is an
 // error, and a jq panic is recovered into an error; the input is never mutated.
-func (c *CompiledPatch) transform(unstruct *unstructured.Unstructured) (result *unstructured.Unstructured, err error) {
+func (c *CompiledPatch) transform(ctx context.Context, unstruct *unstructured.Unstructured) (result *unstructured.Unstructured, err error) {
 	// Unstructured stores integers as int64, which gojq rejects; round-trip
 	// through JSON with UseNumber so numbers reach gojq as json.Number.
 	input, err := toJQInput(unstruct.Object)
@@ -105,7 +106,7 @@ func (c *CompiledPatch) transform(unstruct *unstructured.Unstructured) (result *
 		}
 	}()
 
-	iter := c.code.Run(input)
+	iter := c.code.RunWithContext(ctx, input)
 
 	first, ok := iter.Next()
 	if !ok {
@@ -135,7 +136,7 @@ func (c *CompiledPatch) transform(unstruct *unstructured.Unstructured) (result *
 // ApplyPatches runs every rule whose matcher matches the resource, threading each
 // transform's output into the next, and returns a transformed deep copy; the
 // input is never mutated. namespace is the resource's true namespace.
-func ApplyPatches(patches []*CompiledPatch, resMeta *ResourceMeta, namespace string, unstruct *unstructured.Unstructured) (*unstructured.Unstructured, error) {
+func ApplyPatches(ctx context.Context, patches []*CompiledPatch, resMeta *ResourceMeta, namespace string, unstruct *unstructured.Unstructured) (*unstructured.Unstructured, error) {
 	result := unstruct
 	transformed := false
 
@@ -144,7 +145,7 @@ func ApplyPatches(patches []*CompiledPatch, resMeta *ResourceMeta, namespace str
 			continue
 		}
 
-		out, err := patch.transform(result)
+		out, err := patch.transform(ctx, result)
 		if err != nil {
 			return nil, fmt.Errorf("apply patch #%d: %w", i+1, err)
 		}

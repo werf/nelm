@@ -876,11 +876,11 @@ func resourceInstallType(ctx context.Context, localRes *resource.InstallableReso
 		// namespace selector dimension.
 		namespace := getObj.GetNamespace()
 
-		if patchedGetObj, err = spec.ApplyPatches(diffPatches, localRes.ResourceMeta, namespace, getObj); err != nil {
+		if patchedGetObj, err = spec.ApplyPatches(ctx, diffPatches, localRes.ResourceMeta, namespace, getObj); err != nil {
 			return "", false, fmt.Errorf("apply diff patches to live version of resource %q: %w", localRes.IDHuman(), err)
 		}
 
-		if patchedDryApplyObj, err = spec.ApplyPatches(diffPatches, localRes.ResourceMeta, namespace, dryApplyObj); err != nil {
+		if patchedDryApplyObj, err = spec.ApplyPatches(ctx, diffPatches, localRes.ResourceMeta, namespace, dryApplyObj); err != nil {
 			return "", false, fmt.Errorf("apply diff patches to dry-apply version of resource %q: %w", localRes.IDHuman(), err)
 		}
 	}

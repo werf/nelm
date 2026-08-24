@@ -1,6 +1,10 @@
 package spec
 
-import "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+import (
+	"context"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+)
 
 var (
 	// CompilePatch and ParsePatchesFile expose unexported symbols to the
@@ -10,6 +14,6 @@ var (
 )
 
 // Transform exposes the unexported transform method to the external spec_test package.
-func (c *CompiledPatch) Transform(unstruct *unstructured.Unstructured) (*unstructured.Unstructured, error) {
-	return c.transform(unstruct)
+func (c *CompiledPatch) Transform(ctx context.Context, unstruct *unstructured.Unstructured) (*unstructured.Unstructured, error) {
+	return c.transform(ctx, unstruct)
 }
