@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.30.1](https://github.com/werf/nelm/compare/v1.30.0...v1.30.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* switch managed-services.deckhouse.io readiness tracking to Available only ([#700](https://github.com/werf/nelm/issues/700)) ([2c15572](https://github.com/werf/nelm/commit/2c1557279a98ce0fb17fe0c5849d27bea453af3f))
+
 ## [1.30.0](https://github.com/werf/nelm/compare/v1.29.1...v1.30.0) (2026-08-20)
 
 
