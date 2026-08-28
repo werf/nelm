@@ -43,8 +43,14 @@ func (r *LegacyProgressReporter) ReportStatus(opID string, status progrep.Operat
 	})
 }
 
-func (r *LegacyProgressReporter) StartStage(p *Plan, releaseNamespace string, installableResourceInfos []*InstallableResourceInfo, mapper meta.RESTMapper) {
+func (r *LegacyProgressReporter) StartStage(p *Plan, releaseNamespace string, installableResourceInfos []*InstallableResourceInfo, mapper meta.RESTMapper, opts StartStageOptions) {
 	resolvedNamespaces := buildResolvedNamespaces(p, releaseNamespace, mapper)
+
+	if opts.NoUntouchedResources {
+		r.startStage(p, resolvedNamespaces, nil, nil)
+
+		return
+	}
 
 	untouchedResolvedNamespaces := make(map[string]string, len(installableResourceInfos))
 	for _, info := range installableResourceInfos {
@@ -153,6 +159,15 @@ func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[stri
 		report := buildProgressReport(s.frozen, s.ops)
 		sendNonBlocking(r.reportCh, report)
 	})
+}
+
+// StartStageOptions configures StartStage.
+type StartStageOptions struct {
+	// NoUntouchedResources, when true, omits untouched resources from the stage report.
+	// Set it for delta plans, like a failure plan, which only carry operations for the few
+	// resources they act upon: there the release-wide inventory of untouched resources is
+	// not part of what the stage does.
+	NoUntouchedResources bool
 }
 
 type progressReporterState struct {

@@ -569,6 +569,52 @@ func TestAI_StartStage_FreezesPreviousStage(t *testing.T) {
 	assert.Equal(t, progrep.OperationStatusPending, activeOps[0].Status)
 }
 
+func TestAI_StartStage_NoUntouchedResourcesOmitsBackfill(t *testing.T) {
+	mapper := newFakeRESTMapper()
+	releaseNS := "release-ns"
+
+	op := &Operation{
+		Type: OperationTypeDelete, Version: OperationVersionDelete, Category: OperationCategoryResource,
+		Config: &OperationConfigDelete{ResourceMeta: makeResourceMeta("job1", releaseNS, gvkConfigMap)},
+	}
+	p := buildTestPlan([]*Operation{op}, nil)
+
+	untouched := []*InstallableResourceInfo{
+		makeUntouchedInfo("cm1", releaseNS, gvkConfigMap),
+		makeUntouchedInfo("cm2", releaseNS, gvkConfigMap),
+	}
+
+	t.Run("included by default", func(t *testing.T) {
+		ch := make(chan progrep.ProgressReport, 64)
+		reporter := NewLegacyProgressReporter(ch)
+
+		reporter.StartStage(p, releaseNS, untouched, mapper, StartStageOptions{})
+
+		reports := drainChannel(ch)
+		require.NotEmpty(t, reports)
+
+		ops := reports[len(reports)-1].StageReports[0].Operations
+		assert.Len(t, ops, 3, "plan op plus both untouched resources")
+	})
+
+	t.Run("omitted when NoUntouchedResources", func(t *testing.T) {
+		ch := make(chan progrep.ProgressReport, 64)
+		reporter := NewLegacyProgressReporter(ch)
+
+		reporter.StartStage(p, releaseNS, untouched, mapper, StartStageOptions{
+			NoUntouchedResources: true,
+		})
+
+		reports := drainChannel(ch)
+		require.NotEmpty(t, reports)
+
+		ops := reports[len(reports)-1].StageReports[0].Operations
+		require.Len(t, ops, 1, "only the plan's own operation")
+		assert.Equal(t, "job1", ops[0].Name)
+		assert.Equal(t, progrep.OperationTypeDelete, ops[0].Type)
+	})
+}
+
 func TestAI_StartStage_ReportStatusNeverAffectsUntouchedEntry(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)

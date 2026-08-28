@@ -29,6 +29,9 @@ type ExecutePlanOptions struct {
 	InstallableResourceInfos []*InstallableResourceInfo
 	LegacyProgressReporter   *LegacyProgressReporter
 	NetworkParallelism       int
+	// NoUntouchedResourcesReport, when true, omits untouched resources from the progress
+	// report for this plan. Set it for delta plans, like a failure plan.
+	NoUntouchedResourcesReport bool
 }
 
 // Executes the given plan. It doesn't care what kind of plan it is (install, upgrade, failure plan,
@@ -42,7 +45,9 @@ func ExecutePlan(parentCtx context.Context, releaseNamespace string, plan *Plan,
 	opts.NetworkParallelism = lo.Max([]int{opts.NetworkParallelism, 1})
 
 	if opts.LegacyProgressReporter != nil {
-		opts.LegacyProgressReporter.StartStage(plan, releaseNamespace, opts.InstallableResourceInfos, clientFactory.Mapper())
+		opts.LegacyProgressReporter.StartStage(plan, releaseNamespace, opts.InstallableResourceInfos, clientFactory.Mapper(), StartStageOptions{
+			NoUntouchedResources: opts.NoUntouchedResourcesReport,
+		})
 	}
 
 	workerPool := pool.New().WithContext(ctx).WithMaxGoroutines(opts.NetworkParallelism).WithCancelOnError().WithFirstError()
