@@ -545,7 +545,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			reporter := plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
 			defer close(opts.LegacyProgressReportCh)
 
-			reporter.StartStage(installPlan, releaseNamespace, instResInfos, clientFactory.Mapper())
+			reporter.StartStage(installPlan, releaseNamespace, instResInfos, clientFactory.Mapper(), plan.StartStageOptions{})
 			reporter.Stop(ctx)
 		}
 
@@ -975,7 +975,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	if releaseIsUpToDate && planIsUseless {
 		if opts.LegacyProgressReporter != nil {
-			opts.LegacyProgressReporter.StartStage(rollbackPlan, releaseNamespace, instResInfos, clientFactory.Mapper())
+			opts.LegacyProgressReporter.StartStage(rollbackPlan, releaseNamespace, instResInfos, clientFactory.Mapper(), plan.StartStageOptions{})
 		}
 
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Skipped rollback release")+" %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)
