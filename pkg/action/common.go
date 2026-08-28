@@ -193,7 +193,6 @@ func runFailurePlan(ctx context.Context, releaseNamespace string, failedPlan *pl
 		LegacyProgressReporter:     opts.LegacyProgressReporter,
 		TrackingOptions:            opts.TrackingOptions,
 		NetworkParallelism:         opts.NetworkParallelism,
-		InstallableResourceInfos:   installableInfos,
 		NoUntouchedResourcesReport: true,
 	}); err != nil {
 		critErrs.Add(fmt.Errorf("execute failure plan: %w", err))

@@ -161,7 +161,6 @@ func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[stri
 	})
 }
 
-// StartStageOptions configures StartStage.
 type StartStageOptions struct {
 	// NoUntouchedResources, when true, omits untouched resources from the stage report.
 	// Set it for delta plans, like a failure plan, which only carry operations for the few
