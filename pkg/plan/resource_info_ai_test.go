@@ -41,6 +41,29 @@ func TestAI_ExclusiveOwnershipForOurManagerDeckhouseControllerGateEnabled(t *tes
 	assert.False(t, hasManager(newManagedFields, common.OldDeckhouseControllerManager))
 }
 
+func TestAI_PoolRoutines(t *testing.T) {
+	for _, tt := range []struct {
+		name               string
+		resourcesCount     int
+		totalCount         int
+		networkParallelism int
+		expected           int
+	}{
+		{name: "all resources installable", resourcesCount: 100, totalCount: 100, networkParallelism: 30, expected: 30},
+		{name: "mostly installable", resourcesCount: 100, totalCount: 105, networkParallelism: 30, expected: 28},
+		{name: "even split", resourcesCount: 50, totalCount: 100, networkParallelism: 30, expected: 15},
+		{name: "single resource of each kind", resourcesCount: 1, totalCount: 2, networkParallelism: 30, expected: 15},
+		{name: "small share never drops below one", resourcesCount: 5, totalCount: 105, networkParallelism: 30, expected: 1},
+		{name: "no resources", resourcesCount: 0, totalCount: 0, networkParallelism: 30, expected: 1},
+		{name: "minimal parallelism", resourcesCount: 1, totalCount: 2, networkParallelism: 1, expected: 1},
+		{name: "zero parallelism still yields a usable pool", resourcesCount: 1, totalCount: 2, networkParallelism: 0, expected: 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, poolRoutines(tt.resourcesCount, tt.totalCount, tt.networkParallelism))
+		})
+	}
+}
+
 func TestAI_RemoveUndesirableManagersDeckhouseControllerGateDisabled(t *testing.T) {
 	featgate.FeatGateAdoptDeckhouseControllerFields.Disable()
 	t.Cleanup(featgate.FeatGateAdoptDeckhouseControllerFields.Disable)
