@@ -90,7 +90,7 @@ type BuildResourceInfosOptions struct {
 func BuildResourceInfos(ctx context.Context, deployType common.DeployType, releaseName, releaseNamespace string, instResources []*resource.InstallableResource, delResources []*resource.DeletableResource, prevReleaseFailed bool, clientFactory kube.ClientFactorier, opts BuildResourceInfosOptions) (instResourceInfos []*InstallableResourceInfo, delResourceInfos []*DeletableResourceInfo, err error) {
 	totalResourcesCount := len(instResources) + len(delResources)
 
-	routines := lo.Max([]int{len(instResources) / lo.Max([]int{totalResourcesCount, 1}) * opts.NetworkParallelism, 1})
+	routines := poolRoutines(len(instResources), totalResourcesCount, opts.NetworkParallelism)
 
 	instResourcesPool := pool.NewWithResults[[]*InstallableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range instResources {
@@ -104,7 +104,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 		})
 	}
 
-	routines = lo.Max([]int{len(delResources) / lo.Max([]int{totalResourcesCount, 1}) * opts.NetworkParallelism, 1})
+	routines = poolRoutines(len(delResources), totalResourcesCount, opts.NetworkParallelism)
 
 	delResourcesPool := pool.NewWithResults[*DeletableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range delResources {
@@ -799,6 +799,10 @@ func orphaned(meta *spec.ResourceMeta, releaseName, releaseNamespace string) boo
 	}
 
 	return false
+}
+
+func poolRoutines(resourcesCount, totalResourcesCount, networkParallelism int) int {
+	return lo.Max([]int{resourcesCount * networkParallelism / lo.Max([]int{totalResourcesCount, 1}), 1})
 }
 
 func removeUndesirableManagers(managedFields []v1.ManagedFieldsEntry, oursEntry v1.ManagedFieldsEntry, noRemoveManualChanges bool) (newManagedFields []v1.ManagedFieldsEntry, newOursEntry v1.ManagedFieldsEntry, changed bool) {
