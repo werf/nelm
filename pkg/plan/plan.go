@@ -272,6 +272,28 @@ func (b *planChainBuilder) Stage(stage common.Stage) *planChainBuilder {
 	return b
 }
 
+func squashFinalTrackingOperations(p *Plan) {
+	adjMap := lo.Must(p.Graph.AdjacencyMap())
+	predMap := lo.Must(p.Graph.PredecessorMap())
+
+	// Squashing preserves reachability between the remaining operations, so all the answers stay
+	// valid while we squash and can be calculated once up front.
+	reachesResourceOps := calculateReachesResourceOps(p, adjMap)
+
+	var squashableOpIDs []string
+	for opID := range adjMap {
+		if lo.Must(p.Operation(opID)).Category != OperationCategoryTrack || reachesResourceOps[opID] {
+			continue
+		}
+
+		squashableOpIDs = append(squashableOpIDs, opID)
+	}
+
+	for _, opID := range squashableOpIDs {
+		squashOperationInMaps(p, opID, adjMap, predMap)
+	}
+}
+
 func squashUselessMetaOperations(p *Plan) {
 	operationPairs := findMetaOperationPairs(p.Operations())
 	uselessOperationPairs := findUselessMetaOperations(operationPairs, lo.Must(p.Graph.AdjacencyMap()))
@@ -288,6 +310,38 @@ func squashUselessMetaOperations(p *Plan) {
 	if len(uselessOperationPairs) > 0 {
 		squashUselessMetaOperations(p)
 	}
+}
+
+func calculateReachesResourceOps(p *Plan, adjMap map[string]map[string]graph.Edge[string]) map[string]bool {
+	reaches := make(map[string]bool, len(adjMap))
+
+	var calculate func(opID string) bool
+
+	calculate = func(opID string) bool {
+		if result, calculated := reaches[opID]; calculated {
+			return result
+		}
+
+		result := lo.Must(p.Operation(opID)).Category == OperationCategoryResource
+
+		for adjID := range adjMap[opID] {
+			if result {
+				break
+			}
+
+			result = calculate(adjID)
+		}
+
+		reaches[opID] = result
+
+		return result
+	}
+
+	for opID := range adjMap {
+		calculate(opID)
+	}
+
+	return reaches
 }
 
 func findMetaOperationPairs(operations []*Operation) [][]*Operation {
@@ -342,29 +396,35 @@ func findUselessMetaOperations(operationPairs [][]*Operation, adjMap map[string]
 	return uselessPairs
 }
 
-func squashFinalTrackingOperations(p *Plan) {
-	ops := p.Operations()
-	trackingOps := lo.Filter(ops, func(op *Operation, _ int) bool {
-		return op.Category == OperationCategoryTrack
-	})
+func squashOperationInMaps(p *Plan, opID string, adjMap, predMap map[string]map[string]graph.Edge[string]) {
+	opPreds := predMap[opID]
+	opAdjacencies := adjMap[opID]
 
-	for _, trackingOp := range trackingOps {
-		var foundDependentResourceOps bool
-		lo.Must0(graph.BFS(p.Graph, trackingOp.ID(), func(opID string) bool {
-			op := lo.Must(p.Operation(opID))
-			if op.Category == OperationCategoryResource {
-				foundDependentResourceOps = true
+	for predID := range opPreds {
+		lo.Must0(p.Graph.RemoveEdge(predID, opID))
 
-				return true
-			}
+		delete(adjMap[predID], opID)
+	}
 
-			return false
-		}))
+	for adjID := range opAdjacencies {
+		lo.Must0(p.Graph.RemoveEdge(opID, adjID))
 
-		if !foundDependentResourceOps {
-			p.SquashOperation(trackingOp)
+		delete(predMap[adjID], opID)
+	}
+
+	for predID := range opPreds {
+		for adjID := range opAdjacencies {
+			lo.Must0(p.Connect(predID, adjID))
+
+			adjMap[predID][adjID] = graph.Edge[string]{Source: predID, Target: adjID}
+			predMap[adjID][predID] = graph.Edge[string]{Source: predID, Target: adjID}
 		}
 	}
+
+	lo.Must0(p.Graph.RemoveVertex(opID))
+
+	delete(adjMap, opID)
+	delete(predMap, opID)
 }
 
 func stageOperationID(stage common.Stage, suffix string) string {
