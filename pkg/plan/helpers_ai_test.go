@@ -4,7 +4,10 @@ package plan
 
 import (
 	"fmt"
+	"math/rand"
 
+	"github.com/dominikbraun/graph"
+	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
@@ -95,4 +98,62 @@ func makeResourceMeta(name, namespace string, gvk schema.GroupVersionKind) *spec
 		Namespace:        namespace,
 		GroupVersionKind: gvk,
 	}
+}
+
+func randomTrackingGraph(rnd *rand.Rand, opsCount int, edgeChance float64) ([]OperationCategory, map[int][]int) {
+	allCategories := []OperationCategory{OperationCategoryResource, OperationCategoryTrack, OperationCategoryMeta}
+
+	categories := make([]OperationCategory, opsCount)
+	for i := range categories {
+		categories[i] = allCategories[rnd.Intn(len(allCategories))]
+	}
+
+	deps := map[int][]int{}
+	for from := 0; from < opsCount; from++ {
+		for to := from + 1; to < opsCount; to++ {
+			if rnd.Float64() < edgeChance {
+				deps[to] = append(deps[to], from)
+			}
+		}
+	}
+
+	return categories, deps
+}
+
+// Pre-optimization implementation of squashFinalTrackingOperations, kept as a reference to assert
+// the optimized one against.
+func squashFinalTrackingOperationsReference(p *Plan) {
+	ops := p.Operations()
+	trackingOps := lo.Filter(ops, func(op *Operation, _ int) bool {
+		return op.Category == OperationCategoryTrack
+	})
+
+	for _, trackingOp := range trackingOps {
+		var foundDependentResourceOps bool
+		lo.Must0(graph.BFS(p.Graph, trackingOp.ID(), func(opID string) bool {
+			op := lo.Must(p.Operation(opID))
+			if op.Category == OperationCategoryResource {
+				foundDependentResourceOps = true
+
+				return true
+			}
+
+			return false
+		}))
+
+		if !foundDependentResourceOps {
+			p.SquashOperation(trackingOp)
+		}
+	}
+}
+
+func trackingTestOperations(categories []OperationCategory) []*Operation {
+	return lo.Map(categories, func(category OperationCategory, i int) *Operation {
+		return &Operation{
+			Type:     OperationTypeNoop,
+			Version:  OperationVersionNoop,
+			Category: category,
+			Config:   &OperationConfigNoop{OpID: fmt.Sprintf("op-%d", i)},
+		}
+	})
 }
