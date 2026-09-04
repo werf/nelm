@@ -229,30 +229,12 @@ func (b *planChainBuilder) Do() error {
 			vertexAdded = true
 		}
 
-		operations := b.plan.Operations()
-
 		if step.stage != "" && vertexAdded {
-			stageStartOp := lo.Must(lo.Find(operations, func(op *Operation) bool {
-				config, ok := op.Config.(*OperationConfigNoop)
-				if !ok {
-					return false
-				}
-
-				return config.OpID == fmt.Sprintf("%s/%s/%s", common.StagePrefix, step.stage, common.StageStartSuffix)
-			}))
-			if err := b.plan.Connect(stageStartOp.ID(), step.operation.ID()); err != nil {
+			if err := b.plan.Connect(stageOperationID(step.stage, common.StageStartSuffix), step.operation.ID()); err != nil {
 				return fmt.Errorf("connect starting stage: %w", err)
 			}
 
-			stageEndOp := lo.Must(lo.Find(operations, func(op *Operation) bool {
-				config, ok := op.Config.(*OperationConfigNoop)
-				if !ok {
-					return false
-				}
-
-				return config.OpID == fmt.Sprintf("%s/%s/%s", common.StagePrefix, step.stage, common.StageEndSuffix)
-			}))
-			if err := b.plan.Connect(step.operation.ID(), stageEndOp.ID()); err != nil {
+			if err := b.plan.Connect(step.operation.ID(), stageOperationID(step.stage, common.StageEndSuffix)); err != nil {
 				return fmt.Errorf("connect ending stage: %w", err)
 			}
 		}
@@ -383,4 +365,8 @@ func squashFinalTrackingOperations(p *Plan) {
 			p.SquashOperation(trackingOp)
 		}
 	}
+}
+
+func stageOperationID(stage common.Stage, suffix string) string {
+	return OperationID(OperationTypeNoop, OperationVersionNoop, 0, fmt.Sprintf("%s/%s/%s", common.StagePrefix, stage, suffix))
 }

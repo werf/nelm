@@ -471,20 +471,21 @@ func exclusiveOwnershipForOurManager(managedFields []v1.ManagedFieldsEntry, ours
 }
 
 func filterDelResourcesPresentInInstResources(instResourceInfos []*InstallableResourceInfo, delResourceInfos []*DeletableResourceInfo) []*DeletableResourceInfo {
-	var instResourcesUIDs []types.UID
+	instResourcesUIDs := make(map[types.UID]struct{}, len(instResourceInfos))
 	for _, instInfo := range instResourceInfos {
 		if instInfo.GetResult == nil {
 			continue
 		}
 
-		instResourcesUIDs = append(instResourcesUIDs, instInfo.GetResult.GetUID())
+		instResourcesUIDs[instInfo.GetResult.GetUID()] = struct{}{}
 	}
 
 	var filteredDelResourceInfos []*DeletableResourceInfo
 	for _, delInfo := range delResourceInfos {
-		if delInfo.GetResult != nil &&
-			lo.Contains(instResourcesUIDs, delInfo.GetResult.GetUID()) {
-			continue
+		if delInfo.GetResult != nil {
+			if _, found := instResourcesUIDs[delInfo.GetResult.GetUID()]; found {
+				continue
+			}
 		}
 
 		filteredDelResourceInfos = append(filteredDelResourceInfos, delInfo)
@@ -680,16 +681,17 @@ func isServiceAccountFieldManaged(entry v1.ManagedFieldsEntry, subPath []string)
 }
 
 func iterateInstallableResourceInfos(infos []*InstallableResourceInfo) {
-	var seenInfos []*InstallableResourceInfo
+	seenInfos := make(map[string]*InstallableResourceInfo, len(infos))
 	for _, info := range infos {
-		seenInfo, seen := lo.Find(seenInfos, func(inf *InstallableResourceInfo) bool {
-			return info.ID() == inf.ID()
-		})
-		if seen {
+		id := info.ID()
+
+		if seenInfo, seen := seenInfos[id]; seen {
 			info.Iteration = seenInfo.Iteration + 1
+
+			continue
 		}
 
-		seenInfos = append(seenInfos, info)
+		seenInfos[id] = info
 	}
 
 	var highestIteration int
