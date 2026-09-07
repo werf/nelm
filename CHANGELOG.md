@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.30.2](https://github.com/werf/nelm/compare/v1.30.1...v1.30.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* optimize plan building for large releases ([#709](https://github.com/werf/nelm/issues/709)) ([aba6e3a](https://github.com/werf/nelm/commit/aba6e3a7874d957ee1b43eb8669cafa44f3f9c3e))
+* restore network parallelism when building resource infos ([#708](https://github.com/werf/nelm/issues/708)) ([f10c001](https://github.com/werf/nelm/commit/f10c001f213055020e345e3ae3172b89027e656c))
+* skippable untouched resources check for progress reporter ([#704](https://github.com/werf/nelm/issues/704)) ([0c56110](https://github.com/werf/nelm/commit/0c56110973d345fdb3d3ee49e0d03c587472333a))
+
 ## [1.30.1](https://github.com/werf/nelm/compare/v1.30.0...v1.30.1) (2026-08-26)
 
 
