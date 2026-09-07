@@ -55,6 +55,13 @@ func (m *fakeRESTMapper) RESTMapping(gk schema.GroupKind, versions ...string) (*
 	return nil, fmt.Errorf("no mapping for %v", gk)
 }
 
+func installableInfoToDeleteOnSuccessfulInstall(name string) *InstallableResourceInfo {
+	info := installableInfoNamed(name, ResourceInstallTypeApply)
+	info.MustDeleteOnSuccessfulInstall = true
+
+	return info
+}
+
 func deletableInfoWithUID(uid types.UID) *DeletableResourceInfo {
 	return &DeletableResourceInfo{GetResult: unstructuredWithUID(uid)}
 }
@@ -65,13 +72,6 @@ func installableInfoNamed(name string, installType ResourceInstallType, policies
 		LocalResource: &resource.InstallableResource{ResourcePolicies: policies},
 		MustInstall:   installType,
 	}
-}
-
-func installableInfoToDeleteOnSuccessfulInstall(name string) *InstallableResourceInfo {
-	info := installableInfoNamed(name, ResourceInstallTypeApply)
-	info.MustDeleteOnSuccessfulInstall = true
-
-	return info
 }
 
 func installableInfoWithUID(uid types.UID) *InstallableResourceInfo {
