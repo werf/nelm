@@ -13,7 +13,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/legacy/progrep"
+	"github.com/werf/nelm/pkg/resource"
 	"github.com/werf/nelm/pkg/resource/spec"
 )
 
@@ -55,6 +57,21 @@ func (m *fakeRESTMapper) RESTMapping(gk schema.GroupKind, versions ...string) (*
 
 func deletableInfoWithUID(uid types.UID) *DeletableResourceInfo {
 	return &DeletableResourceInfo{GetResult: unstructuredWithUID(uid)}
+}
+
+func installableInfoNamed(name string, installType ResourceInstallType, policies ...common.ResourcePolicy) *InstallableResourceInfo {
+	return &InstallableResourceInfo{
+		ResourceMeta:  makeResourceMeta(name, "test-namespace", gvkConfigMap),
+		LocalResource: &resource.InstallableResource{ResourcePolicies: policies},
+		MustInstall:   installType,
+	}
+}
+
+func installableInfoToDeleteOnSuccessfulInstall(name string) *InstallableResourceInfo {
+	info := installableInfoNamed(name, ResourceInstallTypeApply)
+	info.MustDeleteOnSuccessfulInstall = true
+
+	return info
 }
 
 func installableInfoWithUID(uid types.UID) *InstallableResourceInfo {

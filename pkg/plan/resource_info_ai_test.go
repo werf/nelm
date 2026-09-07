@@ -107,6 +107,98 @@ func TestAI_FilterDelResourcesPresentInInstResources(t *testing.T) {
 	}
 }
 
+func TestAI_IterateInstallableResourceInfos(t *testing.T) {
+	for _, tt := range []struct {
+		name                 string
+		infos                []*InstallableResourceInfo
+		expectedIterations   []int
+		expectedInstallTypes []ResourceInstallType
+	}{
+		{
+			name:                 "leaves a lone resource on the first iteration",
+			infos:                []*InstallableResourceInfo{installableInfoNamed("a", ResourceInstallTypeApply)},
+			expectedIterations:   []int{0},
+			expectedInstallTypes: []ResourceInstallType{ResourceInstallTypeApply},
+		},
+		{
+			name: "moves the second resource sharing an id to the next iteration",
+			infos: []*InstallableResourceInfo{
+				installableInfoNamed("a", ResourceInstallTypeApply),
+				installableInfoNamed("a", ResourceInstallTypeApply),
+			},
+			expectedIterations:   []int{0, 1},
+			expectedInstallTypes: []ResourceInstallType{ResourceInstallTypeApply, ResourceInstallTypeApply},
+		},
+		{
+			name: "keeps the third resource sharing an id on the second iteration",
+			infos: []*InstallableResourceInfo{
+				installableInfoNamed("a", ResourceInstallTypeApply),
+				installableInfoNamed("a", ResourceInstallTypeApply),
+				installableInfoNamed("a", ResourceInstallTypeApply),
+			},
+			expectedIterations:   []int{0, 1, 1},
+			expectedInstallTypes: []ResourceInstallType{ResourceInstallTypeApply, ResourceInstallTypeApply, ResourceInstallTypeApply},
+		},
+		{
+			name: "iterates every id on its own",
+			infos: []*InstallableResourceInfo{
+				installableInfoNamed("a", ResourceInstallTypeApply),
+				installableInfoNamed("b", ResourceInstallTypeApply),
+				installableInfoNamed("a", ResourceInstallTypeApply),
+				installableInfoNamed("b", ResourceInstallTypeApply),
+				installableInfoNamed("a", ResourceInstallTypeApply),
+			},
+			expectedIterations: []int{0, 0, 1, 1, 1},
+			expectedInstallTypes: []ResourceInstallType{
+				ResourceInstallTypeApply,
+				ResourceInstallTypeApply,
+				ResourceInstallTypeApply,
+				ResourceInstallTypeApply,
+				ResourceInstallTypeApply,
+			},
+		},
+		{
+			name: "creates the next iteration of a resource deleted on successful install",
+			infos: []*InstallableResourceInfo{
+				installableInfoToDeleteOnSuccessfulInstall("a"),
+				installableInfoNamed("a", ResourceInstallTypeApply),
+			},
+			expectedIterations:   []int{0, 1},
+			expectedInstallTypes: []ResourceInstallType{ResourceInstallTypeApply, ResourceInstallTypeCreate},
+		},
+		{
+			name: "keeps the install type of a resource with skip-create",
+			infos: []*InstallableResourceInfo{
+				installableInfoToDeleteOnSuccessfulInstall("a"),
+				installableInfoNamed("a", ResourceInstallTypeApply, common.ResourcePolicySkipCreate),
+			},
+			expectedIterations:   []int{0, 1},
+			expectedInstallTypes: []ResourceInstallType{ResourceInstallTypeApply, ResourceInstallTypeApply},
+		},
+		{
+			name: "keeps a resource that must not be installed uninstalled",
+			infos: []*InstallableResourceInfo{
+				installableInfoToDeleteOnSuccessfulInstall("a"),
+				installableInfoNamed("a", ResourceInstallTypeNone),
+			},
+			expectedIterations:   []int{0, 1},
+			expectedInstallTypes: []ResourceInstallType{ResourceInstallTypeApply, ResourceInstallTypeNone},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			iterateInstallableResourceInfos(tt.infos)
+
+			assert.Equal(t, tt.expectedIterations, lo.Map(tt.infos, func(info *InstallableResourceInfo, _ int) int {
+				return info.Iteration
+			}))
+
+			assert.Equal(t, tt.expectedInstallTypes, lo.Map(tt.infos, func(info *InstallableResourceInfo, _ int) ResourceInstallType {
+				return info.MustInstall
+			}))
+		})
+	}
+}
+
 func TestAI_PoolRoutines(t *testing.T) {
 	for _, tt := range []struct {
 		name               string

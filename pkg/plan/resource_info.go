@@ -714,9 +714,7 @@ func iterateInstallableResourceInfos(infos []*InstallableResourceInfo) {
 				continue
 			}
 
-			prevIterInfo := lo.Must(lo.Find(infos, func(inf *InstallableResourceInfo) bool {
-				return iterInfo.ID() == inf.ID() && inf.Iteration == iterInfo.Iteration-1
-			}))
+			prevIterInfo := seenInfos[iterInfo.ID()]
 
 			if prevIterInfo.MustDeleteOnSuccessfulInstall && !lo.Contains(iterInfo.LocalResource.ResourcePolicies, common.ResourcePolicySkipCreate) {
 				iterInfo.MustInstall = ResourceInstallTypeCreate
