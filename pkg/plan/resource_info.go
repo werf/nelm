@@ -482,10 +482,8 @@ func filterDelResourcesPresentInInstResources(instResourceInfos []*InstallableRe
 
 	var filteredDelResourceInfos []*DeletableResourceInfo
 	for _, delInfo := range delResourceInfos {
-		if delInfo.GetResult != nil {
-			if _, found := instResourcesUIDs[delInfo.GetResult.GetUID()]; found {
-				continue
-			}
+		if delInfo.GetResult != nil && lo.HasKey(instResourcesUIDs, delInfo.GetResult.GetUID()) {
+			continue
 		}
 
 		filteredDelResourceInfos = append(filteredDelResourceInfos, delInfo)
