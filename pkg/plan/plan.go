@@ -258,7 +258,7 @@ func squashFinalTrackingOperations(p *Plan) {
 
 	// Squashing preserves reachability between the remaining operations, so all the answers stay
 	// valid while we squash and can be calculated once up front.
-	reachesResourceOps := calculateReachesResourceOps(p, adjMap)
+	reachesResourceOps := calculateReachesResourceOps(p, adjMap, predMap)
 
 	var squashableOpIDs []string
 	for opID := range adjMap {
@@ -292,33 +292,29 @@ func squashUselessMetaOperations(p *Plan) {
 	}
 }
 
-func calculateReachesResourceOps(p *Plan, adjMap map[string]map[string]graph.Edge[string]) map[string]bool {
+func calculateReachesResourceOps(p *Plan, adjMap, predMap map[string]map[string]graph.Edge[string]) map[string]bool {
 	reaches := make(map[string]bool, len(adjMap))
 
-	var calculate func(opID string) bool
-
-	calculate = func(opID string) bool {
-		if result, calculated := reaches[opID]; calculated {
-			return result
+	var queue []string
+	for opID := range adjMap {
+		if lo.Must(p.Operation(opID)).Category == OperationCategoryResource {
+			queue = append(queue, opID)
 		}
-
-		result := lo.Must(p.Operation(opID)).Category == OperationCategoryResource
-
-		for adjID := range adjMap[opID] {
-			if result {
-				break
-			}
-
-			result = calculate(adjID)
-		}
-
-		reaches[opID] = result
-
-		return result
 	}
 
-	for opID := range adjMap {
-		calculate(opID)
+	for len(queue) > 0 {
+		opID := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+
+		if reaches[opID] {
+			continue
+		}
+
+		reaches[opID] = true
+
+		for predID := range predMap[opID] {
+			queue = append(queue, predID)
+		}
 	}
 
 	return reaches
