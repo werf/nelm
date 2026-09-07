@@ -5,8 +5,10 @@ package plan
 import (
 	"testing"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
@@ -39,6 +41,70 @@ func TestAI_ExclusiveOwnershipForOurManagerDeckhouseControllerGateEnabled(t *tes
 
 	assert.False(t, changed)
 	assert.False(t, hasManager(newManagedFields, common.OldDeckhouseControllerManager))
+}
+
+func TestAI_FilterDelResourcesPresentInInstResources(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		instInfos    []*InstallableResourceInfo
+		delInfos     []*DeletableResourceInfo
+		expectedUIDs []types.UID
+	}{
+		{
+			name:         "keeps every deletable when there are no installables",
+			instInfos:    nil,
+			delInfos:     []*DeletableResourceInfo{deletableInfoWithUID("a"), deletableInfoWithUID("b")},
+			expectedUIDs: []types.UID{"a", "b"},
+		},
+		{
+			name:         "returns nothing when there are no deletables",
+			instInfos:    []*InstallableResourceInfo{installableInfoWithUID("a")},
+			delInfos:     nil,
+			expectedUIDs: []types.UID{},
+		},
+		{
+			name:         "drops the deletable sharing a uid with an installable",
+			instInfos:    []*InstallableResourceInfo{installableInfoWithUID("a"), installableInfoWithUID("b")},
+			delInfos:     []*DeletableResourceInfo{deletableInfoWithUID("a"), deletableInfoWithUID("c")},
+			expectedUIDs: []types.UID{"c"},
+		},
+		{
+			name:         "drops every deletable when all of them share uids with installables",
+			instInfos:    []*InstallableResourceInfo{installableInfoWithUID("a"), installableInfoWithUID("b")},
+			delInfos:     []*DeletableResourceInfo{deletableInfoWithUID("b"), deletableInfoWithUID("a")},
+			expectedUIDs: []types.UID{},
+		},
+		{
+			name:         "ignores installables that were not found in the cluster",
+			instInfos:    []*InstallableResourceInfo{{}, installableInfoWithUID("b")},
+			delInfos:     []*DeletableResourceInfo{deletableInfoWithUID("a")},
+			expectedUIDs: []types.UID{"a"},
+		},
+		{
+			name:         "keeps deletables that were not found in the cluster",
+			instInfos:    []*InstallableResourceInfo{installableInfoWithUID("a")},
+			delInfos:     []*DeletableResourceInfo{{}, deletableInfoWithUID("a")},
+			expectedUIDs: []types.UID{""},
+		},
+		{
+			name:         "preserves the order of the kept deletables",
+			instInfos:    []*InstallableResourceInfo{installableInfoWithUID("b")},
+			delInfos:     []*DeletableResourceInfo{deletableInfoWithUID("a"), deletableInfoWithUID("b"), deletableInfoWithUID("c")},
+			expectedUIDs: []types.UID{"a", "c"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			filtered := filterDelResourcesPresentInInstResources(tt.instInfos, tt.delInfos)
+
+			assert.Equal(t, tt.expectedUIDs, lo.Map(filtered, func(info *DeletableResourceInfo, _ int) types.UID {
+				if info.GetResult == nil {
+					return ""
+				}
+
+				return info.GetResult.GetUID()
+			}))
+		})
+	}
 }
 
 func TestAI_PoolRoutines(t *testing.T) {
