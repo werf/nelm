@@ -139,20 +139,16 @@ func addFailureReleaseOperations(failedPlan, plan *Plan, releaseInfos []*Release
 			continue
 		}
 
-		if _, releaseCreated := lo.Find(failedPlan.Operations(), func(op *Operation) bool {
-			if op.Status != OperationStatusCompleted {
-				return false
-			}
+		releaseOpIDs := []string{
+			OperationID(OperationTypeCreateRelease, OperationVersionCreateRelease, 0, info.Release.ID()),
+			OperationID(OperationTypeUpdateRelease, OperationVersionUpdateRelease, 0, info.Release.ID()),
+		}
 
-			switch config := op.Config.(type) {
-			case *OperationConfigCreateRelease:
-				return config.Release.ID() == info.Release.ID()
-			case *OperationConfigUpdateRelease:
-				return config.Release.ID() == info.Release.ID()
-			default:
-				return false
-			}
-		}); !releaseCreated {
+		if !lo.SomeBy(releaseOpIDs, func(opID string) bool {
+			op, found := failedPlan.Operation(opID)
+
+			return found && op.Status == OperationStatusCompleted
+		}) {
 			continue
 		}
 
@@ -339,11 +335,7 @@ func addFailureResourceOperations(failedPlan, plan *Plan, infos []*InstallableRe
 		}
 
 		if info.MustDeleteOnSuccessfulInstall {
-			deleteOnSuccessfulInstallOp := lo.Must(lo.Find(failedPlan.Operations(), func(op *Operation) bool {
-				return op.Type == OperationTypeDelete &&
-					op.Iteration == OperationIteration(info.Iteration) &&
-					op.Config.(*OperationConfigDelete).ResourceMeta.ID() == info.ID()
-			}))
+			deleteOnSuccessfulInstallOp := lo.Must(failedPlan.Operation(OperationID(OperationTypeDelete, OperationVersionDelete, OperationIteration(info.Iteration), info.ID())))
 
 			if deleteOnSuccessfulInstallOp.Status == OperationStatusCompleted {
 				continue
