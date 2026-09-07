@@ -55,6 +55,20 @@ func (m *fakeRESTMapper) RESTMapping(gk schema.GroupKind, versions ...string) (*
 	return nil, fmt.Errorf("no mapping for %v", gk)
 }
 
+func installableInfoToDeleteOnAnyOutcome(name string) *InstallableResourceInfo {
+	info := installableInfoToDeleteOnSuccessfulInstall(name)
+	info.MustDeleteOnFailedInstall = true
+
+	return info
+}
+
+func installableInfoToDeleteOnFailedInstall(name string) *InstallableResourceInfo {
+	info := installableInfoNamed(name, ResourceInstallTypeApply)
+	info.MustDeleteOnFailedInstall = true
+
+	return info
+}
+
 func installableInfoToDeleteOnSuccessfulInstall(name string) *InstallableResourceInfo {
 	info := installableInfoNamed(name, ResourceInstallTypeApply)
 	info.MustDeleteOnSuccessfulInstall = true
