@@ -125,27 +125,7 @@ func (p *Plan) Optimize(noFinalTracking bool) error {
 }
 
 func (p *Plan) SquashOperation(op *Operation) {
-	adjMap := lo.Must(p.Graph.AdjacencyMap())
-	predMap := lo.Must(p.Graph.PredecessorMap())
-
-	opPreds := predMap[op.ID()]
-	opAdjacencies := adjMap[op.ID()]
-
-	for predID := range opPreds {
-		lo.Must0(p.Graph.RemoveEdge(predID, op.ID()))
-	}
-
-	for adjID := range opAdjacencies {
-		lo.Must0(p.Graph.RemoveEdge(op.ID(), adjID))
-	}
-
-	for predID := range opPreds {
-		for adjID := range opAdjacencies {
-			lo.Must0(p.Connect(predID, adjID))
-		}
-	}
-
-	lo.Must0(p.Graph.RemoveVertex(op.ID()))
+	squashOperationInMaps(p, op.ID(), lo.Must(p.Graph.AdjacencyMap()), lo.Must(p.Graph.PredecessorMap()))
 }
 
 func (p *Plan) ToDOT() ([]byte, error) {
