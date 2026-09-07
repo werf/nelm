@@ -342,12 +342,11 @@ func fixManagedFields(ctx context.Context, unstruct *unstructured.Unstructured, 
 }
 
 func buildDeletableResourceInfo(ctx context.Context, localRes *resource.DeletableResource, deployType common.DeployType, releaseName, releaseNamespace string, clientFactory kube.ClientFactorier) (*DeletableResourceInfo, error) {
-	var stage common.Stage
-	if deployType == common.DeployTypeUninstall {
-		stage = common.StageUninstall
-	} else {
-		stage = common.StagePrePreUninstall
-	}
+	// Purge previous-release resources in StageUninstall, which runs after
+	// StageInstall. Helm updates/creates first and only then deletes removed
+	// objects; waiting for ABSENT in pre-pre-uninstall before install deadlocks
+	// PVCs still mounted by pods that are updated only during install.
+	stage := deletableResourceStage(deployType)
 
 	noDeleteInfo := &DeletableResourceInfo{
 		ResourceMeta:  localRes.ResourceMeta,
@@ -394,6 +393,18 @@ func buildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 		MustTrackAbsence: true,
 		Stage:            stage,
 	}, nil
+}
+
+// deletableResourceStage places purge/delete of release resources after install.
+// Previously non-uninstall deploys used StagePrePreUninstall, which blocked the
+// install stage on TrackAbsence (e.g. PVC finalizers) before Deployment updates.
+func deletableResourceStage(deployType common.DeployType) common.Stage {
+	switch deployType {
+	case common.DeployTypeInitial, common.DeployTypeInstall, common.DeployTypeUpgrade, common.DeployTypeRollback, common.DeployTypeUninstall:
+		return common.StageUninstall
+	default:
+		return common.StageUninstall
+	}
 }
 
 func isServiceAccountManagedFieldFixRequired(localRes *unstructured.Unstructured, entry *v1.ManagedFieldsEntry) (bool, error) {
