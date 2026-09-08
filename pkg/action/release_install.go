@@ -578,6 +578,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	if !opts.NoProgressTablePrint {
 		progressPrinter = track.NewProgressTablesPrinter(taskStore, logStore, track.ProgressTablesPrinterOptions{
 			DefaultNamespace: releaseNamespace,
+			MaxTableWidth:    opts.ProgressTableWidth,
 		})
 		progressPrinter.Start(ctx, opts.ProgressTablePrintInterval)
 	}

@@ -52,6 +52,10 @@ func (l *LogboekLogger) BlockContentWidth(ctx context.Context) int {
 	return logboek.Context(ctx).Streams().ContentWidth()
 }
 
+func (l *LogboekLogger) TerminalWidth(ctx context.Context) int {
+	return logboek.Context(ctx).Streams().Width()
+}
+
 func (l *LogboekLogger) Debug(ctx context.Context, format string, a ...interface{}) {
 	if !l.AcceptLevel(ctx, DebugLevel) {
 		return

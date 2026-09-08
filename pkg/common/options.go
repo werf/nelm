@@ -195,6 +195,9 @@ type TrackingOptions struct {
 	// ProgressTablePrintInterval is the interval for updating the progress table display.
 	// Defaults to DefaultProgressPrintInterval (5 seconds) if not set or <= 0.
 	ProgressTablePrintInterval time.Duration
+	// ProgressTableWidth sets a fixed maximum width in characters for progress, log and event tables.
+	// When 0, the width is auto-detected from the terminal. Defaults to 140 if auto-detection fails.
+	ProgressTableWidth int
 	// TrackCreationTimeout is the timeout duration for tracking resource creation.
 	// If resource creation doesn't complete within this time, the operation fails.
 	// If 0, no timeout is applied and resources are tracked indefinitely.

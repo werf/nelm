@@ -7,6 +7,7 @@ import (
 	"io"
 	stdlog "log"
 	"os"
+	"strconv"
 
 	cdlog "github.com/containerd/log"
 	"github.com/davecgh/go-spew/spew"
@@ -22,6 +23,8 @@ import (
 	"github.com/werf/logboek"
 	"github.com/werf/nelm/pkg/helm/pkg/engine"
 )
+
+const LogTerminalWidthEnvVarName = "NELM_LOG_TERMINAL_WIDTH"
 
 var Default Logger = NewLogboekLogger()
 
@@ -114,6 +117,12 @@ func SetupLogging(ctx context.Context, logLevel Level, opts SetupLoggingOptions)
 		debug.SetDebug(true)
 	default:
 		panic(fmt.Sprintf("unknown log level %q", logLevel))
+	}
+
+	if widthStr := os.Getenv(LogTerminalWidthEnvVarName); widthStr != "" {
+		if width, err := strconv.Atoi(widthStr); err == nil && width > 0 {
+			logboek.Context(ctx).Streams().SetWidth(width)
+		}
 	}
 
 	colorLevel := getColorLevel(opts.ColorMode, opts.LogIsParseable)

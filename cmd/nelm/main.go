@@ -70,7 +70,8 @@ func main() {
 		return fg.EnvVarName()
 	})
 
-	if unsupportedEnvVars := lo.Without(cli.FindUndefinedFlagEnvVarsInEnviron(), featGatesEnvVars...); len(unsupportedEnvVars) > 0 {
+	knownEnvVars := append(featGatesEnvVars, log.LogTerminalWidthEnvVarName)
+	if unsupportedEnvVars := lo.Without(cli.FindUndefinedFlagEnvVarsInEnviron(), knownEnvVars...); len(unsupportedEnvVars) > 0 {
 		log.Default.Warn(ctx, "Unsupported environment variable(s): %s", strings.Join(unsupportedEnvVars, ","))
 	}
 
