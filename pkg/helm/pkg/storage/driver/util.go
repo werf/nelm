@@ -68,66 +68,20 @@ func lastVersionFromMetadata(ctx context.Context, client metadata.Interface, gvr
 	return latest, nil
 }
 
-// ReleaseMeta describes a single stored release revision. It is filled from
-// storage metadata only, so obtaining it never decodes a release body.
-type ReleaseMeta struct {
-	Name      string
-	Namespace string
-	Status    rspb.Status
-	Version   int
-}
+const listLatestPageSize = 500
 
-const releaseMetaPageSize = 500
-
-// listReleaseMetaFromMetadata lists metadata of all release revisions matching
-// selector. It pages through the results and transfers only object metadata
-// (labels), never the release bodies stored in the objects' data, so it does not
-// scale with release size or history depth.
-func listReleaseMetaFromMetadata(ctx context.Context, client metadata.Interface, gvr schema.GroupVersionResource, namespace, selector string) ([]ReleaseMeta, error) {
-	opts := metav1.ListOptions{LabelSelector: selector, Limit: releaseMetaPageSize}
-
-	var metas []ReleaseMeta
-
-	for {
-		list, err := client.Resource(gvr).Namespace(namespace).List(ctx, opts)
-		if err != nil {
-			return nil, errors.Wrap(err, "list release metadata")
-		}
-
-		for _, item := range list.Items {
-			meta, ok := releaseMetaFromLabels(item.Namespace, item.Labels)
-			if !ok {
-				continue
-			}
-
-			metas = append(metas, meta)
-		}
-
-		if list.Continue == "" {
-			return metas, nil
-		}
-
-		opts.Continue = list.Continue
-	}
-}
-
-func releaseMetaFromLabels(namespace string, lbs map[string]string) (ReleaseMeta, bool) {
+func releaseKeyAndVersionFromLabels(namespace string, lbs map[string]string) (string, int, bool) {
 	name := lbs["name"]
 	if name == "" {
-		return ReleaseMeta{}, false
+		return "", 0, false
 	}
 
 	version, err := strconv.Atoi(lbs["version"])
 	if err != nil {
-		return ReleaseMeta{}, false
+		return "", 0, false
 	}
 
-	return ReleaseMeta{
-		Name:      name,
-		Namespace: namespace,
-		Status:    rspb.Status(lbs["status"]),
-		Version:   version,
-	}, true
+	return namespace + "/" + name, version, true
 }
 
 // encodeRelease encodes a release returning a base64 encoded

@@ -105,34 +105,63 @@ func (secrets *Secrets) LastVersion(name string) (int, error) {
 	return latest, nil
 }
 
-// ListReleaseMeta returns metadata of every stored release revision owned by
-// Helm. It reads only labels and decodes no release body.
-func (secrets *Secrets) ListReleaseMeta() ([]ReleaseMeta, error) {
-	selector := kblabels.Set{"owner": "helm"}.AsSelector().String()
-
-	if secrets.MetadataClient != nil {
-		return listReleaseMetaFromMetadata(context.Background(), secrets.MetadataClient, secretsGVR, secrets.Namespace, selector)
+// ListLatestReleases returns the highest revision of every release owned by Helm.
+// Superseded revisions are dropped while paging, before any body is decoded, so
+// the cost does not scale with the depth of the histories.
+func (secrets *Secrets) ListLatestReleases(ctx context.Context) ([]*rspb.Release, error) {
+	opts := metav1.ListOptions{
+		LabelSelector: kblabels.Set{"owner": "helm"}.AsSelector().String(),
+		Limit:         listLatestPageSize,
 	}
 
-	// Safety net without a metadata client: a typed list still avoids decoding
-	// release bodies, but unlike the metadata path it transfers them over the wire.
-	list, err := secrets.impl.List(context.Background(), metav1.ListOptions{LabelSelector: selector})
-	if err != nil {
-		return nil, errors.Wrap(err, "list release meta: failed to list")
+	latestItems := map[string]v1.Secret{}
+	latestVersions := map[string]int{}
+
+	for {
+		list, err := secrets.impl.List(ctx, opts)
+		if err != nil {
+			return nil, errors.Wrap(err, "list latest releases: failed to list")
+		}
+
+		for _, item := range list.Items {
+			key, version, ok := releaseKeyAndVersionFromLabels(item.Namespace, item.Labels)
+			if !ok {
+				continue
+			}
+
+			if current, found := latestVersions[key]; found && current >= version {
+				continue
+			}
+
+			latestItems[key] = item
+			latestVersions[key] = version
+		}
+
+		if list.Continue == "" {
+			break
+		}
+
+		opts.Continue = list.Continue
 	}
 
-	var metas []ReleaseMeta
+	var releases []*rspb.Release
 
-	for _, item := range list.Items {
-		meta, ok := releaseMetaFromLabels(item.Namespace, item.Labels)
-		if !ok {
+	for _, item := range latestItems {
+		rls, err := decodeRelease(string(item.Data["release"]))
+		if err != nil {
+			secrets.Log("list latest releases: failed to decode release %q: %s", item.Name, err)
 			continue
 		}
 
-		metas = append(metas, meta)
+		if rls.Namespace == "" {
+			rls.Namespace = item.Namespace
+		}
+
+		rls.Labels = item.Labels
+		releases = append(releases, rls)
 	}
 
-	return metas, nil
+	return releases, nil
 }
 
 // Get fetches the release named by key. The corresponding release is returned

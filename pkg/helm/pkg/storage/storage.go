@@ -17,6 +17,7 @@ limitations under the License.
 package storage // import "helm.sh/helm/v3/pkg/storage"
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -132,19 +133,23 @@ func (s *Storage) resolveLastVersion(name string) (int, error) {
 	return h[0].Version, nil
 }
 
-// releaseMetaLister is an optional driver capability that lists metadata of all
-// stored release revisions cheaply, without decoding release bodies.
-type releaseMetaLister interface {
-	ListReleaseMeta() ([]driver.ReleaseMeta, error)
+// latestReleasesLister is an optional driver capability that returns the highest
+// revision of every stored release without decoding superseded revisions.
+type latestReleasesLister interface {
+	ListLatestReleases(ctx context.Context) ([]*rspb.Release, error)
 }
 
-// ListReleaseMeta returns metadata of every stored release revision owned by
-// Helm. Drivers implementing the capability answer without decoding release
-// bodies; the fallback decodes the whole history, so it costs as much as
-// listing all releases.
-func (s *Storage) ListReleaseMeta() ([]driver.ReleaseMeta, error) {
-	if l, ok := s.Driver.(releaseMetaLister); ok {
-		return l.ListReleaseMeta()
+var (
+	_ latestReleasesLister = (*driver.Secrets)(nil)
+	_ latestReleasesLister = (*driver.ConfigMaps)(nil)
+)
+
+// ListLatestReleases returns the highest revision of every release owned by Helm.
+// Drivers implementing the capability answer without decoding superseded
+// revisions; the fallback decodes the whole history of every release.
+func (s *Storage) ListLatestReleases(ctx context.Context) ([]*rspb.Release, error) {
+	if l, ok := s.Driver.(latestReleasesLister); ok {
+		return l.ListLatestReleases(ctx)
 	}
 
 	rels, err := s.Driver.Query(map[string]string{"owner": "helm"})
@@ -156,22 +161,23 @@ func (s *Storage) ListReleaseMeta() ([]driver.ReleaseMeta, error) {
 		return nil, err
 	}
 
-	metas := make([]driver.ReleaseMeta, 0, len(rels))
+	latest := map[string]*rspb.Release{}
 	for _, rel := range rels {
-		meta := driver.ReleaseMeta{
-			Name:      rel.Name,
-			Namespace: rel.Namespace,
-			Version:   rel.Version,
+		key := rel.Namespace + "/" + rel.Name
+
+		if current, found := latest[key]; found && current.Version >= rel.Version {
+			continue
 		}
 
-		if rel.Info != nil {
-			meta.Status = rel.Info.Status
-		}
-
-		metas = append(metas, meta)
+		latest[key] = rel
 	}
 
-	return metas, nil
+	result := make([]*rspb.Release, 0, len(latest))
+	for _, rel := range latest {
+		result = append(result, rel)
+	}
+
+	return result, nil
 }
 
 // Create creates a new storage entry holding the release. An

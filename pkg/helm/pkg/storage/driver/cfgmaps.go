@@ -105,34 +105,64 @@ func (cfgmaps *ConfigMaps) LastVersion(name string) (int, error) {
 	return latest, nil
 }
 
-// ListReleaseMeta returns metadata of every stored release revision owned by
-// Helm. It reads only labels and decodes no release body.
-func (cfgmaps *ConfigMaps) ListReleaseMeta() ([]ReleaseMeta, error) {
-	selector := kblabels.Set{"owner": "helm"}.AsSelector().String()
-
-	if cfgmaps.MetadataClient != nil {
-		return listReleaseMetaFromMetadata(context.Background(), cfgmaps.MetadataClient, configMapsGVR, cfgmaps.Namespace, selector)
+// ListLatestReleases returns the highest revision of every release owned by Helm.
+// Superseded revisions are dropped while paging, before any body is decoded, so
+// the cost does not scale with the depth of the histories.
+func (cfgmaps *ConfigMaps) ListLatestReleases(ctx context.Context) ([]*rspb.Release, error) {
+	opts := metav1.ListOptions{
+		LabelSelector: kblabels.Set{"owner": "helm"}.AsSelector().String(),
+		Limit:         listLatestPageSize,
 	}
 
-	// Safety net without a metadata client: a typed list still avoids decoding
-	// release bodies, but unlike the metadata path it transfers them over the wire.
-	list, err := cfgmaps.impl.List(context.Background(), metav1.ListOptions{LabelSelector: selector})
-	if err != nil {
-		return nil, errors.Wrap(err, "list release meta: failed to list")
+	latestItems := map[string]v1.ConfigMap{}
+	latestVersions := map[string]int{}
+
+	for {
+		list, err := cfgmaps.impl.List(ctx, opts)
+		if err != nil {
+			cfgmaps.Log("list latest releases: failed to list: %s", err)
+			return nil, err
+		}
+
+		for _, item := range list.Items {
+			key, version, ok := releaseKeyAndVersionFromLabels(item.Namespace, item.Labels)
+			if !ok {
+				continue
+			}
+
+			if current, found := latestVersions[key]; found && current >= version {
+				continue
+			}
+
+			latestItems[key] = item
+			latestVersions[key] = version
+		}
+
+		if list.Continue == "" {
+			break
+		}
+
+		opts.Continue = list.Continue
 	}
 
-	var metas []ReleaseMeta
+	var releases []*rspb.Release
 
-	for _, item := range list.Items {
-		meta, ok := releaseMetaFromLabels(item.Namespace, item.Labels)
-		if !ok {
+	for _, item := range latestItems {
+		rls, err := decodeRelease(item.Data["release"])
+		if err != nil {
+			cfgmaps.Log("list latest releases: failed to decode release %q: %s", item.Name, err)
 			continue
 		}
 
-		metas = append(metas, meta)
+		if rls.Namespace == "" {
+			rls.Namespace = item.Namespace
+		}
+
+		rls.Labels = item.Labels
+		releases = append(releases, rls)
 	}
 
-	return metas, nil
+	return releases, nil
 }
 
 // Get fetches the release named by key. The corresponding release is returned

@@ -331,48 +331,6 @@ func (s *SQL) LastVersion(name string) (int, error) {
 	return int(version.Int64), nil
 }
 
-// ListReleaseMeta returns metadata of every stored release revision owned by
-// Helm. It reads only the label columns and decodes no release body.
-func (s *SQL) ListReleaseMeta() ([]ReleaseMeta, error) {
-	qb := s.statementBuilder.
-		Select(
-			sqlReleaseTableNameColumn,
-			sqlReleaseTableNamespaceColumn,
-			sqlReleaseTableVersionColumn,
-			sqlReleaseTableStatusColumn,
-		).
-		From(sqlReleaseTableName).
-		Where(sq.Eq{sqlReleaseTableOwnerColumn: sqlReleaseDefaultOwner})
-
-	if s.namespace != "" {
-		qb = qb.Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace})
-	}
-
-	query, args, err := qb.ToSql()
-	if err != nil {
-		s.Log("failed to build query: %v", err)
-		return nil, err
-	}
-
-	var records []SQLReleaseWrapper
-	if err := s.db.Select(&records, query, args...); err != nil {
-		s.Log("list release meta: failed to query: %v", err)
-		return nil, err
-	}
-
-	metas := make([]ReleaseMeta, 0, len(records))
-	for _, record := range records {
-		metas = append(metas, ReleaseMeta{
-			Name:      record.Name,
-			Namespace: record.Namespace,
-			Status:    rspb.Status(record.Status),
-			Version:   record.Version,
-		})
-	}
-
-	return metas, nil
-}
-
 // Get returns the release named by key.
 func (s *SQL) Get(key string) (*rspb.Release, error) {
 	var record SQLReleaseWrapper
