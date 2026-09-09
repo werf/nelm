@@ -132,6 +132,48 @@ func (s *Storage) resolveLastVersion(name string) (int, error) {
 	return h[0].Version, nil
 }
 
+// releaseMetaLister is an optional driver capability that lists metadata of all
+// stored release revisions cheaply, without decoding release bodies.
+type releaseMetaLister interface {
+	ListReleaseMeta() ([]driver.ReleaseMeta, error)
+}
+
+// ListReleaseMeta returns metadata of every stored release revision owned by
+// Helm. Drivers implementing the capability answer without decoding release
+// bodies; the fallback decodes the whole history, so it costs as much as
+// listing all releases.
+func (s *Storage) ListReleaseMeta() ([]driver.ReleaseMeta, error) {
+	if l, ok := s.Driver.(releaseMetaLister); ok {
+		return l.ListReleaseMeta()
+	}
+
+	rels, err := s.Driver.Query(map[string]string{"owner": "helm"})
+	if err != nil {
+		if errors.Is(err, driver.ErrReleaseNotFound) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	metas := make([]driver.ReleaseMeta, 0, len(rels))
+	for _, rel := range rels {
+		meta := driver.ReleaseMeta{
+			Name:      rel.Name,
+			Namespace: rel.Namespace,
+			Version:   rel.Version,
+		}
+
+		if rel.Info != nil {
+			meta.Status = rel.Info.Status
+		}
+
+		metas = append(metas, meta)
+	}
+
+	return metas, nil
+}
+
 // Create creates a new storage entry holding the release. An
 // error is returned if the storage driver fails to store the
 // release, or a release with an identical key already exists.

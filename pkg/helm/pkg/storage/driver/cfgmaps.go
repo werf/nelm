@@ -105,6 +105,36 @@ func (cfgmaps *ConfigMaps) LastVersion(name string) (int, error) {
 	return latest, nil
 }
 
+// ListReleaseMeta returns metadata of every stored release revision owned by
+// Helm. It reads only labels and decodes no release body.
+func (cfgmaps *ConfigMaps) ListReleaseMeta() ([]ReleaseMeta, error) {
+	selector := kblabels.Set{"owner": "helm"}.AsSelector().String()
+
+	if cfgmaps.MetadataClient != nil {
+		return listReleaseMetaFromMetadata(context.Background(), cfgmaps.MetadataClient, configMapsGVR, cfgmaps.Namespace, selector)
+	}
+
+	// Safety net without a metadata client: a typed list still avoids decoding
+	// release bodies, but unlike the metadata path it transfers them over the wire.
+	list, err := cfgmaps.impl.List(context.Background(), metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return nil, errors.Wrap(err, "list release meta: failed to list")
+	}
+
+	var metas []ReleaseMeta
+
+	for _, item := range list.Items {
+		meta, ok := releaseMetaFromLabels(item.Namespace, item.Labels)
+		if !ok {
+			continue
+		}
+
+		metas = append(metas, meta)
+	}
+
+	return metas, nil
+}
+
 // Get fetches the release named by key. The corresponding release is returned
 // or error if not found.
 func (cfgmaps *ConfigMaps) Get(key string) (*rspb.Release, error) {

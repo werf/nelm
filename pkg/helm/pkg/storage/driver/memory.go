@@ -173,6 +173,43 @@ func (mem *Memory) LastVersion(name string) (int, error) {
 	return latest, nil
 }
 
+// ListReleaseMeta returns metadata of every stored release revision.
+func (mem *Memory) ListReleaseMeta() ([]ReleaseMeta, error) {
+	defer unlock(mem.rlock())
+
+	var metas []ReleaseMeta
+
+	for namespace := range mem.cache {
+		if mem.namespace != "" && namespace != mem.namespace {
+			continue
+		}
+
+		for _, recs := range mem.cache[namespace] {
+			recs.Iter(func(_ int, rec *record) bool {
+				if rec == nil || rec.rls == nil {
+					return false
+				}
+
+				meta := ReleaseMeta{
+					Name:      rec.rls.Name,
+					Namespace: namespace,
+					Version:   rec.rls.Version,
+				}
+
+				if rec.rls.Info != nil {
+					meta.Status = rec.rls.Info.Status
+				}
+
+				metas = append(metas, meta)
+
+				return true
+			})
+		}
+	}
+
+	return metas, nil
+}
+
 // Create creates a new release or returns ErrReleaseExists.
 func (mem *Memory) Create(key string, rls *rspb.Release) error {
 	defer unlock(mem.wlock())

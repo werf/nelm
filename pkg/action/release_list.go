@@ -3,22 +3,26 @@ package action
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
-	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/gookit/color"
 	prtable "github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
 	"github.com/samber/lo"
+	"github.com/sourcegraph/conc/pool"
 
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmstorage "github.com/werf/nelm/pkg/helm/pkg/storage"
+	"github.com/werf/nelm/pkg/helm/pkg/storage/driver"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -70,6 +74,33 @@ type ReleaseListResultRelease struct {
 	DeployedAt  *ReleaseListResultDeployedAt `json:"deployedAt"`
 	Annotations map[string]string            `json:"annotations"`
 	Chart       *ReleaseListResultChart      `json:"chart"`
+}
+
+func newReleaseListResultRelease(rel *helmrelease.Release) *ReleaseListResultRelease {
+	result := &ReleaseListResultRelease{
+		Name:      rel.Name,
+		Namespace: rel.Namespace,
+		Revision:  rel.Version,
+	}
+
+	if rel.Info != nil {
+		result.Annotations = rel.Info.Annotations
+		result.Status = rel.Info.Status
+		result.DeployedAt = &ReleaseListResultDeployedAt{
+			Human: rel.Info.LastDeployed.String(),
+			Unix:  int(rel.Info.LastDeployed.Unix()),
+		}
+	}
+
+	if rel.Chart != nil && rel.Chart.Metadata != nil {
+		result.Chart = &ReleaseListResultChart{
+			AppVersion: rel.Chart.Metadata.AppVersion,
+			Name:       rel.Chart.Metadata.Name,
+			Version:    rel.Chart.Metadata.Version,
+		}
+	}
+
+	return result
 }
 
 type ReleaseListResultDeployedAt struct {
@@ -126,37 +157,21 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 
 	loader.NoChartLockWarning = ""
 
-	log.Default.Info(ctx, "Build release histories")
+	log.Default.Info(ctx, "List releases")
 
-	histories, err := release.BuildHistories(releaseStorage, release.HistoryOptions{})
+	metas, err := releaseStorage.ListReleaseMeta()
 	if err != nil {
-		return nil, fmt.Errorf("build release histories: %w", err)
+		return nil, fmt.Errorf("list release metadata: %w", err)
+	}
+
+	releases, err := buildReleaseListResultReleases(ctx, releaseStorage, lastReleaseRevisions(metas), opts.NetworkParallelism)
+	if err != nil {
+		return nil, err
 	}
 
 	result := &ReleaseListResultV1{
 		APIVersion: "v1",
-	}
-
-	for _, history := range histories {
-		releases := history.Releases()
-		lastRelease := lo.LastOrEmpty(releases)
-
-		result.Releases = append(result.Releases, &ReleaseListResultRelease{
-			Annotations: lastRelease.Info.Annotations,
-			Chart: &ReleaseListResultChart{
-				Name:       lastRelease.Chart.Name(),
-				Version:    lastRelease.Chart.Metadata.Version,
-				AppVersion: lastRelease.Chart.Metadata.AppVersion,
-			},
-			DeployedAt: &ReleaseListResultDeployedAt{
-				Human: time.Time{}.String(),
-				Unix:  int(time.Time{}.Unix()),
-			},
-			Name:      lastRelease.Name,
-			Namespace: lastRelease.Namespace,
-			Revision:  lastRelease.Version,
-			Status:    lastRelease.Info.Status,
-		})
+		Releases:   releases,
 	}
 
 	sort.SliceStable(result.Releases, func(i, j int) bool {
@@ -248,6 +263,34 @@ func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV
 	return table
 }
 
+func buildReleaseListResultReleases(ctx context.Context, releaseStorage *helmstorage.Storage, metas []driver.ReleaseMeta, networkParallelism int) ([]*ReleaseListResultRelease, error) {
+	releasesPool := pool.NewWithResults[[]*ReleaseListResultRelease]().WithContext(ctx).WithMaxGoroutines(networkParallelism).WithCancelOnError().WithFirstError()
+
+	for _, meta := range metas {
+		releasesPool.Go(func(_ context.Context) ([]*ReleaseListResultRelease, error) {
+			rel, err := getReleaseRevision(releaseStorage, meta)
+			if err != nil {
+				// The revision was trimmed from the history between listing metadata and
+				// fetching it, so the release is no longer part of the listing.
+				if errors.Is(err, driver.ErrReleaseNotFound) {
+					return nil, nil
+				}
+
+				return nil, fmt.Errorf("get release %q (namespace: %q, revision: %d): %w", meta.Name, meta.Namespace, meta.Version, err)
+			}
+
+			return []*ReleaseListResultRelease{newReleaseListResultRelease(rel)}, nil
+		})
+	}
+
+	releases, err := releasesPool.Wait()
+	if err != nil {
+		return nil, fmt.Errorf("wait for release pool: %w", err)
+	}
+
+	return lo.Flatten(releases), nil
+}
+
 func applyReleaseListOptionsDefaults(opts ReleaseListOptions, homeDir string) (ReleaseListOptions, error) {
 	var err error
 	if opts.TempDirPath == "" {
@@ -272,6 +315,47 @@ func applyReleaseListOptionsDefaults(opts ReleaseListOptions, homeDir string) (R
 	}
 
 	return opts, nil
+}
+
+func getReleaseRevision(releaseStorage *helmstorage.Storage, meta driver.ReleaseMeta) (*helmrelease.Release, error) {
+	rels, err := releaseStorage.Query(map[string]string{
+		"name":    meta.Name,
+		"owner":   "helm",
+		"version": strconv.Itoa(meta.Version),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("query release revision: %w", err)
+	}
+
+	if rel, found := lo.Find(rels, func(rel *helmrelease.Release) bool {
+		return rel.Namespace == meta.Namespace
+	}); found {
+		return rel, nil
+	}
+
+	// Releases stored by ancient Helm versions have no namespace in the release body,
+	// so there is nothing to match the metadata namespace against.
+	if len(rels) == 1 {
+		return rels[0], nil
+	}
+
+	return nil, driver.ErrReleaseNotFound
+}
+
+func lastReleaseRevisions(metas []driver.ReleaseMeta) []driver.ReleaseMeta {
+	latest := make(map[string]driver.ReleaseMeta, len(metas))
+
+	for _, meta := range metas {
+		key := meta.Namespace + "/" + meta.Name
+
+		if current, found := latest[key]; found && current.Version >= meta.Version {
+			continue
+		}
+
+		latest[key] = meta
+	}
+
+	return lo.Values(latest)
 }
 
 func setReleaseListOutputTableStyle(ctx context.Context, table prtable.Writer) {

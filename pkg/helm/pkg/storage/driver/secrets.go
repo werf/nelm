@@ -105,6 +105,36 @@ func (secrets *Secrets) LastVersion(name string) (int, error) {
 	return latest, nil
 }
 
+// ListReleaseMeta returns metadata of every stored release revision owned by
+// Helm. It reads only labels and decodes no release body.
+func (secrets *Secrets) ListReleaseMeta() ([]ReleaseMeta, error) {
+	selector := kblabels.Set{"owner": "helm"}.AsSelector().String()
+
+	if secrets.MetadataClient != nil {
+		return listReleaseMetaFromMetadata(context.Background(), secrets.MetadataClient, secretsGVR, secrets.Namespace, selector)
+	}
+
+	// Safety net without a metadata client: a typed list still avoids decoding
+	// release bodies, but unlike the metadata path it transfers them over the wire.
+	list, err := secrets.impl.List(context.Background(), metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return nil, errors.Wrap(err, "list release meta: failed to list")
+	}
+
+	var metas []ReleaseMeta
+
+	for _, item := range list.Items {
+		meta, ok := releaseMetaFromLabels(item.Namespace, item.Labels)
+		if !ok {
+			continue
+		}
+
+		metas = append(metas, meta)
+	}
+
+	return metas, nil
+}
+
 // Get fetches the release named by key. The corresponding release is returned
 // or error if not found.
 func (secrets *Secrets) Get(key string) (*rspb.Release, error) {
