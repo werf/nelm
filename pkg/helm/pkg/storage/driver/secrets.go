@@ -146,9 +146,13 @@ func (secrets *Secrets) ListLatestReleases(ctx context.Context) ([]*rspb.Release
 		opts.Continue = list.Continue
 	}
 
-	var releases []*rspb.Release
+	releases := make([]*rspb.Release, 0, len(latestItems))
 
-	for _, item := range latestItems {
+	// The entry is dropped before its body is decoded, so the undecoded
+	// survivors and the decoded releases are never both live.
+	for key, item := range latestItems {
+		delete(latestItems, key)
+
 		rls, err := decodeRelease(string(item.Data["release"]))
 		if err != nil {
 			secrets.Log("list latest releases: failed to decode release %q: %s", item.Name, err)

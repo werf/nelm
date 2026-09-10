@@ -5,6 +5,9 @@ package release //nolint:testpackage
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -57,6 +60,55 @@ func (d *plainDriver) Query(labels map[string]string) ([]*helmrelease.Release, e
 
 func (d *plainDriver) Update(key string, rls *helmrelease.Release) error {
 	return d.inner.Update(key, rls) //nolint:wrapcheck
+}
+
+// corruptBodySecretClient serves single-revision releases whose bodies are all
+// corrupt. Every one of them sends the driver looking for an older revision,
+// which lists again with a field selector -- a hook inside the decode loop. On
+// the last such list every survivor has been processed, so the bodies still
+// live are exactly the ones the loop failed to release.
+type corruptBodySecretClient struct {
+	corev1.SecretInterface
+
+	body            []byte
+	heapAtLastProbe uint64
+	probes          int
+	releases        int
+}
+
+func (c *corruptBodySecretClient) List(_ context.Context, opts metav1.ListOptions) (*v1.SecretList, error) {
+	if opts.FieldSelector != "" {
+		c.probes++
+
+		if c.probes == c.releases {
+			runtime.GC()
+
+			var stats runtime.MemStats
+			runtime.ReadMemStats(&stats)
+			c.heapAtLastProbe = stats.HeapAlloc
+		}
+
+		return &v1.SecretList{}, nil
+	}
+
+	list := &v1.SecretList{Items: make([]v1.Secret, 0, c.releases)}
+	for i := 0; i < c.releases; i++ {
+		name := fmt.Sprintf("rel-%04d", i)
+
+		body := make([]byte, len(c.body))
+		copy(body, c.body)
+
+		list.Items = append(list.Items, v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: testNamespace,
+				Name:      fmt.Sprintf("sh.helm.release.v1.%s.v1", name),
+				Labels:    map[string]string{"owner": "helm", "name": name, "version": strconv.Itoa(1)},
+			},
+			Data: map[string][]byte{"release": body},
+		})
+	}
+
+	return list, nil
 }
 
 // pagingSecretClient serves a secret list page by page, honoring Limit and
@@ -276,6 +328,26 @@ func TestAI_StorageListLatestReleases_CorruptLatestRevisionDoesNotFanOut(t *test
 		"recovering from a corrupt revision must not re-list the whole cross-namespace history of the release name once per namespace")
 }
 
+func TestAI_StorageListLatestReleases_DoesNotRetainUndecodedBodies(t *testing.T) {
+	const (
+		releases = 500
+		bodySize = 256 << 10
+	)
+
+	client := &corruptBodySecretClient{body: incompressibleBody(bodySize), releases: releases}
+	storage := helmstorage.Init(helmdriver.NewSecrets(client))
+
+	rels, err := storage.ListLatestReleases(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, rels, "every stored body is corrupt, so nothing is listed")
+	require.Equal(t, releases, client.probes, "every corrupt release must look for an older revision")
+
+	storedBodies := uint64(releases) * uint64(bodySize)
+
+	assert.Less(t, client.heapAtLastProbe, storedBodies/4,
+		"undecoded bodies must be released as they are decoded, not held until the loop ends")
+}
+
 func TestAI_StorageListLatestReleases_Empty(t *testing.T) {
 	storage, _ := newSecretStorage(t)
 
@@ -480,6 +552,19 @@ func TestAI_StorageListLatestReleases_TakesNamespaceFromObjectWhenBodyHasNone(t 
 
 	require.Len(t, rels, 1)
 	assert.Equal(t, testNamespace, rels[0].Namespace)
+}
+
+// incompressibleBody returns bytes that neither gzip nor the release decoder
+// can shrink, so the memory a retained body costs matches its stored size.
+func incompressibleBody(size int) []byte {
+	body := make([]byte, size)
+
+	rnd := rand.New(rand.NewSource(1)) //nolint:gosec
+	for i := range body {
+		body[i] = byte(rnd.Intn(256))
+	}
+
+	return body
 }
 
 func revisionsByName(rels []*helmrelease.Release) map[string]int {
