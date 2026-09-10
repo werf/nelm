@@ -142,6 +142,54 @@ func (c *namespaceScopedConfigMapClient) List(ctx context.Context, opts metav1.L
 	return list, nil
 }
 
+func TestAI_StorageListLatestReleases_ConfigMapCorruptLatestRevisionDoesNotFanOut(t *testing.T) {
+	const (
+		namespaces = 10
+		revisions  = 8
+	)
+
+	clientset := k8sfake.NewSimpleClientset()
+
+	for i := 0; i < namespaces; i++ {
+		namespace := fmt.Sprintf("ns-%d", i)
+		configMaps := clientset.CoreV1().ConfigMaps(namespace)
+		storage := helmstorage.Init(helmdriver.NewConfigMaps(configMaps))
+
+		for v := 1; v <= revisions; v++ {
+			rel := newTestRelease("myapp", v, nil)
+			rel.Namespace = namespace
+			require.NoError(t, storage.Create(rel))
+		}
+
+		configMap, err := configMaps.Get(context.Background(), fmt.Sprintf("sh.helm.release.v1.myapp.v%d", revisions), metav1.GetOptions{})
+		require.NoError(t, err)
+
+		configMap.Data["release"] = "corrupt"
+		_, err = configMaps.Update(context.Background(), configMap, metav1.UpdateOptions{})
+		require.NoError(t, err)
+	}
+
+	scoped := &namespaceScopedConfigMapClient{ConfigMapInterface: clientset.CoreV1().ConfigMaps("")}
+	listStorage := helmstorage.Init(helmdriver.NewConfigMaps(scoped))
+
+	rels, err := listStorage.ListLatestReleases(context.Background())
+	require.NoError(t, err)
+
+	byNamespace := map[string]int{}
+	for _, rel := range rels {
+		byNamespace[rel.Namespace] = rel.Version
+	}
+
+	require.Len(t, byNamespace, namespaces)
+
+	for namespace, version := range byNamespace {
+		assert.Equal(t, revisions-1, version, "namespace %s must fall back to its own newest decodable revision", namespace)
+	}
+
+	assert.LessOrEqual(t, scoped.served, namespaces*revisions*2,
+		"recovering from a corrupt revision must not re-list the whole cross-namespace history of the release name once per namespace")
+}
+
 func TestAI_StorageListLatestReleases_ConfigMapDriver(t *testing.T) {
 	clientset := k8sfake.NewSimpleClientset()
 
@@ -178,6 +226,54 @@ func TestAI_StorageListLatestReleases_ConfigMapFallsBackFromCorruptLatestRevisio
 	require.NoError(t, err)
 
 	assert.Equal(t, map[string]int{"one": 1}, revisionsByName(rels))
+}
+
+func TestAI_StorageListLatestReleases_CorruptLatestRevisionDoesNotFanOut(t *testing.T) {
+	const (
+		namespaces = 10
+		revisions  = 8
+	)
+
+	clientset := k8sfake.NewSimpleClientset()
+
+	for i := 0; i < namespaces; i++ {
+		namespace := fmt.Sprintf("ns-%d", i)
+		secrets := clientset.CoreV1().Secrets(namespace)
+		storage := helmstorage.Init(helmdriver.NewSecrets(secrets))
+
+		for v := 1; v <= revisions; v++ {
+			rel := newTestRelease("myapp", v, nil)
+			rel.Namespace = namespace
+			require.NoError(t, storage.Create(rel))
+		}
+
+		secret, err := secrets.Get(context.Background(), fmt.Sprintf("sh.helm.release.v1.myapp.v%d", revisions), metav1.GetOptions{})
+		require.NoError(t, err)
+
+		secret.Data["release"] = []byte("corrupt")
+		_, err = secrets.Update(context.Background(), secret, metav1.UpdateOptions{})
+		require.NoError(t, err)
+	}
+
+	scoped := &namespaceScopedSecretClient{SecretInterface: clientset.CoreV1().Secrets("")}
+	listStorage := helmstorage.Init(helmdriver.NewSecrets(scoped))
+
+	rels, err := listStorage.ListLatestReleases(context.Background())
+	require.NoError(t, err)
+
+	byNamespace := map[string]int{}
+	for _, rel := range rels {
+		byNamespace[rel.Namespace] = rel.Version
+	}
+
+	require.Len(t, byNamespace, namespaces)
+
+	for namespace, version := range byNamespace {
+		assert.Equal(t, revisions-1, version, "namespace %s must fall back to its own newest decodable revision", namespace)
+	}
+
+	assert.LessOrEqual(t, scoped.served, namespaces*revisions*2,
+		"recovering from a corrupt revision must not re-list the whole cross-namespace history of the release name once per namespace")
 }
 
 func TestAI_StorageListLatestReleases_Empty(t *testing.T) {
@@ -277,102 +373,6 @@ func TestAI_StorageListLatestReleases_Paginates(t *testing.T) {
 		"the last revision of every release must survive paging")
 	assert.Equal(t, 5, paging.pages, "9 items served 2 at a time must be fetched as 5 pages")
 	assert.NotZero(t, paging.limit, "the driver must ask the API server for pages, not for everything at once")
-}
-
-func TestAI_StorageListLatestReleases_ConfigMapCorruptLatestRevisionDoesNotFanOut(t *testing.T) {
-	const (
-		namespaces = 10
-		revisions  = 8
-	)
-
-	clientset := k8sfake.NewSimpleClientset()
-
-	for i := 0; i < namespaces; i++ {
-		namespace := fmt.Sprintf("ns-%d", i)
-		configMaps := clientset.CoreV1().ConfigMaps(namespace)
-		storage := helmstorage.Init(helmdriver.NewConfigMaps(configMaps))
-
-		for v := 1; v <= revisions; v++ {
-			rel := newTestRelease("myapp", v, nil)
-			rel.Namespace = namespace
-			require.NoError(t, storage.Create(rel))
-		}
-
-		configMap, err := configMaps.Get(context.Background(), fmt.Sprintf("sh.helm.release.v1.myapp.v%d", revisions), metav1.GetOptions{})
-		require.NoError(t, err)
-
-		configMap.Data["release"] = "corrupt"
-		_, err = configMaps.Update(context.Background(), configMap, metav1.UpdateOptions{})
-		require.NoError(t, err)
-	}
-
-	scoped := &namespaceScopedConfigMapClient{ConfigMapInterface: clientset.CoreV1().ConfigMaps("")}
-	listStorage := helmstorage.Init(helmdriver.NewConfigMaps(scoped))
-
-	rels, err := listStorage.ListLatestReleases(context.Background())
-	require.NoError(t, err)
-
-	byNamespace := map[string]int{}
-	for _, rel := range rels {
-		byNamespace[rel.Namespace] = rel.Version
-	}
-
-	require.Len(t, byNamespace, namespaces)
-
-	for namespace, version := range byNamespace {
-		assert.Equal(t, revisions-1, version, "namespace %s must fall back to its own newest decodable revision", namespace)
-	}
-
-	assert.LessOrEqual(t, scoped.served, namespaces*revisions*2,
-		"recovering from a corrupt revision must not re-list the whole cross-namespace history of the release name once per namespace")
-}
-
-func TestAI_StorageListLatestReleases_CorruptLatestRevisionDoesNotFanOut(t *testing.T) {
-	const (
-		namespaces = 10
-		revisions  = 8
-	)
-
-	clientset := k8sfake.NewSimpleClientset()
-
-	for i := 0; i < namespaces; i++ {
-		namespace := fmt.Sprintf("ns-%d", i)
-		secrets := clientset.CoreV1().Secrets(namespace)
-		storage := helmstorage.Init(helmdriver.NewSecrets(secrets))
-
-		for v := 1; v <= revisions; v++ {
-			rel := newTestRelease("myapp", v, nil)
-			rel.Namespace = namespace
-			require.NoError(t, storage.Create(rel))
-		}
-
-		secret, err := secrets.Get(context.Background(), fmt.Sprintf("sh.helm.release.v1.myapp.v%d", revisions), metav1.GetOptions{})
-		require.NoError(t, err)
-
-		secret.Data["release"] = []byte("corrupt")
-		_, err = secrets.Update(context.Background(), secret, metav1.UpdateOptions{})
-		require.NoError(t, err)
-	}
-
-	scoped := &namespaceScopedSecretClient{SecretInterface: clientset.CoreV1().Secrets("")}
-	listStorage := helmstorage.Init(helmdriver.NewSecrets(scoped))
-
-	rels, err := listStorage.ListLatestReleases(context.Background())
-	require.NoError(t, err)
-
-	byNamespace := map[string]int{}
-	for _, rel := range rels {
-		byNamespace[rel.Namespace] = rel.Version
-	}
-
-	require.Len(t, byNamespace, namespaces)
-
-	for namespace, version := range byNamespace {
-		assert.Equal(t, revisions-1, version, "namespace %s must fall back to its own newest decodable revision", namespace)
-	}
-
-	assert.LessOrEqual(t, scoped.served, namespaces*revisions*2,
-		"recovering from a corrupt revision must not re-list the whole cross-namespace history of the release name once per namespace")
 }
 
 func TestAI_StorageListLatestReleases_SameNameInManyNamespacesDoesNotFanOut(t *testing.T) {
