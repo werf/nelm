@@ -142,6 +142,7 @@ type latestReleasesLister interface {
 var (
 	_ latestReleasesLister = (*driver.Secrets)(nil)
 	_ latestReleasesLister = (*driver.ConfigMaps)(nil)
+	_ latestReleasesLister = (*driver.SQL)(nil)
 )
 
 // ListLatestReleases returns the highest revision of every release owned by Helm.

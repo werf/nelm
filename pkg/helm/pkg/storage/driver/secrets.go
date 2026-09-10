@@ -150,6 +150,15 @@ func (secrets *Secrets) ListLatestReleases(ctx context.Context) ([]*rspb.Release
 		rls, err := decodeRelease(string(item.Data["release"]))
 		if err != nil {
 			secrets.Log("list latest releases: failed to decode release %q: %s", item.Name, err)
+
+			_, version, _ := releaseKeyAndVersionFromLabels(item.Namespace, item.Labels)
+			rls, err = secrets.findPreviousValidRelease(ctx, item.Namespace, item.Labels["name"], version)
+			if err != nil {
+				return nil, err
+			}
+			if rls != nil {
+				releases = append(releases, rls)
+			}
 			continue
 		}
 
@@ -162,6 +171,49 @@ func (secrets *Secrets) ListLatestReleases(ctx context.Context) ([]*rspb.Release
 	}
 
 	return releases, nil
+}
+
+func (secrets *Secrets) findPreviousValidRelease(ctx context.Context, namespace, name string, beforeVersion int) (*rspb.Release, error) {
+	opts := metav1.ListOptions{
+		LabelSelector: kblabels.Set{"owner": "helm", "name": name}.AsSelector().String(),
+		Limit:         listLatestPageSize,
+	}
+
+	var latestValidRelease *rspb.Release
+	latestValidVersion := 0
+
+	for {
+		list, err := secrets.impl.List(ctx, opts)
+		if err != nil {
+			return nil, errors.Wrap(err, "list latest releases: failed to list previous revisions")
+		}
+
+		for _, item := range list.Items {
+			_, version, ok := releaseKeyAndVersionFromLabels(item.Namespace, item.Labels)
+			if !ok || item.Namespace != namespace || version >= beforeVersion || version <= latestValidVersion {
+				continue
+			}
+
+			rls, err := decodeRelease(string(item.Data["release"]))
+			if err != nil {
+				secrets.Log("list latest releases: failed to decode release %q: %s", item.Name, err)
+				continue
+			}
+
+			if rls.Namespace == "" {
+				rls.Namespace = item.Namespace
+			}
+			rls.Labels = item.Labels
+			latestValidRelease = rls
+			latestValidVersion = version
+		}
+
+		if list.Continue == "" {
+			return latestValidRelease, nil
+		}
+
+		opts.Continue = list.Continue
+	}
 }
 
 // Get fetches the release named by key. The corresponding release is returned

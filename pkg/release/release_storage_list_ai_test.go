@@ -104,6 +104,29 @@ func TestAI_StorageListLatestReleases_ConfigMapDriver(t *testing.T) {
 	assert.Equal(t, map[string]int{"one": 2, "two": 5}, revisionsByName(rels))
 }
 
+func TestAI_StorageListLatestReleases_ConfigMapFallsBackFromCorruptLatestRevision(t *testing.T) {
+	clientset := k8sfake.NewSimpleClientset()
+	configMaps := clientset.CoreV1().ConfigMaps(testNamespace)
+	storage := helmstorage.Init(helmdriver.NewConfigMaps(configMaps))
+
+	for version := 1; version <= 3; version++ {
+		require.NoError(t, storage.Create(newTestRelease("one", version, nil)))
+	}
+
+	for _, version := range []int{2, 3} {
+		configMap, err := configMaps.Get(context.Background(), fmt.Sprintf("sh.helm.release.v1.one.v%d", version), metav1.GetOptions{})
+		require.NoError(t, err)
+		configMap.Data["release"] = "corrupt"
+		_, err = configMaps.Update(context.Background(), configMap, metav1.UpdateOptions{})
+		require.NoError(t, err)
+	}
+
+	rels, err := storage.ListLatestReleases(context.Background())
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]int{"one": 1}, revisionsByName(rels))
+}
+
 func TestAI_StorageListLatestReleases_Empty(t *testing.T) {
 	storage, _ := newSecretStorage(t)
 
@@ -249,6 +272,46 @@ func TestAI_StorageListLatestReleases_SameNameInManyNamespacesDoesNotFanOut(t *t
 
 	assert.Equal(t, 1, lists,
 		"the listing must not issue a request per release: that is quadratic when one name is deployed to many namespaces")
+}
+
+func TestAI_StorageListLatestReleases_SecretFallsBackFromCorruptLatestRevision(t *testing.T) {
+	clientset := k8sfake.NewSimpleClientset()
+	secrets := clientset.CoreV1().Secrets(testNamespace)
+	storage := helmstorage.Init(helmdriver.NewSecrets(secrets))
+
+	for version := 1; version <= 3; version++ {
+		require.NoError(t, storage.Create(newTestRelease("one", version, nil)))
+	}
+
+	for _, version := range []int{2, 3} {
+		secret, err := secrets.Get(context.Background(), fmt.Sprintf("sh.helm.release.v1.one.v%d", version), metav1.GetOptions{})
+		require.NoError(t, err)
+		secret.Data["release"] = []byte("corrupt")
+		_, err = secrets.Update(context.Background(), secret, metav1.UpdateOptions{})
+		require.NoError(t, err)
+	}
+
+	rels, err := storage.ListLatestReleases(context.Background())
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]int{"one": 1}, revisionsByName(rels))
+}
+
+func TestAI_StorageListLatestReleases_SecretOmitsReleaseWhenEveryRevisionIsCorrupt(t *testing.T) {
+	clientset := k8sfake.NewSimpleClientset()
+	secrets := clientset.CoreV1().Secrets(testNamespace)
+	storage := helmstorage.Init(helmdriver.NewSecrets(secrets))
+	require.NoError(t, storage.Create(newTestRelease("one", 1, nil)))
+
+	secret, err := secrets.Get(context.Background(), "sh.helm.release.v1.one.v1", metav1.GetOptions{})
+	require.NoError(t, err)
+	secret.Data["release"] = []byte("corrupt")
+	_, err = secrets.Update(context.Background(), secret, metav1.UpdateOptions{})
+	require.NoError(t, err)
+
+	rels, err := storage.ListLatestReleases(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, rels)
 }
 
 func TestAI_StorageListLatestReleases_TakesNamespaceFromObjectWhenBodyHasNone(t *testing.T) {
