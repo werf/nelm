@@ -238,7 +238,11 @@ func TestAI_StorageListLatestReleases_ConfigMapCorruptLatestRevisionDoesNotFanOu
 		assert.Equal(t, revisions-1, version, "namespace %s must fall back to its own newest decodable revision", namespace)
 	}
 
-	assert.LessOrEqual(t, scoped.served, namespaces*revisions*2,
+	// One cross-namespace list serves every stored object, and recovering each
+	// corrupt survivor serves that release's own history in its own namespace.
+	// Filtering the namespace client-side instead would serve the release name's
+	// history across every namespace, once per namespace.
+	assert.Equal(t, namespaces*revisions*2, scoped.served,
 		"recovering from a corrupt revision must not re-list the whole cross-namespace history of the release name once per namespace")
 }
 
@@ -324,7 +328,11 @@ func TestAI_StorageListLatestReleases_CorruptLatestRevisionDoesNotFanOut(t *test
 		assert.Equal(t, revisions-1, version, "namespace %s must fall back to its own newest decodable revision", namespace)
 	}
 
-	assert.LessOrEqual(t, scoped.served, namespaces*revisions*2,
+	// One cross-namespace list serves every stored object, and recovering each
+	// corrupt survivor serves that release's own history in its own namespace.
+	// Filtering the namespace client-side instead would serve the release name's
+	// history across every namespace, once per namespace.
+	assert.Equal(t, namespaces*revisions*2, scoped.served,
 		"recovering from a corrupt revision must not re-list the whole cross-namespace history of the release name once per namespace")
 }
 
