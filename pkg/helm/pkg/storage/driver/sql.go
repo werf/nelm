@@ -19,6 +19,7 @@ package driver // import "helm.sh/helm/v3/pkg/storage/driver"
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -441,7 +442,7 @@ func (s *SQL) findPreviousReleaseRecord(ctx context.Context, namespace, name str
 
 	var record sqlLatestReleaseRecord
 	if err := s.db.GetContext(ctx, &record, query, args...); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return sqlLatestReleaseRecord{}, false, nil
 		}
 

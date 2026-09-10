@@ -150,7 +150,12 @@ var (
 // revisions; the fallback decodes the whole history of every release.
 func (s *Storage) ListLatestReleases(ctx context.Context) ([]*rspb.Release, error) {
 	if l, ok := s.Driver.(latestReleasesLister); ok {
-		return l.ListLatestReleases(ctx)
+		rels, err := l.ListLatestReleases(ctx)
+		if err != nil && errors.Is(err, driver.ErrReleaseNotFound) {
+			return nil, nil
+		}
+
+		return rels, err
 	}
 
 	rels, err := s.Driver.Query(map[string]string{"owner": "helm"})

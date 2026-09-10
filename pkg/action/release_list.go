@@ -32,8 +32,8 @@ const (
 type ReleaseListOptions struct {
 	common.KubeConnectionOptions
 
-	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
-	// Defaults to DefaultNetworkParallelism if not set or <= 0.
+	// NetworkParallelism is not used by the release listing, which performs a single
+	// paginated request. Kept for compatibility.
 	NetworkParallelism int
 	// OutputFormat specifies the output format for the release list.
 	// Valid values: "table" (default), "yaml", "json".
