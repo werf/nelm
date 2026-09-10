@@ -151,7 +151,7 @@ var (
 func (s *Storage) ListLatestReleases(ctx context.Context) ([]*rspb.Release, error) {
 	if l, ok := s.Driver.(latestReleasesLister); ok {
 		rels, err := l.ListLatestReleases(ctx)
-		if err != nil && errors.Is(err, driver.ErrReleaseNotFound) {
+		if errors.Is(err, driver.ErrReleaseNotFound) {
 			return nil, nil
 		}
 

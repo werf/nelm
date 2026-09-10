@@ -19,13 +19,13 @@ package driver // import "helm.sh/helm/v3/pkg/storage/driver"
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"sort"
 	"strconv"
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/pkg/errors"
 	migrate "github.com/rubenv/sql-migrate"
 
 	sq "github.com/Masterminds/squirrel"
