@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.30.3](https://github.com/werf/nelm/compare/v1.30.2...v1.30.3) (2026-09-11)
+
+
+### Bug Fixes
+
+* optimize memory usage of release list ([#711](https://github.com/werf/nelm/issues/711)) ([2a19028](https://github.com/werf/nelm/commit/2a19028ca850bd431b5f85f524ded52e0888caef))
+
 ## [1.30.2](https://github.com/werf/nelm/compare/v1.30.1...v1.30.2) (2026-09-07)
 
 
