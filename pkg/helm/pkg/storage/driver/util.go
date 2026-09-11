@@ -68,6 +68,31 @@ func lastVersionFromMetadata(ctx context.Context, client metadata.Interface, gvr
 	return latest, nil
 }
 
+const listLatestPageSize = 500
+
+func releaseKeyAndVersionFromLabels(namespace string, lbs map[string]string) (string, int, bool) {
+	name := lbs["name"]
+	if name == "" {
+		return "", 0, false
+	}
+
+	version, err := strconv.Atoi(lbs["version"])
+	if err != nil {
+		return "", 0, false
+	}
+
+	return namespace + "/" + name, version, true
+}
+
+func releaseVersionFromLabels(lbs map[string]string) int {
+	version, err := strconv.Atoi(lbs["version"])
+	if err != nil {
+		return 0
+	}
+
+	return version
+}
+
 // encodeRelease encodes a release returning a base64 encoded
 // gzipped string representation, or error.
 func encodeRelease(rls *rspb.Release) (string, error) {

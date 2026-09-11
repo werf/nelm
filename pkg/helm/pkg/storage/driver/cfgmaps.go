@@ -18,6 +18,7 @@ package driver // import "helm.sh/helm/v3/pkg/storage/driver"
 
 import (
 	"context"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	kblabels "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -103,6 +105,136 @@ func (cfgmaps *ConfigMaps) LastVersion(name string) (int, error) {
 	}
 
 	return latest, nil
+}
+
+// ListLatestReleases returns the highest revision of every release owned by Helm.
+// Superseded revisions are dropped while paging, before any body is decoded, so
+// the cost does not scale with the depth of the histories.
+func (cfgmaps *ConfigMaps) ListLatestReleases(ctx context.Context) ([]*rspb.Release, error) {
+	opts := metav1.ListOptions{
+		LabelSelector: kblabels.Set{"owner": "helm"}.AsSelector().String(),
+		Limit:         listLatestPageSize,
+	}
+
+	latestItems := map[string]v1.ConfigMap{}
+	latestVersions := map[string]int{}
+
+	for {
+		list, err := cfgmaps.impl.List(ctx, opts)
+		if err != nil {
+			return nil, errors.Wrap(err, "list latest releases: failed to list")
+		}
+
+		for _, item := range list.Items {
+			key, version, ok := releaseKeyAndVersionFromLabels(item.Namespace, item.Labels)
+			if !ok {
+				continue
+			}
+
+			if current, found := latestVersions[key]; found && current >= version {
+				continue
+			}
+
+			latestItems[key] = item
+			latestVersions[key] = version
+		}
+
+		if list.Continue == "" {
+			break
+		}
+
+		opts.Continue = list.Continue
+	}
+
+	releases := make([]*rspb.Release, 0, len(latestItems))
+
+	// The entry is dropped before its body is decoded, so the undecoded
+	// survivors and the decoded releases are never both live.
+	for key, item := range latestItems {
+		delete(latestItems, key)
+
+		rls, err := decodeRelease(item.Data["release"])
+		if err != nil {
+			cfgmaps.Log("list latest releases: failed to decode release %q: %s", item.Name, err)
+
+			_, version, _ := releaseKeyAndVersionFromLabels(item.Namespace, item.Labels)
+			rls, err = cfgmaps.findPreviousValidRelease(ctx, item.Namespace, item.Labels["name"], version)
+			if err != nil {
+				return nil, err
+			}
+			if rls != nil {
+				releases = append(releases, rls)
+			}
+			continue
+		}
+
+		if rls.Namespace == "" {
+			rls.Namespace = item.Namespace
+		}
+
+		rls.Labels = item.Labels
+		releases = append(releases, rls)
+	}
+
+	return releases, nil
+}
+
+// findPreviousValidRelease returns the newest decodable revision of the release
+// below beforeVersion, or nil if the whole remaining history is corrupt. The
+// scan is scoped to a single release in a single namespace, so it lists that
+// release's own history only.
+func (cfgmaps *ConfigMaps) findPreviousValidRelease(ctx context.Context, namespace, name string, beforeVersion int) (*rspb.Release, error) {
+	opts := metav1.ListOptions{
+		LabelSelector: kblabels.Set{"owner": "helm", "name": name}.AsSelector().String(),
+		FieldSelector: fields.OneTermEqualSelector("metadata.namespace", namespace).String(),
+		Limit:         listLatestPageSize,
+	}
+
+	var candidates []v1.ConfigMap
+
+	for {
+		list, err := cfgmaps.impl.List(ctx, opts)
+		if err != nil {
+			return nil, errors.Wrap(err, "list latest releases: failed to list previous revisions")
+		}
+
+		for _, item := range list.Items {
+			_, version, ok := releaseKeyAndVersionFromLabels(item.Namespace, item.Labels)
+			if !ok || item.Namespace != namespace || version >= beforeVersion {
+				continue
+			}
+
+			candidates = append(candidates, item)
+		}
+
+		if list.Continue == "" {
+			break
+		}
+
+		opts.Continue = list.Continue
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		return releaseVersionFromLabels(candidates[i].Labels) > releaseVersionFromLabels(candidates[j].Labels)
+	})
+
+	for _, item := range candidates {
+		rls, err := decodeRelease(item.Data["release"])
+		if err != nil {
+			cfgmaps.Log("list latest releases: failed to decode release %q: %s", item.Name, err)
+			continue
+		}
+
+		if rls.Namespace == "" {
+			rls.Namespace = item.Namespace
+		}
+
+		rls.Labels = item.Labels
+
+		return rls, nil
+	}
+
+	return nil, nil
 }
 
 // Get fetches the release named by key. The corresponding release is returned

@@ -126,36 +126,33 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 
 	loader.NoChartLockWarning = ""
 
-	log.Default.Info(ctx, "Build release histories")
+	log.Default.Info(ctx, "List releases")
 
-	histories, err := release.BuildHistories(releaseStorage, release.HistoryOptions{})
+	rels, err := releaseStorage.ListLatestReleases(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("build release histories: %w", err)
+		return nil, fmt.Errorf("list latest releases: %w", err)
 	}
 
 	result := &ReleaseListResultV1{
 		APIVersion: "v1",
 	}
 
-	for _, history := range histories {
-		releases := history.Releases()
-		lastRelease := lo.LastOrEmpty(releases)
-
+	for _, rel := range rels {
 		result.Releases = append(result.Releases, &ReleaseListResultRelease{
-			Annotations: lastRelease.Info.Annotations,
+			Annotations: rel.Info.Annotations,
 			Chart: &ReleaseListResultChart{
-				Name:       lastRelease.Chart.Name(),
-				Version:    lastRelease.Chart.Metadata.Version,
-				AppVersion: lastRelease.Chart.Metadata.AppVersion,
+				Name:       rel.Chart.Name(),
+				Version:    rel.Chart.Metadata.Version,
+				AppVersion: rel.Chart.Metadata.AppVersion,
 			},
 			DeployedAt: &ReleaseListResultDeployedAt{
 				Human: time.Time{}.String(),
 				Unix:  int(time.Time{}.Unix()),
 			},
-			Name:      lastRelease.Name,
-			Namespace: lastRelease.Namespace,
-			Revision:  lastRelease.Version,
-			Status:    lastRelease.Info.Status,
+			Name:      rel.Name,
+			Namespace: rel.Namespace,
+			Revision:  rel.Version,
+			Status:    rel.Info.Status,
 		})
 	}
 

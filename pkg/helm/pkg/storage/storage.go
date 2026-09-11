@@ -17,6 +17,7 @@ limitations under the License.
 package storage // import "helm.sh/helm/v3/pkg/storage"
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -130,6 +131,59 @@ func (s *Storage) resolveLastVersion(name string) (int, error) {
 	relutil.Reverse(h, relutil.SortByRevision)
 
 	return h[0].Version, nil
+}
+
+// latestReleasesLister is an optional driver capability that returns the highest
+// revision of every stored release without decoding superseded revisions.
+type latestReleasesLister interface {
+	ListLatestReleases(ctx context.Context) ([]*rspb.Release, error)
+}
+
+var (
+	_ latestReleasesLister = (*driver.Secrets)(nil)
+	_ latestReleasesLister = (*driver.ConfigMaps)(nil)
+	_ latestReleasesLister = (*driver.SQL)(nil)
+)
+
+// ListLatestReleases returns the highest revision of every release owned by Helm.
+// Drivers implementing the capability answer without decoding superseded
+// revisions; the fallback decodes the whole history of every release.
+func (s *Storage) ListLatestReleases(ctx context.Context) ([]*rspb.Release, error) {
+	if l, ok := s.Driver.(latestReleasesLister); ok {
+		rels, err := l.ListLatestReleases(ctx)
+		if errors.Is(err, driver.ErrReleaseNotFound) {
+			return nil, nil
+		}
+
+		return rels, err
+	}
+
+	rels, err := s.Driver.Query(map[string]string{"owner": "helm"})
+	if err != nil {
+		if errors.Is(err, driver.ErrReleaseNotFound) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	latest := map[string]*rspb.Release{}
+	for _, rel := range rels {
+		key := rel.Namespace + "/" + rel.Name
+
+		if current, found := latest[key]; found && current.Version >= rel.Version {
+			continue
+		}
+
+		latest[key] = rel
+	}
+
+	result := make([]*rspb.Release, 0, len(latest))
+	for _, rel := range latest {
+		result = append(result, rel)
+	}
+
+	return result, nil
 }
 
 // Create creates a new storage entry holding the release. An
