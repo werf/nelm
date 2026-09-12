@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.30.4](https://github.com/werf/nelm/compare/v1.30.3...v1.30.4) (2026-09-12)
+
+
+### Bug Fixes
+
+* report the inaccessible events feed through the nelm logger ([#713](https://github.com/werf/nelm/issues/713)) ([52bcdc9](https://github.com/werf/nelm/commit/52bcdc948f1d625926fefba4d3d24cc81b1fa210))
+
 ## [1.30.3](https://github.com/werf/nelm/compare/v1.30.2...v1.30.3) (2026-09-11)
 
 
