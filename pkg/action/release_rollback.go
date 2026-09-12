@@ -12,7 +12,6 @@ import (
 	"github.com/samber/lo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
 	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
@@ -384,7 +383,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	taskStore := kdutil.NewConcurrent(statestore.NewTaskStore())
 	logStore := kdutil.NewConcurrent(logstore.NewLogStore())
 	watchErrCh := make(chan error, 1)
-	informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
+	informerFactory := newInformerFactory(ctx, watchErrCh, clientFactory.Dynamic())
 
 	log.Default.Debug(ctx, "Start tracking")
 

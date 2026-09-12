@@ -557,7 +557,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	taskStore := kdutil.NewConcurrent(statestore.NewTaskStore())
 	logStore := kdutil.NewConcurrent(logstore.NewLogStore())
 	watchErrCh := make(chan error, 1)
-	informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
+	informerFactory := newInformerFactory(ctx, watchErrCh, clientFactory.Dynamic())
 
 	log.Default.Debug(ctx, "Start tracking")
 
