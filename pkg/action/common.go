@@ -15,6 +15,8 @@ import (
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 	"github.com/xo/terminfo"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
 
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
@@ -113,6 +115,14 @@ func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr err
 	}
 
 	log.Default.Warn(ctx, "Plan graph saved to %q for debugging", graphPath)
+}
+
+func newInformerFactory(ctx context.Context, watchErrCh chan error, dynamicClient dynamic.Interface) *kdutil.Concurrent[*informer.InformerFactory] {
+	return informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, dynamicClient, informer.ConcurrentInformerFactoryOptions{
+		OnNonFatalWatchError: func(gvr schema.GroupVersionResource, namespace string, err error) {
+			log.Default.Warn(ctx, "No access to %s in namespace %q, tracking continues without it: %s", gvr.GroupResource().String(), namespace, err)
+		},
+	})
 }
 
 func printNotes(ctx context.Context, notes string) {
