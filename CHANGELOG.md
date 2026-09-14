@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.30.4](https://github.com/werf/nelm/compare/v1.30.3...v1.30.4) (2026-09-14)
+
+
+### Bug Fixes
+
+* prevent panic when release deletion fails ([#715](https://github.com/werf/nelm/issues/715)) ([4820837](https://github.com/werf/nelm/commit/482083796e57e5ce9faefb18223776bb32ca7e59))
+* report the inaccessible events feed through the nelm logger ([#713](https://github.com/werf/nelm/issues/713)) ([52bcdc9](https://github.com/werf/nelm/commit/52bcdc948f1d625926fefba4d3d24cc81b1fa210))
+
 ## [1.30.3](https://github.com/werf/nelm/compare/v1.30.2...v1.30.3) (2026-09-11)
 
 
