@@ -65,7 +65,7 @@ func (h *History) DeleteRelease(ctx context.Context, name string, revision int) 
 
 	rel, err := h.storage.Delete(name, revision)
 	if err != nil {
-		return fmt.Errorf("uninstall release %q (namespace: %q, revision: %q): %w", rel.Name, rel.Namespace, rel.Version, err)
+		return fmt.Errorf("uninstall release %q (revision: %d): %w", name, revision, err)
 	}
 
 	if _, i, found := lo.FindIndexOf(h.releases, func(r *helmrelease.Release) bool {
