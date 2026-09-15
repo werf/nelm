@@ -1,13 +1,14 @@
 package plan
 
 import (
+	"fmt"
 	"regexp"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
+	"github.com/werf/nelm/pkg/release"
 	"github.com/werf/nelm/pkg/resource/spec"
 )
 
@@ -113,7 +114,7 @@ func (c *OperationConfigDelete) IDHuman() string {
 type OperationConfigTrackReadiness struct {
 	ResourceMeta *spec.ResourceMeta `json:"resourceMeta"`
 
-	FailMode                                 multitrack.FailMode       `json:"failMode"`
+	FailMode                                 statestore.FailMode       `json:"failMode"`
 	FailuresAllowed                          int                       `json:"failuresAllowed"`
 	IgnoreLogs                               bool                      `json:"ignoreLogs"`
 	IgnoreLogsForContainers                  []string                  `json:"ignoreLogsForContainers,omitempty"`
@@ -161,27 +162,27 @@ func (c *OperationConfigTrackAbsence) IDHuman() string {
 }
 
 type OperationConfigCreateRelease struct {
-	Release *helmrelease.Release `json:"release"`
+	Release *release.VersionedRelease `json:"release"`
 }
 
 func (c *OperationConfigCreateRelease) ID() string {
-	return c.Release.ID()
+	return releaseID(c.Release.Accessor.Namespace(), c.Release.Accessor.Name(), c.Release.Accessor.Version())
 }
 
 func (c *OperationConfigCreateRelease) IDHuman() string {
-	return c.Release.IDHuman()
+	return releaseIDHuman(c.Release.Accessor.Namespace(), c.Release.Accessor.Name(), c.Release.Accessor.Version())
 }
 
 type OperationConfigUpdateRelease struct {
-	Release *helmrelease.Release `json:"release"`
+	Release *release.VersionedRelease `json:"release"`
 }
 
 func (c *OperationConfigUpdateRelease) ID() string {
-	return c.Release.ID()
+	return releaseID(c.Release.Accessor.Namespace(), c.Release.Accessor.Name(), c.Release.Accessor.Version())
 }
 
 func (c *OperationConfigUpdateRelease) IDHuman() string {
-	return c.Release.IDHuman()
+	return releaseIDHuman(c.Release.Accessor.Namespace(), c.Release.Accessor.Name(), c.Release.Accessor.Version())
 }
 
 type OperationConfigDeleteRelease struct {
@@ -191,9 +192,17 @@ type OperationConfigDeleteRelease struct {
 }
 
 func (c *OperationConfigDeleteRelease) ID() string {
-	return helmrelease.ReleaseID(c.ReleaseNamespace, c.ReleaseName, c.ReleaseRevision)
+	return releaseID(c.ReleaseNamespace, c.ReleaseName, c.ReleaseRevision)
 }
 
 func (c *OperationConfigDeleteRelease) IDHuman() string {
-	return helmrelease.ReleaseIDHuman(c.ReleaseNamespace, c.ReleaseName, c.ReleaseRevision)
+	return releaseIDHuman(c.ReleaseNamespace, c.ReleaseName, c.ReleaseRevision)
+}
+
+func releaseID(namespace, name string, revision int) string {
+	return fmt.Sprintf("%s:%s:%d", namespace, name, revision)
+}
+
+func releaseIDHuman(namespace, name string, revision int) string {
+	return fmt.Sprintf("%s/%d (namespace=%s)", name, revision, namespace)
 }

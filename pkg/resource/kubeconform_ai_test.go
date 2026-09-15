@@ -48,7 +48,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
+			opts := makeValidationOptions([]string{schemaURL})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{deployment}, opts)
 			assert.NoError(t, err)
@@ -70,7 +70,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
+			opts := makeValidationOptions([]string{schemaURL})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{configMap}, opts)
 			assert.NoError(t, err)
@@ -99,7 +99,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
+			opts := makeValidationOptions([]string{schemaURL})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{service}, opts)
 			assert.NoError(t, err)
@@ -125,7 +125,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
+			opts := makeValidationOptions([]string{schemaURL})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{deployment}, opts)
 			assert.NoError(t, err)
@@ -145,7 +145,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
+			opts := makeValidationOptions([]string{schemaURL})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{deployment}, opts)
 			assertValidationError(t, err, "spec")
@@ -167,7 +167,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
+			opts := makeValidationOptions([]string{schemaURL})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{deployment}, opts)
 			assertValidationError(t, err, "replicas")
@@ -193,7 +193,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
+			opts := makeValidationOptions([]string{schemaURL})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{service}, opts)
 			assertValidationError(t, err, "port")
@@ -214,7 +214,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
+			opts := makeValidationOptions([]string{schemaURL})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{configMap}, opts)
 			assertValidationError(t, err, "data")
@@ -240,7 +240,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
+			opts := makeValidationOptions([]string{schemaURL})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{deployment1, deployment2}, opts)
 			assertValidationError(t, err, "invalid-deployment-1")
@@ -252,7 +252,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 		t.Run("local_filesystem_source_works", func(t *testing.T) {
 			setupTestEnvironment(t)
 
-			schemas := getDefaultSchemas(t, testKubeVersion)
+			schemas := getDefaultSchemas(t, testKubeVersion(t))
 			schemaDir := setupLocalSchemaDir(t, schemas)
 
 			deployment := makeInstallableResource(t, map[string]interface{}{
@@ -268,7 +268,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaDir})
+			opts := makeValidationOptions([]string{schemaDir})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{deployment}, opts)
 			assert.NoError(t, err)
@@ -290,7 +290,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
+			opts := makeValidationOptions([]string{schemaURL})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{deployment}, opts)
 			assert.NoError(t, err)
@@ -299,14 +299,14 @@ func TestAI_KubeConformValidator(t *testing.T) {
 		t.Run("fallback_to_second_source", func(t *testing.T) {
 			setupTestEnvironment(t)
 
-			version := "v" + testKubeVersion
+			version := "v" + testKubeVersion(t)
 			deploymentOnlySchemas := map[string]string{
 				version + "-standalone/deployment-apps-v1.json": loadSchema(t, "deployment"),
 			}
 			server1 := setupSchemaServer(t, deploymentOnlySchemas)
 			schemaURL1 := server1.URL + schemaURLTemplate
 
-			allSchemas := getDefaultSchemas(t, testKubeVersion)
+			allSchemas := getDefaultSchemas(t, testKubeVersion(t))
 			server2 := setupSchemaServer(t, allSchemas)
 			schemaURL2 := server2.URL + schemaURLTemplate
 
@@ -322,18 +322,21 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL1, schemaURL2})
+			opts := makeValidationOptions([]string{schemaURL1, schemaURL2})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{configMap}, opts)
 			assert.NoError(t, err)
 		})
 
-		t.Run("sanity_check_fails_no_deployment_schema", func(t *testing.T) {
+		t.Run("configured_source_with_only_some_schemas_is_accepted", func(t *testing.T) {
 			setupTestEnvironment(t)
 
-			version := "v" + testKubeVersion
+			// A source that has no Deployment schema used to be rejected up front as probably mistyped.
+			// It is not any more: the embedded Kubernetes schemas cover native resources, so a source
+			// that only adds a schema here and there is a legitimate setup.
+			version := "v" + testKubeVersion(t)
 			configMapOnlySchemas := map[string]string{
-				version + "-standalone/configmap-" + testKubeVersion + ".json": loadSchema(t, "configmap"),
+				version + "-standalone/configmap-" + testKubeVersion(t) + ".json": loadSchema(t, "configmap"),
 			}
 			server := setupSchemaServer(t, configMapOnlySchemas)
 			schemaURL := server.URL + schemaURLTemplate
@@ -350,10 +353,10 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
+			opts := makeValidationOptions([]string{schemaURL})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{configMap}, opts)
-			assertValidationError(t, err, "sanity check")
+			assert.NoError(t, err)
 		})
 
 		t.Run("resource_without_schema_skipped", func(t *testing.T) {
@@ -371,7 +374,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
+			opts := makeValidationOptions([]string{schemaURL})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{crd}, opts)
 			assert.NoError(t, err)
@@ -382,7 +385,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 		t.Run("second_validation_uses_cache", func(t *testing.T) {
 			setupTestEnvironment(t)
 
-			schemas := getDefaultSchemas(t, testKubeVersion)
+			schemas := getDefaultSchemas(t, testKubeVersion(t))
 			server, requestCount := setupSchemaServerWithCounter(t, schemas)
 			schemaURL := server.URL + schemaURLTemplate
 
@@ -411,7 +414,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
+			opts := makeValidationOptions([]string{schemaURL})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{deployment1}, opts)
 			assert.NoError(t, err)
@@ -430,7 +433,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			schemaURL := setupDefaultSchemaServer(t)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
+			opts := makeValidationOptions([]string{schemaURL})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{}, opts)
 			assert.NoError(t, err)
@@ -451,7 +454,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
+			opts := makeValidationOptions([]string{schemaURL})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{configMap}, opts)
 			assert.NoError(t, err)
@@ -500,7 +503,7 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
+			opts := makeValidationOptions([]string{schemaURL})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{deployment, configMap, service}, opts)
 			assert.NoError(t, err)

@@ -28,20 +28,18 @@ type ClientFactorier interface {
 	Dynamic() dynamic.Interface
 	Discovery() discovery.CachedDiscoveryInterface
 	Mapper() meta.ResettableRESTMapper
-	LegacyClientGetter() *LegacyClientGetter
 	KubeConfig() *KubeConfig
 }
 
 // Constructs all Kubernetes clients you may possibly need and makes it easy to pass them all
 // around.
 type ClientFactory struct {
-	discoveryClient    discovery.CachedDiscoveryInterface
-	dynamicClient      dynamic.Interface
-	kubeClient         KubeClienter
-	kubeConfig         *KubeConfig
-	legacyClientGetter *LegacyClientGetter
-	mapper             meta.ResettableRESTMapper
-	staticClient       kubernetes.Interface
+	discoveryClient discovery.CachedDiscoveryInterface
+	dynamicClient   dynamic.Interface
+	kubeClient      KubeClienter
+	kubeConfig      *KubeConfig
+	mapper          meta.ResettableRESTMapper
+	staticClient    kubernetes.Interface
 }
 
 func NewClientFactory(ctx context.Context, kubeConfig *KubeConfig) (*ClientFactory, error) {
@@ -71,16 +69,14 @@ func NewClientFactory(ctx context.Context, kubeConfig *KubeConfig) (*ClientFacto
 
 	mapper := reflect.ValueOf(NewKubeMapper(ctx, discoveryClient)).Interface().(meta.ResettableRESTMapper)
 	kubeClient := NewKubeClient(staticClient, dynamicClient, discoveryClient, mapper)
-	legacyClientGetter := NewLegacyClientGetter(discoveryClient, mapper, kubeConfig.RestConfig, kubeConfig.LegacyClientConfig)
 
 	clientFactory := &ClientFactory{
-		discoveryClient:    discoveryClient,
-		dynamicClient:      dynamicClient,
-		kubeClient:         kubeClient,
-		kubeConfig:         kubeConfig,
-		legacyClientGetter: legacyClientGetter,
-		mapper:             mapper,
-		staticClient:       staticClient,
+		discoveryClient: discoveryClient,
+		dynamicClient:   dynamicClient,
+		kubeClient:      kubeClient,
+		kubeConfig:      kubeConfig,
+		mapper:          mapper,
+		staticClient:    staticClient,
 	}
 
 	return clientFactory, nil
@@ -100,10 +96,6 @@ func (f *ClientFactory) KubeClient() KubeClienter {
 
 func (f *ClientFactory) KubeConfig() *KubeConfig {
 	return f.kubeConfig
-}
-
-func (f *ClientFactory) LegacyClientGetter() *LegacyClientGetter {
-	return f.legacyClientGetter
 }
 
 func (f *ClientFactory) Mapper() meta.ResettableRESTMapper {

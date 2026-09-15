@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
@@ -70,7 +71,7 @@ func generateReferenceDoc(rootCmd *cobra.Command) string {
 func renderCommandMarkdown(cmd *cobra.Command, commandPath string) string {
 	var buf bytes.Buffer
 
-	buf.WriteString(fmt.Sprintf("### %s\n\n", commandPath))
+	lo.Must(fmt.Fprintf(&buf, "### %s\n\n", commandPath))
 
 	if cmd.Long != "" {
 		buf.WriteString(util.EscapeForMarkdownPreservingCodeSpans(cmd.Long) + "\n\n")
@@ -79,16 +80,16 @@ func renderCommandMarkdown(cmd *cobra.Command, commandPath string) string {
 	}
 
 	buf.WriteString("**Usage:**\n\n")
-	buf.WriteString(fmt.Sprintf("```shell\n%s\n```\n\n", cmd.UseLine()))
+	lo.Must(fmt.Fprintf(&buf, "```shell\n%s\n```\n\n", cmd.UseLine()))
 
 	if len(cmd.Aliases) > 0 {
 		buf.WriteString("**Aliases:** ")
-		buf.WriteString(fmt.Sprintf("`%s`\n\n", cmd.NameAndAliases()))
+		lo.Must(fmt.Fprintf(&buf, "`%s`\n\n", cmd.NameAndAliases()))
 	}
 
 	if cmd.Example != "" {
 		buf.WriteString("**Examples:**\n\n")
-		buf.WriteString(fmt.Sprintf("```shell\n%s\n```\n\n", cmd.Example))
+		lo.Must(fmt.Fprintf(&buf, "```shell\n%s\n```\n\n", cmd.Example))
 	}
 
 	if cmd.HasAvailableLocalFlags() {
@@ -116,7 +117,7 @@ func renderFlagsMarkdown(fset *pflag.FlagSet) string {
 			continue
 		}
 
-		buf.WriteString(fmt.Sprintf("**%s**\n\n", group.Title))
+		lo.Must(fmt.Fprintf(&buf, "**%s**\n\n", group.Title))
 
 		for _, flag := range groupedFlags[group] {
 			if flag.Hidden {
@@ -141,10 +142,10 @@ func renderCommandsOverview(groupsByPriority []cli.CommandGroup, groupedSubComma
 	buf.WriteString("## Commands Overview\n\n")
 
 	for _, group := range groupsByPriority {
-		buf.WriteString(fmt.Sprintf("### %s\n\n", strings.TrimSuffix(group.Title, ":")))
+		lo.Must(fmt.Fprintf(&buf, "### %s\n\n", strings.TrimSuffix(group.Title, ":")))
 
 		for _, cmdInfo := range groupedSubCommandInfos[group] {
-			buf.WriteString(fmt.Sprintf("- [`%s %s`](#%s) — %s\n", strings.ToLower(common.Brand), cmdInfo.commandPath, commandPathToAnchor(cmdInfo.commandPath), util.EscapeForMarkdownPreservingCodeSpans(cmdInfo.short)))
+			lo.Must(fmt.Fprintf(&buf, "- [`%s %s`](#%s) — %s\n", strings.ToLower(common.Brand), cmdInfo.commandPath, commandPathToAnchor(cmdInfo.commandPath), util.EscapeForMarkdownPreservingCodeSpans(cmdInfo.short)))
 		}
 
 		buf.WriteString("\n")
@@ -175,8 +176,8 @@ func renderFlagMarkdown(flag *pflag.Flag) string {
 		defValue = flag.DefValue
 	}
 
-	buf.WriteString(fmt.Sprintf("- %s (default: `%s`)\n\n", flagName, defValue))
-	buf.WriteString(fmt.Sprintf("  %s\n\n", util.EscapeForMarkdownPreservingCodeSpans(flag.Usage)))
+	lo.Must(fmt.Fprintf(&buf, "- %s (default: `%s`)\n\n", flagName, defValue))
+	lo.Must(fmt.Fprintf(&buf, "  %s\n\n", util.EscapeForMarkdownPreservingCodeSpans(flag.Usage)))
 
 	return buf.String()
 }
@@ -231,9 +232,9 @@ func renderFeatGatesMarkdown() string {
 	buf.WriteString("Feature gates are experimental features that can be enabled via environment variables.\n\n")
 
 	for _, fg := range featgate.FeatGates {
-		buf.WriteString(fmt.Sprintf("### %s\n\n", fg.EnvVarName()))
-		buf.WriteString(fmt.Sprintf("**Default:** `%v`\n\n", fg.Default()))
-		buf.WriteString(fmt.Sprintf("%s\n\n", util.EscapeForMarkdownPreservingCodeSpans(fg.Help)))
+		lo.Must(fmt.Fprintf(&buf, "### %s\n\n", fg.EnvVarName()))
+		lo.Must(fmt.Fprintf(&buf, "**Default:** `%v`\n\n", fg.Default()))
+		lo.Must(fmt.Fprintf(&buf, "%s\n\n", util.EscapeForMarkdownPreservingCodeSpans(fg.Help)))
 	}
 
 	return buf.String()

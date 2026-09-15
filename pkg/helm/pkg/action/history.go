@@ -17,9 +17,9 @@ limitations under the License.
 package action
 
 import (
-	"github.com/pkg/errors"
+	"fmt"
 
-	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
+	chartutil "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
 	"github.com/werf/nelm/pkg/helm/pkg/release"
 )
 
@@ -44,15 +44,15 @@ func NewHistory(cfg *Configuration) *History {
 }
 
 // Run executes 'helm history' against the given release.
-func (h *History) Run(name string) ([]*release.Release, error) {
+func (h *History) Run(name string) ([]release.Releaser, error) {
 	if err := h.cfg.KubeClient.IsReachable(); err != nil {
 		return nil, err
 	}
 
 	if err := chartutil.ValidateReleaseName(name); err != nil {
-		return nil, errors.Errorf("release name is invalid: %s", name)
+		return nil, fmt.Errorf("release name is invalid: %s", name)
 	}
 
-	h.cfg.Log("getting history for release %s", name)
+	h.cfg.Logger().Debug("getting history for release", "release", name)
 	return h.cfg.Releases.History(name)
 }

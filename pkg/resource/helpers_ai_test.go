@@ -3,6 +3,7 @@
 package resource_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,14 +17,13 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
 	"github.com/werf/nelm/pkg/resource"
+	"github.com/werf/nelm/pkg/resource/schemas"
 	"github.com/werf/nelm/pkg/resource/spec"
 )
 
 const (
 	schemaURLTemplate    = "/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json"
-	testKubeVersion      = "1.30.0"
 	testReleaseNamespace = "test-namespace"
 )
 
@@ -32,7 +32,7 @@ func setupDefaultSchemaServer(t *testing.T) string {
 	t.Helper()
 	setupTestEnvironment(t)
 
-	schemas := getDefaultSchemas(t, testKubeVersion)
+	schemas := getDefaultSchemas(t, testKubeVersion(t))
 	server := setupSchemaServer(t, schemas)
 
 	return server.URL + schemaURLTemplate
@@ -103,17 +103,16 @@ func makeInstallableResource(t *testing.T, obj map[string]interface{}, releaseNa
 	unstruct := &unstructured.Unstructured{Object: obj}
 	resSpec := spec.NewResourceSpec(unstruct, releaseNamespace, spec.ResourceSpecOptions{})
 
-	instRes, err := resource.NewInstallableResource(resSpec, nil, releaseNamespace, nil, resource.InstallableResourceOptions{})
+	instRes, err := resource.NewInstallableResource(context.Background(), resSpec, nil, releaseNamespace, resource.InstallableResourceOptions{})
 	require.NoError(t, err)
 
 	return instRes
 }
 
-func makeValidationOptions(kubeVersion string, schemaURLs []string) common.ResourceValidationOptions {
+func makeValidationOptions(schemaURLs []string) common.ResourceValidationOptions {
 	return common.ResourceValidationOptions{
-		ValidationKubeVersion:         kubeVersion,
 		ValidationSchemaCacheLifetime: 1 * time.Hour,
-		ValidationSchemas:             schemaURLs,
+		ValidationExtraSchemas:        schemaURLs,
 	}
 }
 
@@ -148,8 +147,25 @@ func setupLocalSchemaDir(t *testing.T, schemas map[string]string) string {
 	return schemaDir
 }
 
+// setupTestEnvironment redirects the cache directory, which holds both the downloaded schemas and
+// the unpacked embedded ones, at a temporary directory. Without it, tests read and write the real
+// user cache, which makes cache assertions depend on machine state. Note that the vendored helmpath
+// only honors XDG_CACHE_HOME, not HELM_CACHE_HOME.
 func setupTestEnvironment(t *testing.T) {
 	t.Helper()
-	common.APIResourceValidationJSONSchemasCacheDir = t.TempDir()
-	featgate.FeatGateResourceValidation.Enable()
+
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+}
+
+// testKubeVersion is the version the "{{ .NormalizedKubernetesVersion }}" placeholder of a configured
+// schema source resolves to. It is not configurable: it comes from the schemas embedded into the
+// binary, and test servers have to lay their schemas out under it, or nothing ever finds them.
+func testKubeVersion(t *testing.T) string {
+	t.Helper()
+
+	kubeVersion, err := schemas.KubeVersion()
+	require.NoError(t, err)
+	require.NotEmpty(t, kubeVersion, "the embedded schemas record no Kubernetes version")
+
+	return kubeVersion
 }

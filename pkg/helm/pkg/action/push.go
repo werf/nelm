@@ -24,7 +24,6 @@ import (
 	"github.com/werf/nelm/pkg/helm/pkg/pusher"
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
 	"github.com/werf/nelm/pkg/helm/pkg/uploader"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 )
 
 // Push is the action for uploading a chart.
@@ -36,7 +35,7 @@ type Push struct {
 	certFile              string
 	keyFile               string
 	caFile                string
-	insecureSkipTLSverify bool
+	insecureSkipTLSVerify bool
 	plainHTTP             bool
 	out                   io.Writer
 }
@@ -63,7 +62,7 @@ func WithTLSClientConfig(certFile, keyFile, caFile string) PushOpt {
 // WithInsecureSkipTLSVerify determines if a TLS Certificate will be checked
 func WithInsecureSkipTLSVerify(insecureSkipTLSVerify bool) PushOpt {
 	return func(p *Push) {
-		p.insecureSkipTLSverify = insecureSkipTLSVerify
+		p.insecureSkipTLSVerify = insecureSkipTLSVerify
 	}
 }
 
@@ -74,7 +73,7 @@ func WithPlainHTTP(plainHTTP bool) PushOpt {
 	}
 }
 
-// WithOptWriter sets the registryOut field on the push configuration object.
+// WithPushOptWriter sets the registryOut field on the push configuration object.
 func WithPushOptWriter(out io.Writer) PushOpt {
 	return func(p *Push) {
 		p.out = out
@@ -91,7 +90,7 @@ func NewPushWithOpts(opts ...PushOpt) *Push {
 }
 
 // Run executes 'helm push' against the given chart archive.
-func (p *Push) Run(chartRef string, remote string, opts helmopts.HelmOptions) (string, error) {
+func (p *Push) Run(chartRef string, remote string) (string, error) {
 	var out strings.Builder
 
 	c := uploader.ChartUploader{
@@ -99,7 +98,7 @@ func (p *Push) Run(chartRef string, remote string, opts helmopts.HelmOptions) (s
 		Pushers: pusher.All(p.Settings),
 		Options: []pusher.Option{
 			pusher.WithTLSClientConfig(p.certFile, p.keyFile, p.caFile),
-			pusher.WithInsecureSkipTLSVerify(p.insecureSkipTLSverify),
+			pusher.WithInsecureSkipTLSVerify(p.insecureSkipTLSVerify),
 			pusher.WithPlainHTTP(p.plainHTTP),
 		},
 	}
@@ -109,5 +108,5 @@ func (p *Push) Run(chartRef string, remote string, opts helmopts.HelmOptions) (s
 		c.Options = append(c.Options, pusher.WithRegistryClient(p.cfg.RegistryClient))
 	}
 
-	return out.String(), c.UploadTo(chartRef, remote, opts)
+	return out.String(), c.UploadTo(chartRef, remote)
 }

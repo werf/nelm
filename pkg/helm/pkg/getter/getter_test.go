@@ -17,11 +17,8 @@ package getter
 
 import (
 	"testing"
-
-	"github.com/werf/nelm/pkg/helm/pkg/cli"
+	"time"
 )
-
-const pluginDir = "testdata/plugins"
 
 func TestProvider(t *testing.T) {
 	p := Provider{
@@ -52,29 +49,20 @@ func TestProviders(t *testing.T) {
 	}
 }
 
-func TestAll(t *testing.T) {
-	env := cli.New()
-	env.PluginsDirectory = pluginDir
-
-	all := All(env)
-	if len(all) != 4 {
-		t.Errorf("expected 4 providers (default plus three plugins), got %d", len(all))
-	}
-
-	if _, err := all.ByScheme("test2"); err != nil {
+func TestProvidersWithTimeout(t *testing.T) {
+	want := time.Hour
+	getters := Getters(WithTimeout(want))
+	getter, err := getters.ByScheme("http")
+	if err != nil {
 		t.Error(err)
 	}
-}
-
-func TestByScheme(t *testing.T) {
-	env := cli.New()
-	env.PluginsDirectory = pluginDir
-
-	g := All(env)
-	if _, err := g.ByScheme("test"); err != nil {
+	httpGetter := getter.(*HTTPGetter)
+	client, err := httpGetter.httpClient(httpGetter.opts)
+	if err != nil {
 		t.Error(err)
 	}
-	if _, err := g.ByScheme("https"); err != nil {
-		t.Error(err)
+	got := client.Timeout
+	if got != want {
+		t.Errorf("Expected %q, got %q", want, got)
 	}
 }

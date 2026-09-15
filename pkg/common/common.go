@@ -1,18 +1,19 @@
 package common
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/user"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"time"
 
 	"github.com/Masterminds/sprig/v3"
-	"github.com/docker/cli/cli/config"
-	"github.com/docker/docker/pkg/homedir"
 	"github.com/samber/lo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
 	"github.com/werf/nelm/pkg/log"
 )
 
@@ -27,6 +28,10 @@ const (
 	// If during resource update we got an immutable error, then recreate the resource instead of
 	// updating it.
 	DeletePolicyBeforeCreationIfImmutable DeletePolicy = "before-creation-if-immutable"
+
+	DependencyExternalAuto  DependencyExternal = "auto"
+	DependencyExternalFalse DependencyExternal = "false"
+	DependencyExternalTrue  DependencyExternal = "true"
 
 	// Installing revision number 1 of the release always considered "Initial".
 	DeployTypeInitial DeployType = "Initial"
@@ -88,6 +93,16 @@ const (
 	StoreAsHook    StoreAs = "hook"
 	StoreAsRegular StoreAs = "regular"
 
+	// CacheDirAPIResourceJSONSchemas is where the JSON schemas downloaded from the schema sources
+	// configured by the user are cached. Unchanged on purpose: moving it would orphan the schemas
+	// every existing installation has already downloaded, with nothing to clean them up afterwards.
+	CacheDirAPIResourceJSONSchemas = CacheSubdirNelm + "/api-resource-json-schemas"
+	// CacheDirEmbeddedAPIResourceJSONSchemas is where the JSON schemas embedded into the binary are
+	// unpacked to, so that they are validated against from disk instead of from memory. It nests under
+	// the directory above, which holds nothing but hash named per source directories, so a new name
+	// cannot collide with one of those.
+	CacheDirEmbeddedAPIResourceJSONSchemas = CacheDirAPIResourceJSONSchemas + "/embedded"
+	CacheSubdirNelm                        = "nelm"
 	// ChartTSBundleFile is the path to the bundle in a Helm chart.
 	ChartTSBundleFile = ChartTSSourceDir + "dist/bundle.js"
 	// ChartTSEntryPointJS is the JavaScript entry point path.
@@ -99,46 +114,44 @@ const (
 	// ChartTSOutputFile is the name of the output file with rendered manifests from the Deno app.
 	ChartTSOutputFile = "output.yaml"
 	// ChartTSSourceDir is the directory containing TypeScript sources in a Helm chart.
-	ChartTSSourceDir  = "ts/"
-	DefaultBurstLimit = 100
-	// TODO(major): switch to if-possible
-	DefaultChartProvenanceStrategy = "never"
-	// TODO(major): reconsider?
-	DefaultDeletePropagation = metav1.DeletePropagationForeground
-	DefaultDiffContextLines  = 3
-	DefaultFieldManager      = "helm"
-	// TODO(major): update to a more recent version? Not sure about backwards compatibility.
-	DefaultLocalKubeVersion           = "1.20.0"
-	DefaultLogColorMode               = log.LogColorModeAuto
-	DefaultMapperNoMatchRetryInterval = 500 * time.Millisecond
-	DefaultMapperNoMatchRetryTimeout  = 10 * time.Second
-	DefaultNetworkParallelism         = 30
-	DefaultProgressPrintInterval      = 5 * time.Second
-	DefaultQPSLimit                   = 30
-	DefaultReleaseHistoryLimit        = 10
-	// DefaultResourceValidationKubeVersion Kubernetes version to use during resource validation by kubeconform
-	DefaultResourceValidationKubeVersion = "1.35.0"
-	DefaultWebhookRetryTimeout           = 4 * time.Minute
-	KubectlEditFieldManager              = "kubectl-edit"
-	LockConfigMapName                    = "werf-synchronization"
-	OldDeckhouseControllerManager        = "deckhouse-controller"
-	OldFieldManagerPrefix                = "werf"
-	OutputFormatJSON                     = "json"
-	OutputFormatTable                    = "table"
-	OutputFormatYAML                     = "yaml"
-	ReleaseStorageDriverConfigMap        = "configmap"
-	ReleaseStorageDriverConfigMaps       = "configmaps"
-	ReleaseStorageDriverDefault          = ""
-	ReleaseStorageDriverMemory           = "memory"
-	ReleaseStorageDriverSQL              = "sql"
-	ReleaseStorageDriverSecret           = "secret"
-	ReleaseStorageDriverSecrets          = "secrets"
-	StageEndSuffix                       = "end"
-	StagePrefix                          = "stage"
-	StageStartSuffix                     = "start"
-	StubReleaseName                      = "stub-release"
-	StubReleaseNamespace                 = "stub-namespace"
-	TSDefaultRenderContextType           = TSGenericRenderContextType
+	ChartTSSourceDir                    = "ts/"
+	DefaultBurstLimit                   = 100
+	DefaultChartProvenanceStrategy      = "never"
+	DefaultDeletePropagation            = metav1.DeletePropagationBackground
+	DefaultDependencyExternal           = DependencyExternalAuto
+	DefaultDiffContextLines             = 3
+	DefaultExternalDependencyMaxMatches = 30
+	DefaultExternalDependencyMinMatches = 1
+	DefaultFieldManager                 = "helm"
+	DefaultLocalKubeVersion             = "1.36.0"
+	DefaultLogColorMode                 = log.LogColorModeAuto
+	DefaultMapperNoMatchRetryInterval   = 500 * time.Millisecond
+	DefaultMapperNoMatchRetryTimeout    = 10 * time.Second
+	DefaultNetworkParallelism           = 30
+	DefaultProgressPrintInterval        = 5 * time.Second
+	DefaultQPSLimit                     = 30
+	DefaultReleaseHistoryLimit          = 10
+	DefaultWebhookRetryTimeout          = 4 * time.Minute
+	KubectlEditFieldManager             = "kubectl-edit"
+	LockConfigMapName                   = "werf-synchronization"
+	OldDeckhouseControllerManager       = "deckhouse-controller"
+	OldFieldManagerPrefix               = "werf"
+	OutputFormatJSON                    = "json"
+	OutputFormatTable                   = "table"
+	OutputFormatYAML                    = "yaml"
+	ReleaseStorageDriverConfigMap       = "configmap"
+	ReleaseStorageDriverConfigMaps      = "configmaps"
+	ReleaseStorageDriverDefault         = ""
+	ReleaseStorageDriverMemory          = "memory"
+	ReleaseStorageDriverSQL             = "sql"
+	ReleaseStorageDriverSecret          = "secret"
+	ReleaseStorageDriverSecrets         = "secrets"
+	StageEndSuffix                      = "end"
+	StagePrefix                         = "stage"
+	StageStartSuffix                    = "start"
+	StubReleaseName                     = "stub-release"
+	StubReleaseNamespace                = "stub-namespace"
+	TSDefaultRenderContextType          = TSGenericRenderContextType
 	// TSGenericRenderContextType is the TypeScript render context type name for nelm charts.
 	TSGenericRenderContextType = "RenderContext"
 	// TSWerfRenderContextType is the TypeScript render context type name for werf charts.
@@ -167,7 +180,6 @@ var (
 		StageFinal,
 	}
 	OrderedStoreAs                                      = []StoreAs{StoreAsNone, StoreAsHook, StoreAsRegular}
-	DefaultRegistryCredentialsPath                      = filepath.Join(homedir.Get(), ".docker", config.ConfigFileName)
 	LabelKeyHumanManagedBy                              = "app.kubernetes.io/managed-by"
 	LabelKeyPatternManagedBy                            = regexp.MustCompile(`^app.kubernetes.io/managed-by$`)
 	AnnotationKeyHumanReleaseName                       = "meta.helm.sh/release-name"
@@ -222,37 +234,27 @@ var (
 	AnnotationKeyPatternDeployDependency                = regexp.MustCompile(`^werf.io/deploy-dependency-(?P<id>.+)$`)
 	AnnotationKeyHumanDeleteDependency                  = "werf.io/delete-dependency-<name>"
 	AnnotationKeyPatternDeleteDependency                = regexp.MustCompile(`^werf.io/delete-dependency-(?P<id>.+)$`)
-	// TODO(major): get rid
-	AnnotationKeyHumanDependency                          = "<name>.dependency.werf.io"
-	AnnotationKeyPatternDependency                        = regexp.MustCompile(`^(?P<id>.+).dependency.werf.io$`)
-	AnnotationKeyHumanExternalDependency                  = "<name>.external-dependency.werf.io"
-	AnnotationKeyPatternExternalDependency                = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io$`)
-	AnnotationKeyHumanLegacyExternalDependencyResource    = "<name>.external-dependency.werf.io/resource"
-	AnnotationKeyPatternLegacyExternalDependencyResource  = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io/resource$`)
-	AnnotationKeyHumanLegacyExternalDependencyNamespace   = "<name>.external-dependency.werf.io/namespace"
-	AnnotationKeyPatternLegacyExternalDependencyNamespace = regexp.MustCompile(`^(?P<id>.+).external-dependency.werf.io/namespace$`)
-	AnnotationKeyHumanSensitive                           = "werf.io/sensitive"
-	AnnotationKeyPatternSensitive                         = regexp.MustCompile(`^werf.io/sensitive$`)
-	AnnotationKeyHumanSensitivePaths                      = "werf.io/sensitive-paths"
-	AnnotationKeyPatternSensitivePaths                    = regexp.MustCompile(`^werf.io/sensitive-paths$`)
-	AnnotationKeyHumanDeployOn                            = "werf.io/deploy-on"
-	AnnotationKeyPatternDeployOn                          = regexp.MustCompile(`^werf.io/deploy-on$`)
-	AnnotationKeyHumanOwnership                           = "werf.io/ownership"
-	AnnotationKeyPatternOwnership                         = regexp.MustCompile(`^werf.io/ownership$`)
-	AnnotationKeyHumanDeletePropagation                   = "werf.io/delete-propagation"
-	AnnotationKeyPatternDeletePropagation                 = regexp.MustCompile(`^werf.io/delete-propagation$`)
-	SprigFuncs                                            = sprig.TxtFuncMap()
-	DefaultPlanArtifactLifetime                           = 2 * time.Hour
-	DefaultResourceValidationSchema                       = []string{
-		"https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{ .NormalizedKubernetesVersion }}-standalone{{ .StrictSuffix }}/{{ .ResourceKind }}{{ .KindSuffix }}.json",
-		"https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json",
-	}
-	DefaultResourceValidationCacheLifetime   = 48 * time.Hour
-	APIResourceValidationJSONSchemasCacheDir = helmpath.CachePath("nelm", "api-resource-json-schemas")
+	AnnotationKeyHumanSensitive                         = "werf.io/sensitive"
+	AnnotationKeyPatternSensitive                       = regexp.MustCompile(`^werf.io/sensitive$`)
+	AnnotationKeyHumanSensitivePaths                    = "werf.io/sensitive-paths"
+	AnnotationKeyPatternSensitivePaths                  = regexp.MustCompile(`^werf.io/sensitive-paths$`)
+	AnnotationKeyHumanDeployOn                          = "werf.io/deploy-on"
+	AnnotationKeyPatternDeployOn                        = regexp.MustCompile(`^werf.io/deploy-on$`)
+	AnnotationKeyHumanOwnership                         = "werf.io/ownership"
+	AnnotationKeyPatternOwnership                       = regexp.MustCompile(`^werf.io/ownership$`)
+	AnnotationKeyHumanDeletePropagation                 = "werf.io/delete-propagation"
+	AnnotationKeyPatternDeletePropagation               = regexp.MustCompile(`^werf.io/delete-propagation$`)
+	SprigFuncs                                          = sprig.TxtFuncMap()
+	DefaultDockerConfig                                 = filepath.Join(userHomeDir(), ".docker")
+	DefaultPlanArtifactLifetime                         = 2 * time.Hour
+	DefaultResourceValidationCacheLifetime              = 48 * time.Hour
 )
 
 // Type of the current operation.
 type DeployType string
+
+// External dependency mode.
+type DependencyExternal string
 
 // Configures resource deletions during deployment of this resource.
 type DeletePolicy string
@@ -275,6 +277,50 @@ type ResourceState string
 // How the resource should be stored in the Helm release.
 type StoreAs string
 
+type HelmOptions struct {
+	ChartLoadOpts  ChartLoadOptions
+	TypeScriptOpts TypeScriptOptions
+}
+
+type ChartLoadOptions struct {
+	ChartAppVersion            string
+	ChartDepsDownloader        ChartDepsDownloader
+	ChartType                  LegacyChartType
+	DefaultChartAPIVersion     string
+	DefaultChartName           string
+	DefaultChartVersion        string
+	DefaultSecretValuesDisable bool
+	DefaultValuesDisable       bool
+	ExtraValues                map[string]interface{}
+	NoSecrets                  bool
+	SecretKeyIgnore            bool
+	SecretValuesFiles          []string
+	SecretWorkDir              string
+}
+
+type TypeScriptOptions struct {
+	DenoBinaryPath         string
+	EmbeddedDenoCompressed []byte
+}
+
+type helmOptionsContextKey struct{}
+
+func ContextWithHelmOptions(ctx context.Context, opts HelmOptions) context.Context {
+	return context.WithValue(ctx, helmOptionsContextKey{}, opts)
+}
+
+func HasHelmOptions(ctx context.Context) bool {
+	_, ok := ctx.Value(helmOptionsContextKey{}).(HelmOptions)
+
+	return ok
+}
+
+func HelmOptionsFromContext(ctx context.Context) HelmOptions {
+	opts, _ := ctx.Value(helmOptionsContextKey{}).(HelmOptions)
+
+	return opts
+}
+
 func StagesSortHandler(stage1, stage2 Stage) bool {
 	index1 := lo.IndexOf(StagesOrdered, stage1)
 	index2 := lo.IndexOf(StagesOrdered, stage2)
@@ -284,4 +330,15 @@ func StagesSortHandler(stage1, stage2 Stage) bool {
 
 func SubStageWeighted(stage Stage, weight int) Stage {
 	return Stage(fmt.Sprintf("%s/weight:%d", stage, weight))
+}
+
+func userHomeDir() string {
+	home, _ := os.UserHomeDir()
+	if home == "" && runtime.GOOS != "windows" {
+		if u, err := user.Current(); err == nil {
+			return u.HomeDir
+		}
+	}
+
+	return home
 }

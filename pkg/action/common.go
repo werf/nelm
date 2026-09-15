@@ -18,16 +18,19 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 
+	"github.com/werf/kubedog/pkg/dyntracker/logstore"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
+	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/kubedog/pkg/informer"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
-	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
 	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
+	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
+	"github.com/werf/nelm/pkg/lock"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/plan"
 	"github.com/werf/nelm/pkg/release"
+	"github.com/werf/nelm/pkg/resource/spec"
 	"github.com/werf/nelm/pkg/util"
 )
 
@@ -75,16 +78,15 @@ var syntaxHighlightTheme = fmt.Sprintf(`
 </style>
 `, syntaxHighlightThemeName)
 
-// TODO(major): Version > APIVersion as string "v3"
-type releaseReportV3 struct {
-	Version             int                `json:"version,omitempty"`
-	Release             string             `json:"release,omitempty"`
-	Namespace           string             `json:"namespace,omitempty"`
-	Revision            int                `json:"revision,omitempty"`
-	Status              helmrelease.Status `json:"status,omitempty"`
-	CompletedOperations []string           `json:"completedOperations,omitempty"`
-	CanceledOperations  []string           `json:"canceledOperations,omitempty"`
-	FailedOperations    []string           `json:"failedOperations,omitempty"`
+type ReleaseReportV3 struct {
+	APIVersion          string                   `json:"apiVersion,omitempty"`
+	Release             string                   `json:"release,omitempty"`
+	Namespace           string                   `json:"namespace,omitempty"`
+	Revision            int                      `json:"revision,omitempty"`
+	Status              helmreleasestatus.Status `json:"status,omitempty"`
+	CompletedOperations []string                 `json:"completedOperations,omitempty"`
+	CanceledOperations  []string                 `json:"canceledOperations,omitempty"`
+	FailedOperations    []string                 `json:"failedOperations,omitempty"`
 }
 
 type runFailureInstallPlanOptions struct {
@@ -125,6 +127,21 @@ func newInformerFactory(ctx context.Context, watchErrCh chan error, dynamicClien
 	})
 }
 
+// Reports enabled=false when release locking is disabled, in which case callers must skip acquiring
+// the lock entirely.
+func newReleaseLockManager(ctx context.Context, releaseNamespace string, clientFactory kube.ClientFactorier, legacyNoReleaseLock bool) (*lock.LockManager, bool, error) {
+	if legacyNoReleaseLock {
+		return nil, false, nil
+	}
+
+	lockManager, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory)
+	if err != nil {
+		return nil, false, fmt.Errorf("construct lock manager: %w", err)
+	}
+
+	return lockManager, true, nil
+}
+
 func printNotes(ctx context.Context, notes string) {
 	if notes == "" {
 		return
@@ -137,7 +154,7 @@ func printNotes(ctx context.Context, notes string) {
 	})
 }
 
-func printReport(ctx context.Context, report *releaseReportV3) {
+func printReport(ctx context.Context, report *ReleaseReportV3) {
 	if totalOpsLen := len(report.CompletedOperations) + len(report.CanceledOperations) + len(report.FailedOperations); totalOpsLen == 0 {
 		return
 	}
@@ -171,6 +188,42 @@ func printReport(ctx context.Context, report *releaseReportV3) {
 			}
 		})
 	}
+}
+
+// Chart-shipped rules are scoped to their own chart subtree, rules from patches files are not.
+// Both kinds are compiled right away, so an invalid rule fails before anything is applied.
+func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string) (spec.CompiledPatches, error) {
+	var patches spec.Patches
+
+	if !defaultDisable {
+		chartPatches, err := spec.CollectChartPatches(chart)
+		if err != nil {
+			return spec.CompiledPatches{}, fmt.Errorf("collect chart patches: %w", err)
+		}
+
+		patches.Diff = append(patches.Diff, chartPatches.Diff...)
+		patches.Render = append(patches.Render, chartPatches.Render...)
+	}
+
+	filePatches, err := spec.LoadPatchesFiles(patchesFiles)
+	if err != nil {
+		return spec.CompiledPatches{}, fmt.Errorf("load patches files: %w", err)
+	}
+
+	patches.Diff = append(patches.Diff, filePatches.Diff...)
+	patches.Render = append(patches.Render, filePatches.Render...)
+
+	diffPatches, err := spec.CompilePatches(patches.Diff)
+	if err != nil {
+		return spec.CompiledPatches{}, fmt.Errorf("compile diff patches: %w", err)
+	}
+
+	renderPatches, err := spec.CompilePatches(patches.Render)
+	if err != nil {
+		return spec.CompiledPatches{}, fmt.Errorf("compile render patches: %w", err)
+	}
+
+	return spec.CompiledPatches{Diff: diffPatches, Render: renderPatches}, nil
 }
 
 func runFailurePlan(ctx context.Context, releaseNamespace string, failedPlan *plan.Plan, installableInfos []*plan.InstallableResourceInfo, releaseInfos []*plan.ReleaseInfo, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history *release.History, clientFactory *kube.ClientFactory, opts runFailureInstallPlanOptions) (result *runFailurePlanResult, nonCritErrs, critErrs *util.MultiError) {
@@ -244,7 +297,7 @@ func savePlanAsDot(plan *plan.Plan, path string) error {
 	return nil
 }
 
-func saveReport(reportPath string, report *releaseReportV3) error {
+func saveReport(reportPath string, report *ReleaseReportV3) error {
 	reportByte, err := json.MarshalIndent(report, "", "\t")
 	if err != nil {
 		return fmt.Errorf("marshal report: %w", err)

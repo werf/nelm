@@ -12,7 +12,7 @@ import (
 	"github.com/werf/nelm/pkg/resource"
 )
 
-func CompareInternalDependencyOption() cmp.Option {
+func CompareDependencyOption() cmp.Option {
 	sp := &spew.ConfigState{
 		Indent:                  " ",
 		DisablePointerAddresses: true,
@@ -21,7 +21,7 @@ func CompareInternalDependencyOption() cmp.Option {
 		SpewKeys:                true,
 	}
 
-	return cmpopts.SortSlices(func(a, b *resource.InternalDependency) bool {
+	return cmpopts.SortSlices(func(a, b *resource.Dependency) bool {
 		return sp.Sdump(a) < sp.Sdump(b)
 	})
 }

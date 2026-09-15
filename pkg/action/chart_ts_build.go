@@ -14,8 +14,8 @@ import (
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
 	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
+	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/ts"
 )
@@ -45,22 +45,29 @@ func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Run bundle for ")+"%s", absPath)
 
-	helmOpts := helmopts.HelmOptions{
-		ChartLoadOpts: helmopts.ChartLoadOptions{
-			ChartType: helmopts.ChartTypeChart,
+	helmOpts := common.HelmOptions{
+		ChartLoadOpts: common.ChartLoadOptions{
+			ChartType: common.LegacyChartTypeChart,
 		},
 	}
 
-	chart, err := loader.Load(absPath, helmOpts)
+	ctx = common.ContextWithHelmOptions(ctx, helmOpts)
+
+	loadedChart, err := loader.Load(ctx, absPath)
 	if err != nil {
 		return fmt.Errorf("load chart: %w", err)
 	}
 
-	if err = ts.BundleChartsRecursive(ctx, chart, absPath, true, opts.DenoBinaryPath); err != nil {
+	chartAccessor, err := helmchart.NewAccessor(loadedChart)
+	if err != nil {
+		return fmt.Errorf("create chart accessor: %w", err)
+	}
+
+	if err = ts.BundleChartsRecursive(ctx, chartAccessor, absPath, true, opts.DenoBinaryPath); err != nil {
 		return fmt.Errorf("process chart: %w", err)
 	}
 
-	bundles := lo.Filter(chart.Raw, func(file *helmchart.File, _ int) bool {
+	bundles := lo.Filter(chartAccessor.RawFiles(), func(file *chartcommon.File, _ int) bool {
 		return strings.Contains(file.Name, common.ChartTSBundleFile)
 	})
 

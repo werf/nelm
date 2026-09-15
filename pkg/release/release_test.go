@@ -6,7 +6,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/pkg/release"
 )
 
@@ -22,7 +24,7 @@ data:
 
 	baseOldRel := func() *helmrelease.Release {
 		return &helmrelease.Release{
-			Info:     &helmrelease.Info{Status: helmrelease.StatusDeployed},
+			Info:     &helmrelease.Info{Status: helmreleasecommon.StatusDeployed},
 			Config:   map[string]interface{}{},
 			Manifest: cmManifest("value1"),
 			Hooks:    []*helmrelease.Hook{{Manifest: cmManifest("hookval1")}},
@@ -31,7 +33,7 @@ data:
 
 	baseNewRel := func() *helmrelease.Release {
 		return &helmrelease.Release{
-			Info:     &helmrelease.Info{Status: helmrelease.StatusDeployed},
+			Info:     &helmrelease.Info{Status: helmreleasecommon.StatusDeployed},
 			Config:   map[string]interface{}{},
 			Manifest: cmManifest("value1"),
 			Hooks:    []*helmrelease.Hook{{Manifest: cmManifest("hookval1")}},
@@ -63,7 +65,7 @@ data:
 			name: "status-not-deployed",
 			oldRel: func() *helmrelease.Release {
 				r := baseOldRel()
-				r.Info.Status = helmrelease.StatusFailed
+				r.Info.Status = helmreleasecommon.StatusFailed
 
 				return r
 			}(),
@@ -143,9 +145,22 @@ data:
 		},
 	}
 
+	accessor := func(t *testing.T, rel *helmrelease.Release) helmrel.Accessor {
+		t.Helper()
+
+		if rel == nil {
+			return nil
+		}
+
+		acc, err := helmrel.NewAccessor(rel)
+		require.NoError(t, err)
+
+		return acc
+	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := release.IsReleaseUpToDate(tt.oldRel, tt.newRel)
+			result, err := release.IsReleaseUpToDate(accessor(t, tt.oldRel), accessor(t, tt.newRel))
 			require.NoError(t, err)
 			assert.Equal(t, tt.expectedUpToDate, result.UpToDate)
 			assert.Equal(t, tt.expectedReason, result.Reason)

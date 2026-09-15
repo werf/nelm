@@ -14,7 +14,10 @@ vars:
   arch: '{{ternary "arm64" ARCH (eq ARCH "arm")}}'
   package: "github.com/werf/nelm/cmd/nelm"
 
+  kubeconformValidationSchemasUpstreamKubeVersion: "1.36.3"
+
   tags: ""
+  buildTags: "{{if .tags}}{{.tags}},{{end}}embeddeno"
   ldFlags: "-s -w -X github.com/werf/nelm/pkg/common.Brand={{.brand}} -X github.com/werf/nelm/pkg/common.Version={{.version}}"
 
 tasks:
@@ -34,7 +37,7 @@ tasks:
   _build:dev: &build_dev
     cmds:
       - go build {{if eq .raceDetectorEnabled "true" }}-race{{end}} -o "{{.outputDir | default (printf "./build/%s-%s" .targetOS .targetArch)}}/{{.brandSlug}}{{if (eq .targetOS "windows")}}.exe{{end}}"
-        -ldflags="{{.ldFlags}}" -tags="{{.ctags}}" {{.extraGoBuildArgs}} {{.CLI_ARGS}} {{.pkg | default .package}}
+        -ldflags="{{.ldFlags}}" -tags="{{.tags}}" {{.extraGoBuildArgs}} {{.CLI_ARGS}} {{.pkg | default .package}}
     env:
       GOOS: "{{.targetOS}}"
       GOARCH: "{{.targetArch}}"
@@ -46,20 +49,22 @@ tasks:
     <<: *build_dev
     cmds:
       - go build -o "{{.outputDir | default (printf "./dist/%s/%s-%s/bin" .version .targetOS .targetArch)}}/{{.brandSlug}}{{if (eq .targetOS "windows")}}.exe{{end}}"
-        -ldflags="{{.ldFlags}}" -tags="{{.ctags}}" {{.extraGoBuildArgs}} {{.CLI_ARGS}} {{.pkg | default .package}}
+        -ldflags="{{.ldFlags}}" -tags="{{.buildTags}}" {{.extraGoBuildArgs}} {{.CLI_ARGS}} {{.pkg | default .package}}
 
   _golangci-lint:
     internal: true
     run: once
     cmds:
-      - golangci-lint run {{if eq .fix "true"}}--fix{{end}} --build-tags="{{.tags}}" {{.CLI_ARGS}} {{.paths | default "$(find pkg/ -mindepth 1 -maxdepth 1 -type d ! -name helm -printf './%p/... ' 2>/dev/null || find pkg/ -mindepth 1 -maxdepth 1 -type d ! -name helm | xargs -I{} echo './{}/...') ./cmd/..."}}
+      - golangci-lint run {{if eq .fix "true"}}--fix{{end}} --build-tags="{{.tags}}" {{.CLI_ARGS}} {{.paths | default "$(find pkg/ -mindepth 1 -maxdepth 1 -type d ! -name helm -printf './%p/... ') ./cmd/..."}}
     vars:
       paths: "{{.paths}}"
 
   _wormatter:
     internal: true
     cmds:
-      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work -w /work ghcr.io/werf/wormatter:1.5.0 {{if eq .onlyLint "true"}}-c{{end}} -e ^pkg/helm/ {{.paths | default "cmd/ pkg/"}}
+      # pkg/ts/embed_ is excluded because wormatter drops the //go:embed directive of a single var
+      # declaration, which would silently produce a binary with an empty embedded Deno.
+      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work -w /work ghcr.io/werf/wormatter:1.5.0 {{if eq .onlyLint "true"}}-c{{end}} -e ^pkg/helm/ -e ^pkg/ts/embed_ {{.paths | default "cmd/ pkg/"}}
     vars:
       onlyLint: '{{.onlyLint | default "false"}}'
       paths: "{{.paths}}"
@@ -105,6 +110,10 @@ tasks:
 
   build:dist:linux:amd64:
     desc: 'Build main release binary for linux/amd64. Important vars: "version".'
+    deps:
+      - task: deno:embed
+        vars:
+          platform: "linux/amd64"
     cmds:
       - task: _build:dist
         vars:
@@ -126,6 +135,10 @@ tasks:
 
   build:dist:linux:arm64:
     desc: 'Build main release binary for linux/arm64. Important vars: "version".'
+    deps:
+      - task: deno:embed
+        vars:
+          platform: "linux/arm64"
     cmds:
       - task: _build:dist
         vars:
@@ -147,6 +160,10 @@ tasks:
 
   build:dist:darwin:amd64:
     desc: 'Build main release binary for darwin/amd64. Important vars: "version".'
+    deps:
+      - task: deno:embed
+        vars:
+          platform: "darwin/amd64"
     cmds:
       - task: _build:dist
         vars:
@@ -167,6 +184,10 @@ tasks:
 
   build:dist:darwin:arm64:
     desc: 'Build main release binary for darwin/arm64. Important vars: "version".'
+    deps:
+      - task: deno:embed
+        vars:
+          platform: "darwin/arm64"
     cmds:
       - task: _build:dist
         vars:
@@ -187,6 +208,10 @@ tasks:
 
   build:dist:windows:amd64:
     desc: 'Build main release binary for windows/amd64. Important vars: "version".'
+    deps:
+      - task: deno:embed
+        vars:
+          platform: "windows/amd64"
     cmds:
       - task: _build:dist
         vars:
@@ -237,7 +262,7 @@ tasks:
       - task: test:ginkgo
         vars:
           paths: '{{.paths | default "./pkg ./cmd"}}'
-          skipPackage: "pkg/helm{{if .skipPackage}},{{.skipPackage}}{{end}}"
+          skipPackage: "{{.skipPackage}}"
           parallel: "{{.parallel}}"
 
   verify:binaries:dist:all:
@@ -278,19 +303,48 @@ tasks:
     cmds:
       - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work tmknom/prettier -w "**/*.yaml" "**/*.yml"
 
+  deno:embed:
+    desc: 'Download and embed the Deno binary for one platform. Important vars: "platform".'
+    label: "deno:embed {{.platform}}"
+    run: when_changed
+    vars:
+      platform: '{{.platform | default (printf "%s/%s" .os .arch)}}'
+    sources:
+      - pkg/ts/downloader.go
+      - pkg/ts/denolock/data/lock.json
+      - scripts/embed-deno/main.go
+    generates:
+      - pkg/ts/embed/{{.platform}}/deno.gz
+    cmds:
+      - env -u GOOS -u GOARCH DENO_EMBED_PLATFORM="{{.platform}}" go run ./scripts/embed-deno
+
+  deno:lock:
+    desc: "Re-pin the Deno release nelm downloads and embeds, and commit the result. Bump with: task deno:lock -- -version 2.8.0."
+    cmds:
+      # Takes the version to pin from the lock itself, so it needs no vars.
+      - go run ./scripts/denolock {{.CLI_ARGS}}
+
   generate:
     desc: 'Run all generators. Important vars: "paths".'
     run: once
     cmds:
+      - task: generate:validation-schemas
       - task: generate:reference
       - task: generate:doctoc
 
+  generate:validation-schemas:
+    desc: 'Download and pack the JSON schemas embedded into the binary. Fetches only what the committed archives do not cover; use the force variant to pull upstream changes. Commit the changed archives. Important vars: "kubeconformValidationSchemasUpstreamKubeVersion".'
+    run: once
+    cmds:
+      - go run ./scripts/schemagen -kube-version {{.kubeconformValidationSchemasUpstreamKubeVersion}} {{.CLI_ARGS}}
+
+  generate:validation-schemas:force:
+    desc: 'Rebuild every embedded JSON schema archive from scratch, even the up to date ones. Commit the changed archives. Important vars: "kubeconformValidationSchemasUpstreamKubeVersion".'
+    cmds:
+      - go run ./scripts/schemagen -kube-version {{.kubeconformValidationSchemasUpstreamKubeVersion}} -force {{.CLI_ARGS}}
+
   generate:reference:
     desc: "Generate CLI reference documentation with TOC."
-    env:
-      HELM_CONFIG_HOME: "~/.config/helm"
-      HELM_CACHE_HOME: "~/.cache/helm"
-      HELM_DATA_HOME: "~/.local/share/helm"
     cmds:
       - go run {{.package}} generate-reference
       - task: generate:doctoc
@@ -311,6 +365,29 @@ tasks:
       - lint:wormatter
       - lint:prettier
       - lint:golangci-lint
+      - lint:validation-schemas
+      - lint:deno-lock
+
+  lint:validation-schemas:
+    desc: 'Check that the committed embedded JSON schema archives match their index and the pinned Kubernetes version. Runs offline. Important vars: "kubeconformValidationSchemasUpstreamKubeVersion".'
+    cmds:
+      - go run ./scripts/schemagen -kube-version {{.kubeconformValidationSchemasUpstreamKubeVersion}} -verify {{.CLI_ARGS}}
+
+  lint:deno-lock:
+    desc: "Check that the committed Deno lock is well formed and covers the platforms nelm builds for. Runs offline."
+    cmds:
+      - go run ./scripts/denolock -verify {{.CLI_ARGS}}
+
+  check:validation-schemas-upstream:
+    desc: "Report whether upstream has schemas the committed archives do not. Needs network, so it is not part of lint: run it on a schedule."
+    cmds:
+      # Takes the repositories, refs and versions to compare from the index, so it needs no vars.
+      - go run ./scripts/schemagen -check-upstream {{.CLI_ARGS}}
+
+  check:deno-lock-upstream:
+    desc: "Report whether the Deno release assets the lock pins still hash to what it records. Needs network, so it is not part of lint: it runs on a schedule."
+    cmds:
+      - go run ./scripts/denolock -check-upstream {{.CLI_ARGS}}
 
   lint:golangci-lint:
     desc: 'Lint with golangci-lint. Important vars: "paths".'
@@ -491,8 +568,7 @@ tasks:
         sg scan --rule "$intern_rule" -U "{{.forkSnapshotDir}}"
         rm -f "$intern_rule"
 
-        rm -f "{{.forkSnapshotDir}}/cmd/helm/helm.go"
-        find "{{.forkSnapshotDir}}/cmd/helm" -name "*.go" -exec perl -i -p -e 's/^package main$/package helm/' {} +
+        rm -rf "{{.forkSnapshotDir}}/cmd"
 
         git -C "{{.forkSnapshotDir}}" add -A
         git -C "{{.forkSnapshotDir}}" -c user.name="sync" -c user.email="sync@local" \
@@ -504,13 +580,22 @@ tasks:
         git fetch "{{.forkTempRemote}}" prepared
         git checkout -B "{{.forkSyncBranch}}" FETCH_HEAD --no-track
 
-        stripped=0
-        while IFS= read -r sync_path; do
-          if ! git -c core.quotePath=false ls-tree --name-only "${original_ref}" -- "{{.forkPrefix}}/${sync_path}" | grep -q .; then
-            git rm -rf -- "$sync_path"
-            stripped=$((stripped + 1))
-          fi
-        done < <(git ls-tree --name-only HEAD)
+        prev_split=$(git log --grep="git-subtree-dir: {{.forkPrefix}}" --format="%b" "${original_ref}" | grep "^git-subtree-split:" | head -n1 | cut -d' ' -f2)
+        git fetch "{{.forkTempRemote}}" "$prev_split"
+        if [ -z "$prev_split" ]; then
+          echo "WARNING: no previous subtree split found for {{.forkPrefix}}, skipping file stripping"
+        else
+          stripped=0
+          while IFS= read -r sync_path; do
+            if ! git -c core.quotePath=false ls-tree "${original_ref}" -- "{{.forkPrefix}}/${sync_path}" | grep -q .; then
+              if git -c core.quotePath=false ls-tree "$prev_split" -- "$sync_path" | grep -q .; then
+                git rm -rf -- "$sync_path"
+                stripped=$((stripped + 1))
+              fi
+            fi
+          done < <(git -c core.quotePath=false ls-tree -r --name-only HEAD)
+          echo "Stripped $stripped files that were removed from our fork"
+        fi
 
         if ! git diff --cached --quiet; then
           git commit -m "sync: strip paths not kept in {{.forkPrefix}}"

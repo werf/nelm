@@ -47,10 +47,6 @@ func (f *createNamespaceClientFactory) KubeConfig() *kube.KubeConfig {
 	panic("not implemented")
 }
 
-func (f *createNamespaceClientFactory) LegacyClientGetter() *kube.LegacyClientGetter {
-	panic("not implemented")
-}
-
 func (f *createNamespaceClientFactory) Mapper() apimeta.ResettableRESTMapper {
 	panic("not implemented")
 }

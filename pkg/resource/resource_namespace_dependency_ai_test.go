@@ -10,7 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/kube/fake"
 	"github.com/werf/nelm/pkg/resource"
 	"github.com/werf/nelm/pkg/resource/spec"
 )
@@ -20,7 +19,7 @@ func TestAI_ManualDeployDependencyNormalizesReleaseNamespace(t *testing.T) {
 
 	t.Run("modern syntax with release namespace normalizes to empty", func(t *testing.T) {
 		dep := manualDeployDep(t, releaseNamespace, map[string]string{
-			"werf.io/deploy-dependency-target": "state=ready,kind=Deployment,group=apps,name=target,namespace=" + releaseNamespace,
+			"werf.io/deploy-dependency-target": "state=ready,kind=Deployment,group=apps,version=v1,name=target,namespace=" + releaseNamespace,
 		})
 
 		require.Equal(t, common.ResourceStateReady, dep.ResourceState)
@@ -29,7 +28,7 @@ func TestAI_ManualDeployDependencyNormalizesReleaseNamespace(t *testing.T) {
 
 	t.Run("modern syntax with foreign namespace kept literal", func(t *testing.T) {
 		dep := manualDeployDep(t, releaseNamespace, map[string]string{
-			"werf.io/deploy-dependency-target": "state=ready,kind=Deployment,group=apps,name=target,namespace=other-ns",
+			"werf.io/deploy-dependency-target": "state=ready,kind=Deployment,group=apps,version=v1,name=target,namespace=other-ns",
 		})
 
 		require.Equal(t, []string{"other-ns"}, dep.Namespaces)
@@ -37,51 +36,23 @@ func TestAI_ManualDeployDependencyNormalizesReleaseNamespace(t *testing.T) {
 
 	t.Run("modern syntax with omitted namespace yields empty list", func(t *testing.T) {
 		dep := manualDeployDep(t, releaseNamespace, map[string]string{
-			"werf.io/deploy-dependency-target": "state=ready,kind=Deployment,group=apps,name=target",
+			"werf.io/deploy-dependency-target": "state=ready,kind=Deployment,group=apps,version=v1,name=target",
 		})
 
 		require.Empty(t, dep.Namespaces)
 	})
-
-	t.Run("legacy syntax with release namespace normalizes to empty", func(t *testing.T) {
-		dep := manualDeployDep(t, releaseNamespace, map[string]string{
-			"target.dependency.werf.io": "apps/v1:Deployment:" + releaseNamespace + ":target",
-		})
-
-		require.Equal(t, common.ResourceStatePresent, dep.ResourceState)
-		require.Equal(t, []string{""}, dep.Namespaces)
-	})
-
-	t.Run("legacy syntax with foreign namespace kept literal", func(t *testing.T) {
-		dep := manualDeployDep(t, releaseNamespace, map[string]string{
-			"target.dependency.werf.io": "apps/v1:Deployment:other-ns:target",
-		})
-
-		require.Equal(t, []string{"other-ns"}, dep.Namespaces)
-	})
-
-	t.Run("legacy syntax with omitted namespace keeps single empty-string entry", func(t *testing.T) {
-		dep := manualDeployDep(t, releaseNamespace, map[string]string{
-			"target.dependency.werf.io": "apps/v1:Deployment:target",
-		})
-
-		require.Equal(t, []string{""}, dep.Namespaces)
-	})
 }
 
-func manualDeployDep(t *testing.T, releaseNamespace string, annotations map[string]string) *resource.InternalDependency {
+func manualDeployDep(t *testing.T, releaseNamespace string, annotations map[string]string) *resource.Dependency {
 	t.Helper()
 
 	resSpec := newDependentConfigMapSpec(releaseNamespace, annotations)
 
-	clientFactory, err := fake.NewClientFactory(context.Background())
+	res, err := resource.NewInstallableResource(context.Background(), resSpec, nil, releaseNamespace, resource.InstallableResourceOptions{})
 	require.NoError(t, err)
+	require.Len(t, res.ManualDependencies, 1)
 
-	res, err := resource.NewInstallableResource(resSpec, nil, releaseNamespace, clientFactory, resource.InstallableResourceOptions{})
-	require.NoError(t, err)
-	require.Len(t, res.ManualInternalDependencies, 1)
-
-	return res.ManualInternalDependencies[0]
+	return res.ManualDependencies[0]
 }
 
 func newDependentConfigMapSpec(releaseNamespace string, annotations map[string]string) *spec.ResourceSpec {

@@ -13,11 +13,11 @@ import (
 
 	"github.com/werf/nelm/pkg/common"
 	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
-	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
+	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
 	"github.com/werf/nelm/pkg/log"
 )
 
-func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues chartutil.Values, rebuildBundle bool, chartPath, tempDirPath, denoBinaryPath string) (map[string]string, error) {
+func RenderChart(ctx context.Context, chart helmchart.Accessor, renderedValues chartcommon.Values, rebuildBundle bool, chartPath, tempDirPath, denoBinaryPath string) (map[string]string, error) {
 	if !hasTSFiles(chart) {
 		return map[string]string{}, nil
 	}
@@ -39,11 +39,11 @@ func RenderChart(ctx context.Context, chart *helmchart.Chart, renderedValues cha
 	return allRendered, nil
 }
 
-func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values chartutil.Values, pathPrefix, chartPath, tempDirPath, denoBin string) (map[string]string, error) {
+func renderChartRecursive(ctx context.Context, chart helmchart.Accessor, values chartcommon.Values, pathPrefix, chartPath, tempDirPath, denoBin string) (map[string]string, error) {
 	log.Default.Debug(ctx, "Rendering TypeScript for chart %q (path prefix: %s)", chart.Name(), pathPrefix)
 
 	results := make(map[string]string)
-	entrypoint, bundle := getEntrypointAndBundle(chart.RuntimeFiles)
+	entrypoint, bundle := getEntrypointAndBundle(chart.RuntimeFiles())
 
 	if bundle != nil {
 		content, err := renderChart(ctx, bundle, chart, values, tempDirPath, denoBin)
@@ -59,19 +59,24 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 	}
 
 	for _, dep := range chart.Dependencies() {
-		log.Default.Debug(ctx, "Processing dependency %q for chart %q", dep.Name(), chart.Name())
+		depAcc, err := helmchart.NewAccessor(dep)
+		if err != nil {
+			return nil, fmt.Errorf("create accessor for dependency: %w", err)
+		}
+
+		log.Default.Debug(ctx, "Processing dependency %q for chart %q", depAcc.Name(), chart.Name())
 
 		depResults, err := renderChartRecursive(
 			ctx,
-			dep,
-			scopeValuesForSubchart(values, dep.Name(), dep),
-			path.Join(pathPrefix, "charts", dep.Name()),
-			filepath.Join(chartPath, "charts", dep.Name()),
+			depAcc,
+			scopeValuesForSubchart(values, depAcc.Name(), depAcc),
+			path.Join(pathPrefix, "charts", depAcc.Name()),
+			filepath.Join(chartPath, "charts", depAcc.Name()),
 			tempDirPath,
 			denoBin,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("render dependency %q: %w", dep.Name(), err)
+			return nil, fmt.Errorf("render dependency %q: %w", depAcc.Name(), err)
 		}
 
 		results = lo.Assign(results, depResults)
@@ -80,7 +85,7 @@ func renderChartRecursive(ctx context.Context, chart *helmchart.Chart, values ch
 	return results, nil
 }
 
-func renderChart(ctx context.Context, bundle *helmchart.File, chart *helmchart.Chart, renderedValues chartutil.Values, tempDirPath, denoBin string) (string, error) {
+func renderChart(ctx context.Context, bundle *chartcommon.File, chart helmchart.Accessor, renderedValues chartcommon.Values, tempDirPath, denoBin string) (string, error) {
 	renderDir := filepath.Join(tempDirPath, "typescript-render", chart.ChartFullPath())
 	if err := os.MkdirAll(renderDir, 0o755); err != nil {
 		return "", fmt.Errorf("create temp dir for render context: %w", err)
@@ -102,8 +107,8 @@ func renderChart(ctx context.Context, bundle *helmchart.File, chart *helmchart.C
 	return strings.TrimSpace(string(resultBytes)), nil
 }
 
-func scopeValuesForSubchart(parentValues chartutil.Values, subchartName string, subchart *helmchart.Chart) chartutil.Values {
-	scoped := chartutil.Values{
+func scopeValuesForSubchart(parentValues chartcommon.Values, subchartName string, subchart helmchart.Accessor) chartcommon.Values {
+	scoped := chartcommon.Values{
 		"Chart":  buildChartMetadata(subchart),
 		"Values": map[string]any{},
 	}
@@ -119,7 +124,7 @@ func scopeValuesForSubchart(parentValues chartutil.Values, subchartName string, 
 		switch v := parentVals.(type) {
 		case map[string]any:
 			valuesMap = v
-		case chartutil.Values:
+		case chartcommon.Values:
 			valuesMap = v
 		}
 
@@ -130,8 +135,8 @@ func scopeValuesForSubchart(parentValues chartutil.Values, subchartName string, 
 		}
 	}
 
-	files := make(map[string]any, len(subchart.Files))
-	for _, f := range subchart.Files {
+	files := make(map[string]any, len(subchart.Files()))
+	for _, f := range subchart.Files() {
 		files[f.Name] = f.Data
 	}
 
@@ -140,19 +145,19 @@ func scopeValuesForSubchart(parentValues chartutil.Values, subchartName string, 
 	return scoped
 }
 
-func writeInputRenderContext(renderedValues chartutil.Values, chart *helmchart.Chart, renderDir string) error {
+func writeInputRenderContext(renderedValues chartcommon.Values, chart helmchart.Accessor, renderDir string) error {
 	renderContext := renderedValues.AsMap()
 
 	if valuesInterface, ok := renderContext["Values"]; ok {
-		if chartValues, ok := valuesInterface.(chartutil.Values); ok {
+		if chartValues, ok := valuesInterface.(chartcommon.Values); ok {
 			renderContext["Values"] = chartValues.AsMap()
 		}
 	}
 
 	renderContext["Chart"] = buildChartMetadata(chart)
 
-	files := make(map[string]any, len(chart.Files))
-	for _, file := range chart.Files {
+	files := make(map[string]any, len(chart.Files()))
+	for _, file := range chart.Files() {
 		files[file.Name] = file.Data
 	}
 
@@ -170,41 +175,13 @@ func writeInputRenderContext(renderedValues chartutil.Values, chart *helmchart.C
 	return nil
 }
 
-func buildChartMetadata(chart *helmchart.Chart) map[string]any {
-	metadata := map[string]any{
-		"Name":    chart.Name(),
-		"Version": "",
-	}
-
-	if chart.Metadata == nil {
-		return metadata
-	}
-
-	m := chart.Metadata
-	metadata["Version"] = m.Version
-	metadata["AppVersion"] = m.AppVersion
-	metadata["Description"] = m.Description
-	metadata["Keywords"] = m.Keywords
-	metadata["Home"] = m.Home
-	metadata["Sources"] = m.Sources
-	metadata["Icon"] = m.Icon
-	metadata["APIVersion"] = m.APIVersion
-	metadata["Condition"] = m.Condition
-	metadata["Tags"] = m.Tags
-	metadata["Type"] = m.Type
-	metadata["Annotations"] = m.Annotations
-
-	if m.Maintainers != nil {
-		maintainers := make([]map[string]any, len(m.Maintainers))
-		for i, maint := range m.Maintainers {
-			maintainers[i] = map[string]any{
-				"Name":  maint.Name,
-				"Email": maint.Email,
-				"URL":   maint.URL,
-			}
+func buildChartMetadata(chart helmchart.Accessor) map[string]any {
+	metadata := chart.MetadataAsMap()
+	if metadata == nil {
+		return map[string]any{
+			"Name":    chart.Name(),
+			"Version": "",
 		}
-
-		metadata["Maintainers"] = maintainers
 	}
 
 	return metadata

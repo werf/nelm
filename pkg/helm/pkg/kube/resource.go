@@ -14,15 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package kube // import "helm.sh/helm/v3/pkg/kube"
+package kube // import "github.com/werf/nelm/pkg/helm/pkg/kube"
 
-import (
-	"fmt"
-
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/cli-runtime/pkg/resource"
-)
+import "k8s.io/cli-runtime/pkg/resource"
 
 // ResourceList provides convenience methods for comparing collections of Infos.
 type ResourceList []*resource.Info
@@ -32,7 +26,7 @@ func (r *ResourceList) Append(val *resource.Info) {
 	*r = append(*r, val)
 }
 
-// Visit implements resource.Visitor.
+// Visit implements resource.Visitor. The visitor stops if fn returns an error.
 func (r ResourceList) Visit(fn resource.VisitorFunc) error {
 	for _, i := range r {
 		if err := fn(i, nil); err != nil {
@@ -44,7 +38,7 @@ func (r ResourceList) Visit(fn resource.VisitorFunc) error {
 
 // Filter returns a new Result with Infos that satisfy the predicate fn.
 func (r ResourceList) Filter(fn func(*resource.Info) bool) ResourceList {
-	result := ResourceList{}
+	var result ResourceList
 	for _, i := range r {
 		if fn(i) {
 			result.Append(i)
@@ -85,39 +79,14 @@ func (r ResourceList) Intersect(rs ResourceList) ResourceList {
 	return r.Filter(rs.Contains)
 }
 
-// isMatchingInfo returns true if infos match on Name and GroupVersionKind.
+// isMatchingInfo returns true if infos match on Name, Namespace, Group and Kind.
+//
+// IMPORTANT: Version is intentionally excluded from the comparison. Resources
+// served by the same CRD at different API versions (e.g. v2beta1 vs v2beta2)
+// share the same underlying storage in the Kubernetes API server. Comparing
+// the full GroupVersionKind causes Difference() to treat a version change as
+// a resource removal + addition, which makes Helm delete the resource it just
+// created during upgrades. See https://github.com/helm/helm/issues/31768
 func isMatchingInfo(a, b *resource.Info) bool {
-	return a.Name == b.Name && a.Namespace == b.Namespace && a.Mapping.GroupVersionKind.Kind == b.Mapping.GroupVersionKind.Kind
-}
-
-func (r ResourceList) ToYamlDocs() (string, error) {
-	var manifestsStr string
-	for _, res := range r {
-		var err error
-		unstructuredObj := unstructured.Unstructured{}
-		unstructuredObj.Object, err = runtime.DefaultUnstructuredConverter.ToUnstructured(res.Object)
-		if err != nil {
-			return "", fmt.Errorf("error converting object to unstructured type: %w", err)
-		}
-
-		objByte, err := unstructuredObj.MarshalJSON()
-		if err != nil {
-			return "", fmt.Errorf("error marshaling object: %w", err)
-		}
-
-		manifestsStr = fmt.Sprintf("%s\n---\n%s", manifestsStr, string(objByte))
-	}
-
-	return manifestsStr, nil
-}
-
-func (r *ResourceList) Merge(rs ResourceList) {
-	*r = r.Difference(rs)
-	for _, res := range rs {
-		r.Append(res)
-	}
-}
-
-func ResourceNameNamespaceKind(info *resource.Info) string {
-	return fmt.Sprint(info.Namespace, ":", info.Object.GetObjectKind().GroupVersionKind().Kind, "/", info.Name)
+	return a.Name == b.Name && a.Namespace == b.Namespace && a.Mapping.GroupVersionKind.GroupKind() == b.Mapping.GroupVersionKind.GroupKind()
 }
