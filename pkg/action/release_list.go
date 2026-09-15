@@ -12,7 +12,6 @@ import (
 	"github.com/gookit/color"
 	prtable "github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
-	"github.com/samber/lo"
 
 	"github.com/werf/nelm/pkg/common"
 	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
@@ -116,22 +115,19 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 
 	loader.NoChartLockWarning = ""
 
-	log.Default.Info(ctx, "Build release histories")
+	log.Default.Info(ctx, "List releases")
 
-	histories, err := release.BuildHistories(releaseStorage, release.HistoryOptions{})
+	rels, err := releaseStorage.ListLatestReleases(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("build release histories: %w", err)
+		return nil, fmt.Errorf("list latest releases: %w", err)
 	}
 
 	result := &ReleaseListResultV1{
 		APIVersion: "v1",
 	}
 
-	for _, history := range histories {
-		releases := history.Releases()
-		lastRelease := lo.LastOrEmpty(releases)
-
-		chartAccessor, err := helmchart.NewAccessor(lastRelease.Chart())
+	for _, rel := range rels {
+		chartAccessor, err := helmchart.NewAccessor(rel.Chart())
 		if err != nil {
 			return nil, fmt.Errorf("construct chart accessor: %w", err)
 		}
@@ -141,20 +137,20 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 		chartAppVersion, _ := chartMetadata["AppVersion"].(string)
 
 		result.Releases = append(result.Releases, &ReleaseListResultRelease{
-			Annotations: lastRelease.Annotations(),
+			Annotations: rel.Annotations(),
 			Chart: &ReleaseListResultChart{
 				Name:       chartAccessor.Name(),
 				Version:    chartVersion,
 				AppVersion: chartAppVersion,
 			},
 			DeployedAt: &ReleaseListResultDeployedAt{
-				Human: lastRelease.DeployedAt().String(),
-				Unix:  int(lastRelease.DeployedAt().Unix()),
+				Human: rel.DeployedAt().String(),
+				Unix:  int(rel.DeployedAt().Unix()),
 			},
-			Name:      lastRelease.Name(),
-			Namespace: lastRelease.Namespace(),
-			Revision:  lastRelease.Version(),
-			Status:    helmreleasestatus.Status(lastRelease.Status()),
+			Name:      rel.Name(),
+			Namespace: rel.Namespace(),
+			Revision:  rel.Version(),
+			Status:    helmreleasestatus.Status(rel.Status()),
 		})
 	}
 

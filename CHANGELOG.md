@@ -1,5 +1,58 @@
 # Changelog
 
+## [1.30.4](https://github.com/werf/nelm/compare/v1.30.3...v1.30.4) (2026-09-14)
+
+
+### Bug Fixes
+
+* prevent panic when release deletion fails ([#715](https://github.com/werf/nelm/issues/715)) ([4820837](https://github.com/werf/nelm/commit/482083796e57e5ce9faefb18223776bb32ca7e59))
+* report the inaccessible events feed through the nelm logger ([#713](https://github.com/werf/nelm/issues/713)) ([52bcdc9](https://github.com/werf/nelm/commit/52bcdc948f1d625926fefba4d3d24cc81b1fa210))
+
+## [1.30.3](https://github.com/werf/nelm/compare/v1.30.2...v1.30.3) (2026-09-11)
+
+
+### Bug Fixes
+
+* optimize memory usage of release list ([#711](https://github.com/werf/nelm/issues/711)) ([2a19028](https://github.com/werf/nelm/commit/2a19028ca850bd431b5f85f524ded52e0888caef))
+
+## [1.30.2](https://github.com/werf/nelm/compare/v1.30.1...v1.30.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* optimize plan building for large releases ([#709](https://github.com/werf/nelm/issues/709)) ([aba6e3a](https://github.com/werf/nelm/commit/aba6e3a7874d957ee1b43eb8669cafa44f3f9c3e))
+* restore network parallelism when building resource infos ([#708](https://github.com/werf/nelm/issues/708)) ([f10c001](https://github.com/werf/nelm/commit/f10c001f213055020e345e3ae3172b89027e656c))
+* skippable untouched resources check for progress reporter ([#704](https://github.com/werf/nelm/issues/704)) ([0c56110](https://github.com/werf/nelm/commit/0c56110973d345fdb3d3ee49e0d03c587472333a))
+
+## [1.30.1](https://github.com/werf/nelm/compare/v1.30.0...v1.30.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* switch managed-services.deckhouse.io readiness tracking to Available only ([#700](https://github.com/werf/nelm/issues/700)) ([2c15572](https://github.com/werf/nelm/commit/2c1557279a98ce0fb17fe0c5849d27bea453af3f))
+
+## [1.30.0](https://github.com/werf/nelm/compare/v1.29.1...v1.30.0) (2026-08-20)
+
+
+### Features
+
+* add LintMode in chart render options and pass it to the Helm engine ([#695](https://github.com/werf/nelm/issues/695)) ([f5cff5a](https://github.com/werf/nelm/commit/f5cff5ada8b94b2c7cac0c023b861e894517b607))
+
+## [1.29.1](https://github.com/werf/nelm/compare/v1.29.0...v1.29.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* noop resources sent to legacyprogressreporter too ([cb25490](https://github.com/werf/nelm/commit/cb254907c5499a7c47f5034e7797aeeb64f828b8))
+
+## [1.29.0](https://github.com/werf/nelm/compare/v1.28.0...v1.29.0) (2026-08-11)
+
+
+### Features
+
+* add case-insensitive-condition-tracking feature gate ([3d2d2d0](https://github.com/werf/nelm/commit/3d2d2d0bdfaa69ec64383ec7829ee351712758a0))
+* track managed-services.deckhouse.io resources ([2dc75a3](https://github.com/werf/nelm/commit/2dc75a38f2b05c4cf6c7a66e92e2c018d7756c0f))
+
 ## [1.28.0](https://github.com/werf/nelm/compare/v1.27.2...v1.28.0) (2026-08-03)
 
 

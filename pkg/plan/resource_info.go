@@ -93,7 +93,7 @@ type BuildResourceInfosOptions struct {
 func BuildResourceInfos(ctx context.Context, deployType common.DeployType, releaseName, releaseNamespace string, instResources []*resource.InstallableResource, delResources []*resource.DeletableResource, prevReleaseFailed bool, clientFactory kube.ClientFactorier, opts BuildResourceInfosOptions) (instResourceInfos []*InstallableResourceInfo, delResourceInfos []*DeletableResourceInfo, err error) {
 	totalResourcesCount := len(instResources) + len(delResources)
 
-	routines := lo.Max([]int{len(instResources) / lo.Max([]int{totalResourcesCount, 1}) * opts.NetworkParallelism, 1})
+	routines := poolRoutines(len(instResources), totalResourcesCount, opts.NetworkParallelism)
 
 	instResourcesPool := pool.NewWithResults[[]*InstallableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range instResources {
@@ -107,7 +107,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 		})
 	}
 
-	routines = lo.Max([]int{len(delResources) / lo.Max([]int{totalResourcesCount, 1}) * opts.NetworkParallelism, 1})
+	routines = poolRoutines(len(delResources), totalResourcesCount, opts.NetworkParallelism)
 
 	delResourcesPool := pool.NewWithResults[*DeletableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range delResources {
@@ -471,19 +471,18 @@ func exclusiveOwnershipForOurManager(managedFields []v1.ManagedFieldsEntry, ours
 }
 
 func filterDelResourcesPresentInInstResources(instResourceInfos []*InstallableResourceInfo, delResourceInfos []*DeletableResourceInfo) []*DeletableResourceInfo {
-	var instResourcesUIDs []types.UID
+	instResourcesUIDs := make(map[types.UID]struct{}, len(instResourceInfos))
 	for _, instInfo := range instResourceInfos {
 		if instInfo.GetResult == nil {
 			continue
 		}
 
-		instResourcesUIDs = append(instResourcesUIDs, instInfo.GetResult.GetUID())
+		instResourcesUIDs[instInfo.GetResult.GetUID()] = struct{}{}
 	}
 
 	var filteredDelResourceInfos []*DeletableResourceInfo
 	for _, delInfo := range delResourceInfos {
-		if delInfo.GetResult != nil &&
-			lo.Contains(instResourcesUIDs, delInfo.GetResult.GetUID()) {
+		if delInfo.GetResult != nil && lo.HasKey(instResourcesUIDs, delInfo.GetResult.GetUID()) {
 			continue
 		}
 
@@ -687,16 +686,17 @@ func isServiceAccountFieldManaged(entry v1.ManagedFieldsEntry, subPath []string)
 }
 
 func iterateInstallableResourceInfos(infos []*InstallableResourceInfo) {
-	var seenInfos []*InstallableResourceInfo
+	seenInfos := make(map[string]*InstallableResourceInfo, len(infos))
 	for _, info := range infos {
-		seenInfo, seen := lo.Find(seenInfos, func(inf *InstallableResourceInfo) bool {
-			return info.ID() == inf.ID()
-		})
-		if seen {
+		id := info.ID()
+
+		if seenInfo, seen := seenInfos[id]; seen {
 			info.Iteration = seenInfo.Iteration + 1
+
+			continue
 		}
 
-		seenInfos = append(seenInfos, info)
+		seenInfos[id] = info
 	}
 
 	var highestIteration int
@@ -721,9 +721,7 @@ func iterateInstallableResourceInfos(infos []*InstallableResourceInfo) {
 				continue
 			}
 
-			prevIterInfo := lo.Must(lo.Find(infos, func(inf *InstallableResourceInfo) bool {
-				return iterInfo.ID() == inf.ID() && inf.Iteration == iterInfo.Iteration-1
-			}))
+			prevIterInfo := seenInfos[iterInfo.ID()]
 
 			if prevIterInfo.MustDeleteOnSuccessfulInstall && !lo.Contains(iterInfo.LocalResource.ResourcePolicies, common.ResourcePolicySkipCreate) {
 				iterInfo.MustInstall = ResourceInstallTypeCreate
@@ -790,6 +788,10 @@ func orphaned(meta *spec.ResourceMeta, releaseName, releaseNamespace string) boo
 	}
 
 	return false
+}
+
+func poolRoutines(resourcesCount, totalResourcesCount, networkParallelism int) int {
+	return lo.Max([]int{resourcesCount * networkParallelism / lo.Max([]int{totalResourcesCount, 1}), 1})
 }
 
 func removeUndesirableManagers(managedFields []v1.ManagedFieldsEntry, oursEntry v1.ManagedFieldsEntry, noRemoveManualChanges bool) (newManagedFields []v1.ManagedFieldsEntry, newOursEntry v1.ManagedFieldsEntry, changed bool) {

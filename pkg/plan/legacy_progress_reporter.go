@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/samber/lo"
+	"k8s.io/apimachinery/pkg/api/meta"
 
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/nelm/pkg/legacy/progrep"
@@ -42,6 +43,23 @@ func (r *LegacyProgressReporter) ReportStatus(opID string, status progrep.Operat
 	})
 }
 
+func (r *LegacyProgressReporter) StartStage(p *Plan, releaseNamespace string, installableResourceInfos []*InstallableResourceInfo, mapper meta.RESTMapper, opts StartStageOptions) {
+	resolvedNamespaces := buildResolvedNamespaces(p, releaseNamespace, mapper)
+
+	if opts.NoUntouchedResources {
+		r.startStage(p, resolvedNamespaces, nil, nil)
+
+		return
+	}
+
+	untouchedResolvedNamespaces := make(map[string]string, len(installableResourceInfos))
+	for _, info := range installableResourceInfos {
+		untouchedResolvedNamespaces[info.ID()] = resolveNamespace(info.GroupVersionKind, info.Namespace, releaseNamespace, mapper)
+	}
+
+	r.startStage(p, resolvedNamespaces, installableResourceInfos, untouchedResolvedNamespaces)
+}
+
 func (r *LegacyProgressReporter) Stop(ctx context.Context) {
 	var report progrep.ProgressReport
 
@@ -59,7 +77,7 @@ func (r *LegacyProgressReporter) Stop(ctx context.Context) {
 	}()
 }
 
-func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[string]string) {
+func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[string]string, untouched []*InstallableResourceInfo, untouchedResolvedNamespaces map[string]string) {
 	r.state.RWTransaction(func(s *progressReporterState) {
 		if len(s.ops) > 0 {
 			s.frozen = append(s.frozen, buildStageReport(s.ops))
@@ -71,6 +89,7 @@ func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[stri
 		var entries []opEntry
 
 		entryIndex := make(map[string]int)
+		seenRefs := make(map[progrep.ObjectRef]struct{})
 
 		for _, op := range ops {
 			if op.Category != OperationCategoryResource && op.Category != OperationCategoryTrack {
@@ -81,12 +100,40 @@ func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[stri
 			typ := mapOperationType(op.Type)
 			idx := len(entries)
 			entryIndex[op.ID()] = idx
+			seenRefs[ref] = struct{}{}
 
 			entries = append(entries, opEntry{
 				iteration: int(op.Iteration),
 				ref:       ref,
 				status:    progrep.OperationStatusPending,
 				typ:       typ,
+			})
+		}
+
+		for _, info := range untouched {
+			if info.GetResult == nil {
+				continue
+			}
+
+			ref := progrep.ObjectRef{
+				GroupVersionKind: info.GroupVersionKind,
+				Name:             info.Name,
+				Namespace:        untouchedResolvedNamespaces[info.ID()],
+			}
+
+			if _, ok := seenRefs[ref]; ok {
+				continue
+			}
+
+			seenRefs[ref] = struct{}{}
+
+			entries = append(entries, opEntry{
+				iteration: 0,
+				ref:       ref,
+				status:    progrep.OperationStatusCompleted,
+				// Untouched resources have no real operation; NoOp is a
+				// neutral label for an already-present, unchanged resource shown as Completed.
+				typ: progrep.OperationTypeNoOp,
 			})
 		}
 
@@ -112,6 +159,14 @@ func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[stri
 		report := buildProgressReport(s.frozen, s.ops)
 		sendNonBlocking(r.reportCh, report)
 	})
+}
+
+type StartStageOptions struct {
+	// NoUntouchedResources, when true, omits untouched resources from the stage report.
+	// Set it for delta plans, like a failure plan, which only carry operations for the few
+	// resources they act upon: there the release-wide inventory of untouched resources is
+	// not part of what the stage does.
+	NoUntouchedResources bool
 }
 
 type progressReporterState struct {

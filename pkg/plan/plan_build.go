@@ -186,30 +186,18 @@ func addFailureReleaseOperations(failedPlan, plan *Plan, releaseInfos []*Release
 			continue
 		}
 
-		infoRel := info.Release.Accessor
+		relID := releaseID(info.Release.Accessor.Namespace(), info.Release.Accessor.Name(), info.Release.Accessor.Version())
 
-		if _, releaseCreated := lo.Find(failedPlan.Operations(), func(op *Operation) bool {
-			if op.Status != OperationStatusCompleted {
-				return false
-			}
+		releaseOpIDs := []string{
+			OperationID(OperationTypeCreateRelease, OperationVersionCreateRelease, 0, relID),
+			OperationID(OperationTypeUpdateRelease, OperationVersionUpdateRelease, 0, relID),
+		}
 
-			switch config := op.Config.(type) {
-			case *OperationConfigCreateRelease:
-				configRel := config.Release.Accessor
+		if !lo.SomeBy(releaseOpIDs, func(opID string) bool {
+			op, found := failedPlan.Operation(opID)
 
-				return configRel.Namespace() == infoRel.Namespace() &&
-					configRel.Name() == infoRel.Name() &&
-					configRel.Version() == infoRel.Version()
-			case *OperationConfigUpdateRelease:
-				configRel := config.Release.Accessor
-
-				return configRel.Namespace() == infoRel.Namespace() &&
-					configRel.Name() == infoRel.Name() &&
-					configRel.Version() == infoRel.Version()
-			default:
-				return false
-			}
-		}); !releaseCreated {
+			return found && op.Status == OperationStatusCompleted
+		}) {
 			continue
 		}
 
@@ -588,11 +576,7 @@ func addFailureResourceOperations(failedPlan, plan *Plan, infos []*InstallableRe
 		}
 
 		if info.MustDeleteOnSuccessfulInstall {
-			deleteOnSuccessfulInstallOp := lo.Must(lo.Find(failedPlan.Operations(), func(op *Operation) bool {
-				return op.Type == OperationTypeDelete &&
-					op.Iteration == OperationIteration(info.Iteration) &&
-					op.Config.(*OperationConfigDelete).ResourceMeta.ID() == info.ID()
-			}))
+			deleteOnSuccessfulInstallOp := lo.Must(failedPlan.Operation(OperationID(OperationTypeDelete, OperationVersionDelete, OperationIteration(info.Iteration), info.ID())))
 
 			if deleteOnSuccessfulInstallOp.Status == OperationStatusCompleted {
 				continue

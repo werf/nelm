@@ -14,7 +14,6 @@ import (
 	"github.com/werf/kubedog/pkg/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
-	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/nelm/pkg/common"
 	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
@@ -408,7 +407,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	taskStore := kdutil.NewConcurrent(statestore.NewTaskStore())
 	logStore := kdutil.NewConcurrent(logstore.NewLogStore())
 	watchErrCh := make(chan error, 1)
-	informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
+	informerFactory := newInformerFactory(ctx, watchErrCh, clientFactory.Dynamic())
 
 	log.Default.Debug(ctx, "Start tracking")
 
@@ -439,8 +438,9 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 	log.Default.Debug(ctx, "Execute release install plan")
 
 	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, installPlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		TrackingOptions:    opts.TrackingOptions,
-		NetworkParallelism: opts.NetworkParallelism,
+		TrackingOptions:          opts.TrackingOptions,
+		NetworkParallelism:       opts.NetworkParallelism,
+		InstallableResourceInfos: instResInfos,
 	})
 	if executePlanErr != nil {
 		criticalErrs.Add(fmt.Errorf("execute release install plan: %w", executePlanErr))

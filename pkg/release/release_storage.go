@@ -32,6 +32,8 @@ type ReleaseStorager interface {
 	Query(labels map[string]string) ([]helmrel.Accessor, error)
 	// GetRelease returns a single release revision. version == 0 means the latest revision.
 	GetRelease(name string, version int) (helmrel.Accessor, error)
+	// ListLatestReleases returns the highest revision of every stored release.
+	ListLatestReleases(ctx context.Context) ([]helmrel.Accessor, error)
 }
 
 type storageAdapter struct {
@@ -78,6 +80,25 @@ func (a *storageAdapter) GetRelease(name string, version int) (helmrel.Accessor,
 	}
 
 	return acc, nil
+}
+
+func (a *storageAdapter) ListLatestReleases(ctx context.Context) ([]helmrel.Accessor, error) {
+	rels, err := a.storage.ListLatestReleases(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list latest releases: %w", err)
+	}
+
+	result := make([]helmrel.Accessor, 0, len(rels))
+	for _, rel := range rels {
+		acc, err := helmrel.NewAccessor(rel)
+		if err != nil {
+			return nil, fmt.Errorf("wrap release: %w", err)
+		}
+
+		result = append(result, acc)
+	}
+
+	return result, nil
 }
 
 func (a *storageAdapter) Query(labels map[string]string) ([]helmrel.Accessor, error) {

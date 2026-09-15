@@ -16,7 +16,6 @@ import (
 	"github.com/werf/kubedog/pkg/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
-	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/nelm/pkg/common"
 	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
@@ -168,7 +167,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 	}
 
 	watchErrCh := make(chan error, 1)
-	informerFactory := informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, clientFactory.Dynamic(), informer.ConcurrentInformerFactoryOptions{})
+	informerFactory := newInformerFactory(ctx, watchErrCh, clientFactory.Dynamic())
 
 	go func() {
 		for {

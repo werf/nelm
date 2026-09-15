@@ -4,11 +4,18 @@ package plan
 
 import (
 	"fmt"
+	"math/rand"
 
+	"github.com/dominikbraun/graph"
+	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/legacy/progrep"
+	"github.com/werf/nelm/pkg/resource"
 	"github.com/werf/nelm/pkg/resource/spec"
 )
 
@@ -46,6 +53,43 @@ func (m *fakeRESTMapper) RESTMapping(gk schema.GroupKind, versions ...string) (*
 	}
 
 	return nil, fmt.Errorf("no mapping for %v", gk)
+}
+
+func installableInfoToDeleteOnAnyOutcome(name string) *InstallableResourceInfo {
+	info := installableInfoToDeleteOnSuccessfulInstall(name)
+	info.MustDeleteOnFailedInstall = true
+
+	return info
+}
+
+func installableInfoToDeleteOnFailedInstall(name string) *InstallableResourceInfo {
+	info := installableInfoNamed(name, ResourceInstallTypeApply)
+	info.MustDeleteOnFailedInstall = true
+
+	return info
+}
+
+func installableInfoToDeleteOnSuccessfulInstall(name string) *InstallableResourceInfo {
+	info := installableInfoNamed(name, ResourceInstallTypeApply)
+	info.MustDeleteOnSuccessfulInstall = true
+
+	return info
+}
+
+func deletableInfoWithUID(uid types.UID) *DeletableResourceInfo {
+	return &DeletableResourceInfo{GetResult: unstructuredWithUID(uid)}
+}
+
+func installableInfoNamed(name string, installType ResourceInstallType, policies ...common.ResourcePolicy) *InstallableResourceInfo {
+	return &InstallableResourceInfo{
+		ResourceMeta:  makeResourceMeta(name, "test-namespace", gvkConfigMap),
+		LocalResource: &resource.InstallableResource{ResourcePolicies: policies},
+		MustInstall:   installType,
+	}
+}
+
+func installableInfoWithUID(uid types.UID) *InstallableResourceInfo {
+	return &InstallableResourceInfo{GetResult: unstructuredWithUID(uid)}
 }
 
 func makeResourceSpec(name, namespace string, gvk schema.GroupVersionKind) *spec.ResourceSpec {
@@ -95,4 +139,69 @@ func makeResourceMeta(name, namespace string, gvk schema.GroupVersionKind) *spec
 		Namespace:        namespace,
 		GroupVersionKind: gvk,
 	}
+}
+
+func randomTrackingGraph(rnd *rand.Rand, opsCount int, edgeChance float64) ([]OperationCategory, map[int][]int) {
+	allCategories := []OperationCategory{OperationCategoryResource, OperationCategoryTrack, OperationCategoryMeta}
+
+	categories := make([]OperationCategory, opsCount)
+	for i := range categories {
+		categories[i] = allCategories[rnd.Intn(len(allCategories))]
+	}
+
+	deps := map[int][]int{}
+	for from := 0; from < opsCount; from++ {
+		for to := from + 1; to < opsCount; to++ {
+			if rnd.Float64() < edgeChance {
+				deps[to] = append(deps[to], from)
+			}
+		}
+	}
+
+	return categories, deps
+}
+
+// Pre-optimization implementation of squashFinalTrackingOperations, kept as a reference to assert
+// the optimized one against.
+func squashFinalTrackingOperationsReference(p *Plan) {
+	ops := p.Operations()
+	trackingOps := lo.Filter(ops, func(op *Operation, _ int) bool {
+		return op.Category == OperationCategoryTrack
+	})
+
+	for _, trackingOp := range trackingOps {
+		var foundDependentResourceOps bool
+		lo.Must0(graph.BFS(p.Graph, trackingOp.ID(), func(opID string) bool {
+			op := lo.Must(p.Operation(opID))
+			if op.Category == OperationCategoryResource {
+				foundDependentResourceOps = true
+
+				return true
+			}
+
+			return false
+		}))
+
+		if !foundDependentResourceOps {
+			p.SquashOperation(trackingOp)
+		}
+	}
+}
+
+func trackingTestOperations(categories []OperationCategory) []*Operation {
+	return lo.Map(categories, func(category OperationCategory, i int) *Operation {
+		return &Operation{
+			Type:     OperationTypeNoop,
+			Version:  OperationVersionNoop,
+			Category: category,
+			Config:   &OperationConfigNoop{OpID: fmt.Sprintf("op-%d", i)},
+		}
+	})
+}
+
+func unstructuredWithUID(uid types.UID) *unstructured.Unstructured {
+	unstruct := &unstructured.Unstructured{Object: map[string]interface{}{}}
+	unstruct.SetUID(uid)
+
+	return unstruct
 }

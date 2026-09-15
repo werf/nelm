@@ -13,6 +13,8 @@ import (
 	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 )
 
+var _ ReleaseStorager = (*stubStorager)(nil)
+
 type stubStorager struct {
 	deleteErr error
 	deleteRel helmrel.Accessor
@@ -30,6 +32,10 @@ func (s *stubStorager) GetRelease(name string, version int) (helmrel.Accessor, e
 	return nil, nil
 }
 
+func (s *stubStorager) ListLatestReleases(ctx context.Context) ([]helmrel.Accessor, error) {
+	return nil, nil
+}
+
 func (s *stubStorager) Query(labels map[string]string) ([]helmrel.Accessor, error) {
 	return nil, nil
 }
@@ -43,13 +49,19 @@ func (s *stubStorager) UpdateLabels(name string, version int, labels map[string]
 }
 
 func TestAI_DeleteRelease_ErrorIncludesNameAndRevision(t *testing.T) {
-	history := NewHistory(nil, "myrelease", &stubStorager{
+	storage := &stubStorager{
 		deleteErr: errors.New("kube delete failed"),
 		deleteRel: nil,
-	}, HistoryOptions{})
+	}
+	history := NewHistory(nil, "myrelease", storage, HistoryOptions{})
 
-	delErr := history.DeleteRelease(context.Background(), "myrelease", 3)
+	var delErr error
+	require.NotPanics(t, func() {
+		delErr = history.DeleteRelease(context.Background(), "myrelease", 3)
+	})
+
 	require.Error(t, delErr)
+	assert.ErrorIs(t, delErr, storage.deleteErr)
 	assert.Contains(t, delErr.Error(), `"myrelease"`)
 	assert.Contains(t, delErr.Error(), "revision: 3")
 }

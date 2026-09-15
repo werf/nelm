@@ -13,6 +13,7 @@ const (
 	OperationTypeDelete         OperationType = "Delete"
 	OperationTypeApply          OperationType = "Apply"
 	OperationTypeRecreate       OperationType = "Recreate"
+	OperationTypeNoOp           OperationType = "NoOp"
 	OperationTypeTrackReadiness OperationType = "TrackReadiness"
 	OperationTypeTrackPresence  OperationType = "TrackPresence"
 	OperationTypeTrackAbsence   OperationType = "TrackAbsence"
@@ -29,7 +30,11 @@ type ProgressReport struct {
 }
 
 // StageReport contains ALL operations in the plan -- from the very first report, every
-// operation is present (initially as Pending).
+// operation is present (initially as Pending). A stage of a plan that describes a complete
+// desired state, such as an install or a rollback plan, additionally lists the resources that
+// plan leaves untouched, as NoOp with status Completed; that set is supplied per stage and
+// matches the revision the stage deploys. A failure plan acts upon a few resources only, so
+// its stage lists just its own operations.
 type StageReport struct {
 	Operations []Operation `json:"operations"`
 }

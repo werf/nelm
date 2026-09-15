@@ -15,6 +15,8 @@ import (
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 	"github.com/xo/terminfo"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
 
 	"github.com/werf/kubedog/pkg/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/dyntracker/statestore"
@@ -115,6 +117,14 @@ func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr err
 	}
 
 	log.Default.Warn(ctx, "Plan graph saved to %q for debugging", graphPath)
+}
+
+func newInformerFactory(ctx context.Context, watchErrCh chan error, dynamicClient dynamic.Interface) *kdutil.Concurrent[*informer.InformerFactory] {
+	return informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, dynamicClient, informer.ConcurrentInformerFactoryOptions{
+		OnNonFatalWatchError: func(gvr schema.GroupVersionResource, namespace string, err error) {
+			log.Default.Warn(ctx, "No access to %s in namespace %q, tracking continues without it: %s", gvr.GroupResource().String(), namespace, err)
+		},
+	})
 }
 
 // Reports enabled=false when release locking is disabled, in which case callers must skip acquiring
@@ -243,9 +253,10 @@ func runFailurePlan(ctx context.Context, releaseNamespace string, failedPlan *pl
 	log.Default.Debug(ctx, "Execute failure plan")
 
 	if err := plan.ExecutePlan(ctx, releaseNamespace, failurePlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		LegacyProgressReporter: opts.LegacyProgressReporter,
-		TrackingOptions:        opts.TrackingOptions,
-		NetworkParallelism:     opts.NetworkParallelism,
+		LegacyProgressReporter:     opts.LegacyProgressReporter,
+		TrackingOptions:            opts.TrackingOptions,
+		NetworkParallelism:         opts.NetworkParallelism,
+		NoUntouchedResourcesReport: true,
 	}); err != nil {
 		critErrs.Add(fmt.Errorf("execute failure plan: %w", err))
 	}

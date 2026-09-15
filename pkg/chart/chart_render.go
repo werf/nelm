@@ -59,6 +59,7 @@ type RenderChartOptions struct {
 	ExtraAPIVersions                []string
 	HelmOptions                     common.HelmOptions
 	IgnoreBundleJS                  bool
+	LintMode                        bool
 	LocalKubeVersion                string
 	LocalLookupResourcesPaths       []string
 	NoStandaloneCRDs                bool
@@ -257,6 +258,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	}
 
 	engine.EnableDNS = opts.TemplatesAllowDNS
+	engine.LintMode = opts.LintMode
 
 	log.Default.Debug(ctx, "Rendering resources for chart at %q", chartPath)
 
