@@ -3,7 +3,10 @@ package plan
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 
+	"github.com/dominikbraun/graph"
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/api/meta"
 
@@ -36,35 +39,75 @@ func (r *LegacyProgressReporter) ReportStatus(opID string, status progrep.Operat
 			return
 		}
 
-		s.ops[idx].status = status
+		s.ops[idx].Status = status
 
-		report := buildProgressReport(s.frozen, s.ops)
-		sendNonBlocking(r.reportCh, report)
+		if len(r.reportCh) == cap(r.reportCh) {
+			return
+		}
+
+		sendNonBlocking(r.reportCh, buildProgressReport(s.ops))
 	})
 }
 
-func (r *LegacyProgressReporter) StartStage(p *Plan, releaseNamespace string, installableResourceInfos []*InstallableResourceInfo, mapper meta.RESTMapper, opts StartStageOptions) {
+// StartPlan appends the operations of the plan that is about to be executed to the report and
+// makes them addressable by ReportStatus. Operations of the previously started plans stay in the
+// report as they are. The plans are chained: the root operations of the new plan depend on the
+// final operations of the previous one, so the whole run reads as a single graph. Operations of
+// the previous plan that never started are marked Canceled. Untouched resources are reported for
+// the first plan only: later plans act upon a release the first plan has already described in
+// full.
+func (r *LegacyProgressReporter) StartPlan(p *Plan, releaseNamespace string, installableResourceInfos []*InstallableResourceInfo, mapper meta.RESTMapper, opts StartPlanOptions) {
 	resolvedNamespaces := buildResolvedNamespaces(p, releaseNamespace, mapper)
-
-	if opts.NoUntouchedResources {
-		r.startStage(p, resolvedNamespaces, nil, nil)
-
-		return
-	}
 
 	untouchedResolvedNamespaces := make(map[string]string, len(installableResourceInfos))
 	for _, info := range installableResourceInfos {
 		untouchedResolvedNamespaces[info.ID()] = resolveNamespace(info.GroupVersionKind, info.Namespace, releaseNamespace, mapper)
 	}
 
-	r.startStage(p, resolvedNamespaces, installableResourceInfos, untouchedResolvedNamespaces)
+	r.state.RWTransaction(func(s *progressReporterState) {
+		cancelPendingOperations(s.ops)
+
+		s.plansCount++
+		idPrefix := planIDPrefix(s.plansCount)
+
+		var planOps []progrep.Operation
+		if !opts.UntouchedResourcesOnly {
+			predMap := lo.Must(p.Graph.PredecessorMap())
+
+			planOps = buildPlanOperations(p, predMap, resolvedNamespaces, idPrefix, s.lastPlanSinkIDs)
+			s.lastPlanSinkIDs = planSinkOperationIDs(predMap, idPrefix)
+		}
+
+		seenRefs := make(map[progrep.ObjectRef]struct{}, len(planOps))
+		for _, op := range planOps {
+			if op.Category == progrep.OperationCategoryResource || op.Category == progrep.OperationCategoryTrack {
+				seenRefs[op.ObjectRef] = struct{}{}
+			}
+		}
+
+		if s.plansCount == 1 {
+			s.ops = append(s.ops, buildUntouchedOperations(installableResourceInfos, untouchedResolvedNamespaces, seenRefs)...)
+		}
+
+		s.opIndex = make(map[string]int, len(planOps))
+		for _, op := range planOps {
+			s.opIndex[strings.TrimPrefix(op.ID, idPrefix)] = len(s.ops)
+			s.ops = append(s.ops, op)
+		}
+
+		sendNonBlocking(r.reportCh, buildProgressReport(s.ops))
+	})
 }
 
+// Stop sends the final report with a blocking send. Operations that never started are marked
+// Canceled first: nothing is going to run them anymore.
 func (r *LegacyProgressReporter) Stop(ctx context.Context) {
 	var report progrep.ProgressReport
 
 	r.state.RWTransaction(func(s *progressReporterState) {
-		report = buildProgressReport(s.frozen, s.ops)
+		cancelPendingOperations(s.ops)
+
+		report = buildProgressReport(s.ops)
 	})
 
 	func() {
@@ -77,173 +120,155 @@ func (r *LegacyProgressReporter) Stop(ctx context.Context) {
 	}()
 }
 
-func (r *LegacyProgressReporter) startStage(p *Plan, resolvedNamespaces map[string]string, untouched []*InstallableResourceInfo, untouchedResolvedNamespaces map[string]string) {
-	r.state.RWTransaction(func(s *progressReporterState) {
-		if len(s.ops) > 0 {
-			s.frozen = append(s.frozen, buildStageReport(s.ops))
-		}
-
-		predMap := lo.Must(p.Graph.PredecessorMap())
-		ops := p.Operations()
-
-		var entries []opEntry
-
-		entryIndex := make(map[string]int)
-		seenRefs := make(map[progrep.ObjectRef]struct{})
-
-		for _, op := range ops {
-			if op.Category != OperationCategoryResource && op.Category != OperationCategoryTrack {
-				continue
-			}
-
-			ref := extractObjectRef(op, resolvedNamespaces)
-			typ := mapOperationType(op.Type)
-			idx := len(entries)
-			entryIndex[op.ID()] = idx
-			seenRefs[ref] = struct{}{}
-
-			entries = append(entries, opEntry{
-				iteration: int(op.Iteration),
-				ref:       ref,
-				status:    progrep.OperationStatusPending,
-				typ:       typ,
-			})
-		}
-
-		for _, info := range untouched {
-			if info.GetResult == nil {
-				continue
-			}
-
-			ref := progrep.ObjectRef{
-				GroupVersionKind: info.GroupVersionKind,
-				Name:             info.Name,
-				Namespace:        untouchedResolvedNamespaces[info.ID()],
-			}
-
-			if _, ok := seenRefs[ref]; ok {
-				continue
-			}
-
-			seenRefs[ref] = struct{}{}
-
-			entries = append(entries, opEntry{
-				iteration: 0,
-				ref:       ref,
-				status:    progrep.OperationStatusCompleted,
-				// Untouched resources have no real operation; NoOp is a
-				// neutral label for an already-present, unchanged resource shown as Completed.
-				typ: progrep.OperationTypeNoOp,
-			})
-		}
-
-		for _, op := range ops {
-			idx, ok := entryIndex[op.ID()]
-			if !ok {
-				continue
-			}
-
-			var predIndices []int
-			for predID := range predMap[op.ID()] {
-				if predIdx, predOk := entryIndex[predID]; predOk {
-					predIndices = append(predIndices, predIdx)
-				}
-			}
-
-			entries[idx].predIndices = predIndices
-		}
-
-		s.ops = entries
-		s.opIndex = entryIndex
-
-		report := buildProgressReport(s.frozen, s.ops)
-		sendNonBlocking(r.reportCh, report)
-	})
-}
-
-type StartStageOptions struct {
-	// NoUntouchedResources, when true, omits untouched resources from the stage report.
-	// Set it for delta plans, like a failure plan, which only carry operations for the few
-	// resources they act upon: there the release-wide inventory of untouched resources is
-	// not part of what the stage does.
-	NoUntouchedResources bool
+type StartPlanOptions struct {
+	// UntouchedResourcesOnly, when true, omits the plan's own operations and reports the untouched
+	// resources alone. Set it for a plan that is not going to be executed: its operations would
+	// otherwise stay Pending forever.
+	UntouchedResourcesOnly bool
 }
 
 type progressReporterState struct {
-	frozen  []progrep.StageReport
-	opIndex map[string]int
-	ops     []opEntry
-}
-
-type opEntry struct {
-	iteration   int
-	predIndices []int
-	ref         progrep.ObjectRef
-	status      progrep.OperationStatus
-	typ         progrep.OperationType
+	// lastPlanSinkIDs are the report IDs of the operations without successors in the most recently
+	// started plan that had operations. The root operations of the next plan depend on them.
+	lastPlanSinkIDs []string
+	// opIndex maps the raw operation IDs of the most recently started plan to their positions in
+	// ops. Operations of earlier plans are no longer addressable: by the time the next plan starts
+	// they are either done or canceled.
+	opIndex    map[string]int
+	ops        []progrep.Operation
+	plansCount int
 }
 
 func sendNonBlocking(ch chan<- progrep.ProgressReport, report progrep.ProgressReport) {
 	safeSend(ch, report)
 }
 
-func buildProgressReport(frozen []progrep.StageReport, ops []opEntry) progrep.ProgressReport {
-	stageReports := make([]progrep.StageReport, 0, len(frozen)+1)
+func buildPlanOperations(p *Plan, predMap map[string]map[string]graph.Edge[string], resolvedNamespaces map[string]string, idPrefix string, rootDependsOn []string) []progrep.Operation {
+	opIDs := lo.Must(graph.StableTopologicalSort(p.Graph, func(a, b string) bool {
+		return a < b
+	}))
 
-	for _, sr := range frozen {
-		opsCopy := make([]progrep.Operation, len(sr.Operations))
-		copy(opsCopy, sr.Operations)
-		stageReports = append(stageReports, progrep.StageReport{Operations: opsCopy})
-	}
+	result := make([]progrep.Operation, 0, len(opIDs))
 
-	operations := make([]progrep.Operation, len(ops))
-	for i, e := range ops {
-		var waitingFor []progrep.OperationRef
+	for _, opID := range opIDs {
+		op := lo.Must(p.Operation(opID))
 
-		for _, predIdx := range e.predIndices {
-			if ops[predIdx].status != progrep.OperationStatusCompleted {
-				waitingFor = append(waitingFor, progrep.OperationRef{
-					ObjectRef: ops[predIdx].ref,
-					Type:      ops[predIdx].typ,
-					Iteration: ops[predIdx].iteration,
-				})
-			}
+		dependsOn := lo.Keys(predMap[opID])
+		sort.Strings(dependsOn)
+
+		for i := range dependsOn {
+			dependsOn[i] = idPrefix + dependsOn[i]
 		}
 
-		operations[i] = progrep.Operation{
+		if len(dependsOn) == 0 {
+			dependsOn = append(dependsOn, rootDependsOn...)
+		}
+
+		var ref progrep.ObjectRef
+		if op.Category == OperationCategoryResource || op.Category == OperationCategoryTrack {
+			ref = extractObjectRef(op, resolvedNamespaces)
+		}
+
+		result = append(result, progrep.Operation{
 			OperationRef: progrep.OperationRef{
-				ObjectRef: e.ref,
-				Type:      e.typ,
-				Iteration: e.iteration,
+				ObjectRef: ref,
+				Type:      mapOperationType(op),
+				Iteration: int(op.Iteration),
 			},
-			Status:     e.status,
-			WaitingFor: waitingFor,
-		}
+			ID:        idPrefix + opID,
+			Category:  mapOperationCategory(op.Category),
+			Status:    progrep.OperationStatusPending,
+			DependsOn: dependsOn,
+		})
 	}
 
-	stageReports = append(stageReports, progrep.StageReport{Operations: operations})
+	return result
+}
+
+func buildProgressReport(ops []progrep.Operation) progrep.ProgressReport {
+	operations := make([]progrep.Operation, len(ops))
+	copy(operations, ops)
 
 	return progrep.ProgressReport{
-		StageReports: stageReports,
+		Operations: operations,
 	}
 }
 
-func buildStageReport(ops []opEntry) progrep.StageReport {
-	operations := make([]progrep.Operation, len(ops))
-	for i, e := range ops {
-		operations[i] = progrep.Operation{
+// Untouched resources have no operation in the plan and thus no position in its graph, so they
+// are reported without edges, before the plan operations, ordered by ID. NoOp is a neutral label
+// for a resource the plan leaves as is, shown as Completed.
+func buildUntouchedOperations(untouched []*InstallableResourceInfo, untouchedResolvedNamespaces map[string]string, seenRefs map[progrep.ObjectRef]struct{}) []progrep.Operation {
+	var result []progrep.Operation
+
+	for _, info := range untouched {
+		ref := progrep.ObjectRef{
+			GroupVersionKind: info.GroupVersionKind,
+			Name:             info.Name,
+			Namespace:        untouchedResolvedNamespaces[info.ID()],
+		}
+
+		if _, ok := seenRefs[ref]; ok {
+			continue
+		}
+
+		seenRefs[ref] = struct{}{}
+
+		result = append(result, progrep.Operation{
 			OperationRef: progrep.OperationRef{
-				ObjectRef: e.ref,
-				Type:      e.typ,
-				Iteration: e.iteration,
+				ObjectRef: ref,
+				Type:      progrep.OperationTypeNoOp,
+				Iteration: info.Iteration,
 			},
-			Status: e.status,
+			ID:        OperationID(OperationTypeNoop, OperationVersionNoop, OperationIteration(info.Iteration), info.ID()),
+			Category:  progrep.OperationCategoryResource,
+			Status:    progrep.OperationStatusCompleted,
+			DependsOn: []string{},
+		})
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID < result[j].ID
+	})
+
+	return result
+}
+
+// ExecutePlan waits for every started operation before returning, so once a plan is over, what
+// is still Pending was never scheduled and never will be.
+func cancelPendingOperations(ops []progrep.Operation) {
+	for i := range ops {
+		if ops[i].Status == progrep.OperationStatusPending {
+			ops[i].Status = progrep.OperationStatusCanceled
+		}
+	}
+}
+
+func planIDPrefix(planNumber int) string {
+	if planNumber == 1 {
+		return ""
+	}
+
+	return fmt.Sprintf("%d/", planNumber)
+}
+
+func planSinkOperationIDs(predMap map[string]map[string]graph.Edge[string], idPrefix string) []string {
+	hasSuccessors := make(map[string]struct{}, len(predMap))
+	for _, preds := range predMap {
+		for predID := range preds {
+			hasSuccessors[predID] = struct{}{}
 		}
 	}
 
-	return progrep.StageReport{
-		Operations: operations,
+	var sinkIDs []string
+	for opID := range predMap {
+		if _, ok := hasSuccessors[opID]; !ok {
+			sinkIDs = append(sinkIDs, idPrefix+opID)
+		}
 	}
+
+	sort.Strings(sinkIDs)
+
+	return sinkIDs
 }
 
 func safeSend(ch chan<- progrep.ProgressReport, report progrep.ProgressReport) (sent bool) {
