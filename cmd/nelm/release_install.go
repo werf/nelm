@@ -59,7 +59,7 @@ func newReleaseInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 				}
 			}
 
-			if err := action.ReleaseInstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, cfg.ReleaseInstallOptions); err != nil {
+			if _, err := action.ReleaseInstall(ctx, cfg.ReleaseName, cfg.ReleaseNamespace, cfg.ReleaseInstallOptions); err != nil {
 				return fmt.Errorf("install: %w", err)
 			}
 
