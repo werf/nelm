@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.31.0](https://github.com/werf/nelm/compare/v1.30.4...v1.31.0) (2026-09-18)
+
+
+### Features
+
+* **action:** return rendered resources from ReleaseInstall ([#718](https://github.com/werf/nelm/issues/718)) ([312d2f2](https://github.com/werf/nelm/commit/312d2f269472a50c73d89edae914e0b051c73f3f))
+* expose operation graph in progress report ([#717](https://github.com/werf/nelm/issues/717)) ([7bf3d70](https://github.com/werf/nelm/commit/7bf3d70bca9f8bdae578b3faf92f31fec9137578))
+
 ## [1.30.4](https://github.com/werf/nelm/compare/v1.30.3...v1.30.4) (2026-09-14)
 
 
