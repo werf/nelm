@@ -2,10 +2,12 @@ package plan
 
 import (
 	"fmt"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
+	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/legacy/progrep"
 	"github.com/werf/nelm/pkg/resource/spec"
 )
@@ -42,33 +44,8 @@ func extractObjectRef(op *Operation, resolvedNamespaces map[string]string) progr
 	}
 }
 
-func reportOperationStatus(op *Operation, status OperationStatus, reporter *LegacyProgressReporter) {
-	op.Status = status
-
-	if reporter == nil {
-		return
-	}
-
-	reporter.ReportStatus(op.ID(), mapOperationStatus(status))
-}
-
-func mapOperationStatus(s OperationStatus) progrep.OperationStatus {
-	switch s {
-	case OperationStatusUnknown:
-		return progrep.OperationStatusPending
-	case OperationStatusPending:
-		return progrep.OperationStatusProgressing
-	case OperationStatusCompleted:
-		return progrep.OperationStatusCompleted
-	case OperationStatusFailed:
-		return progrep.OperationStatusFailed
-	default:
-		return progrep.OperationStatusPending
-	}
-}
-
-func mapOperationType(t OperationType) progrep.OperationType {
-	switch t {
+func mapOperationType(op *Operation) progrep.OperationType {
+	switch op.Type {
 	case OperationTypeCreate:
 		return progrep.OperationTypeCreate
 	case OperationTypeUpdate:
@@ -85,8 +62,71 @@ func mapOperationType(t OperationType) progrep.OperationType {
 		return progrep.OperationTypeTrackPresence
 	case OperationTypeTrackAbsence:
 		return progrep.OperationTypeTrackAbsence
+	case OperationTypeCreateRelease:
+		return progrep.OperationTypeCreateRelease
+	case OperationTypeUpdateRelease:
+		return progrep.OperationTypeUpdateRelease
+	case OperationTypeDeleteRelease:
+		return progrep.OperationTypeDeleteRelease
+	case OperationTypeNoop:
+		return mapNoopOperationType(op)
 	default:
-		panic(fmt.Sprintf("unexpected operation type %q", t))
+		panic(fmt.Sprintf("unexpected operation type %q", op.Type))
+	}
+}
+
+func reportOperationStatus(op *Operation, status OperationStatus, reporter *LegacyProgressReporter) {
+	op.Status = status
+
+	if reporter == nil {
+		return
+	}
+
+	reporter.ReportStatus(op.ID(), mapOperationStatus(status))
+}
+
+// Stage boundaries are plain noop operations in the plan; only the suffix of their config ID
+// tells a stage start from a stage end, the same way findMetaOperationPairs does.
+func mapNoopOperationType(op *Operation) progrep.OperationType {
+	configID := op.Config.ID()
+
+	switch {
+	case strings.HasSuffix(configID, "/"+common.StageStartSuffix):
+		return progrep.OperationTypeStageStart
+	case strings.HasSuffix(configID, "/"+common.StageEndSuffix):
+		return progrep.OperationTypeStageEnd
+	default:
+		panic(fmt.Sprintf("unexpected noop operation %q", op.ID()))
+	}
+}
+
+func mapOperationCategory(c OperationCategory) progrep.OperationCategory {
+	switch c {
+	case OperationCategoryMeta:
+		return progrep.OperationCategoryMeta
+	case OperationCategoryResource:
+		return progrep.OperationCategoryResource
+	case OperationCategoryTrack:
+		return progrep.OperationCategoryTrack
+	case OperationCategoryRelease:
+		return progrep.OperationCategoryRelease
+	default:
+		panic(fmt.Sprintf("unexpected operation category %q", c))
+	}
+}
+
+func mapOperationStatus(s OperationStatus) progrep.OperationStatus {
+	switch s {
+	case OperationStatusUnknown:
+		return progrep.OperationStatusPending
+	case OperationStatusPending:
+		return progrep.OperationStatusProgressing
+	case OperationStatusCompleted:
+		return progrep.OperationStatusCompleted
+	case OperationStatusFailed:
+		return progrep.OperationStatusFailed
+	default:
+		return progrep.OperationStatusPending
 	}
 }
 

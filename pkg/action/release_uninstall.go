@@ -45,9 +45,9 @@ type ReleaseUninstallOptions struct {
 	// LegacyNoReleaseLock, when true, disables acquiring the werf-synchronization release lock in the cluster.
 	LegacyNoReleaseLock bool
 	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
-	// Must be a buffered channel with capacity >= 1. The caller owns the channel and is responsible
-	// for its lifecycle. Intermediate reports may be dropped if the consumer is slow; the final
-	// report is guaranteed (blocking send). ReleaseUninstall does not close this channel.
+	// Must be a buffered channel with capacity >= 1. Intermediate reports may be dropped if the
+	// consumer is slow; the final report is guaranteed (blocking send). ReleaseUninstall closes the
+	// channel when it returns, on every path. See docs/progress-report.md.
 	LegacyProgressReportCh chan<- progrep.ProgressReport
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
@@ -82,6 +82,10 @@ type ReleaseUninstallOptions struct {
 
 // Uninstall the Helm release along with its resources from the cluster.
 func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseUninstallOptions) error {
+	if opts.LegacyProgressReportCh != nil {
+		defer close(opts.LegacyProgressReportCh)
+	}
+
 	ctx, ctxCancelFn := context.WithCancelCause(ctx)
 
 	if opts.Timeout == 0 {
@@ -299,9 +303,6 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		var reporter *plan.LegacyProgressReporter
 		if opts.LegacyProgressReportCh != nil {
 			reporter = plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
-			defer func() {
-				close(opts.LegacyProgressReportCh)
-			}()
 		}
 
 		log.Default.Debug(ctx, "Execute release delete plan")

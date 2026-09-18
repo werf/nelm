@@ -21,6 +21,7 @@ import (
 	"github.com/werf/nelm/pkg/common"
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
 	"github.com/werf/nelm/pkg/kube"
+	"github.com/werf/nelm/pkg/legacy/progrep"
 	"github.com/werf/nelm/pkg/plan"
 	"github.com/werf/nelm/pkg/resource"
 	"github.com/werf/nelm/pkg/resource/spec"
@@ -125,6 +126,28 @@ func (c *createNamespaceKubeClient) ResetDiscoveryCache(ctx context.Context) err
 
 func (c *createNamespaceKubeClient) ServerVersion(ctx context.Context) (*version.Info, error) {
 	panic("not implemented")
+}
+
+func TestAI_ApplyReleaseInstallOptionsDefaults_AllowsProgressReportWithoutAutoRollback(t *testing.T) {
+	opts := ReleaseInstallOptions{
+		LegacyProgressReportCh: make(chan progrep.ProgressReport, 1),
+		TempDirPath:            t.TempDir(),
+	}
+
+	_, err := applyReleaseInstallOptionsDefaults(opts, t.TempDir(), t.TempDir())
+	require.NoError(t, err)
+}
+
+func TestAI_ApplyReleaseInstallOptionsDefaults_RejectsAutoRollbackWithProgressReport(t *testing.T) {
+	opts := ReleaseInstallOptions{
+		AutoRollback:           true,
+		LegacyProgressReportCh: make(chan progrep.ProgressReport, 1),
+		TempDirPath:            t.TempDir(),
+	}
+
+	_, err := applyReleaseInstallOptionsDefaults(opts, t.TempDir(), t.TempDir())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "auto rollback")
 }
 
 func TestAI_CreateReleaseNamespaceBothProbesForbiddenAggregates(t *testing.T) {
@@ -329,6 +352,44 @@ func TestAI_NewReleaseInstallResultWithoutResources(t *testing.T) {
 	assert.Equal(t, "mynamespace", result.Release.Namespace)
 	assert.Equal(t, 7, result.Release.Revision)
 	assert.Equal(t, helmrelease.StatusSkipped, result.Release.Status)
+}
+
+func TestAI_ReleaseInstall_ClosesProgressReportChannelOnEarlyError(t *testing.T) {
+	reportCh := make(chan progrep.ProgressReport, 1)
+
+	_, err := ReleaseInstall(context.Background(), "rel", "ns", ReleaseInstallOptions{
+		AutoRollback:           true,
+		LegacyProgressReportCh: reportCh,
+		TempDirPath:            t.TempDir(),
+	})
+	require.Error(t, err)
+
+	select {
+	case _, ok := <-reportCh:
+		assert.False(t, ok, "the channel must be closed, not carry a report")
+	default:
+		t.Fatal("the channel must be closed when ReleaseInstall returns")
+	}
+}
+
+func TestAI_ReleaseUninstall_ClosesProgressReportChannelOnEarlyError(t *testing.T) {
+	reportCh := make(chan progrep.ProgressReport, 1)
+
+	opts := ReleaseUninstallOptions{
+		LegacyProgressReportCh: reportCh,
+		TempDirPath:            t.TempDir(),
+	}
+	opts.ReleaseStorageDriver = common.ReleaseStorageDriverMemory
+
+	err := ReleaseUninstall(context.Background(), "rel", "ns", opts)
+	require.Error(t, err)
+
+	select {
+	case _, ok := <-reportCh:
+		assert.False(t, ok, "the channel must be closed, not carry a report")
+	default:
+		t.Fatal("the channel must be closed when ReleaseUninstall returns")
+	}
 }
 
 func newForbiddenErr(resource, name string) error {

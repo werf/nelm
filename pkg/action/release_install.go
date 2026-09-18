@@ -98,9 +98,10 @@ type ReleaseInstallOptions struct {
 	// LegacyNoReleaseLock, when true, disables acquiring the werf-synchronization release lock in the cluster.
 	LegacyNoReleaseLock bool
 	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
-	// Must be a buffered channel with capacity >= 1. The caller owns the channel and is responsible
-	// for its lifecycle. Intermediate reports may be dropped if the consumer is slow; the final
-	// report is guaranteed (blocking send). ReleaseInstall does not close this channel.
+	// Must be a buffered channel with capacity >= 1. Intermediate reports may be dropped if the
+	// consumer is slow; the final report is guaranteed (blocking send). ReleaseInstall closes the
+	// channel when it returns, on every path. Incompatible with AutoRollback. See
+	// docs/progress-report.md.
 	LegacyProgressReportCh chan<- progrep.ProgressReport
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
@@ -139,9 +140,8 @@ type runRollbackPlanOptions struct {
 	common.ReleaseInstallRuntimeOptions
 	common.TrackingOptions
 
-	LegacyProgressReporter *plan.LegacyProgressReporter
-	NetworkParallelism     int
-	RollbackGraphPath      string
+	NetworkParallelism int
+	RollbackGraphPath  string
 }
 
 type runRollbackPlanResult struct {
@@ -172,6 +172,10 @@ type releaseInstallOutcome struct {
 // errors. The result is also returned when the release was skipped as already up to date
 // (Release.Status is StatusSkipped) and when non-critical errors are returned alongside it.
 func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseInstallOptions) (*ReleaseInstallResultV1, error) {
+	if opts.LegacyProgressReportCh != nil {
+		defer close(opts.LegacyProgressReportCh)
+	}
+
 	ctx, ctxCancelFn := context.WithCancelCause(ctx)
 
 	if opts.Timeout == 0 {
@@ -565,9 +569,10 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		if opts.LegacyProgressReportCh != nil {
 			reporter := plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
-			defer close(opts.LegacyProgressReportCh)
 
-			reporter.StartStage(installPlan, releaseNamespace, instResInfos, clientFactory.Mapper(), plan.StartStageOptions{})
+			reporter.StartPlan(installPlan, releaseNamespace, instResInfos, clientFactory.Mapper(), plan.StartPlanOptions{
+				UntouchedResourcesOnly: true,
+			})
 			reporter.Stop(ctx)
 		}
 
@@ -610,7 +615,6 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	var reporter *plan.LegacyProgressReporter
 	if opts.LegacyProgressReportCh != nil {
 		reporter = plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
-		defer close(opts.LegacyProgressReportCh)
 	}
 
 	log.Default.Debug(ctx, "Execute release install plan")
@@ -661,7 +665,6 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			runRollbackPlanResult, nonCritErrs, critErrs := runRollbackPlan(ctx, releaseName, releaseNamespace, newRelease, prevDeployedRelease, taskStore, logStore, informerFactory, history, clientFactory, runRollbackPlanOptions{
 				ReleaseInstallRuntimeOptions: opts.ReleaseInstallRuntimeOptions,
 				TrackingOptions:              opts.TrackingOptions,
-				LegacyProgressReporter:       reporter,
 				NetworkParallelism:           opts.NetworkParallelism,
 				RollbackGraphPath:            opts.RollbackGraphPath,
 			})
@@ -766,6 +769,10 @@ func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir, 
 
 	if opts.LegacyLogRegistryStreamOut == nil {
 		opts.LegacyLogRegistryStreamOut = io.Discard
+	}
+
+	if opts.AutoRollback && opts.LegacyProgressReportCh != nil {
+		return ReleaseInstallOptions{}, fmt.Errorf("auto rollback is not supported together with legacy progress reporting")
 	}
 
 	if opts.NetworkParallelism <= 0 {
@@ -1026,10 +1033,6 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 	})
 
 	if releaseIsUpToDate && planIsUseless {
-		if opts.LegacyProgressReporter != nil {
-			opts.LegacyProgressReporter.StartStage(rollbackPlan, releaseNamespace, instResInfos, clientFactory.Mapper(), plan.StartStageOptions{})
-		}
-
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Skipped rollback release")+" %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)
 
 		return &runRollbackPlanResult{}, nonCritErrs, critErrs
@@ -1038,7 +1041,6 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 	log.Default.Debug(ctx, "Execute rollback plan")
 
 	executePlanErr := plan.ExecutePlan(ctx, releaseNamespace, rollbackPlan, taskStore, logStore, informerFactory, history, clientFactory, plan.ExecutePlanOptions{
-		LegacyProgressReporter:   opts.LegacyProgressReporter,
 		TrackingOptions:          opts.TrackingOptions,
 		NetworkParallelism:       opts.NetworkParallelism,
 		InstallableResourceInfos: instResInfos,
@@ -1065,9 +1067,8 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	if executePlanErr != nil {
 		runFailurePlanResult, nonCrErrs, crErrs := runFailurePlan(ctx, releaseNamespace, rollbackPlan, instResInfos, relInfos, taskStore, logStore, informerFactory, history, clientFactory, runFailureInstallPlanOptions{
-			LegacyProgressReporter: opts.LegacyProgressReporter,
-			TrackingOptions:        opts.TrackingOptions,
-			NetworkParallelism:     opts.NetworkParallelism,
+			TrackingOptions:    opts.TrackingOptions,
+			NetworkParallelism: opts.NetworkParallelism,
 		})
 
 		critErrs.Add(crErrs)
