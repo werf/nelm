@@ -18,7 +18,12 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/werf/nelm/pkg/common"
+	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
 	"github.com/werf/nelm/pkg/kube"
+	"github.com/werf/nelm/pkg/legacy/progrep"
+	"github.com/werf/nelm/pkg/plan"
+	"github.com/werf/nelm/pkg/resource"
 	"github.com/werf/nelm/pkg/resource/spec"
 )
 
@@ -117,6 +122,28 @@ func (c *createNamespaceKubeClient) ResetDiscoveryCache(ctx context.Context) err
 
 func (c *createNamespaceKubeClient) ServerVersion(ctx context.Context) (*version.Info, error) {
 	panic("not implemented")
+}
+
+func TestAI_ApplyReleaseInstallOptionsDefaults_AllowsProgressReportWithoutAutoRollback(t *testing.T) {
+	opts := ReleaseInstallOptions{
+		LegacyProgressReportCh: make(chan progrep.ProgressReport, 1),
+		TempDirPath:            t.TempDir(),
+	}
+
+	_, err := applyReleaseInstallOptionsDefaults(opts, t.TempDir(), t.TempDir())
+	require.NoError(t, err)
+}
+
+func TestAI_ApplyReleaseInstallOptionsDefaults_RejectsAutoRollbackWithProgressReport(t *testing.T) {
+	opts := ReleaseInstallOptions{
+		AutoRollback:           true,
+		LegacyProgressReportCh: make(chan progrep.ProgressReport, 1),
+		TempDirPath:            t.TempDir(),
+	}
+
+	_, err := applyReleaseInstallOptionsDefaults(opts, t.TempDir(), t.TempDir())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "auto rollback")
 }
 
 func TestAI_CreateReleaseNamespaceBothProbesForbiddenAggregates(t *testing.T) {
@@ -238,10 +265,160 @@ func TestAI_CreateReleaseNamespaceRealCreateFailurePropagates(t *testing.T) {
 	assert.Equal(t, createNamespaceCall{dryRun: false, kind: "Namespace"}, kubeClient.calls[2])
 }
 
+func TestAI_NewReleaseInstallResultDeduplicatesMultiStageResources(t *testing.T) {
+	hookInfo := newTestInstallableResourceInfo("batch/v1", "Job", "myhook", "mynamespace", "mynamespace", "mychart/templates/hook.yaml", common.StoreAsHook, map[string]string{
+		"helm.sh/hook": "pre-install,post-install",
+	})
+	hookInfo.Stage = common.StagePreInstall
+
+	postHookInfo := *hookInfo
+	postHookInfo.Stage = common.StagePostInstall
+
+	cmInfo := newTestInstallableResourceInfo("v1", "ConfigMap", "mycm", "mynamespace", "mynamespace", "mychart/templates/configmap.yaml", common.StoreAsRegular, nil)
+	cmInfo.Stage = common.StageInstall
+
+	instResInfos := []*plan.InstallableResourceInfo{hookInfo, &postHookInfo, cmInfo}
+
+	result := newReleaseInstallResult("myrelease", "mynamespace", 1, helmrelease.StatusDeployed, instResInfos)
+
+	require.Len(t, result.Resources, 2)
+	assert.Same(t, hookInfo.LocalResource.ResourceSpec, result.Resources[0])
+	assert.Equal(t, "myhook", result.Resources[0].Name)
+	assert.Equal(t, "mycm", result.Resources[1].Name)
+}
+
+func TestAI_NewReleaseInstallResultKeepsResourceSpecData(t *testing.T) {
+	releaseAnnotations := map[string]string{
+		"meta.helm.sh/release-name":      "myrelease",
+		"meta.helm.sh/release-namespace": "mynamespace",
+	}
+
+	instResInfos := []*plan.InstallableResourceInfo{
+		newTestInstallableResourceInfo("v1", "ConfigMap", "mycm", "mynamespace", "mynamespace", "mychart/templates/configmap.yaml", common.StoreAsRegular, releaseAnnotations),
+		newTestInstallableResourceInfo("v1", "ConfigMap", "othercm", "othernamespace", "mynamespace", "mychart/templates/other.yaml", common.StoreAsRegular, nil),
+	}
+
+	result := newReleaseInstallResult("myrelease", "mynamespace", 1, helmrelease.StatusDeployed, instResInfos)
+
+	require.Len(t, result.Resources, 2)
+
+	assert.Same(t, instResInfos[0].LocalResource.ResourceSpec, result.Resources[0])
+	assert.Equal(t, "mychart/templates/configmap.yaml", result.Resources[0].FilePath)
+	assert.Equal(t, releaseAnnotations, result.Resources[0].Annotations)
+	assert.Equal(t, "myrelease", result.Resources[0].Unstruct.GetAnnotations()["meta.helm.sh/release-name"])
+
+	assert.Empty(t, result.Resources[0].Namespace)
+	assert.Equal(t, "othernamespace", result.Resources[1].Namespace)
+}
+
+func TestAI_NewReleaseInstallResultSortsResources(t *testing.T) {
+	instResInfos := []*plan.InstallableResourceInfo{
+		newTestInstallableResourceInfo("v1", "Service", "mysvc", "mynamespace", "mynamespace", "mychart/templates/service.yaml", common.StoreAsRegular, nil),
+		newTestInstallableResourceInfo("v1", "ConfigMap", "mycm", "mynamespace", "mynamespace", "mychart/templates/configmap.yaml", common.StoreAsRegular, nil),
+		newTestInstallableResourceInfo("batch/v1", "Job", "myhook", "mynamespace", "mynamespace", "mychart/templates/hook.yaml", common.StoreAsHook, nil),
+		newTestInstallableResourceInfo("apiextensions.k8s.io/v1", "CustomResourceDefinition", "mycrd", "", "mynamespace", "mychart/crds/mycrd.yaml", common.StoreAsNone, nil),
+	}
+
+	result := newReleaseInstallResult("myrelease", "mynamespace", 1, helmrelease.StatusDeployed, instResInfos)
+
+	require.Len(t, result.Resources, 4)
+
+	assert.Equal(t, common.StoreAsNone, result.Resources[0].StoreAs)
+	assert.Equal(t, "mycrd", result.Resources[0].Name)
+
+	assert.Equal(t, common.StoreAsHook, result.Resources[1].StoreAs)
+	assert.Equal(t, "myhook", result.Resources[1].Name)
+
+	assert.Equal(t, common.StoreAsRegular, result.Resources[2].StoreAs)
+	assert.Equal(t, "mycm", result.Resources[2].Name)
+
+	assert.Equal(t, common.StoreAsRegular, result.Resources[3].StoreAs)
+	assert.Equal(t, "mysvc", result.Resources[3].Name)
+}
+
+func TestAI_NewReleaseInstallResultWithoutResources(t *testing.T) {
+	result := newReleaseInstallResult("myrelease", "mynamespace", 7, helmrelease.StatusSkipped, nil)
+
+	require.NotNil(t, result)
+	assert.Equal(t, "v1", result.APIVersion)
+	assert.Empty(t, result.Resources)
+
+	require.NotNil(t, result.Release)
+	assert.Equal(t, "myrelease", result.Release.Name)
+	assert.Equal(t, "mynamespace", result.Release.Namespace)
+	assert.Equal(t, 7, result.Release.Revision)
+	assert.Equal(t, helmrelease.StatusSkipped, result.Release.Status)
+}
+
+func TestAI_ReleaseInstall_ClosesProgressReportChannelOnEarlyError(t *testing.T) {
+	reportCh := make(chan progrep.ProgressReport, 1)
+
+	_, err := ReleaseInstall(context.Background(), "rel", "ns", ReleaseInstallOptions{
+		AutoRollback:           true,
+		LegacyProgressReportCh: reportCh,
+		TempDirPath:            t.TempDir(),
+	})
+	require.Error(t, err)
+
+	select {
+	case _, ok := <-reportCh:
+		assert.False(t, ok, "the channel must be closed, not carry a report")
+	default:
+		t.Fatal("the channel must be closed when ReleaseInstall returns")
+	}
+}
+
+func TestAI_ReleaseUninstall_ClosesProgressReportChannelOnEarlyError(t *testing.T) {
+	reportCh := make(chan progrep.ProgressReport, 1)
+
+	opts := ReleaseUninstallOptions{
+		LegacyProgressReportCh: reportCh,
+		TempDirPath:            t.TempDir(),
+	}
+	opts.ReleaseStorageDriver = common.ReleaseStorageDriverMemory
+
+	err := ReleaseUninstall(context.Background(), "rel", "ns", opts)
+	require.Error(t, err)
+
+	select {
+	case _, ok := <-reportCh:
+		assert.False(t, ok, "the channel must be closed, not carry a report")
+	default:
+		t.Fatal("the channel must be closed when ReleaseUninstall returns")
+	}
+}
+
 func newForbiddenErr(resource, name string) error {
 	return apierrors.NewForbidden(schema.GroupResource{Resource: resource}, name, errors.New("forbidden"))
 }
 
 func newNotFoundErr(resource, name string) error {
 	return apierrors.NewNotFound(schema.GroupResource{Resource: resource}, name)
+}
+
+func newTestInstallableResourceInfo(apiVersion, kind, name, namespace, releaseNamespace, filePath string, storeAs common.StoreAs, annotations map[string]string) *plan.InstallableResourceInfo {
+	unstruct := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": apiVersion,
+			"kind":       kind,
+			"metadata": map[string]interface{}{
+				"name":      name,
+				"namespace": namespace,
+			},
+		},
+	}
+
+	if len(annotations) > 0 {
+		unstruct.SetAnnotations(annotations)
+	}
+
+	resSpec := spec.NewResourceSpec(unstruct, releaseNamespace, spec.ResourceSpecOptions{
+		FilePath: filePath,
+		StoreAs:  storeAs,
+	})
+
+	return &plan.InstallableResourceInfo{
+		ResourceMeta:  resSpec.ResourceMeta,
+		LocalResource: &resource.InstallableResource{ResourceSpec: resSpec},
+	}
 }
