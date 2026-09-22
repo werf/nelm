@@ -13,6 +13,54 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
+func TestAI_IsImmutableErr(t *testing.T) {
+	statefulSetGK := schema.GroupKind{Group: "apps", Kind: "StatefulSet"}
+	pvcGK := schema.GroupKind{Kind: "PersistentVolumeClaim"}
+
+	apimachineryImmutableErr := apierrors.NewInvalid(schema.GroupKind{Group: "batch", Kind: "Job"}, "backup", field.ErrorList{
+		field.Invalid(field.NewPath("spec", "selector"), "", "field is immutable"),
+	})
+	statefulSetErr := apierrors.NewInvalid(statefulSetGK, "db", field.ErrorList{
+		field.Forbidden(field.NewPath("spec"), "updates to statefulset spec for fields other than 'replicas', 'ordinals', 'template', 'updateStrategy', 'revisionHistoryLimit', 'persistentVolumeClaimRetentionPolicy' and 'minReadySeconds' are forbidden"),
+	})
+	storageClassErr := apierrors.NewInvalid(schema.GroupKind{Group: "storage.k8s.io", Kind: "StorageClass"}, "fast", field.ErrorList{
+		field.Forbidden(field.NewPath("provisioner"), "updates to provisioner are forbidden."),
+	})
+	pvcErr := apierrors.NewInvalid(pvcGK, "data", field.ErrorList{
+		field.Forbidden(field.NewPath("spec"), "spec is immutable after creation except resources.requests and volumeAttributesClassName for bound claims\n  core.PersistentVolumeClaimSpec{...}"),
+	})
+	podErr := apierrors.NewInvalid(schema.GroupKind{Kind: "Pod"}, "debug", field.ErrorList{
+		field.Forbidden(field.NewPath("spec"), "pod updates may not change fields other than `spec.containers[*].image`,`spec.initContainers[*].image`,`spec.activeDeadlineSeconds`,`spec.tolerations` (only additions to existing tolerations),`spec.terminationGracePeriodSeconds` (allow it to be set to 1 if it was previously negative)\n  core.PodSpec{...}"),
+	})
+	serviceErr := apierrors.NewInvalid(schema.GroupKind{Kind: "Service"}, "web", field.ErrorList{
+		field.Invalid(field.NewPath("spec", "clusterIPs").Index(0), []string{"10.0.0.1"}, "may not change once set"),
+	})
+
+	assert.True(t, IsImmutableErr(apimachineryImmutableErr))
+	assert.True(t, IsImmutableErr(statefulSetErr))
+	assert.True(t, IsImmutableErr(storageClassErr))
+	assert.True(t, IsImmutableErr(pvcErr))
+	assert.True(t, IsImmutableErr(podErr))
+	assert.True(t, IsImmutableErr(serviceErr))
+	assert.True(t, IsImmutableErr(fmt.Errorf("retryable on webhook error: %w", statefulSetErr)))
+
+	assert.False(t, IsImmutableErr(nil))
+	assert.False(t, IsImmutableErr(apierrors.NewInvalid(statefulSetGK, "db", field.ErrorList{
+		field.Invalid(field.NewPath("spec", "replicas"), -1, "must be greater than or equal to 0"),
+	})))
+	assert.False(t, IsImmutableErr(apierrors.NewInvalid(statefulSetGK, "db", field.ErrorList{
+		field.Required(field.NewPath("spec", "selector"), ""),
+	})))
+	assert.False(t, IsImmutableErr(apierrors.NewInvalid(pvcGK, "data", field.ErrorList{
+		field.Forbidden(field.NewPath("spec", "resources", "requests", "storage"), "field can not be less than previous value"),
+	})))
+	assert.False(t, IsImmutableErr(apierrors.NewInvalid(schema.GroupKind{Group: "example.com", Kind: "Widget"}, "w", field.ErrorList{
+		field.Invalid(field.NewPath("spec", "count"), -1, "negative values are forbidden"),
+	})))
+	assert.False(t, IsImmutableErr(apierrors.NewForbidden(schema.GroupResource{Group: "apps", Resource: "statefulsets"}, "db", errors.New("updates to statefulset spec are forbidden"))))
+	assert.False(t, IsImmutableErr(errors.New("updates to statefulset spec are forbidden")))
+}
+
 func TestAI_IsInvalidErr(t *testing.T) {
 	invalidErr := apierrors.NewInvalid(schema.GroupKind{}, "", field.ErrorList{
 		field.Invalid(field.NewPath("patch"), "", "bad"),
