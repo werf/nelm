@@ -2,26 +2,19 @@ package release
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"sync"
 	"time"
 
 	"github.com/samber/lo"
 
 	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
-	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	"github.com/werf/nelm/pkg/helm/pkg/storage/driver"
 )
 
 var _ Historier = (*History)(nil)
 
 type Historier interface {
-	Releases() []helmrel.Accessor
-	FindAllDeployed() []helmrel.Accessor
-	FindRevision(revision int) (helmrel.Accessor, bool)
 	CreateRelease(ctx context.Context, rel helmrel.Accessor) error
 	UpdateRelease(ctx context.Context, rel helmrel.Accessor) error
 	DeleteRelease(ctx context.Context, name string, revision int) error
@@ -29,21 +22,9 @@ type Historier interface {
 
 type History struct {
 	releaseName string
-	releases    []helmrel.Accessor
+	revisions   []Revision
 	storage     ReleaseStorager
 	updateLock  sync.Mutex
-}
-
-func NewHistory(rels []helmrel.Accessor, releaseName string, historyStorage ReleaseStorager, opts HistoryOptions) *History {
-	sort.SliceStable(rels, func(i, j int) bool {
-		return rels[i].Version() < rels[j].Version()
-	})
-
-	return &History{
-		releaseName: releaseName,
-		releases:    rels,
-		storage:     historyStorage,
-	}
 }
 
 func (h *History) CreateRelease(ctx context.Context, rel helmrel.Accessor) error {
@@ -58,7 +39,7 @@ func (h *History) CreateRelease(ctx context.Context, rel helmrel.Accessor) error
 		return fmt.Errorf("create release %q (namespace: %q, revision: %d): %w", rel.Name(), rel.Namespace(), rel.Version(), err)
 	}
 
-	h.releases = append(h.releases, rel)
+	h.revisions = append(h.revisions, revisionFromAccessor(rel))
 
 	return nil
 }
@@ -67,53 +48,33 @@ func (h *History) DeleteRelease(ctx context.Context, name string, revision int) 
 	h.updateLock.Lock()
 	defer h.updateLock.Unlock()
 
-	rel, err := h.storage.Delete(name, revision)
-	if err != nil {
+	if _, err := h.storage.Delete(name, revision); err != nil {
 		return fmt.Errorf("uninstall release %q (revision: %d): %w", name, revision, err)
 	}
 
-	if _, i, found := lo.FindIndexOf(h.releases, func(existing helmrel.Accessor) bool {
-		return existing.Version() == rel.Version()
-	}); !found {
+	_, i, found := lo.FindIndexOf(h.revisions, func(existing Revision) bool {
+		return existing.Version == revision
+	})
+	if !found {
 		return nil
-	} else {
-		h.releases = slices.Delete(h.releases, i, i+1)
 	}
+
+	h.revisions = slices.Delete(h.revisions, i, i+1)
 
 	return nil
 }
 
-func (h *History) FindAllDeployed() []helmrel.Accessor {
-	_, lastUninstalledRelIndex, lastUninstalledRelFound := lo.FindLastIndexOf(h.releases, func(r helmrel.Accessor) bool {
-		return r.Status() == helmreleasecommon.StatusUninstalled.String() ||
-			r.Status() == helmreleasecommon.StatusUninstalling.String()
-	})
-
-	var relsSinceUninstalled []helmrel.Accessor
-	if lastUninstalledRelFound {
-		if lastUninstalledRelIndex == len(h.releases)-1 {
-			return nil
-		}
-
-		relsSinceUninstalled = h.releases[lastUninstalledRelIndex+1:]
-	} else {
-		relsSinceUninstalled = h.releases
+func (h *History) Release(ctx context.Context, version int) (helmrel.Accessor, error) {
+	rel, err := h.storage.GetRelease(h.releaseName, version)
+	if err != nil {
+		return nil, fmt.Errorf("get release %q (revision: %d): %w", h.releaseName, version, err)
 	}
 
-	return lo.Filter(relsSinceUninstalled, func(r helmrel.Accessor, _ int) bool {
-		return r.Status() == helmreleasecommon.StatusDeployed.String() ||
-			r.Status() == helmreleasecommon.StatusSuperseded.String()
-	})
+	return rel, nil
 }
 
-func (h *History) FindRevision(revision int) (helmrel.Accessor, bool) {
-	return lo.Find(h.releases, func(r helmrel.Accessor) bool {
-		return r.Version() == revision
-	})
-}
-
-func (h *History) Releases() []helmrel.Accessor {
-	return h.releases
+func (h *History) Revisions() []Revision {
+	return h.revisions
 }
 
 func (h *History) UpdateRelease(ctx context.Context, rel helmrel.Accessor) error {
@@ -128,65 +89,36 @@ func (h *History) UpdateRelease(ctx context.Context, rel helmrel.Accessor) error
 		return fmt.Errorf("update release %q (namespace: %q, revision: %d): %w", rel.Name(), rel.Namespace(), rel.Version(), err)
 	}
 
-	if _, i, found := lo.FindIndexOf(h.releases, func(existing helmrel.Accessor) bool {
-		return existing.Version() == rel.Version()
-	}); !found {
+	_, i, found := lo.FindIndexOf(h.revisions, func(existing Revision) bool {
+		return existing.Version == rel.Version()
+	})
+	if !found {
 		return fmt.Errorf("release %q (namespace: %q, revision: %d) not found in history", rel.Name(), rel.Namespace(), rel.Version())
-	} else {
-		h.releases[i] = rel
 	}
+
+	h.revisions[i] = revisionFromAccessor(rel)
 
 	return nil
 }
 
-type HistoryOptions struct{}
-
-func BuildHistories(historyStorage ReleaseStorager, opts HistoryOptions) ([]*History, error) {
-	rels, err := historyStorage.Query(map[string]string{"owner": "helm"})
-	if err != nil && !errors.Is(err, driver.ErrReleaseNotFound) {
-		return nil, fmt.Errorf("query releases: %w", err)
+func BuildHistory(ctx context.Context, releaseName string, historyStorage ReleaseStorager) (*History, error) {
+	revisions, err := historyStorage.Revisions(ctx, releaseName)
+	if err != nil {
+		return nil, fmt.Errorf("list revisions for release %q: %w", releaseName, err)
 	}
 
-	releasesByNamespace := map[string]map[string][]helmrel.Accessor{}
-	for _, rel := range rels {
-		if releasesByNamespace[rel.Namespace()] == nil {
-			releasesByNamespace[rel.Namespace()] = map[string][]helmrel.Accessor{}
-		}
-
-		if releasesByNamespace[rel.Namespace()][rel.Name()] == nil {
-			releasesByNamespace[rel.Namespace()][rel.Name()] = []helmrel.Accessor{}
-		}
-
-		releasesByNamespace[rel.Namespace()][rel.Name()] = append(releasesByNamespace[rel.Namespace()][rel.Name()], rel)
-	}
-
-	var histories []*History
-	for _, releasesFromNamespace := range releasesByNamespace {
-		for relName, revisions := range releasesFromNamespace {
-			history := NewHistory(
-				revisions,
-				relName,
-				historyStorage,
-				opts,
-			)
-
-			histories = append(histories, history)
-		}
-	}
-
-	return histories, nil
+	return &History{
+		releaseName: releaseName,
+		revisions:   revisions,
+		storage:     historyStorage,
+	}, nil
 }
 
-func BuildHistory(releaseName string, historyStorage ReleaseStorager, opts HistoryOptions) (*History, error) {
-	rels, err := historyStorage.Query(map[string]string{"name": releaseName, "owner": "helm"})
-	if err != nil && !errors.Is(err, driver.ErrReleaseNotFound) {
-		return nil, fmt.Errorf("query releases for release %q: %w", releaseName, err)
+func revisionFromAccessor(rel helmrel.Accessor) Revision {
+	return Revision{
+		Name:      rel.Name(),
+		Namespace: rel.Namespace(),
+		Version:   rel.Version(),
+		Status:    rel.Status(),
 	}
-
-	return NewHistory(
-		rels,
-		releaseName,
-		historyStorage,
-		opts,
-	), nil
 }
