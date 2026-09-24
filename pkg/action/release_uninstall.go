@@ -201,19 +201,25 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 		log.Default.Debug(ctx, "Build release history")
 
-		history, err := release.BuildHistory(releaseName, releaseStorage, release.HistoryOptions{})
+		history, err := release.BuildHistory(ctx, releaseName, releaseStorage)
 		if err != nil {
 			return fmt.Errorf("build release history: %w", err)
 		}
 
-		releases := history.Releases()
-		if len(releases) == 0 {
+		revisions := history.Revisions()
+		if len(revisions) == 0 {
 			log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q) uninstall: no release found", releaseName, releaseNamespace)))
 
 			return nil
 		}
 
-		prevRelease := lo.LastOrEmpty(releases)
+		lastRevision, _ := lo.Last(revisions)
+
+		prevRelease, err := history.Release(ctx, lastRevision.Version)
+		if err != nil {
+			return fmt.Errorf("get last release: %w", err)
+		}
+
 		prevReleaseFailed := prevRelease.Status() == helmreleasestatus.StatusFailed.String()
 		deployType := common.DeployTypeUninstall
 
@@ -266,7 +272,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 		log.Default.Debug(ctx, "Build release infos")
 
-		relInfos, err := plan.BuildReleaseInfos(ctx, deployType, releases, nil)
+		relInfos, err := plan.BuildUninstallReleaseInfos(ctx, revisions, prevRelease)
 		if err != nil {
 			return fmt.Errorf("build release infos: %w", err)
 		}

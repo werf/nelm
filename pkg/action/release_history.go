@@ -3,6 +3,7 @@ package action
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -18,6 +19,7 @@ import (
 	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/pkg/helm/pkg/storage/driver"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
 	"github.com/werf/nelm/pkg/release"
@@ -114,16 +116,15 @@ func ReleaseHistory(ctx context.Context, releaseName, releaseNamespace string, o
 
 	log.Default.Info(ctx, "Build release history")
 
-	history, err := release.BuildHistory(releaseName, releaseStorage, release.HistoryOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("build release history: %w", err)
+	releases, err := releaseStorage.Query(map[string]string{"name": releaseName, "owner": "helm"})
+	if err != nil && !errors.Is(err, driver.ErrReleaseNotFound) {
+		return nil, fmt.Errorf("query releases for release %q: %w", releaseName, err)
 	}
 
 	result := &ReleaseHistoryResultV1{
 		APIVersion: "v1",
 	}
 
-	releases := history.Releases()
 	if len(releases) == 0 {
 		return nil, &ReleaseNotFoundError{
 			ReleaseName:      releaseName,

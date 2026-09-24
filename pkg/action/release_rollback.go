@@ -175,57 +175,66 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	log.Default.Debug(ctx, "Build release history")
 
-	history, err := release.BuildHistory(releaseName, releaseStorage, release.HistoryOptions{})
+	history, err := release.BuildHistory(ctx, releaseName, releaseStorage)
 	if err != nil {
 		return fmt.Errorf("build release history: %w", err)
 	}
 
-	releases := history.Releases()
-	if len(releases) == 0 {
+	revisions := history.Revisions()
+	if len(revisions) == 0 {
 		return fmt.Errorf("not found release %q (namespace: %q)", releaseName, releaseNamespace)
 	}
 
-	deployedReleases := history.FindAllDeployed()
-	prevRelease := lo.LastOrEmpty(releases)
-	prevDeployedRelease := lo.LastOrEmpty(deployedReleases)
+	deployedRevisions := release.DeployedRevisions(revisions)
+	lastRevision, _ := lo.Last(revisions)
+	lastDeployedRevision, lastDeployedFound := lo.Last(deployedRevisions)
 
-	var rollbackRelease helmrel.Accessor
+	var rollbackRevision release.Revision
 	if opts.Revision == 0 {
-		if len(deployedReleases) == 0 {
+		if !lastDeployedFound {
 			return fmt.Errorf("not found successfully deployed release %q (namespace: %q)", releaseName, releaseNamespace)
 		}
 
-		if prevDeployedRelease.Version() != prevRelease.Version() {
-			rollbackRelease = prevDeployedRelease
+		if lastDeployedRevision.Version != lastRevision.Version {
+			rollbackRevision = lastDeployedRevision
 		} else {
-			if len(deployedReleases) < 2 {
+			if len(deployedRevisions) < 2 {
 				return fmt.Errorf("not found successfully deployed (except last) release %q (namespace: %q)", releaseName, releaseNamespace)
 			}
 
-			rollbackRelease = deployedReleases[len(deployedReleases)-2]
+			rollbackRevision = deployedRevisions[len(deployedRevisions)-2]
 		}
 	} else {
 		var found bool
 
-		rollbackRelease, found = lo.Find(releases, func(rel helmrel.Accessor) bool {
-			return rel.Version() == opts.Revision
+		rollbackRevision, found = lo.Find(revisions, func(rev release.Revision) bool {
+			return rev.Version == opts.Revision
 		})
 		if !found {
 			return fmt.Errorf("not found revision %d for release %q (namespace: %q)", opts.Revision, releaseName, releaseNamespace)
 		}
 	}
 
-	var (
-		newRevision       int
-		prevReleaseFailed bool
-	)
-
-	if prevRelease != nil {
-		newRevision = prevRelease.Version() + 1
-		prevReleaseFailed = prevRelease.Status() == helmreleasestatus.StatusFailed.String()
-	} else {
-		newRevision = 1
+	rollbackRelease, err := history.Release(ctx, rollbackRevision.Version)
+	if err != nil {
+		return fmt.Errorf("get release revision to rollback to: %w", err)
 	}
+
+	prevRelease, err := history.Release(ctx, lastRevision.Version)
+	if err != nil {
+		return fmt.Errorf("get previous release: %w", err)
+	}
+
+	var prevDeployedRelease helmrel.Accessor
+	if lastDeployedFound {
+		prevDeployedRelease, err = history.Release(ctx, lastDeployedRevision.Version)
+		if err != nil {
+			return fmt.Errorf("get previous deployed release: %w", err)
+		}
+	}
+
+	newRevision := lastRevision.Version + 1
+	prevReleaseFailed := lastRevision.Status == helmreleasestatus.StatusFailed.String()
 
 	deployType := common.DeployTypeRollback
 
@@ -344,7 +353,12 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, releases, newRelease)
+	prevDeployedReleases, err := loadDeployedReleases(releaseName, revisions, releaseStorage)
+	if err != nil {
+		return fmt.Errorf("load deployed releases: %w", err)
+	}
+
+	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, prevDeployedReleases, newRelease)
 	if err != nil {
 		return fmt.Errorf("build release infos: %w", err)
 	}
