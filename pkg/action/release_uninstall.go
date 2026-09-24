@@ -47,6 +47,12 @@ type ReleaseUninstallOptions struct {
 	DeleteReleaseNamespace bool
 	// LegacyNoReleaseLock, when true, disables acquiring the werf-synchronization release lock in the cluster.
 	LegacyNoReleaseLock bool
+	// LegacyPatches are patch rules supplied programmatically, applied after
+	// chart-shipped and PatchesFiles rules. Rules are UNSCOPED: use Match.Charts to
+	// constrain a rule to a (sub)chart, which matches chart path segments and so does not
+	// reach nested sub-subcharts unless they are listed too. Nothing is rendered during an uninstall,
+	// so only diff patches (drift detection) have an effect here.
+	LegacyPatches spec.Patches
 	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
 	// Must be a buffered channel with capacity >= 1. Intermediate reports may be dropped if the
 	// consumer is slow; the final report is guaranteed (blocking send). ReleaseUninstall closes the
@@ -249,7 +255,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			return fmt.Errorf("access chart of previous release: %w", err)
 		}
 
-		patches, err := resolvePatches(uninstallChart, opts.DefaultPatchesDisable, opts.PatchesFiles)
+		patches, err := resolvePatches(uninstallChart, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches)
 		if err != nil {
 			return fmt.Errorf("resolve patches: %w", err)
 		}

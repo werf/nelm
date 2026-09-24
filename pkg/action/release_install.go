@@ -99,6 +99,14 @@ type ReleaseInstallOptions struct {
 	LegacyLogRegistryStreamOut io.Writer
 	// LegacyNoReleaseLock, when true, disables acquiring the werf-synchronization release lock in the cluster.
 	LegacyNoReleaseLock bool
+	// LegacyPatches are patch rules supplied programmatically, applied after
+	// chart-shipped and PatchesFiles rules. Rules are UNSCOPED: use Match.Charts to
+	// constrain a rule to a (sub)chart, which matches chart path segments and so does not
+	// reach nested sub-subcharts unless they are listed too.
+	// When LegacyPlanArtifact is used, what gets applied was already fixed by
+	// ReleasePlanInstall, and these rules only feed the diff patches of the auto-rollback
+	// plan.
+	LegacyPatches spec.Patches
 	// LegacyPlanArtifact provides plan artifact as a result of the release plan install action.
 	LegacyPlanArtifact *PlanArtifact
 	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
@@ -144,6 +152,7 @@ type runRollbackPlanOptions struct {
 	common.ReleaseInstallRuntimeOptions
 	common.TrackingOptions
 
+	LegacyPatches      spec.Patches
 	NetworkParallelism int
 	RollbackGraphPath  string
 }
@@ -414,7 +423,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		log.Default.Debug(ctx, "Resolve patches")
 
-		patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles)
+		patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches)
 		if err != nil {
 			return nil, fmt.Errorf("resolve patches: %w", err)
 		}
@@ -684,6 +693,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			runRollbackPlanResult, nonCritErrs, critErrs := runRollbackPlan(ctx, releaseName, releaseNamespace, newRelease, prevDeployedRelease, taskStore, logStore, informerFactory, history, clientFactory, runRollbackPlanOptions{
 				ReleaseInstallRuntimeOptions: opts.ReleaseInstallRuntimeOptions,
 				TrackingOptions:              opts.TrackingOptions,
+				LegacyPatches:                opts.LegacyPatches,
 				NetworkParallelism:           opts.NetworkParallelism,
 				RollbackGraphPath:            opts.RollbackGraphPath,
 			})
@@ -997,7 +1007,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert last deployed or last release to resource specs: %w", err))
 	}
 
-	patches, err := resolvePatches(chartAccessor, opts.DefaultPatchesDisable, opts.PatchesFiles)
+	patches, err := resolvePatches(chartAccessor, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("resolve patches: %w", err))
 	}

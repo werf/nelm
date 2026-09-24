@@ -94,10 +94,9 @@ func TestAI_BuildRenderPatchedResourceSpecs_ChartScope(t *testing.T) {
 	inScope := renderedSpec(t, "cached", "", "myapp/charts/cache/templates/web.yaml", nil)
 	outOfScope := renderedSpec(t, "web", "", "myapp/templates/web.yaml", nil)
 
-	patches, err := spec.CompilePatches([]spec.Patch{{
-		ChartScope: "myapp/charts/cache",
-		Patch:      `del(.spec.replicas)`,
-	}})
+	patches, err := spec.CompilePatches([]spec.Patch{
+		spec.NewChartScopedPatch("myapp/charts/cache", `del(.spec.replicas)`),
+	})
 	require.NoError(t, err)
 
 	out, err := spec.BuildRenderPatchedResourceSpecs(context.Background(), "prod", []*spec.ResourceSpec{inScope, outOfScope}, patches)
