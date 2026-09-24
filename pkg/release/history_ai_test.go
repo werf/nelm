@@ -102,6 +102,28 @@ func TestAI_History_ReleaseLoadsBodyOnDemand(t *testing.T) {
 	assert.Equal(t, helmreleasecommon.StatusSuperseded.String(), rel.Status())
 }
 
+func TestAI_History_RevisionsSnapshotSurvivesDelete(t *testing.T) {
+	ctx := context.Background()
+
+	storage := newMemoryReleaseStorage(t,
+		newTestReleaseWithStatus("myrelease", 1, helmreleasecommon.StatusSuperseded),
+		newTestReleaseWithStatus("myrelease", 2, helmreleasecommon.StatusDeployed),
+	)
+
+	history, err := BuildHistory(ctx, "myrelease", storage)
+	require.NoError(t, err)
+
+	revisions := history.Revisions()
+	require.Len(t, revisions, 2)
+
+	require.NoError(t, history.DeleteRelease(ctx, "myrelease", 1))
+
+	assert.Equal(t, 1, revisions[0].Version, "captured revisions must not be mutated by DeleteRelease")
+	assert.Equal(t, helmreleasecommon.StatusSuperseded.String(), revisions[0].Status)
+	assert.Equal(t, 2, revisions[1].Version)
+	assert.Equal(t, helmreleasecommon.StatusDeployed.String(), revisions[1].Status)
+}
+
 func TestAI_History_RevisionsStayConsistentAfterMutations(t *testing.T) {
 	ctx := context.Background()
 

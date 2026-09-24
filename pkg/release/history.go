@@ -74,7 +74,10 @@ func (h *History) Release(ctx context.Context, version int) (helmrel.Accessor, e
 }
 
 func (h *History) Revisions() []Revision {
-	return h.revisions
+	h.updateLock.Lock()
+	defer h.updateLock.Unlock()
+
+	return slices.Clone(h.revisions)
 }
 
 func (h *History) UpdateRelease(ctx context.Context, rel helmrel.Accessor) error {
