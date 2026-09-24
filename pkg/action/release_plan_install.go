@@ -250,8 +250,9 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	var prevDeployedRelease helmrel.Accessor
 	if lastDeployedRevision, found := lo.Last(release.DeployedRevisions(revisions)); found {
-		prevDeployedRelease, err = releaseStorage.GetRelease(releaseName, lastDeployedRevision.Version)
-		if err != nil {
+		if prevRelease != nil && prevRelease.Version() == lastDeployedRevision.Version {
+			prevDeployedRelease = prevRelease
+		} else if prevDeployedRelease, err = releaseStorage.GetRelease(releaseName, lastDeployedRevision.Version); err != nil {
 			return nil, fmt.Errorf("get previous deployed release: %w", err)
 		}
 	}
@@ -394,7 +395,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	prevDeployedReleases, err := loadDeployedReleases(releaseName, revisions, releaseStorage)
+	prevDeployedReleases, err := loadDeployedReleases(releaseName, revisions, releaseStorage, []helmrel.Accessor{prevRelease, prevDeployedRelease})
 	if err != nil {
 		return nil, fmt.Errorf("load deployed releases: %w", err)
 	}

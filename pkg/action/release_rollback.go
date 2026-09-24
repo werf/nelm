@@ -215,21 +215,31 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		}
 	}
 
-	rollbackRelease, err := history.Release(ctx, rollbackRevision.Version)
-	if err != nil {
-		return fmt.Errorf("get release revision to rollback to: %w", err)
-	}
-
 	prevRelease, err := history.Release(ctx, lastRevision.Version)
 	if err != nil {
 		return fmt.Errorf("get previous release: %w", err)
 	}
 
+	rollbackRelease := prevRelease
+	if rollbackRevision.Version != lastRevision.Version {
+		rollbackRelease, err = history.Release(ctx, rollbackRevision.Version)
+		if err != nil {
+			return fmt.Errorf("get release revision to rollback to: %w", err)
+		}
+	}
+
 	var prevDeployedRelease helmrel.Accessor
 	if lastDeployedFound {
-		prevDeployedRelease, err = history.Release(ctx, lastDeployedRevision.Version)
-		if err != nil {
-			return fmt.Errorf("get previous deployed release: %w", err)
+		switch lastDeployedRevision.Version {
+		case lastRevision.Version:
+			prevDeployedRelease = prevRelease
+		case rollbackRevision.Version:
+			prevDeployedRelease = rollbackRelease
+		default:
+			prevDeployedRelease, err = history.Release(ctx, lastDeployedRevision.Version)
+			if err != nil {
+				return fmt.Errorf("get previous deployed release: %w", err)
+			}
 		}
 	}
 
@@ -353,7 +363,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	prevDeployedReleases, err := loadDeployedReleases(releaseName, revisions, releaseStorage)
+	prevDeployedReleases, err := loadDeployedReleases(releaseName, revisions, releaseStorage, []helmrel.Accessor{prevRelease, prevDeployedRelease, rollbackRelease})
 	if err != nil {
 		return fmt.Errorf("load deployed releases: %w", err)
 	}
