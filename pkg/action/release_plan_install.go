@@ -17,6 +17,7 @@ import (
 	"github.com/werf/nelm/pkg/chart"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
+	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
@@ -224,37 +225,35 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release install")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-	log.Default.Debug(ctx, "Build release history")
+	log.Default.Debug(ctx, "List release revisions")
 
-	history, err := release.BuildHistory(releaseName, releaseStorage, release.HistoryOptions{})
+	revisions, err := releaseStorage.Revisions(ctx, releaseName)
 	if err != nil {
-		return nil, fmt.Errorf("build release history: %w", err)
+		return nil, fmt.Errorf("list release revisions: %w", err)
 	}
 
-	releases := history.Releases()
-	deployedReleases := history.FindAllDeployed()
-	prevRelease := lo.LastOrEmpty(releases)
-	prevDeployedRelease := lo.LastOrEmpty(deployedReleases)
+	newRevision, deployType := resolveDeployState(revisions)
 
 	var (
-		newRevision       int
+		prevRelease       helmrel.Accessor
 		prevReleaseFailed bool
 	)
 
-	if prevRelease != nil {
-		newRevision = prevRelease.Version() + 1
-		prevReleaseFailed = prevRelease.Status() == helmreleasestatus.StatusFailed.String()
-	} else {
-		newRevision = 1
+	if lastRevision, found := lo.Last(revisions); found {
+		prevReleaseFailed = lastRevision.Status == helmreleasestatus.StatusFailed.String()
+
+		prevRelease, err = releaseStorage.GetRelease(releaseName, lastRevision.Version)
+		if err != nil {
+			return nil, fmt.Errorf("get previous release: %w", err)
+		}
 	}
 
-	var deployType common.DeployType
-	if prevDeployedRelease != nil {
-		deployType = common.DeployTypeUpgrade
-	} else if prevRelease != nil {
-		deployType = common.DeployTypeInstall
-	} else {
-		deployType = common.DeployTypeInitial
+	var prevDeployedRelease helmrel.Accessor
+	if lastDeployedRevision, found := lo.Last(release.DeployedRevisions(revisions)); found {
+		prevDeployedRelease, err = releaseStorage.GetRelease(releaseName, lastDeployedRevision.Version)
+		if err != nil {
+			return nil, fmt.Errorf("get previous deployed release: %w", err)
+		}
 	}
 
 	log.Default.Debug(ctx, "Render chart")
@@ -395,7 +394,12 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, releases, newRelease)
+	prevDeployedReleases, err := loadDeployedReleases(releaseName, revisions, releaseStorage)
+	if err != nil {
+		return nil, fmt.Errorf("load deployed releases: %w", err)
+	}
+
+	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, prevDeployedReleases, newRelease)
 	if err != nil {
 		return nil, fmt.Errorf("build release infos: %w", err)
 	}

@@ -13,6 +13,7 @@ import (
 	"github.com/werf/nelm/pkg/chart"
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/helm/pkg/registry"
+	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/pkg/kube"
 	"github.com/werf/nelm/pkg/log"
@@ -232,37 +233,37 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		},
 	}
 
-	log.Default.Debug(ctx, "Build release history")
+	log.Default.Debug(ctx, "List release revisions")
 
-	history, err := release.BuildHistory(opts.ReleaseName, releaseStorage, release.HistoryOptions{})
+	revisions, err := releaseStorage.Revisions(ctx, opts.ReleaseName)
 	if err != nil {
-		return fmt.Errorf("build release history: %w", err)
+		return fmt.Errorf("list release revisions: %w", err)
 	}
 
-	releases := history.Releases()
-	deployedReleases := history.FindAllDeployed()
-	prevRelease := lo.LastOrEmpty(releases)
-	prevDeployedRelease := lo.LastOrEmpty(deployedReleases)
+	newRevision, deployType := resolveDeployState(revisions)
 
 	var (
-		newRevision       int
+		prevRelease       helmrel.Accessor
 		prevReleaseFailed bool
 	)
 
-	if prevRelease != nil {
-		newRevision = prevRelease.Version() + 1
-		prevReleaseFailed = prevRelease.Status() == helmreleasestatus.StatusFailed.String()
-	} else {
-		newRevision = 1
+	if lastRevision, found := lo.Last(revisions); found {
+		prevReleaseFailed = lastRevision.Status == helmreleasestatus.StatusFailed.String()
+
+		prevRelease, err = releaseStorage.GetRelease(opts.ReleaseName, lastRevision.Version)
+		if err != nil {
+			return fmt.Errorf("get previous release: %w", err)
+		}
 	}
 
-	var deployType common.DeployType
-	if prevDeployedRelease != nil {
-		deployType = common.DeployTypeUpgrade
-	} else if prevRelease != nil {
-		deployType = common.DeployTypeInstall
-	} else {
-		deployType = common.DeployTypeInitial
+	deployedRevisions := release.DeployedRevisions(revisions)
+
+	var prevDeployedRelease helmrel.Accessor
+	if lastDeployedRevision, found := lo.Last(deployedRevisions); found {
+		prevDeployedRelease, err = releaseStorage.GetRelease(opts.ReleaseName, lastDeployedRevision.Version)
+		if err != nil {
+			return fmt.Errorf("get previous deployed release: %w", err)
+		}
 	}
 
 	chartTreeOptions := chart.RenderChartOptions{
@@ -401,7 +402,12 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, releases, newRelease)
+	prevDeployedReleases, err := loadDeployedReleases(opts.ReleaseName, revisions, releaseStorage)
+	if err != nil {
+		return fmt.Errorf("load deployed releases: %w", err)
+	}
+
+	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, prevDeployedReleases, newRelease)
 	if err != nil {
 		return fmt.Errorf("build release infos: %w", err)
 	}
@@ -472,4 +478,25 @@ func applyChartLintOptionsDefaults(opts ChartLintOptions, currentDir, homeDir st
 	}
 
 	return opts, nil
+}
+
+// loadDeployedReleases loads the bodies of the revisions BuildReleaseInfos would keep, i.e. the
+// ones with status exactly "deployed". release.DeployedRevisions is deliberately not used here:
+// it also returns superseded revisions, which would turn into extra supersede operations.
+func loadDeployedReleases(releaseName string, revisions []release.Revision, releaseStorage release.ReleaseStorager) ([]helmrel.Accessor, error) {
+	deployedRevisions := lo.Filter(revisions, func(r release.Revision, _ int) bool {
+		return r.Status == helmreleasestatus.StatusDeployed.String()
+	})
+
+	rels := make([]helmrel.Accessor, 0, len(deployedRevisions))
+	for _, revision := range deployedRevisions {
+		rel, err := releaseStorage.GetRelease(releaseName, revision.Version)
+		if err != nil {
+			return nil, fmt.Errorf("get release revision %d: %w", revision.Version, err)
+		}
+
+		rels = append(rels, rel)
+	}
+
+	return rels, nil
 }

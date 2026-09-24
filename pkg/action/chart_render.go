@@ -242,33 +242,14 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		},
 	}
 
-	log.Default.Debug(ctx, "Build release history")
+	log.Default.Debug(ctx, "List release revisions")
 
-	history, err := release.BuildHistory(opts.ReleaseName, releaseStorage, release.HistoryOptions{})
+	revisions, err := releaseStorage.Revisions(ctx, opts.ReleaseName)
 	if err != nil {
-		return nil, fmt.Errorf("build release history: %w", err)
+		return nil, fmt.Errorf("list release revisions: %w", err)
 	}
 
-	releases := history.Releases()
-	deployedReleases := history.FindAllDeployed()
-	prevRelease := lo.LastOrEmpty(releases)
-	prevDeployedRelease := lo.LastOrEmpty(deployedReleases)
-
-	var newRevision int
-	if prevRelease != nil {
-		newRevision = prevRelease.Version() + 1
-	} else {
-		newRevision = 1
-	}
-
-	var deployType common.DeployType
-	if prevDeployedRelease != nil {
-		deployType = common.DeployTypeUpgrade
-	} else if prevRelease != nil {
-		deployType = common.DeployTypeInstall
-	} else {
-		deployType = common.DeployTypeInitial
-	}
+	newRevision, deployType := resolveDeployState(revisions)
 
 	chartTreeOptions := chart.RenderChartOptions{
 		ChartRepoConnectionOptions:      opts.ChartRepoConnectionOptions,
@@ -481,4 +462,20 @@ func renderResource(unstruct *unstructured.Unstructured, path string, outStream 
 	}
 
 	return nil
+}
+
+func resolveDeployState(revisions []release.Revision) (int, common.DeployType) {
+	newRevision := 1
+	if last, found := lo.Last(revisions); found {
+		newRevision = last.Version + 1
+	}
+
+	switch {
+	case len(release.DeployedRevisions(revisions)) > 0:
+		return newRevision, common.DeployTypeUpgrade
+	case len(revisions) > 0:
+		return newRevision, common.DeployTypeInstall
+	default:
+		return newRevision, common.DeployTypeInitial
+	}
 }
