@@ -119,6 +119,47 @@ func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr err
 	log.Default.Warn(ctx, "Plan graph saved to %q for debugging", graphPath)
 }
 
+// Chart-shipped rules are scoped to their own chart subtree; rules from patches files and
+// programmatically supplied ones are not, so their ChartScope is cleared and they must scope
+// themselves through Match.Charts.
+// All kinds are compiled right away, so an invalid rule fails before anything is applied.
+func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string, legacyPatches spec.Patches) (spec.CompiledPatches, error) {
+	var patches spec.Patches
+
+	if !defaultDisable {
+		chartPatches, err := spec.CollectChartPatches(chart)
+		if err != nil {
+			return spec.CompiledPatches{}, fmt.Errorf("collect chart patches: %w", err)
+		}
+
+		patches.Diff = append(patches.Diff, chartPatches.Diff...)
+		patches.Render = append(patches.Render, chartPatches.Render...)
+	}
+
+	filePatches, err := spec.LoadPatchesFiles(patchesFiles)
+	if err != nil {
+		return spec.CompiledPatches{}, fmt.Errorf("load patches files: %w", err)
+	}
+
+	patches.Diff = append(patches.Diff, filePatches.Diff...)
+	patches.Render = append(patches.Render, filePatches.Render...)
+
+	patches.Diff = append(patches.Diff, unscopePatches(legacyPatches.Diff)...)
+	patches.Render = append(patches.Render, unscopePatches(legacyPatches.Render)...)
+
+	diffPatches, err := spec.CompilePatches(patches.Diff)
+	if err != nil {
+		return spec.CompiledPatches{}, fmt.Errorf("compile diff patches: %w", err)
+	}
+
+	renderPatches, err := spec.CompilePatches(patches.Render)
+	if err != nil {
+		return spec.CompiledPatches{}, fmt.Errorf("compile render patches: %w", err)
+	}
+
+	return spec.CompiledPatches{Diff: diffPatches, Render: renderPatches}, nil
+}
+
 func newInformerFactory(ctx context.Context, watchErrCh chan error, dynamicClient dynamic.Interface) *kdutil.Concurrent[*informer.InformerFactory] {
 	return informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, dynamicClient, informer.ConcurrentInformerFactoryOptions{
 		OnNonFatalWatchError: func(gvr schema.GroupVersionResource, namespace string, err error) {
@@ -188,42 +229,6 @@ func printReport(ctx context.Context, report *ReleaseReportV3) {
 			}
 		})
 	}
-}
-
-// Chart-shipped rules are scoped to their own chart subtree, rules from patches files are not.
-// Both kinds are compiled right away, so an invalid rule fails before anything is applied.
-func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string) (spec.CompiledPatches, error) {
-	var patches spec.Patches
-
-	if !defaultDisable {
-		chartPatches, err := spec.CollectChartPatches(chart)
-		if err != nil {
-			return spec.CompiledPatches{}, fmt.Errorf("collect chart patches: %w", err)
-		}
-
-		patches.Diff = append(patches.Diff, chartPatches.Diff...)
-		patches.Render = append(patches.Render, chartPatches.Render...)
-	}
-
-	filePatches, err := spec.LoadPatchesFiles(patchesFiles)
-	if err != nil {
-		return spec.CompiledPatches{}, fmt.Errorf("load patches files: %w", err)
-	}
-
-	patches.Diff = append(patches.Diff, filePatches.Diff...)
-	patches.Render = append(patches.Render, filePatches.Render...)
-
-	diffPatches, err := spec.CompilePatches(patches.Diff)
-	if err != nil {
-		return spec.CompiledPatches{}, fmt.Errorf("compile diff patches: %w", err)
-	}
-
-	renderPatches, err := spec.CompilePatches(patches.Render)
-	if err != nil {
-		return spec.CompiledPatches{}, fmt.Errorf("compile render patches: %w", err)
-	}
-
-	return spec.CompiledPatches{Diff: diffPatches, Render: renderPatches}, nil
 }
 
 func runFailurePlan(ctx context.Context, releaseNamespace string, failedPlan *plan.Plan, installableInfos []*plan.InstallableResourceInfo, releaseInfos []*plan.ReleaseInfo, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history *release.History, clientFactory *kube.ClientFactory, opts runFailureInstallPlanOptions) (result *runFailurePlanResult, nonCritErrs, critErrs *util.MultiError) {
@@ -307,6 +312,16 @@ func saveReport(reportPath string, report *ReleaseReportV3) error {
 	}
 
 	return nil
+}
+
+// unscopePatches returns copies with ChartScope cleared, so chart-subtree scoping stays
+// reserved for chart-shipped rules and the caller's patches are never mutated.
+func unscopePatches(patches []spec.Patch) []spec.Patch {
+	return lo.Map(patches, func(patch spec.Patch, _ int) spec.Patch {
+		patch.ChartScope = ""
+
+		return patch
+	})
 }
 
 func writeWithSyntaxHighlight(outStream io.Writer, text, lang string, colorLevel terminfo.ColorLevel) error {

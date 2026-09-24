@@ -93,6 +93,11 @@ type ReleasePlanInstallOptions struct {
 	// LegacyLogRegistryStreamOut is the output writer for Helm registry client logs.
 	// Defaults to io.Discard if not set. Used for debugging registry operations.
 	LegacyLogRegistryStreamOut io.Writer
+	// LegacyPatches are patch rules supplied programmatically, applied after
+	// chart-shipped and PatchesFiles rules. Rules are UNSCOPED: use Match.Charts to
+	// constrain a rule to a specific (sub)chart. Unlike PatchesFiles, these are NOT
+	// stored in the plan artifact: ReleaseInstall must be given them again.
+	LegacyPatches spec.Patches
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
@@ -282,7 +287,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Resolve patches")
 
-	patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles)
+	patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches)
 	if err != nil {
 		return nil, fmt.Errorf("resolve patches: %w", err)
 	}
