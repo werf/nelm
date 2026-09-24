@@ -12,6 +12,7 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 
 	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	helmstorage "github.com/werf/nelm/pkg/helm/pkg/storage"
 	helmdriver "github.com/werf/nelm/pkg/helm/pkg/storage/driver"
 )
 
@@ -168,6 +169,106 @@ func TestAI_SecretsRevisions_TypedListFallbackWhenNoMetadataClient(t *testing.T)
 	assert.Equal(t, helmreleasecommon.StatusDeployed.String(), records[2].Status)
 	assert.Equal(t, testNamespace, records[0].Namespace)
 	assert.Equal(t, relName, records[0].Name)
+}
+
+func TestAI_StorageAdapterRevisions_ProjectsDriverRecords(t *testing.T) {
+	const relName = "myrelease"
+
+	storage, driver := newSecretStorage(t,
+		newTestReleaseWithStatus(relName, 1, helmreleasecommon.StatusSuperseded),
+		newTestReleaseWithStatus(relName, 2, helmreleasecommon.StatusDeployed),
+	)
+	driver.Namespace = testNamespace
+
+	adapter := &storageAdapter{storage: storage}
+
+	revisions, err := adapter.Revisions(context.Background(), relName)
+	require.NoError(t, err)
+	require.Len(t, revisions, 2)
+
+	assert.Equal(t, Revision{Name: relName, Namespace: testNamespace, Status: helmreleasecommon.StatusSuperseded.String(), Version: 1}, revisions[0])
+	assert.Equal(t, Revision{Name: relName, Namespace: testNamespace, Status: helmreleasecommon.StatusDeployed.String(), Version: 2}, revisions[1])
+}
+
+func TestAI_StorageAdapterRevisions_UnknownReleaseYieldsEmpty(t *testing.T) {
+	storage, driver := newSecretStorage(t)
+	driver.Namespace = testNamespace
+
+	adapter := &storageAdapter{storage: storage}
+
+	revisions, err := adapter.Revisions(context.Background(), "missing")
+	require.NoError(t, err)
+	assert.Empty(t, revisions)
+}
+
+func TestAI_StorageRevisions_CapabilityErrorIsNotSwallowedByFallback(t *testing.T) {
+	storage, _ := newSecretStorage(t)
+
+	_, err := storage.Revisions(context.Background(), "myrelease")
+	require.Error(t, err, "a driver that implements the capability but is misconfigured must not silently fall back")
+	assert.Contains(t, err.Error(), "namespace")
+}
+
+func TestAI_StorageRevisions_CapabilityPath(t *testing.T) {
+	const relName = "myrelease"
+
+	storage, driver := newSecretStorage(t,
+		newTestReleaseWithStatus(relName, 2, helmreleasecommon.StatusDeployed),
+		newTestReleaseWithStatus(relName, 1, helmreleasecommon.StatusSuperseded),
+	)
+	driver.Namespace = testNamespace
+
+	records, err := storage.Revisions(context.Background(), relName)
+	require.NoError(t, err)
+	require.Len(t, records, 2)
+
+	assert.Equal(t, []int{1, 2}, revisionVersions(records))
+	assert.Equal(t, helmreleasecommon.StatusSuperseded.String(), records[0].Status)
+	assert.Equal(t, helmreleasecommon.StatusDeployed.String(), records[1].Status)
+	assert.Equal(t, testNamespace, records[0].Namespace)
+	assert.Equal(t, relName, records[0].Name)
+}
+
+func TestAI_StorageRevisions_FallbackUnknownReleaseYieldsEmpty(t *testing.T) {
+	mem := helmdriver.NewMemory()
+	mem.SetNamespace(testNamespace)
+
+	storage := helmstorage.Init(&plainDriver{inner: mem})
+
+	records, err := storage.Revisions(context.Background(), "missing")
+	require.NoError(t, err)
+	assert.Empty(t, records, "ErrReleaseNotFound from Query means an empty history, not a failure")
+}
+
+func TestAI_StorageRevisions_FallbackWhenDriverLacksCapability(t *testing.T) {
+	const relName = "myrelease"
+
+	mem := helmdriver.NewMemory()
+	mem.SetNamespace(testNamespace)
+
+	storage := helmstorage.Init(&plainDriver{inner: mem})
+	require.NoError(t, storage.Create(newTestReleaseWithStatus(relName, 2, helmreleasecommon.StatusDeployed)))
+	require.NoError(t, storage.Create(newTestReleaseWithStatus(relName, 1, helmreleasecommon.StatusSuperseded)))
+	require.NoError(t, storage.Create(newTestReleaseWithStatus("otherrelease", 7, helmreleasecommon.StatusDeployed)))
+
+	records, err := storage.Revisions(context.Background(), relName)
+	require.NoError(t, err)
+	require.Len(t, records, 2, "the fallback must scope the query to the named release")
+
+	assert.Equal(t, []int{1, 2}, revisionVersions(records), "the fallback must sort by ascending version; Query makes no ordering guarantee")
+	assert.Equal(t, helmreleasecommon.StatusSuperseded.String(), records[0].Status)
+	assert.Equal(t, helmreleasecommon.StatusDeployed.String(), records[1].Status)
+	assert.Equal(t, testNamespace, records[0].Namespace)
+	assert.Equal(t, relName, records[0].Name)
+}
+
+func TestAI_StorageRevisions_NotFoundYieldsEmpty(t *testing.T) {
+	storage, driver := newSecretStorage(t)
+	driver.Namespace = testNamespace
+
+	records, err := storage.Revisions(context.Background(), "missing")
+	require.NoError(t, err)
+	assert.Empty(t, records)
 }
 
 func revisionLabels(name string, version int, status string) map[string]string {

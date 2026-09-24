@@ -40,6 +40,10 @@ func (s *stubStorager) Query(labels map[string]string) ([]helmrel.Accessor, erro
 	return nil, nil
 }
 
+func (s *stubStorager) Revisions(ctx context.Context, name string) ([]Revision, error) {
+	return nil, nil
+}
+
 func (s *stubStorager) Update(rls helmrel.Accessor) error {
 	return nil
 }

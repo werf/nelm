@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -198,6 +199,57 @@ func (s *Storage) ListLatestReleases(ctx context.Context) ([]*rspb.Release, erro
 	}
 
 	return result, nil
+}
+
+// revisionLister is an optional driver capability that returns the version and
+// status of every revision of a release without decoding release bodies.
+type revisionLister interface {
+	Revisions(ctx context.Context, name string) ([]driver.RevisionRecord, error)
+}
+
+var (
+	_ revisionLister = (*driver.Secrets)(nil)
+	_ revisionLister = (*driver.ConfigMaps)(nil)
+	_ revisionLister = (*driver.SQL)(nil)
+	_ revisionLister = (*driver.Memory)(nil)
+)
+
+// Revisions returns version and status of every revision of the named release,
+// sorted by ascending version. Drivers implementing the capability answer
+// without decoding release bodies; the fallback decodes the whole history. An
+// unknown release yields an empty result, not an error.
+func (s *Storage) Revisions(ctx context.Context, name string) ([]driver.RevisionRecord, error) {
+	if l, ok := s.Driver.(revisionLister); ok {
+		return l.Revisions(ctx, name)
+	}
+
+	releasers, err := s.Driver.Query(map[string]string{"name": name, "owner": "helm"})
+	if err != nil {
+		if errors.Is(err, driver.ErrReleaseNotFound) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	rels, err := releaseListToV1List(releasers)
+	if err != nil {
+		return nil, err
+	}
+
+	records := make([]driver.RevisionRecord, 0, len(rels))
+	for _, rel := range rels {
+		records = append(records, driver.RevisionRecord{
+			Name:      rel.Name,
+			Namespace: rel.Namespace,
+			Version:   rel.Version,
+			Status:    rel.Info.Status.String(),
+		})
+	}
+
+	sort.Slice(records, func(i, j int) bool { return records[i].Version < records[j].Version })
+
+	return records, nil
 }
 
 // Create creates a new storage entry holding the release. An
