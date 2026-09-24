@@ -19,7 +19,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 
 	"k8s.io/apimachinery/pkg/runtime"
 )

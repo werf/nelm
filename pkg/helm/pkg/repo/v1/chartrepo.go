@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package repo // import "github.com/werf/nelm/pkg/helm/pkg/repo/v1"
+package repo // import "github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1"
 
 import (
 	"bytes"
@@ -29,9 +29,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/werf/nelm/pkg/helm/intern/fileutil"
-	"github.com/werf/nelm/pkg/helm/pkg/getter"
-	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
+	"github.com/werf/nelm/v2/pkg/helm/intern/fileutil"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/getter"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/helmpath"
 )
 
 // Entry represents a collection of parameters for chart repository

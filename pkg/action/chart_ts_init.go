@@ -7,10 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/werf/nelm/pkg/featgate"
-	"github.com/werf/nelm/pkg/helm/intern/chart/v3/util"
-	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/ts"
+	"github.com/werf/nelm/v2/pkg/featgate"
+	"github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/util"
+	"github.com/werf/nelm/v2/pkg/log"
+	"github.com/werf/nelm/v2/pkg/ts"
 )
 
 type ChartTSInitOptions struct {

@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

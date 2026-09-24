@@ -24,10 +24,10 @@ import (
 	"testing"
 	"time"
 
-	chart "github.com/werf/nelm/pkg/helm/intern/chart/v3"
-	"github.com/werf/nelm/pkg/helm/intern/chart/v3/lint/support"
-	chartutil "github.com/werf/nelm/pkg/helm/intern/chart/v3/util"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
+	chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	"github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/lint/support"
+	chartutil "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 )
 
 const templateTestBasedir = "./testdata/albatross"

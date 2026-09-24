@@ -14,7 +14,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 
-	"github.com/werf/nelm/pkg/kube"
+	"github.com/werf/nelm/v2/pkg/kube"
 )
 
 var _ kube.ClientFactorier = (*ClientFactory)(nil)

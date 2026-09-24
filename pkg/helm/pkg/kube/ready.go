@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package kube // import "github.com/werf/nelm/pkg/helm/pkg/kube"
+package kube // import "github.com/werf/nelm/v2/pkg/helm/pkg/kube"
 
 import (
 	"context"
@@ -33,7 +33,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 
-	deploymentutil "github.com/werf/nelm/pkg/helm/intern/third_party/k8s.io/kubernetes/deployment/util"
+	deploymentutil "github.com/werf/nelm/v2/pkg/helm/intern/third_party/k8s.io/kubernetes/deployment/util"
 )
 
 // ReadyCheckerOption is a function that configures a ReadyChecker.

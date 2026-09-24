@@ -17,8 +17,8 @@ limitations under the License.
 package util // import "helm.sh/helm/v4/internal/release/v2/util"
 
 import (
-	v2 "github.com/werf/nelm/pkg/helm/intern/release/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
+	v2 "github.com/werf/nelm/v2/pkg/helm/intern/release/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 )
 
 // FilterFunc returns true if the release object satisfies

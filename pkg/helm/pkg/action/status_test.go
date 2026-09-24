@@ -24,9 +24,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	kubefake "github.com/werf/nelm/pkg/helm/pkg/kube/fake"
-	rcommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	release "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	kubefake "github.com/werf/nelm/v2/pkg/helm/pkg/kube/fake"
+	rcommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	release "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 func TestNewStatus(t *testing.T) {

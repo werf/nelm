@@ -15,11 +15,11 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/logboek"
-	"github.com/werf/nelm/pkg/action"
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
-	helmcmd "github.com/werf/nelm/pkg/helm/pkg/cmd"
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/v2/pkg/action"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/featgate"
+	helmcmd "github.com/werf/nelm/v2/pkg/helm/pkg/cmd"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 func abort(ctx context.Context, err error, exitCode int) {

@@ -12,16 +12,16 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/gookit/color"
 
-	"github.com/werf/nelm/pkg/common"
-	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
-	chartcommonutil "github.com/werf/nelm/pkg/helm/pkg/chart/common/util"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
-	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	"github.com/werf/nelm/pkg/helm/pkg/storage/driver"
-	"github.com/werf/nelm/pkg/kube"
-	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/release"
-	"github.com/werf/nelm/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/common"
+	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	chartcommonutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
+	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
+	"github.com/werf/nelm/v2/pkg/kube"
+	"github.com/werf/nelm/v2/pkg/log"
+	"github.com/werf/nelm/v2/pkg/release"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
 const (

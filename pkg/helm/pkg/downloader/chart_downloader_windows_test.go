@@ -23,9 +23,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/werf/nelm/pkg/helm/pkg/cli"
-	"github.com/werf/nelm/pkg/helm/pkg/getter"
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1/repotest"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/getter"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1/repotest"
 )
 
 // TestParallelDownloadTo tests that parallel downloads to the same file

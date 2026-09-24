@@ -22,8 +22,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/werf/nelm/pkg/helm/intern/logging"
-	"github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/nelm/v2/pkg/helm/intern/logging"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release"
 )
 
 var _ Driver = (*Memory)(nil)

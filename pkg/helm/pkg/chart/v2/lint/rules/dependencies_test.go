@@ -19,9 +19,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/lint/support"
-	chartutil "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/lint/support"
+	chartutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
 )
 
 func chartWithBadDependencies() chart.Chart {

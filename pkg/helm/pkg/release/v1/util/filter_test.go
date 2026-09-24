@@ -14,13 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package util // import "github.com/werf/nelm/pkg/helm/pkg/release/v1/util"
+package util // import "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1/util"
 
 import (
 	"testing"
 
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
-	rspb "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	rspb "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 func TestFilterAny(t *testing.T) {

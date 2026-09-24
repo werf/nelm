@@ -23,13 +23,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	chartv3 "github.com/werf/nelm/pkg/helm/intern/chart/v3"
-	chartutilv3 "github.com/werf/nelm/pkg/helm/intern/chart/v3/util"
-	"github.com/werf/nelm/pkg/helm/intern/gates"
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	chartutil "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
-	"github.com/werf/nelm/pkg/helm/pkg/cmd/require"
-	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
+	chartv3 "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	chartutilv3 "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/util"
+	"github.com/werf/nelm/v2/pkg/helm/intern/gates"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	chartutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cmd/require"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/helmpath"
 )
 
 const createDesc = `

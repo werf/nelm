@@ -6,7 +6,7 @@ import (
 	"github.com/chanced/caps"
 	"github.com/samber/lo"
 
-	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/v2/pkg/common"
 )
 
 var (

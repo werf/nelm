@@ -13,9 +13,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/werf/lockgate"
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/kube"
-	"github.com/werf/nelm/pkg/kube/fake"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/kube"
+	"github.com/werf/nelm/v2/pkg/kube/fake"
 )
 
 const (

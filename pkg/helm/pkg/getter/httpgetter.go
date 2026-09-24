@@ -25,8 +25,8 @@ import (
 	"net/url"
 	"sync"
 
-	"github.com/werf/nelm/pkg/helm/intern/tlsutil"
-	"github.com/werf/nelm/pkg/helm/intern/version"
+	"github.com/werf/nelm/v2/pkg/helm/intern/tlsutil"
+	"github.com/werf/nelm/v2/pkg/helm/intern/version"
 )
 
 // HTTPGetter is the default HTTP(/S) backend handler

@@ -24,13 +24,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/werf/nelm/pkg/helm/intern/test/ensure"
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	chartutil "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
-	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
-	"github.com/werf/nelm/pkg/helm/pkg/provenance"
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1"
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1/repotest"
+	"github.com/werf/nelm/v2/pkg/helm/intern/test/ensure"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	chartutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/helmpath"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/provenance"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1/repotest"
 )
 
 func TestDependencyUpdateCmd(t *testing.T) {

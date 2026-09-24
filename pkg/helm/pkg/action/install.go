@@ -25,14 +25,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	ci "github.com/werf/nelm/pkg/helm/pkg/chart"
-	"github.com/werf/nelm/pkg/helm/pkg/cli"
-	"github.com/werf/nelm/pkg/helm/pkg/downloader"
-	"github.com/werf/nelm/pkg/helm/pkg/getter"
-	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	ri "github.com/werf/nelm/pkg/helm/pkg/release"
-	release "github.com/werf/nelm/pkg/helm/pkg/release/v1"
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1"
+	ci "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/downloader"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/getter"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
+	ri "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	release "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1"
 )
 
 // notesFileSuffix that we want to treat specially. It goes through the templating engine

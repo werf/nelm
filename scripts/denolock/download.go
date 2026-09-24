@@ -14,7 +14,7 @@ import (
 
 	"github.com/go-resty/resty/v2"
 
-	"github.com/werf/nelm/pkg/ts/denolock"
+	"github.com/werf/nelm/v2/pkg/ts/denolock"
 )
 
 const sha256HexLen = 64

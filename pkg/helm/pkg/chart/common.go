@@ -21,9 +21,9 @@ import (
 	"reflect"
 	"strings"
 
-	v3chart "github.com/werf/nelm/pkg/helm/intern/chart/v3"
-	common "github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	v2chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	common "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 )
 
 var NewAccessor func(chrt Charter) (Accessor, error) = NewDefaultAccessor //nolint:revive

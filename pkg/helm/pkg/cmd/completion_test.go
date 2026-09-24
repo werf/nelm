@@ -21,9 +21,9 @@ import (
 	"strings"
 	"testing"
 
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
-	release "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	release "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 // Check if file completion should be performed according to parameter 'shouldBePerformed'

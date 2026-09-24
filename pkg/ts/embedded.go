@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/werf/nelm/pkg/ts/denolock"
+	"github.com/werf/nelm/v2/pkg/ts/denolock"
 )
 
 // There is a blob only for the platforms denolock pins, so a tagged build for any other one fails

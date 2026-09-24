@@ -20,7 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 )
 
 func TestColorizeStatus(t *testing.T) {

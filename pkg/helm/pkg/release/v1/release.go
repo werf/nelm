@@ -16,8 +16,8 @@ limitations under the License.
 package v1
 
 import (
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 )
 
 type ApplyMethod string

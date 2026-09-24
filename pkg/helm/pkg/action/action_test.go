@@ -30,16 +30,16 @@ import (
 	"github.com/stretchr/testify/require"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 
-	"github.com/werf/nelm/pkg/helm/intern/logging"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/kube"
-	kubefake "github.com/werf/nelm/pkg/helm/pkg/kube/fake"
-	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	rcommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	release "github.com/werf/nelm/pkg/helm/pkg/release/v1"
-	"github.com/werf/nelm/pkg/helm/pkg/storage"
-	"github.com/werf/nelm/pkg/helm/pkg/storage/driver"
+	"github.com/werf/nelm/v2/pkg/helm/intern/logging"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/kube"
+	kubefake "github.com/werf/nelm/v2/pkg/helm/pkg/kube/fake"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
+	rcommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	release "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/storage"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 )
 
 var verbose = flag.Bool("test.log", false, "enable test logging (debug by default)")

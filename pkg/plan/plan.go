@@ -12,7 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
 
-	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/v2/pkg/common"
 )
 
 // Wrapper over dominikbraun/graph to make it easier to use as a plan/graph of operations.

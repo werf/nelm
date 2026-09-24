@@ -18,12 +18,12 @@ import (
 	"github.com/werf/common-go/pkg/locker"
 	"github.com/werf/common-go/pkg/util"
 	"github.com/werf/lockgate"
-	nelmcommon "github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/helm/intern/sympath"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/loader/archive"
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/ignore"
-	"github.com/werf/nelm/pkg/log"
+	nelmcommon "github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/helm/intern/sympath"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader/archive"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/ignore"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 var utf8bom = []byte{0xEF, 0xBB, 0xBF}

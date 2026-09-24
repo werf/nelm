@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1/repotest"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1/repotest"
 )
 
 func TestShowPreReleaseChart(t *testing.T) {

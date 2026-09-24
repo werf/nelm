@@ -19,7 +19,7 @@ package util // import "helm.sh/helm/v4/internal/release/v2/util"
 import (
 	"sort"
 
-	release "github.com/werf/nelm/pkg/helm/intern/release/v2"
+	release "github.com/werf/nelm/v2/pkg/helm/intern/release/v2"
 )
 
 // KindSortOrder is an ordering of Kinds.

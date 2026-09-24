@@ -9,12 +9,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	v3chart "github.com/werf/nelm/pkg/helm/intern/chart/v3"
-	v2release "github.com/werf/nelm/pkg/helm/intern/release/v2"
-	v2chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
-	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	v2release "github.com/werf/nelm/v2/pkg/helm/intern/release/v2"
+	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	helmreleasecommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 func TestAI_VersionedRelease_NilRoundTrip(t *testing.T) {

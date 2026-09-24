@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/werf/common-go/pkg/secrets_manager"
-	nelmcommon "github.com/werf/nelm/pkg/common"
+	nelmcommon "github.com/werf/nelm/v2/pkg/common"
 )
 
 type RuntimeData interface {

@@ -28,16 +28,16 @@ import (
 	shellwords "github.com/mattn/go-shellwords"
 	"github.com/spf13/cobra"
 
-	"github.com/werf/nelm/pkg/helm/intern/test"
-	"github.com/werf/nelm/pkg/helm/pkg/action"
-	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/cli"
-	kubefake "github.com/werf/nelm/pkg/helm/pkg/kube/fake"
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
-	release "github.com/werf/nelm/pkg/helm/pkg/release/v1"
-	"github.com/werf/nelm/pkg/helm/pkg/storage"
-	"github.com/werf/nelm/pkg/helm/pkg/storage/driver"
+	"github.com/werf/nelm/v2/pkg/helm/intern/test"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/action"
+	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli"
+	kubefake "github.com/werf/nelm/v2/pkg/helm/pkg/kube/fake"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	release "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/storage"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 )
 
 func testTimestamper() time.Time { return time.Unix(242085845, 0).UTC() }

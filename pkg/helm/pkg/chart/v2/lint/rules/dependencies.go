@@ -14,16 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package rules // import "github.com/werf/nelm/pkg/helm/pkg/chart/v2/lint/rules"
+package rules // import "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/lint/rules"
 
 import (
 	"context"
 	"fmt"
 	"strings"
 
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/lint/support"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/loader"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/lint/support"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/loader"
 )
 
 // Dependencies runs lints against a chart's dependencies

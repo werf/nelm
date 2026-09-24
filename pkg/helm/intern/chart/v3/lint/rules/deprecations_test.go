@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package rules // import "github.com/werf/nelm/pkg/helm/intern/chart/v3/lint/rules"
+package rules // import "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/lint/rules"
 
 import "testing"
 

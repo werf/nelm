@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package repo // import "github.com/werf/nelm/pkg/helm/pkg/repo/v1"
+package repo // import "github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1"
 
 import (
 	"fmt"

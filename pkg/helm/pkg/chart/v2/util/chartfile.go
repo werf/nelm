@@ -25,7 +25,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 )
 
 // LoadChartfile loads a Chart.yaml file into a *chart.Metadata.

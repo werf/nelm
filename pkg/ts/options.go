@@ -3,7 +3,7 @@ package ts
 import (
 	"context"
 
-	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/v2/pkg/common"
 )
 
 var tsOptionsKey chartTSOptionsKey

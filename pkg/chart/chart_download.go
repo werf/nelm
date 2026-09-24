@@ -7,13 +7,13 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/werf/nelm/pkg/common"
-	helmdownloader "github.com/werf/nelm/pkg/helm/pkg/downloader"
-	helmgetter "github.com/werf/nelm/pkg/helm/pkg/getter"
-	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
-	helmregistry "github.com/werf/nelm/pkg/helm/pkg/registry"
-	helmrepo "github.com/werf/nelm/pkg/helm/pkg/repo/v1"
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/v2/pkg/common"
+	helmdownloader "github.com/werf/nelm/v2/pkg/helm/pkg/downloader"
+	helmgetter "github.com/werf/nelm/v2/pkg/helm/pkg/getter"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/helmpath"
+	helmregistry "github.com/werf/nelm/v2/pkg/helm/pkg/registry"
+	helmrepo "github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 type chartDownloaderOptions struct {

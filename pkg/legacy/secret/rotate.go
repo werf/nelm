@@ -11,7 +11,7 @@ import (
 	"github.com/werf/common-go/pkg/secret"
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/common-go/pkg/util"
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 func RotateSecretKey(ctx context.Context, helmChartDir, secretWorkingDir string, secretValuesPaths ...string) error {

@@ -14,12 +14,12 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	metadatafake "k8s.io/client-go/metadata/fake"
 
-	v2release "github.com/werf/nelm/pkg/helm/intern/release/v2"
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
-	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
-	helmstorage "github.com/werf/nelm/pkg/helm/pkg/storage"
-	helmdriver "github.com/werf/nelm/pkg/helm/pkg/storage/driver"
+	v2release "github.com/werf/nelm/v2/pkg/helm/intern/release/v2"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	helmreleasecommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	helmstorage "github.com/werf/nelm/v2/pkg/helm/pkg/storage"
+	helmdriver "github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 )
 
 const testNamespace = "test-ns"

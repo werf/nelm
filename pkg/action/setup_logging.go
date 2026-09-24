@@ -20,8 +20,8 @@ import (
 
 	kdlog "github.com/werf/kubedog/pkg/log"
 	"github.com/werf/logboek"
-	"github.com/werf/nelm/pkg/helm/pkg/engine"
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/engine"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 type SetupLoggingOptions struct {

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package registry // import "github.com/werf/nelm/pkg/helm/pkg/registry"
+package registry // import "github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 
 import (
 	"context"
@@ -42,9 +42,9 @@ import (
 	"oras.land/oras-go/v2/registry/remote/credentials"
 	"oras.land/oras-go/v2/registry/remote/retry"
 
-	"github.com/werf/nelm/pkg/helm/intern/version"
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
+	"github.com/werf/nelm/v2/pkg/helm/intern/version"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/helmpath"
 )
 
 // See https://github.com/helm/helm/issues/10166

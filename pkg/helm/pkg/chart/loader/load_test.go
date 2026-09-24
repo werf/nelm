@@ -29,9 +29,9 @@ import (
 	"testing"
 	"time"
 
-	c3 "github.com/werf/nelm/pkg/helm/intern/chart/v3"
-	"github.com/werf/nelm/pkg/helm/pkg/chart"
-	c2 "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+	c3 "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	c2 "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 )
 
 // createChartArchive is a helper function to create a gzipped tar archive in memory

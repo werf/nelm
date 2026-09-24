@@ -23,9 +23,9 @@ import (
 	"strings"
 	"testing"
 
-	chart "github.com/werf/nelm/pkg/helm/intern/chart/v3"
-	"github.com/werf/nelm/pkg/helm/intern/chart/v3/lint/support"
-	chartutil "github.com/werf/nelm/pkg/helm/intern/chart/v3/util"
+	chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	"github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/lint/support"
+	chartutil "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/util"
 )
 
 const (

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 )
 
 var _ ReleaseStorager = (*stubStorager)(nil)

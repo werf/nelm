@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package driver // import "github.com/werf/nelm/pkg/helm/pkg/storage/driver"
+package driver // import "github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 
 import (
 	"context"
@@ -31,8 +31,8 @@ import (
 	kblabels "k8s.io/apimachinery/pkg/labels"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
-	rspb "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	rspb "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 func releaseStub(name string, vers int, namespace string, status common.Status) *rspb.Release {

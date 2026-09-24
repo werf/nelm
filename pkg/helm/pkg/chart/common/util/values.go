@@ -19,8 +19,8 @@ package util
 import (
 	"fmt"
 
-	"github.com/werf/nelm/pkg/helm/pkg/chart"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 )
 
 // ToRenderValues composes the struct from the data coming from the Releases, Charts and Values files

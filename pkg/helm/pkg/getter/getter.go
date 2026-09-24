@@ -23,8 +23,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/werf/nelm/pkg/helm/pkg/cli"
-	"github.com/werf/nelm/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 )
 
 // getterOptions are generic parameters to be provided to the getter during instantiation.

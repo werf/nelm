@@ -8,7 +8,7 @@ import (
 
 	"github.com/werf/common-go/pkg/secret"
 	"github.com/werf/common-go/pkg/util"
-	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/v2/pkg/common"
 )
 
 const (

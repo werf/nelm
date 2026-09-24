@@ -26,9 +26,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/werf/nelm/pkg/helm/intern/tlsutil"
-	"github.com/werf/nelm/pkg/helm/intern/urlutil"
-	"github.com/werf/nelm/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/v2/pkg/helm/intern/tlsutil"
+	"github.com/werf/nelm/v2/pkg/helm/intern/urlutil"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 )
 
 // OCIGetter is the default HTTP(/S) backend handler
