@@ -16,11 +16,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/werf/nelm/pkg/common"
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
-	"github.com/werf/nelm/pkg/legacy/progrep"
-	"github.com/werf/nelm/pkg/release"
+	"github.com/werf/nelm/v2/pkg/common"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/legacy/progrep"
+	"github.com/werf/nelm/v2/pkg/release"
 )
 
 func TestAI_BuildResolvedNamespaces(t *testing.T) {

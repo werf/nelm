@@ -23,8 +23,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 )
 
 func TestValidateAgainstSingleSchema(t *testing.T) {

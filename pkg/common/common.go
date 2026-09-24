@@ -14,7 +14,7 @@ import (
 	"github.com/samber/lo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 const (

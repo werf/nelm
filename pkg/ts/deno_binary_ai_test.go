@@ -14,10 +14,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/werf/nelm/pkg/common"
-	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
-	v2chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/ts"
+	"github.com/werf/nelm/v2/pkg/common"
+	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/ts"
 )
 
 func TestAI_GetDenoBinaryCtxEmbeddedData(t *testing.T) {

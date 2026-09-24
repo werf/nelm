@@ -26,8 +26,8 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	v2 "github.com/werf/nelm/pkg/helm/intern/release/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
+	v2 "github.com/werf/nelm/v2/pkg/helm/intern/release/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 )
 
 // Manifest represents a manifest file, which has a name and some content.

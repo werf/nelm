@@ -10,17 +10,17 @@ import (
 	"github.com/samber/lo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/werf/nelm/pkg/chart"
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
-	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	"github.com/werf/nelm/pkg/kube"
-	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/plan"
-	"github.com/werf/nelm/pkg/release"
-	"github.com/werf/nelm/pkg/resource"
-	"github.com/werf/nelm/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/chart"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/v2/pkg/kube"
+	"github.com/werf/nelm/v2/pkg/log"
+	"github.com/werf/nelm/v2/pkg/plan"
+	"github.com/werf/nelm/v2/pkg/release"
+	"github.com/werf/nelm/v2/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
 const DefaultChartLintLogLevel = log.InfoLevel

@@ -19,7 +19,7 @@ package util // import "helm.sh/helm/v4/internal/release/v2/util"
 import (
 	"sort"
 
-	rspb "github.com/werf/nelm/pkg/helm/intern/release/v2"
+	rspb "github.com/werf/nelm/v2/pkg/helm/intern/release/v2"
 )
 
 // Reverse reverses the list of releases sorted by the sort func.

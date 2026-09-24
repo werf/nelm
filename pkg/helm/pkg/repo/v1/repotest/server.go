@@ -34,11 +34,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"sigs.k8s.io/yaml"
 
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/loader"
-	chartutil "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
-	ociRegistry "github.com/werf/nelm/pkg/helm/pkg/registry"
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/loader"
+	chartutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
+	ociRegistry "github.com/werf/nelm/v2/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1"
 )
 
 func BasicAuthMiddleware(t *testing.T) http.HandlerFunc {

@@ -22,12 +22,12 @@ import (
 	"log"
 	"maps"
 
-	nelmcommon "github.com/werf/nelm/pkg/common"
-	v3 "github.com/werf/nelm/pkg/helm/intern/chart/v3"
-	"github.com/werf/nelm/pkg/helm/intern/copystructure"
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	v2 "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+	nelmcommon "github.com/werf/nelm/v2/pkg/common"
+	v3 "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	"github.com/werf/nelm/v2/pkg/helm/intern/copystructure"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	v2 "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 )
 
 func concatPrefix(a, b string) string {

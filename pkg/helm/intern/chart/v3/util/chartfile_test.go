@@ -19,7 +19,7 @@ package util
 import (
 	"testing"
 
-	chart "github.com/werf/nelm/pkg/helm/intern/chart/v3"
+	chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
 )
 
 const testfile = "testdata/chartfiletest.yaml"

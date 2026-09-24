@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package driver // import "github.com/werf/nelm/pkg/helm/pkg/storage/driver"
+package driver // import "github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 
 import (
 	"bytes"
@@ -31,7 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/metadata"
 
-	rspb "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	rspb "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 var b64 = base64.StdEncoding

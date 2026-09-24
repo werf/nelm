@@ -22,10 +22,10 @@ import (
 	"strings"
 	"testing"
 
-	chartutil "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
-	"github.com/werf/nelm/pkg/helm/pkg/provenance"
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1"
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1/repotest"
+	chartutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/provenance"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1/repotest"
 )
 
 func TestDependencyBuildCmd(t *testing.T) {

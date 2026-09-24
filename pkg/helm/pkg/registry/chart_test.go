@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package registry // import "github.com/werf/nelm/pkg/helm/pkg/registry"
+package registry // import "github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 
 import (
 	"reflect"
@@ -23,7 +23,7 @@ import (
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 )
 
 func TestGenerateOCIChartAnnotations(t *testing.T) {

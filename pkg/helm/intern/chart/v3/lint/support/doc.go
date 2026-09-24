@@ -20,4 +20,4 @@ Package support contains tools for linting charts.
 Linting is the process of testing charts for errors or warnings regarding
 formatting, compilation, or standards compliance.
 */
-package support // import "github.com/werf/nelm/pkg/helm/intern/chart/v3/lint/support"
+package support // import "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/lint/support"

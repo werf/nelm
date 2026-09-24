@@ -22,7 +22,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	release "github.com/werf/nelm/pkg/helm/intern/release/v2"
+	release "github.com/werf/nelm/v2/pkg/helm/intern/release/v2"
 )
 
 func TestSortManifests(t *testing.T) {

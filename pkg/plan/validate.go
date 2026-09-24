@@ -6,9 +6,9 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/resource/spec"
-	"github.com/werf/nelm/pkg/util"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/util"
 )
 
 // Should only be called if cluster access is allowed.

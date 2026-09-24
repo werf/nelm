@@ -16,7 +16,7 @@ limitations under the License.
 
 package kube
 
-import "github.com/werf/nelm/pkg/helm/pkg/kubeenv"
+import "github.com/werf/nelm/v2/pkg/helm/pkg/kubeenv"
 
 // RetryingRoundTripper retries transient Kubernetes API server errors on a
 // wrapped [http.RoundTripper]. The implementation lives in [kubeenv] so

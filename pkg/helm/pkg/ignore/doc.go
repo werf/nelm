@@ -65,4 +65,4 @@ Notable differences from .gitignore:
   - The evaluation of escape sequences has not been tested for compatibility
   - There is no support for '\!' as a special leading sequence.
 */
-package ignore // import "github.com/werf/nelm/pkg/helm/pkg/ignore"
+package ignore // import "github.com/werf/nelm/v2/pkg/helm/pkg/ignore"

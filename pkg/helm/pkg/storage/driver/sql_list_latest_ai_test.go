@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
-	rspb "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	rspb "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 func TestAI_SQLListLatestReleases(t *testing.T) {

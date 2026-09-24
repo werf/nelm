@@ -11,9 +11,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	metadatafake "k8s.io/client-go/metadata/fake"
 
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
-	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	helmreleasecommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 var configMapsGVR = schema.GroupVersionResource{Version: "v1", Resource: "configmaps"}

@@ -29,7 +29,7 @@ import (
 	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	k8sversion "k8s.io/apimachinery/pkg/util/version"
 
-	helmversion "github.com/werf/nelm/pkg/helm/intern/version"
+	helmversion "github.com/werf/nelm/v2/pkg/helm/intern/version"
 )
 
 const (

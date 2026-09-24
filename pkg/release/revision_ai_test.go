@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	helmreleasecommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 )
 
 func TestAI_DeployedRevisions(t *testing.T) {

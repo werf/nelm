@@ -34,12 +34,12 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common/util"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/lint/support"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/loader"
-	chartutil "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
-	"github.com/werf/nelm/pkg/helm/pkg/engine"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/lint/support"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/loader"
+	chartutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/engine"
 )
 
 // Templates lints the templates in the Linter.

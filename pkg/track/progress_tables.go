@@ -17,7 +17,7 @@ import (
 	"github.com/werf/kubedog/pkg/dyntracker/logstore"
 	"github.com/werf/kubedog/pkg/dyntracker/statestore"
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 // Prints progress tables at regular intervals. Progress tables include resource statuses, container

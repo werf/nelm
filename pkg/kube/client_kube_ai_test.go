@@ -20,7 +20,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	ktesting "k8s.io/client-go/testing"
 
-	"github.com/werf/nelm/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
 type testCachedDiscoveryClient struct {

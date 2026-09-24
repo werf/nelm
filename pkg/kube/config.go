@@ -9,8 +9,8 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
 
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 // Abstracts all static configuration needed to create Kubernetes clients.

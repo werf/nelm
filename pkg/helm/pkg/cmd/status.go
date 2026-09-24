@@ -28,13 +28,13 @@ import (
 
 	"k8s.io/kubectl/pkg/cmd/get"
 
-	coloroutput "github.com/werf/nelm/pkg/helm/intern/cli/output"
-	"github.com/werf/nelm/pkg/helm/pkg/action"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common/util"
-	"github.com/werf/nelm/pkg/helm/pkg/cli/output"
-	"github.com/werf/nelm/pkg/helm/pkg/cmd/require"
-	"github.com/werf/nelm/pkg/helm/pkg/release"
-	releasev1 "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	coloroutput "github.com/werf/nelm/v2/pkg/helm/intern/cli/output"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/action"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli/output"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cmd/require"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	releasev1 "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 // NOTE: Keep the list of statuses up-to-date with pkg/release/status.go.

@@ -32,9 +32,9 @@ import (
 	"testing"
 	"time"
 
-	chart "github.com/werf/nelm/pkg/helm/intern/chart/v3"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/loader/archive"
+	chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader/archive"
 )
 
 func TestLoadDir(t *testing.T) {

@@ -19,8 +19,8 @@ package action
 import (
 	"bytes"
 
-	"github.com/werf/nelm/pkg/helm/pkg/kube"
-	ri "github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/kube"
+	ri "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 )
 
 // Status is the action for checking the deployment status of releases.

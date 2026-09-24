@@ -21,10 +21,10 @@ import (
 	"log/slog"
 	"strings"
 
-	chart "github.com/werf/nelm/pkg/helm/intern/chart/v3"
-	"github.com/werf/nelm/pkg/helm/intern/copystructure"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common/util"
+	chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	"github.com/werf/nelm/v2/pkg/helm/intern/copystructure"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common/util"
 )
 
 // ProcessDependencies checks through this chart's dependencies, processing accordingly.

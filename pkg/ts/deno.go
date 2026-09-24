@@ -14,11 +14,11 @@ import (
 	"github.com/gofrs/flock"
 	"github.com/samber/lo"
 
-	"github.com/werf/nelm/pkg/common"
-	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
-	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/ts/denolock"
+	"github.com/werf/nelm/v2/pkg/common"
+	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	"github.com/werf/nelm/v2/pkg/log"
+	"github.com/werf/nelm/v2/pkg/ts/denolock"
 )
 
 var chartTSEntryPoints = [...]string{common.ChartTSEntryPointTS, common.ChartTSEntryPointJS}

@@ -26,7 +26,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/werf/nelm/pkg/helm/pkg/getter"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/getter"
 )
 
 // mockGetter implements getter.Getter for testing

@@ -24,7 +24,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/werf/nelm/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 )
 
 func TestNewOCIPusher(t *testing.T) {

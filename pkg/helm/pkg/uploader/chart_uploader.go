@@ -20,8 +20,8 @@ import (
 	"io"
 	"net/url"
 
-	"github.com/werf/nelm/pkg/helm/pkg/pusher"
-	"github.com/werf/nelm/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/pusher"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 )
 
 // ChartUploader handles uploading a chart.

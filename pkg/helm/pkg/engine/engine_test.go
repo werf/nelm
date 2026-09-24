@@ -35,9 +35,9 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/fake"
 
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common/util"
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common/util"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 )
 
 func TestSortTemplates(t *testing.T) {

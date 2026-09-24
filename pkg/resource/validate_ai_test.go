@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/resource"
 )
 
 func TestAI_ValidateLocal(t *testing.T) {

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package storage // import "github.com/werf/nelm/pkg/helm/pkg/storage"
+package storage // import "github.com/werf/nelm/v2/pkg/helm/pkg/storage"
 
 import (
 	"context"
@@ -25,12 +25,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/werf/nelm/pkg/helm/intern/logging"
-	"github.com/werf/nelm/pkg/helm/pkg/release"
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
-	rspb "github.com/werf/nelm/pkg/helm/pkg/release/v1"
-	relutil "github.com/werf/nelm/pkg/helm/pkg/release/v1/util"
-	"github.com/werf/nelm/pkg/helm/pkg/storage/driver"
+	"github.com/werf/nelm/v2/pkg/helm/intern/logging"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	rspb "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	relutil "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 )
 
 // HelmStorageType is the type field of the Kubernetes storage object which stores the Helm release

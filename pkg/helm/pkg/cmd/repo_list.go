@@ -23,9 +23,9 @@ import (
 	"github.com/gosuri/uitable"
 	"github.com/spf13/cobra"
 
-	"github.com/werf/nelm/pkg/helm/pkg/cli/output"
-	"github.com/werf/nelm/pkg/helm/pkg/cmd/require"
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli/output"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cmd/require"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1"
 )
 
 func newRepoListCmd(out io.Writer) *cobra.Command {

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cmd // import "github.com/werf/nelm/pkg/helm/pkg/cmd"
+package cmd // import "github.com/werf/nelm/v2/pkg/helm/pkg/cmd"
 
 import (
 	"context"
@@ -33,16 +33,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/werf/nelm/pkg/helm/intern/logging"
-	"github.com/werf/nelm/pkg/helm/intern/tlsutil"
-	"github.com/werf/nelm/pkg/helm/pkg/action"
-	"github.com/werf/nelm/pkg/helm/pkg/cli"
-	kubefake "github.com/werf/nelm/pkg/helm/pkg/kube/fake"
-	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	ri "github.com/werf/nelm/pkg/helm/pkg/release"
-	release "github.com/werf/nelm/pkg/helm/pkg/release/v1"
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1"
-	"github.com/werf/nelm/pkg/helm/pkg/storage/driver"
+	"github.com/werf/nelm/v2/pkg/helm/intern/logging"
+	"github.com/werf/nelm/v2/pkg/helm/intern/tlsutil"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/action"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli"
+	kubefake "github.com/werf/nelm/v2/pkg/helm/pkg/kube/fake"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
+	ri "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	release "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 )
 
 var globalUsage = `The Kubernetes package manager

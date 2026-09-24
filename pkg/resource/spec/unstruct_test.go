@@ -10,7 +10,7 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/werf/nelm/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
 type UnstructSuite struct {

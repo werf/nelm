@@ -23,7 +23,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/werf/nelm/pkg/helm/intern/chart/v3/lint/support"
+	"github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/lint/support"
 )
 
 const invalidCrdsDir = "./testdata/invalidcrdsdir"

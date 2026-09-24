@@ -22,9 +22,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/werf/nelm/pkg/helm/pkg/action"
-	"github.com/werf/nelm/pkg/helm/pkg/cmd/require"
-	"github.com/werf/nelm/pkg/helm/pkg/pusher"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/action"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cmd/require"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/pusher"
 )
 
 const pushDesc = `

@@ -23,9 +23,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/werf/nelm/pkg/helm/pkg/release"
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
-	rspb "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	rspb "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 func TestMemoryName(t *testing.T) {

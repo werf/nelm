@@ -22,12 +22,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	chartutil "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
-	"github.com/werf/nelm/pkg/helm/pkg/cli"
-	"github.com/werf/nelm/pkg/helm/pkg/downloader"
-	"github.com/werf/nelm/pkg/helm/pkg/getter"
-	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1"
+	chartutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/downloader"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/getter"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1"
 )
 
 // Pull is the action for checking a given release's information.

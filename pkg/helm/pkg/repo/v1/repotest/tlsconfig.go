@@ -20,7 +20,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/werf/nelm/pkg/helm/intern/tlsutil"
+	"github.com/werf/nelm/v2/pkg/helm/intern/tlsutil"
 
 	"github.com/stretchr/testify/require"
 )

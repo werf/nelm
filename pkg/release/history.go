@@ -9,7 +9,7 @@ import (
 
 	"github.com/samber/lo"
 
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 )
 
 var _ Historier = (*History)(nil)

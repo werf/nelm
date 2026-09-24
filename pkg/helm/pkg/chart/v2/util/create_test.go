@@ -23,8 +23,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/loader"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/loader"
 )
 
 func TestCreate(t *testing.T) {

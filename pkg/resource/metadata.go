@@ -18,11 +18,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/werf/kubedog/pkg/dyntracker/statestore"
-	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
-	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/resource/spec"
-	"github.com/werf/nelm/pkg/util"
+	"github.com/werf/nelm/v2/pkg/common"
+	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/log"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/util"
 )
 
 func ResourcePolicies(meta *spec.ResourceMeta, releaseNamespace string) []common.ResourcePolicy {

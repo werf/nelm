@@ -28,9 +28,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/werf/nelm/pkg/helm/intern/tlsutil"
-	"github.com/werf/nelm/pkg/helm/intern/version"
-	"github.com/werf/nelm/pkg/helm/pkg/cli"
+	"github.com/werf/nelm/v2/pkg/helm/intern/tlsutil"
+	"github.com/werf/nelm/v2/pkg/helm/intern/version"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli"
 )
 
 func TestHTTPGetter(t *testing.T) {

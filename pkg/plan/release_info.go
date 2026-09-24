@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/werf/nelm/pkg/common"
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
-	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	"github.com/werf/nelm/pkg/release"
+	"github.com/werf/nelm/v2/pkg/common"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	helmreleasecommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/v2/pkg/release"
 )
 
 const (

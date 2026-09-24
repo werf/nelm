@@ -17,9 +17,9 @@ import (
 
 	"github.com/gofrs/flock"
 
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/helmpath"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 const (

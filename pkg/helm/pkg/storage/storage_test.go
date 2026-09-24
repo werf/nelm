@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package storage // import "github.com/werf/nelm/pkg/helm/pkg/storage"
+package storage // import "github.com/werf/nelm/v2/pkg/helm/pkg/storage"
 
 import (
 	"context"
@@ -26,10 +26,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/werf/nelm/pkg/helm/pkg/release"
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
-	rspb "github.com/werf/nelm/pkg/helm/pkg/release/v1"
-	"github.com/werf/nelm/pkg/helm/pkg/storage/driver"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	rspb "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 )
 
 func TestStorageCreate(t *testing.T) {

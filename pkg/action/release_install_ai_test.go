@@ -18,13 +18,13 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/werf/nelm/pkg/common"
-	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	"github.com/werf/nelm/pkg/kube"
-	"github.com/werf/nelm/pkg/legacy/progrep"
-	"github.com/werf/nelm/pkg/plan"
-	"github.com/werf/nelm/pkg/resource"
-	"github.com/werf/nelm/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/common"
+	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/v2/pkg/kube"
+	"github.com/werf/nelm/v2/pkg/legacy/progrep"
+	"github.com/werf/nelm/v2/pkg/plan"
+	"github.com/werf/nelm/v2/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
 var (

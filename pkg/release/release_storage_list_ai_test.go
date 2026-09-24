@@ -19,10 +19,10 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
-	helmstorage "github.com/werf/nelm/pkg/helm/pkg/storage"
-	helmdriver "github.com/werf/nelm/pkg/helm/pkg/storage/driver"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	helmstorage "github.com/werf/nelm/v2/pkg/helm/pkg/storage"
+	helmdriver "github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 )
 
 var _ helmdriver.Driver = (*plainDriver)(nil)

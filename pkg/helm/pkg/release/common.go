@@ -23,10 +23,10 @@ import (
 
 	"github.com/mitchellh/copystructure"
 
-	v2release "github.com/werf/nelm/pkg/helm/intern/release/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/chart"
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
-	v1release "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	v2release "github.com/werf/nelm/v2/pkg/helm/intern/release/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	v1release "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 var NewAccessor func(rel Releaser) (Accessor, error) = newDefaultAccessor //nolint:revive

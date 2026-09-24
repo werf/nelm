@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 const downloadAttempts = 3

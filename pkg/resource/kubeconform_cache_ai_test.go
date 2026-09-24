@@ -17,8 +17,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/resource"
 )
 
 var sha256HexPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)

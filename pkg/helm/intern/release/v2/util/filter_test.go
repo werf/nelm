@@ -19,8 +19,8 @@ package util // import "helm.sh/helm/v4/internal/release/v2/util"
 import (
 	"testing"
 
-	rspb "github.com/werf/nelm/pkg/helm/intern/release/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
+	rspb "github.com/werf/nelm/v2/pkg/helm/intern/release/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 )
 
 func TestFilterAny(t *testing.T) {

@@ -12,15 +12,15 @@ import (
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/werf/nelm/pkg/common"
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
-	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
-	"github.com/werf/nelm/pkg/plan"
-	"github.com/werf/nelm/pkg/release"
-	"github.com/werf/nelm/pkg/resource"
-	"github.com/werf/nelm/pkg/resource/spec"
-	"github.com/werf/nelm/pkg/test"
+	"github.com/werf/nelm/v2/pkg/common"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/plan"
+	"github.com/werf/nelm/v2/pkg/release"
+	"github.com/werf/nelm/v2/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/test"
 )
 
 type BuildPlanSuite struct {

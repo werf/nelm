@@ -26,12 +26,12 @@ import (
 	"github.com/gosuri/uitable"
 	"github.com/spf13/cobra"
 
-	"github.com/werf/nelm/pkg/helm/pkg/action"
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/cli/output"
-	"github.com/werf/nelm/pkg/helm/pkg/cmd/require"
-	release "github.com/werf/nelm/pkg/helm/pkg/release/v1"
-	releaseutil "github.com/werf/nelm/pkg/helm/pkg/release/v1/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/action"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli/output"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cmd/require"
+	release "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	releaseutil "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1/util"
 )
 
 var historyHelp = `

@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 
-	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	helmstorage "github.com/werf/nelm/pkg/helm/pkg/storage"
-	helmdriver "github.com/werf/nelm/pkg/helm/pkg/storage/driver"
+	helmreleasecommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	helmstorage "github.com/werf/nelm/v2/pkg/helm/pkg/storage"
+	helmdriver "github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 )
 
 func TestAI_ConfigMapsRevisions_EmptyNamespaceIsRejected(t *testing.T) {

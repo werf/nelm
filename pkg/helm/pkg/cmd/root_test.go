@@ -23,10 +23,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/werf/nelm/pkg/helm/intern/test/ensure"
-	"github.com/werf/nelm/pkg/helm/pkg/action"
-	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
-	"github.com/werf/nelm/pkg/helm/pkg/helmpath/xdg"
+	"github.com/werf/nelm/v2/pkg/helm/intern/test/ensure"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/action"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/helmpath"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/helmpath/xdg"
 )
 
 func TestRootCmd(t *testing.T) {

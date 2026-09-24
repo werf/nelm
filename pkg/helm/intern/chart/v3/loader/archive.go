@@ -24,8 +24,8 @@ import (
 	"io"
 	"os"
 
-	chart "github.com/werf/nelm/pkg/helm/intern/chart/v3"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/loader/archive"
+	chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader/archive"
 )
 
 // FileLoader loads a chart from a file

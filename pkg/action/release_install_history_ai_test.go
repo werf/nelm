@@ -9,11 +9,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
-	helmreleasestatus "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
-	"github.com/werf/nelm/pkg/helm/pkg/storage/driver"
-	"github.com/werf/nelm/pkg/release"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
+	"github.com/werf/nelm/v2/pkg/release"
 )
 
 var _ release.ReleaseStorager = (*prunedRevisionStorager)(nil)

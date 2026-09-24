@@ -25,11 +25,11 @@ import (
 	"k8s.io/cli-runtime/pkg/printers"
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/loader"
-	chartutil "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
-	"github.com/werf/nelm/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/loader"
+	chartutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 )
 
 // ShowOutputFormat is the format of the output of `helm show`

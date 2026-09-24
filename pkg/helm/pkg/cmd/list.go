@@ -26,12 +26,12 @@ import (
 	"github.com/gosuri/uitable"
 	"github.com/spf13/cobra"
 
-	coloroutput "github.com/werf/nelm/pkg/helm/intern/cli/output"
-	"github.com/werf/nelm/pkg/helm/pkg/action"
-	"github.com/werf/nelm/pkg/helm/pkg/cli/output"
-	"github.com/werf/nelm/pkg/helm/pkg/cmd/require"
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
-	release "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	coloroutput "github.com/werf/nelm/v2/pkg/helm/intern/cli/output"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/action"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli/output"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cmd/require"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	release "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 var listHelp = `

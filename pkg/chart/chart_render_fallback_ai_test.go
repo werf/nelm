@@ -14,13 +14,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/werf/logboek"
-	nelmcommon "github.com/werf/nelm/pkg/common"
-	v3chart "github.com/werf/nelm/pkg/helm/intern/chart/v3"
-	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
-	v2chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	chartv2util "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
-	"github.com/werf/nelm/pkg/log"
+	nelmcommon "github.com/werf/nelm/v2/pkg/common"
+	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
+	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	chartv2util "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 type fallbackChartFilesAI struct {

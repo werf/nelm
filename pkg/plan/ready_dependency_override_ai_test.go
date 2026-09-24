@@ -13,12 +13,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/werf/kubedog/pkg/dyntracker/statestore"
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/kube"
-	"github.com/werf/nelm/pkg/kube/fake"
-	"github.com/werf/nelm/pkg/plan"
-	"github.com/werf/nelm/pkg/resource"
-	"github.com/werf/nelm/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/kube"
+	"github.com/werf/nelm/v2/pkg/kube/fake"
+	"github.com/werf/nelm/v2/pkg/plan"
+	"github.com/werf/nelm/v2/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
 const (

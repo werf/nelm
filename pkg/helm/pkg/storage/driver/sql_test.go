@@ -25,9 +25,9 @@ import (
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 	migrate "github.com/rubenv/sql-migrate"
 
-	"github.com/werf/nelm/pkg/helm/pkg/release"
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
-	rspb "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	rspb "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 const recentTimestampTolerance = time.Second

@@ -3,7 +3,7 @@ package release
 import (
 	"github.com/samber/lo"
 
-	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	helmreleasecommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 )
 
 type Revision struct {

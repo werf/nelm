@@ -34,16 +34,16 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/nelm/pkg/helm/intern/resolver"
-	"github.com/werf/nelm/pkg/helm/intern/third_party/dep/fs"
-	"github.com/werf/nelm/pkg/helm/intern/urlutil"
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/loader"
-	chartutil "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
-	"github.com/werf/nelm/pkg/helm/pkg/getter"
-	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
-	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1"
+	"github.com/werf/nelm/v2/pkg/helm/intern/resolver"
+	"github.com/werf/nelm/v2/pkg/helm/intern/third_party/dep/fs"
+	"github.com/werf/nelm/v2/pkg/helm/intern/urlutil"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/loader"
+	chartutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/getter"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/helmpath"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1"
 )
 
 // ErrRepoNotFound indicates that chart repositories can't be found in local repo cache.

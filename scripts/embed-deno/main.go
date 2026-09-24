@@ -13,9 +13,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/ts"
-	"github.com/werf/nelm/pkg/ts/denolock"
+	"github.com/werf/nelm/v2/pkg/log"
+	"github.com/werf/nelm/v2/pkg/ts"
+	"github.com/werf/nelm/v2/pkg/ts/denolock"
 )
 
 func run() error {

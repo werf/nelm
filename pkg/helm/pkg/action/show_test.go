@@ -22,9 +22,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 )
 
 func TestShow(t *testing.T) {

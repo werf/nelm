@@ -27,9 +27,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/werf/nelm/pkg/helm/intern/tlsutil"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/loader"
-	"github.com/werf/nelm/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/v2/pkg/helm/intern/tlsutil"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/loader"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 )
 
 // OCIPusher is the default OCI backend handler

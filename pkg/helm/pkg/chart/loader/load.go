@@ -27,13 +27,13 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	nelmcommon "github.com/werf/nelm/pkg/common"
-	c3 "github.com/werf/nelm/pkg/helm/intern/chart/v3"
-	c3load "github.com/werf/nelm/pkg/helm/intern/chart/v3/loader"
-	"github.com/werf/nelm/pkg/helm/pkg/chart"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/loader/archive"
-	c2 "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	c2load "github.com/werf/nelm/pkg/helm/pkg/chart/v2/loader"
+	nelmcommon "github.com/werf/nelm/v2/pkg/common"
+	c3 "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	c3load "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/loader"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader/archive"
+	c2 "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	c2load "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/loader"
 )
 
 // ChartLoader loads a chart.

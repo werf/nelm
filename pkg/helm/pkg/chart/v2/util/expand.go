@@ -26,8 +26,8 @@ import (
 	securejoin "github.com/cyphar/filepath-securejoin"
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/nelm/pkg/helm/pkg/chart/loader/archive"
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader/archive"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 )
 
 // Expand uncompresses and extracts a chart into the specified directory.

@@ -18,8 +18,8 @@ package chart
 import (
 	"errors"
 
-	v3chart "github.com/werf/nelm/pkg/helm/intern/chart/v3"
-	v2chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 )
 
 var NewDependencyAccessor func(dep Dependency) (DependencyAccessor, error) = NewDefaultDependencyAccessor //nolint:revive

@@ -67,7 +67,7 @@ Every snapshot is complete and self-contained: it lists every operation reported
 
 ## Report shape
 
-The types live in `github.com/werf/nelm/pkg/legacy/progrep`. A report has a single field, `Operations`, a list of operations with the following fields:
+The types live in `github.com/werf/nelm/v2/pkg/legacy/progrep`. A report has a single field, `Operations`, a list of operations with the following fields:
 
 | Field | Meaning |
 |---|---|
