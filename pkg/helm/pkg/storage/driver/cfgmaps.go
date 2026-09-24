@@ -113,6 +113,78 @@ func (cfgmaps *ConfigMaps) LastVersion(name string) (int, error) {
 	return latest, nil
 }
 
+// Revisions returns the metadata of every revision of the named release, sorted
+// by ascending version. It reads only labels and decodes no release body.
+func (cfgmaps *ConfigMaps) Revisions(ctx context.Context, name string) ([]RevisionRecord, error) {
+	if cfgmaps.Namespace == "" {
+		return nil, fmt.Errorf("list revisions of release %q: namespace is required", name)
+	}
+
+	selector := kblabels.Set{"owner": "helm", "name": name}.AsSelector().String()
+
+	var records []RevisionRecord
+
+	if cfgmaps.MetadataClient != nil {
+		opts := metav1.ListOptions{LabelSelector: selector, Limit: listLatestPageSize}
+
+		for {
+			list, err := cfgmaps.MetadataClient.Resource(configMapsGVR).Namespace(cfgmaps.Namespace).List(ctx, opts)
+			if err != nil {
+				return nil, fmt.Errorf("list revision metadata of release %q: %w", name, err)
+			}
+
+			for _, item := range list.Items {
+				record, ok := revisionRecordFromLabels(cfgmaps.Namespace, item.Labels)
+				if !ok {
+					continue
+				}
+
+				records = append(records, record)
+			}
+
+			if list.Continue == "" {
+				break
+			}
+
+			opts.Continue = list.Continue
+		}
+
+		sort.Slice(records, func(i, j int) bool { return records[i].Version < records[j].Version })
+
+		return records, nil
+	}
+
+	// Safety net without a metadata client: a typed list still avoids decoding
+	// release bodies, but unlike the metadata path it transfers them over the wire.
+	opts := metav1.ListOptions{LabelSelector: selector, Limit: listLatestPageSize}
+
+	for {
+		list, err := cfgmaps.impl.List(ctx, opts)
+		if err != nil {
+			return nil, fmt.Errorf("list revisions of release %q: %w", name, err)
+		}
+
+		for _, item := range list.Items {
+			record, ok := revisionRecordFromLabels(cfgmaps.Namespace, item.Labels)
+			if !ok {
+				continue
+			}
+
+			records = append(records, record)
+		}
+
+		if list.Continue == "" {
+			break
+		}
+
+		opts.Continue = list.Continue
+	}
+
+	sort.Slice(records, func(i, j int) bool { return records[i].Version < records[j].Version })
+
+	return records, nil
+}
+
 // ListLatestReleases returns the highest revision of every release owned by Helm.
 // Superseded revisions are dropped while paging, before any body is decoded, so
 // the cost does not scale with the depth of the histories.

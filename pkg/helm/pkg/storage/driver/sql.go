@@ -337,6 +337,55 @@ func (s *SQL) LastVersion(name string) (int, error) {
 	return int(version.Int64), nil
 }
 
+type sqlRevisionRecord struct {
+	Name      string `db:"name"`
+	Namespace string `db:"namespace"`
+	Version   int    `db:"version"`
+	Status    string `db:"status"`
+}
+
+// Revisions returns the metadata of every revision of the named release, sorted
+// by ascending version. It reads only metadata columns and decodes no release body.
+func (s *SQL) Revisions(ctx context.Context, name string) ([]RevisionRecord, error) {
+	if s.namespace == "" {
+		return nil, fmt.Errorf("list revisions of release %q: namespace is required", name)
+	}
+
+	query, args, err := s.statementBuilder.
+		Select(
+			sqlReleaseTableNameColumn,
+			sqlReleaseTableNamespaceColumn,
+			sqlReleaseTableVersionColumn,
+			sqlReleaseTableStatusColumn,
+		).
+		From(sqlReleaseTableName).
+		Where(sq.Eq{sqlReleaseTableNameColumn: name}).
+		Where(sq.Eq{sqlReleaseTableOwnerColumn: sqlReleaseDefaultOwner}).
+		Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace}).
+		OrderBy(sqlReleaseTableVersionColumn + " ASC").
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build revisions query for release %q: %w", name, err)
+	}
+
+	var rows []sqlRevisionRecord
+	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, fmt.Errorf("select revisions of release %q: %w", name, err)
+	}
+
+	records := make([]RevisionRecord, 0, len(rows))
+	for _, row := range rows {
+		records = append(records, RevisionRecord{
+			Name:      row.Name,
+			Namespace: row.Namespace,
+			Version:   row.Version,
+			Status:    row.Status,
+		})
+	}
+
+	return records, nil
+}
+
 type sqlLatestReleaseRecord struct {
 	Key       string `db:"key"`
 	Namespace string `db:"namespace"`
