@@ -24,7 +24,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1"
 )
 
 func TestRepoIndexCmd(t *testing.T) {

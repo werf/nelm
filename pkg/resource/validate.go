@@ -10,10 +10,10 @@ import (
 	"github.com/yannh/kubeconform/pkg/validator"
 	"k8s.io/client-go/kubernetes/scheme"
 
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/resource/spec"
-	"github.com/werf/nelm/pkg/util"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/log"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/util"
 )
 
 var (

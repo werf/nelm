@@ -9,10 +9,10 @@ import (
 	"github.com/dominikbraun/graph"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/plan"
-	"github.com/werf/nelm/pkg/resource"
-	"github.com/werf/nelm/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/plan"
+	"github.com/werf/nelm/v2/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
 type BuildPlanAISuite struct {

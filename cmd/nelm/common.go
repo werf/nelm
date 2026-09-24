@@ -6,7 +6,7 @@ import (
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 var helmRootCmd *cobra.Command

@@ -1,6 +1,6 @@
 package loader
 
-import chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+import chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 
 type autosetChartMetadataOptions struct {
 	OverrideAppVersion string

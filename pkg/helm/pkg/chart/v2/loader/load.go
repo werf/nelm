@@ -33,11 +33,11 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/werf/common-go/pkg/secrets_manager"
-	nelmcommon "github.com/werf/nelm/pkg/common"
-	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/loader/archive"
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	legacysecret "github.com/werf/nelm/pkg/legacy/secret"
+	nelmcommon "github.com/werf/nelm/v2/pkg/common"
+	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader/archive"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	legacysecret "github.com/werf/nelm/v2/pkg/legacy/secret"
 )
 
 // ChartLoader loads a chart.

@@ -26,12 +26,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/werf/nelm/pkg/helm/intern/test/ensure"
-	"github.com/werf/nelm/pkg/helm/pkg/cli"
-	"github.com/werf/nelm/pkg/helm/pkg/getter"
-	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1"
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1/repotest"
+	"github.com/werf/nelm/v2/pkg/helm/intern/test/ensure"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/getter"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1/repotest"
 )
 
 const (

@@ -21,8 +21,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
-	"github.com/werf/nelm/pkg/helm/pkg/helmpath/xdg"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/helmpath"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/helmpath/xdg"
 )
 
 // HelmHome sets up a Helm Home in a temp dir.

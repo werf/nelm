@@ -21,7 +21,7 @@ import (
 
 	"k8s.io/client-go/util/homedir"
 
-	"github.com/werf/nelm/pkg/helm/pkg/helmpath/xdg"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/helmpath/xdg"
 )
 
 const (

@@ -17,7 +17,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/werf/nelm/pkg/helm/pkg/helmpath/xdg"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/helmpath/xdg"
 )
 
 const (

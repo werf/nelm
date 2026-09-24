@@ -8,13 +8,13 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/metadata"
 
-	"github.com/werf/nelm/pkg/common"
-	v2release "github.com/werf/nelm/pkg/helm/intern/release/v2"
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
-	helmstorage "github.com/werf/nelm/pkg/helm/pkg/storage"
-	helmdriver "github.com/werf/nelm/pkg/helm/pkg/storage/driver"
-	"github.com/werf/nelm/pkg/kube"
+	"github.com/werf/nelm/v2/pkg/common"
+	v2release "github.com/werf/nelm/v2/pkg/helm/intern/release/v2"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	helmstorage "github.com/werf/nelm/v2/pkg/helm/pkg/storage"
+	helmdriver "github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
+	"github.com/werf/nelm/v2/pkg/kube"
 )
 
 const (

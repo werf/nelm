@@ -28,8 +28,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/yaml"
 
-	"github.com/werf/nelm/pkg/helm/intern/chart/v3/lint/support"
-	"github.com/werf/nelm/pkg/helm/intern/chart/v3/loader"
+	"github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/lint/support"
+	"github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/loader"
 )
 
 // Crds lints the CRDs in the Linter.

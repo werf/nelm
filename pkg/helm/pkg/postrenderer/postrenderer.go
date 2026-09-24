@@ -17,7 +17,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/werf/nelm/pkg/helm/pkg/cli"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli"
 )
 
 // PostRenderer is an interface different plugin runtimes

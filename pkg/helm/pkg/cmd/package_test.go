@@ -24,9 +24,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/werf/nelm/pkg/helm/intern/test/ensure"
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/loader"
+	"github.com/werf/nelm/v2/pkg/helm/intern/test/ensure"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/loader"
 )
 
 func TestPackage(t *testing.T) {

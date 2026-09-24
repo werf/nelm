@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/werf/nelm/pkg/helm/pkg/downloader"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/downloader"
 )
 
 // Verify is the action for building a given chart's Verify tree.

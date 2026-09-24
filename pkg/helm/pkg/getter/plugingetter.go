@@ -16,7 +16,7 @@ limitations under the License.
 package getter
 
 import (
-	"github.com/werf/nelm/pkg/helm/pkg/cli"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli"
 )
 
 // collectGetterPlugins scans for getter plugins.

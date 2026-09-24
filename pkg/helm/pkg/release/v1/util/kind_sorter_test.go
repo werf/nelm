@@ -20,7 +20,7 @@ import (
 	"bytes"
 	"testing"
 
-	release "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	release "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 func TestKindSorter(t *testing.T) {

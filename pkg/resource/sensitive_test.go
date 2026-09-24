@@ -7,7 +7,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/werf/nelm/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/resource"
 )
 
 func TestGetSensitiveInfo(t *testing.T) {

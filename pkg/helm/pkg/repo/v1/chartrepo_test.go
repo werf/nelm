@@ -31,9 +31,9 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/nelm/pkg/helm/pkg/cli"
-	"github.com/werf/nelm/pkg/helm/pkg/getter"
-	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/getter"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/helmpath"
 )
 
 type CustomGetter struct {

@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/werf/nelm/pkg/util"
+	"github.com/werf/nelm/v2/pkg/util"
 )
 
 func TestAI_EscapeForMarkdown(t *testing.T) {

@@ -21,9 +21,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	rcommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	rcommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 )
 
 // MockHookTemplate is the hook template used for all mock release objects.

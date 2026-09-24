@@ -10,10 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	chartcommonutil "github.com/werf/nelm/pkg/helm/pkg/chart/common/util"
-	v2chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	helmengine "github.com/werf/nelm/pkg/helm/pkg/engine"
+	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	chartcommonutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common/util"
+	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	helmengine "github.com/werf/nelm/v2/pkg/helm/pkg/engine"
 )
 
 func TestAI_LocalClientProviderEmpty(t *testing.T) {

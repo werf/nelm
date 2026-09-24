@@ -26,8 +26,8 @@ import (
 	"github.com/gosuri/uitable"
 	"github.com/spf13/cobra"
 
-	"github.com/werf/nelm/pkg/helm/intern/monocular"
-	"github.com/werf/nelm/pkg/helm/pkg/cli/output"
+	"github.com/werf/nelm/v2/pkg/helm/intern/monocular"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli/output"
 )
 
 const searchHubDesc = `

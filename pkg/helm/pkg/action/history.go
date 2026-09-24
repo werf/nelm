@@ -19,8 +19,8 @@ package action
 import (
 	"fmt"
 
-	chartutil "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
-	"github.com/werf/nelm/pkg/helm/pkg/release"
+	chartutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release"
 )
 
 // History is the action for checking the release's ledger.

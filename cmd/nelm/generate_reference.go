@@ -13,9 +13,9 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/werf/common-go/pkg/cli"
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
-	"github.com/werf/nelm/pkg/util"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/featgate"
+	"github.com/werf/nelm/v2/pkg/util"
 )
 
 type generateReferenceConfig struct{}

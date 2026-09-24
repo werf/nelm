@@ -9,8 +9,8 @@ import (
 
 	"github.com/werf/common-go/pkg/secret"
 	"github.com/werf/common-go/pkg/secrets_manager"
-	"github.com/werf/nelm/pkg/common"
-	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
+	"github.com/werf/nelm/v2/pkg/common"
+	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 )
 
 var _ RuntimeData = (*SecretsRuntimeData)(nil)

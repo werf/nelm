@@ -11,9 +11,9 @@ import (
 
 	"github.com/samber/lo"
 
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
-	helmreleasecommon "github.com/werf/nelm/pkg/helm/pkg/release/common"
-	"github.com/werf/nelm/pkg/helm/pkg/storage/driver"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	helmreleasecommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 )
 
 var _ Historier = (*History)(nil)

@@ -7,7 +7,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/werf/nelm/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
 func renderedSpec(t *testing.T, name, namespace, filePath string, annotations map[string]interface{}) *spec.ResourceSpec {

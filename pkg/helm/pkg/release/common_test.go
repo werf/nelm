@@ -22,9 +22,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	v2release "github.com/werf/nelm/pkg/helm/intern/release/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
-	rspb "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	v2release "github.com/werf/nelm/v2/pkg/helm/intern/release/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	rspb "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 func TestNewDefaultAccessor(t *testing.T) {

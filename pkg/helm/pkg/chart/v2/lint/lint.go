@@ -14,14 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package lint // import "github.com/werf/nelm/pkg/helm/pkg/chart/v2/lint"
+package lint // import "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/lint"
 
 import (
 	"path/filepath"
 
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/lint/rules"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/lint/support"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/lint/rules"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/lint/support"
 )
 
 type linterOptions struct {

@@ -9,7 +9,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/samber/lo"
 
-	"github.com/werf/nelm/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/resource"
 )
 
 func CompareDependencyOption() cmp.Option {

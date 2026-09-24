@@ -14,13 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package driver // import "github.com/werf/nelm/pkg/helm/pkg/storage/driver"
+package driver // import "github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 
 import (
 	"reflect"
 	"testing"
 
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 )
 
 func TestRecordsAdd(t *testing.T) {

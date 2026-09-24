@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/yaml"
 
-	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
+	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 )
 
 const (

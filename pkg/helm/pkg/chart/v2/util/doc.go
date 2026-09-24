@@ -39,7 +39,7 @@ For accepting raw compressed tar file data from an io.Reader, the
 'loader.LoadArchive()' will read in the data, uncompress it, and unpack it
 into a Chart.
 
-When creating charts in memory, use the 'github.com/werf/nelm/pkg/helm/pkg/chart'
+When creating charts in memory, use the 'github.com/werf/nelm/v2/pkg/helm/pkg/chart'
 package directly.
 */
-package util // import chartutil "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
+package util // import chartutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"

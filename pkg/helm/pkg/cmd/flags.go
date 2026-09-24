@@ -30,12 +30,12 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/werf/nelm/pkg/helm/pkg/action"
-	"github.com/werf/nelm/pkg/helm/pkg/cli/output"
-	"github.com/werf/nelm/pkg/helm/pkg/cli/values"
-	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
-	"github.com/werf/nelm/pkg/helm/pkg/kube"
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/action"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli/output"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli/values"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/helmpath"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/kube"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1"
 )
 
 const (

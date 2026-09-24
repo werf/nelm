@@ -20,8 +20,8 @@ import (
 	"strings"
 	"testing"
 
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1"
 )
 
 func TestSortScore(t *testing.T) {

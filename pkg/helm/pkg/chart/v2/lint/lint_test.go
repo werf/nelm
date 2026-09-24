@@ -23,8 +23,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/lint/support"
-	chartutil "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/lint/support"
+	chartutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
 )
 
 const namespace = "testNamespace"

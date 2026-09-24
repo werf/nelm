@@ -11,7 +11,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/fake"
 
-	"github.com/werf/nelm/pkg/helm/pkg/engine"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/engine"
 )
 
 var (

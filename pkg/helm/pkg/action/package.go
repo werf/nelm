@@ -29,14 +29,14 @@ import (
 	"golang.org/x/term"
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
-	ci "github.com/werf/nelm/pkg/helm/pkg/chart"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/loader"
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	chartutil "github.com/werf/nelm/pkg/helm/pkg/chart/v2/util"
-	"github.com/werf/nelm/pkg/helm/pkg/provenance"
-	"github.com/werf/nelm/pkg/ts"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/featgate"
+	ci "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	chartutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/provenance"
+	"github.com/werf/nelm/v2/pkg/ts"
 )
 
 // Package is the action for packaging a chart.

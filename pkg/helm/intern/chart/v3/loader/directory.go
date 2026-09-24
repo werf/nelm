@@ -24,10 +24,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	chart "github.com/werf/nelm/pkg/helm/intern/chart/v3"
-	"github.com/werf/nelm/pkg/helm/intern/sympath"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/loader/archive"
-	"github.com/werf/nelm/pkg/helm/pkg/ignore"
+	chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	"github.com/werf/nelm/v2/pkg/helm/intern/sympath"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader/archive"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/ignore"
 )
 
 var utf8bom = []byte{0xEF, 0xBB, 0xBF}

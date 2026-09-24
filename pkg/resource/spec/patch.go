@@ -10,7 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/werf/kubedog/pkg/dyntracker/statestore"
-	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/v2/pkg/common"
 )
 
 const (

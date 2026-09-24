@@ -1,4 +1,4 @@
-module github.com/werf/nelm
+module github.com/werf/nelm/v2
 
 go 1.25.0
 

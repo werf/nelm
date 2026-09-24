@@ -24,10 +24,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/werf/nelm/pkg/helm/intern/test/ensure"
-	"github.com/werf/nelm/pkg/helm/pkg/getter"
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1"
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1/repotest"
+	"github.com/werf/nelm/v2/pkg/helm/intern/test/ensure"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/getter"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1/repotest"
 )
 
 func TestUpdateCmd(t *testing.T) {

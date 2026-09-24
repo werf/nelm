@@ -20,10 +20,10 @@ import (
 	"io"
 	"strings"
 
-	"github.com/werf/nelm/pkg/helm/pkg/cli"
-	"github.com/werf/nelm/pkg/helm/pkg/pusher"
-	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	"github.com/werf/nelm/pkg/helm/pkg/uploader"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/pusher"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/uploader"
 )
 
 // Push is the action for uploading a chart.

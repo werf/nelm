@@ -25,7 +25,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/werf/nelm/pkg/helm/intern/fileutil"
+	"github.com/werf/nelm/v2/pkg/helm/intern/fileutil"
 )
 
 // Cache describes a cache that can get and put chart data.

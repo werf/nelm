@@ -23,11 +23,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	kubefake "github.com/werf/nelm/pkg/helm/pkg/kube/fake"
-	ri "github.com/werf/nelm/pkg/helm/pkg/release"
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
-	release "github.com/werf/nelm/pkg/helm/pkg/release/v1"
-	"github.com/werf/nelm/pkg/helm/pkg/storage"
+	kubefake "github.com/werf/nelm/v2/pkg/helm/pkg/kube/fake"
+	ri "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	release "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/storage"
 )
 
 func TestListStates(t *testing.T) {

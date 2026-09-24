@@ -4,7 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 )
 
 type SaveIntoTarOptions struct {

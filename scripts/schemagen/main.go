@@ -27,8 +27,8 @@ import (
 
 	"github.com/dustin/go-humanize"
 
-	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/resource/schemas"
+	"github.com/werf/nelm/v2/pkg/log"
+	"github.com/werf/nelm/v2/pkg/resource/schemas"
 )
 
 const (

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package kube // import "github.com/werf/nelm/pkg/helm/pkg/kube"
+package kube // import "github.com/werf/nelm/v2/pkg/helm/pkg/kube"
 
 import (
 	"context"
@@ -38,8 +38,8 @@ import (
 	"k8s.io/client-go/dynamic"
 	watchtools "k8s.io/client-go/tools/watch"
 
-	"github.com/werf/nelm/pkg/helm/intern/logging"
-	helmStatusReaders "github.com/werf/nelm/pkg/helm/intern/statusreaders"
+	"github.com/werf/nelm/v2/pkg/helm/intern/logging"
+	helmStatusReaders "github.com/werf/nelm/v2/pkg/helm/intern/statusreaders"
 )
 
 type statusWaiter struct {

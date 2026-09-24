@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	v2release "github.com/werf/nelm/pkg/helm/intern/release/v2"
-	helmrel "github.com/werf/nelm/pkg/helm/pkg/release"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release/v1"
+	v2release "github.com/werf/nelm/v2/pkg/helm/intern/release/v2"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 type VersionedRelease struct {

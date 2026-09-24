@@ -25,7 +25,7 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/stretchr/testify/require"
 
-	"github.com/werf/nelm/pkg/helm/intern/test/ensure"
+	"github.com/werf/nelm/v2/pkg/helm/intern/test/ensure"
 )
 
 func TestPassphraseFileFetcher(t *testing.T) {

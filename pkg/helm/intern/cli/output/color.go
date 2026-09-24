@@ -19,7 +19,7 @@ package output
 import (
 	"github.com/fatih/color"
 
-	"github.com/werf/nelm/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 )
 
 // ColorizeStatus returns a colorized version of the status string based on the status value

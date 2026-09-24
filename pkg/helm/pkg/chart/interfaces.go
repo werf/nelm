@@ -16,7 +16,7 @@ limitations under the License.
 package chart
 
 import (
-	common "github.com/werf/nelm/pkg/helm/pkg/chart/common"
+	common "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 )
 
 type Charter any

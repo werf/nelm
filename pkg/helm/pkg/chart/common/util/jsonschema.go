@@ -29,10 +29,10 @@ import (
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
-	"github.com/werf/nelm/pkg/helm/intern/version"
+	"github.com/werf/nelm/v2/pkg/helm/intern/version"
 
-	chart "github.com/werf/nelm/pkg/helm/pkg/chart"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
+	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 )
 
 // HTTPURLLoader implements a loader for HTTP/HTTPS URLs

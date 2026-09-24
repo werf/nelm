@@ -15,7 +15,7 @@ limitations under the License.
 
 package gates
 
-import "github.com/werf/nelm/pkg/helm/pkg/gates"
+import "github.com/werf/nelm/v2/pkg/helm/pkg/gates"
 
 // ChartV3 is the feature gate for chart API version v3.
 const ChartV3 gates.Gate = "HELM_EXPERIMENTAL_CHART_V3"

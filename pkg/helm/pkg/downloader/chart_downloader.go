@@ -29,14 +29,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/werf/nelm/pkg/helm/intern/fileutil"
-	ifs "github.com/werf/nelm/pkg/helm/intern/third_party/dep/fs"
-	"github.com/werf/nelm/pkg/helm/intern/urlutil"
-	"github.com/werf/nelm/pkg/helm/pkg/getter"
-	"github.com/werf/nelm/pkg/helm/pkg/helmpath"
-	"github.com/werf/nelm/pkg/helm/pkg/provenance"
-	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	"github.com/werf/nelm/pkg/helm/pkg/repo/v1"
+	"github.com/werf/nelm/v2/pkg/helm/intern/fileutil"
+	ifs "github.com/werf/nelm/v2/pkg/helm/intern/third_party/dep/fs"
+	"github.com/werf/nelm/v2/pkg/helm/intern/urlutil"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/getter"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/helmpath"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/provenance"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1"
 )
 
 // VerificationStrategy describes a strategy for determining whether to verify a chart.

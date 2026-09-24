@@ -22,9 +22,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common/util"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/v2/lint/support"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/lint/support"
 )
 
 // ValuesWithOverrides tests the values.yaml file.

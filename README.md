@@ -8,7 +8,7 @@
 </p>
 
 <!-- <p align="center">
-  <a href="https://godoc.org/github.com/werf/nelm"><img src="https://godoc.org/github.com/werf/nelm?status.svg" alt="GoDoc"></a>
+  <a href="https://pkg.go.dev/github.com/werf/nelm/v2"><img src="https://pkg.go.dev/badge/github.com/werf/nelm/v2.svg" alt="Go Reference"></a>
   <a href="https://qlty.sh/gh/werf/projects/nelm"><img src="https://qlty.sh/gh/werf/projects/nelm/coverage.svg" alt="Code Coverage" /></a>
 </p> -->
 

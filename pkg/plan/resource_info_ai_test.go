@@ -10,8 +10,8 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/featgate"
 )
 
 func TestAI_AdoptDeckhouseControllerFieldsGateEnvVarName(t *testing.T) {

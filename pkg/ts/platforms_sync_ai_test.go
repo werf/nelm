@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/werf/nelm/pkg/ts/denolock"
+	"github.com/werf/nelm/v2/pkg/ts/denolock"
 )
 
 // A platform missing from any of the three lists is a release binary that silently falls back to

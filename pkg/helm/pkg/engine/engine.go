@@ -35,11 +35,11 @@ import (
 	"github.com/werf/common-go/pkg/util"
 	"k8s.io/client-go/rest"
 
-	nelmcommon "github.com/werf/nelm/pkg/common"
-	v3 "github.com/werf/nelm/pkg/helm/intern/chart/v3"
-	ci "github.com/werf/nelm/pkg/helm/pkg/chart"
-	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	v2 "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
+	nelmcommon "github.com/werf/nelm/v2/pkg/common"
+	v3 "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	ci "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	v2 "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 )
 
 type secretFilesRuntimeData interface {

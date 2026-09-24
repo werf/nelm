@@ -22,9 +22,9 @@ import (
 	"strconv"
 	"testing"
 
-	chart "github.com/werf/nelm/pkg/helm/intern/chart/v3"
-	"github.com/werf/nelm/pkg/helm/intern/chart/v3/loader"
-	"github.com/werf/nelm/pkg/helm/pkg/chart/common"
+	chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	"github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/loader"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 )
 
 func loadChart(t *testing.T, path string) *chart.Chart {
