@@ -7,12 +7,13 @@ import (
 )
 
 type Revision struct {
-	Name      string
-	Namespace string
-	Status    string
-	Version   int
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Status    string `json:"status"`
+	Version   int    `json:"version"`
 }
 
+// DeployedRevisions expects revisions sorted by ascending Version.
 func DeployedRevisions(revisions []Revision) []Revision {
 	_, lastUninstalledIndex, lastUninstalledFound := lo.FindLastIndexOf(revisions, func(r Revision) bool {
 		return r.Status == helmreleasecommon.StatusUninstalled.String() ||

@@ -53,6 +53,15 @@ func TestAI_ResolveDeployState(t *testing.T) {
 			wantDeployType: common.DeployTypeUpgrade,
 		},
 		{
+			name: "superseded without deployed",
+			revisions: []release.Revision{
+				{Version: 1, Status: helmreleasecommon.StatusSuperseded.String()},
+				{Version: 2, Status: helmreleasecommon.StatusFailed.String()},
+			},
+			wantRevision:   3,
+			wantDeployType: common.DeployTypeUpgrade,
+		},
+		{
 			name: "uninstalled last",
 			revisions: []release.Revision{
 				{Version: 1, Status: helmreleasecommon.StatusSuperseded.String()},
