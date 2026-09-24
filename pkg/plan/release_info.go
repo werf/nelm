@@ -98,7 +98,7 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 			}
 		}
 	case common.DeployTypeUninstall:
-		return nil, fmt.Errorf("build release infos: uninstall release infos must be built with BuildUninstallReleaseInfos")
+		return nil, fmt.Errorf("uninstall release infos must be built with BuildUninstallReleaseInfos")
 	default:
 		panic("unexpected deploy type")
 	}
@@ -113,8 +113,14 @@ func BuildUninstallReleaseInfos(ctx context.Context, revisions []release.Revisio
 		return nil, nil
 	}
 
+	lastRevision := revisions[len(revisions)-1]
+
 	if lastRel == nil {
-		return nil, fmt.Errorf("build uninstall release infos: no release body for the last revision")
+		return nil, fmt.Errorf("no release body for the last revision %d", lastRevision.Version)
+	}
+
+	if lastRel.Version() != lastRevision.Version {
+		return nil, fmt.Errorf("release body revision %d does not match the last revision %d", lastRel.Version(), lastRevision.Version)
 	}
 
 	infos := make([]*ReleaseInfo, 0, len(revisions))
