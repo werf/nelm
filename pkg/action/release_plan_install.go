@@ -96,8 +96,10 @@ type ReleasePlanInstallOptions struct {
 	// LegacyPatches are patch rules supplied programmatically, applied after
 	// chart-shipped and PatchesFiles rules. Rules are UNSCOPED: use Match.Charts to
 	// constrain a rule to a (sub)chart, which matches chart path segments and so does not
-	// reach nested sub-subcharts unless they are listed too. Unlike PatchesFiles, these are NOT
-	// stored in the plan artifact: ReleaseInstall must be given them again.
+	// reach nested sub-subcharts unless they are listed too.
+	// Unlike PatchesFiles, these are not stored in the plan artifact, but what gets
+	// applied is fixed here: rules passed to ReleaseInstall alongside the artifact only
+	// feed the diff patches of the auto-rollback plan.
 	LegacyPatches spec.Patches
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
