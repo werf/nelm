@@ -98,7 +98,8 @@ type ChartLintOptions struct {
 	LegacyLogRegistryStreamOut io.Writer
 	// LegacyPatches are patch rules supplied programmatically, applied after
 	// chart-shipped and PatchesFiles rules. Rules are UNSCOPED: use Match.Charts to
-	// constrain a rule to a specific (sub)chart.
+	// constrain a rule to a (sub)chart, which matches chart path segments and so does not
+	// reach nested sub-subcharts unless they are listed too.
 	LegacyPatches spec.Patches
 	// LocalKubeVersion specifies the Kubernetes version to use for linting when not connected to a cluster.
 	// Format: "major.minor.patch" (e.g., "1.28.0"). Defaults to DefaultLocalKubeVersion if not set.

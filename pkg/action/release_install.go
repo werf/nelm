@@ -101,8 +101,11 @@ type ReleaseInstallOptions struct {
 	LegacyNoReleaseLock bool
 	// LegacyPatches are patch rules supplied programmatically, applied after
 	// chart-shipped and PatchesFiles rules. Rules are UNSCOPED: use Match.Charts to
-	// constrain a rule to a specific (sub)chart. Unlike PatchesFiles, these do not come
-	// from the plan artifact, so they must be set here even when LegacyPlanArtifact is used.
+	// constrain a rule to a (sub)chart, which matches chart path segments and so does not
+	// reach nested sub-subcharts unless they are listed too.
+	// When LegacyPlanArtifact is used, what gets applied was already fixed by
+	// ReleasePlanInstall, and these rules only feed the diff patches of the auto-rollback
+	// plan.
 	LegacyPatches spec.Patches
 	// LegacyPlanArtifact provides plan artifact as a result of the release plan install action.
 	LegacyPlanArtifact *PlanArtifact

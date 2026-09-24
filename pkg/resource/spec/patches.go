@@ -59,10 +59,10 @@ type Patch struct {
 	// Patch is the jq program: it receives the whole raw resource object and must
 	// return exactly one object.
 	Patch string `json:"patch,omitempty"`
-	// ChartScope, when set, constrains this rule to resources originating in the
-	// given chart subtree (a FilePath prefix). Set internally for chart-shipped
-	// rules; never serialized or set by users.
-	ChartScope string `json:"-"`
+	// chartScope, when set, constrains this rule to resources originating in the
+	// given chart subtree (a FilePath prefix). Set internally for chart-shipped rules
+	// only: rules from anywhere else scope themselves through Match.Charts.
+	chartScope string
 }
 
 // CompiledPatch is a Patch with its jq program compiled once, ready to match and
@@ -204,11 +204,11 @@ func CollectChartPatches(chart helmchart.Accessor) (Patches, error) {
 	}
 
 	for i := range own.Diff {
-		own.Diff[i].ChartScope = chartPath
+		own.Diff[i].chartScope = chartPath
 	}
 
 	for i := range own.Render {
-		own.Render[i].ChartScope = chartPath
+		own.Render[i].chartScope = chartPath
 	}
 
 	patches.Diff = append(patches.Diff, own.Diff...)
@@ -314,7 +314,7 @@ func compilePatch(patch Patch) (*CompiledPatch, error) {
 		return nil, fmt.Errorf("compile jq program: %w", err)
 	}
 
-	return &CompiledPatch{chartScope: patch.ChartScope, code: code, matcher: patch.Match}, nil
+	return &CompiledPatch{chartScope: patch.chartScope, code: code, matcher: patch.Match}, nil
 }
 
 func normalizeNumbers(value interface{}) (interface{}, error) {

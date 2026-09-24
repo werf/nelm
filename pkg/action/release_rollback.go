@@ -53,7 +53,8 @@ type ReleaseRollbackOptions struct {
 	LegacyNoReleaseLock bool
 	// LegacyPatches are patch rules supplied programmatically, applied after
 	// chart-shipped and PatchesFiles rules. Rules are UNSCOPED: use Match.Charts to
-	// constrain a rule to a specific (sub)chart. Nothing is rendered during a rollback,
+	// constrain a rule to a (sub)chart, which matches chart path segments and so does not
+	// reach nested sub-subcharts unless they are listed too. Nothing is rendered during a rollback,
 	// so only diff patches (drift detection) have an effect here.
 	LegacyPatches spec.Patches
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).

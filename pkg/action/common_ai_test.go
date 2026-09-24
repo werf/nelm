@@ -52,18 +52,6 @@ func TestAI_ResolvePatches_LegacyPatchesAppliedLast(t *testing.T) {
 	require.Equal(t, []interface{}{"chart", "file", "legacy"}, aiApplyOrder(t, patches.Render, "app/templates/web.yaml"))
 }
 
-func TestAI_ResolvePatches_LegacyPatchesIgnoreChartScope(t *testing.T) {
-	legacy := spec.Patches{
-		Render: []spec.Patch{{Patch: `.order += ["legacy"]`, ChartScope: "app/charts/cache"}},
-	}
-
-	patches, err := resolvePatches(nil, true, nil, legacy)
-	require.NoError(t, err)
-
-	require.Equal(t, []interface{}{"legacy"}, aiApplyOrder(t, patches.Render, "app/charts/cache/templates/redis.yaml"))
-	require.Equal(t, []interface{}{"legacy"}, aiApplyOrder(t, patches.Render, "app/templates/web.yaml"))
-}
-
 func TestAI_ResolvePatches_LegacyPatchesScopeViaMatchCharts(t *testing.T) {
 	legacy := spec.Patches{
 		Render: []spec.Patch{{
