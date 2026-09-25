@@ -22,6 +22,10 @@ const (
 	patchesFileName = "patches.yaml"
 )
 
+var
+// Their order matches the values RenderContext.jqVariableValues returns.
+renderContextVariableNames = []string{"$values", "$release", "$chart", "$capabilities"}
+
 // PatchType is the transform kind of patch.
 type PatchType string
 
@@ -65,12 +69,40 @@ type Patch struct {
 	chartScope string
 }
 
+// RenderContext is what the chart's templates saw, exposed to render patches as
+// the jq variables $values, $release, $chart and $capabilities.
+type RenderContext struct {
+	Capabilities interface{}
+	Chart        map[string]interface{}
+	Release      map[string]interface{}
+	Values       map[string]interface{}
+}
+
+// jqVariableValues returns the values for renderContextVariableNames, in that
+// order, normalized so gojq accepts them: Unstructured and Helm types hold Go
+// values such as int64 and structs, which must round-trip through JSON first.
+func (c RenderContext) jqVariableValues() ([]interface{}, error) {
+	values := make([]interface{}, 0, len(renderContextVariableNames))
+
+	for _, source := range []interface{}{c.Values, c.Release, c.Chart, c.Capabilities} {
+		value, err := toJQValue(source)
+		if err != nil {
+			return nil, err
+		}
+
+		values = append(values, value)
+	}
+
+	return values, nil
+}
+
 // CompiledPatch is a Patch with its jq program compiled once, ready to match and
 // transform many resources.
 type CompiledPatch struct {
 	chartScope string
 	code       *gojq.Code
 	matcher    ResourceMatcher
+	variables  []interface{}
 }
 
 // Match reports whether the rule matches the resource. namespace is the
@@ -106,7 +138,7 @@ func (c *CompiledPatch) transform(ctx context.Context, unstruct *unstructured.Un
 		}
 	}()
 
-	iter := c.code.RunWithContext(ctx, input)
+	iter := c.code.RunWithContext(ctx, input, c.variables...)
 
 	first, ok := iter.Next()
 	if !ok {
@@ -220,21 +252,20 @@ func CollectChartPatches(chart helmchart.Accessor) (Patches, error) {
 // CompilePatches compiles patch rules, returning an error on the first invalid
 // regexp, unsupported type, empty patch body, or invalid jq program.
 func CompilePatches(patches []Patch) ([]*CompiledPatch, error) {
-	if len(patches) == 0 {
-		return nil, nil
+	return compilePatches(patches, nil, nil)
+}
+
+// CompileRenderPatches compiles render patches, additionally exposing the render
+// context as the jq variables $values, $release, $chart and $capabilities. Diff
+// patches are compiled without them, so a diff patch referencing one fails to
+// compile.
+func CompileRenderPatches(patches []Patch, renderContext RenderContext) ([]*CompiledPatch, error) {
+	values, err := renderContext.jqVariableValues()
+	if err != nil {
+		return nil, fmt.Errorf("normalize render context for jq: %w", err)
 	}
 
-	compiled := make([]*CompiledPatch, 0, len(patches))
-	for i, patch := range patches {
-		c, err := compilePatch(patch)
-		if err != nil {
-			return nil, fmt.Errorf("compile patch #%d: %w", i+1, err)
-		}
-
-		compiled = append(compiled, c)
-	}
-
-	return compiled, nil
+	return compilePatches(patches, renderContextVariableNames, values)
 }
 
 // LoadPatchesFiles reads and parses the given patches file paths, returning their
@@ -257,6 +288,24 @@ func LoadPatchesFiles(paths []string) (Patches, error) {
 	}
 
 	return patches, nil
+}
+
+func compilePatches(patches []Patch, variableNames []string, variableValues []interface{}) ([]*CompiledPatch, error) {
+	if len(patches) == 0 {
+		return nil, nil
+	}
+
+	compiled := make([]*CompiledPatch, 0, len(patches))
+	for i, patch := range patches {
+		c, err := compilePatch(patch, variableNames, variableValues)
+		if err != nil {
+			return nil, fmt.Errorf("compile patch #%d: %w", i+1, err)
+		}
+
+		compiled = append(compiled, c)
+	}
+
+	return compiled, nil
 }
 
 func fromJQOutput(value interface{}) (map[string]interface{}, error) {
@@ -286,7 +335,11 @@ func fromJQOutput(value interface{}) (map[string]interface{}, error) {
 	return normalized, nil
 }
 
-func compilePatch(patch Patch) (*CompiledPatch, error) {
+func toJQInput(obj map[string]interface{}) (interface{}, error) {
+	return toJQValue(obj)
+}
+
+func compilePatch(patch Patch, variableNames []string, variableValues []interface{}) (*CompiledPatch, error) {
 	patchType := patch.Type
 	if patchType == "" {
 		patchType = PatchTypeJQ
@@ -309,12 +362,17 @@ func compilePatch(patch Patch) (*CompiledPatch, error) {
 		return nil, fmt.Errorf("parse jq program: %w", err)
 	}
 
-	code, err := gojq.Compile(query)
+	var compileOpts []gojq.CompilerOption
+	if len(variableNames) > 0 {
+		compileOpts = append(compileOpts, gojq.WithVariables(variableNames))
+	}
+
+	code, err := gojq.Compile(query, compileOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("compile jq program: %w", err)
 	}
 
-	return &CompiledPatch{chartScope: patch.chartScope, code: code, matcher: patch.Match}, nil
+	return &CompiledPatch{chartScope: patch.chartScope, code: code, matcher: patch.Match, variables: variableValues}, nil
 }
 
 func normalizeNumbers(value interface{}) (interface{}, error) {
@@ -379,8 +437,8 @@ func resourceInChartScope(chartPath, filePath string) bool {
 	return filePath == chartPath || strings.HasPrefix(filePath, chartPath+"/")
 }
 
-func toJQInput(obj map[string]interface{}) (interface{}, error) {
-	data, err := json.Marshal(obj)
+func toJQValue(value interface{}) (interface{}, error) {
+	data, err := json.Marshal(value)
 	if err != nil {
 		return nil, fmt.Errorf("marshal: %w", err)
 	}

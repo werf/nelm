@@ -12,10 +12,10 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
-	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	v2chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/resource/spec"
+	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
 func TestAI_ResolvePatches_DefaultPatchesDisableKeepsLegacyPatches(t *testing.T) {
@@ -23,7 +23,7 @@ func TestAI_ResolvePatches_DefaultPatchesDisableKeepsLegacyPatches(t *testing.T)
 
 	legacy := spec.Patches{Render: []spec.Patch{{Patch: `.order += ["legacy"]`}}}
 
-	patches, err := resolvePatches(chart, true, nil, legacy)
+	patches, err := resolvePatches(chart, true, nil, legacy, spec.RenderContext{})
 	require.NoError(t, err)
 
 	require.Equal(t, []interface{}{"legacy"}, aiApplyOrder(t, patches.Render, "app/templates/web.yaml"))
@@ -32,7 +32,7 @@ func TestAI_ResolvePatches_DefaultPatchesDisableKeepsLegacyPatches(t *testing.T)
 func TestAI_ResolvePatches_InvalidLegacyPatchFailsClosed(t *testing.T) {
 	_, err := resolvePatches(nil, true, nil, spec.Patches{
 		Render: []spec.Patch{{Patch: "del(.spec.replicas"}},
-	})
+	}, spec.RenderContext{})
 	require.ErrorContains(t, err, "compile render patches")
 }
 
@@ -45,7 +45,7 @@ func TestAI_ResolvePatches_LegacyPatchesAppliedLast(t *testing.T) {
 		Render: []spec.Patch{{Patch: `.order += ["legacy"]`}},
 	}
 
-	patches, err := resolvePatches(chart, false, []string{patchesFile}, legacy)
+	patches, err := resolvePatches(chart, false, []string{patchesFile}, legacy, spec.RenderContext{})
 	require.NoError(t, err)
 
 	require.Equal(t, []interface{}{"chart", "file", "legacy"}, aiApplyOrder(t, patches.Diff, "app/templates/web.yaml"))
@@ -60,7 +60,7 @@ func TestAI_ResolvePatches_LegacyPatchesScopeViaMatchCharts(t *testing.T) {
 		}},
 	}
 
-	patches, err := resolvePatches(nil, true, nil, legacy)
+	patches, err := resolvePatches(nil, true, nil, legacy, spec.RenderContext{})
 	require.NoError(t, err)
 
 	require.Equal(t, []interface{}{"legacy"}, aiApplyOrder(t, patches.Render, "app/charts/cache/templates/redis.yaml"))

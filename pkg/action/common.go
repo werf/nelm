@@ -24,6 +24,7 @@ import (
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/nelm/v2/pkg/common"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/lock"
@@ -119,6 +120,29 @@ func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr err
 	log.Default.Warn(ctx, "Plan graph saved to %q for debugging", graphPath)
 }
 
+// renderContextFor splits the rendered top-level context, which holds what chart
+// templates saw, into the parts render patches get as jq variables. Subchart
+// rules get the top-level values, not their own scope.
+func renderContextFor(renderedValues map[string]interface{}) spec.RenderContext {
+	return spec.RenderContext{
+		Values:       nestedMap(renderedValues, "Values"),
+		Release:      nestedMap(renderedValues, "Release"),
+		Chart:        nestedMap(renderedValues, "Chart"),
+		Capabilities: renderedValues["Capabilities"],
+	}
+}
+
+func nestedMap(values map[string]interface{}, key string) map[string]interface{} {
+	switch v := values[key].(type) {
+	case map[string]interface{}:
+		return v
+	case chartcommon.Values:
+		return v
+	default:
+		return nil
+	}
+}
+
 func newInformerFactory(ctx context.Context, watchErrCh chan error, dynamicClient dynamic.Interface) *kdutil.Concurrent[*informer.InformerFactory] {
 	return informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, dynamicClient, informer.ConcurrentInformerFactoryOptions{
 		OnNonFatalWatchError: func(gvr schema.GroupVersionResource, namespace string, err error) {
@@ -193,7 +217,7 @@ func printReport(ctx context.Context, report *ReleaseReportV3) {
 // Chart-shipped rules are scoped to their own chart subtree, rules from patches files and
 // programmatically supplied ones are not.
 // All kinds are compiled right away, so an invalid rule fails before anything is applied.
-func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string, legacyPatches spec.Patches) (spec.CompiledPatches, error) {
+func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string, legacyPatches spec.Patches, renderContext spec.RenderContext) (spec.CompiledPatches, error) {
 	var patches spec.Patches
 
 	if !defaultDisable {
@@ -222,7 +246,7 @@ func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles 
 		return spec.CompiledPatches{}, fmt.Errorf("compile diff patches: %w", err)
 	}
 
-	renderPatches, err := spec.CompilePatches(patches.Render)
+	renderPatches, err := spec.CompileRenderPatches(patches.Render, renderContext)
 	if err != nil {
 		return spec.CompiledPatches{}, fmt.Errorf("compile render patches: %w", err)
 	}
