@@ -324,6 +324,14 @@ func (mem *Memory) Delete(key string) (release.Releaser, error) {
 	return nil, ErrReleaseNotFound
 }
 
+// DeleteRevision removes the release named by key, or returns ErrReleaseNotFound.
+func (mem *Memory) DeleteRevision(ctx context.Context, key string) error {
+	if _, err := mem.Delete(key); err != nil {
+		return err
+	}
+	return nil
+}
+
 // wlock locks mem for writing
 func (mem *Memory) wlock() func() {
 	mem.Lock()

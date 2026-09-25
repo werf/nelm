@@ -25,7 +25,7 @@ func (s *stubStorager) Create(rls helmrel.Accessor) error {
 	return nil
 }
 
-func (s *stubStorager) Delete(name string, version int) error {
+func (s *stubStorager) Delete(ctx context.Context, name string, version int) error {
 	return s.deleteErr
 }
 

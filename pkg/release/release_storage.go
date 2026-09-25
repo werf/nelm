@@ -28,7 +28,7 @@ type ReleaseStorager interface {
 	Create(rls helmrel.Accessor) error
 	Update(rls helmrel.Accessor) error
 	UpdateLabels(name string, version int, labels map[string]string) error
-	Delete(name string, version int) error
+	Delete(ctx context.Context, name string, version int) error
 	Query(labels map[string]string) ([]helmrel.Accessor, error)
 	// GetRelease returns a single release revision. version == 0 means the latest revision.
 	GetRelease(name string, version int) (helmrel.Accessor, error)
@@ -56,9 +56,9 @@ func (a *storageAdapter) Create(rls helmrel.Accessor) error {
 	return nil
 }
 
-func (a *storageAdapter) Delete(name string, version int) error {
-	if _, err := a.storage.Delete(name, version); err != nil {
-		return fmt.Errorf("delete release: %w", err)
+func (a *storageAdapter) Delete(ctx context.Context, name string, version int) error {
+	if err := a.storage.DeleteRevision(ctx, name, version); err != nil {
+		return fmt.Errorf("delete release revision: %w", err)
 	}
 
 	return nil

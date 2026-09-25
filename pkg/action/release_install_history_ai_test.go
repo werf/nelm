@@ -28,7 +28,7 @@ func (s *prunedRevisionStorager) Create(rls helmrel.Accessor) error {
 	return nil
 }
 
-func (s *prunedRevisionStorager) Delete(name string, version int) error {
+func (s *prunedRevisionStorager) Delete(ctx context.Context, name string, version int) error {
 	return nil
 }
 

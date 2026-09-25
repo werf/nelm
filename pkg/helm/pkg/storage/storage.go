@@ -214,6 +214,34 @@ var (
 	_ revisionLister = (*driver.Memory)(nil)
 )
 
+// revisionDeleter is an optional driver capability that removes a stored revision
+// without fetching or decoding its body, honouring the context.
+type revisionDeleter interface {
+	DeleteRevision(ctx context.Context, key string) error
+}
+
+var (
+	_ revisionDeleter = (*driver.Secrets)(nil)
+	_ revisionDeleter = (*driver.ConfigMaps)(nil)
+	_ revisionDeleter = (*driver.SQL)(nil)
+	_ revisionDeleter = (*driver.Memory)(nil)
+)
+
+// DeleteRevision removes one revision of a release. Drivers implementing the capability
+// delete without transferring the body and honour ctx; the fallback goes through Delete,
+// which fetches and decodes the body first and ignores ctx.
+func (s *Storage) DeleteRevision(ctx context.Context, name string, version int) error {
+	key := makeKey(name, version)
+	s.Logger().Debug("deleting release revision", "key", key)
+
+	if d, ok := s.Driver.(revisionDeleter); ok {
+		return d.DeleteRevision(ctx, key)
+	}
+
+	_, err := s.Driver.Delete(key)
+	return err
+}
+
 // Revisions returns version and status of every revision of the named release,
 // sorted by ascending version. Drivers implementing the capability answer
 // without decoding release bodies; the fallback decodes the whole history. An

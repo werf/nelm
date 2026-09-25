@@ -510,29 +510,32 @@ func (cfgmaps *ConfigMaps) UpdateLabels(key string, lbls map[string]string) erro
 }
 
 // Delete deletes the ConfigMap holding the release named by key.
-// Delete removes the release named by key. The stored body is decoded only after the
-// object is gone, so a release whose body can no longer be decoded is still deleted; the
-// returned release is nil in that case.
-func (cfgmaps *ConfigMaps) Delete(key string) (release.Releaser, error) {
-	obj, err := cfgmaps.impl.Get(context.Background(), key, metav1.GetOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, ErrReleaseNotFound
-		}
-		return nil, fmt.Errorf("delete: failed to get %q: %w", key, err)
-	}
-
-	if err := cfgmaps.impl.Delete(context.Background(), key, metav1.DeleteOptions{}); err != nil {
+func (cfgmaps *ConfigMaps) Delete(key string) (rls release.Releaser, err error) {
+	// fetch the release to check existence
+	if rls, err = cfgmaps.Get(key); err != nil {
 		return nil, err
 	}
-
-	rls, err := decodeRelease(obj.Data["release"])
-	if err != nil {
-		cfgmaps.Logger().Debug("delete: failed to decode data", slog.String("key", key), slog.Any("error", err))
-		return nil, nil
+	// delete the release
+	if err = cfgmaps.impl.Delete(context.Background(), key, metav1.DeleteOptions{}); err != nil {
+		return rls, err
 	}
-	rls.Labels = filterSystemLabels(obj.Labels)
 	return rls, nil
+}
+
+// DeleteRevision removes the ConfigMap holding the release named by key without fetching or
+// decoding it, and returns ErrReleaseNotFound if it does not exist. The context is
+// honoured, unlike Delete, Create and Update, which run on context.Background():
+// plan execution cancels its context on the first failed operation and then still has
+// to record the failed status, so those writes must not become cancellable. Deleting
+// a revision is idempotent and safe to abandon.
+func (cfgmaps *ConfigMaps) DeleteRevision(ctx context.Context, key string) error {
+	if err := cfgmaps.impl.Delete(ctx, key, metav1.DeleteOptions{}); err != nil {
+		if apierrors.IsNotFound(err) {
+			return ErrReleaseNotFound
+		}
+		return fmt.Errorf("delete revision: failed to delete %q: %w", key, err)
+	}
+	return nil
 }
 
 // newConfigMapsObject constructs a kubernetes ConfigMap object

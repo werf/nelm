@@ -48,7 +48,7 @@ func (h *History) DeleteRelease(ctx context.Context, name string, revision int) 
 	h.updateLock.Lock()
 	defer h.updateLock.Unlock()
 
-	if err := h.storage.Delete(name, revision); err != nil {
+	if err := h.storage.Delete(ctx, name, revision); err != nil {
 		return fmt.Errorf("uninstall release %q (revision: %d): %w", name, revision, err)
 	}
 

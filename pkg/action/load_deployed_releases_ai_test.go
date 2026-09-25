@@ -26,7 +26,7 @@ func (s *countingStorager) Create(rls helmrel.Accessor) error {
 	return nil
 }
 
-func (s *countingStorager) Delete(name string, version int) error {
+func (s *countingStorager) Delete(ctx context.Context, name string, version int) error {
 	return nil
 }
 
