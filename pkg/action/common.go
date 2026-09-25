@@ -267,9 +267,10 @@ func resolveDeployState(revisions []release.Revision) (int, common.DeployType) {
 	}
 }
 
-// Chart-shipped rules are scoped to their own chart subtree, rules from patches files are not.
-// Both kinds are compiled right away, so an invalid rule fails before anything is applied.
-func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string) (spec.CompiledPatches, error) {
+// Chart-shipped rules are scoped to their own chart subtree, rules from patches files and
+// programmatically supplied ones are not.
+// All kinds are compiled right away, so an invalid rule fails before anything is applied.
+func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string, legacyPatches spec.Patches) (spec.CompiledPatches, error) {
 	var patches spec.Patches
 
 	if !defaultDisable {
@@ -289,6 +290,9 @@ func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles 
 
 	patches.Diff = append(patches.Diff, filePatches.Diff...)
 	patches.Render = append(patches.Render, filePatches.Render...)
+
+	patches.Diff = append(patches.Diff, legacyPatches.Diff...)
+	patches.Render = append(patches.Render, legacyPatches.Render...)
 
 	diffPatches, err := spec.CompilePatches(patches.Diff)
 	if err != nil {

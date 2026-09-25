@@ -86,10 +86,10 @@ func TestCollectChartPatches_ScopingAndOrder(t *testing.T) {
 	require.Equal(t, "del(.appRendered)", patches.Render[1].Patch)
 
 	// Scoping: subchart rule constrained to its subtree; parent rule to the root.
-	require.Equal(t, "app/charts/cache", patches.Diff[0].ChartScope)
-	require.Equal(t, "app", patches.Diff[1].ChartScope)
-	require.Equal(t, "app/charts/cache", patches.Render[0].ChartScope)
-	require.Equal(t, "app", patches.Render[1].ChartScope)
+	require.Equal(t, "app/charts/cache", patches.Diff[0].ChartScope())
+	require.Equal(t, "app", patches.Diff[1].ChartScope())
+	require.Equal(t, "app/charts/cache", patches.Render[0].ChartScope())
+	require.Equal(t, "app", patches.Render[1].ChartScope())
 }
 
 func TestCompilePatch_DefaultsType(t *testing.T) {
@@ -148,7 +148,7 @@ func TestCompiledPatch_ChartScope(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c, err := spec.CompilePatch(spec.Patch{ChartScope: scope, Patch: "."})
+			c, err := spec.CompilePatch(spec.NewChartScopedPatch(scope, "."))
 			require.NoError(t, err)
 
 			meta := metaFor("Deployment", "apps", "v1", "web", "", tt.filePath, nil, nil)
