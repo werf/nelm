@@ -9,10 +9,10 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/samber/lo"
 
-	"github.com/werf/nelm/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/resource"
 )
 
-func CompareInternalDependencyOption() cmp.Option {
+func CompareDependencyOption() cmp.Option {
 	sp := &spew.ConfigState{
 		Indent:                  " ",
 		DisablePointerAddresses: true,
@@ -21,7 +21,7 @@ func CompareInternalDependencyOption() cmp.Option {
 		SpewKeys:                true,
 	}
 
-	return cmpopts.SortSlices(func(a, b *resource.InternalDependency) bool {
+	return cmpopts.SortSlices(func(a, b *resource.Dependency) bool {
 		return sp.Sdump(a) < sp.Sdump(b)
 	})
 }

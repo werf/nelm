@@ -19,9 +19,10 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
-	helmstorage "github.com/werf/nelm/pkg/helm/pkg/storage"
-	helmdriver "github.com/werf/nelm/pkg/helm/pkg/storage/driver"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	helmstorage "github.com/werf/nelm/v2/pkg/helm/pkg/storage"
+	helmdriver "github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 )
 
 var _ helmdriver.Driver = (*plainDriver)(nil)
@@ -34,19 +35,19 @@ type plainDriver struct {
 	inner *helmdriver.Memory
 }
 
-func (d *plainDriver) Create(key string, rls *helmrelease.Release) error {
+func (d *plainDriver) Create(key string, rls helmrel.Releaser) error {
 	return d.inner.Create(key, rls) //nolint:wrapcheck
 }
 
-func (d *plainDriver) Delete(key string) (*helmrelease.Release, error) {
+func (d *plainDriver) Delete(key string) (helmrel.Releaser, error) {
 	return d.inner.Delete(key) //nolint:wrapcheck
 }
 
-func (d *plainDriver) Get(key string) (*helmrelease.Release, error) {
+func (d *plainDriver) Get(key string) (helmrel.Releaser, error) {
 	return d.inner.Get(key) //nolint:wrapcheck
 }
 
-func (d *plainDriver) List(filter func(*helmrelease.Release) bool) ([]*helmrelease.Release, error) {
+func (d *plainDriver) List(filter func(helmrel.Releaser) bool) ([]helmrel.Releaser, error) {
 	return d.inner.List(filter) //nolint:wrapcheck
 }
 
@@ -54,12 +55,16 @@ func (d *plainDriver) Name() string {
 	return d.inner.Name()
 }
 
-func (d *plainDriver) Query(labels map[string]string) ([]*helmrelease.Release, error) {
+func (d *plainDriver) Query(labels map[string]string) ([]helmrel.Releaser, error) {
 	return d.inner.Query(labels) //nolint:wrapcheck
 }
 
-func (d *plainDriver) Update(key string, rls *helmrelease.Release) error {
+func (d *plainDriver) Update(key string, rls helmrel.Releaser) error {
 	return d.inner.Update(key, rls) //nolint:wrapcheck
+}
+
+func (d *plainDriver) UpdateLabels(key string, labels map[string]string) error {
+	return d.inner.UpdateLabels(key, labels) //nolint:wrapcheck
 }
 
 // corruptBodySecretClient serves single-revision releases whose bodies are all

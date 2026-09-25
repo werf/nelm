@@ -82,10 +82,10 @@ linters:
     wrapcheck:
       extra-ignore-sigs:
         - context.Cause(
-        - (*github.com/werf/nelm/pkg/util.MultiError).OrNilIfNoErrs(
+        - (*github.com/werf/nelm/v2/pkg/util.MultiError).OrNilIfNoErrs(
     errcheck:
       exclude-functions:
-        - (*github.com/werf/nelm/pkg/util.MultiError).Add
+        - (*github.com/werf/nelm/v2/pkg/util.MultiError).Add
   exclusions:
     generated: lax
     presets:

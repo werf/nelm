@@ -12,13 +12,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	rspb "github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	rspb "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 func TestAI_SQLListLatestReleases(t *testing.T) {
 	driver, mock := newTestFixtureSQL(t)
-	first := releaseStub("one", 3, "default", rspb.StatusDeployed)
-	second := releaseStub("two", 5, "default", rspb.StatusFailed)
+	first := releaseStub("one", 3, "default", common.StatusDeployed)
+	second := releaseStub("two", 5, "default", common.StatusFailed)
 	firstBody, err := encodeRelease(first)
 	require.NoError(t, err)
 	secondBody, err := encodeRelease(second)
@@ -39,8 +40,8 @@ func TestAI_SQLListLatestReleases(t *testing.T) {
 func TestAI_SQLListLatestReleases_AllNamespaces(t *testing.T) {
 	driver, mock := newTestFixtureSQL(t)
 	driver.namespace = ""
-	first := releaseStub("one", 2, "ns-one", rspb.StatusDeployed)
-	second := releaseStub("one", 4, "ns-two", rspb.StatusFailed)
+	first := releaseStub("one", 2, "ns-one", common.StatusDeployed)
+	second := releaseStub("one", 4, "ns-two", common.StatusFailed)
 	firstBody, err := encodeRelease(first)
 	require.NoError(t, err)
 	secondBody, err := encodeRelease(second)
@@ -64,7 +65,7 @@ func TestAI_SQLListLatestReleases_AllNamespaces(t *testing.T) {
 
 func TestAI_SQLListLatestReleases_FallsBackFromCorruptLatestRevision(t *testing.T) {
 	driver, mock := newTestFixtureSQL(t)
-	valid := releaseStub("one", 1, "default", rspb.StatusSuperseded)
+	valid := releaseStub("one", 1, "default", common.StatusSuperseded)
 	validBody, err := encodeRelease(valid)
 	require.NoError(t, err)
 

@@ -8,9 +8,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/werf/common-go/pkg/cli"
-	"github.com/werf/nelm/pkg/action"
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/v2/pkg/action"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 type releasePlanShowConfig struct {
@@ -37,9 +37,7 @@ func newReleasePlanShowCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = log.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultReleasePlanShowLogLevel), log.SetupLoggingOptions{
-				ColorMode: cfg.LogColorMode,
-			})
+			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultReleasePlanShowLogLevel), action.SetupLoggingOptions{ColorMode: cfg.LogColorMode})
 
 			cfg.PlanArtifactPath = args[0]
 
@@ -67,14 +65,6 @@ func newReleasePlanShowCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 		}
 
 		if err := cli.AddFlag(cmd, &cfg.ShowVerboseCRDDiffs, "show-verbose-crd-diffs", false, "Show verbose CRD diff lines", cli.AddFlagOptions{
-			GetEnvVarRegexesFunc: cli.GetFlagLocalEnvVarRegexes,
-			Group:                mainFlagGroup,
-		}); err != nil {
-			return fmt.Errorf("add flag: %w", err)
-		}
-
-		// TODO(v2): get rid?
-		if err := cli.AddFlag(cmd, &cfg.ShowVerboseDiffs, "show-verbose-diffs", true, "Show verbose diff lines", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
 		}); err != nil {

@@ -11,13 +11,13 @@ import (
 	"github.com/gookit/color"
 	prtable "github.com/jedib0t/go-pretty/v6/table"
 	"github.com/samber/lo"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
-	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/kubedog/pkg/dyntracker/logstore"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
+	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 // Prints progress tables at regular intervals. Progress tables include resource statuses, container
@@ -35,10 +35,10 @@ func NewProgressTablesPrinter(taskStore *kdutil.Concurrent[*statestore.TaskStore
 }
 
 func (p *ProgressTablesPrinter) Start(ctx context.Context, interval time.Duration) {
-	go func() {
-		p.finishedCh = make(chan struct{})
+	p.finishedCh = make(chan struct{})
+	ctx, p.ctxCancelFn = context.WithCancelCause(ctx)
 
-		ctx, p.ctxCancelFn = context.WithCancelCause(ctx)
+	go func() {
 		defer func() {
 			p.ctxCancelFn(fmt.Errorf("context canceled: table printer finished"))
 

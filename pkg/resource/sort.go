@@ -1,7 +1,7 @@
 package resource
 
 import (
-	"github.com/werf/nelm/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
 func InstallableResourceSortByWeightHandler(r1, r2 *InstallableResource) bool {

@@ -19,8 +19,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	ktesting "k8s.io/client-go/testing"
 
-	"github.com/werf/nelm/pkg/kube"
-	"github.com/werf/nelm/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/kube"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
 var (
@@ -46,10 +46,6 @@ func (f *chartCapabilitiesClientFactory) KubeClient() kube.KubeClienter {
 }
 
 func (f *chartCapabilitiesClientFactory) KubeConfig() *kube.KubeConfig {
-	panic("not implemented")
-}
-
-func (f *chartCapabilitiesClientFactory) LegacyClientGetter() *kube.LegacyClientGetter {
 	panic("not implemented")
 }
 

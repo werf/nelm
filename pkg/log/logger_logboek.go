@@ -9,7 +9,7 @@ import (
 	"github.com/gookit/color"
 	"github.com/samber/lo"
 
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/util"
+	"github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/logboek"
 	"github.com/werf/logboek/pkg/level"
 )

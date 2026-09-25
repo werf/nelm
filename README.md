@@ -8,7 +8,7 @@
 </p>
 
 <!-- <p align="center">
-  <a href="https://godoc.org/github.com/werf/nelm"><img src="https://godoc.org/github.com/werf/nelm?status.svg" alt="GoDoc"></a>
+  <a href="https://pkg.go.dev/github.com/werf/nelm/v2"><img src="https://pkg.go.dev/badge/github.com/werf/nelm/v2.svg" alt="Go Reference"></a>
   <a href="https://qlty.sh/gh/werf/projects/nelm"><img src="https://qlty.sh/gh/werf/projects/nelm/coverage.svg" alt="Code Coverage" /></a>
 </p> -->
 
@@ -54,8 +54,6 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [`werf.io/weight` annotation](#werfioweight-annotation)
   - [`werf.io/deploy-dependency-<id>` annotation](#werfiodeploy-dependency-id-annotation)
   - [`werf.io/delete-dependency-<id>` annotation](#werfiodelete-dependency-id-annotation)
-  - [`<id>.external-dependency.werf.io/resource` annotation](#idexternal-dependencywerfioresource-annotation)
-  - [`<id>.external-dependency.werf.io/name` annotation](#idexternal-dependencywerfioname-annotation)
   - [`werf.io/ownership` annotation](#werfioownership-annotation)
   - [`werf.io/deploy-on` annotation](#werfiodeploy-on-annotation)
   - [`werf.io/delete-policy` annotation](#werfiodelete-policy-annotation)
@@ -87,8 +85,6 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [`NELM_FEAT_NATIVE_RELEASE_LIST` environment variable](#nelm_feat_native_release_list-environment-variable)
   - [`NELM_FEAT_NATIVE_RELEASE_UNINSTALL` environment variable](#nelm_feat_native_release_uninstall-environment-variable)
   - [`NELM_FEAT_PERIODIC_STACK_TRACES` environment variable](#nelm_feat_periodic_stack_traces-environment-variable)
-  - [`NELM_FEAT_FIELD_SENSITIVE` environment variable](#nelm_feat_field_sensitive-environment-variable)
-  - [`NELM_FEAT_CLEAN_NULL_FIELDS` environment variable](#nelm_feat_clean_null_fields-environment-variable)
   - [`NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN` environment variable](#nelm_feat_more_detailed_exit_code_for_plan-environment-variable)
 - [More documentation](#more-documentation)
 - [Limitations](#limitations)
@@ -183,11 +179,11 @@ Dependency commands:
   chart dependency update            Update Chart.lock and download chart dependencies.
 
 Repo commands:
-  repo add                           Set up a new chart repository.
-  repo remove                        Remove a chart repository.
-  repo update                        Update info about available charts for all chart repositories.
-  repo login                         Log in to an OCI registry with charts.
-  repo logout                        Log out from an OCI registry with charts.
+  chart repo add                     Set up a new chart repository.
+  chart repo remove                  Remove a chart repository.
+  chart repo update                  Update info about available charts for all chart repositories.
+  chart repo login                   Log in to an OCI registry with charts.
+  chart repo logout                  Log out from an OCI registry with charts.
 
 Other commands:
   completion bash                    Generate the autocompletion script for bash
@@ -224,8 +220,8 @@ Generally, the migration from Helm to Nelm should be as simple as changing Helm 
 
 The resource deployment subsystem of Helm is rewritten from scratch in Nelm. During the deployment, Nelm builds the Directed Acyclic Graph (DAG) of all operations we want to perform in the cluster to do the release, then the DAG is executed. The DAG allowed us to implement advanced resource ordering capabilities, such as:
 * The `werf.io/weight` annotation: similar to `helm.sh/hook-weight`, but also works for non-hook resources. Resources with the same weight deployed in parallel.
-* The `werf.io/deploy-dependency-<id>` annotation: do not deploy the annotated resource until the dependency is present or ready. This is the most powerful and effective way to enforce deployment order in Nelm.
-* The `<id>.external-dependency.werf.io/resource` annotation: do not deploy the annotated resource until the dependency is ready. The dependency can be an external, non-release resource, e.g. a resource created by a third-party operator.
+* The `werf.io/deploy-dependency-<id>` annotation: do not deploy the annotated resource until the dependency is present or ready. Works for both release resources and external cluster resources (e.g. resources created by a third-party operator). This is the most powerful and effective way to enforce deployment order in Nelm.
+* The `werf.io/delete-dependency-<id>` annotation: do not delete the annotated resource until the dependency is absent. Works for both release resources and external cluster resources.
 * Helm Hooks and their weights are supported, too.
 
 ![ordering](resources/images/graph.png)
@@ -375,58 +371,39 @@ Default:
 
 ### `werf.io/deploy-dependency-<id>` annotation 
 
-The resource will deploy only after all of its dependencies are satisfied. It waits until the specified resource is just `present` or is also `ready`. It serves as a more powerful alternative to hooks and `werf.io/weight`. You can only point to resources in the release. This annotation has higher priority than `werf.io/weight` and `helm.sh/hook-weight`. This annotation has no effect if the resource on which we depend upon is outside the stage (pre, main, post, ...) of the resource with the annotation.
+The resource will deploy only after all of its dependencies are satisfied. It waits until the specified resource is just `present` or is also `ready`. It serves as a more powerful alternative to hooks and `werf.io/weight`. This annotation has higher priority than `werf.io/weight` and `helm.sh/hook-weight`. This annotation has no effect on internal (release) dependencies if the resource on which we depend upon is outside the stage (pre, main, post, ...) of the resource with the annotation.
+
+If `external=true` or `external=auto` and the dependency is not found in the release, then the dependency is treated as external to the release: `name`, `kind` and `version` must be specified.
 
 Example:
 ```yaml
 werf.io/deploy-dependency-db: state=ready,kind=StatefulSet,name=postgres
 werf.io/deploy-dependency-app: state=present,kind=Deployment,group=apps,version=v1,name=app,namespace=app
+werf.io/deploy-dependency-secret: state=ready,kind=Secret,version=v1,name=my-vault-secret,external=true
 ```
 Format:
 ```
-werf.io/deploy-dependency-<anything>: state=ready|present[,name=<name>][,namespace=<namespace>][,kind=<kind>][,group=<group>][,version=<version>]
+werf.io/deploy-dependency-<anything>: state=ready|present[,name=<name>][,namespace=<namespace>][,kind=<kind>][,group=<group>][,version=<version>][,external=auto|true|false]
 ```
 
 ### `werf.io/delete-dependency-<id>` annotation
 
-The resource will be deleted only after all of its dependencies are satisfied. It waits until the specified resource is `absent`. You can only point to resources in the release. This annotation has no effect if the resource on which we depend upon is outside the stage (pre, main, post, ...) of the resource with the annotation.
+The resource will be deleted only after all of its dependencies are satisfied. It waits until the specified resource is `absent`. This annotation has no effect on internal (release) dependencies if the resource on which we depend upon is outside the stage (pre, main, post, ...) of the resource with the annotation.
+
+If `external=true` or `external=auto` and the dependency is not found in the release, then the dependency is treated as external to the release: `name`, `kind` and `version` must be specified.
 
 Example:
 ```yaml
 werf.io/delete-dependency-db: state=absent,kind=StatefulSet,name=postgres
 werf.io/delete-dependency-app: state=absent,kind=Deployment,group=apps,version=v1,name=app,namespace=app
+werf.io/delete-dependency-secret: state=absent,kind=Secret,version=v1,name=my-vault-secret,external=true
 ```
 Format:
 ```
-werf.io/delete-dependency-<anything>: state=absent[,name=<name>][,namespace=<namespace>][,kind=<kind>][,group=<group>][,version=<version>]
+werf.io/delete-dependency-<anything>: state=absent[,name=<name>][,namespace=<namespace>][,kind=<kind>][,group=<group>][,version=<version>][,external=auto|true|false]
 ```
 
-### `<id>.external-dependency.werf.io/resource` annotation 
 
-The resource will deploy only after all of its external dependencies are satisfied. It waits until the specified resource is `present` and `ready`. You can only point to resources outside the release.
-
-Example:
-```yaml
-secret.external-dependency.werf.io/resource: secret/config
-someapp.external-dependency.werf.io/resource: deployments.v1.apps/app
-```
-Format:
-```
-<anything>.external-dependency.werf.io/resource: <kind>[.<version>.<group>]/<name>
-```
-
-### `<id>.external-dependency.werf.io/name` annotation 
-
-Set the namespace of the external dependency defined by `<id>.external-dependency.werf.io/resource`. `<id>` must match on both annotations. If not specified, the release namespace is used.
-
-Example:
-```yaml
-someapp.external-dependency.werf.io/name: someapp-production
-```
-Format:
-```
-<anything>.external-dependency.werf.io/name: <name>
-```
 
 ### `werf.io/ownership` annotation 
 
@@ -600,9 +577,11 @@ Default:
 
 DEPRECATED. Use `werf.io/sensitive-paths` instead.
 
-Don't show diffs for the resource.
+Hide sensitive field values in diffs. `"true"` hides the values of `data.*` and `stringData.*` only — all other fields, the field keys themselves and metadata stay visible. Hidden values are replaced with a placeholder showing the value size (bytes or entries) and a short hash.
 
-`NELM_FEAT_FIELD_SENSITIVE` feature gate alters behavior of this annotation.
+`"false"` disables this automatic hiding, unless a non-empty `werf.io/sensitive-paths` annotation is also set, which takes precedence.
+
+To hide sensitive values in other fields (e.g. custom spec fields) use `werf.io/sensitive-paths` with explicit JSONPath expressions. The `--show-sensitive-diffs` option of `nelm release plan install` and `nelm release plan show` disables hiding entirely.
 
 Example:
 ```yaml
@@ -619,11 +598,13 @@ Default:
 
 ### `werf.io/sensitive-paths` annotation 
 
-Don't show diffs for resource fields that match specified JSONPath expressions. Overrides the behavior of `werf.io/sensitive`.
+Hide the values of resource fields that match the specified comma-separated JSONPath expressions. Replaces (not extends) the default list of hidden fields and overrides `werf.io/sensitive`, including `werf.io/sensitive: "false"`. If no expressions are specified, `werf.io/sensitive` or the resource type's default behavior applies. Include `$.data.*` and `$.stringData.*` when adding custom paths to keep Secret data redacted, as in the example below.
+
+The `--show-sensitive-diffs` option of `nelm release plan install` and `nelm release plan show` disables hiding entirely.
 
 Example:
 ```yaml
-werf.io/sensitive-paths: "$.spec.template.spec.containers[*].env[*].value,$.data.*"
+werf.io/sensitive-paths: "$.spec.template.spec.containers[*].env[*].value,$.data.*,$.stringData.*"
 ```
 Format:
 ```
@@ -879,30 +860,6 @@ Every few seconds print stack traces of all goroutines. Useful for debugging pur
 Example:
 ```shell
 export NELM_FEAT_PERIODIC_STACK_TRACES=true
-nelm release install -n myproject -r myproject
-```
-
-### `NELM_FEAT_FIELD_SENSITIVE` environment variable
-
-When showing diffs for Secrets or `werf.io/sensitive: "true"` annotated resources, instead of hiding the entire resource diff hide only the actual secret fields: `$.data`, `$.stringData`.
-
-Will be the default in the next major release.
-
-Example:
-```shell
-export NELM_FEAT_FIELD_SENSITIVE=true
-nelm release plan install -n myproject -r myproject
-```
-
-### `NELM_FEAT_CLEAN_NULL_FIELDS` environment variable
-
-Improve Helm chart compatibility. When rendering charts, remove keys with `null` values from the rendered resource manifests, before applying them. Otherwise, SSA often fail on `null` values, which didn't happen with 3WM.
-
-Will be the default in the next major release.
-
-Example:
-```shell
-export NELM_FEAT_CLEAN_NULL_FIELDS=true
 nelm release install -n myproject -r myproject
 ```
 

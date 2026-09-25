@@ -8,9 +8,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/werf/common-go/pkg/cli"
-	"github.com/werf/nelm/pkg/action"
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/v2/pkg/action"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 type chartSecretValuesFileDecryptOptions struct {
@@ -38,7 +38,7 @@ func newChartSecretValuesFileDecryptCommand(ctx context.Context, afterAllCommand
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = log.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultSecretValuesFileDecryptLogLevel), log.SetupLoggingOptions{
+			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultSecretValuesFileDecryptLogLevel), action.SetupLoggingOptions{
 				ColorMode:      cfg.LogColorMode,
 				LogIsParseable: true,
 			})

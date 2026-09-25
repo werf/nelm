@@ -7,10 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/werf/nelm/pkg/featgate"
-	"github.com/werf/nelm/pkg/helm/pkg/chartutil"
-	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/ts"
+	"github.com/werf/nelm/v2/pkg/featgate"
+	"github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/util"
+	"github.com/werf/nelm/v2/pkg/log"
+	"github.com/werf/nelm/v2/pkg/ts"
 )
 
 type ChartTSInitOptions struct {
@@ -36,7 +36,7 @@ func ChartTSInit(ctx context.Context, opts ChartTSInitOptions) error {
 	if opts.ChartName != "" {
 		chartName = opts.ChartName
 	} else {
-		meta, err := chartutil.LoadChartfile(filepath.Join(absPath, "Chart.yaml"))
+		meta, err := util.LoadChartfile(filepath.Join(absPath, "Chart.yaml"))
 		if err != nil {
 			return fmt.Errorf("load Chart.yaml: %w", err)
 		}

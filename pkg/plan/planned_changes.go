@@ -10,17 +10,15 @@ import (
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/resource"
-	"github.com/werf/nelm/pkg/resource/spec"
-	"github.com/werf/nelm/pkg/util"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/util"
 )
 
 const (
 	HiddenInsignificantChanges = "<hidden insignificant changes>"
-	HiddenSensitiveChanges     = "<hidden sensitive changes>"
 	HiddenVerboseCRDChanges    = "<hidden verbose CRD changes>"
-	HiddenVerboseChanges       = "<hidden verbose changes>"
 )
 
 type ResourceChange struct {
@@ -44,10 +42,6 @@ func (c *ResourceChange) UDiff(opts common.ResourceDiffOptions) (string, error) 
 		!opts.ShowVerboseCRDDiffs &&
 		(c.Before == nil || c.After == nil) {
 		uDiff = HiddenVerboseCRDChanges
-	} else if sensitiveInfo.FullySensitive() && !opts.ShowSensitiveDiffs {
-		uDiff = HiddenSensitiveChanges
-	} else if !opts.ShowVerboseDiffs && (c.Before == nil || c.After == nil) {
-		uDiff = HiddenVerboseChanges
 	} else {
 		var (
 			oldObjManifest string

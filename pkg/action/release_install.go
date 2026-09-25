@@ -15,25 +15,25 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
+	"github.com/werf/kubedog/pkg/dyntracker/logstore"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
+	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/kubedog/pkg/informer"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
-	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
-	"github.com/werf/nelm/pkg/chart"
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/helm/pkg/registry"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
-	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
-	"github.com/werf/nelm/pkg/kube"
-	"github.com/werf/nelm/pkg/legacy/progrep"
-	"github.com/werf/nelm/pkg/lock"
-	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/plan"
-	"github.com/werf/nelm/pkg/release"
-	"github.com/werf/nelm/pkg/resource"
-	"github.com/werf/nelm/pkg/resource/spec"
-	"github.com/werf/nelm/pkg/track"
-	"github.com/werf/nelm/pkg/util"
+	"github.com/werf/nelm/v2/pkg/chart"
+	"github.com/werf/nelm/v2/pkg/common"
+	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/v2/pkg/kube"
+	"github.com/werf/nelm/v2/pkg/legacy/progrep"
+	"github.com/werf/nelm/v2/pkg/log"
+	"github.com/werf/nelm/v2/pkg/plan"
+	"github.com/werf/nelm/v2/pkg/release"
+	"github.com/werf/nelm/v2/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/track"
+	"github.com/werf/nelm/v2/pkg/util"
 )
 
 const DefaultReleaseInstallLogLevel = log.InfoLevel
@@ -56,8 +56,6 @@ type ReleaseInstallOptions struct {
 	// ChartAppVersion overrides the appVersion field in Chart.yaml.
 	// Used to set application version metadata without modifying the chart file.
 	ChartAppVersion string
-	// ChartDirPath is deprecated
-	ChartDirPath string // TODO(major): get rid
 	// ChartProvenanceKeyring is the path to a keyring file containing public keys
 	// used to verify chart provenance signatures. Used with signed charts for security.
 	ChartProvenanceKeyring string
@@ -78,6 +76,10 @@ type ReleaseInstallOptions struct {
 	DefaultChartVersion string
 	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
 	DenoBinaryPath string
+	// DockerConfig is the path to the Docker configuration directory (e.g., ~/.docker).
+	DockerConfig string
+	// DropInvalidAnnotationsAndLabels disables strict annotations and labels validation.
+	DropInvalidAnnotationsAndLabels bool
 	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources.
 	IgnoreBundleJS bool
 	// InstallGraphPath, if specified, saves the Graphviz representation of the install plan to this file path.
@@ -88,7 +90,7 @@ type ReleaseInstallOptions struct {
 	InstallReportPath string
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.
-	LegacyChartType helmopts.ChartType
+	LegacyChartType common.LegacyChartType
 	// LegacyExtraValues provides additional values programmatically.
 	// Used internally for backward compatibility with werf integration.
 	LegacyExtraValues map[string]interface{}
@@ -97,6 +99,16 @@ type ReleaseInstallOptions struct {
 	LegacyLogRegistryStreamOut io.Writer
 	// LegacyNoReleaseLock, when true, disables acquiring the werf-synchronization release lock in the cluster.
 	LegacyNoReleaseLock bool
+	// LegacyPatches are patch rules supplied programmatically, applied after
+	// chart-shipped and PatchesFiles rules. Rules are UNSCOPED: use Match.Charts to
+	// constrain a rule to a (sub)chart, which matches chart path segments and so does not
+	// reach nested sub-subcharts unless they are listed too.
+	// When LegacyPlanArtifact is used, what gets applied was already fixed by
+	// ReleasePlanInstall, and these rules only feed the diff patches of the auto-rollback
+	// plan.
+	LegacyPatches spec.Patches
+	// LegacyPlanArtifact provides plan artifact as a result of the release plan install action.
+	LegacyPlanArtifact *PlanArtifact
 	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
 	// Must be a buffered channel with capacity >= 1. Intermediate reports may be dropped if the
 	// consumer is slow; the final report is guaranteed (blocking send). ReleaseInstall closes the
@@ -116,7 +128,7 @@ type ReleaseInstallOptions struct {
 	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
 	PlanArtifactPath string
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
-	// Defaults to DefaultRegistryCredentialsPath (~/.docker/config.json) if not set.
+	// Defaults to DockerConfig/config.json if not set.
 	// Used for authenticating to OCI registries when pulling charts.
 	RegistryCredentialsPath string
 	// RollbackGraphPath, if specified, saves the Graphviz representation of the rollback plan (if auto-rollback occurs)
@@ -140,6 +152,7 @@ type runRollbackPlanOptions struct {
 	common.ReleaseInstallRuntimeOptions
 	common.TrackingOptions
 
+	LegacyPatches      spec.Patches
 	NetworkParallelism int
 	RollbackGraphPath  string
 }
@@ -157,10 +170,10 @@ type ReleaseInstallResultV1 struct {
 }
 
 type ReleaseInstallResultRelease struct {
-	Name      string             `json:"name"`
-	Namespace string             `json:"namespace"`
-	Revision  int                `json:"revision"`
-	Status    helmrelease.Status `json:"status"`
+	Name      string                   `json:"name"`
+	Namespace string                   `json:"namespace"`
+	Revision  int                      `json:"revision"`
+	Status    helmreleasestatus.Status `json:"status"`
 }
 
 type releaseInstallOutcome struct {
@@ -202,8 +215,6 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 }
 
 func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, opts ReleaseInstallOptions) (*ReleaseInstallResultV1, error) {
-	usePlan := opts.PlanArtifactPath != ""
-
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("get current working directory: %w", err)
@@ -223,20 +234,27 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
 	}
 
-	var planArtifact *plan.PlanArtifact
-	if usePlan {
+	var planArtifact *PlanArtifact
+
+	if opts.PlanArtifactPath != "" {
 		log.Default.Info(ctx, "Using %s plan artifact", opts.PlanArtifactPath)
 
 		log.Default.Debug(ctx, "Read plan artifact")
 
-		planArtifact, err = plan.ReadPlanArtifact(ctx, opts.PlanArtifactPath, opts.SecretKey, opts.SecretWorkDir)
+		planArtifact, err = ReadPlanArtifact(ctx, opts.PlanArtifactPath, opts.SecretKey, opts.SecretWorkDir)
 		if err != nil {
 			return nil, fmt.Errorf("read plan artifact from %s: %w", opts.PlanArtifactPath, err)
 		}
+	} else {
+		planArtifact = opts.LegacyPlanArtifact
+	}
 
+	usePlan := planArtifact != nil
+
+	if usePlan {
 		log.Default.Debug(ctx, "Validate plan artifact")
 
-		if err := plan.ValidatePlanArtifact(planArtifact, opts.PlanArtifactLifetime); err != nil {
+		if err := ValidatePlanArtifact(planArtifact, opts.PlanArtifactLifetime); err != nil {
 			return nil, fmt.Errorf("validate plan artifact: %w", err)
 		}
 
@@ -246,16 +264,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		opts.ReleaseInstallRuntimeOptions = planArtifact.Data.Options
 	}
 
-	if len(opts.KubeConfigPaths) > 0 {
-		var splitPaths []string
-		for _, path := range opts.KubeConfigPaths {
-			splitPaths = append(splitPaths, filepath.SplitList(path)...)
-		}
-
-		opts.KubeConfigPaths = lo.Compact(splitPaths)
-	}
-
-	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+	kubeConfig, err := kube.NewKubeConfig(ctx, kube.KubeConfigOptions{
 		KubeConnectionOptions: opts.KubeConnectionOptions,
 		KubeContextNamespace:  releaseNamespace, // TODO: unset it everywhere
 	})
@@ -297,13 +306,9 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		return nil, fmt.Errorf("construct release storage: %w", err)
 	}
 
-	var lockManager *lock.LockManager
-	if !opts.LegacyNoReleaseLock {
-		if m, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory); err != nil {
-			return nil, fmt.Errorf("construct lock manager: %w", err)
-		} else {
-			lockManager = m
-		}
+	lockManager, lockEnabled, err := newReleaseLockManager(ctx, releaseNamespace, clientFactory, opts.LegacyNoReleaseLock)
+	if err != nil {
+		return nil, err
 	}
 
 	if !opts.NoCreateNamespace {
@@ -314,7 +319,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Start release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-	if lockManager != nil {
+	if lockEnabled {
 		if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
 			return nil, fmt.Errorf("lock release: %w", err)
 		} else {
@@ -338,12 +343,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	newRevision := 1
 	if prevRelease != nil {
-		newRevision = prevRelease.Version + 1
+		newRevision = prevRelease.Version() + 1
 	}
 
 	var (
 		installPlan  *plan.Plan
-		newRelease   *helmrelease.Release
+		newRelease   helmrel.Accessor
 		instResInfos []*plan.InstallableResourceInfo
 		relInfos     []*plan.ReleaseInfo
 	)
@@ -355,11 +360,17 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}
 
 		installPlan = planArtifact.Data.Plan
-		newRelease = planArtifact.Data.Release
+
+		if planArtifact.Data.Release == nil || planArtifact.Data.Release.Accessor == nil {
+			return nil, fmt.Errorf("plan artifact has no release")
+		}
+
+		newRelease = planArtifact.Data.Release.Accessor
+
 		instResInfos = planArtifact.Data.InstallableResourceInfos
 		relInfos = planArtifact.Data.ReleaseInfos
 	} else {
-		prevReleaseFailed := prevRelease != nil && prevRelease.IsStatusFailed()
+		prevReleaseFailed := prevRelease != nil && prevRelease.Status() == helmreleasestatus.StatusFailed.String()
 
 		var deployType common.DeployType
 		if prevDeployedRelease != nil {
@@ -370,8 +381,8 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			deployType = common.DeployTypeInitial
 		}
 
-		helmOptions := helmopts.HelmOptions{
-			ChartLoadOpts: helmopts.ChartLoadOptions{
+		helmOptions := common.HelmOptions{
+			ChartLoadOpts: common.ChartLoadOptions{
 				ChartAppVersion:            opts.ChartAppVersion,
 				ChartType:                  opts.LegacyChartType,
 				DefaultChartAPIVersion:     opts.DefaultChartAPIVersion,
@@ -389,33 +400,48 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		log.Default.Debug(ctx, "Render chart")
 
 		renderChartResult, err := chart.RenderChart(ctx, opts.Chart, releaseName, releaseNamespace, newRevision, deployType, helmRegistryClient, clientFactory, chart.RenderChartOptions{
-			ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
-			ValuesOptions:              opts.ValuesOptions,
-			ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
-			ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
-			ChartRepoNoUpdate:          opts.ChartRepoSkipUpdate,
-			ChartVersion:               opts.ChartVersion,
-			HelmOptions:                helmOptions,
-			NoStandaloneCRDs:           opts.NoInstallStandaloneCRDs,
-			Remote:                     true,
-			SubchartNotes:              opts.ShowSubchartNotes,
-			TemplatesAllowDNS:          opts.TemplatesAllowDNS,
-			IgnoreBundleJS:             opts.IgnoreBundleJS,
-			DenoBinaryPath:             opts.DenoBinaryPath,
-			TempDirPath:                opts.TempDirPath,
+			ChartRepoConnectionOptions:      opts.ChartRepoConnectionOptions,
+			ValuesOptions:                   opts.ValuesOptions,
+			ChartProvenanceKeyring:          opts.ChartProvenanceKeyring,
+			ChartProvenanceStrategy:         opts.ChartProvenanceStrategy,
+			ChartRepoNoUpdate:               opts.ChartRepoSkipUpdate,
+			ChartVersion:                    opts.ChartVersion,
+			DropInvalidAnnotationsAndLabels: opts.DropInvalidAnnotationsAndLabels,
+			HelmOptions:                     helmOptions,
+			NoValuesSchemaValidation:        opts.NoValuesSchemaValidation,
+			NoStandaloneCRDs:                opts.NoInstallStandaloneCRDs,
+			Remote:                          true,
+			SubchartNotes:                   opts.ShowSubchartNotes,
+			TemplatesAllowDNS:               opts.TemplatesAllowDNS,
+			IgnoreBundleJS:                  opts.IgnoreBundleJS,
+			DenoBinaryPath:                  opts.DenoBinaryPath,
+			TempDirPath:                     opts.TempDirPath,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("render chart: %w", err)
+		}
+
+		log.Default.Debug(ctx, "Resolve patches")
+
+		patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches)
+		if err != nil {
+			return nil, fmt.Errorf("resolve patches: %w", err)
 		}
 
 		log.Default.Debug(ctx, "Build transformed resource specs")
 
 		transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, releaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
 			spec.NewResourceListsTransformer(),
-			spec.NewDropInvalidAnnotationsAndLabelsTransformer(),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("build transformed resource specs: %w", err)
+		}
+
+		log.Default.Debug(ctx, "Build render patched resource specs")
+
+		renderPatchedResSpecs, err := spec.BuildRenderPatchedResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patches.Render)
+		if err != nil {
+			return nil, fmt.Errorf("build render patched resource specs: %w", err)
 		}
 
 		log.Default.Debug(ctx, "Build releasable resource specs")
@@ -429,7 +455,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
 		}
 
-		releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patchers)
+		releasableResSpecs, err := spec.BuildPatchedResourceSpecs(ctx, releaseNamespace, renderPatchedResSpecs, patchers)
 		if err != nil {
 			return nil, fmt.Errorf("build releasable resource specs: %w", err)
 		}
@@ -447,7 +473,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		var prevRelResSpecs []*spec.ResourceSpec
 		if prevRelease != nil {
-			prevRelResSpecs, err = release.ReleaseToResourceSpecs(prevRelease, releaseNamespace, false)
+			prevRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, prevRelease, releaseNamespace)
 			if err != nil {
 				return nil, fmt.Errorf("convert previous release to resource specs: %w", err)
 			}
@@ -455,7 +481,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		log.Default.Debug(ctx, "Convert new release to resource specs")
 
-		newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace, false)
+		newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, releaseNamespace)
 		if err != nil {
 			return nil, fmt.Errorf("convert new release to resource specs: %w", err)
 		}
@@ -465,8 +491,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
 			spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 			spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
-		}, clientFactory, resource.BuildResourcesOptions{
-			Remote:                   true,
+		}, resource.BuildResourcesOptions{
 			DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 			NoPodLogs:                opts.NoPodLogs,
 		})
@@ -488,16 +513,19 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		var lastDeployedOrLastRelResSpecs []*spec.ResourceSpec
 		if lastDeployedOrLastRelease != nil {
-			lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(lastDeployedOrLastRelease, releaseNamespace, false)
+			lastDeployedOrLastRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, lastDeployedOrLastRelease, releaseNamespace)
 			if err != nil {
 				return nil, fmt.Errorf("convert last deployed or last release to resource specs: %w", err)
 			}
 		}
 
 		instResInfos, delResInfos, err = plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
+			DiffPatches:                        patches.Diff,
 			NetworkParallelism:                 opts.NetworkParallelism,
 			NoRemoveManualChanges:              opts.NoRemoveManualChanges,
 			LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,
+			ExtraRuntimeAnnotations:            opts.ExtraRuntimeAnnotations,
+			ExtraRuntimeLabels:                 opts.ExtraRuntimeLabels,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("build resource infos: %w", err)
@@ -518,7 +546,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		log.Default.Debug(ctx, "Build install plan")
 
-		installPlan, err = plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
+		installPlan, err = plan.BuildPlan(ctx, instResInfos, delResInfos, relInfos, releaseNamespace, plan.BuildPlanOptions{
 			NoFinalTracking: opts.NoFinalTracking,
 		})
 		if err != nil {
@@ -552,19 +580,19 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	if releaseIsUpToDate && installPlanIsUseless {
 		if opts.InstallReportPath != "" {
-			if err := saveReport(opts.InstallReportPath, &releaseReportV3{
-				Version:   3,
-				Release:   releaseName,
-				Namespace: releaseNamespace,
-				Revision:  newRelease.Version,
-				Status:    helmrelease.StatusSkipped,
+			if err := saveReport(opts.InstallReportPath, &ReleaseReportV3{
+				APIVersion: "v3",
+				Release:    releaseName,
+				Namespace:  releaseNamespace,
+				Revision:   newRelease.Version(),
+				Status:     helmreleasestatus.Status("skipped"),
 			}); err != nil {
 				return nil, fmt.Errorf("save release install report: %w", err)
 			}
 		}
 
 		if !opts.NoShowNotes {
-			printNotes(ctx, newRelease.Info.Notes)
+			printNotes(ctx, newRelease.Notes())
 		}
 
 		if opts.LegacyProgressReportCh != nil {
@@ -578,7 +606,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)))
 
-		return newReleaseInstallResult(releaseName, releaseNamespace, prevRelease.Version, helmrelease.StatusSkipped, instResInfos), nil
+		return newReleaseInstallResult(releaseName, releaseNamespace, prevRelease.Version(), helmreleasestatus.Status("skipped"), instResInfos), nil
 	}
 
 	taskStore := kdutil.NewConcurrent(statestore.NewTaskStore())
@@ -665,6 +693,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			runRollbackPlanResult, nonCritErrs, critErrs := runRollbackPlan(ctx, releaseName, releaseNamespace, newRelease, prevDeployedRelease, taskStore, logStore, informerFactory, history, clientFactory, runRollbackPlanOptions{
 				ReleaseInstallRuntimeOptions: opts.ReleaseInstallRuntimeOptions,
 				TrackingOptions:              opts.TrackingOptions,
+				LegacyPatches:                opts.LegacyPatches,
 				NetworkParallelism:           opts.NetworkParallelism,
 				RollbackGraphPath:            opts.RollbackGraphPath,
 			})
@@ -705,12 +734,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	sort.Strings(reportCanceledOps)
 	sort.Strings(reportFailedOps)
 
-	report := &releaseReportV3{
-		Version:             3,
+	report := &ReleaseReportV3{
+		APIVersion:          "v3",
 		Release:             releaseName,
 		Namespace:           releaseNamespace,
-		Revision:            newRelease.Version,
-		Status:              lo.Ternary(executePlanErr == nil, helmrelease.StatusDeployed, helmrelease.StatusFailed),
+		Revision:            newRelease.Version(),
+		Status:              lo.Ternary(executePlanErr == nil, helmreleasestatus.StatusDeployed, helmreleasestatus.StatusFailed),
 		CompletedOperations: reportCompletedOps,
 		CanceledOperations:  reportCanceledOps,
 		FailedOperations:    reportFailedOps,
@@ -725,7 +754,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	if !criticalErrs.HasErrors() && !opts.NoShowNotes {
-		printNotes(ctx, newRelease.Info.Notes)
+		printNotes(ctx, newRelease.Notes())
 	}
 
 	if criticalErrs.HasErrors() {
@@ -735,7 +764,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		return nil, fmt.Errorf("failed release %q (namespace: %q): %w", releaseName, releaseNamespace, allErrs)
 	}
 
-	installResult := newReleaseInstallResult(releaseName, releaseNamespace, newRelease.Version, helmrelease.StatusDeployed, instResInfos)
+	installResult := newReleaseInstallResult(releaseName, releaseNamespace, newRelease.Version(), helmreleasestatus.StatusDeployed, instResInfos)
 
 	if nonCriticalErrs.HasErrors() {
 		return installResult, fmt.Errorf("succeeded release %q (namespace: %q), but non-critical errors encountered: %w", releaseName, releaseNamespace, nonCriticalErrs)
@@ -761,9 +790,7 @@ func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir, 
 	opts.SecretValuesOptions.ApplyDefaults(currentDir)
 	opts.TrackingOptions.ApplyDefaults()
 
-	if opts.Chart == "" && opts.ChartDirPath != "" {
-		opts.Chart = opts.ChartDirPath
-	} else if opts.ChartDirPath == "" && opts.Chart == "" {
+	if opts.Chart == "" {
 		opts.Chart = currentDir
 	}
 
@@ -791,7 +818,7 @@ func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir, 
 	}
 
 	if opts.RegistryCredentialsPath == "" {
-		opts.RegistryCredentialsPath = common.DefaultRegistryCredentialsPath
+		opts.RegistryCredentialsPath = filepath.Join(opts.DockerConfig, "config.json")
 	}
 
 	if opts.ChartProvenanceStrategy == "" {
@@ -864,7 +891,7 @@ func createReleaseNamespace(ctx context.Context, clientFactory kube.ClientFactor
 	return nil
 }
 
-func newReleaseInstallResult(releaseName, releaseNamespace string, revision int, status helmrelease.Status, instResInfos []*plan.InstallableResourceInfo) *ReleaseInstallResultV1 {
+func newReleaseInstallResult(releaseName, releaseNamespace string, revision int, status helmreleasestatus.Status, instResInfos []*plan.InstallableResourceInfo) *ReleaseInstallResultV1 {
 	// There is one InstallableResourceInfo per deploy stage, but each resource must be returned once.
 	uniqResInfos := lo.UniqBy(instResInfos, func(info *plan.InstallableResourceInfo) string {
 		return info.ID()
@@ -890,13 +917,13 @@ func newReleaseInstallResult(releaseName, releaseNamespace string, revision int,
 	}
 }
 
-func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, failedRelease, prevDeployedRelease *helmrelease.Release, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history *release.History, clientFactory *kube.ClientFactory, opts runRollbackPlanOptions) (result *runRollbackPlanResult, nonCritErrs, critErrs *util.MultiError) {
+func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, failedRelease, prevDeployedRelease helmrel.Accessor, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history *release.History, clientFactory *kube.ClientFactory, opts runRollbackPlanOptions) (result *runRollbackPlanResult, nonCritErrs, critErrs *util.MultiError) {
 	critErrs = &util.MultiError{}
 	nonCritErrs = &util.MultiError{}
 
 	log.Default.Debug(ctx, "Convert prev deployed release to resource specs")
 
-	resSpecs, err := release.ReleaseToResourceSpecs(prevDeployedRelease, releaseNamespace, false)
+	resSpecs, err := release.ReleaseToResourceSpecs(ctx, prevDeployedRelease, releaseNamespace)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert previous deployed release to resource specs: %w", err))
 	}
@@ -905,7 +932,6 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, releaseNamespace, resSpecs, []spec.ResourceTransformer{
 		spec.NewResourceListsTransformer(),
-		spec.NewDropInvalidAnnotationsAndLabelsTransformer(),
 	})
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build transformed resource specs: %w", err))
@@ -922,15 +948,20 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
 	}
 
-	releasableResSpecs, err := spec.BuildReleasableResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patchers)
+	releasableResSpecs, err := spec.BuildPatchedResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patchers)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build releasable resource specs: %w", err))
 	}
 
-	newRelease, err := release.NewRelease(releaseName, releaseNamespace, failedRelease.Version+1, common.DeployTypeRollback, releasableResSpecs, prevDeployedRelease.Chart, prevDeployedRelease.Config, release.ReleaseOptions{
+	chartAccessor, err := helmchart.NewAccessor(prevDeployedRelease.Chart())
+	if err != nil {
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("create chart accessor: %w", err))
+	}
+
+	newRelease, err := release.NewRelease(releaseName, releaseNamespace, failedRelease.Version()+1, common.DeployTypeRollback, releasableResSpecs, chartAccessor, prevDeployedRelease.Config(), release.ReleaseOptions{
 		InfoAnnotations: opts.ReleaseInfoAnnotations,
 		Labels:          opts.ReleaseLabels,
-		Notes:           prevDeployedRelease.Info.Notes,
+		Notes:           prevDeployedRelease.Notes(),
 	})
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("construct new release: %w", err))
@@ -938,14 +969,14 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Convert failed release to resource specs")
 
-	failedRelResSpecs, err := release.ReleaseToResourceSpecs(failedRelease, releaseNamespace, false)
+	failedRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, failedRelease, releaseNamespace)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert previous release to resource specs: %w", err))
 	}
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
-	newRelResSpecs, err := release.ReleaseToResourceSpecs(newRelease, releaseNamespace, false)
+	newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, releaseNamespace)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert new release to resource specs: %w", err))
 	}
@@ -955,8 +986,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 	instResources, delResources, err := resource.BuildResources(ctx, common.DeployTypeRollback, releaseNamespace, failedRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
 		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
-	}, clientFactory, resource.BuildResourcesOptions{
-		Remote:                   true,
+	}, resource.BuildResourcesOptions{
 		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 		NoPodLogs:                opts.NoPodLogs,
 	})
@@ -972,15 +1002,23 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Build resource infos")
 
-	lastDeployedOrLastRelResSpecs, err := release.ReleaseToResourceSpecs(prevDeployedRelease, releaseNamespace, false)
+	lastDeployedOrLastRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, prevDeployedRelease, releaseNamespace)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert last deployed or last release to resource specs: %w", err))
 	}
 
+	patches, err := resolvePatches(chartAccessor, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches)
+	if err != nil {
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("resolve patches: %w", err))
+	}
+
 	instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, common.DeployTypeRollback, releaseName, releaseNamespace, instResources, delResources, true, clientFactory, plan.BuildResourceInfosOptions{
+		DiffPatches:                        patches.Diff,
 		NetworkParallelism:                 opts.NetworkParallelism,
 		NoRemoveManualChanges:              opts.NoRemoveManualChanges,
 		LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,
+		ExtraRuntimeAnnotations:            opts.ExtraRuntimeAnnotations,
+		ExtraRuntimeLabels:                 opts.ExtraRuntimeLabels,
 	})
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build resource infos: %w", err))
@@ -1003,7 +1041,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Build rollback plan")
 
-	rollbackPlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
+	rollbackPlan, err := plan.BuildPlan(ctx, instResInfos, delResInfos, relInfos, releaseNamespace, plan.BuildPlanOptions{
 		NoFinalTracking: opts.NoFinalTracking,
 	})
 	if err != nil {

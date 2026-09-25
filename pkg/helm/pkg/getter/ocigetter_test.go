@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/werf/nelm/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 )
 
 func TestOCIGetter(t *testing.T) {
@@ -42,7 +42,7 @@ func TestOCIGetter(t *testing.T) {
 	insecureSkipVerifyTLS := false
 	plainHTTP := false
 
-	// Test with options
+	// Test with getterOptions
 	g, err = NewOCIGetter(
 		WithBasicAuth("I", "Am"),
 		WithTLSClientConfig(pub, priv, ca),
@@ -128,7 +128,7 @@ func TestOCIHTTPTransportReuse(t *testing.T) {
 	}
 
 	if g.transport == nil {
-		t.Fatalf("Expected non nil value for transport")
+		t.Fatal("Expected non nil value for transport")
 	}
 
 	transport1 := g.transport
@@ -140,12 +140,12 @@ func TestOCIHTTPTransportReuse(t *testing.T) {
 	}
 
 	if g.transport == nil {
-		t.Fatalf("Expected non nil value for transport")
+		t.Fatal("Expected non nil value for transport")
 	}
 
 	transport2 := g.transport
 
 	if transport1 != transport2 {
-		t.Fatalf("Expected default transport to be reused")
+		t.Fatal("Expected default transport to be reused")
 	}
 }

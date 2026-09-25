@@ -10,46 +10,58 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 )
 
-var _ ReleaseStorager = (*failingDeleteStorage)(nil)
+var _ ReleaseStorager = (*stubStorager)(nil)
 
-type failingDeleteStorage struct {
+type stubStorager struct {
 	deleteErr error
+	deleteRel helmrel.Accessor
 }
 
-func (s *failingDeleteStorage) Create(rls *helmrelease.Release) error {
+func (s *stubStorager) Create(rls helmrel.Accessor) error {
 	return nil
 }
 
-func (s *failingDeleteStorage) Delete(name string, version int) (*helmrelease.Release, error) {
-	return nil, s.deleteErr
+func (s *stubStorager) Delete(name string, version int) (helmrel.Accessor, error) {
+	return s.deleteRel, s.deleteErr
 }
 
-func (s *failingDeleteStorage) GetRelease(name string, version int) (*helmrelease.Release, error) {
+func (s *stubStorager) GetRelease(name string, version int) (helmrel.Accessor, error) {
 	return nil, nil
 }
 
-func (s *failingDeleteStorage) Query(labels map[string]string) ([]*helmrelease.Release, error) {
+func (s *stubStorager) ListLatestReleases(ctx context.Context) ([]helmrel.Accessor, error) {
 	return nil, nil
 }
 
-func (s *failingDeleteStorage) Update(rls *helmrelease.Release) error {
+func (s *stubStorager) Query(labels map[string]string) ([]helmrel.Accessor, error) {
+	return nil, nil
+}
+
+func (s *stubStorager) Update(rls helmrel.Accessor) error {
 	return nil
 }
 
-func TestAI_HistoryDeleteRelease_StorageError(t *testing.T) {
-	storage := &failingDeleteStorage{deleteErr: errors.New("context deadline exceeded")}
-	history := NewHistory(nil, "myrel", storage, HistoryOptions{})
+func (s *stubStorager) UpdateLabels(name string, version int, labels map[string]string) error {
+	return nil
+}
 
-	var err error
+func TestAI_DeleteRelease_ErrorIncludesNameAndRevision(t *testing.T) {
+	storage := &stubStorager{
+		deleteErr: errors.New("kube delete failed"),
+		deleteRel: nil,
+	}
+	history := NewHistory(nil, "myrelease", storage, HistoryOptions{})
+
+	var delErr error
 	require.NotPanics(t, func() {
-		err = history.DeleteRelease(context.Background(), "myrel", 7)
+		delErr = history.DeleteRelease(context.Background(), "myrelease", 3)
 	})
 
-	require.Error(t, err)
-	assert.ErrorIs(t, err, storage.deleteErr)
-	assert.Contains(t, err.Error(), "myrel")
-	assert.Contains(t, err.Error(), "7")
+	require.Error(t, delErr)
+	assert.ErrorIs(t, delErr, storage.deleteErr)
+	assert.Contains(t, delErr.Error(), `"myrelease"`)
+	assert.Contains(t, delErr.Error(), "revision: 3")
 }

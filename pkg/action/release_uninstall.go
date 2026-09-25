@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"time"
 
@@ -13,22 +12,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/werf/kubedog/pkg/trackers/dyntracker"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
-	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
-	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
-	"github.com/werf/nelm/pkg/kube"
-	"github.com/werf/nelm/pkg/legacy/progrep"
-	"github.com/werf/nelm/pkg/lock"
-	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/plan"
-	"github.com/werf/nelm/pkg/release"
-	"github.com/werf/nelm/pkg/resource"
-	"github.com/werf/nelm/pkg/resource/spec"
-	"github.com/werf/nelm/pkg/track"
-	"github.com/werf/nelm/pkg/util"
+	"github.com/werf/kubedog/pkg/dyntracker"
+	"github.com/werf/kubedog/pkg/dyntracker/logstore"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
+	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
+	"github.com/werf/nelm/v2/pkg/common"
+	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/v2/pkg/kube"
+	"github.com/werf/nelm/v2/pkg/legacy/progrep"
+	"github.com/werf/nelm/v2/pkg/log"
+	"github.com/werf/nelm/v2/pkg/plan"
+	"github.com/werf/nelm/v2/pkg/release"
+	"github.com/werf/nelm/v2/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/track"
+	"github.com/werf/nelm/v2/pkg/util"
 )
 
 const DefaultReleaseUninstallLogLevel = log.InfoLevel
@@ -39,11 +38,21 @@ type ReleaseUninstallOptions struct {
 
 	// DefaultDeletePropagation sets the deletion propagation policy for resource deletions.
 	DefaultDeletePropagation string
+	// DefaultPatchesDisable, when true, ignores chart-shipped patches.yaml files
+	// (from the top-level chart and subcharts of the uninstalled release). Diff
+	// patches only affect drift detection of surviving pre-delete hooks.
+	DefaultPatchesDisable bool
 	// DeleteReleaseNamespace, when true, deletes the release namespace after uninstalling the release.
 	// WARNING: This will delete the entire namespace including resources not managed by this release.
 	DeleteReleaseNamespace bool
 	// LegacyNoReleaseLock, when true, disables acquiring the werf-synchronization release lock in the cluster.
 	LegacyNoReleaseLock bool
+	// LegacyPatches are patch rules supplied programmatically, applied after
+	// chart-shipped and PatchesFiles rules. Rules are UNSCOPED: use Match.Charts to
+	// constrain a rule to a (sub)chart, which matches chart path segments and so does not
+	// reach nested sub-subcharts unless they are listed too. Nothing is rendered during an uninstall,
+	// so only diff patches (drift detection) have an effect here.
+	LegacyPatches spec.Patches
 	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
 	// Must be a buffered channel with capacity >= 1. Intermediate reports may be dropped if the
 	// consumer is slow; the final report is guaranteed (blocking send). ReleaseUninstall closes the
@@ -55,6 +64,10 @@ type ReleaseUninstallOptions struct {
 	// NoRemoveManualChanges, when true, preserves fields manually added to resources in the cluster
 	// that are not present in the chart manifests. By default, such fields are removed during deletion.
 	NoRemoveManualChanges bool
+	// PatchesFiles are paths to additional patches files applied on top of
+	// chart-shipped ones during the uninstall plan. Nothing is rendered during an
+	// uninstall, so only diff patches (drift detection) have an effect here.
+	PatchesFiles []string
 	// ReleaseHistoryLimit sets the maximum number of release revisions to keep in storage.
 	// Defaults to DefaultReleaseHistoryLimit if not set or <= 0.
 	// After uninstall, only the uninstall record itself is kept.
@@ -127,16 +140,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		return fmt.Errorf("build  release uninstall options: %w", err)
 	}
 
-	if len(opts.KubeConfigPaths) > 0 {
-		var splitPaths []string
-		for _, path := range opts.KubeConfigPaths {
-			splitPaths = append(splitPaths, filepath.SplitList(path)...)
-		}
-
-		opts.KubeConfigPaths = lo.Compact(splitPaths)
-	}
-
-	kubeConfig, err := kube.NewKubeConfig(ctx, opts.KubeConfigPaths, kube.KubeConfigOptions{
+	kubeConfig, err := kube.NewKubeConfig(ctx, kube.KubeConfigOptions{
 		KubeConnectionOptions: opts.KubeConnectionOptions,
 		KubeContextNamespace:  releaseNamespace, // TODO: unset it everywhere
 	})
@@ -157,13 +161,9 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		return fmt.Errorf("construct release storage: %w", err)
 	}
 
-	var lockManager *lock.LockManager
-	if !opts.LegacyNoReleaseLock {
-		if m, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory); err != nil {
-			return fmt.Errorf("construct lock manager: %w", err)
-		} else {
-			lockManager = m
-		}
+	lockManager, lockEnabled, err := newReleaseLockManager(ctx, releaseNamespace, clientFactory, opts.LegacyNoReleaseLock)
+	if err != nil {
+		return err
 	}
 
 	nsMeta := spec.NewResourceMeta(releaseNamespace, "", releaseNamespace, "", schema.GroupVersionKind{Version: "v1", Kind: "Namespace"}, nil, nil)
@@ -195,7 +195,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 	if err := func() error {
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Delete release")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-		if lockManager != nil {
+		if lockEnabled {
 			if lock, err := lockManager.LockRelease(ctx, releaseName); err != nil {
 				return fmt.Errorf("lock release: %w", err)
 			} else {
@@ -220,12 +220,12 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		prevRelease := lo.LastOrEmpty(releases)
-		prevReleaseFailed := prevRelease.IsStatusFailed()
+		prevReleaseFailed := prevRelease.Status() == helmreleasestatus.StatusFailed.String()
 		deployType := common.DeployTypeUninstall
 
 		log.Default.Debug(ctx, "Convert previous release to resource specs")
 
-		prevRelResSpecs, err := release.ReleaseToResourceSpecs(prevRelease, releaseNamespace, false)
+		prevRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, prevRelease, releaseNamespace)
 		if err != nil {
 			return fmt.Errorf("convert previous release to resource specs: %w", err)
 		}
@@ -240,8 +240,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 		log.Default.Debug(ctx, "Build resources")
 
-		instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, nil, patchers, clientFactory, resource.BuildResourcesOptions{
-			Remote:                   true,
+		instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, nil, patchers, resource.BuildResourcesOptions{
 			DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
 			NoPodLogs:                opts.NoPodLogs,
 		})
@@ -251,7 +250,18 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 		log.Default.Debug(ctx, "Build resource infos")
 
+		uninstallChart, err := helmchart.NewAccessor(prevRelease.Chart())
+		if err != nil {
+			return fmt.Errorf("access chart of previous release: %w", err)
+		}
+
+		patches, err := resolvePatches(uninstallChart, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches)
+		if err != nil {
+			return fmt.Errorf("resolve patches: %w", err)
+		}
+
 		instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
+			DiffPatches:                        patches.Diff,
 			NetworkParallelism:                 opts.NetworkParallelism,
 			NoRemoveManualChanges:              opts.NoRemoveManualChanges,
 			LastDeployedOrLastRelResourceSpecs: prevRelResSpecs,
@@ -269,7 +279,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 		log.Default.Debug(ctx, "Build delete plan")
 
-		deletePlan, err := plan.BuildPlan(instResInfos, delResInfos, relInfos, plan.BuildPlanOptions{
+		deletePlan, err := plan.BuildPlan(ctx, instResInfos, delResInfos, relInfos, releaseNamespace, plan.BuildPlanOptions{
 			NoFinalTracking: opts.NoFinalTracking,
 		})
 		if err != nil {
@@ -374,12 +384,12 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		sort.Strings(reportCanceledOps)
 		sort.Strings(reportFailedOps)
 
-		report := &releaseReportV3{
-			Version:             3,
+		report := &ReleaseReportV3{
+			APIVersion:          "v3",
 			Release:             releaseName,
 			Namespace:           releaseNamespace,
-			Revision:            prevRelease.Version,
-			Status:              helmrelease.StatusUninstalled,
+			Revision:            prevRelease.Version(),
+			Status:              helmreleasestatus.StatusUninstalled,
 			CompletedOperations: reportCompletedOps,
 			CanceledOperations:  reportCanceledOps,
 			FailedOperations:    reportFailedOps,
@@ -423,7 +433,8 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		)
 
 		tracker := dyntracker.NewDynamicAbsenceTracker(taskState, informerFactory, clientFactory.Dynamic(), clientFactory.Mapper(), dyntracker.DynamicAbsenceTrackerOptions{
-			Timeout: opts.TrackDeletionTimeout,
+			Timeout:                    opts.TrackDeletionTimeout,
+			CaseInsensitiveGVKMatching: true,
 		})
 
 		if err := tracker.Track(ctx); err != nil {

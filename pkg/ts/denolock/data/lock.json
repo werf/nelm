@@ -1,0 +1,30 @@
+{
+  "platforms": {
+    "darwin/amd64": {
+      "archiveSha256": "f757df6d3991e37601c69fad56c22b37c4ea77b5dcfad3636a642c2ba4c9b19f",
+      "binarySha256": "e0d641386d4f396414da81fa4cfda7b73533ce092a8e12ab0f0551d1a2bc8dcd",
+      "target": "x86_64-apple-darwin"
+    },
+    "darwin/arm64": {
+      "archiveSha256": "6d17647fdbf9c587a581dba205054c4ccf732dae0a196cc1e9b44c07589db412",
+      "binarySha256": "433088c827fa0e39ff162ab0e475f1fd4c7690eaedec500cf678edc3865e9287",
+      "target": "aarch64-apple-darwin"
+    },
+    "linux/amd64": {
+      "archiveSha256": "c24f955d9fbfe0ea5ae2b501c8e71ae76e31e4c9782390a54a284b3364fda725",
+      "binarySha256": "1d97ecaf9e6bbb2a99e991caaf64ba9d62bf98759e8ef9938b9005855772b017",
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    "linux/arm64": {
+      "archiveSha256": "111da5c05c240cfdc4340f234a0e3539d39dbcb6755221f19dcd60bacc8be5aa",
+      "binarySha256": "7d87b8a5225485ddea1786024f875b2b3422c31100ba11cb2e36b6125959e218",
+      "target": "aarch64-unknown-linux-gnu"
+    },
+    "windows/amd64": {
+      "archiveSha256": "68ed08b05c56cf887e9aa509947dc3f468f7e12f47a13e5c1abd51d46d1453ef",
+      "binarySha256": "4a2757fe99afc2c62c46500c8221cfa0189ac4bfb7064141875ad9c0f04b60ef",
+      "target": "x86_64-pc-windows-msvc"
+    }
+  },
+  "version": "2.9.4"
+}
