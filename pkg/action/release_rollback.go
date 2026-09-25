@@ -363,7 +363,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	prevDeployedReleases, err := loadDeployedReleases(releaseName, revisions, releaseStorage, []helmrel.Accessor{prevRelease, prevDeployedRelease, rollbackRelease})
+	prevDeployedReleases, err := loadDeployedReleases(ctx, history, []helmrel.Accessor{prevRelease, prevDeployedRelease, rollbackRelease})
 	if err != nil {
 		return fmt.Errorf("load deployed releases: %w", err)
 	}

@@ -913,6 +913,9 @@ func (s *SQL) UpdateLabels(key string, lbls map[string]string) error {
 }
 
 // Delete deletes a release or returns ErrReleaseNotFound.
+// Delete removes the release named by key. The stored body is decoded only after the rows
+// are gone, so a release whose body can no longer be decoded is still deleted; the returned
+// release is nil in that case.
 func (s *SQL) Delete(key string) (release.Releaser, error) {
 	transaction, err := s.db.Beginx()
 	if err != nil {
@@ -937,13 +940,6 @@ func (s *SQL) Delete(key string) (release.Releaser, error) {
 		s.Logger().Debug("release not found", slog.String("key", key), slog.Any("error", err))
 		return nil, ErrReleaseNotFound
 	}
-
-	release, err := decodeRelease(record.Body)
-	if err != nil {
-		s.Logger().Debug("failed to decode release", slog.String("key", key), slog.Any("error", err))
-		transaction.Rollback()
-		return nil, err
-	}
 	defer transaction.Commit()
 
 	deleteQuery, args, err := s.statementBuilder.
@@ -956,13 +952,13 @@ func (s *SQL) Delete(key string) (release.Releaser, error) {
 		return nil, err
 	}
 
-	_, err = transaction.Exec(deleteQuery, args...)
-	if err != nil {
+	if _, err = transaction.Exec(deleteQuery, args...); err != nil {
 		s.Logger().Debug("failed perform delete query", slog.Any("error", err))
-		return release, err
+		return nil, err
 	}
 
-	if release.Labels, err = s.getReleaseCustomLabels(key, s.namespace); err != nil {
+	customLabels, err := s.getReleaseCustomLabels(key, s.namespace)
+	if err != nil {
 		s.Logger().Debug(
 			"failed to get release custom labels",
 			slog.String("namespace", s.namespace),
@@ -976,13 +972,23 @@ func (s *SQL) Delete(key string) (release.Releaser, error) {
 		Where(sq.Eq{sqlCustomLabelsTableReleaseKeyColumn: key}).
 		Where(sq.Eq{sqlCustomLabelsTableReleaseNamespaceColumn: s.namespace}).
 		ToSql()
-
 	if err != nil {
 		s.Logger().Debug("failed to build delete Labels query", slog.Any("error", err))
 		return nil, err
 	}
-	_, err = transaction.Exec(deleteCustomLabelsQuery, args...)
-	return release, err
+
+	if _, err = transaction.Exec(deleteCustomLabelsQuery, args...); err != nil {
+		return nil, err
+	}
+
+	rls, err := decodeRelease(record.Body)
+	if err != nil {
+		s.Logger().Debug("delete: failed to decode release, deleted anyway", slog.String("key", key), slog.Any("error", err))
+		return nil, nil
+	}
+	rls.Labels = customLabels
+
+	return rls, nil
 }
 
 // Get release custom labels from database

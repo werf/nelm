@@ -3,6 +3,7 @@ package release
 import (
 	"github.com/samber/lo"
 
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmreleasecommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 )
 
@@ -11,6 +12,15 @@ type Revision struct {
 	Namespace string `json:"namespace"`
 	Status    string `json:"status"`
 	Version   int    `json:"version"`
+}
+
+func NewRevisionFromAccessor(rel helmrel.Accessor) Revision {
+	return Revision{
+		Name:      rel.Name(),
+		Namespace: rel.Namespace(),
+		Status:    rel.Status(),
+		Version:   rel.Version(),
+	}
 }
 
 // DeployedRevisions expects revisions sorted by ascending Version.

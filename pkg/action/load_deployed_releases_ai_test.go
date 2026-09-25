@@ -18,15 +18,16 @@ import (
 var _ release.ReleaseStorager = (*countingStorager)(nil)
 
 type countingStorager struct {
-	gets []int
+	gets      []int
+	revisions []release.Revision
 }
 
 func (s *countingStorager) Create(rls helmrel.Accessor) error {
 	return nil
 }
 
-func (s *countingStorager) Delete(name string, version int) (helmrel.Accessor, error) {
-	return nil, nil
+func (s *countingStorager) Delete(name string, version int) error {
+	return nil
 }
 
 func (s *countingStorager) GetRelease(name string, version int) (helmrel.Accessor, error) {
@@ -44,7 +45,7 @@ func (s *countingStorager) Query(labels map[string]string) ([]helmrel.Accessor, 
 }
 
 func (s *countingStorager) Revisions(ctx context.Context, name string) ([]release.Revision, error) {
-	return nil, nil
+	return s.revisions, nil
 }
 
 func (s *countingStorager) Update(rls helmrel.Accessor) error {
@@ -65,7 +66,7 @@ func TestAI_LoadDeployedReleases_FetchesWhatIsNotPreloaded(t *testing.T) {
 	require.NoError(t, err)
 
 	storage := &countingStorager{}
-	rels, err := loadDeployedReleases("myrelease", revisions, storage, []helmrel.Accessor{prevRelease})
+	rels, err := loadDeployedReleases(context.Background(), newTestHistory(t, storage, revisions), []helmrel.Accessor{prevRelease})
 	require.NoError(t, err)
 
 	require.Len(t, rels, 2)
@@ -82,7 +83,7 @@ func TestAI_LoadDeployedReleases_IgnoresNilAndIrrelevantPreloaded(t *testing.T) 
 	require.NoError(t, err)
 
 	storage := &countingStorager{}
-	rels, err := loadDeployedReleases("myrelease", revisions, storage, []helmrel.Accessor{nil, unrelated})
+	rels, err := loadDeployedReleases(context.Background(), newTestHistory(t, storage, revisions), []helmrel.Accessor{nil, unrelated})
 	require.NoError(t, err)
 
 	require.Len(t, rels, 1)
@@ -96,7 +97,7 @@ func TestAI_LoadDeployedReleases_PreloadingDoesNotChangeTheSet(t *testing.T) {
 	for name, revisions := range loadDeployedReleasesTestCases() {
 		t.Run(name, func(t *testing.T) {
 			coldStorage := &countingStorager{}
-			cold, err := loadDeployedReleases("myrelease", revisions, coldStorage, nil)
+			cold, err := loadDeployedReleases(context.Background(), newTestHistory(t, coldStorage, revisions), nil)
 			require.NoError(t, err)
 
 			lastRevision, _ := lo.Last(revisions)
@@ -104,7 +105,7 @@ func TestAI_LoadDeployedReleases_PreloadingDoesNotChangeTheSet(t *testing.T) {
 			require.NoError(t, err)
 
 			warmStorage := &countingStorager{}
-			warm, err := loadDeployedReleases("myrelease", revisions, warmStorage, []helmrel.Accessor{prevRelease})
+			warm, err := loadDeployedReleases(context.Background(), newTestHistory(t, warmStorage, revisions), []helmrel.Accessor{prevRelease})
 			require.NoError(t, err)
 
 			assert.Equal(t,
@@ -125,7 +126,7 @@ func TestAI_LoadDeployedReleases_ReusesPreloadedBodyInsteadOfFetching(t *testing
 	require.NoError(t, err)
 
 	storage := &countingStorager{}
-	rels, err := loadDeployedReleases("myrelease", revisions, storage, []helmrel.Accessor{prevRelease})
+	rels, err := loadDeployedReleases(context.Background(), newTestHistory(t, storage, revisions), []helmrel.Accessor{prevRelease})
 	require.NoError(t, err)
 
 	require.Len(t, rels, 1)
@@ -161,4 +162,15 @@ func loadDeployedReleasesTestCases() map[string][]release.Revision {
 		},
 		"empty history": {},
 	}
+}
+
+func newTestHistory(t *testing.T, storage *countingStorager, revisions []release.Revision) *release.History {
+	t.Helper()
+
+	storage.revisions = revisions
+
+	history, err := release.BuildHistory(context.Background(), "myrelease", storage)
+	require.NoError(t, err)
+
+	return history
 }

@@ -39,7 +39,7 @@ func (h *History) CreateRelease(ctx context.Context, rel helmrel.Accessor) error
 		return fmt.Errorf("create release %q (namespace: %q, revision: %d): %w", rel.Name(), rel.Namespace(), rel.Version(), err)
 	}
 
-	h.revisions = append(h.revisions, revisionFromAccessor(rel))
+	h.revisions = append(h.revisions, NewRevisionFromAccessor(rel))
 
 	return nil
 }
@@ -48,7 +48,7 @@ func (h *History) DeleteRelease(ctx context.Context, name string, revision int) 
 	h.updateLock.Lock()
 	defer h.updateLock.Unlock()
 
-	if _, err := h.storage.Delete(name, revision); err != nil {
+	if err := h.storage.Delete(name, revision); err != nil {
 		return fmt.Errorf("uninstall release %q (revision: %d): %w", name, revision, err)
 	}
 
@@ -99,7 +99,7 @@ func (h *History) UpdateRelease(ctx context.Context, rel helmrel.Accessor) error
 		return fmt.Errorf("release %q (namespace: %q, revision: %d) not found in history", rel.Name(), rel.Namespace(), rel.Version())
 	}
 
-	h.revisions[i] = revisionFromAccessor(rel)
+	h.revisions[i] = NewRevisionFromAccessor(rel)
 
 	return nil
 }
@@ -115,13 +115,4 @@ func BuildHistory(ctx context.Context, releaseName string, historyStorage Releas
 		revisions:   revisions,
 		storage:     historyStorage,
 	}, nil
-}
-
-func revisionFromAccessor(rel helmrel.Accessor) Revision {
-	return Revision{
-		Name:      rel.Name(),
-		Namespace: rel.Namespace(),
-		Version:   rel.Version(),
-		Status:    rel.Status(),
-	}
 }

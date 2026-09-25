@@ -3,6 +3,7 @@ package action
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"os"
@@ -24,7 +25,9 @@ import (
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/nelm/v2/pkg/common"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/lock"
 	"github.com/werf/nelm/v2/pkg/log"
@@ -119,6 +122,64 @@ func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr err
 	log.Default.Warn(ctx, "Plan graph saved to %q for debugging", graphPath)
 }
 
+// loadDeployedReleases loads the bodies of the revisions BuildReleaseInfos would keep, i.e. the
+// ones with status exactly "deployed". release.DeployedRevisions is deliberately not used here:
+// it also returns superseded revisions, which would turn into extra supersede operations.
+// Bodies the caller already holds are passed in preloaded and reused instead of being fetched
+// again; this never changes which revisions are returned, only where their bodies come from.
+func loadDeployedReleases(ctx context.Context, history *release.History, preloaded []helmrel.Accessor) ([]helmrel.Accessor, error) {
+	revisions := history.Revisions()
+
+	deployedRevisions := lo.Filter(revisions, func(r release.Revision, _ int) bool {
+		return r.Status == helmreleasestatus.StatusDeployed.String()
+	})
+
+	rels := make([]helmrel.Accessor, 0, len(deployedRevisions))
+	for _, revision := range deployedRevisions {
+		if rel, found := lo.Find(preloaded, func(r helmrel.Accessor) bool {
+			return r != nil && r.Version() == revision.Version
+		}); found {
+			rels = append(rels, rel)
+
+			continue
+		}
+
+		rel, err := history.Release(ctx, revision.Version)
+		if err != nil {
+			return nil, fmt.Errorf("get release revision %d: %w", revision.Version, err)
+		}
+
+		rels = append(rels, rel)
+	}
+
+	return rels, nil
+}
+
+// loadDeployedReleasesSkippingPruned loads the bodies of the revisions BuildReleaseInfos would
+// keep, tolerating revisions that the release history limit pruned from storage while the plan was
+// executing. A pruned revision no longer exists and has nothing left to supersede.
+func loadDeployedReleasesSkippingPruned(ctx context.Context, history *release.History) ([]helmrel.Accessor, error) {
+	var rels []helmrel.Accessor
+	for _, revision := range history.Revisions() {
+		if revision.Status != helmreleasestatus.StatusDeployed.String() {
+			continue
+		}
+
+		rel, err := history.Release(ctx, revision.Version)
+		if err != nil {
+			if stderrors.Is(err, driver.ErrReleaseNotFound) {
+				continue
+			}
+
+			return nil, fmt.Errorf("get release revision %d: %w", revision.Version, err)
+		}
+
+		rels = append(rels, rel)
+	}
+
+	return rels, nil
+}
+
 func newInformerFactory(ctx context.Context, watchErrCh chan error, dynamicClient dynamic.Interface) *kdutil.Concurrent[*informer.InformerFactory] {
 	return informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, dynamicClient, informer.ConcurrentInformerFactoryOptions{
 		OnNonFatalWatchError: func(gvr schema.GroupVersionResource, namespace string, err error) {
@@ -187,6 +248,22 @@ func printReport(ctx context.Context, report *ReleaseReportV3) {
 				log.Default.Info(ctx, util.Capitalize(op))
 			}
 		})
+	}
+}
+
+func resolveDeployState(revisions []release.Revision) (int, common.DeployType) {
+	newRevision := 1
+	if last, found := lo.Last(revisions); found {
+		newRevision = last.Version + 1
+	}
+
+	switch {
+	case len(release.DeployedRevisions(revisions)) > 0:
+		return newRevision, common.DeployTypeUpgrade
+	case len(revisions) > 0:
+		return newRevision, common.DeployTypeInstall
+	default:
+		return newRevision, common.DeployTypeInitial
 	}
 }
 

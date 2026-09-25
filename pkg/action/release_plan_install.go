@@ -225,12 +225,14 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Planning release install")+" %q (namespace: %q)", releaseName, releaseNamespace)
 
-	log.Default.Debug(ctx, "List release revisions")
+	log.Default.Debug(ctx, "Build release history")
 
-	revisions, err := releaseStorage.Revisions(ctx, releaseName)
+	history, err := release.BuildHistory(ctx, releaseName, releaseStorage)
 	if err != nil {
-		return nil, fmt.Errorf("list release revisions: %w", err)
+		return nil, fmt.Errorf("build release history: %w", err)
 	}
+
+	revisions := history.Revisions()
 
 	newRevision, deployType := resolveDeployState(revisions)
 
@@ -242,7 +244,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	if lastRevision, found := lo.Last(revisions); found {
 		prevReleaseFailed = lastRevision.Status == helmreleasestatus.StatusFailed.String()
 
-		prevRelease, err = releaseStorage.GetRelease(releaseName, lastRevision.Version)
+		prevRelease, err = history.Release(ctx, lastRevision.Version)
 		if err != nil {
 			return nil, fmt.Errorf("get previous release: %w", err)
 		}
@@ -252,7 +254,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	if lastDeployedRevision, found := lo.Last(release.DeployedRevisions(revisions)); found {
 		if prevRelease != nil && prevRelease.Version() == lastDeployedRevision.Version {
 			prevDeployedRelease = prevRelease
-		} else if prevDeployedRelease, err = releaseStorage.GetRelease(releaseName, lastDeployedRevision.Version); err != nil {
+		} else if prevDeployedRelease, err = history.Release(ctx, lastDeployedRevision.Version); err != nil {
 			return nil, fmt.Errorf("get previous deployed release: %w", err)
 		}
 	}
@@ -395,7 +397,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	prevDeployedReleases, err := loadDeployedReleases(releaseName, revisions, releaseStorage, []helmrel.Accessor{prevRelease, prevDeployedRelease})
+	prevDeployedReleases, err := loadDeployedReleases(ctx, history, []helmrel.Accessor{prevRelease, prevDeployedRelease})
 	if err != nil {
 		return nil, fmt.Errorf("load deployed releases: %w", err)
 	}

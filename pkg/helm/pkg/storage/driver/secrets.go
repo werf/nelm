@@ -119,6 +119,10 @@ func (secrets *Secrets) Revisions(ctx context.Context, name string) ([]RevisionR
 		return nil, fmt.Errorf("list revisions of release %q: namespace is required", name)
 	}
 
+	if errs := validation.IsValidLabelValue(name); len(errs) != 0 {
+		return nil, fmt.Errorf("list revisions of release %q: invalid label value: %s", name, strings.Join(errs, "; "))
+	}
+
 	selector := kblabels.Set{"owner": "helm", "name": name}.AsSelector().String()
 
 	var records []RevisionRecord
@@ -493,16 +497,28 @@ func (secrets *Secrets) UpdateLabels(key string, lbls map[string]string) error {
 }
 
 // Delete deletes the Secret holding the release named by key.
-func (secrets *Secrets) Delete(key string) (rls release.Releaser, err error) {
-	// fetch the release to check existence
-	if rls, err = secrets.Get(key); err != nil {
-		return nil, err
-	}
-	// delete the release
-	err = secrets.impl.Delete(context.Background(), key, metav1.DeleteOptions{})
+// Delete removes the release named by key. The stored body is decoded only after the
+// object is gone, so a release whose body can no longer be decoded is still deleted; the
+// returned release is nil in that case.
+func (secrets *Secrets) Delete(key string) (release.Releaser, error) {
+	obj, err := secrets.impl.Get(context.Background(), key, metav1.GetOptions{})
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, ErrReleaseNotFound
+		}
+		return nil, fmt.Errorf("delete: failed to get %q: %w", key, err)
+	}
+
+	if err := secrets.impl.Delete(context.Background(), key, metav1.DeleteOptions{}); err != nil {
 		return nil, err
 	}
+
+	rls, err := decodeRelease(string(obj.Data["release"]))
+	if err != nil {
+		secrets.Logger().Debug("delete: failed to decode data", slog.String("key", key), slog.Any("error", err))
+		return nil, nil
+	}
+	rls.Labels = filterSystemLabels(obj.Labels)
 	return rls, nil
 }
 

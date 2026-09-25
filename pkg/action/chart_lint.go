@@ -233,12 +233,14 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		},
 	}
 
-	log.Default.Debug(ctx, "List release revisions")
+	log.Default.Debug(ctx, "Build release history")
 
-	revisions, err := releaseStorage.Revisions(ctx, opts.ReleaseName)
+	history, err := release.BuildHistory(ctx, opts.ReleaseName, releaseStorage)
 	if err != nil {
-		return fmt.Errorf("list release revisions: %w", err)
+		return fmt.Errorf("build release history: %w", err)
 	}
+
+	revisions := history.Revisions()
 
 	newRevision, deployType := resolveDeployState(revisions)
 
@@ -250,7 +252,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	if lastRevision, found := lo.Last(revisions); found {
 		prevReleaseFailed = lastRevision.Status == helmreleasestatus.StatusFailed.String()
 
-		prevRelease, err = releaseStorage.GetRelease(opts.ReleaseName, lastRevision.Version)
+		prevRelease, err = history.Release(ctx, lastRevision.Version)
 		if err != nil {
 			return fmt.Errorf("get previous release: %w", err)
 		}
@@ -262,7 +264,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	if lastDeployedRevision, found := lo.Last(deployedRevisions); found {
 		if prevRelease != nil && prevRelease.Version() == lastDeployedRevision.Version {
 			prevDeployedRelease = prevRelease
-		} else if prevDeployedRelease, err = releaseStorage.GetRelease(opts.ReleaseName, lastDeployedRevision.Version); err != nil {
+		} else if prevDeployedRelease, err = history.Release(ctx, lastDeployedRevision.Version); err != nil {
 			return fmt.Errorf("get previous deployed release: %w", err)
 		}
 	}
@@ -403,7 +405,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	prevDeployedReleases, err := loadDeployedReleases(opts.ReleaseName, revisions, releaseStorage, []helmrel.Accessor{prevRelease, prevDeployedRelease})
+	prevDeployedReleases, err := loadDeployedReleases(ctx, history, []helmrel.Accessor{prevRelease, prevDeployedRelease})
 	if err != nil {
 		return fmt.Errorf("load deployed releases: %w", err)
 	}
@@ -479,35 +481,4 @@ func applyChartLintOptionsDefaults(opts ChartLintOptions, currentDir, homeDir st
 	}
 
 	return opts, nil
-}
-
-// loadDeployedReleases loads the bodies of the revisions BuildReleaseInfos would keep, i.e. the
-// ones with status exactly "deployed". release.DeployedRevisions is deliberately not used here:
-// it also returns superseded revisions, which would turn into extra supersede operations.
-// Bodies the caller already holds are passed in preloaded and reused instead of being fetched
-// again; this never changes which revisions are returned, only where their bodies come from.
-func loadDeployedReleases(releaseName string, revisions []release.Revision, releaseStorage release.ReleaseStorager, preloaded []helmrel.Accessor) ([]helmrel.Accessor, error) {
-	deployedRevisions := lo.Filter(revisions, func(r release.Revision, _ int) bool {
-		return r.Status == helmreleasestatus.StatusDeployed.String()
-	})
-
-	rels := make([]helmrel.Accessor, 0, len(deployedRevisions))
-	for _, revision := range deployedRevisions {
-		if rel, found := lo.Find(preloaded, func(r helmrel.Accessor) bool {
-			return r != nil && r.Version() == revision.Version
-		}); found {
-			rels = append(rels, rel)
-
-			continue
-		}
-
-		rel, err := releaseStorage.GetRelease(releaseName, revision.Version)
-		if err != nil {
-			return nil, fmt.Errorf("get release revision %d: %w", revision.Version, err)
-		}
-
-		rels = append(rels, rel)
-	}
-
-	return rels, nil
 }

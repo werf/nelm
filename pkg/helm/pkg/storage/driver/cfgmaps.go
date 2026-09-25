@@ -120,6 +120,10 @@ func (cfgmaps *ConfigMaps) Revisions(ctx context.Context, name string) ([]Revisi
 		return nil, fmt.Errorf("list revisions of release %q: namespace is required", name)
 	}
 
+	if errs := validation.IsValidLabelValue(name); len(errs) != 0 {
+		return nil, fmt.Errorf("list revisions of release %q: invalid label value: %s", name, strings.Join(errs, "; "))
+	}
+
 	selector := kblabels.Set{"owner": "helm", "name": name}.AsSelector().String()
 
 	var records []RevisionRecord
@@ -506,15 +510,28 @@ func (cfgmaps *ConfigMaps) UpdateLabels(key string, lbls map[string]string) erro
 }
 
 // Delete deletes the ConfigMap holding the release named by key.
-func (cfgmaps *ConfigMaps) Delete(key string) (rls release.Releaser, err error) {
-	// fetch the release to check existence
-	if rls, err = cfgmaps.Get(key); err != nil {
+// Delete removes the release named by key. The stored body is decoded only after the
+// object is gone, so a release whose body can no longer be decoded is still deleted; the
+// returned release is nil in that case.
+func (cfgmaps *ConfigMaps) Delete(key string) (release.Releaser, error) {
+	obj, err := cfgmaps.impl.Get(context.Background(), key, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, ErrReleaseNotFound
+		}
+		return nil, fmt.Errorf("delete: failed to get %q: %w", key, err)
+	}
+
+	if err := cfgmaps.impl.Delete(context.Background(), key, metav1.DeleteOptions{}); err != nil {
 		return nil, err
 	}
-	// delete the release
-	if err = cfgmaps.impl.Delete(context.Background(), key, metav1.DeleteOptions{}); err != nil {
-		return rls, err
+
+	rls, err := decodeRelease(obj.Data["release"])
+	if err != nil {
+		cfgmaps.Logger().Debug("delete: failed to decode data", slog.String("key", key), slog.Any("error", err))
+		return nil, nil
 	}
+	rls.Labels = filterSystemLabels(obj.Labels)
 	return rls, nil
 }
 

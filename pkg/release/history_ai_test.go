@@ -18,7 +18,6 @@ var _ ReleaseStorager = (*stubStorager)(nil)
 
 type stubStorager struct {
 	deleteErr error
-	deleteRel helmrel.Accessor
 	revisions []Revision
 }
 
@@ -26,8 +25,8 @@ func (s *stubStorager) Create(rls helmrel.Accessor) error {
 	return nil
 }
 
-func (s *stubStorager) Delete(name string, version int) (helmrel.Accessor, error) {
-	return s.deleteRel, s.deleteErr
+func (s *stubStorager) Delete(name string, version int) error {
+	return s.deleteErr
 }
 
 func (s *stubStorager) GetRelease(name string, version int) (helmrel.Accessor, error) {
@@ -59,7 +58,6 @@ func TestAI_DeleteRelease_ErrorIncludesNameAndRevision(t *testing.T) {
 
 	storage := &stubStorager{
 		deleteErr: errors.New("kube delete failed"),
-		deleteRel: nil,
 		revisions: []Revision{
 			{Name: "myrelease", Namespace: testNamespace, Version: 3, Status: helmreleasecommon.StatusDeployed.String()},
 		},

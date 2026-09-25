@@ -73,13 +73,6 @@ func TestAI_BuildReleaseInfos_FillsRevisionAndKeepsDeployedOnlySupersedes(t *tes
 	require.NotNil(t, infos[1].Release)
 }
 
-func TestAI_BuildReleaseInfos_RejectsUninstallDeployType(t *testing.T) {
-	infos, err := BuildReleaseInfos(context.Background(), common.DeployTypeUninstall, nil, nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "BuildUninstallReleaseInfos")
-	assert.Nil(t, infos)
-}
-
 func TestAI_BuildUninstallReleaseInfos_LoadsBodyOnlyForLastRevision(t *testing.T) {
 	revisions := []release.Revision{
 		{Name: "myrelease", Namespace: "test-ns", Version: 1, Status: helmreleasecommon.StatusSuperseded.String()},

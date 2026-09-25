@@ -28,8 +28,8 @@ func (s *prunedRevisionStorager) Create(rls helmrel.Accessor) error {
 	return nil
 }
 
-func (s *prunedRevisionStorager) Delete(name string, version int) (helmrel.Accessor, error) {
-	return nil, nil
+func (s *prunedRevisionStorager) Delete(name string, version int) error {
+	return nil
 }
 
 func (s *prunedRevisionStorager) GetRelease(name string, version int) (helmrel.Accessor, error) {

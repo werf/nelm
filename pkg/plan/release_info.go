@@ -51,7 +51,7 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 			Must:                   ReleaseTypeInstall,
 			MustFailOnFailedDeploy: true,
 			Release:                &release.VersionedRelease{Accessor: newRel},
-			Revision:               revisionFromAccessor(newRel),
+			Revision:               release.NewRevisionFromAccessor(newRel),
 		})
 
 		for _, rel := range prevReleases {
@@ -59,7 +59,7 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 				infos = append(infos, &ReleaseInfo{
 					Must:     ReleaseTypeSupersede,
 					Release:  &release.VersionedRelease{Accessor: rel},
-					Revision: revisionFromAccessor(rel),
+					Revision: release.NewRevisionFromAccessor(rel),
 				})
 			}
 		}
@@ -68,7 +68,7 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 			Must:                   ReleaseTypeUpgrade,
 			MustFailOnFailedDeploy: true,
 			Release:                &release.VersionedRelease{Accessor: newRel},
-			Revision:               revisionFromAccessor(newRel),
+			Revision:               release.NewRevisionFromAccessor(newRel),
 		})
 
 		for _, rel := range prevReleases {
@@ -76,7 +76,7 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 				infos = append(infos, &ReleaseInfo{
 					Must:     ReleaseTypeSupersede,
 					Release:  &release.VersionedRelease{Accessor: rel},
-					Revision: revisionFromAccessor(rel),
+					Revision: release.NewRevisionFromAccessor(rel),
 				})
 			}
 		}
@@ -85,7 +85,7 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 			Must:                   ReleaseTypeRollback,
 			MustFailOnFailedDeploy: true,
 			Release:                &release.VersionedRelease{Accessor: newRel},
-			Revision:               revisionFromAccessor(newRel),
+			Revision:               release.NewRevisionFromAccessor(newRel),
 		})
 
 		for _, rel := range prevReleases {
@@ -93,12 +93,10 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 				infos = append(infos, &ReleaseInfo{
 					Must:     ReleaseTypeSupersede,
 					Release:  &release.VersionedRelease{Accessor: rel},
-					Revision: revisionFromAccessor(rel),
+					Revision: release.NewRevisionFromAccessor(rel),
 				})
 			}
 		}
-	case common.DeployTypeUninstall:
-		return nil, fmt.Errorf("uninstall release infos must be built with BuildUninstallReleaseInfos")
 	default:
 		panic("unexpected deploy type")
 	}
@@ -143,13 +141,4 @@ func BuildUninstallReleaseInfos(ctx context.Context, revisions []release.Revisio
 	}
 
 	return infos, nil
-}
-
-func revisionFromAccessor(rel helmrel.Accessor) release.Revision {
-	return release.Revision{
-		Name:      rel.Name(),
-		Namespace: rel.Namespace(),
-		Status:    rel.Status(),
-		Version:   rel.Version(),
-	}
 }

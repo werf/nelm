@@ -242,12 +242,14 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		},
 	}
 
-	log.Default.Debug(ctx, "List release revisions")
+	log.Default.Debug(ctx, "Build release history")
 
-	revisions, err := releaseStorage.Revisions(ctx, opts.ReleaseName)
+	history, err := release.BuildHistory(ctx, opts.ReleaseName, releaseStorage)
 	if err != nil {
-		return nil, fmt.Errorf("list release revisions: %w", err)
+		return nil, fmt.Errorf("build release history: %w", err)
 	}
+
+	revisions := history.Revisions()
 
 	newRevision, deployType := resolveDeployState(revisions)
 
@@ -462,20 +464,4 @@ func renderResource(unstruct *unstructured.Unstructured, path string, outStream 
 	}
 
 	return nil
-}
-
-func resolveDeployState(revisions []release.Revision) (int, common.DeployType) {
-	newRevision := 1
-	if last, found := lo.Last(revisions); found {
-		newRevision = last.Version + 1
-	}
-
-	switch {
-	case len(release.DeployedRevisions(revisions)) > 0:
-		return newRevision, common.DeployTypeUpgrade
-	case len(revisions) > 0:
-		return newRevision, common.DeployTypeInstall
-	default:
-		return newRevision, common.DeployTypeInitial
-	}
 }

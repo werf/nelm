@@ -2,7 +2,6 @@ package action
 
 import (
 	"context"
-	stderrors "errors"
 	"fmt"
 	"io"
 	"os"
@@ -26,7 +25,6 @@ import (
 	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
-	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/legacy/progrep"
 	"github.com/werf/nelm/v2/pkg/log"
@@ -533,7 +531,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		log.Default.Debug(ctx, "Build release infos")
 
-		prevDeployedReleases, err := loadDeployedReleases(releaseName, revisions, releaseStorage, []helmrel.Accessor{prevRelease, prevDeployedRelease})
+		prevDeployedReleases, err := loadDeployedReleases(ctx, history, []helmrel.Accessor{prevRelease, prevDeployedRelease})
 		if err != nil {
 			return nil, fmt.Errorf("load deployed releases: %w", err)
 		}
@@ -773,6 +771,148 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	return installResult, nil
 }
 
+func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir, homeDir string) (ReleaseInstallOptions, error) {
+	var err error
+	if opts.TempDirPath == "" {
+		opts.TempDirPath, err = os.MkdirTemp("", "")
+		if err != nil {
+			return ReleaseInstallOptions{}, fmt.Errorf("create temp dir: %w", err)
+		}
+	}
+
+	opts.KubeConnectionOptions.ApplyDefaults(homeDir)
+	opts.ChartRepoConnectionOptions.ApplyDefaults()
+	opts.ValuesOptions.ApplyDefaults()
+	opts.SecretValuesOptions.ApplyDefaults(currentDir)
+	opts.TrackingOptions.ApplyDefaults()
+
+	if opts.Chart == "" {
+		opts.Chart = currentDir
+	}
+
+	if opts.LegacyLogRegistryStreamOut == nil {
+		opts.LegacyLogRegistryStreamOut = io.Discard
+	}
+
+	if opts.AutoRollback && opts.LegacyProgressReportCh != nil {
+		return ReleaseInstallOptions{}, fmt.Errorf("auto rollback is not supported together with legacy progress reporting")
+	}
+
+	if opts.NetworkParallelism <= 0 {
+		opts.NetworkParallelism = common.DefaultNetworkParallelism
+	}
+
+	if opts.ReleaseHistoryLimit <= 0 {
+		opts.ReleaseHistoryLimit = common.DefaultReleaseHistoryLimit
+	}
+
+	switch opts.ReleaseStorageDriver {
+	case common.ReleaseStorageDriverDefault:
+		opts.ReleaseStorageDriver = common.ReleaseStorageDriverSecrets
+	case common.ReleaseStorageDriverMemory:
+		return ReleaseInstallOptions{}, fmt.Errorf("memory release storage driver is not supported")
+	}
+
+	if opts.RegistryCredentialsPath == "" {
+		opts.RegistryCredentialsPath = filepath.Join(opts.DockerConfig, "config.json")
+	}
+
+	if opts.ChartProvenanceStrategy == "" {
+		opts.ChartProvenanceStrategy = common.DefaultChartProvenanceStrategy
+	}
+
+	if opts.DefaultDeletePropagation == "" {
+		opts.DefaultDeletePropagation = string(common.DefaultDeletePropagation)
+	}
+
+	return opts, nil
+}
+
+func createReleaseNamespace(ctx context.Context, clientFactory kube.ClientFactorier, releaseNamespace string) error {
+	cmUnstruct := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "ConfigMap",
+			"metadata": map[string]interface{}{
+				"name":      common.LockConfigMapName,
+				"namespace": releaseNamespace,
+			},
+		},
+	}
+
+	nsUnstruct := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "Namespace",
+			"metadata": map[string]interface{}{
+				"name": releaseNamespace,
+			},
+		},
+	}
+
+	cmResSpec := spec.NewResourceSpec(cmUnstruct, releaseNamespace, spec.ResourceSpecOptions{})
+	nsResSpec := spec.NewResourceSpec(nsUnstruct, releaseNamespace, spec.ResourceSpecOptions{})
+
+	_, cmApplyErr := clientFactory.KubeClient().Apply(ctx, cmResSpec, kube.KubeClientApplyOptions{
+		DefaultNamespace: releaseNamespace,
+		DryRun:           true,
+	})
+	if cmApplyErr == nil {
+		return nil
+	}
+
+	if !errors.IsForbidden(cmApplyErr) && !errors.IsNotFound(cmApplyErr) {
+		return fmt.Errorf("dry-run apply release synchronization configmap: %w", cmApplyErr)
+	}
+
+	if _, nsApplyErr := clientFactory.KubeClient().Apply(ctx, nsResSpec, kube.KubeClientApplyOptions{
+		DefaultNamespace: releaseNamespace,
+		DryRun:           true,
+	}); nsApplyErr != nil {
+		if errors.IsForbidden(nsApplyErr) || errors.IsNotFound(nsApplyErr) {
+			allErr := &util.MultiError{}
+
+			return fmt.Errorf("can't apply ConfigMap for locking, and can't apply release namespace (in case ConfigMap apply error caused by non-existent namespace): %w", allErr.Add(cmApplyErr, nsApplyErr))
+		}
+
+		return fmt.Errorf("dry-run apply release namespace: %w", nsApplyErr)
+	}
+
+	log.Default.Debug(ctx, "Ensure release namespace %q", releaseNamespace)
+
+	if _, err := clientFactory.KubeClient().Create(ctx, nsResSpec, kube.KubeClientCreateOptions{}); err != nil {
+		return fmt.Errorf("create release namespace: %w", err)
+	}
+
+	return nil
+}
+
+func newReleaseInstallResult(releaseName, releaseNamespace string, revision int, status helmreleasestatus.Status, instResInfos []*plan.InstallableResourceInfo) *ReleaseInstallResultV1 {
+	// There is one InstallableResourceInfo per deploy stage, but each resource must be returned once.
+	uniqResInfos := lo.UniqBy(instResInfos, func(info *plan.InstallableResourceInfo) string {
+		return info.ID()
+	})
+
+	resSpecs := lo.Map(uniqResInfos, func(info *plan.InstallableResourceInfo, _ int) *spec.ResourceSpec {
+		return info.LocalResource.ResourceSpec
+	})
+
+	sort.SliceStable(resSpecs, func(i, j int) bool {
+		return spec.ResourceSpecSortHandler(resSpecs[i], resSpecs[j])
+	})
+
+	return &ReleaseInstallResultV1{
+		APIVersion: "v1",
+		Release: &ReleaseInstallResultRelease{
+			Name:      releaseName,
+			Namespace: releaseNamespace,
+			Revision:  revision,
+			Status:    status,
+		},
+		Resources: resSpecs,
+	}
+}
+
 func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, failedRelease, prevDeployedRelease helmrel.Accessor, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history *release.History, clientFactory *kube.ClientFactory, opts runRollbackPlanOptions) (result *runRollbackPlanResult, nonCritErrs, critErrs *util.MultiError) {
 	critErrs = &util.MultiError{}
 	nonCritErrs = &util.MultiError{}
@@ -983,171 +1123,4 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		CompletedResourceOps: completedResourceOps,
 		FailedResourceOps:    failedResourceOps,
 	}, nonCritErrs, critErrs
-}
-
-func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir, homeDir string) (ReleaseInstallOptions, error) {
-	var err error
-	if opts.TempDirPath == "" {
-		opts.TempDirPath, err = os.MkdirTemp("", "")
-		if err != nil {
-			return ReleaseInstallOptions{}, fmt.Errorf("create temp dir: %w", err)
-		}
-	}
-
-	opts.KubeConnectionOptions.ApplyDefaults(homeDir)
-	opts.ChartRepoConnectionOptions.ApplyDefaults()
-	opts.ValuesOptions.ApplyDefaults()
-	opts.SecretValuesOptions.ApplyDefaults(currentDir)
-	opts.TrackingOptions.ApplyDefaults()
-
-	if opts.Chart == "" {
-		opts.Chart = currentDir
-	}
-
-	if opts.LegacyLogRegistryStreamOut == nil {
-		opts.LegacyLogRegistryStreamOut = io.Discard
-	}
-
-	if opts.AutoRollback && opts.LegacyProgressReportCh != nil {
-		return ReleaseInstallOptions{}, fmt.Errorf("auto rollback is not supported together with legacy progress reporting")
-	}
-
-	if opts.NetworkParallelism <= 0 {
-		opts.NetworkParallelism = common.DefaultNetworkParallelism
-	}
-
-	if opts.ReleaseHistoryLimit <= 0 {
-		opts.ReleaseHistoryLimit = common.DefaultReleaseHistoryLimit
-	}
-
-	switch opts.ReleaseStorageDriver {
-	case common.ReleaseStorageDriverDefault:
-		opts.ReleaseStorageDriver = common.ReleaseStorageDriverSecrets
-	case common.ReleaseStorageDriverMemory:
-		return ReleaseInstallOptions{}, fmt.Errorf("memory release storage driver is not supported")
-	}
-
-	if opts.RegistryCredentialsPath == "" {
-		opts.RegistryCredentialsPath = filepath.Join(opts.DockerConfig, "config.json")
-	}
-
-	if opts.ChartProvenanceStrategy == "" {
-		opts.ChartProvenanceStrategy = common.DefaultChartProvenanceStrategy
-	}
-
-	if opts.DefaultDeletePropagation == "" {
-		opts.DefaultDeletePropagation = string(common.DefaultDeletePropagation)
-	}
-
-	return opts, nil
-}
-
-func createReleaseNamespace(ctx context.Context, clientFactory kube.ClientFactorier, releaseNamespace string) error {
-	cmUnstruct := &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": "v1",
-			"kind":       "ConfigMap",
-			"metadata": map[string]interface{}{
-				"name":      common.LockConfigMapName,
-				"namespace": releaseNamespace,
-			},
-		},
-	}
-
-	nsUnstruct := &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"apiVersion": "v1",
-			"kind":       "Namespace",
-			"metadata": map[string]interface{}{
-				"name": releaseNamespace,
-			},
-		},
-	}
-
-	cmResSpec := spec.NewResourceSpec(cmUnstruct, releaseNamespace, spec.ResourceSpecOptions{})
-	nsResSpec := spec.NewResourceSpec(nsUnstruct, releaseNamespace, spec.ResourceSpecOptions{})
-
-	_, cmApplyErr := clientFactory.KubeClient().Apply(ctx, cmResSpec, kube.KubeClientApplyOptions{
-		DefaultNamespace: releaseNamespace,
-		DryRun:           true,
-	})
-	if cmApplyErr == nil {
-		return nil
-	}
-
-	if !errors.IsForbidden(cmApplyErr) && !errors.IsNotFound(cmApplyErr) {
-		return fmt.Errorf("dry-run apply release synchronization configmap: %w", cmApplyErr)
-	}
-
-	if _, nsApplyErr := clientFactory.KubeClient().Apply(ctx, nsResSpec, kube.KubeClientApplyOptions{
-		DefaultNamespace: releaseNamespace,
-		DryRun:           true,
-	}); nsApplyErr != nil {
-		if errors.IsForbidden(nsApplyErr) || errors.IsNotFound(nsApplyErr) {
-			allErr := &util.MultiError{}
-
-			return fmt.Errorf("can't apply ConfigMap for locking, and can't apply release namespace (in case ConfigMap apply error caused by non-existent namespace): %w", allErr.Add(cmApplyErr, nsApplyErr))
-		}
-
-		return fmt.Errorf("dry-run apply release namespace: %w", nsApplyErr)
-	}
-
-	log.Default.Debug(ctx, "Ensure release namespace %q", releaseNamespace)
-
-	if _, err := clientFactory.KubeClient().Create(ctx, nsResSpec, kube.KubeClientCreateOptions{}); err != nil {
-		return fmt.Errorf("create release namespace: %w", err)
-	}
-
-	return nil
-}
-
-// loadDeployedReleasesSkippingPruned loads the bodies of the revisions BuildReleaseInfos would
-// keep, tolerating revisions that the release history limit pruned from storage while the plan was
-// executing. A pruned revision no longer exists and has nothing left to supersede.
-func loadDeployedReleasesSkippingPruned(ctx context.Context, history *release.History) ([]helmrel.Accessor, error) {
-	var rels []helmrel.Accessor
-	for _, revision := range history.Revisions() {
-		if revision.Status != helmreleasestatus.StatusDeployed.String() {
-			continue
-		}
-
-		rel, err := history.Release(ctx, revision.Version)
-		if err != nil {
-			if stderrors.Is(err, driver.ErrReleaseNotFound) {
-				continue
-			}
-
-			return nil, fmt.Errorf("get release revision %d: %w", revision.Version, err)
-		}
-
-		rels = append(rels, rel)
-	}
-
-	return rels, nil
-}
-
-func newReleaseInstallResult(releaseName, releaseNamespace string, revision int, status helmreleasestatus.Status, instResInfos []*plan.InstallableResourceInfo) *ReleaseInstallResultV1 {
-	// There is one InstallableResourceInfo per deploy stage, but each resource must be returned once.
-	uniqResInfos := lo.UniqBy(instResInfos, func(info *plan.InstallableResourceInfo) string {
-		return info.ID()
-	})
-
-	resSpecs := lo.Map(uniqResInfos, func(info *plan.InstallableResourceInfo, _ int) *spec.ResourceSpec {
-		return info.LocalResource.ResourceSpec
-	})
-
-	sort.SliceStable(resSpecs, func(i, j int) bool {
-		return spec.ResourceSpecSortHandler(resSpecs[i], resSpecs[j])
-	})
-
-	return &ReleaseInstallResultV1{
-		APIVersion: "v1",
-		Release: &ReleaseInstallResultRelease{
-			Name:      releaseName,
-			Namespace: releaseNamespace,
-			Revision:  revision,
-			Status:    status,
-		},
-		Resources: resSpecs,
-	}
 }
