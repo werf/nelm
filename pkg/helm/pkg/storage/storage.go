@@ -215,7 +215,8 @@ var (
 )
 
 // revisionDeleter is an optional driver capability that removes a stored revision
-// without fetching or decoding its body, honouring the context.
+// without fetching or decoding its body. Network-backed drivers honour the context;
+// the in-memory driver has nothing to cancel.
 type revisionDeleter interface {
 	DeleteRevision(ctx context.Context, key string) error
 }
@@ -520,10 +521,8 @@ func (s *Storage) removeLeastRecent(name string, maximum int) error {
 }
 
 func (s *Storage) deleteReleaseVersion(name string, version int) error {
-	key := makeKey(name, version)
-	_, err := s.Delete(name, version)
-	if err != nil {
-		s.Logger().Debug("error pruning release", slog.String("key", key), slog.Any("error", err))
+	if err := s.DeleteRevision(context.Background(), name, version); err != nil {
+		s.Logger().Debug("error pruning release", slog.String("key", makeKey(name, version)), slog.Any("error", err))
 		return err
 	}
 	return nil
