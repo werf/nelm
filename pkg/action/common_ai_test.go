@@ -18,12 +18,17 @@ import (
 	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
-func TestAI_RenderContextFor_NoSubchartsLeavesMapNil(t *testing.T) {
+func TestAI_RenderContextFor_NoSubchartsLeavesNoEntries(t *testing.T) {
 	accessor, err := helmchart.NewAccessor(&v2chart.Chart{Metadata: &v2chart.Metadata{Name: "app"}})
 	require.NoError(t, err)
 
-	require.Nil(t, renderContextFor(accessor, map[string]interface{}{}).Subcharts)
-	require.Nil(t, renderContextFor(nil, map[string]interface{}{}).Subcharts)
+	withChart, err := renderContextFor(accessor, map[string]interface{}{})
+	require.NoError(t, err)
+	require.Empty(t, withChart.Subcharts)
+
+	withoutChart, err := renderContextFor(nil, map[string]interface{}{})
+	require.NoError(t, err)
+	require.Empty(t, withoutChart.Subcharts)
 }
 
 func TestAI_RenderContextFor_ScopesEachSubchartToItsOwnValuesAndMetadata(t *testing.T) {
@@ -48,7 +53,8 @@ func TestAI_RenderContextFor_ScopesEachSubchartToItsOwnValuesAndMetadata(t *test
 		},
 	}
 
-	renderContext := renderContextFor(accessor, renderedValues)
+	renderContext, err := renderContextFor(accessor, renderedValues)
+	require.NoError(t, err)
 
 	require.Equal(t, renderedValues["Values"], renderContext.Values)
 

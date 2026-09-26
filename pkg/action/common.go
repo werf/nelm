@@ -105,16 +105,21 @@ type runFailurePlanResult struct {
 }
 
 // renderContextFor splits the rendered top-level context, which holds what chart
-// templates saw, into the parts render patches get as jq variables. Subchart
-// rules get the top-level values, not their own scope.
-func renderContextFor(chart helmchart.Accessor, renderedValues map[string]interface{}) spec.RenderContext {
+// templates saw, into the parts render patches get as jq variables, with a
+// per-subchart entry so a subchart's rules resolve against their own chart.
+func renderContextFor(chart helmchart.Accessor, renderedValues map[string]interface{}) (spec.RenderContext, error) {
+	subcharts, err := subchartContexts(chart, renderedValues["Values"])
+	if err != nil {
+		return spec.RenderContext{}, err
+	}
+
 	return spec.RenderContext{
 		Values:       renderedValues["Values"],
 		Release:      renderedValues["Release"],
 		Chart:        renderedValues["Chart"],
 		Capabilities: renderedValues["Capabilities"],
-		Subcharts:    subchartContexts(chart, renderedValues["Values"]),
-	}
+		Subcharts:    subcharts,
+	}, nil
 }
 
 func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr error, installGraphPath, tempDirPath, fallbackGraphFilename string) {
@@ -137,17 +142,17 @@ func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr err
 // subchartContexts walks the chart tree so a rule shipped by a subchart sees the
 // values and metadata its own templates saw: its section of the parent values,
 // which already carries the globals merged in, and its own chart metadata.
-func subchartContexts(chart helmchart.Accessor, values interface{}) map[string]spec.SubchartContext {
-	if chart == nil {
-		return nil
-	}
-
+func subchartContexts(chart helmchart.Accessor, values interface{}) (map[string]spec.SubchartContext, error) {
 	contexts := map[string]spec.SubchartContext{}
+
+	if chart == nil {
+		return contexts, nil
+	}
 
 	for _, dep := range chart.Dependencies() {
 		depAccessor, err := helmchart.NewAccessor(dep)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("access subchart of %q: %w", chart.ChartFullPath(), err)
 		}
 
 		depValues := subchartValues(values, depAccessor.Name())
@@ -157,14 +162,15 @@ func subchartContexts(chart helmchart.Accessor, values interface{}) map[string]s
 			Values: depValues,
 		}
 
-		maps.Copy(contexts, subchartContexts(depAccessor, depValues))
+		depContexts, err := subchartContexts(depAccessor, depValues)
+		if err != nil {
+			return nil, err
+		}
+
+		maps.Copy(contexts, depContexts)
 	}
 
-	if len(contexts) == 0 {
-		return nil
-	}
-
-	return contexts
+	return contexts, nil
 }
 
 func newInformerFactory(ctx context.Context, watchErrCh chan error, dynamicClient dynamic.Interface) *kdutil.Concurrent[*informer.InformerFactory] {

@@ -88,26 +88,16 @@ func (c RenderContext) jqVariables(chartScope string) ([]string, []interface{}, 
 		chart, chartValues = subchart.Chart, subchart.Values
 	}
 
-	sources := []struct {
-		name  string
-		value interface{}
-	}{
-		{name: "$Values", value: chartValues},
-		{name: "$Release", value: c.Release},
-		{name: "$Chart", value: chart},
-		{name: "$Capabilities", value: c.Capabilities},
-	}
+	sources := []interface{}{chartValues, c.Release, chart, c.Capabilities}
+	names := renderContextVariableNames()
 
-	names := make([]string, 0, len(sources))
 	values := make([]interface{}, 0, len(sources))
-
-	for _, source := range sources {
-		value, err := toJQValue(source.value)
+	for i, source := range sources {
+		value, err := toJQValue(source)
 		if err != nil {
-			return nil, nil, fmt.Errorf("normalize %s: %w", source.name, err)
+			return nil, nil, fmt.Errorf("normalize %s: %w", names[i], err)
 		}
 
-		names = append(names, source.name)
 		values = append(values, value)
 	}
 
@@ -280,7 +270,7 @@ func CompilePatches(patches []Patch) ([]*CompiledPatch, error) {
 }
 
 // CompileRenderPatches compiles render patches, additionally exposing the render
-// context as the jq variables $values, $release, $chart and $capabilities. Diff
+// context as the jq variables $Values, $Release, $Chart and $Capabilities. Diff
 // patches are compiled without them, so a diff patch referencing one fails to
 // compile.
 func CompileRenderPatches(patches []Patch, renderContext RenderContext) ([]*CompiledPatch, error) {
@@ -424,6 +414,18 @@ func fromJQOutput(value interface{}) (map[string]interface{}, error) {
 	return normalized, nil
 }
 
+// undefinedRenderContextVariable reports which render context variable a jq
+// program referenced, when that is why compiling it failed.
+func undefinedRenderContextVariable(compileErr error) (string, bool) {
+	for _, name := range renderContextVariableNames() {
+		if strings.Contains(compileErr.Error(), "variable not defined: "+name) {
+			return name, true
+		}
+	}
+
+	return "", false
+}
+
 func normalizeNumbers(value interface{}) (interface{}, error) {
 	switch v := value.(type) {
 	case map[string]interface{}:
@@ -478,6 +480,12 @@ func parsePatchesFile(data []byte) (Patches, error) {
 	return Patches{Diff: file.DiffPatches, Render: file.RenderPatches}, nil
 }
 
+// renderContextVariableNames are the jq variables only render patches get, in
+// the order jqVariables returns their values.
+func renderContextVariableNames() []string {
+	return []string{"$Values", "$Release", "$Chart", "$Capabilities"}
+}
+
 func resourceInChartScope(chartPath, filePath string) bool {
 	if chartPath == "" {
 		return true
@@ -501,18 +509,4 @@ func toJQValue(value interface{}) (interface{}, error) {
 	}
 
 	return out, nil
-}
-
-// undefinedRenderContextVariable reports which render context variable a jq
-// program referenced, when that is why compiling it failed.
-func undefinedRenderContextVariable(compileErr error) (string, bool) {
-	names, _, _ := RenderContext{}.jqVariables("")
-
-	for _, name := range names {
-		if strings.Contains(compileErr.Error(), "variable not defined: "+name) {
-			return name, true
-		}
-	}
-
-	return "", false
 }

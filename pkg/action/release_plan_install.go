@@ -290,7 +290,12 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Resolve patches")
 
-	patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches, renderContextFor(renderChartResult.Chart, renderChartResult.Values))
+	renderContext, err := renderContextFor(renderChartResult.Chart, renderChartResult.Values)
+	if err != nil {
+		return nil, fmt.Errorf("build render context: %w", err)
+	}
+
+	patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches, renderContext)
 	if err != nil {
 		return nil, fmt.Errorf("resolve patches: %w", err)
 	}
