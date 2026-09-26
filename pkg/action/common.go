@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	"github.com/werf/kubedog/pkg/informer"
 	"github.com/werf/nelm/v2/pkg/common"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/lock"
@@ -102,6 +104,24 @@ type runFailurePlanResult struct {
 	FailedResourceOps    []*plan.Operation
 }
 
+// renderContextFor splits the rendered top-level context, which holds what chart
+// templates saw, into the parts render patches get as jq variables, with a
+// per-subchart entry so a subchart's rules resolve against their own chart.
+func renderContextFor(chart helmchart.Accessor, renderedValues map[string]interface{}) (spec.RenderContext, error) {
+	subcharts, err := subchartContexts(chart, renderedValues["Values"])
+	if err != nil {
+		return spec.RenderContext{}, err
+	}
+
+	return spec.RenderContext{
+		Values:       renderedValues["Values"],
+		Release:      renderedValues["Release"],
+		Chart:        renderedValues["Chart"],
+		Capabilities: renderedValues["Capabilities"],
+		Subcharts:    subcharts,
+	}, nil
+}
+
 func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr error, installGraphPath, tempDirPath, fallbackGraphFilename string) {
 	var graphPath string
 	if installGraphPath != "" {
@@ -117,6 +137,40 @@ func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr err
 	}
 
 	log.Default.Warn(ctx, "Plan graph saved to %q for debugging", graphPath)
+}
+
+// subchartContexts walks the chart tree so a rule shipped by a subchart sees the
+// values and metadata its own templates saw: its section of the parent values,
+// which already carries the globals merged in, and its own chart metadata.
+func subchartContexts(chart helmchart.Accessor, values interface{}) (map[string]spec.SubchartContext, error) {
+	contexts := map[string]spec.SubchartContext{}
+
+	if chart == nil {
+		return contexts, nil
+	}
+
+	for _, dep := range chart.Dependencies() {
+		depAccessor, err := helmchart.NewAccessor(dep)
+		if err != nil {
+			return nil, fmt.Errorf("access subchart of %q: %w", chart.ChartFullPath(), err)
+		}
+
+		depValues := subchartValues(values, depAccessor.Name())
+
+		contexts[depAccessor.ChartFullPath()] = spec.SubchartContext{
+			Chart:  depAccessor.MetadataAsMap(),
+			Values: depValues,
+		}
+
+		depContexts, err := subchartContexts(depAccessor, depValues)
+		if err != nil {
+			return nil, err
+		}
+
+		maps.Copy(contexts, depContexts)
+	}
+
+	return contexts, nil
 }
 
 func newInformerFactory(ctx context.Context, watchErrCh chan error, dynamicClient dynamic.Interface) *kdutil.Concurrent[*informer.InformerFactory] {
@@ -193,7 +247,7 @@ func printReport(ctx context.Context, report *ReleaseReportV3) {
 // Chart-shipped rules are scoped to their own chart subtree, rules from patches files and
 // programmatically supplied ones are not.
 // All kinds are compiled right away, so an invalid rule fails before anything is applied.
-func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string, legacyPatches spec.Patches) (spec.CompiledPatches, error) {
+func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string, legacyPatches spec.Patches, renderContext spec.RenderContext) (spec.CompiledPatches, error) {
 	var patches spec.Patches
 
 	if !defaultDisable {
@@ -222,7 +276,7 @@ func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles 
 		return spec.CompiledPatches{}, fmt.Errorf("compile diff patches: %w", err)
 	}
 
-	renderPatches, err := spec.CompilePatches(patches.Render)
+	renderPatches, err := spec.CompileRenderPatches(patches.Render, renderContext)
 	if err != nil {
 		return spec.CompiledPatches{}, fmt.Errorf("compile render patches: %w", err)
 	}
@@ -311,6 +365,17 @@ func saveReport(reportPath string, report *ReleaseReportV3) error {
 	}
 
 	return nil
+}
+
+func subchartValues(values interface{}, subchartName string) interface{} {
+	switch v := values.(type) {
+	case map[string]interface{}:
+		return v[subchartName]
+	case chartcommon.Values:
+		return v[subchartName]
+	default:
+		return nil
+	}
 }
 
 func writeWithSyntaxHighlight(outStream io.Writer, text, lang string, colorLevel terminfo.ColorLevel) error {
