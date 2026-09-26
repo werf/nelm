@@ -337,6 +337,55 @@ func (s *SQL) LastVersion(name string) (int, error) {
 	return int(version.Int64), nil
 }
 
+type sqlRevisionRecord struct {
+	Name      string `db:"name"`
+	Namespace string `db:"namespace"`
+	Version   int    `db:"version"`
+	Status    string `db:"status"`
+}
+
+// Revisions returns the metadata of every revision of the named release, sorted
+// by ascending version. It reads only metadata columns and decodes no release body.
+func (s *SQL) Revisions(ctx context.Context, name string) ([]RevisionRecord, error) {
+	if s.namespace == "" {
+		return nil, fmt.Errorf("list revisions of release %q: namespace is required", name)
+	}
+
+	query, args, err := s.statementBuilder.
+		Select(
+			sqlReleaseTableNameColumn,
+			sqlReleaseTableNamespaceColumn,
+			sqlReleaseTableVersionColumn,
+			sqlReleaseTableStatusColumn,
+		).
+		From(sqlReleaseTableName).
+		Where(sq.Eq{sqlReleaseTableNameColumn: name}).
+		Where(sq.Eq{sqlReleaseTableOwnerColumn: sqlReleaseDefaultOwner}).
+		Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace}).
+		OrderBy(sqlReleaseTableVersionColumn + " ASC").
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build revisions query for release %q: %w", name, err)
+	}
+
+	var rows []sqlRevisionRecord
+	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, fmt.Errorf("select revisions of release %q: %w", name, err)
+	}
+
+	records := make([]RevisionRecord, 0, len(rows))
+	for _, row := range rows {
+		records = append(records, RevisionRecord{
+			Name:      row.Name,
+			Namespace: row.Namespace,
+			Version:   row.Version,
+			Status:    row.Status,
+		})
+	}
+
+	return records, nil
+}
+
 type sqlLatestReleaseRecord struct {
 	Key       string `db:"key"`
 	Namespace string `db:"namespace"`
@@ -934,6 +983,60 @@ func (s *SQL) Delete(key string) (release.Releaser, error) {
 	}
 	_, err = transaction.Exec(deleteCustomLabelsQuery, args...)
 	return release, err
+}
+
+// DeleteRevision removes the release named by key and its custom labels without fetching
+// or decoding the body, and returns ErrReleaseNotFound if no row was deleted. The context
+// is honoured, unlike Delete, Create and Update, which ignore it: plan execution cancels
+// its context on the first failed operation and then still has to record the failed
+// status, so those writes must not become cancellable. Deleting a revision is idempotent
+// and safe to abandon.
+func (s *SQL) DeleteRevision(ctx context.Context, key string) error {
+	transaction, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("delete revision: begin transaction: %w", err)
+	}
+
+	deleteQuery, args, err := s.statementBuilder.
+		Delete(sqlReleaseTableName).
+		Where(sq.Eq{sqlReleaseTableKeyColumn: key}).
+		Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace}).
+		ToSql()
+	if err != nil {
+		transaction.Rollback()
+		return fmt.Errorf("delete revision: build query: %w", err)
+	}
+
+	result, err := transaction.ExecContext(ctx, deleteQuery, args...)
+	if err != nil {
+		transaction.Rollback()
+		return fmt.Errorf("delete revision: %w", err)
+	}
+
+	if affected, err := result.RowsAffected(); err == nil && affected == 0 {
+		transaction.Rollback()
+		return ErrReleaseNotFound
+	}
+
+	deleteLabelsQuery, args, err := s.statementBuilder.
+		Delete(sqlCustomLabelsTableName).
+		Where(sq.Eq{sqlCustomLabelsTableReleaseKeyColumn: key}).
+		Where(sq.Eq{sqlCustomLabelsTableReleaseNamespaceColumn: s.namespace}).
+		ToSql()
+	if err != nil {
+		transaction.Rollback()
+		return fmt.Errorf("delete revision: build labels query: %w", err)
+	}
+
+	if _, err := transaction.ExecContext(ctx, deleteLabelsQuery, args...); err != nil {
+		transaction.Rollback()
+		return fmt.Errorf("delete revision labels: %w", err)
+	}
+
+	if err := transaction.Commit(); err != nil {
+		return fmt.Errorf("delete revision: commit: %w", err)
+	}
+	return nil
 }
 
 // Get release custom labels from database

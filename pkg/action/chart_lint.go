@@ -13,6 +13,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/common"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/log"
@@ -239,35 +240,38 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Build release history")
 
-	history, err := release.BuildHistory(opts.ReleaseName, releaseStorage, release.HistoryOptions{})
+	history, err := release.BuildHistory(ctx, opts.ReleaseName, releaseStorage)
 	if err != nil {
 		return fmt.Errorf("build release history: %w", err)
 	}
 
-	releases := history.Releases()
-	deployedReleases := history.FindAllDeployed()
-	prevRelease := lo.LastOrEmpty(releases)
-	prevDeployedRelease := lo.LastOrEmpty(deployedReleases)
+	revisions := history.Revisions()
+
+	newRevision, deployType := resolveDeployState(revisions)
 
 	var (
-		newRevision       int
+		prevRelease       helmrel.Accessor
 		prevReleaseFailed bool
 	)
 
-	if prevRelease != nil {
-		newRevision = prevRelease.Version() + 1
-		prevReleaseFailed = prevRelease.Status() == helmreleasestatus.StatusFailed.String()
-	} else {
-		newRevision = 1
+	if lastRevision, found := lo.Last(revisions); found {
+		prevReleaseFailed = lastRevision.Status == helmreleasestatus.StatusFailed.String()
+
+		prevRelease, err = history.Release(ctx, lastRevision.Version)
+		if err != nil {
+			return fmt.Errorf("get previous release: %w", err)
+		}
 	}
 
-	var deployType common.DeployType
-	if prevDeployedRelease != nil {
-		deployType = common.DeployTypeUpgrade
-	} else if prevRelease != nil {
-		deployType = common.DeployTypeInstall
-	} else {
-		deployType = common.DeployTypeInitial
+	deployedRevisions := release.DeployedRevisions(revisions)
+
+	var prevDeployedRelease helmrel.Accessor
+	if lastDeployedRevision, found := lo.Last(deployedRevisions); found {
+		if prevRelease != nil && prevRelease.Version() == lastDeployedRevision.Version {
+			prevDeployedRelease = prevRelease
+		} else if prevDeployedRelease, err = history.Release(ctx, lastDeployedRevision.Version); err != nil {
+			return fmt.Errorf("get previous deployed release: %w", err)
+		}
 	}
 
 	chartTreeOptions := chart.RenderChartOptions{
@@ -406,7 +410,12 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, releases, newRelease)
+	prevDeployedReleases, err := loadDeployedReleases(ctx, history, []helmrel.Accessor{prevRelease, prevDeployedRelease})
+	if err != nil {
+		return fmt.Errorf("load deployed releases: %w", err)
+	}
+
+	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, prevDeployedReleases, newRelease)
 	if err != nil {
 		return fmt.Errorf("build release infos: %w", err)
 	}

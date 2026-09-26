@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -198,6 +199,86 @@ func (s *Storage) ListLatestReleases(ctx context.Context) ([]*rspb.Release, erro
 	}
 
 	return result, nil
+}
+
+// revisionLister is an optional driver capability that returns the version and
+// status of every revision of a release without decoding release bodies.
+type revisionLister interface {
+	Revisions(ctx context.Context, name string) ([]driver.RevisionRecord, error)
+}
+
+var (
+	_ revisionLister = (*driver.Secrets)(nil)
+	_ revisionLister = (*driver.ConfigMaps)(nil)
+	_ revisionLister = (*driver.SQL)(nil)
+	_ revisionLister = (*driver.Memory)(nil)
+)
+
+// revisionDeleter is an optional driver capability that removes a stored revision
+// without fetching or decoding its body. Network-backed drivers honour the context;
+// the in-memory driver has nothing to cancel.
+type revisionDeleter interface {
+	DeleteRevision(ctx context.Context, key string) error
+}
+
+var (
+	_ revisionDeleter = (*driver.Secrets)(nil)
+	_ revisionDeleter = (*driver.ConfigMaps)(nil)
+	_ revisionDeleter = (*driver.SQL)(nil)
+	_ revisionDeleter = (*driver.Memory)(nil)
+)
+
+// DeleteRevision removes one revision of a release. Drivers implementing the capability
+// delete without transferring the body and honour ctx; the fallback goes through Delete,
+// which fetches and decodes the body first and ignores ctx.
+func (s *Storage) DeleteRevision(ctx context.Context, name string, version int) error {
+	key := makeKey(name, version)
+	s.Logger().Debug("deleting release revision", "key", key)
+
+	if d, ok := s.Driver.(revisionDeleter); ok {
+		return d.DeleteRevision(ctx, key)
+	}
+
+	_, err := s.Driver.Delete(key)
+	return err
+}
+
+// Revisions returns version and status of every revision of the named release,
+// sorted by ascending version. Drivers implementing the capability answer
+// without decoding release bodies; the fallback decodes the whole history. An
+// unknown release yields an empty result, not an error.
+func (s *Storage) Revisions(ctx context.Context, name string) ([]driver.RevisionRecord, error) {
+	if l, ok := s.Driver.(revisionLister); ok {
+		return l.Revisions(ctx, name)
+	}
+
+	releasers, err := s.Driver.Query(map[string]string{"name": name, "owner": "helm"})
+	if err != nil {
+		if errors.Is(err, driver.ErrReleaseNotFound) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	rels, err := releaseListToV1List(releasers)
+	if err != nil {
+		return nil, err
+	}
+
+	records := make([]driver.RevisionRecord, 0, len(rels))
+	for _, rel := range rels {
+		records = append(records, driver.RevisionRecord{
+			Name:      rel.Name,
+			Namespace: rel.Namespace,
+			Version:   rel.Version,
+			Status:    rel.Info.Status.String(),
+		})
+	}
+
+	sort.Slice(records, func(i, j int) bool { return records[i].Version < records[j].Version })
+
+	return records, nil
 }
 
 // Create creates a new storage entry holding the release. An
@@ -440,10 +521,8 @@ func (s *Storage) removeLeastRecent(name string, maximum int) error {
 }
 
 func (s *Storage) deleteReleaseVersion(name string, version int) error {
-	key := makeKey(name, version)
-	_, err := s.Delete(name, version)
-	if err != nil {
-		s.Logger().Debug("error pruning release", slog.String("key", key), slog.Any("error", err))
+	if err := s.DeleteRevision(context.Background(), name, version); err != nil {
+		s.Logger().Debug("error pruning release", slog.String("key", makeKey(name, version)), slog.Any("error", err))
 		return err
 	}
 	return nil

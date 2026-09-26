@@ -331,19 +331,29 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	log.Default.Debug(ctx, "Build release history")
 
-	history, err := release.BuildHistory(releaseName, releaseStorage, release.HistoryOptions{})
+	history, err := release.BuildHistory(ctx, releaseName, releaseStorage)
 	if err != nil {
 		return nil, fmt.Errorf("build release history: %w", err)
 	}
 
-	releases := history.Releases()
-	deployedReleases := history.FindAllDeployed()
-	prevRelease := lo.LastOrEmpty(releases)
-	prevDeployedRelease := lo.LastOrEmpty(deployedReleases)
+	revisions := history.Revisions()
+	newRevision, deployType := resolveDeployState(revisions)
 
-	newRevision := 1
-	if prevRelease != nil {
-		newRevision = prevRelease.Version() + 1
+	var prevRelease helmrel.Accessor
+	if lastRevision, found := lo.Last(revisions); found {
+		prevRelease, err = history.Release(ctx, lastRevision.Version)
+		if err != nil {
+			return nil, fmt.Errorf("get previous release: %w", err)
+		}
+	}
+
+	var prevDeployedRelease helmrel.Accessor
+	if lastDeployedRevision, found := lo.Last(release.DeployedRevisions(revisions)); found {
+		if prevRelease != nil && prevRelease.Version() == lastDeployedRevision.Version {
+			prevDeployedRelease = prevRelease
+		} else if prevDeployedRelease, err = history.Release(ctx, lastDeployedRevision.Version); err != nil {
+			return nil, fmt.Errorf("get previous deployed release: %w", err)
+		}
 	}
 
 	var (
@@ -371,15 +381,6 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		relInfos = planArtifact.Data.ReleaseInfos
 	} else {
 		prevReleaseFailed := prevRelease != nil && prevRelease.Status() == helmreleasestatus.StatusFailed.String()
-
-		var deployType common.DeployType
-		if prevDeployedRelease != nil {
-			deployType = common.DeployTypeUpgrade
-		} else if prevRelease != nil {
-			deployType = common.DeployTypeInstall
-		} else {
-			deployType = common.DeployTypeInitial
-		}
 
 		helmOptions := common.HelmOptions{
 			ChartLoadOpts: common.ChartLoadOptions{
@@ -539,7 +540,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		log.Default.Debug(ctx, "Build release infos")
 
-		relInfos, err = plan.BuildReleaseInfos(ctx, deployType, releases, newRelease)
+		prevDeployedReleases, err := loadDeployedReleases(ctx, history, []helmrel.Accessor{prevRelease, prevDeployedRelease})
+		if err != nil {
+			return nil, fmt.Errorf("load deployed releases: %w", err)
+		}
+
+		relInfos, err = plan.BuildReleaseInfos(ctx, deployType, prevDeployedReleases, newRelease)
 		if err != nil {
 			return nil, fmt.Errorf("build release infos: %w", err)
 		}
@@ -1030,11 +1036,14 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("remotely validate resources: %w", err))
 	}
 
-	releases := history.Releases()
-
 	log.Default.Debug(ctx, "Build release infos")
 
-	relInfos, err := plan.BuildReleaseInfos(ctx, common.DeployTypeRollback, releases, newRelease)
+	prevDeployedReleases, err := loadDeployedReleasesSkippingPruned(ctx, history)
+	if err != nil {
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("load deployed releases: %w", err))
+	}
+
+	relInfos, err := plan.BuildReleaseInfos(ctx, common.DeployTypeRollback, prevDeployedReleases, newRelease)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("build release infos: %w", err))
 	}

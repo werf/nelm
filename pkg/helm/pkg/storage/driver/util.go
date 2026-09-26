@@ -177,3 +177,31 @@ func ContainsSystemLabels(lbs map[string]string) bool {
 func GetSystemLabels() []string {
 	return systemLabels
 }
+
+// RevisionRecord is the lightweight metadata of a single release revision:
+// everything Revisions can report without decoding a release body.
+type RevisionRecord struct {
+	Name      string
+	Namespace string
+	Version   int
+	Status    string
+}
+
+func revisionRecordFromLabels(namespace string, lbs map[string]string) (RevisionRecord, bool) {
+	name := lbs["name"]
+	if name == "" {
+		return RevisionRecord{}, false
+	}
+
+	version, err := strconv.Atoi(lbs["version"])
+	if err != nil {
+		return RevisionRecord{}, false
+	}
+
+	return RevisionRecord{
+		Name:      name,
+		Namespace: namespace,
+		Version:   version,
+		Status:    lbs["status"],
+	}, true
+}

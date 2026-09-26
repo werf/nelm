@@ -17,7 +17,10 @@ limitations under the License.
 package driver
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -179,6 +182,35 @@ func (mem *Memory) LastVersion(name string) (int, error) {
 	return latest, nil
 }
 
+// Revisions returns the metadata of every revision of the named release, sorted
+// by ascending version.
+func (mem *Memory) Revisions(_ context.Context, name string) ([]RevisionRecord, error) {
+	defer unlock(mem.rlock())
+
+	if mem.namespace == "" {
+		return nil, fmt.Errorf("list revisions of release %q: namespace is required", name)
+	}
+
+	var records []RevisionRecord
+
+	for _, rec := range mem.cache[mem.namespace][name] {
+		if rec == nil {
+			continue
+		}
+
+		record, ok := revisionRecordFromLabels(mem.namespace, rec.lbs.toMap())
+		if !ok {
+			continue
+		}
+
+		records = append(records, record)
+	}
+
+	sort.Slice(records, func(i, j int) bool { return records[i].Version < records[j].Version })
+
+	return records, nil
+}
+
 // Create creates a new release or returns ErrReleaseExists.
 func (mem *Memory) Create(key string, rel release.Releaser) error {
 	defer unlock(mem.wlock())
@@ -290,6 +322,14 @@ func (mem *Memory) Delete(key string) (release.Releaser, error) {
 		}
 	}
 	return nil, ErrReleaseNotFound
+}
+
+// DeleteRevision removes the release named by key, or returns ErrReleaseNotFound.
+func (mem *Memory) DeleteRevision(ctx context.Context, key string) error {
+	if _, err := mem.Delete(key); err != nil {
+		return err
+	}
+	return nil
 }
 
 // wlock locks mem for writing

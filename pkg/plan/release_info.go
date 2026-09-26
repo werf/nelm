@@ -2,6 +2,7 @@ package plan
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/werf/nelm/v2/pkg/common"
 	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
@@ -31,7 +32,8 @@ type ReleaseType string
 // Data class, which stores all info to make a decision on what to do with the release revision
 // in the plan.
 type ReleaseInfo struct {
-	Release *release.VersionedRelease `json:"release"`
+	Revision release.Revision          `json:"revision"`
+	Release  *release.VersionedRelease `json:"release"`
 
 	Must                   ReleaseType `json:"must"`
 	MustFailOnFailedDeploy bool        `json:"mustFailOnFailedDeploy"`
@@ -49,13 +51,15 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 			Must:                   ReleaseTypeInstall,
 			MustFailOnFailedDeploy: true,
 			Release:                &release.VersionedRelease{Accessor: newRel},
+			Revision:               release.NewRevisionFromAccessor(newRel),
 		})
 
 		for _, rel := range prevReleases {
 			if rel.Status() == helmreleasecommon.StatusDeployed.String() {
 				infos = append(infos, &ReleaseInfo{
-					Must:    ReleaseTypeSupersede,
-					Release: &release.VersionedRelease{Accessor: rel},
+					Must:     ReleaseTypeSupersede,
+					Release:  &release.VersionedRelease{Accessor: rel},
+					Revision: release.NewRevisionFromAccessor(rel),
 				})
 			}
 		}
@@ -64,13 +68,15 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 			Must:                   ReleaseTypeUpgrade,
 			MustFailOnFailedDeploy: true,
 			Release:                &release.VersionedRelease{Accessor: newRel},
+			Revision:               release.NewRevisionFromAccessor(newRel),
 		})
 
 		for _, rel := range prevReleases {
 			if rel.Status() == helmreleasecommon.StatusDeployed.String() {
 				infos = append(infos, &ReleaseInfo{
-					Must:    ReleaseTypeSupersede,
-					Release: &release.VersionedRelease{Accessor: rel},
+					Must:     ReleaseTypeSupersede,
+					Release:  &release.VersionedRelease{Accessor: rel},
+					Revision: release.NewRevisionFromAccessor(rel),
 				})
 			}
 		}
@@ -79,38 +85,59 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 			Must:                   ReleaseTypeRollback,
 			MustFailOnFailedDeploy: true,
 			Release:                &release.VersionedRelease{Accessor: newRel},
+			Revision:               release.NewRevisionFromAccessor(newRel),
 		})
 
 		for _, rel := range prevReleases {
 			if rel.Status() == helmreleasecommon.StatusDeployed.String() {
 				infos = append(infos, &ReleaseInfo{
-					Must:    ReleaseTypeSupersede,
-					Release: &release.VersionedRelease{Accessor: rel},
+					Must:     ReleaseTypeSupersede,
+					Release:  &release.VersionedRelease{Accessor: rel},
+					Revision: release.NewRevisionFromAccessor(rel),
 				})
 			}
 		}
-	case common.DeployTypeUninstall:
-		for i := 0; i < len(prevReleases); i++ {
-			var (
-				releaseType        ReleaseType
-				failOnFailedDeploy bool
-			)
-
-			if i == len(prevReleases)-1 {
-				releaseType = ReleaseTypeUninstall
-				failOnFailedDeploy = true
-			} else {
-				releaseType = ReleaseTypeDelete
-			}
-
-			infos = append(infos, &ReleaseInfo{
-				Must:                   releaseType,
-				MustFailOnFailedDeploy: failOnFailedDeploy,
-				Release:                &release.VersionedRelease{Accessor: prevReleases[i]},
-			})
-		}
 	default:
 		panic("unexpected deploy type")
+	}
+
+	return infos, nil
+}
+
+// Build ReleaseInfos for an uninstall. Only the last revision needs a release body, since it is the
+// only one whose status is rewritten; older revisions are dropped by name and version alone.
+func BuildUninstallReleaseInfos(ctx context.Context, revisions []release.Revision, lastRel helmrel.Accessor) ([]*ReleaseInfo, error) {
+	if len(revisions) == 0 {
+		return nil, nil
+	}
+
+	lastRevision := revisions[len(revisions)-1]
+
+	if lastRel == nil {
+		return nil, fmt.Errorf("no release body for the last revision %d", lastRevision.Version)
+	}
+
+	if lastRel.Version() != lastRevision.Version {
+		return nil, fmt.Errorf("release body revision %d does not match the last revision %d", lastRel.Version(), lastRevision.Version)
+	}
+
+	infos := make([]*ReleaseInfo, 0, len(revisions))
+	for i, revision := range revisions {
+		if i < len(revisions)-1 {
+			infos = append(infos, &ReleaseInfo{
+				Must:     ReleaseTypeDelete,
+				Revision: revision,
+			})
+
+			continue
+		}
+
+		infos = append(infos, &ReleaseInfo{
+			Must:                   ReleaseTypeUninstall,
+			MustFailOnFailedDeploy: true,
+			Release:                &release.VersionedRelease{Accessor: lastRel},
+			Revision:               revision,
+		})
 	}
 
 	return infos, nil
