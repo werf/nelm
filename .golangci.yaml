@@ -41,7 +41,6 @@ linters:
     - nilnil
     - predeclared
     - testifylint
-    - testpackage
     - unconvert
     - usestdlibvars
     - usetesting

@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package plan_test
 
 import (
@@ -26,7 +24,7 @@ const (
 	readyDepReleaseNamespace = "test-namespace"
 )
 
-func TestAI_ReadyDependencyCrossStageDoesNotForceTracking(t *testing.T) {
+func TestReadyDependencyCrossStageDoesNotForceTracking(t *testing.T) {
 	target := readyDepInstallableResource(
 		readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil),
 		multitrack.NonBlocking,
@@ -63,7 +61,7 @@ func TestAI_ReadyDependencyCrossStageDoesNotForceTracking(t *testing.T) {
 		"fail mode must remain the resource's own value when not forced")
 }
 
-func TestAI_ReadyDependencyDoesNotForceCRDTarget(t *testing.T) {
+func TestReadyDependencyDoesNotForceCRDTarget(t *testing.T) {
 	crdInfo := &plan.InstallableResourceInfo{
 		ResourceMeta: &spec.ResourceMeta{
 			Name:             "widgets.example.com",
@@ -103,7 +101,7 @@ func TestAI_ReadyDependencyDoesNotForceCRDTarget(t *testing.T) {
 	require.NotEqual(t, multitrack.FailWholeDeployProcessImmediately, crdInfo.FailMode)
 }
 
-func TestAI_ReadyDependencyDoesNotForceSkipCreateAbsentTarget(t *testing.T) {
+func TestReadyDependencyDoesNotForceSkipCreateAbsentTarget(t *testing.T) {
 	target := readyDepInstallableResource(
 		readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil),
 		multitrack.NonBlocking,
@@ -123,7 +121,7 @@ func TestAI_ReadyDependencyDoesNotForceSkipCreateAbsentTarget(t *testing.T) {
 		"fail mode must remain the resource's own value when not forced")
 }
 
-func TestAI_ReadyDependencyDoesNotForceUnmatchedTarget(t *testing.T) {
+func TestReadyDependencyDoesNotForceUnmatchedTarget(t *testing.T) {
 	target := readyDepInstallableResource(
 		readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil),
 		multitrack.NonBlocking,
@@ -139,7 +137,7 @@ func TestAI_ReadyDependencyDoesNotForceUnmatchedTarget(t *testing.T) {
 		"fail mode must remain the resource's own value when not forced")
 }
 
-func TestAI_ReadyDependencyForcesTrackingOnChartAuthoredNonBlockingTarget(t *testing.T) {
+func TestReadyDependencyForcesTrackingOnChartAuthoredNonBlockingTarget(t *testing.T) {
 	target := readyDepInstallableResource(
 		readyDepConfigMapSpec("target", readyDepReleaseNamespace, map[string]string{
 			"werf.io/track-termination-mode": "NonBlocking",
@@ -157,7 +155,7 @@ func TestAI_ReadyDependencyForcesTrackingOnChartAuthoredNonBlockingTarget(t *tes
 	require.Equal(t, multitrack.FailWholeDeployProcessImmediately, targetInfo.FailMode)
 }
 
-func TestAI_ReadyDependencyForcesTrackingOnLegacyPatchedTarget(t *testing.T) {
+func TestReadyDependencyForcesTrackingOnLegacyPatchedTarget(t *testing.T) {
 	target := readyDepInstallableResource(
 		readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil),
 		multitrack.NonBlocking,
@@ -172,7 +170,7 @@ func TestAI_ReadyDependencyForcesTrackingOnLegacyPatchedTarget(t *testing.T) {
 	require.Equal(t, multitrack.FailWholeDeployProcessImmediately, targetInfo.FailMode)
 }
 
-func TestAI_ReadyDependencyForcesTrackingOnUnchangedTarget(t *testing.T) {
+func TestReadyDependencyForcesTrackingOnUnchangedTarget(t *testing.T) {
 	targetSpec := readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil)
 	target := readyDepInstallableResource(targetSpec, multitrack.NonBlocking, multitrack.IgnoreAndContinueDeployProcess)
 	dependent := readyDependentResource("target", "")
@@ -190,7 +188,7 @@ func TestAI_ReadyDependencyForcesTrackingOnUnchangedTarget(t *testing.T) {
 	require.Equal(t, multitrack.FailWholeDeployProcessImmediately, targetInfo.FailMode)
 }
 
-func TestAI_ReadyDependencyProducesEdgeAndRetainsTrackingWithNoFinalTracking(t *testing.T) {
+func TestReadyDependencyProducesEdgeAndRetainsTrackingWithNoFinalTracking(t *testing.T) {
 	target := readyDepInstallableResource(
 		readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil),
 		multitrack.NonBlocking,
@@ -217,7 +215,7 @@ func TestAI_ReadyDependencyProducesEdgeAndRetainsTrackingWithNoFinalTracking(t *
 		"forced readiness op must fail the whole deploy despite IgnoreAndContinue annotation")
 }
 
-func TestAI_ReadyDependencyReleaseNamespaceSelectorProducesEdge(t *testing.T) {
+func TestReadyDependencyReleaseNamespaceSelectorProducesEdge(t *testing.T) {
 	cf, err := fake.NewClientFactory(context.Background())
 	require.NoError(t, err)
 
@@ -361,6 +359,7 @@ func readyDepConfigMapSpec(name, namespace string, annotations map[string]string
 			"app.kubernetes.io/managed-by": "Helm",
 		},
 	}
+
 	anns := meta["annotations"].(map[string]interface{})
 	for k, v := range annotations {
 		anns[k] = v

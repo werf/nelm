@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package spec_test
 
 import (
@@ -14,7 +12,7 @@ import (
 	"github.com/werf/nelm/pkg/resource/spec"
 )
 
-func TestAI_LegacyOnlyTrackJobsPatcher_Patch(t *testing.T) {
+func TestLegacyOnlyTrackJobsPatcher_Patch(t *testing.T) {
 	defaultFailMode := string(multitrack.IgnoreAndContinueDeployProcess)
 	defaultTrackTermination := string(multitrack.NonBlocking)
 

@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package featgate
 
 import (
@@ -10,12 +8,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAI_CaseInsensitiveConditionTracking_EnvVarName(t *testing.T) {
+func TestCaseInsensitiveConditionTracking_EnvVarName(t *testing.T) {
 	assert.Equal(t, "NELM_FEAT_CASE_INSENSITIVE_CONDITION_TRACKING", FeatGateCaseInsensitiveConditionTracking.EnvVarName())
 	assert.Equal(t, "case-insensitive-condition-tracking", FeatGateCaseInsensitiveConditionTracking.Name)
 }
 
-func TestAI_CaseInsensitiveConditionTracking_OnlyTrueEnables(t *testing.T) {
+func TestCaseInsensitiveConditionTracking_OnlyTrueEnables(t *testing.T) {
 	assert.False(t, FeatGateCaseInsensitiveConditionTracking.Default())
 
 	for _, value := range []string{"", "1", "yes", "TRUE", "True", "false"} {
@@ -27,7 +25,7 @@ func TestAI_CaseInsensitiveConditionTracking_OnlyTrueEnables(t *testing.T) {
 	assert.True(t, FeatGateCaseInsensitiveConditionTracking.Enabled())
 }
 
-func TestAI_CaseInsensitiveConditionTracking_Registered(t *testing.T) {
+func TestCaseInsensitiveConditionTracking_Registered(t *testing.T) {
 	_, found := lo.Find(FeatGates, func(fg *FeatGate) bool {
 		return fg == FeatGateCaseInsensitiveConditionTracking
 	})

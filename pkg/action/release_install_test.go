@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package action
 
 import (
@@ -128,7 +126,7 @@ func (c *createNamespaceKubeClient) ServerVersion(ctx context.Context) (*version
 	panic("not implemented")
 }
 
-func TestAI_ApplyReleaseInstallOptionsDefaults_AllowsProgressReportWithoutAutoRollback(t *testing.T) {
+func TestApplyReleaseInstallOptionsDefaults_AllowsProgressReportWithoutAutoRollback(t *testing.T) {
 	opts := ReleaseInstallOptions{
 		LegacyProgressReportCh: make(chan progrep.ProgressReport, 1),
 		TempDirPath:            t.TempDir(),
@@ -138,7 +136,7 @@ func TestAI_ApplyReleaseInstallOptionsDefaults_AllowsProgressReportWithoutAutoRo
 	require.NoError(t, err)
 }
 
-func TestAI_ApplyReleaseInstallOptionsDefaults_RejectsAutoRollbackWithProgressReport(t *testing.T) {
+func TestApplyReleaseInstallOptionsDefaults_RejectsAutoRollbackWithProgressReport(t *testing.T) {
 	opts := ReleaseInstallOptions{
 		AutoRollback:           true,
 		LegacyProgressReportCh: make(chan progrep.ProgressReport, 1),
@@ -150,7 +148,7 @@ func TestAI_ApplyReleaseInstallOptionsDefaults_RejectsAutoRollbackWithProgressRe
 	assert.Contains(t, err.Error(), "auto rollback")
 }
 
-func TestAI_CreateReleaseNamespaceBothProbesForbiddenAggregates(t *testing.T) {
+func TestCreateReleaseNamespaceBothProbesForbiddenAggregates(t *testing.T) {
 	cmErr := newForbiddenErr("configmaps", "werf-synchronization")
 	nsErr := newForbiddenErr("namespaces", "my-namespace")
 	kubeClient := &createNamespaceKubeClient{cmApplyErr: cmErr, nsApplyErr: nsErr}
@@ -167,7 +165,7 @@ func TestAI_CreateReleaseNamespaceBothProbesForbiddenAggregates(t *testing.T) {
 	assert.Equal(t, createNamespaceCall{dryRun: true, kind: "Namespace"}, kubeClient.calls[1])
 }
 
-func TestAI_CreateReleaseNamespaceConfigMapForbiddenNamespaceNotFoundAggregates(t *testing.T) {
+func TestCreateReleaseNamespaceConfigMapForbiddenNamespaceNotFoundAggregates(t *testing.T) {
 	cmErr := newForbiddenErr("configmaps", "werf-synchronization")
 	nsErr := newNotFoundErr("namespaces", "my-namespace")
 	kubeClient := &createNamespaceKubeClient{cmApplyErr: cmErr, nsApplyErr: nsErr}
@@ -181,7 +179,7 @@ func TestAI_CreateReleaseNamespaceConfigMapForbiddenNamespaceNotFoundAggregates(
 	require.Len(t, kubeClient.calls, 2)
 }
 
-func TestAI_CreateReleaseNamespaceConfigMapForbiddenThenNamespaceCreated(t *testing.T) {
+func TestCreateReleaseNamespaceConfigMapForbiddenThenNamespaceCreated(t *testing.T) {
 	kubeClient := &createNamespaceKubeClient{
 		cmApplyErr: newForbiddenErr("configmaps", "werf-synchronization"),
 	}
@@ -196,7 +194,7 @@ func TestAI_CreateReleaseNamespaceConfigMapForbiddenThenNamespaceCreated(t *test
 	assert.Equal(t, createNamespaceCall{dryRun: false, kind: "Namespace"}, kubeClient.calls[2])
 }
 
-func TestAI_CreateReleaseNamespaceConfigMapNotFoundThenNamespaceCreated(t *testing.T) {
+func TestCreateReleaseNamespaceConfigMapNotFoundThenNamespaceCreated(t *testing.T) {
 	kubeClient := &createNamespaceKubeClient{
 		cmApplyErr: newNotFoundErr("configmaps", "werf-synchronization"),
 	}
@@ -211,7 +209,7 @@ func TestAI_CreateReleaseNamespaceConfigMapNotFoundThenNamespaceCreated(t *testi
 	assert.Equal(t, createNamespaceCall{dryRun: false, kind: "Namespace"}, kubeClient.calls[2])
 }
 
-func TestAI_CreateReleaseNamespaceConfigMapOtherErrorPropagates(t *testing.T) {
+func TestCreateReleaseNamespaceConfigMapOtherErrorPropagates(t *testing.T) {
 	cmErr := errors.New("connection refused")
 	kubeClient := &createNamespaceKubeClient{cmApplyErr: cmErr}
 	clientFactory := &createNamespaceClientFactory{kubeClient: kubeClient}
@@ -224,7 +222,7 @@ func TestAI_CreateReleaseNamespaceConfigMapOtherErrorPropagates(t *testing.T) {
 	assert.Equal(t, "ConfigMap", kubeClient.calls[0].kind)
 }
 
-func TestAI_CreateReleaseNamespaceConfigMapProbeSucceeds(t *testing.T) {
+func TestCreateReleaseNamespaceConfigMapProbeSucceeds(t *testing.T) {
 	kubeClient := &createNamespaceKubeClient{}
 	clientFactory := &createNamespaceClientFactory{kubeClient: kubeClient}
 
@@ -236,7 +234,7 @@ func TestAI_CreateReleaseNamespaceConfigMapProbeSucceeds(t *testing.T) {
 	assert.True(t, kubeClient.calls[0].dryRun)
 }
 
-func TestAI_CreateReleaseNamespaceNamespaceProbeOtherErrorPropagates(t *testing.T) {
+func TestCreateReleaseNamespaceNamespaceProbeOtherErrorPropagates(t *testing.T) {
 	nsErr := errors.New("connection refused")
 	kubeClient := &createNamespaceKubeClient{
 		cmApplyErr: newForbiddenErr("configmaps", "werf-synchronization"),
@@ -252,7 +250,7 @@ func TestAI_CreateReleaseNamespaceNamespaceProbeOtherErrorPropagates(t *testing.
 	require.Len(t, kubeClient.calls, 2)
 }
 
-func TestAI_CreateReleaseNamespaceRealCreateFailurePropagates(t *testing.T) {
+func TestCreateReleaseNamespaceRealCreateFailurePropagates(t *testing.T) {
 	createErr := errors.New("quota exceeded")
 	kubeClient := &createNamespaceKubeClient{
 		cmApplyErr:  newForbiddenErr("configmaps", "werf-synchronization"),
@@ -269,7 +267,7 @@ func TestAI_CreateReleaseNamespaceRealCreateFailurePropagates(t *testing.T) {
 	assert.Equal(t, createNamespaceCall{dryRun: false, kind: "Namespace"}, kubeClient.calls[2])
 }
 
-func TestAI_NewReleaseInstallResultDeduplicatesMultiStageResources(t *testing.T) {
+func TestNewReleaseInstallResultDeduplicatesMultiStageResources(t *testing.T) {
 	hookInfo := newTestInstallableResourceInfo("batch/v1", "Job", "myhook", "mynamespace", "mynamespace", "mychart/templates/hook.yaml", common.StoreAsHook, map[string]string{
 		"helm.sh/hook": "pre-install,post-install",
 	})
@@ -291,7 +289,7 @@ func TestAI_NewReleaseInstallResultDeduplicatesMultiStageResources(t *testing.T)
 	assert.Equal(t, "mycm", result.Resources[1].Name)
 }
 
-func TestAI_NewReleaseInstallResultKeepsResourceSpecData(t *testing.T) {
+func TestNewReleaseInstallResultKeepsResourceSpecData(t *testing.T) {
 	releaseAnnotations := map[string]string{
 		"meta.helm.sh/release-name":      "myrelease",
 		"meta.helm.sh/release-namespace": "mynamespace",
@@ -315,7 +313,7 @@ func TestAI_NewReleaseInstallResultKeepsResourceSpecData(t *testing.T) {
 	assert.Equal(t, "othernamespace", result.Resources[1].Namespace)
 }
 
-func TestAI_NewReleaseInstallResultSortsResources(t *testing.T) {
+func TestNewReleaseInstallResultSortsResources(t *testing.T) {
 	instResInfos := []*plan.InstallableResourceInfo{
 		newTestInstallableResourceInfo("v1", "Service", "mysvc", "mynamespace", "mynamespace", "mychart/templates/service.yaml", common.StoreAsRegular, nil),
 		newTestInstallableResourceInfo("v1", "ConfigMap", "mycm", "mynamespace", "mynamespace", "mychart/templates/configmap.yaml", common.StoreAsRegular, nil),
@@ -340,7 +338,7 @@ func TestAI_NewReleaseInstallResultSortsResources(t *testing.T) {
 	assert.Equal(t, "mysvc", result.Resources[3].Name)
 }
 
-func TestAI_NewReleaseInstallResultWithoutResources(t *testing.T) {
+func TestNewReleaseInstallResultWithoutResources(t *testing.T) {
 	result := newReleaseInstallResult("myrelease", "mynamespace", 7, helmrelease.StatusSkipped, nil)
 
 	require.NotNil(t, result)
@@ -354,7 +352,7 @@ func TestAI_NewReleaseInstallResultWithoutResources(t *testing.T) {
 	assert.Equal(t, helmrelease.StatusSkipped, result.Release.Status)
 }
 
-func TestAI_ReleaseInstall_ClosesProgressReportChannelOnEarlyError(t *testing.T) {
+func TestReleaseInstall_ClosesProgressReportChannelOnEarlyError(t *testing.T) {
 	reportCh := make(chan progrep.ProgressReport, 1)
 
 	_, err := ReleaseInstall(context.Background(), "rel", "ns", ReleaseInstallOptions{
@@ -372,7 +370,7 @@ func TestAI_ReleaseInstall_ClosesProgressReportChannelOnEarlyError(t *testing.T)
 	}
 }
 
-func TestAI_ReleaseUninstall_ClosesProgressReportChannelOnEarlyError(t *testing.T) {
+func TestReleaseUninstall_ClosesProgressReportChannelOnEarlyError(t *testing.T) {
 	reportCh := make(chan progrep.ProgressReport, 1)
 
 	opts := ReleaseUninstallOptions{
