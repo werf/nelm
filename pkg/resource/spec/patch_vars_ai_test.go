@@ -13,31 +13,25 @@ import (
 )
 
 func TestAI_CompilePatches_RejectsRenderContextVariables(t *testing.T) {
-	for _, variable := range []string{"$values", "$release", "$chart", "$capabilities"} {
+	for _, variable := range []string{"$Values", "$Release", "$Chart", "$Capabilities"} {
 		t.Run(variable, func(t *testing.T) {
 			_, err := spec.CompilePatches([]spec.Patch{{Patch: `.spec.replicas = ` + variable + `.x`}})
-			require.ErrorContains(t, err, "variable not defined: "+variable)
+			require.ErrorContains(t, err, "only available in renderPatches")
+			require.ErrorContains(t, err, variable)
 		})
 	}
 }
 
 func TestAI_CompileRenderPatches_ExposesRenderContextVariables(t *testing.T) {
-	renderContext := spec.RenderContext{
-		Values:       map[string]interface{}{"replicaCount": int64(7)},
-		Release:      map[string]interface{}{"Name": "myrel"},
-		Chart:        map[string]interface{}{"Name": "myapp", "Version": "1.2.3"},
-		Capabilities: map[string]interface{}{"KubeVersion": map[string]interface{}{"Version": "v1.30.0"}},
-	}
-
 	patches, err := spec.CompileRenderPatches([]spec.Patch{{Patch: `
-		.spec.replicas = $values.replicaCount
-		| .metadata.labels.release = $release.Name
-		| .metadata.labels.chart = $chart.Name + "-" + $chart.Version
-		| .metadata.labels.kube = $capabilities.KubeVersion.Version
-	`}}, renderContext)
+		.spec.replicas = $Values.replicaCount
+		| .metadata.labels.release = $Release.Name
+		| .metadata.labels.chart = $Chart.Name + "-" + $Chart.Version
+		| .metadata.labels.kube = $Capabilities.KubeVersion.Version
+	`}}, varsRenderContext())
 	require.NoError(t, err)
 
-	out, err := spec.ApplyPatches(context.Background(), patches, varsMeta(), "prod", varsObj())
+	out, err := spec.ApplyPatches(context.Background(), patches, varsMeta("myapp/templates/web.yaml"), "prod", varsObj())
 	require.NoError(t, err)
 
 	replicas, found, err := unstructured.NestedInt64(out.Object, "spec", "replicas")
@@ -54,11 +48,11 @@ func TestAI_CompileRenderPatches_ExposesRenderContextVariables(t *testing.T) {
 
 func TestAI_CompileRenderPatches_NilRenderContextValuesAreNull(t *testing.T) {
 	patches, err := spec.CompileRenderPatches([]spec.Patch{{
-		Patch: `.metadata.labels.missing = ($values.nope // "fallback")`,
+		Patch: `.metadata.labels.missing = ($Values.nope // "fallback")`,
 	}}, spec.RenderContext{})
 	require.NoError(t, err)
 
-	out, err := spec.ApplyPatches(context.Background(), patches, varsMeta(), "prod", varsObj())
+	out, err := spec.ApplyPatches(context.Background(), patches, varsMeta("myapp/templates/web.yaml"), "prod", varsObj())
 	require.NoError(t, err)
 
 	labels, _, err := unstructured.NestedStringMap(out.Object, "metadata", "labels")
@@ -66,27 +60,32 @@ func TestAI_CompileRenderPatches_NilRenderContextValuesAreNull(t *testing.T) {
 	require.Equal(t, "fallback", labels["missing"])
 }
 
+func TestAI_CompileRenderPatches_ScopesSubchartRulesToTheirOwnChart(t *testing.T) {
+	patches, err := spec.CompileRenderPatches([]spec.Patch{
+		spec.NewChartScopedPatch("myapp/charts/cache", `
+			.metadata.labels.chart = $Chart.Name + "-" + $Chart.Version
+			| .metadata.labels.replicas = ($Values.replicaCount | tostring)
+		`),
+	}, varsRenderContext())
+	require.NoError(t, err)
+
+	out, err := spec.ApplyPatches(context.Background(), patches, varsMeta("myapp/charts/cache/templates/redis.yaml"), "prod", varsObj())
+	require.NoError(t, err)
+
+	labels, _, err := unstructured.NestedStringMap(out.Object, "metadata", "labels")
+	require.NoError(t, err)
+	require.Equal(t, "cache-4.5.6", labels["chart"])
+	require.Equal(t, "9", labels["replicas"])
+}
+
 func TestAI_CompileRenderPatches_UnusedVariablesDoNotBreakPatch(t *testing.T) {
 	patches, err := spec.CompileRenderPatches([]spec.Patch{{Patch: `del(.spec.replicas)`}}, spec.RenderContext{})
 	require.NoError(t, err)
 
-	out, err := spec.ApplyPatches(context.Background(), patches, varsMeta(), "prod", varsObj())
+	out, err := spec.ApplyPatches(context.Background(), patches, varsMeta("myapp/templates/web.yaml"), "prod", varsObj())
 	require.NoError(t, err)
 
 	_, found, err := unstructured.NestedInt64(out.Object, "spec", "replicas")
 	require.NoError(t, err)
 	require.False(t, found)
-}
-
-func varsMeta() *spec.ResourceMeta {
-	return metaFor("Deployment", "apps", "v1", "web", "", "myapp/templates/web.yaml", nil, nil)
-}
-
-func varsObj() *unstructured.Unstructured {
-	return &unstructured.Unstructured{Object: map[string]interface{}{
-		"apiVersion": "apps/v1",
-		"kind":       "Deployment",
-		"metadata":   map[string]interface{}{"name": "web", "labels": map[string]interface{}{}},
-		"spec":       map[string]interface{}{"replicas": int64(1)},
-	}}
 }

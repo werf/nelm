@@ -18,6 +18,51 @@ import (
 	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
+func TestAI_RenderContextFor_NoSubchartsLeavesMapNil(t *testing.T) {
+	accessor, err := helmchart.NewAccessor(&v2chart.Chart{Metadata: &v2chart.Metadata{Name: "app"}})
+	require.NoError(t, err)
+
+	require.Nil(t, renderContextFor(accessor, map[string]interface{}{}).Subcharts)
+	require.Nil(t, renderContextFor(nil, map[string]interface{}{}).Subcharts)
+}
+
+func TestAI_RenderContextFor_ScopesEachSubchartToItsOwnValuesAndMetadata(t *testing.T) {
+	cache := &v2chart.Chart{Metadata: &v2chart.Metadata{Name: "cache", Version: "4.5.6"}}
+	inner := &v2chart.Chart{Metadata: &v2chart.Metadata{Name: "inner", Version: "7.8.9"}}
+	cache.AddDependency(inner)
+
+	parent := &v2chart.Chart{Metadata: &v2chart.Metadata{Name: "app", Version: "1.2.3"}}
+	parent.AddDependency(cache)
+
+	accessor, err := helmchart.NewAccessor(parent)
+	require.NoError(t, err)
+
+	renderedValues := map[string]interface{}{
+		"Chart": map[string]interface{}{"Name": "app"},
+		"Values": chartcommon.Values{
+			"replicaCount": int64(1),
+			"cache": map[string]interface{}{
+				"replicaCount": int64(2),
+				"inner":        map[string]interface{}{"replicaCount": int64(3)},
+			},
+		},
+	}
+
+	renderContext := renderContextFor(accessor, renderedValues)
+
+	require.Equal(t, renderedValues["Values"], renderContext.Values)
+
+	cacheCtx, found := renderContext.Subcharts["app/charts/cache"]
+	require.True(t, found)
+	require.Equal(t, "cache", cacheCtx.Chart.(map[string]interface{})["Name"])
+	require.Equal(t, int64(2), cacheCtx.Values.(map[string]interface{})["replicaCount"])
+
+	innerCtx, found := renderContext.Subcharts["app/charts/cache/charts/inner"]
+	require.True(t, found)
+	require.Equal(t, "inner", innerCtx.Chart.(map[string]interface{})["Name"])
+	require.Equal(t, int64(3), innerCtx.Values.(map[string]interface{})["replicaCount"])
+}
+
 func TestAI_ResolvePatches_DefaultPatchesDisableKeepsLegacyPatches(t *testing.T) {
 	chart := aiChartWithPatches(t, "app", "renderPatches:\n- patch: .order += [\"chart\"]\n")
 

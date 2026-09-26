@@ -305,7 +305,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	log.Default.Debug(ctx, "Resolve patches")
 
-	patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches, renderContextFor(renderChartResult.Values))
+	patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches, renderContextFor(renderChartResult.Chart, renderChartResult.Values))
 	if err != nil {
 		return nil, fmt.Errorf("resolve patches: %w", err)
 	}

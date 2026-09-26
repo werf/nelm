@@ -6,9 +6,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-var
-// ParsePatchesFile exposes an unexported symbol to the external spec_test
-// package.
+var // ParsePatchesFile exposes an unexported symbol to the external spec_test package.
 ParsePatchesFile = parsePatchesFile
 
 // ChartScope exposes the unexported chart scope to the external spec_test package.

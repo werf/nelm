@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,6 +104,19 @@ type runFailurePlanResult struct {
 	FailedResourceOps    []*plan.Operation
 }
 
+// renderContextFor splits the rendered top-level context, which holds what chart
+// templates saw, into the parts render patches get as jq variables. Subchart
+// rules get the top-level values, not their own scope.
+func renderContextFor(chart helmchart.Accessor, renderedValues map[string]interface{}) spec.RenderContext {
+	return spec.RenderContext{
+		Values:       renderedValues["Values"],
+		Release:      renderedValues["Release"],
+		Chart:        renderedValues["Chart"],
+		Capabilities: renderedValues["Capabilities"],
+		Subcharts:    subchartContexts(chart, renderedValues["Values"]),
+	}
+}
+
 func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr error, installGraphPath, tempDirPath, fallbackGraphFilename string) {
 	var graphPath string
 	if installGraphPath != "" {
@@ -120,27 +134,37 @@ func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr err
 	log.Default.Warn(ctx, "Plan graph saved to %q for debugging", graphPath)
 }
 
-// renderContextFor splits the rendered top-level context, which holds what chart
-// templates saw, into the parts render patches get as jq variables. Subchart
-// rules get the top-level values, not their own scope.
-func renderContextFor(renderedValues map[string]interface{}) spec.RenderContext {
-	return spec.RenderContext{
-		Values:       nestedMap(renderedValues, "Values"),
-		Release:      nestedMap(renderedValues, "Release"),
-		Chart:        nestedMap(renderedValues, "Chart"),
-		Capabilities: renderedValues["Capabilities"],
-	}
-}
-
-func nestedMap(values map[string]interface{}, key string) map[string]interface{} {
-	switch v := values[key].(type) {
-	case map[string]interface{}:
-		return v
-	case chartcommon.Values:
-		return v
-	default:
+// subchartContexts walks the chart tree so a rule shipped by a subchart sees the
+// values and metadata its own templates saw: its section of the parent values,
+// which already carries the globals merged in, and its own chart metadata.
+func subchartContexts(chart helmchart.Accessor, values interface{}) map[string]spec.SubchartContext {
+	if chart == nil {
 		return nil
 	}
+
+	contexts := map[string]spec.SubchartContext{}
+
+	for _, dep := range chart.Dependencies() {
+		depAccessor, err := helmchart.NewAccessor(dep)
+		if err != nil {
+			continue
+		}
+
+		depValues := subchartValues(values, depAccessor.Name())
+
+		contexts[depAccessor.ChartFullPath()] = spec.SubchartContext{
+			Chart:  depAccessor.MetadataAsMap(),
+			Values: depValues,
+		}
+
+		maps.Copy(contexts, subchartContexts(depAccessor, depValues))
+	}
+
+	if len(contexts) == 0 {
+		return nil
+	}
+
+	return contexts
 }
 
 func newInformerFactory(ctx context.Context, watchErrCh chan error, dynamicClient dynamic.Interface) *kdutil.Concurrent[*informer.InformerFactory] {
@@ -335,6 +359,17 @@ func saveReport(reportPath string, report *ReleaseReportV3) error {
 	}
 
 	return nil
+}
+
+func subchartValues(values interface{}, subchartName string) interface{} {
+	switch v := values.(type) {
+	case map[string]interface{}:
+		return v[subchartName]
+	case chartcommon.Values:
+		return v[subchartName]
+	default:
+		return nil
+	}
 }
 
 func writeWithSyntaxHighlight(outStream io.Writer, text, lang string, colorLevel terminfo.ColorLevel) error {
