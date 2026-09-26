@@ -72,12 +72,12 @@ const (
 	ResourceStateReady   ResourceState = "ready"
 
 	StageInit              Stage = "init"                // create pending release
-	StagePrePreUninstall   Stage = "pre-pre-uninstall"   // uninstall previous release resources
+	StagePrePreUninstall   Stage = "pre-pre-uninstall"   // legacy early uninstall stage (kept for plan compatibility)
 	StagePrePreInstall     Stage = "pre-pre-install"     // install crd
 	StagePreInstall        Stage = "pre-install"         // install pre-hooks
 	StagePreUninstall      Stage = "pre-uninstall"       // cleanup pre-hooks
 	StageInstall           Stage = "install"             // install resources
-	StageUninstall         Stage = "uninstall"           // cleanup resources
+	StageUninstall         Stage = "uninstall"           // cleanup resources, including purged previous-release resources (after install)
 	StagePostInstall       Stage = "post-install"        // install post-hooks
 	StagePostUninstall     Stage = "post-uninstall"      // cleanup post-hooks
 	StagePostPostInstall   Stage = "post-post-install"   // install webhook
