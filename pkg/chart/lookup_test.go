@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package chart
 
 import (
@@ -15,7 +13,7 @@ import (
 	"github.com/werf/nelm/pkg/helm/pkg/werf/helmopts"
 )
 
-func TestAI_LocalClientProviderEmpty(t *testing.T) {
+func TestLocalClientProviderEmpty(t *testing.T) {
 	provider := newLocalClientProvider(nil)
 
 	c := &helmchart.Chart{
@@ -34,7 +32,7 @@ func TestAI_LocalClientProviderEmpty(t *testing.T) {
 	require.Equal(t, "map[]", out["moby/templates/empty"])
 }
 
-func TestAI_LocalClientProviderLookup(t *testing.T) {
+func TestLocalClientProviderLookup(t *testing.T) {
 	provider := newLocalClientProvider([]*unstructured.Unstructured{
 		makeUnstructured("v1", "Namespace", "default", ""),
 		makeUnstructured("v1", "Pod", "pod1", "default"),
@@ -82,7 +80,7 @@ func TestAI_LocalClientProviderLookup(t *testing.T) {
 	}
 }
 
-func TestAI_LocalClientProviderNamespaceIsolation(t *testing.T) {
+func TestLocalClientProviderNamespaceIsolation(t *testing.T) {
 	provider := newLocalClientProvider([]*unstructured.Unstructured{
 		makeUnstructured("v1", "Pod", "pod1", "default"),
 	})
@@ -121,7 +119,7 @@ func TestAI_LocalClientProviderNamespaceIsolation(t *testing.T) {
 	}
 }
 
-func TestAI_LocalClientProviderUnstubbedListEmptyProvider(t *testing.T) {
+func TestLocalClientProviderUnstubbedListEmptyProvider(t *testing.T) {
 	provider := newLocalClientProvider(nil)
 
 	c := &helmchart.Chart{
@@ -140,7 +138,7 @@ func TestAI_LocalClientProviderUnstubbedListEmptyProvider(t *testing.T) {
 	require.Equal(t, "0", out["moby/templates/list"])
 }
 
-func TestAI_LocalClientProviderUnstubbedListOtherKind(t *testing.T) {
+func TestLocalClientProviderUnstubbedListOtherKind(t *testing.T) {
 	provider := newLocalClientProvider([]*unstructured.Unstructured{
 		makeUnstructured("v1", "Pod", "pod1", "default"),
 	})

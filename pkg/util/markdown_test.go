@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package util_test
 
 import (
@@ -10,9 +8,9 @@ import (
 	"github.com/werf/nelm/pkg/util"
 )
 
-func TestAI_EscapeForMarkdown(t *testing.T) {
+func TestEscapeForMarkdown(t *testing.T) {
 	t.Run("empty string", func(t *testing.T) {
-		assert.Equal(t, "", util.EscapeForMarkdown(""))
+		assert.Empty(t, util.EscapeForMarkdown(""))
 	})
 
 	t.Run("plain text unchanged", func(t *testing.T) {
@@ -143,9 +141,9 @@ func TestAI_EscapeForMarkdown(t *testing.T) {
 	})
 }
 
-func TestAI_EscapeForMarkdownPreservingCodeSpans(t *testing.T) {
+func TestEscapeForMarkdownPreservingCodeSpans(t *testing.T) {
 	t.Run("empty string", func(t *testing.T) {
-		assert.Equal(t, "", util.EscapeForMarkdownPreservingCodeSpans(""))
+		assert.Empty(t, util.EscapeForMarkdownPreservingCodeSpans(""))
 	})
 
 	t.Run("plain text unchanged", func(t *testing.T) {

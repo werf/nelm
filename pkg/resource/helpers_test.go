@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package resource_test
 
 import (
@@ -40,6 +38,7 @@ func setupDefaultSchemaServer(t *testing.T) string {
 
 func getDefaultSchemas(t *testing.T, kubeVersion string) map[string]string {
 	t.Helper()
+
 	version := "v" + kubeVersion
 
 	return map[string]string{
@@ -52,6 +51,7 @@ func getDefaultSchemas(t *testing.T, kubeVersion string) map[string]string {
 
 func loadSchema(t *testing.T, name string) string {
 	t.Helper()
+
 	path := filepath.Join(getTestdataPath(), "schemas", name+".json")
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -76,6 +76,7 @@ func setupSchemaServerWithCounter(t *testing.T, schemas map[string]string) (*htt
 
 	countingHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		*requestCount++
+
 		baseHandler.ServeHTTP(w, r)
 	})
 
@@ -151,5 +152,6 @@ func setupLocalSchemaDir(t *testing.T, schemas map[string]string) string {
 func setupTestEnvironment(t *testing.T) {
 	t.Helper()
 	common.APIResourceValidationJSONSchemasCacheDir = t.TempDir()
+
 	featgate.FeatGateResourceValidation.Enable()
 }

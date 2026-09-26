@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package chart
 
 import (
@@ -10,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAI_ParseLocalLookupResourcesDuplicateAfterExpansion(t *testing.T) {
+func TestParseLocalLookupResourcesDuplicateAfterExpansion(t *testing.T) {
 	path := writeLocalLookupFile(t, `
 apiVersion: v1
 kind: Pod
@@ -34,7 +32,7 @@ items:
 	require.Contains(t, err.Error(), "item 1")
 }
 
-func TestAI_ParseLocalLookupResourcesListExpansion(t *testing.T) {
+func TestParseLocalLookupResourcesListExpansion(t *testing.T) {
 	path := writeLocalLookupFile(t, `
 apiVersion: v1
 kind: List
@@ -56,12 +54,13 @@ items:
 	require.Len(t, resources, 2)
 	require.Equal(t, "pod1", resources[0].GetName())
 	require.Equal(t, "pod2", resources[1].GetName())
+
 	for _, r := range resources {
 		require.Equal(t, "Pod", r.GetKind())
 	}
 }
 
-func TestAI_ParseLocalLookupResourcesListItemMissingAPIVersion(t *testing.T) {
+func TestParseLocalLookupResourcesListItemMissingAPIVersion(t *testing.T) {
 	path := writeLocalLookupFile(t, `
 apiVersion: v1
 kind: List
@@ -78,7 +77,7 @@ items:
 	require.Contains(t, err.Error(), "item 1")
 }
 
-func TestAI_ParseLocalLookupResourcesMultiDoc(t *testing.T) {
+func TestParseLocalLookupResourcesMultiDoc(t *testing.T) {
 	path := writeLocalLookupFile(t, `
 apiVersion: v1
 kind: Pod
@@ -100,7 +99,7 @@ metadata:
 	require.Equal(t, "ConfigMap", resources[1].GetKind())
 }
 
-func TestAI_ParseLocalLookupResourcesTopLevelDuplicate(t *testing.T) {
+func TestParseLocalLookupResourcesTopLevelDuplicate(t *testing.T) {
 	path := writeLocalLookupFile(t, `
 apiVersion: v1
 kind: Pod
@@ -120,7 +119,7 @@ metadata:
 	require.Contains(t, err.Error(), "duplicate resource")
 }
 
-func TestAI_ParseLocalLookupResourcesTopLevelMissingAPIVersion(t *testing.T) {
+func TestParseLocalLookupResourcesTopLevelMissingAPIVersion(t *testing.T) {
 	path := writeLocalLookupFile(t, `
 kind: Pod
 metadata:
@@ -133,7 +132,7 @@ metadata:
 	require.Contains(t, err.Error(), "apiVersion is missing")
 }
 
-func TestAI_ParseLocalLookupResourcesTypedListExpansion(t *testing.T) {
+func TestParseLocalLookupResourcesTypedListExpansion(t *testing.T) {
 	path := writeLocalLookupFile(t, `
 apiVersion: v1
 kind: PodList

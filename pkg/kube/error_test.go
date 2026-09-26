@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package kube
 
 import (
@@ -13,7 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-func TestAI_IsInvalidErr(t *testing.T) {
+func TestIsInvalidErr(t *testing.T) {
 	invalidErr := apierrors.NewInvalid(schema.GroupKind{}, "", field.ErrorList{
 		field.Invalid(field.NewPath("patch"), "", "bad"),
 	})
@@ -28,7 +26,7 @@ func TestAI_IsInvalidErr(t *testing.T) {
 	assert.False(t, IsInvalidErr(errors.New("connection refused")))
 }
 
-func TestAI_IsTypedObjectErr(t *testing.T) {
+func TestIsTypedObjectErr(t *testing.T) {
 	typedObjErr := fmt.Errorf(`server-side dry-run apply resource "DaemonSet/log-shipper-agent": server-side apply: failed to create typed patch object (d8-log-shipper/log-shipper-agent; apps/v1, Kind=DaemonSet): .spec.template.spec.containers[name="vector"].resources.cpu: field not declared in schema`)
 
 	assert.True(t, IsTypedObjectErr(typedObjErr))
@@ -40,7 +38,7 @@ func TestAI_IsTypedObjectErr(t *testing.T) {
 	assert.False(t, IsTypedObjectErr(errors.New("failed to create typed live object")))
 }
 
-func TestAI_TypedObjectErrIsNotStatusInvalid(t *testing.T) {
+func TestTypedObjectErrIsNotStatusInvalid(t *testing.T) {
 	rawTypedObjErr := fmt.Errorf("failed to create typed patch object: field not declared in schema")
 	serverErr := apierrors.NewGenericServerResponse(500, "PATCH", schema.GroupResource{}, "", rawTypedObjErr.Error(), 0, false)
 

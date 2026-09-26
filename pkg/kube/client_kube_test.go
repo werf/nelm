@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package kube
 
 import (
@@ -110,7 +108,7 @@ func (m *testResettableMapper) ResourcesFor(input schema.GroupVersionResource) (
 	panic("not implemented")
 }
 
-func TestAI_KubeClientDelete_UsesRetryingGVKResolution(t *testing.T) {
+func TestKubeClientDelete_UsesRetryingGVKResolution(t *testing.T) {
 	client, discoveryClient, mapper := newTestKubeClient(1)
 	client.dynamicClient = dynfake.NewSimpleDynamicClient(scheme.Scheme)
 	meta := spec.NewResourceMeta("widget", "default", "default", "", schema.GroupVersionKind{Group: "example.com", Version: "v1", Kind: "Widget"}, nil, nil)
@@ -122,7 +120,7 @@ func TestAI_KubeClientDelete_UsesRetryingGVKResolution(t *testing.T) {
 	assert.Equal(t, 1, discoveryClient.invalidateCount)
 }
 
-func TestAI_KubeClientGVKToGVR_DoesNotRetryNonNoMatch(t *testing.T) {
+func TestKubeClientGVKToGVR_DoesNotRetryNonNoMatch(t *testing.T) {
 	client, discoveryClient, mapper := newTestKubeClient(0)
 	boom := errors.New("discovery forbidden")
 	mapper.err = boom
@@ -139,7 +137,7 @@ func TestAI_KubeClientGVKToGVR_DoesNotRetryNonNoMatch(t *testing.T) {
 	assert.Equal(t, 0, discoveryClient.invalidateCount)
 }
 
-func TestAI_KubeClientGVKToGVR_RetriesNoMatchAfterRefresh(t *testing.T) {
+func TestKubeClientGVKToGVR_RetriesNoMatchAfterRefresh(t *testing.T) {
 	client, discoveryClient, mapper := newTestKubeClient(1)
 
 	var (
@@ -163,7 +161,7 @@ func TestAI_KubeClientGVKToGVR_RetriesNoMatchAfterRefresh(t *testing.T) {
 	assert.Equal(t, 1, discoveryClient.invalidateCount)
 }
 
-func TestAI_KubeClientGVKToGVR_StopsOnContextCancellation(t *testing.T) {
+func TestKubeClientGVKToGVR_StopsOnContextCancellation(t *testing.T) {
 	client, _, _ := newTestKubeClient(1000)
 	ctx, cancel := context.WithCancelCause(context.Background())
 	cancel(fmt.Errorf("mapping canceled"))
@@ -178,7 +176,7 @@ func TestAI_KubeClientGVKToGVR_StopsOnContextCancellation(t *testing.T) {
 	assert.Contains(t, err.Error(), "mapping canceled")
 }
 
-func TestAI_KubeClientGVKToGVR_SucceedsWithoutRetry(t *testing.T) {
+func TestKubeClientGVKToGVR_SucceedsWithoutRetry(t *testing.T) {
 	client, discoveryClient, mapper := newTestKubeClient(0)
 
 	gvr, namespaced, err := client.GVKToGVR(context.Background(), schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"})
@@ -191,7 +189,7 @@ func TestAI_KubeClientGVKToGVR_SucceedsWithoutRetry(t *testing.T) {
 	assert.Equal(t, 0, discoveryClient.invalidateCount)
 }
 
-func TestAI_KubeClientGVKToGVR_TimesOutOnRepeatedNoMatch(t *testing.T) {
+func TestKubeClientGVKToGVR_TimesOutOnRepeatedNoMatch(t *testing.T) {
 	client, discoveryClient, mapper := newTestKubeClient(1000)
 	client.mapperNoMatchRetryTimeout = 5 * time.Millisecond
 	client.mapperNoMatchRetryInterval = time.Millisecond
@@ -204,11 +202,11 @@ func TestAI_KubeClientGVKToGVR_TimesOutOnRepeatedNoMatch(t *testing.T) {
 	require.Error(t, err)
 
 	assert.Contains(t, err.Error(), "retry mapper NoMatch timed out after")
-	assert.True(t, mapper.resetCount > 0)
+	assert.Positive(t, mapper.resetCount)
 	assert.Equal(t, mapper.resetCount, discoveryClient.invalidateCount)
 }
 
-func TestAI_KubeClientNamespaced_RetriesNoMatchAfterRefresh(t *testing.T) {
+func TestKubeClientNamespaced_RetriesNoMatchAfterRefresh(t *testing.T) {
 	client, discoveryClient, mapper := newTestKubeClient(1)
 
 	var namespaced bool
@@ -228,7 +226,7 @@ func TestAI_KubeClientNamespaced_RetriesNoMatchAfterRefresh(t *testing.T) {
 	assert.Equal(t, 1, discoveryClient.invalidateCount)
 }
 
-func TestAI_KubeClientRefreshDiscovery_InvalidatesDiscoveryAndResetsMapper(t *testing.T) {
+func TestKubeClientRefreshDiscovery_InvalidatesDiscoveryAndResetsMapper(t *testing.T) {
 	client, discoveryClient, mapper := newTestKubeClient(0)
 
 	require.NoError(t, client.ResetDiscoveryCache(context.Background()))
@@ -237,7 +235,7 @@ func TestAI_KubeClientRefreshDiscovery_InvalidatesDiscoveryAndResetsMapper(t *te
 	assert.Equal(t, 1, mapper.resetCount)
 }
 
-func TestAI_KubeClientWaitForCRDDiscoverability_ResolvesServedGVKs(t *testing.T) {
+func TestKubeClientWaitForCRDDiscoverability_ResolvesServedGVKs(t *testing.T) {
 	client, discoveryClient, mapper := newTestKubeClient(2)
 	crd := newTestCRD(map[string]any{
 		"group": "example.com",
@@ -260,7 +258,7 @@ func TestAI_KubeClientWaitForCRDDiscoverability_ResolvesServedGVKs(t *testing.T)
 	assert.Equal(t, 2, mapper.mappingCalls)
 }
 
-func TestAI_ServedCRDGVKs_SupportsV1Beta1VersionFieldWithOmittedScope(t *testing.T) {
+func TestServedCRDGVKs_SupportsV1Beta1VersionFieldWithOmittedScope(t *testing.T) {
 	crd := newTestCRD(map[string]any{
 		"group": "example.com",
 		"names": map[string]any{

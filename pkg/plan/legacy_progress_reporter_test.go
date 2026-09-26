@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package plan
 
 import (
@@ -21,7 +19,7 @@ import (
 	"github.com/werf/nelm/pkg/legacy/progrep"
 )
 
-func TestAI_BuildResolvedNamespaces(t *testing.T) {
+func TestBuildResolvedNamespaces(t *testing.T) {
 	mapper := newFakeRESTMapper()
 	releaseNS := "release-ns"
 
@@ -54,7 +52,7 @@ func TestAI_BuildResolvedNamespaces(t *testing.T) {
 	assert.Equal(t, releaseNS, resolved[opTrack.ID()])
 }
 
-func TestAI_ExtractObjectRef(t *testing.T) {
+func TestExtractObjectRef(t *testing.T) {
 	resolvedNS := map[string]string{}
 
 	tests := []struct {
@@ -147,31 +145,31 @@ func TestAI_ExtractObjectRef(t *testing.T) {
 	}
 }
 
-func TestAI_ExtractObjectRef_PanicsOnUnexpectedConfig(t *testing.T) {
+func TestExtractObjectRef_PanicsOnUnexpectedConfig(t *testing.T) {
 	assert.Panics(t, func() {
 		extractObjectRef(stageMetaOp("stage/install/start"), map[string]string{})
 	})
 }
 
-func TestAI_MapOperationCategory_PanicsOnUnknown(t *testing.T) {
+func TestMapOperationCategory_PanicsOnUnknown(t *testing.T) {
 	assert.Panics(t, func() {
 		mapOperationCategory("unknown-category")
 	})
 }
 
-func TestAI_MapOperationType_PanicsOnNoopWithoutStageSuffix(t *testing.T) {
+func TestMapOperationType_PanicsOnNoopWithoutStageSuffix(t *testing.T) {
 	assert.Panics(t, func() {
 		mapOperationType(stageMetaOp("something-else"))
 	})
 }
 
-func TestAI_MapOperationType_PanicsOnUnknown(t *testing.T) {
+func TestMapOperationType_PanicsOnUnknown(t *testing.T) {
 	assert.Panics(t, func() {
 		mapOperationType(&Operation{Type: "unknown-type"})
 	})
 }
 
-func TestAI_NewLegacyProgressReporter_AcceptsBufferedChannel(t *testing.T) {
+func TestNewLegacyProgressReporter_AcceptsBufferedChannel(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 1)
 
 	assert.NotPanics(t, func() {
@@ -180,7 +178,7 @@ func TestAI_NewLegacyProgressReporter_AcceptsBufferedChannel(t *testing.T) {
 	})
 }
 
-func TestAI_NewLegacyProgressReporter_PanicsOnUnbufferedChannel(t *testing.T) {
+func TestNewLegacyProgressReporter_PanicsOnUnbufferedChannel(t *testing.T) {
 	ch := make(chan progrep.ProgressReport)
 
 	assert.Panics(t, func() {
@@ -188,7 +186,7 @@ func TestAI_NewLegacyProgressReporter_PanicsOnUnbufferedChannel(t *testing.T) {
 	})
 }
 
-func TestAI_ProgressReport_JSONShape(t *testing.T) {
+func TestProgressReport_JSONShape(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -233,7 +231,7 @@ func TestAI_ProgressReport_JSONShape(t *testing.T) {
 	assert.Equal(t, "default", cmJSON["namespace"])
 }
 
-func TestAI_ReportOperationStatus_SetsStatusAndReports(t *testing.T) {
+func TestReportOperationStatus_SetsStatusAndReports(t *testing.T) {
 	tests := []struct {
 		planStatus   OperationStatus
 		reportStatus progrep.OperationStatus
@@ -264,14 +262,14 @@ func TestAI_ReportOperationStatus_SetsStatusAndReports(t *testing.T) {
 	}
 }
 
-func TestAI_ReportOperationStatus_SetsStatusWithoutReporter(t *testing.T) {
+func TestReportOperationStatus_SetsStatusWithoutReporter(t *testing.T) {
 	op := createConfigMapOp("cm1")
 
 	reportOperationStatus(op, OperationStatusCompleted, nil)
 	assert.Equal(t, OperationStatusCompleted, op.Status)
 }
 
-func TestAI_ReportStatus_ConcurrentCallsAreSafe(t *testing.T) {
+func TestReportStatus_ConcurrentCallsAreSafe(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 1)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -305,7 +303,7 @@ func TestAI_ReportStatus_ConcurrentCallsAreSafe(t *testing.T) {
 	}
 }
 
-func TestAI_ReportStatus_DoesNotPanicOnClosedChannel(t *testing.T) {
+func TestReportStatus_DoesNotPanicOnClosedChannel(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 1)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -320,7 +318,7 @@ func TestAI_ReportStatus_DoesNotPanicOnClosedChannel(t *testing.T) {
 	})
 }
 
-func TestAI_ReportStatus_KeepsOperationOrder(t *testing.T) {
+func TestReportStatus_KeepsOperationOrder(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -338,7 +336,7 @@ func TestAI_ReportStatus_KeepsOperationOrder(t *testing.T) {
 	assert.Equal(t, before, operationIDs(lastReportOperations(t, ch)))
 }
 
-func TestAI_ReportStatus_PreviousPlanOperationsNotAddressable(t *testing.T) {
+func TestReportStatus_PreviousPlanOperationsNotAddressable(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -360,7 +358,7 @@ func TestAI_ReportStatus_PreviousPlanOperationsNotAddressable(t *testing.T) {
 	assert.Equal(t, progrep.OperationStatusCompleted, ops[1].Status)
 }
 
-func TestAI_ReportStatus_SendsSnapshot(t *testing.T) {
+func TestReportStatus_SendsSnapshot(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -383,7 +381,7 @@ func TestAI_ReportStatus_SendsSnapshot(t *testing.T) {
 	assert.Equal(t, progrep.OperationStatusPending, ops[svc.ID()].Status)
 }
 
-func TestAI_ReportStatus_SentReportsAreImmutable(t *testing.T) {
+func TestReportStatus_SentReportsAreImmutable(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -399,7 +397,7 @@ func TestAI_ReportStatus_SentReportsAreImmutable(t *testing.T) {
 	assert.Equal(t, progrep.OperationStatusCompleted, lastReportOperations(t, ch)[0].Status)
 }
 
-func TestAI_ReportStatus_SkipsSnapshotWhileChannelIsFull(t *testing.T) {
+func TestReportStatus_SkipsSnapshotWhileChannelIsFull(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 1)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -419,7 +417,7 @@ func TestAI_ReportStatus_SkipsSnapshotWhileChannelIsFull(t *testing.T) {
 	assert.Equal(t, progrep.OperationStatusCompleted, final.Operations[0].Status, "the status change is kept and reaches the final report")
 }
 
-func TestAI_ReportStatus_UnknownOpIDIsIgnored(t *testing.T) {
+func TestReportStatus_UnknownOpIDIsIgnored(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -433,7 +431,7 @@ func TestAI_ReportStatus_UnknownOpIDIsIgnored(t *testing.T) {
 	assert.Empty(t, drainChannel(ch), "expected no report for unknown op ID")
 }
 
-func TestAI_ResolveNamespace(t *testing.T) {
+func TestResolveNamespace(t *testing.T) {
 	mapper := newFakeRESTMapper()
 	releaseNS := "release-ns"
 
@@ -489,7 +487,7 @@ func TestAI_ResolveNamespace(t *testing.T) {
 	}
 }
 
-func TestAI_ResolveNamespace_UnknownGVKFallbackIsFast(t *testing.T) {
+func TestResolveNamespace_UnknownGVKFallbackIsFast(t *testing.T) {
 	mapper := newFakeRESTMapper()
 	startedAt := time.Now()
 
@@ -499,7 +497,7 @@ func TestAI_ResolveNamespace_UnknownGVKFallbackIsFast(t *testing.T) {
 	assert.Less(t, time.Since(startedAt), 100*time.Millisecond)
 }
 
-func TestAI_SendNonBlocking_DoesNotPanicOnClosedChannel(t *testing.T) {
+func TestSendNonBlocking_DoesNotPanicOnClosedChannel(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 1)
 	close(ch)
 
@@ -508,7 +506,7 @@ func TestAI_SendNonBlocking_DoesNotPanicOnClosedChannel(t *testing.T) {
 	})
 }
 
-func TestAI_SendNonBlocking_DropsWhenFull(t *testing.T) {
+func TestSendNonBlocking_DropsWhenFull(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 1)
 
 	ch <- progrep.ProgressReport{}
@@ -521,7 +519,7 @@ func TestAI_SendNonBlocking_DropsWhenFull(t *testing.T) {
 	assert.Empty(t, msg.Operations, "expected the original empty report, not the dropped one")
 }
 
-func TestAI_StartPlan_CancelsNothingAfterCompletedPlan(t *testing.T) {
+func TestStartPlan_CancelsNothingAfterCompletedPlan(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -558,7 +556,7 @@ func TestAI_StartPlan_CancelsNothingAfterCompletedPlan(t *testing.T) {
 	assert.Equal(t, progrep.OperationStatusPending, byID["2/"+next.ID()].Status)
 }
 
-func TestAI_StartPlan_CancelsPendingOperationsOfPreviousPlan(t *testing.T) {
+func TestStartPlan_CancelsPendingOperationsOfPreviousPlan(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -583,7 +581,7 @@ func TestAI_StartPlan_CancelsPendingOperationsOfPreviousPlan(t *testing.T) {
 	assert.Equal(t, progrep.OperationStatusPending, ops["2/"+next.ID()].Status, "the new plan starts Pending")
 }
 
-func TestAI_StartPlan_DependsOnSortedByID(t *testing.T) {
+func TestStartPlan_DependsOnSortedByID(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -600,7 +598,7 @@ func TestAI_StartPlan_DependsOnSortedByID(t *testing.T) {
 	assert.Empty(t, ops[b.ID()].DependsOn)
 }
 
-func TestAI_StartPlan_DependsOnUsesPrefixedIDsInLaterPlans(t *testing.T) {
+func TestStartPlan_DependsOnUsesPrefixedIDsInLaterPlans(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -615,7 +613,7 @@ func TestAI_StartPlan_DependsOnUsesPrefixedIDsInLaterPlans(t *testing.T) {
 	assert.Equal(t, []string{"2/" + a.ID()}, ops["2/"+b.ID()].DependsOn)
 }
 
-func TestAI_StartPlan_IncludesMetaAndReleaseOperations(t *testing.T) {
+func TestStartPlan_IncludesMetaAndReleaseOperations(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -656,7 +654,7 @@ func TestAI_StartPlan_IncludesMetaAndReleaseOperations(t *testing.T) {
 	}
 }
 
-func TestAI_StartPlan_LaterPlanRootsDependOnPreviousPlanSinks(t *testing.T) {
+func TestStartPlan_LaterPlanRootsDependOnPreviousPlanSinks(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -681,7 +679,7 @@ func TestAI_StartPlan_LaterPlanRootsDependOnPreviousPlanSinks(t *testing.T) {
 	assert.Empty(t, ops[a.ID()].DependsOn, "the first plan has nothing to depend on")
 }
 
-func TestAI_StartPlan_MetaOperationStatusReported(t *testing.T) {
+func TestStartPlan_MetaOperationStatusReported(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -698,7 +696,7 @@ func TestAI_StartPlan_MetaOperationStatusReported(t *testing.T) {
 	assert.Equal(t, progrep.OperationStatusCompleted, ops[0].Status)
 }
 
-func TestAI_StartPlan_OperationFields(t *testing.T) {
+func TestStartPlan_OperationFields(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -723,7 +721,7 @@ func TestAI_StartPlan_OperationFields(t *testing.T) {
 	assert.Empty(t, ops[0].DependsOn)
 }
 
-func TestAI_StartPlan_OperationNamespaceResolution(t *testing.T) {
+func TestStartPlan_OperationNamespaceResolution(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -751,7 +749,7 @@ func TestAI_StartPlan_OperationNamespaceResolution(t *testing.T) {
 	assert.Equal(t, "release-ns", ops[unknownKind.ID()].Namespace, "unknown kinds are assumed namespaced")
 }
 
-func TestAI_StartPlan_OperationTypesAndCategories(t *testing.T) {
+func TestStartPlan_OperationTypesAndCategories(t *testing.T) {
 	rel := &helmrelease.Release{Name: "rel", Namespace: "default", Version: 1, Info: &helmrelease.Info{}}
 
 	tests := []struct {
@@ -886,7 +884,7 @@ func TestAI_StartPlan_OperationTypesAndCategories(t *testing.T) {
 	}
 }
 
-func TestAI_StartPlan_RealPlansFormSingleChainedGraph(t *testing.T) {
+func TestStartPlan_RealPlansFormSingleChainedGraph(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -980,7 +978,7 @@ func TestAI_StartPlan_RealPlansFormSingleChainedGraph(t *testing.T) {
 	assert.Equal(t, progrep.OperationStatusPending, byID[failureDeleteID].Status)
 }
 
-func TestAI_StartPlan_SecondPlanAppendedWithPrefix(t *testing.T) {
+func TestStartPlan_SecondPlanAppendedWithPrefix(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1006,7 +1004,7 @@ func TestAI_StartPlan_SecondPlanAppendedWithPrefix(t *testing.T) {
 	assert.Equal(t, progrep.OperationTypeDelete, ops[1].Type)
 }
 
-func TestAI_StartPlan_SkippedPlanDoesNotBreakChain(t *testing.T) {
+func TestStartPlan_SkippedPlanDoesNotBreakChain(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1024,7 +1022,7 @@ func TestAI_StartPlan_SkippedPlanDoesNotBreakChain(t *testing.T) {
 	assert.Equal(t, []string{op1.ID()}, ops["3/"+op3.ID()].DependsOn, "a plan without reported operations is skipped over by the chain")
 }
 
-func TestAI_StartPlan_ThirdPlanGetsOwnPrefix(t *testing.T) {
+func TestStartPlan_ThirdPlanGetsOwnPrefix(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1038,7 +1036,7 @@ func TestAI_StartPlan_ThirdPlanGetsOwnPrefix(t *testing.T) {
 	assert.Equal(t, []string{op.ID(), "2/" + op.ID(), "3/" + op.ID()}, operationIDs(ops))
 }
 
-func TestAI_StartPlan_TopologicalOrderIsDeterministic(t *testing.T) {
+func TestStartPlan_TopologicalOrderIsDeterministic(t *testing.T) {
 	a := createConfigMapOp("cm-a")
 	b := createConfigMapOp("cm-b")
 	c := createConfigMapOp("cm-c")
@@ -1069,7 +1067,7 @@ func TestAI_StartPlan_TopologicalOrderIsDeterministic(t *testing.T) {
 	}
 }
 
-func TestAI_StartPlan_UntouchedAbsentResourceIncluded(t *testing.T) {
+func TestStartPlan_UntouchedAbsentResourceIncluded(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1092,7 +1090,7 @@ func TestAI_StartPlan_UntouchedAbsentResourceIncluded(t *testing.T) {
 	assert.Equal(t, progrep.OperationStatusCompleted, ops[absentID].Status)
 }
 
-func TestAI_StartPlan_UntouchedDeduplicatedAcrossIterations(t *testing.T) {
+func TestStartPlan_UntouchedDeduplicatedAcrossIterations(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1109,7 +1107,7 @@ func TestAI_StartPlan_UntouchedDeduplicatedAcrossIterations(t *testing.T) {
 	assert.Equal(t, op.ID(), ops[0].ID)
 }
 
-func TestAI_StartPlan_UntouchedDeduplicatedAgainstPlanOp(t *testing.T) {
+func TestStartPlan_UntouchedDeduplicatedAgainstPlanOp(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1129,7 +1127,7 @@ func TestAI_StartPlan_UntouchedDeduplicatedAgainstPlanOp(t *testing.T) {
 	assert.Equal(t, progrep.OperationStatusPending, ops[0].Status)
 }
 
-func TestAI_StartPlan_UntouchedDeduplicatedByObjectRefNotByInfoNamespace(t *testing.T) {
+func TestStartPlan_UntouchedDeduplicatedByObjectRefNotByInfoNamespace(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1145,7 +1143,7 @@ func TestAI_StartPlan_UntouchedDeduplicatedByObjectRefNotByInfoNamespace(t *test
 	assert.Equal(t, "default", ops[0].Namespace)
 }
 
-func TestAI_StartPlan_UntouchedFields(t *testing.T) {
+func TestStartPlan_UntouchedFields(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1173,7 +1171,7 @@ func TestAI_StartPlan_UntouchedFields(t *testing.T) {
 	assert.Empty(t, untouchedOp.DependsOn)
 }
 
-func TestAI_StartPlan_UntouchedFirstSortedByID(t *testing.T) {
+func TestStartPlan_UntouchedFirstSortedByID(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1195,7 +1193,7 @@ func TestAI_StartPlan_UntouchedFirstSortedByID(t *testing.T) {
 	}, operationIDs(ops))
 }
 
-func TestAI_StartPlan_UntouchedIgnoredInLaterPlans(t *testing.T) {
+func TestStartPlan_UntouchedIgnoredInLaterPlans(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1213,7 +1211,7 @@ func TestAI_StartPlan_UntouchedIgnoredInLaterPlans(t *testing.T) {
 	}, operationIDs(ops), "only the first plan contributes untouched resources")
 }
 
-func TestAI_StartPlan_UntouchedInventoryDeduplicated(t *testing.T) {
+func TestStartPlan_UntouchedInventoryDeduplicated(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1229,7 +1227,7 @@ func TestAI_StartPlan_UntouchedInventoryDeduplicated(t *testing.T) {
 	assert.Equal(t, "cm1", ops[0].Name)
 }
 
-func TestAI_StartPlan_UntouchedIterationsGetDistinctIDs(t *testing.T) {
+func TestStartPlan_UntouchedIterationsGetDistinctIDs(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1253,7 +1251,7 @@ func TestAI_StartPlan_UntouchedIterationsGetDistinctIDs(t *testing.T) {
 	assert.Equal(t, 1, ops[1].Iteration)
 }
 
-func TestAI_StartPlan_UntouchedKeptWhenLaterPlanTouchesResource(t *testing.T) {
+func TestStartPlan_UntouchedKeptWhenLaterPlanTouchesResource(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1286,7 +1284,7 @@ func TestAI_StartPlan_UntouchedKeptWhenLaterPlanTouchesResource(t *testing.T) {
 	assert.Equal(t, progrep.OperationTypeDelete, ops[3].Type)
 }
 
-func TestAI_StartPlan_UntouchedNamespaceResolution(t *testing.T) {
+func TestStartPlan_UntouchedNamespaceResolution(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1309,7 +1307,7 @@ func TestAI_StartPlan_UntouchedNamespaceResolution(t *testing.T) {
 	assert.Empty(t, namespaces["my-ns"])
 }
 
-func TestAI_StartPlan_UntouchedNotAddressableByReportStatus(t *testing.T) {
+func TestStartPlan_UntouchedNotAddressableByReportStatus(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1332,7 +1330,7 @@ func TestAI_StartPlan_UntouchedNotAddressableByReportStatus(t *testing.T) {
 	assert.Equal(t, progrep.OperationStatusCompleted, ops["noop/1/0/default::ConfigMap:cm2"].Status)
 }
 
-func TestAI_StartPlan_UntouchedResourcesOnly(t *testing.T) {
+func TestStartPlan_UntouchedResourcesOnly(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1363,7 +1361,7 @@ func TestAI_StartPlan_UntouchedResourcesOnly(t *testing.T) {
 	assert.Empty(t, drainChannel(ch), "omitted plan operations must not be addressable")
 }
 
-func TestAI_Stop_CancelsPendingOperations(t *testing.T) {
+func TestStop_CancelsPendingOperations(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1384,7 +1382,7 @@ func TestAI_Stop_CancelsPendingOperations(t *testing.T) {
 	assert.Equal(t, progrep.OperationStatusCanceled, ops[neverStarted.ID()].Status, "the final report leaves nothing Pending")
 }
 
-func TestAI_Stop_DoesNotPanicOnClosedChannel(t *testing.T) {
+func TestStop_DoesNotPanicOnClosedChannel(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 1)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1397,7 +1395,7 @@ func TestAI_Stop_DoesNotPanicOnClosedChannel(t *testing.T) {
 	})
 }
 
-func TestAI_Stop_LeavesCompletedOperationsAlone(t *testing.T) {
+func TestStop_LeavesCompletedOperationsAlone(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1417,7 +1415,7 @@ func TestAI_Stop_LeavesCompletedOperationsAlone(t *testing.T) {
 	}
 }
 
-func TestAI_Stop_ReportsAllPlans(t *testing.T) {
+func TestStop_ReportsAllPlans(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1439,7 +1437,7 @@ func TestAI_Stop_ReportsAllPlans(t *testing.T) {
 	assert.Equal(t, progrep.OperationStatusCompleted, reports[0].Operations[1].Status)
 }
 
-func TestAI_Stop_SendsFinalReport(t *testing.T) {
+func TestStop_SendsFinalReport(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 64)
 	reporter := NewLegacyProgressReporter(ch)
 
@@ -1459,7 +1457,7 @@ func TestAI_Stop_SendsFinalReport(t *testing.T) {
 	assert.Equal(t, progrep.OperationStatusCompleted, finalOps[0].Status)
 }
 
-func TestAI_Stop_SkipsOnCanceledContext(t *testing.T) {
+func TestStop_SkipsOnCanceledContext(t *testing.T) {
 	ch := make(chan progrep.ProgressReport, 1)
 	ch <- progrep.ProgressReport{}
 

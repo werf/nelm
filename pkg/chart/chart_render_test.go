@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package chart
 
 import (
@@ -141,7 +139,7 @@ func (d *chartCapabilitiesDiscovery) Fresh() bool {
 
 func (d *chartCapabilitiesDiscovery) Invalidate() {}
 
-func TestAI_BuildChartCapabilitiesRefreshesKubeClientDiscovery(t *testing.T) {
+func TestBuildChartCapabilitiesRefreshesKubeClientDiscovery(t *testing.T) {
 	fakeKubeClient := &chartCapabilitiesKubeClient{}
 	fakeDiscovery := newChartCapabilitiesDiscovery(fakeKubeClient)
 	clientFactory := &chartCapabilitiesClientFactory{

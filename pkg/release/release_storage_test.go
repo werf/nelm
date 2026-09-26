@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package release
 
 import (
@@ -23,7 +21,7 @@ const testNamespace = "test-ns"
 
 var secretsGVR = schema.GroupVersionResource{Version: "v1", Resource: "secrets"}
 
-func TestAI_StorageGetRelease_LatestViaMetadata(t *testing.T) {
+func TestStorageGetRelease_LatestViaMetadata(t *testing.T) {
 	const relName = "myrel"
 
 	storage, driver := newSecretStorage(t,
@@ -42,7 +40,7 @@ func TestAI_StorageGetRelease_LatestViaMetadata(t *testing.T) {
 	assert.Equal(t, "helm", rel.Labels["owner"], "fetch via Query keeps unfiltered system labels")
 }
 
-func TestAI_StorageGetRelease_MemoryDriver(t *testing.T) {
+func TestStorageGetRelease_MemoryDriver(t *testing.T) {
 	const relName = "myrel"
 
 	var rels []*helmrelease.Release
@@ -61,7 +59,7 @@ func TestAI_StorageGetRelease_MemoryDriver(t *testing.T) {
 	assert.Equal(t, 5, specific.Version)
 }
 
-func TestAI_StorageGetRelease_MetadataNumericMax(t *testing.T) {
+func TestStorageGetRelease_MetadataNumericMax(t *testing.T) {
 	const relName = "myrel"
 
 	var rels []*helmrelease.Release
@@ -85,7 +83,7 @@ func TestAI_StorageGetRelease_MetadataNumericMax(t *testing.T) {
 	assert.Equal(t, 11, rel.Version, "must pick numeric max (11), not lexical max (9); non-integer and other-release metadata ignored")
 }
 
-func TestAI_StorageGetRelease_NotFound(t *testing.T) {
+func TestStorageGetRelease_NotFound(t *testing.T) {
 	storage, driver := newSecretStorage(t)
 	driver.MetadataClient = newMetadataClient(t)
 	driver.Namespace = testNamespace
@@ -99,7 +97,7 @@ func TestAI_StorageGetRelease_NotFound(t *testing.T) {
 	require.ErrorIs(t, err, helmdriver.ErrReleaseNotFound)
 }
 
-func TestAI_StorageGetRelease_SpecificRevisionPreservesSystemLabels(t *testing.T) {
+func TestStorageGetRelease_SpecificRevisionPreservesSystemLabels(t *testing.T) {
 	const relName = "myrel"
 
 	storage, _ := newSecretStorage(t,
@@ -123,7 +121,7 @@ func TestAI_StorageGetRelease_SpecificRevisionPreservesSystemLabels(t *testing.T
 	assert.Equal(t, "bbb", stripped.Labels["moduleChecksum"])
 }
 
-func TestAI_StorageGetRelease_TypedListFallbackWhenNoMetadataClient(t *testing.T) {
+func TestStorageGetRelease_TypedListFallbackWhenNoMetadataClient(t *testing.T) {
 	const relName = "myrel"
 
 	var rels []*helmrelease.Release
