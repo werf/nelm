@@ -202,9 +202,9 @@ func (mem *Memory) Revisions(_ context.Context, name string) ([]RevisionRecord, 
 			continue
 		}
 
-		record, ok, err := revisionRecordFromLabels(mem.namespace, rec.lbs.toMap())
+		record, ok, err := revisionRecordFromLabels(rec.key, mem.namespace, rec.lbs.toMap())
 		if err != nil {
-			return nil, fmt.Errorf("list revisions: %w", err)
+			return nil, fmt.Errorf("list revisions of release %q: %w", name, err)
 		}
 		if !ok {
 			continue

@@ -181,6 +181,8 @@ func TestAI_SecretsRevisions_UnparseableVersionLabelIsAnError(t *testing.T) {
 	_, err := secrets.Revisions(context.Background(), "myrelease")
 	require.Error(t, err, "a release object whose version cannot be parsed would collide with the next revision number")
 	assert.Contains(t, err.Error(), "unparseable version label")
+	assert.Contains(t, err.Error(), "obj-1", "the error must name the object to remove")
+	assert.Contains(t, err.Error(), `release "myrelease"`, "the wrapper must keep the release name")
 }
 
 func TestAI_StorageAdapterRevisions_ProjectsDriverRecords(t *testing.T) {

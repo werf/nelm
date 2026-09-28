@@ -137,9 +137,9 @@ func (cfgmaps *ConfigMaps) Revisions(ctx context.Context, name string) ([]Revisi
 			}
 
 			for _, item := range list.Items {
-				record, ok, err := revisionRecordFromLabels(cfgmaps.Namespace, item.Labels)
+				record, ok, err := revisionRecordFromLabels(item.Name, cfgmaps.Namespace, item.Labels)
 				if err != nil {
-					return nil, fmt.Errorf("list revisions: %w", err)
+					return nil, fmt.Errorf("list revisions of release %q: %w", name, err)
 				}
 				if !ok {
 					continue
@@ -171,9 +171,9 @@ func (cfgmaps *ConfigMaps) Revisions(ctx context.Context, name string) ([]Revisi
 		}
 
 		for _, item := range list.Items {
-			record, ok, err := revisionRecordFromLabels(cfgmaps.Namespace, item.Labels)
+			record, ok, err := revisionRecordFromLabels(item.Name, cfgmaps.Namespace, item.Labels)
 			if err != nil {
-				return nil, fmt.Errorf("list revisions: %w", err)
+				return nil, fmt.Errorf("list revisions of release %q: %w", name, err)
 			}
 			if !ok {
 				continue
@@ -213,7 +213,10 @@ func (cfgmaps *ConfigMaps) ListLatestReleases(ctx context.Context) ([]*rspb.Rele
 		}
 
 		for _, item := range list.Items {
-			key, version, ok := releaseKeyAndVersionFromLabels(item.Namespace, item.Labels)
+			key, version, ok, err := releaseKeyAndVersionFromLabels(item.Name, item.Namespace, item.Labels)
+			if err != nil {
+				return nil, fmt.Errorf("list latest releases: %w", err)
+			}
 			if !ok {
 				continue
 			}
@@ -244,7 +247,7 @@ func (cfgmaps *ConfigMaps) ListLatestReleases(ctx context.Context) ([]*rspb.Rele
 		if err != nil {
 			cfgmaps.Logger().Debug("list latest releases: failed to decode release", slog.String("name", item.Name), slog.Any("error", err))
 
-			_, version, _ := releaseKeyAndVersionFromLabels(item.Namespace, item.Labels)
+			_, version, _, _ := releaseKeyAndVersionFromLabels(item.Name, item.Namespace, item.Labels)
 			rls, err = cfgmaps.findPreviousValidRelease(ctx, item.Namespace, item.Labels["name"], version)
 			if err != nil {
 				return nil, err
@@ -286,7 +289,10 @@ func (cfgmaps *ConfigMaps) findPreviousValidRelease(ctx context.Context, namespa
 		}
 
 		for _, item := range list.Items {
-			_, version, ok := releaseKeyAndVersionFromLabels(item.Namespace, item.Labels)
+			_, version, ok, err := releaseKeyAndVersionFromLabels(item.Name, item.Namespace, item.Labels)
+			if err != nil {
+				return nil, fmt.Errorf("list latest releases: %w", err)
+			}
 			if !ok || item.Namespace != namespace || version >= beforeVersion {
 				continue
 			}

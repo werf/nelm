@@ -71,13 +71,16 @@ func lastVersionFromMetadata(ctx context.Context, client metadata.Interface, gvr
 
 const listLatestPageSize = 500
 
-func releaseKeyAndVersionFromLabels(namespace string, lbs map[string]string) (string, int, bool) {
-	record, ok, err := revisionRecordFromLabels(namespace, lbs)
-	if !ok || err != nil {
-		return "", 0, false
+func releaseKeyAndVersionFromLabels(key, namespace string, lbs map[string]string) (string, int, bool, error) {
+	record, ok, err := revisionRecordFromLabels(key, namespace, lbs)
+	if err != nil {
+		return "", 0, false, err
+	}
+	if !ok {
+		return "", 0, false, nil
 	}
 
-	return namespace + "/" + record.Name, record.Version, true
+	return namespace + "/" + record.Name, record.Version, true, nil
 }
 
 func releaseVersionFromLabels(lbs map[string]string) int {
@@ -183,9 +186,10 @@ type RevisionRecord struct {
 }
 
 // revisionRecordFromLabels returns ok=false for an object that is not a release at all
-// (no name label). A release object whose version label does not parse is an error:
-// leaving it out would let the next revision number collide with it.
-func revisionRecordFromLabels(namespace string, lbs map[string]string) (RevisionRecord, bool, error) {
+// (no name label). A release object whose version label does not parse is an error naming
+// the object, so it can be removed by hand: leaving it out would let the next revision
+// number collide with it.
+func revisionRecordFromLabels(key, namespace string, lbs map[string]string) (RevisionRecord, bool, error) {
 	name := lbs["name"]
 	if name == "" {
 		return RevisionRecord{}, false, nil
@@ -193,7 +197,7 @@ func revisionRecordFromLabels(namespace string, lbs map[string]string) (Revision
 
 	version, err := strconv.Atoi(lbs["version"])
 	if err != nil {
-		return RevisionRecord{}, false, fmt.Errorf("release %q in namespace %q: unparseable version label %q", name, namespace, lbs["version"])
+		return RevisionRecord{}, false, fmt.Errorf("release object %q (namespace: %q): unparseable version label %q", key, namespace, lbs["version"])
 	}
 
 	return RevisionRecord{
