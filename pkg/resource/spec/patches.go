@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/itchyny/gojq"
+	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/yaml"
 
@@ -21,6 +23,8 @@ const (
 	// patchesFileName is the conventional name of a chart-shipped patches file.
 	patchesFileName = "patches.yaml"
 )
+
+var undefinedVariableRegexp = regexp.MustCompile(`variable not defined: (\$\w+)`)
 
 // PatchType is the transform kind of patch.
 type PatchType string
@@ -304,15 +308,6 @@ func compilePatches(patches []Patch, renderContext *RenderContext) ([]*CompiledP
 		return nil, nil
 	}
 
-	type jqVars struct {
-		names  []string
-		values []interface{}
-	}
-
-	// Rules of one chart share their variables, and most trees have one or two
-	// charts shipping patches, so normalize each scope's values once.
-	varsByScope := map[string]jqVars{}
-
 	compiled := make([]*CompiledPatch, 0, len(patches))
 	for i, patch := range patches {
 		var (
@@ -321,17 +316,10 @@ func compilePatches(patches []Patch, renderContext *RenderContext) ([]*CompiledP
 		)
 
 		if renderContext != nil {
-			vars, cached := varsByScope[patch.chartScope]
-			if !cached {
-				var err error
-				if vars.names, vars.values, err = renderContext.jqVariables(patch.chartScope); err != nil {
-					return nil, fmt.Errorf("compile patch #%d: %w", i+1, err)
-				}
-
-				varsByScope[patch.chartScope] = vars
+			var err error
+			if names, values, err = renderContext.jqVariables(patch.chartScope); err != nil {
+				return nil, fmt.Errorf("compile patch #%d: %w", i+1, err)
 			}
-
-			names, values = vars.names, vars.values
 		}
 
 		c, err := compilePatch(patch, names, values)
@@ -377,7 +365,7 @@ func compilePatch(patch Patch, variableNames []string, variableValues []interfac
 	if err != nil {
 		if len(variableNames) == 0 {
 			if name, found := undefinedRenderContextVariable(err); found {
-				return nil, fmt.Errorf("compile jq program: %s is only available in renderPatches: diff patches also run on rollback and uninstall, where nothing is rendered", name)
+				return nil, fmt.Errorf("compile jq program: %s is only available in renderPatches, because diff patches also run on rollback and uninstall, where nothing is rendered: %w", name, err)
 			}
 		}
 
@@ -415,15 +403,19 @@ func fromJQOutput(value interface{}) (map[string]interface{}, error) {
 }
 
 // undefinedRenderContextVariable reports which render context variable a jq
-// program referenced, when that is why compiling it failed.
+// program referenced, when that is why compiling it failed. The name is matched
+// whole, so an unrelated $ValuesFoo is not mistaken for $Values.
 func undefinedRenderContextVariable(compileErr error) (string, bool) {
-	for _, name := range renderContextVariableNames() {
-		if strings.Contains(compileErr.Error(), "variable not defined: "+name) {
-			return name, true
-		}
+	match := undefinedVariableRegexp.FindStringSubmatch(compileErr.Error())
+	if match == nil {
+		return "", false
 	}
 
-	return "", false
+	if !lo.Contains(renderContextVariableNames(), match[1]) {
+		return "", false
+	}
+
+	return match[1], true
 }
 
 func normalizeNumbers(value interface{}) (interface{}, error) {

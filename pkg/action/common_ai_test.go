@@ -18,6 +18,21 @@ import (
 	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
+func TestAI_RenderContextFor_MarksOnlyTheRootChartAsRoot(t *testing.T) {
+	cache := &v2chart.Chart{Metadata: &v2chart.Metadata{Name: "cache", Version: "4.5.6"}}
+	parent := &v2chart.Chart{Metadata: &v2chart.Metadata{Name: "app", Version: "1.2.3"}}
+	parent.AddDependency(cache)
+
+	accessor, err := helmchart.NewAccessor(parent)
+	require.NoError(t, err)
+
+	renderContext, err := renderContextFor(accessor, map[string]interface{}{"Values": map[string]interface{}{}})
+	require.NoError(t, err)
+
+	require.Equal(t, true, renderContext.Chart.(map[string]interface{})["IsRoot"])
+	require.Equal(t, false, renderContext.Subcharts["app/charts/cache"].Chart.(map[string]interface{})["IsRoot"])
+}
+
 func TestAI_RenderContextFor_NoSubchartsLeavesNoEntries(t *testing.T) {
 	accessor, err := helmchart.NewAccessor(&v2chart.Chart{Metadata: &v2chart.Metadata{Name: "app"}})
 	require.NoError(t, err)
@@ -74,7 +89,7 @@ func TestAI_ResolvePatches_DefaultPatchesDisableKeepsLegacyPatches(t *testing.T)
 
 	legacy := spec.Patches{Render: []spec.Patch{{Patch: `.order += ["legacy"]`}}}
 
-	patches, err := resolvePatches(chart, true, nil, legacy, spec.RenderContext{})
+	patches, err := resolvePatches(chart, true, nil, legacy, aiRenderedValues())
 	require.NoError(t, err)
 
 	require.Equal(t, []interface{}{"legacy"}, aiApplyOrder(t, patches.Render, "app/templates/web.yaml"))
@@ -83,7 +98,7 @@ func TestAI_ResolvePatches_DefaultPatchesDisableKeepsLegacyPatches(t *testing.T)
 func TestAI_ResolvePatches_InvalidLegacyPatchFailsClosed(t *testing.T) {
 	_, err := resolvePatches(nil, true, nil, spec.Patches{
 		Render: []spec.Patch{{Patch: "del(.spec.replicas"}},
-	}, spec.RenderContext{})
+	}, aiRenderedValues())
 	require.ErrorContains(t, err, "compile render patches")
 }
 
@@ -96,7 +111,7 @@ func TestAI_ResolvePatches_LegacyPatchesAppliedLast(t *testing.T) {
 		Render: []spec.Patch{{Patch: `.order += ["legacy"]`}},
 	}
 
-	patches, err := resolvePatches(chart, false, []string{patchesFile}, legacy, spec.RenderContext{})
+	patches, err := resolvePatches(chart, false, []string{patchesFile}, legacy, aiRenderedValues())
 	require.NoError(t, err)
 
 	require.Equal(t, []interface{}{"chart", "file", "legacy"}, aiApplyOrder(t, patches.Diff, "app/templates/web.yaml"))
@@ -111,11 +126,28 @@ func TestAI_ResolvePatches_LegacyPatchesScopeViaMatchCharts(t *testing.T) {
 		}},
 	}
 
-	patches, err := resolvePatches(nil, true, nil, legacy, spec.RenderContext{})
+	patches, err := resolvePatches(nil, true, nil, legacy, aiRenderedValues())
 	require.NoError(t, err)
 
 	require.Equal(t, []interface{}{"legacy"}, aiApplyOrder(t, patches.Render, "app/charts/cache/templates/redis.yaml"))
 	require.Empty(t, aiApplyOrder(t, patches.Render, "app/templates/web.yaml"))
+}
+
+func TestAI_ResolvePatches_WithoutRenderedValuesCompilesOnlyDiffPatches(t *testing.T) {
+	chart := aiChartWithPatches(t, "app", "diffPatches:\n- patch: .order += [\"chart\"]\nrenderPatches:\n- patch: .order += [\"chart\"]\n")
+
+	patches, err := resolvePatches(chart, false, nil, spec.Patches{}, nil)
+	require.NoError(t, err)
+
+	require.NotEmpty(t, patches.Diff)
+	require.Empty(t, patches.Render)
+}
+
+func TestAI_ResolvePatches_WithoutRenderedValuesStillRejectsRenderContextVariables(t *testing.T) {
+	_, err := resolvePatches(nil, true, nil, spec.Patches{
+		Diff: []spec.Patch{{Patch: `.x = $Values.a`}},
+	}, nil)
+	require.ErrorContains(t, err, "only available in renderPatches")
 }
 
 func aiApplyOrder(t *testing.T, patches []*spec.CompiledPatch, filePath string) []interface{} {
@@ -155,6 +187,10 @@ func aiChartWithPatches(t *testing.T, name, patchesYAML string) helmchart.Access
 	require.NoError(t, err)
 
 	return accessor
+}
+
+func aiRenderedValues() map[string]interface{} {
+	return map[string]interface{}{"Values": map[string]interface{}{}}
 }
 
 func aiWritePatchesFile(t *testing.T, content string) string {

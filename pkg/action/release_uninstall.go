@@ -255,7 +255,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			return fmt.Errorf("access chart of previous release: %w", err)
 		}
 
-		patches, err := resolvePatches(uninstallChart, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches, spec.RenderContext{})
+		patches, err := resolvePatches(uninstallChart, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches, nil)
 		if err != nil {
 			return fmt.Errorf("resolve patches: %w", err)
 		}

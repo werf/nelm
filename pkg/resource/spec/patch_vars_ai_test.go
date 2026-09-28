@@ -12,6 +12,12 @@ import (
 	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
+func TestAI_CompilePatches_PassesThroughUnrelatedUndefinedVariable(t *testing.T) {
+	_, err := spec.CompilePatches([]spec.Patch{{Patch: `.x = $ValuesFoo.a`}})
+	require.ErrorContains(t, err, "variable not defined: $ValuesFoo")
+	require.NotContains(t, err.Error(), "only available in renderPatches")
+}
+
 func TestAI_CompilePatches_RejectsRenderContextVariables(t *testing.T) {
 	for _, variable := range []string{"$Values", "$Release", "$Chart", "$Capabilities"} {
 		t.Run(variable, func(t *testing.T) {
@@ -58,6 +64,12 @@ func TestAI_CompileRenderPatches_NilRenderContextValuesAreNull(t *testing.T) {
 	labels, _, err := unstructured.NestedStringMap(out.Object, "metadata", "labels")
 	require.NoError(t, err)
 	require.Equal(t, "fallback", labels["missing"])
+}
+
+func TestAI_CompileRenderPatches_PassesThroughUnknownVariable(t *testing.T) {
+	_, err := spec.CompileRenderPatches([]spec.Patch{{Patch: `.x = $nope.a`}}, varsRenderContext())
+	require.ErrorContains(t, err, "variable not defined: $nope")
+	require.NotContains(t, err.Error(), "only available in renderPatches")
 }
 
 func TestAI_CompileRenderPatches_ScopesSubchartRulesToTheirOwnChart(t *testing.T) {

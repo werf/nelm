@@ -325,7 +325,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		}
 	}
 
-	patches, err := resolvePatches(chartAccessor, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches, spec.RenderContext{})
+	patches, err := resolvePatches(chartAccessor, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches, nil)
 	if err != nil {
 		return fmt.Errorf("resolve patches: %w", err)
 	}

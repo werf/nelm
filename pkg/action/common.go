@@ -104,6 +104,58 @@ type runFailurePlanResult struct {
 	FailedResourceOps    []*plan.Operation
 }
 
+// Chart-shipped rules are scoped to their own chart subtree, rules from patches files and
+// programmatically supplied ones are not.
+// All kinds are compiled right away, so an invalid rule fails before anything is applied.
+// renderedValues is the top-level context the chart was rendered with, which render patches
+// get as jq variables; nil means nothing was rendered, as on rollback and uninstall, and
+// then only diff patches are compiled.
+func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string, legacyPatches spec.Patches, renderedValues map[string]interface{}) (spec.CompiledPatches, error) {
+	var patches spec.Patches
+
+	if !defaultDisable {
+		chartPatches, err := spec.CollectChartPatches(chart)
+		if err != nil {
+			return spec.CompiledPatches{}, fmt.Errorf("collect chart patches: %w", err)
+		}
+
+		patches.Diff = append(patches.Diff, chartPatches.Diff...)
+		patches.Render = append(patches.Render, chartPatches.Render...)
+	}
+
+	filePatches, err := spec.LoadPatchesFiles(patchesFiles)
+	if err != nil {
+		return spec.CompiledPatches{}, fmt.Errorf("load patches files: %w", err)
+	}
+
+	patches.Diff = append(patches.Diff, filePatches.Diff...)
+	patches.Render = append(patches.Render, filePatches.Render...)
+
+	patches.Diff = append(patches.Diff, legacyPatches.Diff...)
+	patches.Render = append(patches.Render, legacyPatches.Render...)
+
+	diffPatches, err := spec.CompilePatches(patches.Diff)
+	if err != nil {
+		return spec.CompiledPatches{}, fmt.Errorf("compile diff patches: %w", err)
+	}
+
+	if renderedValues == nil {
+		return spec.CompiledPatches{Diff: diffPatches}, nil
+	}
+
+	renderContext, err := renderContextFor(chart, renderedValues)
+	if err != nil {
+		return spec.CompiledPatches{}, fmt.Errorf("build render context: %w", err)
+	}
+
+	renderPatches, err := spec.CompileRenderPatches(patches.Render, renderContext)
+	if err != nil {
+		return spec.CompiledPatches{}, fmt.Errorf("compile render patches: %w", err)
+	}
+
+	return spec.CompiledPatches{Diff: diffPatches, Render: renderPatches}, nil
+}
+
 // renderContextFor splits the rendered top-level context, which holds what chart
 // templates saw, into the parts render patches get as jq variables, with a
 // per-subchart entry so a subchart's rules resolve against their own chart.
@@ -113,10 +165,15 @@ func renderContextFor(chart helmchart.Accessor, renderedValues map[string]interf
 		return spec.RenderContext{}, err
 	}
 
+	rootChart := renderedValues["Chart"]
+	if chart != nil {
+		rootChart = chartMetadata(chart)
+	}
+
 	return spec.RenderContext{
 		Values:       renderedValues["Values"],
 		Release:      renderedValues["Release"],
-		Chart:        renderedValues["Chart"],
+		Chart:        rootChart,
 		Capabilities: renderedValues["Capabilities"],
 		Subcharts:    subcharts,
 	}, nil
@@ -158,7 +215,7 @@ func subchartContexts(chart helmchart.Accessor, values interface{}) (map[string]
 		depValues := subchartValues(values, depAccessor.Name())
 
 		contexts[depAccessor.ChartFullPath()] = spec.SubchartContext{
-			Chart:  depAccessor.MetadataAsMap(),
+			Chart:  chartMetadata(depAccessor),
 			Values: depValues,
 		}
 
@@ -171,6 +228,19 @@ func subchartContexts(chart helmchart.Accessor, values interface{}) (map[string]
 	}
 
 	return contexts, nil
+}
+
+// chartMetadata mirrors what the render engine puts in .Chart: the chart's own
+// metadata plus IsRoot, which the metadata itself does not carry.
+func chartMetadata(chart helmchart.Accessor) map[string]interface{} {
+	metadata := chart.MetadataAsMap()
+	if metadata == nil {
+		metadata = map[string]interface{}{}
+	}
+
+	metadata["IsRoot"] = chart.IsRoot()
+
+	return metadata
 }
 
 func newInformerFactory(ctx context.Context, watchErrCh chan error, dynamicClient dynamic.Interface) *kdutil.Concurrent[*informer.InformerFactory] {
@@ -242,46 +312,6 @@ func printReport(ctx context.Context, report *ReleaseReportV3) {
 			}
 		})
 	}
-}
-
-// Chart-shipped rules are scoped to their own chart subtree, rules from patches files and
-// programmatically supplied ones are not.
-// All kinds are compiled right away, so an invalid rule fails before anything is applied.
-func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string, legacyPatches spec.Patches, renderContext spec.RenderContext) (spec.CompiledPatches, error) {
-	var patches spec.Patches
-
-	if !defaultDisable {
-		chartPatches, err := spec.CollectChartPatches(chart)
-		if err != nil {
-			return spec.CompiledPatches{}, fmt.Errorf("collect chart patches: %w", err)
-		}
-
-		patches.Diff = append(patches.Diff, chartPatches.Diff...)
-		patches.Render = append(patches.Render, chartPatches.Render...)
-	}
-
-	filePatches, err := spec.LoadPatchesFiles(patchesFiles)
-	if err != nil {
-		return spec.CompiledPatches{}, fmt.Errorf("load patches files: %w", err)
-	}
-
-	patches.Diff = append(patches.Diff, filePatches.Diff...)
-	patches.Render = append(patches.Render, filePatches.Render...)
-
-	patches.Diff = append(patches.Diff, legacyPatches.Diff...)
-	patches.Render = append(patches.Render, legacyPatches.Render...)
-
-	diffPatches, err := spec.CompilePatches(patches.Diff)
-	if err != nil {
-		return spec.CompiledPatches{}, fmt.Errorf("compile diff patches: %w", err)
-	}
-
-	renderPatches, err := spec.CompileRenderPatches(patches.Render, renderContext)
-	if err != nil {
-		return spec.CompiledPatches{}, fmt.Errorf("compile render patches: %w", err)
-	}
-
-	return spec.CompiledPatches{Diff: diffPatches, Render: renderPatches}, nil
 }
 
 func runFailurePlan(ctx context.Context, releaseNamespace string, failedPlan *plan.Plan, installableInfos []*plan.InstallableResourceInfo, releaseInfos []*plan.ReleaseInfo, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history *release.History, clientFactory *kube.ClientFactory, opts runFailureInstallPlanOptions) (result *runFailurePlanResult, nonCritErrs, critErrs *util.MultiError) {

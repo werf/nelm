@@ -423,12 +423,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		log.Default.Debug(ctx, "Resolve patches")
 
-		renderContext, err := renderContextFor(renderChartResult.Chart, renderChartResult.Values)
-		if err != nil {
-			return nil, fmt.Errorf("build render context: %w", err)
-		}
-
-		patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches, renderContext)
+		patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches, renderChartResult.Values)
 		if err != nil {
 			return nil, fmt.Errorf("resolve patches: %w", err)
 		}
@@ -1012,7 +1007,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert last deployed or last release to resource specs: %w", err))
 	}
 
-	patches, err := resolvePatches(chartAccessor, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches, spec.RenderContext{})
+	patches, err := resolvePatches(chartAccessor, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches, nil)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("resolve patches: %w", err))
 	}
