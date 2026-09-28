@@ -202,36 +202,6 @@ func loadDeployedReleasesSkippingPruned(ctx context.Context, history *release.Hi
 	return loadDeployedReleasesWith(ctx, history, nil, true)
 }
 
-func loadDeployedReleasesWith(ctx context.Context, history *release.History, preloaded []helmrel.Accessor, skipPruned bool) ([]helmrel.Accessor, error) {
-	deployedRevisions := lo.Filter(history.Revisions(), func(r release.Revision, _ int) bool {
-		return r.Status == helmreleasestatus.StatusDeployed.String()
-	})
-
-	rels := make([]helmrel.Accessor, 0, len(deployedRevisions))
-	for _, revision := range deployedRevisions {
-		if rel, found := lo.Find(preloaded, func(r helmrel.Accessor) bool {
-			return r != nil && r.Version() == revision.Version
-		}); found {
-			rels = append(rels, rel)
-
-			continue
-		}
-
-		rel, err := history.Release(ctx, revision.Version)
-		if err != nil {
-			if skipPruned && stderrors.Is(err, driver.ErrReleaseNotFound) {
-				continue
-			}
-
-			return nil, fmt.Errorf("get release revision %d: %w", revision.Version, err)
-		}
-
-		rels = append(rels, rel)
-	}
-
-	return rels, nil
-}
-
 // resolveDiffPatches compiles only the diff rules, for rollback, uninstall and install
 // from a plan artifact: nothing is rendered there, so render rules have nothing to apply
 // to and their jq variables would have no values.
@@ -321,6 +291,36 @@ func collectPatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles 
 	patches.Render = append(patches.Render, legacyPatches.Render...)
 
 	return patches, nil
+}
+
+func loadDeployedReleasesWith(ctx context.Context, history *release.History, preloaded []helmrel.Accessor, skipPruned bool) ([]helmrel.Accessor, error) {
+	deployedRevisions := lo.Filter(history.Revisions(), func(r release.Revision, _ int) bool {
+		return r.Status == helmreleasestatus.StatusDeployed.String()
+	})
+
+	rels := make([]helmrel.Accessor, 0, len(deployedRevisions))
+	for _, revision := range deployedRevisions {
+		if rel, found := lo.Find(preloaded, func(r helmrel.Accessor) bool {
+			return r != nil && r.Version() == revision.Version
+		}); found {
+			rels = append(rels, rel)
+
+			continue
+		}
+
+		rel, err := history.Release(ctx, revision.Version)
+		if err != nil {
+			if skipPruned && stderrors.Is(err, driver.ErrReleaseNotFound) {
+				continue
+			}
+
+			return nil, fmt.Errorf("get release revision %d: %w", revision.Version, err)
+		}
+
+		rels = append(rels, rel)
+	}
+
+	return rels, nil
 }
 
 func newInformerFactory(ctx context.Context, watchErrCh chan error, dynamicClient dynamic.Interface) *kdutil.Concurrent[*informer.InformerFactory] {
