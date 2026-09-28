@@ -127,13 +127,20 @@ func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr err
 // it also returns superseded revisions, which would turn into extra supersede operations.
 // Bodies the caller already holds are passed in preloaded and reused instead of being fetched
 // again; this never changes which revisions are returned, only where their bodies come from.
-// A revision whose body cannot be read — pruned by the history limit while the plan ran, or
-// stored undecodable — is skipped: there is nothing to supersede it with, and the old bulk
-// query dropped such revisions the same way.
+// A revision whose body cannot be read is an error: it would otherwise stay deployed forever.
 func loadDeployedReleases(ctx context.Context, history *release.History, preloaded []helmrel.Accessor) ([]helmrel.Accessor, error) {
-	revisions := history.Revisions()
+	return loadDeployedReleasesWith(ctx, history, preloaded, false)
+}
 
-	deployedRevisions := lo.Filter(revisions, func(r release.Revision, _ int) bool {
+// loadDeployedReleasesSkippingPruned is loadDeployedReleases for the one reader that runs after
+// plan execution: a revision the history limit pruned meanwhile no longer exists and has nothing
+// left to supersede, so ErrReleaseNotFound is skipped. An undecodable body is still an error.
+func loadDeployedReleasesSkippingPruned(ctx context.Context, history *release.History) ([]helmrel.Accessor, error) {
+	return loadDeployedReleasesWith(ctx, history, nil, true)
+}
+
+func loadDeployedReleasesWith(ctx context.Context, history *release.History, preloaded []helmrel.Accessor, skipPruned bool) ([]helmrel.Accessor, error) {
+	deployedRevisions := lo.Filter(history.Revisions(), func(r release.Revision, _ int) bool {
 		return r.Status == helmreleasestatus.StatusDeployed.String()
 	})
 
@@ -149,9 +156,7 @@ func loadDeployedReleases(ctx context.Context, history *release.History, preload
 
 		rel, err := history.Release(ctx, revision.Version)
 		if err != nil {
-			if stderrors.Is(err, driver.ErrReleaseNotFound) || stderrors.Is(err, driver.ErrReleaseUndecodable) {
-				log.Default.Debug(ctx, "Skip unreadable deployed revision %d: %s", revision.Version, err)
-
+			if skipPruned && stderrors.Is(err, driver.ErrReleaseNotFound) {
 				continue
 			}
 

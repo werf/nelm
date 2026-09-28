@@ -9,14 +9,12 @@ import (
 	"k8s.io/client-go/metadata"
 
 	"github.com/werf/nelm/v2/pkg/common"
-	helmlogging "github.com/werf/nelm/v2/pkg/helm/intern/logging"
 	v2release "github.com/werf/nelm/v2/pkg/helm/intern/release/v2"
 	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 	helmstorage "github.com/werf/nelm/v2/pkg/helm/pkg/storage"
 	helmdriver "github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 	"github.com/werf/nelm/v2/pkg/kube"
-	"github.com/werf/nelm/v2/pkg/log"
 )
 
 const (
@@ -169,10 +167,6 @@ type ReleaseStorageOptions struct {
 }
 
 func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, clientFactory kube.ClientFactorier, opts ReleaseStorageOptions) (ReleaseStorager, error) {
-	driverLogger := helmlogging.NewLogger(func() bool {
-		return log.Default.AcceptLevel(ctx, log.DebugLevel)
-	})
-
 	var storage *helmstorage.Storage
 
 	switch storageDriver {
@@ -188,7 +182,6 @@ func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, cli
 
 		clientset := clientFactory.Static().(*kubernetes.Clientset)
 		d := helmdriver.NewSecrets(clientset.CoreV1().Secrets(namespace))
-		d.SetLogger(driverLogger.Handler())
 		d.MetadataClient = metadataClient
 		d.Namespace = namespace
 		storage = helmstorage.Init(d)
@@ -204,13 +197,11 @@ func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, cli
 
 		clientset := clientFactory.Static().(*kubernetes.Clientset)
 		d := helmdriver.NewConfigMaps(clientset.CoreV1().ConfigMaps(namespace))
-		d.SetLogger(driverLogger.Handler())
 		d.MetadataClient = metadataClient
 		d.Namespace = namespace
 		storage = helmstorage.Init(d)
 	case common.ReleaseStorageDriverMemory:
 		d := helmdriver.NewMemory()
-		d.SetLogger(driverLogger.Handler())
 		d.SetNamespace(namespace)
 		storage = helmstorage.Init(d)
 	case common.ReleaseStorageDriverSQL:
@@ -218,8 +209,6 @@ func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, cli
 		if err != nil {
 			return nil, fmt.Errorf("construct sql driver: %w", err)
 		}
-
-		d.SetLogger(driverLogger.Handler())
 
 		storage = helmstorage.Init(d)
 	default:

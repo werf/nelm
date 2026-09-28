@@ -123,14 +123,16 @@ func TestAI_LoadDeployedReleases_SkipsPrunedRevision(t *testing.T) {
 	history, err := release.BuildHistory(ctx, "myrelease", storage)
 	require.NoError(t, err)
 
-	rels, err := loadDeployedReleases(ctx, history, nil)
+	rels, err := loadDeployedReleasesSkippingPruned(ctx, history)
 	require.NoError(t, err)
 
 	require.Len(t, rels, 1)
 	assert.Equal(t, 2, rels[0].Version())
+	_, err = loadDeployedReleases(ctx, history, nil)
+	require.ErrorIs(t, err, driver.ErrReleaseNotFound, "the strict loader does not tolerate a vanished revision")
 }
 
-func TestAI_LoadDeployedReleases_SkipsUndecodableRevision(t *testing.T) {
+func TestAI_LoadDeployedReleases_UndecodableRevisionIsAnError(t *testing.T) {
 	ctx := context.Background()
 
 	storage := &prunedRevisionStorager{
@@ -144,10 +146,11 @@ func TestAI_LoadDeployedReleases_SkipsUndecodableRevision(t *testing.T) {
 	history, err := release.BuildHistory(ctx, "myrelease", storage)
 	require.NoError(t, err)
 
-	rels, err := loadDeployedReleases(ctx, history, nil)
-	require.NoError(t, err, "an undecodable supersede candidate is skipped, not fatal")
-	require.Len(t, rels, 1)
-	assert.Equal(t, 2, rels[0].Version())
+	_, err = loadDeployedReleases(ctx, history, nil)
+	require.ErrorIs(t, err, driver.ErrReleaseUndecodable, "a deployed revision that cannot be read must fail, not be silently left deployed")
+
+	_, err = loadDeployedReleasesSkippingPruned(ctx, history)
+	require.ErrorIs(t, err, driver.ErrReleaseUndecodable, "the pruned-tolerant loader skips only revisions that no longer exist")
 }
 
 func newTestDeployedRevision(name string, version int, status helmreleasestatus.Status) release.Revision {

@@ -32,7 +32,6 @@ func TestAI_ConfigMapsRevisions_ReadsLabelsWithoutBodies(t *testing.T) {
 	cfgmaps.MetadataClient = newMetadataClientForGVR(t, configMapsGVR, "ConfigMap",
 		revisionLabels("myrelease", 2, helmreleasecommon.StatusDeployed.String()),
 		revisionLabels("myrelease", 1, helmreleasecommon.StatusSuperseded.String()),
-		map[string]string{"name": "myrelease", "owner": "helm", "version": "not-a-number"},
 	)
 
 	records, err := cfgmaps.Revisions(context.Background(), "myrelease")
@@ -135,12 +134,11 @@ func TestAI_SecretsRevisions_ReadsLabelsWithoutBodies(t *testing.T) {
 	assert.Equal(t, "myrelease", records[1].Name)
 }
 
-func TestAI_SecretsRevisions_SkipsUnparseableLabels(t *testing.T) {
+func TestAI_SecretsRevisions_IgnoresObjectsWithoutNameLabel(t *testing.T) {
 	secrets := helmdriver.NewSecrets(nil)
 	secrets.Namespace = testNamespace
 	secrets.MetadataClient = newMetadataClient(t,
 		revisionLabels("myrelease", 1, helmreleasecommon.StatusDeployed.String()),
-		map[string]string{"name": "myrelease", "owner": "helm", "version": "not-a-number"},
 		map[string]string{"owner": "helm", "version": "2"},
 	)
 
@@ -148,6 +146,19 @@ func TestAI_SecretsRevisions_SkipsUnparseableLabels(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, records, 1)
 	assert.Equal(t, 1, records[0].Version)
+}
+
+func TestAI_SecretsRevisions_UnparseableVersionLabelIsAnError(t *testing.T) {
+	secrets := helmdriver.NewSecrets(nil)
+	secrets.Namespace = testNamespace
+	secrets.MetadataClient = newMetadataClient(t,
+		revisionLabels("myrelease", 1, helmreleasecommon.StatusDeployed.String()),
+		map[string]string{"name": "myrelease", "owner": "helm", "version": "not-a-number"},
+	)
+
+	_, err := secrets.Revisions(context.Background(), "myrelease")
+	require.Error(t, err, "a release object whose version cannot be parsed would collide with the next revision number")
+	assert.Contains(t, err.Error(), "unparseable version label")
 }
 
 func TestAI_SecretsRevisions_TypedListFallbackWhenNoMetadataClient(t *testing.T) {

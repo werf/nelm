@@ -24,7 +24,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"slices"
 	"strconv"
 
@@ -72,9 +71,9 @@ func lastVersionFromMetadata(ctx context.Context, client metadata.Interface, gvr
 
 const listLatestPageSize = 500
 
-func releaseKeyAndVersionFromLabels(logger *slog.Logger, namespace string, lbs map[string]string) (string, int, bool) {
-	record, ok := revisionRecordFromLabels(logger, namespace, lbs)
-	if !ok {
+func releaseKeyAndVersionFromLabels(namespace string, lbs map[string]string) (string, int, bool) {
+	record, ok, err := revisionRecordFromLabels(namespace, lbs)
+	if !ok || err != nil {
 		return "", 0, false
 	}
 
@@ -183,20 +182,18 @@ type RevisionRecord struct {
 	Status    string
 }
 
-// revisionRecordFromLabels rejects objects whose labels do not identify a revision. Such an
-// object is invisible to history, so the next revision number may collide with it; the drop
-// is logged at debug through the driver's logger so it can be traced back.
-func revisionRecordFromLabels(logger *slog.Logger, namespace string, lbs map[string]string) (RevisionRecord, bool) {
+// revisionRecordFromLabels returns ok=false for an object that is not a release at all
+// (no name label). A release object whose version label does not parse is an error:
+// leaving it out would let the next revision number collide with it.
+func revisionRecordFromLabels(namespace string, lbs map[string]string) (RevisionRecord, bool, error) {
 	name := lbs["name"]
 	if name == "" {
-		logger.Debug("skip release object without a name label", slog.String("namespace", namespace), slog.String("version", lbs["version"]))
-		return RevisionRecord{}, false
+		return RevisionRecord{}, false, nil
 	}
 
 	version, err := strconv.Atoi(lbs["version"])
 	if err != nil {
-		logger.Debug("skip release object with an unparseable version label", slog.String("namespace", namespace), slog.String("name", name), slog.String("version", lbs["version"]))
-		return RevisionRecord{}, false
+		return RevisionRecord{}, false, fmt.Errorf("release %q in namespace %q: unparseable version label %q", name, namespace, lbs["version"])
 	}
 
 	return RevisionRecord{
@@ -204,5 +201,5 @@ func revisionRecordFromLabels(logger *slog.Logger, namespace string, lbs map[str
 		Namespace: namespace,
 		Version:   version,
 		Status:    lbs["status"],
-	}, true
+	}, true, nil
 }

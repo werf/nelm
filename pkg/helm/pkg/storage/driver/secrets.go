@@ -136,7 +136,10 @@ func (secrets *Secrets) Revisions(ctx context.Context, name string) ([]RevisionR
 			}
 
 			for _, item := range list.Items {
-				record, ok := revisionRecordFromLabels(secrets.Logger(), secrets.Namespace, item.Labels)
+				record, ok, err := revisionRecordFromLabels(secrets.Namespace, item.Labels)
+				if err != nil {
+					return nil, fmt.Errorf("list revisions: %w", err)
+				}
 				if !ok {
 					continue
 				}
@@ -167,7 +170,10 @@ func (secrets *Secrets) Revisions(ctx context.Context, name string) ([]RevisionR
 		}
 
 		for _, item := range list.Items {
-			record, ok := revisionRecordFromLabels(secrets.Logger(), secrets.Namespace, item.Labels)
+			record, ok, err := revisionRecordFromLabels(secrets.Namespace, item.Labels)
+			if err != nil {
+				return nil, fmt.Errorf("list revisions: %w", err)
+			}
 			if !ok {
 				continue
 			}
@@ -206,7 +212,7 @@ func (secrets *Secrets) ListLatestReleases(ctx context.Context) ([]*rspb.Release
 		}
 
 		for _, item := range list.Items {
-			key, version, ok := releaseKeyAndVersionFromLabels(secrets.Logger(), item.Namespace, item.Labels)
+			key, version, ok := releaseKeyAndVersionFromLabels(item.Namespace, item.Labels)
 			if !ok {
 				continue
 			}
@@ -237,7 +243,7 @@ func (secrets *Secrets) ListLatestReleases(ctx context.Context) ([]*rspb.Release
 		if err != nil {
 			secrets.Logger().Debug("list latest releases: failed to decode release", slog.String("name", item.Name), slog.Any("error", err))
 
-			_, version, _ := releaseKeyAndVersionFromLabels(secrets.Logger(), item.Namespace, item.Labels)
+			_, version, _ := releaseKeyAndVersionFromLabels(item.Namespace, item.Labels)
 			rls, err = secrets.findPreviousValidRelease(ctx, item.Namespace, item.Labels["name"], version)
 			if err != nil {
 				return nil, err
@@ -279,7 +285,7 @@ func (secrets *Secrets) findPreviousValidRelease(ctx context.Context, namespace,
 		}
 
 		for _, item := range list.Items {
-			_, version, ok := releaseKeyAndVersionFromLabels(secrets.Logger(), item.Namespace, item.Labels)
+			_, version, ok := releaseKeyAndVersionFromLabels(item.Namespace, item.Labels)
 			if !ok || item.Namespace != namespace || version >= beforeVersion {
 				continue
 			}
