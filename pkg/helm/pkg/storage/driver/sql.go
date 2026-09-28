@@ -562,6 +562,38 @@ func (s *SQL) Get(key string) (release.Releaser, error) {
 	return release, nil
 }
 
+// GetRevision returns the release stored under key with its custom labels attached. A stored
+// body that cannot be decoded is reported as ErrReleaseUndecodable rather than dropped, so a
+// single-revision lookup can tell a corrupt revision from an absent one.
+func (s *SQL) GetRevision(key string) (release.Releaser, error) {
+	var record SQLReleaseWrapper
+
+	query, args, err := s.statementBuilder.
+		Select(sqlReleaseTableBodyColumn).
+		From(sqlReleaseTableName).
+		Where(sq.Eq{sqlReleaseTableKeyColumn: key}).
+		Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("get revision: build query: %w", err)
+	}
+
+	if err := s.db.Get(&record, query, args...); err != nil {
+		return nil, ErrReleaseNotFound
+	}
+
+	rls, err := decodeRelease(record.Body)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s: %w", ErrReleaseUndecodable, key, err)
+	}
+
+	if rls.Labels, err = s.getReleaseCustomLabels(key, s.namespace); err != nil {
+		return nil, fmt.Errorf("get revision: custom labels of %q: %w", key, err)
+	}
+
+	return rls, nil
+}
+
 // List returns the list of all releases such that filter(release) == true
 func (s *SQL) List(filter func(release.Releaser) bool) ([]release.Releaser, error) {
 	sb := s.statementBuilder.

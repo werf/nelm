@@ -343,6 +343,27 @@ func (secrets *Secrets) Get(key string) (release.Releaser, error) {
 	return r, nil
 }
 
+// GetRevision returns the release stored under key with its storage labels intact, unlike
+// Get, which strips the system labels. A stored body that cannot be decoded is reported as
+// ErrReleaseUndecodable rather than dropped, so a single-revision lookup can tell a corrupt
+// revision from an absent one.
+func (secrets *Secrets) GetRevision(key string) (release.Releaser, error) {
+	obj, err := secrets.impl.Get(context.Background(), key, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, ErrReleaseNotFound
+		}
+		return nil, fmt.Errorf("get revision: failed to get %q: %w", key, err)
+	}
+
+	rls, err := decodeRelease(string(obj.Data["release"]))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s: %w", ErrReleaseUndecodable, key, err)
+	}
+	rls.Labels = obj.Labels
+	return rls, nil
+}
+
 // List fetches all releases and returns the list releases such
 // that filter(release) == true. An error is returned if the
 // secret fails to retrieve the releases.

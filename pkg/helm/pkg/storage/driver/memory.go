@@ -91,6 +91,11 @@ func (mem *Memory) Get(key string) (release.Releaser, error) {
 	}
 }
 
+// GetRevision is Get: in-memory records carry their labels and cannot be undecodable.
+func (mem *Memory) GetRevision(key string) (release.Releaser, error) {
+	return mem.Get(key)
+}
+
 // List returns the list of all releases such that filter(release) == true
 func (mem *Memory) List(filter func(release.Releaser) bool) ([]release.Releaser, error) {
 	defer unlock(mem.rlock())

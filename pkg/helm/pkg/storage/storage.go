@@ -70,9 +70,9 @@ type lastVersioner interface {
 // GetRelease returns a single release revision without decoding the whole
 // history. version == 0 resolves the latest revision (via the driver's
 // LastVersion capability, falling back to decoding the history). The revision is
-// always fetched via Query, so the returned release keeps its unfiltered storage
-// labels; Get is deliberately not used because it strips system labels through
-// filterSystemLabels.
+// fetched through the driver's GetRevision capability, which keeps the unfiltered
+// storage labels; Get is deliberately not used because it strips system labels
+// through filterSystemLabels.
 func (s *Storage) GetRelease(name string, version int) (*rspb.Release, error) {
 	if version != 0 {
 		return s.queryRevision(name, version)
@@ -102,7 +102,29 @@ func (s *Storage) GetRelease(name string, version int) (*rspb.Release, error) {
 	return s.queryRevision(name, target)
 }
 
+// revisionGetter is an optional driver capability that fetches one stored revision by key,
+// keeping its storage labels and reporting an undecodable body as ErrReleaseUndecodable.
+type revisionGetter interface {
+	GetRevision(key string) (release.Releaser, error)
+}
+
+var (
+	_ revisionGetter = (*driver.Secrets)(nil)
+	_ revisionGetter = (*driver.ConfigMaps)(nil)
+	_ revisionGetter = (*driver.SQL)(nil)
+	_ revisionGetter = (*driver.Memory)(nil)
+)
+
 func (s *Storage) queryRevision(name string, version int) (*rspb.Release, error) {
+	if g, ok := s.Driver.(revisionGetter); ok {
+		rel, err := g.GetRevision(makeKey(name, version))
+		if err != nil {
+			return nil, err
+		}
+
+		return releaserToV1Release(rel)
+	}
+
 	rels, err := s.Driver.Query(map[string]string{
 		"name":    name,
 		"owner":   "helm",
@@ -113,33 +135,10 @@ func (s *Storage) queryRevision(name string, version int) (*rspb.Release, error)
 	}
 
 	if len(rels) == 0 {
-		return nil, s.revisionMissingError(name, version)
+		return nil, driver.ErrReleaseNotFound
 	}
 
 	return releaserToV1Release(rels[0])
-}
-
-// revisionMissingError tells a revision that does not exist apart from one whose stored
-// body the driver could not decode: Query silently drops the latter, so an empty result
-// is checked against the label metadata, which never reads the body.
-func (s *Storage) revisionMissingError(name string, version int) error {
-	l, ok := s.Driver.(revisionLister)
-	if !ok {
-		return driver.ErrReleaseNotFound
-	}
-
-	records, err := l.Revisions(context.Background(), name)
-	if err != nil {
-		return driver.ErrReleaseNotFound
-	}
-
-	for _, record := range records {
-		if record.Version == version {
-			return fmt.Errorf("%w: %s", driver.ErrReleaseUndecodable, makeKey(name, version))
-		}
-	}
-
-	return driver.ErrReleaseNotFound
 }
 
 func (s *Storage) resolveLastVersion(name string) (int, error) {
