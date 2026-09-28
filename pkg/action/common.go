@@ -108,38 +108,19 @@ type runFailurePlanResult struct {
 // programmatically supplied ones are not.
 // All kinds are compiled right away, so an invalid rule fails before anything is applied.
 // renderedValues is the top-level context the chart was rendered with, which render patches
-// get as jq variables; nil means nothing was rendered, as on rollback and uninstall, and
-// then only diff patches are compiled.
+// get as jq variables.
 func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string, legacyPatches spec.Patches, renderedValues map[string]interface{}) (spec.CompiledPatches, error) {
-	var patches spec.Patches
-
-	if !defaultDisable {
-		chartPatches, err := spec.CollectChartPatches(chart)
-		if err != nil {
-			return spec.CompiledPatches{}, fmt.Errorf("collect chart patches: %w", err)
-		}
-
-		patches.Diff = append(patches.Diff, chartPatches.Diff...)
-		patches.Render = append(patches.Render, chartPatches.Render...)
-	}
-
-	filePatches, err := spec.LoadPatchesFiles(patchesFiles)
+	patches, err := collectPatches(chart, defaultDisable, patchesFiles, legacyPatches)
 	if err != nil {
-		return spec.CompiledPatches{}, fmt.Errorf("load patches files: %w", err)
+		return spec.CompiledPatches{}, err
 	}
-
-	patches.Diff = append(patches.Diff, filePatches.Diff...)
-	patches.Render = append(patches.Render, filePatches.Render...)
-
-	patches.Diff = append(patches.Diff, legacyPatches.Diff...)
-	patches.Render = append(patches.Render, legacyPatches.Render...)
 
 	diffPatches, err := spec.CompilePatches(patches.Diff)
 	if err != nil {
 		return spec.CompiledPatches{}, fmt.Errorf("compile diff patches: %w", err)
 	}
 
-	if renderedValues == nil {
+	if len(patches.Render) == 0 {
 		return spec.CompiledPatches{Diff: diffPatches}, nil
 	}
 
@@ -196,6 +177,23 @@ func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr err
 	log.Default.Warn(ctx, "Plan graph saved to %q for debugging", graphPath)
 }
 
+// resolveDiffPatches compiles only the diff rules, for rollback, uninstall and install
+// from a plan artifact: nothing is rendered there, so render rules have nothing to apply
+// to and their jq variables would have no values.
+func resolveDiffPatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string, legacyPatches spec.Patches) (spec.CompiledPatches, error) {
+	patches, err := collectPatches(chart, defaultDisable, patchesFiles, legacyPatches)
+	if err != nil {
+		return spec.CompiledPatches{}, err
+	}
+
+	diffPatches, err := spec.CompilePatches(patches.Diff)
+	if err != nil {
+		return spec.CompiledPatches{}, fmt.Errorf("compile diff patches: %w", err)
+	}
+
+	return spec.CompiledPatches{Diff: diffPatches}, nil
+}
+
 // subchartContexts walks the chart tree so a rule shipped by a subchart sees the
 // values and metadata its own templates saw: its section of the parent values,
 // which already carries the globals merged in, and its own chart metadata.
@@ -241,6 +239,33 @@ func chartMetadata(chart helmchart.Accessor) map[string]interface{} {
 	metadata["IsRoot"] = chart.IsRoot()
 
 	return metadata
+}
+
+func collectPatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string, legacyPatches spec.Patches) (spec.Patches, error) {
+	var patches spec.Patches
+
+	if !defaultDisable {
+		chartPatches, err := spec.CollectChartPatches(chart)
+		if err != nil {
+			return spec.Patches{}, fmt.Errorf("collect chart patches: %w", err)
+		}
+
+		patches.Diff = append(patches.Diff, chartPatches.Diff...)
+		patches.Render = append(patches.Render, chartPatches.Render...)
+	}
+
+	filePatches, err := spec.LoadPatchesFiles(patchesFiles)
+	if err != nil {
+		return spec.Patches{}, fmt.Errorf("load patches files: %w", err)
+	}
+
+	patches.Diff = append(patches.Diff, filePatches.Diff...)
+	patches.Render = append(patches.Render, filePatches.Render...)
+
+	patches.Diff = append(patches.Diff, legacyPatches.Diff...)
+	patches.Render = append(patches.Render, legacyPatches.Render...)
+
+	return patches, nil
 }
 
 func newInformerFactory(ctx context.Context, watchErrCh chan error, dynamicClient dynamic.Interface) *kdutil.Concurrent[*informer.InformerFactory] {

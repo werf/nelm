@@ -84,6 +84,23 @@ func TestAI_RenderContextFor_ScopesEachSubchartToItsOwnValuesAndMetadata(t *test
 	require.Equal(t, int64(3), innerCtx.Values.(map[string]interface{})["replicaCount"])
 }
 
+func TestAI_ResolveDiffPatches_RejectsRenderContextVariables(t *testing.T) {
+	_, err := resolveDiffPatches(nil, true, nil, spec.Patches{
+		Diff: []spec.Patch{{Patch: `.x = $Values.a`}},
+	})
+	require.ErrorContains(t, err, "only available in renderPatches")
+}
+
+func TestAI_ResolveDiffPatches_SkipsRenderPatches(t *testing.T) {
+	chart := aiChartWithPatches(t, "app", "diffPatches:\n- patch: .order += [\"chart\"]\nrenderPatches:\n- patch: .order += [\"chart\"]\n")
+
+	patches, err := resolveDiffPatches(chart, false, nil, spec.Patches{})
+	require.NoError(t, err)
+
+	require.NotEmpty(t, patches.Diff)
+	require.Empty(t, patches.Render)
+}
+
 func TestAI_ResolvePatches_DefaultPatchesDisableKeepsLegacyPatches(t *testing.T) {
 	chart := aiChartWithPatches(t, "app", "renderPatches:\n- patch: .order += [\"chart\"]\n")
 
@@ -133,21 +150,23 @@ func TestAI_ResolvePatches_LegacyPatchesScopeViaMatchCharts(t *testing.T) {
 	require.Empty(t, aiApplyOrder(t, patches.Render, "app/templates/web.yaml"))
 }
 
-func TestAI_ResolvePatches_WithoutRenderedValuesCompilesOnlyDiffPatches(t *testing.T) {
-	chart := aiChartWithPatches(t, "app", "diffPatches:\n- patch: .order += [\"chart\"]\nrenderPatches:\n- patch: .order += [\"chart\"]\n")
+// A subchart whose metadata is missing makes renderContextFor fail, so this only
+// passes while an empty render rule set skips building the context at all.
+func TestAI_ResolvePatches_WithoutRenderPatchesSkipsRenderContext(t *testing.T) {
+	parent := &v2chart.Chart{
+		Metadata: &v2chart.Metadata{Name: "app"},
+		Files:    []*chartcommon.File{{Name: "patches.yaml", Data: []byte("diffPatches:\n- patch: .\n")}},
+	}
+	parent.AddDependency(&v2chart.Chart{})
+
+	chart, err := helmchart.NewAccessor(parent)
+	require.NoError(t, err)
 
 	patches, err := resolvePatches(chart, false, nil, spec.Patches{}, nil)
 	require.NoError(t, err)
 
 	require.NotEmpty(t, patches.Diff)
 	require.Empty(t, patches.Render)
-}
-
-func TestAI_ResolvePatches_WithoutRenderedValuesStillRejectsRenderContextVariables(t *testing.T) {
-	_, err := resolvePatches(nil, true, nil, spec.Patches{
-		Diff: []spec.Patch{{Patch: `.x = $Values.a`}},
-	}, nil)
-	require.ErrorContains(t, err, "only available in renderPatches")
 }
 
 func aiApplyOrder(t *testing.T, patches []*spec.CompiledPatch, filePath string) []interface{} {

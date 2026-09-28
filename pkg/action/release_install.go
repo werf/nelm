@@ -1007,7 +1007,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("convert last deployed or last release to resource specs: %w", err))
 	}
 
-	patches, err := resolvePatches(chartAccessor, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches, nil)
+	patches, err := resolveDiffPatches(chartAccessor, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("resolve patches: %w", err))
 	}
