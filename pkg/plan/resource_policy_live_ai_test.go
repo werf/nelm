@@ -62,7 +62,7 @@ func (s *ResourcePolicyLiveAISuite) TestAI_ChartPolicyStillSuppressesDeleteOnSuc
 	})
 }
 
-func (s *ResourcePolicyLiveAISuite) TestAI_LiveOnlyPolicyDoesNotProtectChartRemovedResource() {
+func (s *ResourcePolicyLiveAISuite) TestAI_LiveOnlyPolicyProtectsChartRemovedResource() {
 	livePolicies := []map[string]string{
 		{"helm.sh/resource-policy": "keep"},
 		{"werf.io/resource-policy": "keep"},
@@ -70,20 +70,22 @@ func (s *ResourcePolicyLiveAISuite) TestAI_LiveOnlyPolicyDoesNotProtectChartRemo
 		{"werf.io/resource-policy": "bogus"},
 	}
 
-	for _, policy := range livePolicies {
-		s.Run(policyName(policy), func() {
-			s.createLiveResource(policy)
+	for _, deployType := range []common.DeployType{common.DeployTypeUpgrade, common.DeployTypeUninstall} {
+		for _, policy := range livePolicies {
+			s.Run(string(deployType)+"/"+policyName(policy), func() {
+				s.createLiveResource(policy)
 
-			localRes := defaultDeletableResource(s.releaseName, s.releaseNamespace)
+				localRes := defaultDeletableResource(s.releaseName, s.releaseNamespace)
 
-			resInfo, err := plan.BuildDeletableResourceInfo(context.Background(), localRes, common.DeployTypeUninstall, s.releaseName, s.releaseNamespace, s.clientFactory)
-			s.Require().NoError(err)
-			s.Require().True(resInfo.MustDelete, "chart-removed resource must be deleted despite live-only policy %v", policy)
-		})
+				resInfo, err := plan.BuildDeletableResourceInfo(context.Background(), localRes, deployType, s.releaseName, s.releaseNamespace, s.clientFactory)
+				s.Require().NoError(err)
+				s.Require().False(resInfo.MustDelete, "chart-removed resource must be kept by live-only policy %v", policy)
+			})
+		}
 	}
 }
 
-func (s *ResourcePolicyLiveAISuite) TestAI_LiveOnlyPolicyDoesNotSuppressDeleteOnFailed() {
+func (s *ResourcePolicyLiveAISuite) TestAI_LiveOnlyPolicySuppressesDeleteOnFailed() {
 	livePolicies := []map[string]string{
 		{"werf.io/resource-policy": "skip-delete"},
 		{"werf.io/resource-policy": "bogus"},
@@ -100,12 +102,12 @@ func (s *ResourcePolicyLiveAISuite) TestAI_LiveOnlyPolicyDoesNotSuppressDeleteOn
 			s.Require().NoError(err)
 			s.Require().NotEmpty(resInfos)
 			s.Require().Equal(plan.ResourceInstallTypeUpdate, resInfos[0].MustInstall)
-			s.Require().True(resInfos[0].MustDeleteOnFailedInstall, "delete-on-failed must not be suppressed by live-only policy %v", policy)
+			s.Require().False(resInfos[0].MustDeleteOnFailedInstall, "delete-on-failed must be suppressed by live-only policy %v", policy)
 		})
 	}
 }
 
-func (s *ResourcePolicyLiveAISuite) TestAI_LiveOnlyPolicyDoesNotSuppressDeleteOnSucceeded() {
+func (s *ResourcePolicyLiveAISuite) TestAI_LiveOnlyPolicySuppressesDeleteOnSucceeded() {
 	livePolicies := []map[string]string{
 		{"werf.io/resource-policy": "skip-delete"},
 		{"werf.io/resource-policy": "bogus"},
@@ -122,9 +124,21 @@ func (s *ResourcePolicyLiveAISuite) TestAI_LiveOnlyPolicyDoesNotSuppressDeleteOn
 			s.Require().NoError(err)
 			s.Require().NotEmpty(resInfos)
 			s.Require().Equal(plan.ResourceInstallTypeNone, resInfos[0].MustInstall)
-			s.Require().True(resInfos[0].MustDeleteOnSuccessfulInstall, "delete-on-succeeded must not be suppressed by live-only policy %v", policy)
+			s.Require().False(resInfos[0].MustDeleteOnSuccessfulInstall, "delete-on-succeeded must be suppressed by live-only policy %v", policy)
 		})
 	}
+}
+
+func (s *ResourcePolicyLiveAISuite) TestAI_NoLivePolicyStillDeletesChartRemovedResource() {
+	s.Run("unannotated live resource is deleted", func() {
+		s.createLiveResource(nil)
+
+		localRes := defaultDeletableResource(s.releaseName, s.releaseNamespace)
+
+		resInfo, err := plan.BuildDeletableResourceInfo(context.Background(), localRes, common.DeployTypeUninstall, s.releaseName, s.releaseNamespace, s.clientFactory)
+		s.Require().NoError(err)
+		s.Require().True(resInfo.MustDelete, "chart-removed resource without any policy must be deleted")
+	})
 }
 
 func (s *ResourcePolicyLiveAISuite) createLiveResource(policyAnnotations map[string]string) {

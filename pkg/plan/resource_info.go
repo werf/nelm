@@ -219,7 +219,7 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 		}
 	}
 
-	mustDeleteOnSuccess := mustDeleteOnSuccessfulDeploy(localRes, getMeta, installType, skippedByPolicy)
+	mustDeleteOnSuccess := mustDeleteOnSuccessfulDeploy(localRes, getMeta, installType, releaseNamespace, skippedByPolicy)
 	trackReadiness := mustTrackReadiness(localRes, installType, getObj != nil, prevRelFailed, mustDeleteOnSuccess, skippedByPolicy)
 
 	return lo.Map(stages, func(stg common.Stage, _ int) *InstallableResourceInfo {
@@ -230,7 +230,7 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 			FailMode:                       localRes.FailMode,
 			GetResult:                      getObj,
 			LocalResource:                  localRes,
-			MustDeleteOnFailedInstall:      mustDeleteOnFailedDeploy(localRes, installType, trackReadiness, skippedByPolicy),
+			MustDeleteOnFailedInstall:      mustDeleteOnFailedDeploy(localRes, getMeta, installType, releaseNamespace, trackReadiness, skippedByPolicy),
 			MustDeleteOnSuccessfulInstall:  mustDeleteOnSuccess,
 			MustInstall:                    installType,
 			MustTrackReadiness:             trackReadiness,
@@ -380,6 +380,12 @@ func buildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 	}
 
 	getMeta := spec.NewResourceMetaFromUnstructured(getObj, releaseNamespace, localRes.FilePath)
+
+	if err := resource.ValidateResourcePolicy(getMeta); err != nil {
+		return noDeleteInfo, nil
+	} else if lo.Contains(resource.ResourcePolicies(getMeta, releaseNamespace), common.ResourcePolicySkipDelete) {
+		return noDeleteInfo, nil
+	}
 
 	if orphaned(getMeta, releaseName, releaseNamespace) {
 		return noDeleteInfo, nil
@@ -730,7 +736,7 @@ func iterateInstallableResourceInfos(infos []*InstallableResourceInfo) {
 	}
 }
 
-func mustDeleteOnFailedDeploy(res *resource.InstallableResource, installType ResourceInstallType, mustTrackReadiness, skippedByPolicy bool) bool {
+func mustDeleteOnFailedDeploy(res *resource.InstallableResource, getMeta *spec.ResourceMeta, installType ResourceInstallType, releaseNamespace string, mustTrackReadiness, skippedByPolicy bool) bool {
 	if skippedByPolicy ||
 		!res.DeleteOnFailed ||
 		lo.Contains(res.ResourcePolicies, common.ResourcePolicySkipDelete) ||
@@ -739,14 +745,30 @@ func mustDeleteOnFailedDeploy(res *resource.InstallableResource, installType Res
 		return false
 	}
 
+	if getMeta != nil {
+		if err := resource.ValidateResourcePolicy(getMeta); err != nil {
+			return false
+		} else if lo.Contains(resource.ResourcePolicies(getMeta, releaseNamespace), common.ResourcePolicySkipDelete) {
+			return false
+		}
+	}
+
 	return true
 }
 
-func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMeta *spec.ResourceMeta, installType ResourceInstallType, skippedByPolicy bool) bool {
+func mustDeleteOnSuccessfulDeploy(localRes *resource.InstallableResource, getMeta *spec.ResourceMeta, installType ResourceInstallType, releaseNamespace string, skippedByPolicy bool) bool {
 	if skippedByPolicy ||
 		!localRes.DeleteOnSucceeded ||
 		lo.Contains(localRes.ResourcePolicies, common.ResourcePolicySkipDelete) {
 		return false
+	}
+
+	if getMeta != nil {
+		if err := resource.ValidateResourcePolicy(getMeta); err != nil {
+			return false
+		} else if lo.Contains(resource.ResourcePolicies(getMeta, releaseNamespace), common.ResourcePolicySkipDelete) {
+			return false
+		}
 	}
 
 	if installType == ResourceInstallTypeNone {

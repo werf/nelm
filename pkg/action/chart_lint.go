@@ -303,7 +303,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Resolve patches")
 
-	patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches)
+	patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches, renderChartResult.Values)
 	if err != nil {
 		return fmt.Errorf("resolve patches: %w", err)
 	}
