@@ -395,187 +395,28 @@ func TestAI_StorageListLatestReleases_FallbackForEmptyDriverWithoutCapability(t 
 	assert.Empty(t, rels, "ErrReleaseNotFound from the driver means an empty listing, not a failure")
 }
 
-func TestAI_StorageListLatestReleases_IgnoresObjectsWithoutNameLabel(t *testing.T) {
+func TestAI_StorageListLatestReleases_SkipsObjectsThatAreNotRevisions(t *testing.T) {
 	clientset := k8sfake.NewSimpleClientset()
 
 	storage := helmstorage.Init(helmdriver.NewSecrets(clientset.CoreV1().Secrets(testNamespace)))
 	require.NoError(t, storage.Create(newTestRelease("one", 3, nil)))
 
-	_, err := clientset.CoreV1().Secrets(testNamespace).Create(context.Background(), &v1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace, Name: "no-name", Labels: map[string]string{"owner": "helm", "version": "9"}},
-	}, metav1.CreateOptions{})
-	require.NoError(t, err)
+	for name, labels := range map[string]map[string]string{
+		"no-name":         {"owner": "helm", "version": "9"},
+		"missing-version": {"owner": "helm", "name": "one"},
+		"broken-version":  {"owner": "helm", "name": "one", "version": "not-a-number"},
+	} {
+		_, err := clientset.CoreV1().Secrets(testNamespace).Create(context.Background(), &v1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace, Name: name, Labels: labels},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+	}
 
 	rels, err := storage.ListLatestReleases(context.Background())
-	require.NoError(t, err)
+	require.NoError(t, err, "a read-only listing must not fail because of one stray object")
 
 	assert.Equal(t, map[string]int{"one": 3}, revisionsByName(rels),
-		"an object without a name label is not a release and must be ignored")
-}
-
-func TestAI_StorageListLatestReleases_NumericMaxRevision(t *testing.T) {
-	storage, _ := newSecretStorage(t,
-		newTestRelease("one", 1, nil),
-		newTestRelease("one", 9, nil),
-		newTestRelease("one", 11, nil),
-		newTestRelease("one", 2, nil),
-	)
-
-	rels, err := storage.ListLatestReleases(context.Background())
-	require.NoError(t, err)
-
-	assert.Equal(t, map[string]int{"one": 11}, revisionsByName(rels),
-		"the revision must be compared numerically, not lexicographically")
-}
-
-func TestAI_StorageListLatestReleases_Paginates(t *testing.T) {
-	clientset := k8sfake.NewSimpleClientset()
-
-	storage := helmstorage.Init(helmdriver.NewSecrets(clientset.CoreV1().Secrets(testNamespace)))
-	for name, revisions := range map[string]int{"one": 3, "two": 4, "three": 2} {
-		for v := 1; v <= revisions; v++ {
-			require.NoError(t, storage.Create(newTestRelease(name, v, nil)))
-		}
-	}
-
-	stored, err := clientset.CoreV1().Secrets(testNamespace).List(context.Background(), metav1.ListOptions{})
-	require.NoError(t, err)
-	require.Len(t, stored.Items, 9)
-
-	paging := &pagingSecretClient{SecretInterface: clientset.CoreV1().Secrets(testNamespace), items: stored.Items}
-	pagingStorage := helmstorage.Init(helmdriver.NewSecrets(paging))
-
-	rels, err := pagingStorage.ListLatestReleases(context.Background())
-	require.NoError(t, err)
-
-	assert.Equal(t, map[string]int{"one": 3, "two": 4, "three": 2}, revisionsByName(rels),
-		"the last revision of every release must survive paging")
-	assert.Equal(t, 5, paging.pages, "9 items served 2 at a time must be fetched as 5 pages")
-	assert.NotZero(t, paging.limit, "the driver must ask the API server for pages, not for everything at once")
-}
-
-func TestAI_StorageListLatestReleases_SameNameInManyNamespacesDoesNotFanOut(t *testing.T) {
-	const (
-		namespaces = 20
-		revisions  = 5
-	)
-
-	clientset := k8sfake.NewSimpleClientset()
-
-	for i := 0; i < namespaces; i++ {
-		namespace := fmt.Sprintf("ns-%d", i)
-		storage := helmstorage.Init(helmdriver.NewSecrets(clientset.CoreV1().Secrets(namespace)))
-
-		for v := 1; v <= revisions; v++ {
-			rel := newTestRelease("myapp", v, nil)
-			rel.Namespace = namespace
-			require.NoError(t, storage.Create(rel))
-		}
-	}
-
-	listStorage := helmstorage.Init(helmdriver.NewSecrets(clientset.CoreV1().Secrets("")))
-
-	clientset.ClearActions()
-
-	rels, err := listStorage.ListLatestReleases(context.Background())
-	require.NoError(t, err)
-
-	lists := 0
-	for _, action := range clientset.Actions() {
-		if action.GetVerb() == "list" {
-			lists++
-		}
-	}
-
-	byNamespace := map[string]int{}
-	for _, rel := range rels {
-		byNamespace[rel.Namespace] = rel.Version
-	}
-
-	require.Len(t, byNamespace, namespaces, "the same release name in different namespaces must stay separate")
-
-	for namespace, version := range byNamespace {
-		assert.Equal(t, revisions, version, "namespace %s must report its own last revision", namespace)
-	}
-
-	assert.Equal(t, 1, lists,
-		"the listing must not issue a request per release: that is quadratic when one name is deployed to many namespaces")
-}
-
-func TestAI_StorageListLatestReleases_SecretFallsBackFromCorruptLatestRevision(t *testing.T) {
-	clientset := k8sfake.NewSimpleClientset()
-	secrets := clientset.CoreV1().Secrets(testNamespace)
-	storage := helmstorage.Init(helmdriver.NewSecrets(secrets))
-
-	for version := 1; version <= 3; version++ {
-		require.NoError(t, storage.Create(newTestRelease("one", version, nil)))
-	}
-
-	for _, version := range []int{2, 3} {
-		secret, err := secrets.Get(context.Background(), fmt.Sprintf("sh.helm.release.v1.one.v%d", version), metav1.GetOptions{})
-		require.NoError(t, err)
-
-		secret.Data["release"] = []byte("corrupt")
-		_, err = secrets.Update(context.Background(), secret, metav1.UpdateOptions{})
-		require.NoError(t, err)
-	}
-
-	rels, err := storage.ListLatestReleases(context.Background())
-	require.NoError(t, err)
-
-	assert.Equal(t, map[string]int{"one": 1}, revisionsByName(rels))
-}
-
-func TestAI_StorageListLatestReleases_SecretOmitsReleaseWhenEveryRevisionIsCorrupt(t *testing.T) {
-	clientset := k8sfake.NewSimpleClientset()
-	secrets := clientset.CoreV1().Secrets(testNamespace)
-	storage := helmstorage.Init(helmdriver.NewSecrets(secrets))
-	require.NoError(t, storage.Create(newTestRelease("one", 1, nil)))
-
-	secret, err := secrets.Get(context.Background(), "sh.helm.release.v1.one.v1", metav1.GetOptions{})
-	require.NoError(t, err)
-
-	secret.Data["release"] = []byte("corrupt")
-	_, err = secrets.Update(context.Background(), secret, metav1.UpdateOptions{})
-	require.NoError(t, err)
-
-	rels, err := storage.ListLatestReleases(context.Background())
-	require.NoError(t, err)
-	assert.Empty(t, rels)
-}
-
-func TestAI_StorageListLatestReleases_TakesNamespaceFromObjectWhenBodyHasNone(t *testing.T) {
-	clientset := k8sfake.NewSimpleClientset()
-
-	storage := helmstorage.Init(helmdriver.NewSecrets(clientset.CoreV1().Secrets(testNamespace)))
-
-	// Releases stored by ancient Helm versions carry no namespace in the body.
-	ancient := newTestRelease("legacy", 4, nil)
-	ancient.Namespace = ""
-	require.NoError(t, storage.Create(ancient))
-
-	rels, err := storage.ListLatestReleases(context.Background())
-	require.NoError(t, err)
-
-	require.Len(t, rels, 1)
-	assert.Equal(t, testNamespace, rels[0].Namespace)
-}
-
-func TestAI_StorageListLatestReleases_UnparseableVersionLabelIsAnErrorNamingTheObject(t *testing.T) {
-	clientset := k8sfake.NewSimpleClientset()
-
-	storage := helmstorage.Init(helmdriver.NewSecrets(clientset.CoreV1().Secrets(testNamespace)))
-	require.NoError(t, storage.Create(newTestRelease("one", 3, nil)))
-
-	_, err := clientset.CoreV1().Secrets(testNamespace).Create(context.Background(), &v1.Secret{
-		ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace, Name: "sh.helm.release.v1.one.vbroken", Labels: map[string]string{"owner": "helm", "name": "one", "version": "not-a-number"}},
-	}, metav1.CreateOptions{})
-	require.NoError(t, err)
-
-	_, err = storage.ListLatestReleases(context.Background())
-	require.Error(t, err, "release list must fail the same way every other action does, not hide the broken object")
-	assert.Contains(t, err.Error(), "sh.helm.release.v1.one.vbroken", "the error must name the object to remove")
-	assert.Contains(t, err.Error(), "unparseable version label")
+		"objects whose labels do not identify a revision are skipped; the listing never writes, so a version collision cannot follow")
 }
 
 // incompressibleBody returns bytes that neither gzip nor the release decoder

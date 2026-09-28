@@ -213,10 +213,7 @@ func (cfgmaps *ConfigMaps) ListLatestReleases(ctx context.Context) ([]*rspb.Rele
 		}
 
 		for _, item := range list.Items {
-			key, version, ok, err := releaseKeyAndVersionFromLabels(item.Name, item.Namespace, item.Labels)
-			if err != nil {
-				return nil, fmt.Errorf("list latest releases: %w", err)
-			}
+			key, version, ok := releaseKeyAndVersionFromLabels(item.Name, item.Namespace, item.Labels)
 			if !ok {
 				continue
 			}
@@ -247,7 +244,7 @@ func (cfgmaps *ConfigMaps) ListLatestReleases(ctx context.Context) ([]*rspb.Rele
 		if err != nil {
 			cfgmaps.Logger().Debug("list latest releases: failed to decode release", slog.String("name", item.Name), slog.Any("error", err))
 
-			_, version, _, _ := releaseKeyAndVersionFromLabels(item.Name, item.Namespace, item.Labels)
+			_, version, _ := releaseKeyAndVersionFromLabels(item.Name, item.Namespace, item.Labels)
 			rls, err = cfgmaps.findPreviousValidRelease(ctx, item.Namespace, item.Labels["name"], version)
 			if err != nil {
 				return nil, err
@@ -289,10 +286,7 @@ func (cfgmaps *ConfigMaps) findPreviousValidRelease(ctx context.Context, namespa
 		}
 
 		for _, item := range list.Items {
-			_, version, ok, err := releaseKeyAndVersionFromLabels(item.Name, item.Namespace, item.Labels)
-			if err != nil {
-				return nil, fmt.Errorf("list latest releases: %w", err)
-			}
+			_, version, ok := releaseKeyAndVersionFromLabels(item.Name, item.Namespace, item.Labels)
 			if !ok || item.Namespace != namespace || version >= beforeVersion {
 				continue
 			}

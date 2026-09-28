@@ -114,16 +114,17 @@ func TestAI_SecretsRevisions_EmptyNamespaceIsRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "namespace")
 }
 
-func TestAI_SecretsRevisions_IgnoresObjectsWithoutNameLabel(t *testing.T) {
+func TestAI_SecretsRevisions_IgnoresObjectsThatAreNotRevisions(t *testing.T) {
 	secrets := helmdriver.NewSecrets(nil)
 	secrets.Namespace = testNamespace
 	secrets.MetadataClient = newMetadataClient(t,
 		revisionLabels("myrelease", 1, helmreleasecommon.StatusDeployed.String()),
 		map[string]string{"owner": "helm", "version": "2"},
+		map[string]string{"owner": "helm", "name": "myrelease"},
 	)
 
 	records, err := secrets.Revisions(context.Background(), "myrelease")
-	require.NoError(t, err)
+	require.NoError(t, err, "an object without a name or without a version label is not a revision")
 	require.Len(t, records, 1)
 	assert.Equal(t, 1, records[0].Version)
 }
