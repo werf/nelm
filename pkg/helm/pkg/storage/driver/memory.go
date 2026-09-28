@@ -197,7 +197,7 @@ func (mem *Memory) Revisions(_ context.Context, name string) ([]RevisionRecord, 
 			continue
 		}
 
-		record, ok := revisionRecordFromLabels(mem.namespace, rec.lbs.toMap())
+		record, ok := revisionRecordFromLabels(mem.Logger(), mem.namespace, rec.lbs.toMap())
 		if !ok {
 			continue
 		}

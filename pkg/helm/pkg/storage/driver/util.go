@@ -17,7 +17,6 @@ limitations under the License.
 package driver // import "github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 
 import (
-	"log/slog"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -25,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"slices"
 	"strconv"
 
@@ -72,8 +72,8 @@ func lastVersionFromMetadata(ctx context.Context, client metadata.Interface, gvr
 
 const listLatestPageSize = 500
 
-func releaseKeyAndVersionFromLabels(namespace string, lbs map[string]string) (string, int, bool) {
-	record, ok := revisionRecordFromLabels(namespace, lbs)
+func releaseKeyAndVersionFromLabels(logger *slog.Logger, namespace string, lbs map[string]string) (string, int, bool) {
+	record, ok := revisionRecordFromLabels(logger, namespace, lbs)
 	if !ok {
 		return "", 0, false
 	}
@@ -185,17 +185,17 @@ type RevisionRecord struct {
 
 // revisionRecordFromLabels rejects objects whose labels do not identify a revision. Such an
 // object is invisible to history, so the next revision number may collide with it; the drop
-// is logged so it can be traced back.
-func revisionRecordFromLabels(namespace string, lbs map[string]string) (RevisionRecord, bool) {
+// is logged at debug through the driver's logger so it can be traced back.
+func revisionRecordFromLabels(logger *slog.Logger, namespace string, lbs map[string]string) (RevisionRecord, bool) {
 	name := lbs["name"]
 	if name == "" {
-		slog.Default().Debug("skip release object without a name label", slog.String("namespace", namespace), slog.Any("labels", lbs))
+		logger.Debug("skip release object without a name label", slog.String("namespace", namespace), slog.String("version", lbs["version"]))
 		return RevisionRecord{}, false
 	}
 
 	version, err := strconv.Atoi(lbs["version"])
 	if err != nil {
-		slog.Default().Debug("skip release object with an unparseable version label", slog.String("namespace", namespace), slog.String("name", name), slog.String("version", lbs["version"]))
+		logger.Debug("skip release object with an unparseable version label", slog.String("namespace", namespace), slog.String("name", name), slog.String("version", lbs["version"]))
 		return RevisionRecord{}, false
 	}
 

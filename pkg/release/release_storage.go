@@ -15,6 +15,7 @@ import (
 	helmstorage "github.com/werf/nelm/v2/pkg/helm/pkg/storage"
 	helmdriver "github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 	"github.com/werf/nelm/v2/pkg/kube"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 const (
@@ -182,6 +183,7 @@ func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, cli
 
 		clientset := clientFactory.Static().(*kubernetes.Clientset)
 		d := helmdriver.NewSecrets(clientset.CoreV1().Secrets(namespace))
+		d.SetLogger(log.NewSlogHandler(ctx))
 		d.MetadataClient = metadataClient
 		d.Namespace = namespace
 		storage = helmstorage.Init(d)
@@ -197,11 +199,13 @@ func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, cli
 
 		clientset := clientFactory.Static().(*kubernetes.Clientset)
 		d := helmdriver.NewConfigMaps(clientset.CoreV1().ConfigMaps(namespace))
+		d.SetLogger(log.NewSlogHandler(ctx))
 		d.MetadataClient = metadataClient
 		d.Namespace = namespace
 		storage = helmstorage.Init(d)
 	case common.ReleaseStorageDriverMemory:
 		d := helmdriver.NewMemory()
+		d.SetLogger(log.NewSlogHandler(ctx))
 		d.SetNamespace(namespace)
 		storage = helmstorage.Init(d)
 	case common.ReleaseStorageDriverSQL:
@@ -209,6 +213,8 @@ func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, cli
 		if err != nil {
 			return nil, fmt.Errorf("construct sql driver: %w", err)
 		}
+
+		d.SetLogger(log.NewSlogHandler(ctx))
 
 		storage = helmstorage.Init(d)
 	default:
