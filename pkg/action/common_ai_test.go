@@ -12,18 +12,101 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	helmchart "github.com/werf/nelm/pkg/helm/pkg/chart"
-	chartcommon "github.com/werf/nelm/pkg/helm/pkg/chart/common"
-	v2chart "github.com/werf/nelm/pkg/helm/pkg/chart/v2"
-	"github.com/werf/nelm/pkg/resource/spec"
+	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
+
+func TestAI_RenderContextFor_MarksOnlyTheRootChartAsRoot(t *testing.T) {
+	cache := &v2chart.Chart{Metadata: &v2chart.Metadata{Name: "cache", Version: "4.5.6"}}
+	parent := &v2chart.Chart{Metadata: &v2chart.Metadata{Name: "app", Version: "1.2.3"}}
+	parent.AddDependency(cache)
+
+	accessor, err := helmchart.NewAccessor(parent)
+	require.NoError(t, err)
+
+	renderContext, err := renderContextFor(accessor, map[string]interface{}{"Values": map[string]interface{}{}})
+	require.NoError(t, err)
+
+	require.Equal(t, true, renderContext.Chart.(map[string]interface{})["IsRoot"])
+	require.Equal(t, false, renderContext.Subcharts["app/charts/cache"].Chart.(map[string]interface{})["IsRoot"])
+}
+
+func TestAI_RenderContextFor_NoSubchartsLeavesNoEntries(t *testing.T) {
+	accessor, err := helmchart.NewAccessor(&v2chart.Chart{Metadata: &v2chart.Metadata{Name: "app"}})
+	require.NoError(t, err)
+
+	withChart, err := renderContextFor(accessor, map[string]interface{}{})
+	require.NoError(t, err)
+	require.Empty(t, withChart.Subcharts)
+
+	withoutChart, err := renderContextFor(nil, map[string]interface{}{})
+	require.NoError(t, err)
+	require.Empty(t, withoutChart.Subcharts)
+}
+
+func TestAI_RenderContextFor_ScopesEachSubchartToItsOwnValuesAndMetadata(t *testing.T) {
+	cache := &v2chart.Chart{Metadata: &v2chart.Metadata{Name: "cache", Version: "4.5.6"}}
+	inner := &v2chart.Chart{Metadata: &v2chart.Metadata{Name: "inner", Version: "7.8.9"}}
+	cache.AddDependency(inner)
+
+	parent := &v2chart.Chart{Metadata: &v2chart.Metadata{Name: "app", Version: "1.2.3"}}
+	parent.AddDependency(cache)
+
+	accessor, err := helmchart.NewAccessor(parent)
+	require.NoError(t, err)
+
+	renderedValues := map[string]interface{}{
+		"Chart": map[string]interface{}{"Name": "app"},
+		"Values": chartcommon.Values{
+			"replicaCount": int64(1),
+			"cache": map[string]interface{}{
+				"replicaCount": int64(2),
+				"inner":        map[string]interface{}{"replicaCount": int64(3)},
+			},
+		},
+	}
+
+	renderContext, err := renderContextFor(accessor, renderedValues)
+	require.NoError(t, err)
+
+	require.Equal(t, renderedValues["Values"], renderContext.Values)
+
+	cacheCtx, found := renderContext.Subcharts["app/charts/cache"]
+	require.True(t, found)
+	require.Equal(t, "cache", cacheCtx.Chart.(map[string]interface{})["Name"])
+	require.Equal(t, int64(2), cacheCtx.Values.(map[string]interface{})["replicaCount"])
+
+	innerCtx, found := renderContext.Subcharts["app/charts/cache/charts/inner"]
+	require.True(t, found)
+	require.Equal(t, "inner", innerCtx.Chart.(map[string]interface{})["Name"])
+	require.Equal(t, int64(3), innerCtx.Values.(map[string]interface{})["replicaCount"])
+}
+
+func TestAI_ResolveDiffPatches_RejectsRenderContextVariables(t *testing.T) {
+	_, err := resolveDiffPatches(nil, true, nil, spec.Patches{
+		Diff: []spec.Patch{{Patch: `.x = $Values.a`}},
+	})
+	require.ErrorContains(t, err, "only available in renderPatches")
+}
+
+func TestAI_ResolveDiffPatches_SkipsRenderPatches(t *testing.T) {
+	chart := aiChartWithPatches(t, "app", "diffPatches:\n- patch: .order += [\"chart\"]\nrenderPatches:\n- patch: .order += [\"chart\"]\n")
+
+	patches, err := resolveDiffPatches(chart, false, nil, spec.Patches{})
+	require.NoError(t, err)
+
+	require.NotEmpty(t, patches.Diff)
+	require.Empty(t, patches.Render)
+}
 
 func TestAI_ResolvePatches_DefaultPatchesDisableKeepsLegacyPatches(t *testing.T) {
 	chart := aiChartWithPatches(t, "app", "renderPatches:\n- patch: .order += [\"chart\"]\n")
 
 	legacy := spec.Patches{Render: []spec.Patch{{Patch: `.order += ["legacy"]`}}}
 
-	patches, err := resolvePatches(chart, true, nil, legacy)
+	patches, err := resolvePatches(chart, true, nil, legacy, aiRenderedValues())
 	require.NoError(t, err)
 
 	require.Equal(t, []interface{}{"legacy"}, aiApplyOrder(t, patches.Render, "app/templates/web.yaml"))
@@ -32,7 +115,7 @@ func TestAI_ResolvePatches_DefaultPatchesDisableKeepsLegacyPatches(t *testing.T)
 func TestAI_ResolvePatches_InvalidLegacyPatchFailsClosed(t *testing.T) {
 	_, err := resolvePatches(nil, true, nil, spec.Patches{
 		Render: []spec.Patch{{Patch: "del(.spec.replicas"}},
-	})
+	}, aiRenderedValues())
 	require.ErrorContains(t, err, "compile render patches")
 }
 
@@ -45,7 +128,7 @@ func TestAI_ResolvePatches_LegacyPatchesAppliedLast(t *testing.T) {
 		Render: []spec.Patch{{Patch: `.order += ["legacy"]`}},
 	}
 
-	patches, err := resolvePatches(chart, false, []string{patchesFile}, legacy)
+	patches, err := resolvePatches(chart, false, []string{patchesFile}, legacy, aiRenderedValues())
 	require.NoError(t, err)
 
 	require.Equal(t, []interface{}{"chart", "file", "legacy"}, aiApplyOrder(t, patches.Diff, "app/templates/web.yaml"))
@@ -60,11 +143,38 @@ func TestAI_ResolvePatches_LegacyPatchesScopeViaMatchCharts(t *testing.T) {
 		}},
 	}
 
-	patches, err := resolvePatches(nil, true, nil, legacy)
+	patches, err := resolvePatches(nil, true, nil, legacy, aiRenderedValues())
 	require.NoError(t, err)
 
 	require.Equal(t, []interface{}{"legacy"}, aiApplyOrder(t, patches.Render, "app/charts/cache/templates/redis.yaml"))
 	require.Empty(t, aiApplyOrder(t, patches.Render, "app/templates/web.yaml"))
+}
+
+func TestAI_ResolvePatches_RejectsMissingRenderedValues(t *testing.T) {
+	chart := aiChartWithPatches(t, "app", "renderPatches:\n- patch: .order += [\"chart\"]\n")
+
+	_, err := resolvePatches(chart, false, nil, spec.Patches{}, nil)
+	require.ErrorContains(t, err, "rendered values are required")
+}
+
+// A dependency without metadata makes subchartContexts panic while walking the
+// tree, so this only passes while an empty render rule set skips building the
+// context at all.
+func TestAI_ResolvePatches_WithoutRenderPatchesSkipsRenderContext(t *testing.T) {
+	parent := &v2chart.Chart{
+		Metadata: &v2chart.Metadata{Name: "app"},
+		Files:    []*chartcommon.File{{Name: "patches.yaml", Data: []byte("diffPatches:\n- patch: .\n")}},
+	}
+	parent.AddDependency(&v2chart.Chart{})
+
+	chart, err := helmchart.NewAccessor(parent)
+	require.NoError(t, err)
+
+	patches, err := resolvePatches(chart, false, nil, spec.Patches{}, aiRenderedValues())
+	require.NoError(t, err)
+
+	require.NotEmpty(t, patches.Diff)
+	require.Empty(t, patches.Render)
 }
 
 func aiApplyOrder(t *testing.T, patches []*spec.CompiledPatch, filePath string) []interface{} {
@@ -104,6 +214,10 @@ func aiChartWithPatches(t *testing.T, name, patchesYAML string) helmchart.Access
 	require.NoError(t, err)
 
 	return accessor
+}
+
+func aiRenderedValues() map[string]interface{} {
+	return map[string]interface{}{"Values": map[string]interface{}{}}
 }
 
 func aiWritePatchesFile(t *testing.T, content string) string {
