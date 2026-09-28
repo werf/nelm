@@ -108,7 +108,8 @@ type runFailurePlanResult struct {
 // programmatically supplied ones are not.
 // All kinds are compiled right away, so an invalid rule fails before anything is applied.
 // renderedValues is the top-level context the chart was rendered with, which render patches
-// get as jq variables.
+// get as jq variables; it is required whenever there are render rules to compile, so a
+// caller that has nothing rendered uses resolveDiffPatches instead of passing nil here.
 func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string, legacyPatches spec.Patches, renderedValues map[string]interface{}) (spec.CompiledPatches, error) {
 	patches, err := collectPatches(chart, defaultDisable, patchesFiles, legacyPatches)
 	if err != nil {
@@ -122,6 +123,10 @@ func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles 
 
 	if len(patches.Render) == 0 {
 		return spec.CompiledPatches{Diff: diffPatches}, nil
+	}
+
+	if renderedValues == nil {
+		return spec.CompiledPatches{}, fmt.Errorf("rendered values are required to compile render patches, use resolveDiffPatches where nothing is rendered")
 	}
 
 	renderContext, err := renderContextFor(chart, renderedValues)

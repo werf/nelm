@@ -150,8 +150,16 @@ func TestAI_ResolvePatches_LegacyPatchesScopeViaMatchCharts(t *testing.T) {
 	require.Empty(t, aiApplyOrder(t, patches.Render, "app/templates/web.yaml"))
 }
 
-// A subchart whose metadata is missing makes renderContextFor fail, so this only
-// passes while an empty render rule set skips building the context at all.
+func TestAI_ResolvePatches_RejectsMissingRenderedValues(t *testing.T) {
+	chart := aiChartWithPatches(t, "app", "renderPatches:\n- patch: .order += [\"chart\"]\n")
+
+	_, err := resolvePatches(chart, false, nil, spec.Patches{}, nil)
+	require.ErrorContains(t, err, "rendered values are required")
+}
+
+// A dependency without metadata makes subchartContexts panic while walking the
+// tree, so this only passes while an empty render rule set skips building the
+// context at all.
 func TestAI_ResolvePatches_WithoutRenderPatchesSkipsRenderContext(t *testing.T) {
 	parent := &v2chart.Chart{
 		Metadata: &v2chart.Metadata{Name: "app"},
@@ -162,7 +170,7 @@ func TestAI_ResolvePatches_WithoutRenderPatchesSkipsRenderContext(t *testing.T) 
 	chart, err := helmchart.NewAccessor(parent)
 	require.NoError(t, err)
 
-	patches, err := resolvePatches(chart, false, nil, spec.Patches{}, nil)
+	patches, err := resolvePatches(chart, false, nil, spec.Patches{}, aiRenderedValues())
 	require.NoError(t, err)
 
 	require.NotEmpty(t, patches.Diff)
