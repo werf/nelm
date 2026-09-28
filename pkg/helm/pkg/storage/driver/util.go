@@ -71,18 +71,15 @@ func lastVersionFromMetadata(ctx context.Context, client metadata.Interface, gvr
 
 const listLatestPageSize = 500
 
-func releaseKeyAndVersionFromLabels(namespace string, lbs map[string]string) (string, int, bool) {
-	name := lbs["name"]
-	if name == "" {
+// releaseKeyAndVersionFromLabels serves the listing paths, which only read: an object whose
+// labels do not identify a revision is skipped rather than failing the whole listing.
+func releaseKeyAndVersionFromLabels(key, namespace string, lbs map[string]string) (string, int, bool) {
+	record, ok, err := revisionRecordFromLabels(key, namespace, lbs)
+	if !ok || err != nil {
 		return "", 0, false
 	}
 
-	version, err := strconv.Atoi(lbs["version"])
-	if err != nil {
-		return "", 0, false
-	}
-
-	return namespace + "/" + name, version, true
+	return namespace + "/" + record.Name, record.Version, true
 }
 
 func releaseVersionFromLabels(lbs map[string]string) int {
@@ -176,4 +173,42 @@ func ContainsSystemLabels(lbs map[string]string) bool {
 
 func GetSystemLabels() []string {
 	return systemLabels
+}
+
+// RevisionRecord is the lightweight metadata of a single release revision:
+// everything Revisions can report without decoding a release body.
+type RevisionRecord struct {
+	Name      string
+	Namespace string
+	Version   int
+	Status    string
+}
+
+// revisionRecordFromLabels returns ok=false for an object that is not a release revision:
+// one without a name label, or without a version label, which every stored revision
+// carries. A version label that is present but does not parse is an error naming the
+// object, so it can be removed by hand: left out, it would let the next revision number
+// collide with it.
+func revisionRecordFromLabels(key, namespace string, lbs map[string]string) (RevisionRecord, bool, error) {
+	name := lbs["name"]
+	if name == "" {
+		return RevisionRecord{}, false, nil
+	}
+
+	versionLabel, found := lbs["version"]
+	if !found {
+		return RevisionRecord{}, false, nil
+	}
+
+	version, err := strconv.Atoi(versionLabel)
+	if err != nil {
+		return RevisionRecord{}, false, fmt.Errorf("release object %q (namespace: %q): unparseable version label %q", key, namespace, versionLabel)
+	}
+
+	return RevisionRecord{
+		Name:      name,
+		Namespace: namespace,
+		Version:   version,
+		Status:    lbs["status"],
+	}, true, nil
 }

@@ -249,31 +249,14 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	log.Default.Debug(ctx, "Build release history")
 
-	history, err := release.BuildHistory(opts.ReleaseName, releaseStorage, release.HistoryOptions{})
+	history, err := release.BuildHistory(ctx, opts.ReleaseName, releaseStorage)
 	if err != nil {
 		return nil, fmt.Errorf("build release history: %w", err)
 	}
 
-	releases := history.Releases()
-	deployedReleases := history.FindAllDeployed()
-	prevRelease := lo.LastOrEmpty(releases)
-	prevDeployedRelease := lo.LastOrEmpty(deployedReleases)
+	revisions := history.Revisions()
 
-	var newRevision int
-	if prevRelease != nil {
-		newRevision = prevRelease.Version() + 1
-	} else {
-		newRevision = 1
-	}
-
-	var deployType common.DeployType
-	if prevDeployedRelease != nil {
-		deployType = common.DeployTypeUpgrade
-	} else if prevRelease != nil {
-		deployType = common.DeployTypeInstall
-	} else {
-		deployType = common.DeployTypeInitial
-	}
+	newRevision, deployType := resolveDeployState(revisions)
 
 	chartTreeOptions := chart.RenderChartOptions{
 		ChartRepoConnectionOptions:      opts.ChartRepoConnectionOptions,

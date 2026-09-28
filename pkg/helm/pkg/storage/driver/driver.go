@@ -27,6 +27,8 @@ import (
 var (
 	// ErrReleaseNotFound indicates that a release is not found.
 	ErrReleaseNotFound = errors.New("release: not found")
+	// ErrReleaseUndecodable indicates that a release exists but its stored body cannot be decoded.
+	ErrReleaseUndecodable = errors.New("release: stored body cannot be decoded")
 	// ErrReleaseExists indicates that a release already exists.
 	ErrReleaseExists = errors.New("release: already exists")
 	// ErrInvalidKey indicates that a release key could not be parsed.

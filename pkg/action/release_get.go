@@ -128,6 +128,10 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 
 	relAccessor, err := releaseStorage.GetRelease(releaseName, opts.Revision)
 	if err != nil {
+		if errors.Is(err, driver.ErrReleaseUndecodable) {
+			return nil, fmt.Errorf("%w; remove its storage object by hand to make the release readable again", err)
+		}
+
 		if !errors.Is(err, driver.ErrReleaseNotFound) {
 			return nil, fmt.Errorf("get release: %w", err)
 		}

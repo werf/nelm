@@ -28,12 +28,14 @@ type ReleaseStorager interface {
 	Create(rls helmrel.Accessor) error
 	Update(rls helmrel.Accessor) error
 	UpdateLabels(name string, version int, labels map[string]string) error
-	Delete(name string, version int) (helmrel.Accessor, error)
+	Delete(ctx context.Context, name string, version int) error
 	Query(labels map[string]string) ([]helmrel.Accessor, error)
 	// GetRelease returns a single release revision. version == 0 means the latest revision.
 	GetRelease(name string, version int) (helmrel.Accessor, error)
 	// ListLatestReleases returns the highest revision of every stored release.
 	ListLatestReleases(ctx context.Context) ([]helmrel.Accessor, error)
+	// Revisions returns version and status of every revision of the named release.
+	Revisions(ctx context.Context, name string) ([]Revision, error)
 }
 
 type storageAdapter struct {
@@ -54,18 +56,12 @@ func (a *storageAdapter) Create(rls helmrel.Accessor) error {
 	return nil
 }
 
-func (a *storageAdapter) Delete(name string, version int) (helmrel.Accessor, error) {
-	rel, err := a.storage.Delete(name, version)
-	if err != nil {
-		return nil, fmt.Errorf("delete release: %w", err)
+func (a *storageAdapter) Delete(ctx context.Context, name string, version int) error {
+	if err := a.storage.DeleteRevision(ctx, name, version); err != nil {
+		return fmt.Errorf("delete release revision: %w", err)
 	}
 
-	acc, err := helmrel.NewAccessor(rel)
-	if err != nil {
-		return nil, fmt.Errorf("wrap release: %w", err)
-	}
-
-	return acc, nil
+	return nil
 }
 
 func (a *storageAdapter) GetRelease(name string, version int) (helmrel.Accessor, error) {
@@ -115,6 +111,25 @@ func (a *storageAdapter) Query(labels map[string]string) ([]helmrel.Accessor, er
 		}
 
 		result = append(result, acc)
+	}
+
+	return result, nil
+}
+
+func (a *storageAdapter) Revisions(ctx context.Context, name string) ([]Revision, error) {
+	records, err := a.storage.Revisions(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("list revisions: %w", err)
+	}
+
+	result := make([]Revision, 0, len(records))
+	for _, record := range records {
+		result = append(result, Revision{
+			Name:      record.Name,
+			Namespace: record.Namespace,
+			Status:    record.Status,
+			Version:   record.Version,
+		})
 	}
 
 	return result, nil

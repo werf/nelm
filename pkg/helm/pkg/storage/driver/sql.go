@@ -337,6 +337,54 @@ func (s *SQL) LastVersion(name string) (int, error) {
 	return int(version.Int64), nil
 }
 
+type sqlRevisionRecord struct {
+	Name      string `db:"name"`
+	Namespace string `db:"namespace"`
+	Version   int    `db:"version"`
+	Status    string `db:"status"`
+}
+
+// Revisions reads only labels and decodes no release body; the result is sorted by ascending version.
+func (s *SQL) Revisions(ctx context.Context, name string) ([]RevisionRecord, error) {
+	if s.namespace == "" {
+		return nil, fmt.Errorf("list revisions of release %q: namespace is required", name)
+	}
+
+	query, args, err := s.statementBuilder.
+		Select(
+			sqlReleaseTableNameColumn,
+			sqlReleaseTableNamespaceColumn,
+			sqlReleaseTableVersionColumn,
+			sqlReleaseTableStatusColumn,
+		).
+		From(sqlReleaseTableName).
+		Where(sq.Eq{sqlReleaseTableNameColumn: name}).
+		Where(sq.Eq{sqlReleaseTableOwnerColumn: sqlReleaseDefaultOwner}).
+		Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace}).
+		OrderBy(sqlReleaseTableVersionColumn + " ASC").
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build revisions query for release %q: %w", name, err)
+	}
+
+	var rows []sqlRevisionRecord
+	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, fmt.Errorf("select revisions of release %q: %w", name, err)
+	}
+
+	records := make([]RevisionRecord, 0, len(rows))
+	for _, row := range rows {
+		records = append(records, RevisionRecord{
+			Name:      row.Name,
+			Namespace: row.Namespace,
+			Version:   row.Version,
+			Status:    row.Status,
+		})
+	}
+
+	return records, nil
+}
+
 type sqlLatestReleaseRecord struct {
 	Key       string `db:"key"`
 	Namespace string `db:"namespace"`
@@ -512,6 +560,38 @@ func (s *SQL) Get(key string) (release.Releaser, error) {
 	}
 
 	return release, nil
+}
+
+// GetRevision returns the release stored under key with its custom labels attached. A stored
+// body that cannot be decoded is reported as ErrReleaseUndecodable rather than dropped, so a
+// single-revision lookup can tell a corrupt revision from an absent one.
+func (s *SQL) GetRevision(key string) (release.Releaser, error) {
+	var record SQLReleaseWrapper
+
+	query, args, err := s.statementBuilder.
+		Select(sqlReleaseTableBodyColumn).
+		From(sqlReleaseTableName).
+		Where(sq.Eq{sqlReleaseTableKeyColumn: key}).
+		Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("get revision: build query: %w", err)
+	}
+
+	if err := s.db.Get(&record, query, args...); err != nil {
+		return nil, ErrReleaseNotFound
+	}
+
+	rls, err := decodeRelease(record.Body)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s: %w", ErrReleaseUndecodable, key, err)
+	}
+
+	if rls.Labels, err = s.getReleaseCustomLabels(key, s.namespace); err != nil {
+		return nil, fmt.Errorf("get revision: custom labels of %q: %w", key, err)
+	}
+
+	return rls, nil
 }
 
 // List returns the list of all releases such that filter(release) == true
@@ -934,6 +1014,55 @@ func (s *SQL) Delete(key string) (release.Releaser, error) {
 	}
 	_, err = transaction.Exec(deleteCustomLabelsQuery, args...)
 	return release, err
+}
+
+// DeleteRevision removes the release named by key and its custom labels without reading the body.
+func (s *SQL) DeleteRevision(ctx context.Context, key string) error {
+	transaction, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("delete revision: begin transaction: %w", err)
+	}
+
+	deleteQuery, args, err := s.statementBuilder.
+		Delete(sqlReleaseTableName).
+		Where(sq.Eq{sqlReleaseTableKeyColumn: key}).
+		Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace}).
+		ToSql()
+	if err != nil {
+		transaction.Rollback()
+		return fmt.Errorf("delete revision: build query: %w", err)
+	}
+
+	result, err := transaction.ExecContext(ctx, deleteQuery, args...)
+	if err != nil {
+		transaction.Rollback()
+		return fmt.Errorf("delete revision: %w", err)
+	}
+
+	if affected, err := result.RowsAffected(); err == nil && affected == 0 {
+		transaction.Rollback()
+		return ErrReleaseNotFound
+	}
+
+	deleteLabelsQuery, args, err := s.statementBuilder.
+		Delete(sqlCustomLabelsTableName).
+		Where(sq.Eq{sqlCustomLabelsTableReleaseKeyColumn: key}).
+		Where(sq.Eq{sqlCustomLabelsTableReleaseNamespaceColumn: s.namespace}).
+		ToSql()
+	if err != nil {
+		transaction.Rollback()
+		return fmt.Errorf("delete revision: build labels query: %w", err)
+	}
+
+	if _, err := transaction.ExecContext(ctx, deleteLabelsQuery, args...); err != nil {
+		transaction.Rollback()
+		return fmt.Errorf("delete revision labels: %w", err)
+	}
+
+	if err := transaction.Commit(); err != nil {
+		return fmt.Errorf("delete revision: commit: %w", err)
+	}
+	return nil
 }
 
 // Get release custom labels from database
