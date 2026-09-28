@@ -120,6 +120,10 @@ type ReleaseInstallOptions struct {
 	NetworkParallelism int
 	// NoCreateNamespace, when true, skips creating the release namespace entirely.
 	NoCreateNamespace bool
+	// NoManifestYAMLPrecheck, when true, skips the extra YAML parse of every rendered manifest
+	// done before decoding it. Invalid YAML is still rejected when the manifest is decoded, but
+	// the error no longer reports which document within the file failed.
+	NoManifestYAMLPrecheck bool
 	// NoShowNotes, when true, suppresses printing of NOTES.txt after successful installation.
 	// NOTES.txt typically contains usage instructions and next steps.
 	NoShowNotes bool
@@ -410,6 +414,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			DropInvalidAnnotationsAndLabels: opts.DropInvalidAnnotationsAndLabels,
 			HelmOptions:                     helmOptions,
 			NoValuesSchemaValidation:        opts.NoValuesSchemaValidation,
+			NoManifestYAMLPrecheck:          opts.NoManifestYAMLPrecheck,
 			NoStandaloneCRDs:                opts.NoInstallStandaloneCRDs,
 			Remote:                          true,
 			SubchartNotes:                   opts.ShowSubchartNotes,

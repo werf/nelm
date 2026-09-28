@@ -118,6 +118,10 @@ type ChartLintOptions struct {
 	NetworkParallelism int
 	// NoFinalTracking, when true, disables final tracking operations during validation to speed up linting.
 	NoFinalTracking bool
+	// NoManifestYAMLPrecheck, when true, skips the extra YAML parse of every rendered manifest
+	// done before decoding it. Invalid YAML is still rejected when the manifest is decoded, but
+	// the error no longer reports which document within the file failed.
+	NoManifestYAMLPrecheck bool
 	// NoRemoveManualChanges, when true, preserves fields during validation that would be manually added.
 	// Used in the validation dry-run to check resource compatibility.
 	NoRemoveManualChanges bool
@@ -286,6 +290,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		HelmOptions:                     helmOptions,
 		LocalKubeVersion:                opts.LocalKubeVersion,
 		NoValuesSchemaValidation:        opts.NoValuesSchemaValidation,
+		NoManifestYAMLPrecheck:          opts.NoManifestYAMLPrecheck,
 		Remote:                          opts.Remote,
 		TemplatesAllowDNS:               opts.TemplatesAllowDNS,
 		TempDirPath:                     opts.TempDirPath,

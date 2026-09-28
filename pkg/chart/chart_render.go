@@ -62,6 +62,7 @@ type RenderChartOptions struct {
 	LintMode                        bool
 	LocalKubeVersion                string
 	LocalLookupResourcesPaths       []string
+	NoManifestYAMLPrecheck          bool
 	NoStandaloneCRDs                bool
 	NoValuesSchemaValidation        bool
 	Remote                          bool
@@ -724,13 +725,15 @@ func renderedTemplatesToResourceSpecs(ctx context.Context, renderedTemplates map
 		manifests := util.SplitManifests(fileContent)
 
 		for idx, manifest := range manifests {
-			var head releaseutil.SimpleHead
-			if err := yaml.UnmarshalWithOptions(
-				[]byte(manifest),
-				&head,
-				yaml.AllowDuplicateMapKey(),
-			); err != nil {
-				return nil, fmt.Errorf("parse YAML resource #%d for %q: %w", idx+1, filePath, err)
+			if !opts.NoManifestYAMLPrecheck {
+				var head releaseutil.SimpleHead
+				if err := yaml.UnmarshalWithOptions(
+					[]byte(manifest),
+					&head,
+					yaml.AllowDuplicateMapKey(),
+				); err != nil {
+					return nil, fmt.Errorf("parse YAML resource #%d for %q: %w", idx+1, filePath, err)
+				}
 			}
 
 			if res, err := spec.NewResourceSpecFromManifest(ctx, manifest, releaseNamespace, spec.ResourceSpecOptions{
