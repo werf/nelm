@@ -17,6 +17,7 @@ limitations under the License.
 package driver // import "github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 
 import (
+	"log/slog"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -72,17 +73,12 @@ func lastVersionFromMetadata(ctx context.Context, client metadata.Interface, gvr
 const listLatestPageSize = 500
 
 func releaseKeyAndVersionFromLabels(namespace string, lbs map[string]string) (string, int, bool) {
-	name := lbs["name"]
-	if name == "" {
+	record, ok := revisionRecordFromLabels(namespace, lbs)
+	if !ok {
 		return "", 0, false
 	}
 
-	version, err := strconv.Atoi(lbs["version"])
-	if err != nil {
-		return "", 0, false
-	}
-
-	return namespace + "/" + name, version, true
+	return namespace + "/" + record.Name, record.Version, true
 }
 
 func releaseVersionFromLabels(lbs map[string]string) int {
@@ -187,14 +183,19 @@ type RevisionRecord struct {
 	Status    string
 }
 
+// revisionRecordFromLabels rejects objects whose labels do not identify a revision. Such an
+// object is invisible to history, so the next revision number may collide with it; the drop
+// is logged so it can be traced back.
 func revisionRecordFromLabels(namespace string, lbs map[string]string) (RevisionRecord, bool) {
 	name := lbs["name"]
 	if name == "" {
+		slog.Default().Debug("skip release object without a name label", slog.String("namespace", namespace), slog.Any("labels", lbs))
 		return RevisionRecord{}, false
 	}
 
 	version, err := strconv.Atoi(lbs["version"])
 	if err != nil {
+		slog.Default().Debug("skip release object with an unparseable version label", slog.String("namespace", namespace), slog.String("name", name), slog.String("version", lbs["version"]))
 		return RevisionRecord{}, false
 	}
 

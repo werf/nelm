@@ -112,8 +112,7 @@ func (secrets *Secrets) LastVersion(name string) (int, error) {
 	return latest, nil
 }
 
-// Revisions returns the metadata of every revision of the named release, sorted
-// by ascending version. It reads only labels and decodes no release body.
+// Revisions reads only labels and decodes no release body; the result is sorted by ascending version.
 func (secrets *Secrets) Revisions(ctx context.Context, name string) ([]RevisionRecord, error) {
 	if secrets.Namespace == "" {
 		return nil, fmt.Errorf("list revisions of release %q: namespace is required", name)
@@ -510,12 +509,7 @@ func (secrets *Secrets) Delete(key string) (rls release.Releaser, err error) {
 	return rls, nil
 }
 
-// DeleteRevision removes the Secret holding the release named by key without fetching or
-// decoding it, and returns ErrReleaseNotFound if it does not exist. The context is
-// honoured, unlike Delete, Create and Update, which run on context.Background():
-// plan execution cancels its context on the first failed operation and then still has
-// to record the failed status, so those writes must not become cancellable. Deleting
-// a revision is idempotent and safe to abandon.
+// DeleteRevision removes the Secret holding the release named by key without fetching it.
 func (secrets *Secrets) DeleteRevision(ctx context.Context, key string) error {
 	if err := secrets.impl.Delete(ctx, key, metav1.DeleteOptions{}); err != nil {
 		if apierrors.IsNotFound(err) {

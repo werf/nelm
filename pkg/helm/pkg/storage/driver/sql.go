@@ -344,8 +344,7 @@ type sqlRevisionRecord struct {
 	Status    string `db:"status"`
 }
 
-// Revisions returns the metadata of every revision of the named release, sorted
-// by ascending version. It reads only metadata columns and decodes no release body.
+// Revisions reads only labels and decodes no release body; the result is sorted by ascending version.
 func (s *SQL) Revisions(ctx context.Context, name string) ([]RevisionRecord, error) {
 	if s.namespace == "" {
 		return nil, fmt.Errorf("list revisions of release %q: namespace is required", name)
@@ -985,12 +984,7 @@ func (s *SQL) Delete(key string) (release.Releaser, error) {
 	return release, err
 }
 
-// DeleteRevision removes the release named by key and its custom labels without fetching
-// or decoding the body, and returns ErrReleaseNotFound if no row was deleted. The context
-// is honoured, unlike Delete, Create and Update, which ignore it: plan execution cancels
-// its context on the first failed operation and then still has to record the failed
-// status, so those writes must not become cancellable. Deleting a revision is idempotent
-// and safe to abandon.
+// DeleteRevision removes the release named by key and its custom labels without reading the body.
 func (s *SQL) DeleteRevision(ctx context.Context, key string) error {
 	transaction, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {

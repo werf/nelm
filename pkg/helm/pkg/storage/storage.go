@@ -113,10 +113,33 @@ func (s *Storage) queryRevision(name string, version int) (*rspb.Release, error)
 	}
 
 	if len(rels) == 0 {
-		return nil, driver.ErrReleaseNotFound
+		return nil, s.revisionMissingError(name, version)
 	}
 
 	return releaserToV1Release(rels[0])
+}
+
+// revisionMissingError tells a revision that does not exist apart from one whose stored
+// body the driver could not decode: Query silently drops the latter, so an empty result
+// is checked against the label metadata, which never reads the body.
+func (s *Storage) revisionMissingError(name string, version int) error {
+	l, ok := s.Driver.(revisionLister)
+	if !ok {
+		return driver.ErrReleaseNotFound
+	}
+
+	records, err := l.Revisions(context.Background(), name)
+	if err != nil {
+		return driver.ErrReleaseNotFound
+	}
+
+	for _, record := range records {
+		if record.Version == version {
+			return fmt.Errorf("%w: %s", driver.ErrReleaseUndecodable, makeKey(name, version))
+		}
+	}
+
+	return driver.ErrReleaseNotFound
 }
 
 func (s *Storage) resolveLastVersion(name string) (int, error) {
@@ -201,6 +224,10 @@ func (s *Storage) ListLatestReleases(ctx context.Context) ([]*rspb.Release, erro
 	return result, nil
 }
 
+// The capabilities below are optional interfaces with a fallback rather than members of
+// driver.Driver so the upstream Helm interface stays untouched and rebases stay cheap; every
+// driver in this repository implements them.
+//
 // revisionLister is an optional driver capability that returns the version and
 // status of every revision of a release without decoding release bodies.
 type revisionLister interface {

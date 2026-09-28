@@ -1038,7 +1038,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	prevDeployedReleases, err := loadDeployedReleasesSkippingPruned(ctx, history)
+	prevDeployedReleases, err := loadDeployedReleases(ctx, history, nil)
 	if err != nil {
 		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("load deployed releases: %w", err))
 	}

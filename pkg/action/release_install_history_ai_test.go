@@ -4,6 +4,7 @@ package action
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -19,9 +20,10 @@ import (
 var _ release.ReleaseStorager = (*prunedRevisionStorager)(nil)
 
 type prunedRevisionStorager struct {
-	getErr    error
-	prunedSet map[int]bool
-	revisions []release.Revision
+	getErr         error
+	prunedSet      map[int]bool
+	revisions      []release.Revision
+	undecodableSet map[int]bool
 }
 
 func (s *prunedRevisionStorager) Create(rls helmrel.Accessor) error {
@@ -35,6 +37,10 @@ func (s *prunedRevisionStorager) Delete(ctx context.Context, name string, versio
 func (s *prunedRevisionStorager) GetRelease(name string, version int) (helmrel.Accessor, error) {
 	if s.prunedSet[version] {
 		return nil, driver.ErrReleaseNotFound
+	}
+
+	if s.undecodableSet[version] {
+		return nil, fmt.Errorf("%w: rev %d", driver.ErrReleaseUndecodable, version)
 	}
 
 	if s.getErr != nil {
@@ -64,7 +70,7 @@ func (s *prunedRevisionStorager) UpdateLabels(name string, version int, labels m
 	return nil
 }
 
-func TestAI_LoadDeployedReleasesSkippingPruned_KeepsOnlyDeployedStatus(t *testing.T) {
+func TestAI_LoadDeployedReleases_KeepsOnlyDeployedStatus(t *testing.T) {
 	ctx := context.Background()
 
 	storage := &prunedRevisionStorager{
@@ -78,14 +84,14 @@ func TestAI_LoadDeployedReleasesSkippingPruned_KeepsOnlyDeployedStatus(t *testin
 	history, err := release.BuildHistory(ctx, "myrelease", storage)
 	require.NoError(t, err)
 
-	rels, err := loadDeployedReleasesSkippingPruned(ctx, history)
+	rels, err := loadDeployedReleases(ctx, history, nil)
 	require.NoError(t, err)
 
 	require.Len(t, rels, 1)
 	assert.Equal(t, 3, rels[0].Version())
 }
 
-func TestAI_LoadDeployedReleasesSkippingPruned_PropagatesOtherErrors(t *testing.T) {
+func TestAI_LoadDeployedReleases_PropagatesOtherErrors(t *testing.T) {
 	ctx := context.Background()
 
 	storage := &prunedRevisionStorager{
@@ -98,12 +104,12 @@ func TestAI_LoadDeployedReleasesSkippingPruned_PropagatesOtherErrors(t *testing.
 	history, err := release.BuildHistory(ctx, "myrelease", storage)
 	require.NoError(t, err)
 
-	_, err = loadDeployedReleasesSkippingPruned(ctx, history)
+	_, err = loadDeployedReleases(ctx, history, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, assert.AnError)
 }
 
-func TestAI_LoadDeployedReleasesSkippingPruned_SkipsPrunedRevision(t *testing.T) {
+func TestAI_LoadDeployedReleases_SkipsPrunedRevision(t *testing.T) {
 	ctx := context.Background()
 
 	storage := &prunedRevisionStorager{
@@ -117,9 +123,29 @@ func TestAI_LoadDeployedReleasesSkippingPruned_SkipsPrunedRevision(t *testing.T)
 	history, err := release.BuildHistory(ctx, "myrelease", storage)
 	require.NoError(t, err)
 
-	rels, err := loadDeployedReleasesSkippingPruned(ctx, history)
+	rels, err := loadDeployedReleases(ctx, history, nil)
 	require.NoError(t, err)
 
+	require.Len(t, rels, 1)
+	assert.Equal(t, 2, rels[0].Version())
+}
+
+func TestAI_LoadDeployedReleases_SkipsUndecodableRevision(t *testing.T) {
+	ctx := context.Background()
+
+	storage := &prunedRevisionStorager{
+		revisions: []release.Revision{
+			newTestDeployedRevision("myrelease", 1, helmreleasestatus.StatusDeployed),
+			newTestDeployedRevision("myrelease", 2, helmreleasestatus.StatusDeployed),
+		},
+		undecodableSet: map[int]bool{1: true},
+	}
+
+	history, err := release.BuildHistory(ctx, "myrelease", storage)
+	require.NoError(t, err)
+
+	rels, err := loadDeployedReleases(ctx, history, nil)
+	require.NoError(t, err, "an undecodable supersede candidate is skipped, not fatal")
 	require.Len(t, rels, 1)
 	assert.Equal(t, 2, rels[0].Version())
 }

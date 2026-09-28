@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 
 	helmreleasecommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
@@ -199,6 +200,32 @@ func TestAI_StorageAdapterRevisions_UnknownReleaseYieldsEmpty(t *testing.T) {
 	revisions, err := adapter.Revisions(context.Background(), "missing")
 	require.NoError(t, err)
 	assert.Empty(t, revisions)
+}
+
+func TestAI_StorageGetRelease_UndecodableBodyIsNotReportedAsNotFound(t *testing.T) {
+	secrets := k8sfake.NewSimpleClientset().CoreV1().Secrets(testNamespace)
+	driver := helmdriver.NewSecrets(secrets)
+	driver.Namespace = testNamespace
+	driver.MetadataClient = newMetadataClient(t, versionLabelSets("myrelease", 1, 2)...)
+	storage := helmstorage.Init(driver)
+
+	require.NoError(t, storage.Create(newTestRelease("myrelease", 1, nil)))
+	require.NoError(t, storage.Create(newTestRelease("myrelease", 2, nil)))
+
+	key := "sh.helm.release.v1.myrelease.v2"
+	obj, err := secrets.Get(context.Background(), key, metav1.GetOptions{})
+	require.NoError(t, err)
+	obj.Data["release"] = []byte("not-base64-at-all!!!")
+	_, err = secrets.Update(context.Background(), obj, metav1.UpdateOptions{})
+	require.NoError(t, err)
+
+	_, err = storage.GetRelease("myrelease", 2)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, helmdriver.ErrReleaseUndecodable, "an existing revision with a corrupt body must not look absent")
+	assert.NotErrorIs(t, err, helmdriver.ErrReleaseNotFound)
+
+	_, err = storage.GetRelease("myrelease", 3)
+	assert.ErrorIs(t, err, helmdriver.ErrReleaseNotFound, "a genuinely missing revision still reports not found")
 }
 
 func TestAI_StorageRevisions_CapabilityErrorIsNotSwallowedByFallback(t *testing.T) {

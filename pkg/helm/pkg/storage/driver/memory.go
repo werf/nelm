@@ -182,8 +182,7 @@ func (mem *Memory) LastVersion(name string) (int, error) {
 	return latest, nil
 }
 
-// Revisions returns the metadata of every revision of the named release, sorted
-// by ascending version.
+// Revisions returns the release's revisions sorted by ascending version.
 func (mem *Memory) Revisions(_ context.Context, name string) ([]RevisionRecord, error) {
 	defer unlock(mem.rlock())
 
@@ -325,7 +324,7 @@ func (mem *Memory) Delete(key string) (release.Releaser, error) {
 }
 
 // DeleteRevision removes the release named by key, or returns ErrReleaseNotFound.
-func (mem *Memory) DeleteRevision(ctx context.Context, key string) error {
+func (mem *Memory) DeleteRevision(_ context.Context, key string) error {
 	if _, err := mem.Delete(key); err != nil {
 		return err
 	}
