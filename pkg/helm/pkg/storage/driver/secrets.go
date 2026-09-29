@@ -112,6 +112,87 @@ func (secrets *Secrets) LastVersion(name string) (int, error) {
 	return latest, nil
 }
 
+// Revisions reads only labels and decodes no release body; the result is sorted by ascending version.
+func (secrets *Secrets) Revisions(ctx context.Context, name string) ([]RevisionRecord, error) {
+	if secrets.Namespace == "" {
+		return nil, fmt.Errorf("list revisions of release %q: namespace is required", name)
+	}
+
+	if errs := validation.IsValidLabelValue(name); len(errs) != 0 {
+		return nil, fmt.Errorf("list revisions of release %q: invalid label value: %s", name, strings.Join(errs, "; "))
+	}
+
+	selector := kblabels.Set{"owner": "helm", "name": name}.AsSelector().String()
+
+	var records []RevisionRecord
+
+	if secrets.MetadataClient != nil {
+		opts := metav1.ListOptions{LabelSelector: selector, Limit: listLatestPageSize}
+
+		for {
+			list, err := secrets.MetadataClient.Resource(secretsGVR).Namespace(secrets.Namespace).List(ctx, opts)
+			if err != nil {
+				return nil, fmt.Errorf("list revision metadata of release %q: %w", name, err)
+			}
+
+			for _, item := range list.Items {
+				record, ok, err := revisionRecordFromLabels(item.Name, secrets.Namespace, item.Labels)
+				if err != nil {
+					return nil, fmt.Errorf("list revisions of release %q: %w", name, err)
+				}
+				if !ok {
+					continue
+				}
+
+				records = append(records, record)
+			}
+
+			if list.Continue == "" {
+				break
+			}
+
+			opts.Continue = list.Continue
+		}
+
+		sort.Slice(records, func(i, j int) bool { return records[i].Version < records[j].Version })
+
+		return records, nil
+	}
+
+	// Safety net without a metadata client: a typed list still avoids decoding
+	// release bodies, but unlike the metadata path it transfers them over the wire.
+	opts := metav1.ListOptions{LabelSelector: selector, Limit: listLatestPageSize}
+
+	for {
+		list, err := secrets.impl.List(ctx, opts)
+		if err != nil {
+			return nil, fmt.Errorf("list revisions of release %q: %w", name, err)
+		}
+
+		for _, item := range list.Items {
+			record, ok, err := revisionRecordFromLabels(item.Name, secrets.Namespace, item.Labels)
+			if err != nil {
+				return nil, fmt.Errorf("list revisions of release %q: %w", name, err)
+			}
+			if !ok {
+				continue
+			}
+
+			records = append(records, record)
+		}
+
+		if list.Continue == "" {
+			break
+		}
+
+		opts.Continue = list.Continue
+	}
+
+	sort.Slice(records, func(i, j int) bool { return records[i].Version < records[j].Version })
+
+	return records, nil
+}
+
 // ListLatestReleases returns the highest revision of every release owned by Helm.
 // Superseded revisions are dropped while paging, before any body is decoded, so
 // the cost does not scale with the depth of the histories.
@@ -131,7 +212,7 @@ func (secrets *Secrets) ListLatestReleases(ctx context.Context) ([]*rspb.Release
 		}
 
 		for _, item := range list.Items {
-			key, version, ok := releaseKeyAndVersionFromLabels(item.Namespace, item.Labels)
+			key, version, ok := releaseKeyAndVersionFromLabels(item.Name, item.Namespace, item.Labels)
 			if !ok {
 				continue
 			}
@@ -162,7 +243,7 @@ func (secrets *Secrets) ListLatestReleases(ctx context.Context) ([]*rspb.Release
 		if err != nil {
 			secrets.Logger().Debug("list latest releases: failed to decode release", slog.String("name", item.Name), slog.Any("error", err))
 
-			_, version, _ := releaseKeyAndVersionFromLabels(item.Namespace, item.Labels)
+			_, version, _ := releaseKeyAndVersionFromLabels(item.Name, item.Namespace, item.Labels)
 			rls, err = secrets.findPreviousValidRelease(ctx, item.Namespace, item.Labels["name"], version)
 			if err != nil {
 				return nil, err
@@ -204,7 +285,7 @@ func (secrets *Secrets) findPreviousValidRelease(ctx context.Context, namespace,
 		}
 
 		for _, item := range list.Items {
-			_, version, ok := releaseKeyAndVersionFromLabels(item.Namespace, item.Labels)
+			_, version, ok := releaseKeyAndVersionFromLabels(item.Name, item.Namespace, item.Labels)
 			if !ok || item.Namespace != namespace || version >= beforeVersion {
 				continue
 			}
@@ -260,6 +341,27 @@ func (secrets *Secrets) Get(key string) (release.Releaser, error) {
 	}
 	r.Labels = filterSystemLabels(obj.Labels)
 	return r, nil
+}
+
+// GetRevision returns the release stored under key with its storage labels intact, unlike
+// Get, which strips the system labels. A stored body that cannot be decoded is reported as
+// ErrReleaseUndecodable rather than dropped, so a single-revision lookup can tell a corrupt
+// revision from an absent one.
+func (secrets *Secrets) GetRevision(key string) (release.Releaser, error) {
+	obj, err := secrets.impl.Get(context.Background(), key, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, ErrReleaseNotFound
+		}
+		return nil, fmt.Errorf("get revision: failed to get %q: %w", key, err)
+	}
+
+	rls, err := decodeRelease(string(obj.Data["release"]))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s: %w", ErrReleaseUndecodable, key, err)
+	}
+	rls.Labels = obj.Labels
+	return rls, nil
 }
 
 // List fetches all releases and returns the list releases such
@@ -432,6 +534,17 @@ func (secrets *Secrets) Delete(key string) (rls release.Releaser, err error) {
 		return nil, err
 	}
 	return rls, nil
+}
+
+// DeleteRevision removes the Secret holding the release named by key without fetching it.
+func (secrets *Secrets) DeleteRevision(ctx context.Context, key string) error {
+	if err := secrets.impl.Delete(ctx, key, metav1.DeleteOptions{}); err != nil {
+		if apierrors.IsNotFound(err) {
+			return ErrReleaseNotFound
+		}
+		return fmt.Errorf("delete revision: failed to delete %q: %w", key, err)
+	}
+	return nil
 }
 
 // newSecretsObject constructs a kubernetes Secret object

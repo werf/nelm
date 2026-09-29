@@ -489,16 +489,14 @@ func resolveTrackReadinessOpInStage(ctx context.Context, plan *Plan, instInfos [
 }
 
 func addDeleteReleaseOps(plan *Plan, info *ReleaseInfo) {
-	rel := info.Release.Accessor
-
 	deletedOp := &Operation{
 		Type:     OperationTypeDeleteRelease,
 		Version:  OperationVersionDeleteRelease,
 		Category: OperationCategoryRelease,
 		Config: &OperationConfigDeleteRelease{
-			ReleaseName:      rel.Name(),
-			ReleaseNamespace: rel.Namespace(),
-			ReleaseRevision:  rel.Version(),
+			ReleaseName:      info.Revision.Name,
+			ReleaseNamespace: info.Revision.Namespace,
+			ReleaseRevision:  info.Revision.Version,
 		},
 	}
 	lo.Must0(plan.AddOperationChain().AddOperation(deletedOp).Stage(common.StageFinal).Do())

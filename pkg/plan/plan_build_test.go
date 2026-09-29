@@ -1410,8 +1410,16 @@ func TestBuildPlanSuites(t *testing.T) {
 }
 
 func defaultReleaseInfo(releaseName, releaseNamespace string) *plan.ReleaseInfo {
+	rel := defaultRelease(releaseName, releaseNamespace)
+
 	return &plan.ReleaseInfo{
-		Release:                &release.VersionedRelease{Accessor: lo.Must(helmrel.NewAccessor(defaultRelease(releaseName, releaseNamespace)))},
+		Revision: release.Revision{
+			Name:      rel.Name,
+			Namespace: rel.Namespace,
+			Status:    rel.Info.Status.String(),
+			Version:   rel.Version,
+		},
+		Release:                &release.VersionedRelease{Accessor: lo.Must(helmrel.NewAccessor(rel))},
 		Must:                   plan.ReleaseTypeInstall,
 		MustFailOnFailedDeploy: true,
 	}
