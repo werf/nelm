@@ -39,20 +39,23 @@ data:
 `
 )
 
-func TestAI_RenderedTemplatesToResourceSpecs_DecodableButInvalidMetadata_Rejected(t *testing.T) {
-	for name, manifest := range map[string]string{
-		"name":        invalidNameManifestAI,
-		"annotations": invalidAnnotationManifestAI,
-	} {
-		t.Run(name, func(t *testing.T) {
-			templates := map[string]string{"templates/broken.yaml": manifest}
+func TestAI_RenderedTemplatesToResourceSpecs_InvalidAnnotations_Rejected(t *testing.T) {
+	templates := map[string]string{"templates/broken.yaml": invalidAnnotationManifestAI}
 
-			_, err := renderedTemplatesToResourceSpecs(context.Background(), templates, "ns", RenderChartOptions{})
+	_, err := renderedTemplatesToResourceSpecs(context.Background(), templates, "ns", RenderChartOptions{})
 
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "parse YAML resource #1")
-		})
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parse YAML resource #1")
+}
+
+func TestAI_RenderedTemplatesToResourceSpecs_NonScalarName_Accepted(t *testing.T) {
+	templates := map[string]string{"templates/broken.yaml": invalidNameManifestAI}
+
+	resources, err := renderedTemplatesToResourceSpecs(context.Background(), templates, "ns", RenderChartOptions{})
+
+	require.NoError(t, err)
+	require.Len(t, resources, 1)
+	assert.Empty(t, resources[0].Name)
 }
 
 func TestAI_RenderedTemplatesToResourceSpecs_DuplicateMapKeys_Accepted(t *testing.T) {
@@ -64,15 +67,16 @@ func TestAI_RenderedTemplatesToResourceSpecs_DuplicateMapKeys_Accepted(t *testin
 	require.Len(t, resources, 1)
 }
 
-func TestAI_RenderedTemplatesToResourceSpecs_InvalidMetadataWithDropInvalidAnnotationsAndLabels_Rejected(t *testing.T) {
+func TestAI_RenderedTemplatesToResourceSpecs_InvalidAnnotationsWithDropInvalidAnnotationsAndLabels_Stripped(t *testing.T) {
 	templates := map[string]string{"templates/broken.yaml": invalidAnnotationManifestAI}
 
-	_, err := renderedTemplatesToResourceSpecs(context.Background(), templates, "ns", RenderChartOptions{
+	resources, err := renderedTemplatesToResourceSpecs(context.Background(), templates, "ns", RenderChartOptions{
 		DropInvalidAnnotationsAndLabels: true,
 	})
 
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "parse YAML resource #1")
+	require.NoError(t, err)
+	require.Len(t, resources, 1)
+	assert.Empty(t, resources[0].Annotations)
 }
 
 func TestAI_RenderedTemplatesToResourceSpecs_InvalidSecondDocument_ReportsItsIndex(t *testing.T) {
