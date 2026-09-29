@@ -3,4 +3,5 @@ commands:
   - export VERSION="$(echo {{ .Tag }} | cut -c2-)"
   - task -o group -p build:dist:all version=$VERSION
   - task -p verify:binaries:dist:all version=$VERSION
+  - task -p compress:binaries:dist:all version=$VERSION
   - cp -a ./dist/$VERSION/* /result

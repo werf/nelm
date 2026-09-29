@@ -270,6 +270,12 @@ tasks:
     cmds:
       - ./scripts/verify-dist-binaries.sh {{.version}}
 
+  compress:binaries:dist:all:
+    desc: 'Compress distributable binaries with upx. Important vars: "version".'
+    cmds:
+      - |
+        find "./dist/{{.version}}" -type f \( -path "*/linux-*/bin/{{.brandSlug}}" -o -path "*/windows-*/bin/{{.brandSlug}}.exe" \) -exec upx --best {} +
+
   format:
     desc: 'Run all code formatters. Important vars: "paths".'
     run: once

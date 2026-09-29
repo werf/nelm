@@ -2,14 +2,20 @@ FROM golang:1.25.14-bookworm@sha256:3b4a11519ad929d1e1d261a12cff056f0c85b735253d
 ENV DEBIAN_FRONTEND=noninteractive
 
 ARG TARGETPLATFORM
+ARG TARGETARCH
 # linux/amd64 -> linux_amd64
 ENV PLATFORM=${TARGETPLATFORM/\//_}
 
 RUN apt-get -y update && \
-    apt-get -y install apt-utils gcc-aarch64-linux-gnu file && \
+    apt-get -y install apt-utils gcc-aarch64-linux-gnu file xz-utils && \
     curl -sSLO https://github.com/go-task/task/releases/download/v3.43.3/task_${PLATFORM}.deb && \
     apt-get -y install ./task_${PLATFORM}.deb && \
     rm -rf ./task_${PLATFORM}.deb /var/cache/apt/* /var/lib/apt/lists/* /var/log/*
+
+RUN curl -sSLO https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-${TARGETARCH}_linux.tar.xz && \
+    tar xf upx-5.2.0-${TARGETARCH}_linux.tar.xz && \
+    mv upx-5.2.0-${TARGETARCH}_linux/upx /usr/local/bin/ && \
+    rm -rf upx-5.2.0-${TARGETARCH}_linux.tar.xz upx-5.2.0-${TARGETARCH}_linux
 
 ADD cmd /.nelm-deps/cmd
 ADD pkg /.nelm-deps/pkg
