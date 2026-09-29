@@ -108,10 +108,6 @@ type ReleasePlanInstallOptions struct {
 	// NoFinalTracking, when true, disables final tracking operations in the plan that have no
 	// create/update/delete resource operations after them. This speeds up plan generation.
 	NoFinalTracking bool
-	// NoManifestYAMLPrecheck, when true, skips the extra YAML parse of every rendered manifest
-	// done before decoding it. Invalid YAML is still rejected when the manifest is decoded, but
-	// the error no longer reports which document within the file failed.
-	NoManifestYAMLPrecheck bool
 	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
 	PlanArtifactPath string
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
@@ -283,7 +279,6 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		DropInvalidAnnotationsAndLabels: opts.DropInvalidAnnotationsAndLabels,
 		HelmOptions:                     helmOptions,
 		NoValuesSchemaValidation:        opts.NoValuesSchemaValidation,
-		NoManifestYAMLPrecheck:          opts.NoManifestYAMLPrecheck,
 		NoStandaloneCRDs:                opts.NoInstallStandaloneCRDs,
 		Remote:                          true,
 		TemplatesAllowDNS:               opts.TemplatesAllowDNS,

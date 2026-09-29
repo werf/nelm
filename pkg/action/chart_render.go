@@ -112,10 +112,6 @@ type ChartRenderOptions struct {
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
-	// NoManifestYAMLPrecheck, when true, skips the extra YAML parse of every rendered manifest
-	// done before decoding it. Invalid YAML is still rejected when the manifest is decoded, but
-	// the error no longer reports which document within the file failed.
-	NoManifestYAMLPrecheck bool
 	// NoValuesSchemaValidation disables validation of values against the chart's JSON schema.
 	NoValuesSchemaValidation bool
 	// OutputFilePath, if specified, writes the rendered manifests to this file instead of stdout.
@@ -281,7 +277,6 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		DenoBinaryPath:                  opts.DenoBinaryPath,
 		LocalLookupResourcesPaths:       opts.LocalLookupResourcesPaths,
 		NoValuesSchemaValidation:        opts.NoValuesSchemaValidation,
-		NoManifestYAMLPrecheck:          opts.NoManifestYAMLPrecheck,
 	}
 
 	log.Default.Debug(ctx, "Render chart")

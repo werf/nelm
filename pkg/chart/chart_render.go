@@ -62,7 +62,6 @@ type RenderChartOptions struct {
 	LintMode                        bool
 	LocalKubeVersion                string
 	LocalLookupResourcesPaths       []string
-	NoManifestYAMLPrecheck          bool
 	NoStandaloneCRDs                bool
 	NoValuesSchemaValidation        bool
 	Remote                          bool
@@ -725,25 +724,26 @@ func renderedTemplatesToResourceSpecs(ctx context.Context, renderedTemplates map
 		manifests := util.SplitManifests(fileContent)
 
 		for idx, manifest := range manifests {
-			if !opts.NoManifestYAMLPrecheck {
+			res, err := spec.NewResourceSpecFromManifest(ctx, manifest, releaseNamespace, spec.ResourceSpecOptions{
+				FilePath:                        filePath,
+				DropInvalidAnnotationsAndLabels: opts.DropInvalidAnnotationsAndLabels,
+			})
+			if err != nil {
+				// Reparse with goccy only to report a better error: it points at the line and
+				// column, while the decoder above does not.
 				var head releaseutil.SimpleHead
-				if err := yaml.UnmarshalWithOptions(
+				if parseErr := yaml.UnmarshalWithOptions(
 					[]byte(manifest),
 					&head,
 					yaml.AllowDuplicateMapKey(),
-				); err != nil {
-					return nil, fmt.Errorf("parse YAML resource #%d for %q: %w", idx+1, filePath, err)
+				); parseErr != nil {
+					return nil, fmt.Errorf("parse YAML resource #%d for %q: %w", idx+1, filePath, parseErr)
 				}
+
+				return nil, fmt.Errorf("construct resource spec for %q: %w", filePath, err)
 			}
 
-			if res, err := spec.NewResourceSpecFromManifest(ctx, manifest, releaseNamespace, spec.ResourceSpecOptions{
-				FilePath:                        filePath,
-				DropInvalidAnnotationsAndLabels: opts.DropInvalidAnnotationsAndLabels,
-			}); err != nil {
-				return nil, fmt.Errorf("construct resource spec for %q: %w", filePath, err)
-			} else {
-				resources = append(resources, res)
-			}
+			resources = append(resources, res)
 		}
 	}
 

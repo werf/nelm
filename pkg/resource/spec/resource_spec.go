@@ -59,6 +59,10 @@ func NewResourceSpecFromManifest(ctx context.Context, manifest, releaseNamespace
 
 	unstruct := obj.(*unstructured.Unstructured)
 
+	if err := validateMetadataShape(unstruct); err != nil {
+		return nil, fmt.Errorf("decode resource (file: %q): %w", opts.FilePath, err)
+	}
+
 	if opts.DropInvalidAnnotationsAndLabels {
 		unstruct.SetAnnotations(stripInvalidEntries(ctx, opts.FilePath, unstruct.Object, "metadata", "annotations"))
 		unstruct.SetLabels(stripInvalidEntries(ctx, opts.FilePath, unstruct.Object, "metadata", "labels"))
@@ -227,6 +231,49 @@ func BuildTransformedResourceSpecs(ctx context.Context, releaseNamespace string,
 	}
 
 	return transformedResources, nil
+}
+
+func validateMetadataShape(unstruct *unstructured.Unstructured) error {
+	rawMetadata, found := unstruct.Object["metadata"]
+	if !found || rawMetadata == nil {
+		return nil
+	}
+
+	metadata, ok := rawMetadata.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("validate resource metadata: .metadata must be a mapping")
+	}
+
+	if name, found := metadata["name"]; found && name != nil && !isScalarValue(name) {
+		return fmt.Errorf("validate resource metadata: .metadata.name must be a scalar")
+	}
+
+	rawAnnotations, found := metadata["annotations"]
+	if !found || rawAnnotations == nil {
+		return nil
+	}
+
+	annotations, ok := rawAnnotations.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("validate resource metadata: .metadata.annotations must be a mapping")
+	}
+
+	for key, value := range annotations {
+		if value != nil && !isScalarValue(value) {
+			return fmt.Errorf("validate resource metadata: .metadata.annotations[%q] must be a scalar", key)
+		}
+	}
+
+	return nil
+}
+
+func isScalarValue(value interface{}) bool {
+	switch value.(type) {
+	case map[string]interface{}, []interface{}:
+		return false
+	}
+
+	return true
 }
 
 // Annotations and labels are read via apimachinery accessors, which silently discard non-string

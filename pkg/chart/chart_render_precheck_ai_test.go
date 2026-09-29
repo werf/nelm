@@ -11,11 +11,24 @@ import (
 )
 
 const (
+	invalidAnnotationManifestAI = `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ok
+  annotations:
+    key:
+      nested: value
+`
 	invalidManifestAI = `apiVersion: v1
 kind: ConfigMap
 metadata:
   name: broken
 data: [unclosed
+`
+	invalidNameManifestAI = `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: [broken]
 `
 	validManifestAI = `apiVersion: v1
 kind: ConfigMap
@@ -26,39 +39,68 @@ data:
 `
 )
 
-func TestAI_RenderedTemplatesToResourceSpecs_PrecheckDisabled_SkipsGoccyParse(t *testing.T) {
-	templates := map[string]string{"templates/broken.yaml": invalidManifestAI}
+func TestAI_RenderedTemplatesToResourceSpecs_DecodableButInvalidMetadata_Rejected(t *testing.T) {
+	for name, manifest := range map[string]string{
+		"name":        invalidNameManifestAI,
+		"annotations": invalidAnnotationManifestAI,
+	} {
+		t.Run(name, func(t *testing.T) {
+			templates := map[string]string{"templates/broken.yaml": manifest}
+
+			_, err := renderedTemplatesToResourceSpecs(context.Background(), templates, "ns", RenderChartOptions{})
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "parse YAML resource #1")
+		})
+	}
+}
+
+func TestAI_RenderedTemplatesToResourceSpecs_DuplicateMapKeys_Accepted(t *testing.T) {
+	templates := map[string]string{"templates/dup.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: dup\ndata:\n  key: first\n  key: second\n"}
+
+	resources, err := renderedTemplatesToResourceSpecs(context.Background(), templates, "ns", RenderChartOptions{})
+
+	require.NoError(t, err)
+	require.Len(t, resources, 1)
+}
+
+func TestAI_RenderedTemplatesToResourceSpecs_InvalidMetadataWithDropInvalidAnnotationsAndLabels_Rejected(t *testing.T) {
+	templates := map[string]string{"templates/broken.yaml": invalidAnnotationManifestAI}
 
 	_, err := renderedTemplatesToResourceSpecs(context.Background(), templates, "ns", RenderChartOptions{
-		NoManifestYAMLPrecheck: true,
+		DropInvalidAnnotationsAndLabels: true,
 	})
 
 	require.Error(t, err)
-	assert.NotContains(t, err.Error(), "parse YAML resource")
-	assert.Contains(t, err.Error(), "decode resource")
+	assert.Contains(t, err.Error(), "parse YAML resource #1")
 }
 
-func TestAI_RenderedTemplatesToResourceSpecs_PrecheckEnabled_ReportsParseYAMLError(t *testing.T) {
+func TestAI_RenderedTemplatesToResourceSpecs_InvalidSecondDocument_ReportsItsIndex(t *testing.T) {
+	templates := map[string]string{"templates/broken.yaml": validManifestAI + "---\n" + invalidManifestAI}
+
+	_, err := renderedTemplatesToResourceSpecs(context.Background(), templates, "ns", RenderChartOptions{})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `parse YAML resource #2 for "templates/broken.yaml"`)
+}
+
+func TestAI_RenderedTemplatesToResourceSpecs_InvalidYAML_ReportsParseErrorWithPosition(t *testing.T) {
 	templates := map[string]string{"templates/broken.yaml": invalidManifestAI}
 
 	_, err := renderedTemplatesToResourceSpecs(context.Background(), templates, "ns", RenderChartOptions{})
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "parse YAML resource")
+	assert.Contains(t, err.Error(), `parse YAML resource #1 for "templates/broken.yaml"`)
+	assert.Contains(t, err.Error(), "sequence end token ']' not found")
 }
 
-func TestAI_RenderedTemplatesToResourceSpecs_ValidManifest_SameResultBothModes(t *testing.T) {
+func TestAI_RenderedTemplatesToResourceSpecs_ValidManifest_Rendered(t *testing.T) {
 	templates := map[string]string{"templates/ok.yaml": validManifestAI}
 
-	withPrecheck, err := renderedTemplatesToResourceSpecs(context.Background(), templates, "ns", RenderChartOptions{})
-	require.NoError(t, err)
+	resources, err := renderedTemplatesToResourceSpecs(context.Background(), templates, "ns", RenderChartOptions{})
 
-	withoutPrecheck, err := renderedTemplatesToResourceSpecs(context.Background(), templates, "ns", RenderChartOptions{
-		NoManifestYAMLPrecheck: true,
-	})
 	require.NoError(t, err)
-
-	require.Len(t, withPrecheck, 1)
-	require.Len(t, withoutPrecheck, 1)
-	assert.Equal(t, withPrecheck[0].Unstruct.Object, withoutPrecheck[0].Unstruct.Object)
+	require.Len(t, resources, 1)
+	assert.Equal(t, "ok", resources[0].Name)
+	assert.Equal(t, map[string]interface{}{"key": "value"}, resources[0].Unstruct.Object["data"])
 }
