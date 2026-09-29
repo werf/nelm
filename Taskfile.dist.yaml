@@ -274,7 +274,7 @@ tasks:
     desc: 'Compress distributable binaries with upx. Important vars: "version".'
     cmds:
       - |
-        find "./dist/{{.version}}" -type f \( -path "*/linux-*/bin/{{.brandSlug}}" -o -path "*/windows-*/bin/{{.brandSlug}}.exe" \) -exec upx --best {} +
+        find "./dist/{{.version}}" -type f \( -path "*/linux-*/bin/{{.brandSlug}}" -o -path "*/windows-*/bin/{{.brandSlug}}.exe" \) -exec upx {} +
 
   format:
     desc: 'Run all code formatters. Important vars: "paths".'
