@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package driver
 
 import (
@@ -15,7 +13,7 @@ import (
 	rspb "github.com/werf/nelm/pkg/helm/pkg/release"
 )
 
-func TestAI_SQLListLatestReleases(t *testing.T) {
+func TestSQLListLatestReleases(t *testing.T) {
 	driver, mock := newTestFixtureSQL(t)
 	first := releaseStub("one", 3, "default", rspb.StatusDeployed)
 	second := releaseStub("two", 5, "default", rspb.StatusFailed)
@@ -36,7 +34,7 @@ func TestAI_SQLListLatestReleases(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestAI_SQLListLatestReleases_AllNamespaces(t *testing.T) {
+func TestSQLListLatestReleases_AllNamespaces(t *testing.T) {
 	driver, mock := newTestFixtureSQL(t)
 	driver.namespace = ""
 	first := releaseStub("one", 2, "ns-one", rspb.StatusDeployed)
@@ -62,7 +60,7 @@ func TestAI_SQLListLatestReleases_AllNamespaces(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestAI_SQLListLatestReleases_FallsBackFromCorruptLatestRevision(t *testing.T) {
+func TestSQLListLatestReleases_FallsBackFromCorruptLatestRevision(t *testing.T) {
 	driver, mock := newTestFixtureSQL(t)
 	valid := releaseStub("one", 1, "default", rspb.StatusSuperseded)
 	validBody, err := encodeRelease(valid)
@@ -81,7 +79,7 @@ func TestAI_SQLListLatestReleases_FallsBackFromCorruptLatestRevision(t *testing.
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestAI_SQLListLatestReleases_OmitsReleaseWhenEveryRevisionIsCorrupt(t *testing.T) {
+func TestSQLListLatestReleases_OmitsReleaseWhenEveryRevisionIsCorrupt(t *testing.T) {
 	driver, mock := newTestFixtureSQL(t)
 
 	expectSQLListLatestReleases(mock, driver.namespace, sqlmock.NewRows(sqlLatestReleaseColumns()).

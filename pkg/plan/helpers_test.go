@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package plan
 
 import (
@@ -149,12 +147,10 @@ func buildTestPlan(ops []*Operation, deps map[int][]int) *Plan {
 		}
 	}
 
-	if deps != nil {
-		for toIdx, fromIdxs := range deps {
-			for _, fromIdx := range fromIdxs {
-				if err := p.Graph.AddEdge(ops[fromIdx].ID(), ops[toIdx].ID()); err != nil {
-					panic(fmt.Sprintf("add edge: %v", err))
-				}
+	for toIdx, fromIdxs := range deps {
+		for _, fromIdx := range fromIdxs {
+			if err := p.Graph.AddEdge(ops[fromIdx].ID(), ops[toIdx].ID()); err != nil {
+				panic(fmt.Sprintf("add edge: %v", err))
 			}
 		}
 	}

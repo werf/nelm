@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package plan
 
 import (
@@ -14,7 +12,7 @@ import (
 	"github.com/werf/nelm/pkg/common"
 )
 
-func TestAI_SquashFinalTrackingOperationsMatchesReference(t *testing.T) {
+func TestSquashFinalTrackingOperationsMatchesReference(t *testing.T) {
 	for _, tt := range []struct {
 		name       string
 		opsCount   int
@@ -41,7 +39,7 @@ func TestAI_SquashFinalTrackingOperationsMatchesReference(t *testing.T) {
 	}
 }
 
-func TestAI_SquashFinalTrackingOperationsSemantics(t *testing.T) {
+func TestSquashFinalTrackingOperationsSemantics(t *testing.T) {
 	for _, tt := range []struct {
 		name          string
 		categories    []OperationCategory
@@ -125,7 +123,7 @@ func TestAI_SquashFinalTrackingOperationsSemantics(t *testing.T) {
 	}
 }
 
-func TestAI_StageOperationID(t *testing.T) {
+func TestStageOperationID(t *testing.T) {
 	for _, stage := range common.StagesOrdered {
 		for _, suffix := range []string{common.StageStartSuffix, common.StageEndSuffix} {
 			op := &Operation{

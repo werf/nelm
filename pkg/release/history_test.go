@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package release
 
 import (
@@ -28,7 +26,7 @@ func (s *failingDeleteStorage) Delete(name string, version int) (*helmrelease.Re
 }
 
 func (s *failingDeleteStorage) GetRelease(name string, version int) (*helmrelease.Release, error) {
-	return nil, nil
+	return nil, errors.ErrUnsupported
 }
 
 func (s *failingDeleteStorage) Query(labels map[string]string) ([]*helmrelease.Release, error) {
@@ -39,7 +37,7 @@ func (s *failingDeleteStorage) Update(rls *helmrelease.Release) error {
 	return nil
 }
 
-func TestAI_HistoryDeleteRelease_StorageError(t *testing.T) {
+func TestHistoryDeleteRelease_StorageError(t *testing.T) {
 	storage := &failingDeleteStorage{deleteErr: errors.New("context deadline exceeded")}
 	history := NewHistory(nil, "myrel", storage, HistoryOptions{})
 
@@ -49,7 +47,7 @@ func TestAI_HistoryDeleteRelease_StorageError(t *testing.T) {
 	})
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, storage.deleteErr)
+	require.ErrorIs(t, err, storage.deleteErr)
 	assert.Contains(t, err.Error(), "myrel")
 	assert.Contains(t, err.Error(), "7")
 }

@@ -1,4 +1,4 @@
-package action //nolint:testpackage
+package action
 
 import (
 	"testing"

@@ -1,6 +1,4 @@
-//go:build ai_tests
-
-package release //nolint:testpackage
+package release
 
 import (
 	"context"
@@ -194,7 +192,7 @@ func (c *namespaceScopedConfigMapClient) List(ctx context.Context, opts metav1.L
 	return list, nil
 }
 
-func TestAI_StorageListLatestReleases_ConfigMapCorruptLatestRevisionDoesNotFanOut(t *testing.T) {
+func TestStorageListLatestReleases_ConfigMapCorruptLatestRevisionDoesNotFanOut(t *testing.T) {
 	const (
 		namespaces = 10
 		revisions  = 8
@@ -246,7 +244,7 @@ func TestAI_StorageListLatestReleases_ConfigMapCorruptLatestRevisionDoesNotFanOu
 		"recovering from a corrupt revision must not re-list the whole cross-namespace history of the release name once per namespace")
 }
 
-func TestAI_StorageListLatestReleases_ConfigMapDriver(t *testing.T) {
+func TestStorageListLatestReleases_ConfigMapDriver(t *testing.T) {
 	clientset := k8sfake.NewSimpleClientset()
 
 	storage := helmstorage.Init(helmdriver.NewConfigMaps(clientset.CoreV1().ConfigMaps(testNamespace)))
@@ -260,7 +258,7 @@ func TestAI_StorageListLatestReleases_ConfigMapDriver(t *testing.T) {
 	assert.Equal(t, map[string]int{"one": 2, "two": 5}, revisionsByName(rels))
 }
 
-func TestAI_StorageListLatestReleases_ConfigMapFallsBackFromCorruptLatestRevision(t *testing.T) {
+func TestStorageListLatestReleases_ConfigMapFallsBackFromCorruptLatestRevision(t *testing.T) {
 	clientset := k8sfake.NewSimpleClientset()
 	configMaps := clientset.CoreV1().ConfigMaps(testNamespace)
 	storage := helmstorage.Init(helmdriver.NewConfigMaps(configMaps))
@@ -284,7 +282,7 @@ func TestAI_StorageListLatestReleases_ConfigMapFallsBackFromCorruptLatestRevisio
 	assert.Equal(t, map[string]int{"one": 1}, revisionsByName(rels))
 }
 
-func TestAI_StorageListLatestReleases_CorruptLatestRevisionDoesNotFanOut(t *testing.T) {
+func TestStorageListLatestReleases_CorruptLatestRevisionDoesNotFanOut(t *testing.T) {
 	const (
 		namespaces = 10
 		revisions  = 8
@@ -336,7 +334,7 @@ func TestAI_StorageListLatestReleases_CorruptLatestRevisionDoesNotFanOut(t *test
 		"recovering from a corrupt revision must not re-list the whole cross-namespace history of the release name once per namespace")
 }
 
-func TestAI_StorageListLatestReleases_DoesNotRetainUndecodedBodies(t *testing.T) {
+func TestStorageListLatestReleases_DoesNotRetainUndecodedBodies(t *testing.T) {
 	const (
 		releases = 500
 		bodySize = 256 << 10
@@ -356,7 +354,7 @@ func TestAI_StorageListLatestReleases_DoesNotRetainUndecodedBodies(t *testing.T)
 		"undecoded bodies must be released as they are decoded, not held until the loop ends")
 }
 
-func TestAI_StorageListLatestReleases_Empty(t *testing.T) {
+func TestStorageListLatestReleases_Empty(t *testing.T) {
 	storage, _ := newSecretStorage(t)
 
 	rels, err := storage.ListLatestReleases(context.Background())
@@ -364,7 +362,7 @@ func TestAI_StorageListLatestReleases_Empty(t *testing.T) {
 	assert.Empty(t, rels, "an empty storage is not an error for a listing")
 }
 
-func TestAI_StorageListLatestReleases_FallbackForDriverWithoutCapability(t *testing.T) {
+func TestStorageListLatestReleases_FallbackForDriverWithoutCapability(t *testing.T) {
 	mem := helmdriver.NewMemory()
 	mem.SetNamespace(testNamespace)
 
@@ -379,7 +377,7 @@ func TestAI_StorageListLatestReleases_FallbackForDriverWithoutCapability(t *test
 	assert.Equal(t, map[string]int{"one": 2, "two": 7}, revisionsByName(rels))
 }
 
-func TestAI_StorageListLatestReleases_FallbackForEmptyDriverWithoutCapability(t *testing.T) {
+func TestStorageListLatestReleases_FallbackForEmptyDriverWithoutCapability(t *testing.T) {
 	mem := helmdriver.NewMemory()
 	mem.SetNamespace(testNamespace)
 
@@ -390,7 +388,7 @@ func TestAI_StorageListLatestReleases_FallbackForEmptyDriverWithoutCapability(t 
 	assert.Empty(t, rels, "ErrReleaseNotFound from the driver means an empty listing, not a failure")
 }
 
-func TestAI_StorageListLatestReleases_IgnoresObjectsWithoutReleaseLabels(t *testing.T) {
+func TestStorageListLatestReleases_IgnoresObjectsWithoutReleaseLabels(t *testing.T) {
 	clientset := k8sfake.NewSimpleClientset()
 
 	storage := helmstorage.Init(helmdriver.NewSecrets(clientset.CoreV1().Secrets(testNamespace)))
@@ -414,7 +412,7 @@ func TestAI_StorageListLatestReleases_IgnoresObjectsWithoutReleaseLabels(t *test
 		"objects without a name or with a non-numeric version must be ignored, not crash the listing")
 }
 
-func TestAI_StorageListLatestReleases_NumericMaxRevision(t *testing.T) {
+func TestStorageListLatestReleases_NumericMaxRevision(t *testing.T) {
 	storage, _ := newSecretStorage(t,
 		newTestRelease("one", 1, nil),
 		newTestRelease("one", 9, nil),
@@ -429,7 +427,7 @@ func TestAI_StorageListLatestReleases_NumericMaxRevision(t *testing.T) {
 		"the revision must be compared numerically, not lexicographically")
 }
 
-func TestAI_StorageListLatestReleases_Paginates(t *testing.T) {
+func TestStorageListLatestReleases_Paginates(t *testing.T) {
 	clientset := k8sfake.NewSimpleClientset()
 
 	storage := helmstorage.Init(helmdriver.NewSecrets(clientset.CoreV1().Secrets(testNamespace)))
@@ -455,7 +453,7 @@ func TestAI_StorageListLatestReleases_Paginates(t *testing.T) {
 	assert.NotZero(t, paging.limit, "the driver must ask the API server for pages, not for everything at once")
 }
 
-func TestAI_StorageListLatestReleases_SameNameInManyNamespacesDoesNotFanOut(t *testing.T) {
+func TestStorageListLatestReleases_SameNameInManyNamespacesDoesNotFanOut(t *testing.T) {
 	const (
 		namespaces = 20
 		revisions  = 5
@@ -503,7 +501,7 @@ func TestAI_StorageListLatestReleases_SameNameInManyNamespacesDoesNotFanOut(t *t
 		"the listing must not issue a request per release: that is quadratic when one name is deployed to many namespaces")
 }
 
-func TestAI_StorageListLatestReleases_SecretFallsBackFromCorruptLatestRevision(t *testing.T) {
+func TestStorageListLatestReleases_SecretFallsBackFromCorruptLatestRevision(t *testing.T) {
 	clientset := k8sfake.NewSimpleClientset()
 	secrets := clientset.CoreV1().Secrets(testNamespace)
 	storage := helmstorage.Init(helmdriver.NewSecrets(secrets))
@@ -527,7 +525,7 @@ func TestAI_StorageListLatestReleases_SecretFallsBackFromCorruptLatestRevision(t
 	assert.Equal(t, map[string]int{"one": 1}, revisionsByName(rels))
 }
 
-func TestAI_StorageListLatestReleases_SecretOmitsReleaseWhenEveryRevisionIsCorrupt(t *testing.T) {
+func TestStorageListLatestReleases_SecretOmitsReleaseWhenEveryRevisionIsCorrupt(t *testing.T) {
 	clientset := k8sfake.NewSimpleClientset()
 	secrets := clientset.CoreV1().Secrets(testNamespace)
 	storage := helmstorage.Init(helmdriver.NewSecrets(secrets))
@@ -545,7 +543,7 @@ func TestAI_StorageListLatestReleases_SecretOmitsReleaseWhenEveryRevisionIsCorru
 	assert.Empty(t, rels)
 }
 
-func TestAI_StorageListLatestReleases_TakesNamespaceFromObjectWhenBodyHasNone(t *testing.T) {
+func TestStorageListLatestReleases_TakesNamespaceFromObjectWhenBodyHasNone(t *testing.T) {
 	clientset := k8sfake.NewSimpleClientset()
 
 	storage := helmstorage.Init(helmdriver.NewSecrets(clientset.CoreV1().Secrets(testNamespace)))

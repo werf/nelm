@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package resource_test
 
 import (
@@ -12,7 +10,7 @@ import (
 	"github.com/werf/nelm/pkg/resource"
 )
 
-func TestAI_ValidateLocal(t *testing.T) {
+func TestValidateLocal(t *testing.T) {
 	t.Run("duplicate_detection", func(t *testing.T) {
 		t.Run("duplicate_resources_detected", func(t *testing.T) {
 			setupTestEnvironment(t)
@@ -194,7 +192,7 @@ func TestAI_ValidateLocal(t *testing.T) {
 	})
 }
 
-func TestAI_ValidateResourceWithCodec(t *testing.T) {
+func TestValidateResourceWithCodec(t *testing.T) {
 	t.Run("valid_Deployment_passes", func(t *testing.T) {
 		setupTestEnvironment(t)
 

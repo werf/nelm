@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package resource_test
 
 import (
@@ -7,11 +5,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/werf/nelm/pkg/resource"
 )
 
-func TestAI_KubeConformValidator(t *testing.T) {
+func TestKubeConformValidator(t *testing.T) {
 	t.Run("valid_resources", func(t *testing.T) {
 		t.Run("valid_Deployment_passes", func(t *testing.T) {
 			schemaURL := setupDefaultSchemaServer(t)
@@ -414,11 +413,13 @@ func TestAI_KubeConformValidator(t *testing.T) {
 			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{deployment1}, opts)
-			assert.NoError(t, err)
+			require.NoError(t, err)
+
 			firstRequestCount := *requestCount
 
 			err = resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{deployment2}, opts)
-			assert.NoError(t, err)
+			require.NoError(t, err)
+
 			secondRequestCount := *requestCount - firstRequestCount
 
 			assert.Less(t, secondRequestCount, firstRequestCount, "second validation should use cache and make fewer requests")

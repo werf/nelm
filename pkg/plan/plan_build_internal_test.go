@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package plan
 
 import (
@@ -13,7 +11,7 @@ import (
 	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
 )
 
-func TestAI_BuildFailurePlan(t *testing.T) {
+func TestBuildFailurePlan(t *testing.T) {
 	failedRelease := &helmrelease.Release{
 		Name:      "test-release",
 		Namespace: "test-namespace",

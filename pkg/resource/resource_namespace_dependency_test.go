@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package resource_test
 
 import (
@@ -15,7 +13,7 @@ import (
 	"github.com/werf/nelm/pkg/resource/spec"
 )
 
-func TestAI_ManualDeployDependencyNormalizesReleaseNamespace(t *testing.T) {
+func TestManualDeployDependencyNormalizesReleaseNamespace(t *testing.T) {
 	const releaseNamespace = "test-namespace"
 
 	t.Run("modern syntax with release namespace normalizes to empty", func(t *testing.T) {
@@ -94,6 +92,7 @@ func newDependentConfigMapSpec(releaseNamespace string, annotations map[string]s
 		for k, v := range annotations {
 			anns[k] = v
 		}
+
 		meta["annotations"] = anns
 	}
 

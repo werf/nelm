@@ -1,5 +1,3 @@
-//go:build ai_tests
-
 package plan
 
 import (
@@ -14,11 +12,11 @@ import (
 	"github.com/werf/nelm/pkg/featgate"
 )
 
-func TestAI_AdoptDeckhouseControllerFieldsGateEnvVarName(t *testing.T) {
+func TestAdoptDeckhouseControllerFieldsGateEnvVarName(t *testing.T) {
 	assert.Equal(t, "NELM_FEAT_ADOPT_DECKHOUSE_CONTROLLER_FIELDS", featgate.FeatGateAdoptDeckhouseControllerFields.EnvVarName())
 }
 
-func TestAI_ExclusiveOwnershipForOurManagerDeckhouseControllerGateDisabled(t *testing.T) {
+func TestExclusiveOwnershipForOurManagerDeckhouseControllerGateDisabled(t *testing.T) {
 	featgate.FeatGateAdoptDeckhouseControllerFields.Disable()
 	t.Cleanup(featgate.FeatGateAdoptDeckhouseControllerFields.Disable)
 
@@ -30,7 +28,7 @@ func TestAI_ExclusiveOwnershipForOurManagerDeckhouseControllerGateDisabled(t *te
 	assert.True(t, hasManager(newManagedFields, common.OldDeckhouseControllerManager))
 }
 
-func TestAI_ExclusiveOwnershipForOurManagerDeckhouseControllerGateEnabled(t *testing.T) {
+func TestExclusiveOwnershipForOurManagerDeckhouseControllerGateEnabled(t *testing.T) {
 	featgate.FeatGateAdoptDeckhouseControllerFields.Enable()
 	t.Cleanup(featgate.FeatGateAdoptDeckhouseControllerFields.Disable)
 
@@ -43,7 +41,7 @@ func TestAI_ExclusiveOwnershipForOurManagerDeckhouseControllerGateEnabled(t *tes
 	assert.False(t, hasManager(newManagedFields, common.OldDeckhouseControllerManager))
 }
 
-func TestAI_FilterDelResourcesPresentInInstResources(t *testing.T) {
+func TestFilterDelResourcesPresentInInstResources(t *testing.T) {
 	for _, tt := range []struct {
 		name         string
 		instInfos    []*InstallableResourceInfo
@@ -107,7 +105,7 @@ func TestAI_FilterDelResourcesPresentInInstResources(t *testing.T) {
 	}
 }
 
-func TestAI_IterateInstallableResourceInfos(t *testing.T) {
+func TestIterateInstallableResourceInfos(t *testing.T) {
 	for _, tt := range []struct {
 		name                 string
 		infos                []*InstallableResourceInfo
@@ -199,7 +197,7 @@ func TestAI_IterateInstallableResourceInfos(t *testing.T) {
 	}
 }
 
-func TestAI_PoolRoutines(t *testing.T) {
+func TestPoolRoutines(t *testing.T) {
 	for _, tt := range []struct {
 		name               string
 		resourcesCount     int
@@ -222,7 +220,7 @@ func TestAI_PoolRoutines(t *testing.T) {
 	}
 }
 
-func TestAI_RemoveUndesirableManagersDeckhouseControllerGateDisabled(t *testing.T) {
+func TestRemoveUndesirableManagersDeckhouseControllerGateDisabled(t *testing.T) {
 	featgate.FeatGateAdoptDeckhouseControllerFields.Disable()
 	t.Cleanup(featgate.FeatGateAdoptDeckhouseControllerFields.Disable)
 
@@ -232,10 +230,10 @@ func TestAI_RemoveUndesirableManagersDeckhouseControllerGateDisabled(t *testing.
 	_, newOursEntry, changed := removeUndesirableManagers([]v1.ManagedFieldsEntry{deckhouseEntry}, oursEntry, false)
 
 	assert.False(t, changed)
-	assert.Equal(t, `{"f:spec":{"f:foo":{}}}`, string(newOursEntry.FieldsV1.Raw))
+	assert.JSONEq(t, `{"f:spec":{"f:foo":{}}}`, string(newOursEntry.FieldsV1.Raw))
 }
 
-func TestAI_RemoveUndesirableManagersDeckhouseControllerGateEnabled(t *testing.T) {
+func TestRemoveUndesirableManagersDeckhouseControllerGateEnabled(t *testing.T) {
 	featgate.FeatGateAdoptDeckhouseControllerFields.Enable()
 	t.Cleanup(featgate.FeatGateAdoptDeckhouseControllerFields.Disable)
 

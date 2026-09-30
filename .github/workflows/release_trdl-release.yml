@@ -38,12 +38,13 @@ jobs:
       - name: Get version from CHANGELOG.md
         id: get_version
         run: |
-          VERSION=$(grep -m1 '^#\+ \[[0-9]\+\.[0-9]\+\.[0-9]\+\]' CHANGELOG.md | sed -E 's/^#+ \[([0-9]+\.[0-9]+\.[0-9]+)\].*/\1/')
+          VERSION=$(grep -m1 -E '^#+ \[[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?\]' CHANGELOG.md | sed -E 's/^#+ \[([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?)\].*/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
       - name: Generate notes.md
         id: notes
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
+          MAJOR="${VERSION%%.*}"
           echo "## Changelog" > notes.md
           awk -v version="$VERSION" '
             $0 ~ "^#+ \\[" version "\\]" {capture=1; next}
@@ -64,7 +65,7 @@ jobs:
           3. Make \`nelm\` binary available in the current shell:
 
               \`\`\`shell
-              source "\$(trdl use nelm 1 stable)"
+              source "\$(trdl use nelm $MAJOR stable)"
               \`\`\`
           ## Install binaries directly (no autoupdates)
 
