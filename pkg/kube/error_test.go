@@ -33,6 +33,12 @@ func TestIsImmutableErr(t *testing.T) {
 	serviceErr := apierrors.NewInvalid(schema.GroupKind{Kind: "Service"}, "web", field.ErrorList{
 		field.Invalid(field.NewPath("spec", "clusterIPs").Index(0), []string{"10.0.0.1"}, "may not change once set"),
 	})
+	roleBindingErr := apierrors.NewInvalid(schema.GroupKind{Group: "rbac.authorization.k8s.io", Kind: "RoleBinding"}, "app", field.ErrorList{
+		field.Invalid(field.NewPath("roleRef"), "", "cannot change roleRef"),
+	})
+	priorityClassErr := apierrors.NewInvalid(schema.GroupKind{Group: "scheduling.k8s.io", Kind: "PriorityClass"}, "high", field.ErrorList{
+		field.Forbidden(field.NewPath("value"), "may not be changed in an update."),
+	})
 
 	assert.True(t, IsImmutableErr(apimachineryImmutableErr))
 	assert.True(t, IsImmutableErr(statefulSetErr))
@@ -40,6 +46,8 @@ func TestIsImmutableErr(t *testing.T) {
 	assert.True(t, IsImmutableErr(pvcErr))
 	assert.True(t, IsImmutableErr(podErr))
 	assert.True(t, IsImmutableErr(serviceErr))
+	assert.True(t, IsImmutableErr(roleBindingErr))
+	assert.True(t, IsImmutableErr(priorityClassErr))
 	assert.True(t, IsImmutableErr(fmt.Errorf("retryable on webhook error: %w", statefulSetErr)))
 
 	assert.False(t, IsImmutableErr(nil))
