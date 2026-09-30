@@ -11,3 +11,7 @@ groups:
         version: 1.26.2
       - name: rock-solid
         version: 1.26.0
+  - name: "2"
+    channels:
+      - name: dev
+        version: 2.0.0-alpha.1
