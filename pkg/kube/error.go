@@ -15,19 +15,19 @@ import (
 var immutableErrRegexps = []*regexp.Regexp{
 	// apimachinery ValidateImmutableField; Secret/ConfigMap with immutable: true.
 	regexp.MustCompile(`: ` + regexp.QuoteMeta(validation.FieldImmutableErrorMsg) + `\b`),
-	// PersistentVolume, PersistentVolumeClaim.
-	regexp.MustCompile(`: spec(\.persistentvolumesource)? is immutable after creation\b`),
+	// PersistentVolume, PersistentVolumeClaim, Job schedulingPolicy.
+	regexp.MustCompile(`\bis immutable after creation\b`),
 	// StatefulSet.
-	regexp.MustCompile(`: updates to statefulset spec for fields other than .* are forbidden$`),
+	regexp.MustCompile(`: updates to statefulset spec for fields other than .* are forbidden\b`),
 	// StorageClass, VolumeAttributesClass.
-	regexp.MustCompile(`: updates to (parameters|provisioner|reclaimPolicy|driverName) are forbidden\.$`),
+	regexp.MustCompile(`: updates to (parameters|provisioner|reclaimPolicy|driverName) are forbidden\b`),
 	// Pod.
 	regexp.MustCompile(`: pod updates may not (change fields other than|add or remove containers)\b`),
-	regexp.MustCompile(`: existing toleration can not be modified except its tolerationSeconds$`),
+	regexp.MustCompile(`: existing toleration can not be modified except its tolerationSeconds\b`),
 	// Service clusterIPs, ipFamilies, loadBalancerClass.
 	regexp.MustCompile(`: may not change once set$`),
 	// RoleBinding, ClusterRoleBinding.
-	regexp.MustCompile(`: cannot change roleRef$`),
+	regexp.MustCompile(`: cannot change roleRef\b`),
 	// PriorityClass.
 	regexp.MustCompile(`: may not be changed in an update\.$`),
 }

@@ -47,6 +47,9 @@ func TestIsImmutableErr(t *testing.T) {
 	podTolerationErr := apierrors.NewInvalid(schema.GroupKind{Kind: "Pod"}, "debug", field.ErrorList{
 		field.Forbidden(field.NewPath("spec", "tolerations").Index(0), "existing toleration can not be modified except its tolerationSeconds"),
 	})
+	jobGangPolicyErr := apierrors.NewInvalid(schema.GroupKind{Group: "batch", Kind: "Job"}, "train", field.ErrorList{
+		field.Invalid(field.NewPath("spec", "schedulingPolicy"), "", "the basic/gang policy variant is immutable after creation; only schedulingPolicy.gang.minCount may be updated"),
+	})
 
 	assert.True(t, IsImmutableErr(apimachineryImmutableErr))
 	assert.True(t, IsImmutableErr(statefulSetErr))
@@ -58,6 +61,7 @@ func TestIsImmutableErr(t *testing.T) {
 	assert.True(t, IsImmutableErr(priorityClassErr))
 	assert.True(t, IsImmutableErr(podContainersErr))
 	assert.True(t, IsImmutableErr(podTolerationErr))
+	assert.True(t, IsImmutableErr(jobGangPolicyErr))
 	assert.True(t, IsImmutableErr(fmt.Errorf("retryable on webhook error: %w", statefulSetErr)))
 	assert.True(t, IsImmutableErr(&apierrors.StatusError{ErrStatus: metav1.Status{
 		Status:  metav1.StatusFailure,
