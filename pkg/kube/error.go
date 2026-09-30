@@ -1,38 +1,63 @@
 package kube
 
 import (
+	"errors"
 	"regexp"
 	"strings"
 
 	"github.com/samber/lo"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/validation"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var immutableErrRegexps = []*regexp.Regexp{
-	regexp.MustCompile(`\bfield is immutable\b`),
-	regexp.MustCompile(`\bis immutable after creation\b`),
-	regexp.MustCompile(`\bupdates to .+ are forbidden\b`),
-	regexp.MustCompile(`\bpod updates may not change fields other than\b`),
-	regexp.MustCompile(`\bmay not change once set\b`),
-	regexp.MustCompile(`\bcannot change roleRef\b`),
-	regexp.MustCompile(`\bmay not be changed in an update\b`),
+	// apimachinery ValidateImmutableField; Secret/ConfigMap with immutable: true.
+	regexp.MustCompile(`: ` + regexp.QuoteMeta(validation.FieldImmutableErrorMsg) + `\b`),
+	// PersistentVolume, PersistentVolumeClaim.
+	regexp.MustCompile(`: spec(\.persistentvolumesource)? is immutable after creation\b`),
+	// StatefulSet.
+	regexp.MustCompile(`: updates to statefulset spec for fields other than .* are forbidden$`),
+	// StorageClass, VolumeAttributesClass.
+	regexp.MustCompile(`: updates to (parameters|provisioner|reclaimPolicy|driverName) are forbidden\.$`),
+	// Pod.
+	regexp.MustCompile(`: pod updates may not (change fields other than|add or remove containers)\b`),
+	regexp.MustCompile(`: existing toleration can not be modified except its tolerationSeconds$`),
+	// Service clusterIPs, ipFamilies, loadBalancerClass.
+	regexp.MustCompile(`: may not change once set$`),
+	// RoleBinding, ClusterRoleBinding.
+	regexp.MustCompile(`: cannot change roleRef$`),
+	// PriorityClass.
+	regexp.MustCompile(`: may not be changed in an update\.$`),
 }
 
 func IsImmutableErr(err error) bool {
-	if err == nil || !errors.IsInvalid(err) {
+	if err == nil || !apierrors.IsInvalid(err) {
 		return false
 	}
 
-	msg := err.Error()
+	var statusErr *apierrors.StatusError
+	if !errors.As(err, &statusErr) {
+		return false
+	}
 
-	return lo.SomeBy(immutableErrRegexps, func(re *regexp.Regexp) bool {
-		return re.MatchString(msg)
+	messages := []string{statusErr.ErrStatus.Message}
+	if statusErr.ErrStatus.Details != nil && len(statusErr.ErrStatus.Details.Causes) > 0 {
+		messages = lo.Map(statusErr.ErrStatus.Details.Causes, func(cause metav1.StatusCause, _ int) string {
+			return cause.Message
+		})
+	}
+
+	return lo.SomeBy(messages, func(message string) bool {
+		return lo.SomeBy(immutableErrRegexps, func(re *regexp.Regexp) bool {
+			return re.MatchString(message)
+		})
 	})
 }
 
 func IsInvalidErr(err error) bool {
-	return err != nil && errors.IsInvalid(err)
+	return err != nil && apierrors.IsInvalid(err)
 }
 
 func IsNoSuchKindErr(err error) bool {
@@ -40,7 +65,7 @@ func IsNoSuchKindErr(err error) bool {
 }
 
 func IsNotFoundErr(err error) bool {
-	return err != nil && errors.IsNotFound(err)
+	return err != nil && apierrors.IsNotFound(err)
 }
 
 func IsTypedObjectErr(err error) bool {
