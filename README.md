@@ -251,6 +251,16 @@ Nelm has powerful resource tracking built from the ground up, much more advanced
 
 ![tracking](resources/images/nelm-release-install.gif)
 
+The width of the tracking table adapts to the terminal width automatically. To override it, set `NELM_LOG_TERMINAL_WIDTH` or use `--progress-table-width`:
+
+```shell
+# Set a fixed width globally via env var (affects all log output)
+NELM_LOG_TERMINAL_WIDTH=200 nelm release install -n myproject -r myproject
+
+# Set a fixed width just for the progress/log/event tables
+nelm release install -n myproject -r myproject --progress-table-width 120
+```
+
 ### Printing logs and events during deploy
 
 During the deployment, Nelm finds Pods of deploying resources and periodically prints their container logs. With annotation `werf.io/show-service-messages: "true"`, resource events are also printed. Can be configured with CLI flags and annotations.

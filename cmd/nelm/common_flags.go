@@ -439,6 +439,13 @@ func AddTrackingFlags(cmd *cobra.Command, cfg *common.TrackingOptions) error {
 		return fmt.Errorf("add flag: %w", err)
 	}
 
+	if err := cli.AddFlag(cmd, &cfg.ProgressTableWidth, "progress-table-width", 0, "Maximum width in characters for progress, log and event tables. Use 0 for auto-detect from terminal width", cli.AddFlagOptions{
+		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+		Group:                progressFlagGroup,
+	}); err != nil {
+		return fmt.Errorf("add flag: %w", err)
+	}
+
 	return nil
 }
 
