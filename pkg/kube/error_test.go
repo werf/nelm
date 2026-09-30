@@ -50,6 +50,9 @@ func TestIsImmutableErr(t *testing.T) {
 	jobGangPolicyErr := apierrors.NewInvalid(schema.GroupKind{Group: "batch", Kind: "Job"}, "train", field.ErrorList{
 		field.Invalid(field.NewPath("spec", "schedulingPolicy"), "", "the basic/gang policy variant is immutable after creation; only schedulingPolicy.gang.minCount may be updated"),
 	})
+	webhookFieldErr := apierrors.NewInvalid(schema.GroupKind{Group: "example.com", Kind: "Widget"}, "w", field.ErrorList{
+		field.Invalid(field.NewPath("spec", "storage"), "fast", "spec.storage field is immutable"),
+	})
 
 	assert.True(t, IsImmutableErr(apimachineryImmutableErr))
 	assert.True(t, IsImmutableErr(statefulSetErr))
@@ -62,6 +65,7 @@ func TestIsImmutableErr(t *testing.T) {
 	assert.True(t, IsImmutableErr(podContainersErr))
 	assert.True(t, IsImmutableErr(podTolerationErr))
 	assert.True(t, IsImmutableErr(jobGangPolicyErr))
+	assert.True(t, IsImmutableErr(webhookFieldErr))
 	assert.True(t, IsImmutableErr(fmt.Errorf("retryable on webhook error: %w", statefulSetErr)))
 	assert.True(t, IsImmutableErr(&apierrors.StatusError{ErrStatus: metav1.Status{
 		Status:  metav1.StatusFailure,
@@ -87,8 +91,8 @@ func TestIsImmutableErr(t *testing.T) {
 	assert.False(t, IsImmutableErr(apierrors.NewForbidden(schema.GroupResource{Group: "apps", Resource: "statefulsets"}, "db", errors.New("updates to statefulset spec are forbidden"))))
 	assert.False(t, IsImmutableErr(errors.New("updates to statefulset spec are forbidden")))
 	assert.False(t, IsImmutableErr(apierrors.NewInvalid(schema.GroupKind{Group: "example.com", Kind: "Widget"}, "w", field.ErrorList{
-		field.Forbidden(field.NewPath("spec", "size"), "updates to size"),
-		field.Invalid(field.NewPath("spec", "count"), -1, "negative values are forbidden"),
+		field.Forbidden(field.NewPath("spec"), "updates to statefulset spec for fields other than foo"),
+		field.Forbidden(field.NewPath("spec", "b"), "mutations are forbidden"),
 	})))
 	assert.False(t, IsImmutableErr(apierrors.NewInvalid(schema.GroupKind{Group: "example.com", Kind: "Widget"}, "w", field.ErrorList{
 		field.Forbidden(field.NewPath("spec", "replicas"), "updates to replicas are forbidden while the rollout is paused"),

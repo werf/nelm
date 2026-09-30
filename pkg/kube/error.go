@@ -14,7 +14,7 @@ import (
 
 var immutableErrRegexps = []*regexp.Regexp{
 	// apimachinery ValidateImmutableField; Secret/ConfigMap with immutable: true.
-	regexp.MustCompile(`: ` + regexp.QuoteMeta(validation.FieldImmutableErrorMsg) + `\b`),
+	regexp.MustCompile(`\b` + regexp.QuoteMeta(validation.FieldImmutableErrorMsg) + `\b`),
 	// PersistentVolume, PersistentVolumeClaim, Job schedulingPolicy.
 	regexp.MustCompile(`\bis immutable after creation\b`),
 	// StatefulSet.
@@ -42,6 +42,9 @@ func IsImmutableErr(err error) bool {
 		return false
 	}
 
+	// Status.Message of an API server response is the causes joined into one string, so it is
+	// only consulted when there are no causes (a validating webhook): otherwise the ".*" of one
+	// pattern could span two unrelated causes.
 	messages := []string{statusErr.ErrStatus.Message}
 	if statusErr.ErrStatus.Details != nil && len(statusErr.ErrStatus.Details.Causes) > 0 {
 		messages = lo.Map(statusErr.ErrStatus.Details.Causes, func(cause metav1.StatusCause, _ int) string {
