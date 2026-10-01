@@ -1,15 +1,22 @@
 package plan
 
 import (
+	"context"
 	"testing"
 
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 
 	"github.com/werf/nelm/pkg/common"
 	"github.com/werf/nelm/pkg/featgate"
+	"github.com/werf/nelm/pkg/resource"
 )
 
 func TestAdoptDeckhouseControllerFieldsGateEnvVarName(t *testing.T) {
@@ -244,6 +251,30 @@ func TestRemoveUndesirableManagersDeckhouseControllerGateEnabled(t *testing.T) {
 
 	assert.True(t, changed)
 	assert.Contains(t, string(newOursEntry.FieldsV1.Raw), "f:bar")
+}
+
+func TestResourceInstallTypeOnImmutableStatefulSetError(t *testing.T) {
+	statefulSetErr := apierrors.NewInvalid(schema.GroupKind{Group: "apps", Kind: "StatefulSet"}, "db", field.ErrorList{
+		field.Forbidden(field.NewPath("spec"), "updates to statefulset spec for fields other than 'replicas', 'ordinals', 'template', 'updateStrategy', 'revisionHistoryLimit', 'persistentVolumeClaimRetentionPolicy' and 'minReadySeconds' are forbidden"),
+	})
+	liveObj := &unstructured.Unstructured{Object: map[string]interface{}{"apiVersion": "apps/v1", "kind": "StatefulSet"}}
+	gvk := schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "StatefulSet"}
+
+	recreateOnImmutable := &resource.InstallableResource{ResourceSpec: makeResourceSpec("db", "default", gvk), RecreateOnImmutable: true}
+	installType, skipped, err := resourceInstallType(context.Background(), recreateOnImmutable, liveObj, nil, statefulSetErr, nil)
+	require.NoError(t, err)
+	assert.Equal(t, ResourceInstallTypeRecreate, installType)
+	assert.False(t, skipped)
+
+	noPolicy := &resource.InstallableResource{ResourceSpec: makeResourceSpec("db", "default", gvk)}
+	_, _, err = resourceInstallType(context.Background(), noPolicy, liveObj, nil, statefulSetErr, nil)
+	require.ErrorContains(t, err, "immutable fields change in resource")
+	require.ErrorIs(t, err, statefulSetErr)
+
+	installType, skipped, err = resourceInstallType(context.Background(), noPolicy, liveObj, nil, statefulSetErr, []common.ResourcePolicy{common.ResourcePolicySkipRecreate})
+	require.NoError(t, err)
+	assert.Equal(t, ResourceInstallTypeNone, installType)
+	assert.True(t, skipped)
 }
 
 func hasManager(managedFields []v1.ManagedFieldsEntry, manager string) bool {
