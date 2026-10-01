@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1-alpha.1](https://github.com/werf/nelm/compare/v2.0.0-alpha.1...v2.0.1-alpha.1) (2026-10-01)
+
+
+### Bug Fixes
+
+* recreate StatefulSet and other custom-validated kinds on immutable field change ([#733](https://github.com/werf/nelm/issues/733)) ([7d2829e](https://github.com/werf/nelm/commit/7d2829eb13734c717bcf08747c272628f963a0a8))
+
 ## [2.0.0-alpha.1](https://github.com/werf/nelm/compare/v1.22.0...v2.0.0-alpha.1) (2026-09-29)
 
 
