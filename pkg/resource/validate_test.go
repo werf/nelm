@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/resource"
 )
 
 func TestValidateLocal(t *testing.T) {
@@ -119,7 +119,7 @@ func TestValidateLocal(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
+			opts := makeValidationOptions([]string{schemaURL})
 			opts.ValidationSkip = []string{"kind=ConfigMap"}
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{invalidConfigMap}, opts)
@@ -138,7 +138,7 @@ func TestValidateLocal(t *testing.T) {
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := makeValidationOptions(testKubeVersion, []string{schemaURL})
+			opts := makeValidationOptions([]string{schemaURL})
 			opts.ValidationSkip = []string{"name=skip-me"}
 
 			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{invalidDeployment}, opts)
@@ -147,24 +147,27 @@ func TestValidateLocal(t *testing.T) {
 	})
 
 	t.Run("integration", func(t *testing.T) {
-		t.Run("LocalResourceValidation_skips_kubeconform", func(t *testing.T) {
+		t.Run("validates_against_embedded_schemas", func(t *testing.T) {
 			setupTestEnvironment(t)
 
-			deploymentMissingSpec := makeInstallableResource(t, map[string]interface{}{
+			// No schema sources are configured and nothing is reachable over the network, so this
+			// can only be caught by the schemas embedded into the binary.
+			invalidDeployment := makeInstallableResource(t, map[string]interface{}{
 				"apiVersion": "apps/v1",
 				"kind":       "Deployment",
 				"metadata": map[string]interface{}{
-					"name": "deployment-missing-spec",
+					"name": "invalid-deployment",
+				},
+				"spec": map[string]interface{}{
+					"replicas": "should-be-integer",
 				},
 			}, testReleaseNamespace)
 
 			ctx := context.Background()
-			opts := common.ResourceValidationOptions{
-				LocalResourceValidation: true,
-			}
+			opts := common.ResourceValidationOptions{}
 
-			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{deploymentMissingSpec}, opts)
-			assert.NoError(t, err)
+			err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{invalidDeployment}, opts)
+			assertValidationError(t, err, "/spec/replicas")
 		})
 
 		t.Run("NoResourceValidation_skips_all_validation", func(t *testing.T) {
@@ -228,9 +231,7 @@ func TestValidateResourceWithCodec(t *testing.T) {
 		}, testReleaseNamespace)
 
 		ctx := context.Background()
-		opts := common.ResourceValidationOptions{
-			LocalResourceValidation: true,
-		}
+		opts := common.ResourceValidationOptions{}
 
 		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{deployment}, opts)
 		assert.NoError(t, err)
@@ -251,9 +252,7 @@ func TestValidateResourceWithCodec(t *testing.T) {
 		}, testReleaseNamespace)
 
 		ctx := context.Background()
-		opts := common.ResourceValidationOptions{
-			LocalResourceValidation: true,
-		}
+		opts := common.ResourceValidationOptions{}
 
 		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{configMap}, opts)
 		assert.NoError(t, err)
@@ -274,9 +273,7 @@ func TestValidateResourceWithCodec(t *testing.T) {
 		}, testReleaseNamespace)
 
 		ctx := context.Background()
-		opts := common.ResourceValidationOptions{
-			LocalResourceValidation: true,
-		}
+		opts := common.ResourceValidationOptions{}
 
 		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{crd}, opts)
 		assert.NoError(t, err)
@@ -297,9 +294,42 @@ func TestValidateResourceWithCodec(t *testing.T) {
 		}, testReleaseNamespace)
 
 		ctx := context.Background()
-		opts := common.ResourceValidationOptions{
-			LocalResourceValidation: true,
-		}
+		opts := common.ResourceValidationOptions{}
+
+		// Since validation uses the embedded schemas instead of skipping
+		// schema validation, this is now caught by the schema before the codec ever sees it.
+		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{pod}, opts)
+		assertValidationError(t, err, "/spec/containers")
+	})
+
+	t.Run("value_rejected_only_by_the_codec_fails", func(t *testing.T) {
+		setupTestEnvironment(t)
+
+		// A quantity is just a string as far as the JSON schema is concerned, so this reaches the
+		// codec check and keeps it covered now that schema validation always runs.
+		pod := makeInstallableResource(t, map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "Pod",
+			"metadata": map[string]interface{}{
+				"name": "test-pod",
+			},
+			"spec": map[string]interface{}{
+				"containers": []interface{}{
+					map[string]interface{}{
+						"name":  "app",
+						"image": "nginx:latest",
+						"resources": map[string]interface{}{
+							"limits": map[string]interface{}{
+								"memory": "not-a-quantity",
+							},
+						},
+					},
+				},
+			},
+		}, testReleaseNamespace)
+
+		ctx := context.Background()
+		opts := common.ResourceValidationOptions{}
 
 		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{pod}, opts)
 		assertValidationError(t, err, "decode")

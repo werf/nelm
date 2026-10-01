@@ -16,13 +16,13 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
-	"github.com/werf/nelm/pkg/kube"
-	"github.com/werf/nelm/pkg/legacy/progrep"
-	"github.com/werf/nelm/pkg/plan"
-	"github.com/werf/nelm/pkg/resource"
-	"github.com/werf/nelm/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/common"
+	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/v2/pkg/kube"
+	"github.com/werf/nelm/v2/pkg/legacy/progrep"
+	"github.com/werf/nelm/v2/pkg/plan"
+	"github.com/werf/nelm/v2/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
 var (
@@ -47,10 +47,6 @@ func (f *createNamespaceClientFactory) KubeClient() kube.KubeClienter {
 }
 
 func (f *createNamespaceClientFactory) KubeConfig() *kube.KubeConfig {
-	panic("not implemented")
-}
-
-func (f *createNamespaceClientFactory) LegacyClientGetter() *kube.LegacyClientGetter {
 	panic("not implemented")
 }
 
@@ -281,12 +277,12 @@ func TestNewReleaseInstallResultDeduplicatesMultiStageResources(t *testing.T) {
 
 	instResInfos := []*plan.InstallableResourceInfo{hookInfo, &postHookInfo, cmInfo}
 
-	result := newReleaseInstallResult("myrelease", "mynamespace", 1, helmrelease.StatusDeployed, instResInfos)
+	result := newReleaseInstallResult("myrelease", "mynamespace", 1, helmreleasestatus.StatusDeployed, instResInfos)
 
 	require.Len(t, result.Resources, 2)
-	assert.Same(t, hookInfo.LocalResource.ResourceSpec, result.Resources[0])
-	assert.Equal(t, "myhook", result.Resources[0].Name)
-	assert.Equal(t, "mycm", result.Resources[1].Name)
+	assert.Same(t, cmInfo.LocalResource.ResourceSpec, result.Resources[0])
+	assert.Equal(t, "mycm", result.Resources[0].Name)
+	assert.Equal(t, "myhook", result.Resources[1].Name)
 }
 
 func TestNewReleaseInstallResultKeepsResourceSpecData(t *testing.T) {
@@ -300,7 +296,7 @@ func TestNewReleaseInstallResultKeepsResourceSpecData(t *testing.T) {
 		newTestInstallableResourceInfo("v1", "ConfigMap", "othercm", "othernamespace", "mynamespace", "mychart/templates/other.yaml", common.StoreAsRegular, nil),
 	}
 
-	result := newReleaseInstallResult("myrelease", "mynamespace", 1, helmrelease.StatusDeployed, instResInfos)
+	result := newReleaseInstallResult("myrelease", "mynamespace", 1, helmreleasestatus.StatusDeployed, instResInfos)
 
 	require.Len(t, result.Resources, 2)
 
@@ -321,25 +317,25 @@ func TestNewReleaseInstallResultSortsResources(t *testing.T) {
 		newTestInstallableResourceInfo("apiextensions.k8s.io/v1", "CustomResourceDefinition", "mycrd", "", "mynamespace", "mychart/crds/mycrd.yaml", common.StoreAsNone, nil),
 	}
 
-	result := newReleaseInstallResult("myrelease", "mynamespace", 1, helmrelease.StatusDeployed, instResInfos)
+	result := newReleaseInstallResult("myrelease", "mynamespace", 1, helmreleasestatus.StatusDeployed, instResInfos)
 
 	require.Len(t, result.Resources, 4)
 
 	assert.Equal(t, common.StoreAsNone, result.Resources[0].StoreAs)
 	assert.Equal(t, "mycrd", result.Resources[0].Name)
 
-	assert.Equal(t, common.StoreAsHook, result.Resources[1].StoreAs)
-	assert.Equal(t, "myhook", result.Resources[1].Name)
+	assert.Equal(t, common.StoreAsRegular, result.Resources[1].StoreAs)
+	assert.Equal(t, "mycm", result.Resources[1].Name)
 
-	assert.Equal(t, common.StoreAsRegular, result.Resources[2].StoreAs)
-	assert.Equal(t, "mycm", result.Resources[2].Name)
+	assert.Equal(t, common.StoreAsHook, result.Resources[2].StoreAs)
+	assert.Equal(t, "myhook", result.Resources[2].Name)
 
 	assert.Equal(t, common.StoreAsRegular, result.Resources[3].StoreAs)
 	assert.Equal(t, "mysvc", result.Resources[3].Name)
 }
 
 func TestNewReleaseInstallResultWithoutResources(t *testing.T) {
-	result := newReleaseInstallResult("myrelease", "mynamespace", 7, helmrelease.StatusSkipped, nil)
+	result := newReleaseInstallResult("myrelease", "mynamespace", 7, helmreleasestatus.Status("skipped"), nil)
 
 	require.NotNil(t, result)
 	assert.Equal(t, "v1", result.APIVersion)
@@ -349,7 +345,7 @@ func TestNewReleaseInstallResultWithoutResources(t *testing.T) {
 	assert.Equal(t, "myrelease", result.Release.Name)
 	assert.Equal(t, "mynamespace", result.Release.Namespace)
 	assert.Equal(t, 7, result.Release.Revision)
-	assert.Equal(t, helmrelease.StatusSkipped, result.Release.Status)
+	assert.Equal(t, helmreleasestatus.Status("skipped"), result.Release.Status)
 }
 
 func TestReleaseInstall_ClosesProgressReportChannelOnEarlyError(t *testing.T) {

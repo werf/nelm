@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/werf/common-go/pkg/cli"
-	"github.com/werf/nelm/pkg/common"
+	"github.com/werf/nelm/v2/pkg/common"
 )
 
 func NewRootCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -26,7 +26,6 @@ func NewRootCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.C
 
 	cmd.AddCommand(newReleaseCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newChartCommand(ctx, afterAllCommandsBuiltFuncs))
-	cmd.AddCommand(newRepoCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newVersionCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newGenerateReferenceCommand(ctx, afterAllCommandsBuiltFuncs))
 

@@ -1,6 +1,7 @@
 package plan_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -11,12 +12,15 @@ import (
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
-	"github.com/werf/nelm/pkg/plan"
-	"github.com/werf/nelm/pkg/resource"
-	"github.com/werf/nelm/pkg/resource/spec"
-	"github.com/werf/nelm/pkg/test"
+	"github.com/werf/nelm/v2/pkg/common"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/plan"
+	"github.com/werf/nelm/v2/pkg/release"
+	"github.com/werf/nelm/v2/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/test"
 )
 
 type BuildPlanSuite struct {
@@ -34,6 +38,9 @@ func (s *BuildPlanSuite) SetupSuite() {
 	s.cmpOpts = cmp.Options{
 		cmpopts.EquateEmpty(),
 		test.IgnoreEdgeOption(),
+		cmp.Comparer(func(a, b helmrel.Accessor) bool {
+			return cmp.Equal(a.Releaser(), b.Releaser())
+		}),
 		cmpopts.SortSlices(func(a, b *plan.Operation) bool {
 			return a.ID() < b.ID()
 		}),
@@ -225,18 +232,18 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 					},
 				}
 
-				updatedRelRaw, err := copystructure.Copy(releaseInfos[0].Release)
+				updatedRelRaw, err := copystructure.Copy(releaseInfos[0].Release.Accessor.Releaser())
 				s.Require().NoError(err)
 
 				updatedRel := updatedRelRaw.(*helmrelease.Release)
-				updatedRel.Info.Status = helmrelease.StatusDeployed
+				updatedRel.Info.Status = helmreleasestatus.StatusDeployed
 
 				updateReleaseOp := &plan.Operation{
 					Type:     plan.OperationTypeUpdateRelease,
 					Version:  plan.OperationVersionUpdateRelease,
 					Category: plan.OperationCategoryRelease,
 					Config: &plan.OperationConfigUpdateRelease{
-						Release: updatedRel,
+						Release: &release.VersionedRelease{Accessor: lo.Must(helmrel.NewAccessor(updatedRel))},
 					},
 				}
 
@@ -475,7 +482,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 				dependentResSpec := defaultInstallableResource(s.releaseName, s.releaseNamespace)
 				dependentResSpec.Name = "dependent-resource"
 				dependentResSpec.Unstruct.SetName("dependent-resource")
-				dependentResSpec.AutoInternalDependencies = []*resource.InternalDependency{
+				dependentResSpec.AutoInternalDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{resInfo.Name},
@@ -592,7 +599,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 				dependentResSpec.Name = "dependent-resource"
 				dependentResSpec.Unstruct.SetName("dependent-resource")
 				dependentResSpec.Weight = nil
-				dependentResSpec.ManualInternalDependencies = []*resource.InternalDependency{
+				dependentResSpec.ManualDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{resInfo.Name},
@@ -732,7 +739,7 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 				dependentResSpec.Name = "dependent-resource"
 				dependentResSpec.Unstruct.SetName("dependent-resource")
 				dependentResSpec.Weight = nil
-				dependentResSpec.ManualInternalDependencies = []*resource.InternalDependency{
+				dependentResSpec.ManualDependencies = []*resource.Dependency{
 					{
 						ResourceMatcher: &spec.ResourceMatcher{
 							Names:      []string{resInfo.Name},
@@ -1403,8 +1410,16 @@ func TestBuildPlanSuites(t *testing.T) {
 }
 
 func defaultReleaseInfo(releaseName, releaseNamespace string) *plan.ReleaseInfo {
+	rel := defaultRelease(releaseName, releaseNamespace)
+
 	return &plan.ReleaseInfo{
-		Release:                defaultRelease(releaseName, releaseNamespace),
+		Revision: release.Revision{
+			Name:      rel.Name,
+			Namespace: rel.Namespace,
+			Status:    rel.Info.Status.String(),
+			Version:   rel.Version,
+		},
+		Release:                &release.VersionedRelease{Accessor: lo.Must(helmrel.NewAccessor(rel))},
 		Must:                   plan.ReleaseTypeInstall,
 		MustFailOnFailedDeploy: true,
 	}
@@ -1415,7 +1430,7 @@ func defaultRelease(releaseName, releaseNamespace string) *helmrelease.Release {
 		Name:      releaseName,
 		Namespace: releaseNamespace,
 		Info: &helmrelease.Info{
-			Status: helmrelease.StatusPendingInstall,
+			Status: helmreleasestatus.StatusPendingInstall,
 		},
 		Version: 1,
 	}
@@ -1429,7 +1444,7 @@ func runBuildPlanTest(tc buildPlanTestCase, s *BuildPlanSuite) func() {
 
 		instInfos, delInfos, relInfos, opts := tc.input()
 
-		plan, err := plan.BuildPlan(instInfos, delInfos, relInfos, opts)
+		plan, err := plan.BuildPlan(context.Background(), instInfos, delInfos, relInfos, s.releaseNamespace, opts)
 		s.Require().NoError(err)
 
 		operations := plan.Operations()

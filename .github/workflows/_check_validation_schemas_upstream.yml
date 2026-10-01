@@ -1,0 +1,43 @@
+name: xxxxx(internal)
+
+on:
+  workflow_call:
+    inputs:
+      forceSkip:
+        default: false
+        type: string
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DEBIAN_FRONTEND: "noninteractive"
+
+jobs:
+  _:
+    if: inputs.forceSkip == 'false'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          cache: false
+          go-version-file: go.mod
+
+      - name: Install Task
+        uses: go-task/setup-task@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Fails when upstream changed schemas the committed archives were generated from, which is the
+      # only signal that "task generate:validation-schemas:force" is due: the generator itself never
+      # goes looking, so that builds stay offline and reproducible.
+      - name: Check embedded validation schemas against upstream
+        run: task -p check:validation-schemas-upstream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

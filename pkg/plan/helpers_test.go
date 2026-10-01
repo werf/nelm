@@ -14,10 +14,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/legacy/progrep"
-	"github.com/werf/nelm/pkg/resource"
-	"github.com/werf/nelm/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/common"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	helmreleasecommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/legacy/progrep"
+	"github.com/werf/nelm/v2/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
 var (
@@ -214,6 +217,20 @@ func makeResourceMeta(name, namespace string, gvk schema.GroupVersionKind) *spec
 		Namespace:        namespace,
 		GroupVersionKind: gvk,
 	}
+}
+
+func newTestReleaseAccessorForPlan(t *testing.T, name, namespace string, version int, status helmreleasecommon.Status) helmrel.Accessor {
+	t.Helper()
+
+	acc, err := helmrel.NewAccessor(&helmrelease.Release{
+		Name:      name,
+		Namespace: namespace,
+		Version:   version,
+		Info:      &helmrelease.Info{Status: status},
+	})
+	require.NoError(t, err)
+
+	return acc
 }
 
 func operationIDs(ops []progrep.Operation) []string {

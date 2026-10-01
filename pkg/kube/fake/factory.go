@@ -14,7 +14,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 
-	"github.com/werf/nelm/pkg/kube"
+	"github.com/werf/nelm/v2/pkg/kube"
 )
 
 var _ kube.ClientFactorier = (*ClientFactory)(nil)
@@ -67,10 +67,6 @@ func (f *ClientFactory) KubeClient() kube.KubeClienter {
 }
 
 func (f *ClientFactory) KubeConfig() *kube.KubeConfig {
-	panic("not implemented yet")
-}
-
-func (f *ClientFactory) LegacyClientGetter() *kube.LegacyClientGetter {
 	panic("not implemented yet")
 }
 

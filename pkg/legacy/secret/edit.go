@@ -19,7 +19,7 @@ import (
 	"github.com/werf/common-go/pkg/secret"
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/common-go/pkg/util"
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 func SecretEdit(ctx context.Context, m *secrets_manager.SecretsManager, workingDir, tempDir, filePath string, values bool) error {

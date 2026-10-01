@@ -17,11 +17,16 @@ limitations under the License.
 package driver
 
 import (
+	"context"
+	"fmt"
+	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 
-	rspb "github.com/werf/nelm/pkg/helm/pkg/release"
+	"github.com/werf/nelm/v2/pkg/helm/intern/logging"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/release"
 )
 
 var _ Driver = (*Memory)(nil)
@@ -42,11 +47,15 @@ type Memory struct {
 	namespace string
 	// A map of namespaces to releases
 	cache map[string]memReleases
+	// Embed a LogHolder to provide logger functionality
+	logging.LogHolder
 }
 
 // NewMemory initializes a new memory driver.
 func NewMemory() *Memory {
-	return &Memory{cache: map[string]memReleases{}, namespace: "default"}
+	m := &Memory{cache: map[string]memReleases{}, namespace: "default"}
+	m.SetLogger(slog.Default().Handler())
+	return m
 }
 
 // SetNamespace sets a specific namespace in which releases will be accessed.
@@ -61,7 +70,7 @@ func (mem *Memory) Name() string {
 }
 
 // Get returns the release named by key or returns ErrReleaseNotFound.
-func (mem *Memory) Get(key string) (*rspb.Release, error) {
+func (mem *Memory) Get(key string) (release.Releaser, error) {
 	defer unlock(mem.rlock())
 
 	keyWithoutPrefix := strings.TrimPrefix(key, "sh.helm.release.v1.")
@@ -82,11 +91,16 @@ func (mem *Memory) Get(key string) (*rspb.Release, error) {
 	}
 }
 
+// GetRevision is Get: in-memory records carry their labels and cannot be undecodable.
+func (mem *Memory) GetRevision(key string) (release.Releaser, error) {
+	return mem.Get(key)
+}
+
 // List returns the list of all releases such that filter(release) == true
-func (mem *Memory) List(filter func(*rspb.Release) bool) ([]*rspb.Release, error) {
+func (mem *Memory) List(filter func(release.Releaser) bool) ([]release.Releaser, error) {
 	defer unlock(mem.rlock())
 
-	var ls []*rspb.Release
+	var ls []release.Releaser
 	for namespace := range mem.cache {
 		if mem.namespace != "" {
 			// Should only list releases of this namespace
@@ -109,7 +123,7 @@ func (mem *Memory) List(filter func(*rspb.Release) bool) ([]*rspb.Release, error
 }
 
 // Query returns the set of releases that match the provided set of labels
-func (mem *Memory) Query(keyvals map[string]string) ([]*rspb.Release, error) {
+func (mem *Memory) Query(keyvals map[string]string) ([]release.Releaser, error) {
 	defer unlock(mem.rlock())
 
 	var lbs labels
@@ -117,7 +131,7 @@ func (mem *Memory) Query(keyvals map[string]string) ([]*rspb.Release, error) {
 	lbs.init()
 	lbs.fromMap(keyvals)
 
-	var ls []*rspb.Release
+	var ls []release.Releaser
 	for namespace := range mem.cache {
 		if mem.namespace != "" {
 			// Should only query releases of this namespace
@@ -173,10 +187,45 @@ func (mem *Memory) LastVersion(name string) (int, error) {
 	return latest, nil
 }
 
+// Revisions returns the release's revisions sorted by ascending version.
+func (mem *Memory) Revisions(_ context.Context, name string) ([]RevisionRecord, error) {
+	defer unlock(mem.rlock())
+
+	if mem.namespace == "" {
+		return nil, fmt.Errorf("list revisions of release %q: namespace is required", name)
+	}
+
+	var records []RevisionRecord
+
+	for _, rec := range mem.cache[mem.namespace][name] {
+		if rec == nil {
+			continue
+		}
+
+		record, ok, err := revisionRecordFromLabels(rec.key, mem.namespace, rec.lbs.toMap())
+		if err != nil {
+			return nil, fmt.Errorf("list revisions of release %q: %w", name, err)
+		}
+		if !ok {
+			continue
+		}
+
+		records = append(records, record)
+	}
+
+	sort.Slice(records, func(i, j int) bool { return records[i].Version < records[j].Version })
+
+	return records, nil
+}
+
 // Create creates a new release or returns ErrReleaseExists.
-func (mem *Memory) Create(key string, rls *rspb.Release) error {
+func (mem *Memory) Create(key string, rel release.Releaser) error {
 	defer unlock(mem.wlock())
 
+	rls, err := releaserToV1Release(rel)
+	if err != nil {
+		return err
+	}
 	// For backwards compatibility, we protect against an unset namespace
 	namespace := rls.Namespace
 	if namespace == "" {
@@ -200,8 +249,13 @@ func (mem *Memory) Create(key string, rls *rspb.Release) error {
 }
 
 // Update updates a release or returns ErrReleaseNotFound.
-func (mem *Memory) Update(key string, rls *rspb.Release) error {
+func (mem *Memory) Update(key string, rel release.Releaser) error {
 	defer unlock(mem.wlock())
+
+	rls, err := releaserToV1Release(rel)
+	if err != nil {
+		return err
+	}
 
 	// For backwards compatibility, we protect against an unset namespace
 	namespace := rls.Namespace
@@ -219,8 +273,39 @@ func (mem *Memory) Update(key string, rls *rspb.Release) error {
 	return ErrReleaseNotFound
 }
 
+// UpdateLabels merges the given custom labels into the stored release named by
+// key without creating a new revision. Returns ErrReleaseNotFound if the
+// release does not exist.
+func (mem *Memory) UpdateLabels(key string, lbls map[string]string) error {
+	defer unlock(mem.wlock())
+
+	keyWithoutPrefix := strings.TrimPrefix(key, "sh.helm.release.v1.")
+	elems := strings.Split(keyWithoutPrefix, ".v")
+	if len(elems) != 2 {
+		return ErrInvalidKey
+	}
+	name := elems[0]
+
+	recs, ok := mem.cache[mem.namespace][name]
+	if !ok {
+		return ErrReleaseNotFound
+	}
+	r := recs.Get(key)
+	if r == nil {
+		return ErrReleaseNotFound
+	}
+
+	if r.rls.Labels == nil {
+		r.rls.Labels = map[string]string{}
+	}
+	for k, v := range filterSystemLabels(lbls) {
+		r.rls.Labels[k] = v
+	}
+	return nil
+}
+
 // Delete deletes a release or returns ErrReleaseNotFound.
-func (mem *Memory) Delete(key string) (*rspb.Release, error) {
+func (mem *Memory) Delete(key string) (release.Releaser, error) {
 	defer unlock(mem.wlock())
 
 	keyWithoutPrefix := strings.TrimPrefix(key, "sh.helm.release.v1.")
@@ -244,6 +329,14 @@ func (mem *Memory) Delete(key string) (*rspb.Release, error) {
 		}
 	}
 	return nil, ErrReleaseNotFound
+}
+
+// DeleteRevision removes the release named by key, or returns ErrReleaseNotFound.
+func (mem *Memory) DeleteRevision(_ context.Context, key string) error {
+	if _, err := mem.Delete(key); err != nil {
+		return err
+	}
+	return nil
 }
 
 // wlock locks mem for writing

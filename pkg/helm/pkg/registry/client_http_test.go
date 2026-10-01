@@ -17,50 +17,66 @@ limitations under the License.
 package registry
 
 import (
-	"fmt"
+	"errors"
 	"os"
 	"testing"
 
-	"github.com/containerd/containerd/errdefs"
 	"github.com/stretchr/testify/suite"
+	"oras.land/oras-go/v2/content"
 )
 
 type HTTPRegistryClientTestSuite struct {
-	TestSuite
+	TestRegistry
 }
 
 func (suite *HTTPRegistryClientTestSuite) SetupSuite() {
 	// init test client
-	dockerRegistry := setup(&suite.TestSuite, false, false)
-
-	// Start Docker registry
-	go dockerRegistry.ListenAndServe()
+	setup(&suite.TestRegistry, false, false)
 }
 
 func (suite *HTTPRegistryClientTestSuite) TearDownSuite() {
-	teardown(&suite.TestSuite)
-	os.RemoveAll(suite.WorkspaceDir)
+	teardown(&suite.TestRegistry)
+	_ = os.RemoveAll(suite.WorkspaceDir)
+}
+
+func (suite *HTTPRegistryClientTestSuite) Test_0_Login() {
+	err := suite.RegistryClient.Login(suite.DockerRegistryHost,
+		LoginOptBasicAuth("badverybad", "ohsobad"),
+		LoginOptPlainText(true))
+	suite.NotNil(err, "error logging into registry with bad credentials")
+
+	err = suite.RegistryClient.Login(suite.DockerRegistryHost,
+		LoginOptBasicAuth(testUsername, testPassword),
+		LoginOptPlainText(true))
+	suite.Nil(err, "no error logging into registry with good credentials")
 }
 
 func (suite *HTTPRegistryClientTestSuite) Test_1_Push() {
-	testPush(&suite.TestSuite)
+	testPush(&suite.TestRegistry)
 }
 
 func (suite *HTTPRegistryClientTestSuite) Test_2_Pull() {
-	testPull(&suite.TestSuite)
+	testPull(&suite.TestRegistry)
 }
 
 func (suite *HTTPRegistryClientTestSuite) Test_3_Tags() {
-	testTags(&suite.TestSuite)
+	testTags(&suite.TestRegistry)
 }
 
 func (suite *HTTPRegistryClientTestSuite) Test_4_ManInTheMiddle() {
-	ref := fmt.Sprintf("%s/testrepo/supposedlysafechart:9.9.9", suite.CompromisedRegistryHost)
+	ref := suite.CompromisedRegistryHost + "/testrepo/supposedlysafechart:9.9.9"
 
 	// returns content that does not match the expected digest
 	_, err := suite.RegistryClient.Pull(ref)
 	suite.NotNil(err)
-	suite.True(errdefs.IsFailedPrecondition(err))
+	suite.True(errors.Is(err, content.ErrMismatchedDigest))
+}
+
+func (suite *HTTPRegistryClientTestSuite) Test_5_ImageIndex() {
+	ref := suite.FakeRegistryHost + "/testrepo/image-index:0.1.0"
+
+	_, err := suite.RegistryClient.Pull(ref)
+	suite.Nil(err)
 }
 
 func TestHTTPRegistryClientTestSuite(t *testing.T) {

@@ -10,13 +10,13 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/kube"
-	"github.com/werf/nelm/pkg/kube/fake"
-	"github.com/werf/nelm/pkg/plan"
-	"github.com/werf/nelm/pkg/resource"
-	"github.com/werf/nelm/pkg/resource/spec"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/kube"
+	"github.com/werf/nelm/v2/pkg/kube/fake"
+	"github.com/werf/nelm/v2/pkg/plan"
+	"github.com/werf/nelm/v2/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
 const (
@@ -27,21 +27,21 @@ const (
 func TestReadyDependencyCrossStageDoesNotForceTracking(t *testing.T) {
 	target := readyDepInstallableResource(
 		readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil),
-		multitrack.NonBlocking,
-		multitrack.IgnoreAndContinueDeployProcess,
+		statestore.NonBlocking,
+		statestore.IgnoreAndContinueDeployProcess,
 	)
 
 	dependent := readyDepInstallableResource(
 		readyDepConfigMapSpec("dependent", readyDepReleaseNamespace, nil),
-		multitrack.WaitUntilResourceReady,
-		multitrack.FailWholeDeployProcessImmediately,
+		statestore.WaitUntilResourceReady,
+		statestore.FailWholeDeployProcessImmediately,
 	)
 	dependent.DeployConditions = map[common.On][]common.Stage{
 		common.InstallOnInstall:  {common.StagePostInstall},
 		common.InstallOnUpgrade:  {common.StagePostInstall},
 		common.InstallOnRollback: {common.StagePostInstall},
 	}
-	dependent.ManualInternalDependencies = []*resource.InternalDependency{
+	dependent.ManualDependencies = []*resource.Dependency{
 		{
 			ResourceMatcher: &spec.ResourceMatcher{
 				Names:  []string{"target"},
@@ -57,7 +57,7 @@ func TestReadyDependencyCrossStageDoesNotForceTracking(t *testing.T) {
 	targetInfo := findInfo(t, infos, "target")
 	require.False(t, targetInfo.MustTrackReadiness,
 		"a cross-stage state=ready dep must not force tracking, since no ordering edge can form")
-	require.Equal(t, multitrack.IgnoreAndContinueDeployProcess, targetInfo.FailMode,
+	require.Equal(t, statestore.IgnoreAndContinueDeployProcess, targetInfo.FailMode,
 		"fail mode must remain the resource's own value when not forced")
 }
 
@@ -80,7 +80,7 @@ func TestReadyDependencyDoesNotForceCRDTarget(t *testing.T) {
 			GroupVersionKind: schema.GroupVersionKind{Version: "v1", Kind: "Namespace"},
 		},
 		LocalResource: &resource.InstallableResource{
-			ManualInternalDependencies: []*resource.InternalDependency{
+			ManualDependencies: []*resource.Dependency{
 				{
 					ResourceMatcher: &spec.ResourceMatcher{
 						Names:  []string{"widgets.example.com"},
@@ -98,14 +98,51 @@ func TestReadyDependencyDoesNotForceCRDTarget(t *testing.T) {
 
 	require.False(t, crdInfo.MustTrackReadiness,
 		"a CRD target must never be forced to track even when a same-stage dependent selects it")
-	require.NotEqual(t, multitrack.FailWholeDeployProcessImmediately, crdInfo.FailMode)
+	require.NotEqual(t, statestore.FailWholeDeployProcessImmediately, crdInfo.FailMode)
+}
+
+func TestReadyDependencyDoesNotForceExternalDependencyTarget(t *testing.T) {
+	target := readyDepInstallableResource(
+		readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil),
+		statestore.NonBlocking,
+		statestore.IgnoreAndContinueDeployProcess,
+	)
+
+	dependent := readyDepInstallableResource(
+		readyDepConfigMapSpec("dependent", readyDepReleaseNamespace, nil),
+		statestore.WaitUntilResourceReady,
+		statestore.FailWholeDeployProcessImmediately,
+	)
+	dependent.ManualDependencies = []*resource.Dependency{
+		{
+			ResourceMatcher: &spec.ResourceMatcher{
+				Names:      []string{"target"},
+				Namespaces: []string{""},
+				Groups:     []string{""},
+				Versions:   []string{"v1"},
+				Kinds:      []string{"ConfigMap"},
+			},
+			ResourceState: common.ResourceStateReady,
+			External:      true,
+			MinMatches:    common.DefaultExternalDependencyMinMatches,
+			MaxMatches:    common.DefaultExternalDependencyMaxMatches,
+		},
+	}
+
+	infos := buildReadyDepInfos(t, target, dependent, nil)
+
+	targetInfo := findInfo(t, infos, "target")
+	require.False(t, targetInfo.MustTrackReadiness,
+		"an external ready-dependency is tracked by its own operation and must not force a same-named local resource")
+	require.Equal(t, statestore.IgnoreAndContinueDeployProcess, targetInfo.FailMode,
+		"the local resource must keep its chart-authored fail mode")
 }
 
 func TestReadyDependencyDoesNotForceSkipCreateAbsentTarget(t *testing.T) {
 	target := readyDepInstallableResource(
 		readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil),
-		multitrack.NonBlocking,
-		multitrack.IgnoreAndContinueDeployProcess,
+		statestore.NonBlocking,
+		statestore.IgnoreAndContinueDeployProcess,
 	)
 	target.ResourcePolicies = []common.ResourcePolicy{common.ResourcePolicySkipCreate}
 	dependent := readyDependentResource("target", "")
@@ -117,15 +154,15 @@ func TestReadyDependencyDoesNotForceSkipCreateAbsentTarget(t *testing.T) {
 	require.Nil(t, targetInfo.GetResult, "target is absent")
 	require.False(t, targetInfo.MustTrackReadiness,
 		"an absent skip-create target that will never be created must not be force-tracked")
-	require.Equal(t, multitrack.IgnoreAndContinueDeployProcess, targetInfo.FailMode,
+	require.Equal(t, statestore.IgnoreAndContinueDeployProcess, targetInfo.FailMode,
 		"fail mode must remain the resource's own value when not forced")
 }
 
 func TestReadyDependencyDoesNotForceUnmatchedTarget(t *testing.T) {
 	target := readyDepInstallableResource(
 		readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil),
-		multitrack.NonBlocking,
-		multitrack.IgnoreAndContinueDeployProcess,
+		statestore.NonBlocking,
+		statestore.IgnoreAndContinueDeployProcess,
 	)
 	dependent := readyDependentResource("some-other-name", "")
 
@@ -133,7 +170,7 @@ func TestReadyDependencyDoesNotForceUnmatchedTarget(t *testing.T) {
 
 	targetInfo := findInfo(t, infos, "target")
 	require.False(t, targetInfo.MustTrackReadiness, "NonBlocking target not selected by any dep stays untracked")
-	require.Equal(t, multitrack.IgnoreAndContinueDeployProcess, targetInfo.FailMode,
+	require.Equal(t, statestore.IgnoreAndContinueDeployProcess, targetInfo.FailMode,
 		"fail mode must remain the resource's own value when not forced")
 }
 
@@ -143,8 +180,8 @@ func TestReadyDependencyForcesTrackingOnChartAuthoredNonBlockingTarget(t *testin
 			"werf.io/track-termination-mode": "NonBlocking",
 			"werf.io/fail-mode":              "IgnoreAndContinueDeployProcess",
 		}),
-		multitrack.NonBlocking,
-		multitrack.IgnoreAndContinueDeployProcess,
+		statestore.NonBlocking,
+		statestore.IgnoreAndContinueDeployProcess,
 	)
 	dependent := readyDependentResource("target", "")
 
@@ -152,14 +189,14 @@ func TestReadyDependencyForcesTrackingOnChartAuthoredNonBlockingTarget(t *testin
 
 	targetInfo := findInfo(t, infos, "target")
 	require.True(t, targetInfo.MustTrackReadiness)
-	require.Equal(t, multitrack.FailWholeDeployProcessImmediately, targetInfo.FailMode)
+	require.Equal(t, statestore.FailWholeDeployProcessImmediately, targetInfo.FailMode)
 }
 
 func TestReadyDependencyForcesTrackingOnLegacyPatchedTarget(t *testing.T) {
 	target := readyDepInstallableResource(
 		readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil),
-		multitrack.NonBlocking,
-		multitrack.IgnoreAndContinueDeployProcess,
+		statestore.NonBlocking,
+		statestore.IgnoreAndContinueDeployProcess,
 	)
 	dependent := readyDependentResource("target", "")
 
@@ -167,12 +204,12 @@ func TestReadyDependencyForcesTrackingOnLegacyPatchedTarget(t *testing.T) {
 
 	targetInfo := findInfo(t, infos, "target")
 	require.True(t, targetInfo.MustTrackReadiness, "NonBlocking target selected by state=ready dep must be tracked")
-	require.Equal(t, multitrack.FailWholeDeployProcessImmediately, targetInfo.FailMode)
+	require.Equal(t, statestore.FailWholeDeployProcessImmediately, targetInfo.FailMode)
 }
 
 func TestReadyDependencyForcesTrackingOnUnchangedTarget(t *testing.T) {
 	targetSpec := readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil)
-	target := readyDepInstallableResource(targetSpec, multitrack.NonBlocking, multitrack.IgnoreAndContinueDeployProcess)
+	target := readyDepInstallableResource(targetSpec, statestore.NonBlocking, statestore.IgnoreAndContinueDeployProcess)
 	dependent := readyDependentResource("target", "")
 
 	infos := buildReadyDepInfos(t, target, dependent, func(cf *fake.ClientFactory) {
@@ -185,20 +222,20 @@ func TestReadyDependencyForcesTrackingOnUnchangedTarget(t *testing.T) {
 	targetInfo := findInfo(t, infos, "target")
 	require.Equal(t, plan.ResourceInstallTypeNone, targetInfo.MustInstall, "target must be an unchanged no-op")
 	require.True(t, targetInfo.MustTrackReadiness, "unchanged target still forced to track when selected by state=ready dep")
-	require.Equal(t, multitrack.FailWholeDeployProcessImmediately, targetInfo.FailMode)
+	require.Equal(t, statestore.FailWholeDeployProcessImmediately, targetInfo.FailMode)
 }
 
 func TestReadyDependencyProducesEdgeAndRetainsTrackingWithNoFinalTracking(t *testing.T) {
 	target := readyDepInstallableResource(
 		readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil),
-		multitrack.NonBlocking,
-		multitrack.IgnoreAndContinueDeployProcess,
+		statestore.NonBlocking,
+		statestore.IgnoreAndContinueDeployProcess,
 	)
 	dependent := readyDependentResource("target", "")
 
 	infos := buildReadyDepInfos(t, target, dependent, nil)
 
-	p, err := plan.BuildPlan(infos, nil, nil, plan.BuildPlanOptions{NoFinalTracking: true})
+	p, err := plan.BuildPlan(context.Background(), infos, nil, nil, readyDepReleaseNamespace, plan.BuildPlanOptions{NoFinalTracking: true})
 	require.NoError(t, err)
 
 	trackOp := findTrackReadinessOp(t, p, "target")
@@ -211,7 +248,7 @@ func TestReadyDependencyProducesEdgeAndRetainsTrackingWithNoFinalTracking(t *tes
 		"target track-readiness must precede dependent create (ready-dependency edge)")
 
 	cfg := trackOp.Config.(*plan.OperationConfigTrackReadiness)
-	require.Equal(t, multitrack.FailWholeDeployProcessImmediately, cfg.FailMode,
+	require.Equal(t, statestore.FailWholeDeployProcessImmediately, cfg.FailMode,
 		"forced readiness op must fail the whole deploy despite IgnoreAndContinue annotation")
 }
 
@@ -220,13 +257,13 @@ func TestReadyDependencyReleaseNamespaceSelectorProducesEdge(t *testing.T) {
 	require.NoError(t, err)
 
 	targetSpec := readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil)
-	target, err := resource.NewInstallableResource(targetSpec, nil, readyDepReleaseNamespace, cf, resource.InstallableResourceOptions{})
+	target, err := resource.NewInstallableResource(context.Background(), targetSpec, nil, readyDepReleaseNamespace, resource.InstallableResourceOptions{})
 	require.NoError(t, err)
 
 	dependentSpec := readyDepConfigMapSpec("dependent", readyDepReleaseNamespace, map[string]string{
 		"werf.io/deploy-dependency-target": "state=ready,version=v1,kind=ConfigMap,name=target,namespace=" + readyDepReleaseNamespace,
 	})
-	dependent, err := resource.NewInstallableResource(dependentSpec, nil, readyDepReleaseNamespace, cf, resource.InstallableResourceOptions{})
+	dependent, err := resource.NewInstallableResource(context.Background(), dependentSpec, nil, readyDepReleaseNamespace, resource.InstallableResourceOptions{})
 	require.NoError(t, err)
 
 	instInfos, _, err := plan.BuildResourceInfos(
@@ -242,7 +279,7 @@ func TestReadyDependencyReleaseNamespaceSelectorProducesEdge(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	p, err := plan.BuildPlan(instInfos, nil, nil, plan.BuildPlanOptions{NoFinalTracking: true})
+	p, err := plan.BuildPlan(context.Background(), instInfos, nil, nil, readyDepReleaseNamespace, plan.BuildPlanOptions{NoFinalTracking: true})
 	require.NoError(t, err)
 
 	trackOp := findTrackReadinessOp(t, p, "target")
@@ -255,10 +292,10 @@ func TestReadyDependencyReleaseNamespaceSelectorProducesEdge(t *testing.T) {
 func readyDependentResource(targetName, targetNamespace string) *resource.InstallableResource {
 	res := readyDepInstallableResource(
 		readyDepConfigMapSpec("dependent", readyDepReleaseNamespace, nil),
-		multitrack.WaitUntilResourceReady,
-		multitrack.FailWholeDeployProcessImmediately,
+		statestore.WaitUntilResourceReady,
+		statestore.FailWholeDeployProcessImmediately,
 	)
-	res.ManualInternalDependencies = []*resource.InternalDependency{
+	res.ManualDependencies = []*resource.Dependency{
 		{
 			ResourceMatcher: &spec.ResourceMatcher{
 				Names:      []string{targetName},
@@ -378,7 +415,7 @@ func readyDepConfigMapSpec(name, namespace string, annotations map[string]string
 	return resSpec
 }
 
-func readyDepInstallableResource(resSpec *spec.ResourceSpec, trackTermination multitrack.TrackTerminationMode, failMode multitrack.FailMode) *resource.InstallableResource {
+func readyDepInstallableResource(resSpec *spec.ResourceSpec, trackTermination statestore.TrackTerminationMode, failMode statestore.FailMode) *resource.InstallableResource {
 	return &resource.InstallableResource{
 		ResourceSpec:                    resSpec,
 		Ownership:                       common.OwnershipRelease,

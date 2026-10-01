@@ -34,10 +34,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 package fs
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"syscall"
-
-	"github.com/pkg/errors"
 )
 
 // renameFallback attempts to determine the appropriate fallback to failed rename
@@ -47,11 +47,12 @@ func renameFallback(err error, src, dst string) error {
 	// copy if we detect that case. syscall.EXDEV is the common name for the
 	// cross device link error which has varying output text across different
 	// operating systems.
-	terr, ok := err.(*os.LinkError)
+	terr := &os.LinkError{}
+	ok := errors.As(err, &terr)
 	if !ok {
 		return err
-	} else if terr.Err != syscall.EXDEV {
-		return errors.Wrapf(terr, "link error: cannot rename %s to %s", src, dst)
+	} else if !errors.Is(terr.Err, syscall.EXDEV) {
+		return fmt.Errorf("link error: cannot rename %s to %s: %w", src, dst, terr)
 	}
 
 	return renameByCopy(src, dst)

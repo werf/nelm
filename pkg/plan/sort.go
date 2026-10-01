@@ -1,8 +1,8 @@
 package plan
 
 import (
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/resource"
 )
 
 func InstallableResourceInfoSortByMustInstallHandler(r1, r2 *InstallableResourceInfo) bool {

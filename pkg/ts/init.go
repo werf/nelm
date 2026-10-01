@@ -9,8 +9,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 const (

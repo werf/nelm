@@ -1,21 +1,11 @@
 package spec
 
-import "github.com/werf/nelm/pkg/common"
-
 func ResourceSpecSortHandler(r1, r2 *ResourceSpec) bool {
-	sortAs1 := r1.StoreAs
-	sortAs2 := r2.StoreAs
+	isCRD1 := IsCRD(r1.GroupVersionKind.GroupKind())
+	isCRD2 := IsCRD(r2.GroupVersionKind.GroupKind())
 
-	// TODO(major): sorted based on sortAs for compatibility. In future should just probably sort
-	// like this: first CRDs (any type), then helm.sh/hook hooks, then the rest
-	if sortAs1 != sortAs2 {
-		if sortAs1 == common.StoreAsNone {
-			return true
-		} else if sortAs1 == common.StoreAsHook && sortAs2 != common.StoreAsNone {
-			return true
-		} else {
-			return false
-		}
+	if isCRD1 != isCRD2 {
+		return isCRD1
 	}
 
 	return ResourceMetaSortHandler(r1.ResourceMeta, r2.ResourceMeta)

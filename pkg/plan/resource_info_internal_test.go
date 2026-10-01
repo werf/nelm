@@ -14,9 +14,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
-	"github.com/werf/nelm/pkg/resource"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/featgate"
+	"github.com/werf/nelm/v2/pkg/resource"
 )
 
 func TestAdoptDeckhouseControllerFieldsGateEnvVarName(t *testing.T) {
@@ -261,17 +261,17 @@ func TestResourceInstallTypeOnImmutableStatefulSetError(t *testing.T) {
 	gvk := schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "StatefulSet"}
 
 	recreateOnImmutable := &resource.InstallableResource{ResourceSpec: makeResourceSpec("db", "default", gvk), RecreateOnImmutable: true}
-	installType, skipped, err := resourceInstallType(context.Background(), recreateOnImmutable, liveObj, nil, statefulSetErr, nil)
+	installType, skipped, err := resourceInstallType(context.Background(), recreateOnImmutable, liveObj, nil, statefulSetErr, nil, nil, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, ResourceInstallTypeRecreate, installType)
 	assert.False(t, skipped)
 
 	noPolicy := &resource.InstallableResource{ResourceSpec: makeResourceSpec("db", "default", gvk)}
-	_, _, err = resourceInstallType(context.Background(), noPolicy, liveObj, nil, statefulSetErr, nil)
+	_, _, err = resourceInstallType(context.Background(), noPolicy, liveObj, nil, statefulSetErr, nil, nil, nil, nil)
 	require.ErrorContains(t, err, "immutable fields change in resource")
 	require.ErrorIs(t, err, statefulSetErr)
 
-	installType, skipped, err = resourceInstallType(context.Background(), noPolicy, liveObj, nil, statefulSetErr, []common.ResourcePolicy{common.ResourcePolicySkipRecreate})
+	installType, skipped, err = resourceInstallType(context.Background(), noPolicy, liveObj, nil, statefulSetErr, nil, nil, []common.ResourcePolicy{common.ResourcePolicySkipRecreate}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, ResourceInstallTypeNone, installType)
 	assert.True(t, skipped)

@@ -14,9 +14,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
-	"github.com/werf/nelm/pkg/legacy/progrep"
+	"github.com/werf/nelm/v2/pkg/common"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/legacy/progrep"
+	"github.com/werf/nelm/v2/pkg/release"
 )
 
 func TestBuildResolvedNamespaces(t *testing.T) {
@@ -750,7 +752,14 @@ func TestStartPlan_OperationNamespaceResolution(t *testing.T) {
 }
 
 func TestStartPlan_OperationTypesAndCategories(t *testing.T) {
-	rel := &helmrelease.Release{Name: "rel", Namespace: "default", Version: 1, Info: &helmrelease.Info{}}
+	rel := &release.VersionedRelease{
+		Accessor: lo.Must(helmrel.NewAccessor(&helmrelease.Release{
+			Name:      "rel",
+			Namespace: "default",
+			Version:   1,
+			Info:      &helmrelease.Info{},
+		})),
+	}
 
 	tests := []struct {
 		name         string
@@ -899,17 +908,19 @@ func TestStartPlan_RealPlansFormSingleChainedGraph(t *testing.T) {
 	infos := []*InstallableResourceInfo{preInstall, install, untouched}
 
 	relInfos := []*ReleaseInfo{{
-		Release: &helmrelease.Release{
-			Name:      "rel",
-			Namespace: "default",
-			Version:   1,
-			Info:      &helmrelease.Info{},
+		Release: &release.VersionedRelease{
+			Accessor: lo.Must(helmrel.NewAccessor(&helmrelease.Release{
+				Name:      "rel",
+				Namespace: "default",
+				Version:   1,
+				Info:      &helmrelease.Info{},
+			})),
 		},
 		Must:                   ReleaseTypeInstall,
 		MustFailOnFailedDeploy: true,
 	}}
 
-	installPlan, err := BuildPlan(infos, nil, relInfos, BuildPlanOptions{})
+	installPlan, err := BuildPlan(context.Background(), infos, nil, relInfos, "default", BuildPlanOptions{})
 	require.NoError(t, err)
 
 	startTestPlan(reporter, installPlan, infos, StartPlanOptions{})
@@ -927,8 +938,8 @@ func TestStartPlan_RealPlansFormSingleChainedGraph(t *testing.T) {
 	require.Equal(t, []string{stageOperationID(common.StageInit, common.StageStartSuffix)}, roots, "a real plan has a single root")
 	require.Equal(t, []string{stageOperationID(common.StageFinal, common.StageEndSuffix)}, sinks, "a real plan has a single sink")
 
-	createRelID := OperationID(OperationTypeCreateRelease, OperationVersionCreateRelease, 0, relInfos[0].Release.ID())
-	updateRelID := OperationID(OperationTypeUpdateRelease, OperationVersionUpdateRelease, 0, relInfos[0].Release.ID())
+	createRelID := OperationID(OperationTypeCreateRelease, OperationVersionCreateRelease, 0, releaseID("default", "rel", 1))
+	updateRelID := OperationID(OperationTypeUpdateRelease, OperationVersionUpdateRelease, 0, releaseID("default", "rel", 1))
 
 	assert.Equal(t, progrep.OperationTypeCreateRelease, byID[createRelID].Type)
 	assert.Equal(t, progrep.OperationCategoryRelease, byID[createRelID].Category)

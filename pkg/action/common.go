@@ -3,8 +3,10 @@ package action
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,17 +20,23 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 
+	"github.com/werf/kubedog/pkg/dyntracker/logstore"
+	"github.com/werf/kubedog/pkg/dyntracker/statestore"
+	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/kubedog/pkg/informer"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/logstore"
-	"github.com/werf/kubedog/pkg/trackers/dyntracker/statestore"
-	kdutil "github.com/werf/kubedog/pkg/trackers/dyntracker/util"
-	"github.com/werf/nelm/pkg/common"
-	helmrelease "github.com/werf/nelm/pkg/helm/pkg/release"
-	"github.com/werf/nelm/pkg/kube"
-	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/plan"
-	"github.com/werf/nelm/pkg/release"
-	"github.com/werf/nelm/pkg/util"
+	"github.com/werf/nelm/v2/pkg/common"
+	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
+	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
+	"github.com/werf/nelm/v2/pkg/kube"
+	"github.com/werf/nelm/v2/pkg/lock"
+	"github.com/werf/nelm/v2/pkg/log"
+	"github.com/werf/nelm/v2/pkg/plan"
+	"github.com/werf/nelm/v2/pkg/release"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/util"
 )
 
 func init() {
@@ -75,16 +83,15 @@ var syntaxHighlightTheme = fmt.Sprintf(`
 </style>
 `, syntaxHighlightThemeName)
 
-// TODO(major): Version > APIVersion as string "v3"
-type releaseReportV3 struct {
-	Version             int                `json:"version,omitempty"`
-	Release             string             `json:"release,omitempty"`
-	Namespace           string             `json:"namespace,omitempty"`
-	Revision            int                `json:"revision,omitempty"`
-	Status              helmrelease.Status `json:"status,omitempty"`
-	CompletedOperations []string           `json:"completedOperations,omitempty"`
-	CanceledOperations  []string           `json:"canceledOperations,omitempty"`
-	FailedOperations    []string           `json:"failedOperations,omitempty"`
+type ReleaseReportV3 struct {
+	APIVersion          string                   `json:"apiVersion,omitempty"`
+	Release             string                   `json:"release,omitempty"`
+	Namespace           string                   `json:"namespace,omitempty"`
+	Revision            int                      `json:"revision,omitempty"`
+	Status              helmreleasestatus.Status `json:"status,omitempty"`
+	CompletedOperations []string                 `json:"completedOperations,omitempty"`
+	CanceledOperations  []string                 `json:"canceledOperations,omitempty"`
+	FailedOperations    []string                 `json:"failedOperations,omitempty"`
 }
 
 type runFailureInstallPlanOptions struct {
@@ -98,6 +105,67 @@ type runFailurePlanResult struct {
 	CanceledResourceOps  []*plan.Operation
 	CompletedResourceOps []*plan.Operation
 	FailedResourceOps    []*plan.Operation
+}
+
+// Chart-shipped rules are scoped to their own chart subtree, rules from patches files and
+// programmatically supplied ones are not.
+// All kinds are compiled right away, so an invalid rule fails before anything is applied.
+// renderedValues is the top-level context the chart was rendered with, which render patches
+// get as jq variables; it is required whenever there are render rules to compile, so a
+// caller that has nothing rendered uses resolveDiffPatches instead of passing nil here.
+func resolvePatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string, legacyPatches spec.Patches, renderedValues map[string]interface{}) (spec.CompiledPatches, error) {
+	patches, err := collectPatches(chart, defaultDisable, patchesFiles, legacyPatches)
+	if err != nil {
+		return spec.CompiledPatches{}, err
+	}
+
+	diffPatches, err := spec.CompilePatches(patches.Diff)
+	if err != nil {
+		return spec.CompiledPatches{}, fmt.Errorf("compile diff patches: %w", err)
+	}
+
+	if len(patches.Render) == 0 {
+		return spec.CompiledPatches{Diff: diffPatches}, nil
+	}
+
+	if renderedValues == nil {
+		return spec.CompiledPatches{}, fmt.Errorf("rendered values are required to compile render patches, use resolveDiffPatches where nothing is rendered")
+	}
+
+	renderContext, err := renderContextFor(chart, renderedValues)
+	if err != nil {
+		return spec.CompiledPatches{}, fmt.Errorf("build render context: %w", err)
+	}
+
+	renderPatches, err := spec.CompileRenderPatches(patches.Render, renderContext)
+	if err != nil {
+		return spec.CompiledPatches{}, fmt.Errorf("compile render patches: %w", err)
+	}
+
+	return spec.CompiledPatches{Diff: diffPatches, Render: renderPatches}, nil
+}
+
+// renderContextFor splits the rendered top-level context, which holds what chart
+// templates saw, into the parts render patches get as jq variables, with a
+// per-subchart entry so a subchart's rules resolve against their own chart.
+func renderContextFor(chart helmchart.Accessor, renderedValues map[string]interface{}) (spec.RenderContext, error) {
+	subcharts, err := subchartContexts(chart, renderedValues["Values"])
+	if err != nil {
+		return spec.RenderContext{}, err
+	}
+
+	rootChart := renderedValues["Chart"]
+	if chart != nil {
+		rootChart = chartMetadata(chart)
+	}
+
+	return spec.RenderContext{
+		Values:       renderedValues["Values"],
+		Release:      renderedValues["Release"],
+		Chart:        rootChart,
+		Capabilities: renderedValues["Capabilities"],
+		Subcharts:    subcharts,
+	}, nil
 }
 
 func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr error, installGraphPath, tempDirPath, fallbackGraphFilename string) {
@@ -117,12 +185,165 @@ func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr err
 	log.Default.Warn(ctx, "Plan graph saved to %q for debugging", graphPath)
 }
 
+// loadDeployedReleases loads the bodies of the revisions BuildReleaseInfos would keep, i.e. the
+// ones with status exactly "deployed". release.DeployedRevisions is deliberately not used here:
+// it also returns superseded revisions, which would turn into extra supersede operations.
+// Bodies the caller already holds are passed in preloaded and reused instead of being fetched
+// again; this never changes which revisions are returned, only where their bodies come from.
+// A revision whose body cannot be read is an error: it would otherwise stay deployed forever.
+func loadDeployedReleases(ctx context.Context, history *release.History, preloaded []helmrel.Accessor) ([]helmrel.Accessor, error) {
+	return loadDeployedReleasesWith(ctx, history, preloaded, false)
+}
+
+// loadDeployedReleasesSkippingPruned is loadDeployedReleases for the one reader that runs after
+// plan execution: a revision the history limit pruned meanwhile no longer exists and has nothing
+// left to supersede, so ErrReleaseNotFound is skipped. An undecodable body is still an error.
+func loadDeployedReleasesSkippingPruned(ctx context.Context, history *release.History) ([]helmrel.Accessor, error) {
+	return loadDeployedReleasesWith(ctx, history, nil, true)
+}
+
+// resolveDiffPatches compiles only the diff rules, for rollback, uninstall and install
+// from a plan artifact: nothing is rendered there, so render rules have nothing to apply
+// to and their jq variables would have no values.
+func resolveDiffPatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string, legacyPatches spec.Patches) (spec.CompiledPatches, error) {
+	patches, err := collectPatches(chart, defaultDisable, patchesFiles, legacyPatches)
+	if err != nil {
+		return spec.CompiledPatches{}, err
+	}
+
+	diffPatches, err := spec.CompilePatches(patches.Diff)
+	if err != nil {
+		return spec.CompiledPatches{}, fmt.Errorf("compile diff patches: %w", err)
+	}
+
+	return spec.CompiledPatches{Diff: diffPatches}, nil
+}
+
+// subchartContexts walks the chart tree so a rule shipped by a subchart sees the
+// values and metadata its own templates saw: its section of the parent values,
+// which already carries the globals merged in, and its own chart metadata.
+func subchartContexts(chart helmchart.Accessor, values interface{}) (map[string]spec.SubchartContext, error) {
+	contexts := map[string]spec.SubchartContext{}
+
+	if chart == nil {
+		return contexts, nil
+	}
+
+	for _, dep := range chart.Dependencies() {
+		depAccessor, err := helmchart.NewAccessor(dep)
+		if err != nil {
+			return nil, fmt.Errorf("access subchart of %q: %w", chart.ChartFullPath(), err)
+		}
+
+		depValues := subchartValues(values, depAccessor.Name())
+
+		contexts[depAccessor.ChartFullPath()] = spec.SubchartContext{
+			Chart:  chartMetadata(depAccessor),
+			Values: depValues,
+		}
+
+		depContexts, err := subchartContexts(depAccessor, depValues)
+		if err != nil {
+			return nil, err
+		}
+
+		maps.Copy(contexts, depContexts)
+	}
+
+	return contexts, nil
+}
+
+// chartMetadata mirrors what the render engine puts in .Chart: the chart's own
+// metadata plus IsRoot, which the metadata itself does not carry.
+func chartMetadata(chart helmchart.Accessor) map[string]interface{} {
+	metadata := chart.MetadataAsMap()
+	if metadata == nil {
+		metadata = map[string]interface{}{}
+	}
+
+	metadata["IsRoot"] = chart.IsRoot()
+
+	return metadata
+}
+
+func collectPatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string, legacyPatches spec.Patches) (spec.Patches, error) {
+	var patches spec.Patches
+
+	if !defaultDisable {
+		chartPatches, err := spec.CollectChartPatches(chart)
+		if err != nil {
+			return spec.Patches{}, fmt.Errorf("collect chart patches: %w", err)
+		}
+
+		patches.Diff = append(patches.Diff, chartPatches.Diff...)
+		patches.Render = append(patches.Render, chartPatches.Render...)
+	}
+
+	filePatches, err := spec.LoadPatchesFiles(patchesFiles)
+	if err != nil {
+		return spec.Patches{}, fmt.Errorf("load patches files: %w", err)
+	}
+
+	patches.Diff = append(patches.Diff, filePatches.Diff...)
+	patches.Render = append(patches.Render, filePatches.Render...)
+
+	patches.Diff = append(patches.Diff, legacyPatches.Diff...)
+	patches.Render = append(patches.Render, legacyPatches.Render...)
+
+	return patches, nil
+}
+
+func loadDeployedReleasesWith(ctx context.Context, history *release.History, preloaded []helmrel.Accessor, skipPruned bool) ([]helmrel.Accessor, error) {
+	deployedRevisions := lo.Filter(history.Revisions(), func(r release.Revision, _ int) bool {
+		return r.Status == helmreleasestatus.StatusDeployed.String()
+	})
+
+	rels := make([]helmrel.Accessor, 0, len(deployedRevisions))
+	for _, revision := range deployedRevisions {
+		if rel, found := lo.Find(preloaded, func(r helmrel.Accessor) bool {
+			return r != nil && r.Version() == revision.Version
+		}); found {
+			rels = append(rels, rel)
+
+			continue
+		}
+
+		rel, err := history.Release(ctx, revision.Version)
+		if err != nil {
+			if skipPruned && stderrors.Is(err, driver.ErrReleaseNotFound) {
+				continue
+			}
+
+			return nil, fmt.Errorf("get release revision %d: %w", revision.Version, err)
+		}
+
+		rels = append(rels, rel)
+	}
+
+	return rels, nil
+}
+
 func newInformerFactory(ctx context.Context, watchErrCh chan error, dynamicClient dynamic.Interface) *kdutil.Concurrent[*informer.InformerFactory] {
 	return informer.NewConcurrentInformerFactory(ctx.Done(), watchErrCh, dynamicClient, informer.ConcurrentInformerFactoryOptions{
 		OnNonFatalWatchError: func(gvr schema.GroupVersionResource, namespace string, err error) {
 			log.Default.Warn(ctx, "No access to %s in namespace %q, tracking continues without it: %s", gvr.GroupResource().String(), namespace, err)
 		},
 	})
+}
+
+// Reports enabled=false when release locking is disabled, in which case callers must skip acquiring
+// the lock entirely.
+func newReleaseLockManager(ctx context.Context, releaseNamespace string, clientFactory kube.ClientFactorier, legacyNoReleaseLock bool) (*lock.LockManager, bool, error) {
+	if legacyNoReleaseLock {
+		return nil, false, nil
+	}
+
+	lockManager, err := lock.NewLockManager(ctx, releaseNamespace, false, clientFactory)
+	if err != nil {
+		return nil, false, fmt.Errorf("construct lock manager: %w", err)
+	}
+
+	return lockManager, true, nil
 }
 
 func printNotes(ctx context.Context, notes string) {
@@ -137,7 +358,7 @@ func printNotes(ctx context.Context, notes string) {
 	})
 }
 
-func printReport(ctx context.Context, report *releaseReportV3) {
+func printReport(ctx context.Context, report *ReleaseReportV3) {
 	if totalOpsLen := len(report.CompletedOperations) + len(report.CanceledOperations) + len(report.FailedOperations); totalOpsLen == 0 {
 		return
 	}
@@ -170,6 +391,22 @@ func printReport(ctx context.Context, report *releaseReportV3) {
 				log.Default.Info(ctx, util.Capitalize(op))
 			}
 		})
+	}
+}
+
+func resolveDeployState(revisions []release.Revision) (int, common.DeployType) {
+	newRevision := 1
+	if last, found := lo.Last(revisions); found {
+		newRevision = last.Version + 1
+	}
+
+	switch {
+	case len(release.DeployedRevisions(revisions)) > 0:
+		return newRevision, common.DeployTypeUpgrade
+	case len(revisions) > 0:
+		return newRevision, common.DeployTypeInstall
+	default:
+		return newRevision, common.DeployTypeInitial
 	}
 }
 
@@ -243,7 +480,7 @@ func savePlanAsDot(plan *plan.Plan, path string) error {
 	return nil
 }
 
-func saveReport(reportPath string, report *releaseReportV3) error {
+func saveReport(reportPath string, report *ReleaseReportV3) error {
 	reportByte, err := json.MarshalIndent(report, "", "\t")
 	if err != nil {
 		return fmt.Errorf("marshal report: %w", err)
@@ -254,6 +491,17 @@ func saveReport(reportPath string, report *releaseReportV3) error {
 	}
 
 	return nil
+}
+
+func subchartValues(values interface{}, subchartName string) interface{} {
+	switch v := values.(type) {
+	case map[string]interface{}:
+		return v[subchartName]
+	case chartcommon.Values:
+		return v[subchartName]
+	default:
+		return nil
+	}
 }
 
 func writeWithSyntaxHighlight(outStream io.Writer, text, lang string, colorLevel terminfo.ColorLevel) error {

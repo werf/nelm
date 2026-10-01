@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/werf/nelm/pkg/release"
+	"github.com/werf/nelm/v2/pkg/release"
 )
 
 func TestReleaseMustInstallMessage(t *testing.T) {

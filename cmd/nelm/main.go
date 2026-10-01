@@ -15,11 +15,11 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/logboek"
-	"github.com/werf/nelm/pkg/action"
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/featgate"
-	helm_v3 "github.com/werf/nelm/pkg/helm/cmd/helm"
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/v2/pkg/action"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/featgate"
+	helmcmd "github.com/werf/nelm/v2/pkg/helm/pkg/cmd"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 func abort(ctx context.Context, err error, exitCode int) {
@@ -53,9 +53,9 @@ func main() {
 	// Needed for embedding original Helm 3 commands.
 	var err error
 
-	helmRootCmd, err = helm_v3.Init()
+	helmRootCmd, err = helmcmd.NewRootCmd(os.Stdout, os.Args[1:], helmcmd.SetupLogging)
 	if err != nil {
-		abort(ctx, fmt.Errorf("init helm: %w", err), 1)
+		abort(ctx, fmt.Errorf("new helm root command: %w", err), 1)
 	}
 
 	rootCmd := NewRootCommand(ctx, afterAllCommandsBuiltFuncs)

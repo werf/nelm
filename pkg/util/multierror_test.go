@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/werf/nelm/pkg/util"
+	"github.com/werf/nelm/v2/pkg/util"
 )
 
 type customError struct {

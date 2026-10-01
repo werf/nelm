@@ -7,8 +7,8 @@ import (
 
 	"github.com/samber/lo"
 
-	"github.com/werf/nelm/pkg/legacy/secret"
-	"github.com/werf/nelm/pkg/log"
+	"github.com/werf/nelm/v2/pkg/legacy/secret"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 const DefaultSecretKeyRotateLogLevel = log.InfoLevel

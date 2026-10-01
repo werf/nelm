@@ -21,7 +21,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/werf/nelm/pkg/helm/intern/third_party/dep/fs"
+	"github.com/werf/nelm/v2/pkg/helm/intern/third_party/dep/fs"
 )
 
 // AtomicWriteFile atomically (as atomic as os.Rename allows) writes a file to a

@@ -10,10 +10,10 @@ import (
 	"github.com/werf/common-go/pkg/locker_with_retry"
 	"github.com/werf/lockgate"
 	"github.com/werf/lockgate/pkg/distributed_locker"
-	"github.com/werf/nelm/pkg/common"
-	"github.com/werf/nelm/pkg/kube"
-	"github.com/werf/nelm/pkg/log"
-	"github.com/werf/nelm/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/kube"
+	"github.com/werf/nelm/v2/pkg/log"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
 // NOTE: LockManager for not is not multithreaded due to the lack of support of contexts in the lockgate library
