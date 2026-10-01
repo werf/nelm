@@ -443,7 +443,7 @@ Default:
 
 ### `werf.io/delete-policy` annotation 
 
-Inspired by `helm.sh/hook-delete-policy`. Controls resource deletions during resource deployment. `before-creation` means always recreate the resource, `before-creation-if-immutable` means recreate the resource only when we got "field is immutable" error during its update, `succeeded` means delete the resource at the end of the current deployment stage if the resource was successfully deployed, `failed` means delete the resource if it's readiness check failed. Has precedence over `helm.sh/hook-delete-policy`.
+Inspired by `helm.sh/hook-delete-policy`. Controls resource deletions during resource deployment. `before-creation` means always recreate the resource, `before-creation-if-immutable` means recreate the resource only when its update fails because an immutable field changed (for example, `field is immutable` for a Job selector, or `updates to statefulset spec for fields other than ... are forbidden` for a StatefulSet), `succeeded` means delete the resource at the end of the current deployment stage if the resource was successfully deployed, `failed` means delete the resource if it's readiness check failed. Has precedence over `helm.sh/hook-delete-policy`.
 
 Example:
 ```yaml
