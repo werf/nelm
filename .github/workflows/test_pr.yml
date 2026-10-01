@@ -3,7 +3,7 @@ name: test:pr
 on:
   pull_request:
   push:
-    branches: [main, "2"]
+    branches: [main, "1"]
   repository_dispatch:
     types: ["test:pr"]
   workflow_dispatch:
