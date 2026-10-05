@@ -323,7 +323,7 @@ func buildReleaseListOutput(ctx context.Context, result *ReleaseListResult, netw
 			if err != nil {
 				switch {
 				case errors.Is(err, release.ErrReleaseNotFound):
-					log.Default.Debug(ctx, "Release %q (namespace: %q) was removed after listing", rel.Name, rel.Namespace)
+					log.Default.Warn(ctx, "Left out release %q (namespace: %q): its revision %d was removed after listing", rel.Name, rel.Namespace, rel.Revision)
 
 					return nil
 				case errors.Is(err, release.ErrReleaseUndecodable):
