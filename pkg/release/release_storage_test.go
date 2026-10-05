@@ -302,6 +302,24 @@ func TestReleaseStorage_ForEachReleaseReturnsCallbackErrorAsIs(t *testing.T) {
 	assert.Equal(t, callbackErr, err)
 }
 
+func TestReleaseStorage_ForEachReleaseWithLimitInMemory(t *testing.T) {
+	var rels []*helmrelease.Release
+	for _, version := range []int{1, 2, 9, 10} {
+		rels = append(rels, newTestReleaseWithStatus("myrel", version, helmreleasecommon.StatusSuperseded))
+	}
+
+	var versions []int
+	require.NoError(t, newMemoryReleaseStorage(t, rels...).ForEachRelease(context.Background(), "myrel", func(revision Revision, _ helmrel.Accessor, err error) error {
+		require.NoError(t, err)
+
+		versions = append(versions, revision.Version)
+
+		return nil
+	}, ForEachReleaseOptions{Limit: 2}))
+
+	assert.ElementsMatch(t, []int{9, 10}, versions)
+}
+
 func TestReleaseStorage_ForEachReleaseWithLimitReadsOnlyNewestBodies(t *testing.T) {
 	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
 	for _, version := range []int{1, 2, 9, 10} {
@@ -327,8 +345,14 @@ func TestReleaseStorage_ForEachReleaseWithLimitReadsOnlyNewestBodies(t *testing.
 	}, ForEachReleaseOptions{Limit: 2}))
 
 	assert.Equal(t, []int{10, 11}, versions)
-	assert.Equal(t, 2, countActions(s.client.Actions(), "get"))
-	assert.Equal(t, 0, countActions(s.client.Actions(), "list"))
+	assert.Equal(t, 0, countActions(s.client.Actions(), "get"))
+	require.Equal(t, 1, countActions(s.client.Actions(), "list"))
+
+	for _, action := range s.client.Actions() {
+		if listAction, ok := action.(k8stesting.ListActionImpl); ok {
+			assert.Equal(t, "name=myrel,owner=helm,version in (10,11)", listAction.GetListOptions().LabelSelector)
+		}
+	}
 }
 
 func TestReleaseStorage_ForEachReleaseWithLimitSkipsRemovedRevision(t *testing.T) {

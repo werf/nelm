@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"sort"
+	"strconv"
 
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 )
@@ -73,7 +74,7 @@ func (b *memoryStorageBackend) get(_ context.Context, namespace, key string) (*s
 	return result, nil
 }
 
-func (b *memoryStorageBackend) list(namespace, releaseName string, withBodies bool) []*storedObject {
+func (b *memoryStorageBackend) list(namespace, releaseName string, versions []int, withBodies bool) []*storedObject {
 	var result []*storedObject
 
 	b.objects.RTransaction(func(objects map[string]*storedObject) {
@@ -88,6 +89,13 @@ func (b *memoryStorageBackend) list(namespace, releaseName string, withBodies bo
 
 			if releaseName != "" && obj.Labels[storageLabelName] != releaseName {
 				continue
+			}
+
+			if versions != nil {
+				version, err := strconv.Atoi(obj.Labels[storageLabelVersion])
+				if err != nil || !slices.Contains(versions, version) {
+					continue
+				}
 			}
 
 			result = append(result, cloneStoredObject(obj, withBodies))
@@ -106,11 +114,11 @@ func (b *memoryStorageBackend) list(namespace, releaseName string, withBodies bo
 }
 
 func (b *memoryStorageBackend) listMetadata(_ context.Context, namespace, releaseName string) ([]*storedObject, error) {
-	return b.list(namespace, releaseName, false), nil
+	return b.list(namespace, releaseName, nil, false), nil
 }
 
-func (b *memoryStorageBackend) listWithBodies(_ context.Context, namespace, releaseName string, fn func(obj *storedObject) error) error {
-	for _, obj := range b.list(namespace, releaseName, true) {
+func (b *memoryStorageBackend) listWithBodies(_ context.Context, namespace, releaseName string, versions []int, fn func(obj *storedObject) error) error {
+	for _, obj := range b.list(namespace, releaseName, versions, true) {
 		if err := fn(obj); err != nil {
 			return err
 		}

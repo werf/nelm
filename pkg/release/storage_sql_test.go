@@ -183,6 +183,34 @@ func TestSQLStorageBackend_ListMetadataReadsNoBodies(t *testing.T) {
 	}, revisions)
 }
 
+func TestSQLStorageBackend_ListWithBodiesOfVersions(t *testing.T) {
+	backend, mock := newTestSQLBackend(t)
+
+	body := encodeHelmRelease(t, newTestReleaseWithStatus("myrel", 2, helmreleasecommon.StatusDeployed))
+
+	mock.ExpectQuery(`SELECT key, namespace, name, version, status, owner, createdAt, modifiedAt FROM releases_v1 WHERE owner = $1 AND namespace = $2 AND name = $3 AND version IN ($4)`).
+		WithArgs("helm", testNamespace, "myrel", 2).
+		WillReturnRows(sqlmock.NewRows([]string{"key", "namespace", "name", "version", "status", "owner", "createdat", "modifiedat"}).
+			AddRow("sh.helm.release.v1.myrel.v2", testNamespace, "myrel", 2, "deployed", "helm", 200, 0))
+	mock.ExpectQuery(`SELECT releaseKey, key, value FROM custom_labels_v1 WHERE releaseKey IN ($1) AND releaseNamespace = $2`).
+		WithArgs("sh.helm.release.v1.myrel.v2", testNamespace).
+		WillReturnRows(sqlmock.NewRows([]string{"releasekey", "key", "value"}))
+	mock.ExpectQuery(`SELECT key, namespace, name, version, status, owner, createdAt, modifiedAt, body FROM releases_v1 WHERE owner = $1 AND namespace = $2 AND name = $3 AND version IN ($4) ORDER BY version ASC`).
+		WithArgs("helm", testNamespace, "myrel", 2).
+		WillReturnRows(sqlmock.NewRows([]string{"key", "namespace", "name", "version", "status", "owner", "createdat", "modifiedat", "body"}).
+			AddRow("sh.helm.release.v1.myrel.v2", testNamespace, "myrel", 2, "deployed", "helm", 200, 0, string(body)))
+
+	var keys []string
+	require.NoError(t, backend.listWithBodies(context.Background(), testNamespace, "myrel", []int{2}, func(obj *storedObject) error {
+		keys = append(keys, obj.Key)
+
+		return nil
+	}))
+
+	assert.Equal(t, []string{"sh.helm.release.v1.myrel.v2"}, keys)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestSQLStorageBackend_RevisionsOfRelease(t *testing.T) {
 	backend, mock := newTestSQLBackend(t)
 

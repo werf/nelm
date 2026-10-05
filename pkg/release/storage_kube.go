@@ -4,13 +4,16 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"strconv"
 	"strings"
 
+	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/metadata"
@@ -124,7 +127,7 @@ func (b *kubeStorageBackend) gvr() schema.GroupVersionResource {
 }
 
 func (b *kubeStorageBackend) listMetadata(ctx context.Context, namespace, releaseName string) ([]*storedObject, error) {
-	selector, err := kubeStorageSelector(releaseName)
+	selector, err := kubeStorageSelector(releaseName, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -154,8 +157,8 @@ func (b *kubeStorageBackend) listMetadata(ctx context.Context, namespace, releas
 	}
 }
 
-func (b *kubeStorageBackend) listWithBodies(ctx context.Context, namespace, releaseName string, fn func(obj *storedObject) error) error {
-	selector, err := kubeStorageSelector(releaseName)
+func (b *kubeStorageBackend) listWithBodies(ctx context.Context, namespace, releaseName string, versions []int, fn func(obj *storedObject) error) error {
+	selector, err := kubeStorageSelector(releaseName, versions)
 	if err != nil {
 		return err
 	}
@@ -270,7 +273,7 @@ func kubeStorageError(err error) error {
 	return err
 }
 
-func kubeStorageSelector(releaseName string) (string, error) {
+func kubeStorageSelector(releaseName string, versions []int) (string, error) {
 	set := labels.Set{storageLabelOwner: storageOwner}
 
 	if releaseName != "" {
@@ -281,7 +284,18 @@ func kubeStorageSelector(releaseName string) (string, error) {
 		set[storageLabelName] = releaseName
 	}
 
-	return set.AsSelector().String(), nil
+	selector := set.AsSelector()
+
+	if versions != nil {
+		requirement, err := labels.NewRequirement(storageLabelVersion, selection.In, lo.Map(versions, func(version, _ int) string { return strconv.Itoa(version) }))
+		if err != nil {
+			return "", fmt.Errorf("build version label requirement: %w", err)
+		}
+
+		selector = selector.Add(*requirement)
+	}
+
+	return selector.String(), nil
 }
 
 func newKubeConfigMap(obj *storedObject) *corev1.ConfigMap {

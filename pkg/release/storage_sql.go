@@ -189,7 +189,7 @@ func (b *sqlStorageBackend) delete(ctx context.Context, namespace, key string) e
 	return nil
 }
 
-func (b *sqlStorageBackend) filterReleases(builder sq.SelectBuilder, namespace, releaseName string) sq.SelectBuilder {
+func (b *sqlStorageBackend) filterReleases(builder sq.SelectBuilder, namespace, releaseName string, versions []int) sq.SelectBuilder {
 	builder = builder.Where(sq.Eq{sqlReleaseOwnerColumn: storageOwner})
 
 	if namespace != "" {
@@ -198,6 +198,10 @@ func (b *sqlStorageBackend) filterReleases(builder sq.SelectBuilder, namespace, 
 
 	if releaseName != "" {
 		builder = builder.Where(sq.Eq{sqlReleaseNameColumn: releaseName})
+	}
+
+	if versions != nil {
+		builder = builder.Where(sq.Eq{sqlReleaseVersionColumn: versions})
 	}
 
 	return builder
@@ -246,26 +250,11 @@ func (b *sqlStorageBackend) insertCustomLabel(ctx context.Context, tx *sqlx.Tx, 
 }
 
 func (b *sqlStorageBackend) listMetadata(ctx context.Context, namespace, releaseName string) ([]*storedObject, error) {
-	query, args, err := b.filterReleases(b.selectReleases(false), namespace, releaseName).ToSql()
-	if err != nil {
-		return nil, fmt.Errorf("build select releases query: %w", err)
-	}
-
-	var records []sqlReleaseRecord
-	if err := b.db.SelectContext(ctx, &records, query, args...); err != nil {
-		return nil, fmt.Errorf("select releases: %w", err)
-	}
-
-	objects := make([]*storedObject, 0, len(records))
-	for i := range records {
-		objects = append(objects, storedObjectFromSQLRecord(&records[i]))
-	}
-
-	return objects, nil
+	return b.selectMetadata(ctx, namespace, releaseName, nil)
 }
 
-func (b *sqlStorageBackend) listWithBodies(ctx context.Context, namespace, releaseName string, fn func(obj *storedObject) error) error {
-	objects, err := b.listMetadata(ctx, namespace, releaseName)
+func (b *sqlStorageBackend) listWithBodies(ctx context.Context, namespace, releaseName string, versions []int, fn func(obj *storedObject) error) error {
+	objects, err := b.selectMetadata(ctx, namespace, releaseName, versions)
 	if err != nil {
 		return err
 	}
@@ -304,7 +293,7 @@ func (b *sqlStorageBackend) listWithBodies(ctx context.Context, namespace, relea
 		customLabels[labelRecord.ReleaseKey][labelRecord.Key] = labelRecord.Value
 	}
 
-	query, args, err = b.filterReleases(b.selectReleases(true), namespace, releaseName).
+	query, args, err = b.filterReleases(b.selectReleases(true), namespace, releaseName, versions).
 		OrderBy(sqlReleaseVersionColumn + " ASC").
 		ToSql()
 	if err != nil {
@@ -338,6 +327,25 @@ func (b *sqlStorageBackend) listWithBodies(ctx context.Context, namespace, relea
 	}
 
 	return nil
+}
+
+func (b *sqlStorageBackend) selectMetadata(ctx context.Context, namespace, releaseName string, versions []int) ([]*storedObject, error) {
+	query, args, err := b.filterReleases(b.selectReleases(false), namespace, releaseName, versions).ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build select releases query: %w", err)
+	}
+
+	var records []sqlReleaseRecord
+	if err := b.db.SelectContext(ctx, &records, query, args...); err != nil {
+		return nil, fmt.Errorf("select releases: %w", err)
+	}
+
+	objects := make([]*storedObject, 0, len(records))
+	for i := range records {
+		objects = append(objects, storedObjectFromSQLRecord(&records[i]))
+	}
+
+	return objects, nil
 }
 
 func (b *sqlStorageBackend) selectReleases(withBody bool) sq.SelectBuilder {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/samber/lo"
 	"k8s.io/client-go/metadata"
 
 	"github.com/werf/nelm/v2/pkg/common"
@@ -68,12 +69,14 @@ type storageBackend interface {
 	// listMetadata reads the objects owned by Helm without their bodies. An empty namespace
 	// means all namespaces, an empty releaseName means all releases.
 	listMetadata(ctx context.Context, namespace, releaseName string) ([]*storedObject, error)
-	listWithBodies(ctx context.Context, namespace, releaseName string, fn func(obj *storedObject) error) error
+	// listWithBodies reads the objects owned by Helm together with their bodies; non-nil
+	// versions restrict the read to the revisions with these versions.
+	listWithBodies(ctx context.Context, namespace, releaseName string, versions []int, fn func(obj *storedObject) error) error
 }
 
 type ForEachReleaseOptions struct {
-	// Limit restricts the read to the newest Limit revisions, passed to fn in ascending
-	// version order, so the bodies of older revisions are not read. 0 reads every revision.
+	// Limit restricts the read to the newest Limit revisions, so the bodies of older
+	// revisions are not read. 0 reads every revision.
 	Limit int
 }
 
@@ -149,12 +152,26 @@ func (s *releaseStorage) ForEachRelease(ctx context.Context, name string, fn fun
 		return errors.New("release name is required")
 	}
 
+	var versions []int
 	if opts.Limit > 0 {
-		return s.forEachLatestRelease(ctx, namespace, name, opts.Limit, fn)
+		revisions, err := s.readableRevisions(ctx, namespace, name)
+		if err != nil {
+			return err
+		}
+
+		if len(revisions) == 0 {
+			return nil
+		}
+
+		if len(revisions) > opts.Limit {
+			revisions = revisions[len(revisions)-opts.Limit:]
+		}
+
+		versions = lo.Map(revisions, func(revision Revision, _ int) int { return revision.Version })
 	}
 
 	var fnErr error
-	if err := s.backend.listWithBodies(ctx, namespace, name, func(obj *storedObject) error {
+	if err := s.backend.listWithBodies(ctx, namespace, name, versions, func(obj *storedObject) error {
 		revision, ok, err := revisionFromStoredObject(obj)
 		if err != nil {
 			log.Default.Error(ctx, "Skipped storage object of release %q: %s", name, err)
@@ -355,38 +372,6 @@ func (s *releaseStorage) UpdateLabels(ctx context.Context, name string, version 
 	key := storageKey(name, version)
 	if err := s.backend.updateLabels(ctx, namespace, key, withoutSystemLabels(labels)); err != nil {
 		return fmt.Errorf("update labels of release object %q (namespace: %q): %w", key, namespace, err)
-	}
-
-	return nil
-}
-
-func (s *releaseStorage) forEachLatestRelease(ctx context.Context, namespace, name string, limit int, fn func(revision Revision, rel helmrel.Accessor, err error) error) error {
-	revisions, err := s.readableRevisions(ctx, namespace, name)
-	if err != nil {
-		return err
-	}
-
-	if len(revisions) > limit {
-		revisions = revisions[len(revisions)-limit:]
-	}
-
-	for _, revision := range revisions {
-		rel, err := s.LoadRevision(ctx, revision)
-		if err != nil {
-			if errors.Is(err, ErrReleaseNotFound) {
-				log.Default.Debug(ctx, "Revision %d of release %q was removed after listing", revision.Version, name)
-
-				continue
-			}
-
-			if !errors.Is(err, ErrReleaseUndecodable) {
-				return err
-			}
-		}
-
-		if err := fn(revision, rel, err); err != nil {
-			return err
-		}
 	}
 
 	return nil
