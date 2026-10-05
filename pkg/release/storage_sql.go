@@ -69,10 +69,17 @@ type sqlCustomLabelRecord struct {
 func newSQLStorageBackend(ctx context.Context, connectionString string) (*sqlStorageBackend, error) {
 	db, err := sqlx.ConnectContext(ctx, sqlDialect, connectionString)
 	if err != nil {
+		// ConnectContext returns an open handle when only the ping failed.
+		if db != nil {
+			db.Close()
+		}
+
 		return nil, fmt.Errorf("connect to database: %w", err)
 	}
 
 	if err := ensureSQLStorageSchema(ctx, db); err != nil {
+		db.Close()
+
 		return nil, fmt.Errorf("set up database schema: %w", err)
 	}
 
@@ -525,7 +532,9 @@ func storedObjectFromSQLRecord(record *sqlReleaseRecord) *storedObject {
 
 // ensureSQLStorageSchema applies the migrations of the Helm SQL driver, with the same ids and
 // statements, so Helm and nelm can share a database. When every migration is already applied
-// nothing is executed, which lets a database user without DDL privileges use the storage.
+// nothing is executed, which lets a database user without DDL privileges use the storage. A
+// local migration set keeps the package-level sql-migrate settings of the host application
+// out of play.
 func ensureSQLStorageSchema(ctx context.Context, db *sqlx.DB) error {
 	migrations := &migrate.MemoryMigrationSource{
 		Migrations: []*migrate.Migration{
@@ -635,7 +644,7 @@ func ensureSQLStorageSchema(ctx context.Context, db *sqlx.DB) error {
 		return nil
 	}
 
-	if _, err := migrate.ExecContext(ctx, db.DB, sqlDialect, migrations, migrate.Up); err != nil {
+	if _, err := (migrate.MigrationSet{}).ExecContext(ctx, db.DB, sqlDialect, migrations, migrate.Up); err != nil {
 		return fmt.Errorf("apply migrations: %w", err)
 	}
 
@@ -648,10 +657,7 @@ func sqlStorageMigrationsApplied(ctx context.Context, db *sqlx.DB, migrations []
 		pending[migration.Id] = struct{}{}
 	}
 
-	migrate.SetDisableCreateTable(true)
-	records, err := migrate.GetMigrationRecords(db.DB, sqlDialect)
-	migrate.SetDisableCreateTable(false)
-
+	records, err := migrate.MigrationSet{DisableCreateTable: true}.GetMigrationRecords(db.DB, sqlDialect)
 	if err != nil {
 		log.Default.Debug(ctx, "Unable to read applied release storage migrations: %s", err)
 		return false

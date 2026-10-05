@@ -3,6 +3,7 @@ package release
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/lib/pq"
@@ -229,4 +230,15 @@ func TestSQLStorageBackend_ForEachReleaseReadsLabelsBeforeBodies(t *testing.T) {
 	assert.Equal(t, entry{version: 1, custom: "value"}, entries[0])
 	assert.Equal(t, 2, entries[1].version)
 	require.ErrorIs(t, entries[1].err, ErrReleaseUndecodable)
+}
+
+func TestEnsureSQLStorageSchema_SkipsMigrationsWhenAllApplied(t *testing.T) {
+	backend, mock := newTestSQLBackend(t)
+
+	mock.ExpectQuery(`SELECT * FROM "gorp_migrations" ORDER BY "id" ASC`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "applied_at"}).
+			AddRow("custom_labels", time.Now()).
+			AddRow("init", time.Now()))
+
+	require.NoError(t, ensureSQLStorageSchema(context.Background(), backend.db))
 }
