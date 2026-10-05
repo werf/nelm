@@ -165,7 +165,9 @@ func ReleaseHistory(ctx context.Context, releaseName, releaseNamespace string, o
 		})
 
 		return nil
-	}, release.ForEachReleaseOptions{}); err != nil {
+	}, release.ForEachReleaseOptions{
+		Limit: opts.RevisionsLimit,
+	}); err != nil {
 		return nil, fmt.Errorf("read history of release %q: %w", releaseName, err)
 	}
 
@@ -179,10 +181,6 @@ func ReleaseHistory(ctx context.Context, releaseName, releaseNamespace string, o
 	sort.SliceStable(result.Releases, func(i, j int) bool {
 		return result.Releases[i].Revision < result.Releases[j].Revision
 	})
-
-	if opts.RevisionsLimit > 0 && len(result.Releases) > opts.RevisionsLimit {
-		result.Releases = result.Releases[len(result.Releases)-opts.RevisionsLimit:]
-	}
 
 	if opts.OutputNoPrint {
 		return result, nil
