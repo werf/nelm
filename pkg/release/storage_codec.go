@@ -152,8 +152,8 @@ func encodeRelease(rls *helmrelease.Release) ([]byte, error) {
 // revisionFromStoredObject returns ok=false for a storage object that is not a release
 // revision: one without a name or without a version label, which every stored revision
 // carries. A version label that is present but does not parse is an error naming the
-// object, so it can be removed by hand: left in place, it would collide with the next
-// revision number.
+// object, so it can be removed by hand: revision numbering cannot tell which revision such an
+// object holds, and it may occupy the object name of the next one.
 func revisionFromStoredObject(obj *storedObject) (Revision, bool, error) {
 	name := obj.Labels[storageLabelName]
 	if name == "" {

@@ -33,7 +33,7 @@ func (s *listStorager) Delete(ctx context.Context, name string, version int) err
 	return nil
 }
 
-func (s *listStorager) ForEachRelease(ctx context.Context, name string, fn func(revision release.Revision, rel helmrel.Accessor, err error) error) error {
+func (s *listStorager) ForEachRelease(ctx context.Context, name string, fn func(revision release.Revision, rel helmrel.Accessor, err error) error, opts release.ForEachReleaseOptions) error {
 	return nil
 }
 

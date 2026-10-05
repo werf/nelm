@@ -2,6 +2,7 @@ package release
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -239,10 +240,69 @@ func TestReleaseStorage_ForEachReleaseReportsUndecodableRevision(t *testing.T) {
 		decoded[revision.Version] = err == nil
 
 		return nil
-	}))
+	}, ForEachReleaseOptions{}))
 
 	assert.Equal(t, map[int]bool{1: true, 2: false}, decoded)
 	assert.Equal(t, 1, countActions(s.client.Actions(), "list"))
+}
+
+func TestReleaseStorage_ForEachReleaseReturnsCallbackErrorAsIs(t *testing.T) {
+	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
+	putTestKubeRelease(t, s, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusDeployed))
+
+	callbackErr := errors.New("callback failed")
+
+	err := s.storage.ForEachRelease(context.Background(), "myrel", func(Revision, helmrel.Accessor, error) error { return callbackErr }, ForEachReleaseOptions{})
+	assert.Equal(t, callbackErr, err)
+}
+
+func TestReleaseStorage_ForEachReleaseWithLimitReadsOnlyNewestBodies(t *testing.T) {
+	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
+	for _, version := range []int{1, 2, 9, 10} {
+		putTestKubeRelease(t, s, newTestReleaseWithStatus("myrel", version, helmreleasecommon.StatusSuperseded))
+	}
+
+	putTestKubeObject(t, s, newUndecodableTestStoredObject(t, testNamespace, "myrel", 11, helmreleasecommon.StatusDeployed))
+	putTestKubeObject(t, s, &storedObject{Namespace: testNamespace, Key: "broken", Labels: map[string]string{"owner": "helm", "name": "myrel", "version": "x"}})
+
+	var versions []int
+	require.NoError(t, s.storage.ForEachRelease(context.Background(), "myrel", func(revision Revision, rel helmrel.Accessor, err error) error {
+		if revision.Version == 11 {
+			require.ErrorIs(t, err, ErrReleaseUndecodable)
+			assert.Nil(t, rel)
+		} else {
+			require.NoError(t, err)
+			assert.Equal(t, revision.Version, rel.Version())
+		}
+
+		versions = append(versions, revision.Version)
+
+		return nil
+	}, ForEachReleaseOptions{Limit: 2}))
+
+	assert.Equal(t, []int{10, 11}, versions)
+	assert.Equal(t, 2, countActions(s.client.Actions(), "get"))
+	assert.Equal(t, 0, countActions(s.client.Actions(), "list"))
+}
+
+func TestReleaseStorage_ForEachReleaseWithLimitSkipsRemovedRevision(t *testing.T) {
+	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
+	for _, version := range []int{1, 2, 3} {
+		putTestKubeRelease(t, s, newTestReleaseWithStatus("myrel", version, helmreleasecommon.StatusSuperseded))
+	}
+
+	require.NoError(t, s.backend.delete(context.Background(), testNamespace, storageKey("myrel", 2)))
+
+	var versions []int
+	require.NoError(t, s.storage.ForEachRelease(context.Background(), "myrel", func(revision Revision, _ helmrel.Accessor, err error) error {
+		require.NoError(t, err)
+
+		versions = append(versions, revision.Version)
+
+		return nil
+	}, ForEachReleaseOptions{Limit: 2}))
+
+	assert.Equal(t, []int{3}, versions)
 }
 
 func TestReleaseStorage_GetReleaseKeepsStorageLabels(t *testing.T) {
@@ -273,6 +333,20 @@ func TestReleaseStorage_GetReleaseLatestFetchesOneBody(t *testing.T) {
 
 	assert.Equal(t, 1, countActions(s.client.Actions(), "get"))
 	assert.Equal(t, 0, countActions(s.client.Actions(), "list"))
+}
+
+func TestReleaseStorage_GetReleaseLatestSkipsUnparseableVersion(t *testing.T) {
+	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
+	for _, version := range []int{1, 2, 11} {
+		putTestKubeRelease(t, s, newTestReleaseWithStatus("myrel", version, helmreleasecommon.StatusSuperseded))
+	}
+
+	putTestKubeObject(t, s, &storedObject{Namespace: testNamespace, Key: "broken", Labels: map[string]string{"owner": "helm", "name": "myrel", "version": "not-a-number"}})
+	putTestKubeRelease(t, s, newTestReleaseWithStatus("otherrel", 99, helmreleasecommon.StatusDeployed))
+
+	rel, err := s.storage.GetRelease(context.Background(), "myrel", 0)
+	require.NoError(t, err)
+	assert.Equal(t, 11, rel.Version())
 }
 
 func TestReleaseStorage_GetReleaseNotFound(t *testing.T) {
@@ -389,10 +463,14 @@ func TestReleaseStorage_NamedReadsRequireName(t *testing.T) {
 	_, err := s.storage.GetRelease(ctx, "", 0)
 	require.Error(t, err)
 
+	_, err = s.storage.GetRelease(ctx, "", 7)
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrReleaseNotFound)
+
 	_, err = s.storage.Revisions(ctx, "")
 	require.Error(t, err)
 
-	require.Error(t, s.storage.ForEachRelease(ctx, "", func(Revision, helmrel.Accessor, error) error { return nil }))
+	require.Error(t, s.storage.ForEachRelease(ctx, "", func(Revision, helmrel.Accessor, error) error { return nil }, ForEachReleaseOptions{}))
 }
 
 func TestReleaseStorage_NamespacedOperationsRequireNamespace(t *testing.T) {
@@ -411,7 +489,7 @@ func TestReleaseStorage_NamespacedOperationsRequireNamespace(t *testing.T) {
 	_, err = s.storage.Revisions(ctx, "myrel")
 	require.Error(t, err)
 
-	require.Error(t, s.storage.ForEachRelease(ctx, "myrel", func(Revision, helmrel.Accessor, error) error { return nil }))
+	require.Error(t, s.storage.ForEachRelease(ctx, "myrel", func(Revision, helmrel.Accessor, error) error { return nil }, ForEachReleaseOptions{}))
 }
 
 func TestReleaseStorage_RevisionsAreSortedAndUnparseableVersionIsAnError(t *testing.T) {

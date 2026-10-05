@@ -28,7 +28,7 @@ func (s *countingStorager) Delete(ctx context.Context, name string, version int)
 	return nil
 }
 
-func (s *countingStorager) ForEachRelease(ctx context.Context, name string, fn func(revision release.Revision, rel helmrel.Accessor, err error) error) error {
+func (s *countingStorager) ForEachRelease(ctx context.Context, name string, fn func(revision release.Revision, rel helmrel.Accessor, err error) error, opts release.ForEachReleaseOptions) error {
 	return nil
 }
 

@@ -165,7 +165,7 @@ func ReleaseHistory(ctx context.Context, releaseName, releaseNamespace string, o
 		})
 
 		return nil
-	}); err != nil {
+	}, release.ForEachReleaseOptions{}); err != nil {
 		return nil, fmt.Errorf("read history of release %q: %w", releaseName, err)
 	}
 

@@ -119,7 +119,7 @@ func TestSQLStorageBackend_ForEachReleaseReadsLabelsBeforeBodies(t *testing.T) {
 		entries = append(entries, e)
 
 		return nil
-	}))
+	}, ForEachReleaseOptions{}))
 
 	require.Len(t, entries, 2)
 	assert.Equal(t, entry{custom: "value", version: 1}, entries[0])
