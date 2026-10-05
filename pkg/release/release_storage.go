@@ -173,6 +173,10 @@ func (s *releaseStorage) ForEachRelease(ctx context.Context, name string, fn fun
 		return err
 	}
 
+	if name == "" {
+		return errors.New("release name is required")
+	}
+
 	if err := s.backend.listWithBodies(ctx, namespace, name, func(obj *storedObject) error {
 		revision, ok, err := revisionFromStoredObject(obj)
 		if err != nil {
@@ -302,6 +306,10 @@ func (s *releaseStorage) Revisions(ctx context.Context, name string) ([]Revision
 	namespace, err := s.requireNamespace()
 	if err != nil {
 		return nil, err
+	}
+
+	if name == "" {
+		return nil, errors.New("release name is required")
 	}
 
 	objects, err := s.backend.listMetadata(ctx, namespace, name)

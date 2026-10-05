@@ -441,3 +441,17 @@ func TestReleaseStorage_DeleteMissingRevision(t *testing.T) {
 
 	require.ErrorIs(t, s.Delete(context.Background(), "myrel", 1), ErrReleaseNotFound)
 }
+
+func TestReleaseStorage_NamedReadsRequireName(t *testing.T) {
+	ctx := context.Background()
+	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
+	putTestKubeRelease(t, s, newTestReleaseWithStatus("other", 7, helmreleasecommon.StatusDeployed))
+
+	_, err := s.storage.GetRelease(ctx, "", 0)
+	require.Error(t, err)
+
+	_, err = s.storage.Revisions(ctx, "")
+	require.Error(t, err)
+
+	require.Error(t, s.storage.ForEachRelease(ctx, "", func(Revision, helmrel.Accessor, error) error { return nil }))
+}
