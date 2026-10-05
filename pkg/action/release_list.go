@@ -238,15 +238,9 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 }
 
 // buildReleaseListOutput loads the release bodies concurrently, keeping only the fields the
-// output needs from each one.
+// output needs from each one. A release removed after it was listed is left out.
 func buildReleaseListOutput(ctx context.Context, result *ReleaseListResult, networkParallelism int) (*releaseListOutput, error) {
-	output := &releaseListOutput{
-		APIVersion: "v1",
-	}
-
-	if len(result.Releases) > 0 {
-		output.Releases = make([]*releaseListOutputRelease, len(result.Releases))
-	}
+	loaded := make([]*releaseListOutputRelease, len(result.Releases))
 
 	loadPool := pool.New().WithContext(ctx).WithMaxGoroutines(networkParallelism).WithCancelOnError().WithFirstError()
 	for i, rel := range result.Releases {
@@ -257,22 +251,26 @@ func buildReleaseListOutput(ctx context.Context, result *ReleaseListResult, netw
 				Revision:  rel.Revision,
 				Status:    rel.Status,
 			}
-			output.Releases[i] = outputRelease
 
 			details, err := rel.Load(ctx)
 			if err != nil {
-				if !errors.Is(err, release.ErrReleaseUndecodable) {
+				switch {
+				case errors.Is(err, release.ErrReleaseNotFound):
+					log.Default.Debug(ctx, "Release %q (namespace: %q) was removed after listing", rel.Name, rel.Namespace)
+
+					return nil
+				case errors.Is(err, release.ErrReleaseUndecodable):
+					log.Default.Error(ctx, "Showing release %q (namespace: %q) without its details: %s", rel.Name, rel.Namespace, err)
+				default:
 					return err
 				}
-
-				log.Default.Error(ctx, "Showing release %q (namespace: %q) without its details: %s", rel.Name, rel.Namespace, err)
-
-				return nil
+			} else {
+				outputRelease.Annotations = details.Annotations
+				outputRelease.Chart = details.Chart
+				outputRelease.DeployedAt = details.DeployedAt
 			}
 
-			outputRelease.Annotations = details.Annotations
-			outputRelease.Chart = details.Chart
-			outputRelease.DeployedAt = details.DeployedAt
+			loaded[i] = outputRelease
 
 			return nil
 		})
@@ -280,6 +278,16 @@ func buildReleaseListOutput(ctx context.Context, result *ReleaseListResult, netw
 
 	if err := loadPool.Wait(); err != nil {
 		return nil, err
+	}
+
+	output := &releaseListOutput{
+		APIVersion: "v1",
+	}
+
+	for _, outputRelease := range loaded {
+		if outputRelease != nil {
+			output.Releases = append(output.Releases, outputRelease)
+		}
 	}
 
 	return output, nil

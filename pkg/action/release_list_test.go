@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/werf/logboek"
 
+	"github.com/werf/nelm/v2/pkg/common"
 	chartv2 "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
@@ -130,4 +131,50 @@ func TestBuildReleaseHistoryOutputTable_RevisionWithoutDetails(t *testing.T) {
 	require.NotPanics(t, func() {
 		buildReleaseHistoryOutputTable(context.Background(), result).Render()
 	})
+}
+
+func TestBuildReleaseListOutput_ReleaseRemovedDuringLoadIsSkipped(t *testing.T) {
+	ctx := logboek.NewContext(context.Background(), logboek.NewLogger(io.Discard, io.Discard))
+
+	storage, err := release.NewReleaseStorage(ctx, "ns", common.ReleaseStorageDriverMemory, nil, release.ReleaseStorageOptions{})
+	require.NoError(t, err)
+
+	for _, name := range []string{"a", "b"} {
+		acc, err := helmrel.NewAccessor(&helmrelease.Release{
+			Name:      name,
+			Namespace: "ns",
+			Version:   1,
+			Info:      &helmrelease.Info{Status: helmreleasestatus.StatusDeployed},
+			Chart:     &chartv2.Chart{Metadata: &chartv2.Metadata{Name: "mychart"}},
+		})
+		require.NoError(t, err)
+		require.NoError(t, storage.Create(ctx, acc))
+	}
+
+	revisions, err := storage.LatestRevisions(ctx)
+	require.NoError(t, err)
+
+	result := &ReleaseListResult{}
+	for _, revision := range revisions {
+		result.Releases = append(result.Releases, &ReleaseListResultRelease{
+			Name:      revision.Name,
+			Namespace: revision.Namespace,
+			Revision:  revision.Version,
+			Status:    helmreleasestatus.Status(revision.Status),
+			storage:   storage,
+		})
+	}
+
+	require.NoError(t, storage.Delete(ctx, "b", 1))
+
+	output, err := buildReleaseListOutput(ctx, result, 2)
+	require.NoError(t, err)
+	require.Len(t, output.Releases, 1)
+	assert.Equal(t, "a", output.Releases[0].Name)
+
+	require.NoError(t, storage.Delete(ctx, "a", 1))
+
+	output, err = buildReleaseListOutput(ctx, result, 2)
+	require.NoError(t, err)
+	assert.Nil(t, output.Releases, "an empty list is printed as null")
 }
