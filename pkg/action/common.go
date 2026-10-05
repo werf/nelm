@@ -29,7 +29,6 @@ import (
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
-	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/lock"
 	"github.com/werf/nelm/v2/pkg/log"
@@ -310,7 +309,7 @@ func loadDeployedReleasesWith(ctx context.Context, history *release.History, pre
 
 		rel, err := history.Release(ctx, revision.Version)
 		if err != nil {
-			if skipPruned && stderrors.Is(err, driver.ErrReleaseNotFound) {
+			if skipPruned && stderrors.Is(err, release.ErrReleaseNotFound) {
 				continue
 			}
 

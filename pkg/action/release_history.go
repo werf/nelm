@@ -18,8 +18,8 @@ import (
 	"github.com/werf/nelm/v2/pkg/common"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
-	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/log"
 	"github.com/werf/nelm/v2/pkg/release"
@@ -116,26 +116,31 @@ func ReleaseHistory(ctx context.Context, releaseName, releaseNamespace string, o
 
 	log.Default.Info(ctx, "Build release history")
 
-	releases, err := releaseStorage.Query(map[string]string{"name": releaseName, "owner": "helm"})
-	if err != nil && !errors.Is(err, driver.ErrReleaseNotFound) {
-		return nil, fmt.Errorf("query releases for release %q: %w", releaseName, err)
-	}
-
 	result := &ReleaseHistoryResultV1{
 		APIVersion: "v1",
 	}
 
-	if len(releases) == 0 {
-		return nil, &ReleaseNotFoundError{
-			ReleaseName:      releaseName,
-			ReleaseNamespace: releaseNamespace,
-		}
-	}
+	if err := releaseStorage.ForEachRelease(ctx, releaseName, func(revision release.Revision, releaseAccessor helmrel.Accessor, err error) error {
+		if err != nil {
+			if !errors.Is(err, release.ErrReleaseUndecodable) {
+				return err
+			}
 
-	for _, releaseAccessor := range releases {
+			log.Default.Error(ctx, "Showing revision %d of release %q without its details: %s", revision.Version, releaseName, err)
+
+			result.Releases = append(result.Releases, &ReleaseHistoryResultRelease{
+				Name:      revision.Name,
+				Namespace: revision.Namespace,
+				Revision:  revision.Version,
+				Status:    helmreleasestatus.Status(revision.Status),
+			})
+
+			return nil
+		}
+
 		chartAccessor, err := helmchart.NewAccessor(releaseAccessor.Chart())
 		if err != nil {
-			return nil, fmt.Errorf("construct chart accessor: %w", err)
+			return fmt.Errorf("construct chart accessor: %w", err)
 		}
 
 		chartMetadata := chartAccessor.MetadataAsMap()
@@ -158,6 +163,17 @@ func ReleaseHistory(ctx context.Context, releaseName, releaseNamespace string, o
 			Revision:  releaseAccessor.Version(),
 			Status:    helmreleasestatus.Status(releaseAccessor.Status()),
 		})
+
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("read history of release %q: %w", releaseName, err)
+	}
+
+	if len(result.Releases) == 0 {
+		return nil, &ReleaseNotFoundError{
+			ReleaseName:      releaseName,
+			ReleaseNamespace: releaseNamespace,
+		}
 	}
 
 	sort.SliceStable(result.Releases, func(i, j int) bool {
@@ -234,13 +250,23 @@ func buildReleaseHistoryOutputTable(ctx context.Context, result *ReleaseHistoryR
 			statusColor = color.LightYellow
 		}
 
+		var deployedAt string
+		if release.DeployedAt != nil {
+			deployedAt = time.Unix(int64(release.DeployedAt.Unix), 0).Format(time.RFC822)
+		}
+
+		var chartName, chartVersion, chartAppVersion string
+		if release.Chart != nil {
+			chartName, chartVersion, chartAppVersion = release.Chart.Name, release.Chart.Version, release.Chart.AppVersion
+		}
+
 		row := prtable.Row{
 			release.Revision,
 			color.New(statusColor).Sprint(release.Status),
-			time.Unix(int64(release.DeployedAt.Unix), 0).Format(time.RFC822),
-			release.Chart.Name,
-			release.Chart.Version,
-			release.Chart.AppVersion,
+			deployedAt,
+			chartName,
+			chartVersion,
+			chartAppVersion,
 		}
 
 		table.AppendRow(row)

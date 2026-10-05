@@ -19,7 +19,7 @@ type stubStorager struct {
 	revisions []Revision
 }
 
-func (s *stubStorager) Create(rls helmrel.Accessor) error {
+func (s *stubStorager) Create(ctx context.Context, rls helmrel.Accessor) error {
 	return nil
 }
 
@@ -27,27 +27,31 @@ func (s *stubStorager) Delete(ctx context.Context, name string, version int) err
 	return s.deleteErr
 }
 
-func (s *stubStorager) GetRelease(name string, version int) (helmrel.Accessor, error) {
+func (s *stubStorager) GetRelease(ctx context.Context, name string, version int) (helmrel.Accessor, error) {
 	return nil, errors.ErrUnsupported
 }
 
-func (s *stubStorager) ListLatestReleases(ctx context.Context) ([]helmrel.Accessor, error) {
+func (s *stubStorager) LatestRevisions(ctx context.Context) ([]Revision, error) {
 	return nil, nil
 }
 
-func (s *stubStorager) Query(labels map[string]string) ([]helmrel.Accessor, error) {
-	return nil, nil
+func (s *stubStorager) LoadRevision(ctx context.Context, revision Revision) (helmrel.Accessor, error) {
+	return s.GetRelease(ctx, revision.Name, revision.Version)
+}
+
+func (s *stubStorager) ForEachRelease(ctx context.Context, name string, fn func(revision Revision, rel helmrel.Accessor, err error) error) error {
+	return nil
 }
 
 func (s *stubStorager) Revisions(ctx context.Context, name string) ([]Revision, error) {
 	return s.revisions, nil
 }
 
-func (s *stubStorager) Update(rls helmrel.Accessor) error {
+func (s *stubStorager) Update(ctx context.Context, rls helmrel.Accessor) error {
 	return nil
 }
 
-func (s *stubStorager) UpdateLabels(name string, version int, labels map[string]string) error {
+func (s *stubStorager) UpdateLabels(ctx context.Context, name string, version int, labels map[string]string) error {
 	return nil
 }
 

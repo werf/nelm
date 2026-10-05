@@ -17,7 +17,6 @@ import (
 	chartcommonutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common/util"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
-	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/log"
 	"github.com/werf/nelm/v2/pkg/release"
@@ -126,18 +125,18 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 
 	log.Default.Debug(ctx, "Get release")
 
-	relAccessor, err := releaseStorage.GetRelease(releaseName, opts.Revision)
+	relAccessor, err := releaseStorage.GetRelease(ctx, releaseName, opts.Revision)
 	if err != nil {
-		if errors.Is(err, driver.ErrReleaseUndecodable) {
+		if errors.Is(err, release.ErrReleaseUndecodable) {
 			return nil, fmt.Errorf("%w; remove its storage object by hand to make the release readable again", err)
 		}
 
-		if !errors.Is(err, driver.ErrReleaseNotFound) {
+		if !errors.Is(err, release.ErrReleaseNotFound) {
 			return nil, fmt.Errorf("get release: %w", err)
 		}
 
 		if opts.Revision != 0 {
-			_, existsErr := releaseStorage.GetRelease(releaseName, 0)
+			_, existsErr := releaseStorage.GetRelease(ctx, releaseName, 0)
 			if existsErr == nil {
 				return nil, &ReleaseRevisionNotFoundError{
 					ReleaseName:      releaseName,
@@ -146,7 +145,7 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 				}
 			}
 
-			if !errors.Is(existsErr, driver.ErrReleaseNotFound) {
+			if !errors.Is(existsErr, release.ErrReleaseNotFound) {
 				return nil, fmt.Errorf("check release existence: %w", existsErr)
 			}
 		}

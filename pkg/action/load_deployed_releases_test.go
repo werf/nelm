@@ -20,7 +20,7 @@ type countingStorager struct {
 	revisions []release.Revision
 }
 
-func (s *countingStorager) Create(rls helmrel.Accessor) error {
+func (s *countingStorager) Create(ctx context.Context, rls helmrel.Accessor) error {
 	return nil
 }
 
@@ -28,29 +28,33 @@ func (s *countingStorager) Delete(ctx context.Context, name string, version int)
 	return nil
 }
 
-func (s *countingStorager) GetRelease(name string, version int) (helmrel.Accessor, error) {
+func (s *countingStorager) GetRelease(ctx context.Context, name string, version int) (helmrel.Accessor, error) {
 	s.gets = append(s.gets, version)
 
 	return newTestReleaseAccessorForAction(name, version, helmreleasestatus.StatusDeployed)
 }
 
-func (s *countingStorager) ListLatestReleases(ctx context.Context) ([]helmrel.Accessor, error) {
+func (s *countingStorager) LatestRevisions(ctx context.Context) ([]release.Revision, error) {
 	return nil, nil
 }
 
-func (s *countingStorager) Query(labels map[string]string) ([]helmrel.Accessor, error) {
-	return nil, nil
+func (s *countingStorager) LoadRevision(ctx context.Context, revision release.Revision) (helmrel.Accessor, error) {
+	return s.GetRelease(ctx, revision.Name, revision.Version)
+}
+
+func (s *countingStorager) ForEachRelease(ctx context.Context, name string, fn func(revision release.Revision, rel helmrel.Accessor, err error) error) error {
+	return nil
 }
 
 func (s *countingStorager) Revisions(ctx context.Context, name string) ([]release.Revision, error) {
 	return s.revisions, nil
 }
 
-func (s *countingStorager) Update(rls helmrel.Accessor) error {
+func (s *countingStorager) Update(ctx context.Context, rls helmrel.Accessor) error {
 	return nil
 }
 
-func (s *countingStorager) UpdateLabels(name string, version int, labels map[string]string) error {
+func (s *countingStorager) UpdateLabels(ctx context.Context, name string, version int, labels map[string]string) error {
 	return nil
 }
 

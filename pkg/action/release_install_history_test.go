@@ -11,7 +11,6 @@ import (
 	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
-	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 	"github.com/werf/nelm/v2/pkg/release"
 )
 
@@ -24,7 +23,7 @@ type prunedRevisionStorager struct {
 	undecodableSet map[int]bool
 }
 
-func (s *prunedRevisionStorager) Create(rls helmrel.Accessor) error {
+func (s *prunedRevisionStorager) Create(ctx context.Context, rls helmrel.Accessor) error {
 	return nil
 }
 
@@ -32,13 +31,13 @@ func (s *prunedRevisionStorager) Delete(ctx context.Context, name string, versio
 	return nil
 }
 
-func (s *prunedRevisionStorager) GetRelease(name string, version int) (helmrel.Accessor, error) {
+func (s *prunedRevisionStorager) GetRelease(ctx context.Context, name string, version int) (helmrel.Accessor, error) {
 	if s.prunedSet[version] {
-		return nil, driver.ErrReleaseNotFound
+		return nil, release.ErrReleaseNotFound
 	}
 
 	if s.undecodableSet[version] {
-		return nil, fmt.Errorf("%w: rev %d", driver.ErrReleaseUndecodable, version)
+		return nil, fmt.Errorf("%w: rev %d", release.ErrReleaseUndecodable, version)
 	}
 
 	if s.getErr != nil {
@@ -48,23 +47,27 @@ func (s *prunedRevisionStorager) GetRelease(name string, version int) (helmrel.A
 	return newTestReleaseAccessorForAction(name, version, helmreleasestatus.StatusDeployed)
 }
 
-func (s *prunedRevisionStorager) ListLatestReleases(ctx context.Context) ([]helmrel.Accessor, error) {
+func (s *prunedRevisionStorager) LatestRevisions(ctx context.Context) ([]release.Revision, error) {
 	return nil, nil
 }
 
-func (s *prunedRevisionStorager) Query(labels map[string]string) ([]helmrel.Accessor, error) {
-	return nil, nil
+func (s *prunedRevisionStorager) LoadRevision(ctx context.Context, revision release.Revision) (helmrel.Accessor, error) {
+	return s.GetRelease(ctx, revision.Name, revision.Version)
+}
+
+func (s *prunedRevisionStorager) ForEachRelease(ctx context.Context, name string, fn func(revision release.Revision, rel helmrel.Accessor, err error) error) error {
+	return nil
 }
 
 func (s *prunedRevisionStorager) Revisions(ctx context.Context, name string) ([]release.Revision, error) {
 	return s.revisions, nil
 }
 
-func (s *prunedRevisionStorager) Update(rls helmrel.Accessor) error {
+func (s *prunedRevisionStorager) Update(ctx context.Context, rls helmrel.Accessor) error {
 	return nil
 }
 
-func (s *prunedRevisionStorager) UpdateLabels(name string, version int, labels map[string]string) error {
+func (s *prunedRevisionStorager) UpdateLabels(ctx context.Context, name string, version int, labels map[string]string) error {
 	return nil
 }
 
@@ -128,7 +131,7 @@ func TestLoadDeployedReleases_SkipsPrunedRevision(t *testing.T) {
 	assert.Equal(t, 2, rels[0].Version())
 
 	_, err = loadDeployedReleases(ctx, history, nil)
-	require.ErrorIs(t, err, driver.ErrReleaseNotFound, "the strict loader does not tolerate a vanished revision")
+	require.ErrorIs(t, err, release.ErrReleaseNotFound, "the strict loader does not tolerate a vanished revision")
 }
 
 func TestLoadDeployedReleases_UndecodableRevisionIsAnError(t *testing.T) {
@@ -146,10 +149,10 @@ func TestLoadDeployedReleases_UndecodableRevisionIsAnError(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = loadDeployedReleases(ctx, history, nil)
-	require.ErrorIs(t, err, driver.ErrReleaseUndecodable, "a deployed revision that cannot be read must fail, not be silently left deployed")
+	require.ErrorIs(t, err, release.ErrReleaseUndecodable, "a deployed revision that cannot be read must fail, not be silently left deployed")
 
 	_, err = loadDeployedReleasesSkippingPruned(ctx, history)
-	require.ErrorIs(t, err, driver.ErrReleaseUndecodable, "the pruned-tolerant loader skips only revisions that no longer exist")
+	require.ErrorIs(t, err, release.ErrReleaseUndecodable, "the pruned-tolerant loader skips only revisions that no longer exist")
 }
 
 func newTestDeployedRevision(name string, version int, status helmreleasestatus.Status) release.Revision {

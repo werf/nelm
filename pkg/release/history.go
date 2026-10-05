@@ -35,7 +35,9 @@ func (h *History) CreateRelease(ctx context.Context, rel helmrel.Accessor) error
 	rel.SetFirstDeployed(now)
 	rel.SetLastDeployed(now)
 
-	if err := h.storage.Create(rel); err != nil {
+	// Plan execution cancels its context on the first failed operation and still has to
+	// record the failed revision afterwards.
+	if err := h.storage.Create(context.WithoutCancel(ctx), rel); err != nil {
 		return fmt.Errorf("create release %q (namespace: %q, revision: %d): %w", rel.Name(), rel.Namespace(), rel.Version(), err)
 	}
 
@@ -65,7 +67,7 @@ func (h *History) DeleteRelease(ctx context.Context, name string, revision int) 
 }
 
 func (h *History) Release(ctx context.Context, version int) (helmrel.Accessor, error) {
-	rel, err := h.storage.GetRelease(h.releaseName, version)
+	rel, err := h.storage.GetRelease(ctx, h.releaseName, version)
 	if err != nil {
 		return nil, fmt.Errorf("get release %q (revision: %d): %w", h.releaseName, version, err)
 	}
@@ -88,7 +90,7 @@ func (h *History) UpdateRelease(ctx context.Context, rel helmrel.Accessor) error
 	rel.SetFirstDeployed(now)
 	rel.SetLastDeployed(now)
 
-	if err := h.storage.Update(rel); err != nil {
+	if err := h.storage.Update(context.WithoutCancel(ctx), rel); err != nil {
 		return fmt.Errorf("update release %q (namespace: %q, revision: %d): %w", rel.Name(), rel.Namespace(), rel.Version(), err)
 	}
 

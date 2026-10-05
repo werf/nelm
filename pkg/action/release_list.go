@@ -3,15 +3,16 @@ package action
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 
 	"github.com/goccy/go-yaml"
 	"github.com/gookit/color"
 	prtable "github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
+	"github.com/sourcegraph/conc/pool"
 
 	"github.com/werf/nelm/v2/pkg/common"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
@@ -55,19 +56,61 @@ type ReleaseListOptions struct {
 	TempDirPath string
 }
 
-type ReleaseListResultV1 struct {
-	APIVersion string                      `json:"apiVersion"`
-	Releases   []*ReleaseListResultRelease `json:"releases"`
+// ReleaseListResult holds the latest revision of every release. Only the revision metadata is
+// read; the details stored in a revision's body are fetched with ReleaseListResultRelease.Load.
+type ReleaseListResult struct {
+	Releases []*ReleaseListResultRelease
 }
 
 type ReleaseListResultRelease struct {
-	Name        string                       `json:"name"`
-	Namespace   string                       `json:"namespace"`
-	Revision    int                          `json:"revision"`
-	Status      helmreleasestatus.Status     `json:"status"`
-	DeployedAt  *ReleaseListResultDeployedAt `json:"deployedAt"`
-	Annotations map[string]string            `json:"annotations"`
-	Chart       *ReleaseListResultChart      `json:"chart"`
+	Name      string
+	Namespace string
+	Revision  int
+	Status    helmreleasestatus.Status
+
+	storage release.ReleaseStorager
+}
+
+// Load fetches and decodes the body of the revision. A body that cannot be decoded is
+// reported as release.ErrReleaseUndecodable.
+func (r *ReleaseListResultRelease) Load(ctx context.Context) (*ReleaseListResultReleaseDetails, error) {
+	rel, err := r.storage.LoadRevision(ctx, release.Revision{
+		Name:      r.Name,
+		Namespace: r.Namespace,
+		Status:    string(r.Status),
+		Version:   r.Revision,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("load release %q (namespace: %q, revision: %d): %w", r.Name, r.Namespace, r.Revision, err)
+	}
+
+	chartAccessor, err := helmchart.NewAccessor(rel.Chart())
+	if err != nil {
+		return nil, fmt.Errorf("construct chart accessor: %w", err)
+	}
+
+	chartMetadata := chartAccessor.MetadataAsMap()
+	chartVersion, _ := chartMetadata["Version"].(string)
+	chartAppVersion, _ := chartMetadata["AppVersion"].(string)
+
+	return &ReleaseListResultReleaseDetails{
+		Annotations: rel.Annotations(),
+		Chart: &ReleaseListResultChart{
+			Name:       chartAccessor.Name(),
+			Version:    chartVersion,
+			AppVersion: chartAppVersion,
+		},
+		DeployedAt: &ReleaseListResultDeployedAt{
+			Human: rel.DeployedAt().String(),
+			Unix:  int(rel.DeployedAt().Unix()),
+		},
+	}, nil
+}
+
+type ReleaseListResultReleaseDetails struct {
+	Annotations map[string]string
+	Chart       *ReleaseListResultChart
+	DeployedAt  *ReleaseListResultDeployedAt
 }
 
 type ReleaseListResultDeployedAt struct {
@@ -81,8 +124,22 @@ type ReleaseListResultChart struct {
 	AppVersion string `json:"appVersion"`
 }
 
-// Lists Helm releases from the cluster.
-func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResultV1, error) {
+type releaseListOutput struct {
+	APIVersion string                      `json:"apiVersion"`
+	Releases   []*releaseListOutputRelease `json:"releases"`
+}
+
+type releaseListOutputRelease struct {
+	Name        string                       `json:"name"`
+	Namespace   string                       `json:"namespace"`
+	Revision    int                          `json:"revision"`
+	Status      helmreleasestatus.Status     `json:"status"`
+	DeployedAt  *ReleaseListResultDeployedAt `json:"deployedAt"`
+	Annotations map[string]string            `json:"annotations"`
+	Chart       *ReleaseListResultChart      `json:"chart"`
+}
+
+func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResult, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("get home directory: %w", err)
@@ -117,50 +174,21 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 
 	log.Default.Info(ctx, "List releases")
 
-	rels, err := releaseStorage.ListLatestReleases(ctx)
+	revisions, err := releaseStorage.LatestRevisions(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list latest releases: %w", err)
+		return nil, fmt.Errorf("list latest release revisions: %w", err)
 	}
 
-	result := &ReleaseListResultV1{
-		APIVersion: "v1",
-	}
-
-	for _, rel := range rels {
-		chartAccessor, err := helmchart.NewAccessor(rel.Chart())
-		if err != nil {
-			return nil, fmt.Errorf("construct chart accessor: %w", err)
-		}
-
-		chartMetadata := chartAccessor.MetadataAsMap()
-		chartVersion, _ := chartMetadata["Version"].(string)
-		chartAppVersion, _ := chartMetadata["AppVersion"].(string)
-
+	result := &ReleaseListResult{}
+	for _, revision := range revisions {
 		result.Releases = append(result.Releases, &ReleaseListResultRelease{
-			Annotations: rel.Annotations(),
-			Chart: &ReleaseListResultChart{
-				Name:       chartAccessor.Name(),
-				Version:    chartVersion,
-				AppVersion: chartAppVersion,
-			},
-			DeployedAt: &ReleaseListResultDeployedAt{
-				Human: rel.DeployedAt().String(),
-				Unix:  int(rel.DeployedAt().Unix()),
-			},
-			Name:      rel.Name(),
-			Namespace: rel.Namespace(),
-			Revision:  rel.Version(),
-			Status:    helmreleasestatus.Status(rel.Status()),
+			Name:      revision.Name,
+			Namespace: revision.Namespace,
+			Revision:  revision.Version,
+			Status:    helmreleasestatus.Status(revision.Status),
+			storage:   releaseStorage,
 		})
 	}
-
-	sort.SliceStable(result.Releases, func(i, j int) bool {
-		if result.Releases[i].Namespace != result.Releases[j].Namespace {
-			return result.Releases[i].Namespace < result.Releases[j].Namespace
-		}
-
-		return result.Releases[i].Name < result.Releases[j].Name
-	})
 
 	if opts.OutputNoPrint {
 		return result, nil
@@ -172,20 +200,27 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 	case common.OutputFormatTable:
 		table := buildReleaseListOutputTable(ctx, result, opts.ReleaseNamespace != "")
 		resultMessage = table.Render() + "\n"
-	case common.OutputFormatJSON:
-		b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
+	case common.OutputFormatJSON, common.OutputFormatYAML:
+		output, err := buildReleaseListOutput(ctx, result, opts.NetworkParallelism)
 		if err != nil {
-			return nil, fmt.Errorf("marshal result to json: %w", err)
+			return nil, fmt.Errorf("build release list output: %w", err)
 		}
 
-		resultMessage = string(b) + "\n"
-	case common.OutputFormatYAML:
-		b, err := yaml.MarshalContext(ctx, result, yaml.UseLiteralStyleIfMultiline(true))
-		if err != nil {
-			return nil, fmt.Errorf("marshal result to yaml: %w", err)
-		}
+		if opts.OutputFormat == common.OutputFormatJSON {
+			b, err := json.MarshalIndent(output, "", strings.Repeat(" ", 2))
+			if err != nil {
+				return nil, fmt.Errorf("marshal result to json: %w", err)
+			}
 
-		resultMessage = string(b)
+			resultMessage = string(b) + "\n"
+		} else {
+			b, err := yaml.MarshalContext(ctx, output, yaml.UseLiteralStyleIfMultiline(true))
+			if err != nil {
+				return nil, fmt.Errorf("marshal result to yaml: %w", err)
+			}
+
+			resultMessage = string(b)
+		}
 	default:
 		return nil, fmt.Errorf("unknown output format %q", opts.OutputFormat)
 	}
@@ -202,7 +237,55 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 	return result, nil
 }
 
-func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV1, namespaced bool) prtable.Writer {
+// buildReleaseListOutput loads the release bodies concurrently, keeping only the fields the
+// output needs from each one.
+func buildReleaseListOutput(ctx context.Context, result *ReleaseListResult, networkParallelism int) (*releaseListOutput, error) {
+	output := &releaseListOutput{
+		APIVersion: "v1",
+	}
+
+	if len(result.Releases) > 0 {
+		output.Releases = make([]*releaseListOutputRelease, len(result.Releases))
+	}
+
+	loadPool := pool.New().WithContext(ctx).WithMaxGoroutines(networkParallelism).WithCancelOnError().WithFirstError()
+	for i, rel := range result.Releases {
+		loadPool.Go(func(ctx context.Context) error {
+			outputRelease := &releaseListOutputRelease{
+				Name:      rel.Name,
+				Namespace: rel.Namespace,
+				Revision:  rel.Revision,
+				Status:    rel.Status,
+			}
+			output.Releases[i] = outputRelease
+
+			details, err := rel.Load(ctx)
+			if err != nil {
+				if !errors.Is(err, release.ErrReleaseUndecodable) {
+					return err
+				}
+
+				log.Default.Error(ctx, "Showing release %q (namespace: %q) without its details: %s", rel.Name, rel.Namespace, err)
+
+				return nil
+			}
+
+			outputRelease.Annotations = details.Annotations
+			outputRelease.Chart = details.Chart
+			outputRelease.DeployedAt = details.DeployedAt
+
+			return nil
+		})
+	}
+
+	if err := loadPool.Wait(); err != nil {
+		return nil, err
+	}
+
+	return output, nil
+}
+
+func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResult, namespaced bool) prtable.Writer {
 	table := prtable.NewWriter()
 	setReleaseListOutputTableStyle(ctx, table)
 
