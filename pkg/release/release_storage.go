@@ -25,12 +25,12 @@ const (
 )
 
 var (
+	_ ReleaseStorager = (*releaseStorage)(nil)
+
 	ErrReleaseExists      = errors.New("release: already exists")
 	ErrReleaseNotFound    = errors.New("release: not found")
 	ErrReleaseUndecodable = errors.New("release: stored body cannot be decoded")
 )
-
-var _ ReleaseStorager = (*releaseStorage)(nil)
 
 // ReleaseStorager reads and writes release revisions in the Helm storage format. Methods
 // taking a release name operate in the namespace the storage was constructed for and fail
@@ -56,48 +56,6 @@ type ReleaseStorager interface {
 	ForEachRelease(ctx context.Context, name string, fn func(revision Revision, rel helmrel.Accessor, err error) error) error
 }
 
-type ReleaseStorageOptions struct {
-	HistoryLimit  int
-	SQLConnection string
-}
-
-func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, clientFactory kube.ClientFactorier, opts ReleaseStorageOptions) (ReleaseStorager, error) {
-	var backend storageBackend
-
-	switch storageDriver {
-	case common.ReleaseStorageDriverSecret, common.ReleaseStorageDriverSecrets, common.ReleaseStorageDriverDefault,
-		common.ReleaseStorageDriverConfigMap, common.ReleaseStorageDriverConfigMaps:
-		if clientFactory == nil {
-			return nil, fmt.Errorf("kube client factory is required for %q storage driver", storageDriver)
-		}
-
-		metadataClient, err := metadata.NewForConfig(clientFactory.KubeConfig().RestConfig)
-		if err != nil {
-			return nil, fmt.Errorf("construct release metadata client: %w", err)
-		}
-
-		kind := kubeStorageKindSecret
-		if storageDriver == common.ReleaseStorageDriverConfigMap || storageDriver == common.ReleaseStorageDriverConfigMaps {
-			kind = kubeStorageKindConfigMap
-		}
-
-		backend = newKubeStorageBackend(kind, clientFactory.Static(), metadataClient)
-	case common.ReleaseStorageDriverMemory:
-		backend = newMemoryStorageBackend()
-	case common.ReleaseStorageDriverSQL:
-		sqlBackend, err := newSQLStorageBackend(ctx, opts.SQLConnection)
-		if err != nil {
-			return nil, fmt.Errorf("construct sql release storage: %w", err)
-		}
-
-		backend = sqlBackend
-	default:
-		panic(fmt.Sprintf("Unknown storage driver: %s", storageDriver))
-	}
-
-	return newReleaseStorage(namespace, backend, opts.HistoryLimit), nil
-}
-
 type storageBackend interface {
 	get(ctx context.Context, namespace, key string) (*storedObject, error)
 	create(ctx context.Context, obj *storedObject) error
@@ -110,17 +68,22 @@ type storageBackend interface {
 	listWithBodies(ctx context.Context, namespace, releaseName string, fn func(obj *storedObject) error) error
 }
 
+type ReleaseStorageOptions struct {
+	HistoryLimit  int
+	SQLConnection string
+}
+
 type releaseStorage struct {
 	backend      storageBackend
-	namespace    string
 	historyLimit int
+	namespace    string
 }
 
 func newReleaseStorage(namespace string, backend storageBackend, historyLimit int) *releaseStorage {
 	return &releaseStorage{
 		backend:      backend,
-		namespace:    namespace,
 		historyLimit: historyLimit,
+		namespace:    namespace,
 	}
 }
 
@@ -181,6 +144,7 @@ func (s *releaseStorage) ForEachRelease(ctx context.Context, name string, fn fun
 		revision, ok, err := revisionFromStoredObject(obj)
 		if err != nil {
 			log.Default.Error(ctx, "Skipped storage object of release %q: %s", name, err)
+
 			return nil
 		}
 
@@ -425,6 +389,43 @@ func (s *releaseStorage) requireNamespace() (string, error) {
 	}
 
 	return s.namespace, nil
+}
+
+func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, clientFactory kube.ClientFactorier, opts ReleaseStorageOptions) (ReleaseStorager, error) {
+	var backend storageBackend
+
+	switch storageDriver {
+	case common.ReleaseStorageDriverSecret, common.ReleaseStorageDriverSecrets, common.ReleaseStorageDriverDefault,
+		common.ReleaseStorageDriverConfigMap, common.ReleaseStorageDriverConfigMaps:
+		if clientFactory == nil {
+			return nil, fmt.Errorf("kube client factory is required for %q storage driver", storageDriver)
+		}
+
+		metadataClient, err := metadata.NewForConfig(clientFactory.KubeConfig().RestConfig)
+		if err != nil {
+			return nil, fmt.Errorf("construct release metadata client: %w", err)
+		}
+
+		kind := kubeStorageKindSecret
+		if storageDriver == common.ReleaseStorageDriverConfigMap || storageDriver == common.ReleaseStorageDriverConfigMaps {
+			kind = kubeStorageKindConfigMap
+		}
+
+		backend = newKubeStorageBackend(kind, clientFactory.Static(), metadataClient)
+	case common.ReleaseStorageDriverMemory:
+		backend = newMemoryStorageBackend()
+	case common.ReleaseStorageDriverSQL:
+		sqlBackend, err := newSQLStorageBackend(ctx, opts.SQLConnection)
+		if err != nil {
+			return nil, fmt.Errorf("construct sql release storage: %w", err)
+		}
+
+		backend = sqlBackend
+	default:
+		panic(fmt.Sprintf("Unknown storage driver: %s", storageDriver))
+	}
+
+	return newReleaseStorage(namespace, backend, opts.HistoryLimit), nil
 }
 
 func ReleaserToV1Release(releaser helmrel.Releaser) (*helmrelease.Release, error) {

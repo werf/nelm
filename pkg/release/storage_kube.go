@@ -16,33 +16,31 @@ import (
 	"k8s.io/client-go/metadata"
 )
 
-type kubeStorageKind string
-
 const (
 	kubeStorageKindConfigMap kubeStorageKind = "configmap"
 	kubeStorageKindSecret    kubeStorageKind = "secret"
-)
 
-const (
 	kubeStorageDataKey  = "release"
 	kubeStoragePageSize = 500
 )
 
 var _ storageBackend = (*kubeStorageBackend)(nil)
 
+type kubeStorageKind string
+
 // kubeStorageBackend stores each revision in its own Secret or ConfigMap. Listings go through
 // the metadata client, so they never transfer release bodies; a body is fetched by object
 // name in the revision's own namespace.
 type kubeStorageBackend struct {
-	kind           kubeStorageKind
 	client         kubernetes.Interface
+	kind           kubeStorageKind
 	metadataClient metadata.Interface
 }
 
 func newKubeStorageBackend(kind kubeStorageKind, client kubernetes.Interface, metadataClient metadata.Interface) *kubeStorageBackend {
 	return &kubeStorageBackend{
-		kind:           kind,
 		client:         client,
+		kind:           kind,
 		metadataClient: metadataClient,
 	}
 }
@@ -101,6 +99,17 @@ func (b *kubeStorageBackend) get(ctx context.Context, namespace, key string) (*s
 		}
 
 		return storedObjectFromKubeConfigMap(configMap), nil
+	default:
+		panic(fmt.Sprintf("unexpected kube storage kind %q", b.kind))
+	}
+}
+
+func (b *kubeStorageBackend) gvr() schema.GroupVersionResource {
+	switch b.kind {
+	case kubeStorageKindSecret:
+		return schema.GroupVersionResource{Version: "v1", Resource: "secrets"}
+	case kubeStorageKindConfigMap:
+		return schema.GroupVersionResource{Version: "v1", Resource: "configmaps"}
 	default:
 		panic(fmt.Sprintf("unexpected kube storage kind %q", b.kind))
 	}
@@ -240,17 +249,6 @@ func (b *kubeStorageBackend) updateLabels(ctx context.Context, namespace, key st
 		_, err = b.client.CoreV1().ConfigMaps(namespace).Update(ctx, configMap, metav1.UpdateOptions{})
 
 		return kubeStorageError(err)
-	default:
-		panic(fmt.Sprintf("unexpected kube storage kind %q", b.kind))
-	}
-}
-
-func (b *kubeStorageBackend) gvr() schema.GroupVersionResource {
-	switch b.kind {
-	case kubeStorageKindSecret:
-		return schema.GroupVersionResource{Version: "v1", Resource: "secrets"}
-	case kubeStorageKindConfigMap:
-		return schema.GroupVersionResource{Version: "v1", Resource: "configmaps"}
 	default:
 		panic(fmt.Sprintf("unexpected kube storage kind %q", b.kind))
 	}

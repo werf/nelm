@@ -68,6 +68,38 @@ func (b *memoryStorageBackend) get(_ context.Context, namespace, key string) (*s
 	return result, nil
 }
 
+func (b *memoryStorageBackend) list(namespace, releaseName string, withBodies bool) []*storedObject {
+	var result []*storedObject
+
+	b.objects.RTransaction(func(objects map[string]*storedObject) {
+		for _, obj := range objects {
+			if namespace != "" && obj.Namespace != namespace {
+				continue
+			}
+
+			if obj.Labels[storageLabelOwner] != storageOwner {
+				continue
+			}
+
+			if releaseName != "" && obj.Labels[storageLabelName] != releaseName {
+				continue
+			}
+
+			result = append(result, cloneStoredObject(obj, withBodies))
+		}
+	})
+
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Namespace != result[j].Namespace {
+			return result[i].Namespace < result[j].Namespace
+		}
+
+		return result[i].Key < result[j].Key
+	})
+
+	return result
+}
+
 func (b *memoryStorageBackend) listMetadata(_ context.Context, namespace, releaseName string) ([]*storedObject, error) {
 	return b.list(namespace, releaseName, false), nil
 }
@@ -106,38 +138,6 @@ func (b *memoryStorageBackend) updateLabels(_ context.Context, namespace, key st
 
 		return nil
 	})
-}
-
-func (b *memoryStorageBackend) list(namespace, releaseName string, withBodies bool) []*storedObject {
-	var result []*storedObject
-
-	b.objects.RTransaction(func(objects map[string]*storedObject) {
-		for _, obj := range objects {
-			if namespace != "" && obj.Namespace != namespace {
-				continue
-			}
-
-			if obj.Labels[storageLabelOwner] != storageOwner {
-				continue
-			}
-
-			if releaseName != "" && obj.Labels[storageLabelName] != releaseName {
-				continue
-			}
-
-			result = append(result, cloneStoredObject(obj, withBodies))
-		}
-	})
-
-	sort.Slice(result, func(i, j int) bool {
-		if result[i].Namespace != result[j].Namespace {
-			return result[i].Namespace < result[j].Namespace
-		}
-
-		return result[i].Key < result[j].Key
-	})
-
-	return result
 }
 
 func cloneStoredObject(obj *storedObject, withBody bool) *storedObject {

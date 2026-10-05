@@ -68,6 +68,55 @@ func TestAccessorCopyAndSetStatus_V2PreservesDescriptionAndOriginal(t *testing.T
 	assert.Equal(t, helmreleasecommon.StatusDeployed, original.Info.Status, "original must not be mutated")
 }
 
+func TestReleaseStorage_CreateAndUpdateWriteHelmFormat(t *testing.T) {
+	for _, kind := range []kubeStorageKind{kubeStorageKindSecret, kubeStorageKindConfigMap} {
+		t.Run(string(kind), func(t *testing.T) {
+			ctx := context.Background()
+			s := newTestKubeStorage(t, kind, testNamespace, 0)
+
+			rls := newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusPendingInstall)
+			rls.Labels = map[string]string{"custom": "value"}
+
+			acc, err := helmrel.NewAccessor(rls)
+			require.NoError(t, err)
+			require.NoError(t, s.storage.Create(ctx, acc))
+
+			created, err := s.backend.get(ctx, testNamespace, "sh.helm.release.v1.myrel.v1")
+			require.NoError(t, err)
+			assert.Equal(t, "myrel", created.Labels["name"])
+			assert.Equal(t, "helm", created.Labels["owner"])
+			assert.Equal(t, "pending-install", created.Labels["status"])
+			assert.Equal(t, "1", created.Labels["version"])
+			assert.Equal(t, "value", created.Labels["custom"])
+			assert.NotEmpty(t, created.Labels["createdAt"])
+
+			loaded, err := s.storage.GetRelease(ctx, "myrel", 1)
+			require.NoError(t, err)
+
+			loaded.SetStatus(helmreleasecommon.StatusDeployed)
+			require.NoError(t, s.storage.Update(ctx, loaded))
+
+			updated, err := s.backend.get(ctx, testNamespace, "sh.helm.release.v1.myrel.v1")
+			require.NoError(t, err)
+			assert.Equal(t, "deployed", updated.Labels["status"])
+			assert.Equal(t, created.Labels["createdAt"], updated.Labels["createdAt"], "update keeps the creation timestamp")
+			assert.NotEmpty(t, updated.Labels["modifiedAt"])
+			assert.Equal(t, "value", updated.Labels["custom"])
+
+			rlsFromBody, err := decodeRelease(updated.Body)
+			require.NoError(t, err)
+			assert.Equal(t, helmreleasecommon.StatusDeployed, rlsFromBody.Info.Status, "the status is rewritten in the body too")
+		})
+	}
+}
+
+func TestReleaseStorage_CreateExistingRevision(t *testing.T) {
+	s := newMemoryReleaseStorage(t, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusDeployed))
+
+	err := s.Create(context.Background(), newTestReleaseAccessor(t, "myrel", 1, helmreleasecommon.StatusDeployed))
+	require.ErrorIs(t, err, ErrReleaseExists)
+}
+
 func TestReleaseStorage_CreatePrunesLikeHelm(t *testing.T) {
 	deployed := helmreleasecommon.StatusDeployed
 	superseded := helmreleasecommon.StatusSuperseded
@@ -164,53 +213,50 @@ func TestReleaseStorage_CreatePrunesWithoutReadingBodies(t *testing.T) {
 		"an undecodable revision is pruned like any other")
 }
 
-func TestReleaseStorage_CreateAndUpdateWriteHelmFormat(t *testing.T) {
-	for _, kind := range []kubeStorageKind{kubeStorageKindSecret, kubeStorageKindConfigMap} {
-		t.Run(string(kind), func(t *testing.T) {
-			ctx := context.Background()
-			s := newTestKubeStorage(t, kind, testNamespace, 0)
+func TestReleaseStorage_DeleteMissingRevision(t *testing.T) {
+	s := newMemoryReleaseStorage(t)
 
-			rls := newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusPendingInstall)
-			rls.Labels = map[string]string{"custom": "value"}
-
-			acc, err := helmrel.NewAccessor(rls)
-			require.NoError(t, err)
-			require.NoError(t, s.storage.Create(ctx, acc))
-
-			created, err := s.backend.get(ctx, testNamespace, "sh.helm.release.v1.myrel.v1")
-			require.NoError(t, err)
-			assert.Equal(t, "myrel", created.Labels["name"])
-			assert.Equal(t, "helm", created.Labels["owner"])
-			assert.Equal(t, "pending-install", created.Labels["status"])
-			assert.Equal(t, "1", created.Labels["version"])
-			assert.Equal(t, "value", created.Labels["custom"])
-			assert.NotEmpty(t, created.Labels["createdAt"])
-
-			loaded, err := s.storage.GetRelease(ctx, "myrel", 1)
-			require.NoError(t, err)
-
-			loaded.SetStatus(helmreleasecommon.StatusDeployed)
-			require.NoError(t, s.storage.Update(ctx, loaded))
-
-			updated, err := s.backend.get(ctx, testNamespace, "sh.helm.release.v1.myrel.v1")
-			require.NoError(t, err)
-			assert.Equal(t, "deployed", updated.Labels["status"])
-			assert.Equal(t, created.Labels["createdAt"], updated.Labels["createdAt"], "update keeps the creation timestamp")
-			assert.NotEmpty(t, updated.Labels["modifiedAt"])
-			assert.Equal(t, "value", updated.Labels["custom"])
-
-			rlsFromBody, err := decodeRelease(updated.Body)
-			require.NoError(t, err)
-			assert.Equal(t, helmreleasecommon.StatusDeployed, rlsFromBody.Info.Status, "the status is rewritten in the body too")
-		})
-	}
+	require.ErrorIs(t, s.Delete(context.Background(), "myrel", 1), ErrReleaseNotFound)
 }
 
-func TestReleaseStorage_CreateExistingRevision(t *testing.T) {
-	s := newMemoryReleaseStorage(t, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusDeployed))
+func TestReleaseStorage_ForEachReleaseReportsUndecodableRevision(t *testing.T) {
+	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
+	putTestKubeRelease(t, s, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusSuperseded))
+	putTestKubeObject(t, s, newUndecodableTestStoredObject(t, testNamespace, "myrel", 2, helmreleasecommon.StatusDeployed))
+	putTestKubeRelease(t, s, newTestReleaseWithStatus("otherrel", 1, helmreleasecommon.StatusDeployed))
 
-	err := s.Create(context.Background(), newTestReleaseAccessor(t, "myrel", 1, helmreleasecommon.StatusDeployed))
-	require.ErrorIs(t, err, ErrReleaseExists)
+	decoded := map[int]bool{}
+	require.NoError(t, s.storage.ForEachRelease(context.Background(), "myrel", func(revision Revision, rel helmrel.Accessor, err error) error {
+		if revision.Version == 2 {
+			require.ErrorIs(t, err, ErrReleaseUndecodable)
+			assert.Nil(t, rel)
+			assert.Equal(t, "deployed", revision.Status)
+		} else {
+			require.NoError(t, err)
+			assert.Equal(t, revision.Version, rel.Version())
+		}
+
+		decoded[revision.Version] = err == nil
+
+		return nil
+	}))
+
+	assert.Equal(t, map[int]bool{1: true, 2: false}, decoded)
+	assert.Equal(t, 1, countActions(s.client.Actions(), "list"))
+}
+
+func TestReleaseStorage_GetReleaseKeepsStorageLabels(t *testing.T) {
+	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
+
+	rls := newTestReleaseWithStatus("myrel", 2, helmreleasecommon.StatusDeployed)
+	rls.Labels = map[string]string{"moduleChecksum": "bbb"}
+	putTestKubeRelease(t, s, rls)
+
+	rel, err := s.storage.GetRelease(context.Background(), "myrel", 2)
+	require.NoError(t, err)
+	assert.Equal(t, "bbb", rel.Labels()["moduleChecksum"])
+	assert.Equal(t, "helm", rel.Labels()["owner"])
+	assert.Equal(t, "2", rel.Labels()["version"])
 }
 
 func TestReleaseStorage_GetReleaseLatestFetchesOneBody(t *testing.T) {
@@ -227,20 +273,6 @@ func TestReleaseStorage_GetReleaseLatestFetchesOneBody(t *testing.T) {
 
 	assert.Equal(t, 1, countActions(s.client.Actions(), "get"))
 	assert.Equal(t, 0, countActions(s.client.Actions(), "list"))
-}
-
-func TestReleaseStorage_GetReleaseKeepsStorageLabels(t *testing.T) {
-	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
-
-	rls := newTestReleaseWithStatus("myrel", 2, helmreleasecommon.StatusDeployed)
-	rls.Labels = map[string]string{"moduleChecksum": "bbb"}
-	putTestKubeRelease(t, s, rls)
-
-	rel, err := s.storage.GetRelease(context.Background(), "myrel", 2)
-	require.NoError(t, err)
-	assert.Equal(t, "bbb", rel.Labels()["moduleChecksum"])
-	assert.Equal(t, "helm", rel.Labels()["owner"])
-	assert.Equal(t, "2", rel.Labels()["version"])
 }
 
 func TestReleaseStorage_GetReleaseNotFound(t *testing.T) {
@@ -262,38 +294,6 @@ func TestReleaseStorage_GetReleaseUndecodable(t *testing.T) {
 	require.NotErrorIs(t, err, ErrReleaseNotFound)
 	assert.Contains(t, err.Error(), `"sh.helm.release.v1.myrel.v1"`)
 	assert.Contains(t, err.Error(), `"test-ns"`)
-}
-
-func TestReleaseStorage_LatestRevisionsSameNameInManyNamespaces(t *testing.T) {
-	ctx := context.Background()
-	s := newTestKubeStorage(t, kubeStorageKindSecret, "", 0)
-
-	const namespaces = 20
-	for i := range namespaces {
-		for version := 1; version <= 3; version++ {
-			putTestKubeRelease(t, s, newTestRelease(fmt.Sprintf("ns-%02d", i), "myrel", version, helmreleasecommon.StatusDeployed))
-		}
-	}
-
-	revisions, err := s.storage.LatestRevisions(ctx)
-	require.NoError(t, err)
-	require.Len(t, revisions, namespaces)
-
-	assert.Equal(t, 1, countActions(s.metadataClient.Actions(), "list"))
-	assert.Empty(t, s.client.Actions(), "listing reads no release bodies")
-
-	for i, revision := range revisions {
-		assert.Equal(t, fmt.Sprintf("ns-%02d", i), revision.Namespace)
-		assert.Equal(t, 3, revision.Version)
-
-		rel, err := s.storage.LoadRevision(ctx, revision)
-		require.NoError(t, err)
-		assert.Equal(t, revision.Namespace, rel.Namespace())
-		assert.Equal(t, 3, rel.Version())
-	}
-
-	assert.Equal(t, namespaces, countActions(s.client.Actions(), "get"), "one body is fetched per release")
-	assert.Equal(t, 0, countActions(s.client.Actions(), "list"))
 }
 
 func TestReleaseStorage_LatestRevisionsPaginates(t *testing.T) {
@@ -332,6 +332,38 @@ func TestReleaseStorage_LatestRevisionsPaginates(t *testing.T) {
 	assert.Equal(t, 2, calls)
 }
 
+func TestReleaseStorage_LatestRevisionsSameNameInManyNamespaces(t *testing.T) {
+	ctx := context.Background()
+	s := newTestKubeStorage(t, kubeStorageKindSecret, "", 0)
+
+	const namespaces = 20
+	for i := range namespaces {
+		for version := 1; version <= 3; version++ {
+			putTestKubeRelease(t, s, newTestRelease(fmt.Sprintf("ns-%02d", i), "myrel", version, helmreleasecommon.StatusDeployed))
+		}
+	}
+
+	revisions, err := s.storage.LatestRevisions(ctx)
+	require.NoError(t, err)
+	require.Len(t, revisions, namespaces)
+
+	assert.Equal(t, 1, countActions(s.metadataClient.Actions(), "list"))
+	assert.Empty(t, s.client.Actions(), "listing reads no release bodies")
+
+	for i, revision := range revisions {
+		assert.Equal(t, fmt.Sprintf("ns-%02d", i), revision.Namespace)
+		assert.Equal(t, 3, revision.Version)
+
+		rel, err := s.storage.LoadRevision(ctx, revision)
+		require.NoError(t, err)
+		assert.Equal(t, revision.Namespace, rel.Namespace())
+		assert.Equal(t, 3, rel.Version())
+	}
+
+	assert.Equal(t, namespaces, countActions(s.client.Actions(), "get"), "one body is fetched per release")
+	assert.Equal(t, 0, countActions(s.client.Actions(), "list"))
+}
+
 func TestReleaseStorage_LatestRevisionsSkipsObjectsThatAreNotRevisions(t *testing.T) {
 	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
 	putTestKubeRelease(t, s, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusDeployed))
@@ -347,6 +379,39 @@ func TestReleaseStorage_LatestRevisionsSkipsObjectsThatAreNotRevisions(t *testin
 	revisions, err := s.storage.LatestRevisions(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, []Revision{{Name: "myrel", Namespace: testNamespace, Status: "deployed", Version: 1}}, revisions)
+}
+
+func TestReleaseStorage_NamedReadsRequireName(t *testing.T) {
+	ctx := context.Background()
+	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
+	putTestKubeRelease(t, s, newTestReleaseWithStatus("other", 7, helmreleasecommon.StatusDeployed))
+
+	_, err := s.storage.GetRelease(ctx, "", 0)
+	require.Error(t, err)
+
+	_, err = s.storage.Revisions(ctx, "")
+	require.Error(t, err)
+
+	require.Error(t, s.storage.ForEachRelease(ctx, "", func(Revision, helmrel.Accessor, error) error { return nil }))
+}
+
+func TestReleaseStorage_NamespacedOperationsRequireNamespace(t *testing.T) {
+	ctx := context.Background()
+	s := newTestKubeStorage(t, kubeStorageKindSecret, "", 0)
+	acc := newTestReleaseAccessor(t, "myrel", 1, helmreleasecommon.StatusDeployed)
+
+	require.Error(t, s.storage.Create(ctx, acc))
+	require.Error(t, s.storage.Update(ctx, acc))
+	require.Error(t, s.storage.Delete(ctx, "myrel", 1))
+	require.Error(t, s.storage.UpdateLabels(ctx, "myrel", 1, map[string]string{"a": "b"}))
+
+	_, err := s.storage.GetRelease(ctx, "myrel", 1)
+	require.Error(t, err)
+
+	_, err = s.storage.Revisions(ctx, "myrel")
+	require.Error(t, err)
+
+	require.Error(t, s.storage.ForEachRelease(ctx, "myrel", func(Revision, helmrel.Accessor, error) error { return nil }))
 }
 
 func TestReleaseStorage_RevisionsAreSortedAndUnparseableVersionIsAnError(t *testing.T) {
@@ -377,51 +442,6 @@ func TestReleaseStorage_RevisionsAreSortedAndUnparseableVersionIsAnError(t *test
 	assert.Contains(t, err.Error(), `"broken"`)
 }
 
-func TestReleaseStorage_ForEachReleaseReportsUndecodableRevision(t *testing.T) {
-	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
-	putTestKubeRelease(t, s, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusSuperseded))
-	putTestKubeObject(t, s, newUndecodableTestStoredObject(t, testNamespace, "myrel", 2, helmreleasecommon.StatusDeployed))
-	putTestKubeRelease(t, s, newTestReleaseWithStatus("otherrel", 1, helmreleasecommon.StatusDeployed))
-
-	decoded := map[int]bool{}
-	require.NoError(t, s.storage.ForEachRelease(context.Background(), "myrel", func(revision Revision, rel helmrel.Accessor, err error) error {
-		if revision.Version == 2 {
-			require.ErrorIs(t, err, ErrReleaseUndecodable)
-			assert.Nil(t, rel)
-			assert.Equal(t, "deployed", revision.Status)
-		} else {
-			require.NoError(t, err)
-			assert.Equal(t, revision.Version, rel.Version())
-		}
-
-		decoded[revision.Version] = err == nil
-
-		return nil
-	}))
-
-	assert.Equal(t, map[int]bool{1: true, 2: false}, decoded)
-	assert.Equal(t, 1, countActions(s.client.Actions(), "list"))
-}
-
-func TestReleaseStorage_NamespacedOperationsRequireNamespace(t *testing.T) {
-	ctx := context.Background()
-	s := newTestKubeStorage(t, kubeStorageKindSecret, "", 0)
-	acc := newTestReleaseAccessor(t, "myrel", 1, helmreleasecommon.StatusDeployed)
-
-	require.Error(t, s.storage.Create(ctx, acc))
-	require.Error(t, s.storage.Update(ctx, acc))
-	require.Error(t, s.storage.Delete(ctx, "myrel", 1))
-	require.Error(t, s.storage.UpdateLabels(ctx, "myrel", 1, map[string]string{"a": "b"}))
-
-	_, err := s.storage.GetRelease(ctx, "myrel", 1)
-	require.Error(t, err)
-
-	_, err = s.storage.Revisions(ctx, "myrel")
-	require.Error(t, err)
-
-	require.Error(t, s.storage.ForEachRelease(ctx, "myrel", func(Revision, helmrel.Accessor, error) error { return nil }))
-}
-
 func TestReleaseStorage_UpdateLabelsKeepsSystemLabels(t *testing.T) {
 	ctx := context.Background()
 	s := newMemoryReleaseStorage(t, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusDeployed))
@@ -434,24 +454,4 @@ func TestReleaseStorage_UpdateLabelsKeepsSystemLabels(t *testing.T) {
 	assert.Equal(t, "deployed", rel.Labels()["status"])
 
 	require.ErrorIs(t, s.UpdateLabels(ctx, "myrel", 2, map[string]string{"custom": "value"}), ErrReleaseNotFound)
-}
-
-func TestReleaseStorage_DeleteMissingRevision(t *testing.T) {
-	s := newMemoryReleaseStorage(t)
-
-	require.ErrorIs(t, s.Delete(context.Background(), "myrel", 1), ErrReleaseNotFound)
-}
-
-func TestReleaseStorage_NamedReadsRequireName(t *testing.T) {
-	ctx := context.Background()
-	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
-	putTestKubeRelease(t, s, newTestReleaseWithStatus("other", 7, helmreleasecommon.StatusDeployed))
-
-	_, err := s.storage.GetRelease(ctx, "", 0)
-	require.Error(t, err)
-
-	_, err = s.storage.Revisions(ctx, "")
-	require.Error(t, err)
-
-	require.Error(t, s.storage.ForEachRelease(ctx, "", func(Revision, helmrel.Accessor, error) error { return nil }))
 }

@@ -24,9 +24,8 @@ const (
 	storageLabelOwner      = "owner"
 	storageLabelStatus     = "status"
 	storageLabelVersion    = "version"
-
-	storageOwner      = "helm"
-	storageObjectType = "helm.sh/release.v1"
+	storageObjectType      = "helm.sh/release.v1"
+	storageOwner           = "helm"
 )
 
 var (
@@ -37,39 +36,50 @@ var (
 // storedObject is a release revision as the backends see it: the storage object identity,
 // its labels and the encoded body. Body is nil when only the metadata was read.
 type storedObject struct {
-	Namespace string
+	Body      []byte
 	Key       string
 	Labels    map[string]string
-	Body      []byte
+	Namespace string
 }
 
-func storageKey(name string, version int) string {
-	return fmt.Sprintf("sh.helm.release.v1.%s.v%d", name, version)
-}
-
-func encodeRelease(rls *helmrelease.Release) ([]byte, error) {
-	var buf bytes.Buffer
-
-	base64Writer := base64.NewEncoder(base64.StdEncoding, &buf)
-
-	gzipWriter, err := gzip.NewWriterLevel(base64Writer, gzip.BestCompression)
+func newStoredObject(namespace string, rls *helmrelease.Release, timestampLabel string) (*storedObject, error) {
+	body, err := encodeRelease(rls)
 	if err != nil {
-		return nil, fmt.Errorf("create gzip writer: %w", err)
+		return nil, fmt.Errorf("encode release %q (revision: %d): %w", rls.Name, rls.Version, err)
 	}
 
-	if err := json.NewEncoder(gzipWriter).Encode(rls); err != nil {
-		return nil, fmt.Errorf("encode release: %w", err)
+	labels := maps.Clone(rls.Labels)
+	if labels == nil {
+		labels = map[string]string{}
 	}
 
-	if err := gzipWriter.Close(); err != nil {
-		return nil, fmt.Errorf("close gzip writer: %w", err)
+	labels[timestampLabel] = strconv.FormatInt(time.Now().Unix(), 10)
+	labels[storageLabelName] = rls.Name
+	labels[storageLabelOwner] = storageOwner
+	labels[storageLabelStatus] = rls.Info.Status.String()
+	labels[storageLabelVersion] = strconv.Itoa(rls.Version)
+
+	return &storedObject{
+		Body:      body,
+		Key:       storageKey(rls.Name, rls.Version),
+		Labels:    labels,
+		Namespace: namespace,
+	}, nil
+}
+
+func decodeStoredObject(obj *storedObject) (*helmrelease.Release, error) {
+	rls, err := decodeRelease(obj.Body)
+	if err != nil {
+		return nil, fmt.Errorf("%w: object %q (namespace: %q): %w", ErrReleaseUndecodable, obj.Key, obj.Namespace, err)
 	}
 
-	if err := base64Writer.Close(); err != nil {
-		return nil, fmt.Errorf("close base64 writer: %w", err)
+	if rls.Namespace == "" {
+		rls.Namespace = obj.Namespace
 	}
 
-	return buf.Bytes(), nil
+	rls.Labels = maps.Clone(obj.Labels)
+
+	return rls, nil
 }
 
 // decodeRelease streams the body through base64 and gzip decoding instead of materializing
@@ -114,44 +124,29 @@ func decodeRelease(body []byte) (*helmrelease.Release, error) {
 	return rls, nil
 }
 
-func decodeStoredObject(obj *storedObject) (*helmrelease.Release, error) {
-	rls, err := decodeRelease(obj.Body)
+func encodeRelease(rls *helmrelease.Release) ([]byte, error) {
+	var buf bytes.Buffer
+
+	base64Writer := base64.NewEncoder(base64.StdEncoding, &buf)
+
+	gzipWriter, err := gzip.NewWriterLevel(base64Writer, gzip.BestCompression)
 	if err != nil {
-		return nil, fmt.Errorf("%w: object %q (namespace: %q): %w", ErrReleaseUndecodable, obj.Key, obj.Namespace, err)
+		return nil, fmt.Errorf("create gzip writer: %w", err)
 	}
 
-	if rls.Namespace == "" {
-		rls.Namespace = obj.Namespace
+	if err := json.NewEncoder(gzipWriter).Encode(rls); err != nil {
+		return nil, fmt.Errorf("encode release: %w", err)
 	}
 
-	rls.Labels = maps.Clone(obj.Labels)
-
-	return rls, nil
-}
-
-func newStoredObject(namespace string, rls *helmrelease.Release, timestampLabel string) (*storedObject, error) {
-	body, err := encodeRelease(rls)
-	if err != nil {
-		return nil, fmt.Errorf("encode release %q (revision: %d): %w", rls.Name, rls.Version, err)
+	if err := gzipWriter.Close(); err != nil {
+		return nil, fmt.Errorf("close gzip writer: %w", err)
 	}
 
-	labels := maps.Clone(rls.Labels)
-	if labels == nil {
-		labels = map[string]string{}
+	if err := base64Writer.Close(); err != nil {
+		return nil, fmt.Errorf("close base64 writer: %w", err)
 	}
 
-	labels[timestampLabel] = strconv.FormatInt(time.Now().Unix(), 10)
-	labels[storageLabelName] = rls.Name
-	labels[storageLabelOwner] = storageOwner
-	labels[storageLabelStatus] = rls.Info.Status.String()
-	labels[storageLabelVersion] = strconv.Itoa(rls.Version)
-
-	return &storedObject{
-		Namespace: namespace,
-		Key:       storageKey(rls.Name, rls.Version),
-		Labels:    labels,
-		Body:      body,
-	}, nil
+	return buf.Bytes(), nil
 }
 
 // revisionFromStoredObject returns ok=false for a storage object that is not a release
@@ -181,6 +176,10 @@ func revisionFromStoredObject(obj *storedObject) (Revision, bool, error) {
 		Status:    obj.Labels[storageLabelStatus],
 		Version:   version,
 	}, true, nil
+}
+
+func storageKey(name string, version int) string {
+	return fmt.Sprintf("sh.helm.release.v1.%s.v%d", name, version)
 }
 
 func withoutSystemLabels(labels map[string]string) map[string]string {

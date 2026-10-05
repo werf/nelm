@@ -237,62 +237,6 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 	return result, nil
 }
 
-// buildReleaseListOutput loads the release bodies concurrently, keeping only the fields the
-// output needs from each one. A release removed after it was listed is left out.
-func buildReleaseListOutput(ctx context.Context, result *ReleaseListResult, networkParallelism int) (*releaseListOutput, error) {
-	loaded := make([]*releaseListOutputRelease, len(result.Releases))
-
-	loadPool := pool.New().WithContext(ctx).WithMaxGoroutines(networkParallelism).WithCancelOnError().WithFirstError()
-	for i, rel := range result.Releases {
-		loadPool.Go(func(ctx context.Context) error {
-			outputRelease := &releaseListOutputRelease{
-				Name:      rel.Name,
-				Namespace: rel.Namespace,
-				Revision:  rel.Revision,
-				Status:    rel.Status,
-			}
-
-			details, err := rel.Load(ctx)
-			if err != nil {
-				switch {
-				case errors.Is(err, release.ErrReleaseNotFound):
-					log.Default.Debug(ctx, "Release %q (namespace: %q) was removed after listing", rel.Name, rel.Namespace)
-
-					return nil
-				case errors.Is(err, release.ErrReleaseUndecodable):
-					log.Default.Error(ctx, "Showing release %q (namespace: %q) without its details: %s", rel.Name, rel.Namespace, err)
-				default:
-					return err
-				}
-			} else {
-				outputRelease.Annotations = details.Annotations
-				outputRelease.Chart = details.Chart
-				outputRelease.DeployedAt = details.DeployedAt
-			}
-
-			loaded[i] = outputRelease
-
-			return nil
-		})
-	}
-
-	if err := loadPool.Wait(); err != nil {
-		return nil, err
-	}
-
-	output := &releaseListOutput{
-		APIVersion: "v1",
-	}
-
-	for _, outputRelease := range loaded {
-		if outputRelease != nil {
-			output.Releases = append(output.Releases, outputRelease)
-		}
-	}
-
-	return output, nil
-}
-
 func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResult, namespaced bool) prtable.Writer {
 	table := prtable.NewWriter()
 	setReleaseListOutputTableStyle(ctx, table)
@@ -358,6 +302,62 @@ func applyReleaseListOptionsDefaults(opts ReleaseListOptions, homeDir string) (R
 	}
 
 	return opts, nil
+}
+
+// buildReleaseListOutput loads the release bodies concurrently, keeping only the fields the
+// output needs from each one. A release removed after it was listed is left out.
+func buildReleaseListOutput(ctx context.Context, result *ReleaseListResult, networkParallelism int) (*releaseListOutput, error) {
+	loaded := make([]*releaseListOutputRelease, len(result.Releases))
+
+	loadPool := pool.New().WithContext(ctx).WithMaxGoroutines(networkParallelism).WithCancelOnError().WithFirstError()
+	for i, rel := range result.Releases {
+		loadPool.Go(func(ctx context.Context) error {
+			outputRelease := &releaseListOutputRelease{
+				Name:      rel.Name,
+				Namespace: rel.Namespace,
+				Revision:  rel.Revision,
+				Status:    rel.Status,
+			}
+
+			details, err := rel.Load(ctx)
+			if err != nil {
+				switch {
+				case errors.Is(err, release.ErrReleaseNotFound):
+					log.Default.Debug(ctx, "Release %q (namespace: %q) was removed after listing", rel.Name, rel.Namespace)
+
+					return nil
+				case errors.Is(err, release.ErrReleaseUndecodable):
+					log.Default.Error(ctx, "Showing release %q (namespace: %q) without its details: %s", rel.Name, rel.Namespace, err)
+				default:
+					return err
+				}
+			} else {
+				outputRelease.Annotations = details.Annotations
+				outputRelease.Chart = details.Chart
+				outputRelease.DeployedAt = details.DeployedAt
+			}
+
+			loaded[i] = outputRelease
+
+			return nil
+		})
+	}
+
+	if err := loadPool.Wait(); err != nil {
+		return nil, err
+	}
+
+	output := &releaseListOutput{
+		APIVersion: "v1",
+	}
+
+	for _, outputRelease := range loaded {
+		if outputRelease != nil {
+			output.Releases = append(output.Releases, outputRelease)
+		}
+	}
+
+	return output, nil
 }
 
 func setReleaseListOutputTableStyle(ctx context.Context, table prtable.Writer) {

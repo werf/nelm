@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/werf/logboek"
 
+	"github.com/werf/logboek"
 	"github.com/werf/nelm/v2/pkg/common"
 	chartv2 "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
@@ -74,36 +74,20 @@ func (s *listStorager) UpdateLabels(ctx context.Context, name string, version in
 	return nil
 }
 
-func TestReleaseListResultRelease_Load(t *testing.T) {
-	rel := &ReleaseListResultRelease{Name: "a", Namespace: "ns", Revision: 3, Status: helmreleasestatus.StatusDeployed, storage: &listStorager{}}
+func TestBuildReleaseHistoryOutputTable_RevisionWithoutDetails(t *testing.T) {
+	result := &ReleaseHistoryResultV1{Releases: []*ReleaseHistoryResultRelease{
+		{Name: "a", Namespace: "ns", Revision: 1, Status: helmreleasestatus.StatusFailed},
+	}}
 
-	details, err := rel.Load(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, map[string]string{"managed-by": "test"}, details.Annotations)
-	assert.Equal(t, &ReleaseListResultChart{Name: "mychart", Version: "1.2.3", AppVersion: "4.5.6"}, details.Chart)
-	require.NotNil(t, details.DeployedAt)
+	require.NotPanics(t, func() {
+		buildReleaseHistoryOutputTable(context.Background(), result).Render()
+	})
 }
 
-func TestBuildReleaseListOutput_UndecodableReleaseIsShownWithoutDetails(t *testing.T) {
-	storage := &listStorager{loadErrs: map[string]error{
-		"broken": fmt.Errorf("%w: object %q", release.ErrReleaseUndecodable, "sh.helm.release.v1.broken.v2"),
-	}}
-
-	result := &ReleaseListResult{Releases: []*ReleaseListResultRelease{
-		{Name: "a", Namespace: "ns", Revision: 1, Status: helmreleasestatus.StatusDeployed, storage: storage},
-		{Name: "broken", Namespace: "ns", Revision: 2, Status: helmreleasestatus.StatusFailed, storage: storage},
-	}}
-
-	ctx := logboek.NewContext(context.Background(), logboek.NewLogger(io.Discard, io.Discard))
-
-	output, err := buildReleaseListOutput(ctx, result, 2)
+func TestBuildReleaseListOutput_NoReleases(t *testing.T) {
+	output, err := buildReleaseListOutput(context.Background(), &ReleaseListResult{}, 2)
 	require.NoError(t, err)
-	require.Len(t, output.Releases, 2)
-
-	assert.Equal(t, "a", output.Releases[0].Name)
-	assert.Equal(t, "mychart", output.Releases[0].Chart.Name)
-
-	assert.Equal(t, &releaseListOutputRelease{Name: "broken", Namespace: "ns", Revision: 2, Status: helmreleasestatus.StatusFailed}, output.Releases[1])
+	assert.Nil(t, output.Releases, "an empty list is printed as null, as before")
 }
 
 func TestBuildReleaseListOutput_OtherLoadErrorsFail(t *testing.T) {
@@ -115,22 +99,6 @@ func TestBuildReleaseListOutput_OtherLoadErrorsFail(t *testing.T) {
 
 	_, err := buildReleaseListOutput(context.Background(), result, 2)
 	require.ErrorContains(t, err, "connection refused")
-}
-
-func TestBuildReleaseListOutput_NoReleases(t *testing.T) {
-	output, err := buildReleaseListOutput(context.Background(), &ReleaseListResult{}, 2)
-	require.NoError(t, err)
-	assert.Nil(t, output.Releases, "an empty list is printed as null, as before")
-}
-
-func TestBuildReleaseHistoryOutputTable_RevisionWithoutDetails(t *testing.T) {
-	result := &ReleaseHistoryResultV1{Releases: []*ReleaseHistoryResultRelease{
-		{Name: "a", Namespace: "ns", Revision: 1, Status: helmreleasestatus.StatusFailed},
-	}}
-
-	require.NotPanics(t, func() {
-		buildReleaseHistoryOutputTable(context.Background(), result).Render()
-	})
 }
 
 func TestBuildReleaseListOutput_ReleaseRemovedDuringLoadIsSkipped(t *testing.T) {
@@ -177,4 +145,36 @@ func TestBuildReleaseListOutput_ReleaseRemovedDuringLoadIsSkipped(t *testing.T) 
 	output, err = buildReleaseListOutput(ctx, result, 2)
 	require.NoError(t, err)
 	assert.Nil(t, output.Releases, "an empty list is printed as null")
+}
+
+func TestBuildReleaseListOutput_UndecodableReleaseIsShownWithoutDetails(t *testing.T) {
+	storage := &listStorager{loadErrs: map[string]error{
+		"broken": fmt.Errorf("%w: object %q", release.ErrReleaseUndecodable, "sh.helm.release.v1.broken.v2"),
+	}}
+
+	result := &ReleaseListResult{Releases: []*ReleaseListResultRelease{
+		{Name: "a", Namespace: "ns", Revision: 1, Status: helmreleasestatus.StatusDeployed, storage: storage},
+		{Name: "broken", Namespace: "ns", Revision: 2, Status: helmreleasestatus.StatusFailed, storage: storage},
+	}}
+
+	ctx := logboek.NewContext(context.Background(), logboek.NewLogger(io.Discard, io.Discard))
+
+	output, err := buildReleaseListOutput(ctx, result, 2)
+	require.NoError(t, err)
+	require.Len(t, output.Releases, 2)
+
+	assert.Equal(t, "a", output.Releases[0].Name)
+	assert.Equal(t, "mychart", output.Releases[0].Chart.Name)
+
+	assert.Equal(t, &releaseListOutputRelease{Name: "broken", Namespace: "ns", Revision: 2, Status: helmreleasestatus.StatusFailed}, output.Releases[1])
+}
+
+func TestReleaseListResultRelease_Load(t *testing.T) {
+	rel := &ReleaseListResultRelease{Name: "a", Namespace: "ns", Revision: 3, Status: helmreleasestatus.StatusDeployed, storage: &listStorager{}}
+
+	details, err := rel.Load(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"managed-by": "test"}, details.Annotations)
+	assert.Equal(t, &ReleaseListResultChart{Name: "mychart", Version: "1.2.3", AppVersion: "4.5.6"}, details.Chart)
+	require.NotNil(t, details.DeployedAt)
 }

@@ -17,25 +17,23 @@ import (
 )
 
 const (
-	sqlDialect = "postgres"
-
-	sqlReleaseTable            = "releases_v1"
-	sqlReleaseKeyColumn        = "key"
-	sqlReleaseTypeColumn       = "type"
-	sqlReleaseBodyColumn       = "body"
-	sqlReleaseNameColumn       = "name"
-	sqlReleaseNamespaceColumn  = "namespace"
-	sqlReleaseVersionColumn    = "version"
-	sqlReleaseStatusColumn     = "status"
-	sqlReleaseOwnerColumn      = "owner"
-	sqlReleaseCreatedAtColumn  = "createdAt"
-	sqlReleaseModifiedAtColumn = "modifiedAt"
-
-	sqlCustomLabelsTable                 = "custom_labels_v1"
-	sqlCustomLabelsReleaseKeyColumn      = "releaseKey"
+	sqlCustomLabelsKeyColumn              = "key"
+	sqlCustomLabelsReleaseKeyColumn       = "releaseKey"
 	sqlCustomLabelsReleaseNamespaceColumn = "releaseNamespace"
-	sqlCustomLabelsKeyColumn             = "key"
-	sqlCustomLabelsValueColumn           = "value"
+	sqlCustomLabelsTable                  = "custom_labels_v1"
+	sqlCustomLabelsValueColumn            = "value"
+	sqlDialect                            = "postgres"
+	sqlReleaseBodyColumn                  = "body"
+	sqlReleaseCreatedAtColumn             = "createdAt"
+	sqlReleaseKeyColumn                   = "key"
+	sqlReleaseModifiedAtColumn            = "modifiedAt"
+	sqlReleaseNameColumn                  = "name"
+	sqlReleaseNamespaceColumn             = "namespace"
+	sqlReleaseOwnerColumn                 = "owner"
+	sqlReleaseStatusColumn                = "status"
+	sqlReleaseTable                       = "releases_v1"
+	sqlReleaseTypeColumn                  = "type"
+	sqlReleaseVersionColumn               = "version"
 )
 
 var _ storageBackend = (*sqlStorageBackend)(nil)
@@ -46,24 +44,6 @@ var _ storageBackend = (*sqlStorageBackend)(nil)
 type sqlStorageBackend struct {
 	db               *sqlx.DB
 	statementBuilder sq.StatementBuilderType
-}
-
-type sqlReleaseRecord struct {
-	Key        string `db:"key"`
-	Namespace  string `db:"namespace"`
-	Name       string `db:"name"`
-	Version    int    `db:"version"`
-	Status     string `db:"status"`
-	Owner      string `db:"owner"`
-	CreatedAt  int64  `db:"createdat"`
-	ModifiedAt int64  `db:"modifiedat"`
-	Body       string `db:"body"`
-}
-
-type sqlCustomLabelRecord struct {
-	ReleaseKey string `db:"releasekey"`
-	Key        string `db:"key"`
-	Value      string `db:"value"`
 }
 
 func newSQLStorageBackend(ctx context.Context, connectionString string) (*sqlStorageBackend, error) {
@@ -209,6 +189,20 @@ func (b *sqlStorageBackend) delete(ctx context.Context, namespace, key string) e
 	return nil
 }
 
+func (b *sqlStorageBackend) filterReleases(builder sq.SelectBuilder, namespace, releaseName string) sq.SelectBuilder {
+	builder = builder.Where(sq.Eq{sqlReleaseOwnerColumn: storageOwner})
+
+	if namespace != "" {
+		builder = builder.Where(sq.Eq{sqlReleaseNamespaceColumn: namespace})
+	}
+
+	if releaseName != "" {
+		builder = builder.Where(sq.Eq{sqlReleaseNameColumn: releaseName})
+	}
+
+	return builder
+}
+
 func (b *sqlStorageBackend) get(ctx context.Context, namespace, key string) (*storedObject, error) {
 	query, args, err := b.selectReleases(true).
 		Where(sq.Eq{sqlReleaseKeyColumn: key, sqlReleaseNamespaceColumn: namespace}).
@@ -227,6 +221,28 @@ func (b *sqlStorageBackend) get(ctx context.Context, namespace, key string) (*st
 	}
 
 	return b.storedObjectWithCustomLabels(ctx, &record)
+}
+
+func (b *sqlStorageBackend) insertCustomLabel(ctx context.Context, tx *sqlx.Tx, namespace, key, labelKey, labelValue string) error {
+	query, args, err := b.statementBuilder.
+		Insert(sqlCustomLabelsTable).
+		Columns(
+			sqlCustomLabelsReleaseKeyColumn,
+			sqlCustomLabelsReleaseNamespaceColumn,
+			sqlCustomLabelsKeyColumn,
+			sqlCustomLabelsValueColumn,
+		).
+		Values(key, namespace, labelKey, labelValue).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build insert custom label query: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+		return fmt.Errorf("insert custom label %q: %w", labelKey, err)
+	}
+
+	return nil
 }
 
 func (b *sqlStorageBackend) listMetadata(ctx context.Context, namespace, releaseName string) ([]*storedObject, error) {
@@ -322,6 +338,54 @@ func (b *sqlStorageBackend) listWithBodies(ctx context.Context, namespace, relea
 	}
 
 	return nil
+}
+
+func (b *sqlStorageBackend) selectReleases(withBody bool) sq.SelectBuilder {
+	columns := []string{
+		sqlReleaseKeyColumn,
+		sqlReleaseNamespaceColumn,
+		sqlReleaseNameColumn,
+		sqlReleaseVersionColumn,
+		sqlReleaseStatusColumn,
+		sqlReleaseOwnerColumn,
+		sqlReleaseCreatedAtColumn,
+		sqlReleaseModifiedAtColumn,
+	}
+
+	if withBody {
+		columns = append(columns, sqlReleaseBodyColumn)
+	}
+
+	return b.statementBuilder.Select(columns...).From(sqlReleaseTable)
+}
+
+func (b *sqlStorageBackend) storedObjectWithCustomLabels(ctx context.Context, record *sqlReleaseRecord) (*storedObject, error) {
+	query, args, err := b.statementBuilder.
+		Select(sqlCustomLabelsKeyColumn, sqlCustomLabelsValueColumn).
+		From(sqlCustomLabelsTable).
+		Where(sq.Eq{sqlCustomLabelsReleaseKeyColumn: record.Key, sqlCustomLabelsReleaseNamespaceColumn: record.Namespace}).
+		ToSql()
+	if err != nil {
+		return nil, fmt.Errorf("build select custom labels query: %w", err)
+	}
+
+	var labelRecords []sqlCustomLabelRecord
+	if err := b.db.SelectContext(ctx, &labelRecords, query, args...); err != nil {
+		return nil, fmt.Errorf("select custom labels of release %q (namespace: %q): %w", record.Key, record.Namespace, err)
+	}
+
+	obj := storedObjectFromSQLRecord(record)
+
+	customLabels := map[string]string{}
+	for _, labelRecord := range labelRecords {
+		customLabels[labelRecord.Key] = labelRecord.Value
+	}
+
+	for key, value := range withoutSystemLabels(customLabels) {
+		obj.Labels[key] = value
+	}
+
+	return obj, nil
 }
 
 func (b *sqlStorageBackend) update(ctx context.Context, obj *storedObject) error {
@@ -420,114 +484,22 @@ func (b *sqlStorageBackend) updateLabels(ctx context.Context, namespace, key str
 	return nil
 }
 
-func (b *sqlStorageBackend) filterReleases(builder sq.SelectBuilder, namespace, releaseName string) sq.SelectBuilder {
-	builder = builder.Where(sq.Eq{sqlReleaseOwnerColumn: storageOwner})
-
-	if namespace != "" {
-		builder = builder.Where(sq.Eq{sqlReleaseNamespaceColumn: namespace})
-	}
-
-	if releaseName != "" {
-		builder = builder.Where(sq.Eq{sqlReleaseNameColumn: releaseName})
-	}
-
-	return builder
+type sqlReleaseRecord struct {
+	Body       string `db:"body"`
+	CreatedAt  int64  `db:"createdat"`
+	Key        string `db:"key"`
+	ModifiedAt int64  `db:"modifiedat"`
+	Name       string `db:"name"`
+	Namespace  string `db:"namespace"`
+	Owner      string `db:"owner"`
+	Status     string `db:"status"`
+	Version    int    `db:"version"`
 }
 
-func (b *sqlStorageBackend) insertCustomLabel(ctx context.Context, tx *sqlx.Tx, namespace, key, labelKey, labelValue string) error {
-	query, args, err := b.statementBuilder.
-		Insert(sqlCustomLabelsTable).
-		Columns(
-			sqlCustomLabelsReleaseKeyColumn,
-			sqlCustomLabelsReleaseNamespaceColumn,
-			sqlCustomLabelsKeyColumn,
-			sqlCustomLabelsValueColumn,
-		).
-		Values(key, namespace, labelKey, labelValue).
-		ToSql()
-	if err != nil {
-		return fmt.Errorf("build insert custom label query: %w", err)
-	}
-
-	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
-		return fmt.Errorf("insert custom label %q: %w", labelKey, err)
-	}
-
-	return nil
-}
-
-func (b *sqlStorageBackend) selectReleases(withBody bool) sq.SelectBuilder {
-	columns := []string{
-		sqlReleaseKeyColumn,
-		sqlReleaseNamespaceColumn,
-		sqlReleaseNameColumn,
-		sqlReleaseVersionColumn,
-		sqlReleaseStatusColumn,
-		sqlReleaseOwnerColumn,
-		sqlReleaseCreatedAtColumn,
-		sqlReleaseModifiedAtColumn,
-	}
-
-	if withBody {
-		columns = append(columns, sqlReleaseBodyColumn)
-	}
-
-	return b.statementBuilder.Select(columns...).From(sqlReleaseTable)
-}
-
-func (b *sqlStorageBackend) storedObjectWithCustomLabels(ctx context.Context, record *sqlReleaseRecord) (*storedObject, error) {
-	query, args, err := b.statementBuilder.
-		Select(sqlCustomLabelsKeyColumn, sqlCustomLabelsValueColumn).
-		From(sqlCustomLabelsTable).
-		Where(sq.Eq{sqlCustomLabelsReleaseKeyColumn: record.Key, sqlCustomLabelsReleaseNamespaceColumn: record.Namespace}).
-		ToSql()
-	if err != nil {
-		return nil, fmt.Errorf("build select custom labels query: %w", err)
-	}
-
-	var labelRecords []sqlCustomLabelRecord
-	if err := b.db.SelectContext(ctx, &labelRecords, query, args...); err != nil {
-		return nil, fmt.Errorf("select custom labels of release %q (namespace: %q): %w", record.Key, record.Namespace, err)
-	}
-
-	obj := storedObjectFromSQLRecord(record)
-
-	customLabels := map[string]string{}
-	for _, labelRecord := range labelRecords {
-		customLabels[labelRecord.Key] = labelRecord.Value
-	}
-
-	for key, value := range withoutSystemLabels(customLabels) {
-		obj.Labels[key] = value
-	}
-
-	return obj, nil
-}
-
-func storedObjectFromSQLRecord(record *sqlReleaseRecord) *storedObject {
-	labels := map[string]string{
-		storageLabelName:      record.Name,
-		storageLabelOwner:     record.Owner,
-		storageLabelStatus:    record.Status,
-		storageLabelVersion:   strconv.Itoa(record.Version),
-		storageLabelCreatedAt: strconv.FormatInt(record.CreatedAt, 10),
-	}
-
-	if record.ModifiedAt != 0 {
-		labels[storageLabelModifiedAt] = strconv.FormatInt(record.ModifiedAt, 10)
-	}
-
-	var body []byte
-	if record.Body != "" {
-		body = []byte(record.Body)
-	}
-
-	return &storedObject{
-		Namespace: record.Namespace,
-		Key:       record.Key,
-		Labels:    labels,
-		Body:      body,
-	}
+type sqlCustomLabelRecord struct {
+	Key        string `db:"key"`
+	ReleaseKey string `db:"releasekey"`
+	Value      string `db:"value"`
 }
 
 // ensureSQLStorageSchema applies the migrations of the Helm SQL driver, with the same ids and
@@ -660,6 +632,7 @@ func sqlStorageMigrationsApplied(ctx context.Context, db *sqlx.DB, migrations []
 	records, err := migrate.MigrationSet{DisableCreateTable: true}.GetMigrationRecords(db.DB, sqlDialect)
 	if err != nil {
 		log.Default.Debug(ctx, "Unable to read applied release storage migrations: %s", err)
+
 		return false
 	}
 
@@ -668,4 +641,30 @@ func sqlStorageMigrationsApplied(ctx context.Context, db *sqlx.DB, migrations []
 	}
 
 	return len(pending) == 0
+}
+
+func storedObjectFromSQLRecord(record *sqlReleaseRecord) *storedObject {
+	labels := map[string]string{
+		storageLabelName:      record.Name,
+		storageLabelOwner:     record.Owner,
+		storageLabelStatus:    record.Status,
+		storageLabelVersion:   strconv.Itoa(record.Version),
+		storageLabelCreatedAt: strconv.FormatInt(record.CreatedAt, 10),
+	}
+
+	if record.ModifiedAt != 0 {
+		labels[storageLabelModifiedAt] = strconv.FormatInt(record.ModifiedAt, 10)
+	}
+
+	var body []byte
+	if record.Body != "" {
+		body = []byte(record.Body)
+	}
+
+	return &storedObject{
+		Namespace: record.Namespace,
+		Key:       record.Key,
+		Labels:    labels,
+		Body:      body,
+	}
 }
