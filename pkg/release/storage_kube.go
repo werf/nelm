@@ -61,7 +61,11 @@ func (b *kubeStorageBackend) create(ctx context.Context, obj *storedObject) erro
 		return ErrReleaseExists
 	}
 
-	return err
+	if err != nil {
+		return fmt.Errorf("create %s: %w", b.kind, err)
+	}
+
+	return nil
 }
 
 func (b *kubeStorageBackend) delete(ctx context.Context, namespace, key string) error {
@@ -80,7 +84,11 @@ func (b *kubeStorageBackend) delete(ctx context.Context, namespace, key string) 
 		return ErrReleaseNotFound
 	}
 
-	return err
+	if err != nil {
+		return fmt.Errorf("delete %s: %w", b.kind, err)
+	}
+
+	return nil
 }
 
 func (b *kubeStorageBackend) get(ctx context.Context, namespace, key string) (*storedObject, error) {
@@ -127,7 +135,7 @@ func (b *kubeStorageBackend) listMetadata(ctx context.Context, namespace, releas
 	for {
 		list, err := b.metadataClient.Resource(b.gvr()).Namespace(namespace).List(ctx, opts)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("list %s metadata: %w", b.kind, err)
 		}
 
 		for _, item := range list.Items {
@@ -163,7 +171,7 @@ func (b *kubeStorageBackend) listWithBodies(ctx context.Context, namespace, rele
 		case kubeStorageKindSecret:
 			list, err := b.client.CoreV1().Secrets(namespace).List(ctx, opts)
 			if err != nil {
-				return err
+				return fmt.Errorf("list secrets: %w", err)
 			}
 
 			for i := range list.Items {
@@ -174,7 +182,7 @@ func (b *kubeStorageBackend) listWithBodies(ctx context.Context, namespace, rele
 		case kubeStorageKindConfigMap:
 			list, err := b.client.CoreV1().ConfigMaps(namespace).List(ctx, opts)
 			if err != nil {
-				return err
+				return fmt.Errorf("list configmaps: %w", err)
 			}
 
 			for i := range list.Items {

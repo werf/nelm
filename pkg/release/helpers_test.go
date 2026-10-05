@@ -111,6 +111,7 @@ func encodeHelmRelease(t *testing.T, rls *helmrelease.Release) []byte {
 
 	writer, err := gzip.NewWriterLevel(&buf, gzip.BestCompression)
 	require.NoError(t, err)
+
 	_, err = writer.Write(data)
 	require.NoError(t, err)
 	require.NoError(t, writer.Close())

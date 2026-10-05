@@ -24,45 +24,50 @@ func newMemoryStorageBackend() *memoryStorageBackend {
 }
 
 func (b *memoryStorageBackend) create(_ context.Context, obj *storedObject) error {
-	return b.objects.RWTransactionErr(func(objects map[string]*storedObject) error {
+	var err error
+
+	b.objects.RWTransaction(func(objects map[string]*storedObject) {
 		id := memoryStorageID(obj.Namespace, obj.Key)
 		if _, found := objects[id]; found {
-			return ErrReleaseExists
+			err = ErrReleaseExists
+
+			return
 		}
 
 		objects[id] = cloneStoredObject(obj, true)
-
-		return nil
 	})
+
+	return err
 }
 
 func (b *memoryStorageBackend) delete(_ context.Context, namespace, key string) error {
-	return b.objects.RWTransactionErr(func(objects map[string]*storedObject) error {
+	var err error
+
+	b.objects.RWTransaction(func(objects map[string]*storedObject) {
 		id := memoryStorageID(namespace, key)
 		if _, found := objects[id]; !found {
-			return ErrReleaseNotFound
+			err = ErrReleaseNotFound
+
+			return
 		}
 
 		delete(objects, id)
-
-		return nil
 	})
+
+	return err
 }
 
 func (b *memoryStorageBackend) get(_ context.Context, namespace, key string) (*storedObject, error) {
 	var result *storedObject
 
-	if err := b.objects.RTransactionErr(func(objects map[string]*storedObject) error {
-		obj, found := objects[memoryStorageID(namespace, key)]
-		if !found {
-			return ErrReleaseNotFound
+	b.objects.RTransaction(func(objects map[string]*storedObject) {
+		if obj, found := objects[memoryStorageID(namespace, key)]; found {
+			result = cloneStoredObject(obj, true)
 		}
+	})
 
-		result = cloneStoredObject(obj, true)
-
-		return nil
-	}); err != nil {
-		return nil, err
+	if result == nil {
+		return nil, ErrReleaseNotFound
 	}
 
 	return result, nil
@@ -115,29 +120,37 @@ func (b *memoryStorageBackend) listWithBodies(_ context.Context, namespace, rele
 }
 
 func (b *memoryStorageBackend) update(_ context.Context, obj *storedObject) error {
-	return b.objects.RWTransactionErr(func(objects map[string]*storedObject) error {
+	var err error
+
+	b.objects.RWTransaction(func(objects map[string]*storedObject) {
 		id := memoryStorageID(obj.Namespace, obj.Key)
 		if _, found := objects[id]; !found {
-			return ErrReleaseNotFound
+			err = ErrReleaseNotFound
+
+			return
 		}
 
 		objects[id] = cloneStoredObject(obj, true)
-
-		return nil
 	})
+
+	return err
 }
 
 func (b *memoryStorageBackend) updateLabels(_ context.Context, namespace, key string, labels map[string]string) error {
-	return b.objects.RWTransactionErr(func(objects map[string]*storedObject) error {
+	var err error
+
+	b.objects.RWTransaction(func(objects map[string]*storedObject) {
 		obj, found := objects[memoryStorageID(namespace, key)]
 		if !found {
-			return ErrReleaseNotFound
+			err = ErrReleaseNotFound
+
+			return
 		}
 
 		maps.Copy(obj.Labels, labels)
-
-		return nil
 	})
+
+	return err
 }
 
 func cloneStoredObject(obj *storedObject, withBody bool) *storedObject {

@@ -50,7 +50,7 @@ func (s *listStorager) LoadRevision(ctx context.Context, revision release.Revisi
 		return nil, err
 	}
 
-	return helmrel.NewAccessor(&helmrelease.Release{
+	acc, err := helmrel.NewAccessor(&helmrelease.Release{
 		Name:      revision.Name,
 		Namespace: revision.Namespace,
 		Version:   revision.Version,
@@ -60,6 +60,11 @@ func (s *listStorager) LoadRevision(ctx context.Context, revision release.Revisi
 		},
 		Chart: &chartv2.Chart{Metadata: &chartv2.Metadata{Name: "mychart", Version: "1.2.3", AppVersion: "4.5.6"}},
 	})
+	if err != nil {
+		return nil, fmt.Errorf("wrap release: %w", err)
+	}
+
+	return acc, nil
 }
 
 func (s *listStorager) Revisions(ctx context.Context, name string) ([]release.Revision, error) {

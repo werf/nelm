@@ -344,7 +344,7 @@ func buildReleaseListOutput(ctx context.Context, result *ReleaseListResult, netw
 	}
 
 	if err := loadPool.Wait(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load releases: %w", err)
 	}
 
 	output := &releaseListOutput{

@@ -88,7 +88,7 @@ func (b *sqlStorageBackend) create(ctx context.Context, obj *storedObject) error
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackSQLTransaction(ctx, tx)
 
 	query, args, err := b.statementBuilder.
 		Insert(sqlReleaseTable).
@@ -146,7 +146,7 @@ func (b *sqlStorageBackend) delete(ctx context.Context, namespace, key string) e
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackSQLTransaction(ctx, tx)
 
 	query, args, err := b.statementBuilder.
 		Delete(sqlReleaseTable).
@@ -435,7 +435,7 @@ func (b *sqlStorageBackend) updateLabels(ctx context.Context, namespace, key str
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackSQLTransaction(ctx, tx)
 
 	query, args, err := b.statementBuilder.
 		Select(sqlReleaseKeyColumn).
@@ -621,6 +621,12 @@ func ensureSQLStorageSchema(ctx context.Context, db *sqlx.DB) error {
 	}
 
 	return nil
+}
+
+func rollbackSQLTransaction(ctx context.Context, tx *sqlx.Tx) {
+	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		log.Default.Warn(ctx, "Unable to roll back release storage transaction: %s", err)
+	}
 }
 
 func sqlStorageMigrationsApplied(ctx context.Context, db *sqlx.DB, migrations []*migrate.Migration) bool {
