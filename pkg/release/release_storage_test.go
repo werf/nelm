@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	k8stesting "k8s.io/client-go/testing"
@@ -220,6 +222,50 @@ func TestReleaseStorage_DeleteMissingRevision(t *testing.T) {
 	require.ErrorIs(t, s.Delete(context.Background(), "myrel", 1), ErrReleaseNotFound)
 }
 
+func TestReleaseStorage_ForEachReleasePaginates(t *testing.T) {
+	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
+
+	pages := []struct {
+		next    string
+		version int
+	}{
+		{next: "page-1", version: 1},
+		{version: 2},
+	}
+	pageByContinue := map[string]int{"": 0, "page-1": 1}
+
+	var calls int
+	s.client.PrependReactor("list", "secrets", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		calls++
+		require.LessOrEqual(t, calls, len(pages))
+
+		opts := action.(k8stesting.ListActionImpl).GetListOptions()
+		assert.Equal(t, int64(kubeStoragePageSize), opts.Limit)
+
+		page, found := pageByContinue[opts.Continue]
+		require.True(t, found, "unexpected continue token %q", opts.Continue)
+
+		obj := newTestStoredObject(t, newTestReleaseWithStatus("myrel", pages[page].version, helmreleasecommon.StatusSuperseded))
+
+		list := &corev1.SecretList{Items: []corev1.Secret{*newKubeSecret(obj)}}
+		list.Continue = pages[page].next
+
+		return true, list, nil
+	})
+
+	var versions []int
+	require.NoError(t, s.storage.ForEachRelease(context.Background(), "myrel", func(revision Revision, _ helmrel.Accessor, err error) error {
+		require.NoError(t, err)
+
+		versions = append(versions, revision.Version)
+
+		return nil
+	}, ForEachReleaseOptions{}))
+
+	assert.Equal(t, []int{1, 2}, versions)
+	assert.Equal(t, 2, calls)
+}
+
 func TestReleaseStorage_ForEachReleaseReportsUndecodableRevision(t *testing.T) {
 	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
 	putTestKubeRelease(t, s, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusSuperseded))
@@ -333,6 +379,40 @@ func TestReleaseStorage_GetReleaseLatestFetchesOneBody(t *testing.T) {
 
 	assert.Equal(t, 1, countActions(s.client.Actions(), "get"))
 	assert.Equal(t, 0, countActions(s.client.Actions(), "list"))
+}
+
+func TestReleaseStorage_GetReleaseLatestRelistsWhenLatestIsRemoved(t *testing.T) {
+	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
+	for _, version := range []int{1, 2, 4} {
+		putTestKubeRelease(t, s, newTestReleaseWithStatus("myrel", version, helmreleasecommon.StatusSuperseded))
+	}
+
+	listings := [][]int{{1, 2, 3}, {1, 2, 4}}
+
+	var calls int
+	s.metadataClient.PrependReactor("list", "secrets", func(k8stesting.Action) (bool, runtime.Object, error) {
+		require.Less(t, calls, len(listings))
+
+		list := &metav1.List{}
+		for _, version := range listings[calls] {
+			list.Items = append(list.Items, runtime.RawExtension{Object: &metav1.PartialObjectMetadata{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: testNamespace,
+					Name:      storageKey("myrel", version),
+					Labels:    map[string]string{"owner": "helm", "name": "myrel", "version": strconv.Itoa(version), "status": "superseded"},
+				},
+			}})
+		}
+
+		calls++
+
+		return true, list, nil
+	})
+
+	rel, err := s.storage.GetRelease(context.Background(), "myrel", 0)
+	require.NoError(t, err)
+	assert.Equal(t, 4, rel.Version())
+	assert.Equal(t, 2, calls)
 }
 
 func TestReleaseStorage_GetReleaseLatestSkipsUnparseableVersion(t *testing.T) {
