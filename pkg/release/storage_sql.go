@@ -3,6 +3,7 @@ package release
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -12,6 +13,8 @@ import (
 	"github.com/lib/pq"
 	"github.com/lib/pq/pqerror"
 	migrate "github.com/rubenv/sql-migrate"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 
 	"github.com/werf/nelm/v2/pkg/log"
 )
@@ -247,6 +250,64 @@ func (b *sqlStorageBackend) insertCustomLabel(ctx context.Context, tx *sqlx.Tx, 
 	}
 
 	return nil
+}
+
+func (b *sqlStorageBackend) listLatestWithBodies(ctx context.Context, namespace string, selector labels.Selector, fn func(obj *storedObject) error) error {
+	builder := b.filterReleases(b.selectReleases(true), namespace, "", nil).
+		Options("DISTINCT ON (namespace, name)").OrderBy("namespace", "name", "version DESC")
+	if selector != nil {
+		requirements, selectable := selector.Requirements()
+		if !selectable {
+			builder = builder.Where("FALSE")
+		}
+		for _, requirement := range requirements {
+			predicate, err := sqlLabelRequirement(requirement)
+			if err != nil {
+				return fmt.Errorf("build release label selector: %w", err)
+			}
+			builder = builder.Where(predicate)
+		}
+	}
+	query, args, err := b.statementBuilder.Select("releases_v1.*", "COALESCE((SELECT json_object_agg(c.key, c.value ORDER BY c.ctid)::text FROM custom_labels_v1 c WHERE c.releaseKey = releases_v1.key AND c.releaseNamespace = releases_v1.namespace), '{}') AS custom_labels").FromSelect(builder, sqlReleaseTable).ToSql()
+	if err != nil {
+		return fmt.Errorf("build select latest releases query: %w", err)
+	}
+	rows, err := b.db.QueryxContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("select latest releases: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		var record struct {
+			sqlReleaseRecord
+			CustomLabels string `db:"custom_labels"`
+		}
+		if err := rows.StructScan(&record); err != nil {
+			return fmt.Errorf("scan release: %w", err)
+		}
+		var customLabels map[string]string
+		if err := json.Unmarshal([]byte(record.CustomLabels), &customLabels); err != nil {
+			return fmt.Errorf("decode custom labels of release %q (namespace: %q): %w", record.Key, record.Namespace, err)
+		}
+		obj := storedObjectFromSQLRecord(&record.sqlReleaseRecord)
+		for key, value := range withoutSystemLabels(customLabels) {
+			obj.Labels[key] = value
+		}
+		if err := fn(obj); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate releases: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close releases: %w", err)
+	}
+
+	return ctx.Err()
 }
 
 func (b *sqlStorageBackend) listMetadata(ctx context.Context, namespace, releaseName string) ([]*storedObject, error) {
@@ -635,6 +696,76 @@ func rollbackSQLTransaction(ctx context.Context, tx *sqlx.Tx) {
 	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
 		log.Default.Warn(ctx, "Unable to roll back release storage transaction: %s", err)
 	}
+}
+
+func sqlLabelRequirement(requirement labels.Requirement) (sq.Sqlizer, error) {
+	column := ""
+	switch requirement.Key() {
+	case storageLabelName:
+		column = sqlReleaseNameColumn
+	case storageLabelOwner:
+		column = sqlReleaseOwnerColumn
+	case storageLabelStatus:
+		column = sqlReleaseStatusColumn
+	case storageLabelVersion:
+		column = sqlReleaseVersionColumn + "::text"
+	case storageLabelCreatedAt:
+		column = sqlReleaseCreatedAtColumn + "::text"
+	case storageLabelModifiedAt:
+		column = "NULLIF(" + sqlReleaseModifiedAtColumn + ", 0)::text"
+	}
+	custom := column == ""
+	if custom {
+		column = "value"
+	}
+	values := requirement.Values().List()
+	var predicate sq.Sqlizer
+	negate := false
+	switch requirement.Operator() {
+	case selection.Equals, selection.DoubleEquals, selection.In:
+		predicate = sq.Eq{column: values}
+	case selection.NotEquals, selection.NotIn:
+		if custom {
+			predicate = sq.Eq{column: values}
+			negate = true
+		} else {
+			predicate = sq.Or{sq.Expr(column + " IS NULL"), sq.NotEq{column: values}}
+		}
+	case selection.Exists:
+		predicate = sq.Expr(column + " IS NOT NULL")
+	case selection.DoesNotExist:
+		if custom {
+			predicate = sq.Expr(column + " IS NOT NULL")
+			negate = true
+		} else {
+			predicate = sq.Expr(column + " IS NULL")
+		}
+	case selection.GreaterThan, selection.LessThan:
+		value, err := strconv.ParseInt(values[0], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("label %q requires an integer comparison value: %w", requirement.Key(), err)
+		}
+		operator := ">"
+		if requirement.Operator() == selection.LessThan {
+			operator = "<"
+		}
+		number := "(CASE WHEN " + column + " ~ '^[+-]??[0-9]+$' AND length(regexp_replace(" + column + ", '^[+-]??0*', '')) <= 19 THEN (" + column + ")::numeric END)"
+		predicate = sq.Expr(number+" BETWEEN -9223372036854775808 AND 9223372036854775807 AND "+number+" "+operator+" ?", value)
+	default:
+		return nil, fmt.Errorf("unsupported operator %q for label %q; use equality, set, existence, or integer comparisons", requirement.Operator(), requirement.Key())
+	}
+	if !custom {
+		return predicate, nil
+	}
+	label := sq.Select(sqlCustomLabelsValueColumn).From(sqlCustomLabelsTable).
+		Where("releaseKey = releases_v1.key AND releaseNamespace = releases_v1.namespace").
+		Where(sq.Eq{sqlCustomLabelsKeyColumn: requirement.Key()}).OrderBy("ctid DESC").Limit(1)
+	match := sq.Select("1").FromSelect(label, "label").Where(predicate)
+	if negate {
+		return sq.Expr("NOT EXISTS (?)", match), nil
+	}
+
+	return sq.Expr("EXISTS (?)", match), nil
 }
 
 func sqlStorageMigrationsApplied(ctx context.Context, db *sqlx.DB, migrations []*migrate.Migration) bool {

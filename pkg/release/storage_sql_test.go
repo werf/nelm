@@ -2,6 +2,8 @@ package release
 
 import (
 	"context"
+	"database/sql/driver"
+	"errors"
 	"testing"
 	"time"
 
@@ -10,9 +12,16 @@ import (
 	"github.com/lib/pq/pqerror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/labels"
 
 	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmreleasecommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+)
+
+const (
+	testSQLLatestColumns = "key, namespace, name, version, status, owner, createdAt, modifiedAt, body"
+	testSQLLatestOrder   = " ORDER BY namespace, name, version DESC) AS releases_v1"
+	testSQLLatestSelect  = "SELECT releases_v1.*, COALESCE((SELECT json_object_agg(c.key, c.value ORDER BY c.ctid)::text FROM custom_labels_v1 c WHERE c.releaseKey = releases_v1.key AND c.releaseNamespace = releases_v1.namespace), '{}') AS custom_labels FROM (SELECT DISTINCT ON (namespace, name) " + testSQLLatestColumns + " FROM releases_v1 WHERE owner = $1"
 )
 
 func TestEnsureSQLStorageSchema_SkipsMigrationsWhenAllApplied(t *testing.T) {
@@ -24,6 +33,12 @@ func TestEnsureSQLStorageSchema_SkipsMigrationsWhenAllApplied(t *testing.T) {
 			AddRow("init", time.Now()))
 
 	require.NoError(t, ensureSQLStorageSchema(context.Background(), backend.db))
+}
+
+func TestSQLLabelRequirementUnsupportedOperator(t *testing.T) {
+	_, err := sqlLabelRequirement(labels.Requirement{})
+	require.ErrorContains(t, err, "unsupported operator")
+	require.ErrorContains(t, err, "use equality, set, existence, or integer comparisons")
 }
 
 func TestSQLStorageBackend_CreateExisting(t *testing.T) {
@@ -162,6 +177,204 @@ func TestSQLStorageBackend_GetMissing(t *testing.T) {
 
 	_, err := backend.get(context.Background(), testNamespace, "sh.helm.release.v1.myrel.v2")
 	require.ErrorIs(t, err, ErrReleaseNotFound)
+}
+
+func TestSQLStorageBackend_ListLatestCancelledDuringCallback(t *testing.T) {
+	backend, mock := newTestSQLBackend(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	rows := sqlmock.NewRows([]string{"key", "custom_labels"}).AddRow("a", "{}").AddRow("b", "{}")
+	mock.ExpectQuery(testSQLLatestSelect + testSQLLatestOrder).WithArgs("helm").WillReturnRows(rows).RowsWillBeClosed()
+	calls := 0
+	err := backend.listLatestWithBodies(ctx, "", nil, func(*storedObject) error {
+		calls++
+		cancel()
+
+		return nil
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Equal(t, 1, calls)
+}
+
+func TestSQLStorageBackend_ListLatestCloseError(t *testing.T) {
+	backend, mock := newTestSQLBackend(t)
+	sentinel := errors.New("close failed")
+	mock.ExpectQuery(testSQLLatestSelect + testSQLLatestOrder).WithArgs("helm").WillReturnRows(sqlmock.NewRows([]string{"key"}).CloseError(sentinel)).RowsWillBeClosed()
+	require.ErrorIs(t, backend.listLatestWithBodies(context.Background(), "", nil, func(*storedObject) error { return nil }), sentinel)
+}
+
+func TestSQLStorageBackend_ListLatestErrors(t *testing.T) {
+	sentinel := errors.New("failed")
+	for _, kind := range []string{"query", "scan", "labels", "iterate", "callback", "cancel"} {
+		t.Run(kind, func(t *testing.T) {
+			backend, mock := newTestSQLBackend(t)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			expectation := mock.ExpectQuery(testSQLLatestSelect + testSQLLatestOrder).WithArgs("helm")
+			rows := sqlmock.NewRows([]string{"key", "namespace", "version", "custom_labels"}).AddRow("a", "ns", 1, "{}")
+			switch kind {
+			case "query":
+				expectation.WillReturnError(sentinel)
+			case "scan":
+				expectation.WillReturnRows(sqlmock.NewRows([]string{"unknown"}).AddRow("bad")).RowsWillBeClosed()
+			case "labels":
+				expectation.WillReturnRows(sqlmock.NewRows([]string{"custom_labels"}).AddRow("bad")).RowsWillBeClosed()
+			case "iterate":
+				expectation.WillReturnRows(rows.RowError(0, sentinel)).RowsWillBeClosed()
+			case "cancel":
+				expectation.WillDelayFor(time.Second).WillReturnRows(rows)
+				time.AfterFunc(10*time.Millisecond, cancel)
+			default:
+				expectation.WillReturnRows(rows.AddRow("b", "ns", 1, "{}")).RowsWillBeClosed()
+			}
+			err := backend.listLatestWithBodies(ctx, "", nil, func(*storedObject) error { return sentinel })
+			require.Error(t, err)
+			if kind == "callback" || kind == "iterate" || kind == "query" {
+				require.ErrorIs(t, err, sentinel)
+			}
+			if kind == "cancel" {
+				require.ErrorIs(t, ctx.Err(), context.Canceled)
+			}
+		})
+	}
+}
+
+func TestSQLStorageBackend_ListLatestIntegerSelectors(t *testing.T) {
+	for _, tt := range []struct {
+		selector, column, operator string
+		threshold                  int64
+		custom                     bool
+	}{
+		{selector: "packageChecksum>10", column: "value", operator: ">", threshold: 10, custom: true},
+		{selector: "packageChecksum<10", column: "value", operator: "<", threshold: 10, custom: true},
+		{selector: "version>10", column: "version::text", operator: ">", threshold: 10, custom: false},
+		{selector: "createdAt<100", column: "createdAt::text", operator: "<", threshold: 100, custom: false},
+		{selector: "modifiedAt>0", column: "NULLIF(modifiedAt, 0)::text", operator: ">", threshold: 0, custom: false},
+		{selector: "name>9223372036854775807", column: "name", operator: ">", threshold: 9223372036854775807, custom: false},
+	} {
+		t.Run(tt.selector, func(t *testing.T) {
+			backend, mock := newTestSQLBackend(t)
+			selector, err := labels.Parse(tt.selector)
+			require.NoError(t, err)
+			requirements, _ := selector.Requirements()
+			number := "(CASE WHEN " + tt.column + " ~ '^[+-]?[0-9]+$' AND length(regexp_replace(" + tt.column + ", '^[+-]?0*', '')) <= 19 THEN (" + tt.column + ")::numeric END)"
+			placeholder := "$2"
+			args := []driver.Value{"helm", tt.threshold}
+			if tt.custom {
+				placeholder = "$3"
+				args = []driver.Value{"helm", "packageChecksum", tt.threshold}
+			}
+			predicate := number + " BETWEEN -9223372036854775808 AND 9223372036854775807 AND " + number + " " + tt.operator + " " + placeholder
+			if tt.custom {
+				predicate = "EXISTS (SELECT 1 FROM (SELECT value FROM custom_labels_v1 WHERE releaseKey = releases_v1.key AND releaseNamespace = releases_v1.namespace AND key = $2 ORDER BY ctid DESC LIMIT 1) AS label WHERE " + predicate + ")"
+			}
+			mock.ExpectQuery(testSQLLatestSelect + " AND " + predicate + testSQLLatestOrder).WithArgs(args...).WillReturnRows(sqlmock.NewRows([]string{"key"})).RowsWillBeClosed()
+			require.NoError(t, backend.listLatestWithBodies(context.Background(), "", selector, func(*storedObject) error {
+				t.Fatal("unexpected callback")
+
+				return nil
+			}))
+			for _, invalid := range []string{"text", "", "1.5", " 11", "9223372036854775808", "-9223372036854775809", "18446744073709551616"} {
+				assert.False(t, selector.Matches(labels.Set{requirements[0].Key(): invalid}))
+			}
+		})
+	}
+}
+
+func TestSQLStorageBackend_ListLatestMatchingRevision(t *testing.T) {
+	backend, mock := newTestSQLBackend(t)
+	selector, err := labels.Parse("packageChecksum,status=superseded")
+	require.NoError(t, err)
+	mock.ExpectQuery(testSQLLatestSelect+" AND namespace = $2 AND EXISTS (SELECT 1 FROM (SELECT value FROM custom_labels_v1 WHERE releaseKey = releases_v1.key AND releaseNamespace = releases_v1.namespace AND key = $3 ORDER BY ctid DESC LIMIT 1) AS label WHERE value IS NOT NULL) AND status IN ($4)"+testSQLLatestOrder).
+		WithArgs("helm", testNamespace, "packageChecksum", "superseded").
+		WillReturnRows(sqlmock.NewRows([]string{"key", "namespace", "name", "version", "status", "owner", "createdat", "modifiedat", "body", "custom_labels"}).
+			AddRow("sh.helm.release.v1.myrel.v1", testNamespace, "myrel", 1, "superseded", "helm", 100, 0, "selected-body", `{"packageChecksum":"old","packageChecksum":"matching"}`)).RowsWillBeClosed()
+	calls := 0
+	require.NoError(t, backend.listLatestWithBodies(context.Background(), testNamespace, selector, func(obj *storedObject) error {
+		calls++
+		assert.Equal(t, "1", obj.Labels["version"])
+		assert.Equal(t, "matching", obj.Labels["packageChecksum"])
+		assert.Equal(t, []byte("selected-body"), obj.Body)
+		assert.True(t, selector.Matches(labels.Set(obj.Labels)))
+
+		return nil
+	}))
+	assert.Equal(t, 1, calls)
+}
+
+func TestSQLStorageBackend_ListLatestNothing(t *testing.T) {
+	backend, mock := newTestSQLBackend(t)
+	mock.ExpectQuery(testSQLLatestSelect + " AND FALSE" + testSQLLatestOrder).WithArgs("helm").WillReturnRows(sqlmock.NewRows([]string{"key"}))
+	require.NoError(t, backend.listLatestWithBodies(context.Background(), "", labels.Nothing(), func(*storedObject) error {
+		t.Fatal("unexpected callback")
+
+		return nil
+	}))
+}
+
+func TestSQLStorageBackend_ListLatestSelector(t *testing.T) {
+	custom := "SELECT value FROM custom_labels_v1 WHERE releaseKey = releases_v1.key AND releaseNamespace = releases_v1.namespace AND key = $3 ORDER BY ctid DESC LIMIT 1"
+	tests := []struct {
+		selector, predicate string
+		args                []driver.Value
+	}{
+		{selector: "packageChecksum", predicate: "EXISTS (SELECT 1 FROM (" + custom + ") AS label WHERE value IS NOT NULL)", args: []driver.Value{"packageChecksum"}},
+		{selector: "!packageChecksum", predicate: "NOT EXISTS (SELECT 1 FROM (" + custom + ") AS label WHERE value IS NOT NULL)", args: []driver.Value{"packageChecksum"}},
+		{selector: "packageChecksum=abc", predicate: "EXISTS (SELECT 1 FROM (" + custom + ") AS label WHERE value IN ($4))", args: []driver.Value{"packageChecksum", "abc"}},
+		{selector: "packageChecksum==abc", predicate: "EXISTS (SELECT 1 FROM (" + custom + ") AS label WHERE value IN ($4))", args: []driver.Value{"packageChecksum", "abc"}},
+		{selector: "packageChecksum!=abc", predicate: "NOT EXISTS (SELECT 1 FROM (" + custom + ") AS label WHERE value IN ($4))", args: []driver.Value{"packageChecksum", "abc"}},
+		{selector: "packageChecksum in (abc,def)", predicate: "EXISTS (SELECT 1 FROM (" + custom + ") AS label WHERE value IN ($4,$5))", args: []driver.Value{"packageChecksum", "abc", "def"}},
+		{selector: "packageChecksum notin (abc,def)", predicate: "NOT EXISTS (SELECT 1 FROM (" + custom + ") AS label WHERE value IN ($4,$5))", args: []driver.Value{"packageChecksum", "abc", "def"}},
+		{selector: "status=deployed", predicate: "status IN ($3)", args: []driver.Value{"deployed"}},
+		{selector: "name=a", predicate: "name IN ($3)", args: []driver.Value{"a"}},
+		{selector: "owner=helm", predicate: "owner IN ($3)", args: []driver.Value{"helm"}},
+		{selector: "version=01", predicate: "version::text IN ($3)", args: []driver.Value{"01"}},
+		{selector: "createdAt=0100", predicate: "createdAt::text IN ($3)", args: []driver.Value{"0100"}},
+		{selector: "modifiedAt=0", predicate: "NULLIF(modifiedAt, 0)::text IN ($3)", args: []driver.Value{"0"}},
+		{selector: "modifiedAt!=0", predicate: "(NULLIF(modifiedAt, 0)::text IS NULL OR NULLIF(modifiedAt, 0)::text NOT IN ($3))", args: []driver.Value{"0"}},
+		{selector: "modifiedAt", predicate: "NULLIF(modifiedAt, 0)::text IS NOT NULL", args: nil},
+		{selector: "!modifiedAt", predicate: "NULLIF(modifiedAt, 0)::text IS NULL", args: nil},
+		{selector: "!version", predicate: "version::text IS NULL", args: nil},
+		{selector: "version", predicate: "version::text IS NOT NULL", args: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.selector, func(t *testing.T) {
+			backend, mock := newTestSQLBackend(t)
+			selector, err := labels.Parse(tt.selector)
+			require.NoError(t, err)
+			args := append([]driver.Value{"helm", testNamespace}, tt.args...)
+			mock.ExpectQuery(testSQLLatestSelect + " AND namespace = $2 AND " + tt.predicate + testSQLLatestOrder).WithArgs(args...).WillReturnRows(sqlmock.NewRows([]string{"key"})).RowsWillBeClosed()
+			require.NoError(t, backend.listLatestWithBodies(context.Background(), testNamespace, selector, func(*storedObject) error {
+				t.Fatal("unexpected callback")
+
+				return nil
+			}))
+		})
+	}
+}
+
+func TestSQLStorageBackend_ListLatestWithBodies(t *testing.T) {
+	backend, mock := newTestSQLBackend(t)
+	backend.db.SetMaxOpenConns(1)
+	mock.ExpectQuery(testSQLLatestSelect + testSQLLatestOrder).WithArgs("helm").WillReturnRows(
+		sqlmock.NewRows([]string{"key", "namespace", "name", "version", "status", "owner", "createdat", "modifiedat", "body", "custom_labels"}).
+			AddRow("same-key", "ns-1", "a", 2, "deployed", "helm", 100, 0, "first", `{"packageChecksum":"one","status":"bogus","modifiedAt":"bogus"}`).
+			AddRow("same-key", "ns-2", "a", 2, "deployed", "helm", 100, 200, "second", `{"packageChecksum":"two"}`)).RowsWillBeClosed()
+	var objects []*storedObject
+	require.NoError(t, backend.listLatestWithBodies(context.Background(), "", nil, func(obj *storedObject) error {
+		objects = append(objects, obj)
+
+		return nil
+	}))
+	require.Len(t, objects, 2)
+	assert.Equal(t, "ns-1", objects[0].Namespace)
+	assert.Equal(t, "one", objects[0].Labels["packageChecksum"])
+	assert.Equal(t, "deployed", objects[0].Labels["status"])
+	assert.NotContains(t, objects[0].Labels, "modifiedAt")
+	assert.Equal(t, []byte("first"), objects[0].Body)
+	assert.Equal(t, "ns-2", objects[1].Namespace)
+	assert.Equal(t, "two", objects[1].Labels["packageChecksum"])
+	assert.Equal(t, "200", objects[1].Labels["modifiedAt"])
 }
 
 func TestSQLStorageBackend_ListMetadataReadsNoBodies(t *testing.T) {
