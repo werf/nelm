@@ -260,54 +260,70 @@ func (b *sqlStorageBackend) listLatestWithBodies(ctx context.Context, namespace 
 		if !selectable {
 			builder = builder.Where("FALSE")
 		}
+
 		for _, requirement := range requirements {
 			predicate, err := sqlLabelRequirement(requirement)
 			if err != nil {
 				return fmt.Errorf("build release label selector: %w", err)
 			}
+
 			builder = builder.Where(predicate)
 		}
 	}
+
 	query, args, err := b.statementBuilder.Select("releases_v1.*", "COALESCE((SELECT json_object_agg(c.key, c.value ORDER BY c.ctid)::text FROM custom_labels_v1 c WHERE c.releaseKey = releases_v1.key AND c.releaseNamespace = releases_v1.namespace), '{}') AS custom_labels").FromSelect(builder, sqlReleaseTable).ToSql()
 	if err != nil {
 		return fmt.Errorf("build select latest releases query: %w", err)
 	}
+
 	rows, err := b.db.QueryxContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("select latest releases: %w", err)
 	}
 	defer rows.Close()
+
 	for rows.Next() {
 		if err := ctx.Err(); err != nil {
-			return err
+			return fmt.Errorf("read release objects: %w", err)
 		}
+
 		var record struct {
 			sqlReleaseRecord
+
 			CustomLabels string `db:"custom_labels"`
 		}
 		if err := rows.StructScan(&record); err != nil {
 			return fmt.Errorf("scan release: %w", err)
 		}
+
 		var customLabels map[string]string
 		if err := json.Unmarshal([]byte(record.CustomLabels), &customLabels); err != nil {
 			return fmt.Errorf("decode custom labels of release %q (namespace: %q): %w", record.Key, record.Namespace, err)
 		}
+
 		obj := storedObjectFromSQLRecord(&record.sqlReleaseRecord)
 		for key, value := range withoutSystemLabels(customLabels) {
 			obj.Labels[key] = value
 		}
+
 		if err := fn(obj); err != nil {
 			return err
 		}
 	}
+
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("iterate releases: %w", err)
 	}
+
 	if err := rows.Close(); err != nil {
 		return fmt.Errorf("close releases: %w", err)
 	}
 
-	return ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("read release objects: %w", err)
+	}
+
+	return nil
 }
 
 func (b *sqlStorageBackend) listMetadata(ctx context.Context, namespace, releaseName string) ([]*storedObject, error) {
@@ -714,12 +730,16 @@ func sqlLabelRequirement(requirement labels.Requirement) (sq.Sqlizer, error) {
 	case storageLabelModifiedAt:
 		column = "NULLIF(" + sqlReleaseModifiedAtColumn + ", 0)::text"
 	}
+
 	custom := column == ""
 	if custom {
 		column = "value"
 	}
+
 	values := requirement.Values().List()
+
 	var predicate sq.Sqlizer
+
 	negate := false
 	switch requirement.Operator() {
 	case selection.Equals, selection.DoubleEquals, selection.In:
@@ -745,21 +765,26 @@ func sqlLabelRequirement(requirement labels.Requirement) (sq.Sqlizer, error) {
 		if err != nil {
 			return nil, fmt.Errorf("label %q requires an integer comparison value: %w", requirement.Key(), err)
 		}
+
 		operator := ">"
 		if requirement.Operator() == selection.LessThan {
 			operator = "<"
 		}
+
 		number := "(CASE WHEN " + column + " ~ '^[+-]??[0-9]+$' AND length(regexp_replace(" + column + ", '^[+-]??0*', '')) <= 19 THEN (" + column + ")::numeric END)"
 		predicate = sq.Expr(number+" BETWEEN -9223372036854775808 AND 9223372036854775807 AND "+number+" "+operator+" ?", value)
 	default:
 		return nil, fmt.Errorf("unsupported operator %q for label %q; use equality, set, existence, or integer comparisons", requirement.Operator(), requirement.Key())
 	}
+
 	if !custom {
 		return predicate, nil
 	}
+
 	label := sq.Select(sqlCustomLabelsValueColumn).From(sqlCustomLabelsTable).
 		Where("releaseKey = releases_v1.key AND releaseNamespace = releases_v1.namespace").
 		Where(sq.Eq{sqlCustomLabelsKeyColumn: requirement.Key()}).OrderBy("ctid DESC").Limit(1)
+
 	match := sq.Select("1").FromSelect(label, "label").Where(predicate)
 	if negate {
 		return sq.Expr("NOT EXISTS (?)", match), nil
