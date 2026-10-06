@@ -52,6 +52,7 @@ type infoJSON struct {
 	Status        common.Status               `json:"status,omitempty"`
 	Notes         string                      `json:"notes,omitempty"`
 	Resources     map[string][]runtime.Object `json:"resources,omitempty"`
+	Annotations   map[string]string           `json:"annotations,omitempty"`
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
@@ -98,6 +99,7 @@ func (i *Info) UnmarshalJSON(data []byte) error {
 	i.Status = tmp.Status
 	i.Notes = tmp.Notes
 	i.Resources = tmp.Resources
+	i.Annotations = tmp.Annotations
 
 	return nil
 }
@@ -110,6 +112,7 @@ func (i Info) MarshalJSON() ([]byte, error) {
 		Status:      i.Status,
 		Notes:       i.Notes,
 		Resources:   i.Resources,
+		Annotations: i.Annotations,
 	}
 
 	if !i.FirstDeployed.IsZero() {

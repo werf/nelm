@@ -50,6 +50,21 @@ func TestInfoMarshalJSON(t *testing.T) {
 			expected: `{"first_deployed":"2025-10-08T12:00:00Z","last_deployed":"2025-10-08T13:00:00Z","deleted":"2025-10-08T14:00:00Z","description":"Test release","status":"deployed","notes":"Test notes"}`,
 		},
 		{
+			name:     "annotations",
+			info:     Info{Annotations: map[string]string{"packages.deckhouse.io/managed-by": "deckhouse", "checksum": "123"}},
+			expected: `{"annotations":{"packages.deckhouse.io/managed-by":"deckhouse","checksum":"123"}}`,
+		},
+		{
+			name:     "nil annotations omitted",
+			info:     Info{},
+			expected: `{}`,
+		},
+		{
+			name:     "empty annotations omitted",
+			info:     Info{Annotations: map[string]string{}},
+			expected: `{}`,
+		},
+		{
 			name: "only required fields",
 			info: Info{
 				FirstDeployed: now,
@@ -120,6 +135,31 @@ func TestInfoUnmarshalJSON(t *testing.T) {
 				Status:        common.StatusDeployed,
 				Notes:         "Test notes",
 			},
+		},
+		{
+			name:     "annotations",
+			input:    `{"annotations":{"packages.deckhouse.io/managed-by":"deckhouse","checksum":"123"}}`,
+			expected: Info{Annotations: map[string]string{"packages.deckhouse.io/managed-by": "deckhouse", "checksum": "123"}},
+		},
+		{
+			name:     "annotations with empty time fields",
+			input:    `{"first_deployed":"","last_deployed":"","annotations":{"key":"value"}}`,
+			expected: Info{Annotations: map[string]string{"key": "value"}},
+		},
+		{
+			name:     "null annotations",
+			input:    `{"annotations":null}`,
+			expected: Info{},
+		},
+		{
+			name:     "empty annotations",
+			input:    `{"annotations":{}}`,
+			expected: Info{Annotations: map[string]string{}},
+		},
+		{
+			name:    "invalid annotation value",
+			input:   `{"annotations":{"key":1}}`,
+			wantErr: true,
 		},
 		{
 			name:  "only required fields",
@@ -221,6 +261,7 @@ func TestInfoUnmarshalJSON(t *testing.T) {
 			assert.Equal(t, tt.expected.Status, info.Status)
 			assert.Equal(t, tt.expected.Notes, info.Notes)
 			assert.Equal(t, tt.expected.Resources, info.Resources)
+			assert.Equal(t, tt.expected.Annotations, info.Annotations)
 		})
 	}
 }
@@ -235,6 +276,7 @@ func TestInfoRoundTrip(t *testing.T) {
 		Description:   "Test release",
 		Status:        common.StatusDeployed,
 		Notes:         "Release notes",
+		Annotations:   map[string]string{"packages.deckhouse.io/managed-by": "deckhouse"},
 	}
 
 	data, err := json.Marshal(&original)
@@ -250,6 +292,7 @@ func TestInfoRoundTrip(t *testing.T) {
 	assert.Equal(t, original.Description, decoded.Description)
 	assert.Equal(t, original.Status, decoded.Status)
 	assert.Equal(t, original.Notes, decoded.Notes)
+	assert.Equal(t, original.Annotations, decoded.Annotations)
 }
 
 func TestInfoEmptyStringRoundTrip(t *testing.T) {

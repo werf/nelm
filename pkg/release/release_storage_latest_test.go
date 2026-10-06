@@ -20,6 +20,31 @@ import (
 	helmreleasecommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 )
 
+func TestReleaseStorage_AnnotationsSurviveStorageAndListing(t *testing.T) {
+	ctx := context.Background()
+	s := newTestKubeStorage(t, kubeStorageKindSecret, "ns", 0)
+	rls := newTestRelease("ns", "myrel", 1, helmreleasecommon.StatusDeployed)
+	rls.Info.Annotations = map[string]string{"packages.deckhouse.io/managed-by": "deckhouse"}
+	acc, err := helmrel.NewAccessor(rls)
+	require.NoError(t, err)
+	require.NoError(t, s.storage.Create(ctx, acc))
+
+	loaded, err := s.storage.GetRelease(ctx, "myrel", 1)
+	require.NoError(t, err)
+	assert.Equal(t, rls.Info.Annotations, loaded.Annotations())
+
+	var calls int
+	require.NoError(t, s.storage.ForEachLatestRelease(ctx, func(_ Revision, rel helmrel.Accessor, err error) error {
+		require.NoError(t, err)
+		assert.Equal(t, rls.Info.Annotations, rel.Annotations())
+
+		calls++
+
+		return nil
+	}, ForEachLatestReleaseOptions{}))
+	assert.Equal(t, 1, calls)
+}
+
 func TestReleaseStorage_ForEachLatestReleaseCallbackAndBackendErrors(t *testing.T) {
 	callbackErr := errors.New("callback error")
 	backend := &latestListingBackend{objects: []*storedObject{newTestStoredObject(t, newTestRelease("ns", "myrel", 1, helmreleasecommon.StatusDeployed))}}
