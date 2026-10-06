@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/samber/lo"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/metadata"
 
 	"github.com/werf/nelm/v2/pkg/common"
@@ -35,7 +36,7 @@ var (
 
 // ReleaseStorager reads and writes release revisions in the Helm storage format. Methods
 // taking a release name operate in the namespace the storage was constructed for and fail
-// when it is empty; LatestRevisions and LoadRevision also work cluster-wide. A storage object
+// when it is empty; LatestRevisions, LoadRevision and ForEachLatestRelease also work cluster-wide. A storage object
 // whose version label does not parse is reported and skipped by the reads, while Revisions,
 // which revision numbering and pruning rely on, fails on it.
 type ReleaseStorager interface {
@@ -53,6 +54,11 @@ type ReleaseStorager interface {
 	// LatestRevisions returns the newest revision of every release, without reading their
 	// bodies.
 	LatestRevisions(ctx context.Context) ([]Revision, error)
+	// ForEachLatestRelease reads matching revision bodies and passes their latest decoded
+	// releases to fn without retaining bodies. A later call for the same namespace/name
+	// supersedes an earlier call. Undecodable bodies are passed as nil with
+	// ErrReleaseUndecodable; errors returned by fn stop the read and are returned as is.
+	ForEachLatestRelease(ctx context.Context, fn func(revision Revision, rel helmrel.Accessor, err error) error, opts ForEachLatestReleaseOptions) error
 	// ForEachRelease reads the revisions of a release together with their bodies, one at a
 	// time. A body that cannot be decoded is passed to fn as a nil release and an
 	// ErrReleaseUndecodable error instead of failing the whole read. An error returned by fn
@@ -69,9 +75,16 @@ type storageBackend interface {
 	// listMetadata reads the objects owned by Helm without their bodies. An empty namespace
 	// means all namespaces, an empty releaseName means all releases.
 	listMetadata(ctx context.Context, namespace, releaseName string) ([]*storedObject, error)
+	listLatestWithBodies(ctx context.Context, namespace string, selector labels.Selector, fn func(obj *storedObject) error) error
 	// listWithBodies reads the objects owned by Helm together with their bodies; non-nil
 	// versions restrict the read to the revisions with these versions.
 	listWithBodies(ctx context.Context, namespace, releaseName string, versions []int, fn func(obj *storedObject) error) error
+}
+
+type ForEachLatestReleaseOptions struct {
+	// LabelSelector uses Kubernetes label selector syntax and filters storage objects
+	// before selecting the latest matching revision. Empty matches every Helm revision.
+	LabelSelector string
 }
 
 type ForEachReleaseOptions struct {
@@ -140,6 +153,95 @@ func (s *releaseStorage) Delete(ctx context.Context, name string, version int) e
 	}
 
 	return nil
+}
+
+func (s *releaseStorage) ForEachLatestRelease(ctx context.Context, fn func(revision Revision, rel helmrel.Accessor, err error) error, opts ForEachLatestReleaseOptions) error {
+	selector, err := labels.Parse(opts.LabelSelector)
+	if err != nil {
+		return fmt.Errorf("parse release label selector: %w", err)
+	}
+
+	completed := map[string]int{}
+
+	var (
+		candidate         *storedObject
+		candidateRevision Revision
+		fnErr             error
+	)
+
+	emit := func() error {
+		if candidate == nil {
+			return nil
+		}
+
+		obj, revision := candidate, candidateRevision
+		candidate = nil
+		completed[revision.Namespace+"/"+revision.Name] = revision.Version
+
+		rls, decodeErr := decodeStoredObject(obj)
+		if decodeErr == nil && rls.Info == nil {
+			decodeErr = fmt.Errorf("%w: object %q (namespace: %q): release info is required", ErrReleaseUndecodable, obj.Key, obj.Namespace)
+		}
+
+		var acc helmrel.Accessor
+		if decodeErr == nil {
+			accessor, err := helmrel.NewAccessor(rls)
+			if err != nil {
+				return fmt.Errorf("wrap release: %w", err)
+			}
+
+			acc = accessor
+		}
+
+		fnErr = fn(revision, acc, decodeErr)
+
+		return fnErr
+	}
+
+	if err := s.backend.listLatestWithBodies(ctx, s.namespace, selector, func(obj *storedObject) error {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("read release objects: %w", err)
+		}
+		revision, ok, err := revisionFromStoredObject(obj)
+		if err != nil {
+			log.Default.Error(ctx, "Skipped storage object: %s", err)
+
+			return nil
+		}
+		if !ok {
+			return nil
+		}
+
+		id := revision.Namespace + "/" + revision.Name
+		if candidate != nil && id != candidateRevision.Namespace+"/"+candidateRevision.Name {
+			if err := emit(); err != nil {
+				return err
+			}
+		}
+
+		// Storage order only saves decoding work; a repeated group can supersede its
+		// earlier projection, but an older revision must never replace a newer one.
+		if version, found := completed[id]; found && revision.Version <= version {
+			return nil
+		}
+		if candidate == nil || revision.Version > candidateRevision.Version {
+			candidate, candidateRevision = obj, revision
+		}
+
+		return nil
+	}); err != nil {
+		if fnErr != nil {
+			return fnErr
+		}
+
+		return fmt.Errorf("list latest release objects: %w", err)
+	}
+
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("read release objects: %w", err)
+	}
+
+	return emit()
 }
 
 func (s *releaseStorage) ForEachRelease(ctx context.Context, name string, fn func(revision Revision, rel helmrel.Accessor, err error) error, opts ForEachReleaseOptions) error {

@@ -27,6 +27,10 @@ func (s *stubStorager) Delete(ctx context.Context, name string, version int) err
 	return s.deleteErr
 }
 
+func (s *stubStorager) ForEachLatestRelease(ctx context.Context, fn func(revision Revision, rel helmrel.Accessor, err error) error, opts ForEachLatestReleaseOptions) error {
+	return nil
+}
+
 func (s *stubStorager) ForEachRelease(ctx context.Context, name string, fn func(revision Revision, rel helmrel.Accessor, err error) error, opts ForEachReleaseOptions) error {
 	return nil
 }

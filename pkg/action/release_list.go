@@ -6,17 +6,20 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/goccy/go-yaml"
 	"github.com/gookit/color"
 	prtable "github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
-	"github.com/sourcegraph/conc/pool"
+	"github.com/samber/lo"
+	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/werf/nelm/v2/pkg/common"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/log"
@@ -31,8 +34,7 @@ const (
 type ReleaseListOptions struct {
 	common.KubeConnectionOptions
 
-	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
-	// Defaults to DefaultNetworkParallelism if not set or <= 0.
+	// NetworkParallelism is retained for compatibility and is not used by release listing.
 	NetworkParallelism int
 	// OutputFormat specifies the output format for the release list.
 	// Valid values: "table" (default), "yaml", "json".
@@ -41,8 +43,11 @@ type ReleaseListOptions struct {
 	// OutputNoPrint, when true, suppresses printing the output and only returns the result data structure.
 	// Useful when calling this programmatically.
 	OutputNoPrint bool
+	// ReleaseLabelSelector filters storage objects using Kubernetes label selector syntax.
+	// The result contains the latest matching revision, not necessarily the latest overall.
+	ReleaseLabelSelector string
 	// ReleaseNamespace specifies the namespace to list releases from.
-	// If empty, uses the namespace from kubeconfig context.
+	// If empty, lists all namespaces.
 	ReleaseNamespace string
 	// ReleaseStorageDriver specifies how release metadata is stored in Kubernetes.
 	// Valid values: "secret" (default), "configmap", "sql".
@@ -56,61 +61,19 @@ type ReleaseListOptions struct {
 	TempDirPath string
 }
 
-// ReleaseListResult holds the latest revision of every release. Only the revision metadata is
-// read; the details stored in a revision's body are fetched with ReleaseListResultRelease.Load.
-type ReleaseListResult struct {
-	Releases []*ReleaseListResultRelease
+type ReleaseListResultV1 struct {
+	APIVersion string                      `json:"apiVersion"`
+	Releases   []*ReleaseListResultRelease `json:"releases"`
 }
 
 type ReleaseListResultRelease struct {
-	Name      string
-	Namespace string
-	Revision  int
-	Status    helmreleasestatus.Status
-
-	storage release.ReleaseStorager
-}
-
-// Load fetches and decodes the body of the revision. A body that cannot be decoded is
-// reported as release.ErrReleaseUndecodable.
-func (r *ReleaseListResultRelease) Load(ctx context.Context) (*ReleaseListResultReleaseDetails, error) {
-	rel, err := r.storage.LoadRevision(ctx, release.Revision{
-		Name:      r.Name,
-		Namespace: r.Namespace,
-		Status:    string(r.Status),
-		Version:   r.Revision,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("load release %q (namespace: %q, revision: %d): %w", r.Name, r.Namespace, r.Revision, err)
-	}
-
-	chartAccessor, err := helmchart.NewAccessor(rel.Chart())
-	if err != nil {
-		return nil, fmt.Errorf("construct chart accessor: %w", err)
-	}
-
-	chartMetadata := chartAccessor.MetadataAsMap()
-	chartVersion, _ := chartMetadata["Version"].(string)
-	chartAppVersion, _ := chartMetadata["AppVersion"].(string)
-
-	return &ReleaseListResultReleaseDetails{
-		Annotations: rel.Annotations(),
-		Chart: &ReleaseListResultChart{
-			Name:       chartAccessor.Name(),
-			Version:    chartVersion,
-			AppVersion: chartAppVersion,
-		},
-		DeployedAt: &ReleaseListResultDeployedAt{
-			Human: rel.DeployedAt().String(),
-			Unix:  int(rel.DeployedAt().Unix()),
-		},
-	}, nil
-}
-
-type ReleaseListResultReleaseDetails struct {
-	Annotations map[string]string
-	Chart       *ReleaseListResultChart
-	DeployedAt  *ReleaseListResultDeployedAt
+	Name        string                       `json:"name"`
+	Namespace   string                       `json:"namespace"`
+	Revision    int                          `json:"revision"`
+	Status      helmreleasestatus.Status     `json:"status"`
+	DeployedAt  *ReleaseListResultDeployedAt `json:"deployedAt"`
+	Annotations map[string]string            `json:"annotations"`
+	Chart       *ReleaseListResultChart      `json:"chart"`
 }
 
 type ReleaseListResultDeployedAt struct {
@@ -124,22 +87,7 @@ type ReleaseListResultChart struct {
 	AppVersion string `json:"appVersion"`
 }
 
-type releaseListOutput struct {
-	APIVersion string                      `json:"apiVersion"`
-	Releases   []*releaseListOutputRelease `json:"releases"`
-}
-
-type releaseListOutputRelease struct {
-	Name        string                       `json:"name"`
-	Namespace   string                       `json:"namespace"`
-	Revision    int                          `json:"revision"`
-	Status      helmreleasestatus.Status     `json:"status"`
-	DeployedAt  *ReleaseListResultDeployedAt `json:"deployedAt"`
-	Annotations map[string]string            `json:"annotations"`
-	Chart       *ReleaseListResultChart      `json:"chart"`
-}
-
-func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResult, error) {
+func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResultV1, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("get home directory: %w", err)
@@ -174,20 +122,9 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 
 	log.Default.Info(ctx, "List releases")
 
-	revisions, err := releaseStorage.LatestRevisions(ctx)
+	result, err := buildReleaseListResult(ctx, releaseStorage, opts.ReleaseLabelSelector)
 	if err != nil {
-		return nil, fmt.Errorf("list latest release revisions: %w", err)
-	}
-
-	result := &ReleaseListResult{}
-	for _, revision := range revisions {
-		result.Releases = append(result.Releases, &ReleaseListResultRelease{
-			Name:      revision.Name,
-			Namespace: revision.Namespace,
-			Revision:  revision.Version,
-			Status:    helmreleasestatus.Status(revision.Status),
-			storage:   releaseStorage,
-		})
+		return nil, fmt.Errorf("list latest releases: %w", err)
 	}
 
 	if opts.OutputNoPrint {
@@ -201,20 +138,15 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 		table := buildReleaseListOutputTable(ctx, result, opts.ReleaseNamespace != "")
 		resultMessage = table.Render() + "\n"
 	case common.OutputFormatJSON, common.OutputFormatYAML:
-		output, err := buildReleaseListOutput(ctx, result, opts.NetworkParallelism)
-		if err != nil {
-			return nil, fmt.Errorf("build release list output: %w", err)
-		}
-
 		if opts.OutputFormat == common.OutputFormatJSON {
-			b, err := json.MarshalIndent(output, "", strings.Repeat(" ", 2))
+			b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
 			if err != nil {
 				return nil, fmt.Errorf("marshal result to json: %w", err)
 			}
 
 			resultMessage = string(b) + "\n"
 		} else {
-			b, err := yaml.MarshalContext(ctx, output, yaml.UseLiteralStyleIfMultiline(true))
+			b, err := yaml.MarshalContext(ctx, result, yaml.UseLiteralStyleIfMultiline(true))
 			if err != nil {
 				return nil, fmt.Errorf("marshal result to yaml: %w", err)
 			}
@@ -237,7 +169,7 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 	return result, nil
 }
 
-func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResult, namespaced bool) prtable.Writer {
+func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV1, namespaced bool) prtable.Writer {
 	table := prtable.NewWriter()
 	setReleaseListOutputTableStyle(ctx, table)
 
@@ -279,6 +211,10 @@ func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResult,
 }
 
 func applyReleaseListOptionsDefaults(opts ReleaseListOptions, homeDir string) (ReleaseListOptions, error) {
+	if _, err := labels.Parse(opts.ReleaseLabelSelector); err != nil {
+		return ReleaseListOptions{}, fmt.Errorf("parse release label selector: %w", err)
+	}
+
 	var err error
 	if opts.TempDirPath == "" {
 		opts.TempDirPath, err = os.MkdirTemp("", "")
@@ -304,60 +240,80 @@ func applyReleaseListOptionsDefaults(opts ReleaseListOptions, homeDir string) (R
 	return opts, nil
 }
 
-// buildReleaseListOutput loads the release bodies concurrently, keeping only the fields the
-// output needs from each one. A release removed after it was listed is left out.
-func buildReleaseListOutput(ctx context.Context, result *ReleaseListResult, networkParallelism int) (*releaseListOutput, error) {
-	loaded := make([]*releaseListOutputRelease, len(result.Releases))
+func buildReleaseListResult(ctx context.Context, storage release.ReleaseStorager, selector string) (*ReleaseListResultV1, error) {
+	latest := map[string]*ReleaseListResultRelease{}
+	readErrors := map[string]error{}
 
-	loadPool := pool.New().WithContext(ctx).WithMaxGoroutines(networkParallelism).WithCancelOnError().WithFirstError()
-	for i, rel := range result.Releases {
-		loadPool.Go(func(ctx context.Context) error {
-			outputRelease := &releaseListOutputRelease{
-				Name:      rel.Name,
-				Namespace: rel.Namespace,
-				Revision:  rel.Revision,
-				Status:    rel.Status,
-			}
-
-			details, err := rel.Load(ctx)
-			if err != nil {
-				switch {
-				case errors.Is(err, release.ErrReleaseNotFound):
-					log.Default.Warn(ctx, "Left out release %q (namespace: %q): its revision %d was removed after listing", rel.Name, rel.Namespace, rel.Revision)
-
-					return nil
-				case errors.Is(err, release.ErrReleaseUndecodable):
-					log.Default.Error(ctx, "Showing release %q (namespace: %q) without its details: %s", rel.Name, rel.Namespace, err)
-				default:
-					return err
-				}
-			} else {
-				outputRelease.Annotations = details.Annotations
-				outputRelease.Chart = details.Chart
-				outputRelease.DeployedAt = details.DeployedAt
-			}
-
-			loaded[i] = outputRelease
+	if err := storage.ForEachLatestRelease(ctx, func(revision release.Revision, rel helmrel.Accessor, readErr error) error {
+		id := revision.Namespace + "/" + revision.Name
+		if current, found := latest[id]; found && current.Revision >= revision.Version {
+			return nil
+		}
+		entry := &ReleaseListResultRelease{
+			Name: revision.Name, Namespace: revision.Namespace, Revision: revision.Version,
+			Status: helmreleasestatus.Status(revision.Status),
+		}
+		latest[id] = entry
+		delete(readErrors, id)
+		if readErr != nil {
+			readErrors[id] = readErr
 
 			return nil
-		})
+		}
+
+		if lo.IsNil(rel.Chart()) {
+			readErrors[id] = errors.New("chart is required")
+
+			return nil
+		}
+
+		chartAccessor, err := helmchart.NewAccessor(rel.Chart())
+		if err != nil {
+			readErrors[id] = fmt.Errorf("construct chart accessor: %w", err)
+
+			return nil
+		}
+		metadata := chartAccessor.MetadataAsMap()
+		if metadata == nil {
+			readErrors[id] = errors.New("chart metadata is required")
+
+			return nil
+		}
+		version, _ := metadata["Version"].(string)
+		appVersion, _ := metadata["AppVersion"].(string)
+		entry.Annotations = rel.Annotations()
+		entry.Chart = &ReleaseListResultChart{AppVersion: appVersion, Name: chartAccessor.Name(), Version: version}
+		entry.DeployedAt = &ReleaseListResultDeployedAt{Human: rel.DeployedAt().String(), Unix: int(rel.DeployedAt().Unix())}
+
+		return nil
+	}, release.ForEachLatestReleaseOptions{LabelSelector: selector}); err != nil {
+		return nil, fmt.Errorf("read release list: %w", err)
 	}
 
-	if err := loadPool.Wait(); err != nil {
-		return nil, fmt.Errorf("load releases: %w", err)
+	result := &ReleaseListResultV1{APIVersion: "v1"}
+	for _, entry := range latest {
+		result.Releases = append(result.Releases, entry)
 	}
 
-	output := &releaseListOutput{
-		APIVersion: "v1",
-	}
+	sort.Slice(result.Releases, func(i, j int) bool {
+		if result.Releases[i].Namespace != result.Releases[j].Namespace {
+			return result.Releases[i].Namespace < result.Releases[j].Namespace
+		}
 
-	for _, outputRelease := range loaded {
-		if outputRelease != nil {
-			output.Releases = append(output.Releases, outputRelease)
+		return result.Releases[i].Name < result.Releases[j].Name
+	})
+
+	for _, entry := range result.Releases {
+		if err := readErrors[entry.Namespace+"/"+entry.Name]; err != nil {
+			if !errors.Is(err, release.ErrReleaseUndecodable) {
+				return nil, fmt.Errorf("read details of release %q (namespace: %q): %w", entry.Name, entry.Namespace, err)
+			}
+
+			log.Default.Error(ctx, "Showing release %q (namespace: %q, revision: %d) without its details: %s", entry.Name, entry.Namespace, entry.Revision, err)
 		}
 	}
 
-	return output, nil
+	return result, nil
 }
 
 func setReleaseListOutputTableStyle(ctx context.Context, table prtable.Writer) {
