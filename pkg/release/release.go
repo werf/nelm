@@ -258,8 +258,9 @@ func NewRelease(name, namespace string, revision int, deployType common.DeployTy
 		releaser = &v2release.Release{
 			Name: name,
 			Info: &v2release.Info{
-				Status: status,
-				Notes:  opts.Notes,
+				Status:      status,
+				Notes:       opts.Notes,
+				Annotations: opts.InfoAnnotations,
 			},
 			Chart:            chartObj,
 			Config:           releaseConfig,
