@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	metadatafake "k8s.io/client-go/metadata/fake"
 	k8stesting "k8s.io/client-go/testing"
@@ -48,6 +49,45 @@ func newTestKubeStorage(t *testing.T, kind kubeStorageKind, namespace string, hi
 		metadataClient: metadataClient,
 		storage:        newReleaseStorage(namespace, backend, historyLimit),
 	}
+}
+
+type latestListingBackend struct {
+	storageBackend
+
+	err      error
+	generate func(fn func(*storedObject) error) error
+	listings int
+	objects  []*storedObject
+	selector labels.Selector
+}
+
+func (b *latestListingBackend) listLatestWithBodies(ctx context.Context, namespace string, selector labels.Selector, fn func(*storedObject) error) error {
+	b.listings++
+
+	b.selector = selector
+	if b.err != nil {
+		return b.err
+	}
+
+	if b.generate != nil {
+		return b.generate(fn)
+	}
+
+	for _, obj := range b.objects {
+		if namespace != "" && obj.Namespace != namespace {
+			continue
+		}
+
+		if obj.Labels[storageLabelOwner] != storageOwner || !selector.Matches(labels.Set(obj.Labels)) {
+			continue
+		}
+
+		if err := fn(obj); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func newTestReleaseAccessor(t *testing.T, name string, version int, status helmreleasecommon.Status) helmrel.Accessor {
@@ -189,4 +229,60 @@ func putTestKubeObject(t *testing.T, s *testKubeStorage, obj *storedObject) {
 
 	s.client.ClearActions()
 	s.metadataClient.ClearActions()
+}
+
+func testLatestBodySelectors(t *testing.T, create func(*storedObject), list func(context.Context, string, labels.Selector, func(*storedObject) error) error) {
+	t.Helper()
+
+	for _, obj := range []*storedObject{
+		{Namespace: "ns-a", Key: "a-v1", Labels: map[string]string{"owner": "helm", "name": "a", "version": "1", "packageChecksum": "old"}, Body: []byte("a-v1")},
+		{Namespace: "ns-a", Key: "a-v2", Labels: map[string]string{"owner": "helm", "name": "a", "version": "2", "packageChecksum": "new"}, Body: []byte("a-v2")},
+		{Namespace: "ns-b", Key: "b-v1", Labels: map[string]string{"owner": "helm", "name": "b", "version": "1"}, Body: []byte("b-v1")},
+		{Namespace: "ns-a", Key: "foreign", Labels: map[string]string{"owner": "other", "packageChecksum": "old"}, Body: []byte("foreign")},
+		{Namespace: "ns-a", Key: "unowned", Labels: map[string]string{"packageChecksum": "old"}, Body: []byte("unowned")},
+	} {
+		create(obj)
+	}
+
+	for _, tt := range []struct {
+		name      string
+		namespace string
+		selector  string
+		keys      []string
+	}{
+		{name: "all candidates", keys: []string{"ns-a/a-v1", "ns-a/a-v2", "ns-b/b-v1"}},
+		{name: "exists", selector: "packageChecksum", keys: []string{"ns-a/a-v1", "ns-a/a-v2"}},
+		{name: "equality before maximum", selector: "packageChecksum=old", keys: []string{"ns-a/a-v1"}},
+		{name: "set", selector: "packageChecksum in (old,new)", keys: []string{"ns-a/a-v1", "ns-a/a-v2"}},
+		{name: "missing notin", selector: "packageChecksum notin (old,new)", keys: []string{"ns-b/b-v1"}},
+		{name: "namespace", namespace: "ns-a", keys: []string{"ns-a/a-v1", "ns-a/a-v2"}},
+		{name: "owner contradiction", selector: "owner=other"},
+		{name: "owner exclusion", selector: "owner!=helm"},
+		{name: "owner set contradiction", selector: "owner in (other)"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			selector, err := labels.Parse(tt.selector)
+			require.NoError(t, err)
+
+			renderedSelector := selector.String()
+
+			var keys []string
+			require.NoError(t, list(context.Background(), tt.namespace, selector, func(obj *storedObject) error {
+				keys = append(keys, obj.Namespace+"/"+obj.Key)
+				assert.Equal(t, obj.Key, string(obj.Body))
+
+				return nil
+			}))
+			assert.ElementsMatch(t, tt.keys, keys)
+			assert.Equal(t, renderedSelector, selector.String())
+		})
+	}
+
+	t.Run("nothing", func(t *testing.T) {
+		require.NoError(t, list(context.Background(), "", labels.Nothing(), func(*storedObject) error {
+			t.Fatal("Nothing must not match any object")
+
+			return nil
+		}))
+	})
 }

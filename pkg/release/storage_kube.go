@@ -31,9 +31,8 @@ var _ storageBackend = (*kubeStorageBackend)(nil)
 
 type kubeStorageKind string
 
-// kubeStorageBackend stores each revision in its own Secret or ConfigMap. Listings go through
-// the metadata client, so they never transfer release bodies; a body is fetched by object
-// name in the revision's own namespace.
+// kubeStorageBackend stores each revision in its own Secret or ConfigMap. Metadata listings
+// omit release bodies, while typed listings read bodies one page at a time.
 type kubeStorageBackend struct {
 	client         kubernetes.Interface
 	kind           kubeStorageKind
@@ -126,6 +125,91 @@ func (b *kubeStorageBackend) gvr() schema.GroupVersionResource {
 	}
 }
 
+func (b *kubeStorageBackend) listBodies(ctx context.Context, namespace, selector string, fn func(obj *storedObject) error) error {
+	opts := metav1.ListOptions{LabelSelector: selector, Limit: kubeStoragePageSize}
+	for {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("list %s: %w", b.kind, err)
+		}
+
+		var continueToken string
+
+		switch b.kind {
+		case kubeStorageKindSecret:
+			list, err := b.client.CoreV1().Secrets(namespace).List(ctx, opts)
+			if err != nil {
+				return fmt.Errorf("list secrets: %w", err)
+			}
+
+			for i := range list.Items {
+				if err := ctx.Err(); err != nil {
+					return fmt.Errorf("list %s: %w", b.kind, err)
+				}
+
+				obj := storedObjectFromKubeSecret(&list.Items[i])
+				list.Items[i] = corev1.Secret{}
+
+				if err := fn(obj); err != nil {
+					return err
+				}
+			}
+
+			continueToken = list.Continue
+		case kubeStorageKindConfigMap:
+			list, err := b.client.CoreV1().ConfigMaps(namespace).List(ctx, opts)
+			if err != nil {
+				return fmt.Errorf("list configmaps: %w", err)
+			}
+
+			for i := range list.Items {
+				if err := ctx.Err(); err != nil {
+					return fmt.Errorf("list %s: %w", b.kind, err)
+				}
+
+				obj := storedObjectFromKubeConfigMap(&list.Items[i])
+				list.Items[i] = corev1.ConfigMap{}
+
+				if err := fn(obj); err != nil {
+					return err
+				}
+			}
+
+			continueToken = list.Continue
+		default:
+			panic(fmt.Sprintf("unexpected kube storage kind %q", b.kind))
+		}
+
+		if continueToken == "" {
+			if err := ctx.Err(); err != nil {
+				return fmt.Errorf("list %s: %w", b.kind, err)
+			}
+
+			return nil
+		}
+
+		opts.Continue = continueToken
+	}
+}
+
+func (b *kubeStorageBackend) listLatestWithBodies(ctx context.Context, namespace string, selector labels.Selector, fn func(obj *storedObject) error) error {
+	if selector == nil {
+		selector = labels.Everything()
+	}
+
+	requirements, selectable := selector.Requirements()
+	if !selectable {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("list %s: %w", b.kind, err)
+		}
+
+		return nil
+	}
+
+	combined := labels.Set{storageLabelOwner: storageOwner}.AsSelector().Add(requirements...)
+
+	return b.listBodies(ctx, namespace, combined.String(), fn)
+}
+
 func (b *kubeStorageBackend) listMetadata(ctx context.Context, namespace, releaseName string) ([]*storedObject, error) {
 	selector, err := kubeStorageSelector(releaseName, nil)
 	if err != nil {
@@ -163,54 +247,7 @@ func (b *kubeStorageBackend) listWithBodies(ctx context.Context, namespace, rele
 		return err
 	}
 
-	opts := metav1.ListOptions{LabelSelector: selector, Limit: kubeStoragePageSize}
-	for {
-		var (
-			objects       []*storedObject
-			continueToken string
-		)
-
-		switch b.kind {
-		case kubeStorageKindSecret:
-			list, err := b.client.CoreV1().Secrets(namespace).List(ctx, opts)
-			if err != nil {
-				return fmt.Errorf("list secrets: %w", err)
-			}
-
-			for i := range list.Items {
-				objects = append(objects, storedObjectFromKubeSecret(&list.Items[i]))
-			}
-
-			continueToken = list.Continue
-		case kubeStorageKindConfigMap:
-			list, err := b.client.CoreV1().ConfigMaps(namespace).List(ctx, opts)
-			if err != nil {
-				return fmt.Errorf("list configmaps: %w", err)
-			}
-
-			for i := range list.Items {
-				objects = append(objects, storedObjectFromKubeConfigMap(&list.Items[i]))
-			}
-
-			continueToken = list.Continue
-		default:
-			panic(fmt.Sprintf("unexpected kube storage kind %q", b.kind))
-		}
-
-		for i, obj := range objects {
-			objects[i] = nil
-
-			if err := fn(obj); err != nil {
-				return err
-			}
-		}
-
-		if continueToken == "" {
-			return nil
-		}
-
-		opts.Continue = continueToken
-	}
+	return b.listBodies(ctx, namespace, selector, fn)
 }
 
 func (b *kubeStorageBackend) update(ctx context.Context, obj *storedObject) error {

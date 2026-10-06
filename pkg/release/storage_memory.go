@@ -2,10 +2,13 @@ package release
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 	"sort"
 	"strconv"
+
+	"k8s.io/apimachinery/pkg/labels"
 
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 )
@@ -98,7 +101,12 @@ func (b *memoryStorageBackend) list(namespace, releaseName string, versions []in
 				}
 			}
 
-			result = append(result, cloneStoredObject(obj, withBodies))
+			snapshot := cloneStoredObject(obj, false)
+			if withBodies {
+				snapshot.Body = obj.Body
+			}
+
+			result = append(result, snapshot)
 		}
 	})
 
@@ -113,15 +121,65 @@ func (b *memoryStorageBackend) list(namespace, releaseName string, versions []in
 	return result
 }
 
+func (b *memoryStorageBackend) listLatestWithBodies(ctx context.Context, namespace string, selector labels.Selector, fn func(obj *storedObject) error) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("read release objects: %w", err)
+	}
+
+	if selector == nil {
+		selector = labels.Everything()
+	}
+
+	objects := b.list(namespace, "", nil, true)
+	for i, obj := range objects {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("read release objects: %w", err)
+		}
+
+		objects[i] = nil
+
+		if !selector.Matches(labels.Set(obj.Labels)) {
+			continue
+		}
+
+		obj.Body = slices.Clone(obj.Body)
+		if err := fn(obj); err != nil {
+			return err
+		}
+	}
+
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("read release objects: %w", err)
+	}
+
+	return nil
+}
+
 func (b *memoryStorageBackend) listMetadata(_ context.Context, namespace, releaseName string) ([]*storedObject, error) {
 	return b.list(namespace, releaseName, nil, false), nil
 }
 
-func (b *memoryStorageBackend) listWithBodies(_ context.Context, namespace, releaseName string, versions []int, fn func(obj *storedObject) error) error {
-	for _, obj := range b.list(namespace, releaseName, versions, true) {
+func (b *memoryStorageBackend) listWithBodies(ctx context.Context, namespace, releaseName string, versions []int, fn func(obj *storedObject) error) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("read release objects: %w", err)
+	}
+
+	objects := b.list(namespace, releaseName, versions, true)
+	for i, obj := range objects {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("read release objects: %w", err)
+		}
+
+		objects[i] = nil
+		obj.Body = slices.Clone(obj.Body)
+
 		if err := fn(obj); err != nil {
 			return err
 		}
+	}
+
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("read release objects: %w", err)
 	}
 
 	return nil
