@@ -96,6 +96,38 @@ func TestKubeStorageBackend_ListBodiesPagination(t *testing.T) {
 	}
 }
 
+func TestKubeStorageBackend_MetadataListingReportsCancellationDuringLastObject(t *testing.T) {
+	s := newTestKubeStorage(t, kubeStorageKindSecret, "", 0)
+	putTestKubeObject(t, s, &storedObject{Namespace: "ns", Key: "a-v1", Labels: map[string]string{"owner": "helm", "name": "a", "version": "1"}, Body: []byte("a-v1")})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	err := s.backend.scanLatestCandidates(ctx, "", labels.Everything(), false, func(*storedObject) error {
+		cancel()
+
+		return nil
+	})
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestKubeStorageBackend_MetadataListingStopsOnCancellation(t *testing.T) {
+	s := newTestKubeStorage(t, kubeStorageKindSecret, "", 0)
+	putTestKubeObject(t, s, &storedObject{Namespace: "ns", Key: "a-v1", Labels: map[string]string{"owner": "helm", "name": "a", "version": "1"}, Body: []byte("a-v1")})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := s.backend.scanLatestCandidates(ctx, "", labels.Everything(), false, func(*storedObject) error {
+		t.Fatal("callback after cancellation")
+
+		return nil
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Empty(t, s.metadataClient.Actions())
+
+	_, err = s.backend.listMetadata(ctx, "", "")
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 func TestKubeStorageBackend_ScanLatestCandidatesWithBodiesSelectors(t *testing.T) {
 	for _, kind := range []kubeStorageKind{kubeStorageKindSecret, kubeStorageKindConfigMap} {
 		t.Run(string(kind), func(t *testing.T) {

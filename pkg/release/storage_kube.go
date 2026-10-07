@@ -212,12 +212,20 @@ func (b *kubeStorageBackend) listMetadata(ctx context.Context, namespace, releas
 func (b *kubeStorageBackend) listMetadataPages(ctx context.Context, namespace, selector string, fn func(obj *storedObject) error) error {
 	opts := metav1.ListOptions{LabelSelector: selector, Limit: kubeStoragePageSize}
 	for {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("list %s metadata: %w", b.kind, err)
+		}
+
 		list, err := b.metadataClient.Resource(b.gvr()).Namespace(namespace).List(ctx, opts)
 		if err != nil {
 			return fmt.Errorf("list %s metadata: %w", b.kind, err)
 		}
 
 		for _, item := range list.Items {
+			if err := ctx.Err(); err != nil {
+				return fmt.Errorf("list %s metadata: %w", b.kind, err)
+			}
+
 			if err := fn(&storedObject{
 				Namespace: item.Namespace,
 				Key:       item.Name,
@@ -228,6 +236,10 @@ func (b *kubeStorageBackend) listMetadataPages(ctx context.Context, namespace, s
 		}
 
 		if list.Continue == "" {
+			if err := ctx.Err(); err != nil {
+				return fmt.Errorf("list %s metadata: %w", b.kind, err)
+			}
+
 			return nil
 		}
 

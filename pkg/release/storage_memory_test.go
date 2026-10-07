@@ -12,6 +12,14 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 )
 
+func TestMemoryStorageBackend_ListMetadataStopsOnCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := newMemoryStorageBackend().listMetadata(ctx, "", "")
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 func TestMemoryStorageBackend_ScanLatestCandidatesWithBodiesConcurrent(t *testing.T) {
 	ctx := context.Background()
 

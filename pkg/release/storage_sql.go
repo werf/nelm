@@ -310,6 +310,10 @@ func (b *sqlStorageBackend) listWithBodies(ctx context.Context, namespace, relea
 	defer rows.Close()
 
 	for rows.Next() {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("iterate releases: %w", err)
+		}
+
 		var record sqlReleaseRecord
 		if err := rows.StructScan(&record); err != nil {
 			return fmt.Errorf("scan release: %w", err)

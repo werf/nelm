@@ -121,7 +121,11 @@ func (b *memoryStorageBackend) list(namespace, releaseName string, versions []in
 	return result
 }
 
-func (b *memoryStorageBackend) listMetadata(_ context.Context, namespace, releaseName string) ([]*storedObject, error) {
+func (b *memoryStorageBackend) listMetadata(ctx context.Context, namespace, releaseName string) ([]*storedObject, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("read release objects: %w", err)
+	}
+
 	return b.list(namespace, releaseName, nil, false), nil
 }
 
