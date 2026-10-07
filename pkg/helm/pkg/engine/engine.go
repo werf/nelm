@@ -765,6 +765,12 @@ func recAllTpls(c ci.Charter, templates map[string]renderable, values chartcommo
 		"Subcharts":    subCharts,
 	}
 
+	for k, v := range vals {
+		if _, exists := next[k]; !exists {
+			next[k] = v
+		}
+	}
+
 	// If there is a {{.Values.ThisChart}} in the parent metadata,
 	// copy that into the {{.Values}} for this template.
 	if accessor.IsRoot() {
