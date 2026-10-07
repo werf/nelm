@@ -79,3 +79,31 @@ func TestEngineRendersSimpleTemplate(t *testing.T) {
 	}
 	assert.True(t, found, "rendered output should contain 'greeting: world', got %v", out)
 }
+
+func TestRenderPassesExtraRootContextToTemplates(t *testing.T) {
+	parent := &chart.Chart{
+		Metadata: &chart.Metadata{Name: "parent"},
+		Templates: []*common.File{
+			{Name: "templates/root.yaml", Data: []byte("{{ .Application.Instance.Name }} {{ .Chart.Name }}")},
+		},
+	}
+	child := &chart.Chart{
+		Metadata: &chart.Metadata{Name: "child"},
+		Templates: []*common.File{
+			{Name: "templates/root.yaml", Data: []byte("{{ .Application.Instance.Name }} {{ .Chart.Name }}")},
+		},
+	}
+	parent.AddDependency(child)
+
+	vals := common.Values{
+		"Values":      map[string]any{},
+		"Application": map[string]any{"Instance": map[string]any{"Name": "app"}},
+		"Chart":       map[string]any{"Name": "overridden"},
+	}
+
+	out, err := Render(context.Background(), parent, vals)
+	require.NoError(t, err)
+
+	assert.Equal(t, "app parent", out["parent/templates/root.yaml"])
+	assert.Equal(t, "app child", out["parent/charts/child/templates/root.yaml"])
+}
