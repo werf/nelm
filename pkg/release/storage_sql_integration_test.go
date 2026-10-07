@@ -68,27 +68,30 @@ func TestSQLStorageBackend_SelectorsPostgres(t *testing.T) {
 				}
 			}
 
-			actual := map[string]int{}
-			err = b.listLatestWithBodies(ctx, "", sel, func(obj *storedObject) error {
-				if obj.Namespace != prefix+"-one" && obj.Namespace != prefix+"-two" {
-					return nil
-				}
-
-				rev, ok, err := revisionFromStoredObject(obj)
-				require.NoError(t, err)
-				require.True(t, ok)
-
-				actual[rev.Namespace+"/"+rev.Name] = rev.Version
-				for _, original := range objects {
-					if original.Namespace == obj.Namespace && original.Key == obj.Key {
-						require.Equal(t, original.Labels, obj.Labels)
+			for _, withBodies := range []bool{true, false} {
+				actual := map[string]int{}
+				err = b.listLatest(ctx, "", sel, withBodies, func(obj *storedObject) error {
+					if obj.Namespace != prefix+"-one" && obj.Namespace != prefix+"-two" {
+						return nil
 					}
-				}
 
-				return nil
-			})
-			require.NoError(t, err)
-			require.Equal(t, expected, actual, "selector %q", raw)
+					rev, ok, err := revisionFromStoredObject(obj)
+					require.NoError(t, err)
+					require.True(t, ok)
+					require.Equal(t, withBodies, len(obj.Body) > 0)
+
+					actual[rev.Namespace+"/"+rev.Name] = rev.Version
+					for _, original := range objects {
+						if original.Namespace == obj.Namespace && original.Key == obj.Key {
+							require.Equal(t, original.Labels, obj.Labels)
+						}
+					}
+
+					return nil
+				})
+				require.NoError(t, err)
+				require.Equal(t, expected, actual, "selector %q, bodies %t", raw, withBodies)
+			}
 		})
 	}
 }
