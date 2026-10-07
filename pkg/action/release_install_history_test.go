@@ -2,6 +2,7 @@ package action
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -31,7 +32,7 @@ func (s *prunedRevisionStorager) Delete(ctx context.Context, name string, versio
 	return nil
 }
 
-func (s *prunedRevisionStorager) ForEachLatestRelease(ctx context.Context, fn func(revision release.Revision, rel helmrel.Accessor, err error) error, opts release.ForEachLatestReleaseOptions) error {
+func (s *prunedRevisionStorager) ForEachLatestRelease(ctx context.Context, fn func(revision release.Revision, summary *release.ReleaseSummary, err error) error, opts release.ForEachLatestReleaseOptions) error {
 	return nil
 }
 
@@ -55,12 +56,16 @@ func (s *prunedRevisionStorager) GetRelease(ctx context.Context, name string, ve
 	return newTestReleaseAccessorForAction(name, version, helmreleasestatus.StatusDeployed)
 }
 
-func (s *prunedRevisionStorager) LatestRevisions(ctx context.Context) ([]release.Revision, error) {
+func (s *prunedRevisionStorager) LatestRevisions(ctx context.Context, opts release.LatestRevisionsOptions) ([]release.Revision, error) {
 	return nil, nil
 }
 
 func (s *prunedRevisionStorager) LoadRevision(ctx context.Context, revision release.Revision) (helmrel.Accessor, error) {
 	return s.GetRelease(ctx, revision.Name, revision.Version)
+}
+
+func (s *prunedRevisionStorager) LoadRevisionSummary(ctx context.Context, revision release.Revision) (*release.ReleaseSummary, error) {
+	return nil, errors.ErrUnsupported
 }
 
 func (s *prunedRevisionStorager) Revisions(ctx context.Context, name string) ([]release.Revision, error) {

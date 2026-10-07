@@ -252,8 +252,8 @@ func (b *sqlStorageBackend) insertCustomLabel(ctx context.Context, tx *sqlx.Tx, 
 	return nil
 }
 
-func (b *sqlStorageBackend) listLatestWithBodies(ctx context.Context, namespace string, selector labels.Selector, fn func(obj *storedObject) error) error {
-	builder := b.filterReleases(b.selectReleases(true), namespace, "", nil).
+func (b *sqlStorageBackend) listLatest(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(obj *storedObject) error) error {
+	builder := b.filterReleases(b.selectReleases(withBodies), namespace, "", nil).
 		Options("DISTINCT ON (namespace, name)").OrderBy("namespace", "name", "version DESC")
 	if selector != nil {
 		requirements, selectable := selector.Requirements()

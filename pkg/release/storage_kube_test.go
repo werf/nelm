@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -80,7 +81,7 @@ func TestKubeStorageBackend_ListBodiesPagination(t *testing.T) {
 					selector, parseErr := labels.Parse("packageChecksum")
 					require.NoError(t, parseErr)
 
-					err = s.backend.listLatestWithBodies(context.Background(), "", selector, fn)
+					err = s.backend.listLatest(context.Background(), "", selector, true, fn)
 				} else {
 					err = s.backend.listWithBodies(context.Background(), "", "a", []int{2}, fn)
 				}
@@ -101,7 +102,9 @@ func TestKubeStorageBackend_ListLatestWithBodiesSelectors(t *testing.T) {
 			s := newTestKubeStorage(t, kind, "", 0)
 			testLatestBodySelectors(t, func(obj *storedObject) {
 				putTestKubeObject(t, s, obj)
-			}, s.backend.listLatestWithBodies)
+			}, func(ctx context.Context, namespace string, selector labels.Selector, fn func(*storedObject) error) error {
+				return s.backend.listLatest(ctx, namespace, selector, true, fn)
+			})
 			assert.Zero(t, countActions(s.client.Actions(), "get"))
 			assert.Empty(t, s.metadataClient.Actions())
 		})
@@ -118,7 +121,7 @@ func TestKubeStorageBackend_ListLatestWithBodiesStops(t *testing.T) {
 
 			stop := errors.New("stop")
 			calls := 0
-			err := s.backend.listLatestWithBodies(context.Background(), "", labels.Everything(), func(*storedObject) error {
+			err := s.backend.listLatest(context.Background(), "", labels.Everything(), true, func(*storedObject) error {
 				calls++
 
 				return stop
@@ -129,7 +132,7 @@ func TestKubeStorageBackend_ListLatestWithBodiesStops(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 
-			err = s.backend.listLatestWithBodies(ctx, "", labels.Everything(), func(*storedObject) error {
+			err = s.backend.listLatest(ctx, "", labels.Everything(), true, func(*storedObject) error {
 				t.Fatal("callback after cancellation")
 
 				return nil
@@ -140,7 +143,7 @@ func TestKubeStorageBackend_ListLatestWithBodiesStops(t *testing.T) {
 			defer cancel()
 
 			calls = 0
-			err = s.backend.listLatestWithBodies(ctx, "", labels.Everything(), func(*storedObject) error {
+			err = s.backend.listLatest(ctx, "", labels.Everything(), true, func(*storedObject) error {
 				calls++
 
 				cancel()
@@ -152,8 +155,36 @@ func TestKubeStorageBackend_ListLatestWithBodiesStops(t *testing.T) {
 			s.client.PrependReactor("list", s.backend.gvr().Resource, func(k8stesting.Action) (bool, runtime.Object, error) {
 				return true, nil, stop
 			})
-			err = s.backend.listLatestWithBodies(context.Background(), "", labels.Everything(), func(*storedObject) error { return nil })
+			err = s.backend.listLatest(context.Background(), "", labels.Everything(), true, func(*storedObject) error { return nil })
 			require.ErrorIs(t, err, stop)
+		})
+	}
+}
+
+func TestKubeStorageBackend_ListLatestWithoutBodies(t *testing.T) {
+	for _, kind := range []kubeStorageKind{kubeStorageKindSecret, kubeStorageKindConfigMap} {
+		t.Run(string(kind), func(t *testing.T) {
+			s := newTestKubeStorage(t, kind, "", 0)
+			putTestKubeObject(t, s, &storedObject{Namespace: "ns", Key: "a-v1", Labels: map[string]string{"owner": "helm", "name": "a", "version": "1", "packageChecksum": "x"}, Body: []byte("a-v1")})
+
+			selector, err := labels.Parse("packageChecksum")
+			require.NoError(t, err)
+
+			var objects []*storedObject
+			require.NoError(t, s.backend.listLatest(context.Background(), "", selector, false, func(obj *storedObject) error {
+				objects = append(objects, obj)
+
+				return nil
+			}))
+			require.Len(t, objects, 1)
+			assert.Nil(t, objects[0].Body)
+			assert.Equal(t, "a-v1", objects[0].Key)
+
+			listActions := lo.Filter(s.metadataClient.Actions(), func(action k8stesting.Action, _ int) bool { return action.GetVerb() == "list" })
+			require.Len(t, listActions, 1)
+			assert.Equal(t, "owner=helm,packageChecksum", listActions[0].(k8stesting.ListActionImpl).GetListRestrictions().Labels.String())
+			assert.Zero(t, countActions(s.client.Actions(), "list"))
+			assert.Zero(t, countActions(s.client.Actions(), "get"))
 		})
 	}
 }

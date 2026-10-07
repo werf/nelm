@@ -83,22 +83,69 @@ func decodeStoredObject(obj *storedObject) (*helmrelease.Release, error) {
 }
 
 // decodeRelease streams the body through base64 and gzip decoding instead of materializing
-// each intermediate form. Bodies stored before Helm started compressing them are plain
-// base64-encoded JSON.
+// each intermediate form.
 func decodeRelease(body []byte) (*helmrelease.Release, error) {
+	rls := &helmrelease.Release{}
+	if err := decodeReleaseBody(body, rls); err != nil {
+		return nil, err
+	}
+
+	return rls, nil
+}
+
+// decodeStoredSummary decodes only the release fields a listing shows, so the manifest,
+// values and chart files of the body are skipped instead of being allocated.
+func decodeStoredSummary(obj *storedObject) (*ReleaseSummary, error) {
+	var body struct {
+		Info *struct {
+			Annotations  map[string]string `json:"annotations"`
+			LastDeployed json.RawMessage   `json:"last_deployed"`
+		} `json:"info"`
+		Chart *struct {
+			Metadata *ReleaseSummaryChart `json:"metadata"`
+		} `json:"chart"`
+	}
+
+	if err := decodeReleaseBody(obj.Body, &body); err != nil {
+		return nil, fmt.Errorf("%w: object %q (namespace: %q): %w", ErrReleaseUndecodable, obj.Key, obj.Namespace, err)
+	}
+
+	if body.Info == nil {
+		return nil, fmt.Errorf("%w: object %q (namespace: %q): release info is required", ErrReleaseUndecodable, obj.Key, obj.Namespace)
+	}
+
+	summary := &ReleaseSummary{Annotations: body.Info.Annotations}
+
+	// Matches helmrelease.Info, which reads an empty string as a zero time.
+	if raw := string(body.Info.LastDeployed); raw != "" && raw != "null" && raw != `""` {
+		if err := json.Unmarshal(body.Info.LastDeployed, &summary.DeployedAt); err != nil {
+			return nil, fmt.Errorf("%w: object %q (namespace: %q): decode last deployment time: %w", ErrReleaseUndecodable, obj.Key, obj.Namespace, err)
+		}
+	}
+
+	if body.Chart != nil {
+		summary.Chart = body.Chart.Metadata
+	}
+
+	return summary, nil
+}
+
+// decodeReleaseBody decodes the release JSON of a stored body into target. Bodies stored
+// before Helm started compressing them are plain base64-encoded JSON.
+func decodeReleaseBody(body []byte, target any) error {
 	reader := bufio.NewReader(base64.NewDecoder(base64.StdEncoding, bytes.NewReader(body)))
 
 	var jsonReader io.Reader = reader
 
 	magic, err := reader.Peek(len(gzipMagic))
 	if err != nil && !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("decode base64: %w", err)
+		return fmt.Errorf("decode base64: %w", err)
 	}
 
 	if bytes.Equal(magic, gzipMagic) {
 		gzipReader, err := gzip.NewReader(reader)
 		if err != nil {
-			return nil, fmt.Errorf("create gzip reader: %w", err)
+			return fmt.Errorf("create gzip reader: %w", err)
 		}
 		defer gzipReader.Close()
 
@@ -107,21 +154,20 @@ func decodeRelease(body []byte) (*helmrelease.Release, error) {
 
 	decoder := json.NewDecoder(jsonReader)
 
-	rls := &helmrelease.Release{}
-	if err := decoder.Decode(rls); err != nil {
-		return nil, fmt.Errorf("decode release: %w", err)
+	if err := decoder.Decode(target); err != nil {
+		return fmt.Errorf("decode release: %w", err)
 	}
 
 	// Reading to the end validates the gzip checksum and rejects data after the release.
 	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
 		if err == nil {
-			return nil, errors.New("decode release: unexpected data after release")
+			return errors.New("decode release: unexpected data after release")
 		}
 
-		return nil, fmt.Errorf("decode release: %w", err)
+		return fmt.Errorf("decode release: %w", err)
 	}
 
-	return rls, nil
+	return nil
 }
 
 func encodeRelease(rls *helmrelease.Release) ([]byte, error) {

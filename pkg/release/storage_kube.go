@@ -191,7 +191,7 @@ func (b *kubeStorageBackend) listBodies(ctx context.Context, namespace, selector
 	}
 }
 
-func (b *kubeStorageBackend) listLatestWithBodies(ctx context.Context, namespace string, selector labels.Selector, fn func(obj *storedObject) error) error {
+func (b *kubeStorageBackend) listLatest(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(obj *storedObject) error) error {
 	if selector == nil {
 		selector = labels.Everything()
 	}
@@ -207,7 +207,11 @@ func (b *kubeStorageBackend) listLatestWithBodies(ctx context.Context, namespace
 
 	combined := labels.Set{storageLabelOwner: storageOwner}.AsSelector().Add(requirements...)
 
-	return b.listBodies(ctx, namespace, combined.String(), fn)
+	if withBodies {
+		return b.listBodies(ctx, namespace, combined.String(), fn)
+	}
+
+	return b.listMetadataPages(ctx, namespace, combined.String(), fn)
 }
 
 func (b *kubeStorageBackend) listMetadata(ctx context.Context, namespace, releaseName string) ([]*storedObject, error) {
@@ -217,24 +221,37 @@ func (b *kubeStorageBackend) listMetadata(ctx context.Context, namespace, releas
 	}
 
 	var objects []*storedObject
+	if err := b.listMetadataPages(ctx, namespace, selector, func(obj *storedObject) error {
+		objects = append(objects, obj)
 
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return objects, nil
+}
+
+func (b *kubeStorageBackend) listMetadataPages(ctx context.Context, namespace, selector string, fn func(obj *storedObject) error) error {
 	opts := metav1.ListOptions{LabelSelector: selector, Limit: kubeStoragePageSize}
 	for {
 		list, err := b.metadataClient.Resource(b.gvr()).Namespace(namespace).List(ctx, opts)
 		if err != nil {
-			return nil, fmt.Errorf("list %s metadata: %w", b.kind, err)
+			return fmt.Errorf("list %s metadata: %w", b.kind, err)
 		}
 
 		for _, item := range list.Items {
-			objects = append(objects, &storedObject{
+			if err := fn(&storedObject{
 				Namespace: item.Namespace,
 				Key:       item.Name,
 				Labels:    item.Labels,
-			})
+			}); err != nil {
+				return err
+			}
 		}
 
 		if list.Continue == "" {
-			return objects, nil
+			return nil
 		}
 
 		opts.Continue = list.Continue

@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	chartv2 "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	helmreleasecommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
@@ -82,6 +84,58 @@ func TestDecodeStoredObject_TakesNamespaceFromObjectWhenBodyHasNone(t *testing.T
 
 	decoded.Labels["owner"] = "changed"
 	assert.Equal(t, "helm", obj.Labels["owner"], "the decoded release must not share labels with the stored object")
+}
+
+func TestDecodeStoredSummary_MatchesFullDecode(t *testing.T) {
+	rls := newTestReleaseWithStatus("myrel", 3, helmreleasecommon.StatusDeployed)
+	rls.Manifest = "kind: ConfigMap"
+	rls.Info.LastDeployed = time.Date(2025, 1, 2, 3, 4, 5, 6, time.UTC)
+	rls.Info.Annotations = map[string]string{"managed-by": "deckhouse"}
+	rls.Chart = &chartv2.Chart{Metadata: &chartv2.Metadata{Name: "mychart", Version: "1.2.3", AppVersion: "4.5.6"}}
+	obj := &storedObject{Namespace: "ns", Key: "key", Body: encodeHelmRelease(t, rls)}
+
+	summary, err := decodeStoredSummary(obj)
+	require.NoError(t, err)
+	assert.Equal(t, &ReleaseSummary{
+		Annotations: map[string]string{"managed-by": "deckhouse"},
+		Chart:       &ReleaseSummaryChart{AppVersion: "4.5.6", Name: "mychart", Version: "1.2.3"},
+		DeployedAt:  rls.Info.LastDeployed,
+	}, summary)
+
+	full, err := decodeStoredObject(obj)
+	require.NoError(t, err)
+	assert.True(t, full.Info.LastDeployed.Equal(summary.DeployedAt))
+}
+
+func TestDecodeStoredSummary_OptionalFields(t *testing.T) {
+	for name, body := range map[string]string{
+		"no chart":           `{"info":{"status":"deployed"}}`,
+		"chart without meta": `{"info":{"status":"deployed"},"chart":{}}`,
+		"empty deploy time":  `{"info":{"last_deployed":""}}`,
+		"null deploy time":   `{"info":{"last_deployed":null}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			summary, err := decodeStoredSummary(&storedObject{Body: []byte(base64.StdEncoding.EncodeToString([]byte(body)))})
+			require.NoError(t, err)
+			assert.Nil(t, summary.Chart)
+			assert.True(t, summary.DeployedAt.IsZero())
+		})
+	}
+}
+
+func TestDecodeStoredSummary_Undecodable(t *testing.T) {
+	for name, body := range map[string][]byte{
+		"garbage":          []byte("not base64!"),
+		"no info":          []byte(base64.StdEncoding.EncodeToString([]byte(`{"name":"myrel"}`))),
+		"bad deploy time":  []byte(base64.StdEncoding.EncodeToString([]byte(`{"info":{"last_deployed":"yesterday"}}`))),
+		"bad annotations":  []byte(base64.StdEncoding.EncodeToString([]byte(`{"info":{"annotations":{"a":1}}}`))),
+		"trailing release": []byte(base64.StdEncoding.EncodeToString([]byte(`{"info":{}}{}`))),
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := decodeStoredSummary(&storedObject{Namespace: "ns", Key: "key", Body: body})
+			require.ErrorIs(t, err, ErrReleaseUndecodable)
+		})
+	}
 }
 
 func TestEncodeRelease_ReadableByHelm(t *testing.T) {

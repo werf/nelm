@@ -54,15 +54,17 @@ func newTestKubeStorage(t *testing.T, kind kubeStorageKind, namespace string, hi
 type latestListingBackend struct {
 	storageBackend
 
-	err      error
-	generate func(fn func(*storedObject) error) error
-	listings int
-	objects  []*storedObject
-	selector labels.Selector
+	err        error
+	generate   func(fn func(*storedObject) error) error
+	listings   int
+	objects    []*storedObject
+	selector   labels.Selector
+	withBodies bool
 }
 
-func (b *latestListingBackend) listLatestWithBodies(ctx context.Context, namespace string, selector labels.Selector, fn func(*storedObject) error) error {
+func (b *latestListingBackend) listLatest(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(*storedObject) error) error {
 	b.listings++
+	b.withBodies = withBodies
 
 	b.selector = selector
 	if b.err != nil {

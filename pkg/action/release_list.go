@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"sort"
 	"strings"
@@ -16,10 +17,9 @@ import (
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/labels"
 
+	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/nelm/v2/pkg/common"
-	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
-	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/log"
@@ -34,6 +34,10 @@ const (
 type ReleaseListOptions struct {
 	common.KubeConnectionOptions
 
+	// MetadataOnly lists releases by storage metadata without reading release bodies. The
+	// detail getters of the returned releases then read each body on first use. Printing a
+	// table never needs the bodies, so it always lists by metadata.
+	MetadataOnly bool
 	// NetworkParallelism is retained for compatibility and is not used by release listing.
 	NetworkParallelism int
 	// OutputFormat specifies the output format for the release list.
@@ -61,19 +65,164 @@ type ReleaseListOptions struct {
 	TempDirPath string
 }
 
-type ReleaseListResultV1 struct {
+type ReleaseListResultV2 struct {
 	APIVersion string                      `json:"apiVersion"`
 	Releases   []*ReleaseListResultRelease `json:"releases"`
 }
 
+// ReleaseListResultRelease is the latest revision of a release. Its fields come from storage
+// metadata, while the getters return details of the stored release body: listed eagerly they
+// are already decoded, listed with MetadataOnly the first getter call reads and decodes the
+// body and later calls reuse it.
 type ReleaseListResultRelease struct {
-	Name        string                       `json:"name"`
-	Namespace   string                       `json:"namespace"`
-	Revision    int                          `json:"revision"`
-	Status      helmreleasestatus.Status     `json:"status"`
-	DeployedAt  *ReleaseListResultDeployedAt `json:"deployedAt"`
-	Annotations map[string]string            `json:"annotations"`
-	Chart       *ReleaseListResultChart      `json:"chart"`
+	Name      string                   `json:"name"`
+	Namespace string                   `json:"namespace"`
+	Revision  int                      `json:"revision"`
+	Status    helmreleasestatus.Status `json:"status"`
+
+	details *kdutil.Concurrent[*releaseListDetails]
+}
+
+func (r *ReleaseListResultRelease) Annotations(ctx context.Context) (map[string]string, error) {
+	summary, err := r.loadSummary(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return maps.Clone(summary.Annotations), nil
+}
+
+func (r *ReleaseListResultRelease) Chart(ctx context.Context) (*ReleaseListResultChart, error) {
+	summary, err := r.loadSummary(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if summary.Chart == nil {
+		return nil, fmt.Errorf("release %q (namespace: %q, revision: %d) has no chart metadata", r.Name, r.Namespace, r.Revision)
+	}
+
+	return &ReleaseListResultChart{
+		AppVersion: summary.Chart.AppVersion,
+		Name:       summary.Chart.Name,
+		Version:    summary.Chart.Version,
+	}, nil
+}
+
+func (r *ReleaseListResultRelease) DeployedAt(ctx context.Context) (*ReleaseListResultDeployedAt, error) {
+	summary, err := r.loadSummary(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ReleaseListResultDeployedAt{
+		Human: summary.DeployedAt.String(),
+		Unix:  int(summary.DeployedAt.Unix()),
+	}, nil
+}
+
+func (r *ReleaseListResultRelease) MarshalJSON() ([]byte, error) {
+	b, err := json.Marshal(r.output())
+	if err != nil {
+		return nil, fmt.Errorf("marshal release %q: %w", r.Name, err)
+	}
+
+	return b, nil
+}
+
+func (r *ReleaseListResultRelease) MarshalYAML() (any, error) {
+	return r.output(), nil
+}
+
+// loadSummary reads the body on first use. Undecodable bodies are remembered, while other
+// errors, such as a failed request or a revision pruned since the listing, are retried by
+// the next call.
+func (r *ReleaseListResultRelease) loadSummary(ctx context.Context) (*release.ReleaseSummary, error) {
+	if r.details == nil {
+		return nil, fmt.Errorf("release %q (namespace: %q) was not returned by ReleaseList", r.Name, r.Namespace)
+	}
+
+	var (
+		summary *release.ReleaseSummary
+		err     error
+	)
+
+	r.details.RWTransaction(func(details *releaseListDetails) {
+		if details.summary == nil && details.err == nil && details.storage != nil {
+			loaded, loadErr := details.storage.LoadRevisionSummary(ctx, details.revision)
+			if loadErr != nil && !errors.Is(loadErr, release.ErrReleaseUndecodable) {
+				err = fmt.Errorf("read details of release %q (namespace: %q, revision: %d): %w", r.Name, r.Namespace, r.Revision, loadErr)
+
+				return
+			}
+
+			details.summary, details.err = loaded, loadErr
+		}
+
+		if details.err != nil {
+			err = fmt.Errorf("read details of release %q (namespace: %q, revision: %d): %w", r.Name, r.Namespace, r.Revision, details.err)
+
+			return
+		}
+
+		if details.summary == nil {
+			err = fmt.Errorf("read details of release %q (namespace: %q, revision: %d): no details", r.Name, r.Namespace, r.Revision)
+
+			return
+		}
+
+		summary = details.summary
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return summary, nil
+}
+
+// output holds the details already read, without reading bodies, since marshaling has no
+// context to read them with.
+func (r *ReleaseListResultRelease) output() releaseListResultReleaseOutput {
+	output := releaseListResultReleaseOutput{
+		Name:      r.Name,
+		Namespace: r.Namespace,
+		Revision:  r.Revision,
+		Status:    r.Status,
+	}
+
+	if r.details == nil {
+		return output
+	}
+
+	r.details.RTransaction(func(details *releaseListDetails) {
+		if details.summary == nil {
+			return
+		}
+
+		output.Annotations = details.summary.Annotations
+		output.DeployedAt = &ReleaseListResultDeployedAt{
+			Human: details.summary.DeployedAt.String(),
+			Unix:  int(details.summary.DeployedAt.Unix()),
+		}
+
+		if details.summary.Chart != nil {
+			output.Chart = &ReleaseListResultChart{
+				AppVersion: details.summary.Chart.AppVersion,
+				Name:       details.summary.Chart.Name,
+				Version:    details.summary.Chart.Version,
+			}
+		}
+	})
+
+	return output
+}
+
+type releaseListDetails struct {
+	err      error
+	revision release.Revision
+	storage  release.ReleaseStorager
+	summary  *release.ReleaseSummary
 }
 
 type ReleaseListResultDeployedAt struct {
@@ -87,7 +236,17 @@ type ReleaseListResultChart struct {
 	AppVersion string `json:"appVersion"`
 }
 
-func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResultV1, error) {
+type releaseListResultReleaseOutput struct {
+	Name        string                       `json:"name"`
+	Namespace   string                       `json:"namespace"`
+	Revision    int                          `json:"revision"`
+	Status      helmreleasestatus.Status     `json:"status"`
+	DeployedAt  *ReleaseListResultDeployedAt `json:"deployedAt"`
+	Annotations map[string]string            `json:"annotations"`
+	Chart       *ReleaseListResultChart      `json:"chart"`
+}
+
+func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResultV2, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("get home directory: %w", err)
@@ -122,7 +281,13 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 
 	log.Default.Info(ctx, "List releases")
 
-	result, err := buildReleaseListResult(ctx, releaseStorage, opts.ReleaseLabelSelector)
+	var result *ReleaseListResultV2
+	if listsReleasesByMetadata(opts) {
+		result, err = buildReleaseListResultFromMetadata(ctx, releaseStorage, opts.ReleaseLabelSelector)
+	} else {
+		result, err = buildReleaseListResult(ctx, releaseStorage, opts.ReleaseLabelSelector)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("list latest releases: %w", err)
 	}
@@ -169,7 +334,7 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 	return result, nil
 }
 
-func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV1, namespaced bool) prtable.Writer {
+func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV2, namespaced bool) prtable.Writer {
 	table := prtable.NewWriter()
 	setReleaseListOutputTableStyle(ctx, table)
 
@@ -210,6 +375,61 @@ func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV
 	return table
 }
 
+func buildReleaseListResult(ctx context.Context, storage release.ReleaseStorager, selector string) (*ReleaseListResultV2, error) {
+	latest := map[string]*ReleaseListResultRelease{}
+
+	if err := storage.ForEachLatestRelease(ctx, func(revision release.Revision, summary *release.ReleaseSummary, readErr error) error {
+		id := revision.Namespace + "/" + revision.Name
+		if current, found := latest[id]; found && current.Revision >= revision.Version {
+			return nil
+		}
+
+		latest[id] = &ReleaseListResultRelease{
+			Name:      revision.Name,
+			Namespace: revision.Namespace,
+			Revision:  revision.Version,
+			Status:    helmreleasestatus.Status(revision.Status),
+			details:   kdutil.NewConcurrent(&releaseListDetails{err: readErr, revision: revision, summary: summary}),
+		}
+
+		return nil
+	}, release.ForEachLatestReleaseOptions{LabelSelector: selector}); err != nil {
+		return nil, fmt.Errorf("read release list: %w", err)
+	}
+
+	result := newReleaseListResult(lo.Values(latest))
+
+	for _, rel := range result.Releases {
+		rel.details.RTransaction(func(details *releaseListDetails) {
+			if details.err != nil {
+				log.Default.Error(ctx, "Showing release %q (namespace: %q, revision: %d) without its details: %s", rel.Name, rel.Namespace, rel.Revision, details.err)
+			}
+		})
+	}
+
+	return result, nil
+}
+
+func buildReleaseListResultFromMetadata(ctx context.Context, storage release.ReleaseStorager, selector string) (*ReleaseListResultV2, error) {
+	revisions, err := storage.LatestRevisions(ctx, release.LatestRevisionsOptions{LabelSelector: selector})
+	if err != nil {
+		return nil, fmt.Errorf("read release list: %w", err)
+	}
+
+	releases := make([]*ReleaseListResultRelease, 0, len(revisions))
+	for _, revision := range revisions {
+		releases = append(releases, &ReleaseListResultRelease{
+			Name:      revision.Name,
+			Namespace: revision.Namespace,
+			Revision:  revision.Version,
+			Status:    helmreleasestatus.Status(revision.Status),
+			details:   kdutil.NewConcurrent(&releaseListDetails{revision: revision, storage: storage}),
+		})
+	}
+
+	return newReleaseListResult(releases), nil
+}
+
 func applyReleaseListOptionsDefaults(opts ReleaseListOptions, homeDir string) (ReleaseListOptions, error) {
 	if _, err := labels.Parse(opts.ReleaseLabelSelector); err != nil {
 		return ReleaseListOptions{}, fmt.Errorf("parse release label selector: %w", err)
@@ -240,80 +460,23 @@ func applyReleaseListOptionsDefaults(opts ReleaseListOptions, homeDir string) (R
 	return opts, nil
 }
 
-func buildReleaseListResult(ctx context.Context, storage release.ReleaseStorager, selector string) (*ReleaseListResultV1, error) {
-	latest := map[string]*ReleaseListResultRelease{}
-	readErrors := map[string]error{}
+func listsReleasesByMetadata(opts ReleaseListOptions) bool {
+	return opts.MetadataOnly || (!opts.OutputNoPrint && opts.OutputFormat == common.OutputFormatTable)
+}
 
-	if err := storage.ForEachLatestRelease(ctx, func(revision release.Revision, rel helmrel.Accessor, readErr error) error {
-		id := revision.Namespace + "/" + revision.Name
-		if current, found := latest[id]; found && current.Revision >= revision.Version {
-			return nil
-		}
-		entry := &ReleaseListResultRelease{
-			Name: revision.Name, Namespace: revision.Namespace, Revision: revision.Version,
-			Status: helmreleasestatus.Status(revision.Status),
-		}
-		latest[id] = entry
-		delete(readErrors, id)
-		if readErr != nil {
-			readErrors[id] = readErr
-
-			return nil
+func newReleaseListResult(releases []*ReleaseListResultRelease) *ReleaseListResultV2 {
+	sort.Slice(releases, func(i, j int) bool {
+		if releases[i].Namespace != releases[j].Namespace {
+			return releases[i].Namespace < releases[j].Namespace
 		}
 
-		if lo.IsNil(rel.Chart()) {
-			readErrors[id] = errors.New("chart is required")
-
-			return nil
-		}
-
-		chartAccessor, err := helmchart.NewAccessor(rel.Chart())
-		if err != nil {
-			readErrors[id] = fmt.Errorf("construct chart accessor: %w", err)
-
-			return nil
-		}
-		metadata := chartAccessor.MetadataAsMap()
-		if metadata == nil {
-			readErrors[id] = errors.New("chart metadata is required")
-
-			return nil
-		}
-		version, _ := metadata["Version"].(string)
-		appVersion, _ := metadata["AppVersion"].(string)
-		entry.Annotations = rel.Annotations()
-		entry.Chart = &ReleaseListResultChart{AppVersion: appVersion, Name: chartAccessor.Name(), Version: version}
-		entry.DeployedAt = &ReleaseListResultDeployedAt{Human: rel.DeployedAt().String(), Unix: int(rel.DeployedAt().Unix())}
-
-		return nil
-	}, release.ForEachLatestReleaseOptions{LabelSelector: selector}); err != nil {
-		return nil, fmt.Errorf("read release list: %w", err)
-	}
-
-	result := &ReleaseListResultV1{APIVersion: "v1"}
-	for _, entry := range latest {
-		result.Releases = append(result.Releases, entry)
-	}
-
-	sort.Slice(result.Releases, func(i, j int) bool {
-		if result.Releases[i].Namespace != result.Releases[j].Namespace {
-			return result.Releases[i].Namespace < result.Releases[j].Namespace
-		}
-
-		return result.Releases[i].Name < result.Releases[j].Name
+		return releases[i].Name < releases[j].Name
 	})
 
-	for _, entry := range result.Releases {
-		if err := readErrors[entry.Namespace+"/"+entry.Name]; err != nil {
-			if !errors.Is(err, release.ErrReleaseUndecodable) {
-				return nil, fmt.Errorf("read details of release %q (namespace: %q): %w", entry.Name, entry.Namespace, err)
-			}
-
-			log.Default.Error(ctx, "Showing release %q (namespace: %q, revision: %d) without its details: %s", entry.Name, entry.Namespace, entry.Revision, err)
-		}
+	return &ReleaseListResultV2{
+		APIVersion: "v2",
+		Releases:   releases,
 	}
-
-	return result, nil
 }
 
 func setReleaseListOutputTableStyle(ctx context.Context, table prtable.Writer) {

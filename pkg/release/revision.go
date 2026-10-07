@@ -1,6 +1,8 @@
 package release
 
 import (
+	"time"
+
 	"github.com/samber/lo"
 
 	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
@@ -21,6 +23,20 @@ func NewRevisionFromAccessor(rel helmrel.Accessor) Revision {
 		Status:    rel.Status(),
 		Version:   rel.Version(),
 	}
+}
+
+// ReleaseSummary holds the parts of a stored release body that release listings show.
+type ReleaseSummary struct {
+	Annotations map[string]string
+	// Chart is nil when the stored release has no chart metadata.
+	Chart      *ReleaseSummaryChart
+	DeployedAt time.Time
+}
+
+type ReleaseSummaryChart struct {
+	AppVersion string `json:"appVersion"`
+	Name       string `json:"name"`
+	Version    string `json:"version"`
 }
 
 // DeployedRevisions expects revisions sorted by ascending Version.

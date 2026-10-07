@@ -2,6 +2,7 @@ package action
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/samber/lo"
@@ -28,7 +29,7 @@ func (s *countingStorager) Delete(ctx context.Context, name string, version int)
 	return nil
 }
 
-func (s *countingStorager) ForEachLatestRelease(ctx context.Context, fn func(revision release.Revision, rel helmrel.Accessor, err error) error, opts release.ForEachLatestReleaseOptions) error {
+func (s *countingStorager) ForEachLatestRelease(ctx context.Context, fn func(revision release.Revision, summary *release.ReleaseSummary, err error) error, opts release.ForEachLatestReleaseOptions) error {
 	return nil
 }
 
@@ -42,12 +43,16 @@ func (s *countingStorager) GetRelease(ctx context.Context, name string, version 
 	return newTestReleaseAccessorForAction(name, version, helmreleasestatus.StatusDeployed)
 }
 
-func (s *countingStorager) LatestRevisions(ctx context.Context) ([]release.Revision, error) {
+func (s *countingStorager) LatestRevisions(ctx context.Context, opts release.LatestRevisionsOptions) ([]release.Revision, error) {
 	return nil, nil
 }
 
 func (s *countingStorager) LoadRevision(ctx context.Context, revision release.Revision) (helmrel.Accessor, error) {
 	return s.GetRelease(ctx, revision.Name, revision.Version)
+}
+
+func (s *countingStorager) LoadRevisionSummary(ctx context.Context, revision release.Revision) (*release.ReleaseSummary, error) {
+	return nil, errors.ErrUnsupported
 }
 
 func (s *countingStorager) Revisions(ctx context.Context, name string) ([]release.Revision, error) {

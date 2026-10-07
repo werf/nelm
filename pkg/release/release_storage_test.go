@@ -501,7 +501,7 @@ func TestReleaseStorage_LatestRevisionsPaginates(t *testing.T) {
 		return true, list, nil
 	})
 
-	revisions, err := s.storage.LatestRevisions(context.Background())
+	revisions, err := s.storage.LatestRevisions(context.Background(), LatestRevisionsOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, []Revision{
 		{Name: "a", Namespace: testNamespace, Status: "deployed", Version: 2},
@@ -521,7 +521,7 @@ func TestReleaseStorage_LatestRevisionsSameNameInManyNamespaces(t *testing.T) {
 		}
 	}
 
-	revisions, err := s.storage.LatestRevisions(ctx)
+	revisions, err := s.storage.LatestRevisions(ctx, LatestRevisionsOptions{})
 	require.NoError(t, err)
 	require.Len(t, revisions, namespaces)
 
@@ -554,7 +554,7 @@ func TestReleaseStorage_LatestRevisionsSkipsObjectsThatAreNotRevisions(t *testin
 		putTestKubeObject(t, s, &storedObject{Namespace: testNamespace, Key: fmt.Sprintf("stray-%d", i), Labels: labels})
 	}
 
-	revisions, err := s.storage.LatestRevisions(context.Background())
+	revisions, err := s.storage.LatestRevisions(context.Background(), LatestRevisionsOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, []Revision{{Name: "myrel", Namespace: testNamespace, Status: "deployed", Version: 1}}, revisions)
 }

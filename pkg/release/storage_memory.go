@@ -121,7 +121,7 @@ func (b *memoryStorageBackend) list(namespace, releaseName string, versions []in
 	return result
 }
 
-func (b *memoryStorageBackend) listLatestWithBodies(ctx context.Context, namespace string, selector labels.Selector, fn func(obj *storedObject) error) error {
+func (b *memoryStorageBackend) listLatest(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(obj *storedObject) error) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("read release objects: %w", err)
 	}
@@ -130,7 +130,7 @@ func (b *memoryStorageBackend) listLatestWithBodies(ctx context.Context, namespa
 		selector = labels.Everything()
 	}
 
-	objects := b.list(namespace, "", nil, true)
+	objects := b.list(namespace, "", nil, withBodies)
 	for i, obj := range objects {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("read release objects: %w", err)
@@ -142,7 +142,10 @@ func (b *memoryStorageBackend) listLatestWithBodies(ctx context.Context, namespa
 			continue
 		}
 
-		obj.Body = slices.Clone(obj.Body)
+		if withBodies {
+			obj.Body = slices.Clone(obj.Body)
+		}
+
 		if err := fn(obj); err != nil {
 			return err
 		}
