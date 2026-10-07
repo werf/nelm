@@ -14,7 +14,6 @@ import (
 	"github.com/gookit/color"
 	prtable "github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
-	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/labels"
 
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
@@ -376,38 +375,27 @@ func buildReleaseListOutputTable(ctx context.Context, result *ReleaseListResultV
 }
 
 func buildReleaseListResult(ctx context.Context, storage release.ReleaseStorager, selector string) (*ReleaseListResultV2, error) {
-	latest := map[string]*ReleaseListResultRelease{}
-
-	if err := storage.ForEachLatestRelease(ctx, func(revision release.Revision, summary *release.ReleaseSummary, readErr error) error {
-		id := revision.Namespace + "/" + revision.Name
-		if current, found := latest[id]; found && current.Revision >= revision.Version {
-			return nil
-		}
-
-		latest[id] = &ReleaseListResultRelease{
-			Name:      revision.Name,
-			Namespace: revision.Namespace,
-			Revision:  revision.Version,
-			Status:    helmreleasestatus.Status(revision.Status),
-			details:   kdutil.NewConcurrent(&releaseListDetails{err: readErr, revision: revision, summary: summary}),
-		}
-
-		return nil
-	}, release.ForEachLatestReleaseOptions{LabelSelector: selector}); err != nil {
+	summaries, err := storage.ListLatestSummaries(ctx, release.ListLatestSummariesOptions{LabelSelector: selector})
+	if err != nil {
 		return nil, fmt.Errorf("read release list: %w", err)
 	}
 
-	result := newReleaseListResult(lo.Values(latest))
+	releases := make([]*ReleaseListResultRelease, 0, len(summaries))
+	for _, summary := range summaries {
+		if summary.DecodeErr != nil {
+			log.Default.Error(ctx, "Showing release %q (namespace: %q, revision: %d) without its details: %s", summary.Revision.Name, summary.Revision.Namespace, summary.Revision.Version, summary.DecodeErr)
+		}
 
-	for _, rel := range result.Releases {
-		rel.details.RTransaction(func(details *releaseListDetails) {
-			if details.err != nil {
-				log.Default.Error(ctx, "Showing release %q (namespace: %q, revision: %d) without its details: %s", rel.Name, rel.Namespace, rel.Revision, details.err)
-			}
+		releases = append(releases, &ReleaseListResultRelease{
+			Name:      summary.Revision.Name,
+			Namespace: summary.Revision.Namespace,
+			Revision:  summary.Revision.Version,
+			Status:    helmreleasestatus.Status(summary.Revision.Status),
+			details:   kdutil.NewConcurrent(&releaseListDetails{err: summary.DecodeErr, revision: summary.Revision, summary: summary.Summary}),
 		})
 	}
 
-	return result, nil
+	return newReleaseListResult(releases), nil
 }
 
 func buildReleaseListResultFromMetadata(ctx context.Context, storage release.ReleaseStorager, selector string) (*ReleaseListResultV2, error) {

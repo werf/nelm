@@ -33,6 +33,14 @@ type ReleaseSummary struct {
 	DeployedAt time.Time
 }
 
+// RevisionSummary is a revision with the summary of its body. DecodeErr wraps
+// ErrReleaseUndecodable when the body cannot be decoded, and Summary is nil then.
+type RevisionSummary struct {
+	DecodeErr error
+	Revision  Revision
+	Summary   *ReleaseSummary
+}
+
 type ReleaseSummaryChart struct {
 	AppVersion string `json:"appVersion"`
 	Name       string `json:"name"`

@@ -252,80 +252,6 @@ func (b *sqlStorageBackend) insertCustomLabel(ctx context.Context, tx *sqlx.Tx, 
 	return nil
 }
 
-func (b *sqlStorageBackend) listLatest(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(obj *storedObject) error) error {
-	builder := b.filterReleases(b.selectReleases(withBodies), namespace, "", nil).
-		Options("DISTINCT ON (namespace, name)").OrderBy("namespace", "name", "version DESC")
-	if selector != nil {
-		requirements, selectable := selector.Requirements()
-		if !selectable {
-			builder = builder.Where("FALSE")
-		}
-
-		for _, requirement := range requirements {
-			predicate, err := sqlLabelRequirement(requirement)
-			if err != nil {
-				return fmt.Errorf("build release label selector: %w", err)
-			}
-
-			builder = builder.Where(predicate)
-		}
-	}
-
-	query, args, err := b.statementBuilder.Select("releases_v1.*", "COALESCE((SELECT json_object_agg(c.key, c.value ORDER BY c.ctid)::text FROM custom_labels_v1 c WHERE c.releaseKey = releases_v1.key AND c.releaseNamespace = releases_v1.namespace), '{}') AS custom_labels").FromSelect(builder, sqlReleaseTable).ToSql()
-	if err != nil {
-		return fmt.Errorf("build select latest releases query: %w", err)
-	}
-
-	rows, err := b.db.QueryxContext(ctx, query, args...)
-	if err != nil {
-		return fmt.Errorf("select latest releases: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("read release objects: %w", err)
-		}
-
-		var record struct {
-			sqlReleaseRecord
-
-			CustomLabels string `db:"custom_labels"`
-		}
-		if err := rows.StructScan(&record); err != nil {
-			return fmt.Errorf("scan release: %w", err)
-		}
-
-		var customLabels map[string]string
-		if err := json.Unmarshal([]byte(record.CustomLabels), &customLabels); err != nil {
-			return fmt.Errorf("decode custom labels of release %q (namespace: %q): %w", record.Key, record.Namespace, err)
-		}
-
-		obj := storedObjectFromSQLRecord(&record.sqlReleaseRecord)
-		for key, value := range withoutSystemLabels(customLabels) {
-			obj.Labels[key] = value
-		}
-
-		if err := fn(obj); err != nil {
-			return err
-		}
-	}
-
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate releases: %w", err)
-	}
-
-	if err := rows.Close(); err != nil {
-		return fmt.Errorf("close releases: %w", err)
-	}
-
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("read release objects: %w", err)
-	}
-
-	return nil
-}
-
 func (b *sqlStorageBackend) listMetadata(ctx context.Context, namespace, releaseName string) ([]*storedObject, error) {
 	return b.selectMetadata(ctx, namespace, releaseName, nil)
 }
@@ -401,6 +327,80 @@ func (b *sqlStorageBackend) listWithBodies(ctx context.Context, namespace, relea
 
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("iterate releases: %w", err)
+	}
+
+	return nil
+}
+
+func (b *sqlStorageBackend) scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(obj *storedObject) error) error {
+	builder := b.filterReleases(b.selectReleases(withBodies), namespace, "", nil).
+		Options("DISTINCT ON (namespace, name)").OrderBy("namespace", "name", "version DESC")
+	if selector != nil {
+		requirements, selectable := selector.Requirements()
+		if !selectable {
+			builder = builder.Where("FALSE")
+		}
+
+		for _, requirement := range requirements {
+			predicate, err := sqlLabelRequirement(requirement)
+			if err != nil {
+				return fmt.Errorf("build release label selector: %w", err)
+			}
+
+			builder = builder.Where(predicate)
+		}
+	}
+
+	query, args, err := b.statementBuilder.Select("releases_v1.*", "COALESCE((SELECT json_object_agg(c.key, c.value ORDER BY c.ctid)::text FROM custom_labels_v1 c WHERE c.releaseKey = releases_v1.key AND c.releaseNamespace = releases_v1.namespace), '{}') AS custom_labels").FromSelect(builder, sqlReleaseTable).ToSql()
+	if err != nil {
+		return fmt.Errorf("build select latest releases query: %w", err)
+	}
+
+	rows, err := b.db.QueryxContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("select latest releases: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("read release objects: %w", err)
+		}
+
+		var record struct {
+			sqlReleaseRecord
+
+			CustomLabels string `db:"custom_labels"`
+		}
+		if err := rows.StructScan(&record); err != nil {
+			return fmt.Errorf("scan release: %w", err)
+		}
+
+		var customLabels map[string]string
+		if err := json.Unmarshal([]byte(record.CustomLabels), &customLabels); err != nil {
+			return fmt.Errorf("decode custom labels of release %q (namespace: %q): %w", record.Key, record.Namespace, err)
+		}
+
+		obj := storedObjectFromSQLRecord(&record.sqlReleaseRecord)
+		for key, value := range withoutSystemLabels(customLabels) {
+			obj.Labels[key] = value
+		}
+
+		if err := fn(obj); err != nil {
+			return err
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate releases: %w", err)
+	}
+
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close releases: %w", err)
+	}
+
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("read release objects: %w", err)
 	}
 
 	return nil

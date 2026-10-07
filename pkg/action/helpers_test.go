@@ -7,19 +7,6 @@ import (
 	"github.com/werf/nelm/v2/pkg/release"
 )
 
-type latestReleaseListEntry struct {
-	err      error
-	revision release.Revision
-	summary  *release.ReleaseSummary
-}
-
-func newLatestReleaseListEntry(namespace, name string, version int) latestReleaseListEntry {
-	return latestReleaseListEntry{
-		revision: release.Revision{Namespace: namespace, Name: name, Version: version, Status: "deployed"},
-		summary:  newTestReleaseSummary(),
-	}
-}
-
 type latestReleaseListLoads struct {
 	errs      []error
 	revisions []release.Revision
@@ -28,27 +15,15 @@ type latestReleaseListLoads struct {
 type latestReleaseListStorager struct {
 	release.ReleaseStorager
 
-	entries   []latestReleaseListEntry
-	err       error
-	loads     *kdutil.Concurrent[*latestReleaseListLoads]
-	revisions []release.Revision
-	selector  string
-	summaries map[string]*release.ReleaseSummary
-}
-
-func (s *latestReleaseListStorager) ForEachLatestRelease(ctx context.Context, fn func(release.Revision, *release.ReleaseSummary, error) error, opts release.ForEachLatestReleaseOptions) error {
-	s.selector = opts.LabelSelector
-	if s.err != nil {
-		return s.err
-	}
-
-	for _, entry := range s.entries {
-		if err := fn(entry.revision, entry.summary, entry.err); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	err              error
+	historyLimit     int
+	historyName      string
+	historySummaries []release.RevisionSummary
+	latestSummaries  []release.RevisionSummary
+	loads            *kdutil.Concurrent[*latestReleaseListLoads]
+	revisions        []release.Revision
+	selector         string
+	summaries        map[string]*release.ReleaseSummary
 }
 
 func (s *latestReleaseListStorager) LatestRevisions(ctx context.Context, opts release.LatestRevisionsOptions) ([]release.Revision, error) {
@@ -58,6 +33,24 @@ func (s *latestReleaseListStorager) LatestRevisions(ctx context.Context, opts re
 	}
 
 	return s.revisions, nil
+}
+
+func (s *latestReleaseListStorager) ListLatestSummaries(ctx context.Context, opts release.ListLatestSummariesOptions) ([]release.RevisionSummary, error) {
+	s.selector = opts.LabelSelector
+	if s.err != nil {
+		return nil, s.err
+	}
+
+	return s.latestSummaries, nil
+}
+
+func (s *latestReleaseListStorager) ListRevisionSummaries(ctx context.Context, name string, opts release.ListRevisionSummariesOptions) ([]release.RevisionSummary, error) {
+	s.historyName, s.historyLimit = name, opts.Limit
+	if s.err != nil {
+		return nil, s.err
+	}
+
+	return s.historySummaries, nil
 }
 
 func (s *latestReleaseListStorager) LoadRevisionSummary(ctx context.Context, revision release.Revision) (*release.ReleaseSummary, error) {
@@ -90,6 +83,13 @@ func (s *latestReleaseListStorager) loadedRevisions() []release.Revision {
 	})
 
 	return revisions
+}
+
+func newLatestRevisionSummary(namespace, name string, version int) release.RevisionSummary {
+	return release.RevisionSummary{
+		Revision: release.Revision{Namespace: namespace, Name: name, Version: version, Status: "deployed"},
+		Summary:  newTestReleaseSummary(),
+	}
 }
 
 func newMetadataReleaseListStorager(revisions []release.Revision, summaries map[string]*release.ReleaseSummary, loadErrs ...error) *latestReleaseListStorager {

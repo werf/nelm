@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 )
 
-func TestMemoryStorageBackend_ListLatestWithBodiesConcurrent(t *testing.T) {
+func TestMemoryStorageBackend_ScanLatestCandidatesWithBodiesConcurrent(t *testing.T) {
 	ctx := context.Background()
 
 	backend := newMemoryStorageBackend()
@@ -38,7 +38,7 @@ func TestMemoryStorageBackend_ListLatestWithBodiesConcurrent(t *testing.T) {
 		defer wg.Done()
 
 		for i := 0; i < 100; i++ {
-			assert.NoError(t, backend.listLatest(ctx, "", selector, true, func(obj *storedObject) error {
+			assert.NoError(t, backend.scanLatestCandidates(ctx, "", selector, true, func(obj *storedObject) error {
 				assert.Equal(t, "body", string(obj.Body))
 				obj.Body[0] = 'x'
 				obj.Labels["packageChecksum"] = "callback"
@@ -51,16 +51,16 @@ func TestMemoryStorageBackend_ListLatestWithBodiesConcurrent(t *testing.T) {
 	wg.Wait()
 }
 
-func TestMemoryStorageBackend_ListLatestWithBodiesSelectors(t *testing.T) {
+func TestMemoryStorageBackend_ScanLatestCandidatesWithBodiesSelectors(t *testing.T) {
 	backend := newMemoryStorageBackend()
 	testLatestBodySelectors(t, func(obj *storedObject) {
 		require.NoError(t, backend.create(context.Background(), obj))
 	}, func(ctx context.Context, namespace string, selector labels.Selector, fn func(*storedObject) error) error {
-		return backend.listLatest(ctx, namespace, selector, true, fn)
+		return backend.scanLatestCandidates(ctx, namespace, selector, true, fn)
 	})
 }
 
-func TestMemoryStorageBackend_ListLatestWithBodiesSnapshot(t *testing.T) {
+func TestMemoryStorageBackend_ScanLatestCandidatesWithBodiesSnapshot(t *testing.T) {
 	ctx := context.Background()
 	backend := newMemoryStorageBackend()
 	input := &storedObject{Namespace: "ns", Key: "b", Labels: map[string]string{"owner": "helm", "packageChecksum": "old"}, Body: []byte("old")}
@@ -71,7 +71,7 @@ func TestMemoryStorageBackend_ListLatestWithBodiesSnapshot(t *testing.T) {
 	require.NoError(t, backend.create(ctx, &storedObject{Namespace: "other", Key: "c", Labels: map[string]string{"owner": "helm"}, Body: []byte("c")}))
 
 	var keys []string
-	require.NoError(t, backend.listLatest(ctx, "", labels.Everything(), true, func(obj *storedObject) error {
+	require.NoError(t, backend.scanLatestCandidates(ctx, "", labels.Everything(), true, func(obj *storedObject) error {
 		keys = append(keys, obj.Namespace+"/"+obj.Key)
 		switch obj.Key {
 		case "a":
@@ -98,7 +98,7 @@ func TestMemoryStorageBackend_ListLatestWithBodiesSnapshot(t *testing.T) {
 	assert.Equal(t, "new", string(stored.Body))
 }
 
-func TestMemoryStorageBackend_ListLatestWithBodiesStops(t *testing.T) {
+func TestMemoryStorageBackend_ScanLatestCandidatesWithBodiesStops(t *testing.T) {
 	backend := newMemoryStorageBackend()
 
 	ctx := context.Background()
@@ -108,7 +108,7 @@ func TestMemoryStorageBackend_ListLatestWithBodiesStops(t *testing.T) {
 
 	stop := errors.New("stop")
 	calls := 0
-	err := backend.listLatest(ctx, "", labels.Everything(), true, func(*storedObject) error {
+	err := backend.scanLatestCandidates(ctx, "", labels.Everything(), true, func(*storedObject) error {
 		calls++
 
 		return stop
@@ -119,7 +119,7 @@ func TestMemoryStorageBackend_ListLatestWithBodiesStops(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err = backend.listLatest(ctx, "", labels.Everything(), true, func(*storedObject) error {
+	err = backend.scanLatestCandidates(ctx, "", labels.Everything(), true, func(*storedObject) error {
 		t.Fatal("callback after cancellation")
 
 		return nil
@@ -130,7 +130,7 @@ func TestMemoryStorageBackend_ListLatestWithBodiesStops(t *testing.T) {
 	defer cancel()
 
 	calls = 0
-	err = backend.listLatest(ctx, "", labels.Everything(), true, func(*storedObject) error {
+	err = backend.scanLatestCandidates(ctx, "", labels.Everything(), true, func(*storedObject) error {
 		calls++
 
 		cancel()
@@ -141,7 +141,7 @@ func TestMemoryStorageBackend_ListLatestWithBodiesStops(t *testing.T) {
 	assert.Equal(t, 1, calls)
 }
 
-func TestMemoryStorageBackend_ListLatestWithoutBodies(t *testing.T) {
+func TestMemoryStorageBackend_ScanLatestCandidatesWithoutBodies(t *testing.T) {
 	ctx := context.Background()
 	backend := newMemoryStorageBackend()
 	require.NoError(t, backend.create(ctx, &storedObject{Namespace: "ns", Key: "a", Labels: map[string]string{"owner": "helm", "packageChecksum": "x"}, Body: []byte("a")}))
@@ -151,7 +151,7 @@ func TestMemoryStorageBackend_ListLatestWithoutBodies(t *testing.T) {
 	require.NoError(t, err)
 
 	var keys []string
-	require.NoError(t, backend.listLatest(ctx, "", selector, false, func(obj *storedObject) error {
+	require.NoError(t, backend.scanLatestCandidates(ctx, "", selector, false, func(obj *storedObject) error {
 		assert.Nil(t, obj.Body)
 
 		keys = append(keys, obj.Key)

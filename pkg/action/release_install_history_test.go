@@ -32,14 +32,6 @@ func (s *prunedRevisionStorager) Delete(ctx context.Context, name string, versio
 	return nil
 }
 
-func (s *prunedRevisionStorager) ForEachLatestRelease(ctx context.Context, fn func(revision release.Revision, summary *release.ReleaseSummary, err error) error, opts release.ForEachLatestReleaseOptions) error {
-	return nil
-}
-
-func (s *prunedRevisionStorager) ForEachRelease(ctx context.Context, name string, fn func(revision release.Revision, rel helmrel.Accessor, err error) error, opts release.ForEachReleaseOptions) error {
-	return nil
-}
-
 func (s *prunedRevisionStorager) GetRelease(ctx context.Context, name string, version int) (helmrel.Accessor, error) {
 	if s.prunedSet[version] {
 		return nil, release.ErrReleaseNotFound
@@ -57,6 +49,14 @@ func (s *prunedRevisionStorager) GetRelease(ctx context.Context, name string, ve
 }
 
 func (s *prunedRevisionStorager) LatestRevisions(ctx context.Context, opts release.LatestRevisionsOptions) ([]release.Revision, error) {
+	return nil, nil
+}
+
+func (s *prunedRevisionStorager) ListLatestSummaries(ctx context.Context, opts release.ListLatestSummariesOptions) ([]release.RevisionSummary, error) {
+	return nil, nil
+}
+
+func (s *prunedRevisionStorager) ListRevisionSummaries(ctx context.Context, name string, opts release.ListRevisionSummariesOptions) ([]release.RevisionSummary, error) {
 	return nil, nil
 }
 

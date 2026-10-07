@@ -33,30 +33,43 @@ func TestReleaseStorage_AnnotationsSurviveStorageAndListing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, rls.Info.Annotations, loaded.Annotations())
 
-	var calls int
-	require.NoError(t, s.storage.ForEachLatestRelease(ctx, func(_ Revision, summary *ReleaseSummary, err error) error {
-		require.NoError(t, err)
-		assert.Equal(t, rls.Info.Annotations, summary.Annotations)
-
-		calls++
-
-		return nil
-	}, ForEachLatestReleaseOptions{}))
-	assert.Equal(t, 1, calls)
+	summaries, err := s.storage.ListLatestSummaries(ctx, ListLatestSummariesOptions{})
+	require.NoError(t, err)
+	require.Len(t, summaries, 1)
+	require.NoError(t, summaries[0].DecodeErr)
+	assert.Equal(t, rls.Info.Annotations, summaries[0].Summary.Annotations)
 }
 
-func TestReleaseStorage_ForEachLatestReleaseCallbackAndBackendErrors(t *testing.T) {
-	callbackErr := errors.New("callback error")
-	backend := &latestListingBackend{objects: []*storedObject{newTestStoredObject(t, newTestRelease("ns", "myrel", 1, helmreleasecommon.StatusDeployed))}}
-	err := newReleaseStorage("", backend, 0).ForEachLatestRelease(context.Background(), func(Revision, *ReleaseSummary, error) error { return callbackErr }, ForEachLatestReleaseOptions{})
-	assert.Equal(t, callbackErr, err)
+func TestReleaseStorage_LatestRevisionsSelectorBeforeMaximum(t *testing.T) {
+	old := newTestStoredObject(t, newTestRelease("ns", "myrel", 2, helmreleasecommon.StatusSuperseded))
+	old.Labels["packageChecksum"] = "old"
+	newer := newTestStoredObject(t, newTestRelease("ns", "myrel", 3, helmreleasecommon.StatusDeployed))
+	newer.Labels["packageChecksum"] = "new"
+	other := newTestStoredObject(t, newTestRelease("a-ns", "other", 1, helmreleasecommon.StatusDeployed))
+	other.Labels["packageChecksum"] = "old"
+	backend := &latestListingBackend{objects: []*storedObject{newer, old, other}}
 
-	backend.err = errors.New("list error")
-	err = newReleaseStorage("", backend, 0).ForEachLatestRelease(context.Background(), func(Revision, *ReleaseSummary, error) error { return nil }, ForEachLatestReleaseOptions{})
+	revisions, err := newReleaseStorage("", backend, 0).LatestRevisions(context.Background(), LatestRevisionsOptions{LabelSelector: "packageChecksum=old"})
+	require.NoError(t, err)
+	assert.Equal(t, []Revision{
+		{Name: "other", Namespace: "a-ns", Status: "deployed", Version: 1},
+		{Name: "myrel", Namespace: "ns", Status: "superseded", Version: 2},
+	}, revisions)
+	assert.False(t, backend.withBodies)
+	assert.Equal(t, "packageChecksum=old", backend.selector.String())
+
+	_, err = newReleaseStorage("", backend, 0).LatestRevisions(context.Background(), LatestRevisionsOptions{LabelSelector: "team in ("})
+	require.Error(t, err)
+	assert.Equal(t, 1, backend.listings)
+}
+
+func TestReleaseStorage_ListLatestSummariesBackendError(t *testing.T) {
+	backend := &latestListingBackend{err: errors.New("list error")}
+	_, err := newReleaseStorage("", backend, 0).ListLatestSummaries(context.Background(), ListLatestSummariesOptions{})
 	require.ErrorIs(t, err, backend.err)
 }
 
-func TestReleaseStorage_ForEachLatestReleaseDoesNotRetainBodies(t *testing.T) {
+func TestReleaseStorage_ListLatestSummariesDoesNotRetainBodies(t *testing.T) {
 	ctx := logboek.NewContext(context.Background(), logboek.NewLogger(io.Discard, io.Discard))
 	backend := &latestListingBackend{}
 	rls := newTestRelease("ns", "myrel", 1, helmreleasecommon.StatusDeployed)
@@ -98,17 +111,14 @@ func TestReleaseStorage_ForEachLatestReleaseDoesNotRetainBodies(t *testing.T) {
 		return nil
 	}
 
-	var revisions []Revision
-	require.NoError(t, newReleaseStorage("", backend, 0).ForEachLatestRelease(ctx, func(revision Revision, summary *ReleaseSummary, err error) error {
-		require.NoError(t, err)
-		require.NotNil(t, summary)
-		assert.Equal(t, 3, revision.Version)
+	summaries, err := newReleaseStorage("", backend, 0).ListLatestSummaries(ctx, ListLatestSummariesOptions{})
+	require.NoError(t, err)
+	require.Len(t, summaries, 1000)
 
-		revisions = append(revisions, revision)
-
-		return nil
-	}, ForEachLatestReleaseOptions{}))
-	require.Len(t, revisions, 1000)
+	for _, summary := range summaries {
+		require.NoError(t, summary.DecodeErr)
+		assert.Equal(t, 3, summary.Revision.Version)
+	}
 
 	growth := uint64(0)
 	if peak.HeapAlloc > before.HeapAlloc {
@@ -119,7 +129,7 @@ func TestReleaseStorage_ForEachLatestReleaseDoesNotRetainBodies(t *testing.T) {
 	assert.Less(t, growth, uint64(32<<20), "live heap must not retain all decoded manifests")
 }
 
-func TestReleaseStorage_ForEachLatestReleaseGroupsAndReplaces(t *testing.T) {
+func TestReleaseStorage_ListLatestSummariesGroupsAndReplaces(t *testing.T) {
 	objects := []*storedObject{
 		newUndecodableTestStoredObject(t, "ns", "foo", 1, helmreleasecommon.StatusSuperseded),
 		newTestStoredObject(t, newTestRelease("ns", "foo", 10, helmreleasecommon.StatusDeployed)),
@@ -127,99 +137,63 @@ func TestReleaseStorage_ForEachLatestReleaseGroupsAndReplaces(t *testing.T) {
 		newTestStoredObject(t, newTestRelease("ns", "foo", 11, helmreleasecommon.StatusDeployed)),
 		newUndecodableTestStoredObject(t, "ns", "foo", 9, helmreleasecommon.StatusFailed),
 		newTestStoredObject(t, newTestRelease("other", "foo", 3, helmreleasecommon.StatusDeployed)),
+		newTestStoredObject(t, newTestRelease("ns", "foo", 5, helmreleasecommon.StatusSuperseded)),
 		newUndecodableTestStoredObject(t, "ns", "broken", 1, helmreleasecommon.StatusDeployed),
 	}
 	backend := &latestListingBackend{objects: objects}
 
-	var events []string
+	summaries, err := newReleaseStorage("", backend, 0).ListLatestSummaries(context.Background(), ListLatestSummariesOptions{})
+	require.NoError(t, err)
 
-	err := newReleaseStorage("", backend, 0).ForEachLatestRelease(context.Background(), func(revision Revision, summary *ReleaseSummary, err error) error {
-		if revision.Name == "broken" {
-			require.ErrorIs(t, err, ErrReleaseUndecodable)
-			assert.Nil(t, summary)
+	var events []string
+	for _, summary := range summaries {
+		if summary.Revision.Name == "broken" {
+			require.ErrorIs(t, summary.DecodeErr, ErrReleaseUndecodable)
+			assert.Nil(t, summary.Summary)
 		} else {
-			require.NoError(t, err)
-			require.NotNil(t, summary)
+			require.NoError(t, summary.DecodeErr)
+			require.NotNil(t, summary.Summary)
 		}
 
-		events = append(events, fmt.Sprintf("%s/%s/%d", revision.Namespace, revision.Name, revision.Version))
+		events = append(events, fmt.Sprintf("%s/%s/%d", summary.Revision.Namespace, summary.Revision.Name, summary.Revision.Version))
+	}
 
-		return nil
-	}, ForEachLatestReleaseOptions{})
-	require.NoError(t, err)
-	assert.Equal(t, []string{"ns/foo/10", "ns/foo.v1a/1", "ns/foo/11", "other/foo/3", "ns/broken/1"}, events)
+	assert.Equal(t, []string{"ns/broken/1", "ns/foo/11", "ns/foo.v1a/1", "other/foo/3"}, events)
 	assert.Equal(t, 1, backend.listings)
 }
 
-func TestReleaseStorage_ForEachLatestReleaseInvalidSelectorMakesNoRequests(t *testing.T) {
+func TestReleaseStorage_ListLatestSummariesInvalidSelectorMakesNoRequests(t *testing.T) {
 	backend := &latestListingBackend{}
-	err := newReleaseStorage("", backend, 0).ForEachLatestRelease(context.Background(), func(Revision, *ReleaseSummary, error) error {
-		t.Fatal("unexpected callback")
-
-		return nil
-	}, ForEachLatestReleaseOptions{LabelSelector: "team in ("})
+	_, err := newReleaseStorage("", backend, 0).ListLatestSummaries(context.Background(), ListLatestSummariesOptions{LabelSelector: "team in ("})
 	require.Error(t, err)
 	assert.Zero(t, backend.listings)
 }
 
-func TestReleaseStorage_ForEachLatestReleaseMissingInfo(t *testing.T) {
+func TestReleaseStorage_ListLatestSummariesMissingInfo(t *testing.T) {
 	obj := &storedObject{
 		Namespace: "ns", Key: storageKey("myrel", 1),
 		Labels: map[string]string{"owner": "helm", "name": "myrel", "version": "1"},
 		Body:   []byte(base64.StdEncoding.EncodeToString([]byte(`{"name":"myrel","namespace":"ns","version":1}`))),
 	}
 	backend := &latestListingBackend{objects: []*storedObject{obj}}
-	err := newReleaseStorage("", backend, 0).ForEachLatestRelease(context.Background(), func(_ Revision, summary *ReleaseSummary, err error) error {
-		require.ErrorIs(t, err, ErrReleaseUndecodable)
-		assert.Nil(t, summary)
-
-		return nil
-	}, ForEachLatestReleaseOptions{})
+	summaries, err := newReleaseStorage("", backend, 0).ListLatestSummaries(context.Background(), ListLatestSummariesOptions{})
 	require.NoError(t, err)
+	require.Len(t, summaries, 1)
+	require.ErrorIs(t, summaries[0].DecodeErr, ErrReleaseUndecodable)
+	assert.Nil(t, summaries[0].Summary)
 }
 
-func TestReleaseStorage_ForEachLatestReleaseSelectorBeforeMaximum(t *testing.T) {
+func TestReleaseStorage_ListLatestSummariesSelectorBeforeMaximum(t *testing.T) {
 	old := newTestStoredObject(t, newTestRelease("ns", "myrel", 2, helmreleasecommon.StatusSuperseded))
 	old.Labels["packageChecksum"] = "old"
 	newer := newTestStoredObject(t, newTestRelease("ns", "myrel", 3, helmreleasecommon.StatusDeployed))
 	newer.Labels["packageChecksum"] = "new"
 	backend := &latestListingBackend{objects: []*storedObject{old, newer}}
 
-	var versions []int
-
-	err := newReleaseStorage("ns", backend, 0).ForEachLatestRelease(context.Background(), func(revision Revision, _ *ReleaseSummary, err error) error {
-		require.NoError(t, err)
-
-		versions = append(versions, revision.Version)
-
-		return nil
-	}, ForEachLatestReleaseOptions{LabelSelector: "packageChecksum=old"})
+	summaries, err := newReleaseStorage("ns", backend, 0).ListLatestSummaries(context.Background(), ListLatestSummariesOptions{LabelSelector: "packageChecksum=old"})
 	require.NoError(t, err)
-	assert.Equal(t, []int{2}, versions)
+	assert.Equal(t, []int{2}, summaryVersions(t, summaries))
 	assert.Equal(t, "packageChecksum=old", backend.selector.String())
-}
-
-func TestReleaseStorage_LatestRevisionsSelectorBeforeMaximum(t *testing.T) {
-	old := newTestStoredObject(t, newTestRelease("ns", "myrel", 2, helmreleasecommon.StatusSuperseded))
-	old.Labels["packageChecksum"] = "old"
-	newer := newTestStoredObject(t, newTestRelease("ns", "myrel", 3, helmreleasecommon.StatusDeployed))
-	newer.Labels["packageChecksum"] = "new"
-	other := newTestStoredObject(t, newTestRelease("a-ns", "other", 1, helmreleasecommon.StatusDeployed))
-	other.Labels["packageChecksum"] = "old"
-	backend := &latestListingBackend{objects: []*storedObject{newer, old, other}}
-
-	revisions, err := newReleaseStorage("", backend, 0).LatestRevisions(context.Background(), LatestRevisionsOptions{LabelSelector: "packageChecksum=old"})
-	require.NoError(t, err)
-	assert.Equal(t, []Revision{
-		{Name: "other", Namespace: "a-ns", Status: "deployed", Version: 1},
-		{Name: "myrel", Namespace: "ns", Status: "superseded", Version: 2},
-	}, revisions)
-	assert.False(t, backend.withBodies)
-	assert.Equal(t, "packageChecksum=old", backend.selector.String())
-
-	_, err = newReleaseStorage("", backend, 0).LatestRevisions(context.Background(), LatestRevisionsOptions{LabelSelector: "team in ("})
-	require.Error(t, err)
-	assert.Equal(t, 1, backend.listings)
 }
 
 func TestReleaseStorage_LoadRevisionSummary(t *testing.T) {

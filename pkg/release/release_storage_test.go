@@ -2,7 +2,6 @@ package release
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -222,159 +221,6 @@ func TestReleaseStorage_DeleteMissingRevision(t *testing.T) {
 	require.ErrorIs(t, s.Delete(context.Background(), "myrel", 1), ErrReleaseNotFound)
 }
 
-func TestReleaseStorage_ForEachReleasePaginates(t *testing.T) {
-	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
-
-	pages := []struct {
-		next    string
-		version int
-	}{
-		{next: "page-1", version: 1},
-		{version: 2},
-	}
-	pageByContinue := map[string]int{"": 0, "page-1": 1}
-
-	var calls int
-	s.client.PrependReactor("list", "secrets", func(action k8stesting.Action) (bool, runtime.Object, error) {
-		calls++
-		require.LessOrEqual(t, calls, len(pages))
-
-		opts := action.(k8stesting.ListActionImpl).GetListOptions()
-		assert.Equal(t, int64(kubeStoragePageSize), opts.Limit)
-
-		page, found := pageByContinue[opts.Continue]
-		require.True(t, found, "unexpected continue token %q", opts.Continue)
-
-		obj := newTestStoredObject(t, newTestReleaseWithStatus("myrel", pages[page].version, helmreleasecommon.StatusSuperseded))
-
-		list := &corev1.SecretList{Items: []corev1.Secret{*newKubeSecret(obj)}}
-		list.Continue = pages[page].next
-
-		return true, list, nil
-	})
-
-	var versions []int
-	require.NoError(t, s.storage.ForEachRelease(context.Background(), "myrel", func(revision Revision, _ helmrel.Accessor, err error) error {
-		require.NoError(t, err)
-
-		versions = append(versions, revision.Version)
-
-		return nil
-	}, ForEachReleaseOptions{}))
-
-	assert.Equal(t, []int{1, 2}, versions)
-	assert.Equal(t, 2, calls)
-}
-
-func TestReleaseStorage_ForEachReleaseReportsUndecodableRevision(t *testing.T) {
-	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
-	putTestKubeRelease(t, s, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusSuperseded))
-	putTestKubeObject(t, s, newUndecodableTestStoredObject(t, testNamespace, "myrel", 2, helmreleasecommon.StatusDeployed))
-	putTestKubeRelease(t, s, newTestReleaseWithStatus("otherrel", 1, helmreleasecommon.StatusDeployed))
-
-	decoded := map[int]bool{}
-	require.NoError(t, s.storage.ForEachRelease(context.Background(), "myrel", func(revision Revision, rel helmrel.Accessor, err error) error {
-		if revision.Version == 2 {
-			require.ErrorIs(t, err, ErrReleaseUndecodable)
-			assert.Nil(t, rel)
-			assert.Equal(t, "deployed", revision.Status)
-		} else {
-			require.NoError(t, err)
-			assert.Equal(t, revision.Version, rel.Version())
-		}
-
-		decoded[revision.Version] = err == nil
-
-		return nil
-	}, ForEachReleaseOptions{}))
-
-	assert.Equal(t, map[int]bool{1: true, 2: false}, decoded)
-	assert.Equal(t, 1, countActions(s.client.Actions(), "list"))
-}
-
-func TestReleaseStorage_ForEachReleaseReturnsCallbackErrorAsIs(t *testing.T) {
-	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
-	putTestKubeRelease(t, s, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusDeployed))
-
-	callbackErr := errors.New("callback failed")
-
-	err := s.storage.ForEachRelease(context.Background(), "myrel", func(Revision, helmrel.Accessor, error) error { return callbackErr }, ForEachReleaseOptions{})
-	assert.Equal(t, callbackErr, err)
-}
-
-func TestReleaseStorage_ForEachReleaseWithLimitInMemory(t *testing.T) {
-	var rels []*helmrelease.Release
-	for _, version := range []int{1, 2, 9, 10} {
-		rels = append(rels, newTestReleaseWithStatus("myrel", version, helmreleasecommon.StatusSuperseded))
-	}
-
-	var versions []int
-	require.NoError(t, newMemoryReleaseStorage(t, rels...).ForEachRelease(context.Background(), "myrel", func(revision Revision, _ helmrel.Accessor, err error) error {
-		require.NoError(t, err)
-
-		versions = append(versions, revision.Version)
-
-		return nil
-	}, ForEachReleaseOptions{Limit: 2}))
-
-	assert.ElementsMatch(t, []int{9, 10}, versions)
-}
-
-func TestReleaseStorage_ForEachReleaseWithLimitReadsOnlyNewestBodies(t *testing.T) {
-	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
-	for _, version := range []int{1, 2, 9, 10} {
-		putTestKubeRelease(t, s, newTestReleaseWithStatus("myrel", version, helmreleasecommon.StatusSuperseded))
-	}
-
-	putTestKubeObject(t, s, newUndecodableTestStoredObject(t, testNamespace, "myrel", 11, helmreleasecommon.StatusDeployed))
-	putTestKubeObject(t, s, &storedObject{Namespace: testNamespace, Key: "broken", Labels: map[string]string{"owner": "helm", "name": "myrel", "version": "x"}})
-
-	var versions []int
-	require.NoError(t, s.storage.ForEachRelease(context.Background(), "myrel", func(revision Revision, rel helmrel.Accessor, err error) error {
-		if revision.Version == 11 {
-			require.ErrorIs(t, err, ErrReleaseUndecodable)
-			assert.Nil(t, rel)
-		} else {
-			require.NoError(t, err)
-			assert.Equal(t, revision.Version, rel.Version())
-		}
-
-		versions = append(versions, revision.Version)
-
-		return nil
-	}, ForEachReleaseOptions{Limit: 2}))
-
-	assert.Equal(t, []int{10, 11}, versions)
-	assert.Equal(t, 0, countActions(s.client.Actions(), "get"))
-	require.Equal(t, 1, countActions(s.client.Actions(), "list"))
-
-	for _, action := range s.client.Actions() {
-		if listAction, ok := action.(k8stesting.ListActionImpl); ok {
-			assert.Equal(t, "name=myrel,owner=helm,version in (10,11)", listAction.GetListOptions().LabelSelector)
-		}
-	}
-}
-
-func TestReleaseStorage_ForEachReleaseWithLimitSkipsRemovedRevision(t *testing.T) {
-	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
-	for _, version := range []int{1, 2, 3} {
-		putTestKubeRelease(t, s, newTestReleaseWithStatus("myrel", version, helmreleasecommon.StatusSuperseded))
-	}
-
-	require.NoError(t, s.backend.delete(context.Background(), testNamespace, storageKey("myrel", 2)))
-
-	var versions []int
-	require.NoError(t, s.storage.ForEachRelease(context.Background(), "myrel", func(revision Revision, _ helmrel.Accessor, err error) error {
-		require.NoError(t, err)
-
-		versions = append(versions, revision.Version)
-
-		return nil
-	}, ForEachReleaseOptions{Limit: 2}))
-
-	assert.Equal(t, []int{3}, versions)
-}
-
 func TestReleaseStorage_GetReleaseKeepsStorageLabels(t *testing.T) {
 	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
 
@@ -559,6 +405,125 @@ func TestReleaseStorage_LatestRevisionsSkipsObjectsThatAreNotRevisions(t *testin
 	assert.Equal(t, []Revision{{Name: "myrel", Namespace: testNamespace, Status: "deployed", Version: 1}}, revisions)
 }
 
+func TestReleaseStorage_ListRevisionSummariesPaginates(t *testing.T) {
+	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
+
+	pages := []struct {
+		next    string
+		version int
+	}{
+		{next: "page-1", version: 1},
+		{version: 2},
+	}
+	pageByContinue := map[string]int{"": 0, "page-1": 1}
+
+	var calls int
+	s.client.PrependReactor("list", "secrets", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		calls++
+		require.LessOrEqual(t, calls, len(pages))
+
+		opts := action.(k8stesting.ListActionImpl).GetListOptions()
+		assert.Equal(t, int64(kubeStoragePageSize), opts.Limit)
+
+		page, found := pageByContinue[opts.Continue]
+		require.True(t, found, "unexpected continue token %q", opts.Continue)
+
+		obj := newTestStoredObject(t, newTestReleaseWithStatus("myrel", pages[page].version, helmreleasecommon.StatusSuperseded))
+
+		list := &corev1.SecretList{Items: []corev1.Secret{*newKubeSecret(obj)}}
+		list.Continue = pages[page].next
+
+		return true, list, nil
+	})
+
+	summaries, err := s.storage.ListRevisionSummaries(context.Background(), "myrel", ListRevisionSummariesOptions{})
+	require.NoError(t, err)
+
+	assert.Equal(t, []int{1, 2}, summaryVersions(t, summaries))
+	assert.Equal(t, 2, calls)
+}
+
+func TestReleaseStorage_ListRevisionSummariesReportsUndecodableRevision(t *testing.T) {
+	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
+	putTestKubeRelease(t, s, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusSuperseded))
+	putTestKubeObject(t, s, newUndecodableTestStoredObject(t, testNamespace, "myrel", 2, helmreleasecommon.StatusDeployed))
+	putTestKubeRelease(t, s, newTestReleaseWithStatus("otherrel", 1, helmreleasecommon.StatusDeployed))
+
+	summaries, err := s.storage.ListRevisionSummaries(context.Background(), "myrel", ListRevisionSummariesOptions{})
+	require.NoError(t, err)
+	require.Len(t, summaries, 2)
+
+	require.NoError(t, summaries[0].DecodeErr)
+	assert.NotNil(t, summaries[0].Summary)
+	require.ErrorIs(t, summaries[1].DecodeErr, ErrReleaseUndecodable)
+	assert.Nil(t, summaries[1].Summary)
+	assert.Equal(t, "deployed", summaries[1].Revision.Status)
+	assert.Equal(t, 1, countActions(s.client.Actions(), "list"))
+}
+
+func TestReleaseStorage_ListRevisionSummariesSortsByVersion(t *testing.T) {
+	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
+	for _, version := range []int{2, 10, 1} {
+		putTestKubeObject(t, s, newTestStoredObject(t, newTestRelease(testNamespace, "myrel", version, helmreleasecommon.StatusSuperseded)))
+	}
+
+	summaries, err := s.storage.ListRevisionSummaries(context.Background(), "myrel", ListRevisionSummariesOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, []int{1, 2, 10}, summaryVersions(t, summaries))
+}
+
+func TestReleaseStorage_ListRevisionSummariesWithLimitInMemory(t *testing.T) {
+	var rels []*helmrelease.Release
+	for _, version := range []int{1, 2, 9, 10} {
+		rels = append(rels, newTestReleaseWithStatus("myrel", version, helmreleasecommon.StatusSuperseded))
+	}
+
+	summaries, err := newMemoryReleaseStorage(t, rels...).ListRevisionSummaries(context.Background(), "myrel", ListRevisionSummariesOptions{Limit: 2})
+	require.NoError(t, err)
+
+	assert.Equal(t, []int{9, 10}, summaryVersions(t, summaries))
+}
+
+func TestReleaseStorage_ListRevisionSummariesWithLimitReadsOnlyNewestBodies(t *testing.T) {
+	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
+	for _, version := range []int{1, 2, 9, 10} {
+		putTestKubeRelease(t, s, newTestReleaseWithStatus("myrel", version, helmreleasecommon.StatusSuperseded))
+	}
+
+	putTestKubeObject(t, s, newUndecodableTestStoredObject(t, testNamespace, "myrel", 11, helmreleasecommon.StatusDeployed))
+	putTestKubeObject(t, s, &storedObject{Namespace: testNamespace, Key: "broken", Labels: map[string]string{"owner": "helm", "name": "myrel", "version": "x"}})
+
+	summaries, err := s.storage.ListRevisionSummaries(context.Background(), "myrel", ListRevisionSummariesOptions{Limit: 2})
+	require.NoError(t, err)
+	require.Len(t, summaries, 2)
+	assert.Equal(t, 10, summaries[0].Revision.Version)
+	require.NoError(t, summaries[0].DecodeErr)
+	assert.Equal(t, 11, summaries[1].Revision.Version)
+	require.ErrorIs(t, summaries[1].DecodeErr, ErrReleaseUndecodable)
+	assert.Equal(t, 0, countActions(s.client.Actions(), "get"))
+	require.Equal(t, 1, countActions(s.client.Actions(), "list"))
+
+	for _, action := range s.client.Actions() {
+		if listAction, ok := action.(k8stesting.ListActionImpl); ok {
+			assert.Equal(t, "name=myrel,owner=helm,version in (10,11)", listAction.GetListOptions().LabelSelector)
+		}
+	}
+}
+
+func TestReleaseStorage_ListRevisionSummariesWithLimitSkipsRemovedRevision(t *testing.T) {
+	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
+	for _, version := range []int{1, 2, 3} {
+		putTestKubeRelease(t, s, newTestReleaseWithStatus("myrel", version, helmreleasecommon.StatusSuperseded))
+	}
+
+	require.NoError(t, s.backend.delete(context.Background(), testNamespace, storageKey("myrel", 2)))
+
+	summaries, err := s.storage.ListRevisionSummaries(context.Background(), "myrel", ListRevisionSummariesOptions{Limit: 2})
+	require.NoError(t, err)
+
+	assert.Equal(t, []int{3}, summaryVersions(t, summaries))
+}
+
 func TestReleaseStorage_NamedReadsRequireName(t *testing.T) {
 	ctx := context.Background()
 	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
@@ -574,7 +539,8 @@ func TestReleaseStorage_NamedReadsRequireName(t *testing.T) {
 	_, err = s.storage.Revisions(ctx, "")
 	require.Error(t, err)
 
-	require.Error(t, s.storage.ForEachRelease(ctx, "", func(Revision, helmrel.Accessor, error) error { return nil }, ForEachReleaseOptions{}))
+	_, err = s.storage.ListRevisionSummaries(ctx, "", ListRevisionSummariesOptions{})
+	require.Error(t, err)
 }
 
 func TestReleaseStorage_NamespacedOperationsRequireNamespace(t *testing.T) {
@@ -593,7 +559,8 @@ func TestReleaseStorage_NamespacedOperationsRequireNamespace(t *testing.T) {
 	_, err = s.storage.Revisions(ctx, "myrel")
 	require.Error(t, err)
 
-	require.Error(t, s.storage.ForEachRelease(ctx, "myrel", func(Revision, helmrel.Accessor, error) error { return nil }, ForEachReleaseOptions{}))
+	_, err = s.storage.ListRevisionSummaries(ctx, "myrel", ListRevisionSummariesOptions{})
+	require.Error(t, err)
 }
 
 func TestReleaseStorage_RevisionsAreSortedAndUnparseableVersionIsAnError(t *testing.T) {

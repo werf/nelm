@@ -62,7 +62,7 @@ type latestListingBackend struct {
 	withBodies bool
 }
 
-func (b *latestListingBackend) listLatest(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(*storedObject) error) error {
+func (b *latestListingBackend) scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(*storedObject) error) error {
 	b.listings++
 	b.withBodies = withBodies
 
@@ -231,6 +231,19 @@ func putTestKubeObject(t *testing.T, s *testKubeStorage, obj *storedObject) {
 
 	s.client.ClearActions()
 	s.metadataClient.ClearActions()
+}
+
+func summaryVersions(t *testing.T, summaries []RevisionSummary) []int {
+	t.Helper()
+
+	versions := make([]int, 0, len(summaries))
+	for _, summary := range summaries {
+		require.NoError(t, summary.DecodeErr)
+
+		versions = append(versions, summary.Revision.Version)
+	}
+
+	return versions
 }
 
 func testLatestBodySelectors(t *testing.T, create func(*storedObject), list func(context.Context, string, labels.Selector, func(*storedObject) error) error) {

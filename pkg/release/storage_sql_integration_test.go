@@ -70,7 +70,7 @@ func TestSQLStorageBackend_SelectorsPostgres(t *testing.T) {
 
 			for _, withBodies := range []bool{true, false} {
 				actual := map[string]int{}
-				err = b.listLatest(ctx, "", sel, withBodies, func(obj *storedObject) error {
+				err = b.scanLatestCandidates(ctx, "", sel, withBodies, func(obj *storedObject) error {
 					if obj.Namespace != prefix+"-one" && obj.Namespace != prefix+"-two" {
 						return nil
 					}

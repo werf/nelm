@@ -191,29 +191,6 @@ func (b *kubeStorageBackend) listBodies(ctx context.Context, namespace, selector
 	}
 }
 
-func (b *kubeStorageBackend) listLatest(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(obj *storedObject) error) error {
-	if selector == nil {
-		selector = labels.Everything()
-	}
-
-	requirements, selectable := selector.Requirements()
-	if !selectable {
-		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("list %s: %w", b.kind, err)
-		}
-
-		return nil
-	}
-
-	combined := labels.Set{storageLabelOwner: storageOwner}.AsSelector().Add(requirements...)
-
-	if withBodies {
-		return b.listBodies(ctx, namespace, combined.String(), fn)
-	}
-
-	return b.listMetadataPages(ctx, namespace, combined.String(), fn)
-}
-
 func (b *kubeStorageBackend) listMetadata(ctx context.Context, namespace, releaseName string) ([]*storedObject, error) {
 	selector, err := kubeStorageSelector(releaseName, nil)
 	if err != nil {
@@ -265,6 +242,29 @@ func (b *kubeStorageBackend) listWithBodies(ctx context.Context, namespace, rele
 	}
 
 	return b.listBodies(ctx, namespace, selector, fn)
+}
+
+func (b *kubeStorageBackend) scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(obj *storedObject) error) error {
+	if selector == nil {
+		selector = labels.Everything()
+	}
+
+	requirements, selectable := selector.Requirements()
+	if !selectable {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("list %s: %w", b.kind, err)
+		}
+
+		return nil
+	}
+
+	combined := labels.Set{storageLabelOwner: storageOwner}.AsSelector().Add(requirements...)
+
+	if withBodies {
+		return b.listBodies(ctx, namespace, combined.String(), fn)
+	}
+
+	return b.listMetadataPages(ctx, namespace, combined.String(), fn)
 }
 
 func (b *kubeStorageBackend) update(ctx context.Context, obj *storedObject) error {

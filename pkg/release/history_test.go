@@ -27,19 +27,19 @@ func (s *stubStorager) Delete(ctx context.Context, name string, version int) err
 	return s.deleteErr
 }
 
-func (s *stubStorager) ForEachLatestRelease(ctx context.Context, fn func(revision Revision, summary *ReleaseSummary, err error) error, opts ForEachLatestReleaseOptions) error {
-	return nil
-}
-
-func (s *stubStorager) ForEachRelease(ctx context.Context, name string, fn func(revision Revision, rel helmrel.Accessor, err error) error, opts ForEachReleaseOptions) error {
-	return nil
-}
-
 func (s *stubStorager) GetRelease(ctx context.Context, name string, version int) (helmrel.Accessor, error) {
 	return nil, errors.ErrUnsupported
 }
 
 func (s *stubStorager) LatestRevisions(ctx context.Context, opts LatestRevisionsOptions) ([]Revision, error) {
+	return nil, nil
+}
+
+func (s *stubStorager) ListLatestSummaries(ctx context.Context, opts ListLatestSummariesOptions) ([]RevisionSummary, error) {
+	return nil, nil
+}
+
+func (s *stubStorager) ListRevisionSummaries(ctx context.Context, name string, opts ListRevisionSummariesOptions) ([]RevisionSummary, error) {
 	return nil, nil
 }
 

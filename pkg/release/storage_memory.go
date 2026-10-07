@@ -121,7 +121,37 @@ func (b *memoryStorageBackend) list(namespace, releaseName string, versions []in
 	return result
 }
 
-func (b *memoryStorageBackend) listLatest(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(obj *storedObject) error) error {
+func (b *memoryStorageBackend) listMetadata(_ context.Context, namespace, releaseName string) ([]*storedObject, error) {
+	return b.list(namespace, releaseName, nil, false), nil
+}
+
+func (b *memoryStorageBackend) listWithBodies(ctx context.Context, namespace, releaseName string, versions []int, fn func(obj *storedObject) error) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("read release objects: %w", err)
+	}
+
+	objects := b.list(namespace, releaseName, versions, true)
+	for i, obj := range objects {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("read release objects: %w", err)
+		}
+
+		objects[i] = nil
+		obj.Body = slices.Clone(obj.Body)
+
+		if err := fn(obj); err != nil {
+			return err
+		}
+	}
+
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("read release objects: %w", err)
+	}
+
+	return nil
+}
+
+func (b *memoryStorageBackend) scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(obj *storedObject) error) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("read release objects: %w", err)
 	}
@@ -145,36 +175,6 @@ func (b *memoryStorageBackend) listLatest(ctx context.Context, namespace string,
 		if withBodies {
 			obj.Body = slices.Clone(obj.Body)
 		}
-
-		if err := fn(obj); err != nil {
-			return err
-		}
-	}
-
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("read release objects: %w", err)
-	}
-
-	return nil
-}
-
-func (b *memoryStorageBackend) listMetadata(_ context.Context, namespace, releaseName string) ([]*storedObject, error) {
-	return b.list(namespace, releaseName, nil, false), nil
-}
-
-func (b *memoryStorageBackend) listWithBodies(ctx context.Context, namespace, releaseName string, versions []int, fn func(obj *storedObject) error) error {
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("read release objects: %w", err)
-	}
-
-	objects := b.list(namespace, releaseName, versions, true)
-	for i, obj := range objects {
-		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("read release objects: %w", err)
-		}
-
-		objects[i] = nil
-		obj.Body = slices.Clone(obj.Body)
 
 		if err := fn(obj); err != nil {
 			return err

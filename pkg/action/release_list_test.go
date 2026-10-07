@@ -33,6 +33,36 @@ func TestBuildReleaseHistoryOutputTable_RevisionWithoutDetails(t *testing.T) {
 	require.NotPanics(t, func() { buildReleaseHistoryOutputTable(context.Background(), result).Render() })
 }
 
+func TestBuildReleaseHistoryResult(t *testing.T) {
+	ctx := logboek.NewContext(context.Background(), logboek.NewLogger(io.Discard, io.Discard))
+	withoutChart := newLatestRevisionSummary("ns", "myrel", 2)
+	withoutChart.Summary.Chart = nil
+	storage := &latestReleaseListStorager{historySummaries: []release.RevisionSummary{
+		newLatestRevisionSummary("ns", "myrel", 1),
+		withoutChart,
+		{Revision: release.Revision{Namespace: "ns", Name: "myrel", Version: 3, Status: "failed"}, DecodeErr: release.ErrReleaseUndecodable},
+	}}
+
+	result, err := buildReleaseHistoryResult(ctx, storage, "myrel", 5)
+	require.NoError(t, err)
+	assert.Equal(t, "myrel", storage.historyName)
+	assert.Equal(t, 5, storage.historyLimit)
+	require.Len(t, result.Releases, 3)
+
+	assert.Equal(t, &ReleaseHistoryResultChart{AppVersion: "4.5.6", Name: "mychart", Version: "1.2.3"}, result.Releases[0].Chart)
+	assert.Equal(t, map[string]string{"managed-by": "deckhouse"}, result.Releases[0].Annotations)
+	require.NotNil(t, result.Releases[0].DeployedAt)
+
+	assert.Nil(t, result.Releases[1].Chart)
+	require.NotNil(t, result.Releases[1].DeployedAt)
+
+	assert.Equal(t, &ReleaseHistoryResultRelease{Name: "myrel", Namespace: "ns", Revision: 3, Status: helmreleasestatus.StatusFailed}, result.Releases[2])
+	require.NotPanics(t, func() { buildReleaseHistoryOutputTable(ctx, result).Render() })
+
+	_, err = buildReleaseHistoryResult(ctx, &latestReleaseListStorager{err: errors.New("connection refused")}, "myrel", 0)
+	require.ErrorContains(t, err, "connection refused")
+}
+
 func TestBuildReleaseListResultBackendError(t *testing.T) {
 	backendErr := errors.New("connection refused")
 	_, err := buildReleaseListResult(context.Background(), &latestReleaseListStorager{err: backendErr}, "")
@@ -139,12 +169,10 @@ func TestBuildReleaseListResultFromMetadataRetriesTransientErrors(t *testing.T) 
 
 func TestBuildReleaseListResultProjectsAndSorts(t *testing.T) {
 	ctx := context.Background()
-	storage := &latestReleaseListStorager{entries: []latestReleaseListEntry{
-		newLatestReleaseListEntry("z", "same", 3),
-		newLatestReleaseListEntry("a", "same", 1),
-		newLatestReleaseListEntry("a", "other", 1),
-		newLatestReleaseListEntry("a", "same", 10),
-		newLatestReleaseListEntry("a", "same", 2),
+	storage := &latestReleaseListStorager{latestSummaries: []release.RevisionSummary{
+		newLatestRevisionSummary("z", "same", 3),
+		newLatestRevisionSummary("a", "same", 10),
+		newLatestRevisionSummary("a", "other", 1),
 	}}
 
 	result, err := buildReleaseListResult(ctx, storage, "packageChecksum")
@@ -173,26 +201,10 @@ func TestBuildReleaseListResultProjectsAndSorts(t *testing.T) {
 	assert.Empty(t, storage.loadedRevisions())
 }
 
-func TestBuildReleaseListResultSupersedesProvisionalError(t *testing.T) {
-	storage := &latestReleaseListStorager{entries: []latestReleaseListEntry{
-		{revision: release.Revision{Namespace: "ns", Name: "myrel", Version: 1}, err: release.ErrReleaseUndecodable},
-		newLatestReleaseListEntry("ns", "myrel", 2),
-	}}
-
-	result, err := buildReleaseListResult(context.Background(), storage, "")
-	require.NoError(t, err)
-	require.Len(t, result.Releases, 1)
-	assert.Equal(t, 2, result.Releases[0].Revision)
-
-	_, err = result.Releases[0].Chart(context.Background())
-	require.NoError(t, err)
-}
-
 func TestBuildReleaseListResultUndecodableLatest(t *testing.T) {
 	ctx := logboek.NewContext(context.Background(), logboek.NewLogger(io.Discard, io.Discard))
-	storage := &latestReleaseListStorager{entries: []latestReleaseListEntry{
-		newLatestReleaseListEntry("ns", "myrel", 1),
-		{revision: release.Revision{Namespace: "ns", Name: "myrel", Version: 2, Status: "failed"}, err: release.ErrReleaseUndecodable},
+	storage := &latestReleaseListStorager{latestSummaries: []release.RevisionSummary{
+		{Revision: release.Revision{Namespace: "ns", Name: "myrel", Version: 2, Status: "failed"}, DecodeErr: release.ErrReleaseUndecodable},
 	}}
 
 	result, err := buildReleaseListResult(ctx, storage, "")
@@ -232,10 +244,10 @@ func TestListsReleasesByMetadata(t *testing.T) {
 }
 
 func TestReleaseListResultMarshalsEagerDetails(t *testing.T) {
-	entry := newLatestReleaseListEntry("ns", "myrel", 1)
-	entry.summary.DeployedAt = time.Unix(1735689600, 0).UTC()
+	entry := newLatestRevisionSummary("ns", "myrel", 1)
+	entry.Summary.DeployedAt = time.Unix(1735689600, 0).UTC()
 
-	result, err := buildReleaseListResult(context.Background(), &latestReleaseListStorager{entries: []latestReleaseListEntry{entry}}, "")
+	result, err := buildReleaseListResult(context.Background(), &latestReleaseListStorager{latestSummaries: []release.RevisionSummary{entry}}, "")
 	require.NoError(t, err)
 
 	data, err := json.Marshal(result)
@@ -262,10 +274,10 @@ func TestReleaseListResultReleaseNotFromList(t *testing.T) {
 
 func TestReleaseListResultReleaseWithoutChart(t *testing.T) {
 	ctx := context.Background()
-	entry := newLatestReleaseListEntry("ns", "myrel", 1)
-	entry.summary.Chart = nil
+	entry := newLatestRevisionSummary("ns", "myrel", 1)
+	entry.Summary.Chart = nil
 
-	result, err := buildReleaseListResult(ctx, &latestReleaseListStorager{entries: []latestReleaseListEntry{entry}}, "")
+	result, err := buildReleaseListResult(ctx, &latestReleaseListStorager{latestSummaries: []release.RevisionSummary{entry}}, "")
 	require.NoError(t, err)
 
 	_, err = result.Releases[0].Chart(ctx)
@@ -273,5 +285,5 @@ func TestReleaseListResultReleaseWithoutChart(t *testing.T) {
 
 	annotations, err := result.Releases[0].Annotations(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, entry.summary.Annotations, annotations)
+	assert.Equal(t, entry.Summary.Annotations, annotations)
 }
