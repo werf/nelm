@@ -240,7 +240,7 @@ func newTestSQLBackend(t *testing.T) (*sqlStorageBackend, sqlmock.Sqlmock) {
 		db.Close()
 	})
 
-	return newSQLStorageBackendFromDB(sqlx.NewDb(db, sqlDialect)), mock
+	return newSQLStorageBackend(sqlx.NewDb(db, sqlDialect)), mock
 }
 
 func newTestStoredObject(t *testing.T, rls *helmrelease.Release) *storedObject {

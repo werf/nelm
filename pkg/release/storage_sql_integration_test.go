@@ -20,7 +20,7 @@ func TestSQLStorageBackend_SelectorsPostgres(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	b, err := newSQLStorageBackend(ctx, connection)
+	b, err := openSQLStorageBackend(ctx, connection)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, b.db.Close()) })
 

@@ -50,27 +50,7 @@ type sqlStorageBackend struct {
 	statementBuilder sq.StatementBuilderType
 }
 
-func newSQLStorageBackend(ctx context.Context, connectionString string) (*sqlStorageBackend, error) {
-	db, err := sqlx.ConnectContext(ctx, sqlDialect, connectionString)
-	if err != nil {
-		// ConnectContext returns an open handle when only the ping failed.
-		if db != nil {
-			db.Close()
-		}
-
-		return nil, fmt.Errorf("connect to database: %w", err)
-	}
-
-	if err := ensureSQLStorageSchema(ctx, db); err != nil {
-		db.Close()
-
-		return nil, fmt.Errorf("set up database schema: %w", err)
-	}
-
-	return newSQLStorageBackendFromDB(db), nil
-}
-
-func newSQLStorageBackendFromDB(db *sqlx.DB) *sqlStorageBackend {
+func newSQLStorageBackend(db *sqlx.DB) *sqlStorageBackend {
 	return &sqlStorageBackend{
 		db:               db,
 		statementBuilder: sq.StatementBuilder.PlaceholderFormat(sq.Dollar),
@@ -580,6 +560,26 @@ type sqlCustomLabelRecord struct {
 	Key        string `db:"key"`
 	ReleaseKey string `db:"releasekey"`
 	Value      string `db:"value"`
+}
+
+func openSQLStorageBackend(ctx context.Context, connectionString string) (*sqlStorageBackend, error) {
+	db, err := sqlx.ConnectContext(ctx, sqlDialect, connectionString)
+	if err != nil {
+		// ConnectContext returns an open handle when only the ping failed.
+		if db != nil {
+			db.Close()
+		}
+
+		return nil, fmt.Errorf("connect to database: %w", err)
+	}
+
+	if err := ensureSQLStorageSchema(ctx, db); err != nil {
+		db.Close()
+
+		return nil, fmt.Errorf("set up database schema: %w", err)
+	}
+
+	return newSQLStorageBackend(db), nil
 }
 
 // ensureSQLStorageSchema applies the migrations of the Helm SQL driver, with the same ids and

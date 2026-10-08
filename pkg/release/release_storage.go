@@ -598,7 +598,7 @@ func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, cli
 	case common.ReleaseStorageDriverMemory:
 		backend = newMemoryStorageBackend()
 	case common.ReleaseStorageDriverSQL:
-		sqlBackend, err := newSQLStorageBackend(ctx, opts.SQLConnection)
+		sqlBackend, err := openSQLStorageBackend(ctx, opts.SQLConnection)
 		if err != nil {
 			return nil, fmt.Errorf("construct sql release storage: %w", err)
 		}
