@@ -333,6 +333,10 @@ func (b *sqlStorageBackend) listWithBodies(ctx context.Context, namespace, relea
 		return fmt.Errorf("iterate releases: %w", err)
 	}
 
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close releases: %w", err)
+	}
+
 	return nil
 }
 
@@ -785,6 +789,8 @@ func sqlLabelRequirement(requirement labels.Requirement) (sq.Sqlizer, error) {
 		return predicate, nil
 	}
 
+	// Neither nelm nor Helm writes a custom label of a release twice, so the ctid order only
+	// picks a deterministic row if a foreign writer did; it does not track write order.
 	label := sq.Select(sqlCustomLabelsValueColumn).From(sqlCustomLabelsTable).
 		Where("releaseKey = releases_v1.key AND releaseNamespace = releases_v1.namespace").
 		Where(sq.Eq{sqlCustomLabelsKeyColumn: requirement.Key()}).OrderBy("ctid DESC").Limit(1)

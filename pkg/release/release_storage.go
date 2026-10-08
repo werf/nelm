@@ -63,7 +63,7 @@ type ReleaseStorager interface {
 	// are read page by page and only their summaries are retained.
 	ListLatestSummaries(ctx context.Context, opts ListLatestSummariesOptions) ([]RevisionSummary, error)
 	// ListRevisionSummaries returns the summaries of the revisions of a release sorted by
-	// ascending version. Bodies are read one at a time and only their summaries are
+	// ascending version. Bodies are read page by page and only their summaries are
 	// retained.
 	ListRevisionSummaries(ctx context.Context, name string, opts ListRevisionSummariesOptions) ([]RevisionSummary, error)
 }

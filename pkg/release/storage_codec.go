@@ -93,8 +93,9 @@ func decodeRelease(body []byte) (*helmrelease.Release, error) {
 	return rls, nil
 }
 
-// decodeStoredSummary decodes only the release fields a listing shows, so the manifest,
-// values and chart files of the body are skipped instead of being allocated.
+// decodeStoredSummary decodes only the release fields a listing shows. The decoder still
+// buffers the uncompressed JSON of this one body, but the manifest, values and chart files
+// are not turned into Go values and nothing of the body outlives the call.
 func decodeStoredSummary(obj *storedObject) (*ReleaseSummary, error) {
 	var body struct {
 		Info *struct {
