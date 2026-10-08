@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strconv"
 
 	sq "github.com/Masterminds/squirrel"
@@ -192,24 +193,6 @@ func (b *sqlStorageBackend) delete(ctx context.Context, namespace, key string) e
 	return nil
 }
 
-func (b *sqlStorageBackend) filterReleases(builder sq.SelectBuilder, namespace, releaseName string, versions []int) sq.SelectBuilder {
-	builder = builder.Where(sq.Eq{sqlReleaseOwnerColumn: storageOwner})
-
-	if namespace != "" {
-		builder = builder.Where(sq.Eq{sqlReleaseNamespaceColumn: namespace})
-	}
-
-	if releaseName != "" {
-		builder = builder.Where(sq.Eq{sqlReleaseNameColumn: releaseName})
-	}
-
-	if versions != nil {
-		builder = builder.Where(sq.Eq{sqlReleaseVersionColumn: versions})
-	}
-
-	return builder
-}
-
 func (b *sqlStorageBackend) get(ctx context.Context, namespace, key string) (*storedObject, error) {
 	query, args, err := b.selectReleases(true).
 		Where(sq.Eq{sqlReleaseKeyColumn: key, sqlReleaseNamespaceColumn: namespace}).
@@ -296,7 +279,7 @@ func (b *sqlStorageBackend) listWithBodies(ctx context.Context, namespace, relea
 		customLabels[labelRecord.ReleaseKey][labelRecord.Key] = labelRecord.Value
 	}
 
-	query, args, err = b.filterReleases(b.selectReleases(true), namespace, releaseName, versions).
+	query, args, err = filterSQLReleases(b.selectReleases(true), namespace, releaseName, versions).
 		OrderBy(sqlReleaseVersionColumn + " ASC").
 		ToSql()
 	if err != nil {
@@ -320,9 +303,7 @@ func (b *sqlStorageBackend) listWithBodies(ctx context.Context, namespace, relea
 		}
 
 		obj := storedObjectFromSQLRecord(&record)
-		for key, value := range withoutSystemLabels(customLabels[record.Key]) {
-			obj.Labels[key] = value
-		}
+		maps.Copy(obj.Labels, withoutSystemLabels(customLabels[record.Key]))
 
 		if err := fn(obj); err != nil {
 			return err
@@ -341,8 +322,9 @@ func (b *sqlStorageBackend) listWithBodies(ctx context.Context, namespace, relea
 }
 
 func (b *sqlStorageBackend) scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(obj *storedObject) error) error {
-	builder := b.filterReleases(b.selectReleases(withBodies), namespace, "", nil).
-		Options("DISTINCT ON (namespace, name)").OrderBy("namespace", "name", "version DESC")
+	builder := filterSQLReleases(b.selectReleases(withBodies), namespace, "", nil).
+		Options("DISTINCT ON (namespace, name)").
+		OrderBy("namespace", "name", "version DESC")
 	if selector != nil {
 		requirements, selectable := selector.Requirements()
 		if !selectable {
@@ -359,7 +341,16 @@ func (b *sqlStorageBackend) scanLatestCandidates(ctx context.Context, namespace 
 		}
 	}
 
-	query, args, err := b.statementBuilder.Select("releases_v1.*", "COALESCE((SELECT json_object_agg(c.key, c.value ORDER BY c.ctid)::text FROM custom_labels_v1 c WHERE c.releaseKey = releases_v1.key AND c.releaseNamespace = releases_v1.namespace), '{}') AS custom_labels").FromSelect(builder, sqlReleaseTable).ToSql()
+	const customLabelsColumn = "COALESCE((" +
+		"SELECT json_object_agg(c.key, c.value ORDER BY c.ctid)::text " +
+		"FROM custom_labels_v1 c " +
+		"WHERE c.releaseKey = releases_v1.key AND c.releaseNamespace = releases_v1.namespace" +
+		"), '{}') AS custom_labels"
+
+	query, args, err := b.statementBuilder.
+		Select("releases_v1.*", customLabelsColumn).
+		FromSelect(builder, sqlReleaseTable).
+		ToSql()
 	if err != nil {
 		return fmt.Errorf("build select latest releases query: %w", err)
 	}
@@ -390,9 +381,7 @@ func (b *sqlStorageBackend) scanLatestCandidates(ctx context.Context, namespace 
 		}
 
 		obj := storedObjectFromSQLRecord(&record.sqlReleaseRecord)
-		for key, value := range withoutSystemLabels(customLabels) {
-			obj.Labels[key] = value
-		}
+		maps.Copy(obj.Labels, withoutSystemLabels(customLabels))
 
 		if err := fn(obj); err != nil {
 			return err
@@ -415,7 +404,7 @@ func (b *sqlStorageBackend) scanLatestCandidates(ctx context.Context, namespace 
 }
 
 func (b *sqlStorageBackend) selectMetadata(ctx context.Context, namespace, releaseName string, versions []int) ([]*storedObject, error) {
-	query, args, err := b.filterReleases(b.selectReleases(false), namespace, releaseName, versions).ToSql()
+	query, args, err := filterSQLReleases(b.selectReleases(false), namespace, releaseName, versions).ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("build select releases query: %w", err)
 	}
@@ -474,9 +463,7 @@ func (b *sqlStorageBackend) storedObjectWithCustomLabels(ctx context.Context, re
 		customLabels[labelRecord.Key] = labelRecord.Value
 	}
 
-	for key, value := range withoutSystemLabels(customLabels) {
-		obj.Labels[key] = value
-	}
+	maps.Copy(obj.Labels, withoutSystemLabels(customLabels))
 
 	return obj, nil
 }
@@ -716,6 +703,24 @@ func ensureSQLStorageSchema(ctx context.Context, db *sqlx.DB) error {
 	return nil
 }
 
+func filterSQLReleases(builder sq.SelectBuilder, namespace, releaseName string, versions []int) sq.SelectBuilder {
+	builder = builder.Where(sq.Eq{sqlReleaseOwnerColumn: storageOwner})
+
+	if namespace != "" {
+		builder = builder.Where(sq.Eq{sqlReleaseNamespaceColumn: namespace})
+	}
+
+	if releaseName != "" {
+		builder = builder.Where(sq.Eq{sqlReleaseNameColumn: releaseName})
+	}
+
+	if versions != nil {
+		builder = builder.Where(sq.Eq{sqlReleaseVersionColumn: versions})
+	}
+
+	return builder
+}
+
 func rollbackSQLTransaction(ctx context.Context, tx *sqlx.Tx) {
 	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
 		log.Default.Warn(ctx, "Unable to roll back release storage transaction: %s", err)
@@ -779,8 +784,16 @@ func sqlLabelRequirement(requirement labels.Requirement) (sq.Sqlizer, error) {
 			operator = "<"
 		}
 
-		number := "(CASE WHEN " + column + " ~ '^[+-]??[0-9]+$' AND length(regexp_replace(" + column + ", '^[+-]??0*', '')) <= 19 THEN (" + column + ")::numeric END)"
-		predicate = sq.Expr(number+" BETWEEN -9223372036854775808 AND 9223372036854775807 AND "+number+" "+operator+" ?", value)
+		// Kubernetes compares only labels that parse as int64; other values never match, so the
+		// cast is guarded instead of failing the whole query on a non-numeric or huge value.
+		number := fmt.Sprintf(
+			"(CASE WHEN %[1]s ~ '^[+-]??[0-9]+$' AND length(regexp_replace(%[1]s, '^[+-]??0*', '')) <= 19 THEN (%[1]s)::numeric END)",
+			column,
+		)
+		predicate = sq.Expr(
+			fmt.Sprintf("%[1]s BETWEEN -9223372036854775808 AND 9223372036854775807 AND %[1]s %[2]s ?", number, operator),
+			value,
+		)
 	default:
 		return nil, fmt.Errorf("unsupported operator %q for label %q; use equality, set, existence, or integer comparisons", requirement.Operator(), requirement.Key())
 	}

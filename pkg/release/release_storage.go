@@ -231,10 +231,7 @@ func (s *releaseStorage) LatestRevisions(ctx context.Context, opts LatestRevisio
 		return nil, fmt.Errorf("list release objects metadata: %w", err)
 	}
 
-	result := make([]Revision, 0, len(latest))
-	for _, revision := range latest {
-		result = append(result, revision)
-	}
+	result := lo.Values(latest)
 
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].Namespace != result[j].Namespace {
@@ -310,10 +307,7 @@ func (s *releaseStorage) ListLatestSummaries(ctx context.Context, opts ListLates
 
 	summarize()
 
-	result := make([]RevisionSummary, 0, len(latest))
-	for _, summary := range latest {
-		result = append(result, summary)
-	}
+	result := lo.Values(latest)
 
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].Revision.Namespace != result[j].Revision.Namespace {
@@ -438,7 +432,7 @@ func (s *releaseStorage) Revisions(ctx context.Context, name string) ([]Revision
 
 	objects, err := s.backend.listMetadata(ctx, namespace, name)
 	if err != nil {
-		return nil, fmt.Errorf("list release objects metadata of release %q (namespace: %q): %w", name, namespace, err)
+		return nil, fmt.Errorf("list storage metadata of release %q (namespace: %q): %w", name, namespace, err)
 	}
 
 	revisions := make([]Revision, 0, len(objects))
@@ -502,7 +496,7 @@ func (s *releaseStorage) UpdateLabels(ctx context.Context, name string, version 
 func (s *releaseStorage) readableRevisions(ctx context.Context, namespace, name string) ([]Revision, error) {
 	objects, err := s.backend.listMetadata(ctx, namespace, name)
 	if err != nil {
-		return nil, fmt.Errorf("list release objects metadata of release %q (namespace: %q): %w", name, namespace, err)
+		return nil, fmt.Errorf("list storage metadata of release %q (namespace: %q): %w", name, namespace, err)
 	}
 
 	revisions := make([]Revision, 0, len(objects))

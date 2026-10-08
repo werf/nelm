@@ -150,7 +150,7 @@ func (r *ReleaseListResultRelease) loadSummary(ctx context.Context) (*release.Re
 		if details.summary == nil && details.err == nil && details.storage != nil {
 			loaded, loadErr := details.storage.LoadRevisionSummary(ctx, details.revision)
 			if loadErr != nil && !errors.Is(loadErr, release.ErrReleaseUndecodable) {
-				err = fmt.Errorf("read details of release %q (namespace: %q, revision: %d): %w", r.Name, r.Namespace, r.Revision, loadErr)
+				err = loadErr
 
 				return
 			}
@@ -158,23 +158,18 @@ func (r *ReleaseListResultRelease) loadSummary(ctx context.Context) (*release.Re
 			details.summary, details.err = loaded, loadErr
 		}
 
-		if details.err != nil {
-			err = fmt.Errorf("read details of release %q (namespace: %q, revision: %d): %w", r.Name, r.Namespace, r.Revision, details.err)
-
-			return
+		switch {
+		case details.err != nil:
+			err = details.err
+		case details.summary == nil:
+			err = errors.New("no details")
+		default:
+			summary = details.summary
 		}
-
-		if details.summary == nil {
-			err = fmt.Errorf("read details of release %q (namespace: %q, revision: %d): no details", r.Name, r.Namespace, r.Revision)
-
-			return
-		}
-
-		summary = details.summary
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read details of release %q (namespace: %q, revision: %d): %w", r.Name, r.Namespace, r.Revision, err)
 	}
 
 	return summary, nil
@@ -301,22 +296,20 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 	case common.OutputFormatTable:
 		table := buildReleaseListOutputTable(ctx, result, opts.ReleaseNamespace != "")
 		resultMessage = table.Render() + "\n"
-	case common.OutputFormatJSON, common.OutputFormatYAML:
-		if opts.OutputFormat == common.OutputFormatJSON {
-			b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
-			if err != nil {
-				return nil, fmt.Errorf("marshal result to json: %w", err)
-			}
-
-			resultMessage = string(b) + "\n"
-		} else {
-			b, err := yaml.MarshalContext(ctx, result, yaml.UseLiteralStyleIfMultiline(true))
-			if err != nil {
-				return nil, fmt.Errorf("marshal result to yaml: %w", err)
-			}
-
-			resultMessage = string(b)
+	case common.OutputFormatJSON:
+		b, err := json.MarshalIndent(result, "", strings.Repeat(" ", 2))
+		if err != nil {
+			return nil, fmt.Errorf("marshal result to json: %w", err)
 		}
+
+		resultMessage = string(b) + "\n"
+	case common.OutputFormatYAML:
+		b, err := yaml.MarshalContext(ctx, result, yaml.UseLiteralStyleIfMultiline(true))
+		if err != nil {
+			return nil, fmt.Errorf("marshal result to yaml: %w", err)
+		}
+
+		resultMessage = string(b)
 	default:
 		return nil, fmt.Errorf("unknown output format %q", opts.OutputFormat)
 	}
