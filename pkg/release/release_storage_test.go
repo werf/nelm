@@ -7,11 +7,13 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
 	v2release "github.com/werf/nelm/v2/pkg/helm/intern/release/v2"
@@ -85,6 +87,13 @@ func TestReleaseStorage_CreateAndUpdateWriteHelmFormat(t *testing.T) {
 
 			created, err := s.backend.get(ctx, testNamespace, "sh.helm.release.v1.myrel.v1")
 			require.NoError(t, err)
+
+			if kind == kubeStorageKindSecret {
+				secret, err := s.client.CoreV1().Secrets(testNamespace).Get(ctx, "sh.helm.release.v1.myrel.v1", metav1.GetOptions{})
+				require.NoError(t, err)
+				assert.Equal(t, corev1.SecretType("helm.sh/release.v1"), secret.Type)
+			}
+
 			assert.Equal(t, "myrel", created.Labels["name"])
 			assert.Equal(t, "helm", created.Labels["owner"])
 			assert.Equal(t, "pending-install", created.Labels["status"])
@@ -321,39 +330,29 @@ func TestReleaseStorage_GetReleaseUndecodable(t *testing.T) {
 }
 
 func TestReleaseStorage_LatestRevisionsPaginates(t *testing.T) {
-	s := newTestKubeStorage(t, kubeStorageKindSecret, testNamespace, 0)
-
-	pages := [][]map[string]string{
-		{{"owner": "helm", "name": "a", "version": "1", "status": "superseded"}},
-		{{"owner": "helm", "name": "a", "version": "2", "status": "deployed"}, {"owner": "helm", "name": "b", "version": "1", "status": "failed"}},
+	pages := map[string]*metav1.PartialObjectMetadataList{
+		"": newTestMetadataPage("page-1",
+			map[string]string{"owner": "helm", "name": "a", "version": "1", "status": "superseded"}),
+		"page-1": newTestMetadataPage("page-2"),
+		"page-2": newTestMetadataPage("",
+			map[string]string{"owner": "helm", "name": "a", "version": "2", "status": "deployed"},
+			map[string]string{"owner": "helm", "name": "b", "version": "1", "status": "failed"}),
 	}
+	client := &pagedMetadataClient{pages: pages}
+	storage := newReleaseStorage(testNamespace, newKubeStorageBackend(kubeStorageKindSecret, k8sfake.NewClientset(), client), 0)
 
-	var calls int
-	s.metadataClient.PrependReactor("list", "secrets", func(action k8stesting.Action) (bool, runtime.Object, error) {
-		page := calls
-		calls++
-
-		list := &metav1.List{}
-		if page < len(pages)-1 {
-			list.Continue = fmt.Sprintf("page-%d", page+1)
-		}
-
-		for i, labels := range pages[page] {
-			list.Items = append(list.Items, runtime.RawExtension{Object: &metav1.PartialObjectMetadata{
-				ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace, Name: fmt.Sprintf("obj-%d-%d", page, i), Labels: labels},
-			}})
-		}
-
-		return true, list, nil
-	})
-
-	revisions, err := s.storage.LatestRevisions(context.Background(), LatestRevisionsOptions{})
+	revisions, err := storage.LatestRevisions(context.Background(), LatestRevisionsOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, []Revision{
 		{Name: "a", Namespace: testNamespace, Status: "deployed", Version: 2},
 		{Name: "b", Namespace: testNamespace, Status: "failed", Version: 1},
 	}, revisions)
-	assert.Equal(t, 2, calls)
+	assert.Equal(t, []string{"", "page-1", "page-2"}, lo.Map(client.requests, func(opts metav1.ListOptions, _ int) string { return opts.Continue }))
+
+	for _, opts := range client.requests {
+		assert.Equal(t, int64(kubeStoragePageSize), opts.Limit)
+		assert.Equal(t, "owner=helm", opts.LabelSelector)
+	}
 }
 
 func TestReleaseStorage_LatestRevisionsSameNameInManyNamespaces(t *testing.T) {

@@ -6,16 +6,20 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/metadata"
 	metadatafake "k8s.io/client-go/metadata/fake"
 	k8stesting "k8s.io/client-go/testing"
 
@@ -90,6 +94,38 @@ func (b *latestListingBackend) scanLatestCandidates(ctx context.Context, namespa
 	}
 
 	return nil
+}
+
+// pagedMetadataClient serves metadata pages by continue token, which the client-go metadata
+// fake does not pass to reactors.
+type pagedMetadataClient struct {
+	metadata.ResourceInterface
+
+	pages    map[string]*metav1.PartialObjectMetadataList
+	requests []metav1.ListOptions
+}
+
+func (c *pagedMetadataClient) List(ctx context.Context, opts metav1.ListOptions) (*metav1.PartialObjectMetadataList, error) {
+	if lo.ContainsBy(c.requests, func(previous metav1.ListOptions) bool { return previous.Continue == opts.Continue }) {
+		return nil, fmt.Errorf("page with continue token %q requested twice", opts.Continue)
+	}
+
+	c.requests = append(c.requests, opts)
+
+	page, found := c.pages[opts.Continue]
+	if !found {
+		return nil, fmt.Errorf("unexpected continue token %q", opts.Continue)
+	}
+
+	return page, nil
+}
+
+func (c *pagedMetadataClient) Namespace(string) metadata.ResourceInterface {
+	return c
+}
+
+func (c *pagedMetadataClient) Resource(schema.GroupVersionResource) metadata.Getter {
+	return c
 }
 
 func newTestReleaseAccessor(t *testing.T, name string, version int, status helmreleasecommon.Status) helmrel.Accessor {
@@ -171,6 +207,17 @@ func listTestKubeSecrets(t *testing.T, s *testKubeStorage, namespace string) []c
 	require.True(t, ok)
 
 	return secretList.Items
+}
+
+func newTestMetadataPage(next string, objectLabels ...map[string]string) *metav1.PartialObjectMetadataList {
+	list := &metav1.PartialObjectMetadataList{ListMeta: metav1.ListMeta{Continue: next}}
+	for i, labels := range objectLabels {
+		list.Items = append(list.Items, metav1.PartialObjectMetadata{
+			ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace, Name: fmt.Sprintf("%s-%d", next, i), Labels: labels},
+		})
+	}
+
+	return list
 }
 
 func newTestRelease(namespace, name string, version int, status helmreleasecommon.Status) *helmrelease.Release {

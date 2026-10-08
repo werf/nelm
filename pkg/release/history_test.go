@@ -17,9 +17,12 @@ var _ ReleaseStorager = (*stubStorager)(nil)
 type stubStorager struct {
 	deleteErr error
 	revisions []Revision
+	writeErrs []error
 }
 
 func (s *stubStorager) Create(ctx context.Context, rls helmrel.Accessor) error {
+	s.writeErrs = append(s.writeErrs, ctx.Err())
+
 	return nil
 }
 
@@ -56,6 +59,8 @@ func (s *stubStorager) Revisions(ctx context.Context, name string) ([]Revision, 
 }
 
 func (s *stubStorager) Update(ctx context.Context, rls helmrel.Accessor) error {
+	s.writeErrs = append(s.writeErrs, ctx.Err())
+
 	return nil
 }
 
@@ -164,4 +169,20 @@ func TestHistory_RevisionsStayConsistentAfterMutations(t *testing.T) {
 	revisions = history.Revisions()
 	require.Len(t, revisions, 1)
 	assert.Equal(t, 2, revisions[0].Version)
+}
+
+func TestHistory_WritesAfterCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	storage := &stubStorager{}
+
+	history, err := BuildHistory(ctx, "myrelease", storage)
+	require.NoError(t, err)
+
+	cancel()
+
+	rls, err := helmrel.NewAccessor(newTestReleaseWithStatus("myrelease", 1, helmreleasecommon.StatusFailed))
+	require.NoError(t, err)
+	require.NoError(t, history.CreateRelease(ctx, rls))
+	require.NoError(t, history.UpdateRelease(ctx, rls))
+	assert.Equal(t, []error{nil, nil}, storage.writeErrs)
 }
