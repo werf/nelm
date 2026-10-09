@@ -13,6 +13,38 @@ import (
 	common "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 )
 
+func TestSQLStorageBackend_LatestIgnoresRowsOutsideTheirStorageKeyPostgres(t *testing.T) {
+	connection := os.Getenv("NELM_TEST_POSTGRES_CONNECTION")
+	if connection == "" {
+		t.Skip("NELM_TEST_POSTGRES_CONNECTION is not set")
+	}
+
+	ctx := context.Background()
+	b, err := openSQLStorageBackend(ctx, connection)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, b.db.Close()) })
+
+	namespace := "nelm-test-key-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	original := newTestStoredObject(t, newTestRelease(namespace, "app", 1, common.StatusDeployed))
+	backup := newTestStoredObject(t, newTestRelease(namespace, "app", 2, common.StatusDeployed))
+	backup.Key = "app-backup"
+
+	for _, obj := range []*storedObject{original, backup} {
+		require.NoError(t, b.create(ctx, obj))
+		t.Cleanup(func() { require.NoError(t, b.delete(ctx, obj.Namespace, obj.Key)) })
+	}
+
+	for _, withBodies := range []bool{true, false} {
+		var keys []string
+		require.NoError(t, b.scanLatestCandidates(ctx, namespace, labels.Everything(), withBodies, func(obj *storedObject) error {
+			keys = append(keys, obj.Key)
+
+			return nil
+		}))
+		require.Equal(t, []string{original.Key}, keys, "bodies %t", withBodies)
+	}
+}
+
 func TestSQLStorageBackend_SelectorsPostgres(t *testing.T) {
 	connection := os.Getenv("NELM_TEST_POSTGRES_CONNECTION")
 	if connection == "" {
@@ -102,7 +134,9 @@ func TestSQLStorageBackend_UpdateLabelsWaitsForReleaseRowLockPostgres(t *testing
 		t.Skip("NELM_TEST_POSTGRES_CONNECTION is not set")
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
 	b, err := openSQLStorageBackend(ctx, connection)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, b.db.Close()) })
@@ -116,6 +150,11 @@ func TestSQLStorageBackend_UpdateLabelsWaitsForReleaseRowLockPostgres(t *testing
 
 	tx, err := b.db.BeginTxx(ctx, nil)
 	require.NoError(t, err)
+
+	// Registered after the delete cleanup, so it runs first and releases the row lock if the
+	// test fails while holding it.
+	t.Cleanup(func() { rollbackSQLTransaction(ctx, tx) })
+
 	_, err = tx.ExecContext(ctx, "UPDATE releases_v1 SET status = status WHERE key = $1 AND namespace = $2", obj.Key, namespace)
 	require.NoError(t, err)
 	_, err = tx.ExecContext(ctx, "DELETE FROM custom_labels_v1 WHERE releaseKey = $1 AND releaseNamespace = $2", obj.Key, namespace)
@@ -128,7 +167,6 @@ func TestSQLStorageBackend_UpdateLabelsWaitsForReleaseRowLockPostgres(t *testing
 
 	select {
 	case err := <-done:
-		require.NoError(t, tx.Rollback())
 		t.Fatalf("label update did not wait for the release row lock: %v", err)
 	case <-time.After(300 * time.Millisecond):
 	}
