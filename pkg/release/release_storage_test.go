@@ -577,6 +577,35 @@ func TestReleaseStorage_NamespacedOperationsRequireNamespace(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestReleaseStorage_PruningIgnoresObjectsOutsideTheirStorageKey(t *testing.T) {
+	ctx := context.Background()
+	backend := newMemoryStorageBackend()
+	s := newReleaseStorage(testNamespace, backend, 2)
+
+	for _, obj := range []*storedObject{
+		newTestStoredObject(t, newTestRelease(testNamespace, "app", 1, helmreleasecommon.StatusDeployed)),
+		newTestStoredObject(t, newTestRelease(testNamespace, "app", 2, helmreleasecommon.StatusFailed)),
+		{Namespace: testNamespace, Key: "app-backup", Labels: map[string]string{"owner": "helm", "name": "app", "version": "2", "status": "deployed"}, Body: []byte("copy")},
+	} {
+		require.NoError(t, backend.create(ctx, obj))
+	}
+
+	acc, err := helmrel.NewAccessor(newTestRelease(testNamespace, "app", 3, helmreleasecommon.StatusPendingUpgrade))
+	require.NoError(t, err)
+	require.NoError(t, s.Create(ctx, acc))
+
+	_, err = backend.get(ctx, testNamespace, storageKey("app", 1))
+	require.NoError(t, err, "the last deployed revision must survive pruning")
+
+	revisions, err := s.Revisions(ctx, "app")
+	require.NoError(t, err)
+	assert.Equal(t, []int{1, 3}, lo.Map(revisions, func(revision Revision, _ int) int { return revision.Version }))
+
+	latest, err := s.LatestRevisions(ctx, LatestRevisionsOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, []Revision{{Name: "app", Namespace: testNamespace, Status: "pending-upgrade", Version: 3}}, latest)
+}
+
 func TestReleaseStorage_RevisionsAreSortedAndUnparseableVersionIsAnError(t *testing.T) {
 	ctx := context.Background()
 	s := newTestKubeStorage(t, kubeStorageKindConfigMap, testNamespace, 0)

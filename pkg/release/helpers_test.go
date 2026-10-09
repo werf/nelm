@@ -211,9 +211,9 @@ func listTestKubeSecrets(t *testing.T, s *testKubeStorage, namespace string) []c
 
 func newTestMetadataPage(next string, objectLabels ...map[string]string) *metav1.PartialObjectMetadataList {
 	list := &metav1.PartialObjectMetadataList{ListMeta: metav1.ListMeta{Continue: next}}
-	for i, labels := range objectLabels {
+	for _, labels := range objectLabels {
 		list.Items = append(list.Items, metav1.PartialObjectMetadata{
-			ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace, Name: fmt.Sprintf("%s-%d", next, i), Labels: labels},
+			ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace, Name: "sh.helm.release.v1." + labels["name"] + ".v" + labels["version"], Labels: labels},
 		})
 	}
 

@@ -131,6 +131,42 @@ func decodeStoredSummary(obj *storedObject) (*ReleaseSummary, error) {
 	return summary, nil
 }
 
+// revisionFromStoredObject returns ok=false for a storage object that is not a release
+// revision: one without a name or without a version label, which every stored revision
+// carries, or one whose object name is not the storage key of the revision its labels name.
+// Such an object, like a copy of a revision saved under another name, must not be taken for
+// that revision, since pruning deletes revisions by their storage key. A version label that
+// is present but does not parse is an error naming the object, so it can be removed by hand:
+// revision numbering cannot tell which revision such an object holds, and it may occupy the
+// object name of the next one.
+func revisionFromStoredObject(obj *storedObject) (Revision, bool, error) {
+	name := obj.Labels[storageLabelName]
+	if name == "" {
+		return Revision{}, false, nil
+	}
+
+	versionLabel, found := obj.Labels[storageLabelVersion]
+	if !found {
+		return Revision{}, false, nil
+	}
+
+	version, err := strconv.Atoi(versionLabel)
+	if err != nil {
+		return Revision{}, false, fmt.Errorf("release object %q (namespace: %q): unparseable version label %q", obj.Key, obj.Namespace, versionLabel)
+	}
+
+	if obj.Key != storageKey(name, version) {
+		return Revision{}, false, nil
+	}
+
+	return Revision{
+		Name:      name,
+		Namespace: obj.Namespace,
+		Status:    obj.Labels[storageLabelStatus],
+		Version:   version,
+	}, true, nil
+}
+
 // decodeReleaseBody decodes the release JSON of a stored body into target. Bodies stored
 // before Helm started compressing them are plain base64-encoded JSON.
 func decodeReleaseBody(body []byte, target any) error {
@@ -194,35 +230,6 @@ func encodeRelease(rls *helmrelease.Release) ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
-}
-
-// revisionFromStoredObject returns ok=false for a storage object that is not a release
-// revision: one without a name or without a version label, which every stored revision
-// carries. A version label that is present but does not parse is an error naming the
-// object, so it can be removed by hand: revision numbering cannot tell which revision such an
-// object holds, and it may occupy the object name of the next one.
-func revisionFromStoredObject(obj *storedObject) (Revision, bool, error) {
-	name := obj.Labels[storageLabelName]
-	if name == "" {
-		return Revision{}, false, nil
-	}
-
-	versionLabel, found := obj.Labels[storageLabelVersion]
-	if !found {
-		return Revision{}, false, nil
-	}
-
-	version, err := strconv.Atoi(versionLabel)
-	if err != nil {
-		return Revision{}, false, fmt.Errorf("release object %q (namespace: %q): unparseable version label %q", obj.Key, obj.Namespace, versionLabel)
-	}
-
-	return Revision{
-		Name:      name,
-		Namespace: obj.Namespace,
-		Status:    obj.Labels[storageLabelStatus],
-		Version:   version,
-	}, true, nil
 }
 
 func storageKey(name string, version int) string {
