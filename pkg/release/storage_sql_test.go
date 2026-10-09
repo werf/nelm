@@ -19,7 +19,7 @@ import (
 
 const (
 	testSQLLatestColumns = "key, namespace, name, version, status, owner, createdAt, modifiedAt, body"
-	testSQLLatestOrder   = " ORDER BY namespace, name, version DESC) AS releases_v1"
+	testSQLLatestOrder   = " AND key = 'sh.helm.release.v1.' || name || '.v' || version ORDER BY namespace, name, version DESC) AS releases_v1"
 	testSQLLatestSelect  = "SELECT releases_v1.*, COALESCE((SELECT json_object_agg(c.key, c.value ORDER BY c.ctid)::text FROM custom_labels_v1 c WHERE c.releaseKey = releases_v1.key AND c.releaseNamespace = releases_v1.namespace), '{}') AS custom_labels FROM (SELECT DISTINCT ON (namespace, name) " + testSQLLatestColumns + " FROM releases_v1 WHERE owner = $1"
 )
 
@@ -138,7 +138,7 @@ func TestSQLStorageBackend_GetMissing(t *testing.T) {
 func TestSQLStorageBackend_LatestRevisionsReadNoBodies(t *testing.T) {
 	backend, mock := newTestSQLBackend(t)
 
-	mock.ExpectQuery(`SELECT releases_v1.*, COALESCE((SELECT json_object_agg(c.key, c.value ORDER BY c.ctid)::text FROM custom_labels_v1 c WHERE c.releaseKey = releases_v1.key AND c.releaseNamespace = releases_v1.namespace), '{}') AS custom_labels FROM (SELECT DISTINCT ON (namespace, name) key, namespace, name, version, status, owner, createdAt, modifiedAt FROM releases_v1 WHERE owner = $1 AND EXISTS (SELECT 1 FROM (SELECT value FROM custom_labels_v1 WHERE releaseKey = releases_v1.key AND releaseNamespace = releases_v1.namespace AND key = $2 ORDER BY ctid DESC LIMIT 1) AS label WHERE value IS NOT NULL) ORDER BY namespace, name, version DESC) AS releases_v1`).
+	mock.ExpectQuery(`SELECT releases_v1.*, COALESCE((SELECT json_object_agg(c.key, c.value ORDER BY c.ctid)::text FROM custom_labels_v1 c WHERE c.releaseKey = releases_v1.key AND c.releaseNamespace = releases_v1.namespace), '{}') AS custom_labels FROM (SELECT DISTINCT ON (namespace, name) key, namespace, name, version, status, owner, createdAt, modifiedAt FROM releases_v1 WHERE owner = $1 AND EXISTS (SELECT 1 FROM (SELECT value FROM custom_labels_v1 WHERE releaseKey = releases_v1.key AND releaseNamespace = releases_v1.namespace AND key = $2 ORDER BY ctid DESC LIMIT 1) AS label WHERE value IS NOT NULL) AND key = 'sh.helm.release.v1.' || name || '.v' || version ORDER BY namespace, name, version DESC) AS releases_v1`).
 		WithArgs("helm", "packageChecksum").
 		WillReturnRows(sqlmock.NewRows([]string{"key", "namespace", "name", "version", "status", "owner", "createdat", "modifiedat", "custom_labels"}).
 			AddRow("sh.helm.release.v1.a.v1", "ns-1", "a", 1, "superseded", "helm", 100, 200, `{"packageChecksum":"x"}`).

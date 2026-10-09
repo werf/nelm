@@ -321,6 +321,10 @@ func (b *sqlStorageBackend) scanLatestCandidates(ctx context.Context, namespace 
 		}
 	}
 
+	// DISTINCT ON keeps one row per release, so a row outside its storage key, which is not a
+	// revision, must be excluded before it can hide the release's real latest revision.
+	builder = builder.Where("key = 'sh.helm.release.v1.' || name || '.v' || version")
+
 	const customLabelsColumn = "COALESCE((" +
 		"SELECT json_object_agg(c.key, c.value ORDER BY c.ctid)::text " +
 		"FROM custom_labels_v1 c " +
