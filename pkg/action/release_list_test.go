@@ -294,6 +294,24 @@ func TestReleaseListResultReleaseCancelledReaderLetsWaiterRead(t *testing.T) {
 	require.NoError(t, <-waiterDone)
 }
 
+func TestReleaseListResultReleaseMarshalsByValue(t *testing.T) {
+	entry := newLatestRevisionSummary("ns", "myrel", 1)
+	result, err := buildReleaseListResult(context.Background(), &latestReleaseListStorager{latestSummaries: []release.RevisionSummary{entry}}, "")
+	require.NoError(t, err)
+
+	byPointer, err := json.Marshal(result.Releases[0])
+	require.NoError(t, err)
+
+	byValue, err := json.Marshal(*result.Releases[0])
+	require.NoError(t, err)
+	assert.JSONEq(t, string(byPointer), string(byValue))
+	assert.Contains(t, string(byValue), `"managed-by":"deckhouse"`)
+
+	yamlByValue, err := yaml.Marshal(*result.Releases[0])
+	require.NoError(t, err)
+	assert.Contains(t, string(yamlByValue), "managed-by: deckhouse")
+}
+
 func TestReleaseListResultReleaseNotFromList(t *testing.T) {
 	rel := &ReleaseListResultRelease{Name: "a", Namespace: "ns"}
 

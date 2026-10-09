@@ -120,7 +120,7 @@ func (r *ReleaseListResultRelease) DeployedAt(ctx context.Context) (*ReleaseList
 	}, nil
 }
 
-func (r *ReleaseListResultRelease) MarshalJSON() ([]byte, error) {
+func (r ReleaseListResultRelease) MarshalJSON() ([]byte, error) {
 	b, err := json.Marshal(r.output())
 	if err != nil {
 		return nil, fmt.Errorf("marshal release %q: %w", r.Name, err)
@@ -129,7 +129,7 @@ func (r *ReleaseListResultRelease) MarshalJSON() ([]byte, error) {
 	return b, nil
 }
 
-func (r *ReleaseListResultRelease) MarshalYAML() (any, error) {
+func (r ReleaseListResultRelease) MarshalYAML() (any, error) {
 	return r.output(), nil
 }
 
@@ -190,7 +190,7 @@ func (r *ReleaseListResultRelease) loadSummary(ctx context.Context) (*release.Re
 
 // output holds the details already read, without reading bodies, since marshaling has no
 // context to read them with.
-func (r *ReleaseListResultRelease) output() releaseListResultReleaseOutput {
+func (r ReleaseListResultRelease) output() releaseListResultReleaseOutput {
 	output := releaseListResultReleaseOutput{
 		Name:      r.Name,
 		Namespace: r.Namespace,
