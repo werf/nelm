@@ -2,6 +2,7 @@ package action
 
 import (
 	"context"
+	"fmt"
 
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/nelm/v2/pkg/release"
@@ -20,10 +21,14 @@ type latestReleaseListStorager struct {
 	historyName      string
 	historySummaries []release.RevisionSummary
 	latestSummaries  []release.RevisionSummary
-	loads            *kdutil.Concurrent[*latestReleaseListLoads]
-	revisions        []release.Revision
-	selector         string
-	summaries        map[string]*release.ReleaseSummary
+	// loadGate, when set, holds every LoadRevisionSummary call until it is closed or the
+	// call's context ends; loadStarted then receives one value per call.
+	loadGate    chan struct{}
+	loadStarted chan struct{}
+	loads       *kdutil.Concurrent[*latestReleaseListLoads]
+	revisions   []release.Revision
+	selector    string
+	summaries   map[string]*release.ReleaseSummary
 }
 
 func (s *latestReleaseListStorager) LatestRevisions(ctx context.Context, opts release.LatestRevisionsOptions) ([]release.Revision, error) {
@@ -54,6 +59,16 @@ func (s *latestReleaseListStorager) ListRevisionSummaries(ctx context.Context, n
 }
 
 func (s *latestReleaseListStorager) LoadRevisionSummary(ctx context.Context, revision release.Revision) (*release.ReleaseSummary, error) {
+	if s.loadGate != nil {
+		s.loadStarted <- struct{}{}
+
+		select {
+		case <-s.loadGate:
+		case <-ctx.Done():
+			return nil, fmt.Errorf("wait for load gate: %w", ctx.Err())
+		}
+	}
+
 	var err error
 
 	s.loads.RWTransaction(func(loads *latestReleaseListLoads) {

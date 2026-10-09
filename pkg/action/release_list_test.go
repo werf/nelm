@@ -261,6 +261,39 @@ func TestReleaseListResultMarshalsEagerDetails(t *testing.T) {
 	assert.Contains(t, string(yamlData), "apiVersion: v2")
 }
 
+func TestReleaseListResultReleaseCancelledReaderLetsWaiterRead(t *testing.T) {
+	storage := newMetadataReleaseListStorager([]release.Revision{{Namespace: "ns", Name: "a", Version: 1}}, map[string]*release.ReleaseSummary{"ns/a": newTestReleaseSummary()})
+	storage.loadGate, storage.loadStarted = make(chan struct{}), make(chan struct{}, 10)
+
+	result, err := buildReleaseListResultFromMetadata(context.Background(), storage, "")
+	require.NoError(t, err)
+
+	rel := result.Releases[0]
+
+	readerCtx, cancelReader := context.WithCancel(context.Background())
+
+	readerDone := make(chan error, 1)
+	go func() {
+		_, err := rel.Chart(readerCtx)
+		readerDone <- err
+	}()
+
+	<-storage.loadStarted
+
+	waiterDone := make(chan error, 1)
+	go func() {
+		_, err := rel.Annotations(context.Background())
+		waiterDone <- err
+	}()
+
+	cancelReader()
+	require.ErrorIs(t, <-readerDone, context.Canceled)
+
+	<-storage.loadStarted
+	close(storage.loadGate)
+	require.NoError(t, <-waiterDone)
+}
+
 func TestReleaseListResultReleaseNotFromList(t *testing.T) {
 	rel := &ReleaseListResultRelease{Name: "a", Namespace: "ns"}
 
@@ -270,6 +303,44 @@ func TestReleaseListResultReleaseNotFromList(t *testing.T) {
 	data, err := json.Marshal(rel)
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"name":"a","namespace":"ns","revision":0,"status":"","deployedAt":null,"annotations":null,"chart":null}`, string(data))
+}
+
+func TestReleaseListResultReleaseWaiterHonoursItsContext(t *testing.T) {
+	storage := newMetadataReleaseListStorager([]release.Revision{{Namespace: "ns", Name: "a", Version: 1}}, map[string]*release.ReleaseSummary{"ns/a": newTestReleaseSummary()})
+	storage.loadGate, storage.loadStarted = make(chan struct{}), make(chan struct{}, 10)
+
+	result, err := buildReleaseListResultFromMetadata(context.Background(), storage, "")
+	require.NoError(t, err)
+
+	rel := result.Releases[0]
+
+	loaderDone := make(chan error, 1)
+	go func() {
+		_, err := rel.Chart(context.Background())
+		loaderDone <- err
+	}()
+
+	<-storage.loadStarted
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+
+	started := time.Now()
+	_, err = rel.Annotations(ctx)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Less(t, time.Since(started), time.Second)
+
+	data, err := json.Marshal(rel)
+	require.NoError(t, err, "marshaling must not wait for the running read")
+	assert.Contains(t, string(data), `"chart":null`)
+
+	close(storage.loadGate)
+	require.NoError(t, <-loaderDone)
+
+	annotations, err := rel.Annotations(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"managed-by": "deckhouse"}, annotations)
+	assert.Len(t, storage.loadedRevisions(), 1)
 }
 
 func TestReleaseListResultReleaseWithoutChart(t *testing.T) {

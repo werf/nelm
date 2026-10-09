@@ -133,46 +133,59 @@ func (r *ReleaseListResultRelease) MarshalYAML() (any, error) {
 	return r.output(), nil
 }
 
-// loadSummary reads the body on first use. Undecodable bodies are remembered, while other
-// errors, such as a failed request or a revision pruned since the listing, are retried by
-// the next call.
+// loadSummary reads the body on first use. Concurrent calls share one read, and a caller
+// waiting for it stops waiting when its own context ends. Undecodable bodies are remembered,
+// while other errors, such as a failed request, a canceled reader or a revision pruned since
+// the listing, are retried by the next call.
 func (r *ReleaseListResultRelease) loadSummary(ctx context.Context) (*release.ReleaseSummary, error) {
 	if r.details == nil {
 		return nil, fmt.Errorf("release %q (namespace: %q) was not returned by ReleaseList", r.Name, r.Namespace)
 	}
 
-	var (
-		summary *release.ReleaseSummary
-		err     error
-	)
+	for {
+		var (
+			summary  *release.ReleaseSummary
+			err      error
+			loading  chan struct{}
+			storage  release.ReleaseStorager
+			revision release.Revision
+		)
 
-	r.details.RWTransaction(func(details *releaseListDetails) {
-		if details.summary == nil && details.err == nil && details.storage != nil {
-			loaded, loadErr := details.storage.LoadRevisionSummary(ctx, details.revision)
-			if loadErr != nil && !errors.Is(loadErr, release.ErrReleaseUndecodable) {
-				err = loadErr
-
-				return
+		r.details.RWTransaction(func(details *releaseListDetails) {
+			switch {
+			case details.summary != nil:
+				summary = details.summary
+			case details.err != nil:
+				err = details.err
+			case details.storage == nil:
+				err = errors.New("no details")
+			case details.loading != nil:
+				loading = details.loading
+			default:
+				details.loading = make(chan struct{})
+				storage, revision = details.storage, details.revision
 			}
+		})
 
-			details.summary, details.err = loaded, loadErr
+		if storage != nil {
+			err = r.readSummary(ctx, storage, revision)
 		}
 
 		switch {
-		case details.err != nil:
-			err = details.err
-		case details.summary == nil:
-			err = errors.New("no details")
-		default:
-			summary = details.summary
+		case summary != nil:
+			return summary, nil
+		case err != nil:
+			return nil, fmt.Errorf("read details of release %q (namespace: %q, revision: %d): %w", r.Name, r.Namespace, r.Revision, err)
+		case loading == nil:
+			continue
 		}
-	})
 
-	if err != nil {
-		return nil, fmt.Errorf("read details of release %q (namespace: %q, revision: %d): %w", r.Name, r.Namespace, r.Revision, err)
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("wait for details of release %q (namespace: %q, revision: %d): %w", r.Name, r.Namespace, r.Revision, ctx.Err())
+		case <-loading:
+		}
 	}
-
-	return summary, nil
 }
 
 // output holds the details already read, without reading bodies, since marshaling has no
@@ -212,8 +225,33 @@ func (r *ReleaseListResultRelease) output() releaseListResultReleaseOutput {
 	return output
 }
 
+// readSummary reads the body outside the lock, remembers a decoded or undecodable result and
+// wakes the callers waiting for it. It returns the error of a read that is not remembered.
+func (r *ReleaseListResultRelease) readSummary(ctx context.Context, storage release.ReleaseStorager, revision release.Revision) error {
+	defer r.details.RWTransaction(func(details *releaseListDetails) {
+		close(details.loading)
+		details.loading = nil
+	})
+
+	loaded, err := storage.LoadRevisionSummary(ctx, revision)
+	if err != nil && !errors.Is(err, release.ErrReleaseUndecodable) {
+		return fmt.Errorf("load stored release: %w", err)
+	}
+
+	if err == nil && loaded == nil {
+		err = errors.New("no details")
+	}
+
+	r.details.RWTransaction(func(details *releaseListDetails) {
+		details.summary, details.err = loaded, err
+	})
+
+	return nil
+}
+
 type releaseListDetails struct {
 	err      error
+	loading  chan struct{}
 	revision release.Revision
 	storage  release.ReleaseStorager
 	summary  *release.ReleaseSummary
