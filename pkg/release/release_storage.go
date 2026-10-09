@@ -9,7 +9,6 @@ import (
 
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/metadata"
 
 	"github.com/werf/nelm/v2/pkg/common"
 	v2release "github.com/werf/nelm/v2/pkg/helm/intern/release/v2"
@@ -584,17 +583,12 @@ func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, cli
 			return nil, fmt.Errorf("kube client factory is required for %q storage driver", storageDriver)
 		}
 
-		metadataClient, err := metadata.NewForConfig(clientFactory.KubeConfig().RestConfig)
-		if err != nil {
-			return nil, fmt.Errorf("construct release metadata client: %w", err)
-		}
-
 		kind := kubeStorageKindSecret
 		if storageDriver == common.ReleaseStorageDriverConfigMap || storageDriver == common.ReleaseStorageDriverConfigMaps {
 			kind = kubeStorageKindConfigMap
 		}
 
-		backend = newKubeStorageBackend(kind, clientFactory.Static(), metadataClient)
+		backend = newKubeStorageBackend(kind, clientFactory.Static(), clientFactory.Metadata())
 	case common.ReleaseStorageDriverMemory:
 		backend = newMemoryStorageBackend()
 	case common.ReleaseStorageDriverSQL:

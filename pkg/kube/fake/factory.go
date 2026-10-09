@@ -13,6 +13,8 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/metadata"
+	metadatafake "k8s.io/client-go/metadata/fake"
 
 	"github.com/werf/nelm/v2/pkg/kube"
 )
@@ -24,6 +26,7 @@ type ClientFactory struct {
 	dynamicClient   dynamic.Interface
 	kubeClient      kube.KubeClienter
 	mapper          meta.ResettableRESTMapper
+	metadataClient  metadata.Interface
 	staticClient    kubernetes.Interface
 }
 
@@ -48,6 +51,7 @@ func NewClientFactory(ctx context.Context) (*ClientFactory, error) {
 		dynamicClient:   dynamicClient,
 		kubeClient:      kubeClient,
 		mapper:          mapper,
+		metadataClient:  metadatafake.NewSimpleMetadataClient(metadatafake.NewTestScheme()),
 		staticClient:    staticClient,
 	}
 
@@ -72,6 +76,10 @@ func (f *ClientFactory) KubeConfig() *kube.KubeConfig {
 
 func (f *ClientFactory) Mapper() meta.ResettableRESTMapper {
 	return f.mapper
+}
+
+func (f *ClientFactory) Metadata() metadata.Interface {
+	return f.metadataClient
 }
 
 func (f *ClientFactory) Static() kubernetes.Interface {

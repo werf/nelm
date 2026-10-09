@@ -15,6 +15,7 @@ import (
 	discfake "k8s.io/client-go/discovery/fake"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/metadata"
 	ktesting "k8s.io/client-go/testing"
 
 	"github.com/werf/nelm/v2/pkg/kube"
@@ -48,6 +49,10 @@ func (f *chartCapabilitiesClientFactory) KubeConfig() *kube.KubeConfig {
 }
 
 func (f *chartCapabilitiesClientFactory) Mapper() apimeta.ResettableRESTMapper {
+	panic("not implemented")
+}
+
+func (f *chartCapabilitiesClientFactory) Metadata() metadata.Interface {
 	panic("not implemented")
 }
 

@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/metadata"
 )
 
 var (
@@ -28,6 +29,7 @@ type ClientFactorier interface {
 	Dynamic() dynamic.Interface
 	Discovery() discovery.CachedDiscoveryInterface
 	Mapper() meta.ResettableRESTMapper
+	Metadata() metadata.Interface
 	KubeConfig() *KubeConfig
 }
 
@@ -39,6 +41,7 @@ type ClientFactory struct {
 	kubeClient      KubeClienter
 	kubeConfig      *KubeConfig
 	mapper          meta.ResettableRESTMapper
+	metadataClient  metadata.Interface
 	staticClient    kubernetes.Interface
 }
 
@@ -62,6 +65,11 @@ func NewClientFactory(ctx context.Context, kubeConfig *KubeConfig) (*ClientFacto
 		return nil, fmt.Errorf("construct dynamic kubernetes client: %w", err)
 	}
 
+	metadataClient, err := NewMetadataKubeClientFromKubeConfig(kubeConfig)
+	if err != nil {
+		return nil, fmt.Errorf("construct metadata kubernetes client: %w", err)
+	}
+
 	discoveryClient, err := NewDiscoveryKubeClientFromKubeConfig(kubeConfig)
 	if err != nil {
 		return nil, fmt.Errorf("construct discovery kubernetes client: %w", err)
@@ -76,6 +84,7 @@ func NewClientFactory(ctx context.Context, kubeConfig *KubeConfig) (*ClientFacto
 		kubeClient:      kubeClient,
 		kubeConfig:      kubeConfig,
 		mapper:          mapper,
+		metadataClient:  metadataClient,
 		staticClient:    staticClient,
 	}
 
@@ -100,6 +109,10 @@ func (f *ClientFactory) KubeConfig() *KubeConfig {
 
 func (f *ClientFactory) Mapper() meta.ResettableRESTMapper {
 	return f.mapper
+}
+
+func (f *ClientFactory) Metadata() metadata.Interface {
+	return f.metadataClient
 }
 
 func (f *ClientFactory) Static() kubernetes.Interface {
