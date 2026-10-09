@@ -526,10 +526,13 @@ func (b *sqlStorageBackend) updateLabels(ctx context.Context, namespace, key str
 	}
 	defer rollbackSQLTransaction(ctx, tx)
 
+	// Locking the release row orders label changes with Update and delete, which change the
+	// row first and then rewrite or remove all custom labels of the release.
 	query, args, err := b.statementBuilder.
 		Select(sqlReleaseKeyColumn).
 		From(sqlReleaseTable).
 		Where(sq.Eq{sqlReleaseKeyColumn: key, sqlReleaseNamespaceColumn: namespace}).
+		Suffix("FOR UPDATE").
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build select release query: %w", err)

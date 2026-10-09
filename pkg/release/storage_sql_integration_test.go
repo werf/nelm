@@ -96,6 +96,58 @@ func TestSQLStorageBackend_SelectorsPostgres(t *testing.T) {
 	}
 }
 
+func TestSQLStorageBackend_UpdateLabelsWaitsForReleaseRowLockPostgres(t *testing.T) {
+	connection := os.Getenv("NELM_TEST_POSTGRES_CONNECTION")
+	if connection == "" {
+		t.Skip("NELM_TEST_POSTGRES_CONNECTION is not set")
+	}
+
+	ctx := context.Background()
+	b, err := openSQLStorageBackend(ctx, connection)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, b.db.Close()) })
+
+	namespace := "nelm-test-lock-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	rls := newTestRelease(namespace, "myrel", 1, common.StatusDeployed)
+	rls.Labels = map[string]string{"team": "old"}
+	obj := newTestStoredObject(t, rls)
+	require.NoError(t, b.create(ctx, obj))
+	t.Cleanup(func() { require.NoError(t, b.delete(ctx, obj.Namespace, obj.Key)) })
+
+	tx, err := b.db.BeginTxx(ctx, nil)
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, "UPDATE releases_v1 SET status = status WHERE key = $1 AND namespace = $2", obj.Key, namespace)
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, "DELETE FROM custom_labels_v1 WHERE releaseKey = $1 AND releaseNamespace = $2", obj.Key, namespace)
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- b.updateLabels(ctx, namespace, obj.Key, map[string]string{"leftover": "yes"})
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, tx.Rollback())
+		t.Fatalf("label update did not wait for the release row lock: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	_, err = tx.ExecContext(ctx, "INSERT INTO custom_labels_v1 (releaseKey, releaseNamespace, key, value) VALUES ($1, $2, 'team', 'new')", obj.Key, namespace)
+	require.NoError(t, err)
+	require.NoError(t, tx.Commit())
+	require.NoError(t, <-done)
+
+	stored, err := b.get(ctx, namespace, obj.Key)
+	require.NoError(t, err)
+	require.Equal(t, "new", stored.Labels["team"])
+	require.Equal(t, "yes", stored.Labels["leftover"])
+
+	var teamRows int
+	require.NoError(t, b.db.GetContext(ctx, &teamRows, "SELECT count(*) FROM custom_labels_v1 WHERE releaseKey = $1 AND releaseNamespace = $2 AND key = 'team'", obj.Key, namespace))
+	require.Equal(t, 1, teamRows)
+}
+
 func TestSQLStorageBackend_UpdateReplacesCustomLabelsPostgres(t *testing.T) {
 	connection := os.Getenv("NELM_TEST_POSTGRES_CONNECTION")
 	if connection == "" {

@@ -449,7 +449,7 @@ func TestSQLStorageBackend_UpdateLabelsOfMissingRelease(t *testing.T) {
 	backend, mock := newTestSQLBackend(t)
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(`SELECT key FROM releases_v1 WHERE key = $1 AND namespace = $2`).
+	mock.ExpectQuery(`SELECT key FROM releases_v1 WHERE key = $1 AND namespace = $2 FOR UPDATE`).
 		WithArgs("sh.helm.release.v1.myrel.v1", testNamespace).
 		WillReturnRows(sqlmock.NewRows([]string{"key"}))
 	mock.ExpectRollback()
@@ -461,7 +461,7 @@ func TestSQLStorageBackend_UpdateLabelsReplacesValues(t *testing.T) {
 	backend, mock := newTestSQLBackend(t)
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(`SELECT key FROM releases_v1 WHERE key = $1 AND namespace = $2`).
+	mock.ExpectQuery(`SELECT key FROM releases_v1 WHERE key = $1 AND namespace = $2 FOR UPDATE`).
 		WithArgs("sh.helm.release.v1.myrel.v1", testNamespace).
 		WillReturnRows(sqlmock.NewRows([]string{"key"}).AddRow("sh.helm.release.v1.myrel.v1"))
 	mock.ExpectExec(`DELETE FROM custom_labels_v1 WHERE key = $1 AND releaseKey = $2 AND releaseNamespace = $3`).
