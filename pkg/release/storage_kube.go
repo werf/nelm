@@ -31,8 +31,6 @@ var _ storageBackend = (*kubeStorageBackend)(nil)
 
 type kubeStorageKind string
 
-// kubeStorageBackend stores each revision in its own Secret or ConfigMap. Metadata listings
-// omit release bodies, while typed listings read bodies one page at a time.
 type kubeStorageBackend struct {
 	client         kubernetes.Interface
 	kind           kubeStorageKind

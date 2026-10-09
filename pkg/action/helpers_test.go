@@ -21,14 +21,12 @@ type latestReleaseListStorager struct {
 	historyName      string
 	historySummaries []release.RevisionSummary
 	latestSummaries  []release.RevisionSummary
-	// loadGate, when set, holds every LoadRevisionSummary call until it is closed or the
-	// call's context ends; loadStarted then receives one value per call.
-	loadGate    chan struct{}
-	loadStarted chan struct{}
-	loads       *kdutil.Concurrent[*latestReleaseListLoads]
-	revisions   []release.Revision
-	selector    string
-	summaries   map[string]*release.ReleaseSummary
+	loadGate         chan struct{}
+	loadStarted      chan struct{}
+	loads            *kdutil.Concurrent[*latestReleaseListLoads]
+	revisions        []release.Revision
+	selector         string
+	summaries        map[string]*release.ReleaseSummary
 }
 
 func (s *latestReleaseListStorager) LatestRevisions(ctx context.Context, opts release.LatestRevisionsOptions) ([]release.Revision, error) {

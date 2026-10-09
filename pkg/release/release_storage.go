@@ -33,12 +33,8 @@ var (
 	ErrReleaseUndecodable = errors.New("release: stored body cannot be decoded")
 )
 
-// ReleaseStorager reads and writes release revisions in the Helm storage format. Methods
-// taking a release name operate in the namespace the storage was constructed for and fail
-// when it is empty; LatestRevisions, LoadRevision, LoadRevisionSummary and ListLatestSummaries
-// also work cluster-wide. A storage object
-// whose version label does not parse is reported and skipped by the reads, while Revisions,
-// which revision numbering and pruning rely on, fails on it.
+// ReleaseStorager stores releases in the Helm format. Methods taking a release name require a
+// namespace. Objects with an unparseable version label are skipped on reads but fail Revisions.
 type ReleaseStorager interface {
 	Create(ctx context.Context, rel helmrel.Accessor) error
 	Update(ctx context.Context, rel helmrel.Accessor) error
@@ -46,24 +42,16 @@ type ReleaseStorager interface {
 	Delete(ctx context.Context, name string, version int) error
 	// GetRelease returns the decoded revision; version 0 means the latest one.
 	GetRelease(ctx context.Context, name string, version int) (helmrel.Accessor, error)
-	// LoadRevision returns the decoded body of a revision from Revisions or LatestRevisions.
 	LoadRevision(ctx context.Context, revision Revision) (helmrel.Accessor, error)
-	// LoadRevisionSummary returns the listing fields of a revision body without decoding the
-	// rest of it. A body that cannot be decoded fails with ErrReleaseUndecodable.
+	// LoadRevisionSummary fails with ErrReleaseUndecodable on an undecodable body.
 	LoadRevisionSummary(ctx context.Context, revision Revision) (*ReleaseSummary, error)
-	// Revisions returns the revisions of a release sorted by ascending version, without
-	// reading their bodies.
+	// Revisions reads no bodies; sorted by version.
 	Revisions(ctx context.Context, name string) ([]Revision, error)
-	// LatestRevisions returns the newest matching revision of every release, sorted by
-	// namespace and name, without reading their bodies.
+	// LatestRevisions reads no bodies; sorted by namespace and name.
 	LatestRevisions(ctx context.Context, opts LatestRevisionsOptions) ([]Revision, error)
-	// ListLatestSummaries reads the bodies of matching revisions and returns the summary of
-	// the latest matching revision of every release, sorted by namespace and name. Bodies
-	// are read page by page and only their summaries are retained.
+	// ListLatestSummaries streams bodies and keeps only summaries; sorted by namespace and name.
 	ListLatestSummaries(ctx context.Context, opts ListLatestSummariesOptions) ([]RevisionSummary, error)
-	// ListRevisionSummaries returns the summaries of the revisions of a release sorted by
-	// ascending version. Bodies are read page by page and only their summaries are
-	// retained.
+	// ListRevisionSummaries streams bodies and keeps only summaries; sorted by version.
 	ListRevisionSummaries(ctx context.Context, name string, opts ListRevisionSummariesOptions) ([]RevisionSummary, error)
 }
 
@@ -73,34 +61,24 @@ type storageBackend interface {
 	update(ctx context.Context, obj *storedObject) error
 	updateLabels(ctx context.Context, namespace, key string, labels map[string]string) error
 	delete(ctx context.Context, namespace, key string) error
-	// listMetadata reads the objects owned by Helm without their bodies. An empty namespace
-	// means all namespaces, an empty releaseName means all releases.
 	listMetadata(ctx context.Context, namespace, releaseName string) ([]*storedObject, error)
-	// scanLatestCandidates passes the objects owned by Helm that match selector to fn, with
-	// their bodies when withBodies is set. The latest matching revision of every release is
-	// always passed; older matching revisions may be passed too, in any order, so the caller
-	// selects the latest one of each release.
+	// scanLatestCandidates may also pass older revisions, in any order.
 	scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(obj *storedObject) error) error
-	// listWithBodies reads the objects owned by Helm together with their bodies; non-nil
-	// versions restrict the read to the revisions with these versions.
 	listWithBodies(ctx context.Context, namespace, releaseName string, versions []int, fn func(obj *storedObject) error) error
 }
 
 type ListLatestSummariesOptions struct {
-	// LabelSelector uses Kubernetes label selector syntax and filters storage objects
-	// before selecting the latest matching revision. Empty matches every Helm revision.
+	// LabelSelector is applied before choosing the latest revision.
 	LabelSelector string
 }
 
 type LatestRevisionsOptions struct {
-	// LabelSelector uses Kubernetes label selector syntax and filters storage objects
-	// before selecting the latest matching revision. Empty matches every Helm revision.
+	// LabelSelector is applied before choosing the latest revision.
 	LabelSelector string
 }
 
 type ListRevisionSummariesOptions struct {
-	// Limit restricts the read to the newest Limit revisions, so the bodies of older
-	// revisions are not read. 0 reads every revision.
+	// Limit reads only the newest revisions; 0 means all.
 	Limit int
 }
 
@@ -180,8 +158,7 @@ func (s *releaseStorage) GetRelease(ctx context.Context, name string, version in
 		return s.LoadRevision(ctx, Revision{Name: name, Namespace: namespace, Version: version})
 	}
 
-	// The latest revision can be pruned by a concurrent install between listing and fetching
-	// it; the next listing then names the revision that replaced it.
+	// A concurrent install may prune the latest revision before it is read.
 	for attempt := 0; ; attempt++ {
 		revisions, err := s.readableRevisions(ctx, namespace, name)
 		if err != nil {
@@ -256,8 +233,7 @@ func (s *releaseStorage) ListLatestSummaries(ctx context.Context, opts ListLates
 		candidateRevision Revision
 	)
 
-	// Only the candidate's body is kept while its group is read; it is reduced to a summary
-	// as soon as the storage moves on to another release.
+	// Only one raw body, the current candidate, is retained at a time.
 	summarize := func() {
 		if candidate == nil {
 			return
@@ -289,8 +265,7 @@ func (s *releaseStorage) ListLatestSummaries(ctx context.Context, opts ListLates
 			summarize()
 		}
 
-		// Storage order only saves decoding work: a release whose revisions are not adjacent
-		// is summarized again, but an older revision never replaces a newer one.
+		// Revisions of a release may be non-adjacent; an older one never replaces a newer one.
 		if current, found := latest[id]; found && revision.Version <= current.Revision.Version {
 			return nil
 		}
@@ -490,8 +465,6 @@ func (s *releaseStorage) UpdateLabels(ctx context.Context, name string, version 
 	return nil
 }
 
-// readableRevisions lists the revisions of a release for reading them, skipping the storage
-// objects whose version label does not parse.
 func (s *releaseStorage) readableRevisions(ctx context.Context, namespace, name string) ([]Revision, error) {
 	objects, err := s.backend.listMetadata(ctx, namespace, name)
 	if err != nil {
@@ -519,8 +492,6 @@ func (s *releaseStorage) readableRevisions(ctx context.Context, namespace, name 
 	return revisions, nil
 }
 
-// removeOldestRevisions keeps at most maximum revisions, never removing the newest deployed
-// one, deciding from labels only. It mirrors the pruning Helm does before creating a revision.
 func (s *releaseStorage) removeOldestRevisions(ctx context.Context, name string, maximum int) error {
 	if maximum < 0 {
 		return nil

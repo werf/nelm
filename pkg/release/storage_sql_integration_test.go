@@ -151,8 +151,7 @@ func TestSQLStorageBackend_UpdateLabelsWaitsForReleaseRowLockPostgres(t *testing
 	tx, err := b.db.BeginTxx(ctx, nil)
 	require.NoError(t, err)
 
-	// Registered after the delete cleanup, so it runs first and releases the row lock if the
-	// test fails while holding it.
+	// Runs before the delete cleanup, releasing the row lock on failure.
 	t.Cleanup(func() { rollbackSQLTransaction(ctx, tx) })
 
 	_, err = tx.ExecContext(ctx, "UPDATE releases_v1 SET status = status WHERE key = $1 AND namespace = $2", obj.Key, namespace)

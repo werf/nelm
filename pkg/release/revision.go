@@ -25,16 +25,15 @@ func NewRevisionFromAccessor(rel helmrel.Accessor) Revision {
 	}
 }
 
-// ReleaseSummary holds the parts of a stored release body that release listings show.
+// ReleaseSummary is the part of a release body that listings show.
 type ReleaseSummary struct {
 	Annotations map[string]string
-	// Chart is nil when the stored release has no chart metadata.
+	// Chart is nil without chart metadata.
 	Chart      *ReleaseSummaryChart
 	DeployedAt time.Time
 }
 
-// RevisionSummary is a revision with the summary of its body. DecodeErr wraps
-// ErrReleaseUndecodable when the body cannot be decoded, and Summary is nil then.
+// RevisionSummary has either Summary or DecodeErr wrapping ErrReleaseUndecodable.
 type RevisionSummary struct {
 	DecodeErr error
 	Revision  Revision

@@ -96,8 +96,7 @@ func (b *latestListingBackend) scanLatestCandidates(ctx context.Context, namespa
 	return nil
 }
 
-// pagedMetadataClient serves metadata pages by continue token, which the client-go metadata
-// fake does not pass to reactors.
+// The client-go metadata fake drops continue tokens.
 type pagedMetadataClient struct {
 	metadata.ResourceInterface
 
@@ -178,7 +177,6 @@ func countActions(actions []k8stesting.Action, verb string) int {
 	return count
 }
 
-// encodeHelmRelease encodes a body exactly as the Helm storage drivers do.
 func encodeHelmRelease(t *testing.T, rls *helmrelease.Release) []byte {
 	t.Helper()
 
@@ -252,8 +250,7 @@ func newTestStoredObject(t *testing.T, rls *helmrelease.Release) *storedObject {
 	return obj
 }
 
-// putTestKubeObject stores obj in both fake clients: the typed one serves gets and body
-// listings, the metadata one serves metadata listings, and the fakes share no state.
+// The typed and metadata fakes share no state.
 func putTestKubeObject(t *testing.T, s *testKubeStorage, obj *storedObject) {
 	t.Helper()
 

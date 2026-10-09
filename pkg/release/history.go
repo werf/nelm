@@ -35,8 +35,7 @@ func (h *History) CreateRelease(ctx context.Context, rel helmrel.Accessor) error
 	rel.SetFirstDeployed(now)
 	rel.SetLastDeployed(now)
 
-	// Plan execution cancels its context on the first failed operation and still has to
-	// record the failed revision afterwards.
+	// A failed plan cancels ctx but must still record the revision.
 	if err := h.storage.Create(context.WithoutCancel(ctx), rel); err != nil {
 		return fmt.Errorf("create release %q (namespace: %q, revision: %d): %w", rel.Name(), rel.Namespace(), rel.Version(), err)
 	}

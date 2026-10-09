@@ -15,8 +15,6 @@ import (
 
 var _ storageBackend = (*memoryStorageBackend)(nil)
 
-// memoryStorageBackend keeps encoded revisions in process memory, keyed by namespace and
-// object name, so it exercises the same encoding as the persistent backends.
 type memoryStorageBackend struct {
 	objects *kdutil.Concurrent[map[string]*storedObject]
 }

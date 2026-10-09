@@ -33,8 +33,6 @@ var (
 	gzipMagic           = []byte{0x1f, 0x8b, 0x08}
 )
 
-// storedObject is a release revision as the backends see it: the storage object identity,
-// its labels and the encoded body. Body is nil when only the metadata was read.
 type storedObject struct {
 	Body      []byte
 	Key       string
@@ -82,8 +80,6 @@ func decodeStoredObject(obj *storedObject) (*helmrelease.Release, error) {
 	return rls, nil
 }
 
-// decodeRelease streams the body through base64 and gzip decoding instead of materializing
-// each intermediate form.
 func decodeRelease(body []byte) (*helmrelease.Release, error) {
 	rls := &helmrelease.Release{}
 	if err := decodeReleaseBody(body, rls); err != nil {
@@ -93,9 +89,6 @@ func decodeRelease(body []byte) (*helmrelease.Release, error) {
 	return rls, nil
 }
 
-// decodeStoredSummary decodes only the release fields a listing shows. The decoder still
-// buffers the uncompressed JSON of this one body, but the manifest, values and chart files
-// are not turned into Go values and nothing of the body outlives the call.
 func decodeStoredSummary(obj *storedObject) (*ReleaseSummary, error) {
 	var body struct {
 		Info *struct {
@@ -131,14 +124,6 @@ func decodeStoredSummary(obj *storedObject) (*ReleaseSummary, error) {
 	return summary, nil
 }
 
-// revisionFromStoredObject returns ok=false for a storage object that is not a release
-// revision: one without a name or without a version label, which every stored revision
-// carries, or one whose object name is not the storage key of the revision its labels name.
-// Such an object, like a copy of a revision saved under another name, must not be taken for
-// that revision, since pruning deletes revisions by their storage key. A version label that
-// is present but does not parse is an error naming the object, so it can be removed by hand:
-// revision numbering cannot tell which revision such an object holds, and it may occupy the
-// object name of the next one.
 func revisionFromStoredObject(obj *storedObject) (Revision, bool, error) {
 	name := obj.Labels[storageLabelName]
 	if name == "" {
@@ -167,8 +152,6 @@ func revisionFromStoredObject(obj *storedObject) (Revision, bool, error) {
 	}, true, nil
 }
 
-// decodeReleaseBody decodes the release JSON of a stored body into target. Bodies stored
-// before Helm started compressing them are plain base64-encoded JSON.
 func decodeReleaseBody(body []byte, target any) error {
 	reader := bufio.NewReader(base64.NewDecoder(base64.StdEncoding, bytes.NewReader(body)))
 
@@ -195,7 +178,7 @@ func decodeReleaseBody(body []byte, target any) error {
 		return fmt.Errorf("decode release: %w", err)
 	}
 
-	// Reading to the end validates the gzip checksum and rejects data after the release.
+	// Reading to EOF verifies the gzip checksum.
 	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
 		if err == nil {
 			return errors.New("decode release: unexpected data after release")

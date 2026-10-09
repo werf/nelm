@@ -42,9 +42,7 @@ const (
 
 var _ storageBackend = (*sqlStorageBackend)(nil)
 
-// sqlStorageBackend stores revisions in the PostgreSQL schema of the Helm SQL driver: system
-// labels live in columns of the releases table, custom labels in a table of their own. The
-// schema declares its camelCase columns unquoted, so PostgreSQL reports them in lower case.
+// The Helm schema declares camelCase columns unquoted, so PostgreSQL reports them lower-case.
 type sqlStorageBackend struct {
 	db               *sqlx.DB
 	statementBuilder sq.StatementBuilderType
@@ -234,8 +232,7 @@ func (b *sqlStorageBackend) listWithBodies(ctx context.Context, namespace, relea
 		keys = append(keys, obj.Key)
 	}
 
-	// Custom labels are read before the bodies, so the cursor below is the only query in
-	// flight and the read needs a single connection.
+	// Read labels first so only one query is in flight.
 	query, args, err := b.statementBuilder.
 		Select(sqlCustomLabelsReleaseKeyColumn, sqlCustomLabelsKeyColumn, sqlCustomLabelsValueColumn).
 		From(sqlCustomLabelsTable).
@@ -321,8 +318,7 @@ func (b *sqlStorageBackend) scanLatestCandidates(ctx context.Context, namespace 
 		}
 	}
 
-	// DISTINCT ON keeps one row per release, so a row outside its storage key, which is not a
-	// revision, must be excluded before it can hide the release's real latest revision.
+	// Drop non-revision rows before DISTINCT ON, or they can hide the real latest revision.
 	builder = builder.Where("key = 'sh.helm.release.v1.' || name || '.v' || version")
 
 	const customLabelsColumn = "COALESCE((" +
@@ -497,7 +493,6 @@ func (b *sqlStorageBackend) update(ctx context.Context, obj *storedObject) error
 		return ErrReleaseNotFound
 	}
 
-	// Like the Kubernetes backends, an update replaces the whole set of custom labels.
 	query, args, err = b.statementBuilder.
 		Delete(sqlCustomLabelsTable).
 		Where(sq.Eq{sqlCustomLabelsReleaseKeyColumn: obj.Key, sqlCustomLabelsReleaseNamespaceColumn: obj.Namespace}).
@@ -530,8 +525,7 @@ func (b *sqlStorageBackend) updateLabels(ctx context.Context, namespace, key str
 	}
 	defer rollbackSQLTransaction(ctx, tx)
 
-	// Locking the release row orders label changes with Update and delete, which change the
-	// row first and then rewrite or remove all custom labels of the release.
+	// Lock the release row to serialize with update and delete.
 	query, args, err := b.statementBuilder.
 		Select(sqlReleaseKeyColumn).
 		From(sqlReleaseTable).
@@ -618,11 +612,8 @@ func openSQLStorageBackend(ctx context.Context, connectionString string) (*sqlSt
 	return newSQLStorageBackend(db), nil
 }
 
-// ensureSQLStorageSchema applies the migrations of the Helm SQL driver, with the same ids and
-// statements, so Helm and nelm can share a database. When every migration is already applied
-// nothing is executed, which lets a database user without DDL privileges use the storage. A
-// local migration set keeps the package-level sql-migrate settings of the host application
-// out of play.
+// Skipping applied migrations lets users without DDL privileges use the storage; a local
+// MigrationSet avoids sql-migrate globals.
 func ensureSQLStorageSchema(ctx context.Context, db *sqlx.DB) error {
 	migrations := &migrate.MemoryMigrationSource{
 		Migrations: []*migrate.Migration{
@@ -820,8 +811,7 @@ func sqlLabelRequirement(requirement labels.Requirement) (sq.Sqlizer, error) {
 			operator = "<"
 		}
 
-		// Kubernetes compares only labels that parse as int64; other values never match, so the
-		// cast is guarded instead of failing the whole query on a non-numeric or huge value.
+		// Like Kubernetes, only int64 values match; the guard keeps bad values from failing the query.
 		number := fmt.Sprintf(
 			"(CASE WHEN %[1]s ~ '^[+-]??[0-9]+$' AND length(regexp_replace(%[1]s, '^[+-]??0*', '')) <= 19 THEN (%[1]s)::numeric END)",
 			column,
@@ -838,8 +828,7 @@ func sqlLabelRequirement(requirement labels.Requirement) (sq.Sqlizer, error) {
 		return predicate, nil
 	}
 
-	// Neither nelm nor Helm writes a custom label of a release twice, so the ctid order only
-	// picks a deterministic row if a foreign writer did; it does not track write order.
+	// ctid only makes duplicates from foreign writers deterministic; it is not write order.
 	label := sq.Select(sqlCustomLabelsValueColumn).From(sqlCustomLabelsTable).
 		Where("releaseKey = releases_v1.key AND releaseNamespace = releases_v1.namespace").
 		Where(sq.Eq{sqlCustomLabelsKeyColumn: requirement.Key()}).OrderBy("ctid DESC").Limit(1)

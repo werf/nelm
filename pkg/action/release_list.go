@@ -33,12 +33,10 @@ const (
 type ReleaseListOptions struct {
 	common.KubeConnectionOptions
 
-	// LegacyMetadataOnly lists releases by storage metadata without reading release bodies when
-	// OutputNoPrint is set. The detail getters of the returned releases then read each body on
-	// first use. Printed JSON and YAML always read the bodies, and a printed table never needs
-	// them. Used by Deckhouse until release listing is served by a server API.
+	// LegacyMetadataOnly, with OutputNoPrint, lists only metadata; getters then read each body
+	// on first use. For Deckhouse until a server API replaces it.
 	LegacyMetadataOnly bool
-	// NetworkParallelism is retained for compatibility and is not used by release listing.
+	// NetworkParallelism is unused, kept for compatibility.
 	NetworkParallelism int
 	// OutputFormat specifies the output format for the release list.
 	// Valid values: "table" (default), "yaml", "json".
@@ -47,8 +45,7 @@ type ReleaseListOptions struct {
 	// OutputNoPrint, when true, suppresses printing the output and only returns the result data structure.
 	// Useful when calling this programmatically.
 	OutputNoPrint bool
-	// ReleaseLabelSelector filters storage objects using Kubernetes label selector syntax.
-	// The result contains the latest matching revision, not necessarily the latest overall.
+	// ReleaseLabelSelector is a Kubernetes label selector; the latest matching revision is listed.
 	ReleaseLabelSelector string
 	// ReleaseNamespace specifies the namespace to list releases from.
 	// If empty, lists all namespaces.
@@ -70,10 +67,8 @@ type ReleaseListResultV2 struct {
 	Releases   []*ReleaseListResultRelease `json:"releases"`
 }
 
-// ReleaseListResultRelease is the latest revision of a release. Its fields come from storage
-// metadata, while the getters return details of the stored release body: listed eagerly they
-// are already decoded, listed with LegacyMetadataOnly the first getter call reads and decodes the
-// body and later calls reuse it.
+// ReleaseListResultRelease is the latest revision of a release. Getters return details from the
+// release body, read on first use with LegacyMetadataOnly.
 type ReleaseListResultRelease struct {
 	Name      string                   `json:"name"`
 	Namespace string                   `json:"namespace"`
@@ -134,10 +129,6 @@ func (r ReleaseListResultRelease) MarshalYAML() (any, error) {
 	return r.output(), nil
 }
 
-// loadSummary reads the body on first use. Concurrent calls share one read, and a caller
-// waiting for it stops waiting when its own context ends. Undecodable bodies are remembered,
-// while other errors, such as a failed request, a canceled reader or a revision pruned since
-// the listing, are retried by the next call.
 func (r *ReleaseListResultRelease) loadSummary(ctx context.Context) (*release.ReleaseSummary, error) {
 	if r.details == nil {
 		return nil, fmt.Errorf("release %q (namespace: %q) was not returned by ReleaseList", r.Name, r.Namespace)
@@ -189,8 +180,6 @@ func (r *ReleaseListResultRelease) loadSummary(ctx context.Context) (*release.Re
 	}
 }
 
-// output holds the details already read, without reading bodies, since marshaling has no
-// context to read them with.
 func (r ReleaseListResultRelease) output() releaseListResultReleaseOutput {
 	output := releaseListResultReleaseOutput{
 		Name:      r.Name,
@@ -226,8 +215,6 @@ func (r ReleaseListResultRelease) output() releaseListResultReleaseOutput {
 	return output
 }
 
-// readSummary reads the body outside the lock, remembers a decoded or undecodable result and
-// wakes the callers waiting for it. It returns the error of a read that is not remembered.
 func (r *ReleaseListResultRelease) readSummary(ctx context.Context, storage release.ReleaseStorager, revision release.Revision) error {
 	defer r.details.RWTransaction(func(details *releaseListDetails) {
 		close(details.loading)
