@@ -95,3 +95,40 @@ func TestSQLStorageBackend_SelectorsPostgres(t *testing.T) {
 		})
 	}
 }
+
+func TestSQLStorageBackend_UpdateReplacesCustomLabelsPostgres(t *testing.T) {
+	connection := os.Getenv("NELM_TEST_POSTGRES_CONNECTION")
+	if connection == "" {
+		t.Skip("NELM_TEST_POSTGRES_CONNECTION is not set")
+	}
+
+	ctx := context.Background()
+	b, err := openSQLStorageBackend(ctx, connection)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, b.db.Close()) })
+
+	namespace := "nelm-test-update-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	rls := newTestRelease(namespace, "myrel", 1, common.StatusDeployed)
+	rls.Labels = map[string]string{"team": "old", "removed": "yes"}
+	obj := newTestStoredObject(t, rls)
+	require.NoError(t, b.create(ctx, obj))
+	t.Cleanup(func() { require.NoError(t, b.delete(ctx, obj.Namespace, obj.Key)) })
+
+	rls.Labels = map[string]string{"team": "new"}
+	updated, err := newStoredObject(namespace, rls, storageLabelModifiedAt)
+	require.NoError(t, err)
+	require.NoError(t, b.update(ctx, updated))
+
+	stored, err := b.get(ctx, namespace, obj.Key)
+	require.NoError(t, err)
+	require.Equal(t, "new", stored.Labels["team"])
+	require.NotContains(t, stored.Labels, "removed")
+
+	var count int
+	require.NoError(t, b.db.GetContext(ctx, &count, "SELECT count(*) FROM custom_labels_v1 WHERE releaseKey = $1 AND releaseNamespace = $2", obj.Key, namespace))
+	require.Equal(t, 1, count)
+
+	missing, err := newStoredObject(namespace, newTestRelease(namespace, "missing", 1, common.StatusDeployed), storageLabelModifiedAt)
+	require.NoError(t, err)
+	require.ErrorIs(t, b.update(ctx, missing), ErrReleaseNotFound)
+}

@@ -117,6 +117,21 @@ func TestReleaseStorage_CreateAndUpdateWriteHelmFormat(t *testing.T) {
 			rlsFromBody, err := decodeRelease(updated.Body)
 			require.NoError(t, err)
 			assert.Equal(t, helmreleasecommon.StatusDeployed, rlsFromBody.Info.Status, "the status is rewritten in the body too")
+
+			relabeled, err := s.storage.GetRelease(ctx, "myrel", 1)
+			require.NoError(t, err)
+
+			relabeledRls, err := ReleaserToV1Release(relabeled.Releaser())
+			require.NoError(t, err)
+
+			relabeledRls.Labels = map[string]string{"team": "new"}
+
+			require.NoError(t, s.storage.Update(ctx, relabeled))
+
+			updated, err = s.backend.get(ctx, testNamespace, "sh.helm.release.v1.myrel.v1")
+			require.NoError(t, err)
+			assert.Equal(t, "new", updated.Labels["team"])
+			assert.NotContains(t, updated.Labels, "custom")
 		})
 	}
 }

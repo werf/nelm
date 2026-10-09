@@ -473,7 +473,13 @@ func (b *sqlStorageBackend) update(ctx context.Context, obj *storedObject) error
 		return fmt.Errorf("build update release query: %w", err)
 	}
 
-	result, err := b.db.ExecContext(ctx, query, args...)
+	tx, err := b.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer rollbackSQLTransaction(ctx, tx)
+
+	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("update release: %w", err)
 	}
@@ -485,6 +491,29 @@ func (b *sqlStorageBackend) update(ctx context.Context, obj *storedObject) error
 
 	if affected == 0 {
 		return ErrReleaseNotFound
+	}
+
+	// Like the Kubernetes backends, an update replaces the whole set of custom labels.
+	query, args, err = b.statementBuilder.
+		Delete(sqlCustomLabelsTable).
+		Where(sq.Eq{sqlCustomLabelsReleaseKeyColumn: obj.Key, sqlCustomLabelsReleaseNamespaceColumn: obj.Namespace}).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build delete custom labels query: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+		return fmt.Errorf("delete custom labels: %w", err)
+	}
+
+	for key, value := range withoutSystemLabels(obj.Labels) {
+		if err := b.insertCustomLabel(ctx, tx, obj.Namespace, obj.Key, key, value); err != nil {
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
 	}
 
 	return nil

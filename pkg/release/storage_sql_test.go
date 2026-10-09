@@ -481,9 +481,34 @@ func TestSQLStorageBackend_UpdateMissing(t *testing.T) {
 	obj, err := newStoredObject(testNamespace, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusDeployed), storageLabelModifiedAt)
 	require.NoError(t, err)
 
+	mock.ExpectBegin()
 	mock.ExpectExec(`UPDATE releases_v1 SET body = $1, name = $2, version = $3, status = $4, owner = $5, modifiedAt = $6 WHERE key = $7 AND namespace = $8`).
 		WithArgs(string(obj.Body), "myrel", 1, "deployed", "helm", sqlmock.AnyArg(), obj.Key, testNamespace).
 		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectRollback()
 
 	require.ErrorIs(t, backend.update(context.Background(), obj), ErrReleaseNotFound)
+}
+
+func TestSQLStorageBackend_UpdateReplacesCustomLabels(t *testing.T) {
+	backend, mock := newTestSQLBackend(t)
+
+	rls := newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusDeployed)
+	rls.Labels = map[string]string{"team": "new"}
+	obj, err := newStoredObject(testNamespace, rls, storageLabelModifiedAt)
+	require.NoError(t, err)
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE releases_v1 SET body = $1, name = $2, version = $3, status = $4, owner = $5, modifiedAt = $6 WHERE key = $7 AND namespace = $8`).
+		WithArgs(string(obj.Body), "myrel", 1, "deployed", "helm", sqlmock.AnyArg(), obj.Key, testNamespace).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`DELETE FROM custom_labels_v1 WHERE releaseKey = $1 AND releaseNamespace = $2`).
+		WithArgs(obj.Key, testNamespace).
+		WillReturnResult(sqlmock.NewResult(0, 2))
+	mock.ExpectExec(`INSERT INTO custom_labels_v1 (releaseKey,releaseNamespace,key,value) VALUES ($1,$2,$3,$4)`).
+		WithArgs(obj.Key, testNamespace, "team", "new").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	require.NoError(t, backend.update(context.Background(), obj))
 }
