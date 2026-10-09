@@ -236,8 +236,8 @@ func TestListsReleasesByMetadata(t *testing.T) {
 		{opts: ReleaseListOptions{OutputFormat: common.OutputFormatJSON}, expected: false},
 		{opts: ReleaseListOptions{OutputFormat: common.OutputFormatYAML}, expected: false},
 		{opts: ReleaseListOptions{OutputFormat: common.OutputFormatTable, OutputNoPrint: true}, expected: false},
-		{opts: ReleaseListOptions{OutputFormat: common.OutputFormatJSON, MetadataOnly: true}, expected: true},
-		{opts: ReleaseListOptions{OutputFormat: common.OutputFormatTable, OutputNoPrint: true, MetadataOnly: true}, expected: true},
+		{opts: ReleaseListOptions{OutputFormat: common.OutputFormatJSON, LegacyMetadataOnly: true}, expected: true},
+		{opts: ReleaseListOptions{OutputFormat: common.OutputFormatTable, OutputNoPrint: true, LegacyMetadataOnly: true}, expected: true},
 	} {
 		assert.Equal(t, tt.expected, listsReleasesByMetadata(tt.opts), "%+v", tt.opts)
 	}

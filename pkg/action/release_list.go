@@ -33,10 +33,11 @@ const (
 type ReleaseListOptions struct {
 	common.KubeConnectionOptions
 
-	// MetadataOnly lists releases by storage metadata without reading release bodies. The
+	// LegacyMetadataOnly lists releases by storage metadata without reading release bodies. The
 	// detail getters of the returned releases then read each body on first use. Printing a
-	// table never needs the bodies, so it always lists by metadata.
-	MetadataOnly bool
+	// table never needs the bodies, so it always lists by metadata. Used by Deckhouse until
+	// release listing is served by a server API.
+	LegacyMetadataOnly bool
 	// NetworkParallelism is retained for compatibility and is not used by release listing.
 	NetworkParallelism int
 	// OutputFormat specifies the output format for the release list.
@@ -71,7 +72,7 @@ type ReleaseListResultV2 struct {
 
 // ReleaseListResultRelease is the latest revision of a release. Its fields come from storage
 // metadata, while the getters return details of the stored release body: listed eagerly they
-// are already decoded, listed with MetadataOnly the first getter call reads and decodes the
+// are already decoded, listed with LegacyMetadataOnly the first getter call reads and decodes the
 // body and later calls reuse it.
 type ReleaseListResultRelease struct {
 	Name      string                   `json:"name"`
@@ -480,7 +481,7 @@ func applyReleaseListOptionsDefaults(opts ReleaseListOptions, homeDir string) (R
 }
 
 func listsReleasesByMetadata(opts ReleaseListOptions) bool {
-	return opts.MetadataOnly || (!opts.OutputNoPrint && opts.OutputFormat == common.OutputFormatTable)
+	return opts.LegacyMetadataOnly || (!opts.OutputNoPrint && opts.OutputFormat == common.OutputFormatTable)
 }
 
 func newReleaseListResult(releases []*ReleaseListResultRelease) *ReleaseListResultV2 {
