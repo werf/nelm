@@ -1,15 +1,21 @@
 package release_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/werf/nelm/v2/pkg/common"
+	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmreleasecommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 	"github.com/werf/nelm/v2/pkg/release"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
 func TestIsReleaseUpToDate(t *testing.T) {
@@ -164,6 +170,78 @@ data:
 			require.NoError(t, err)
 			assert.Equal(t, tt.expectedUpToDate, result.UpToDate)
 			assert.Equal(t, tt.expectedReason, result.Reason)
+		})
+	}
+}
+
+func TestNewRelease_PreservesInfoAnnotations(t *testing.T) {
+	charts := []struct {
+		name  string
+		chart helmchart.Charter
+	}{
+		{
+			name: "chart v2",
+			chart: &v2chart.Chart{Metadata: &v2chart.Metadata{
+				Name: "mychart", Version: "1.0.0", APIVersion: v2chart.APIVersionV2,
+			}},
+		},
+		{
+			name: "chart v3",
+			chart: &v3chart.Chart{Metadata: &v3chart.Metadata{
+				Name: "mychart", Version: "1.0.0", APIVersion: v3chart.APIVersionV3,
+			}},
+		},
+	}
+	annotationCases := []struct {
+		name   string
+		values map[string]string
+	}{
+		{
+			name: "populated",
+			values: map[string]string{
+				"packages.deckhouse.io/managed-by": "deckhouse",
+				"description":                      "релиз",
+				"empty":                            "",
+			},
+		},
+		{name: "nil"},
+		{name: "empty", values: map[string]string{}},
+	}
+
+	for _, chrt := range charts {
+		t.Run(chrt.name, func(t *testing.T) {
+			chartAccessor, err := helmchart.NewAccessor(chrt.chart)
+			require.NoError(t, err)
+
+			for _, tt := range annotationCases {
+				t.Run(tt.name, func(t *testing.T) {
+					original, err := release.NewRelease("myrelease", "myns", 1, common.DeployTypeInstall, []*spec.ResourceSpec{}, chartAccessor, map[string]any{}, release.ReleaseOptions{
+						InfoAnnotations: tt.values,
+					})
+					require.NoError(t, err)
+					assert.Equal(t, tt.values, original.Annotations())
+
+					storageRelease, err := release.ReleaserToV1Release(original.Releaser())
+					require.NoError(t, err)
+					require.NotNil(t, storageRelease.Info)
+
+					data, err := json.Marshal(&release.VersionedRelease{Accessor: original})
+					require.NoError(t, err)
+
+					var restored release.VersionedRelease
+					require.NoError(t, json.Unmarshal(data, &restored))
+					require.NotNil(t, restored.Accessor)
+
+					if len(tt.values) == 0 {
+						assert.NotContains(t, string(data), `"annotations"`)
+						assert.Nil(t, restored.Accessor.Annotations())
+						assert.Empty(t, storageRelease.Info.Annotations)
+					} else {
+						assert.Equal(t, tt.values, restored.Accessor.Annotations())
+						assert.Equal(t, tt.values, storageRelease.Info.Annotations)
+					}
+				})
+			}
 		})
 	}
 }

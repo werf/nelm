@@ -201,7 +201,7 @@ func (a *v2Accessor) Labels() map[string]string {
 }
 
 func (a *v2Accessor) Annotations() map[string]string {
-	return nil
+	return a.rel.Info.Annotations
 }
 
 func (a *v2Accessor) Chart() chart.Charter {
