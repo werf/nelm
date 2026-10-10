@@ -17,12 +17,9 @@ limitations under the License.
 package storage // import "github.com/werf/nelm/v2/pkg/helm/pkg/storage"
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/werf/nelm/v2/pkg/helm/intern/logging"
@@ -61,252 +58,6 @@ func (s *Storage) Get(name string, version int) (release.Releaser, error) {
 	return s.Driver.Get(makeKey(name, version))
 }
 
-// lastVersioner is an optional driver capability that returns the highest
-// revision of a release cheaply, without decoding release bodies.
-type lastVersioner interface {
-	LastVersion(name string) (int, error)
-}
-
-// GetRelease returns a single release revision without decoding the whole
-// history. version == 0 resolves the latest revision (via the driver's
-// LastVersion capability, falling back to decoding the history). The revision is
-// fetched through the driver's GetRevision capability, which keeps the unfiltered
-// storage labels; Get is deliberately not used because it strips system labels
-// through filterSystemLabels.
-func (s *Storage) GetRelease(name string, version int) (*rspb.Release, error) {
-	if version != 0 {
-		return s.queryRevision(name, version)
-	}
-
-	target, err := s.resolveLastVersion(name)
-	if err != nil {
-		return nil, err
-	}
-
-	rel, err := s.queryRevision(name, target)
-	if err == nil {
-		return rel, nil
-	}
-
-	if !errors.Is(err, driver.ErrReleaseNotFound) {
-		return nil, err
-	}
-
-	// The resolved revision was trimmed between resolve and fetch (TOCTOU);
-	// re-resolve and refetch once.
-	target, err = s.resolveLastVersion(name)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.queryRevision(name, target)
-}
-
-// revisionGetter is an optional driver capability that fetches one stored revision by key,
-// keeping its storage labels and reporting an undecodable body as ErrReleaseUndecodable.
-type revisionGetter interface {
-	GetRevision(key string) (release.Releaser, error)
-}
-
-var (
-	_ revisionGetter = (*driver.Secrets)(nil)
-	_ revisionGetter = (*driver.ConfigMaps)(nil)
-	_ revisionGetter = (*driver.SQL)(nil)
-	_ revisionGetter = (*driver.Memory)(nil)
-)
-
-func (s *Storage) queryRevision(name string, version int) (*rspb.Release, error) {
-	if g, ok := s.Driver.(revisionGetter); ok {
-		rel, err := g.GetRevision(makeKey(name, version))
-		if err != nil {
-			return nil, err
-		}
-
-		return releaserToV1Release(rel)
-	}
-
-	rels, err := s.Driver.Query(map[string]string{
-		"name":    name,
-		"owner":   "helm",
-		"version": strconv.Itoa(version),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if len(rels) == 0 {
-		return nil, driver.ErrReleaseNotFound
-	}
-
-	return releaserToV1Release(rels[0])
-}
-
-func (s *Storage) resolveLastVersion(name string) (int, error) {
-	if lv, ok := s.Driver.(lastVersioner); ok {
-		return lv.LastVersion(name)
-	}
-
-	history, err := s.History(name)
-	if err != nil {
-		return 0, err
-	}
-
-	h, err := releaseListToV1List(history)
-	if err != nil {
-		return 0, err
-	}
-
-	if len(h) == 0 {
-		return 0, driver.ErrReleaseNotFound
-	}
-
-	relutil.Reverse(h, relutil.SortByRevision)
-
-	return h[0].Version, nil
-}
-
-// latestReleasesLister is an optional driver capability that returns the highest
-// revision of every stored release without decoding superseded revisions.
-type latestReleasesLister interface {
-	ListLatestReleases(ctx context.Context) ([]*rspb.Release, error)
-}
-
-var (
-	_ latestReleasesLister = (*driver.Secrets)(nil)
-	_ latestReleasesLister = (*driver.ConfigMaps)(nil)
-	_ latestReleasesLister = (*driver.SQL)(nil)
-)
-
-// ListLatestReleases returns the highest revision of every release owned by Helm.
-// Drivers implementing the capability answer without decoding superseded
-// revisions; the fallback decodes the whole history of every release.
-func (s *Storage) ListLatestReleases(ctx context.Context) ([]*rspb.Release, error) {
-	if l, ok := s.Driver.(latestReleasesLister); ok {
-		rels, err := l.ListLatestReleases(ctx)
-		if errors.Is(err, driver.ErrReleaseNotFound) {
-			return nil, nil
-		}
-
-		return rels, err
-	}
-
-	releasers, err := s.Driver.Query(map[string]string{"owner": "helm"})
-	if err != nil {
-		if errors.Is(err, driver.ErrReleaseNotFound) {
-			return nil, nil
-		}
-
-		return nil, err
-	}
-
-	rels, err := releaseListToV1List(releasers)
-	if err != nil {
-		return nil, err
-	}
-
-	latest := map[string]*rspb.Release{}
-	for _, rel := range rels {
-		key := rel.Namespace + "/" + rel.Name
-
-		if current, found := latest[key]; found && current.Version >= rel.Version {
-			continue
-		}
-
-		latest[key] = rel
-	}
-
-	result := make([]*rspb.Release, 0, len(latest))
-	for _, rel := range latest {
-		result = append(result, rel)
-	}
-
-	return result, nil
-}
-
-// The capabilities below are optional interfaces with a fallback rather than members of
-// driver.Driver so the upstream Helm interface stays untouched and rebases stay cheap; every
-// driver in this repository implements them.
-//
-// revisionLister is an optional driver capability that returns the version and
-// status of every revision of a release without decoding release bodies.
-type revisionLister interface {
-	Revisions(ctx context.Context, name string) ([]driver.RevisionRecord, error)
-}
-
-var (
-	_ revisionLister = (*driver.Secrets)(nil)
-	_ revisionLister = (*driver.ConfigMaps)(nil)
-	_ revisionLister = (*driver.SQL)(nil)
-	_ revisionLister = (*driver.Memory)(nil)
-)
-
-// revisionDeleter is an optional driver capability that removes a stored revision
-// without fetching or decoding its body. Network-backed drivers honour the context;
-// the in-memory driver has nothing to cancel.
-type revisionDeleter interface {
-	DeleteRevision(ctx context.Context, key string) error
-}
-
-var (
-	_ revisionDeleter = (*driver.Secrets)(nil)
-	_ revisionDeleter = (*driver.ConfigMaps)(nil)
-	_ revisionDeleter = (*driver.SQL)(nil)
-	_ revisionDeleter = (*driver.Memory)(nil)
-)
-
-// DeleteRevision removes one revision of a release. Drivers implementing the capability
-// delete without transferring the body and honour ctx; the fallback goes through Delete,
-// which fetches and decodes the body first and ignores ctx.
-func (s *Storage) DeleteRevision(ctx context.Context, name string, version int) error {
-	key := makeKey(name, version)
-	s.Logger().Debug("deleting release revision", "key", key)
-
-	if d, ok := s.Driver.(revisionDeleter); ok {
-		return d.DeleteRevision(ctx, key)
-	}
-
-	_, err := s.Driver.Delete(key)
-	return err
-}
-
-// Revisions returns version and status of every revision of the named release,
-// sorted by ascending version. Drivers implementing the capability answer
-// without decoding release bodies; the fallback decodes the whole history. An
-// unknown release yields an empty result, not an error.
-func (s *Storage) Revisions(ctx context.Context, name string) ([]driver.RevisionRecord, error) {
-	if l, ok := s.Driver.(revisionLister); ok {
-		return l.Revisions(ctx, name)
-	}
-
-	releasers, err := s.Driver.Query(map[string]string{"name": name, "owner": "helm"})
-	if err != nil {
-		if errors.Is(err, driver.ErrReleaseNotFound) {
-			return nil, nil
-		}
-
-		return nil, err
-	}
-
-	rels, err := releaseListToV1List(releasers)
-	if err != nil {
-		return nil, err
-	}
-
-	records := make([]driver.RevisionRecord, 0, len(rels))
-	for _, rel := range rels {
-		records = append(records, driver.RevisionRecord{
-			Name:      rel.Name,
-			Namespace: rel.Namespace,
-			Version:   rel.Version,
-			Status:    rel.Info.Status.String(),
-		})
-	}
-
-	sort.Slice(records, func(i, j int) bool { return records[i].Version < records[j].Version })
-
-	return records, nil
-}
-
 // Create creates a new storage entry holding the release. An
 // error is returned if the storage driver fails to store the
 // release, or a release with an identical key already exists.
@@ -336,14 +87,6 @@ func (s *Storage) Update(rls release.Releaser) error {
 	}
 	s.Logger().Debug("updating release", "key", makeKey(rac.Name(), rac.Version()))
 	return s.Driver.Update(makeKey(rac.Name(), rac.Version()), rls)
-}
-
-// UpdateLabels merges the given custom labels into the stored release identified
-// by name and version without creating a new revision. An error is returned if
-// the storage backend fails or the release does not exist.
-func (s *Storage) UpdateLabels(name string, version int, labels map[string]string) error {
-	s.Logger().Debug("updating release labels", "key", makeKey(name, version))
-	return s.Driver.UpdateLabels(makeKey(name, version), labels)
 }
 
 // Delete deletes the release from storage. An error is returned if
@@ -547,8 +290,10 @@ func (s *Storage) removeLeastRecent(name string, maximum int) error {
 }
 
 func (s *Storage) deleteReleaseVersion(name string, version int) error {
-	if err := s.DeleteRevision(context.Background(), name, version); err != nil {
-		s.Logger().Debug("error pruning release", slog.String("key", makeKey(name, version)), slog.Any("error", err))
+	key := makeKey(name, version)
+	_, err := s.Delete(name, version)
+	if err != nil {
+		s.Logger().Debug("error pruning release", slog.String("key", key), slog.Any("error", err))
 		return err
 	}
 	return nil

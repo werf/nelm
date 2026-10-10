@@ -19,17 +19,10 @@ package driver // import "github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 import (
 	"bytes"
 	"compress/gzip"
-	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"slices"
-	"strconv"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/metadata"
 
 	rspb "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
@@ -39,57 +32,6 @@ var b64 = base64.StdEncoding
 var magicGzip = []byte{0x1f, 0x8b, 0x08}
 
 var systemLabels = []string{"name", "owner", "status", "version", "createdAt", "modifiedAt"}
-
-// lastVersionFromMetadata resolves the highest release revision matching selector
-// using a metadata-only list. It transfers only object metadata (labels), never
-// the release bodies stored in the objects' data, so it does not scale with
-// release size or history depth.
-func lastVersionFromMetadata(ctx context.Context, client metadata.Interface, gvr schema.GroupVersionResource, namespace, selector string) (int, error) {
-	list, err := client.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
-	if err != nil {
-		return 0, fmt.Errorf("list release metadata: %w", err)
-	}
-
-	latest := 0
-	for _, item := range list.Items {
-		version, err := strconv.Atoi(item.Labels["version"])
-		if err != nil {
-			continue
-		}
-
-		if version > latest {
-			latest = version
-		}
-	}
-
-	if latest == 0 {
-		return 0, ErrReleaseNotFound
-	}
-
-	return latest, nil
-}
-
-const listLatestPageSize = 500
-
-// releaseKeyAndVersionFromLabels serves the listing paths, which only read: an object whose
-// labels do not identify a revision is skipped rather than failing the whole listing.
-func releaseKeyAndVersionFromLabels(key, namespace string, lbs map[string]string) (string, int, bool) {
-	record, ok, err := revisionRecordFromLabels(key, namespace, lbs)
-	if !ok || err != nil {
-		return "", 0, false
-	}
-
-	return namespace + "/" + record.Name, record.Version, true
-}
-
-func releaseVersionFromLabels(lbs map[string]string) int {
-	version, err := strconv.Atoi(lbs["version"])
-	if err != nil {
-		return 0
-	}
-
-	return version
-}
 
 // encodeRelease encodes a release returning a base64 encoded
 // gzipped string representation, or error.
@@ -173,42 +115,4 @@ func ContainsSystemLabels(lbs map[string]string) bool {
 
 func GetSystemLabels() []string {
 	return systemLabels
-}
-
-// RevisionRecord is the lightweight metadata of a single release revision:
-// everything Revisions can report without decoding a release body.
-type RevisionRecord struct {
-	Name      string
-	Namespace string
-	Version   int
-	Status    string
-}
-
-// revisionRecordFromLabels returns ok=false for an object that is not a release revision:
-// one without a name label, or without a version label, which every stored revision
-// carries. A version label that is present but does not parse is an error naming the
-// object, so it can be removed by hand: left out, it would let the next revision number
-// collide with it.
-func revisionRecordFromLabels(key, namespace string, lbs map[string]string) (RevisionRecord, bool, error) {
-	name := lbs["name"]
-	if name == "" {
-		return RevisionRecord{}, false, nil
-	}
-
-	versionLabel, found := lbs["version"]
-	if !found {
-		return RevisionRecord{}, false, nil
-	}
-
-	version, err := strconv.Atoi(versionLabel)
-	if err != nil {
-		return RevisionRecord{}, false, fmt.Errorf("release object %q (namespace: %q): unparseable version label %q", key, namespace, versionLabel)
-	}
-
-	return RevisionRecord{
-		Name:      name,
-		Namespace: namespace,
-		Version:   version,
-		Status:    lbs["status"],
-	}, true, nil
 }

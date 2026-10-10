@@ -20,7 +20,6 @@ import (
 	"github.com/werf/nelm/v2/pkg/common"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
-	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/legacy/progrep"
 	"github.com/werf/nelm/v2/pkg/log"
@@ -225,7 +224,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 		prevRelease, err := history.Release(ctx, lastRevision.Version)
 		if err != nil {
-			if stderrors.Is(err, driver.ErrReleaseUndecodable) {
+			if stderrors.Is(err, release.ErrReleaseUndecodable) {
 				return fmt.Errorf("get last release: %w; the resources of this revision cannot be determined, so nothing was deleted — remove the storage object of revision %d by hand and rerun", err, lastRevision.Version)
 			}
 
