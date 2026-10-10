@@ -14,4 +14,4 @@ groups:
   - name: "2"
     channels:
       - name: dev
-        version: 2.0.0-alpha.2
+        version: 2.0.1-alpha.2
