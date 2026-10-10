@@ -178,15 +178,29 @@ func (s *ResourceInfoSuite) TestBuildDeletableResourceInfo() {
 		},
 		{
 			expect: func(localRes *resource.DeletableResource) *plan.DeletableResourceInfo {
-				info := defaultDeletableResourceInfo(localRes, s.releaseName, s.releaseNamespace)
-				info.Stage = common.StagePrePreUninstall
-
-				return info
+				// Upgrade/install purge runs in StageUninstall (after StageInstall),
+				// same as full uninstall — so workloads can move off old PVCs first.
+				return defaultDeletableResourceInfo(localRes, s.releaseName, s.releaseNamespace)
 			},
 			input: func() (*resource.DeletableResource, common.DeployType) {
 				return defaultDeletableResource(s.releaseName, s.releaseNamespace), common.DeployTypeInstall
 			},
-			name: `for existing resource, initial deploy`,
+			name: `for existing resource, install deploy purges after install stage`,
+			prepare: func() {
+				_, err := s.clientFactory.KubeClient().Create(context.Background(), defaultResourceSpec(s.releaseName, s.releaseNamespace), kube.KubeClientCreateOptions{
+					DefaultNamespace: s.releaseNamespace,
+				})
+				s.Require().NoError(err)
+			},
+		},
+		{
+			expect: func(localRes *resource.DeletableResource) *plan.DeletableResourceInfo {
+				return defaultDeletableResourceInfo(localRes, s.releaseName, s.releaseNamespace)
+			},
+			input: func() (*resource.DeletableResource, common.DeployType) {
+				return defaultDeletableResource(s.releaseName, s.releaseNamespace), common.DeployTypeUpgrade
+			},
+			name: `for existing resource, upgrade deploy purges after install stage`,
 			prepare: func() {
 				_, err := s.clientFactory.KubeClient().Create(context.Background(), defaultResourceSpec(s.releaseName, s.releaseNamespace), kube.KubeClientCreateOptions{
 					DefaultNamespace: s.releaseNamespace,
