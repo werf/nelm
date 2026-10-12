@@ -50,7 +50,7 @@ func newReleaseListCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*
 			return fmt.Errorf("add kube connection flags: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.NetworkParallelism, "network-parallelism", common.DefaultNetworkParallelism, "Retained for compatibility; release listing does not use this limit", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.NetworkParallelism, "network-parallelism", common.DefaultNetworkParallelism, "Limit of network-related tasks to run in parallel", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                performanceFlagGroup,
 		}); err != nil {

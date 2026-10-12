@@ -36,7 +36,8 @@ type ReleaseListOptions struct {
 	// LegacyMetadataOnly, with OutputNoPrint, lists only metadata; getters then read each body
 	// on first use. For Deckhouse until a server API replaces it.
 	LegacyMetadataOnly bool
-	// NetworkParallelism is unused, kept for compatibility.
+	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
+	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
 	// OutputFormat specifies the output format for the release list.
 	// Valid values: "table" (default), "yaml", "json".

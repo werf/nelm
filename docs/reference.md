@@ -1783,7 +1783,7 @@ nelm release list [options...] [-n namespace]
 
 - `--network-parallelism` (default: `30`)
 
-  Retained for compatibility; release listing does not use this limit\. Vars: \$NELM\_NETWORK\_PARALLELISM, \$NELM\_RELEASE\_LIST\_NETWORK\_PARALLELISM
+  Limit of network\-related tasks to run in parallel\. Vars: \$NELM\_NETWORK\_PARALLELISM, \$NELM\_RELEASE\_LIST\_NETWORK\_PARALLELISM
 
 
 **Other options:**
