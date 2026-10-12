@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -28,12 +27,9 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
 	kblabels "k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/metadata"
 
 	"github.com/werf/nelm/v2/pkg/helm/intern/logging"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/release"
@@ -41,8 +37,6 @@ import (
 )
 
 var _ Driver = (*ConfigMaps)(nil)
-
-var configMapsGVR = schema.GroupVersionResource{Version: "v1", Resource: "configmaps"}
 
 // ConfigMapsDriverName is the string name of the driver.
 const ConfigMapsDriverName = "ConfigMap"
@@ -54,12 +48,6 @@ type ConfigMaps struct {
 
 	// Embed a LogHolder to provide logger functionality
 	logging.LogHolder
-
-	// MetadataClient, when set, lets LastVersion resolve the highest revision via a
-	// metadata-only list that transfers no release bodies. Namespace is the
-	// namespace it lists in and is required whenever MetadataClient is set.
-	MetadataClient metadata.Interface
-	Namespace      string
 }
 
 // NewConfigMaps initializes a new ConfigMaps wrapping an implementation of
@@ -75,253 +63,6 @@ func NewConfigMaps(impl corev1.ConfigMapInterface) *ConfigMaps {
 // Name returns the name of the driver.
 func (cfgmaps *ConfigMaps) Name() string {
 	return ConfigMapsDriverName
-}
-
-// LastVersion returns the highest revision of the named release, or
-// ErrReleaseNotFound if the release does not exist. It reads only label
-// metadata and decodes no release body.
-func (cfgmaps *ConfigMaps) LastVersion(name string) (int, error) {
-	selector := kblabels.Set{"owner": "helm", "name": name}.AsSelector().String()
-
-	if cfgmaps.MetadataClient != nil {
-		return lastVersionFromMetadata(context.Background(), cfgmaps.MetadataClient, configMapsGVR, cfgmaps.Namespace, selector)
-	}
-
-	// Safety net without a metadata client: a typed list still avoids decoding
-	// release bodies, but unlike the metadata path it transfers them over the wire.
-	list, err := cfgmaps.impl.List(context.Background(), metav1.ListOptions{LabelSelector: selector})
-	if err != nil {
-		return 0, fmt.Errorf("last version: failed to list: %w", err)
-	}
-
-	latest := 0
-	for _, item := range list.Items {
-		version, err := strconv.Atoi(item.Labels["version"])
-		if err != nil {
-			continue
-		}
-
-		if version > latest {
-			latest = version
-		}
-	}
-
-	if latest == 0 {
-		return 0, ErrReleaseNotFound
-	}
-
-	return latest, nil
-}
-
-// Revisions reads only labels and decodes no release body; the result is sorted by ascending version.
-func (cfgmaps *ConfigMaps) Revisions(ctx context.Context, name string) ([]RevisionRecord, error) {
-	if cfgmaps.Namespace == "" {
-		return nil, fmt.Errorf("list revisions of release %q: namespace is required", name)
-	}
-
-	if errs := validation.IsValidLabelValue(name); len(errs) != 0 {
-		return nil, fmt.Errorf("list revisions of release %q: invalid label value: %s", name, strings.Join(errs, "; "))
-	}
-
-	selector := kblabels.Set{"owner": "helm", "name": name}.AsSelector().String()
-
-	var records []RevisionRecord
-
-	if cfgmaps.MetadataClient != nil {
-		opts := metav1.ListOptions{LabelSelector: selector, Limit: listLatestPageSize}
-
-		for {
-			list, err := cfgmaps.MetadataClient.Resource(configMapsGVR).Namespace(cfgmaps.Namespace).List(ctx, opts)
-			if err != nil {
-				return nil, fmt.Errorf("list revision metadata of release %q: %w", name, err)
-			}
-
-			for _, item := range list.Items {
-				record, ok, err := revisionRecordFromLabels(item.Name, cfgmaps.Namespace, item.Labels)
-				if err != nil {
-					return nil, fmt.Errorf("list revisions of release %q: %w", name, err)
-				}
-				if !ok {
-					continue
-				}
-
-				records = append(records, record)
-			}
-
-			if list.Continue == "" {
-				break
-			}
-
-			opts.Continue = list.Continue
-		}
-
-		sort.Slice(records, func(i, j int) bool { return records[i].Version < records[j].Version })
-
-		return records, nil
-	}
-
-	// Safety net without a metadata client: a typed list still avoids decoding
-	// release bodies, but unlike the metadata path it transfers them over the wire.
-	opts := metav1.ListOptions{LabelSelector: selector, Limit: listLatestPageSize}
-
-	for {
-		list, err := cfgmaps.impl.List(ctx, opts)
-		if err != nil {
-			return nil, fmt.Errorf("list revisions of release %q: %w", name, err)
-		}
-
-		for _, item := range list.Items {
-			record, ok, err := revisionRecordFromLabels(item.Name, cfgmaps.Namespace, item.Labels)
-			if err != nil {
-				return nil, fmt.Errorf("list revisions of release %q: %w", name, err)
-			}
-			if !ok {
-				continue
-			}
-
-			records = append(records, record)
-		}
-
-		if list.Continue == "" {
-			break
-		}
-
-		opts.Continue = list.Continue
-	}
-
-	sort.Slice(records, func(i, j int) bool { return records[i].Version < records[j].Version })
-
-	return records, nil
-}
-
-// ListLatestReleases returns the highest revision of every release owned by Helm.
-// Superseded revisions are dropped while paging, before any body is decoded, so
-// the cost does not scale with the depth of the histories.
-func (cfgmaps *ConfigMaps) ListLatestReleases(ctx context.Context) ([]*rspb.Release, error) {
-	opts := metav1.ListOptions{
-		LabelSelector: kblabels.Set{"owner": "helm"}.AsSelector().String(),
-		Limit:         listLatestPageSize,
-	}
-
-	latestItems := map[string]v1.ConfigMap{}
-	latestVersions := map[string]int{}
-
-	for {
-		list, err := cfgmaps.impl.List(ctx, opts)
-		if err != nil {
-			return nil, fmt.Errorf("list latest releases: failed to list: %w", err)
-		}
-
-		for _, item := range list.Items {
-			key, version, ok := releaseKeyAndVersionFromLabels(item.Name, item.Namespace, item.Labels)
-			if !ok {
-				continue
-			}
-
-			if current, found := latestVersions[key]; found && current >= version {
-				continue
-			}
-
-			latestItems[key] = item
-			latestVersions[key] = version
-		}
-
-		if list.Continue == "" {
-			break
-		}
-
-		opts.Continue = list.Continue
-	}
-
-	releases := make([]*rspb.Release, 0, len(latestItems))
-
-	// The entry is dropped before its body is decoded, so the undecoded
-	// survivors and the decoded releases are never both live.
-	for key, item := range latestItems {
-		delete(latestItems, key)
-
-		rls, err := decodeRelease(item.Data["release"])
-		if err != nil {
-			cfgmaps.Logger().Debug("list latest releases: failed to decode release", slog.String("name", item.Name), slog.Any("error", err))
-
-			_, version, _ := releaseKeyAndVersionFromLabels(item.Name, item.Namespace, item.Labels)
-			rls, err = cfgmaps.findPreviousValidRelease(ctx, item.Namespace, item.Labels["name"], version)
-			if err != nil {
-				return nil, err
-			}
-			if rls != nil {
-				releases = append(releases, rls)
-			}
-			continue
-		}
-
-		if rls.Namespace == "" {
-			rls.Namespace = item.Namespace
-		}
-
-		rls.Labels = item.Labels
-		releases = append(releases, rls)
-	}
-
-	return releases, nil
-}
-
-// findPreviousValidRelease returns the newest decodable revision of the release
-// below beforeVersion, or nil if the whole remaining history is corrupt. The
-// scan is scoped to a single release in a single namespace, so it lists that
-// release's own history only.
-func (cfgmaps *ConfigMaps) findPreviousValidRelease(ctx context.Context, namespace, name string, beforeVersion int) (*rspb.Release, error) {
-	opts := metav1.ListOptions{
-		LabelSelector: kblabels.Set{"owner": "helm", "name": name}.AsSelector().String(),
-		FieldSelector: fields.OneTermEqualSelector("metadata.namespace", namespace).String(),
-		Limit:         listLatestPageSize,
-	}
-
-	var candidates []v1.ConfigMap
-
-	for {
-		list, err := cfgmaps.impl.List(ctx, opts)
-		if err != nil {
-			return nil, fmt.Errorf("list latest releases: failed to list previous revisions: %w", err)
-		}
-
-		for _, item := range list.Items {
-			_, version, ok := releaseKeyAndVersionFromLabels(item.Name, item.Namespace, item.Labels)
-			if !ok || item.Namespace != namespace || version >= beforeVersion {
-				continue
-			}
-
-			candidates = append(candidates, item)
-		}
-
-		if list.Continue == "" {
-			break
-		}
-
-		opts.Continue = list.Continue
-	}
-
-	sort.Slice(candidates, func(i, j int) bool {
-		return releaseVersionFromLabels(candidates[i].Labels) > releaseVersionFromLabels(candidates[j].Labels)
-	})
-
-	for _, item := range candidates {
-		rls, err := decodeRelease(item.Data["release"])
-		if err != nil {
-			cfgmaps.Logger().Debug("list latest releases: failed to decode release", slog.String("name", item.Name), slog.Any("error", err))
-			continue
-		}
-
-		if rls.Namespace == "" {
-			rls.Namespace = item.Namespace
-		}
-
-		rls.Labels = item.Labels
-
-		return rls, nil
-	}
-
-	return nil, nil
 }
 
 // Get fetches the release named by key. The corresponding release is returned
@@ -346,27 +87,6 @@ func (cfgmaps *ConfigMaps) Get(key string) (release.Releaser, error) {
 	r.Labels = filterSystemLabels(obj.Labels)
 	// return the release object
 	return r, nil
-}
-
-// GetRevision returns the release stored under key with its storage labels intact, unlike
-// Get, which strips the system labels. A stored body that cannot be decoded is reported as
-// ErrReleaseUndecodable rather than dropped, so a single-revision lookup can tell a corrupt
-// revision from an absent one.
-func (cfgmaps *ConfigMaps) GetRevision(key string) (release.Releaser, error) {
-	obj, err := cfgmaps.impl.Get(context.Background(), key, metav1.GetOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, ErrReleaseNotFound
-		}
-		return nil, fmt.Errorf("get revision: failed to get %q: %w", key, err)
-	}
-
-	rls, err := decodeRelease(obj.Data["release"])
-	if err != nil {
-		return nil, fmt.Errorf("%w: %s: %w", ErrReleaseUndecodable, key, err)
-	}
-	rls.Labels = obj.Labels
-	return rls, nil
 }
 
 // List fetches all releases and returns the list releases such
@@ -510,31 +230,6 @@ func (cfgmaps *ConfigMaps) Update(key string, rel release.Releaser) error {
 	return nil
 }
 
-// UpdateLabels merges the given custom labels into the ConfigMap holding the
-// release named by key without creating a new revision. System labels in the
-// map are ignored to avoid corrupting release metadata.
-func (cfgmaps *ConfigMaps) UpdateLabels(key string, lbls map[string]string) error {
-	obj, err := cfgmaps.impl.Get(context.Background(), key, metav1.GetOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return ErrReleaseNotFound
-		}
-		return fmt.Errorf("update labels: failed to get %q: %w", key, err)
-	}
-
-	if obj.Labels == nil {
-		obj.Labels = map[string]string{}
-	}
-	for k, v := range filterSystemLabels(lbls) {
-		obj.Labels[k] = v
-	}
-
-	if _, err := cfgmaps.impl.Update(context.Background(), obj, metav1.UpdateOptions{}); err != nil {
-		return fmt.Errorf("update labels: failed to update %q: %w", key, err)
-	}
-	return nil
-}
-
 // Delete deletes the ConfigMap holding the release named by key.
 func (cfgmaps *ConfigMaps) Delete(key string) (rls release.Releaser, err error) {
 	// fetch the release to check existence
@@ -546,17 +241,6 @@ func (cfgmaps *ConfigMaps) Delete(key string) (rls release.Releaser, err error) 
 		return rls, err
 	}
 	return rls, nil
-}
-
-// DeleteRevision removes the ConfigMap holding the release named by key without fetching it.
-func (cfgmaps *ConfigMaps) DeleteRevision(ctx context.Context, key string) error {
-	if err := cfgmaps.impl.Delete(ctx, key, metav1.DeleteOptions{}); err != nil {
-		if apierrors.IsNotFound(err) {
-			return ErrReleaseNotFound
-		}
-		return fmt.Errorf("delete revision: failed to delete %q: %w", key, err)
-	}
-	return nil
 }
 
 // newConfigMapsObject constructs a kubernetes ConfigMap object

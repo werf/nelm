@@ -1,6 +1,8 @@
 package release
 
 import (
+	"time"
+
 	"github.com/samber/lo"
 
 	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
@@ -21,6 +23,27 @@ func NewRevisionFromAccessor(rel helmrel.Accessor) Revision {
 		Status:    rel.Status(),
 		Version:   rel.Version(),
 	}
+}
+
+// ReleaseSummary is the part of a release body that listings show.
+type ReleaseSummary struct {
+	Annotations map[string]string
+	// Chart is nil without chart metadata.
+	Chart      *ReleaseSummaryChart
+	DeployedAt time.Time
+}
+
+// RevisionSummary has either Summary or DecodeErr wrapping ErrReleaseUndecodable.
+type RevisionSummary struct {
+	DecodeErr error
+	Revision  Revision
+	Summary   *ReleaseSummary
+}
+
+type ReleaseSummaryChart struct {
+	AppVersion string `json:"appVersion"`
+	Name       string `json:"name"`
+	Version    string `json:"version"`
 }
 
 // DeployedRevisions expects revisions sorted by ascending Version.

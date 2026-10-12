@@ -27,8 +27,6 @@ import (
 var (
 	// ErrReleaseNotFound indicates that a release is not found.
 	ErrReleaseNotFound = errors.New("release: not found")
-	// ErrReleaseUndecodable indicates that a release exists but its stored body cannot be decoded.
-	ErrReleaseUndecodable = errors.New("release: stored body cannot be decoded")
 	// ErrReleaseExists indicates that a release already exists.
 	ErrReleaseExists = errors.New("release: already exists")
 	// ErrInvalidKey indicates that a release key could not be parsed.
@@ -94,15 +92,6 @@ type Queryor interface {
 	Query(labels map[string]string) ([]release.Releaser, error)
 }
 
-// LabelUpdator is the interface that wraps the UpdateLabels method.
-//
-// UpdateLabels merges the given custom labels into the stored release named by
-// key without creating a new revision, or returns ErrReleaseNotFound if the
-// release does not exist. Existing labels not present in the map are preserved.
-type LabelUpdator interface {
-	UpdateLabels(key string, labels map[string]string) error
-}
-
 // Driver is the interface composed of Creator, Updator, Deletor, and Queryor
 // interfaces. It defines the behavior for storing, updating, deleted,
 // and retrieving Helm releases from some underlying storage mechanism,
@@ -112,7 +101,6 @@ type Driver interface {
 	Updator
 	Deletor
 	Queryor
-	LabelUpdator
 	Name() string
 }
 

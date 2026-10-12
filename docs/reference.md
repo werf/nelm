@@ -1663,6 +1663,10 @@ nelm release list [options...] [-n namespace]
 
   The release namespace\. Query all namespaces if not specified\. Vars: \$NELM\_NAMESPACE, \$NELM\_RELEASE\_LIST\_NAMESPACE
 
+- `--release-label-selector` (default: `""`)
+
+  Kubernetes label selector for stored revisions; list the latest matching revision of each release\. Vars: \$NELM\_RELEASE\_LABEL\_SELECTOR, \$NELM\_RELEASE\_LIST\_RELEASE\_LABEL\_SELECTOR
+
 
 **Kubernetes connection options:**
 

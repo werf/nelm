@@ -17,10 +17,7 @@ limitations under the License.
 package driver
 
 import (
-	"context"
-	"fmt"
 	"log/slog"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -91,11 +88,6 @@ func (mem *Memory) Get(key string) (release.Releaser, error) {
 	}
 }
 
-// GetRevision is Get: in-memory records carry their labels and cannot be undecodable.
-func (mem *Memory) GetRevision(key string) (release.Releaser, error) {
-	return mem.Get(key)
-}
-
 // List returns the list of all releases such that filter(release) == true
 func (mem *Memory) List(filter func(release.Releaser) bool) ([]release.Releaser, error) {
 	defer unlock(mem.rlock())
@@ -163,61 +155,6 @@ func (mem *Memory) Query(keyvals map[string]string) ([]release.Releaser, error) 
 	return ls, nil
 }
 
-// LastVersion returns the highest revision number for the named release, or
-// ErrReleaseNotFound if the release does not exist.
-func (mem *Memory) LastVersion(name string) (int, error) {
-	defer unlock(mem.rlock())
-
-	recs, ok := mem.cache[mem.namespace][name]
-	if !ok || len(recs) == 0 {
-		return 0, ErrReleaseNotFound
-	}
-
-	latest := 0
-	for _, rec := range recs {
-		if rec != nil && rec.rls.Version > latest {
-			latest = rec.rls.Version
-		}
-	}
-
-	if latest == 0 {
-		return 0, ErrReleaseNotFound
-	}
-
-	return latest, nil
-}
-
-// Revisions returns the release's revisions sorted by ascending version.
-func (mem *Memory) Revisions(_ context.Context, name string) ([]RevisionRecord, error) {
-	defer unlock(mem.rlock())
-
-	if mem.namespace == "" {
-		return nil, fmt.Errorf("list revisions of release %q: namespace is required", name)
-	}
-
-	var records []RevisionRecord
-
-	for _, rec := range mem.cache[mem.namespace][name] {
-		if rec == nil {
-			continue
-		}
-
-		record, ok, err := revisionRecordFromLabels(rec.key, mem.namespace, rec.lbs.toMap())
-		if err != nil {
-			return nil, fmt.Errorf("list revisions of release %q: %w", name, err)
-		}
-		if !ok {
-			continue
-		}
-
-		records = append(records, record)
-	}
-
-	sort.Slice(records, func(i, j int) bool { return records[i].Version < records[j].Version })
-
-	return records, nil
-}
-
 // Create creates a new release or returns ErrReleaseExists.
 func (mem *Memory) Create(key string, rel release.Releaser) error {
 	defer unlock(mem.wlock())
@@ -273,37 +210,6 @@ func (mem *Memory) Update(key string, rel release.Releaser) error {
 	return ErrReleaseNotFound
 }
 
-// UpdateLabels merges the given custom labels into the stored release named by
-// key without creating a new revision. Returns ErrReleaseNotFound if the
-// release does not exist.
-func (mem *Memory) UpdateLabels(key string, lbls map[string]string) error {
-	defer unlock(mem.wlock())
-
-	keyWithoutPrefix := strings.TrimPrefix(key, "sh.helm.release.v1.")
-	elems := strings.Split(keyWithoutPrefix, ".v")
-	if len(elems) != 2 {
-		return ErrInvalidKey
-	}
-	name := elems[0]
-
-	recs, ok := mem.cache[mem.namespace][name]
-	if !ok {
-		return ErrReleaseNotFound
-	}
-	r := recs.Get(key)
-	if r == nil {
-		return ErrReleaseNotFound
-	}
-
-	if r.rls.Labels == nil {
-		r.rls.Labels = map[string]string{}
-	}
-	for k, v := range filterSystemLabels(lbls) {
-		r.rls.Labels[k] = v
-	}
-	return nil
-}
-
 // Delete deletes a release or returns ErrReleaseNotFound.
 func (mem *Memory) Delete(key string) (release.Releaser, error) {
 	defer unlock(mem.wlock())
@@ -329,14 +235,6 @@ func (mem *Memory) Delete(key string) (release.Releaser, error) {
 		}
 	}
 	return nil, ErrReleaseNotFound
-}
-
-// DeleteRevision removes the release named by key, or returns ErrReleaseNotFound.
-func (mem *Memory) DeleteRevision(_ context.Context, key string) error {
-	if _, err := mem.Delete(key); err != nil {
-		return err
-	}
-	return nil
 }
 
 // wlock locks mem for writing

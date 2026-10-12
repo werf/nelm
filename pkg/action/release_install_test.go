@@ -15,6 +15,7 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/metadata"
 
 	"github.com/werf/nelm/v2/pkg/common"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
@@ -51,6 +52,10 @@ func (f *createNamespaceClientFactory) KubeConfig() *kube.KubeConfig {
 }
 
 func (f *createNamespaceClientFactory) Mapper() apimeta.ResettableRESTMapper {
+	panic("not implemented")
+}
+
+func (f *createNamespaceClientFactory) Metadata() metadata.Interface {
 	panic("not implemented")
 }
 

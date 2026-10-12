@@ -17,8 +17,6 @@ limitations under the License.
 package driver // import "github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 
 import (
-	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -27,7 +25,6 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/pkg/errors"
 	migrate "github.com/rubenv/sql-migrate"
 
 	sq "github.com/Masterminds/squirrel"
@@ -304,223 +301,6 @@ func NewSQL(connectionString string, namespace string) (*SQL, error) {
 	return driver, nil
 }
 
-// LastVersion returns the highest revision number for the named release, or
-// ErrReleaseNotFound if the release does not exist. It reads only the version
-// column and decodes no release body.
-func (s *SQL) LastVersion(name string) (int, error) {
-	qb := s.statementBuilder.
-		Select("MAX(" + sqlReleaseTableVersionColumn + ")").
-		From(sqlReleaseTableName).
-		Where(sq.Eq{sqlReleaseTableNameColumn: name}).
-		Where(sq.Eq{sqlReleaseTableOwnerColumn: sqlReleaseDefaultOwner})
-
-	if s.namespace != "" {
-		qb = qb.Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace})
-	}
-
-	query, args, err := qb.ToSql()
-	if err != nil {
-		s.Logger().Debug("failed to build query", slog.Any("error", err))
-		return 0, err
-	}
-
-	var version sql.NullInt64
-	if err := s.db.Get(&version, query, args...); err != nil {
-		s.Logger().Debug("got SQL error when getting last version of release", slog.String("name", name), slog.Any("error", err))
-		return 0, err
-	}
-
-	if !version.Valid || version.Int64 <= 0 {
-		return 0, ErrReleaseNotFound
-	}
-
-	return int(version.Int64), nil
-}
-
-type sqlRevisionRecord struct {
-	Name      string `db:"name"`
-	Namespace string `db:"namespace"`
-	Version   int    `db:"version"`
-	Status    string `db:"status"`
-}
-
-// Revisions reads only labels and decodes no release body; the result is sorted by ascending version.
-func (s *SQL) Revisions(ctx context.Context, name string) ([]RevisionRecord, error) {
-	if s.namespace == "" {
-		return nil, fmt.Errorf("list revisions of release %q: namespace is required", name)
-	}
-
-	query, args, err := s.statementBuilder.
-		Select(
-			sqlReleaseTableNameColumn,
-			sqlReleaseTableNamespaceColumn,
-			sqlReleaseTableVersionColumn,
-			sqlReleaseTableStatusColumn,
-		).
-		From(sqlReleaseTableName).
-		Where(sq.Eq{sqlReleaseTableNameColumn: name}).
-		Where(sq.Eq{sqlReleaseTableOwnerColumn: sqlReleaseDefaultOwner}).
-		Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace}).
-		OrderBy(sqlReleaseTableVersionColumn + " ASC").
-		ToSql()
-	if err != nil {
-		return nil, fmt.Errorf("build revisions query for release %q: %w", name, err)
-	}
-
-	var rows []sqlRevisionRecord
-	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
-		return nil, fmt.Errorf("select revisions of release %q: %w", name, err)
-	}
-
-	records := make([]RevisionRecord, 0, len(rows))
-	for _, row := range rows {
-		records = append(records, RevisionRecord{
-			Name:      row.Name,
-			Namespace: row.Namespace,
-			Version:   row.Version,
-			Status:    row.Status,
-		})
-	}
-
-	return records, nil
-}
-
-type sqlLatestReleaseRecord struct {
-	Key       string `db:"key"`
-	Namespace string `db:"namespace"`
-	Name      string `db:"name"`
-	Version   int    `db:"version"`
-	Body      string `db:"body"`
-}
-
-// ListLatestReleases returns the highest valid revision of every release owned by Helm.
-func (s *SQL) ListLatestReleases(ctx context.Context) ([]*rspb.Release, error) {
-	qb := s.statementBuilder.
-		Select(
-			sqlReleaseTableKeyColumn,
-			sqlReleaseTableNamespaceColumn,
-			sqlReleaseTableNameColumn,
-			sqlReleaseTableVersionColumn,
-			sqlReleaseTableBodyColumn,
-		).
-		Options("DISTINCT ON (" + sqlReleaseTableNamespaceColumn + ", " + sqlReleaseTableNameColumn + ")").
-		From(sqlReleaseTableName).
-		Where(sq.Eq{sqlReleaseTableOwnerColumn: sqlReleaseDefaultOwner}).
-		OrderBy(
-			sqlReleaseTableNamespaceColumn,
-			sqlReleaseTableNameColumn,
-			sqlReleaseTableVersionColumn+" DESC",
-		)
-
-	if s.namespace != "" {
-		qb = qb.Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace})
-	}
-
-	query, args, err := qb.ToSql()
-	if err != nil {
-		return nil, fmt.Errorf("build latest releases query: %w", err)
-	}
-
-	var records []sqlLatestReleaseRecord
-	if err := s.db.SelectContext(ctx, &records, query, args...); err != nil {
-		return nil, fmt.Errorf("list latest releases: %w", err)
-	}
-
-	releases := make([]*rspb.Release, 0, len(records))
-	for _, record := range records {
-		release, err := decodeRelease(record.Body)
-		if err != nil {
-			s.Logger().Debug("list latest releases: failed to decode release", slog.String("key", record.Key), slog.Any("error", err))
-			release, record, err = s.findPreviousValidRelease(ctx, record)
-			if err != nil {
-				return nil, err
-			}
-			if release == nil {
-				continue
-			}
-		}
-
-		if err := s.populateLatestRelease(ctx, record, release); err != nil {
-			return nil, err
-		}
-		releases = append(releases, release)
-	}
-
-	return releases, nil
-}
-
-func (s *SQL) findPreviousValidRelease(ctx context.Context, current sqlLatestReleaseRecord) (*rspb.Release, sqlLatestReleaseRecord, error) {
-	for {
-		record, found, err := s.findPreviousReleaseRecord(ctx, current.Namespace, current.Name, current.Version)
-		if err != nil {
-			return nil, sqlLatestReleaseRecord{}, err
-		}
-		if !found {
-			return nil, sqlLatestReleaseRecord{}, nil
-		}
-
-		release, err := decodeRelease(record.Body)
-		if err == nil {
-			return release, record, nil
-		}
-
-		s.Logger().Debug("list latest releases: failed to decode release", slog.String("key", record.Key), slog.Any("error", err))
-		current = record
-	}
-}
-
-func (s *SQL) findPreviousReleaseRecord(ctx context.Context, namespace, name string, beforeVersion int) (sqlLatestReleaseRecord, bool, error) {
-	query, args, err := s.statementBuilder.
-		Select(
-			sqlReleaseTableKeyColumn,
-			sqlReleaseTableNamespaceColumn,
-			sqlReleaseTableNameColumn,
-			sqlReleaseTableVersionColumn,
-			sqlReleaseTableBodyColumn,
-		).
-		From(sqlReleaseTableName).
-		Where(sq.Eq{
-			sqlReleaseTableOwnerColumn:     sqlReleaseDefaultOwner,
-			sqlReleaseTableNamespaceColumn: namespace,
-			sqlReleaseTableNameColumn:      name,
-		}).
-		Where(sq.Lt{sqlReleaseTableVersionColumn: beforeVersion}).
-		OrderBy(sqlReleaseTableVersionColumn + " DESC").
-		Limit(1).
-		ToSql()
-	if err != nil {
-		return sqlLatestReleaseRecord{}, false, fmt.Errorf("build previous release query: %w", err)
-	}
-
-	var record sqlLatestReleaseRecord
-	if err := s.db.GetContext(ctx, &record, query, args...); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return sqlLatestReleaseRecord{}, false, nil
-		}
-
-		return sqlLatestReleaseRecord{}, false, fmt.Errorf("get previous release revision: %w", err)
-	}
-
-	return record, true, nil
-}
-
-func (s *SQL) populateLatestRelease(ctx context.Context, record sqlLatestReleaseRecord, release *rspb.Release) error {
-	if release.Namespace == "" {
-		release.Namespace = record.Namespace
-	}
-
-	var err error
-	release.Labels, err = s.getReleaseCustomLabelsForNamespace(ctx, record.Key, record.Namespace)
-	if err != nil {
-		return fmt.Errorf("get release %s/%s custom labels: %w", record.Namespace, record.Key, err)
-	}
-	for key, value := range getReleaseSystemLabels(release) {
-		release.Labels[key] = value
-	}
-
-	return nil
-}
-
 // Get returns the release named by key.
 func (s *SQL) Get(key string) (release.Releaser, error) {
 	var record SQLReleaseWrapper
@@ -560,38 +340,6 @@ func (s *SQL) Get(key string) (release.Releaser, error) {
 	}
 
 	return release, nil
-}
-
-// GetRevision returns the release stored under key with its custom labels attached. A stored
-// body that cannot be decoded is reported as ErrReleaseUndecodable rather than dropped, so a
-// single-revision lookup can tell a corrupt revision from an absent one.
-func (s *SQL) GetRevision(key string) (release.Releaser, error) {
-	var record SQLReleaseWrapper
-
-	query, args, err := s.statementBuilder.
-		Select(sqlReleaseTableBodyColumn).
-		From(sqlReleaseTableName).
-		Where(sq.Eq{sqlReleaseTableKeyColumn: key}).
-		Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace}).
-		ToSql()
-	if err != nil {
-		return nil, fmt.Errorf("get revision: build query: %w", err)
-	}
-
-	if err := s.db.Get(&record, query, args...); err != nil {
-		return nil, ErrReleaseNotFound
-	}
-
-	rls, err := decodeRelease(record.Body)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %s: %w", ErrReleaseUndecodable, key, err)
-	}
-
-	if rls.Labels, err = s.getReleaseCustomLabels(key, s.namespace); err != nil {
-		return nil, fmt.Errorf("get revision: custom labels of %q: %w", key, err)
-	}
-
-	return rls, nil
 }
 
 // List returns the list of all releases such that filter(release) == true
@@ -870,79 +618,6 @@ func (s *SQL) Update(key string, rel release.Releaser) error {
 	return nil
 }
 
-// UpdateLabels merges the given custom labels into the release named by key
-// without creating a new revision, by upserting rows in the custom labels
-// table. System labels in the map are ignored to avoid corrupting release
-// metadata. Returns ErrReleaseNotFound if the release does not exist.
-func (s *SQL) UpdateLabels(key string, lbls map[string]string) error {
-	selectQuery, selectArgs, err := s.statementBuilder.
-		Select(sqlReleaseTableKeyColumn).
-		From(sqlReleaseTableName).
-		Where(sq.Eq{sqlReleaseTableKeyColumn: key}).
-		Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace}).
-		ToSql()
-	if err != nil {
-		s.Logger().Debug("failed to build select query", slog.Any("error", err))
-		return err
-	}
-
-	transaction, err := s.db.Beginx()
-	if err != nil {
-		s.Logger().Debug("failed to start SQL transaction", slog.Any("error", err))
-		return fmt.Errorf("error beginning transaction: %v", err)
-	}
-
-	var existingKey string
-	if err := transaction.Get(&existingKey, selectQuery, selectArgs...); err != nil {
-		transaction.Rollback()
-		return ErrReleaseNotFound
-	}
-
-	for k, v := range filterSystemLabels(lbls) {
-		deleteQuery, deleteArgs, err := s.statementBuilder.
-			Delete(sqlCustomLabelsTableName).
-			Where(sq.Eq{
-				sqlCustomLabelsTableReleaseKeyColumn:       key,
-				sqlCustomLabelsTableReleaseNamespaceColumn: s.namespace,
-				sqlCustomLabelsTableKeyColumn:              k,
-			}).
-			ToSql()
-		if err != nil {
-			transaction.Rollback()
-			s.Logger().Debug("failed to build delete labels query", slog.Any("error", err))
-			return err
-		}
-		if _, err := transaction.Exec(deleteQuery, deleteArgs...); err != nil {
-			transaction.Rollback()
-			s.Logger().Debug("failed to delete existing label", slog.Any("error", err))
-			return err
-		}
-
-		insertQuery, insertArgs, err := s.statementBuilder.
-			Insert(sqlCustomLabelsTableName).
-			Columns(
-				sqlCustomLabelsTableReleaseKeyColumn,
-				sqlCustomLabelsTableReleaseNamespaceColumn,
-				sqlCustomLabelsTableKeyColumn,
-				sqlCustomLabelsTableValueColumn,
-			).
-			Values(key, s.namespace, k, v).
-			ToSql()
-		if err != nil {
-			transaction.Rollback()
-			s.Logger().Debug("failed to build insert labels query", slog.Any("error", err))
-			return err
-		}
-		if _, err := transaction.Exec(insertQuery, insertArgs...); err != nil {
-			transaction.Rollback()
-			s.Logger().Debug("failed to insert label", slog.Any("error", err))
-			return err
-		}
-	}
-
-	return transaction.Commit()
-}
-
 // Delete deletes a release or returns ErrReleaseNotFound.
 func (s *SQL) Delete(key string) (release.Releaser, error) {
 	transaction, err := s.db.Beginx()
@@ -1016,73 +691,20 @@ func (s *SQL) Delete(key string) (release.Releaser, error) {
 	return release, err
 }
 
-// DeleteRevision removes the release named by key and its custom labels without reading the body.
-func (s *SQL) DeleteRevision(ctx context.Context, key string) error {
-	transaction, err := s.db.BeginTxx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("delete revision: begin transaction: %w", err)
-	}
-
-	deleteQuery, args, err := s.statementBuilder.
-		Delete(sqlReleaseTableName).
-		Where(sq.Eq{sqlReleaseTableKeyColumn: key}).
-		Where(sq.Eq{sqlReleaseTableNamespaceColumn: s.namespace}).
-		ToSql()
-	if err != nil {
-		transaction.Rollback()
-		return fmt.Errorf("delete revision: build query: %w", err)
-	}
-
-	result, err := transaction.ExecContext(ctx, deleteQuery, args...)
-	if err != nil {
-		transaction.Rollback()
-		return fmt.Errorf("delete revision: %w", err)
-	}
-
-	if affected, err := result.RowsAffected(); err == nil && affected == 0 {
-		transaction.Rollback()
-		return ErrReleaseNotFound
-	}
-
-	deleteLabelsQuery, args, err := s.statementBuilder.
-		Delete(sqlCustomLabelsTableName).
-		Where(sq.Eq{sqlCustomLabelsTableReleaseKeyColumn: key}).
-		Where(sq.Eq{sqlCustomLabelsTableReleaseNamespaceColumn: s.namespace}).
-		ToSql()
-	if err != nil {
-		transaction.Rollback()
-		return fmt.Errorf("delete revision: build labels query: %w", err)
-	}
-
-	if _, err := transaction.ExecContext(ctx, deleteLabelsQuery, args...); err != nil {
-		transaction.Rollback()
-		return fmt.Errorf("delete revision labels: %w", err)
-	}
-
-	if err := transaction.Commit(); err != nil {
-		return fmt.Errorf("delete revision: commit: %w", err)
-	}
-	return nil
-}
-
 // Get release custom labels from database
-func (s *SQL) getReleaseCustomLabels(key, _ string) (map[string]string, error) {
-	return s.getReleaseCustomLabelsForNamespace(context.Background(), key, s.namespace)
-}
-
-func (s *SQL) getReleaseCustomLabelsForNamespace(ctx context.Context, key, namespace string) (map[string]string, error) {
+func (s *SQL) getReleaseCustomLabels(key string, _ string) (map[string]string, error) {
 	query, args, err := s.statementBuilder.
 		Select(sqlCustomLabelsTableKeyColumn, sqlCustomLabelsTableValueColumn).
 		From(sqlCustomLabelsTableName).
 		Where(sq.Eq{sqlCustomLabelsTableReleaseKeyColumn: key,
-			sqlCustomLabelsTableReleaseNamespaceColumn: namespace}).
+			sqlCustomLabelsTableReleaseNamespaceColumn: s.namespace}).
 		ToSql()
 	if err != nil {
 		return nil, err
 	}
 
 	var labelsList = []SQLReleaseCustomLabelWrapper{}
-	if err := s.db.SelectContext(ctx, &labelsList, query, args...); err != nil {
+	if err := s.db.Select(&labelsList, query, args...); err != nil {
 		return nil, err
 	}
 

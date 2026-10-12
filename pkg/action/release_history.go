@@ -3,10 +3,8 @@ package action
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -16,10 +14,8 @@ import (
 	"github.com/jedib0t/go-pretty/v6/text"
 
 	"github.com/werf/nelm/v2/pkg/common"
-	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
-	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/log"
 	"github.com/werf/nelm/v2/pkg/release"
@@ -116,56 +112,16 @@ func ReleaseHistory(ctx context.Context, releaseName, releaseNamespace string, o
 
 	log.Default.Info(ctx, "Build release history")
 
-	releases, err := releaseStorage.Query(map[string]string{"name": releaseName, "owner": "helm"})
-	if err != nil && !errors.Is(err, driver.ErrReleaseNotFound) {
-		return nil, fmt.Errorf("query releases for release %q: %w", releaseName, err)
+	result, err := buildReleaseHistoryResult(ctx, releaseStorage, releaseName, opts.RevisionsLimit)
+	if err != nil {
+		return nil, err
 	}
 
-	result := &ReleaseHistoryResultV1{
-		APIVersion: "v1",
-	}
-
-	if len(releases) == 0 {
+	if len(result.Releases) == 0 {
 		return nil, &ReleaseNotFoundError{
 			ReleaseName:      releaseName,
 			ReleaseNamespace: releaseNamespace,
 		}
-	}
-
-	for _, releaseAccessor := range releases {
-		chartAccessor, err := helmchart.NewAccessor(releaseAccessor.Chart())
-		if err != nil {
-			return nil, fmt.Errorf("construct chart accessor: %w", err)
-		}
-
-		chartMetadata := chartAccessor.MetadataAsMap()
-		chartVersion, _ := chartMetadata["Version"].(string)
-		chartAppVersion, _ := chartMetadata["AppVersion"].(string)
-
-		result.Releases = append(result.Releases, &ReleaseHistoryResultRelease{
-			Annotations: releaseAccessor.Annotations(),
-			Chart: &ReleaseHistoryResultChart{
-				Name:       chartAccessor.Name(),
-				Version:    chartVersion,
-				AppVersion: chartAppVersion,
-			},
-			DeployedAt: &ReleaseHistoryResultDeployedAt{
-				Human: releaseAccessor.DeployedAt().String(),
-				Unix:  int(releaseAccessor.DeployedAt().Unix()),
-			},
-			Name:      releaseAccessor.Name(),
-			Namespace: releaseAccessor.Namespace(),
-			Revision:  releaseAccessor.Version(),
-			Status:    helmreleasestatus.Status(releaseAccessor.Status()),
-		})
-	}
-
-	sort.SliceStable(result.Releases, func(i, j int) bool {
-		return result.Releases[i].Revision < result.Releases[j].Revision
-	})
-
-	if opts.RevisionsLimit > 0 && len(result.Releases) > opts.RevisionsLimit {
-		result.Releases = result.Releases[len(result.Releases)-opts.RevisionsLimit:]
 	}
 
 	if opts.OutputNoPrint {
@@ -234,13 +190,23 @@ func buildReleaseHistoryOutputTable(ctx context.Context, result *ReleaseHistoryR
 			statusColor = color.LightYellow
 		}
 
+		var deployedAt string
+		if release.DeployedAt != nil {
+			deployedAt = time.Unix(int64(release.DeployedAt.Unix), 0).Format(time.RFC822)
+		}
+
+		var chartName, chartVersion, chartAppVersion string
+		if release.Chart != nil {
+			chartName, chartVersion, chartAppVersion = release.Chart.Name, release.Chart.Version, release.Chart.AppVersion
+		}
+
 		row := prtable.Row{
 			release.Revision,
 			color.New(statusColor).Sprint(release.Status),
-			time.Unix(int64(release.DeployedAt.Unix), 0).Format(time.RFC822),
-			release.Chart.Name,
-			release.Chart.Version,
-			release.Chart.AppVersion,
+			deployedAt,
+			chartName,
+			chartVersion,
+			chartAppVersion,
 		}
 
 		table.AppendRow(row)
@@ -269,6 +235,51 @@ func applyReleaseHistoryOptionsDefaults(opts ReleaseHistoryOptions, homeDir stri
 	}
 
 	return opts, nil
+}
+
+func buildReleaseHistoryResult(ctx context.Context, storage release.ReleaseStorager, releaseName string, revisionsLimit int) (*ReleaseHistoryResultV1, error) {
+	summaries, err := storage.ListRevisionSummaries(ctx, releaseName, release.ListRevisionSummariesOptions{
+		Limit: revisionsLimit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("read history of release %q: %w", releaseName, err)
+	}
+
+	result := &ReleaseHistoryResultV1{
+		APIVersion: "v1",
+	}
+
+	for _, summary := range summaries {
+		entry := &ReleaseHistoryResultRelease{
+			Name:      summary.Revision.Name,
+			Namespace: summary.Revision.Namespace,
+			Revision:  summary.Revision.Version,
+			Status:    helmreleasestatus.Status(summary.Revision.Status),
+		}
+		result.Releases = append(result.Releases, entry)
+
+		if summary.DecodeErr != nil {
+			log.Default.Error(ctx, "Showing revision %d of release %q without its details: %s", summary.Revision.Version, releaseName, summary.DecodeErr)
+
+			continue
+		}
+
+		entry.Annotations = summary.Summary.Annotations
+		entry.DeployedAt = &ReleaseHistoryResultDeployedAt{
+			Human: summary.Summary.DeployedAt.String(),
+			Unix:  int(summary.Summary.DeployedAt.Unix()),
+		}
+
+		if summary.Summary.Chart != nil {
+			entry.Chart = &ReleaseHistoryResultChart{
+				AppVersion: summary.Summary.Chart.AppVersion,
+				Name:       summary.Summary.Chart.Name,
+				Version:    summary.Summary.Chart.Version,
+			}
+		}
+	}
+
+	return result, nil
 }
 
 func setReleaseHistoryOutputTableStyle(ctx context.Context, table prtable.Writer) {
