@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1-alpha.2](https://github.com/werf/nelm/compare/v2.0.0-alpha.2...v2.0.1-alpha.2) (2026-10-09)
+
+
+### Bug Fixes
+
+* set content cache for the chart downloader ([5416f86](https://github.com/werf/nelm/commit/5416f866760c8e4297902d21e650a55507faa443))
+
 ## [2.0.0-alpha.2](https://github.com/werf/nelm/compare/v2.0.0-alpha.1...v2.0.0-alpha.2) (2026-10-07)
 
 

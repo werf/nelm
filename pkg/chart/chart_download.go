@@ -74,6 +74,7 @@ func newChartDownloader(ctx context.Context, chartRef string, registryClient *he
 		RegistryClient:   registryClient,
 		RepositoryConfig: helmpath.ConfigPath("repositories.yaml"),
 		RepositoryCache:  helmpath.CachePath("repository"),
+		ContentCache:     helmpath.CachePath("content"),
 	}
 
 	if opts.ChartRepoURL != "" {
