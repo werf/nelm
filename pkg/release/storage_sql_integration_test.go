@@ -3,6 +3,7 @@ package release
 import (
 	"context"
 	"maps"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -49,6 +50,17 @@ func TestSQLStorageBackend_AnnotationPermissionsPostgres(t *testing.T) {
 	_, err = tx.ExecContext(ctx, "SET LOCAL ROLE "+pq.QuoteIdentifier(role))
 	require.NoError(t, err)
 
+	var annotationCount int
+	require.NoError(t, tx.GetContext(ctx, &annotationCount, "SELECT count(*) FROM nelm_release_annotations_v1 WHERE releaseNamespace = $1", prefix))
+	require.Zero(t, annotationCount, "release access alone must not grant annotation access")
+
+	_, err = tx.ExecContext(ctx, "RESET ROLE")
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, "CREATE POLICY "+pq.QuoteIdentifier(role)+" ON nelm_release_annotations_v1 TO "+pq.QuoteIdentifier(role)+" USING (releaseNamespace = "+pq.QuoteLiteral(prefix)+") WITH CHECK (releaseNamespace = "+pq.QuoteLiteral(prefix)+")")
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, "SET LOCAL ROLE "+pq.QuoteIdentifier(role))
+	require.NoError(t, err)
+
 	var migrationIDs []string
 	require.NoError(t, tx.SelectContext(ctx, &migrationIDs, "SELECT id FROM nelm_migrations ORDER BY id"))
 	require.Equal(t, []string{"release_annotations_v1"}, migrationIDs)
@@ -67,6 +79,13 @@ func TestSQLStorageBackend_AnnotationPermissionsPostgres(t *testing.T) {
 	var count int
 	require.NoError(t, tx.GetContext(ctx, &count, "SELECT count(*) FROM nelm_release_annotations_v1 WHERE releaseNamespace = $1", prefix+"-hidden"))
 	require.Zero(t, count)
+
+	_, err = tx.ExecContext(ctx, "SAVEPOINT move_annotation")
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, "UPDATE nelm_release_annotations_v1 SET releaseNamespace = $1 WHERE releaseNamespace = $2", prefix+"-hidden", prefix)
+	require.ErrorContains(t, err, "row-level security policy")
+	_, err = tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT move_annotation")
+	require.NoError(t, err)
 
 	_, err = tx.ExecContext(ctx, "INSERT INTO nelm_release_annotations_v1 (releaseKey, releaseNamespace, key, value, releaseModifiedAt) VALUES ($1, $2, 'leak', 'value', 0)", storageKey("app", 1), prefix+"-hidden")
 	require.ErrorContains(t, err, "row-level security policy")
@@ -295,6 +314,142 @@ func TestSQLStorageBackend_AnnotationsPostgres(t *testing.T) {
 	require.Zero(t, annotationRows)
 }
 
+func TestSQLStorageBackend_ExplicitAnnotationPoliciesAllowStatusTransitionPostgres(t *testing.T) {
+	connection := os.Getenv("NELM_TEST_POSTGRES_CONNECTION")
+	if connection == "" {
+		t.Skip("NELM_TEST_POSTGRES_CONNECTION is not set")
+	}
+
+	ctx := context.Background()
+	b, err := openSQLStorageBackend(ctx, connection)
+	require.NoError(t, err)
+	b.db.SetMaxOpenConns(1)
+	t.Cleanup(func() { require.NoError(t, b.db.Close()) })
+
+	namespace := "nelm-test-transition-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	storage := newReleaseStorage(namespace, b, 0)
+	rls := newTestRelease(namespace, "app", 1, common.StatusPendingInstall)
+	rls.Info.Annotations = map[string]string{"team": "platform"}
+	accessor, err := helmrel.NewAccessor(rls)
+	require.NoError(t, err)
+	require.NoError(t, storage.Create(ctx, accessor))
+
+	role := "nelm_transition_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	t.Cleanup(func() {
+		_, err := b.db.ExecContext(ctx, "RESET ROLE")
+		require.NoError(t, err)
+		require.NoError(t, storage.Delete(ctx, "app", 1))
+
+		for _, query := range []string{
+			"DROP POLICY IF EXISTS " + pq.QuoteIdentifier(role+"_read") + " ON releases_v1",
+			"DROP POLICY IF EXISTS " + pq.QuoteIdentifier(role+"_write") + " ON releases_v1",
+			"DROP POLICY IF EXISTS " + pq.QuoteIdentifier(role) + " ON nelm_release_annotations_v1",
+			"DROP ROLE IF EXISTS " + pq.QuoteIdentifier(role),
+		} {
+			_, err = b.db.ExecContext(ctx, query)
+			require.NoError(t, err)
+		}
+	})
+
+	for _, query := range []string{
+		"CREATE ROLE " + pq.QuoteIdentifier(role),
+		"CREATE POLICY " + pq.QuoteIdentifier(role+"_read") + " ON releases_v1 FOR SELECT TO " + pq.QuoteIdentifier(role) + " USING (namespace = " + pq.QuoteLiteral(namespace) + ")",
+		"CREATE POLICY " + pq.QuoteIdentifier(role+"_write") + " ON releases_v1 FOR UPDATE TO " + pq.QuoteIdentifier(role) + " USING (namespace = " + pq.QuoteLiteral(namespace) + " AND status = 'pending-install') WITH CHECK (namespace = " + pq.QuoteLiteral(namespace) + " AND status IN ('pending-install','deployed'))",
+		"CREATE POLICY " + pq.QuoteIdentifier(role) + " ON nelm_release_annotations_v1 TO " + pq.QuoteIdentifier(role) + " USING (releaseNamespace = " + pq.QuoteLiteral(namespace) + ") WITH CHECK (releaseNamespace = " + pq.QuoteLiteral(namespace) + ")",
+		"SET ROLE " + pq.QuoteIdentifier(role),
+	} {
+		_, err = b.db.ExecContext(ctx, query)
+		require.NoError(t, err)
+	}
+
+	loaded, err := storage.GetRelease(ctx, "app", 1)
+	require.NoError(t, err)
+	loaded.SetStatus(common.StatusDeployed)
+	require.NoError(t, storage.Update(ctx, loaded))
+	loaded, err = storage.GetRelease(ctx, "app", 1)
+	require.NoError(t, err)
+	require.Equal(t, "deployed", loaded.Status())
+	require.Equal(t, "platform", loaded.Annotations()["team"])
+
+	loaded.SetStatus(common.StatusFailed)
+	require.Error(t, storage.Update(ctx, loaded))
+	loaded, err = storage.GetRelease(ctx, "app", 1)
+	require.NoError(t, err)
+	require.Equal(t, "deployed", loaded.Status())
+	require.Equal(t, "platform", loaded.Annotations()["team"])
+}
+
+func TestSQLStorageBackend_ExplicitPoliciesOpenForNonDDLRolePostgres(t *testing.T) {
+	connection := os.Getenv("NELM_TEST_POSTGRES_CONNECTION")
+	if connection == "" {
+		t.Skip("NELM_TEST_POSTGRES_CONNECTION is not set")
+	}
+
+	ctx := context.Background()
+	b, err := openSQLStorageBackend(ctx, connection)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, b.db.Close()) })
+
+	namespace := "nelm-test-noddl-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	role := "nelm_noddl_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	t.Cleanup(func() {
+		for _, table := range []string{sqlReleaseTable, sqlCustomLabelsTable, sqlAnnotationsTable} {
+			_, err := b.db.ExecContext(ctx, "DROP POLICY IF EXISTS "+pq.QuoteIdentifier(role)+" ON "+table)
+			require.NoError(t, err)
+		}
+
+		_, err := b.db.ExecContext(ctx, "DROP ROLE IF EXISTS "+pq.QuoteIdentifier(role))
+		require.NoError(t, err)
+	})
+
+	_, err = b.db.ExecContext(ctx, "CREATE ROLE "+pq.QuoteIdentifier(role)+" LOGIN PASSWORD 'nelm-test'")
+	require.NoError(t, err)
+
+	for _, table := range []string{sqlReleaseTable, sqlCustomLabelsTable, sqlAnnotationsTable} {
+		column := "releaseNamespace"
+		if table == sqlReleaseTable {
+			column = "namespace"
+		}
+
+		_, err = b.db.ExecContext(ctx, "CREATE POLICY "+pq.QuoteIdentifier(role)+" ON "+table+" TO "+pq.QuoteIdentifier(role)+" USING ("+column+" = "+pq.QuoteLiteral(namespace)+") WITH CHECK ("+column+" = "+pq.QuoteLiteral(namespace)+")")
+		require.NoError(t, err)
+	}
+
+	roleConnection := connection + " user=" + role + " password=nelm-test"
+	if strings.HasPrefix(connection, "postgres://") || strings.HasPrefix(connection, "postgresql://") {
+		parsed, err := url.Parse(connection)
+		require.NoError(t, err)
+
+		parsed.User = url.UserPassword(role, "nelm-test")
+		roleConnection = parsed.String()
+	}
+
+	limited, err := openSQLStorageBackend(ctx, roleConnection)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, limited.db.Close()) })
+
+	storage := newReleaseStorage(namespace, limited, 0)
+	rls := newTestRelease(namespace, "app", 1, common.StatusPendingInstall)
+	rls.Info.Annotations = map[string]string{"team": "platform"}
+	rls.Labels = map[string]string{"team": "platform"}
+	accessor, err := helmrel.NewAccessor(rls)
+	require.NoError(t, err)
+	require.NoError(t, storage.Create(ctx, accessor))
+	t.Cleanup(func() { require.NoError(t, storage.Delete(ctx, "app", 1)) })
+
+	loaded, err := storage.GetRelease(ctx, "app", 1)
+	require.NoError(t, err)
+	require.Equal(t, "platform", loaded.Annotations()["team"])
+	loaded.SetStatus(common.StatusDeployed)
+	require.NoError(t, storage.Update(ctx, loaded))
+	require.NoError(t, storage.UpdateLabels(ctx, "app", 1, map[string]string{"team": "changed"}))
+	loaded, err = storage.GetRelease(ctx, "app", 1)
+	require.NoError(t, err)
+	require.Equal(t, "deployed", loaded.Status())
+	require.Equal(t, "platform", loaded.Annotations()["team"])
+	require.Equal(t, "changed", loaded.Labels()["team"])
+}
+
 func TestSQLStorageBackend_HiddenCreatedReleaseRollsBackAnnotationsPostgres(t *testing.T) {
 	connection := os.Getenv("NELM_TEST_POSTGRES_CONNECTION")
 	if connection == "" {
@@ -444,12 +599,23 @@ func TestSQLStorageBackend_ReadOnlyReleaseRoleCannotChangeAnnotationsPostgres(t 
 	require.NoError(t, err)
 	_, err = tx.ExecContext(ctx, "CREATE POLICY "+pq.QuoteIdentifier(role)+" ON releases_v1 FOR SELECT TO "+pq.QuoteIdentifier(role)+" USING (namespace = "+pq.QuoteLiteral(namespace)+")")
 	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, "CREATE POLICY "+pq.QuoteIdentifier(role+"_write")+" ON releases_v1 FOR UPDATE TO "+pq.QuoteIdentifier(role)+" USING (namespace = "+pq.QuoteLiteral(namespace)+") WITH CHECK (false)")
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, "CREATE POLICY "+pq.QuoteIdentifier(role)+" ON nelm_release_annotations_v1 FOR SELECT TO "+pq.QuoteIdentifier(role)+" USING (releaseNamespace = "+pq.QuoteLiteral(namespace)+")")
+	require.NoError(t, err)
 	_, err = tx.ExecContext(ctx, "SET LOCAL ROLE "+pq.QuoteIdentifier(role))
 	require.NoError(t, err)
 
 	var count int
 	require.NoError(t, tx.GetContext(ctx, &count, "SELECT count(*) FROM nelm_release_annotations_v1 WHERE releaseNamespace = $1", namespace))
 	require.Equal(t, 1, count)
+
+	_, err = tx.ExecContext(ctx, "SAVEPOINT denied_release_update")
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, "UPDATE releases_v1 SET status = status WHERE namespace = $1", namespace)
+	require.ErrorContains(t, err, "row-level security policy")
+	_, err = tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT denied_release_update")
+	require.NoError(t, err)
 
 	result, err := tx.ExecContext(ctx, "UPDATE nelm_release_annotations_v1 SET value = 'spoofed' WHERE releaseNamespace = $1", namespace)
 	require.NoError(t, err)
