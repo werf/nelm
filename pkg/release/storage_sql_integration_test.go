@@ -392,18 +392,19 @@ func TestSQLStorageBackend_ExplicitPoliciesOpenForNonDDLRolePostgres(t *testing.
 
 	namespace := "nelm-test-noddl-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	role := "nelm_noddl_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	_, err = b.db.ExecContext(ctx, "CREATE ROLE "+pq.QuoteIdentifier(role)+" LOGIN PASSWORD 'nelm-test'")
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		for _, table := range []string{sqlReleaseTable, sqlCustomLabelsTable, sqlAnnotationsTable} {
 			_, err := b.db.ExecContext(ctx, "DROP POLICY IF EXISTS "+pq.QuoteIdentifier(role)+" ON "+table)
 			require.NoError(t, err)
 		}
 
-		_, err := b.db.ExecContext(ctx, "DROP ROLE IF EXISTS "+pq.QuoteIdentifier(role))
+		_, err := b.db.ExecContext(ctx, "REVOKE SELECT ON gorp_migrations FROM "+pq.QuoteIdentifier(role))
+		require.NoError(t, err)
+		_, err = b.db.ExecContext(ctx, "DROP ROLE IF EXISTS "+pq.QuoteIdentifier(role))
 		require.NoError(t, err)
 	})
-
-	_, err = b.db.ExecContext(ctx, "CREATE ROLE "+pq.QuoteIdentifier(role)+" LOGIN PASSWORD 'nelm-test'")
-	require.NoError(t, err)
 
 	for _, table := range []string{sqlReleaseTable, sqlCustomLabelsTable, sqlAnnotationsTable} {
 		column := "releaseNamespace"
@@ -415,11 +416,22 @@ func TestSQLStorageBackend_ExplicitPoliciesOpenForNonDDLRolePostgres(t *testing.
 		require.NoError(t, err)
 	}
 
+	var canReadHelmMigrations bool
+	require.NoError(t, b.db.GetContext(ctx, &canReadHelmMigrations, "SELECT has_table_privilege($1, 'gorp_migrations', 'SELECT')", role))
+	require.False(t, canReadHelmMigrations)
+
+	_, err = b.db.ExecContext(ctx, "GRANT SELECT ON gorp_migrations TO "+pq.QuoteIdentifier(role))
+	require.NoError(t, err)
+
 	roleConnection := connection + " user=" + role + " password=nelm-test"
 	if strings.HasPrefix(connection, "postgres://") || strings.HasPrefix(connection, "postgresql://") {
 		parsed, err := url.Parse(connection)
 		require.NoError(t, err)
 
+		query := parsed.Query()
+		query.Del("user")
+		query.Del("password")
+		parsed.RawQuery = query.Encode()
 		parsed.User = url.UserPassword(role, "nelm-test")
 		roleConnection = parsed.String()
 	}
@@ -427,6 +439,10 @@ func TestSQLStorageBackend_ExplicitPoliciesOpenForNonDDLRolePostgres(t *testing.
 	limited, err := openSQLStorageBackend(ctx, roleConnection)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, limited.db.Close()) })
+
+	var sessionUser string
+	require.NoError(t, limited.db.GetContext(ctx, &sessionUser, "SELECT session_user"))
+	require.Equal(t, role, sessionUser)
 
 	storage := newReleaseStorage(namespace, limited, 0)
 	rls := newTestRelease(namespace, "app", 1, common.StatusPendingInstall)

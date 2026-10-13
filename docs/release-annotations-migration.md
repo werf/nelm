@@ -24,7 +24,13 @@ CREATE POLICY app_annotations ON nelm_release_annotations_v1 TO nelm_user
 
 For read-only annotation access, add `FOR SELECT` and omit `WITH CHECK`. Choose consistent namespace and operation restrictions for each table; permissions are independent. Without an annotation policy, ordinary roles cannot read stored annotations or create or update releases. Table owners, superusers and roles with `BYPASSRLS` retain PostgreSQL's usual RLS bypass.
 
-Release and annotation writes stay atomic: if either is denied, neither change is committed. Migration records are readable by ordinary roles after initialization; CREATE permission is not required for subsequent startup.
+Release and annotation writes stay atomic: if either is denied, neither change is committed. Nelm grants read access to `nelm_migrations` but does not change permissions on Helm's `gorp_migrations`. If an ordinary role cannot read that table, its owner must grant access explicitly:
+
+```sql
+GRANT SELECT ON gorp_migrations TO nelm_user;
+```
+
+With access to both migration tables, CREATE permission is not required for subsequent startup.
 
 If a test database was initialized with an earlier draft of this migration, recreate that test database before testing the new policies; the migration id has not changed.
 

@@ -804,7 +804,7 @@ func ensureSQLStorageSchema(ctx context.Context, db *sqlx.DB) error {
 					FOREIGN KEY (releaseKey, releaseNamespace) REFERENCES releases_v1 (key, namespace) ON DELETE CASCADE
 				);
 				GRANT SELECT, INSERT, UPDATE, DELETE ON nelm_release_annotations_v1 TO PUBLIC;
-				GRANT SELECT ON gorp_migrations, nelm_migrations TO PUBLIC;
+				GRANT SELECT ON nelm_migrations TO PUBLIC;
 				ALTER TABLE nelm_release_annotations_v1 ENABLE ROW LEVEL SECURITY;
 			`},
 			Down: []string{"DROP TABLE nelm_release_annotations_v1;"},
