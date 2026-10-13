@@ -16,7 +16,7 @@ func TestMemoryStorageBackend_ListMetadataStopsOnCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := newMemoryStorageBackend().listMetadata(ctx, "", "")
+	_, err := newMemoryStorageBackend().listMetadata(ctx, "", "", true)
 	require.ErrorIs(t, err, context.Canceled)
 }
 

@@ -212,7 +212,7 @@ func TestSQLStorageBackend_AnnotationsPostgres(t *testing.T) {
 	require.NoError(t, b.db.GetContext(ctx, &mismatched, `SELECT count(*) FROM nelm_release_annotations_v1 a JOIN releases_v1 r ON r.key = a.releaseKey AND r.namespace = a.releaseNamespace WHERE r.namespace = $1 AND a.releaseModifiedAt <> COALESCE(r.modifiedAt, 0)`, namespace))
 	require.Zero(t, mismatched)
 
-	metadata, err := b.listMetadata(ctx, namespace, "app")
+	metadata, err := b.listMetadata(ctx, namespace, "app", true)
 	require.NoError(t, err)
 	require.Len(t, metadata, 1)
 	require.Equal(t, annotations, metadata[0].Annotations)
@@ -276,7 +276,7 @@ func TestSQLStorageBackend_AnnotationsPostgres(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, legacy.Info.Annotations, decoded.Info.Annotations)
 
-	metadata, err = b.listMetadata(ctx, namespace, "app")
+	metadata, err = b.listMetadata(ctx, namespace, "app", true)
 	require.NoError(t, err)
 	require.Nil(t, metadata[0].Annotations)
 

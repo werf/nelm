@@ -191,7 +191,7 @@ func (b *kubeStorageBackend) listBodies(ctx context.Context, namespace, selector
 	}
 }
 
-func (b *kubeStorageBackend) listMetadata(ctx context.Context, namespace, releaseName string) ([]*storedObject, error) {
+func (b *kubeStorageBackend) listMetadata(ctx context.Context, namespace, releaseName string, withAnnotations bool) ([]*storedObject, error) {
 	selector, err := kubeStorageSelector(releaseName, nil)
 	if err != nil {
 		return nil, err
@@ -199,6 +199,10 @@ func (b *kubeStorageBackend) listMetadata(ctx context.Context, namespace, releas
 
 	var objects []*storedObject
 	if err := b.listMetadataPages(ctx, namespace, selector, func(obj *storedObject) error {
+		if !withAnnotations {
+			obj.Annotations = nil
+		}
+
 		objects = append(objects, obj)
 
 		return nil

@@ -178,7 +178,7 @@ func (b *sqlStorageBackend) delete(ctx context.Context, namespace, key string) e
 }
 
 func (b *sqlStorageBackend) get(ctx context.Context, namespace, key string) (*storedObject, error) {
-	query, args, err := b.selectReleases(true).
+	query, args, err := b.selectReleases(true).Column(sqlAnnotationsColumn).
 		Where(sq.Eq{sqlReleaseKeyColumn: key, sqlReleaseNamespaceColumn: namespace}).
 		ToSql()
 	if err != nil {
@@ -219,12 +219,12 @@ func (b *sqlStorageBackend) insertCustomLabel(ctx context.Context, tx *sqlx.Tx, 
 	return nil
 }
 
-func (b *sqlStorageBackend) listMetadata(ctx context.Context, namespace, releaseName string) ([]*storedObject, error) {
-	return b.selectMetadata(ctx, namespace, releaseName, nil)
+func (b *sqlStorageBackend) listMetadata(ctx context.Context, namespace, releaseName string, withAnnotations bool) ([]*storedObject, error) {
+	return b.selectMetadata(ctx, namespace, releaseName, nil, withAnnotations)
 }
 
 func (b *sqlStorageBackend) listWithBodies(ctx context.Context, namespace, releaseName string, versions []int, fn func(obj *storedObject) error) error {
-	objects, err := b.selectMetadata(ctx, namespace, releaseName, versions)
+	objects, err := b.selectMetadata(ctx, namespace, releaseName, versions, false)
 	if err != nil {
 		return err
 	}
@@ -262,7 +262,7 @@ func (b *sqlStorageBackend) listWithBodies(ctx context.Context, namespace, relea
 		customLabels[labelRecord.ReleaseKey][labelRecord.Key] = labelRecord.Value
 	}
 
-	query, args, err = filterSQLReleases(b.selectReleases(true), namespace, releaseName, versions).
+	query, args, err = filterSQLReleases(b.selectReleases(true).Column(sqlAnnotationsColumn), namespace, releaseName, versions).
 		OrderBy(sqlReleaseVersionColumn + " ASC").
 		ToSql()
 	if err != nil {
@@ -370,7 +370,7 @@ func (b *sqlStorageBackend) scanLatestCandidates(ctx context.Context, namespace 
 		"), '{}') AS custom_labels"
 
 	query, args, err := b.statementBuilder.
-		Select("releases_v1.*", customLabelsColumn).
+		Select("releases_v1.*", customLabelsColumn, sqlAnnotationsColumn).
 		FromSelect(builder, sqlReleaseTable).
 		ToSql()
 	if err != nil {
@@ -429,8 +429,13 @@ func (b *sqlStorageBackend) scanLatestCandidates(ctx context.Context, namespace 
 	return nil
 }
 
-func (b *sqlStorageBackend) selectMetadata(ctx context.Context, namespace, releaseName string, versions []int) ([]*storedObject, error) {
-	query, args, err := filterSQLReleases(b.selectReleases(false), namespace, releaseName, versions).ToSql()
+func (b *sqlStorageBackend) selectMetadata(ctx context.Context, namespace, releaseName string, versions []int, withAnnotations bool) ([]*storedObject, error) {
+	builder := b.selectReleases(false)
+	if withAnnotations {
+		builder = builder.Column(sqlAnnotationsColumn)
+	}
+
+	query, args, err := filterSQLReleases(builder, namespace, releaseName, versions).ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("build select releases query: %w", err)
 	}
@@ -468,8 +473,6 @@ func (b *sqlStorageBackend) selectReleases(withBody bool) sq.SelectBuilder {
 	if withBody {
 		columns = append(columns, sqlReleaseBodyColumn)
 	}
-
-	columns = append(columns, sqlAnnotationsColumn)
 
 	return b.statementBuilder.Select(columns...).From(sqlReleaseTable)
 }

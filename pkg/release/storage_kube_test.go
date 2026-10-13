@@ -124,7 +124,7 @@ func TestKubeStorageBackend_MetadataListingStopsOnCancellation(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 	assert.Empty(t, s.metadataClient.Actions())
 
-	_, err = s.backend.listMetadata(ctx, "", "")
+	_, err = s.backend.listMetadata(ctx, "", "", true)
 	require.ErrorIs(t, err, context.Canceled)
 }
 

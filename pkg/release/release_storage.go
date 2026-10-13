@@ -62,7 +62,7 @@ type storageBackend interface {
 	update(ctx context.Context, obj *storedObject) error
 	updateLabels(ctx context.Context, namespace, key string, labels map[string]string) error
 	delete(ctx context.Context, namespace, key string) error
-	listMetadata(ctx context.Context, namespace, releaseName string) ([]*storedObject, error)
+	listMetadata(ctx context.Context, namespace, releaseName string, withAnnotations bool) ([]*storedObject, error)
 	// scanLatestCandidates may also pass older revisions, in any order.
 	scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(obj *storedObject) error) error
 	listWithBodies(ctx context.Context, namespace, releaseName string, versions []int, fn func(obj *storedObject) error) error
@@ -409,7 +409,7 @@ func (s *releaseStorage) Revisions(ctx context.Context, name string) ([]Revision
 		return nil, errors.New("release name is required")
 	}
 
-	objects, err := s.backend.listMetadata(ctx, namespace, name)
+	objects, err := s.backend.listMetadata(ctx, namespace, name, true)
 	if err != nil {
 		return nil, fmt.Errorf("list storage metadata of release %q (namespace: %q): %w", name, namespace, err)
 	}
@@ -475,7 +475,7 @@ func (s *releaseStorage) UpdateLabels(ctx context.Context, name string, version 
 }
 
 func (s *releaseStorage) readableRevisions(ctx context.Context, namespace, name string) ([]Revision, error) {
-	objects, err := s.backend.listMetadata(ctx, namespace, name)
+	objects, err := s.backend.listMetadata(ctx, namespace, name, false)
 	if err != nil {
 		return nil, fmt.Errorf("list storage metadata of release %q (namespace: %q): %w", name, namespace, err)
 	}
