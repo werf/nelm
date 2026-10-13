@@ -264,9 +264,10 @@ func putTestKubeObject(t *testing.T, s *testKubeStorage, obj *storedObject) {
 	metadataObj := &metav1.PartialObjectMetadata{
 		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: kind},
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: obj.Namespace,
-			Name:      obj.Key,
-			Labels:    obj.Labels,
+			Namespace:   obj.Namespace,
+			Name:        obj.Key,
+			Labels:      obj.Labels,
+			Annotations: obj.Annotations,
 		},
 	}
 

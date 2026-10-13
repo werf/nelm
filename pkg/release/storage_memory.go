@@ -224,11 +224,16 @@ func (b *memoryStorageBackend) updateLabels(_ context.Context, namespace, key st
 	return err
 }
 
+func (b *memoryStorageBackend) validate(_ *storedObject) error {
+	return nil
+}
+
 func cloneStoredObject(obj *storedObject, withBody bool) *storedObject {
 	clone := &storedObject{
-		Namespace: obj.Namespace,
-		Key:       obj.Key,
-		Labels:    maps.Clone(obj.Labels),
+		Namespace:   obj.Namespace,
+		Key:         obj.Key,
+		Labels:      maps.Clone(obj.Labels),
+		Annotations: maps.Clone(obj.Annotations),
 	}
 
 	if clone.Labels == nil {

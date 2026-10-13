@@ -2,16 +2,344 @@ package release
 
 import (
 	"context"
+	"maps"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/labels"
 
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	common "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 )
+
+func TestSQLStorageBackend_AnnotationPermissionsPostgres(t *testing.T) {
+	connection := os.Getenv("NELM_TEST_POSTGRES_CONNECTION")
+	if connection == "" {
+		t.Skip("NELM_TEST_POSTGRES_CONNECTION is not set")
+	}
+
+	ctx := context.Background()
+	b, err := openSQLStorageBackend(ctx, connection)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, b.db.Close()) })
+
+	prefix := "nelm-test-rls-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	for _, namespace := range []string{prefix, prefix + "-hidden"} {
+		obj := newTestStoredObject(t, newTestRelease(namespace, "app", 1, common.StatusDeployed))
+		obj.Annotations = map[string]string{"nelm.werf.io/released-by": "nelm", "secret": namespace}
+		require.NoError(t, b.create(ctx, obj))
+		t.Cleanup(func() { require.NoError(t, b.delete(ctx, namespace, obj.Key)) })
+	}
+
+	tx, err := b.db.BeginTxx(ctx, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { rollbackSQLTransaction(ctx, tx) })
+
+	role := "nelm_annotations_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	_, err = tx.ExecContext(ctx, "CREATE ROLE "+pq.QuoteIdentifier(role))
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, "CREATE POLICY "+pq.QuoteIdentifier(role)+" ON releases_v1 TO "+pq.QuoteIdentifier(role)+" USING (namespace = "+pq.QuoteLiteral(prefix)+")")
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, "SET LOCAL ROLE "+pq.QuoteIdentifier(role))
+	require.NoError(t, err)
+
+	var migrationIDs []string
+	require.NoError(t, tx.SelectContext(ctx, &migrationIDs, "SELECT id FROM nelm_migrations ORDER BY id"))
+	require.Equal(t, []string{"release_annotations_v1"}, migrationIDs)
+
+	_, err = tx.ExecContext(ctx, "SAVEPOINT truncate_check")
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, "TRUNCATE nelm_release_annotations_v1")
+	require.ErrorContains(t, err, "permission denied")
+	_, err = tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT truncate_check")
+	require.NoError(t, err)
+
+	var namespaces []string
+	require.NoError(t, tx.SelectContext(ctx, &namespaces, "SELECT DISTINCT releaseNamespace FROM nelm_release_annotations_v1 WHERE releaseNamespace IN ($1, $2)", prefix, prefix+"-hidden"))
+	require.Equal(t, []string{prefix}, namespaces)
+
+	var count int
+	require.NoError(t, tx.GetContext(ctx, &count, "SELECT count(*) FROM nelm_release_annotations_v1 WHERE releaseNamespace = $1", prefix+"-hidden"))
+	require.Zero(t, count)
+
+	_, err = tx.ExecContext(ctx, "INSERT INTO nelm_release_annotations_v1 (releaseKey, releaseNamespace, key, value, releaseModifiedAt) VALUES ($1, $2, 'leak', 'value', 0)", storageKey("app", 1), prefix+"-hidden")
+	require.ErrorContains(t, err, "row-level security policy")
+	require.NoError(t, tx.Rollback())
+}
+
+func TestSQLStorageBackend_AnnotationStorageInteropPostgres(t *testing.T) {
+	connection := os.Getenv("NELM_TEST_POSTGRES_CONNECTION")
+	if connection == "" {
+		t.Skip("NELM_TEST_POSTGRES_CONNECTION is not set")
+	}
+
+	ctx := context.Background()
+	b, err := openSQLStorageBackend(ctx, connection)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, b.db.Close()) })
+	require.NoError(t, ensureSQLStorageSchema(ctx, b.db))
+	require.NoError(t, ensureSQLStorageSchema(ctx, b.db))
+
+	var helmMigrations, nelmMigrations []string
+	require.NoError(t, b.db.SelectContext(ctx, &helmMigrations, "SELECT id FROM gorp_migrations ORDER BY id"))
+	require.Equal(t, []string{"custom_labels", "init"}, helmMigrations)
+	require.NoError(t, b.db.SelectContext(ctx, &nelmMigrations, "SELECT id FROM nelm_migrations ORDER BY id"))
+	require.Equal(t, []string{"release_annotations_v1"}, nelmMigrations)
+
+	namespace := "nelm-test-interop-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	storage := newReleaseStorage(namespace, b, 0)
+	rls := newTestRelease(namespace, "app", 1, common.StatusPendingInstall)
+	rls.Info.Annotations = map[string]string{"first": "value", "removed": "yes"}
+	accessor, err := helmrel.NewAccessor(rls)
+	require.NoError(t, err)
+	require.NoError(t, storage.Create(ctx, accessor))
+	t.Cleanup(func() { require.NoError(t, storage.Delete(ctx, "app", 1)) })
+	require.Equal(t, map[string]string{"first": "value", "removed": "yes"}, rls.Info.Annotations)
+
+	stored, err := b.get(ctx, namespace, storageKey("app", 1))
+	require.NoError(t, err)
+	body, err := decodeRelease(stored.Body)
+	require.NoError(t, err)
+	require.Empty(t, body.Info.Annotations)
+	require.Equal(t, map[string]string{"nelm.werf.io/released-by": "nelm", "first": "value", "removed": "yes"}, stored.Annotations)
+
+	loaded, err := storage.GetRelease(ctx, "app", 1)
+	require.NoError(t, err)
+	require.Equal(t, stored.Annotations, loaded.Annotations())
+
+	revisions, err := storage.Revisions(ctx, "app")
+	require.NoError(t, err)
+	require.Len(t, revisions, 1)
+	require.Equal(t, stored.Annotations, revisions[0].Annotations)
+
+	latest, err := storage.LatestRevisions(ctx, LatestRevisionsOptions{})
+	require.NoError(t, err)
+	require.Len(t, latest, 1)
+	require.Equal(t, stored.Annotations, latest[0].Annotations)
+
+	helm, err := driver.NewSQL(connection, namespace)
+	require.NoError(t, err)
+	helmRelease, err := helm.Get(storageKey("app", 1))
+	require.NoError(t, err)
+	accessor, err = helmrel.NewAccessor(helmRelease)
+	require.NoError(t, err)
+	require.Empty(t, accessor.Annotations())
+
+	loaded.SetStatus(common.StatusDeployed)
+	require.NoError(t, storage.Update(ctx, loaded))
+	loaded, err = storage.GetRelease(ctx, "app", 1)
+	require.NoError(t, err)
+	require.Equal(t, stored.Annotations, loaded.Annotations())
+
+	updated, err := ReleaserToV1Release(loaded.Releaser())
+	require.NoError(t, err)
+
+	updated.Info.Annotations = map[string]string{"first": "new"}
+	accessor, err = helmrel.NewAccessor(updated)
+	require.NoError(t, err)
+	require.NoError(t, storage.Update(ctx, accessor))
+	loaded, err = storage.GetRelease(ctx, "app", 1)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"nelm.werf.io/released-by": "nelm", "first": "new"}, loaded.Annotations())
+	updated.Info.Annotations = nil
+	accessor, err = helmrel.NewAccessor(updated)
+	require.NoError(t, err)
+	require.NoError(t, storage.Update(ctx, accessor))
+	stored, err = b.get(ctx, namespace, storageKey("app", 1))
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"nelm.werf.io/released-by": "nelm"}, stored.Annotations)
+
+	loaded, err = storage.GetRelease(ctx, "app", 1)
+	require.NoError(t, err)
+	require.Equal(t, stored.Annotations, loaded.Annotations())
+}
+
+func TestSQLStorageBackend_AnnotationsPostgres(t *testing.T) {
+	connection := os.Getenv("NELM_TEST_POSTGRES_CONNECTION")
+	if connection == "" {
+		t.Skip("NELM_TEST_POSTGRES_CONNECTION is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	b, err := openSQLStorageBackend(ctx, connection)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, b.db.Close()) })
+	b.db.SetMaxOpenConns(1)
+
+	namespace := "nelm-test-annotations-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	rls := newTestRelease(namespace, "app", 1, common.StatusDeployed)
+	obj := newTestStoredObject(t, rls)
+	annotations := map[string]string{"nelm.werf.io/released-by": "nelm", strings.Repeat("arbitrary key / '", 30): strings.Repeat("value", 1000), "removed": "yes"}
+	obj.Annotations = maps.Clone(annotations)
+	require.NoError(t, b.create(ctx, obj))
+	t.Cleanup(func() {
+		_, err := b.db.ExecContext(ctx, "DELETE FROM releases_v1 WHERE namespace = $1", namespace)
+		require.NoError(t, err)
+	})
+
+	stored, err := b.get(ctx, namespace, obj.Key)
+	require.NoError(t, err)
+	require.Equal(t, annotations, stored.Annotations)
+
+	var mismatched int
+	require.NoError(t, b.db.GetContext(ctx, &mismatched, `SELECT count(*) FROM nelm_release_annotations_v1 a JOIN releases_v1 r ON r.key = a.releaseKey AND r.namespace = a.releaseNamespace WHERE r.namespace = $1 AND a.releaseModifiedAt <> COALESCE(r.modifiedAt, 0)`, namespace))
+	require.Zero(t, mismatched)
+
+	metadata, err := b.listMetadata(ctx, namespace, "app")
+	require.NoError(t, err)
+	require.Len(t, metadata, 1)
+	require.Equal(t, annotations, metadata[0].Annotations)
+	require.Nil(t, metadata[0].Body)
+
+	for _, withBodies := range []bool{false, true} {
+		calls := 0
+		require.NoError(t, b.scanLatestCandidates(ctx, namespace, nil, withBodies, func(obj *storedObject) error {
+			calls++
+
+			require.Equal(t, annotations, obj.Annotations)
+			require.Equal(t, withBodies, len(obj.Body) > 0)
+
+			return nil
+		}))
+		require.Equal(t, 1, calls)
+	}
+
+	calls := 0
+	require.NoError(t, b.listWithBodies(ctx, namespace, "app", nil, func(obj *storedObject) error {
+		calls++
+
+		require.Equal(t, annotations, obj.Annotations)
+
+		return nil
+	}))
+	require.Equal(t, 1, calls)
+
+	require.NoError(t, b.updateLabels(ctx, namespace, obj.Key, map[string]string{"team": "new"}))
+	stored, err = b.get(ctx, namespace, obj.Key)
+	require.NoError(t, err)
+	require.Equal(t, annotations, stored.Annotations)
+
+	delete(annotations, "removed")
+	obj.Annotations = maps.Clone(annotations)
+	obj.Labels[storageLabelModifiedAt] = "200"
+	require.NoError(t, b.update(ctx, obj))
+	stored, err = b.get(ctx, namespace, obj.Key)
+	require.NoError(t, err)
+	require.Equal(t, annotations, stored.Annotations)
+
+	var annotationRows int
+	require.NoError(t, b.db.GetContext(ctx, &annotationRows, `SELECT count(*) FROM nelm_release_annotations_v1 WHERE releaseNamespace = $1 AND releaseModifiedAt = 200`, namespace))
+	require.Equal(t, len(annotations), annotationRows)
+
+	legacy := newTestRelease(namespace, "app", 1, common.StatusDeployed)
+	legacy.Info.Annotations = map[string]string{"foreign": "legacy"}
+	legacyBody := encodeHelmRelease(t, legacy)
+	_, err = b.db.ExecContext(ctx, "UPDATE releases_v1 SET body = $1 WHERE namespace = $2 AND key = $3", string(legacyBody), namespace, obj.Key)
+	require.NoError(t, err)
+	stored, err = b.get(ctx, namespace, obj.Key)
+	require.NoError(t, err)
+	require.Equal(t, annotations, stored.Annotations, "a same-second foreign write is intentionally undetected")
+
+	_, err = b.db.ExecContext(ctx, "UPDATE releases_v1 SET modifiedAt = modifiedAt + 1 WHERE namespace = $1 AND key = $2", namespace, obj.Key)
+	require.NoError(t, err)
+	stored, err = b.get(ctx, namespace, obj.Key)
+	require.NoError(t, err)
+	require.Nil(t, stored.Annotations)
+	decoded, err := decodeStoredObject(stored)
+	require.NoError(t, err)
+	require.Equal(t, legacy.Info.Annotations, decoded.Info.Annotations)
+
+	metadata, err = b.listMetadata(ctx, namespace, "app")
+	require.NoError(t, err)
+	require.Nil(t, metadata[0].Annotations)
+
+	for _, withBodies := range []bool{false, true} {
+		require.NoError(t, b.scanLatestCandidates(ctx, namespace, nil, withBodies, func(obj *storedObject) error {
+			require.Nil(t, obj.Annotations)
+
+			return nil
+		}))
+	}
+
+	require.NoError(t, b.listWithBodies(ctx, namespace, "app", nil, func(obj *storedObject) error {
+		require.Nil(t, obj.Annotations)
+
+		return nil
+	}))
+	require.NoError(t, b.db.GetContext(ctx, &annotationRows, `SELECT count(*) FROM nelm_release_annotations_v1 WHERE releaseNamespace = $1`, namespace))
+	require.Equal(t, len(annotations), annotationRows, "reads do not delete stale metadata")
+
+	obj.Annotations = map[string]string{"nelm.werf.io/released-by": "nelm"}
+	require.NoError(t, b.update(ctx, obj))
+	stored, err = b.get(ctx, namespace, obj.Key)
+	require.NoError(t, err)
+	require.Equal(t, obj.Annotations, stored.Annotations)
+	obj.Annotations = nil
+	require.NoError(t, b.update(ctx, obj))
+	stored, err = b.get(ctx, namespace, obj.Key)
+	require.NoError(t, err)
+	require.Nil(t, stored.Annotations, "manual legacy objects are not marked automatically")
+
+	obj.Annotations = maps.Clone(annotations)
+	require.NoError(t, b.update(ctx, obj))
+	require.NoError(t, b.delete(ctx, namespace, obj.Key))
+	require.NoError(t, b.db.GetContext(ctx, &annotationRows, `SELECT count(*) FROM nelm_release_annotations_v1 WHERE releaseNamespace = $1`, namespace))
+	require.Zero(t, annotationRows)
+}
+
+func TestSQLStorageBackend_HiddenCreatedReleaseRollsBackAnnotationsPostgres(t *testing.T) {
+	connection := os.Getenv("NELM_TEST_POSTGRES_CONNECTION")
+	if connection == "" {
+		t.Skip("NELM_TEST_POSTGRES_CONNECTION is not set")
+	}
+
+	ctx := context.Background()
+	b, err := openSQLStorageBackend(ctx, connection)
+	require.NoError(t, err)
+	b.db.SetMaxOpenConns(1)
+	t.Cleanup(func() { require.NoError(t, b.db.Close()) })
+
+	namespace := "nelm-test-insert-only-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	role := "nelm_insert_only_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	_, err = b.db.ExecContext(ctx, "CREATE ROLE "+pq.QuoteIdentifier(role))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, err := b.db.ExecContext(ctx, "RESET ROLE")
+		require.NoError(t, err)
+		_, err = b.db.ExecContext(ctx, "DELETE FROM releases_v1 WHERE namespace = $1", namespace)
+		require.NoError(t, err)
+		_, err = b.db.ExecContext(ctx, "DROP POLICY IF EXISTS "+pq.QuoteIdentifier(role)+" ON releases_v1")
+		require.NoError(t, err)
+		_, err = b.db.ExecContext(ctx, "DROP ROLE "+pq.QuoteIdentifier(role))
+		require.NoError(t, err)
+	})
+
+	_, err = b.db.ExecContext(ctx, "CREATE POLICY "+pq.QuoteIdentifier(role)+" ON releases_v1 FOR INSERT TO "+pq.QuoteIdentifier(role)+" WITH CHECK (namespace = "+pq.QuoteLiteral(namespace)+")")
+	require.NoError(t, err)
+	_, err = b.db.ExecContext(ctx, "SET ROLE "+pq.QuoteIdentifier(role))
+	require.NoError(t, err)
+
+	rls := newTestRelease(namespace, "app", 1, common.StatusDeployed)
+	rls.Info.Annotations = map[string]string{"team": "platform"}
+	obj := newTestStoredObject(t, rls)
+	require.Error(t, b.create(ctx, obj), "a hidden release must not commit without its metadata annotations")
+	_, err = b.db.ExecContext(ctx, "RESET ROLE")
+	require.NoError(t, err)
+
+	var count int
+	require.NoError(t, b.db.GetContext(ctx, &count, "SELECT count(*) FROM releases_v1 WHERE namespace = $1", namespace))
+	require.Zero(t, count)
+	require.NoError(t, b.db.GetContext(ctx, &count, "SELECT count(*) FROM nelm_release_annotations_v1 WHERE releaseNamespace = $1", namespace))
+	require.Zero(t, count)
+}
 
 func TestSQLStorageBackend_LatestIgnoresRowsOutsideTheirStorageKeyPostgres(t *testing.T) {
 	connection := os.Getenv("NELM_TEST_POSTGRES_CONNECTION")
@@ -43,6 +371,101 @@ func TestSQLStorageBackend_LatestIgnoresRowsOutsideTheirStorageKeyPostgres(t *te
 		}))
 		require.Equal(t, []string{original.Key}, keys, "bodies %t", withBodies)
 	}
+}
+
+func TestSQLStorageBackend_LongReleaseAnnotationKeyPostgres(t *testing.T) {
+	connection := os.Getenv("NELM_TEST_POSTGRES_CONNECTION")
+	if connection == "" {
+		t.Skip("NELM_TEST_POSTGRES_CONNECTION is not set")
+	}
+
+	ctx := context.Background()
+	b, err := openSQLStorageBackend(ctx, connection)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, b.db.Close()) })
+
+	namespace := "nelm-test-long-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	storage := newReleaseStorage(namespace, b, 0)
+	rls := newTestRelease(namespace, strings.Repeat("a", 53), 1, common.StatusDeployed)
+	accessor, err := helmrel.NewAccessor(rls)
+	require.NoError(t, err)
+	require.NoError(t, storage.Create(ctx, accessor))
+	t.Cleanup(func() { require.NoError(t, storage.Delete(ctx, rls.Name, 1)) })
+
+	loaded, err := storage.GetRelease(ctx, rls.Name, 1)
+	require.NoError(t, err)
+	require.Equal(t, storageAnnotationReleasedByValue, loaded.Annotations()[storageAnnotationReleasedBy])
+
+	loaded.SetStatus(common.StatusSuperseded)
+	require.NoError(t, storage.Update(ctx, loaded))
+
+	legacyRelease := newTestRelease(namespace, rls.Name, 2, common.StatusDeployed)
+	legacyRelease.Info.Annotations = map[string]string{"team": "legacy"}
+	legacy, err := newStoredObject(namespace, legacyRelease, storageLabelCreatedAt)
+	require.NoError(t, err)
+
+	legacy.Annotations = nil
+	legacy.Body = encodeHelmRelease(t, legacyRelease)
+	require.NoError(t, b.create(ctx, legacy))
+	t.Cleanup(func() { require.NoError(t, storage.Delete(ctx, rls.Name, 2)) })
+
+	loaded, err = storage.GetRelease(ctx, rls.Name, 2)
+	require.NoError(t, err)
+	require.Equal(t, legacyRelease.Info.Annotations, loaded.Annotations())
+	require.NoError(t, storage.Update(ctx, loaded))
+	loaded, err = storage.GetRelease(ctx, rls.Name, 2)
+	require.NoError(t, err)
+	require.Equal(t, "legacy", loaded.Annotations()["team"])
+	require.Equal(t, storageAnnotationReleasedByValue, loaded.Annotations()[storageAnnotationReleasedBy])
+}
+
+func TestSQLStorageBackend_ReadOnlyReleaseRoleCannotChangeAnnotationsPostgres(t *testing.T) {
+	connection := os.Getenv("NELM_TEST_POSTGRES_CONNECTION")
+	if connection == "" {
+		t.Skip("NELM_TEST_POSTGRES_CONNECTION is not set")
+	}
+
+	ctx := context.Background()
+	b, err := openSQLStorageBackend(ctx, connection)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, b.db.Close()) })
+
+	namespace := "nelm-test-readonly-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	obj := newTestStoredObject(t, newTestRelease(namespace, "app", 1, common.StatusDeployed))
+	require.NoError(t, b.create(ctx, obj))
+	t.Cleanup(func() { require.NoError(t, b.delete(ctx, namespace, obj.Key)) })
+
+	tx, err := b.db.BeginTxx(ctx, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { rollbackSQLTransaction(ctx, tx) })
+
+	role := "nelm_readonly_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	_, err = tx.ExecContext(ctx, "CREATE ROLE "+pq.QuoteIdentifier(role))
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, "CREATE POLICY "+pq.QuoteIdentifier(role)+" ON releases_v1 FOR SELECT TO "+pq.QuoteIdentifier(role)+" USING (namespace = "+pq.QuoteLiteral(namespace)+")")
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, "SET LOCAL ROLE "+pq.QuoteIdentifier(role))
+	require.NoError(t, err)
+
+	var count int
+	require.NoError(t, tx.GetContext(ctx, &count, "SELECT count(*) FROM nelm_release_annotations_v1 WHERE releaseNamespace = $1", namespace))
+	require.Equal(t, 1, count)
+
+	result, err := tx.ExecContext(ctx, "UPDATE nelm_release_annotations_v1 SET value = 'spoofed' WHERE releaseNamespace = $1", namespace)
+	require.NoError(t, err)
+	affected, err := result.RowsAffected()
+	require.NoError(t, err)
+	require.Zero(t, affected)
+
+	result, err = tx.ExecContext(ctx, "DELETE FROM nelm_release_annotations_v1 WHERE releaseNamespace = $1", namespace)
+	require.NoError(t, err)
+	affected, err = result.RowsAffected()
+	require.NoError(t, err)
+	require.Zero(t, affected)
+
+	_, err = tx.ExecContext(ctx, "INSERT INTO nelm_release_annotations_v1 (releaseKey, releaseNamespace, key, value, releaseModifiedAt) VALUES ($1, $2, 'spoof', 'value', 0)", obj.Key, namespace)
+	require.ErrorContains(t, err, "row-level security policy")
+	require.NoError(t, tx.Rollback())
 }
 
 func TestSQLStorageBackend_SelectorsPostgres(t *testing.T) {

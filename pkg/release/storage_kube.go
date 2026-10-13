@@ -10,11 +10,13 @@ import (
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apiValidation "k8s.io/apimachinery/pkg/api/validation"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/metadata"
 )
@@ -225,9 +227,10 @@ func (b *kubeStorageBackend) listMetadataPages(ctx context.Context, namespace, s
 			}
 
 			if err := fn(&storedObject{
-				Namespace: item.Namespace,
-				Key:       item.Name,
-				Labels:    item.Labels,
+				Namespace:   item.Namespace,
+				Key:         item.Name,
+				Labels:      item.Labels,
+				Annotations: item.Annotations,
 			}); err != nil {
 				return err
 			}
@@ -329,6 +332,14 @@ func (b *kubeStorageBackend) updateLabels(ctx context.Context, namespace, key st
 	}
 }
 
+func (b *kubeStorageBackend) validate(obj *storedObject) error {
+	if err := apiValidation.ValidateAnnotations(obj.Annotations, field.NewPath("metadata", "annotations")).ToAggregate(); err != nil {
+		return fmt.Errorf("validate annotations: %w", err)
+	}
+
+	return nil
+}
+
 func kubeStorageError(err error) error {
 	if apierrors.IsNotFound(err) {
 		return ErrReleaseNotFound
@@ -365,9 +376,10 @@ func kubeStorageSelector(releaseName string, versions []int) (string, error) {
 func newKubeConfigMap(obj *storedObject) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      obj.Key,
-			Namespace: obj.Namespace,
-			Labels:    obj.Labels,
+			Name:        obj.Key,
+			Namespace:   obj.Namespace,
+			Labels:      obj.Labels,
+			Annotations: obj.Annotations,
 		},
 		Data: map[string]string{kubeStorageDataKey: string(obj.Body)},
 	}
@@ -376,9 +388,10 @@ func newKubeConfigMap(obj *storedObject) *corev1.ConfigMap {
 func newKubeSecret(obj *storedObject) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      obj.Key,
-			Namespace: obj.Namespace,
-			Labels:    obj.Labels,
+			Name:        obj.Key,
+			Namespace:   obj.Namespace,
+			Labels:      obj.Labels,
+			Annotations: obj.Annotations,
 		},
 		Type: storageObjectType,
 		Data: map[string][]byte{kubeStorageDataKey: obj.Body},
@@ -387,18 +400,20 @@ func newKubeSecret(obj *storedObject) *corev1.Secret {
 
 func storedObjectFromKubeConfigMap(configMap *corev1.ConfigMap) *storedObject {
 	return &storedObject{
-		Namespace: configMap.Namespace,
-		Key:       configMap.Name,
-		Labels:    configMap.Labels,
-		Body:      []byte(configMap.Data[kubeStorageDataKey]),
+		Namespace:   configMap.Namespace,
+		Key:         configMap.Name,
+		Labels:      configMap.Labels,
+		Annotations: configMap.Annotations,
+		Body:        []byte(configMap.Data[kubeStorageDataKey]),
 	}
 }
 
 func storedObjectFromKubeSecret(secret *corev1.Secret) *storedObject {
 	return &storedObject{
-		Namespace: secret.Namespace,
-		Key:       secret.Name,
-		Labels:    secret.Labels,
-		Body:      secret.Data[kubeStorageDataKey],
+		Namespace:   secret.Namespace,
+		Key:         secret.Name,
+		Labels:      secret.Labels,
+		Annotations: secret.Annotations,
+		Body:        secret.Data[kubeStorageDataKey],
 	}
 }

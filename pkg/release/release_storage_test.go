@@ -416,7 +416,7 @@ func TestReleaseStorage_LatestRevisionsSkipsObjectsThatAreNotRevisions(t *testin
 
 	revisions, err := s.storage.LatestRevisions(context.Background(), LatestRevisionsOptions{})
 	require.NoError(t, err)
-	assert.Equal(t, []Revision{{Name: "myrel", Namespace: testNamespace, Status: "deployed", Version: 1}}, revisions)
+	assert.Equal(t, []Revision{{Annotations: map[string]string{storageAnnotationReleasedBy: storageAnnotationReleasedByValue}, Name: "myrel", Namespace: testNamespace, Status: "deployed", Version: 1}}, revisions)
 }
 
 func TestReleaseStorage_ListRevisionSummariesPaginates(t *testing.T) {
@@ -603,7 +603,7 @@ func TestReleaseStorage_PruningIgnoresObjectsOutsideTheirStorageKey(t *testing.T
 
 	latest, err := s.LatestRevisions(ctx, LatestRevisionsOptions{})
 	require.NoError(t, err)
-	assert.Equal(t, []Revision{{Name: "app", Namespace: testNamespace, Status: "pending-upgrade", Version: 3}}, latest)
+	assert.Equal(t, []Revision{{Annotations: map[string]string{storageAnnotationReleasedBy: storageAnnotationReleasedByValue}, Name: "app", Namespace: testNamespace, Status: "pending-upgrade", Version: 3}}, latest)
 }
 
 func TestReleaseStorage_RevisionsAreSortedAndUnparseableVersionIsAnError(t *testing.T) {

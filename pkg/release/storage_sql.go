@@ -21,6 +21,8 @@ import (
 )
 
 const (
+	sqlAnnotationsColumn                  = "(SELECT json_object_agg(a.key, a.value)::text FROM nelm_release_annotations_v1 a WHERE a.releaseKey = releases_v1.key AND a.releaseNamespace = releases_v1.namespace AND a.releaseModifiedAt = COALESCE(releases_v1.modifiedAt, 0)) AS annotations"
+	sqlAnnotationsTable                   = "nelm_release_annotations_v1"
 	sqlCustomLabelsKeyColumn              = "key"
 	sqlCustomLabelsReleaseKeyColumn       = "releaseKey"
 	sqlCustomLabelsReleaseNamespaceColumn = "releaseNamespace"
@@ -114,6 +116,10 @@ func (b *sqlStorageBackend) create(ctx context.Context, obj *storedObject) error
 		if err := b.insertCustomLabel(ctx, tx, obj.Namespace, obj.Key, key, value); err != nil {
 			return err
 		}
+	}
+
+	if err := b.replaceAnnotations(ctx, tx, obj); err != nil {
+		return err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -279,7 +285,11 @@ func (b *sqlStorageBackend) listWithBodies(ctx context.Context, namespace, relea
 			return fmt.Errorf("scan release: %w", err)
 		}
 
-		obj := storedObjectFromSQLRecord(&record)
+		obj, err := storedObjectFromSQLRecord(&record)
+		if err != nil {
+			return err
+		}
+
 		maps.Copy(obj.Labels, withoutSystemLabels(customLabels[record.Key]))
 
 		if err := fn(obj); err != nil {
@@ -293,6 +303,38 @@ func (b *sqlStorageBackend) listWithBodies(ctx context.Context, namespace, relea
 
 	if err := rows.Close(); err != nil {
 		return fmt.Errorf("close releases: %w", err)
+	}
+
+	return nil
+}
+
+func (b *sqlStorageBackend) replaceAnnotations(ctx context.Context, tx *sqlx.Tx, obj *storedObject) error {
+	query, args, err := b.statementBuilder.Delete(sqlAnnotationsTable).
+		Where(sq.Eq{"releaseKey": obj.Key, "releaseNamespace": obj.Namespace}).ToSql()
+	if err != nil {
+		return fmt.Errorf("build delete annotations query: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+		return fmt.Errorf("delete annotations: %w", err)
+	}
+
+	for key, value := range obj.Annotations {
+		result, err := tx.ExecContext(ctx,
+			"INSERT INTO nelm_release_annotations_v1 (releaseKey,releaseNamespace,key,value,releaseModifiedAt) SELECT key,namespace,$3,$4,COALESCE(modifiedAt, 0) FROM releases_v1 WHERE key = $1 AND namespace = $2",
+			obj.Key, obj.Namespace, key, value)
+		if err != nil {
+			return fmt.Errorf("insert annotation %q: %w", key, err)
+		}
+
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("get inserted annotation rows count: %w", err)
+		}
+
+		if affected != 1 {
+			return fmt.Errorf("insert annotation %q: release row is not visible", key)
+		}
 	}
 
 	return nil
@@ -360,7 +402,11 @@ func (b *sqlStorageBackend) scanLatestCandidates(ctx context.Context, namespace 
 			return fmt.Errorf("decode custom labels of release %q (namespace: %q): %w", record.Key, record.Namespace, err)
 		}
 
-		obj := storedObjectFromSQLRecord(&record.sqlReleaseRecord)
+		obj, err := storedObjectFromSQLRecord(&record.sqlReleaseRecord)
+		if err != nil {
+			return err
+		}
+
 		maps.Copy(obj.Labels, withoutSystemLabels(customLabels))
 
 		if err := fn(obj); err != nil {
@@ -396,7 +442,12 @@ func (b *sqlStorageBackend) selectMetadata(ctx context.Context, namespace, relea
 
 	objects := make([]*storedObject, 0, len(records))
 	for i := range records {
-		objects = append(objects, storedObjectFromSQLRecord(&records[i]))
+		obj, err := storedObjectFromSQLRecord(&records[i])
+		if err != nil {
+			return nil, err
+		}
+
+		objects = append(objects, obj)
 	}
 
 	return objects, nil
@@ -418,6 +469,8 @@ func (b *sqlStorageBackend) selectReleases(withBody bool) sq.SelectBuilder {
 		columns = append(columns, sqlReleaseBodyColumn)
 	}
 
+	columns = append(columns, sqlAnnotationsColumn)
+
 	return b.statementBuilder.Select(columns...).From(sqlReleaseTable)
 }
 
@@ -436,7 +489,10 @@ func (b *sqlStorageBackend) storedObjectWithCustomLabels(ctx context.Context, re
 		return nil, fmt.Errorf("select custom labels of release %q (namespace: %q): %w", record.Key, record.Namespace, err)
 	}
 
-	obj := storedObjectFromSQLRecord(record)
+	obj, err := storedObjectFromSQLRecord(record)
+	if err != nil {
+		return nil, err
+	}
 
 	customLabels := map[string]string{}
 	for _, labelRecord := range labelRecords {
@@ -511,6 +567,10 @@ func (b *sqlStorageBackend) update(ctx context.Context, obj *storedObject) error
 		}
 	}
 
+	if err := b.replaceAnnotations(ctx, tx, obj); err != nil {
+		return err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
@@ -574,16 +634,21 @@ func (b *sqlStorageBackend) updateLabels(ctx context.Context, namespace, key str
 	return nil
 }
 
+func (b *sqlStorageBackend) validate(_ *storedObject) error {
+	return nil
+}
+
 type sqlReleaseRecord struct {
-	Body       string `db:"body"`
-	CreatedAt  int64  `db:"createdat"`
-	Key        string `db:"key"`
-	ModifiedAt int64  `db:"modifiedat"`
-	Name       string `db:"name"`
-	Namespace  string `db:"namespace"`
-	Owner      string `db:"owner"`
-	Status     string `db:"status"`
-	Version    int    `db:"version"`
+	Annotations sql.NullString `db:"annotations"`
+	Body        string         `db:"body"`
+	CreatedAt   int64          `db:"createdat"`
+	Key         string         `db:"key"`
+	ModifiedAt  int64          `db:"modifiedat"`
+	Name        string         `db:"name"`
+	Namespace   string         `db:"namespace"`
+	Owner       string         `db:"owner"`
+	Status      string         `db:"status"`
+	Version     int            `db:"version"`
 }
 
 type sqlCustomLabelRecord struct {
@@ -719,12 +784,48 @@ func ensureSQLStorageSchema(ctx context.Context, db *sqlx.DB) error {
 		},
 	}
 
-	if sqlStorageMigrationsApplied(ctx, db, migrations.Migrations) {
-		return nil
+	if !sqlStorageMigrationsApplied(ctx, db, migrations.Migrations, "gorp_migrations") {
+		if _, err := (migrate.MigrationSet{}).ExecContext(ctx, db.DB, sqlDialect, migrations, migrate.Up); err != nil {
+			return fmt.Errorf("apply migrations: %w", err)
+		}
 	}
 
-	if _, err := (migrate.MigrationSet{}).ExecContext(ctx, db.DB, sqlDialect, migrations, migrate.Up); err != nil {
-		return fmt.Errorf("apply migrations: %w", err)
+	annotationMigrations := &migrate.MemoryMigrationSource{
+		Migrations: []*migrate.Migration{{
+			Id: "release_annotations_v1",
+			Up: []string{`
+				CREATE TABLE nelm_release_annotations_v1 (
+					releaseKey TEXT NOT NULL,
+					releaseNamespace VARCHAR(67) NOT NULL,
+					key TEXT NOT NULL,
+					value TEXT NOT NULL,
+					releaseModifiedAt BIGINT NOT NULL,
+					UNIQUE (releaseNamespace, releaseKey, key),
+					FOREIGN KEY (releaseKey, releaseNamespace) REFERENCES releases_v1 (key, namespace) ON DELETE CASCADE
+				);
+				GRANT SELECT, INSERT, UPDATE, DELETE ON nelm_release_annotations_v1 TO PUBLIC;
+				GRANT SELECT ON nelm_migrations TO PUBLIC;
+				ALTER TABLE nelm_release_annotations_v1 ENABLE ROW LEVEL SECURITY;
+				CREATE POLICY release_read ON nelm_release_annotations_v1 FOR SELECT
+					USING (EXISTS (SELECT 1 FROM releases_v1 r
+						WHERE r.key = releaseKey AND r.namespace = releaseNamespace));
+				CREATE POLICY release_insert ON nelm_release_annotations_v1 FOR INSERT
+					WITH CHECK (EXISTS (SELECT 1 FROM releases_v1 r
+						WHERE r.key = releaseKey AND r.namespace = releaseNamespace FOR UPDATE));
+				CREATE POLICY release_update ON nelm_release_annotations_v1 FOR UPDATE
+					USING (EXISTS (SELECT 1 FROM releases_v1 r
+						WHERE r.key = releaseKey AND r.namespace = releaseNamespace FOR UPDATE));
+				CREATE POLICY release_delete ON nelm_release_annotations_v1 FOR DELETE
+					USING (EXISTS (SELECT 1 FROM releases_v1 r
+						WHERE r.key = releaseKey AND r.namespace = releaseNamespace FOR UPDATE));
+			`},
+			Down: []string{"DROP TABLE nelm_release_annotations_v1;"},
+		}},
+	}
+	if !sqlStorageMigrationsApplied(ctx, db, annotationMigrations.Migrations, "nelm_migrations") {
+		if _, err := (migrate.MigrationSet{TableName: "nelm_migrations"}).ExecContext(ctx, db.DB, sqlDialect, annotationMigrations, migrate.Up); err != nil {
+			return fmt.Errorf("apply annotation migrations: %w", err)
+		}
 	}
 
 	return nil
@@ -841,13 +942,13 @@ func sqlLabelRequirement(requirement labels.Requirement) (sq.Sqlizer, error) {
 	return sq.Expr("EXISTS (?)", match), nil
 }
 
-func sqlStorageMigrationsApplied(ctx context.Context, db *sqlx.DB, migrations []*migrate.Migration) bool {
+func sqlStorageMigrationsApplied(ctx context.Context, db *sqlx.DB, migrations []*migrate.Migration, tableName string) bool {
 	pending := map[string]struct{}{}
 	for _, migration := range migrations {
 		pending[migration.Id] = struct{}{}
 	}
 
-	records, err := migrate.MigrationSet{DisableCreateTable: true}.GetMigrationRecords(db.DB, sqlDialect)
+	records, err := migrate.MigrationSet{TableName: tableName, DisableCreateTable: true}.GetMigrationRecords(db.DB, sqlDialect)
 	if err != nil {
 		log.Default.Debug(ctx, "Unable to read applied release storage migrations: %s", err)
 
@@ -861,7 +962,14 @@ func sqlStorageMigrationsApplied(ctx context.Context, db *sqlx.DB, migrations []
 	return len(pending) == 0
 }
 
-func storedObjectFromSQLRecord(record *sqlReleaseRecord) *storedObject {
+func storedObjectFromSQLRecord(record *sqlReleaseRecord) (*storedObject, error) {
+	var annotations map[string]string
+	if record.Annotations.Valid {
+		if err := json.Unmarshal([]byte(record.Annotations.String), &annotations); err != nil {
+			return nil, fmt.Errorf("decode annotations of release %q (namespace: %q): %w", record.Key, record.Namespace, err)
+		}
+	}
+
 	labels := map[string]string{
 		storageLabelName:      record.Name,
 		storageLabelOwner:     record.Owner,
@@ -880,9 +988,10 @@ func storedObjectFromSQLRecord(record *sqlReleaseRecord) *storedObject {
 	}
 
 	return &storedObject{
-		Namespace: record.Namespace,
-		Key:       record.Key,
-		Labels:    labels,
-		Body:      body,
-	}
+		Namespace:   record.Namespace,
+		Key:         record.Key,
+		Labels:      labels,
+		Body:        body,
+		Annotations: annotations,
+	}, nil
 }

@@ -1,6 +1,7 @@
 package release
 
 import (
+	"maps"
 	"time"
 
 	"github.com/samber/lo"
@@ -10,18 +11,26 @@ import (
 )
 
 type Revision struct {
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
-	Status    string `json:"status"`
-	Version   int    `json:"version"`
+	// Annotations is nil when they must be read from the body.
+	Annotations map[string]string `json:"annotations,omitempty"`
+	Name        string            `json:"name"`
+	Namespace   string            `json:"namespace"`
+	Status      string            `json:"status"`
+	Version     int               `json:"version"`
 }
 
 func NewRevisionFromAccessor(rel helmrel.Accessor) Revision {
+	var annotations map[string]string
+	if rel.Annotations()[storageAnnotationReleasedBy] == storageAnnotationReleasedByValue {
+		annotations = maps.Clone(rel.Annotations())
+	}
+
 	return Revision{
-		Name:      rel.Name(),
-		Namespace: rel.Namespace(),
-		Status:    rel.Status(),
-		Version:   rel.Version(),
+		Annotations: annotations,
+		Name:        rel.Name(),
+		Namespace:   rel.Namespace(),
+		Status:      rel.Status(),
+		Version:     rel.Version(),
 	}
 }
 

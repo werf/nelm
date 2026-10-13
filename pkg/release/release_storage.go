@@ -56,6 +56,7 @@ type ReleaseStorager interface {
 }
 
 type storageBackend interface {
+	validate(obj *storedObject) error
 	get(ctx context.Context, namespace, key string) (*storedObject, error)
 	create(ctx context.Context, obj *storedObject) error
 	update(ctx context.Context, obj *storedObject) error
@@ -112,15 +113,19 @@ func (s *releaseStorage) Create(ctx context.Context, rel helmrel.Accessor) error
 		return fmt.Errorf("prepare release for storage: %w", err)
 	}
 
+	obj, err := newStoredObject(namespace, rls, storageLabelCreatedAt)
+	if err != nil {
+		return err
+	}
+
+	if err := s.backend.validate(obj); err != nil {
+		return fmt.Errorf("validate release object %q: %w", obj.Key, err)
+	}
+
 	if s.historyLimit > 0 {
 		if err := s.removeOldestRevisions(ctx, rls.Name, s.historyLimit-1); err != nil {
 			return fmt.Errorf("remove oldest revisions of release %q: %w", rls.Name, err)
 		}
-	}
-
-	obj, err := newStoredObject(namespace, rls, storageLabelCreatedAt)
-	if err != nil {
-		return err
 	}
 
 	if err := s.backend.create(ctx, obj); err != nil {
@@ -442,6 +447,10 @@ func (s *releaseStorage) Update(ctx context.Context, rel helmrel.Accessor) error
 	obj, err := newStoredObject(namespace, rls, storageLabelModifiedAt)
 	if err != nil {
 		return err
+	}
+
+	if err := s.backend.validate(obj); err != nil {
+		return fmt.Errorf("validate release object %q: %w", obj.Key, err)
 	}
 
 	if err := s.backend.update(ctx, obj); err != nil {

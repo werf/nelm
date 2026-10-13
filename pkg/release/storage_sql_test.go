@@ -2,8 +2,10 @@ package release
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,9 +20,10 @@ import (
 )
 
 const (
-	testSQLLatestColumns = "key, namespace, name, version, status, owner, createdAt, modifiedAt, body"
-	testSQLLatestOrder   = " AND key = 'sh.helm.release.v1.' || name || '.v' || version ORDER BY namespace, name, version DESC) AS releases_v1"
-	testSQLLatestSelect  = "SELECT releases_v1.*, COALESCE((SELECT json_object_agg(c.key, c.value ORDER BY c.ctid)::text FROM custom_labels_v1 c WHERE c.releaseKey = releases_v1.key AND c.releaseNamespace = releases_v1.namespace), '{}') AS custom_labels FROM (SELECT DISTINCT ON (namespace, name) " + testSQLLatestColumns + " FROM releases_v1 WHERE owner = $1"
+	testSQLAnnotationsColumn = "(SELECT json_object_agg(a.key, a.value)::text FROM nelm_release_annotations_v1 a WHERE a.releaseKey = releases_v1.key AND a.releaseNamespace = releases_v1.namespace AND a.releaseModifiedAt = COALESCE(releases_v1.modifiedAt, 0)) AS annotations"
+	testSQLLatestColumns     = "key, namespace, name, version, status, owner, createdAt, modifiedAt, body, " + testSQLAnnotationsColumn
+	testSQLLatestOrder       = " AND key = 'sh.helm.release.v1.' || name || '.v' || version ORDER BY namespace, name, version DESC) AS releases_v1"
+	testSQLLatestSelect      = "SELECT releases_v1.*, COALESCE((SELECT json_object_agg(c.key, c.value ORDER BY c.ctid)::text FROM custom_labels_v1 c WHERE c.releaseKey = releases_v1.key AND c.releaseNamespace = releases_v1.namespace), '{}') AS custom_labels FROM (SELECT DISTINCT ON (namespace, name) " + testSQLLatestColumns + " FROM releases_v1 WHERE owner = $1"
 )
 
 func TestEnsureSQLStorageSchema_SkipsMigrationsWhenAllApplied(t *testing.T) {
@@ -30,6 +33,8 @@ func TestEnsureSQLStorageSchema_SkipsMigrationsWhenAllApplied(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "applied_at"}).
 			AddRow("custom_labels", time.Now()).
 			AddRow("init", time.Now()))
+	mock.ExpectQuery(`SELECT * FROM "nelm_migrations" ORDER BY "id" ASC`).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "applied_at"}).AddRow("release_annotations_v1", time.Now()))
 
 	require.NoError(t, ensureSQLStorageSchema(context.Background(), backend.db))
 }
@@ -38,6 +43,40 @@ func TestSQLLabelRequirementUnsupportedOperator(t *testing.T) {
 	_, err := sqlLabelRequirement(labels.Requirement{})
 	require.ErrorContains(t, err, "unsupported operator")
 	require.ErrorContains(t, err, "use equality, set, existence, or integer comparisons")
+}
+
+func TestSQLStorageBackend_AnnotationInsertRollsBack(t *testing.T) {
+	for _, operation := range []string{"create", "update"} {
+		t.Run(operation, func(t *testing.T) {
+			backend, mock := newTestSQLBackend(t)
+			obj, err := newStoredObject(testNamespace, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusDeployed), storageLabelModifiedAt)
+			require.NoError(t, err)
+
+			obj.Labels[storageLabelCreatedAt] = "100"
+			obj.Annotations = map[string]string{"arbitrary key": "long annotation value"}
+			sentinel := errors.New("annotation insert failed")
+
+			mock.ExpectBegin()
+
+			if operation == "create" {
+				mock.ExpectExec(`INSERT INTO releases_v1 (key,type,body,name,namespace,version,status,owner,createdAt) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`).WillReturnResult(sqlmock.NewResult(1, 1))
+			} else {
+				mock.ExpectExec(`UPDATE releases_v1 SET body = $1, name = $2, version = $3, status = $4, owner = $5, modifiedAt = $6 WHERE key = $7 AND namespace = $8`).WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec(`DELETE FROM custom_labels_v1 WHERE releaseKey = $1 AND releaseNamespace = $2`).WithArgs(obj.Key, testNamespace).WillReturnResult(sqlmock.NewResult(0, 1))
+			}
+
+			mock.ExpectExec(`DELETE FROM nelm_release_annotations_v1 WHERE releaseKey = $1 AND releaseNamespace = $2`).WithArgs(obj.Key, testNamespace).WillReturnResult(sqlmock.NewResult(0, 1))
+			mock.ExpectExec(`INSERT INTO nelm_release_annotations_v1 (releaseKey,releaseNamespace,key,value,releaseModifiedAt) SELECT key,namespace,$3,$4,COALESCE(modifiedAt, 0) FROM releases_v1 WHERE key = $1 AND namespace = $2`).
+				WithArgs(obj.Key, testNamespace, "arbitrary key", "long annotation value").WillReturnError(sentinel)
+			mock.ExpectRollback()
+
+			if operation == "create" {
+				require.ErrorIs(t, backend.create(context.Background(), obj), sentinel)
+			} else {
+				require.ErrorIs(t, backend.update(context.Background(), obj), sentinel)
+			}
+		})
+	}
 }
 
 func TestSQLStorageBackend_CreateExisting(t *testing.T) {
@@ -59,6 +98,8 @@ func TestSQLStorageBackend_CreateInsertsReleaseAndCustomLabels(t *testing.T) {
 	obj := newTestStoredObject(t, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusPendingInstall))
 	obj.Labels["custom"] = "value"
 
+	obj.Annotations = map[string]string{"nelm.werf.io/released-by": "nelm"}
+
 	mock.ExpectBegin()
 	mock.ExpectExec(`INSERT INTO releases_v1 (key,type,body,name,namespace,version,status,owner,createdAt) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`).
 		WithArgs(obj.Key, "helm.sh/release.v1", string(obj.Body), "myrel", testNamespace, 1, "pending-install", "helm", sqlmock.AnyArg()).
@@ -66,6 +107,23 @@ func TestSQLStorageBackend_CreateInsertsReleaseAndCustomLabels(t *testing.T) {
 	mock.ExpectExec(`INSERT INTO custom_labels_v1 (releaseKey,releaseNamespace,key,value) VALUES ($1,$2,$3,$4)`).
 		WithArgs(obj.Key, testNamespace, "custom", "value").
 		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`DELETE FROM nelm_release_annotations_v1 WHERE releaseKey = $1 AND releaseNamespace = $2`).
+		WithArgs(obj.Key, testNamespace).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`INSERT INTO nelm_release_annotations_v1 (releaseKey,releaseNamespace,key,value,releaseModifiedAt) SELECT key,namespace,$3,$4,COALESCE(modifiedAt, 0) FROM releases_v1 WHERE key = $1 AND namespace = $2`).
+		WithArgs(obj.Key, testNamespace, "nelm.werf.io/released-by", "nelm").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	require.NoError(t, backend.create(context.Background(), obj))
+}
+
+func TestSQLStorageBackend_CreateLegacyWithoutAnnotations(t *testing.T) {
+	backend, mock := newTestSQLBackend(t)
+	obj := newTestStoredObject(t, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusDeployed))
+	obj.Annotations = nil
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`INSERT INTO releases_v1 (key,type,body,name,namespace,version,status,owner,createdAt) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`DELETE FROM nelm_release_annotations_v1 WHERE releaseKey = $1 AND releaseNamespace = $2`).WithArgs(obj.Key, testNamespace).WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectCommit()
 
 	require.NoError(t, backend.create(context.Background(), obj))
@@ -103,7 +161,7 @@ func TestSQLStorageBackend_GetMergesCustomLabels(t *testing.T) {
 
 	body := encodeHelmRelease(t, newTestReleaseWithStatus("myrel", 2, helmreleasecommon.StatusDeployed))
 
-	mock.ExpectQuery(`SELECT key, namespace, name, version, status, owner, createdAt, modifiedAt, body FROM releases_v1 WHERE key = $1 AND namespace = $2`).
+	mock.ExpectQuery(`SELECT key, namespace, name, version, status, owner, createdAt, modifiedAt, body, `+testSQLAnnotationsColumn+` FROM releases_v1 WHERE key = $1 AND namespace = $2`).
 		WithArgs("sh.helm.release.v1.myrel.v2", testNamespace).
 		WillReturnRows(sqlmock.NewRows([]string{"key", "namespace", "name", "version", "status", "owner", "createdat", "modifiedat", "body"}).
 			AddRow("sh.helm.release.v1.myrel.v2", testNamespace, "myrel", 2, "deployed", "helm", 100, 0, string(body)))
@@ -127,7 +185,7 @@ func TestSQLStorageBackend_GetMergesCustomLabels(t *testing.T) {
 func TestSQLStorageBackend_GetMissing(t *testing.T) {
 	backend, mock := newTestSQLBackend(t)
 
-	mock.ExpectQuery(`SELECT key, namespace, name, version, status, owner, createdAt, modifiedAt, body FROM releases_v1 WHERE key = $1 AND namespace = $2`).
+	mock.ExpectQuery(`SELECT key, namespace, name, version, status, owner, createdAt, modifiedAt, body, `+testSQLAnnotationsColumn+` FROM releases_v1 WHERE key = $1 AND namespace = $2`).
 		WithArgs("sh.helm.release.v1.myrel.v2", testNamespace).
 		WillReturnRows(sqlmock.NewRows([]string{"key"}))
 
@@ -135,10 +193,15 @@ func TestSQLStorageBackend_GetMissing(t *testing.T) {
 	require.ErrorIs(t, err, ErrReleaseNotFound)
 }
 
+func TestSQLStorageBackend_InvalidAnnotations(t *testing.T) {
+	_, err := storedObjectFromSQLRecord(&sqlReleaseRecord{Annotations: sql.NullString{Valid: true, String: "invalid"}})
+	require.ErrorContains(t, err, "decode annotations")
+}
+
 func TestSQLStorageBackend_LatestRevisionsReadNoBodies(t *testing.T) {
 	backend, mock := newTestSQLBackend(t)
 
-	mock.ExpectQuery(`SELECT releases_v1.*, COALESCE((SELECT json_object_agg(c.key, c.value ORDER BY c.ctid)::text FROM custom_labels_v1 c WHERE c.releaseKey = releases_v1.key AND c.releaseNamespace = releases_v1.namespace), '{}') AS custom_labels FROM (SELECT DISTINCT ON (namespace, name) key, namespace, name, version, status, owner, createdAt, modifiedAt FROM releases_v1 WHERE owner = $1 AND EXISTS (SELECT 1 FROM (SELECT value FROM custom_labels_v1 WHERE releaseKey = releases_v1.key AND releaseNamespace = releases_v1.namespace AND key = $2 ORDER BY ctid DESC LIMIT 1) AS label WHERE value IS NOT NULL) AND key = 'sh.helm.release.v1.' || name || '.v' || version ORDER BY namespace, name, version DESC) AS releases_v1`).
+	mock.ExpectQuery(`SELECT releases_v1.*, COALESCE((SELECT json_object_agg(c.key, c.value ORDER BY c.ctid)::text FROM custom_labels_v1 c WHERE c.releaseKey = releases_v1.key AND c.releaseNamespace = releases_v1.namespace), '{}') AS custom_labels FROM (SELECT DISTINCT ON (namespace, name) key, namespace, name, version, status, owner, createdAt, modifiedAt, `+testSQLAnnotationsColumn+` FROM releases_v1 WHERE owner = $1 AND EXISTS (SELECT 1 FROM (SELECT value FROM custom_labels_v1 WHERE releaseKey = releases_v1.key AND releaseNamespace = releases_v1.namespace AND key = $2 ORDER BY ctid DESC LIMIT 1) AS label WHERE value IS NOT NULL) AND key = 'sh.helm.release.v1.' || name || '.v' || version ORDER BY namespace, name, version DESC) AS releases_v1`).
 		WithArgs("helm", "packageChecksum").
 		WillReturnRows(sqlmock.NewRows([]string{"key", "namespace", "name", "version", "status", "owner", "createdat", "modifiedat", "custom_labels"}).
 			AddRow("sh.helm.release.v1.a.v1", "ns-1", "a", 1, "superseded", "helm", 100, 200, `{"packageChecksum":"x"}`).
@@ -184,7 +247,7 @@ func TestSQLStorageBackend_ListLatestCloseError(t *testing.T) {
 
 func TestSQLStorageBackend_ListLatestErrors(t *testing.T) {
 	sentinel := errors.New("failed")
-	for _, kind := range []string{"query", "scan", "labels", "iterate", "callback", "cancel"} {
+	for _, kind := range []string{"query", "scan", "labels", "annotations", "iterate", "callback", "cancel"} {
 		t.Run(kind, func(t *testing.T) {
 			backend, mock := newTestSQLBackend(t)
 
@@ -201,6 +264,8 @@ func TestSQLStorageBackend_ListLatestErrors(t *testing.T) {
 				expectation.WillReturnRows(sqlmock.NewRows([]string{"unknown"}).AddRow("bad")).RowsWillBeClosed()
 			case "labels":
 				expectation.WillReturnRows(sqlmock.NewRows([]string{"custom_labels"}).AddRow("bad")).RowsWillBeClosed()
+			case "annotations":
+				expectation.WillReturnRows(sqlmock.NewRows([]string{"annotations", "custom_labels"}).AddRow("bad", "{}")).RowsWillBeClosed()
 			case "iterate":
 				expectation.WillReturnRows(rows.RowError(0, sentinel)).RowsWillBeClosed()
 			case "cancel":
@@ -351,9 +416,9 @@ func TestSQLStorageBackend_ListLatestWithBodies(t *testing.T) {
 	backend, mock := newTestSQLBackend(t)
 	backend.db.SetMaxOpenConns(1)
 	mock.ExpectQuery(testSQLLatestSelect + testSQLLatestOrder).WithArgs("helm").WillReturnRows(
-		sqlmock.NewRows([]string{"key", "namespace", "name", "version", "status", "owner", "createdat", "modifiedat", "body", "custom_labels"}).
-			AddRow("same-key", "ns-1", "a", 2, "deployed", "helm", 100, 0, "first", `{"packageChecksum":"one","status":"bogus","modifiedAt":"bogus"}`).
-			AddRow("same-key", "ns-2", "a", 2, "deployed", "helm", 100, 200, "second", `{"packageChecksum":"two"}`)).RowsWillBeClosed()
+		sqlmock.NewRows([]string{"key", "namespace", "name", "version", "status", "owner", "createdat", "modifiedat", "body", "custom_labels", "annotations"}).
+			AddRow("same-key", "ns-1", "a", 2, "deployed", "helm", 100, 0, "first", `{"packageChecksum":"one","status":"bogus","modifiedAt":"bogus"}`, `{"nelm.werf.io/released-by":"nelm","note":"first"}`).
+			AddRow("same-key", "ns-2", "a", 2, "deployed", "helm", 100, 200, "second", `{"packageChecksum":"two"}`, nil)).RowsWillBeClosed()
 
 	var objects []*storedObject
 	require.NoError(t, backend.scanLatestCandidates(context.Background(), "", nil, true, func(obj *storedObject) error {
@@ -362,6 +427,8 @@ func TestSQLStorageBackend_ListLatestWithBodies(t *testing.T) {
 		return nil
 	}))
 	require.Len(t, objects, 2)
+	assert.Equal(t, map[string]string{"nelm.werf.io/released-by": "nelm", "note": "first"}, objects[0].Annotations)
+	assert.Nil(t, objects[1].Annotations)
 	assert.Equal(t, "ns-1", objects[0].Namespace)
 	assert.Equal(t, "one", objects[0].Labels["packageChecksum"])
 	assert.Equal(t, "deployed", objects[0].Labels["status"])
@@ -377,7 +444,7 @@ func TestSQLStorageBackend_ListRevisionSummariesReadsLabelsBeforeBodies(t *testi
 
 	body := encodeHelmRelease(t, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusSuperseded))
 
-	mock.ExpectQuery(`SELECT key, namespace, name, version, status, owner, createdAt, modifiedAt FROM releases_v1 WHERE owner = $1 AND namespace = $2 AND name = $3`).
+	mock.ExpectQuery(`SELECT key, namespace, name, version, status, owner, createdAt, modifiedAt, `+testSQLAnnotationsColumn+` FROM releases_v1 WHERE owner = $1 AND namespace = $2 AND name = $3`).
 		WithArgs("helm", testNamespace, "myrel").
 		WillReturnRows(sqlmock.NewRows([]string{"key", "namespace", "name", "version", "status", "owner", "createdat", "modifiedat"}).
 			AddRow("sh.helm.release.v1.myrel.v1", testNamespace, "myrel", 1, "superseded", "helm", 100, 0).
@@ -385,7 +452,7 @@ func TestSQLStorageBackend_ListRevisionSummariesReadsLabelsBeforeBodies(t *testi
 	mock.ExpectQuery(`SELECT releaseKey, key, value FROM custom_labels_v1 WHERE releaseKey IN ($1,$2) AND releaseNamespace = $3`).
 		WithArgs("sh.helm.release.v1.myrel.v1", "sh.helm.release.v1.myrel.v2", testNamespace).
 		WillReturnRows(sqlmock.NewRows([]string{"releasekey", "key", "value"}).AddRow("sh.helm.release.v1.myrel.v1", "custom", "value"))
-	mock.ExpectQuery(`SELECT key, namespace, name, version, status, owner, createdAt, modifiedAt, body FROM releases_v1 WHERE owner = $1 AND namespace = $2 AND name = $3 ORDER BY version ASC`).
+	mock.ExpectQuery(`SELECT key, namespace, name, version, status, owner, createdAt, modifiedAt, body, `+testSQLAnnotationsColumn+` FROM releases_v1 WHERE owner = $1 AND namespace = $2 AND name = $3 ORDER BY version ASC`).
 		WithArgs("helm", testNamespace, "myrel").
 		WillReturnRows(sqlmock.NewRows([]string{"key", "namespace", "name", "version", "status", "owner", "createdat", "modifiedat", "body"}).
 			AddRow("sh.helm.release.v1.myrel.v1", testNamespace, "myrel", 1, "superseded", "helm", 100, 0, string(body)).
@@ -405,14 +472,14 @@ func TestSQLStorageBackend_ListWithBodiesOfVersions(t *testing.T) {
 
 	body := encodeHelmRelease(t, newTestReleaseWithStatus("myrel", 2, helmreleasecommon.StatusDeployed))
 
-	mock.ExpectQuery(`SELECT key, namespace, name, version, status, owner, createdAt, modifiedAt FROM releases_v1 WHERE owner = $1 AND namespace = $2 AND name = $3 AND version IN ($4)`).
+	mock.ExpectQuery(`SELECT key, namespace, name, version, status, owner, createdAt, modifiedAt, `+testSQLAnnotationsColumn+` FROM releases_v1 WHERE owner = $1 AND namespace = $2 AND name = $3 AND version IN ($4)`).
 		WithArgs("helm", testNamespace, "myrel", 2).
 		WillReturnRows(sqlmock.NewRows([]string{"key", "namespace", "name", "version", "status", "owner", "createdat", "modifiedat"}).
 			AddRow("sh.helm.release.v1.myrel.v2", testNamespace, "myrel", 2, "deployed", "helm", 200, 0))
 	mock.ExpectQuery(`SELECT releaseKey, key, value FROM custom_labels_v1 WHERE releaseKey IN ($1) AND releaseNamespace = $2`).
 		WithArgs("sh.helm.release.v1.myrel.v2", testNamespace).
 		WillReturnRows(sqlmock.NewRows([]string{"releasekey", "key", "value"}))
-	mock.ExpectQuery(`SELECT key, namespace, name, version, status, owner, createdAt, modifiedAt, body FROM releases_v1 WHERE owner = $1 AND namespace = $2 AND name = $3 AND version IN ($4) ORDER BY version ASC`).
+	mock.ExpectQuery(`SELECT key, namespace, name, version, status, owner, createdAt, modifiedAt, body, `+testSQLAnnotationsColumn+` FROM releases_v1 WHERE owner = $1 AND namespace = $2 AND name = $3 AND version IN ($4) ORDER BY version ASC`).
 		WithArgs("helm", testNamespace, "myrel", 2).
 		WillReturnRows(sqlmock.NewRows([]string{"key", "namespace", "name", "version", "status", "owner", "createdat", "modifiedat", "body"}).
 			AddRow("sh.helm.release.v1.myrel.v2", testNamespace, "myrel", 2, "deployed", "helm", 200, 0, string(body)))
@@ -428,10 +495,26 @@ func TestSQLStorageBackend_ListWithBodiesOfVersions(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestSQLStorageBackend_MetadataAnnotations(t *testing.T) {
+	backend, mock := newTestSQLBackend(t)
+	mock.ExpectQuery(`SELECT key, namespace, name, version, status, owner, createdAt, modifiedAt, `+testSQLAnnotationsColumn+` FROM releases_v1 WHERE owner = $1 AND namespace = $2 AND name = $3`).
+		WithArgs("helm", testNamespace, "myrel").
+		WillReturnRows(sqlmock.NewRows([]string{"key", "namespace", "name", "version", "status", "owner", "createdat", "modifiedat", "annotations"}).
+			AddRow("sh.helm.release.v1.myrel.v1", testNamespace, "myrel", 1, "deployed", "helm", 100, 0, `{"nelm.werf.io/released-by":"nelm","note":"value"}`).
+			AddRow("sh.helm.release.v1.myrel.v2", testNamespace, "myrel", 2, "deployed", "helm", 100, 200, nil))
+	objects, err := backend.listMetadata(context.Background(), testNamespace, "myrel")
+	require.NoError(t, err)
+	require.Len(t, objects, 2)
+	assert.Equal(t, map[string]string{"nelm.werf.io/released-by": "nelm", "note": "value"}, objects[0].Annotations)
+	assert.Nil(t, objects[0].Body)
+	assert.Nil(t, objects[1].Annotations)
+	assert.Nil(t, objects[1].Body)
+}
+
 func TestSQLStorageBackend_RevisionsOfRelease(t *testing.T) {
 	backend, mock := newTestSQLBackend(t)
 
-	mock.ExpectQuery(`SELECT key, namespace, name, version, status, owner, createdAt, modifiedAt FROM releases_v1 WHERE owner = $1 AND namespace = $2 AND name = $3`).
+	mock.ExpectQuery(`SELECT key, namespace, name, version, status, owner, createdAt, modifiedAt, `+testSQLAnnotationsColumn+` FROM releases_v1 WHERE owner = $1 AND namespace = $2 AND name = $3`).
 		WithArgs("helm", testNamespace, "a").
 		WillReturnRows(sqlmock.NewRows([]string{"key", "namespace", "name", "version", "status", "owner", "createdat", "modifiedat"}).
 			AddRow("sh.helm.release.v1.a.v10", testNamespace, "a", 10, "deployed", "helm", 100, 0).
@@ -498,6 +581,8 @@ func TestSQLStorageBackend_UpdateReplacesCustomLabels(t *testing.T) {
 	obj, err := newStoredObject(testNamespace, rls, storageLabelModifiedAt)
 	require.NoError(t, err)
 
+	obj.Annotations = map[string]string{"nelm.werf.io/released-by": "nelm"}
+
 	mock.ExpectBegin()
 	mock.ExpectExec(`UPDATE releases_v1 SET body = $1, name = $2, version = $3, status = $4, owner = $5, modifiedAt = $6 WHERE key = $7 AND namespace = $8`).
 		WithArgs(string(obj.Body), "myrel", 1, "deployed", "helm", sqlmock.AnyArg(), obj.Key, testNamespace).
@@ -508,7 +593,16 @@ func TestSQLStorageBackend_UpdateReplacesCustomLabels(t *testing.T) {
 	mock.ExpectExec(`INSERT INTO custom_labels_v1 (releaseKey,releaseNamespace,key,value) VALUES ($1,$2,$3,$4)`).
 		WithArgs(obj.Key, testNamespace, "team", "new").
 		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`DELETE FROM nelm_release_annotations_v1 WHERE releaseKey = $1 AND releaseNamespace = $2`).
+		WithArgs(obj.Key, testNamespace).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`INSERT INTO nelm_release_annotations_v1 (releaseKey,releaseNamespace,key,value,releaseModifiedAt) SELECT key,namespace,$3,$4,COALESCE(modifiedAt, 0) FROM releases_v1 WHERE key = $1 AND namespace = $2`).
+		WithArgs(obj.Key, testNamespace, "nelm.werf.io/released-by", "nelm").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 
 	require.NoError(t, backend.update(context.Background(), obj))
+}
+
+func TestSQLStorageBackend_ValidateAnnotations(t *testing.T) {
+	backend, _ := newTestSQLBackend(t)
+	require.NoError(t, backend.validate(&storedObject{Annotations: map[string]string{"not a label key": strings.Repeat("value", 100000)}}))
 }

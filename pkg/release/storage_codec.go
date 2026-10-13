@@ -18,14 +18,16 @@ import (
 )
 
 const (
-	storageLabelCreatedAt  = "createdAt"
-	storageLabelModifiedAt = "modifiedAt"
-	storageLabelName       = "name"
-	storageLabelOwner      = "owner"
-	storageLabelStatus     = "status"
-	storageLabelVersion    = "version"
-	storageObjectType      = "helm.sh/release.v1"
-	storageOwner           = "helm"
+	storageAnnotationReleasedBy      = "nelm.werf.io/released-by"
+	storageAnnotationReleasedByValue = "nelm"
+	storageLabelCreatedAt            = "createdAt"
+	storageLabelModifiedAt           = "modifiedAt"
+	storageLabelName                 = "name"
+	storageLabelOwner                = "owner"
+	storageLabelStatus               = "status"
+	storageLabelVersion              = "version"
+	storageObjectType                = "helm.sh/release.v1"
+	storageOwner                     = "helm"
 )
 
 var (
@@ -34,14 +36,31 @@ var (
 )
 
 type storedObject struct {
-	Body      []byte
-	Key       string
-	Labels    map[string]string
-	Namespace string
+	Annotations map[string]string
+	Body        []byte
+	Key         string
+	Labels      map[string]string
+	Namespace   string
 }
 
 func newStoredObject(namespace string, rls *helmrelease.Release, timestampLabel string) (*storedObject, error) {
-	body, err := encodeRelease(rls)
+	annotations := maps.Clone(rls.Info.Annotations)
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
+
+	if writer, found := annotations[storageAnnotationReleasedBy]; found && writer != storageAnnotationReleasedByValue {
+		return nil, fmt.Errorf("annotation %q is reserved for %q", storageAnnotationReleasedBy, storageAnnotationReleasedByValue)
+	}
+
+	annotations[storageAnnotationReleasedBy] = storageAnnotationReleasedByValue
+
+	storedRelease := *rls
+	storedInfo := *rls.Info
+	storedInfo.Annotations = nil
+	storedRelease.Info = &storedInfo
+
+	body, err := encodeRelease(&storedRelease)
 	if err != nil {
 		return nil, fmt.Errorf("encode release %q (revision: %d): %w", rls.Name, rls.Version, err)
 	}
@@ -58,10 +77,11 @@ func newStoredObject(namespace string, rls *helmrelease.Release, timestampLabel 
 	labels[storageLabelVersion] = strconv.Itoa(rls.Version)
 
 	return &storedObject{
-		Body:      body,
-		Key:       storageKey(rls.Name, rls.Version),
-		Labels:    labels,
-		Namespace: namespace,
+		Annotations: annotations,
+		Body:        body,
+		Key:         storageKey(rls.Name, rls.Version),
+		Labels:      labels,
+		Namespace:   namespace,
 	}, nil
 }
 
@@ -71,11 +91,18 @@ func decodeStoredObject(obj *storedObject) (*helmrelease.Release, error) {
 		return nil, fmt.Errorf("%w: object %q (namespace: %q): %w", ErrReleaseUndecodable, obj.Key, obj.Namespace, err)
 	}
 
+	if rls.Info == nil {
+		return nil, fmt.Errorf("%w: object %q (namespace: %q): release info is required", ErrReleaseUndecodable, obj.Key, obj.Namespace)
+	}
+
 	if rls.Namespace == "" {
 		rls.Namespace = obj.Namespace
 	}
 
 	rls.Labels = maps.Clone(obj.Labels)
+	if obj.Annotations[storageAnnotationReleasedBy] == storageAnnotationReleasedByValue {
+		rls.Info.Annotations = maps.Clone(obj.Annotations)
+	}
 
 	return rls, nil
 }
@@ -109,6 +136,9 @@ func decodeStoredSummary(obj *storedObject) (*ReleaseSummary, error) {
 	}
 
 	summary := &ReleaseSummary{Annotations: body.Info.Annotations}
+	if obj.Annotations[storageAnnotationReleasedBy] == storageAnnotationReleasedByValue {
+		summary.Annotations = maps.Clone(obj.Annotations)
+	}
 
 	// Matches helmrelease.Info, which reads an empty string as a zero time.
 	if raw := string(body.Info.LastDeployed); raw != "" && raw != "null" && raw != `""` {
@@ -144,11 +174,17 @@ func revisionFromStoredObject(obj *storedObject) (Revision, bool, error) {
 		return Revision{}, false, nil
 	}
 
+	var annotations map[string]string
+	if obj.Annotations[storageAnnotationReleasedBy] == storageAnnotationReleasedByValue {
+		annotations = maps.Clone(obj.Annotations)
+	}
+
 	return Revision{
-		Name:      name,
-		Namespace: obj.Namespace,
-		Status:    obj.Labels[storageLabelStatus],
-		Version:   version,
+		Annotations: annotations,
+		Name:        name,
+		Namespace:   obj.Namespace,
+		Status:      obj.Labels[storageLabelStatus],
+		Version:     version,
 	}, true, nil
 }
 
