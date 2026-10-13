@@ -199,7 +199,9 @@ Nelm is built upon the Helm codebase with some parts of Helm reimplemented. It i
 
 Helm Charts can be deployed by Nelm with no changes. All the obscure Helm Chart features, such as `lookup` functions, are supported.
 
-To store release information, Nelm uses Helm Releases. You can deploy the same release with Helm and Nelm interchangeably, and it will work just fine. No migration needed from/to Helm.
+Nelm uses Helm-compatible release storage and can read existing Helm releases without migrating their data. Nelm-specific release annotations may be lost when a revision is rewritten by Helm.
+
+Like [Helm](https://helm.sh/docs/topics/permissions_sql_storage_backend/), Nelm initializes SQL storage automatically. Initialization and schema upgrades require permission to create tables and grant privileges in the public schema. Roles subject to row-level security also need policies on `nelm_release_annotations_v1` in addition to the Helm tables.
 
 Nelm has a different CLI layout, flags and environment variables, but we largely support all the same features as Helm.
 
