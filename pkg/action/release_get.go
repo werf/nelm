@@ -16,6 +16,7 @@ import (
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	chartcommonutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common/util"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
+	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/log"
@@ -59,7 +60,7 @@ type ReleaseGetOptions struct {
 	TempDirPath string
 }
 
-type ReleaseGetResultV2 struct {
+type ReleaseGetResultV3 struct {
 	APIVersion    string                   `json:"apiVersion"`
 	Release       *ReleaseGetResultRelease `json:"release"`
 	Chart         *ReleaseGetResultChart   `json:"chart"`
@@ -69,13 +70,13 @@ type ReleaseGetResultV2 struct {
 }
 
 type ReleaseGetResultRelease struct {
-	Name          string                      `json:"name"`
-	Namespace     string                      `json:"namespace"`
-	Revision      int                         `json:"revision"`
-	Status        helmreleasestatus.Status    `json:"status"`
-	DeployedAt    *ReleaseGetResultDeployedAt `json:"deployedAt"`
-	Annotations   map[string]string           `json:"annotations"`
-	StorageLabels map[string]string           `json:"storageLabels"`
+	Name        string                      `json:"name"`
+	Namespace   string                      `json:"namespace"`
+	Revision    int                         `json:"revision"`
+	Status      helmreleasestatus.Status    `json:"status"`
+	DeployedAt  *ReleaseGetResultDeployedAt `json:"deployedAt"`
+	Annotations map[string]string           `json:"annotations"`
+	Labels      map[string]string           `json:"labels"`
 }
 
 type ReleaseGetResultDeployedAt struct {
@@ -90,7 +91,7 @@ type ReleaseGetResultChart struct {
 }
 
 // Retrieves detailed information about the Helm release from the cluster.
-func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseGetOptions) (*ReleaseGetResultV2, error) {
+func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseGetOptions) (*ReleaseGetResultV3, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("get home directory: %w", err)
@@ -156,49 +157,10 @@ func ReleaseGet(ctx context.Context, releaseName, releaseNamespace string, opts 
 		}
 	}
 
-	chartAccessor, err := helmchart.NewAccessor(relAccessor.Chart())
+	result, err := buildReleaseGetResult(ctx, relAccessor, releaseNamespace)
 	if err != nil {
-		return nil, fmt.Errorf("construct chart accessor: %w", err)
+		return nil, err
 	}
-
-	values, err := chartcommonutil.CoalesceValues(relAccessor.Chart(), relAccessor.Config())
-	if err != nil {
-		return nil, fmt.Errorf("coalesce release values: %w", err)
-	}
-
-	chartMetadata := chartAccessor.MetadataAsMap()
-	chartVersion, _ := chartMetadata["Version"].(string)
-	chartAppVersion, _ := chartMetadata["AppVersion"].(string)
-
-	result := &ReleaseGetResultV2{
-		APIVersion: "v2",
-		Chart: &ReleaseGetResultChart{
-			Name:       chartAccessor.Name(),
-			Version:    chartVersion,
-			AppVersion: chartAppVersion,
-		},
-		Notes: relAccessor.Notes(),
-		Release: &ReleaseGetResultRelease{
-			Name:      relAccessor.Name(),
-			Namespace: relAccessor.Namespace(),
-			Revision:  relAccessor.Version(),
-			Status:    helmreleasestatus.Status(relAccessor.Status()),
-			DeployedAt: &ReleaseGetResultDeployedAt{
-				Human: time.Time{}.String(),
-				Unix:  int(time.Time{}.Unix()),
-			},
-			Annotations:   relAccessor.Annotations(),
-			StorageLabels: relAccessor.Labels(),
-		},
-		Values: values,
-	}
-
-	resSpecs, err := release.ReleaseToResourceSpecs(ctx, relAccessor, releaseNamespace)
-	if err != nil {
-		return nil, fmt.Errorf("convert release to resource specs: %w", err)
-	}
-
-	result.ResourceSpecs = append(result.ResourceSpecs, resSpecs...)
 
 	if opts.OutputNoPrint {
 		return result, nil
@@ -270,4 +232,52 @@ func applyReleaseGetOptionsDefaults(opts ReleaseGetOptions, homeDir string) (Rel
 	}
 
 	return opts, nil
+}
+
+func buildReleaseGetResult(ctx context.Context, relAccessor helmrelease.Accessor, releaseNamespace string) (*ReleaseGetResultV3, error) {
+	chartAccessor, err := helmchart.NewAccessor(relAccessor.Chart())
+	if err != nil {
+		return nil, fmt.Errorf("construct chart accessor: %w", err)
+	}
+
+	values, err := chartcommonutil.CoalesceValues(relAccessor.Chart(), relAccessor.Config())
+	if err != nil {
+		return nil, fmt.Errorf("coalesce release values: %w", err)
+	}
+
+	chartMetadata := chartAccessor.MetadataAsMap()
+	chartVersion, _ := chartMetadata["Version"].(string)
+	chartAppVersion, _ := chartMetadata["AppVersion"].(string)
+
+	result := &ReleaseGetResultV3{
+		APIVersion: "v3",
+		Chart: &ReleaseGetResultChart{
+			Name:       chartAccessor.Name(),
+			Version:    chartVersion,
+			AppVersion: chartAppVersion,
+		},
+		Notes: relAccessor.Notes(),
+		Release: &ReleaseGetResultRelease{
+			Name:      relAccessor.Name(),
+			Namespace: relAccessor.Namespace(),
+			Revision:  relAccessor.Version(),
+			Status:    helmreleasestatus.Status(relAccessor.Status()),
+			DeployedAt: &ReleaseGetResultDeployedAt{
+				Human: time.Time{}.String(),
+				Unix:  int(time.Time{}.Unix()),
+			},
+			Annotations: relAccessor.Annotations(),
+			Labels:      relAccessor.Labels(),
+		},
+		Values: values,
+	}
+
+	resSpecs, err := release.ReleaseToResourceSpecs(ctx, relAccessor, releaseNamespace)
+	if err != nil {
+		return nil, fmt.Errorf("convert release to resource specs: %w", err)
+	}
+
+	result.ResourceSpecs = append(result.ResourceSpecs, resSpecs...)
+
+	return result, nil
 }
