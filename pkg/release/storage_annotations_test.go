@@ -8,60 +8,120 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	v2release "github.com/werf/nelm/v2/pkg/helm/intern/release/v2"
 	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	common "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	v1release "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 func TestReleaseStorage_KubeAndMemoryAnnotationsReplaceAndPreserve(t *testing.T) {
-	ctx := context.Background()
-	kubeSecret := newTestKubeStorage(t, kubeStorageKindSecret, "ns", 0)
+	for _, releaseCase := range []struct {
+		name       string
+		newRelease func(map[string]string) helmrel.Releaser
+	}{
+		{
+			name: "v1",
+			newRelease: func(annotations map[string]string) helmrel.Releaser {
+				rls := newTestRelease("ns", "app", 1, common.StatusPendingInstall)
+				rls.Info.Annotations = annotations
 
-	kubeConfigMap := newTestKubeStorage(t, kubeStorageKindConfigMap, "ns", 0)
-	for name, backend := range map[string]storageBackend{"secret": kubeSecret.backend, "configmap": kubeConfigMap.backend, "memory": newMemoryStorageBackend()} {
-		t.Run(name, func(t *testing.T) {
-			storage := newReleaseStorage("ns", backend, 0)
-			rls := newTestRelease("ns", "app", 1, common.StatusPendingInstall)
-			rls.Info.Annotations = map[string]string{"team": "old", "remove": "yes"}
-			accessor, err := helmrel.NewAccessor(rls)
-			require.NoError(t, err)
-			require.NoError(t, storage.Create(ctx, accessor))
-			stored, err := backend.get(ctx, "ns", storageKey("app", 1))
-			require.NoError(t, err)
-			assert.Equal(t, "old", stored.Annotations["team"])
-			assert.Equal(t, storageAnnotationReleasedByValue, stored.Annotations[storageAnnotationReleasedBy])
+				return rls
+			},
+		},
+		{
+			name: "v2",
+			newRelease: func(annotations map[string]string) helmrel.Releaser {
+				return &v2release.Release{
+					Name:      "app",
+					Namespace: "ns",
+					Version:   1,
+					Info:      &v2release.Info{Status: common.StatusPendingInstall, Annotations: annotations},
+				}
+			},
+		},
+	} {
+		t.Run(releaseCase.name, func(t *testing.T) {
+			for name, newBackend := range map[string]func(*testing.T) storageBackend{
+				"secret": func(t *testing.T) storageBackend {
+					return newTestKubeStorage(t, kubeStorageKindSecret, "ns", 0).backend
+				},
+				"configmap": func(t *testing.T) storageBackend {
+					return newTestKubeStorage(t, kubeStorageKindConfigMap, "ns", 0).backend
+				},
+				"memory": func(t *testing.T) storageBackend {
+					return newMemoryStorageBackend()
+				},
+			} {
+				t.Run(name, func(t *testing.T) {
+					ctx := context.Background()
+					backend := newBackend(t)
+					storage := newReleaseStorage("ns", backend, 0)
+					rls := releaseCase.newRelease(map[string]string{"team": "old", "remove": "yes"})
+					inputAccessor, err := helmrel.NewAccessor(rls)
+					require.NoError(t, err)
+					require.NoError(t, storage.Create(ctx, inputAccessor))
+					assert.Equal(t, map[string]string{"team": "old", "remove": "yes"}, inputAccessor.Annotations())
 
-			accessor, err = storage.GetRelease(ctx, "app", 1)
-			require.NoError(t, err)
-			accessor.SetStatus(common.StatusDeployed)
-			require.NoError(t, storage.Update(ctx, accessor))
-			accessor, err = storage.GetRelease(ctx, "app", 1)
-			require.NoError(t, err)
-			assert.Equal(t, "old", accessor.Annotations()["team"])
-			require.NoError(t, storage.UpdateLabels(ctx, "app", 1, map[string]string{"team": "label"}))
-			stored, err = backend.get(ctx, "ns", storageKey("app", 1))
-			require.NoError(t, err)
-			assert.Equal(t, "old", stored.Annotations["team"])
+					stored, err := backend.get(ctx, "ns", storageKey("app", 1))
+					require.NoError(t, err)
 
-			updated, err := ReleaserToV1Release(accessor.Releaser())
-			require.NoError(t, err)
+					originalAnnotations := map[string]string{
+						"team":                      "old",
+						"remove":                    "yes",
+						storageAnnotationReleasedBy: storageAnnotationReleasedByValue,
+					}
+					assert.Equal(t, originalAnnotations, stored.Annotations)
+					body, err := decodeRelease(stored.Body)
+					require.NoError(t, err)
+					assert.Empty(t, body.Info.Annotations)
 
-			updated.Info.Annotations = map[string]string{"team": "new"}
+					accessor, err := storage.GetRelease(ctx, "app", 1)
+					require.NoError(t, err)
+					assert.IsType(t, &v1release.Release{}, accessor.Releaser())
+					assert.Equal(t, originalAnnotations, accessor.Annotations())
+					accessor.SetStatus(common.StatusDeployed)
+					require.NoError(t, storage.Update(ctx, accessor))
+					accessor, err = storage.GetRelease(ctx, "app", 1)
+					require.NoError(t, err)
+					assert.Equal(t, string(common.StatusDeployed), accessor.Status())
+					assert.Equal(t, originalAnnotations, accessor.Annotations())
+					require.NoError(t, storage.UpdateLabels(ctx, "app", 1, map[string]string{"team": "label"}))
+					stored, err = backend.get(ctx, "ns", storageKey("app", 1))
+					require.NoError(t, err)
+					assert.Equal(t, originalAnnotations, stored.Annotations)
 
-			require.NoError(t, storage.Update(ctx, accessor))
-			accessor, err = storage.GetRelease(ctx, "app", 1)
-			require.NoError(t, err)
-			assert.Equal(t, "new", accessor.Annotations()["team"])
-			assert.NotContains(t, accessor.Annotations(), "remove")
+					updated := releaseCase.newRelease(map[string]string{"team": "new"})
+					updatedAccessor, err := helmrel.NewAccessor(updated)
+					require.NoError(t, err)
+					updatedAccessor.SetStatus(common.StatusDeployed)
+					require.NoError(t, storage.Update(ctx, updatedAccessor))
+					assert.Equal(t, map[string]string{"team": "new"}, updatedAccessor.Annotations())
 
-			updated, err = ReleaserToV1Release(accessor.Releaser())
-			require.NoError(t, err)
+					accessor, err = storage.GetRelease(ctx, "app", 1)
+					require.NoError(t, err)
+					assert.Equal(t, map[string]string{
+						"team":                      "new",
+						storageAnnotationReleasedBy: storageAnnotationReleasedByValue,
+					}, accessor.Annotations())
 
-			updated.Info.Annotations = nil
+					stored, err = backend.get(ctx, "ns", storageKey("app", 1))
+					require.NoError(t, err)
+					body, err = decodeRelease(stored.Body)
+					require.NoError(t, err)
+					assert.Empty(t, body.Info.Annotations)
 
-			require.NoError(t, storage.Update(ctx, accessor))
-			accessor, err = storage.GetRelease(ctx, "app", 1)
-			require.NoError(t, err)
-			assert.Equal(t, map[string]string{storageAnnotationReleasedBy: storageAnnotationReleasedByValue}, accessor.Annotations())
+					updated = releaseCase.newRelease(nil)
+					updatedAccessor, err = helmrel.NewAccessor(updated)
+					require.NoError(t, err)
+					updatedAccessor.SetStatus(common.StatusDeployed)
+					require.NoError(t, storage.Update(ctx, updatedAccessor))
+					assert.Nil(t, updatedAccessor.Annotations())
+
+					accessor, err = storage.GetRelease(ctx, "app", 1)
+					require.NoError(t, err)
+					assert.Equal(t, map[string]string{storageAnnotationReleasedBy: storageAnnotationReleasedByValue}, accessor.Annotations())
+				})
+			}
 		})
 	}
 }
