@@ -33,7 +33,7 @@ func NewLegacyProgressReporter(reportCh chan<- progrep.ProgressReport) *LegacyPr
 }
 
 // Close stops reporting and closes the channel after in-flight sends finish. Its context does
-// not interrupt those sends: cancel a blocking Stop's context before calling Close.
+// not interrupt those sends: cancel any blocking send's context before calling Close.
 // Close does not send a final snapshot.
 func (r *LegacyProgressReporter) Close(ctx context.Context) {
 	r.state.RWTransaction(func(s *progressReporterState) {
@@ -61,6 +61,18 @@ func (r *LegacyProgressReporter) ReportAnalyzedResource(ctx context.Context) {
 		}
 
 		sendNonBlocking(r.reportCh, buildProgressReport(s))
+	})
+}
+
+// ReportCheckpoint sends the current snapshot with a blocking send without stopping reporting
+// or changing pending statuses. Cancellation can interrupt the send.
+func (r *LegacyProgressReporter) ReportCheckpoint(ctx context.Context) {
+	r.state.RWTransaction(func(s *progressReporterState) {
+		if s.stopped || (s.plansCount == 0 && !s.phaseReported) {
+			return
+		}
+
+		sendBlocking(ctx, r.reportCh, buildProgressReport(s))
 	})
 }
 
@@ -202,15 +214,7 @@ func (r *LegacyProgressReporter) Stop(ctx context.Context) {
 			}
 		}
 
-		report := buildProgressReport(s)
-		func() {
-			defer func() { _ = recover() }()
-
-			select {
-			case r.reportCh <- report:
-			case <-ctx.Done():
-			}
-		}()
+		sendBlocking(ctx, r.reportCh, buildProgressReport(s))
 	})
 }
 
@@ -421,5 +425,14 @@ func safeSend(ch chan<- progrep.ProgressReport, report progrep.ProgressReport) (
 		return true
 	default:
 		return false
+	}
+}
+
+func sendBlocking(ctx context.Context, ch chan<- progrep.ProgressReport, report progrep.ProgressReport) {
+	defer func() { _ = recover() }()
+
+	select {
+	case ch <- report:
+	case <-ctx.Done():
 	}
 }
