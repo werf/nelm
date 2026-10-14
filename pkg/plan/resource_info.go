@@ -84,6 +84,8 @@ type BuildResourceInfosOptions struct {
 	LastDeployedOrLastRelResourceSpecs []*spec.ResourceSpec
 	NetworkParallelism                 int
 	NoRemoveManualChanges              bool
+	// OnResourceAnalyzed runs concurrently in pool workers after successful input analysis, including skips.
+	OnResourceAnalyzed func(context.Context)
 }
 
 // From Installable/DeletableResource builds Installable/DeletableResourceInfo. If you can do
@@ -103,6 +105,10 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 				return nil, fmt.Errorf("build installable resource info: %w", err)
 			}
 
+			if opts.OnResourceAnalyzed != nil {
+				opts.OnResourceAnalyzed(ctx)
+			}
+
 			return infos, nil
 		})
 	}
@@ -115,6 +121,10 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 			info, err := buildDeletableResourceInfo(ctx, res, deployType, releaseName, releaseNamespace, clientFactory)
 			if err != nil {
 				return nil, fmt.Errorf("build deletable resource info: %w", err)
+			}
+
+			if opts.OnResourceAnalyzed != nil {
+				opts.OnResourceAnalyzed(ctx)
 			}
 
 			return info, nil
