@@ -59,6 +59,9 @@ type ReleaseUninstallOptions struct {
 	// consumer is slow; the final report is guaranteed (blocking send). ReleaseUninstall closes the
 	// channel when it returns, on every path. See docs/progress-report.md.
 	LegacyProgressReportCh chan<- progrep.ProgressReport
+	// LegacyProgressReportPhases enables preparation and namespace deletion details. Reports may
+	// arrive before the plan is built, with no operations. Requires LegacyProgressReportCh to receive them.
+	LegacyProgressReportPhases bool
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
@@ -126,6 +129,17 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 }
 
 func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, opts ReleaseUninstallOptions) error {
+	var reporter, phaseReporter *plan.LegacyProgressReporter
+	if opts.LegacyProgressReportCh != nil {
+		reporter = plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
+		defer reporter.Stop(ctx)
+
+		if opts.LegacyProgressReportPhases {
+			phaseReporter = reporter
+			phaseReporter.ReportPhase(ctx, progrep.PhaseKindInitializing, plan.ReportPhaseOptions{})
+		}
+	}
+
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get current working directory: %w", err)
@@ -271,7 +285,16 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			return fmt.Errorf("resolve patches: %w", err)
 		}
 
+		var onResourceAnalyzed func(context.Context)
+		if phaseReporter != nil {
+			phaseReporter.ReportPhase(ctx, progrep.PhaseKindAnalyzing, plan.ReportPhaseOptions{
+				AnalyzeDetails: &progrep.AnalyzeDetails{Total: len(instResources) + len(delResources)},
+			})
+			onResourceAnalyzed = phaseReporter.ReportAnalyzedResource
+		}
+
 		instResInfos, delResInfos, err := plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
+			OnResourceAnalyzed:                 onResourceAnalyzed,
 			DiffPatches:                        patches.Diff,
 			NetworkParallelism:                 opts.NetworkParallelism,
 			NoRemoveManualChanges:              opts.NoRemoveManualChanges,
@@ -279,6 +302,10 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		})
 		if err != nil {
 			return fmt.Errorf("build resource infos: %w", err)
+		}
+
+		if phaseReporter != nil {
+			phaseReporter.ReportPhase(ctx, progrep.PhaseKindPlanning, plan.ReportPhaseOptions{})
 		}
 
 		log.Default.Debug(ctx, "Build release infos")
@@ -321,9 +348,8 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		criticalErrs := &util.MultiError{}
 		nonCriticalErrs := &util.MultiError{}
 
-		var reporter *plan.LegacyProgressReporter
-		if opts.LegacyProgressReportCh != nil {
-			reporter = plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
+		if phaseReporter != nil {
+			phaseReporter.ReportPhase(ctx, progrep.PhaseKindExecuting, plan.ReportPhaseOptions{})
 		}
 
 		log.Default.Debug(ctx, "Execute release delete plan")
@@ -373,10 +399,6 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		if !opts.NoProgressTablePrint {
 			progressPrinter.Stop()
 			progressPrinter.Wait()
-		}
-
-		if reporter != nil {
-			reporter.Stop(ctx)
 		}
 
 		reportCompletedOps := lo.Map(completedResourceOps, func(op *plan.Operation, _ int) string {
@@ -433,10 +455,39 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 	if opts.DeleteReleaseNamespace {
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Delete release namespace %q", nsMeta.Name)))
 
+		namespaceDeleteDetails := &progrep.NamespaceDeleteDetails{
+			Name:               nsMeta.Name,
+			DeleteStatus:       progrep.OperationStatusProgressing,
+			TrackAbsenceStatus: progrep.OperationStatusPending,
+		}
+		if phaseReporter != nil {
+			phaseReporter.ReportPhase(ctx, progrep.PhaseKindDeletingNamespace, plan.ReportPhaseOptions{
+				NamespaceDeleteDetails: namespaceDeleteDetails,
+			})
+		}
+
 		if err := clientFactory.KubeClient().Delete(ctx, nsMeta, kube.KubeClientDeleteOptions{
 			PropagationPolicy: metav1.DeletePropagationForeground,
 		}); err != nil {
+			namespaceDeleteDetails.DeleteStatus = progrep.OperationStatusFailed
+
+			namespaceDeleteDetails.TrackAbsenceStatus = progrep.OperationStatusCanceled
+			if phaseReporter != nil {
+				phaseReporter.ReportPhase(ctx, progrep.PhaseKindDeletingNamespace, plan.ReportPhaseOptions{
+					NamespaceDeleteDetails: namespaceDeleteDetails,
+				})
+			}
+
 			return fmt.Errorf("delete release namespace: %w", err)
+		}
+
+		namespaceDeleteDetails.DeleteStatus = progrep.OperationStatusCompleted
+
+		namespaceDeleteDetails.TrackAbsenceStatus = progrep.OperationStatusProgressing
+		if phaseReporter != nil {
+			phaseReporter.ReportPhase(ctx, progrep.PhaseKindDeletingNamespace, plan.ReportPhaseOptions{
+				NamespaceDeleteDetails: namespaceDeleteDetails,
+			})
 		}
 
 		taskState := kdutil.NewConcurrent(
@@ -449,7 +500,21 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		})
 
 		if err := tracker.Track(ctx); err != nil {
+			namespaceDeleteDetails.TrackAbsenceStatus = progrep.OperationStatusFailed
+			if phaseReporter != nil {
+				phaseReporter.ReportPhase(ctx, progrep.PhaseKindDeletingNamespace, plan.ReportPhaseOptions{
+					NamespaceDeleteDetails: namespaceDeleteDetails,
+				})
+			}
+
 			return fmt.Errorf("track release namespace absence: %w", err)
+		}
+
+		namespaceDeleteDetails.TrackAbsenceStatus = progrep.OperationStatusCompleted
+		if phaseReporter != nil {
+			phaseReporter.ReportPhase(ctx, progrep.PhaseKindDeletingNamespace, plan.ReportPhaseOptions{
+				NamespaceDeleteDetails: namespaceDeleteDetails,
+			})
 		}
 
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Deleted release namespace %q", nsMeta.Name)))
