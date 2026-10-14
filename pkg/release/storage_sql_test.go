@@ -269,6 +269,19 @@ func TestSQLStorageBackend_InvalidAnnotations(t *testing.T) {
 	require.ErrorContains(t, err, "decode annotations")
 }
 
+func TestSQLStorageBackend_LatestRevisionsCanSkipAnnotations(t *testing.T) {
+	backend, mock := newTestSQLBackend(t)
+	mock.ExpectQuery(`SELECT releases_v1.*, COALESCE((SELECT json_object_agg(c.key, c.value ORDER BY c.ctid)::text FROM custom_labels_v1 c WHERE c.releaseKey = releases_v1.key AND c.releaseNamespace = releases_v1.namespace), '{}') AS custom_labels FROM (SELECT DISTINCT ON (namespace, name) key, namespace, name, version, status, owner, createdAt, modifiedAt FROM releases_v1 WHERE owner = $1 AND namespace = $2 AND EXISTS (SELECT 1 FROM (SELECT value FROM custom_labels_v1 WHERE releaseKey = releases_v1.key AND releaseNamespace = releases_v1.namespace AND key = $3 ORDER BY ctid DESC LIMIT 1) AS label WHERE value IS NOT NULL) AND key = 'sh.helm.release.v1.' || name || '.v' || version ORDER BY namespace, name, version DESC) AS releases_v1`).
+		WithArgs("helm", testNamespace, "packageChecksum").
+		WillReturnRows(sqlmock.NewRows([]string{"key", "namespace", "name", "version", "status", "owner", "createdat", "modifiedat", "custom_labels"}).
+			AddRow(storageKey("myrel", 2), testNamespace, "myrel", 2, "deployed", "helm", 100, 200, `{"packageChecksum":"present"}`))
+
+	revisions, err := newReleaseStorage(testNamespace, backend, 0).LatestRevisions(context.Background(), LatestRevisionsOptions{LabelSelector: "packageChecksum", SkipAnnotations: true})
+	require.NoError(t, err)
+	require.Len(t, revisions, 1)
+	assert.Equal(t, Revision{Name: "myrel", Namespace: testNamespace, Version: 2, Status: "deployed"}, revisions[0])
+}
+
 func TestSQLStorageBackend_LatestRevisionsReadNoBodies(t *testing.T) {
 	backend, mock := newTestSQLBackend(t)
 
@@ -327,7 +340,7 @@ func TestSQLStorageBackend_ListLatestCancelledDuringCallback(t *testing.T) {
 	mock.ExpectQuery(testSQLLatestSelect + testSQLLatestOrder).WithArgs("helm").WillReturnRows(rows).RowsWillBeClosed()
 
 	calls := 0
-	err := backend.scanLatestCandidates(ctx, "", nil, true, func(*storedObject) error {
+	err := backend.scanLatestCandidates(ctx, "", nil, true, true, func(*storedObject) error {
 		calls++
 
 		cancel()
@@ -342,7 +355,7 @@ func TestSQLStorageBackend_ListLatestCloseError(t *testing.T) {
 	backend, mock := newTestSQLBackend(t)
 	sentinel := errors.New("close failed")
 	mock.ExpectQuery(testSQLLatestSelect + testSQLLatestOrder).WithArgs("helm").WillReturnRows(sqlmock.NewRows([]string{"key"}).CloseError(sentinel)).RowsWillBeClosed()
-	require.ErrorIs(t, backend.scanLatestCandidates(context.Background(), "", nil, true, func(*storedObject) error { return nil }), sentinel)
+	require.ErrorIs(t, backend.scanLatestCandidates(context.Background(), "", nil, true, true, func(*storedObject) error { return nil }), sentinel)
 }
 
 func TestSQLStorageBackend_ListLatestErrors(t *testing.T) {
@@ -375,7 +388,7 @@ func TestSQLStorageBackend_ListLatestErrors(t *testing.T) {
 				expectation.WillReturnRows(rows.AddRow("b", "ns", 1, "{}")).RowsWillBeClosed()
 			}
 
-			err := backend.scanLatestCandidates(ctx, "", nil, true, func(*storedObject) error { return sentinel })
+			err := backend.scanLatestCandidates(ctx, "", nil, true, true, func(*storedObject) error { return sentinel })
 			require.Error(t, err)
 
 			if kind == "callback" || kind == "iterate" || kind == "query" {
@@ -423,7 +436,7 @@ func TestSQLStorageBackend_ListLatestIntegerSelectors(t *testing.T) {
 			}
 
 			mock.ExpectQuery(testSQLLatestSelect + " AND " + predicate + testSQLLatestOrder).WithArgs(args...).WillReturnRows(sqlmock.NewRows([]string{"key"})).RowsWillBeClosed()
-			require.NoError(t, backend.scanLatestCandidates(context.Background(), "", selector, true, func(*storedObject) error {
+			require.NoError(t, backend.scanLatestCandidates(context.Background(), "", selector, true, true, func(*storedObject) error {
 				t.Fatal("unexpected callback")
 
 				return nil
@@ -446,7 +459,7 @@ func TestSQLStorageBackend_ListLatestMatchingRevision(t *testing.T) {
 			AddRow("sh.helm.release.v1.myrel.v1", testNamespace, "myrel", 1, "superseded", "helm", 100, 0, "selected-body", `{"packageChecksum":"old","packageChecksum":"matching"}`)).RowsWillBeClosed()
 
 	calls := 0
-	require.NoError(t, backend.scanLatestCandidates(context.Background(), testNamespace, selector, true, func(obj *storedObject) error {
+	require.NoError(t, backend.scanLatestCandidates(context.Background(), testNamespace, selector, true, true, func(obj *storedObject) error {
 		calls++
 
 		assert.Equal(t, "1", obj.Labels["version"])
@@ -462,7 +475,7 @@ func TestSQLStorageBackend_ListLatestMatchingRevision(t *testing.T) {
 func TestSQLStorageBackend_ListLatestNothing(t *testing.T) {
 	backend, mock := newTestSQLBackend(t)
 	mock.ExpectQuery(testSQLLatestSelect + " AND FALSE" + testSQLLatestOrder).WithArgs("helm").WillReturnRows(sqlmock.NewRows([]string{"key"}))
-	require.NoError(t, backend.scanLatestCandidates(context.Background(), "", labels.Nothing(), true, func(*storedObject) error {
+	require.NoError(t, backend.scanLatestCandidates(context.Background(), "", labels.Nothing(), true, true, func(*storedObject) error {
 		t.Fatal("unexpected callback")
 
 		return nil
@@ -503,7 +516,7 @@ func TestSQLStorageBackend_ListLatestSelector(t *testing.T) {
 
 			args := append([]driver.Value{"helm", testNamespace}, tt.args...)
 			mock.ExpectQuery(testSQLLatestSelect + " AND namespace = $2 AND " + tt.predicate + testSQLLatestOrder).WithArgs(args...).WillReturnRows(sqlmock.NewRows([]string{"key"})).RowsWillBeClosed()
-			require.NoError(t, backend.scanLatestCandidates(context.Background(), testNamespace, selector, true, func(*storedObject) error {
+			require.NoError(t, backend.scanLatestCandidates(context.Background(), testNamespace, selector, true, true, func(*storedObject) error {
 				t.Fatal("unexpected callback")
 
 				return nil
@@ -521,7 +534,7 @@ func TestSQLStorageBackend_ListLatestWithBodies(t *testing.T) {
 			AddRow("same-key", "ns-2", "a", 2, "deployed", "helm", 100, 200, "second", `{"packageChecksum":"two"}`, nil)).RowsWillBeClosed()
 
 	var objects []*storedObject
-	require.NoError(t, backend.scanLatestCandidates(context.Background(), "", nil, true, func(obj *storedObject) error {
+	require.NoError(t, backend.scanLatestCandidates(context.Background(), "", nil, true, true, func(obj *storedObject) error {
 		objects = append(objects, obj)
 
 		return nil
@@ -609,6 +622,16 @@ func TestSQLStorageBackend_MetadataAnnotations(t *testing.T) {
 	assert.Nil(t, objects[0].Body)
 	assert.Nil(t, objects[1].Annotations)
 	assert.Nil(t, objects[1].Body)
+}
+
+func TestSQLStorageBackend_PruningReadsNoAnnotations(t *testing.T) {
+	backend, mock := newTestSQLBackend(t)
+	mock.ExpectQuery(`SELECT key, namespace, name, version, status, owner, createdAt, modifiedAt FROM releases_v1 WHERE owner = $1 AND namespace = $2 AND name = $3`).
+		WithArgs("helm", testNamespace, "myrel").
+		WillReturnRows(sqlmock.NewRows([]string{"key", "namespace", "name", "version", "status", "owner", "createdat", "modifiedat"}).
+			AddRow(storageKey("myrel", 1), testNamespace, "myrel", 1, "deployed", "helm", 100, 0))
+
+	require.NoError(t, newReleaseStorage(testNamespace, backend, 0).removeOldestRevisions(context.Background(), "myrel", 1))
 }
 
 func TestSQLStorageBackend_RevisionsOfRelease(t *testing.T) {

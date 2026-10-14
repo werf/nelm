@@ -66,7 +66,7 @@ type latestListingBackend struct {
 	withBodies bool
 }
 
-func (b *latestListingBackend) scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(*storedObject) error) error {
+func (b *latestListingBackend) scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies, withAnnotations bool, fn func(*storedObject) error) error {
 	b.listings++
 	b.withBodies = withBodies
 
@@ -75,8 +75,17 @@ func (b *latestListingBackend) scanLatestCandidates(ctx context.Context, namespa
 		return b.err
 	}
 
+	visit := func(obj *storedObject) error {
+		if !withAnnotations {
+			clonedObject := *obj
+			clonedObject.Annotations = nil
+			obj = &clonedObject
+		}
+
+		return fn(obj)
+	}
 	if b.generate != nil {
-		return b.generate(fn)
+		return b.generate(visit)
 	}
 
 	for _, obj := range b.objects {
@@ -88,7 +97,7 @@ func (b *latestListingBackend) scanLatestCandidates(ctx context.Context, namespa
 			continue
 		}
 
-		if err := fn(obj); err != nil {
+		if err := visit(obj); err != nil {
 			return err
 		}
 	}

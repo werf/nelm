@@ -261,7 +261,7 @@ func (b *kubeStorageBackend) listWithBodies(ctx context.Context, namespace, rele
 	return b.listBodies(ctx, namespace, selector, fn)
 }
 
-func (b *kubeStorageBackend) scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(obj *storedObject) error) error {
+func (b *kubeStorageBackend) scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies, withAnnotations bool, fn func(obj *storedObject) error) error {
 	if selector == nil {
 		selector = labels.Everything()
 	}
@@ -277,11 +277,18 @@ func (b *kubeStorageBackend) scanLatestCandidates(ctx context.Context, namespace
 
 	combined := labels.Set{storageLabelOwner: storageOwner}.AsSelector().Add(requirements...)
 
+	visit := func(obj *storedObject) error {
+		if !withAnnotations {
+			obj.Annotations = nil
+		}
+
+		return fn(obj)
+	}
 	if withBodies {
-		return b.listBodies(ctx, namespace, combined.String(), fn)
+		return b.listBodies(ctx, namespace, combined.String(), visit)
 	}
 
-	return b.listMetadataPages(ctx, namespace, combined.String(), fn)
+	return b.listMetadataPages(ctx, namespace, combined.String(), visit)
 }
 
 func (b *kubeStorageBackend) update(ctx context.Context, obj *storedObject) error {

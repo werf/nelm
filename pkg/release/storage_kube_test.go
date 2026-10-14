@@ -81,7 +81,7 @@ func TestKubeStorageBackend_ListBodiesPagination(t *testing.T) {
 					selector, parseErr := labels.Parse("packageChecksum")
 					require.NoError(t, parseErr)
 
-					err = s.backend.scanLatestCandidates(context.Background(), "", selector, true, fn)
+					err = s.backend.scanLatestCandidates(context.Background(), "", selector, true, true, fn)
 				} else {
 					err = s.backend.listWithBodies(context.Background(), "", "a", []int{2}, fn)
 				}
@@ -101,7 +101,7 @@ func TestKubeStorageBackend_MetadataListingReportsCancellationDuringLastObject(t
 	putTestKubeObject(t, s, &storedObject{Namespace: "ns", Key: "a-v1", Labels: map[string]string{"owner": "helm", "name": "a", "version": "1"}, Body: []byte("a-v1")})
 
 	ctx, cancel := context.WithCancel(context.Background())
-	err := s.backend.scanLatestCandidates(ctx, "", labels.Everything(), false, func(*storedObject) error {
+	err := s.backend.scanLatestCandidates(ctx, "", labels.Everything(), false, true, func(*storedObject) error {
 		cancel()
 
 		return nil
@@ -116,7 +116,7 @@ func TestKubeStorageBackend_MetadataListingStopsOnCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := s.backend.scanLatestCandidates(ctx, "", labels.Everything(), false, func(*storedObject) error {
+	err := s.backend.scanLatestCandidates(ctx, "", labels.Everything(), false, true, func(*storedObject) error {
 		t.Fatal("callback after cancellation")
 
 		return nil
@@ -135,7 +135,7 @@ func TestKubeStorageBackend_ScanLatestCandidatesWithBodiesSelectors(t *testing.T
 			testLatestBodySelectors(t, func(obj *storedObject) {
 				putTestKubeObject(t, s, obj)
 			}, func(ctx context.Context, namespace string, selector labels.Selector, fn func(*storedObject) error) error {
-				return s.backend.scanLatestCandidates(ctx, namespace, selector, true, fn)
+				return s.backend.scanLatestCandidates(ctx, namespace, selector, true, true, fn)
 			})
 			assert.Zero(t, countActions(s.client.Actions(), "get"))
 			assert.Empty(t, s.metadataClient.Actions())
@@ -153,7 +153,7 @@ func TestKubeStorageBackend_ScanLatestCandidatesWithBodiesStops(t *testing.T) {
 
 			stop := errors.New("stop")
 			calls := 0
-			err := s.backend.scanLatestCandidates(context.Background(), "", labels.Everything(), true, func(*storedObject) error {
+			err := s.backend.scanLatestCandidates(context.Background(), "", labels.Everything(), true, true, func(*storedObject) error {
 				calls++
 
 				return stop
@@ -164,7 +164,7 @@ func TestKubeStorageBackend_ScanLatestCandidatesWithBodiesStops(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 
-			err = s.backend.scanLatestCandidates(ctx, "", labels.Everything(), true, func(*storedObject) error {
+			err = s.backend.scanLatestCandidates(ctx, "", labels.Everything(), true, true, func(*storedObject) error {
 				t.Fatal("callback after cancellation")
 
 				return nil
@@ -175,7 +175,7 @@ func TestKubeStorageBackend_ScanLatestCandidatesWithBodiesStops(t *testing.T) {
 			defer cancel()
 
 			calls = 0
-			err = s.backend.scanLatestCandidates(ctx, "", labels.Everything(), true, func(*storedObject) error {
+			err = s.backend.scanLatestCandidates(ctx, "", labels.Everything(), true, true, func(*storedObject) error {
 				calls++
 
 				cancel()
@@ -187,7 +187,7 @@ func TestKubeStorageBackend_ScanLatestCandidatesWithBodiesStops(t *testing.T) {
 			s.client.PrependReactor("list", s.backend.gvr().Resource, func(k8stesting.Action) (bool, runtime.Object, error) {
 				return true, nil, stop
 			})
-			err = s.backend.scanLatestCandidates(context.Background(), "", labels.Everything(), true, func(*storedObject) error { return nil })
+			err = s.backend.scanLatestCandidates(context.Background(), "", labels.Everything(), true, true, func(*storedObject) error { return nil })
 			require.ErrorIs(t, err, stop)
 		})
 	}
@@ -203,7 +203,7 @@ func TestKubeStorageBackend_ScanLatestCandidatesWithoutBodies(t *testing.T) {
 			require.NoError(t, err)
 
 			var objects []*storedObject
-			require.NoError(t, s.backend.scanLatestCandidates(context.Background(), "", selector, false, func(obj *storedObject) error {
+			require.NoError(t, s.backend.scanLatestCandidates(context.Background(), "", selector, false, true, func(obj *storedObject) error {
 				objects = append(objects, obj)
 
 				return nil

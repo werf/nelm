@@ -350,7 +350,7 @@ func (b *sqlStorageBackend) replaceAnnotations(ctx context.Context, tx *sqlx.Tx,
 	return nil
 }
 
-func (b *sqlStorageBackend) scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(obj *storedObject) error) error {
+func (b *sqlStorageBackend) scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies, withAnnotations bool, fn func(obj *storedObject) error) error {
 	builder := filterSQLReleases(b.selectReleases(withBodies), namespace, "", nil).
 		Options("DISTINCT ON (namespace, name)").
 		OrderBy("namespace", "name", "version DESC")
@@ -379,10 +379,12 @@ func (b *sqlStorageBackend) scanLatestCandidates(ctx context.Context, namespace 
 		"WHERE c.releaseKey = releases_v1.key AND c.releaseNamespace = releases_v1.namespace" +
 		"), '{}') AS custom_labels"
 
-	query, args, err := b.statementBuilder.
-		Select("releases_v1.*", customLabelsColumn, sqlAnnotationsColumn).
-		FromSelect(builder, sqlReleaseTable).
-		ToSql()
+	outer := b.statementBuilder.Select("releases_v1.*", customLabelsColumn).FromSelect(builder, sqlReleaseTable)
+	if withAnnotations {
+		outer = outer.Column(sqlAnnotationsColumn)
+	}
+
+	query, args, err := outer.ToSql()
 	if err != nil {
 		return fmt.Errorf("build select latest releases query: %w", err)
 	}

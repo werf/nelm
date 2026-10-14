@@ -64,7 +64,7 @@ type storageBackend interface {
 	delete(ctx context.Context, namespace, key string) error
 	listMetadata(ctx context.Context, namespace, releaseName string, withAnnotations bool) ([]*storedObject, error)
 	// scanLatestCandidates may also pass older revisions, in any order.
-	scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(obj *storedObject) error) error
+	scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies, withAnnotations bool, fn func(obj *storedObject) error) error
 	listWithBodies(ctx context.Context, namespace, releaseName string, versions []int, fn func(obj *storedObject) error) error
 }
 
@@ -76,6 +76,8 @@ type ListLatestSummariesOptions struct {
 type LatestRevisionsOptions struct {
 	// LabelSelector is applied before choosing the latest revision.
 	LabelSelector string
+	// SkipAnnotations omits annotations from returned revisions.
+	SkipAnnotations bool
 }
 
 type ListRevisionSummariesOptions struct {
@@ -188,7 +190,7 @@ func (s *releaseStorage) LatestRevisions(ctx context.Context, opts LatestRevisio
 	}
 
 	latest := map[string]Revision{}
-	if err := s.backend.scanLatestCandidates(ctx, s.namespace, selector, false, func(obj *storedObject) error {
+	if err := s.backend.scanLatestCandidates(ctx, s.namespace, selector, false, !opts.SkipAnnotations, func(obj *storedObject) error {
 		revision, ok, err := revisionFromStoredObject(obj)
 		if err != nil {
 			log.Default.Error(ctx, "Skipped storage object: %s", err)
@@ -253,7 +255,7 @@ func (s *releaseStorage) ListLatestSummaries(ctx context.Context, opts ListLates
 		candidate = nil
 	}
 
-	if err := s.backend.scanLatestCandidates(ctx, s.namespace, selector, true, func(obj *storedObject) error {
+	if err := s.backend.scanLatestCandidates(ctx, s.namespace, selector, true, true, func(obj *storedObject) error {
 		revision, ok, err := revisionFromStoredObject(obj)
 		if err != nil {
 			log.Default.Error(ctx, "Skipped storage object: %s", err)
@@ -400,37 +402,7 @@ func (s *releaseStorage) LoadRevisionSummary(ctx context.Context, revision Revis
 }
 
 func (s *releaseStorage) Revisions(ctx context.Context, name string) ([]Revision, error) {
-	namespace, err := s.requireNamespace()
-	if err != nil {
-		return nil, err
-	}
-
-	if name == "" {
-		return nil, errors.New("release name is required")
-	}
-
-	objects, err := s.backend.listMetadata(ctx, namespace, name, true)
-	if err != nil {
-		return nil, fmt.Errorf("list storage metadata of release %q (namespace: %q): %w", name, namespace, err)
-	}
-
-	revisions := make([]Revision, 0, len(objects))
-	for _, obj := range objects {
-		revision, ok, err := revisionFromStoredObject(obj)
-		if err != nil {
-			return nil, fmt.Errorf("list revisions of release %q: %w", name, err)
-		}
-
-		if !ok {
-			continue
-		}
-
-		revisions = append(revisions, revision)
-	}
-
-	sort.Slice(revisions, func(i, j int) bool { return revisions[i].Version < revisions[j].Version })
-
-	return revisions, nil
+	return s.revisions(ctx, name, true)
 }
 
 func (s *releaseStorage) Update(ctx context.Context, rel helmrel.Accessor) error {
@@ -506,7 +478,7 @@ func (s *releaseStorage) removeOldestRevisions(ctx context.Context, name string,
 		return nil
 	}
 
-	revisions, err := s.Revisions(ctx, name)
+	revisions, err := s.revisions(ctx, name, false)
 	if err != nil {
 		return err
 	}
@@ -551,6 +523,40 @@ func (s *releaseStorage) requireNamespace() (string, error) {
 	}
 
 	return s.namespace, nil
+}
+
+func (s *releaseStorage) revisions(ctx context.Context, name string, withAnnotations bool) ([]Revision, error) {
+	namespace, err := s.requireNamespace()
+	if err != nil {
+		return nil, err
+	}
+
+	if name == "" {
+		return nil, errors.New("release name is required")
+	}
+
+	objects, err := s.backend.listMetadata(ctx, namespace, name, withAnnotations)
+	if err != nil {
+		return nil, fmt.Errorf("list storage metadata of release %q (namespace: %q): %w", name, namespace, err)
+	}
+
+	revisions := make([]Revision, 0, len(objects))
+	for _, obj := range objects {
+		revision, ok, err := revisionFromStoredObject(obj)
+		if err != nil {
+			return nil, fmt.Errorf("list revisions of release %q: %w", name, err)
+		}
+
+		if !ok {
+			continue
+		}
+
+		revisions = append(revisions, revision)
+	}
+
+	sort.Slice(revisions, func(i, j int) bool { return revisions[i].Version < revisions[j].Version })
+
+	return revisions, nil
 }
 
 func NewReleaseStorage(ctx context.Context, namespace, storageDriver string, clientFactory kube.ClientFactorier, opts ReleaseStorageOptions) (ReleaseStorager, error) {

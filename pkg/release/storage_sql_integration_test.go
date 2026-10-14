@@ -248,9 +248,23 @@ func TestSQLStorageBackend_AnnotationsPostgres(t *testing.T) {
 	require.Equal(t, annotations, metadata[0].Annotations)
 	require.Nil(t, metadata[0].Body)
 
+	storage := newReleaseStorage(namespace, b, 0)
+	latest, err := storage.LatestRevisions(ctx, LatestRevisionsOptions{SkipAnnotations: true})
+	require.NoError(t, err)
+	require.Len(t, latest, 1)
+	require.Nil(t, latest[0].Annotations)
+	latest, err = storage.LatestRevisions(ctx, LatestRevisionsOptions{})
+	require.NoError(t, err)
+	require.Len(t, latest, 1)
+	require.Equal(t, annotations, latest[0].Annotations)
+	require.NoError(t, storage.removeOldestRevisions(ctx, "app", 1))
+	stored, err = b.get(ctx, namespace, obj.Key)
+	require.NoError(t, err)
+	require.Equal(t, annotations, stored.Annotations)
+
 	for _, withBodies := range []bool{false, true} {
 		calls := 0
-		require.NoError(t, b.scanLatestCandidates(ctx, namespace, nil, withBodies, func(obj *storedObject) error {
+		require.NoError(t, b.scanLatestCandidates(ctx, namespace, nil, withBodies, true, func(obj *storedObject) error {
 			calls++
 
 			require.Equal(t, annotations, obj.Annotations)
@@ -311,7 +325,7 @@ func TestSQLStorageBackend_AnnotationsPostgres(t *testing.T) {
 	require.Nil(t, metadata[0].Annotations)
 
 	for _, withBodies := range []bool{false, true} {
-		require.NoError(t, b.scanLatestCandidates(ctx, namespace, nil, withBodies, func(obj *storedObject) error {
+		require.NoError(t, b.scanLatestCandidates(ctx, namespace, nil, withBodies, true, func(obj *storedObject) error {
 			require.Nil(t, obj.Annotations)
 
 			return nil
@@ -565,7 +579,7 @@ func TestSQLStorageBackend_LatestIgnoresRowsOutsideTheirStorageKeyPostgres(t *te
 
 	for _, withBodies := range []bool{true, false} {
 		var keys []string
-		require.NoError(t, b.scanLatestCandidates(ctx, namespace, labels.Everything(), withBodies, func(obj *storedObject) error {
+		require.NoError(t, b.scanLatestCandidates(ctx, namespace, labels.Everything(), withBodies, true, func(obj *storedObject) error {
 			keys = append(keys, obj.Key)
 
 			return nil
@@ -737,7 +751,7 @@ func TestSQLStorageBackend_SelectorsPostgres(t *testing.T) {
 
 			for _, withBodies := range []bool{true, false} {
 				actual := map[string]int{}
-				err = b.scanLatestCandidates(ctx, "", sel, withBodies, func(obj *storedObject) error {
+				err = b.scanLatestCandidates(ctx, "", sel, withBodies, true, func(obj *storedObject) error {
 					if obj.Namespace != prefix+"-one" && obj.Namespace != prefix+"-two" {
 						return nil
 					}

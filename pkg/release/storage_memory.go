@@ -160,7 +160,7 @@ func (b *memoryStorageBackend) listWithBodies(ctx context.Context, namespace, re
 	return nil
 }
 
-func (b *memoryStorageBackend) scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(obj *storedObject) error) error {
+func (b *memoryStorageBackend) scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies, withAnnotations bool, fn func(obj *storedObject) error) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("read release objects: %w", err)
 	}
@@ -183,6 +183,10 @@ func (b *memoryStorageBackend) scanLatestCandidates(ctx context.Context, namespa
 
 		if withBodies {
 			obj.Body = slices.Clone(obj.Body)
+		}
+
+		if !withAnnotations {
+			obj.Annotations = nil
 		}
 
 		if err := fn(obj); err != nil {
