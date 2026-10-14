@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"sort"
@@ -18,12 +19,16 @@ import (
 	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmreleasecommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/legacy/progrep"
 	"github.com/werf/nelm/v2/pkg/resource"
 	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
 var (
+	_ kube.ClientFactorier = (*analysisLifecycleClientFactory)(nil)
+	_ kube.KubeClienter    = (*analysisLifecycleKubeClient)(nil)
+
 	gvkConfigMap  = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ConfigMap"}
 	gvkService    = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Service"}
 	gvkDeployment = schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"}
@@ -59,6 +64,26 @@ func (m *fakeRESTMapper) RESTMapping(gk schema.GroupKind, versions ...string) (*
 	return nil, fmt.Errorf("no mapping for %v", gk)
 }
 
+type analysisLifecycleClientFactory struct {
+	kube.ClientFactorier
+
+	client kube.KubeClienter
+}
+
+func (f *analysisLifecycleClientFactory) KubeClient() kube.KubeClienter {
+	return f.client
+}
+
+type analysisLifecycleKubeClient struct {
+	kube.KubeClienter
+
+	get func(context.Context, *spec.ResourceMeta, kube.KubeClientGetOptions) (*unstructured.Unstructured, error)
+}
+
+func (c *analysisLifecycleKubeClient) Get(ctx context.Context, meta *spec.ResourceMeta, opts kube.KubeClientGetOptions) (*unstructured.Unstructured, error) {
+	return c.get(ctx, meta, opts)
+}
+
 func installableInfoToDeleteOnAnyOutcome(name string) *InstallableResourceInfo {
 	info := installableInfoToDeleteOnSuccessfulInstall(name)
 	info.MustDeleteOnFailedInstall = true
@@ -85,6 +110,20 @@ func installableInfoToDeleteOnSuccessfulInstall(name string) *InstallableResourc
 	info.MustDeleteOnSuccessfulInstall = true
 
 	return info
+}
+
+func lifecycleInstallable(name string, stages ...common.Stage) *resource.InstallableResource {
+	resSpec := makeResourceSpec(name, "default", gvkConfigMap)
+	resSpec.Unstruct = &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "v1",
+		"kind":       "ConfigMap",
+		"metadata":   map[string]interface{}{"name": name, "namespace": "default"},
+	}}
+
+	return &resource.InstallableResource{
+		ResourceSpec:     resSpec,
+		DeployConditions: map[common.On][]common.Stage{common.InstallOnUpgrade: stages},
+	}
 }
 
 func realInstallableInfo(name string, stage common.Stage) *InstallableResourceInfo {
