@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strconv"
 
 	sq "github.com/Masterminds/squirrel"
@@ -319,22 +320,31 @@ func (b *sqlStorageBackend) replaceAnnotations(ctx context.Context, tx *sqlx.Tx,
 		return fmt.Errorf("delete annotations: %w", err)
 	}
 
-	for key, value := range obj.Annotations {
-		result, err := tx.ExecContext(ctx,
-			"INSERT INTO nelm_release_annotations_v1 (releaseKey,releaseNamespace,key,value,releaseModifiedAt) SELECT key,namespace,$3,$4,COALESCE(modifiedAt, 0) FROM releases_v1 WHERE key = $1 AND namespace = $2",
-			obj.Key, obj.Namespace, key, value)
-		if err != nil {
-			return fmt.Errorf("insert annotation %q: %w", key, err)
-		}
+	if len(obj.Annotations) == 0 {
+		return nil
+	}
 
-		affected, err := result.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("get inserted annotation rows count: %w", err)
-		}
+	annotationKeys := slices.Sorted(maps.Keys(obj.Annotations))
 
-		if affected != 1 {
-			return fmt.Errorf("insert annotation %q: release row is not visible", key)
-		}
+	annotationValues := make([]string, 0, len(annotationKeys))
+	for _, key := range annotationKeys {
+		annotationValues = append(annotationValues, obj.Annotations[key])
+	}
+
+	result, err := tx.ExecContext(ctx,
+		"INSERT INTO nelm_release_annotations_v1 (releaseKey,releaseNamespace,key,value,releaseModifiedAt) SELECT r.key,r.namespace,a.key,a.value,COALESCE(r.modifiedAt, 0) FROM releases_v1 r CROSS JOIN unnest($3::text[], $4::text[]) AS a(key,value) WHERE r.key = $1 AND r.namespace = $2",
+		obj.Key, obj.Namespace, pq.Array(annotationKeys), pq.Array(annotationValues))
+	if err != nil {
+		return fmt.Errorf("insert annotations: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("get inserted annotation rows count: %w", err)
+	}
+
+	if affected != int64(len(annotationKeys)) {
+		return fmt.Errorf("insert annotations: release row is not visible (inserted %d of %d rows)", affected, len(annotationKeys))
 	}
 
 	return nil

@@ -226,7 +226,7 @@ func TestSQLStorageBackend_AnnotationsPostgres(t *testing.T) {
 	namespace := "nelm-test-annotations-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	rls := newTestRelease(namespace, "app", 1, common.StatusDeployed)
 	obj := newTestStoredObject(t, rls)
-	annotations := map[string]string{"nelm.werf.io/released-by": "nelm", strings.Repeat("arbitrary key / '", 30): strings.Repeat("value", 1000), "removed": "yes"}
+	annotations := map[string]string{"nelm.werf.io/released-by": "nelm", strings.Repeat("arbitrary key / '", 30): strings.Repeat("value", 1000), "removed": "yes", "empty": "", "escaped": "comma, braces{}, quotes\" and backslash\\\nПривет"}
 	obj.Annotations = maps.Clone(annotations)
 	require.NoError(t, b.create(ctx, obj))
 	t.Cleanup(func() {

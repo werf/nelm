@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,7 @@ import (
 
 const (
 	testSQLAnnotationsColumn = "(SELECT json_object_agg(a.key, a.value)::text FROM nelm_release_annotations_v1 a WHERE a.releaseKey = releases_v1.key AND a.releaseNamespace = releases_v1.namespace AND a.releaseModifiedAt = COALESCE(releases_v1.modifiedAt, 0)) AS annotations"
+	testSQLAnnotationsInsert = `INSERT INTO nelm_release_annotations_v1 (releaseKey,releaseNamespace,key,value,releaseModifiedAt) SELECT r.key,r.namespace,a.key,a.value,COALESCE(r.modifiedAt, 0) FROM releases_v1 r CROSS JOIN unnest($3::text[], $4::text[]) AS a(key,value) WHERE r.key = $1 AND r.namespace = $2`
 	testSQLLatestColumns     = "key, namespace, name, version, status, owner, createdAt, modifiedAt, body"
 	testSQLLatestOrder       = " AND key = 'sh.helm.release.v1.' || name || '.v' || version ORDER BY namespace, name, version DESC) AS releases_v1"
 	testSQLLatestSelect      = "SELECT releases_v1.*, COALESCE((SELECT json_object_agg(c.key, c.value ORDER BY c.ctid)::text FROM custom_labels_v1 c WHERE c.releaseKey = releases_v1.key AND c.releaseNamespace = releases_v1.namespace), '{}') AS custom_labels, " + testSQLAnnotationsColumn + " FROM (SELECT DISTINCT ON (namespace, name) " + testSQLLatestColumns + " FROM releases_v1 WHERE owner = $1"
@@ -45,6 +47,75 @@ func TestSQLLabelRequirementUnsupportedOperator(t *testing.T) {
 	require.ErrorContains(t, err, "use equality, set, existence, or integer comparisons")
 }
 
+func TestSQLStorageBackend_AnnotationBatchRowsAffectedErrorRollsBack(t *testing.T) {
+	backend, mock := newTestSQLBackend(t)
+	obj := newTestStoredObject(t, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusDeployed))
+	obj.Labels[storageLabelCreatedAt] = "100"
+	sentinel := errors.New("rows affected unavailable")
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`INSERT INTO releases_v1 (key,type,body,name,namespace,version,status,owner,createdAt) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`DELETE FROM nelm_release_annotations_v1 WHERE releaseKey = $1 AND releaseNamespace = $2`).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(testSQLAnnotationsInsert).WillReturnResult(sqlmock.NewErrorResult(sentinel))
+	mock.ExpectRollback()
+	require.ErrorIs(t, backend.create(context.Background(), obj), sentinel)
+}
+
+func TestSQLStorageBackend_AnnotationBatchShortWriteRollsBack(t *testing.T) {
+	for _, affected := range []int64{0, 1} {
+		t.Run(strconv.FormatInt(affected, 10), func(t *testing.T) {
+			backend, mock := newTestSQLBackend(t)
+			obj := newTestStoredObject(t, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusDeployed))
+			obj.Labels[storageLabelCreatedAt] = "100"
+			obj.Annotations = map[string]string{"first": "one", "second": "two"}
+
+			mock.ExpectBegin()
+			mock.ExpectExec(`INSERT INTO releases_v1 (key,type,body,name,namespace,version,status,owner,createdAt) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`).WillReturnResult(sqlmock.NewResult(1, 1))
+			mock.ExpectExec(`DELETE FROM nelm_release_annotations_v1 WHERE releaseKey = $1 AND releaseNamespace = $2`).WillReturnResult(sqlmock.NewResult(0, 0))
+			mock.ExpectExec(testSQLAnnotationsInsert).
+				WithArgs(obj.Key, testNamespace, pq.Array([]string{"first", "second"}), pq.Array([]string{"one", "two"})).
+				WillReturnResult(sqlmock.NewResult(0, affected))
+			mock.ExpectRollback()
+			require.ErrorContains(t, backend.create(context.Background(), obj), "release row is not visible")
+		})
+	}
+}
+
+func TestSQLStorageBackend_AnnotationBatchUsesOneInsert(t *testing.T) {
+	for _, operation := range []string{"create", "update"} {
+		t.Run(operation, func(t *testing.T) {
+			backend, mock := newTestSQLBackend(t)
+			obj := newTestStoredObject(t, newTestReleaseWithStatus("myrel", 1, helmreleasecommon.StatusDeployed))
+			obj.Labels[storageLabelCreatedAt] = "100"
+			obj.Labels[storageLabelModifiedAt] = "200"
+			obj.Annotations = map[string]string{"team": "platform", "empty": "", "arbitrary key / '": "comma, brace{} and \"quote\""}
+
+			mock.ExpectBegin()
+
+			switch operation {
+			case "create":
+				mock.ExpectExec(`INSERT INTO releases_v1 (key,type,body,name,namespace,version,status,owner,createdAt) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`).WillReturnResult(sqlmock.NewResult(1, 1))
+			case "update":
+				mock.ExpectExec(`UPDATE releases_v1 SET body = $1, name = $2, version = $3, status = $4, owner = $5, modifiedAt = $6 WHERE key = $7 AND namespace = $8`).WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec(`DELETE FROM custom_labels_v1 WHERE releaseKey = $1 AND releaseNamespace = $2`).WillReturnResult(sqlmock.NewResult(0, 0))
+			}
+
+			mock.ExpectExec(`DELETE FROM nelm_release_annotations_v1 WHERE releaseKey = $1 AND releaseNamespace = $2`).WithArgs(obj.Key, testNamespace).WillReturnResult(sqlmock.NewResult(0, 3))
+			mock.ExpectExec(testSQLAnnotationsInsert).
+				WithArgs(obj.Key, testNamespace, pq.Array([]string{"arbitrary key / '", "empty", "team"}), pq.Array([]string{"comma, brace{} and \"quote\"", "", "platform"})).
+				WillReturnResult(sqlmock.NewResult(0, 3))
+			mock.ExpectCommit()
+
+			switch operation {
+			case "create":
+				require.NoError(t, backend.create(context.Background(), obj))
+			case "update":
+				require.NoError(t, backend.update(context.Background(), obj))
+			}
+		})
+	}
+}
+
 func TestSQLStorageBackend_AnnotationInsertRollsBack(t *testing.T) {
 	for _, operation := range []string{"create", "update"} {
 		t.Run(operation, func(t *testing.T) {
@@ -66,8 +137,8 @@ func TestSQLStorageBackend_AnnotationInsertRollsBack(t *testing.T) {
 			}
 
 			mock.ExpectExec(`DELETE FROM nelm_release_annotations_v1 WHERE releaseKey = $1 AND releaseNamespace = $2`).WithArgs(obj.Key, testNamespace).WillReturnResult(sqlmock.NewResult(0, 1))
-			mock.ExpectExec(`INSERT INTO nelm_release_annotations_v1 (releaseKey,releaseNamespace,key,value,releaseModifiedAt) SELECT key,namespace,$3,$4,COALESCE(modifiedAt, 0) FROM releases_v1 WHERE key = $1 AND namespace = $2`).
-				WithArgs(obj.Key, testNamespace, "arbitrary key", "long annotation value").WillReturnError(sentinel)
+			mock.ExpectExec(`INSERT INTO nelm_release_annotations_v1 (releaseKey,releaseNamespace,key,value,releaseModifiedAt) SELECT r.key,r.namespace,a.key,a.value,COALESCE(r.modifiedAt, 0) FROM releases_v1 r CROSS JOIN unnest($3::text[], $4::text[]) AS a(key,value) WHERE r.key = $1 AND r.namespace = $2`).
+				WithArgs(obj.Key, testNamespace, pq.Array([]string{"arbitrary key"}), pq.Array([]string{"long annotation value"})).WillReturnError(sentinel)
 			mock.ExpectRollback()
 
 			if operation == "create" {
@@ -109,8 +180,8 @@ func TestSQLStorageBackend_CreateInsertsReleaseAndCustomLabels(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec(`DELETE FROM nelm_release_annotations_v1 WHERE releaseKey = $1 AND releaseNamespace = $2`).
 		WithArgs(obj.Key, testNamespace).WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`INSERT INTO nelm_release_annotations_v1 (releaseKey,releaseNamespace,key,value,releaseModifiedAt) SELECT key,namespace,$3,$4,COALESCE(modifiedAt, 0) FROM releases_v1 WHERE key = $1 AND namespace = $2`).
-		WithArgs(obj.Key, testNamespace, "nelm.werf.io/released-by", "nelm").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`INSERT INTO nelm_release_annotations_v1 (releaseKey,releaseNamespace,key,value,releaseModifiedAt) SELECT r.key,r.namespace,a.key,a.value,COALESCE(r.modifiedAt, 0) FROM releases_v1 r CROSS JOIN unnest($3::text[], $4::text[]) AS a(key,value) WHERE r.key = $1 AND r.namespace = $2`).
+		WithArgs(obj.Key, testNamespace, pq.Array([]string{"nelm.werf.io/released-by"}), pq.Array([]string{"nelm"})).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 
 	require.NoError(t, backend.create(context.Background(), obj))
@@ -624,8 +695,8 @@ func TestSQLStorageBackend_UpdateReplacesCustomLabels(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec(`DELETE FROM nelm_release_annotations_v1 WHERE releaseKey = $1 AND releaseNamespace = $2`).
 		WithArgs(obj.Key, testNamespace).WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`INSERT INTO nelm_release_annotations_v1 (releaseKey,releaseNamespace,key,value,releaseModifiedAt) SELECT key,namespace,$3,$4,COALESCE(modifiedAt, 0) FROM releases_v1 WHERE key = $1 AND namespace = $2`).
-		WithArgs(obj.Key, testNamespace, "nelm.werf.io/released-by", "nelm").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`INSERT INTO nelm_release_annotations_v1 (releaseKey,releaseNamespace,key,value,releaseModifiedAt) SELECT r.key,r.namespace,a.key,a.value,COALESCE(r.modifiedAt, 0) FROM releases_v1 r CROSS JOIN unnest($3::text[], $4::text[]) AS a(key,value) WHERE r.key = $1 AND r.namespace = $2`).
+		WithArgs(obj.Key, testNamespace, pq.Array([]string{"nelm.werf.io/released-by"}), pq.Array([]string{"nelm"})).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 
 	require.NoError(t, backend.update(context.Background(), obj))
