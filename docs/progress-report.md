@@ -5,6 +5,7 @@
 
 - [Enabling the report](#enabling-the-report)
 - [Snapshots](#snapshots)
+- [Preparation and namespace deletion](#preparation-and-namespace-deletion)
 - [Report shape](#report-shape)
 - [Operation types](#operation-types)
 - [Statuses](#statuses)
@@ -41,7 +42,7 @@ go func() {
 	}
 }()
 
-err := action.ReleaseInstall(ctx, releaseName, releaseNamespace, action.ReleaseInstallOptions{
+_, err := action.ReleaseInstall(ctx, releaseName, releaseNamespace, action.ReleaseInstallOptions{
 	Chart:                  chartPath,
 	LegacyProgressReportCh: reportCh,
 })
@@ -55,19 +56,36 @@ Rules for the channel:
 - Consume it concurrently with `ReleaseInstall`. Intermediate snapshots are sent without blocking and are dropped when the channel is full, but the final snapshot is sent with a blocking send, so a consumer that stops reading before `ReleaseInstall` returns deadlocks the deployment.
 - Do not close the channel yourself: `ReleaseInstall` closes it when it returns, on every path, including early errors. Snapshots still in the buffer at that moment are delivered before the `range` ends. After a `Timeout` the deployment may still be winding down inside nelm, its snapshots after the return are dropped.
 - A snapshot handed to the consumer is never modified afterwards.
-- `AutoRollback` cannot be combined with `LegacyProgressReportCh`: `ReleaseInstall` returns an error before doing anything. Rollback reporting needs its own design.
+- `AutoRollback` cannot be combined with `LegacyProgressReportCh`: `ReleaseInstall` rejects the combination before deployment. With phase reporting enabled, an `Initializing` snapshot can precede this error. Rollback reporting needs its own design.
 
 ## Snapshots
 
-1. The first snapshot arrives when the plan is built, before any operation runs: every operation is listed, all `Pending`, untouched resources already `Completed`.
-2. A snapshot arrives on every status change, unless the consumer has not taken the previous one yet, then it is skipped.
-3. The final snapshot arrives when the deployment is over, with a blocking send, so it is never skipped. Nothing in it is `Pending`: what did not run is `Canceled`.
+1. By default, the first snapshot arrives when the plan is built, before any operation runs: every operation is listed, all `Pending`, untouched resources already `Completed`. With phase reporting enabled, earlier snapshots describe preparation and have no operations yet.
+2. A snapshot arrives on every status change and, when enabled, phase or detail update, unless the channel is full, then it is skipped.
+3. The final snapshot is sent when the action is over, including optional namespace deletion, with a blocking send. Cancellation or timeout can interrupt that send. Nothing in it is `Pending`: what did not run is `Canceled`.
 
-Every snapshot is complete and self-contained: it lists every operation reported so far with its current status, so keeping the latest one is enough, and a skipped snapshot loses nothing but intermediate statuses. The set of operations is fixed from the first snapshot, with one exception: after a failure the operations of the failure plan are appended, so the report grows once, see [Several plans in one run](#several-plans-in-one-run).
+Every snapshot is complete and self-contained: it lists every operation reported so far with its current status and retains any phase details already provided, so keeping the latest one is enough. Short phases and intermediate statuses may be skipped. Once the first plan starts, its set of operations is fixed; after a failure the operations of the failure plan are appended, see [Several plans in one run](#several-plans-in-one-run).
+
+## Preparation and namespace deletion
+
+To show what the action is doing before resource operations begin, also set `LegacyProgressReportPhases: true` in `ReleaseInstallOptions` or `ReleaseUninstallOptions`. This is opt-in: without it, the first snapshot still contains the plan and the extra fields are omitted.
+
+`CurrentPhase` can be `Initializing`, `Rendering`, `Analyzing`, `Planning`, `Executing`, or `DeletingNamespace`. Uninstall has no rendering phase. An install from a plan artifact omits rendering, resource analysis and plan construction. An already up-to-date install reaches `Executing` with `NoOp` operations already `Completed`.
+
+| Detail | Meaning |
+|---|---|
+| `RenderDetails.ResourceCount` | Number of prepared chart resources after rendering and local transformations/patches. The count is absent until available; zero means the chart produced no resources. Manifests are not included. |
+| `AnalyzeDetails.Processed`, `Total` | Successfully processed input tasks and total input tasks for resource analysis, including normal policy/stage skips. These are not Kubernetes request counts, unique-object counts, or resulting operation counts. Reaching `Total` does not mean subsequent validation has passed. |
+| `NamespaceDeleteDetails.Name` | Name of the namespace being deleted when `DeleteReleaseNamespace` is enabled and deletion is reached. |
+| `NamespaceDeleteDetails.DeleteStatus`, `TrackAbsenceStatus` | Separate statuses for the deletion request and waiting for the namespace to disappear, using the operation statuses below. A completed deletion request does not mean the namespace is gone. Namespace deletion adds no operations to the plan report. |
+
+Details remain in later snapshots; a missing detail means no data for that part has been provided. `Planning` begins after resource analysis and covers validation, preparation of release data, and graph construction. `Executing` includes failure cleanup.
+
+The last snapshot retains the last reported phase: it does not indicate that the action is still running. Channel closure ends the stream; the action's returned result/error determines the outcome. An early error can leave a phase-only report with no operations, and cancellation or timeout can prevent a final snapshot.
 
 ## Report shape
 
-The types live in `github.com/werf/nelm/v2/pkg/legacy/progrep`. A report has a single field, `Operations`, a list of operations with the following fields:
+The types live in `github.com/werf/nelm/v2/pkg/legacy/progrep`. `ProgressReport.Operations` lists operations with the following fields:
 
 | Field | Meaning |
 |---|---|
