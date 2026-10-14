@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/gookit/color"
@@ -263,8 +262,8 @@ func buildReleaseGetResult(ctx context.Context, relAccessor helmrelease.Accessor
 			Revision:  relAccessor.Version(),
 			Status:    helmreleasestatus.Status(relAccessor.Status()),
 			DeployedAt: &ReleaseGetResultDeployedAt{
-				Human: time.Time{}.String(),
-				Unix:  int(time.Time{}.Unix()),
+				Human: relAccessor.DeployedAt().String(),
+				Unix:  int(relAccessor.DeployedAt().Unix()),
 			},
 			Annotations: relAccessor.Annotations(),
 			Labels:      relAccessor.Labels(),
