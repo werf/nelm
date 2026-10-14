@@ -56,8 +56,9 @@ type ReleaseUninstallOptions struct {
 	LegacyPatches spec.Patches
 	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
 	// Must be a buffered channel with capacity >= 1. Intermediate reports may be dropped if the
-	// consumer is slow; the final report is guaranteed (blocking send). ReleaseUninstall closes the
-	// channel when it returns, on every path. See docs/progress-report.md.
+	// consumer is slow; checkpoints and the final report use blocking sends, interruptible by
+	// cancellation. ReleaseUninstall closes the channel when it returns, on every path.
+	// See docs/progress-report.md.
 	LegacyProgressReportCh chan<- progrep.ProgressReport
 	// LegacyProgressReportPhases enables preparation and namespace deletion details. Reports may
 	// arrive before the plan is built, with no operations. Requires LegacyProgressReportCh to receive them.
@@ -312,6 +313,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		}
 
 		if phaseReporter != nil {
+			phaseReporter.ReportCheckpoint(ctx)
 			phaseReporter.ReportPhase(ctx, progrep.PhaseKindPlanning, plan.ReportPhaseOptions{})
 		}
 
@@ -406,6 +408,10 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		if !opts.NoProgressTablePrint {
 			progressPrinter.Stop()
 			progressPrinter.Wait()
+		}
+
+		if reporter != nil {
+			reporter.ReportCheckpoint(ctx)
 		}
 
 		reportCompletedOps := lo.Map(completedResourceOps, func(op *plan.Operation, _ int) string {

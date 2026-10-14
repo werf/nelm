@@ -53,7 +53,7 @@ wg.Wait()
 Rules for the channel:
 
 - It must be buffered with capacity of at least 1, `ReleaseInstall` panics otherwise.
-- Consume it concurrently with `ReleaseInstall`. Intermediate snapshots are sent without blocking and are dropped when the channel is full, but the final snapshot is sent with a blocking send, so a consumer that stops reading before `ReleaseInstall` returns deadlocks the deployment.
+- Consume it concurrently with `ReleaseInstall`. Intermediate snapshots are sent without blocking and are dropped when the channel is full. Checkpoints and the final snapshot use blocking sends, so a slow consumer delays the action at these points; a consumer that stops reading can stall it until cancellation or timeout.
 - Do not close the channel yourself: `ReleaseInstall` closes it when it returns, on every path, including early errors. Snapshots still in the buffer at that moment are delivered before the `range` ends. After a `Timeout` the deployment may still be winding down inside nelm, its snapshots after the return are dropped.
 - A snapshot handed to the consumer is never modified afterwards.
 - `AutoRollback` cannot be combined with `LegacyProgressReportCh`: `ReleaseInstall` rejects the combination before deployment. With phase reporting enabled, an `Initializing` snapshot can precede this error. Rollback reporting needs its own design.
@@ -62,9 +62,10 @@ Rules for the channel:
 
 1. By default, the first snapshot arrives when the plan is built, before any operation runs: every operation is listed, all `Pending`, untouched resources already `Completed`. With phase reporting enabled, earlier snapshots describe preparation and have no operations yet.
 2. A snapshot arrives on every status change and, when enabled, phase or detail update, unless the channel is full, then it is skipped.
-3. The final snapshot is sent when the action is over, including optional namespace deletion, with a blocking send. Cancellation or timeout can interrupt that send. Nothing in it is `Pending`: what did not run is `Canceled`.
+3. A checkpoint is sent with a blocking send after plan execution, including failure cleanup, before optional namespace deletion. An already up-to-date install sends a checkpoint of its untouched resources instead. With phase reporting enabled, checkpoints also follow successful rendering and resource analysis. Checkpoints do not end the stream.
+4. The final snapshot is sent when the action is over, including optional namespace deletion, with a blocking send. Cancellation or timeout can interrupt any blocking send. Nothing in the final snapshot is `Pending`: what did not run is `Canceled`.
 
-Every snapshot is complete and self-contained: it lists every operation reported so far with its current status and retains any phase details already provided, so keeping the latest one is enough. Short phases and intermediate statuses may be skipped. Once the first plan starts, its set of operations is fixed; after a failure the operations of the failure plan are appended, see [Several plans in one run](#several-plans-in-one-run).
+Every snapshot is complete and self-contained: it lists every operation reported so far with its current status and retains any phase details already provided, so keeping the latest one is enough. Intermediate statuses and phases without a delivered checkpoint may be skipped. Once the first plan starts, its set of operations is fixed; after a failure the operations of the failure plan are appended, see [Several plans in one run](#several-plans-in-one-run).
 
 ## Preparation and namespace deletion
 

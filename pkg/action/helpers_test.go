@@ -386,6 +386,24 @@ func collectProgressPhaseReports(ch <-chan progrep.ProgressReport) <-chan []prog
 	return done
 }
 
+func collectSlowProgressPhaseReports(ch <-chan progrep.ProgressReport) <-chan []progrep.ProgressReport {
+	done := make(chan []progrep.ProgressReport, 1)
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+
+		var reports []progrep.ProgressReport
+		for report := range ch {
+			reports = append(reports, report)
+
+			time.Sleep(20 * time.Millisecond)
+		}
+
+		done <- reports
+	}()
+
+	return done
+}
+
 func newMetadataReleaseListStorager(revisions []release.Revision, summaries map[string]*release.ReleaseSummary, loadErrs ...error) *latestReleaseListStorager {
 	return &latestReleaseListStorager{
 		loads:     kdutil.NewConcurrent(&latestReleaseListLoads{errs: loadErrs}),

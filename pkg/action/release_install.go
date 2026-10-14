@@ -111,9 +111,9 @@ type ReleaseInstallOptions struct {
 	LegacyPlanArtifact *PlanArtifact
 	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
 	// Must be a buffered channel with capacity >= 1. Intermediate reports may be dropped if the
-	// consumer is slow; the final report is guaranteed (blocking send). ReleaseInstall closes the
-	// channel when it returns, on every path. Incompatible with AutoRollback. See
-	// docs/progress-report.md.
+	// consumer is slow; checkpoints and the final report use blocking sends, interruptible by
+	// cancellation. ReleaseInstall closes the channel when it returns, on every path.
+	// Incompatible with AutoRollback. See docs/progress-report.md.
 	LegacyProgressReportCh chan<- progrep.ProgressReport
 	// LegacyProgressReportPhases enables preparation phases and their details. Reports may arrive
 	// before the plan is built, with no operations. Requires LegacyProgressReportCh to receive them.
@@ -493,6 +493,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			phaseReporter.ReportPhase(ctx, progrep.PhaseKindRendering, plan.ReportPhaseOptions{
 				RenderDetails: &progrep.RenderDetails{ResourceCount: lo.ToPtr(len(releasableResSpecs))},
 			})
+			phaseReporter.ReportCheckpoint(ctx)
 		}
 
 		newRelease, err = release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, releasableResSpecs, renderChartResult.Chart, renderChartResult.ReleaseConfig, release.ReleaseOptions{
@@ -576,6 +577,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}
 
 		if phaseReporter != nil {
+			phaseReporter.ReportCheckpoint(ctx)
 			phaseReporter.ReportPhase(ctx, progrep.PhaseKindPlanning, plan.ReportPhaseOptions{})
 		}
 
@@ -656,6 +658,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			reporter.StartPlan(installPlan, releaseNamespace, instResInfos, clientFactory.Mapper(), plan.StartPlanOptions{
 				UntouchedResourcesOnly: true,
 			})
+			reporter.ReportCheckpoint(ctx)
 		}
 
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)))
@@ -761,6 +764,10 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	if !opts.NoProgressTablePrint {
 		progressPrinter.Stop()
 		progressPrinter.Wait()
+	}
+
+	if reporter != nil {
+		reporter.ReportCheckpoint(ctx)
 	}
 
 	reportCompletedOps := lo.Map(completedResourceOps, func(op *plan.Operation, _ int) string {
