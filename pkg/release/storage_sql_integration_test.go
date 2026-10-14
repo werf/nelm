@@ -125,7 +125,7 @@ func TestSQLStorageBackend_AnnotationStorageInteropPostgres(t *testing.T) {
 	require.NoError(t, err)
 	body, err := decodeRelease(stored.Body)
 	require.NoError(t, err)
-	require.Empty(t, body.Info.Annotations)
+	require.Equal(t, stored.Annotations, body.Info.Annotations)
 	require.Equal(t, map[string]string{"nelm.werf.io/released-by": "nelm", "first": "value", "removed": "yes"}, stored.Annotations)
 
 	loaded, err := storage.GetRelease(ctx, "app", 1)
@@ -148,13 +148,43 @@ func TestSQLStorageBackend_AnnotationStorageInteropPostgres(t *testing.T) {
 	require.NoError(t, err)
 	accessor, err = helmrel.NewAccessor(helmRelease)
 	require.NoError(t, err)
-	require.Empty(t, accessor.Annotations())
+	require.Equal(t, stored.Annotations, accessor.Annotations())
 
 	loaded.SetStatus(common.StatusDeployed)
 	require.NoError(t, storage.Update(ctx, loaded))
 	loaded, err = storage.GetRelease(ctx, "app", 1)
 	require.NoError(t, err)
 	require.Equal(t, stored.Annotations, loaded.Annotations())
+
+	_, err = b.db.ExecContext(ctx, "UPDATE releases_v1 SET modifiedAt = 1 WHERE namespace = $1 AND key = $2", namespace, storageKey("app", 1))
+	require.NoError(t, err)
+	_, err = b.db.ExecContext(ctx, "UPDATE nelm_release_annotations_v1 SET releaseModifiedAt = 1 WHERE releaseNamespace = $1 AND releaseKey = $2", namespace, storageKey("app", 1))
+	require.NoError(t, err)
+	olderRelease, err := helm.Get(storageKey("app", 1))
+	require.NoError(t, err)
+	olderAccessor, err := helmrel.NewAccessor(olderRelease)
+	require.NoError(t, err)
+	require.Equal(t, stored.Annotations, olderAccessor.Annotations())
+	olderAccessor.Annotations()["first"] = "older"
+	delete(olderAccessor.Annotations(), "removed")
+	olderAccessor.Annotations()["extra"] = "value"
+	olderAccessor.SetStatus(common.StatusSuperseded)
+	require.NoError(t, helm.Update(storageKey("app", 1), olderRelease))
+	stored, err = b.get(ctx, namespace, storageKey("app", 1))
+	require.NoError(t, err)
+	require.Nil(t, stored.Annotations)
+
+	loaded, err = storage.GetRelease(ctx, "app", 1)
+	require.NoError(t, err)
+	require.Equal(t, "superseded", loaded.Status())
+	require.Equal(t, olderAccessor.Annotations(), loaded.Annotations())
+	require.Equal(t, "older", loaded.Annotations()["first"])
+	require.NotContains(t, loaded.Annotations(), "removed")
+	require.Equal(t, "value", loaded.Annotations()["extra"])
+
+	summary, err := storage.LoadRevisionSummary(ctx, Revision{Name: "app", Namespace: namespace, Version: 1})
+	require.NoError(t, err)
+	require.Equal(t, olderAccessor.Annotations(), summary.Annotations)
 
 	updated, err := ReleaserToV1Release(loaded.Releaser())
 	require.NoError(t, err)

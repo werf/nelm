@@ -12,6 +12,7 @@ import (
 	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	common "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	v1release "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/storage/driver"
 )
 
 func TestReleaseStorage_KubeAndMemoryAnnotationsReplaceAndPreserve(t *testing.T) {
@@ -73,7 +74,7 @@ func TestReleaseStorage_KubeAndMemoryAnnotationsReplaceAndPreserve(t *testing.T)
 					assert.Equal(t, originalAnnotations, stored.Annotations)
 					body, err := decodeRelease(stored.Body)
 					require.NoError(t, err)
-					assert.Empty(t, body.Info.Annotations)
+					assert.Equal(t, stored.Annotations, body.Info.Annotations)
 
 					accessor, err := storage.GetRelease(ctx, "app", 1)
 					require.NoError(t, err)
@@ -108,7 +109,7 @@ func TestReleaseStorage_KubeAndMemoryAnnotationsReplaceAndPreserve(t *testing.T)
 					require.NoError(t, err)
 					body, err = decodeRelease(stored.Body)
 					require.NoError(t, err)
-					assert.Empty(t, body.Info.Annotations)
+					assert.Equal(t, stored.Annotations, body.Info.Annotations)
 
 					updated = releaseCase.newRelease(nil)
 					updatedAccessor, err = helmrel.NewAccessor(updated)
@@ -120,6 +121,13 @@ func TestReleaseStorage_KubeAndMemoryAnnotationsReplaceAndPreserve(t *testing.T)
 					accessor, err = storage.GetRelease(ctx, "app", 1)
 					require.NoError(t, err)
 					assert.Equal(t, map[string]string{storageAnnotationReleasedBy: storageAnnotationReleasedByValue}, accessor.Annotations())
+
+					stored, err = backend.get(ctx, "ns", storageKey("app", 1))
+					require.NoError(t, err)
+					body, err = decodeRelease(stored.Body)
+					require.NoError(t, err)
+					assert.Equal(t, accessor.Annotations(), body.Info.Annotations)
+					assert.Equal(t, stored.Annotations, body.Info.Annotations)
 				})
 			}
 		})
@@ -140,6 +148,71 @@ func TestReleaseStorage_KubeMetadataIncludesAnnotations(t *testing.T) {
 			require.Len(t, revisions, 1)
 			assert.Equal(t, obj.Annotations, revisions[0].Annotations)
 			assert.Empty(t, s.client.Actions())
+		})
+	}
+}
+
+func TestReleaseStorage_KubeOlderWriterPreservesBodyAnnotations(t *testing.T) {
+	for _, kind := range []kubeStorageKind{kubeStorageKindSecret, kubeStorageKindConfigMap} {
+		t.Run(string(kind), func(t *testing.T) {
+			ctx := context.Background()
+			s := newTestKubeStorage(t, kind, "ns", 0)
+			rls := newTestRelease("ns", "app", 1, common.StatusPendingInstall)
+			rls.Info.Annotations = map[string]string{"team": "platform"}
+			accessor, err := helmrel.NewAccessor(rls)
+			require.NoError(t, err)
+			require.NoError(t, s.storage.Create(ctx, accessor))
+
+			expected := map[string]string{storageAnnotationReleasedBy: storageAnnotationReleasedByValue, "team": "platform"}
+
+			var older driver.Driver
+			switch kind {
+			case kubeStorageKindSecret:
+				older = driver.NewSecrets(s.client.CoreV1().Secrets("ns"))
+			case kubeStorageKindConfigMap:
+				older = driver.NewConfigMaps(s.client.CoreV1().ConfigMaps("ns"))
+			}
+
+			olderRelease, err := older.Get(storageKey("app", 1))
+			require.NoError(t, err)
+			olderAccessor, err := helmrel.NewAccessor(olderRelease)
+			require.NoError(t, err)
+			require.Equal(t, expected, olderAccessor.Annotations())
+			olderAccessor.SetStatus(common.StatusDeployed)
+			require.NoError(t, older.Update(storageKey("app", 1), olderRelease))
+
+			stored, err := s.backend.get(ctx, "ns", storageKey("app", 1))
+			require.NoError(t, err)
+			assert.Empty(t, stored.Annotations)
+
+			loaded, err := s.storage.GetRelease(ctx, "app", 1)
+			require.NoError(t, err)
+			assert.Equal(t, string(common.StatusDeployed), loaded.Status())
+			assert.Equal(t, expected, loaded.Annotations())
+
+			olderAccessor.Annotations()["team"] = "older"
+			olderAccessor.Annotations()["extra"] = "value"
+
+			require.NoError(t, older.Update(storageKey("app", 1), olderRelease))
+
+			expected["team"] = "older"
+			expected["extra"] = "value"
+			loaded, err = s.storage.GetRelease(ctx, "app", 1)
+			require.NoError(t, err)
+			assert.Equal(t, expected, loaded.Annotations())
+
+			summary, err := s.storage.LoadRevisionSummary(ctx, Revision{Name: "app", Namespace: "ns", Version: 1})
+			require.NoError(t, err)
+			assert.Equal(t, expected, summary.Annotations)
+
+			loaded.SetStatus(common.StatusSuperseded)
+			require.NoError(t, s.storage.Update(ctx, loaded))
+			stored, err = s.backend.get(ctx, "ns", storageKey("app", 1))
+			require.NoError(t, err)
+			assert.Equal(t, expected, stored.Annotations)
+			body, err := decodeRelease(stored.Body)
+			require.NoError(t, err)
+			assert.Equal(t, expected, body.Info.Annotations)
 		})
 	}
 }
@@ -175,7 +248,7 @@ func TestReleaseStorage_KubeValidatesBeforePruningOrUpdating(t *testing.T) {
 	}
 }
 
-func TestStoredObject_AnnotationsNotEncodedInBody(t *testing.T) {
+func TestStoredObject_AnnotationsDuplicatedWithoutMutatingRelease(t *testing.T) {
 	rls := newTestRelease("ns", "app", 1, common.StatusDeployed)
 	rls.Info.Annotations = map[string]string{"team": "platform"}
 
@@ -184,7 +257,8 @@ func TestStoredObject_AnnotationsNotEncodedInBody(t *testing.T) {
 
 	body, err := decodeRelease(obj.Body)
 	require.NoError(t, err)
-	assert.Empty(t, body.Info.Annotations)
+	assert.Equal(t, map[string]string{storageAnnotationReleasedBy: storageAnnotationReleasedByValue, "team": "platform"}, body.Info.Annotations)
+	assert.Equal(t, obj.Annotations, body.Info.Annotations)
 	assert.Equal(t, map[string]string{"team": "platform"}, rls.Info.Annotations)
 }
 
@@ -194,6 +268,10 @@ func TestStoredObject_EmptyAnnotationsHaveMarker(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{storageAnnotationReleasedBy: storageAnnotationReleasedByValue}, obj.Annotations)
 	assert.Nil(t, rls.Info.Annotations)
+
+	body, err := decodeRelease(obj.Body)
+	require.NoError(t, err)
+	assert.Equal(t, obj.Annotations, body.Info.Annotations)
 
 	loaded, err := decodeStoredObject(obj)
 	require.NoError(t, err)

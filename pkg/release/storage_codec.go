@@ -57,7 +57,7 @@ func newStoredObject(namespace string, rls *helmrelease.Release, timestampLabel 
 
 	storedRelease := *rls
 	storedInfo := *rls.Info
-	storedInfo.Annotations = nil
+	storedInfo.Annotations = annotations
 	storedRelease.Info = &storedInfo
 
 	body, err := encodeRelease(&storedRelease)
