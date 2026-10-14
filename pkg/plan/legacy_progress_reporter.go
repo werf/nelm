@@ -32,6 +32,22 @@ func NewLegacyProgressReporter(reportCh chan<- progrep.ProgressReport) *LegacyPr
 	}
 }
 
+// Close stops reporting and closes the channel after in-flight sends finish. Its context does
+// not interrupt those sends: cancel a blocking Stop's context before calling Close.
+// Close does not send a final snapshot.
+func (r *LegacyProgressReporter) Close(ctx context.Context) {
+	r.state.RWTransaction(func(s *progressReporterState) {
+		if s.closed {
+			return
+		}
+
+		s.closed = true
+		s.stopped = true
+
+		close(r.reportCh)
+	})
+}
+
 func (r *LegacyProgressReporter) ReportAnalyzedResource(ctx context.Context) {
 	r.state.RWTransaction(func(s *progressReporterState) {
 		if s.stopped || s.analyzeDetails == nil {
@@ -108,16 +124,23 @@ func (r *LegacyProgressReporter) ReportStatus(opID string, status progrep.Operat
 // the first plan only: later plans act upon a release the first plan has already described in
 // full.
 func (r *LegacyProgressReporter) StartPlan(p *Plan, releaseNamespace string, installableResourceInfos []*InstallableResourceInfo, mapper meta.RESTMapper, opts StartPlanOptions) {
+	var stopped bool
+	r.state.RTransaction(func(s *progressReporterState) { stopped = s.stopped })
+
+	if stopped {
+		return
+	}
+
+	resolvedNamespaces := buildResolvedNamespaces(p, releaseNamespace, mapper)
+
+	untouchedResolvedNamespaces := make(map[string]string, len(installableResourceInfos))
+	for _, info := range installableResourceInfos {
+		untouchedResolvedNamespaces[info.ID()] = resolveNamespace(info.GroupVersionKind, info.Namespace, releaseNamespace, mapper)
+	}
+
 	r.state.RWTransaction(func(s *progressReporterState) {
 		if s.stopped {
 			return
-		}
-
-		resolvedNamespaces := buildResolvedNamespaces(p, releaseNamespace, mapper)
-
-		untouchedResolvedNamespaces := make(map[string]string, len(installableResourceInfos))
-		for _, info := range installableResourceInfos {
-			untouchedResolvedNamespaces[info.ID()] = resolveNamespace(info.GroupVersionKind, info.Namespace, releaseNamespace, mapper)
 		}
 
 		cancelPendingOperations(s.ops)
@@ -157,11 +180,6 @@ func (r *LegacyProgressReporter) StartPlan(p *Plan, releaseNamespace string, ins
 // Stop sends the final report with a blocking send. Operations that never started are marked
 // Canceled first: nothing is going to run them anymore.
 func (r *LegacyProgressReporter) Stop(ctx context.Context) {
-	var (
-		report progrep.ProgressReport
-		send   bool
-	)
-
 	r.state.RWTransaction(func(s *progressReporterState) {
 		if s.stopped {
 			return
@@ -184,22 +202,16 @@ func (r *LegacyProgressReporter) Stop(ctx context.Context) {
 			}
 		}
 
-		report = buildProgressReport(s)
-		send = true
+		report := buildProgressReport(s)
+		func() {
+			defer func() { _ = recover() }()
+
+			select {
+			case r.reportCh <- report:
+			case <-ctx.Done():
+			}
+		}()
 	})
-
-	if !send {
-		return
-	}
-
-	func() {
-		defer func() { _ = recover() }()
-
-		select {
-		case r.reportCh <- report:
-		case <-ctx.Done():
-		}
-	}()
 }
 
 // ReportPhaseOptions replaces each nonnil detail with an owned copy; nil retains the existing
@@ -219,6 +231,7 @@ type StartPlanOptions struct {
 
 type progressReporterState struct {
 	analyzeDetails *progrep.AnalyzeDetails
+	closed         bool
 	currentPhase   progrep.PhaseKind
 	// lastPlanSinkIDs are the report IDs of the operations without successors in the most recently
 	// started plan that had operations. The root operations of the next plan depend on them.

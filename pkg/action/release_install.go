@@ -188,22 +188,31 @@ type releaseInstallOutcome struct {
 // errors. The result is also returned when the release was skipped as already up to date
 // (Release.Status is StatusSkipped) and when non-critical errors are returned alongside it.
 func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseInstallOptions) (*ReleaseInstallResultV1, error) {
-	if opts.LegacyProgressReportCh != nil {
-		defer close(opts.LegacyProgressReportCh)
-	}
-
 	ctx, ctxCancelFn := context.WithCancelCause(ctx)
 
+	var reporter *plan.LegacyProgressReporter
+
+	if opts.LegacyProgressReportCh != nil {
+		reporter = plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
+	}
+	defer func() {
+		ctxCancelFn(fmt.Errorf("context canceled: action finished"))
+
+		if reporter != nil {
+			reporter.Close(ctx)
+		}
+	}()
+
 	if opts.Timeout == 0 {
-		return releaseInstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts)
+		return releaseInstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts, reporter)
 	}
 
-	ctx, _ = context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
-	defer ctxCancelFn(fmt.Errorf("context canceled: action finished"))
+	ctx, timeoutCancel := context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
+	defer timeoutCancel()
 
 	actionCh := make(chan *releaseInstallOutcome, 1)
 	go func() {
-		result, err := releaseInstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts)
+		result, err := releaseInstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts, reporter)
 		actionCh <- &releaseInstallOutcome{err: err, result: result}
 	}()
 
@@ -217,10 +226,9 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	}
 }
 
-func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, opts ReleaseInstallOptions) (*ReleaseInstallResultV1, error) {
-	var reporter, phaseReporter *plan.LegacyProgressReporter
-	if opts.LegacyProgressReportCh != nil {
-		reporter = plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
+func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, opts ReleaseInstallOptions, reporter *plan.LegacyProgressReporter) (*ReleaseInstallResultV1, error) {
+	var phaseReporter *plan.LegacyProgressReporter
+	if reporter != nil {
 		defer reporter.Stop(ctx)
 
 		if opts.LegacyProgressReportPhases {

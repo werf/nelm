@@ -26,6 +26,7 @@ import (
 )
 
 var (
+	_ meta.RESTMapper      = (*blockingRESTMapper)(nil)
 	_ kube.ClientFactorier = (*analysisLifecycleClientFactory)(nil)
 	_ kube.KubeClienter    = (*analysisLifecycleKubeClient)(nil)
 
@@ -62,6 +63,25 @@ func (m *fakeRESTMapper) RESTMapping(gk schema.GroupKind, versions ...string) (*
 	}
 
 	return nil, fmt.Errorf("no mapping for %v", gk)
+}
+
+type blockingRESTMapper struct {
+	meta.RESTMapper
+
+	lookupStarted chan struct{}
+	releaseLookup chan struct{}
+}
+
+func (m *blockingRESTMapper) RESTMapping(groupKind schema.GroupKind, versions ...string) (*meta.RESTMapping, error) {
+	close(m.lookupStarted)
+	<-m.releaseLookup
+
+	mapping, err := m.RESTMapper.RESTMapping(groupKind, versions...)
+	if err != nil {
+		return nil, fmt.Errorf("resolve REST mapping: %w", err)
+	}
+
+	return mapping, nil
 }
 
 type analysisLifecycleClientFactory struct {

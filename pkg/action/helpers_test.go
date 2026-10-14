@@ -372,6 +372,20 @@ func addProgressPhasesConfigMap(t *testing.T, api *progressPhasesAPI) string {
 	return string(body)
 }
 
+func collectProgressPhaseReports(ch <-chan progrep.ProgressReport) <-chan []progrep.ProgressReport {
+	done := make(chan []progrep.ProgressReport, 1)
+	go func() {
+		var reports []progrep.ProgressReport
+		for report := range ch {
+			reports = append(reports, report)
+		}
+
+		done <- reports
+	}()
+
+	return done
+}
+
 func newMetadataReleaseListStorager(revisions []release.Revision, summaries map[string]*release.ReleaseSummary, loadErrs ...error) *latestReleaseListStorager {
 	return &latestReleaseListStorager{
 		loads:     kdutil.NewConcurrent(&latestReleaseListLoads{errs: loadErrs}),

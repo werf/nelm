@@ -99,23 +99,31 @@ type ReleaseUninstallOptions struct {
 
 // Uninstall the Helm release along with its resources from the cluster.
 func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseUninstallOptions) error {
-	if opts.LegacyProgressReportCh != nil {
-		defer close(opts.LegacyProgressReportCh)
-	}
-
 	ctx, ctxCancelFn := context.WithCancelCause(ctx)
 
+	var reporter *plan.LegacyProgressReporter
+
+	if opts.LegacyProgressReportCh != nil {
+		reporter = plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
+	}
+	defer func() {
+		ctxCancelFn(fmt.Errorf("context canceled: action finished"))
+
+		if reporter != nil {
+			reporter.Close(ctx)
+		}
+	}()
+
 	if opts.Timeout == 0 {
-		return releaseUninstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts)
+		return releaseUninstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts, reporter)
 	}
 
 	ctx, timeoutCancel := context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
 	defer timeoutCancel()
-	defer ctxCancelFn(fmt.Errorf("context canceled: action finished"))
 
 	actionCh := make(chan error, 1)
 	go func() {
-		actionCh <- releaseUninstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts)
+		actionCh <- releaseUninstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts, reporter)
 	}()
 
 	for {
@@ -128,10 +136,9 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 	}
 }
 
-func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, opts ReleaseUninstallOptions) error {
-	var reporter, phaseReporter *plan.LegacyProgressReporter
-	if opts.LegacyProgressReportCh != nil {
-		reporter = plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
+func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, opts ReleaseUninstallOptions, reporter *plan.LegacyProgressReporter) error {
+	var phaseReporter *plan.LegacyProgressReporter
+	if reporter != nil {
 		defer reporter.Stop(ctx)
 
 		if opts.LegacyProgressReportPhases {
