@@ -80,7 +80,7 @@ func TestReleaseStorage_VersionReadsDoNotKeepAnnotations(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, revisions, 1)
 	assert.Equal(t, "platform", revisions[0].Annotations["team"])
-	assert.Equal(t, storageAnnotationReleasedByValue, revisions[0].Annotations[storageAnnotationReleasedBy])
+	assert.Equal(t, storageAnnotationReleaseFormatV1, revisions[0].Annotations[storageAnnotationReleaseFormat])
 
 	loaded, err := storage.GetRelease(ctx, "app", 0)
 	require.NoError(t, err)

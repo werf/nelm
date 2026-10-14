@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	storageAnnotationReleasedBy      = "nelm.werf.io/released-by"
-	storageAnnotationReleasedByValue = "nelm"
+	storageAnnotationReleaseFormat   = "nelm.werf.io/release-format"
+	storageAnnotationReleaseFormatV1 = "v1"
 	storageLabelCreatedAt            = "createdAt"
 	storageLabelModifiedAt           = "modifiedAt"
 	storageLabelName                 = "name"
@@ -49,11 +49,11 @@ func newStoredObject(namespace string, rls *helmrelease.Release, timestampLabel 
 		annotations = map[string]string{}
 	}
 
-	if writer, found := annotations[storageAnnotationReleasedBy]; found && writer != storageAnnotationReleasedByValue {
-		return nil, fmt.Errorf("annotation %q is reserved for %q", storageAnnotationReleasedBy, storageAnnotationReleasedByValue)
+	if releaseFormat, found := annotations[storageAnnotationReleaseFormat]; found && releaseFormat != storageAnnotationReleaseFormatV1 {
+		return nil, fmt.Errorf("annotation %q is reserved for %q", storageAnnotationReleaseFormat, storageAnnotationReleaseFormatV1)
 	}
 
-	annotations[storageAnnotationReleasedBy] = storageAnnotationReleasedByValue
+	annotations[storageAnnotationReleaseFormat] = storageAnnotationReleaseFormatV1
 
 	storedRelease := *rls
 	storedInfo := *rls.Info
@@ -100,7 +100,7 @@ func decodeStoredObject(obj *storedObject) (*helmrelease.Release, error) {
 	}
 
 	rls.Labels = maps.Clone(obj.Labels)
-	if obj.Annotations[storageAnnotationReleasedBy] == storageAnnotationReleasedByValue {
+	if obj.Annotations[storageAnnotationReleaseFormat] == storageAnnotationReleaseFormatV1 {
 		rls.Info.Annotations = maps.Clone(obj.Annotations)
 	}
 
@@ -136,7 +136,7 @@ func decodeStoredSummary(obj *storedObject) (*ReleaseSummary, error) {
 	}
 
 	summary := &ReleaseSummary{Annotations: body.Info.Annotations}
-	if obj.Annotations[storageAnnotationReleasedBy] == storageAnnotationReleasedByValue {
+	if obj.Annotations[storageAnnotationReleaseFormat] == storageAnnotationReleaseFormatV1 {
 		summary.Annotations = maps.Clone(obj.Annotations)
 	}
 
@@ -175,7 +175,7 @@ func revisionFromStoredObject(obj *storedObject) (Revision, bool, error) {
 	}
 
 	var annotations map[string]string
-	if obj.Annotations[storageAnnotationReleasedBy] == storageAnnotationReleasedByValue {
+	if obj.Annotations[storageAnnotationReleaseFormat] == storageAnnotationReleaseFormatV1 {
 		annotations = maps.Clone(obj.Annotations)
 	}
 
