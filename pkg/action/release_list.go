@@ -320,7 +320,7 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 
 	var result *ReleaseListResultV2
 	if listsReleasesByMetadata(opts) {
-		result, err = buildReleaseListResultFromMetadata(ctx, releaseStorage, opts.ReleaseLabelSelector)
+		result, err = buildReleaseListResultFromMetadata(ctx, releaseStorage, opts)
 	} else {
 		result, err = buildReleaseListResult(ctx, releaseStorage, opts.ReleaseLabelSelector)
 	}
@@ -434,8 +434,11 @@ func buildReleaseListResult(ctx context.Context, storage release.ReleaseStorager
 	return newReleaseListResult(releases), nil
 }
 
-func buildReleaseListResultFromMetadata(ctx context.Context, storage release.ReleaseStorager, selector string) (*ReleaseListResultV2, error) {
-	revisions, err := storage.LatestRevisions(ctx, release.LatestRevisionsOptions{LabelSelector: selector})
+func buildReleaseListResultFromMetadata(ctx context.Context, storage release.ReleaseStorager, opts ReleaseListOptions) (*ReleaseListResultV2, error) {
+	revisions, err := storage.LatestRevisions(ctx, release.LatestRevisionsOptions{
+		LabelSelector:   opts.ReleaseLabelSelector,
+		SkipAnnotations: !opts.OutputNoPrint,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("read release list: %w", err)
 	}
