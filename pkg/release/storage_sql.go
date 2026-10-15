@@ -317,7 +317,7 @@ func (b *sqlStorageBackend) replaceAnnotations(ctx context.Context, tx *sqlx.Tx,
 	}
 
 	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
-		return fmt.Errorf("delete annotations: %w", err)
+		return fmt.Errorf("delete annotations: %w", sqlAnnotationWriteError(err, obj.Namespace))
 	}
 
 	if len(obj.Annotations) == 0 {
@@ -335,7 +335,7 @@ func (b *sqlStorageBackend) replaceAnnotations(ctx context.Context, tx *sqlx.Tx,
 		"INSERT INTO nelm_release_annotations_v1 (releaseKey,releaseNamespace,key,value,releaseModifiedAt) SELECT r.key,r.namespace,a.key,a.value,COALESCE(r.modifiedAt, 0) FROM releases_v1 r CROSS JOIN unnest($3::text[], $4::text[]) AS a(key,value) WHERE r.key = $1 AND r.namespace = $2",
 		obj.Key, obj.Namespace, pq.Array(annotationKeys), pq.Array(annotationValues))
 	if err != nil {
-		return fmt.Errorf("insert annotations: %w", err)
+		return fmt.Errorf("insert annotations: %w", sqlAnnotationWriteError(err, obj.Namespace))
 	}
 
 	affected, err := result.RowsAffected()
@@ -856,6 +856,15 @@ func rollbackSQLTransaction(ctx context.Context, tx *sqlx.Tx) {
 	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
 		log.Default.Warn(ctx, "Unable to roll back release storage transaction: %s", err)
 	}
+}
+
+func sqlAnnotationWriteError(err error, namespace string) error {
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) && pqErr.Code == pqerror.InsufficientPrivilege {
+		return fmt.Errorf("access to table %q for release namespace %q: check the current role's table privileges and row-level security (RLS) policies: %w", sqlAnnotationsTable, namespace, err)
+	}
+
+	return err
 }
 
 func sqlLabelRequirement(requirement labels.Requirement) (sq.Sqlizer, error) {
