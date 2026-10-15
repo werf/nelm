@@ -29,8 +29,8 @@ func TestBuildReleaseGetResult(t *testing.T) {
 		"team":    "platform",
 	}
 	annotations := map[string]string{
-		"nelm.werf.io/released-by": "nelm",
-		"example.com/managed-by":   "platform",
+		"nelm.werf.io/release-format": "v1",
+		"example.com/managed-by":      "platform",
 	}
 	relAccessor, err := helmrelease.NewAccessor(&helmreleasev1.Release{
 		Name:      "myrel",
@@ -106,7 +106,7 @@ metadata:
 				"owner": "helm", "name": "myrel", "status": "deployed", "version": "3", "team": "platform",
 			}, releaseOutput["labels"])
 			assert.Equal(t, map[string]any{
-				"nelm.werf.io/released-by": "nelm", "example.com/managed-by": "platform",
+				"nelm.werf.io/release-format": "v1", "example.com/managed-by": "platform",
 			}, releaseOutput["annotations"])
 			assert.Contains(t, output, "chart")
 			assert.Equal(t, "Release notes", output["notes"])
