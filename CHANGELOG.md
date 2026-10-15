@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.0.1-alpha.3](https://github.com/werf/nelm/compare/v2.0.1-alpha.2...v2.0.1-alpha.3) (2026-10-15)
+
+
+### Bug Fixes
+
+* allow upgrades from legacy delete-dependency annotations ([#755](https://github.com/werf/nelm/issues/755)) ([03a66a1](https://github.com/werf/nelm/commit/03a66a124d470258851a9e4e655f8174715dafdc))
+
+
+### Miscellaneous Chores
+
+* prepare 2.0.1-alpha.3 release ([0ce662d](https://github.com/werf/nelm/commit/0ce662d369c39d2e7e18035d7b421a36630f39ce))
+
 ## [2.0.1-alpha.2](https://github.com/werf/nelm/compare/v2.0.0-alpha.2...v2.0.1-alpha.2) (2026-10-09)
 
 
