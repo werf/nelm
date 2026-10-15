@@ -2,6 +2,7 @@ package resource_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -92,6 +93,15 @@ func assertValidationError(t *testing.T, err error, expectedSubstring string) {
 	require.Contains(t, err.Error(), expectedSubstring)
 }
 
+func buildTestResources(deployType common.DeployType, prev, newSpecs []*spec.ResourceSpec) ([]*resource.InstallableResource, []*resource.DeletableResource, error) {
+	instResources, delResources, err := resource.BuildResources(context.Background(), deployType, testReleaseNamespace, prev, newSpecs, nil, resource.BuildResourcesOptions{})
+	if err != nil {
+		return nil, nil, fmt.Errorf("build resources: %w", err)
+	}
+
+	return instResources, delResources, nil
+}
+
 func getTestdataPath() string {
 	_, filename, _, _ := runtime.Caller(0)
 
@@ -156,6 +166,22 @@ func setupTestEnvironment(t *testing.T) {
 	t.Helper()
 
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+}
+
+func singleDeleteDependency(t *testing.T, delResources []*resource.DeletableResource, name string) *resource.Dependency {
+	t.Helper()
+
+	for _, delRes := range delResources {
+		if delRes.Name == name {
+			require.Len(t, delRes.ManualDependencies, 1)
+
+			return delRes.ManualDependencies[0]
+		}
+	}
+
+	require.FailNow(t, "deletable resource not found", name)
+
+	return nil
 }
 
 // testKubeVersion is the version the "{{ .NormalizedKubernetesVersion }}" placeholder of a configured

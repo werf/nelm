@@ -85,7 +85,7 @@ func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherRe
 		return nil, fmt.Errorf("validate deploy dependencies: %w", err)
 	}
 
-	if err := validateDeleteDependencies(res.ResourceMeta, otherResourceMetaList); err != nil {
+	if err := validateDeleteDependencies(res.ResourceMeta, otherResourceMetaList, opts.AllowLegacyDeleteDependencies); err != nil {
 		return nil, fmt.Errorf("validate delete dependencies: %w", err)
 	}
 
@@ -148,8 +148,9 @@ func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherRe
 }
 
 type InstallableResourceOptions struct {
-	DefaultDeletePropagation metav1.DeletionPropagation
-	NoPodLogs                bool
+	AllowLegacyDeleteDependencies bool
+	DefaultDeletePropagation      metav1.DeletionPropagation
+	NoPodLogs                     bool
 }
 
 // Represent a Kubernetes resource that can be deleted. Higher level than ResourceMeta, but lower
@@ -167,7 +168,7 @@ type DeletableResource struct {
 
 // Construct a DeletableResource from a ResourceSpec. Must never contact the cluster, because
 // this is called even when no cluster access allowed.
-func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []*spec.ResourceSpec, releaseNamespace string, opts DeletableResourceOptions) (*DeletableResource, error) {
+func NewDeletableResource(ctx context.Context, resourceSpec *spec.ResourceSpec, otherResourceSpecs []*spec.ResourceSpec, releaseNamespace string, opts DeletableResourceOptions) (*DeletableResource, error) {
 	var policies []common.ResourcePolicy
 	if err := ValidateResourcePolicy(resourceSpec.ResourceMeta); err != nil {
 		policies = []common.ResourcePolicy{common.ResourcePolicySkipDelete}
@@ -193,9 +194,11 @@ func NewDeletableResource(resourceSpec *spec.ResourceSpec, otherResourceSpecs []
 		return resSpec.ResourceMeta
 	})
 
-	if err := validateDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList); err != nil {
+	if err := validateDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList, true); err != nil {
 		return nil, fmt.Errorf("validate delete dependencies: %w", err)
 	}
+
+	warnLegacyDeleteDependencies(ctx, resourceSpec.ResourceMeta, otherResourceMetaList)
 
 	unstructList := lo.Map(otherResourceSpecs, func(resSpec *spec.ResourceSpec, _ int) *unstructured.Unstructured {
 		return resSpec.Unstruct
@@ -226,7 +229,7 @@ type BuildResourcesOptions struct {
 func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRelResSpecs, newRelResSpecs []*spec.ResourceSpec, patchers []spec.ResourcePatcher, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
 	var prevRelDelResources []*DeletableResource
 	for _, resSpec := range prevRelResSpecs {
-		deletableRes, err := NewDeletableResource(resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, DeletableResourceOptions{
+		deletableRes, err := NewDeletableResource(ctx, resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, DeletableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 		})
 		if err != nil {
@@ -239,8 +242,9 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	var prevRelInstResources []*InstallableResource
 	for _, resSpec := range prevRelResSpecs {
 		installableResource, err := NewInstallableResource(ctx, resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
-			DefaultDeletePropagation: opts.DefaultDeletePropagation,
-			NoPodLogs:                opts.NoPodLogs,
+			AllowLegacyDeleteDependencies: true,
+			DefaultDeletePropagation:      opts.DefaultDeletePropagation,
+			NoPodLogs:                     opts.NoPodLogs,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct installable resource: %w", err)
@@ -352,8 +356,9 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	var instResources []*InstallableResource
 	for _, resSpec := range patchedResSpecs {
 		instRes, err := NewInstallableResource(ctx, resSpec, lo.Without(patchedResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
-			DefaultDeletePropagation: opts.DefaultDeletePropagation,
-			NoPodLogs:                opts.NoPodLogs,
+			AllowLegacyDeleteDependencies: deployType == common.DeployTypeUninstall,
+			DefaultDeletePropagation:      opts.DefaultDeletePropagation,
+			NoPodLogs:                     opts.NoPodLogs,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct deployable resource: %w", err)
