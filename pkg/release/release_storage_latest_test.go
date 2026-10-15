@@ -31,7 +31,7 @@ func TestReleaseStorage_AnnotationsSurviveStorageAndListing(t *testing.T) {
 
 	loaded, err := s.storage.GetRelease(ctx, "myrel", 1)
 	require.NoError(t, err)
-	assert.Equal(t, map[string]string{storageAnnotationReleaseFormat: storageAnnotationReleaseFormatV1, "packages.deckhouse.io/managed-by": "deckhouse"}, loaded.Annotations())
+	assert.Equal(t, map[string]string{storageAnnotationReleaseVersion: storageAnnotationReleaseVersionV1, "packages.deckhouse.io/managed-by": "deckhouse"}, loaded.Annotations())
 
 	summaries, err := s.storage.ListLatestSummaries(ctx, ListLatestSummariesOptions{})
 	require.NoError(t, err)
@@ -52,8 +52,8 @@ func TestReleaseStorage_LatestRevisionsSelectorBeforeMaximum(t *testing.T) {
 	revisions, err := newReleaseStorage("", backend, 0).LatestRevisions(context.Background(), LatestRevisionsOptions{LabelSelector: "packageChecksum=old"})
 	require.NoError(t, err)
 	assert.Equal(t, []Revision{
-		{Annotations: map[string]string{storageAnnotationReleaseFormat: storageAnnotationReleaseFormatV1}, Name: "other", Namespace: "a-ns", Status: "deployed", Version: 1},
-		{Annotations: map[string]string{storageAnnotationReleaseFormat: storageAnnotationReleaseFormatV1}, Name: "myrel", Namespace: "ns", Status: "superseded", Version: 2},
+		{Annotations: map[string]string{storageAnnotationReleaseVersion: storageAnnotationReleaseVersionV1}, Name: "other", Namespace: "a-ns", Status: "deployed", Version: 1},
+		{Annotations: map[string]string{storageAnnotationReleaseVersion: storageAnnotationReleaseVersionV1}, Name: "myrel", Namespace: "ns", Status: "superseded", Version: 2},
 	}, revisions)
 	assert.False(t, backend.withBodies)
 	assert.Equal(t, "packageChecksum=old", backend.selector.String())
@@ -209,7 +209,7 @@ func TestReleaseStorage_LoadRevisionSummary(t *testing.T) {
 
 	summary, err := cluster.LoadRevisionSummary(ctx, Revision{Name: "myrel", Namespace: "ns", Version: 1})
 	require.NoError(t, err)
-	assert.Equal(t, map[string]string{storageAnnotationReleaseFormat: storageAnnotationReleaseFormatV1, "managed-by": "deckhouse"}, summary.Annotations)
+	assert.Equal(t, map[string]string{storageAnnotationReleaseVersion: storageAnnotationReleaseVersionV1, "managed-by": "deckhouse"}, summary.Annotations)
 
 	_, err = cluster.LoadRevisionSummary(ctx, Revision{Name: "myrel", Namespace: "ns", Version: 2})
 	require.ErrorIs(t, err, ErrReleaseNotFound)

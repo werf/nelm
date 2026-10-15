@@ -176,7 +176,7 @@ func TestBuildReleaseListResultMetadataAnnotationsOnlyForLibrary(t *testing.T) {
 
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
-			annotations := map[string]string{"nelm.werf.io/release-format": "v1", "team": "platform"}
+			annotations := map[string]string{"werf.io/release-version": "v1", "team": "platform"}
 			storage := newMetadataReleaseListStorager([]release.Revision{{Name: "app", Namespace: "ns", Version: 1, Status: "deployed", Annotations: annotations}}, nil)
 			result, err := buildReleaseListResultFromMetadata(ctx, storage, ReleaseListOptions{
 				OutputFormat: common.OutputFormatTable, OutputNoPrint: outputNoPrint, LegacyMetadataOnly: true, ReleaseLabelSelector: "packageChecksum",
@@ -340,7 +340,7 @@ func TestReleaseListResultReleaseCancelledReaderLetsWaiterRead(t *testing.T) {
 
 func TestReleaseListResultReleaseEmptyMetadataAnnotationsReadNoBody(t *testing.T) {
 	ctx := context.Background()
-	annotations := map[string]string{"nelm.werf.io/release-format": "v1"}
+	annotations := map[string]string{"werf.io/release-version": "v1"}
 	storage := newMetadataReleaseListStorager([]release.Revision{{Namespace: "ns", Name: "a", Version: 1, Annotations: annotations}}, nil)
 	result, err := buildReleaseListResultFromMetadata(ctx, storage, ReleaseListOptions{OutputNoPrint: true})
 	require.NoError(t, err)
@@ -371,7 +371,7 @@ func TestReleaseListResultReleaseMarshalsByValue(t *testing.T) {
 
 func TestReleaseListResultReleaseMetadataAnnotationsReadNoBody(t *testing.T) {
 	ctx := context.Background()
-	annotations := map[string]string{"nelm.werf.io/release-format": "v1", "team": "platform"}
+	annotations := map[string]string{"werf.io/release-version": "v1", "team": "platform"}
 	storage := newMetadataReleaseListStorager([]release.Revision{{Namespace: "ns", Name: "a", Version: 1, Annotations: annotations}}, nil, release.ErrReleaseUndecodable)
 	result, err := buildReleaseListResultFromMetadata(ctx, storage, ReleaseListOptions{OutputNoPrint: true})
 	require.NoError(t, err)
@@ -398,7 +398,7 @@ func TestReleaseListResultReleaseMetadataAnnotationsReadNoBody(t *testing.T) {
 
 func TestReleaseListResultReleaseMetadataAnnotationsSurviveBrokenBody(t *testing.T) {
 	ctx := logboek.NewContext(context.Background(), logboek.NewLogger(io.Discard, io.Discard))
-	annotations := map[string]string{"nelm.werf.io/release-format": "v1", "team": "platform"}
+	annotations := map[string]string{"werf.io/release-version": "v1", "team": "platform"}
 	summary := release.RevisionSummary{Revision: release.Revision{Namespace: "ns", Name: "a", Version: 1, Annotations: annotations}, DecodeErr: release.ErrReleaseUndecodable}
 	storage := &latestReleaseListStorager{latestSummaries: []release.RevisionSummary{summary}, historySummaries: []release.RevisionSummary{summary}}
 	result, err := buildReleaseListResult(ctx, storage, "")

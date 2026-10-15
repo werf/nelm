@@ -33,7 +33,7 @@ func TestSQLStorageBackend_AnnotationPermissionsPostgres(t *testing.T) {
 	prefix := "nelm-test-rls-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	for _, namespace := range []string{prefix, prefix + "-hidden"} {
 		obj := newTestStoredObject(t, newTestRelease(namespace, "app", 1, common.StatusDeployed))
-		obj.Annotations = map[string]string{"nelm.werf.io/release-format": "v1", "secret": namespace}
+		obj.Annotations = map[string]string{"werf.io/release-version": "v1", "secret": namespace}
 		require.NoError(t, b.create(ctx, obj))
 		t.Cleanup(func() { require.NoError(t, b.delete(ctx, namespace, obj.Key)) })
 	}
@@ -126,7 +126,7 @@ func TestSQLStorageBackend_AnnotationStorageInteropPostgres(t *testing.T) {
 	body, err := decodeRelease(stored.Body)
 	require.NoError(t, err)
 	require.Equal(t, stored.Annotations, body.Info.Annotations)
-	require.Equal(t, map[string]string{"nelm.werf.io/release-format": "v1", "first": "value", "removed": "yes"}, stored.Annotations)
+	require.Equal(t, map[string]string{"werf.io/release-version": "v1", "first": "value", "removed": "yes"}, stored.Annotations)
 
 	loaded, err := storage.GetRelease(ctx, "app", 1)
 	require.NoError(t, err)
@@ -195,14 +195,14 @@ func TestSQLStorageBackend_AnnotationStorageInteropPostgres(t *testing.T) {
 	require.NoError(t, storage.Update(ctx, accessor))
 	loaded, err = storage.GetRelease(ctx, "app", 1)
 	require.NoError(t, err)
-	require.Equal(t, map[string]string{"nelm.werf.io/release-format": "v1", "first": "new"}, loaded.Annotations())
+	require.Equal(t, map[string]string{"werf.io/release-version": "v1", "first": "new"}, loaded.Annotations())
 	updated.Info.Annotations = nil
 	accessor, err = helmrel.NewAccessor(updated)
 	require.NoError(t, err)
 	require.NoError(t, storage.Update(ctx, accessor))
 	stored, err = b.get(ctx, namespace, storageKey("app", 1))
 	require.NoError(t, err)
-	require.Equal(t, map[string]string{"nelm.werf.io/release-format": "v1"}, stored.Annotations)
+	require.Equal(t, map[string]string{"werf.io/release-version": "v1"}, stored.Annotations)
 
 	loaded, err = storage.GetRelease(ctx, "app", 1)
 	require.NoError(t, err)
@@ -226,7 +226,7 @@ func TestSQLStorageBackend_AnnotationsPostgres(t *testing.T) {
 	namespace := "nelm-test-annotations-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	rls := newTestRelease(namespace, "app", 1, common.StatusDeployed)
 	obj := newTestStoredObject(t, rls)
-	annotations := map[string]string{"nelm.werf.io/release-format": "v1", strings.Repeat("arbitrary key / '", 30): strings.Repeat("value", 1000), "removed": "yes", "empty": "", "escaped": "comma, braces{}, quotes\" and backslash\\\nПривет"}
+	annotations := map[string]string{"werf.io/release-version": "v1", strings.Repeat("arbitrary key / '", 30): strings.Repeat("value", 1000), "removed": "yes", "empty": "", "escaped": "comma, braces{}, quotes\" and backslash\\\nПривет"}
 	obj.Annotations = maps.Clone(annotations)
 	require.NoError(t, b.create(ctx, obj))
 	t.Cleanup(func() {
@@ -340,7 +340,7 @@ func TestSQLStorageBackend_AnnotationsPostgres(t *testing.T) {
 	require.NoError(t, b.db.GetContext(ctx, &annotationRows, `SELECT count(*) FROM nelm_release_annotations_v1 WHERE releaseNamespace = $1`, namespace))
 	require.Equal(t, len(annotations), annotationRows, "reads do not delete stale metadata")
 
-	obj.Annotations = map[string]string{"nelm.werf.io/release-format": "v1"}
+	obj.Annotations = map[string]string{"werf.io/release-version": "v1"}
 	require.NoError(t, b.update(ctx, obj))
 	stored, err = b.get(ctx, namespace, obj.Key)
 	require.NoError(t, err)
@@ -609,7 +609,7 @@ func TestSQLStorageBackend_LongReleaseAnnotationKeyPostgres(t *testing.T) {
 
 	loaded, err := storage.GetRelease(ctx, rls.Name, 1)
 	require.NoError(t, err)
-	require.Equal(t, storageAnnotationReleaseFormatV1, loaded.Annotations()[storageAnnotationReleaseFormat])
+	require.Equal(t, storageAnnotationReleaseVersionV1, loaded.Annotations()[storageAnnotationReleaseVersion])
 
 	loaded.SetStatus(common.StatusSuperseded)
 	require.NoError(t, storage.Update(ctx, loaded))
@@ -631,7 +631,7 @@ func TestSQLStorageBackend_LongReleaseAnnotationKeyPostgres(t *testing.T) {
 	loaded, err = storage.GetRelease(ctx, rls.Name, 2)
 	require.NoError(t, err)
 	require.Equal(t, "legacy", loaded.Annotations()["team"])
-	require.Equal(t, storageAnnotationReleaseFormatV1, loaded.Annotations()[storageAnnotationReleaseFormat])
+	require.Equal(t, storageAnnotationReleaseVersionV1, loaded.Annotations()[storageAnnotationReleaseVersion])
 }
 
 func TestSQLStorageBackend_ReadOnlyReleaseRoleCannotChangeAnnotationsPostgres(t *testing.T) {

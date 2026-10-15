@@ -21,7 +21,7 @@ type Revision struct {
 
 func NewRevisionFromAccessor(rel helmrel.Accessor) Revision {
 	var annotations map[string]string
-	if rel.Annotations()[storageAnnotationReleaseFormat] == storageAnnotationReleaseFormatV1 {
+	if rel.Annotations()[storageAnnotationReleaseVersion] == storageAnnotationReleaseVersionV1 {
 		annotations = maps.Clone(rel.Annotations())
 	}
 
