@@ -207,8 +207,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 		return releaseInstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts, reporter)
 	}
 
-	ctx, timeoutCancel := context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
-	defer timeoutCancel()
+	ctx, _ = context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
 
 	actionCh := make(chan *releaseInstallOutcome, 1)
 	go func() {
