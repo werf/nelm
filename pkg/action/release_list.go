@@ -33,8 +33,8 @@ const (
 type ReleaseListOptions struct {
 	common.KubeConnectionOptions
 
-	// LegacyMetadataOnly, with OutputNoPrint, lists only metadata; getters then read each body
-	// on first use. For Deckhouse until a server API replaces it.
+	// LegacyMetadataOnly, with OutputNoPrint, lists only metadata; body details are read on
+	// first use. For Deckhouse until a server API replaces it.
 	LegacyMetadataOnly bool
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
@@ -69,7 +69,7 @@ type ReleaseListResultV2 struct {
 }
 
 // ReleaseListResultRelease is the latest revision of a release. Getters return details from the
-// release body, read on first use with LegacyMetadataOnly.
+// metadata or the release body, read on first use with LegacyMetadataOnly.
 type ReleaseListResultRelease struct {
 	Name      string                   `json:"name"`
 	Namespace string                   `json:"namespace"`
@@ -80,6 +80,17 @@ type ReleaseListResultRelease struct {
 }
 
 func (r *ReleaseListResultRelease) Annotations(ctx context.Context) (map[string]string, error) {
+	var annotations map[string]string
+	if r.details != nil {
+		r.details.RTransaction(func(details *releaseListDetails) {
+			annotations = maps.Clone(details.annotations)
+		})
+	}
+
+	if annotations != nil {
+		return annotations, nil
+	}
+
 	summary, err := r.loadSummary(ctx)
 	if err != nil {
 		return nil, err
@@ -194,11 +205,15 @@ func (r ReleaseListResultRelease) output() releaseListResultReleaseOutput {
 	}
 
 	r.details.RTransaction(func(details *releaseListDetails) {
+		output.Annotations = details.annotations
 		if details.summary == nil {
 			return
 		}
 
-		output.Annotations = details.summary.Annotations
+		if output.Annotations == nil {
+			output.Annotations = details.summary.Annotations
+		}
+
 		output.DeployedAt = &ReleaseListResultDeployedAt{
 			Human: details.summary.DeployedAt.String(),
 			Unix:  int(details.summary.DeployedAt.Unix()),
@@ -239,11 +254,12 @@ func (r *ReleaseListResultRelease) readSummary(ctx context.Context, storage rele
 }
 
 type releaseListDetails struct {
-	err      error
-	loading  chan struct{}
-	revision release.Revision
-	storage  release.ReleaseStorager
-	summary  *release.ReleaseSummary
+	annotations map[string]string
+	err         error
+	loading     chan struct{}
+	revision    release.Revision
+	storage     release.ReleaseStorager
+	summary     *release.ReleaseSummary
 }
 
 type ReleaseListResultDeployedAt struct {
@@ -304,7 +320,7 @@ func ReleaseList(ctx context.Context, opts ReleaseListOptions) (*ReleaseListResu
 
 	var result *ReleaseListResultV2
 	if listsReleasesByMetadata(opts) {
-		result, err = buildReleaseListResultFromMetadata(ctx, releaseStorage, opts.ReleaseLabelSelector)
+		result, err = buildReleaseListResultFromMetadata(ctx, releaseStorage, opts)
 	} else {
 		result, err = buildReleaseListResult(ctx, releaseStorage, opts.ReleaseLabelSelector)
 	}
@@ -411,15 +427,18 @@ func buildReleaseListResult(ctx context.Context, storage release.ReleaseStorager
 			Namespace: summary.Revision.Namespace,
 			Revision:  summary.Revision.Version,
 			Status:    helmreleasestatus.Status(summary.Revision.Status),
-			details:   kdutil.NewConcurrent(&releaseListDetails{err: summary.DecodeErr, revision: summary.Revision, summary: summary.Summary}),
+			details:   kdutil.NewConcurrent(&releaseListDetails{annotations: maps.Clone(summary.Revision.Annotations), err: summary.DecodeErr, revision: summary.Revision, summary: summary.Summary}),
 		})
 	}
 
 	return newReleaseListResult(releases), nil
 }
 
-func buildReleaseListResultFromMetadata(ctx context.Context, storage release.ReleaseStorager, selector string) (*ReleaseListResultV2, error) {
-	revisions, err := storage.LatestRevisions(ctx, release.LatestRevisionsOptions{LabelSelector: selector})
+func buildReleaseListResultFromMetadata(ctx context.Context, storage release.ReleaseStorager, opts ReleaseListOptions) (*ReleaseListResultV2, error) {
+	revisions, err := storage.LatestRevisions(ctx, release.LatestRevisionsOptions{
+		LabelSelector:   opts.ReleaseLabelSelector,
+		SkipAnnotations: !opts.OutputNoPrint,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("read release list: %w", err)
 	}
@@ -431,7 +450,7 @@ func buildReleaseListResultFromMetadata(ctx context.Context, storage release.Rel
 			Namespace: revision.Namespace,
 			Revision:  revision.Version,
 			Status:    helmreleasestatus.Status(revision.Status),
-			details:   kdutil.NewConcurrent(&releaseListDetails{revision: revision, storage: storage}),
+			details:   kdutil.NewConcurrent(&releaseListDetails{annotations: maps.Clone(revision.Annotations), revision: revision, storage: storage}),
 		})
 	}
 

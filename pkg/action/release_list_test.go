@@ -68,7 +68,7 @@ func TestBuildReleaseListResultBackendError(t *testing.T) {
 	_, err := buildReleaseListResult(context.Background(), &latestReleaseListStorager{err: backendErr}, "")
 	require.ErrorIs(t, err, backendErr)
 
-	_, err = buildReleaseListResultFromMetadata(context.Background(), &latestReleaseListStorager{err: backendErr}, "")
+	_, err = buildReleaseListResultFromMetadata(context.Background(), &latestReleaseListStorager{err: backendErr}, ReleaseListOptions{OutputNoPrint: true})
 	require.ErrorIs(t, err, backendErr)
 }
 
@@ -85,7 +85,7 @@ func TestBuildReleaseListResultFromMetadataCachesUndecodable(t *testing.T) {
 	ctx := context.Background()
 	storage := newMetadataReleaseListStorager([]release.Revision{{Namespace: "ns", Name: "a", Version: 1}}, nil, fmt.Errorf("decode: %w", release.ErrReleaseUndecodable))
 
-	result, err := buildReleaseListResultFromMetadata(ctx, storage, "")
+	result, err := buildReleaseListResultFromMetadata(ctx, storage, ReleaseListOptions{OutputNoPrint: true})
 	require.NoError(t, err)
 
 	for range 2 {
@@ -103,7 +103,7 @@ func TestBuildReleaseListResultFromMetadataLoadsOnce(t *testing.T) {
 		{Namespace: "ns", Name: "b", Version: 1, Status: "failed"},
 	}, map[string]*release.ReleaseSummary{"ns/a": newTestReleaseSummary(), "ns/b": newTestReleaseSummary()})
 
-	result, err := buildReleaseListResultFromMetadata(ctx, storage, "packageChecksum")
+	result, err := buildReleaseListResultFromMetadata(ctx, storage, ReleaseListOptions{OutputNoPrint: true, ReleaseLabelSelector: "packageChecksum"})
 	require.NoError(t, err)
 	assert.Equal(t, "packageChecksum", storage.selector)
 	assert.Empty(t, storage.loadedRevisions())
@@ -151,7 +151,7 @@ func TestBuildReleaseListResultFromMetadataRetriesTransientErrors(t *testing.T) 
 	transient := errors.New("connection refused")
 	storage := newMetadataReleaseListStorager([]release.Revision{{Namespace: "ns", Name: "a", Version: 1}}, map[string]*release.ReleaseSummary{"ns/a": newTestReleaseSummary()}, transient, release.ErrReleaseNotFound)
 
-	result, err := buildReleaseListResultFromMetadata(ctx, storage, "")
+	result, err := buildReleaseListResultFromMetadata(ctx, storage, ReleaseListOptions{OutputNoPrint: true})
 	require.NoError(t, err)
 
 	rel := result.Releases[0]
@@ -165,6 +165,48 @@ func TestBuildReleaseListResultFromMetadataRetriesTransientErrors(t *testing.T) 
 	_, err = rel.Annotations(ctx)
 	require.NoError(t, err)
 	assert.Len(t, storage.loadedRevisions(), 3)
+}
+
+func TestBuildReleaseListResultMetadataAnnotationsOnlyForLibrary(t *testing.T) {
+	for _, outputNoPrint := range []bool{true, false} {
+		name := "table"
+		if outputNoPrint {
+			name = "library"
+		}
+
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			annotations := map[string]string{"werf.io/release-version": "v1", "team": "platform"}
+			storage := newMetadataReleaseListStorager([]release.Revision{{Name: "app", Namespace: "ns", Version: 1, Status: "deployed", Annotations: annotations}}, nil)
+			result, err := buildReleaseListResultFromMetadata(ctx, storage, ReleaseListOptions{
+				OutputFormat: common.OutputFormatTable, OutputNoPrint: outputNoPrint, LegacyMetadataOnly: true, ReleaseLabelSelector: "packageChecksum",
+			})
+			require.NoError(t, err)
+			require.Len(t, result.Releases, 1)
+			assert.Equal(t, !outputNoPrint, storage.skipAnnotations)
+			assert.Equal(t, "packageChecksum", storage.selector)
+			assert.Empty(t, storage.loadedRevisions())
+			assert.Equal(t, "app", result.Releases[0].Name)
+			assert.Equal(t, "ns", result.Releases[0].Namespace)
+			assert.Equal(t, 1, result.Releases[0].Revision)
+			assert.Equal(t, helmreleasestatus.StatusDeployed, result.Releases[0].Status)
+
+			if outputNoPrint {
+				actual, err := result.Releases[0].Annotations(ctx)
+				require.NoError(t, err)
+				assert.Equal(t, annotations, actual)
+				assert.Empty(t, storage.loadedRevisions())
+			} else {
+				data, err := json.Marshal(result.Releases[0])
+				require.NoError(t, err)
+
+				var output map[string]any
+				require.NoError(t, json.Unmarshal(data, &output))
+				assert.Nil(t, output["annotations"])
+				assert.Empty(t, storage.loadedRevisions())
+			}
+		})
+	}
 }
 
 func TestBuildReleaseListResultProjectsAndSorts(t *testing.T) {
@@ -267,7 +309,7 @@ func TestReleaseListResultReleaseCancelledReaderLetsWaiterRead(t *testing.T) {
 	storage := newMetadataReleaseListStorager([]release.Revision{{Namespace: "ns", Name: "a", Version: 1}}, map[string]*release.ReleaseSummary{"ns/a": newTestReleaseSummary()})
 	storage.loadGate, storage.loadStarted = make(chan struct{}), make(chan struct{}, 10)
 
-	result, err := buildReleaseListResultFromMetadata(context.Background(), storage, "")
+	result, err := buildReleaseListResultFromMetadata(context.Background(), storage, ReleaseListOptions{OutputNoPrint: true})
 	require.NoError(t, err)
 
 	rel := result.Releases[0]
@@ -296,6 +338,19 @@ func TestReleaseListResultReleaseCancelledReaderLetsWaiterRead(t *testing.T) {
 	require.NoError(t, <-waiterDone)
 }
 
+func TestReleaseListResultReleaseEmptyMetadataAnnotationsReadNoBody(t *testing.T) {
+	ctx := context.Background()
+	annotations := map[string]string{"werf.io/release-version": "v1"}
+	storage := newMetadataReleaseListStorager([]release.Revision{{Namespace: "ns", Name: "a", Version: 1, Annotations: annotations}}, nil)
+	result, err := buildReleaseListResultFromMetadata(ctx, storage, ReleaseListOptions{OutputNoPrint: true})
+	require.NoError(t, err)
+
+	actual, err := result.Releases[0].Annotations(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, annotations, actual)
+	assert.Empty(t, storage.loadedRevisions())
+}
+
 func TestReleaseListResultReleaseMarshalsByValue(t *testing.T) {
 	entry := newLatestRevisionSummary("ns", "myrel", 1)
 	result, err := buildReleaseListResult(context.Background(), &latestReleaseListStorager{latestSummaries: []release.RevisionSummary{entry}}, "")
@@ -314,6 +369,55 @@ func TestReleaseListResultReleaseMarshalsByValue(t *testing.T) {
 	assert.Contains(t, string(yamlByValue), "managed-by: deckhouse")
 }
 
+func TestReleaseListResultReleaseMetadataAnnotationsReadNoBody(t *testing.T) {
+	ctx := context.Background()
+	annotations := map[string]string{"werf.io/release-version": "v1", "team": "platform"}
+	storage := newMetadataReleaseListStorager([]release.Revision{{Namespace: "ns", Name: "a", Version: 1, Annotations: annotations}}, nil, release.ErrReleaseUndecodable)
+	result, err := buildReleaseListResultFromMetadata(ctx, storage, ReleaseListOptions{OutputNoPrint: true})
+	require.NoError(t, err)
+
+	actual, err := result.Releases[0].Annotations(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, annotations, actual)
+	assert.Empty(t, storage.loadedRevisions())
+
+	actual["team"] = "changed"
+
+	_, err = result.Releases[0].Chart(ctx)
+	require.ErrorIs(t, err, release.ErrReleaseUndecodable)
+	actual, err = result.Releases[0].Annotations(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "platform", actual["team"])
+	assert.Len(t, storage.loadedRevisions(), 1)
+
+	data, err := json.Marshal(result)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"team":"platform"`)
+	assert.Contains(t, string(data), `"chart":null`)
+}
+
+func TestReleaseListResultReleaseMetadataAnnotationsSurviveBrokenBody(t *testing.T) {
+	ctx := logboek.NewContext(context.Background(), logboek.NewLogger(io.Discard, io.Discard))
+	annotations := map[string]string{"werf.io/release-version": "v1", "team": "platform"}
+	summary := release.RevisionSummary{Revision: release.Revision{Namespace: "ns", Name: "a", Version: 1, Annotations: annotations}, DecodeErr: release.ErrReleaseUndecodable}
+	storage := &latestReleaseListStorager{latestSummaries: []release.RevisionSummary{summary}, historySummaries: []release.RevisionSummary{summary}}
+	result, err := buildReleaseListResult(ctx, storage, "")
+	require.NoError(t, err)
+
+	actual, err := result.Releases[0].Annotations(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, annotations, actual)
+
+	_, err = result.Releases[0].DeployedAt(ctx)
+	require.ErrorIs(t, err, release.ErrReleaseUndecodable)
+
+	history, err := buildReleaseHistoryResult(ctx, storage, "a", 0)
+	require.NoError(t, err)
+	require.Len(t, history.Releases, 1)
+	assert.Equal(t, annotations, history.Releases[0].Annotations)
+	assert.Nil(t, history.Releases[0].Chart)
+}
+
 func TestReleaseListResultReleaseNotFromList(t *testing.T) {
 	rel := &ReleaseListResultRelease{Name: "a", Namespace: "ns"}
 
@@ -329,7 +433,7 @@ func TestReleaseListResultReleaseWaiterHonoursItsContext(t *testing.T) {
 	storage := newMetadataReleaseListStorager([]release.Revision{{Namespace: "ns", Name: "a", Version: 1}}, map[string]*release.ReleaseSummary{"ns/a": newTestReleaseSummary()})
 	storage.loadGate, storage.loadStarted = make(chan struct{}), make(chan struct{}, 10)
 
-	result, err := buildReleaseListResultFromMetadata(context.Background(), storage, "")
+	result, err := buildReleaseListResultFromMetadata(context.Background(), storage, ReleaseListOptions{OutputNoPrint: true})
 	require.NoError(t, err)
 
 	rel := result.Releases[0]
