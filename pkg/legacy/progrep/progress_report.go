@@ -28,7 +28,16 @@ const (
 	OperationTypeCreateRelease  OperationType = "CreateRelease"
 	OperationTypeUpdateRelease  OperationType = "UpdateRelease"
 	OperationTypeDeleteRelease  OperationType = "DeleteRelease"
+
+	PhaseKindInitializing      PhaseKind = "Initializing"
+	PhaseKindRendering         PhaseKind = "Rendering"
+	PhaseKindAnalyzing         PhaseKind = "Analyzing"
+	PhaseKindPlanning          PhaseKind = "Planning"
+	PhaseKindExecuting         PhaseKind = "Executing"
+	PhaseKindDeletingNamespace PhaseKind = "DeletingNamespace"
 )
+
+type PhaseKind string
 
 type OperationCategory string
 
@@ -36,10 +45,11 @@ type OperationType string
 
 type OperationStatus string
 
-// ProgressReport lists ALL operations of every plan executed so far, in execution order: from
-// the very first report every operation of the current plan is present (initially as Pending),
-// and operations of later plans (e.g. a failure plan) are appended after the earlier ones. The
-// plans form a single graph: the root operations of a later plan depend on the final operations
+// ProgressReport lists ALL operations of every plan executed so far, in execution order. When
+// a plan starts every operation of that plan is present (initially as Pending). Earlier reports
+// may contain only phase information when enabled. Operations of later plans (e.g. a failure
+// plan) are appended after the earlier ones. The plans form a single graph: the root operations
+// of a later plan depend on the final operations
 // of the plan before it. Operations of a finished plan that were never started are Canceled. The first plan describes the complete desired state of the release, so
 // the resources it leaves untouched are listed too, as NoOp with status Completed, at the
 // beginning of the slice. Later plans, e.g. a failure plan, never add untouched resources.
@@ -50,7 +60,27 @@ type OperationStatus string
 // skipped by a resource policy). It is not a statement about the resource being present or
 // in the desired state.
 type ProgressReport struct {
-	Operations []Operation `json:"operations"`
+	CurrentPhase           PhaseKind               `json:"currentPhase,omitempty"`
+	RenderDetails          *RenderDetails          `json:"renderDetails,omitempty"`
+	AnalyzeDetails         *AnalyzeDetails         `json:"analyzeDetails,omitempty"`
+	NamespaceDeleteDetails *NamespaceDeleteDetails `json:"namespaceDeleteDetails,omitempty"`
+	Operations             []Operation             `json:"operations"`
+}
+
+type RenderDetails struct {
+	// A nil count means rendering has not yet determined the number of resources.
+	ResourceCount *int `json:"resourceCount,omitempty"`
+}
+
+type AnalyzeDetails struct {
+	Processed int `json:"processed"`
+	Total     int `json:"total"`
+}
+
+type NamespaceDeleteDetails struct {
+	Name               string          `json:"name"`
+	DeleteStatus       OperationStatus `json:"deleteStatus"`
+	TrackAbsenceStatus OperationStatus `json:"trackAbsenceStatus"`
 }
 
 // Operation ID is unique within a report and is referenced by DependsOn of other operations.

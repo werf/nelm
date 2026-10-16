@@ -84,6 +84,9 @@ type BuildResourceInfosOptions struct {
 	LastDeployedOrLastRelResourceSpecs []*spec.ResourceSpec
 	NetworkParallelism                 int
 	NoRemoveManualChanges              bool
+	// OnResourceAnalyzed is optional and runs concurrently in pool workers after successful input analysis,
+	// including policy and stage skips. It never runs after BuildResourceInfos returns, even on error.
+	OnResourceAnalyzed func(context.Context)
 }
 
 // From Installable/DeletableResource builds Installable/DeletableResourceInfo. If you can do
@@ -91,16 +94,23 @@ type BuildResourceInfosOptions struct {
 // more info, and here we actually decide what to do with each resource. Initially all this logic
 // was in BuildPlan, but it became way too complex, so we extracted it here.
 func BuildResourceInfos(ctx context.Context, deployType common.DeployType, releaseName, releaseNamespace string, instResources []*resource.InstallableResource, delResources []*resource.DeletableResource, prevReleaseFailed bool, clientFactory kube.ClientFactorier, opts BuildResourceInfosOptions) (instResourceInfos []*InstallableResourceInfo, delResourceInfos []*DeletableResourceInfo, err error) {
+	analysisCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	totalResourcesCount := len(instResources) + len(delResources)
 
 	routines := poolRoutines(len(instResources), totalResourcesCount, opts.NetworkParallelism)
 
-	instResourcesPool := pool.NewWithResults[[]*InstallableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
+	instResourcesPool := pool.NewWithResults[[]*InstallableResourceInfo]().WithContext(analysisCtx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range instResources {
 		instResourcesPool.Go(func(ctx context.Context) ([]*InstallableResourceInfo, error) {
 			infos, err := buildInstallableResourceInfo(ctx, res, deployType, releaseNamespace, prevReleaseFailed, opts.NoRemoveManualChanges, clientFactory, opts, opts.DiffPatches)
 			if err != nil {
 				return nil, fmt.Errorf("build installable resource info: %w", err)
+			}
+
+			if opts.OnResourceAnalyzed != nil {
+				opts.OnResourceAnalyzed(ctx)
 			}
 
 			return infos, nil
@@ -109,7 +119,7 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 
 	routines = poolRoutines(len(delResources), totalResourcesCount, opts.NetworkParallelism)
 
-	delResourcesPool := pool.NewWithResults[*DeletableResourceInfo]().WithContext(ctx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
+	delResourcesPool := pool.NewWithResults[*DeletableResourceInfo]().WithContext(analysisCtx).WithMaxGoroutines(routines).WithCancelOnError().WithFirstError()
 	for _, res := range delResources {
 		delResourcesPool.Go(func(ctx context.Context) (*DeletableResourceInfo, error) {
 			info, err := buildDeletableResourceInfo(ctx, res, deployType, releaseName, releaseNamespace, clientFactory)
@@ -117,20 +127,30 @@ func BuildResourceInfos(ctx context.Context, deployType common.DeployType, relea
 				return nil, fmt.Errorf("build deletable resource info: %w", err)
 			}
 
+			if opts.OnResourceAnalyzed != nil {
+				opts.OnResourceAnalyzed(ctx)
+			}
+
 			return info, nil
 		})
 	}
 
-	if infos, err := instResourcesPool.Wait(); err != nil {
-		return nil, nil, fmt.Errorf("wait for resource pool: %w", err)
-	} else {
-		instResourceInfos = lo.Flatten(infos)
+	infos, instErr := instResourcesPool.Wait()
+	if instErr != nil {
+		cancel()
 	}
 
 	delResourceInfos, err = delResourcesPool.Wait()
+
+	if instErr != nil {
+		return nil, nil, fmt.Errorf("wait for resource pool: %w", instErr)
+	}
+
 	if err != nil {
 		return nil, nil, fmt.Errorf("wait for prev release resource pool: %w", err)
 	}
+
+	instResourceInfos = lo.Flatten(infos)
 
 	forceReadinessTrackingForReadyDependencyTargets(instResourceInfos)
 

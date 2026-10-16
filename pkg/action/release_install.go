@@ -111,10 +111,13 @@ type ReleaseInstallOptions struct {
 	LegacyPlanArtifact *PlanArtifact
 	// LegacyProgressReportCh, when non-nil, receives ProgressReport snapshots during deployment.
 	// Must be a buffered channel with capacity >= 1. Intermediate reports may be dropped if the
-	// consumer is slow; the final report is guaranteed (blocking send). ReleaseInstall closes the
-	// channel when it returns, on every path. Incompatible with AutoRollback. See
-	// docs/progress-report.md.
+	// consumer is slow; checkpoints and the final report use blocking sends, interruptible by
+	// cancellation. ReleaseInstall closes the channel when it returns, on every path.
+	// Incompatible with AutoRollback. See docs/progress-report.md.
 	LegacyProgressReportCh chan<- progrep.ProgressReport
+	// LegacyProgressReportPhases enables preparation phases and their details. Reports may arrive
+	// before the plan is built, with no operations. Requires LegacyProgressReportCh to receive them.
+	LegacyProgressReportPhases bool
 	// NetworkParallelism limits the number of concurrent network-related operations (API calls, resource fetches).
 	// Defaults to DefaultNetworkParallelism if not set or <= 0.
 	NetworkParallelism int
@@ -185,22 +188,30 @@ type releaseInstallOutcome struct {
 // errors. The result is also returned when the release was skipped as already up to date
 // (Release.Status is StatusSkipped) and when non-critical errors are returned alongside it.
 func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, opts ReleaseInstallOptions) (*ReleaseInstallResultV1, error) {
-	if opts.LegacyProgressReportCh != nil {
-		defer close(opts.LegacyProgressReportCh)
-	}
-
 	ctx, ctxCancelFn := context.WithCancelCause(ctx)
 
+	var reporter *plan.LegacyProgressReporter
+
+	if opts.LegacyProgressReportCh != nil {
+		reporter = plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
+	}
+	defer func() {
+		ctxCancelFn(fmt.Errorf("context canceled: action finished"))
+
+		if reporter != nil {
+			reporter.Close(ctx)
+		}
+	}()
+
 	if opts.Timeout == 0 {
-		return releaseInstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts)
+		return releaseInstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts, reporter)
 	}
 
 	ctx, _ = context.WithTimeoutCause(ctx, opts.Timeout, fmt.Errorf("context timed out: action timed out after %s", opts.Timeout.String()))
-	defer ctxCancelFn(fmt.Errorf("context canceled: action finished"))
 
 	actionCh := make(chan *releaseInstallOutcome, 1)
 	go func() {
-		result, err := releaseInstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts)
+		result, err := releaseInstall(ctx, ctxCancelFn, releaseName, releaseNamespace, opts, reporter)
 		actionCh <- &releaseInstallOutcome{err: err, result: result}
 	}()
 
@@ -214,7 +225,17 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	}
 }
 
-func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, opts ReleaseInstallOptions) (*ReleaseInstallResultV1, error) {
+func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, releaseName, releaseNamespace string, opts ReleaseInstallOptions, reporter *plan.LegacyProgressReporter) (*ReleaseInstallResultV1, error) {
+	var phaseReporter *plan.LegacyProgressReporter
+	if reporter != nil {
+		defer reporter.Stop(ctx)
+
+		if opts.LegacyProgressReportPhases {
+			phaseReporter = reporter
+			phaseReporter.ReportPhase(ctx, progrep.PhaseKindInitializing, plan.ReportPhaseOptions{})
+		}
+	}
+
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return nil, fmt.Errorf("get current working directory: %w", err)
@@ -400,6 +421,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		log.Default.Debug(ctx, "Render chart")
 
+		if phaseReporter != nil {
+			phaseReporter.ReportPhase(ctx, progrep.PhaseKindRendering, plan.ReportPhaseOptions{
+				RenderDetails: &progrep.RenderDetails{},
+			})
+		}
+
 		renderChartResult, err := chart.RenderChart(ctx, opts.Chart, releaseName, releaseNamespace, newRevision, deployType, helmRegistryClient, clientFactory, chart.RenderChartOptions{
 			ChartRepoConnectionOptions:      opts.ChartRepoConnectionOptions,
 			ValuesOptions:                   opts.ValuesOptions,
@@ -461,6 +488,13 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			return nil, fmt.Errorf("build releasable resource specs: %w", err)
 		}
 
+		if phaseReporter != nil {
+			phaseReporter.ReportPhase(ctx, progrep.PhaseKindRendering, plan.ReportPhaseOptions{
+				RenderDetails: &progrep.RenderDetails{ResourceCount: lo.ToPtr(len(releasableResSpecs))},
+			})
+			phaseReporter.ReportCheckpoint(ctx)
+		}
+
 		newRelease, err = release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, releasableResSpecs, renderChartResult.Chart, renderChartResult.ReleaseConfig, release.ReleaseOptions{
 			InfoAnnotations: opts.ReleaseInfoAnnotations,
 			Labels:          opts.ReleaseLabels,
@@ -520,7 +554,16 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			}
 		}
 
+		var onResourceAnalyzed func(context.Context)
+		if phaseReporter != nil {
+			phaseReporter.ReportPhase(ctx, progrep.PhaseKindAnalyzing, plan.ReportPhaseOptions{
+				AnalyzeDetails: &progrep.AnalyzeDetails{Total: len(instResources) + len(delResources)},
+			})
+			onResourceAnalyzed = phaseReporter.ReportAnalyzedResource
+		}
+
 		instResInfos, delResInfos, err = plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
+			OnResourceAnalyzed:                 onResourceAnalyzed,
 			DiffPatches:                        patches.Diff,
 			NetworkParallelism:                 opts.NetworkParallelism,
 			NoRemoveManualChanges:              opts.NoRemoveManualChanges,
@@ -530,6 +573,11 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		})
 		if err != nil {
 			return nil, fmt.Errorf("build resource infos: %w", err)
+		}
+
+		if phaseReporter != nil {
+			phaseReporter.ReportCheckpoint(ctx)
+			phaseReporter.ReportPhase(ctx, progrep.PhaseKindPlanning, plan.ReportPhaseOptions{})
 		}
 
 		log.Default.Debug(ctx, "Remotely validate resources")
@@ -584,6 +632,10 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}
 	})
 
+	if phaseReporter != nil {
+		phaseReporter.ReportPhase(ctx, progrep.PhaseKindExecuting, plan.ReportPhaseOptions{})
+	}
+
 	if releaseIsUpToDate && installPlanIsUseless {
 		if opts.InstallReportPath != "" {
 			if err := saveReport(opts.InstallReportPath, &ReleaseReportV3{
@@ -601,13 +653,11 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			printNotes(ctx, newRelease.Notes())
 		}
 
-		if opts.LegacyProgressReportCh != nil {
-			reporter := plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
-
+		if reporter != nil {
 			reporter.StartPlan(installPlan, releaseNamespace, instResInfos, clientFactory.Mapper(), plan.StartPlanOptions{
 				UntouchedResourcesOnly: true,
 			})
-			reporter.Stop(ctx)
+			reporter.ReportCheckpoint(ctx)
 		}
 
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("Skipped release %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)))
@@ -645,11 +695,6 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	criticalErrs := &util.MultiError{}
 	nonCriticalErrs := &util.MultiError{}
-
-	var reporter *plan.LegacyProgressReporter
-	if opts.LegacyProgressReportCh != nil {
-		reporter = plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
-	}
 
 	log.Default.Debug(ctx, "Execute release install plan")
 
@@ -721,7 +766,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	if reporter != nil {
-		reporter.Stop(ctx)
+		reporter.ReportCheckpoint(ctx)
 	}
 
 	reportCompletedOps := lo.Map(completedResourceOps, func(op *plan.Operation, _ int) string {

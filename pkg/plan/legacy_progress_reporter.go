@@ -32,8 +32,87 @@ func NewLegacyProgressReporter(reportCh chan<- progrep.ProgressReport) *LegacyPr
 	}
 }
 
+// Close stops reporting and closes the channel after in-flight sends finish. Its context does
+// not interrupt those sends: cancel any blocking send's context before calling Close.
+// Close does not send a final snapshot.
+func (r *LegacyProgressReporter) Close(ctx context.Context) {
+	r.state.RWTransaction(func(s *progressReporterState) {
+		if s.closed {
+			return
+		}
+
+		s.closed = true
+		s.stopped = true
+
+		close(r.reportCh)
+	})
+}
+
+func (r *LegacyProgressReporter) ReportAnalyzedResource(ctx context.Context) {
+	r.state.RWTransaction(func(s *progressReporterState) {
+		if s.stopped || s.analyzeDetails == nil {
+			return
+		}
+
+		s.analyzeDetails.Processed++
+
+		if len(r.reportCh) == cap(r.reportCh) {
+			return
+		}
+
+		sendNonBlocking(r.reportCh, buildProgressReport(s))
+	})
+}
+
+// ReportCheckpoint sends the current snapshot with a blocking send without stopping reporting
+// or changing pending statuses. Cancellation can interrupt the send.
+func (r *LegacyProgressReporter) ReportCheckpoint(ctx context.Context) {
+	r.state.RWTransaction(func(s *progressReporterState) {
+		if s.stopped || (s.plansCount == 0 && !s.phaseReported) {
+			return
+		}
+
+		sendBlocking(ctx, r.reportCh, buildProgressReport(s))
+	})
+}
+
+func (r *LegacyProgressReporter) ReportPhase(ctx context.Context, phase progrep.PhaseKind, opts ReportPhaseOptions) {
+	r.state.RWTransaction(func(s *progressReporterState) {
+		if s.stopped {
+			return
+		}
+
+		s.currentPhase = phase
+
+		s.phaseReported = true
+		if opts.RenderDetails != nil {
+			s.renderDetails = copyRenderDetails(opts.RenderDetails)
+		}
+
+		if opts.AnalyzeDetails != nil {
+			details := *opts.AnalyzeDetails
+			s.analyzeDetails = &details
+		}
+
+		if opts.NamespaceDeleteDetails != nil {
+			details := *opts.NamespaceDeleteDetails
+			s.namespaceDeleteDetails = &details
+		}
+
+		if len(r.reportCh) == cap(r.reportCh) {
+			return
+		}
+
+		sendNonBlocking(r.reportCh, buildProgressReport(s))
+	})
+}
+
 func (r *LegacyProgressReporter) ReportStatus(opID string, status progrep.OperationStatus) {
 	r.state.RWTransaction(func(s *progressReporterState) {
+		if s.stopped {
+			return
+		}
+
 		idx, ok := s.opIndex[opID]
 		if !ok {
 			return
@@ -45,7 +124,7 @@ func (r *LegacyProgressReporter) ReportStatus(opID string, status progrep.Operat
 			return
 		}
 
-		sendNonBlocking(r.reportCh, buildProgressReport(s.ops))
+		sendNonBlocking(r.reportCh, buildProgressReport(s))
 	})
 }
 
@@ -57,6 +136,13 @@ func (r *LegacyProgressReporter) ReportStatus(opID string, status progrep.Operat
 // the first plan only: later plans act upon a release the first plan has already described in
 // full.
 func (r *LegacyProgressReporter) StartPlan(p *Plan, releaseNamespace string, installableResourceInfos []*InstallableResourceInfo, mapper meta.RESTMapper, opts StartPlanOptions) {
+	var stopped bool
+	r.state.RTransaction(func(s *progressReporterState) { stopped = s.stopped })
+
+	if stopped {
+		return
+	}
+
 	resolvedNamespaces := buildResolvedNamespaces(p, releaseNamespace, mapper)
 
 	untouchedResolvedNamespaces := make(map[string]string, len(installableResourceInfos))
@@ -65,6 +151,10 @@ func (r *LegacyProgressReporter) StartPlan(p *Plan, releaseNamespace string, ins
 	}
 
 	r.state.RWTransaction(func(s *progressReporterState) {
+		if s.stopped {
+			return
+		}
+
 		cancelPendingOperations(s.ops)
 
 		s.plansCount++
@@ -95,29 +185,45 @@ func (r *LegacyProgressReporter) StartPlan(p *Plan, releaseNamespace string, ins
 			s.ops = append(s.ops, op)
 		}
 
-		sendNonBlocking(r.reportCh, buildProgressReport(s.ops))
+		sendNonBlocking(r.reportCh, buildProgressReport(s))
 	})
 }
 
 // Stop sends the final report with a blocking send. Operations that never started are marked
 // Canceled first: nothing is going to run them anymore.
 func (r *LegacyProgressReporter) Stop(ctx context.Context) {
-	var report progrep.ProgressReport
-
 	r.state.RWTransaction(func(s *progressReporterState) {
+		if s.stopped {
+			return
+		}
+
+		s.stopped = true
+		if s.plansCount == 0 && !s.phaseReported {
+			return
+		}
+
 		cancelPendingOperations(s.ops)
 
-		report = buildProgressReport(s.ops)
-	})
+		if s.namespaceDeleteDetails != nil {
+			if s.namespaceDeleteDetails.DeleteStatus == progrep.OperationStatusPending {
+				s.namespaceDeleteDetails.DeleteStatus = progrep.OperationStatusCanceled
+			}
 
-	func() {
-		defer func() { _ = recover() }()
-
-		select {
-		case r.reportCh <- report:
-		case <-ctx.Done():
+			if s.namespaceDeleteDetails.TrackAbsenceStatus == progrep.OperationStatusPending {
+				s.namespaceDeleteDetails.TrackAbsenceStatus = progrep.OperationStatusCanceled
+			}
 		}
-	}()
+
+		sendBlocking(ctx, r.reportCh, buildProgressReport(s))
+	})
+}
+
+// ReportPhaseOptions replaces each nonnil detail with an owned copy; nil retains the existing
+// detail. Emitted reports own their data independently of the options and other snapshots.
+type ReportPhaseOptions struct {
+	AnalyzeDetails         *progrep.AnalyzeDetails
+	NamespaceDeleteDetails *progrep.NamespaceDeleteDetails
+	RenderDetails          *progrep.RenderDetails
 }
 
 type StartPlanOptions struct {
@@ -128,15 +234,48 @@ type StartPlanOptions struct {
 }
 
 type progressReporterState struct {
+	analyzeDetails *progrep.AnalyzeDetails
+	closed         bool
+	currentPhase   progrep.PhaseKind
 	// lastPlanSinkIDs are the report IDs of the operations without successors in the most recently
 	// started plan that had operations. The root operations of the next plan depend on them.
-	lastPlanSinkIDs []string
+	lastPlanSinkIDs        []string
+	namespaceDeleteDetails *progrep.NamespaceDeleteDetails
 	// opIndex maps the raw operation IDs of the most recently started plan to their positions in
 	// ops. Operations of earlier plans are no longer addressable: by the time the next plan starts
 	// they are either done or canceled.
-	opIndex    map[string]int
-	ops        []progrep.Operation
-	plansCount int
+	opIndex       map[string]int
+	ops           []progrep.Operation
+	phaseReported bool
+	plansCount    int
+	renderDetails *progrep.RenderDetails
+	stopped       bool
+}
+
+func buildProgressReport(s *progressReporterState) progrep.ProgressReport {
+	operations := make([]progrep.Operation, len(s.ops))
+	copy(operations, s.ops)
+
+	for i := range operations {
+		operations[i].DependsOn = append([]string{}, operations[i].DependsOn...)
+	}
+
+	report := progrep.ProgressReport{
+		CurrentPhase:  s.currentPhase,
+		RenderDetails: copyRenderDetails(s.renderDetails),
+		Operations:    operations,
+	}
+	if s.analyzeDetails != nil {
+		details := *s.analyzeDetails
+		report.AnalyzeDetails = &details
+	}
+
+	if s.namespaceDeleteDetails != nil {
+		details := *s.namespaceDeleteDetails
+		report.NamespaceDeleteDetails = &details
+	}
+
+	return report
 }
 
 func sendNonBlocking(ch chan<- progrep.ProgressReport, report progrep.ProgressReport) {
@@ -183,15 +322,6 @@ func buildPlanOperations(p *Plan, predMap map[string]map[string]graph.Edge[strin
 	}
 
 	return result
-}
-
-func buildProgressReport(ops []progrep.Operation) progrep.ProgressReport {
-	operations := make([]progrep.Operation, len(ops))
-	copy(operations, ops)
-
-	return progrep.ProgressReport{
-		Operations: operations,
-	}
 }
 
 // Untouched resources have no operation in the plan and thus no position in its graph, so they
@@ -243,6 +373,20 @@ func cancelPendingOperations(ops []progrep.Operation) {
 	}
 }
 
+func copyRenderDetails(details *progrep.RenderDetails) *progrep.RenderDetails {
+	if details == nil {
+		return nil
+	}
+
+	result := *details
+	if details.ResourceCount != nil {
+		count := *details.ResourceCount
+		result.ResourceCount = &count
+	}
+
+	return &result
+}
+
 func planIDPrefix(planNumber int) string {
 	if planNumber == 1 {
 		return ""
@@ -281,5 +425,14 @@ func safeSend(ch chan<- progrep.ProgressReport, report progrep.ProgressReport) (
 		return true
 	default:
 		return false
+	}
+}
+
+func sendBlocking(ctx context.Context, ch chan<- progrep.ProgressReport, report progrep.ProgressReport) {
+	defer func() { _ = recover() }()
+
+	select {
+	case ch <- report:
+	case <-ctx.Done():
 	}
 }

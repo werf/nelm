@@ -6,6 +6,8 @@
 - [Enabling the report](#enabling-the-report)
 - [Snapshots](#snapshots)
 - [Report shape](#report-shape)
+  - [Phase and details](#phase-and-details)
+  - [Operations](#operations)
 - [Operation types](#operation-types)
 - [Statuses](#statuses)
 - [Ordering and graph](#ordering-and-graph)
@@ -41,7 +43,7 @@ go func() {
 	}
 }()
 
-err := action.ReleaseInstall(ctx, releaseName, releaseNamespace, action.ReleaseInstallOptions{
+_, err := action.ReleaseInstall(ctx, releaseName, releaseNamespace, action.ReleaseInstallOptions{
 	Chart:                  chartPath,
 	LegacyProgressReportCh: reportCh,
 })
@@ -49,25 +51,48 @@ err := action.ReleaseInstall(ctx, releaseName, releaseNamespace, action.ReleaseI
 wg.Wait()
 ```
 
+By default, reporting covers only plan execution (`Executing`). To include all phases of the action, set `LegacyProgressReportPhases: true` in `ReleaseInstallOptions` or `ReleaseUninstallOptions`. Phase/detail fields are omitted unless this option is enabled.
+
 Rules for the channel:
 
 - It must be buffered with capacity of at least 1, `ReleaseInstall` panics otherwise.
-- Consume it concurrently with `ReleaseInstall`. Intermediate snapshots are sent without blocking and are dropped when the channel is full, but the final snapshot is sent with a blocking send, so a consumer that stops reading before `ReleaseInstall` returns deadlocks the deployment.
+- Consume it concurrently with `ReleaseInstall`. Intermediate snapshots are sent without blocking and are dropped when the channel is full. The phase-ending and final snapshots described below use blocking sends, so a slow consumer delays the action at these points; a consumer that stops reading can stall it until cancellation or timeout.
 - Do not close the channel yourself: `ReleaseInstall` closes it when it returns, on every path, including early errors. Snapshots still in the buffer at that moment are delivered before the `range` ends. After a `Timeout` the deployment may still be winding down inside nelm, its snapshots after the return are dropped.
 - A snapshot handed to the consumer is never modified afterwards.
-- `AutoRollback` cannot be combined with `LegacyProgressReportCh`: `ReleaseInstall` returns an error before doing anything. Rollback reporting needs its own design.
+- `AutoRollback` cannot be combined with `LegacyProgressReportCh`.
 
 ## Snapshots
 
-1. The first snapshot arrives when the plan is built, before any operation runs: every operation is listed, all `Pending`, untouched resources already `Completed`.
-2. A snapshot arrives on every status change, unless the consumer has not taken the previous one yet, then it is skipped.
-3. The final snapshot arrives when the deployment is over, with a blocking send, so it is never skipped. Nothing in it is `Pending`: what did not run is `Canceled`.
+1. By default, the first snapshot arrives when the plan is built, before any operation runs: every operation is listed, all `Pending`, untouched resources already `Completed`. With phase reporting enabled, earlier snapshots describe preparation and have no operations yet.
+2. A snapshot arrives on every status change and, when enabled, phase or detail update, unless the channel is full, then it is skipped.
+3. Blocking sends at phase boundaries wait for channel space instead of dropping the snapshot. Reporting continues after these sends.
+4. The final snapshot is sent when the action is over, including optional namespace deletion, with a blocking send. Cancellation or timeout can interrupt any blocking send. Nothing in the final snapshot is `Pending`: what did not run is `Canceled`.
 
-Every snapshot is complete and self-contained: it lists every operation reported so far with its current status, so keeping the latest one is enough, and a skipped snapshot loses nothing but intermediate statuses. The set of operations is fixed from the first snapshot, with one exception: after a failure the operations of the failure plan are appended, so the report grows once, see [Several plans in one run](#several-plans-in-one-run).
+Every snapshot is complete and self-contained: it lists every operation reported so far with its current status and retains any phase details already provided, so keeping the latest one is enough. Intermediate statuses and phases reported only through non-blocking sends may be skipped. Once the first plan starts, its set of operations is fixed; after a failure the operations of the failure plan are appended, see [Several plans in one run](#several-plans-in-one-run).
 
 ## Report shape
 
-The types live in `github.com/werf/nelm/v2/pkg/legacy/progrep`. A report has a single field, `Operations`, a list of operations with the following fields:
+The types live in `github.com/werf/nelm/v2/pkg/legacy/progrep`. A `ProgressReport` contains optional phase/details fields and an `Operations` list.
+
+### Phase and details
+
+These optional fields describe the current phase and its progress:
+
+| Field | Meaning |
+|---|---|
+| `CurrentPhase` | `Initializing`, `Rendering`, `Analyzing`, `Planning`, `Executing`, or `DeletingNamespace`. |
+| `RenderDetails.ResourceCount` | Number of chart resources after rendering and local transformations/patches. An absent count is unknown; zero means no resources were produced. Manifests are not included. |
+| `AnalyzeDetails.Processed`, `Total` | Successfully processed input tasks and total input tasks, including policy/stage skips. These are not Kubernetes request counts, unique-object counts, or operation counts. Reaching `Total` does not mean subsequent validation has passed. |
+| `NamespaceDeleteDetails.Name` | Namespace being deleted when `DeleteReleaseNamespace` is enabled and deletion is reached. |
+| `NamespaceDeleteDetails.DeleteStatus`, `TrackAbsenceStatus` | Separate statuses for the deletion request and waiting for the namespace to disappear. A completed request does not mean the namespace is gone. Namespace deletion adds no operations to the plan report. |
+
+Details remain in later snapshots; a missing detail means it has not been provided. Phases that do not apply to the action may be skipped. The execution phase includes failure cleanup.
+
+The last snapshot retains the last reported phase, even after the action ends. Channel closure ends the stream; use the action's returned result/error to determine the outcome. An early error can leave a phase-only report with no operations.
+
+### Operations
+
+`ProgressReport.Operations` lists operations with the following fields:
 
 | Field | Meaning |
 |---|---|

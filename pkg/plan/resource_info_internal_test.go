@@ -2,6 +2,7 @@ package plan
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/samber/lo"
@@ -10,17 +11,153 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
+	ktesting "k8s.io/client-go/testing"
 
 	"github.com/werf/nelm/v2/pkg/common"
 	"github.com/werf/nelm/v2/pkg/featgate"
+	"github.com/werf/nelm/v2/pkg/kube/fake"
 	"github.com/werf/nelm/v2/pkg/resource"
 )
 
 func TestAdoptDeckhouseControllerFieldsGateEnvVarName(t *testing.T) {
 	assert.Equal(t, "NELM_FEAT_ADOPT_DECKHOUSE_CONTROLLER_FIELDS", featgate.FeatGateAdoptDeckhouseControllerFields.EnvVarName())
+}
+
+func TestBuildResourceInfosFailedInputProgress(t *testing.T) {
+	for _, installable := range []bool{true, false} {
+		t.Run(lo.Ternary(installable, "installable", "deletable"), func(t *testing.T) {
+			cf, err := fake.NewClientFactory(context.Background())
+			require.NoError(t, err)
+
+			getErr := errors.New("analysis get error")
+			cf.Dynamic().(*dynamicfake.FakeDynamicClient).PrependReactor("get", "configmaps", func(ktesting.Action) (bool, runtime.Object, error) {
+				return true, nil, getErr
+			})
+
+			var (
+				instResources []*resource.InstallableResource
+				delResources  []*resource.DeletableResource
+			)
+
+			resSpec := makeResourceSpec("failing", "default", gvkConfigMap)
+			if installable {
+				instResources = []*resource.InstallableResource{{
+					ResourceSpec:     resSpec,
+					DeployConditions: map[common.On][]common.Stage{common.InstallOnInstall: {common.StageInstall}},
+				}}
+			} else {
+				delResources = []*resource.DeletableResource{{ResourceMeta: resSpec.ResourceMeta}}
+			}
+
+			calls := make(chan context.Context, 1)
+			instInfos, delInfos, err := BuildResourceInfos(context.Background(), common.DeployTypeInitial, "release", "default", instResources, delResources, false, cf, BuildResourceInfosOptions{
+				OnResourceAnalyzed: func(ctx context.Context) { calls <- ctx },
+			})
+			require.ErrorIs(t, err, getErr)
+			assert.Nil(t, instInfos)
+			assert.Nil(t, delInfos)
+			assert.Empty(t, calls)
+		})
+	}
+}
+
+func TestBuildResourceInfosMultiStageProgress(t *testing.T) {
+	for _, skipCreate := range []bool{false, true} {
+		t.Run(lo.Ternary(skipCreate, "policy skip", "create"), func(t *testing.T) {
+			cf, err := fake.NewClientFactory(context.Background())
+			require.NoError(t, err)
+
+			res := &resource.InstallableResource{
+				ResourceSpec: makeResourceSpec("staged", "default", gvkConfigMap),
+				DeployConditions: map[common.On][]common.Stage{
+					common.InstallOnInstall: {common.StagePreInstall, common.StagePostInstall},
+				},
+			}
+			res.Unstruct = &unstructured.Unstructured{}
+			res.Unstruct.SetGroupVersionKind(gvkConfigMap)
+
+			if skipCreate {
+				res.ResourcePolicies = []common.ResourcePolicy{common.ResourcePolicySkipCreate}
+			}
+
+			calls := make(chan context.Context, 2)
+			instInfos, delInfos, err := BuildResourceInfos(context.Background(), common.DeployTypeInitial, "release", "default", []*resource.InstallableResource{res}, nil, false, cf, BuildResourceInfosOptions{
+				OnResourceAnalyzed: func(ctx context.Context) { calls <- ctx },
+			})
+			require.NoError(t, err)
+			require.Len(t, instInfos, 2)
+			assert.Empty(t, delInfos)
+			assert.Len(t, calls, 1)
+			assert.Equal(t, common.StagePreInstall, instInfos[0].Stage)
+			assert.Equal(t, common.StagePostInstall, instInfos[1].Stage)
+
+			for _, info := range instInfos {
+				assert.Equal(t, lo.Ternary(skipCreate, ResourceInstallTypeNone, ResourceInstallTypeCreate), info.MustInstall)
+			}
+		})
+	}
+}
+
+func TestBuildResourceInfosNoInputsProgress(t *testing.T) {
+	cf, err := fake.NewClientFactory(context.Background())
+	require.NoError(t, err)
+
+	calls := make(chan context.Context, 1)
+	instInfos, delInfos, err := BuildResourceInfos(context.Background(), common.DeployTypeInitial, "release", "default", nil, nil, false, cf, BuildResourceInfosOptions{
+		OnResourceAnalyzed: func(ctx context.Context) { calls <- ctx },
+	})
+	require.NoError(t, err)
+	assert.Empty(t, instInfos)
+	assert.Empty(t, delInfos)
+	assert.Empty(t, calls)
+}
+
+func TestBuildResourceInfosSkippedInputsProgress(t *testing.T) {
+	for _, withCallback := range []bool{false, true} {
+		t.Run(lo.Ternary(withCallback, "callback", "nil callback"), func(t *testing.T) {
+			cf, err := fake.NewClientFactory(context.Background())
+			require.NoError(t, err)
+
+			instResources := []*resource.InstallableResource{
+				{ResourceSpec: makeResourceSpec("a", "default", gvkConfigMap)},
+				{ResourceSpec: makeResourceSpec("b", "default", gvkConfigMap)},
+				{ResourceSpec: makeResourceSpec("c", "default", gvkConfigMap)},
+			}
+			delRes := &resource.DeletableResource{
+				ResourceMeta:     makeResourceMeta("duplicate", "default", gvkConfigMap),
+				ResourcePolicies: []common.ResourcePolicy{common.ResourcePolicySkipDelete},
+			}
+			delResources := []*resource.DeletableResource{delRes, delRes, delRes}
+			calls := make(chan context.Context, len(instResources)+len(delResources))
+
+			opts := BuildResourceInfosOptions{NetworkParallelism: 10}
+			if withCallback {
+				opts.OnResourceAnalyzed = func(ctx context.Context) { calls <- ctx }
+			}
+
+			type contextKey struct{}
+
+			key := contextKey{}
+			ctx := context.WithValue(context.Background(), key, "progress")
+			instInfos, delInfos, err := BuildResourceInfos(ctx, common.DeployTypeInitial, "release", "default", instResources, delResources, false, cf, opts)
+			require.NoError(t, err)
+			assert.Empty(t, instInfos)
+			require.Len(t, delInfos, 1)
+			assert.False(t, delInfos[0].MustDelete)
+			assert.Len(t, calls, lo.Ternary(withCallback, 6, 0))
+			close(calls)
+
+			for workerCtx := range calls {
+				assert.Equal(t, "progress", workerCtx.Value(key))
+				assert.NotSame(t, ctx, workerCtx)
+			}
+		})
+	}
 }
 
 func TestExclusiveOwnershipForOurManagerDeckhouseControllerGateDisabled(t *testing.T) {
