@@ -16,7 +16,7 @@ func TestMemoryStorageBackend_ListMetadataStopsOnCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := newMemoryStorageBackend().listMetadata(ctx, "", "")
+	_, err := newMemoryStorageBackend().listMetadata(ctx, "", "", true)
 	require.ErrorIs(t, err, context.Canceled)
 }
 
@@ -46,7 +46,7 @@ func TestMemoryStorageBackend_ScanLatestCandidatesWithBodiesConcurrent(t *testin
 		defer wg.Done()
 
 		for i := 0; i < 100; i++ {
-			assert.NoError(t, backend.scanLatestCandidates(ctx, "", selector, true, func(obj *storedObject) error {
+			assert.NoError(t, backend.scanLatestCandidates(ctx, "", selector, true, true, func(obj *storedObject) error {
 				assert.Equal(t, "body", string(obj.Body))
 				obj.Body[0] = 'x'
 				obj.Labels["packageChecksum"] = "callback"
@@ -64,7 +64,7 @@ func TestMemoryStorageBackend_ScanLatestCandidatesWithBodiesSelectors(t *testing
 	testLatestBodySelectors(t, func(obj *storedObject) {
 		require.NoError(t, backend.create(context.Background(), obj))
 	}, func(ctx context.Context, namespace string, selector labels.Selector, fn func(*storedObject) error) error {
-		return backend.scanLatestCandidates(ctx, namespace, selector, true, fn)
+		return backend.scanLatestCandidates(ctx, namespace, selector, true, true, fn)
 	})
 }
 
@@ -79,7 +79,7 @@ func TestMemoryStorageBackend_ScanLatestCandidatesWithBodiesSnapshot(t *testing.
 	require.NoError(t, backend.create(ctx, &storedObject{Namespace: "other", Key: "c", Labels: map[string]string{"owner": "helm"}, Body: []byte("c")}))
 
 	var keys []string
-	require.NoError(t, backend.scanLatestCandidates(ctx, "", labels.Everything(), true, func(obj *storedObject) error {
+	require.NoError(t, backend.scanLatestCandidates(ctx, "", labels.Everything(), true, true, func(obj *storedObject) error {
 		keys = append(keys, obj.Namespace+"/"+obj.Key)
 		switch obj.Key {
 		case "a":
@@ -116,7 +116,7 @@ func TestMemoryStorageBackend_ScanLatestCandidatesWithBodiesStops(t *testing.T) 
 
 	stop := errors.New("stop")
 	calls := 0
-	err := backend.scanLatestCandidates(ctx, "", labels.Everything(), true, func(*storedObject) error {
+	err := backend.scanLatestCandidates(ctx, "", labels.Everything(), true, true, func(*storedObject) error {
 		calls++
 
 		return stop
@@ -127,7 +127,7 @@ func TestMemoryStorageBackend_ScanLatestCandidatesWithBodiesStops(t *testing.T) 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err = backend.scanLatestCandidates(ctx, "", labels.Everything(), true, func(*storedObject) error {
+	err = backend.scanLatestCandidates(ctx, "", labels.Everything(), true, true, func(*storedObject) error {
 		t.Fatal("callback after cancellation")
 
 		return nil
@@ -138,7 +138,7 @@ func TestMemoryStorageBackend_ScanLatestCandidatesWithBodiesStops(t *testing.T) 
 	defer cancel()
 
 	calls = 0
-	err = backend.scanLatestCandidates(ctx, "", labels.Everything(), true, func(*storedObject) error {
+	err = backend.scanLatestCandidates(ctx, "", labels.Everything(), true, true, func(*storedObject) error {
 		calls++
 
 		cancel()
@@ -159,7 +159,7 @@ func TestMemoryStorageBackend_ScanLatestCandidatesWithoutBodies(t *testing.T) {
 	require.NoError(t, err)
 
 	var keys []string
-	require.NoError(t, backend.scanLatestCandidates(ctx, "", selector, false, func(obj *storedObject) error {
+	require.NoError(t, backend.scanLatestCandidates(ctx, "", selector, false, true, func(obj *storedObject) error {
 		assert.Nil(t, obj.Body)
 
 		keys = append(keys, obj.Key)

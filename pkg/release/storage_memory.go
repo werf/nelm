@@ -119,12 +119,19 @@ func (b *memoryStorageBackend) list(namespace, releaseName string, versions []in
 	return result
 }
 
-func (b *memoryStorageBackend) listMetadata(ctx context.Context, namespace, releaseName string) ([]*storedObject, error) {
+func (b *memoryStorageBackend) listMetadata(ctx context.Context, namespace, releaseName string, withAnnotations bool) ([]*storedObject, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("read release objects: %w", err)
 	}
 
-	return b.list(namespace, releaseName, nil, false), nil
+	objects := b.list(namespace, releaseName, nil, false)
+	if !withAnnotations {
+		for _, obj := range objects {
+			obj.Annotations = nil
+		}
+	}
+
+	return objects, nil
 }
 
 func (b *memoryStorageBackend) listWithBodies(ctx context.Context, namespace, releaseName string, versions []int, fn func(obj *storedObject) error) error {
@@ -153,7 +160,7 @@ func (b *memoryStorageBackend) listWithBodies(ctx context.Context, namespace, re
 	return nil
 }
 
-func (b *memoryStorageBackend) scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies bool, fn func(obj *storedObject) error) error {
+func (b *memoryStorageBackend) scanLatestCandidates(ctx context.Context, namespace string, selector labels.Selector, withBodies, withAnnotations bool, fn func(obj *storedObject) error) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("read release objects: %w", err)
 	}
@@ -176,6 +183,10 @@ func (b *memoryStorageBackend) scanLatestCandidates(ctx context.Context, namespa
 
 		if withBodies {
 			obj.Body = slices.Clone(obj.Body)
+		}
+
+		if !withAnnotations {
+			obj.Annotations = nil
 		}
 
 		if err := fn(obj); err != nil {
@@ -224,11 +235,16 @@ func (b *memoryStorageBackend) updateLabels(_ context.Context, namespace, key st
 	return err
 }
 
+func (b *memoryStorageBackend) validate(_ *storedObject) error {
+	return nil
+}
+
 func cloneStoredObject(obj *storedObject, withBody bool) *storedObject {
 	clone := &storedObject{
-		Namespace: obj.Namespace,
-		Key:       obj.Key,
-		Labels:    maps.Clone(obj.Labels),
+		Namespace:   obj.Namespace,
+		Key:         obj.Key,
+		Labels:      maps.Clone(obj.Labels),
+		Annotations: maps.Clone(obj.Annotations),
 	}
 
 	if clone.Labels == nil {

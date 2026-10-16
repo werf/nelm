@@ -3,6 +3,7 @@ package action
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/nelm/v2/pkg/release"
@@ -26,16 +27,26 @@ type latestReleaseListStorager struct {
 	loads            *kdutil.Concurrent[*latestReleaseListLoads]
 	revisions        []release.Revision
 	selector         string
+	skipAnnotations  bool
 	summaries        map[string]*release.ReleaseSummary
 }
 
 func (s *latestReleaseListStorager) LatestRevisions(ctx context.Context, opts release.LatestRevisionsOptions) ([]release.Revision, error) {
 	s.selector = opts.LabelSelector
+
+	s.skipAnnotations = opts.SkipAnnotations
 	if s.err != nil {
 		return nil, s.err
 	}
 
-	return s.revisions, nil
+	revisions := slices.Clone(s.revisions)
+	if opts.SkipAnnotations {
+		for i := range revisions {
+			revisions[i].Annotations = nil
+		}
+	}
+
+	return revisions, nil
 }
 
 func (s *latestReleaseListStorager) ListLatestSummaries(ctx context.Context, opts release.ListLatestSummariesOptions) ([]release.RevisionSummary, error) {

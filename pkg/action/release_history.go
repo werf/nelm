@@ -251,10 +251,11 @@ func buildReleaseHistoryResult(ctx context.Context, storage release.ReleaseStora
 
 	for _, summary := range summaries {
 		entry := &ReleaseHistoryResultRelease{
-			Name:      summary.Revision.Name,
-			Namespace: summary.Revision.Namespace,
-			Revision:  summary.Revision.Version,
-			Status:    helmreleasestatus.Status(summary.Revision.Status),
+			Annotations: summary.Revision.Annotations,
+			Name:        summary.Revision.Name,
+			Namespace:   summary.Revision.Namespace,
+			Revision:    summary.Revision.Version,
+			Status:      helmreleasestatus.Status(summary.Revision.Status),
 		}
 		result.Releases = append(result.Releases, entry)
 
