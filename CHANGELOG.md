@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.1.0](https://github.com/werf/nelm/compare/v2.0.1-alpha.2...v2.1.0) (2026-10-16)
+
+
+### Features
+
+* expose release labels in the v3 release get result ([#753](https://github.com/werf/nelm/issues/753)) ([f33bf9e](https://github.com/werf/nelm/commit/f33bf9e689a54cdf5de2fb2723bb8542a6344f0d))
+* own Helm-compatible release storage with streamed reads ([#745](https://github.com/werf/nelm/issues/745)) ([9fc1003](https://github.com/werf/nelm/commit/9fc1003d96b6a7deee1502847b29eeba6dad21a5))
+* read release annotations from storage metadata ([#752](https://github.com/werf/nelm/issues/752)) ([eff9057](https://github.com/werf/nelm/commit/eff9057778efab83417a0eabc5fe2c991ff61f28))
+* report legacy progress phases ([#751](https://github.com/werf/nelm/issues/751)) ([54b0fdd](https://github.com/werf/nelm/commit/54b0fdd3dc65caf63d46abfe026a86e3463805d7))
+
+
+### Bug Fixes
+
+* allow upgrades from legacy delete-dependency annotations ([#755](https://github.com/werf/nelm/issues/755)) ([1abada4](https://github.com/werf/nelm/commit/1abada485c7d8aacb2b4fb998e972b360c0d0f0a))
+
+
+### Miscellaneous Chores
+
+* switch to stable release versioning ([#750](https://github.com/werf/nelm/issues/750)) ([39a4b70](https://github.com/werf/nelm/commit/39a4b70eb95620a5496d67edd4b5c9057afdd197))
+
 ## [2.0.1-alpha.2](https://github.com/werf/nelm/compare/v2.0.0-alpha.2...v2.0.1-alpha.2) (2026-10-09)
 
 
