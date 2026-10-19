@@ -429,12 +429,6 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			diffPatches        []*spec.CompiledPatch
 		)
 
-		if phaseReporter != nil {
-			phaseReporter.ReportPhase(ctx, progrep.PhaseKindRendering, plan.ReportPhaseOptions{
-				RenderDetails: &progrep.RenderDetails{},
-			})
-		}
-
 		if opts.LegacyChartRenderResult != nil {
 			installable := opts.LegacyChartRenderResult.installable
 
@@ -485,6 +479,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			}
 
 			log.Default.Debug(ctx, "Render chart")
+
+			if phaseReporter != nil {
+				phaseReporter.ReportPhase(ctx, progrep.PhaseKindRendering, plan.ReportPhaseOptions{
+					RenderDetails: &progrep.RenderDetails{},
+				})
+			}
 
 			renderChartResult, err := chart.RenderChart(ctx, opts.Chart, releaseName, releaseNamespace, newRevision, deployType, helmRegistryClient, clientFactory, chart.RenderChartOptions{
 				ChartRepoConnectionOptions:      opts.ChartRepoConnectionOptions,
@@ -547,17 +547,17 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 				return nil, fmt.Errorf("build releasable resource specs: %w", err)
 			}
 
+			if phaseReporter != nil {
+				phaseReporter.ReportPhase(ctx, progrep.PhaseKindRendering, plan.ReportPhaseOptions{
+					RenderDetails: &progrep.RenderDetails{ResourceCount: lo.ToPtr(len(releasableResSpecs))},
+				})
+				phaseReporter.ReportCheckpoint(ctx)
+			}
+
 			chartAccessor = renderChartResult.Chart
 			releaseConfig = renderChartResult.ReleaseConfig
 			notes = renderChartResult.Notes
 			diffPatches = patches.Diff
-		}
-
-		if phaseReporter != nil {
-			phaseReporter.ReportPhase(ctx, progrep.PhaseKindRendering, plan.ReportPhaseOptions{
-				RenderDetails: &progrep.RenderDetails{ResourceCount: lo.ToPtr(len(releasableResSpecs))},
-			})
-			phaseReporter.ReportCheckpoint(ctx)
 		}
 
 		newRelease, err = release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, releasableResSpecs, chartAccessor, releaseConfig, release.ReleaseOptions{

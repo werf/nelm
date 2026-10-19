@@ -11,6 +11,7 @@ import (
 
 	"github.com/werf/nelm/v2/pkg/common"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	"github.com/werf/nelm/v2/pkg/legacy/progrep"
 	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
 
@@ -33,6 +34,27 @@ func TestApplyReleaseInstallOptionsDefaults_RejectsLocalChartRenderResult(t *tes
 
 	_, err := applyReleaseInstallOptionsDefaults(opts, t.TempDir(), t.TempDir())
 	require.ErrorContains(t, err, "chart render result can't be installed")
+}
+
+func TestReleaseInstallChartRenderResultSkipsRenderingPhase(t *testing.T) {
+	api := newProgressPhasesAPI(t)
+	chartPath := newChartRenderInstallChart(t, api)
+	ctx := newChartRenderInstallContext(t)
+
+	renderResult, err := ChartRender(ctx, newChartRenderInstallRenderOptions(t, api, chartPath, "progress-release"))
+	require.NoError(t, err)
+
+	ch := make(chan progrep.ProgressReport, 4096)
+	installOpts := newChartRenderInstallOptions(t, api, chartPath, renderResult)
+	installOpts.LegacyProgressReportCh = ch
+	installOpts.LegacyProgressReportPhases = true
+
+	_, err = ReleaseInstall(ctx, "progress-release", "progress-ns", installOpts)
+	require.NoError(t, err)
+
+	reports := progressPhaseReports(t, ch)
+	assert.Equal(t, []progrep.PhaseKind{progrep.PhaseKindInitializing, progrep.PhaseKindAnalyzing, progrep.PhaseKindPlanning, progrep.PhaseKindExecuting}, progressPhaseSequence(reports))
+	assert.Nil(t, reports[len(reports)-1].RenderDetails)
 }
 
 func TestReleaseInstallInstallsChartRenderResult(t *testing.T) {
