@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
+	"github.com/werf/logboek"
 	"github.com/werf/nelm/v2/pkg/common"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/legacy/progrep"
@@ -333,6 +334,35 @@ users:
 	return api
 }
 
+func newChartRenderInstallChart(t *testing.T, api *progressPhasesAPI) string {
+	t.Helper()
+
+	chartPath := newProgressPhasesChart(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(chartPath, "templates"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(chartPath, "templates", "cm.yaml"), []byte(addProgressPhasesConfigMap(t, api)), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Join(chartPath, "crds"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(chartPath, "crds", "crd.yaml"), []byte(`apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: widgets.example.com
+spec:
+  group: example.com
+  names:
+    kind: Widget
+    plural: widgets
+  scope: Namespaced
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+`), 0o600))
+
+	return chartPath
+}
+
 func newLatestRevisionSummary(namespace, name string, version int) release.RevisionSummary {
 	return release.RevisionSummary{
 		Revision: release.Revision{Namespace: namespace, Name: name, Version: version, Status: "deployed"},
@@ -413,6 +443,51 @@ func collectSlowProgressPhaseReports(ch <-chan progrep.ProgressReport) <-chan []
 	}()
 
 	return done
+}
+
+func newChartRenderInstallContext(t *testing.T) context.Context {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(logboek.NewContext(context.Background(), logboek.NewLogger(io.Discard, io.Discard)), 10*time.Second)
+	t.Cleanup(cancel)
+
+	return ctx
+}
+
+func newChartRenderInstallOptions(t *testing.T, api *progressPhasesAPI, chartPath string, renderResult *ChartRenderResultV2) ReleaseInstallOptions {
+	t.Helper()
+
+	return ReleaseInstallOptions{
+		KubeConnectionOptions:   api.kubeOpts,
+		Chart:                   chartPath,
+		LegacyChartRenderResult: renderResult,
+		LegacyNoReleaseLock:     true,
+		NoCreateNamespace:       true,
+		NoShowNotes:             true,
+		ReleaseInstallRuntimeOptions: common.ReleaseInstallRuntimeOptions{
+			ExtraLabels:               map[string]string{"install-label": "install"},
+			NoInstallStandaloneCRDs:   true,
+			ReleaseStorageDriver:      "configmap",
+			ResourceValidationOptions: common.ResourceValidationOptions{NoResourceValidation: true},
+		},
+		TempDirPath:     t.TempDir(),
+		TrackingOptions: common.TrackingOptions{NoProgressTablePrint: true},
+	}
+}
+
+func newChartRenderInstallRenderOptions(t *testing.T, api *progressPhasesAPI, chartPath, releaseName string) ChartRenderOptions {
+	t.Helper()
+
+	return ChartRenderOptions{
+		KubeConnectionOptions: api.kubeOpts,
+		Chart:                 chartPath,
+		OutputFilePath:        filepath.Join(t.TempDir(), "output.yaml"),
+		ReleaseName:           releaseName,
+		ReleaseNamespace:      "progress-ns",
+		ReleaseStorageDriver:  "configmap",
+		Remote:                true,
+		TempDirPath:           t.TempDir(),
+	}
 }
 
 func newMetadataReleaseListStorager(revisions []release.Revision, summaries map[string]*release.ReleaseSummary, loadErrs ...error) *latestReleaseListStorager {

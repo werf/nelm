@@ -17,6 +17,7 @@ import (
 
 	"github.com/werf/nelm/v2/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/common"
+	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/log"
@@ -158,8 +159,28 @@ type ChartRenderOptions struct {
 }
 
 type ChartRenderResultV2 struct {
-	APIVersion string               `json:"apiVersion,omitempty"`
-	Resources  []*spec.ResourceSpec `json:"resources,omitempty"`
+	APIVersion string `json:"apiVersion,omitempty"`
+	// Resources must not be modified if the result is passed to ReleaseInstall as
+	// LegacyChartRenderResult.
+	Resources []*spec.ResourceSpec `json:"resources,omitempty"`
+
+	installable *chartRenderInstallable
+}
+
+// chartRenderInstallable is what ReleaseInstall needs to install a ChartRender result
+// without rendering the chart again.
+type chartRenderInstallable struct {
+	Chart            helmchart.Accessor
+	DeployType       common.DeployType
+	DiffPatches      []*spec.CompiledPatch
+	Notes            string
+	ReleaseConfig    map[string]interface{}
+	ReleaseName      string
+	ReleaseNamespace string
+	// ResourceSpecs are releasable: they have everything but the runtime annotations
+	// and labels applied.
+	ResourceSpecs []*spec.ResourceSpec
+	Revision      int
 }
 
 // Render the Helm chart.
@@ -311,13 +332,21 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 
 	log.Default.Debug(ctx, "Build releasable resource specs")
 
-	resSpecs, err := spec.BuildPatchedResourceSpecs(ctx, opts.ReleaseNamespace, renderPatchedResSpecs, []spec.ResourcePatcher{
+	releasableResSpecs, err := spec.BuildPatchedResourceSpecs(ctx, opts.ReleaseNamespace, renderPatchedResSpecs, []spec.ResourcePatcher{
 		spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 		spec.NewSecretStringDataPatcher(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build releasable resource specs: %w", err)
+	}
+
+	log.Default.Debug(ctx, "Build runtime patched resource specs")
+
+	resSpecs, err := spec.BuildPatchedResourceSpecs(ctx, opts.ReleaseNamespace, releasableResSpecs, []spec.ResourcePatcher{
+		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("build runtime patched resource specs: %w", err)
 	}
 
 	var showFiles []string
@@ -373,6 +402,20 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	result := &ChartRenderResultV2{
 		APIVersion: "v2",
 		Resources:  resSpecs,
+	}
+
+	if opts.Remote && !opts.LintMode {
+		result.installable = &chartRenderInstallable{
+			Chart:            renderChartResult.Chart,
+			DeployType:       deployType,
+			DiffPatches:      patches.Diff,
+			Notes:            renderChartResult.Notes,
+			ReleaseConfig:    renderChartResult.ReleaseConfig,
+			ReleaseName:      opts.ReleaseName,
+			ReleaseNamespace: opts.ReleaseNamespace,
+			ResourceSpecs:    releasableResSpecs,
+			Revision:         newRevision,
+		}
 	}
 
 	sort.SliceStable(result.Resources, func(i, j int) bool {

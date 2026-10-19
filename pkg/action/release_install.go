@@ -88,6 +88,17 @@ type ReleaseInstallOptions struct {
 	// InstallReportPath, if specified, saves a JSON report of the installation results to this file path.
 	// The report includes the release status and lists of completed, canceled, and failed operations.
 	InstallReportPath string
+	// LegacyChartRenderResult, if specified, installs the resources of this ChartRender result
+	// instead of rendering the chart again. The result must come from ChartRender with Remote
+	// and without LintMode for the same release, and the release must not get a new revision
+	// in between, otherwise the installation fails. Rendering against the same cluster and
+	// release storage is up to the caller. The options that shape the
+	// rendered resources are then taken from the render and ignored here: Chart and the other
+	// Chart* options, values and secret values, DefaultChart*, DropInvalidAnnotationsAndLabels,
+	// ExtraAnnotations, ExtraLabels, DefaultPatchesDisable, PatchesFiles, LegacyPatches,
+	// LegacyChartType, LegacyExtraValues, ShowSubchartNotes and the like. Auto-rollback still
+	// uses ExtraAnnotations, ExtraLabels and the patches options. Incompatible with plan artifacts.
+	LegacyChartRenderResult *ChartRenderResultV2
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.
 	LegacyChartType common.LegacyChartType
@@ -285,6 +296,13 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		opts.ReleaseInstallRuntimeOptions = planArtifact.Data.Options
 	}
 
+	if renderResult := opts.LegacyChartRenderResult; renderResult != nil {
+		if renderResult.installable.ReleaseName != releaseName || renderResult.installable.ReleaseNamespace != releaseNamespace {
+			return nil, fmt.Errorf("chart render result release mismatch: expected %q (namespace: %q), got %q (namespace: %q)",
+				releaseName, releaseNamespace, renderResult.installable.ReleaseName, renderResult.installable.ReleaseNamespace)
+		}
+	}
+
 	kubeConfig, err := kube.NewKubeConfig(ctx, kube.KubeConfigOptions{
 		KubeConnectionOptions: opts.KubeConnectionOptions,
 		KubeContextNamespace:  releaseNamespace, // TODO: unset it everywhere
@@ -299,7 +317,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	}
 
 	var helmRegistryClient *registry.Client
-	if !usePlan {
+	if !usePlan && opts.LegacyChartRenderResult == nil {
 		helmRegistryClientOpts := []registry.ClientOption{
 			registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)), // TODO(log):
 			registry.ClientOptWriter(opts.LegacyLogRegistryStreamOut),
@@ -403,23 +421,13 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	} else {
 		prevReleaseFailed := prevRelease != nil && prevRelease.Status() == helmreleasestatus.StatusFailed.String()
 
-		helmOptions := common.HelmOptions{
-			ChartLoadOpts: common.ChartLoadOptions{
-				ChartAppVersion:            opts.ChartAppVersion,
-				ChartType:                  opts.LegacyChartType,
-				DefaultChartAPIVersion:     opts.DefaultChartAPIVersion,
-				DefaultChartName:           opts.DefaultChartName,
-				DefaultChartVersion:        opts.DefaultChartVersion,
-				DefaultSecretValuesDisable: opts.DefaultSecretValuesDisable,
-				DefaultValuesDisable:       opts.DefaultValuesDisable,
-				ExtraValues:                opts.LegacyExtraValues,
-				SecretKeyIgnore:            opts.SecretKeyIgnore,
-				SecretValuesFiles:          opts.SecretValuesFiles,
-				SecretWorkDir:              opts.SecretWorkDir,
-			},
-		}
-
-		log.Default.Debug(ctx, "Render chart")
+		var (
+			releasableResSpecs []*spec.ResourceSpec
+			chartAccessor      helmchart.Accessor
+			releaseConfig      map[string]interface{}
+			notes              string
+			diffPatches        []*spec.CompiledPatch
+		)
 
 		if phaseReporter != nil {
 			phaseReporter.ReportPhase(ctx, progrep.PhaseKindRendering, plan.ReportPhaseOptions{
@@ -427,65 +435,122 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			})
 		}
 
-		renderChartResult, err := chart.RenderChart(ctx, opts.Chart, releaseName, releaseNamespace, newRevision, deployType, helmRegistryClient, clientFactory, chart.RenderChartOptions{
-			ChartRepoConnectionOptions:      opts.ChartRepoConnectionOptions,
-			ValuesOptions:                   opts.ValuesOptions,
-			ChartProvenanceKeyring:          opts.ChartProvenanceKeyring,
-			ChartProvenanceStrategy:         opts.ChartProvenanceStrategy,
-			ChartRepoNoUpdate:               opts.ChartRepoSkipUpdate,
-			ChartVersion:                    opts.ChartVersion,
-			DropInvalidAnnotationsAndLabels: opts.DropInvalidAnnotationsAndLabels,
-			HelmOptions:                     helmOptions,
-			NoValuesSchemaValidation:        opts.NoValuesSchemaValidation,
-			NoStandaloneCRDs:                opts.NoInstallStandaloneCRDs,
-			Remote:                          true,
-			SubchartNotes:                   opts.ShowSubchartNotes,
-			TemplatesAllowDNS:               opts.TemplatesAllowDNS,
-			IgnoreBundleJS:                  opts.IgnoreBundleJS,
-			DenoBinaryPath:                  opts.DenoBinaryPath,
-			TempDirPath:                     opts.TempDirPath,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("render chart: %w", err)
-		}
+		if opts.LegacyChartRenderResult != nil {
+			installable := opts.LegacyChartRenderResult.installable
 
-		log.Default.Debug(ctx, "Resolve patches")
+			if installable.Revision != newRevision {
+				return nil, fmt.Errorf("chart render result release revision mismatch: expected %d, got %d", installable.Revision, newRevision)
+			}
 
-		patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches, renderChartResult.Values)
-		if err != nil {
-			return nil, fmt.Errorf("resolve patches: %w", err)
-		}
+			if installable.DeployType != deployType {
+				return nil, fmt.Errorf("chart render result deploy type mismatch: expected %q, got %q", installable.DeployType, deployType)
+			}
 
-		log.Default.Debug(ctx, "Build transformed resource specs")
+			resSpecs := installable.ResourceSpecs
+			if opts.NoInstallStandaloneCRDs {
+				resSpecs = lo.Reject(resSpecs, func(res *spec.ResourceSpec, _ int) bool {
+					return res.StoreAs == common.StoreAsNone
+				})
+			}
 
-		transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, releaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
-			spec.NewResourceListsTransformer(),
-		})
-		if err != nil {
-			return nil, fmt.Errorf("build transformed resource specs: %w", err)
-		}
+			var patchers []spec.ResourcePatcher
+			if opts.LegacyHelmCompatibleTracking {
+				patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
+			}
 
-		log.Default.Debug(ctx, "Build render patched resource specs")
+			releasableResSpecs, err = spec.BuildPatchedResourceSpecs(ctx, releaseNamespace, resSpecs, patchers)
+			if err != nil {
+				return nil, fmt.Errorf("build releasable resource specs: %w", err)
+			}
 
-		renderPatchedResSpecs, err := spec.BuildRenderPatchedResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patches.Render)
-		if err != nil {
-			return nil, fmt.Errorf("build render patched resource specs: %w", err)
-		}
+			chartAccessor = installable.Chart
+			releaseConfig = installable.ReleaseConfig
+			notes = installable.Notes
+			diffPatches = installable.DiffPatches
+		} else {
+			helmOptions := common.HelmOptions{
+				ChartLoadOpts: common.ChartLoadOptions{
+					ChartAppVersion:            opts.ChartAppVersion,
+					ChartType:                  opts.LegacyChartType,
+					DefaultChartAPIVersion:     opts.DefaultChartAPIVersion,
+					DefaultChartName:           opts.DefaultChartName,
+					DefaultChartVersion:        opts.DefaultChartVersion,
+					DefaultSecretValuesDisable: opts.DefaultSecretValuesDisable,
+					DefaultValuesDisable:       opts.DefaultValuesDisable,
+					ExtraValues:                opts.LegacyExtraValues,
+					SecretKeyIgnore:            opts.SecretKeyIgnore,
+					SecretValuesFiles:          opts.SecretValuesFiles,
+					SecretWorkDir:              opts.SecretWorkDir,
+				},
+			}
 
-		log.Default.Debug(ctx, "Build releasable resource specs")
+			log.Default.Debug(ctx, "Render chart")
 
-		patchers := []spec.ResourcePatcher{
-			spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
-			spec.NewSecretStringDataPatcher(),
-		}
+			renderChartResult, err := chart.RenderChart(ctx, opts.Chart, releaseName, releaseNamespace, newRevision, deployType, helmRegistryClient, clientFactory, chart.RenderChartOptions{
+				ChartRepoConnectionOptions:      opts.ChartRepoConnectionOptions,
+				ValuesOptions:                   opts.ValuesOptions,
+				ChartProvenanceKeyring:          opts.ChartProvenanceKeyring,
+				ChartProvenanceStrategy:         opts.ChartProvenanceStrategy,
+				ChartRepoNoUpdate:               opts.ChartRepoSkipUpdate,
+				ChartVersion:                    opts.ChartVersion,
+				DropInvalidAnnotationsAndLabels: opts.DropInvalidAnnotationsAndLabels,
+				HelmOptions:                     helmOptions,
+				NoValuesSchemaValidation:        opts.NoValuesSchemaValidation,
+				NoStandaloneCRDs:                opts.NoInstallStandaloneCRDs,
+				Remote:                          true,
+				SubchartNotes:                   opts.ShowSubchartNotes,
+				TemplatesAllowDNS:               opts.TemplatesAllowDNS,
+				IgnoreBundleJS:                  opts.IgnoreBundleJS,
+				DenoBinaryPath:                  opts.DenoBinaryPath,
+				TempDirPath:                     opts.TempDirPath,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("render chart: %w", err)
+			}
 
-		if opts.LegacyHelmCompatibleTracking {
-			patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
-		}
+			log.Default.Debug(ctx, "Resolve patches")
 
-		releasableResSpecs, err := spec.BuildPatchedResourceSpecs(ctx, releaseNamespace, renderPatchedResSpecs, patchers)
-		if err != nil {
-			return nil, fmt.Errorf("build releasable resource specs: %w", err)
+			patches, err := resolvePatches(renderChartResult.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches, renderChartResult.Values)
+			if err != nil {
+				return nil, fmt.Errorf("resolve patches: %w", err)
+			}
+
+			log.Default.Debug(ctx, "Build transformed resource specs")
+
+			transformedResSpecs, err := spec.BuildTransformedResourceSpecs(ctx, releaseNamespace, renderChartResult.ResourceSpecs, []spec.ResourceTransformer{
+				spec.NewResourceListsTransformer(),
+			})
+			if err != nil {
+				return nil, fmt.Errorf("build transformed resource specs: %w", err)
+			}
+
+			log.Default.Debug(ctx, "Build render patched resource specs")
+
+			renderPatchedResSpecs, err := spec.BuildRenderPatchedResourceSpecs(ctx, releaseNamespace, transformedResSpecs, patches.Render)
+			if err != nil {
+				return nil, fmt.Errorf("build render patched resource specs: %w", err)
+			}
+
+			log.Default.Debug(ctx, "Build releasable resource specs")
+
+			patchers := []spec.ResourcePatcher{
+				spec.NewExtraMetadataPatcher(opts.ExtraAnnotations, opts.ExtraLabels),
+				spec.NewSecretStringDataPatcher(),
+			}
+
+			if opts.LegacyHelmCompatibleTracking {
+				patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
+			}
+
+			releasableResSpecs, err = spec.BuildPatchedResourceSpecs(ctx, releaseNamespace, renderPatchedResSpecs, patchers)
+			if err != nil {
+				return nil, fmt.Errorf("build releasable resource specs: %w", err)
+			}
+
+			chartAccessor = renderChartResult.Chart
+			releaseConfig = renderChartResult.ReleaseConfig
+			notes = renderChartResult.Notes
+			diffPatches = patches.Diff
 		}
 
 		if phaseReporter != nil {
@@ -495,10 +560,10 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			phaseReporter.ReportCheckpoint(ctx)
 		}
 
-		newRelease, err = release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, releasableResSpecs, renderChartResult.Chart, renderChartResult.ReleaseConfig, release.ReleaseOptions{
+		newRelease, err = release.NewRelease(releaseName, releaseNamespace, newRevision, deployType, releasableResSpecs, chartAccessor, releaseConfig, release.ReleaseOptions{
 			InfoAnnotations: opts.ReleaseInfoAnnotations,
 			Labels:          opts.ReleaseLabels,
-			Notes:           renderChartResult.Notes,
+			Notes:           notes,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("construct new release: %w", err)
@@ -564,7 +629,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		instResInfos, delResInfos, err = plan.BuildResourceInfos(ctx, deployType, releaseName, releaseNamespace, instResources, delResources, prevReleaseFailed, clientFactory, plan.BuildResourceInfosOptions{
 			OnResourceAnalyzed:                 onResourceAnalyzed,
-			DiffPatches:                        patches.Diff,
+			DiffPatches:                        diffPatches,
 			NetworkParallelism:                 opts.NetworkParallelism,
 			NoRemoveManualChanges:              opts.NoRemoveManualChanges,
 			LastDeployedOrLastRelResourceSpecs: lastDeployedOrLastRelResSpecs,
@@ -851,6 +916,16 @@ func applyReleaseInstallOptionsDefaults(opts ReleaseInstallOptions, currentDir, 
 
 	if opts.AutoRollback && opts.LegacyProgressReportCh != nil {
 		return ReleaseInstallOptions{}, fmt.Errorf("auto rollback is not supported together with legacy progress reporting")
+	}
+
+	if opts.LegacyChartRenderResult != nil {
+		if opts.LegacyChartRenderResult.installable == nil {
+			return ReleaseInstallOptions{}, fmt.Errorf("chart render result can't be installed: it must be rendered with Remote and without LintMode")
+		}
+
+		if opts.PlanArtifactPath != "" || opts.LegacyPlanArtifact != nil {
+			return ReleaseInstallOptions{}, fmt.Errorf("chart render result is not supported together with plan artifact")
+		}
 	}
 
 	if opts.NetworkParallelism <= 0 {
