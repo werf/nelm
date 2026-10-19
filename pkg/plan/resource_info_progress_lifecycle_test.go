@@ -68,8 +68,8 @@ func TestBuildResourceInfosDeletionErrorLifecycle(t *testing.T) {
 	}
 
 	select {
-	case <-result:
-		t.Fatal("returned before installation worker finished")
+	case err := <-result:
+		t.Fatalf("returned before installation worker finished: %v", err)
 	default:
 	}
 
@@ -82,8 +82,8 @@ func TestBuildResourceInfosDeletionErrorLifecycle(t *testing.T) {
 	}
 
 	select {
-	case <-result:
-		t.Fatal("returned before installation callback finished")
+	case err := <-result:
+		t.Fatalf("returned before installation callback finished: %v", err)
 	default:
 	}
 

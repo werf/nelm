@@ -108,6 +108,17 @@ linters:
       - path: '.+/fake/.+\.go'
         linters:
           - wrapcheck
+      # Queries are built by squirrel with bound placeholders; taint analysis can't see through ToSql().
+      - path: 'pkg/release/storage_sql\.go$'
+        linters:
+          - gosec
+        text: G701
+        source: 'ExecContext\(ctx, query, args\.\.\.\)'
+      # Fixture secrets for sensitive data redaction tests.
+      - path: 'pkg/resource/sensitive_test\.go$'
+        linters:
+          - gosec
+        text: G101
 
 formatters:
   enable:
@@ -120,7 +131,9 @@ formatters:
         - default
         - prefix(github.com/werf/)
     gofumpt:
-      extra-rules: true
+      extra:
+        group-params: true
+        clothe-returns: true
   exclusions:
     generated: lax
     paths:

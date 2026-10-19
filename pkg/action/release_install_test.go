@@ -442,11 +442,11 @@ func TestReleaseUninstall_ClosesProgressReportChannelOnEarlyError(t *testing.T) 
 	}
 }
 
-func newForbiddenErr(resource, name string) error {
+func newForbiddenErr(resource, name string) *apierrors.StatusError {
 	return apierrors.NewForbidden(schema.GroupResource{Resource: resource}, name, errors.New("forbidden"))
 }
 
-func newNotFoundErr(resource, name string) error {
+func newNotFoundErr(resource, name string) *apierrors.StatusError {
 	return apierrors.NewNotFound(schema.GroupResource{Resource: resource}, name)
 }
 

@@ -501,7 +501,7 @@ tasks:
   deps:install:golangci-lint:
     desc: "Install golangci-lint binary."
     cmds:
-      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin {{.golangcilintVersion | default "v2.5.0"}}
+      - curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(go env GOPATH)/bin {{.golangcilintVersion | default "v2.15.0"}}
 
   fork:helm:sync:
     desc: 'Prepare upstream helm ref for merging into pkg/helm/ of a current branch via a /tmp snapshot. Important vars: "ref" (required, e.g. ref=v4.1.1).'

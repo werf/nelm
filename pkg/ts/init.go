@@ -198,7 +198,7 @@ func ensureFileEntries(filePath, defaultContent string, requiredEntries []string
 
 	newContent := strings.TrimRight(content, "\n") + "\n\n# TypeScript chart files\n" + strings.Join(toAdd, "\n") + "\n"
 
-	if err := os.WriteFile(filePath, []byte(newContent), 0o644); err != nil {
+	if err := os.WriteFile(filePath, []byte(newContent), 0o644); err != nil { //nolint:gosec // G703: filePath is inside the chart directory the user asked to initialize
 		return fmt.Errorf("write %s: %w", filePath, err)
 	}
 
