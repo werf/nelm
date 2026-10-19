@@ -107,6 +107,7 @@ func ReleaseUninstall(ctx context.Context, releaseName, releaseNamespace string,
 	if opts.LegacyProgressReportCh != nil {
 		reporter = plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
 	}
+
 	defer func() {
 		ctxCancelFn(fmt.Errorf("context canceled: action finished"))
 
