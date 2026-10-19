@@ -272,10 +272,6 @@ type ReleaseInstallRuntimeOptions struct {
 	// NoRemoveManualChanges, when true, preserves fields manually added to resources in the cluster
 	// that are not present in the chart manifests. By default, such fields are removed during updates.
 	NoRemoveManualChanges bool `json:"noRemoveManualChanges"`
-	// ReleaseHistoryLimit sets the maximum number of release revisions to keep in storage.
-	// When exceeded, the oldest revisions are deleted. Defaults to DefaultReleaseHistoryLimit if not set or <= 0.
-	// Note: Only release metadata is deleted; actual Kubernetes resources are not affected.
-	ReleaseHistoryLimit int `json:"releaseHistoryLimit"`
 	// ReleaseInfoAnnotations are custom annotations to add to the release metadata (stored in Secret/ConfigMap).
 	// These do not affect resources but can be used for tagging releases.
 	ReleaseInfoAnnotations map[string]string `json:"releaseInfoAnnotations"`
