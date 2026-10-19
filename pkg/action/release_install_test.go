@@ -3,8 +3,14 @@ package action
 import (
 	"context"
 	"errors"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,6 +23,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/metadata"
 
+	"github.com/werf/logboek"
 	"github.com/werf/nelm/v2/pkg/common"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/v2/pkg/kube"
@@ -369,6 +376,50 @@ func TestReleaseInstall_ClosesProgressReportChannelOnEarlyError(t *testing.T) {
 	default:
 		t.Fatal("the channel must be closed when ReleaseInstall returns")
 	}
+}
+
+func TestReleaseInstall_PlanArtifactKeepsInstallHistoryLimit(t *testing.T) {
+	api := newProgressPhasesAPI(t)
+
+	manifest := addProgressPhasesConfigMap(t, api)
+	for revision := 1; revision <= 3; revision++ {
+		addProgressPhaseRevision(t, api, revision, "")
+	}
+
+	chartPath := newProgressPhasesChart(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(chartPath, "templates"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(chartPath, "templates", "cm.yaml"), []byte(manifest), 0o600))
+
+	ctx, cancel := context.WithTimeout(logboek.NewContext(context.Background(), logboek.NewLogger(io.Discard, io.Discard)), 10*time.Second)
+	defer cancel()
+
+	planArtifact, err := ReleasePlanInstall(ctx, "progress-release", "progress-ns", ReleasePlanInstallOptions{
+		KubeConnectionOptions: api.kubeOpts, Chart: chartPath,
+		ReleaseInstallRuntimeOptions: common.ReleaseInstallRuntimeOptions{
+			ReleaseStorageDriver: "configmap", ResourceValidationOptions: common.ResourceValidationOptions{NoResourceValidation: true},
+		}, TempDirPath: t.TempDir(),
+	})
+	require.NoError(t, err)
+
+	_, err = ReleaseInstall(ctx, "progress-release", "progress-ns", ReleaseInstallOptions{
+		KubeConnectionOptions: api.kubeOpts,
+		TrackingOptions:       common.TrackingOptions{NoProgressTablePrint: true},
+		NoCreateNamespace:     true, LegacyNoReleaseLock: true, NoShowNotes: true,
+		LegacyPlanArtifact: planArtifact, PlanArtifactLifetime: time.Hour,
+		ReleaseHistoryLimit: 2,
+		TempDirPath:         t.TempDir(),
+	})
+	require.NoError(t, err)
+
+	api.state.RTransaction(func(s *progressPhasesAPIState) {
+		deletedRevisions := lo.Filter(s.requests, func(req string, _ int) bool {
+			return strings.HasPrefix(req, "DELETE /api/v1/namespaces/progress-ns/configmaps/sh.helm.release.v1.")
+		})
+		assert.ElementsMatch(t, []string{
+			"DELETE /api/v1/namespaces/progress-ns/configmaps/sh.helm.release.v1.progress-release.v1",
+			"DELETE /api/v1/namespaces/progress-ns/configmaps/sh.helm.release.v1.progress-release.v2",
+		}, deletedRevisions)
+	})
 }
 
 func TestReleaseUninstall_ClosesProgressReportChannelOnEarlyError(t *testing.T) {
