@@ -77,7 +77,7 @@ func ExecutePlan(parentCtx context.Context, releaseNamespace string, plan *Plan,
 		executableOpsIDs := findExecutableOpsIDs(opsMap)
 		for _, opID := range executableOpsIDs {
 			delete(opsMap, opID)
-			execOperation(opID, releaseNamespace, completedOpsIDsCh, workerPool, plan, taskStore, logStore, informerFactory, history, clientFactory, ctxCancelFn, opts.TrackReadinessTimeout, opts.TrackCreationTimeout, opts.TrackDeletionTimeout, opts.LegacyProgressReporter)
+			execOperation(opID, releaseNamespace, completedOpsIDsCh, workerPool, plan, taskStore, logStore, informerFactory, history, clientFactory, ctxCancelFn, opts.TrackReadinessTimeout, opts.TrackCreationTimeout, opts.TrackDeletionTimeout, opts.NoPodLogs, opts.LegacyProgressReporter)
 		}
 	}
 
@@ -94,7 +94,7 @@ func ExecutePlan(parentCtx context.Context, releaseNamespace string, plan *Plan,
 	return nil
 }
 
-func execOperation(opID, releaseNamespace string, completedOpsIDsCh chan string, workerPool *pool.ContextPool, plan *Plan, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history release.Historier, clientFactory kube.ClientFactorier, ctxCancelFn context.CancelCauseFunc, readinessTimeout, presenceTimeout, absenceTimeout time.Duration, reporter *LegacyProgressReporter) {
+func execOperation(opID, releaseNamespace string, completedOpsIDsCh chan string, workerPool *pool.ContextPool, plan *Plan, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history release.Historier, clientFactory kube.ClientFactorier, ctxCancelFn context.CancelCauseFunc, readinessTimeout, presenceTimeout, absenceTimeout time.Duration, noPodLogs bool, reporter *LegacyProgressReporter) {
 	workerPool.Go(func(ctx context.Context) error {
 		var err error
 		defer func() {
@@ -108,7 +108,7 @@ func execOperation(opID, releaseNamespace string, completedOpsIDsCh chan string,
 
 		log.Default.Debug(ctx, util.Capitalize(op.IDHuman()))
 
-		if err = execOp(ctx, op, releaseNamespace, taskStore, logStore, informerFactory, history, clientFactory, readinessTimeout, presenceTimeout, absenceTimeout); err != nil {
+		if err = execOp(ctx, op, releaseNamespace, taskStore, logStore, informerFactory, history, clientFactory, readinessTimeout, presenceTimeout, absenceTimeout, noPodLogs); err != nil {
 			reportOperationStatus(op, OperationStatusFailed, reporter)
 
 			return fmt.Errorf("execute operation: %w", err)
@@ -122,7 +122,7 @@ func execOperation(opID, releaseNamespace string, completedOpsIDsCh chan string,
 	})
 }
 
-func execOp(ctx context.Context, op *Operation, releaseNamespace string, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history release.Historier, clientFactory kube.ClientFactorier, readinessTimeout, presenceTimeout, absenceTimeout time.Duration) error {
+func execOp(ctx context.Context, op *Operation, releaseNamespace string, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], history release.Historier, clientFactory kube.ClientFactorier, readinessTimeout, presenceTimeout, absenceTimeout time.Duration, noPodLogs bool) error {
 	switch op.Type {
 	case OperationTypeCreate:
 		return execOpCreate(ctx, op, releaseNamespace, clientFactory)
@@ -135,7 +135,7 @@ func execOp(ctx context.Context, op *Operation, releaseNamespace string, taskSto
 	case OperationTypeDelete:
 		return execOpDelete(ctx, op, releaseNamespace, clientFactory)
 	case OperationTypeTrackReadiness:
-		return execOpTrackReadiness(ctx, op, releaseNamespace, taskStore, logStore, informerFactory, readinessTimeout, clientFactory)
+		return execOpTrackReadiness(ctx, op, releaseNamespace, taskStore, logStore, informerFactory, readinessTimeout, noPodLogs, clientFactory)
 	case OperationTypeTrackPresence:
 		return execOpTrackPresence(ctx, op, releaseNamespace, taskStore, informerFactory, presenceTimeout, clientFactory)
 	case OperationTypeTrackAbsence:
@@ -253,7 +253,7 @@ func execOpTrackPresence(ctx context.Context, op *Operation, releaseNamespace st
 	return nil
 }
 
-func execOpTrackReadiness(ctx context.Context, op *Operation, releaseNamespace string, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], timeout time.Duration, clientFactory kube.ClientFactorier) error {
+func execOpTrackReadiness(ctx context.Context, op *Operation, releaseNamespace string, taskStore *kdutil.Concurrent[*statestore.TaskStore], logStore *kdutil.Concurrent[*logstore.LogStore], informerFactory *kdutil.Concurrent[*informer.InformerFactory], timeout time.Duration, noPodLogs bool, clientFactory kube.ClientFactorier) error {
 	opConfig := op.Config.(*OperationConfigTrackReadiness)
 
 	namespace, err := getNamespace(ctx, opConfig.ResourceMeta, releaseNamespace, clientFactory)
@@ -272,21 +272,7 @@ func execOpTrackReadiness(ctx context.Context, op *Operation, releaseNamespace s
 		ts.AddReadinessTaskState(taskState)
 	})
 
-	tracker, err := dyntracker.NewDynamicReadinessTracker(ctx, taskState, logStore, informerFactory, clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), dyntracker.DynamicReadinessTrackerOptions{
-		Timeout:                                  timeout,
-		NoActivityTimeout:                        opConfig.NoActivityTimeout,
-		IgnoreReadinessProbeFailsByContainerName: opConfig.IgnoreReadinessProbeFailsByContainerName,
-		CaseInsensitiveGVKMatching:               true,
-		SaveLogsOnlyForNumberOfReplicas:          opConfig.SaveLogsOnlyForNumberOfReplicas,
-		SaveLogsOnlyForContainers:                opConfig.SaveLogsOnlyForContainers,
-		SaveLogsByRegex:                          opConfig.SaveLogsByRegex,
-		SaveLogsByRegexForContainers:             opConfig.SaveLogsByRegexForContainers,
-		IgnoreLogs:                               opConfig.IgnoreLogs,
-		IgnoreLogsForContainers:                  opConfig.IgnoreLogsForContainers,
-		IgnoreLogsByRegex:                        opConfig.IgnoreLogsByRegex,
-		IgnoreLogsByRegexForContainers:           opConfig.IgnoreLogsByRegexForContainers,
-		SaveEvents:                               opConfig.SaveEvents,
-	})
+	tracker, err := dyntracker.NewDynamicReadinessTracker(ctx, taskState, logStore, informerFactory, clientFactory.Static(), clientFactory.Dynamic(), clientFactory.Discovery(), clientFactory.Mapper(), readinessTrackerOptions(opConfig, timeout, noPodLogs))
 	if err != nil {
 		return fmt.Errorf("construct dynamic readiness tracker: %w", err)
 	}
@@ -420,4 +406,22 @@ func getNamespace(ctx context.Context, resMeta *spec.ResourceMeta, releaseNamesp
 	}
 
 	return namespace, nil
+}
+
+func readinessTrackerOptions(opConfig *OperationConfigTrackReadiness, timeout time.Duration, noPodLogs bool) dyntracker.DynamicReadinessTrackerOptions {
+	return dyntracker.DynamicReadinessTrackerOptions{
+		Timeout:                                  timeout,
+		NoActivityTimeout:                        opConfig.NoActivityTimeout,
+		IgnoreReadinessProbeFailsByContainerName: opConfig.IgnoreReadinessProbeFailsByContainerName,
+		CaseInsensitiveGVKMatching:               true,
+		SaveLogsOnlyForNumberOfReplicas:          opConfig.SaveLogsOnlyForNumberOfReplicas,
+		SaveLogsOnlyForContainers:                opConfig.SaveLogsOnlyForContainers,
+		SaveLogsByRegex:                          opConfig.SaveLogsByRegex,
+		SaveLogsByRegexForContainers:             opConfig.SaveLogsByRegexForContainers,
+		IgnoreLogs:                               opConfig.IgnoreLogs || noPodLogs,
+		IgnoreLogsForContainers:                  opConfig.IgnoreLogsForContainers,
+		IgnoreLogsByRegex:                        opConfig.IgnoreLogsByRegex,
+		IgnoreLogsByRegexForContainers:           opConfig.IgnoreLogsByRegexForContainers,
+		SaveEvents:                               opConfig.SaveEvents,
+	}
 }
