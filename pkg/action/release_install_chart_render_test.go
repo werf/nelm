@@ -1,6 +1,7 @@
 package action
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"testing"
@@ -55,6 +56,49 @@ func TestReleaseInstallChartRenderResultSkipsRenderingPhase(t *testing.T) {
 	reports := progressPhaseReports(t, ch)
 	assert.Equal(t, []progrep.PhaseKind{progrep.PhaseKindInitializing, progrep.PhaseKindAnalyzing, progrep.PhaseKindPlanning, progrep.PhaseKindExecuting}, progressPhaseSequence(reports))
 	assert.Nil(t, reports[len(reports)-1].RenderDetails)
+}
+
+func TestReleaseInstallChartRenderResultWithLegacyHelmCompatibleTracking(t *testing.T) {
+	api := newProgressPhasesAPI(t)
+	chartPath := newChartRenderInstallChart(t, api)
+	trackingAnnotations := map[string]string{
+		common.AnnotationKeyHumanFailMode:             "IgnoreAndContinueDeployProcess",
+		common.AnnotationKeyHumanTrackTerminationMode: "NonBlocking",
+	}
+
+	api.state.RWTransaction(func(s *progressPhasesAPIState) {
+		cm := s.configMaps["progress-resource"]
+		maps.Copy(cm.Annotations, trackingAnnotations)
+		s.configMaps["progress-resource"] = cm
+	})
+
+	ctx := newChartRenderInstallContext(t)
+
+	renderResult, err := ChartRender(ctx, newChartRenderInstallRenderOptions(t, api, chartPath, "progress-release"))
+	require.NoError(t, err)
+
+	installOpts := newChartRenderInstallOptions(t, api, chartPath, renderResult)
+	installOpts.LegacyHelmCompatibleTracking = true
+
+	_, err = ReleaseInstall(ctx, "progress-release", "progress-ns", installOpts)
+	require.NoError(t, err)
+
+	getResult, err := ReleaseGet(ctx, "progress-release", "progress-ns", ReleaseGetOptions{
+		KubeConnectionOptions: api.kubeOpts,
+		OutputNoPrint:         true,
+		ReleaseStorageDriver:  "configmap",
+		TempDirPath:           t.TempDir(),
+	})
+	require.NoError(t, err)
+	require.Len(t, getResult.ResourceSpecs, 1)
+
+	for key, value := range trackingAnnotations {
+		assert.Equal(t, value, getResult.ResourceSpecs[0].Unstruct.GetAnnotations()[key])
+	}
+
+	for _, res := range renderResult.installable.ResourceSpecs {
+		assert.NotContains(t, res.Unstruct.GetAnnotations(), common.AnnotationKeyHumanFailMode)
+	}
 }
 
 func TestReleaseInstallInstallsChartRenderResult(t *testing.T) {
@@ -119,6 +163,26 @@ func TestReleaseInstallInstallsChartRenderResult(t *testing.T) {
 	assert.Equal(t, "value-patched", data["key"])
 }
 
+func TestReleaseInstallRejectsChartRenderResultOfOtherDeployType(t *testing.T) {
+	api := newProgressPhasesAPI(t)
+	chartPath := newChartRenderInstallChart(t, api)
+	ctx := newChartRenderInstallContext(t)
+
+	addProgressPhaseRevision(t, api, 1, "")
+
+	renderResult, err := ChartRender(ctx, newChartRenderInstallRenderOptions(t, api, chartPath, "progress-release"))
+	require.NoError(t, err)
+
+	api.state.RWTransaction(func(s *progressPhasesAPIState) {
+		cm := s.configMaps["sh.helm.release.v1.progress-release.v1"]
+		cm.Labels["status"] = "failed"
+		s.configMaps["sh.helm.release.v1.progress-release.v1"] = cm
+	})
+
+	_, err = ReleaseInstall(ctx, "progress-release", "progress-ns", newChartRenderInstallOptions(t, api, chartPath, renderResult))
+	require.ErrorContains(t, err, `chart render result deploy type mismatch: expected "Upgrade", got "Install"`)
+}
+
 func TestReleaseInstallRejectsChartRenderResultOfOtherRelease(t *testing.T) {
 	api := newProgressPhasesAPI(t)
 	chartPath := newChartRenderInstallChart(t, api)
@@ -128,7 +192,7 @@ func TestReleaseInstallRejectsChartRenderResultOfOtherRelease(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = ReleaseInstall(ctx, "progress-release", "progress-ns", newChartRenderInstallOptions(t, api, chartPath, renderResult))
-	require.ErrorContains(t, err, "chart render result release mismatch")
+	require.ErrorContains(t, err, `chart render result release mismatch: expected "other-release" (namespace: "progress-ns"), got "progress-release" (namespace: "progress-ns")`)
 }
 
 func TestReleaseInstallRejectsChartRenderResultOfOtherRevision(t *testing.T) {
