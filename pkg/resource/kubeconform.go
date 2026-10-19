@@ -129,7 +129,7 @@ validatorLoop:
 					}
 				}
 			default:
-				panic(fmt.Errorf("unexpected validation status %q", validationResult.Status))
+				panic(fmt.Errorf("unexpected validation status %d", validationResult.Status))
 			}
 		}
 

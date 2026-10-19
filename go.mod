@@ -1,6 +1,8 @@
 module github.com/werf/nelm/v2
 
-go 1.25.0
+go 1.26.0
+
+toolchain go1.26.9
 
 require (
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6
