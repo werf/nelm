@@ -299,7 +299,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	if renderResult := opts.LegacyChartRenderResult; renderResult != nil {
 		if renderResult.installable.ReleaseName != releaseName || renderResult.installable.ReleaseNamespace != releaseNamespace {
 			return nil, fmt.Errorf("chart render result release mismatch: expected %q (namespace: %q), got %q (namespace: %q)",
-				releaseName, releaseNamespace, renderResult.installable.ReleaseName, renderResult.installable.ReleaseNamespace)
+				renderResult.installable.ReleaseName, renderResult.installable.ReleaseNamespace, releaseName, releaseNamespace)
 		}
 	}
 
@@ -430,6 +430,8 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		)
 
 		if opts.LegacyChartRenderResult != nil {
+			log.Default.Debug(ctx, "Use chart render result")
+
 			installable := opts.LegacyChartRenderResult.installable
 
 			if installable.Revision != newRevision {
