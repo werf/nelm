@@ -172,7 +172,6 @@ type ChartRenderResultV2 struct {
 type chartRenderInstallable struct {
 	Chart            helmchart.Accessor
 	DeployType       common.DeployType
-	DiffPatches      []*spec.CompiledPatch
 	Notes            string
 	ReleaseConfig    map[string]interface{}
 	ReleaseName      string
@@ -414,7 +413,6 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		result.installable = &chartRenderInstallable{
 			Chart:            renderChartResult.Chart,
 			DeployType:       deployType,
-			DiffPatches:      patches.Diff,
 			Notes:            renderChartResult.Notes,
 			ReleaseConfig:    renderChartResult.ReleaseConfig,
 			ReleaseName:      opts.ReleaseName,

@@ -95,9 +95,10 @@ type ReleaseInstallOptions struct {
 	// Rendering against the same cluster and release storage is up to the caller. The options
 	// that shape the rendered resources are then taken from the render and ignored here: Chart
 	// and the other Chart* options, values and secret values, DefaultChart*, DropInvalidAnnotationsAndLabels,
-	// ExtraAnnotations, ExtraLabels, DefaultPatchesDisable, PatchesFiles, LegacyPatches,
-	// LegacyChartType, LegacyExtraValues, ShowSubchartNotes and the like. Auto-rollback still
-	// uses ExtraAnnotations, ExtraLabels and the patches options. Incompatible with plan artifacts.
+	// ExtraAnnotations, ExtraLabels, render patches, LegacyChartType, LegacyExtraValues,
+	// ShowSubchartNotes and the like. Diff patches still come from DefaultPatchesDisable,
+	// PatchesFiles and LegacyPatches, as for auto-rollback, which also still uses
+	// ExtraAnnotations and ExtraLabels. Incompatible with plan artifacts.
 	LegacyChartRenderResult *ChartRenderResultV2
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.
@@ -467,10 +468,15 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 				return nil, fmt.Errorf("build releasable resource specs: %w", err)
 			}
 
+			patches, err := resolveDiffPatches(installable.Chart, opts.DefaultPatchesDisable, opts.PatchesFiles, opts.LegacyPatches)
+			if err != nil {
+				return nil, fmt.Errorf("resolve diff patches: %w", err)
+			}
+
 			chartAccessor = installable.Chart
 			releaseConfig = installable.ReleaseConfig
 			notes = installable.Notes
-			diffPatches = installable.DiffPatches
+			diffPatches = patches.Diff
 		} else {
 			helmOptions := common.HelmOptions{
 				ChartLoadOpts: common.ChartLoadOptions{

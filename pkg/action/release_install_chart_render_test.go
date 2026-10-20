@@ -76,6 +76,29 @@ func TestReleaseInstallChartRenderResultSkipsRenderingPhase(t *testing.T) {
 	assert.Nil(t, reports[len(reports)-1].RenderDetails)
 }
 
+func TestReleaseInstallChartRenderResultUsesInstallDiffPatches(t *testing.T) {
+	api := newProgressPhasesAPI(t)
+	chartPath := newChartRenderInstallChart(t, api)
+
+	api.state.RWTransaction(func(s *progressPhasesAPIState) {
+		cm := s.configMaps["progress-resource"]
+		cm.Data["drift"] = "cluster-only"
+		s.configMaps["progress-resource"] = cm
+	})
+
+	ctx := newChartRenderInstallContext(t)
+
+	renderResult, err := ChartRender(ctx, newChartRenderInstallRenderOptions(t, api, chartPath, "progress-release"))
+	require.NoError(t, err)
+
+	installOpts := newChartRenderInstallOptions(t, api, chartPath, renderResult)
+	installOpts.LegacyPatches = spec.Patches{Diff: []spec.Patch{{Patch: `del(.data.drift)`}}}
+
+	result, err := ReleaseInstall(ctx, "progress-release", "progress-ns", installOpts)
+	require.NoError(t, err)
+	assert.Equal(t, helmreleasestatus.StatusDeployed, result.Release.Status)
+}
+
 func TestReleaseInstallChartRenderResultWithLegacyHelmCompatibleTracking(t *testing.T) {
 	api := newProgressPhasesAPI(t)
 	chartPath := newChartRenderInstallChart(t, api)
