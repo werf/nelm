@@ -201,9 +201,9 @@ func loadDeployedReleasesSkippingPruned(ctx context.Context, history *release.Hi
 	return loadDeployedReleasesWith(ctx, history, nil, true)
 }
 
-// resolveDiffPatches compiles only the diff rules, for rollback, uninstall and install
-// from a plan artifact: nothing is rendered there, so render rules have nothing to apply
-// to and their jq variables would have no values.
+// resolveDiffPatches compiles only the diff rules, for rollback, uninstall, install from a
+// plan artifact and install from a chart render result: nothing is rendered there, so render
+// rules have nothing to apply to and their jq variables would have no values.
 func resolveDiffPatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string, legacyPatches spec.Patches) (spec.CompiledPatches, error) {
 	patches, err := collectPatches(chart, defaultDisable, patchesFiles, legacyPatches)
 	if err != nil {
