@@ -85,6 +85,7 @@ func TestReleaseStorage_ListLatestSummariesDoesNotRetainBodies(t *testing.T) {
 	}
 
 	var before, peak runtime.MemStats
+
 	runtime.GC()
 	runtime.ReadMemStats(&before)
 

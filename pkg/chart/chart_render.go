@@ -479,6 +479,7 @@ func parseLocalLookupResources(paths []string) ([]*unstructured.Unstructured, er
 					}
 
 					item++
+
 					resources = append(resources, res)
 
 					return nil

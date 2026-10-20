@@ -753,12 +753,12 @@ func (s *BuildPlanSuite) TestBuildPlan() {
 				}
 				dependentResInfo := defaultInstallableResourceInfo(dependentResSpec)
 
+				buildOpts := plan.BuildPlanOptions{NoFinalTracking: true}
+
 				return []*plan.InstallableResourceInfo{
-						resInfo,
-						dependentResInfo,
-					}, nil, nil, plan.BuildPlanOptions{
-						NoFinalTracking: true,
-					}
+					resInfo,
+					dependentResInfo,
+				}, nil, nil, buildOpts
 			},
 			name: `install manually interdependent resources with no final tracking operations`,
 		},

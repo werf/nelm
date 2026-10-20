@@ -145,6 +145,11 @@ type ReleaseInstallOptions struct {
 	// Defaults to DockerConfig/config.json if not set.
 	// Used for authenticating to OCI registries when pulling charts.
 	RegistryCredentialsPath string
+	// ReleaseHistoryLimit sets the maximum number of release revisions to keep in storage.
+	// When exceeded, the oldest revisions are deleted. Defaults to DefaultReleaseHistoryLimit if not set or <= 0.
+	// Note: Only release metadata is deleted; actual Kubernetes resources are not affected.
+	// Unlike ReleaseInstallRuntimeOptions, not frozen in the plan artifact: the value passed here always applies.
+	ReleaseHistoryLimit int
 	// RollbackGraphPath, if specified, saves the Graphviz representation of the rollback plan (if auto-rollback occurs)
 	// to this file path. Only used when AutoRollback is true and rollback is triggered.
 	RollbackGraphPath string
@@ -206,6 +211,7 @@ func ReleaseInstall(ctx context.Context, releaseName, releaseNamespace string, o
 	if opts.LegacyProgressReportCh != nil {
 		reporter = plan.NewLegacyProgressReporter(opts.LegacyProgressReportCh)
 	}
+
 	defer func() {
 		ctxCancelFn(fmt.Errorf("context canceled: action finished"))
 
