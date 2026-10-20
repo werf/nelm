@@ -449,6 +449,8 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 				})
 			}
 
+			log.Default.Debug(ctx, "Build releasable resource specs")
+
 			var patchers []spec.ResourcePatcher
 			if opts.LegacyHelmCompatibleTracking {
 				patchers = append(patchers, spec.NewLegacyOnlyTrackJobsPatcher())
