@@ -177,8 +177,9 @@ type chartRenderInstallable struct {
 	ReleaseConfig    map[string]interface{}
 	ReleaseName      string
 	ReleaseNamespace string
-	// ResourceSpecs are releasable: they have everything but the runtime annotations
-	// and labels applied.
+	// ResourceSpecs have the render patches, ExtraAnnotations, ExtraLabels and Secret
+	// stringData conversion applied, but not the runtime annotations and labels, nor the
+	// install-only standalone CRD filtering and legacy tracking annotations.
 	ResourceSpecs []*spec.ResourceSpec
 	Revision      int
 }

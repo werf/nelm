@@ -90,11 +90,11 @@ type ReleaseInstallOptions struct {
 	InstallReportPath string
 	// LegacyChartRenderResult, if specified, installs the resources of this ChartRender result
 	// instead of rendering the chart again. The result must come from ChartRender with Remote
-	// and without LintMode for the same release, and the release must not get a new revision
-	// in between, otherwise the installation fails. Rendering against the same cluster and
-	// release storage is up to the caller. The options that shape the
-	// rendered resources are then taken from the render and ignored here: Chart and the other
-	// Chart* options, values and secret values, DefaultChart*, DropInvalidAnnotationsAndLabels,
+	// and without LintMode for the same release, and in between the release must neither get
+	// a new revision nor switch between install and upgrade, otherwise the installation fails.
+	// Rendering against the same cluster and release storage is up to the caller. The options
+	// that shape the rendered resources are then taken from the render and ignored here: Chart
+	// and the other Chart* options, values and secret values, DefaultChart*, DropInvalidAnnotationsAndLabels,
 	// ExtraAnnotations, ExtraLabels, DefaultPatchesDisable, PatchesFiles, LegacyPatches,
 	// LegacyChartType, LegacyExtraValues, ShowSubchartNotes and the like. Auto-rollback still
 	// uses ExtraAnnotations, ExtraLabels and the patches options. Incompatible with plan artifacts.

@@ -146,6 +146,7 @@ func TestReleaseInstallInstallsChartRenderResult(t *testing.T) {
 		renderedKinds[res.GroupVersionKind.Kind] = res.StoreAs
 
 		if res.GroupVersionKind.Kind == "ConfigMap" {
+			assert.Equal(t, "render", res.Unstruct.GetLabels()["render-label"])
 			assert.Equal(t, "render", res.Unstruct.GetLabels()["render-runtime-label"])
 		}
 	}
