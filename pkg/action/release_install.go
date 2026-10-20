@@ -88,17 +88,10 @@ type ReleaseInstallOptions struct {
 	// InstallReportPath, if specified, saves a JSON report of the installation results to this file path.
 	// The report includes the release status and lists of completed, canceled, and failed operations.
 	InstallReportPath string
-	// LegacyChartRenderResult, if specified, installs the resources of this ChartRender result
-	// instead of rendering the chart again. The result must come from ChartRender with Remote
-	// and without LintMode for the same release, and in between the release must neither get
-	// a new revision nor switch between install and upgrade, otherwise the installation fails.
-	// Rendering against the same cluster and release storage is up to the caller. The options
-	// that shape the rendered resources are then taken from the render and ignored here: Chart
-	// and the other Chart* options, values and secret values, DefaultChart*, DropInvalidAnnotationsAndLabels,
-	// ExtraAnnotations, ExtraLabels, render patches, LegacyChartType, LegacyExtraValues,
-	// ShowSubchartNotes and the like. Diff patches still come from DefaultPatchesDisable,
-	// PatchesFiles and LegacyPatches, as for auto-rollback, which also still uses
-	// ExtraAnnotations and ExtraLabels. Incompatible with plan artifacts.
+	// LegacyChartRenderResult, if specified, installs this ChartRender result (Remote, not
+	// LintMode) instead of rendering the chart again; render options are taken from it and
+	// ignored here. Fails if the release revision or deploy type changed since the render.
+	// Incompatible with plan artifacts.
 	LegacyChartRenderResult *ChartRenderResultV2
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.
