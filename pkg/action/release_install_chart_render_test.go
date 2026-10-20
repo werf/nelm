@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -35,6 +36,23 @@ func TestApplyReleaseInstallOptionsDefaults_RejectsLocalChartRenderResult(t *tes
 
 	_, err := applyReleaseInstallOptionsDefaults(opts, t.TempDir(), t.TempDir())
 	require.ErrorContains(t, err, "chart render result can't be installed")
+}
+
+func TestChartRenderSharesInstallableResourcesWithoutRuntimeMetadata(t *testing.T) {
+	api := newProgressPhasesAPI(t)
+	chartPath := newChartRenderInstallChart(t, api)
+	ctx := newChartRenderInstallContext(t)
+
+	renderResult, err := ChartRender(ctx, newChartRenderInstallRenderOptions(t, api, chartPath, "progress-release"))
+	require.NoError(t, err)
+	require.NotEmpty(t, renderResult.Resources)
+	assert.ElementsMatch(t, renderResult.Resources, renderResult.installable.ResourceSpecs)
+
+	for _, res := range renderResult.Resources {
+		assert.True(t, lo.ContainsBy(renderResult.installable.ResourceSpecs, func(installableRes *spec.ResourceSpec) bool {
+			return installableRes == res
+		}), "resource %s is a copy", res.IDHuman())
+	}
 }
 
 func TestReleaseInstallChartRenderResultSkipsRenderingPhase(t *testing.T) {

@@ -340,13 +340,18 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		return nil, fmt.Errorf("build releasable resource specs: %w", err)
 	}
 
-	log.Default.Debug(ctx, "Build runtime patched resource specs")
+	// Without runtime metadata the result and its installable part share resource specs instead of
+	// keeping two identical copies.
+	resSpecs := releasableResSpecs
+	if len(opts.ExtraRuntimeAnnotations) > 0 || len(opts.ExtraRuntimeLabels) > 0 {
+		log.Default.Debug(ctx, "Build runtime patched resource specs")
 
-	resSpecs, err := spec.BuildPatchedResourceSpecs(ctx, opts.ReleaseNamespace, releasableResSpecs, []spec.ResourcePatcher{
-		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("build runtime patched resource specs: %w", err)
+		resSpecs, err = spec.BuildPatchedResourceSpecs(ctx, opts.ReleaseNamespace, releasableResSpecs, []spec.ResourcePatcher{
+			spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("build runtime patched resource specs: %w", err)
+		}
 	}
 
 	var showFiles []string
