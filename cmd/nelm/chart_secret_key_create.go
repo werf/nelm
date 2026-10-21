@@ -18,6 +18,7 @@ type chartSecretKeyCreateOptions struct {
 
 	LogColorMode string
 	LogLevel     string
+	LogWidth     int
 }
 
 func newChartSecretKeyCreateCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -34,6 +35,7 @@ func newChartSecretKeyCreateCommand(ctx context.Context, afterAllCommandsBuiltFu
 		func(cmd *cobra.Command, args []string) error {
 			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultSecretKeyCreateLogLevel), action.SetupLoggingOptions{
 				ColorMode:      cfg.LogColorMode,
+				LogWidth:       cfg.LogWidth,
 				LogIsParseable: true,
 			})
 
@@ -54,6 +56,13 @@ func newChartSecretKeyCreateCommand(ctx context.Context, afterAllCommandsBuiltFu
 		}
 
 		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", string(action.DefaultSecretKeyCreateLogLevel), "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.LogWidth, "log-width", 0, "Set log width. 0 to detect automatically", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
