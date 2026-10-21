@@ -542,6 +542,10 @@ nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_RELEASE\_INSTALL\_LOG\_LEVEL
 
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_RELEASE\_INSTALL\_LOG\_WIDTH
+
 - `--release-history-limit` (default: `10`)
 
   Limit the number of releases in release history\. When limit is exceeded the oldest releases are deleted\. Release resources are not affected\. Var: \$NELM\_RELEASE\_HISTORY\_LIMIT
@@ -816,6 +820,10 @@ nelm release rollback [options...] -n namespace -r release [revision]
 - `--log-level` (default: `"info"`)
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_RELEASE\_ROLLBACK\_LOG\_LEVEL
+
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_RELEASE\_ROLLBACK\_LOG\_WIDTH
 
 - `--release-history-limit` (default: `10`)
 
@@ -1236,6 +1244,10 @@ nelm release plan install [options...] -n namespace -r release [chart-dir|chart-
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_RELEASE\_PLAN\_INSTALL\_LOG\_LEVEL
 
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_RELEASE\_PLAN\_INSTALL\_LOG\_WIDTH
+
 - `--release-storage` (default: `""`)
 
   How releases should be stored\. Var: \$NELM\_RELEASE\_STORAGE
@@ -1464,6 +1476,10 @@ nelm release uninstall [options...] -n namespace -r release
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_RELEASE\_UNINSTALL\_LOG\_LEVEL
 
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_RELEASE\_UNINSTALL\_LOG\_WIDTH
+
 - `--release-history-limit` (default: `10`)
 
   Limit the number of releases in release history\. When limit is exceeded the oldest releases are deleted\. Release resources are not affected\. Var: \$NELM\_RELEASE\_HISTORY\_LIMIT
@@ -1630,6 +1646,10 @@ nelm release history [options...] -n namespace -r release
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_RELEASE\_HISTORY\_LOG\_LEVEL
 
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_RELEASE\_HISTORY\_LOG\_WIDTH
+
 - `--output-format` (default: `"table"`)
 
   Result output format\. Vars: \$NELM\_OUTPUT\_FORMAT, \$NELM\_RELEASE\_HISTORY\_OUTPUT\_FORMAT
@@ -1795,6 +1815,10 @@ nelm release list [options...] [-n namespace]
 - `--log-level` (default: `"error"`)
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_RELEASE\_LIST\_LOG\_LEVEL
+
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_RELEASE\_LIST\_LOG\_WIDTH
 
 - `--output-format` (default: `"table"`)
 
@@ -1966,6 +1990,10 @@ nelm release get [options...] -n namespace -r release [revision]
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_RELEASE\_GET\_LOG\_LEVEL
 
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_RELEASE\_GET\_LOG\_WIDTH
+
 - `--output-format` (default: `"yaml"`)
 
   Result output format\. Vars: \$NELM\_OUTPUT\_FORMAT, \$NELM\_RELEASE\_GET\_OUTPUT\_FORMAT
@@ -2025,6 +2053,10 @@ nelm release plan show [options...] plan.json
 - `--log-level` (default: `"info"`)
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_RELEASE\_PLAN\_SHOW\_LOG\_LEVEL
+
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_RELEASE\_PLAN\_SHOW\_LOG\_WIDTH
 
 - `--temp-dir` (default: `""`)
 
@@ -2405,6 +2437,10 @@ nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_LINT\_LOG\_LEVEL
 
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_LINT\_LOG\_WIDTH
+
 - `--release-storage` (default: `""`)
 
   How releases should be stored\. Var: \$NELM\_RELEASE\_STORAGE
@@ -2764,6 +2800,10 @@ nelm chart render [options...] [chart-dir|chart-repo-name/chart-name|chart-archi
 - `--log-level` (default: `"error"`)
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_RENDER\_LOG\_LEVEL
+
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_RENDER\_LOG\_WIDTH
 
 - `--release-storage` (default: `""`)
 
@@ -3260,6 +3300,10 @@ nelm chart secret key create [options...]
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_SECRET\_KEY\_CREATE\_LOG\_LEVEL
 
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_SECRET\_KEY\_CREATE\_LOG\_WIDTH
+
 - `--temp-dir` (default: `""`)
 
   The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
@@ -3300,6 +3344,10 @@ nelm chart secret key rotate [options...] --old-secret-key secret-key --new-secr
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_LOG\_LEVEL
 
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_LOG\_WIDTH
+
 - `--temp-dir` (default: `""`)
 
   The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
@@ -3331,6 +3379,10 @@ nelm chart secret values-file edit [options...] --secret-key secret-key values-f
 - `--log-level` (default: `"error"`)
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_SECRET\_VALUES\_FILE\_EDIT\_LOG\_LEVEL
+
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_SECRET\_VALUES\_FILE\_EDIT\_LOG\_WIDTH
 
 - `--temp-dir` (default: `""`)
 
@@ -3368,6 +3420,10 @@ nelm chart secret values-file encrypt [options...] --secret-key secret-key value
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_SECRET\_VALUES\_FILE\_ENCRYPT\_LOG\_LEVEL
 
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_SECRET\_VALUES\_FILE\_ENCRYPT\_LOG\_WIDTH
+
 - `--temp-dir` (default: `""`)
 
   The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
@@ -3404,6 +3460,10 @@ nelm chart secret values-file decrypt [options...] --secret-key secret-key value
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_SECRET\_VALUES\_FILE\_DECRYPT\_LOG\_LEVEL
 
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_SECRET\_VALUES\_FILE\_DECRYPT\_LOG\_WIDTH
+
 - `--temp-dir` (default: `""`)
 
   The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
@@ -3435,6 +3495,10 @@ nelm chart secret file edit [options...] --secret-key secret-key file
 - `--log-level` (default: `"error"`)
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_SECRET\_FILE\_EDIT\_LOG\_LEVEL
+
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_SECRET\_FILE\_EDIT\_LOG\_WIDTH
 
 - `--temp-dir` (default: `""`)
 
@@ -3472,6 +3536,10 @@ nelm chart secret file encrypt [options...] --secret-key secret-key file
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_SECRET\_FILE\_ENCRYPT\_LOG\_LEVEL
 
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_SECRET\_FILE\_ENCRYPT\_LOG\_WIDTH
+
 - `--temp-dir` (default: `""`)
 
   The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
@@ -3507,6 +3575,10 @@ nelm chart secret file decrypt [options...] --secret-key secret-key file
 - `--log-level` (default: `"error"`)
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_SECRET\_FILE\_DECRYPT\_LOG\_LEVEL
+
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_SECRET\_FILE\_DECRYPT\_LOG\_WIDTH
 
 - `--temp-dir` (default: `""`)
 
@@ -4336,6 +4408,10 @@ nelm chart ts init [PATH]
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_TS\_INIT\_LOG\_LEVEL
 
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_TS\_INIT\_LOG\_WIDTH
+
 - `--temp-dir` (default: `""`)
 
   The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
@@ -4367,6 +4443,10 @@ nelm chart ts build [PATH]
 - `--log-level` (default: `"info"`)
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_TS\_BUILD\_LOG\_LEVEL
+
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_TS\_BUILD\_LOG\_WIDTH
 
 - `--temp-dir` (default: `""`)
 
@@ -4521,6 +4601,10 @@ nelm version [options...]
 - `--log-level` (default: `"error"`)
 
   Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_VERSION\_LOG\_LEVEL
+
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_VERSION\_LOG\_WIDTH
 
 - `--output-format` (default: `"yaml"`)
 

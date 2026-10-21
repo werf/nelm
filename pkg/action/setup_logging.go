@@ -27,6 +27,8 @@ import (
 type SetupLoggingOptions struct {
 	ColorMode      string
 	LogIsParseable bool
+	// LogWidth, when greater than zero, overrides the automatically detected log width.
+	LogWidth int
 }
 
 func SetupLogging(ctx context.Context, logLevel log.Level, opts SetupLoggingOptions) context.Context {
@@ -35,6 +37,10 @@ func SetupLogging(ctx context.Context, logLevel log.Level, opts SetupLoggingOpti
 	}
 
 	log.Default.SetLevel(ctx, logLevel)
+
+	if opts.LogWidth > 0 {
+		logboek.Context(ctx).Streams().SetWidth(opts.LogWidth)
+	}
 
 	spew.Config.DisablePointerAddresses = true
 	spew.Config.DisableCapacities = true
