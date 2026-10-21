@@ -282,7 +282,9 @@ CRDs from the `crds/` directory of the chart deployed not only on the very first
 
 ### Render and diff patches
 
-Rendered resources can be modified with jq programs without changing chart templates, e.g. to set a field that a third-party chart doesn't expose in its values. Render patches change what is deployed. Diff patches don't change what is deployed: they make Nelm ignore changes in the patched fields when deciding whether to update a resource. Patches are shipped with the chart in `patches.yaml` or passed with the `--patches` option.
+Nelm can patch chart resources with jq after rendering, using `patches.yaml` of the chart or files passed with the `--patches` option. There are two kinds of patches:
+* Render patches modify resources before deploy, similar to Helm's `--post-renderer`. Use them to change what the chart doesn't let you configure, without forking it.
+* Diff patches don't change what is deployed: they make Nelm ignore changes in the patched fields when deciding whether to update a resource. Use them to avoid needless updates caused by fields that change on every render or are modified in the cluster.
 
 ## Usage
 
