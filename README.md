@@ -47,9 +47,12 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [Release planning and two-stage deployment workflow support](#release-planning-and-two-stage-deployment-workflow-support)
   - [Encrypted values and encrypted files](#encrypted-values-and-encrypted-files)
   - [Improved CRD management](#improved-crd-management)
+  - [Render and diff patches](#render-and-diff-patches)
 - [Usage](#usage)
   - [Encrypted values files](#encrypted-values-files)
   - [Encrypted arbitrary files](#encrypted-arbitrary-files)
+  - [Render patches](#render-patches)
+  - [Diff patches](#diff-patches)
 - [Reference](#reference)
   - [`werf.io/weight` annotation](#werfioweight-annotation)
   - [`werf.io/deploy-dependency-<id>` annotation](#werfiodeploy-dependency-id-annotation)
@@ -79,6 +82,7 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [`printf_debug` function](#printf_debug-function)
   - [`include_debug` function](#include_debug-function)
   - [`tpl_debug` function](#tpl_debug-function)
+  - [`patches.yaml` file](#patchesyaml-file)
 - [Feature gates](#feature-gates)
   - [`NELM_FEAT_PREVIEW_V2` environment variable](#nelm_feat_preview_v2-environment-variable)
   - [`NELM_FEAT_REMOTE_CHARTS` environment variable](#nelm_feat_remote_charts-environment-variable)
@@ -276,6 +280,12 @@ nelm release install --use-plan=plan.gz
 
 CRDs from the `crds/` directory of the chart deployed not only on the very first release install, but also on release upgrades. Also, CRDs not only can be created, but can be updated as well.
 
+### Render and diff patches
+
+Nelm can patch chart resources with jq after rendering, using `patches.yaml` of the chart or files passed with the `--patches` option. There are two kinds of patches:
+* Render patches modify resources before deploy, similar to Helm's `--post-renderer`. Use them to change what the chart doesn't let you configure, without forking it.
+* Diff patches don't change what is deployed: they make Nelm ignore changes in the patched fields when deciding whether to update a resource. Use them to avoid needless updates caused by fields that change on every render or are modified in the cluster.
+
 ## Usage
 
 Nelm-specific features are described below. For general documentation, see [Helm docs](https://helm.sh/docs/) and [werf docs](https://werf.io/docs/v2/usage/deploy/overview.html).
@@ -346,6 +356,53 @@ config:
   user: john-doe
   password: verysecurepassword123
 ```
+
+### Render patches
+
+Render patches change chart resources without editing the chart, e.g. resources of a third-party subchart.
+
+Create `patches.yaml` in the root of the chart:
+```yaml
+renderPatches:
+- match:
+    kinds: [Deployment, StatefulSet]
+    charts: [redis]
+  patch: .spec.template.spec.priorityClassName = $Values.redisPriorityClass
+```
+
+Render the chart:
+```bash
+nelm chart render --set redisPriorityClass=high-priority
+```
+```yaml
+kind: StatefulSet
+# ...
+spec:
+  template:
+    spec:
+      priorityClassName: high-priority
+```
+
+`$Values` here are the values of the parent chart that ships `patches.yaml`, not of the `redis` subchart.
+
+Render and diff patches can also be stored outside the chart, in a file of the same format:
+```bash
+nelm release install -n myns -r myrls --patches ../ops-patches.yaml ./chart
+```
+
+### Diff patches
+
+Diff patches make Nelm ignore changes in fields that differ on every deploy or are changed in the cluster by someone else, so that such changes alone don't update the resource. When the resource is updated for another reason, the patched fields are deployed as rendered.
+
+Create `patches.yaml` in the root of the chart:
+```yaml
+diffPatches:
+- match:
+    kinds: [Deployment]
+  patch: del(.spec.template.metadata.annotations."example.com/deployed-at")
+```
+
+Here, a change of the `example.com/deployed-at` annotation alone, e.g. a timestamp rendered anew on every deploy, no longer updates the Deployment and restarts its Pods.
 
 ## Reference
 
@@ -803,6 +860,50 @@ Example:
 Format:
 ```
 {{ tpl_debug "<template string>" <context> }}
+```
+
+### `patches.yaml` file
+
+Defines render patches, which modify the rendered resources before deploy, and diff patches, which are applied to both the current and the to-be versions of a resource only when Nelm compares them to decide whether to update it.
+
+A patch receives the whole resource and must return exactly one object. A render patch can't change `apiVersion`, `kind`, `name` or `namespace` of the resource. Render patches can use `$Values`, `$Release`, `$Chart` and `$Capabilities`: the same data as in the templates of the chart that ships `patches.yaml` (of the top-level chart for `--patches` files). Diff patches can't use these variables.
+
+A resource matches if all specified `match` fields match:
+* `/.../` values are regular expressions that must match the whole value (case-sensitive); other values are compared literally, case-insensitively for `kinds`, `groups` and `versions`.
+* `labels` and `annotations` match if the resource has all of them with the same values.
+* `charts` matches the name (or alias, if set) of the chart the resource is rendered from, or its path from the top-level chart, e.g. `app/charts/redis`.
+
+`patches.yaml` applies only to resources of its chart, including subcharts; `--patches` files apply to all resources. Patches are applied in order, each to the result of the previous one: subcharts first, then the parent chart, then `--patches` files. `--no-default-patches` ignores `patches.yaml` of all charts. `nelm release rollback` and `nelm release uninstall` apply only diff patches.
+
+Example:
+```yaml
+renderPatches:
+- match:
+    kinds: [Deployment]
+    names: [/backend-.*/]
+  patch: .metadata.labels.team = $Values.team
+diffPatches:
+- match:
+    kinds: [ConfigMap]
+    labels:
+      app: backend
+  patch: del(.data."generated-at")
+```
+Format:
+```
+renderPatches:
+- match:
+    names: [<name or /regexp/>, ...]
+    namespaces: [<namespace or /regexp/>, ...]
+    groups: [<group or /regexp/>, ...]
+    versions: [<version or /regexp/>, ...]
+    kinds: [<kind or /regexp/>, ...]
+    charts: [<chart name, alias, path or /regexp/>, ...]
+    labels: {<key>: <value>, ...}
+    annotations: {<key>: <value>, ...}
+  patch: <jq program>
+diffPatches:
+- <same as renderPatches>
 ```
 
 ## Feature gates
