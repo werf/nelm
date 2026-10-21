@@ -52,7 +52,8 @@ type InstallableResourceInfo struct {
 	LocalResource  *resource.InstallableResource `json:"localResource"`
 	GetResult      *unstructured.Unstructured    `json:"getResult"`
 	DryApplyResult *unstructured.Unstructured    `json:"dryApplyResult"`
-	DryApplyErr    error                         `json:"dryApplyErr"`
+	// Not serialized: an error can't be decoded back from JSON. For blind applies its text is kept in ResourceChange.Reason.
+	DryApplyErr error `json:"-"`
 
 	MustInstall                   ResourceInstallType `json:"mustInstall"`
 	MustDeleteOnSuccessfulInstall bool                `json:"mustDeleteOnSuccessfulInstall"`
