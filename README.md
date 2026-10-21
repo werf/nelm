@@ -392,7 +392,7 @@ nelm release install -n myns -r myrls --patches ../ops-patches.yaml ./chart
 
 ### Diff patches
 
-Diff patches make Nelm ignore changes in fields that differ on every deploy or are changed in the cluster by someone else, so that such changes alone don't update the resource. Diff patches don't change what is deployed: when the resource is updated for another reason, the patched fields are deployed as rendered.
+Diff patches make Nelm ignore changes in fields that differ on every deploy or are changed in the cluster by someone else, so that such changes alone don't update the resource. When the resource is updated for another reason, the patched fields are deployed as rendered.
 
 Create `patches.yaml` in the root of the chart:
 ```yaml
@@ -873,7 +873,7 @@ A resource matches if all specified `match` fields match:
 * `labels` and `annotations` match if the resource has all of them with the same values.
 * `charts` matches the name (or alias, if set) of the chart the resource is rendered from, or its path from the top-level chart, e.g. `app/charts/redis`.
 
-Patches from `patches.yaml` of a chart only apply to resources of this chart and its subcharts, patches from `--patches` files apply to any resource. Patches are applied in order, each to the result of the previous one: subcharts first, then the parent chart, then `--patches` files in the order specified. `nelm release rollback` and `nelm release uninstall` apply only diff patches.
+`patches.yaml` applies only to resources of its chart, including subcharts; `--patches` files apply to all resources. Patches are applied in order, each to the result of the previous one: subcharts first, then the parent chart, then `--patches` files. `--no-default-patches` ignores `patches.yaml` of all charts. `nelm release rollback` and `nelm release uninstall` apply only diff patches.
 
 Example:
 ```yaml
