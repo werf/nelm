@@ -18,6 +18,7 @@ type chartTSBuildConfig struct {
 
 	LogColorMode string
 	LogLevel     string
+	LogWidth     int
 }
 
 func newChartTSBuildCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -37,7 +38,10 @@ func newChartTSBuildCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[
 			},
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), log.InfoLevel), action.SetupLoggingOptions{ColorMode: cfg.LogColorMode})
+			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), log.InfoLevel), action.SetupLoggingOptions{
+				ColorMode: cfg.LogColorMode,
+				LogWidth:  cfg.LogWidth,
+			})
 
 			if len(args) > 0 {
 				cfg.ChartDirPath = args[0]
@@ -60,6 +64,13 @@ func newChartTSBuildCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[
 		}
 
 		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", string(log.InfoLevel), "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.LogWidth, "log-width", 0, "Set log width. 0 to detect automatically", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {

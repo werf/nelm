@@ -19,6 +19,7 @@ type releaseRollbackConfig struct {
 
 	LogColorMode     string
 	LogLevel         string
+	LogWidth         int
 	ReleaseName      string
 	ReleaseNamespace string
 }
@@ -37,7 +38,10 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 			Args: cobra.MaximumNArgs(1),
 		},
 		func(cmd *cobra.Command, args []string) error {
-			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultReleaseRollbackLogLevel), action.SetupLoggingOptions{ColorMode: cfg.LogColorMode})
+			ctx = action.SetupLogging(ctx, cmp.Or(log.Level(cfg.LogLevel), action.DefaultReleaseRollbackLogLevel), action.SetupLoggingOptions{
+				ColorMode: cfg.LogColorMode,
+				LogWidth:  cfg.LogWidth,
+			})
 
 			if len(args) > 0 {
 				var err error
@@ -195,6 +199,13 @@ func newReleaseRollbackCommand(ctx context.Context, afterAllCommandsBuiltFuncs m
 		}
 
 		if err := cli.AddFlag(cmd, &cfg.LogLevel, "log-level", string(action.DefaultReleaseRollbackLogLevel), "Set log level. "+allowedLogLevelsHelp(), cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                miscFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.LogWidth, "log-width", 0, "Set log width. 0 to detect automatically", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                miscFlagGroup,
 		}); err != nil {
