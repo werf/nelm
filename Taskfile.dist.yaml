@@ -55,7 +55,15 @@ tasks:
     internal: true
     run: once
     cmds:
-      - golangci-lint run {{if eq .fix "true"}}--fix{{end}} --build-tags="{{.tags}}" {{.CLI_ARGS}} {{.paths | default "$(find pkg/ -mindepth 1 -maxdepth 1 -type d ! -name helm -printf './%p/... ') ./cmd/..."}}
+      - |
+        paths="{{.paths}}"
+        if [ -z "$paths" ]; then
+          # -exec printf instead of -printf: BSD find on macOS has no -printf.
+          paths="$(find pkg -mindepth 1 -maxdepth 1 -type d ! -name helm -exec printf './%s/... ' {} +)"
+          [ -n "$paths" ] || { echo "no packages to lint found in pkg/" >&2; exit 1; }
+          paths="$paths ./cmd/..."
+        fi
+        golangci-lint run {{if eq .fix "true"}}--fix{{end}} --build-tags="{{.tags}}" {{.CLI_ARGS}} $paths
     vars:
       paths: "{{.paths}}"
 
