@@ -430,7 +430,9 @@ Default:
 
 The resource will deploy only after all of its dependencies are satisfied. It waits until the specified resource is just `present` or is also `ready`. It serves as a more powerful alternative to hooks and `werf.io/weight`. This annotation has higher priority than `werf.io/weight` and `helm.sh/hook-weight`. This annotation has no effect on internal (release) dependencies if the resource on which we depend upon is outside the stage (pre, main, post, ...) of the resource with the annotation.
 
-If `external=true` or `external=auto` and the dependency is not found in the release, then the dependency is treated as external to the release: `name`, `kind` and `version` must be specified.
+If `external=true` or `external=auto` (default) and the dependency is not found in the release, then the dependency is treated as external to the release: `name`, `kind` and `version` must be specified.
+
+If `external` is omitted and `name`, `kind` or `version` is missing, the dependency is treated as internal.
 
 Example:
 ```yaml
@@ -447,7 +449,9 @@ werf.io/deploy-dependency-<anything>: state=ready|present[,name=<name>][,namespa
 
 The resource will be deleted only after all of its dependencies are satisfied. It waits until the specified resource is `absent`. This annotation has no effect on internal (release) dependencies if the resource on which we depend upon is outside the stage (pre, main, post, ...) of the resource with the annotation.
 
-If `external=true` or `external=auto` and the dependency is not found in the release, then the dependency is treated as external to the release: `name`, `kind` and `version` must be specified.
+If `external=true` or `external=auto` (default) and the dependency is not found in the release, then the dependency is treated as external to the release: `name`, `kind` and `version` must be specified.
+
+If `external` is omitted and `name`, `kind` or `version` is missing, the dependency is treated as internal.
 
 Example:
 ```yaml

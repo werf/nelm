@@ -161,7 +161,7 @@ func manualDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Reso
 				ResourceState:   depState,
 			}
 
-			dep.External = isExternalDependency(dep.ResourceMatcher, otherResMeta, deleteDependencyExternal(properties, true))
+			dep.External = isExternalDependency(dep.ResourceMatcher, otherResMeta, dependencyExternal(properties))
 
 			if dep.External {
 				dep.MinMatches = common.DefaultExternalDependencyMinMatches
@@ -201,12 +201,7 @@ func manualDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Reso
 				ResourceState:   depState,
 			}
 
-			depExternal := common.DefaultDependencyExternal
-			if ext := properties["external"]; ext != nil {
-				depExternal = common.DependencyExternal(ext.(string))
-			}
-
-			dep.External = isExternalDependency(dep.ResourceMatcher, otherResMeta, depExternal)
+			dep.External = isExternalDependency(dep.ResourceMatcher, otherResMeta, dependencyExternal(properties))
 
 			if dep.External {
 				dep.MinMatches = common.DefaultExternalDependencyMinMatches
@@ -232,7 +227,7 @@ func recreateOnImmutable(meta *spec.ResourceMeta) bool {
 	return lo.Contains(deletePolicies, common.DeletePolicyBeforeCreationIfImmutable)
 }
 
-func validateDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta, allowLegacy bool) error {
+func validateDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta) error {
 	if annotations, found := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteDependency); found {
 		for key, value := range annotations {
 			keyMatches := common.AnnotationKeyPatternDeleteDependency.FindStringSubmatch(key)
@@ -314,7 +309,7 @@ func validateDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Re
 
 			matcher := dependencyMatcher(properties, "")
 
-			if isExternalDependency(matcher, otherResMeta, deleteDependencyExternal(properties, allowLegacy)) {
+			if isExternalDependency(matcher, otherResMeta, dependencyExternal(properties)) {
 				depID := keyMatches[idSubexpIndex]
 
 				if len(matcher.Names) == 0 {
@@ -415,14 +410,9 @@ func validateDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Re
 				}
 			}
 
-			depExternal := common.DefaultDependencyExternal
-			if ext := properties["external"]; ext != nil {
-				depExternal = common.DependencyExternal(ext.(string))
-			}
-
 			matcher := dependencyMatcher(properties, releaseNamespace)
 
-			if isExternalDependency(matcher, otherResMeta, depExternal) {
+			if isExternalDependency(matcher, otherResMeta, dependencyExternal(properties)) {
 				depID := keyMatches[idSubexpIndex]
 
 				if len(matcher.Names) == 0 {
@@ -443,19 +433,47 @@ func validateDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Re
 	return nil
 }
 
-func warnLegacyDeleteDependencies(ctx context.Context, meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta) {
-	annotations, _ := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteDependency)
-	for key, value := range annotations {
-		properties := lo.Must(util.ParseProperties(ctx, value))
-		if properties["external"] != nil || deleteDependencyExternal(properties, true) != common.DependencyExternalFalse {
-			continue
-		}
+func warnDependencyFallbacks(ctx context.Context, resSpecs []*spec.ResourceSpec, releaseNamespace string, deployResourceIDs map[string]struct{}, warned map[[2]string]struct{}) {
+	for _, resSpec := range resSpecs {
+		var otherResMeta []*spec.ResourceMeta
 
-		if !isExternalDependency(dependencyMatcher(properties, ""), otherResMeta, common.DependencyExternalAuto) {
-			continue
-		}
+		for _, pattern := range []*regexp.Regexp{common.AnnotationKeyPatternDeployDependency, common.AnnotationKeyPatternDeleteDependency} {
+			namespace := ""
+			if pattern == common.AnnotationKeyPatternDeployDependency {
+				if _, willDeploy := deployResourceIDs[resSpec.ID()]; !willDeploy || spec.IsCRD(resSpec.GroupVersionKind.GroupKind()) {
+					continue
+				}
 
-		log.Default.Warn(ctx, "annotation %q in resource %q from the previous release is treated as internal for compatibility; set external=false for an internal dependency or specify name, kind and version for an external dependency", key, meta.IDHuman())
+				namespace = releaseNamespace
+			}
+
+			annotations, _ := spec.FindAnnotationsOrLabelsByKeyPattern(resSpec.Annotations, pattern)
+			for key, value := range annotations {
+				properties := lo.Must(util.ParseProperties(context.TODO(), value))
+				if properties["external"] != nil || dependencyExternal(properties) != common.DependencyExternalFalse {
+					continue
+				}
+
+				if otherResMeta == nil {
+					otherResMeta = lo.Map(lo.Without(resSpecs, resSpec), func(other *spec.ResourceSpec, _ int) *spec.ResourceMeta {
+						return other.ResourceMeta
+					})
+				}
+
+				if !isExternalDependency(dependencyMatcher(properties, namespace), otherResMeta, common.DependencyExternalAuto) {
+					continue
+				}
+
+				warningKey := [2]string{resSpec.ID(), key}
+				if _, found := warned[warningKey]; found {
+					continue
+				}
+
+				warned[warningKey] = struct{}{}
+
+				log.Default.Warn(ctx, "annotation %q in resource %q is treated as internal because name, kind or version is missing; no matching resource was found in the release; set external=false for an internal dependency or specify name, kind and version for an external dependency", key, resSpec.IDHuman())
+			}
+		}
 	}
 }
 
@@ -466,18 +484,6 @@ func defaultReplicasOnCreation(meta *spec.ResourceMeta, releaseNamespace string)
 	}
 
 	return lo.ToPtr(lo.Must(strconv.Atoi(value)))
-}
-
-func deleteDependencyExternal(properties map[string]any, allowLegacy bool) common.DependencyExternal {
-	if external := properties["external"]; external != nil {
-		return common.DependencyExternal(external.(string))
-	}
-
-	if allowLegacy && (properties["name"] == nil || properties["kind"] == nil || properties["version"] == nil) {
-		return common.DependencyExternalFalse
-	}
-
-	return common.DefaultDependencyExternal
 }
 
 func deletePolicies(meta *spec.ResourceMeta) []common.DeletePolicy {
@@ -536,6 +542,18 @@ func deletePropagation(meta *spec.ResourceMeta, defaultDeletePropagation apiv1.D
 	}
 
 	return common.DefaultDeletePropagation
+}
+
+func dependencyExternal(properties map[string]any) common.DependencyExternal {
+	if external := properties["external"]; external != nil {
+		return common.DependencyExternal(external.(string))
+	}
+
+	if properties["name"] == nil || properties["kind"] == nil || properties["version"] == nil {
+		return common.DependencyExternalFalse
+	}
+
+	return common.DefaultDependencyExternal
 }
 
 func dependencyMatcher(properties map[string]any, releaseNamespace string) *spec.ResourceMatcher {

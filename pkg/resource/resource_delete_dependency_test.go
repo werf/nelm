@@ -73,15 +73,6 @@ func TestBuildResourcesDeleteDependencyRequiresState(t *testing.T) {
 	}
 }
 
-func TestBuildResourcesIncompleteSavedDeployDependencyStaysStrict(t *testing.T) {
-	prev := []*spec.ResourceSpec{newDependentConfigMapSpec(testReleaseNamespace, map[string]string{
-		"werf.io/deploy-dependency-target": "state=present,kind=Deployment,name=absent-target",
-	})}
-
-	_, _, err := buildTestResources(common.DeployTypeUpgrade, prev, nil)
-	require.ErrorContains(t, err, `external deploy dependency "target" must have "version" property set`)
-}
-
 func TestBuildResourcesMigratesIncompleteSavedDeleteDependency(t *testing.T) {
 	correctedCharts := []struct {
 		name string
@@ -138,7 +129,7 @@ func TestBuildResourcesMigratesIncompleteSavedDeleteDependency(t *testing.T) {
 	}
 }
 
-func TestBuildResourcesNewDeleteDependencyStaysStrict(t *testing.T) {
+func TestBuildResourcesNewDeleteDependencyFallsBackToInternal(t *testing.T) {
 	const incompleteValue = "state=absent,kind=Deployment,name=test-deployment"
 
 	incompleteDependent := func() *spec.ResourceSpec {
@@ -181,8 +172,7 @@ func TestBuildResourcesNewDeleteDependencyStaysStrict(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, _, err := buildTestResources(tt.deployType, tt.prev, tt.new)
-			require.ErrorContains(t, err, "construct installable resource: validate delete dependencies")
-			require.ErrorContains(t, err, `external delete dependency "target" must have "version" property set`)
+			require.NoError(t, err)
 		})
 	}
 }
@@ -276,8 +266,7 @@ func TestBuildResourcesSavedDeleteDependencyWithTargetInNewRelease(t *testing.T)
 	require.NoError(t, err)
 
 	_, _, err = buildTestResources(common.DeployTypeUpgrade, current, previous)
-	require.ErrorContains(t, err, "construct installable resource: validate delete dependencies")
-	require.ErrorContains(t, err, `external delete dependency "target" must have "version" property set`)
+	require.NoError(t, err)
 }
 
 func TestBuildResourcesUninstallWithIncompleteSavedDeleteDependency(t *testing.T) {
@@ -352,7 +341,7 @@ func TestBuildResourcesWarnsOnIncompleteSavedDeleteDependencyFallback(t *testing
 	}
 }
 
-func TestNewDeletableResourceWarnsAfterValidation(t *testing.T) {
+func TestNewDeletableResourceValidatesBeforeFallback(t *testing.T) {
 	for _, valid := range []bool{true, false} {
 		t.Run(lo.Ternary(valid, "legacy fallback", "missing state"), func(t *testing.T) {
 			value := "kind=Deployment,name=absent-target"
@@ -379,9 +368,7 @@ func TestNewDeletableResourceWarnsAfterValidation(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, res.ManualDependencies, 1)
 			require.False(t, res.ManualDependencies[0].External)
-			require.Equal(t, 1, strings.Count(out.String(), deleteDependencyAnnotation))
-			require.Contains(t, out.String(), "dependent")
-			require.Contains(t, out.String(), "external=false")
+			require.Empty(t, out.String())
 		})
 	}
 }

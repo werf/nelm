@@ -85,7 +85,7 @@ func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherRe
 		return nil, fmt.Errorf("validate deploy dependencies: %w", err)
 	}
 
-	if err := validateDeleteDependencies(res.ResourceMeta, otherResourceMetaList, opts.AllowLegacyDeleteDependencies); err != nil {
+	if err := validateDeleteDependencies(res.ResourceMeta, otherResourceMetaList); err != nil {
 		return nil, fmt.Errorf("validate delete dependencies: %w", err)
 	}
 
@@ -148,9 +148,8 @@ func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherRe
 }
 
 type InstallableResourceOptions struct {
-	AllowLegacyDeleteDependencies bool
-	DefaultDeletePropagation      metav1.DeletionPropagation
-	NoPodLogs                     bool
+	DefaultDeletePropagation metav1.DeletionPropagation
+	NoPodLogs                bool
 }
 
 // Represent a Kubernetes resource that can be deleted. Higher level than ResourceMeta, but lower
@@ -194,11 +193,9 @@ func NewDeletableResource(ctx context.Context, resourceSpec *spec.ResourceSpec, 
 		return resSpec.ResourceMeta
 	})
 
-	if err := validateDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList, true); err != nil {
+	if err := validateDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList); err != nil {
 		return nil, fmt.Errorf("validate delete dependencies: %w", err)
 	}
-
-	warnLegacyDeleteDependencies(ctx, resourceSpec.ResourceMeta, otherResourceMetaList)
 
 	unstructList := lo.Map(otherResourceSpecs, func(resSpec *spec.ResourceSpec, _ int) *unstructured.Unstructured {
 		return resSpec.Unstruct
@@ -242,9 +239,8 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	var prevRelInstResources []*InstallableResource
 	for _, resSpec := range prevRelResSpecs {
 		installableResource, err := NewInstallableResource(ctx, resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
-			AllowLegacyDeleteDependencies: true,
-			DefaultDeletePropagation:      opts.DefaultDeletePropagation,
-			NoPodLogs:                     opts.NoPodLogs,
+			DefaultDeletePropagation: opts.DefaultDeletePropagation,
+			NoPodLogs:                opts.NoPodLogs,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct installable resource: %w", err)
@@ -356,9 +352,8 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	var instResources []*InstallableResource
 	for _, resSpec := range patchedResSpecs {
 		instRes, err := NewInstallableResource(ctx, resSpec, lo.Without(patchedResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
-			AllowLegacyDeleteDependencies: deployType == common.DeployTypeUninstall,
-			DefaultDeletePropagation:      opts.DefaultDeletePropagation,
-			NoPodLogs:                     opts.NoPodLogs,
+			DefaultDeletePropagation: opts.DefaultDeletePropagation,
+			NoPodLogs:                opts.NoPodLogs,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct deployable resource: %w", err)
@@ -374,6 +369,30 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	sort.SliceStable(delResources, func(i, j int) bool {
 		return spec.ResourceMetaSortHandler(delResources[i].ResourceMeta, delResources[j].ResourceMeta)
 	})
+
+	if deployType == common.DeployTypeUninstall {
+		prevRelResSpecs = lo.UniqBy(append(patchedResSpecs, prevRelResSpecs...), func(resSpec *spec.ResourceSpec) string {
+			return resSpec.ID()
+		})
+	} else {
+		newRelResSpecs = lo.UniqBy(append(patchedResSpecs, newRelResSpecs...), func(resSpec *spec.ResourceSpec) string {
+			return resSpec.ID()
+		})
+	}
+
+	prevRelDeployResourceIDs := make(map[string]struct{}, len(filteredPrevRelInstResources))
+	for _, instRes := range filteredPrevRelInstResources {
+		prevRelDeployResourceIDs[instRes.ID()] = struct{}{}
+	}
+
+	newRelDeployResourceIDs := make(map[string]struct{}, len(newRelInstResources))
+	for _, instRes := range newRelInstResources {
+		newRelDeployResourceIDs[instRes.ID()] = struct{}{}
+	}
+
+	warned := make(map[[2]string]struct{})
+	warnDependencyFallbacks(ctx, prevRelResSpecs, releaseNamespace, prevRelDeployResourceIDs, warned)
+	warnDependencyFallbacks(ctx, newRelResSpecs, releaseNamespace, newRelDeployResourceIDs, warned)
 
 	return instResources, delResources, nil
 }
