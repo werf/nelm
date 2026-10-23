@@ -539,15 +539,22 @@ func logPlannedChanges(ctx context.Context, planArtifact *PlanArtifact, opts com
 
 	log.Default.Info(ctx, "")
 
+	var otherChanges []string
+
 	for _, change := range planArtifact.Data.Changes {
+		uDiff, err := change.UDiff(opts)
+		if err != nil {
+			return fmt.Errorf("calculate diff for resource %s: %w", change.ResourceMeta.IDHuman(), err)
+		}
+
+		if change.Reason == "" && (uDiff == plan.HiddenInsignificantChanges || uDiff == plan.HiddenVerboseCRDChanges) {
+			otherChanges = append(otherChanges, fmt.Sprintf("%s (%s)", buildDiffHeader(change), strings.Trim(uDiff, "<>")))
+			continue
+		}
+
 		if err := log.Default.InfoBlockErr(ctx, log.BlockOptions{
 			BlockTitle: buildDiffHeader(change),
 		}, func() error {
-			uDiff, err := change.UDiff(opts)
-			if err != nil {
-				return fmt.Errorf("calculate diff for resource %s: %w", change.ResourceMeta.IDHuman(), err)
-			}
-
 			log.Default.Info(ctx, "%s", uDiff)
 
 			if change.Reason != "" {
@@ -558,6 +565,16 @@ func logPlannedChanges(ctx context.Context, planArtifact *PlanArtifact, opts com
 		}); err != nil {
 			return fmt.Errorf("log changes: %w", err)
 		}
+	}
+
+	if len(otherChanges) > 0 {
+		log.Default.Info(ctx, color.Bold.Render("Other changes")+":")
+
+		for _, line := range otherChanges {
+			log.Default.Info(ctx, "- %s", line)
+		}
+
+		log.Default.Info(ctx, "")
 	}
 
 	log.Default.Info(ctx, color.Bold.Render("Planned changes summary")+" for release %q (namespace: %q):", planArtifact.Release.Name, planArtifact.Release.Namespace)

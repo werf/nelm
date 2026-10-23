@@ -52,6 +52,7 @@ import (
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/legacy/progrep"
+	"github.com/werf/nelm/v2/pkg/log"
 	"github.com/werf/nelm/v2/pkg/release"
 	"github.com/werf/nelm/v2/pkg/werfdata"
 )
@@ -400,6 +401,22 @@ users:
 	api.kubeOpts = common.KubeConnectionOptions{KubeConfigPaths: []string{configPath}, KubeRequestTimeout: 5 * time.Second}
 
 	return api
+}
+
+type recordingLogger struct {
+	log.Logger
+
+	blocks []string
+	lines  []string
+}
+
+func (l *recordingLogger) Info(_ context.Context, format string, a ...interface{}) {
+	l.lines = append(l.lines, fmt.Sprintf(format, a...))
+}
+
+func (l *recordingLogger) InfoBlockErr(_ context.Context, opts log.BlockOptions, fn func() error) error {
+	l.blocks = append(l.blocks, opts.BlockTitle)
+	return fn()
 }
 
 type chartCopyTestImage struct {
@@ -1125,6 +1142,17 @@ func readWerfDataTestMetadata(t *testing.T) string {
 	require.NoError(t, err)
 
 	return string(metadata)
+}
+
+func recordLogs(t *testing.T) *recordingLogger {
+	t.Helper()
+
+	recorder := &recordingLogger{Logger: log.Default}
+	origLogger := log.Default
+	log.Default = recorder
+	t.Cleanup(func() { log.Default = origLogger })
+
+	return recorder
 }
 
 func renderedValuesJSON(t *testing.T, res *ChartRenderResultV2) string {
