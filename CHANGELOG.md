@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.2.0](https://github.com/werf/nelm/compare/v2.1.0...v2.2.0) (2026-10-23)
+
+
+### Features
+
+* add `--log-width` flag to set the log output width ([b0b22eb](https://github.com/werf/nelm/commit/b0b22eb50bca4618a8914042384cf14a521e554f))
+* install a ChartRender result without rendering the chart again ([#762](https://github.com/werf/nelm/issues/762)) ([d6302bb](https://github.com/werf/nelm/commit/d6302bb5f24d98a781a89eb62d667695f5fe4f09))
+
+
+### Bug Fixes
+
+* respect `--no-pod-logs` with `--use-plan` ([3065051](https://github.com/werf/nelm/commit/30650512b08ab443cc09416962660a5fd2651395))
+* respect `--release-history-limit` with `--use-plan` ([65c0139](https://github.com/werf/nelm/commit/65c01393de409004650dcd8f4137010a122d8f9c))
+* show and apply saved plans that contain a blind apply ([#765](https://github.com/werf/nelm/issues/765)) ([94814d4](https://github.com/werf/nelm/commit/94814d40d33456cd6b8b4c227a487ba01bcb995b)), closes [#746](https://github.com/werf/nelm/issues/746)
+* treat incomplete resource dependencies as internal ([#769](https://github.com/werf/nelm/issues/769)) ([6f92f53](https://github.com/werf/nelm/commit/6f92f53257d2f8eaa520fca80f0624a5a682516d))
+
 ## [2.1.0](https://github.com/werf/nelm/compare/v2.0.1-alpha.2...v2.1.0) (2026-10-16)
 
 
