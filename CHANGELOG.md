@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.31.2](https://github.com/werf/nelm/compare/v1.31.1...v1.31.2) (2026-10-21)
+
+
+### Bug Fixes
+
+* show and apply saved plans that contain a blind apply ([#766](https://github.com/werf/nelm/issues/766)) ([7d1c80c](https://github.com/werf/nelm/commit/7d1c80c67c1246925847546638103975b6452fe9)), closes [#746](https://github.com/werf/nelm/issues/746)
+
 ## [1.31.1](https://github.com/werf/nelm/compare/v1.31.0...v1.31.1) (2026-10-01)
 
 
