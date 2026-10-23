@@ -510,15 +510,24 @@ func logPlannedChanges(ctx context.Context, planArtifact *PlanArtifact, opts com
 
 	log.Default.Info(ctx, "")
 
+	var otherChanges []*plan.ResourceChange
+
 	for _, change := range planArtifact.Data.Changes {
+		uDiff, err := change.UDiff(opts)
+		if err != nil {
+			return fmt.Errorf("calculate diff for resource %s: %w", change.ResourceMeta.IDHuman(), err)
+		}
+
+		// Resources without anything to show are listed together at the end instead of getting
+		// a block with just a placeholder inside.
+		if isHiddenDiff(uDiff) && change.Reason == "" {
+			otherChanges = append(otherChanges, change)
+			continue
+		}
+
 		if err := log.Default.InfoBlockErr(ctx, log.BlockOptions{
 			BlockTitle: buildDiffHeader(change),
 		}, func() error {
-			uDiff, err := change.UDiff(opts)
-			if err != nil {
-				return fmt.Errorf("calculate diff for resource %s: %w", change.ResourceMeta.IDHuman(), err)
-			}
-
 			log.Default.Info(ctx, "%s", uDiff)
 
 			if change.Reason != "" {
@@ -529,6 +538,16 @@ func logPlannedChanges(ctx context.Context, planArtifact *PlanArtifact, opts com
 		}); err != nil {
 			return fmt.Errorf("log changes: %w", err)
 		}
+	}
+
+	if len(otherChanges) > 0 {
+		log.Default.Info(ctx, color.Bold.Render("Other changes")+" (no significant diff to show):")
+
+		for _, change := range otherChanges {
+			log.Default.Info(ctx, "- %s", buildDiffHeader(change))
+		}
+
+		log.Default.Info(ctx, "")
 	}
 
 	log.Default.Info(ctx, color.Bold.Render("Planned changes summary")+" for release %q (namespace: %q):", planArtifact.Release.Name, planArtifact.Release.Namespace)
@@ -589,6 +608,11 @@ func applyReleasePlanInstallOptionsDefaults(opts ReleasePlanInstallOptions, curr
 	}
 
 	return opts, nil
+}
+
+// isHiddenDiff tells whether the diff was replaced with a placeholder, so there is nothing to show.
+func isHiddenDiff(uDiff string) bool {
+	return uDiff == plan.HiddenInsignificantChanges || uDiff == plan.HiddenVerboseCRDChanges
 }
 
 func buildDiffHeader(change *plan.ResourceChange) string {
