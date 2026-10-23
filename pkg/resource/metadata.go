@@ -436,7 +436,7 @@ func validateDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Re
 func warnLegacyDependencies(ctx context.Context, meta *spec.ResourceMeta, otherResMeta []*spec.ResourceMeta, releaseNamespace string, annotationPattern *regexp.Regexp) {
 	annotations, _ := spec.FindAnnotationsOrLabelsByKeyPattern(meta.Annotations, annotationPattern)
 	for key, value := range annotations {
-		properties := lo.Must(util.ParseProperties(ctx, value))
+		properties := lo.Must(util.ParseProperties(context.TODO(), value))
 		if properties["external"] != nil || dependencyExternal(properties, true) != common.DependencyExternalFalse {
 			continue
 		}
