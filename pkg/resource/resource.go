@@ -81,11 +81,11 @@ func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherRe
 		return nil, fmt.Errorf("validate weight: %w", err)
 	}
 
-	if err := validateDeployDependencies(res.ResourceMeta, otherResourceMetaList, releaseNamespace, opts.AllowLegacyDeployDependencies); err != nil {
+	if err := validateDeployDependencies(res.ResourceMeta, otherResourceMetaList, releaseNamespace, opts.AllowLegacyDependencies); err != nil {
 		return nil, fmt.Errorf("validate deploy dependencies: %w", err)
 	}
 
-	if err := validateDeleteDependencies(res.ResourceMeta, otherResourceMetaList, opts.AllowLegacyDeleteDependencies); err != nil {
+	if err := validateDeleteDependencies(res.ResourceMeta, otherResourceMetaList, opts.AllowLegacyDependencies); err != nil {
 		return nil, fmt.Errorf("validate delete dependencies: %w", err)
 	}
 
@@ -107,7 +107,7 @@ func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherRe
 		return nil, fmt.Errorf("validate delete propagation: %w", err)
 	}
 
-	manDeps := manualDeployDependencies(res.ResourceMeta, otherResourceMetaList, releaseNamespace, opts.AllowLegacyDeployDependencies)
+	manDeps := manualDeployDependencies(res.ResourceMeta, otherResourceMetaList, releaseNamespace, opts.AllowLegacyDependencies)
 	internalDeps := lo.Filter(manDeps, func(item *Dependency, _ int) bool {
 		return !item.External
 	})
@@ -148,10 +148,9 @@ func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherRe
 }
 
 type InstallableResourceOptions struct {
-	AllowLegacyDeleteDependencies bool
-	AllowLegacyDeployDependencies bool
-	DefaultDeletePropagation      metav1.DeletionPropagation
-	NoPodLogs                     bool
+	AllowLegacyDependencies  bool
+	DefaultDeletePropagation metav1.DeletionPropagation
+	NoPodLogs                bool
 }
 
 // Represent a Kubernetes resource that can be deleted. Higher level than ResourceMeta, but lower
@@ -243,10 +242,9 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	var prevRelInstResources []*InstallableResource
 	for _, resSpec := range prevRelResSpecs {
 		installableResource, err := NewInstallableResource(ctx, resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
-			AllowLegacyDeleteDependencies: true,
-			AllowLegacyDeployDependencies: true,
-			DefaultDeletePropagation:      opts.DefaultDeletePropagation,
-			NoPodLogs:                     opts.NoPodLogs,
+			AllowLegacyDependencies:  true,
+			DefaultDeletePropagation: opts.DefaultDeletePropagation,
+			NoPodLogs:                opts.NoPodLogs,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct installable resource: %w", err)
@@ -363,10 +361,9 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	var instResources []*InstallableResource
 	for _, resSpec := range patchedResSpecs {
 		instRes, err := NewInstallableResource(ctx, resSpec, lo.Without(patchedResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
-			AllowLegacyDeleteDependencies: deployType == common.DeployTypeUninstall,
-			AllowLegacyDeployDependencies: deployType == common.DeployTypeUninstall,
-			DefaultDeletePropagation:      opts.DefaultDeletePropagation,
-			NoPodLogs:                     opts.NoPodLogs,
+			AllowLegacyDependencies:  deployType == common.DeployTypeUninstall,
+			DefaultDeletePropagation: opts.DefaultDeletePropagation,
+			NoPodLogs:                opts.NoPodLogs,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct deployable resource: %w", err)
