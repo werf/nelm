@@ -81,11 +81,11 @@ func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherRe
 		return nil, fmt.Errorf("validate weight: %w", err)
 	}
 
-	if err := validateDeployDependencies(res.ResourceMeta, otherResourceMetaList, releaseNamespace, opts.AllowLegacyDependencies); err != nil {
+	if err := validateDeployDependencies(res.ResourceMeta, otherResourceMetaList, releaseNamespace); err != nil {
 		return nil, fmt.Errorf("validate deploy dependencies: %w", err)
 	}
 
-	if err := validateDeleteDependencies(res.ResourceMeta, otherResourceMetaList, opts.AllowLegacyDependencies); err != nil {
+	if err := validateDeleteDependencies(res.ResourceMeta, otherResourceMetaList); err != nil {
 		return nil, fmt.Errorf("validate delete dependencies: %w", err)
 	}
 
@@ -107,7 +107,7 @@ func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherRe
 		return nil, fmt.Errorf("validate delete propagation: %w", err)
 	}
 
-	manDeps := manualDeployDependencies(res.ResourceMeta, otherResourceMetaList, releaseNamespace, opts.AllowLegacyDependencies)
+	manDeps := manualDeployDependencies(res.ResourceMeta, otherResourceMetaList, releaseNamespace)
 	internalDeps := lo.Filter(manDeps, func(item *Dependency, _ int) bool {
 		return !item.External
 	})
@@ -148,7 +148,6 @@ func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherRe
 }
 
 type InstallableResourceOptions struct {
-	AllowLegacyDependencies  bool
 	DefaultDeletePropagation metav1.DeletionPropagation
 	NoPodLogs                bool
 }
@@ -194,11 +193,9 @@ func NewDeletableResource(ctx context.Context, resourceSpec *spec.ResourceSpec, 
 		return resSpec.ResourceMeta
 	})
 
-	if err := validateDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList, true); err != nil {
+	if err := validateDeleteDependencies(resourceSpec.ResourceMeta, otherResourceMetaList); err != nil {
 		return nil, fmt.Errorf("validate delete dependencies: %w", err)
 	}
-
-	warnLegacyDependencies(ctx, resourceSpec.ResourceMeta, otherResourceMetaList, "", common.AnnotationKeyPatternDeleteDependency)
 
 	unstructList := lo.Map(otherResourceSpecs, func(resSpec *spec.ResourceSpec, _ int) *unstructured.Unstructured {
 		return resSpec.Unstruct
@@ -242,18 +239,12 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	var prevRelInstResources []*InstallableResource
 	for _, resSpec := range prevRelResSpecs {
 		installableResource, err := NewInstallableResource(ctx, resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
-			AllowLegacyDependencies:  true,
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 			NoPodLogs:                opts.NoPodLogs,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("construct installable resource: %w", err)
 		}
-
-		otherResourceMetaList := lo.Map(lo.Without(prevRelResSpecs, resSpec), func(otherResSpec *spec.ResourceSpec, _ int) *spec.ResourceMeta {
-			return otherResSpec.ResourceMeta
-		})
-		warnLegacyDependencies(ctx, resSpec.ResourceMeta, otherResourceMetaList, releaseNamespace, common.AnnotationKeyPatternDeployDependency)
 
 		prevRelInstResources = append(prevRelInstResources, installableResource)
 	}
@@ -361,7 +352,6 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	var instResources []*InstallableResource
 	for _, resSpec := range patchedResSpecs {
 		instRes, err := NewInstallableResource(ctx, resSpec, lo.Without(patchedResSpecs, resSpec), releaseNamespace, InstallableResourceOptions{
-			AllowLegacyDependencies:  deployType == common.DeployTypeUninstall,
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 			NoPodLogs:                opts.NoPodLogs,
 		})
@@ -379,6 +369,20 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	sort.SliceStable(delResources, func(i, j int) bool {
 		return spec.ResourceMetaSortHandler(delResources[i].ResourceMeta, delResources[j].ResourceMeta)
 	})
+
+	if deployType == common.DeployTypeUninstall {
+		prevRelResSpecs = lo.UniqBy(append(patchedResSpecs, prevRelResSpecs...), func(resSpec *spec.ResourceSpec) string {
+			return resSpec.ID()
+		})
+	} else {
+		newRelResSpecs = lo.UniqBy(append(patchedResSpecs, newRelResSpecs...), func(resSpec *spec.ResourceSpec) string {
+			return resSpec.ID()
+		})
+	}
+
+	warned := make(map[[2]string]struct{})
+	warnDependencyFallbacks(ctx, prevRelResSpecs, releaseNamespace, warned)
+	warnDependencyFallbacks(ctx, newRelResSpecs, releaseNamespace, warned)
 
 	return instResources, delResources, nil
 }

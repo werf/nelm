@@ -57,7 +57,7 @@ func TestBuildResourcesMigratesIncompleteSavedDeployDependency(t *testing.T) {
 	}
 }
 
-func TestBuildResourcesNewDeployDependencyStaysStrict(t *testing.T) {
+func TestBuildResourcesNewDeployDependencyFallsBackToInternal(t *testing.T) {
 	const value = "state=ready,kind=Deployment,name=test-deployment"
 
 	dependent := newDependentConfigMapSpec(testReleaseNamespace, map[string]string{
@@ -71,13 +71,16 @@ func TestBuildResourcesNewDeployDependencyStaysStrict(t *testing.T) {
 				prev = []*spec.ResourceSpec{dependent, defaultDeploymentResourceSpec(testReleaseNamespace)}
 			}
 
-			_, _, err := buildTestResources(deployType, prev, []*spec.ResourceSpec{dependent})
-			require.ErrorContains(t, err, `external deploy dependency "target" must have "version" property set`)
+			resources, _, err := buildTestResources(deployType, prev, []*spec.ResourceSpec{dependent})
+			require.NoError(t, err)
+			require.Len(t, resources, 1)
+			require.Len(t, resources[0].ManualDependencies, 1)
+			require.False(t, resources[0].ManualDependencies[0].External)
 		})
 	}
 
 	_, _, err := buildTestResources(common.DeployTypeUpgrade, []*spec.ResourceSpec{dependent}, []*spec.ResourceSpec{dependent})
-	require.ErrorContains(t, err, `external deploy dependency "target" must have "version" property set`)
+	require.NoError(t, err)
 }
 
 func TestBuildResourcesSavedDeployDependencyExternality(t *testing.T) {
