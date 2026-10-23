@@ -73,15 +73,6 @@ func TestBuildResourcesDeleteDependencyRequiresState(t *testing.T) {
 	}
 }
 
-func TestBuildResourcesIncompleteSavedDeployDependencyStaysStrict(t *testing.T) {
-	prev := []*spec.ResourceSpec{newDependentConfigMapSpec(testReleaseNamespace, map[string]string{
-		"werf.io/deploy-dependency-target": "state=present,kind=Deployment,name=absent-target",
-	})}
-
-	_, _, err := buildTestResources(common.DeployTypeUpgrade, prev, nil)
-	require.ErrorContains(t, err, `external deploy dependency "target" must have "version" property set`)
-}
-
 func TestBuildResourcesMigratesIncompleteSavedDeleteDependency(t *testing.T) {
 	correctedCharts := []struct {
 		name string
