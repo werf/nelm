@@ -87,7 +87,7 @@ func TestBuildResourcesDependencyFallbackForAllResources(t *testing.T) {
 					require.Equal(t, tt.wantExternal, deps[0].External)
 					require.Equal(t, value, resSpec.Annotations[dependency.annotation])
 
-					if tt.wantWarn {
+					if tt.wantWarn && (deployType != common.DeployTypeUninstall || dependency.annotation != deployDependencyAnnotation) {
 						require.Equal(t, 1, strings.Count(out.String(), dependency.annotation))
 						require.Contains(t, out.String(), "treated as internal")
 						require.NotContains(t, out.String(), "previous release")
@@ -237,6 +237,69 @@ func TestBuildResourcesDependencyWarningsWithCanceledContext(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func TestBuildResourcesUninstallDeployWarningsOnlyForInstalledResources(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		hook         string
+		deployOn     string
+		withPeer     bool
+		patch        bool
+		wantInstall  bool
+		wantWarnings int
+	}{
+		{name: "ordinary resource"},
+		{name: "install hook", hook: "pre-install"},
+		{name: "pre-delete hook", hook: "pre-delete", wantInstall: true, wantWarnings: 1},
+		{name: "post-delete hook", hook: "post-delete", wantInstall: true, wantWarnings: 1},
+		{name: "deploy-on delete", deployOn: "delete", wantInstall: true, wantWarnings: 1},
+		{name: "overridden delete hook", hook: "pre-delete", deployOn: "install"},
+		{name: "delete hook with ordinary peer", hook: "pre-delete", withPeer: true, wantInstall: true},
+		{name: "patched delete hook", hook: "pre-delete", patch: true, wantInstall: true, wantWarnings: 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			annotations := map[string]string{
+				deployDependencyAnnotation: "state=ready,kind=Deployment,name=test-deployment",
+				deleteDependencyAnnotation: "state=absent,kind=Deployment,name=absent-delete-target",
+			}
+			if tt.hook != "" {
+				annotations["helm.sh/hook"] = tt.hook
+			}
+
+			if tt.deployOn != "" {
+				annotations["werf.io/deploy-on"] = tt.deployOn
+			}
+
+			var patchers []spec.ResourcePatcher
+			if tt.patch {
+				delete(annotations, deployDependencyAnnotation)
+				patchers = []spec.ResourcePatcher{spec.NewExtraMetadataPatcher(map[string]string{
+					deployDependencyAnnotation: "state=ready,kind=Deployment,name=test-deployment",
+				}, nil)}
+			}
+
+			previous := []*spec.ResourceSpec{newDependentConfigMapSpec(testReleaseNamespace, annotations)}
+			if tt.withPeer {
+				previous = append(previous, defaultDeploymentResourceSpec(testReleaseNamespace))
+			}
+
+			var out bytes.Buffer
+
+			ctx := logboek.NewContext(context.Background(), logboek.NewLogger(&out, &out))
+			inst, _, err := resource.BuildResources(ctx, common.DeployTypeUninstall, testReleaseNamespace, previous, nil, patchers, resource.BuildResourcesOptions{})
+			require.NoError(t, err)
+			require.Equal(t, tt.wantWarnings, strings.Count(out.String(), deployDependencyAnnotation))
+			require.Equal(t, 1, strings.Count(out.String(), deleteDependencyAnnotation))
+
+			if tt.wantInstall {
+				require.Len(t, inst, 1)
+				require.Equal(t, "dependent", inst[0].Name)
+			} else {
+				require.Empty(t, inst)
+			}
+		})
 	}
 }
 

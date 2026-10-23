@@ -433,14 +433,14 @@ func validateDeployDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Re
 	return nil
 }
 
-func warnDependencyFallbacks(ctx context.Context, resSpecs []*spec.ResourceSpec, releaseNamespace string, includeDeployDependencies bool, warned map[[2]string]struct{}) {
+func warnDependencyFallbacks(ctx context.Context, resSpecs []*spec.ResourceSpec, releaseNamespace string, deployResourceIDs map[string]struct{}, warned map[[2]string]struct{}) {
 	for _, resSpec := range resSpecs {
 		var otherResMeta []*spec.ResourceMeta
 
 		for _, pattern := range []*regexp.Regexp{common.AnnotationKeyPatternDeployDependency, common.AnnotationKeyPatternDeleteDependency} {
 			namespace := ""
 			if pattern == common.AnnotationKeyPatternDeployDependency {
-				if !includeDeployDependencies || spec.IsCRD(resSpec.GroupVersionKind.GroupKind()) {
+				if _, willDeploy := deployResourceIDs[resSpec.ID()]; !willDeploy || spec.IsCRD(resSpec.GroupVersionKind.GroupKind()) {
 					continue
 				}
 

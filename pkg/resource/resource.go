@@ -380,9 +380,19 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 		})
 	}
 
+	prevRelDeployResourceIDs := make(map[string]struct{}, len(filteredPrevRelInstResources))
+	for _, instRes := range filteredPrevRelInstResources {
+		prevRelDeployResourceIDs[instRes.ID()] = struct{}{}
+	}
+
+	newRelDeployResourceIDs := make(map[string]struct{}, len(newRelInstResources))
+	for _, instRes := range newRelInstResources {
+		newRelDeployResourceIDs[instRes.ID()] = struct{}{}
+	}
+
 	warned := make(map[[2]string]struct{})
-	warnDependencyFallbacks(ctx, prevRelResSpecs, releaseNamespace, deployType == common.DeployTypeUninstall, warned)
-	warnDependencyFallbacks(ctx, newRelResSpecs, releaseNamespace, true, warned)
+	warnDependencyFallbacks(ctx, prevRelResSpecs, releaseNamespace, prevRelDeployResourceIDs, warned)
+	warnDependencyFallbacks(ctx, newRelResSpecs, releaseNamespace, newRelDeployResourceIDs, warned)
 
 	return instResources, delResources, nil
 }
