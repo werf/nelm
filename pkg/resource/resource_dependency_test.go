@@ -123,6 +123,51 @@ func TestBuildResourcesDependencyFallbackWarningsAreNotDuplicated(t *testing.T) 
 	}
 }
 
+func TestBuildResourcesDependencyWarningsUseRelevantRevisions(t *testing.T) {
+	for _, deployType := range []common.DeployType{common.DeployTypeUpgrade, common.DeployTypeRollback} {
+		for _, correction := range []string{"external=false", "annotation removed", "resource removed", "target added", "unchanged"} {
+			t.Run(string(deployType)+"/"+correction, func(t *testing.T) {
+				annotations := map[string]string{
+					deployDependencyAnnotation: "state=ready,kind=Deployment,name=test-deployment",
+					deleteDependencyAnnotation: "state=absent,kind=Deployment,name=test-deployment",
+				}
+				previous := []*spec.ResourceSpec{newDependentConfigMapSpec(testReleaseNamespace, annotations)}
+
+				var current []*spec.ResourceSpec
+				switch correction {
+				case "external=false":
+					current = []*spec.ResourceSpec{newDependentConfigMapSpec(testReleaseNamespace, map[string]string{
+						deployDependencyAnnotation: annotations[deployDependencyAnnotation] + ",external=false",
+						deleteDependencyAnnotation: annotations[deleteDependencyAnnotation] + ",external=false",
+					})}
+				case "annotation removed":
+					current = []*spec.ResourceSpec{newDependentConfigMapSpec(testReleaseNamespace, nil)}
+				case "resource removed":
+					current = []*spec.ResourceSpec{defaultDeploymentResourceSpec(testReleaseNamespace)}
+				case "target added":
+					current = []*spec.ResourceSpec{newDependentConfigMapSpec(testReleaseNamespace, annotations), defaultDeploymentResourceSpec(testReleaseNamespace)}
+				case "unchanged":
+					current = []*spec.ResourceSpec{newDependentConfigMapSpec(testReleaseNamespace, annotations)}
+				}
+
+				var out bytes.Buffer
+
+				ctx := logboek.NewContext(context.Background(), logboek.NewLogger(&out, &out))
+				_, _, err := resource.BuildResources(ctx, deployType, testReleaseNamespace, previous, current, nil, resource.BuildResourcesOptions{})
+				require.NoError(t, err)
+
+				var deployWarnings int
+				if correction == "unchanged" {
+					deployWarnings = 1
+				}
+
+				require.Equal(t, deployWarnings, strings.Count(out.String(), deployDependencyAnnotation))
+				require.Equal(t, 1, strings.Count(out.String(), deleteDependencyAnnotation))
+			})
+		}
+	}
+}
+
 func TestBuildResourcesDependencyWarningsWithCanceledContext(t *testing.T) {
 	for _, dependency := range []struct {
 		annotation string
@@ -171,7 +216,7 @@ func TestBuildResourcesDependencyWarningsWithCanceledContext(t *testing.T) {
 					var err error
 
 					require.NotPanics(t, func() {
-						_, _, err = resource.BuildResources(ctx, common.DeployTypeUpgrade, testReleaseNamespace, prev, nil, nil, resource.BuildResourcesOptions{})
+						_, _, err = resource.BuildResources(ctx, common.DeployTypeUpgrade, testReleaseNamespace, prev, prev, nil, resource.BuildResourcesOptions{})
 					})
 
 					if tt.wantErr != "" {

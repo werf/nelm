@@ -381,8 +381,8 @@ func BuildResources(ctx context.Context, deployType common.DeployType, releaseNa
 	}
 
 	warned := make(map[[2]string]struct{})
-	warnDependencyFallbacks(ctx, prevRelResSpecs, releaseNamespace, warned)
-	warnDependencyFallbacks(ctx, newRelResSpecs, releaseNamespace, warned)
+	warnDependencyFallbacks(ctx, prevRelResSpecs, releaseNamespace, deployType == common.DeployTypeUninstall, warned)
+	warnDependencyFallbacks(ctx, newRelResSpecs, releaseNamespace, true, warned)
 
 	return instResources, delResources, nil
 }

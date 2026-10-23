@@ -129,6 +129,10 @@ func TestBuildResourcesSavedDeployDependencyExternality(t *testing.T) {
 			}
 
 			require.NoError(t, err)
+			require.Empty(t, out.String())
+
+			instResources, _, err := resource.BuildResources(ctx, common.DeployTypeUninstall, testReleaseNamespace, prev, nil, nil, resource.BuildResourcesOptions{})
+			require.NoError(t, err)
 
 			var expectedWarnings int
 			if tt.wantWarn {
@@ -138,11 +142,6 @@ func TestBuildResourcesSavedDeployDependencyExternality(t *testing.T) {
 				require.Contains(t, out.String(), "external=false")
 			}
 
-			require.Equal(t, expectedWarnings, strings.Count(out.String(), deployDependencyAnnotation))
-			out.Reset()
-
-			instResources, _, err := resource.BuildResources(ctx, common.DeployTypeUninstall, testReleaseNamespace, prev, nil, nil, resource.BuildResourcesOptions{})
-			require.NoError(t, err)
 			require.Equal(t, expectedWarnings, strings.Count(out.String(), deployDependencyAnnotation))
 			require.Len(t, instResources, 1)
 			require.Len(t, instResources[0].ManualDependencies, 1)
