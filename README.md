@@ -432,7 +432,7 @@ The resource will deploy only after all of its dependencies are satisfied. It wa
 
 If `external=true` or `external=auto` and the dependency is not found in the release, then the dependency is treated as external to the release: `name`, `kind` and `version` must be specified.
 
-If `external` is omitted, the dependency is internal when `name`, `kind` or `version` is missing; otherwise it behaves as `external=auto`. This applies to both new and previously deployed resources. An incomplete internal dependency that matches no resource in the release produces a warning and does not wait for any resource. Set `external=false` explicitly to suppress this warning. Deploy-dependency warnings use the target revision during install, upgrade and rollback, and the stored revision during uninstall.
+If `external` is omitted, the dependency is internal when `name`, `kind` or `version` is missing; otherwise it behaves as `external=auto`. This applies to both new and previously deployed resources. An incomplete internal dependency that matches no resource in the release produces a warning and does not wait for any resource. Set `external=false` explicitly to suppress this warning.
 
 Example:
 ```yaml
