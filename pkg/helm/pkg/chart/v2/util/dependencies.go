@@ -588,12 +588,14 @@ func valueMapFromExport(parentChartName, dependencyName string, pvals common.Val
 
 	value, valueErr := pvals.PathValue(parent)
 	if valueErr != nil {
-		slog.Warn(
-			"ExportValues parent path not found",
+		// Not a warning: the parent path may be set only in user-supplied or service values, which
+		// are exported by ExportUserValues.
+		slog.Debug(
+			"ExportValues parent path not found in chart values",
 			slog.String("chart", parentChartName),
 			slog.String("dependency", dependencyName),
 			slog.String("path", parent),
-			slog.Any("error", err),
+			slog.Any("error", valueErr),
 		)
 		return nil, false
 	}

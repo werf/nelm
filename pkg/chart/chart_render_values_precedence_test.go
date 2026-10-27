@@ -1,6 +1,9 @@
 package chart
 
 import (
+	"bytes"
+	stdlog "log"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -200,11 +203,22 @@ func TestRenderChart_ExportedValueOverridesValuesFileForDependencyWithSameNameAs
 			tt.opts.ChartDir = tt.chartDir
 			tt.opts.ValuesFiles = []string{filepath.Join("testdata", "layered-values", "same-name-values-file.yaml")}
 
+			defaultLogger, stdLogWriter, stdLogFlags := slog.Default(), stdlog.Writer(), stdlog.Flags()
+			t.Cleanup(func() {
+				slog.SetDefault(defaultLogger)
+				stdlog.SetOutput(stdLogWriter)
+				stdlog.SetFlags(stdLogFlags)
+			})
+
+			var warnings bytes.Buffer
+			slog.SetDefault(slog.New(slog.NewTextHandler(&warnings, &slog.HandlerOptions{Level: slog.LevelWarn})))
+
 			result := renderLayeredValuesChart(t, tt.opts)
 
 			require.Len(t, result.ResourceSpecs, 1)
 			assert.Equal(t, map[string]interface{}{"image": tt.wantImage, "pullPolicy": "Always"}, result.ResourceSpecs[0].Unstruct.Object["data"])
 			assert.Equal(t, tt.wantReleaseConfig, result.ReleaseConfig)
+			assert.Empty(t, warnings.String())
 		})
 	}
 }
