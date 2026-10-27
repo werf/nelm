@@ -396,8 +396,31 @@ func TestMergeSetValues_PatchesBase(t *testing.T) {
 		Values: []string{"list[1]=set"},
 	}
 
-	result, err := opts.MergeSetValues(context.Background(), getter.Providers{}, map[string]any{"list": []any{"base-0", "base-1"}})
+	result, err := opts.MergeSetValues(context.Background(), getter.Providers{}, map[string]any{"list": []any{"base-0", "base-1"}}, MergeSetValuesOptions{})
 	require.NoError(t, err)
 
 	assert.Equal(t, map[string]any{"list": []any{"base-0", "set"}}, result)
+}
+
+func TestMergeSetValues_ReadsSetFileOnceWithCache(t *testing.T) {
+	stdinReader, stdinWriter, err := os.Pipe()
+	require.NoError(t, err)
+
+	_, err = stdinWriter.WriteString("from-stdin")
+	require.NoError(t, err)
+	require.NoError(t, stdinWriter.Close())
+
+	originalStdin := os.Stdin
+	os.Stdin = stdinReader
+	t.Cleanup(func() { os.Stdin = originalStdin })
+
+	opts := Options{FileValues: []string{"file=-"}}
+	mergeOpts := MergeSetValuesOptions{SetFilesCache: map[string]string{}}
+
+	for range 2 {
+		result, err := opts.MergeSetValues(context.Background(), getter.Providers{}, map[string]any{}, mergeOpts)
+		require.NoError(t, err)
+
+		assert.Equal(t, map[string]any{"file": "from-stdin"}, result)
+	}
 }
