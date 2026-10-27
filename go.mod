@@ -60,7 +60,7 @@ require (
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.7.0
 	github.com/werf/common-go v0.0.0-20260831162604-46c3b45163be
-	github.com/werf/kubedog v0.13.1-0.20260915153156-438ef109f804
+	github.com/werf/kubedog v0.13.1-0.20261027130304-a20d88c9964e
 	github.com/werf/lockgate v0.1.1
 	github.com/werf/logboek v0.6.1
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e
