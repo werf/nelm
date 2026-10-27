@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -30,6 +31,8 @@ import (
 	"github.com/werf/nelm/v2/pkg/legacy/progrep"
 	"github.com/werf/nelm/v2/pkg/release"
 )
+
+const secretValuesTypesSecretKey = "0123456789abcdef0123456789abcdef"
 
 type latestReleaseListLoads struct {
 	errs      []error
@@ -445,6 +448,16 @@ func collectSlowProgressPhaseReports(ch <-chan progrep.ProgressReport) <-chan []
 	return done
 }
 
+func encryptSecretValuesTypesFile(t *testing.T, outputPath string) {
+	t.Helper()
+
+	require.NoError(t, SecretValuesFileEncrypt(context.Background(), "testdata/secret-values-types/plain-secret-values.yaml", SecretValuesFileEncryptOptions{
+		OutputFilePath: outputPath,
+		SecretKey:      secretValuesTypesSecretKey,
+		TempDirPath:    t.TempDir(),
+	}))
+}
+
 func newChartRenderInstallContext(t *testing.T) context.Context {
 	t.Helper()
 
@@ -507,6 +520,15 @@ func newProgressPhasesChart(t *testing.T) string {
 	return path
 }
 
+func newSecretValuesTypesChart(t *testing.T) string {
+	t.Helper()
+
+	path := t.TempDir()
+	require.NoError(t, os.CopyFS(path, os.DirFS("testdata/secret-values-types/chart")))
+
+	return path
+}
+
 func newTestReleaseSummary() *release.ReleaseSummary {
 	return &release.ReleaseSummary{
 		Annotations: map[string]string{"managed-by": "deckhouse"},
@@ -544,4 +566,16 @@ func progressPhaseSequence(reports []progrep.ProgressReport) []progrep.PhaseKind
 	}
 
 	return phases
+}
+
+func renderedValuesJSON(t *testing.T, res *ChartRenderResultV2) string {
+	t.Helper()
+
+	require.Len(t, res.Resources, 1)
+
+	valuesJSON, found, err := unstructured.NestedString(res.Resources[0].Unstruct.Object, "data", "values")
+	require.NoError(t, err)
+	require.True(t, found)
+
+	return valuesJSON
 }

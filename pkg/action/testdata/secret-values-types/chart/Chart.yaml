@@ -1,0 +1,3 @@
+apiVersion: v2
+name: secretvaluestypes
+version: 0.1.0
