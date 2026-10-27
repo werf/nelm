@@ -2,17 +2,21 @@ package chart
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 
 	"github.com/werf/logboek"
 	"github.com/werf/nelm/v2/pkg/common"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 const layeredValuesSecretKey = "eb1988e0ffd7272892a851f4c20f6512" //nolint:gosec // Test-only key that encrypts testdata/layered-values.
@@ -27,11 +31,22 @@ var (
 	layeredSecretValuesNullFile         = filepath.Join("testdata", "layered-values", "secret-values-file-null.yaml")
 	layeredSecretValuesShapeFile        = filepath.Join("testdata", "layered-values", "secret-values-file-shape.yaml")
 	layeredSecretValuesShapeScalarFile  = filepath.Join("testdata", "layered-values", "secret-values-file-shape-scalar.yaml")
+	layeredSecretValuesSubFile          = filepath.Join("testdata", "layered-values", "secret-values-file-sub.yaml")
 	layeredValuesShapeFile              = filepath.Join("testdata", "layered-values", "values-file-shape.yaml")
 	layeredValuesShapeMapFile           = filepath.Join("testdata", "layered-values", "values-file-shape-map.yaml")
 )
 
 type absentValue struct{}
+
+type warningsLogger struct {
+	log.Logger
+
+	warnings []string
+}
+
+func (l *warningsLogger) Warn(_ context.Context, format string, a ...interface{}) {
+	l.warnings = append(l.warnings, fmt.Sprintf(format, a...))
+}
 
 type layeredValuesRenderOptions struct {
 	ChartDir          string
@@ -56,6 +71,32 @@ func dependencyNames(t *testing.T, result *RenderChartResult) []string {
 	sort.Strings(names)
 
 	return names
+}
+
+func flattenToSetValues(vals map[string]interface{}, prefix string) []string {
+	var result []string
+	for key, value := range vals {
+		if table, ok := value.(map[string]interface{}); ok {
+			result = append(result, flattenToSetValues(table, prefix+key+".")...)
+			continue
+		}
+
+		result = append(result, prefix+key+"="+fmt.Sprint(value))
+	}
+
+	return result
+}
+
+func readValuesFile(t *testing.T, path string) map[string]interface{} {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	var vals map[string]interface{}
+	require.NoError(t, yaml.Unmarshal(data, &vals))
+
+	return vals
 }
 
 func renderLayeredValuesChart(t *testing.T, opts layeredValuesRenderOptions) *RenderChartResult {

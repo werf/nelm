@@ -136,8 +136,9 @@ func coalesceDeps(printf printFn, chrt chart.Charter, dest map[string]any, prefi
 		if err != nil {
 			return dest, err
 		}
-		if c, ok := dest[sub.Name()]; !ok {
-			// If dest doesn't already have the key, create it.
+		if c, ok := dest[sub.Name()]; !ok || c == nil {
+			// If dest doesn't already have the key, or the value is null, create it, so that the
+			// subchart gets its defaults.
 			dest[sub.Name()] = make(map[string]any)
 		} else if !istable(c) {
 			return dest, fmt.Errorf("type mismatch on %s: %t", sub.Name(), c)

@@ -1,0 +1,6 @@
+sub: scalar
+nested:
+  foo: values-yaml
+  bar: values-yaml
+t:
+  enabled: false
