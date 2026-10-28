@@ -22,6 +22,9 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/loader"
@@ -568,4 +571,21 @@ func TestChartWithDependencyAliasedTwiceAndDoublyReferencedSubDependency(t *test
 		t.Fatal("expected two dependencies after processing aliases")
 	}
 	validateDependencyTree(t, c)
+}
+
+func TestProcessDependencies_ServiceValuesEnableDependency(t *testing.T) {
+	c := &chart.Chart{
+		Metadata: &chart.Metadata{
+			APIVersion:   chart.APIVersionV2,
+			Name:         "parent",
+			Version:      "0.1.0",
+			Dependencies: []*chart.Dependency{{Name: "sub", Version: "0.1.0", Condition: "sub.enabled"}},
+		},
+		Values:      map[string]any{"sub": map[string]any{"enabled": false}},
+		ExtraValues: map[string]any{"sub": map[string]any{"enabled": true}},
+	}
+	c.AddDependency(&chart.Chart{Metadata: &chart.Metadata{APIVersion: chart.APIVersionV2, Name: "sub", Version: "0.1.0"}})
+
+	require.NoError(t, ProcessDependencies(c, &map[string]interface{}{}))
+	assert.Len(t, c.Dependencies(), 1, "dependency must be enabled by service values")
 }

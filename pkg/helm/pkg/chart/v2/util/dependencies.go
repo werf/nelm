@@ -28,17 +28,39 @@ import (
 	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 )
 
-// ProcessDependencies checks through this chart's dependencies, processing accordingly.
+// ProcessDependencies checks through this chart's dependencies, processing accordingly. The service
+// values and the custom secret values of the chart override v.
 func ProcessDependencies(c *chart.Chart, v *map[string]interface{}) error {
+	if err := ExportUserValues(c, v); err != nil {
+		return err
+	}
+
+	extraVals, err := util.ServiceAndCustomSecretValues(c)
+	if err != nil {
+		return err
+	}
+
+	return ProcessDependenciesWithMergedValues(c, common.MergeMaps(*v, extraVals))
+}
+
+// ExportUserValues applies export-values of the chart dependencies to the user-supplied values v.
+func ExportUserValues(c *chart.Chart, v *map[string]interface{}) error {
 	if v == nil {
-		return fmt.Errorf("process dependencies: values map pointer is nil")
+		return fmt.Errorf("export user values: values map pointer is nil")
 	}
 
 	if err := processDependencyExportExtraValues(c, v, true); err != nil {
 		return fmt.Errorf("process dependency export extra values: %w", err)
 	}
 
-	if err := processDependencyEnabled(c, *v, ""); err != nil {
+	return nil
+}
+
+// ProcessDependenciesWithMergedValues processes dependencies like ProcessDependencies, except that v
+// must already contain the exported user values (see ExportUserValues), the service values and the
+// custom secret values.
+func ProcessDependenciesWithMergedValues(c *chart.Chart, v map[string]interface{}) error {
+	if err := processDependencyEnabled(c, v, ""); err != nil {
 		return fmt.Errorf("process dependency enabled: %w", err)
 	}
 
@@ -263,13 +285,16 @@ func processImportValues(c *chart.Chart, merge bool) error {
 	if c.Metadata.Dependencies == nil {
 		return nil
 	}
-	// combine chart values and empty config to get Values
+	extraVals, err := util.ServiceAndCustomSecretValues(c)
+	if err != nil {
+		return err
+	}
+
 	var cvals common.Values
-	var err error
 	if merge {
-		cvals, err = util.MergeValues(c, nil)
+		cvals, err = util.MergeValues(c, extraVals)
 	} else {
-		cvals, err = util.CoalesceValues(c, nil)
+		cvals, err = util.CoalesceValues(c, extraVals)
 	}
 	if err != nil {
 		return err
@@ -673,15 +698,20 @@ func syncChartOverridesToParentsValues(c *chart.Chart, overrides map[string]inte
 }
 
 func valuesForChart(c *chart.Chart, merge bool) (common.Values, error) {
+	extraVals, err := util.ServiceAndCustomSecretValues(c)
+	if err != nil {
+		return nil, err
+	}
+
 	if merge {
-		vals, err := util.MergeValues(c, nil)
+		vals, err := util.MergeValues(c, extraVals)
 		if err != nil {
 			return nil, err
 		}
 		return vals, nil
 	}
 
-	vals, err := util.CoalesceValues(c, nil)
+	vals, err := util.CoalesceValues(c, extraVals)
 	if err != nil {
 		return nil, err
 	}

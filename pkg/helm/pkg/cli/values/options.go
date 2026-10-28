@@ -70,6 +70,14 @@ func (opts *Options) MergeValues(ctx context.Context, p getter.Providers) (map[s
 		base = loader.MergeMaps(base, currentMap)
 	}
 
+	return opts.MergeSetValues(ctx, p, base)
+}
+
+// MergeSetValues applies values specified via --set-json, --set, --set-string, --set-file and
+// --set-literal on top of base, so that they can patch it, e.g. replace a single element of a list.
+func (opts *Options) MergeSetValues(ctx context.Context, p getter.Providers, base map[string]any) (map[string]any, error) {
+	ho := common.HelmOptionsFromContext(ctx)
+
 	// User specified a value via --set-json
 	for _, value := range opts.JSONValues {
 		trimmedValue := strings.TrimSpace(value)

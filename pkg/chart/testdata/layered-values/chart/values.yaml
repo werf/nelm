@@ -1,0 +1,12 @@
+p12: values-yaml
+all: values-yaml
+del1: values-yaml
+exp: values-yaml
+nested:
+  a: values-yaml
+  b: values-yaml
+sub:
+  s2: root-values-yaml
+  s4: root-values-yaml
+sub2:
+  enabled: false

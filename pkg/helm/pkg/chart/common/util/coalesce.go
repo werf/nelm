@@ -46,16 +46,21 @@ func concatPrefix(a, b string) string {
 //   - Scalar values and arrays are replaced, maps are merged
 //   - A chart has access to all of the variables for it, as well as all of
 //     the values destined for its dependencies.
+//
+// The decrypted secret-values.yaml of the chart is merged over its values.yaml. The service values
+// and the custom secret values of the chart are not used: pass them in vals if needed (see
+// ServiceAndCustomSecretValues).
 func CoalesceValues(chrt chart.Charter, vals map[string]any) (common.Values, error) {
-	vals, err := makeValues(chrt, vals)
-	if err != nil {
-		return vals, err
-	}
-
 	valsCopy, err := copyValues(vals)
 	if err != nil {
 		return vals, err
 	}
+
+	chrt, err = withDefaultSecretValues(chrt)
+	if err != nil {
+		return vals, err
+	}
+
 	return coalesce(log.Printf, chrt, valsCopy, "", false)
 }
 
@@ -73,16 +78,21 @@ func CoalesceValues(chrt chart.Charter, vals map[string]any) (common.Values, err
 // Retaining Nils is useful when processes early in a Helm action or business
 // logic need to retain them for when Coalescing will happen again later in the
 // business logic.
+//
+// The decrypted secret-values.yaml of the chart is merged over its values.yaml. The service values
+// and the custom secret values of the chart are not used: pass them in vals if needed (see
+// ServiceAndCustomSecretValues).
 func MergeValues(chrt chart.Charter, vals map[string]any) (common.Values, error) {
-	vals, err := makeValues(chrt, vals)
-	if err != nil {
-		return vals, err
-	}
-
 	valsCopy, err := copyValues(vals)
 	if err != nil {
 		return vals, err
 	}
+
+	chrt, err = withDefaultSecretValues(chrt)
+	if err != nil {
+		return vals, err
+	}
+
 	return coalesce(log.Printf, chrt, valsCopy, "", true)
 }
 
@@ -388,37 +398,90 @@ func istable(v any) bool {
 	return ok
 }
 
-func makeValues(chrt chart.Charter, vals map[string]interface{}) (map[string]interface{}, error) {
-	var secretsRuntimeData common.RuntimeData
-	var extraValues map[string]interface{}
+// withDefaultSecretValues returns a shallow copy of the chart with its own decrypted
+// secret-values.yaml merged over its values.yaml, so that secret-values.yaml has the priority of
+// chart defaults. Subcharts are left as is: dependency processing merges the secret values of
+// declared v2 subcharts into their values.
+func withDefaultSecretValues(chrt chart.Charter) (chart.Charter, error) {
+	switch c := chrt.(type) {
+	case *v2.Chart:
+		vals, err := mergeDefaultSecretValues(c.Values, c.SecretsRuntimeData)
+		if err != nil || vals == nil {
+			return chrt, err
+		}
+
+		chartCopy := *c
+		chartCopy.Values = vals
+
+		return &chartCopy, nil
+	case *v3.Chart:
+		vals, err := mergeDefaultSecretValues(c.Values, c.SecretsRuntimeData)
+		if err != nil || vals == nil {
+			return chrt, err
+		}
+
+		chartCopy := *c
+		chartCopy.Values = vals
+
+		return &chartCopy, nil
+	default:
+		return chrt, nil
+	}
+}
+
+func mergeDefaultSecretValues(vals map[string]any, secretsRuntimeData common.RuntimeData) (map[string]any, error) {
+	if secretsRuntimeData == nil || len(secretsRuntimeData.GetDecryptedDefaultSecretValues()) == 0 {
+		return nil, nil
+	}
+
+	valsCopy, err := copyValues(vals)
+	if err != nil {
+		return nil, fmt.Errorf("copy chart values: %w", err)
+	}
+
+	secretValsCopy, err := copyValues(secretsRuntimeData.GetDecryptedDefaultSecretValues())
+	if err != nil {
+		return nil, fmt.Errorf("copy chart secret values: %w", err)
+	}
+
+	return common.MergeMaps(valsCopy, secretValsCopy), nil
+}
+
+// ServiceAndCustomSecretValues returns the service values and the decrypted custom secret values
+// (--secret-values) of the chart, service values winning. Only the top-level chart has them.
+func ServiceAndCustomSecretValues(chrt chart.Charter) (map[string]any, error) {
+	var (
+		serviceVals        map[string]any
+		secretsRuntimeData common.RuntimeData
+	)
 
 	switch c := chrt.(type) {
 	case *v2.Chart:
+		serviceVals = c.ExtraValues
 		secretsRuntimeData = c.SecretsRuntimeData
-		extraValues = c.ExtraValues
 	case *v3.Chart:
+		serviceVals = c.ExtraValues
 		secretsRuntimeData = c.SecretsRuntimeData
-		extraValues = c.ExtraValues
 	default:
-		return vals, nil
+		return nil, nil
 	}
 
-	var decryptedSecretValues map[string]interface{}
+	var customSecretVals map[string]any
 	if secretsRuntimeData != nil {
-		decryptedSecretValues = secretsRuntimeData.GetDecryptedSecretValues()
+		customSecretVals = secretsRuntimeData.GetDecryptedCustomSecretValues()
 	}
 
-	result, err := MergeInternal(
-		context.Background(),
-		vals,
-		extraValues,
-		decryptedSecretValues,
-	)
+	serviceValsCopy, err := copyValues(serviceVals)
 	if err != nil {
-		return vals, err
+		return nil, fmt.Errorf("copy service values: %w", err)
 	}
 
-	return result, nil
+	customSecretValsCopy, err := copyValues(customSecretVals)
+	if err != nil {
+		return nil, fmt.Errorf("copy custom secret values: %w", err)
+	}
+
+	return MergeInternal(context.Background(), nil, serviceValsCopy, customSecretValsCopy)
 }
 
 func MergeInternal(ctx context.Context, inputVals, serviceVals map[string]interface{}, decryptedSecretValues map[string]interface{}) (map[string]interface{}, error) {
