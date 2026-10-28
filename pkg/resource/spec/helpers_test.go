@@ -1,12 +1,29 @@
 package spec_test
 
 import (
+	"bytes"
+	"context"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
+	"github.com/werf/logboek"
+	"github.com/werf/nelm/v2/pkg/log"
 	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
+
+func patchDebugContext(t *testing.T, lvl log.Level) (context.Context, *bytes.Buffer) {
+	t.Helper()
+
+	var output bytes.Buffer
+
+	ctx := logboek.NewContext(context.Background(), logboek.NewLogger(&output, &output))
+	previous := log.Default.Level(ctx)
+	log.Default.SetLevel(ctx, lvl)
+	t.Cleanup(func() { log.Default.SetLevel(ctx, previous) })
+
+	return ctx, &output
+}
 
 func renderedSpec(t *testing.T, name, namespace, filePath string, annotations map[string]interface{}) *spec.ResourceSpec {
 	t.Helper()

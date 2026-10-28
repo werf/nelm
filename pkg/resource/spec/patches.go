@@ -15,16 +15,22 @@ import (
 	"sigs.k8s.io/yaml"
 
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 const (
 	PatchTypeJQ PatchType = "jq"
 
+	jqDebugContextVariable = "$__nelm_debug_context"
+	jqDebugFunction        = "_nelm_debug"
 	// patchesFileName is the conventional name of a chart-shipped patches file.
 	patchesFileName = "patches.yaml"
 )
 
-var undefinedVariableRegexp = regexp.MustCompile(`variable not defined: (\$\w+)`)
+var (
+	undefinedVariableRegexp = regexp.MustCompile(`variable not defined: (\$\w+)`)
+	jqDebugDefinition       = lo.Must(gojq.Parse(`def debug: ` + jqDebugFunction + `(` + jqDebugContextVariable + `); .`)).FuncDefs[0]
+)
 
 // PatchType is the transform kind of patch.
 type PatchType string
@@ -156,7 +162,16 @@ func (c *CompiledPatch) transform(ctx context.Context, unstruct *unstructured.Un
 		}
 	}()
 
-	iter := c.code.RunWithContext(ctx, input, c.variables...)
+	debug := func(value interface{}) {
+		if !log.Default.AcceptLevel(ctx, log.DebugLevel) {
+			return
+		}
+
+		data := lo.Must(gojq.Marshal([]interface{}{"DEBUG:", value}))
+		log.Default.Debug(ctx, "%s", data)
+	}
+	variables := append([]interface{}{debug}, c.variables...)
+	iter := c.code.RunWithContext(ctx, input, variables...)
 
 	first, ok := iter.Next()
 	if !ok {
@@ -356,12 +371,14 @@ func compilePatch(patch Patch, variableNames []string, variableValues []interfac
 		return nil, fmt.Errorf("parse jq program: %w", err)
 	}
 
-	var compileOpts []gojq.CompilerOption
-	if len(variableNames) > 0 {
-		compileOpts = append(compileOpts, gojq.WithVariables(variableNames))
-	}
+	// gojq callbacks do not receive RunWithContext's context. A lexical binding
+	// carries an execution-local callback without exposing ctx to jq programs.
+	query.FuncDefs = append([]*gojq.FuncDef{jqDebugDefinition}, query.FuncDefs...)
 
-	code, err := gojq.Compile(query, compileOpts...)
+	code, err := gojq.Compile(query,
+		gojq.WithVariables(append([]string{jqDebugContextVariable}, variableNames...)),
+		gojq.WithFunction(jqDebugFunction, 1, 1, jqDebug),
+	)
 	if err != nil {
 		if len(variableNames) == 0 {
 			if name, found := undefinedRenderContextVariable(err); found {
@@ -416,6 +433,14 @@ func undefinedRenderContextVariable(compileErr error) (string, bool) {
 	}
 
 	return match[1], true
+}
+
+func jqDebug(value interface{}, args []interface{}) interface{} {
+	if debug, ok := args[0].(func(interface{})); ok {
+		debug(value)
+	}
+
+	return value
 }
 
 func normalizeNumbers(value interface{}) (interface{}, error) {
