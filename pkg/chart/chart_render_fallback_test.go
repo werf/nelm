@@ -17,7 +17,6 @@ import (
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
 	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
-	chartv2util "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
 	"github.com/werf/nelm/v2/pkg/log"
 )
 
@@ -206,12 +205,12 @@ func TestServiceValuesFallback_UserTypo_StillFails_NamingOnlyTypo(t *testing.T) 
 func runFallbackAI(t *testing.T, ctx context.Context, chartPath string, c *v2chart.Chart, overrideValues map[string]any) (chartcommon.Values, error) {
 	t.Helper()
 
-	pristine, err := deepCopyValues(overrideValues)
+	userVals := userValues{Service: c.ExtraValues, User: overrideValues}
+
+	vals, _, err := processDependencies(c, userVals)
 	require.NoError(t, err)
 
-	require.NoError(t, chartv2util.ProcessDependencies(c, &overrideValues))
-
-	return renderValuesToleratingServiceValues(ctx, chartPath, c, overrideValues, pristine, renderReleaseOptionsAI(), nil, false)
+	return renderValuesToleratingServiceValues(ctx, chartPath, c, vals, userVals, renderReleaseOptionsAI(), nil, false)
 }
 
 func loadChartWithServiceValuesAI(t *testing.T, chartPath string, extra map[string]any) (context.Context, *v2chart.Chart) {

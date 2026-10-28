@@ -26,6 +26,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/werf/nelm/v2/pkg/helm/pkg/getter"
 )
 
@@ -386,4 +389,15 @@ func TestMergeValuesCLI(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMergeSetValues_PatchesBase(t *testing.T) {
+	opts := Options{
+		Values: []string{"list[1]=set"},
+	}
+
+	result, err := opts.MergeSetValues(context.Background(), getter.Providers{}, map[string]any{"list": []any{"base-0", "base-1"}})
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]any{"list": []any{"base-0", "set"}}, result)
 }

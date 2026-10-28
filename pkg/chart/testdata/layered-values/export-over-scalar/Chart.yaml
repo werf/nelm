@@ -1,0 +1,9 @@
+apiVersion: v2
+name: export-over-scalar
+version: 0.1.0
+dependencies:
+  - name: sub
+    version: 0.1.0
+    export-values:
+      - parent: source
+        child: target.child

@@ -1,0 +1,7 @@
+p23: values-file
+p34: values-file
+all: values-file
+del3: values-file
+list:
+  - values-file-0
+  - values-file-1
