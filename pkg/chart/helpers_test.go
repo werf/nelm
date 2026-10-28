@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -17,16 +18,20 @@ import (
 const layeredValuesSecretKey = "eb1988e0ffd7272892a851f4c20f6512" //nolint:gosec // Test-only key that encrypts testdata/layered-values.
 
 var (
-	layeredValuesFile                  = filepath.Join("testdata", "layered-values", "values-file.yaml")
-	layeredValuesExportFile            = filepath.Join("testdata", "layered-values", "values-file-export.yaml")
-	layeredSecretValuesExportFile      = filepath.Join("testdata", "layered-values", "secret-values-file-export.yaml")
-	layeredSecretValuesFile            = filepath.Join("testdata", "layered-values", "secret-values-file.yaml")
-	layeredSecretValuesNullFile        = filepath.Join("testdata", "layered-values", "secret-values-file-null.yaml")
-	layeredSecretValuesShapeFile       = filepath.Join("testdata", "layered-values", "secret-values-file-shape.yaml")
-	layeredSecretValuesShapeScalarFile = filepath.Join("testdata", "layered-values", "secret-values-file-shape-scalar.yaml")
-	layeredValuesShapeFile             = filepath.Join("testdata", "layered-values", "values-file-shape.yaml")
-	layeredValuesShapeMapFile          = filepath.Join("testdata", "layered-values", "values-file-shape-map.yaml")
+	layeredImportExportSecretValuesFile = filepath.Join("testdata", "layered-values", "ie-secret-values-file.yaml")
+	layeredImportExportValuesFile       = filepath.Join("testdata", "layered-values", "ie-values-file.yaml")
+	layeredValuesFile                   = filepath.Join("testdata", "layered-values", "values-file.yaml")
+	layeredValuesExportFile             = filepath.Join("testdata", "layered-values", "values-file-export.yaml")
+	layeredSecretValuesExportFile       = filepath.Join("testdata", "layered-values", "secret-values-file-export.yaml")
+	layeredSecretValuesFile             = filepath.Join("testdata", "layered-values", "secret-values-file.yaml")
+	layeredSecretValuesNullFile         = filepath.Join("testdata", "layered-values", "secret-values-file-null.yaml")
+	layeredSecretValuesShapeFile        = filepath.Join("testdata", "layered-values", "secret-values-file-shape.yaml")
+	layeredSecretValuesShapeScalarFile  = filepath.Join("testdata", "layered-values", "secret-values-file-shape-scalar.yaml")
+	layeredValuesShapeFile              = filepath.Join("testdata", "layered-values", "values-file-shape.yaml")
+	layeredValuesShapeMapFile           = filepath.Join("testdata", "layered-values", "values-file-shape-map.yaml")
 )
+
+type absentValue struct{}
 
 type layeredValuesRenderOptions struct {
 	ChartDir          string
@@ -94,4 +99,21 @@ func renderedChartValues(t *testing.T, result *RenderChartResult) map[string]int
 	require.True(t, ok, "unexpected rendered values type %T", result.Values["Values"])
 
 	return vals.AsMap()
+}
+
+// valueAtPath returns the value at the dot-separated path, or absentValue if there is none.
+func valueAtPath(t *testing.T, vals map[string]interface{}, path string) interface{} {
+	t.Helper()
+
+	var value interface{} = vals
+	for key := range strings.SplitSeq(path, ".") {
+		table, ok := value.(map[string]interface{})
+		require.True(t, ok, "value at %q is not a map", path)
+
+		if value, ok = table[key]; !ok {
+			return absentValue{}
+		}
+	}
+
+	return value
 }

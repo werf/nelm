@@ -205,7 +205,7 @@ func TestServiceValuesFallback_UserTypo_StillFails_NamingOnlyTypo(t *testing.T) 
 func runFallbackAI(t *testing.T, ctx context.Context, chartPath string, c *v2chart.Chart, overrideValues map[string]any) (chartcommon.Values, error) {
 	t.Helper()
 
-	userVals := userValues{Service: c.ExtraValues, User: overrideValues}
+	userVals := userValues{Service: c.ExtraValues, ValuesFiles: overrideValues}
 
 	vals, _, err := processDependencies(c, userVals)
 	require.NoError(t, err)

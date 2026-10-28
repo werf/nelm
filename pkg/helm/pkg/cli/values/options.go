@@ -70,12 +70,18 @@ func (opts *Options) MergeValues(ctx context.Context, p getter.Providers) (map[s
 		base = loader.MergeMaps(base, currentMap)
 	}
 
-	return opts.MergeSetValues(ctx, p, base)
+	return opts.MergeSetValues(ctx, p, base, MergeSetValuesOptions{})
+}
+
+type MergeSetValuesOptions struct {
+	// SetFilesCache caches the contents of --set-file files, so that the files are read only once
+	// when the values are applied to several bases.
+	SetFilesCache map[string]string
 }
 
 // MergeSetValues applies values specified via --set-json, --set, --set-string, --set-file and
 // --set-literal on top of base, so that they can patch it, e.g. replace a single element of a list.
-func (opts *Options) MergeSetValues(ctx context.Context, p getter.Providers, base map[string]any) (map[string]any, error) {
+func (opts *Options) MergeSetValues(ctx context.Context, p getter.Providers, base map[string]any, mergeOpts MergeSetValuesOptions) (map[string]any, error) {
 	ho := common.HelmOptionsFromContext(ctx)
 
 	// User specified a value via --set-json
@@ -113,15 +119,24 @@ func (opts *Options) MergeSetValues(ctx context.Context, p getter.Providers, bas
 	// User specified a value via --set-file
 	for _, value := range opts.FileValues {
 		reader := func(rs []rune) (any, error) {
+			filePath := string(rs)
+			if data, ok := mergeOpts.SetFilesCache[filePath]; ok {
+				return data, nil
+			}
+
 			var bytes []byte
 			var err error
 			if ho.ChartLoadOpts.ChartType == common.LegacyChartTypeChart && common.ChartFileReader != nil {
-				bytes, err = common.ChartFileReader.ReadChartFile(ctx, string(rs))
+				bytes, err = common.ChartFileReader.ReadChartFile(ctx, filePath)
 			} else {
-				bytes, err = readFile(string(rs), p)
+				bytes, err = readFile(filePath, p)
 			}
 			if err != nil {
 				return nil, err
+			}
+
+			if mergeOpts.SetFilesCache != nil {
+				mergeOpts.SetFilesCache[filePath] = string(bytes)
 			}
 
 			return string(bytes), nil

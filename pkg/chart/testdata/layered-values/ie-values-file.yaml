@@ -1,0 +1,16 @@
+g:
+  repo: values-file
+  aliasRepo: values-file
+  map:
+    b: values-file
+sub:
+  image:
+    repository: values-file-child
+  out:
+    k: values-file
+aliased:
+  out:
+    k: values-file
+toggle: true
+obj:
+  old: values-file
