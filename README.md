@@ -910,19 +910,6 @@ diffPatches:
 - <same as renderPatches>
 ```
 
-Both render and diff patches support `debug` and `debug(filter)` for diagnostics without changing the input value or interrupting the operation. `debug` logs its input; `debug(filter)` logs each value produced by the filter, then passes the original input on exactly once. Messages use the format `["DEBUG:",<value>]` in Nelm's log stream. Unlike jq, they are visible only with `--log-level debug` or `--log-level trace`, not at the default `info` level or at `silent`. A diff patch runs on both the live and dry-apply resource, so it can log twice per resource. Be careful when logging resources or values containing secrets.
-
-Example:
-```yaml
-renderPatches:
-- match:
-    kinds: [Deployment]
-  patch: |
-    debug |
-    debug("Setting replicas for \(.metadata.name)") |
-    .spec.replicas = 3
-```
-
 ## Feature gates
 
 ### `NELM_FEAT_PREVIEW_V2` environment variable
