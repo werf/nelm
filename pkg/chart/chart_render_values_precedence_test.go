@@ -1,12 +1,16 @@
 package chart
 
 import (
+	"bytes"
+	stdlog "log"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/werf/nelm/v2/pkg/log"
 )
@@ -154,6 +158,67 @@ func TestRenderChart_ExportAndImportValuesSkippedWarnings(t *testing.T) {
 				return strings.HasPrefix(warning, "Skipping")
 			})
 			assert.Equal(t, []string{tt.want}, skipWarnings)
+		})
+	}
+}
+
+func TestRenderChart_ExportedValueOverridesValuesFileForDependencyWithSameNameAsParent(t *testing.T) {
+	serviceValues := readValuesFile(t, filepath.Join("testdata", "layered-values", "same-name-service-values.yaml"))
+
+	tests := []struct {
+		name              string
+		chartDir          string
+		opts              layeredValuesRenderOptions
+		wantImage         string
+		wantReleaseConfig map[string]interface{}
+	}{
+		{
+			name:              "global.werf.images from service values",
+			chartDir:          "same-name-global-export-chart",
+			opts:              layeredValuesRenderOptions{ServiceValues: serviceValues},
+			wantImage:         "service-repo:service-tag",
+			wantReleaseConfig: map[string]interface{}{"litellm-helm": map[string]interface{}{"image": map[string]interface{}{"pullPolicy": "Always", "repository": "values-file-repo", "tag": "values-file-tag"}}},
+		},
+		{
+			name:              "werf.repo and werf.tag from service values",
+			chartDir:          "same-name-werf-export-chart",
+			opts:              layeredValuesRenderOptions{ServiceValues: serviceValues},
+			wantImage:         "service-repo:service-tag",
+			wantReleaseConfig: map[string]interface{}{"litellm-helm": map[string]interface{}{"image": map[string]interface{}{"pullPolicy": "Always", "repository": "values-file-repo", "tag": "values-file-tag"}}},
+		},
+		{
+			name:      "global.werf.images from set",
+			chartDir:  "same-name-global-export-chart",
+			opts:      layeredValuesRenderOptions{Set: []string{"global.werf.images.litellm.repository=set-repo", "global.werf.images.litellm.tag=set-tag"}},
+			wantImage: "set-repo:set-tag",
+			wantReleaseConfig: map[string]interface{}{
+				"global":       map[string]interface{}{"werf": map[string]interface{}{"images": map[string]interface{}{"litellm": map[string]interface{}{"repository": "set-repo", "tag": "set-tag"}}}},
+				"litellm-helm": map[string]interface{}{"image": map[string]interface{}{"pullPolicy": "Always", "repository": "set-repo", "tag": "set-tag"}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.opts.ChartDir = tt.chartDir
+			tt.opts.ValuesFiles = []string{filepath.Join("testdata", "layered-values", "same-name-values-file.yaml")}
+
+			defaultLogger, stdLogWriter, stdLogFlags := slog.Default(), stdlog.Writer(), stdlog.Flags()
+			t.Cleanup(func() {
+				slog.SetDefault(defaultLogger)
+				stdlog.SetOutput(stdLogWriter)
+				stdlog.SetFlags(stdLogFlags)
+			})
+
+			var warnings bytes.Buffer
+			slog.SetDefault(slog.New(slog.NewTextHandler(&warnings, &slog.HandlerOptions{Level: slog.LevelWarn})))
+
+			result := renderLayeredValuesChart(t, tt.opts)
+
+			require.Len(t, result.ResourceSpecs, 1)
+			assert.Equal(t, map[string]interface{}{"image": tt.wantImage, "pullPolicy": "Always"}, result.ResourceSpecs[0].Unstruct.Object["data"])
+			assert.Equal(t, tt.wantReleaseConfig, result.ReleaseConfig)
+			assert.Empty(t, warnings.String())
 		})
 	}
 }

@@ -1,0 +1,13 @@
+werf:
+  repo: service-repo
+  image:
+    litellm: service-repo:service-tag
+  tag:
+    litellm: service-tag
+global:
+  werf:
+    repo: service-repo
+    images:
+      litellm:
+        repository: service-repo
+        tag: service-tag

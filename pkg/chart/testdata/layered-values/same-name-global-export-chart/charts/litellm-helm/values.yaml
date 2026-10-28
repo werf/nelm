@@ -1,0 +1,4 @@
+image:
+  repository: ghcr.io/example/litellm
+  pullPolicy: IfNotPresent
+  tag: ""
