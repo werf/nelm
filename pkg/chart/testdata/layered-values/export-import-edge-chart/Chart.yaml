@@ -1,0 +1,45 @@
+apiVersion: v2
+name: parent
+version: 0.1.0
+dependencies:
+  - name: b
+    version: 0.1.0
+    export-values:
+      - parent: a.image.repository
+        child: repo
+      - parent: a.out
+        child: out
+      - parent: g.cfg
+        child: cfg
+  - name: a
+    version: 0.1.0
+    export-values:
+      - parent: g.repo
+        child: image.repository
+      - parent: global.werf.images.app.repository
+        child: image.repository
+      - parent: g.list
+        child: list
+      - parent: g.dnull
+        child: d
+      - parent: g.prim
+        child: .
+      - parent: g.out
+        child: out
+      - parent: g.nullSource
+        child: nullTarget
+      - parent: g.empty
+        child: empty
+    import-values:
+      - child: out
+        parent: b
+      - child: sec
+        parent: imp
+      - child: nullSec
+        parent: nullImp
+  - name: t
+    version: 0.1.0
+    condition: t.enabled
+    export-values:
+      - parent: g.repo
+        child: x

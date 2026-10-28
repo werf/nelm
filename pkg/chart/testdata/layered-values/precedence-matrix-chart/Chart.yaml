@@ -1,0 +1,120 @@
+apiVersion: v2
+dependencies:
+  - export-values:
+      - child: exp.pv.cv
+        parent: src.pv.cv
+      - child: exp.pv.cs
+        parent: src.pv.cs
+      - child: exp.pv.pv
+        parent: src.pv.pv
+      - child: exp.pv.ps
+        parent: src.pv.ps
+      - child: exp.pv.file
+        parent: src.pv.file
+      - child: exp.pv.secretfile
+        parent: src.pv.secretfile
+      - child: exp.pv.set
+        parent: src.pv.set
+      - child: exp.pv.service
+        parent: src.pv.service
+      - child: exp.ps.cv
+        parent: src.ps.cv
+      - child: exp.ps.cs
+        parent: src.ps.cs
+      - child: exp.ps.pv
+        parent: src.ps.pv
+      - child: exp.ps.ps
+        parent: src.ps.ps
+      - child: exp.ps.file
+        parent: src.ps.file
+      - child: exp.ps.secretfile
+        parent: src.ps.secretfile
+      - child: exp.ps.set
+        parent: src.ps.set
+      - child: exp.ps.service
+        parent: src.ps.service
+      - child: exp.file.cv
+        parent: src.file.cv
+      - child: exp.file.cs
+        parent: src.file.cs
+      - child: exp.file.pv
+        parent: src.file.pv
+      - child: exp.file.ps
+        parent: src.file.ps
+      - child: exp.file.file
+        parent: src.file.file
+      - child: exp.file.secretfile
+        parent: src.file.secretfile
+      - child: exp.file.set
+        parent: src.file.set
+      - child: exp.file.service
+        parent: src.file.service
+      - child: exp.secretfile.cv
+        parent: src.secretfile.cv
+      - child: exp.secretfile.cs
+        parent: src.secretfile.cs
+      - child: exp.secretfile.pv
+        parent: src.secretfile.pv
+      - child: exp.secretfile.ps
+        parent: src.secretfile.ps
+      - child: exp.secretfile.file
+        parent: src.secretfile.file
+      - child: exp.secretfile.secretfile
+        parent: src.secretfile.secretfile
+      - child: exp.secretfile.set
+        parent: src.secretfile.set
+      - child: exp.secretfile.service
+        parent: src.secretfile.service
+      - child: exp.set.cv
+        parent: src.set.cv
+      - child: exp.set.cs
+        parent: src.set.cs
+      - child: exp.set.pv
+        parent: src.set.pv
+      - child: exp.set.ps
+        parent: src.set.ps
+      - child: exp.set.file
+        parent: src.set.file
+      - child: exp.set.secretfile
+        parent: src.set.secretfile
+      - child: exp.set.set
+        parent: src.set.set
+      - child: exp.set.service
+        parent: src.set.service
+      - child: exp.service.cv
+        parent: src.service.cv
+      - child: exp.service.cs
+        parent: src.service.cs
+      - child: exp.service.pv
+        parent: src.service.pv
+      - child: exp.service.ps
+        parent: src.service.ps
+      - child: exp.service.file
+        parent: src.service.file
+      - child: exp.service.secretfile
+        parent: src.service.secretfile
+      - child: exp.service.set
+        parent: src.service.set
+      - child: exp.service.service
+        parent: src.service.service
+    import-values:
+      - child: out.cv
+        parent: imp.cv
+      - child: out.cs
+        parent: imp.cs
+      - child: out.pv
+        parent: imp.pv
+      - child: out.ps
+        parent: imp.ps
+      - child: out.file
+        parent: imp.file
+      - child: out.secretfile
+        parent: imp.secretfile
+      - child: out.set
+        parent: imp.set
+      - child: out.service
+        parent: imp.service
+    name: sub
+    version: 0.1.0
+name: parent
+version: 0.1.0

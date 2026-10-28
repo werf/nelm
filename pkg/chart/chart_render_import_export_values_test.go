@@ -77,6 +77,25 @@ func TestRenderChart_ExportValuesFromValuesLayers(t *testing.T) {
 			},
 		},
 		{
+			name: "null from set for subchart",
+			opts: layeredValuesRenderOptions{Set: []string{"sub=null"}},
+			want: map[string]interface{}{
+				"sub.image.repository": "parent-values-yaml",
+				"sub.deep.repo":        "parent-values-yaml",
+			},
+		},
+		{
+			name: "exported value from set replaces null from set for subchart",
+			opts: layeredValuesRenderOptions{
+				Set:         []string{"sub=null", "g.repo=set"},
+				ValuesFiles: []string{layeredImportExportValuesFile},
+			},
+			want: map[string]interface{}{
+				"sub.image.repository": "set",
+				"sub.out.k":            "values-file",
+			},
+		},
+		{
 			name: "values file",
 			opts: layeredValuesRenderOptions{ValuesFiles: []string{layeredImportExportValuesFile}},
 			want: map[string]interface{}{
@@ -361,6 +380,16 @@ func TestRenderChart_SetReplacesOrMergesMapsFromFiles(t *testing.T) {
 			name: "set-json replaces exported map from values file",
 			opts: layeredValuesRenderOptions{SetJSON: []string{`sub.m={"c":"set"}`}},
 			want: map[string]interface{}{"sub.m": map[string]interface{}{"a": "parent-values-yaml", "c": "set"}},
+		},
+		{
+			name: "set-json replaces export parent map from values file",
+			opts: layeredValuesRenderOptions{SetJSON: []string{`g.map={"c":"set"}`}},
+			want: map[string]interface{}{"sub.m": map[string]interface{}{"a": "parent-values-yaml", "c": "set"}},
+		},
+		{
+			name: "set-json replaces import child map from values file",
+			opts: layeredValuesRenderOptions{SetJSON: []string{`sub.out={"z":"set"}`}},
+			want: map[string]interface{}{"imported.k": "sub-values-yaml", "imported.z": "set"},
 		},
 		{
 			name: "set-json replaces imported map from values file",

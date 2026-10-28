@@ -1,0 +1,12 @@
+apiVersion: v2
+name: scalar-sub-secret-null
+version: 0.1.0
+dependencies:
+  - name: sub
+    version: 0.1.0
+  - name: t
+    version: 0.1.0
+    condition: t.enabled
+    export-values:
+      - parent: g
+        child: enabled

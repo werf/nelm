@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -85,6 +86,8 @@ type RenderChartResult struct {
 // values.yaml < secret-values.yaml of the chart < --values < --secret-values < --set* < service
 // values.
 type userValues struct {
+	// ChartSecretValues are the decrypted values from the secret-values.yaml of the chart.
+	ChartSecretValues map[string]interface{}
 	// SecretValuesFiles are the decrypted values from --secret-values.
 	SecretValuesFiles map[string]interface{}
 	// Service are the values injected by werf (ExtraValues), which override all other values.
@@ -100,7 +103,11 @@ type userValues struct {
 }
 
 type valuesLayer struct {
-	IsService bool
+	// ChartValues are the values before export-values and import-values of a layer that is also
+	// coalesced with the chart values (see mergeValuesLayers).
+	ChartValues         map[string]interface{}
+	IsChartSecretValues bool
+	IsService           bool
 	// ReplacedPaths are the paths at which the layer replaces the maps of the lower layers instead
 	// of merging into them.
 	ReplacedPaths [][]string
@@ -202,9 +209,13 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 
 	log.Default.TraceStruct(ctx, userVals, "Override values layers:")
 
-	vals, releaseConfig, err := processDependencies(loadedChart, userVals)
+	vals, releaseConfig, skippedWarnings, err := processDependencies(loadedChart, userVals)
 	if err != nil {
 		return nil, fmt.Errorf("process chart %q dependencies: %w", chartAccessor.Name(), err)
+	}
+
+	for _, warning := range skippedWarnings {
+		log.Default.Warn(ctx, "%s", warning)
 	}
 
 	log.Default.TraceStruct(ctx, loadedChart, "Chart after processing dependencies:")
@@ -466,7 +477,7 @@ func loadServiceFreeChart(ctx context.Context, chartPath string, userVals userVa
 
 	userVals.Service = nil
 
-	vals, _, err := processDependencies(freshChart, userVals)
+	vals, _, _, err := processDependencies(freshChart, userVals)
 	if err != nil {
 		return nil, nil, fmt.Errorf("process reloaded chart at %q dependencies: %w", chartPath, err)
 	}
@@ -475,75 +486,79 @@ func loadServiceFreeChart(ctx context.Context, chartPath string, userVals userVa
 }
 
 // processDependencies processes the chart dependencies and returns the values to render the chart
-// with and the values to store in the release: the user values with the values exported from them,
-// but without service values and imported values. The user values are not modified.
-func processDependencies(chrt helmchart.Charter, userVals userValues) (map[string]interface{}, map[string]interface{}, error) {
+// with, the values to store in the release and the warnings about the export-values and
+// import-values skipped because of the user values. The values to store in the release are the user
+// values with the values exported from them, but without service values, the secret-values.yaml of
+// the chart and imported values. The user values are not modified.
+func processDependencies(chrt helmchart.Charter, userVals userValues) (map[string]interface{}, map[string]interface{}, []string, error) {
 	switch c := chrt.(type) {
 	case *v2chart.Chart:
-		var exportedLayers []valuesLayer
-		for _, layer := range userValuesLayers(userVals) {
-			exportedLayerValues, err := chartv2util.ExportUserValues(c, layer.Values)
-			if err != nil {
-				return nil, nil, fmt.Errorf("export user values: %w", err)
-			}
+		layers := userValuesLayers(userVals)
 
-			exportedLayers = append(exportedLayers, valuesLayer{IsService: layer.IsService, ReplacedPaths: layer.ReplacedPaths, Values: exportedLayerValues})
+		conditionLayers, _, err := exportValuesLayers(c, layers)
+		if err != nil {
+			return nil, nil, nil, err
 		}
 
-		vals, err := mergeValuesLayers(exportedLayers)
+		vals, err := mergeValuesLayers(conditionLayers, coalescedChartValues(c))
 		if err != nil {
-			return nil, nil, fmt.Errorf("merge exported values layers: %w", err)
-		}
-
-		releaseConfig, err := mergeValuesLayers(lo.Filter(exportedLayers, func(layer valuesLayer, _ int) bool {
-			return !layer.IsService
-		}))
-		if err != nil {
-			return nil, nil, fmt.Errorf("merge exported values layers without service values: %w", err)
+			return nil, nil, nil, fmt.Errorf("merge exported values layers: %w", err)
 		}
 
 		if err := chartv2util.ProcessDependenciesWithMergedValues(c, vals); err != nil {
-			return nil, nil, fmt.Errorf("process dependencies with merged values: %w", err)
+			return nil, nil, nil, fmt.Errorf("process dependencies with merged values: %w", err)
+		}
+
+		exportedLayers, skipped, err := exportValuesLayers(c, layers)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		releaseConfig, err := mergeValuesLayers(lo.Filter(exportedLayers, isReleaseConfigLayer), nil)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("merge exported values layers to store in release: %w", err)
 		}
 
 		var importedLayers []valuesLayer
-		for _, layer := range exportedLayers {
-			importedLayerValues, err := chartv2util.ImportUserValues(c, layer.Values)
+		for i, layer := range exportedLayers {
+			importedLayerValues, importSkipped, err := chartv2util.ImportUserValues(c, layer.Values, chartv2util.ImportUserValuesOptions{
+				ReplacedPaths: higherLayersReplacedPaths(exportedLayers, i),
+			})
 			if err != nil {
-				return nil, nil, fmt.Errorf("import user values: %w", err)
+				return nil, nil, nil, fmt.Errorf("import user values: %w", err)
 			}
 
-			importedLayers = append(importedLayers, valuesLayer{IsService: layer.IsService, ReplacedPaths: layer.ReplacedPaths, Values: importedLayerValues})
+			layer.Values = importedLayerValues
+			importedLayers = append(importedLayers, layer)
+			skipped = append(skipped, importSkipped...)
 		}
 
-		vals, err = mergeValuesLayers(importedLayers)
+		vals, err = mergeValuesLayers(importedLayers, coalescedChartValues(c))
 		if err != nil {
-			return nil, nil, fmt.Errorf("merge imported values layers: %w", err)
+			return nil, nil, nil, fmt.Errorf("merge imported values layers: %w", err)
 		}
 
-		return vals, releaseConfig, nil
+		return vals, releaseConfig, lo.Uniq(skipped), nil
 	case *v3chart.Chart:
 		layers := userValuesLayers(userVals)
 
-		vals, err := mergeValuesLayers(layers)
+		vals, err := mergeValuesLayers(layers, coalescedChartValues(c))
 		if err != nil {
-			return nil, nil, fmt.Errorf("merge values layers: %w", err)
+			return nil, nil, nil, fmt.Errorf("merge values layers: %w", err)
 		}
 
-		releaseConfig, err := mergeValuesLayers(lo.Filter(layers, func(layer valuesLayer, _ int) bool {
-			return !layer.IsService
-		}))
+		releaseConfig, err := mergeValuesLayers(lo.Filter(layers, isReleaseConfigLayer), nil)
 		if err != nil {
-			return nil, nil, fmt.Errorf("merge values layers without service values: %w", err)
+			return nil, nil, nil, fmt.Errorf("merge values layers to store in release: %w", err)
 		}
 
 		if err := chartv3util.ProcessDependenciesWithMergedValues(c, vals); err != nil {
-			return nil, nil, fmt.Errorf("process dependencies with merged values: %w", err)
+			return nil, nil, nil, fmt.Errorf("process dependencies with merged values: %w", err)
 		}
 
-		return vals, releaseConfig, nil
+		return vals, releaseConfig, nil, nil
 	default:
-		return nil, nil, fmt.Errorf("unexpected chart type %T", chrt)
+		return nil, nil, nil, fmt.Errorf("unexpected chart type %T", chrt)
 	}
 }
 
@@ -567,8 +582,9 @@ func buildUserValues(ctx context.Context, setValuesOpts *values.Options, valuesF
 		return userValues{}, fmt.Errorf("unexpected chart type %T", chrt)
 	}
 
-	var secretValuesFilesValues map[string]interface{}
+	var chartSecretValues, secretValuesFilesValues map[string]interface{}
 	if secretsRuntimeData != nil {
+		chartSecretValues = secretsRuntimeData.GetDecryptedDefaultSecretValues()
 		secretValuesFilesValues = secretsRuntimeData.GetDecryptedCustomSecretValues()
 	}
 
@@ -592,9 +608,22 @@ func buildUserValues(ctx context.Context, setValuesOpts *values.Options, valuesF
 		return setValuesOpts.MergeSetValues(ctx, getter.Getters(), base, values.MergeSetValuesOptions{SetFilesCache: setFilesCache})
 	}
 
-	withSecrets, err := applySet(chartcommon.MergeMaps(valuesFilesBase, secretValuesFilesBase))
+	setBase, err := exportedSetValuesBase(chrt, valuesFilesBase, secretValuesFilesBase)
 	if err != nil {
-		return userValues{}, fmt.Errorf("merge set values: %w", err)
+		return userValues{}, err
+	}
+
+	// The --set* values patch the exported values, e.g. a list element at the child path of an
+	// export. The --set* values might be invalid over the exported values though, e.g. when they
+	// set a key of a map that is exported as a scalar, then they patch the unexported values.
+	withSecrets, err := applySet(setBase)
+	if err != nil {
+		log.Default.Debug(ctx, "Applying --set* values over the values files values with export-values applied failed, applying them over the values files values: %s", err)
+
+		withSecrets, err = applySet(chartcommon.MergeMaps(valuesFilesBase, secretValuesFilesBase))
+		if err != nil {
+			return userValues{}, fmt.Errorf("merge set values: %w", err)
+		}
 	}
 
 	setPaths, err := applySet(map[string]interface{}{})
@@ -612,7 +641,13 @@ func buildUserValues(ctx context.Context, setValuesOpts *values.Options, valuesF
 		return userValues{}, fmt.Errorf("copy secret values files values: %w", err)
 	}
 
+	chartSecretValuesLayer, err := deepCopyValues(chartSecretValues)
+	if err != nil {
+		return userValues{}, fmt.Errorf("copy chart secret values: %w", err)
+	}
+
 	return userValues{
+		ChartSecretValues: chartSecretValuesLayer,
 		SecretValuesFiles: secretValuesFilesLayer,
 		Service:           service,
 		Set:               pickValues(setPaths, withSecrets),
@@ -621,13 +656,48 @@ func buildUserValues(ctx context.Context, setValuesOpts *values.Options, valuesF
 	}, nil
 }
 
+func exportValuesLayers(c *v2chart.Chart, layers []valuesLayer) ([]valuesLayer, []string, error) {
+	var (
+		result  []valuesLayer
+		skipped []string
+	)
+
+	for i, layer := range layers {
+		exportedValues, layerSkipped, err := chartv2util.ExportUserValues(c, layer.Values, chartv2util.ExportUserValuesOptions{
+			ReplacedPaths: higherLayersReplacedPaths(layers, i),
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("export user values: %w", err)
+		}
+
+		layer.Values = exportedValues
+		result = append(result, layer)
+		skipped = append(skipped, layerSkipped...)
+	}
+
+	return result, skipped, nil
+}
+
 // mergeValuesLayers merges copies of the values layers, from the lowest to the highest precedence.
-func mergeValuesLayers(layers []valuesLayer) (map[string]interface{}, error) {
+// chartVals are the coalesced chart values, or nil if the chart values can't be coalesced without
+// user values. The values of a layer with ChartValues that are already applied to the coalesced
+// chart values are deleted: merging them again would expose the nulls that coalescing removes, e.g.
+// as null keys in subchart values. Without chartVals, only the nulls that are nulls in the
+// ChartValues are deleted: coalescing applies them, while the nulls that export-values and
+// import-values made might delete chart values that coalescing keeps.
+func mergeValuesLayers(layers []valuesLayer, chartVals map[string]interface{}) (map[string]interface{}, error) {
 	vals := map[string]interface{}{}
 	for _, layer := range layers {
 		layerCopy, err := deepCopyValues(layer.Values)
 		if err != nil {
 			return nil, fmt.Errorf("copy values layer: %w", err)
+		}
+
+		switch {
+		case layer.ChartValues != nil && chartVals != nil:
+			deleteValuesAppliedToChartValues(layerCopy, chartVals)
+		case layer.ChartValues != nil:
+			deleteNullsOfValues(layerCopy, layer.ChartValues)
 		}
 
 		for _, path := range layer.ReplacedPaths {
@@ -827,6 +897,17 @@ func chartHasExtraValues(chrt helmchart.Charter) bool {
 	}
 }
 
+// coalescedChartValues returns the chart values coalesced without user values, or nil if the chart
+// values are invalid without user values, e.g. when they set a subchart values to a scalar.
+func coalescedChartValues(chrt helmchart.Charter) map[string]interface{} {
+	vals, err := chartcommonutil.CoalesceValues(chrt, nil)
+	if err != nil {
+		return nil
+	}
+
+	return vals.AsMap()
+}
+
 func collectLocalLookupResource(unstruct *unstructured.Unstructured, seen map[string]bool) (*unstructured.Unstructured, error) {
 	if unstruct.GetAPIVersion() == "" {
 		return nil, fmt.Errorf("apiVersion is missing")
@@ -861,6 +942,26 @@ func deepCopyValues(vals map[string]interface{}) (map[string]interface{}, error)
 	return copied.(map[string]interface{}), nil
 }
 
+// deleteNullsOfValues deletes the nulls of vals at the paths where origVals have nulls.
+func deleteNullsOfValues(vals, origVals map[string]interface{}) {
+	for key, origValue := range origVals {
+		value, found := vals[key]
+		if !found {
+			continue
+		}
+
+		origTable, origIsTable := origValue.(map[string]interface{})
+		table, isTable := value.(map[string]interface{})
+
+		switch {
+		case origValue == nil && value == nil:
+			delete(vals, key)
+		case origIsTable && isTable:
+			deleteNullsOfValues(table, origTable)
+		}
+	}
+}
+
 func deleteValueAtPath(vals map[string]interface{}, path []string) {
 	for _, key := range path[:len(path)-1] {
 		table, ok := vals[key].(map[string]interface{})
@@ -872,6 +973,28 @@ func deleteValueAtPath(vals map[string]interface{}, path []string) {
 	}
 
 	delete(vals, path[len(path)-1])
+}
+
+// deleteValuesAppliedToChartValues deletes the values of vals that the coalesced chart values
+// chartVals have, the nulls at the paths that chartVals don't have, and the maps that become empty
+// unless they replace a non-map of chartVals.
+func deleteValuesAppliedToChartValues(vals, chartVals map[string]interface{}) {
+	for key, value := range vals {
+		chartValue, found := chartVals[key]
+		table, isTable := value.(map[string]interface{})
+		chartTable, chartIsTable := chartValue.(map[string]interface{})
+
+		switch {
+		case isTable:
+			deleteValuesAppliedToChartValues(table, chartTable)
+
+			if len(table) == 0 && chartIsTable {
+				delete(vals, key)
+			}
+		case value == nil && !found, found && reflect.DeepEqual(value, chartValue):
+			delete(vals, key)
+		}
+	}
 }
 
 func dependencyGraphSignature(chrt helmchart.Charter) ([]string, error) {
@@ -902,8 +1025,42 @@ func dependencyGraphSignature(chrt helmchart.Charter) ([]string, error) {
 	return paths, nil
 }
 
+// exportedSetValuesBase returns the values files values and the secret values files values merged,
+// each with the export-values of a v2 chart applied.
+func exportedSetValuesBase(chrt helmchart.Charter, valuesFilesValues, secretValuesFilesValues map[string]interface{}) (map[string]interface{}, error) {
+	c, ok := chrt.(*v2chart.Chart)
+	if !ok {
+		return chartcommon.MergeMaps(valuesFilesValues, secretValuesFilesValues), nil
+	}
+
+	exportedValuesFilesValues, _, err := chartv2util.ExportUserValues(c, valuesFilesValues, chartv2util.ExportUserValuesOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("export values files values: %w", err)
+	}
+
+	exportedSecretValuesFilesValues, _, err := chartv2util.ExportUserValues(c, secretValuesFilesValues, chartv2util.ExportUserValuesOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("export secret values files values: %w", err)
+	}
+
+	return chartcommon.MergeMaps(exportedValuesFilesValues, exportedSecretValuesFilesValues), nil
+}
+
+func higherLayersReplacedPaths(layers []valuesLayer, i int) [][]string {
+	var paths [][]string
+	for _, layer := range layers[i+1:] {
+		paths = append(paths, layer.ReplacedPaths...)
+	}
+
+	return paths
+}
+
 func isLocalChart(path string) bool {
 	return filepath.IsAbs(path) || filepath.HasPrefix(path, "..") || filepath.HasPrefix(path, ".")
+}
+
+func isReleaseConfigLayer(layer valuesLayer, _ int) bool {
+	return !layer.IsChartSecretValues && !layer.IsService
 }
 
 func parseVerificationStrategy(s string) helmdownloader.VerificationStrategy {
@@ -1027,6 +1184,7 @@ func setValuesReplacedPaths(setPaths map[string]interface{}, applySet func(vals 
 
 func userValuesLayers(v userValues) []valuesLayer {
 	return []valuesLayer{
+		{ChartValues: v.ChartSecretValues, IsChartSecretValues: true, Values: v.ChartSecretValues},
 		{Values: v.ValuesFiles},
 		{Values: v.SecretValuesFiles},
 		{ReplacedPaths: v.SetReplacedPaths, Values: v.Set},

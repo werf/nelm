@@ -1,0 +1,4 @@
+image:
+  repository: a-values
+out:
+  k: a

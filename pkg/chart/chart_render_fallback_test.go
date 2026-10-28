@@ -207,7 +207,7 @@ func runFallbackAI(t *testing.T, ctx context.Context, chartPath string, c *v2cha
 
 	userVals := userValues{Service: c.ExtraValues, ValuesFiles: overrideValues}
 
-	vals, _, err := processDependencies(c, userVals)
+	vals, _, _, err := processDependencies(c, userVals)
 	require.NoError(t, err)
 
 	return renderValuesToleratingServiceValues(ctx, chartPath, c, vals, userVals, renderReleaseOptionsAI(), nil, false)
