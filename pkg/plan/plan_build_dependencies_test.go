@@ -569,6 +569,143 @@ func (s *BuildPlanDependenciesSuite) TestBuildPlanConnectsAllMatchingDependencie
 			},
 			name: "connect delete dependency to all matching track-absence operations",
 		},
+		{
+			expect: func(installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo) ([]*plan.Operation, map[string]map[string]graph.Edge[string]) {
+				deleteDependedUponOp := &plan.Operation{
+					Type:     plan.OperationTypeDelete,
+					Version:  plan.OperationVersionDelete,
+					Category: plan.OperationCategoryResource,
+					Config: &plan.OperationConfigDelete{
+						ResourceMeta:      deletableInfos[0].LocalResource.ResourceMeta,
+						DeletePropagation: deletableInfos[0].LocalResource.DeletePropagation,
+					},
+				}
+
+				trackAbsenceDependedUponOp := &plan.Operation{
+					Type:     plan.OperationTypeTrackAbsence,
+					Version:  plan.OperationVersionTrackAbsence,
+					Category: plan.OperationCategoryTrack,
+					Config: &plan.OperationConfigTrackAbsence{
+						ResourceMeta: deletableInfos[0].LocalResource.ResourceMeta,
+					},
+				}
+
+				deleteNotDependedUponOp := &plan.Operation{
+					Type:     plan.OperationTypeDelete,
+					Version:  plan.OperationVersionDelete,
+					Category: plan.OperationCategoryResource,
+					Config: &plan.OperationConfigDelete{
+						ResourceMeta:      deletableInfos[1].LocalResource.ResourceMeta,
+						DeletePropagation: deletableInfos[1].LocalResource.DeletePropagation,
+					},
+				}
+
+				deleteDependentOp := &plan.Operation{
+					Type:     plan.OperationTypeDelete,
+					Version:  plan.OperationVersionDelete,
+					Category: plan.OperationCategoryResource,
+					Config: &plan.OperationConfigDelete{
+						ResourceMeta:      deletableInfos[2].LocalResource.ResourceMeta,
+						DeletePropagation: deletableInfos[2].LocalResource.DeletePropagation,
+					},
+				}
+
+				trackAbsenceDependentOp := &plan.Operation{
+					Type:     plan.OperationTypeTrackAbsence,
+					Version:  plan.OperationVersionTrackAbsence,
+					Category: plan.OperationCategoryTrack,
+					Config: &plan.OperationConfigTrackAbsence{
+						ResourceMeta: deletableInfos[2].LocalResource.ResourceMeta,
+					},
+				}
+
+				stageStartOp := &plan.Operation{
+					Type:     plan.OperationTypeNoop,
+					Version:  plan.OperationVersionNoop,
+					Category: plan.OperationCategoryMeta,
+					Config: &plan.OperationConfigNoop{
+						OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, common.StagePrePreUninstall, common.StageStartSuffix),
+					},
+				}
+
+				stageEndOp := &plan.Operation{
+					Type:     plan.OperationTypeNoop,
+					Version:  plan.OperationVersionNoop,
+					Category: plan.OperationCategoryMeta,
+					Config: &plan.OperationConfigNoop{
+						OpID: fmt.Sprintf("%s/%s/%s", common.StagePrefix, common.StagePrePreUninstall, common.StageEndSuffix),
+					},
+				}
+
+				ops := []*plan.Operation{
+					stageStartOp,
+					deleteDependedUponOp,
+					deleteNotDependedUponOp,
+					deleteDependentOp,
+					trackAbsenceDependentOp,
+					trackAbsenceDependedUponOp,
+					stageEndOp,
+				}
+
+				adjMap := map[string]map[string]graph.Edge[string]{
+					stageStartOp.ID(): {
+						deleteDependedUponOp.ID():    {},
+						deleteNotDependedUponOp.ID(): {},
+					},
+					deleteDependedUponOp.ID(): {
+						trackAbsenceDependedUponOp.ID(): {},
+					},
+					trackAbsenceDependedUponOp.ID(): {
+						deleteDependentOp.ID(): {},
+					},
+					deleteNotDependedUponOp.ID(): {
+						stageEndOp.ID(): {},
+					},
+					deleteDependentOp.ID(): {
+						trackAbsenceDependentOp.ID(): {},
+					},
+					trackAbsenceDependentOp.ID(): {
+						stageEndOp.ID(): {},
+					},
+					stageEndOp.ID(): {},
+				}
+
+				return ops, adjMap
+			},
+			input: func() (installableInfos []*plan.InstallableResourceInfo, deletableInfos []*plan.DeletableResourceInfo, releaseInfos []*plan.ReleaseInfo, opts plan.BuildPlanOptions) {
+				dependedUponRes := storageDeletableResource("PersistentVolumeClaim", s.releaseName, s.releaseNamespace)
+				dependedUponRes.Name = "depended-upon-storage"
+
+				notDependedUponRes := storageDeletableResource("PersistentVolumeClaim", s.releaseName, s.releaseNamespace)
+				notDependedUponRes.Name = "not-depended-upon-storage"
+
+				dependentDelRes := defaultDeletableResource(s.releaseName, s.releaseNamespace)
+				dependentDelRes.Name = "dependent-configmap"
+				dependentDelRes.ManualDependencies = []*resource.Dependency{
+					{
+						ResourceMatcher: &spec.ResourceMatcher{
+							Names: []string{"depended-upon-storage"},
+							Kinds: []string{"PersistentVolumeClaim"},
+						},
+						ResourceState: common.ResourceStateAbsent,
+					},
+				}
+
+				dependedUponInfo := defaultDeletableResourceInfo(dependedUponRes, s.releaseName, s.releaseNamespace)
+				dependedUponInfo.MustTrackAbsence = false
+				dependedUponInfo.Stage = common.StagePrePreUninstall
+
+				notDependedUponInfo := defaultDeletableResourceInfo(notDependedUponRes, s.releaseName, s.releaseNamespace)
+				notDependedUponInfo.MustTrackAbsence = false
+				notDependedUponInfo.Stage = common.StagePrePreUninstall
+
+				dependentDelInfo := defaultDeletableResourceInfo(dependentDelRes, s.releaseName, s.releaseNamespace)
+				dependentDelInfo.Stage = common.StagePrePreUninstall
+
+				return nil, []*plan.DeletableResourceInfo{dependedUponInfo, notDependedUponInfo, dependentDelInfo}, nil, plan.BuildPlanOptions{}
+			},
+			name: "track absence of deletable without mandatory absence tracking only when depended upon",
+		},
 	}
 
 	for _, tc := range testCases {

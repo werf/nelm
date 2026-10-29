@@ -411,8 +411,10 @@ func buildDeletableResourceInfo(ctx context.Context, localRes *resource.Deletabl
 		GetResult:     getObj,
 		LocalResource: localRes,
 		MustDelete:    true,
-		// TODO: make switchable
-		MustTrackAbsence: true,
+		// Resources removed from the chart are deleted before install, but a PVC stays Terminating
+		// while Pods use it (and a PV while it is bound), and those Pods are only replaced during
+		// install. Waiting for their absence here would deadlock the release.
+		MustTrackAbsence: deployType == common.DeployTypeUninstall || !isPersistentVolumeOrClaim(localRes.GroupVersionKind.GroupKind()),
 		Stage:            stage,
 	}, nil
 }
@@ -686,6 +688,11 @@ func getServiceAccountSpecSubPath(gvk schema.GroupVersionKind) []string {
 	}
 
 	return path
+}
+
+func isPersistentVolumeOrClaim(groupKind schema.GroupKind) bool {
+	return groupKind == schema.GroupKind{Kind: "PersistentVolumeClaim"} ||
+		groupKind == schema.GroupKind{Kind: "PersistentVolume"}
 }
 
 func isServiceAccountFieldManaged(entry v1.ManagedFieldsEntry, subPath []string) (bool, error) {
