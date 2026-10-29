@@ -1,0 +1,6 @@
+apiVersion: v3
+name: scalar-sub-secret-null
+version: 0.1.0
+dependencies:
+  - name: sub
+    version: 0.1.0

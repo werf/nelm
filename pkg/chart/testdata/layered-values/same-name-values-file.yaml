@@ -1,0 +1,5 @@
+litellm-helm:
+  image:
+    repository: values-file-repo
+    pullPolicy: Always
+    tag: values-file-tag

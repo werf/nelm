@@ -501,6 +501,35 @@ func (s *ResourceInfoSuite) TestBuildInstallableResourceInfo() {
 	}
 }
 
+func (s *ResourceInfoSuite) TestBuildInstallableResourceInfoRecreatesHookWithHelmResourcePolicyKeep() {
+	s.Run("existing hook with helm.sh/resource-policy keep and default hook-delete-policy, upgrade", func() {
+		_, err := s.clientFactory.KubeClient().Create(context.Background(), defaultResourceSpec(s.releaseName, s.releaseNamespace), kube.KubeClientCreateOptions{
+			DefaultNamespace: s.releaseNamespace,
+		})
+		s.Require().NoError(err)
+
+		resSpec := defaultResourceSpec(s.releaseName, s.releaseNamespace)
+		resSpec.SetAnnotations(lo.Assign(resSpec.Annotations, map[string]string{
+			"helm.sh/hook":            "pre-install,pre-upgrade",
+			"helm.sh/resource-policy": "keep",
+		}))
+		resSpec.StoreAs = common.StoreAsHook
+
+		localRes, err := resource.NewInstallableResource(context.Background(), resSpec, nil, s.releaseNamespace, resource.InstallableResourceOptions{})
+		s.Require().NoError(err)
+		s.Require().True(localRes.Recreate)
+		s.Require().Contains(localRes.ResourcePolicies, common.ResourcePolicySkipDelete)
+
+		resInfos, err := plan.BuildInstallableResourceInfo(context.Background(), localRes, common.DeployTypeUpgrade, s.releaseNamespace, false, true, s.clientFactory, plan.BuildResourceInfosOptions{}, nil)
+		s.Require().NoError(err)
+		s.Require().NotEmpty(resInfos)
+
+		for _, info := range resInfos {
+			s.Equal(plan.ResourceInstallTypeRecreate, info.MustInstall)
+		}
+	})
+}
+
 func (s *ResourceInfoSuite) TestBuildResourceInfos() {
 	testCases := []buildResourceInfosTestCase{
 		{

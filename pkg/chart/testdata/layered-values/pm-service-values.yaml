@@ -1,0 +1,49 @@
+imp:
+  cs:
+    service: dst-service
+  cv:
+    service: dst-service
+  file:
+    service: dst-service
+  ps:
+    service: dst-service
+  pv:
+    service: dst-service
+  secretfile:
+    service: dst-service
+  service:
+    service: dst-service
+  set:
+    service: dst-service
+src:
+  service:
+    cs: src-service
+    cv: src-service
+    file: src-service
+    ps: src-service
+    pv: src-service
+    secretfile: src-service
+    service: src-service
+    set: src-service
+sub:
+  exp:
+    file:
+      service: dst-service
+    ps:
+      service: dst-service
+    pv:
+      service: dst-service
+    secretfile:
+      service: dst-service
+    service:
+      service: dst-service
+    set:
+      service: dst-service
+  out:
+    service:
+      file: src-service
+      ps: src-service
+      pv: src-service
+      secretfile: src-service
+      service: src-service
+      set: src-service
