@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.3.0](https://github.com/werf/nelm/compare/v2.2.1...v2.3.0) (2026-10-29)
+
+
+### Features
+
+* `werf.io/triggers-release` annotation ([#779](https://github.com/werf/nelm/issues/779)) ([2d3e5fb](https://github.com/werf/nelm/commit/2d3e5fb3d4b96590faaf70d26c9ef8b766ca7917))
+* support debug in jq patches ([#785](https://github.com/werf/nelm/issues/785)) ([7500e9e](https://github.com/werf/nelm/commit/7500e9ed1cc9566eb554f2c0e49c78b68da682a9))
+
+
+### Bug Fixes
+
+* apply export-values and import-values to --values, --secret-values, --set and service values ([#773](https://github.com/werf/nelm/issues/773)) ([1209451](https://github.com/werf/nelm/commit/12094518068ff5f62ef858098786d3ca034899aa))
+* do not warn about export-values parents set only in user or service values ([#775](https://github.com/werf/nelm/issues/775)) ([35cb144](https://github.com/werf/nelm/commit/35cb144b1f07debc745173a83cd6dc61afc5ee71))
+* don't wait for absence of PVCs and PVs removed from the chart ([#777](https://github.com/werf/nelm/issues/777)) ([4f5c2a7](https://github.com/werf/nelm/commit/4f5c2a7439339dd396fe73dad9204d6b1dd2f8c0))
+* make export-values precedence consistent across all values layers ([#774](https://github.com/werf/nelm/issues/774)) ([f5d9451](https://github.com/werf/nelm/commit/f5d94517403e0232bf62b4154daf924ef01d24c0))
+
 ## [2.2.1](https://github.com/werf/nelm/compare/v2.2.0...v2.2.1) (2026-10-28)
 
 
