@@ -194,6 +194,64 @@ func (s *ResourceInfoSuite) TestBuildDeletableResourceInfo() {
 				s.Require().NoError(err)
 			},
 		},
+		{
+			expect: func(localRes *resource.DeletableResource) *plan.DeletableResourceInfo {
+				info := defaultDeletableResourceInfo(localRes, s.releaseName, s.releaseNamespace)
+				info.GetResult = storageResourceSpec("PersistentVolumeClaim", s.releaseName, s.releaseNamespace).Unstruct
+				info.MustTrackAbsence = false
+				info.Stage = common.StagePrePreUninstall
+
+				return info
+			},
+			input: func() (*resource.DeletableResource, common.DeployType) {
+				return storageDeletableResource("PersistentVolumeClaim", s.releaseName, s.releaseNamespace), common.DeployTypeUpgrade
+			},
+			name: `for existing PersistentVolumeClaim, upgrade deploy`,
+			prepare: func() {
+				_, err := s.clientFactory.KubeClient().Create(context.Background(), storageResourceSpec("PersistentVolumeClaim", s.releaseName, s.releaseNamespace), kube.KubeClientCreateOptions{
+					DefaultNamespace: s.releaseNamespace,
+				})
+				s.Require().NoError(err)
+			},
+		},
+		{
+			expect: func(localRes *resource.DeletableResource) *plan.DeletableResourceInfo {
+				info := defaultDeletableResourceInfo(localRes, s.releaseName, s.releaseNamespace)
+				info.GetResult = storageResourceSpec("PersistentVolume", s.releaseName, s.releaseNamespace).Unstruct
+				info.MustTrackAbsence = false
+				info.Stage = common.StagePrePreUninstall
+
+				return info
+			},
+			input: func() (*resource.DeletableResource, common.DeployType) {
+				return storageDeletableResource("PersistentVolume", s.releaseName, s.releaseNamespace), common.DeployTypeRollback
+			},
+			name: `for existing PersistentVolume, rollback deploy`,
+			prepare: func() {
+				_, err := s.clientFactory.KubeClient().Create(context.Background(), storageResourceSpec("PersistentVolume", s.releaseName, s.releaseNamespace), kube.KubeClientCreateOptions{
+					DefaultNamespace: s.releaseNamespace,
+				})
+				s.Require().NoError(err)
+			},
+		},
+		{
+			expect: func(localRes *resource.DeletableResource) *plan.DeletableResourceInfo {
+				info := defaultDeletableResourceInfo(localRes, s.releaseName, s.releaseNamespace)
+				info.GetResult = storageResourceSpec("PersistentVolumeClaim", s.releaseName, s.releaseNamespace).Unstruct
+
+				return info
+			},
+			input: func() (*resource.DeletableResource, common.DeployType) {
+				return storageDeletableResource("PersistentVolumeClaim", s.releaseName, s.releaseNamespace), common.DeployTypeUninstall
+			},
+			name: `for existing PersistentVolumeClaim, uninstall deploy`,
+			prepare: func() {
+				_, err := s.clientFactory.KubeClient().Create(context.Background(), storageResourceSpec("PersistentVolumeClaim", s.releaseName, s.releaseNamespace), kube.KubeClientCreateOptions{
+					DefaultNamespace: s.releaseNamespace,
+				})
+				s.Require().NoError(err)
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -684,6 +742,13 @@ func defaultInstallableResource(releaseName, releaseNamespace string) *resource.
 	}
 }
 
+func storageDeletableResource(kind, releaseName, releaseNamespace string) *resource.DeletableResource {
+	return &resource.DeletableResource{
+		ResourceMeta: storageResourceSpec(kind, releaseName, releaseNamespace).ResourceMeta,
+		Ownership:    common.OwnershipRelease,
+	}
+}
+
 func updatedResourceSpec(s *suite.Suite, releaseName, releaseNamespace string) *spec.ResourceSpec {
 	resSpec := defaultResourceSpec(releaseName, releaseNamespace)
 
@@ -802,4 +867,29 @@ func runBuildResourceInfosTest(tc buildResourceInfosTestCase, s *ResourceInfoSui
 			s.T().Fatalf("unexpected deletable resource infos (-want +got):\n%s", cmp.Diff(expectDelResInfos, delResInfos, s.cmpOpts...))
 		}
 	}
+}
+
+func storageResourceSpec(kind, releaseName, releaseNamespace string) *spec.ResourceSpec {
+	resSpec := spec.NewResourceSpec(&unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       kind,
+			"metadata": map[string]interface{}{
+				"name": "test-storage",
+				"annotations": map[string]interface{}{
+					"meta.helm.sh/release-name":      releaseName,
+					"meta.helm.sh/release-namespace": releaseNamespace,
+				},
+				"labels": map[string]interface{}{
+					"app.kubernetes.io/managed-by": "Helm",
+				},
+			},
+		},
+	}, releaseNamespace, spec.ResourceSpecOptions{})
+
+	if kind == "PersistentVolumeClaim" {
+		resSpec.Unstruct.SetNamespace(releaseNamespace)
+	}
+
+	return resSpec
 }
