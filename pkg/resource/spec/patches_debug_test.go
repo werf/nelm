@@ -3,12 +3,14 @@ package spec_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
+	"github.com/werf/logboek"
 	"github.com/werf/nelm/v2/pkg/log"
 	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
@@ -178,6 +180,39 @@ func TestPatchesDebug(t *testing.T) {
 						if lvl == log.DebugLevel || lvl == log.TraceLevel {
 							require.Contains(t, output.String(), header+":\n{\n  \"apiVersion\": \"apps/v1\",")
 							require.Contains(t, output.String(), header+": message\n")
+						} else {
+							require.Empty(t, output.String())
+						}
+					})
+				}
+			})
+
+			t.Run("pretty print failure falls back to compact JSON", func(t *testing.T) {
+				patches, err := compile([]spec.Patch{{Patch: `debug(reduce range(0;10001) as $i (null; [.])) | .spec.replicas += 1 | debug("continued")`}})
+				require.NoError(t, err)
+
+				for _, lvl := range log.Levels {
+					t.Run(string(lvl), func(t *testing.T) {
+						ctx, output := patchDebugContext(t, lvl)
+						logboek.Context(ctx).Streams().DisableLineWrapping()
+
+						res := renderedSpec(t, "web", "", "myapp/templates/web.yaml", nil)
+						original := res.Unstruct.DeepCopy()
+
+						out, err := apply(ctx, patches, res)
+						require.NoError(t, err)
+
+						expected := original.DeepCopy()
+						require.NoError(t, unstructured.SetNestedField(expected.Object, int64(4), "spec", "replicas"))
+						require.Equal(t, expected.Object, out.Object)
+						require.Equal(t, original.Object, res.Unstruct.Object)
+
+						if lvl == log.DebugLevel || lvl == log.TraceLevel {
+							compact := strings.Repeat("[", 10001) + "null" + strings.Repeat("]", 10001)
+
+							require.Contains(t, output.String(), header+": cannot pretty-print debug value: invalid character '[' exceeded max depth; using compact JSON\n")
+							require.Contains(t, output.String(), header+":\n"+compact+"\n")
+							require.True(t, strings.HasSuffix(output.String(), header+": continued\n"))
 						} else {
 							require.Empty(t, output.String())
 						}

@@ -176,9 +176,14 @@ func (c *CompiledPatch) transform(ctx context.Context, unstruct *unstructured.Un
 			data := lo.Must(gojq.Marshal(value))
 			switch value.(type) {
 			case map[string]interface{}, []interface{}:
+				message, separator = string(data), "\n"
+
 				var indented bytes.Buffer
-				lo.Must0(json.Indent(&indented, data, "", "  "))
-				message, separator = indented.String(), "\n"
+				if err := json.Indent(&indented, data, "", "  "); err != nil {
+					log.Default.Warn(ctx, "%s: cannot pretty-print debug value: %v; using compact JSON", debugPrefix, err)
+				} else {
+					message = indented.String()
+				}
 			default:
 				message = string(data)
 			}
