@@ -14,7 +14,7 @@ vars:
   arch: '{{ternary "arm64" ARCH (eq ARCH "arm")}}'
   package: "github.com/werf/nelm/v2/cmd/nelm"
 
-  kubeconformValidationSchemasUpstreamKubeVersion: "1.36.3"
+  kubeconformValidationSchemasUpstreamKubeVersion: "1.37.1"
 
   tags: ""
   buildTags: "{{if .tags}}{{.tags}},{{end}}embeddeno"
@@ -357,6 +357,11 @@ tasks:
     cmds:
       - go run ./scripts/schemagen -kube-version {{.kubeconformValidationSchemasUpstreamKubeVersion}} -force {{.CLI_ARGS}}
 
+  generate:validation-schemas:bump:
+    desc: "Pin kubeconformValidationSchemasUpstreamKubeVersion to the newest Kubernetes version upstream has schemas for. Run generate:validation-schemas:force afterwards, as a separate task invocation, and commit the result."
+    cmds:
+      - go run ./scripts/schemagen -bump-kube-version {{.CLI_ARGS}}
+
   generate:reference:
     desc: "Generate CLI reference documentation with TOC."
     cmds:
@@ -391,12 +396,6 @@ tasks:
     desc: "Check that the committed Deno lock is well formed and covers the platforms nelm builds for. Runs offline."
     cmds:
       - go run ./scripts/denolock -verify {{.CLI_ARGS}}
-
-  check:validation-schemas-upstream:
-    desc: "Report whether upstream has schemas the committed archives do not. Needs network, so it is not part of lint: run it on a schedule."
-    cmds:
-      # Takes the repositories, refs and versions to compare from the index, so it needs no vars.
-      - go run ./scripts/schemagen -check-upstream {{.CLI_ARGS}}
 
   check:deno-lock-upstream:
     desc: "Report whether the Deno release assets the lock pins still hash to what it records. Needs network, so it is not part of lint: it runs on a schedule."
