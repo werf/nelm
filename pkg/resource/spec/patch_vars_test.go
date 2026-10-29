@@ -35,7 +35,7 @@ func TestCompileRenderPatches_ExposesRenderContextVariables(t *testing.T) {
 	`}}, varsRenderContext())
 	require.NoError(t, err)
 
-	out, err := spec.ApplyPatches(context.Background(), patches, varsMeta("myapp/templates/web.yaml"), "prod", varsObj())
+	out, err := spec.ApplyPatches(context.Background(), patches, varsMeta("myapp/templates/web.yaml"), "prod", varsObj(), spec.ApplyPatchesOptions{})
 	require.NoError(t, err)
 
 	replicas, found, err := unstructured.NestedInt64(out.Object, "spec", "replicas")
@@ -56,7 +56,7 @@ func TestCompileRenderPatches_NilRenderContextValuesAreNull(t *testing.T) {
 	}}, spec.RenderContext{})
 	require.NoError(t, err)
 
-	out, err := spec.ApplyPatches(context.Background(), patches, varsMeta("myapp/templates/web.yaml"), "prod", varsObj())
+	out, err := spec.ApplyPatches(context.Background(), patches, varsMeta("myapp/templates/web.yaml"), "prod", varsObj(), spec.ApplyPatchesOptions{})
 	require.NoError(t, err)
 
 	labels, _, err := unstructured.NestedStringMap(out.Object, "metadata", "labels")
@@ -79,7 +79,7 @@ func TestCompileRenderPatches_ScopesSubchartRulesToTheirOwnChart(t *testing.T) {
 	}, varsRenderContext())
 	require.NoError(t, err)
 
-	out, err := spec.ApplyPatches(context.Background(), patches, varsMeta("myapp/charts/cache/templates/redis.yaml"), "prod", varsObj())
+	out, err := spec.ApplyPatches(context.Background(), patches, varsMeta("myapp/charts/cache/templates/redis.yaml"), "prod", varsObj(), spec.ApplyPatchesOptions{})
 	require.NoError(t, err)
 
 	labels, _, err := unstructured.NestedStringMap(out.Object, "metadata", "labels")
@@ -92,7 +92,7 @@ func TestCompileRenderPatches_UnusedVariablesDoNotBreakPatch(t *testing.T) {
 	patches, err := spec.CompileRenderPatches([]spec.Patch{{Patch: `del(.spec.replicas)`}}, spec.RenderContext{})
 	require.NoError(t, err)
 
-	out, err := spec.ApplyPatches(context.Background(), patches, varsMeta("myapp/templates/web.yaml"), "prod", varsObj())
+	out, err := spec.ApplyPatches(context.Background(), patches, varsMeta("myapp/templates/web.yaml"), "prod", varsObj(), spec.ApplyPatchesOptions{})
 	require.NoError(t, err)
 
 	_, found, err := unstructured.NestedInt64(out.Object, "spec", "replicas")

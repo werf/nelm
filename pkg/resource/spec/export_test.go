@@ -15,7 +15,7 @@ func (p Patch) ChartScope() string {
 
 // Transform exposes the unexported transform method to the external spec_test package.
 func (c *CompiledPatch) Transform(ctx context.Context, unstruct *unstructured.Unstructured) (*unstructured.Unstructured, error) {
-	return c.transform(ctx, unstruct)
+	return c.transform(ctx, unstruct, "Applying patch")
 }
 
 // CompilePatch compiles a single patch without render context variables, for the

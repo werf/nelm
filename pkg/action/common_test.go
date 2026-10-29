@@ -191,7 +191,7 @@ func aiApplyOrder(t *testing.T, patches []*spec.CompiledPatch, filePath string) 
 		FilePath:         filePath,
 	}
 
-	out, err := spec.ApplyPatches(context.Background(), patches, meta, "prod", obj)
+	out, err := spec.ApplyPatches(context.Background(), patches, meta, "prod", obj, spec.ApplyPatchesOptions{})
 	require.NoError(t, err)
 
 	order, ok := out.Object["order"].([]interface{})

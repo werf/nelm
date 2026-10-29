@@ -15,12 +15,12 @@ import (
 
 func TestPatchesDebug(t *testing.T) {
 	for _, render := range []bool{false, true} {
-		name := "diff"
+		patchKind := "diff"
 		if render {
-			name = "render"
+			patchKind = "render"
 		}
 
-		t.Run(name, func(t *testing.T) {
+		t.Run(patchKind, func(t *testing.T) {
 			compile := func(patches []spec.Patch) ([]*spec.CompiledPatch, error) {
 				if render {
 					return spec.CompileRenderPatches(patches, varsRenderContext())
@@ -30,7 +30,7 @@ func TestPatchesDebug(t *testing.T) {
 			}
 			apply := func(ctx context.Context, patches []*spec.CompiledPatch, res *spec.ResourceSpec) (*unstructured.Unstructured, error) {
 				if !render {
-					return spec.ApplyPatches(ctx, patches, res.ResourceMeta, "prod", res.Unstruct)
+					return spec.ApplyPatches(ctx, patches, res.ResourceMeta, "prod", res.Unstruct, spec.ApplyPatchesOptions{})
 				}
 
 				out, err := spec.BuildRenderPatchedResourceSpecs(ctx, "prod", []*spec.ResourceSpec{res}, patches)
@@ -41,6 +41,7 @@ func TestPatchesDebug(t *testing.T) {
 				return out[0].Unstruct, nil
 			}
 
+			header := fmt.Sprintf("Applying %s patch #1 to resource %q", patchKind, "Deployment/web")
 			for _, tt := range []struct {
 				name    string
 				program string
@@ -49,27 +50,52 @@ func TestPatchesDebug(t *testing.T) {
 				{
 					name:    "debug passes through the whole resource",
 					program: `debug`,
-					wantLog: "[\"DEBUG:\",{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{\"name\":\"web\"},\"spec\":{\"replicas\":3}}]\n",
+					wantLog: header + ":\n" + `{
+  "apiVersion": "apps/v1",
+  "kind": "Deployment",
+  "metadata": {
+    "name": "web"
+  },
+  "spec": {
+    "replicas": 3
+  }
+}
+`,
 				},
 				{
 					name:    "debug filter emits messages without extra results",
 					program: `debug("replicas=\(.spec.replicas) 100%", .spec, null, false, 9223372036854775808)`,
-					wantLog: "[\"DEBUG:\",\"replicas=3 100%\"]\n[\"DEBUG:\",{\"replicas\":3}]\n[\"DEBUG:\",null]\n[\"DEBUG:\",false]\n[\"DEBUG:\",9223372036854775808]\n",
+					wantLog: header + ": replicas=3 100%\n" + header + ":\n{\n  \"replicas\": 3\n}\n" + header + ": null\n" + header + ": false\n" + header + ": 9223372036854775808\n",
+				},
+				{
+					name:    "arrays and empty objects are indented",
+					program: `debug([1, {nested: [true, null]}], {}, [])`,
+					wantLog: header + ":\n[\n  1,\n  {\n    \"nested\": [\n      true,\n      null\n    ]\n  }\n]\n" + header + ":\n{}\n" + header + ":\n[]\n",
+				},
+				{
+					name:    "strings are printed without JSON escaping",
+					program: `debug("first\nsecond\t100%", "")`,
+					wantLog: header + ": first\nsecond\t100%\n" + header + ": \n",
+				},
+				{
+					name:    "numeric formatting follows gojq",
+					program: `debug(nan, infinite, -infinite, 1.5)`,
+					wantLog: header + ": null\n" + header + ": 1.7976931348623157e+308\n" + header + ": -1.7976931348623157e+308\n" + header + ": 1.5\n",
 				},
 				{
 					name:    "debug preserves update paths",
 					program: `.spec.replicas |= debug`,
-					wantLog: "[\"DEBUG:\",3]\n",
+					wantLog: header + ": 3\n",
 				},
 				{
 					name:    "debug preserves path expressions",
 					program: `debug(path(.spec.replicas | debug))`,
-					wantLog: "[\"DEBUG:\",3]\n[\"DEBUG:\",[\"spec\",\"replicas\"]]\n",
+					wantLog: header + ": 3\n" + header + ":\n[\n  \"spec\",\n  \"replicas\"\n]\n",
 				},
 				{
 					name:    "debug is not caught as an error",
 					program: `try debug("safe") catch error("unexpected error")`,
-					wantLog: "[\"DEBUG:\",\"safe\"]\n",
+					wantLog: header + ": safe\n",
 				},
 				{
 					name:    "user definition overrides debug",
@@ -116,7 +142,24 @@ func TestPatchesDebug(t *testing.T) {
 				require.NoError(t, unstructured.SetNestedField(expected.Object, int64(6), "spec", "replicas"))
 				require.Equal(t, expected.Object, out.Object)
 				require.Equal(t, original.Object, res.Unstruct.Object)
-				require.Equal(t, "[\"DEBUG:\",\"replicas=4\"]\n[\"DEBUG:\",4]\n[\"DEBUG:\",6]\n", output.String())
+
+				secondHeader := fmt.Sprintf("Applying %s patch #2 to resource %q", patchKind, "Deployment/web")
+				require.Equal(t, header+": replicas=4\n"+header+": 4\n"+secondHeader+": 6\n", output.String())
+			})
+
+			t.Run("patch numbers include skipped rules", func(t *testing.T) {
+				ctx, output := patchDebugContext(t, log.DebugLevel)
+				res := renderedSpec(t, "web", "", "myapp/templates/web.yaml", nil)
+				patches, err := compile([]spec.Patch{
+					{Match: spec.ResourceMatcher{Names: []string{"other"}}, Patch: `debug("ignored")`},
+					{Patch: `debug("matched")`},
+				})
+				require.NoError(t, err)
+
+				out, err := apply(ctx, patches, res)
+				require.NoError(t, err)
+				require.Equal(t, res.Unstruct.Object, out.Object)
+				require.Equal(t, fmt.Sprintf("Applying %s patch #2 to resource %q: matched\n", patchKind, "Deployment/web"), output.String())
 			})
 
 			t.Run("visibility follows the execution log level", func(t *testing.T) {
@@ -133,8 +176,8 @@ func TestPatchesDebug(t *testing.T) {
 						require.Equal(t, res.Unstruct.Object, out.Object)
 
 						if lvl == log.DebugLevel || lvl == log.TraceLevel {
-							require.Contains(t, output.String(), `["DEBUG:",{"apiVersion":"apps/v1"`)
-							require.Contains(t, output.String(), "[\"DEBUG:\",\"message\"]\n")
+							require.Contains(t, output.String(), header+":\n{\n  \"apiVersion\": \"apps/v1\",")
+							require.Contains(t, output.String(), header+": message\n")
 						} else {
 							require.Empty(t, output.String())
 						}
@@ -202,7 +245,9 @@ func TestPatchesDebug(t *testing.T) {
 							require.NotNil(t, out)
 							require.Equal(t, original.Object, out.Object)
 							require.Equal(t, original.Object, res.Unstruct.Object)
-							require.Equal(t, fmt.Sprintf("[\"DEBUG:\",\"web-%d\"]\n[\"DEBUG:\",3]\n", i), output.String())
+
+							header := fmt.Sprintf("Applying %s patch #1 to resource %q", patchKind, fmt.Sprintf("Deployment/web-%d", i))
+							require.Equal(t, fmt.Sprintf("%s: web-%d\n%s: 3\n", header, i, header), output.String())
 						})
 					}
 

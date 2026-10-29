@@ -26,7 +26,7 @@ func TestApplyPatches(t *testing.T) {
 	meta := metaFor("Deployment", "apps", "v1", "web", "", "myapp/templates/web.yaml", nil, nil)
 
 	t.Run("no rules returns unchanged deep copy", func(t *testing.T) {
-		out, err := spec.ApplyPatches(context.Background(), nil, meta, "prod", obj)
+		out, err := spec.ApplyPatches(context.Background(), nil, meta, "prod", obj, spec.ApplyPatchesOptions{})
 		require.NoError(t, err)
 		require.Equal(t, obj.Object, out.Object)
 		require.NotSame(t, &obj.Object, &out.Object)
@@ -39,7 +39,7 @@ func TestApplyPatches(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		out, err := spec.ApplyPatches(context.Background(), []*spec.CompiledPatch{c}, meta, "prod", obj)
+		out, err := spec.ApplyPatches(context.Background(), []*spec.CompiledPatch{c}, meta, "prod", obj, spec.ApplyPatchesOptions{})
 		require.NoError(t, err)
 		require.Equal(t, int64(3), out.Object["spec"].(map[string]interface{})["replicas"])
 	})
@@ -50,7 +50,7 @@ func TestApplyPatches(t *testing.T) {
 		c2, err := spec.CompilePatch(spec.Patch{Patch: `.metadata.name = "patched"`})
 		require.NoError(t, err)
 
-		out, err := spec.ApplyPatches(context.Background(), []*spec.CompiledPatch{c1, c2}, meta, "prod", obj)
+		out, err := spec.ApplyPatches(context.Background(), []*spec.CompiledPatch{c1, c2}, meta, "prod", obj, spec.ApplyPatchesOptions{})
 		require.NoError(t, err)
 
 		_, hasReplicas := out.Object["spec"].(map[string]interface{})["replicas"]

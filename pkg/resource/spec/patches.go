@@ -147,7 +147,7 @@ func (c *CompiledPatch) Match(resMeta *ResourceMeta, namespace string) bool {
 // transform runs the compiled jq program over a deep copy of the object and
 // returns the single object output. Zero, multiple, or non-object output is an
 // error, and a jq panic is recovered into an error; the input is never mutated.
-func (c *CompiledPatch) transform(ctx context.Context, unstruct *unstructured.Unstructured) (result *unstructured.Unstructured, err error) {
+func (c *CompiledPatch) transform(ctx context.Context, unstruct *unstructured.Unstructured, debugPrefix string) (result *unstructured.Unstructured, err error) {
 	// Unstructured stores integers as int64, which gojq rejects; round-trip
 	// through JSON with UseNumber so numbers reach gojq as json.Number.
 	input, err := toJQValue(unstruct.Object)
@@ -167,8 +167,24 @@ func (c *CompiledPatch) transform(ctx context.Context, unstruct *unstructured.Un
 			return
 		}
 
-		data := lo.Must(gojq.Marshal([]interface{}{"DEBUG:", value}))
-		log.Default.Debug(ctx, "%s", data)
+		var message string
+
+		separator := " "
+		if text, ok := value.(string); ok {
+			message = text
+		} else {
+			data := lo.Must(gojq.Marshal(value))
+			switch value.(type) {
+			case map[string]interface{}, []interface{}:
+				var indented bytes.Buffer
+				lo.Must0(json.Indent(&indented, data, "", "  "))
+				message, separator = indented.String(), "\n"
+			default:
+				message = string(data)
+			}
+		}
+
+		log.Default.Debug(ctx, "%s:%s%s", debugPrefix, separator, message)
 	}
 	variables := append([]interface{}{debug}, c.variables...)
 	iter := c.code.RunWithContext(ctx, input, variables...)
@@ -198,10 +214,20 @@ func (c *CompiledPatch) transform(ctx context.Context, unstruct *unstructured.Un
 	return &unstructured.Unstructured{Object: obj}, nil
 }
 
-// ApplyPatches runs every rule whose matcher matches the resource, threading each
-// transform's output into the next, and returns a transformed deep copy; the
-// input is never mutated. namespace is the resource's true namespace.
-func ApplyPatches(ctx context.Context, patches []*CompiledPatch, resMeta *ResourceMeta, namespace string, unstruct *unstructured.Unstructured) (*unstructured.Unstructured, error) {
+type ApplyPatchesOptions struct {
+	// DiffSide labels the live or dry-apply resource in debug output; empty omits the qualifier.
+	DiffSide string
+}
+
+// ApplyPatches runs matching diff rules in order and returns a transformed deep
+// copy; the input is never mutated. namespace is the resource's true namespace.
+// Use BuildRenderPatchedResourceSpecs for render rules.
+func ApplyPatches(ctx context.Context, patches []*CompiledPatch, resMeta *ResourceMeta, namespace string, unstruct *unstructured.Unstructured, opts ApplyPatchesOptions) (*unstructured.Unstructured, error) {
+	subject := "resource"
+	if opts.DiffSide != "" {
+		subject = opts.DiffSide + " version of resource"
+	}
+
 	result := unstruct
 	transformed := false
 
@@ -210,7 +236,9 @@ func ApplyPatches(ctx context.Context, patches []*CompiledPatch, resMeta *Resour
 			continue
 		}
 
-		out, err := patch.transform(ctx, result)
+		debugPrefix := fmt.Sprintf("Applying diff patch #%d to %s %q", i+1, subject, resMeta.IDHuman())
+
+		out, err := patch.transform(ctx, result, debugPrefix)
 		if err != nil {
 			return nil, fmt.Errorf("apply patch #%d: %w", i+1, err)
 		}
