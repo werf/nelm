@@ -697,14 +697,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 	releaseIsUpToDate := result.UpToDate
 
-	installPlanIsUseless := lo.NoneBy(installPlan.Operations(), func(op *plan.Operation) bool {
-		switch op.Category {
-		case plan.OperationCategoryResource, plan.OperationCategoryTrack:
-			return true
-		default:
-			return false
-		}
-	})
+	installPlanIsUseless := !plan.PlanTriggersRelease(installPlan)
 
 	if phaseReporter != nil {
 		phaseReporter.ReportPhase(ctx, progrep.PhaseKindExecuting, plan.ReportPhaseOptions{})
@@ -1199,14 +1192,7 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	releaseIsUpToDate := releaseUpToDateResult.UpToDate
 
-	planIsUseless := lo.NoneBy(rollbackPlan.Operations(), func(op *plan.Operation) bool {
-		switch op.Category {
-		case plan.OperationCategoryResource, plan.OperationCategoryTrack:
-			return true
-		default:
-			return false
-		}
-	})
+	planIsUseless := !plan.PlanTriggersRelease(rollbackPlan)
 
 	if releaseIsUpToDate && planIsUseless {
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render("Skipped rollback release")+" %q (namespace: %q): cluster resources already as desired", releaseName, releaseNamespace)

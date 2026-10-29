@@ -244,6 +244,8 @@ var (
 	AnnotationKeyPatternOwnership                       = regexp.MustCompile(`^werf.io/ownership$`)
 	AnnotationKeyHumanDeletePropagation                 = "werf.io/delete-propagation"
 	AnnotationKeyPatternDeletePropagation               = regexp.MustCompile(`^werf.io/delete-propagation$`)
+	AnnotationKeyHumanTriggersRelease                   = "werf.io/triggers-release"
+	AnnotationKeyPatternTriggersRelease                 = regexp.MustCompile(`^werf\.io/triggers-release$`)
 	SprigFuncs                                          = sprig.TxtFuncMap()
 	DefaultDockerConfig                                 = filepath.Join(userHomeDir(), ".docker")
 	DefaultPlanArtifactLifetime                         = 2 * time.Hour
