@@ -1,0 +1,109 @@
+name: generate:validation-schemas
+
+on:
+  schedule:
+    # Cron cannot express "every third week", so this runs weekly and the schedule job skips two runs
+    # out of three.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DEBIAN_FRONTEND: "noninteractive"
+
+jobs:
+  schedule:
+    # The result is committed to main, so a dispatch from another branch does nothing.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    outputs:
+      due: ${{ steps.due.outputs.due }}
+    steps:
+      - name: Decide whether the update is due
+        id: due
+        run: |
+          # 10# keeps ISO weeks 08 and 09 from being read as octal.
+          if [[ "$GITHUB_EVENT_NAME" != "schedule" ]] || (( 10#$(date -u +%V) % 3 == 0 )); then
+            echo "due=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  update:
+    needs: schedule
+    if: needs.schedule.outputs.due == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    # Pushes with RELEASE_PLEASE_TOKEN, so GITHUB_TOKEN only needs to read.
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          cache: false
+          go-version-file: go.mod
+
+      - name: Install Task
+        uses: go-task/setup-task@v2
+        with:
+          repo-token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+
+      - name: Set up git config
+        uses: ./.github/actions/set-up-git-config
+
+      - name: Bump the pinned Kubernetes version
+        run: task generate:validation-schemas:bump
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # A separate task run, since Task reads the pin bumped above only at startup.
+      - name: Regenerate embedded validation schemas
+        run: task generate:validation-schemas:force
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if [[ -n "$(git status --porcelain -- Taskfile.dist.yaml pkg/resource/schemas/data)" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Lint embedded validation schemas
+        if: steps.changes.outputs.changed == 'true'
+        run: task lint:validation-schemas
+
+      - name: Install ginkgo
+        if: steps.changes.outputs.changed == 'true'
+        run: task -p deps:install:ginkgo
+
+      - name: Test
+        if: steps.changes.outputs.changed == 'true'
+        run: task -p test:unit -- --keep-going
+
+      - name: Commit and push
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          kube_version="$(jq -r '.kubernetes.kubeVersions[0]' pkg/resource/schemas/data/index.json)"
+          git add Taskfile.dist.yaml pkg/resource/schemas/data
+          git commit -m "chore: update embedded validation schemas (Kubernetes ${kube_version})"
+          git push
+
+  notify:
+    if: always() && needs.schedule.outputs.due == 'true'
+    needs:
+      - schedule
+      - update
+    uses: werf/common-ci/.github/workflows/notification.yml@main
+    secrets:
+      loopNotificationGroup: ${{ vars.LOOP_NOTIFICATION_GROUP }}
+      webhook: ${{ secrets.LOOP_NOTIFICATION_WEBHOOK }}
+      notificationChannel: ${{ vars.LOOP_NOTIFICATION_CHANNEL }}
