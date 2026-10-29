@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -371,6 +372,35 @@ func newLatestRevisionSummary(namespace, name string, version int) release.Revis
 		Revision: release.Revision{Namespace: namespace, Name: name, Version: version, Status: "deployed"},
 		Summary:  newTestReleaseSummary(),
 	}
+}
+
+func newTriggersReleaseChart(t *testing.T, api *progressPhasesAPI, annotations map[string]string) string {
+	t.Helper()
+
+	cm := corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{Kind: "ConfigMap", APIVersion: "v1"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "progress-resource", Namespace: "progress-ns",
+			Annotations: lo.Assign(map[string]string{
+				"meta.helm.sh/release-name": "progress-release", "meta.helm.sh/release-namespace": "progress-ns",
+				"werf.io/delete-policy": "before-creation",
+			}, annotations),
+			Labels: map[string]string{"app.kubernetes.io/managed-by": "Helm"},
+		},
+		Data: map[string]string{"key": "value"},
+	}
+	body, err := json.Marshal(cm)
+	require.NoError(t, err)
+	api.state.RWTransaction(func(s *progressPhasesAPIState) {
+		s.configMaps[cm.Name] = cm
+	})
+	addProgressPhaseRevision(t, api, 1, string(body))
+
+	chartPath := newProgressPhasesChart(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(chartPath, "templates"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(chartPath, "templates", "cm.yaml"), body, 0o600))
+
+	return chartPath
 }
 
 func addProgressPhaseRevision(t *testing.T, api *progressPhasesAPI, revision int, manifest string) {

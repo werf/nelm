@@ -26,6 +26,7 @@ import (
 	helmreleasecommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 	releaseutil "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1/util"
+	"github.com/werf/nelm/v2/pkg/resource"
 	"github.com/werf/nelm/v2/pkg/resource/spec"
 	"github.com/werf/nelm/v2/pkg/util"
 )
@@ -54,7 +55,8 @@ type IsReleaseUpToDateResult struct {
 }
 
 // Check if the new Release is up-to-date compared to the old Release. It doesn't check any
-// resources of the release in the cluster, just compares Release objects.
+// resources of the release in the cluster, just compares Release objects. Manifests of resources
+// that don't trigger releases are not compared.
 func IsReleaseUpToDate(oldRel, newRel helmrel.Accessor) (IsReleaseUpToDateResult, error) {
 	if oldRel == nil {
 		return IsReleaseUpToDateResult{Reason: ReleaseOutdatedReasonNoPreviousRelease}, nil
@@ -88,6 +90,10 @@ func IsReleaseUpToDate(oldRel, newRel helmrel.Accessor) (IsReleaseUpToDateResult
 			return IsReleaseUpToDateResult{}, fmt.Errorf("decode old hook: %w", err)
 		}
 
+		if !resource.TriggersRelease(obj.(*unstructured.Unstructured).GetAnnotations()) {
+			continue
+		}
+
 		unstruct := cleanUnstruct(obj.(*unstructured.Unstructured))
 
 		if err := writeUnstructHash(unstruct, oldHookResourcesHash); err != nil {
@@ -105,6 +111,10 @@ func IsReleaseUpToDate(oldRel, newRel helmrel.Accessor) (IsReleaseUpToDateResult
 		obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(hookAcc.Manifest()), nil, &unstructured.Unstructured{})
 		if err != nil {
 			return IsReleaseUpToDateResult{}, fmt.Errorf("decode new hook: %w", err)
+		}
+
+		if !resource.TriggersRelease(obj.(*unstructured.Unstructured).GetAnnotations()) {
+			continue
 		}
 
 		unstruct := cleanUnstruct(obj.(*unstructured.Unstructured))
@@ -127,6 +137,10 @@ func IsReleaseUpToDate(oldRel, newRel helmrel.Accessor) (IsReleaseUpToDateResult
 			return IsReleaseUpToDateResult{}, fmt.Errorf("decode old regular resource: %w", err)
 		}
 
+		if !resource.TriggersRelease(obj.(*unstructured.Unstructured).GetAnnotations()) {
+			continue
+		}
+
 		unstruct := cleanUnstruct(obj.(*unstructured.Unstructured))
 
 		if err := writeUnstructHash(unstruct, oldRegularResourcesHash); err != nil {
@@ -141,6 +155,10 @@ func IsReleaseUpToDate(oldRel, newRel helmrel.Accessor) (IsReleaseUpToDateResult
 		obj, _, err := scheme.Codecs.UniversalDecoder().Decode([]byte(manifest), nil, &unstructured.Unstructured{})
 		if err != nil {
 			return IsReleaseUpToDateResult{}, fmt.Errorf("decode new regular resource: %w", err)
+		}
+
+		if !resource.TriggersRelease(obj.(*unstructured.Unstructured).GetAnnotations()) {
+			continue
 		}
 
 		unstruct := cleanUnstruct(obj.(*unstructured.Unstructured))

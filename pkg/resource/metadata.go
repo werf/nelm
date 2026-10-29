@@ -40,6 +40,14 @@ func ResourcePolicies(meta *spec.ResourceMeta, releaseNamespace string) []common
 	return policies
 }
 
+// Whether changes to the resource can trigger a new release on their own. Anything but an exact
+// "false" means true, since resources from previously stored releases were never validated.
+func TriggersRelease(annotations map[string]string) bool {
+	_, value, found := spec.FindAnnotationOrLabelByKeyPattern(annotations, common.AnnotationKeyPatternTriggersRelease)
+
+	return !found || value != "false"
+}
+
 func ValidateResourcePolicy(meta *spec.ResourceMeta) error {
 	if key, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternWerfResourcePolicy); found {
 		if value == "" {
@@ -1319,6 +1327,18 @@ func validateTrack(meta *spec.ResourceMeta) error {
 		case string(statestore.NonBlocking):
 		default:
 			return fmt.Errorf("invalid unknown value %q for annotation %q", value, key)
+		}
+	}
+
+	return nil
+}
+
+func validateTriggersRelease(meta *spec.ResourceMeta) error {
+	if key, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternTriggersRelease); found {
+		switch value {
+		case "true", "false":
+		default:
+			return fmt.Errorf(`invalid value %q for annotation %q, expected "true" or "false"`, value, key)
 		}
 	}
 
