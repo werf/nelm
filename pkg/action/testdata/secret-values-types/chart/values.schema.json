@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["int", "bool", "number", "list", "map", "str"],
+  "properties": {
+    "int": { "type": "integer" },
+    "bool": { "type": "boolean" },
+    "number": { "type": "number" },
+    "list": { "type": "array", "prefixItems": [{ "type": "integer" }, { "type": "string" }] },
+    "map": { "type": "object", "properties": { "k": { "type": "integer" } } },
+    "str": { "type": "string" }
+  }
+}

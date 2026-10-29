@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.1](https://github.com/werf/nelm/compare/v2.2.0...v2.2.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* allow recreating resources with helm.sh/resource-policy ([#781](https://github.com/werf/nelm/issues/781)) ([431777d](https://github.com/werf/nelm/commit/431777d40f7741db63372aec88d62bc98ca39626))
+* give secret values their documented precedence ([#772](https://github.com/werf/nelm/issues/772)) ([dcb769e](https://github.com/werf/nelm/commit/dcb769e6d4d491ae57768ecab4de3508b107e94c))
+
 ## [2.2.0](https://github.com/werf/nelm/compare/v2.1.0...v2.2.0) (2026-10-23)
 
 

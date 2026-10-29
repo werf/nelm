@@ -1,0 +1,12 @@
+apiVersion: v2
+name: litellm-helm
+version: 1.85.0
+dependencies:
+  - name: litellm-helm
+    version: 1.85.0
+    repository: oci://registry.example.com/charts
+    export-values:
+      - parent: global.werf.images.litellm.repository
+        child: image.repository
+      - parent: global.werf.images.litellm.tag
+        child: image.tag

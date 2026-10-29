@@ -1,0 +1,7 @@
+image:
+  repository: sub-values-yaml
+out:
+  k: sub-values-yaml
+exports:
+  data:
+    d: sub-values-yaml

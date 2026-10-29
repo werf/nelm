@@ -1,0 +1,4 @@
+apiVersion: v2
+name: litellm-helm
+version: 1.85.0
+appVersion: v1.85.0

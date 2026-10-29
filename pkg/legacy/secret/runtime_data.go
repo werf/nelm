@@ -20,13 +20,15 @@ type DecodeAndLoadSecretsOptions = chartcommon.DecodeAndLoadSecretsOptions
 type RuntimeData interface {
 	DecodeAndLoadSecrets(ctx context.Context, loadedChartFiles []*common.BufferedFile, secretsManager *secrets_manager.SecretsManager, opts DecodeAndLoadSecretsOptions) error
 	GetEncodedSecretValues(ctx context.Context, secretsManager *secrets_manager.SecretsManager, secretsWorkingDir string, noDecryptSecrets bool) (map[string]interface{}, error)
-	GetDecryptedSecretValues() map[string]interface{}
+	GetDecryptedDefaultSecretValues() map[string]interface{}
+	GetDecryptedCustomSecretValues() map[string]interface{}
 	GetDecryptedSecretFilesData() map[string]string
 }
 
 type SecretsRuntimeData struct {
-	decryptedSecretFilesData map[string]string
-	decryptedSecretValues    map[string]interface{}
+	decryptedCustomSecretValues  map[string]interface{}
+	decryptedDefaultSecretValues map[string]interface{}
+	decryptedSecretFilesData     map[string]string
 }
 
 func NewSecretsRuntimeData() *SecretsRuntimeData {
@@ -38,13 +40,14 @@ func NewSecretsRuntimeData() *SecretsRuntimeData {
 func (s *SecretsRuntimeData) DecodeAndLoadSecrets(ctx context.Context, loadedChartFiles []*common.BufferedFile, secretsManager *secrets_manager.SecretsManager, opts DecodeAndLoadSecretsOptions) error {
 	secretDirFiles := GetSecretDirFiles(loadedChartFiles)
 
-	var loadedSecretValuesFiles []*common.BufferedFile
-
+	var defaultSecretValuesFiles []*common.BufferedFile
 	if !opts.WithoutDefaultSecretValues {
 		if defaultSecretValues := GetDefaultSecretValuesFile(loadedChartFiles); defaultSecretValues != nil {
-			loadedSecretValuesFiles = append(loadedSecretValuesFiles, defaultSecretValues)
+			defaultSecretValuesFiles = append(defaultSecretValuesFiles, defaultSecretValues)
 		}
 	}
+
+	var customSecretValuesFiles []*common.BufferedFile
 
 	for _, customSecretValuesFileName := range opts.CustomSecretValueFiles {
 		f := &common.BufferedFile{Name: customSecretValuesFileName}
@@ -63,11 +66,11 @@ func (s *SecretsRuntimeData) DecodeAndLoadSecrets(ctx context.Context, loadedCha
 			f.Data = data
 		}
 
-		loadedSecretValuesFiles = append(loadedSecretValuesFiles, f)
+		customSecretValuesFiles = append(customSecretValuesFiles, f)
 	}
 
 	var encoder *secret.YamlEncoder
-	if len(secretDirFiles)+len(loadedSecretValuesFiles) > 0 {
+	if len(secretDirFiles)+len(defaultSecretValuesFiles)+len(customSecretValuesFiles) > 0 {
 		enc, err := secretsManager.GetYamlEncoder(ctx, opts.SecretsWorkingDir, opts.NoDecryptSecrets)
 		if err != nil {
 			return fmt.Errorf("get secrets yaml encoder: %w", err)
@@ -83,27 +86,44 @@ func (s *SecretsRuntimeData) DecodeAndLoadSecrets(ctx context.Context, loadedCha
 		s.decryptedSecretFilesData = data
 	}
 
-	if len(loadedSecretValuesFiles) > 0 {
-		values, err := LoadChartSecretValueFiles(loadedSecretValuesFiles, encoder)
+	if len(defaultSecretValuesFiles) > 0 {
+		values, err := LoadChartSecretValueFiles(defaultSecretValuesFiles, encoder)
 		if err != nil {
-			return fmt.Errorf("load secret value files: %w", err)
+			return fmt.Errorf("load default secret values file: %w", err)
 		}
-		s.decryptedSecretValues = values
+		s.decryptedDefaultSecretValues = values
+	}
+
+	if len(customSecretValuesFiles) > 0 {
+		values, err := LoadChartSecretValueFiles(customSecretValuesFiles, encoder)
+		if err != nil {
+			return fmt.Errorf("load custom secret values files: %w", err)
+		}
+		s.decryptedCustomSecretValues = values
 	}
 
 	return nil
+}
+
+// GetDecryptedCustomSecretValues returns the merged values of the secret values files passed
+// explicitly (--secret-values). Callers must not mutate the returned map.
+func (s *SecretsRuntimeData) GetDecryptedCustomSecretValues() map[string]interface{} {
+	return s.decryptedCustomSecretValues
+}
+
+// GetDecryptedDefaultSecretValues returns the values of the chart's own secret-values.yaml.
+// Callers must not mutate the returned map.
+func (s *SecretsRuntimeData) GetDecryptedDefaultSecretValues() map[string]interface{} {
+	return s.decryptedDefaultSecretValues
 }
 
 func (s *SecretsRuntimeData) GetDecryptedSecretFilesData() map[string]string {
 	return s.decryptedSecretFilesData
 }
 
-func (s *SecretsRuntimeData) GetDecryptedSecretValues() map[string]interface{} {
-	return s.decryptedSecretValues
-}
-
 func (s *SecretsRuntimeData) GetEncodedSecretValues(ctx context.Context, secretsManager *secrets_manager.SecretsManager, secretsWorkingDir string, noDecryptSecrets bool) (map[string]interface{}, error) {
-	if len(s.decryptedSecretValues) == 0 {
+	decryptedSecretValues := chartcommon.MergeMaps(s.decryptedDefaultSecretValues, s.decryptedCustomSecretValues)
+	if len(decryptedSecretValues) == 0 {
 		return nil, nil
 	}
 
@@ -112,7 +132,7 @@ func (s *SecretsRuntimeData) GetEncodedSecretValues(ctx context.Context, secrets
 		return nil, fmt.Errorf("get secrets yaml encoder: %w", err)
 	}
 
-	decryptedSecretsData, err := yaml.Marshal(s.decryptedSecretValues)
+	decryptedSecretsData, err := yaml.Marshal(decryptedSecretValues)
 	if err != nil {
 		return nil, fmt.Errorf("marshal decrypted secrets yaml: %w", err)
 	}
@@ -144,7 +164,7 @@ func LoadChartSecretValueFiles(secretDirFiles []*common.BufferedFile, encoder *s
 			return nil, fmt.Errorf("unmarshal secret values file %s: %w", f.Name, err)
 		}
 
-		res = common.LegacyCoalesceTablesFunc(rawValues, res)
+		res = chartcommon.MergeMaps(res, rawValues)
 	}
 
 	return res, nil

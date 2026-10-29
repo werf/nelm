@@ -107,6 +107,10 @@ func NewInstallableResource(ctx context.Context, res *spec.ResourceSpec, otherRe
 		return nil, fmt.Errorf("validate delete propagation: %w", err)
 	}
 
+	if err := validateTriggersRelease(res.ResourceMeta); err != nil {
+		return nil, fmt.Errorf("validate triggers release: %w", err)
+	}
+
 	manDeps := manualDeployDependencies(res.ResourceMeta, otherResourceMetaList, releaseNamespace)
 	internalDeps := lo.Filter(manDeps, func(item *Dependency, _ int) bool {
 		return !item.External

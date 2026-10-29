@@ -21,6 +21,7 @@ also keeps builds offline and makes a nelm commit fully determine the binary it 
 ## Regenerating
 
 ```shell
+task generate:validation-schemas:bump     # pin the newest Kubernetes version upstream has
 task generate:validation-schemas          # after bumping the pinned Kubernetes version
 task generate:validation-schemas:force    # to pull whatever upstream has now
 ```
@@ -36,18 +37,11 @@ the index as recorded and only checks the pin against the Taskfile: the newest v
 of minors around it.
 
 That the network stays out of it is deliberate — builds are offline and a nelm commit determines the
-binary it produces — so staleness is reported separately instead:
-
-```shell
-task check:validation-schemas-upstream
-```
-
-Two requests, no downloads, and it runs daily in CI. For the CRD catalog it compares the commit, since
-the whole repository is taken. For the Kubernetes schemas it lists the repository and fails when a
-collected older minor has a newer patch upstream, or when the git tree of a collected version changed.
-The commit is deliberately not compared there: that repository's ref moves whenever any version is
-touched, while the directories we take are frozen snapshots, so it would cry stale on every unrelated
-release. A newer patch of the pinned version is only reported, since bumping the pin is a decision.
+binary it produces — so the archives are refreshed on a schedule instead. Every third week, the
+`generate:validation-schemas` workflow bumps the pin, regenerates with the `:force` variant, runs
+`task lint:validation-schemas` and the unit tests, and commits the result to `main` if anything
+changed. Run it manually from the Actions tab to refresh sooner. The `:bump` task is a separate step
+because Task reads the pin only at startup, so `:force` has to run as a new invocation afterwards.
 
 Commit the changed archives along with `index.json`. `task lint:validation-schemas` checks that the
 two agree, and runs offline.

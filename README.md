@@ -62,6 +62,7 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [`werf.io/delete-policy` annotation](#werfiodelete-policy-annotation)
   - [`werf.io/resource-policy` annotation](#werfioresource-policy-annotation)
   - [`werf.io/delete-propagation` annotation](#werfiodelete-propagation-annotation)
+  - [`werf.io/triggers-release` annotation](#werfiotriggers-release-annotation)
   - [`werf.io/track-termination-mode` annotation](#werfiotrack-termination-mode-annotation)
   - [`werf.io/fail-mode` annotation](#werfiofail-mode-annotation)
   - [`werf.io/failures-allowed-per-replica` annotation](#werfiofailures-allowed-per-replica-annotation)
@@ -237,6 +238,7 @@ Helm doesn't offer any resource lifecycle capabilities, except `helm.sh/resource
 * The `werf.io/ownership` annotation. `anyone` allows to get Hook-like behavior for regular resources: don't delete the resource if it is removed from the Chart or when the whole release is removed, and never check or apply release annotations.
 * The `werf.io/deploy-on` annotation. Inspired by `helm.sh/hook`. Render and deploy the resource only on install/upgrade/rollback/uninstall in a pre/main/post stage.
 * The `werf.io/resource-policy` annotation. Inspired by `helm.sh/resource-policy`, but adds more options: set `skip-create`, `skip-update`, `skip-recreate` or `skip-delete` to skip the corresponding operation.
+* The `werf.io/triggers-release` annotation. Set `false` to never create a new release only because of changes in this resource, e.g. to keep a Job with `werf.io/delete-policy: before-creation` from breaking skipping of up-to-date releases.
 
 These annotations make Helm Hooks obsolete: regular resources can do all the same things now.
 
@@ -560,6 +562,27 @@ werf.io/delete-propagation: Foreground|Background|Orphan
 Default:
 ```
 Foreground
+```
+
+### `werf.io/triggers-release` annotation
+
+Set to `false` so that the resource never causes a new release on its own. When deciding whether the release is up to date and can be skipped, Nelm ignores changes in the manifest of such a resource and all operations on it: creation, update, recreation (e.g. caused by `werf.io/delete-policy: before-creation` or by the default delete policy of Hooks), deletion and readiness tracking. If there are no other resource changes, then readiness tracking of other unchanged resources is ignored too, e.g. of resources that such a resource depends on. If the release is deployed for any other reason (other resources, values or notes changed, the previous release failed, there is no previous release yet, ...), then the resource is deployed as usual.
+
+Useful for Jobs that should only run when something else is deployed, e.g. database migrations, initialization, backups or notifications. Without this annotation a Job with `werf.io/delete-policy: before-creation` is recreated on every deploy, so the release is never skipped.
+
+Beware that adding such a resource to the chart, removing it from the chart, or the resource being absent in the cluster (e.g. deleted by `werf.io/delete-policy: succeeded` or by `ttlSecondsAfterFinished`) doesn't trigger a release either: the resource will be created or deleted with the next release. Values are always compared as a whole, so changing values used only by such a resource still triggers a release. Changing the value of the annotation itself triggers a release.
+
+Example:
+```yaml
+werf.io/triggers-release: "false"
+```
+Format:
+```
+werf.io/triggers-release: "true"|"false"
+```
+Default:
+```
+"true"
 ```
 
 ### `werf.io/track-termination-mode` annotation 

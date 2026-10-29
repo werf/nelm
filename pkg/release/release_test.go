@@ -28,6 +28,17 @@ data:
   key: ` + dataVal + "\n"
 	}
 
+	nonTriggeringCMManifest := func(dataVal, triggersRelease string) string {
+		return `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: non-triggering-cm
+  annotations:
+    werf.io/triggers-release: "` + triggersRelease + `"
+data:
+  key: ` + dataVal + "\n"
+	}
+
 	baseOldRel := func() *helmrelease.Release {
 		return &helmrelease.Release{
 			Info:     &helmrelease.Info{Status: helmreleasecommon.StatusDeployed},
@@ -143,6 +154,98 @@ data:
 				r := baseNewRel()
 				r.Hooks = nil
 				r.Manifest = cmManifest("value2")
+
+				return r
+			}(),
+			expectedUpToDate: false,
+			expectedReason:   release.ReleaseOutdatedReasonManifestsChanged,
+		},
+		{
+			name: "non-triggering-manifest-changed",
+			oldRel: func() *helmrelease.Release {
+				r := baseOldRel()
+				r.Manifest = cmManifest("value1") + "---\n" + nonTriggeringCMManifest("value1", "false")
+
+				return r
+			}(),
+			newRel: func() *helmrelease.Release {
+				r := baseNewRel()
+				r.Manifest = cmManifest("value1") + "---\n" + nonTriggeringCMManifest("value2", "false")
+
+				return r
+			}(),
+			expectedUpToDate: true,
+			expectedReason:   release.ReleaseOutdatedReasonNone,
+		},
+		{
+			name:   "non-triggering-manifest-added",
+			oldRel: baseOldRel(),
+			newRel: func() *helmrelease.Release {
+				r := baseNewRel()
+				r.Manifest = cmManifest("value1") + "---\n" + nonTriggeringCMManifest("value1", "false")
+
+				return r
+			}(),
+			expectedUpToDate: true,
+			expectedReason:   release.ReleaseOutdatedReasonNone,
+		},
+		{
+			name: "non-triggering-manifest-removed",
+			oldRel: func() *helmrelease.Release {
+				r := baseOldRel()
+				r.Manifest = cmManifest("value1") + "---\n" + nonTriggeringCMManifest("value1", "false")
+
+				return r
+			}(),
+			newRel:           baseNewRel(),
+			expectedUpToDate: true,
+			expectedReason:   release.ReleaseOutdatedReasonNone,
+		},
+		{
+			name: "non-triggering-hook-changed",
+			oldRel: func() *helmrelease.Release {
+				r := baseOldRel()
+				r.Hooks = append(r.Hooks, &helmrelease.Hook{Manifest: nonTriggeringCMManifest("hookval1", "false")})
+
+				return r
+			}(),
+			newRel: func() *helmrelease.Release {
+				r := baseNewRel()
+				r.Hooks = append(r.Hooks, &helmrelease.Hook{Manifest: nonTriggeringCMManifest("hookval2", "false")})
+
+				return r
+			}(),
+			expectedUpToDate: true,
+			expectedReason:   release.ReleaseOutdatedReasonNone,
+		},
+		{
+			name: "triggers-release-switched-to-true",
+			oldRel: func() *helmrelease.Release {
+				r := baseOldRel()
+				r.Manifest = cmManifest("value1") + "---\n" + nonTriggeringCMManifest("value1", "false")
+
+				return r
+			}(),
+			newRel: func() *helmrelease.Release {
+				r := baseNewRel()
+				r.Manifest = cmManifest("value1") + "---\n" + nonTriggeringCMManifest("value1", "true")
+
+				return r
+			}(),
+			expectedUpToDate: false,
+			expectedReason:   release.ReleaseOutdatedReasonManifestsChanged,
+		},
+		{
+			name: "triggering-manifest-changed-next-to-non-triggering",
+			oldRel: func() *helmrelease.Release {
+				r := baseOldRel()
+				r.Manifest = cmManifest("value1") + "---\n" + nonTriggeringCMManifest("value1", "false")
+
+				return r
+			}(),
+			newRel: func() *helmrelease.Release {
+				r := baseNewRel()
+				r.Manifest = cmManifest("value2") + "---\n" + nonTriggeringCMManifest("value1", "false")
 
 				return r
 			}(),

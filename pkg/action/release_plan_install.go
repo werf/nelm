@@ -439,7 +439,9 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	releaseIsUpToDate := result.UpToDate
 
-	installPlanIsUseless := lo.NoneBy(installPlan.Operations(), func(op *plan.Operation) bool {
+	installPlanIsUseless := !plan.PlanTriggersRelease(installPlan)
+
+	installPlanIsEmpty := lo.NoneBy(installPlan.Operations(), func(op *plan.Operation) bool {
 		switch op.Category {
 		case plan.OperationCategoryResource, plan.OperationCategoryTrack:
 			return true
@@ -456,8 +458,11 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	}
 
 	if releaseIsUpToDate && installPlanIsUseless {
+		// Only changes of resources that don't trigger releases can be left, and they won't be applied.
+		changes = nil
+
 		log.Default.Info(ctx, color.Style{color.Bold, color.Green}.Render(fmt.Sprintf("No changes planned for release %q (namespace: %q)", releaseName, releaseNamespace)))
-	} else if installPlanIsUseless || len(changes) == 0 {
+	} else if installPlanIsEmpty || len(changes) == 0 {
 		log.Default.Info(ctx, color.Style{color.Bold, color.Yellow}.Render(releaseMustInstallMessage(releaseName, releaseNamespace, result.Reason)))
 	}
 
@@ -493,7 +498,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	if opts.ErrorIfChangesPlanned {
 		if releaseIsUpToDate && installPlanIsUseless {
 			return planArtifact, nil
-		} else if installPlanIsUseless || len(changes) == 0 {
+		} else if installPlanIsEmpty || len(changes) == 0 {
 			return planArtifact, ErrReleaseInstallPlanned
 		}
 

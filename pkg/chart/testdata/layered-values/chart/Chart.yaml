@@ -1,0 +1,12 @@
+apiVersion: v2
+name: layered
+version: 0.1.0
+dependencies:
+  - name: sub
+    version: 0.1.0
+    export-values:
+      - parent: exp
+        child: e
+  - name: sub2
+    version: 0.1.0
+    condition: sub2.enabled

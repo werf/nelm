@@ -403,14 +403,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	releaseIsUpToDate := result.UpToDate
 
-	installPlanIsUseless := lo.NoneBy(installPlan.Operations(), func(op *plan.Operation) bool {
-		switch op.Category {
-		case plan.OperationCategoryResource, plan.OperationCategoryTrack:
-			return true
-		default:
-			return false
-		}
-	})
+	installPlanIsUseless := !plan.PlanTriggersRelease(installPlan)
 
 	if releaseIsUpToDate && installPlanIsUseless {
 		if opts.RollbackReportPath != "" {

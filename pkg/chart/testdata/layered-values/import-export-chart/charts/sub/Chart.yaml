@@ -1,0 +1,12 @@
+apiVersion: v2
+name: sub
+version: 0.1.0
+dependencies:
+  - name: deep
+    version: 0.1.0
+    export-values:
+      - parent: image.repository
+        child: repo
+    import-values:
+      - child: out
+        parent: out.fromDeep
