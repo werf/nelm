@@ -26,7 +26,7 @@ func TestApplyPatches_CancelledContextStopsInfiniteProgram(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err = spec.ApplyPatches(ctx, []*spec.CompiledPatch{c}, meta, "prod", obj)
+	_, err = spec.ApplyPatches(ctx, []*spec.CompiledPatch{c}, meta, "prod", obj, spec.ApplyPatchesOptions{})
 	require.ErrorIs(t, err, context.Canceled)
 }
 

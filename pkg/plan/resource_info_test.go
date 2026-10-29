@@ -1,6 +1,7 @@
 package plan_test
 
 import (
+	"bytes"
 	"context"
 	"testing"
 	"time"
@@ -12,9 +13,11 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/werf/kubedog/pkg/dyntracker/statestore"
+	"github.com/werf/logboek"
 	"github.com/werf/nelm/v2/pkg/common"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/kube/fake"
+	"github.com/werf/nelm/v2/pkg/log"
 	"github.com/werf/nelm/v2/pkg/plan"
 	"github.com/werf/nelm/v2/pkg/resource"
 	"github.com/werf/nelm/v2/pkg/resource/spec"
@@ -669,6 +672,37 @@ func (s *ResourceInfoSuite) TestBuildResourceInfosDiffPatches() {
 		s.Require().NoError(err)
 		s.Require().Len(instResInfos, 1)
 		s.Require().Equal(plan.ResourceInstallTypeNone, instResInfos[0].MustInstall)
+	})
+
+	s.Run(`diff patch debug output names the diffed resource side`, func() {
+		_, err := s.clientFactory.KubeClient().Create(context.Background(), defaultResourceSpec(s.releaseName, s.releaseNamespace), kube.KubeClientCreateOptions{
+			DefaultNamespace: s.releaseNamespace,
+		})
+		s.Require().NoError(err)
+
+		var output bytes.Buffer
+
+		ctx := logboek.NewContext(context.Background(), logboek.NewLogger(&output, &output))
+		previousLevel := log.Default.Level(ctx)
+		log.Default.SetLevel(ctx, log.DebugLevel)
+		s.T().Cleanup(func() { log.Default.SetLevel(ctx, previousLevel) })
+
+		localRes := updatedInstallableResource(&s.Suite, s.releaseName, s.releaseNamespace)
+
+		diffPatches, err := spec.CompilePatches([]spec.Patch{{Patch: `debug("diff marker") | del(.data.key2)`}})
+		s.Require().NoError(err)
+
+		instResInfos, _, err := plan.BuildResourceInfos(ctx, common.DeployTypeInitial, s.releaseName, s.releaseNamespace, []*resource.InstallableResource{localRes}, nil, false, s.clientFactory, plan.BuildResourceInfosOptions{
+			NetworkParallelism: 10,
+			DiffPatches:        diffPatches,
+		})
+		s.Require().NoError(err)
+		s.Require().Len(instResInfos, 1)
+		s.Require().Equal(plan.ResourceInstallTypeNone, instResInfos[0].MustInstall)
+
+		s.Contains(output.String(), "Applying diff patch #1 to live version of resource \"ConfigMap/test-configmap\": diff marker\n")
+		s.Contains(output.String(), "Applying diff patch #1 to dry-apply version of resource \"ConfigMap/test-configmap\": diff marker\n")
+		s.NotContains(output.String(), `["DEBUG:",`)
 	})
 }
 

@@ -15,16 +15,22 @@ import (
 	"sigs.k8s.io/yaml"
 
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 const (
 	PatchTypeJQ PatchType = "jq"
 
+	jqDebugContextVariable = "$__nelm_debug_context"
+	jqDebugFunction        = "_nelm_debug"
 	// patchesFileName is the conventional name of a chart-shipped patches file.
 	patchesFileName = "patches.yaml"
 )
 
-var undefinedVariableRegexp = regexp.MustCompile(`variable not defined: (\$\w+)`)
+var (
+	undefinedVariableRegexp = regexp.MustCompile(`variable not defined: (\$\w+)`)
+	jqDebugDefinition       = lo.Must(gojq.Parse(`def debug: ` + jqDebugFunction + `(` + jqDebugContextVariable + `); .`)).FuncDefs[0]
+)
 
 // PatchType is the transform kind of patch.
 type PatchType string
@@ -141,7 +147,7 @@ func (c *CompiledPatch) Match(resMeta *ResourceMeta, namespace string) bool {
 // transform runs the compiled jq program over a deep copy of the object and
 // returns the single object output. Zero, multiple, or non-object output is an
 // error, and a jq panic is recovered into an error; the input is never mutated.
-func (c *CompiledPatch) transform(ctx context.Context, unstruct *unstructured.Unstructured) (result *unstructured.Unstructured, err error) {
+func (c *CompiledPatch) transform(ctx context.Context, unstruct *unstructured.Unstructured, debugPrefix string) (result *unstructured.Unstructured, err error) {
 	// Unstructured stores integers as int64, which gojq rejects; round-trip
 	// through JSON with UseNumber so numbers reach gojq as json.Number.
 	input, err := toJQValue(unstruct.Object)
@@ -156,7 +162,37 @@ func (c *CompiledPatch) transform(ctx context.Context, unstruct *unstructured.Un
 		}
 	}()
 
-	iter := c.code.RunWithContext(ctx, input, c.variables...)
+	debug := func(value interface{}) {
+		if !log.Default.AcceptLevel(ctx, log.DebugLevel) {
+			return
+		}
+
+		var message string
+
+		separator := " "
+		if text, ok := value.(string); ok {
+			message = text
+		} else {
+			data := lo.Must(gojq.Marshal(value))
+			switch value.(type) {
+			case map[string]interface{}, []interface{}:
+				message, separator = string(data), "\n"
+
+				var indented bytes.Buffer
+				if err := json.Indent(&indented, data, "", "  "); err != nil {
+					log.Default.Warn(ctx, "%s: cannot pretty-print debug value: %v; using compact JSON", debugPrefix, err)
+				} else {
+					message = indented.String()
+				}
+			default:
+				message = string(data)
+			}
+		}
+
+		log.Default.Debug(ctx, "%s:%s%s", debugPrefix, separator, message)
+	}
+	variables := append([]interface{}{debug}, c.variables...)
+	iter := c.code.RunWithContext(ctx, input, variables...)
 
 	first, ok := iter.Next()
 	if !ok {
@@ -183,10 +219,20 @@ func (c *CompiledPatch) transform(ctx context.Context, unstruct *unstructured.Un
 	return &unstructured.Unstructured{Object: obj}, nil
 }
 
-// ApplyPatches runs every rule whose matcher matches the resource, threading each
-// transform's output into the next, and returns a transformed deep copy; the
-// input is never mutated. namespace is the resource's true namespace.
-func ApplyPatches(ctx context.Context, patches []*CompiledPatch, resMeta *ResourceMeta, namespace string, unstruct *unstructured.Unstructured) (*unstructured.Unstructured, error) {
+type ApplyPatchesOptions struct {
+	// DiffSide labels the live or dry-apply resource in debug output; empty omits the qualifier.
+	DiffSide string
+}
+
+// ApplyPatches runs matching diff rules in order and returns a transformed deep
+// copy; the input is never mutated. namespace is the resource's true namespace.
+// Use BuildRenderPatchedResourceSpecs for render rules.
+func ApplyPatches(ctx context.Context, patches []*CompiledPatch, resMeta *ResourceMeta, namespace string, unstruct *unstructured.Unstructured, opts ApplyPatchesOptions) (*unstructured.Unstructured, error) {
+	subject := "resource"
+	if opts.DiffSide != "" {
+		subject = opts.DiffSide + " version of resource"
+	}
+
 	result := unstruct
 	transformed := false
 
@@ -195,7 +241,9 @@ func ApplyPatches(ctx context.Context, patches []*CompiledPatch, resMeta *Resour
 			continue
 		}
 
-		out, err := patch.transform(ctx, result)
+		debugPrefix := fmt.Sprintf("Applying diff patch #%d to %s %q", i+1, subject, resMeta.IDHuman())
+
+		out, err := patch.transform(ctx, result, debugPrefix)
 		if err != nil {
 			return nil, fmt.Errorf("apply patch #%d: %w", i+1, err)
 		}
@@ -356,12 +404,14 @@ func compilePatch(patch Patch, variableNames []string, variableValues []interfac
 		return nil, fmt.Errorf("parse jq program: %w", err)
 	}
 
-	var compileOpts []gojq.CompilerOption
-	if len(variableNames) > 0 {
-		compileOpts = append(compileOpts, gojq.WithVariables(variableNames))
-	}
+	// gojq callbacks do not receive RunWithContext's context. A lexical binding
+	// carries an execution-local callback without exposing ctx to jq programs.
+	query.FuncDefs = append([]*gojq.FuncDef{jqDebugDefinition}, query.FuncDefs...)
 
-	code, err := gojq.Compile(query, compileOpts...)
+	code, err := gojq.Compile(query,
+		gojq.WithVariables(append([]string{jqDebugContextVariable}, variableNames...)),
+		gojq.WithFunction(jqDebugFunction, 1, 1, jqDebug),
+	)
 	if err != nil {
 		if len(variableNames) == 0 {
 			if name, found := undefinedRenderContextVariable(err); found {
@@ -416,6 +466,14 @@ func undefinedRenderContextVariable(compileErr error) (string, bool) {
 	}
 
 	return match[1], true
+}
+
+func jqDebug(value interface{}, args []interface{}) interface{} {
+	if debug, ok := args[0].(func(interface{})); ok {
+		debug(value)
+	}
+
+	return value
 }
 
 func normalizeNumbers(value interface{}) (interface{}, error) {
