@@ -1,0 +1,9 @@
+g:
+  list:
+    - values-file-0
+    - values-file-1
+  out:
+    old: values-file
+a:
+  image:
+    repository: values-file

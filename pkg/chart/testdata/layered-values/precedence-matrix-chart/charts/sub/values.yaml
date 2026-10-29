@@ -1,0 +1,21 @@
+exp:
+  file:
+    cv: dst-cv
+  ps:
+    cv: dst-cv
+  pv:
+    cv: dst-cv
+  secretfile:
+    cv: dst-cv
+  service:
+    cv: dst-cv
+  set:
+    cv: dst-cv
+out:
+  cv:
+    file: src-cv
+    ps: src-cv
+    pv: src-cv
+    secretfile: src-cv
+    service: src-cv
+    set: src-cv

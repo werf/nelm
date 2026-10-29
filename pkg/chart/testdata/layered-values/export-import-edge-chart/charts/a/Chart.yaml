@@ -1,0 +1,6 @@
+apiVersion: v2
+name: a
+version: 0.1.0
+dependencies:
+  - name: d
+    version: 0.1.0

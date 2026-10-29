@@ -19,6 +19,7 @@ package common
 import (
 	"errors"
 	"io"
+	"maps"
 	"os"
 	"strings"
 
@@ -126,6 +127,27 @@ type ReleaseOptions struct {
 	Revision  int
 	IsUpgrade bool
 	IsInstall bool
+}
+
+// MergeMaps merges b into a like values files are merged: values from b win, maps are merged
+// recursively, and null values are kept so that they can delete keys of lower-priority values. The
+// maps are not modified, but nested maps of a and b are reused in the result.
+func MergeMaps(a, b map[string]any) map[string]any {
+	out := make(map[string]any, len(a))
+	maps.Copy(out, a)
+
+	for k, v := range b {
+		if v, ok := v.(map[string]any); ok {
+			if outV, ok := out[k].(map[string]any); ok {
+				out[k] = MergeMaps(outV, v)
+				continue
+			}
+		}
+
+		out[k] = v
+	}
+
+	return out
 }
 
 // istable is a special-purpose function to see if the present thing matches the definition of a YAML table.

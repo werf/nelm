@@ -27,11 +27,24 @@ import (
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/common/util"
 )
 
-// ProcessDependencies checks through this chart's dependencies, processing accordingly.
+// ProcessDependencies checks through this chart's dependencies, processing accordingly. The service
+// values and the custom secret values of the chart override v.
 func ProcessDependencies(c *chart.Chart, v common.Values) error {
+	extraVals, err := util.ServiceAndCustomSecretValues(c)
+	if err != nil {
+		return err
+	}
+
+	return ProcessDependenciesWithMergedValues(c, common.MergeMaps(v, extraVals))
+}
+
+// ProcessDependenciesWithMergedValues processes dependencies like ProcessDependencies, except that v
+// must already contain the service values and the custom secret values.
+func ProcessDependenciesWithMergedValues(c *chart.Chart, v common.Values) error {
 	if err := processDependencyEnabled(c, v, ""); err != nil {
 		return err
 	}
+
 	return processDependencyImportValues(c, true)
 }
 
@@ -253,13 +266,16 @@ func processImportValues(c *chart.Chart, merge bool) error {
 	if c.Metadata.Dependencies == nil {
 		return nil
 	}
-	// combine chart values and empty config to get Values
+	extraVals, err := util.ServiceAndCustomSecretValues(c)
+	if err != nil {
+		return err
+	}
+
 	var cvals common.Values
-	var err error
 	if merge {
-		cvals, err = util.MergeValues(c, nil)
+		cvals, err = util.MergeValues(c, extraVals)
 	} else {
-		cvals, err = util.CoalesceValues(c, nil)
+		cvals, err = util.CoalesceValues(c, extraVals)
 	}
 	if err != nil {
 		return err
