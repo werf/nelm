@@ -154,22 +154,27 @@ func TestExportUserValuesDependencyChartOutOfVersionRangeUsedByAlias(t *testing.
 
 func TestExportUserValuesGlobalValuesOfNestedChart(t *testing.T) {
 	tests := []struct {
-		name string
-		vals map[string]interface{}
-		want interface{}
+		name            string
+		parent          string
+		vals            map[string]interface{}
+		want            interface{}
+		wantNotExported bool
 	}{
 		{
-			name: "root chart global",
-			vals: map[string]interface{}{"global": map[string]interface{}{"img": map[string]interface{}{"repo": "root"}}},
-			want: map[string]interface{}{"repo": "root"},
+			name:   "root chart global",
+			parent: "global.img",
+			vals:   map[string]interface{}{"global": map[string]interface{}{"img": map[string]interface{}{"repo": "root"}}},
+			want:   map[string]interface{}{"repo": "root"},
 		},
 		{
-			name: "intermediate chart global",
-			vals: map[string]interface{}{"a": map[string]interface{}{"global": map[string]interface{}{"img": map[string]interface{}{"repo": "a"}}}},
-			want: map[string]interface{}{"repo": "a"},
+			name:   "intermediate chart global",
+			parent: "global.img",
+			vals:   map[string]interface{}{"a": map[string]interface{}{"global": map[string]interface{}{"img": map[string]interface{}{"repo": "a"}}}},
+			want:   map[string]interface{}{"repo": "a"},
 		},
 		{
-			name: "higher chart globals are merged over lower chart globals",
+			name:   "higher chart globals are merged over lower chart globals",
+			parent: "global.img",
 			vals: map[string]interface{}{
 				"global": map[string]interface{}{"img": map[string]interface{}{"repo": "root"}},
 				"a": map[string]interface{}{
@@ -180,27 +185,74 @@ func TestExportUserValuesGlobalValuesOfNestedChart(t *testing.T) {
 			want: map[string]interface{}{"repo": "root", "tag": "a", "pullPolicy": "b"},
 		},
 		{
-			name: "higher chart global scalar overrides lower chart global map",
+			name:   "higher chart global scalar overrides lower chart global map",
+			parent: "global.img",
+			vals: map[string]interface{}{
+				"global": map[string]interface{}{"img": map[string]interface{}{"repo": "root"}},
+				"a":      map[string]interface{}{"b": map[string]interface{}{"global": map[string]interface{}{"img": map[string]interface{}{"repo": map[string]interface{}{"name": "b"}}}}},
+			},
+			want: map[string]interface{}{"repo": "root"},
+		},
+		{
+			name:   "higher chart global null overrides lower chart global map",
+			parent: "global.img",
+			vals: map[string]interface{}{
+				"global": map[string]interface{}{"img": map[string]interface{}{"repo": nil}},
+				"a":      map[string]interface{}{"b": map[string]interface{}{"global": map[string]interface{}{"img": map[string]interface{}{"repo": map[string]interface{}{"name": "b"}}}}},
+			},
+			want: map[string]interface{}{"repo": nil},
+		},
+		{
+			name:   "higher chart global null shadows lower chart global value",
+			parent: "global.img.repo.name",
+			vals: map[string]interface{}{
+				"global": map[string]interface{}{"img": map[string]interface{}{"repo": nil}},
+				"a":      map[string]interface{}{"b": map[string]interface{}{"global": map[string]interface{}{"img": map[string]interface{}{"repo": map[string]interface{}{"name": "b"}}}}},
+			},
+			wantNotExported: true,
+		},
+		{
+			name:   "higher chart global scalar shadows lower chart global value",
+			parent: "global.img.repo.name",
+			vals: map[string]interface{}{
+				"global": map[string]interface{}{"img": map[string]interface{}{"repo": "root"}},
+				"a":      map[string]interface{}{"b": map[string]interface{}{"global": map[string]interface{}{"img": map[string]interface{}{"repo": map[string]interface{}{"name": "b"}}}}},
+			},
+			wantNotExported: true,
+		},
+		{
+			name:   "lower chart global map is kept on type conflict of top-level global key",
+			parent: "global.img",
 			vals: map[string]interface{}{
 				"global": map[string]interface{}{"img": "root"},
 				"a":      map[string]interface{}{"b": map[string]interface{}{"global": map[string]interface{}{"img": map[string]interface{}{"repo": "b"}}}},
 			},
-			want: "root",
+			want: map[string]interface{}{"repo": "b"},
 		},
 		{
-			name: "higher chart global null overrides lower chart global map",
+			name:   "lower chart global scalar is kept on type conflict of top-level global key",
+			parent: "global.img",
 			vals: map[string]interface{}{
-				"global": map[string]interface{}{"img": nil},
+				"global": map[string]interface{}{"img": map[string]interface{}{"repo": "root"}},
+				"a":      map[string]interface{}{"b": map[string]interface{}{"global": map[string]interface{}{"img": "b"}}},
+			},
+			want: "b",
+		},
+		{
+			name:   "non-map root chart global is ignored",
+			parent: "global.img",
+			vals: map[string]interface{}{
+				"global": "root",
 				"a":      map[string]interface{}{"b": map[string]interface{}{"global": map[string]interface{}{"img": map[string]interface{}{"repo": "b"}}}},
 			},
-			want: nil,
+			want: map[string]interface{}{"repo": "b"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			b := &chart.Chart{Metadata: &chart.Metadata{Name: "b", Version: "0.1.0", APIVersion: chart.APIVersionV2, Dependencies: []*chart.Dependency{
-				{Name: "leaf", Version: "0.1.0", ExportValues: []interface{}{map[string]interface{}{"parent": "global.img", "child": "image"}}},
+				{Name: "leaf", Version: "0.1.0", ExportValues: []interface{}{map[string]interface{}{"parent": tt.parent, "child": "image"}}},
 			}}}
 			b.AddDependency(&chart.Chart{Metadata: &chart.Metadata{Name: "leaf", Version: "0.1.0", APIVersion: chart.APIVersionV2}})
 
@@ -217,7 +269,7 @@ func TestExportUserValuesGlobalValuesOfNestedChart(t *testing.T) {
 			require.NoError(t, err)
 
 			value, found := userValueAtPath(got, "a.b.leaf.image")
-			require.True(t, found)
+			assert.Equal(t, !tt.wantNotExported, found)
 			assert.Equal(t, tt.want, value)
 			assert.Equal(t, valsBefore, tt.vals)
 		})
