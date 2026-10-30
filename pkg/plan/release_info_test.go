@@ -61,6 +61,7 @@ func TestBuildPlan_FailsStuckPendingRevisionOnlyInFinalStage(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, helmreleasecommon.StatusFailed.String(), cfg.Release.Accessor.Status())
 	assert.Equal(t, 2, cfg.Release.Accessor.Version())
+	assert.True(t, cfg.IgnoreNotFound, "the history limit may prune the stuck revision when the new one is created")
 
 	predMap, err := builtPlan.Graph.PredecessorMap()
 	require.NoError(t, err)
