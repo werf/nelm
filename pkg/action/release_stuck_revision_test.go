@@ -61,6 +61,31 @@ func TestReleaseInstall_FailureKeepsStuckPendingRevisions(t *testing.T) {
 	}, progressPhaseRevisionStatuses(t, ctx, api))
 }
 
+func TestReleaseInstall_StuckPendingRevisionPrunedByHistoryLimitDoesNotFailDeploy(t *testing.T) {
+	api := newProgressPhasesAPI(t)
+	addProgressPhaseRevisionWithStatus(t, api, 1, "", helmreleasestatus.StatusDeployed)
+	addProgressPhaseRevisionWithStatus(t, api, 2, "", helmreleasestatus.StatusPendingUpgrade)
+
+	ctx := newStuckRevisionContext(t)
+
+	opts := newStuckRevisionInstallOptions(t, api)
+	opts.Chart = newStuckRevisionChart(t, api)
+	opts.ReleaseHistoryLimit = 2
+
+	api.state.RWTransaction(func(s *progressPhasesAPIState) {
+		s.updateMissingConfigMapNotFound = true
+	})
+
+	result, err := ReleaseInstall(ctx, "progress-release", "progress-ns", opts)
+	require.NoError(t, err)
+	assert.Equal(t, helmreleasestatus.StatusDeployed, result.Release.Status)
+
+	assert.Equal(t, map[int]helmreleasestatus.Status{
+		1: helmreleasestatus.StatusSuperseded,
+		3: helmreleasestatus.StatusDeployed,
+	}, progressPhaseRevisionStatuses(t, ctx, api))
+}
+
 func TestReleaseInstall_SuccessMarksStuckPendingRevisionsFailed(t *testing.T) {
 	for _, usePlanArtifact := range []bool{false, true} {
 		t.Run("plan artifact "+strconv.FormatBool(usePlanArtifact), func(t *testing.T) {

@@ -201,7 +201,7 @@ func addFailureReleaseOperations(failedPlan, plan *Plan, releaseInfos []*Release
 			continue
 		}
 
-		if err := addFailedReleaseOps(plan, info, common.StageInit); err != nil {
+		if err := addFailedReleaseOps(plan, info); err != nil {
 			return fmt.Errorf("add failed release ops for release: %w", err)
 		}
 	}
@@ -229,7 +229,7 @@ func addReleaseOperations(plan *Plan, releaseInfos []*ReleaseInfo) error {
 				return fmt.Errorf("add supersede ops for release: %w", err)
 			}
 		case ReleaseTypeFail:
-			if err := addFailedReleaseOps(plan, info, common.StageFinal); err != nil {
+			if err := addFailStuckReleaseOps(plan, info); err != nil {
 				return fmt.Errorf("add failed ops for stuck release: %w", err)
 			}
 		case ReleaseTypeUninstall:
@@ -544,7 +544,29 @@ func addDeleteResourcesOps(plan *Plan, infos []*DeletableResourceInfo) error {
 	return nil
 }
 
-func addFailedReleaseOps(plan *Plan, info *ReleaseInfo, stage common.Stage) error {
+func addFailStuckReleaseOps(plan *Plan, info *ReleaseInfo) error {
+	failedRel, err := info.Release.Accessor.Copy()
+	if err != nil {
+		return fmt.Errorf("copy release: %w", err)
+	}
+
+	failedRel.SetStatus(helmreleasecommon.StatusFailed)
+
+	failOp := &Operation{
+		Type:     OperationTypeUpdateRelease,
+		Version:  OperationVersionUpdateRelease,
+		Category: OperationCategoryRelease,
+		Config: &OperationConfigUpdateRelease{
+			IgnoreNotFound: true,
+			Release:        &release.VersionedRelease{Accessor: failedRel},
+		},
+	}
+	lo.Must0(plan.AddOperationChain().AddOperation(failOp).Stage(common.StageFinal).Do())
+
+	return nil
+}
+
+func addFailedReleaseOps(plan *Plan, info *ReleaseInfo) error {
 	failedRel, err := info.Release.Accessor.Copy()
 	if err != nil {
 		return fmt.Errorf("copy release: %w", err)
@@ -560,7 +582,7 @@ func addFailedReleaseOps(plan *Plan, info *ReleaseInfo, stage common.Stage) erro
 			Release: &release.VersionedRelease{Accessor: failedRel},
 		},
 	}
-	lo.Must0(plan.AddOperationChain().AddOperation(failedOp).Stage(stage).Do())
+	lo.Must0(plan.AddOperationChain().AddOperation(failedOp).Stage(common.StageInit).Do())
 
 	return nil
 }

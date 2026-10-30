@@ -174,7 +174,10 @@ func (c *OperationConfigCreateRelease) IDHuman() string {
 }
 
 type OperationConfigUpdateRelease struct {
-	Release *release.VersionedRelease `json:"release"`
+	// IgnoreNotFound makes a revision deleted meanwhile, e.g. pruned by the history limit when the new
+	// revision was created, not an error.
+	IgnoreNotFound bool                      `json:"ignoreNotFound,omitempty"`
+	Release        *release.VersionedRelease `json:"release"`
 }
 
 func (c *OperationConfigUpdateRelease) ID() string {

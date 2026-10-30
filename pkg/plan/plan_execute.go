@@ -2,6 +2,7 @@ package plan
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -361,6 +362,10 @@ func execOpUpdateRelease(ctx context.Context, op *Operation, history release.His
 	opConfig := op.Config.(*OperationConfigUpdateRelease)
 
 	if err := history.UpdateRelease(ctx, opConfig.Release.Accessor); err != nil {
+		if opConfig.IgnoreNotFound && errors.Is(err, release.ErrReleaseNotFound) {
+			return nil
+		}
+
 		return fmt.Errorf("update release: %w", err)
 	}
 

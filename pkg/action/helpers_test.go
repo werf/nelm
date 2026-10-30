@@ -144,6 +144,9 @@ type progressPhasesAPIState struct {
 	requests              []string
 	retainNamespace       bool
 	trackNamespaceStatus  int
+	// updateMissingConfigMapNotFound makes PUT of a missing ConfigMap fail as in a real cluster
+	// instead of creating it.
+	updateMissingConfigMapNotFound bool
 }
 
 type progressPhasesAPI struct {
@@ -263,6 +266,12 @@ func newProgressPhasesAPI(t *testing.T) *progressPhasesAPI {
 						t.Errorf("decode ConfigMap body: %s", err)
 
 						status = http.StatusBadRequest
+
+						break
+					}
+
+					if _, found := s.configMaps[cm.Name]; s.updateMissingConfigMapNotFound && r.Method == http.MethodPut && !found {
+						status = http.StatusNotFound
 
 						break
 					}
