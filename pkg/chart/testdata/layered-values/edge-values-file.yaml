@@ -7,3 +7,4 @@ g:
 a:
   image:
     repository: values-file
+  other: values-file
