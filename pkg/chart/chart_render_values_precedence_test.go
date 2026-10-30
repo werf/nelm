@@ -263,6 +263,14 @@ func TestRenderChart_ExportAndImportValuesNotFoundWarnings(t *testing.T) {
 				`Skipping import-values of "disabled.disabledImport" from dependency "disabled" to chart "parent": no map is set at the path in any values`,
 			},
 		},
+		{
+			name: "paths set in nested chart values overridden by parent chart values",
+			opts: layeredValuesRenderOptions{ChartDir: "not-found-paths-nested-chart"},
+		},
+		{
+			name: "dependency not in Chart.yaml with values invalid without set",
+			opts: layeredValuesRenderOptions{ChartDir: "scalar-sub-no-dependencies-chart", Set: []string{"sub.enabled=true"}},
+		},
 	}
 
 	for _, tt := range tests {
@@ -281,7 +289,10 @@ func TestRenderChart_ExportAndImportValuesNotFoundWarnings(t *testing.T) {
 			var slogWarnings bytes.Buffer
 			slog.SetDefault(slog.New(slog.NewTextHandler(&slogWarnings, &slog.HandlerOptions{Level: slog.LevelWarn})))
 
-			tt.opts.ChartDir = "not-found-paths-chart"
+			if tt.opts.ChartDir == "" {
+				tt.opts.ChartDir = "not-found-paths-chart"
+			}
+
 			renderLayeredValuesChart(t, tt.opts)
 
 			skipWarnings := lo.Filter(logger.warnings, func(warning string, _ int) bool {

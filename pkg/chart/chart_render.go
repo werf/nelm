@@ -487,9 +487,10 @@ func loadServiceFreeChart(ctx context.Context, chartPath string, userVals userVa
 
 // processDependencies processes the chart dependencies and returns the values to render the chart
 // with, the values to store in the release and the warnings about the export-values and
-// import-values skipped because of the user values or because their paths are set in no values. The values to store in the release are the user
-// values with the values exported from them, but without service values, the secret-values.yaml of
-// the chart and imported values. The user values are not modified.
+// import-values skipped because of the user values or because their paths are set in no values. The
+// values to store in the release are the user values with the values exported from them, but
+// without service values, the secret-values.yaml of the chart and imported values. The user values
+// are not modified.
 func processDependencies(chrt helmchart.Charter, userVals userValues) (map[string]interface{}, map[string]interface{}, []string, error) {
 	switch c := chrt.(type) {
 	case *v2chart.Chart:
