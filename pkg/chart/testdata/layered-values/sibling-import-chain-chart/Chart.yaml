@@ -1,0 +1,14 @@
+apiVersion: v2
+name: parent
+version: 0.1.0
+dependencies:
+  - name: a
+    version: 0.1.0
+    import-values:
+      - child: out
+        parent: b.tbl
+  - name: b
+    version: 0.1.0
+    import-values:
+      - child: tbl
+        parent: z
