@@ -903,12 +903,17 @@ func sortUserValuesExports(exports []userValuesExport) []userValuesExport {
 }
 
 func exportWaitsForOtherExports(exports []userValuesExport, done []bool, i int) bool {
+	parentPaths := []string{exports[i].ParentPath}
+	for _, globalPath := range exports[i].GlobalPaths {
+		parentPaths = append(parentPaths, globalPath+strings.TrimPrefix(exports[i].ParentPath, common.GlobalKey))
+	}
+
 	for j := range exports {
 		if done[j] || j == i {
 			continue
 		}
 
-		writesParentPath := lo.ContainsBy(append([]string{exports[i].ParentPath}, exports[i].GlobalPaths...), func(parentPath string) bool {
+		writesParentPath := lo.ContainsBy(parentPaths, func(parentPath string) bool {
 			return pathsOverlap(exports[j].ChildPath, parentPath)
 		})
 
@@ -1060,7 +1065,13 @@ func userValuesExportParentValue(vals map[string]interface{}, export userValuesE
 	var globals map[string]interface{}
 	for _, path := range export.GlobalPaths {
 		value, found := userValueAtPath(vals, path)
-		if !found || !istable(value) {
+		if !found {
+			continue
+		}
+
+		// coalesceGlobals propagates no globals into or out of a non-map global.
+		if !istable(value) {
+			globals = nil
 			continue
 		}
 
