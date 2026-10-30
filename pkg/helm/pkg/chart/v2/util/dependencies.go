@@ -35,6 +35,9 @@ import (
 
 // ProcessDependencies checks through this chart's dependencies, processing accordingly. The service
 // values and the custom secret values of the chart override v.
+//
+// Deprecated: the resulting values differ from the values computed by
+// [github.com/werf/nelm/v2/pkg/chart.RenderChart], which should be used instead.
 func ProcessDependencies(c *chart.Chart, v *map[string]interface{}) error {
 	if v == nil {
 		return fmt.Errorf("process dependencies: values map pointer is nil")

@@ -43,6 +43,10 @@ import (
 )
 
 // Templates lints the templates in the Linter.
+//
+// Deprecated: the values passed to the templates are computed differently from
+// [github.com/werf/nelm/v2/pkg/chart.RenderChart]. Use
+// [github.com/werf/nelm/v2/pkg/action.ChartLint] instead.
 func Templates(linter *support.Linter, namespace string, values map[string]any, options ...TemplateLinterOption) {
 	templateLinter := newTemplateLinter(linter, namespace, values, options...)
 	templateLinter.Lint()
@@ -118,8 +122,6 @@ func (t *templateLinter) Lint() {
 		caps.KubeVersion = *t.kubeVersion
 	}
 
-	// lint ignores import-values
-	// See https://github.com/helm/helm/issues/9658
 	if err := chartutil.ProcessDependencies(chart, &t.values); err != nil {
 		return
 	}
