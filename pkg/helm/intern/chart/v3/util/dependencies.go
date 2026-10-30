@@ -32,20 +32,28 @@ import (
 func ProcessDependencies(c *chart.Chart, v common.Values) error {
 	extraVals, err := util.ServiceAndCustomSecretValues(c)
 	if err != nil {
-		return err
+		return fmt.Errorf("get service and custom secret values: %w", err)
 	}
 
-	return ProcessDependenciesWithMergedValues(c, common.MergeMaps(v, extraVals))
+	if err := ProcessDependenciesWithMergedValues(c, common.MergeMaps(v, extraVals)); err != nil {
+		return fmt.Errorf("process dependencies with merged values: %w", err)
+	}
+
+	return nil
 }
 
 // ProcessDependenciesWithMergedValues processes dependencies like ProcessDependencies, except that v
 // must already contain the service values and the custom secret values.
 func ProcessDependenciesWithMergedValues(c *chart.Chart, v common.Values) error {
 	if err := processDependencyEnabled(c, v, ""); err != nil {
-		return err
+		return fmt.Errorf("process dependency enabled: %w", err)
 	}
 
-	return processDependencyImportValues(c, true)
+	if err := processDependencyImportValues(c, true); err != nil {
+		return fmt.Errorf("process dependency import values: %w", err)
+	}
+
+	return nil
 }
 
 // processDependencyConditions disables charts based on condition path value in values
@@ -195,7 +203,7 @@ Loop:
 	}
 	cvals, err := util.CoalesceValues(c, v)
 	if err != nil {
-		return err
+		return fmt.Errorf("coalesce values: %w", err)
 	}
 	// flag dependencies as enabled/disabled
 	processDependencyTags(c.Metadata.Dependencies, cvals)
@@ -229,7 +237,7 @@ Loop:
 	for _, t := range cd {
 		subpath := path + t.Metadata.Name + "."
 		if err := processDependencyEnabled(t, cvals, subpath); err != nil {
-			return err
+			return fmt.Errorf("process dependency enabled for subchart %q: %w", t.Name(), err)
 		}
 	}
 	// set the correct dependencies in metadata
@@ -268,7 +276,7 @@ func processImportValues(c *chart.Chart, merge bool) error {
 	}
 	extraVals, err := util.ServiceAndCustomSecretValues(c)
 	if err != nil {
-		return err
+		return fmt.Errorf("get service and custom secret values: %w", err)
 	}
 
 	var cvals common.Values
@@ -278,7 +286,7 @@ func processImportValues(c *chart.Chart, merge bool) error {
 		cvals, err = util.CoalesceValues(c, extraVals)
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("get chart values: %w", err)
 	}
 	b := make(map[string]any)
 	// import values from each dependency if specified in import-values
@@ -392,7 +400,7 @@ func processDependencyImportValues(c *chart.Chart, merge bool) error {
 	for _, d := range c.Dependencies() {
 		// recurse
 		if err := processDependencyImportValues(d, merge); err != nil {
-			return err
+			return fmt.Errorf("process dependency import values for subchart %q: %w", d.Name(), err)
 		}
 	}
 	return processImportValues(c, merge)

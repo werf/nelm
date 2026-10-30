@@ -589,3 +589,25 @@ func TestProcessDependencies_ServiceValuesEnableDependency(t *testing.T) {
 	require.NoError(t, ProcessDependencies(c, &map[string]interface{}{}))
 	assert.Len(t, c.Dependencies(), 1, "dependency must be enabled by service values")
 }
+
+func TestProcessDependenciesWithMergedValues_TypeMismatchNamesSubchartPath(t *testing.T) {
+	leaf := &chart.Chart{Metadata: &chart.Metadata{APIVersion: chart.APIVersionV2, Name: "leaf", Version: "0.1.0"}}
+	mid := &chart.Chart{Metadata: &chart.Metadata{
+		APIVersion:   chart.APIVersionV2,
+		Name:         "mid",
+		Version:      "0.1.0",
+		Dependencies: []*chart.Dependency{{Name: "leaf", Version: "0.1.0"}},
+	}}
+	mid.AddDependency(leaf)
+	c := &chart.Chart{Metadata: &chart.Metadata{
+		APIVersion:   chart.APIVersionV2,
+		Name:         "parent",
+		Version:      "0.1.0",
+		Dependencies: []*chart.Dependency{{Name: "mid", Version: "0.1.0"}},
+	}}
+	c.AddDependency(mid)
+
+	err := ProcessDependenciesWithMergedValues(c, map[string]any{"mid": map[string]any{"leaf": "some-string"}})
+
+	assert.EqualError(t, err, "process dependency enabled: coalesce values: type mismatch on parent.mid.leaf: expected a table, got string (some-string)")
+}

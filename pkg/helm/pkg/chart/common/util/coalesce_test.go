@@ -727,6 +727,20 @@ func TestCoalesceValuesWarnings(t *testing.T) {
 
 }
 
+func TestCoalesceValuesTypeMismatchNamesSubchartPath(t *testing.T) {
+	c := withDeps(&chart.Chart{Metadata: &chart.Metadata{Name: "p"}},
+		withDeps(&chart.Chart{Metadata: &chart.Metadata{Name: "mid"}},
+			&chart.Chart{Metadata: &chart.Metadata{Name: "leaf"}},
+		),
+	)
+
+	_, err := CoalesceValues(c, map[string]any{
+		"mid": map[string]any{"leaf": "some-string"},
+	})
+
+	assert.EqualError(t, err, "type mismatch on p.mid.leaf: expected a table, got string (some-string)")
+}
+
 func TestConcatPrefix(t *testing.T) {
 	assert.Equal(t, "b", concatPrefix("", "b"))
 	assert.Equal(t, "a.b", concatPrefix("a", "b"))
