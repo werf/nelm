@@ -2,13 +2,16 @@ package chart
 
 import (
 	"context"
+	"strings"
 	"testing"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/werf/nelm/v2/pkg/helm/pkg/cli/values"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/getter"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 func TestRenderChart_ExportValuesFromValuesLayers(t *testing.T) {
@@ -272,6 +275,16 @@ func TestRenderChart_ImportValuesFromValuesLayers(t *testing.T) {
 			},
 		},
 		{
+			name: "set-json replaces imported map from secret values file",
+			opts: layeredValuesRenderOptions{
+				SecretValuesFiles: []string{layeredImportExportSecretValuesFile},
+				SetJSON:           []string{`imported={"z":"set"}`},
+			},
+			want: map[string]interface{}{
+				"imported": map[string]interface{}{"k": "sub-values-yaml", "z": "set", "fromDeep": map[string]interface{}{"k": "deep-values-yaml"}},
+			},
+		},
+		{
 			name: "service values",
 			opts: layeredValuesRenderOptions{ServiceValues: map[string]interface{}{"sub": map[string]interface{}{"out": map[string]interface{}{"k": "service"}}}},
 			want: map[string]interface{}{
@@ -300,15 +313,17 @@ func TestRenderChart_ImportValuesFromValuesLayers(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.opts.ChartDir = "import-export-chart"
-			vals := renderedChartValues(t, renderLayeredValuesChart(t, tt.opts))
+	for _, chartDir := range []string{"import-export-chart", "import-export-chart-v3"} {
+		for _, tt := range tests {
+			t.Run(chartDir+"/"+tt.name, func(t *testing.T) {
+				tt.opts.ChartDir = chartDir
+				vals := renderedChartValues(t, renderLayeredValuesChart(t, tt.opts))
 
-			for path, want := range tt.want {
-				assert.Equal(t, want, valueAtPath(t, vals, path), path)
-			}
-		})
+				for path, want := range tt.want {
+					assert.Equal(t, want, valueAtPath(t, vals, path), path)
+				}
+			})
+		}
 	}
 }
 
@@ -430,6 +445,33 @@ func TestRenderChart_SetReplacesOrMergesMapsFromFiles(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRenderChart_V3ChartIgnoresExportValuesWithWarning(t *testing.T) {
+	logger := &warningsLogger{Logger: log.Default}
+	log.Default = logger
+	t.Cleanup(func() { log.Default = logger.Logger })
+
+	result := renderLayeredValuesChart(t, layeredValuesRenderOptions{
+		ChartDir: "import-export-chart-v3",
+		Set:      []string{"g.repo=set", "sub.out.k=set"},
+	})
+	vals := renderedChartValues(t, result)
+
+	assert.Equal(t, "sub-values-yaml", valueAtPath(t, vals, "sub.image.repository"))
+	assert.Equal(t, "set", valueAtPath(t, vals, "imported.k"))
+	assert.Equal(t, map[string]interface{}{
+		"g":   map[string]interface{}{"repo": "set"},
+		"sub": map[string]interface{}{"out": map[string]interface{}{"k": "set"}},
+	}, result.ReleaseConfig, "release config must have neither exported nor imported values")
+	assert.ElementsMatch(t, []string{
+		`Ignoring export-values of dependency "sub" of chart "parent": export-values are not supported in charts with apiVersion v3`,
+		`Ignoring export-values of dependency "aliased" of chart "parent": export-values are not supported in charts with apiVersion v3`,
+		`Ignoring export-values of dependency "toggled" of chart "parent": export-values are not supported in charts with apiVersion v3`,
+		`Ignoring export-values of dependency "deep" of chart "parent/charts/sub": export-values are not supported in charts with apiVersion v3`,
+	}, lo.Filter(logger.warnings, func(warning string, _ int) bool {
+		return strings.HasPrefix(warning, "Ignoring")
+	}))
 }
 
 func TestSetValuesReplacedPaths(t *testing.T) {
