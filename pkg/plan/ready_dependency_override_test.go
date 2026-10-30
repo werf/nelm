@@ -158,6 +158,30 @@ func TestReadyDependencyDoesNotForceSkipCreateAbsentTarget(t *testing.T) {
 		"fail mode must remain the resource's own value when not forced")
 }
 
+func TestReadyDependencyDoesNotForceTrackingWhenDependentUnchanged(t *testing.T) {
+	targetSpec := readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil)
+	target := readyDepInstallableResource(targetSpec, statestore.WaitUntilResourceReady, statestore.IgnoreAndContinueDeployProcess)
+
+	dependentSpec := readyDepConfigMapSpec("dependent", readyDepReleaseNamespace, nil)
+	dependent := readyDependentResource("target", "")
+
+	infos := buildReadyDepInfos(t, target, dependent, func(cf *fake.ClientFactory) {
+		readyDepCreateInCluster(t, cf, targetSpec)
+		readyDepCreateInCluster(t, cf, dependentSpec)
+	})
+
+	targetInfo := findInfo(t, infos, "target")
+	require.Equal(t, plan.ResourceInstallTypeNone, targetInfo.MustInstall, "target must be an unchanged no-op")
+	require.Equal(t, plan.ResourceInstallTypeNone, findInfo(t, infos, "dependent").MustInstall, "dependent must be an unchanged no-op")
+	require.False(t, targetInfo.MustTrackReadiness, "unchanged target of an unchanged dependent must not be tracked")
+	require.Equal(t, statestore.IgnoreAndContinueDeployProcess, targetInfo.FailMode,
+		"fail mode must remain the resource's own value when not forced")
+
+	p, err := plan.BuildPlan(context.Background(), infos, nil, nil, readyDepReleaseNamespace, plan.BuildPlanOptions{})
+	require.NoError(t, err)
+	require.False(t, plan.PlanTriggersRelease(p), "a no-op deploy must not trigger a new release revision")
+}
+
 func TestReadyDependencyDoesNotForceUnmatchedTarget(t *testing.T) {
 	target := readyDepInstallableResource(
 		readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil),
@@ -207,22 +231,73 @@ func TestReadyDependencyForcesTrackingOnLegacyPatchedTarget(t *testing.T) {
 	require.Equal(t, statestore.FailWholeDeployProcessImmediately, targetInfo.FailMode)
 }
 
-func TestReadyDependencyForcesTrackingOnUnchangedTarget(t *testing.T) {
+func TestReadyDependencyForcesTrackingOnUnchangedTargetAfterFailedRelease(t *testing.T) {
+	targetSpec := readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil)
+	target := readyDepInstallableResource(targetSpec, statestore.NonBlocking, statestore.IgnoreAndContinueDeployProcess)
+
+	dependentSpec := readyDepConfigMapSpec("dependent", readyDepReleaseNamespace, nil)
+	dependent := readyDependentResource("target", "")
+
+	cf, err := fake.NewClientFactory(context.Background())
+	require.NoError(t, err)
+
+	readyDepCreateInCluster(t, cf, targetSpec)
+	readyDepCreateInCluster(t, cf, dependentSpec)
+
+	infos, _, err := plan.BuildResourceInfos(
+		context.Background(),
+		common.DeployTypeUpgrade,
+		readyDepReleaseName,
+		readyDepReleaseNamespace,
+		[]*resource.InstallableResource{target, dependent},
+		nil,
+		true,
+		cf,
+		plan.BuildResourceInfosOptions{NetworkParallelism: 10},
+	)
+	require.NoError(t, err)
+
+	dependentInfo := findInfo(t, infos, "dependent")
+	require.Equal(t, plan.ResourceInstallTypeNone, dependentInfo.MustInstall, "dependent must be an unchanged no-op")
+	require.True(t, dependentInfo.MustTrackReadiness, "existing dependent must be tracked after a failed release")
+
+	targetInfo := findInfo(t, infos, "target")
+	require.Equal(t, plan.ResourceInstallTypeNone, targetInfo.MustInstall, "target must be an unchanged no-op")
+	require.True(t, targetInfo.MustTrackReadiness, "target of a tracked dependent must be tracked")
+	require.Equal(t, statestore.FailWholeDeployProcessImmediately, targetInfo.FailMode)
+}
+
+func TestReadyDependencyForcesTrackingOnUnchangedTargetOfChangedDependent(t *testing.T) {
 	targetSpec := readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil)
 	target := readyDepInstallableResource(targetSpec, statestore.NonBlocking, statestore.IgnoreAndContinueDeployProcess)
 	dependent := readyDependentResource("target", "")
 
+	staleDependentSpec := readyDepConfigMapSpec("dependent", readyDepReleaseNamespace, nil)
+	require.NoError(t, unstructured.SetNestedField(staleDependentSpec.Unstruct.Object, "stale", "data", "key"))
+
 	infos := buildReadyDepInfos(t, target, dependent, func(cf *fake.ClientFactory) {
-		_, err := cf.KubeClient().Create(context.Background(), targetSpec, kube.KubeClientCreateOptions{
-			DefaultNamespace: readyDepReleaseNamespace,
-		})
-		require.NoError(t, err)
+		readyDepCreateInCluster(t, cf, targetSpec)
+		readyDepCreateInCluster(t, cf, staleDependentSpec)
 	})
 
 	targetInfo := findInfo(t, infos, "target")
 	require.Equal(t, plan.ResourceInstallTypeNone, targetInfo.MustInstall, "target must be an unchanged no-op")
-	require.True(t, targetInfo.MustTrackReadiness, "unchanged target still forced to track when selected by state=ready dep")
+	require.Equal(t, plan.ResourceInstallTypeUpdate, findInfo(t, infos, "dependent").MustInstall, "dependent must be updated")
+	require.True(t, targetInfo.MustTrackReadiness, "unchanged target must be tracked when a changed dependent waits for its readiness")
 	require.Equal(t, statestore.FailWholeDeployProcessImmediately, targetInfo.FailMode)
+
+	p, err := plan.BuildPlan(context.Background(), infos, nil, nil, readyDepReleaseNamespace, plan.BuildPlanOptions{})
+	require.NoError(t, err)
+
+	trackOp := findTrackReadinessOp(t, p, "target")
+	updateDependentOp, found := lo.Find(p.Operations(), func(op *plan.Operation) bool {
+		cfg, ok := op.Config.(*plan.OperationConfigUpdate)
+
+		return ok && cfg.ResourceSpec.Name == "dependent"
+	})
+	require.True(t, found, "update op for dependent not found")
+	require.True(t, planHasEdge(t, p, trackOp.ID(), updateDependentOp.ID()),
+		"target track-readiness must precede dependent update (ready-dependency edge)")
 }
 
 func TestReadyDependencyProducesEdgeAndRetainsTrackingWithNoFinalTracking(t *testing.T) {
@@ -413,6 +488,15 @@ func readyDepConfigMapSpec(name, namespace string, annotations map[string]string
 	resSpec.Unstruct.SetNamespace(namespace)
 
 	return resSpec
+}
+
+func readyDepCreateInCluster(t *testing.T, cf *fake.ClientFactory, resSpec *spec.ResourceSpec) {
+	t.Helper()
+
+	_, err := cf.KubeClient().Create(context.Background(), resSpec, kube.KubeClientCreateOptions{
+		DefaultNamespace: readyDepReleaseNamespace,
+	})
+	require.NoError(t, err)
 }
 
 func readyDepInstallableResource(resSpec *spec.ResourceSpec, trackTermination statestore.TrackTerminationMode, failMode statestore.FailMode) *resource.InstallableResource {
