@@ -2,6 +2,7 @@ package release
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"hash"
 	"hash/fnv"
@@ -74,7 +75,17 @@ func IsReleaseUpToDate(oldRel, newRel helmrel.Accessor) (IsReleaseUpToDateResult
 		return IsReleaseUpToDateResult{Reason: ReleaseOutdatedReasonNotesChanged}, nil
 	}
 
-	if !cmp.Equal(oldRel.Config(), newRel.Config(), cmpOpts) {
+	oldConfig, err := jsonRoundTripConfig(oldRel.Config())
+	if err != nil {
+		return IsReleaseUpToDateResult{}, fmt.Errorf("normalize old release values: %w", err)
+	}
+
+	newConfig, err := jsonRoundTripConfig(newRel.Config())
+	if err != nil {
+		return IsReleaseUpToDateResult{}, fmt.Errorf("normalize new release values: %w", err)
+	}
+
+	if !cmp.Equal(oldConfig, newConfig, cmpOpts) {
 		return IsReleaseUpToDateResult{Reason: ReleaseOutdatedReasonValuesChanged}, nil
 	}
 
@@ -352,6 +363,23 @@ func cleanUnstruct(unstruct *unstructured.Unstructured) *unstructured.Unstructur
 		CleanRuntimeData:        true,
 		CleanWerfIoRuntimeAnnos: true,
 	})
+}
+
+// Values of a stored release are decoded from JSON (numbers become float64), while fresh values keep
+// the types they were parsed with (e.g. int64 from --set). Round-trip both through JSON so that only
+// changes that survive storage are detected.
+func jsonRoundTripConfig(config map[string]any) (map[string]any, error) {
+	data, err := json.Marshal(config)
+	if err != nil {
+		return nil, fmt.Errorf("marshal values: %w", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("unmarshal values: %w", err)
+	}
+
+	return result, nil
 }
 
 func resourceSpecToManifest(name, namespace string, revision int, res *spec.ResourceSpec) (string, error) {
