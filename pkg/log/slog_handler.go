@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-
-	"github.com/werf/kubedog/pkg/dyntracker/util"
 )
 
 var _ slog.Handler = (*SlogHandler)(nil)
@@ -15,28 +13,14 @@ var _ slog.Handler = (*SlogHandler)(nil)
 // SlogHandler writes log/slog records through Default, so they respect its level and output streams.
 // slog levels map to Debug, Info, Warn and Error of Default.
 type SlogHandler struct {
-	buf  *util.Concurrent[*bytes.Buffer]
-	ctx  context.Context
-	text slog.Handler
+	ctx context.Context
+	// Attributes and groups are replayed on a fresh text handler for every record, so that no state
+	// is shared between records and a LogValuer may log itself.
+	wrappers []func(slog.Handler) slog.Handler
 }
 
 func NewSlogHandler(ctx context.Context) *SlogHandler {
-	buf := &bytes.Buffer{}
-
-	return &SlogHandler{
-		buf: util.NewConcurrent(buf),
-		ctx: ctx,
-		text: slog.NewTextHandler(buf, &slog.HandlerOptions{
-			Level: slog.LevelDebug,
-			ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
-				if len(groups) == 0 && (attr.Key == slog.TimeKey || attr.Key == slog.LevelKey || attr.Key == slog.MessageKey) {
-					return slog.Attr{}
-				}
-
-				return attr
-			},
-		}),
-	}
+	return &SlogHandler{ctx: ctx}
 }
 
 func (h *SlogHandler) Enabled(_ context.Context, level slog.Level) bool {
@@ -44,23 +28,27 @@ func (h *SlogHandler) Enabled(_ context.Context, level slog.Level) bool {
 }
 
 func (h *SlogHandler) Handle(ctx context.Context, record slog.Record) error {
-	var attrs string
-	if err := h.buf.RWTransactionErr(func(buf *bytes.Buffer) error {
-		buf.Reset()
+	var buf bytes.Buffer
 
-		if err := h.text.Handle(ctx, record); err != nil {
-			return fmt.Errorf("format slog record attributes: %w", err)
-		}
+	var text slog.Handler = slog.NewTextHandler(&buf, &slog.HandlerOptions{
+		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
+			if len(groups) == 0 && (attr.Key == slog.TimeKey || attr.Key == slog.LevelKey || attr.Key == slog.MessageKey) {
+				return slog.Attr{}
+			}
 
-		attrs = strings.TrimSpace(buf.String())
+			return attr
+		},
+	})
+	for _, wrap := range h.wrappers {
+		text = wrap(text)
+	}
 
-		return nil
-	}); err != nil {
-		return err
+	if err := text.Handle(ctx, record); err != nil {
+		return fmt.Errorf("format slog record attributes: %w", err)
 	}
 
 	msg := record.Message
-	if attrs != "" {
+	if attrs := strings.TrimSpace(buf.String()); attrs != "" {
 		msg += " " + attrs
 	}
 
@@ -79,18 +67,21 @@ func (h *SlogHandler) Handle(ctx context.Context, record slog.Record) error {
 }
 
 func (h *SlogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &SlogHandler{
-		buf:  h.buf,
-		ctx:  h.ctx,
-		text: h.text.WithAttrs(attrs),
-	}
+	return h.withWrapper(func(handler slog.Handler) slog.Handler {
+		return handler.WithAttrs(attrs)
+	})
 }
 
 func (h *SlogHandler) WithGroup(name string) slog.Handler {
+	return h.withWrapper(func(handler slog.Handler) slog.Handler {
+		return handler.WithGroup(name)
+	})
+}
+
+func (h *SlogHandler) withWrapper(wrap func(slog.Handler) slog.Handler) *SlogHandler {
 	return &SlogHandler{
-		buf:  h.buf,
-		ctx:  h.ctx,
-		text: h.text.WithGroup(name),
+		ctx:      h.ctx,
+		wrappers: append(append([]func(slog.Handler) slog.Handler{}, h.wrappers...), wrap),
 	}
 }
 

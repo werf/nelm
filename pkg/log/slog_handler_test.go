@@ -5,11 +5,22 @@ import (
 	"context"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
 	"github.com/werf/logboek"
 )
+
+type selfLoggingValue struct {
+	logger *slog.Logger
+}
+
+func (v selfLoggingValue) LogValue() slog.Value {
+	v.logger.Info("nested message")
+
+	return slog.StringValue("value")
+}
 
 func TestSlogHandler(t *testing.T) {
 	type logOutput struct {
@@ -92,4 +103,32 @@ func TestSlogHandler(t *testing.T) {
 			assert.Equal(t, tt.expect, got)
 		})
 	}
+}
+
+func TestSlogHandlerAllowsLoggingFromLogValuer(t *testing.T) {
+	prevDefault := Default
+	t.Cleanup(func() { Default = prevDefault })
+
+	Default = NewLogboekLogger()
+
+	var outBuf, errBuf bytes.Buffer
+
+	ctx := logboek.NewContext(context.Background(), logboek.NewLogger(&outBuf, &errBuf))
+	Default.SetLevel(ctx, InfoLevel)
+
+	logger := slog.New(NewSlogHandler(ctx)).With("chart", "parent")
+
+	done := make(chan struct{})
+	go func() {
+		logger.Info("outer message", "key", selfLoggingValue{logger: logger})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("logging from a LogValuer deadlocked")
+	}
+
+	assert.Equal(t, "nested message chart=parent\nouter message chart=parent key=value\n", outBuf.String())
 }
