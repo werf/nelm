@@ -268,6 +268,16 @@ func TestRenderChart_ExportAndImportValuesNotFoundWarnings(t *testing.T) {
 			opts: layeredValuesRenderOptions{ChartDir: "not-found-paths-nested-chart"},
 		},
 		{
+			name: "paths read before exports overwrite them",
+			opts: layeredValuesRenderOptions{ChartDir: "not-found-paths-overwrite-chart"},
+			want: []string{`Skipping export-values of "sub.typoCycle.typo" from chart "parent" to dependency "sub": the path is not set in any values`},
+		},
+		{
+			name: "paths read from set before exports overwrite them",
+			opts: layeredValuesRenderOptions{ChartDir: "not-found-paths-overwrite-chart", Set: []string{"sub.cycle.k=set", "sub.self.k=set"}},
+			want: []string{`Skipping export-values of "sub.typoCycle.typo" from chart "parent" to dependency "sub": the path is not set in any values`},
+		},
+		{
 			name: "dependency not in Chart.yaml with values invalid without set",
 			opts: layeredValuesRenderOptions{ChartDir: "scalar-sub-no-dependencies-chart", Set: []string{"sub.enabled=true"}},
 		},

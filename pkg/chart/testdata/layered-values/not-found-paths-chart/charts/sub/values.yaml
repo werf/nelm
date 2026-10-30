@@ -1,4 +1,2 @@
 cfg:
   k: sub-values-yaml
-source:
-  k: sub-values-yaml
