@@ -151,3 +151,75 @@ func TestExportUserValuesDependencyChartOutOfVersionRangeUsedByAlias(t *testing.
 
 	assert.Equal(t, map[string]interface{}{"g": true, "a": map[string]interface{}{"enabled": false}}, got)
 }
+
+func TestExportUserValuesGlobalValuesOfNestedChart(t *testing.T) {
+	tests := []struct {
+		name string
+		vals map[string]interface{}
+		want interface{}
+	}{
+		{
+			name: "root chart global",
+			vals: map[string]interface{}{"global": map[string]interface{}{"img": map[string]interface{}{"repo": "root"}}},
+			want: map[string]interface{}{"repo": "root"},
+		},
+		{
+			name: "intermediate chart global",
+			vals: map[string]interface{}{"a": map[string]interface{}{"global": map[string]interface{}{"img": map[string]interface{}{"repo": "a"}}}},
+			want: map[string]interface{}{"repo": "a"},
+		},
+		{
+			name: "higher chart globals are merged over lower chart globals",
+			vals: map[string]interface{}{
+				"global": map[string]interface{}{"img": map[string]interface{}{"repo": "root"}},
+				"a": map[string]interface{}{
+					"global": map[string]interface{}{"img": map[string]interface{}{"repo": "a", "tag": "a"}},
+					"b":      map[string]interface{}{"global": map[string]interface{}{"img": map[string]interface{}{"repo": "b", "tag": "b", "pullPolicy": "b"}}},
+				},
+			},
+			want: map[string]interface{}{"repo": "root", "tag": "a", "pullPolicy": "b"},
+		},
+		{
+			name: "higher chart global scalar overrides lower chart global map",
+			vals: map[string]interface{}{
+				"global": map[string]interface{}{"img": "root"},
+				"a":      map[string]interface{}{"b": map[string]interface{}{"global": map[string]interface{}{"img": map[string]interface{}{"repo": "b"}}}},
+			},
+			want: "root",
+		},
+		{
+			name: "higher chart global null overrides lower chart global map",
+			vals: map[string]interface{}{
+				"global": map[string]interface{}{"img": nil},
+				"a":      map[string]interface{}{"b": map[string]interface{}{"global": map[string]interface{}{"img": map[string]interface{}{"repo": "b"}}}},
+			},
+			want: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := &chart.Chart{Metadata: &chart.Metadata{Name: "b", Version: "0.1.0", APIVersion: chart.APIVersionV2, Dependencies: []*chart.Dependency{
+				{Name: "leaf", Version: "0.1.0", ExportValues: []interface{}{map[string]interface{}{"parent": "global.img", "child": "image"}}},
+			}}}
+			b.AddDependency(&chart.Chart{Metadata: &chart.Metadata{Name: "leaf", Version: "0.1.0", APIVersion: chart.APIVersionV2}})
+
+			a := &chart.Chart{Metadata: &chart.Metadata{Name: "a", Version: "0.1.0", APIVersion: chart.APIVersionV2, Dependencies: []*chart.Dependency{{Name: "b", Version: "0.1.0"}}}}
+			a.AddDependency(b)
+
+			parent := &chart.Chart{Metadata: &chart.Metadata{Name: "parent", Version: "0.1.0", APIVersion: chart.APIVersionV2, Dependencies: []*chart.Dependency{{Name: "a", Version: "0.1.0"}}}}
+			parent.AddDependency(a)
+
+			valsBefore, err := copyUserValues(tt.vals)
+			require.NoError(t, err)
+
+			got, _, err := ExportUserValues(parent, tt.vals, ExportUserValuesOptions{})
+			require.NoError(t, err)
+
+			value, found := userValueAtPath(got, "a.b.leaf.image")
+			require.True(t, found)
+			assert.Equal(t, tt.want, value)
+			assert.Equal(t, valsBefore, tt.vals)
+		})
+	}
+}
