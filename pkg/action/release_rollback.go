@@ -299,11 +299,11 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 		return fmt.Errorf("construct new release: %w", err)
 	}
 
-	log.Default.Debug(ctx, "Convert previous release to resource specs")
+	log.Default.Debug(ctx, "Build delete candidate resource specs")
 
-	prevRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, prevRelease, releaseNamespace)
+	delCandidateResSpecs, err := buildDeleteCandidateResSpecs(ctx, prevRelease, prevDeployedRelease, releaseNamespace)
 	if err != nil {
-		return fmt.Errorf("convert previous release to resource specs: %w", err)
+		return fmt.Errorf("build delete candidate resource specs: %w", err)
 	}
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
@@ -315,7 +315,7 @@ func releaseRollback(ctx context.Context, ctxCancelFn context.CancelCauseFunc, r
 
 	log.Default.Debug(ctx, "Build resources")
 
-	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
+	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, delCandidateResSpecs, newRelResSpecs, []spec.ResourcePatcher{
 		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 	}, resource.BuildResourcesOptions{

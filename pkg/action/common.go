@@ -252,6 +252,45 @@ func subchartContexts(chart helmchart.Accessor, values interface{}) (map[string]
 	return contexts, nil
 }
 
+// buildDeleteCandidateResSpecs returns the specs of the resources of the last revision and of the
+// last deployed revision. The last deployed revision is needed too, because the deletions planned
+// by a later pending or failed revision might never have run. On a duplicate ID the spec from the
+// last revision wins.
+func buildDeleteCandidateResSpecs(ctx context.Context, lastRelease, lastDeployedRelease helmrel.Accessor, releaseNamespace string) ([]*spec.ResourceSpec, error) {
+	if lastRelease == nil {
+		return nil, nil
+	}
+
+	resSpecs, err := release.ReleaseToResourceSpecs(ctx, lastRelease, releaseNamespace)
+	if err != nil {
+		return nil, fmt.Errorf("convert last release to resource specs: %w", err)
+	}
+
+	if lastDeployedRelease == nil || lastDeployedRelease.Version() == lastRelease.Version() {
+		return resSpecs, nil
+	}
+
+	lastDeployedResSpecs, err := release.ReleaseToResourceSpecs(ctx, lastDeployedRelease, releaseNamespace)
+	if err != nil {
+		return nil, fmt.Errorf("convert last deployed release to resource specs: %w", err)
+	}
+
+	resIDs := lo.SliceToMap(resSpecs, func(resSpec *spec.ResourceSpec) (string, struct{}) {
+		return resSpec.ID(), struct{}{}
+	})
+
+	for _, resSpec := range lastDeployedResSpecs {
+		if _, found := resIDs[resSpec.ID()]; found {
+			continue
+		}
+
+		resIDs[resSpec.ID()] = struct{}{}
+		resSpecs = append(resSpecs, resSpec)
+	}
+
+	return resSpecs, nil
+}
+
 // chartMetadata mirrors what the render engine puts in .Chart: the chart's own
 // metadata plus IsRoot, which the metadata itself does not carry.
 func chartMetadata(chart helmchart.Accessor) map[string]interface{} {
