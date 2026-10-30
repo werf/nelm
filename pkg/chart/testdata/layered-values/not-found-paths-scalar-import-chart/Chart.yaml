@@ -1,0 +1,10 @@
+apiVersion: v2
+name: parent
+version: 0.1.0
+dependencies:
+  - name: sub
+    version: 0.1.0
+    import-values:
+      - child: out
+        parent: imported
+      - data

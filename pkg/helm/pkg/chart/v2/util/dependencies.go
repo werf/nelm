@@ -45,9 +45,9 @@ func ProcessDependencies(c *chart.Chart, v *map[string]interface{}) error {
 		return err
 	}
 
-	checkedVals := []map[string]interface{}{*v, extraVals}
+	chartValsBeforeProcessing := map[string]interface{}{}
 	if chartVals, err := util.CoalesceValues(c, nil); err == nil {
-		checkedVals = append(checkedVals, chartVals.AsMap())
+		chartValsBeforeProcessing = chartVals.AsMap()
 	}
 
 	exportedVals, exportSkipped, err := ExportUserValues(c, *v, ExportUserValuesOptions{})
@@ -74,7 +74,7 @@ func ProcessDependencies(c *chart.Chart, v *map[string]interface{}) error {
 		return fmt.Errorf("import service and custom secret values: %w", err)
 	}
 
-	notFound, err := ExportAndImportValuesNotFoundWarnings(c, append(checkedVals, importedVals, importedExtraVals))
+	notFound, err := ExportAndImportValuesNotFoundWarnings(c, []map[string]interface{}{*v, extraVals, importedVals, importedExtraVals}, chartValsBeforeProcessing)
 	if err != nil {
 		return fmt.Errorf("check export and import values paths: %w", err)
 	}
@@ -857,13 +857,15 @@ func ImportUserValues(c *chart.Chart, v map[string]interface{}, opts ImportUserV
 // any value in the values layers, e.g. because of a typo in Chart.yaml. Each layer has the
 // export-values and import-values applied separately, so only all of them together tell that a
 // path is not set. Call it after ProcessDependenciesWithMergedValues with the values layers both
-// before ExportUserValues and after ImportUserValues, and the chart values coalesced before
-// processing, if valid: an export might overwrite the path it reads, and an export might read the
-// path that another export writes.
-func ExportAndImportValuesNotFoundWarnings(c *chart.Chart, layers []map[string]interface{}) ([]string, error) {
+// before ExportUserValues and after ImportUserValues, and with the chart values coalesced before
+// processing, or an empty map if they are invalid: an export might overwrite the path it reads, and
+// an export might read the path that another export writes.
+func ExportAndImportValuesNotFoundWarnings(c *chart.Chart, layers []map[string]interface{}, chartValuesBeforeProcessing map[string]interface{}) ([]string, error) {
+	exportLayers := append(slices.Clone(layers), chartValuesBeforeProcessing)
+
 	var warnings []string
 	for _, export := range collectUserValuesExports(c, "") {
-		found, err := userValuesExportParentFound(layers, export)
+		found, err := userValuesExportParentFound(exportLayers, export)
 		if err != nil {
 			return nil, err
 		}

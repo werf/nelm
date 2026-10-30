@@ -1,0 +1,3 @@
+out: sub-values-yaml
+exports:
+  data: sub-values-yaml

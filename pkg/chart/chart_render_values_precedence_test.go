@@ -278,6 +278,11 @@ func TestRenderChart_ExportAndImportValuesNotFoundWarnings(t *testing.T) {
 			want: []string{`Skipping export-values of "sub.typoCycle.typo" from chart "parent" to dependency "sub": the path is not set in any values`},
 		},
 		{
+			name: "import child paths set to scalars in chart values",
+			opts: layeredValuesRenderOptions{ChartDir: "not-found-paths-scalar-import-chart"},
+			want: []string{importMapWarning, importNameWarning},
+		},
+		{
 			name: "dependency not in Chart.yaml with values invalid without set",
 			opts: layeredValuesRenderOptions{ChartDir: "scalar-sub-no-dependencies-chart", Set: []string{"sub.enabled=true"}},
 		},

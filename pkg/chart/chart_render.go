@@ -495,14 +495,14 @@ func processDependencies(chrt helmchart.Charter, userVals userValues) (map[strin
 	switch c := chrt.(type) {
 	case *v2chart.Chart:
 		layers := userValuesLayers(userVals)
-		chartVals := coalescedChartValues(c)
+		chartValsBeforeProcessing := coalescedChartValues(c)
 
 		conditionLayers, _, err := exportValuesLayers(c, layers)
 		if err != nil {
 			return nil, nil, nil, err
 		}
 
-		vals, err := mergeValuesLayers(conditionLayers, chartVals)
+		vals, err := mergeValuesLayers(conditionLayers, chartValsBeforeProcessing)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("merge exported values layers: %w", err)
 		}
@@ -535,14 +535,11 @@ func processDependencies(chrt helmchart.Charter, userVals userValues) (map[strin
 			skipped = append(skipped, importSkipped...)
 		}
 
-		checkedVals := lo.Map(slices.Concat(layers, importedLayers), func(layer valuesLayer, _ int) map[string]interface{} {
+		checkedLayers := lo.Map(slices.Concat(layers, importedLayers), func(layer valuesLayer, _ int) map[string]interface{} {
 			return layer.Values
 		})
-		if chartVals != nil {
-			checkedVals = append(checkedVals, chartVals)
-		}
 
-		notFound, err := chartv2util.ExportAndImportValuesNotFoundWarnings(c, checkedVals)
+		notFound, err := chartv2util.ExportAndImportValuesNotFoundWarnings(c, checkedLayers, lo.CoalesceMapOrEmpty(chartValsBeforeProcessing))
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("check export and import values paths: %w", err)
 		}
