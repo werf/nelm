@@ -1,0 +1,7 @@
+apiVersion: v3
+name: subchart-secret
+version: 0.1.0
+dependencies:
+  - name: sub
+    version: 0.1.0
+    alias: sub-alias

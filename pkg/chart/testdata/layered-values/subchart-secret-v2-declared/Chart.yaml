@@ -1,0 +1,9 @@
+apiVersion: v2
+name: subchart-secret
+version: 0.1.0
+dependencies:
+  - name: sub
+    version: 0.1.0
+    export-values:
+      - parent: sub.k
+        child: exported-k

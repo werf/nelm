@@ -45,7 +45,25 @@ func ProcessDependenciesWithMergedValues(c *chart.Chart, v common.Values) error 
 		return err
 	}
 
+	if err := applyDependenciesDefaultSecretValues(c); err != nil {
+		return fmt.Errorf("apply dependencies secret values: %w", err)
+	}
+
 	return processDependencyImportValues(c, true)
+}
+
+func applyDependenciesDefaultSecretValues(c *chart.Chart) error {
+	for _, d := range c.Dependencies() {
+		if err := util.ApplyDefaultSecretValues(d); err != nil {
+			return err
+		}
+
+		if err := applyDependenciesDefaultSecretValues(d); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // processDependencyConditions disables charts based on condition path value in values

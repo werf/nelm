@@ -252,7 +252,7 @@ nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-
 
 - `--no-default-secret-values` (default: `false`)
 
-  Ignore secret\-values\.yaml of the top\-level chart\. Vars: \$NELM\_NO\_DEFAULT\_SECRET\_VALUES, \$NELM\_RELEASE\_INSTALL\_NO\_DEFAULT\_SECRET\_VALUES
+  Ignore secret\-values\.yaml of the top\-level chart and its subcharts\. Vars: \$NELM\_NO\_DEFAULT\_SECRET\_VALUES, \$NELM\_RELEASE\_INSTALL\_NO\_DEFAULT\_SECRET\_VALUES
 
 - `--secret-key` (default: `""`)
 
@@ -978,7 +978,7 @@ nelm release plan install [options...] -n namespace -r release [chart-dir|chart-
 
 - `--no-default-secret-values` (default: `false`)
 
-  Ignore secret\-values\.yaml of the top\-level chart\. Vars: \$NELM\_NO\_DEFAULT\_SECRET\_VALUES, \$NELM\_RELEASE\_PLAN\_INSTALL\_NO\_DEFAULT\_SECRET\_VALUES
+  Ignore secret\-values\.yaml of the top\-level chart and its subcharts\. Vars: \$NELM\_NO\_DEFAULT\_SECRET\_VALUES, \$NELM\_RELEASE\_PLAN\_INSTALL\_NO\_DEFAULT\_SECRET\_VALUES
 
 - `--secret-key` (default: `""`)
 
@@ -2171,7 +2171,7 @@ nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive
 
 - `--no-default-secret-values` (default: `false`)
 
-  Ignore secret\-values\.yaml of the top\-level chart\. Vars: \$NELM\_NO\_DEFAULT\_SECRET\_VALUES, \$NELM\_CHART\_LINT\_NO\_DEFAULT\_SECRET\_VALUES
+  Ignore secret\-values\.yaml of the top\-level chart and its subcharts\. Vars: \$NELM\_NO\_DEFAULT\_SECRET\_VALUES, \$NELM\_CHART\_LINT\_NO\_DEFAULT\_SECRET\_VALUES
 
 - `--secret-key` (default: `""`)
 
@@ -2562,7 +2562,7 @@ nelm chart render [options...] [chart-dir|chart-repo-name/chart-name|chart-archi
 
 - `--no-default-secret-values` (default: `false`)
 
-  Ignore secret\-values\.yaml of the top\-level chart\. Vars: \$NELM\_NO\_DEFAULT\_SECRET\_VALUES, \$NELM\_CHART\_RENDER\_NO\_DEFAULT\_SECRET\_VALUES
+  Ignore secret\-values\.yaml of the top\-level chart and its subcharts\. Vars: \$NELM\_NO\_DEFAULT\_SECRET\_VALUES, \$NELM\_CHART\_RENDER\_NO\_DEFAULT\_SECRET\_VALUES
 
 - `--secret-key` (default: `""`)
 

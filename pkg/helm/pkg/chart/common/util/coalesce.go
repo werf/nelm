@@ -399,10 +399,37 @@ func istable(v any) bool {
 	return ok
 }
 
+// ApplyDefaultSecretValues merges the decrypted secret-values.yaml of the chart over its values.yaml
+// in place, so that it has the priority of the chart defaults. Use it for subcharts: CoalesceValues
+// and MergeValues apply the secret-values.yaml of the chart passed to them, but not of its subcharts.
+func ApplyDefaultSecretValues(chrt chart.Charter) error {
+	switch c := chrt.(type) {
+	case *v2.Chart:
+		vals, err := mergeDefaultSecretValues(c.Values, c.SecretsRuntimeData)
+		if err != nil {
+			return fmt.Errorf("merge secret values of chart %q: %w", c.Name(), err)
+		}
+
+		if vals != nil {
+			c.Values = vals
+		}
+	case *v3.Chart:
+		vals, err := mergeDefaultSecretValues(c.Values, c.SecretsRuntimeData)
+		if err != nil {
+			return fmt.Errorf("merge secret values of chart %q: %w", c.Name(), err)
+		}
+
+		if vals != nil {
+			c.Values = vals
+		}
+	}
+
+	return nil
+}
+
 // withDefaultSecretValues returns a shallow copy of the chart with its own decrypted
 // secret-values.yaml merged over its values.yaml, so that secret-values.yaml has the priority of
-// chart defaults. Subcharts are left as is: dependency processing merges the secret values of
-// declared v2 subcharts into their values.
+// chart defaults. Subcharts are left as is: see ApplyDefaultSecretValues.
 func withDefaultSecretValues(chrt chart.Charter) (chart.Charter, error) {
 	switch c := chrt.(type) {
 	case *v2.Chart:
