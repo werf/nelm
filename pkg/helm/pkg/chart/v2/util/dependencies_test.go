@@ -702,3 +702,14 @@ func TestProcessDependencies_ExportsScalarThenMapToNestedDependencyRoot(t *testi
 	require.True(t, found)
 	assert.Equal(t, "parent-values", leafValue)
 }
+
+func TestProcessDependencies_ExportsChainOfManyDependencies(t *testing.T) {
+	c := chainOfExportsChart(200)
+	c.Values = map[string]any{"src": "exported"}
+
+	require.NoError(t, ProcessDependencies(c, &map[string]interface{}{}))
+
+	for _, dep := range c.Dependencies() {
+		assert.Equal(t, "exported", dep.Values["out"], dep.Name())
+	}
+}

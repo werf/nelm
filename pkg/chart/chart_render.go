@@ -15,7 +15,6 @@ import (
 	"unicode"
 
 	"github.com/goccy/go-yaml"
-	"github.com/mitchellh/copystructure"
 	"github.com/samber/lo"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -601,17 +600,17 @@ func buildUserValues(ctx context.Context, setValuesOpts *values.Options, valuesF
 		secretValuesFilesValues = secretsRuntimeData.GetDecryptedCustomSecretValues()
 	}
 
-	valuesFilesBase, err := deepCopyValues(valuesFilesValues)
+	valuesFilesBase, err := chartcommonutil.DeepCopyValues(valuesFilesValues)
 	if err != nil {
 		return userValues{}, fmt.Errorf("copy values files values: %w", err)
 	}
 
-	secretValuesFilesBase, err := deepCopyValues(secretValuesFilesValues)
+	secretValuesFilesBase, err := chartcommonutil.DeepCopyValues(secretValuesFilesValues)
 	if err != nil {
 		return userValues{}, fmt.Errorf("copy secret values files values: %w", err)
 	}
 
-	service, err := deepCopyValues(serviceValues)
+	service, err := chartcommonutil.DeepCopyValues(serviceValues)
 	if err != nil {
 		return userValues{}, fmt.Errorf("copy service values: %w", err)
 	}
@@ -644,17 +643,17 @@ func buildUserValues(ctx context.Context, setValuesOpts *values.Options, valuesF
 		return userValues{}, fmt.Errorf("merge set values: %w", err)
 	}
 
-	valuesFilesLayer, err := deepCopyValues(valuesFilesValues)
+	valuesFilesLayer, err := chartcommonutil.DeepCopyValues(valuesFilesValues)
 	if err != nil {
 		return userValues{}, fmt.Errorf("copy values files values: %w", err)
 	}
 
-	secretValuesFilesLayer, err := deepCopyValues(secretValuesFilesValues)
+	secretValuesFilesLayer, err := chartcommonutil.DeepCopyValues(secretValuesFilesValues)
 	if err != nil {
 		return userValues{}, fmt.Errorf("copy secret values files values: %w", err)
 	}
 
-	chartSecretValuesLayer, err := deepCopyValues(chartSecretValues)
+	chartSecretValuesLayer, err := chartcommonutil.DeepCopyValues(chartSecretValues)
 	if err != nil {
 		return userValues{}, fmt.Errorf("copy chart secret values: %w", err)
 	}
@@ -701,7 +700,7 @@ func exportValuesLayers(c *v2chart.Chart, layers []valuesLayer) ([]valuesLayer, 
 func mergeValuesLayers(layers []valuesLayer, chartVals map[string]interface{}) (map[string]interface{}, error) {
 	vals := map[string]interface{}{}
 	for _, layer := range layers {
-		layerCopy, err := deepCopyValues(layer.Values)
+		layerCopy, err := chartcommonutil.DeepCopyValues(layer.Values)
 		if err != nil {
 			return nil, fmt.Errorf("copy values layer: %w", err)
 		}
@@ -713,9 +712,7 @@ func mergeValuesLayers(layers []valuesLayer, chartVals map[string]interface{}) (
 			deleteNullsOfValues(layerCopy, layer.ChartValues)
 		}
 
-		for _, path := range layer.ReplacedPaths {
-			deleteValueAtPath(vals, path)
-		}
+		chartcommonutil.DeleteValuesAtPaths(vals, layer.ReplacedPaths)
 
 		vals = chartcommon.MergeMaps(vals, layerCopy)
 	}
@@ -942,19 +939,6 @@ func collectLocalLookupResource(unstruct *unstructured.Unstructured, seen map[st
 	return unstruct, nil
 }
 
-func deepCopyValues(vals map[string]interface{}) (map[string]interface{}, error) {
-	if vals == nil {
-		return map[string]interface{}{}, nil
-	}
-
-	copied, err := copystructure.Copy(vals)
-	if err != nil {
-		return nil, fmt.Errorf("deep copy values: %w", err)
-	}
-
-	return copied.(map[string]interface{}), nil
-}
-
 // deleteNullsOfValues deletes the nulls of vals at the paths where origVals have nulls.
 func deleteNullsOfValues(vals, origVals map[string]interface{}) {
 	for key, origValue := range origVals {
@@ -973,19 +957,6 @@ func deleteNullsOfValues(vals, origVals map[string]interface{}) {
 			deleteNullsOfValues(table, origTable)
 		}
 	}
-}
-
-func deleteValueAtPath(vals map[string]interface{}, path []string) {
-	for _, key := range path[:len(path)-1] {
-		table, ok := vals[key].(map[string]interface{})
-		if !ok {
-			return
-		}
-
-		vals = table
-	}
-
-	delete(vals, path[len(path)-1])
 }
 
 // deleteValuesAppliedToChartValues deletes the values of vals that the coalesced chart values
