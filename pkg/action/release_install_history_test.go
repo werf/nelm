@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -80,28 +81,31 @@ func (s *prunedRevisionStorager) UpdateLabels(ctx context.Context, name string, 
 	return nil
 }
 
-func TestLoadDeployedReleases_KeepsOnlyDeployedStatus(t *testing.T) {
+func TestLoadDeployedAndPendingReleases_KeepsOnlyDeployedAndPendingStatuses(t *testing.T) {
 	ctx := context.Background()
 
 	storage := &prunedRevisionStorager{
 		revisions: []release.Revision{
 			newTestDeployedRevision("myrelease", 1, helmreleasestatus.StatusSuperseded),
-			newTestDeployedRevision("myrelease", 2, helmreleasestatus.StatusFailed),
-			newTestDeployedRevision("myrelease", 3, helmreleasestatus.StatusDeployed),
+			newTestDeployedRevision("myrelease", 2, helmreleasestatus.StatusPendingInstall),
+			newTestDeployedRevision("myrelease", 3, helmreleasestatus.StatusFailed),
+			newTestDeployedRevision("myrelease", 4, helmreleasestatus.StatusPendingUpgrade),
+			newTestDeployedRevision("myrelease", 5, helmreleasestatus.StatusUninstalled),
+			newTestDeployedRevision("myrelease", 6, helmreleasestatus.StatusPendingRollback),
+			newTestDeployedRevision("myrelease", 7, helmreleasestatus.StatusDeployed),
 		},
 	}
 
 	history, err := release.BuildHistory(ctx, "myrelease", storage)
 	require.NoError(t, err)
 
-	rels, err := loadDeployedReleases(ctx, history, nil)
+	rels, err := loadDeployedAndPendingReleases(ctx, history, nil)
 	require.NoError(t, err)
 
-	require.Len(t, rels, 1)
-	assert.Equal(t, 3, rels[0].Version())
+	assert.Equal(t, []int{2, 4, 6, 7}, lo.Map(rels, func(r helmrel.Accessor, _ int) int { return r.Version() }))
 }
 
-func TestLoadDeployedReleases_PropagatesOtherErrors(t *testing.T) {
+func TestLoadDeployedAndPendingReleases_PropagatesOtherErrors(t *testing.T) {
 	ctx := context.Background()
 
 	storage := &prunedRevisionStorager{
@@ -114,12 +118,12 @@ func TestLoadDeployedReleases_PropagatesOtherErrors(t *testing.T) {
 	history, err := release.BuildHistory(ctx, "myrelease", storage)
 	require.NoError(t, err)
 
-	_, err = loadDeployedReleases(ctx, history, nil)
+	_, err = loadDeployedAndPendingReleases(ctx, history, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, assert.AnError)
 }
 
-func TestLoadDeployedReleases_SkipsPrunedRevision(t *testing.T) {
+func TestLoadDeployedAndPendingReleases_SkipsPrunedRevision(t *testing.T) {
 	ctx := context.Background()
 
 	storage := &prunedRevisionStorager{
@@ -133,17 +137,42 @@ func TestLoadDeployedReleases_SkipsPrunedRevision(t *testing.T) {
 	history, err := release.BuildHistory(ctx, "myrelease", storage)
 	require.NoError(t, err)
 
-	rels, err := loadDeployedReleasesSkippingPruned(ctx, history)
+	rels, err := loadDeployedAndPendingReleasesSkippingPruned(ctx, history)
 	require.NoError(t, err)
 
 	require.Len(t, rels, 1)
 	assert.Equal(t, 2, rels[0].Version())
 
-	_, err = loadDeployedReleases(ctx, history, nil)
+	_, err = loadDeployedAndPendingReleases(ctx, history, nil)
 	require.ErrorIs(t, err, release.ErrReleaseNotFound, "the strict loader does not tolerate a vanished revision")
 }
 
-func TestLoadDeployedReleases_UndecodableRevisionIsAnError(t *testing.T) {
+func TestLoadDeployedAndPendingReleases_SkipsUnreadablePendingRevision(t *testing.T) {
+	ctx := context.Background()
+
+	storage := &prunedRevisionStorager{
+		prunedSet: map[int]bool{2: true},
+		revisions: []release.Revision{
+			newTestDeployedRevision("myrelease", 1, helmreleasestatus.StatusDeployed),
+			newTestDeployedRevision("myrelease", 2, helmreleasestatus.StatusPendingUpgrade),
+			newTestDeployedRevision("myrelease", 3, helmreleasestatus.StatusPendingUpgrade),
+		},
+		undecodableSet: map[int]bool{3: true},
+	}
+
+	history, err := release.BuildHistory(ctx, "myrelease", storage)
+	require.NoError(t, err)
+
+	rels, err := loadDeployedAndPendingReleases(ctx, history, nil)
+	require.NoError(t, err, "a stuck pending revision that cannot be read must not block the deploy")
+	assert.Equal(t, []int{1}, lo.Map(rels, func(r helmrel.Accessor, _ int) int { return r.Version() }))
+
+	rels, err = loadDeployedAndPendingReleasesSkippingPruned(ctx, history)
+	require.NoError(t, err)
+	assert.Equal(t, []int{1}, lo.Map(rels, func(r helmrel.Accessor, _ int) int { return r.Version() }))
+}
+
+func TestLoadDeployedAndPendingReleases_UndecodableRevisionIsAnError(t *testing.T) {
 	ctx := context.Background()
 
 	storage := &prunedRevisionStorager{
@@ -157,10 +186,10 @@ func TestLoadDeployedReleases_UndecodableRevisionIsAnError(t *testing.T) {
 	history, err := release.BuildHistory(ctx, "myrelease", storage)
 	require.NoError(t, err)
 
-	_, err = loadDeployedReleases(ctx, history, nil)
+	_, err = loadDeployedAndPendingReleases(ctx, history, nil)
 	require.ErrorIs(t, err, release.ErrReleaseUndecodable, "a deployed revision that cannot be read must fail, not be silently left deployed")
 
-	_, err = loadDeployedReleasesSkippingPruned(ctx, history)
+	_, err = loadDeployedAndPendingReleasesSkippingPruned(ctx, history)
 	require.ErrorIs(t, err, release.ErrReleaseUndecodable, "the pruned-tolerant loader skips only revisions that no longer exist")
 }
 

@@ -67,7 +67,7 @@ func (s *countingStorager) UpdateLabels(ctx context.Context, name string, versio
 	return nil
 }
 
-func TestLoadDeployedReleases_FetchesWhatIsNotPreloaded(t *testing.T) {
+func TestLoadDeployedAndPendingReleases_FetchesWhatIsNotPreloaded(t *testing.T) {
 	revisions := []release.Revision{
 		newTestDeployedRevision("myrelease", 1, helmreleasestatus.StatusDeployed),
 		newTestDeployedRevision("myrelease", 2, helmreleasestatus.StatusDeployed),
@@ -77,7 +77,7 @@ func TestLoadDeployedReleases_FetchesWhatIsNotPreloaded(t *testing.T) {
 	require.NoError(t, err)
 
 	storage := &countingStorager{}
-	rels, err := loadDeployedReleases(context.Background(), newTestHistory(t, storage, revisions), []helmrel.Accessor{prevRelease})
+	rels, err := loadDeployedAndPendingReleases(context.Background(), newTestHistory(t, storage, revisions), []helmrel.Accessor{prevRelease})
 	require.NoError(t, err)
 
 	require.Len(t, rels, 2)
@@ -85,7 +85,7 @@ func TestLoadDeployedReleases_FetchesWhatIsNotPreloaded(t *testing.T) {
 	assert.Same(t, prevRelease, rels[1])
 }
 
-func TestLoadDeployedReleases_IgnoresNilAndIrrelevantPreloaded(t *testing.T) {
+func TestLoadDeployedAndPendingReleases_IgnoresNilAndIrrelevantPreloaded(t *testing.T) {
 	revisions := []release.Revision{
 		newTestDeployedRevision("myrelease", 5, helmreleasestatus.StatusDeployed),
 	}
@@ -94,7 +94,7 @@ func TestLoadDeployedReleases_IgnoresNilAndIrrelevantPreloaded(t *testing.T) {
 	require.NoError(t, err)
 
 	storage := &countingStorager{}
-	rels, err := loadDeployedReleases(context.Background(), newTestHistory(t, storage, revisions), []helmrel.Accessor{nil, unrelated})
+	rels, err := loadDeployedAndPendingReleases(context.Background(), newTestHistory(t, storage, revisions), []helmrel.Accessor{nil, unrelated})
 	require.NoError(t, err)
 
 	require.Len(t, rels, 1)
@@ -104,11 +104,11 @@ func TestLoadDeployedReleases_IgnoresNilAndIrrelevantPreloaded(t *testing.T) {
 
 // Preloading is purely a fetch optimization: the set of revisions handed to BuildReleaseInfos must
 // be byte-for-byte the same as when every body is fetched from storage.
-func TestLoadDeployedReleases_PreloadingDoesNotChangeTheSet(t *testing.T) {
-	for name, revisions := range loadDeployedReleasesTestCases() {
+func TestLoadDeployedAndPendingReleases_PreloadingDoesNotChangeTheSet(t *testing.T) {
+	for name, revisions := range loadDeployedAndPendingReleasesTestCases() {
 		t.Run(name, func(t *testing.T) {
 			coldStorage := &countingStorager{}
-			cold, err := loadDeployedReleases(context.Background(), newTestHistory(t, coldStorage, revisions), nil)
+			cold, err := loadDeployedAndPendingReleases(context.Background(), newTestHistory(t, coldStorage, revisions), nil)
 			require.NoError(t, err)
 
 			lastRevision, _ := lo.Last(revisions)
@@ -116,7 +116,7 @@ func TestLoadDeployedReleases_PreloadingDoesNotChangeTheSet(t *testing.T) {
 			require.NoError(t, err)
 
 			warmStorage := &countingStorager{}
-			warm, err := loadDeployedReleases(context.Background(), newTestHistory(t, warmStorage, revisions), []helmrel.Accessor{prevRelease})
+			warm, err := loadDeployedAndPendingReleases(context.Background(), newTestHistory(t, warmStorage, revisions), []helmrel.Accessor{prevRelease})
 			require.NoError(t, err)
 
 			assert.Equal(t,
@@ -127,7 +127,7 @@ func TestLoadDeployedReleases_PreloadingDoesNotChangeTheSet(t *testing.T) {
 	}
 }
 
-func TestLoadDeployedReleases_ReusesPreloadedBodyInsteadOfFetching(t *testing.T) {
+func TestLoadDeployedAndPendingReleases_ReusesPreloadedBodyInsteadOfFetching(t *testing.T) {
 	revisions := []release.Revision{
 		newTestDeployedRevision("myrelease", 1, helmreleasestatus.StatusSuperseded),
 		newTestDeployedRevision("myrelease", 2, helmreleasestatus.StatusDeployed),
@@ -137,7 +137,7 @@ func TestLoadDeployedReleases_ReusesPreloadedBodyInsteadOfFetching(t *testing.T)
 	require.NoError(t, err)
 
 	storage := &countingStorager{}
-	rels, err := loadDeployedReleases(context.Background(), newTestHistory(t, storage, revisions), []helmrel.Accessor{prevRelease})
+	rels, err := loadDeployedAndPendingReleases(context.Background(), newTestHistory(t, storage, revisions), []helmrel.Accessor{prevRelease})
 	require.NoError(t, err)
 
 	require.Len(t, rels, 1)
@@ -145,7 +145,7 @@ func TestLoadDeployedReleases_ReusesPreloadedBodyInsteadOfFetching(t *testing.T)
 	assert.Empty(t, storage.gets, "no revision should be fetched when its body is preloaded")
 }
 
-func loadDeployedReleasesTestCases() map[string][]release.Revision {
+func loadDeployedAndPendingReleasesTestCases() map[string][]release.Revision {
 	return map[string][]release.Revision{
 		"steady state upgrade": {
 			newTestDeployedRevision("myrelease", 1, helmreleasestatus.StatusSuperseded),
@@ -167,6 +167,11 @@ func loadDeployedReleasesTestCases() map[string][]release.Revision {
 		"multiple deployed": {
 			newTestDeployedRevision("myrelease", 1, helmreleasestatus.StatusDeployed),
 			newTestDeployedRevision("myrelease", 2, helmreleasestatus.StatusDeployed),
+		},
+		"stuck pending revisions": {
+			newTestDeployedRevision("myrelease", 1, helmreleasestatus.StatusDeployed),
+			newTestDeployedRevision("myrelease", 2, helmreleasestatus.StatusPendingUpgrade),
+			newTestDeployedRevision("myrelease", 3, helmreleasestatus.StatusPendingRollback),
 		},
 		"no deployed at all": {
 			newTestDeployedRevision("myrelease", 1, helmreleasestatus.StatusFailed),
