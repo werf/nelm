@@ -9,8 +9,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/samber/lo"
-
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/v2/pkg/common"
 	"github.com/werf/nelm/v2/pkg/log"
@@ -80,7 +78,7 @@ func ReadPlanArtifact(ctx context.Context, path, secretKey, secretWorkDir string
 			return nil, fmt.Errorf("artifact is encrypted but no secret key provided")
 		}
 
-		lo.Must0(os.Setenv("WERF_SECRET_KEY", secretKey))
+		defer setEnvUntilRestore("WERF_SECRET_KEY", secretKey)()
 
 		encoder, err := secrets_manager.Manager.GetYamlEncoder(ctx, secretWorkDir, false)
 		if err != nil {
@@ -146,7 +144,7 @@ func WritePlanArtifact(ctx context.Context, artifact *PlanArtifact, path, secret
 	}
 
 	if secretKey != "" {
-		lo.Must0(os.Setenv("WERF_SECRET_KEY", secretKey))
+		defer setEnvUntilRestore("WERF_SECRET_KEY", secretKey)()
 
 		encoder, err := secrets_manager.Manager.GetYamlEncoder(ctx, secretWorkDir, false)
 		if err != nil {

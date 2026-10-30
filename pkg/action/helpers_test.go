@@ -403,6 +403,23 @@ func newTriggersReleaseChart(t *testing.T, api *progressPhasesAPI, annotations m
 	return chartPath
 }
 
+func renderSecretValuesTypesChart(t *testing.T) {
+	t.Helper()
+
+	chartDir := newSecretValuesTypesChart(t)
+	encryptSecretValuesTypesFile(t, filepath.Join(chartDir, "secret-values.yaml"))
+
+	_, err := ChartRender(context.Background(), ChartRenderOptions{
+		Chart:         chartDir,
+		OutputNoPrint: true,
+		SecretValuesOptions: common.SecretValuesOptions{
+			SecretKey: secretValuesTypesSecretKey,
+		},
+		TempDirPath: t.TempDir(),
+	})
+	require.NoError(t, err)
+}
+
 func addProgressPhaseRevision(t *testing.T, api *progressPhasesAPI, revision int, manifest string) {
 	t.Helper()
 

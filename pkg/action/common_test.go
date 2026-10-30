@@ -2,10 +2,12 @@ package action
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -173,6 +175,81 @@ func TestResolvePatches_WithoutRenderPatchesSkipsRenderContext(t *testing.T) {
 
 	require.NotEmpty(t, patches.Diff)
 	require.Empty(t, patches.Render)
+}
+
+func TestSetEnvUntilRestore(t *testing.T) {
+	const (
+		name      = "NELM_TEST_SET_ENV_UNTIL_RESTORE"
+		otherName = "NELM_TEST_SET_ENV_UNTIL_RESTORE_OTHER"
+	)
+
+	t.Run("previously set to empty", func(t *testing.T) {
+		t.Setenv(name, "")
+
+		setEnvUntilRestore(name, "new")()
+
+		value, isSet := os.LookupEnv(name)
+		assert.True(t, isSet)
+		assert.Empty(t, value)
+	})
+
+	t.Run("empty override is a no-op", func(t *testing.T) {
+		t.Setenv(name, "previous")
+
+		restore := setEnvUntilRestore(name, "")
+		assert.Equal(t, "previous", os.Getenv(name))
+
+		t.Setenv(name, "changed")
+		restore()
+		assert.Equal(t, "changed", os.Getenv(name))
+	})
+
+	t.Run("nested distinct keys", func(t *testing.T) {
+		t.Setenv(name, "previous")
+		t.Setenv(otherName, "")
+		require.NoError(t, os.Unsetenv(otherName))
+
+		restoreName := setEnvUntilRestore(name, "new")
+		restoreOtherName := setEnvUntilRestore(otherName, "other")
+
+		assert.Equal(t, "new", os.Getenv(name))
+		assert.Equal(t, "other", os.Getenv(otherName))
+
+		restoreOtherName()
+		restoreName()
+
+		assert.Equal(t, "previous", os.Getenv(name))
+
+		_, isOtherSet := os.LookupEnv(otherName)
+		assert.False(t, isOtherSet)
+	})
+
+	t.Run("error return", func(t *testing.T) {
+		t.Setenv(name, "previous")
+
+		err := func() error {
+			defer setEnvUntilRestore(name, "new")()
+
+			return errors.New("action failed")
+		}()
+		require.Error(t, err)
+
+		assert.Equal(t, "previous", os.Getenv(name))
+	})
+
+	t.Run("recovered panic", func(t *testing.T) {
+		t.Setenv(name, "")
+		require.NoError(t, os.Unsetenv(name))
+
+		assert.Panics(t, func() {
+			defer setEnvUntilRestore(name, "new")()
+
+			panic("action panicked")
+		})
+
+		_, isSet := os.LookupEnv(name)
+		assert.False(t, isSet)
+	})
 }
 
 func aiApplyOrder(t *testing.T, patches []*spec.CompiledPatch, filePath string) []interface{} {

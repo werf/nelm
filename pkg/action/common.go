@@ -492,6 +492,23 @@ func saveReport(reportPath string, report *ReleaseReportV3) error {
 	return nil
 }
 
+func setEnvUntilRestore(name, value string) func() {
+	if value == "" {
+		return func() {}
+	}
+
+	prevValue, wasSet := os.LookupEnv(name)
+	lo.Must0(os.Setenv(name, value))
+
+	return func() {
+		if wasSet {
+			lo.Must0(os.Setenv(name, prevValue))
+		} else {
+			lo.Must0(os.Unsetenv(name))
+		}
+	}
+}
+
 func subchartValues(values interface{}, subchartName string) interface{} {
 	switch v := values.(type) {
 	case map[string]interface{}:

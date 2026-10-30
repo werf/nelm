@@ -262,9 +262,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		return nil, fmt.Errorf("build release install options: %w", err)
 	}
 
-	if opts.SecretKey != "" {
-		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
-	}
+	defer setEnvUntilRestore("WERF_SECRET_KEY", opts.SecretKey)()
 
 	var planArtifact *PlanArtifact
 
