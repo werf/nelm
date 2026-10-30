@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/samber/lo"
@@ -200,6 +202,8 @@ func warnAboutUntypedSecretValues(ctx context.Context, fileName string, untypedS
 	log.Default.Warn(ctx, "Secret values file %q has values encrypted in an old format that does not store YAML types, so they are read as strings: %s. To make them numbers or booleans, re-enter them with `nelm chart secret values-file edit` (`werf helm secret values edit` in werf).", fileName, strings.Join(untypedPaths, ", "))
 }
 
+var simpleSecretValuePathKeyRegexp = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
+
 func formatSecretValuePath(path []interface{}) string {
 	var result strings.Builder
 
@@ -208,11 +212,16 @@ func formatSecretValuePath(path []interface{}) string {
 		case int:
 			fmt.Fprintf(&result, "[%d]", element)
 		default:
-			if result.Len() > 0 {
-				result.WriteString(".")
-			}
+			key := fmt.Sprint(element)
 
-			fmt.Fprintf(&result, "%v", element)
+			switch {
+			case !simpleSecretValuePathKeyRegexp.MatchString(key):
+				fmt.Fprintf(&result, "[%s]", strconv.Quote(key))
+			case result.Len() > 0:
+				result.WriteString("." + key)
+			default:
+				result.WriteString(key)
+			}
 		}
 	}
 
