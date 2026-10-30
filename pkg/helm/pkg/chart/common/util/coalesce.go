@@ -19,7 +19,7 @@ package util
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"maps"
 
 	nelmcommon "github.com/werf/nelm/v2/pkg/common"
@@ -61,7 +61,7 @@ func CoalesceValues(chrt chart.Charter, vals map[string]any) (common.Values, err
 		return vals, err
 	}
 
-	return coalesce(log.Printf, chrt, valsCopy, "", false)
+	return coalesce(logWarning, chrt, valsCopy, "", false)
 }
 
 // MergeValues is used to merge the values in a chart and its subcharts. This
@@ -93,7 +93,7 @@ func MergeValues(chrt chart.Charter, vals map[string]any) (common.Values, error)
 		return vals, err
 	}
 
-	return coalesce(log.Printf, chrt, valsCopy, "", true)
+	return coalesce(logWarning, chrt, valsCopy, "", true)
 }
 
 func copyValues(vals map[string]any) (common.Values, error) {
@@ -113,6 +113,10 @@ func copyValues(vals map[string]any) (common.Values, error) {
 
 type printFn func(format string, v ...any)
 
+func logWarning(format string, v ...any) {
+	slog.Warn(fmt.Sprintf(format, v...))
+}
+
 // coalesce coalesces the dest values and the chart values, giving priority to the dest values.
 //
 // This is a helper function for CoalesceValues and MergeValues.
@@ -131,6 +135,7 @@ func coalesceDeps(printf printFn, chrt chart.Charter, dest map[string]any, prefi
 	if err != nil {
 		return dest, err
 	}
+	subPrefix := concatPrefix(prefix, ch.Name())
 	for _, subchart := range ch.Dependencies() {
 		sub, err := chart.NewAccessor(subchart)
 		if err != nil {
@@ -141,11 +146,10 @@ func coalesceDeps(printf printFn, chrt chart.Charter, dest map[string]any, prefi
 			// subchart gets its defaults.
 			dest[sub.Name()] = make(map[string]any)
 		} else if !istable(c) {
-			return dest, fmt.Errorf("type mismatch on %s: %t", sub.Name(), c)
+			return dest, fmt.Errorf("type mismatch on %s: expected a table, got %T (%v)", concatPrefix(subPrefix, sub.Name()), c, c)
 		}
 		if dv, ok := dest[sub.Name()]; ok {
 			dvmap := dv.(map[string]any)
-			subPrefix := concatPrefix(prefix, ch.Name())
 			// Get globals out of dest and merge them into dvmap.
 			coalesceGlobals(printf, dvmap, dest, subPrefix, merge)
 			// Now coalesce the rest of the values.
@@ -325,11 +329,11 @@ func childChartMergeTrue(chrt chart.Charter, key string, merge bool) bool {
 //
 // dest is considered authoritative.
 func CoalesceTables(dst, src map[string]any) map[string]any {
-	return coalesceTablesFullKey(log.Printf, dst, src, "", false)
+	return coalesceTablesFullKey(logWarning, dst, src, "", false)
 }
 
 func MergeTables(dst, src map[string]any) map[string]any {
-	return coalesceTablesFullKey(log.Printf, dst, src, "", true)
+	return coalesceTablesFullKey(logWarning, dst, src, "", true)
 }
 
 // coalesceTablesFullKey merges a source map into a destination map.
