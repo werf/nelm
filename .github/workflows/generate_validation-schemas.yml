@@ -93,8 +93,23 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
         run: |
           kube_version="$(jq -r '.kubernetes.kubeVersions[0]' pkg/resource/schemas/data/index.json)"
+          base="$(git rev-parse HEAD)"
           git add Taskfile.dist.yaml pkg/resource/schemas/data
           git commit -m "chore: update embedded validation schemas (Kubernetes ${kube_version})"
+
+          if git push; then
+            exit 0
+          fi
+
+          # main moved during the run. Rebase onto it only if it left the generated files alone, so that
+          # what is pushed is what was generated.
+          git fetch origin main
+          if ! git diff --quiet "$base" FETCH_HEAD -- Taskfile.dist.yaml pkg/resource/schemas/data; then
+            echo "::error::main changed Taskfile.dist.yaml or pkg/resource/schemas/data during the run, rerun the workflow"
+            exit 1
+          fi
+
+          git rebase FETCH_HEAD
           git push
 
   notify:
