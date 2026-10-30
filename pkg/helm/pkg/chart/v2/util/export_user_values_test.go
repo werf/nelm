@@ -239,6 +239,27 @@ func TestExportUserValuesGlobalValuesOfNestedChart(t *testing.T) {
 			want: "b",
 		},
 		{
+			name:   "non-map intermediate chart global stops root chart global",
+			parent: "global.img",
+			vals: map[string]interface{}{
+				"global": map[string]interface{}{"img": map[string]interface{}{"repo": "root", "tag": "root"}},
+				"a": map[string]interface{}{
+					"global": "a",
+					"b":      map[string]interface{}{"global": map[string]interface{}{"img": map[string]interface{}{"repo": "b"}}},
+				},
+			},
+			want: map[string]interface{}{"repo": "b"},
+		},
+		{
+			name:   "non-map chart global is not exported",
+			parent: "global.img",
+			vals: map[string]interface{}{
+				"global": map[string]interface{}{"img": map[string]interface{}{"repo": "root"}},
+				"a":      map[string]interface{}{"b": map[string]interface{}{"global": nil}},
+			},
+			wantNotExported: true,
+		},
+		{
 			name:   "non-map root chart global is ignored",
 			parent: "global.img",
 			vals: map[string]interface{}{
@@ -274,4 +295,24 @@ func TestExportUserValuesGlobalValuesOfNestedChart(t *testing.T) {
 			assert.Equal(t, valsBefore, tt.vals)
 		})
 	}
+}
+
+func TestExportUserValuesGlobalValueOfNestedChartBeforeExportReadingIt(t *testing.T) {
+	a := &chart.Chart{Metadata: &chart.Metadata{Name: "a", Version: "0.1.0", APIVersion: chart.APIVersionV2, Dependencies: []*chart.Dependency{
+		{Name: "b", Version: "0.1.0", ExportValues: []interface{}{map[string]interface{}{"parent": "global.foo", "child": "bar"}}},
+	}}}
+	a.AddDependency(&chart.Chart{Metadata: &chart.Metadata{Name: "b", Version: "0.1.0", APIVersion: chart.APIVersionV2}})
+
+	parent := &chart.Chart{Metadata: &chart.Metadata{Name: "parent", Version: "0.1.0", APIVersion: chart.APIVersionV2, Dependencies: []*chart.Dependency{
+		{Name: "a", Version: "0.1.0", ExportValues: []interface{}{map[string]interface{}{"parent": "a.b.bar", "child": "global.baz"}}},
+	}}}
+	parent.AddDependency(a)
+
+	got, _, err := ExportUserValues(parent, map[string]interface{}{"global": map[string]interface{}{"foo": "foo"}}, ExportUserValuesOptions{})
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]interface{}{
+		"global": map[string]interface{}{"foo": "foo"},
+		"a":      map[string]interface{}{"global": map[string]interface{}{"baz": "foo"}, "b": map[string]interface{}{"bar": "foo"}},
+	}, got)
 }
