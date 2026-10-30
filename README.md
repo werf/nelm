@@ -21,6 +21,8 @@
 * advanced resource lifecycle capabilities;
 * improved resource state/error tracking;
 * continuous printing of logs, events, resource statuses, and errors during deployment;
+* render and diff patches to modify chart resources without forking the chart;
+* offline validation of resources against Kubernetes JSON schemas;
 * fixed hundreds of Helm bugs, e.g. ["no matches for kind Deployment in version apps/v1beta1"](https://github.com/helm/helm/issues/7219);
 * performance and stability improvements and more.
 
@@ -48,6 +50,8 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [Encrypted values and encrypted files](#encrypted-values-and-encrypted-files)
   - [Improved CRD management](#improved-crd-management)
   - [Render and diff patches](#render-and-diff-patches)
+  - [Resource validation](#resource-validation)
+  - [TypeScript charts](#typescript-charts)
 - [Usage](#usage)
   - [Encrypted values files](#encrypted-values-files)
   - [Encrypted arbitrary files](#encrypted-arbitrary-files)
@@ -63,9 +67,11 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [`werf.io/resource-policy` annotation](#werfioresource-policy-annotation)
   - [`werf.io/delete-propagation` annotation](#werfiodelete-propagation-annotation)
   - [`werf.io/triggers-release` annotation](#werfiotriggers-release-annotation)
+  - [`werf.io/replicas-on-creation` annotation](#werfioreplicas-on-creation-annotation)
   - [`werf.io/track-termination-mode` annotation](#werfiotrack-termination-mode-annotation)
   - [`werf.io/fail-mode` annotation](#werfiofail-mode-annotation)
   - [`werf.io/failures-allowed-per-replica` annotation](#werfiofailures-allowed-per-replica-annotation)
+  - [`werf.io/ignore-readiness-probe-fails-for-<container_name>` annotation](#werfioignore-readiness-probe-fails-for-container_name-annotation)
   - [`werf.io/no-activity-timeout` annotation](#werfiono-activity-timeout-annotation)
   - [`werf.io/sensitive` annotation](#werfiosensitive-annotation)
   - [`werf.io/sensitive-paths` annotation](#werfiosensitive-paths-annotation)
@@ -85,12 +91,9 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [`tpl_debug` function](#tpl_debug-function)
   - [`patches.yaml` file](#patchesyaml-file)
 - [Feature gates](#feature-gates)
-  - [`NELM_FEAT_PREVIEW_V2` environment variable](#nelm_feat_preview_v2-environment-variable)
-  - [`NELM_FEAT_REMOTE_CHARTS` environment variable](#nelm_feat_remote_charts-environment-variable)
-  - [`NELM_FEAT_NATIVE_RELEASE_LIST` environment variable](#nelm_feat_native_release_list-environment-variable)
-  - [`NELM_FEAT_NATIVE_RELEASE_UNINSTALL` environment variable](#nelm_feat_native_release_uninstall-environment-variable)
+  - [`NELM_FEAT_TYPESCRIPT` environment variable](#nelm_feat_typescript-environment-variable)
   - [`NELM_FEAT_PERIODIC_STACK_TRACES` environment variable](#nelm_feat_periodic_stack_traces-environment-variable)
-  - [`NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN` environment variable](#nelm_feat_more_detailed_exit_code_for_plan-environment-variable)
+  - [`NELM_FEAT_ADOPT_DECKHOUSE_CONTROLLER_FIELDS` environment variable](#nelm_feat_adopt_deckhouse_controller_fields-environment-variable)
 - [More documentation](#more-documentation)
 - [Limitations](#limitations)
 - [Contributing](#contributing)
@@ -158,15 +161,16 @@ Release commands:
   release rollback                   Rollback to a previously deployed release.
   release plan install               Plan a release install to Kubernetes.
   release uninstall                  Uninstall a Helm Release from Kubernetes.
-  release list                       List all releases in a namespace.
   release history                    Show release history.
+  release list                       List all deployed releases.
   release get                        Get information about a deployed release.
+  release plan show                  Show plan artifact planned changes.
 
 Chart commands:
   chart lint                         Lint a chart.
   chart render                       Render a chart.
   chart download                     Download a chart from a repository.
-  chart upload                       Upload a chart to a repository.
+  chart upload                       Upload a chart archive to a repository.
   chart pack                         Pack a chart into an archive to distribute via a repository.
 
 Secret commands:
@@ -190,6 +194,10 @@ Repo commands:
   chart repo login                   Log in to an OCI registry with charts.
   chart repo logout                  Log out from an OCI registry with charts.
 
+TypeScript commands:
+  chart ts init                      Initialize the files needed to render manifests using TypeScript.
+  chart ts build                     Build TypeScript chart.
+
 Other commands:
   completion bash                    Generate the autocompletion script for bash
   completion fish                    Generate the autocompletion script for fish
@@ -197,6 +205,8 @@ Other commands:
   completion zsh                     Generate the autocompletion script for zsh
   version                            Show version.
 ```
+
+The full list of options of every command is in the [CLI reference](docs/reference.md).
    
 ## Helm compatibility
 
@@ -214,7 +224,9 @@ Generally, the migration from Helm to Nelm should be as simple as changing Helm 
 
 | Helm command | Nelm command equivalent |
 | -------- | ------- |
-| `helm upgrade --install --atomic --wait -n myns myrls ./chart` | `nelm release install --auto-rollback -n myns -r myrls ./chart` |
+| `helm upgrade --install --rollback-on-failure --wait -n myns myrls ./chart` | `nelm release install --auto-rollback -n myns -r myrls ./chart` |
+| `helm diff upgrade -n myns myrls ./chart` (helm-diff plugin) | `nelm release plan install -n myns -r myrls ./chart` |
+| `helm rollback -n myns myrls 2` | `nelm release rollback -n myns -r myrls 2` |
 | `helm uninstall -n myns myrls` | `nelm release uninstall -n myns -r myrls` |
 | `helm template ./chart` | `nelm chart render ./chart` |
 | `helm dependency build` | `nelm chart dependency download` |
@@ -267,12 +279,18 @@ To ensure that these exact changes will be applied during the release install, y
 
 1. **Plan:** Generate, review, and save a plan artifact using the `--save-plan` flag:
 ```
-nelm release plan install --save-plan=plan.gz
+nelm release plan install -n myns -r myrls --save-plan=plan.gz
 ```
-2. **Apply:** Perform the release install rapidly using the pre-generated reviewed plan:
+2. **Review:** Show the changes saved in the plan artifact again at any time, e.g. in another CI job:
 ```
-nelm release install --use-plan=plan.gz
+nelm release plan show plan.gz
 ```
+3. **Apply:** Perform the release install rapidly using the pre-generated reviewed plan:
+```
+nelm release install -n myns -r myrls --use-plan=plan.gz
+```
+
+The plan artifact is valid for 2 hours by default, which can be changed with `--plan-lifetime`.
 
 ### Encrypted values and encrypted files
 
@@ -287,6 +305,14 @@ CRDs from the `crds/` directory of the chart deployed not only on the very first
 Nelm can patch chart resources with jq after rendering, using `patches.yaml` of the chart or files passed with the `--patches` option. There are two kinds of patches:
 * Render patches modify resources before deploy, similar to Helm's `--post-renderer`. Use them to change what the chart doesn't let you configure, without forking it.
 * Diff patches don't change what is deployed: they make Nelm ignore changes in the patched fields when deciding whether to update a resource. Use them to avoid needless updates caused by fields that change on every render or are modified in the cluster.
+
+### Resource validation
+
+Before deploying, Nelm validates rendered resources against the Kubernetes JSON schemas and a catalog of popular CRD schemas, both embedded into the Nelm binary, so validation works offline. Validation runs in `nelm release install`, `nelm release plan install`, `nelm release rollback` and `nelm chart lint`. Use `--resource-validation-skip` to skip some resources, `--resource-validation-extra-schema` to add your own schema sources, or `--no-resource-validation` to turn validation off.
+
+### TypeScript charts
+
+With the `NELM_FEAT_TYPESCRIPT` feature gate, charts can render manifests with TypeScript code from the `ts/` directory of the chart, in addition to or instead of Go templates in `templates/`. `nelm chart ts init` adds the TypeScript boilerplate to a chart, `nelm chart ts build` bundles the code into `ts/dist/bundle.js`, and `nelm chart pack` bundles it automatically. See [`NELM_FEAT_TYPESCRIPT`](#nelm_feat_typescript-environment-variable).
 
 ## Usage
 
@@ -323,7 +349,9 @@ nelm chart render
 password: verysecurepassword123
 ```
 
-NOTE: `$NELM_SECRET_KEY` must be set for any command that encrypts/decrypts secrets, including `nelm chart render`.
+NOTE: `$NELM_SECRET_KEY` (or the `--secret-key` option) must be set for any command that encrypts/decrypts secrets, including `nelm chart render`, unless `--no-decrypt-secrets` is specified.
+
+`secret-values.yaml` of the chart is used by default. Encrypted values files outside the chart can be passed with the `--secret-values` option.
 
 ### Encrypted arbitrary files
 
@@ -518,7 +546,7 @@ werf.io/delete-policy: [before-creation][,before-creation-if-immutable][,succeed
 ```
 Default:
 ```
-nothing for general resources (unless Job, then "before-creation-if-immutable"), mapped from "helm.sh/hook-delete-policy" for hooks
+nothing for general resources (unless Job, then "before-creation-if-immutable"), mapped from "helm.sh/hook-delete-policy" for hooks ("before-creation" if it is not set either)
 ```
 
 ### `werf.io/resource-policy` annotation
@@ -561,7 +589,7 @@ werf.io/delete-propagation: Foreground|Background|Orphan
 ```
 Default:
 ```
-Foreground
+the value of the --delete-propagation option, which defaults to Background
 ```
 
 ### `werf.io/triggers-release` annotation
@@ -583,6 +611,19 @@ werf.io/triggers-release: "true"|"false"
 Default:
 ```
 "true"
+```
+
+### `werf.io/replicas-on-creation` annotation
+
+Set `spec.replicas` to the specified number when the resource is created or recreated. Useful when replicas are managed by HorizontalPodAutoscaler: omit `spec.replicas` in the manifest so that deploys don't reset the number of replicas, and use this annotation to set the initial number of replicas.
+
+Example:
+```yaml
+werf.io/replicas-on-creation: "3"
+```
+Format:
+```
+werf.io/replicas-on-creation: "<any positive number or zero>"
 ```
 
 ### `werf.io/track-termination-mode` annotation 
@@ -625,7 +666,7 @@ FailWholeDeployProcessImmediately
 
 ### `werf.io/failures-allowed-per-replica` annotation 
 
-Set the number of allowed errors during resource tracking. When exceeded, act according to `werf.io/fail-mode`.
+Set the number of allowed errors per replica during resource tracking. The number is multiplied by `spec.replicas`, if the resource has it. When exceeded, act according to `werf.io/fail-mode`. Has no effect on Jobs and on resources with `restartPolicy: Never` in the Pod template: no errors are allowed for them.
 
 Example:
 ```yaml
@@ -637,7 +678,20 @@ werf.io/failures-allowed-per-replica: "<any positive number or zero>"
 ```
 Default:
 ```
-1
+1 for Deployment, StatefulSet, DaemonSet and Flagger Canary, 0 for others
+```
+
+### `werf.io/ignore-readiness-probe-fails-for-<container_name>` annotation
+
+For the specified container, ignore readiness probe failures during resource tracking for the specified time after the container start. By default, this time is calculated from the readiness and startup probe settings of the container, such as `initialDelaySeconds`, `periodSeconds` and `failureThreshold`.
+
+Example:
+```yaml
+werf.io/ignore-readiness-probe-fails-for-backend: 2m
+```
+Format ([more info](https://pkg.go.dev/time#ParseDuration)):
+```
+werf.io/ignore-readiness-probe-fails-for-<container_name>: <golang duration>
 ```
 
 ### `werf.io/no-activity-timeout` annotation 
@@ -935,50 +989,17 @@ diffPatches:
 
 ## Feature gates
 
-### `NELM_FEAT_PREVIEW_V2` environment variable
+Feature gates of Nelm v1 that became the default behavior in Nelm v2, such as `NELM_FEAT_PREVIEW_V2`, `NELM_FEAT_REMOTE_CHARTS`, `NELM_FEAT_NATIVE_RELEASE_LIST`, `NELM_FEAT_NATIVE_RELEASE_UNINSTALL` and `NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN`, no longer exist: setting them only prints a warning.
 
-Activates all feature gates that will be enabled by default in v2.
+### `NELM_FEAT_TYPESCRIPT` environment variable
 
-Example:
-```shell
-export NELM_FEAT_PREVIEW_V2=true
-nelm release list
-```
-
-### `NELM_FEAT_REMOTE_CHARTS` environment variable
-
-Allows specifying not only local, but also remote charts as a command-line argument to commands such as `nelm release install`. Adds the `--chart-version` option as well.
-
-Will be the default in the next major release.
+Render manifests with TypeScript code from the `ts/` directory of the chart, in addition to Go templates. Enables the `nelm chart ts` commands as well.
 
 Example:
 ```shell
-export NELM_FEAT_REMOTE_CHARTS=true
-nelm release install -n myproject -r myproject --chart-version 19.1.1 bitnami/nginx
-```
-
-### `NELM_FEAT_NATIVE_RELEASE_LIST` environment variable
-
-Use native Nelm implementation of the `release list` command instead of `helm list` exposed as `release list`. Implementations differ a bit, but serve the same purpose.
-
-Will be the default in the next major release.
-
-Example:
-```shell
-export NELM_FEAT_NATIVE_RELEASE_LIST=true
-nelm release list
-```
-
-### `NELM_FEAT_NATIVE_RELEASE_UNINSTALL` environment variable
-
-Use a new native Nelm implementation of the `release uninstall` command. Not fully backwards compatible with previous implementation.
-
-Will be the default in the next major release.
-
-Example:
-```shell
-export NELM_FEAT_NATIVE_RELEASE_UNINSTALL=true
-nelm release uninstall -n myproject -r myproject
+export NELM_FEAT_TYPESCRIPT=true
+nelm chart ts init
+nelm chart render
 ```
 
 ### `NELM_FEAT_PERIODIC_STACK_TRACES` environment variable
@@ -991,21 +1012,21 @@ export NELM_FEAT_PERIODIC_STACK_TRACES=true
 nelm release install -n myproject -r myproject
 ```
 
-### `NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN` environment variable
+### `NELM_FEAT_ADOPT_DECKHOUSE_CONTROLLER_FIELDS` environment variable
 
-When the `--exit-code` flag is specified for `nelm release plan install`, return exit code 3, if no resource changes planned, but release still must be installed. Previously, exit code 2 was returned in this case.
-
-Will be the default in the next major release.
+Adopt managed fields owned by the legacy `deckhouse-controller` field manager (the pre-Nelm Helm 3 engine). Unsafe if any resource still has hook-owned `deckhouse-controller` entries.
 
 Example:
 ```shell
-export NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN=true
-nelm release plan install -n myproject -r myproject --exit-code
+export NELM_FEAT_ADOPT_DECKHOUSE_CONTROLLER_FIELDS=true
+nelm release install -n myproject -r myproject
 ```
 
 ## More documentation
 
 For documentation on regular Helm features, see [Helm docs](https://helm.sh/docs/). A lot of useful documentation can be found in [werf docs](https://werf.io/docs/v2/usage/deploy/overview.html).
+
+All commands and their options are described in the [CLI reference](docs/reference.md).
 
 ## Limitations
 
@@ -1029,12 +1050,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [x] Refactor, stabilize.
 - [x] Advanced resource lifecycle management.
 - [x] Advanced Kubeconform-based local validation.
-- [ ] Nelm v2.
-- [ ] Migration to Helm v4.
-- [ ] The Nelm operator, which can integrate with ArgoCD/Flux ([#494](https://github.com/werf/nelm/issues/494)).
-- [ ] An alternative to Helm templating ([#54](https://github.com/werf/nelm/issues/54)).
-- [ ] Resource patching support ([#115](https://github.com/werf/nelm/issues/115)).
+- [x] Nelm v2.
+- [x] Migration to Helm v4.
+- [x] The [Nelm operator](https://github.com/werf/nelm-operator), which can integrate with ArgoCD/Flux ([#494](https://github.com/werf/nelm/issues/494)).
+- [x] An alternative to Helm templating: TypeScript charts ([#54](https://github.com/werf/nelm/issues/54)).
+- [x] Resource patching support ([#115](https://github.com/werf/nelm/issues/115)).
 - [ ] DRY values.yaml files ([#495](https://github.com/werf/nelm/issues/495)).
 - [ ] Downloading charts directly from Git.
-- [ ] Migrate the built-in secrets management to Mozilla SOPS ([#62](https://github.com/werf/nelm/issues/62)).
 - [ ] Nelmfile.
