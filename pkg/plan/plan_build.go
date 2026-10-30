@@ -557,8 +557,9 @@ func addFailStuckReleaseOps(plan *Plan, info *ReleaseInfo) error {
 		Version:  OperationVersionUpdateRelease,
 		Category: OperationCategoryRelease,
 		Config: &OperationConfigUpdateRelease{
-			IgnoreNotFound: true,
-			Release:        &release.VersionedRelease{Accessor: failedRel},
+			IgnoreNotFound:         true,
+			KeepDeployedTimestamps: true,
+			Release:                &release.VersionedRelease{Accessor: failedRel},
 		},
 	}
 	lo.Must0(plan.AddOperationChain().AddOperation(failOp).Stage(common.StageFinal).Do())
