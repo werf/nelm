@@ -218,8 +218,8 @@ func TestRenderChart_ExportAndImportValuesSkippedWarnings(t *testing.T) {
 func TestRenderChart_ExportAndImportValuesNotFoundWarnings(t *testing.T) {
 	const (
 		exportWarning     = `Skipping export-values of "img.repo" from chart "parent" to dependency "sub": the path is not set in any values`
-		importMapWarning  = `Skipping import-values of "sub.out" from dependency "sub" to chart "parent": no map is set at the path in any values`
-		importNameWarning = `Skipping import-values of "sub.exports.data" from dependency "sub" to chart "parent": no map is set at the path in any values`
+		importMapWarning  = `Skipping import-values of "out" from dependency "sub" to chart "parent": no map is set at the path in any values`
+		importNameWarning = `Skipping import-values of "exports.data" from dependency "sub" to chart "parent": no map is set at the path in any values`
 	)
 
 	allPathsSet := []string{"img.repo=set", "sub.out.k=set", "sub.exports.data.k=set"}
@@ -260,7 +260,7 @@ func TestRenderChart_ExportAndImportValuesNotFoundWarnings(t *testing.T) {
 			opts: layeredValuesRenderOptions{Set: append([]string{"disabled.enabled=true"}, allPathsSet...)},
 			want: []string{
 				`Skipping export-values of "disabledExport" from chart "parent" to dependency "disabled": the path is not set in any values`,
-				`Skipping import-values of "disabled.disabledImport" from dependency "disabled" to chart "parent": no map is set at the path in any values`,
+				`Skipping import-values of "disabledImport" from dependency "disabled" to chart "parent": no map is set at the path in any values`,
 			},
 		},
 		{

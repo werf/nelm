@@ -9,6 +9,10 @@ dependencies:
         child: image.repository
       - parent: img.tag
         child: image.tag
+      - parent: sub.source.k
+        child: saved
+      - parent: sub.saved
+        child: source
     import-values:
       - child: out
         parent: imported

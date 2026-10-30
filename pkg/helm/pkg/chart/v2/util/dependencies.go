@@ -854,8 +854,23 @@ func ImportUserValues(c *chart.Chart, v map[string]interface{}, opts ImportUserV
 // path is not set. Call it after ProcessDependenciesWithMergedValues with the layers returned by
 // ImportUserValues.
 func ExportAndImportValuesNotFoundWarnings(c *chart.Chart, layers []map[string]interface{}) ([]string, error) {
+	exports := collectUserValuesExports(c, "")
+	order := sortValuesExports(exports)
+
 	var warnings []string
-	for _, export := range collectUserValuesExports(c, "") {
+	for pos, i := range order {
+		export := exports[i]
+
+		// An export in a cycle may read its parent path before a later export overwrites it, so the
+		// final values don't tell whether the path was set.
+		if lo.ContainsBy(order[pos+1:], func(j int) bool {
+			return lo.ContainsBy(valuesExportParentPaths(export), func(parentPath string) bool {
+				return pathsOverlap(exports[j].ChildPath, parentPath)
+			})
+		}) {
+			continue
+		}
+
 		found, err := userValuesExportParentFound(layers, export)
 		if err != nil {
 			return nil, err
@@ -868,7 +883,7 @@ func ExportAndImportValuesNotFoundWarnings(c *chart.Chart, layers []map[string]i
 		}
 
 		if !found {
-			warnings = append(warnings, fmt.Sprintf("Skipping export-values of %q from chart %q to dependency %q: the path is not set in any values", export.ParentPath, export.Chart.Name(), export.DependencyName))
+			warnings = append(warnings, fmt.Sprintf("Skipping export-values of %q from chart %q to dependency %q: the path is not set in any values", export.Parent, export.Chart.ChartPath(), export.DependencyName))
 		}
 	}
 
@@ -933,6 +948,7 @@ func importValuesNotFoundWarnings(c *chart.Chart, layers []map[string]interface{
 
 	chartPath := stripFirstPathPart(c.ChartPath())
 
+	var cvals common.Values
 	for _, r := range c.Metadata.Dependencies {
 		for _, importValue := range r.ImportValues {
 			child, _, ok := parseImportValues(importValue)
@@ -949,16 +965,18 @@ func importValuesNotFoundWarnings(c *chart.Chart, layers []map[string]interface{
 				continue
 			}
 
-			cvals, err := valuesForChart(c, true)
-			if err != nil {
-				return nil, fmt.Errorf("get values of chart %q: %w", c.ChartPath(), err)
+			if cvals == nil {
+				var err error
+				if cvals, err = valuesForChart(c, true); err != nil {
+					return nil, fmt.Errorf("get values of chart %q: %w", c.ChartPath(), err)
+				}
 			}
 
 			if _, err := cvals.Table(r.Name + "." + child); err == nil {
 				continue
 			}
 
-			warnings = append(warnings, fmt.Sprintf("Skipping import-values of %q from dependency %q to chart %q: no map is set at the path in any values", childPath, r.Name, c.Name()))
+			warnings = append(warnings, fmt.Sprintf("Skipping import-values of %q from dependency %q to chart %q: no map is set at the path in any values", child, r.Name, c.ChartPath()))
 		}
 	}
 
