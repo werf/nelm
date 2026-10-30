@@ -78,6 +78,26 @@ func TestChartRender_SecretValues_WarnAboutUntypedLegacyValues(t *testing.T) {
 		assert.Equal(t, warning, logs.String())
 	})
 
+	t.Run("legacy format failing the values schema with service values", func(t *testing.T) {
+		t.Setenv("WERF_SECRET_KEY", secretValuesTypesSecretKey)
+
+		chartDir := newSecretValuesTypesChart(t)
+		require.NoError(t, os.CopyFS(chartDir, os.DirFS("testdata/secret-values-types/legacy")))
+
+		ctx, logs := newLogCapturingContext(t)
+		_, err := ChartRender(ctx, ChartRenderOptions{
+			Chart:             chartDir,
+			LegacyExtraValues: map[string]interface{}{"werf": map[string]interface{}{"name": "project"}},
+			OutputNoPrint:     true,
+			SecretValuesOptions: common.SecretValuesOptions{
+				SecretKey: secretValuesTypesSecretKey,
+			},
+			TempDirPath: t.TempDir(),
+		})
+		require.ErrorContains(t, err, "want integer")
+		assert.Equal(t, warning, logs.String())
+	})
+
 	t.Run("current format", func(t *testing.T) {
 		t.Setenv("WERF_SECRET_KEY", secretValuesTypesSecretKey)
 
@@ -94,6 +114,6 @@ func TestChartRender_SecretValues_WarnAboutUntypedLegacyValues(t *testing.T) {
 			TempDirPath: t.TempDir(),
 		})
 		require.NoError(t, err)
-		assert.NotContains(t, logs.String(), "old format")
+		assert.Empty(t, logs.String())
 	})
 }
