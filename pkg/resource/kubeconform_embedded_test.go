@@ -209,22 +209,22 @@ func TestEmbeddedSchemasOnly(t *testing.T) {
 	t.Run("validates_resources_of_api_versions_dropped_by_newer_kube_versions", func(t *testing.T) {
 		setupTestEnvironment(t)
 
-		// PodCertificateRequest certificates.k8s.io/v1alpha1 exists in Kubernetes 1.34 alone, so its
-		// schema can only come from an older collected version and only while 1.34 is one of them.
-		// Replace it with another resource of a dropped API version once the window moves past 1.34.
+		// ServiceCIDR networking.k8s.io/v1beta1 is gone from Kubernetes 1.37, so its schema can only come
+		// from an older collected version. It stays collected until the bump to 1.41 drops 1.36 from the
+		// window; replace it with another resource of a dropped API version then.
 		//
-		// The path in the error is what tells the two validators apart: the schema reports
-		// "/spec/maxExpirationSeconds", the client-go codec would report "spec.maxExpirationSeconds".
+		// The path in the error is what tells the two validators apart: the schema reports "/spec/cidrs",
+		// the client-go codec would report "spec.cidrs".
 		ctx := context.Background()
 		opts := common.ResourceValidationOptions{}
 
-		valid := makeInstallableResource(t, podCertificateRequestObject(int64(3600)), testReleaseNamespace)
+		valid := makeInstallableResource(t, serviceCIDRObject([]interface{}{"10.96.0.0/16"}), testReleaseNamespace)
 		require.NoError(t, resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{valid}, opts))
 
-		invalid := makeInstallableResource(t, podCertificateRequestObject("should-be-integer"), testReleaseNamespace)
+		invalid := makeInstallableResource(t, serviceCIDRObject("should-be-array"), testReleaseNamespace)
 
 		err := resource.ValidateLocal(ctx, testReleaseNamespace, []*resource.InstallableResource{invalid}, opts)
-		assertValidationError(t, err, "/spec/maxExpirationSeconds")
+		assertValidationError(t, err, "/spec/cidrs")
 	})
 
 	t.Run("unpacks_schemas_only_once", func(t *testing.T) {
@@ -264,30 +264,6 @@ func embeddedSchemasUnpacked(t *testing.T) bool {
 	return false
 }
 
-// podCertificateRequestObject builds a resource of an API version that only the older collected
-// Kubernetes versions have a schema for.
-func podCertificateRequestObject(maxExpirationSeconds interface{}) map[string]interface{} {
-	return map[string]interface{}{
-		"apiVersion": "certificates.k8s.io/v1alpha1",
-		"kind":       "PodCertificateRequest",
-		"metadata": map[string]interface{}{
-			"name": "test-pod-certificate-request",
-		},
-		"spec": map[string]interface{}{
-			"maxExpirationSeconds": maxExpirationSeconds,
-			"nodeName":             "test-node",
-			"nodeUID":              "11111111-1111-1111-1111-111111111111",
-			"pkixPublicKey":        "dGVzdC1wdWJsaWMta2V5",
-			"podName":              "test-pod",
-			"podUID":               "22222222-2222-2222-2222-222222222222",
-			"proofOfPossession":    "dGVzdC1wcm9vZg==",
-			"serviceAccountName":   "test-service-account",
-			"serviceAccountUID":    "33333333-3333-3333-3333-333333333333",
-			"signerName":           "example.com/test-signer",
-		},
-	}
-}
-
 func prometheusObject(replicas interface{}) map[string]interface{} {
 	return map[string]interface{}{
 		"apiVersion": "monitoring.coreos.com/v1",
@@ -297,6 +273,21 @@ func prometheusObject(replicas interface{}) map[string]interface{} {
 		},
 		"spec": map[string]interface{}{
 			"replicas": replicas,
+		},
+	}
+}
+
+// serviceCIDRObject builds a resource of an API version that only the older collected Kubernetes
+// versions have a schema for.
+func serviceCIDRObject(cidrs interface{}) map[string]interface{} {
+	return map[string]interface{}{
+		"apiVersion": "networking.k8s.io/v1beta1",
+		"kind":       "ServiceCIDR",
+		"metadata": map[string]interface{}{
+			"name": "test-service-cidr",
+		},
+		"spec": map[string]interface{}{
+			"cidrs": cidrs,
 		},
 	}
 }
