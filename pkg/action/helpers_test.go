@@ -22,6 +22,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes/scheme"
 
@@ -338,39 +339,21 @@ users:
 	return api
 }
 
-func newChartRenderInstallChart(t *testing.T, api *progressPhasesAPI) string {
+func newDeleteCandidatesInstallOptions(t *testing.T, api *progressPhasesAPI, manifest string) ReleaseInstallOptions {
 	t.Helper()
 
-	chartPath := newProgressPhasesChart(t)
-	require.NoError(t, os.MkdirAll(filepath.Join(chartPath, "templates"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(chartPath, "templates", "cm.yaml"), []byte(addProgressPhasesConfigMap(t, api)), 0o600))
-	require.NoError(t, os.MkdirAll(filepath.Join(chartPath, "crds"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(chartPath, "crds", "crd.yaml"), []byte(`apiVersion: apiextensions.k8s.io/v1
-kind: CustomResourceDefinition
-metadata:
-  name: widgets.example.com
-spec:
-  group: example.com
-  names:
-    kind: Widget
-    plural: widgets
-  scope: Namespaced
-  versions:
-  - name: v1
-    served: true
-    storage: true
-    schema:
-      openAPIV3Schema:
-        type: object
-`), 0o600))
-
-	return chartPath
-}
-
-func newLatestRevisionSummary(namespace, name string, version int) release.RevisionSummary {
-	return release.RevisionSummary{
-		Revision: release.Revision{Namespace: namespace, Name: name, Version: version, Status: "deployed"},
-		Summary:  newTestReleaseSummary(),
+	return ReleaseInstallOptions{
+		KubeConnectionOptions: api.kubeOpts,
+		Chart:                 newDeleteCandidatesChart(t, manifest),
+		LegacyNoReleaseLock:   true,
+		NoCreateNamespace:     true,
+		NoShowNotes:           true,
+		ReleaseInstallRuntimeOptions: common.ReleaseInstallRuntimeOptions{
+			ReleaseStorageDriver:      "configmap",
+			ResourceValidationOptions: common.ResourceValidationOptions{NoResourceValidation: true},
+		},
+		TempDirPath:     t.TempDir(),
+		TrackingOptions: common.TrackingOptions{NoProgressTablePrint: true},
 	}
 }
 
@@ -406,9 +389,61 @@ func newTriggersReleaseChart(t *testing.T, api *progressPhasesAPI, annotations m
 func addProgressPhaseRevision(t *testing.T, api *progressPhasesAPI, revision int, manifest string) {
 	t.Helper()
 
+	addProgressPhaseRevisionWithStatus(t, api, revision, "deployed", manifest)
+}
+
+func newChartRenderInstallChart(t *testing.T, api *progressPhasesAPI) string {
+	t.Helper()
+
+	chartPath := newProgressPhasesChart(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(chartPath, "templates"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(chartPath, "templates", "cm.yaml"), []byte(addProgressPhasesConfigMap(t, api)), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Join(chartPath, "crds"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(chartPath, "crds", "crd.yaml"), []byte(`apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: widgets.example.com
+spec:
+  group: example.com
+  names:
+    kind: Widget
+    plural: widgets
+  scope: Namespaced
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+`), 0o600))
+
+	return chartPath
+}
+
+func newDeleteCandidatesChart(t *testing.T, manifest string) string {
+	t.Helper()
+
+	chartPath := newProgressPhasesChart(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(chartPath, "templates"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(chartPath, "templates", "cm.yaml"), []byte(manifest), 0o600))
+
+	return chartPath
+}
+
+func newLatestRevisionSummary(namespace, name string, version int) release.RevisionSummary {
+	return release.RevisionSummary{
+		Revision: release.Revision{Namespace: namespace, Name: name, Version: version, Status: "deployed"},
+		Summary:  newTestReleaseSummary(),
+	}
+}
+
+func addProgressPhaseRevisionWithStatus(t *testing.T, api *progressPhasesAPI, revision int, status, manifest string) {
+	t.Helper()
+
 	body, err := json.Marshal(map[string]any{
 		"name": "progress-release", "namespace": "progress-ns", "version": revision,
-		"info": map[string]any{"status": "deployed"}, "manifest": manifest,
+		"info": map[string]any{"status": status}, "manifest": manifest,
 		"chart": map[string]any{"metadata": map[string]any{"apiVersion": "v2", "name": "progress-chart", "version": "1.0.0"}},
 	})
 	require.NoError(t, err)
@@ -418,7 +453,7 @@ func addProgressPhaseRevision(t *testing.T, api *progressPhasesAPI, revision int
 		s.configMaps[key] = corev1.ConfigMap{
 			TypeMeta: metav1.TypeMeta{Kind: "ConfigMap", APIVersion: "v1"},
 			ObjectMeta: metav1.ObjectMeta{Name: key, Namespace: "progress-ns", Labels: map[string]string{
-				"owner": "helm", "name": "progress-release", "version": fmt.Sprint(revision), "status": "deployed",
+				"owner": "helm", "name": "progress-release", "version": fmt.Sprint(revision), "status": status,
 			}},
 			Data: map[string]string{"release": base64.StdEncoding.EncodeToString(body)},
 		}
@@ -434,6 +469,31 @@ func addProgressPhasesConfigMap(t *testing.T, api *progressPhasesAPI) string {
 			Name: "progress-resource", Namespace: "progress-ns",
 			Annotations: map[string]string{"meta.helm.sh/release-name": "progress-release", "meta.helm.sh/release-namespace": "progress-ns"},
 			Labels:      map[string]string{"app.kubernetes.io/managed-by": "Helm"},
+		},
+		Data: map[string]string{"key": "value"},
+	}
+	body, err := json.Marshal(cm)
+	require.NoError(t, err)
+	api.state.RWTransaction(func(s *progressPhasesAPIState) {
+		s.configMaps[cm.Name] = cm
+	})
+
+	return string(body)
+}
+
+func addReleaseConfigMap(t *testing.T, api *progressPhasesAPI, name string, annotations map[string]string) string {
+	t.Helper()
+
+	cm := corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{Kind: "ConfigMap", APIVersion: "v1"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name, Namespace: "progress-ns", UID: types.UID("uid-" + name),
+			// The fake API serves no events, so readiness tracking must not block on them.
+			Annotations: lo.Assign(map[string]string{
+				"meta.helm.sh/release-name": "progress-release", "meta.helm.sh/release-namespace": "progress-ns",
+				"werf.io/track-termination-mode": "NonBlocking",
+			}, annotations),
+			Labels: map[string]string{"app.kubernetes.io/managed-by": "Helm"},
 		},
 		Data: map[string]string{"key": "value"},
 	}
@@ -476,6 +536,20 @@ func collectSlowProgressPhaseReports(ch <-chan progrep.ProgressReport) <-chan []
 	}()
 
 	return done
+}
+
+func deletedResourceConfigMaps(api *progressPhasesAPI) []string {
+	var names []string
+	api.state.RTransaction(func(s *progressPhasesAPIState) {
+		for _, request := range s.requests {
+			name, found := strings.CutPrefix(request, "DELETE /api/v1/namespaces/progress-ns/configmaps/")
+			if found && !strings.HasPrefix(name, "sh.helm.release.v1.") {
+				names = append(names, name)
+			}
+		}
+	})
+
+	return names
 }
 
 func encryptSecretValuesTypesFile(t *testing.T, outputPath string) {

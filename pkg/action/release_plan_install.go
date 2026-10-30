@@ -338,14 +338,11 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		return nil, fmt.Errorf("construct new release: %w", err)
 	}
 
-	log.Default.Debug(ctx, "Convert previous release to resource specs")
+	log.Default.Debug(ctx, "Build delete candidate resource specs")
 
-	var prevRelResSpecs []*spec.ResourceSpec
-	if prevRelease != nil {
-		prevRelResSpecs, err = release.ReleaseToResourceSpecs(ctx, prevRelease, releaseNamespace)
-		if err != nil {
-			return nil, fmt.Errorf("convert previous release to resource specs: %w", err)
-		}
+	prevRelResSpecs, err := buildDeleteCandidateResSpecs(ctx, prevRelease, prevDeployedRelease, releaseNamespace)
+	if err != nil {
+		return nil, fmt.Errorf("build delete candidate resource specs: %w", err)
 	}
 
 	log.Default.Debug(ctx, "Convert new release to resource specs")
