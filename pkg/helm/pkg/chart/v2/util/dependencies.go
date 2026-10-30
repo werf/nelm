@@ -102,21 +102,21 @@ type ExportUserValuesOptions struct {
 // conditions see the exported values, and after it, so that the values are not exported to the
 // disabled dependencies.
 func ExportUserValues(c *chart.Chart, v map[string]interface{}, opts ExportUserValuesOptions) (map[string]interface{}, []string, error) {
-	vals, err := copyUserValues(v)
+	vals, err := util.DeepCopyValues(v)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("copy user values: %w", err)
 	}
 
-	deleteUserValuesAtPaths(vals, opts.ReplacedPaths)
+	util.DeleteValuesAtPaths(vals, opts.ReplacedPaths)
 
-	exports := collectUserValuesExports(c, "")
+	exports := collectUserValuesExports(c, nil)
 
 	var skipped []string
 	for _, i := range sortValuesExports(exports) {
 		export := exports[i]
 		value, found, err := userValuesExportParentValue(vals, export)
 		if err != nil {
-			return nil, nil, fmt.Errorf("get value %q: %w", export.ParentPath, err)
+			return nil, nil, fmt.Errorf("get value %q: %w", joinPath(export.ParentPath), err)
 		}
 
 		if !found {
@@ -124,19 +124,19 @@ func ExportUserValues(c *chart.Chart, v map[string]interface{}, opts ExportUserV
 		}
 
 		if export.ToDependencyRoot && !istable(value) {
-			skipped = append(skipped, fmt.Sprintf("Skipping export-values of %q to dependency %q: only a map can be exported to the dependency root", export.ParentPath, export.ChildPath))
+			skipped = append(skipped, fmt.Sprintf("Skipping export-values of %q to dependency %q: only a map can be exported to the dependency root", joinPath(export.ParentPath), joinPath(export.ChildPath)))
 			continue
 		}
 
 		var valueCopy interface{}
 		if value != nil {
 			if valueCopy, err = copystructure.Copy(value); err != nil {
-				return nil, nil, fmt.Errorf("copy value %q: %w", export.ParentPath, err)
+				return nil, nil, fmt.Errorf("copy value %q: %w", joinPath(export.ParentPath), err)
 			}
 		}
 
-		vals = util.MergeTables(valueToPathMap(parsePath(export.ChildPath), valueCopy), vals)
-		deleteUserValuesAtPaths(vals, opts.ReplacedPaths)
+		vals = util.MergeTables(valueToPathMap(export.ChildPath, valueCopy), vals)
+		util.DeleteValuesAtPaths(vals, opts.ReplacedPaths)
 	}
 
 	return vals, skipped, nil
@@ -500,41 +500,27 @@ func processDependencyImportExportValues(c *chart.Chart, merge bool) error {
 }
 
 type chartValuesExport struct {
-	Chart  *chart.Chart
-	Parent string
-	Child  string
-	Paths  userValuesExport
+	Chart          *chart.Chart
+	DependencyPath []string
+	Parent         string
+	Child          string
+	Paths          userValuesExport
+	// TouchesGlobals is set by batchChartValuesExports.
+	TouchesGlobals bool
 }
 
 // processDependencyExportValues applies export-values of the chart dependencies, recursively, in the
 // order of sortValuesExports, so that an export reads the values written by the exports to the
-// sibling dependencies regardless of their order. Consecutive exports to the same dependency are
-// applied together, unless one reads what another writes, so that the values in between, e.g. a
-// scalar exported to a dependency root before a map exported there, are never coalesced.
+// sibling dependencies regardless of their order. The exports to the same dependency are applied
+// together where batchChartValuesExports allows it, so that the values in between, e.g. a scalar
+// exported to a dependency root before a map exported there, are never coalesced.
 func processDependencyExportValues(c *chart.Chart, merge bool) error {
 	exports, err := prepareChartValuesExports(c, merge)
 	if err != nil {
 		return fmt.Errorf("prepare export values: %w", err)
 	}
 
-	paths := lo.Map(exports, func(export chartValuesExport, _ int) userValuesExport {
-		return export.Paths
-	})
-
-	var batch []chartValuesExport
-	for _, i := range sortValuesExports(paths) {
-		if len(batch) > 0 && !joinsChartValuesExports(batch, exports[i]) {
-			if err := applyChartValuesExports(batch, merge); err != nil {
-				return fmt.Errorf("apply export values of dependency %q: %w", batch[0].Chart.ChartPath(), err)
-			}
-
-			batch = nil
-		}
-
-		batch = append(batch, exports[i])
-	}
-
-	if len(batch) > 0 {
+	for _, batch := range batchChartValuesExports(exports, dependencyPaths(c)) {
 		if err := applyChartValuesExports(batch, merge); err != nil {
 			return fmt.Errorf("apply export values of dependency %q: %w", batch[0].Chart.ChartPath(), err)
 		}
@@ -543,18 +529,60 @@ func processDependencyExportValues(c *chart.Chart, merge bool) error {
 	return nil
 }
 
-func joinsChartValuesExports(batch []chartValuesExport, export chartValuesExport) bool {
-	if export.Chart != batch[0].Chart {
-		return false
+// batchChartValuesExports returns the exports in the order of sortValuesExports, split into batches
+// of exports to the same dependency. An export joins the last batch of its dependency unless it
+// reads what the batch writes, or the batch is not independent of an export that follows it. The
+// batch is then moved after the batches that follow it, which, unless the values in between are
+// invalid, changes what no export reads. depPaths are the paths of all the dependencies in the
+// chart values. If a dependency is named global, no batch is moved: its values are also globals,
+// which coalescing propagates to the other charts, nesting them deeper on each pass.
+func batchChartValuesExports(exports []chartValuesExport, depPaths [][]string) [][]chartValuesExport {
+	moveBatches := !lo.ContainsBy(depPaths, func(depPath []string) bool {
+		return depPath[len(depPath)-1] == common.GlobalKey
+	})
+
+	exports = slices.Clone(exports)
+	for i := range exports {
+		exports[i].TouchesGlobals = valuesExportTouchesGlobals(exports[i].Paths, depPaths)
 	}
 
-	parentPaths := valuesExportParentPaths(export.Paths)
-
-	return !lo.ContainsBy(batch, func(batchExport chartValuesExport) bool {
-		return lo.ContainsBy(parentPaths, func(parentPath string) bool {
-			return pathsOverlap(batchExport.Paths.ChildPath, parentPath)
-		})
+	paths := lo.Map(exports, func(export chartValuesExport, _ int) userValuesExport {
+		return export.Paths
 	})
+
+	var (
+		batches [][]chartValuesExport
+		// dependentsAfter[k] is the number of exports after batches[k] that are not independent of it.
+		dependentsAfter []int
+	)
+
+	for _, i := range sortValuesExports(paths) {
+		export := exports[i]
+
+		batch, k, found := lo.FindLastIndexOf(batches, func(batch []chartValuesExport) bool {
+			return batch[0].Chart == export.Chart
+		})
+
+		if found && dependentsAfter[k] == 0 && !lo.ContainsBy(batch, func(batchExport chartValuesExport) bool {
+			return valuesExportReadsPath(export.Paths, batchExport.Paths.ChildPath)
+		}) {
+			batches = append(slices.Delete(batches, k, k+1), append(batch, export))
+			dependentsAfter = append(slices.Delete(dependentsAfter, k, k+1), 0)
+		} else {
+			batches = append(batches, []chartValuesExport{export})
+			dependentsAfter = append(dependentsAfter, 0)
+		}
+
+		for j, earlierBatch := range batches[:len(batches)-1] {
+			if !lo.EveryBy(earlierBatch, func(batchExport chartValuesExport) bool {
+				return moveBatches && chartValuesExportsIndependent(batchExport, export)
+			}) {
+				dependentsAfter[j]++
+			}
+		}
+	}
+
+	return batches
 }
 
 // prepareChartValuesExports returns the export-values of the chart dependencies, recursively,
@@ -565,8 +593,8 @@ func prepareChartValuesExports(c *chart.Chart, merge bool) ([]chartValuesExport,
 	var exports []chartValuesExport
 
 	if r := dependencyForChart(c); r != nil {
-		parentChartPath := stripFirstPathPart(c.Parent().ChartPath())
-		depPath := joinNonEmptyPath(parentChartPath, c.Name())
+		parentChartPath := chartPathFromRoot(c.Parent())
+		depPath := appendPath(parentChartPath, c.Name())
 
 		var normalizedExportValues []interface{}
 		for _, rev := range dependencyExportValues(r) {
@@ -587,10 +615,11 @@ func prepareChartValuesExports(c *chart.Chart, merge bool) ([]chartValuesExport,
 			})
 
 			exports = append(exports, chartValuesExport{
-				Chart:  c,
-				Parent: parent,
-				Child:  child,
-				Paths:  newUserValuesExport(parentChartPath, depPath, parent, child),
+				Chart:          c,
+				DependencyPath: depPath,
+				Parent:         parent,
+				Child:          child,
+				Paths:          newUserValuesExport(parentChartPath, depPath, parent, child),
 			})
 		}
 
@@ -698,7 +727,7 @@ func valueMapFromExport(parentChartName, dependencyName string, pvals common.Val
 		return nil, false
 	}
 
-	childPath := joinPath(childSlice[:len(childSlice)-1]...)
+	childPath := joinPath(childSlice[:len(childSlice)-1])
 	childMap := map[string]interface{}{childSlice[len(childSlice)-1]: value}
 	if childPath == "" {
 		return childMap, true
@@ -725,7 +754,7 @@ func valuesWithRootGlobalsForChart(c *chart.Chart, merge bool) (common.Values, e
 		return nil, fmt.Errorf("get root chart values: %w", err)
 	}
 
-	vals, err := rootVals.Table(stripFirstPathPart(c.ChartPath()))
+	vals, err := rootVals.Table(joinPath(chartPathFromRoot(c)))
 	if err != nil {
 		return nil, fmt.Errorf("get chart %q values from root chart values: %w", c.ChartPath(), err)
 	}
@@ -841,12 +870,12 @@ type ImportUserValuesOptions struct {
 // overridden by the value at the parent path. It also returns the messages about the imports skipped
 // because of their values. Call it after ProcessDependenciesWithMergedValues.
 func ImportUserValues(c *chart.Chart, v map[string]interface{}, opts ImportUserValuesOptions) (map[string]interface{}, []string, error) {
-	vals, err := copyUserValues(v)
+	vals, err := util.DeepCopyValues(v)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("copy user values: %w", err)
 	}
 
-	deleteUserValuesAtPaths(vals, opts.ReplacedPaths)
+	util.DeleteValuesAtPaths(vals, opts.ReplacedPaths)
 
 	return importUserValues(c, vals, opts.ReplacedPaths)
 }
@@ -864,7 +893,7 @@ func ExportAndImportValuesNotFoundWarnings(c *chart.Chart, layers []map[string]i
 	exportLayers := append(slices.Clone(layers), chartValuesBeforeProcessing)
 
 	var warnings []string
-	for _, export := range collectUserValuesExports(c, "") {
+	for _, export := range collectUserValuesExports(c, nil) {
 		found, err := userValuesExportParentFound(exportLayers, export)
 		if err != nil {
 			return nil, err
@@ -893,7 +922,7 @@ func userValuesExportParentFound(layers []map[string]interface{}, export userVal
 	for _, vals := range layers {
 		_, found, err := userValuesExportParentValue(vals, export)
 		if err != nil {
-			return false, fmt.Errorf("get value %q: %w", export.ParentPath, err)
+			return false, fmt.Errorf("get value %q: %w", joinPath(export.ParentPath), err)
 		}
 
 		if found {
@@ -921,7 +950,7 @@ func chartValuesExportParentFound(export userValuesExport) (bool, error) {
 		return false, fmt.Errorf("get values of chart %q: %w", export.Chart.ChartPath(), err)
 	}
 
-	_, found := userValueAtPath(pvals, export.Parent)
+	_, found := valueAtPath(pvals, parsePath(export.Parent))
 
 	return found, nil
 }
@@ -940,7 +969,7 @@ func importValuesNotFoundWarnings(c *chart.Chart, layers []map[string]interface{
 		warnings = append(warnings, depWarnings...)
 	}
 
-	chartPath := stripFirstPathPart(c.ChartPath())
+	chartPath := chartPathFromRoot(c)
 
 	var cvals common.Values
 	for _, r := range c.Metadata.Dependencies {
@@ -950,10 +979,10 @@ func importValuesNotFoundWarnings(c *chart.Chart, layers []map[string]interface{
 				continue
 			}
 
-			childPath := joinNonEmptyPath(chartPath, r.Name, child)
+			childPath := appendPath(chartPath, r.Name, child)
 
 			if lo.ContainsBy(layers, func(vals map[string]interface{}) bool {
-				_, found := userValueAtPath(vals, childPath)
+				_, found := valueAtPath(vals, childPath)
 				return found
 			}) {
 				continue
@@ -981,20 +1010,20 @@ type userValuesExport struct {
 	// Chart, DependencyName and Parent are the export-values definition in Chart.yaml, set only by
 	// collectUserValuesExports.
 	Chart          *chart.Chart
-	ChildPath      string
+	ChildPath      []string
 	DependencyName string
 	// GlobalPaths are set for an export of a global value from a subchart: the paths of the globals of
 	// the root chart and of each chart down to the subchart, from the highest precedence. ParentPath is
 	// then the path in these globals merged like in coalesceGlobals.
-	GlobalPaths      []string
+	GlobalPaths      [][]string
 	Parent           string
-	ParentPath       string
+	ParentPath       []string
 	ToDependencyRoot bool
 }
 
 // collectUserValuesExports returns the export-values of the chart dependencies, recursively, with
 // the paths from the root chart, parents before their dependencies.
-func collectUserValuesExports(c *chart.Chart, chartPath string) []userValuesExport {
+func collectUserValuesExports(c *chart.Chart, chartPath []string) []userValuesExport {
 	var exports []userValuesExport
 
 	for _, existing := range c.Dependencies() {
@@ -1002,7 +1031,7 @@ func collectUserValuesExports(c *chart.Chart, chartPath string) []userValuesExpo
 			continue
 		}
 
-		exports = append(exports, collectUserValuesExports(existing, joinNonEmptyPath(chartPath, existing.Name()))...)
+		exports = append(exports, collectUserValuesExports(existing, appendPath(chartPath, existing.Name()))...)
 	}
 
 	for _, req := range c.Metadata.Dependencies {
@@ -1025,7 +1054,7 @@ func collectUserValuesExports(c *chart.Chart, chartPath string) []userValuesExpo
 			continue
 		}
 
-		depPath := joinNonEmptyPath(chartPath, dep.Name())
+		depPath := appendPath(chartPath, dep.Name())
 
 		for _, exportValue := range dependencyExportValues(req) {
 			parent, child, err := parseExportValues(exportValue)
@@ -1048,26 +1077,25 @@ func collectUserValuesExports(c *chart.Chart, chartPath string) []userValuesExpo
 	return exports
 }
 
-func newUserValuesExport(chartPath, depPath, parent, child string) userValuesExport {
+func newUserValuesExport(chartPath, depPath []string, parent, child string) userValuesExport {
 	export := userValuesExport{
-		ChildPath:        joinNonEmptyPath(depPath, child),
-		ParentPath:       joinNonEmptyPath(chartPath, parent),
+		ChildPath:        appendPath(depPath, child),
+		ParentPath:       appendPath(chartPath, parent),
 		ToDependencyRoot: child == "",
 	}
 
-	if chartPath != "" && isGlobalValuesPath(parent) {
+	if len(chartPath) > 0 && isGlobalValuesPath(parent) {
 		export.GlobalPaths = userValuesGlobalPaths(chartPath)
-		export.ParentPath = parent
+		export.ParentPath = parsePath(parent)
 	}
 
 	return export
 }
 
-func userValuesGlobalPaths(chartPath string) []string {
-	paths := []string{common.GlobalKey}
-	chartPathParts := parsePath(chartPath)
-	for i := range chartPathParts {
-		paths = append(paths, joinPath(append(slices.Clone(chartPathParts[:i+1]), common.GlobalKey)...))
+func userValuesGlobalPaths(chartPath []string) [][]string {
+	paths := [][]string{{common.GlobalKey}}
+	for i := range chartPath {
+		paths = append(paths, slices.Concat(chartPath[:i+1], []string{common.GlobalKey}))
 	}
 
 	return paths
@@ -1084,6 +1112,17 @@ func chartMatchesDependency(c *chart.Chart, reqs []*chart.Dependency) bool {
 // export to a sibling dependency listed after it, and after the exports listed before it that write
 // to its child path. Otherwise the order is kept. A cycle is broken at its first listed export.
 func sortValuesExports(exports []userValuesExport) []int {
+	waitedBy := make([][]int, len(exports))
+	waitsFor := make([]int, len(exports))
+	for i := range exports {
+		for j := range exports {
+			if j != i && (valuesExportReadsPath(exports[i], exports[j].ChildPath) || (j < i && pathsOverlap(exports[j].ChildPath, exports[i].ChildPath))) {
+				waitedBy[j] = append(waitedBy[j], i)
+				waitsFor[i]++
+			}
+		}
+	}
+
 	sorted := make([]int, 0, len(exports))
 	done := make([]bool, len(exports))
 
@@ -1098,7 +1137,7 @@ func sortValuesExports(exports []userValuesExport) []int {
 				next = i
 			}
 
-			if !exportWaitsForOtherExports(exports, done, i) {
+			if waitsFor[i] == 0 {
 				next = i
 				break
 			}
@@ -1106,43 +1145,69 @@ func sortValuesExports(exports []userValuesExport) []int {
 
 		done[next] = true
 		sorted = append(sorted, next)
+
+		for _, i := range waitedBy[next] {
+			waitsFor[i]--
+		}
 	}
 
 	return sorted
 }
 
-func exportWaitsForOtherExports(exports []userValuesExport, done []bool, i int) bool {
-	parentPaths := valuesExportParentPaths(exports[i])
+// chartValuesExportsIndependent reports whether the exports can be applied in any order: the values
+// of their dependencies don't overlap, neither of them reads the values of the other's dependency,
+// and not both of them touch globals. An export might change the values of its dependency outside of
+// its child path, e.g. the globals of the nested charts, or the defaults merged into a map that
+// replaced a scalar. Coalescing also merges the globals of a dependency into the globals of its
+// parents, because it copies the nested maps of the globals by reference.
+func chartValuesExportsIndependent(a, b chartValuesExport) bool {
+	return !(a.TouchesGlobals && b.TouchesGlobals) &&
+		!pathsOverlap(a.DependencyPath, b.DependencyPath) &&
+		!valuesExportReadsPath(a.Paths, b.DependencyPath) &&
+		!valuesExportReadsPath(b.Paths, a.DependencyPath)
+}
 
-	for j := range exports {
-		if done[j] || j == i {
-			continue
-		}
-
-		writesParentPath := lo.ContainsBy(parentPaths, func(parentPath string) bool {
-			return pathsOverlap(exports[j].ChildPath, parentPath)
+// valuesExportTouchesGlobals reports whether the export reads or writes a path with globals: a path
+// under a global, or a path of a dependency or of its parents, whose values include its globals.
+func valuesExportTouchesGlobals(export userValuesExport, depPaths [][]string) bool {
+	return lo.ContainsBy(append(valuesExportParentPaths(export), export.ChildPath), func(path []string) bool {
+		return slices.Contains(path, common.GlobalKey) || lo.ContainsBy(depPaths, func(depPath []string) bool {
+			return len(path) <= len(depPath) && slices.Equal(path, depPath[:len(path)])
 		})
+	})
+}
 
-		if writesParentPath || (j < i && pathsOverlap(exports[j].ChildPath, exports[i].ChildPath)) {
-			return true
-		}
+// dependencyPaths returns the paths of the dependencies of the chart, recursively, in the chart values.
+func dependencyPaths(c *chart.Chart) [][]string {
+	var paths [][]string
+	for _, d := range c.Dependencies() {
+		paths = append(paths, chartPathFromRoot(d))
+		paths = append(paths, dependencyPaths(d)...)
 	}
 
-	return false
+	return paths
+}
+
+func valuesExportReadsPath(export userValuesExport, path []string) bool {
+	return lo.ContainsBy(valuesExportParentPaths(export), func(parentPath []string) bool {
+		return pathsOverlap(path, parentPath)
+	})
 }
 
 // valuesExportParentPaths returns the paths from the root chart that the export reads.
-func valuesExportParentPaths(export userValuesExport) []string {
-	parentPaths := []string{export.ParentPath}
+func valuesExportParentPaths(export userValuesExport) [][]string {
+	parentPaths := [][]string{export.ParentPath}
 	for _, globalPath := range export.GlobalPaths {
-		parentPaths = append(parentPaths, globalPath+strings.TrimPrefix(export.ParentPath, common.GlobalKey))
+		parentPaths = append(parentPaths, slices.Concat(globalPath, export.ParentPath[1:]))
 	}
 
 	return parentPaths
 }
 
-func pathsOverlap(a, b string) bool {
-	return a == b || strings.HasPrefix(a, b+".") || strings.HasPrefix(b, a+".")
+func pathsOverlap(a, b []string) bool {
+	n := min(len(a), len(b))
+
+	return slices.Equal(a[:n], b[:n])
 }
 
 func importUserValues(c *chart.Chart, vals map[string]interface{}, replacedPaths [][]string) (map[string]interface{}, []string, error) {
@@ -1159,7 +1224,7 @@ func importUserValues(c *chart.Chart, vals map[string]interface{}, replacedPaths
 		skipped = append(skipped, depSkipped...)
 	}
 
-	chartPath := stripFirstPathPart(c.ChartPath())
+	chartPath := chartPathFromRoot(c)
 
 	imported := map[string]interface{}{}
 	for _, r := range c.Metadata.Dependencies {
@@ -1169,9 +1234,9 @@ func importUserValues(c *chart.Chart, vals map[string]interface{}, replacedPaths
 				continue
 			}
 
-			childPath := joinNonEmptyPath(chartPath, r.Name, child)
+			childPath := appendPath(chartPath, r.Name, child)
 
-			value, found := userValueAtPath(vals, childPath)
+			value, found := valueAtPath(vals, childPath)
 			if !found {
 				continue
 			}
@@ -1185,13 +1250,13 @@ func importUserValues(c *chart.Chart, vals map[string]interface{}, replacedPaths
 			}
 
 			if !istable(value) {
-				skipped = append(skipped, fmt.Sprintf("Skipping import-values of %q: only a map can be imported", childPath))
+				skipped = append(skipped, fmt.Sprintf("Skipping import-values of %q: only a map can be imported", joinPath(childPath)))
 				continue
 			}
 
 			valueCopy, err := copystructure.Copy(value)
 			if err != nil {
-				return nil, nil, fmt.Errorf("copy value %q: %w", childPath, err)
+				return nil, nil, fmt.Errorf("copy value %q: %w", joinPath(childPath), err)
 			}
 
 			imported = util.MergeTables(imported, pathToMap(parent, valueCopy.(map[string]interface{})))
@@ -1202,29 +1267,14 @@ func importUserValues(c *chart.Chart, vals map[string]interface{}, replacedPaths
 		return vals, skipped, nil
 	}
 
-	if chartPath != "" {
-		imported = valueToPathMap(parsePath(chartPath), imported)
+	if len(chartPath) > 0 {
+		imported = valueToPathMap(chartPath, imported)
 	}
 
 	vals = util.MergeTables(vals, imported)
-	deleteUserValuesAtPaths(vals, replacedPaths)
+	util.DeleteValuesAtPaths(vals, replacedPaths)
 
 	return vals, skipped, nil
-}
-
-func deleteUserValuesAtPaths(vals map[string]interface{}, paths [][]string) {
-	for _, path := range paths {
-		table := vals
-		for _, key := range path[:len(path)-1] {
-			if table, _ = table[key].(map[string]interface{}); table == nil {
-				break
-			}
-		}
-
-		if table != nil {
-			delete(table, path[len(path)-1])
-		}
-	}
 }
 
 // parseImportValues returns the child and parent paths of an import-values entry, in the original
@@ -1242,23 +1292,9 @@ func parseImportValues(importValue interface{}) (string, string, bool) {
 	}
 }
 
-func copyUserValues(v map[string]interface{}) (map[string]interface{}, error) {
-	valsCopy, err := copystructure.Copy(v)
-	if err != nil {
-		return nil, fmt.Errorf("copy user values: %w", err)
-	}
-
-	vals, ok := valsCopy.(map[string]interface{})
-	if !ok || vals == nil {
-		return map[string]interface{}{}, nil
-	}
-
-	return vals, nil
-}
-
-func userValueAtPath(vals map[string]interface{}, path string) (interface{}, bool) {
+func valueAtPath(vals map[string]interface{}, path []string) (interface{}, bool) {
 	var value interface{} = vals
-	for _, key := range parsePath(path) {
+	for _, key := range path {
 		table, ok := value.(map[string]interface{})
 		if !ok {
 			return nil, false
@@ -1274,13 +1310,13 @@ func userValueAtPath(vals map[string]interface{}, path string) (interface{}, boo
 
 func userValuesExportParentValue(vals map[string]interface{}, export userValuesExport) (interface{}, bool, error) {
 	if len(export.GlobalPaths) == 0 {
-		value, found := userValueAtPath(vals, export.ParentPath)
+		value, found := valueAtPath(vals, export.ParentPath)
 		return value, found, nil
 	}
 
 	var globals map[string]interface{}
 	for _, path := range export.GlobalPaths {
-		value, found := userValueAtPath(vals, path)
+		value, found := valueAtPath(vals, path)
 		if !found {
 			continue
 		}
@@ -1293,7 +1329,7 @@ func userValuesExportParentValue(vals map[string]interface{}, export userValuesE
 
 		valueCopy, err := copystructure.Copy(value)
 		if err != nil {
-			return nil, false, fmt.Errorf("copy value %q: %w", path, err)
+			return nil, false, fmt.Errorf("copy value %q: %w", joinPath(path), err)
 		}
 
 		globals = mergeUserGlobals(globals, valueCopy.(map[string]interface{}))
@@ -1303,7 +1339,7 @@ func userValuesExportParentValue(vals map[string]interface{}, export userValuesE
 		return nil, false, nil
 	}
 
-	value, found := userValueAtPath(map[string]interface{}{common.GlobalKey: globals}, export.ParentPath)
+	value, found := valueAtPath(map[string]interface{}{common.GlobalKey: globals}, export.ParentPath)
 
 	return value, found, nil
 }
@@ -1334,15 +1370,16 @@ func valueToPathMap(path []string, value interface{}) map[string]interface{} {
 	return result
 }
 
-func joinNonEmptyPath(path ...string) string {
-	var parts []string
-	for _, p := range path {
-		if p != "" {
-			parts = append(parts, p)
+// appendPath returns a copy of path followed by the keys of each non-empty dot-separated subPath.
+func appendPath(path []string, subPaths ...string) []string {
+	result := slices.Clone(path)
+	for _, subPath := range subPaths {
+		if subPath != "" {
+			result = append(result, parsePath(subPath)...)
 		}
 	}
 
-	return joinPath(parts...)
+	return result
 }
 
 func dependencyForChart(c *chart.Chart) *chart.Dependency {
@@ -1410,15 +1447,11 @@ func setDependencyExportValues(r *chart.Dependency, values []interface{}) {
 	field.Set(reflect.ValueOf(values))
 }
 
-func stripFirstPathPart(path string) string {
-	pathParts := parsePath(path)
-	if len(pathParts) <= 1 {
-		return ""
-	}
-
-	return joinPath(pathParts[1:]...)
+// chartPathFromRoot returns the path of the chart values in the root chart values.
+func chartPathFromRoot(c *chart.Chart) []string {
+	return parsePath(c.ChartPath())[1:]
 }
 
-func joinPath(path ...string) string {
+func joinPath(path []string) string {
 	return strings.Join(path, ".")
 }
