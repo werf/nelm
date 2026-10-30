@@ -1,6 +1,7 @@
 package action
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -531,6 +532,17 @@ func newChartRenderInstallRenderOptions(t *testing.T, api *progressPhasesAPI, ch
 		Remote:                true,
 		TempDirPath:           t.TempDir(),
 	}
+}
+
+func newLogCapturingContext(t *testing.T) (context.Context, *bytes.Buffer) {
+	t.Helper()
+
+	var logs bytes.Buffer
+
+	ctx := logboek.NewContext(context.Background(), logboek.NewLogger(&logs, &logs))
+	logboek.Context(ctx).Streams().SetWidth(1000)
+
+	return ctx, &logs
 }
 
 func newMetadataReleaseListStorager(revisions []release.Revision, summaries map[string]*release.ReleaseSummary, loadErrs ...error) *latestReleaseListStorager {

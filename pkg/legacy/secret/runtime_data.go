@@ -4,16 +4,25 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
+	"strconv"
+	"strings"
 
+	"github.com/samber/lo"
 	"sigs.k8s.io/yaml"
 
 	"github.com/werf/common-go/pkg/secret"
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/v2/pkg/common"
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
-var _ RuntimeData = (*SecretsRuntimeData)(nil)
+var (
+	_ RuntimeData = (*SecretsRuntimeData)(nil)
+
+	simpleSecretValuePathKeyRegexp = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
+)
 
 type DecodeAndLoadSecretsOptions = chartcommon.DecodeAndLoadSecretsOptions
 
@@ -87,7 +96,7 @@ func (s *SecretsRuntimeData) DecodeAndLoadSecrets(ctx context.Context, loadedCha
 	}
 
 	if len(defaultSecretValuesFiles) > 0 {
-		values, err := LoadChartSecretValueFiles(defaultSecretValuesFiles, encoder)
+		values, err := LoadChartSecretValueFiles(ctx, defaultSecretValuesFiles, encoder)
 		if err != nil {
 			return fmt.Errorf("load default secret values file: %w", err)
 		}
@@ -95,7 +104,7 @@ func (s *SecretsRuntimeData) DecodeAndLoadSecrets(ctx context.Context, loadedCha
 	}
 
 	if len(customSecretValuesFiles) > 0 {
-		values, err := LoadChartSecretValueFiles(customSecretValuesFiles, encoder)
+		values, err := LoadChartSecretValueFiles(ctx, customSecretValuesFiles, encoder)
 		if err != nil {
 			return fmt.Errorf("load custom secret values files: %w", err)
 		}
@@ -150,14 +159,16 @@ func (s *SecretsRuntimeData) GetEncodedSecretValues(ctx context.Context, secrets
 	return encryptedData, nil
 }
 
-func LoadChartSecretValueFiles(secretDirFiles []*common.BufferedFile, encoder *secret.YamlEncoder) (map[string]interface{}, error) {
+func LoadChartSecretValueFiles(ctx context.Context, secretDirFiles []*common.BufferedFile, encoder *secret.YamlEncoder) (map[string]interface{}, error) {
 	var res map[string]interface{}
 
 	for _, f := range secretDirFiles {
-		decodedData, err := encoder.DecryptYamlData(f.Data)
+		decodedData, untypedScalars, err := encoder.DecryptYamlDataWithUntypedScalars(f.Data)
 		if err != nil {
 			return nil, fmt.Errorf("decode file %q secret data: %w", f.Name, err)
 		}
+
+		warnAboutUntypedSecretValues(ctx, f.Name, untypedScalars)
 
 		rawValues := map[string]interface{}{}
 		if err := yaml.Unmarshal(decodedData, &rawValues); err != nil {
@@ -168,4 +179,53 @@ func LoadChartSecretValueFiles(secretDirFiles []*common.BufferedFile, encoder *s
 	}
 
 	return res, nil
+}
+
+// warnAboutUntypedSecretValues points out values encrypted in a format that does not store the
+// YAML type: they are always decrypted as strings, which matters only for those that would
+// otherwise be read as a number or a boolean.
+func warnAboutUntypedSecretValues(ctx context.Context, fileName string, untypedScalars []secret.UntypedScalar) {
+	untypedPaths := lo.FilterMap(untypedScalars, func(scalar secret.UntypedScalar, _ int) (string, bool) {
+		var value interface{}
+		if err := yaml.Unmarshal([]byte(scalar.Value), &value); err != nil {
+			return "", false
+		}
+
+		switch value.(type) {
+		case bool, float64:
+			return formatSecretValuePath(scalar.Path), true
+		default:
+			return "", false
+		}
+	})
+
+	if len(untypedPaths) == 0 {
+		return
+	}
+
+	log.Default.Warn(ctx, "Secret values file %q has values encrypted in an old format that does not store YAML types, so they are read as strings: %s. To make them numbers or booleans, re-enter them with `nelm chart secret values-file edit` (`werf helm secret values edit` in werf).", fileName, strings.Join(untypedPaths, ", "))
+}
+
+func formatSecretValuePath(path []interface{}) string {
+	var result strings.Builder
+
+	for _, element := range path {
+		switch element := element.(type) {
+		case int:
+			fmt.Fprintf(&result, "[%d]", element)
+		default:
+			key := fmt.Sprint(element)
+
+			switch {
+			case !simpleSecretValuePathKeyRegexp.MatchString(key):
+				fmt.Fprintf(&result, "[%s]", strconv.Quote(key))
+			case result.Len() > 0:
+				result.WriteString("." + key)
+			default:
+				result.WriteString(key)
+			}
+		}
+	}
+
+	return result.String()
 }
