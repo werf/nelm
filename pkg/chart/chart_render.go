@@ -539,7 +539,7 @@ func processDependencies(chrt helmchart.Charter, userVals userValues) (map[strin
 			return layer.Values
 		})
 
-		notFound, err := chartv2util.ExportAndImportValuesNotFoundWarnings(c, checkedLayers, lo.CoalesceMapOrEmpty(chartValsBeforeProcessing))
+		notFound, err := chartv2util.ExportAndImportValuesNotFoundWarnings(c, checkedLayers, chartValsBeforeProcessing)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("check export and import values paths: %w", err)
 		}

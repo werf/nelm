@@ -45,7 +45,7 @@ func ProcessDependencies(c *chart.Chart, v *map[string]interface{}) error {
 		return err
 	}
 
-	chartValsBeforeProcessing := map[string]interface{}{}
+	var chartValsBeforeProcessing map[string]interface{}
 	if chartVals, err := util.CoalesceValues(c, nil); err == nil {
 		chartValsBeforeProcessing = chartVals.AsMap()
 	}
@@ -858,7 +858,7 @@ func ImportUserValues(c *chart.Chart, v map[string]interface{}, opts ImportUserV
 // export-values and import-values applied separately, so only all of them together tell that a
 // path is not set. Call it after ProcessDependenciesWithMergedValues with the values layers both
 // before ExportUserValues and after ImportUserValues, and with the chart values coalesced before
-// processing, or an empty map if they are invalid: an export might overwrite the path it reads, and
+// processing, or nil if they are invalid: an export might overwrite the path it reads, and
 // an export might read the path that another export writes.
 func ExportAndImportValuesNotFoundWarnings(c *chart.Chart, layers []map[string]interface{}, chartValuesBeforeProcessing map[string]interface{}) ([]string, error) {
 	exportLayers := append(slices.Clone(layers), chartValuesBeforeProcessing)

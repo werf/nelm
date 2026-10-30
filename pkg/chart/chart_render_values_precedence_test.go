@@ -157,64 +157,6 @@ func TestRenderChart_ExportAndImportValuesEdgeCases(t *testing.T) {
 	}
 }
 
-// TestRenderChart_ExportAndImportValuesPrecedenceMatrix checks every pair of value layers. Within a
-// layer, an exported value beats the child value and the parent value beats an imported value.
-// Across layers, the higher layer wins.
-func TestRenderChart_ExportAndImportValuesPrecedenceMatrix(t *testing.T) {
-	layers := []string{"cv", "cs", "pv", "ps", "file", "secretfile", "set", "service"}
-
-	result := renderLayeredValuesChart(t, layeredValuesRenderOptions{
-		ChartDir:          "precedence-matrix-chart",
-		SecretValuesFiles: []string{filepath.Join("testdata", "layered-values", "pm-secret-values-file.yaml")},
-		ServiceValues:     readValuesFile(t, filepath.Join("testdata", "layered-values", "pm-service-values.yaml")),
-		Set:               flattenToSetValues(readValuesFile(t, filepath.Join("testdata", "layered-values", "pm-set-values.yaml")), ""),
-		ValuesFiles:       []string{filepath.Join("testdata", "layered-values", "pm-values-file.yaml")},
-	})
-	vals := renderedChartValues(t, result)
-
-	for sourceRank, source := range layers {
-		for targetRank, target := range layers {
-			if sourceRank >= 2 {
-				t.Run("export from "+source+" to "+target, func(t *testing.T) {
-					assert.Equal(t, lo.Ternary(sourceRank >= targetRank, "src-"+source, "dst-"+target), valueAtPath(t, vals, "sub.exp."+source+"."+target))
-				})
-			}
-
-			if targetRank >= 2 {
-				t.Run("import from "+source+" to "+target, func(t *testing.T) {
-					assert.Equal(t, lo.Ternary(sourceRank > targetRank, "src-"+source, "dst-"+target), valueAtPath(t, vals, "imp."+source+"."+target))
-				})
-			}
-		}
-	}
-}
-
-func TestRenderChart_ExportAndImportValuesSkippedWarnings(t *testing.T) {
-	tests := []struct {
-		name string
-		set  string
-		want string
-	}{
-		{name: "scalar exported to dependency root", set: "g.prim=set", want: `Skipping export-values of "g.prim" to dependency "a": only a map can be exported to the dependency root`},
-		{name: "scalar imported", set: "a.out=set", want: `Skipping import-values of "a.out": only a map can be imported`},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			logger := &warningsLogger{Logger: log.Default}
-			log.Default = logger
-			t.Cleanup(func() { log.Default = logger.Logger })
-
-			renderLayeredValuesChart(t, layeredValuesRenderOptions{ChartDir: "export-import-edge-chart", Set: []string{tt.set}})
-
-			skipWarnings := lo.Filter(logger.warnings, func(warning string, _ int) bool {
-				return strings.HasPrefix(warning, "Skipping") && strings.Contains(warning, "only a map")
-			})
-			assert.Equal(t, []string{tt.want}, skipWarnings)
-		})
-	}
-}
-
 func TestRenderChart_ExportAndImportValuesNotFoundWarnings(t *testing.T) {
 	const (
 		exportWarning     = `Skipping export-values of "img.repo" from chart "parent" to dependency "sub": the path is not set in any values`
@@ -315,6 +257,64 @@ func TestRenderChart_ExportAndImportValuesNotFoundWarnings(t *testing.T) {
 			})
 			assert.ElementsMatch(t, tt.want, skipWarnings)
 			assert.Empty(t, slogWarnings.String())
+		})
+	}
+}
+
+// TestRenderChart_ExportAndImportValuesPrecedenceMatrix checks every pair of value layers. Within a
+// layer, an exported value beats the child value and the parent value beats an imported value.
+// Across layers, the higher layer wins.
+func TestRenderChart_ExportAndImportValuesPrecedenceMatrix(t *testing.T) {
+	layers := []string{"cv", "cs", "pv", "ps", "file", "secretfile", "set", "service"}
+
+	result := renderLayeredValuesChart(t, layeredValuesRenderOptions{
+		ChartDir:          "precedence-matrix-chart",
+		SecretValuesFiles: []string{filepath.Join("testdata", "layered-values", "pm-secret-values-file.yaml")},
+		ServiceValues:     readValuesFile(t, filepath.Join("testdata", "layered-values", "pm-service-values.yaml")),
+		Set:               flattenToSetValues(readValuesFile(t, filepath.Join("testdata", "layered-values", "pm-set-values.yaml")), ""),
+		ValuesFiles:       []string{filepath.Join("testdata", "layered-values", "pm-values-file.yaml")},
+	})
+	vals := renderedChartValues(t, result)
+
+	for sourceRank, source := range layers {
+		for targetRank, target := range layers {
+			if sourceRank >= 2 {
+				t.Run("export from "+source+" to "+target, func(t *testing.T) {
+					assert.Equal(t, lo.Ternary(sourceRank >= targetRank, "src-"+source, "dst-"+target), valueAtPath(t, vals, "sub.exp."+source+"."+target))
+				})
+			}
+
+			if targetRank >= 2 {
+				t.Run("import from "+source+" to "+target, func(t *testing.T) {
+					assert.Equal(t, lo.Ternary(sourceRank > targetRank, "src-"+source, "dst-"+target), valueAtPath(t, vals, "imp."+source+"."+target))
+				})
+			}
+		}
+	}
+}
+
+func TestRenderChart_ExportAndImportValuesSkippedWarnings(t *testing.T) {
+	tests := []struct {
+		name string
+		set  string
+		want string
+	}{
+		{name: "scalar exported to dependency root", set: "g.prim=set", want: `Skipping export-values of "g.prim" to dependency "a": only a map can be exported to the dependency root`},
+		{name: "scalar imported", set: "a.out=set", want: `Skipping import-values of "a.out": only a map can be imported`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := &warningsLogger{Logger: log.Default}
+			log.Default = logger
+			t.Cleanup(func() { log.Default = logger.Logger })
+
+			renderLayeredValuesChart(t, layeredValuesRenderOptions{ChartDir: "export-import-edge-chart", Set: []string{tt.set}})
+
+			skipWarnings := lo.Filter(logger.warnings, func(warning string, _ int) bool {
+				return strings.HasPrefix(warning, "Skipping") && strings.Contains(warning, "only a map")
+			})
+			assert.Equal(t, []string{tt.want}, skipWarnings)
 		})
 	}
 }
