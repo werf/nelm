@@ -3,6 +3,7 @@ package plan_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/suite"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/werf/kubedog/pkg/dyntracker/statestore"
@@ -588,6 +590,101 @@ func (s *ResourceInfoSuite) TestBuildInstallableResourceInfoRecreatesHookWithHel
 		for _, info := range resInfos {
 			s.Equal(plan.ResourceInstallTypeRecreate, info.MustInstall)
 		}
+	})
+}
+
+func (s *ResourceInfoSuite) TestBuildInstallableResourceInfoTerminatingWarning() {
+	terminatingSpec := func(resSpec *spec.ResourceSpec) *spec.ResourceSpec {
+		resSpec.Unstruct.SetDeletionTimestamp(lo.ToPtr(metav1.Now()))
+		resSpec.Unstruct.SetFinalizers([]string{"example.com/finalizer"})
+
+		return resSpec
+	}
+
+	build := func(localRes *resource.InstallableResource, deployType common.DeployType, prevRelFailed bool) ([]*plan.InstallableResourceInfo, string) {
+		var output bytes.Buffer
+
+		ctx := logboek.NewContext(context.Background(), logboek.NewLogger(&output, &output))
+
+		resInfos, err := plan.BuildInstallableResourceInfo(ctx, localRes, deployType, s.releaseNamespace, prevRelFailed, true, s.clientFactory, plan.BuildResourceInfosOptions{}, nil)
+		s.Require().NoError(err)
+		s.Require().Len(resInfos, 1)
+
+		return resInfos, output.String()
+	}
+
+	create := func(resSpec *spec.ResourceSpec) {
+		_, err := s.clientFactory.KubeClient().Create(context.Background(), resSpec, kube.KubeClientCreateOptions{
+			DefaultNamespace: s.releaseNamespace,
+		})
+		s.Require().NoError(err)
+	}
+
+	for _, deployType := range []common.DeployType{common.DeployTypeInstall, common.DeployTypeUpgrade, common.DeployTypeRollback} {
+		s.Run(fmt.Sprintf("terminating ConfigMap warns without changing the plan, %s", deployType), func() {
+			create(terminatingSpec(defaultResourceSpec(s.releaseName, s.releaseNamespace)))
+
+			resInfos, output := build(defaultInstallableResource(s.releaseName, s.releaseNamespace), deployType, deployType == common.DeployTypeRollback)
+
+			s.Contains(output, `Resource "ConfigMap/test-configmap" is being deleted`)
+			s.NotContains(output, "fail to schedule")
+			s.Equal(plan.ResourceInstallTypeNone, resInfos[0].MustInstall)
+			s.Equal(deployType == common.DeployTypeRollback, resInfos[0].MustTrackReadiness)
+		})
+
+		s.Run(fmt.Sprintf("live ConfigMap does not warn, %s", deployType), func() {
+			create(defaultResourceSpec(s.releaseName, s.releaseNamespace))
+
+			resInfos, output := build(defaultInstallableResource(s.releaseName, s.releaseNamespace), deployType, deployType == common.DeployTypeRollback)
+
+			s.NotContains(output, "is being deleted")
+			s.Equal(plan.ResourceInstallTypeNone, resInfos[0].MustInstall)
+			s.Equal(deployType == common.DeployTypeRollback, resInfos[0].MustTrackReadiness)
+		})
+	}
+
+	for _, kind := range []string{"PersistentVolumeClaim", "PersistentVolume"} {
+		s.Run(fmt.Sprintf("terminating %s warns about pods", kind), func() {
+			create(terminatingSpec(storageResourceSpec(kind, s.releaseName, s.releaseNamespace)))
+
+			localRes := defaultInstallableResource(s.releaseName, s.releaseNamespace)
+			localRes.ResourceSpec = storageResourceSpec(kind, s.releaseName, s.releaseNamespace)
+
+			_, output := build(localRes, common.DeployTypeRollback, true)
+
+			s.Contains(output, fmt.Sprintf(`Resource "%s/test-storage`, kind))
+			s.Contains(output, "is being deleted")
+			s.Contains(output, "fail to schedule")
+		})
+	}
+
+	s.Run("terminating outdated ConfigMap warns and is still updated", func() {
+		create(terminatingSpec(defaultResourceSpec(s.releaseName, s.releaseNamespace)))
+
+		resInfos, output := build(updatedInstallableResource(&s.Suite, s.releaseName, s.releaseNamespace), common.DeployTypeUpgrade, false)
+
+		s.Contains(output, "is being deleted")
+		s.Equal(plan.ResourceInstallTypeUpdate, resInfos[0].MustInstall)
+		s.True(resInfos[0].MustTrackReadiness)
+	})
+
+	s.Run("absent resource does not warn", func() {
+		resInfos, output := build(defaultInstallableResource(s.releaseName, s.releaseNamespace), common.DeployTypeUpgrade, false)
+
+		s.NotContains(output, "is being deleted")
+		s.Equal(plan.ResourceInstallTypeCreate, resInfos[0].MustInstall)
+	})
+
+	s.Run("terminating resource to be recreated does not warn", func() {
+		create(terminatingSpec(defaultResourceSpec(s.releaseName, s.releaseNamespace)))
+
+		localRes := defaultInstallableResource(s.releaseName, s.releaseNamespace)
+		localRes.Recreate = true
+
+		resInfos, output := build(localRes, common.DeployTypeUpgrade, false)
+
+		s.NotContains(output, "is being deleted")
+		s.Equal(plan.ResourceInstallTypeRecreate, resInfos[0].MustInstall)
 	})
 }
 

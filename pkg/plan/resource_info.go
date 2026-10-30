@@ -234,6 +234,15 @@ func buildInstallableResourceInfo(ctx context.Context, localRes *resource.Instal
 		return nil, fmt.Errorf("determine install type for resource %q: %w", localRes.IDHuman(), err)
 	}
 
+	if getObj != nil && getObj.GetDeletionTimestamp() != nil && installType != ResourceInstallTypeRecreate {
+		warning := fmt.Sprintf("Resource %q is being deleted and will disappear once its finalizers are removed, but it is treated as existing and is not recreated. A deploy after it is gone recreates it.", localRes.IDHuman())
+		if isPersistentVolumeOrClaim(localRes.GroupVersionKind.GroupKind()) {
+			warning += " Pods that use it will fail to schedule once they are recreated, and its data may be lost."
+		}
+
+		log.Default.Warn(ctx, "%s", warning)
+	}
+
 	mustDeleteOnSuccess := mustDeleteOnSuccessfulDeploy(localRes, getMeta, installType, releaseNamespace, skippedByPolicy)
 	trackReadiness := mustTrackReadiness(localRes, installType, getObj != nil, prevRelFailed, mustDeleteOnSuccess, skippedByPolicy)
 
