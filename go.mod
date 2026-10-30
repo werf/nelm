@@ -59,13 +59,14 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.7.0
-	github.com/werf/common-go v0.0.0-20260831162604-46c3b45163be
+	github.com/werf/common-go v0.0.0-20261030044031-15159ec7e2cb
 	github.com/werf/kubedog v0.13.1-0.20261029011008-97f4f131413e
 	github.com/werf/lockgate v0.1.1
 	github.com/werf/logboek v0.6.1
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e
 	github.com/yannh/kubeconform v0.7.0
 	golang.org/x/crypto v0.49.0
+	golang.org/x/sync v0.20.0
 	golang.org/x/term v0.41.0
 	k8s.io/api v0.35.3
 	k8s.io/apiextensions-apiserver v0.35.3
@@ -212,7 +213,6 @@ require (
 	golang.org/x/mod v0.34.0 // indirect
 	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
 	golang.org/x/time v0.15.0 // indirect

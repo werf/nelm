@@ -51,6 +51,7 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
 - [Usage](#usage)
   - [Encrypted values files](#encrypted-values-files)
   - [Encrypted arbitrary files](#encrypted-arbitrary-files)
+  - [Encrypted values and files compatibility](#encrypted-values-and-files-compatibility)
   - [Render patches](#render-patches)
   - [Diff patches](#diff-patches)
 - [Reference](#reference)
@@ -358,6 +359,14 @@ config:
   user: john-doe
   password: verysecurepassword123
 ```
+
+### Encrypted values and files compatibility
+
+Since Nelm v2.0.0-alpha.1 and werf v3.3.0, secrets are encrypted with AES-GCM, and each value in an encrypted values file keeps its YAML type: `port: 8080` stays a number, `enabled: true` stays a boolean. Secrets encrypted by older versions are still read as before.
+
+Older Nelm and werf versions can't read secrets encrypted by newer ones and fail with a `decode file ...` error. Once a secret values file or a secret file is written by a newer version (`edit`, `encrypt` or `nelm chart secret key rotate`), every Nelm and werf that reads it, including CI jobs and saved release plans, must be upgraded as well.
+
+Values encrypted by older versions don't store their type, so they are always read as strings: `port: 8080` becomes `port: "8080"`, which may fail `values.schema.json` validation or change template logic. Re-encrypting them, e.g. with `nelm chart secret key rotate`, doesn't help, because the type is already lost. The only way to restore the type is to re-enter the value: open the file with `nelm chart secret values-file edit` and remove the quotes, e.g. change `"8080"` to `8080`. Saving the file re-encrypts all of its values in the new format, with the types they have in the editor, so fix every such value in the same edit. When loading secret values files, Nelm warns about old-format values that look like numbers or booleans.
 
 ### Render patches
 
