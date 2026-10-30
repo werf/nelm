@@ -228,6 +228,10 @@ func addReleaseOperations(plan *Plan, releaseInfos []*ReleaseInfo) error {
 			if err := addSupersedeReleaseOps(plan, info); err != nil {
 				return fmt.Errorf("add supersede ops for release: %w", err)
 			}
+		case ReleaseTypeFail:
+			if err := addFailStuckReleaseOps(plan, info); err != nil {
+				return fmt.Errorf("add failed ops for stuck release: %w", err)
+			}
 		case ReleaseTypeUninstall:
 			if err := addUninstallReleaseOps(plan, info); err != nil {
 				return fmt.Errorf("add uninstall ops for release: %w", err)
@@ -536,6 +540,29 @@ func addDeleteResourcesOps(plan *Plan, infos []*DeletableResourceInfo) error {
 			}
 		}
 	}
+
+	return nil
+}
+
+func addFailStuckReleaseOps(plan *Plan, info *ReleaseInfo) error {
+	failedRel, err := info.Release.Accessor.Copy()
+	if err != nil {
+		return fmt.Errorf("copy release: %w", err)
+	}
+
+	failedRel.SetStatus(helmreleasecommon.StatusFailed)
+
+	failOp := &Operation{
+		Type:     OperationTypeUpdateRelease,
+		Version:  OperationVersionUpdateRelease,
+		Category: OperationCategoryRelease,
+		Config: &OperationConfigUpdateRelease{
+			IgnoreNotFound:         true,
+			KeepDeployedTimestamps: true,
+			Release:                &release.VersionedRelease{Accessor: failedRel},
+		},
+	}
+	lo.Must0(plan.AddOperationChain().AddOperation(failOp).Stage(common.StageFinal).Do())
 
 	return nil
 }
