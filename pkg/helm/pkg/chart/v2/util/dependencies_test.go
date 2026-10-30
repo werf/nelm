@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -630,4 +631,74 @@ func TestProcessDependencies_ExportsRootGlobalsToNestedDependency(t *testing.T) 
 	leafUserValues, found := userValueAtPath(vals, "mid.leaf")
 	require.True(t, found)
 	assert.Equal(t, map[string]interface{}{"fromUser": "user-values", "fromService": "service-values"}, leafUserValues)
+}
+
+func TestProcessDependencies_ExportsIndependentOfDependencyOrder(t *testing.T) {
+	reader := &chart.Dependency{Name: "a", Version: "0.1.0", ExportValues: []interface{}{map[string]interface{}{"parent": "b.foo", "child": "fromB"}}}
+	writer := &chart.Dependency{Name: "b", Version: "0.1.0", ExportValues: []interface{}{map[string]interface{}{"parent": "g.foo", "child": "foo"}}}
+
+	tests := []struct {
+		name string
+		deps []*chart.Dependency
+	}{
+		{name: "reader listed before writer", deps: []*chart.Dependency{reader, writer}},
+		{name: "writer listed before reader", deps: []*chart.Dependency{writer, reader}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &chart.Chart{
+				Metadata: &chart.Metadata{
+					APIVersion:   chart.APIVersionV2,
+					Name:         "parent",
+					Version:      "0.1.0",
+					Dependencies: lo.Map(tt.deps, func(d *chart.Dependency, _ int) *chart.Dependency { return lo.ToPtr(*d) }),
+				},
+				Values: map[string]any{"g": map[string]any{"foo": "parent-values"}},
+			}
+			c.AddDependency(&chart.Chart{Metadata: &chart.Metadata{APIVersion: chart.APIVersionV2, Name: "a", Version: "0.1.0"}, Values: map[string]any{"fromB": "a-values"}})
+			c.AddDependency(&chart.Chart{Metadata: &chart.Metadata{APIVersion: chart.APIVersionV2, Name: "b", Version: "0.1.0"}, Values: map[string]any{"foo": "b-values"}})
+
+			require.NoError(t, ProcessDependencies(c, &map[string]interface{}{}))
+
+			a, found := lo.Find(c.Dependencies(), func(d *chart.Chart) bool { return d.Name() == "a" })
+			require.True(t, found)
+			assert.Equal(t, "parent-values", a.Values["fromB"])
+
+			b, found := lo.Find(c.Dependencies(), func(d *chart.Chart) bool { return d.Name() == "b" })
+			require.True(t, found)
+			assert.Equal(t, "parent-values", b.Values["foo"])
+		})
+	}
+}
+
+func TestProcessDependencies_ExportsScalarThenMapToNestedDependencyRoot(t *testing.T) {
+	c := &chart.Chart{
+		Metadata: &chart.Metadata{
+			APIVersion: chart.APIVersionV2,
+			Name:       "parent",
+			Version:    "0.1.0",
+			Dependencies: []*chart.Dependency{{Name: "mid", Version: "0.1.0", ExportValues: []interface{}{
+				map[string]interface{}{"parent": "first", "child": "leaf"},
+				map[string]interface{}{"parent": "second", "child": "leaf"},
+			}}},
+		},
+		Values: map[string]any{"first": "scalar", "second": map[string]any{"k": "parent-values"}},
+	}
+	mid := &chart.Chart{
+		Metadata: &chart.Metadata{
+			APIVersion:   chart.APIVersionV2,
+			Name:         "mid",
+			Version:      "0.1.0",
+			Dependencies: []*chart.Dependency{{Name: "leaf", Version: "0.1.0"}},
+		},
+	}
+	mid.AddDependency(&chart.Chart{Metadata: &chart.Metadata{APIVersion: chart.APIVersionV2, Name: "leaf", Version: "0.1.0"}})
+	c.AddDependency(mid)
+
+	require.NoError(t, ProcessDependencies(c, &map[string]interface{}{}))
+
+	leafValue, found := userValueAtPath(c.Dependencies()[0].Values, "leaf.k")
+	require.True(t, found)
+	assert.Equal(t, "parent-values", leafValue)
 }

@@ -1,0 +1,28 @@
+apiVersion: v2
+name: parent
+version: 0.1.0
+dependencies:
+  - name: a
+    version: 0.1.0
+    export-values:
+      - parent: b.foo
+        child: fromB
+  - name: b
+    version: 0.1.0
+    export-values:
+      - parent: c.bar
+        child: foo
+  - name: c
+    version: 0.1.0
+    export-values:
+      - parent: g.bar
+        child: bar
+      - parent: g.first
+        child: same
+      - parent: g.second
+        child: same
+  - name: mid
+    version: 0.1.0
+    export-values:
+      - parent: g.src
+        child: src
