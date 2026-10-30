@@ -43,16 +43,28 @@ import (
 )
 
 // Templates lints the templates in the Linter.
+//
+// Deprecated: the values passed to the templates are computed differently from
+// [github.com/werf/nelm/v2/pkg/chart.RenderChart]. Use
+// [github.com/werf/nelm/v2/pkg/action.ChartLint] instead.
 func Templates(linter *support.Linter, values map[string]any, namespace string, _ bool) {
 	TemplatesWithKubeVersion(linter, values, namespace, nil)
 }
 
 // TemplatesWithKubeVersion lints the templates in the Linter, allowing to specify the kubernetes version.
+//
+// Deprecated: the values passed to the templates are computed differently from
+// [github.com/werf/nelm/v2/pkg/chart.RenderChart]. Use
+// [github.com/werf/nelm/v2/pkg/action.ChartLint] instead.
 func TemplatesWithKubeVersion(linter *support.Linter, values map[string]any, namespace string, kubeVersion *common.KubeVersion) {
 	TemplatesWithSkipSchemaValidation(linter, values, namespace, kubeVersion, false)
 }
 
 // TemplatesWithSkipSchemaValidation lints the templates in the Linter, allowing to specify the kubernetes version and if schema validation is enabled or not.
+//
+// Deprecated: the values passed to the templates are computed differently from
+// [github.com/werf/nelm/v2/pkg/chart.RenderChart]. Use
+// [github.com/werf/nelm/v2/pkg/action.ChartLint] instead.
 func TemplatesWithSkipSchemaValidation(linter *support.Linter, values map[string]any, namespace string, kubeVersion *common.KubeVersion, skipSchemaValidation bool) {
 	fpath := "templates/"
 	templatesPath := filepath.Join(linter.ChartDir, fpath)
@@ -87,8 +99,6 @@ func TemplatesWithSkipSchemaValidation(linter *support.Linter, values map[string
 		caps.KubeVersion = *kubeVersion
 	}
 
-	// lint ignores import-values
-	// See https://github.com/helm/helm/issues/9658
 	if err := chartutil.ProcessDependencies(chart, values); err != nil {
 		return
 	}
