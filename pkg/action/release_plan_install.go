@@ -340,7 +340,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Build delete candidate resource specs")
 
-	prevRelResSpecs, err := buildDeleteCandidateResSpecs(ctx, prevRelease, prevDeployedRelease, releaseNamespace)
+	delCandidateResSpecs, err := buildDeleteCandidateResSpecs(ctx, prevRelease, prevDeployedRelease, releaseNamespace)
 	if err != nil {
 		return nil, fmt.Errorf("build delete candidate resource specs: %w", err)
 	}
@@ -354,7 +354,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Build resources")
 
-	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, newRelResSpecs, []spec.ResourcePatcher{
+	instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, delCandidateResSpecs, newRelResSpecs, []spec.ResourcePatcher{
 		spec.NewReleaseMetadataPatcher(releaseName, releaseNamespace),
 		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 	}, resource.BuildResourcesOptions{
