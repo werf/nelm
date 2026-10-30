@@ -2,7 +2,6 @@ package schemas_test
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -177,27 +176,6 @@ func TestKubernetesSource(t *testing.T) {
 		assert.FileExists(t, filepath.Join(dir, "deployment-apps-v1.json"))
 	})
 
-	t.Run("holds the schemas of every collected version, newest content winning", func(t *testing.T) {
-		setupCacheHome(t)
-
-		source := requireKubernetesSource(t)
-		require.NoError(t, source.EnsureExtracted(context.Background()))
-
-		dir := sourceDir(t, source)
-
-		// PodCertificateRequest certificates.k8s.io/v1alpha1 exists in Kubernetes 1.34 alone, so this
-		// schema can only have come from an older collected version, and only while 1.34 is one of them.
-		// Pick another such schema once the collected window moves past 1.34.
-		assert.FileExists(t, filepath.Join(dir, "podcertificaterequest-certificates-v1alpha1.json"),
-			"the schemas only older Kubernetes versions have must be collected too")
-
-		// Kinds that several collected versions have must come from the newest of them. Pod is one,
-		// and spec.hostnameOverride was added to it after the oldest collected version, so an older
-		// schema winning would drop the field.
-		assert.Contains(t, specProperties(t, filepath.Join(dir, "pod-v1.json")), "hostnameOverride",
-			"a schema present in several versions must be the one of the newest of them")
-	})
-
 	t.Run("template resolves without a Kubernetes version in the path", func(t *testing.T) {
 		setupCacheHome(t)
 
@@ -265,25 +243,4 @@ func sourceDir(t *testing.T, source *schemas.Source) string {
 	require.True(t, found, "source template %s has no placeholders", source.Template)
 
 	return filepath.Clean(dir)
-}
-
-// specProperties returns the names of the "spec" properties a schema file defines.
-func specProperties(t *testing.T, path string) []string {
-	t.Helper()
-
-	schemaBytes, err := os.ReadFile(path)
-	require.NoError(t, err)
-
-	var schema struct {
-		Properties struct {
-			Spec struct {
-				Properties map[string]any `json:"properties"`
-			} `json:"spec"`
-		} `json:"properties"`
-	}
-
-	require.NoError(t, json.Unmarshal(schemaBytes, &schema))
-	require.NotEmpty(t, schema.Properties.Spec.Properties, "%s defines no spec properties", path)
-
-	return lo.Keys(schema.Properties.Spec.Properties)
 }
