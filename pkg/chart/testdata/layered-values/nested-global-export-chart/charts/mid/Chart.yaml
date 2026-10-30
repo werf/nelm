@@ -1,0 +1,17 @@
+apiVersion: v2
+name: mid
+version: 0.1.0
+dependencies:
+  - name: leaf
+    version: 0.1.0
+    export-values:
+      - parent: global.img.repo
+        child: image.repository
+      - parent: global.root
+        child: fromRoot
+      - parent: global.mid
+        child: fromMid
+      - parent: global.both
+        child: fromBoth
+      - parent: global.werf.images.leaf
+        child: werfImage

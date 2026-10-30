@@ -1,0 +1,6 @@
+apiVersion: v2
+name: p
+version: 0.1.0
+dependencies:
+  - name: mid
+    version: 0.1.0

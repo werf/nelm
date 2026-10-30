@@ -1,0 +1,8 @@
+image:
+  repository: leaf-default
+fromRoot: leaf-default
+fromMid: leaf-default
+fromBoth: leaf-default
+werfImage:
+  repository: leaf-default
+  tag: leaf-default
