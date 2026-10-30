@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/samber/lo"
-
 	"github.com/werf/nelm/v2/pkg/legacy/secret"
 	"github.com/werf/nelm/v2/pkg/log"
 )
@@ -33,13 +31,8 @@ func SecretKeyRotate(ctx context.Context, opts SecretKeyRotateOptions) error {
 		return fmt.Errorf("build secret key rotate options: %w", err)
 	}
 
-	if opts.OldSecretKey != "" {
-		lo.Must0(os.Setenv("WERF_OLD_SECRET_KEY", opts.OldSecretKey))
-	}
-
-	if opts.NewSecretKey != "" {
-		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.NewSecretKey))
-	}
+	defer setEnvUntilRestore("WERF_OLD_SECRET_KEY", opts.OldSecretKey)()
+	defer setEnvUntilRestore("WERF_SECRET_KEY", opts.NewSecretKey)()
 
 	if err := secret.RotateSecretKey(ctx, opts.ChartDirPath, opts.SecretWorkDir, opts.SecretValuesFiles...); err != nil {
 		return fmt.Errorf("rotate secret key: %w", err)

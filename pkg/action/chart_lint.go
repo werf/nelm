@@ -171,9 +171,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		return fmt.Errorf("build chart lint options: %w", err)
 	}
 
-	if opts.SecretKey != "" {
-		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
-	}
+	defer setEnvUntilRestore("WERF_SECRET_KEY", opts.SecretKey)()
 
 	if !opts.Remote {
 		opts.ReleaseStorageDriver = common.ReleaseStorageDriverMemory

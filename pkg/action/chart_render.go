@@ -200,9 +200,7 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 		return nil, fmt.Errorf("build chart render options: %w", err)
 	}
 
-	if opts.SecretKey != "" {
-		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
-	}
+	defer setEnvUntilRestore("WERF_SECRET_KEY", opts.SecretKey)()
 
 	if !opts.Remote {
 		opts.ReleaseStorageDriver = common.ReleaseStorageDriverMemory

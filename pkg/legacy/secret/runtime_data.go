@@ -19,7 +19,6 @@ type DecodeAndLoadSecretsOptions = chartcommon.DecodeAndLoadSecretsOptions
 
 type RuntimeData interface {
 	DecodeAndLoadSecrets(ctx context.Context, loadedChartFiles []*common.BufferedFile, secretsManager *secrets_manager.SecretsManager, opts DecodeAndLoadSecretsOptions) error
-	GetEncodedSecretValues(ctx context.Context, secretsManager *secrets_manager.SecretsManager, secretsWorkingDir string, noDecryptSecrets bool) (map[string]interface{}, error)
 	GetDecryptedDefaultSecretValues() map[string]interface{}
 	GetDecryptedCustomSecretValues() map[string]interface{}
 	GetDecryptedSecretFilesData() map[string]string
@@ -119,35 +118,6 @@ func (s *SecretsRuntimeData) GetDecryptedDefaultSecretValues() map[string]interf
 
 func (s *SecretsRuntimeData) GetDecryptedSecretFilesData() map[string]string {
 	return s.decryptedSecretFilesData
-}
-
-func (s *SecretsRuntimeData) GetEncodedSecretValues(ctx context.Context, secretsManager *secrets_manager.SecretsManager, secretsWorkingDir string, noDecryptSecrets bool) (map[string]interface{}, error) {
-	decryptedSecretValues := chartcommon.MergeMaps(s.decryptedDefaultSecretValues, s.decryptedCustomSecretValues)
-	if len(decryptedSecretValues) == 0 {
-		return nil, nil
-	}
-
-	enc, err := secretsManager.GetYamlEncoder(ctx, secretsWorkingDir, noDecryptSecrets)
-	if err != nil {
-		return nil, fmt.Errorf("get secrets yaml encoder: %w", err)
-	}
-
-	decryptedSecretsData, err := yaml.Marshal(decryptedSecretValues)
-	if err != nil {
-		return nil, fmt.Errorf("marshal decrypted secrets yaml: %w", err)
-	}
-
-	encryptedSecretsData, err := enc.EncryptYamlData(decryptedSecretsData)
-	if err != nil {
-		return nil, fmt.Errorf("encrypt secrets data: %w", err)
-	}
-
-	var encryptedData map[string]interface{}
-	if err := yaml.Unmarshal(encryptedSecretsData, &encryptedData); err != nil {
-		return nil, fmt.Errorf("unmarshal encrypted secrets data: %w", err)
-	}
-
-	return encryptedData, nil
 }
 
 func LoadChartSecretValueFiles(secretDirFiles []*common.BufferedFile, encoder *secret.YamlEncoder) (map[string]interface{}, error) {

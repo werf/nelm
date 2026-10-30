@@ -2,6 +2,7 @@ package action
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -11,12 +12,30 @@ import (
 	"github.com/werf/nelm/v2/pkg/common"
 )
 
+func TestChartRender_SecretKey_RestoresEnv(t *testing.T) {
+	t.Run("previously set", func(t *testing.T) {
+		t.Setenv("WERF_SECRET_KEY", "previous")
+
+		renderSecretValuesTypesChart(t)
+
+		assert.Equal(t, "previous", os.Getenv("WERF_SECRET_KEY"))
+	})
+
+	t.Run("previously unset", func(t *testing.T) {
+		t.Setenv("WERF_SECRET_KEY", "")
+		require.NoError(t, os.Unsetenv("WERF_SECRET_KEY"))
+
+		renderSecretValuesTypesChart(t)
+
+		_, isSet := os.LookupEnv("WERF_SECRET_KEY")
+		assert.False(t, isSet)
+	})
+}
+
 func TestChartRender_SecretValues_KeepTypesForSchemaValidation(t *testing.T) {
 	const wantValuesJSON = `{"bool":true,"int":123,"list":[1,"two"],"map":{"k":7},"number":1.5,"str":"456"}`
 
 	t.Run("default secret-values.yaml", func(t *testing.T) {
-		t.Setenv("WERF_SECRET_KEY", secretValuesTypesSecretKey)
-
 		chartDir := newSecretValuesTypesChart(t)
 		encryptSecretValuesTypesFile(t, filepath.Join(chartDir, "secret-values.yaml"))
 
@@ -33,8 +52,6 @@ func TestChartRender_SecretValues_KeepTypesForSchemaValidation(t *testing.T) {
 	})
 
 	t.Run("custom secret values file", func(t *testing.T) {
-		t.Setenv("WERF_SECRET_KEY", secretValuesTypesSecretKey)
-
 		chartDir := newSecretValuesTypesChart(t)
 		secretValuesPath := filepath.Join(t.TempDir(), "secret-values.yaml")
 		encryptSecretValuesTypesFile(t, secretValuesPath)
@@ -51,4 +68,26 @@ func TestChartRender_SecretValues_KeepTypesForSchemaValidation(t *testing.T) {
 		require.NoError(t, err)
 		assert.JSONEq(t, wantValuesJSON, renderedValuesJSON(t, res))
 	})
+}
+
+func TestSecretKeyRotate_RestoresEnv(t *testing.T) {
+	t.Setenv("WERF_SECRET_KEY", "previous")
+	t.Setenv("WERF_OLD_SECRET_KEY", "")
+	require.NoError(t, os.Unsetenv("WERF_OLD_SECRET_KEY"))
+
+	chartDir := newSecretValuesTypesChart(t)
+	encryptSecretValuesTypesFile(t, filepath.Join(chartDir, "secret-values.yaml"))
+
+	require.NoError(t, SecretKeyRotate(context.Background(), SecretKeyRotateOptions{
+		ChartDirPath:  chartDir,
+		NewSecretKey:  "fedcba9876543210fedcba9876543210",
+		OldSecretKey:  secretValuesTypesSecretKey,
+		SecretWorkDir: chartDir,
+		TempDirPath:   t.TempDir(),
+	}))
+
+	assert.Equal(t, "previous", os.Getenv("WERF_SECRET_KEY"))
+
+	_, isOldSet := os.LookupEnv("WERF_OLD_SECRET_KEY")
+	assert.False(t, isOldSet)
 }
