@@ -15,6 +15,59 @@ import (
 	"github.com/werf/nelm/v2/pkg/log"
 )
 
+func TestRenderChart_ExportAndImportValuesDependencyVersionMismatch(t *testing.T) {
+	tests := []struct {
+		name string
+		opts layeredValuesRenderOptions
+		want map[string]interface{}
+	}{
+		{
+			name: "value from values.yaml is exported to dependency out of version range",
+			want: map[string]interface{}{"m.image.repository": "parent-values-yaml"},
+		},
+		{
+			name: "value from set is exported to dependency out of version range",
+			opts: layeredValuesRenderOptions{Set: []string{"g.repo=set"}},
+			want: map[string]interface{}{"m.image.repository": "set"},
+		},
+		{
+			name: "value from service values is exported to dependency out of version range",
+			opts: layeredValuesRenderOptions{ServiceValues: map[string]interface{}{"werf": map[string]interface{}{"repo": "service"}}},
+			want: map[string]interface{}{"m.svc": "service"},
+		},
+		{
+			name: "value is imported from dependency out of version range",
+			want: map[string]interface{}{"imp.k": "m-values"},
+		},
+		{
+			name: "value from set is imported from dependency out of version range",
+			opts: layeredValuesRenderOptions{Set: []string{"m.out.k=set"}},
+			want: map[string]interface{}{"imp.k": "set"},
+		},
+		{
+			name: "value is not exported to dependency out of version range disabled by condition",
+			opts: layeredValuesRenderOptions{Set: []string{"g.repo=set", "m.enabled=false"}},
+			want: map[string]interface{}{"m.image": absentValue{}, "imp": absentValue{}},
+		},
+		{
+			name: "value is not exported to alias dependency out of version range",
+			opts: layeredValuesRenderOptions{Set: []string{"g.repo=set"}},
+			want: map[string]interface{}{"s.image.repository": "s-default", "al": absentValue{}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.opts.ChartDir = "version-mismatch-chart"
+			vals := renderedChartValues(t, renderLayeredValuesChart(t, tt.opts))
+
+			for path, want := range tt.want {
+				assert.Equal(t, want, valueAtPath(t, vals, path), path)
+			}
+		})
+	}
+}
+
 func TestRenderChart_ExportAndImportValuesEdgeCases(t *testing.T) {
 	edgeValuesFile := filepath.Join("testdata", "layered-values", "edge-values-file.yaml")
 
