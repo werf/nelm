@@ -201,7 +201,7 @@ func addFailureReleaseOperations(failedPlan, plan *Plan, releaseInfos []*Release
 			continue
 		}
 
-		if err := addFailedReleaseOps(plan, info); err != nil {
+		if err := addFailedReleaseOps(plan, info, common.StageInit); err != nil {
 			return fmt.Errorf("add failed release ops for release: %w", err)
 		}
 	}
@@ -227,6 +227,10 @@ func addReleaseOperations(plan *Plan, releaseInfos []*ReleaseInfo) error {
 		case ReleaseTypeSupersede:
 			if err := addSupersedeReleaseOps(plan, info); err != nil {
 				return fmt.Errorf("add supersede ops for release: %w", err)
+			}
+		case ReleaseTypeFail:
+			if err := addFailedReleaseOps(plan, info, common.StageFinal); err != nil {
+				return fmt.Errorf("add failed ops for stuck release: %w", err)
 			}
 		case ReleaseTypeUninstall:
 			if err := addUninstallReleaseOps(plan, info); err != nil {
@@ -540,7 +544,7 @@ func addDeleteResourcesOps(plan *Plan, infos []*DeletableResourceInfo) error {
 	return nil
 }
 
-func addFailedReleaseOps(plan *Plan, info *ReleaseInfo) error {
+func addFailedReleaseOps(plan *Plan, info *ReleaseInfo, stage common.Stage) error {
 	failedRel, err := info.Release.Accessor.Copy()
 	if err != nil {
 		return fmt.Errorf("copy release: %w", err)
@@ -556,7 +560,7 @@ func addFailedReleaseOps(plan *Plan, info *ReleaseInfo) error {
 			Release: &release.VersionedRelease{Accessor: failedRel},
 		},
 	}
-	lo.Must0(plan.AddOperationChain().AddOperation(failedOp).Stage(common.StageInit).Do())
+	lo.Must0(plan.AddOperationChain().AddOperation(failedOp).Stage(stage).Do())
 
 	return nil
 }
