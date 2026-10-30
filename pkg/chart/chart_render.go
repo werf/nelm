@@ -487,7 +487,7 @@ func loadServiceFreeChart(ctx context.Context, chartPath string, userVals userVa
 
 // processDependencies processes the chart dependencies and returns the values to render the chart
 // with, the values to store in the release and the warnings about the export-values and
-// import-values skipped because of the user values. The values to store in the release are the user
+// import-values skipped because of the user values or because their paths are set in no values. The values to store in the release are the user
 // values with the values exported from them, but without service values, the secret-values.yaml of
 // the chart and imported values. The user values are not modified.
 func processDependencies(chrt helmchart.Charter, userVals userValues) (map[string]interface{}, map[string]interface{}, []string, error) {
@@ -532,6 +532,15 @@ func processDependencies(chrt helmchart.Charter, userVals userValues) (map[strin
 			importedLayers = append(importedLayers, layer)
 			skipped = append(skipped, importSkipped...)
 		}
+
+		notFound, err := chartv2util.ExportAndImportValuesNotFoundWarnings(c, lo.Map(importedLayers, func(layer valuesLayer, _ int) map[string]interface{} {
+			return layer.Values
+		}))
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("check export and import values paths: %w", err)
+		}
+
+		skipped = append(skipped, notFound...)
 
 		vals, err = mergeValuesLayers(importedLayers, coalescedChartValues(c))
 		if err != nil {

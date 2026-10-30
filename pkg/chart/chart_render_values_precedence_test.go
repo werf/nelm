@@ -208,9 +208,87 @@ func TestRenderChart_ExportAndImportValuesSkippedWarnings(t *testing.T) {
 			renderLayeredValuesChart(t, layeredValuesRenderOptions{ChartDir: "export-import-edge-chart", Set: []string{tt.set}})
 
 			skipWarnings := lo.Filter(logger.warnings, func(warning string, _ int) bool {
-				return strings.HasPrefix(warning, "Skipping")
+				return strings.HasPrefix(warning, "Skipping") && strings.Contains(warning, "only a map")
 			})
 			assert.Equal(t, []string{tt.want}, skipWarnings)
+		})
+	}
+}
+
+func TestRenderChart_ExportAndImportValuesNotFoundWarnings(t *testing.T) {
+	const (
+		exportWarning     = `Skipping export-values of "img.repo" from chart "parent" to dependency "sub": the path is not set in any values`
+		importMapWarning  = `Skipping import-values of "sub.out" from dependency "sub" to chart "parent": no map is set at the path in any values`
+		importNameWarning = `Skipping import-values of "sub.exports.data" from dependency "sub" to chart "parent": no map is set at the path in any values`
+	)
+
+	allPathsSet := []string{"img.repo=set", "sub.out.k=set", "sub.exports.data.k=set"}
+
+	tests := []struct {
+		name string
+		opts layeredValuesRenderOptions
+		want []string
+	}{
+		{
+			name: "paths set nowhere",
+			want: []string{exportWarning, importMapWarning, importNameWarning},
+		},
+		{
+			name: "export parent path set nowhere",
+			opts: layeredValuesRenderOptions{Set: []string{"img.repoo=typo", "sub.out.k=set", "sub.exports.data.k=set"}},
+			want: []string{exportWarning},
+		},
+		{
+			name: "import child tables set nowhere",
+			opts: layeredValuesRenderOptions{Set: []string{"img.repo=set", "sub.outt.k=typo", "sub.exportz.data.k=typo"}},
+			want: []string{importMapWarning, importNameWarning},
+		},
+		{
+			name: "paths set only in set",
+			opts: layeredValuesRenderOptions{Set: allPathsSet},
+		},
+		{
+			name: "paths set only in values file",
+			opts: layeredValuesRenderOptions{ValuesFiles: []string{filepath.Join("testdata", "layered-values", "not-found-paths-values-file.yaml")}},
+		},
+		{
+			name: "paths set only in service values",
+			opts: layeredValuesRenderOptions{ServiceValues: readValuesFile(t, filepath.Join("testdata", "layered-values", "not-found-paths-values-file.yaml"))},
+		},
+		{
+			name: "paths of enabled dependency set nowhere",
+			opts: layeredValuesRenderOptions{Set: append([]string{"disabled.enabled=true"}, allPathsSet...)},
+			want: []string{
+				`Skipping export-values of "disabledExport" from chart "parent" to dependency "disabled": the path is not set in any values`,
+				`Skipping import-values of "disabled.disabledImport" from dependency "disabled" to chart "parent": no map is set at the path in any values`,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := &warningsLogger{Logger: log.Default}
+			log.Default = logger
+			t.Cleanup(func() { log.Default = logger.Logger })
+
+			defaultLogger, stdLogWriter, stdLogFlags := slog.Default(), stdlog.Writer(), stdlog.Flags()
+			t.Cleanup(func() {
+				slog.SetDefault(defaultLogger)
+				stdlog.SetOutput(stdLogWriter)
+				stdlog.SetFlags(stdLogFlags)
+			})
+
+			var slogWarnings bytes.Buffer
+			slog.SetDefault(slog.New(slog.NewTextHandler(&slogWarnings, &slog.HandlerOptions{Level: slog.LevelWarn})))
+
+			tt.opts.ChartDir = "not-found-paths-chart"
+			renderLayeredValuesChart(t, tt.opts)
+
+			skipWarnings := lo.Filter(logger.warnings, func(warning string, _ int) bool {
+				return strings.HasPrefix(warning, "Skipping")
+			})
+			assert.ElementsMatch(t, tt.want, skipWarnings)
+			assert.Empty(t, slogWarnings.String())
 		})
 	}
 }
@@ -388,12 +466,19 @@ func TestRenderChart_ExportedValueOverridesValuesFileForDependencyWithSameNameAs
 			var warnings bytes.Buffer
 			slog.SetDefault(slog.New(slog.NewTextHandler(&warnings, &slog.HandlerOptions{Level: slog.LevelWarn})))
 
+			logger := &warningsLogger{Logger: log.Default}
+			log.Default = logger
+			t.Cleanup(func() { log.Default = logger.Logger })
+
 			result := renderLayeredValuesChart(t, tt.opts)
 
 			require.Len(t, result.ResourceSpecs, 1)
 			assert.Equal(t, map[string]interface{}{"image": tt.wantImage, "pullPolicy": "Always"}, result.ResourceSpecs[0].Unstruct.Object["data"])
 			assert.Equal(t, tt.wantReleaseConfig, result.ReleaseConfig)
 			assert.Empty(t, warnings.String())
+			assert.Empty(t, lo.Filter(logger.warnings, func(warning string, _ int) bool {
+				return strings.HasPrefix(warning, "Skipping")
+			}))
 		})
 	}
 }

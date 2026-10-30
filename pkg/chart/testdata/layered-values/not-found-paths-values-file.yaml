@@ -1,0 +1,8 @@
+img:
+  repo: values-file
+sub:
+  out:
+    k: values-file
+  exports:
+    data:
+      k: values-file
