@@ -240,6 +240,8 @@ var (
 	AnnotationKeyPatternSensitivePaths                  = regexp.MustCompile(`^werf\.io/sensitive-paths$`)
 	AnnotationKeyHumanDeployOn                          = "werf.io/deploy-on"
 	AnnotationKeyPatternDeployOn                        = regexp.MustCompile(`^werf\.io/deploy-on$`)
+	AnnotationKeyHumanDeleteOn                          = "werf.io/delete-on"
+	AnnotationKeyPatternDeleteOn                        = regexp.MustCompile(`^werf\.io/delete-on$`)
 	AnnotationKeyHumanOwnership                         = "werf.io/ownership"
 	AnnotationKeyPatternOwnership                       = regexp.MustCompile(`^werf\.io/ownership$`)
 	AnnotationKeyHumanDeletePropagation                 = "werf.io/delete-propagation"

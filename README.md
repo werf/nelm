@@ -64,6 +64,7 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [`werf.io/delete-dependency-<id>` annotation](#werfiodelete-dependency-id-annotation)
   - [`werf.io/ownership` annotation](#werfioownership-annotation)
   - [`werf.io/deploy-on` annotation](#werfiodeploy-on-annotation)
+  - [`werf.io/delete-on` annotation](#werfiodelete-on-annotation)
   - [`werf.io/delete-policy` annotation](#werfiodelete-policy-annotation)
   - [`werf.io/resource-policy` annotation](#werfioresource-policy-annotation)
   - [`werf.io/delete-propagation` annotation](#werfiodelete-propagation-annotation)
@@ -249,6 +250,7 @@ Helm doesn't offer any resource lifecycle capabilities, except `helm.sh/resource
 * The `werf.io/delete-policy` annotation. Inspired by `helm.sh/hook-delete-policy`, but works for any resource. Set `before-creation` to always recreate the resource, `before-creation-if-immutable` to only recreate if the resource is immutable, `succeeded` or `failed` to delete the resource on success or failure. 
 * The `werf.io/ownership` annotation. `anyone` allows to get Hook-like behavior for regular resources: don't delete the resource if it is removed from the Chart or when the whole release is removed, and never check or apply release annotations.
 * The `werf.io/deploy-on` annotation. Inspired by `helm.sh/hook`. Render and deploy the resource only on install/upgrade/rollback/uninstall in a pre/main/post stage.
+* The `werf.io/delete-on` annotation. Delete the resource removed from the Chart in a pre/main/post stage of install/upgrade/rollback/uninstall, e.g. only after the new resources are deployed.
 * The `werf.io/resource-policy` annotation. Inspired by `helm.sh/resource-policy`, but adds more options: set `skip-create`, `skip-update`, `skip-recreate` or `skip-delete` to skip the corresponding operation.
 * The `werf.io/triggers-release` annotation. Set `false` to never create a new release only because of changes in this resource, e.g. to keep a Job with `werf.io/delete-policy: before-creation` from breaking skipping of up-to-date releases.
 
@@ -536,6 +538,27 @@ werf.io/deploy-on: [pre-install][,install][,post-install][,pre-upgrade][,upgrade
 Default:
 ```
 "install,upgrade,rollback" for general resources, populated from "helm.sh/hook" for hooks
+```
+
+### `werf.io/delete-on` annotation
+
+Sets the stage in which the resource is deleted after it was removed from the Chart (or when the release is uninstalled), separately for each deploy type. `pre-*` means delete the resource after the resources of the pre stage (e.g. `pre-upgrade` hooks) are deployed, but before the main stage. `install`, `upgrade`, `rollback` and `delete` mean delete the resource after the resources of the main stage are deployed and ready. `post-*` means delete the resource after the resources of the post stage are deployed. Only one stage per deploy type is allowed. Doesn't affect deletions caused by `werf.io/delete-policy` or `helm.sh/hook-delete-policy`.
+
+The annotation is read from the previous release, so it must be deployed with the resource before the resource is removed from the Chart. If the deployment fails before the specified stage, the resource is not deleted.
+
+`werf.io/delete-dependency-<id>` has no effect on internal dependencies deleted in a different stage, and a resource deleted in an earlier stage than the resources using it might get stuck in the `Terminating` state until they are deleted. Unless another resource depends on its absence, Nelm doesn't wait for absence of a deleted `PersistentVolumeClaim` or `PersistentVolume` on install, upgrade and rollback, and in the `pre-delete` stage of uninstall, since Pods using them might still be running.
+
+Example:
+```yaml
+werf.io/delete-on: post-upgrade,post-rollback
+```
+Format:
+```
+werf.io/delete-on: [pre-install|install|post-install][,pre-upgrade|upgrade|post-upgrade][,pre-rollback|rollback|post-rollback][,pre-delete|delete|post-delete]
+```
+Default:
+```
+before everything else on install, upgrade and rollback, "delete" on uninstall
 ```
 
 ### `werf.io/delete-policy` annotation 

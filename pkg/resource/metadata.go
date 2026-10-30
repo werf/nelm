@@ -101,6 +101,25 @@ func deleteOnSucceeded(meta *spec.ResourceMeta) bool {
 	return lo.Contains(deletePolicies, common.DeletePolicySucceeded)
 }
 
+func deleteStages(meta *spec.ResourceMeta) map[common.On]common.Stage {
+	_, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteOn)
+	if !found {
+		return nil
+	}
+
+	result := map[common.On]common.Stage{}
+	for _, condition := range strings.Split(value, ",") {
+		on, stage, ok := parseDeleteOnCondition(strings.TrimSpace(condition))
+		if !ok {
+			panic(fmt.Sprintf("unknown value %q for %s", value, common.AnnotationKeyHumanDeleteOn))
+		}
+
+		result[on] = stage
+	}
+
+	return result
+}
+
 func deployConditions(meta *spec.ResourceMeta, hasManualInternalDeps bool) map[common.On][]common.Stage {
 	if conditions := deployConditionsForAnnotation(meta, common.AnnotationKeyPatternDeployOn); len(conditions) > 0 {
 		if spec.IsCRD(meta.GroupVersionKind.GroupKind()) || spec.IsNamespace(meta.GroupVersionKind) {
@@ -333,6 +352,38 @@ func validateDeleteDependencies(meta *spec.ResourceMeta, otherResMeta []*spec.Re
 				}
 			}
 		}
+	}
+
+	return nil
+}
+
+func validateDeleteOn(meta *spec.ResourceMeta) error {
+	key, value, found := spec.FindAnnotationOrLabelByKeyPattern(meta.Annotations, common.AnnotationKeyPatternDeleteOn)
+	if !found {
+		return nil
+	}
+
+	if value == "" {
+		return fmt.Errorf("invalid value %q for annotation %q, expected non-empty string value", value, key)
+	}
+
+	conditionsByOn := map[common.On]string{}
+	for _, condition := range strings.Split(value, ",") {
+		condition = strings.TrimSpace(condition)
+		if condition == "" {
+			return fmt.Errorf("invalid value %q for annotation %q, one of the comma-separated values is empty", value, key)
+		}
+
+		on, _, ok := parseDeleteOnCondition(condition)
+		if !ok {
+			return fmt.Errorf("value %q for annotation %q is not supported", value, key)
+		}
+
+		if prevCondition, found := conditionsByOn[on]; found {
+			return fmt.Errorf("invalid value %q for annotation %q, %q and %q can't be used together, only one stage per deploy type is allowed", value, key, prevCondition, condition)
+		}
+
+		conditionsByOn[on] = condition
 	}
 
 	return nil
@@ -794,6 +845,37 @@ func ownership(meta *spec.ResourceMeta, releaseNamespace string, storeAs common.
 		return common.OwnershipRelease
 	default:
 		panic("unexpected storeAs value")
+	}
+}
+
+func parseDeleteOnCondition(condition string) (common.On, common.Stage, bool) {
+	switch condition {
+	case string(helmrelease.HookPreInstall):
+		return common.InstallOnInstall, common.StagePreUninstall, true
+	case string(common.InstallOnInstall):
+		return common.InstallOnInstall, common.StageUninstall, true
+	case string(helmrelease.HookPostInstall):
+		return common.InstallOnInstall, common.StagePostUninstall, true
+	case string(helmrelease.HookPreUpgrade):
+		return common.InstallOnUpgrade, common.StagePreUninstall, true
+	case string(common.InstallOnUpgrade):
+		return common.InstallOnUpgrade, common.StageUninstall, true
+	case string(helmrelease.HookPostUpgrade):
+		return common.InstallOnUpgrade, common.StagePostUninstall, true
+	case string(helmrelease.HookPreRollback):
+		return common.InstallOnRollback, common.StagePreUninstall, true
+	case string(common.InstallOnRollback):
+		return common.InstallOnRollback, common.StageUninstall, true
+	case string(helmrelease.HookPostRollback):
+		return common.InstallOnRollback, common.StagePostUninstall, true
+	case string(helmrelease.HookPreDelete):
+		return common.InstallOnDelete, common.StagePreUninstall, true
+	case string(common.InstallOnDelete):
+		return common.InstallOnDelete, common.StageUninstall, true
+	case string(helmrelease.HookPostDelete):
+		return common.InstallOnDelete, common.StagePostUninstall, true
+	default:
+		return "", "", false
 	}
 }
 
