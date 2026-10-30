@@ -500,41 +500,27 @@ func processDependencyImportExportValues(c *chart.Chart, merge bool) error {
 }
 
 type chartValuesExport struct {
-	Chart  *chart.Chart
-	Parent string
-	Child  string
-	Paths  userValuesExport
+	Chart          *chart.Chart
+	DependencyPath []string
+	Parent         string
+	Child          string
+	Paths          userValuesExport
+	// TouchesGlobals is set by batchChartValuesExports.
+	TouchesGlobals bool
 }
 
 // processDependencyExportValues applies export-values of the chart dependencies, recursively, in the
 // order of sortValuesExports, so that an export reads the values written by the exports to the
-// sibling dependencies regardless of their order. Consecutive exports to the same dependency are
-// applied together, unless one reads what another writes, so that the values in between, e.g. a
-// scalar exported to a dependency root before a map exported there, are never coalesced.
+// sibling dependencies regardless of their order. The exports to the same dependency are applied
+// together where batchChartValuesExports allows it, so that the values in between, e.g. a scalar
+// exported to a dependency root before a map exported there, are never coalesced.
 func processDependencyExportValues(c *chart.Chart, merge bool) error {
 	exports, err := prepareChartValuesExports(c, merge)
 	if err != nil {
 		return fmt.Errorf("prepare export values: %w", err)
 	}
 
-	paths := lo.Map(exports, func(export chartValuesExport, _ int) userValuesExport {
-		return export.Paths
-	})
-
-	var batch []chartValuesExport
-	for _, i := range sortValuesExports(paths) {
-		if len(batch) > 0 && !joinsChartValuesExports(batch, exports[i]) {
-			if err := applyChartValuesExports(batch, merge); err != nil {
-				return fmt.Errorf("apply export values of dependency %q: %w", batch[0].Chart.ChartPath(), err)
-			}
-
-			batch = nil
-		}
-
-		batch = append(batch, exports[i])
-	}
-
-	if len(batch) > 0 {
+	for _, batch := range batchChartValuesExports(exports, dependencyPaths(c)) {
 		if err := applyChartValuesExports(batch, merge); err != nil {
 			return fmt.Errorf("apply export values of dependency %q: %w", batch[0].Chart.ChartPath(), err)
 		}
@@ -543,14 +529,60 @@ func processDependencyExportValues(c *chart.Chart, merge bool) error {
 	return nil
 }
 
-func joinsChartValuesExports(batch []chartValuesExport, export chartValuesExport) bool {
-	if export.Chart != batch[0].Chart {
-		return false
+// batchChartValuesExports returns the exports in the order of sortValuesExports, split into batches
+// of exports to the same dependency. An export joins the last batch of its dependency unless it
+// reads what the batch writes, or the batch is not independent of an export that follows it. The
+// batch is then moved after the batches that follow it, which, unless the values in between are
+// invalid, changes what no export reads. depPaths are the paths of all the dependencies in the
+// chart values. If a dependency is named global, no batch is moved: its values are also globals,
+// which coalescing propagates to the other charts, nesting them deeper on each pass.
+func batchChartValuesExports(exports []chartValuesExport, depPaths [][]string) [][]chartValuesExport {
+	moveBatches := !lo.ContainsBy(depPaths, func(depPath []string) bool {
+		return depPath[len(depPath)-1] == common.GlobalKey
+	})
+
+	exports = slices.Clone(exports)
+	for i := range exports {
+		exports[i].TouchesGlobals = valuesExportTouchesGlobals(exports[i].Paths, depPaths)
 	}
 
-	return !lo.ContainsBy(batch, func(batchExport chartValuesExport) bool {
-		return valuesExportWritesParentPath(batchExport.Paths, export.Paths)
+	paths := lo.Map(exports, func(export chartValuesExport, _ int) userValuesExport {
+		return export.Paths
 	})
+
+	var (
+		batches [][]chartValuesExport
+		// dependentsAfter[k] is the number of exports after batches[k] that are not independent of it.
+		dependentsAfter []int
+	)
+
+	for _, i := range sortValuesExports(paths) {
+		export := exports[i]
+
+		batch, k, found := lo.FindLastIndexOf(batches, func(batch []chartValuesExport) bool {
+			return batch[0].Chart == export.Chart
+		})
+
+		if found && dependentsAfter[k] == 0 && !lo.ContainsBy(batch, func(batchExport chartValuesExport) bool {
+			return valuesExportReadsPath(export.Paths, batchExport.Paths.ChildPath)
+		}) {
+			batches = append(slices.Delete(batches, k, k+1), append(batch, export))
+			dependentsAfter = append(slices.Delete(dependentsAfter, k, k+1), 0)
+		} else {
+			batches = append(batches, []chartValuesExport{export})
+			dependentsAfter = append(dependentsAfter, 0)
+		}
+
+		for j, earlierBatch := range batches[:len(batches)-1] {
+			if !lo.EveryBy(earlierBatch, func(batchExport chartValuesExport) bool {
+				return moveBatches && chartValuesExportsIndependent(batchExport, export)
+			}) {
+				dependentsAfter[j]++
+			}
+		}
+	}
+
+	return batches
 }
 
 // prepareChartValuesExports returns the export-values of the chart dependencies, recursively,
@@ -583,10 +615,11 @@ func prepareChartValuesExports(c *chart.Chart, merge bool) ([]chartValuesExport,
 			})
 
 			exports = append(exports, chartValuesExport{
-				Chart:  c,
-				Parent: parent,
-				Child:  child,
-				Paths:  newUserValuesExport(parentChartPath, depPath, parent, child),
+				Chart:          c,
+				DependencyPath: depPath,
+				Parent:         parent,
+				Child:          child,
+				Paths:          newUserValuesExport(parentChartPath, depPath, parent, child),
 			})
 		}
 
@@ -1083,7 +1116,7 @@ func sortValuesExports(exports []userValuesExport) []int {
 	waitsFor := make([]int, len(exports))
 	for i := range exports {
 		for j := range exports {
-			if j != i && (valuesExportWritesParentPath(exports[j], exports[i]) || (j < i && pathsOverlap(exports[j].ChildPath, exports[i].ChildPath))) {
+			if j != i && (valuesExportReadsPath(exports[i], exports[j].ChildPath) || (j < i && pathsOverlap(exports[j].ChildPath, exports[i].ChildPath))) {
 				waitedBy[j] = append(waitedBy[j], i)
 				waitsFor[i]++
 			}
@@ -1121,9 +1154,43 @@ func sortValuesExports(exports []userValuesExport) []int {
 	return sorted
 }
 
-func valuesExportWritesParentPath(writer, reader userValuesExport) bool {
-	return lo.ContainsBy(valuesExportParentPaths(reader), func(parentPath []string) bool {
-		return pathsOverlap(writer.ChildPath, parentPath)
+// chartValuesExportsIndependent reports whether the exports can be applied in any order: the values
+// of their dependencies don't overlap, neither of them reads the values of the other's dependency,
+// and not both of them touch globals. An export might change the values of its dependency outside of
+// its child path, e.g. the globals of the nested charts, or the defaults merged into a map that
+// replaced a scalar. Coalescing also merges the globals of a dependency into the globals of its
+// parents, because it copies the nested maps of the globals by reference.
+func chartValuesExportsIndependent(a, b chartValuesExport) bool {
+	return !(a.TouchesGlobals && b.TouchesGlobals) &&
+		!pathsOverlap(a.DependencyPath, b.DependencyPath) &&
+		!valuesExportReadsPath(a.Paths, b.DependencyPath) &&
+		!valuesExportReadsPath(b.Paths, a.DependencyPath)
+}
+
+// valuesExportTouchesGlobals reports whether the export reads or writes a path with globals: a path
+// under a global, or a path of a dependency or of its parents, whose values include its globals.
+func valuesExportTouchesGlobals(export userValuesExport, depPaths [][]string) bool {
+	return lo.ContainsBy(append(valuesExportParentPaths(export), export.ChildPath), func(path []string) bool {
+		return slices.Contains(path, common.GlobalKey) || lo.ContainsBy(depPaths, func(depPath []string) bool {
+			return len(path) <= len(depPath) && slices.Equal(path, depPath[:len(path)])
+		})
+	})
+}
+
+// dependencyPaths returns the paths of the dependencies of the chart, recursively, in the chart values.
+func dependencyPaths(c *chart.Chart) [][]string {
+	var paths [][]string
+	for _, d := range c.Dependencies() {
+		paths = append(paths, chartPathFromRoot(d))
+		paths = append(paths, dependencyPaths(d)...)
+	}
+
+	return paths
+}
+
+func valuesExportReadsPath(export userValuesExport, path []string) bool {
+	return lo.ContainsBy(valuesExportParentPaths(export), func(parentPath []string) bool {
+		return pathsOverlap(path, parentPath)
 	})
 }
 
