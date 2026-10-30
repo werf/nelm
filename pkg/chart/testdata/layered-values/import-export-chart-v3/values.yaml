@@ -1,0 +1,5 @@
+g:
+  repo: parent-values-yaml
+  aliasRepo: parent-values-yaml
+  map:
+    a: parent-values-yaml

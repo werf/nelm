@@ -487,9 +487,10 @@ func loadServiceFreeChart(ctx context.Context, chartPath string, userVals userVa
 
 // processDependencies processes the chart dependencies and returns the values to render the chart
 // with, the values to store in the release and the warnings about the export-values and
-// import-values skipped because of the user values. The values to store in the release are the user
-// values with the values exported from them, but without service values, the secret-values.yaml of
-// the chart and imported values. The user values are not modified.
+// import-values skipped because of the user values, and about the ignored export-values of a v3
+// chart. The values to store in the release are the user values with the values exported from them,
+// but without service values, the secret-values.yaml of the chart and imported values. The user
+// values are not modified.
 func processDependencies(chrt helmchart.Charter, userVals userValues) (map[string]interface{}, map[string]interface{}, []string, error) {
 	switch c := chrt.(type) {
 	case *v2chart.Chart:
@@ -540,6 +541,7 @@ func processDependencies(chrt helmchart.Charter, userVals userValues) (map[strin
 
 		return vals, releaseConfig, lo.Uniq(skipped), nil
 	case *v3chart.Chart:
+		warnings := v3ExportValuesWarnings(c)
 		layers := userValuesLayers(userVals)
 
 		vals, err := mergeValuesLayers(layers, coalescedChartValues(c))
@@ -556,7 +558,26 @@ func processDependencies(chrt helmchart.Charter, userVals userValues) (map[strin
 			return nil, nil, nil, fmt.Errorf("process dependencies with merged values: %w", err)
 		}
 
-		return vals, releaseConfig, nil, nil
+		var importedLayers []valuesLayer
+		for i, layer := range layers {
+			importedLayerValues, importSkipped, err := chartv3util.ImportUserValues(c, layer.Values, chartv3util.ImportUserValuesOptions{
+				ReplacedPaths: higherLayersReplacedPaths(layers, i),
+			})
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("import user values: %w", err)
+			}
+
+			layer.Values = importedLayerValues
+			importedLayers = append(importedLayers, layer)
+			warnings = append(warnings, importSkipped...)
+		}
+
+		vals, err = mergeValuesLayers(importedLayers, coalescedChartValues(c))
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("merge imported values layers: %w", err)
+		}
+
+		return vals, releaseConfig, lo.Uniq(warnings), nil
 	default:
 		return nil, nil, nil, fmt.Errorf("unexpected chart type %T", chrt)
 	}
@@ -1190,6 +1211,25 @@ func userValuesLayers(v userValues) []valuesLayer {
 		{ReplacedPaths: v.SetReplacedPaths, Values: v.Set},
 		{IsService: true, Values: v.Service},
 	}
+}
+
+// v3ExportValuesWarnings returns the warnings about the export-values of the dependencies of the v3
+// chart and its subcharts, which are ignored.
+func v3ExportValuesWarnings(c *v3chart.Chart) []string {
+	var warnings []string
+	for _, dep := range c.Metadata.Dependencies {
+		if dep == nil || len(dep.ExportValues) == 0 {
+			continue
+		}
+
+		warnings = append(warnings, fmt.Sprintf("Ignoring export-values of dependency %q of chart %q: export-values are not supported in charts with apiVersion v3", lo.CoalesceOrEmpty(dep.Alias, dep.Name), c.ChartFullPath()))
+	}
+
+	for _, sub := range c.Dependencies() {
+		warnings = append(warnings, v3ExportValuesWarnings(sub)...)
+	}
+
+	return warnings
 }
 
 func validateChart(ctx context.Context, chrt helmchart.Charter, acc helmchart.Accessor) error {
