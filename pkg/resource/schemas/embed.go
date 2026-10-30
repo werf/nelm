@@ -70,8 +70,8 @@ type Bundle struct {
 	UpstreamRef      string   `json:"upstreamRef"`
 	UpstreamRepo     string   `json:"upstreamRepo"`
 	// UpstreamTrees maps each collected Kubernetes version to the git tree sha of the upstream
-	// directory its schemas came from, which is what tells a moved ref that changed those schemas from
-	// one that did not. Only set for the Kubernetes bundle.
+	// directory its schemas came from. It only records provenance: nothing compares it with upstream.
+	// Only set for the Kubernetes bundle.
 	UpstreamTrees map[string]string `json:"upstreamTrees,omitempty"`
 }
 
