@@ -227,6 +227,7 @@ Generally, the migration from Helm to Nelm should be as simple as changing Helm 
 | `helm upgrade --install --rollback-on-failure --wait -n myns myrls ./chart` | `nelm release install --auto-rollback -n myns -r myrls ./chart` |
 | `helm diff upgrade -n myns myrls ./chart` (helm-diff plugin) | `nelm release plan install -n myns -r myrls ./chart` |
 | `helm rollback -n myns myrls 2` | `nelm release rollback -n myns -r myrls 2` |
+| `helm upgrade --install --version 19.1.1 -n myns myrls bitnami/nginx` | `nelm release install --chart-version 19.1.1 -n myns -r myrls bitnami/nginx` |
 | `helm uninstall -n myns myrls` | `nelm release uninstall -n myns -r myrls` |
 | `helm template ./chart` | `nelm chart render ./chart` |
 | `helm dependency build` | `nelm chart dependency download` |
@@ -290,7 +291,7 @@ nelm release plan show plan.gz
 nelm release install -n myns -r myrls --use-plan=plan.gz
 ```
 
-The plan artifact is valid for 2 hours by default, which can be changed with `--plan-lifetime`.
+The plan artifact is valid for 2 hours by default, which can be changed with the `--plan-lifetime` option of `nelm release install`. If the secret key is set (`$NELM_SECRET_KEY` or `--secret-key`) during `nelm release plan install --save-plan`, the plan artifact is encrypted with it, and the same key is required to show or apply the plan.
 
 ### Encrypted values and encrypted files
 
@@ -510,12 +511,12 @@ werf.io/ownership: anyone|release
 ```
 Default:
 ```
-"release" for general resources, "anyone" for hooks and CRDs from "crds/" directory
+"release" for general resources, "anyone" for hooks, CRDs from "crds/" directory and the release Namespace
 ```
 
 ### `werf.io/deploy-on` annotation 
 
-Inspired by `helm.sh/hook`. Render the resource for deployment only on the specified deploy types and stages. Has precedence over `helm.sh/hook`.
+Inspired by `helm.sh/hook`. Render the resource for deployment only on the specified deploy types and stages. `delete` stands for release uninstall. Has precedence over `helm.sh/hook`.
 
 Beware that with `werf.io/ownership: release` if the resource is rendered for install, but, for example, not for upgrade, then it is going to be deployed on install, but then deleted on upgrade, so you might want to consider `werf.io/ownership: anyone`.
 
@@ -525,7 +526,7 @@ werf.io/deploy-on: pre-install,upgrade
 ```
 Format:
 ```
-werf.io/deploy-on: [pre-install][,install][,post-install][,pre-upgrade][,upgrade][,post-upgrade][,pre-rollback][,rollback][,post-rollback][,pre-uninstall][,uninstall][,post-uninstall]
+werf.io/deploy-on: [pre-install][,install][,post-install][,pre-upgrade][,upgrade][,post-upgrade][,pre-rollback][,rollback][,post-rollback][,pre-delete][,delete][,post-delete]
 ```
 Default:
 ```
@@ -534,7 +535,7 @@ Default:
 
 ### `werf.io/delete-policy` annotation 
 
-Inspired by `helm.sh/hook-delete-policy`. Controls resource deletions during resource deployment. `before-creation` means always recreate the resource, `before-creation-if-immutable` means recreate the resource only when its update fails because an immutable field changed (for example, `field is immutable` for a Job selector, or `updates to statefulset spec for fields other than ... are forbidden` for a StatefulSet), `succeeded` means delete the resource at the end of the current deployment stage if the resource was successfully deployed, `failed` means delete the resource if it's readiness check failed. Has precedence over `helm.sh/hook-delete-policy`.
+Inspired by `helm.sh/hook-delete-policy`. Controls resource deletions during resource deployment. `before-creation` means always recreate the resource, `before-creation-if-immutable` means recreate the resource only when its update fails because an immutable field changed (for example, `field is immutable` for a Job selector, or `updates to statefulset spec for fields other than ... are forbidden` for a StatefulSet), `succeeded` means delete the resource at the end of the current deployment stage if the resource was successfully deployed, `failed` means delete the resource if its readiness check failed. Has precedence over `helm.sh/hook-delete-policy`.
 
 Example:
 ```yaml
@@ -683,7 +684,7 @@ Default:
 
 ### `werf.io/ignore-readiness-probe-fails-for-<container_name>` annotation
 
-For the specified container, ignore readiness probe failures during resource tracking for the specified time after the container start. By default, this time is calculated from the readiness and startup probe settings of the container, such as `initialDelaySeconds`, `periodSeconds` and `failureThreshold`.
+For the specified container, ignore readiness probe failures during resource tracking for the specified time after the container start. By default, this time is calculated from the readiness and startup probe settings of the container, such as `initialDelaySeconds`, `periodSeconds` and `failureThreshold`. Failures of a readiness probe with `failureThreshold: 1` are never ignored.
 
 Example:
 ```yaml
@@ -696,7 +697,7 @@ werf.io/ignore-readiness-probe-fails-for-<container_name>: <golang duration>
 
 ### `werf.io/no-activity-timeout` annotation 
 
-Take it as a resource tracking error if no new events or resource updates are received during resource tracking for the specified time.
+Take it as a resource tracking error if no new events or resource updates are received during resource tracking for the specified time. Has no effect on Deployments, StatefulSets, DaemonSets, Jobs, Pods and Flagger Canaries, which have their own trackers.
 
 Example:
 ```yaml
@@ -893,7 +894,7 @@ Format:
 
 ### `dump_debug` function 
 
-If the log level is `debug`, then pretty-dumps the passed value to the logs. Handles just fine any kind of complex types, including .Values, or event root context. Never prints to the templating output.
+If the log level is `debug`, then pretty-dumps the passed value to the logs. Handles just fine any kind of complex types, including .Values, or even root context. Never prints to the templating output.
 
 Example:
 ```
@@ -993,7 +994,7 @@ Feature gates of Nelm v1 that became the default behavior in Nelm v2, such as `N
 
 ### `NELM_FEAT_TYPESCRIPT` environment variable
 
-Render manifests with TypeScript code from the `ts/` directory of the chart, in addition to Go templates. Enables the `nelm chart ts` commands as well.
+Render manifests with TypeScript code from the `ts/` directory of the chart, in addition to or instead of Go templates. Enables the `nelm chart ts` commands as well.
 
 Example:
 ```shell
