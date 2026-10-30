@@ -26,6 +26,7 @@ func TestRenderChart_SubchartSecretValues(t *testing.T) {
 		subchartKey string
 	}{
 		{chartDir: "subchart-secret-v2-declared", subchartKey: "sub"},
+		{chartDir: "subchart-secret-v2-alias", subchartKey: "sub-alias"},
 		{chartDir: "subchart-secret-v2-undeclared", subchartKey: "sub"},
 		{chartDir: "subchart-secret-v3", subchartKey: "sub"},
 		{chartDir: "subchart-secret-v3-alias", subchartKey: "sub-alias"},
@@ -42,12 +43,27 @@ func TestRenderChart_SubchartSecretValues(t *testing.T) {
 			assert.Equal(t, "parent-values", valueAtPath(t, vals, tt.subchartKey+".pk"), "parent values.yaml overrides subchart secret-values.yaml")
 			assert.Empty(t, result.ReleaseConfig)
 		})
+
+		t.Run(tt.chartDir+" with set", func(t *testing.T) {
+			vals := renderedChartValues(t, renderLayeredValuesChart(t, layeredValuesRenderOptions{
+				ChartDir: tt.chartDir,
+				Set:      []string{tt.subchartKey + ".k=set"},
+			}))
+
+			assert.Equal(t, "set", valueAtPath(t, vals, tt.subchartKey+".k"), "--set overrides subchart secret-values.yaml")
+		})
 	}
 
 	t.Run("nested undeclared subchart", func(t *testing.T) {
 		vals := renderedChartValues(t, renderLayeredValuesChart(t, layeredValuesRenderOptions{ChartDir: "subchart-secret-v2-undeclared"}))
 
 		assert.Equal(t, "subsub-secret", valueAtPath(t, vals, "sub.subsub.s"))
+	})
+
+	t.Run("export from declared v2 subchart values", func(t *testing.T) {
+		vals := renderedChartValues(t, renderLayeredValuesChart(t, layeredValuesRenderOptions{ChartDir: "subchart-secret-v2-declared"}))
+
+		assert.Equal(t, "sub-values", valueAtPath(t, vals, "sub.exported-k"), "export-values read the subchart values before its secret-values.yaml is merged")
 	})
 }
 

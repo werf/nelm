@@ -133,10 +133,6 @@ func ProcessDependenciesWithMergedValues(c *chart.Chart, v map[string]interface{
 		return fmt.Errorf("process dependency enabled: %w", err)
 	}
 
-	if err := util.MergeSubchartsDefaultSecretValues(c); err != nil {
-		return fmt.Errorf("merge subcharts secret values: %w", err)
-	}
-
 	return processDependencyImportExportValues(c, true)
 }
 
@@ -506,12 +502,18 @@ func processDependencyExportValues(c *chart.Chart, merge bool) error {
 }
 
 func processExportValues(c *chart.Chart, merge bool) error {
-	if c.Parent() == nil || c.Parent().Metadata.Dependencies == nil {
+	if c.Parent() == nil {
 		return nil
 	}
 
+	// A declared dependency gets its secret-values.yaml below, via valuesForChart. Merging it at the
+	// same point for an undeclared one keeps the order in which the parent values see it the same.
 	r := dependencyForChart(c)
 	if r == nil {
+		if err := util.ApplyDefaultSecretValues(c); err != nil {
+			return fmt.Errorf("apply secret values of undeclared dependency: %w", err)
+		}
+
 		return nil
 	}
 
