@@ -17,6 +17,9 @@ import (
 
 func TestRenderChart_ExportAndImportValuesEdgeCases(t *testing.T) {
 	edgeValuesFile := filepath.Join("testdata", "layered-values", "edge-values-file.yaml")
+	edgeValuesNullFile := filepath.Join("testdata", "layered-values", "edge-values-file-null.yaml")
+	edgeSecretValuesNullFile := filepath.Join("testdata", "layered-values", "edge-secret-values-file-null.yaml")
+	edgeSecretValuesDependencyNullFile := filepath.Join("testdata", "layered-values", "edge-secret-values-file-dependency-null.yaml")
 
 	tests := []struct {
 		name string
@@ -79,6 +82,26 @@ func TestRenderChart_ExportAndImportValuesEdgeCases(t *testing.T) {
 		{
 			name: "null in secret-values.yaml deletes value from values.yaml",
 			want: map[string]interface{}{"nested": map[string]interface{}{"bar": "secret-values-yaml"}},
+		},
+		{
+			name: "null from set for dependency deletes values file values",
+			opts: layeredValuesRenderOptions{Set: []string{"a=null"}, ValuesFiles: []string{edgeValuesFile}},
+			want: map[string]interface{}{"a.image.repository": "parent-values-yaml", "a.other": absentValue{}},
+		},
+		{
+			name: "exported value from secret values file replaces null from secret values file for dependency and keeps values file values",
+			opts: layeredValuesRenderOptions{SecretValuesFiles: []string{edgeSecretValuesNullFile}, ValuesFiles: []string{edgeValuesFile}},
+			want: map[string]interface{}{"a.image.repository": "secret-values-file-null", "a.other": "values-file"},
+		},
+		{
+			name: "null from secret values file for dependency deletes values file values despite export from set",
+			opts: layeredValuesRenderOptions{SecretValuesFiles: []string{edgeSecretValuesDependencyNullFile}, Set: []string{"g.repo=set"}, ValuesFiles: []string{edgeValuesFile}},
+			want: map[string]interface{}{"a.image.repository": "set", "a.other": absentValue{}},
+		},
+		{
+			name: "null from later values file for dependency deletes earlier values file values despite export",
+			opts: layeredValuesRenderOptions{ValuesFiles: []string{edgeValuesFile, edgeValuesNullFile}},
+			want: map[string]interface{}{"a.image.repository": "values-file-null", "a.other": absentValue{}},
 		},
 		{
 			name: "value is not exported to dependency disabled by condition",
@@ -247,6 +270,7 @@ func TestRenderChart_NullInSecretValuesYAMLWhenChartValuesAreInvalidAlone(t *tes
 
 func TestRenderChart_ReleaseConfigFollowsExportAndImportValuesPrecedence(t *testing.T) {
 	edgeValuesFile := filepath.Join("testdata", "layered-values", "edge-values-file.yaml")
+	edgeSecretValuesNullFile := filepath.Join("testdata", "layered-values", "edge-secret-values-file-null.yaml")
 
 	tests := []struct {
 		name string
@@ -301,6 +325,16 @@ func TestRenderChart_ReleaseConfigFollowsExportAndImportValuesPrecedence(t *test
 			name: "exported value from set replaces null from set for dependency",
 			opts: layeredValuesRenderOptions{Set: []string{"a=null", "g.repo=set"}},
 			want: map[string]interface{}{"a.image.repository": "set"},
+		},
+		{
+			name: "exported value from set replaces null from set for dependency and keeps values file values",
+			opts: layeredValuesRenderOptions{Set: []string{"a=null", "g.repo=set"}, ValuesFiles: []string{edgeValuesFile}},
+			want: map[string]interface{}{"a.image.repository": "set", "a.other": "values-file"},
+		},
+		{
+			name: "exported value from secret values file replaces null from secret values file for dependency and keeps values file values",
+			opts: layeredValuesRenderOptions{SecretValuesFiles: []string{edgeSecretValuesNullFile}, ValuesFiles: []string{edgeValuesFile}},
+			want: map[string]interface{}{"a.image.repository": "secret-values-file-null", "a.other": "values-file"},
 		},
 		{
 			name: "value is not exported to dependency disabled by condition",
