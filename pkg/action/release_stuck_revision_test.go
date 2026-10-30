@@ -1,7 +1,12 @@
 package action
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -13,10 +18,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/werf/logboek"
 	"github.com/werf/nelm/v2/pkg/common"
+	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
+	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
 )
 
 func TestReleaseInstall_AutoRollbackMarksStuckPendingRevisionsFailed(t *testing.T) {
@@ -59,6 +68,52 @@ func TestReleaseInstall_FailureKeepsStuckPendingRevisions(t *testing.T) {
 		2: helmreleasestatus.StatusPendingUpgrade,
 		3: helmreleasestatus.StatusFailed,
 	}, progressPhaseRevisionStatuses(t, ctx, api))
+}
+
+func TestReleaseInstall_MarkingStuckRevisionFailedChangesOnlyItsStatus(t *testing.T) {
+	for _, usePlanArtifactFile := range []bool{false, true} {
+		t.Run("plan artifact file "+strconv.FormatBool(usePlanArtifactFile), func(t *testing.T) {
+			api := newProgressPhasesAPI(t)
+			addProgressPhaseRevisionWithStatus(t, api, 1, "", helmreleasestatus.StatusDeployed)
+			stuckBody := addStuckRevisionWithFullBody(t, api, 2)
+			chartPath := newStuckRevisionChart(t, api)
+
+			ctx := newStuckRevisionContext(t)
+
+			opts := newStuckRevisionInstallOptions(t, api)
+			if usePlanArtifactFile {
+				opts.PlanArtifactPath = filepath.Join(t.TempDir(), "plan.gz")
+				opts.PlanArtifactLifetime = time.Hour
+
+				_, err := ReleasePlanInstall(ctx, "progress-release", "progress-ns", ReleasePlanInstallOptions{
+					KubeConnectionOptions: api.kubeOpts, Chart: chartPath, PlanArtifactPath: opts.PlanArtifactPath,
+					ReleaseInstallRuntimeOptions: common.ReleaseInstallRuntimeOptions{ReleaseStorageDriver: "configmap"},
+					TempDirPath:                  t.TempDir(),
+				})
+				require.NoError(t, err)
+			} else {
+				opts.Chart = chartPath
+			}
+
+			_, err := ReleaseInstall(ctx, "progress-release", "progress-ns", opts)
+			require.NoError(t, err)
+
+			var storedBody []byte
+			api.state.RTransaction(func(s *progressPhasesAPIState) {
+				storedBody = decodeStoredReleaseBody(t, s.configMaps["sh.helm.release.v1.progress-release.v2"].Data["release"])
+			})
+
+			var want, got map[string]any
+			require.NoError(t, json.Unmarshal(stuckBody, &want))
+			require.NoError(t, json.Unmarshal(storedBody, &got))
+
+			assert.Equal(t, helmreleasestatus.StatusFailed.String(), got["info"].(map[string]any)["status"])
+
+			delete(want["info"].(map[string]any), "status")
+			delete(got["info"].(map[string]any), "status")
+			assert.Equal(t, want, got, "only the status of the stuck revision may change")
+		})
+	}
 }
 
 func TestReleaseInstall_StuckPendingRevisionPrunedByHistoryLimitDoesNotFailDeploy(t *testing.T) {
@@ -148,6 +203,66 @@ func TestReleaseRollback_SuccessMarksStuckPendingRevisionsFailed(t *testing.T) {
 		2: helmreleasestatus.StatusFailed,
 		3: helmreleasestatus.StatusDeployed,
 	}, progressPhaseRevisionStatuses(t, ctx, api))
+}
+
+func addStuckRevisionWithFullBody(t *testing.T, api *progressPhasesAPI, revision int) []byte {
+	t.Helper()
+
+	deployedAt := time.Date(2026, time.October, 1, 10, 0, 0, 0, time.UTC)
+	body, err := json.Marshal(&helmrelease.Release{
+		Name:      "progress-release",
+		Namespace: "progress-ns",
+		Version:   revision,
+		Info: &helmrelease.Info{
+			Annotations:   map[string]string{"werf.io/release-version": "v1", "example.com/team": "platform"},
+			FirstDeployed: deployedAt,
+			LastDeployed:  deployedAt.Add(time.Hour),
+			Description:   "Upgrade in progress",
+			Status:        helmreleasestatus.StatusPendingUpgrade,
+			Notes:         "notes",
+		},
+		Chart: &helmchart.Chart{
+			Metadata: &helmchart.Metadata{APIVersion: "v2", Name: "progress-chart", Version: "1.0.0"},
+			Values:   map[string]any{"default": "value"},
+		},
+		Config:   map[string]any{"key": "value", "nested": map[string]any{"number": 42, "list": []any{"a", true}}},
+		Manifest: "",
+	})
+	require.NoError(t, err)
+
+	key := fmt.Sprintf("sh.helm.release.v1.progress-release.v%d", revision)
+	api.state.RWTransaction(func(s *progressPhasesAPIState) {
+		s.configMaps[key] = corev1.ConfigMap{
+			TypeMeta: metav1.TypeMeta{Kind: "ConfigMap", APIVersion: "v1"},
+			ObjectMeta: metav1.ObjectMeta{Name: key, Namespace: "progress-ns", Annotations: map[string]string{
+				"werf.io/release-version": "v1", "example.com/team": "platform",
+			}, Labels: map[string]string{
+				"owner": "helm", "name": "progress-release", "version": strconv.Itoa(revision), "status": helmreleasestatus.StatusPendingUpgrade.String(),
+			}},
+			Data: map[string]string{"release": base64.StdEncoding.EncodeToString(body)},
+		}
+	})
+
+	return body
+}
+
+func decodeStoredReleaseBody(t *testing.T, data string) []byte {
+	t.Helper()
+
+	body, err := base64.StdEncoding.DecodeString(data)
+	require.NoError(t, err)
+
+	if !bytes.HasPrefix(body, []byte{0x1f, 0x8b}) {
+		return body
+	}
+
+	gzipReader, err := gzip.NewReader(bytes.NewReader(body))
+	require.NoError(t, err)
+
+	body, err = io.ReadAll(gzipReader)
+	require.NoError(t, err)
+
+	return body
 }
 
 func newStuckRevisionChart(t *testing.T, api *progressPhasesAPI) string {

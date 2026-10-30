@@ -361,7 +361,9 @@ func execOpUpdate(ctx context.Context, op *Operation, releaseNamespace string, c
 func execOpUpdateRelease(ctx context.Context, op *Operation, history release.Historier) error {
 	opConfig := op.Config.(*OperationConfigUpdateRelease)
 
-	if err := history.UpdateRelease(ctx, opConfig.Release.Accessor); err != nil {
+	if err := history.UpdateRelease(ctx, opConfig.Release.Accessor, release.UpdateReleaseOptions{
+		KeepDeployedTimestamps: opConfig.KeepDeployedTimestamps,
+	}); err != nil {
 		if opConfig.IgnoreNotFound && errors.Is(err, release.ErrReleaseNotFound) {
 			return nil
 		}
