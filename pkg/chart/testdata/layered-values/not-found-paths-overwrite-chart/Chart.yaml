@@ -1,0 +1,17 @@
+apiVersion: v2
+name: parent
+version: 0.1.0
+dependencies:
+  - name: sub
+    version: 0.1.0
+    export-values:
+      - parent: sub.cycle.k
+        child: cycleSaved
+      - parent: sub.cycleSaved
+        child: cycle
+      - parent: sub.self.k
+        child: self
+      - parent: sub.typoCycle.typo
+        child: typoCycleSaved
+      - parent: sub.typoCycleSaved
+        child: typoCycle

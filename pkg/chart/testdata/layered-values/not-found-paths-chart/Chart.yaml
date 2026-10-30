@@ -1,0 +1,26 @@
+apiVersion: v2
+name: parent
+version: 0.1.0
+dependencies:
+  - name: sub
+    version: 0.1.0
+    export-values:
+      - parent: img.repo
+        child: image.repository
+      - parent: img.tag
+        child: image.tag
+    import-values:
+      - child: out
+        parent: imported
+      - data
+      - child: cfg
+        parent: cfg
+  - name: disabled
+    version: 0.1.0
+    condition: disabled.enabled
+    export-values:
+      - parent: disabledExport
+        child: x
+    import-values:
+      - child: disabledImport
+        parent: disabledImported

@@ -45,6 +45,11 @@ func ProcessDependencies(c *chart.Chart, v *map[string]interface{}) error {
 		return err
 	}
 
+	var chartValsBeforeProcessing map[string]interface{}
+	if chartVals, err := util.CoalesceValues(c, nil); err == nil {
+		chartValsBeforeProcessing = chartVals.AsMap()
+	}
+
 	exportedVals, exportSkipped, err := ExportUserValues(c, *v, ExportUserValuesOptions{})
 	if err != nil {
 		return fmt.Errorf("export user values: %w", err)
@@ -69,9 +74,14 @@ func ProcessDependencies(c *chart.Chart, v *map[string]interface{}) error {
 		return fmt.Errorf("import service and custom secret values: %w", err)
 	}
 
+	notFound, err := ExportAndImportValuesNotFoundWarnings(c, []map[string]interface{}{*v, extraVals, importedVals, importedExtraVals}, chartValsBeforeProcessing)
+	if err != nil {
+		return fmt.Errorf("check export and import values paths: %w", err)
+	}
+
 	*v = common.MergeMaps(importedVals, importedExtraVals)
 
-	for _, msg := range lo.Uniq(slices.Concat(exportSkipped, extraExportSkipped, importSkipped, extraImportSkipped)) {
+	for _, msg := range lo.Uniq(slices.Concat(exportSkipped, extraExportSkipped, importSkipped, extraImportSkipped, notFound)) {
 		log.Default.Warn(context.Background(), "%s", msg)
 	}
 
@@ -380,14 +390,10 @@ func processImportValues(c *chart.Chart, merge bool) error {
 					"parent": parent,
 				})
 
-				// get child table
+				// The table may be set only in user-supplied or service values, imported by
+				// ImportUserValues, see ExportAndImportValuesNotFoundWarnings.
 				vv, err := cvals.Table(r.Name + "." + child)
 				if err != nil {
-					slog.Warn(
-						"ImportValues missing table from chart",
-						slog.String("chart", r.Name),
-						slog.Any("error", err),
-					)
 					continue
 				}
 				// create value map from child to be merged into parent
@@ -404,7 +410,6 @@ func processImportValues(c *chart.Chart, merge bool) error {
 				})
 				vm, err := cvals.Table(r.Name + "." + child)
 				if err != nil {
-					slog.Warn("ImportValues missing table", slog.Any("error", err))
 					continue
 				}
 				if merge {
@@ -846,12 +851,143 @@ func ImportUserValues(c *chart.Chart, v map[string]interface{}, opts ImportUserV
 	return importUserValues(c, vals, opts.ReplacedPaths)
 }
 
+// ExportAndImportValuesNotFoundWarnings returns the warnings about the export-values of the enabled
+// chart dependencies whose parent path is set neither in the chart values nor in any of the values
+// layers, and about the import-values whose child path has a map neither in the chart values nor
+// any value in the values layers, e.g. because of a typo in Chart.yaml. Each layer has the
+// export-values and import-values applied separately, so only all of them together tell that a
+// path is not set. Call it after ProcessDependenciesWithMergedValues with the values layers both
+// before ExportUserValues and after ImportUserValues, and with the chart values coalesced before
+// processing, or nil if they are invalid: an export might overwrite the path it reads, and
+// an export might read the path that another export writes.
+func ExportAndImportValuesNotFoundWarnings(c *chart.Chart, layers []map[string]interface{}, chartValuesBeforeProcessing map[string]interface{}) ([]string, error) {
+	exportLayers := append(slices.Clone(layers), chartValuesBeforeProcessing)
+
+	var warnings []string
+	for _, export := range collectUserValuesExports(c, "") {
+		found, err := userValuesExportParentFound(exportLayers, export)
+		if err != nil {
+			return nil, err
+		}
+
+		if !found {
+			if found, err = chartValuesExportParentFound(export); err != nil {
+				return nil, err
+			}
+		}
+
+		if !found {
+			warnings = append(warnings, fmt.Sprintf("Skipping export-values of %q from chart %q to dependency %q: the path is not set in any values", export.Parent, export.Chart.ChartPath(), export.DependencyName))
+		}
+	}
+
+	importWarnings, err := importValuesNotFoundWarnings(c, layers)
+	if err != nil {
+		return nil, err
+	}
+
+	return append(warnings, importWarnings...), nil
+}
+
+func userValuesExportParentFound(layers []map[string]interface{}, export userValuesExport) (bool, error) {
+	for _, vals := range layers {
+		_, found, err := userValuesExportParentValue(vals, export)
+		if err != nil {
+			return false, fmt.Errorf("get value %q: %w", export.ParentPath, err)
+		}
+
+		if found {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// chartValuesExportParentFound looks up the parent path in the same chart values as
+// applyChartValuesExports.
+func chartValuesExportParentFound(export userValuesExport) (bool, error) {
+	var (
+		pvals common.Values
+		err   error
+	)
+	if isGlobalValuesPath(export.Parent) && export.Chart.Parent() != nil {
+		pvals, err = valuesWithRootGlobalsForChart(export.Chart, true)
+	} else {
+		pvals, err = valuesForChart(export.Chart, true)
+	}
+
+	if err != nil {
+		return false, fmt.Errorf("get values of chart %q: %w", export.Chart.ChartPath(), err)
+	}
+
+	_, found := userValueAtPath(pvals, export.Parent)
+
+	return found, nil
+}
+
+// importValuesNotFoundWarnings looks up the child path in the same chart values as
+// processImportValues. It counts a non-map in a values layer as set, because ImportUserValues
+// already warns about it.
+func importValuesNotFoundWarnings(c *chart.Chart, layers []map[string]interface{}) ([]string, error) {
+	var warnings []string
+	for _, d := range c.Dependencies() {
+		depWarnings, err := importValuesNotFoundWarnings(d, layers)
+		if err != nil {
+			return nil, err
+		}
+
+		warnings = append(warnings, depWarnings...)
+	}
+
+	chartPath := stripFirstPathPart(c.ChartPath())
+
+	var cvals common.Values
+	for _, r := range c.Metadata.Dependencies {
+		for _, importValue := range r.ImportValues {
+			child, _, ok := parseImportValues(importValue)
+			if !ok {
+				continue
+			}
+
+			childPath := joinNonEmptyPath(chartPath, r.Name, child)
+
+			if lo.ContainsBy(layers, func(vals map[string]interface{}) bool {
+				_, found := userValueAtPath(vals, childPath)
+				return found
+			}) {
+				continue
+			}
+
+			if cvals == nil {
+				var err error
+				if cvals, err = valuesForChart(c, true); err != nil {
+					return nil, fmt.Errorf("get values of chart %q: %w", c.ChartPath(), err)
+				}
+			}
+
+			if _, err := cvals.Table(r.Name + "." + child); err == nil {
+				continue
+			}
+
+			warnings = append(warnings, fmt.Sprintf("Skipping import-values of %q from dependency %q to chart %q: no map is set at the path in any values", child, r.Name, c.ChartPath()))
+		}
+	}
+
+	return warnings, nil
+}
+
 type userValuesExport struct {
-	ChildPath string
+	// Chart, DependencyName and Parent are the export-values definition in Chart.yaml, set only by
+	// collectUserValuesExports.
+	Chart          *chart.Chart
+	ChildPath      string
+	DependencyName string
 	// GlobalPaths are set for an export of a global value from a subchart: the paths of the globals of
 	// the root chart and of each chart down to the subchart, from the highest precedence. ParentPath is
 	// then the path in these globals merged like in coalesceGlobals.
 	GlobalPaths      []string
+	Parent           string
 	ParentPath       string
 	ToDependencyRoot bool
 }
@@ -897,7 +1033,11 @@ func collectUserValuesExports(c *chart.Chart, chartPath string) []userValuesExpo
 				continue
 			}
 
-			exports = append(exports, newUserValuesExport(chartPath, depPath, parent, child))
+			export := newUserValuesExport(chartPath, depPath, parent, child)
+			export.Chart = c
+			export.DependencyName = dep.Name()
+			export.Parent = parent
+			exports = append(exports, export)
 		}
 
 		if inRange {
