@@ -133,6 +133,10 @@ func ProcessDependenciesWithMergedValues(c *chart.Chart, v map[string]interface{
 		return fmt.Errorf("process dependency enabled: %w", err)
 	}
 
+	if err := util.MergeSubchartsDefaultSecretValues(c); err != nil {
+		return fmt.Errorf("merge subcharts secret values: %w", err)
+	}
+
 	return processDependencyImportExportValues(c, true)
 }
 

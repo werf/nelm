@@ -159,7 +159,7 @@ type ValuesOptions struct {
 func (opts *ValuesOptions) ApplyDefaults() {}
 
 type SecretValuesOptions struct {
-	// DefaultSecretValuesDisable, when true, ignores the default secret-values.yaml file from the chart.
+	// DefaultSecretValuesDisable, when true, ignores the default secret-values.yaml file of the chart and its subcharts.
 	// Useful when you don't want to use the chart's default encrypted values.
 	DefaultSecretValuesDisable bool
 	// SecretKey is the encryption/decryption key for secret values files.

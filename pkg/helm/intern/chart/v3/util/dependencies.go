@@ -45,6 +45,10 @@ func ProcessDependenciesWithMergedValues(c *chart.Chart, v common.Values) error 
 		return err
 	}
 
+	if err := util.MergeSubchartsDefaultSecretValues(c); err != nil {
+		return fmt.Errorf("merge subcharts secret values: %w", err)
+	}
+
 	return processDependencyImportValues(c, true)
 }
 
