@@ -748,12 +748,9 @@ type userValuesExport struct {
 func collectUserValuesExports(c *chart.Chart, chartPath string) []userValuesExport {
 	var exports []userValuesExport
 
-Loop:
 	for _, existing := range c.Dependencies() {
-		for _, req := range c.Metadata.Dependencies {
-			if req != nil && existing.Name() == req.Name && IsCompatibleRange(req.Version, existing.Metadata.Version) {
-				continue Loop
-			}
+		if chartMatchesDependency(existing, c.Metadata.Dependencies) {
+			continue
 		}
 
 		exports = append(exports, collectUserValuesExports(existing, joinNonEmptyPath(chartPath, existing.Name()))...)
@@ -765,6 +762,16 @@ Loop:
 		}
 
 		dep := getAliasDependency(c.Dependencies(), req)
+		inRange := dep != nil
+		// processDependencyEnabled keeps a chart that matches no dependency by name and version range,
+		// and processExportValues applies the export-values of the non-alias dependency with its name to
+		// it, so they are applied here too. Such a chart is recursed into in the loop above.
+		if !inRange && req.Alias == "" {
+			dep, _ = lo.Find(c.Dependencies(), func(d *chart.Chart) bool {
+				return d.Name() == req.Name && !chartMatchesDependency(d, c.Metadata.Dependencies)
+			})
+		}
+
 		if dep == nil {
 			continue
 		}
@@ -784,10 +791,18 @@ Loop:
 			})
 		}
 
-		exports = append(exports, collectUserValuesExports(dep, depPath)...)
+		if inRange {
+			exports = append(exports, collectUserValuesExports(dep, depPath)...)
+		}
 	}
 
 	return exports
+}
+
+func chartMatchesDependency(c *chart.Chart, reqs []*chart.Dependency) bool {
+	return lo.ContainsBy(reqs, func(r *chart.Dependency) bool {
+		return r != nil && r.Name == c.Name() && IsCompatibleRange(r.Version, c.Metadata.Version)
+	})
 }
 
 // sortUserValuesExports orders the exports so that each export comes after the exports that write
