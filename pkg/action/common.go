@@ -319,7 +319,7 @@ func loadDeployedAndPendingReleasesWith(ctx context.Context, history *release.Hi
 			}
 
 			if helmreleasestatus.Status(revision.Status).IsPending() {
-				log.Default.Warn(ctx, "Cannot mark stuck revision %d of release %q as failed, it stays %s: %s", revision.Version, revision.Name, revision.Status, err)
+				log.Default.Warn(ctx, "Skipped stuck revision %d of release %q with status %q: %s", revision.Version, revision.Name, revision.Status, err)
 
 				continue
 			}
