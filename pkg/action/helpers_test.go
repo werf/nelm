@@ -31,6 +31,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/legacy/progrep"
 	"github.com/werf/nelm/v2/pkg/release"
+	"github.com/werf/nelm/v2/pkg/werfdata"
 )
 
 const secretValuesTypesSecretKey = "0123456789abcdef0123456789abcdef"
@@ -566,6 +567,19 @@ func newTestReleaseSummary() *release.ReleaseSummary {
 	}
 }
 
+// newWerfDataChart copies the werf-data test chart and gives it a .werf-data/metadata.yaml with
+// the given contents.
+func newWerfDataChart(t *testing.T, metadata string) string {
+	t.Helper()
+
+	path := t.TempDir()
+	require.NoError(t, os.CopyFS(path, os.DirFS("testdata/werf-data/chart")))
+	require.NoError(t, os.MkdirAll(filepath.Join(path, werfdata.DirName), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(path, werfdata.DirName, werfdata.MetadataFileName), []byte(metadata), 0o600))
+
+	return path
+}
+
 func progressPhaseReports(t *testing.T, ch <-chan progrep.ProgressReport) []progrep.ProgressReport {
 	t.Helper()
 
@@ -598,6 +612,15 @@ func progressPhaseSequence(reports []progrep.ProgressReport) []progrep.PhaseKind
 	return phases
 }
 
+func readWerfDataTestMetadata(t *testing.T) string {
+	t.Helper()
+
+	metadata, err := os.ReadFile("testdata/werf-data/metadata.yaml")
+	require.NoError(t, err)
+
+	return string(metadata)
+}
+
 func renderedValuesJSON(t *testing.T, res *ChartRenderResultV2) string {
 	t.Helper()
 
@@ -608,4 +631,24 @@ func renderedValuesJSON(t *testing.T, res *ChartRenderResultV2) string {
 	require.True(t, found)
 
 	return valuesJSON
+}
+
+// setWerfDataMergedClusterConfigMap puts the werf-data test chart's ConfigMap into the cluster as
+// installing it with the werf-data test metadata and caller options produces it, so the install
+// has nothing to apply.
+func setWerfDataMergedClusterConfigMap(api *progressPhasesAPI) {
+	annotations := lo.Assign(map[string]string{
+		"meta.helm.sh/release-name": "progress-release", "meta.helm.sh/release-namespace": "progress-ns",
+	}, werfDataMergedAnnotations, werfDataMergedRuntimeAnnotations)
+	labels := lo.Assign(map[string]string{"app.kubernetes.io/managed-by": "Helm"}, werfDataMergedLabels)
+
+	api.state.RWTransaction(func(s *progressPhasesAPIState) {
+		s.configMaps["progress-resource"] = corev1.ConfigMap{
+			TypeMeta: metav1.TypeMeta{Kind: "ConfigMap", APIVersion: "v1"},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "progress-resource", Namespace: "progress-ns", Annotations: annotations, Labels: labels,
+			},
+			Data: map[string]string{"key": "value"},
+		}
+	})
 }
