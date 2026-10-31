@@ -155,6 +155,18 @@ func (c *GenericClient) PullGeneric(ref string, options GenericPullOptions) (*Ge
 	}, nil
 }
 
+// Repository returns the remote repository of ref, authenticated and configured like the client.
+func (c *GenericClient) Repository(ref string) (*remote.Repository, error) {
+	repository, err := remote.NewRepository(ref)
+	if err != nil {
+		return nil, err
+	}
+	repository.PlainHTTP = c.plainHTTP
+	repository.Client = c.authorizer
+
+	return repository, nil
+}
+
 // GetDescriptorData retrieves the data for a specific descriptor
 func (c *GenericClient) GetDescriptorData(store *memory.Store, desc ocispec.Descriptor) ([]byte, error) {
 	return content.FetchAll(context.Background(), store, desc)

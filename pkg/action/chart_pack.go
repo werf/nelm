@@ -180,7 +180,7 @@ func ChartPack(ctx context.Context, chartPath string, opts ChartPackOptions) (*C
 		return nil, fmt.Errorf("get absolute path of %q: %w", chartPath, err)
 	}
 
-	registryClient, err := newChartPackRegistryClient(ctx, opts)
+	registryClient, err := newChartRepoRegistryClient(ctx, opts.ChartRepoConnectionOptions, opts.RegistryCredentialsPath)
 	if err != nil {
 		return nil, fmt.Errorf("construct registry client: %w", err)
 	}
@@ -972,12 +972,12 @@ func newChartPackDependencyDownloader(ctx context.Context, chartPath string, reg
 	}
 }
 
-func newChartPackRegistryClient(ctx context.Context, opts ChartPackOptions) (*registry.Client, error) {
+func newChartRepoRegistryClient(ctx context.Context, opts common.ChartRepoConnectionOptions, registryCredentialsPath string) (*registry.Client, error) {
 	clientOpts := []registry.ClientOption{
 		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
 		registry.ClientOptEnableCache(true),
 		registry.ClientOptWriter(io.Discard),
-		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
+		registry.ClientOptCredentialsFile(registryCredentialsPath),
 		registry.ClientOptBasicAuth(opts.ChartRepoBasicAuthUsername, opts.ChartRepoBasicAuthPassword),
 	}
 
