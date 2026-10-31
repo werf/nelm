@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -79,6 +81,48 @@ func TestChartCopy_ArchiveRoundTrip(t *testing.T) {
 			require.NoError(t, ChartCopy(newChartPackTestContext(), archive, copyArchivePath, newChartCopyTestOptions(t)))
 			assert.ElementsMatch(t, index.Manifests, readChartCopyTestArchiveIndex(t, copyArchivePath).Manifests)
 		})
+	}
+}
+
+func TestChartCopy_BasicAuthOnlyForChartHosts(t *testing.T) {
+	host := newChartCopyTestRegistry(t)
+	client := newChartCopyTestRegistryClient(t)
+
+	var (
+		mu                   sync.Mutex
+		hostileAuthorization []string
+	)
+
+	hostile := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+
+		hostileAuthorization = append(hostileAuthorization, r.Header.Get("Authorization"))
+		mu.Unlock()
+
+		w.Header().Set("WWW-Authenticate", `Basic realm="hostile"`)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(hostile.Close)
+
+	chartData := buildChartCopyTestChart(t, map[string]string{
+		"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: " + strings.TrimPrefix(hostile.URL, "http://") + "/images:backend\n",
+	})
+	_, err := client.Push(chartData, host+"/src/app:1.0.0")
+	require.NoError(t, err)
+
+	opts := newChartCopyTestOptions(t)
+	opts.ChartRepoBasicAuthUsername = "user"
+	opts.ChartRepoBasicAuthPassword = "secret"
+
+	require.Error(t, ChartCopy(newChartPackTestContext(), "oci://"+host+"/src/app:1.0.0", "oci://"+host+"/dst/app", opts))
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	require.NotEmpty(t, hostileAuthorization)
+
+	for _, authorization := range hostileAuthorization {
+		assert.NotContains(t, authorization, base64.StdEncoding.EncodeToString([]byte("user:secret")))
 	}
 }
 

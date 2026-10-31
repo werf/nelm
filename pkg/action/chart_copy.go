@@ -138,7 +138,13 @@ func ChartCopy(ctx context.Context, from, to string, opts ChartCopyOptions) erro
 	}
 	defer os.RemoveAll(tempDir)
 
-	registryClient, err := newChartRepoRegistryClient(ctx, opts.ChartRepoConnectionOptions, opts.RegistryCredentialsPath)
+	// The chart repo credentials are for the chart repositories only: image repositories on other
+	// hosts must not get them.
+	chartHosts := lo.FilterMap([]*chartCopyAddress{fromAddr, toAddr}, func(addr *chartCopyAddress, _ int) (string, bool) {
+		return strings.Split(addr.Repo, "/")[0], addr.Repo != ""
+	})
+
+	registryClient, err := newChartRepoRegistryClient(ctx, opts.ChartRepoConnectionOptions, opts.RegistryCredentialsPath, registry.ClientOptBasicAuthHosts(chartHosts...))
 	if err != nil {
 		return fmt.Errorf("construct registry client: %w", err)
 	}

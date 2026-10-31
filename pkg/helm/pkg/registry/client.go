@@ -72,6 +72,7 @@ type (
 		credentialsFile    string
 		username           string
 		password           string
+		basicAuthHosts     []string
 		out                io.Writer
 		authorizer         *auth.Client
 		registryAuthorizer RemoteClient
@@ -126,7 +127,16 @@ func NewClient(options ...ClientOption) (*Client, error) {
 		}
 		authorizer.SetUserAgent(version.GetUserAgent())
 
-		if client.username != "" && client.password != "" {
+		if client.username != "" && client.password != "" && client.basicAuthHosts != nil {
+			storeCredential := credentials.Credential(client.credentialsStore)
+			authorizer.Credential = func(ctx context.Context, hostport string) (auth.Credential, error) {
+				if slices.Contains(client.basicAuthHosts, hostport) {
+					return auth.Credential{Username: client.username, Password: client.password}, nil
+				}
+
+				return storeCredential(ctx, hostport)
+			}
+		} else if client.username != "" && client.password != "" {
 			authorizer.Credential = func(_ context.Context, _ string) (auth.Credential, error) {
 				return auth.Credential{Username: client.username, Password: client.password}, nil
 			}
@@ -167,6 +177,14 @@ func ClientOptBasicAuth(username, password string) ClientOption {
 	return func(client *Client) {
 		client.username = username
 		client.password = password
+	}
+}
+
+// ClientOptBasicAuthHosts limits the username and password to the given registry hosts (host or
+// host:port). Other hosts get the credentials from the credentials store.
+func ClientOptBasicAuthHosts(hosts ...string) ClientOption {
+	return func(client *Client) {
+		client.basicAuthHosts = append([]string{}, hosts...)
 	}
 }
 

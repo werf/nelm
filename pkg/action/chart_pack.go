@@ -972,7 +972,7 @@ func newChartPackDependencyDownloader(ctx context.Context, chartPath string, reg
 	}
 }
 
-func newChartRepoRegistryClient(ctx context.Context, opts common.ChartRepoConnectionOptions, registryCredentialsPath string) (*registry.Client, error) {
+func newChartRepoRegistryClient(ctx context.Context, opts common.ChartRepoConnectionOptions, registryCredentialsPath string, extraClientOpts ...registry.ClientOption) (*registry.Client, error) {
 	clientOpts := []registry.ClientOption{
 		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
 		registry.ClientOptEnableCache(true),
@@ -1011,7 +1011,7 @@ func newChartRepoRegistryClient(ctx context.Context, opts common.ChartRepoConnec
 		}))
 	}
 
-	client, err := registry.NewClient(clientOpts...)
+	client, err := registry.NewClient(append(clientOpts, extraClientOpts...)...)
 	if err != nil {
 		return nil, fmt.Errorf("create registry client: %w", err)
 	}
