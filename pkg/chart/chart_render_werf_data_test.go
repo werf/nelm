@@ -2,13 +2,16 @@ package chart
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/werf/nelm/v2/pkg/common"
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	"github.com/werf/nelm/v2/pkg/log"
 	"github.com/werf/nelm/v2/pkg/werfdata"
 )
 
@@ -201,6 +204,47 @@ func TestRenderChart_WerfDataDependencyFolding(t *testing.T) {
 
 			assert.Equal(t, tt.wantDeps, dependencyNames(t, result))
 			assert.Empty(t, result.ReleaseConfig)
+		})
+	}
+}
+
+func TestRenderChart_WerfDataDependencyMetadataIgnored(t *testing.T) {
+	tests := []struct {
+		name         string
+		metadata     string
+		wantWarnings []string
+	}{
+		{
+			name:         "annotations and labels",
+			metadata:     "apiVersion: v2\nextraAnnotations:\n  team: payments\nextraLabels:\n  tier: backend\n",
+			wantWarnings: []string{`Annotations and labels in .werf-data of dependency "pub" are ignored: only those of the root chart are applied`},
+		},
+		{
+			name:         "no annotations or labels",
+			metadata:     "apiVersion: v2\n",
+			wantWarnings: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := &warningsLogger{Logger: log.Default}
+			log.Default = logger
+			t.Cleanup(func() { log.Default = logger.Logger })
+
+			chartPath := writeWerfDataTestChart(t, map[string]string{
+				"charts/pub/Chart.yaml":               "apiVersion: v2\nname: pub\nversion: 1.0.0\n",
+				"charts/pub/.werf-data/metadata.yaml": tt.metadata,
+			}, map[string]string{
+				"Chart.yaml": "apiVersion: v2\nname: root\nversion: 1.0.0\ndependencies:\n- name: pub\n  version: 1.0.0\n",
+			})
+
+			_, err := renderWerfDataTestChart(t, chartPath, RenderChartOptions{})
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.wantWarnings, lo.Filter(logger.warnings, func(w string, _ int) bool {
+				return strings.Contains(w, werfdata.DirName)
+			}))
 		})
 	}
 }

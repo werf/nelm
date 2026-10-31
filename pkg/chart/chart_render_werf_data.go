@@ -80,6 +80,10 @@ func foldWerfDataDependencies(ctx context.Context, chrt helmchart.Charter, witho
 				return fmt.Errorf("fold %s of dependency %q: %w", werfdata.DirName, depAcc.Name(), err)
 			}
 
+			if !withoutServiceValues {
+				warnIgnoredDependencyMetadata(ctx, dep, depAcc.Name())
+			}
+
 			log.Default.Debug(ctx, "Folded %s of dependency %q into its values", werfdata.DirName, depAcc.Name())
 		}
 
@@ -216,6 +220,22 @@ func mergePublishedValuesIntoChart(chrt helmchart.Charter, userVals userValues) 
 			defaultSecretValues: defaultSecretValuesOf(c.SecretsRuntimeData),
 		}
 	}
+}
+
+// warnIgnoredDependencyMetadata warns that annotations and labels of a werf-published dependency
+// are not applied: Nelm applies them to the whole release, and only the root chart decides those.
+func warnIgnoredDependencyMetadata(ctx context.Context, dep helmchart.Charter, name string) {
+	data, err := werfdata.Parse(werfDataFiles(dep))
+	if err != nil {
+		return
+	}
+
+	metadata := data.Metadata
+	if len(metadata.ExtraAnnotations) == 0 && len(metadata.ExtraLabels) == 0 && len(metadata.ExtraRuntimeAnnotations) == 0 && len(metadata.ReleaseInfoAnnotations) == 0 {
+		return
+	}
+
+	log.Default.Warn(ctx, "Annotations and labels in %s of dependency %q are ignored: only those of the root chart are applied", werfdata.DirName, name)
 }
 
 func customSecretValuesOf(secretsRuntimeData chartcommon.RuntimeData) map[string]interface{} {
