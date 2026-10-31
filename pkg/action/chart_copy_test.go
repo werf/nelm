@@ -126,6 +126,53 @@ func TestChartCopy_BasicAuthOnlyForChartHosts(t *testing.T) {
 	}
 }
 
+func TestChartCopy_DependencyImages(t *testing.T) {
+	host := newChartCopyTestRegistry(t)
+	client := newChartCopyTestRegistryClient(t)
+
+	depImage := pushChartCopyTestImage(t, host+"/src/images", "dep", "amd64", "arm64")
+	nestedImage := pushChartCopyTestImage(t, host+"/src/images", "nested", "amd64")
+
+	chartData := buildChartCopyTestChart(t, map[string]string{
+		"Chart.yaml":                          "apiVersion: v2\nname: app\nversion: 1.0.0\n",
+		"charts/dep/Chart.yaml":               "apiVersion: v2\nname: dep\nversion: 0.1.0\nannotations:\n  helm.sh/images: |\n    - name: dep\n      image: " + depImage.Ref + "\n",
+		"charts/dep/charts/nested/Chart.yaml": "apiVersion: v2\nname: nested\nversion: 0.1.0\nannotations:\n  helm.sh/images: |\n    - name: nested\n      image: " + nestedImage.Ref + "\n    - name: dep\n      image: " + depImage.Ref + "\n",
+	})
+	_, err := client.Push(chartData, host+"/src/app:1.0.0")
+	require.NoError(t, err)
+
+	archivePath := filepath.Join(t.TempDir(), "chart.tar")
+	require.NoError(t, ChartCopy(newChartPackTestContext(), "oci://"+host+"/src/app:1.0.0", archivePath, newChartCopyTestOptions(t)))
+
+	var rewriteMapping map[string]string
+
+	opts := newChartCopyTestOptions(t)
+	opts.RewriteChart = func(ctx context.Context, chart helmchart.Charter, repo string, imageMapping map[string]string) error {
+		rewriteMapping = imageMapping
+
+		return nil
+	}
+
+	dst := host + "/dst/app"
+	require.NoError(t, ChartCopy(newChartPackTestContext(), archivePath, "oci://"+dst, opts))
+
+	requireChartCopyTestImage(t, dst, "dep", depImage)
+	requireChartCopyTestImage(t, dst, "nested", nestedImage)
+
+	newDepRef := fmt.Sprintf("%s:dep@%s", dst, depImage.Desc.Digest)
+	newNestedRef := fmt.Sprintf("%s:nested@%s", dst, nestedImage.Desc.Digest)
+	assert.Equal(t, map[string]string{depImage.Ref: newDepRef, nestedImage.Ref: newNestedRef}, rewriteMapping)
+
+	result, err := client.Pull(dst + ":1.0.0")
+	require.NoError(t, err)
+
+	files := readChartCopyTestChartFiles(t, result.Chart.Data)
+	assert.Contains(t, files["app/charts/dep/Chart.yaml"], "image: "+newDepRef+"\n")
+	assert.NotContains(t, files["app/charts/dep/Chart.yaml"], depImage.Ref)
+	assert.Contains(t, files["app/charts/dep/charts/nested/Chart.yaml"], "image: "+newNestedRef+"\n")
+	assert.Contains(t, files["app/charts/dep/charts/nested/Chart.yaml"], "image: "+newDepRef+"\n")
+}
+
 func TestChartCopy_Provenance(t *testing.T) {
 	keyringPath, err := filepath.Abs("../helm/pkg/cmd/testdata/helm-test-key.secret")
 	require.NoError(t, err)

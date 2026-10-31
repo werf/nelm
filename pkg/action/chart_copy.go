@@ -62,9 +62,9 @@ type ChartCopyOptions struct {
 	RegistryCredentialsPath string
 	// RewriteChart, when set, is called on a copy to a registry after the images are copied and
 	// before the chart is saved, with the root chart, the destination repository and the ref of
-	// every copied image, as written in the helm.sh/images annotation, mapped to the ref of its
-	// copy. Changes it makes to the chart are pushed. The helm.sh/images annotation is rewritten
-	// by ChartCopy itself.
+	// every copied image, as written in the helm.sh/images annotations or in Images, mapped to the
+	// ref of its copy. Changes it makes to the chart are pushed. The helm.sh/images annotations of
+	// the chart and its dependencies are rewritten by ChartCopy itself.
 	RewriteChart func(ctx context.Context, chart helmchart.Charter, repo string, imageMapping map[string]string) error
 	// Sign, when true, signs the copy with SignKey from SignKeyring if the copy changes the chart.
 	// Without it the provenance of a changed chart is dropped.
@@ -117,7 +117,9 @@ type chartCopyImageRef struct {
 	Tag    string
 }
 
-// ChartCopy copies the chart at from, with every image in its helm.sh/images annotation, to to.
+// ChartCopy copies the chart at from, with every image in the helm.sh/images annotations of the
+// chart and its dependencies, to to. Referrers of the images, like signatures and SBOMs, are not
+// copied.
 // Each address is either "oci://REPO[:TAG]" (or "REPO[:TAG]"), or an archive: "archive:PATH" or a
 // path ending in .tar, .tar.gz or .tgz. A source repository without a tag means the "latest" tag.
 // An archive is written as an OCI image layout; the werf 3 bundle archive format is also read.
@@ -187,7 +189,7 @@ func ChartCopy(ctx context.Context, from, to string, opts ChartCopyOptions) erro
 		return fmt.Errorf("load chart from %q: %w", from, err)
 	}
 
-	images, err := chartyaml.ParseImages(ctx, chartAnnotations(loadedChart)[chartyaml.ImagesAnnotation])
+	images, err := chartCopyImages(ctx, loadedChart)
 	if err != nil {
 		return fmt.Errorf("read images of chart from %q: %w", from, err)
 	}
@@ -550,6 +552,11 @@ func copyChartToRepo(ctx context.Context, registryClient *registry.Client, sourc
 		}
 	}
 
+	dependenciesChanged, err := rewriteChartCopyDependencyImages(ctx, chartAccessor, imageMapping)
+	if err != nil {
+		return err
+	}
+
 	snapshotBefore, err := chartCopySnapshot(chartAccessor)
 	if err != nil {
 		return err
@@ -567,7 +574,7 @@ func copyChartToRepo(ctx context.Context, registryClient *registry.Client, sourc
 	}
 
 	chartData, provData := source.ChartData, source.ProvData
-	if edit.Name != "" || edit.Version != "" || len(edit.SetAnnotations) > 0 || !bytes.Equal(snapshotBefore, snapshotAfter) {
+	if edit.Name != "" || edit.Version != "" || len(edit.SetAnnotations) > 0 || dependenciesChanged || !bytes.Equal(snapshotBefore, snapshotAfter) {
 		if chartData, provData, err = saveChartCopy(ctx, loadedChart, chartAccessor, edit, source.ProvData != nil, tempDir, opts); err != nil {
 			return err
 		}
@@ -820,6 +827,30 @@ func addFileToTar(tarWriter *tar.Writer, filePath, name string) error {
 	}
 
 	return nil
+}
+
+// chartCopyImages returns the helm.sh/images entries of the chart and of all its dependencies.
+func chartCopyImages(ctx context.Context, loadedChart helmchart.Charter) ([]chartyaml.Image, error) {
+	chartAccessor, err := helmchart.NewAccessor(loadedChart)
+	if err != nil {
+		return nil, fmt.Errorf("create chart accessor: %w", err)
+	}
+
+	images, err := chartyaml.ParseImages(ctx, chartAnnotations(loadedChart)[chartyaml.ImagesAnnotation])
+	if err != nil {
+		return nil, fmt.Errorf("read images of chart %q: %w", chartAccessor.Name(), err)
+	}
+
+	for _, dep := range chartAccessor.Dependencies() {
+		depImages, err := chartCopyImages(ctx, dep)
+		if err != nil {
+			return nil, err
+		}
+
+		images = append(images, depImages...)
+	}
+
+	return images, nil
 }
 
 // chartCopySnapshot serializes everything a chart archive is saved from, to tell whether the chart
@@ -1117,6 +1148,40 @@ func readChartCopyOCILayout(ctx context.Context, tarPath string, indexData []byt
 	}
 
 	return source, nil
+}
+
+// rewriteChartCopyDependencyImages rewrites the helm.sh/images annotations of all dependencies of
+// the chart, which are saved from their metadata, and returns whether any changed.
+func rewriteChartCopyDependencyImages(ctx context.Context, chartAccessor helmchart.Accessor, imageMapping map[string]string) (bool, error) {
+	var changed bool
+	for _, dep := range chartAccessor.Dependencies() {
+		depAccessor, err := helmchart.NewAccessor(dep)
+		if err != nil {
+			return false, fmt.Errorf("create dependency accessor: %w", err)
+		}
+
+		annotations := chartAnnotations(dep)
+		if imagesAnnotation := annotations[chartyaml.ImagesAnnotation]; imagesAnnotation != "" {
+			newImagesAnnotation, err := chartyaml.RewriteImages(ctx, imagesAnnotation, imageMapping)
+			if err != nil {
+				return false, fmt.Errorf("rewrite %s annotation of dependency %q: %w", chartyaml.ImagesAnnotation, depAccessor.Name(), err)
+			}
+
+			if newImagesAnnotation != imagesAnnotation {
+				annotations[chartyaml.ImagesAnnotation] = newImagesAnnotation
+				changed = true
+			}
+		}
+
+		depChanged, err := rewriteChartCopyDependencyImages(ctx, depAccessor, imageMapping)
+		if err != nil {
+			return false, err
+		}
+
+		changed = changed || depChanged
+	}
+
+	return changed, nil
 }
 
 // saveChartCopy returns the archive of the edited chart and its provenance, signing it if
