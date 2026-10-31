@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -28,13 +29,18 @@ import (
 	"oras.land/oras-go/v2/content/oci"
 	"oras.land/oras-go/v2/errdef"
 	orasregistry "oras.land/oras-go/v2/registry"
+	"sigs.k8s.io/yaml"
 
 	"github.com/werf/nelm/v2/pkg/chartyaml"
 	"github.com/werf/nelm/v2/pkg/common"
+	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
 	helmaction "github.com/werf/nelm/v2/pkg/helm/pkg/action"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader/archive"
+	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	v2util "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 	"github.com/werf/nelm/v2/pkg/log"
 )
@@ -73,8 +79,11 @@ type ChartCopyOptions struct {
 	// RewriteChart, when set, is called on a copy to a registry after the images are copied and
 	// before the chart is saved, with the root chart, the destination repository and the ref of
 	// every copied image, as written in the helm.sh/images annotations or in Images, mapped to the
-	// ref of its copy. Changes it makes to the chart are pushed. The helm.sh/images annotations of
-	// the chart and its dependencies are rewritten by ChartCopy itself.
+	// ref of its copy. Changes it makes to the chart files, to the root chart annotations, to
+	// dependency metadata and to values are pushed; parsed values it changes are written to
+	// values.yaml, dropping its comments, unless it changes values.yaml too. Changing other root
+	// Chart.yaml fields is an error. The helm.sh/images annotations of the chart and its
+	// dependencies are rewritten by ChartCopy itself, before the hook.
 	RewriteChart func(ctx context.Context, chart helmchart.Charter, repo string, imageMapping map[string]string) error
 	// Sign, when true, signs the copy with SignKey from SignKeyring if the copy changes the chart.
 	// Without it the provenance of a changed chart is dropped.
@@ -152,6 +161,97 @@ func (r *chartCopyExpansionReader) Read(p []byte) (int, error) {
 	}
 
 	return n, err //nolint:wrapcheck // io.Reader returns io.EOF as is.
+}
+
+// chartCopyHookState is the chart state before RewriteChart, to turn the changes it makes to the
+// parsed chart into changes of the files the chart is saved from.
+type chartCopyHookState struct {
+	Annotations map[string]string
+	// Metadata is the root chart metadata without annotations.
+	Metadata []byte
+	Values   []chartCopyValuesState
+}
+
+func newChartCopyHookState(chartAccessor helmchart.Accessor) (*chartCopyHookState, error) {
+	metadata, err := chartCopyMetadataWithoutAnnotations(chartAccessor)
+	if err != nil {
+		return nil, err
+	}
+
+	values, err := chartCopyValuesStates(chartAccessor)
+	if err != nil {
+		return nil, err
+	}
+
+	return &chartCopyHookState{
+		Annotations: maps.Clone(chartAnnotations(chartAccessor.Charter())),
+		Metadata:    metadata,
+		Values:      values,
+	}, nil
+}
+
+// Persist adds the root chart annotations changed by the hook to edit and writes the values it
+// changed into values.yaml, unless it changed values.yaml itself. Changes to other root Chart.yaml
+// fields can't be saved and are an error.
+func (s *chartCopyHookState) Persist(chartAccessor helmchart.Accessor, edit *chartyaml.EditOptions) error {
+	metadata, err := chartCopyMetadataWithoutAnnotations(chartAccessor)
+	if err != nil {
+		return err
+	}
+
+	if !bytes.Equal(metadata, s.Metadata) {
+		return errors.New("RewriteChart changed Chart.yaml fields other than annotations of the root chart, which chart copy can't save")
+	}
+
+	annotations := chartAnnotations(chartAccessor.Charter())
+	for key, value := range annotations {
+		if previous, found := s.Annotations[key]; !found || previous != value {
+			edit.SetAnnotations = lo.Assign(edit.SetAnnotations, map[string]string{key: value})
+		}
+	}
+
+	for key := range s.Annotations {
+		if _, found := annotations[key]; !found {
+			edit.DeleteAnnotations = append(edit.DeleteAnnotations, key)
+		}
+	}
+
+	for _, state := range s.Values {
+		stateAccessor, err := helmchart.NewAccessor(state.Chart)
+		if err != nil {
+			return fmt.Errorf("create chart accessor: %w", err)
+		}
+
+		values, err := json.Marshal(stateAccessor.Values())
+		if err != nil {
+			return fmt.Errorf("marshal values of chart %q: %w", stateAccessor.Name(), err)
+		}
+
+		rawValues := chartCopyRawValues(stateAccessor)
+		if bytes.Equal(values, state.Values) || rawValues != nil && !bytes.Equal(rawValues.Data, state.RawValues) {
+			continue
+		}
+
+		valuesYAML, err := yaml.Marshal(stateAccessor.Values())
+		if err != nil {
+			return fmt.Errorf("marshal values of chart %q: %w", stateAccessor.Name(), err)
+		}
+
+		if rawValues != nil {
+			rawValues.Data = valuesYAML
+		} else {
+			addChartRawFile(state.Chart, &chartcommon.File{Name: v2util.ValuesfileName, Data: valuesYAML})
+		}
+	}
+
+	return nil
+}
+
+type chartCopyValuesState struct {
+	Chart helmchart.Charter
+	// RawValues is nil when the chart has no values.yaml.
+	RawValues []byte
+	Values    []byte
 }
 
 type chartCopyImageRef struct {
@@ -396,6 +496,7 @@ func copyChartToRepo(ctx context.Context, registryClient *registry.Client, sourc
 
 		if newImagesAnnotation != imagesAnnotation {
 			edit.SetAnnotations = map[string]string{chartyaml.ImagesAnnotation: newImagesAnnotation}
+			chartAnnotations(loadedChart)[chartyaml.ImagesAnnotation] = newImagesAnnotation
 		}
 	}
 
@@ -410,8 +511,17 @@ func copyChartToRepo(ctx context.Context, registryClient *registry.Client, sourc
 	}
 
 	if opts.RewriteChart != nil {
+		hookState, err := newChartCopyHookState(chartAccessor)
+		if err != nil {
+			return err
+		}
+
 		if err := opts.RewriteChart(ctx, loadedChart, to.Repo, imageMapping); err != nil {
 			return fmt.Errorf("rewrite chart: %w", err)
+		}
+
+		if err := hookState.Persist(chartAccessor, &edit); err != nil {
+			return err
 		}
 	}
 
@@ -662,6 +772,36 @@ func copyChartCopyImage(ctx context.Context, src content.ReadOnlyStorage, dst co
 	}
 
 	return nil
+}
+
+// chartCopyValuesStates returns the values of the chart and all its dependencies.
+func chartCopyValuesStates(chartAccessor helmchart.Accessor) ([]chartCopyValuesState, error) {
+	values, err := json.Marshal(chartAccessor.Values())
+	if err != nil {
+		return nil, fmt.Errorf("marshal values of chart %q: %w", chartAccessor.Name(), err)
+	}
+
+	state := chartCopyValuesState{Chart: chartAccessor.Charter(), Values: values}
+	if rawValues := chartCopyRawValues(chartAccessor); rawValues != nil {
+		state.RawValues = bytes.Clone(rawValues.Data)
+	}
+
+	states := []chartCopyValuesState{state}
+	for _, dep := range chartAccessor.Dependencies() {
+		depAccessor, err := helmchart.NewAccessor(dep)
+		if err != nil {
+			return nil, fmt.Errorf("create dependency accessor: %w", err)
+		}
+
+		depStates, err := chartCopyValuesStates(depAccessor)
+		if err != nil {
+			return nil, err
+		}
+
+		states = append(states, depStates...)
+	}
+
+	return states, nil
 }
 
 func copyChartCopyForeignLayers(ctx context.Context, src content.ReadOnlyStorage, dst content.Storage, desc ocispec.Descriptor, visited map[digest.Digest]bool) error {
@@ -930,6 +1070,17 @@ func writeOCILayoutTar(dir, archivePath string, compress bool) error {
 	return nil
 }
 
+func addChartRawFile(loadedChart helmchart.Charter, f *chartcommon.File) {
+	switch c := loadedChart.(type) {
+	case *v2chart.Chart:
+		c.Raw = append(c.Raw, f)
+	case *v3chart.Chart:
+		c.Raw = append(c.Raw, f)
+	default:
+		panic(fmt.Sprintf("unexpected chart type %T", loadedChart))
+	}
+}
+
 func addFileToTar(tarWriter *tar.Writer, filePath, name string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -981,6 +1132,23 @@ func chartCopyImages(ctx context.Context, loadedChart helmchart.Charter) ([]char
 	}
 
 	return images, nil
+}
+
+func chartCopyMetadataWithoutAnnotations(chartAccessor helmchart.Accessor) ([]byte, error) {
+	metadata, err := json.Marshal(lo.OmitByKeys(chartAccessor.MetadataAsMap(), []string{"Annotations"}))
+	if err != nil {
+		return nil, fmt.Errorf("marshal chart metadata: %w", err)
+	}
+
+	return metadata, nil
+}
+
+func chartCopyRawValues(chartAccessor helmchart.Accessor) *chartcommon.File {
+	rawValues, _ := lo.Find(chartAccessor.RawFiles(), func(f *chartcommon.File) bool {
+		return f.Name == v2util.ValuesfileName
+	})
+
+	return rawValues
 }
 
 // chartCopySnapshot serializes everything a chart archive is saved from, to tell whether the chart

@@ -473,6 +473,100 @@ func TestChartCopy_RequestTimeout(t *testing.T) {
 	require.ErrorContains(t, err, "Client.Timeout exceeded")
 }
 
+func TestChartCopy_RewriteChartMetadataAndValues(t *testing.T) {
+	host := newChartCopyTestRegistry(t)
+	client := newChartCopyTestRegistryClient(t)
+
+	chartData := buildChartCopyTestChart(t, map[string]string{
+		"Chart.yaml":            "apiVersion: v2\n# keep me\nname: app\nversion: 1.0.0\nannotations:\n  team: payments\n  obsolete: \"yes\"\n",
+		"values.yaml":           "# comment\nwerf:\n  image:\n    backend: old.registry/project:abc\n",
+		"charts/dep/Chart.yaml": "apiVersion: v2\nname: dep\nversion: 0.1.0\n",
+	})
+	_, err := client.Push(chartData, host+"/src/app:1.0.0")
+	require.NoError(t, err)
+
+	tests := []struct {
+		name          string
+		rewrite       func(chart *v2chart.Chart)
+		expectedFiles map[string]string
+		expectedErr   string
+	}{
+		{
+			name: "annotations",
+			rewrite: func(chart *v2chart.Chart) {
+				chart.Metadata.Annotations["team"] = "billing"
+				chart.Metadata.Annotations["werf.io/version"] = "v3"
+				delete(chart.Metadata.Annotations, "obsolete")
+			},
+			expectedFiles: map[string]string{
+				"app/Chart.yaml": "apiVersion: v2\n# keep me\nname: app\nversion: 1.0.0\nannotations:\n  team: billing\n  werf.io/version: v3\n",
+			},
+		},
+		{
+			name: "values",
+			rewrite: func(chart *v2chart.Chart) {
+				chart.Values["werf"].(map[string]any)["image"].(map[string]any)["backend"] = "new.registry/project:abc"
+				chart.Dependencies()[0].Values = map[string]any{"dep": "value"}
+			},
+			expectedFiles: map[string]string{
+				"app/values.yaml":            "werf:\n  image:\n    backend: new.registry/project:abc\n",
+				"app/charts/dep/values.yaml": "dep: value\n",
+			},
+		},
+		{
+			name: "values changed both raw and parsed keep the raw file",
+			rewrite: func(chart *v2chart.Chart) {
+				chart.Values["werf"] = "parsed"
+				for _, f := range chart.Raw {
+					if f.Name == "values.yaml" {
+						f.Data = []byte("# raw\nwerf: raw\n")
+					}
+				}
+			},
+			expectedFiles: map[string]string{
+				"app/values.yaml": "# raw\nwerf: raw\n",
+			},
+		},
+		{
+			name: "other metadata",
+			rewrite: func(chart *v2chart.Chart) {
+				chart.Metadata.Description = "changed"
+			},
+			expectedErr: "RewriteChart changed Chart.yaml fields other than annotations",
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := newChartCopyTestOptions(t)
+			opts.RewriteChart = func(ctx context.Context, chart helmchart.Charter, repo string, imageMapping map[string]string) error {
+				tt.rewrite(chart.(*v2chart.Chart))
+
+				return nil
+			}
+
+			dst := fmt.Sprintf("%s/dst%d/app", host, i)
+
+			err := ChartCopy(newChartPackTestContext(), "oci://"+host+"/src/app:1.0.0", "oci://"+dst, opts)
+			if tt.expectedErr != "" {
+				require.ErrorContains(t, err, tt.expectedErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+
+			result, err := client.Pull(dst + ":1.0.0")
+			require.NoError(t, err)
+
+			files := readChartCopyTestChartFiles(t, result.Chart.Data)
+			for name, expected := range tt.expectedFiles {
+				assert.Equal(t, expected, files[name], name)
+			}
+		})
+	}
+}
+
 func TestChartCopy_TagCollisions(t *testing.T) {
 	host := newChartCopyTestRegistry(t)
 	client := newChartCopyTestRegistryClient(t)
