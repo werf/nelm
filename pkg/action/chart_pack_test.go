@@ -291,13 +291,13 @@ annotations:
 			expectedErr: `.werf-data/secret-values.yaml: value at "password" is not encrypted`,
 		},
 		{
-			name:  "first plaintext secret value in key order reported",
+			name:  "first plaintext secret value in document order reported",
 			chart: map[string]string{"Chart.yaml": chartPackTestChartYAML},
 			steps: []chartPackTestStep{{
 				inputs: map[string]string{"keys.yaml": "z: plain\ny: plain\nx: plain\nw: plain\nv: plain\nu: plain\nt: plain\ns: plain\nr: plain\nq: plain\np: plain\no: plain\nn: plain\nm: plain\nl: plain\nk: plain\nj: plain\ni: plain\nh: plain\ng: plain\nf: plain\ne: plain\nd: plain\nc: plain\nb: plain\na: plain\n"},
 				opts:   ChartPackOptions{SecretValuesFiles: []string{"keys.yaml"}},
 			}},
-			expectedErr: `secret values file "keys.yaml": value at "a" is not encrypted`,
+			expectedErr: `secret values file "keys.yaml": value at "z" is not encrypted`,
 		},
 		{
 			name:  "secret values file with a leading and a trailing document separator",
@@ -314,6 +314,22 @@ annotations:
 				},
 			},
 			expectedSecretValues: map[string]any{"password": "p1", "list": []any{"s1", "s2"}},
+		},
+		{
+			name:  "secret values file with repeated merge keys",
+			chart: map[string]string{"Chart.yaml": chartPackTestChartYAML},
+			steps: []chartPackTestStep{{
+				inputs: map[string]string{"values-a.yaml": "a: &a {x: \"\"}\nb: &b {z: \"\"}\nc:\n  <<: *a\n  <<: *b\n"},
+				opts:   ChartPackOptions{SecretValuesFiles: []string{"values-a.yaml"}},
+			}},
+			expectedData: &werfdata.Data{
+				Files: map[string][]byte{},
+				Metadata: werfdata.Metadata{
+					APIVersion: werfdata.APIVersionV2,
+					Values:     werfdata.ValuesMetadata{SecretValues: true},
+				},
+			},
+			expectedSecretValues: map[string]any{"a": map[string]any{"x": ""}, "b": map[string]any{"z": ""}, "c": map[string]any{"x": "", "z": ""}},
 		},
 		{
 			name: "stored secret values with consecutive document headers rejected",
@@ -968,6 +984,11 @@ func TestChartPack_SecretValuesRejectedWithoutSource(t *testing.T) {
 		{name: "duplicate key", data: "password: TOPSECRET\npassword: \"\"\n", expectedErr: `duplicate key "password" at line 2, column 1`},
 		{name: "nested duplicate key", data: "db:\n  password: TOPSECRET\n  password: \"\"\n", expectedErr: `duplicate key "password" at line 3, column 3`},
 		{name: "not a mapping", data: "- TOPSECRET\n", expectedErr: "expected a mapping at the top level, got a list at line 1"},
+		{name: "null-tagged mapping", data: "!!null {password: TOPSECRET}\n", expectedErr: `unsupported tag "!!null" at line 1, column 1`},
+		{name: "keys colliding when decoded", data: "true: TOPSECRET\nyes: \"\"\n", expectedErr: `value at "true" is not encrypted`},
+		{name: "merge key overridden by an empty value", data: "db:\n  <<: &base {password: TOPSECRET}\n  password: \"\"\n", expectedErr: `value at "db.<<.password" is not encrypted`},
+		{name: "sequence item", data: "list:\n- \"\"\n- TOPSECRET\n", expectedErr: `value at "list.[1]" is not encrypted`},
+		{name: "custom scalar tag", data: "password: !custom TOPSECRET\n", expectedErr: `unsupported tag "!custom" at line 1, column 11`},
 	}
 
 	locations := []struct {

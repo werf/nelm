@@ -558,7 +558,9 @@ func mergeChartPackSecretValues(ctx context.Context, data *werfdata.Data, secret
 }
 
 // parseEncryptedValues parses a secret values file, failing unless it is a single YAML document
-// with every value encrypted. Parse errors don't include the file contents.
+// with every value encrypted. The checks run on the YAML nodes as written rather than on decoded
+// values, so that nothing published can hide a plaintext value. Errors don't include the file
+// contents.
 func parseEncryptedValues(data []byte) (map[string]any, error) {
 	var (
 		root           *yamlv3.Node
@@ -574,7 +576,7 @@ func parseEncryptedValues(data []byte) (map[string]any, error) {
 			return nil, sanitizeYAMLError(err)
 		}
 
-		if len(document.Content) == 0 || document.Content[0].Tag == "!!null" {
+		if len(document.Content) == 0 || isNullYAMLScalar(document.Content[0]) {
 			emptyDocuments++
 			continue
 		}
@@ -596,7 +598,7 @@ func parseEncryptedValues(data []byte) (map[string]any, error) {
 		return nil, fmt.Errorf("expected a mapping at the top level, got %s at line %d", yamlNodeKindName(root.Kind), root.Line)
 	}
 
-	if err := checkNoDuplicateKeys(root); err != nil {
+	if err := checkEncryptedYAMLNode(root, nil); err != nil {
 		return nil, err
 	}
 
@@ -605,44 +607,68 @@ func parseEncryptedValues(data []byte) (map[string]any, error) {
 		return nil, sanitizeYAMLError(err)
 	}
 
-	if err := checkEncryptedValues(vals, nil); err != nil {
-		return nil, err
-	}
-
 	return vals, nil
 }
 
-// checkEncryptedValues fails unless every non-null leaf of vals is a value encrypted by werf.
-func checkEncryptedValues(vals any, keyPath []string) error {
-	switch v := vals.(type) {
-	case nil:
-		return nil
-	case map[string]any:
-		keys := lo.Keys(v)
-		sort.Strings(keys)
+// checkEncryptedYAMLNode fails unless every non-null scalar value under node, wherever it is, is
+// a value encrypted by werf. Mapping keys can't repeat and only standard tags are accepted on
+// collections, since both change what the decoded values are.
+func checkEncryptedYAMLNode(node *yamlv3.Node, keyPath []string) error {
+	switch node.Kind {
+	case yamlv3.MappingNode:
+		if node.Tag != "!!map" {
+			return fmt.Errorf("unsupported tag %q at line %d, column %d", node.Tag, node.Line, node.Column)
+		}
 
-		for _, key := range keys {
-			if err := checkEncryptedValues(v[key], append(keyPath, key)); err != nil {
+		seen := map[string]bool{}
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key := node.Content[i]
+			if key.Kind != yamlv3.ScalarNode {
+				return fmt.Errorf("unsupported non-scalar key at line %d, column %d", key.Line, key.Column)
+			}
+
+			// A repeated merge key only adds merge sources, which are checked like other values.
+			if key.Tag == "!!merge" {
+				continue
+			}
+
+			if seen[key.Value] {
+				return fmt.Errorf("duplicate key %q at line %d, column %d", key.Value, key.Line, key.Column)
+			}
+
+			seen[key.Value] = true
+		}
+
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			if err := checkEncryptedYAMLNode(node.Content[i+1], append(keyPath, node.Content[i].Value)); err != nil {
 				return err
 			}
 		}
+	case yamlv3.SequenceNode:
+		if node.Tag != "!!seq" {
+			return fmt.Errorf("unsupported tag %q at line %d, column %d", node.Tag, node.Line, node.Column)
+		}
 
-		return nil
-	case []any:
-		for i, item := range v {
-			if err := checkEncryptedValues(item, append(keyPath, fmt.Sprintf("[%d]", i))); err != nil {
+		for i, item := range node.Content {
+			if err := checkEncryptedYAMLNode(item, append(keyPath, fmt.Sprintf("[%d]", i))); err != nil {
 				return err
 			}
 		}
-
-		return nil
-	case string:
-		if v == "" || isWerfCiphertext(v) {
-			return nil
+	case yamlv3.ScalarNode:
+		if node.Style&yamlv3.TaggedStyle != 0 && node.Tag != "!!str" && node.Tag != "!!null" {
+			return fmt.Errorf("unsupported tag %q at line %d, column %d", node.Tag, node.Line, node.Column)
 		}
+
+		if !isNullYAMLScalar(node) && node.Value != "" && !isWerfCiphertext(node.Value) {
+			return fmt.Errorf("value at %q is not encrypted: encrypt the file with \"nelm chart secret values-file encrypt\"", strings.Join(keyPath, "."))
+		}
+	case yamlv3.AliasNode:
+		// The anchored node is checked where it is defined.
+	default:
+		return fmt.Errorf("unexpected YAML node at line %d, column %d", node.Line, node.Column)
 	}
 
-	return fmt.Errorf("value at %q is not encrypted: encrypt the file with \"nelm chart secret values-file encrypt\"", strings.Join(keyPath, "."))
+	return nil
 }
 
 // migrateLegacyExtraAnnotationsAndLabels moves the extra_annotations.json and extra_labels.json
@@ -853,34 +879,6 @@ func checkChartPackArchiveSize(archivePath string) error {
 	return nil
 }
 
-// checkNoDuplicateKeys fails if a mapping at any depth repeats a key, since only one of the
-// values would be checked and the others published as they are.
-func checkNoDuplicateKeys(node *yamlv3.Node) error {
-	if node.Kind == yamlv3.MappingNode {
-		seen := map[string]bool{}
-		for i := 0; i+1 < len(node.Content); i += 2 {
-			key := node.Content[i]
-			if key.Kind != yamlv3.ScalarNode {
-				continue
-			}
-
-			if seen[key.Value] {
-				return fmt.Errorf("duplicate key %q at line %d, column %d", key.Value, key.Line, key.Column)
-			}
-
-			seen[key.Value] = true
-		}
-	}
-
-	for _, child := range node.Content {
-		if err := checkNoDuplicateKeys(child); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func editAnnotationsMap(annotations map[string]string, edit chartyaml.EditOptions) map[string]string {
 	result := lo.OmitByKeys(lo.Assign(annotations, edit.SetAnnotations), edit.DeleteAnnotations)
 	if len(result) == 0 {
@@ -888,6 +886,15 @@ func editAnnotationsMap(annotations map[string]string, edit chartyaml.EditOption
 	}
 
 	return result
+}
+
+// isNullYAMLScalar reports whether node is a null scalar, explicitly tagged or not.
+func isNullYAMLScalar(node *yamlv3.Node) bool {
+	if node.Kind != yamlv3.ScalarNode || node.Tag != "!!null" {
+		return false
+	}
+
+	return lo.Contains([]string{"", "~", "null", "Null", "NULL"}, node.Value)
 }
 
 // isWerfCiphertext checks the layout of a value encrypted by werf: hex of a two-byte
