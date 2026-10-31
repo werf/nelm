@@ -18,6 +18,7 @@ package registry
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"slices"
@@ -159,7 +160,7 @@ func (c *GenericClient) PullGeneric(ref string, options GenericPullOptions) (*Ge
 func (c *GenericClient) Repository(ref string) (*remote.Repository, error) {
 	repository, err := remote.NewRepository(ref)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse repository reference %q: %w", ref, err)
 	}
 	repository.PlainHTTP = c.plainHTTP
 	repository.Client = c.authorizer

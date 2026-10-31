@@ -666,10 +666,10 @@ func TestChartCopy_Tags(t *testing.T) {
 			expectedTags:    []string{"2.0.0", "v2.0.0"},
 		},
 		{
-			name:            "semver tag with build metadata",
-			to:              host + "/build/app:1.2.3+b",
-			expectedVersion: "^1\\.2\\.3\\+b$",
-			expectedTags:    []string{"1.2.3_b"},
+			name:            "semver tag with prerelease",
+			to:              host + "/prerelease/app:1.2.3-rc.1",
+			expectedVersion: "^1\\.2\\.3-rc\\.1$",
+			expectedTags:    []string{"1.2.3-rc.1"},
 		},
 		{
 			name:            "non-semver tag",
@@ -713,7 +713,7 @@ func TestChartCopy_WerfArchive(t *testing.T) {
 		"manifest.json":     []byte(fmt.Sprintf(`[{"Config":%q,"RepoTags":["old.registry/project:abc"],"Layers":[%q,"plain/layer.tar"]}]`, configName, compressedLayerName)),
 		configName:          configData,
 		compressedLayerName: compressedLayer,
-		"plain/layer.tar":   []byte("plain layer"),
+		"plain/layer.tar":   tarChartCopyTestFiles(t, map[string][]byte{"file": []byte("plain layer")}),
 	})
 
 	sourceRef := "old.registry/project:abc@sha256:0000000000000000000000000000000000000000000000000000000000000000"
@@ -759,11 +759,47 @@ func TestChartCopy_WerfArchive(t *testing.T) {
 	require.NoError(t, err)
 	plainLayerData, err := io.ReadAll(gzipReader)
 	require.NoError(t, err)
-	assert.Equal(t, "plain layer", string(plainLayerData))
+	assert.Equal(t, tarChartCopyTestFiles(t, map[string][]byte{"file": []byte("plain layer")}), plainLayerData)
 
 	result, err := client.Pull(dst + ":2.0.0")
 	require.NoError(t, err)
 	assert.Equal(t, fmt.Sprintf("apiVersion: v2\nname: app\nversion: 2.0.0\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: %s:abc@%s\n", dst, manifestDesc.Digest), readChartCopyTestChartFiles(t, result.Chart.Data)["app/Chart.yaml"])
+}
+
+func TestChartCopy_WerfArchiveUnsupportedLayers(t *testing.T) {
+	tests := []struct {
+		name        string
+		layer       []byte
+		expectedErr string
+	}{
+		{
+			name:        "zstd",
+			layer:       append([]byte{0x28, 0xb5, 0x2f, 0xfd}, []byte("zstd data")...),
+			expectedErr: `layer "layer" is zstd-compressed, only gzip-compressed and uncompressed tar layers are supported`,
+		},
+		{
+			name:        "not a tar",
+			layer:       []byte("not a tar"),
+			expectedErr: `layer "layer" is neither a gzip-compressed nor an uncompressed tar`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			imageTarball := tarChartCopyTestFiles(t, map[string][]byte{
+				"manifest.json": []byte(`[{"Config":"config.json","Layers":["layer"]}]`),
+				"config.json":   []byte(`{"architecture":"amd64","os":"linux"}`),
+				"layer":         tt.layer,
+			})
+			chartData := buildChartCopyTestChart(t, map[string]string{
+				"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: old.registry/project:abc\n",
+			})
+			archivePath := writeWerfChartCopyTestArchive(t, chartData, map[string][]byte{"abc": imageTarball})
+
+			err := ChartCopy(newChartPackTestContext(), "archive:"+archivePath, filepath.Join(t.TempDir(), "copy.tar"), newChartCopyTestOptions(t))
+			require.ErrorContains(t, err, tt.expectedErr)
+		})
+	}
 }
 
 func TestChartCopy_WerfArchiveWithImagesOption(t *testing.T) {
@@ -837,6 +873,28 @@ func TestChartVersionFromTag(t *testing.T) {
 	}
 }
 
+func TestImageRepositoryAddress(t *testing.T) {
+	tests := []struct {
+		repo     string
+		expected string
+	}{
+		{repo: "nginx", expected: "registry-1.docker.io/library/nginx"},
+		{repo: "docker.io/nginx", expected: "registry-1.docker.io/library/nginx"},
+		{repo: "index.docker.io/nginx", expected: "registry-1.docker.io/library/nginx"},
+		{repo: "docker.io/org/app", expected: "registry-1.docker.io/org/app"},
+		{repo: "org/app", expected: "registry-1.docker.io/org/app"},
+		{repo: "ghcr.io/org/app", expected: "ghcr.io/org/app"},
+		{repo: "localhost/app", expected: "localhost/app"},
+		{repo: "127.0.0.1:5000/app", expected: "127.0.0.1:5000/app"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.repo, func(t *testing.T) {
+			assert.Equal(t, tt.expected, imageRepositoryAddress(tt.repo))
+		})
+	}
+}
+
 func TestParseChartCopyAddress(t *testing.T) {
 	tests := []struct {
 		addr        string
@@ -852,6 +910,8 @@ func TestParseChartCopyAddress(t *testing.T) {
 		{addr: "archive:", expectedErr: "archive path is empty"},
 		{addr: "oci://registry.example.com/app@sha256:abc", expectedErr: "digest references are not supported"},
 		{addr: "app", expectedErr: "parse repository"},
+		{addr: "oci://registry.example.com/app:1.2.3+b", expectedErr: "invalid tag \"1.2.3+b\""},
+		{addr: "registry.example.com/app:-bad", expectedErr: "invalid tag \"-bad\""},
 	}
 
 	for _, tt := range tests {

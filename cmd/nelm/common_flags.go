@@ -68,7 +68,7 @@ func AddChartRepoConnectionFlags(cmd *cobra.Command, cfg *common.ChartRepoConnec
 		return fmt.Errorf("add flag: %w", err)
 	}
 
-	if err := cli.AddFlag(cmd, &cfg.ChartRepoRequestTimeout, "chart-repo-request-timeout", 0, "Set timeout for all requests to chart repository", cli.AddFlagOptions{
+	if err := cli.AddFlag(cmd, &cfg.ChartRepoRequestTimeout, "chart-repo-request-timeout", 0, "Set timeout for all requests to chart repository. A request includes its whole body, so the timeout also bounds a whole blob download or upload", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                chartRepoFlagGroup,
 	}); err != nil {

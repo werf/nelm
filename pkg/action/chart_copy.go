@@ -49,6 +49,11 @@ const (
 	// DefaultChartCopyArchiveMaxExpandedSize is the default ChartCopyOptions.ArchiveMaxExpandedSize.
 	DefaultChartCopyArchiveMaxExpandedSize int64 = 64 << 30
 
+	chartCopyLayerFormatGzip    chartCopyLayerFormatType = "gzip"
+	chartCopyLayerFormatTar     chartCopyLayerFormatType = "tar"
+	chartCopyLayerFormatUnknown chartCopyLayerFormatType = "unknown"
+	chartCopyLayerFormatZstd    chartCopyLayerFormatType = "zstd"
+
 	// chartCopyArchiveEntryAnnotation marks the index.json entries of a chart copy archive: the chart,
 	// tagged with its tag, and the images, tagged with their refs from the helm.sh/images annotation.
 	chartCopyArchiveEntryAnnotation = "nelm.werf.io/archive-entry"
@@ -62,6 +67,8 @@ const (
 	werfArchiveChartFileName        = "chart.tar.gz"
 	werfArchiveImagesDirName        = "images"
 )
+
+type chartCopyLayerFormatType string
 
 type ChartCopyOptions struct {
 	common.ChartRepoConnectionOptions
@@ -268,10 +275,11 @@ type chartCopyImageRef struct {
 // An archive is written as an OCI image layout; the werf 3 bundle archive format is also read.
 //
 // When copying to a repository, the chart is renamed to the basename of the repository and the
-// images are copied by digest into it, keeping their tags, and referenced as REPO[:TAG]@DIGEST. A tag
-// that would point to different content is an error, raised before anything is pushed. With a tag, the chart version is
-// ChartVersionFromTag of it and the chart is pushed under the version and the tag; without one the
-// chart keeps its version and is pushed under it and the source tag. The provenance is kept only if
+// images are copied by digest into it, keeping their tags, and referenced as REPO[:TAG]@DIGEST. A
+// tag that would point to different content is an error, raised before anything is pushed. With a
+// tag, the chart version is ChartVersionFromTag of it and the chart is pushed under the version and
+// the tag; without one the chart keeps its version and is pushed under it and the source tag, if
+// any: a werf 3 archive has none, so only the version tag is pushed. The provenance is kept only if
 // the chart doesn't change.
 func ChartCopy(ctx context.Context, from, to string, opts ChartCopyOptions) error {
 	if opts.Sign && (opts.SignKey == "" || opts.SignKeyring == "") {
@@ -379,7 +387,7 @@ func ChartVersionFromTag(ctx context.Context, tag string, now time.Time) string 
 func readChartCopyArchive(ctx context.Context, archivePath, tempDir string, expansion *chartCopyExpansion) (*chartCopySource, error) {
 	tarPath, err := uncompressedChartCopyArchive(ctx, archivePath, tempDir, expansion)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decompress archive: %w", err)
 	}
 
 	var (
@@ -402,7 +410,7 @@ func readChartCopyArchive(ctx context.Context, archivePath, tempDir string, expa
 
 		return nil
 	}); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("detect archive format: %w", err)
 	}
 
 	switch {
@@ -507,13 +515,13 @@ func copyChartToRepo(ctx context.Context, registryClient *registry.Client, sourc
 
 	snapshotBefore, err := chartCopySnapshot(chartAccessor)
 	if err != nil {
-		return err
+		return fmt.Errorf("snapshot chart: %w", err)
 	}
 
 	if opts.RewriteChart != nil {
 		hookState, err := newChartCopyHookState(chartAccessor)
 		if err != nil {
-			return err
+			return fmt.Errorf("record chart state: %w", err)
 		}
 
 		if err := opts.RewriteChart(ctx, loadedChart, to.Repo, imageMapping); err != nil {
@@ -521,19 +529,19 @@ func copyChartToRepo(ctx context.Context, registryClient *registry.Client, sourc
 		}
 
 		if err := hookState.Persist(chartAccessor, &edit); err != nil {
-			return err
+			return fmt.Errorf("save chart changes of RewriteChart: %w", err)
 		}
 	}
 
 	snapshotAfter, err := chartCopySnapshot(chartAccessor)
 	if err != nil {
-		return err
+		return fmt.Errorf("snapshot chart: %w", err)
 	}
 
 	chartData, provData := source.ChartData, source.ProvData
 	if edit.Name != "" || edit.Version != "" || len(edit.SetAnnotations) > 0 || dependenciesChanged || !bytes.Equal(snapshotBefore, snapshotAfter) {
 		if chartData, provData, err = saveChartCopy(ctx, loadedChart, chartAccessor, edit, source.ProvData != nil, tempDir, opts); err != nil {
-			return err
+			return fmt.Errorf("save chart: %w", err)
 		}
 	}
 
@@ -586,7 +594,7 @@ func readWerfArchive(ctx context.Context, tarPath, tempDir string, expansion *ch
 
 		return nil
 	}); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read werf archive: %w", err)
 	}
 
 	if source.ChartData == nil {
@@ -625,7 +633,7 @@ func writeChartCopyArchive(ctx context.Context, source *chartCopySource, loadedC
 
 	chartDesc, err := pushChartCopyManifest(ctx, store, chartAccessor, source.ChartData, source.ProvData)
 	if err != nil {
-		return err
+		return fmt.Errorf("save chart manifest: %w", err)
 	}
 
 	chartDesc.Annotations = map[string]string{chartCopyArchiveEntryAnnotation: chartCopyArchiveEntryChart}
@@ -652,7 +660,7 @@ func writeChartCopyArchive(ctx context.Context, source *chartCopySource, loadedC
 	}
 
 	if err := keepAnnotatedIndexEntries(layoutDir); err != nil {
-		return err
+		return fmt.Errorf("clean up OCI image layout index: %w", err)
 	}
 
 	return writeOCILayoutTar(layoutDir, archivePath, strings.HasSuffix(archivePath, ".gz") || strings.HasSuffix(archivePath, ".tgz"))
@@ -698,7 +706,7 @@ func convertDockerArchiveImage(ctx context.Context, in io.Reader, store *oci.Sto
 
 		filePath := filepath.Join(dir, strconv.Itoa(len(files)))
 		if err := writeFileFromReader(filePath, tarReader); err != nil {
-			return ocispec.Descriptor{}, err
+			return ocispec.Descriptor{}, fmt.Errorf("extract %s from the image tarball: %w", header.Name, err)
 		}
 
 		files[path.Clean(header.Name)] = filePath
@@ -735,7 +743,24 @@ func convertDockerArchiveImage(ctx context.Context, in io.Reader, store *oci.Sto
 	}
 
 	for _, layer := range tarballManifests[0].Layers {
-		layerDesc, err := pushChartCopyFileBlob(ctx, store, files[path.Clean(layer)], dockerLayerMediaType, true)
+		layerPath := files[path.Clean(layer)]
+		if layerPath == "" {
+			return ocispec.Descriptor{}, fmt.Errorf("layer %q not found in the image tarball", layer)
+		}
+
+		layerFormat, err := chartCopyLayerFormat(layerPath)
+		if err != nil {
+			return ocispec.Descriptor{}, err
+		}
+
+		switch layerFormat {
+		case chartCopyLayerFormatZstd:
+			return ocispec.Descriptor{}, fmt.Errorf("layer %q is zstd-compressed, only gzip-compressed and uncompressed tar layers are supported", layer)
+		case chartCopyLayerFormatUnknown:
+			return ocispec.Descriptor{}, fmt.Errorf("layer %q is neither a gzip-compressed nor an uncompressed tar", layer)
+		}
+
+		layerDesc, err := pushChartCopyFileBlob(ctx, store, layerPath, dockerLayerMediaType, layerFormat == chartCopyLayerFormatTar)
 		if err != nil {
 			return ocispec.Descriptor{}, fmt.Errorf("push layer %q: %w", layer, err)
 		}
@@ -882,29 +907,27 @@ func parseChartCopyAddress(addr string) (*chartCopyAddress, error) {
 		return nil, fmt.Errorf("parse repository: %w", err)
 	}
 
+	if image.Tag != "" {
+		if err := (orasregistry.Reference{Reference: image.Tag}).ValidateReferenceAsTag(); err != nil {
+			return nil, fmt.Errorf("invalid tag %q: %w", image.Tag, err)
+		}
+	}
+
 	return &chartCopyAddress{Repo: image.Repo, Tag: image.Tag}, nil
 }
 
-// pushChartCopyFileBlob pushes the file into store, gzipping it first when gzipped is true and the
-// file is not compressed yet.
-func pushChartCopyFileBlob(ctx context.Context, store *oci.Store, filePath, mediaType string, gzipped bool) (ocispec.Descriptor, error) {
+// pushChartCopyFileBlob pushes the file into store, gzipping it first when compress is true.
+func pushChartCopyFileBlob(ctx context.Context, store *oci.Store, filePath, mediaType string, compress bool) (ocispec.Descriptor, error) {
 	if filePath == "" {
 		return ocispec.Descriptor{}, errors.New("file not found in the image tarball")
 	}
 
-	if gzipped {
-		compressed, err := isGzipFile(filePath)
-		if err != nil {
-			return ocispec.Descriptor{}, err
+	if compress {
+		if err := gzipFile(filePath, filePath+".gz"); err != nil {
+			return ocispec.Descriptor{}, fmt.Errorf("compress blob: %w", err)
 		}
 
-		if !compressed {
-			if err := gzipFile(filePath, filePath+".gz"); err != nil {
-				return ocispec.Descriptor{}, err
-			}
-
-			filePath += ".gz"
-		}
+		filePath += ".gz"
 	}
 
 	file, err := os.Open(filePath)
@@ -993,7 +1016,7 @@ func uncompressedChartCopyArchive(ctx context.Context, archivePath, tempDir stri
 
 	tarPath := filepath.Join(tempDir, "archive.tar")
 	if err := writeFileFromReader(tarPath, expansion.Reader(ctx, gzipReader)); err != nil {
-		return "", err
+		return "", fmt.Errorf("decompress %q: %w", archivePath, err)
 	}
 
 	return tarPath, nil
@@ -1134,6 +1157,35 @@ func chartCopyImages(ctx context.Context, loadedChart helmchart.Charter) ([]char
 	return images, nil
 }
 
+// chartCopyLayerFormat detects the format of an image layer file by its magic bytes.
+func chartCopyLayerFormat(filePath string) (chartCopyLayerFormatType, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("open %q: %w", filePath, err)
+	}
+	defer file.Close()
+
+	header := make([]byte, 512)
+
+	n, err := io.ReadFull(file, header)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return "", fmt.Errorf("read %q: %w", filePath, err)
+	}
+
+	header = header[:n]
+
+	switch {
+	case bytes.HasPrefix(header, []byte{0x1f, 0x8b}):
+		return chartCopyLayerFormatGzip, nil
+	case bytes.HasPrefix(header, []byte{0x28, 0xb5, 0x2f, 0xfd}):
+		return chartCopyLayerFormatZstd, nil
+	case len(header) >= 262 && bytes.Equal(header[257:262], []byte("ustar")):
+		return chartCopyLayerFormatTar, nil
+	default:
+		return chartCopyLayerFormatUnknown, nil
+	}
+}
+
 func chartCopyMetadataWithoutAnnotations(chartAccessor helmchart.Accessor) ([]byte, error) {
 	metadata, err := json.Marshal(lo.OmitByKeys(chartAccessor.MetadataAsMap(), []string{"Annotations"}))
 	if err != nil {
@@ -1239,13 +1291,14 @@ func imageRepositoryAddress(repo string) string {
 	host, repoPath, found := strings.Cut(repo, "/")
 	if !found || !strings.ContainsAny(host, ".:") && host != "localhost" {
 		host, repoPath = "docker.io", repo
-		if !strings.Contains(repoPath, "/") {
-			repoPath = "library/" + repoPath
-		}
 	}
 
 	if host == "docker.io" || host == "index.docker.io" {
 		host = "registry-1.docker.io"
+
+		if !strings.Contains(repoPath, "/") {
+			repoPath = "library/" + repoPath
+		}
 	}
 
 	return host + "/" + repoPath
