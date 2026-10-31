@@ -701,6 +701,19 @@ func TestRenderChart_WerfDataEquivalence(t *testing.T) {
 			want:  "g: chart\nsub:\n  global: {}\n  x: service\nwerf:\n  repo: service",
 		},
 		{
+			name:  "extra values reach nested subcharts",
+			chart: werfDataNestedSubchartsChart(),
+			flags: werfDataFlags{ExtraValues: "werf:\n  image:\n    x: published-image\nglobal:\n  werf:\n    repo: published-repo"},
+			want:  "global:\n  werf:\n    repo: published-repo\nsub:\n  global:\n    werf:\n      repo: published-repo\n  subsub:\n    global:\n      werf:\n        repo: published-repo\n    werf:\n      image:\n        x: published-image\n  werf:\n    image:\n      x: published-image\nwerf:\n  image:\n    x: published-image",
+		},
+		{
+			name:       "deploy extra values beat published extra values in nested subcharts",
+			chart:      werfDataNestedSubchartsChart(),
+			flags:      werfDataFlags{ExtraValues: "werf:\n  image:\n    x: published-image\n    y: published-image\nglobal:\n  werf:\n    repo: published-repo"},
+			deployOpts: RenderChartOptions{HelmOptions: common.HelmOptions{ChartLoadOpts: common.ChartLoadOptions{ExtraValues: map[string]interface{}{"werf": map[string]interface{}{"image": map[string]interface{}{"x": "deploy-image"}}, "global": map[string]interface{}{"werf": map[string]interface{}{"repo": "deploy-repo"}}}}}},
+			want:       "global:\n  werf:\n    repo: deploy-repo\nsub:\n  global:\n    werf:\n      repo: deploy-repo\n  subsub:\n    global:\n      werf:\n        repo: deploy-repo\n    werf:\n      image:\n        x: deploy-image\n        y: published-image\n  werf:\n    image:\n      x: deploy-image\n      y: published-image\nwerf:\n  image:\n    x: deploy-image\n    y: published-image",
+		},
+		{
 			name:  "--set-string with --set-literal and --set-file whose file is absent at deploy",
 			chart: werfDataCardChart("", "", "", ""),
 			flags: werfDataFlags{
@@ -766,6 +779,7 @@ func TestRenderChart_WerfDataEquivalence(t *testing.T) {
 			assert.Equal(t, parseTestValues(t, tt.want), renderedChartValues(t, fromOptions))
 			assert.Equal(t, renderedChartValues(t, fromOptions), renderedChartValues(t, fromWerfData))
 			assert.Equal(t, fromOptions.ReleaseConfig, fromWerfData.ReleaseConfig)
+			assert.Equal(t, fromOptions.ResourceSpecs, fromWerfData.ResourceSpecs)
 
 			for key, value := range fromOptions.Values {
 				if _, isValues := value.(chartcommon.Values); isValues {

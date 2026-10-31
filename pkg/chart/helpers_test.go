@@ -175,7 +175,7 @@ func werfDataFlagsAsOptions(t *testing.T, flags werfDataFlags, opts RenderChartO
 	}
 
 	if flags.ExtraValues != "" {
-		opts.HelmOptions.ChartLoadOpts.ExtraValues = parseTestValues(t, flags.ExtraValues)
+		opts.HelmOptions.ChartLoadOpts.ExtraValues = chartcommon.MergeMaps(parseTestValues(t, flags.ExtraValues), opts.HelmOptions.ChartLoadOpts.ExtraValues)
 	}
 
 	opts.ValuesSet = append(opts.ValuesSet, flags.Set...)
@@ -442,6 +442,22 @@ func werfDataCardChart(dependencies, values, secretValues, subchartValues string
 	}
 
 	return files
+}
+
+// werfDataNestedSubchartsChart returns the files of a chart with a dependency "sub" with a dependency
+// "subsub", each exporting werf to its dependency, like werf charts do, and rendering a ConfigMap with
+// an image and the repo from the extra values.
+func werfDataNestedSubchartsChart() map[string]string {
+	const template = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: {{ .Chart.Name }}\ndata:\n  image: {{ .Values.werf.image.x }}\n  repo: {{ .Values.global.werf.repo }}\n"
+
+	return map[string]string{
+		"Chart.yaml":                                 "apiVersion: v2\nname: root\nversion: 1.0.0\ndependencies:\n- name: sub\n  version: 1.0.0\n  export-values:\n  - parent: werf\n    child: werf\n",
+		"templates/cm.yaml":                          template,
+		"charts/sub/Chart.yaml":                      "apiVersion: v2\nname: sub\nversion: 1.0.0\ndependencies:\n- name: subsub\n  version: 1.0.0\n  export-values:\n  - parent: werf\n    child: werf\n",
+		"charts/sub/templates/cm.yaml":               template,
+		"charts/sub/charts/subsub/Chart.yaml":        "apiVersion: v2\nname: subsub\nversion: 1.0.0\n",
+		"charts/sub/charts/subsub/templates/cm.yaml": template,
+	}
 }
 
 // werfDataVersionedChart returns the files of a chart of the Chart.yaml apiVersion with a dependency
