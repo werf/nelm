@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/google/uuid"
 	"github.com/samber/lo"
 	yamlv3 "gopkg.in/yaml.v3"
 	"sigs.k8s.io/yaml"
@@ -334,12 +335,12 @@ func ChartPack(ctx context.Context, chartPath string, opts ChartPackOptions) (*C
 		return nil, fmt.Errorf("remove provenance file of a previous archive: %w", err)
 	}
 
-	if err := fs.RenameWithFallback(stagedArchivePath, archivePath); err != nil {
+	if err := replaceFile(stagedArchivePath, archivePath); err != nil {
 		return nil, fmt.Errorf("move archive into place: %w", err)
 	}
 
 	if opts.Sign {
-		if err := fs.RenameWithFallback(stagedArchivePath+".prov", result.ProvenancePath); err != nil {
+		if err := replaceFile(stagedArchivePath+".prov", result.ProvenancePath); err != nil {
 			return nil, fmt.Errorf("move provenance file into place: %w", err)
 		}
 	}
@@ -1081,6 +1082,27 @@ func replaceArchiveFiles(archivePath string, replacements map[string][]byte) err
 
 	if err := os.Rename(tmpFile.Name(), archivePath); err != nil {
 		return fmt.Errorf("replace archive: %w", err)
+	}
+
+	return nil
+}
+
+// replaceFile moves src to dst. src is first moved, copying it across filesystems if needed, to a
+// temporary file next to dst, which then replaces dst in one rename, so that dst is never left
+// partly written.
+func replaceFile(src, dst string) error {
+	tmpPath := fmt.Sprintf("%s.tmp-%s", dst, uuid.NewString())
+
+	if err := fs.RenameWithFallback(src, tmpPath); err != nil {
+		os.Remove(tmpPath)
+
+		return fmt.Errorf("move %q next to %q: %w", src, dst, err)
+	}
+
+	if err := os.Rename(tmpPath, dst); err != nil {
+		os.Remove(tmpPath)
+
+		return fmt.Errorf("rename %q to %q: %w", tmpPath, dst, err)
 	}
 
 	return nil

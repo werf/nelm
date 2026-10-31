@@ -819,6 +819,12 @@ func TestChartPack_FailedArchiveMoveRemovesOldProvenance(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "move archive into place")
 	assert.NoFileExists(t, filepath.Join(destination, "mychart-1.0.0.tgz.prov"))
+
+	entries, err := os.ReadDir(destination)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"mychart-1.0.0.tgz"}, lo.Map(entries, func(entry os.DirEntry, _ int) string {
+		return entry.Name()
+	}))
 }
 
 func TestChartPack_FailedPackLeavesDestinationUntouched(t *testing.T) {
