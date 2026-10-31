@@ -97,6 +97,20 @@ type chartCopySource struct {
 	Tag string
 }
 
+type chartCopyResolvedImage struct {
+	Desc    ocispec.Descriptor
+	Ref     string
+	Storage content.ReadOnlyStorage
+	// Tag is empty for an image referenced by digest only.
+	Tag string
+}
+
+type chartCopyTagClaim struct {
+	// Digest is empty for the chart, whose digest is not known before it is pushed.
+	Digest digest.Digest
+	Owner  string
+}
+
 type chartCopyImageRef struct {
 	Digest string
 	Repo   string
@@ -109,7 +123,8 @@ type chartCopyImageRef struct {
 // An archive is written as an OCI image layout; the werf 3 bundle archive format is also read.
 //
 // When copying to a repository, the chart is renamed to the basename of the repository and the
-// images are copied by digest into it, keeping their tags. With a tag, the chart version is
+// images are copied by digest into it, keeping their tags, and referenced as REPO[:TAG]@DIGEST. A tag
+// that would point to different content is an error, raised before anything is pushed. With a tag, the chart version is
 // ChartVersionFromTag of it and the chart is pushed under the version and the tag; without one the
 // chart keeps its version and is pushed under it and the source tag. The provenance is kept only if
 // the chart doesn't change.
@@ -457,38 +472,6 @@ func copyChartToRepo(ctx context.Context, registryClient *registry.Client, sourc
 		return fmt.Errorf("construct repository: %w", err)
 	}
 
-	imageMapping := map[string]string{}
-	for _, imageRef := range imageRefs {
-		storage, desc, err := source.ResolveImage(ctx, imageRef)
-		if err != nil {
-			return fmt.Errorf("resolve image %q: %w", imageRef, err)
-		}
-
-		if err := oras.CopyGraph(ctx, storage, repository, desc, oras.DefaultCopyGraphOptions); err != nil {
-			return fmt.Errorf("copy image %q: %w", imageRef, err)
-		}
-
-		image := parseChartCopyImageRef(imageRef)
-		if image.Tag != "" {
-			if err := repository.Tag(ctx, desc, image.Tag); err != nil {
-				return fmt.Errorf("tag copy of image %q: %w", imageRef, err)
-			}
-		}
-
-		newImageRef := to.Repo
-		if image.Tag != "" {
-			newImageRef += ":" + image.Tag
-		}
-
-		if image.Digest != "" || image.Tag == "" {
-			newImageRef += "@" + desc.Digest.String()
-		}
-
-		imageMapping[imageRef] = newImageRef
-
-		log.Default.Info(ctx, "Copied image %s to %s", imageRef, newImageRef)
-	}
-
 	chartAccessor, err := helmchart.NewAccessor(loadedChart)
 	if err != nil {
 		return fmt.Errorf("create chart accessor: %w", err)
@@ -499,6 +482,51 @@ func copyChartToRepo(ctx context.Context, registryClient *registry.Client, sourc
 	version, extraTag := sourceVersion, source.Tag
 	if to.Tag != "" {
 		version, extraTag = ChartVersionFromTag(ctx, to.Tag, time.Now()), to.Tag
+	}
+
+	tagClaims := map[string]chartCopyTagClaim{}
+	for _, tag := range lo.Compact([]string{strings.ReplaceAll(version, "+", "_"), extraTag}) {
+		if err := claimChartCopyTag(tagClaims, tag, chartCopyTagClaim{Owner: "the chart"}); err != nil {
+			return err
+		}
+	}
+
+	images := make([]chartCopyResolvedImage, 0, len(imageRefs))
+	for _, imageRef := range imageRefs {
+		storage, desc, err := source.ResolveImage(ctx, imageRef)
+		if err != nil {
+			return fmt.Errorf("resolve image %q: %w", imageRef, err)
+		}
+
+		image := chartCopyResolvedImage{Desc: desc, Ref: imageRef, Storage: storage, Tag: parseChartCopyImageRef(imageRef).Tag}
+		if image.Tag != "" {
+			if err := claimChartCopyTag(tagClaims, image.Tag, chartCopyTagClaim{Digest: desc.Digest, Owner: fmt.Sprintf("image %q", imageRef)}); err != nil {
+				return err
+			}
+		}
+
+		images = append(images, image)
+	}
+
+	imageMapping := map[string]string{}
+	for _, image := range images {
+		if err := oras.CopyGraph(ctx, image.Storage, repository, image.Desc, oras.DefaultCopyGraphOptions); err != nil {
+			return fmt.Errorf("copy image %q: %w", image.Ref, err)
+		}
+
+		newImageRef := to.Repo
+		if image.Tag != "" {
+			if err := repository.Tag(ctx, image.Desc, image.Tag); err != nil {
+				return fmt.Errorf("tag copy of image %q: %w", image.Ref, err)
+			}
+
+			newImageRef += ":" + image.Tag
+		}
+
+		newImageRef += "@" + image.Desc.Digest.String()
+		imageMapping[image.Ref] = newImageRef
+
+		log.Default.Info(ctx, "Copied image %s to %s", image.Ref, newImageRef)
 	}
 
 	edit := chartyaml.EditOptions{}
@@ -828,6 +856,23 @@ func chartCopySnapshot(chartAccessor helmchart.Accessor) ([]byte, error) {
 	}
 
 	return snapshot, nil
+}
+
+// claimChartCopyTag records that the copy pushes claim under tag, failing if the tag is already
+// claimed for different content.
+func claimChartCopyTag(claims map[string]chartCopyTagClaim, tag string, claim chartCopyTagClaim) error {
+	previous, found := claims[tag]
+	if !found {
+		claims[tag] = claim
+
+		return nil
+	}
+
+	if previous.Owner == claim.Owner || previous.Digest != "" && previous.Digest == claim.Digest {
+		return nil
+	}
+
+	return fmt.Errorf("tag %q would be used for both %s and %s in the destination repository", tag, previous.Owner, claim.Owner)
 }
 
 func gzipFile(sourcePath, destinationPath string) error {

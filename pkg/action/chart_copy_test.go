@@ -254,7 +254,7 @@ func TestChartCopy_RegistryToRegistry(t *testing.T) {
 	expectedMapping := map[string]string{
 		backend.Ref:  fmt.Sprintf("%s:backend@%s", dst, backend.Desc.Digest),
 		frontend.Ref: fmt.Sprintf("%s:frontend@%s", dst, frontend.Desc.Digest),
-		nginxRef:     dst + ":1.25",
+		nginxRef:     fmt.Sprintf("%s:1.25@%s", dst, nginx.Desc.Digest),
 	}
 	assert.Equal(t, dst, rewriteRepo)
 	assert.Equal(t, expectedMapping, rewriteMapping)
@@ -285,6 +285,78 @@ func TestChartCopy_RequestTimeout(t *testing.T) {
 
 	err := ChartCopy(newChartPackTestContext(), "oci://"+strings.TrimPrefix(server.URL, "http://")+"/app:1.0.0", filepath.Join(t.TempDir(), "chart.tar"), opts)
 	require.ErrorContains(t, err, "Client.Timeout exceeded")
+}
+
+func TestChartCopy_TagCollisions(t *testing.T) {
+	host := newChartCopyTestRegistry(t)
+	client := newChartCopyTestRegistryClient(t)
+
+	first := pushChartCopyTestImage(t, host+"/first/images", "backend", "amd64")
+	second := pushChartCopyTestImage(t, host+"/second/images", "backend", "arm64")
+	sameDigest := pushChartCopyTestImage(t, host+"/first/images", "same", "amd64")
+	versionTagged := pushChartCopyTestImage(t, host+"/first/images", "1.0.0", "amd64")
+	extraTagged := pushChartCopyTestImage(t, host+"/first/images", "latest", "amd64")
+
+	tests := []struct {
+		name        string
+		images      []string
+		expectedErr string
+	}{
+		{
+			name:        "images with the same tag and different digests",
+			images:      []string{first.Ref, second.Ref},
+			expectedErr: fmt.Sprintf(`tag "backend" would be used for both image %q and image %q`, first.Ref, second.Ref),
+		},
+		{
+			name:        "image tag is the chart version tag",
+			images:      []string{versionTagged.Ref},
+			expectedErr: fmt.Sprintf(`tag "1.0.0" would be used for both the chart and image %q`, versionTagged.Ref),
+		},
+		{
+			name:        "image tag is the chart extra tag",
+			images:      []string{extraTagged.Ref},
+			expectedErr: fmt.Sprintf(`tag "latest" would be used for both the chart and image %q`, extraTagged.Ref),
+		},
+		{
+			name:   "images with the same tag and digest",
+			images: []string{first.Ref, host + "/first/images:backend@" + first.Desc.Digest.String(), sameDigest.Ref},
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			images := lo.Map(tt.images, func(image string, j int) string {
+				return fmt.Sprintf("    - name: image%d\n      image: %s\n", j, image)
+			})
+			chartData := buildChartCopyTestChart(t, map[string]string{
+				"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\nannotations:\n  helm.sh/images: |\n" + strings.Join(images, ""),
+			})
+
+			src := fmt.Sprintf("%s/src%d/app", host, i)
+			_, err := client.Push(chartData, src+":1.0.0", registry.PushOptExtraTags([]string{"latest"}))
+			require.NoError(t, err)
+
+			dst := fmt.Sprintf("%s/dst%d/app", host, i)
+
+			err = ChartCopy(newChartPackTestContext(), "oci://"+src+":latest", "oci://"+dst, newChartCopyTestOptions(t))
+			if tt.expectedErr == "" {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.ErrorContains(t, err, tt.expectedErr)
+
+			var pushedTags []string
+
+			_ = newChartCopyTestRepository(t, dst).Tags(context.Background(), "", func(tags []string) error {
+				pushedTags = append(pushedTags, tags...)
+
+				return nil
+			})
+			assert.Empty(t, pushedTags)
+		})
+	}
 }
 
 func TestChartCopy_Tags(t *testing.T) {
@@ -446,9 +518,9 @@ func TestChartCopy_WerfArchiveWithImagesOption(t *testing.T) {
 	dst := host + "/werf/app"
 	require.NoError(t, ChartCopy(newChartPackTestContext(), "archive:"+archivePath, "oci://"+dst+":2.0.0", opts))
 
-	_, err := newChartCopyTestRepository(t, dst).Resolve(context.Background(), "abc")
+	imageDesc, err := newChartCopyTestRepository(t, dst).Resolve(context.Background(), "abc")
 	require.NoError(t, err)
-	assert.Equal(t, map[string]string{sourceRef: dst + ":abc"}, rewriteMapping)
+	assert.Equal(t, map[string]string{sourceRef: fmt.Sprintf("%s:abc@%s", dst, imageDesc.Digest)}, rewriteMapping)
 
 	result, err := client.Pull(dst + ":2.0.0")
 	require.NoError(t, err)
