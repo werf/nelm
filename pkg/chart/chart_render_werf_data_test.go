@@ -272,12 +272,19 @@ func TestRenderChart_WerfDataDependencyMetadataIgnored(t *testing.T) {
 	tests := []struct {
 		name         string
 		metadata     string
+		files        map[string]string
 		wantWarnings []string
 	}{
 		{
 			name:         "annotations and labels",
 			metadata:     "apiVersion: v2\nextraAnnotations:\n  team: payments\nextraLabels:\n  tier: backend\n",
-			wantWarnings: []string{`Annotations and labels in .werf-data of dependency "pub" are ignored: only those of the root chart are applied`},
+			wantWarnings: []string{`Ignoring annotations and labels in .werf-data of dependency "pub": only those of the root chart are applied`},
+		},
+		{
+			name:         "patches, root JSON and release defaults",
+			metadata:     "apiVersion: v2\npatches: [patches/0.yaml]\ndefaultPatchesDisable: true\nvalues:\n  valuesSetRootJSON: ['a={}']\nrelease:\n  namespace: ns\n",
+			files:        map[string]string{"charts/pub/.werf-data/patches/0.yaml": "render: []"},
+			wantWarnings: []string{`Ignoring patches, disabled default patches, --set-root-json values, release defaults in .werf-data of dependency "pub": only those of the root chart are applied`},
 		},
 		{
 			name:         "no annotations or labels",
@@ -297,7 +304,7 @@ func TestRenderChart_WerfDataDependencyMetadataIgnored(t *testing.T) {
 				"charts/pub/.werf-data/metadata.yaml": tt.metadata,
 			}, map[string]string{
 				"Chart.yaml": "apiVersion: v2\nname: root\nversion: 1.0.0\ndependencies:\n- name: pub\n  version: 1.0.0\n",
-			})
+			}, tt.files)
 
 			_, err := renderWerfDataTestChart(t, chartPath, RenderChartOptions{})
 			require.NoError(t, err)

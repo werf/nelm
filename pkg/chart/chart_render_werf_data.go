@@ -306,8 +306,8 @@ func mergePublishedValuesIntoChart(chrt helmchart.Charter, userVals userValues) 
 	}
 }
 
-// warnIgnoredDependencyMetadata warns that annotations and labels of a werf-published dependency
-// are not applied: Nelm applies them to the whole release, and only the root chart decides those.
+// warnIgnoredDependencyMetadata warns that the release-wide publish-time inputs of a werf-published
+// dependency are not applied: only the root chart decides those for the release.
 func warnIgnoredDependencyMetadata(ctx context.Context, dep helmchart.Charter, name string) {
 	data, err := werfdata.Parse(werfDataFiles(dep))
 	if err != nil {
@@ -315,11 +315,33 @@ func warnIgnoredDependencyMetadata(ctx context.Context, dep helmchart.Charter, n
 	}
 
 	metadata := data.Metadata
-	if len(metadata.ExtraAnnotations) == 0 && len(metadata.ExtraLabels) == 0 && len(metadata.ExtraRuntimeAnnotations) == 0 && len(metadata.ReleaseInfoAnnotations) == 0 {
+
+	var ignored []string
+	if len(metadata.ExtraAnnotations) > 0 || len(metadata.ExtraLabels) > 0 || len(metadata.ExtraRuntimeAnnotations) > 0 || len(metadata.ReleaseInfoAnnotations) > 0 {
+		ignored = append(ignored, "annotations and labels")
+	}
+
+	if len(metadata.Patches) > 0 {
+		ignored = append(ignored, "patches")
+	}
+
+	if metadata.DefaultPatchesDisable {
+		ignored = append(ignored, "disabled default patches")
+	}
+
+	if len(metadata.Values.ValuesSetRootJSON) > 0 {
+		ignored = append(ignored, "--set-root-json values")
+	}
+
+	if metadata.Release != nil && *metadata.Release != (werfdata.ReleaseMetadata{}) {
+		ignored = append(ignored, "release defaults")
+	}
+
+	if len(ignored) == 0 {
 		return
 	}
 
-	log.Default.Warn(ctx, "Annotations and labels in %s of dependency %q are ignored: only those of the root chart are applied", werfdata.DirName, name)
+	log.Default.Warn(ctx, "Ignoring %s in %s of dependency %q: only those of the root chart are applied", strings.Join(ignored, ", "), werfdata.DirName, name)
 }
 
 // chartTreeHasSecretFiles reports whether the chart or any of its dependencies has a
