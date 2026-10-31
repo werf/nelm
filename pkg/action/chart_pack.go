@@ -1,0 +1,819 @@
+package action
+
+import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
+	"context"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path"
+	"path/filepath"
+	"reflect"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/Masterminds/semver/v3"
+	"github.com/samber/lo"
+	"sigs.k8s.io/yaml"
+
+	"github.com/werf/nelm/v2/pkg/chartyaml"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/featgate"
+	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	v3util "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/util"
+	"github.com/werf/nelm/v2/pkg/helm/intern/tlsutil"
+	helmaction "github.com/werf/nelm/v2/pkg/helm/pkg/action"
+	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader/archive"
+	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	v2util "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/cli/values"
+	helmdownloader "github.com/werf/nelm/v2/pkg/helm/pkg/downloader"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/getter"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/helmpath"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/v2/pkg/log"
+	"github.com/werf/nelm/v2/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/ts"
+	"github.com/werf/nelm/v2/pkg/werfdata"
+)
+
+const (
+	legacyExtraAnnotationsFileName = "extra_annotations.json"
+	legacyExtraLabelsFileName      = "extra_labels.json"
+)
+
+type ChartPackOptions struct {
+	common.ChartRepoConnectionOptions
+	common.ValuesOptions
+
+	// AppVersion overrides appVersion in Chart.yaml.
+	AppVersion string
+	// ChartRepoSkipUpdate, when true, skips updating the chart repositories index before
+	// downloading dependencies.
+	ChartRepoSkipUpdate bool
+	// DefaultPatchesDisable, when true, is stored in .werf-data, so that the patches.yaml files
+	// of the chart and its subcharts are ignored when the chart is deployed.
+	DefaultPatchesDisable bool
+	// DefaultSecretValuesDisable, when true, is stored in .werf-data, so that the
+	// secret-values.yaml files of the chart and its subcharts are ignored when the chart is
+	// deployed.
+	DefaultSecretValuesDisable bool
+	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
+	DenoBinaryPath string
+	// DependencyUpdate, when true, updates Chart.lock and charts/ of the chart directory from
+	// Chart.yaml before packing.
+	DependencyUpdate bool
+	// Destination is the directory to write the archive to. Defaults to the current directory.
+	Destination string
+	// ExtraAnnotations are merged per key over the stored ones.
+	ExtraAnnotations map[string]string
+	// ExtraLabels are merged per key over the stored ones.
+	ExtraLabels map[string]string
+	// ExtraRuntimeAnnotations are merged per key over the stored ones.
+	ExtraRuntimeAnnotations map[string]string
+	// ExtraValues, when not nil, replace the stored extra values. An empty map removes them.
+	ExtraValues map[string]interface{}
+	// Images, when not nil, replace the helm.sh/images entries that previous packs added to
+	// Chart.yaml. An empty slice removes them. Entries written by the chart author are kept.
+	Images []chartyaml.Image
+	// Name overrides the chart name.
+	Name string
+	// PatchesFiles are appended to the stored patches files.
+	PatchesFiles []string
+	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials,
+	// used to download dependencies from OCI registries.
+	// Defaults to DefaultDockerConfig/config.json.
+	RegistryCredentialsPath string
+	// Release, when not nil, replaces the stored release defaults.
+	Release *werfdata.ReleaseMetadata
+	// ReleaseInfoAnnotations are merged per key over the stored ones.
+	ReleaseInfoAnnotations map[string]string
+	// ResetValues, when true, drops everything stored in .werf-data and the helm.sh/images
+	// entries previous packs added before applying the inputs of this pack.
+	ResetValues bool
+	// SecretValuesFiles are werf-encrypted values files, merged over the stored secret values
+	// without decrypting them. Every value must be encrypted.
+	SecretValuesFiles []string
+	// Sign, when true, signs the archive with SignKey from SignKeyring and writes the
+	// provenance file next to it.
+	Sign bool
+	// SignKey is the name of the key to sign with.
+	SignKey string
+	// SignKeyring is the path to the keyring with the signing key.
+	SignKeyring string
+	// SignPassphraseFile is the path to a file with the passphrase of the signing key, "-" for
+	// stdin. Prompted for if not set.
+	SignPassphraseFile string
+	// TSNoRebuild, when true, reuses the existing TypeScript bundle instead of rebuilding it.
+	TSNoRebuild bool
+	// Version overrides the chart version.
+	Version string
+}
+
+type ChartPackResult struct {
+	ArchivePath  string
+	ChartName    string
+	ChartVersion string
+	// ProvenancePath is the path to the provenance file, empty if the archive is not signed.
+	ProvenancePath string
+}
+
+// ChartPack packs the chart directory into an archive, storing the publish-time inputs from
+// opts in .werf-data of the chart on top of the ones the directory already has.
+func ChartPack(ctx context.Context, chartPath string, opts ChartPackOptions) (*ChartPackResult, error) {
+	opts, err := applyChartPackOptionsDefaults(opts)
+	if err != nil {
+		return nil, fmt.Errorf("build chart pack options: %w", err)
+	}
+
+	if opts.Sign && (opts.SignKey == "" || opts.SignKeyring == "") {
+		return nil, errors.New("signing key name and keyring are required for signing")
+	}
+
+	chartPath, err = filepath.Abs(chartPath)
+	if err != nil {
+		return nil, fmt.Errorf("get absolute path of %q: %w", chartPath, err)
+	}
+
+	registryClient, err := newChartPackRegistryClient(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("construct registry client: %w", err)
+	}
+
+	if opts.DependencyUpdate {
+		if err := newChartPackDependencyDownloader(ctx, chartPath, registryClient, opts).Update(ctx); err != nil {
+			return nil, fmt.Errorf("update dependencies: %w", err)
+		}
+	}
+
+	ctx = common.ContextWithHelmOptions(ctx, common.HelmOptions{
+		ChartLoadOpts: common.ChartLoadOptions{
+			ChartDepsDownloader:    newChartPackDependencyDownloader(ctx, chartPath, registryClient, opts),
+			ChartType:              common.LegacyChartTypeChart,
+			DefaultChartAPIVersion: v2chart.APIVersionV2,
+			DefaultChartName:       opts.Name,
+			DefaultChartVersion:    opts.Version,
+			NoSecrets:              true,
+		},
+	})
+
+	loadedChart, err := loader.LoadDir(ctx, chartPath)
+	if err != nil {
+		return nil, fmt.Errorf("load chart %q: %w", chartPath, err)
+	}
+
+	chartAccessor, err := helmchart.NewAccessor(loadedChart)
+	if err != nil {
+		return nil, fmt.Errorf("create chart accessor: %w", err)
+	}
+
+	if featgate.FeatGateTypescript.Enabled() {
+		if err := ts.BundleChartsRecursive(ctx, chartAccessor, chartPath, !opts.TSNoRebuild, opts.DenoBinaryPath); err != nil {
+			return nil, fmt.Errorf("process TypeScript files in chart: %w", err)
+		}
+	}
+
+	if deps := chartAccessor.MetaDependencies(); len(deps) > 0 {
+		if err := helmaction.CheckDependencies(loadedChart, deps); err != nil {
+			return nil, fmt.Errorf("check dependencies: %w", err)
+		}
+	}
+
+	werfData, ownedImages, chartFiles, err := buildChartPackWerfData(ctx, chartAccessor, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	werfDataFiles, err := werfData.ChartFiles()
+	if err != nil {
+		return nil, fmt.Errorf("build %s files: %w", werfdata.DirName, err)
+	}
+
+	if len(chartAccessor.WerfDataFiles()) == 0 {
+		emptyWerfDataFiles, err := (&werfdata.Data{}).ChartFiles()
+		if err != nil {
+			return nil, fmt.Errorf("build empty %s files: %w", werfdata.DirName, err)
+		}
+
+		if reflect.DeepEqual(werfDataFiles, emptyWerfDataFiles) {
+			werfDataFiles = nil
+		}
+	}
+
+	for _, f := range werfDataFiles {
+		if int64(len(f.Data)) > archive.MaxDecompressedFileSize {
+			return nil, fmt.Errorf("%s is %d bytes, more than the %d bytes a chart loader accepts for a single file", f.Name, len(f.Data), archive.MaxDecompressedFileSize)
+		}
+	}
+
+	chartYAMLEdit := chartyaml.EditOptions{
+		AppVersion: opts.AppVersion,
+		Name:       opts.Name,
+		Version:    opts.Version,
+	}
+
+	if opts.Images != nil || opts.ResetValues {
+		currentImagesAnnotation := chartAnnotations(loadedChart)[chartyaml.ImagesAnnotation]
+
+		imagesAnnotation, err := chartyaml.UpdateImages(ctx, currentImagesAnnotation, ownedImages, opts.Images)
+		if err != nil {
+			return nil, fmt.Errorf("update %s annotation: %w", chartyaml.ImagesAnnotation, err)
+		}
+
+		switch imagesAnnotation {
+		case currentImagesAnnotation:
+		case "":
+			chartYAMLEdit.DeleteAnnotations = []string{chartyaml.ImagesAnnotation}
+		default:
+			chartYAMLEdit.SetAnnotations = map[string]string{chartyaml.ImagesAnnotation: imagesAnnotation}
+		}
+	}
+
+	archivePath, err := saveChartPackArchive(loadedChart, chartFiles, werfDataFiles, chartYAMLEdit, opts.Destination)
+	if err != nil {
+		return nil, fmt.Errorf("save chart archive: %w", err)
+	}
+
+	if err := rewriteChartPackArchiveMetadata(ctx, archivePath, chartAccessor, chartYAMLEdit); err != nil {
+		return nil, fmt.Errorf("write Chart.yaml and Chart.lock into %q: %w", archivePath, err)
+	}
+
+	result := &ChartPackResult{
+		ArchivePath:  archivePath,
+		ChartName:    chartAccessor.Name(),
+		ChartVersion: chartVersion(loadedChart),
+	}
+
+	if opts.Sign {
+		pkg := &helmaction.Package{
+			Key:            opts.SignKey,
+			Keyring:        opts.SignKeyring,
+			PassphraseFile: opts.SignPassphraseFile,
+		}
+
+		if err := pkg.Clearsign(archivePath); err != nil {
+			return nil, fmt.Errorf("sign %q: %w", archivePath, err)
+		}
+
+		result.ProvenancePath = archivePath + ".prov"
+	}
+
+	log.Default.Info(ctx, "Successfully packaged chart and saved it to: %s", archivePath)
+
+	return result, nil
+}
+
+// buildChartPackWerfData returns the .werf-data to pack, the helm.sh/images entries the
+// previous packs added and the chart files without the ones moved into .werf-data.
+func buildChartPackWerfData(ctx context.Context, chartAccessor helmchart.Accessor, opts ChartPackOptions) (*werfdata.Data, []string, []*chartcommon.File, error) {
+	data := &werfdata.Data{Files: map[string][]byte{}}
+	if len(chartAccessor.WerfDataFiles()) > 0 {
+		var err error
+
+		data, err = werfdata.Parse(chartAccessor.WerfDataFiles())
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("parse %s: %w", werfdata.DirName, err)
+		}
+	}
+
+	ownedImages := data.Metadata.Images
+
+	chartFiles, err := migrateLegacyExtraAnnotationsAndLabels(chartAccessor.Files(), data)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	if opts.ResetValues {
+		data = &werfdata.Data{Files: map[string][]byte{}}
+	}
+
+	if err := addChartPackInputs(ctx, data, opts); err != nil {
+		return nil, nil, nil, err
+	}
+
+	return data, ownedImages, chartFiles, nil
+}
+
+func addChartPackInputs(ctx context.Context, data *werfdata.Data, opts ChartPackOptions) error {
+	if len(opts.ValuesFiles) > 0 {
+		vals, err := (&values.Options{ValueFiles: opts.ValuesFiles}).MergeValues(ctx, getter.Getters())
+		if err != nil {
+			return fmt.Errorf("merge values files: %w", err)
+		}
+
+		data.Values = chartcommon.MergeMaps(lo.Ternary(data.Values != nil, data.Values, map[string]any{}), vals)
+	}
+
+	if len(opts.SecretValuesFiles) > 0 {
+		if err := mergeChartPackSecretValues(ctx, data, opts.SecretValuesFiles); err != nil {
+			return err
+		}
+	}
+
+	setValuesOpts := &values.Options{
+		Values:        opts.ValuesSet,
+		StringValues:  opts.ValuesSetString,
+		JSONValues:    opts.ValuesSetJSON,
+		LiteralValues: opts.ValuesSetLiteral,
+	}
+	if _, err := setValuesOpts.MergeSetValues(ctx, getter.Getters(), map[string]any{}, values.MergeSetValuesOptions{}); err != nil {
+		return fmt.Errorf("parse set values: %w", err)
+	}
+
+	data.Metadata.Values.ValuesSet = append(data.Metadata.Values.ValuesSet, opts.ValuesSet...)
+	data.Metadata.Values.ValuesSetString = append(data.Metadata.Values.ValuesSetString, opts.ValuesSetString...)
+	data.Metadata.Values.ValuesSetJSON = append(data.Metadata.Values.ValuesSetJSON, opts.ValuesSetJSON...)
+	data.Metadata.Values.ValuesSetLiteral = append(data.Metadata.Values.ValuesSetLiteral, opts.ValuesSetLiteral...)
+	data.Metadata.Values.ValuesSetRootJSON = append(data.Metadata.Values.ValuesSetRootJSON, opts.RootSetJSON...)
+
+	for _, value := range opts.ValuesSetFile {
+		contents := map[string]string{}
+		if _, err := (&values.Options{FileValues: []string{value}}).MergeSetValues(ctx, getter.Getters(), map[string]any{}, values.MergeSetValuesOptions{SetFilesCache: contents}); err != nil {
+			return fmt.Errorf("read --set-file %q: %w", value, err)
+		}
+
+		record := werfdata.SetFileRecord{Value: value, Contents: map[string]string{}}
+		filePaths := lo.Keys(contents)
+		sort.Strings(filePaths)
+
+		for _, filePath := range filePaths {
+			name := path.Join(werfdata.SetFilesDirName, strconv.Itoa(nextWerfDataFileIndex(data.Files, werfdata.SetFilesDirName)))
+			data.Files[name] = []byte(contents[filePath])
+			record.Contents[filePath] = name
+		}
+
+		data.Metadata.Values.ValuesSetFile = append(data.Metadata.Values.ValuesSetFile, record)
+	}
+
+	for _, patchesFile := range opts.PatchesFiles {
+		if _, err := spec.LoadPatchesFiles([]string{patchesFile}); err != nil {
+			return fmt.Errorf("load patches file: %w", err)
+		}
+
+		patchesData, err := os.ReadFile(patchesFile)
+		if err != nil {
+			return fmt.Errorf("read patches file %q: %w", patchesFile, err)
+		}
+
+		name := path.Join(werfdata.PatchesDirName, strconv.Itoa(nextWerfDataFileIndex(data.Files, werfdata.PatchesDirName)))
+		data.Files[name] = patchesData
+		data.Metadata.Patches = append(data.Metadata.Patches, name)
+	}
+
+	data.Metadata.Values.DefaultValuesDisable = data.Metadata.Values.DefaultValuesDisable || opts.DefaultValuesDisable
+	data.Metadata.Values.DefaultSecretValuesDisable = data.Metadata.Values.DefaultSecretValuesDisable || opts.DefaultSecretValuesDisable
+	data.Metadata.DefaultPatchesDisable = data.Metadata.DefaultPatchesDisable || opts.DefaultPatchesDisable
+
+	if opts.Release != nil {
+		data.Metadata.Release = lo.ToPtr(*opts.Release)
+	}
+
+	data.Metadata.ExtraAnnotations = mergeStringMaps(data.Metadata.ExtraAnnotations, opts.ExtraAnnotations)
+	data.Metadata.ExtraLabels = mergeStringMaps(data.Metadata.ExtraLabels, opts.ExtraLabels)
+	data.Metadata.ExtraRuntimeAnnotations = mergeStringMaps(data.Metadata.ExtraRuntimeAnnotations, opts.ExtraRuntimeAnnotations)
+	data.Metadata.ReleaseInfoAnnotations = mergeStringMaps(data.Metadata.ReleaseInfoAnnotations, opts.ReleaseInfoAnnotations)
+
+	if opts.ExtraValues != nil {
+		data.ExtraValues = lo.Ternary(len(opts.ExtraValues) > 0, opts.ExtraValues, nil)
+	}
+
+	if opts.Images != nil {
+		data.Metadata.Images = lo.Map(opts.Images, func(image chartyaml.Image, _ int) string {
+			return image.Name
+		})
+	} else if opts.ResetValues {
+		data.Metadata.Images = nil
+	}
+
+	return nil
+}
+
+func mergeChartPackSecretValues(ctx context.Context, data *werfdata.Data, secretValuesFiles []string) error {
+	merged := map[string]any{}
+	if data.SecretValues != nil {
+		if err := yaml.Unmarshal(data.SecretValues, &merged); err != nil {
+			return fmt.Errorf("parse %s/%s: %w", werfdata.DirName, werfdata.SecretValuesFileName, err)
+		}
+	}
+
+	for _, secretValuesFile := range secretValuesFiles {
+		var (
+			fileData []byte
+			err      error
+		)
+
+		if common.ChartFileReader != nil {
+			fileData, err = common.ChartFileReader.ReadChartFile(ctx, secretValuesFile)
+		} else {
+			fileData, err = os.ReadFile(secretValuesFile)
+		}
+
+		if err != nil {
+			return fmt.Errorf("read secret values file %q: %w", secretValuesFile, err)
+		}
+
+		vals := map[string]any{}
+		if err := yaml.Unmarshal(fileData, &vals); err != nil {
+			return fmt.Errorf("parse secret values file %q: %w", secretValuesFile, err)
+		}
+
+		if err := checkEncryptedValues(vals, nil); err != nil {
+			return fmt.Errorf("secret values file %q: %w", secretValuesFile, err)
+		}
+
+		merged = chartcommon.MergeMaps(merged, vals)
+	}
+
+	secretValuesData, err := yaml.Marshal(merged)
+	if err != nil {
+		return fmt.Errorf("marshal secret values: %w", err)
+	}
+
+	data.SecretValues = secretValuesData
+
+	return nil
+}
+
+// checkEncryptedValues fails unless every non-null leaf of vals is a value encrypted by werf.
+func checkEncryptedValues(vals any, keyPath []string) error {
+	switch v := vals.(type) {
+	case nil:
+		return nil
+	case map[string]any:
+		for _, key := range lo.Keys(v) {
+			if err := checkEncryptedValues(v[key], append(keyPath, key)); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	case []any:
+		for i, item := range v {
+			if err := checkEncryptedValues(item, append(keyPath, fmt.Sprintf("[%d]", i))); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	case string:
+		if v == "" || isWerfCiphertext(v) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("value at %q is not encrypted: encrypt the file with \"nelm chart secret values-file encrypt\"", strings.Join(keyPath, "."))
+}
+
+// migrateLegacyExtraAnnotationsAndLabels moves the extra_annotations.json and extra_labels.json
+// of a chart published by werf <= 3.12 into the .werf-data metadata, classifying the annotations
+// like werf bundle apply did.
+func migrateLegacyExtraAnnotationsAndLabels(files []*chartcommon.File, data *werfdata.Data) ([]*chartcommon.File, error) {
+	var result []*chartcommon.File
+	for _, f := range files {
+		switch f.Name {
+		case legacyExtraAnnotationsFileName:
+			annotations := map[string]string{}
+			if err := json.Unmarshal(f.Data, &annotations); err != nil {
+				return nil, fmt.Errorf("parse %s: %w", f.Name, err)
+			}
+
+			extraAnnotations := map[string]string{}
+
+			serviceAnnotations := map[string]string{}
+			for key, value := range annotations {
+				if strings.HasPrefix(key, "project.werf.io/") || strings.Contains(key, "ci.werf.io/") || key == "werf.io/release-channel" {
+					serviceAnnotations[key] = value
+				} else {
+					extraAnnotations[key] = value
+				}
+			}
+
+			data.Metadata.ExtraAnnotations = mergeStringMaps(extraAnnotations, data.Metadata.ExtraAnnotations)
+			data.Metadata.ExtraRuntimeAnnotations = mergeStringMaps(serviceAnnotations, data.Metadata.ExtraRuntimeAnnotations)
+			data.Metadata.ReleaseInfoAnnotations = mergeStringMaps(serviceAnnotations, data.Metadata.ReleaseInfoAnnotations)
+		case legacyExtraLabelsFileName:
+			labels := map[string]string{}
+			if err := json.Unmarshal(f.Data, &labels); err != nil {
+				return nil, fmt.Errorf("parse %s: %w", f.Name, err)
+			}
+
+			data.Metadata.ExtraLabels = mergeStringMaps(labels, data.Metadata.ExtraLabels)
+		default:
+			result = append(result, f)
+		}
+	}
+
+	return result, nil
+}
+
+// rewriteChartPackArchiveMetadata replaces Chart.yaml and Chart.lock of the root chart, which the
+// archive writer generates from the parsed metadata, with the original files, so that their
+// comments, key order and formatting survive. Only the edited Chart.yaml fields change.
+func rewriteChartPackArchiveMetadata(ctx context.Context, archivePath string, chartAccessor helmchart.Accessor, edit chartyaml.EditOptions) error {
+	replacements := map[string][]byte{}
+	for _, f := range chartAccessor.RawFiles() {
+		switch f.Name {
+		case "Chart.yaml":
+			chartYAML, err := chartyaml.Edit(ctx, f.Data, edit)
+			if err != nil {
+				return fmt.Errorf("edit Chart.yaml: %w", err)
+			}
+
+			replacements[path.Join(chartAccessor.Name(), f.Name)] = chartYAML
+		case "Chart.lock":
+			replacements[path.Join(chartAccessor.Name(), f.Name)] = f.Data
+		}
+	}
+
+	if len(replacements) == 0 {
+		return nil
+	}
+
+	return replaceArchiveFiles(archivePath, replacements)
+}
+
+// saveChartPackArchive applies the metadata edits to the loaded chart, so that a generated
+// Chart.yaml, the archive name and the provenance get them, and saves the chart archive.
+func saveChartPackArchive(loadedChart helmchart.Charter, files, werfDataFiles []*chartcommon.File, edit chartyaml.EditOptions, destination string) (string, error) {
+	switch c := loadedChart.(type) {
+	case *v2chart.Chart:
+		c.Metadata.Name = lo.CoalesceOrEmpty(edit.Name, c.Metadata.Name)
+		c.Metadata.Version = lo.CoalesceOrEmpty(edit.Version, c.Metadata.Version)
+		c.Metadata.AppVersion = lo.CoalesceOrEmpty(edit.AppVersion, c.Metadata.AppVersion)
+		c.Metadata.Annotations = editAnnotationsMap(c.Metadata.Annotations, edit)
+		c.Files = files
+		c.WerfDataFiles = werfDataFiles
+		c.Templates = withoutWerfHelpersTemplate(c.Templates)
+
+		if _, err := semver.NewVersion(c.Metadata.Version); err != nil {
+			return "", fmt.Errorf("parse chart version %q: %w", c.Metadata.Version, err)
+		}
+
+		archivePath, err := v2util.Save(c, destination)
+		if err != nil {
+			return "", fmt.Errorf("save chart: %w", err)
+		}
+
+		return archivePath, nil
+	case *v3chart.Chart:
+		c.Metadata.Name = lo.CoalesceOrEmpty(edit.Name, c.Metadata.Name)
+		c.Metadata.Version = lo.CoalesceOrEmpty(edit.Version, c.Metadata.Version)
+		c.Metadata.AppVersion = lo.CoalesceOrEmpty(edit.AppVersion, c.Metadata.AppVersion)
+		c.Metadata.Annotations = editAnnotationsMap(c.Metadata.Annotations, edit)
+		c.Files = files
+		c.WerfDataFiles = werfDataFiles
+		c.Templates = withoutWerfHelpersTemplate(c.Templates)
+
+		if _, err := semver.NewVersion(c.Metadata.Version); err != nil {
+			return "", fmt.Errorf("parse chart version %q: %w", c.Metadata.Version, err)
+		}
+
+		archivePath, err := v3util.Save(c, destination)
+		if err != nil {
+			return "", fmt.Errorf("save chart: %w", err)
+		}
+
+		return archivePath, nil
+	default:
+		panic(fmt.Sprintf("unexpected chart type %T", loadedChart))
+	}
+}
+
+func applyChartPackOptionsDefaults(opts ChartPackOptions) (ChartPackOptions, error) {
+	opts.ChartRepoConnectionOptions.ApplyDefaults()
+	opts.ValuesOptions.ApplyDefaults()
+
+	if opts.Destination == "" {
+		currentDir, err := os.Getwd()
+		if err != nil {
+			return ChartPackOptions{}, fmt.Errorf("get current working directory: %w", err)
+		}
+
+		opts.Destination = currentDir
+	}
+
+	if opts.RegistryCredentialsPath == "" {
+		opts.RegistryCredentialsPath = filepath.Join(common.DefaultDockerConfig, "config.json")
+	}
+
+	return opts, nil
+}
+
+func chartAnnotations(loadedChart helmchart.Charter) map[string]string {
+	switch c := loadedChart.(type) {
+	case *v2chart.Chart:
+		return c.Metadata.Annotations
+	case *v3chart.Chart:
+		return c.Metadata.Annotations
+	default:
+		panic(fmt.Sprintf("unexpected chart type %T", loadedChart))
+	}
+}
+
+func chartVersion(loadedChart helmchart.Charter) string {
+	switch c := loadedChart.(type) {
+	case *v2chart.Chart:
+		return c.Metadata.Version
+	case *v3chart.Chart:
+		return c.Metadata.Version
+	default:
+		panic(fmt.Sprintf("unexpected chart type %T", loadedChart))
+	}
+}
+
+func editAnnotationsMap(annotations map[string]string, edit chartyaml.EditOptions) map[string]string {
+	result := lo.OmitByKeys(lo.Assign(annotations, edit.SetAnnotations), edit.DeleteAnnotations)
+	if len(result) == 0 {
+		return nil
+	}
+
+	return result
+}
+
+// isWerfCiphertext checks the layout of a value encrypted by werf: hex of a two-byte
+// little-endian format version followed by the IV or nonce and the ciphertext. It can't tell
+// whether the value decrypts, which needs the key.
+func isWerfCiphertext(value string) bool {
+	decoded, err := hex.DecodeString(value)
+	if err != nil || len(decoded) < 2 {
+		return false
+	}
+
+	payloadSize := len(decoded) - 2
+
+	switch binary.LittleEndian.Uint16(decoded[:2]) {
+	case 16:
+		return payloadSize >= 32 && payloadSize%16 == 0
+	case 2, 3:
+		return payloadSize > 12+16
+	default:
+		return false
+	}
+}
+
+func mergeStringMaps(base, overrides map[string]string) map[string]string {
+	result := lo.Assign(base, overrides)
+	if len(result) == 0 {
+		return nil
+	}
+
+	return result
+}
+
+func newChartPackDependencyDownloader(ctx context.Context, chartPath string, registryClient *registry.Client, opts ChartPackOptions) *helmdownloader.Manager {
+	return &helmdownloader.Manager{
+		Out:               io.Discard,
+		ChartPath:         chartPath,
+		Debug:             log.Default.AcceptLevel(ctx, log.DebugLevel),
+		SkipUpdate:        opts.ChartRepoSkipUpdate,
+		Getters:           getter.Getters(),
+		RegistryClient:    registryClient,
+		RepositoryConfig:  helmpath.ConfigPath("repositories.yaml"),
+		RepositoryCache:   helmpath.CachePath("repository"),
+		ContentCache:      helmpath.CachePath("content"),
+		AllowMissingRepos: true,
+	}
+}
+
+func newChartPackRegistryClient(ctx context.Context, opts ChartPackOptions) (*registry.Client, error) {
+	clientOpts := []registry.ClientOption{
+		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
+		registry.ClientOptEnableCache(true),
+		registry.ClientOptWriter(io.Discard),
+		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
+		registry.ClientOptBasicAuth(opts.ChartRepoBasicAuthUsername, opts.ChartRepoBasicAuthPassword),
+	}
+
+	if opts.ChartRepoCertPath != "" && opts.ChartRepoKeyPath != "" || opts.ChartRepoCAPath != "" || opts.ChartRepoSkipTLSVerify {
+		tlsConfig, err := tlsutil.NewTLSConfig(
+			tlsutil.WithInsecureSkipVerify(opts.ChartRepoSkipTLSVerify),
+			tlsutil.WithCertKeyPairFiles(opts.ChartRepoCertPath, opts.ChartRepoKeyPath),
+			tlsutil.WithCAFile(opts.ChartRepoCAPath),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("build TLS config: %w", err)
+		}
+
+		clientOpts = append(clientOpts, registry.ClientOptHTTPClient(&http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: tlsConfig,
+				Proxy:           http.ProxyFromEnvironment,
+			},
+		}))
+	} else if opts.ChartRepoInsecure {
+		clientOpts = append(clientOpts, registry.ClientOptPlainHTTP())
+	}
+
+	client, err := registry.NewClient(clientOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("create registry client: %w", err)
+	}
+
+	return client, nil
+}
+
+func nextWerfDataFileIndex(files map[string][]byte, dir string) int {
+	next := 0
+	for name := range files {
+		index, err := strconv.Atoi(strings.TrimPrefix(name, dir+"/"))
+		if !strings.HasPrefix(name, dir+"/") || err != nil {
+			continue
+		}
+
+		next = max(next, index+1)
+	}
+
+	return next
+}
+
+func replaceArchiveFiles(archivePath string, replacements map[string][]byte) error {
+	original, err := os.ReadFile(archivePath)
+	if err != nil {
+		return fmt.Errorf("read archive: %w", err)
+	}
+
+	gzipReader, err := gzip.NewReader(bytes.NewReader(original))
+	if err != nil {
+		return fmt.Errorf("read archive: %w", err)
+	}
+	defer gzipReader.Close()
+
+	tmpFile, err := os.CreateTemp(filepath.Dir(archivePath), filepath.Base(archivePath)+".tmp")
+	if err != nil {
+		return fmt.Errorf("create temporary archive: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+
+	gzipWriter := gzip.NewWriter(tmpFile)
+	gzipWriter.Header = gzipReader.Header
+
+	tarReader := tar.NewReader(gzipReader)
+	tarWriter := tar.NewWriter(gzipWriter)
+
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+
+		if err != nil {
+			return fmt.Errorf("read archive: %w", err)
+		}
+
+		body, err := io.ReadAll(tarReader)
+		if err != nil {
+			return fmt.Errorf("read %q from archive: %w", header.Name, err)
+		}
+
+		if replacement, ok := replacements[header.Name]; ok {
+			body = replacement
+			header.Size = int64(len(body))
+		}
+
+		if err := tarWriter.WriteHeader(header); err != nil {
+			return fmt.Errorf("write %q into archive: %w", header.Name, err)
+		}
+
+		if _, err := tarWriter.Write(body); err != nil {
+			return fmt.Errorf("write %q into archive: %w", header.Name, err)
+		}
+	}
+
+	if err := tarWriter.Close(); err != nil {
+		return fmt.Errorf("write archive: %w", err)
+	}
+
+	if err := gzipWriter.Close(); err != nil {
+		return fmt.Errorf("write archive: %w", err)
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("write archive: %w", err)
+	}
+
+	if err := os.Rename(tmpFile.Name(), archivePath); err != nil {
+		return fmt.Errorf("replace archive: %w", err)
+	}
+
+	return nil
+}
+
+// withoutWerfHelpersTemplate drops the empty placeholder template the loader adds to the root
+// chart, which is filled only at render time.
+func withoutWerfHelpersTemplate(templates []*chartcommon.File) []*chartcommon.File {
+	return lo.Reject(templates, func(f *chartcommon.File, _ int) bool {
+		return f.Name == "templates/_werf_helpers.tpl" && len(f.Data) == 0
+	})
+}
