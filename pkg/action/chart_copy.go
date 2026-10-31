@@ -26,6 +26,7 @@ import (
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content"
 	"oras.land/oras-go/v2/content/oci"
+	"oras.land/oras-go/v2/errdef"
 	orasregistry "oras.land/oras-go/v2/registry"
 
 	"github.com/werf/nelm/v2/pkg/chartyaml"
@@ -160,8 +161,8 @@ type chartCopyImageRef struct {
 }
 
 // ChartCopy copies the chart at from, with every image in the helm.sh/images annotations of the
-// chart and its dependencies, to to. Referrers of the images, like signatures and SBOMs, are not
-// copied.
+// chart and its dependencies, to to. Non-distributable layers are copied too; a blob the source
+// does not serve is an error. Referrers of the images, like signatures and SBOMs, are not copied.
 // Each address is either "oci://REPO[:TAG]" (or "REPO[:TAG]"), or an archive: "archive:PATH" or a
 // path ending in .tar, .tar.gz or .tgz. A source repository without a tag means the "latest" tag.
 // An archive is written as an OCI image layout; the werf 3 bundle archive format is also read.
@@ -314,6 +315,125 @@ func readChartCopyArchive(ctx context.Context, archivePath, tempDir string, expa
 	}
 }
 
+func copyChartToRepo(ctx context.Context, registryClient *registry.Client, source *chartCopySource, loadedChart helmchart.Charter, imageRefs []string, to *chartCopyAddress, tempDir string, opts ChartCopyOptions) error {
+	repository, err := registryClient.Generic().Repository(to.Repo)
+	if err != nil {
+		return fmt.Errorf("construct repository: %w", err)
+	}
+
+	chartAccessor, err := helmchart.NewAccessor(loadedChart)
+	if err != nil {
+		return fmt.Errorf("create chart accessor: %w", err)
+	}
+
+	sourceVersion := chartVersion(loadedChart)
+
+	version, extraTag := sourceVersion, source.Tag
+	if to.Tag != "" {
+		version, extraTag = ChartVersionFromTag(ctx, to.Tag, time.Now()), to.Tag
+	}
+
+	tagClaims := map[string]chartCopyTagClaim{}
+	for _, tag := range lo.Compact([]string{strings.ReplaceAll(version, "+", "_"), extraTag}) {
+		if err := claimChartCopyTag(tagClaims, tag, chartCopyTagClaim{Owner: "the chart"}); err != nil {
+			return err
+		}
+	}
+
+	images := make([]chartCopyResolvedImage, 0, len(imageRefs))
+	for _, imageRef := range imageRefs {
+		storage, desc, err := source.ResolveImage(ctx, imageRef)
+		if err != nil {
+			return fmt.Errorf("resolve image %q: %w", imageRef, err)
+		}
+
+		image := chartCopyResolvedImage{Desc: desc, Ref: imageRef, Storage: storage, Tag: parseChartCopyImageRef(imageRef).Tag}
+		if image.Tag != "" {
+			if err := claimChartCopyTag(tagClaims, image.Tag, chartCopyTagClaim{Digest: desc.Digest, Owner: fmt.Sprintf("image %q", imageRef)}); err != nil {
+				return err
+			}
+		}
+
+		images = append(images, image)
+	}
+
+	imageMapping := map[string]string{}
+	for _, image := range images {
+		if err := copyChartCopyImage(ctx, image.Storage, repository, image.Desc); err != nil {
+			return fmt.Errorf("copy image %q: %w", image.Ref, err)
+		}
+
+		newImageRef := to.Repo
+		if image.Tag != "" {
+			if err := repository.Tag(ctx, image.Desc, image.Tag); err != nil {
+				return fmt.Errorf("tag copy of image %q: %w", image.Ref, err)
+			}
+
+			newImageRef += ":" + image.Tag
+		}
+
+		newImageRef += "@" + image.Desc.Digest.String()
+		imageMapping[image.Ref] = newImageRef
+
+		log.Default.Info(ctx, "Copied image %s to %s", image.Ref, newImageRef)
+	}
+
+	edit := chartyaml.EditOptions{}
+	if name := path.Base(to.Repo); name != chartAccessor.Name() {
+		edit.Name = name
+	}
+
+	if version != sourceVersion {
+		edit.Version = version
+	}
+
+	imagesAnnotation := chartAnnotations(loadedChart)[chartyaml.ImagesAnnotation]
+	if imagesAnnotation != "" {
+		newImagesAnnotation, err := chartyaml.RewriteImages(ctx, imagesAnnotation, imageMapping)
+		if err != nil {
+			return fmt.Errorf("rewrite %s annotation: %w", chartyaml.ImagesAnnotation, err)
+		}
+
+		if newImagesAnnotation != imagesAnnotation {
+			edit.SetAnnotations = map[string]string{chartyaml.ImagesAnnotation: newImagesAnnotation}
+		}
+	}
+
+	dependenciesChanged, err := rewriteChartCopyDependencyImages(ctx, chartAccessor, imageMapping)
+	if err != nil {
+		return err
+	}
+
+	snapshotBefore, err := chartCopySnapshot(chartAccessor)
+	if err != nil {
+		return err
+	}
+
+	if opts.RewriteChart != nil {
+		if err := opts.RewriteChart(ctx, loadedChart, to.Repo, imageMapping); err != nil {
+			return fmt.Errorf("rewrite chart: %w", err)
+		}
+	}
+
+	snapshotAfter, err := chartCopySnapshot(chartAccessor)
+	if err != nil {
+		return err
+	}
+
+	chartData, provData := source.ChartData, source.ProvData
+	if edit.Name != "" || edit.Version != "" || len(edit.SetAnnotations) > 0 || dependenciesChanged || !bytes.Equal(snapshotBefore, snapshotAfter) {
+		if chartData, provData, err = saveChartCopy(ctx, loadedChart, chartAccessor, edit, source.ProvData != nil, tempDir, opts); err != nil {
+			return err
+		}
+	}
+
+	if _, err := registryClient.Push(chartData, fmt.Sprintf("%s:%s", to.Repo, version), registry.PushOptProvData(provData), registry.PushOptExtraTags(lo.Compact([]string{extraTag}))); err != nil {
+		return fmt.Errorf("push chart: %w", err)
+	}
+
+	return nil
+}
+
 // readWerfArchive reads the werf 3 bundle archive: chart.tar.gz and a docker-save tarball per image
 // tag in images/<tag>.tar.gz. The images are converted into OCI blobs in a temporary store.
 func readWerfArchive(ctx context.Context, tarPath, tempDir string, expansion *chartCopyExpansion) (*chartCopySource, error) {
@@ -375,6 +495,57 @@ func readWerfArchive(ctx context.Context, tarPath, tempDir string, expansion *ch
 	}
 
 	return source, nil
+}
+
+func writeChartCopyArchive(ctx context.Context, source *chartCopySource, loadedChart helmchart.Charter, imageRefs []string, archivePath, tempDir string) error {
+	layoutDir, err := os.MkdirTemp(tempDir, "oci-layout-")
+	if err != nil {
+		return fmt.Errorf("create temporary directory: %w", err)
+	}
+
+	store, err := oci.New(layoutDir)
+	if err != nil {
+		return fmt.Errorf("create OCI image layout: %w", err)
+	}
+
+	chartAccessor, err := helmchart.NewAccessor(loadedChart)
+	if err != nil {
+		return fmt.Errorf("create chart accessor: %w", err)
+	}
+
+	chartDesc, err := pushChartCopyManifest(ctx, store, chartAccessor, source.ChartData, source.ProvData)
+	if err != nil {
+		return err
+	}
+
+	chartDesc.Annotations = map[string]string{chartCopyArchiveEntryAnnotation: chartCopyArchiveEntryChart}
+	if err := store.Tag(ctx, chartDesc, lo.CoalesceOrEmpty(source.Tag, strings.ReplaceAll(chartVersion(loadedChart), "+", "_"))); err != nil {
+		return fmt.Errorf("tag chart: %w", err)
+	}
+
+	for _, imageRef := range imageRefs {
+		storage, desc, err := source.ResolveImage(ctx, imageRef)
+		if err != nil {
+			return fmt.Errorf("resolve image %q: %w", imageRef, err)
+		}
+
+		if err := copyChartCopyImage(ctx, storage, store, desc); err != nil {
+			return fmt.Errorf("copy image %q: %w", imageRef, err)
+		}
+
+		desc.Annotations = map[string]string{chartCopyArchiveEntryAnnotation: chartCopyArchiveEntryImage}
+		if err := store.Tag(ctx, desc, imageRef); err != nil {
+			return fmt.Errorf("tag image %q: %w", imageRef, err)
+		}
+
+		log.Default.Info(ctx, "Saved image %s", imageRef)
+	}
+
+	if err := keepAnnotatedIndexEntries(layoutDir); err != nil {
+		return err
+	}
+
+	return writeOCILayoutTar(layoutDir, archivePath, strings.HasSuffix(archivePath, ".gz") || strings.HasSuffix(archivePath, ".tgz"))
 }
 
 // convertDockerArchiveImage pushes the image of a docker-save tarball into store as a Docker
@@ -475,171 +646,72 @@ func convertDockerArchiveImage(ctx context.Context, in io.Reader, store *oci.Sto
 	return desc, nil
 }
 
-func writeChartCopyArchive(ctx context.Context, source *chartCopySource, loadedChart helmchart.Charter, imageRefs []string, archivePath, tempDir string) error {
-	layoutDir, err := os.MkdirTemp(tempDir, "oci-layout-")
-	if err != nil {
-		return fmt.Errorf("create temporary directory: %w", err)
-	}
-
-	store, err := oci.New(layoutDir)
-	if err != nil {
-		return fmt.Errorf("create OCI image layout: %w", err)
-	}
-
-	chartAccessor, err := helmchart.NewAccessor(loadedChart)
-	if err != nil {
-		return fmt.Errorf("create chart accessor: %w", err)
-	}
-
-	chartDesc, err := pushChartCopyManifest(ctx, store, chartAccessor, source.ChartData, source.ProvData)
-	if err != nil {
+// copyChartCopyImage copies the image graph rooted at root by digest. Non-distributable layers,
+// which oras skips, are copied too, and a blob the source does not serve is an error.
+func copyChartCopyImage(ctx context.Context, src content.ReadOnlyStorage, dst content.Storage, root ocispec.Descriptor) error {
+	if err := copyChartCopyForeignLayers(ctx, src, dst, root, map[digest.Digest]bool{}); err != nil {
 		return err
 	}
 
-	chartDesc.Annotations = map[string]string{chartCopyArchiveEntryAnnotation: chartCopyArchiveEntryChart}
-	if err := store.Tag(ctx, chartDesc, lo.CoalesceOrEmpty(source.Tag, strings.ReplaceAll(chartVersion(loadedChart), "+", "_"))); err != nil {
-		return fmt.Errorf("tag chart: %w", err)
-	}
-
-	for _, imageRef := range imageRefs {
-		storage, desc, err := source.ResolveImage(ctx, imageRef)
-		if err != nil {
-			return fmt.Errorf("resolve image %q: %w", imageRef, err)
+	if err := oras.CopyGraph(ctx, src, dst, root, oras.DefaultCopyGraphOptions); err != nil {
+		if errors.Is(err, errdef.ErrNotFound) {
+			return fmt.Errorf("the source does not serve a blob of the image: %w", err)
 		}
 
-		if err := oras.CopyGraph(ctx, storage, store, desc, oras.DefaultCopyGraphOptions); err != nil {
-			return fmt.Errorf("copy image %q: %w", imageRef, err)
-		}
-
-		desc.Annotations = map[string]string{chartCopyArchiveEntryAnnotation: chartCopyArchiveEntryImage}
-		if err := store.Tag(ctx, desc, imageRef); err != nil {
-			return fmt.Errorf("tag image %q: %w", imageRef, err)
-		}
-
-		log.Default.Info(ctx, "Saved image %s", imageRef)
+		return fmt.Errorf("copy image graph: %w", err)
 	}
 
-	if err := keepAnnotatedIndexEntries(layoutDir); err != nil {
-		return err
-	}
-
-	return writeOCILayoutTar(layoutDir, archivePath, strings.HasSuffix(archivePath, ".gz") || strings.HasSuffix(archivePath, ".tgz"))
+	return nil
 }
 
-func copyChartToRepo(ctx context.Context, registryClient *registry.Client, source *chartCopySource, loadedChart helmchart.Charter, imageRefs []string, to *chartCopyAddress, tempDir string, opts ChartCopyOptions) error {
-	repository, err := registryClient.Generic().Repository(to.Repo)
-	if err != nil {
-		return fmt.Errorf("construct repository: %w", err)
+func copyChartCopyForeignLayers(ctx context.Context, src content.ReadOnlyStorage, dst content.Storage, desc ocispec.Descriptor, visited map[digest.Digest]bool) error {
+	if visited[desc.Digest] {
+		return nil
 	}
 
-	chartAccessor, err := helmchart.NewAccessor(loadedChart)
-	if err != nil {
-		return fmt.Errorf("create chart accessor: %w", err)
-	}
+	visited[desc.Digest] = true
 
-	sourceVersion := chartVersion(loadedChart)
-
-	version, extraTag := sourceVersion, source.Tag
-	if to.Tag != "" {
-		version, extraTag = ChartVersionFromTag(ctx, to.Tag, time.Now()), to.Tag
-	}
-
-	tagClaims := map[string]chartCopyTagClaim{}
-	for _, tag := range lo.Compact([]string{strings.ReplaceAll(version, "+", "_"), extraTag}) {
-		if err := claimChartCopyTag(tagClaims, tag, chartCopyTagClaim{Owner: "the chart"}); err != nil {
-			return err
-		}
-	}
-
-	images := make([]chartCopyResolvedImage, 0, len(imageRefs))
-	for _, imageRef := range imageRefs {
-		storage, desc, err := source.ResolveImage(ctx, imageRef)
+	if isChartCopyForeignLayer(desc) {
+		exists, err := dst.Exists(ctx, desc)
 		if err != nil {
-			return fmt.Errorf("resolve image %q: %w", imageRef, err)
+			return fmt.Errorf("check non-distributable layer %s in the destination: %w", desc.Digest, err)
 		}
 
-		image := chartCopyResolvedImage{Desc: desc, Ref: imageRef, Storage: storage, Tag: parseChartCopyImageRef(imageRef).Tag}
-		if image.Tag != "" {
-			if err := claimChartCopyTag(tagClaims, image.Tag, chartCopyTagClaim{Digest: desc.Digest, Owner: fmt.Sprintf("image %q", imageRef)}); err != nil {
-				return err
-			}
+		if exists {
+			return nil
 		}
 
-		images = append(images, image)
-	}
-
-	imageMapping := map[string]string{}
-	for _, image := range images {
-		if err := oras.CopyGraph(ctx, image.Storage, repository, image.Desc, oras.DefaultCopyGraphOptions); err != nil {
-			return fmt.Errorf("copy image %q: %w", image.Ref, err)
-		}
-
-		newImageRef := to.Repo
-		if image.Tag != "" {
-			if err := repository.Tag(ctx, image.Desc, image.Tag); err != nil {
-				return fmt.Errorf("tag copy of image %q: %w", image.Ref, err)
+		reader, err := src.Fetch(ctx, desc)
+		if err != nil {
+			if errors.Is(err, errdef.ErrNotFound) {
+				return fmt.Errorf("the source does not serve blob %s, a non-distributable layer of the image: %w", desc.Digest, err)
 			}
 
-			newImageRef += ":" + image.Tag
+			return fmt.Errorf("fetch non-distributable layer %s: %w", desc.Digest, err)
+		}
+		defer reader.Close()
+
+		verifyReader := content.NewVerifyReader(reader, desc)
+		if err := dst.Push(ctx, desc, verifyReader); err != nil {
+			return fmt.Errorf("push non-distributable layer %s: %w", desc.Digest, err)
 		}
 
-		newImageRef += "@" + image.Desc.Digest.String()
-		imageMapping[image.Ref] = newImageRef
-
-		log.Default.Info(ctx, "Copied image %s to %s", image.Ref, newImageRef)
-	}
-
-	edit := chartyaml.EditOptions{}
-	if name := path.Base(to.Repo); name != chartAccessor.Name() {
-		edit.Name = name
-	}
-
-	if version != sourceVersion {
-		edit.Version = version
-	}
-
-	imagesAnnotation := chartAnnotations(loadedChart)[chartyaml.ImagesAnnotation]
-	if imagesAnnotation != "" {
-		newImagesAnnotation, err := chartyaml.RewriteImages(ctx, imagesAnnotation, imageMapping)
-		if err != nil {
-			return fmt.Errorf("rewrite %s annotation: %w", chartyaml.ImagesAnnotation, err)
+		if err := verifyReader.Verify(); err != nil {
+			return fmt.Errorf("verify non-distributable layer %s: %w", desc.Digest, err)
 		}
 
-		if newImagesAnnotation != imagesAnnotation {
-			edit.SetAnnotations = map[string]string{chartyaml.ImagesAnnotation: newImagesAnnotation}
-		}
+		return nil
 	}
 
-	dependenciesChanged, err := rewriteChartCopyDependencyImages(ctx, chartAccessor, imageMapping)
+	successors, err := content.Successors(ctx, src, desc)
 	if err != nil {
-		return err
+		return fmt.Errorf("read successors of %s: %w", desc.Digest, err)
 	}
 
-	snapshotBefore, err := chartCopySnapshot(chartAccessor)
-	if err != nil {
-		return err
-	}
-
-	if opts.RewriteChart != nil {
-		if err := opts.RewriteChart(ctx, loadedChart, to.Repo, imageMapping); err != nil {
-			return fmt.Errorf("rewrite chart: %w", err)
-		}
-	}
-
-	snapshotAfter, err := chartCopySnapshot(chartAccessor)
-	if err != nil {
-		return err
-	}
-
-	chartData, provData := source.ChartData, source.ProvData
-	if edit.Name != "" || edit.Version != "" || len(edit.SetAnnotations) > 0 || dependenciesChanged || !bytes.Equal(snapshotBefore, snapshotAfter) {
-		if chartData, provData, err = saveChartCopy(ctx, loadedChart, chartAccessor, edit, source.ProvData != nil, tempDir, opts); err != nil {
+	for _, successor := range successors {
+		if err := copyChartCopyForeignLayers(ctx, src, dst, successor, visited); err != nil {
 			return err
 		}
-	}
-
-	if _, err := registryClient.Push(chartData, fmt.Sprintf("%s:%s", to.Repo, version), registry.PushOptProvData(provData), registry.PushOptExtraTags(lo.Compact([]string{extraTag}))); err != nil {
-		return fmt.Errorf("push chart: %w", err)
 	}
 
 	return nil
@@ -1009,6 +1081,18 @@ func imageRepositoryAddress(repo string) string {
 	}
 
 	return host + "/" + repoPath
+}
+
+func isChartCopyForeignLayer(desc ocispec.Descriptor) bool {
+	switch desc.MediaType {
+	case "application/vnd.oci.image.layer.nondistributable.v1.tar",
+		"application/vnd.oci.image.layer.nondistributable.v1.tar+gzip",
+		"application/vnd.oci.image.layer.nondistributable.v1.tar+zstd",
+		"application/vnd.docker.image.rootfs.foreign.diff.tar.gzip":
+		return true
+	default:
+		return false
+	}
 }
 
 func isGzipFile(filePath string) (bool, error) {

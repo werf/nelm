@@ -18,10 +18,12 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/opencontainers/go-digest"
+	specs "github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content"
 
 	"github.com/werf/nelm/v2/pkg/chartyaml"
@@ -232,6 +234,82 @@ func TestChartCopy_DependencyImages(t *testing.T) {
 	assert.NotContains(t, files["app/charts/dep/Chart.yaml"], depImage.Ref)
 	assert.Contains(t, files["app/charts/dep/charts/nested/Chart.yaml"], "image: "+newNestedRef+"\n")
 	assert.Contains(t, files["app/charts/dep/charts/nested/Chart.yaml"], "image: "+newDepRef+"\n")
+}
+
+func TestChartCopy_NonDistributableLayers(t *testing.T) {
+	const nonDistributableMediaType = "application/vnd.oci.image.layer.nondistributable.v1.tar+gzip"
+
+	host := newChartCopyTestRegistry(t)
+	client := newChartCopyTestRegistryClient(t)
+
+	tests := []struct {
+		name        string
+		served      bool
+		expectedErr string
+	}{
+		{
+			name:   "served by the source",
+			served: true,
+		},
+		{
+			name:        "not served by the source",
+			expectedErr: "the source does not serve blob",
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			srcImages := fmt.Sprintf("%s/src%d/images", host, i)
+			repository := newChartCopyTestRepository(t, srcImages)
+
+			configDesc, err := oras.PushBytes(ctx, repository, ocispec.MediaTypeImageConfig, []byte(`{"architecture":"amd64","os":"windows"}`))
+			require.NoError(t, err)
+
+			layerData := gzipChartCopyTestData(t, []byte(fmt.Sprintf("foreign layer %d", i)))
+			layerDesc := content.NewDescriptorFromBytes(nonDistributableMediaType, layerData)
+			layerDesc.URLs = []string{"https://example.com/layer"}
+
+			if tt.served {
+				require.NoError(t, repository.Push(ctx, layerDesc, bytes.NewReader(layerData)))
+			}
+
+			manifestData, err := json.Marshal(ocispec.Manifest{
+				Versioned: specs.Versioned{SchemaVersion: 2},
+				MediaType: ocispec.MediaTypeImageManifest,
+				Config:    configDesc,
+				Layers:    []ocispec.Descriptor{layerDesc},
+			})
+			require.NoError(t, err)
+
+			manifestDesc, err := oras.TagBytes(ctx, repository, ocispec.MediaTypeImageManifest, manifestData, "windows")
+			require.NoError(t, err)
+
+			imageRef := fmt.Sprintf("%s:windows@%s", srcImages, manifestDesc.Digest)
+			chartData := buildChartCopyTestChart(t, map[string]string{
+				"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\nannotations:\n  helm.sh/images: |\n    - name: windows\n      image: " + imageRef + "\n",
+			})
+			src := fmt.Sprintf("%s/src%d/app", host, i)
+			_, err = client.Push(chartData, src+":1.0.0")
+			require.NoError(t, err)
+
+			dst := fmt.Sprintf("%s/dst%d/app", host, i)
+
+			err = ChartCopy(newChartPackTestContext(), "oci://"+src+":1.0.0", "oci://"+dst, newChartCopyTestOptions(t))
+			if tt.expectedErr != "" {
+				require.ErrorContains(t, err, tt.expectedErr)
+				assert.ErrorContains(t, err, layerDesc.Digest.String())
+
+				return
+			}
+
+			require.NoError(t, err)
+
+			exists, err := newChartCopyTestRepository(t, dst).Exists(ctx, layerDesc)
+			require.NoError(t, err)
+			assert.True(t, exists)
+		})
+	}
 }
 
 func TestChartCopy_Provenance(t *testing.T) {

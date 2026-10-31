@@ -683,6 +683,7 @@ func newChartCopyTestRegistry(t *testing.T) string {
 	config.Storage = configuration.Storage{"inmemory": configuration.Parameters{}}
 	config.Log.Level = "fatal"
 	config.Log.AccessLog.Disabled = true
+	config.Validation.Manifests.URLs.Allow = []string{`^https://example\.com/`}
 
 	t.Setenv("OTEL_TRACES_EXPORTER", "none")
 
