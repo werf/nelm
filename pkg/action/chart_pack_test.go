@@ -22,6 +22,7 @@ import (
 	"github.com/werf/logboek"
 	"github.com/werf/nelm/v2/pkg/chartyaml"
 	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/featgate"
 	"github.com/werf/nelm/v2/pkg/helm/intern/resolver"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
@@ -682,5 +683,31 @@ func writeChartPackTestFiles(t *testing.T, dir string, files map[string]string) 
 		filePath := filepath.Join(dir, name)
 		require.NoError(t, os.MkdirAll(filepath.Dir(filePath), 0o755))
 		require.NoError(t, os.WriteFile(filePath, []byte(data), 0o644))
+	}
+}
+
+func TestChartPack_TypeScriptBundle(t *testing.T) {
+	t.Setenv(featgate.FeatGateTypescript.EnvVarName(), "true")
+
+	for _, apiVersion := range []string{"v2", "v3"} {
+		t.Run(apiVersion, func(t *testing.T) {
+			chartDir := filepath.Join(t.TempDir(), "mychart")
+			writeChartPackTestFiles(t, chartDir, map[string]string{
+				"Chart.yaml":                  "apiVersion: " + apiVersion + "\nname: mychart\nversion: 1.0.0\n",
+				"ts/src/index.ts":             "export {};\n",
+				common.ChartTSBundleFile:      "bundle\n",
+			})
+
+			result, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+				DenoBinaryPath: filepath.Join(t.TempDir(), "deno"),
+				Destination:    t.TempDir(),
+				TSNoRebuild:    true,
+			})
+			require.NoError(t, err)
+
+			files := readChartPackTestArchiveFiles(t, result.ArchivePath)
+			assert.Equal(t, "bundle\n", files["mychart/"+common.ChartTSBundleFile])
+			assert.Equal(t, "export {};\n", files["mychart/ts/src/index.ts"])
+		})
 	}
 }
