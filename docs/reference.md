@@ -387,7 +387,7 @@ nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-
 
 - `--chart-repo-request-timeout` (default: `0s`)
 
-  Set timeout for all requests to chart repository\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_RELEASE\_INSTALL\_CHART\_REPO\_REQUEST\_TIMEOUT
+  Set timeout for all requests to chart repository\. A request includes its whole body, so the timeout also bounds a whole blob download or upload\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_RELEASE\_INSTALL\_CHART\_REPO\_REQUEST\_TIMEOUT
 
 - `--chart-repo-url` (default: `""`)
 
@@ -1089,7 +1089,7 @@ nelm release plan install [options...] -n namespace -r release [chart-dir|chart-
 
 - `--chart-repo-request-timeout` (default: `0s`)
 
-  Set timeout for all requests to chart repository\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_RELEASE\_PLAN\_INSTALL\_CHART\_REPO\_REQUEST\_TIMEOUT
+  Set timeout for all requests to chart repository\. A request includes its whole body, so the timeout also bounds a whole blob download or upload\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_RELEASE\_PLAN\_INSTALL\_CHART\_REPO\_REQUEST\_TIMEOUT
 
 - `--chart-repo-url` (default: `""`)
 
@@ -2282,7 +2282,7 @@ nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive
 
 - `--chart-repo-request-timeout` (default: `0s`)
 
-  Set timeout for all requests to chart repository\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_LINT\_CHART\_REPO\_REQUEST\_TIMEOUT
+  Set timeout for all requests to chart repository\. A request includes its whole body, so the timeout also bounds a whole blob download or upload\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_LINT\_CHART\_REPO\_REQUEST\_TIMEOUT
 
 - `--chart-repo-url` (default: `""`)
 
@@ -2646,7 +2646,7 @@ nelm chart render [options...] [chart-dir|chart-repo-name/chart-name|chart-archi
 
 - `--chart-repo-request-timeout` (default: `0s`)
 
-  Set timeout for all requests to chart repository\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_RENDER\_CHART\_REPO\_REQUEST\_TIMEOUT
+  Set timeout for all requests to chart repository\. A request includes its whole body, so the timeout also bounds a whole blob download or upload\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_RENDER\_CHART\_REPO\_REQUEST\_TIMEOUT
 
 - `--chart-repo-url` (default: `""`)
 
@@ -3116,7 +3116,7 @@ nelm chart upload [archive] [remote] [flags]
 
 ### chart copy
 
-Copy a chart with every image listed in its helm\.sh/images annotation\. FROM and TO are either an OCI repository, oci://REPO\[:TAG\], or an archive, archive:PATH or a path ending in \.tar, \.tar\.gz or \.tgz\. A source repository without a tag means the "latest" tag\. An archive is written as an OCI image layout; werf bundle archives are also read\. Copied to a repository, the chart is renamed to the repository basename and its images are copied into the repository by digest, keeping their tags\. With TAG the chart version is TAG if it is a semver version \(without the "v" prefix\), or 0\.0\.0\-\<unix time\>\-\<TAG slug\> otherwise, and the chart is pushed under the version and TAG; without TAG the chart keeps its version and is pushed under it and the source tag\.
+Copy a chart with every image listed in its helm\.sh/images annotation\. FROM and TO are either an OCI repository, oci://REPO\[:TAG\], or an archive, archive:PATH or a path ending in \.tar, \.tar\.gz or \.tgz\. A source repository without a tag means the "latest" tag\. An archive is written as an OCI image layout; werf bundle archives are also read\. Copied to a repository, the chart is renamed to the repository basename and its images are copied into the repository by digest, keeping their tags\. With TAG the chart version is TAG if it is a semver version \(without the "v" prefix\), or 0\.0\.0\-\<unix time\>\-\<TAG slug\> otherwise, and the chart is pushed under the version and TAG; without TAG the chart keeps its version and is pushed under it and the source tag, if any \(a werf bundle archive has none\)\. Images of chart dependencies are copied too, non\-distributable layers included; referrers of the images, like signatures and SBOMs, are not copied\.
 
 **Usage:**
 
@@ -3125,6 +3125,10 @@ nelm chart copy FROM TO
 ```
 
 **Options:**
+
+- `--archive-max-expanded-size` (default: `"64Gi"`)
+
+  Maximum size the source archive may decompress to, nested image tarballs included, e\.g\. 64Gi\. Vars: \$NELM\_ARCHIVE\_MAX\_EXPANDED\_SIZE, \$NELM\_CHART\_COPY\_ARCHIVE\_MAX\_EXPANDED\_SIZE
 
 - `--sign` (default: `false`)
 
@@ -3171,7 +3175,7 @@ nelm chart copy FROM TO
 
 - `--chart-repo-request-timeout` (default: `0s`)
 
-  Set timeout for all requests to chart repository\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_COPY\_CHART\_REPO\_REQUEST\_TIMEOUT
+  Set timeout for all requests to chart repository\. A request includes its whole body, so the timeout also bounds a whole blob download or upload\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_COPY\_CHART\_REPO\_REQUEST\_TIMEOUT
 
 - `--chart-repo-url` (default: `""`)
 
@@ -3206,7 +3210,7 @@ nelm chart copy FROM TO
 
 - `--temp-dir` (default: `""`)
 
-  The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
+  The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Reading an archive needs space for about the decompressed archive and twice its images\. Var: \$NELM\_TEMP\_DIR
 
 
 ### chart pack
