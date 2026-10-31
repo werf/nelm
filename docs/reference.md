@@ -3134,11 +3134,90 @@ unless your environment is otherwise configured\.
 nelm chart pack [CHART_PATH] [...] [flags]
 ```
 
+**Options:**
+
+- `--name` (default: `""`)
+
+  Set the chart name\. Vars: \$NELM\_NAME, \$NELM\_CHART\_PACK\_NAME
+
+
+**Values options:**
+
+- `--no-default-values` (default: `false`)
+
+  Ignore values\.yaml of the top\-level chart\. Vars: \$NELM\_NO\_DEFAULT\_VALUES, \$NELM\_CHART\_PACK\_NO\_DEFAULT\_VALUES
+
+- `--reset-values` (default: `false`)
+
+  Drop the values, secret values, annotations, labels and images stored in \.werf\-data of the chart by previous packs before storing the ones of this pack\. Vars: \$NELM\_RESET\_VALUES, \$NELM\_CHART\_PACK\_RESET\_VALUES
+
+- `--set` (default: `[]`)
+
+  Set new values, where the key is the value path and the value is the value\. Vars: \$NELM\_SET, \$NELM\_CHART\_PACK\_SET
+
+- `--set-file` (default: `[]`)
+
+  Set new values, where the key is the value path and the value is the path to the file with the value content\. Vars: \$NELM\_SET\_FILE, \$NELM\_CHART\_PACK\_SET\_FILE
+
+- `--set-json` (default: `[]`)
+
+  Set new values, where the key is the value path and the value is JSON\. Vars: \$NELM\_SET\_JSON, \$NELM\_CHART\_PACK\_SET\_JSON
+
+- `--set-literal` (default: `[]`)
+
+  Set new values, where the key is the value path and the value is the value\. The value will always become a literal string\. Vars: \$NELM\_SET\_LITERAL, \$NELM\_CHART\_PACK\_SET\_LITERAL
+
+- `--set-root-json` (default: `[]`)
+
+  Set new keys in the global context \(\$\), where the key is the value path and the value is JSON\. This is meant to be generated inside the program, so use \-\-set\-json instead, unless you know what you are doing\. Vars: \$NELM\_SET\_ROOT\_JSON, \$NELM\_CHART\_PACK\_SET\_ROOT\_JSON
+
+- `--set-string` (default: `[]`)
+
+  Set new values, where the key is the value path and the value is the value\. The value will always become a string\. Vars: \$NELM\_SET\_STRING, \$NELM\_CHART\_PACK\_SET\_STRING
+
+- `--values` (default: `[]`)
+
+  Additional values files\. Vars: \$NELM\_VALUES, \$NELM\_CHART\_PACK\_VALUES
+
+
+**Secret options:**
+
+- `--no-default-secret-values` (default: `false`)
+
+  Ignore secret\-values\.yaml of the top\-level chart\. Vars: \$NELM\_NO\_DEFAULT\_SECRET\_VALUES, \$NELM\_CHART\_PACK\_NO\_DEFAULT\_SECRET\_VALUES
+
+- `--secret-values` (default: `[]`)
+
+  Secret values files paths\. Every value must be encrypted\. Vars: \$NELM\_SECRET\_VALUES, \$NELM\_CHART\_PACK\_SECRET\_VALUES
+
+
+**Patch options:**
+
+- `--no-default-patches` (default: `false`)
+
+  Ignore patches\.yaml of the top\-level chart and subcharts\. Vars: \$NELM\_NO\_DEFAULT\_PATCHES, \$NELM\_CHART\_PACK\_NO\_DEFAULT\_PATCHES
+
+- `--patches` (default: `[]`)
+
+  Additional patches files \(render patches for rendered resources, diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_CHART\_PACK\_PATCHES
+
+
 **TypeScript options:**
 
 - `--deno-binary-path` (default: `""`)
 
   Path to the Deno binary to use instead of auto\-downloading\. Vars: \$NELM\_DENO\_BINARY\_PATH, \$NELM\_CHART\_PACK\_DENO\_BINARY\_PATH
+
+- `--ts-no-rebuild` (default: `false`)
+
+  Reuse the existing TypeScript bundle instead of rebuilding it\. Vars: \$NELM\_TS\_NO\_REBUILD, \$NELM\_CHART\_PACK\_TS\_NO\_REBUILD
+
+
+**Chart repository options:**
+
+- `--no-update-chart-repos` (default: `false`)
+
+  Don't update chart repositories index\. Vars: \$NELM\_NO\_UPDATE\_CHART\_REPOS, \$NELM\_CHART\_PACK\_NO\_UPDATE\_CHART\_REPOS
 
 
 **Other options:**
