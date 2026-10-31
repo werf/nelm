@@ -1,0 +1,13 @@
+apiVersion: v2
+extraAnnotations:
+  chart-annotation: chart
+  shared-annotation: chart
+extraLabels:
+  chart-label: chart
+  shared-label: chart
+extraRuntimeAnnotations:
+  chart-runtime-annotation: chart
+  shared-runtime-annotation: chart
+releaseInfoAnnotations:
+  chart-info: chart
+  shared-info: chart

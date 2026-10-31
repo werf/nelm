@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: progress-resource
+  namespace: progress-ns
+  annotations:
+    meta.helm.sh/release-name: progress-release
+    meta.helm.sh/release-namespace: progress-ns
+  labels:
+    app.kubernetes.io/managed-by: Helm
+data:
+  key: value

@@ -21,6 +21,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/release"
 	"github.com/werf/nelm/v2/pkg/resource"
 	"github.com/werf/nelm/v2/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/werfdata"
 )
 
 const DefaultChartLintLogLevel = log.InfoLevel
@@ -300,6 +301,15 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 	if err != nil {
 		return fmt.Errorf("render chart: %w", err)
 	}
+
+	werfData, err := chartWerfData(renderChartResult.Chart)
+	if err != nil {
+		return fmt.Errorf("merge chart %s options: %w", werfdata.DirName, err)
+	}
+
+	opts.ExtraAnnotations = mergeChartMetadataMap(werfData.Metadata.ExtraAnnotations, opts.ExtraAnnotations)
+	opts.ExtraLabels = mergeChartMetadataMap(werfData.Metadata.ExtraLabels, opts.ExtraLabels)
+	opts.ExtraRuntimeAnnotations = mergeChartMetadataMap(werfData.Metadata.ExtraRuntimeAnnotations, opts.ExtraRuntimeAnnotations)
 
 	log.Default.Debug(ctx, "Resolve patches")
 

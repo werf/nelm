@@ -26,6 +26,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/resource"
 	"github.com/werf/nelm/v2/pkg/resource/spec"
 	"github.com/werf/nelm/v2/pkg/util"
+	"github.com/werf/nelm/v2/pkg/werfdata"
 )
 
 const DefaultReleasePlanInstallLogLevel = log.InfoLevel
@@ -288,6 +289,11 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	})
 	if err != nil {
 		return nil, fmt.Errorf("render chart: %w", err)
+	}
+
+	opts.ReleaseInstallRuntimeOptions, err = mergeWerfDataRuntimeOptions(renderChartResult.Chart, opts.ReleaseInstallRuntimeOptions)
+	if err != nil {
+		return nil, fmt.Errorf("merge chart %s options: %w", werfdata.DirName, err)
 	}
 
 	log.Default.Debug(ctx, "Resolve patches")
