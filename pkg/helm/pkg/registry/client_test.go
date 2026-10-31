@@ -20,6 +20,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -165,4 +166,29 @@ func TestWarnIfHostHasPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateReferenceTagCheckError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2/":
+			w.WriteHeader(http.StatusOK)
+		case "/v2/charts/test/tags/list":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"name":"charts/test","tags":["1.0.0"]}`)
+		default:
+			w.WriteHeader(http.StatusForbidden)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewClient(ClientOptPlainHTTP(), ClientOptWriter(io.Discard))
+	require.NoError(t, err)
+
+	ref := "oci://" + strings.TrimPrefix(server.URL, "http://") + "/charts/test:1.x"
+	u, err := url.Parse(ref)
+	require.NoError(t, err)
+
+	_, _, err = client.ValidateReference(ref, "", u)
+	require.ErrorContains(t, err, `check tag "1.x"`)
 }

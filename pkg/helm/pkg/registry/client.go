@@ -37,6 +37,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content/memory"
+	"oras.land/oras-go/v2/errdef"
 	"oras.land/oras-go/v2/registry"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
@@ -928,7 +929,9 @@ func (c *Client) ValidateReference(ref, version string, u *url.URL) (string, *ur
 	_, errSemVer := semver.NewVersion(version)
 	if errSemVer == nil {
 		tag = version
-	} else if version != "" && c.tagExists(registryReference, version) {
+	} else if exists, err := c.tagExists(registryReference, version); err != nil {
+		return "", nil, fmt.Errorf("check tag %q: %w", version, err)
+	} else if exists {
 		tag = version
 	} else {
 		// Retrieve list of repository tags
@@ -956,9 +959,22 @@ func (c *Client) ValidateReference(ref, version string, u *url.URL) (string, *ur
 	return "", u, err
 }
 
-func (c *Client) tagExists(registryReference reference, tag string) bool {
-	_, err := c.Resolve(registryReference.Registry + "/" + registryReference.Repository + ":" + tag)
-	return err == nil
+func (c *Client) tagExists(registryReference reference, tag string) (bool, error) {
+	tagReference := registryReference.orasReference
+	tagReference.Reference = tag
+	if tagReference.ValidateReferenceAsTag() != nil {
+		return false, nil
+	}
+
+	if _, err := c.Resolve(tagReference.String()); err != nil {
+		if errors.Is(err, errdef.ErrNotFound) {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	return true, nil
 }
 
 // tagManifest prepares and tags a manifest in memory storage
