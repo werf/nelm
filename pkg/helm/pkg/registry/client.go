@@ -181,10 +181,18 @@ func ClientOptBasicAuth(username, password string) ClientOption {
 }
 
 // ClientOptBasicAuthHosts limits the username and password to the given registry hosts (host or
-// host:port). Other hosts get the credentials from the credentials store.
+// host:port). Other hosts get the credentials from the credentials store. Docker Hub names are
+// matched to the host the requests go to.
 func ClientOptBasicAuthHosts(hosts ...string) ClientOption {
 	return func(client *Client) {
-		client.basicAuthHosts = append([]string{}, hosts...)
+		client.basicAuthHosts = make([]string, 0, len(hosts))
+		for _, host := range hosts {
+			if host == "index.docker.io" {
+				host = "docker.io"
+			}
+
+			client.basicAuthHosts = append(client.basicAuthHosts, registry.Reference{Registry: host}.Host())
+		}
 	}
 }
 
