@@ -363,20 +363,33 @@ config:
 
 To re-encrypt secrets with a new key, decrypt each encrypted file with the old key and encrypt it with the new one. Cover every encrypted file: `secret-values.yaml` and `secret/*` of the chart and of its local subcharts, encrypted values files passed with `--secret-values`, and `.werf-data/secret-values.yaml` of a published chart.
 
+Run it as a script with the old key in `$NELM_SECRET_KEY`. It stops at the first error and changes files only after every file has been re-encrypted:
+
 ```bash
-export OLD_KEY="$NELM_SECRET_KEY"
-export NEW_KEY="$(nelm chart secret key create)"
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
 
-# Encrypted values files:
-nelm chart secret values-file decrypt --secret-key "$OLD_KEY" --save-output-to /tmp/decrypted secret-values.yaml
-nelm chart secret values-file encrypt --secret-key "$NEW_KEY" --save-output-to secret-values.yaml /tmp/decrypted
+values_files=(secret-values.yaml)  # every encrypted values file
+files=(secret/config.yaml)         # every file in secret/
 
-# Encrypted arbitrary files:
-nelm chart secret file decrypt --secret-key "$OLD_KEY" --save-output-to /tmp/decrypted secret/config.yaml
-nelm chart secret file encrypt --secret-key "$NEW_KEY" --save-output-to secret/config.yaml /tmp/decrypted
+new_key="$(nelm chart secret key create)"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
 
-rm /tmp/decrypted
-export NELM_SECRET_KEY="$NEW_KEY"
+rotate() {
+  nelm chart secret "$1" decrypt --secret-key "$NELM_SECRET_KEY" --save-output-to "$tmp/$3" "$2"
+  nelm chart secret "$1" encrypt --secret-key "$new_key" --save-output-to "$tmp/$3.enc" "$tmp/$3"
+}
+
+n=0
+for f in "${values_files[@]}"; do n=$((n + 1)); rotate values-file "$f" "$n"; done
+for f in "${files[@]}"; do n=$((n + 1)); rotate file "$f" "$n"; done
+
+n=0
+for f in "${values_files[@]}" "${files[@]}"; do n=$((n + 1)); cp "$tmp/$n.enc" "$f"; done
+
+echo "All files re-encrypted. Use the new secret key from now on: $new_key"
 ```
 
 ### Render patches
