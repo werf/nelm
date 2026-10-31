@@ -89,8 +89,11 @@ type RenderChartResult struct {
 type userValues struct {
 	// ChartSecretValues are the decrypted values from the secret-values.yaml of the chart.
 	ChartSecretValues map[string]interface{}
-	Deploy            valuesGroup
-	Published         valuesGroup
+	// DependencyLayers are the publish-time values layers of the werf-published dependencies, below
+	// the other layers.
+	DependencyLayers []valuesLayer
+	Deploy           valuesGroup
+	Published        valuesGroup
 }
 
 // valuesGroup is one set of value flags. The precedence, from lowest to highest: --values <
@@ -114,7 +117,10 @@ type valuesGroup struct {
 type valuesLayer struct {
 	// ChartValues are the values before export-values and import-values of a layer that is also
 	// coalesced with the chart values (see mergeValuesLayers).
-	ChartValues         map[string]interface{}
+	ChartValues map[string]interface{}
+	// DependencyPath is the path in the root chart values of the werf-published dependency whose
+	// publish-time values the layer has, if any.
+	DependencyPath      []string
 	IsChartSecretValues bool
 	IsService           bool
 	// ReplacedPaths are the paths at which the layer replaces the maps of the lower layers instead
@@ -184,7 +190,8 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 		return nil, fmt.Errorf("load chart at %q: %w", chartPath, err)
 	}
 
-	if err := foldWerfDataDependencies(ctx, loadedChart, false); err != nil {
+	dependencyLayers, err := foldWerfDataDependencies(ctx, loadedChart, false)
+	if err != nil {
 		return nil, fmt.Errorf("fold %s of chart at %q dependencies: %w", werfdata.DirName, chartPath, err)
 	}
 
@@ -219,6 +226,8 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 	if err != nil {
 		return nil, fmt.Errorf("merge override values for chart at %q: %w", chartPath, err)
 	}
+
+	userVals.DependencyLayers = dependencyLayers
 
 	if publishedData != nil {
 		mergePublishedValuesIntoChart(loadedChart, userVals)
@@ -497,7 +506,8 @@ func loadServiceFreeChart(ctx context.Context, chartPath string, userVals userVa
 		return nil, nil, fmt.Errorf("reloaded chart at %q has unexpected type %T", chartPath, freshChart)
 	}
 
-	if err := foldWerfDataDependencies(ctx, freshChart, true); err != nil {
+	userVals.DependencyLayers, err = foldWerfDataDependencies(ctx, freshChart, true)
+	if err != nil {
 		return nil, nil, fmt.Errorf("fold %s of reloaded chart at %q dependencies: %w", werfdata.DirName, chartPath, err)
 	}
 
@@ -605,6 +615,10 @@ func processDependencies(chrt helmchart.Charter, userVals userValues) (map[strin
 			return nil, nil, nil, fmt.Errorf("process dependencies with merged values: %w", err)
 		}
 
+		layers = lo.Filter(layers, func(layer valuesLayer, _ int) bool {
+			return layer.DependencyPath == nil || hasDependencyAtPath(c, layer.DependencyPath)
+		})
+
 		exportedLayers, skipped, err := exportValuesLayers(c, layers)
 		if err != nil {
 			return nil, nil, nil, err
@@ -637,8 +651,9 @@ func processDependencies(chrt helmchart.Charter, userVals userValues) (map[strin
 		return vals, releaseConfig, lo.Uniq(skipped), nil
 	case *v3chart.Chart:
 		layers := userValuesLayers(userVals)
+		chartVals := coalescedChartValues(c)
 
-		vals, err := mergeValuesLayers(layers, coalescedChartValues(c))
+		vals, err := mergeValuesLayers(layers, chartVals)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("merge values layers: %w", err)
 		}
@@ -650,6 +665,16 @@ func processDependencies(chrt helmchart.Charter, userVals userValues) (map[strin
 
 		if err := chartv3util.ProcessDependenciesWithMergedValues(c, vals); err != nil {
 			return nil, nil, nil, fmt.Errorf("process dependencies with merged values: %w", err)
+		}
+
+		enabledLayers := lo.Filter(layers, func(layer valuesLayer, _ int) bool {
+			return layer.DependencyPath == nil || hasDependencyAtPath(c, layer.DependencyPath)
+		})
+
+		if len(enabledLayers) < len(layers) {
+			if vals, err = mergeValuesLayers(enabledLayers, chartVals); err != nil {
+				return nil, nil, nil, fmt.Errorf("merge values layers of enabled dependencies: %w", err)
+			}
 		}
 
 		return vals, releaseConfig, nil, nil
@@ -867,9 +892,8 @@ func sameDependencyGraph(a, b helmchart.Charter) bool {
 }
 
 func userValuesLayers(v userValues) []valuesLayer {
-	layers := []valuesLayer{
-		{ChartValues: v.ChartSecretValues, IsChartSecretValues: true, Values: v.ChartSecretValues},
-	}
+	layers := slices.Clone(v.DependencyLayers)
+	layers = append(layers, valuesLayer{ChartValues: v.ChartSecretValues, IsChartSecretValues: true, Values: v.ChartSecretValues})
 	layers = append(layers, valuesGroupLayers(v.Published)...)
 
 	return append(layers, valuesGroupLayers(v.Deploy)...)
@@ -1164,7 +1188,7 @@ func isLocalChart(path string) bool {
 }
 
 func isReleaseConfigLayer(layer valuesLayer, _ int) bool {
-	return !layer.IsChartSecretValues && !layer.IsService
+	return !layer.IsChartSecretValues && !layer.IsService && layer.DependencyPath == nil
 }
 
 func parseVerificationStrategy(s string) helmdownloader.VerificationStrategy {

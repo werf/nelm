@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"slices"
 	"strings"
+
+	"github.com/samber/lo"
 
 	"github.com/werf/common-go/pkg/secrets_manager"
 	commonutil "github.com/werf/common-go/pkg/util"
@@ -15,6 +18,7 @@ import (
 	chartcommonutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common/util"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
 	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	chartv2util "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/cli/values"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/getter"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/strvals"
@@ -61,25 +65,48 @@ func (d *werfDataSecretsRuntimeData) GetDecryptedSecretFilesData() map[string]st
 	return d.base.GetDecryptedSecretFilesData()
 }
 
+// chartValuesPath is a path of the chart values in the root chart values, and the values of the
+// parent charts that override the chart values at this path.
+type chartValuesPath struct {
+	overrides map[string]interface{}
+	path      []string
+}
+
 // foldWerfDataDependencies replaces the values of every dependency with .werf-data, at any depth,
 // with the values the dependency would be deployed with alone: its values.yaml < its
 // secret-values.yaml < its publish-time values groups. Dependency conditions, tags, export-values
 // and import-values are not processed.
-func foldWerfDataDependencies(ctx context.Context, chrt helmchart.Charter, withoutServiceValues bool) error {
+//
+// It also returns the publish-time values layers of these dependencies at their paths in the root
+// chart values, without the values that their parent charts override. Placed below the user values
+// layers, they keep their precedence over the values exported and imported from the lower layers,
+// which the folded values lose.
+func foldWerfDataDependencies(ctx context.Context, chrt helmchart.Charter, withoutServiceValues bool) ([]valuesLayer, error) {
+	return foldDependenciesWerfData(ctx, chrt, withoutServiceValues, []chartValuesPath{{}})
+}
+
+func foldDependenciesWerfData(ctx context.Context, chrt helmchart.Charter, withoutServiceValues bool, chartPaths []chartValuesPath) ([]valuesLayer, error) {
 	acc, err := helmchart.NewAccessor(chrt)
 	if err != nil {
-		return fmt.Errorf("create chart accessor: %w", err)
+		return nil, fmt.Errorf("create chart accessor: %w", err)
 	}
+
+	var (
+		layers         []valuesLayer
+		chartOverrides map[string]interface{}
+	)
 
 	for _, dep := range acc.Dependencies() {
 		depAcc, err := helmchart.NewAccessor(dep)
 		if err != nil {
-			return fmt.Errorf("create dependency accessor: %w", err)
+			return nil, fmt.Errorf("create dependency accessor: %w", err)
 		}
 
+		var publishedLayers []valuesLayer
 		if len(werfDataFiles(dep)) > 0 {
-			if err := foldWerfData(ctx, dep, withoutServiceValues); err != nil {
-				return fmt.Errorf("fold %s of dependency %q: %w", werfdata.DirName, depAcc.Name(), err)
+			publishedLayers, err = foldWerfData(ctx, dep, withoutServiceValues)
+			if err != nil {
+				return nil, fmt.Errorf("fold %s of dependency %q: %w", werfdata.DirName, depAcc.Name(), err)
 			}
 
 			if !withoutServiceValues {
@@ -89,28 +116,60 @@ func foldWerfDataDependencies(ctx context.Context, chrt helmchart.Charter, witho
 			log.Default.Debug(ctx, "Folded %s of dependency %q into its values", werfdata.DirName, depAcc.Name())
 		}
 
-		if err := foldWerfDataDependencies(ctx, dep, withoutServiceValues); err != nil {
-			return err
+		if chartOverrides == nil {
+			if chartOverrides, err = chartValuesOverridingDependencies(chrt); err != nil {
+				return nil, err
+			}
+		}
+
+		var depPaths []chartValuesPath
+		for _, chartPath := range chartPaths {
+			for _, key := range dependencyValuesKeys(acc, depAcc) {
+				depPaths = append(depPaths, chartValuesPath{
+					overrides: chartcommon.MergeMaps(tableValue(chartOverrides, key), tableValue(chartPath.overrides, key)),
+					path:      append(slices.Clone(chartPath.path), key),
+				})
+			}
+		}
+
+		depLayers, err := foldDependenciesWerfData(ctx, dep, withoutServiceValues, depPaths)
+		if err != nil {
+			return nil, err
+		}
+
+		layers = append(layers, depLayers...)
+
+		for _, depPath := range depPaths {
+			for _, layer := range publishedLayers {
+				dependencyLayer, err := dependencyValuesLayer(layer, depPath)
+				if err != nil {
+					return nil, err
+				}
+
+				layers = append(layers, dependencyLayer)
+			}
 		}
 	}
 
-	return nil
+	return layers, nil
 }
 
-func foldWerfData(ctx context.Context, chrt helmchart.Charter, withoutServiceValues bool) error {
+// foldWerfData folds the .werf-data of the chart into its values and returns its publish-time
+// values layers.
+func foldWerfData(ctx context.Context, chrt helmchart.Charter, withoutServiceValues bool) ([]valuesLayer, error) {
 	data, err := werfdata.Parse(werfDataFiles(chrt))
 	if err != nil {
-		return fmt.Errorf("parse %s: %w", werfdata.DirName, err)
+		return nil, fmt.Errorf("parse %s: %w", werfdata.DirName, err)
 	}
 
 	secretValues, err := decryptPublishedSecretValues(ctx, data)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	applySet, err := publishedSetValuesApplier(ctx, data)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var serviceValues map[string]interface{}
@@ -120,12 +179,14 @@ func foldWerfData(ctx context.Context, chrt helmchart.Charter, withoutServiceVal
 
 	group, err := buildValuesGroup(ctx, chrt, data.Values, secretValues, serviceValues, nil, applySet)
 	if err != nil {
-		return fmt.Errorf("build values: %w", err)
+		return nil, fmt.Errorf("build values: %w", err)
 	}
 
-	groupValues, err := mergeValuesLayers(valuesGroupLayers(group), nil)
+	groupLayers := valuesGroupLayers(group)
+
+	groupValues, err := mergeValuesLayers(groupLayers, nil)
 	if err != nil {
-		return fmt.Errorf("merge values layers: %w", err)
+		return nil, fmt.Errorf("merge values layers: %w", err)
 	}
 
 	meta := data.Metadata.Values
@@ -145,7 +206,7 @@ func foldWerfData(ctx context.Context, chrt helmchart.Charter, withoutServiceVal
 
 		folded, err := chartcommonutil.CoalesceValues(&chartCopy, groupValues)
 		if err != nil {
-			return fmt.Errorf("coalesce values: %w", err)
+			return nil, fmt.Errorf("coalesce values: %w", err)
 		}
 
 		c.Values = folded.AsMap()
@@ -164,22 +225,40 @@ func foldWerfData(ctx context.Context, chrt helmchart.Charter, withoutServiceVal
 
 		folded, err := chartcommonutil.CoalesceValues(&chartCopy, groupValues)
 		if err != nil {
-			return fmt.Errorf("coalesce values: %w", err)
+			return nil, fmt.Errorf("coalesce values: %w", err)
 		}
 
 		c.Values = folded.AsMap()
 		c.SecretsRuntimeData = &werfDataSecretsRuntimeData{base: c.SecretsRuntimeData, customSecretValues: customSecretValuesOf(c.SecretsRuntimeData)}
 	default:
-		return fmt.Errorf("unexpected chart type %T", chrt)
+		return nil, fmt.Errorf("unexpected chart type %T", chrt)
 	}
 
 	if meta.DefaultSecretValuesDisable {
 		if err := disableDependenciesDefaultSecretValues(chrt); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	return nil
+	return groupLayers, nil
+}
+
+// chartValuesOverridingDependencies returns the values of the chart, with its secret values and with
+// its export-values applied, that override the values of its dependencies.
+func chartValuesOverridingDependencies(chrt helmchart.Charter) (map[string]interface{}, error) {
+	switch c := chrt.(type) {
+	case *v2chart.Chart:
+		vals, _, err := chartv2util.ExportUserValues(c, chartcommon.MergeMaps(c.Values, defaultSecretValuesOf(c.SecretsRuntimeData)), chartv2util.ExportUserValuesOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("export chart values: %w", err)
+		}
+
+		return vals, nil
+	case *v3chart.Chart:
+		return chartcommon.MergeMaps(c.Values, defaultSecretValuesOf(c.SecretsRuntimeData)), nil
+	default:
+		return nil, fmt.Errorf("unexpected chart type %T", chrt)
+	}
 }
 
 // dependencyHasWerfDataExtraValues reports whether the chart or any of its dependencies has extra
@@ -203,6 +282,35 @@ func dependencyHasWerfDataExtraValues(chrt helmchart.Charter) bool {
 	}
 
 	return false
+}
+
+// dependencyValuesLayer returns the publish-time values layer of a dependency at its path in the
+// root chart values, without the values that its parent charts override.
+func dependencyValuesLayer(layer valuesLayer, depPath chartValuesPath) (valuesLayer, error) {
+	vals, err := deepCopyValues(layer.Values)
+	if err != nil {
+		return valuesLayer{}, fmt.Errorf("copy dependency values layer: %w", err)
+	}
+
+	deleteOverriddenValues(vals, depPath.overrides)
+
+	var nested interface{} = vals
+	for i := len(depPath.path) - 1; i >= 0; i-- {
+		nested = map[string]interface{}{depPath.path[i]: nested}
+	}
+
+	replacedPaths := make([][]string, 0, len(layer.ReplacedPaths))
+	for _, path := range layer.ReplacedPaths {
+		replacedPaths = append(replacedPaths, append(slices.Clone(depPath.path), path...))
+	}
+
+	nestedVals := nested.(map[string]interface{})
+
+	return valuesLayer{
+		DependencyPath: depPath.path,
+		ReplacedPaths:  replacedPaths,
+		Values:         nestedVals,
+	}, nil
 }
 
 // disableDependenciesDefaultSecretValues drops the secret-values.yaml of every dependency of the
@@ -415,6 +523,68 @@ func defaultSecretValuesOf(secretsRuntimeData chartcommon.RuntimeData) map[strin
 	return secretsRuntimeData.GetDecryptedDefaultSecretValues()
 }
 
+// deleteOverriddenValues deletes the values that the overrides replace when coalesced over them.
+func deleteOverriddenValues(vals, overrides map[string]interface{}) {
+	for key, override := range overrides {
+		value, found := vals[key]
+		if !found {
+			continue
+		}
+
+		table, isTable := value.(map[string]interface{})
+		overrideTable, overrideIsTable := override.(map[string]interface{})
+
+		if isTable && overrideIsTable {
+			deleteOverriddenValues(table, overrideTable)
+			continue
+		}
+
+		delete(vals, key)
+	}
+}
+
+// dependencyValuesKeys returns the keys of the dependency values in the values of the chart: its
+// aliases, or its name.
+func dependencyValuesKeys(acc, depAcc helmchart.Accessor) []string {
+	var keys []string
+	for _, metaDep := range acc.MetaDependencies() {
+		metaDepAcc, err := helmchart.NewDependencyAccessor(metaDep)
+		if err != nil || metaDepAcc.Name() != depAcc.Name() {
+			continue
+		}
+
+		keys = append(keys, lo.CoalesceOrEmpty(metaDepAcc.Alias(), metaDepAcc.Name()))
+	}
+
+	if len(keys) == 0 {
+		return []string{depAcc.Name()}
+	}
+
+	return lo.Uniq(keys)
+}
+
+// hasDependencyAtPath reports whether the processed chart has the dependency at the path of its
+// values in the chart values.
+func hasDependencyAtPath(chrt helmchart.Charter, path []string) bool {
+	if len(path) == 0 {
+		return true
+	}
+
+	acc, err := helmchart.NewAccessor(chrt)
+	if err != nil {
+		return false
+	}
+
+	for _, dep := range acc.Dependencies() {
+		depAcc, err := helmchart.NewAccessor(dep)
+		if err == nil && depAcc.Name() == path[0] {
+			return hasDependencyAtPath(dep, path[1:])
+		}
+	}
+
+	return false
+}
+
 func logWerfData(ctx context.Context, data *werfdata.Data) {
 	meta := data.Metadata.Values
 
@@ -540,6 +710,12 @@ func publishedSetValuesApplier(ctx context.Context, data *werfdata.Data) (func(b
 
 		return base, nil
 	}, nil
+}
+
+func tableValue(vals map[string]interface{}, key string) map[string]interface{} {
+	table, _ := vals[key].(map[string]interface{})
+
+	return table
 }
 
 func werfDataFiles(chrt helmchart.Charter) []*chartcommon.File {
