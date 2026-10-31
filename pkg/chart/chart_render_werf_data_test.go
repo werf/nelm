@@ -46,6 +46,22 @@ func TestRenderChart_WerfDataBelowDeployOptions(t *testing.T) {
 			wantReleaseConfig: "l: [a, b]",
 		},
 		{
+			name:              "deploy --set patches a list from deploy --values, not from publish --set below them",
+			chart:             werfDataCardChart("", "", "", ""),
+			published:         werfDataFlags{Set: []string{"l[0]=published"}},
+			deployFlags:       werfDataFlags{Values: "l: [deploy0, deploy1]", Set: []string{"l[1]=patched"}},
+			want:              map[string]interface{}{"l": []interface{}{"deploy0", "patched"}},
+			wantReleaseConfig: "l: [deploy0, patched]",
+		},
+		{
+			name:              "deploy --values replace a map set by publish --set with a scalar",
+			chart:             werfDataCardChart("", "", "", ""),
+			published:         werfDataFlags{Set: []string{"m.a=1"}},
+			deployFlags:       werfDataFlags{Values: "m: scalar"},
+			want:              map[string]interface{}{"m": "scalar"},
+			wantReleaseConfig: "m: scalar",
+		},
+		{
 			name:        "deploy --set sets a key of a map in a list set by publish --set, like converge with both",
 			chart:       werfDataCardChart("", "", "", ""),
 			published:   werfDataFlags{Set: []string{"l[0].a=1"}},
