@@ -46,6 +46,38 @@ func TestRenderChart_WerfDataBelowDeployOptions(t *testing.T) {
 			wantReleaseConfig: "l: [a, b]",
 		},
 		{
+			name:              "deploy --set patches a list from deploy --values, not from publish --set below them",
+			chart:             werfDataCardChart("", "", "", ""),
+			published:         werfDataFlags{Set: []string{"l[0]=published"}},
+			deployFlags:       werfDataFlags{Values: "l: [deploy0, deploy1]", Set: []string{"l[1]=patched"}},
+			want:              map[string]interface{}{"l": []interface{}{"deploy0", "patched"}},
+			wantReleaseConfig: "l: [deploy0, patched]",
+		},
+		{
+			name:              "deploy --set patches a longer list from deploy --values over a list from publish --set",
+			chart:             werfDataCardChart("", "", "", ""),
+			published:         werfDataFlags{Set: []string{"l[0]=a"}},
+			deployFlags:       werfDataFlags{Values: "l: [v0, v1, v2]", Set: []string{"l[1]=b"}},
+			want:              map[string]interface{}{"l": []interface{}{"v0", "b", "v2"}},
+			wantReleaseConfig: "l: [v0, b, v2]",
+		},
+		{
+			name:              "deploy --set patches a list from deploy --secret-values over a list from publish --set",
+			chart:             werfDataCardChart("", "", "", ""),
+			published:         werfDataFlags{Set: []string{"l[0]=a"}},
+			deployFlags:       werfDataFlags{SecretValues: "l: [v0, v1, v2]", Set: []string{"l[1]=b"}}, //nolint:gosec // Test values, not credentials.
+			want:              map[string]interface{}{"l": []interface{}{"v0", "b", "v2"}},
+			wantReleaseConfig: "l: [v0, b, v2]",
+		},
+		{
+			name:              "deploy --values replace a map set by publish --set with a scalar",
+			chart:             werfDataCardChart("", "", "", ""),
+			published:         werfDataFlags{Set: []string{"m.a=1"}},
+			deployFlags:       werfDataFlags{Values: "m: scalar"},
+			want:              map[string]interface{}{"m": "scalar"},
+			wantReleaseConfig: "m: scalar",
+		},
+		{
 			name:        "deploy --set sets a key of a map in a list set by publish --set, like converge with both",
 			chart:       werfDataCardChart("", "", "", ""),
 			published:   werfDataFlags{Set: []string{"l[0].a=1"}},
