@@ -238,13 +238,22 @@ func Parse(files []*common.File) (*Data, error) {
 		return nil, fmt.Errorf("%s/%s not found", DirName, MetadataFileName)
 	}
 
-	data := &Data{Files: map[string][]byte{}}
-	if err := yaml.UnmarshalStrict(metadataData, &data.Metadata); err != nil {
+	// The apiVersion is checked before the strict parse, so that metadata of a newer apiVersion
+	// with new fields reports the apiVersion, not an unknown field.
+	var header struct {
+		APIVersion string `json:"apiVersion"`
+	}
+	if err := yaml.Unmarshal(metadataData, &header); err != nil {
 		return nil, fmt.Errorf("parse %s/%s: %w", DirName, MetadataFileName, err)
 	}
 
-	if err := CheckAPIVersion(data.Metadata.APIVersion); err != nil {
+	if err := CheckAPIVersion(header.APIVersion); err != nil {
 		return nil, err
+	}
+
+	data := &Data{Files: map[string][]byte{}}
+	if err := yaml.UnmarshalStrict(metadataData, &data.Metadata); err != nil {
+		return nil, fmt.Errorf("parse %s/%s: %w", DirName, MetadataFileName, err)
 	}
 
 	for name, fileData := range byName {

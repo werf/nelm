@@ -49,6 +49,11 @@ func TestParse_Errors(t *testing.T) {
 			wantErr: `unsupported .werf-data/metadata.yaml apiVersion "v3"`,
 		},
 		{
+			name:    "unknown apiVersion with new fields",
+			files:   map[string]string{".werf-data/metadata.yaml": "apiVersion: v3\nnewKey: x"},
+			wantErr: `unsupported .werf-data/metadata.yaml apiVersion "v3": this chart requires a newer werf or Nelm`,
+		},
+		{
 			name:    "missing apiVersion",
 			files:   map[string]string{".werf-data/metadata.yaml": "values: {}"},
 			wantErr: ".werf-data/metadata.yaml has no apiVersion",
