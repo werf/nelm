@@ -237,6 +237,10 @@ type chartCopyAddress struct {
 
 type chartCopySource struct {
 	ChartData []byte
+	// ChartManifest is the manifest of the chart in ChartStorage, which is nil for a source without
+	// one, like a werf 3 archive.
+	ChartManifest ocispec.Descriptor
+	ChartStorage  content.ReadOnlyStorage
 	// ProvData is nil for a chart without provenance.
 	ProvData []byte
 	// ResolveImage returns the storage with the image of a helm.sh/images entry and the image's
@@ -427,8 +431,9 @@ type chartCopyImageRef struct {
 // tag that would point to different content is an error, raised before anything is pushed. With a
 // tag, the chart version is ChartVersionFromTag of it and the chart is pushed under the version and
 // the tag; without one the chart keeps its version and is pushed under it and the source tag, if
-// any: a werf 3 archive has none, so only the version tag is pushed. The provenance is kept only if
-// the chart doesn't change.
+// any: a werf 3 archive has none, so only the version tag is pushed. A chart that doesn't change is
+// copied with its manifest, so it keeps its digest and provenance, unless it comes from a werf 3
+// archive, which has no manifest; the provenance of a changed chart is dropped.
 func ChartCopy(ctx context.Context, from, to string, opts ChartCopyOptions) error {
 	if opts.Sign && (opts.SignKey == "" || opts.SignKeyring == "") {
 		return errors.New("signing key name and keyring are required for signing")
@@ -734,6 +739,14 @@ func copyChartToRepo(ctx context.Context, registryClient *registry.Client, sourc
 		if chartData, provData, err = saveChartCopy(ctx, loadedChart, chartAccessor, edit, source.ProvData != nil, tempDir, opts); err != nil {
 			return fmt.Errorf("save chart: %w", err)
 		}
+	} else if source.ChartStorage != nil {
+		// Pushing would write a new manifest, with a new creation time, so an unchanged chart is
+		// copied with its manifest.
+		if err := copyChartCopyManifest(ctx, source, repository, lo.Uniq(lo.Compact([]string{versionTag, extraTag}))); err != nil {
+			return fmt.Errorf("copy chart manifest: %w", err)
+		}
+
+		return nil
 	}
 
 	if _, err := registryClient.PushContext(ctx, chartData, fmt.Sprintf("%s:%s", to.Repo, version), registry.PushOptProvData(provData), registry.PushOptExtraTags(lo.Compact([]string{extraTag}))); err != nil {
@@ -817,9 +830,16 @@ func writeChartCopyArchive(ctx context.Context, source *chartCopySource, loadedC
 		return fmt.Errorf("create OCI image layout: %w", err)
 	}
 
-	chartDesc, err := pushChartCopyManifest(ctx, store, loadedChart, source.ChartData, source.ProvData)
-	if err != nil {
-		return fmt.Errorf("save chart manifest: %w", err)
+	chartDesc := source.ChartManifest
+	if source.ChartStorage != nil {
+		if err := copyChartCopyManifest(ctx, source, store, nil); err != nil {
+			return fmt.Errorf("save chart manifest: %w", err)
+		}
+	} else {
+		var err error
+		if chartDesc, err = pushChartCopyManifest(ctx, store, loadedChart, source.ChartData, source.ProvData); err != nil {
+			return fmt.Errorf("save chart manifest: %w", err)
+		}
 	}
 
 	// The entries are not tagged in the store: the chart tag and the image refs share its tag
@@ -1164,9 +1184,28 @@ func readChartCopyRepo(ctx context.Context, registryClient *registry.Client, add
 		return nil, fmt.Errorf("pull chart: %w", err)
 	}
 
+	var manifest struct {
+		MediaType string `json:"mediaType"`
+	}
+	if err := json.Unmarshal(result.Manifest.Data, &manifest); err != nil {
+		return nil, fmt.Errorf("parse chart manifest: %w", err)
+	}
+
+	manifestDesc := content.NewDescriptorFromBytes(lo.CoalesceOrEmpty(manifest.MediaType, ocispec.MediaTypeImageManifest), result.Manifest.Data)
+	if manifestDesc.Digest.String() != result.Manifest.Digest {
+		return nil, fmt.Errorf("chart manifest digest is %s, expected %s", manifestDesc.Digest, result.Manifest.Digest)
+	}
+
+	chartRepository, err := registryClient.Generic().Repository(addr.Repo)
+	if err != nil {
+		return nil, fmt.Errorf("construct repository: %w", err)
+	}
+
 	return &chartCopySource{
-		ChartData: result.Chart.Data,
-		ProvData:  lo.Ternary(len(result.Prov.Data) > 0, result.Prov.Data, nil),
+		ChartData:     result.Chart.Data,
+		ChartManifest: manifestDesc,
+		ChartStorage:  chartRepository,
+		ProvData:      lo.Ternary(len(result.Prov.Data) > 0, result.Prov.Data, nil),
 		ResolveImage: func(ctx context.Context, imageRef string) (content.ReadOnlyStorage, ocispec.Descriptor, error) {
 			image := parseChartCopyImageRef(imageRef)
 
@@ -1562,6 +1601,20 @@ func claimChartCopyTag(claims map[string]chartCopyTagClaim, tag string, claim ch
 	return fmt.Errorf("tag %q would be used for both %s and %s in the destination repository", tag, previous.Owner, claim.Owner)
 }
 
+func copyChartCopyManifest(ctx context.Context, source *chartCopySource, dst oras.Target, tags []string) error {
+	if err := oras.CopyGraph(ctx, source.ChartStorage, dst, source.ChartManifest, oras.DefaultCopyGraphOptions); err != nil {
+		return fmt.Errorf("copy manifest %s: %w", source.ChartManifest.Digest, err)
+	}
+
+	for _, tag := range tags {
+		if err := dst.Tag(ctx, source.ChartManifest, tag); err != nil {
+			return fmt.Errorf("tag manifest %s with %q: %w", source.ChartManifest.Digest, tag, err)
+		}
+	}
+
+	return nil
+}
+
 func gzipFile(ctx context.Context, sourcePath, destinationPath string) error {
 	source, err := os.Open(sourcePath)
 	if err != nil {
@@ -1816,6 +1869,8 @@ func readChartCopyOCILayout(ctx context.Context, tarPath string, indexData []byt
 	}
 
 	source := &chartCopySource{
+		ChartManifest: ocispec.Descriptor{MediaType: chartDescs[0].MediaType, Digest: chartDescs[0].Digest, Size: chartDescs[0].Size},
+		ChartStorage:  store,
 		ResolveImage: func(ctx context.Context, imageRef string) (content.ReadOnlyStorage, ocispec.Descriptor, error) {
 			desc, found := lo.Find(index.Manifests, func(desc ocispec.Descriptor) bool {
 				return desc.Annotations[chartCopyArchiveEntryAnnotation] == chartCopyArchiveEntryImage && desc.Annotations[ocispec.AnnotationRefName] == imageRef

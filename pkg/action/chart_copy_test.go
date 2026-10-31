@@ -932,6 +932,47 @@ func TestChartCopy_Tags(t *testing.T) {
 	}
 }
 
+func TestChartCopy_UnchangedChartKeepsManifest(t *testing.T) {
+	host := newChartCopyTestRegistry(t)
+	client := newChartCopyTestRegistryClient(t)
+
+	chartData := buildChartCopyTestChart(t, map[string]string{"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\n"})
+	provData := signChartCopyTestChart(t, chartData)
+	pushResult, err := client.Push(chartData, host+"/src/app:1.0.0", registry.PushOptProvData(provData), registry.PushOptCreationTime("2000-01-01T00:00:00Z"))
+	require.NoError(t, err)
+
+	requireManifest := func(t *testing.T, repo string, tags ...string) {
+		t.Helper()
+
+		for _, tag := range tags {
+			desc, err := newChartCopyTestRepository(t, repo).Resolve(context.Background(), tag)
+			require.NoError(t, err, tag)
+			assert.Equal(t, pushResult.Manifest.Digest, desc.Digest.String(), tag)
+		}
+	}
+
+	t.Run("registry to registry", func(t *testing.T) {
+		dst := host + "/registry/app"
+		require.NoError(t, ChartCopy(newChartPackTestContext(), "oci://"+host+"/src/app:1.0.0", "oci://"+dst, newChartCopyTestOptions(t)))
+		requireManifest(t, dst, "1.0.0")
+	})
+
+	t.Run("registry to registry with a tag", func(t *testing.T) {
+		dst := host + "/tagged/app"
+		require.NoError(t, ChartCopy(newChartPackTestContext(), "oci://"+host+"/src/app:1.0.0", "oci://"+dst+":v1.0.0", newChartCopyTestOptions(t)))
+		requireManifest(t, dst, "1.0.0", "v1.0.0")
+	})
+
+	t.Run("archive round trip", func(t *testing.T) {
+		archivePath := filepath.Join(t.TempDir(), "chart.tar.gz")
+		require.NoError(t, ChartCopy(newChartPackTestContext(), "oci://"+host+"/src/app:1.0.0", archivePath, newChartCopyTestOptions(t)))
+
+		dst := host + "/archive/app"
+		require.NoError(t, ChartCopy(newChartPackTestContext(), archivePath, "oci://"+dst, newChartCopyTestOptions(t)))
+		requireManifest(t, dst, "1.0.0")
+	})
+}
+
 func TestChartCopy_WerfArchive(t *testing.T) {
 	host := newChartCopyTestRegistry(t)
 	client := newChartCopyTestRegistryClient(t)
