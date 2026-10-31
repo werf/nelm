@@ -365,7 +365,23 @@ func convertChartExtenderFilesToBufferedFiles(files []*file.ChartExtenderBuffere
 	return res
 }
 
-const werfDataMetadataFileName = ".werf-data/metadata.yaml"
+const (
+	werfDataDirName          = ".werf-data"
+	werfDataMetadataFileName = werfDataDirName + "/metadata.yaml"
+)
+
+// isWerfDataPath reports whether a slash-separated chart path is in or is a .werf-data directory
+// of the chart or of a dependency under charts/. Such paths are read regardless of .helmignore,
+// so that refuseWerfData sees them.
+func isWerfDataPath(name string) bool {
+	for _, part := range strings.Split(name, "/") {
+		if part == werfDataDirName {
+			return true
+		}
+	}
+
+	return false
+}
 
 // refuseWerfData rejects charts published by werf v3 and Nelm v2 with a .werf-data directory:
 // this version would deploy them without their publish-time values and annotations.

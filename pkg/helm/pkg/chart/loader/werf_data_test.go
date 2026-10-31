@@ -1,6 +1,8 @@
 package loader
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -60,6 +62,49 @@ func TestLoadFiles_RefusesWerfData(t *testing.T) {
 			}
 
 			assert.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestLoadDir_RefusesWerfDataIgnoredByHelmignore(t *testing.T) {
+	tests := []struct {
+		name  string
+		files map[string]string
+	}{
+		{
+			name: "root .werf-data",
+			files: map[string]string{
+				".werf-data/metadata.yaml": "apiVersion: v2\n",
+			},
+		},
+		{
+			name: "dependency .werf-data",
+			files: map[string]string{
+				"charts/sub/Chart.yaml":              "apiVersion: v2\nname: sub\nversion: 1.0.0\n",
+				"charts/sub/.werf-data/metadata.yaml": "apiVersion: v2\n",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			files := map[string]string{
+				"Chart.yaml":  "apiVersion: v2\nname: app\nversion: 1.0.0\n",
+				".helmignore": ".*\n",
+			}
+			for name, data := range tt.files {
+				files[name] = data
+			}
+
+			for name, data := range files {
+				path := filepath.Join(dir, name)
+				require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+				require.NoError(t, os.WriteFile(path, []byte(data), 0o644))
+			}
+
+			_, err := LoadDir(dir, helmopts.HelmOptions{})
+			assert.ErrorContains(t, err, "it requires werf v3 or Nelm v2, or newer")
 		})
 	}
 }
