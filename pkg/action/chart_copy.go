@@ -396,7 +396,7 @@ func readChartCopyArchive(ctx context.Context, archivePath, tempDir string, expa
 	)
 
 	if err := walkTar(ctx, tarPath, func(header *tar.Header, reader io.Reader) error {
-		switch path.Clean(header.Name) {
+		switch header.Name {
 		case ocispec.ImageLayoutFile:
 			isOCILayout = true
 		case ocispec.ImageIndexFile:
@@ -569,7 +569,7 @@ func readWerfArchive(ctx context.Context, tarPath, tempDir string, expansion *ch
 	images := map[string]ocispec.Descriptor{}
 
 	if err := walkTar(ctx, tarPath, func(header *tar.Header, reader io.Reader) error {
-		name := path.Clean(header.Name)
+		name := header.Name
 
 		switch {
 		case name == werfArchiveChartFileName:
@@ -700,23 +700,24 @@ func convertDockerArchiveImage(ctx context.Context, in io.Reader, store *oci.Sto
 			continue
 		}
 
-		if path.Clean(header.Name) == "manifest.json" && header.Size > chartCopyArchiveMaxMetadataSize {
-			return ocispec.Descriptor{}, fmt.Errorf("manifest.json is %d bytes, more than %d bytes allowed", header.Size, chartCopyArchiveMaxMetadataSize)
+		name := chartCopyArchiveMemberName(header.Name)
+		if _, found := files[name]; found {
+			return ocispec.Descriptor{}, fmt.Errorf("image tarball has duplicate member %q", name)
 		}
 
-		filePath := filepath.Join(dir, strconv.Itoa(len(files)))
+		filePath := filepath.Join(dir, strconv.Itoa(entries))
 		if err := writeFileFromReader(filePath, tarReader); err != nil {
-			return ocispec.Descriptor{}, fmt.Errorf("extract %s from the image tarball: %w", header.Name, err)
+			return ocispec.Descriptor{}, fmt.Errorf("extract %s from the image tarball: %w", name, err)
 		}
 
-		files[path.Clean(header.Name)] = filePath
+		files[name] = filePath
 	}
 
 	if files["manifest.json"] == "" {
 		return ocispec.Descriptor{}, errors.New("no manifest.json in the image tarball")
 	}
 
-	manifestData, err := os.ReadFile(files["manifest.json"])
+	manifestData, err := readChartCopyFile(files["manifest.json"], chartCopyArchiveMaxMetadataSize)
 	if err != nil {
 		return ocispec.Descriptor{}, fmt.Errorf("read manifest.json: %w", err)
 	}
@@ -738,12 +739,12 @@ func convertDockerArchiveImage(ctx context.Context, in io.Reader, store *oci.Sto
 		MediaType: dockerManifestMediaType,
 	}
 
-	if manifest.Config, err = pushChartCopyFileBlob(ctx, store, files[path.Clean(tarballManifests[0].Config)], dockerConfigMediaType, false); err != nil {
+	if manifest.Config, err = pushChartCopyFileBlob(ctx, store, files[chartCopyArchiveMemberName(tarballManifests[0].Config)], dockerConfigMediaType, false); err != nil {
 		return ocispec.Descriptor{}, fmt.Errorf("push config %q: %w", tarballManifests[0].Config, err)
 	}
 
 	for _, layer := range tarballManifests[0].Layers {
-		layerPath := files[path.Clean(layer)]
+		layerPath := files[chartCopyArchiveMemberName(layer)]
 		if layerPath == "" {
 			return ocispec.Descriptor{}, fmt.Errorf("layer %q not found in the image tarball", layer)
 		}
@@ -1022,6 +1023,51 @@ func uncompressedChartCopyArchive(ctx context.Context, archivePath, tempDir stri
 	return tarPath, nil
 }
 
+func walkTar(ctx context.Context, tarPath string, fn func(header *tar.Header, reader io.Reader) error) error {
+	tarFile, err := os.Open(tarPath)
+	if err != nil {
+		return fmt.Errorf("open archive: %w", err)
+	}
+	defer tarFile.Close()
+
+	names := map[string]bool{}
+
+	tarReader := tar.NewReader(tarFile)
+	for entries := 0; ; entries++ {
+		if err := context.Cause(ctx); err != nil {
+			return err
+		}
+
+		if entries > chartCopyArchiveMaxEntries {
+			return fmt.Errorf("archive has more than %d entries", chartCopyArchiveMaxEntries)
+		}
+
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+
+		if err != nil {
+			return fmt.Errorf("read archive: %w", err)
+		}
+
+		if header.Typeflag != tar.TypeReg {
+			continue
+		}
+
+		header.Name = chartCopyArchiveMemberName(header.Name)
+		if names[header.Name] {
+			return fmt.Errorf("archive has duplicate member %q", header.Name)
+		}
+
+		names[header.Name] = true
+
+		if err := fn(header, tarReader); err != nil {
+			return err
+		}
+	}
+}
+
 // writeOCILayoutTar writes the OCI image layout in dir into a tar at archivePath, replacing it only
 // when the whole tar is written.
 func writeOCILayoutTar(dir, archivePath string, compress bool) error {
@@ -1131,6 +1177,12 @@ func addFileToTar(tarWriter *tar.Writer, filePath, name string) error {
 	}
 
 	return nil
+}
+
+// chartCopyArchiveMemberName normalizes a tar member name, so that names of the same file compare
+// equal.
+func chartCopyArchiveMemberName(name string) string {
+	return strings.TrimPrefix(path.Clean("/"+name), "/")
 }
 
 // chartCopyImages returns the helm.sh/images entries of the chart and of all its dependencies.
@@ -1465,6 +1517,26 @@ func readChartCopyArchiveMember(header *tar.Header, reader io.Reader, maxSize in
 	return data, nil
 }
 
+// readChartCopyFile reads a file of at most maxSize bytes.
+func readChartCopyFile(filePath string, maxSize int64) ([]byte, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("open %q: %w", filePath, err)
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(io.LimitReader(file, maxSize+1))
+	if err != nil {
+		return nil, fmt.Errorf("read %q: %w", filePath, err)
+	}
+
+	if int64(len(data)) > maxSize {
+		return nil, fmt.Errorf("file is more than %d bytes allowed", maxSize)
+	}
+
+	return data, nil
+}
+
 func readChartCopyOCILayout(ctx context.Context, tarPath string, indexData []byte) (*chartCopySource, error) {
 	store, err := oci.NewFromTar(ctx, tarPath)
 	if err != nil {
@@ -1615,42 +1687,6 @@ func saveChartCopy(ctx context.Context, loadedChart helmchart.Charter, chartAcce
 	}
 
 	return chartData, provData, nil
-}
-
-func walkTar(ctx context.Context, tarPath string, fn func(header *tar.Header, reader io.Reader) error) error {
-	tarFile, err := os.Open(tarPath)
-	if err != nil {
-		return fmt.Errorf("open archive: %w", err)
-	}
-	defer tarFile.Close()
-
-	tarReader := tar.NewReader(tarFile)
-	for entries := 0; ; entries++ {
-		if err := context.Cause(ctx); err != nil {
-			return err
-		}
-
-		if entries > chartCopyArchiveMaxEntries {
-			return fmt.Errorf("archive has more than %d entries", chartCopyArchiveMaxEntries)
-		}
-
-		header, err := tarReader.Next()
-		if errors.Is(err, io.EOF) {
-			return nil
-		}
-
-		if err != nil {
-			return fmt.Errorf("read archive: %w", err)
-		}
-
-		if header.Typeflag != tar.TypeReg {
-			continue
-		}
-
-		if err := fn(header, tarReader); err != nil {
-			return err
-		}
-	}
 }
 
 func writeFileFromReader(filePath string, reader io.Reader) error {

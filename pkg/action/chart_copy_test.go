@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -764,6 +765,53 @@ func TestChartCopy_WerfArchive(t *testing.T) {
 	result, err := client.Pull(dst + ":2.0.0")
 	require.NoError(t, err)
 	assert.Equal(t, fmt.Sprintf("apiVersion: v2\nname: app\nversion: 2.0.0\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: %s:abc@%s\n", dst, manifestDesc.Digest), readChartCopyTestChartFiles(t, result.Chart.Data)["app/Chart.yaml"])
+}
+
+func TestChartCopy_WerfArchiveDuplicateMembers(t *testing.T) {
+	chartData := buildChartCopyTestChart(t, map[string]string{
+		"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: old.registry/project:abc\n",
+	})
+	manifest := []byte(`[{"Config":"config.json","Layers":["layer.tar"]}]`)
+	config := []byte(`{"architecture":"amd64","os":"linux"}`)
+	layer := tarChartCopyTestFiles(t, map[string][]byte{"file": []byte("data")})
+
+	tests := []struct {
+		name        string
+		entries     []chartCopyTestTarEntry
+		expectedErr string
+	}{
+		{
+			name: "outer archive",
+			entries: []chartCopyTestTarEntry{
+				{Name: werfArchiveChartFileName, Data: chartData},
+				{Name: "./" + werfArchiveChartFileName, Data: chartData},
+			},
+			expectedErr: `archive has duplicate member "chart.tar.gz"`,
+		},
+		{
+			name: "image tarball",
+			entries: []chartCopyTestTarEntry{
+				{Name: werfArchiveChartFileName, Data: chartData},
+				{Name: "images/abc.tar.gz", Data: gzipChartCopyTestData(t, tarChartCopyTestEntries(t, []chartCopyTestTarEntry{
+					{Name: "manifest.json", Data: manifest},
+					{Name: "manifest.json", Data: manifest},
+					{Name: "config.json", Data: config},
+					{Name: "layer.tar", Data: layer},
+				}))},
+			},
+			expectedErr: `image tarball has duplicate member "manifest.json"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			archivePath := filepath.Join(t.TempDir(), "bundle.tar.gz")
+			require.NoError(t, os.WriteFile(archivePath, gzipChartCopyTestData(t, tarChartCopyTestEntries(t, tt.entries)), 0o644))
+
+			err := ChartCopy(newChartPackTestContext(), "archive:"+archivePath, filepath.Join(t.TempDir(), "copy.tar"), newChartCopyTestOptions(t))
+			require.ErrorContains(t, err, tt.expectedErr)
+		})
+	}
 }
 
 func TestChartCopy_WerfArchiveUnsupportedLayers(t *testing.T) {

@@ -392,6 +392,11 @@ type chartCopyTestImage struct {
 	Ref      string
 }
 
+type chartCopyTestTarEntry struct {
+	Data []byte
+	Name string
+}
+
 func newChartRenderInstallChart(t *testing.T, api *progressPhasesAPI) string {
 	t.Helper()
 
@@ -956,6 +961,24 @@ func signChartCopyTestChart(t *testing.T, chartData []byte) []byte {
 	require.NoError(t, err)
 
 	return provData
+}
+
+// tarChartCopyTestEntries returns a tar with the entries in order, duplicates included.
+func tarChartCopyTestEntries(t *testing.T, entries []chartCopyTestTarEntry) []byte {
+	t.Helper()
+
+	buf := &bytes.Buffer{}
+	tarWriter := tar.NewWriter(buf)
+
+	for _, entry := range entries {
+		require.NoError(t, tarWriter.WriteHeader(&tar.Header{Name: entry.Name, Mode: 0o644, Size: int64(len(entry.Data)), Typeflag: tar.TypeReg}))
+		_, err := tarWriter.Write(entry.Data)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, tarWriter.Close())
+
+	return buf.Bytes()
 }
 
 func tarChartCopyTestFiles(t *testing.T, files map[string][]byte) []byte {
