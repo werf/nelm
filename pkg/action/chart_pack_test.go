@@ -261,6 +261,37 @@ annotations:
 			expectedErr: `.werf-data/secret-values.yaml: value at "password" is not encrypted`,
 		},
 		{
+			name: "multi-document stored secret values rejected",
+			chart: map[string]string{
+				"Chart.yaml":                    chartPackTestChartYAML,
+				".werf-data/metadata.yaml":      "apiVersion: v2\nvalues:\n  secretValues: true\n",
+				".werf-data/secret-values.yaml": "{}\n---\npassword: plain\n",
+			},
+			steps:       []chartPackTestStep{{}},
+			expectedErr: ".werf-data/secret-values.yaml: has 2 YAML documents, expected one",
+		},
+		{
+			name:  "multi-document secret values file rejected",
+			chart: map[string]string{"Chart.yaml": chartPackTestChartYAML},
+			steps: []chartPackTestStep{{
+				inputs: map[string]string{"secret.yaml": encryptedPassword + "---\nplain: text\n"},
+				opts:   ChartPackOptions{SecretValuesFiles: []string{"secret.yaml"}},
+			}},
+			expectedErr: `secret values file "secret.yaml": has 2 YAML documents, expected one`,
+		},
+		{
+			name: "plaintext secret values of a dependency rejected",
+			chart: map[string]string{
+				"Chart.yaml":                                             chartPackTestChartYAML,
+				"charts/dep/Chart.yaml":                                  "apiVersion: v2\nname: dep\nversion: 1.0.0\n",
+				"charts/dep/charts/nested/Chart.yaml":                    "apiVersion: v2\nname: nested\nversion: 1.0.0\n",
+				"charts/dep/charts/nested/.werf-data/metadata.yaml":      "apiVersion: v2\nvalues:\n  secretValues: true\n",
+				"charts/dep/charts/nested/.werf-data/secret-values.yaml": "password: plain\n",
+			},
+			steps:       []chartPackTestStep{{opts: ChartPackOptions{ResetValues: true}}},
+			expectedErr: `dependency "dep": dependency "nested": .werf-data/secret-values.yaml: value at "password" is not encrypted`,
+		},
+		{
 			name:        "invalid root set JSON rejected",
 			chart:       map[string]string{"Chart.yaml": chartPackTestChartYAML},
 			steps:       []chartPackTestStep{{opts: ChartPackOptions{RootSetJSON: []string{"r={bad"}}}},

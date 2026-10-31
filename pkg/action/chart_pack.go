@@ -21,6 +21,8 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/goccy/go-yaml/ast"
+	"github.com/goccy/go-yaml/parser"
 	"github.com/samber/lo"
 	"sigs.k8s.io/yaml"
 
@@ -329,12 +331,7 @@ func buildChartPackWerfData(ctx context.Context, chartAccessor helmchart.Accesso
 	}
 
 	if data.SecretValues != nil && !opts.ResetValues {
-		storedSecretValues := map[string]any{}
-		if err := yaml.Unmarshal(data.SecretValues, &storedSecretValues); err != nil {
-			return nil, nil, nil, fmt.Errorf("parse %s/%s: %w", werfdata.DirName, werfdata.SecretValuesFileName, err)
-		}
-
-		if err := checkEncryptedValues(storedSecretValues, nil); err != nil {
+		if _, err := parseEncryptedValues(data.SecretValues); err != nil {
 			return nil, nil, nil, fmt.Errorf("%s/%s: %w", werfdata.DirName, werfdata.SecretValuesFileName, err)
 		}
 	}
@@ -465,11 +462,42 @@ func addChartPackInputs(ctx context.Context, data *werfdata.Data, opts ChartPack
 	return nil
 }
 
+// checkDependenciesWerfData fails if the .werf-data of a dependency, at any depth, is invalid or
+// has an unsupported apiVersion.
+func checkDependenciesWerfData(chartAccessor helmchart.Accessor) error {
+	for _, dep := range chartAccessor.Dependencies() {
+		depAccessor, err := helmchart.NewAccessor(dep)
+		if err != nil {
+			return fmt.Errorf("create dependency accessor: %w", err)
+		}
+
+		if len(depAccessor.WerfDataFiles()) > 0 {
+			depData, err := werfdata.Parse(depAccessor.WerfDataFiles())
+			if err != nil {
+				return fmt.Errorf("dependency %q: %w", depAccessor.Name(), err)
+			}
+
+			if depData.SecretValues != nil {
+				if _, err := parseEncryptedValues(depData.SecretValues); err != nil {
+					return fmt.Errorf("dependency %q: %s/%s: %w", depAccessor.Name(), werfdata.DirName, werfdata.SecretValuesFileName, err)
+				}
+			}
+		}
+
+		if err := checkDependenciesWerfData(depAccessor); err != nil {
+			return fmt.Errorf("dependency %q: %w", depAccessor.Name(), err)
+		}
+	}
+
+	return nil
+}
+
 func mergeChartPackSecretValues(ctx context.Context, data *werfdata.Data, secretValuesFiles []string) error {
 	merged := map[string]any{}
 	if data.SecretValues != nil {
-		if err := yaml.Unmarshal(data.SecretValues, &merged); err != nil {
-			return fmt.Errorf("parse %s/%s: %w", werfdata.DirName, werfdata.SecretValuesFileName, err)
+		var err error
+		if merged, err = parseEncryptedValues(data.SecretValues); err != nil {
+			return fmt.Errorf("%s/%s: %w", werfdata.DirName, werfdata.SecretValuesFileName, err)
 		}
 	}
 
@@ -489,12 +517,8 @@ func mergeChartPackSecretValues(ctx context.Context, data *werfdata.Data, secret
 			return fmt.Errorf("read secret values file %q: %w", secretValuesFile, err)
 		}
 
-		vals := map[string]any{}
-		if err := yaml.Unmarshal(fileData, &vals); err != nil {
-			return fmt.Errorf("parse secret values file %q: %w", secretValuesFile, err)
-		}
-
-		if err := checkEncryptedValues(vals, nil); err != nil {
+		vals, err := parseEncryptedValues(fileData)
+		if err != nil {
 			return fmt.Errorf("secret values file %q: %w", secretValuesFile, err)
 		}
 
@@ -509,6 +533,30 @@ func mergeChartPackSecretValues(ctx context.Context, data *werfdata.Data, secret
 	data.SecretValues = secretValuesData
 
 	return nil
+}
+
+// parseEncryptedValues parses a secret values file, failing unless it is a single YAML document
+// with every value encrypted.
+func parseEncryptedValues(data []byte) (map[string]any, error) {
+	file, err := parser.ParseBytes(data, 0)
+	if err != nil {
+		return nil, fmt.Errorf("parse YAML: %w", err)
+	}
+
+	if docs := lo.Filter(file.Docs, func(doc *ast.DocumentNode, _ int) bool { return doc.Body != nil }); len(docs) > 1 {
+		return nil, fmt.Errorf("has %d YAML documents, expected one", len(docs))
+	}
+
+	vals := map[string]any{}
+	if err := yaml.Unmarshal(data, &vals); err != nil {
+		return nil, fmt.Errorf("parse YAML: %w", err)
+	}
+
+	if err := checkEncryptedValues(vals, nil); err != nil {
+		return nil, err
+	}
+
+	return vals, nil
 }
 
 // checkEncryptedValues fails unless every non-null leaf of vals is a value encrypted by werf.
@@ -746,29 +794,6 @@ func checkChartPackArchiveSize(archivePath string) error {
 
 	if totalSize >= archive.MaxDecompressedChartSize {
 		return fmt.Errorf("chart decompresses to %d bytes, a chart loader accepts less than %d bytes", totalSize, archive.MaxDecompressedChartSize)
-	}
-
-	return nil
-}
-
-// checkDependenciesWerfData fails if the .werf-data of a dependency, at any depth, is invalid or
-// has an unsupported apiVersion.
-func checkDependenciesWerfData(chartAccessor helmchart.Accessor) error {
-	for _, dep := range chartAccessor.Dependencies() {
-		depAccessor, err := helmchart.NewAccessor(dep)
-		if err != nil {
-			return fmt.Errorf("create dependency accessor: %w", err)
-		}
-
-		if len(depAccessor.WerfDataFiles()) > 0 {
-			if _, err := werfdata.Parse(depAccessor.WerfDataFiles()); err != nil {
-				return fmt.Errorf("dependency %q: %w", depAccessor.Name(), err)
-			}
-		}
-
-		if err := checkDependenciesWerfData(depAccessor); err != nil {
-			return fmt.Errorf("dependency %q: %w", depAccessor.Name(), err)
-		}
 	}
 
 	return nil
