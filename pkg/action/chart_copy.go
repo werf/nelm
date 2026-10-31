@@ -70,6 +70,112 @@ const (
 
 type chartCopyLayerFormatType string
 
+// chartCopyLayoutStore is a read-only store of the blobs of an OCI image layout tar. Unlike the oras
+// one, it reads nothing up front: descriptors in an archive are untrusted, and the oras store
+// indexes the whole graph, reading each manifest into a buffer of its declared size.
+type chartCopyLayoutStore struct {
+	blobs   map[digest.Digest]chartCopyTarMember
+	tarPath string
+}
+
+func newChartCopyLayoutStore(ctx context.Context, tarPath string) (*chartCopyLayoutStore, error) {
+	tarFile, err := os.Open(tarPath)
+	if err != nil {
+		return nil, fmt.Errorf("open archive: %w", err)
+	}
+	defer tarFile.Close()
+
+	store := &chartCopyLayoutStore{blobs: map[digest.Digest]chartCopyTarMember{}, tarPath: tarPath}
+
+	tarReader := tar.NewReader(tarFile)
+	for entries := 0; ; entries++ {
+		if err := context.Cause(ctx); err != nil {
+			return nil, err
+		}
+
+		if entries > chartCopyArchiveMaxEntries {
+			return nil, fmt.Errorf("archive has more than %d entries", chartCopyArchiveMaxEntries)
+		}
+
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			return store, nil
+		}
+
+		if err != nil {
+			return nil, fmt.Errorf("read archive: %w", err)
+		}
+
+		name := chartCopyArchiveMemberName(header.Name)
+
+		algorithm, encoded, found := strings.Cut(strings.TrimPrefix(name, ocispec.ImageBlobsDir+"/"), "/")
+		if header.Typeflag != tar.TypeReg || !strings.HasPrefix(name, ocispec.ImageBlobsDir+"/") || !found {
+			continue
+		}
+
+		dgst := digest.NewDigestFromEncoded(digest.Algorithm(algorithm), encoded)
+		if err := dgst.Validate(); err != nil {
+			return nil, fmt.Errorf("blob %q: %w", name, err)
+		}
+
+		if _, found := store.blobs[dgst]; found {
+			return nil, fmt.Errorf("archive has duplicate member %q", name)
+		}
+
+		// Next leaves the archive positioned at the member data.
+		offset, err := tarFile.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return nil, fmt.Errorf("read archive: %w", err)
+		}
+
+		store.blobs[dgst] = chartCopyTarMember{Offset: offset, Size: header.Size}
+	}
+}
+
+func (s *chartCopyLayoutStore) Exists(ctx context.Context, target ocispec.Descriptor) (bool, error) {
+	member, found := s.blobs[target.Digest]
+
+	return found && member.Size == target.Size, nil
+}
+
+// Fetch returns the blob of target, checking its declared size against the blob and, for the
+// manifests and indexes that oras reads into memory, against the metadata limit.
+func (s *chartCopyLayoutStore) Fetch(ctx context.Context, target ocispec.Descriptor) (io.ReadCloser, error) {
+	member, found := s.blobs[target.Digest]
+	if !found {
+		return nil, fmt.Errorf("%s: %w", target.Digest, errdef.ErrNotFound)
+	}
+
+	if target.Size != member.Size {
+		return nil, fmt.Errorf("blob %s is declared to be %d bytes, the blob in the archive is %d bytes", target.Digest, target.Size, member.Size)
+	}
+
+	if isChartCopyManifestMediaType(target.MediaType) && target.Size > chartCopyArchiveMaxMetadataSize {
+		return nil, fmt.Errorf("manifest %s is %d bytes, more than %d bytes allowed", target.Digest, target.Size, chartCopyArchiveMaxMetadataSize)
+	}
+
+	tarFile, err := os.Open(s.tarPath)
+	if err != nil {
+		return nil, fmt.Errorf("open archive: %w", err)
+	}
+
+	if _, err := tarFile.Seek(member.Offset, io.SeekStart); err != nil {
+		tarFile.Close()
+
+		return nil, fmt.Errorf("read archive: %w", err)
+	}
+
+	return struct {
+		io.Reader
+		io.Closer
+	}{Reader: io.LimitReader(tarFile, member.Size), Closer: tarFile}, nil
+}
+
+type chartCopyTarMember struct {
+	Offset int64
+	Size   int64
+}
+
 type ChartCopyOptions struct {
 	common.ChartRepoConnectionOptions
 
@@ -1368,6 +1474,19 @@ func isChartCopyForeignLayer(desc ocispec.Descriptor) bool {
 	}
 }
 
+func isChartCopyManifestMediaType(mediaType string) bool {
+	switch mediaType {
+	case ocispec.MediaTypeImageManifest,
+		ocispec.MediaTypeImageIndex,
+		"application/vnd.oci.artifact.manifest.v1+json",
+		dockerManifestMediaType,
+		"application/vnd.docker.distribution.manifest.list.v2+json":
+		return true
+	default:
+		return false
+	}
+}
+
 func isGzipFile(filePath string) (bool, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -1538,7 +1657,7 @@ func readChartCopyFile(filePath string, maxSize int64) ([]byte, error) {
 }
 
 func readChartCopyOCILayout(ctx context.Context, tarPath string, indexData []byte) (*chartCopySource, error) {
-	store, err := oci.NewFromTar(ctx, tarPath)
+	store, err := newChartCopyLayoutStore(ctx, tarPath)
 	if err != nil {
 		return nil, fmt.Errorf("open OCI image layout: %w", err)
 	}

@@ -530,6 +530,45 @@ func requireChartCopyTestImage(t *testing.T, repo, tag string, image chartCopyTe
 	}
 }
 
+// rewriteChartCopyTestArchiveIndex copies the uncompressed OCI image layout archive with its
+// index.json changed by edit.
+func rewriteChartCopyTestArchiveIndex(t *testing.T, archivePath, destinationPath string, edit func(index *ocispec.Index)) {
+	t.Helper()
+
+	archiveFile, err := os.Open(archivePath)
+	require.NoError(t, err)
+
+	defer archiveFile.Close()
+
+	var entries []chartCopyTestTarEntry
+
+	tarReader := tar.NewReader(archiveFile)
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+
+		require.NoError(t, err)
+
+		data, err := io.ReadAll(tarReader)
+		require.NoError(t, err)
+
+		if header.Name == ocispec.ImageIndexFile {
+			var index ocispec.Index
+			require.NoError(t, json.Unmarshal(data, &index))
+			edit(&index)
+
+			data, err = json.Marshal(index)
+			require.NoError(t, err)
+		}
+
+		entries = append(entries, chartCopyTestTarEntry{Data: data, Name: header.Name})
+	}
+
+	require.NoError(t, os.WriteFile(destinationPath, tarChartCopyTestEntries(t, entries), 0o644))
+}
+
 // writeWerfChartCopyTestArchive writes a werf 3 bundle archive with the chart and a docker-save
 // tarball per image tag.
 func writeWerfChartCopyTestArchive(t *testing.T, chartData []byte, imageTarballs map[string][]byte) string {

@@ -45,6 +45,63 @@ func TestChartCopy_ArchiveCanceled(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+func TestChartCopy_ArchiveDescriptorSizes(t *testing.T) {
+	host := newChartCopyTestRegistry(t)
+	client := newChartCopyTestRegistryClient(t)
+
+	image := pushChartCopyTestImage(t, host+"/src/images", "backend", "amd64", "arm64")
+	chartData := buildChartCopyTestChart(t, map[string]string{
+		"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: " + image.Ref + "\n",
+	})
+	_, err := client.Push(chartData, host+"/src/app:1.0.0")
+	require.NoError(t, err)
+
+	archivePath := filepath.Join(t.TempDir(), "chart.tar")
+	require.NoError(t, ChartCopy(newChartPackTestContext(), "oci://"+host+"/src/app:1.0.0", archivePath, newChartCopyTestOptions(t)))
+
+	tests := []struct {
+		name        string
+		entry       string
+		size        int64
+		expectedErr string
+	}{
+		{
+			name:        "huge chart manifest",
+			entry:       chartCopyArchiveEntryChart,
+			size:        1 << 62,
+			expectedErr: "is 4611686018427387904 bytes, more than 16777216 bytes allowed",
+		},
+		{
+			name:        "huge image index",
+			entry:       chartCopyArchiveEntryImage,
+			size:        1 << 62,
+			expectedErr: "is declared to be 4611686018427387904 bytes, the blob in the archive is",
+		},
+		{
+			name:        "image index size not matching the blob",
+			entry:       chartCopyArchiveEntryImage,
+			size:        1,
+			expectedErr: "the blob in the archive is",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			maliciousPath := filepath.Join(t.TempDir(), "malicious.tar")
+			rewriteChartCopyTestArchiveIndex(t, archivePath, maliciousPath, func(index *ocispec.Index) {
+				for i := range index.Manifests {
+					if index.Manifests[i].Annotations[chartCopyArchiveEntryAnnotation] == tt.entry {
+						index.Manifests[i].Size = tt.size
+					}
+				}
+			})
+
+			err := ChartCopy(newChartPackTestContext(), maliciousPath, filepath.Join(t.TempDir(), "copy.tar"), newChartCopyTestOptions(t))
+			require.ErrorContains(t, err, tt.expectedErr)
+		})
+	}
+}
+
 func TestChartCopy_ArchiveExpandedSizeLimit(t *testing.T) {
 	layer := tarChartCopyTestFiles(t, map[string][]byte{"zeros": make([]byte, 1<<20)})
 	imageTarball := tarChartCopyTestFiles(t, map[string][]byte{
