@@ -92,6 +92,10 @@ type BufferedFile struct {
 
 // LoadFiles loads from in-memory files.
 func LoadFiles(files []*BufferedFile, opts helmopts.HelmOptions) (*chart.Chart, error) {
+	if err := refuseWerfData(files); err != nil {
+		return nil, err
+	}
+
 	c := new(chart.Chart)
 	subcharts := make(map[string][]*BufferedFile)
 
@@ -359,4 +363,46 @@ func convertChartExtenderFilesToBufferedFiles(files []*file.ChartExtenderBuffere
 		res = append(res, f1)
 	}
 	return res
+}
+
+const (
+	werfDataDirName          = ".werf-data"
+	werfDataMetadataFileName = werfDataDirName + "/metadata.yaml"
+)
+
+// isWerfDataPath reports whether a slash-separated chart path is in or is a .werf-data directory
+// of the chart or of a dependency under charts/. Such paths are read regardless of .helmignore,
+// so that refuseWerfData sees them.
+func isWerfDataPath(name string) bool {
+	parts := strings.Split(name, "/")
+	for len(parts) >= 3 && parts[0] == "charts" {
+		parts = parts[2:]
+	}
+
+	return parts[0] == werfDataDirName
+}
+
+// refuseWerfData rejects charts published by werf v3 and Nelm v2 with a .werf-data directory:
+// this version would deploy them without their publish-time values and annotations.
+func refuseWerfData(files []*BufferedFile) error {
+	for _, f := range files {
+		if f.Name != werfDataMetadataFileName {
+			continue
+		}
+
+		var metadata struct {
+			APIVersion string `json:"apiVersion"`
+		}
+		if err := yaml.Unmarshal(f.Data, &metadata); err != nil {
+			return fmt.Errorf("parse %s: %w", werfDataMetadataFileName, err)
+		}
+
+		if metadata.APIVersion == "" {
+			continue
+		}
+
+		return fmt.Errorf("this chart has %s with apiVersion %q: it requires werf v3 or Nelm v2, or newer", werfDataMetadataFileName, metadata.APIVersion)
+	}
+
+	return nil
 }
