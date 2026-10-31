@@ -484,6 +484,21 @@ appVersion: "1.2"
 			expectedErr: ".werf-data/set-files/0 is 5242881 bytes, more than the 5242880 bytes a chart loader accepts for a single file",
 		},
 		{
+			name:  "JSON Chart.yaml of a werf 3.12 bundle",
+			chart: map[string]string{"Chart.yaml": `{"apiVersion":"v2","name":"mychart","version":"1.0.0","annotations":{"team":"payments"}}`},
+			steps: []chartPackTestStep{{
+				expectedChartYAML: "apiVersion: v2\nname: mychart\nversion: 2.0.0\nannotations:\n  team: payments\n  helm.sh/images: |\n    - name: backend\n      image: registry/app:backend\n",
+				opts: ChartPackOptions{
+					Images:  []chartyaml.Image{{Name: "backend", Image: "registry/app:backend"}},
+					Version: "2.0.0",
+				},
+			}},
+			expectedData: &werfdata.Data{
+				Files:    map[string][]byte{},
+				Metadata: werfdata.Metadata{APIVersion: werfdata.APIVersionV2, Images: []string{"backend"}},
+			},
+		},
+		{
 			name:  "v3 chart",
 			chart: map[string]string{"Chart.yaml": "apiVersion: v3\nname: mychart\nversion: 1.0.0\n"},
 			steps: []chartPackTestStep{{

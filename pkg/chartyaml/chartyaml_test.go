@@ -119,6 +119,23 @@ version: 1.0.0
 `,
 		},
 		{
+			name: "JSON Chart.yaml",
+			data: `{"apiVersion": "v2", "name": "mychart", "version": "1.0.0", "annotations": {"team": "payments", "helm.sh/images": "- name: old\n  image: old\n"}, "dependencies": [{"name": "dep", "version": "1.x"}]}` + "\n",
+			opts: EditOptions{Version: "2.0.0", SetAnnotations: map[string]string{ImagesAnnotation: images}},
+			expected: `apiVersion: v2
+name: mychart
+version: 2.0.0
+annotations:
+  team: payments
+  helm.sh/images: |
+    - name: backend
+      image: registry/app:backend
+dependencies:
+- name: dep
+  version: 1.x
+`,
+		},
+		{
 			name:     "delete from empty annotations",
 			data:     "name: mychart\nannotations: {}\n",
 			opts:     EditOptions{DeleteAnnotations: []string{ImagesAnnotation}},

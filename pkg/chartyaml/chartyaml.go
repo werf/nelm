@@ -48,8 +48,30 @@ func Edit(ctx context.Context, data []byte, opts EditOptions) ([]byte, error) {
 	}
 
 	body, ok := file.Docs[0].Body.(*ast.MappingNode)
-	if !ok || body.IsFlowStyle {
-		return nil, fmt.Errorf("parse Chart.yaml: expected a block mapping at the top level")
+	if !ok {
+		return nil, fmt.Errorf("parse Chart.yaml: expected a mapping at the top level")
+	}
+
+	// A flow mapping, like the JSON Chart.yaml of werf <= 3.12, can't be edited in place, so it
+	// is converted to a block mapping with the same keys in the same order.
+	if body.IsFlowStyle {
+		var ordered yaml.MapSlice
+		if err := yaml.UnmarshalWithOptions(data, &ordered, yaml.UseOrderedMap()); err != nil {
+			return nil, fmt.Errorf("parse Chart.yaml: %w", err)
+		}
+
+		blockData, err := yaml.Marshal(ordered)
+		if err != nil {
+			return nil, fmt.Errorf("convert Chart.yaml to block style: %w", err)
+		}
+
+		if file, err = parser.ParseBytes(blockData, parser.ParseComments); err != nil {
+			return nil, fmt.Errorf("parse converted Chart.yaml: %w", err)
+		}
+
+		if body, ok = file.Docs[0].Body.(*ast.MappingNode); !ok {
+			return nil, fmt.Errorf("parse converted Chart.yaml: expected a mapping at the top level")
+		}
 	}
 
 	for _, field := range []struct{ key, value string }{
