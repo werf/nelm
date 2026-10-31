@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/v2/pkg/action"
@@ -16,9 +17,10 @@ import (
 type chartCopyConfig struct {
 	action.ChartCopyOptions
 
-	LogColorMode string
-	LogLevel     string
-	LogWidth     int
+	ArchiveMaxExpandedSize string
+	LogColorMode           string
+	LogLevel               string
+	LogWidth               int
 }
 
 func newChartCopyCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
@@ -40,6 +42,13 @@ func newChartCopyCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 				LogWidth:  cfg.LogWidth,
 			})
 
+			maxExpandedSize, err := resource.ParseQuantity(cfg.ArchiveMaxExpandedSize)
+			if err != nil {
+				return fmt.Errorf("parse --archive-max-expanded-size: %w", err)
+			}
+
+			cfg.ChartCopyOptions.ArchiveMaxExpandedSize = maxExpandedSize.Value()
+
 			if err := action.ChartCopy(ctx, args[0], args[1], cfg.ChartCopyOptions); err != nil {
 				return fmt.Errorf("chart copy: %w", err)
 			}
@@ -57,6 +66,13 @@ func newChartCopyCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                chartRepoFlagGroup,
 			Type:                 cli.FlagTypeFile,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
+		if err := cli.AddFlag(cmd, &cfg.ArchiveMaxExpandedSize, "archive-max-expanded-size", resource.NewQuantity(action.DefaultChartCopyArchiveMaxExpandedSize, resource.BinarySI).String(), "Maximum size the source archive may decompress to, nested image tarballs included, e.g. 64Gi", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                mainFlagGroup,
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}

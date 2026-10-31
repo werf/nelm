@@ -33,16 +33,22 @@ import (
 	helmaction "github.com/werf/nelm/v2/pkg/helm/pkg/action"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader/archive"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 	"github.com/werf/nelm/v2/pkg/log"
 )
 
 const (
+	// DefaultChartCopyArchiveMaxExpandedSize is the default ChartCopyOptions.ArchiveMaxExpandedSize.
+	DefaultChartCopyArchiveMaxExpandedSize int64 = 64 << 30
+
 	// chartCopyArchiveEntryAnnotation marks the index.json entries of a chart copy archive: the chart,
 	// tagged with its tag, and the images, tagged with their refs from the helm.sh/images annotation.
 	chartCopyArchiveEntryAnnotation = "nelm.werf.io/archive-entry"
 	chartCopyArchiveEntryChart      = "chart"
 	chartCopyArchiveEntryImage      = "image"
+	chartCopyArchiveMaxEntries      = 100_000
+	chartCopyArchiveMaxMetadataSize = 16 << 20
 	dockerConfigMediaType           = "application/vnd.docker.container.image.v1+json"
 	dockerLayerMediaType            = "application/vnd.docker.image.rootfs.diff.tar.gzip"
 	dockerManifestMediaType         = "application/vnd.docker.distribution.manifest.v2+json"
@@ -53,6 +59,9 @@ const (
 type ChartCopyOptions struct {
 	common.ChartRepoConnectionOptions
 
+	// ArchiveMaxExpandedSize limits the bytes decompressed from a source archive, nested image
+	// tarballs included. Defaults to DefaultChartCopyArchiveMaxExpandedSize.
+	ArchiveMaxExpandedSize int64
 	// Images are copied in addition to the images in the helm.sh/images annotation, for charts that
 	// list their images elsewhere, like werf bundles published before the annotation was written.
 	// Only Image matters. The annotation is rewritten only for the entries it contains.
@@ -111,6 +120,39 @@ type chartCopyTagClaim struct {
 	Owner  string
 }
 
+// chartCopyExpansion counts the bytes decompressed from an archive against Max.
+type chartCopyExpansion struct {
+	Max   int64
+	Total int64
+}
+
+// Reader returns reader counting what it reads against the expansion limit and stopping on ctx
+// cancellation.
+func (e *chartCopyExpansion) Reader(ctx context.Context, reader io.Reader) io.Reader {
+	return &chartCopyExpansionReader{ctx: ctx, expansion: e, reader: reader}
+}
+
+type chartCopyExpansionReader struct {
+	ctx       context.Context
+	expansion *chartCopyExpansion
+	reader    io.Reader
+}
+
+func (r *chartCopyExpansionReader) Read(p []byte) (int, error) {
+	if err := context.Cause(r.ctx); err != nil {
+		return 0, err
+	}
+
+	n, err := r.reader.Read(p)
+
+	r.expansion.Total += int64(n)
+	if r.expansion.Total > r.expansion.Max {
+		return n, fmt.Errorf("archive expands to more than %d bytes", r.expansion.Max)
+	}
+
+	return n, err //nolint:wrapcheck // io.Reader returns io.EOF as is.
+}
+
 type chartCopyImageRef struct {
 	Digest string
 	Repo   string
@@ -137,6 +179,10 @@ func ChartCopy(ctx context.Context, from, to string, opts ChartCopyOptions) erro
 
 	if opts.RegistryCredentialsPath == "" {
 		opts.RegistryCredentialsPath = filepath.Join(common.DefaultDockerConfig, "config.json")
+	}
+
+	if opts.ArchiveMaxExpandedSize == 0 {
+		opts.ArchiveMaxExpandedSize = DefaultChartCopyArchiveMaxExpandedSize
 	}
 
 	fromAddr, err := parseChartCopyAddress(from)
@@ -168,7 +214,7 @@ func ChartCopy(ctx context.Context, from, to string, opts ChartCopyOptions) erro
 
 	var source *chartCopySource
 	if fromAddr.ArchivePath != "" {
-		source, err = readChartCopyArchive(ctx, fromAddr.ArchivePath, tempDir)
+		source, err = readChartCopyArchive(ctx, fromAddr.ArchivePath, tempDir, &chartCopyExpansion{Max: opts.ArchiveMaxExpandedSize})
 	} else {
 		source, err = readChartCopyRepo(ctx, registryClient, fromAddr)
 	}
@@ -229,8 +275,8 @@ func ChartVersionFromTag(ctx context.Context, tag string, now time.Time) string 
 	return fmt.Sprintf("0.0.0-%d-%s", now.Unix(), tagSlug)
 }
 
-func readChartCopyArchive(ctx context.Context, archivePath, tempDir string) (*chartCopySource, error) {
-	tarPath, err := uncompressedChartCopyArchive(archivePath, tempDir)
+func readChartCopyArchive(ctx context.Context, archivePath, tempDir string, expansion *chartCopyExpansion) (*chartCopySource, error) {
+	tarPath, err := uncompressedChartCopyArchive(ctx, archivePath, tempDir, expansion)
 	if err != nil {
 		return nil, err
 	}
@@ -240,14 +286,14 @@ func readChartCopyArchive(ctx context.Context, archivePath, tempDir string) (*ch
 		isOCILayout, isWerfArchive bool
 	)
 
-	if err := walkTar(tarPath, func(header *tar.Header, reader io.Reader) error {
+	if err := walkTar(ctx, tarPath, func(header *tar.Header, reader io.Reader) error {
 		switch path.Clean(header.Name) {
 		case ocispec.ImageLayoutFile:
 			isOCILayout = true
 		case ocispec.ImageIndexFile:
 			var err error
-			if indexData, err = io.ReadAll(reader); err != nil {
-				return fmt.Errorf("read %s: %w", ocispec.ImageIndexFile, err)
+			if indexData, err = readChartCopyArchiveMember(header, reader, chartCopyArchiveMaxMetadataSize); err != nil {
+				return err
 			}
 		case werfArchiveChartFileName:
 			isWerfArchive = true
@@ -262,7 +308,7 @@ func readChartCopyArchive(ctx context.Context, archivePath, tempDir string) (*ch
 	case isOCILayout:
 		return readChartCopyOCILayout(ctx, tarPath, indexData)
 	case isWerfArchive:
-		return readWerfArchive(ctx, tarPath, tempDir)
+		return readWerfArchive(ctx, tarPath, tempDir, expansion)
 	default:
 		return nil, fmt.Errorf("unknown archive format: neither %s nor %s found", ocispec.ImageLayoutFile, werfArchiveChartFileName)
 	}
@@ -270,7 +316,7 @@ func readChartCopyArchive(ctx context.Context, archivePath, tempDir string) (*ch
 
 // readWerfArchive reads the werf 3 bundle archive: chart.tar.gz and a docker-save tarball per image
 // tag in images/<tag>.tar.gz. The images are converted into OCI blobs in a temporary store.
-func readWerfArchive(ctx context.Context, tarPath, tempDir string) (*chartCopySource, error) {
+func readWerfArchive(ctx context.Context, tarPath, tempDir string, expansion *chartCopyExpansion) (*chartCopySource, error) {
 	storeDir, err := os.MkdirTemp(tempDir, "werf-archive-images-")
 	if err != nil {
 		return nil, fmt.Errorf("create temporary directory: %w", err)
@@ -284,14 +330,14 @@ func readWerfArchive(ctx context.Context, tarPath, tempDir string) (*chartCopySo
 	source := &chartCopySource{}
 	images := map[string]ocispec.Descriptor{}
 
-	if err := walkTar(tarPath, func(header *tar.Header, reader io.Reader) error {
+	if err := walkTar(ctx, tarPath, func(header *tar.Header, reader io.Reader) error {
 		name := path.Clean(header.Name)
 
 		switch {
 		case name == werfArchiveChartFileName:
 			var err error
-			if source.ChartData, err = io.ReadAll(reader); err != nil {
-				return fmt.Errorf("read %s: %w", name, err)
+			if source.ChartData, err = readChartCopyArchiveMember(header, reader, archive.MaxDecompressedChartSize); err != nil {
+				return err
 			}
 		case path.Dir(name) == werfArchiveImagesDirName && strings.HasSuffix(name, ".tar.gz"):
 			gzipReader, err := gzip.NewReader(reader)
@@ -300,7 +346,7 @@ func readWerfArchive(ctx context.Context, tarPath, tempDir string) (*chartCopySo
 			}
 			defer gzipReader.Close()
 
-			desc, err := convertDockerArchiveImage(ctx, gzipReader, store, tempDir)
+			desc, err := convertDockerArchiveImage(ctx, expansion.Reader(ctx, gzipReader), store, tempDir)
 			if err != nil {
 				return fmt.Errorf("read image %s: %w", name, err)
 			}
@@ -343,7 +389,15 @@ func convertDockerArchiveImage(ctx context.Context, in io.Reader, store *oci.Sto
 	files := map[string]string{}
 
 	tarReader := tar.NewReader(in)
-	for {
+	for entries := 0; ; entries++ {
+		if err := context.Cause(ctx); err != nil {
+			return ocispec.Descriptor{}, err
+		}
+
+		if entries > chartCopyArchiveMaxEntries {
+			return ocispec.Descriptor{}, fmt.Errorf("image tarball has more than %d entries", chartCopyArchiveMaxEntries)
+		}
+
 		header, err := tarReader.Next()
 		if errors.Is(err, io.EOF) {
 			break
@@ -355,6 +409,10 @@ func convertDockerArchiveImage(ctx context.Context, in io.Reader, store *oci.Sto
 
 		if header.Typeflag != tar.TypeReg {
 			continue
+		}
+
+		if path.Clean(header.Name) == "manifest.json" && header.Size > chartCopyArchiveMaxMetadataSize {
+			return ocispec.Descriptor{}, fmt.Errorf("manifest.json is %d bytes, more than %d bytes allowed", header.Size, chartCopyArchiveMaxMetadataSize)
 		}
 
 		filePath := filepath.Join(dir, strconv.Itoa(len(files)))
@@ -699,7 +757,7 @@ func readChartCopyRepo(ctx context.Context, registryClient *registry.Client, add
 
 // uncompressedChartCopyArchive returns the path to the tar of the archive, decompressing a gzipped
 // archive into tempDir.
-func uncompressedChartCopyArchive(archivePath, tempDir string) (string, error) {
+func uncompressedChartCopyArchive(ctx context.Context, archivePath, tempDir string, expansion *chartCopyExpansion) (string, error) {
 	compressed, err := isGzipFile(archivePath)
 	if err != nil {
 		return "", err
@@ -722,7 +780,7 @@ func uncompressedChartCopyArchive(archivePath, tempDir string) (string, error) {
 	defer gzipReader.Close()
 
 	tarPath := filepath.Join(tempDir, "archive.tar")
-	if err := writeFileFromReader(tarPath, gzipReader); err != nil {
+	if err := writeFileFromReader(tarPath, expansion.Reader(ctx, gzipReader)); err != nil {
 		return "", err
 	}
 
@@ -1088,6 +1146,20 @@ func pushIfMissing(ctx context.Context, store *oci.Store, desc ocispec.Descripto
 	return nil
 }
 
+// readChartCopyArchiveMember reads an archive member of at most maxSize bytes.
+func readChartCopyArchiveMember(header *tar.Header, reader io.Reader, maxSize int64) ([]byte, error) {
+	if header.Size > maxSize {
+		return nil, fmt.Errorf("%s is %d bytes, more than %d bytes allowed", header.Name, header.Size, maxSize)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(reader, maxSize))
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", header.Name, err)
+	}
+
+	return data, nil
+}
+
 func readChartCopyOCILayout(ctx context.Context, tarPath string, indexData []byte) (*chartCopySource, error) {
 	store, err := oci.NewFromTar(ctx, tarPath)
 	if err != nil {
@@ -1104,6 +1176,10 @@ func readChartCopyOCILayout(ctx context.Context, tarPath string, indexData []byt
 	})
 	if len(chartDescs) != 1 {
 		return nil, fmt.Errorf("expected one chart in the archive, found %d", len(chartDescs))
+	}
+
+	if chartDescs[0].Size > chartCopyArchiveMaxMetadataSize {
+		return nil, fmt.Errorf("chart manifest is %d bytes, more than %d bytes allowed", chartDescs[0].Size, chartCopyArchiveMaxMetadataSize)
 	}
 
 	manifestData, err := content.FetchAll(ctx, store, chartDescs[0])
@@ -1131,6 +1207,10 @@ func readChartCopyOCILayout(ctx context.Context, tarPath string, indexData []byt
 	}
 
 	for _, layer := range manifest.Layers {
+		if layer.Size > archive.MaxDecompressedChartSize {
+			return nil, fmt.Errorf("chart manifest layer %s is %d bytes, more than %d bytes allowed", layer.Digest, layer.Size, archive.MaxDecompressedChartSize)
+		}
+
 		switch layer.MediaType {
 		case registry.ChartLayerMediaType, registry.LegacyChartLayerMediaType:
 			if source.ChartData, err = content.FetchAll(ctx, store, layer); err != nil {
@@ -1232,7 +1312,7 @@ func saveChartCopy(ctx context.Context, loadedChart helmchart.Charter, chartAcce
 	return chartData, provData, nil
 }
 
-func walkTar(tarPath string, fn func(header *tar.Header, reader io.Reader) error) error {
+func walkTar(ctx context.Context, tarPath string, fn func(header *tar.Header, reader io.Reader) error) error {
 	tarFile, err := os.Open(tarPath)
 	if err != nil {
 		return fmt.Errorf("open archive: %w", err)
@@ -1240,7 +1320,15 @@ func walkTar(tarPath string, fn func(header *tar.Header, reader io.Reader) error
 	defer tarFile.Close()
 
 	tarReader := tar.NewReader(tarFile)
-	for {
+	for entries := 0; ; entries++ {
+		if err := context.Cause(ctx); err != nil {
+			return err
+		}
+
+		if entries > chartCopyArchiveMaxEntries {
+			return fmt.Errorf("archive has more than %d entries", chartCopyArchiveMaxEntries)
+		}
+
 		header, err := tarReader.Next()
 		if errors.Is(err, io.EOF) {
 			return nil

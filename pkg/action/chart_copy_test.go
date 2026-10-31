@@ -31,6 +31,67 @@ import (
 	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 )
 
+func TestChartCopy_ArchiveCanceled(t *testing.T) {
+	chartData := buildChartCopyTestChart(t, map[string]string{"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\n"})
+	archivePath := writeWerfChartCopyTestArchive(t, chartData, nil)
+
+	ctx, cancel := context.WithCancel(newChartPackTestContext())
+	cancel()
+
+	err := ChartCopy(ctx, "archive:"+archivePath, filepath.Join(t.TempDir(), "copy.tar"), newChartCopyTestOptions(t))
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestChartCopy_ArchiveExpandedSizeLimit(t *testing.T) {
+	layer := tarChartCopyTestFiles(t, map[string][]byte{"zeros": make([]byte, 1<<20)})
+	imageTarball := tarChartCopyTestFiles(t, map[string][]byte{
+		"manifest.json": []byte(`[{"Config":"config.json","Layers":["layer.tar"]}]`),
+		"config.json":   []byte(`{"architecture":"amd64","os":"linux"}`),
+		"layer.tar":     layer,
+	})
+	chartData := buildChartCopyTestChart(t, map[string]string{
+		"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: old.registry/project:abc\n",
+	})
+	archivePath := writeWerfChartCopyTestArchive(t, chartData, map[string][]byte{"abc": imageTarball})
+
+	tests := []struct {
+		name        string
+		maxSize     int64
+		expectedErr string
+	}{
+		{
+			name:        "outer archive",
+			maxSize:     1 << 10,
+			expectedErr: "archive expands to more than 1024 bytes",
+		},
+		{
+			name:        "nested image tarball",
+			maxSize:     256 << 10,
+			expectedErr: "archive expands to more than 262144 bytes",
+		},
+		{
+			name:    "within the limit",
+			maxSize: 4 << 20,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := newChartCopyTestOptions(t)
+			opts.ArchiveMaxExpandedSize = tt.maxSize
+
+			err := ChartCopy(newChartPackTestContext(), "archive:"+archivePath, filepath.Join(t.TempDir(), "copy.tar"), opts)
+			if tt.expectedErr == "" {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.ErrorContains(t, err, tt.expectedErr)
+		})
+	}
+}
+
 func TestChartCopy_ArchiveRoundTrip(t *testing.T) {
 	host := newChartCopyTestRegistry(t)
 	client := newChartCopyTestRegistryClient(t)
