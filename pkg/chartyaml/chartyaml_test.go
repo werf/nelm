@@ -176,6 +176,74 @@ dependencies:
 	}
 }
 
+func TestParseImages(t *testing.T) {
+	tests := []struct {
+		name        string
+		value       string
+		expected    []Image
+		expectedErr string
+	}{
+		{
+			name:     "entries",
+			value:    "- name: backend\n  image: registry/app:backend@sha256:abc\n  whitelisted: true\n- {name: nginx, image: 'nginx:1'}\n",
+			expected: []Image{{Name: "backend", Image: "registry/app:backend@sha256:abc"}, {Name: "nginx", Image: "nginx:1"}},
+		},
+		{
+			name:  "empty",
+			value: "",
+		},
+		{
+			name:        "not a list",
+			value:       "name: backend\n",
+			expectedErr: "parse helm.sh/images annotation",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := ParseImages(context.Background(), tt.value)
+			if tt.expectedErr != "" {
+				require.ErrorContains(t, err, tt.expectedErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestRewriteImages(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    string
+		mapping  map[string]string
+		expected string
+	}{
+		{
+			name:     "rewrite mapped entries and keep other fields",
+			value:    "- name: backend\n  image: old/app:backend@sha256:abc\n  whitelisted: true\n- name: nginx\n  image: nginx:1\n",
+			mapping:  map[string]string{"old/app:backend@sha256:abc": "new/app:backend@sha256:abc"},
+			expected: "- name: backend\n  image: new/app:backend@sha256:abc\n  whitelisted: true\n- name: nginx\n  image: nginx:1\n",
+		},
+		{
+			name:     "same refs keep the value as is",
+			value:    "- {name: backend, image: 'new/app:backend'}\n",
+			mapping:  map[string]string{"new/app:backend": "new/app:backend"},
+			expected: "- {name: backend, image: 'new/app:backend'}\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := RewriteImages(context.Background(), tt.value, tt.mapping)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestUpdateImages(t *testing.T) {
 	const annotation = "- name: author\n  image: nginx:1\n  whitelisted: true\n- name: backend\n  image: registry/app:old\n"
 
