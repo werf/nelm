@@ -97,29 +97,6 @@ func foldWerfDataDependencies(ctx context.Context, chrt helmchart.Charter, witho
 	return nil
 }
 
-// dependencyHasWerfDataExtraValues reports whether the chart or any of its dependencies has extra
-// values in its .werf-data.
-func dependencyHasWerfDataExtraValues(chrt helmchart.Charter) bool {
-	acc, err := helmchart.NewAccessor(chrt)
-	if err != nil {
-		return false
-	}
-
-	for _, f := range werfDataFiles(chrt) {
-		if f.Name == path.Join(werfdata.DirName, werfdata.ExtraValuesFileName) {
-			return true
-		}
-	}
-
-	for _, dep := range acc.Dependencies() {
-		if dependencyHasWerfDataExtraValues(dep) {
-			return true
-		}
-	}
-
-	return false
-}
-
 func foldWerfData(ctx context.Context, chrt helmchart.Charter, withoutServiceValues bool) error {
 	data, err := werfdata.Parse(werfDataFiles(chrt))
 	if err != nil {
@@ -194,6 +171,61 @@ func foldWerfData(ctx context.Context, chrt helmchart.Charter, withoutServiceVal
 		c.SecretsRuntimeData = &werfDataSecretsRuntimeData{base: c.SecretsRuntimeData, customSecretValues: customSecretValuesOf(c.SecretsRuntimeData)}
 	default:
 		return fmt.Errorf("unexpected chart type %T", chrt)
+	}
+
+	if meta.DefaultSecretValuesDisable {
+		if err := disableDependenciesDefaultSecretValues(chrt); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// dependencyHasWerfDataExtraValues reports whether the chart or any of its dependencies has extra
+// values in its .werf-data.
+func dependencyHasWerfDataExtraValues(chrt helmchart.Charter) bool {
+	acc, err := helmchart.NewAccessor(chrt)
+	if err != nil {
+		return false
+	}
+
+	for _, f := range werfDataFiles(chrt) {
+		if f.Name == path.Join(werfdata.DirName, werfdata.ExtraValuesFileName) {
+			return true
+		}
+	}
+
+	for _, dep := range acc.Dependencies() {
+		if dependencyHasWerfDataExtraValues(dep) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// disableDependenciesDefaultSecretValues drops the secret-values.yaml of every dependency of the
+// chart, at any depth, as --disable-default-secret-values does for the subcharts of the root chart.
+func disableDependenciesDefaultSecretValues(chrt helmchart.Charter) error {
+	acc, err := helmchart.NewAccessor(chrt)
+	if err != nil {
+		return fmt.Errorf("create chart accessor: %w", err)
+	}
+
+	for _, dep := range acc.Dependencies() {
+		switch c := dep.(type) {
+		case *v2chart.Chart:
+			c.SecretsRuntimeData = &werfDataSecretsRuntimeData{base: c.SecretsRuntimeData, customSecretValues: customSecretValuesOf(c.SecretsRuntimeData)}
+		case *v3chart.Chart:
+			c.SecretsRuntimeData = &werfDataSecretsRuntimeData{base: c.SecretsRuntimeData, customSecretValues: customSecretValuesOf(c.SecretsRuntimeData)}
+		default:
+			return fmt.Errorf("unexpected chart type %T", dep)
+		}
+
+		if err := disableDependenciesDefaultSecretValues(dep); err != nil {
+			return err
+		}
 	}
 
 	return nil
