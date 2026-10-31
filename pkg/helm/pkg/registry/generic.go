@@ -18,6 +18,7 @@ package registry
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"slices"
@@ -46,6 +47,7 @@ type GenericClient struct {
 	credentialsStore   credentials.Store
 	httpClient         *http.Client
 	plainHTTP          bool
+	plainHTTPHost      func(host string) bool
 }
 
 // GenericPullOptions configures a generic pull operation
@@ -80,11 +82,17 @@ func NewGenericClient(client *Client) *GenericClient {
 		credentialsStore:   client.credentialsStore,
 		httpClient:         client.httpClient,
 		plainHTTP:          client.plainHTTP,
+		plainHTTPHost:      client.plainHTTPHost,
 	}
 }
 
 // PullGeneric performs a generic OCI pull without artifact-specific assumptions
 func (c *GenericClient) PullGeneric(ref string, options GenericPullOptions) (*GenericPullResult, error) {
+	return c.PullGenericContext(context.Background(), ref, options)
+}
+
+// PullGenericContext is PullGeneric that stops when ctx is done.
+func (c *GenericClient) PullGenericContext(ctx context.Context, ref string, options GenericPullOptions) (*GenericPullResult, error) {
 	parsedRef, err := newReference(ref)
 	if err != nil {
 		return nil, err
@@ -98,10 +106,8 @@ func (c *GenericClient) PullGeneric(ref string, options GenericPullOptions) (*Ge
 	if err != nil {
 		return nil, err
 	}
-	repository.PlainHTTP = c.plainHTTP
+	repository.PlainHTTP = isPlainHTTP(c.plainHTTP, c.plainHTTPHost, repository.Reference.Registry)
 	repository.Client = c.authorizer
-
-	ctx := context.Background()
 
 	// Prepare allowed media types for filtering
 	var allowedMediaTypes []string
@@ -153,6 +159,18 @@ func (c *GenericClient) PullGeneric(ref string, options GenericPullOptions) (*Ge
 		MemoryStore: memoryStore,
 		Ref:         parsedRef.String(),
 	}, nil
+}
+
+// Repository returns the remote repository of ref, authenticated and configured like the client.
+func (c *GenericClient) Repository(ref string) (*remote.Repository, error) {
+	repository, err := remote.NewRepository(ref)
+	if err != nil {
+		return nil, fmt.Errorf("parse repository reference %q: %w", ref, err)
+	}
+	repository.PlainHTTP = isPlainHTTP(c.plainHTTP, c.plainHTTPHost, repository.Reference.Registry)
+	repository.Client = c.authorizer
+
+	return repository, nil
 }
 
 // GetDescriptorData retrieves the data for a specific descriptor

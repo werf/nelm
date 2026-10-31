@@ -1,20 +1,33 @@
 package action
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/distribution/distribution/v3/configuration"
+	distributionregistry "github.com/distribution/distribution/v3/registry"
+	_ "github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
+	"github.com/opencontainers/go-digest"
+	specs "github.com/opencontainers/image-spec/specs-go"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,10 +37,15 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes/scheme"
+	"oras.land/oras-go/v2"
+	"oras.land/oras-go/v2/registry/remote"
 
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/logboek"
 	"github.com/werf/nelm/v2/pkg/common"
+	helmaction "github.com/werf/nelm/v2/pkg/helm/pkg/action"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/provenance"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/legacy/progrep"
 	"github.com/werf/nelm/v2/pkg/release"
@@ -371,6 +389,17 @@ users:
 	return api
 }
 
+type chartCopyTestImage struct {
+	Children []ocispec.Descriptor
+	Desc     ocispec.Descriptor
+	Ref      string
+}
+
+type chartCopyTestTarEntry struct {
+	Data []byte
+	Name string
+}
+
 func newChartRenderInstallChart(t *testing.T, api *progressPhasesAPI) string {
 	t.Helper()
 
@@ -436,6 +465,129 @@ func newTriggersReleaseChart(t *testing.T, api *progressPhasesAPI, annotations m
 	return chartPath
 }
 
+// pushChartCopyTestImage pushes an image with a manifest per architecture, under an index if there
+// are several, and returns it.
+func pushChartCopyTestImage(t *testing.T, repo, tag string, architectures ...string) chartCopyTestImage {
+	t.Helper()
+
+	ctx := context.Background()
+	repository := newChartCopyTestRepository(t, repo)
+
+	var manifests []ocispec.Descriptor
+	for _, architecture := range architectures {
+		configDesc, err := oras.PushBytes(ctx, repository, ocispec.MediaTypeImageConfig, []byte(fmt.Sprintf(`{"architecture":%q,"os":"linux","tag":%q}`, architecture, tag)))
+		require.NoError(t, err)
+
+		layerDesc, err := oras.PushBytes(ctx, repository, ocispec.MediaTypeImageLayerGzip, gzipChartCopyTestData(t, []byte(repo+tag+architecture)))
+		require.NoError(t, err)
+
+		manifestData, err := json.Marshal(ocispec.Manifest{
+			Versioned: specs.Versioned{SchemaVersion: 2},
+			MediaType: ocispec.MediaTypeImageManifest,
+			Config:    configDesc,
+			Layers:    []ocispec.Descriptor{layerDesc},
+		})
+		require.NoError(t, err)
+
+		manifestDesc, err := oras.PushBytes(ctx, repository, ocispec.MediaTypeImageManifest, manifestData)
+		require.NoError(t, err)
+
+		manifestDesc.Platform = &ocispec.Platform{OS: "linux", Architecture: architecture}
+		manifests = append(manifests, manifestDesc)
+	}
+
+	if len(manifests) == 1 {
+		require.NoError(t, repository.Tag(ctx, manifests[0], tag))
+
+		return chartCopyTestImage{Desc: manifests[0], Ref: fmt.Sprintf("%s:%s@%s", repo, tag, manifests[0].Digest)}
+	}
+
+	indexData, err := json.Marshal(ocispec.Index{
+		Versioned: specs.Versioned{SchemaVersion: 2},
+		MediaType: ocispec.MediaTypeImageIndex,
+		Manifests: manifests,
+	})
+	require.NoError(t, err)
+
+	indexDesc, err := oras.TagBytes(ctx, repository, ocispec.MediaTypeImageIndex, indexData, tag)
+	require.NoError(t, err)
+
+	return chartCopyTestImage{Children: manifests, Desc: indexDesc, Ref: fmt.Sprintf("%s:%s@%s", repo, tag, indexDesc.Digest)}
+}
+
+// requireChartCopyTestImage checks that the image is in repo under tag with all its manifests.
+func requireChartCopyTestImage(t *testing.T, repo, tag string, image chartCopyTestImage) {
+	t.Helper()
+
+	ctx := context.Background()
+	repository := newChartCopyTestRepository(t, repo)
+
+	desc, err := repository.Resolve(ctx, tag)
+	require.NoError(t, err)
+	assert.Equal(t, image.Desc.Digest, desc.Digest)
+
+	for _, child := range image.Children {
+		exists, err := repository.Exists(ctx, child)
+		require.NoError(t, err)
+		assert.True(t, exists, child.Digest.String())
+	}
+}
+
+// rewriteChartCopyTestArchiveIndex copies the uncompressed OCI image layout archive with its
+// index.json changed by edit.
+func rewriteChartCopyTestArchiveIndex(t *testing.T, archivePath, destinationPath string, edit func(index *ocispec.Index)) {
+	t.Helper()
+
+	archiveFile, err := os.Open(archivePath)
+	require.NoError(t, err)
+
+	defer archiveFile.Close()
+
+	var entries []chartCopyTestTarEntry
+
+	tarReader := tar.NewReader(archiveFile)
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+
+		require.NoError(t, err)
+
+		data, err := io.ReadAll(tarReader)
+		require.NoError(t, err)
+
+		if header.Name == ocispec.ImageIndexFile {
+			var index ocispec.Index
+			require.NoError(t, json.Unmarshal(data, &index))
+			edit(&index)
+
+			data, err = json.Marshal(index)
+			require.NoError(t, err)
+		}
+
+		entries = append(entries, chartCopyTestTarEntry{Data: data, Name: header.Name})
+	}
+
+	require.NoError(t, os.WriteFile(destinationPath, tarChartCopyTestEntries(t, entries), 0o644))
+}
+
+// writeWerfChartCopyTestArchive writes a werf 3 bundle archive with the chart and a docker-save
+// tarball per image tag.
+func writeWerfChartCopyTestArchive(t *testing.T, chartData []byte, imageTarballs map[string][]byte) string {
+	t.Helper()
+
+	files := map[string][]byte{werfArchiveChartFileName: chartData}
+	for tag, tarball := range imageTarballs {
+		files[werfArchiveImagesDirName+"/"+tag+".tar.gz"] = gzipChartCopyTestData(t, tarball)
+	}
+
+	archivePath := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	require.NoError(t, os.WriteFile(archivePath, gzipChartCopyTestData(t, tarChartCopyTestFiles(t, files)), 0o644))
+
+	return archivePath
+}
+
 func addProgressPhaseRevision(t *testing.T, api *progressPhasesAPI, revision int, manifest string) {
 	t.Helper()
 
@@ -479,6 +631,30 @@ func addProgressPhasesConfigMap(t *testing.T, api *progressPhasesAPI) string {
 	return string(body)
 }
 
+// buildChartCopyTestChart returns a chart archive with the files under the app directory.
+func buildChartCopyTestChart(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+
+	buf := &bytes.Buffer{}
+	gzipWriter := gzip.NewWriter(buf)
+	tarWriter := tar.NewWriter(gzipWriter)
+
+	for _, name := range lo.Keys(files) {
+		require.NoError(t, tarWriter.WriteHeader(&tar.Header{Name: "app/" + name, Mode: 0o644, Size: int64(len(files[name])), Typeflag: tar.TypeReg}))
+		_, err := tarWriter.Write([]byte(files[name]))
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, tarWriter.Close())
+	require.NoError(t, gzipWriter.Close())
+
+	return buf.Bytes()
+}
+
+func chartCopyTestBlobPath(dgst digest.Digest) string {
+	return path.Join(ocispec.ImageBlobsDir, dgst.Algorithm().String(), dgst.Encoded())
+}
+
 func collectProgressPhaseReports(ch <-chan progrep.ProgressReport) <-chan []progrep.ProgressReport {
 	done := make(chan []progrep.ProgressReport, 1)
 	go func() {
@@ -519,6 +695,91 @@ func encryptSecretValuesTypesFile(t *testing.T, outputPath string) {
 		SecretKey:      secretValuesTypesSecretKey,
 		TempDirPath:    t.TempDir(),
 	}))
+}
+
+func gzipChartCopyTestData(t *testing.T, data []byte) []byte {
+	t.Helper()
+
+	buf := &bytes.Buffer{}
+	gzipWriter := gzip.NewWriter(buf)
+	_, err := gzipWriter.Write(data)
+	require.NoError(t, err)
+	require.NoError(t, gzipWriter.Close())
+
+	return buf.Bytes()
+}
+
+func newChartCopyTestOptions(t *testing.T) ChartCopyOptions {
+	t.Helper()
+
+	return ChartCopyOptions{
+		ChartRepoConnectionOptions: common.ChartRepoConnectionOptions{ChartRepoInsecure: true},
+		RegistryCredentialsPath:    filepath.Join(t.TempDir(), "config.json"),
+		TempDirPath:                t.TempDir(),
+	}
+}
+
+func newChartCopyTestRegistry(t *testing.T) string {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	host := listener.Addr().String()
+	require.NoError(t, listener.Close())
+
+	config := &configuration.Configuration{}
+	config.HTTP.Addr = host
+	config.HTTP.DrainTimeout = time.Second
+	config.Storage = configuration.Storage{"inmemory": configuration.Parameters{}}
+	config.Log.Level = "fatal"
+	config.Log.AccessLog.Disabled = true
+	config.Validation.Manifests.URLs.Allow = []string{`^https://example\.com/`}
+
+	t.Setenv("OTEL_TRACES_EXPORTER", "none")
+
+	dockerRegistry, err := distributionregistry.NewRegistry(context.Background(), config)
+	require.NoError(t, err)
+
+	go func() {
+		_ = dockerRegistry.ListenAndServe()
+	}()
+
+	t.Cleanup(func() {
+		_ = dockerRegistry.Shutdown(context.Background())
+	})
+
+	require.Eventually(t, func() bool {
+		resp, err := http.Get("http://" + host + "/v2/")
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+
+		return resp.StatusCode == http.StatusOK
+	}, 10*time.Second, 50*time.Millisecond)
+
+	return host
+}
+
+func newChartCopyTestRegistryClient(t *testing.T) *registry.Client {
+	t.Helper()
+
+	client, err := registry.NewClient(registry.ClientOptPlainHTTP(), registry.ClientOptWriter(io.Discard), registry.ClientOptCredentialsFile(filepath.Join(t.TempDir(), "config.json")))
+	require.NoError(t, err)
+
+	return client
+}
+
+func newChartCopyTestRepository(t *testing.T, repo string) *remote.Repository {
+	t.Helper()
+
+	repository, err := remote.NewRepository(repo)
+	require.NoError(t, err)
+
+	repository.PlainHTTP = true
+
+	return repository
 }
 
 func newChartRenderInstallContext(t *testing.T) context.Context {
@@ -644,6 +905,77 @@ func progressPhaseSequence(reports []progrep.ProgressReport) []progrep.PhaseKind
 	return phases
 }
 
+func readChartCopyTestArchiveIndex(t *testing.T, archivePath string) ocispec.Index {
+	t.Helper()
+
+	data, err := os.ReadFile(archivePath)
+	require.NoError(t, err)
+
+	if gzipReader, err := gzip.NewReader(bytes.NewReader(data)); err == nil {
+		data, err = io.ReadAll(gzipReader)
+		require.NoError(t, err)
+	}
+
+	var (
+		index        ocispec.Index
+		hasOCILayout bool
+	)
+
+	tarReader := tar.NewReader(bytes.NewReader(data))
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+
+		require.NoError(t, err)
+
+		switch header.Name {
+		case ocispec.ImageLayoutFile:
+			hasOCILayout = true
+		case ocispec.ImageIndexFile:
+			require.NoError(t, json.NewDecoder(tarReader).Decode(&index))
+		}
+	}
+
+	require.True(t, hasOCILayout)
+
+	return index
+}
+
+func readChartCopyTestChartFiles(t *testing.T, chartData []byte) map[string]string {
+	t.Helper()
+
+	archivePath := filepath.Join(t.TempDir(), "chart.tgz")
+	require.NoError(t, os.WriteFile(archivePath, chartData, 0o644))
+
+	return readChartPackTestArchiveFiles(t, archivePath)
+}
+
+func readChartCopyTestTarFiles(t *testing.T, archivePath string) map[string][]byte {
+	t.Helper()
+
+	archiveFile, err := os.Open(archivePath)
+	require.NoError(t, err)
+
+	defer archiveFile.Close()
+
+	files := map[string][]byte{}
+
+	tarReader := tar.NewReader(archiveFile)
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			return files
+		}
+
+		require.NoError(t, err)
+
+		files[header.Name], err = io.ReadAll(tarReader)
+		require.NoError(t, err)
+	}
+}
+
 func readWerfDataTestMetadata(t *testing.T) string {
 	t.Helper()
 
@@ -683,4 +1015,129 @@ func setWerfDataMergedClusterConfigMap(api *progressPhasesAPI) {
 			Data: map[string]string{"key": "value"},
 		}
 	})
+}
+
+func signChartCopyTestChart(t *testing.T, chartData []byte) []byte {
+	t.Helper()
+
+	keyringPath, err := filepath.Abs("../helm/pkg/cmd/testdata/helm-test-key.secret")
+	require.NoError(t, err)
+
+	archivePath := filepath.Join(t.TempDir(), "app-1.0.0.tgz")
+	require.NoError(t, os.WriteFile(archivePath, chartData, 0o644))
+	require.NoError(t, (&helmaction.Package{Key: "helm-test", Keyring: keyringPath}).Clearsign(archivePath))
+
+	provData, err := os.ReadFile(archivePath + ".prov")
+	require.NoError(t, err)
+
+	return provData
+}
+
+// sparseChartCopyTestImageTarball returns a docker-save tarball whose layer is a GNU PAX sparse
+// file of realSize bytes stored in about a kilobyte. Go can't write sparse files, so the PAX header
+// is written as a regular file and then retyped.
+func sparseChartCopyTestImageTarball(t *testing.T, realSize int64) []byte {
+	t.Helper()
+
+	buf := &bytes.Buffer{}
+	tarWriter := tar.NewWriter(buf)
+
+	for _, entry := range []chartCopyTestTarEntry{
+		{Data: []byte(`[{"Config":"config.json","Layers":["layer.tar"]}]`), Name: "manifest.json"},
+		{Data: []byte(`{"architecture":"amd64","os":"linux"}`), Name: "config.json"},
+	} {
+		require.NoError(t, tarWriter.WriteHeader(&tar.Header{Name: entry.Name, Mode: 0o644, Size: int64(len(entry.Data)), Typeflag: tar.TypeReg, Format: tar.FormatUSTAR}))
+		_, err := tarWriter.Write(entry.Data)
+		require.NoError(t, err)
+	}
+
+	paxRecord := func(key, value string) string {
+		record := " " + key + "=" + value + "\n"
+
+		size := len(record) + len(strconv.Itoa(len(record)))
+		if len(strconv.Itoa(size)) != len(strconv.Itoa(len(record))) {
+			size++
+		}
+
+		return strconv.Itoa(size) + record
+	}
+	pax := paxRecord("GNU.sparse.major", "1") + paxRecord("GNU.sparse.minor", "0") + paxRecord("GNU.sparse.name", "layer.tar") + paxRecord("GNU.sparse.realsize", strconv.FormatInt(realSize, 10))
+
+	require.NoError(t, tarWriter.Flush())
+
+	paxHeaderOffset := buf.Len()
+
+	require.NoError(t, tarWriter.WriteHeader(&tar.Header{Name: "pax", Mode: 0o644, Size: int64(len(pax)), Typeflag: tar.TypeReg, Format: tar.FormatUSTAR}))
+	_, err := tarWriter.Write([]byte(pax))
+	require.NoError(t, err)
+
+	data := make([]byte, 513)
+	copy(data, "1\n0\n1\n")
+	data[512] = 'x'
+	require.NoError(t, tarWriter.WriteHeader(&tar.Header{Name: "GNUSparseFile.0/layer.tar", Mode: 0o644, Size: int64(len(data)), Typeflag: tar.TypeReg, Format: tar.FormatUSTAR}))
+	_, err = tarWriter.Write(data)
+	require.NoError(t, err)
+	require.NoError(t, tarWriter.Close())
+
+	result := buf.Bytes()
+	header := result[paxHeaderOffset : paxHeaderOffset+512]
+	header[156] = tar.TypeXHeader
+	copy(header[148:156], "        ")
+
+	var checksum int
+	for _, b := range header {
+		checksum += int(b)
+	}
+
+	copy(header[148:156], fmt.Sprintf("%06o\x00 ", checksum))
+
+	return result
+}
+
+// tarChartCopyTestEntries returns a tar with the entries in order, duplicates included.
+func tarChartCopyTestEntries(t *testing.T, entries []chartCopyTestTarEntry) []byte {
+	t.Helper()
+
+	buf := &bytes.Buffer{}
+	tarWriter := tar.NewWriter(buf)
+
+	for _, entry := range entries {
+		require.NoError(t, tarWriter.WriteHeader(&tar.Header{Name: entry.Name, Mode: 0o644, Size: int64(len(entry.Data)), Typeflag: tar.TypeReg}))
+		_, err := tarWriter.Write(entry.Data)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, tarWriter.Close())
+
+	return buf.Bytes()
+}
+
+func tarChartCopyTestFiles(t *testing.T, files map[string][]byte) []byte {
+	t.Helper()
+
+	buf := &bytes.Buffer{}
+	tarWriter := tar.NewWriter(buf)
+
+	for _, name := range lo.Keys(files) {
+		require.NoError(t, tarWriter.WriteHeader(&tar.Header{Name: name, Mode: 0o644, Size: int64(len(files[name])), Typeflag: tar.TypeReg}))
+		_, err := tarWriter.Write(files[name])
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, tarWriter.Close())
+
+	return buf.Bytes()
+}
+
+func verifyChartCopyTestSignature(t *testing.T, chartData, provData []byte, archiveName string) {
+	t.Helper()
+
+	publicKeyringPath, err := filepath.Abs("../helm/pkg/cmd/testdata/helm-test-key.pub")
+	require.NoError(t, err)
+
+	signatory, err := provenance.NewFromKeyring(publicKeyringPath, "")
+	require.NoError(t, err)
+
+	_, err = signatory.Verify(chartData, provData, archiveName)
+	require.NoError(t, err)
 }

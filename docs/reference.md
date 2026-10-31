@@ -22,6 +22,7 @@
   - [chart render](#chart-render)
   - [chart download](#chart-download)
   - [chart upload](#chart-upload)
+  - [chart copy](#chart-copy)
   - [chart pack](#chart-pack)
   - [chart secret key create](#chart-secret-key-create)
   - [chart secret values-file edit](#chart-secret-values-file-edit)
@@ -70,6 +71,7 @@
 - [`nelm chart render`](#chart-render) — Render a chart\.
 - [`nelm chart download`](#chart-download) — Download a chart from a repository\.
 - [`nelm chart upload`](#chart-upload) — Upload a chart archive to a repository\.
+- [`nelm chart copy`](#chart-copy) — Copy a chart with its images\.
 - [`nelm chart pack`](#chart-pack) — Pack a chart into an archive to distribute via a repository\.
 
 ### Secret commands
@@ -385,7 +387,7 @@ nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-
 
 - `--chart-repo-request-timeout` (default: `0s`)
 
-  Set timeout for all requests to chart repository\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_RELEASE\_INSTALL\_CHART\_REPO\_REQUEST\_TIMEOUT
+  Set timeout for all requests to chart repository\. A request includes its whole body, so the timeout also bounds a whole blob download or upload\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_RELEASE\_INSTALL\_CHART\_REPO\_REQUEST\_TIMEOUT
 
 - `--chart-repo-url` (default: `""`)
 
@@ -1087,7 +1089,7 @@ nelm release plan install [options...] -n namespace -r release [chart-dir|chart-
 
 - `--chart-repo-request-timeout` (default: `0s`)
 
-  Set timeout for all requests to chart repository\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_RELEASE\_PLAN\_INSTALL\_CHART\_REPO\_REQUEST\_TIMEOUT
+  Set timeout for all requests to chart repository\. A request includes its whole body, so the timeout also bounds a whole blob download or upload\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_RELEASE\_PLAN\_INSTALL\_CHART\_REPO\_REQUEST\_TIMEOUT
 
 - `--chart-repo-url` (default: `""`)
 
@@ -2280,7 +2282,7 @@ nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive
 
 - `--chart-repo-request-timeout` (default: `0s`)
 
-  Set timeout for all requests to chart repository\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_LINT\_CHART\_REPO\_REQUEST\_TIMEOUT
+  Set timeout for all requests to chart repository\. A request includes its whole body, so the timeout also bounds a whole blob download or upload\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_LINT\_CHART\_REPO\_REQUEST\_TIMEOUT
 
 - `--chart-repo-url` (default: `""`)
 
@@ -2644,7 +2646,7 @@ nelm chart render [options...] [chart-dir|chart-repo-name/chart-name|chart-archi
 
 - `--chart-repo-request-timeout` (default: `0s`)
 
-  Set timeout for all requests to chart repository\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_RENDER\_CHART\_REPO\_REQUEST\_TIMEOUT
+  Set timeout for all requests to chart repository\. A request includes its whole body, so the timeout also bounds a whole blob download or upload\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_RENDER\_CHART\_REPO\_REQUEST\_TIMEOUT
 
 - `--chart-repo-url` (default: `""`)
 
@@ -3110,6 +3112,105 @@ nelm chart upload [archive] [remote] [flags]
 - `--username` (default: `""`)
 
   chart repository username where to locate the requested chart
+
+
+### chart copy
+
+Copy a chart with every image listed in its helm\.sh/images annotation\. FROM and TO are either an OCI repository, oci://REPO\[:TAG\] \(docker://REPO\[:TAG\] or REPO\[:TAG\] also work\), or an archive, archive:PATH or a path ending in \.tar, \.tar\.gz or \.tgz\. A source repository without a tag means the "latest" tag\. An archive is written as an OCI image layout; werf bundle archives are also read\. Copied to a repository, the chart is renamed to the repository basename and its images are copied into the repository by digest, keeping their tags\. With TAG the chart version is TAG if it is a semver version \(without the "v" prefix\), or 0\.0\.0\-\<unix time\>\-\<TAG slug\> otherwise, and the chart is pushed under the version and TAG, with a "\+" in either pushed as "\_"; without TAG the chart keeps its version and is pushed under it and the source tag, if any \(a werf bundle archive has none\)\. Images of chart dependencies are copied too, non\-distributable layers included; referrers of the images, like signatures and SBOMs, are not copied\. Loopback registries, like localhost:5000, are reached over plain HTTP\.
+
+**Usage:**
+
+```shell
+nelm chart copy FROM TO
+```
+
+**Options:**
+
+- `--archive-max-expanded-size` (default: `"64Gi"`)
+
+  Maximum size the source archive may decompress to, nested image tarballs included, and, separately, the maximum size extracted from its tars, e\.g\. 64Gi\. Temporary files may take up to about twice as much\. Vars: \$NELM\_ARCHIVE\_MAX\_EXPANDED\_SIZE, \$NELM\_CHART\_COPY\_ARCHIVE\_MAX\_EXPANDED\_SIZE
+
+- `--sign` (default: `false`)
+
+  Sign the copy if it changes the chart\. Without it, the provenance of a changed chart is dropped\. Vars: \$NELM\_SIGN, \$NELM\_CHART\_COPY\_SIGN
+
+- `--sign-key` (default: `""`)
+
+  Name of the key to sign with\. Vars: \$NELM\_SIGN\_KEY, \$NELM\_CHART\_COPY\_SIGN\_KEY
+
+- `--sign-keyring` (default: `""`)
+
+  Path to the keyring with the signing key\. Vars: \$NELM\_SIGN\_KEYRING, \$NELM\_CHART\_COPY\_SIGN\_KEYRING
+
+- `--sign-passphrase-file` (default: `""`)
+
+  Path to a file with the passphrase of the signing key, "\-" for stdin\. Vars: \$NELM\_SIGN\_PASSPHRASE\_FILE, \$NELM\_CHART\_COPY\_SIGN\_PASSPHRASE\_FILE
+
+
+**Chart repository options:**
+
+- `--chart-repo-basic-password` (default: `""`)
+
+  Basic auth password to authenticate in chart repository\. Vars: \$NELM\_CHART\_REPO\_BASIC\_PASSWORD, \$NELM\_CHART\_COPY\_CHART\_REPO\_BASIC\_PASSWORD
+
+- `--chart-repo-basic-username` (default: `""`)
+
+  Basic auth username to authenticate in chart repository\. Vars: \$NELM\_CHART\_REPO\_BASIC\_USERNAME, \$NELM\_CHART\_COPY\_CHART\_REPO\_BASIC\_USERNAME
+
+- `--chart-repo-ca` (default: `""`)
+
+  Path to TLS CA file for connecting to chart repository\. Vars: \$NELM\_CHART\_REPO\_CA, \$NELM\_CHART\_COPY\_CHART\_REPO\_CA
+
+- `--chart-repo-cert` (default: `""`)
+
+  Path to TLS client cert file for connecting to chart repository\. Vars: \$NELM\_CHART\_REPO\_CERT, \$NELM\_CHART\_COPY\_CHART\_REPO\_CERT
+
+- `--chart-repo-key` (default: `""`)
+
+  Path to TLS client key file for connecting to chart repository\. Vars: \$NELM\_CHART\_REPO\_KEY, \$NELM\_CHART\_COPY\_CHART\_REPO\_KEY
+
+- `--chart-repo-pass-creds` (default: `false`)
+
+  Allow sending chart repository credentials to domains different from the chart repository domain when downloading charts\. Vars: \$NELM\_CHART\_REPO\_PASS\_CREDS, \$NELM\_CHART\_COPY\_CHART\_REPO\_PASS\_CREDS
+
+- `--chart-repo-request-timeout` (default: `0s`)
+
+  Set timeout for all requests to chart repository\. A request includes its whole body, so the timeout also bounds a whole blob download or upload\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_COPY\_CHART\_REPO\_REQUEST\_TIMEOUT
+
+- `--chart-repo-url` (default: `""`)
+
+  Set URL of chart repo to be used to look for chart\. Vars: \$NELM\_CHART\_REPO\_URL, \$NELM\_CHART\_COPY\_CHART\_REPO\_URL
+
+- `--insecure-chart-repos` (default: `false`)
+
+  Allow insecure HTTP connections to chart repository\. Vars: \$NELM\_INSECURE\_CHART\_REPOS, \$NELM\_CHART\_COPY\_INSECURE\_CHART\_REPOS
+
+- `--no-verify-chart-repos-tls` (default: `false`)
+
+  Don't verify TLS certificates of chart repository\. Vars: \$NELM\_NO\_VERIFY\_CHART\_REPOS\_TLS, \$NELM\_CHART\_COPY\_NO\_VERIFY\_CHART\_REPOS\_TLS
+
+- `--oci-chart-repos-creds` (default: `""`)
+
+  Credentials to access OCI chart repositories\. Vars: \$NELM\_OCI\_CHART\_REPOS\_CREDS, \$NELM\_CHART\_COPY\_OCI\_CHART\_REPOS\_CREDS
+
+
+**Other options:**
+
+- `--color-mode` (default: `"auto"`)
+
+  Color mode for logs\. Allowed: auto, off, on\. Vars: \$NELM\_COLOR\_MODE, \$NELM\_CHART\_COPY\_COLOR\_MODE
+
+- `--log-level` (default: `"info"`)
+
+  Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_COPY\_LOG\_LEVEL
+
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_COPY\_LOG\_WIDTH
+
+- `--temp-dir` (default: `""`)
+
+  The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Reading an archive needs space for about the decompressed archive and twice its images\. Var: \$NELM\_TEMP\_DIR
 
 
 ### chart pack

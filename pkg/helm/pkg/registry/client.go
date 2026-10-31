@@ -72,12 +72,14 @@ type (
 		credentialsFile    string
 		username           string
 		password           string
+		basicAuthHosts     []string
 		out                io.Writer
 		authorizer         *auth.Client
 		registryAuthorizer RemoteClient
 		credentialsStore   credentials.Store
 		httpClient         *http.Client
 		plainHTTP          bool
+		plainHTTPHost      func(host string) bool
 	}
 
 	// ClientOption allows specifying various settings configurable by the user for overriding the defaults
@@ -126,7 +128,16 @@ func NewClient(options ...ClientOption) (*Client, error) {
 		}
 		authorizer.SetUserAgent(version.GetUserAgent())
 
-		if client.username != "" && client.password != "" {
+		if client.username != "" && client.password != "" && client.basicAuthHosts != nil {
+			storeCredential := credentials.Credential(client.credentialsStore)
+			authorizer.Credential = func(ctx context.Context, hostport string) (auth.Credential, error) {
+				if slices.Contains(client.basicAuthHosts, hostport) {
+					return auth.Credential{Username: client.username, Password: client.password}, nil
+				}
+
+				return storeCredential(ctx, hostport)
+			}
+		} else if client.username != "" && client.password != "" {
 			authorizer.Credential = func(_ context.Context, _ string) (auth.Credential, error) {
 				return auth.Credential{Username: client.username, Password: client.password}, nil
 			}
@@ -167,6 +178,30 @@ func ClientOptBasicAuth(username, password string) ClientOption {
 	return func(client *Client) {
 		client.username = username
 		client.password = password
+	}
+}
+
+// ClientOptBasicAuthHosts limits the username and password to the given registry hosts (host or
+// host:port). Other hosts get the credentials from the credentials store. Docker Hub names are
+// matched to the host the requests go to.
+func ClientOptBasicAuthHosts(hosts ...string) ClientOption {
+	return func(client *Client) {
+		client.basicAuthHosts = make([]string, 0, len(hosts))
+		for _, host := range hosts {
+			if host == "index.docker.io" {
+				host = "docker.io"
+			}
+
+			client.basicAuthHosts = append(client.basicAuthHosts, registry.Reference{Registry: host}.Host())
+		}
+	}
+}
+
+// ClientOptPlainHTTPHost makes the client decide per registry host (host or host:port) whether to
+// use plain HTTP, instead of following ClientOptPlainHTTP.
+func ClientOptPlainHTTPHost(plainHTTPHost func(host string) bool) ClientOption {
+	return func(client *Client) {
+		client.plainHTTPHost = plainHTTPHost
 	}
 }
 
@@ -252,7 +287,7 @@ func (c *Client) Login(host string, options ...LoginOption) error {
 	if err != nil {
 		return err
 	}
-	reg.PlainHTTP = c.plainHTTP
+	reg.PlainHTTP = isPlainHTTP(c.plainHTTP, c.plainHTTPHost, reg.Reference.Registry)
 	cred := auth.Credential{Username: c.username, Password: c.password}
 	c.authorizer.ForceAttemptOAuth2 = true
 	reg.Client = c.authorizer
@@ -558,6 +593,11 @@ func (c *Client) processChartPull(genericResult *GenericPullResult, operation *p
 
 // Pull downloads a chart from a registry
 func (c *Client) Pull(ref string, options ...PullOption) (*PullResult, error) {
+	return c.PullContext(context.Background(), ref, options...)
+}
+
+// PullContext is Pull that stops when ctx is done.
+func (c *Client) PullContext(ctx context.Context, ref string, options ...PullOption) (*PullResult, error) {
 	operation := &pullOperation{
 		withChart: true, // By default, always download the chart layer
 	}
@@ -584,7 +624,7 @@ func (c *Client) Pull(ref string, options ...PullOption) (*PullResult, error) {
 
 	// Use generic client for the pull operation
 	genericClient := c.Generic()
-	genericResult, err := genericClient.PullGeneric(ref, GenericPullOptions{
+	genericResult, err := genericClient.PullGenericContext(ctx, ref, GenericPullOptions{
 		AllowedMediaTypes: allowedMediaTypes,
 	})
 	if err != nil {
@@ -649,6 +689,11 @@ type (
 
 // Push uploads a chart to a registry.
 func (c *Client) Push(data []byte, ref string, options ...PushOption) (*PushResult, error) {
+	return c.PushContext(context.Background(), data, ref, options...)
+}
+
+// PushContext is Push that stops when ctx is done.
+func (c *Client) PushContext(ctx context.Context, data []byte, ref string, options ...PushOption) (*PushResult, error) {
 	parsedRef, err := newReference(ref)
 	if err != nil {
 		return nil, err
@@ -675,8 +720,6 @@ func (c *Client) Push(data []byte, ref string, options ...PushOption) (*PushResu
 	if err != nil {
 		return nil, err
 	}
-
-	ctx := context.Background()
 
 	memoryStore := memory.New()
 	chartDescriptor, err := oras.PushBytes(ctx, memoryStore, ChartLayerMediaType, data)
@@ -722,7 +765,7 @@ func (c *Client) Push(data []byte, ref string, options ...PushOption) (*PushResu
 	if err != nil {
 		return nil, err
 	}
-	repository.PlainHTTP = c.plainHTTP
+	repository.PlainHTTP = isPlainHTTP(c.plainHTTP, c.plainHTTPHost, repository.Reference.Registry)
 	repository.Client = c.authorizer
 
 	manifestDescriptor, err = oras.ExtendedCopy(ctx, memoryStore, parsedRef.String(), repository, parsedRef.String(), oras.DefaultExtendedCopyOptions)
@@ -832,7 +875,7 @@ func (c *Client) Tags(ref string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	repository.PlainHTTP = c.plainHTTP
+	repository.PlainHTTP = isPlainHTTP(c.plainHTTP, c.plainHTTPHost, repository.Reference.Registry)
 	repository.Client = c.authorizer
 
 	var tagVersions []*semver.Version
@@ -871,7 +914,7 @@ func (c *Client) Resolve(ref string) (desc ocispec.Descriptor, err error) {
 	if err != nil {
 		return desc, err
 	}
-	remoteRepository.PlainHTTP = c.plainHTTP
+	remoteRepository.PlainHTTP = isPlainHTTP(c.plainHTTP, c.plainHTTPHost, remoteRepository.Reference.Registry)
 	remoteRepository.Client = c.authorizer
 
 	parsedReference, err := newReference(ref)
@@ -994,4 +1037,13 @@ func (c *Client) tagManifest(ctx context.Context, memoryStore *memory.Store,
 
 	return oras.TagBytes(ctx, memoryStore, ocispec.MediaTypeImageManifest,
 		manifestData, parsedRef.String())
+}
+
+// isPlainHTTP returns whether to use plain HTTP with the registry host.
+func isPlainHTTP(plainHTTP bool, plainHTTPHost func(host string) bool, host string) bool {
+	if plainHTTPHost != nil {
+		return plainHTTPHost(host)
+	}
+
+	return plainHTTP
 }
