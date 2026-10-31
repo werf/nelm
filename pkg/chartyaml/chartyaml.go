@@ -23,7 +23,9 @@ type Image struct {
 }
 
 type EditOptions struct {
-	AppVersion        string
+	AppVersion string
+	// DefaultAPIVersion is set as apiVersion only when Chart.yaml has none or an empty one.
+	DefaultAPIVersion string
 	DeleteAnnotations []string
 	Name              string
 	// SetAnnotations values are written as literal blocks when they span several lines.
@@ -31,10 +33,14 @@ type EditOptions struct {
 	Version        string
 }
 
+func (o EditOptions) isNoop() bool {
+	return o.Name == "" && o.Version == "" && o.AppVersion == "" && o.DefaultAPIVersion == "" && len(o.SetAnnotations) == 0 && len(o.DeleteAnnotations) == 0
+}
+
 // Edit sets the non-empty top-level fields and the annotations given in opts in the Chart.yaml
 // data. Data is returned as is when there is nothing to change.
 func Edit(ctx context.Context, data []byte, opts EditOptions) ([]byte, error) {
-	if opts.Name == "" && opts.Version == "" && opts.AppVersion == "" && len(opts.SetAnnotations) == 0 && len(opts.DeleteAnnotations) == 0 {
+	if opts.isNoop() {
 		return data, nil
 	}
 
@@ -74,7 +80,16 @@ func Edit(ctx context.Context, data []byte, opts EditOptions) ([]byte, error) {
 		}
 	}
 
+	if opts.DefaultAPIVersion != "" && hasScalar(body, "apiVersion") {
+		opts.DefaultAPIVersion = ""
+	}
+
+	if opts.isNoop() {
+		return data, nil
+	}
+
 	for _, field := range []struct{ key, value string }{
+		{key: "apiVersion", value: opts.DefaultAPIVersion},
 		{key: "name", value: opts.Name},
 		{key: "version", value: opts.Version},
 		{key: "appVersion", value: opts.AppVersion},
@@ -224,6 +239,21 @@ func editAnnotations(body *ast.MappingNode, set map[string]string, deleteKeys []
 	}
 
 	return nil
+}
+
+// hasScalar reports whether the mapping has the key with a non-empty scalar value.
+func hasScalar(mapping *ast.MappingNode, key string) bool {
+	mappingValue := findMappingValue(mapping, key)
+	if mappingValue == nil {
+		return false
+	}
+
+	var value string
+	if err := yaml.NodeToValue(mappingValue.Value, &value); err != nil {
+		return true
+	}
+
+	return value != ""
 }
 
 func setScalar(mapping *ast.MappingNode, key, value string) error {

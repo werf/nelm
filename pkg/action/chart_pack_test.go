@@ -400,14 +400,16 @@ annotations:
 		},
 		{
 			name: "author images annotation untouched when there is nothing to change",
-			chart: map[string]string{"Chart.yaml": `name: mychart
+			chart: map[string]string{"Chart.yaml": `apiVersion: v2
+name: mychart
 version: 1.0.0
 annotations:
   helm.sh/images: |
     - {name: author, image: "nginx:1"}
 `},
 			steps: []chartPackTestStep{{
-				expectedChartYAML: `name: mychart
+				expectedChartYAML: `apiVersion: v2
+name: mychart
 version: 1.0.0
 annotations:
   helm.sh/images: |
@@ -475,7 +477,8 @@ annotations:
 		},
 		{
 			name: "images added, replaced and removed, author entry kept",
-			chart: map[string]string{"Chart.yaml": `name: mychart
+			chart: map[string]string{"Chart.yaml": `apiVersion: v2
+name: mychart
 version: 1.0.0
 annotations:
   helm.sh/images: |
@@ -484,7 +487,8 @@ annotations:
 `},
 			steps: []chartPackTestStep{
 				{
-					expectedChartYAML: `name: mychart
+					expectedChartYAML: `apiVersion: v2
+name: mychart
 version: 1.0.0
 annotations:
   helm.sh/images: |
@@ -501,7 +505,8 @@ annotations:
 					}},
 				},
 				{
-					expectedChartYAML: `name: mychart
+					expectedChartYAML: `apiVersion: v2
+name: mychart
 version: 1.0.0
 annotations:
   helm.sh/images: |
@@ -513,7 +518,8 @@ annotations:
 					opts: ChartPackOptions{Images: []chartyaml.Image{{Name: "frontend", Image: "registry/app:frontend2"}}},
 				},
 				{
-					expectedChartYAML: `name: mychart
+					expectedChartYAML: `apiVersion: v2
+name: mychart
 version: 1.0.0
 annotations:
   helm.sh/images: |
@@ -755,6 +761,42 @@ func TestChartPack_ChecksDecompressedChartSize(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "a chart loader accepts less than 4096 bytes")
 	assert.NoFileExists(t, filepath.Join(destination, "mychart-1.0.0.tgz"))
+}
+
+// TestChartPack_DefaultsMissingAPIVersion packs a chart without apiVersion and saves the pulled
+// archive into a directory, as werf exports a pulled bundle, which drops the dependencies of an
+// apiVersion v1 chart from Chart.yaml.
+func TestChartPack_DefaultsMissingAPIVersion(t *testing.T) {
+	chartDir := t.TempDir()
+	writeChartPackTestFiles(t, chartDir, map[string]string{
+		"Chart.yaml":                   "# The chart.\nname: mychart # chart name\nversion: 1.0.0\ndependencies:\n  - name: sub\n    version: 0.1.0\n    export-values:\n      - parent: werf\n        child: werf\n",
+		"charts/sub/Chart.yaml":        "apiVersion: v2\nname: sub\nversion: 0.1.0\n",
+		"charts/sub/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: sub\ndata:\n  image: {{ .Values.werf.image.app }}\n",
+	})
+
+	result, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+		Destination: t.TempDir(),
+		ExtraValues: map[string]interface{}{"werf": map[string]interface{}{"image": map[string]interface{}{"app": "registry/app:tag"}}},
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, "# The chart.\nname: mychart # chart name\nversion: 1.0.0\ndependencies:\n  - name: sub\n    version: 0.1.0\n    export-values:\n      - parent: werf\n        child: werf\napiVersion: v2\n", readChartPackTestArchiveFile(t, result.ArchivePath, "mychart/Chart.yaml"))
+
+	loaded, err := v2loader.LoadFile(newChartPackTestContext(), result.ArchivePath)
+	require.NoError(t, err)
+
+	exportedDir := t.TempDir()
+	require.NoError(t, v2util.SaveIntoDir(loaded, exportedDir))
+
+	rendered, err := ChartRender(newChartRenderInstallContext(t), ChartRenderOptions{
+		Chart:           exportedDir,
+		LegacyChartType: common.LegacyChartTypeBundle,
+		OutputNoPrint:   true,
+		TempDirPath:     t.TempDir(),
+	})
+	require.NoError(t, err)
+	require.Len(t, rendered.Resources, 1)
+	assert.Equal(t, map[string]interface{}{"image": "registry/app:tag"}, rendered.Resources[0].Unstruct.Object["data"])
 }
 
 func TestChartPack_FailedArchiveMoveRemovesOldProvenance(t *testing.T) {

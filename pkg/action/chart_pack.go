@@ -274,10 +274,13 @@ func ChartPack(ctx context.Context, chartPath string, opts ChartPackOptions) (*C
 		}
 	}
 
+	// Without apiVersion the chart loads as apiVersion v1, and saving a v1 chart, e.g. when werf
+	// exports a pulled bundle into a directory, drops its dependencies from Chart.yaml.
 	chartYAMLEdit := chartyaml.EditOptions{
-		AppVersion: opts.AppVersion,
-		Name:       opts.Name,
-		Version:    opts.Version,
+		AppVersion:        opts.AppVersion,
+		DefaultAPIVersion: v2chart.APIVersionV2,
+		Name:              opts.Name,
+		Version:           opts.Version,
 	}
 
 	if opts.Images != nil || opts.ResetValues {

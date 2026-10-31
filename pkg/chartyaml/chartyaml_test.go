@@ -61,6 +61,30 @@ appVersion: "2.0"
 `,
 		},
 		{
+			name:     "default apiVersion is added when missing",
+			data:     "# The chart.\nname: mychart # keep me\nversion: 1.0.0\n",
+			opts:     EditOptions{DefaultAPIVersion: "v2"},
+			expected: "# The chart.\nname: mychart # keep me\nversion: 1.0.0\napiVersion: v2\n",
+		},
+		{
+			name:     "default apiVersion replaces an empty one",
+			data:     "apiVersion: \"\"\nname: mychart\n",
+			opts:     EditOptions{DefaultAPIVersion: "v2"},
+			expected: "apiVersion: v2\nname: mychart\n",
+		},
+		{
+			name:     "default apiVersion replaces a null one",
+			data:     "apiVersion:\nname: mychart\n",
+			opts:     EditOptions{DefaultAPIVersion: "v2"},
+			expected: "apiVersion: v2\nname: mychart\n",
+		},
+		{
+			name:     "default apiVersion keeps an explicit one",
+			data:     "apiVersion:   v1\nname: mychart\n",
+			opts:     EditOptions{DefaultAPIVersion: "v2"},
+			expected: "apiVersion:   v1\nname: mychart\n",
+		},
+		{
 			name: "add annotations",
 			data: "name: mychart # c\nversion: 1.0.0\n",
 			opts: EditOptions{SetAnnotations: map[string]string{ImagesAnnotation: images}},
