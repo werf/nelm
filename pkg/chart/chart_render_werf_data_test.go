@@ -38,6 +38,39 @@ func TestRenderChart_WerfDataBelowDeployOptions(t *testing.T) {
 			want:        map[string]interface{}{"l": []interface{}{"values-0", "set"}},
 		},
 		{
+			name:              "deploy --set patches a list element set by publish --set, like converge with both",
+			chart:             werfDataCardChart("", "", "", ""),
+			published:         werfDataFlags{Set: []string{"l[0]=a"}},
+			deployFlags:       werfDataFlags{Set: []string{"l[1]=b"}},
+			want:              map[string]interface{}{"l": []interface{}{"a", "b"}},
+			wantReleaseConfig: "l: [a, b]",
+		},
+		{
+			name:        "deploy --set sets a key of a map in a list set by publish --set, like converge with both",
+			chart:       werfDataCardChart("", "", "", ""),
+			published:   werfDataFlags{Set: []string{"l[0].a=1"}},
+			deployFlags: werfDataFlags{Set: []string{"l[0].b=2"}},
+			want:        map[string]interface{}{"l": []interface{}{map[string]interface{}{"a": int64(1), "b": int64(2)}}},
+		},
+		{
+			name:        "deploy --set-string patches a list set by publish --set, like converge with both",
+			chart:       werfDataCardChart("", "", "", ""),
+			published:   werfDataFlags{Set: []string{"l[0]=1"}},
+			deployFlags: werfDataFlags{SetString: []string{"l[1]=2"}},
+			want:        map[string]interface{}{"l": []interface{}{int64(1), "2"}},
+		},
+		{
+			// Unlike converge with both, which applies all --set-json before all --set, the deploy
+			// --set* are applied after the publish ones.
+			name:        "deploy --set-json replaces a map set by publish --set",
+			chart:       werfDataCardChart("", "", "", ""),
+			published:   werfDataFlags{Set: []string{"m.a=1"}},
+			deployFlags: werfDataFlags{SetJSON: []string{`m={"b":2}`}},
+			want:        map[string]interface{}{"m": map[string]interface{}{"b": float64(2)}},
+		},
+		{
+			// Unlike converge with both, in which all --set* beat all --values, every deploy flag beats
+			// every publish input.
 			name:        "deploy --values beat publish --set",
 			chart:       werfDataCardChart("", "", "", ""),
 			published:   werfDataFlags{Set: []string{"k=published-set"}},

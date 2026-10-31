@@ -670,19 +670,23 @@ func buildUserValues(ctx context.Context, setValuesOpts *values.Options, valuesF
 		secretValuesFilesValues = secretsRuntimeData.GetDecryptedCustomSecretValues()
 	}
 
-	var published valuesGroup
+	var (
+		published         valuesGroup
+		applyPublishedSet func(base map[string]interface{}) (map[string]interface{}, error)
+	)
+
 	if publishedData != nil {
 		publishedSecretValues, err := decryptPublishedSecretValues(ctx, publishedData)
 		if err != nil {
 			return userValues{}, err
 		}
 
-		applyPublishedSet, err := publishedSetValuesApplier(ctx, publishedData)
+		applyPublishedSet, err = publishedSetValuesApplier(ctx, publishedData)
 		if err != nil {
 			return userValues{}, err
 		}
 
-		published, err = buildValuesGroup(ctx, chrt, publishedData.Values, publishedSecretValues, publishedData.ExtraValues, nil, applyPublishedSet)
+		published, err = buildValuesGroup(ctx, chrt, publishedData.Values, publishedSecretValues, publishedData.ExtraValues, nil, nil, applyPublishedSet)
 		if err != nil {
 			return userValues{}, fmt.Errorf("build %s values: %w", werfdata.DirName, err)
 		}
@@ -693,7 +697,7 @@ func buildUserValues(ctx context.Context, setValuesOpts *values.Options, valuesF
 		return setValuesOpts.MergeSetValues(ctx, getter.Getters(), base, values.MergeSetValuesOptions{SetFilesCache: setFilesCache})
 	}
 
-	deploy, err := buildValuesGroup(ctx, chrt, valuesFilesValues, secretValuesFilesValues, serviceValues, []valuesGroup{published}, applySet)
+	deploy, err := buildValuesGroup(ctx, chrt, valuesFilesValues, secretValuesFilesValues, serviceValues, []valuesGroup{published}, applyPublishedSet, applySet)
 	if err != nil {
 		return userValues{}, err
 	}
@@ -738,7 +742,11 @@ func chartValuesWithDependencyLayers(chartVals map[string]interface{}, layers []
 // buildValuesGroup builds a values group. The --set* values are applied on top of the values files
 // and secret values files of the lower groups and of this group, so that they can patch them like in
 // Helm, e.g. replace a single list element.
-func buildValuesGroup(ctx context.Context, chrt helmchart.Charter, valuesFilesValues, secretValuesFilesValues, serviceValues map[string]interface{}, lowerGroups []valuesGroup, applySet func(base map[string]interface{}) (map[string]interface{}, error)) (valuesGroup, error) {
+//
+// applyLowerSet, if not nil, applies the --set* values of the lower groups before the ones of this
+// group, so that they patch the values those set, like on a single command line, e.g. set
+// different elements of one list. Only the paths that this group sets are taken from the result.
+func buildValuesGroup(ctx context.Context, chrt helmchart.Charter, valuesFilesValues, secretValuesFilesValues, serviceValues map[string]interface{}, lowerGroups []valuesGroup, applyLowerSet, applySet func(base map[string]interface{}) (map[string]interface{}, error)) (valuesGroup, error) {
 	var setBaseLayers []map[string]interface{}
 	for _, group := range lowerGroups {
 		setBaseLayers = append(setBaseLayers, group.ValuesFiles, group.SecretValuesFiles)
@@ -765,10 +773,22 @@ func buildValuesGroup(ctx context.Context, chrt helmchart.Charter, valuesFilesVa
 		return valuesGroup{}, err
 	}
 
+	applyAllSet := applySet
+	if applyLowerSet != nil {
+		applyAllSet = func(base map[string]interface{}) (map[string]interface{}, error) {
+			base, err := applyLowerSet(base)
+			if err != nil {
+				return nil, fmt.Errorf("apply lower --set* values: %w", err)
+			}
+
+			return applySet(base)
+		}
+	}
+
 	// The --set* values patch the exported values, e.g. a list element at the child path of an
 	// export. The --set* values might be invalid over the exported values though, e.g. when they
 	// set a key of a map that is exported as a scalar, then they patch the unexported values.
-	withSecrets, err := applySet(setBase)
+	withSecrets, err := applyAllSet(setBase)
 	if err != nil {
 		log.Default.Debug(ctx, "Applying --set* values over the values files values with export-values applied failed, applying them over the values files values: %s", err)
 
@@ -777,7 +797,7 @@ func buildValuesGroup(ctx context.Context, chrt helmchart.Charter, valuesFilesVa
 			unexportedSetBase = chartcommon.MergeMaps(unexportedSetBase, layer)
 		}
 
-		withSecrets, err = applySet(unexportedSetBase)
+		withSecrets, err = applyAllSet(unexportedSetBase)
 		if err != nil {
 			return valuesGroup{}, fmt.Errorf("merge set values: %w", err)
 		}
