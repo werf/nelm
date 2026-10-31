@@ -712,7 +712,6 @@ func (c *Client) PushContext(ctx context.Context, data []byte, ref string, optio
 		return nil, err
 	}
 
-	
 	memoryStore := memory.New()
 	chartDescriptor, err := oras.PushBytes(ctx, memoryStore, ChartLayerMediaType, data)
 	if err != nil {

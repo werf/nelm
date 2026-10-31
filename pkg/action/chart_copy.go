@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,9 +20,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/gosimple/slug"
+	"github.com/gosimple/unidecode"
 	"github.com/opencontainers/go-digest"
 	specs "github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -62,11 +65,13 @@ const (
 	chartCopyArchiveEntryImage      = "image"
 	chartCopyArchiveMaxEntries      = 100_000
 	chartCopyArchiveMaxMetadataSize = 16 << 20
-	dockerConfigMediaType           = "application/vnd.docker.container.image.v1+json"
-	dockerLayerMediaType            = "application/vnd.docker.image.rootfs.diff.tar.gzip"
-	dockerManifestMediaType         = "application/vnd.docker.distribution.manifest.v2+json"
-	werfArchiveChartFileName        = "chart.tar.gz"
-	werfArchiveImagesDirName        = "images"
+	// chartCopyMaxTagLength is the maximum length of an OCI tag.
+	chartCopyMaxTagLength    = 128
+	dockerConfigMediaType    = "application/vnd.docker.container.image.v1+json"
+	dockerLayerMediaType     = "application/vnd.docker.image.rootfs.diff.tar.gzip"
+	dockerManifestMediaType  = "application/vnd.docker.distribution.manifest.v2+json"
+	werfArchiveChartFileName = "chart.tar.gz"
+	werfArchiveImagesDirName = "images"
 )
 
 type chartCopyLayerFormatType string
@@ -323,12 +328,12 @@ type chartCopyHookState struct {
 func newChartCopyHookState(chartAccessor helmchart.Accessor) (*chartCopyHookState, error) {
 	metadata, err := chartCopyMetadataWithoutAnnotations(chartAccessor)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read chart metadata: %w", err)
 	}
 
 	values, err := chartCopyValuesStates(chartAccessor)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read chart values: %w", err)
 	}
 
 	return &chartCopyHookState{
@@ -344,7 +349,7 @@ func newChartCopyHookState(chartAccessor helmchart.Accessor) (*chartCopyHookStat
 func (s *chartCopyHookState) Persist(chartAccessor helmchart.Accessor, edit *chartyaml.EditOptions) error {
 	metadata, err := chartCopyMetadataWithoutAnnotations(chartAccessor)
 	if err != nil {
-		return err
+		return fmt.Errorf("read chart metadata: %w", err)
 	}
 
 	if !bytes.Equal(metadata, s.Metadata) {
@@ -533,7 +538,9 @@ func ChartCopy(ctx context.Context, from, to string, opts ChartCopyOptions) erro
 
 // ChartVersionFromTag returns the version of a chart pushed under tag: a strict semver tag,
 // optionally prefixed with "v", is used as is without the prefix; any other tag gives the
-// prerelease version 0.0.0-<unix time of now>-<tag slug>.
+// prerelease version 0.0.0-<unix time of now>-<tag slug>, as werf does. The chart is pushed under
+// its version, so a slug that would make the version longer than a tag can be is cut and suffixed
+// with a hash of the tag to tell such tags apart.
 func ChartVersionFromTag(ctx context.Context, tag string, now time.Time) string {
 	if version := strings.TrimPrefix(tag, "v"); version != "" {
 		if _, err := semver.StrictNewVersion(version); err == nil {
@@ -541,12 +548,19 @@ func ChartVersionFromTag(ctx context.Context, tag string, now time.Time) string 
 		}
 	}
 
-	tagSlug := strings.Trim(strings.ReplaceAll(slug.Make(tag), "_", "-"), "-")
+	tagSlug := chartVersionTagSlug(tag)
 	if tagSlug == "" {
 		return fmt.Sprintf("0.0.0-%d", now.Unix())
 	}
 
-	return fmt.Sprintf("0.0.0-%d-%s", now.Unix(), tagSlug)
+	prefix := fmt.Sprintf("0.0.0-%d-", now.Unix())
+	if len(prefix)+len(tagSlug) > chartCopyMaxTagLength {
+		hash := sha256.Sum256([]byte(tag))
+		hashSuffix := "-" + hex.EncodeToString(hash[:])[:8]
+		tagSlug = strings.TrimRight(tagSlug[:chartCopyMaxTagLength-len(prefix)-len(hashSuffix)], "-") + hashSuffix
+	}
+
+	return prefix + tagSlug
 }
 
 func readChartCopyArchive(ctx context.Context, archivePath, tempDir string, expansion *chartCopyExpansion) (*chartCopySource, error) {
@@ -606,10 +620,15 @@ func copyChartToRepo(ctx context.Context, registryClient *registry.Client, sourc
 		version, extraTag = ChartVersionFromTag(ctx, to.Tag, time.Now()), strings.ReplaceAll(to.Tag, "+", "_")
 	}
 
+	versionTag := strings.ReplaceAll(version, "+", "_")
+	if err := (orasregistry.Reference{Reference: versionTag}).ValidateReferenceAsTag(); err != nil {
+		return fmt.Errorf("chart version %q can't be a tag: %w", version, err)
+	}
+
 	tagClaims := map[string]chartCopyTagClaim{}
-	for _, tag := range lo.Compact([]string{strings.ReplaceAll(version, "+", "_"), extraTag}) {
+	for _, tag := range lo.Compact([]string{versionTag, extraTag}) {
 		if err := claimChartCopyTag(tagClaims, tag, chartCopyTagClaim{Owner: "the chart"}); err != nil {
-			return err
+			return fmt.Errorf("check destination tags: %w", err)
 		}
 	}
 
@@ -623,7 +642,7 @@ func copyChartToRepo(ctx context.Context, registryClient *registry.Client, sourc
 		image := chartCopyResolvedImage{Desc: desc, Ref: imageRef, Storage: storage, Tag: parseChartCopyImageRef(imageRef).Tag}
 		if image.Tag != "" {
 			if err := claimChartCopyTag(tagClaims, image.Tag, chartCopyTagClaim{Digest: desc.Digest, Owner: fmt.Sprintf("image %q", imageRef)}); err != nil {
-				return err
+				return fmt.Errorf("check destination tags: %w", err)
 			}
 		}
 
@@ -675,7 +694,7 @@ func copyChartToRepo(ctx context.Context, registryClient *registry.Client, sourc
 
 	dependenciesChanged, err := rewriteChartCopyDependencyImages(ctx, chartAccessor, imageMapping)
 	if err != nil {
-		return err
+		return fmt.Errorf("rewrite images of dependencies: %w", err)
 	}
 
 	snapshotBefore, err := chartCopySnapshot(chartAccessor)
@@ -1311,6 +1330,11 @@ func writeOCILayoutTar(ctx context.Context, dir, archivePath string, compress bo
 		return err
 	}
 
+	// A temporary file is created readable by its owner only.
+	if err := os.Chmod(tmpFile.Name(), 0o644); err != nil {
+		return fmt.Errorf("set archive permissions: %w", err)
+	}
+
 	if err := os.Rename(tmpFile.Name(), archivePath); err != nil {
 		return fmt.Errorf("move archive into place: %w", err)
 	}
@@ -1468,6 +1492,35 @@ func chartCopySnapshot(chartAccessor helmchart.Accessor) ([]byte, error) {
 	}
 
 	return snapshot, nil
+}
+
+// chartVersionTagSlug slugs tag as werf's slug.Slug does: letters are lowercased and transliterated
+// to ASCII, separators become "-", other characters are dropped, and "-" are not repeated nor lead
+// or trail.
+func chartVersionTagSlug(tag string) string {
+	var result strings.Builder
+	for _, r := range unidecode.Unidecode(tag) {
+		var cursor rune
+
+		switch {
+		case r >= 'a' && r <= 'z' || r >= '0' && r <= '9':
+			cursor = r
+		case r >= 'A' && r <= 'Z':
+			cursor = unicode.ToLower(r)
+		case strings.ContainsRune("-&(){}_[],.;:=+<>~/ ", r):
+			cursor = '-'
+		default:
+			continue
+		}
+
+		if cursor == '-' && (result.Len() == 0 || strings.HasSuffix(result.String(), "-")) {
+			continue
+		}
+
+		result.WriteRune(cursor)
+	}
+
+	return strings.TrimSuffix(result.String(), "-")
 }
 
 // checkChartCopyTarMember rejects sparse files: tar.Reader fills in their holes, producing more

@@ -60,6 +60,10 @@ func TestChartCopy_ArchiveChartConfig(t *testing.T) {
 	archivePath := filepath.Join(t.TempDir(), "chart.tar")
 	require.NoError(t, ChartCopy(newChartPackTestContext(), "oci://"+host+"/src/app:1.0.0", archivePath, newChartCopyTestOptions(t)))
 
+	info, err := os.Stat(archivePath)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o644), info.Mode().Perm())
+
 	files := readChartCopyTestTarFiles(t, archivePath)
 
 	var index ocispec.Index
@@ -402,6 +406,36 @@ func TestChartCopy_InsecureOnlyForChartHosts(t *testing.T) {
 
 	err = ChartCopy(newChartPackTestContext(), "oci://"+host+"/src/app:1.0.0", "oci://"+host+"/dst/app", newChartCopyTestOptions(t))
 	require.ErrorContains(t, err, "server gave HTTP response to HTTPS client")
+}
+
+func TestChartCopy_InvalidVersionTag(t *testing.T) {
+	host := newChartCopyTestRegistry(t)
+
+	layer := tarChartCopyTestFiles(t, map[string][]byte{"file": []byte("data")})
+	imageTarball := tarChartCopyTestFiles(t, map[string][]byte{
+		"manifest.json": []byte(`[{"Config":"config.json","Layers":["layer.tar"]}]`),
+		"config.json":   []byte(`{"architecture":"amd64","os":"linux"}`),
+		"layer.tar":     layer,
+	})
+
+	version := "1.0.0-" + strings.Repeat("a", 130)
+	chartData := buildChartCopyTestChart(t, map[string]string{
+		"Chart.yaml": "apiVersion: v2\nname: app\nversion: " + version + "\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: old.registry/project:abc\n",
+	})
+	archivePath := writeWerfChartCopyTestArchive(t, chartData, map[string][]byte{"abc": imageTarball})
+
+	dst := host + "/dst/app"
+	err := ChartCopy(newChartPackTestContext(), "archive:"+archivePath, "oci://"+dst, newChartCopyTestOptions(t))
+	require.ErrorContains(t, err, fmt.Sprintf("chart version %q can't be a tag", version))
+
+	var pushedTags []string
+
+	_ = newChartCopyTestRepository(t, dst).Tags(context.Background(), "", func(tags []string) error {
+		pushedTags = append(pushedTags, tags...)
+
+		return nil
+	})
+	assert.Empty(t, pushedTags)
 }
 
 func TestChartCopy_NonDistributableLayers(t *testing.T) {
@@ -1094,6 +1128,23 @@ func TestChartVersionFromTag(t *testing.T) {
 		{tag: "Feature/My_Branch", expected: "0.0.0-1700000000-feature-my-branch"},
 		{tag: "v", expected: "0.0.0-1700000000-v"},
 		{tag: "___", expected: "0.0.0-1700000000"},
+		// The cases below are werf's, from BundleTagToChartVersion.
+		{tag: "0.2.10", expected: "0.2.10"},
+		{tag: "1.24.425-prerelease11", expected: "1.24.425-prerelease11"},
+		{tag: "1.2.3+b", expected: "1.2.3+b"},
+		{tag: "v1.2.3-rc.1", expected: "1.2.3-rc.1"},
+		{tag: "my-branch/ABC", expected: "0.0.0-1700000000-my-branch-abc"},
+		{tag: "3f2a9c1", expected: "0.0.0-1700000000-3f2a9c1"},
+		{tag: "v1.2", expected: "0.0.0-1700000000-v1-2"},
+		{tag: "V1.2.3", expected: "0.0.0-1700000000-v1-2-3"},
+		{tag: "feature/Foo_1", expected: "0.0.0-1700000000-feature-foo-1"},
+		{tag: strings.Repeat("a", 111), expected: "0.0.0-1700000000-" + strings.Repeat("a", 111)},
+		{tag: strings.Repeat("a", 112), expected: "0.0.0-1700000000-" + strings.Repeat("a", 102) + "-f5435300"},
+		{tag: strings.Repeat("a", 101) + "/" + strings.Repeat("b", 10), expected: "0.0.0-1700000000-" + strings.Repeat("a", 101) + "-04dc2c3e"},
+		// werf's slug drops these characters and turns the separators into "-".
+		{tag: "a!b#c$d%e'f*g?h@i^j|k", expected: "0.0.0-1700000000-abcdefghijk"},
+		{tag: "a&b(c)d{e}f[g]h,i;j:k=l+m<n>o~p q", expected: "0.0.0-1700000000-a-b-c-d-e-f-g-h-i-j-k-l-m-n-o-p-q"},
+		{tag: "Café", expected: "0.0.0-1700000000-cafe"},
 	}
 
 	for _, tt := range tests {
@@ -1102,7 +1153,8 @@ func TestChartVersionFromTag(t *testing.T) {
 			assert.Equal(t, tt.expected, version)
 
 			_, err := semver.StrictNewVersion(version)
-			assert.NoError(t, err)
+			require.NoError(t, err)
+			assert.LessOrEqual(t, len(version), 128)
 		})
 	}
 }

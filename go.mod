@@ -35,6 +35,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gookit/color v1.6.0
 	github.com/gosimple/slug v1.15.0
+	github.com/gosimple/unidecode v1.0.1
 	github.com/gosuri/uitable v0.0.4
 	github.com/hofstadter-io/cinful v1.0.0
 	github.com/itchyny/gojq v0.12.19
@@ -134,7 +135,6 @@ require (
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/gorilla/handlers v1.5.2 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
-	github.com/gosimple/unidecode v1.0.1 // indirect
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
