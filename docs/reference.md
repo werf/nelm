@@ -24,7 +24,6 @@
   - [chart upload](#chart-upload)
   - [chart pack](#chart-pack)
   - [chart secret key create](#chart-secret-key-create)
-  - [chart secret key rotate](#chart-secret-key-rotate)
   - [chart secret values-file edit](#chart-secret-values-file-edit)
   - [chart secret values-file encrypt](#chart-secret-values-file-encrypt)
   - [chart secret values-file decrypt](#chart-secret-values-file-decrypt)
@@ -76,7 +75,6 @@
 ### Secret commands
 
 - [`nelm chart secret key create`](#chart-secret-key-create) — Create a new chart secret key\.
-- [`nelm chart secret key rotate`](#chart-secret-key-rotate) — Reencrypt secret files with a new secret key\.
 - [`nelm chart secret values-file edit`](#chart-secret-values-file-edit) — Interactively edit encrypted values file\.
 - [`nelm chart secret values-file encrypt`](#chart-secret-values-file-encrypt) — Encrypt values file and print result to stdout\.
 - [`nelm chart secret values-file decrypt`](#chart-secret-values-file-decrypt) — Decrypt values file and print result to stdout\.
@@ -3307,50 +3305,6 @@ nelm chart secret key create [options...]
 - `--log-width` (default: `0`)
 
   Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_SECRET\_KEY\_CREATE\_LOG\_WIDTH
-
-- `--temp-dir` (default: `""`)
-
-  The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
-
-
-### chart secret key rotate
-
-Decrypt with an old secret key, then encrypt with a new secret key chart files secret\-values\.yaml and secret/\*\.
-
-**Usage:**
-
-```shell
-nelm chart secret key rotate [options...] --old-secret-key secret-key --new-secret-key secret-key [chart-dir]
-```
-
-**Options:**
-
-- `--new-secret-key` (default: `""`)
-
-  New secret key\. Var: \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_NEW\_SECRET\_KEY
-
-- `--old-secret-key` (default: `""`)
-
-  Old secret key\. Var: \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_OLD\_SECRET\_KEY
-
-- `--secret-values` (default: `[]`)
-
-  Secret values files paths\. Vars: \$NELM\_SECRET\_VALUES, \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_SECRET\_VALUES
-
-
-**Other options:**
-
-- `--color-mode` (default: `"auto"`)
-
-  Color mode for logs\. Allowed: auto, off, on\. Vars: \$NELM\_COLOR\_MODE, \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_COLOR\_MODE
-
-- `--log-level` (default: `"info"`)
-
-  Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_LOG\_LEVEL
-
-- `--log-width` (default: `0`)
-
-  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_LOG\_WIDTH
 
 - `--temp-dir` (default: `""`)
 

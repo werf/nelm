@@ -51,6 +51,7 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
 - [Usage](#usage)
   - [Encrypted values files](#encrypted-values-files)
   - [Encrypted arbitrary files](#encrypted-arbitrary-files)
+  - [Rotating the secret key](#rotating-the-secret-key)
   - [Render patches](#render-patches)
   - [Diff patches](#diff-patches)
 - [Reference](#reference)
@@ -171,7 +172,6 @@ Chart commands:
 
 Secret commands:
   chart secret key create            Create a new chart secret key.
-  chart secret key rotate            Reencrypt secret files with a new secret key.
   chart secret values-file edit      Interactively edit encrypted values file.
   chart secret values-file encrypt   Encrypt values file and print result to stdout.
   chart secret values-file decrypt   Decrypt values file and print result to stdout.
@@ -357,6 +357,26 @@ nelm chart render
 config:
   user: john-doe
   password: verysecurepassword123
+```
+
+### Rotating the secret key
+
+To re-encrypt secrets with a new key, decrypt each encrypted file with the old key and encrypt it with the new one. Cover every encrypted file: `secret-values.yaml` and `secret/*` of the chart and of its local subcharts, encrypted values files passed with `--secret-values`, and `.werf-data/secret-values.yaml` of a published chart.
+
+```bash
+export OLD_KEY="$NELM_SECRET_KEY"
+export NEW_KEY="$(nelm chart secret key create)"
+
+# Encrypted values files:
+nelm chart secret values-file decrypt --secret-key "$OLD_KEY" --save-output-to /tmp/decrypted secret-values.yaml
+nelm chart secret values-file encrypt --secret-key "$NEW_KEY" --save-output-to secret-values.yaml /tmp/decrypted
+
+# Encrypted arbitrary files:
+nelm chart secret file decrypt --secret-key "$OLD_KEY" --save-output-to /tmp/decrypted secret/config.yaml
+nelm chart secret file encrypt --secret-key "$NEW_KEY" --save-output-to secret/config.yaml /tmp/decrypted
+
+rm /tmp/decrypted
+export NELM_SECRET_KEY="$NEW_KEY"
 ```
 
 ### Render patches

@@ -19,7 +19,6 @@ func newChartSecretKeyCommand(ctx context.Context, afterAllCommandsBuiltFuncs ma
 	)
 
 	cmd.AddCommand(newChartSecretKeyCreateCommand(ctx, afterAllCommandsBuiltFuncs))
-	cmd.AddCommand(newChartSecretKeyRotateCommand(ctx, afterAllCommandsBuiltFuncs))
 
 	return cmd
 }
