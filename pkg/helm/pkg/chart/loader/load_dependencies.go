@@ -165,8 +165,10 @@ func LoadChartDependencies(
 	}
 
 	for _, chartDep := range chartMetadataLock.Dependencies {
-		if _, err := isVendoredDependency(loadedChartFiles, chartDep); err != nil {
+		if vendored, err := isVendoredDependency(loadedChartFiles, chartDep); err != nil {
 			return nil, err
+		} else if vendored && chartDep.Repository != "" {
+			log.Default.Debug(ctx, "Use dependency %q %s vendored under charts/ instead of %s", chartDep.Name, chartDep.Version, chartDep.Repository)
 		}
 	}
 
