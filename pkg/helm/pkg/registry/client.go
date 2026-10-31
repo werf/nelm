@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -641,6 +642,7 @@ type (
 		provData     []byte
 		strictMode   bool
 		creationTime string
+		extraTags    []string
 	}
 )
 
@@ -666,6 +668,11 @@ func (c *Client) Push(data []byte, ref string, options ...PushOption) (*PushResu
 			return nil, errors.New(
 				"strict mode enabled, ref basename and tag must match the chart name and version")
 		}
+	}
+
+	extraTags, err := normalizeExtraTags(parsedRef, operation.extraTags)
+	if err != nil {
+		return nil, err
 	}
 
 	ctx := context.Background()
@@ -722,6 +729,12 @@ func (c *Client) Push(data []byte, ref string, options ...PushOption) (*PushResu
 		return nil, err
 	}
 
+	for _, tag := range extraTags {
+		if err := repository.Tag(ctx, manifestDescriptor, tag); err != nil {
+			return nil, fmt.Errorf("tag manifest %s as %q: %w", manifestDescriptor.Digest, tag, err)
+		}
+	}
+
 	chartSummary := &descriptorPushSummaryWithMeta{
 		Meta: meta,
 	}
@@ -752,8 +765,31 @@ func (c *Client) Push(data []byte, ref string, options ...PushOption) (*PushResu
 		_, _ = fmt.Fprintf(c.out, "%s contains an underscore.\n", result.Ref)
 		_, _ = fmt.Fprint(c.out, registryUnderscoreMessage+"\n")
 	}
+	for _, tag := range extraTags {
+		_, _ = fmt.Fprintf(c.out, "Tagged: %s:%s\n", parsedRef.Registry+"/"+parsedRef.Repository, tag)
+	}
 
 	return result, err
+}
+
+func normalizeExtraTags(parsedRef reference, tags []string) ([]string, error) {
+	var result []string
+	for _, tag := range tags {
+		tag = strings.ReplaceAll(tag, "+", "_")
+		if tag == parsedRef.Tag || slices.Contains(result, tag) {
+			continue
+		}
+
+		tagRef := parsedRef.orasReference
+		tagRef.Reference = tag
+		if err := tagRef.ValidateReferenceAsTag(); err != nil {
+			return nil, fmt.Errorf("validate extra tag: %w", err)
+		}
+
+		result = append(result, tag)
+	}
+
+	return result, nil
 }
 
 // PushOptProvData returns a function that sets the prov bytes setting on push
@@ -767,6 +803,15 @@ func PushOptProvData(provData []byte) PushOption {
 func PushOptStrictMode(strictMode bool) PushOption {
 	return func(operation *pushOperation) {
 		operation.strictMode = strictMode
+	}
+}
+
+// PushOptExtraTags returns a function that sets additional tags pointing to the
+// pushed manifest. Plus signs are replaced with underscores, as in the main ref.
+// Strict mode applies only to the main ref.
+func PushOptExtraTags(tags []string) PushOption {
+	return func(operation *pushOperation) {
+		operation.extraTags = tags
 	}
 }
 

@@ -37,6 +37,7 @@ type Push struct {
 	caFile                string
 	insecureSkipTLSVerify bool
 	plainHTTP             bool
+	extraTags             []string
 	out                   io.Writer
 }
 
@@ -73,6 +74,13 @@ func WithPlainHTTP(plainHTTP bool) PushOpt {
 	}
 }
 
+// WithPushExtraTags sets additional tags pointing to the pushed chart, besides its version tag.
+func WithPushExtraTags(tags []string) PushOpt {
+	return func(p *Push) {
+		p.extraTags = tags
+	}
+}
+
 // WithPushOptWriter sets the registryOut field on the push configuration object.
 func WithPushOptWriter(out io.Writer) PushOpt {
 	return func(p *Push) {
@@ -100,6 +108,7 @@ func (p *Push) Run(chartRef string, remote string) (string, error) {
 			pusher.WithTLSClientConfig(p.certFile, p.keyFile, p.caFile),
 			pusher.WithInsecureSkipTLSVerify(p.insecureSkipTLSVerify),
 			pusher.WithPlainHTTP(p.plainHTTP),
+			pusher.WithExtraTags(p.extraTags),
 		},
 	}
 

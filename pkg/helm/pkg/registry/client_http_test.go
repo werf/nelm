@@ -18,6 +18,7 @@ package registry
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 
@@ -77,6 +78,55 @@ func (suite *HTTPRegistryClientTestSuite) Test_5_ImageIndex() {
 
 	_, err := suite.RegistryClient.Pull(ref)
 	suite.Nil(err)
+}
+
+func (suite *HTTPRegistryClientTestSuite) Test_6_PushExtraTags() {
+	chartData, err := os.ReadFile("../downloader/testdata/local-subchart-0.1.0.tgz")
+	suite.Require().NoError(err)
+	meta, err := extractChartMeta(chartData)
+	suite.Require().NoError(err)
+
+	repo := fmt.Sprintf("%s/extratags/%s", suite.DockerRegistryHost, meta.Name)
+
+	tests := []struct {
+		name         string
+		extraTags    []string
+		expectedTags []string
+		expectError  bool
+	}{
+		{
+			name:         "literal and duplicate tags",
+			extraTags:    []string{"latest", "v0.1.0", meta.Version, "latest"},
+			expectedTags: []string{meta.Version, "latest", "v0.1.0"},
+		},
+		{
+			name:         "plus sign is encoded",
+			extraTags:    []string{"0.1.0+build"},
+			expectedTags: []string{meta.Version, "0.1.0_build"},
+		},
+		{
+			name:        "invalid tag",
+			extraTags:   []string{"bad tag"},
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			result, err := suite.RegistryClient.Push(chartData, fmt.Sprintf("%s:%s", repo, meta.Version), PushOptExtraTags(tt.extraTags))
+			if tt.expectError {
+				suite.Require().Error(err)
+				return
+			}
+			suite.Require().NoError(err)
+
+			for _, tag := range tt.expectedTags {
+				desc, err := suite.RegistryClient.Resolve(fmt.Sprintf("%s:%s", repo, tag))
+				suite.Require().NoError(err, tag)
+				suite.Equal(result.Manifest.Digest, desc.Digest.String(), tag)
+			}
+		})
+	}
 }
 
 func TestHTTPRegistryClientTestSuite(t *testing.T) {

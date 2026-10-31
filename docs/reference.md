@@ -3105,6 +3105,10 @@ nelm chart upload [archive] [remote] [flags]
 
   path to the file containing repository names and URLs
 
+- `--tag` (default: `[]`)
+
+  additional tag pointing to the pushed chart, besides its version tag \(can be specified multiple times\)
+
 - `--username` (default: `""`)
 
   chart repository username where to locate the requested chart
