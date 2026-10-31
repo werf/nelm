@@ -144,6 +144,14 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		if err := cli.AddFlag(cmd, &opts.TempDirPath, "temp-dir", "", "The directory for temporary files. By default, use the default system directory for temporary files", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalEnvVarRegexes,
+			Group:                miscFlagGroup,
+			Type:                 cli.FlagTypeDir,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &opts.TSNoRebuild, "ts-no-rebuild", false, "Reuse the existing TypeScript bundle instead of rebuilding it", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                tsFlagGroup,

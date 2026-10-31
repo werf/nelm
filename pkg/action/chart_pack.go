@@ -20,7 +20,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/samber/lo"
@@ -32,6 +31,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/featgate"
 	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
 	v3util "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/util"
+	"github.com/werf/nelm/v2/pkg/helm/intern/third_party/dep/fs"
 	"github.com/werf/nelm/v2/pkg/helm/intern/tlsutil"
 	helmaction "github.com/werf/nelm/v2/pkg/helm/pkg/action"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
@@ -135,6 +135,9 @@ type ChartPackOptions struct {
 	SignPassphraseFile string
 	// TSNoRebuild, when true, reuses the existing TypeScript bundle instead of rebuilding it.
 	TSNoRebuild bool
+	// TempDirPath is the directory for temporary files during the operation.
+	// The system directory for temporary files is used if not specified.
+	TempDirPath string
 	// ValuesFiles are merged in order over the stored values.
 	ValuesFiles []string
 	// ValuesSet are appended to the stored --set values.
@@ -277,7 +280,7 @@ func ChartPack(ctx context.Context, chartPath string, opts ChartPackOptions) (*C
 	// The archive and its provenance file are built in a temporary directory and moved into the
 	// destination only when everything succeeded, so that a failed pack never leaves a signature
 	// next to an archive it doesn't sign.
-	stagingDir, err := os.MkdirTemp("", "nelm-chart-pack-")
+	stagingDir, err := os.MkdirTemp(opts.TempDirPath, "chart-pack-")
 	if err != nil {
 		return nil, fmt.Errorf("create staging directory: %w", err)
 	}
@@ -331,12 +334,12 @@ func ChartPack(ctx context.Context, chartPath string, opts ChartPackOptions) (*C
 		return nil, fmt.Errorf("remove provenance file of a previous archive: %w", err)
 	}
 
-	if err := moveFile(stagedArchivePath, archivePath); err != nil {
+	if err := fs.RenameWithFallback(stagedArchivePath, archivePath); err != nil {
 		return nil, fmt.Errorf("move archive into place: %w", err)
 	}
 
 	if opts.Sign {
-		if err := moveFile(stagedArchivePath+".prov", result.ProvenancePath); err != nil {
+		if err := fs.RenameWithFallback(stagedArchivePath+".prov", result.ProvenancePath); err != nil {
 			return nil, fmt.Errorf("move provenance file into place: %w", err)
 		}
 	}
@@ -915,46 +918,6 @@ func mergeStringMaps(base, overrides map[string]string) map[string]string {
 	}
 
 	return result
-}
-
-// moveFile renames src to dst, copying it when they are on different filesystems.
-func moveFile(src, dst string) error {
-	err := os.Rename(src, dst)
-	if err == nil {
-		return nil
-	} else if !errors.Is(err, syscall.EXDEV) {
-		return fmt.Errorf("rename %q to %q: %w", src, dst, err)
-	}
-
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return fmt.Errorf("read %q: %w", src, err)
-	}
-
-	tmpFile, err := os.CreateTemp(filepath.Dir(dst), "."+filepath.Base(dst)+".tmp")
-	if err != nil {
-		return fmt.Errorf("create temporary file: %w", err)
-	}
-	defer os.Remove(tmpFile.Name())
-	defer tmpFile.Close()
-
-	if _, err := tmpFile.Write(data); err != nil {
-		return fmt.Errorf("write %q: %w", tmpFile.Name(), err)
-	}
-
-	if err := tmpFile.Chmod(0o644); err != nil {
-		return fmt.Errorf("chmod %q: %w", tmpFile.Name(), err)
-	}
-
-	if err := tmpFile.Close(); err != nil {
-		return fmt.Errorf("close %q: %w", tmpFile.Name(), err)
-	}
-
-	if err := os.Rename(tmpFile.Name(), dst); err != nil {
-		return fmt.Errorf("rename %q to %q: %w", tmpFile.Name(), dst, err)
-	}
-
-	return nil
 }
 
 func newChartPackDependencyDownloader(ctx context.Context, chartPath string, registryClient *registry.Client, opts ChartPackOptions) *helmdownloader.Manager {

@@ -1062,6 +1062,17 @@ func TestChartPack_Sign(t *testing.T) {
 	}
 }
 
+func TestChartPack_StagesInTempDir(t *testing.T) {
+	chartDir := filepath.Join(t.TempDir(), "mychart")
+	writeChartPackTestFiles(t, chartDir, map[string]string{"Chart.yaml": "apiVersion: v2\nname: mychart\nversion: 1.0.0\n"})
+
+	_, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+		Destination: t.TempDir(),
+		TempDirPath: filepath.Join(t.TempDir(), "missing"),
+	})
+	require.ErrorContains(t, err, "create staging directory")
+}
+
 func TestChartPack_TypeScriptBundle(t *testing.T) {
 	t.Setenv(featgate.FeatGateTypescript.EnvVarName(), "true")
 

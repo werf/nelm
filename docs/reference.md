@@ -3352,6 +3352,10 @@ nelm chart pack [CHART_PATH] [...] [flags]
 
   use a PGP private key to sign this package
 
+- `--temp-dir` (default: `""`)
+
+  The directory for temporary files\. By default, use the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
+
 - `--username` (default: `""`)
 
   chart repository username where to locate the requested chart
