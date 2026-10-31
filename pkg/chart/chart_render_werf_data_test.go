@@ -111,6 +111,36 @@ func TestRenderChart_WerfDataBelowDeployOptions(t *testing.T) {
 	}
 }
 
+func TestRenderChart_WerfDataDefaultSecretValuesDisableWithoutSecretKey(t *testing.T) {
+	chart := werfDataCardChart("", "a: chart", "b: chart-secret", "")
+	flags := werfDataFlags{DefaultSecretValuesDisable: true, Values: "c: values"}
+
+	tests := []struct {
+		name      string
+		secretKey string
+	}{
+		{name: "no secret key"},
+		{name: "another secret key", secretKey: "0123456789abcdef0123456789abcdef"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sourceChartPath := writeWerfDataTestChart(t, chart)
+			publishedChartPath := writeWerfDataTestChart(t, chart, werfDataFlagsAsFiles(t, flags))
+			flagsOpts := werfDataFlagsAsOptions(t, flags, RenderChartOptions{})
+
+			fromOptions, err := renderWerfDataTestChartWithSecretKey(t, sourceChartPath, tt.secretKey, flagsOpts)
+			require.NoError(t, err)
+
+			fromWerfData, err := renderWerfDataTestChartWithSecretKey(t, publishedChartPath, tt.secretKey, RenderChartOptions{})
+			require.NoError(t, err)
+
+			assert.Equal(t, parseTestValues(t, "a: chart\nc: values"), renderedChartValues(t, fromWerfData))
+			assert.Equal(t, renderedChartValues(t, fromOptions), renderedChartValues(t, fromWerfData))
+		})
+	}
+}
+
 func TestRenderChart_WerfDataDependencyFolding(t *testing.T) {
 	publishedDependency := mergeTestFiles(
 		map[string]string{ //nolint:gosec // Test values, not credentials.

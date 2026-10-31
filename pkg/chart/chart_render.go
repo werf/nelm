@@ -179,36 +179,9 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 
 	log.Default.Debug(ctx, "Loading chart at %q", chartPath)
 
-	loadedChart, err := loader.Load(ctx, chartPath)
+	ctx, loadedChart, publishedData, err := loadChartWithWerfData(ctx, chartPath, &opts.HelmOptions)
 	if err != nil {
 		return nil, fmt.Errorf("load chart at %q: %w", chartPath, err)
-	}
-
-	var publishedData *werfdata.Data
-	if files := werfDataFiles(loadedChart); len(files) > 0 {
-		publishedData, err = werfdata.Parse(files)
-		if err != nil {
-			return nil, fmt.Errorf("parse %s of chart at %q: %w", werfdata.DirName, chartPath, err)
-		}
-
-		logWerfData(ctx, publishedData)
-
-		publishedValuesMetadata := publishedData.Metadata.Values
-		chartLoadOpts := &opts.HelmOptions.ChartLoadOpts
-
-		if (publishedValuesMetadata.DefaultValuesDisable && !chartLoadOpts.DefaultValuesDisable) ||
-			(publishedValuesMetadata.DefaultSecretValuesDisable && !chartLoadOpts.DefaultSecretValuesDisable) {
-			chartLoadOpts.DefaultValuesDisable = chartLoadOpts.DefaultValuesDisable || publishedValuesMetadata.DefaultValuesDisable
-			chartLoadOpts.DefaultSecretValuesDisable = chartLoadOpts.DefaultSecretValuesDisable || publishedValuesMetadata.DefaultSecretValuesDisable
-			ctx = common.ContextWithHelmOptions(ctx, opts.HelmOptions)
-
-			log.Default.Debug(ctx, "Reloading chart at %q with the default values disabled by %s", chartPath, werfdata.DirName)
-
-			loadedChart, err = loader.Load(ctx, chartPath)
-			if err != nil {
-				return nil, fmt.Errorf("reload chart at %q: %w", chartPath, err)
-			}
-		}
 	}
 
 	if err := foldWerfDataDependencies(ctx, loadedChart, false); err != nil {

@@ -83,6 +83,12 @@ type layeredValuesRenderOptions struct {
 	ValuesFiles       []string
 }
 
+func renderWerfDataTestChart(t *testing.T, chartPath string, opts RenderChartOptions) (*RenderChartResult, error) {
+	t.Helper()
+
+	return renderWerfDataTestChartWithSecretKey(t, chartPath, layeredValuesSecretKey, opts)
+}
+
 func werfDataCardChartWithSubchartSecrets(values, secretValues, subchartValues, subchartSecretValues string) map[string]string {
 	files := werfDataCardChart("- name: sub\n  version: 1.0.0", values, secretValues, subchartValues)
 	files["charts/sub/secret-values.yaml"] = subchartSecretValues
@@ -332,10 +338,13 @@ func renderLayeredValuesChart(t *testing.T, opts layeredValuesRenderOptions) *Re
 	return result
 }
 
-func renderWerfDataTestChart(t *testing.T, chartPath string, opts RenderChartOptions) (*RenderChartResult, error) {
+// renderWerfDataTestChartWithSecretKey renders the chart with the secret key, none if empty.
+func renderWerfDataTestChartWithSecretKey(t *testing.T, chartPath, secretKey string, opts RenderChartOptions) (*RenderChartResult, error) {
 	t.Helper()
 
-	t.Setenv("WERF_SECRET_KEY", layeredValuesSecretKey)
+	t.Setenv("WERF_SECRET_KEY", secretKey)
+	secrets_manager.SetWerfHomeDir(t.TempDir())
+	t.Cleanup(func() { secrets_manager.SetWerfHomeDir("") })
 
 	opts.LocalKubeVersion = "1.30.0"
 	opts.TempDirPath = t.TempDir()

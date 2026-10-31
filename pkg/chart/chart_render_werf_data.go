@@ -7,11 +7,13 @@ import (
 	"strings"
 
 	"github.com/werf/common-go/pkg/secrets_manager"
+	commonutil "github.com/werf/common-go/pkg/util"
 	"github.com/werf/nelm/v2/pkg/common"
 	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 	chartcommonutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
 	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/cli/values"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/getter"
@@ -197,6 +199,56 @@ func foldWerfData(ctx context.Context, chrt helmchart.Charter, withoutServiceVal
 	return nil
 }
 
+// loadChartWithWerfData loads the chart with the default values switches of its .werf-data applied
+// on top of the caller's. The .werf-data is read from a load without secrets first, so that a chart
+// whose secrets are disabled by its .werf-data loads without the secret key, as with the caller's
+// switches. The returned context has the effective options.
+func loadChartWithWerfData(ctx context.Context, chartPath string, helmOpts *common.HelmOptions) (context.Context, helmchart.Charter, *werfdata.Data, error) {
+	probeOpts := *helmOpts
+	probeOpts.ChartLoadOpts.NoSecrets = true
+
+	probeChart, err := loader.Load(common.ContextWithHelmOptions(ctx, probeOpts), chartPath)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("load chart without secrets: %w", err)
+	}
+
+	var (
+		data            *werfdata.Data
+		switchesChanged bool
+	)
+
+	if files := werfDataFiles(probeChart); len(files) > 0 {
+		data, err = werfdata.Parse(files)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("parse %s: %w", werfdata.DirName, err)
+		}
+
+		logWerfData(ctx, data)
+
+		valuesMetadata := data.Metadata.Values
+		chartLoadOpts := &helmOpts.ChartLoadOpts
+		switchesChanged = (valuesMetadata.DefaultValuesDisable && !chartLoadOpts.DefaultValuesDisable) ||
+			(valuesMetadata.DefaultSecretValuesDisable && !chartLoadOpts.DefaultSecretValuesDisable)
+		chartLoadOpts.DefaultValuesDisable = chartLoadOpts.DefaultValuesDisable || valuesMetadata.DefaultValuesDisable
+		chartLoadOpts.DefaultSecretValuesDisable = chartLoadOpts.DefaultSecretValuesDisable || valuesMetadata.DefaultSecretValuesDisable
+	}
+
+	ctx = common.ContextWithHelmOptions(ctx, *helmOpts)
+
+	// Without secrets to decrypt, the load without secrets is the same as a load with them.
+	secretsToLoad := !helmOpts.ChartLoadOpts.NoSecrets && (len(helmOpts.ChartLoadOpts.SecretValuesFiles) > 0 || chartTreeHasSecretFiles(probeChart))
+	if !switchesChanged && !secretsToLoad {
+		return ctx, probeChart, data, nil
+	}
+
+	loadedChart, err := loader.Load(ctx, chartPath)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("load chart: %w", err)
+	}
+
+	return ctx, loadedChart, data, nil
+}
+
 // mergePublishedValuesIntoChart makes the published service values and secret values part of the
 // service values and custom secret values of the chart, below the deploy ones, for the dependency
 // processing that reads them from the chart.
@@ -236,6 +288,38 @@ func warnIgnoredDependencyMetadata(ctx context.Context, dep helmchart.Charter, n
 	}
 
 	log.Default.Warn(ctx, "Annotations and labels in %s of dependency %q are ignored: only those of the root chart are applied", werfdata.DirName, name)
+}
+
+// chartTreeHasSecretFiles reports whether the chart or any of its dependencies has a
+// secret-values.yaml or secret files.
+func chartTreeHasSecretFiles(chrt helmchart.Charter) bool {
+	var raw []*chartcommon.File
+
+	switch c := chrt.(type) {
+	case *v2chart.Chart:
+		raw = c.Raw
+	case *v3chart.Chart:
+		raw = c.Raw
+	}
+
+	for _, f := range raw {
+		if f.Name == legacysecret.DefaultSecretValuesFileName || commonutil.IsSubpathOfBasePath(legacysecret.SecretDirName, f.Name) {
+			return true
+		}
+	}
+
+	acc, err := helmchart.NewAccessor(chrt)
+	if err != nil {
+		return false
+	}
+
+	for _, dep := range acc.Dependencies() {
+		if chartTreeHasSecretFiles(dep) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func customSecretValuesOf(secretsRuntimeData chartcommon.RuntimeData) map[string]interface{} {
