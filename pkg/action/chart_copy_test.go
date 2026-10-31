@@ -7,7 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"oras.land/oras-go/v2/content"
 
+	"github.com/werf/nelm/v2/pkg/chartyaml"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
@@ -227,6 +229,20 @@ func TestChartCopy_RegistryToRegistry(t *testing.T) {
 	}
 }
 
+func TestChartCopy_RequestTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(time.Second)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(server.Close)
+
+	opts := newChartCopyTestOptions(t)
+	opts.ChartRepoRequestTimeout = 100 * time.Millisecond
+
+	err := ChartCopy(newChartPackTestContext(), "oci://"+strings.TrimPrefix(server.URL, "http://")+"/app:1.0.0", filepath.Join(t.TempDir(), "chart.tar"), opts)
+	require.ErrorContains(t, err, "Client.Timeout exceeded")
+}
+
 func TestChartCopy_Tags(t *testing.T) {
 	host := newChartCopyTestRegistry(t)
 	client := newChartCopyTestRegistryClient(t)
@@ -309,11 +325,7 @@ func TestChartCopy_WerfArchive(t *testing.T) {
 		"Chart.yaml": "apiVersion: v2\nname: project\nversion: 1.0.0\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: " + sourceRef + "\n",
 	})
 
-	archivePath := filepath.Join(t.TempDir(), "bundle.tar.gz")
-	require.NoError(t, os.WriteFile(archivePath, gzipChartCopyTestData(t, tarChartCopyTestFiles(t, map[string][]byte{
-		werfArchiveChartFileName: chartData,
-		"images/abc.tar.gz":      gzipChartCopyTestData(t, imageTarball),
-	})), 0o644))
+	archivePath := writeWerfChartCopyTestArchive(t, chartData, map[string][]byte{"abc": imageTarball})
 
 	var rewriteMapping map[string]string
 
@@ -356,6 +368,47 @@ func TestChartCopy_WerfArchive(t *testing.T) {
 	result, err := client.Pull(dst + ":2.0.0")
 	require.NoError(t, err)
 	assert.Equal(t, fmt.Sprintf("apiVersion: v2\nname: app\nversion: 2.0.0\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: %s:abc@%s\n", dst, manifestDesc.Digest), readChartCopyTestChartFiles(t, result.Chart.Data)["app/Chart.yaml"])
+}
+
+func TestChartCopy_WerfArchiveWithImagesOption(t *testing.T) {
+	host := newChartCopyTestRegistry(t)
+	client := newChartCopyTestRegistryClient(t)
+
+	configData := []byte(`{"architecture":"amd64","os":"linux"}`)
+	layer := gzipChartCopyTestData(t, []byte("layer"))
+	imageTarball := tarChartCopyTestFiles(t, map[string][]byte{
+		"manifest.json": []byte(fmt.Sprintf(`[{"Config":"config.json","Layers":["%s.tar.gz"]}]`, digest.FromBytes(layer).Encoded())),
+		"config.json":   configData,
+		digest.FromBytes(layer).Encoded() + ".tar.gz": layer,
+	})
+
+	sourceRef := "old.registry/project:abc"
+	chartData := buildChartCopyTestChart(t, map[string]string{
+		"Chart.yaml":  "apiVersion: v2\nname: project\nversion: 1.0.0\n",
+		"values.yaml": "werf:\n  image:\n    backend: " + sourceRef + "\n",
+	})
+	archivePath := writeWerfChartCopyTestArchive(t, chartData, map[string][]byte{"abc": imageTarball})
+
+	var rewriteMapping map[string]string
+
+	opts := newChartCopyTestOptions(t)
+	opts.Images = []chartyaml.Image{{Name: "backend", Image: sourceRef}, {Name: "backend-copy", Image: sourceRef}}
+	opts.RewriteChart = func(ctx context.Context, chart helmchart.Charter, repo string, imageMapping map[string]string) error {
+		rewriteMapping = imageMapping
+
+		return nil
+	}
+
+	dst := host + "/werf/app"
+	require.NoError(t, ChartCopy(newChartPackTestContext(), "archive:"+archivePath, "oci://"+dst+":2.0.0", opts))
+
+	_, err := newChartCopyTestRepository(t, dst).Resolve(context.Background(), "abc")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{sourceRef: dst + ":abc"}, rewriteMapping)
+
+	result, err := client.Pull(dst + ":2.0.0")
+	require.NoError(t, err)
+	assert.Equal(t, "apiVersion: v2\nname: app\nversion: 2.0.0\n", readChartCopyTestChartFiles(t, result.Chart.Data)["app/Chart.yaml"])
 }
 
 func TestChartVersionFromTag(t *testing.T) {

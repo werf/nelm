@@ -525,6 +525,22 @@ func requireChartCopyTestImage(t *testing.T, repo, tag string, image chartCopyTe
 	}
 }
 
+// writeWerfChartCopyTestArchive writes a werf 3 bundle archive with the chart and a docker-save
+// tarball per image tag.
+func writeWerfChartCopyTestArchive(t *testing.T, chartData []byte, imageTarballs map[string][]byte) string {
+	t.Helper()
+
+	files := map[string][]byte{werfArchiveChartFileName: chartData}
+	for tag, tarball := range imageTarballs {
+		files[werfArchiveImagesDirName+"/"+tag+".tar.gz"] = gzipChartCopyTestData(t, tarball)
+	}
+
+	archivePath := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	require.NoError(t, os.WriteFile(archivePath, gzipChartCopyTestData(t, tarChartCopyTestFiles(t, files)), 0o644))
+
+	return archivePath
+}
+
 func addProgressPhaseRevision(t *testing.T, api *progressPhasesAPI, revision int, manifest string) {
 	t.Helper()
 

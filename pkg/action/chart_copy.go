@@ -53,6 +53,10 @@ const (
 type ChartCopyOptions struct {
 	common.ChartRepoConnectionOptions
 
+	// Images are copied in addition to the images in the helm.sh/images annotation, for charts that
+	// list their images elsewhere, like werf bundles published before the annotation was written.
+	// Only Image matters. The annotation is rewritten only for the entries it contains.
+	Images []chartyaml.Image
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
 	// Defaults to DefaultDockerConfig/config.json.
 	RegistryCredentialsPath string
@@ -167,7 +171,7 @@ func ChartCopy(ctx context.Context, from, to string, opts ChartCopyOptions) erro
 		return fmt.Errorf("read images of chart from %q: %w", from, err)
 	}
 
-	imageRefs := lo.Uniq(lo.Compact(lo.Map(images, func(image chartyaml.Image, _ int) string {
+	imageRefs := lo.Uniq(lo.Compact(lo.Map(append(images, opts.Images...), func(image chartyaml.Image, _ int) string {
 		return image.Image
 	})))
 
