@@ -255,6 +255,20 @@ func (e *chartCopyExpansion) Reader(ctx context.Context, reader io.Reader) io.Re
 	return &chartCopyExpansionReader{ctx: ctx, expansion: e, reader: reader}
 }
 
+// chartCopyContextReader stops reading when ctx is done.
+type chartCopyContextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r chartCopyContextReader) Read(p []byte) (int, error) {
+	if err := context.Cause(r.ctx); err != nil {
+		return 0, err
+	}
+
+	return r.reader.Read(p) //nolint:wrapcheck // io.Reader returns io.EOF as is.
+}
+
 type chartCopyExpansionReader struct {
 	ctx       context.Context
 	expansion *chartCopyExpansion
@@ -651,7 +665,7 @@ func copyChartToRepo(ctx context.Context, registryClient *registry.Client, sourc
 		}
 	}
 
-	if _, err := registryClient.Push(chartData, fmt.Sprintf("%s:%s", to.Repo, version), registry.PushOptProvData(provData), registry.PushOptExtraTags(lo.Compact([]string{extraTag}))); err != nil {
+	if _, err := registryClient.PushContext(ctx, chartData, fmt.Sprintf("%s:%s", to.Repo, version), registry.PushOptProvData(provData), registry.PushOptExtraTags(lo.Compact([]string{extraTag}))); err != nil {
 		return fmt.Errorf("push chart: %w", err)
 	}
 
@@ -769,7 +783,7 @@ func writeChartCopyArchive(ctx context.Context, source *chartCopySource, loadedC
 		return fmt.Errorf("clean up OCI image layout index: %w", err)
 	}
 
-	return writeOCILayoutTar(layoutDir, archivePath, strings.HasSuffix(archivePath, ".gz") || strings.HasSuffix(archivePath, ".tgz"))
+	return writeOCILayoutTar(ctx, layoutDir, archivePath, strings.HasSuffix(archivePath, ".gz") || strings.HasSuffix(archivePath, ".tgz"))
 }
 
 // convertDockerArchiveImage pushes the image of a docker-save tarball into store as a Docker
@@ -1030,7 +1044,7 @@ func pushChartCopyFileBlob(ctx context.Context, store *oci.Store, filePath, medi
 	}
 
 	if compress {
-		if err := gzipFile(filePath, filePath+".gz"); err != nil {
+		if err := gzipFile(ctx, filePath, filePath+".gz"); err != nil {
 			return ocispec.Descriptor{}, fmt.Errorf("compress blob: %w", err)
 		}
 
@@ -1070,7 +1084,7 @@ func pushChartCopyFileBlob(ctx context.Context, store *oci.Store, filePath, medi
 func readChartCopyRepo(ctx context.Context, registryClient *registry.Client, addr *chartCopyAddress) (*chartCopySource, error) {
 	tag := lo.CoalesceOrEmpty(addr.Tag, "latest")
 
-	result, err := registryClient.Pull(fmt.Sprintf("%s:%s", addr.Repo, tag), registry.PullOptWithProv(true), registry.PullOptIgnoreMissingProv(true))
+	result, err := registryClient.PullContext(ctx, fmt.Sprintf("%s:%s", addr.Repo, tag), registry.PullOptWithProv(true), registry.PullOptIgnoreMissingProv(true))
 	if err != nil {
 		return nil, fmt.Errorf("pull chart: %w", err)
 	}
@@ -1176,7 +1190,7 @@ func walkTar(ctx context.Context, tarPath string, fn func(header *tar.Header, re
 
 // writeOCILayoutTar writes the OCI image layout in dir into a tar at archivePath, replacing it only
 // when the whole tar is written.
-func writeOCILayoutTar(dir, archivePath string, compress bool) error {
+func writeOCILayoutTar(ctx context.Context, dir, archivePath string, compress bool) error {
 	if err := os.MkdirAll(filepath.Dir(archivePath), 0o755); err != nil {
 		return fmt.Errorf("create archive directory: %w", err)
 	}
@@ -1219,7 +1233,7 @@ func writeOCILayoutTar(dir, archivePath string, compress bool) error {
 	}
 
 	for _, name := range names {
-		if err := addFileToTar(tarWriter, filepath.Join(dir, filepath.FromSlash(name)), name); err != nil {
+		if err := addFileToTar(ctx, tarWriter, filepath.Join(dir, filepath.FromSlash(name)), name); err != nil {
 			return err
 		}
 	}
@@ -1236,6 +1250,10 @@ func writeOCILayoutTar(dir, archivePath string, compress bool) error {
 
 	if err := tmpFile.Close(); err != nil {
 		return fmt.Errorf("write archive: %w", err)
+	}
+
+	if err := context.Cause(ctx); err != nil {
+		return err
 	}
 
 	if err := os.Rename(tmpFile.Name(), archivePath); err != nil {
@@ -1256,7 +1274,7 @@ func addChartRawFile(loadedChart helmchart.Charter, f *chartcommon.File) {
 	}
 }
 
-func addFileToTar(tarWriter *tar.Writer, filePath, name string) error {
+func addFileToTar(ctx context.Context, tarWriter *tar.Writer, filePath, name string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("open %q: %w", filePath, err)
@@ -1278,7 +1296,7 @@ func addFileToTar(tarWriter *tar.Writer, filePath, name string) error {
 		return fmt.Errorf("write %q into archive: %w", name, err)
 	}
 
-	if _, err := io.Copy(tarWriter, file); err != nil {
+	if _, err := io.Copy(tarWriter, chartCopyContextReader{ctx: ctx, reader: file}); err != nil {
 		return fmt.Errorf("write %q into archive: %w", name, err)
 	}
 
@@ -1414,7 +1432,7 @@ func claimChartCopyTag(claims map[string]chartCopyTagClaim, tag string, claim ch
 	return fmt.Errorf("tag %q would be used for both %s and %s in the destination repository", tag, previous.Owner, claim.Owner)
 }
 
-func gzipFile(sourcePath, destinationPath string) error {
+func gzipFile(ctx context.Context, sourcePath, destinationPath string) error {
 	source, err := os.Open(sourcePath)
 	if err != nil {
 		return fmt.Errorf("open %q: %w", sourcePath, err)
@@ -1428,7 +1446,7 @@ func gzipFile(sourcePath, destinationPath string) error {
 	defer destination.Close()
 
 	gzipWriter := gzip.NewWriter(destination)
-	if _, err := io.Copy(gzipWriter, source); err != nil {
+	if _, err := io.Copy(gzipWriter, chartCopyContextReader{ctx: ctx, reader: source}); err != nil {
 		return fmt.Errorf("compress %q: %w", sourcePath, err)
 	}
 

@@ -86,6 +86,11 @@ func NewGenericClient(client *Client) *GenericClient {
 
 // PullGeneric performs a generic OCI pull without artifact-specific assumptions
 func (c *GenericClient) PullGeneric(ref string, options GenericPullOptions) (*GenericPullResult, error) {
+	return c.PullGenericContext(context.Background(), ref, options)
+}
+
+// PullGenericContext is PullGeneric that stops when ctx is done.
+func (c *GenericClient) PullGenericContext(ctx context.Context, ref string, options GenericPullOptions) (*GenericPullResult, error) {
 	parsedRef, err := newReference(ref)
 	if err != nil {
 		return nil, err
@@ -101,8 +106,6 @@ func (c *GenericClient) PullGeneric(ref string, options GenericPullOptions) (*Ge
 	}
 	repository.PlainHTTP = c.plainHTTP
 	repository.Client = c.authorizer
-
-	ctx := context.Background()
 
 	// Prepare allowed media types for filtering
 	var allowedMediaTypes []string

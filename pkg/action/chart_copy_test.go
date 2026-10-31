@@ -247,6 +247,26 @@ func TestChartCopy_BasicAuthOnlyForChartHosts(t *testing.T) {
 	}
 }
 
+func TestChartCopy_CanceledDuringChartPull(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(5 * time.Second):
+		}
+
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(server.Close)
+
+	ctx, cancel := context.WithTimeout(newChartPackTestContext(), 200*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	err := ChartCopy(ctx, "oci://"+strings.TrimPrefix(server.URL, "http://")+"/app:1.0.0", filepath.Join(t.TempDir(), "chart.tar"), newChartCopyTestOptions(t))
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Less(t, time.Since(start), 3*time.Second)
+}
+
 func TestChartCopy_DependencyImages(t *testing.T) {
 	host := newChartCopyTestRegistry(t)
 	client := newChartCopyTestRegistryClient(t)

@@ -584,6 +584,11 @@ func (c *Client) processChartPull(genericResult *GenericPullResult, operation *p
 
 // Pull downloads a chart from a registry
 func (c *Client) Pull(ref string, options ...PullOption) (*PullResult, error) {
+	return c.PullContext(context.Background(), ref, options...)
+}
+
+// PullContext is Pull that stops when ctx is done.
+func (c *Client) PullContext(ctx context.Context, ref string, options ...PullOption) (*PullResult, error) {
 	operation := &pullOperation{
 		withChart: true, // By default, always download the chart layer
 	}
@@ -610,7 +615,7 @@ func (c *Client) Pull(ref string, options ...PullOption) (*PullResult, error) {
 
 	// Use generic client for the pull operation
 	genericClient := c.Generic()
-	genericResult, err := genericClient.PullGeneric(ref, GenericPullOptions{
+	genericResult, err := genericClient.PullGenericContext(ctx, ref, GenericPullOptions{
 		AllowedMediaTypes: allowedMediaTypes,
 	})
 	if err != nil {
@@ -675,6 +680,11 @@ type (
 
 // Push uploads a chart to a registry.
 func (c *Client) Push(data []byte, ref string, options ...PushOption) (*PushResult, error) {
+	return c.PushContext(context.Background(), data, ref, options...)
+}
+
+// PushContext is Push that stops when ctx is done.
+func (c *Client) PushContext(ctx context.Context, data []byte, ref string, options ...PushOption) (*PushResult, error) {
 	parsedRef, err := newReference(ref)
 	if err != nil {
 		return nil, err
@@ -702,8 +712,7 @@ func (c *Client) Push(data []byte, ref string, options ...PushOption) (*PushResu
 		return nil, err
 	}
 
-	ctx := context.Background()
-
+	
 	memoryStore := memory.New()
 	chartDescriptor, err := oras.PushBytes(ctx, memoryStore, ChartLayerMediaType, data)
 	if err != nil {
