@@ -30,7 +30,7 @@ func newChartCopyCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 		ctx,
 		"copy FROM TO",
 		"Copy a chart with its images.",
-		"Copy a chart with every image listed in its helm.sh/images annotation. FROM and TO are either an OCI repository, oci://REPO[:TAG], or an archive, archive:PATH or a path ending in .tar, .tar.gz or .tgz. A source repository without a tag means the \"latest\" tag. An archive is written as an OCI image layout; werf bundle archives are also read. Copied to a repository, the chart is renamed to the repository basename and its images are copied into the repository by digest, keeping their tags. With TAG the chart version is TAG if it is a semver version (without the \"v\" prefix), or 0.0.0-<unix time>-<TAG slug> otherwise, and the chart is pushed under the version and TAG; without TAG the chart keeps its version and is pushed under it and the source tag, if any (a werf bundle archive has none). Images of chart dependencies are copied too, non-distributable layers included; referrers of the images, like signatures and SBOMs, are not copied.",
+		"Copy a chart with every image listed in its helm.sh/images annotation. FROM and TO are either an OCI repository, oci://REPO[:TAG] (docker://REPO[:TAG] or REPO[:TAG] also work), or an archive, archive:PATH or a path ending in .tar, .tar.gz or .tgz. A source repository without a tag means the \"latest\" tag. An archive is written as an OCI image layout; werf bundle archives are also read. Copied to a repository, the chart is renamed to the repository basename and its images are copied into the repository by digest, keeping their tags. With TAG the chart version is TAG if it is a semver version (without the \"v\" prefix), or 0.0.0-<unix time>-<TAG slug> otherwise, and the chart is pushed under the version and TAG, with a \"+\" in either pushed as \"_\"; without TAG the chart keeps its version and is pushed under it and the source tag, if any (a werf bundle archive has none). Images of chart dependencies are copied too, non-distributable layers included; referrers of the images, like signatures and SBOMs, are not copied.",
 		35, // priority for ordering in help
 		chartCmdGroup,
 		cli.SubCommandOptions{
@@ -45,6 +45,10 @@ func newChartCopyCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			maxExpandedSize, err := resource.ParseQuantity(cfg.ArchiveMaxExpandedSize)
 			if err != nil {
 				return fmt.Errorf("parse --archive-max-expanded-size: %w", err)
+			}
+
+			if maxExpandedSize.Value() <= 0 {
+				return fmt.Errorf("--archive-max-expanded-size must be positive, got %q", cfg.ArchiveMaxExpandedSize)
 			}
 
 			cfg.ChartCopyOptions.ArchiveMaxExpandedSize = maxExpandedSize.Value()

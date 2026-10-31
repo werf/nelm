@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -186,6 +187,10 @@ type ChartCopyOptions struct {
 	// list their images elsewhere, like werf bundles published before the annotation was written.
 	// Only Image matters. The annotation is rewritten only for the entries it contains.
 	Images []chartyaml.Image
+	// ImagesFunc, when set, is called with the loaded source chart, before the images are resolved,
+	// and the images it returns are copied like Images, for charts that list their images in values,
+	// like werf bundles published before the helm.sh/images annotation was written.
+	ImagesFunc func(ctx context.Context, chart helmchart.Charter) ([]chartyaml.Image, error)
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials.
 	// Defaults to DefaultDockerConfig/config.json.
 	RegistryCredentialsPath string
@@ -390,7 +395,8 @@ type chartCopyImageRef struct {
 // ChartCopy copies the chart at from, with every image in the helm.sh/images annotations of the
 // chart and its dependencies, to to. Non-distributable layers are copied too; a blob the source
 // does not serve is an error. Referrers of the images, like signatures and SBOMs, are not copied.
-// Each address is either "oci://REPO[:TAG]" (or "REPO[:TAG]"), or an archive: "archive:PATH" or a
+// Each address is either "oci://REPO[:TAG]" (or "docker://REPO[:TAG]" or "REPO[:TAG]", as in werf),
+// or an archive: "archive:PATH" or a
 // path ending in .tar, .tar.gz or .tgz. A source repository without a tag means the "latest" tag.
 // An archive is written as an OCI image layout; the werf 3 bundle archive format is also read.
 //
@@ -410,8 +416,11 @@ func ChartCopy(ctx context.Context, from, to string, opts ChartCopyOptions) erro
 		opts.RegistryCredentialsPath = filepath.Join(common.DefaultDockerConfig, "config.json")
 	}
 
-	if opts.ArchiveMaxExpandedSize == 0 {
+	switch {
+	case opts.ArchiveMaxExpandedSize == 0:
 		opts.ArchiveMaxExpandedSize = DefaultChartCopyArchiveMaxExpandedSize
+	case opts.ArchiveMaxExpandedSize < 0:
+		return fmt.Errorf("archive max expanded size must be positive, got %d", opts.ArchiveMaxExpandedSize)
 	}
 
 	fromAddr, err := parseChartCopyAddress(from)
@@ -436,7 +445,18 @@ func ChartCopy(ctx context.Context, from, to string, opts ChartCopyOptions) erro
 		return strings.Split(addr.Repo, "/")[0], addr.Repo != ""
 	})
 
-	registryClient, err := newChartRepoRegistryClient(ctx, opts.ChartRepoConnectionOptions, opts.RegistryCredentialsPath, registry.ClientOptBasicAuthHosts(chartHosts...))
+	clientOpts := []registry.ClientOption{registry.ClientOptBasicAuthHosts(chartHosts...)}
+
+	// Plain HTTP is for the chart repositories only, even with TLS options, which are then for the
+	// image repositories on other hosts.
+	var plainHTTPHosts []string
+	if opts.ChartRepoInsecure {
+		plainHTTPHosts = chartHosts
+
+		clientOpts = append(clientOpts, registry.ClientOptPlainHTTP())
+	}
+
+	registryClient, err := newChartRepoRegistryClient(ctx, opts.ChartRepoConnectionOptions, opts.RegistryCredentialsPath, clientOpts...)
 	if err != nil {
 		return fmt.Errorf("construct registry client: %w", err)
 	}
@@ -445,7 +465,7 @@ func ChartCopy(ctx context.Context, from, to string, opts ChartCopyOptions) erro
 	if fromAddr.ArchivePath != "" {
 		source, err = readChartCopyArchive(ctx, fromAddr.ArchivePath, tempDir, &chartCopyExpansion{Max: opts.ArchiveMaxExpandedSize})
 	} else {
-		source, err = readChartCopyRepo(ctx, registryClient, fromAddr)
+		source, err = readChartCopyRepo(ctx, registryClient, fromAddr, plainHTTPHosts)
 	}
 
 	if err != nil {
@@ -467,6 +487,15 @@ func ChartCopy(ctx context.Context, from, to string, opts ChartCopyOptions) erro
 	images, err := chartCopyImages(ctx, loadedChart)
 	if err != nil {
 		return fmt.Errorf("read images of chart from %q: %w", from, err)
+	}
+
+	if opts.ImagesFunc != nil {
+		funcImages, err := opts.ImagesFunc(ctx, loadedChart)
+		if err != nil {
+			return fmt.Errorf("get images of chart from %q: %w", from, err)
+		}
+
+		images = append(images, funcImages...)
 	}
 
 	imageRefs := lo.Uniq(lo.Compact(lo.Map(append(images, opts.Images...), func(image chartyaml.Image, _ int) string {
@@ -558,7 +587,7 @@ func copyChartToRepo(ctx context.Context, registryClient *registry.Client, sourc
 
 	version, extraTag := sourceVersion, source.Tag
 	if to.Tag != "" {
-		version, extraTag = ChartVersionFromTag(ctx, to.Tag, time.Now()), to.Tag
+		version, extraTag = ChartVersionFromTag(ctx, to.Tag, time.Now()), strings.ReplaceAll(to.Tag, "+", "_")
 	}
 
 	tagClaims := map[string]chartCopyTagClaim{}
@@ -746,12 +775,7 @@ func writeChartCopyArchive(ctx context.Context, source *chartCopySource, loadedC
 		return fmt.Errorf("create OCI image layout: %w", err)
 	}
 
-	chartAccessor, err := helmchart.NewAccessor(loadedChart)
-	if err != nil {
-		return fmt.Errorf("create chart accessor: %w", err)
-	}
-
-	chartDesc, err := pushChartCopyManifest(ctx, store, chartAccessor, source.ChartData, source.ProvData)
+	chartDesc, err := pushChartCopyManifest(ctx, store, loadedChart, source.ChartData, source.ProvData)
 	if err != nil {
 		return fmt.Errorf("save chart manifest: %w", err)
 	}
@@ -1028,8 +1052,9 @@ func parseChartCopyAddress(addr string) (*chartCopyAddress, error) {
 		return nil, fmt.Errorf("parse repository: %w", err)
 	}
 
+	// A "+" is pushed as "_", as Helm does for chart versions.
 	if image.Tag != "" {
-		if err := (orasregistry.Reference{Reference: image.Tag}).ValidateReferenceAsTag(); err != nil {
+		if err := (orasregistry.Reference{Reference: strings.ReplaceAll(image.Tag, "+", "_")}).ValidateReferenceAsTag(); err != nil {
 			return nil, fmt.Errorf("invalid tag %q: %w", image.Tag, err)
 		}
 	}
@@ -1081,8 +1106,8 @@ func pushChartCopyFileBlob(ctx context.Context, store *oci.Store, filePath, medi
 	return desc, nil
 }
 
-func readChartCopyRepo(ctx context.Context, registryClient *registry.Client, addr *chartCopyAddress) (*chartCopySource, error) {
-	tag := lo.CoalesceOrEmpty(addr.Tag, "latest")
+func readChartCopyRepo(ctx context.Context, registryClient *registry.Client, addr *chartCopyAddress, plainHTTPHosts []string) (*chartCopySource, error) {
+	tag := strings.ReplaceAll(lo.CoalesceOrEmpty(addr.Tag, "latest"), "+", "_")
 
 	result, err := registryClient.PullContext(ctx, fmt.Sprintf("%s:%s", addr.Repo, tag), registry.PullOptWithProv(true), registry.PullOptIgnoreMissingProv(true))
 	if err != nil {
@@ -1099,6 +1124,8 @@ func readChartCopyRepo(ctx context.Context, registryClient *registry.Client, add
 			if err != nil {
 				return nil, ocispec.Descriptor{}, fmt.Errorf("construct repository: %w", err)
 			}
+
+			repository.PlainHTTP = slices.Contains(plainHTTPHosts, repository.Reference.Registry)
 
 			desc, err := repository.Resolve(ctx, lo.CoalesceOrEmpty(image.Digest, image.Tag, "latest"))
 			if err != nil {
@@ -1575,8 +1602,18 @@ func parseChartCopyImageRef(ref string) chartCopyImageRef {
 
 // pushChartCopyManifest pushes the chart and its provenance into store as Helm does into a
 // registry.
-func pushChartCopyManifest(ctx context.Context, store *oci.Store, chartAccessor helmchart.Accessor, chartData, provData []byte) (ocispec.Descriptor, error) {
-	configData, err := json.Marshal(chartAccessor.MetadataAsMap())
+func pushChartCopyManifest(ctx context.Context, store *oci.Store, loadedChart helmchart.Charter, chartData, provData []byte) (ocispec.Descriptor, error) {
+	var metadata any
+	switch c := loadedChart.(type) {
+	case *v2chart.Chart:
+		metadata = c.Metadata
+	case *v3chart.Chart:
+		metadata = c.Metadata
+	default:
+		panic(fmt.Sprintf("unexpected chart type %T", loadedChart))
+	}
+
+	configData, err := json.Marshal(metadata)
 	if err != nil {
 		return ocispec.Descriptor{}, fmt.Errorf("marshal chart metadata: %w", err)
 	}

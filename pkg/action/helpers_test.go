@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -23,6 +25,7 @@ import (
 	"github.com/distribution/distribution/v3/configuration"
 	distributionregistry "github.com/distribution/distribution/v3/registry"
 	_ "github.com/distribution/distribution/v3/registry/storage/driver/inmemory"
+	"github.com/opencontainers/go-digest"
 	specs "github.com/opencontainers/image-spec/specs-go"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/samber/lo"
@@ -648,6 +651,10 @@ func buildChartCopyTestChart(t *testing.T, files map[string]string) []byte {
 	return buf.Bytes()
 }
 
+func chartCopyTestBlobPath(dgst digest.Digest) string {
+	return path.Join(ocispec.ImageBlobsDir, dgst.Algorithm().String(), dgst.Encoded())
+}
+
 func collectProgressPhaseReports(ch <-chan progrep.ProgressReport) <-chan []progrep.ProgressReport {
 	done := make(chan []progrep.ProgressReport, 1)
 	go func() {
@@ -945,6 +952,30 @@ func readChartCopyTestChartFiles(t *testing.T, chartData []byte) map[string]stri
 	return readChartPackTestArchiveFiles(t, archivePath)
 }
 
+func readChartCopyTestTarFiles(t *testing.T, archivePath string) map[string][]byte {
+	t.Helper()
+
+	archiveFile, err := os.Open(archivePath)
+	require.NoError(t, err)
+
+	defer archiveFile.Close()
+
+	files := map[string][]byte{}
+
+	tarReader := tar.NewReader(archiveFile)
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			return files
+		}
+
+		require.NoError(t, err)
+
+		files[header.Name], err = io.ReadAll(tarReader)
+		require.NoError(t, err)
+	}
+}
+
 func readWerfDataTestMetadata(t *testing.T) string {
 	t.Helper()
 
@@ -1048,4 +1079,15 @@ func verifyChartCopyTestSignature(t *testing.T, chartData, provData []byte, arch
 
 	_, err = signatory.Verify(chartData, provData, archiveName)
 	require.NoError(t, err)
+}
+
+// writeChartCopyTestCA writes the certificate of the TLS test server into a PEM file and returns its
+// path.
+func writeChartCopyTestCA(t *testing.T, server *httptest.Server) string {
+	t.Helper()
+
+	caPath := filepath.Join(t.TempDir(), "ca.pem")
+	require.NoError(t, os.WriteFile(caPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw}), 0o644))
+
+	return caPath
 }

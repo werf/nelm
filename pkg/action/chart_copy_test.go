@@ -45,6 +45,30 @@ func TestChartCopy_ArchiveCanceled(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+func TestChartCopy_ArchiveChartConfig(t *testing.T) {
+	host := newChartCopyTestRegistry(t)
+	client := newChartCopyTestRegistryClient(t)
+
+	chartData := buildChartCopyTestChart(t, map[string]string{
+		"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\ndescription: An app\nannotations:\n  team: payments\n",
+	})
+	pushResult, err := client.Push(chartData, host+"/src/app:1.0.0")
+	require.NoError(t, err)
+
+	archivePath := filepath.Join(t.TempDir(), "chart.tar")
+	require.NoError(t, ChartCopy(newChartPackTestContext(), "oci://"+host+"/src/app:1.0.0", archivePath, newChartCopyTestOptions(t)))
+
+	files := readChartCopyTestTarFiles(t, archivePath)
+
+	var index ocispec.Index
+	require.NoError(t, json.Unmarshal(files[ocispec.ImageIndexFile], &index))
+	require.Len(t, index.Manifests, 1)
+
+	var manifest ocispec.Manifest
+	require.NoError(t, json.Unmarshal(files[chartCopyTestBlobPath(index.Manifests[0].Digest)], &manifest))
+	assert.Equal(t, pushResult.Config.Digest, manifest.Config.Digest.String())
+}
+
 func TestChartCopy_ArchiveDescriptorSizes(t *testing.T) {
 	host := newChartCopyTestRegistry(t)
 	client := newChartCopyTestRegistryClient(t)
@@ -152,6 +176,14 @@ func TestChartCopy_ArchiveExpandedSizeLimit(t *testing.T) {
 	}
 }
 
+func TestChartCopy_ArchiveMaxExpandedSizeValidation(t *testing.T) {
+	opts := newChartCopyTestOptions(t)
+	opts.ArchiveMaxExpandedSize = -1
+
+	err := ChartCopy(newChartPackTestContext(), "archive:"+filepath.Join(t.TempDir(), "in.tar"), filepath.Join(t.TempDir(), "out.tar"), opts)
+	require.ErrorContains(t, err, "archive max expanded size must be positive, got -1")
+}
+
 func TestChartCopy_ArchiveRoundTrip(t *testing.T) {
 	host := newChartCopyTestRegistry(t)
 	client := newChartCopyTestRegistryClient(t)
@@ -214,7 +246,7 @@ func TestChartCopy_BasicAuthOnlyForChartHosts(t *testing.T) {
 		hostileAuthorization []string
 	)
 
-	hostile := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	hostile := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 
 		hostileAuthorization = append(hostileAuthorization, r.Header.Get("Authorization"))
@@ -226,7 +258,7 @@ func TestChartCopy_BasicAuthOnlyForChartHosts(t *testing.T) {
 	t.Cleanup(hostile.Close)
 
 	chartData := buildChartCopyTestChart(t, map[string]string{
-		"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: " + strings.TrimPrefix(hostile.URL, "http://") + "/images:backend\n",
+		"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: " + strings.TrimPrefix(hostile.URL, "https://") + "/images:backend\n",
 	})
 	_, err := client.Push(chartData, host+"/src/app:1.0.0")
 	require.NoError(t, err)
@@ -234,6 +266,7 @@ func TestChartCopy_BasicAuthOnlyForChartHosts(t *testing.T) {
 	opts := newChartCopyTestOptions(t)
 	opts.ChartRepoBasicAuthUsername = "user"
 	opts.ChartRepoBasicAuthPassword = "secret"
+	opts.ChartRepoCAPath = writeChartCopyTestCA(t, hostile)
 
 	require.Error(t, ChartCopy(newChartPackTestContext(), "oci://"+host+"/src/app:1.0.0", "oci://"+host+"/dst/app", opts))
 
@@ -312,6 +345,61 @@ func TestChartCopy_DependencyImages(t *testing.T) {
 	assert.NotContains(t, files["app/charts/dep/Chart.yaml"], depImage.Ref)
 	assert.Contains(t, files["app/charts/dep/charts/nested/Chart.yaml"], "image: "+newNestedRef+"\n")
 	assert.Contains(t, files["app/charts/dep/charts/nested/Chart.yaml"], "image: "+newDepRef+"\n")
+}
+
+func TestChartCopy_ImagesFunc(t *testing.T) {
+	host := newChartCopyTestRegistry(t)
+
+	layer := tarChartCopyTestFiles(t, map[string][]byte{"file": []byte("data")})
+	imageTarball := tarChartCopyTestFiles(t, map[string][]byte{
+		"manifest.json": []byte(`[{"Config":"config.json","Layers":["layer.tar"]}]`),
+		"config.json":   []byte(`{"architecture":"amd64","os":"linux"}`),
+		"layer.tar":     layer,
+	})
+
+	sourceRef := "old.registry/project:abc"
+	chartData := buildChartCopyTestChart(t, map[string]string{
+		"Chart.yaml":  "apiVersion: v2\nname: project\nversion: 1.0.0\n",
+		"values.yaml": "werf:\n  image:\n    backend: " + sourceRef + "\n",
+	})
+	archivePath := writeWerfChartCopyTestArchive(t, chartData, map[string][]byte{"abc": imageTarball})
+
+	var rewriteMapping map[string]string
+
+	opts := newChartCopyTestOptions(t)
+	opts.ImagesFunc = func(ctx context.Context, chart helmchart.Charter) ([]chartyaml.Image, error) {
+		images := chart.(*v2chart.Chart).Values["werf"].(map[string]any)["image"].(map[string]any)
+
+		return []chartyaml.Image{{Name: "backend", Image: images["backend"].(string)}}, nil
+	}
+	opts.RewriteChart = func(ctx context.Context, chart helmchart.Charter, repo string, imageMapping map[string]string) error {
+		rewriteMapping = imageMapping
+
+		return nil
+	}
+
+	dst := host + "/werf/app"
+	require.NoError(t, ChartCopy(newChartPackTestContext(), "archive:"+archivePath, "oci://"+dst+":2.0.0", opts))
+
+	imageDesc, err := newChartCopyTestRepository(t, dst).Resolve(context.Background(), "abc")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{sourceRef: fmt.Sprintf("%s:abc@%s", dst, imageDesc.Digest)}, rewriteMapping)
+}
+
+func TestChartCopy_InsecureOnlyForChartHosts(t *testing.T) {
+	host := newChartCopyTestRegistry(t)
+	imageHost := newChartCopyTestRegistry(t)
+	client := newChartCopyTestRegistryClient(t)
+
+	image := pushChartCopyTestImage(t, imageHost+"/images", "backend", "amd64")
+	chartData := buildChartCopyTestChart(t, map[string]string{
+		"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: " + image.Ref + "\n",
+	})
+	_, err := client.Push(chartData, host+"/src/app:1.0.0")
+	require.NoError(t, err)
+
+	err = ChartCopy(newChartPackTestContext(), "oci://"+host+"/src/app:1.0.0", "oci://"+host+"/dst/app", newChartCopyTestOptions(t))
+	require.ErrorContains(t, err, "server gave HTTP response to HTTPS client")
 }
 
 func TestChartCopy_NonDistributableLayers(t *testing.T) {
@@ -744,6 +832,12 @@ func TestChartCopy_Tags(t *testing.T) {
 			expectedTags:    []string{"2.0.0", "v2.0.0"},
 		},
 		{
+			name:            "semver tag with build metadata",
+			to:              host + "/build/app:1.2.3+b",
+			expectedVersion: "^1\\.2\\.3\\+b$",
+			expectedTags:    []string{"1.2.3_b"},
+		},
+		{
 			name:            "semver tag with prerelease",
 			to:              host + "/prerelease/app:1.2.3-rc.1",
 			expectedVersion: "^1\\.2\\.3-rc\\.1$",
@@ -1035,7 +1129,8 @@ func TestParseChartCopyAddress(t *testing.T) {
 		{addr: "archive:", expectedErr: "archive path is empty"},
 		{addr: "oci://registry.example.com/app@sha256:abc", expectedErr: "digest references are not supported"},
 		{addr: "app", expectedErr: "parse repository"},
-		{addr: "oci://registry.example.com/app:1.2.3+b", expectedErr: "invalid tag \"1.2.3+b\""},
+		{addr: "oci://registry.example.com/app:1.2.3+b", expected: chartCopyAddress{Repo: "registry.example.com/app", Tag: "1.2.3+b"}},
+		{addr: "oci://registry.example.com/app:1.2.3+b!", expectedErr: "invalid tag \"1.2.3+b!\""},
 		{addr: "registry.example.com/app:-bad", expectedErr: "invalid tag \"-bad\""},
 	}
 
