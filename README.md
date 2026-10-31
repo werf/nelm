@@ -363,7 +363,7 @@ config:
 
 To re-encrypt secrets with a new key, decrypt each encrypted file with the old key and encrypt it with the new one. Cover every encrypted file: `secret-values.yaml` and `secret/*` of the chart and of its local subcharts, encrypted values files passed with `--secret-values`, and `.werf-data/secret-values.yaml` of a published chart.
 
-Create the new key first and store it where you keep secret keys, before changing any file: `nelm chart secret key create`. Then run the script below with the old key in `$OLD_SECRET_KEY` and the new one in `$NEW_SECRET_KEY`, both exported (a key kept in a `.werf_secret_key` file has to be exported first, e.g. `export OLD_SECRET_KEY="$(cat .werf_secret_key)"`). It stops at the first error, re-encrypts every file before changing any of them, and keeps a copy of each original next to it as `<file>.bak` until you remove it:
+Create the new key first and store it where you keep secret keys, before changing any file: `nelm chart secret key create`. Then run the script below with the old key in `$OLD_SECRET_KEY` and the new one in `$NEW_SECRET_KEY`, both exported (a key kept in a `.werf_secret_key` file has to be exported first, e.g. `export OLD_SECRET_KEY="$(cat .werf_secret_key)"`). It stops at the first error, re-encrypts every file before changing any of them, and copies the originals to a backup directory outside the chart, listed in its `index` file:
 
 ```bash
 #!/usr/bin/env bash
@@ -377,23 +377,27 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 rotate() {
-  nelm chart secret "$1" decrypt --secret-key "$OLD_SECRET_KEY" --save-output-to "$tmp/$3" "$2"
-  nelm chart secret "$1" encrypt --secret-key "$NEW_SECRET_KEY" --save-output-to "$tmp/$3.enc" "$tmp/$3"
+  NELM_SECRET_KEY="$OLD_SECRET_KEY" nelm chart secret "$1" decrypt --save-output-to "$tmp/$3" "$2"
+  NELM_SECRET_KEY="$NEW_SECRET_KEY" nelm chart secret "$1" encrypt --save-output-to "$tmp/$3.enc" "$tmp/$3"
 }
 
 n=0
-for f in "${values_files[@]}"; do n=$((n + 1)); rotate values-file "$f" "$n"; done
-for f in "${files[@]}"; do n=$((n + 1)); rotate file "$f" "$n"; done
+for f in ${values_files[@]+"${values_files[@]}"}; do n=$((n + 1)); rotate values-file "$f" "$n"; done
+for f in ${files[@]+"${files[@]}"}; do n=$((n + 1)); rotate file "$f" "$n"; done
 
-for f in "${values_files[@]}" "${files[@]}"; do cp -p "$f" "$f.bak"; done
+backup="$(mktemp -d "${TMPDIR:-/tmp}/secret-rotation-backup.XXXXXX")"
+n=0
+for f in ${values_files[@]+"${values_files[@]}"} ${files[@]+"${files[@]}"}; do
+  n=$((n + 1)); cp -p "$f" "$backup/$n"; printf '%s\t%s\n' "$n" "$f" >>"$backup/index"
+done
 
 n=0
-for f in "${values_files[@]}" "${files[@]}"; do n=$((n + 1)); cp "$tmp/$n.enc" "$f"; done
+for f in ${values_files[@]+"${values_files[@]}"} ${files[@]+"${files[@]}"}; do n=$((n + 1)); cp "$tmp/$n.enc" "$f"; done
 
-echo "All files re-encrypted with the new key. Remove the .bak files once you have checked the result."
+echo "All files re-encrypted with the new key. Originals are in $backup, remove it once you have checked the result."
 ```
 
-If the script stops while copying, the files it already replaced are encrypted with the new key and the rest still with the old one; every original is in its `.bak` file.
+If the script stops while copying, the files it already replaced are encrypted with the new key and the rest still with the old one; every original is in the backup directory.
 
 ### Render patches
 
