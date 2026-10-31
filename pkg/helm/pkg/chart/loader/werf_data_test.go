@@ -68,17 +68,30 @@ func TestLoadFiles_RefusesWerfData(t *testing.T) {
 
 func TestLoadDir_RefusesWerfDataIgnoredByHelmignore(t *testing.T) {
 	tests := []struct {
-		name  string
-		files map[string]string
+		name    string
+		files   map[string]string
+		wantErr bool
 	}{
 		{
-			name: "root .werf-data",
+			name:  "no .werf-data",
+			files: map[string]string{"templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: cm\n"},
+		},
+		{
+			name: ".werf-data outside of the chart root",
+			files: map[string]string{
+				"files/.werf-data/metadata.yaml": "apiVersion: v2\n",
+			},
+		},
+		{
+			name:    "root .werf-data",
+			wantErr: true,
 			files: map[string]string{
 				".werf-data/metadata.yaml": "apiVersion: v2\n",
 			},
 		},
 		{
-			name: "dependency .werf-data",
+			name:    "dependency .werf-data",
+			wantErr: true,
 			files: map[string]string{
 				"charts/sub/Chart.yaml":              "apiVersion: v2\nname: sub\nversion: 1.0.0\n",
 				"charts/sub/.werf-data/metadata.yaml": "apiVersion: v2\n",
@@ -104,6 +117,12 @@ func TestLoadDir_RefusesWerfDataIgnoredByHelmignore(t *testing.T) {
 			}
 
 			_, err := LoadDir(dir, helmopts.HelmOptions{})
+			if !tt.wantErr {
+				require.NoError(t, err)
+
+				return
+			}
+
 			assert.ErrorContains(t, err, "it requires werf v3 or Nelm v2, or newer")
 		})
 	}

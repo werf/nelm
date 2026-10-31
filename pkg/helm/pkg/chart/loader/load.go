@@ -374,13 +374,12 @@ const (
 // of the chart or of a dependency under charts/. Such paths are read regardless of .helmignore,
 // so that refuseWerfData sees them.
 func isWerfDataPath(name string) bool {
-	for _, part := range strings.Split(name, "/") {
-		if part == werfDataDirName {
-			return true
-		}
+	parts := strings.Split(name, "/")
+	for len(parts) >= 3 && parts[0] == "charts" {
+		parts = parts[2:]
 	}
 
-	return false
+	return parts[0] == werfDataDirName
 }
 
 // refuseWerfData rejects charts published by werf v3 and Nelm v2 with a .werf-data directory:
