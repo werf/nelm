@@ -2,6 +2,7 @@ package action
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -110,6 +111,17 @@ func TestResolvePatches_DefaultPatchesDisableKeepsLegacyPatches(t *testing.T) {
 	require.Equal(t, []interface{}{"legacy"}, aiApplyOrder(t, patches.Render, "app/templates/web.yaml"))
 }
 
+func TestResolvePatches_FailsOnUnsupportedWerfDataAPIVersion(t *testing.T) {
+	chart, err := helmchart.NewAccessor(&v2chart.Chart{
+		Metadata:      &v2chart.Metadata{Name: "app"},
+		WerfDataFiles: []*chartcommon.File{{Name: ".werf-data/metadata.yaml", Data: []byte("apiVersion: v3\n")}},
+	})
+	require.NoError(t, err)
+
+	_, err = resolveDiffPatches(chart, false, nil, spec.Patches{})
+	require.ErrorContains(t, err, `unsupported .werf-data/metadata.yaml apiVersion "v3"`)
+}
+
 func TestResolvePatches_InvalidLegacyPatchFailsClosed(t *testing.T) {
 	_, err := resolvePatches(nil, true, nil, spec.Patches{
 		Render: []spec.Patch{{Patch: "del(.spec.replicas"}},
@@ -153,6 +165,39 @@ func TestResolvePatches_RejectsMissingRenderedValues(t *testing.T) {
 
 	_, err := resolvePatches(chart, false, nil, spec.Patches{}, nil)
 	require.ErrorContains(t, err, "rendered values are required")
+}
+
+func TestResolvePatches_WerfDataPatchesOrder(t *testing.T) {
+	tests := []struct {
+		name                  string
+		callerDefaultDisable  bool
+		publishDefaultDisable bool
+		want                  []interface{}
+	}{
+		{name: "chart, publish, caller", want: []interface{}{"chart", "publish-0", "publish-1", "file", "legacy"}},
+		{name: "caller disables chart patches", callerDefaultDisable: true, want: []interface{}{"publish-0", "publish-1", "file", "legacy"}},
+		{name: "publish disables chart patches", publishDefaultDisable: true, want: []interface{}{"publish-0", "publish-1", "file", "legacy"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			chart := aiChartWithWerfDataPatches(t, tt.publishDefaultDisable)
+			patchesFile := aiWritePatchesFile(t, "diffPatches:\n- patch: .order += [\"file\"]\nrenderPatches:\n- patch: .order += [\"file\"]\n")
+			legacy := spec.Patches{
+				Diff:   []spec.Patch{{Patch: `.order += ["legacy"]`}},
+				Render: []spec.Patch{{Patch: `.order += ["legacy"]`}},
+			}
+
+			patches, err := resolvePatches(chart, tt.callerDefaultDisable, []string{patchesFile}, legacy, aiRenderedValues())
+			require.NoError(t, err)
+			require.Equal(t, tt.want, aiApplyOrder(t, patches.Render, "app/templates/web.yaml"))
+			require.Equal(t, tt.want, aiApplyOrder(t, patches.Diff, "app/templates/web.yaml"))
+
+			diffPatches, err := resolveDiffPatches(chart, tt.callerDefaultDisable, []string{patchesFile}, legacy)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, aiApplyOrder(t, diffPatches.Diff, "app/templates/web.yaml"))
+		})
+	}
 }
 
 // A dependency without metadata makes subchartContexts panic while walking the
@@ -206,6 +251,28 @@ func aiChartWithPatches(t *testing.T, name, patchesYAML string) helmchart.Access
 	chart := &v2chart.Chart{
 		Metadata: &v2chart.Metadata{Name: name},
 		Files:    []*chartcommon.File{{Name: "patches.yaml", Data: []byte(patchesYAML)}},
+	}
+
+	accessor, err := helmchart.NewAccessor(chart)
+	require.NoError(t, err)
+
+	return accessor
+}
+
+func aiChartWithWerfDataPatches(t *testing.T, publishDefaultDisable bool) helmchart.Accessor {
+	t.Helper()
+
+	metadata := fmt.Sprintf("apiVersion: v2\npatches: [patches/0, patches/1]\ndefaultPatchesDisable: %t\n", publishDefaultDisable)
+	chart := &v2chart.Chart{
+		Metadata: &v2chart.Metadata{Name: "app"},
+		Files: []*chartcommon.File{
+			{Name: "patches.yaml", Data: []byte("diffPatches:\n- patch: .order += [\"chart\"]\nrenderPatches:\n- patch: .order += [\"chart\"]\n")},
+		},
+		WerfDataFiles: []*chartcommon.File{
+			{Name: ".werf-data/metadata.yaml", Data: []byte(metadata)},
+			{Name: ".werf-data/patches/0", Data: []byte("diffPatches:\n- patch: .order += [\"publish-0\"]\nrenderPatches:\n- patch: .order += [\"publish-0\"]\n")},
+			{Name: ".werf-data/patches/1", Data: []byte("diffPatches:\n- patch: .order += [\"publish-1\"]\nrenderPatches:\n- patch: .order += [\"publish-1\"]\n")},
+		},
 	}
 
 	accessor, err := helmchart.NewAccessor(chart)
