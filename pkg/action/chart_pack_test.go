@@ -695,6 +695,51 @@ func TestChartPack_ChecksDecompressedChartSize(t *testing.T) {
 	assert.NoFileExists(t, filepath.Join(destination, "mychart-1.0.0.tgz"))
 }
 
+func TestChartPack_FailedArchiveMoveRemovesOldProvenance(t *testing.T) {
+	keyringPath, err := filepath.Abs("../helm/pkg/cmd/testdata/helm-test-key.secret")
+	require.NoError(t, err)
+
+	chartDir := filepath.Join(t.TempDir(), "mychart")
+	writeChartPackTestFiles(t, chartDir, map[string]string{"Chart.yaml": "apiVersion: v2\nname: mychart\nversion: 1.0.0\n"})
+
+	// A non-empty directory in place of the archive makes moving the archive into place fail.
+	destination := t.TempDir()
+	writeChartPackTestFiles(t, destination, map[string]string{
+		"mychart-1.0.0.tgz/keep": "",
+		"mychart-1.0.0.tgz.prov": "old signature",
+	})
+
+	_, err = ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+		Destination: destination,
+		Sign:        true,
+		SignKey:     "helm-test",
+		SignKeyring: keyringPath,
+	})
+	require.ErrorContains(t, err, "move archive into place")
+	assert.NoFileExists(t, filepath.Join(destination, "mychart-1.0.0.tgz.prov"))
+}
+
+func TestChartPack_FailedPackLeavesDestinationUntouched(t *testing.T) {
+	chartDir := filepath.Join(t.TempDir(), "mychart")
+	writeChartPackTestFiles(t, chartDir, map[string]string{"Chart.yaml": "apiVersion: v2\nname: mychart\nversion: 1.0.0\n"})
+
+	// Nothing, not even a staging directory, may appear in the chart while packing it into a
+	// destination inside it, since a killed pack would leave it for the next pack to pick up.
+	_, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+		Destination: filepath.Join(chartDir, "out"),
+		Sign:        true,
+		SignKey:     "helm-test",
+		SignKeyring: filepath.Join(t.TempDir(), "missing.secret"),
+	})
+	require.Error(t, err)
+
+	entries, err := os.ReadDir(chartDir)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Chart.yaml"}, lo.Map(entries, func(entry os.DirEntry, _ int) string {
+		return entry.Name()
+	}))
+}
+
 func TestChartPack_FailedResignKeepsSignedArchive(t *testing.T) {
 	keyringPath, err := filepath.Abs("../helm/pkg/cmd/testdata/helm-test-key.secret")
 	require.NoError(t, err)
@@ -765,6 +810,19 @@ func TestChartPack_ForwardsRepositorySettings(t *testing.T) {
 
 	assert.Contains(t, readChartPackTestArchiveFiles(t, result.ArchivePath), "mychart/charts/dep/templates/cm.yaml")
 	assert.FileExists(t, filepath.Join(repositoryCache, "myrepo-index.yaml"))
+}
+
+func TestChartPack_RelativeDestination(t *testing.T) {
+	workDir := t.TempDir()
+	t.Chdir(workDir)
+
+	chartDir := filepath.Join(t.TempDir(), "mychart")
+	writeChartPackTestFiles(t, chartDir, map[string]string{"Chart.yaml": "apiVersion: v2\nname: mychart\nversion: 1.0.0\n"})
+
+	result, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{Destination: "."})
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(workDir, "mychart-1.0.0.tgz"), result.ArchivePath)
+	assert.FileExists(t, result.ArchivePath)
 }
 
 func TestChartPack_RemovesStaleProvenance(t *testing.T) {

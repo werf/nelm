@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/samber/lo"
@@ -273,14 +274,10 @@ func ChartPack(ctx context.Context, chartPath string, opts ChartPackOptions) (*C
 		}
 	}
 
-	// The archive and its provenance file are built in a staging directory and moved into the
+	// The archive and its provenance file are built in a temporary directory and moved into the
 	// destination only when everything succeeded, so that a failed pack never leaves a signature
 	// next to an archive it doesn't sign.
-	if err := os.MkdirAll(opts.Destination, 0o755); err != nil {
-		return nil, fmt.Errorf("create destination directory: %w", err)
-	}
-
-	stagingDir, err := os.MkdirTemp(opts.Destination, ".chart-pack-")
+	stagingDir, err := os.MkdirTemp("", "nelm-chart-pack-")
 	if err != nil {
 		return nil, fmt.Errorf("create staging directory: %w", err)
 	}
@@ -318,18 +315,30 @@ func ChartPack(ctx context.Context, chartPath string, opts ChartPackOptions) (*C
 		}
 
 		result.ProvenancePath = archivePath + ".prov"
+	}
 
-		if err := os.Rename(stagedArchivePath+".prov", result.ProvenancePath); err != nil {
-			return nil, fmt.Errorf("move provenance file into place: %w", err)
+	if err := os.MkdirAll(opts.Destination, 0o755); err != nil {
+		return nil, fmt.Errorf("create destination directory: %w", err)
+	}
+
+	// The old provenance file goes first, so that no failure below leaves it next to an archive it
+	// doesn't sign.
+	if err := os.Remove(archivePath + ".prov"); err == nil {
+		if !opts.Sign {
+			log.Default.Warn(ctx, "Removed %q: it signed a previous archive and the new one is not signed", archivePath+".prov")
 		}
-	} else if err := os.Remove(archivePath + ".prov"); err == nil {
-		log.Default.Warn(ctx, "Removed %q: it signed a previous archive and the new one is not signed", archivePath+".prov")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("remove provenance file of a previous archive: %w", err)
 	}
 
-	if err := os.Rename(stagedArchivePath, archivePath); err != nil {
+	if err := moveFile(stagedArchivePath, archivePath); err != nil {
 		return nil, fmt.Errorf("move archive into place: %w", err)
+	}
+
+	if opts.Sign {
+		if err := moveFile(stagedArchivePath+".prov", result.ProvenancePath); err != nil {
+			return nil, fmt.Errorf("move provenance file into place: %w", err)
+		}
 	}
 
 	log.Default.Info(ctx, "Successfully packaged chart and saved it to: %s", archivePath)
@@ -522,17 +531,7 @@ func mergeChartPackSecretValues(ctx context.Context, data *werfdata.Data, secret
 	}
 
 	for _, secretValuesFile := range secretValuesFiles {
-		var (
-			fileData []byte
-			err      error
-		)
-
-		if common.ChartFileReader != nil {
-			fileData, err = common.ChartFileReader.ReadChartFile(ctx, secretValuesFile)
-		} else {
-			fileData, err = os.ReadFile(secretValuesFile)
-		}
-
+		fileData, err := readChartPackInputFile(ctx, secretValuesFile)
 		if err != nil {
 			return fmt.Errorf("read secret values file %q: %w", secretValuesFile, err)
 		}
@@ -739,14 +738,12 @@ func saveChartPackArchive(loadedChart helmchart.Charter, files, werfDataFiles []
 func applyChartPackOptionsDefaults(opts ChartPackOptions) (ChartPackOptions, error) {
 	opts.ChartRepoConnectionOptions.ApplyDefaults()
 
-	if opts.Destination == "" {
-		currentDir, err := os.Getwd()
-		if err != nil {
-			return ChartPackOptions{}, fmt.Errorf("get current working directory: %w", err)
-		}
-
-		opts.Destination = currentDir
+	destination, err := filepath.Abs(opts.Destination)
+	if err != nil {
+		return ChartPackOptions{}, fmt.Errorf("get absolute path of destination %q: %w", opts.Destination, err)
 	}
+
+	opts.Destination = destination
 
 	if opts.RegistryCredentialsPath == "" {
 		opts.RegistryCredentialsPath = filepath.Join(common.DefaultDockerConfig, "config.json")
@@ -870,6 +867,46 @@ func mergeStringMaps(base, overrides map[string]string) map[string]string {
 	return result
 }
 
+// moveFile renames src to dst, copying it when they are on different filesystems.
+func moveFile(src, dst string) error {
+	err := os.Rename(src, dst)
+	if err == nil {
+		return nil
+	} else if !errors.Is(err, syscall.EXDEV) {
+		return fmt.Errorf("rename %q to %q: %w", src, dst, err)
+	}
+
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("read %q: %w", src, err)
+	}
+
+	tmpFile, err := os.CreateTemp(filepath.Dir(dst), "."+filepath.Base(dst)+".tmp")
+	if err != nil {
+		return fmt.Errorf("create temporary file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+
+	if _, err := tmpFile.Write(data); err != nil {
+		return fmt.Errorf("write %q: %w", tmpFile.Name(), err)
+	}
+
+	if err := tmpFile.Chmod(0o644); err != nil {
+		return fmt.Errorf("chmod %q: %w", tmpFile.Name(), err)
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("close %q: %w", tmpFile.Name(), err)
+	}
+
+	if err := os.Rename(tmpFile.Name(), dst); err != nil {
+		return fmt.Errorf("rename %q to %q: %w", tmpFile.Name(), dst, err)
+	}
+
+	return nil
+}
+
 func newChartPackDependencyDownloader(ctx context.Context, chartPath string, registryClient *registry.Client, opts ChartPackOptions) *helmdownloader.Manager {
 	return &helmdownloader.Manager{
 		Out:               io.Discard,
@@ -934,6 +971,26 @@ func nextWerfDataFileIndex(files map[string][]byte, dir string) int {
 	}
 
 	return next
+}
+
+// readChartPackInputFile reads a file passed to chart pack through the chart file reader of werf,
+// if set, so that werf's giterminism rules apply to it.
+func readChartPackInputFile(ctx context.Context, filePath string) ([]byte, error) {
+	if common.ChartFileReader != nil {
+		data, err := common.ChartFileReader.ReadChartFile(ctx, filePath)
+		if err != nil {
+			return nil, fmt.Errorf("read chart file: %w", err)
+		}
+
+		return data, nil
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("read file: %w", err)
+	}
+
+	return data, nil
 }
 
 func replaceArchiveFiles(archivePath string, replacements map[string][]byte) error {
