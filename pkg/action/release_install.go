@@ -396,9 +396,12 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}
 	}
 
-	// Like release rollback, auto-rollback doesn't use the options from the .werf-data of the new
-	// chart.
+	// Like release rollback, auto-rollback uses the caller's options, without the ones from the
+	// .werf-data of the new chart that are merged below.
 	rollbackRuntimeOptions := opts.ReleaseInstallRuntimeOptions
+	if usePlan && planArtifact.Data.RollbackOptions != nil {
+		rollbackRuntimeOptions = *planArtifact.Data.RollbackOptions
+	}
 
 	var (
 		installPlan  *plan.Plan
