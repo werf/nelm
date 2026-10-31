@@ -271,23 +271,33 @@ func ChartPack(ctx context.Context, chartPath string, opts ChartPackOptions) (*C
 		}
 	}
 
-	archivePath, err := saveChartPackArchive(loadedChart, chartFiles, werfDataFiles, chartYAMLEdit, opts.Destination)
+	// The archive and its provenance file are built in a staging directory and moved into the
+	// destination only when everything succeeded, so that a failed pack never leaves a signature
+	// next to an archive it doesn't sign.
+	if err := os.MkdirAll(opts.Destination, 0o755); err != nil {
+		return nil, fmt.Errorf("create destination directory: %w", err)
+	}
+
+	stagingDir, err := os.MkdirTemp(opts.Destination, ".chart-pack-")
+	if err != nil {
+		return nil, fmt.Errorf("create staging directory: %w", err)
+	}
+	defer os.RemoveAll(stagingDir)
+
+	stagedArchivePath, err := saveChartPackArchive(loadedChart, chartFiles, werfDataFiles, chartYAMLEdit, stagingDir)
 	if err != nil {
 		return nil, fmt.Errorf("save chart archive: %w", err)
 	}
 
-	if err := rewriteChartPackArchiveMetadata(ctx, archivePath, chartAccessor, chartYAMLEdit); err != nil {
-		return nil, fmt.Errorf("write Chart.yaml and Chart.lock into %q: %w", archivePath, err)
+	if err := rewriteChartPackArchiveMetadata(ctx, stagedArchivePath, chartAccessor, chartYAMLEdit); err != nil {
+		return nil, fmt.Errorf("write Chart.yaml and Chart.lock into the archive: %w", err)
 	}
 
-	if err := checkChartPackArchiveSize(archivePath); err != nil {
-		if removeErr := os.Remove(archivePath); removeErr != nil {
-			log.Default.Warn(ctx, "Unable to remove %q: %s", archivePath, removeErr)
-		}
-
+	if err := checkChartPackArchiveSize(stagedArchivePath); err != nil {
 		return nil, err
 	}
 
+	archivePath := filepath.Join(opts.Destination, filepath.Base(stagedArchivePath))
 	result := &ChartPackResult{
 		ArchivePath:  archivePath,
 		ChartName:    chartAccessor.Name(),
@@ -301,15 +311,23 @@ func ChartPack(ctx context.Context, chartPath string, opts ChartPackOptions) (*C
 			PassphraseFile: opts.SignPassphraseFile,
 		}
 
-		if err := pkg.Clearsign(archivePath); err != nil {
+		if err := pkg.Clearsign(stagedArchivePath); err != nil {
 			return nil, fmt.Errorf("sign %q: %w", archivePath, err)
 		}
 
 		result.ProvenancePath = archivePath + ".prov"
+
+		if err := os.Rename(stagedArchivePath+".prov", result.ProvenancePath); err != nil {
+			return nil, fmt.Errorf("move provenance file into place: %w", err)
+		}
 	} else if err := os.Remove(archivePath + ".prov"); err == nil {
 		log.Default.Warn(ctx, "Removed %q: it signed a previous archive and the new one is not signed", archivePath+".prov")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("remove provenance file of a previous archive: %w", err)
+	}
+
+	if err := os.Rename(stagedArchivePath, archivePath); err != nil {
+		return nil, fmt.Errorf("move archive into place: %w", err)
 	}
 
 	log.Default.Info(ctx, "Successfully packaged chart and saved it to: %s", archivePath)

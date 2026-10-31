@@ -656,6 +656,50 @@ func TestChartPack_ChecksDecompressedChartSize(t *testing.T) {
 	assert.NoFileExists(t, filepath.Join(destination, "mychart-1.0.0.tgz"))
 }
 
+func TestChartPack_FailedResignKeepsSignedArchive(t *testing.T) {
+	keyringPath, err := filepath.Abs("../helm/pkg/cmd/testdata/helm-test-key.secret")
+	require.NoError(t, err)
+	publicKeyringPath, err := filepath.Abs("../helm/pkg/cmd/testdata/helm-test-key.pub")
+	require.NoError(t, err)
+
+	chartDir := filepath.Join(t.TempDir(), "mychart")
+	writeChartPackTestFiles(t, chartDir, map[string]string{"Chart.yaml": "apiVersion: v2\nname: mychart\nversion: 1.0.0\n"})
+
+	destination := filepath.Join(t.TempDir(), "not", "created")
+	signed, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+		Destination: destination,
+		Sign:        true,
+		SignKey:     "helm-test",
+		SignKeyring: keyringPath,
+	})
+	require.NoError(t, err)
+
+	_, err = ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+		Destination: destination,
+		Sign:        true,
+		SignKey:     "helm-test",
+		SignKeyring: filepath.Join(t.TempDir(), "missing.secret"),
+		ValuesSet:   []string{"a=1"},
+	})
+	require.Error(t, err)
+
+	entries, err := os.ReadDir(destination)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"mychart-1.0.0.tgz", "mychart-1.0.0.tgz.prov"}, lo.Map(entries, func(entry os.DirEntry, _ int) string {
+		return entry.Name()
+	}))
+
+	archiveData, err := os.ReadFile(signed.ArchivePath)
+	require.NoError(t, err)
+	provData, err := os.ReadFile(signed.ProvenancePath)
+	require.NoError(t, err)
+
+	signatory, err := provenance.NewFromKeyring(publicKeyringPath, "")
+	require.NoError(t, err)
+	_, err = signatory.Verify(archiveData, provData, filepath.Base(signed.ArchivePath))
+	require.NoError(t, err)
+}
+
 func TestChartPack_ForwardsRepositorySettings(t *testing.T) {
 	setupChartPackTestDependencyCaches(t)
 	server := newChartPackTestChartRepo(t)
