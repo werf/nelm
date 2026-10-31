@@ -26,10 +26,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"oras.land/oras-go/v2"
 	"oras.land/oras-go/v2/content"
+	"oras.land/oras-go/v2/content/memory"
 
 	"github.com/werf/nelm/v2/pkg/chartyaml"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
 	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 )
@@ -1160,4 +1162,49 @@ func TestParseChartCopyAddress(t *testing.T) {
 			assert.Equal(t, tt.expected, *addr)
 		})
 	}
+}
+
+func TestWriteChartCopyArchive_ChartTagEqualToImageRef(t *testing.T) {
+	ctx := newChartPackTestContext()
+
+	imageStore := memory.New()
+	configDesc, err := oras.PushBytes(ctx, imageStore, ocispec.MediaTypeImageConfig, []byte(`{"architecture":"amd64","os":"linux"}`))
+	require.NoError(t, err)
+
+	manifestData, err := json.Marshal(ocispec.Manifest{
+		Versioned: specs.Versioned{SchemaVersion: 2},
+		MediaType: ocispec.MediaTypeImageManifest,
+		Config:    configDesc,
+		Layers:    []ocispec.Descriptor{},
+	})
+	require.NoError(t, err)
+
+	imageDesc, err := oras.PushBytes(ctx, imageStore, ocispec.MediaTypeImageManifest, manifestData)
+	require.NoError(t, err)
+
+	chartData := buildChartCopyTestChart(t, map[string]string{
+		"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\nannotations:\n  helm.sh/images: |\n    - name: nginx\n      image: nginx\n",
+	})
+	loadedChart, err := loader.LoadArchive(ctx, bytes.NewReader(chartData))
+	require.NoError(t, err)
+
+	source := &chartCopySource{
+		ChartData: chartData,
+		ResolveImage: func(ctx context.Context, imageRef string) (content.ReadOnlyStorage, ocispec.Descriptor, error) {
+			return imageStore, imageDesc, nil
+		},
+		Tag: "nginx",
+	}
+
+	archivePath := filepath.Join(t.TempDir(), "chart.tar")
+	require.NoError(t, writeChartCopyArchive(ctx, source, loadedChart, []string{"nginx"}, archivePath, t.TempDir()))
+
+	readSource, err := readChartCopyArchive(ctx, archivePath, t.TempDir(), &chartCopyExpansion{Max: DefaultChartCopyArchiveMaxExpandedSize})
+	require.NoError(t, err)
+	assert.Equal(t, "nginx", readSource.Tag)
+	assert.Equal(t, chartData, readSource.ChartData)
+
+	_, readImageDesc, err := readSource.ResolveImage(ctx, "nginx")
+	require.NoError(t, err)
+	assert.Equal(t, imageDesc.Digest, readImageDesc.Digest)
 }

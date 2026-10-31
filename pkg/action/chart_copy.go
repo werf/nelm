@@ -796,10 +796,13 @@ func writeChartCopyArchive(ctx context.Context, source *chartCopySource, loadedC
 		return fmt.Errorf("save chart manifest: %w", err)
 	}
 
-	chartDesc.Annotations = map[string]string{chartCopyArchiveEntryAnnotation: chartCopyArchiveEntryChart}
-	if err := store.Tag(ctx, chartDesc, lo.CoalesceOrEmpty(source.Tag, strings.ReplaceAll(chartVersion(loadedChart), "+", "_"))); err != nil {
-		return fmt.Errorf("tag chart: %w", err)
+	// The entries are not tagged in the store: the chart tag and the image refs share its tag
+	// namespace, so an image ref equal to the chart tag would replace the chart entry.
+	chartDesc.Annotations = map[string]string{
+		chartCopyArchiveEntryAnnotation: chartCopyArchiveEntryChart,
+		ocispec.AnnotationRefName:       lo.CoalesceOrEmpty(source.Tag, strings.ReplaceAll(chartVersion(loadedChart), "+", "_")),
 	}
+	entries := []ocispec.Descriptor{chartDesc}
 
 	for _, imageRef := range imageRefs {
 		storage, desc, err := source.ResolveImage(ctx, imageRef)
@@ -811,16 +814,17 @@ func writeChartCopyArchive(ctx context.Context, source *chartCopySource, loadedC
 			return fmt.Errorf("copy image %q: %w", imageRef, err)
 		}
 
-		desc.Annotations = map[string]string{chartCopyArchiveEntryAnnotation: chartCopyArchiveEntryImage}
-		if err := store.Tag(ctx, desc, imageRef); err != nil {
-			return fmt.Errorf("tag image %q: %w", imageRef, err)
+		desc.Annotations = map[string]string{
+			chartCopyArchiveEntryAnnotation: chartCopyArchiveEntryImage,
+			ocispec.AnnotationRefName:       imageRef,
 		}
+		entries = append(entries, desc)
 
 		log.Default.Info(ctx, "Saved image %s", imageRef)
 	}
 
-	if err := keepAnnotatedIndexEntries(layoutDir); err != nil {
-		return fmt.Errorf("clean up OCI image layout index: %w", err)
+	if err := writeChartCopyArchiveIndex(layoutDir, entries); err != nil {
+		return fmt.Errorf("write OCI image layout index: %w", err)
 	}
 
 	return writeOCILayoutTar(ctx, layoutDir, archivePath, strings.HasSuffix(archivePath, ".gz") || strings.HasSuffix(archivePath, ".tgz"))
@@ -1587,37 +1591,6 @@ func isGzipFile(filePath string) (bool, error) {
 	return magic[0] == 0x1f && magic[1] == 0x8b, nil
 }
 
-// keepAnnotatedIndexEntries drops from index.json the manifests the OCI store lists only because
-// they were pushed, like the per-platform manifests of an image index, leaving the chart and the
-// images.
-func keepAnnotatedIndexEntries(layoutDir string) error {
-	indexPath := filepath.Join(layoutDir, ocispec.ImageIndexFile)
-
-	indexData, err := os.ReadFile(indexPath)
-	if err != nil {
-		return fmt.Errorf("read %s: %w", ocispec.ImageIndexFile, err)
-	}
-
-	var index ocispec.Index
-	if err := json.Unmarshal(indexData, &index); err != nil {
-		return fmt.Errorf("parse %s: %w", ocispec.ImageIndexFile, err)
-	}
-
-	index.Manifests = lo.Filter(index.Manifests, func(desc ocispec.Descriptor, _ int) bool {
-		return desc.Annotations[chartCopyArchiveEntryAnnotation] != ""
-	})
-
-	if indexData, err = json.Marshal(index); err != nil {
-		return fmt.Errorf("marshal %s: %w", ocispec.ImageIndexFile, err)
-	}
-
-	if err := os.WriteFile(indexPath, indexData, 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", ocispec.ImageIndexFile, err)
-	}
-
-	return nil
-}
-
 func parseChartCopyImageRef(ref string) chartCopyImageRef {
 	var result chartCopyImageRef
 
@@ -1897,6 +1870,25 @@ func saveChartCopy(ctx context.Context, loadedChart helmchart.Charter, chartAcce
 	}
 
 	return chartData, provData, nil
+}
+
+// writeChartCopyArchiveIndex replaces index.json, which lists every manifest pushed into the store,
+// like the per-platform manifests of an image index, with the entries.
+func writeChartCopyArchiveIndex(layoutDir string, entries []ocispec.Descriptor) error {
+	indexData, err := json.Marshal(ocispec.Index{
+		Versioned: specs.Versioned{SchemaVersion: 2},
+		MediaType: ocispec.MediaTypeImageIndex,
+		Manifests: entries,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal %s: %w", ocispec.ImageIndexFile, err)
+	}
+
+	if err := os.WriteFile(filepath.Join(layoutDir, ocispec.ImageIndexFile), indexData, 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", ocispec.ImageIndexFile, err)
+	}
+
+	return nil
 }
 
 func writeFileFromReader(filePath string, reader io.Reader) error {
