@@ -270,6 +270,36 @@ annotations:
 			expectedErr: `secret values file "keys.yaml": value at "a" is not encrypted`,
 		},
 		{
+			name: "stored secret values with consecutive document headers rejected",
+			chart: map[string]string{
+				"Chart.yaml":                    chartPackTestChartYAML,
+				".werf-data/metadata.yaml":      "apiVersion: v2\nvalues:\n  secretValues: true\n",
+				".werf-data/secret-values.yaml": "---\n---\npassword: plain\n",
+			},
+			steps:       []chartPackTestStep{{}},
+			expectedErr: ".werf-data/secret-values.yaml: has 2 YAML documents, expected one",
+		},
+		{
+			name:  "secret values file with consecutive document headers rejected",
+			chart: map[string]string{"Chart.yaml": chartPackTestChartYAML},
+			steps: []chartPackTestStep{{
+				inputs: map[string]string{"values-a.yaml": "---\n---\npassword: plain\n"},
+				opts:   ChartPackOptions{SecretValuesFiles: []string{"values-a.yaml"}},
+			}},
+			expectedErr: `secret values file "values-a.yaml": has 2 YAML documents, expected one`,
+		},
+		{
+			name: "dependency secret values with consecutive document headers rejected",
+			chart: map[string]string{
+				"Chart.yaml":                               chartPackTestChartYAML,
+				"charts/dep/Chart.yaml":                    "apiVersion: v2\nname: dep\nversion: 1.0.0\n",
+				"charts/dep/.werf-data/metadata.yaml":      "apiVersion: v2\nvalues:\n  secretValues: true\n",
+				"charts/dep/.werf-data/secret-values.yaml": "---\n---\npassword: plain\n",
+			},
+			steps:       []chartPackTestStep{{}},
+			expectedErr: `dependency "dep": .werf-data/secret-values.yaml: has 2 YAML documents, expected one`,
+		},
+		{
 			name: "multi-document stored secret values rejected",
 			chart: map[string]string{
 				"Chart.yaml":                    chartPackTestChartYAML,
@@ -761,6 +791,61 @@ func TestChartPack_RemovesStaleProvenance(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, unsigned.ProvenancePath)
 	assert.NoFileExists(t, signed.ProvenancePath)
+}
+
+func TestChartPack_SecretValuesParseErrorsHideSource(t *testing.T) {
+	const malformed = "password: TOPSECRET: invalid\n"
+
+	tests := []struct {
+		name        string
+		chart       map[string]string
+		opts        ChartPackOptions
+		expectedErr string
+	}{
+		{
+			name:        "secret values file",
+			chart:       map[string]string{"Chart.yaml": chartPackTestChartYAML},
+			opts:        ChartPackOptions{SecretValuesFiles: []string{"values-a.yaml"}},
+			expectedErr: `secret values file "values-a.yaml": invalid YAML`,
+		},
+		{
+			name: "stored secret values",
+			chart: map[string]string{
+				"Chart.yaml":                    chartPackTestChartYAML,
+				".werf-data/metadata.yaml":      "apiVersion: v2\nvalues:\n  secretValues: true\n",
+				".werf-data/secret-values.yaml": malformed,
+			},
+			expectedErr: ".werf-data/secret-values.yaml: invalid YAML",
+		},
+		{
+			name: "dependency secret values",
+			chart: map[string]string{
+				"Chart.yaml":                               chartPackTestChartYAML,
+				"charts/dep/Chart.yaml":                    "apiVersion: v2\nname: dep\nversion: 1.0.0\n",
+				"charts/dep/.werf-data/metadata.yaml":      "apiVersion: v2\nvalues:\n  secretValues: true\n",
+				"charts/dep/.werf-data/secret-values.yaml": malformed,
+			},
+			expectedErr: `dependency "dep": .werf-data/secret-values.yaml: invalid YAML`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			workDir := t.TempDir()
+			t.Chdir(workDir)
+			writeChartPackTestFiles(t, workDir, map[string]string{"values-a.yaml": malformed})
+
+			chartDir := filepath.Join(t.TempDir(), "mychart")
+			writeChartPackTestFiles(t, chartDir, tt.chart)
+
+			opts := tt.opts
+			opts.Destination = t.TempDir()
+
+			_, err := ChartPack(newChartPackTestContext(), chartDir, opts)
+			require.ErrorContains(t, err, tt.expectedErr)
+			assert.NotContains(t, err.Error(), "TOPSECRET")
+		})
+	}
 }
 
 func TestChartPack_Sign(t *testing.T) {

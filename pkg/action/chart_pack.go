@@ -16,14 +16,14 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/goccy/go-yaml/ast"
-	"github.com/goccy/go-yaml/parser"
 	"github.com/samber/lo"
+	yamlv3 "gopkg.in/yaml.v3"
 	"sigs.k8s.io/yaml"
 
 	"github.com/werf/nelm/v2/pkg/chartyaml"
@@ -55,6 +55,8 @@ const (
 	legacyExtraAnnotationsFileName = "extra_annotations.json"
 	legacyExtraLabelsFileName      = "extra_labels.json"
 )
+
+var yamlErrorLineRegexp = regexp.MustCompile(`line (\d+)`)
 
 type ChartPackOptions struct {
 	common.ChartRepoConnectionOptions
@@ -554,20 +556,29 @@ func mergeChartPackSecretValues(ctx context.Context, data *werfdata.Data, secret
 }
 
 // parseEncryptedValues parses a secret values file, failing unless it is a single YAML document
-// with every value encrypted.
+// with every value encrypted. Parse errors don't include the file contents.
 func parseEncryptedValues(data []byte) (map[string]any, error) {
-	file, err := parser.ParseBytes(data, 0)
-	if err != nil {
-		return nil, fmt.Errorf("parse YAML: %w", err)
+	var documents int
+
+	decoder := yamlv3.NewDecoder(bytes.NewReader(data))
+	for {
+		var node yamlv3.Node
+		if err := decoder.Decode(&node); errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			return nil, sanitizeYAMLError(err)
+		}
+
+		documents++
 	}
 
-	if docs := lo.Filter(file.Docs, func(doc *ast.DocumentNode, _ int) bool { return doc.Body != nil }); len(docs) > 1 {
-		return nil, fmt.Errorf("has %d YAML documents, expected one", len(docs))
+	if documents > 1 {
+		return nil, fmt.Errorf("has %d YAML documents, expected one", documents)
 	}
 
 	vals := map[string]any{}
 	if err := yaml.Unmarshal(data, &vals); err != nil {
-		return nil, fmt.Errorf("parse YAML: %w", err)
+		return nil, sanitizeYAMLError(err)
 	}
 
 	if err := checkEncryptedValues(vals, nil); err != nil {
@@ -996,6 +1007,16 @@ func replaceArchiveFiles(archivePath string, replacements map[string][]byte) err
 	}
 
 	return nil
+}
+
+// sanitizeYAMLError keeps only the line number of a YAML parse error, since the messages of YAML
+// parsers may quote the source, which for secret values may be plaintext secrets.
+func sanitizeYAMLError(err error) error {
+	if match := yamlErrorLineRegexp.FindStringSubmatch(err.Error()); match != nil {
+		return fmt.Errorf("invalid YAML at line %s", match[1])
+	}
+
+	return errors.New("invalid YAML")
 }
 
 // withoutWerfHelpersTemplate drops the empty placeholder template the loader adds to the root
