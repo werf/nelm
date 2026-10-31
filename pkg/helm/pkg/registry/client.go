@@ -928,6 +928,8 @@ func (c *Client) ValidateReference(ref, version string, u *url.URL) (string, *ur
 	_, errSemVer := semver.NewVersion(version)
 	if errSemVer == nil {
 		tag = version
+	} else if version != "" && c.tagExists(registryReference, version) {
+		tag = version
 	} else {
 		// Retrieve list of repository tags
 		tags, err := c.Tags(strings.TrimPrefix(ref, OCIScheme+"://"))
@@ -952,6 +954,11 @@ func (c *Client) ValidateReference(ref, version string, u *url.URL) (string, *ur
 	// desc, err := c.Resolve(u.Path)
 
 	return "", u, err
+}
+
+func (c *Client) tagExists(registryReference reference, tag string) bool {
+	_, err := c.Resolve(registryReference.Registry + "/" + registryReference.Repository + ":" + tag)
+	return err == nil
 }
 
 // tagManifest prepares and tags a manifest in memory storage

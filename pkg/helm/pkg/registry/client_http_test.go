@@ -19,6 +19,7 @@ package registry
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"testing"
 
@@ -125,6 +126,77 @@ func (suite *HTTPRegistryClientTestSuite) Test_6_PushExtraTags() {
 				suite.Require().NoError(err, tag)
 				suite.Equal(result.Manifest.Digest, desc.Digest.String(), tag)
 			}
+		})
+	}
+}
+
+func (suite *HTTPRegistryClientTestSuite) Test_7_ValidateReferenceNonSemverTag() {
+	chartData, err := os.ReadFile("../downloader/testdata/local-subchart-0.1.0.tgz")
+	suite.Require().NoError(err)
+	meta, err := extractChartMeta(chartData)
+	suite.Require().NoError(err)
+
+	repo := fmt.Sprintf("%s/nonsemver/%s", suite.DockerRegistryHost, meta.Name)
+	_, err = suite.RegistryClient.Push(chartData, fmt.Sprintf("%s:%s", repo, meta.Version), PushOptExtraTags([]string{"latest", "1.x"}))
+	suite.Require().NoError(err)
+
+	tests := []struct {
+		name        string
+		ref         string
+		version     string
+		expectedRef string
+		expectError bool
+	}{
+		{
+			name:        "non-semver tag in reference",
+			ref:         "oci://" + repo + ":latest",
+			expectedRef: "oci://" + repo + ":latest",
+		},
+		{
+			name:        "non-semver tag as version",
+			ref:         "oci://" + repo,
+			version:     "latest",
+			expectedRef: "oci://" + repo + ":latest",
+		},
+		{
+			name:        "existing tag that is also a constraint",
+			ref:         "oci://" + repo + ":1.x",
+			expectedRef: "oci://" + repo + ":1.x",
+		},
+		{
+			name:        "semver constraint",
+			ref:         "oci://" + repo,
+			version:     "^0.1.0",
+			expectedRef: "oci://" + repo + ":" + meta.Version,
+		},
+		{
+			name:        "no version",
+			ref:         "oci://" + repo,
+			expectedRef: "oci://" + repo + ":" + meta.Version,
+		},
+		{
+			name:        "missing non-semver tag",
+			ref:         "oci://" + repo + ":missing",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			u, err := url.Parse(tt.ref)
+			suite.Require().NoError(err)
+
+			_, resultURL, err := suite.RegistryClient.ValidateReference(tt.ref, tt.version, u)
+			if tt.expectError {
+				suite.Require().Error(err)
+				return
+			}
+			suite.Require().NoError(err)
+			suite.Equal(tt.expectedRef, resultURL.String())
+
+			result, err := suite.RegistryClient.Pull(resultURL.String())
+			suite.Require().NoError(err)
+			suite.Equal(meta.Version, result.Chart.Meta.Version)
 		})
 	}
 }
