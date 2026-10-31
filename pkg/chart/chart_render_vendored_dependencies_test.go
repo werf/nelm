@@ -22,6 +22,25 @@ func TestRenderChart_VendoredDependencyOfAnotherVersion_Rejected(t *testing.T) {
 			expectedErr: "charts/dep is version 0.1.0 but Chart.lock requires 0.2.0",
 		},
 		{
+			name: "locked with other build metadata",
+			chart: map[string]string{
+				"Chart.yaml":            "apiVersion: v2\nname: mychart\nversion: 1.0.0\ndependencies:\n  - name: dep\n    version: 0.2.0+build2\n    repository: https://example.invalid\n",
+				"Chart.lock":            "dependencies:\n- name: dep\n  repository: https://example.invalid\n  version: 0.2.0+build2\ndigest: sha256:abc\ngenerated: \"2024-01-01T00:00:00Z\"\n",
+				"charts/dep/Chart.yaml": "apiVersion: v2\nname: dep\nversion: 0.2.0+build1\n",
+			},
+			expectedErr: "charts/dep is version 0.2.0+build1 but Chart.lock requires 0.2.0+build2",
+		},
+		{
+			name: "vendored as both a directory and an archive",
+			chart: map[string]string{
+				"Chart.yaml":            "apiVersion: v2\nname: mychart\nversion: 1.0.0\ndependencies:\n  - name: dep\n    version: 0.2.0\n    repository: https://example.invalid\n",
+				"Chart.lock":            "dependencies:\n- name: dep\n  repository: https://example.invalid\n  version: 0.2.0\ndigest: sha256:abc\ngenerated: \"2024-01-01T00:00:00Z\"\n",
+				"charts/dep/Chart.yaml": "apiVersion: v2\nname: dep\nversion: 0.1.0\n",
+				"charts/dep-0.2.0.tgz":  "archive",
+			},
+			expectedErr: `dependency "dep" is vendored more than once`,
+		},
+		{
 			name: "unlocked",
 			chart: map[string]string{
 				"Chart.yaml":            "apiVersion: v2\nname: mychart\nversion: 1.0.0\ndependencies:\n  - name: dep\n    version: 0.2.x\n    repository: https://example.invalid\n",
