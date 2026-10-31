@@ -2,6 +2,7 @@ package chart
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
@@ -16,8 +17,11 @@ import (
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/logboek"
 	"github.com/werf/nelm/v2/pkg/common"
+	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	chartcommonutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common/util"
+	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	"github.com/werf/nelm/v2/pkg/log"
 	"github.com/werf/nelm/v2/pkg/werfdata"
 )
@@ -371,6 +375,34 @@ func renderedChartValues(t *testing.T, result *RenderChartResult) map[string]int
 
 	vals, ok := result.Values["Values"].(chartcommon.Values)
 	require.True(t, ok, "unexpected rendered values type %T", result.Values["Values"])
+
+	return vals.AsMap()
+}
+
+// storedReleaseValues returns the values that release get prints for the release stored from the
+// result: the chart as stored in the release coalesced with the release config.
+func storedReleaseValues(t *testing.T, result *RenderChartResult) map[string]interface{} {
+	t.Helper()
+
+	data, err := json.Marshal(result.Chart.Charter())
+	require.NoError(t, err)
+
+	var stored helmchart.Charter
+	switch result.Chart.Charter().(type) {
+	case *v2chart.Chart:
+		storedChart := &v2chart.Chart{}
+		require.NoError(t, json.Unmarshal(data, storedChart))
+		stored = storedChart
+	case *v3chart.Chart:
+		storedChart := &v3chart.Chart{}
+		require.NoError(t, json.Unmarshal(data, storedChart))
+		stored = storedChart
+	default:
+		t.Fatalf("unexpected chart type %T", result.Chart.Charter())
+	}
+
+	vals, err := chartcommonutil.CoalesceValues(stored, result.ReleaseConfig)
+	require.NoError(t, err)
 
 	return vals.AsMap()
 }

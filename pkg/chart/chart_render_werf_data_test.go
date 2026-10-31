@@ -220,8 +220,11 @@ func TestRenderChart_WerfDataDependencyBelowParentValues(t *testing.T) {
 			require.NoError(t, err)
 
 			vals := renderedChartValues(t, result)
+
+			storedVals := storedReleaseValues(t, result)
 			for path, want := range tt.want {
 				assert.Equal(t, want, valueAtPath(t, vals, path), path)
+				assert.Equal(t, want, valueAtPath(t, storedVals, path), "release get view of %s", path)
 			}
 		})
 	}
@@ -373,6 +376,12 @@ func TestRenderChart_WerfDataDependencyEquivalence(t *testing.T) {
 
 				assert.Equal(t, aloneValues, dependencyValues, layout.pubPath)
 				assert.Empty(t, asDependency.ReleaseConfig, layout.pubPath)
+
+				dependencyStoredValues, ok := valueAtPath(t, storedReleaseValues(t, asDependency), layout.pubPath).(map[string]interface{})
+				require.True(t, ok, layout.pubPath)
+				delete(dependencyStoredValues, "global")
+
+				assert.Equal(t, dependencyValues, dependencyStoredValues, "release get view of %s", layout.pubPath)
 			}
 		})
 	}

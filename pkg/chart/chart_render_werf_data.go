@@ -637,6 +637,15 @@ func publishedSetValuesApplier(ctx context.Context, data *werfdata.Data) (func(b
 	}, nil
 }
 
+func setChartValues(chrt helmchart.Charter, vals map[string]interface{}) {
+	switch c := chrt.(type) {
+	case *v2chart.Chart:
+		c.Values = vals
+	case *v3chart.Chart:
+		c.Values = vals
+	}
+}
+
 func tableValue(vals map[string]interface{}, key string) map[string]interface{} {
 	table, _ := vals[key].(map[string]interface{})
 
