@@ -599,7 +599,7 @@ func parseEncryptedValues(data []byte) (map[string]any, error) {
 		return nil, fmt.Errorf("expected a mapping at the top level, got %s at line %d", yamlNodeKindName(root.Kind), root.Line)
 	}
 
-	if err := checkEncryptedYAMLNode(root, nil); err != nil {
+	if err := checkEncryptedYAMLNode(root, nil, map[*yamlv3.Node]bool{}); err != nil {
 		return nil, err
 	}
 
@@ -614,7 +614,7 @@ func parseEncryptedValues(data []byte) (map[string]any, error) {
 // checkEncryptedYAMLNode fails unless every non-null scalar value under node, wherever it is, is
 // a value encrypted by werf. Mapping keys can't repeat and only standard tags are accepted on
 // collections, since both change what the decoded values are.
-func checkEncryptedYAMLNode(node *yamlv3.Node, keyPath []string) error {
+func checkEncryptedYAMLNode(node *yamlv3.Node, keyPath []string, checkedAliasTargets map[*yamlv3.Node]bool) error {
 	switch node.Kind {
 	case yamlv3.MappingNode:
 		if node.Tag != "!!map" {
@@ -641,7 +641,7 @@ func checkEncryptedYAMLNode(node *yamlv3.Node, keyPath []string) error {
 		}
 
 		for i := 0; i+1 < len(node.Content); i += 2 {
-			if err := checkEncryptedYAMLNode(node.Content[i+1], append(keyPath, node.Content[i].Value)); err != nil {
+			if err := checkEncryptedYAMLNode(node.Content[i+1], append(keyPath, node.Content[i].Value), checkedAliasTargets); err != nil {
 				return err
 			}
 		}
@@ -651,7 +651,7 @@ func checkEncryptedYAMLNode(node *yamlv3.Node, keyPath []string) error {
 		}
 
 		for i, item := range node.Content {
-			if err := checkEncryptedYAMLNode(item, append(keyPath, fmt.Sprintf("[%d]", i))); err != nil {
+			if err := checkEncryptedYAMLNode(item, append(keyPath, fmt.Sprintf("[%d]", i)), checkedAliasTargets); err != nil {
 				return err
 			}
 		}
@@ -664,7 +664,14 @@ func checkEncryptedYAMLNode(node *yamlv3.Node, keyPath []string) error {
 			return fmt.Errorf("value at %q is not encrypted: encrypt the file with \"nelm chart secret values-file encrypt\"", strings.Join(keyPath, "."))
 		}
 	case yamlv3.AliasNode:
-		// The anchored node is checked where it is defined.
+		// The anchored node may be a key, which isn't checked as a value where it is defined.
+		if node.Alias == nil || checkedAliasTargets[node.Alias] {
+			return nil
+		}
+
+		checkedAliasTargets[node.Alias] = true
+
+		return checkEncryptedYAMLNode(node.Alias, keyPath, checkedAliasTargets)
 	default:
 		return fmt.Errorf("unexpected YAML node at line %d, column %d", node.Line, node.Column)
 	}

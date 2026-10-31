@@ -1014,6 +1014,7 @@ func TestChartPack_SecretValuesRejectedWithoutSource(t *testing.T) {
 		{name: "null-tagged mapping", data: "!!null {password: TOPSECRET}\n", expectedErr: `unsupported tag "!!null" at line 1, column 1`},
 		{name: "keys colliding when decoded", data: "true: TOPSECRET\nyes: \"\"\n", expectedErr: `value at "true" is not encrypted`},
 		{name: "merge key overridden by an empty value", data: "db:\n  <<: &base {password: TOPSECRET}\n  password: \"\"\n", expectedErr: `value at "db.<<.password" is not encrypted`},
+		{name: "alias to an anchored key", data: "&plain TOPSECRET: \"\"\npassword: *plain\n", expectedErr: `value at "password" is not encrypted`},
 		{name: "sequence item", data: "list:\n- \"\"\n- TOPSECRET\n", expectedErr: `value at "list.[1]" is not encrypted`},
 		{name: "custom scalar tag", data: "password: !custom TOPSECRET\n", expectedErr: `unsupported tag "!custom" at line 1, column 11`},
 	}
