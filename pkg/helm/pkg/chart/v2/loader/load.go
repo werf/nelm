@@ -177,6 +177,18 @@ func LoadFiles(ctx context.Context, files []*archive.BufferedFile) (*chart.Chart
 		}
 	}
 
+	if applyWerfExtensions && helmOpts.ChartLoadOpts.WerfDataValuesSwitches && len(c.WerfDataFiles) > 0 {
+		data, err := werfdata.Parse(c.WerfDataFiles)
+		if err != nil {
+			return c, fmt.Errorf("cannot load %s: %w", werfdata.DirName, err)
+		}
+
+		// Set before the secrets are decoded, so that the default secret values of the chart and of
+		// its dependencies, which inherit these options, are not decrypted.
+		helmOpts.ChartLoadOpts.DefaultSecretValuesDisable = helmOpts.ChartLoadOpts.DefaultSecretValuesDisable || data.Metadata.Values.DefaultSecretValuesDisable
+		helmOpts.ChartLoadOpts.DefaultValuesDisable = helmOpts.ChartLoadOpts.DefaultValuesDisable || data.Metadata.Values.DefaultValuesDisable
+	}
+
 	if applyWerfExtensions {
 		switch helmOpts.ChartLoadOpts.ChartType {
 		case nelmcommon.LegacyChartTypeBundle:

@@ -298,6 +298,9 @@ type ChartLoadOptions struct {
 	SecretKeyIgnore            bool
 	SecretValuesFiles          []string
 	SecretWorkDir              string
+	// WerfDataValuesSwitches makes the loader apply the default values switches of the .werf-data of
+	// the chart and of every dependency on top of these, to the chart and its dependencies.
+	WerfDataValuesSwitches bool
 }
 
 type TypeScriptOptions struct {

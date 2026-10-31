@@ -11,6 +11,7 @@ import (
 
 	"github.com/werf/nelm/v2/pkg/common"
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
 	"github.com/werf/nelm/v2/pkg/log"
 	"github.com/werf/nelm/v2/pkg/werfdata"
 )
@@ -143,11 +144,12 @@ func TestRenderChart_WerfDataDefaultSecretValuesDisableWithoutSecretKey(t *testi
 
 func TestRenderChart_WerfDataDependencyBelowParentValues(t *testing.T) {
 	published := mergeTestFiles(map[string]string{
-		"charts/pub/Chart.yaml":  "apiVersion: v2\nname: pub\nversion: 1.0.0\n",
-		"charts/pub/values.yaml": "own: pub-values",
+		"charts/pub/Chart.yaml":            "apiVersion: v2\nname: pub\nversion: 1.0.0\ndependencies:\n- name: sub\n  version: 1.0.0\n  export-values:\n  - parent: g\n    child: x\n",
+		"charts/pub/values.yaml":           "own: pub-values",
+		"charts/pub/charts/sub/Chart.yaml": "apiVersion: v2\nname: sub\nversion: 1.0.0\n",
 	}, prefixTestFiles("charts/pub/", werfDataFlagsAsFiles(t, werfDataFlags{
 		Set:    []string{"published=pub-set"},
-		Values: "own: pub-published",
+		Values: "own: pub-published\nexported:\n  k: pub-published\ng: pub-published",
 	})))
 
 	tests := []struct {
@@ -156,6 +158,8 @@ func TestRenderChart_WerfDataDependencyBelowParentValues(t *testing.T) {
 		values       string
 		secretValues string
 		want         map[string]interface{}
+		// nested puts the dependency into a dependency "mid" that imports its "exported" values.
+		nested bool
 	}{
 		{
 			name:         "an export of the parent values",
@@ -168,6 +172,25 @@ func TestRenderChart_WerfDataDependencyBelowParentValues(t *testing.T) {
 			dependencies: "- name: pub\n  version: 1.0.0",
 			secretValues: "pub:\n  own: parent-secret\n  published: parent-secret",
 			want:         map[string]interface{}{"pub.own": "parent-secret", "pub.published": "parent-secret"},
+		},
+		{
+			name:         "the parent values at an import-values destination",
+			dependencies: "- name: pub\n  version: 1.0.0\n  import-values:\n  - child: exported\n    parent: imported",
+			values:       "imported:\n  k: parent",
+			want:         map[string]interface{}{"imported.k": "parent", "pub.exported.k": "pub-published"},
+		},
+		{
+			name:         "the parent values at an import-values destination of a nested dependency",
+			dependencies: "- name: mid\n  version: 1.0.0",
+			values:       "mid:\n  imported:\n    k: parent",
+			want:         map[string]interface{}{"mid.imported.k": "parent", "mid.pub.exported.k": "pub-published"},
+			nested:       true,
+		},
+		{
+			name:         "an export-values of the dependency beats the parent values, like its values.yaml does",
+			dependencies: "- name: pub\n  version: 1.0.0",
+			values:       "pub:\n  sub:\n    x: parent",
+			want:         map[string]interface{}{"pub.sub.x": "pub-published"},
 		},
 		{
 			name:         "a disabled dependency",
@@ -187,12 +210,21 @@ func TestRenderChart_WerfDataDependencyBelowParentValues(t *testing.T) {
 				files["secret-values.yaml"] = tt.secretValues
 			}
 
-			result, err := renderWerfDataTestChart(t, writeWerfDataTestChart(t, published, files), RenderChartOptions{})
+			dependencyFiles := published
+			if tt.nested {
+				dependencyFiles = prefixTestFiles("charts/mid/", published)
+				dependencyFiles["charts/mid/Chart.yaml"] = "apiVersion: v2\nname: mid\nversion: 1.0.0\ndependencies:\n- name: pub\n  version: 1.0.0\n  import-values:\n  - child: exported\n    parent: imported\n"
+			}
+
+			result, err := renderWerfDataTestChart(t, writeWerfDataTestChart(t, dependencyFiles, files), RenderChartOptions{})
 			require.NoError(t, err)
 
 			vals := renderedChartValues(t, result)
+
+			storedVals := storedReleaseValues(t, result)
 			for path, want := range tt.want {
 				assert.Equal(t, want, valueAtPath(t, vals, path), path)
+				assert.Equal(t, want, valueAtPath(t, storedVals, path), "release get view of %s", path)
 			}
 		})
 	}
@@ -225,6 +257,54 @@ func TestRenderChart_WerfDataDependencyDefaultSecretValuesDisable(t *testing.T) 
 		"sibling.s":   "sibling-secret",
 	} {
 		assert.Equal(t, want, valueAtPath(t, vals, path), path)
+	}
+}
+
+func TestRenderChart_WerfDataDependencyDefaultSecretValuesDisableWithoutSecretKey(t *testing.T) {
+	const otherSecretKey = "0123456789abcdef0123456789abcdef"
+
+	tests := []struct {
+		name          string
+		apiVersion    string
+		deploySecrets bool
+		secretKey     string
+	}{
+		{name: "no secret key", apiVersion: "v2"},
+		{name: "another secret key", apiVersion: "v2", deploySecrets: true, secretKey: layeredValuesSecretKey},
+		{name: "no secret key with chart apiVersion v3", apiVersion: "v3"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			files := map[string]string{
+				"Chart.yaml":                          "apiVersion: " + tt.apiVersion + "\nname: root\nversion: 1.0.0\ndependencies:\n- name: pub\n  version: 1.0.0\n- name: sibling\n  version: 1.0.0\n",
+				"charts/pub/Chart.yaml":               "apiVersion: " + tt.apiVersion + "\nname: pub\nversion: 1.0.0\ndependencies:\n- name: child\n  version: 1.0.0\n",
+				"charts/pub/charts/child/Chart.yaml":  "apiVersion: " + tt.apiVersion + "\nname: child\nversion: 1.0.0\n",
+				"charts/pub/charts/child/values.yaml": "k: child",
+				"charts/sibling/Chart.yaml":           "apiVersion: " + tt.apiVersion + "\nname: sibling\nversion: 1.0.0\n",
+			}
+			flags := werfDataFlags{DefaultSecretValuesDisable: true}
+			want := map[string]interface{}{"pub.own": absentValue{}, "pub.child.k": "child", "pub.child.s": absentValue{}}
+
+			if tt.deploySecrets {
+				files["charts/sibling/secret-values.yaml"] = "s: sibling-secret"
+				flags.SecretValues = "custom: pub-published-secret"
+				want["sibling.s"] = "sibling-secret"
+				want["pub.custom"] = "pub-published-secret"
+			}
+
+			chartPath := writeWerfDataTestChart(t, files, prefixTestFiles("charts/pub/", werfDataFlagsAsFiles(t, flags)))
+			writeTestFile(t, filepath.Join(chartPath, "charts/pub/secret-values.yaml"), encryptTestValuesWithKey(t, otherSecretKey, "own: pub-secret"))
+			writeTestFile(t, filepath.Join(chartPath, "charts/pub/charts/child/secret-values.yaml"), encryptTestValuesWithKey(t, otherSecretKey, "s: child-secret"))
+
+			result, err := renderWerfDataTestChartWithSecretKey(t, chartPath, tt.secretKey, RenderChartOptions{})
+			require.NoError(t, err)
+
+			vals := renderedChartValues(t, result)
+			for path, want := range want {
+				assert.Equal(t, want, valueAtPath(t, vals, path), path)
+			}
+		})
 	}
 }
 
@@ -296,6 +376,12 @@ func TestRenderChart_WerfDataDependencyEquivalence(t *testing.T) {
 
 				assert.Equal(t, aloneValues, dependencyValues, layout.pubPath)
 				assert.Empty(t, asDependency.ReleaseConfig, layout.pubPath)
+
+				dependencyStoredValues, ok := valueAtPath(t, storedReleaseValues(t, asDependency), layout.pubPath).(map[string]interface{})
+				require.True(t, ok, layout.pubPath)
+				delete(dependencyStoredValues, "global")
+
+				assert.Equal(t, dependencyValues, dependencyStoredValues, "release get view of %s", layout.pubPath)
 			}
 		})
 	}
@@ -694,6 +780,37 @@ releaseInfoAnnotations:
 			assert.Equal(t, []string{tt.wantLine}, lo.Filter(logger.infos, func(line string, _ int) bool {
 				return strings.Contains(line, werfdata.DirName)
 			}))
+		})
+	}
+}
+
+func TestRenderChart_WerfDataLoadsChartOnce(t *testing.T) {
+	const loadWarning = "chart loaded"
+
+	tests := []struct {
+		name  string
+		files map[string]string
+	}{
+		{name: "without .werf-data"},
+		{name: "with .werf-data", files: werfDataFlagsAsFiles(t, werfDataFlags{DefaultSecretValuesDisable: true, DefaultValuesDisable: true})},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := &warningsLogger{Logger: log.Default}
+			log.Default = logger
+			t.Cleanup(func() { log.Default = logger.Logger })
+
+			prevWarning := loader.NoChartLockWarning
+			loader.NoChartLockWarning = loadWarning
+			t.Cleanup(func() { loader.NoChartLockWarning = prevWarning })
+
+			chartPath := writeWerfDataTestChart(t, werfDataCardChart("- name: sub\n  version: 1.0.0", "a: chart", "b: chart-secret", ""), tt.files)
+
+			_, err := renderWerfDataTestChart(t, chartPath, RenderChartOptions{})
+			require.NoError(t, err)
+
+			assert.Equal(t, 1, lo.Count(logger.warnings, loadWarning))
 		})
 	}
 }
