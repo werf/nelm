@@ -1108,7 +1108,7 @@ func pushChartCopyFileBlob(ctx context.Context, store *oci.Store, filePath, medi
 
 	digester := digest.Canonical.Digester()
 
-	size, err := io.Copy(digester.Hash(), file)
+	size, err := io.Copy(digester.Hash(), chartCopyContextReader{ctx: ctx, reader: file})
 	if err != nil {
 		return ocispec.Descriptor{}, fmt.Errorf("digest blob: %w", err)
 	}
@@ -1123,7 +1123,7 @@ func pushChartCopyFileBlob(ctx context.Context, store *oci.Store, filePath, medi
 		Size:      size,
 	}
 
-	if err := pushIfMissing(ctx, store, desc, file); err != nil {
+	if err := pushIfMissing(ctx, store, desc, chartCopyContextReader{ctx: ctx, reader: file}); err != nil {
 		return ocispec.Descriptor{}, err
 	}
 
