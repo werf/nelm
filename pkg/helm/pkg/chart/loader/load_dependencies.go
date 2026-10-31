@@ -134,7 +134,7 @@ func LoadChartDependencies(
 	conf := newChartDependenciesConfiguration(chartMetadata, chartMetadataLock)
 
 	for _, chartDep := range chartMetadataLock.Dependencies {
-		if !strings.HasPrefix(chartDep.Repository, "file://") {
+		if !strings.HasPrefix(chartDep.Repository, "file://") || isVendoredDependency(loadedChartFiles, chartDep) {
 			continue
 		}
 
@@ -333,18 +333,9 @@ func (conf *chartDependenciesConfiguration) GetExternalDependenciesFiles(loadedC
 		return false
 	}
 
-FindExternalDependencies:
 	for _, depLock := range metadataLock.Dependencies {
-		if depLock.Repository == "" || strings.HasPrefix(depLock.Repository, "file://") {
+		if depLock.Repository == "" || strings.HasPrefix(depLock.Repository, "file://") || isVendoredDependency(loadedChartFiles, depLock) {
 			continue
-		}
-
-		for _, loadedFile := range loadedChartFiles {
-			if strings.HasPrefix(loadedFile.Name, "charts/") {
-				if filepath.Base(loadedFile.Name) == makeDependencyArchiveName(depLock.Name, depLock.Version) {
-					continue FindExternalDependencies
-				}
-			}
 		}
 
 		externalDependenciesNames = append(externalDependenciesNames, depLock.Name)
@@ -423,6 +414,32 @@ func digest(in io.Reader) (string, error) {
 	}
 
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// isVendoredDependency reports whether the chart files already have the dependency under charts/,
+// either as the archive "helm dependency build" downloads or as the directory a saved chart has.
+func isVendoredDependency(loadedChartFiles []*nelmcommon.BufferedFile, dep *chart.Dependency) bool {
+	for _, f := range loadedChartFiles {
+		name, ok := strings.CutPrefix(f.Name, "charts/")
+		if !ok {
+			continue
+		}
+
+		if filepath.Base(name) == makeDependencyArchiveName(dep.Name, dep.Version) {
+			return true
+		}
+
+		if _, fileName, ok := strings.Cut(name, "/"); !ok || fileName != "Chart.yaml" {
+			continue
+		}
+
+		metadata := new(chart.Metadata)
+		if err := yaml.Unmarshal(f.Data, metadata); err == nil && metadata.Name == dep.Name {
+			return true
+		}
+	}
+
+	return false
 }
 
 func makeDependencyArchiveName(depName, depVersion string) string {

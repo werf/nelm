@@ -793,6 +793,48 @@ func TestChartPack_RemovesStaleProvenance(t *testing.T) {
 	assert.NoFileExists(t, signed.ProvenancePath)
 }
 
+func TestChartPack_RepackKeepsVendoredDependencies(t *testing.T) {
+	setupChartPackTestDependencyCaches(t)
+	server := newChartPackTestChartRepo(t)
+
+	sourceDir := t.TempDir()
+	writeChartPackTestFiles(t, filepath.Join(sourceDir, "local"), map[string]string{
+		"Chart.yaml":        "apiVersion: v2\nname: local\nversion: 0.2.0\n",
+		"templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: local\n",
+	})
+
+	deps := []*v2chart.Dependency{
+		{Name: "dep", Version: "0.1.0", Repository: server.URL},
+		{Name: "local", Version: "0.2.0", Repository: "file://../local"},
+	}
+	digest, err := resolver.HashReq(deps, deps)
+	require.NoError(t, err)
+
+	writeChartPackTestFiles(t, filepath.Join(sourceDir, "mychart"), map[string]string{
+		"Chart.yaml": fmt.Sprintf("apiVersion: v2\nname: mychart\nversion: 1.0.0\ndependencies:\n  - name: dep\n    version: 0.1.0\n    repository: %s\n  - name: local\n    version: 0.2.0\n    repository: file://../local\n", server.URL),
+		"Chart.lock": fmt.Sprintf("dependencies:\n- name: dep\n  repository: %s\n  version: 0.1.0\n- name: local\n  repository: file://../local\n  version: 0.2.0\ndigest: %s\ngenerated: \"2024-01-01T00:00:00Z\"\n", server.URL, digest),
+	})
+
+	packed, err := ChartPack(newChartPackTestContext(), filepath.Join(sourceDir, "mychart"), ChartPackOptions{Destination: t.TempDir()})
+	require.NoError(t, err)
+
+	// The file:// source stays next to the unpacked chart, the chart repository goes away.
+	server.Close()
+	require.NoError(t, os.RemoveAll(filepath.Join(sourceDir, "mychart")))
+	require.NoError(t, v2util.ExpandFile(sourceDir, packed.ArchivePath))
+
+	repacked, err := ChartPack(newChartPackTestContext(), filepath.Join(sourceDir, "mychart"), ChartPackOptions{
+		Destination: t.TempDir(),
+		ValuesSet:   []string{"a=1"},
+	})
+	require.NoError(t, err)
+
+	files := readChartPackTestArchiveFiles(t, repacked.ArchivePath)
+	assert.Contains(t, files, "mychart/charts/dep/templates/cm.yaml")
+	assert.Contains(t, files, "mychart/charts/local/templates/cm.yaml")
+	assert.Equal(t, []string{"a=1"}, loadChartPackTestWerfData(t, repacked.ArchivePath).Metadata.Values.ValuesSet)
+}
+
 func TestChartPack_SecretValuesParseErrorsHideSource(t *testing.T) {
 	const malformed = "password: TOPSECRET: invalid\n"
 
@@ -1044,6 +1086,7 @@ func readChartPackTestArchiveFiles(t *testing.T, archivePath string) map[string]
 		data, err := io.ReadAll(tarReader)
 		require.NoError(t, err)
 
+		require.NotContains(t, files, header.Name, "duplicate archive entry")
 		files[header.Name] = string(data)
 	}
 
