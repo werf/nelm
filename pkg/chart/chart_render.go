@@ -115,6 +115,10 @@ type valuesGroup struct {
 }
 
 type valuesLayer struct {
+	// AncestorValues are the values of the ancestor charts of the werf-published dependency whose
+	// publish-time values the layer has, outside the dependency values. They beat the values that the
+	// layer imports into them, like they beat the values imported from the dependency defaults.
+	AncestorValues map[string]interface{}
 	// ChartValues are the values before export-values and import-values of a layer that is also
 	// coalesced with the chart values (see mergeValuesLayers).
 	ChartValues map[string]interface{}
@@ -636,6 +640,14 @@ func processDependencies(chrt helmchart.Charter, userVals userValues) (map[strin
 			})
 			if err != nil {
 				return nil, nil, nil, fmt.Errorf("import user values: %w", err)
+			}
+
+			if layer.AncestorValues != nil {
+				if importedLayerValues, err = deepCopyValues(importedLayerValues); err != nil {
+					return nil, nil, nil, fmt.Errorf("copy imported values: %w", err)
+				}
+
+				deleteOverriddenValues(importedLayerValues, layer.AncestorValues)
 			}
 
 			layer.Values = importedLayerValues

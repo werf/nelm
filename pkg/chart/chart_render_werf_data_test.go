@@ -144,11 +144,12 @@ func TestRenderChart_WerfDataDefaultSecretValuesDisableWithoutSecretKey(t *testi
 
 func TestRenderChart_WerfDataDependencyBelowParentValues(t *testing.T) {
 	published := mergeTestFiles(map[string]string{
-		"charts/pub/Chart.yaml":  "apiVersion: v2\nname: pub\nversion: 1.0.0\n",
-		"charts/pub/values.yaml": "own: pub-values",
+		"charts/pub/Chart.yaml":            "apiVersion: v2\nname: pub\nversion: 1.0.0\ndependencies:\n- name: sub\n  version: 1.0.0\n  export-values:\n  - parent: g\n    child: x\n",
+		"charts/pub/values.yaml":           "own: pub-values",
+		"charts/pub/charts/sub/Chart.yaml": "apiVersion: v2\nname: sub\nversion: 1.0.0\n",
 	}, prefixTestFiles("charts/pub/", werfDataFlagsAsFiles(t, werfDataFlags{
 		Set:    []string{"published=pub-set"},
-		Values: "own: pub-published",
+		Values: "own: pub-published\nexported:\n  k: pub-published\ng: pub-published",
 	})))
 
 	tests := []struct {
@@ -157,6 +158,8 @@ func TestRenderChart_WerfDataDependencyBelowParentValues(t *testing.T) {
 		values       string
 		secretValues string
 		want         map[string]interface{}
+		// nested puts the dependency into a dependency "mid" that imports its "exported" values.
+		nested bool
 	}{
 		{
 			name:         "an export of the parent values",
@@ -169,6 +172,25 @@ func TestRenderChart_WerfDataDependencyBelowParentValues(t *testing.T) {
 			dependencies: "- name: pub\n  version: 1.0.0",
 			secretValues: "pub:\n  own: parent-secret\n  published: parent-secret",
 			want:         map[string]interface{}{"pub.own": "parent-secret", "pub.published": "parent-secret"},
+		},
+		{
+			name:         "the parent values at an import-values destination",
+			dependencies: "- name: pub\n  version: 1.0.0\n  import-values:\n  - child: exported\n    parent: imported",
+			values:       "imported:\n  k: parent",
+			want:         map[string]interface{}{"imported.k": "parent", "pub.exported.k": "pub-published"},
+		},
+		{
+			name:         "the parent values at an import-values destination of a nested dependency",
+			dependencies: "- name: mid\n  version: 1.0.0",
+			values:       "mid:\n  imported:\n    k: parent",
+			want:         map[string]interface{}{"mid.imported.k": "parent", "mid.pub.exported.k": "pub-published"},
+			nested:       true,
+		},
+		{
+			name:         "an export-values of the dependency beats the parent values, like its values.yaml does",
+			dependencies: "- name: pub\n  version: 1.0.0",
+			values:       "pub:\n  sub:\n    x: parent",
+			want:         map[string]interface{}{"pub.sub.x": "pub-published"},
 		},
 		{
 			name:         "a disabled dependency",
@@ -188,7 +210,13 @@ func TestRenderChart_WerfDataDependencyBelowParentValues(t *testing.T) {
 				files["secret-values.yaml"] = tt.secretValues
 			}
 
-			result, err := renderWerfDataTestChart(t, writeWerfDataTestChart(t, published, files), RenderChartOptions{})
+			dependencyFiles := published
+			if tt.nested {
+				dependencyFiles = prefixTestFiles("charts/mid/", published)
+				dependencyFiles["charts/mid/Chart.yaml"] = "apiVersion: v2\nname: mid\nversion: 1.0.0\ndependencies:\n- name: pub\n  version: 1.0.0\n  import-values:\n  - child: exported\n    parent: imported\n"
+			}
+
+			result, err := renderWerfDataTestChart(t, writeWerfDataTestChart(t, dependencyFiles, files), RenderChartOptions{})
 			require.NoError(t, err)
 
 			vals := renderedChartValues(t, result)

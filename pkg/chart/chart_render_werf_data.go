@@ -67,8 +67,10 @@ func (d *werfDataSecretsRuntimeData) GetDecryptedSecretFilesData() map[string]st
 // chartValuesPath is a path of the chart values in the root chart values, and the values of the
 // parent charts that override the chart values at this path.
 type chartValuesPath struct {
-	overrides map[string]interface{}
-	path      []string
+	// ancestorValues are the values of the chart and of its ancestor charts in the root chart values.
+	ancestorValues map[string]interface{}
+	overrides      map[string]interface{}
+	path           []string
 }
 
 // foldWerfDataDependencies replaces the values of every dependency with .werf-data, at any depth,
@@ -123,10 +125,13 @@ func foldDependenciesWerfData(ctx context.Context, chrt helmchart.Charter, witho
 
 		var depPaths []chartValuesPath
 		for _, chartPath := range chartPaths {
+			ancestorValues := chartcommon.MergeMaps(chartPath.ancestorValues, nestValues(chartOverrides, chartPath.path))
+
 			for _, key := range dependencyValuesKeys(acc, depAcc) {
 				depPaths = append(depPaths, chartValuesPath{
-					overrides: chartcommon.MergeMaps(tableValue(chartOverrides, key), tableValue(chartPath.overrides, key)),
-					path:      append(slices.Clone(chartPath.path), key),
+					ancestorValues: ancestorValues,
+					overrides:      chartcommon.MergeMaps(tableValue(chartOverrides, key), tableValue(chartPath.overrides, key)),
+					path:           append(slices.Clone(chartPath.path), key),
 				})
 			}
 		}
@@ -204,22 +209,25 @@ func dependencyValuesLayer(layer valuesLayer, depPath chartValuesPath) (valuesLa
 
 	deleteOverriddenValues(vals, depPath.overrides)
 
-	var nested interface{} = vals
-	for i := len(depPath.path) - 1; i >= 0; i-- {
-		nested = map[string]interface{}{depPath.path[i]: nested}
-	}
-
 	replacedPaths := make([][]string, 0, len(layer.ReplacedPaths))
 	for _, path := range layer.ReplacedPaths {
 		replacedPaths = append(replacedPaths, append(slices.Clone(depPath.path), path...))
 	}
 
-	nestedVals := nested.(map[string]interface{})
+	ancestorValues, err := deepCopyValues(depPath.ancestorValues)
+	if err != nil {
+		return valuesLayer{}, fmt.Errorf("copy ancestor values: %w", err)
+	}
+
+	// The values in the dependency values are already deleted above. The values that the dependency
+	// exports into its own dependencies beat them, like its default values do.
+	deleteValueAtPath(ancestorValues, depPath.path)
 
 	return valuesLayer{
+		AncestorValues: ancestorValues,
 		DependencyPath: depPath.path,
 		ReplacedPaths:  replacedPaths,
-		Values:         nestedVals,
+		Values:         nestValues(vals, depPath.path),
 	}, nil
 }
 
@@ -565,6 +573,15 @@ func logWerfData(ctx context.Context, data *werfdata.Data) {
 	}
 
 	log.Default.Info(ctx, "Using publish-time inputs from %s: %s", werfdata.DirName, strings.Join(loaded, ", "))
+}
+
+// nestValues returns the values at the path.
+func nestValues(vals map[string]interface{}, path []string) map[string]interface{} {
+	for i := len(path) - 1; i >= 0; i-- {
+		vals = map[string]interface{}{path[i]: vals}
+	}
+
+	return vals
 }
 
 // publishedSetValuesApplier returns a function that applies the publish-time --set* values in the
