@@ -12,12 +12,19 @@ import (
 
 	"github.com/werf/common-go/pkg/cli"
 	"github.com/werf/nelm/v2/pkg/action"
+	"github.com/werf/nelm/v2/pkg/common"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
 	helmcmd "github.com/werf/nelm/v2/pkg/helm/pkg/cmd"
 	"github.com/werf/nelm/v2/pkg/log"
 )
 
 func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
+	var (
+		defaultPatchesDisable      bool
+		defaultSecretValuesDisable bool
+		valuesOpts                 common.ValuesOptions
+	)
+
 	opts := action.ChartPackOptions{}
 	cmd := lo.Must(lo.Find(helmRootCmd.Commands(), func(c *cobra.Command) bool {
 		return strings.HasPrefix(c.Use, "package")
@@ -47,6 +54,30 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 		}
 
 		opts.RegistryCredentialsPath = helmSettings.RegistryConfig
+		opts.RepositoryConfig = helmSettings.RepositoryConfig
+		opts.RepositoryCache = helmSettings.RepositoryCache
+		opts.ContentCache = helmSettings.ContentCache
+
+		opts.RootSetJSON = valuesOpts.RootSetJSON
+		opts.ValuesFiles = valuesOpts.ValuesFiles
+		opts.ValuesSet = valuesOpts.ValuesSet
+		opts.ValuesSetFile = valuesOpts.ValuesSetFile
+		opts.ValuesSetJSON = valuesOpts.ValuesSetJSON
+		opts.ValuesSetLiteral = valuesOpts.ValuesSetLiteral
+		opts.ValuesSetString = valuesOpts.ValuesSetString
+
+		for flagName, target := range map[string]struct {
+			opt   **bool
+			value bool
+		}{
+			"no-default-values":        {opt: &opts.DefaultValuesDisable, value: valuesOpts.DefaultValuesDisable},
+			"no-default-secret-values": {opt: &opts.DefaultSecretValuesDisable, value: defaultSecretValuesDisable},
+			"no-default-patches":       {opt: &opts.DefaultPatchesDisable, value: defaultPatchesDisable},
+		} {
+			if cmd.Flags().Changed(flagName) {
+				*target.opt = lo.ToPtr(target.value)
+			}
+		}
 
 		for _, chartPath := range args {
 			if _, err := os.Stat(chartPath); err != nil {
@@ -62,11 +93,11 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 	}
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
-		if err := AddValuesFlags(cmd, &opts.ValuesOptions); err != nil {
+		if err := AddValuesFlags(cmd, &valuesOpts); err != nil {
 			return fmt.Errorf("add values flags: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &opts.DefaultSecretValuesDisable, "no-default-secret-values", false, "Ignore secret-values.yaml of the top-level chart", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &defaultSecretValuesDisable, "no-default-secret-values", false, "Ignore secret-values.yaml of the top-level chart", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                secretFlagGroup,
 		}); err != nil {
@@ -81,11 +112,11 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := AddPatchesFlags(cmd, &opts.PatchesFiles, &opts.DefaultPatchesDisable, AddPatchesFlagsOptions{}); err != nil {
+		if err := AddPatchesFlags(cmd, &opts.PatchesFiles, &defaultPatchesDisable, AddPatchesFlagsOptions{}); err != nil {
 			return fmt.Errorf("add patches flags: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &opts.ResetValues, "reset-values", false, "Drop the values, secret values, annotations, labels and images stored in .werf-data of the chart by previous packs before storing the ones of this pack", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &opts.ResetValues, "reset-values", false, "Drop all publish-time inputs stored in .werf-data of the chart by previous packs (values, secret values, --set*, --set-root-json, patches, --no-default-* switches, release defaults, extra values, annotations, labels and images) before storing the ones of this pack", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                valuesFlagGroup,
 		}); err != nil {

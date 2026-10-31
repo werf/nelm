@@ -42,6 +42,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/helm/pkg/getter"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/helmpath"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/strvals"
 	"github.com/werf/nelm/v2/pkg/log"
 	"github.com/werf/nelm/v2/pkg/resource/spec"
 	"github.com/werf/nelm/v2/pkg/ts"
@@ -55,20 +56,24 @@ const (
 
 type ChartPackOptions struct {
 	common.ChartRepoConnectionOptions
-	common.ValuesOptions
 
 	// AppVersion overrides appVersion in Chart.yaml.
 	AppVersion string
 	// ChartRepoSkipUpdate, when true, skips updating the chart repositories index before
 	// downloading dependencies.
 	ChartRepoSkipUpdate bool
-	// DefaultPatchesDisable, when true, is stored in .werf-data, so that the patches.yaml files
-	// of the chart and its subcharts are ignored when the chart is deployed.
-	DefaultPatchesDisable bool
-	// DefaultSecretValuesDisable, when true, is stored in .werf-data, so that the
-	// secret-values.yaml files of the chart and its subcharts are ignored when the chart is
-	// deployed.
-	DefaultSecretValuesDisable bool
+	// ContentCache is the path to the cache of downloaded dependency charts.
+	// Defaults to the Helm content cache.
+	ContentCache string
+	// DefaultPatchesDisable, when not nil, replaces the stored switch that makes the deployment
+	// ignore the patches.yaml files of the chart and its subcharts.
+	DefaultPatchesDisable *bool
+	// DefaultSecretValuesDisable, when not nil, replaces the stored switch that makes the
+	// deployment ignore the secret-values.yaml file of the top-level chart.
+	DefaultSecretValuesDisable *bool
+	// DefaultValuesDisable, when not nil, replaces the stored switch that makes the deployment
+	// ignore the values.yaml file of the top-level chart.
+	DefaultValuesDisable *bool
 	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
 	DenoBinaryPath string
 	// DependencyUpdate, when true, updates Chart.lock and charts/ of the chart directory from
@@ -99,11 +104,19 @@ type ChartPackOptions struct {
 	Release *werfdata.ReleaseMetadata
 	// ReleaseInfoAnnotations are merged per key over the stored ones.
 	ReleaseInfoAnnotations map[string]string
+	// RepositoryCache is the path to the cache of chart repository indexes.
+	// Defaults to the Helm repository cache.
+	RepositoryCache string
+	// RepositoryConfig is the path to the file with chart repository names and URLs.
+	// Defaults to the Helm repositories.yaml.
+	RepositoryConfig string
 	// ResetValues, when true, drops everything stored in .werf-data and the helm.sh/images
 	// entries previous packs added before applying the inputs of this pack.
 	ResetValues bool
-	// SecretValuesFiles are werf-encrypted values files, merged over the stored secret values
-	// without decrypting them. Every value must be encrypted.
+	// RootSetJSON are appended to the stored --set-root-json values.
+	RootSetJSON []string
+	// SecretValuesFiles are werf-encrypted values files, merged in order over the stored secret
+	// values without decrypting them. Every value must be encrypted.
 	SecretValuesFiles []string
 	// Sign, when true, signs the archive with SignKey from SignKeyring and writes the
 	// provenance file next to it.
@@ -117,6 +130,18 @@ type ChartPackOptions struct {
 	SignPassphraseFile string
 	// TSNoRebuild, when true, reuses the existing TypeScript bundle instead of rebuilding it.
 	TSNoRebuild bool
+	// ValuesFiles are merged in order over the stored values.
+	ValuesFiles []string
+	// ValuesSet are appended to the stored --set values.
+	ValuesSet []string
+	// ValuesSetFile are read and appended to the stored --set-file values.
+	ValuesSetFile []string
+	// ValuesSetJSON are appended to the stored --set-json values.
+	ValuesSetJSON []string
+	// ValuesSetLiteral are appended to the stored --set-literal values.
+	ValuesSetLiteral []string
+	// ValuesSetString are appended to the stored --set-string values.
+	ValuesSetString []string
 	// Version overrides the chart version.
 	Version string
 }
@@ -176,6 +201,10 @@ func ChartPack(ctx context.Context, chartPath string, opts ChartPackOptions) (*C
 	chartAccessor, err := helmchart.NewAccessor(loadedChart)
 	if err != nil {
 		return nil, fmt.Errorf("create chart accessor: %w", err)
+	}
+
+	if err := checkDependenciesWerfData(chartAccessor); err != nil {
+		return nil, err
 	}
 
 	if featgate.FeatGateTypescript.Enabled() {
@@ -249,6 +278,14 @@ func ChartPack(ctx context.Context, chartPath string, opts ChartPackOptions) (*C
 		return nil, fmt.Errorf("write Chart.yaml and Chart.lock into %q: %w", archivePath, err)
 	}
 
+	if err := checkChartPackArchiveSize(archivePath); err != nil {
+		if removeErr := os.Remove(archivePath); removeErr != nil {
+			log.Default.Warn(ctx, "Unable to remove %q: %s", archivePath, removeErr)
+		}
+
+		return nil, err
+	}
+
 	result := &ChartPackResult{
 		ArchivePath:  archivePath,
 		ChartName:    chartAccessor.Name(),
@@ -267,6 +304,10 @@ func ChartPack(ctx context.Context, chartPath string, opts ChartPackOptions) (*C
 		}
 
 		result.ProvenancePath = archivePath + ".prov"
+	} else if err := os.Remove(archivePath + ".prov"); err == nil {
+		log.Default.Warn(ctx, "Removed %q: it signed a previous archive and the new one is not signed", archivePath+".prov")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("remove provenance file of a previous archive: %w", err)
 	}
 
 	log.Default.Info(ctx, "Successfully packaged chart and saved it to: %s", archivePath)
@@ -284,6 +325,17 @@ func buildChartPackWerfData(ctx context.Context, chartAccessor helmchart.Accesso
 		data, err = werfdata.Parse(chartAccessor.WerfDataFiles())
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("parse %s: %w", werfdata.DirName, err)
+		}
+	}
+
+	if data.SecretValues != nil && !opts.ResetValues {
+		storedSecretValues := map[string]any{}
+		if err := yaml.Unmarshal(data.SecretValues, &storedSecretValues); err != nil {
+			return nil, nil, nil, fmt.Errorf("parse %s/%s: %w", werfdata.DirName, werfdata.SecretValuesFileName, err)
+		}
+
+		if err := checkEncryptedValues(storedSecretValues, nil); err != nil {
+			return nil, nil, nil, fmt.Errorf("%s/%s: %w", werfdata.DirName, werfdata.SecretValuesFileName, err)
 		}
 	}
 
@@ -306,10 +358,10 @@ func buildChartPackWerfData(ctx context.Context, chartAccessor helmchart.Accesso
 }
 
 func addChartPackInputs(ctx context.Context, data *werfdata.Data, opts ChartPackOptions) error {
-	if len(opts.ValuesFiles) > 0 {
-		vals, err := (&values.Options{ValueFiles: opts.ValuesFiles}).MergeValues(ctx, getter.Getters())
+	for _, valuesFile := range opts.ValuesFiles {
+		vals, err := (&values.Options{ValueFiles: []string{valuesFile}}).MergeValues(ctx, getter.Getters())
 		if err != nil {
-			return fmt.Errorf("merge values files: %w", err)
+			return fmt.Errorf("read values file %q: %w", valuesFile, err)
 		}
 
 		data.Values = chartcommon.MergeMaps(lo.Ternary(data.Values != nil, data.Values, map[string]any{}), vals)
@@ -329,6 +381,12 @@ func addChartPackInputs(ctx context.Context, data *werfdata.Data, opts ChartPack
 	}
 	if _, err := setValuesOpts.MergeSetValues(ctx, getter.Getters(), map[string]any{}, values.MergeSetValuesOptions{}); err != nil {
 		return fmt.Errorf("parse set values: %w", err)
+	}
+
+	for _, rootSetJSON := range opts.RootSetJSON {
+		if err := strvals.ParseJSON(rootSetJSON, map[string]any{}); err != nil {
+			return fmt.Errorf("parse root set JSON value %q: %w", rootSetJSON, err)
+		}
 	}
 
 	data.Metadata.Values.ValuesSet = append(data.Metadata.Values.ValuesSet, opts.ValuesSet...)
@@ -371,9 +429,17 @@ func addChartPackInputs(ctx context.Context, data *werfdata.Data, opts ChartPack
 		data.Metadata.Patches = append(data.Metadata.Patches, name)
 	}
 
-	data.Metadata.Values.DefaultValuesDisable = data.Metadata.Values.DefaultValuesDisable || opts.DefaultValuesDisable
-	data.Metadata.Values.DefaultSecretValuesDisable = data.Metadata.Values.DefaultSecretValuesDisable || opts.DefaultSecretValuesDisable
-	data.Metadata.DefaultPatchesDisable = data.Metadata.DefaultPatchesDisable || opts.DefaultPatchesDisable
+	if opts.DefaultValuesDisable != nil {
+		data.Metadata.Values.DefaultValuesDisable = *opts.DefaultValuesDisable
+	}
+
+	if opts.DefaultSecretValuesDisable != nil {
+		data.Metadata.Values.DefaultSecretValuesDisable = *opts.DefaultSecretValuesDisable
+	}
+
+	if opts.DefaultPatchesDisable != nil {
+		data.Metadata.DefaultPatchesDisable = *opts.DefaultPatchesDisable
+	}
 
 	if opts.Release != nil {
 		data.Metadata.Release = lo.ToPtr(*opts.Release)
@@ -592,7 +658,6 @@ func saveChartPackArchive(loadedChart helmchart.Charter, files, werfDataFiles []
 
 func applyChartPackOptionsDefaults(opts ChartPackOptions) (ChartPackOptions, error) {
 	opts.ChartRepoConnectionOptions.ApplyDefaults()
-	opts.ValuesOptions.ApplyDefaults()
 
 	if opts.Destination == "" {
 		currentDir, err := os.Getwd()
@@ -605,6 +670,18 @@ func applyChartPackOptionsDefaults(opts ChartPackOptions) (ChartPackOptions, err
 
 	if opts.RegistryCredentialsPath == "" {
 		opts.RegistryCredentialsPath = filepath.Join(common.DefaultDockerConfig, "config.json")
+	}
+
+	if opts.RepositoryConfig == "" {
+		opts.RepositoryConfig = helmpath.ConfigPath("repositories.yaml")
+	}
+
+	if opts.RepositoryCache == "" {
+		opts.RepositoryCache = helmpath.CachePath("repository")
+	}
+
+	if opts.ContentCache == "" {
+		opts.ContentCache = helmpath.CachePath("content")
 	}
 
 	return opts, nil
@@ -630,6 +707,71 @@ func chartVersion(loadedChart helmchart.Charter) string {
 	default:
 		panic(fmt.Sprintf("unexpected chart type %T", loadedChart))
 	}
+}
+
+// checkChartPackArchiveSize fails for an archive that the chart loader would refuse for its
+// decompressed size.
+func checkChartPackArchiveSize(archivePath string) error {
+	archiveFile, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("open archive: %w", err)
+	}
+	defer archiveFile.Close()
+
+	gzipReader, err := gzip.NewReader(archiveFile)
+	if err != nil {
+		return fmt.Errorf("read archive: %w", err)
+	}
+	defer gzipReader.Close()
+
+	var totalSize int64
+
+	tarReader := tar.NewReader(gzipReader)
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+
+		if err != nil {
+			return fmt.Errorf("read archive: %w", err)
+		}
+
+		if header.Size > archive.MaxDecompressedFileSize {
+			return fmt.Errorf("%s is %d bytes, more than the %d bytes a chart loader accepts for a single file", header.Name, header.Size, archive.MaxDecompressedFileSize)
+		}
+
+		totalSize += header.Size
+	}
+
+	if totalSize >= archive.MaxDecompressedChartSize {
+		return fmt.Errorf("chart decompresses to %d bytes, a chart loader accepts less than %d bytes", totalSize, archive.MaxDecompressedChartSize)
+	}
+
+	return nil
+}
+
+// checkDependenciesWerfData fails if the .werf-data of a dependency, at any depth, is invalid or
+// has an unsupported apiVersion.
+func checkDependenciesWerfData(chartAccessor helmchart.Accessor) error {
+	for _, dep := range chartAccessor.Dependencies() {
+		depAccessor, err := helmchart.NewAccessor(dep)
+		if err != nil {
+			return fmt.Errorf("create dependency accessor: %w", err)
+		}
+
+		if len(depAccessor.WerfDataFiles()) > 0 {
+			if _, err := werfdata.Parse(depAccessor.WerfDataFiles()); err != nil {
+				return fmt.Errorf("dependency %q: %w", depAccessor.Name(), err)
+			}
+		}
+
+		if err := checkDependenciesWerfData(depAccessor); err != nil {
+			return fmt.Errorf("dependency %q: %w", depAccessor.Name(), err)
+		}
+	}
+
+	return nil
 }
 
 func editAnnotationsMap(annotations map[string]string, edit chartyaml.EditOptions) map[string]string {
@@ -679,9 +821,9 @@ func newChartPackDependencyDownloader(ctx context.Context, chartPath string, reg
 		SkipUpdate:        opts.ChartRepoSkipUpdate,
 		Getters:           getter.Getters(),
 		RegistryClient:    registryClient,
-		RepositoryConfig:  helmpath.ConfigPath("repositories.yaml"),
-		RepositoryCache:   helmpath.CachePath("repository"),
-		ContentCache:      helmpath.CachePath("content"),
+		RepositoryConfig:  opts.RepositoryConfig,
+		RepositoryCache:   opts.RepositoryCache,
+		ContentCache:      opts.ContentCache,
 		AllowMissingRepos: true,
 	}
 }

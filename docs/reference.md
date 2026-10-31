@@ -3151,7 +3151,7 @@ nelm chart pack [CHART_PATH] [...] [flags]
 
 - `--reset-values` (default: `false`)
 
-  Drop the values, secret values, annotations, labels and images stored in \.werf\-data of the chart by previous packs before storing the ones of this pack\. Vars: \$NELM\_RESET\_VALUES, \$NELM\_CHART\_PACK\_RESET\_VALUES
+  Drop all publish\-time inputs stored in \.werf\-data of the chart by previous packs \(values, secret values, \-\-set\*, \-\-set\-root\-json, patches, \-\-no\-default\-\* switches, release defaults, extra values, annotations, labels and images\) before storing the ones of this pack\. Vars: \$NELM\_RESET\_VALUES, \$NELM\_CHART\_PACK\_RESET\_VALUES
 
 - `--set` (default: `[]`)
 
