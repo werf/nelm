@@ -254,7 +254,7 @@ func foldWerfData(ctx context.Context, chrt helmchart.Charter, withoutServiceVal
 		serviceValues = data.ExtraValues
 	}
 
-	group, err := buildValuesGroup(ctx, chrt, data.Values, secretValues, serviceValues, nil, applySet)
+	group, err := buildValuesGroup(ctx, chrt, data.Values, secretValues, serviceValues, nil, nil, applySet)
 	if err != nil {
 		return nil, fmt.Errorf("build values: %w", err)
 	}
