@@ -14,6 +14,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/google/uuid"
+	"github.com/samber/lo"
 	"sigs.k8s.io/yaml"
 
 	"github.com/werf/common-go/pkg/locker"
@@ -142,7 +143,7 @@ func LoadChartDependencies(
 	}
 
 	for _, chartDep := range chartMetadataLock.Dependencies {
-		if vendoredDeps[chartDep.Name] && chartDep.Repository != "" {
+		if vendoredDeps[newDependencyIdentity(chartDep)] && chartDep.Repository != "" {
 			log.Default.Debug(ctx, "Use dependency %q %s vendored under charts/ instead of %s", chartDep.Name, chartDep.Version, chartDep.Repository)
 		}
 	}
@@ -150,7 +151,7 @@ func LoadChartDependencies(
 	conf := newChartDependenciesConfiguration(chartMetadata, chartMetadataLock)
 
 	for _, chartDep := range chartMetadataLock.Dependencies {
-		if !strings.HasPrefix(chartDep.Repository, "file://") || vendoredDeps[chartDep.Name] {
+		if !strings.HasPrefix(chartDep.Repository, "file://") || vendoredDeps[newDependencyIdentity(chartDep)] {
 			continue
 		}
 
@@ -317,7 +318,7 @@ func newChartDependenciesConfiguration(chartMetadata *chart.Metadata, chartMetad
 	return &chartDependenciesConfiguration{ChartMetadata: chartMetadata, ChartMetadataLock: chartMetadataLock}
 }
 
-func (conf *chartDependenciesConfiguration) GetExternalDependenciesFiles(vendoredDeps map[string]bool) (bool, *nelmcommon.BufferedFile, *nelmcommon.BufferedFile, error) {
+func (conf *chartDependenciesConfiguration) GetExternalDependenciesFiles(vendoredDeps map[dependencyIdentity]bool) (bool, *nelmcommon.BufferedFile, *nelmcommon.BufferedFile, error) {
 	metadataBytes, err := yaml.Marshal(conf.ChartMetadata)
 	if err != nil {
 		return false, nil, nil, fmt.Errorf("unable to marshal original chart metadata into yaml: %w", err)
@@ -338,52 +339,36 @@ func (conf *chartDependenciesConfiguration) GetExternalDependenciesFiles(vendore
 
 	metadata.APIVersion = chart.APIVersionV2
 
-	var externalDependenciesNames []string
-	isExternalDependency := func(depName string) bool {
-		for _, externalDepName := range externalDependenciesNames {
-			if depName == externalDepName {
-				return true
-			}
-		}
-
-		return false
-	}
+	// Lock entries are matched to Chart.yaml dependencies by name and version, so that aliases
+	// of one chart at different versions are told apart.
+	usedDependencies := map[*chart.Dependency]bool{}
+	var (
+		filteredDependencies     []*chart.Dependency
+		filteredLockDependencies []*chart.Dependency
+	)
 
 	for _, depLock := range metadataLock.Dependencies {
-		if depLock.Repository == "" || strings.HasPrefix(depLock.Repository, "file://") || vendoredDeps[depLock.Name] {
+		dep := matchLockedDependency(metadata.Dependencies, depLock, usedDependencies)
+		if dep != nil {
+			usedDependencies[dep] = true
+		}
+
+		if depLock.Repository == "" || strings.HasPrefix(depLock.Repository, "file://") || vendoredDeps[newDependencyIdentity(depLock)] || dep == nil {
 			continue
 		}
 
-		externalDependenciesNames = append(externalDependenciesNames, depLock.Name)
+		dep.Repository = depLock.Repository
+		filteredDependencies = append(filteredDependencies, dep)
+		filteredLockDependencies = append(filteredLockDependencies, depLock)
 	}
 
-	var filteredLockDependencies []*chart.Dependency
-	for _, depLock := range metadataLock.Dependencies {
-		if isExternalDependency(depLock.Name) {
-			filteredLockDependencies = append(filteredLockDependencies, depLock)
-		}
-	}
 	metadataLock.Dependencies = filteredLockDependencies
-
-	var filteredDependencies []*chart.Dependency
-	for _, dep := range metadata.Dependencies {
-		if isExternalDependency(dep.Name) {
-			filteredDependencies = append(filteredDependencies, dep)
-		}
-	}
-	metadata.Dependencies = filteredDependencies
+	metadata.Dependencies = lo.Filter(metadata.Dependencies, func(dep *chart.Dependency, _ int) bool {
+		return lo.Contains(filteredDependencies, dep)
+	})
 
 	if len(metadata.Dependencies) == 0 {
 		return false, nil, nil, nil
-	}
-
-	for _, dep := range metadata.Dependencies {
-		for _, depLock := range metadataLock.Dependencies {
-			if dep.Name == depLock.Name {
-				dep.Repository = depLock.Repository
-				break
-			}
-		}
 	}
 
 	if newDigest, err := hashReq(metadata.Dependencies, metadataLock.Dependencies); err != nil {
@@ -432,49 +417,85 @@ func digest(in io.Reader) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-// findVendoredDependencies returns the names of the locked dependencies the chart files already
-// have under charts/, either as the archive "helm dependency build" downloads or as the
-// directory a saved chart has. A directory with another version of a dependency, or two copies
-// of one, is an error, since one of them would be used instead of the locked version.
-func findVendoredDependencies(loadedChartFiles []*nelmcommon.BufferedFile, deps []*chart.Dependency) (map[string]bool, error) {
-	vendored := map[string]bool{}
-	for _, dep := range deps {
-		var copies []string
-
-		archiveName := makeDependencyArchiveName(dep.Name, dep.Version)
-		for _, f := range loadedChartFiles {
-			if f.Name == "charts/"+archiveName {
-				copies = append(copies, f.Name)
-			}
-		}
-
-		dirs := findVendoredDependencyDirs(loadedChartFiles, dep.Name)
-		for _, dir := range dirs {
-			copies = append(copies, "charts/"+dir.name)
-		}
-
-		if len(copies) > 1 {
-			return nil, fmt.Errorf("dependency %q is vendored more than once (%s): keep one of them", dep.Name, strings.Join(copies, ", "))
-		}
-
-		if len(dirs) == 1 && !sameVersion(dirs[0].version, dep.Version) {
-			hint := fmt.Sprintf("remove charts/%s or vendor version %s there", dirs[0].name, dep.Version)
-			if dep.Repository == "" {
-				hint = fmt.Sprintf("vendor version %s in charts/%s, for example with \"helm dependency update\"", dep.Version, dirs[0].name)
-			}
-
-			return nil, fmt.Errorf("charts/%s is version %s but Chart.lock requires %s: %s", dirs[0].name, dirs[0].version, dep.Version, hint)
-		}
-
-		vendored[dep.Name] = len(copies) == 1
-	}
-
-	return vendored, nil
+type dependencyIdentity struct {
+	name    string
+	version string
 }
 
-// checkVendoredDependenciesConstraints fails if a dependency directory under charts/ of a chart
-// without Chart.lock doesn't match the version constraint in Chart.yaml.
+func newDependencyIdentity(dep *chart.Dependency) dependencyIdentity {
+	return dependencyIdentity{name: dep.Name, version: dep.Version}
+}
+
+// matchLockedDependency returns the first unused Chart.yaml dependency with the name of the lock
+// entry whose version constraint the locked version satisfies.
+func matchLockedDependency(deps []*chart.Dependency, depLock *chart.Dependency, used map[*chart.Dependency]bool) *chart.Dependency {
+	lockVersion, lockVersionErr := semver.NewVersion(depLock.Version)
+
+	for _, dep := range deps {
+		if used[dep] || dep.Name != depLock.Name {
+			continue
+		}
+
+		if lockVersionErr != nil || dep.Version == "" {
+			return dep
+		}
+
+		constraint, err := semver.NewConstraint(dep.Version)
+		if err != nil || constraint.Check(lockVersion) {
+			return dep
+		}
+	}
+
+	return nil
+}
+
+// findVendoredDependencies returns the locked dependencies the chart files already have under
+// charts/, either as an archive or as the directory a saved chart has. A vendored copy of a
+// locked chart at a version no lock entry has, or two copies of one locked version, is an error,
+// since it would be used instead of or next to the locked version.
+func findVendoredDependencies(loadedChartFiles []*nelmcommon.BufferedFile, deps []*chart.Dependency) (map[dependencyIdentity]bool, error) {
+	candidates, err := findVendoredCharts(loadedChartFiles)
+	if err != nil {
+		return nil, err
+	}
+
+	vendoredPaths := map[dependencyIdentity]string{}
+	for _, candidate := range candidates {
+		locks := lo.Filter(deps, func(dep *chart.Dependency, _ int) bool { return dep.Name == candidate.name })
+		if len(locks) == 0 {
+			continue
+		}
+
+		depLock, found := lo.Find(locks, func(dep *chart.Dependency) bool { return sameVersion(candidate.version, dep.Version) })
+		if !found {
+			lockedVersions := lo.Map(locks, func(dep *chart.Dependency, _ int) string { return dep.Version })
+			hint := "remove it"
+			if lo.ContainsBy(locks, func(dep *chart.Dependency) bool { return dep.Repository == "" }) {
+				hint = "replace it with the locked version, for example with \"helm dependency update\""
+			}
+
+			return nil, fmt.Errorf("%s is version %s but Chart.lock requires %s: %s", candidate.path, candidate.version, strings.Join(lockedVersions, " or "), hint)
+		}
+
+		identity := newDependencyIdentity(depLock)
+		if previousPath, ok := vendoredPaths[identity]; ok {
+			return nil, fmt.Errorf("dependency %q %s is vendored more than once (%s, %s): keep one of them", identity.name, identity.version, previousPath, candidate.path)
+		}
+
+		vendoredPaths[identity] = candidate.path
+	}
+
+	return lo.MapValues(vendoredPaths, func(string, dependencyIdentity) bool { return true }), nil
+}
+
+// checkVendoredDependenciesConstraints fails if a chart vendored under charts/ of a chart without
+// Chart.lock doesn't match the version constraint of its dependency in Chart.yaml.
 func checkVendoredDependenciesConstraints(loadedChartFiles []*nelmcommon.BufferedFile, deps []*chart.Dependency) error {
+	candidates, err := findVendoredCharts(loadedChartFiles)
+	if err != nil {
+		return err
+	}
+
 	for _, dep := range deps {
 		if dep.Version == "" {
 			continue
@@ -485,44 +506,70 @@ func checkVendoredDependenciesConstraints(loadedChartFiles []*nelmcommon.Buffere
 			continue
 		}
 
-		for _, dir := range findVendoredDependencyDirs(loadedChartFiles, dep.Name) {
-			if parsedVersion, err := semver.NewVersion(dir.version); err == nil && constraint.Check(parsedVersion) {
+		for _, candidate := range candidates {
+			if candidate.name != dep.Name {
 				continue
 			}
 
-			return fmt.Errorf("charts/%s is version %s but Chart.yaml requires %s: remove charts/%s or vendor a matching version there", dir.name, dir.version, dep.Version, dir.name)
+			if parsedVersion, err := semver.NewVersion(candidate.version); err == nil && constraint.Check(parsedVersion) {
+				continue
+			}
+
+			return fmt.Errorf("%s is version %s but Chart.yaml requires %s: remove it or vendor a matching version", candidate.path, candidate.version, dep.Version)
 		}
 	}
 
 	return nil
 }
 
-type vendoredDependencyDir struct {
+type vendoredChart struct {
+	path    string
 	name    string
 	version string
 }
 
-// findVendoredDependencyDirs finds the directories under charts/ with the chart of the given name.
-func findVendoredDependencyDirs(loadedChartFiles []*nelmcommon.BufferedFile, chartName string) []vendoredDependencyDir {
-	var dirs []vendoredDependencyDir
+// findVendoredCharts finds the charts directly under charts/, as archives or directories, with
+// their names and versions from their Chart.yaml.
+func findVendoredCharts(loadedChartFiles []*nelmcommon.BufferedFile) ([]vendoredChart, error) {
+	var charts []vendoredChart
 	for _, f := range loadedChartFiles {
 		name, ok := strings.CutPrefix(f.Name, "charts/")
 		if !ok {
 			continue
 		}
 
-		dir, fileName, ok := strings.Cut(name, "/")
-		if !ok || fileName != "Chart.yaml" {
+		dir, fileName, isInDir := strings.Cut(name, "/")
+
+		var chartYAML []byte
+		switch {
+		case !isInDir && strings.HasSuffix(name, ".tgz"):
+			archiveFiles, err := archive.LoadArchiveFiles(bytes.NewReader(f.Data))
+			if err != nil {
+				return nil, fmt.Errorf("read %s: %w", f.Name, err)
+			}
+
+			chartFile, found := lo.Find(archiveFiles, func(archiveFile *archive.BufferedFile) bool { return archiveFile.Name == "Chart.yaml" })
+			if !found {
+				return nil, fmt.Errorf("read %s: Chart.yaml not found", f.Name)
+			}
+
+			chartYAML = chartFile.Data
+		case isInDir && fileName == "Chart.yaml":
+			chartYAML = f.Data
+			name = dir
+		default:
 			continue
 		}
 
 		metadata := new(chart.Metadata)
-		if err := yaml.Unmarshal(f.Data, metadata); err == nil && metadata.Name == chartName {
-			dirs = append(dirs, vendoredDependencyDir{name: dir, version: metadata.Version})
+		if err := yaml.Unmarshal(chartYAML, metadata); err != nil || metadata.Name == "" {
+			continue
 		}
+
+		charts = append(charts, vendoredChart{path: "charts/" + name, name: metadata.Name, version: metadata.Version})
 	}
 
-	return dirs
+	return charts, nil
 }
 
 // sameVersion compares versions exactly, build metadata included.
@@ -534,10 +581,6 @@ func sameVersion(a, b string) bool {
 	}
 
 	return parsedA.String() == parsedB.String()
-}
-
-func makeDependencyArchiveName(depName, depVersion string) string {
-	return fmt.Sprintf("%s-%s.tgz", depName, depVersion)
 }
 
 func buildChartDependenciesInDir(ctx context.Context, targetDir string, opts nelmcommon.HelmOptions) error {
