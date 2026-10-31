@@ -38,6 +38,7 @@ import (
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader/archive"
 	legacysecret "github.com/werf/nelm/v2/pkg/legacy/secret"
+	"github.com/werf/nelm/v2/pkg/werfdata"
 )
 
 // ChartLoader loads a chart.
@@ -140,6 +141,8 @@ func LoadFiles(ctx context.Context, files []*archive.BufferedFile) (*chart.Chart
 			subcharts[cname] = append(subcharts[cname], &archive.BufferedFile{Name: fname, ModTime: f.ModTime, Data: f.Data})
 		case applyWerfExtensions && strings.HasPrefix(f.Name, "ts/") && !strings.HasPrefix(f.Name, "ts/node_modules/"):
 			c.RuntimeFiles = append(c.RuntimeFiles, &chartcommon.File{Name: f.Name, ModTime: f.ModTime, Data: f.Data})
+		case werfdata.IsWerfDataFile(f.Name):
+			c.WerfDataFiles = append(c.WerfDataFiles, &chartcommon.File{Name: f.Name, ModTime: f.ModTime, Data: f.Data})
 		default:
 			c.Files = append(c.Files, &chartcommon.File{Name: f.Name, ModTime: f.ModTime, Data: f.Data})
 		}

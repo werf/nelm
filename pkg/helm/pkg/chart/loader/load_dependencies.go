@@ -24,6 +24,7 @@ import (
 	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/ignore"
 	"github.com/werf/nelm/v2/pkg/log"
+	"github.com/werf/nelm/v2/pkg/werfdata"
 )
 
 var utf8bom = []byte{0xEF, 0xBB, 0xBF}
@@ -476,13 +477,13 @@ func getFilesFromLocalFilesystem(dir string) ([]*nelmcommon.BufferedFile, error)
 			return err
 		}
 		if fi.IsDir() {
-			if rules.Ignore(n, fi) {
+			if !werfdata.IsWerfDataFile(n) && rules.Ignore(n, fi) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 
-		if rules.Ignore(n, fi) {
+		if !werfdata.IsWerfDataFile(n) && rules.Ignore(n, fi) {
 			return nil
 		}
 

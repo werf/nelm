@@ -28,6 +28,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/helm/intern/sympath"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader/archive"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/ignore"
+	"github.com/werf/nelm/v2/pkg/werfdata"
 )
 
 var utf8bom = []byte{0xEF, 0xBB, 0xBF}
@@ -83,14 +84,14 @@ func LoadDir(ctx context.Context, dir string) (*chart.Chart, error) {
 		if fi.IsDir() {
 			// Directory-based ignore rules should involve skipping the entire
 			// contents of that directory.
-			if rules.Ignore(n, fi) {
+			if !werfdata.IsWerfDataFile(n) && rules.Ignore(n, fi) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 
 		// If a .helmignore file matches, skip this file.
-		if rules.Ignore(n, fi) {
+		if !werfdata.IsWerfDataFile(n) && rules.Ignore(n, fi) {
 			return nil
 		}
 
