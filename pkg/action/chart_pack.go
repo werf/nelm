@@ -441,13 +441,13 @@ func addChartPackInputs(ctx context.Context, data *werfdata.Data, opts ChartPack
 	}
 
 	for _, patchesFile := range opts.PatchesFiles {
-		if _, err := spec.LoadPatchesFiles([]string{patchesFile}); err != nil {
-			return fmt.Errorf("load patches file: %w", err)
-		}
-
-		patchesData, err := os.ReadFile(patchesFile)
+		patchesData, err := readChartPackInputFile(ctx, patchesFile)
 		if err != nil {
 			return fmt.Errorf("read patches file %q: %w", patchesFile, err)
+		}
+
+		if _, err := spec.ParsePatchesData(patchesData); err != nil {
+			return fmt.Errorf("patches file %q: %w", patchesFile, err)
 		}
 
 		name := path.Join(werfdata.PatchesDirName, strconv.Itoa(nextWerfDataFileIndex(data.Files, werfdata.PatchesDirName)))

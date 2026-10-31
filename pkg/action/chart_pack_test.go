@@ -52,6 +52,36 @@ type chartPackTestStep struct {
 	opts   ChartPackOptions
 }
 
+type chartPackTestFileReader struct {
+	common.ChartFileReaderer
+
+	files map[string]string
+}
+
+func (r chartPackTestFileReader) ReadChartFile(_ context.Context, filePath string) ([]byte, error) {
+	data, ok := r.files[filePath]
+	if !ok {
+		return nil, os.ErrNotExist
+	}
+
+	return []byte(data), nil
+}
+
+func TestAddChartPackInputs_ReadsPatchesThroughChartFileReader(t *testing.T) {
+	const patches = "renderPatches:\n- patch: del(.a)\n"
+
+	chartFileReader := common.ChartFileReader
+	common.ChartFileReader = chartPackTestFileReader{files: map[string]string{"committed/patches.yaml": patches}}
+
+	t.Cleanup(func() {
+		common.ChartFileReader = chartFileReader
+	})
+
+	data := &werfdata.Data{Files: map[string][]byte{}}
+	require.NoError(t, addChartPackInputs(newChartPackTestContext(), data, ChartPackOptions{PatchesFiles: []string{"committed/patches.yaml"}}))
+	assert.Equal(t, map[string][]byte{"patches/0": []byte(patches)}, data.Files)
+}
+
 func TestChartPack(t *testing.T) {
 	encryptedPassword := encryptChartPackTestValues(t, "password: p1\nlist: [s1, s2]\n")
 	encryptedList := encryptChartPackTestValues(t, "list: [s3]\n")
