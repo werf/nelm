@@ -137,12 +137,17 @@ func (s *latestReleaseListStorager) loadedRevisions() []release.Revision {
 }
 
 type progressPhasesAPIState struct {
+	allowApply bool
+	// appliedConfigMaps are the ConfigMaps applied by server-side apply, in order, if allowApply.
+	appliedConfigMaps     []corev1.ConfigMap
 	configMaps            map[string]corev1.ConfigMap
 	deleteNamespaceStatus int
-	namespaceDeleted      bool
-	requests              []string
-	retainNamespace       bool
-	trackNamespaceStatus  int
+	// failConfigMaps are the names of the ConfigMaps whose next update or apply is forbidden.
+	failConfigMaps       map[string]bool
+	namespaceDeleted     bool
+	requests             []string
+	retainNamespace      bool
+	trackNamespaceStatus int
 }
 
 type progressPhasesAPI struct {
@@ -268,14 +273,26 @@ func newProgressPhasesAPI(t *testing.T) *progressPhasesAPI {
 
 					cm.Kind, cm.APIVersion = "ConfigMap", "v1"
 					cm.Namespace, cm.ResourceVersion = "progress-ns", "1"
+
+					if r.Method == http.MethodPut && s.failConfigMaps[cm.Name] {
+						delete(s.failConfigMaps, cm.Name)
+
+						status = http.StatusForbidden
+
+						break
+					}
+
 					s.configMaps[cm.Name] = cm
 					response = cm
 				case http.MethodPatch:
-					assert.Equal(t, "All", r.URL.Query().Get("dryRun"))
+					dryRun := r.URL.Query().Get("dryRun") == "All"
+					if !s.allowApply {
+						assert.True(t, dryRun, "unexpected apply of ConfigMap %q", key)
+					}
 
 					var cm corev1.ConfigMap
 					if err := json.NewDecoder(r.Body).Decode(&cm); err != nil {
-						t.Errorf("decode dry-run ConfigMap: %s", err)
+						t.Errorf("decode applied ConfigMap: %s", err)
 
 						status = http.StatusBadRequest
 
@@ -283,6 +300,21 @@ func newProgressPhasesAPI(t *testing.T) *progressPhasesAPI {
 					}
 
 					cm.Namespace = "progress-ns"
+
+					if !dryRun {
+						if s.failConfigMaps[key] {
+							delete(s.failConfigMaps, key)
+
+							status = http.StatusForbidden
+
+							break
+						}
+
+						cm.Kind, cm.APIVersion, cm.ResourceVersion = "ConfigMap", "v1", "1"
+						s.configMaps[key] = cm
+						s.appliedConfigMaps = append(s.appliedConfigMaps, cm)
+					}
+
 					response = cm
 				case http.MethodDelete:
 					delete(s.configMaps, key)

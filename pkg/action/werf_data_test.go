@@ -91,6 +91,43 @@ func TestChartRender_MergesWerfDataMetadataBelowCallerOptions(t *testing.T) {
 	}
 }
 
+func TestReleaseInstall_AutoRollbackIgnoresWerfDataMetadata(t *testing.T) {
+	api := newProgressPhasesAPI(t)
+	addProgressPhaseRevision(t, api, 1, addProgressPhasesConfigMap(t, api))
+
+	api.state.RWTransaction(func(s *progressPhasesAPIState) {
+		s.allowApply = true
+		s.failConfigMaps = map[string]bool{"sh.helm.release.v1.progress-release.v2": true}
+	})
+
+	installOpts := newChartRenderInstallOptions(t, api, newWerfDataChart(t, readWerfDataTestMetadata(t)), nil)
+	installOpts.AutoRollback = true
+	installOpts.ExtraRuntimeAnnotations = werfDataCallerRuntimeAnnotations
+	installOpts.LegacyHelmCompatibleTracking = true
+
+	_, err := ReleaseInstall(newChartRenderInstallContext(t), "progress-release", "progress-ns", installOpts)
+	require.ErrorContains(t, err, "update release")
+
+	var applied []map[string]string
+	api.state.RTransaction(func(s *progressPhasesAPIState) {
+		for _, cm := range s.appliedConfigMaps {
+			if cm.Name == "progress-resource" {
+				applied = append(applied, cm.GetAnnotations())
+			}
+		}
+	})
+
+	require.Len(t, applied, 2, "applied by the install and by the rollback")
+	assert.Equal(t, "chart", applied[0]["chart-runtime-annotation"])
+
+	for key, value := range werfDataCallerRuntimeAnnotations {
+		assert.Equal(t, value, applied[1][key], key)
+	}
+
+	assert.NotContains(t, applied[1], "chart-runtime-annotation")
+	assert.NotContains(t, applied[1], "chart-annotation")
+}
+
 func TestReleaseInstall_MergesWerfDataMetadataBelowCallerOptions(t *testing.T) {
 	tests := []struct {
 		name              string
