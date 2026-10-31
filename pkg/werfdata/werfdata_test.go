@@ -51,7 +51,7 @@ func TestParse_Errors(t *testing.T) {
 		{
 			name:    "missing apiVersion",
 			files:   map[string]string{".werf-data/metadata.yaml": "values: {}"},
-			wantErr: `unsupported .werf-data/metadata.yaml apiVersion ""`,
+			wantErr: ".werf-data/metadata.yaml has no apiVersion",
 		},
 		{
 			name:    "unknown field",

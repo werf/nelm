@@ -280,8 +280,11 @@ func Parse(files []*common.File) (*Data, error) {
 
 // CheckAPIVersion fails for a .werf-data apiVersion this version doesn't know.
 func CheckAPIVersion(apiVersion string) error {
-	if apiVersion == APIVersionV2 {
+	switch apiVersion {
+	case APIVersionV2:
 		return nil
+	case "":
+		return fmt.Errorf("%s/%s has no apiVersion", DirName, MetadataFileName)
 	}
 
 	return fmt.Errorf("unsupported %s/%s apiVersion %q: this chart requires a newer werf or Nelm", DirName, MetadataFileName, apiVersion)
