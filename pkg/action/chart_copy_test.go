@@ -985,6 +985,19 @@ func TestChartCopy_WerfArchiveDuplicateMembers(t *testing.T) {
 	}
 }
 
+func TestChartCopy_WerfArchiveSparseMember(t *testing.T) {
+	chartData := buildChartCopyTestChart(t, map[string]string{
+		"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: old.registry/project:abc\n",
+	})
+	archivePath := writeWerfChartCopyTestArchive(t, chartData, map[string][]byte{"abc": sparseChartCopyTestImageTarball(t, 10<<20)})
+
+	opts := newChartCopyTestOptions(t)
+	opts.ArchiveMaxExpandedSize = 256 << 10
+
+	err := ChartCopy(newChartPackTestContext(), "archive:"+archivePath, filepath.Join(t.TempDir(), "copy.tar"), opts)
+	require.ErrorContains(t, err, `member "layer.tar" is a sparse file`)
+}
+
 func TestChartCopy_WerfArchiveUnsupportedLayers(t *testing.T) {
 	tests := []struct {
 		name        string

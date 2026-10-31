@@ -18,6 +18,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1031,6 +1032,67 @@ func signChartCopyTestChart(t *testing.T, chartData []byte) []byte {
 	require.NoError(t, err)
 
 	return provData
+}
+
+// sparseChartCopyTestImageTarball returns a docker-save tarball whose layer is a GNU PAX sparse
+// file of realSize bytes stored in about a kilobyte. Go can't write sparse files, so the PAX header
+// is written as a regular file and then retyped.
+func sparseChartCopyTestImageTarball(t *testing.T, realSize int64) []byte {
+	t.Helper()
+
+	buf := &bytes.Buffer{}
+	tarWriter := tar.NewWriter(buf)
+
+	for _, entry := range []chartCopyTestTarEntry{
+		{Data: []byte(`[{"Config":"config.json","Layers":["layer.tar"]}]`), Name: "manifest.json"},
+		{Data: []byte(`{"architecture":"amd64","os":"linux"}`), Name: "config.json"},
+	} {
+		require.NoError(t, tarWriter.WriteHeader(&tar.Header{Name: entry.Name, Mode: 0o644, Size: int64(len(entry.Data)), Typeflag: tar.TypeReg, Format: tar.FormatUSTAR}))
+		_, err := tarWriter.Write(entry.Data)
+		require.NoError(t, err)
+	}
+
+	paxRecord := func(key, value string) string {
+		record := " " + key + "=" + value + "\n"
+
+		size := len(record) + len(strconv.Itoa(len(record)))
+		if len(strconv.Itoa(size)) != len(strconv.Itoa(len(record))) {
+			size++
+		}
+
+		return strconv.Itoa(size) + record
+	}
+	pax := paxRecord("GNU.sparse.major", "1") + paxRecord("GNU.sparse.minor", "0") + paxRecord("GNU.sparse.name", "layer.tar") + paxRecord("GNU.sparse.realsize", strconv.FormatInt(realSize, 10))
+
+	require.NoError(t, tarWriter.Flush())
+
+	paxHeaderOffset := buf.Len()
+
+	require.NoError(t, tarWriter.WriteHeader(&tar.Header{Name: "pax", Mode: 0o644, Size: int64(len(pax)), Typeflag: tar.TypeReg, Format: tar.FormatUSTAR}))
+	_, err := tarWriter.Write([]byte(pax))
+	require.NoError(t, err)
+
+	data := make([]byte, 513)
+	copy(data, "1\n0\n1\n")
+	data[512] = 'x'
+	require.NoError(t, tarWriter.WriteHeader(&tar.Header{Name: "GNUSparseFile.0/layer.tar", Mode: 0o644, Size: int64(len(data)), Typeflag: tar.TypeReg, Format: tar.FormatUSTAR}))
+	_, err = tarWriter.Write(data)
+	require.NoError(t, err)
+	require.NoError(t, tarWriter.Close())
+
+	result := buf.Bytes()
+	header := result[paxHeaderOffset : paxHeaderOffset+512]
+	header[156] = tar.TypeXHeader
+	copy(header[148:156], "        ")
+
+	var checksum int
+	for _, b := range header {
+		checksum += int(b)
+	}
+
+	copy(header[148:156], fmt.Sprintf("%06o\x00 ", checksum))
+
+	return result
 }
 
 // tarChartCopyTestEntries returns a tar with the entries in order, duplicates included.

@@ -107,6 +107,12 @@ func newChartCopyLayoutStore(ctx context.Context, tarPath string) (*chartCopyLay
 			return nil, fmt.Errorf("read archive: %w", err)
 		}
 
+		// The blobs are read at their offsets in the archive, which holds only the data of a
+		// sparse file.
+		if err := checkChartCopyTarMember(header); err != nil {
+			return nil, fmt.Errorf("read archive: %w", err)
+		}
+
 		name := chartCopyArchiveMemberName(header.Name)
 
 		algorithm, encoded, found := strings.Cut(strings.TrimPrefix(name, ocispec.ImageBlobsDir+"/"), "/")
@@ -250,14 +256,23 @@ type chartCopyTagClaim struct {
 
 // chartCopyExpansion counts the bytes decompressed from an archive against Max.
 type chartCopyExpansion struct {
-	Max   int64
-	Total int64
+	// Extracted counts the bytes extracted from tar members separately from Total, which counts
+	// the decompressed streams the tars are read from.
+	Extracted int64
+	Max       int64
+	Total     int64
+}
+
+// ExtractedReader is Reader for the content of a tar member, which tar.Reader produces from the
+// stream counted by Reader.
+func (e *chartCopyExpansion) ExtractedReader(ctx context.Context, reader io.Reader) io.Reader {
+	return &chartCopyExpansionReader{counter: &e.Extracted, ctx: ctx, max: e.Max, reader: reader}
 }
 
 // Reader returns reader counting what it reads against the expansion limit and stopping on ctx
 // cancellation.
 func (e *chartCopyExpansion) Reader(ctx context.Context, reader io.Reader) io.Reader {
-	return &chartCopyExpansionReader{ctx: ctx, expansion: e, reader: reader}
+	return &chartCopyExpansionReader{counter: &e.Total, ctx: ctx, max: e.Max, reader: reader}
 }
 
 // chartCopyContextReader stops reading when ctx is done.
@@ -275,9 +290,10 @@ func (r chartCopyContextReader) Read(p []byte) (int, error) {
 }
 
 type chartCopyExpansionReader struct {
-	ctx       context.Context
-	expansion *chartCopyExpansion
-	reader    io.Reader
+	counter *int64
+	ctx     context.Context
+	max     int64
+	reader  io.Reader
 }
 
 func (r *chartCopyExpansionReader) Read(p []byte) (int, error) {
@@ -287,9 +303,9 @@ func (r *chartCopyExpansionReader) Read(p []byte) (int, error) {
 
 	n, err := r.reader.Read(p)
 
-	r.expansion.Total += int64(n)
-	if r.expansion.Total > r.expansion.Max {
-		return n, fmt.Errorf("archive expands to more than %d bytes", r.expansion.Max)
+	*r.counter += int64(n)
+	if *r.counter > r.max {
+		return n, fmt.Errorf("archive expands to more than %d bytes", r.max)
 	}
 
 	return n, err //nolint:wrapcheck // io.Reader returns io.EOF as is.
@@ -733,7 +749,7 @@ func readWerfArchive(ctx context.Context, tarPath, tempDir string, expansion *ch
 			}
 			defer gzipReader.Close()
 
-			desc, err := convertDockerArchiveImage(ctx, expansion.Reader(ctx, gzipReader), store, tempDir)
+			desc, err := convertDockerArchiveImage(ctx, gzipReader, store, tempDir, expansion)
 			if err != nil {
 				return fmt.Errorf("read image %s: %w", name, err)
 			}
@@ -812,7 +828,7 @@ func writeChartCopyArchive(ctx context.Context, source *chartCopySource, loadedC
 
 // convertDockerArchiveImage pushes the image of a docker-save tarball into store as a Docker
 // manifest, gzipping uncompressed layers, and returns the manifest descriptor.
-func convertDockerArchiveImage(ctx context.Context, in io.Reader, store *oci.Store, tempDir string) (ocispec.Descriptor, error) {
+func convertDockerArchiveImage(ctx context.Context, in io.Reader, store *oci.Store, tempDir string, expansion *chartCopyExpansion) (ocispec.Descriptor, error) {
 	dir, err := os.MkdirTemp(tempDir, "image-")
 	if err != nil {
 		return ocispec.Descriptor{}, fmt.Errorf("create temporary directory: %w", err)
@@ -821,7 +837,7 @@ func convertDockerArchiveImage(ctx context.Context, in io.Reader, store *oci.Sto
 
 	files := map[string]string{}
 
-	tarReader := tar.NewReader(in)
+	tarReader := tar.NewReader(expansion.Reader(ctx, in))
 	for entries := 0; ; entries++ {
 		if err := context.Cause(ctx); err != nil {
 			return ocispec.Descriptor{}, err
@@ -840,6 +856,10 @@ func convertDockerArchiveImage(ctx context.Context, in io.Reader, store *oci.Sto
 			return ocispec.Descriptor{}, fmt.Errorf("read image tarball: %w", err)
 		}
 
+		if err := checkChartCopyTarMember(header); err != nil {
+			return ocispec.Descriptor{}, fmt.Errorf("read image tarball: %w", err)
+		}
+
 		if header.Typeflag != tar.TypeReg {
 			continue
 		}
@@ -850,7 +870,7 @@ func convertDockerArchiveImage(ctx context.Context, in io.Reader, store *oci.Sto
 		}
 
 		filePath := filepath.Join(dir, strconv.Itoa(entries))
-		if err := writeFileFromReader(filePath, tarReader); err != nil {
+		if err := writeFileFromReader(filePath, expansion.ExtractedReader(ctx, tarReader)); err != nil {
 			return ocispec.Descriptor{}, fmt.Errorf("extract %s from the image tarball: %w", name, err)
 		}
 
@@ -1198,6 +1218,10 @@ func walkTar(ctx context.Context, tarPath string, fn func(header *tar.Header, re
 			return fmt.Errorf("read archive: %w", err)
 		}
 
+		if err := checkChartCopyTarMember(header); err != nil {
+			return fmt.Errorf("read archive: %w", err)
+		}
+
 		if header.Typeflag != tar.TypeReg {
 			continue
 		}
@@ -1209,7 +1233,7 @@ func walkTar(ctx context.Context, tarPath string, fn func(header *tar.Header, re
 
 		names[header.Name] = true
 
-		if err := fn(header, tarReader); err != nil {
+		if err := fn(header, chartCopyContextReader{ctx: ctx, reader: tarReader}); err != nil {
 			return err
 		}
 	}
@@ -1440,6 +1464,18 @@ func chartCopySnapshot(chartAccessor helmchart.Accessor) ([]byte, error) {
 	}
 
 	return snapshot, nil
+}
+
+// checkChartCopyTarMember rejects sparse files: tar.Reader fills in their holes, producing more
+// than the archive holds, unbounded by the expansion limit.
+func checkChartCopyTarMember(header *tar.Header) error {
+	if header.Typeflag == tar.TypeGNUSparse || lo.SomeBy(lo.Keys(header.PAXRecords), func(key string) bool {
+		return strings.HasPrefix(key, "GNU.sparse.")
+	}) {
+		return fmt.Errorf("member %q is a sparse file, which is not supported", header.Name)
+	}
+
+	return nil
 }
 
 // claimChartCopyTag records that the copy pushes claim under tag, failing if the tag is already
