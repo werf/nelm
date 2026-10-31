@@ -363,7 +363,7 @@ config:
 
 To re-encrypt secrets with a new key, decrypt each encrypted file with the old key and encrypt it with the new one. Cover every encrypted file: `secret-values.yaml` and `secret/*` of the chart and of its local subcharts, encrypted values files passed with `--secret-values`, and `.werf-data/secret-values.yaml` of a published chart.
 
-Run it as a script with the old key in `$NELM_SECRET_KEY`. It stops at the first error and changes files only after every file has been re-encrypted:
+Create the new key first and store it where you keep secret keys, before changing any file: `nelm chart secret key create`. Then run the script below with the old key in `$OLD_SECRET_KEY` and the new one in `$NEW_SECRET_KEY`. It stops at the first error, re-encrypts every file before changing any of them, and keeps a copy of each original next to it as `<file>.bak` until you remove it:
 
 ```bash
 #!/usr/bin/env bash
@@ -373,24 +373,27 @@ umask 077
 values_files=(secret-values.yaml)  # every encrypted values file
 files=(secret/config.yaml)         # every file in secret/
 
-new_key="$(nelm chart secret key create)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 rotate() {
-  nelm chart secret "$1" decrypt --secret-key "$NELM_SECRET_KEY" --save-output-to "$tmp/$3" "$2"
-  nelm chart secret "$1" encrypt --secret-key "$new_key" --save-output-to "$tmp/$3.enc" "$tmp/$3"
+  nelm chart secret "$1" decrypt --secret-key "$OLD_SECRET_KEY" --save-output-to "$tmp/$3" "$2"
+  nelm chart secret "$1" encrypt --secret-key "$NEW_SECRET_KEY" --save-output-to "$tmp/$3.enc" "$tmp/$3"
 }
 
 n=0
 for f in "${values_files[@]}"; do n=$((n + 1)); rotate values-file "$f" "$n"; done
 for f in "${files[@]}"; do n=$((n + 1)); rotate file "$f" "$n"; done
 
+for f in "${values_files[@]}" "${files[@]}"; do cp -p "$f" "$f.bak"; done
+
 n=0
 for f in "${values_files[@]}" "${files[@]}"; do n=$((n + 1)); cp "$tmp/$n.enc" "$f"; done
 
-echo "All files re-encrypted. Use the new secret key from now on: $new_key"
+echo "All files re-encrypted with the new key. Remove the .bak files once you have checked the result."
 ```
+
+If the script stops while copying, the files it already replaced are encrypted with the new key and the rest still with the old one; every original is in its `.bak` file.
 
 ### Render patches
 
