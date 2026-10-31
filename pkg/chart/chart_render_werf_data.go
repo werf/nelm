@@ -433,8 +433,35 @@ func logWerfData(ctx context.Context, data *werfdata.Data) {
 		loaded = append(loaded, "default secret values disabled")
 	}
 
+	metadata := data.Metadata
+	if len(metadata.Patches) > 0 {
+		loaded = append(loaded, fmt.Sprintf("%d patches files", len(metadata.Patches)))
+	}
+
+	if metadata.DefaultPatchesDisable {
+		loaded = append(loaded, "default patches disabled")
+	}
+
+	for _, entries := range []struct {
+		name    string
+		entries map[string]string
+	}{
+		{name: "annotations", entries: metadata.ExtraAnnotations},
+		{name: "labels", entries: metadata.ExtraLabels},
+		{name: "runtime annotations", entries: metadata.ExtraRuntimeAnnotations},
+		{name: "release info annotations", entries: metadata.ReleaseInfoAnnotations},
+	} {
+		if len(entries.entries) > 0 {
+			loaded = append(loaded, entries.name)
+		}
+	}
+
+	if metadata.Release != nil && *metadata.Release != (werfdata.ReleaseMetadata{}) {
+		loaded = append(loaded, "release defaults")
+	}
+
 	if len(loaded) == 0 {
-		loaded = append(loaded, "no values")
+		loaded = append(loaded, "nothing")
 	}
 
 	log.Default.Info(ctx, "Using publish-time inputs from %s: %s", werfdata.DirName, strings.Join(loaded, ", "))

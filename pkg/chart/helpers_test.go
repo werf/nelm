@@ -67,7 +67,12 @@ type werfDataSetFile struct {
 type warningsLogger struct {
 	log.Logger
 
+	infos    []string
 	warnings []string
+}
+
+func (l *warningsLogger) Info(_ context.Context, format string, a ...interface{}) {
+	l.infos = append(l.infos, fmt.Sprintf(format, a...))
 }
 
 func (l *warningsLogger) Warn(_ context.Context, format string, a ...interface{}) {

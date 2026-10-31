@@ -504,6 +504,63 @@ func TestRenderChart_WerfDataIgnoreSecretKey(t *testing.T) {
 	assert.Equal(t, ciphertext, renderedChartValues(t, result)["s"])
 }
 
+func TestRenderChart_WerfDataInfoLine(t *testing.T) {
+	tests := []struct {
+		name     string
+		files    map[string]string
+		wantLine string
+	}{
+		{
+			name: "values and metadata",
+			files: map[string]string{
+				".werf-data/metadata.yaml": `apiVersion: v2
+values:
+  values: true
+  valuesSet: ["a=1", "b=2"]
+  defaultSecretValuesDisable: true
+patches: ["patches/0.yaml"]
+defaultPatchesDisable: true
+release:
+  name: rel
+extraAnnotations:
+  team: payments
+extraLabels:
+  tier: backend
+extraRuntimeAnnotations:
+  owner: secret-owner
+releaseInfoAnnotations:
+  info: secret-info
+`,
+				".werf-data/values.yaml":    "a: values",
+				".werf-data/patches/0.yaml": "render: []",
+			},
+			wantLine: "Using publish-time inputs from .werf-data: values, 2 --set, default secret values disabled, 1 patches files, default patches disabled, annotations, labels, runtime annotations, release info annotations, release defaults",
+		},
+		{
+			name:     "nothing",
+			files:    map[string]string{".werf-data/metadata.yaml": "apiVersion: v2\n"},
+			wantLine: "Using publish-time inputs from .werf-data: nothing",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := &warningsLogger{Logger: log.Default}
+			log.Default = logger
+			t.Cleanup(func() { log.Default = logger.Logger })
+
+			chartPath := writeWerfDataTestChart(t, werfDataCardChart("", "", "", ""), tt.files)
+
+			_, err := renderWerfDataTestChart(t, chartPath, RenderChartOptions{})
+			require.NoError(t, err)
+
+			assert.Equal(t, []string{tt.wantLine}, lo.Filter(logger.infos, func(line string, _ int) bool {
+				return strings.Contains(line, werfdata.DirName)
+			}))
+		})
+	}
+}
+
 func TestRenderChart_WerfDataSchemaValidation(t *testing.T) {
 	strictRootSchema := `{"type":"object","additionalProperties":false,"properties":{"foo":{"type":"string"},"sub":{"type":"object"}}}`
 	strictSubSchema := `{"type":"object","additionalProperties":false,"properties":{"a":{"type":"string"},"global":{"type":"object"}}}`
