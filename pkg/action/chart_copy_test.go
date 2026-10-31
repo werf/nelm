@@ -36,6 +36,32 @@ import (
 	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 )
 
+func TestChartCopyPlainHTTP(t *testing.T) {
+	tests := []struct {
+		host          string
+		insecureHosts []string
+		expected      bool
+	}{
+		{host: "localhost", expected: true},
+		{host: "localhost:32768", expected: true},
+		{host: "127.0.0.1:5000", expected: true},
+		{host: "127.1.2.3", expected: true},
+		{host: "[::1]:5000", expected: true},
+		{host: "registry.example.com", expected: false},
+		{host: "registry.example.com:5000", expected: false},
+		{host: "10.0.0.1:5000", expected: false},
+		{host: "localhost.example.com", expected: false},
+		{host: "registry.example.com", insecureHosts: []string{"registry.example.com"}, expected: true},
+		{host: "images.example.com", insecureHosts: []string{"registry.example.com"}, expected: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.host, func(t *testing.T) {
+			assert.Equal(t, tt.expected, chartCopyPlainHTTP(tt.host, tt.insecureHosts))
+		})
+	}
+}
+
 func TestChartCopy_ArchiveCanceled(t *testing.T) {
 	chartData := buildChartCopyTestChart(t, map[string]string{"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\n"})
 	archivePath := writeWerfChartCopyTestArchive(t, chartData, nil)
@@ -248,7 +274,7 @@ func TestChartCopy_BasicAuthOnlyForChartHosts(t *testing.T) {
 		hostileAuthorization []string
 	)
 
-	hostile := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	hostile := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 
 		hostileAuthorization = append(hostileAuthorization, r.Header.Get("Authorization"))
@@ -260,7 +286,7 @@ func TestChartCopy_BasicAuthOnlyForChartHosts(t *testing.T) {
 	t.Cleanup(hostile.Close)
 
 	chartData := buildChartCopyTestChart(t, map[string]string{
-		"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: " + strings.TrimPrefix(hostile.URL, "https://") + "/images:backend\n",
+		"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: " + strings.TrimPrefix(hostile.URL, "http://") + "/images:backend\n",
 	})
 	_, err := client.Push(chartData, host+"/src/app:1.0.0")
 	require.NoError(t, err)
@@ -268,7 +294,6 @@ func TestChartCopy_BasicAuthOnlyForChartHosts(t *testing.T) {
 	opts := newChartCopyTestOptions(t)
 	opts.ChartRepoBasicAuthUsername = "user"
 	opts.ChartRepoBasicAuthPassword = "secret"
-	opts.ChartRepoCAPath = writeChartCopyTestCA(t, hostile)
 
 	require.Error(t, ChartCopy(newChartPackTestContext(), "oci://"+host+"/src/app:1.0.0", "oci://"+host+"/dst/app", opts))
 
@@ -388,22 +413,6 @@ func TestChartCopy_ImagesFunc(t *testing.T) {
 	assert.Equal(t, map[string]string{sourceRef: fmt.Sprintf("%s:abc@%s", dst, imageDesc.Digest)}, rewriteMapping)
 }
 
-func TestChartCopy_InsecureOnlyForChartHosts(t *testing.T) {
-	host := newChartCopyTestRegistry(t)
-	imageHost := newChartCopyTestRegistry(t)
-	client := newChartCopyTestRegistryClient(t)
-
-	image := pushChartCopyTestImage(t, imageHost+"/images", "backend", "amd64")
-	chartData := buildChartCopyTestChart(t, map[string]string{
-		"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: " + image.Ref + "\n",
-	})
-	_, err := client.Push(chartData, host+"/src/app:1.0.0")
-	require.NoError(t, err)
-
-	err = ChartCopy(newChartPackTestContext(), "oci://"+host+"/src/app:1.0.0", "oci://"+host+"/dst/app", newChartCopyTestOptions(t))
-	require.ErrorContains(t, err, "server gave HTTP response to HTTPS client")
-}
-
 func TestChartCopy_InvalidArchiveChartTag(t *testing.T) {
 	host := newChartCopyTestRegistry(t)
 	client := newChartCopyTestRegistryClient(t)
@@ -460,6 +469,26 @@ func TestChartCopy_InvalidVersionTag(t *testing.T) {
 		return nil
 	})
 	assert.Empty(t, pushedTags)
+}
+
+func TestChartCopy_LoopbackPlainHTTP(t *testing.T) {
+	host := newChartCopyTestRegistry(t)
+	imageHost := newChartCopyTestRegistry(t)
+	client := newChartCopyTestRegistryClient(t)
+
+	image := pushChartCopyTestImage(t, imageHost+"/images", "backend", "amd64")
+	chartData := buildChartCopyTestChart(t, map[string]string{
+		"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: " + image.Ref + "\n",
+	})
+	_, err := client.Push(chartData, host+"/src/app:1.0.0")
+	require.NoError(t, err)
+
+	opts := newChartCopyTestOptions(t)
+	opts.ChartRepoInsecure = false
+
+	dst := host + "/dst/app"
+	require.NoError(t, ChartCopy(newChartPackTestContext(), "oci://"+host+"/src/app:1.0.0", "oci://"+dst, opts))
+	requireChartCopyTestImage(t, dst, "backend", image)
 }
 
 func TestChartCopy_NonDistributableLayers(t *testing.T) {

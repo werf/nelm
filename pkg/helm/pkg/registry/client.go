@@ -79,6 +79,7 @@ type (
 		credentialsStore   credentials.Store
 		httpClient         *http.Client
 		plainHTTP          bool
+		plainHTTPHost      func(host string) bool
 	}
 
 	// ClientOption allows specifying various settings configurable by the user for overriding the defaults
@@ -196,6 +197,14 @@ func ClientOptBasicAuthHosts(hosts ...string) ClientOption {
 	}
 }
 
+// ClientOptPlainHTTPHost makes the client decide per registry host (host or host:port) whether to
+// use plain HTTP, instead of following ClientOptPlainHTTP.
+func ClientOptPlainHTTPHost(plainHTTPHost func(host string) bool) ClientOption {
+	return func(client *Client) {
+		client.plainHTTPHost = plainHTTPHost
+	}
+}
+
 // ClientOptWriter returns a function that sets the writer setting on client options set
 func ClientOptWriter(out io.Writer) ClientOption {
 	return func(client *Client) {
@@ -278,7 +287,7 @@ func (c *Client) Login(host string, options ...LoginOption) error {
 	if err != nil {
 		return err
 	}
-	reg.PlainHTTP = c.plainHTTP
+	reg.PlainHTTP = isPlainHTTP(c.plainHTTP, c.plainHTTPHost, reg.Reference.Registry)
 	cred := auth.Credential{Username: c.username, Password: c.password}
 	c.authorizer.ForceAttemptOAuth2 = true
 	reg.Client = c.authorizer
@@ -756,7 +765,7 @@ func (c *Client) PushContext(ctx context.Context, data []byte, ref string, optio
 	if err != nil {
 		return nil, err
 	}
-	repository.PlainHTTP = c.plainHTTP
+	repository.PlainHTTP = isPlainHTTP(c.plainHTTP, c.plainHTTPHost, repository.Reference.Registry)
 	repository.Client = c.authorizer
 
 	manifestDescriptor, err = oras.ExtendedCopy(ctx, memoryStore, parsedRef.String(), repository, parsedRef.String(), oras.DefaultExtendedCopyOptions)
@@ -866,7 +875,7 @@ func (c *Client) Tags(ref string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	repository.PlainHTTP = c.plainHTTP
+	repository.PlainHTTP = isPlainHTTP(c.plainHTTP, c.plainHTTPHost, repository.Reference.Registry)
 	repository.Client = c.authorizer
 
 	var tagVersions []*semver.Version
@@ -905,7 +914,7 @@ func (c *Client) Resolve(ref string) (desc ocispec.Descriptor, err error) {
 	if err != nil {
 		return desc, err
 	}
-	remoteRepository.PlainHTTP = c.plainHTTP
+	remoteRepository.PlainHTTP = isPlainHTTP(c.plainHTTP, c.plainHTTPHost, remoteRepository.Reference.Registry)
 	remoteRepository.Client = c.authorizer
 
 	parsedReference, err := newReference(ref)
@@ -1028,4 +1037,13 @@ func (c *Client) tagManifest(ctx context.Context, memoryStore *memory.Store,
 
 	return oras.TagBytes(ctx, memoryStore, ocispec.MediaTypeImageManifest,
 		manifestData, parsedRef.String())
+}
+
+// isPlainHTTP returns whether to use plain HTTP with the registry host.
+func isPlainHTTP(plainHTTP bool, plainHTTPHost func(host string) bool, host string) bool {
+	if plainHTTPHost != nil {
+		return plainHTTPHost(host)
+	}
+
+	return plainHTTP
 }

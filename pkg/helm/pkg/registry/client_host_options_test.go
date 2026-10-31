@@ -44,3 +44,20 @@ func TestClientOptBasicAuthHosts(t *testing.T) {
 		})
 	}
 }
+
+func TestClientOptPlainHTTPHost(t *testing.T) {
+	client, err := NewClient(
+		ClientOptPlainHTTP(),
+		ClientOptPlainHTTPHost(func(host string) bool { return host == "plain.example.com:5000" }),
+		ClientOptCredentialsFile(filepath.Join(t.TempDir(), "config.json")),
+	)
+	require.NoError(t, err)
+
+	plain, err := client.Generic().Repository("plain.example.com:5000/app")
+	require.NoError(t, err)
+	assert.True(t, plain.PlainHTTP)
+
+	secure, err := client.Generic().Repository("secure.example.com/app")
+	require.NoError(t, err)
+	assert.False(t, secure.PlainHTTP)
+}

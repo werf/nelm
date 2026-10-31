@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -1141,15 +1140,4 @@ func verifyChartCopyTestSignature(t *testing.T, chartData, provData []byte, arch
 
 	_, err = signatory.Verify(chartData, provData, archiveName)
 	require.NoError(t, err)
-}
-
-// writeChartCopyTestCA writes the certificate of the TLS test server into a PEM file and returns its
-// path.
-func writeChartCopyTestCA(t *testing.T, server *httptest.Server) string {
-	t.Helper()
-
-	caPath := filepath.Join(t.TempDir(), "ca.pem")
-	require.NoError(t, os.WriteFile(caPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw}), 0o644))
-
-	return caPath
 }

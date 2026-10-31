@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net"
 	"os"
 	"path"
 	"path/filepath"
@@ -421,6 +422,7 @@ type chartCopyImageRef struct {
 // ChartCopy copies the chart at from, with every image in the helm.sh/images annotations of the
 // chart and its dependencies, to to. Non-distributable layers are copied too; a blob the source
 // does not serve is an error. Referrers of the images, like signatures and SBOMs, are not copied.
+// Loopback registries are reached over plain HTTP.
 // Each address is either "oci://REPO[:TAG]" (or "docker://REPO[:TAG]" or "REPO[:TAG]", as in werf),
 // or an archive: "archive:PATH" or a
 // path ending in .tar, .tar.gz or .tgz. A source repository without a tag means the "latest" tag.
@@ -472,18 +474,19 @@ func ChartCopy(ctx context.Context, from, to string, opts ChartCopyOptions) erro
 		return strings.Split(addr.Repo, "/")[0], addr.Repo != ""
 	})
 
-	clientOpts := []registry.ClientOption{registry.ClientOptBasicAuthHosts(chartHosts...)}
-
-	// Plain HTTP is for the chart repositories only, even with TLS options, which are then for the
-	// image repositories on other hosts.
-	var plainHTTPHosts []string
+	// Plain HTTP is for loopback registries and, when insecure, the chart repositories, even with
+	// TLS options, which are then for the image repositories on other hosts.
+	var insecureHosts []string
 	if opts.ChartRepoInsecure {
-		plainHTTPHosts = chartHosts
-
-		clientOpts = append(clientOpts, registry.ClientOptPlainHTTP())
+		insecureHosts = chartHosts
 	}
 
-	registryClient, err := newChartRepoRegistryClient(ctx, opts.ChartRepoConnectionOptions, opts.RegistryCredentialsPath, clientOpts...)
+	registryClient, err := newChartRepoRegistryClient(ctx, opts.ChartRepoConnectionOptions, opts.RegistryCredentialsPath,
+		registry.ClientOptBasicAuthHosts(chartHosts...),
+		registry.ClientOptPlainHTTPHost(func(host string) bool {
+			return chartCopyPlainHTTP(host, insecureHosts)
+		}),
+	)
 	if err != nil {
 		return fmt.Errorf("construct registry client: %w", err)
 	}
@@ -492,7 +495,7 @@ func ChartCopy(ctx context.Context, from, to string, opts ChartCopyOptions) erro
 	if fromAddr.ArchivePath != "" {
 		source, err = readChartCopyArchive(ctx, fromAddr.ArchivePath, tempDir, &chartCopyExpansion{Max: opts.ArchiveMaxExpandedSize})
 	} else {
-		source, err = readChartCopyRepo(ctx, registryClient, fromAddr, plainHTTPHosts)
+		source, err = readChartCopyRepo(ctx, registryClient, fromAddr)
 	}
 
 	if err != nil {
@@ -1176,7 +1179,7 @@ func pushChartCopyFileBlob(ctx context.Context, store *oci.Store, filePath, medi
 	return desc, nil
 }
 
-func readChartCopyRepo(ctx context.Context, registryClient *registry.Client, addr *chartCopyAddress, plainHTTPHosts []string) (*chartCopySource, error) {
+func readChartCopyRepo(ctx context.Context, registryClient *registry.Client, addr *chartCopyAddress) (*chartCopySource, error) {
 	tag := strings.ReplaceAll(lo.CoalesceOrEmpty(addr.Tag, "latest"), "+", "_")
 
 	result, err := registryClient.PullContext(ctx, fmt.Sprintf("%s:%s", addr.Repo, tag), registry.PullOptWithProv(true), registry.PullOptIgnoreMissingProv(true))
@@ -1213,8 +1216,6 @@ func readChartCopyRepo(ctx context.Context, registryClient *registry.Client, add
 			if err != nil {
 				return nil, ocispec.Descriptor{}, fmt.Errorf("construct repository: %w", err)
 			}
-
-			repository.PlainHTTP = slices.Contains(plainHTTPHosts, repository.Reference.Registry)
 
 			desc, err := repository.Resolve(ctx, lo.CoalesceOrEmpty(image.Digest, image.Tag, "latest"))
 			if err != nil {
@@ -1496,6 +1497,29 @@ func chartCopyMetadataWithoutAnnotations(chartAccessor helmchart.Accessor) ([]by
 	}
 
 	return metadata, nil
+}
+
+// chartCopyPlainHTTP returns whether to reach the registry host (host or host:port) over plain
+// HTTP: loopback registries are, as containerd and go-containerregistry do, and so are the
+// insecure ones.
+func chartCopyPlainHTTP(host string, insecureHosts []string) bool {
+	if slices.Contains(insecureHosts, host) {
+		return true
+	}
+
+	hostname := host
+	if splitHost, _, err := net.SplitHostPort(host); err == nil {
+		hostname = splitHost
+	}
+
+	hostname = strings.TrimSuffix(strings.TrimPrefix(hostname, "["), "]")
+	if hostname == "localhost" {
+		return true
+	}
+
+	ip := net.ParseIP(hostname)
+
+	return ip != nil && ip.IsLoopback()
 }
 
 func chartCopyRawValues(chartAccessor helmchart.Accessor) *chartcommon.File {
