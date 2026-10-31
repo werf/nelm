@@ -981,6 +981,7 @@ func newChartRepoRegistryClient(ctx context.Context, opts common.ChartRepoConnec
 		registry.ClientOptBasicAuth(opts.ChartRepoBasicAuthUsername, opts.ChartRepoBasicAuthPassword),
 	}
 
+	var transport http.RoundTripper
 	if opts.ChartRepoCertPath != "" && opts.ChartRepoKeyPath != "" || opts.ChartRepoCAPath != "" || opts.ChartRepoSkipTLSVerify {
 		tlsConfig, err := tlsutil.NewTLSConfig(
 			tlsutil.WithInsecureSkipVerify(opts.ChartRepoSkipTLSVerify),
@@ -991,14 +992,23 @@ func newChartRepoRegistryClient(ctx context.Context, opts common.ChartRepoConnec
 			return nil, fmt.Errorf("build TLS config: %w", err)
 		}
 
-		clientOpts = append(clientOpts, registry.ClientOptHTTPClient(&http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: tlsConfig,
-				Proxy:           http.ProxyFromEnvironment,
-			},
-		}))
+		transport = &http.Transport{
+			TLSClientConfig: tlsConfig,
+			Proxy:           http.ProxyFromEnvironment,
+		}
 	} else if opts.ChartRepoInsecure {
 		clientOpts = append(clientOpts, registry.ClientOptPlainHTTP())
+	}
+
+	if transport != nil || opts.ChartRepoRequestTimeout > 0 {
+		if transport == nil {
+			transport = registry.NewTransport(log.Default.AcceptLevel(ctx, log.DebugLevel))
+		}
+
+		clientOpts = append(clientOpts, registry.ClientOptHTTPClient(&http.Client{
+			Transport: transport,
+			Timeout:   opts.ChartRepoRequestTimeout,
+		}))
 	}
 
 	client, err := registry.NewClient(clientOpts...)
