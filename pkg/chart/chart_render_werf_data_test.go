@@ -54,6 +54,22 @@ func TestRenderChart_WerfDataBelowDeployOptions(t *testing.T) {
 			wantReleaseConfig: "l: [deploy0, patched]",
 		},
 		{
+			name:              "deploy --set patches a longer list from deploy --values over a list from publish --set",
+			chart:             werfDataCardChart("", "", "", ""),
+			published:         werfDataFlags{Set: []string{"l[0]=a"}},
+			deployFlags:       werfDataFlags{Values: "l: [v0, v1, v2]", Set: []string{"l[1]=b"}},
+			want:              map[string]interface{}{"l": []interface{}{"v0", "b", "v2"}},
+			wantReleaseConfig: "l: [v0, b, v2]",
+		},
+		{
+			name:              "deploy --set patches a list from deploy --secret-values over a list from publish --set",
+			chart:             werfDataCardChart("", "", "", ""),
+			published:         werfDataFlags{Set: []string{"l[0]=a"}},
+			deployFlags:       werfDataFlags{SecretValues: "l: [v0, v1, v2]", Set: []string{"l[1]=b"}}, //nolint:gosec // Test values, not credentials.
+			want:              map[string]interface{}{"l": []interface{}{"v0", "b", "v2"}},
+			wantReleaseConfig: "l: [v0, b, v2]",
+		},
+		{
 			name:              "deploy --values replace a map set by publish --set with a scalar",
 			chart:             werfDataCardChart("", "", "", ""),
 			published:         werfDataFlags{Set: []string{"m.a=1"}},
