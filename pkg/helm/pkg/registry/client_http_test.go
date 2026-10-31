@@ -19,8 +19,12 @@ package registry
 import (
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -199,6 +203,38 @@ func (suite *HTTPRegistryClientTestSuite) Test_7_ValidateReferenceNonSemverTag()
 			suite.Equal(meta.Version, result.Chart.Meta.Version)
 		})
 	}
+}
+
+func (suite *HTTPRegistryClientTestSuite) Test_8_PushExtraTagFailure() {
+	chartData, err := os.ReadFile("../downloader/testdata/local-subchart-0.1.0.tgz")
+	suite.Require().NoError(err)
+	meta, err := extractChartMeta(chartData)
+	suite.Require().NoError(err)
+
+	target, err := url.Parse("http://" + suite.DockerRegistryHost)
+	suite.Require().NoError(err)
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/manifests/latest") {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		r.SetBasicAuth(testUsername, testPassword)
+		proxy.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+
+	var out strings.Builder
+	client, err := NewClient(ClientOptPlainHTTP(), ClientOptWriter(&out))
+	suite.Require().NoError(err)
+
+	ref := fmt.Sprintf("%s/failingtag/%s:%s", strings.TrimPrefix(server.URL, "http://"), meta.Name, meta.Version)
+	_, err = client.Push(chartData, ref, PushOptExtraTags([]string{"latest"}))
+	suite.Require().ErrorContains(err, fmt.Sprintf("chart pushed as %s, but tagging it also as \"latest\" failed", ref))
+	suite.Contains(out.String(), "Pushed: "+ref)
+
+	_, err = client.Pull(ref)
+	suite.Require().NoError(err)
 }
 
 func TestHTTPRegistryClientTestSuite(t *testing.T) {

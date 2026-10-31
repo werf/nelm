@@ -730,12 +730,6 @@ func (c *Client) Push(data []byte, ref string, options ...PushOption) (*PushResu
 		return nil, err
 	}
 
-	for _, tag := range extraTags {
-		if err := repository.Tag(ctx, manifestDescriptor, tag); err != nil {
-			return nil, fmt.Errorf("tag manifest %s as %q: %w", manifestDescriptor.Digest, tag, err)
-		}
-	}
-
 	chartSummary := &descriptorPushSummaryWithMeta{
 		Meta: meta,
 	}
@@ -767,6 +761,9 @@ func (c *Client) Push(data []byte, ref string, options ...PushOption) (*PushResu
 		_, _ = fmt.Fprint(c.out, registryUnderscoreMessage+"\n")
 	}
 	for _, tag := range extraTags {
+		if err := repository.Tag(ctx, manifestDescriptor, tag); err != nil {
+			return nil, fmt.Errorf("chart pushed as %s, but tagging it also as %q failed: %w", result.Ref, tag, err)
+		}
 		_, _ = fmt.Fprintf(c.out, "Tagged: %s:%s\n", parsedRef.Registry+"/"+parsedRef.Repository, tag)
 	}
 
@@ -927,9 +924,10 @@ func (c *Client) ValidateReference(ref, version string, u *url.URL) (string, *ur
 
 	// Evaluate whether an explicit version has been provided. Otherwise, determine version to use
 	_, errSemVer := semver.NewVersion(version)
+	_, errConstraint := semver.NewConstraint(version)
 	if errSemVer == nil {
 		tag = version
-	} else if exists, err := c.tagExists(registryReference, version); err != nil {
+	} else if exists, err := c.tagExists(registryReference, version); err != nil && errConstraint != nil {
 		return "", nil, fmt.Errorf("check tag %q: %w", version, err)
 	} else if exists {
 		tag = version
