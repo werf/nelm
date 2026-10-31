@@ -159,6 +159,10 @@ func loadDirWerf(ctx context.Context, dir string) (chart.Charter, error) {
 
 	switch helmOpts.ChartLoadOpts.ChartType {
 	case nelmcommon.LegacyChartTypeChart, nelmcommon.LegacyChartTypeBundle:
+		if helmOpts.ChartLoadOpts.NoDependenciesLoad {
+			break
+		}
+
 		var loadChartDirFunc func(ctx context.Context, dir string) ([]*nelmcommon.BufferedFile, error)
 		if nelmcommon.ChartFileReader != nil {
 			loadChartDirFunc = nelmcommon.ChartFileReader.LoadChartDir

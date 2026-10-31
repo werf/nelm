@@ -29,6 +29,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader/archive"
 	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/ignore"
+	"github.com/werf/nelm/v2/pkg/werfdata"
 )
 
 var utf8bom = []byte{0xEF, 0xBB, 0xBF}
@@ -119,14 +120,14 @@ func getFilesFromLocalFilesystem(dir string) ([]*archive.BufferedFile, error) {
 		if fi.IsDir() {
 			// Directory-based ignore rules should involve skipping the entire
 			// contents of that directory.
-			if rules.Ignore(n, fi) {
+			if !werfdata.IsWerfDataFileInTree(n) && rules.Ignore(n, fi) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 
 		// If a .helmignore file matches, skip this file.
-		if rules.Ignore(n, fi) {
+		if !werfdata.IsWerfDataFileInTree(n) && rules.Ignore(n, fi) {
 			return nil
 		}
 

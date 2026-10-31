@@ -38,6 +38,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader/archive"
 	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	legacysecret "github.com/werf/nelm/v2/pkg/legacy/secret"
+	"github.com/werf/nelm/v2/pkg/werfdata"
 )
 
 // ChartLoader loads a chart.
@@ -169,9 +170,23 @@ func LoadFiles(ctx context.Context, files []*archive.BufferedFile) (*chart.Chart
 			subcharts[cname] = append(subcharts[cname], &archive.BufferedFile{Name: fname, ModTime: f.ModTime, Data: f.Data})
 		case applyWerfExtensions && strings.HasPrefix(f.Name, "ts/") && !strings.HasPrefix(f.Name, "ts/node_modules/"):
 			c.RuntimeFiles = append(c.RuntimeFiles, &chartcommon.File{Name: f.Name, ModTime: f.ModTime, Data: f.Data})
+		case werfdata.IsWerfDataFile(f.Name):
+			c.WerfDataFiles = append(c.WerfDataFiles, &chartcommon.File{Name: f.Name, ModTime: f.ModTime, Data: f.Data})
 		default:
 			c.Files = append(c.Files, &chartcommon.File{Name: f.Name, ModTime: f.ModTime, Data: f.Data})
 		}
+	}
+
+	if applyWerfExtensions && helmOpts.ChartLoadOpts.WerfDataValuesSwitches && len(c.WerfDataFiles) > 0 {
+		data, err := werfdata.Parse(c.WerfDataFiles)
+		if err != nil {
+			return c, fmt.Errorf("cannot load %s: %w", werfdata.DirName, err)
+		}
+
+		// Set before the secrets are decoded, so that the default secret values of the chart and of
+		// its dependencies, which inherit these options, are not decrypted.
+		helmOpts.ChartLoadOpts.DefaultSecretValuesDisable = helmOpts.ChartLoadOpts.DefaultSecretValuesDisable || data.Metadata.Values.DefaultSecretValuesDisable
+		helmOpts.ChartLoadOpts.DefaultValuesDisable = helmOpts.ChartLoadOpts.DefaultValuesDisable || data.Metadata.Values.DefaultValuesDisable
 	}
 
 	if applyWerfExtensions {

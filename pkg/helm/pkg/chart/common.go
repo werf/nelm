@@ -120,6 +120,10 @@ func (r *v2Accessor) RuntimeFiles() []*common.File {
 	return r.chrt.RuntimeFiles
 }
 
+func (r *v2Accessor) WerfDataFiles() []*common.File {
+	return r.chrt.WerfDataFiles
+}
+
 func (r *v2Accessor) AddRuntimeFile(name string, data []byte) {
 	r.chrt.AddRuntimeFile(name, data)
 }
@@ -186,7 +190,7 @@ func (r *v3Accessor) Dependencies() []Charter {
 }
 
 func (r *v3Accessor) MetaDependencies() []Dependency {
-	var deps = make([]Dependency, len(r.chrt.Dependencies()))
+	var deps = make([]Dependency, len(r.chrt.Metadata.Dependencies))
 	for i, c := range r.chrt.Metadata.Dependencies {
 		deps[i] = c
 	}
@@ -207,6 +211,10 @@ func (r *v3Accessor) Deprecated() bool {
 
 func (r *v3Accessor) RuntimeFiles() []*common.File {
 	return r.chrt.RuntimeFiles
+}
+
+func (r *v3Accessor) WerfDataFiles() []*common.File {
+	return r.chrt.WerfDataFiles
 }
 
 func (r *v3Accessor) AddRuntimeFile(name string, data []byte) {

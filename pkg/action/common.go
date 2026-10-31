@@ -36,6 +36,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/release"
 	"github.com/werf/nelm/v2/pkg/resource/spec"
 	"github.com/werf/nelm/v2/pkg/util"
+	"github.com/werf/nelm/v2/pkg/werfdata"
 )
 
 func init() {
@@ -265,10 +266,18 @@ func chartMetadata(chart helmchart.Accessor) map[string]interface{} {
 	return metadata
 }
 
+// Publish-time patches from the chart's .werf-data go between the chart-shipped ones and the
+// caller's patches files, and publish-time --no-default-patches disables the chart-shipped ones
+// too.
 func collectPatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles []string, legacyPatches spec.Patches) (spec.Patches, error) {
+	werfData, err := chartWerfData(chart)
+	if err != nil {
+		return spec.Patches{}, err
+	}
+
 	var patches spec.Patches
 
-	if !defaultDisable {
+	if !defaultDisable && !werfData.Metadata.DefaultPatchesDisable {
 		chartPatches, err := spec.CollectChartPatches(chart)
 		if err != nil {
 			return spec.Patches{}, fmt.Errorf("collect chart patches: %w", err)
@@ -276,6 +285,21 @@ func collectPatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles 
 
 		patches.Diff = append(patches.Diff, chartPatches.Diff...)
 		patches.Render = append(patches.Render, chartPatches.Render...)
+	}
+
+	publishPatchesFiles, err := werfData.PatchesFiles()
+	if err != nil {
+		return spec.Patches{}, fmt.Errorf("get %s patches files: %w", werfdata.DirName, err)
+	}
+
+	for i, data := range publishPatchesFiles {
+		publishPatches, err := spec.ParsePatchesData(data)
+		if err != nil {
+			return spec.Patches{}, fmt.Errorf("patches file %s/%s: %w", werfdata.DirName, werfData.Metadata.Patches[i], err)
+		}
+
+		patches.Diff = append(patches.Diff, publishPatches.Diff...)
+		patches.Render = append(patches.Render, publishPatches.Render...)
 	}
 
 	filePatches, err := spec.LoadPatchesFiles(patchesFiles)

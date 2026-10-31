@@ -34,6 +34,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/resource/spec"
 	"github.com/werf/nelm/v2/pkg/track"
 	"github.com/werf/nelm/v2/pkg/util"
+	"github.com/werf/nelm/v2/pkg/werfdata"
 )
 
 const DefaultReleaseInstallLogLevel = log.InfoLevel
@@ -395,6 +396,13 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}
 	}
 
+	// Like release rollback, auto-rollback uses the caller's options, without the ones from the
+	// .werf-data of the new chart that are merged below.
+	rollbackRuntimeOptions := opts.ReleaseInstallRuntimeOptions
+	if usePlan && planArtifact.Data.RollbackOptions != nil {
+		rollbackRuntimeOptions = *planArtifact.Data.RollbackOptions
+	}
+
 	var (
 		installPlan  *plan.Plan
 		newRelease   helmrel.Accessor
@@ -433,6 +441,11 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			log.Default.Debug(ctx, "Use chart render result")
 
 			installable := opts.LegacyChartRenderResult.installable
+
+			opts.ReleaseInstallRuntimeOptions, err = mergeWerfDataRuntimeOptions(installable.Chart, opts.ReleaseInstallRuntimeOptions)
+			if err != nil {
+				return nil, fmt.Errorf("merge chart %s options: %w", werfdata.DirName, err)
+			}
 
 			if installable.Revision != newRevision {
 				return nil, fmt.Errorf("chart render result release revision mismatch: expected %d, got %d", installable.Revision, newRevision)
@@ -515,6 +528,11 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			})
 			if err != nil {
 				return nil, fmt.Errorf("render chart: %w", err)
+			}
+
+			opts.ReleaseInstallRuntimeOptions, err = mergeWerfDataRuntimeOptions(renderChartResult.Chart, opts.ReleaseInstallRuntimeOptions)
+			if err != nil {
+				return nil, fmt.Errorf("merge chart %s options: %w", werfdata.DirName, err)
 			}
 
 			log.Default.Debug(ctx, "Resolve patches")
@@ -809,7 +827,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		if opts.AutoRollback && prevDeployedRelease != nil {
 			runRollbackPlanResult, nonCritErrs, critErrs := runRollbackPlan(ctx, releaseName, releaseNamespace, newRelease, prevDeployedRelease, taskStore, logStore, informerFactory, history, clientFactory, runRollbackPlanOptions{
-				ReleaseInstallRuntimeOptions: opts.ReleaseInstallRuntimeOptions,
+				ReleaseInstallRuntimeOptions: rollbackRuntimeOptions,
 				TrackingOptions:              opts.TrackingOptions,
 				LegacyPatches:                opts.LegacyPatches,
 				NetworkParallelism:           opts.NetworkParallelism,

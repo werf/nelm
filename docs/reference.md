@@ -24,7 +24,6 @@
   - [chart upload](#chart-upload)
   - [chart pack](#chart-pack)
   - [chart secret key create](#chart-secret-key-create)
-  - [chart secret key rotate](#chart-secret-key-rotate)
   - [chart secret values-file edit](#chart-secret-values-file-edit)
   - [chart secret values-file encrypt](#chart-secret-values-file-encrypt)
   - [chart secret values-file decrypt](#chart-secret-values-file-decrypt)
@@ -76,7 +75,6 @@
 ### Secret commands
 
 - [`nelm chart secret key create`](#chart-secret-key-create) — Create a new chart secret key\.
-- [`nelm chart secret key rotate`](#chart-secret-key-rotate) — Reencrypt secret files with a new secret key\.
 - [`nelm chart secret values-file edit`](#chart-secret-values-file-edit) — Interactively edit encrypted values file\.
 - [`nelm chart secret values-file encrypt`](#chart-secret-values-file-encrypt) — Encrypt values file and print result to stdout\.
 - [`nelm chart secret values-file decrypt`](#chart-secret-values-file-decrypt) — Decrypt values file and print result to stdout\.
@@ -3105,6 +3103,10 @@ nelm chart upload [archive] [remote] [flags]
 
   path to the file containing repository names and URLs
 
+- `--tag` (default: `[]`)
+
+  additional tag pointing to the pushed chart, besides its version tag \(can be specified multiple times\)
+
 - `--username` (default: `""`)
 
   chart repository username where to locate the requested chart
@@ -3134,11 +3136,90 @@ unless your environment is otherwise configured\.
 nelm chart pack [CHART_PATH] [...] [flags]
 ```
 
+**Options:**
+
+- `--name` (default: `""`)
+
+  Set the chart name\. Vars: \$NELM\_NAME, \$NELM\_CHART\_PACK\_NAME
+
+
+**Values options:**
+
+- `--no-default-values` (default: `false`)
+
+  Ignore values\.yaml of the top\-level chart\. Vars: \$NELM\_NO\_DEFAULT\_VALUES, \$NELM\_CHART\_PACK\_NO\_DEFAULT\_VALUES
+
+- `--reset-values` (default: `false`)
+
+  Drop all publish\-time inputs stored in \.werf\-data of the chart by previous packs \(values, secret values, \-\-set\*, \-\-set\-root\-json, patches, \-\-no\-default\-\* switches, release defaults, extra values, annotations, labels and images, including the annotations and labels moved from extra\_annotations\.json and extra\_labels\.json of a werf \<= 3\.12 bundle\) before storing the ones of this pack\. Vars: \$NELM\_RESET\_VALUES, \$NELM\_CHART\_PACK\_RESET\_VALUES
+
+- `--set` (default: `[]`)
+
+  Set new values, where the key is the value path and the value is the value\. Vars: \$NELM\_SET, \$NELM\_CHART\_PACK\_SET
+
+- `--set-file` (default: `[]`)
+
+  Set new values, where the key is the value path and the value is the path to the file with the value content\. Vars: \$NELM\_SET\_FILE, \$NELM\_CHART\_PACK\_SET\_FILE
+
+- `--set-json` (default: `[]`)
+
+  Set new values, where the key is the value path and the value is JSON\. Vars: \$NELM\_SET\_JSON, \$NELM\_CHART\_PACK\_SET\_JSON
+
+- `--set-literal` (default: `[]`)
+
+  Set new values, where the key is the value path and the value is the value\. The value will always become a literal string\. Vars: \$NELM\_SET\_LITERAL, \$NELM\_CHART\_PACK\_SET\_LITERAL
+
+- `--set-root-json` (default: `[]`)
+
+  Set new keys in the global context \(\$\), where the key is the value path and the value is JSON\. This is meant to be generated inside the program, so use \-\-set\-json instead, unless you know what you are doing\. Vars: \$NELM\_SET\_ROOT\_JSON, \$NELM\_CHART\_PACK\_SET\_ROOT\_JSON
+
+- `--set-string` (default: `[]`)
+
+  Set new values, where the key is the value path and the value is the value\. The value will always become a string\. Vars: \$NELM\_SET\_STRING, \$NELM\_CHART\_PACK\_SET\_STRING
+
+- `--values` (default: `[]`)
+
+  Additional values files\. Vars: \$NELM\_VALUES, \$NELM\_CHART\_PACK\_VALUES
+
+
+**Secret options:**
+
+- `--no-default-secret-values` (default: `false`)
+
+  Ignore secret\-values\.yaml of the top\-level chart\. Vars: \$NELM\_NO\_DEFAULT\_SECRET\_VALUES, \$NELM\_CHART\_PACK\_NO\_DEFAULT\_SECRET\_VALUES
+
+- `--secret-values` (default: `[]`)
+
+  Secret values files paths\. Every value must be encrypted\. Vars: \$NELM\_SECRET\_VALUES, \$NELM\_CHART\_PACK\_SECRET\_VALUES
+
+
+**Patch options:**
+
+- `--no-default-patches` (default: `false`)
+
+  Ignore patches\.yaml of the top\-level chart and subcharts\. Vars: \$NELM\_NO\_DEFAULT\_PATCHES, \$NELM\_CHART\_PACK\_NO\_DEFAULT\_PATCHES
+
+- `--patches` (default: `[]`)
+
+  Additional patches files \(render patches for rendered resources, diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_CHART\_PACK\_PATCHES
+
+
 **TypeScript options:**
 
 - `--deno-binary-path` (default: `""`)
 
   Path to the Deno binary to use instead of auto\-downloading\. Vars: \$NELM\_DENO\_BINARY\_PATH, \$NELM\_CHART\_PACK\_DENO\_BINARY\_PATH
+
+- `--ts-no-rebuild` (default: `false`)
+
+  Reuse the existing TypeScript bundle instead of rebuilding it\. Vars: \$NELM\_TS\_NO\_REBUILD, \$NELM\_CHART\_PACK\_TS\_NO\_REBUILD
+
+
+**Chart repository options:**
+
+- `--no-update-chart-repos` (default: `false`)
+
+  Don't update chart repositories index\. Vars: \$NELM\_NO\_UPDATE\_CHART\_REPOS, \$NELM\_CHART\_PACK\_NO\_UPDATE\_CHART\_REPOS
 
 
 **Other options:**
@@ -3271,6 +3352,10 @@ nelm chart pack [CHART_PATH] [...] [flags]
 
   use a PGP private key to sign this package
 
+- `--temp-dir` (default: `""`)
+
+  The directory for temporary files\. By default, use the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
+
 - `--username` (default: `""`)
 
   chart repository username where to locate the requested chart
@@ -3303,50 +3388,6 @@ nelm chart secret key create [options...]
 - `--log-width` (default: `0`)
 
   Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_SECRET\_KEY\_CREATE\_LOG\_WIDTH
-
-- `--temp-dir` (default: `""`)
-
-  The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
-
-
-### chart secret key rotate
-
-Decrypt with an old secret key, then encrypt with a new secret key chart files secret\-values\.yaml and secret/\*\.
-
-**Usage:**
-
-```shell
-nelm chart secret key rotate [options...] --old-secret-key secret-key --new-secret-key secret-key [chart-dir]
-```
-
-**Options:**
-
-- `--new-secret-key` (default: `""`)
-
-  New secret key\. Var: \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_NEW\_SECRET\_KEY
-
-- `--old-secret-key` (default: `""`)
-
-  Old secret key\. Var: \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_OLD\_SECRET\_KEY
-
-- `--secret-values` (default: `[]`)
-
-  Secret values files paths\. Vars: \$NELM\_SECRET\_VALUES, \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_SECRET\_VALUES
-
-
-**Other options:**
-
-- `--color-mode` (default: `"auto"`)
-
-  Color mode for logs\. Allowed: auto, off, on\. Vars: \$NELM\_COLOR\_MODE, \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_COLOR\_MODE
-
-- `--log-level` (default: `"info"`)
-
-  Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_LOG\_LEVEL
-
-- `--log-width` (default: `0`)
-
-  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_LOG\_WIDTH
 
 - `--temp-dir` (default: `""`)
 
