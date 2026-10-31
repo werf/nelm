@@ -557,22 +557,44 @@ func mergeChartPackSecretValues(ctx context.Context, data *werfdata.Data, secret
 // parseEncryptedValues parses a secret values file, failing unless it is a single YAML document
 // with every value encrypted. Parse errors don't include the file contents.
 func parseEncryptedValues(data []byte) (map[string]any, error) {
-	var documents int
+	var (
+		root           *yamlv3.Node
+		emptyDocuments int
+	)
 
 	decoder := yamlv3.NewDecoder(bytes.NewReader(data))
 	for {
-		var node yamlv3.Node
-		if err := decoder.Decode(&node); errors.Is(err, io.EOF) {
+		var document yamlv3.Node
+		if err := decoder.Decode(&document); errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
 			return nil, sanitizeYAMLError(err)
 		}
 
-		documents++
+		if len(document.Content) == 0 || document.Content[0].Tag == "!!null" {
+			emptyDocuments++
+			continue
+		}
+
+		// Only a document with values first and empty documents after it are accepted, since
+		// the values are read from the first document.
+		if root != nil || emptyDocuments > 0 {
+			return nil, errors.New("has several YAML documents: remove the YAML document separators (---) so that only one document with values is left")
+		}
+
+		root = document.Content[0]
 	}
 
-	if documents > 1 {
-		return nil, fmt.Errorf("has %d YAML documents, expected one", documents)
+	if root == nil {
+		return map[string]any{}, nil
+	}
+
+	if root.Kind != yamlv3.MappingNode {
+		return nil, fmt.Errorf("expected a mapping at the top level, got %s at line %d", yamlNodeKindName(root.Kind), root.Line)
+	}
+
+	if err := checkNoDuplicateKeys(root); err != nil {
+		return nil, err
 	}
 
 	vals := map[string]any{}
@@ -823,6 +845,34 @@ func checkChartPackArchiveSize(archivePath string) error {
 
 	if totalSize >= archive.MaxDecompressedChartSize {
 		return fmt.Errorf("chart decompresses to %d bytes, a chart loader accepts less than %d bytes", totalSize, archive.MaxDecompressedChartSize)
+	}
+
+	return nil
+}
+
+// checkNoDuplicateKeys fails if a mapping at any depth repeats a key, since only one of the
+// values would be checked and the others published as they are.
+func checkNoDuplicateKeys(node *yamlv3.Node) error {
+	if node.Kind == yamlv3.MappingNode {
+		seen := map[string]bool{}
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key := node.Content[i]
+			if key.Kind != yamlv3.ScalarNode {
+				continue
+			}
+
+			if seen[key.Value] {
+				return fmt.Errorf("duplicate key %q at line %d, column %d", key.Value, key.Line, key.Column)
+			}
+
+			seen[key.Value] = true
+		}
+	}
+
+	for _, child := range node.Content {
+		if err := checkNoDuplicateKeys(child); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -1082,4 +1132,17 @@ func withoutWerfHelpersTemplate(templates []*chartcommon.File) []*chartcommon.Fi
 	return lo.Reject(templates, func(f *chartcommon.File, _ int) bool {
 		return f.Name == "templates/_werf_helpers.tpl" && len(f.Data) == 0
 	})
+}
+
+func yamlNodeKindName(kind yamlv3.Kind) string {
+	switch kind {
+	case yamlv3.SequenceNode:
+		return "a list"
+	case yamlv3.ScalarNode:
+		return "a scalar"
+	case yamlv3.AliasNode:
+		return "an alias"
+	default:
+		return "an unexpected node"
+	}
 }
