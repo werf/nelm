@@ -191,25 +191,44 @@ func ChartPack(ctx context.Context, chartPath string, opts ChartPackOptions) (*C
 		}
 	}
 
-	ctx = common.ContextWithHelmOptions(ctx, common.HelmOptions{
-		ChartLoadOpts: common.ChartLoadOptions{
-			ChartDepsDownloader:    newChartPackDependencyDownloader(ctx, chartPath, registryClient, opts),
-			ChartType:              common.LegacyChartTypeChart,
-			DefaultChartAPIVersion: v2chart.APIVersionV2,
-			DefaultChartName:       opts.Name,
-			DefaultChartVersion:    opts.Version,
-			NoSecrets:              true,
-		},
-	})
+	loadChart := func(depsDownloader common.ChartDepsDownloader) (helmchart.Charter, helmchart.Accessor, error) {
+		ctx = common.ContextWithHelmOptions(ctx, common.HelmOptions{
+			ChartLoadOpts: common.ChartLoadOptions{
+				ChartDepsDownloader:    depsDownloader,
+				ChartType:              common.LegacyChartTypeChart,
+				DefaultChartAPIVersion: v2chart.APIVersionV2,
+				DefaultChartName:       opts.Name,
+				DefaultChartVersion:    opts.Version,
+				NoDependenciesLoad:     depsDownloader == nil,
+				NoSecrets:              true,
+			},
+		})
 
-	loadedChart, err := loader.LoadDir(ctx, chartPath)
-	if err != nil {
-		return nil, fmt.Errorf("load chart %q: %w", chartPath, err)
+		loadedChart, err := loader.LoadDir(ctx, chartPath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("load chart %q: %w", chartPath, err)
+		}
+
+		chartAccessor, err := helmchart.NewAccessor(loadedChart)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create chart accessor: %w", err)
+		}
+
+		return loadedChart, chartAccessor, nil
 	}
 
-	chartAccessor, err := helmchart.NewAccessor(loadedChart)
+	// Like "helm package", the chart is packed with the dependencies it has under charts/. Only
+	// when some are missing are they loaded from file:// and downloaded as Chart.lock locks them.
+	loadedChart, chartAccessor, err := loadChart(nil)
 	if err != nil {
-		return nil, fmt.Errorf("create chart accessor: %w", err)
+		return nil, err
+	}
+
+	if deps := chartAccessor.MetaDependencies(); len(deps) > 0 && helmaction.CheckDependencies(loadedChart, deps) != nil {
+		loadedChart, chartAccessor, err = loadChart(newChartPackDependencyDownloader(ctx, chartPath, registryClient, opts))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if err := checkDependenciesWerfData(chartAccessor); err != nil {

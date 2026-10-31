@@ -2,7 +2,6 @@ package action
 
 import (
 	"archive/tar"
-	"bytes"
 	"compress/gzip"
 	"context"
 	"errors"
@@ -632,57 +631,6 @@ appVersion: "1.2"
 			},
 		},
 		{
-			name: "vendored dependency directory of another locked version rejected",
-			chart: map[string]string{
-				"Chart.yaml":            "apiVersion: v2\nname: mychart\nversion: 1.0.0\ndependencies:\n  - name: dep\n    version: 0.2.0\n    repository: https://example.invalid\n",
-				"Chart.lock":            "dependencies:\n- name: dep\n  repository: https://example.invalid\n  version: 0.2.0\ndigest: sha256:abc\ngenerated: \"2024-01-01T00:00:00Z\"\n",
-				"charts/dep/Chart.yaml": "apiVersion: v2\nname: dep\nversion: 0.1.0\n",
-			},
-			steps:       []chartPackTestStep{{}},
-			expectedErr: "charts/dep is version 0.1.0 but Chart.lock requires 0.2.0: remove it",
-		},
-		{
-			name: "vendored dependency directory differing in build metadata rejected",
-			chart: map[string]string{
-				"Chart.yaml":            "apiVersion: v2\nname: mychart\nversion: 1.0.0\ndependencies:\n  - name: dep\n    version: 0.2.0+build2\n    repository: https://example.invalid\n",
-				"Chart.lock":            "dependencies:\n- name: dep\n  repository: https://example.invalid\n  version: 0.2.0+build2\ndigest: sha256:abc\ngenerated: \"2024-01-01T00:00:00Z\"\n",
-				"charts/dep/Chart.yaml": "apiVersion: v2\nname: dep\nversion: 0.2.0+build1\n",
-			},
-			steps:       []chartPackTestStep{{}},
-			expectedErr: "charts/dep is version 0.2.0+build1 but Chart.lock requires 0.2.0+build2",
-		},
-		{
-			name: "stale vendored archive next to the locked directory rejected",
-			chart: map[string]string{
-				"Chart.yaml":                  "apiVersion: v2\nname: mychart\nversion: 1.0.0\ndependencies:\n  - name: dep\n    version: 0.2.0+build2\n    repository: https://example.invalid\n",
-				"Chart.lock":                  "dependencies:\n- name: dep\n  repository: https://example.invalid\n  version: 0.2.0+build2\ndigest: sha256:abc\ngenerated: \"2024-01-01T00:00:00Z\"\n",
-				"charts/dep/Chart.yaml":       "apiVersion: v2\nname: dep\nversion: 0.2.0+build2\n",
-				"charts/dep-0.2.0+build1.tgz": chartPackTestDependencyArchive(t, "dep", "0.2.0+build1"),
-			},
-			steps:       []chartPackTestStep{{}},
-			expectedErr: "charts/dep-0.2.0+build1.tgz is version 0.2.0+build1 but Chart.lock requires 0.2.0+build2: remove it",
-		},
-		{
-			name: "dependency vendored as both a directory and an archive rejected",
-			chart: map[string]string{
-				"Chart.yaml":            "apiVersion: v2\nname: mychart\nversion: 1.0.0\ndependencies:\n  - name: dep\n    version: 0.2.0\n    repository: https://example.invalid\n",
-				"Chart.lock":            "dependencies:\n- name: dep\n  repository: https://example.invalid\n  version: 0.2.0\ndigest: sha256:abc\ngenerated: \"2024-01-01T00:00:00Z\"\n",
-				"charts/dep/Chart.yaml": "apiVersion: v2\nname: dep\nversion: 0.2.0\n",
-				"charts/vendored.tgz":   chartPackTestDependencyArchive(t, "dep", "0.2.0"),
-			},
-			steps:       []chartPackTestStep{{}},
-			expectedErr: `dependency "dep" 0.2.0 is vendored more than once`,
-		},
-		{
-			name: "vendored dependency directory not matching the unlocked constraint rejected",
-			chart: map[string]string{
-				"Chart.yaml":            "apiVersion: v2\nname: mychart\nversion: 1.0.0\ndependencies:\n  - name: dep\n    version: 0.2.x\n    repository: https://example.invalid\n",
-				"charts/dep/Chart.yaml": "apiVersion: v2\nname: dep\nversion: 0.1.0\n",
-			},
-			steps:       []chartPackTestStep{{}},
-			expectedErr: "charts/dep is version 0.1.0 but Chart.yaml requires 0.2.x: remove it or vendor a matching version",
-		},
-		{
 			name:  "v3 chart",
 			chart: map[string]string{"Chart.yaml": "apiVersion: v3\nname: mychart\nversion: 1.0.0\n"},
 			steps: []chartPackTestStep{{
@@ -996,12 +944,16 @@ func TestChartPack_RepackKeepsVendoredDependencies(t *testing.T) {
 	packed, err := ChartPack(newChartPackTestContext(), filepath.Join(sourceDir, "mychart"), ChartPackOptions{Destination: t.TempDir()})
 	require.NoError(t, err)
 
-	// The file:// source stays next to the unpacked chart, the chart repository goes away.
+	// Neither the file:// source nor the chart repository, nor the caches of the first pack, are
+	// available to the repack.
 	server.Close()
-	require.NoError(t, os.RemoveAll(filepath.Join(sourceDir, "mychart")))
-	require.NoError(t, v2util.ExpandFile(sourceDir, packed.ArchivePath))
+	require.NoError(t, os.RemoveAll(sourceDir))
+	setupChartPackTestDependencyCaches(t)
 
-	repacked, err := ChartPack(newChartPackTestContext(), filepath.Join(sourceDir, "mychart"), ChartPackOptions{
+	unpackDir := t.TempDir()
+	require.NoError(t, v2util.ExpandFile(unpackDir, packed.ArchivePath))
+
+	repacked, err := ChartPack(newChartPackTestContext(), filepath.Join(unpackDir, "mychart"), ChartPackOptions{
 		Destination: t.TempDir(),
 		ValuesSet:   []string{"a=1"},
 	})
@@ -1223,25 +1175,6 @@ func readChartPackTestArchiveFile(t *testing.T, archivePath, name string) string
 	require.Contains(t, files, name)
 
 	return files[name]
-}
-
-// chartPackTestDependencyArchive returns a chart archive with just Chart.yaml.
-func chartPackTestDependencyArchive(t *testing.T, name, version string) string {
-	t.Helper()
-
-	var buf bytes.Buffer
-
-	gzipWriter := gzip.NewWriter(&buf)
-	tarWriter := tar.NewWriter(gzipWriter)
-	chartYAML := fmt.Sprintf("apiVersion: v2\nname: %s\nversion: %s\n", name, version)
-
-	require.NoError(t, tarWriter.WriteHeader(&tar.Header{Name: name + "/Chart.yaml", Mode: 0o644, Size: int64(len(chartYAML))}))
-	_, err := tarWriter.Write([]byte(chartYAML))
-	require.NoError(t, err)
-	require.NoError(t, tarWriter.Close())
-	require.NoError(t, gzipWriter.Close())
-
-	return buf.String()
 }
 
 func decryptChartPackTestValues(t *testing.T, encrypted []byte) map[string]any {

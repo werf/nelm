@@ -294,10 +294,13 @@ type ChartLoadOptions struct {
 	DefaultSecretValuesDisable bool
 	DefaultValuesDisable       bool
 	ExtraValues                map[string]interface{}
-	NoSecrets                  bool
-	SecretKeyIgnore            bool
-	SecretValuesFiles          []string
-	SecretWorkDir              string
+	// NoDependenciesLoad makes the loader take the chart as it is, without loading file://
+	// dependencies or downloading the dependencies of Chart.lock.
+	NoDependenciesLoad bool
+	NoSecrets          bool
+	SecretKeyIgnore    bool
+	SecretValuesFiles  []string
+	SecretWorkDir      string
 	// WerfDataValuesSwitches makes the loader apply the default values switches of the .werf-data of
 	// the chart and of every dependency on top of these, to the chart and its dependencies.
 	WerfDataValuesSwitches bool
