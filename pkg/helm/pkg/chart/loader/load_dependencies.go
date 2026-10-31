@@ -477,13 +477,13 @@ func getFilesFromLocalFilesystem(dir string) ([]*nelmcommon.BufferedFile, error)
 			return err
 		}
 		if fi.IsDir() {
-			if !werfdata.IsWerfDataFile(n) && rules.Ignore(n, fi) {
+			if !werfdata.IsWerfDataFileInTree(n) && rules.Ignore(n, fi) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 
-		if !werfdata.IsWerfDataFile(n) && rules.Ignore(n, fi) {
+		if !werfdata.IsWerfDataFileInTree(n) && rules.Ignore(n, fi) {
 			return nil
 		}
 

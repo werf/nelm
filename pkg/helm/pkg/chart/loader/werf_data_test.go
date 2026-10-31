@@ -69,6 +69,10 @@ func writeWerfDataChart(t *testing.T, apiVersion string) string {
 	writeTestFile(t, filepath.Join(dir, ".werf-data", "metadata.yaml"), "apiVersion: v2\nvalues:\n  values: true\n")
 	writeTestFile(t, filepath.Join(dir, ".werf-data", "values.yaml"), "key: published\n")
 	writeTestFile(t, filepath.Join(dir, ".werf-data", "set-files", "0"), "contents\n")
+	writeTestFile(t, filepath.Join(dir, "charts", "dep", "Chart.yaml"), "apiVersion: v2\nname: dep\nversion: 1.0.0\n")
+	writeTestFile(t, filepath.Join(dir, "charts", "dep", ".werf-data", "metadata.yaml"), "apiVersion: v2\n")
+	writeTestFile(t, filepath.Join(dir, "charts", "dep", "charts", "nested", "Chart.yaml"), "apiVersion: v2\nname: nested\nversion: 1.0.0\n")
+	writeTestFile(t, filepath.Join(dir, "charts", "dep", "charts", "nested", ".werf-data", "metadata.yaml"), "apiVersion: v2\n")
 
 	return dir
 }
@@ -85,6 +89,16 @@ func assertWerfDataFiles(t *testing.T, loaded helmchart.Charter) {
 		".werf-data/values.yaml",
 	}, testFileNames(accessor.WerfDataFiles()))
 	assert.Equal(t, []string{"README.md"}, testFileNames(accessor.Files()))
+
+	require.Len(t, accessor.Dependencies(), 1)
+	dep, err := helmchart.NewAccessor(accessor.Dependencies()[0])
+	require.NoError(t, err)
+	assert.Equal(t, []string{".werf-data/metadata.yaml"}, testFileNames(dep.WerfDataFiles()))
+
+	require.Len(t, dep.Dependencies(), 1)
+	nested, err := helmchart.NewAccessor(dep.Dependencies()[0])
+	require.NoError(t, err)
+	assert.Equal(t, []string{".werf-data/metadata.yaml"}, testFileNames(nested.WerfDataFiles()))
 }
 
 func saveChart(t *testing.T, loaded helmchart.Charter) string {

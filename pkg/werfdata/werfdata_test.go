@@ -16,6 +16,17 @@ func TestIsWerfDataFile(t *testing.T) {
 	assert.False(t, IsWerfDataFile("charts/sub/.werf-data/metadata.yaml"))
 }
 
+func TestIsWerfDataFileInTree(t *testing.T) {
+	assert.True(t, IsWerfDataFileInTree(".werf-data/metadata.yaml"))
+	assert.True(t, IsWerfDataFileInTree("charts/sub/.werf-data"))
+	assert.True(t, IsWerfDataFileInTree("charts/sub/.werf-data/metadata.yaml"))
+	assert.True(t, IsWerfDataFileInTree("charts/sub/charts/nested/.werf-data/set-files/0"))
+	assert.False(t, IsWerfDataFileInTree("charts/.werf-data/metadata.yaml"))
+	assert.False(t, IsWerfDataFileInTree("charts/sub/templates/.werf-data/x"))
+	assert.False(t, IsWerfDataFileInTree("templates/.werf-data/x"))
+	assert.False(t, IsWerfDataFileInTree("charts/sub/.werf-database/x"))
+}
+
 func TestParse_Errors(t *testing.T) {
 	tests := []struct {
 		name    string

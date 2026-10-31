@@ -204,6 +204,23 @@ func (d *Data) validate() error {
 	return nil
 }
 
+// IsWerfDataFileInTree reports whether a chart file path, relative to the chart root, belongs to
+// the .werf-data of the chart or of a dependency unpacked under charts/, at any depth.
+func IsWerfDataFileInTree(name string) bool {
+	for !IsWerfDataFile(name) {
+		rest, ok := strings.CutPrefix(name, "charts/")
+		if !ok {
+			return false
+		}
+
+		if _, name, ok = strings.Cut(rest, "/"); !ok {
+			return false
+		}
+	}
+
+	return true
+}
+
 // Parse parses the .werf-data files of a chart. Names are relative to the chart root. A chart
 // without .werf-data files has no .werf-data: check for that before calling Parse.
 func Parse(files []*common.File) (*Data, error) {

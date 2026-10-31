@@ -84,14 +84,14 @@ func LoadDir(ctx context.Context, dir string) (*chart.Chart, error) {
 		if fi.IsDir() {
 			// Directory-based ignore rules should involve skipping the entire
 			// contents of that directory.
-			if !werfdata.IsWerfDataFile(n) && rules.Ignore(n, fi) {
+			if !werfdata.IsWerfDataFileInTree(n) && rules.Ignore(n, fi) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 
 		// If a .helmignore file matches, skip this file.
-		if !werfdata.IsWerfDataFile(n) && rules.Ignore(n, fi) {
+		if !werfdata.IsWerfDataFileInTree(n) && rules.Ignore(n, fi) {
 			return nil
 		}
 
