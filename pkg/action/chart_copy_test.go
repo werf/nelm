@@ -60,10 +60,6 @@ func TestChartCopy_ArchiveChartConfig(t *testing.T) {
 	archivePath := filepath.Join(t.TempDir(), "chart.tar")
 	require.NoError(t, ChartCopy(newChartPackTestContext(), "oci://"+host+"/src/app:1.0.0", archivePath, newChartCopyTestOptions(t)))
 
-	info, err := os.Stat(archivePath)
-	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o644), info.Mode().Perm())
-
 	files := readChartCopyTestTarFiles(t, archivePath)
 
 	var index ocispec.Index
@@ -406,6 +402,34 @@ func TestChartCopy_InsecureOnlyForChartHosts(t *testing.T) {
 
 	err = ChartCopy(newChartPackTestContext(), "oci://"+host+"/src/app:1.0.0", "oci://"+host+"/dst/app", newChartCopyTestOptions(t))
 	require.ErrorContains(t, err, "server gave HTTP response to HTTPS client")
+}
+
+func TestChartCopy_InvalidArchiveChartTag(t *testing.T) {
+	host := newChartCopyTestRegistry(t)
+	client := newChartCopyTestRegistryClient(t)
+
+	chartData := buildChartCopyTestChart(t, map[string]string{"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\n"})
+	_, err := client.Push(chartData, host+"/src/app:1.0.0")
+	require.NoError(t, err)
+
+	archivePath := filepath.Join(t.TempDir(), "chart.tar")
+	require.NoError(t, ChartCopy(newChartPackTestContext(), "oci://"+host+"/src/app:1.0.0", archivePath, newChartCopyTestOptions(t)))
+
+	invalidPath := filepath.Join(t.TempDir(), "invalid.tar")
+	rewriteChartCopyTestArchiveIndex(t, archivePath, invalidPath, func(index *ocispec.Index) {
+		index.Manifests[0].Annotations[ocispec.AnnotationRefName] = "bad tag!"
+	})
+
+	dst := host + "/dst/app"
+	require.NoError(t, ChartCopy(newChartPackTestContext(), invalidPath, "oci://"+dst, newChartCopyTestOptions(t)))
+
+	var pushedTags []string
+	require.NoError(t, newChartCopyTestRepository(t, dst).Tags(context.Background(), "", func(tags []string) error {
+		pushedTags = append(pushedTags, tags...)
+
+		return nil
+	}))
+	assert.Equal(t, []string{"1.0.0"}, pushedTags)
 }
 
 func TestChartCopy_InvalidVersionTag(t *testing.T) {

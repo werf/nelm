@@ -3128,7 +3128,7 @@ nelm chart copy FROM TO
 
 - `--archive-max-expanded-size` (default: `"64Gi"`)
 
-  Maximum size the source archive may decompress to, nested image tarballs included, e\.g\. 64Gi\. Vars: \$NELM\_ARCHIVE\_MAX\_EXPANDED\_SIZE, \$NELM\_CHART\_COPY\_ARCHIVE\_MAX\_EXPANDED\_SIZE
+  Maximum size the source archive may decompress to, nested image tarballs included, and, separately, the maximum size extracted from its tars, e\.g\. 64Gi\. Temporary files may take up to about twice as much\. Vars: \$NELM\_ARCHIVE\_MAX\_EXPANDED\_SIZE, \$NELM\_CHART\_COPY\_ARCHIVE\_MAX\_EXPANDED\_SIZE
 
 - `--sign` (default: `false`)
 

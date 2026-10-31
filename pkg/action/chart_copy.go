@@ -191,8 +191,9 @@ type chartCopyTarMember struct {
 type ChartCopyOptions struct {
 	common.ChartRepoConnectionOptions
 
-	// ArchiveMaxExpandedSize limits the bytes decompressed from a source archive, nested image
-	// tarballs included. Defaults to DefaultChartCopyArchiveMaxExpandedSize.
+	// ArchiveMaxExpandedSize limits, separately, the bytes decompressed from a source archive,
+	// nested image tarballs included, and the bytes extracted from the tars in them, so temporary
+	// files may take up to about twice as much. Defaults to DefaultChartCopyArchiveMaxExpandedSize.
 	ArchiveMaxExpandedSize int64
 	// Images are copied in addition to the images in the helm.sh/images annotation, for charts that
 	// list their images elsewhere, like werf bundles published before the annotation was written.
@@ -618,6 +619,12 @@ func copyChartToRepo(ctx context.Context, registryClient *registry.Client, sourc
 	version, extraTag := sourceVersion, source.Tag
 	if to.Tag != "" {
 		version, extraTag = ChartVersionFromTag(ctx, to.Tag, time.Now()), strings.ReplaceAll(to.Tag, "+", "_")
+	} else if extraTag != "" {
+		// The tag of a chart in an archive comes from the archive, unchecked.
+		if err := (orasregistry.Reference{Reference: extraTag}).ValidateReferenceAsTag(); err != nil {
+			log.Default.Warn(ctx, "Not pushing the chart under the source tag %q, which is not a valid tag: %s", extraTag, err)
+			extraTag = ""
+		}
 	}
 
 	versionTag := strings.ReplaceAll(version, "+", "_")
@@ -1269,11 +1276,18 @@ func writeOCILayoutTar(ctx context.Context, dir, archivePath string, compress bo
 		return fmt.Errorf("create archive directory: %w", err)
 	}
 
-	tmpFile, err := os.CreateTemp(filepath.Dir(archivePath), filepath.Base(archivePath)+".tmp")
+	// The archive is created in a temporary directory next to it, rather than with os.CreateTemp,
+	// which ignores the umask, to get the permissions of a file created in place.
+	tmpDir, err := os.MkdirTemp(filepath.Dir(archivePath), "."+filepath.Base(archivePath)+".tmp")
+	if err != nil {
+		return fmt.Errorf("create temporary directory: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	tmpFile, err := os.OpenFile(filepath.Join(tmpDir, filepath.Base(archivePath)), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o666)
 	if err != nil {
 		return fmt.Errorf("create temporary archive: %w", err)
 	}
-	defer os.Remove(tmpFile.Name())
 	defer tmpFile.Close()
 
 	var (
@@ -1328,11 +1342,6 @@ func writeOCILayoutTar(ctx context.Context, dir, archivePath string, compress bo
 
 	if err := context.Cause(ctx); err != nil {
 		return err
-	}
-
-	// A temporary file is created readable by its owner only.
-	if err := os.Chmod(tmpFile.Name(), 0o644); err != nil {
-		return fmt.Errorf("set archive permissions: %w", err)
 	}
 
 	if err := os.Rename(tmpFile.Name(), archivePath); err != nil {
@@ -1494,9 +1503,10 @@ func chartCopySnapshot(chartAccessor helmchart.Accessor) ([]byte, error) {
 	return snapshot, nil
 }
 
-// chartVersionTagSlug slugs tag as werf's slug.Slug does: letters are lowercased and transliterated
-// to ASCII, separators become "-", other characters are dropped, and "-" are not repeated nor lead
-// or trail.
+// chartVersionTagSlug slugs tag as werf's slug.Slug does for ASCII: letters are lowercased,
+// separators become "-", other characters are dropped, and "-" are not repeated nor lead or trail.
+// Other characters are transliterated with unidecode first, while werf maps only some Latin
+// letters and drops the rest, so slugs of non-ASCII tags may differ from werf's.
 func chartVersionTagSlug(tag string) string {
 	var result strings.Builder
 	for _, r := range unidecode.Unidecode(tag) {

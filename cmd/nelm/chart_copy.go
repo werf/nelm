@@ -74,7 +74,7 @@ func newChartCopyCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.ArchiveMaxExpandedSize, "archive-max-expanded-size", resource.NewQuantity(action.DefaultChartCopyArchiveMaxExpandedSize, resource.BinarySI).String(), "Maximum size the source archive may decompress to, nested image tarballs included, e.g. 64Gi", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.ArchiveMaxExpandedSize, "archive-max-expanded-size", resource.NewQuantity(action.DefaultChartCopyArchiveMaxExpandedSize, resource.BinarySI).String(), "Maximum size the source archive may decompress to, nested image tarballs included, and, separately, the maximum size extracted from its tars, e.g. 64Gi. Temporary files may take up to about twice as much", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
 		}); err != nil {
