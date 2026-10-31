@@ -116,7 +116,7 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			return fmt.Errorf("add patches flags: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &opts.ResetValues, "reset-values", false, "Drop all publish-time inputs stored in .werf-data of the chart by previous packs (values, secret values, --set*, --set-root-json, patches, --no-default-* switches, release defaults, extra values, annotations, labels and images) before storing the ones of this pack", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &opts.ResetValues, "reset-values", false, "Drop all publish-time inputs stored in .werf-data of the chart by previous packs (values, secret values, --set*, --set-root-json, patches, --no-default-* switches, release defaults, extra values, annotations, labels and images, including the annotations and labels moved from extra_annotations.json and extra_labels.json of a werf <= 3.12 bundle) before storing the ones of this pack", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                valuesFlagGroup,
 		}); err != nil {
