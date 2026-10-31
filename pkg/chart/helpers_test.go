@@ -67,7 +67,12 @@ type werfDataSetFile struct {
 type warningsLogger struct {
 	log.Logger
 
+	infos    []string
 	warnings []string
+}
+
+func (l *warningsLogger) Info(_ context.Context, format string, a ...interface{}) {
+	l.infos = append(l.infos, fmt.Sprintf(format, a...))
 }
 
 func (l *warningsLogger) Warn(_ context.Context, format string, a ...interface{}) {
@@ -81,6 +86,12 @@ type layeredValuesRenderOptions struct {
 	Set               []string
 	SetJSON           []string
 	ValuesFiles       []string
+}
+
+func renderWerfDataTestChart(t *testing.T, chartPath string, opts RenderChartOptions) (*RenderChartResult, error) {
+	t.Helper()
+
+	return renderWerfDataTestChartWithSecretKey(t, chartPath, layeredValuesSecretKey, opts)
 }
 
 func werfDataCardChartWithSubchartSecrets(values, secretValues, subchartValues, subchartSecretValues string) map[string]string {
@@ -332,10 +343,13 @@ func renderLayeredValuesChart(t *testing.T, opts layeredValuesRenderOptions) *Re
 	return result
 }
 
-func renderWerfDataTestChart(t *testing.T, chartPath string, opts RenderChartOptions) (*RenderChartResult, error) {
+// renderWerfDataTestChartWithSecretKey renders the chart with the secret key, none if empty.
+func renderWerfDataTestChartWithSecretKey(t *testing.T, chartPath, secretKey string, opts RenderChartOptions) (*RenderChartResult, error) {
 	t.Helper()
 
-	t.Setenv("WERF_SECRET_KEY", layeredValuesSecretKey)
+	t.Setenv("WERF_SECRET_KEY", secretKey)
+	secrets_manager.SetWerfHomeDir(t.TempDir())
+	t.Cleanup(func() { secrets_manager.SetWerfHomeDir("") })
 
 	opts.LocalKubeVersion = "1.30.0"
 	opts.TempDirPath = t.TempDir()

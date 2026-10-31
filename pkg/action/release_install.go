@@ -396,6 +396,10 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}
 	}
 
+	// Like release rollback, auto-rollback doesn't use the options from the .werf-data of the new
+	// chart.
+	rollbackRuntimeOptions := opts.ReleaseInstallRuntimeOptions
+
 	var (
 		installPlan  *plan.Plan
 		newRelease   helmrel.Accessor
@@ -820,7 +824,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		if opts.AutoRollback && prevDeployedRelease != nil {
 			runRollbackPlanResult, nonCritErrs, critErrs := runRollbackPlan(ctx, releaseName, releaseNamespace, newRelease, prevDeployedRelease, taskStore, logStore, informerFactory, history, clientFactory, runRollbackPlanOptions{
-				ReleaseInstallRuntimeOptions: opts.ReleaseInstallRuntimeOptions,
+				ReleaseInstallRuntimeOptions: rollbackRuntimeOptions,
 				TrackingOptions:              opts.TrackingOptions,
 				LegacyPatches:                opts.LegacyPatches,
 				NetworkParallelism:           opts.NetworkParallelism,
