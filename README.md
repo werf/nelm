@@ -363,7 +363,7 @@ config:
 
 To re-encrypt secrets with a new key, decrypt each encrypted file with the old key and encrypt it with the new one. Cover every encrypted file: `secret-values.yaml` and `secret/*` of the chart and of its local subcharts, encrypted values files passed with `--secret-values`, and `.werf-data/secret-values.yaml` of a published chart.
 
-Create the new key first and store it where you keep secret keys, before changing any file: `nelm chart secret key create`. Then run the script below with the old key in `$OLD_SECRET_KEY` and the new one in `$NEW_SECRET_KEY`. It stops at the first error, re-encrypts every file before changing any of them, and keeps a copy of each original next to it as `<file>.bak` until you remove it:
+Create the new key first and store it where you keep secret keys, before changing any file: `nelm chart secret key create`. Then run the script below with the old key in `$OLD_SECRET_KEY` and the new one in `$NEW_SECRET_KEY`, both exported (a key kept in a `.werf_secret_key` file has to be exported first, e.g. `export OLD_SECRET_KEY="$(cat .werf_secret_key)"`). It stops at the first error, re-encrypts every file before changing any of them, and keeps a copy of each original next to it as `<file>.bak` until you remove it:
 
 ```bash
 #!/usr/bin/env bash

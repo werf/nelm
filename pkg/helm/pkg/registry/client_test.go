@@ -185,10 +185,39 @@ func TestValidateReferenceTagCheckError(t *testing.T) {
 	client, err := NewClient(ClientOptPlainHTTP(), ClientOptWriter(io.Discard))
 	require.NoError(t, err)
 
-	ref := "oci://" + strings.TrimPrefix(server.URL, "http://") + "/charts/test:1.x"
-	u, err := url.Parse(ref)
-	require.NoError(t, err)
+	repo := "oci://" + strings.TrimPrefix(server.URL, "http://") + "/charts/test"
 
-	_, _, err = client.ValidateReference(ref, "", u)
-	require.ErrorContains(t, err, `check tag "1.x"`)
+	tests := []struct {
+		name          string
+		tag           string
+		expectedRef   string
+		expectedError string
+	}{
+		{
+			name:        "semver constraint falls back to tag list",
+			tag:         "1.x",
+			expectedRef: repo + ":1.0.0",
+		},
+		{
+			name:          "non-constraint tag returns the error",
+			tag:           "latest",
+			expectedError: `check tag "latest"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ref := repo + ":" + tt.tag
+			u, err := url.Parse(ref)
+			require.NoError(t, err)
+
+			_, resultURL, err := client.ValidateReference(ref, "", u)
+			if tt.expectedError != "" {
+				require.ErrorContains(t, err, tt.expectedError)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedRef, resultURL.String())
+		})
+	}
 }
