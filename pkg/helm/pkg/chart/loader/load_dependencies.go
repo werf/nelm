@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/google/uuid"
 	"sigs.k8s.io/yaml"
 
@@ -124,6 +125,10 @@ func LoadChartDependencies(
 	}
 
 	if chartMetadataLock == nil {
+		if err := checkVendoredDependenciesConstraints(loadedChartFiles, chartMetadata.Dependencies); err != nil {
+			return nil, err
+		}
+
 		if len(chartMetadata.Dependencies) > 0 && NoChartLockWarning != "" {
 			log.Default.Warn(ctx, "%s", NoChartLockWarning)
 		}
@@ -134,7 +139,13 @@ func LoadChartDependencies(
 	conf := newChartDependenciesConfiguration(chartMetadata, chartMetadataLock)
 
 	for _, chartDep := range chartMetadataLock.Dependencies {
-		if !strings.HasPrefix(chartDep.Repository, "file://") || isVendoredDependency(loadedChartFiles, chartDep) {
+		if !strings.HasPrefix(chartDep.Repository, "file://") {
+			continue
+		}
+
+		if vendored, err := isVendoredDependency(loadedChartFiles, chartDep); err != nil {
+			return nil, err
+		} else if vendored {
 			continue
 		}
 
@@ -151,6 +162,12 @@ func LoadChartDependencies(
 		}
 
 		res = append(res, chartFiles...)
+	}
+
+	for _, chartDep := range chartMetadataLock.Dependencies {
+		if _, err := isVendoredDependency(loadedChartFiles, chartDep); err != nil {
+			return nil, err
+		}
 	}
 
 	haveExternalDependencies, metadataFile, metadataLockFile, err := conf.GetExternalDependenciesFiles(loadedChartFiles)
@@ -334,7 +351,13 @@ func (conf *chartDependenciesConfiguration) GetExternalDependenciesFiles(loadedC
 	}
 
 	for _, depLock := range metadataLock.Dependencies {
-		if depLock.Repository == "" || strings.HasPrefix(depLock.Repository, "file://") || isVendoredDependency(loadedChartFiles, depLock) {
+		if depLock.Repository == "" || strings.HasPrefix(depLock.Repository, "file://") {
+			continue
+		}
+
+		if vendored, err := isVendoredDependency(loadedChartFiles, depLock); err != nil {
+			return false, nil, nil, err
+		} else if vendored {
 			continue
 		}
 
@@ -416,30 +439,88 @@ func digest(in io.Reader) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-// isVendoredDependency reports whether the chart files already have the dependency under charts/,
-// either as the archive "helm dependency build" downloads or as the directory a saved chart has.
-func isVendoredDependency(loadedChartFiles []*nelmcommon.BufferedFile, dep *chart.Dependency) bool {
+// isVendoredDependency reports whether the chart files already have the locked dependency under
+// charts/, either as the archive "helm dependency build" downloads or as the directory a saved
+// chart has. A directory with another version of the dependency is an error, since it would be
+// used instead of the locked version.
+func isVendoredDependency(loadedChartFiles []*nelmcommon.BufferedFile, dep *chart.Dependency) (bool, error) {
+	for _, f := range loadedChartFiles {
+		name, ok := strings.CutPrefix(f.Name, "charts/")
+		if ok && filepath.Base(name) == makeDependencyArchiveName(dep.Name, dep.Version) {
+			return true, nil
+		}
+	}
+
+	dir, version, found := findVendoredDependencyDir(loadedChartFiles, dep.Name)
+	if !found {
+		return false, nil
+	}
+
+	if !sameVersion(version, dep.Version) {
+		return false, fmt.Errorf("charts/%s is version %s but Chart.lock requires %s: remove charts/%s or vendor version %s there", dir, version, dep.Version, dir, dep.Version)
+	}
+
+	return true, nil
+}
+
+// checkVendoredDependenciesConstraints fails if a dependency directory under charts/ of a chart
+// without Chart.lock doesn't match the version constraint in Chart.yaml.
+func checkVendoredDependenciesConstraints(loadedChartFiles []*nelmcommon.BufferedFile, deps []*chart.Dependency) error {
+	for _, dep := range deps {
+		if dep.Version == "" {
+			continue
+		}
+
+		dir, version, found := findVendoredDependencyDir(loadedChartFiles, dep.Name)
+		if !found {
+			continue
+		}
+
+		constraint, err := semver.NewConstraint(dep.Version)
+		if err != nil {
+			continue
+		}
+
+		if parsedVersion, err := semver.NewVersion(version); err == nil && constraint.Check(parsedVersion) {
+			continue
+		}
+
+		return fmt.Errorf("charts/%s is version %s but Chart.yaml requires %s: remove charts/%s or vendor a matching version there", dir, version, dep.Version, dir)
+	}
+
+	return nil
+}
+
+// findVendoredDependencyDir finds the directory under charts/ with the chart of the given name.
+func findVendoredDependencyDir(loadedChartFiles []*nelmcommon.BufferedFile, chartName string) (dir, version string, found bool) {
 	for _, f := range loadedChartFiles {
 		name, ok := strings.CutPrefix(f.Name, "charts/")
 		if !ok {
 			continue
 		}
 
-		if filepath.Base(name) == makeDependencyArchiveName(dep.Name, dep.Version) {
-			return true
-		}
-
-		if _, fileName, ok := strings.Cut(name, "/"); !ok || fileName != "Chart.yaml" {
+		dir, fileName, ok := strings.Cut(name, "/")
+		if !ok || fileName != "Chart.yaml" {
 			continue
 		}
 
 		metadata := new(chart.Metadata)
-		if err := yaml.Unmarshal(f.Data, metadata); err == nil && metadata.Name == dep.Name {
-			return true
+		if err := yaml.Unmarshal(f.Data, metadata); err == nil && metadata.Name == chartName {
+			return dir, metadata.Version, true
 		}
 	}
 
-	return false
+	return "", "", false
+}
+
+func sameVersion(a, b string) bool {
+	parsedA, errA := semver.NewVersion(a)
+	parsedB, errB := semver.NewVersion(b)
+	if errA != nil || errB != nil {
+		return a == b
+	}
+
+	return parsedA.Equal(parsedB)
 }
 
 func makeDependencyArchiveName(depName, depVersion string) string {

@@ -599,6 +599,25 @@ appVersion: "1.2"
 			},
 		},
 		{
+			name: "vendored dependency directory of another locked version rejected",
+			chart: map[string]string{
+				"Chart.yaml":            "apiVersion: v2\nname: mychart\nversion: 1.0.0\ndependencies:\n  - name: dep\n    version: 0.2.0\n    repository: https://example.invalid\n",
+				"Chart.lock":            "dependencies:\n- name: dep\n  repository: https://example.invalid\n  version: 0.2.0\ndigest: sha256:abc\ngenerated: \"2024-01-01T00:00:00Z\"\n",
+				"charts/dep/Chart.yaml": "apiVersion: v2\nname: dep\nversion: 0.1.0\n",
+			},
+			steps:       []chartPackTestStep{{}},
+			expectedErr: "charts/dep is version 0.1.0 but Chart.lock requires 0.2.0: remove charts/dep or vendor version 0.2.0 there",
+		},
+		{
+			name: "vendored dependency directory not matching the unlocked constraint rejected",
+			chart: map[string]string{
+				"Chart.yaml":            "apiVersion: v2\nname: mychart\nversion: 1.0.0\ndependencies:\n  - name: dep\n    version: 0.2.x\n    repository: https://example.invalid\n",
+				"charts/dep/Chart.yaml": "apiVersion: v2\nname: dep\nversion: 0.1.0\n",
+			},
+			steps:       []chartPackTestStep{{}},
+			expectedErr: "charts/dep is version 0.1.0 but Chart.yaml requires 0.2.x: remove charts/dep or vendor a matching version there",
+		},
+		{
 			name:  "v3 chart",
 			chart: map[string]string{"Chart.yaml": "apiVersion: v3\nname: mychart\nversion: 1.0.0\n"},
 			steps: []chartPackTestStep{{
