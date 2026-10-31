@@ -88,19 +88,6 @@ type layeredValuesRenderOptions struct {
 	ValuesFiles       []string
 }
 
-func renderWerfDataTestChart(t *testing.T, chartPath string, opts RenderChartOptions) (*RenderChartResult, error) {
-	t.Helper()
-
-	return renderWerfDataTestChartWithSecretKey(t, chartPath, layeredValuesSecretKey, opts)
-}
-
-func werfDataCardChartWithSubchartSecrets(values, secretValues, subchartValues, subchartSecretValues string) map[string]string {
-	files := werfDataCardChart("- name: sub\n  version: 1.0.0", values, secretValues, subchartValues)
-	files["charts/sub/secret-values.yaml"] = subchartSecretValues
-
-	return files
-}
-
 // werfDataFlagsAsFiles returns the .werf-data files that store the flags. The default --set-file
 // paths point to files that don't exist.
 func werfDataFlagsAsFiles(t *testing.T, flags werfDataFlags) map[string]string {
@@ -217,6 +204,25 @@ func writeWerfDataTestChart(t *testing.T, files ...map[string]string) string {
 	return dir
 }
 
+func encryptTestValues(t *testing.T, plain string) string {
+	t.Helper()
+
+	return encryptTestValuesWithKey(t, layeredValuesSecretKey, plain)
+}
+
+func renderWerfDataTestChart(t *testing.T, chartPath string, opts RenderChartOptions) (*RenderChartResult, error) {
+	t.Helper()
+
+	return renderWerfDataTestChartWithSecretKey(t, chartPath, layeredValuesSecretKey, opts)
+}
+
+func werfDataCardChartWithSubchartSecrets(values, secretValues, subchartValues, subchartSecretValues string) map[string]string {
+	files := werfDataCardChart("- name: sub\n  version: 1.0.0", values, secretValues, subchartValues)
+	files["charts/sub/secret-values.yaml"] = subchartSecretValues
+
+	return files
+}
+
 func dependencyNames(t *testing.T, result *RenderChartResult) []string {
 	t.Helper()
 
@@ -233,10 +239,10 @@ func dependencyNames(t *testing.T, result *RenderChartResult) []string {
 	return names
 }
 
-func encryptTestValues(t *testing.T, plain string) string {
+func encryptTestValuesWithKey(t *testing.T, secretKey, plain string) string {
 	t.Helper()
 
-	t.Setenv("WERF_SECRET_KEY", layeredValuesSecretKey)
+	t.Setenv("WERF_SECRET_KEY", secretKey)
 
 	encoder, err := secrets_manager.Manager.GetYamlEncoder(context.Background(), "", false)
 	require.NoError(t, err)
