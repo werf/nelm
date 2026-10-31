@@ -160,6 +160,12 @@ func TestUpdateImages(t *testing.T) {
 			expected: "",
 		},
 		{
+			name:     "nothing to remove or add",
+			value:    "- {name: author, image: 'nginx:1'}\n",
+			remove:   []string{"backend"},
+			expected: "- {name: author, image: 'nginx:1'}\n",
+		},
+		{
 			name:        "collision with author entry",
 			value:       annotation,
 			remove:      []string{"backend"},

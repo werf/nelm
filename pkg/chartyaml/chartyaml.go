@@ -81,8 +81,8 @@ func Edit(ctx context.Context, data []byte, opts EditOptions) ([]byte, error) {
 }
 
 // UpdateImages removes the entries named in removeNames from a helm.sh/images annotation value and
-// appends images. The result is empty when no entries are left. An image whose name matches a
-// kept entry is an error.
+// appends images. The result is empty when no entries are left, and annotationValue as is when
+// nothing changes. An image whose name matches a kept entry is an error.
 func UpdateImages(ctx context.Context, annotationValue string, removeNames []string, images []Image) (string, error) {
 	var entries []yaml.MapSlice
 	if strings.TrimSpace(annotationValue) != "" {
@@ -94,6 +94,10 @@ func UpdateImages(ctx context.Context, annotationValue string, removeNames []str
 	kept := lo.Reject(entries, func(entry yaml.MapSlice, _ int) bool {
 		return lo.Contains(removeNames, imageEntryName(entry))
 	})
+
+	if len(kept) == len(entries) && len(images) == 0 {
+		return annotationValue, nil
+	}
 
 	for _, image := range images {
 		if lo.ContainsBy(kept, func(entry yaml.MapSlice) bool { return imageEntryName(entry) == image.Name }) {
