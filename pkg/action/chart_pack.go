@@ -583,7 +583,10 @@ func checkEncryptedValues(vals any, keyPath []string) error {
 	case nil:
 		return nil
 	case map[string]any:
-		for _, key := range lo.Keys(v) {
+		keys := lo.Keys(v)
+		sort.Strings(keys)
+
+		for _, key := range keys {
 			if err := checkEncryptedValues(v[key], append(keyPath, key)); err != nil {
 				return err
 			}

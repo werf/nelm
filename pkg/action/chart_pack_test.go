@@ -261,6 +261,15 @@ annotations:
 			expectedErr: `.werf-data/secret-values.yaml: value at "password" is not encrypted`,
 		},
 		{
+			name:  "first plaintext secret value in key order reported",
+			chart: map[string]string{"Chart.yaml": chartPackTestChartYAML},
+			steps: []chartPackTestStep{{
+				inputs: map[string]string{"keys.yaml": "z: plain\ny: plain\nx: plain\nw: plain\nv: plain\nu: plain\nt: plain\ns: plain\nr: plain\nq: plain\np: plain\no: plain\nn: plain\nm: plain\nl: plain\nk: plain\nj: plain\ni: plain\nh: plain\ng: plain\nf: plain\ne: plain\nd: plain\nc: plain\nb: plain\na: plain\n"},
+				opts:   ChartPackOptions{SecretValuesFiles: []string{"keys.yaml"}},
+			}},
+			expectedErr: `secret values file "keys.yaml": value at "a" is not encrypted`,
+		},
+		{
 			name: "multi-document stored secret values rejected",
 			chart: map[string]string{
 				"Chart.yaml":                    chartPackTestChartYAML,
