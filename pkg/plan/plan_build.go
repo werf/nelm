@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/samber/lo"
@@ -97,7 +98,14 @@ func BuildPlan(ctx context.Context, installableInfos []*InstallableResourceInfo,
 }
 
 func connectInternalDeleteDependencies(ctx context.Context, plan *Plan, delInfos []*DeletableResourceInfo, instInfos []*InstallableResourceInfo, releaseNamespace string) error {
-	for _, info := range delInfos {
+	// A dependency shared by deletions in different stages gets a single track operation in the
+	// stage of the first processed deletion, so process earlier stages first to avoid cycles.
+	delInfosByStage := slices.Clone(delInfos)
+	sort.SliceStable(delInfosByStage, func(i, j int) bool {
+		return common.StagesSortHandler(delInfosByStage[i].Stage, delInfosByStage[j].Stage)
+	})
+
+	for _, info := range delInfosByStage {
 		internalDeps := lo.Union(info.LocalResource.AutoInternalDependencies, info.LocalResource.ManualDependencies)
 		if len(internalDeps) == 0 {
 			continue
