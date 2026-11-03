@@ -58,7 +58,7 @@ require (
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.5.0
 	github.com/werf/common-go v0.0.0-20251113140850-a1a98e909e9b
-	github.com/werf/kubedog v0.13.1-0.20260912145640-ad1e8a134607
+	github.com/werf/kubedog v0.13.1-0.20261103161329-f1eefb59d19a
 	github.com/werf/lockgate v0.1.1
 	github.com/werf/logboek v0.6.1
 	github.com/xeipuuv/gojsonschema v1.2.0
