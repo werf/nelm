@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.31.3](https://github.com/werf/nelm/compare/v1.31.2...v1.31.3) (2026-11-03)
+
+
+### Bug Fixes
+
+* stop leaking informers and their caches after tracking ([1db96ad](https://github.com/werf/nelm/commit/1db96ad120113f376c166055ed201aefec5e10a2))
+* stop resource elimination waiting from missing deletions and hanging when WatchListClient is enabled ([1db96ad](https://github.com/werf/nelm/commit/1db96ad120113f376c166055ed201aefec5e10a2))
+
 ## [1.31.2](https://github.com/werf/nelm/compare/v1.31.1...v1.31.2) (2026-10-21)
 
 
