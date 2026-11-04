@@ -47,6 +47,8 @@ type Dependency struct {
 	ImportValues []any `json:"import-values,omitempty" yaml:"import-values,omitempty"`
 	// Alias usable alias to be used for the chart
 	Alias string `json:"alias,omitempty" yaml:"alias,omitempty"`
+	// ExportValues are not supported in v3 charts. They are parsed only to warn that they are ignored.
+	ExportValues []any `json:"export-values,omitempty" yaml:"export-values,omitempty"`
 }
 
 // Validate checks for common problems with the dependency datastructure in
