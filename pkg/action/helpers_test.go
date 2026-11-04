@@ -28,6 +28,7 @@ import (
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/logboek"
 	"github.com/werf/nelm/v2/pkg/common"
+	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/legacy/progrep"
 	"github.com/werf/nelm/v2/pkg/release"
@@ -136,12 +137,16 @@ func (s *latestReleaseListStorager) loadedRevisions() []release.Revision {
 }
 
 type progressPhasesAPIState struct {
+	applyConfigMapStatus  map[string]int
 	configMaps            map[string]corev1.ConfigMap
 	deleteNamespaceStatus int
 	namespaceDeleted      bool
 	requests              []string
 	retainNamespace       bool
 	trackNamespaceStatus  int
+	// updateMissingConfigMapNotFound makes PUT of a missing ConfigMap fail as in a real cluster
+	// instead of creating it.
+	updateMissingConfigMapNotFound bool
 }
 
 type progressPhasesAPI struct {
@@ -265,11 +270,23 @@ func newProgressPhasesAPI(t *testing.T) *progressPhasesAPI {
 						break
 					}
 
+					if _, found := s.configMaps[cm.Name]; s.updateMissingConfigMapNotFound && r.Method == http.MethodPut && !found {
+						status = http.StatusNotFound
+
+						break
+					}
+
 					cm.Kind, cm.APIVersion = "ConfigMap", "v1"
 					cm.Namespace, cm.ResourceVersion = "progress-ns", "1"
 					s.configMaps[cm.Name] = cm
 					response = cm
 				case http.MethodPatch:
+					if applyStatus := s.applyConfigMapStatus[key]; applyStatus != 0 && r.URL.Query().Get("dryRun") == "" {
+						status = applyStatus
+
+						break
+					}
+
 					assert.Equal(t, "All", r.URL.Query().Get("dryRun"))
 
 					var cm corev1.ConfigMap
@@ -338,6 +355,41 @@ users:
 	return api
 }
 
+func newTriggersReleaseChart(t *testing.T, api *progressPhasesAPI, annotations map[string]string) string {
+	t.Helper()
+
+	cm := corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{Kind: "ConfigMap", APIVersion: "v1"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "progress-resource", Namespace: "progress-ns",
+			Annotations: lo.Assign(map[string]string{
+				"meta.helm.sh/release-name": "progress-release", "meta.helm.sh/release-namespace": "progress-ns",
+				"werf.io/delete-policy": "before-creation",
+			}, annotations),
+			Labels: map[string]string{"app.kubernetes.io/managed-by": "Helm"},
+		},
+		Data: map[string]string{"key": "value"},
+	}
+	body, err := json.Marshal(cm)
+	require.NoError(t, err)
+	api.state.RWTransaction(func(s *progressPhasesAPIState) {
+		s.configMaps[cm.Name] = cm
+	})
+	addProgressPhaseRevision(t, api, 1, string(body))
+
+	chartPath := newProgressPhasesChart(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(chartPath, "templates"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(chartPath, "templates", "cm.yaml"), body, 0o600))
+
+	return chartPath
+}
+
+func addProgressPhaseRevision(t *testing.T, api *progressPhasesAPI, revision int, manifest string) {
+	t.Helper()
+
+	addProgressPhaseRevisionWithStatus(t, api, revision, manifest, helmreleasestatus.StatusDeployed)
+}
+
 func newChartRenderInstallChart(t *testing.T, api *progressPhasesAPI) string {
 	t.Helper()
 
@@ -374,41 +426,12 @@ func newLatestRevisionSummary(namespace, name string, version int) release.Revis
 	}
 }
 
-func newTriggersReleaseChart(t *testing.T, api *progressPhasesAPI, annotations map[string]string) string {
-	t.Helper()
-
-	cm := corev1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{Kind: "ConfigMap", APIVersion: "v1"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "progress-resource", Namespace: "progress-ns",
-			Annotations: lo.Assign(map[string]string{
-				"meta.helm.sh/release-name": "progress-release", "meta.helm.sh/release-namespace": "progress-ns",
-				"werf.io/delete-policy": "before-creation",
-			}, annotations),
-			Labels: map[string]string{"app.kubernetes.io/managed-by": "Helm"},
-		},
-		Data: map[string]string{"key": "value"},
-	}
-	body, err := json.Marshal(cm)
-	require.NoError(t, err)
-	api.state.RWTransaction(func(s *progressPhasesAPIState) {
-		s.configMaps[cm.Name] = cm
-	})
-	addProgressPhaseRevision(t, api, 1, string(body))
-
-	chartPath := newProgressPhasesChart(t)
-	require.NoError(t, os.MkdirAll(filepath.Join(chartPath, "templates"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(chartPath, "templates", "cm.yaml"), body, 0o600))
-
-	return chartPath
-}
-
-func addProgressPhaseRevision(t *testing.T, api *progressPhasesAPI, revision int, manifest string) {
+func addProgressPhaseRevisionWithStatus(t *testing.T, api *progressPhasesAPI, revision int, manifest string, status helmreleasestatus.Status) {
 	t.Helper()
 
 	body, err := json.Marshal(map[string]any{
 		"name": "progress-release", "namespace": "progress-ns", "version": revision,
-		"info": map[string]any{"status": "deployed"}, "manifest": manifest,
+		"info": map[string]any{"status": status}, "manifest": manifest,
 		"chart": map[string]any{"metadata": map[string]any{"apiVersion": "v2", "name": "progress-chart", "version": "1.0.0"}},
 	})
 	require.NoError(t, err)
@@ -418,7 +441,7 @@ func addProgressPhaseRevision(t *testing.T, api *progressPhasesAPI, revision int
 		s.configMaps[key] = corev1.ConfigMap{
 			TypeMeta: metav1.TypeMeta{Kind: "ConfigMap", APIVersion: "v1"},
 			ObjectMeta: metav1.ObjectMeta{Name: key, Namespace: "progress-ns", Labels: map[string]string{
-				"owner": "helm", "name": "progress-release", "version": fmt.Sprint(revision), "status": "deployed",
+				"owner": "helm", "name": "progress-release", "version": fmt.Sprint(revision), "status": status.String(),
 			}},
 			Data: map[string]string{"release": base64.StdEncoding.EncodeToString(body)},
 		}

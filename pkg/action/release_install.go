@@ -662,9 +662,9 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		log.Default.Debug(ctx, "Build release infos")
 
-		prevDeployedReleases, err := loadDeployedReleases(ctx, history, []helmrel.Accessor{prevRelease, prevDeployedRelease})
+		prevDeployedReleases, err := loadDeployedAndPendingReleases(ctx, history, []helmrel.Accessor{prevRelease, prevDeployedRelease})
 		if err != nil {
-			return nil, fmt.Errorf("load deployed releases: %w", err)
+			return nil, fmt.Errorf("load deployed and pending releases: %w", err)
 		}
 
 		relInfos, err = plan.BuildReleaseInfos(ctx, deployType, prevDeployedReleases, newRelease)
@@ -1160,9 +1160,9 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	prevDeployedReleases, err := loadDeployedReleasesSkippingPruned(ctx, history)
+	prevDeployedReleases, err := loadDeployedAndPendingReleasesSkippingPruned(ctx, history)
 	if err != nil {
-		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("load deployed releases: %w", err))
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("load deployed and pending releases: %w", err))
 	}
 
 	relInfos, err := plan.BuildReleaseInfos(ctx, common.DeployTypeRollback, prevDeployedReleases, newRelease)

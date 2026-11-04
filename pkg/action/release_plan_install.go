@@ -405,9 +405,9 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	prevDeployedReleases, err := loadDeployedReleases(ctx, history, []helmrel.Accessor{prevRelease, prevDeployedRelease})
+	prevDeployedReleases, err := loadDeployedAndPendingReleases(ctx, history, []helmrel.Accessor{prevRelease, prevDeployedRelease})
 	if err != nil {
-		return nil, fmt.Errorf("load deployed releases: %w", err)
+		return nil, fmt.Errorf("load deployed and pending releases: %w", err)
 	}
 
 	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, prevDeployedReleases, newRelease)

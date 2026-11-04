@@ -157,7 +157,7 @@ func TestHistory_RevisionsStayConsistentAfterMutations(t *testing.T) {
 	assert.Equal(t, helmreleasecommon.StatusPendingUpgrade.String(), revisions[1].Status)
 
 	newRel.SetStatus(helmreleasecommon.StatusDeployed)
-	require.NoError(t, history.UpdateRelease(ctx, newRel))
+	require.NoError(t, history.UpdateRelease(ctx, newRel, UpdateReleaseOptions{}))
 
 	revisions = history.Revisions()
 	require.Len(t, revisions, 2)
@@ -183,6 +183,6 @@ func TestHistory_WritesAfterCancellation(t *testing.T) {
 	rls, err := helmrel.NewAccessor(newTestReleaseWithStatus("myrelease", 1, helmreleasecommon.StatusFailed))
 	require.NoError(t, err)
 	require.NoError(t, history.CreateRelease(ctx, rls))
-	require.NoError(t, history.UpdateRelease(ctx, rls))
+	require.NoError(t, history.UpdateRelease(ctx, rls, UpdateReleaseOptions{}))
 	assert.Equal(t, []error{nil, nil}, storage.writeErrs)
 }

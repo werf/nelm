@@ -410,9 +410,9 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	prevDeployedReleases, err := loadDeployedReleases(ctx, history, []helmrel.Accessor{prevRelease, prevDeployedRelease})
+	prevDeployedReleases, err := loadDeployedAndPendingReleases(ctx, history, []helmrel.Accessor{prevRelease, prevDeployedRelease})
 	if err != nil {
-		return fmt.Errorf("load deployed releases: %w", err)
+		return fmt.Errorf("load deployed and pending releases: %w", err)
 	}
 
 	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, prevDeployedReleases, newRelease)
