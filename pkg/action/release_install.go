@@ -74,8 +74,6 @@ type ReleaseInstallOptions struct {
 	DefaultChartName string
 	// DefaultChartVersion sets the default chart version when Chart.yaml doesn't specify one.
 	DefaultChartVersion string
-	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
-	DenoBinaryPath string
 	// DockerConfig is the path to the Docker configuration directory (e.g., ~/.docker).
 	DockerConfig string
 	// DropInvalidAnnotationsAndLabels disables strict annotations and labels validation.
@@ -131,6 +129,8 @@ type ReleaseInstallOptions struct {
 	// NoShowNotes, when true, suppresses printing of NOTES.txt after successful installation.
 	// NOTES.txt typically contains usage instructions and next steps.
 	NoShowNotes bool
+	// NodeBinaryPath, if specified, uses this path as the Node.js binary instead of the embedded or auto-downloaded one.
+	NodeBinaryPath string
 	// PlanArtifactLifetime, specifies how long plan artifact be valid.
 	PlanArtifactLifetime time.Duration
 	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
@@ -510,7 +510,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 				SubchartNotes:                   opts.ShowSubchartNotes,
 				TemplatesAllowDNS:               opts.TemplatesAllowDNS,
 				IgnoreBundleJS:                  opts.IgnoreBundleJS,
-				DenoBinaryPath:                  opts.DenoBinaryPath,
+				NodeBinaryPath:                  opts.NodeBinaryPath,
 				TempDirPath:                     opts.TempDirPath,
 			})
 			if err != nil {

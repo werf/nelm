@@ -16,7 +16,7 @@ import (
 type ChartTSInitOptions struct {
 	ChartDirPath      string
 	ChartName         string
-	DenoBinaryPath    string
+	NodeBinaryPath    string
 	RenderContextType string
 	TempDirPath       string
 }
@@ -72,8 +72,8 @@ func ChartTSInit(ctx context.Context, opts ChartTSInitOptions) error {
 		return fmt.Errorf("ensure .gitignore: %w", err)
 	}
 
-	if err := ts.RunDenoInstall(ctx, absPath, opts.DenoBinaryPath); err != nil {
-		return fmt.Errorf("run deno install: %w", err)
+	if err := ts.RunNPMInstall(ctx, absPath, opts.NodeBinaryPath); err != nil {
+		return fmt.Errorf("install TypeScript dependencies: %w", err)
 	}
 
 	log.Default.Info(ctx, "Initialized TypeScript files in %s", absPath)

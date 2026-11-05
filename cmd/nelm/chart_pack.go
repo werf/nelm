@@ -48,7 +48,7 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 	}
 
 	afterAllCommandsBuiltFuncs[cmd] = func(cmd *cobra.Command) error {
-		if err := cli.AddFlag(cmd, &opts.DenoBinaryPath, "deno-binary-path", "", "Path to the Deno binary to use instead of auto-downloading.", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &opts.NodeBinaryPath, "node-binary-path", "", "Path to the Node.js binary to use instead of the embedded or auto-downloaded one.", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                tsFlagGroup,
 		}); err != nil {

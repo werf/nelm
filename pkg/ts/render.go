@@ -1,11 +1,14 @@
 package ts
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/samber/lo"
@@ -17,21 +20,21 @@ import (
 	"github.com/werf/nelm/v2/pkg/log"
 )
 
-func RenderChart(ctx context.Context, chart helmchart.Accessor, renderedValues chartcommon.Values, rebuildBundle bool, chartPath, tempDirPath, denoBinaryPath string) (map[string]string, error) {
+func RenderChart(ctx context.Context, chart helmchart.Accessor, renderedValues chartcommon.Values, rebuildBundle bool, chartPath, tempDirPath, nodeBinaryPath string) (map[string]string, error) {
 	if !hasTSFiles(chart) {
 		return map[string]string{}, nil
 	}
 
-	denoBin, err := getDenoBinary(ctx, denoBinaryPath)
-	if err != nil {
-		return nil, fmt.Errorf("ensure Deno is available: %w", err)
-	}
-
-	if err := bundleChartsRecursive(ctx, chart, chartPath, rebuildBundle, denoBin); err != nil {
+	if err := BundleChartsRecursive(ctx, chart, chartPath, rebuildBundle, nodeBinaryPath); err != nil {
 		return nil, fmt.Errorf("bundle chart recursive: %w", err)
 	}
 
-	allRendered, err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), chartPath, tempDirPath, denoBin)
+	nodeBin, err := getNodeBinary(ctx, nodeBinaryPath)
+	if err != nil {
+		return nil, fmt.Errorf("ensure Node.js is available: %w", err)
+	}
+
+	allRendered, err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), chartPath, tempDirPath, nodeBin)
 	if err != nil {
 		return nil, fmt.Errorf("render chart recursive: %w", err)
 	}
@@ -39,14 +42,14 @@ func RenderChart(ctx context.Context, chart helmchart.Accessor, renderedValues c
 	return allRendered, nil
 }
 
-func renderChartRecursive(ctx context.Context, chart helmchart.Accessor, values chartcommon.Values, pathPrefix, chartPath, tempDirPath, denoBin string) (map[string]string, error) {
+func renderChartRecursive(ctx context.Context, chart helmchart.Accessor, values chartcommon.Values, pathPrefix, chartPath, tempDirPath, nodeBin string) (map[string]string, error) {
 	log.Default.Debug(ctx, "Rendering TypeScript for chart %q (path prefix: %s)", chart.Name(), pathPrefix)
 
 	results := make(map[string]string)
 	entrypoint, bundle := getEntrypointAndBundle(chart.RuntimeFiles())
 
 	if bundle != nil {
-		content, err := renderChart(ctx, bundle, chart, values, tempDirPath, denoBin)
+		content, err := renderChart(ctx, bundle, chart, values, tempDirPath, nodeBin)
 		if err != nil {
 			return nil, fmt.Errorf("render files for chart %q: %w", chart.Name(), err)
 		}
@@ -73,7 +76,7 @@ func renderChartRecursive(ctx context.Context, chart helmchart.Accessor, values 
 			path.Join(pathPrefix, "charts", depAcc.Name()),
 			filepath.Join(chartPath, "charts", depAcc.Name()),
 			tempDirPath,
-			denoBin,
+			nodeBin,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("render dependency %q: %w", depAcc.Name(), err)
@@ -85,18 +88,26 @@ func renderChartRecursive(ctx context.Context, chart helmchart.Accessor, values 
 	return results, nil
 }
 
-func renderChart(ctx context.Context, bundle *chartcommon.File, chart helmchart.Accessor, renderedValues chartcommon.Values, tempDirPath, denoBin string) (string, error) {
+func renderChart(ctx context.Context, bundle *chartcommon.File, chart helmchart.Accessor, renderedValues chartcommon.Values, tempDirPath, nodeBin string) (string, error) {
 	renderDir := filepath.Join(tempDirPath, "typescript-render", chart.ChartFullPath())
 	if err := os.MkdirAll(renderDir, 0o755); err != nil {
 		return "", fmt.Errorf("create temp dir for render context: %w", err)
+	}
+
+	// The temp dir may be reused: whatever is left there, symlinks included, must not be written
+	// through or passed to Node.js in place of the files created here.
+	for _, file := range []string{common.ChartTSInputFile, common.ChartTSOutputFile} {
+		if err := os.Remove(filepath.Join(renderDir, file)); err != nil && !os.IsNotExist(err) {
+			return "", fmt.Errorf("remove leftover %s: %w", file, err)
+		}
 	}
 
 	if err := writeInputRenderContext(renderedValues, chart, renderDir); err != nil {
 		return "", fmt.Errorf("write input render context: %w", err)
 	}
 
-	if err := runApp(ctx, bundle.Data, renderDir, denoBin); err != nil {
-		return "", fmt.Errorf("run deno app: %w", err)
+	if err := runBundle(ctx, nodeBin, renderDir, bundle.Data); err != nil {
+		return "", fmt.Errorf("run bundle: %w", err)
 	}
 
 	resultBytes, err := os.ReadFile(filepath.Join(renderDir, common.ChartTSOutputFile))
@@ -185,4 +196,62 @@ func buildChartMetadata(chart helmchart.Accessor) map[string]any {
 	}
 
 	return metadata
+}
+
+// runBundle runs the bundle, passed through stdin, on the input file in renderDir. Node.js may read
+// only the input file and write only the output file, and gets no environment, so that neither the
+// chart nor its dependencies can reach anything else on the machine.
+func runBundle(ctx context.Context, nodeBin, renderDir string, bundle []byte) error {
+	absRenderDir, err := filepath.Abs(renderDir)
+	if err != nil {
+		return fmt.Errorf("get absolute path of %s: %w", renderDir, err)
+	}
+
+	// Node.js checks permissions against resolved paths.
+	resolvedRenderDir, err := filepath.EvalSymlinks(absRenderDir)
+	if err != nil {
+		return fmt.Errorf("resolve symlinks in %s: %w", absRenderDir, err)
+	}
+
+	inputPath := filepath.Join(resolvedRenderDir, common.ChartTSInputFile)
+	outputPath := filepath.Join(resolvedRenderDir, common.ChartTSOutputFile)
+
+	cmd := exec.CommandContext(ctx, nodeBin, //nolint:gosec // G204: nodeBin is the pinned Node.js or the one the user passed explicitly
+		"--permission",
+		"--allow-fs-read="+inputPath,
+		"--allow-fs-write="+outputPath,
+		// Without a package.json Node.js would guess the module type of stdin.
+		"--input-type=module",
+		"-",
+		"--input-file="+inputPath,
+		"--output-file="+outputPath,
+	)
+	cmd.Dir = resolvedRenderDir
+	cmd.Env = []string{}
+	cmd.Stdin = bytes.NewReader(bundle)
+
+	if runtime.GOOS == "windows" {
+		cmd.Env = []string{"SystemRoot=" + os.Getenv("SystemRoot")}
+	}
+
+	var stdout, stderr bytes.Buffer
+
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	runErr := cmd.Run()
+
+	for line := range strings.Lines(stdout.String()) {
+		log.Default.Debug(ctx, "%s", strings.TrimRight(line, "\n"))
+	}
+
+	for line := range strings.Lines(stderr.String()) {
+		log.Default.Error(ctx, "error from node app: %s", strings.TrimRight(line, "\n"))
+	}
+
+	if runErr != nil {
+		return fmt.Errorf("run process: %w", runErr)
+	}
+
+	return nil
 }

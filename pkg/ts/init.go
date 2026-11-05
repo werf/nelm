@@ -13,36 +13,27 @@ import (
 	"github.com/werf/nelm/v2/pkg/log"
 )
 
-const (
-	denoBuildScript = "deno bundle --output=dist/bundle.js src/index.ts"
-	denoDevScript   = "deno run --no-remote --deny-read --deny-write --deny-net --deny-env --deny-run --allow-read=input.example.yaml src/index.ts --input-file ./input.example.yaml"
-	denoStartScript = "deno run --no-remote --deny-read --deny-write --deny-net --deny-env --deny-run --allow-read=input.example.yaml dist/bundle.js --input-file ./input.example.yaml"
-)
+var chartTSIgnoreEntries = []string{
+	"ts/node_modules/",
+	"ts/.dev/",
+}
 
 type InitTSBoilerplateOptions struct {
 	RenderContextType string
 }
 
 type initTmplData struct {
-	BuildScript       string
 	ChartName         string
-	DevScript         string
 	IsWerfChart       bool
 	RenderContextType string
-	StartScript       string
 }
 
 // EnsureGitignore adds TypeScript entries to .gitignore, creating if needed.
 func EnsureGitignore(chartPath string) error {
-	entries := []string{
-		"ts/node_modules/",
-		"ts/vendor/",
-	}
-
 	return ensureFileEntries(
 		filepath.Join(chartPath, ".gitignore"),
-		strings.Join(entries, "\n")+"\n",
-		entries,
+		strings.Join(chartTSIgnoreEntries, "\n")+"\n",
+		chartTSIgnoreEntries,
 	)
 }
 
@@ -63,7 +54,7 @@ func InitChartStructure(ctx context.Context, chartPath, chartName string) error 
 
 	// Handle .helmignore: create or enrich
 	helmignorePath := filepath.Join(chartPath, ".helmignore")
-	if err := ensureFileEntries(helmignorePath, helmignoreContent, []string{"ts/vendor/", "ts/node_modules/"}); err != nil {
+	if err := ensureFileEntries(helmignorePath, helmignoreContent, chartTSIgnoreEntries); err != nil {
 		return fmt.Errorf("ensure helmignore entries: %w", err)
 	}
 
@@ -88,12 +79,9 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string, opts In
 	}
 
 	data := initTmplData{
-		BuildScript:       denoBuildScript,
 		ChartName:         chartName,
-		DevScript:         denoDevScript,
 		IsWerfChart:       ctxType == common.TSWerfRenderContextType,
 		RenderContextType: ctxType,
-		StartScript:       denoStartScript,
 	}
 
 	files := []struct {
@@ -104,7 +92,8 @@ func InitTSBoilerplate(ctx context.Context, chartPath, chartName string, opts In
 		{tmpl: helpersTSTmpl, path: filepath.Join(srcDir, "helpers.ts")},
 		{tmpl: deploymentTSTmpl, path: filepath.Join(srcDir, "deployment.ts")},
 		{tmpl: serviceTSTmpl, path: filepath.Join(srcDir, "service.ts")},
-		{tmpl: denoJSONTmpl, path: filepath.Join(tsDir, "deno.json")},
+		{tmpl: packageJSONTmpl, path: filepath.Join(tsDir, "package.json")},
+		{tmpl: tsconfigJSONTmpl, path: filepath.Join(tsDir, "tsconfig.json")},
 		{tmpl: inputExampleTmpl, path: filepath.Join(tsDir, "input.example.yaml")},
 	}
 

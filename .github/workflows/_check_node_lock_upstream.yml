@@ -34,11 +34,8 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Fails when the release assets the lock pins no longer hash to what it records: GitHub lets an
-      # asset be replaced without moving its tag, and nothing else would notice, since builds verify
-      # against the committed lock and never look upstream. A newer Deno release is only reported,
-      # since bumping the pin is a decision.
-      - name: Check the pinned Deno release against upstream
-        run: task -p check:deno-lock-upstream
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Fails when the release assets the lock pins no longer hash to what upstream publishes: nothing
+      # else would notice, since builds verify against the committed lock and never look upstream. A
+      # newer Node.js release is only reported, since bumping the pin is a decision.
+      - name: Check the pinned Node.js release against upstream
+        run: task -p check:node-lock-upstream

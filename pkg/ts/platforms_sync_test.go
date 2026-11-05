@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/werf/nelm/v2/pkg/ts/denolock"
+	"github.com/werf/nelm/v2/pkg/ts/nodelock"
 )
 
 // A platform missing from any of the three lists is a release binary that silently falls back to
-// downloading Deno at run time.
+// downloading Node.js at run time.
 func TestEmbedPlatformListsInSync(t *testing.T) {
 	embedFiles, err := filepath.Glob("embed_*.go")
 	require.NoError(t, err)
@@ -33,7 +33,7 @@ func TestEmbedPlatformListsInSync(t *testing.T) {
 	require.NotEmpty(t, embedPlatforms)
 	sort.Strings(embedPlatforms)
 
-	lock, err := denolock.Read()
+	lock, err := nodelock.Read()
 	require.NoError(t, err)
 
 	lockPlatforms := slices.Sorted(maps.Keys(lock.Platforms))
@@ -51,7 +51,7 @@ func TestEmbedPlatformListsInSync(t *testing.T) {
 	sort.Strings(taskfilePlatforms)
 
 	assert.Equal(t, embedPlatforms, lockPlatforms,
-		"pkg/ts/denolock/data/lock.json platforms out of sync with pkg/ts/embed_*.go files, run: task deno:lock")
+		"pkg/ts/nodelock/data/lock.json platforms out of sync with pkg/ts/embed_*.go files, run: task node:lock")
 	assert.Equal(t, embedPlatforms, taskfilePlatforms,
-		"Taskfile.dist.yaml deno:embed platforms out of sync with pkg/ts/embed_*.go files")
+		"Taskfile.dist.yaml node:embed platforms out of sync with pkg/ts/embed_*.go files")
 }

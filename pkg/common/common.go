@@ -109,9 +109,9 @@ const (
 	ChartTSEntryPointJS = "src/index.js"
 	// ChartTSEntryPointTS is the TypeScript entry point path.
 	ChartTSEntryPointTS = "src/index.ts"
-	// ChartTSInputFile is the name of the input file with context for the Deno app.
+	// ChartTSInputFile is the name of the input file with context for the TypeScript chart.
 	ChartTSInputFile = "input.yaml"
-	// ChartTSOutputFile is the name of the output file with rendered manifests from the Deno app.
+	// ChartTSOutputFile is the name of the output file with rendered manifests from the TypeScript chart.
 	ChartTSOutputFile = "output.yaml"
 	// ChartTSSourceDir is the directory containing TypeScript sources in a Helm chart.
 	ChartTSSourceDir                    = "ts/"
@@ -301,8 +301,12 @@ type ChartLoadOptions struct {
 }
 
 type TypeScriptOptions struct {
-	DenoBinaryPath         string
-	EmbeddedDenoCompressed []byte
+	// EmbeddedNPMCompressed is a gzipped tar of the npm package from the pinned Node.js release, with
+	// paths relative to the package root, as produced by scripts/embed-node.
+	EmbeddedNPMCompressed []byte
+	// EmbeddedNodeCompressed is the gzipped Node.js binary of the pinned Node.js release.
+	EmbeddedNodeCompressed []byte
+	NodeBinaryPath         string
 }
 
 type helmOptionsContextKey struct{}
