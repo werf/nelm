@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/samber/lo"
@@ -31,6 +32,8 @@ func TestBuildBundle(t *testing.T) {
 		assert.Contains(t, code, "await render(", "top-level await must be kept for Node.js")
 		assert.NotContains(t, code, "RenderContext", "types must be stripped")
 		assert.NotContains(t, code, "require(", "must be an ES module")
+		assert.True(t, strings.HasPrefix(code, "import { createRequire as __nelmCreateRequire } from 'node:module'; const require = __nelmCreateRequire(import.meta.url);"),
+			"must give CommonJS dependencies require")
 	})
 
 	t.Run("bundles a JavaScript entrypoint", func(t *testing.T) {

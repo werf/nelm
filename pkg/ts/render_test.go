@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
 
+	"github.com/werf/nelm/v2/pkg/common"
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 	"github.com/werf/nelm/v2/pkg/ts"
 )
@@ -145,6 +146,26 @@ await writeFile(values['output-file'], JSON.stringify({ result }));
 	t.Run("gets no environment", func(t *testing.T) {
 		assert.NotContains(t, runProbe(t, `return Object.keys(process.env).join(',');`), "NELM_TEST_CANARY")
 	})
+}
+
+func TestRunBundleWithCJSDependency(t *testing.T) {
+	nodePath := requireTestNode(t)
+
+	tsDir, err := filepath.Abs(filepath.Join("testdata", "fixtures", "cjs-dependency", "ts"))
+	require.NoError(t, err)
+
+	bundle, err := ts.BuildBundle(context.Background(), tsDir, common.ChartTSEntryPointTS)
+	require.NoError(t, err)
+
+	renderDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(renderDir, "input.yaml"), []byte("{}"), 0o644))
+
+	require.NoError(t, ts.RunBundle(context.Background(), nodePath, renderDir, bundle),
+		"CommonJS dependencies must be able to require builtins and use __dirname and __filename")
+
+	output, err := os.ReadFile(filepath.Join(renderDir, "output.yaml"))
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"dirname":"string","filename":"string","joined":"a/b","platform":"string"}`, string(output))
 }
 
 func jsString(value string) string {

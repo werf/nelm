@@ -113,11 +113,20 @@ func hasTSFiles(chart helmchart.Accessor) bool {
 func buildBundle(ctx context.Context, tsDir, entryPoint string) ([]byte, error) {
 	result := api.Build(api.BuildOptions{
 		AbsWorkingDir: tsDir,
-		Bundle:        true,
-		Engines:       []api.Engine{{Name: api.EngineNode, Version: "26"}},
-		EntryPoints:   []string{entryPoint},
-		Format:        api.FormatESModule,
-		Platform:      api.PlatformNode,
+		// CommonJS dependencies need require for Node.js builtins and __dirname/__filename, which an ES
+		// module lacks. Declaring the latter in the banner would clash with ES modules declaring them.
+		Banner: map[string]string{
+			"js": "import { createRequire as __nelmCreateRequire } from 'node:module'; const require = __nelmCreateRequire(import.meta.url);",
+		},
+		Bundle: true,
+		Define: map[string]string{
+			"__dirname":  "import.meta.dirname",
+			"__filename": "import.meta.filename",
+		},
+		Engines:     []api.Engine{{Name: api.EngineNode, Version: "26"}},
+		EntryPoints: []string{entryPoint},
+		Format:      api.FormatESModule,
+		Platform:    api.PlatformNode,
 	})
 
 	for _, warning := range api.FormatMessages(result.Warnings, api.FormatMessagesOptions{Kind: api.WarningMessage}) {
