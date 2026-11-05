@@ -24,6 +24,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/evanphx/json-patch v5.9.11+incompatible
 	github.com/evanphx/json-patch/v5 v5.9.11
+	github.com/evanw/esbuild v0.28.2
 	github.com/fatih/color v1.19.0
 	github.com/fluxcd/cli-utils v0.37.2-flux.1
 	github.com/foxcpp/go-mockdns v1.2.0

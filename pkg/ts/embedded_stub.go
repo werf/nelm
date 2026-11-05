@@ -1,9 +1,13 @@
-//go:build !embeddeno
+//go:build !embednode
 
 package ts
 
 import "context"
 
-func embeddedDenoBinary(_ context.Context) (string, bool, error) {
+func embeddedNPMDir(_ context.Context) (string, bool, error) {
+	return "", false, nil
+}
+
+func embeddedNodeBinary(_ context.Context) (string, bool, error) {
 	return "", false, nil
 }

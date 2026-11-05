@@ -62,8 +62,6 @@ type ChartLintOptions struct {
 	// DefaultPatchesDisable, when true, ignores chart-shipped patches.yaml files
 	// (from the top-level chart and subcharts).
 	DefaultPatchesDisable bool
-	// DenoBinaryPath, if specified, uses this path as the Deno binary instead of auto-downloading.
-	DenoBinaryPath string
 	// DockerConfig is the path to the Docker configuration directory (e.g., ~/.docker).
 	DockerConfig string
 	// DropInvalidAnnotationsAndLabels disables strict annotations and labels validation.
@@ -121,6 +119,8 @@ type ChartLintOptions struct {
 	// NoRemoveManualChanges, when true, preserves fields during validation that would be manually added.
 	// Used in the validation dry-run to check resource compatibility.
 	NoRemoveManualChanges bool
+	// NodeBinaryPath, if specified, uses this path as the Node.js binary instead of the embedded or auto-downloaded one.
+	NodeBinaryPath string
 	// PatchesFiles are paths to patches files (same format as a chart-shipped
 	// patches.yaml) whose rules are applied on top of chart-shipped ones. Rules from
 	// these files are UNSCOPED (they may match any resource), unlike chart-shipped
@@ -290,7 +290,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		TemplatesAllowDNS:               opts.TemplatesAllowDNS,
 		TempDirPath:                     opts.TempDirPath,
 		IgnoreBundleJS:                  opts.IgnoreBundleJS,
-		DenoBinaryPath:                  opts.DenoBinaryPath,
+		NodeBinaryPath:                  opts.NodeBinaryPath,
 		LocalLookupResourcesPaths:       opts.LocalLookupResourcesPaths,
 	}
 

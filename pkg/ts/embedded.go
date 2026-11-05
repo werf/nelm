@@ -1,4 +1,4 @@
-//go:build embeddeno
+//go:build embednode
 
 package ts
 
@@ -7,18 +7,32 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/werf/nelm/v2/pkg/ts/denolock"
+	"github.com/werf/nelm/v2/pkg/ts/nodelock"
 )
 
-// There is a blob only for the platforms denolock pins, so a tagged build for any other one fails
-// with "undefined: embeddedDeno".
-func embeddedDenoBinary(ctx context.Context) (string, bool, error) {
-	pinned, err := denolock.Get(runtime.GOOS, runtime.GOARCH)
+func embeddedNPMDir(ctx context.Context) (string, bool, error) {
+	pinned, err := nodelock.Get(runtime.GOOS, runtime.GOARCH)
 	if err != nil {
-		return "", false, fmt.Errorf("get the pinned Deno release: %w", err)
+		return "", false, fmt.Errorf("get the pinned Node.js release: %w", err)
 	}
 
-	path, err := extractEmbeddedDeno(ctx, embeddedDeno, pinned.BinarySHA256)
+	path, err := extractEmbeddedNPM(ctx, embeddedNPM, pinned.NPMSHA256)
+	if err != nil {
+		return "", false, err
+	}
+
+	return path, true, nil
+}
+
+// There are blobs only for the platforms nodelock pins, so a tagged build for any other one fails
+// with "undefined: embeddedNode".
+func embeddedNodeBinary(ctx context.Context) (string, bool, error) {
+	pinned, err := nodelock.Get(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return "", false, fmt.Errorf("get the pinned Node.js release: %w", err)
+	}
+
+	path, err := extractEmbeddedNode(ctx, embeddedNode, pinned.BinarySHA256)
 	if err != nil {
 		return "", false, err
 	}

@@ -22,7 +22,7 @@ import (
 
 type ChartTSBuildOptions struct {
 	ChartDirPath   string
-	DenoBinaryPath string
+	NodeBinaryPath string
 	TempDirPath    string
 }
 
@@ -63,7 +63,7 @@ func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {
 		return fmt.Errorf("create chart accessor: %w", err)
 	}
 
-	if err = ts.BundleChartsRecursive(ctx, chartAccessor, absPath, true, opts.DenoBinaryPath); err != nil {
+	if err = ts.BundleChartsRecursive(ctx, chartAccessor, absPath, true, opts.NodeBinaryPath); err != nil {
 		return fmt.Errorf("process chart: %w", err)
 	}
 

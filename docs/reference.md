@@ -319,13 +319,13 @@ nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-
 
 **TypeScript options:**
 
-- `--deno-binary-path` (default: `""`)
-
-  Path to the Deno binary to use instead of auto\-downloading\. Vars: \$NELM\_DENO\_BINARY\_PATH, \$NELM\_RELEASE\_INSTALL\_DENO\_BINARY\_PATH
-
 - `--ignore-bundle-js` (default: `false`)
 
-  Do not use the existing bundle\.js file\. Requires TypeScript source files and Deno to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_RELEASE\_INSTALL\_IGNORE\_BUNDLE\_JS
+  Do not use the existing bundle\.js file\. Requires TypeScript source files to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_RELEASE\_INSTALL\_IGNORE\_BUNDLE\_JS
+
+- `--node-binary-path` (default: `""`)
+
+  Path to the Node\.js binary to use instead of the embedded or auto\-downloaded one\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_RELEASE\_INSTALL\_NODE\_BINARY\_PATH
 
 
 **Progress options:**
@@ -1045,13 +1045,13 @@ nelm release plan install [options...] -n namespace -r release [chart-dir|chart-
 
 **TypeScript options:**
 
-- `--deno-binary-path` (default: `""`)
-
-  Path to the Deno binary to use instead of auto\-downloading\. Vars: \$NELM\_DENO\_BINARY\_PATH, \$NELM\_RELEASE\_PLAN\_INSTALL\_DENO\_BINARY\_PATH
-
 - `--ignore-bundle-js` (default: `false`)
 
-  Do not use the existing bundle\.js file\. Requires TypeScript source files and Deno to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_RELEASE\_PLAN\_INSTALL\_IGNORE\_BUNDLE\_JS
+  Do not use the existing bundle\.js file\. Requires TypeScript source files to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_RELEASE\_PLAN\_INSTALL\_IGNORE\_BUNDLE\_JS
+
+- `--node-binary-path` (default: `""`)
+
+  Path to the Node\.js binary to use instead of the embedded or auto\-downloaded one\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_RELEASE\_PLAN\_INSTALL\_NODE\_BINARY\_PATH
 
 
 **Progress options:**
@@ -2238,13 +2238,13 @@ nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive
 
 **TypeScript options:**
 
-- `--deno-binary-path` (default: `""`)
-
-  Path to the Deno binary to use instead of auto\-downloading\. Vars: \$NELM\_DENO\_BINARY\_PATH, \$NELM\_CHART\_LINT\_DENO\_BINARY\_PATH
-
 - `--ignore-bundle-js` (default: `false`)
 
-  Do not use the existing bundle\.js file\. Requires TypeScript source files and Deno to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_CHART\_LINT\_IGNORE\_BUNDLE\_JS
+  Do not use the existing bundle\.js file\. Requires TypeScript source files to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_CHART\_LINT\_IGNORE\_BUNDLE\_JS
+
+- `--node-binary-path` (default: `""`)
+
+  Path to the Node\.js binary to use instead of the embedded or auto\-downloaded one\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_LINT\_NODE\_BINARY\_PATH
 
 
 **Progress options:**
@@ -2609,13 +2609,13 @@ nelm chart render [options...] [chart-dir|chart-repo-name/chart-name|chart-archi
 
 **TypeScript options:**
 
-- `--deno-binary-path` (default: `""`)
-
-  Path to the Deno binary to use instead of auto\-downloading\. Vars: \$NELM\_DENO\_BINARY\_PATH, \$NELM\_CHART\_RENDER\_DENO\_BINARY\_PATH
-
 - `--ignore-bundle-js` (default: `false`)
 
-  Do not use the existing bundle\.js file\. Requires TypeScript source files and Deno to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_CHART\_RENDER\_IGNORE\_BUNDLE\_JS
+  Do not use the existing bundle\.js file\. Requires TypeScript source files to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_CHART\_RENDER\_IGNORE\_BUNDLE\_JS
+
+- `--node-binary-path` (default: `""`)
+
+  Path to the Node\.js binary to use instead of the embedded or auto\-downloaded one\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_RENDER\_NODE\_BINARY\_PATH
 
 
 **Chart repository options:**
@@ -3136,9 +3136,9 @@ nelm chart pack [CHART_PATH] [...] [flags]
 
 **TypeScript options:**
 
-- `--deno-binary-path` (default: `""`)
+- `--node-binary-path` (default: `""`)
 
-  Path to the Deno binary to use instead of auto\-downloading\. Vars: \$NELM\_DENO\_BINARY\_PATH, \$NELM\_CHART\_PACK\_DENO\_BINARY\_PATH
+  Path to the Node\.js binary to use instead of the embedded or auto\-downloaded one\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_PACK\_NODE\_BINARY\_PATH
 
 
 **Other options:**
@@ -4393,9 +4393,9 @@ nelm chart ts init [PATH]
 
 **TypeScript options:**
 
-- `--deno-binary-path` (default: `""`)
+- `--node-binary-path` (default: `""`)
 
-  Path to the Deno binary to use instead of auto\-downloading\. Vars: \$NELM\_DENO\_BINARY\_PATH, \$NELM\_CHART\_TS\_INIT\_DENO\_BINARY\_PATH
+  Path to the Node\.js binary to use instead of the embedded or auto\-downloaded one\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_TS\_INIT\_NODE\_BINARY\_PATH
 
 
 **Other options:**
@@ -4429,9 +4429,9 @@ nelm chart ts build [PATH]
 
 **TypeScript options:**
 
-- `--deno-binary-path` (default: `""`)
+- `--node-binary-path` (default: `""`)
 
-  Path to the Deno binary to use instead of auto\-downloading\. Vars: \$NELM\_DENO\_BINARY\_PATH, \$NELM\_CHART\_TS\_BUILD\_DENO\_BINARY\_PATH
+  Path to the Node\.js binary to use instead of the embedded or auto\-downloaded one\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_TS\_BUILD\_NODE\_BINARY\_PATH
 
 
 **Other options:**
