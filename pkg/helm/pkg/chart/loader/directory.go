@@ -179,14 +179,14 @@ func GetFilesFromLocalFilesystem(dir string) ([]*BufferedFile, error) {
 		if fi.IsDir() {
 			// Directory-based ignore rules should involve skipping the entire
 			// contents of that directory.
-			if rules.Ignore(n, fi) {
+			if !isWerfDataPath(n) && rules.Ignore(n, fi) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 
 		// If a .helmignore file matches, skip this file.
-		if rules.Ignore(n, fi) {
+		if !isWerfDataPath(n) && rules.Ignore(n, fi) {
 			return nil
 		}
 
