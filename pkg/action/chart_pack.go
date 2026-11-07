@@ -14,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -505,6 +506,20 @@ func addChartPackInputs(ctx context.Context, data *werfdata.Data, opts ChartPack
 	return nil
 }
 
+// newChartRegistryClient returns the registry client to download the chart chartRef and its
+// dependencies with. The chart repo credentials go to the registry of an OCI chartRef only.
+func newChartRegistryClient(ctx context.Context, chartRef string, opts common.ChartRepoConnectionOptions, registryCredentialsPath string, out io.Writer) (*registry.Client, error) {
+	var chartHosts []string
+	if registry.IsOCI(chartRef) {
+		chartHosts = []string{strings.Split(strings.TrimPrefix(chartRef, registry.OCIScheme+"://"), "/")[0]}
+	}
+
+	return newChartRepoRegistryClient(ctx, opts, registryCredentialsPath,
+		registry.ClientOptBasicAuthHosts(chartHosts...),
+		registry.ClientOptWriter(out),
+	)
+}
+
 func mergeChartPackSecretValues(ctx context.Context, data *werfdata.Data, secretValuesFiles []string) error {
 	merged := map[string]any{}
 	if data.SecretValues != nil {
@@ -577,6 +592,57 @@ func migrateLegacyExtraAnnotationsAndLabels(files []*chartcommon.File, data *wer
 	}
 
 	return result, nil
+}
+
+func newChartRepoRegistryClient(ctx context.Context, opts common.ChartRepoConnectionOptions, registryCredentialsPath string, extraClientOpts ...registry.ClientOption) (*registry.Client, error) {
+	clientOpts := []registry.ClientOption{
+		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
+		registry.ClientOptEnableCache(true),
+		registry.ClientOptWriter(io.Discard),
+		registry.ClientOptCredentialsFile(registryCredentialsPath),
+		registry.ClientOptBasicAuth(opts.ChartRepoBasicAuthUsername, opts.ChartRepoBasicAuthPassword),
+	}
+
+	withTLSOptions := hasChartRepoTLSOptions(opts)
+
+	clientOpts = append(clientOpts, registry.ClientOptPlainHTTPHost(func(host string) bool {
+		return opts.ChartRepoInsecure || chartRepoPlainHTTP(host, nil, withTLSOptions)
+	}))
+
+	var transport http.RoundTripper
+	if withTLSOptions {
+		tlsConfig, err := tlsutil.NewTLSConfig(
+			tlsutil.WithInsecureSkipVerify(opts.ChartRepoSkipTLSVerify),
+			tlsutil.WithCertKeyPairFiles(opts.ChartRepoCertPath, opts.ChartRepoKeyPath),
+			tlsutil.WithCAFile(opts.ChartRepoCAPath),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("build TLS config: %w", err)
+		}
+
+		transport = &http.Transport{
+			TLSClientConfig: tlsConfig,
+			Proxy:           http.ProxyFromEnvironment,
+		}
+	}
+
+	if transport != nil || opts.ChartRepoRequestTimeout > 0 {
+		if transport == nil {
+			transport = registry.NewTransport(log.Default.AcceptLevel(ctx, log.DebugLevel))
+		}
+
+		clientOpts = append(clientOpts, registry.ClientOptHTTPClient(&http.Client{
+			Transport: transport,
+			Timeout:   opts.ChartRepoRequestTimeout,
+		}))
+	}
+
+	client, err := registry.NewClient(append(clientOpts, extraClientOpts...)...)
+	if err != nil {
+		return nil, fmt.Errorf("create registry client: %w", err)
+	}
+
+	return client, nil
 }
 
 // rewriteChartPackArchiveMetadata replaces Chart.yaml and Chart.lock of the root chart, which the
@@ -696,6 +762,12 @@ func chartAnnotations(loadedChart helmchart.Charter) map[string]string {
 	}
 }
 
+// chartRepoPlainHTTP returns whether to reach the registry host (host or host:port) over plain
+// HTTP: the insecure hosts are, and loopback ones unless TLS options are given for them.
+func chartRepoPlainHTTP(host string, insecureHosts []string, withTLSOptions bool) bool {
+	return slices.Contains(insecureHosts, host) || !withTLSOptions && registry.IsLoopbackHost(host)
+}
+
 func chartVersion(loadedChart helmchart.Charter) string {
 	switch c := loadedChart.(type) {
 	case *v2chart.Chart:
@@ -805,6 +877,10 @@ func editAnnotationsMap(annotations map[string]string, edit chartyaml.EditOption
 	return result
 }
 
+func hasChartRepoTLSOptions(opts common.ChartRepoConnectionOptions) bool {
+	return opts.ChartRepoCertPath != "" && opts.ChartRepoKeyPath != "" || opts.ChartRepoCAPath != "" || opts.ChartRepoSkipTLSVerify
+}
+
 func mergeStringMaps(base, overrides map[string]string) map[string]string {
 	result := lo.Assign(base, overrides)
 	if len(result) == 0 {
@@ -827,53 +903,6 @@ func newChartPackDependencyDownloader(ctx context.Context, chartPath string, reg
 		ContentCache:      opts.ContentCache,
 		AllowMissingRepos: true,
 	}
-}
-
-func newChartRepoRegistryClient(ctx context.Context, opts common.ChartRepoConnectionOptions, registryCredentialsPath string, extraClientOpts ...registry.ClientOption) (*registry.Client, error) {
-	clientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
-		registry.ClientOptEnableCache(true),
-		registry.ClientOptWriter(io.Discard),
-		registry.ClientOptCredentialsFile(registryCredentialsPath),
-		registry.ClientOptBasicAuth(opts.ChartRepoBasicAuthUsername, opts.ChartRepoBasicAuthPassword),
-	}
-
-	var transport http.RoundTripper
-	if opts.ChartRepoCertPath != "" && opts.ChartRepoKeyPath != "" || opts.ChartRepoCAPath != "" || opts.ChartRepoSkipTLSVerify {
-		tlsConfig, err := tlsutil.NewTLSConfig(
-			tlsutil.WithInsecureSkipVerify(opts.ChartRepoSkipTLSVerify),
-			tlsutil.WithCertKeyPairFiles(opts.ChartRepoCertPath, opts.ChartRepoKeyPath),
-			tlsutil.WithCAFile(opts.ChartRepoCAPath),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("build TLS config: %w", err)
-		}
-
-		transport = &http.Transport{
-			TLSClientConfig: tlsConfig,
-			Proxy:           http.ProxyFromEnvironment,
-		}
-	} else if opts.ChartRepoInsecure {
-		clientOpts = append(clientOpts, registry.ClientOptPlainHTTP())
-	}
-
-	if transport != nil || opts.ChartRepoRequestTimeout > 0 {
-		if transport == nil {
-			transport = registry.NewTransport(log.Default.AcceptLevel(ctx, log.DebugLevel))
-		}
-
-		clientOpts = append(clientOpts, registry.ClientOptHTTPClient(&http.Client{
-			Transport: transport,
-			Timeout:   opts.ChartRepoRequestTimeout,
-		}))
-	}
-
-	client, err := registry.NewClient(append(clientOpts, extraClientOpts...)...)
-	if err != nil {
-		return nil, fmt.Errorf("create registry client: %w", err)
-	}
-
-	return client, nil
 }
 
 func nextWerfDataFileIndex(files map[string][]byte, dir string) int {

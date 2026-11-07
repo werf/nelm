@@ -297,6 +297,36 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		opts.ReleaseInstallRuntimeOptions = planArtifact.Data.Options
 	}
 
+	var helmRegistryClient *registry.Client
+	if !usePlan && opts.LegacyChartRenderResult == nil {
+		helmRegistryClient, err = newChartRegistryClient(ctx, opts.Chart, opts.ChartRepoConnectionOptions, opts.RegistryCredentialsPath, opts.LegacyLogRegistryStreamOut)
+		if err != nil {
+			return nil, fmt.Errorf("construct registry client: %w", err)
+		}
+	}
+
+	if !usePlan && opts.LegacyChartRenderResult == nil && (releaseName == "" || releaseNamespace == "") {
+		downloadDir, err := os.MkdirTemp(opts.TempDirPath, "chart-download-")
+		if err != nil {
+			return nil, fmt.Errorf("create chart download directory: %w", err)
+		}
+		defer os.RemoveAll(downloadDir)
+
+		opts.Chart, releaseName, releaseNamespace, err = loadRecordedRelease(ctx, opts.Chart, helmRegistryClient, downloadDir, releaseName, releaseNamespace, chart.DownloadChartOptions{
+			ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
+			ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
+			ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
+			ChartVersion:               opts.ChartVersion,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("resolve release: %w", err)
+		}
+	}
+
+	if err := requireRelease(releaseName, releaseNamespace); err != nil {
+		return nil, err
+	}
+
 	if renderResult := opts.LegacyChartRenderResult; renderResult != nil {
 		if renderResult.installable.ReleaseName != releaseName || renderResult.installable.ReleaseNamespace != releaseNamespace {
 			return nil, fmt.Errorf("chart render result release mismatch: expected %q (namespace: %q), got %q (namespace: %q)",
@@ -315,27 +345,6 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	clientFactory, err := kube.NewClientFactory(ctx, kubeConfig)
 	if err != nil {
 		return nil, fmt.Errorf("construct kube client factory: %w", err)
-	}
-
-	var helmRegistryClient *registry.Client
-	if !usePlan && opts.LegacyChartRenderResult == nil {
-		helmRegistryClientOpts := []registry.ClientOption{
-			registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)), // TODO(log):
-			registry.ClientOptWriter(opts.LegacyLogRegistryStreamOut),
-			registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
-		}
-
-		if opts.ChartRepoInsecure {
-			helmRegistryClientOpts = append(
-				helmRegistryClientOpts,
-				registry.ClientOptPlainHTTP(),
-			)
-		}
-
-		helmRegistryClient, err = registry.NewClient(helmRegistryClientOpts...)
-		if err != nil {
-			return nil, fmt.Errorf("construct registry client: %w", err)
-		}
 	}
 
 	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, clientFactory, release.ReleaseStorageOptions{

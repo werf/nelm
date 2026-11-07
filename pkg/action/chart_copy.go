@@ -12,11 +12,9 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"net"
 	"os"
 	"path"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -474,8 +472,8 @@ func ChartCopy(ctx context.Context, from, to string, opts ChartCopyOptions) erro
 		return strings.Split(addr.Repo, "/")[0], addr.Repo != ""
 	})
 
-	// Plain HTTP is for loopback registries and, when insecure, the chart repositories, even with
-	// TLS options, which are then for the image repositories on other hosts.
+	// Plain HTTP is for loopback registries without TLS options and, when insecure, the chart
+	// repositories, even with TLS options, which are then for the image repositories on other hosts.
 	var insecureHosts []string
 	if opts.ChartRepoInsecure {
 		insecureHosts = chartHosts
@@ -484,7 +482,7 @@ func ChartCopy(ctx context.Context, from, to string, opts ChartCopyOptions) erro
 	registryClient, err := newChartRepoRegistryClient(ctx, opts.ChartRepoConnectionOptions, opts.RegistryCredentialsPath,
 		registry.ClientOptBasicAuthHosts(chartHosts...),
 		registry.ClientOptPlainHTTPHost(func(host string) bool {
-			return chartCopyPlainHTTP(host, insecureHosts)
+			return chartRepoPlainHTTP(host, insecureHosts, hasChartRepoTLSOptions(opts.ChartRepoConnectionOptions))
 		}),
 	)
 	if err != nil {
@@ -1504,29 +1502,6 @@ func chartCopyMetadataWithoutAnnotations(chartAccessor helmchart.Accessor) ([]by
 	}
 
 	return metadata, nil
-}
-
-// chartCopyPlainHTTP returns whether to reach the registry host (host or host:port) over plain
-// HTTP: loopback registries are, as containerd and go-containerregistry do, and so are the
-// insecure ones.
-func chartCopyPlainHTTP(host string, insecureHosts []string) bool {
-	if slices.Contains(insecureHosts, host) {
-		return true
-	}
-
-	hostname := host
-	if splitHost, _, err := net.SplitHostPort(host); err == nil {
-		hostname = splitHost
-	}
-
-	hostname = strings.TrimSuffix(strings.TrimPrefix(hostname, "["), "]")
-	if hostname == "localhost" {
-		return true
-	}
-
-	ip := net.ParseIP(hostname)
-
-	return ip != nil && ip.IsLoopback()
 }
 
 func chartCopyRawValues(chartAccessor helmchart.Accessor) *chartcommon.File {

@@ -26,7 +26,7 @@ type releasePlanInstallConfig struct {
 func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.Command]func(cmd *cobra.Command) error) *cobra.Command {
 	cfg := &releasePlanInstallConfig{}
 
-	use := "install [options...] -n namespace -r release"
+	use := "install [options...] [-n namespace] [-r release]"
 	use += " [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]"
 
 	cmd := cli.NewSubCommand(
@@ -340,19 +340,17 @@ func newReleasePlanInstallCommand(ctx context.Context, afterAllCommandsBuiltFunc
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.ReleaseName, "release", "", "The release name. Must be unique within the release namespace", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.ReleaseName, "release", "", "The release name. Must be unique within the release namespace. Defaults to the one recorded in the chart's .werf-data", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
-			Required:             true,
 			ShortName:            "r",
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.ReleaseNamespace, "namespace", "", "The release namespace. Resources with no namespace will be deployed here", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.ReleaseNamespace, "namespace", "", "The release namespace. Resources with no namespace will be deployed here. Defaults to the one recorded in the chart's .werf-data", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
-			Required:             true,
 			ShortName:            "n",
 		}); err != nil {
 			return fmt.Errorf("add flag: %w", err)

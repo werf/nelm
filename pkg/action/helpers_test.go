@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -400,6 +402,12 @@ type chartCopyTestTarEntry struct {
 	Name string
 }
 
+func newChartCopyTestRegistry(t *testing.T) string {
+	t.Helper()
+
+	return newChartCopyTestRegistryWithTLS(t, "", "")
+}
+
 func newChartRenderInstallChart(t *testing.T, api *progressPhasesAPI) string {
 	t.Helper()
 
@@ -719,7 +727,18 @@ func newChartCopyTestOptions(t *testing.T) ChartCopyOptions {
 	}
 }
 
-func newChartCopyTestRegistry(t *testing.T) string {
+func newChartCopyTestRegistryClient(t *testing.T) *registry.Client {
+	t.Helper()
+
+	client, err := registry.NewClient(registry.ClientOptPlainHTTP(), registry.ClientOptWriter(io.Discard), registry.ClientOptCredentialsFile(filepath.Join(t.TempDir(), "config.json")))
+	require.NoError(t, err)
+
+	return client
+}
+
+// newChartCopyTestRegistryWithTLS starts a registry on localhost, served over HTTPS with the
+// certificate and key if given, which must be signed by the Helm test root CA.
+func newChartCopyTestRegistryWithTLS(t *testing.T, certPath, keyPath string) string {
 	t.Helper()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -735,6 +754,12 @@ func newChartCopyTestRegistry(t *testing.T) string {
 	config.Log.Level = "fatal"
 	config.Log.AccessLog.Disabled = true
 	config.Validation.Manifests.URLs.Allow = []string{`^https://example\.com/`}
+	config.HTTP.TLS.Certificate = certPath
+	config.HTTP.TLS.Key = keyPath
+
+	if certPath != "" {
+		host = strings.Replace(host, "127.0.0.1", "localhost", 1)
+	}
 
 	t.Setenv("OTEL_TRACES_EXPORTER", "none")
 
@@ -749,8 +774,22 @@ func newChartCopyTestRegistry(t *testing.T) string {
 		_ = dockerRegistry.Shutdown(context.Background())
 	})
 
+	healthClient := http.DefaultClient
+	scheme := "http"
+
+	if certPath != "" {
+		caData, err := os.ReadFile("../helm/testdata/rootca.crt")
+		require.NoError(t, err)
+
+		rootCAs := x509.NewCertPool()
+		require.True(t, rootCAs.AppendCertsFromPEM(caData))
+
+		healthClient = &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: rootCAs, MinVersion: tls.VersionTLS12}}}
+		scheme = "https"
+	}
+
 	require.Eventually(t, func() bool {
-		resp, err := http.Get("http://" + host + "/v2/")
+		resp, err := healthClient.Get(scheme + "://" + host + "/v2/")
 		if err != nil {
 			return false
 		}
@@ -760,15 +799,6 @@ func newChartCopyTestRegistry(t *testing.T) string {
 	}, 10*time.Second, 50*time.Millisecond)
 
 	return host
-}
-
-func newChartCopyTestRegistryClient(t *testing.T) *registry.Client {
-	t.Helper()
-
-	client, err := registry.NewClient(registry.ClientOptPlainHTTP(), registry.ClientOptWriter(io.Discard), registry.ClientOptCredentialsFile(filepath.Join(t.TempDir(), "config.json")))
-	require.NoError(t, err)
-
-	return client
 }
 
 func newChartCopyTestRepository(t *testing.T, repo string) *remote.Repository {

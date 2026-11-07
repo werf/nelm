@@ -167,6 +167,27 @@ func TestResolvePatches_RejectsMissingRenderedValues(t *testing.T) {
 	require.ErrorContains(t, err, "rendered values are required")
 }
 
+// A stored release keeps the chart files but not .werf-data, so the root extra_*.json a .werf-data
+// chart ignored at install must not be read when rollback or uninstall collect its patches.
+func TestResolvePatches_StoredChartIgnoresLegacyExtraJSON(t *testing.T) {
+	stored := &v2chart.Chart{
+		Metadata: &v2chart.Metadata{Name: "app"},
+		Files: []*chartcommon.File{
+			{Name: "extra_annotations.json", Data: []byte("not json")},
+			{Name: "extra_labels.json", Data: []byte("not json")},
+		},
+	}
+
+	chart, err := helmchart.NewAccessor(stored)
+	require.NoError(t, err)
+
+	_, err = resolvePatches(chart, false, nil, spec.Patches{}, aiRenderedValues())
+	require.NoError(t, err)
+
+	_, err = chartMetadataWerfData(chart)
+	require.Error(t, err)
+}
+
 func TestResolvePatches_WerfDataPatchesOrder(t *testing.T) {
 	tests := []struct {
 		name                  string
