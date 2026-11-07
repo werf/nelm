@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/gofrs/flock"
 	"github.com/samber/lo"
@@ -28,10 +29,10 @@ func BundleChartsRecursive(ctx context.Context, chart helmchart.Accessor, path s
 		return nil
 	}
 
-	denoBin, err := getDenoBinary(ctx, binaryPath)
-	if err != nil {
-		return fmt.Errorf("ensure Deno is available: %w", err)
-	}
+	// Deno is acquired only when a bundle is built, so reusing existing bundles doesn't need it.
+	denoBin := sync.OnceValues(func() (string, error) {
+		return getDenoBinary(ctx, binaryPath)
+	})
 
 	return bundleChartsRecursive(ctx, chart, path, rebuildBundle, denoBin)
 }
@@ -58,14 +59,19 @@ func RunDenoInstall(ctx context.Context, chartPath, binaryPath string) error {
 	return nil
 }
 
-func bundleChartsRecursive(ctx context.Context, chart helmchart.Accessor, path string, rebuildBundle bool, denoBin string) error {
+func bundleChartsRecursive(ctx context.Context, chart helmchart.Accessor, path string, rebuildBundle bool, denoBin func() (string, error)) error {
 	entrypoint, bundle := getEntrypointAndBundle(chart.RuntimeFiles())
 
 	if entrypoint != "" {
 		if bundle == nil || rebuildBundle {
 			log.Default.Info(ctx, "Bundle TypeScript for chart %q (entrypoint: %s)", chart.Name(), entrypoint)
 
-			bundleRes, err := runDenoBundle(ctx, path, entrypoint, denoBin)
+			bin, err := denoBin()
+			if err != nil {
+				return fmt.Errorf("ensure Deno is available: %w", err)
+			}
+
+			bundleRes, err := runDenoBundle(ctx, path, entrypoint, bin)
 			if err != nil {
 				return fmt.Errorf("build TypeScript bundle: %w", err)
 			}
