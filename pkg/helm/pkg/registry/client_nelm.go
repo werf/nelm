@@ -9,7 +9,10 @@ import (
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2/errdef"
+	"oras.land/oras-go/v2/registry"
 	"oras.land/oras-go/v2/registry/remote"
+	"oras.land/oras-go/v2/registry/remote/auth"
+	"oras.land/oras-go/v2/registry/remote/credentials"
 )
 
 // PushOptExtraTags returns a function that sets additional tags pointing to the
@@ -81,4 +84,61 @@ func (c *Client) tagExists(registryReference reference, tag string) (bool, error
 	}
 
 	return true, nil
+}
+
+// ClientOptBasicAuthHosts limits the username and password to the given registry hosts (host or
+// host:port). Other hosts get the credentials from the credentials store. Docker Hub names are
+// matched to the host the requests go to.
+func ClientOptBasicAuthHosts(hosts ...string) ClientOption {
+	return func(client *Client) {
+		client.basicAuthHosts = make([]string, 0, len(hosts))
+		for _, host := range hosts {
+			if host == "index.docker.io" {
+				host = "docker.io"
+			}
+
+			client.basicAuthHosts = append(client.basicAuthHosts, registry.Reference{Registry: host}.Host())
+		}
+	}
+}
+
+// ClientOptPlainHTTPHost makes the client decide per registry host (host or host:port) whether to
+// use plain HTTP, instead of following ClientOptPlainHTTP.
+func ClientOptPlainHTTPHost(plainHTTPHost func(host string) bool) ClientOption {
+	return func(client *Client) {
+		client.plainHTTPHost = plainHTTPHost
+	}
+}
+
+// Repository returns the remote repository of ref, authenticated and configured like the client.
+func (c *GenericClient) Repository(ref string) (*remote.Repository, error) {
+	repository, err := remote.NewRepository(ref)
+	if err != nil {
+		return nil, fmt.Errorf("parse repository reference %q: %w", ref, err)
+	}
+	repository.PlainHTTP = isPlainHTTP(c.plainHTTP, c.plainHTTPHost, repository.Reference.Registry)
+	repository.Client = c.authorizer
+
+	return repository, nil
+}
+
+func (c *Client) basicAuthHostsCredential() auth.CredentialFunc {
+	storeCredential := credentials.Credential(c.credentialsStore)
+
+	return func(ctx context.Context, hostport string) (auth.Credential, error) {
+		if slices.Contains(c.basicAuthHosts, hostport) {
+			return auth.Credential{Username: c.username, Password: c.password}, nil
+		}
+
+		return storeCredential(ctx, hostport)
+	}
+}
+
+// isPlainHTTP returns whether to use plain HTTP with the registry host.
+func isPlainHTTP(plainHTTP bool, plainHTTPHost func(host string) bool, host string) bool {
+	if plainHTTPHost != nil {
+		return plainHTTPHost(host)
+	}
+
+	return plainHTTP
 }

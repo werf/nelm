@@ -46,6 +46,7 @@ type GenericClient struct {
 	credentialsStore   credentials.Store
 	httpClient         *http.Client
 	plainHTTP          bool
+	plainHTTPHost      func(host string) bool
 }
 
 // GenericPullOptions configures a generic pull operation
@@ -80,6 +81,7 @@ func NewGenericClient(client *Client) *GenericClient {
 		credentialsStore:   client.credentialsStore,
 		httpClient:         client.httpClient,
 		plainHTTP:          client.plainHTTP,
+		plainHTTPHost:      client.plainHTTPHost,
 	}
 }
 
@@ -103,7 +105,7 @@ func (c *GenericClient) PullGenericContext(ctx context.Context, ref string, opti
 	if err != nil {
 		return nil, err
 	}
-	repository.PlainHTTP = c.plainHTTP
+	repository.PlainHTTP = isPlainHTTP(c.plainHTTP, c.plainHTTPHost, repository.Reference.Registry)
 	repository.Client = c.authorizer
 
 	// Prepare allowed media types for filtering
