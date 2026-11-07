@@ -119,7 +119,7 @@ Deploy a chart to Kubernetes\.
 **Usage:**
 
 ```shell
-nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]
+nelm release install [options...] [-n namespace] [-r release] [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]
 ```
 
 **Options:**
@@ -142,7 +142,7 @@ nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-
 
 - `-n`, `--namespace` (default: `""`)
 
-  The release namespace\. Resources with no namespace will be deployed here\. Vars: \$NELM\_NAMESPACE, \$NELM\_RELEASE\_INSTALL\_NAMESPACE
+  The release namespace\. Resources with no namespace will be deployed here\. Defaults to the one recorded in the chart's \.werf\-data\. Vars: \$NELM\_NAMESPACE, \$NELM\_RELEASE\_INSTALL\_NAMESPACE
 
 - `--no-create-namespace` (default: `false`)
 
@@ -174,7 +174,7 @@ nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-
 
 - `-r`, `--release` (default: `""`)
 
-  The release name\. Must be unique within the release namespace\. Vars: \$NELM\_RELEASE, \$NELM\_RELEASE\_INSTALL\_RELEASE
+  The release name\. Must be unique within the release namespace\. Defaults to the one recorded in the chart's \.werf\-data\. Vars: \$NELM\_RELEASE, \$NELM\_RELEASE\_INSTALL\_RELEASE
 
 - `--release-info-annotations` (default: `{}`)
 
@@ -849,7 +849,7 @@ Plan a release install to Kubernetes\.
 **Usage:**
 
 ```shell
-nelm release plan install [options...] -n namespace -r release [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]
+nelm release plan install [options...] [-n namespace] [-r release] [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]
 ```
 
 **Options:**
@@ -876,7 +876,7 @@ nelm release plan install [options...] -n namespace -r release [chart-dir|chart-
 
 - `-n`, `--namespace` (default: `""`)
 
-  The release namespace\. Resources with no namespace will be deployed here\. Vars: \$NELM\_NAMESPACE, \$NELM\_RELEASE\_PLAN\_INSTALL\_NAMESPACE
+  The release namespace\. Resources with no namespace will be deployed here\. Defaults to the one recorded in the chart's \.werf\-data\. Vars: \$NELM\_NAMESPACE, \$NELM\_RELEASE\_PLAN\_INSTALL\_NAMESPACE
 
 - `--no-install-crds` (default: `false`)
 
@@ -896,7 +896,7 @@ nelm release plan install [options...] -n namespace -r release [chart-dir|chart-
 
 - `-r`, `--release` (default: `""`)
 
-  The release name\. Must be unique within the release namespace\. Vars: \$NELM\_RELEASE, \$NELM\_RELEASE\_PLAN\_INSTALL\_RELEASE
+  The release name\. Must be unique within the release namespace\. Defaults to the one recorded in the chart's \.werf\-data\. Vars: \$NELM\_RELEASE, \$NELM\_RELEASE\_PLAN\_INSTALL\_RELEASE
 
 - `--release-info-annotations` (default: `{}`)
 
@@ -2099,9 +2099,9 @@ nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive
 
   Manifest files used as a cluster stub for the lookup template function in non\-remote mode\. Multi\-document and kind:List supported\. Namespaced resources must set metadata\.namespace, otherwise namespace\-scoped lookups ignore the requested namespace\. Vars: \$NELM\_LOOKUP\_RESOURCES\_\*, \$NELM\_CHART\_LINT\_LOOKUP\_RESOURCES\_\*
 
-- `-n`, `--namespace` (default: `"stub-namespace"`)
+- `-n`, `--namespace` (default: `""`)
 
-  The release namespace\. Resources with no namespace will be deployed here\. Vars: \$NELM\_NAMESPACE, \$NELM\_CHART\_LINT\_NAMESPACE
+  The release namespace\. Resources with no namespace will be deployed here\. Defaults to the one recorded in the chart's \.werf\-data, else to a stub\. Vars: \$NELM\_NAMESPACE, \$NELM\_CHART\_LINT\_NAMESPACE
 
 - `--no-remove-manual-changes` (default: `false`)
 
@@ -2115,9 +2115,9 @@ nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive
 
   Strategy for provenance verifying\. Vars: \$NELM\_PROVENANCE\_STRATEGY, \$NELM\_CHART\_LINT\_PROVENANCE\_STRATEGY
 
-- `-r`, `--release` (default: `"stub-release"`)
+- `-r`, `--release` (default: `""`)
 
-  The release name\. Must be unique within the release namespace\. Vars: \$NELM\_RELEASE, \$NELM\_CHART\_LINT\_RELEASE
+  The release name\. Must be unique within the release namespace\. Defaults to the one recorded in the chart's \.werf\-data, else to a stub\. Vars: \$NELM\_RELEASE, \$NELM\_CHART\_LINT\_RELEASE
 
 - `--remote` (default: `false`)
 
@@ -2482,9 +2482,9 @@ nelm chart render [options...] [chart-dir|chart-repo-name/chart-name|chart-archi
 
   Manifest files used as a cluster stub for the lookup template function in non\-remote mode\. Multi\-document and kind:List supported\. Namespaced resources must set metadata\.namespace, otherwise namespace\-scoped lookups ignore the requested namespace\. Vars: \$NELM\_LOOKUP\_RESOURCES\_\*, \$NELM\_CHART\_RENDER\_LOOKUP\_RESOURCES\_\*
 
-- `-n`, `--namespace` (default: `"stub-namespace"`)
+- `-n`, `--namespace` (default: `""`)
 
-  The release namespace\. Resources with no namespace will be deployed here\. Vars: \$NELM\_NAMESPACE, \$NELM\_CHART\_RENDER\_NAMESPACE
+  The release namespace\. Resources with no namespace will be deployed here\. Defaults to the one recorded in the chart's \.werf\-data, else to a stub\. Vars: \$NELM\_NAMESPACE, \$NELM\_CHART\_RENDER\_NAMESPACE
 
 - `--provenance-keyring` (default: `""`)
 
@@ -2494,9 +2494,9 @@ nelm chart render [options...] [chart-dir|chart-repo-name/chart-name|chart-archi
 
   Strategy for provenance verifying\. Vars: \$NELM\_PROVENANCE\_STRATEGY, \$NELM\_CHART\_RENDER\_PROVENANCE\_STRATEGY
 
-- `-r`, `--release` (default: `"stub-release"`)
+- `-r`, `--release` (default: `""`)
 
-  The release name\. Must be unique within the release namespace\. Vars: \$NELM\_RELEASE, \$NELM\_CHART\_RENDER\_RELEASE
+  The release name\. Must be unique within the release namespace\. Defaults to the one recorded in the chart's \.werf\-data, else to a stub\. Vars: \$NELM\_RELEASE, \$NELM\_CHART\_RENDER\_RELEASE
 
 - `--remote` (default: `false`)
 
@@ -2990,128 +2990,73 @@ nelm chart download [chart URL | repo/chartname] [...] [flags]
 
 ### chart upload
 
-
-Upload a chart to a registry\.
-
-If the chart has an associated provenance file,
-it will also be uploaded\.
-
+Upload a chart archive to the OCI repository REMOTE/\<chart name\>, where REMOTE is oci://HOST\[/PATH\], under the chart version and the \-\-tag tags, with a "\+" in a tag pushed as "\_"\. The provenance file \<chart\-archive\>\.prov is uploaded with the chart if it exists\. A tag equal to the tag of an image from the helm\.sh/images annotation of the chart in the same repository is refused before anything is uploaded\. Loopback registries, like localhost:5000, are reached over plain HTTP unless TLS options are given\.
 
 **Usage:**
 
 ```shell
-nelm chart upload [archive] [remote] [flags]
+nelm chart upload [options...] chart-archive remote
 ```
 
-**Other options:**
-
-- `--burst-limit` (default: `100`)
-
-  client\-side default throttling limit
-
-- `--ca-file` (default: `""`)
-
-  verify certificates of HTTPS\-enabled servers using this CA bundle
-
-- `--cert-file` (default: `""`)
-
-  identify registry client using this SSL certificate file
-
-- `--color` (default: `"auto"`)
-
-  use colored output \(never, auto, always\)
-
-- `--colour` (default: `"auto"`)
-
-  use colored output \(never, auto, always\)
-
-- `--content-cache` (default: `"~/.cache/helm/content"`)
-
-  path to the directory containing cached content \(e\.g\. charts\)
-
-- `--debug` (default: `false`)
-
-  enable verbose output
-
-- `--insecure-skip-tls-verify` (default: `false`)
-
-  skip tls certificate checks for the chart upload
-
-- `--key-file` (default: `""`)
-
-  identify registry client using this SSL key file
-
-- `--kube-apiserver` (default: `""`)
-
-  the address and the port for the Kubernetes API server
-
-- `--kube-as-group` (default: `[]`)
-
-  group to impersonate for the operation, this flag can be repeated to specify multiple groups\.
-
-- `--kube-as-user` (default: `""`)
-
-  username to impersonate for the operation
-
-- `--kube-ca-file` (default: `""`)
-
-  the certificate authority file for the Kubernetes API server connection
-
-- `--kube-context` (default: `""`)
-
-  name of the kubeconfig context to use
-
-- `--kube-insecure-skip-tls-verify` (default: `false`)
-
-  if true, the Kubernetes API server's certificate will not be checked for validity\. This will make your HTTPS connections insecure
-
-- `--kube-tls-server-name` (default: `""`)
-
-  server name to use for Kubernetes API server certificate validation\. If it is not provided, the hostname used to contact the server is used
-
-- `--kube-token` (default: `""`)
-
-  bearer token used for authentication
-
-- `--kubeconfig` (default: `""`)
-
-  path to the kubeconfig file
-
-- `-n`, `--namespace` (default: `""`)
-
-  namespace scope for this request
-
-- `--password` (default: `""`)
-
-  chart repository password where to locate the requested chart
-
-- `--plain-http` (default: `false`)
-
-  use insecure HTTP connections for the chart upload
-
-- `--qps` (default: `0`)
-
-  queries per second used when communicating with the Kubernetes API, not including bursting
-
-- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
-
-  path to the registry config file
-
-- `--repository-cache` (default: `"~/.cache/helm/repository"`)
-
-  path to the directory containing cached repository indexes
-
-- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
-
-  path to the file containing repository names and URLs
+**Options:**
 
 - `--tag` (default: `[]`)
 
-  additional tag pointing to the pushed chart, besides its version tag \(can be specified multiple times\)
+  Additional tag pointing to the uploaded chart, besides its version tag\. Vars: \$NELM\_TAG, \$NELM\_CHART\_UPLOAD\_TAG
 
-- `--username` (default: `""`)
 
-  chart repository username where to locate the requested chart
+**Chart repository options:**
+
+- `--chart-repo-basic-password` (default: `""`)
+
+  Basic auth password to authenticate in chart repository\. Vars: \$NELM\_CHART\_REPO\_BASIC\_PASSWORD, \$NELM\_CHART\_UPLOAD\_CHART\_REPO\_BASIC\_PASSWORD
+
+- `--chart-repo-basic-username` (default: `""`)
+
+  Basic auth username to authenticate in chart repository\. Vars: \$NELM\_CHART\_REPO\_BASIC\_USERNAME, \$NELM\_CHART\_UPLOAD\_CHART\_REPO\_BASIC\_USERNAME
+
+- `--chart-repo-ca` (default: `""`)
+
+  Path to TLS CA file for connecting to chart repository\. Vars: \$NELM\_CHART\_REPO\_CA, \$NELM\_CHART\_UPLOAD\_CHART\_REPO\_CA
+
+- `--chart-repo-cert` (default: `""`)
+
+  Path to TLS client cert file for connecting to chart repository\. Vars: \$NELM\_CHART\_REPO\_CERT, \$NELM\_CHART\_UPLOAD\_CHART\_REPO\_CERT
+
+- `--chart-repo-key` (default: `""`)
+
+  Path to TLS client key file for connecting to chart repository\. Vars: \$NELM\_CHART\_REPO\_KEY, \$NELM\_CHART\_UPLOAD\_CHART\_REPO\_KEY
+
+- `--chart-repo-request-timeout` (default: `0s`)
+
+  Set timeout for all requests to chart repository\. A request includes its whole body, so the timeout also bounds a whole blob download or upload\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_UPLOAD\_CHART\_REPO\_REQUEST\_TIMEOUT
+
+- `--insecure-chart-repos` (default: `false`)
+
+  Allow insecure HTTP connections to chart repository\. Vars: \$NELM\_INSECURE\_CHART\_REPOS, \$NELM\_CHART\_UPLOAD\_INSECURE\_CHART\_REPOS
+
+- `--no-verify-chart-repos-tls` (default: `false`)
+
+  Don't verify TLS certificates of chart repository\. Vars: \$NELM\_NO\_VERIFY\_CHART\_REPOS\_TLS, \$NELM\_CHART\_UPLOAD\_NO\_VERIFY\_CHART\_REPOS\_TLS
+
+- `--oci-chart-repos-creds` (default: `""`)
+
+  Credentials to access OCI chart repositories\. Vars: \$NELM\_OCI\_CHART\_REPOS\_CREDS, \$NELM\_CHART\_UPLOAD\_OCI\_CHART\_REPOS\_CREDS
+
+
+**Other options:**
+
+- `--color-mode` (default: `"auto"`)
+
+  Color mode for logs\. Allowed: auto, off, on\. Vars: \$NELM\_COLOR\_MODE, \$NELM\_CHART\_UPLOAD\_COLOR\_MODE
+
+- `--log-level` (default: `"info"`)
+
+  Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_UPLOAD\_LOG\_LEVEL
+
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_UPLOAD\_LOG\_WIDTH
 
 
 ### chart copy
