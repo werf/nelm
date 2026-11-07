@@ -38,7 +38,7 @@ func normalizeExtraTags(parsedRef reference, tags []string) ([]string, error) {
 			return nil, fmt.Errorf("validate extra tag: %w", err)
 		}
 
-		if err := validateChartTag(tag); err != nil {
+		if err := ValidateChartTag(tag); err != nil {
 			return nil, err
 		}
 
@@ -48,8 +48,9 @@ func normalizeExtraTags(parsedRef reference, tags []string) ([]string, error) {
 	return result, nil
 }
 
-// The OCI getter treats a ref ending in ".prov" as a request for the provenance of the chart under the rest of the ref.
-func validateChartTag(tag string) error {
+// ValidateChartTag rejects a tag ending in ".prov": the OCI getter treats a ref ending in ".prov"
+// as a request for the provenance of the chart under the rest of the ref.
+func ValidateChartTag(tag string) error {
 	if strings.HasSuffix(tag, ".prov") {
 		return fmt.Errorf("tag %q is not allowed: tags ending in \".prov\" address provenance files", tag)
 	}
@@ -68,22 +69,24 @@ func (c *Client) pushExtraTags(ctx context.Context, repository *remote.Repositor
 	return nil
 }
 
-func (c *Client) tagExists(registryReference reference, tag string) (bool, error) {
+// tagDescriptor returns the descriptor of the manifest of the tag, nil if there is no such tag.
+func (c *Client) tagDescriptor(ctx context.Context, registryReference reference, tag string) (*ocispec.Descriptor, error) {
 	tagReference := registryReference.orasReference
 	tagReference.Reference = tag
 	if tagReference.ValidateReferenceAsTag() != nil {
-		return false, nil
+		return nil, nil
 	}
 
-	if _, err := c.Resolve(tagReference.String()); err != nil {
+	desc, err := c.ResolveContext(ctx, tagReference.String())
+	if err != nil {
 		if errors.Is(err, errdef.ErrNotFound) {
-			return false, nil
+			return nil, nil
 		}
 
-		return false, err
+		return nil, err
 	}
 
-	return true, nil
+	return &desc, nil
 }
 
 // ClientOptBasicAuthHosts limits the username and password to the given registry hosts (host or
