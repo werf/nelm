@@ -18,6 +18,7 @@ package getter
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"slices"
@@ -49,6 +50,7 @@ type getterOptions struct {
 	timeout               time.Duration
 	transport             *http.Transport
 	artifactType          string
+	ctx                   context.Context
 }
 
 // Option allows specifying various settings configurable by the user for overriding the defaults

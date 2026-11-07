@@ -75,15 +75,20 @@ func (g *OCIGetter) get(href string) (*bytes.Buffer, error) {
 		ref = strings.TrimSuffix(ref, ".prov")
 		pullOpts = append(pullOpts,
 			registry.PullOptWithChart(false),
-			registry.PullOptWithProv(true))
+			registry.PullOptWithProv(true),
+			registry.PullOptIgnoreMissingProv(true))
 	}
 
-	result, err := client.Pull(ref, pullOpts...)
+	result, err := client.PullContext(g.opts.requestContext(), ref, pullOpts...)
 	if err != nil {
 		return nil, err
 	}
 
 	if requestingProv {
+		if result.Prov.Digest == "" {
+			return nil, notFoundError{fmt.Errorf("manifest does not contain a layer with mediatype %s", registry.ProvLayerMediaType)}
+		}
+
 		return bytes.NewBuffer(result.Prov.Data), nil
 	}
 	return bytes.NewBuffer(result.Chart.Data), nil

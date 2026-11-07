@@ -47,6 +47,7 @@ const (
 	VerifyNever VerificationStrategy = iota
 	// VerifyIfPossible will attempt a verification, it will not error if verification
 	// data is missing. But it will not stop processing if verification fails.
+	// Only a missing provenance is skipped: any other failure to fetch it is an error.
 	VerifyIfPossible
 	// VerifyAlways will always attempt a verification, and will fail if the
 	// verification fails.
@@ -54,6 +55,7 @@ const (
 	// VerifyLater will fetch verification data, but not do any verification.
 	// This is to accommodate the case where another step of the process will
 	// perform verification.
+	// A missing provenance is not an error, any other failure to fetch it is.
 	VerifyLater
 )
 
@@ -93,6 +95,8 @@ type ChartDownloader struct {
 // If Verify is set to VerifyIfPossible, this will return a verification (or nil on failure), and print a warning on failure.
 // If Verify is set to VerifyAlways, this will return a verification or an error if the verification fails.
 // If Verify is set to VerifyLater, this will download the prov file (if it exists), but not verify it.
+//
+// For VerifyIfPossible and VerifyLater, only a missing provenance is skipped: any other failure to fetch it is an error.
 //
 // For VerifyNever and VerifyIfPossible, the Verification may be empty.
 //
@@ -161,6 +165,11 @@ func (c *ChartDownloader) DownloadTo(ref, version, dest string) (string, *proven
 	}
 
 	destfile := filepath.Join(dest, name)
+	if u.Scheme == registry.OCIScheme {
+		// The provenance of an OCI chart names the chart after its Chart.yaml, so a shortened
+		// local name doesn't break later verification, unlike for an HTTP chart.
+		destfile = filepath.Join(dest, boundedFileName(name))
+	}
 
 	// Use PlatformAtomicWriteFile to handle platform-specific concurrency concerns
 	// (Windows requires locking to avoid "Access Denied" errors when multiple
@@ -187,8 +196,8 @@ func (c *ChartDownloader) DownloadTo(ref, version, dest string) (string, *proven
 		if !found {
 			body, err = g.Get(u.String()+".prov", c.Options...)
 			if err != nil {
-				if c.Verify == VerifyAlways {
-					return destfile, ver, fmt.Errorf("failed to fetch provenance %q", u.String()+".prov")
+				if c.Verify == VerifyAlways || !errors.Is(err, getter.ErrNotFound) {
+					return destfile, ver, fmt.Errorf("failed to fetch provenance %q: %w", u.String()+".prov", err)
 				}
 				fmt.Fprintf(c.Out, "WARNING: Verification not found for %s: %s\n", ref, err)
 				return destfile, ver, nil
@@ -202,7 +211,11 @@ func (c *ChartDownloader) DownloadTo(ref, version, dest string) (string, *proven
 		}
 
 		if c.Verify != VerifyLater {
-			ver, err = VerifyChart(destfile, destfile+".prov", c.Keyring)
+			signedName, err := chartSignedName(destfile, name, u)
+			if err != nil {
+				return destfile, ver, err
+			}
+			ver, err = verifyChartAs(destfile, provfile, c.Keyring, signedName)
 			if err != nil {
 				// Fail always in this case, since it means the verification step
 				// failed.
@@ -291,10 +304,10 @@ func (c *ChartDownloader) DownloadToCache(ref, version string) (string, *provena
 				return pth, ver, err
 			}
 
-			body, err := g.Get(u.String() + ".prov")
+			body, err := g.Get(u.String()+".prov", c.Options...)
 			if err != nil {
-				if c.Verify == VerifyAlways {
-					return pth, ver, fmt.Errorf("failed to fetch provenance %q", u.String()+".prov")
+				if c.Verify == VerifyAlways || !errors.Is(err, getter.ErrNotFound) {
+					return pth, ver, fmt.Errorf("failed to fetch provenance %q: %w", u.String()+".prov", err)
 				}
 				fmt.Fprintf(c.Out, "WARNING: Verification not found for %s: %s\n", ref, err)
 				return pth, ver, nil
@@ -315,9 +328,8 @@ func (c *ChartDownloader) DownloadToCache(ref, version string) (string, *provena
 			// hash when a provenance file is used. If this isn't true, this section of code
 			// will need to be reworked.
 			name := filepath.Base(u.Path)
-			if u.Scheme == registry.OCIScheme {
-				idx := strings.LastIndexByte(name, ':')
-				name = fmt.Sprintf("%s-%s.tgz", name[:idx], name[idx+1:])
+			if name, err = chartSignedName(pth, name, u); err != nil {
+				return pth, ver, err
 			}
 
 			// Copy chart to a known location with the right name for verification and then
@@ -326,7 +338,9 @@ func (c *ChartDownloader) DownloadToCache(ref, version string) (string, *provena
 			if err := os.MkdirAll(tmpdir, 0755); err != nil {
 				return pth, ver, err
 			}
-			tmpfile := filepath.Join(tmpdir, name)
+			// The file is named after the digest: name comes from the unverified chart and is only
+			// the entry looked up in the provenance file.
+			tmpfile := filepath.Join(tmpdir, hex.EncodeToString(digest32[:])+".tgz")
 			err = ifs.CopyFile(pth, tmpfile)
 			if err != nil {
 				return pth, ver, err
@@ -334,7 +348,7 @@ func (c *ChartDownloader) DownloadToCache(ref, version string) (string, *provena
 			// Not removing the tmp dir itself because a concurrent process may be using it
 			defer os.RemoveAll(tmpfile)
 
-			ver, err = VerifyChart(tmpfile, ppth, c.Keyring)
+			ver, err = verifyChartAs(tmpfile, ppth, c.Keyring, name)
 			if err != nil {
 				// Fail always in this case, since it means the verification step
 				// failed.
@@ -487,6 +501,12 @@ func (c *ChartDownloader) ResolveChartVersion(ref, version string) (string, *url
 // It assumes that a chart archive file is accompanied by a provenance file whose
 // name is the archive file name plus the ".prov" extension.
 func VerifyChart(path, provfile, keyring string) (*provenance.Verification, error) {
+	return verifyChartAs(path, provfile, keyring, filepath.Base(path))
+}
+
+// verifyChartAs verifies the chart archive at path against the provenance entry for signedName,
+// which may differ from the name of the file.
+func verifyChartAs(path, provfile, keyring, signedName string) (*provenance.Verification, error) {
 	// For now, error out if it's not a tar file.
 	switch fi, err := os.Stat(path); {
 	case err != nil:
@@ -516,7 +536,7 @@ func VerifyChart(path, provfile, keyring string) (*provenance.Verification, erro
 		return nil, fmt.Errorf("failed to read provenance file: %w", err)
 	}
 
-	return sig.Verify(archiveData, provData, filepath.Base(path))
+	return sig.Verify(archiveData, provData, signedName)
 }
 
 // isTar tests whether the given file is a tar file.

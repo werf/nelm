@@ -556,6 +556,11 @@ func (c *Client) processChartPull(genericResult *GenericPullResult, operation *p
 
 // Pull downloads a chart from a registry
 func (c *Client) Pull(ref string, options ...PullOption) (*PullResult, error) {
+	return c.PullContext(context.Background(), ref, options...)
+}
+
+// PullContext downloads a chart from a registry, aborting the requests when ctx is done.
+func (c *Client) PullContext(ctx context.Context, ref string, options ...PullOption) (*PullResult, error) {
 	operation := &pullOperation{
 		withChart: true, // By default, always download the chart layer
 	}
@@ -582,7 +587,7 @@ func (c *Client) Pull(ref string, options ...PullOption) (*PullResult, error) {
 
 	// Use generic client for the pull operation
 	genericClient := c.Generic()
-	genericResult, err := genericClient.PullGeneric(ref, GenericPullOptions{
+	genericResult, err := genericClient.PullGenericContext(ctx, ref, GenericPullOptions{
 		AllowedMediaTypes: allowedMediaTypes,
 	})
 	if err != nil {
@@ -641,6 +646,7 @@ type (
 		provData     []byte
 		strictMode   bool
 		creationTime string
+		extraTags    []string
 	}
 )
 
@@ -648,6 +654,10 @@ type (
 func (c *Client) Push(data []byte, ref string, options ...PushOption) (*PushResult, error) {
 	parsedRef, err := newReference(ref)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := validateChartTag(parsedRef.Tag); err != nil {
 		return nil, err
 	}
 
@@ -666,6 +676,11 @@ func (c *Client) Push(data []byte, ref string, options ...PushOption) (*PushResu
 			return nil, errors.New(
 				"strict mode enabled, ref basename and tag must match the chart name and version")
 		}
+	}
+
+	extraTags, err := normalizeExtraTags(parsedRef, operation.extraTags)
+	if err != nil {
+		return nil, err
 	}
 
 	ctx := context.Background()
@@ -751,6 +766,9 @@ func (c *Client) Push(data []byte, ref string, options ...PushOption) (*PushResu
 	if strings.Contains(parsedRef.orasReference.Reference, "_") {
 		_, _ = fmt.Fprintf(c.out, "%s contains an underscore.\n", result.Ref)
 		_, _ = fmt.Fprint(c.out, registryUnderscoreMessage+"\n")
+	}
+	if err := c.pushExtraTags(ctx, repository, manifestDescriptor, parsedRef, result.Ref, extraTags); err != nil {
+		return nil, err
 	}
 
 	return result, err
@@ -881,7 +899,12 @@ func (c *Client) ValidateReference(ref, version string, u *url.URL) (string, *ur
 
 	// Evaluate whether an explicit version has been provided. Otherwise, determine version to use
 	_, errSemVer := semver.NewVersion(version)
+	_, errConstraint := semver.NewConstraint(version)
 	if errSemVer == nil {
+		tag = version
+	} else if exists, err := c.tagExists(registryReference, version); err != nil && errConstraint != nil {
+		return "", nil, fmt.Errorf("check tag %q: %w", version, err)
+	} else if exists {
 		tag = version
 	} else {
 		// Retrieve list of repository tags
