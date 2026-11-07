@@ -1,0 +1,1240 @@
+package action
+
+import (
+	"archive/tar"
+	"compress/gzip"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/samber/lo"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
+
+	"github.com/werf/common-go/pkg/secret"
+	"github.com/werf/logboek"
+	"github.com/werf/nelm/v2/pkg/common"
+	"github.com/werf/nelm/v2/pkg/featgate"
+	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	"github.com/werf/nelm/v2/pkg/helm/intern/resolver"
+	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/chartyaml"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader/archive"
+	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
+	v2loader "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/loader"
+	v2util "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/provenance"
+	repo "github.com/werf/nelm/v2/pkg/helm/pkg/repo/v1"
+	"github.com/werf/nelm/v2/pkg/werfdata"
+)
+
+const (
+	chartPackTestChartLock = `# Locked by CI.
+dependencies:
+- name: sub
+  repository: ""
+  version: 0.1.0
+digest: sha256:0
+generated: "2024-01-01T00:00:00Z"
+`
+	chartPackTestChartYAML = `# The chart.
+apiVersion: v2   # chart api
+name: mychart
+# Bumped by CI.
+version: 1.0.0
+annotations:
+  team: payments # owner
+`
+)
+
+type chartPackTestStep struct {
+	expectedChartYAML string
+	// inputs are written into the working directory before the step.
+	inputs map[string]string
+	opts   ChartPackOptions
+}
+
+type chartPackTestFileReader struct {
+	common.ChartFileReaderer
+
+	files map[string]string
+}
+
+func (r chartPackTestFileReader) ReadChartFile(_ context.Context, filePath string) ([]byte, error) {
+	data, ok := r.files[filePath]
+	if !ok {
+		return nil, os.ErrNotExist
+	}
+
+	return []byte(data), nil
+}
+
+func TestAddChartPackInputs_ReadsPatchesThroughChartFileReader(t *testing.T) {
+	const patches = "renderPatches:\n- patch: del(.a)\n"
+
+	chartFileReader := common.ChartFileReader
+	common.ChartFileReader = chartPackTestFileReader{files: map[string]string{"committed/patches.yaml": patches}}
+
+	t.Cleanup(func() {
+		common.ChartFileReader = chartFileReader
+	})
+
+	data := &werfdata.Data{Files: map[string][]byte{}}
+	require.NoError(t, addChartPackInputs(newChartPackTestContext(), data, ChartPackOptions{PatchesFiles: []string{"committed/patches.yaml"}}))
+	assert.Equal(t, map[string][]byte{"patches/0": []byte(patches)}, data.Files)
+}
+
+func TestChartPack(t *testing.T) {
+	encryptedPassword := encryptChartPackTestValues(t, "password: p1\nlist: [s1, s2]\n")
+	encryptedList := encryptChartPackTestValues(t, "list: [s3]\n")
+
+	tests := []struct {
+		name                 string
+		chart                map[string]string
+		steps                []chartPackTestStep
+		expectedData         *werfdata.Data
+		expectedSecretValues map[string]any
+		expectedFiles        []string
+		expectedErr          string
+	}{
+		{
+			name:  "fresh pack with all inputs",
+			chart: map[string]string{"Chart.yaml": chartPackTestChartYAML},
+			steps: []chartPackTestStep{{
+				expectedChartYAML: `# The chart.
+apiVersion: v2 # chart api
+name: mychart
+# Bumped by CI.
+version: 1.0.0
+annotations:
+  team: payments # owner
+  helm.sh/images: |
+    - name: backend
+      image: registry/app:backend
+`,
+				inputs: map[string]string{
+					"values1.yaml": "a: one\nnested:\n  k: v\n  list: [x]\n",
+					"values2.yaml": "nested:\n  k2: v2\n  list: [z]\n",
+					"secret1.yaml": encryptedPassword,
+					"secret2.yaml": encryptedList,
+					"file1.txt":    "file one",
+					"file2.txt":    "file two",
+					"patches.yaml": "renderPatches:\n- patch: del(.a)\n",
+				},
+				opts: ChartPackOptions{
+					DefaultPatchesDisable:      true,
+					DefaultSecretValuesDisable: true,
+					ExtraAnnotations:           map[string]string{"team": "payments"},
+					ExtraLabels:                map[string]string{"tier": "backend"},
+					ExtraRuntimeAnnotations:    map[string]string{"project.werf.io/name": "myapp"},
+					ExtraValues:                map[string]interface{}{"werf": map[string]interface{}{"env": "production"}},
+					Images:                     []chartyaml.Image{{Name: "backend", Image: "registry/app:backend"}},
+					PatchesFiles:               []string{"patches.yaml"},
+					Release:                    &werfdata.ReleaseMetadata{Name: "myapp-production", Namespace: "myapp"},
+					ReleaseInfoAnnotations:     map[string]string{"project.werf.io/name": "myapp"},
+					SecretValuesFiles:          []string{"secret1.yaml", "secret2.yaml"},
+					ValuesOptions: common.ValuesOptions{
+						DefaultValuesDisable: true,
+						RootSetJSON:          []string{`r={"y":2}`},
+						ValuesFiles:          []string{"values1.yaml", "values2.yaml"},
+						ValuesSet:            []string{"s=1"},
+						ValuesSetFile:        []string{"f=file1.txt,g=file2.txt"},
+						ValuesSetJSON:        []string{`j={"x":1}`},
+						ValuesSetLiteral:     []string{"l=3"},
+						ValuesSetString:      []string{"ss=2"},
+					},
+				},
+			}},
+			expectedData: &werfdata.Data{
+				ExtraValues: map[string]any{"werf": map[string]any{"env": "production"}},
+				Files: map[string][]byte{
+					"patches/0":   []byte("renderPatches:\n- patch: del(.a)\n"),
+					"set-files/0": []byte("file one"),
+					"set-files/1": []byte("file two"),
+				},
+				Metadata: werfdata.Metadata{
+					APIVersion: werfdata.APIVersionV2,
+					Values: werfdata.ValuesMetadata{
+						Values:           true,
+						SecretValues:     true,
+						ExtraValues:      true,
+						ValuesSet:        []string{"s=1"},
+						ValuesSetString:  []string{"ss=2"},
+						ValuesSetJSON:    []string{`j={"x":1}`},
+						ValuesSetLiteral: []string{"l=3"},
+						ValuesSetFile: []werfdata.SetFileRecord{{
+							Value:    "f=file1.txt,g=file2.txt",
+							Contents: map[string]string{"file1.txt": "set-files/0", "file2.txt": "set-files/1"},
+						}},
+						ValuesSetRootJSON:          []string{`r={"y":2}`},
+						DefaultValuesDisable:       true,
+						DefaultSecretValuesDisable: true,
+					},
+					Patches:                 []string{"patches/0"},
+					DefaultPatchesDisable:   true,
+					Release:                 &werfdata.ReleaseMetadata{Name: "myapp-production", Namespace: "myapp"},
+					Images:                  []string{"backend"},
+					ExtraAnnotations:        map[string]string{"team": "payments"},
+					ExtraLabels:             map[string]string{"tier": "backend"},
+					ExtraRuntimeAnnotations: map[string]string{"project.werf.io/name": "myapp"},
+					ReleaseInfoAnnotations:  map[string]string{"project.werf.io/name": "myapp"},
+				},
+				Values: map[string]any{"a": "one", "nested": map[string]any{"k": "v", "k2": "v2", "list": []any{"z"}}},
+			},
+			expectedSecretValues: map[string]any{"password": "p1", "list": []any{"s3"}},
+		},
+		{
+			name:  "no inputs, no .werf-data",
+			chart: map[string]string{"Chart.yaml": chartPackTestChartYAML},
+			steps: []chartPackTestStep{{expectedChartYAML: chartPackTestChartYAML, opts: ChartPackOptions{Images: []chartyaml.Image{}}}},
+		},
+		{
+			name:  "repack adds set over stored values",
+			chart: map[string]string{"Chart.yaml": chartPackTestChartYAML},
+			steps: []chartPackTestStep{
+				{
+					inputs: map[string]string{"values1.yaml": "a: one\nnested:\n  k: v\n"},
+					opts: ChartPackOptions{
+						ExtraAnnotations: map[string]string{"team": "payments", "tier": "backend"},
+						ExtraValues:      map[string]interface{}{"werf": "old"},
+						ValuesOptions:    common.ValuesOptions{ValuesFiles: []string{"values1.yaml"}, ValuesSet: []string{"s=1"}},
+					},
+				},
+				{
+					inputs: map[string]string{"values2.yaml": "nested:\n  k2: v2\n"},
+					opts: ChartPackOptions{
+						ExtraAnnotations: map[string]string{"team": "billing"},
+						ValuesOptions:    common.ValuesOptions{ValuesFiles: []string{"values2.yaml"}, ValuesSet: []string{"a=two"}},
+					},
+				},
+			},
+			expectedData: &werfdata.Data{
+				ExtraValues: map[string]any{"werf": "old"},
+				Files:       map[string][]byte{},
+				Metadata: werfdata.Metadata{
+					APIVersion:       werfdata.APIVersionV2,
+					Values:           werfdata.ValuesMetadata{Values: true, ExtraValues: true, ValuesSet: []string{"s=1", "a=two"}},
+					ExtraAnnotations: map[string]string{"team": "billing", "tier": "backend"},
+				},
+				Values: map[string]any{"a": "one", "nested": map[string]any{"k": "v", "k2": "v2"}},
+			},
+		},
+		{
+			name:  "repack merges values files in order onto stored values",
+			chart: map[string]string{"Chart.yaml": chartPackTestChartYAML},
+			steps: []chartPackTestStep{
+				{
+					inputs: map[string]string{
+						"values1.yaml": "a:\n  x: one\n",
+						"secret1.yaml": encryptChartPackTestValues(t, "a:\n  x: one\n"),
+					},
+					opts: ChartPackOptions{SecretValuesFiles: []string{"secret1.yaml"}, ValuesOptions: common.ValuesOptions{ValuesFiles: []string{"values1.yaml"}}},
+				},
+				{
+					inputs: map[string]string{
+						"values2.yaml": "a: zero\n",
+						"values3.yaml": "a:\n  z: two\n",
+						"secret2.yaml": encryptChartPackTestValues(t, "a: zero\n"),
+						"secret3.yaml": encryptChartPackTestValues(t, "a:\n  z: two\n"),
+					},
+					opts: ChartPackOptions{
+						SecretValuesFiles: []string{"secret2.yaml", "secret3.yaml"},
+						ValuesOptions:     common.ValuesOptions{ValuesFiles: []string{"values2.yaml", "values3.yaml"}},
+					},
+				},
+			},
+			expectedData: &werfdata.Data{
+				Files: map[string][]byte{},
+				Metadata: werfdata.Metadata{
+					APIVersion: werfdata.APIVersionV2,
+					Values:     werfdata.ValuesMetadata{Values: true, SecretValues: true},
+				},
+				Values: map[string]any{"a": map[string]any{"z": "two"}},
+			},
+			expectedSecretValues: map[string]any{"a": map[string]any{"z": "two"}},
+		},
+		{
+			name:  "repack keeps the stored disable switches and sets the passed ones",
+			chart: map[string]string{"Chart.yaml": chartPackTestChartYAML},
+			steps: []chartPackTestStep{
+				{opts: ChartPackOptions{
+					DefaultPatchesDisable:      true,
+					DefaultSecretValuesDisable: true,
+				}},
+				{opts: ChartPackOptions{ValuesOptions: common.ValuesOptions{DefaultValuesDisable: true}}},
+			},
+			expectedData: &werfdata.Data{
+				Files: map[string][]byte{},
+				Metadata: werfdata.Metadata{
+					APIVersion:            werfdata.APIVersionV2,
+					Values:                werfdata.ValuesMetadata{DefaultValuesDisable: true, DefaultSecretValuesDisable: true},
+					DefaultPatchesDisable: true,
+				},
+			},
+		},
+		{
+			name: "invalid .werf-data of a dependency rejected",
+			chart: map[string]string{
+				"Chart.yaml":                                        chartPackTestChartYAML,
+				"charts/dep/Chart.yaml":                             "apiVersion: v2\nname: dep\nversion: 1.0.0\n",
+				"charts/dep/charts/nested/Chart.yaml":               "apiVersion: v2\nname: nested\nversion: 1.0.0\n",
+				"charts/dep/charts/nested/.werf-data/metadata.yaml": "apiVersion: v3\n",
+			},
+			steps:       []chartPackTestStep{{}},
+			expectedErr: `dependency "dep": dependency "nested": unsupported .werf-data/metadata.yaml apiVersion "v3"`,
+		},
+		{
+			name:  "secret values file with a leading and a trailing document separator",
+			chart: map[string]string{"Chart.yaml": chartPackTestChartYAML},
+			steps: []chartPackTestStep{{
+				inputs: map[string]string{"values-a.yaml": "---\n" + encryptedPassword + "---\n"},
+				opts:   ChartPackOptions{SecretValuesFiles: []string{"values-a.yaml"}},
+			}},
+			expectedData: &werfdata.Data{
+				Files: map[string][]byte{},
+				Metadata: werfdata.Metadata{
+					APIVersion: werfdata.APIVersionV2,
+					Values:     werfdata.ValuesMetadata{SecretValues: true},
+				},
+			},
+			expectedSecretValues: map[string]any{"password": "p1", "list": []any{"s1", "s2"}},
+		},
+		{
+			name:  "secret values file with repeated merge keys",
+			chart: map[string]string{"Chart.yaml": chartPackTestChartYAML},
+			steps: []chartPackTestStep{{
+				inputs: map[string]string{"values-a.yaml": "a: &a {x: \"\"}\nb: &b {z: \"\"}\nc:\n  <<: *a\n  <<: *b\n"},
+				opts:   ChartPackOptions{SecretValuesFiles: []string{"values-a.yaml"}},
+			}},
+			expectedData: &werfdata.Data{
+				Files: map[string][]byte{},
+				Metadata: werfdata.Metadata{
+					APIVersion: werfdata.APIVersionV2,
+					Values:     werfdata.ValuesMetadata{SecretValues: true},
+				},
+			},
+			expectedSecretValues: map[string]any{"a": map[string]any{"x": ""}, "b": map[string]any{"z": ""}, "c": map[string]any{"x": "", "z": ""}},
+		},
+		{
+			name:        "invalid root set JSON rejected",
+			chart:       map[string]string{"Chart.yaml": chartPackTestChartYAML},
+			steps:       []chartPackTestStep{{opts: ChartPackOptions{ValuesOptions: common.ValuesOptions{RootSetJSON: []string{"r={bad"}}}}},
+			expectedErr: `parse root set JSON value "r={bad"`,
+		},
+		{
+			name: "author images annotation untouched when there is nothing to change",
+			chart: map[string]string{"Chart.yaml": `apiVersion: v2
+name: mychart
+version: 1.0.0
+annotations:
+  helm.sh/images: |
+    - {name: author, image: "nginx:1"}
+`},
+			steps: []chartPackTestStep{{
+				expectedChartYAML: `apiVersion: v2
+name: mychart
+version: 1.0.0
+annotations:
+  helm.sh/images: |
+    - {name: author, image: "nginx:1"}
+`,
+				opts: ChartPackOptions{Images: []chartyaml.Image{}},
+			}},
+		},
+		{
+			name:  "repack with reset values",
+			chart: map[string]string{"Chart.yaml": chartPackTestChartYAML},
+			steps: []chartPackTestStep{
+				{
+					inputs: map[string]string{"values1.yaml": "a: one\n", "file1.txt": "file one"},
+					opts: ChartPackOptions{
+						ExtraLabels:   map[string]string{"tier": "backend"},
+						ExtraValues:   map[string]interface{}{"werf": "old"},
+						Images:        []chartyaml.Image{{Name: "backend", Image: "registry/app:backend"}},
+						Release:       &werfdata.ReleaseMetadata{Name: "myapp"},
+						ValuesOptions: common.ValuesOptions{DefaultValuesDisable: true, ValuesFiles: []string{"values1.yaml"}, ValuesSet: []string{"s=1"}, ValuesSetFile: []string{"f=file1.txt"}},
+					},
+				},
+				{
+					expectedChartYAML: strings.Replace(chartPackTestChartYAML, "v2   #", "v2 #", 1),
+					opts: ChartPackOptions{
+						ResetValues:   true,
+						ValuesOptions: common.ValuesOptions{ValuesSet: []string{"b=1"}},
+					},
+				},
+			},
+			expectedData: &werfdata.Data{
+				Files: map[string][]byte{},
+				Metadata: werfdata.Metadata{
+					APIVersion: werfdata.APIVersionV2,
+					Values:     werfdata.ValuesMetadata{ValuesSet: []string{"b=1"}},
+				},
+			},
+		},
+		{
+			name:  "same set-file path with different contents across packs",
+			chart: map[string]string{"Chart.yaml": chartPackTestChartYAML},
+			steps: []chartPackTestStep{
+				{
+					inputs: map[string]string{"file1.txt": "first"},
+					opts:   ChartPackOptions{ValuesOptions: common.ValuesOptions{ValuesSetFile: []string{"f=file1.txt"}}},
+				},
+				{
+					inputs: map[string]string{"file1.txt": "second"},
+					opts:   ChartPackOptions{ValuesOptions: common.ValuesOptions{ValuesSetFile: []string{"f=file1.txt"}}},
+				},
+			},
+			expectedData: &werfdata.Data{
+				Files: map[string][]byte{"set-files/0": []byte("first"), "set-files/1": []byte("second")},
+				Metadata: werfdata.Metadata{
+					APIVersion: werfdata.APIVersionV2,
+					Values: werfdata.ValuesMetadata{ValuesSetFile: []werfdata.SetFileRecord{
+						{Value: "f=file1.txt", Contents: map[string]string{"file1.txt": "set-files/0"}},
+						{Value: "f=file1.txt", Contents: map[string]string{"file1.txt": "set-files/1"}},
+					}},
+				},
+			},
+		},
+		{
+			name: "images added, replaced and removed, author entry kept",
+			chart: map[string]string{"Chart.yaml": `apiVersion: v2
+name: mychart
+version: 1.0.0
+annotations:
+  helm.sh/images: |
+    - name: author
+      image: nginx:1
+`},
+			steps: []chartPackTestStep{
+				{
+					expectedChartYAML: `apiVersion: v2
+name: mychart
+version: 1.0.0
+annotations:
+  helm.sh/images: |
+    - name: author
+      image: nginx:1
+    - name: backend
+      image: registry/app:backend
+    - name: frontend
+      image: registry/app:frontend
+`,
+					opts: ChartPackOptions{Images: []chartyaml.Image{
+						{Name: "backend", Image: "registry/app:backend"},
+						{Name: "frontend", Image: "registry/app:frontend"},
+					}},
+				},
+				{
+					expectedChartYAML: `apiVersion: v2
+name: mychart
+version: 1.0.0
+annotations:
+  helm.sh/images: |
+    - name: author
+      image: nginx:1
+    - name: frontend
+      image: registry/app:frontend2
+`,
+					opts: ChartPackOptions{Images: []chartyaml.Image{{Name: "frontend", Image: "registry/app:frontend2"}}},
+				},
+				{
+					expectedChartYAML: `apiVersion: v2
+name: mychart
+version: 1.0.0
+annotations:
+  helm.sh/images: |
+    - name: author
+      image: nginx:1
+`,
+					opts: ChartPackOptions{Images: []chartyaml.Image{}},
+				},
+			},
+			expectedData: &werfdata.Data{
+				Files:    map[string][]byte{},
+				Metadata: werfdata.Metadata{APIVersion: werfdata.APIVersionV2},
+			},
+		},
+		{
+			name: "image colliding with an author entry",
+			chart: map[string]string{"Chart.yaml": `apiVersion: v2
+name: mychart
+version: 1.0.0
+annotations:
+  helm.sh/images: |
+    - name: author
+      image: nginx:1
+`},
+			steps: []chartPackTestStep{
+				{opts: ChartPackOptions{Images: []chartyaml.Image{{Name: "author", Image: "registry/app:author"}}}},
+			},
+			expectedErr: `helm.sh/images in Chart.yaml already has an entry "author"; remove it from Chart.yaml or rename the image`,
+		},
+		{
+			name:        "chart without apiVersion rejected",
+			chart:       map[string]string{"Chart.yaml": "name: mychart\nversion: 1.0.0\n"},
+			steps:       []chartPackTestStep{{}},
+			expectedErr: "Chart.yaml has no apiVersion: set apiVersion (v2 or v3)",
+		},
+		{
+			name:        "chart with empty apiVersion rejected",
+			chart:       map[string]string{"Chart.yaml": "apiVersion: \"\"\nname: mychart\nversion: 1.0.0\n"},
+			steps:       []chartPackTestStep{{}},
+			expectedErr: "Chart.yaml has no apiVersion: set apiVersion (v2 or v3)",
+		},
+		{
+			name: "Chart.yaml and Chart.lock formatting survives",
+			chart: map[string]string{
+				"Chart.yaml": chartPackTestChartYAML + "description: >-\n  folded\n  text\nkeywords: [a, b]\n",
+				"Chart.lock": "# lock comment\ndependencies: []\ndigest: sha256:abc\ngenerated: \"2024-01-01T00:00:00Z\"\n",
+			},
+			steps: []chartPackTestStep{
+				{
+					expectedChartYAML: `# The chart.
+apiVersion: v2 # chart api
+name: renamed
+# Bumped by CI.
+version: 2.0.0
+annotations:
+  team: payments # owner
+description: >-
+  folded
+  text
+keywords: [a, b]
+appVersion: "1.2"
+`,
+					opts: ChartPackOptions{Name: "renamed", Version: "2.0.0", AppVersion: "1.2"},
+				},
+			},
+			expectedFiles: []string{"renamed/Chart.lock:# lock comment\ndependencies: []\ndigest: sha256:abc\ngenerated: \"2024-01-01T00:00:00Z\"\n"},
+		},
+		{
+			name: "v1 bundle extra annotations and labels migrated",
+			chart: map[string]string{
+				"Chart.yaml":             chartPackTestChartYAML,
+				"extra_annotations.json": `{"team": "payments", "project.werf.io/name": "myapp", "ci.werf.io/commit": "abc", "werf.io/release-channel": "stable"}`,
+				"extra_labels.json":      `{"tier": "backend"}`,
+				"README.md":              "readme",
+			},
+			steps: []chartPackTestStep{{opts: ChartPackOptions{ExtraLabels: map[string]string{"tier": "frontend"}}}},
+			expectedData: &werfdata.Data{
+				Files: map[string][]byte{},
+				Metadata: werfdata.Metadata{
+					APIVersion:       werfdata.APIVersionV2,
+					ExtraAnnotations: map[string]string{"team": "payments"},
+					ExtraLabels:      map[string]string{"tier": "frontend"},
+					ExtraRuntimeAnnotations: map[string]string{
+						"project.werf.io/name":    "myapp",
+						"ci.werf.io/commit":       "abc",
+						"werf.io/release-channel": "stable",
+					},
+					ReleaseInfoAnnotations: map[string]string{
+						"project.werf.io/name":    "myapp",
+						"ci.werf.io/commit":       "abc",
+						"werf.io/release-channel": "stable",
+					},
+				},
+			},
+			expectedFiles: []string{"mychart/README.md:readme", "!mychart/extra_annotations.json", "!mychart/extra_labels.json"},
+		},
+		{
+			name:  "oversized .werf-data file rejected",
+			chart: map[string]string{"Chart.yaml": chartPackTestChartYAML},
+			steps: []chartPackTestStep{{
+				inputs: map[string]string{"big.txt": strings.Repeat("x", 5*1024*1024+1)},
+				opts:   ChartPackOptions{ValuesOptions: common.ValuesOptions{ValuesSetFile: []string{"big=big.txt"}}},
+			}},
+			expectedErr: ".werf-data/set-files/0 is 5242881 bytes, more than the 5242880 bytes a chart loader accepts for a single file",
+		},
+		{
+			name:  "JSON Chart.yaml of a legacy bundle",
+			chart: map[string]string{"Chart.yaml": `{"apiVersion":"v2","name":"mychart","version":"1.0.0","annotations":{"team":"payments"}}`},
+			steps: []chartPackTestStep{{
+				expectedChartYAML: "apiVersion: v2\nname: mychart\nversion: 2.0.0\nannotations:\n  team: payments\n  helm.sh/images: |\n    - name: backend\n      image: registry/app:backend\n",
+				opts: ChartPackOptions{
+					Images:  []chartyaml.Image{{Name: "backend", Image: "registry/app:backend"}},
+					Version: "2.0.0",
+				},
+			}},
+			expectedData: &werfdata.Data{
+				Files:    map[string][]byte{},
+				Metadata: werfdata.Metadata{APIVersion: werfdata.APIVersionV2, Images: []string{"backend"}},
+			},
+		},
+		{
+			name:  "v3 chart",
+			chart: map[string]string{"Chart.yaml": "apiVersion: v3\nname: mychart\nversion: 1.0.0\n"},
+			steps: []chartPackTestStep{{
+				expectedChartYAML: "apiVersion: v3\nname: mychart\nversion: 1.0.0\nannotations:\n  helm.sh/images: |\n    - name: backend\n      image: registry/app:backend\n",
+				opts: ChartPackOptions{
+					Images:        []chartyaml.Image{{Name: "backend", Image: "registry/app:backend"}},
+					ValuesOptions: common.ValuesOptions{ValuesSet: []string{"s=1"}},
+				},
+			}},
+			expectedData: &werfdata.Data{
+				Files: map[string][]byte{},
+				Metadata: werfdata.Metadata{
+					APIVersion: werfdata.APIVersionV2,
+					Values:     werfdata.ValuesMetadata{ValuesSet: []string{"s=1"}},
+					Images:     []string{"backend"},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			workDir := t.TempDir()
+			t.Chdir(workDir)
+
+			chartDir := filepath.Join(t.TempDir(), "mychart")
+			writeChartPackTestFiles(t, chartDir, tt.chart)
+
+			var (
+				archivePath string
+				err         error
+			)
+
+			for i, step := range tt.steps {
+				writeChartPackTestFiles(t, workDir, step.inputs)
+
+				opts := step.opts
+				opts.Destination = t.TempDir()
+
+				var result *ChartPackResult
+
+				result, err = ChartPack(newChartPackTestContext(), chartDir, opts)
+				if err != nil {
+					require.Equal(t, len(tt.steps)-1, i, "unexpected error in step %d: %s", i, err)
+					break
+				}
+
+				archivePath = result.ArchivePath
+
+				if step.expectedChartYAML != "" {
+					assert.Equal(t, step.expectedChartYAML, readChartPackTestArchiveFile(t, archivePath, result.ChartName+"/Chart.yaml"), "step %d", i)
+				}
+
+				unpackDir := t.TempDir()
+				require.NoError(t, v2util.ExpandFile(unpackDir, archivePath))
+				chartDir = filepath.Join(unpackDir, result.ChartName)
+			}
+
+			if tt.expectedErr != "" {
+				require.ErrorContains(t, err, tt.expectedErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+
+			if tt.expectedData == nil {
+				for name := range readChartPackTestArchiveFiles(t, archivePath) {
+					_, chartFileName, _ := strings.Cut(name, "/")
+					assert.False(t, werfdata.IsWerfDataFile(chartFileName), name)
+				}
+
+				return
+			}
+
+			data := loadChartPackTestWerfData(t, archivePath)
+
+			if tt.expectedSecretValues != nil {
+				assert.Equal(t, tt.expectedSecretValues, decryptChartPackTestValues(t, data.SecretValues))
+			} else {
+				assert.Nil(t, data.SecretValues)
+			}
+
+			data.SecretValues = nil
+			assert.Equal(t, tt.expectedData, data)
+
+			for _, expectedFile := range tt.expectedFiles {
+				if name, ok := strings.CutPrefix(expectedFile, "!"); ok {
+					assert.NotContains(t, readChartPackTestArchiveFiles(t, archivePath), name)
+					continue
+				}
+
+				name, contents, _ := strings.Cut(expectedFile, ":")
+				assert.Equal(t, contents, readChartPackTestArchiveFile(t, archivePath, name))
+			}
+		})
+	}
+}
+
+func TestChartPack_ChecksChartPath(t *testing.T) {
+	chartFile := filepath.Join(t.TempDir(), "Chart.yaml")
+	writeChartPackTestFiles(t, filepath.Dir(chartFile), map[string]string{"Chart.yaml": "apiVersion: v2\nname: mychart\nversion: 1.0.0\n"})
+
+	tests := []struct {
+		name        string
+		chartPath   string
+		expectedErr string
+	}{
+		{
+			name:        "missing",
+			chartPath:   filepath.Join(t.TempDir(), "missing"),
+			expectedErr: "check chart directory: ",
+		},
+		{
+			name:        "file",
+			chartPath:   chartFile,
+			expectedErr: fmt.Sprintf("chart path %q is not a directory", chartFile),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ChartPack(newChartPackTestContext(), tt.chartPath, ChartPackOptions{Destination: t.TempDir()})
+			require.ErrorContains(t, err, tt.expectedErr)
+		})
+	}
+}
+
+func TestChartPack_ChecksDecompressedChartSize(t *testing.T) {
+	maxChartSize := archive.MaxDecompressedChartSize
+	archive.MaxDecompressedChartSize = 4096
+
+	t.Cleanup(func() {
+		archive.MaxDecompressedChartSize = maxChartSize
+	})
+
+	t.Chdir(t.TempDir())
+	writeChartPackTestFiles(t, ".", map[string]string{"file.txt": strings.Repeat("x", 2000)})
+
+	chartDir := filepath.Join(t.TempDir(), "mychart")
+	writeChartPackTestFiles(t, chartDir, map[string]string{
+		"Chart.yaml":                   "apiVersion: v2\nname: mychart\nversion: 1.0.0\n",
+		"charts/dep/Chart.yaml":        "apiVersion: v2\nname: dep\nversion: 1.0.0\n",
+		"charts/dep/templates/cm.yaml": "# " + strings.Repeat("x", 2000) + "\n",
+	})
+
+	destination := t.TempDir()
+	_, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+		Destination:   destination,
+		ValuesOptions: common.ValuesOptions{ValuesSetFile: []string{"f=file.txt"}},
+	})
+	require.ErrorContains(t, err, "a chart loader accepts less than 4096 bytes")
+	assert.NoFileExists(t, filepath.Join(destination, "mychart-1.0.0.tgz"))
+}
+
+// TestChartPack_DefaultsMissingAPIVersion packs a chart without apiVersion with the default
+// apiVersion v2 and saves the pulled archive into a directory, as exporting a pulled bundle does,
+// which drops the dependencies of an apiVersion v1 chart from Chart.yaml.
+func TestChartPack_DefaultsMissingAPIVersion(t *testing.T) {
+	chartDir := t.TempDir()
+	writeChartPackTestFiles(t, chartDir, map[string]string{
+		"Chart.yaml":                   "# The chart.\nname: mychart # chart name\nversion: 1.0.0\ndependencies:\n  - name: sub\n    version: 0.1.0\n    export-values:\n      - parent: werf\n        child: werf\n",
+		"Chart.lock":                   chartPackTestChartLock,
+		"charts/sub/Chart.yaml":        "apiVersion: v2\nname: sub\nversion: 0.1.0\n",
+		"charts/sub/templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: sub\ndata:\n  image: {{ .Values.werf.image.app }}\n",
+	})
+
+	result, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+		DefaultChartAPIVersion: v2chart.APIVersionV2,
+		Destination:            t.TempDir(),
+		ExtraValues:            map[string]interface{}{"werf": map[string]interface{}{"image": map[string]interface{}{"app": "registry/app:tag"}}},
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, "# The chart.\nname: mychart # chart name\nversion: 1.0.0\ndependencies:\n  - name: sub\n    version: 0.1.0\n    export-values:\n      - parent: werf\n        child: werf\napiVersion: v2\n", readChartPackTestArchiveFile(t, result.ArchivePath, "mychart/Chart.yaml"))
+	assert.Equal(t, chartPackTestChartLock, readChartPackTestArchiveFile(t, result.ArchivePath, "mychart/Chart.lock"))
+
+	loaded, err := v2loader.LoadFile(newChartPackTestContext(), result.ArchivePath)
+	require.NoError(t, err)
+
+	exportedDir := t.TempDir()
+	require.NoError(t, v2util.SaveIntoDir(loaded, exportedDir))
+
+	rendered, err := ChartRender(newChartRenderInstallContext(t), ChartRenderOptions{
+		Chart:           exportedDir,
+		LegacyChartType: common.LegacyChartTypeBundle,
+		OutputNoPrint:   true,
+		TempDirPath:     t.TempDir(),
+	})
+	require.NoError(t, err)
+	require.Len(t, rendered.Resources, 1)
+	assert.Equal(t, map[string]interface{}{"image": "registry/app:tag"}, rendered.Resources[0].Unstruct.Object["data"])
+}
+
+func TestChartPack_DefaultsMissingAPIVersionToV3(t *testing.T) {
+	chartDir := t.TempDir()
+	writeChartPackTestFiles(t, chartDir, map[string]string{
+		"Chart.yaml":            "name: mychart\nversion: 1.0.0\ndependencies:\n  - name: sub\n    version: 0.1.0\n",
+		"Chart.lock":            chartPackTestChartLock,
+		"charts/sub/Chart.yaml": "apiVersion: v3\nname: sub\nversion: 0.1.0\n",
+	})
+
+	result, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+		DefaultChartAPIVersion: v3chart.APIVersionV3,
+		Destination:            t.TempDir(),
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, "name: mychart\nversion: 1.0.0\ndependencies:\n  - name: sub\n    version: 0.1.0\napiVersion: v3\n", readChartPackTestArchiveFile(t, result.ArchivePath, "mychart/Chart.yaml"))
+	assert.Equal(t, chartPackTestChartLock, readChartPackTestArchiveFile(t, result.ArchivePath, "mychart/Chart.lock"))
+
+	loaded, err := loader.LoadFile(context.Background(), result.ArchivePath)
+	require.NoError(t, err)
+	assert.IsType(t, &v3chart.Chart{}, loaded)
+}
+
+func TestChartPack_FailedArchiveMoveRemovesOldProvenance(t *testing.T) {
+	keyringPath, err := filepath.Abs("../helm/pkg/cmd/testdata/helm-test-key.secret")
+	require.NoError(t, err)
+
+	chartDir := filepath.Join(t.TempDir(), "mychart")
+	writeChartPackTestFiles(t, chartDir, map[string]string{"Chart.yaml": "apiVersion: v2\nname: mychart\nversion: 1.0.0\n"})
+
+	// A non-empty directory in place of the archive makes moving the archive into place fail.
+	destination := t.TempDir()
+	writeChartPackTestFiles(t, destination, map[string]string{
+		"mychart-1.0.0.tgz/keep": "",
+		"mychart-1.0.0.tgz.prov": "old signature",
+	})
+
+	_, err = ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+		Destination: destination,
+		Sign:        true,
+		SignKey:     "helm-test",
+		SignKeyring: keyringPath,
+	})
+	require.ErrorContains(t, err, "move archive into place")
+	assert.NoFileExists(t, filepath.Join(destination, "mychart-1.0.0.tgz.prov"))
+
+	entries, err := os.ReadDir(destination)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"mychart-1.0.0.tgz"}, lo.Map(entries, func(entry os.DirEntry, _ int) string {
+		return entry.Name()
+	}))
+}
+
+func TestChartPack_FailedPackLeavesDestinationUntouched(t *testing.T) {
+	chartDir := filepath.Join(t.TempDir(), "mychart")
+	writeChartPackTestFiles(t, chartDir, map[string]string{"Chart.yaml": "apiVersion: v2\nname: mychart\nversion: 1.0.0\n"})
+
+	// Nothing, not even a staging directory, may appear in the chart while packing it into a
+	// destination inside it, since a killed pack would leave it for the next pack to pick up.
+	_, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+		Destination: filepath.Join(chartDir, "out"),
+		Sign:        true,
+		SignKey:     "helm-test",
+		SignKeyring: filepath.Join(t.TempDir(), "missing.secret"),
+	})
+	require.Error(t, err)
+
+	entries, err := os.ReadDir(chartDir)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Chart.yaml"}, lo.Map(entries, func(entry os.DirEntry, _ int) string {
+		return entry.Name()
+	}))
+}
+
+func TestChartPack_FailedResignKeepsSignedArchive(t *testing.T) {
+	keyringPath, err := filepath.Abs("../helm/pkg/cmd/testdata/helm-test-key.secret")
+	require.NoError(t, err)
+	publicKeyringPath, err := filepath.Abs("../helm/pkg/cmd/testdata/helm-test-key.pub")
+	require.NoError(t, err)
+
+	chartDir := filepath.Join(t.TempDir(), "mychart")
+	writeChartPackTestFiles(t, chartDir, map[string]string{"Chart.yaml": "apiVersion: v2\nname: mychart\nversion: 1.0.0\n"})
+
+	destination := filepath.Join(t.TempDir(), "not", "created")
+	signed, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+		Destination: destination,
+		Sign:        true,
+		SignKey:     "helm-test",
+		SignKeyring: keyringPath,
+	})
+	require.NoError(t, err)
+
+	_, err = ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+		Destination:   destination,
+		Sign:          true,
+		SignKey:       "helm-test",
+		SignKeyring:   filepath.Join(t.TempDir(), "missing.secret"),
+		ValuesOptions: common.ValuesOptions{ValuesSet: []string{"a=1"}},
+	})
+	require.Error(t, err)
+
+	entries, err := os.ReadDir(destination)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"mychart-1.0.0.tgz", "mychart-1.0.0.tgz.prov"}, lo.Map(entries, func(entry os.DirEntry, _ int) string {
+		return entry.Name()
+	}))
+
+	archiveData, err := os.ReadFile(signed.ArchivePath)
+	require.NoError(t, err)
+	provData, err := os.ReadFile(signed.ProvenancePath)
+	require.NoError(t, err)
+
+	signatory, err := provenance.NewFromKeyring(publicKeyringPath, "")
+	require.NoError(t, err)
+	_, err = signatory.Verify(archiveData, provData, filepath.Base(signed.ArchivePath))
+	require.NoError(t, err)
+}
+
+func TestChartPack_ForwardsRepositorySettings(t *testing.T) {
+	setupChartPackTestDependencyCaches(t)
+	server := newChartPackTestChartRepo(t)
+
+	repositoryConfig := filepath.Join(t.TempDir(), "repositories.yaml")
+	writeChartPackTestFiles(t, filepath.Dir(repositoryConfig), map[string]string{
+		"repositories.yaml": fmt.Sprintf("apiVersion: v1\nrepositories:\n- name: myrepo\n  url: %s\n", server.URL),
+	})
+
+	chartDir := filepath.Join(t.TempDir(), "mychart")
+	writeChartPackTestFiles(t, chartDir, map[string]string{
+		"Chart.yaml": "apiVersion: v2\nname: mychart\nversion: 1.0.0\ndependencies:\n  - name: dep\n    version: 0.1.0\n    repository: \"@myrepo\"\n",
+	})
+
+	repositoryCache := t.TempDir()
+	result, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+		ContentCache:     t.TempDir(),
+		DependencyUpdate: true,
+		Destination:      t.TempDir(),
+		RepositoryCache:  repositoryCache,
+		RepositoryConfig: repositoryConfig,
+	})
+	require.NoError(t, err)
+
+	assert.Contains(t, readChartPackTestArchiveFiles(t, result.ArchivePath), "mychart/charts/dep/templates/cm.yaml")
+	assert.FileExists(t, filepath.Join(repositoryCache, "myrepo-index.yaml"))
+}
+
+func TestChartPack_RelativeDestination(t *testing.T) {
+	workDir := t.TempDir()
+	t.Chdir(workDir)
+
+	chartDir := filepath.Join(t.TempDir(), "mychart")
+	writeChartPackTestFiles(t, chartDir, map[string]string{"Chart.yaml": "apiVersion: v2\nname: mychart\nversion: 1.0.0\n"})
+
+	result, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{Destination: "."})
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(workDir, "mychart-1.0.0.tgz"), result.ArchivePath)
+	assert.FileExists(t, result.ArchivePath)
+}
+
+func TestChartPack_RemovesStaleProvenance(t *testing.T) {
+	keyringPath, err := filepath.Abs("../helm/pkg/cmd/testdata/helm-test-key.secret")
+	require.NoError(t, err)
+
+	chartDir := filepath.Join(t.TempDir(), "mychart")
+	writeChartPackTestFiles(t, chartDir, map[string]string{"Chart.yaml": "apiVersion: v2\nname: mychart\nversion: 1.0.0\n"})
+
+	destination := t.TempDir()
+	signed, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+		Destination: destination,
+		Sign:        true,
+		SignKey:     "helm-test",
+		SignKeyring: keyringPath,
+	})
+	require.NoError(t, err)
+	require.FileExists(t, signed.ProvenancePath)
+
+	unsigned, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+		Destination:   destination,
+		ValuesOptions: common.ValuesOptions{ValuesSet: []string{"a=1"}},
+	})
+	require.NoError(t, err)
+	assert.Empty(t, unsigned.ProvenancePath)
+	assert.NoFileExists(t, signed.ProvenancePath)
+}
+
+func TestChartPack_RepackKeepsVendoredDependencies(t *testing.T) {
+	setupChartPackTestDependencyCaches(t)
+	server := newChartPackTestChartRepo(t)
+
+	sourceDir := t.TempDir()
+	writeChartPackTestFiles(t, filepath.Join(sourceDir, "local"), map[string]string{
+		"Chart.yaml":        "apiVersion: v2\nname: local\nversion: 0.2.0\n",
+		"templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: local\n",
+	})
+
+	deps := []*v2chart.Dependency{
+		{Name: "dep", Version: "0.1.0", Repository: server.URL},
+		{Name: "local", Version: "0.2.0", Repository: "file://../local"},
+	}
+	digest, err := resolver.HashReq(deps, deps)
+	require.NoError(t, err)
+
+	writeChartPackTestFiles(t, filepath.Join(sourceDir, "mychart"), map[string]string{
+		"Chart.yaml": fmt.Sprintf("apiVersion: v2\nname: mychart\nversion: 1.0.0\ndependencies:\n  - name: dep\n    version: 0.1.0\n    repository: %s\n  - name: local\n    version: 0.2.0\n    repository: file://../local\n", server.URL),
+		"Chart.lock": fmt.Sprintf("dependencies:\n- name: dep\n  repository: %s\n  version: 0.1.0\n- name: local\n  repository: file://../local\n  version: 0.2.0\ndigest: %s\ngenerated: \"2024-01-01T00:00:00Z\"\n", server.URL, digest),
+	})
+
+	packed, err := ChartPack(newChartPackTestContext(), filepath.Join(sourceDir, "mychart"), ChartPackOptions{Destination: t.TempDir()})
+	require.NoError(t, err)
+
+	// Neither the file:// source nor the chart repository, nor the caches of the first pack, are
+	// available to the repack.
+	server.Close()
+	require.NoError(t, os.RemoveAll(sourceDir))
+	setupChartPackTestDependencyCaches(t)
+
+	unpackDir := t.TempDir()
+	require.NoError(t, v2util.ExpandFile(unpackDir, packed.ArchivePath))
+
+	repacked, err := ChartPack(newChartPackTestContext(), filepath.Join(unpackDir, "mychart"), ChartPackOptions{
+		Destination:   t.TempDir(),
+		ValuesOptions: common.ValuesOptions{ValuesSet: []string{"a=1"}},
+	})
+	require.NoError(t, err)
+
+	files := readChartPackTestArchiveFiles(t, repacked.ArchivePath)
+	assert.Contains(t, files, "mychart/charts/dep/templates/cm.yaml")
+	assert.Contains(t, files, "mychart/charts/local/templates/cm.yaml")
+	assert.Equal(t, []string{"a=1"}, loadChartPackTestWerfData(t, repacked.ArchivePath).Metadata.Values.ValuesSet)
+}
+
+func TestChartPack_Sign(t *testing.T) {
+	keyringPath, err := filepath.Abs("../helm/pkg/cmd/testdata/helm-test-key.secret")
+	require.NoError(t, err)
+	publicKeyringPath, err := filepath.Abs("../helm/pkg/cmd/testdata/helm-test-key.pub")
+	require.NoError(t, err)
+
+	for _, apiVersion := range []string{"v2", "v3"} {
+		t.Run(apiVersion, func(t *testing.T) {
+			chartDir := filepath.Join(t.TempDir(), "mychart")
+			writeChartPackTestFiles(t, chartDir, map[string]string{"Chart.yaml": "apiVersion: " + apiVersion + "\nname: mychart\nversion: 1.0.0\n"})
+
+			result, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+				Destination:   t.TempDir(),
+				Sign:          true,
+				SignKey:       "helm-test",
+				SignKeyring:   keyringPath,
+				ValuesOptions: common.ValuesOptions{ValuesSet: []string{"a=1"}},
+			})
+			require.NoError(t, err)
+			require.Equal(t, result.ArchivePath+".prov", result.ProvenancePath)
+
+			archiveData, err := os.ReadFile(result.ArchivePath)
+			require.NoError(t, err)
+			provData, err := os.ReadFile(result.ProvenancePath)
+			require.NoError(t, err)
+
+			signatory, err := provenance.NewFromKeyring(publicKeyringPath, "")
+			require.NoError(t, err)
+			_, err = signatory.Verify(archiveData, provData, filepath.Base(result.ArchivePath))
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestChartPack_StagesInTempDir(t *testing.T) {
+	chartDir := filepath.Join(t.TempDir(), "mychart")
+	writeChartPackTestFiles(t, chartDir, map[string]string{"Chart.yaml": "apiVersion: v2\nname: mychart\nversion: 1.0.0\n"})
+
+	_, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+		Destination: t.TempDir(),
+		TempDirPath: filepath.Join(t.TempDir(), "missing"),
+	})
+	require.ErrorContains(t, err, "create staging directory")
+}
+
+func TestChartPack_TypeScriptBundle(t *testing.T) {
+	t.Setenv(featgate.FeatGateTypescript.EnvVarName(), "true")
+
+	for _, apiVersion := range []string{"v2", "v3"} {
+		t.Run(apiVersion, func(t *testing.T) {
+			chartDir := filepath.Join(t.TempDir(), "mychart")
+			writeChartPackTestFiles(t, chartDir, map[string]string{
+				"Chart.yaml":             "apiVersion: " + apiVersion + "\nname: mychart\nversion: 1.0.0\n",
+				"ts/src/index.ts":        "export {};\n",
+				common.ChartTSBundleFile: "bundle\n",
+			})
+
+			result, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+				DenoBinaryPath: filepath.Join(t.TempDir(), "deno"),
+				Destination:    t.TempDir(),
+				TSNoRebuild:    true,
+			})
+			require.NoError(t, err)
+
+			files := readChartPackTestArchiveFiles(t, result.ArchivePath)
+			assert.Equal(t, "bundle\n", files["mychart/"+common.ChartTSBundleFile])
+			assert.Equal(t, "export {};\n", files["mychart/ts/src/index.ts"])
+		})
+	}
+}
+
+func TestChartPack_VendorsDependenciesFromChartLock(t *testing.T) {
+	for _, skipRepoUpdate := range []bool{false, true} {
+		t.Run(fmt.Sprintf("skip repo update %t", skipRepoUpdate), func(t *testing.T) {
+			setupChartPackTestDependencyCaches(t)
+			server := newChartPackTestChartRepo(t)
+
+			deps := []*v2chart.Dependency{{Name: "dep", Version: "0.1.0", Repository: server.URL}}
+			digest, err := resolver.HashReq(deps, deps)
+			require.NoError(t, err)
+
+			chartLock := fmt.Sprintf("dependencies:\n- name: dep\n  repository: %s\n  version: 0.1.0\ndigest: %s\ngenerated: \"2024-01-01T00:00:00Z\"\n", server.URL, digest)
+			chartDir := filepath.Join(t.TempDir(), "mychart")
+			writeChartPackTestFiles(t, chartDir, map[string]string{
+				"Chart.yaml": fmt.Sprintf("apiVersion: v2\nname: mychart\nversion: 1.0.0\ndependencies:\n  - name: dep\n    version: 0.1.0\n    repository: %s\n", server.URL),
+				"Chart.lock": chartLock,
+			})
+
+			result, err := ChartPack(newChartPackTestContext(), chartDir, ChartPackOptions{
+				ChartRepoSkipUpdate: skipRepoUpdate,
+				Destination:         t.TempDir(),
+			})
+			require.NoError(t, err)
+
+			files := readChartPackTestArchiveFiles(t, result.ArchivePath)
+			assert.Equal(t, "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: dep\n", files["mychart/charts/dep/templates/cm.yaml"])
+			assert.Equal(t, chartLock, files["mychart/Chart.lock"])
+		})
+	}
+}
+
+// newChartPackTestChartRepo serves a chart repository with the dep chart 0.1.0.
+func newChartPackTestChartRepo(t *testing.T) *httptest.Server {
+	t.Helper()
+
+	repoDir := t.TempDir()
+	server := httptest.NewServer(http.FileServer(http.Dir(repoDir)))
+	t.Cleanup(server.Close)
+
+	depDir := filepath.Join(t.TempDir(), "dep")
+	writeChartPackTestFiles(t, depDir, map[string]string{
+		"Chart.yaml":        "apiVersion: v2\nname: dep\nversion: 0.1.0\n",
+		"templates/cm.yaml": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: dep\n",
+	})
+
+	depChart, err := v2loader.Load(context.Background(), depDir)
+	require.NoError(t, err)
+	_, err = v2util.Save(depChart, repoDir)
+	require.NoError(t, err)
+
+	index, err := repo.IndexDirectory(repoDir, server.URL)
+	require.NoError(t, err)
+	require.NoError(t, index.WriteFile(filepath.Join(repoDir, "index.yaml"), 0o644))
+
+	return server
+}
+
+func readChartPackTestArchiveFile(t *testing.T, archivePath, name string) string {
+	t.Helper()
+
+	files := readChartPackTestArchiveFiles(t, archivePath)
+	require.Contains(t, files, name)
+
+	return files[name]
+}
+
+func decryptChartPackTestValues(t *testing.T, encrypted []byte) map[string]any {
+	t.Helper()
+
+	encoder, err := secret.NewAesEncoder([]byte(secretValuesTypesSecretKey))
+	require.NoError(t, err)
+
+	decrypted, err := secret.NewYamlEncoder(encoder).DecryptYamlData(encrypted)
+	require.NoError(t, err)
+
+	vals := map[string]any{}
+	require.NoError(t, yaml.Unmarshal(decrypted, &vals))
+
+	return vals
+}
+
+func encryptChartPackTestValues(t *testing.T, plaintext string) string {
+	t.Helper()
+
+	encoder, err := secret.NewAesEncoder([]byte(secretValuesTypesSecretKey))
+	require.NoError(t, err)
+
+	encrypted, err := secret.NewYamlEncoder(encoder).EncryptYamlData([]byte(plaintext))
+	require.NoError(t, err)
+
+	return string(encrypted)
+}
+
+func loadChartPackTestWerfData(t *testing.T, archivePath string) *werfdata.Data {
+	t.Helper()
+
+	loaded, err := loader.LoadFile(context.Background(), archivePath)
+	require.NoError(t, err)
+
+	accessor, err := helmchart.NewAccessor(loaded)
+	require.NoError(t, err)
+
+	data, err := werfdata.Parse(accessor.WerfDataFiles())
+	require.NoError(t, err)
+
+	return data
+}
+
+func newChartPackTestContext() context.Context {
+	return logboek.NewContext(context.Background(), logboek.NewLogger(io.Discard, io.Discard))
+}
+
+func readChartPackTestArchiveFiles(t *testing.T, archivePath string) map[string]string {
+	t.Helper()
+
+	archiveFile, err := os.Open(archivePath)
+	require.NoError(t, err)
+
+	defer archiveFile.Close()
+
+	gzipReader, err := gzip.NewReader(archiveFile)
+	require.NoError(t, err)
+
+	files := map[string]string{}
+	tarReader := tar.NewReader(gzipReader)
+
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+
+		require.NoError(t, err)
+
+		data, err := io.ReadAll(tarReader)
+		require.NoError(t, err)
+
+		require.NotContains(t, files, header.Name, "duplicate archive entry")
+		files[header.Name] = string(data)
+	}
+
+	return files
+}
+
+func setupChartPackTestDependencyCaches(t *testing.T) {
+	t.Helper()
+
+	t.Setenv("HELM_CACHE_HOME", t.TempDir())
+	t.Setenv("HELM_CONFIG_HOME", t.TempDir())
+	t.Setenv("HELM_DATA_HOME", t.TempDir())
+
+	localCacheDir, err := loader.LocalCacheDir()
+	require.NoError(t, err)
+	serviceDir, err := loader.ServiceDir()
+	require.NoError(t, err)
+
+	loader.SetLocalCacheDir(t.TempDir())
+	loader.SetServiceDir(t.TempDir())
+
+	t.Cleanup(func() {
+		loader.SetLocalCacheDir(localCacheDir)
+		loader.SetServiceDir(serviceDir)
+	})
+}
+
+func writeChartPackTestFiles(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+
+	for name, data := range files {
+		filePath := filepath.Join(dir, name)
+		require.NoError(t, os.MkdirAll(filepath.Dir(filePath), 0o755))
+		require.NoError(t, os.WriteFile(filePath, []byte(data), 0o644))
+	}
+}
