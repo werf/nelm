@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.4.0](https://github.com/werf/nelm/compare/v2.3.0...v2.4.0) (2026-11-07)
+
+
+### Features
+
+* **chart:** copy charts with their images between registries and archives ([#810](https://github.com/werf/nelm/issues/810)) ([47a2d34](https://github.com/werf/nelm/commit/47a2d34e7842ed28928c3584da4de155ff9dfd8b))
+* **chart:** keep publish-time inputs in .werf-data and deploy them like the original flags ([#809](https://github.com/werf/nelm/issues/809)) ([8b462a9](https://github.com/werf/nelm/commit/8b462a9e2344b77f53511f2a713d071611a3efd4))
+* **chart:** pin OCI pulls to one digest, add chart upload and recorded release defaults ([#811](https://github.com/werf/nelm/issues/811)) ([50cd8d8](https://github.com/werf/nelm/commit/50cd8d8bd0057aa59a8fd16f7e99e98a8857d852))
+
 ## [2.3.0](https://github.com/werf/nelm/compare/v2.2.1...v2.3.0) (2026-11-03)
 
 
