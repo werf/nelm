@@ -23,6 +23,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/log"
 	"github.com/werf/nelm/v2/pkg/release"
 	"github.com/werf/nelm/v2/pkg/resource/spec"
+	"github.com/werf/nelm/v2/pkg/werfdata"
 )
 
 const DefaultChartRenderLogLevel = log.ErrorLevel
@@ -306,6 +307,15 @@ func ChartRender(ctx context.Context, opts ChartRenderOptions) (*ChartRenderResu
 	if err != nil {
 		return nil, fmt.Errorf("render chart: %w", err)
 	}
+
+	werfData, err := chartWerfData(renderChartResult.Chart)
+	if err != nil {
+		return nil, fmt.Errorf("merge chart %s options: %w", werfdata.DirName, err)
+	}
+
+	opts.ExtraAnnotations = mergeChartMetadataMap(werfData.Metadata.ExtraAnnotations, opts.ExtraAnnotations)
+	opts.ExtraLabels = mergeChartMetadataMap(werfData.Metadata.ExtraLabels, opts.ExtraLabels)
+	opts.ExtraRuntimeAnnotations = mergeChartMetadataMap(werfData.Metadata.ExtraRuntimeAnnotations, opts.ExtraRuntimeAnnotations)
 
 	log.Default.Debug(ctx, "Resolve patches")
 

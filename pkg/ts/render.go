@@ -27,7 +27,7 @@ func RenderChart(ctx context.Context, chart helmchart.Accessor, renderedValues c
 		return nil, fmt.Errorf("ensure Deno is available: %w", err)
 	}
 
-	if err := bundleChartsRecursive(ctx, chart, chartPath, rebuildBundle, denoBin); err != nil {
+	if err := bundleChartsRecursive(ctx, chart, chartPath, rebuildBundle, func() (string, error) { return denoBin, nil }); err != nil {
 		return nil, fmt.Errorf("bundle chart recursive: %w", err)
 	}
 

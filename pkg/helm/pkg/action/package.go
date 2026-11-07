@@ -31,6 +31,7 @@ import (
 
 	"github.com/werf/nelm/v2/pkg/common"
 	"github.com/werf/nelm/v2/pkg/featgate"
+	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
 	ci "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
 	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
@@ -178,18 +179,20 @@ func (p *Package) Clearsign(filename string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load chart for signing: %w", err)
 	}
-	var ch *chart.Chart
+	var metadata any
 	switch c := chrt.(type) {
 	case *chart.Chart:
-		ch = c
+		metadata = c.Metadata
 	case chart.Chart:
-		ch = &c
+		metadata = c.Metadata
+	case *v3chart.Chart:
+		metadata = c.Metadata
 	default:
 		return errors.New("invalid chart apiVersion")
 	}
 
 	// Marshal chart metadata to YAML bytes
-	metadataBytes, err := yaml.Marshal(ch.Metadata)
+	metadataBytes, err := yaml.Marshal(metadata)
 	if err != nil {
 		return fmt.Errorf("failed to marshal chart metadata: %w", err)
 	}

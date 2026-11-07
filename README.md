@@ -171,7 +171,6 @@ Chart commands:
 
 Secret commands:
   chart secret key create            Create a new chart secret key.
-  chart secret key rotate            Reencrypt secret files with a new secret key.
   chart secret values-file edit      Interactively edit encrypted values file.
   chart secret values-file encrypt   Encrypt values file and print result to stdout.
   chart secret values-file decrypt   Decrypt values file and print result to stdout.

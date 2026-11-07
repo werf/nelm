@@ -77,7 +77,7 @@ func SaveDir(c *chart.Chart, dest string) error {
 	}
 
 	// Save templates and files
-	for _, o := range [][]*common.File{c.Templates, c.Files} {
+	for _, o := range [][]*common.File{c.Templates, c.Files, c.RuntimeFiles, c.WerfDataFiles} {
 		for _, f := range o {
 			n := filepath.Join(outdir, f.Name)
 			if err := writeFile(n, f.Data); err != nil {
@@ -214,6 +214,10 @@ func writeTarContents(out *tar.Writer, c *chart.Chart, prefix string) error {
 		if err := writeToTar(out, n, f.Data, f.ModTime); err != nil {
 			return err
 		}
+	}
+
+	if err := writeNelmFilesToTar(out, c, base); err != nil {
+		return err
 	}
 
 	// Save dependencies
