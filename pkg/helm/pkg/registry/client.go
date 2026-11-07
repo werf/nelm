@@ -70,12 +70,14 @@ type (
 		credentialsFile    string
 		username           string
 		password           string
+		basicAuthHosts     []string
 		out                io.Writer
 		authorizer         *auth.Client
 		registryAuthorizer RemoteClient
 		credentialsStore   credentials.Store
 		httpClient         *http.Client
 		plainHTTP          bool
+		plainHTTPHost      func(host string) bool
 	}
 
 	// ClientOption allows specifying various settings configurable by the user for overriding the defaults
@@ -124,7 +126,9 @@ func NewClient(options ...ClientOption) (*Client, error) {
 		}
 		authorizer.SetUserAgent(version.GetUserAgent())
 
-		if client.username != "" && client.password != "" {
+		if client.username != "" && client.password != "" && client.basicAuthHosts != nil {
+			authorizer.Credential = client.basicAuthHostsCredential()
+		} else if client.username != "" && client.password != "" {
 			authorizer.Credential = func(_ context.Context, _ string) (auth.Credential, error) {
 				return auth.Credential{Username: client.username, Password: client.password}, nil
 			}
@@ -250,7 +254,7 @@ func (c *Client) Login(host string, options ...LoginOption) error {
 	if err != nil {
 		return err
 	}
-	reg.PlainHTTP = c.plainHTTP
+	reg.PlainHTTP = isPlainHTTP(c.plainHTTP, c.plainHTTPHost, reg.Reference.Registry)
 	cred := auth.Credential{Username: c.username, Password: c.password}
 	c.authorizer.ForceAttemptOAuth2 = true
 	reg.Client = c.authorizer
@@ -652,6 +656,11 @@ type (
 
 // Push uploads a chart to a registry.
 func (c *Client) Push(data []byte, ref string, options ...PushOption) (*PushResult, error) {
+	return c.PushContext(context.Background(), data, ref, options...)
+}
+
+// PushContext is Push that stops when ctx is done.
+func (c *Client) PushContext(ctx context.Context, data []byte, ref string, options ...PushOption) (*PushResult, error) {
 	parsedRef, err := newReference(ref)
 	if err != nil {
 		return nil, err
@@ -682,8 +691,6 @@ func (c *Client) Push(data []byte, ref string, options ...PushOption) (*PushResu
 	if err != nil {
 		return nil, err
 	}
-
-	ctx := context.Background()
 
 	memoryStore := memory.New()
 	chartDescriptor, err := oras.PushBytes(ctx, memoryStore, ChartLayerMediaType, data)
@@ -729,7 +736,7 @@ func (c *Client) Push(data []byte, ref string, options ...PushOption) (*PushResu
 	if err != nil {
 		return nil, err
 	}
-	repository.PlainHTTP = c.plainHTTP
+	repository.PlainHTTP = isPlainHTTP(c.plainHTTP, c.plainHTTPHost, repository.Reference.Registry)
 	repository.Client = c.authorizer
 
 	manifestDescriptor, err = oras.ExtendedCopy(ctx, memoryStore, parsedRef.String(), repository, parsedRef.String(), oras.DefaultExtendedCopyOptions)
@@ -807,7 +814,7 @@ func (c *Client) Tags(ref string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	repository.PlainHTTP = c.plainHTTP
+	repository.PlainHTTP = isPlainHTTP(c.plainHTTP, c.plainHTTPHost, repository.Reference.Registry)
 	repository.Client = c.authorizer
 
 	var tagVersions []*semver.Version
@@ -846,7 +853,7 @@ func (c *Client) Resolve(ref string) (desc ocispec.Descriptor, err error) {
 	if err != nil {
 		return desc, err
 	}
-	remoteRepository.PlainHTTP = c.plainHTTP
+	remoteRepository.PlainHTTP = isPlainHTTP(c.plainHTTP, c.plainHTTPHost, remoteRepository.Reference.Registry)
 	remoteRepository.Client = c.authorizer
 
 	parsedReference, err := newReference(ref)

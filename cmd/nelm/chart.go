@@ -23,6 +23,7 @@ func newChartCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*cobra.
 	cmd.AddCommand(newChartDependencyCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newChartDownloadCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newChartUploadCommand(ctx, afterAllCommandsBuiltFuncs))
+	cmd.AddCommand(newChartCopyCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newChartPackCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newChartLintCommand(ctx, afterAllCommandsBuiltFuncs))
 	cmd.AddCommand(newChartSecretCommand(ctx, afterAllCommandsBuiltFuncs))

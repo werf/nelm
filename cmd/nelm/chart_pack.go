@@ -121,6 +121,13 @@ func newChartPackCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			return fmt.Errorf("add flag: %w", err)
 		}
 
+		if err := cli.AddFlag(cmd, &cfg.ChartRepoRequestTimeout, "chart-repo-request-timeout", 0, "Set timeout for all requests to chart repository. A request includes its whole body, so the timeout also bounds a whole blob download or upload", cli.AddFlagOptions{
+			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
+			Group:                chartRepoFlagGroup,
+		}); err != nil {
+			return fmt.Errorf("add flag: %w", err)
+		}
+
 		if err := cli.AddFlag(cmd, &cfg.ChartRepoSkipTLSVerify, "no-verify-chart-repos-tls", false, "Don't verify TLS certificates of chart repository", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                chartRepoFlagGroup,
