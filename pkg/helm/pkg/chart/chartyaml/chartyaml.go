@@ -117,6 +117,52 @@ func Edit(ctx context.Context, data []byte, opts EditOptions) ([]byte, error) {
 	return []byte(result), nil
 }
 
+// ParseImages returns the entries of a helm.sh/images annotation value.
+func ParseImages(ctx context.Context, annotationValue string) ([]Image, error) {
+	var images []Image
+	if err := yaml.Unmarshal([]byte(annotationValue), &images); err != nil {
+		return nil, fmt.Errorf("parse %s annotation: %w", ImagesAnnotation, err)
+	}
+
+	return images, nil
+}
+
+// RewriteImages replaces the image of every helm.sh/images entry found in imageMapping with the
+// mapped one, keeping the other fields of the entries. annotationValue is returned as is when
+// nothing changes.
+func RewriteImages(ctx context.Context, annotationValue string, imageMapping map[string]string) (string, error) {
+	var entries []yaml.MapSlice
+	if err := yaml.Unmarshal([]byte(annotationValue), &entries); err != nil {
+		return "", fmt.Errorf("parse %s annotation: %w", ImagesAnnotation, err)
+	}
+
+	var changed bool
+	for _, entry := range entries {
+		for i, item := range entry {
+			if key, ok := item.Key.(string); !ok || key != "image" {
+				continue
+			}
+
+			image, _ := item.Value.(string)
+			if newImage, ok := imageMapping[image]; ok && newImage != image {
+				entry[i].Value = newImage
+				changed = true
+			}
+		}
+	}
+
+	if !changed {
+		return annotationValue, nil
+	}
+
+	result, err := yaml.Marshal(entries)
+	if err != nil {
+		return "", fmt.Errorf("marshal %s annotation: %w", ImagesAnnotation, err)
+	}
+
+	return string(result), nil
+}
+
 // UpdateImages removes the entries named in removeNames from a helm.sh/images annotation value and
 // appends images. The result is empty when no entries are left, and annotationValue as is when
 // nothing changes. An image whose name matches a kept entry is an error.
