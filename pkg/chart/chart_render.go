@@ -141,7 +141,18 @@ type buildChartCapabilitiesOptions struct {
 // Download chart and its dependencies, build and merge values, then render templates. Most of the
 // logic is in Helm SDK, in Nelm its mostly orchestration level.
 func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace string, revision int, deployType common.DeployType, registryClient *registry.Client, clientFactory kube.ClientFactorier, opts RenderChartOptions) (*RenderChartResult, error) {
-	chartPath, err := downloadChart(ctx, chartPath, registryClient, opts)
+	downloadDir, err := os.MkdirTemp(opts.TempDirPath, "chart-download-")
+	if err != nil {
+		return nil, fmt.Errorf("create chart download directory: %w", err)
+	}
+	defer os.RemoveAll(downloadDir)
+
+	chartPath, err = downloadChart(ctx, chartPath, registryClient, downloadDir, chartDownloaderOptions{
+		ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
+		ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
+		ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
+		ChartVersion:               opts.ChartVersion,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("download chart %q: %w", chartPath, err)
 	}

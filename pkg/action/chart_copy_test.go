@@ -37,32 +37,6 @@ import (
 	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 )
 
-func TestChartCopyPlainHTTP(t *testing.T) {
-	tests := []struct {
-		host          string
-		insecureHosts []string
-		expected      bool
-	}{
-		{host: "localhost", expected: true},
-		{host: "localhost:32768", expected: true},
-		{host: "127.0.0.1:5000", expected: true},
-		{host: "127.1.2.3", expected: true},
-		{host: "[::1]:5000", expected: true},
-		{host: "registry.example.com", expected: false},
-		{host: "registry.example.com:5000", expected: false},
-		{host: "10.0.0.1:5000", expected: false},
-		{host: "localhost.example.com", expected: false},
-		{host: "registry.example.com", insecureHosts: []string{"registry.example.com"}, expected: true},
-		{host: "images.example.com", insecureHosts: []string{"registry.example.com"}, expected: false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.host, func(t *testing.T) {
-			assert.Equal(t, tt.expected, chartCopyPlainHTTP(tt.host, tt.insecureHosts))
-		})
-	}
-}
-
 func TestChartCopy_ArchiveCanceled(t *testing.T) {
 	chartData := buildChartCopyTestChart(t, map[string]string{"Chart.yaml": "apiVersion: v2\nname: app\nversion: 1.0.0\n"})
 	archivePath := writeLegacyBundleChartCopyTestArchive(t, chartData, nil)
@@ -1264,6 +1238,35 @@ func TestChartCopy_UnchangedChartKeepsManifest(t *testing.T) {
 		require.NoError(t, ChartCopy(newChartPackTestContext(), archivePath, "oci://"+dst, newChartCopyTestOptions(t)))
 		requireManifest(t, dst, "1.0.0")
 	})
+}
+
+func TestChartRepoPlainHTTP(t *testing.T) {
+	tests := []struct {
+		host           string
+		insecureHosts  []string
+		withTLSOptions bool
+		expected       bool
+	}{
+		{host: "localhost", expected: true},
+		{host: "localhost:32768", expected: true},
+		{host: "127.0.0.1:5000", expected: true},
+		{host: "127.1.2.3", expected: true},
+		{host: "[::1]:5000", expected: true},
+		{host: "registry.example.com", expected: false},
+		{host: "registry.example.com:5000", expected: false},
+		{host: "10.0.0.1:5000", expected: false},
+		{host: "localhost.example.com", expected: false},
+		{host: "registry.example.com", insecureHosts: []string{"registry.example.com"}, expected: true},
+		{host: "images.example.com", insecureHosts: []string{"registry.example.com"}, expected: false},
+		{host: "127.0.0.1:5000", withTLSOptions: true, expected: false},
+		{host: "127.0.0.1:5000", insecureHosts: []string{"127.0.0.1:5000"}, withTLSOptions: true, expected: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%s %v %t", tt.host, tt.insecureHosts, tt.withTLSOptions), func(t *testing.T) {
+			assert.Equal(t, tt.expected, chartRepoPlainHTTP(tt.host, tt.insecureHosts, tt.withTLSOptions))
+		})
+	}
 }
 
 func TestChartVersionFromTag(t *testing.T) {

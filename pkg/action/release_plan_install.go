@@ -16,7 +16,6 @@ import (
 
 	"github.com/werf/nelm/v2/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/common"
-	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/v2/pkg/kube"
@@ -178,6 +177,33 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
 	}
 
+	helmRegistryClient, err := newChartRegistryClient(ctx, opts.Chart, opts.ChartRepoConnectionOptions, opts.RegistryCredentialsPath, opts.LegacyLogRegistryStreamOut)
+	if err != nil {
+		return nil, fmt.Errorf("construct registry client: %w", err)
+	}
+
+	if releaseName == "" || releaseNamespace == "" {
+		downloadDir, err := os.MkdirTemp(opts.TempDirPath, "chart-download-")
+		if err != nil {
+			return nil, fmt.Errorf("create chart download directory: %w", err)
+		}
+		defer os.RemoveAll(downloadDir)
+
+		opts.Chart, releaseName, releaseNamespace, err = loadRecordedRelease(ctx, opts.Chart, helmRegistryClient, downloadDir, releaseName, releaseNamespace, chart.DownloadChartOptions{
+			ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
+			ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
+			ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
+			ChartVersion:               opts.ChartVersion,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("resolve release: %w", err)
+		}
+	}
+
+	if err := requireRelease(releaseName, releaseNamespace); err != nil {
+		return nil, err
+	}
+
 	kubeConfig, err := kube.NewKubeConfig(ctx, kube.KubeConfigOptions{
 		KubeConnectionOptions: opts.KubeConnectionOptions,
 		KubeContextNamespace:  releaseNamespace, // TODO: unset it everywhere
@@ -189,24 +215,6 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 	clientFactory, err := kube.NewClientFactory(ctx, kubeConfig)
 	if err != nil {
 		return nil, fmt.Errorf("construct kube client factory: %w", err)
-	}
-
-	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
-		registry.ClientOptWriter(opts.LegacyLogRegistryStreamOut),
-		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
-	}
-
-	if opts.ChartRepoInsecure {
-		helmRegistryClientOpts = append(
-			helmRegistryClientOpts,
-			registry.ClientOptPlainHTTP(),
-		)
-	}
-
-	helmRegistryClient, err := registry.NewClient(helmRegistryClientOpts...)
-	if err != nil {
-		return nil, fmt.Errorf("construct registry client: %w", err)
 	}
 
 	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, clientFactory, release.ReleaseStorageOptions{

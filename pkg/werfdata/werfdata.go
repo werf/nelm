@@ -203,23 +203,6 @@ func (d *Data) validate() error {
 	return nil
 }
 
-// IsWerfDataFileInTree reports whether a chart file path, relative to the chart root, belongs to
-// the .werf-data of the chart or of a dependency unpacked under charts/, at any depth.
-func IsWerfDataFileInTree(name string) bool {
-	for !IsWerfDataFile(name) {
-		rest, ok := strings.CutPrefix(name, "charts/")
-		if !ok {
-			return false
-		}
-
-		if _, name, ok = strings.Cut(rest, "/"); !ok {
-			return false
-		}
-	}
-
-	return true
-}
-
 // Parse parses the .werf-data files of a chart. Names are relative to the chart root. A chart
 // without .werf-data files has no .werf-data: check for that before calling Parse.
 func Parse(files []*common.File) (*Data, error) {
@@ -237,23 +220,12 @@ func Parse(files []*common.File) (*Data, error) {
 		return nil, fmt.Errorf("%s/%s not found", DirName, MetadataFileName)
 	}
 
-	// The apiVersion is checked before the strict parse, so that metadata of a newer apiVersion
-	// with new fields reports the apiVersion, not an unknown field.
-	var header struct {
-		APIVersion string `json:"apiVersion"`
-	}
-	if err := yaml.Unmarshal(metadataData, &header); err != nil {
-		return nil, fmt.Errorf("parse %s/%s: %w", DirName, MetadataFileName, err)
-	}
-
-	if err := CheckAPIVersion(header.APIVersion); err != nil {
+	metadata, err := ParseMetadata(metadataData)
+	if err != nil {
 		return nil, err
 	}
 
-	data := &Data{Files: map[string][]byte{}}
-	if err := yaml.UnmarshalStrict(metadataData, &data.Metadata); err != nil {
-		return nil, fmt.Errorf("parse %s/%s: %w", DirName, MetadataFileName, err)
-	}
+	data := &Data{Files: map[string][]byte{}, Metadata: *metadata}
 
 	for name, fileData := range byName {
 		switch name {
@@ -284,6 +256,46 @@ func Parse(files []*common.File) (*Data, error) {
 	}
 
 	return data, nil
+}
+
+// IsWerfDataFileInTree reports whether a chart file path, relative to the chart root, belongs to
+// the .werf-data of the chart or of a dependency unpacked under charts/, at any depth.
+func IsWerfDataFileInTree(name string) bool {
+	for !IsWerfDataFile(name) {
+		rest, ok := strings.CutPrefix(name, "charts/")
+		if !ok {
+			return false
+		}
+
+		if _, name, ok = strings.Cut(rest, "/"); !ok {
+			return false
+		}
+	}
+
+	return true
+}
+
+// ParseMetadata parses .werf-data/metadata.yaml alone, without checking the files it refers to.
+func ParseMetadata(data []byte) (*Metadata, error) {
+	// The apiVersion is checked before the strict parse, so that metadata of a newer apiVersion
+	// with new fields reports the apiVersion, not an unknown field.
+	var header struct {
+		APIVersion string `json:"apiVersion"`
+	}
+	if err := yaml.Unmarshal(data, &header); err != nil {
+		return nil, fmt.Errorf("parse %s/%s: %w", DirName, MetadataFileName, err)
+	}
+
+	if err := CheckAPIVersion(header.APIVersion); err != nil {
+		return nil, err
+	}
+
+	var metadata Metadata
+	if err := yaml.UnmarshalStrict(data, &metadata); err != nil {
+		return nil, fmt.Errorf("parse %s/%s: %w", DirName, MetadataFileName, err)
+	}
+
+	return &metadata, nil
 }
 
 // CheckAPIVersion fails for a .werf-data apiVersion this version doesn't know.

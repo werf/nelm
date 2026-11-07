@@ -12,6 +12,17 @@ func WithContext(ctx context.Context) Option {
 	}
 }
 
+// RequestContext returns the context set with WithContext among options, context.Background() if
+// none is.
+func RequestContext(options ...Option) context.Context {
+	var opts getterOptions
+	for _, opt := range options {
+		opt(&opts)
+	}
+
+	return opts.requestContext()
+}
+
 func (o getterOptions) requestContext() context.Context {
 	if o.ctx == nil {
 		return context.Background()

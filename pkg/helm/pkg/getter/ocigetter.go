@@ -142,7 +142,8 @@ func (g *OCIGetter) newRegistryClient() (*registry.Client, error) {
 		}
 	})
 
-	if (g.opts.certFile != "" && g.opts.keyFile != "") || g.opts.caFile != "" || g.opts.insecureSkipVerifyTLS {
+	withTLSOptions := (g.opts.certFile != "" && g.opts.keyFile != "") || g.opts.caFile != "" || g.opts.insecureSkipVerifyTLS
+	if withTLSOptions {
 		tlsConf, err := tlsutil.NewTLSConfig(
 			tlsutil.WithInsecureSkipVerify(g.opts.insecureSkipVerifyTLS),
 			tlsutil.WithCertKeyPairFiles(g.opts.certFile, g.opts.keyFile),
@@ -165,9 +166,10 @@ func (g *OCIGetter) newRegistryClient() (*registry.Client, error) {
 		Transport: g.transport,
 		Timeout:   g.opts.timeout,
 	})}
-	if g.opts.plainHTTP {
-		opts = append(opts, registry.ClientOptPlainHTTP())
-	}
+	plainHTTP := g.opts.plainHTTP
+	opts = append(opts, registry.ClientOptPlainHTTPHost(func(host string) bool {
+		return plainHTTP || !withTLSOptions && registry.IsLoopbackHost(host)
+	}))
 
 	client, err := registry.NewClient(opts...)
 

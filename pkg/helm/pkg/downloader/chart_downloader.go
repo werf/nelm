@@ -87,6 +87,11 @@ type ChartDownloader struct {
 
 	// Cache specifies the cache implementation to use.
 	Cache Cache
+
+	// LiteralTag, when true, resolves the tag of an OCI chart, from the reference or the version,
+	// only as the tag of that name: a tag that may be a version constraint is not matched against
+	// the tags of the repository, and an OCI reference without a tag or digest is an error.
+	LiteralTag bool
 }
 
 // DownloadTo retrieves a chart. Depending on the settings, it may also download a provenance file.
@@ -110,9 +115,29 @@ func (c *ChartDownloader) DownloadTo(ref, version, dest string) (string, *proven
 		c.Cache = &DiskCache{Root: c.ContentCache}
 		slog.Debug("set up default downloader cache")
 	}
-	hash, u, err := c.ResolveChartVersion(ref, version)
+
+	if err := c.checkBeforeDownload(ref, version); err != nil {
+		return "", nil, err
+	}
+
+	hash, u, desc, err := c.resolveChartVersion(ref, version)
 	if err != nil {
 		return "", nil, err
+	}
+
+	name := filepath.Base(u.Path)
+	if u.Scheme == registry.OCIScheme {
+		idx := strings.LastIndexByte(name, ':')
+		name = fmt.Sprintf("%s-%s.tgz", name[:idx], name[idx+1:])
+	}
+
+	chartURL := u.String()
+
+	var tag string
+	if u.Scheme == registry.OCIScheme {
+		if hash, u, tag, err = c.pinOCIDigest(hash, u, desc); err != nil {
+			return "", nil, err
+		}
 	}
 
 	g, err := c.Getters.ByScheme(u.Scheme)
@@ -158,10 +183,10 @@ func (c *ChartDownloader) DownloadTo(ref, version, dest string) (string, *proven
 		}
 	}
 
-	name := filepath.Base(u.Path)
-	if u.Scheme == registry.OCIScheme {
-		idx := strings.LastIndexByte(name, ':')
-		name = fmt.Sprintf("%s-%s.tgz", name[:idx], name[idx+1:])
+	if tag != "" && (c.Verify == VerifyAlways || c.Verify == VerifyIfPossible) {
+		if err := checkTagNamesChartVersion(data.Bytes(), tag); err != nil {
+			return "", nil, err
+		}
 	}
 
 	destfile := filepath.Join(dest, name)
@@ -183,7 +208,9 @@ func (c *ChartDownloader) DownloadTo(ref, version, dest string) (string, *proven
 	if c.Verify > VerifyNever {
 		found = false
 		var body *bytes.Buffer
-		if hash != "" {
+		// The provenance of an OCI chart comes from its manifest: the cache is keyed by the chart
+		// archive, which another manifest may have with another provenance or none.
+		if hash != "" && u.Scheme != registry.OCIScheme {
 			if pth, err := c.Cache.Get(digest32, CacheProv); err == nil {
 				fdata, err := os.ReadFile(pth)
 				if err == nil {
@@ -203,6 +230,11 @@ func (c *ChartDownloader) DownloadTo(ref, version, dest string) (string, *proven
 				return destfile, ver, nil
 			}
 		}
+
+		if c.Verify != VerifyLater && c.Keyring == "" {
+			return destfile, ver, fmt.Errorf("chart %s is signed: %w", ref, ErrKeyringRequired)
+		}
+
 		provfile := destfile + ".prov"
 
 		// Use PlatformAtomicWriteFile for the provenance file as well
@@ -221,6 +253,8 @@ func (c *ChartDownloader) DownloadTo(ref, version, dest string) (string, *proven
 				// failed.
 				return destfile, ver, err
 			}
+
+			logVerification(c.requestContext(), chartURL, ver)
 		}
 	}
 	return destfile, ver, nil
@@ -236,9 +270,22 @@ func (c *ChartDownloader) DownloadToCache(ref, version string) (string, *provena
 		slog.Debug("set up default downloader cache")
 	}
 
-	digestString, u, err := c.ResolveChartVersion(ref, version)
+	if err := c.checkBeforeDownload(ref, version); err != nil {
+		return "", nil, err
+	}
+
+	digestString, u, desc, err := c.resolveChartVersion(ref, version)
 	if err != nil {
 		return "", nil, err
+	}
+
+	chartURL := u.String()
+
+	var tag string
+	if u.Scheme == registry.OCIScheme {
+		if digestString, u, tag, err = c.pinOCIDigest(digestString, u, desc); err != nil {
+			return "", nil, err
+		}
 	}
 
 	g, err := c.Getters.ByScheme(u.Scheme)
@@ -292,15 +339,30 @@ func (c *ChartDownloader) DownloadToCache(ref, version string) (string, *provena
 		slog.Debug("put downloaded chart in cache", "id", hex.EncodeToString(digest32[:]))
 	}
 
+	if tag != "" && (c.Verify == VerifyAlways || c.Verify == VerifyIfPossible) {
+		archiveData, err := os.ReadFile(pth)
+		if err != nil {
+			return pth, nil, fmt.Errorf("read chart archive: %w", err)
+		}
+
+		if err := checkTagNamesChartVersion(archiveData, tag); err != nil {
+			return pth, nil, err
+		}
+	}
+
 	// If provenance is requested, verify it.
 	ver := &provenance.Verification{}
 	if c.Verify > VerifyNever {
 
+		// The provenance of an OCI chart comes from its manifest: the cache is keyed by the chart
+		// archive, which another manifest may have with another provenance or none.
+		isOCI := u.Scheme == registry.OCIScheme
+
 		ppth, err := c.Cache.Get(digest32, CacheProv)
-		if err == nil {
+		if err == nil && !isOCI {
 			slog.Debug("found provenance in cache", "id", digestString)
 		} else {
-			if !os.IsNotExist(err) {
+			if err != nil && !os.IsNotExist(err) {
 				return pth, ver, err
 			}
 
@@ -313,11 +375,28 @@ func (c *ChartDownloader) DownloadToCache(ref, version string) (string, *provena
 				return pth, ver, nil
 			}
 
-			ppth, err = c.Cache.Put(digest32, body, CacheProv)
-			if err != nil {
-				return "", nil, err
+			if isOCI {
+				provDir, err := os.MkdirTemp("", "helm-prov-")
+				if err != nil {
+					return pth, ver, err
+				}
+				defer os.RemoveAll(provDir)
+
+				ppth = filepath.Join(provDir, hex.EncodeToString(digest32[:])+CacheProv)
+				if err := fileutil.AtomicWriteFile(ppth, body, 0644); err != nil {
+					return pth, ver, err
+				}
+			} else {
+				ppth, err = c.Cache.Put(digest32, body, CacheProv)
+				if err != nil {
+					return "", nil, err
+				}
+				slog.Debug("put downloaded provenance file in cache", "id", hex.EncodeToString(digest32[:]))
 			}
-			slog.Debug("put downloaded provenance file in cache", "id", hex.EncodeToString(digest32[:]))
+		}
+
+		if c.Verify != VerifyLater && c.Keyring == "" {
+			return pth, ver, fmt.Errorf("chart %s is signed: %w", ref, ErrKeyringRequired)
 		}
 
 		if c.Verify != VerifyLater {
@@ -334,10 +413,13 @@ func (c *ChartDownloader) DownloadToCache(ref, version string) (string, *provena
 
 			// Copy chart to a known location with the right name for verification and then
 			// clean it up.
-			tmpdir := filepath.Dir(filepath.Join(c.ContentCache, "tmp"))
-			if err := os.MkdirAll(tmpdir, 0755); err != nil {
+			// The directory is unique, so concurrent downloads of the same chart don't overwrite or
+			// remove each other's copy.
+			tmpdir, err := os.MkdirTemp("", "helm-verify-")
+			if err != nil {
 				return pth, ver, err
 			}
+			defer os.RemoveAll(tmpdir)
 			// The file is named after the digest: name comes from the unverified chart and is only
 			// the entry looked up in the provenance file.
 			tmpfile := filepath.Join(tmpdir, hex.EncodeToString(digest32[:])+".tgz")
@@ -345,8 +427,6 @@ func (c *ChartDownloader) DownloadToCache(ref, version string) (string, *provena
 			if err != nil {
 				return pth, ver, err
 			}
-			// Not removing the tmp dir itself because a concurrent process may be using it
-			defer os.RemoveAll(tmpfile)
 
 			ver, err = verifyChartAs(tmpfile, ppth, c.Keyring, name)
 			if err != nil {
@@ -354,6 +434,8 @@ func (c *ChartDownloader) DownloadToCache(ref, version string) (string, *provena
 				// failed.
 				return pth, ver, err
 			}
+
+			logVerification(c.requestContext(), chartURL, ver)
 		}
 	}
 	return pth, ver, nil
@@ -389,7 +471,7 @@ func (c *ChartDownloader) ResolveChartVersion(ref, version string) (string, *url
 			return "", nil, fmt.Errorf("unable to lookup ref %s at version '%s', missing registry client", ref, version)
 		}
 
-		digest, OCIref, err := c.RegistryClient.ValidateReference(ref, version, u)
+		digest, OCIref, _, err := c.resolveOCIChartVersion(ref, version, u)
 		return digest, OCIref, err
 	}
 

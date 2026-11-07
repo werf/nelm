@@ -1,6 +1,7 @@
 package action
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -12,7 +13,6 @@ import (
 
 	"github.com/werf/nelm/v2/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/common"
-	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
 	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/v2/pkg/kube"
@@ -180,6 +180,32 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		opts.ReleaseStorageDriver = common.ReleaseStorageDriverMemory
 	}
 
+	helmRegistryClient, err := newChartRegistryClient(ctx, opts.Chart, opts.ChartRepoConnectionOptions, opts.RegistryCredentialsPath, opts.LegacyLogRegistryStreamOut)
+	if err != nil {
+		return fmt.Errorf("construct registry client: %w", err)
+	}
+
+	if opts.ReleaseName == "" || opts.ReleaseNamespace == "" {
+		downloadDir, err := os.MkdirTemp(opts.TempDirPath, "chart-download-")
+		if err != nil {
+			return fmt.Errorf("create chart download directory: %w", err)
+		}
+		defer os.RemoveAll(downloadDir)
+
+		opts.Chart, opts.ReleaseName, opts.ReleaseNamespace, err = loadRecordedRelease(ctx, opts.Chart, helmRegistryClient, downloadDir, opts.ReleaseName, opts.ReleaseNamespace, chart.DownloadChartOptions{
+			ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
+			ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
+			ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
+			ChartVersion:               opts.ChartVersion,
+		})
+		if err != nil {
+			return fmt.Errorf("resolve release: %w", err)
+		}
+
+		opts.ReleaseName = cmp.Or(opts.ReleaseName, common.StubReleaseName)
+		opts.ReleaseNamespace = cmp.Or(opts.ReleaseNamespace, common.StubReleaseNamespace)
+	}
+
 	var clientFactory *kube.ClientFactory
 	if opts.Remote {
 		kubeConfig, err := kube.NewKubeConfig(ctx, kube.KubeConfigOptions{
@@ -194,24 +220,6 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		if err != nil {
 			return fmt.Errorf("construct kube client factory: %w", err)
 		}
-	}
-
-	helmRegistryClientOpts := []registry.ClientOption{
-		registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)),
-		registry.ClientOptWriter(opts.LegacyLogRegistryStreamOut),
-		registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
-	}
-
-	if opts.ChartRepoInsecure {
-		helmRegistryClientOpts = append(
-			helmRegistryClientOpts,
-			registry.ClientOptPlainHTTP(),
-		)
-	}
-
-	helmRegistryClient, err := registry.NewClient(helmRegistryClientOpts...)
-	if err != nil {
-		return fmt.Errorf("construct registry client: %w", err)
 	}
 
 	releaseStorageOptions := release.ReleaseStorageOptions{
@@ -302,14 +310,18 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		return fmt.Errorf("render chart: %w", err)
 	}
 
-	werfData, err := chartWerfData(renderChartResult.Chart)
+	runtimeOptions, err := mergeWerfDataRuntimeOptions(renderChartResult.Chart, common.ReleaseInstallRuntimeOptions{
+		ExtraAnnotations:        opts.ExtraAnnotations,
+		ExtraLabels:             opts.ExtraLabels,
+		ExtraRuntimeAnnotations: opts.ExtraRuntimeAnnotations,
+	})
 	if err != nil {
 		return fmt.Errorf("merge chart %s options: %w", werfdata.DirName, err)
 	}
 
-	opts.ExtraAnnotations = mergeChartMetadataMap(werfData.Metadata.ExtraAnnotations, opts.ExtraAnnotations)
-	opts.ExtraLabels = mergeChartMetadataMap(werfData.Metadata.ExtraLabels, opts.ExtraLabels)
-	opts.ExtraRuntimeAnnotations = mergeChartMetadataMap(werfData.Metadata.ExtraRuntimeAnnotations, opts.ExtraRuntimeAnnotations)
+	opts.ExtraAnnotations = runtimeOptions.ExtraAnnotations
+	opts.ExtraLabels = runtimeOptions.ExtraLabels
+	opts.ExtraRuntimeAnnotations = runtimeOptions.ExtraRuntimeAnnotations
 
 	log.Default.Debug(ctx, "Resolve patches")
 
@@ -457,14 +469,6 @@ func applyChartLintOptionsDefaults(opts ChartLintOptions, currentDir, homeDir st
 
 	if opts.Chart == "" {
 		opts.Chart = currentDir
-	}
-
-	if opts.ReleaseName == "" {
-		opts.ReleaseName = common.StubReleaseName
-	}
-
-	if opts.ReleaseNamespace == "" {
-		opts.ReleaseNamespace = common.StubReleaseNamespace
 	}
 
 	if opts.LegacyLogRegistryStreamOut == nil {

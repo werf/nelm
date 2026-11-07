@@ -402,9 +402,9 @@ func newDefaultRegistryClient(plainHTTP bool, username, password string) (*regis
 		registry.ClientOptCredentialsFile(settings.RegistryConfig),
 		registry.ClientOptBasicAuth(username, password),
 	}
-	if plainHTTP {
-		opts = append(opts, registry.ClientOptPlainHTTP())
-	}
+	opts = append(opts, registry.ClientOptPlainHTTPHost(func(host string) bool {
+		return plainHTTP || registry.IsLoopbackHost(host)
+	}))
 
 	// Create a new registry client
 	registryClient, err := registry.NewClient(opts...)
