@@ -59,6 +59,7 @@ type Chart struct {
 	ModTime time.Time `json:"modtime,omitzero"`
 
 	RuntimeFiles       []*common.File         `json:"-"`
+	WerfDataFiles      []*common.File         `json:"-"`
 	ExtraValues        map[string]interface{} `json:"-"`
 	SecretsRuntimeData common.RuntimeData     `json:"-"`
 

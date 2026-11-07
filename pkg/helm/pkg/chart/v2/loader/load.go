@@ -38,6 +38,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader/archive"
 	chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	legacysecret "github.com/werf/nelm/v2/pkg/legacy/secret"
+	"github.com/werf/nelm/v2/pkg/werfdata"
 )
 
 // ChartLoader loads a chart.
@@ -85,6 +86,8 @@ func LoadFiles(ctx context.Context, files []*archive.BufferedFile) (*chart.Chart
 		c.SecretsRuntimeData = legacysecret.NewSecretsRuntimeData()
 	}
 
+	defaultAPIVersion := defaultChartAPIVersion(applyWerfExtensions, helmOpts)
+
 	// do not rely on assumed ordering of files in the chart and crash
 	// if Chart.yaml was not coming early enough to initialize metadata
 	for _, f := range files {
@@ -99,6 +102,9 @@ func LoadFiles(ctx context.Context, files []*archive.BufferedFile) (*chart.Chart
 			// NOTE(bacongobbler): while the chart specification says that APIVersion must be set,
 			// Helm 2 accepted charts that did not provide an APIVersion in their chart metadata.
 			// Because of that, if APIVersion is unset, we should assume we're loading a v1 chart.
+			if c.Metadata.APIVersion == "" {
+				c.Metadata.APIVersion = defaultAPIVersion
+			}
 			if c.Metadata.APIVersion == "" {
 				c.Metadata.APIVersion = chart.APIVersionV1
 			}
@@ -169,8 +175,16 @@ func LoadFiles(ctx context.Context, files []*archive.BufferedFile) (*chart.Chart
 			subcharts[cname] = append(subcharts[cname], &archive.BufferedFile{Name: fname, ModTime: f.ModTime, Data: f.Data})
 		case applyWerfExtensions && strings.HasPrefix(f.Name, "ts/") && !strings.HasPrefix(f.Name, "ts/node_modules/"):
 			c.RuntimeFiles = append(c.RuntimeFiles, &chartcommon.File{Name: f.Name, ModTime: f.ModTime, Data: f.Data})
+		case werfdata.IsWerfDataFile(f.Name):
+			c.WerfDataFiles = append(c.WerfDataFiles, &chartcommon.File{Name: f.Name, ModTime: f.ModTime, Data: f.Data})
 		default:
 			c.Files = append(c.Files, &chartcommon.File{Name: f.Name, ModTime: f.ModTime, Data: f.Data})
+		}
+	}
+
+	if applyWerfExtensions {
+		if err := applyWerfDataValuesSwitches(&helmOpts, c.WerfDataFiles); err != nil {
+			return c, err
 		}
 	}
 
