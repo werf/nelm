@@ -256,7 +256,11 @@ func TestRenderChart_ExportAndImportValuesNotFoundWarnings(t *testing.T) {
 				return strings.HasPrefix(warning, "Skipping")
 			})
 			assert.ElementsMatch(t, tt.want, skipWarnings)
-			assert.Empty(t, slogWarnings.String())
+
+			nonCoalesceSlogWarnings := lo.Filter(strings.Split(slogWarnings.String(), "\n"), func(line string, _ int) bool {
+				return line != "" && !strings.Contains(line, `msg="warning: `)
+			})
+			assert.Empty(t, nonCoalesceSlogWarnings)
 		})
 	}
 }

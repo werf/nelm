@@ -19,7 +19,6 @@ package util
 import (
 	"context"
 	"fmt"
-	"log"
 	"maps"
 
 	nelmcommon "github.com/werf/nelm/v2/pkg/common"
@@ -61,7 +60,7 @@ func CoalesceValues(chrt chart.Charter, vals map[string]any) (common.Values, err
 		return vals, err
 	}
 
-	return coalesce(log.Printf, chrt, valsCopy, "", false)
+	return coalesce(logWarning, chrt, valsCopy, "", false)
 }
 
 // MergeValues is used to merge the values in a chart and its subcharts. This
@@ -93,7 +92,7 @@ func MergeValues(chrt chart.Charter, vals map[string]any) (common.Values, error)
 		return vals, err
 	}
 
-	return coalesce(log.Printf, chrt, valsCopy, "", true)
+	return coalesce(logWarning, chrt, valsCopy, "", true)
 }
 
 func copyValues(vals map[string]any) (common.Values, error) {
@@ -325,11 +324,11 @@ func childChartMergeTrue(chrt chart.Charter, key string, merge bool) bool {
 //
 // dest is considered authoritative.
 func CoalesceTables(dst, src map[string]any) map[string]any {
-	return coalesceTablesFullKey(log.Printf, dst, src, "", false)
+	return coalesceTablesFullKey(logWarning, dst, src, "", false)
 }
 
 func MergeTables(dst, src map[string]any) map[string]any {
-	return coalesceTablesFullKey(log.Printf, dst, src, "", true)
+	return coalesceTablesFullKey(logWarning, dst, src, "", true)
 }
 
 // coalesceTablesFullKey merges a source map into a destination map.
