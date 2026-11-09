@@ -30,7 +30,7 @@ func InputFromInteractiveStdin(prompt string) ([]byte, error) {
 
 	isStdoutTerminal := terminal.IsTerminal(int(os.Stdout.Fd()))
 	if isStdoutTerminal {
-		fmt.Printf(color.New(color.Bold).Sprintf(prompt))
+		fmt.Print(color.New(color.Bold).Sprint(prompt))
 	}
 
 	prepareTerminal := func() (func() error, error) {

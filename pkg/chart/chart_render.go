@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path"
@@ -21,6 +22,7 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes/scheme"
 
+	"github.com/werf/logboek"
 	"github.com/werf/nelm/v2/pkg/common"
 	"github.com/werf/nelm/v2/pkg/featgate"
 	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
@@ -507,7 +509,10 @@ func renderValuesToleratingServiceValues(ctx context.Context, chartPath string, 
 // keys. Only infrastructure errors (reload, copy, dependency processing) are returned; schema
 // validation of the result is done by the caller.
 func loadServiceFreeChart(ctx context.Context, chartPath string, userVals userValues) (helmchart.Charter, map[string]interface{}, error) {
-	freshChart, err := loader.Load(ctx, chartPath)
+	// The chart has already been loaded once, so don't repeat the warnings its loading logs.
+	quietCtx := logboek.NewContext(ctx, logboek.NewLogger(io.Discard, io.Discard))
+
+	freshChart, err := loader.Load(quietCtx, chartPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("reload chart at %q: %w", chartPath, err)
 	}
@@ -521,7 +526,7 @@ func loadServiceFreeChart(ctx context.Context, chartPath string, userVals userVa
 		return nil, nil, fmt.Errorf("reloaded chart at %q has unexpected type %T", chartPath, freshChart)
 	}
 
-	userVals.DependencyLayers, err = werfDataDependencyLayers(ctx, freshChart, true)
+	userVals.DependencyLayers, err = werfDataDependencyLayers(quietCtx, freshChart, true)
 	if err != nil {
 		return nil, nil, fmt.Errorf("get %s values layers of reloaded chart at %q dependencies: %w", werfdata.DirName, chartPath, err)
 	}

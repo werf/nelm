@@ -411,7 +411,7 @@ func decryptPublishedSecretValues(ctx context.Context, data *werfdata.Data) (map
 		return nil, fmt.Errorf("get secrets yaml encoder: %w", err)
 	}
 
-	vals, err := legacysecret.LoadChartSecretValueFiles([]*common.BufferedFile{
+	vals, err := legacysecret.LoadChartSecretValueFiles(ctx, []*common.BufferedFile{
 		{Name: path.Join(werfdata.DirName, werfdata.SecretValuesFileName), Data: data.SecretValues},
 	}, encoder)
 	if err != nil {
