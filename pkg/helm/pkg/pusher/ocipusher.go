@@ -76,7 +76,7 @@ func (pusher *OCIPusher) push(chartRef, href string) error {
 		return err
 	}
 
-	var pushOpts []registry.PushOption
+	pushOpts := []registry.PushOption{registry.PushOptExtraTags(pusher.opts.extraTags)}
 	provRef := chartRef + ".prov"
 	if _, err := os.Stat(provRef); err == nil {
 		provBytes, err := os.ReadFile(provRef)

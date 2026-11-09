@@ -75,15 +75,20 @@ func (g *OCIGetter) get(href string) (*bytes.Buffer, error) {
 		ref = strings.TrimSuffix(ref, ".prov")
 		pullOpts = append(pullOpts,
 			registry.PullOptWithChart(false),
-			registry.PullOptWithProv(true))
+			registry.PullOptWithProv(true),
+			registry.PullOptIgnoreMissingProv(true))
 	}
 
-	result, err := client.Pull(ref, pullOpts...)
+	result, err := client.PullContext(g.opts.requestContext(), ref, pullOpts...)
 	if err != nil {
 		return nil, err
 	}
 
 	if requestingProv {
+		if result.Prov.Digest == "" {
+			return nil, notFoundError{fmt.Errorf("manifest does not contain a layer with mediatype %s", registry.ProvLayerMediaType)}
+		}
+
 		return bytes.NewBuffer(result.Prov.Data), nil
 	}
 	return bytes.NewBuffer(result.Chart.Data), nil
@@ -137,7 +142,8 @@ func (g *OCIGetter) newRegistryClient() (*registry.Client, error) {
 		}
 	})
 
-	if (g.opts.certFile != "" && g.opts.keyFile != "") || g.opts.caFile != "" || g.opts.insecureSkipVerifyTLS {
+	withTLSOptions := (g.opts.certFile != "" && g.opts.keyFile != "") || g.opts.caFile != "" || g.opts.insecureSkipVerifyTLS
+	if withTLSOptions {
 		tlsConf, err := tlsutil.NewTLSConfig(
 			tlsutil.WithInsecureSkipVerify(g.opts.insecureSkipVerifyTLS),
 			tlsutil.WithCertKeyPairFiles(g.opts.certFile, g.opts.keyFile),
@@ -160,9 +166,10 @@ func (g *OCIGetter) newRegistryClient() (*registry.Client, error) {
 		Transport: g.transport,
 		Timeout:   g.opts.timeout,
 	})}
-	if g.opts.plainHTTP {
-		opts = append(opts, registry.ClientOptPlainHTTP())
-	}
+	plainHTTP := g.opts.plainHTTP
+	opts = append(opts, registry.ClientOptPlainHTTPHost(func(host string) bool {
+		return plainHTTP || !withTLSOptions && registry.IsLoopbackHost(host)
+	}))
 
 	client, err := registry.NewClient(opts...)
 

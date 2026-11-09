@@ -101,7 +101,11 @@ func ExportUserValues(c *chart.Chart, v map[string]interface{}, opts ExportUserV
 
 	var skipped []string
 	for _, export := range sortUserValuesExports(collectUserValuesExports(c, "")) {
-		value, found := userValueAtPath(vals, export.ParentPath)
+		value, found, err := userValuesExportParentValue(vals, export)
+		if err != nil {
+			return nil, nil, fmt.Errorf("get value %q: %w", export.ParentPath, err)
+		}
+
 		if !found {
 			continue
 		}
@@ -516,12 +520,19 @@ func processExportValues(c *chart.Chart, merge bool) error {
 		return fmt.Errorf("get parent values: %w", err)
 	}
 
+	globalPvals := pvals
+	if c.Parent().Parent() != nil && exportsGlobalValues(r) {
+		if globalPvals, err = valuesWithRootGlobalsForChart(c.Parent(), merge); err != nil {
+			return fmt.Errorf("get parent values with root chart globals: %w", err)
+		}
+	}
+
 	cvals, err := valuesForChart(c, merge)
 	if err != nil {
 		return fmt.Errorf("get chart values: %w", err)
 	}
 
-	exportedValues, err := getExportedValues(c.Parent().Name(), r, pvals, merge)
+	exportedValues, err := getExportedValues(c.Parent().Name(), r, pvals, globalPvals, merge)
 	if err != nil {
 		return fmt.Errorf("get exported values: %w", err)
 	}
@@ -539,7 +550,7 @@ func processExportValues(c *chart.Chart, merge bool) error {
 	return nil
 }
 
-func getExportedValues(parentName string, r *chart.Dependency, pvals common.Values, merge bool) (map[string]interface{}, error) {
+func getExportedValues(parentName string, r *chart.Dependency, pvals, globalPvals common.Values, merge bool) (map[string]interface{}, error) {
 	b := make(map[string]interface{})
 	var normalizedExportValues []interface{}
 
@@ -560,7 +571,7 @@ func getExportedValues(parentName string, r *chart.Dependency, pvals common.Valu
 			"child":  child,
 		})
 
-		childValMap, ok := valueMapFromExport(parentName, r.Name, pvals, parent, child)
+		childValMap, ok := valueMapFromExport(parentName, r.Name, lo.Ternary(isGlobalValuesPath(parent), globalPvals, pvals), parent, child)
 		if !ok {
 			continue
 		}
@@ -738,7 +749,11 @@ func ImportUserValues(c *chart.Chart, v map[string]interface{}, opts ImportUserV
 }
 
 type userValuesExport struct {
-	ChildPath        string
+	ChildPath string
+	// GlobalPaths are set for an export of a global value from a subchart: the paths of the globals of
+	// the root chart and of each chart down to the subchart, from the highest precedence. ParentPath is
+	// then the path in these globals merged like in coalesceGlobals.
+	GlobalPaths      []string
 	ParentPath       string
 	ToDependencyRoot bool
 }
@@ -748,12 +763,9 @@ type userValuesExport struct {
 func collectUserValuesExports(c *chart.Chart, chartPath string) []userValuesExport {
 	var exports []userValuesExport
 
-Loop:
 	for _, existing := range c.Dependencies() {
-		for _, req := range c.Metadata.Dependencies {
-			if req != nil && existing.Name() == req.Name && IsCompatibleRange(req.Version, existing.Metadata.Version) {
-				continue Loop
-			}
+		if chartMatchesDependency(existing, c.Metadata.Dependencies) {
+			continue
 		}
 
 		exports = append(exports, collectUserValuesExports(existing, joinNonEmptyPath(chartPath, existing.Name()))...)
@@ -765,6 +777,16 @@ Loop:
 		}
 
 		dep := getAliasDependency(c.Dependencies(), req)
+		inRange := dep != nil
+		// processDependencyEnabled keeps a chart that matches no dependency by name and version range,
+		// and processExportValues applies the export-values of the non-alias dependency with its name to
+		// it, so they are applied here too. Such a chart is recursed into in the loop above.
+		if !inRange && req.Alias == "" {
+			dep, _ = lo.Find(c.Dependencies(), func(d *chart.Chart) bool {
+				return d.Name() == req.Name && !chartMatchesDependency(d, c.Metadata.Dependencies)
+			})
+		}
+
 		if dep == nil {
 			continue
 		}
@@ -777,17 +799,32 @@ Loop:
 				continue
 			}
 
-			exports = append(exports, userValuesExport{
+			export := userValuesExport{
 				ChildPath:        joinNonEmptyPath(depPath, child),
 				ParentPath:       joinNonEmptyPath(chartPath, parent),
 				ToDependencyRoot: child == "",
-			})
+			}
+
+			if chartPath != "" && isGlobalValuesPath(parent) {
+				export.GlobalPaths = userValuesGlobalPaths(chartPath)
+				export.ParentPath = parent
+			}
+
+			exports = append(exports, export)
 		}
 
-		exports = append(exports, collectUserValuesExports(dep, depPath)...)
+		if inRange {
+			exports = append(exports, collectUserValuesExports(dep, depPath)...)
+		}
 	}
 
 	return exports
+}
+
+func chartMatchesDependency(c *chart.Chart, reqs []*chart.Dependency) bool {
+	return lo.ContainsBy(reqs, func(r *chart.Dependency) bool {
+		return r != nil && r.Name == c.Name() && IsCompatibleRange(r.Version, c.Metadata.Version)
+	})
 }
 
 // sortUserValuesExports orders the exports so that each export comes after the exports that write
@@ -823,12 +860,21 @@ func sortUserValuesExports(exports []userValuesExport) []userValuesExport {
 }
 
 func exportWaitsForOtherExports(exports []userValuesExport, done []bool, i int) bool {
+	parentPaths := []string{exports[i].ParentPath}
+	for _, globalPath := range exports[i].GlobalPaths {
+		parentPaths = append(parentPaths, globalPath+strings.TrimPrefix(exports[i].ParentPath, common.GlobalKey))
+	}
+
 	for j := range exports {
 		if done[j] || j == i {
 			continue
 		}
 
-		if pathsOverlap(exports[j].ChildPath, exports[i].ParentPath) || (j < i && pathsOverlap(exports[j].ChildPath, exports[i].ChildPath)) {
+		writesParentPath := lo.ContainsBy(parentPaths, func(parentPath string) bool {
+			return pathsOverlap(exports[j].ChildPath, parentPath)
+		})
+
+		if writesParentPath || (j < i && pathsOverlap(exports[j].ChildPath, exports[i].ChildPath)) {
 			return true
 		}
 	}

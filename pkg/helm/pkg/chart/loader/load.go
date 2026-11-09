@@ -159,6 +159,10 @@ func loadDirWerf(ctx context.Context, dir string) (chart.Charter, error) {
 
 	switch helmOpts.ChartLoadOpts.ChartType {
 	case nelmcommon.LegacyChartTypeChart, nelmcommon.LegacyChartTypeBundle:
+		if helmOpts.ChartLoadOpts.NoDependenciesLoad {
+			break
+		}
+
 		var loadChartDirFunc func(ctx context.Context, dir string) ([]*nelmcommon.BufferedFile, error)
 		if nelmcommon.ChartFileReader != nil {
 			loadChartDirFunc = nelmcommon.ChartFileReader.LoadChartDir
@@ -180,7 +184,7 @@ func loadDirWerf(ctx context.Context, dir string) (chart.Charter, error) {
 		files = append(files, &archive.BufferedFile{Name: f.Name, Data: f.Data})
 	}
 
-	apiVersion := detectAPIVersion(chartFiles)
+	apiVersion := defaultAPIVersion(ctx, detectAPIVersion(chartFiles))
 
 	switch apiVersion {
 	case c2.APIVersionV1, c2.APIVersionV2, "":
@@ -245,7 +249,7 @@ func LoadFile(ctx context.Context, name string) (chart.Charter, error) {
 			if err := yaml.Unmarshal(f.Data, c); err != nil {
 				return c, fmt.Errorf("cannot load Chart.yaml: %w", err)
 			}
-			switch c.APIVersion {
+			switch defaultAPIVersion(ctx, c.APIVersion) {
 			case c2.APIVersionV1, c2.APIVersionV2, "":
 				return c2load.Load(ctx, name)
 			case c3.APIVersionV3:
@@ -277,7 +281,7 @@ func LoadArchive(ctx context.Context, in io.Reader) (chart.Charter, error) {
 			if err := yaml.Unmarshal(f.Data, c); err != nil {
 				return c, fmt.Errorf("cannot load Chart.yaml: %w", err)
 			}
-			switch c.APIVersion {
+			switch defaultAPIVersion(ctx, c.APIVersion) {
 			case c2.APIVersionV1, c2.APIVersionV2, "":
 				return c2load.LoadFiles(ctx, files)
 			case c3.APIVersionV3:

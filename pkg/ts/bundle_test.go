@@ -14,6 +14,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/common"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	"github.com/werf/nelm/v2/pkg/ts"
 )
 
@@ -65,6 +66,25 @@ func TestBundleChartsRecursive(t *testing.T) {
 
 		subchart := findDependency(t, chart, "subchart")
 		assert.Contains(t, string(findBundle(t, subchart)), `name: "subchart"`)
+	})
+
+	t.Run("reuses an existing bundle without sources or a package manager", func(t *testing.T) {
+		stubPath(t)
+
+		accessor, err := helmchart.NewAccessor(&v2chart.Chart{
+			Metadata: &v2chart.Metadata{APIVersion: v2chart.APIVersionV2, Name: "mychart", Version: "1.0.0"},
+			RuntimeFiles: []*chartcommon.File{
+				{Name: common.ChartTSSourceDir + common.ChartTSEntryPointTS, Data: []byte("export {};\n")},
+				{Name: common.ChartTSBundleFile, Data: []byte("bundle\n")},
+			},
+		})
+		require.NoError(t, err)
+
+		require.NoError(t, ts.BundleChartsRecursive(context.Background(), accessor, t.TempDir(), false))
+		assert.Equal(t, "bundle\n", string(findBundle(t, accessor)))
+
+		require.Error(t, ts.BundleChartsRecursive(context.Background(), accessor, t.TempDir(), true),
+			"rebuilding must need the sources on disk")
 	})
 
 	t.Run("keeps an existing bundle unless asked to rebuild it", func(t *testing.T) {

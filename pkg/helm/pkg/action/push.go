@@ -37,6 +37,7 @@ type Push struct {
 	caFile                string
 	insecureSkipTLSVerify bool
 	plainHTTP             bool
+	extraTags             []string
 	out                   io.Writer
 }
 
@@ -100,6 +101,7 @@ func (p *Push) Run(chartRef string, remote string) (string, error) {
 			pusher.WithTLSClientConfig(p.certFile, p.keyFile, p.caFile),
 			pusher.WithInsecureSkipTLSVerify(p.insecureSkipTLSVerify),
 			pusher.WithPlainHTTP(p.plainHTTP),
+			pusher.WithExtraTags(p.extraTags),
 		},
 	}
 

@@ -1,0 +1,21 @@
+apiVersion: v2
+name: parent
+version: 0.1.0
+dependencies:
+  - name: m
+    version: ~1.0.0
+    condition: m.enabled
+    export-values:
+      - parent: g.repo
+        child: image.repository
+      - parent: werf.repo
+        child: svc
+    import-values:
+      - child: out
+        parent: imp
+  - name: s
+    alias: al
+    version: ~1.0.0
+    export-values:
+      - parent: g.repo
+        child: image.repository

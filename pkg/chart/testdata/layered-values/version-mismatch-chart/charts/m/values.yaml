@@ -1,0 +1,6 @@
+enabled: true
+image:
+  repository: m-default
+svc: m-default
+out:
+  k: m-values

@@ -46,6 +46,7 @@ type GenericClient struct {
 	credentialsStore   credentials.Store
 	httpClient         *http.Client
 	plainHTTP          bool
+	plainHTTPHost      func(host string) bool
 }
 
 // GenericPullOptions configures a generic pull operation
@@ -80,11 +81,17 @@ func NewGenericClient(client *Client) *GenericClient {
 		credentialsStore:   client.credentialsStore,
 		httpClient:         client.httpClient,
 		plainHTTP:          client.plainHTTP,
+		plainHTTPHost:      client.plainHTTPHost,
 	}
 }
 
 // PullGeneric performs a generic OCI pull without artifact-specific assumptions
 func (c *GenericClient) PullGeneric(ref string, options GenericPullOptions) (*GenericPullResult, error) {
+	return c.PullGenericContext(context.Background(), ref, options)
+}
+
+// PullGenericContext performs a generic OCI pull, aborting the requests when ctx is done.
+func (c *GenericClient) PullGenericContext(ctx context.Context, ref string, options GenericPullOptions) (*GenericPullResult, error) {
 	parsedRef, err := newReference(ref)
 	if err != nil {
 		return nil, err
@@ -98,10 +105,8 @@ func (c *GenericClient) PullGeneric(ref string, options GenericPullOptions) (*Ge
 	if err != nil {
 		return nil, err
 	}
-	repository.PlainHTTP = c.plainHTTP
+	repository.PlainHTTP = isPlainHTTP(c.plainHTTP, c.plainHTTPHost, repository.Reference.Registry)
 	repository.Client = c.authorizer
-
-	ctx := context.Background()
 
 	// Prepare allowed media types for filtering
 	var allowedMediaTypes []string

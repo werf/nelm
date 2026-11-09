@@ -38,6 +38,7 @@ type Accessor interface {
 	Schema() []byte
 	Deprecated() bool
 	RuntimeFiles() []*common.File
+	WerfDataFiles() []*common.File
 	AddRuntimeFile(name string, data []byte)
 	RemoveRuntimeFile(name string)
 	Charter() Charter

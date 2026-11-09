@@ -15,6 +15,59 @@ import (
 	"github.com/werf/nelm/v2/pkg/log"
 )
 
+func TestRenderChart_ExportAndImportValuesDependencyVersionMismatch(t *testing.T) {
+	tests := []struct {
+		name string
+		opts layeredValuesRenderOptions
+		want map[string]interface{}
+	}{
+		{
+			name: "value from values.yaml is exported to dependency out of version range",
+			want: map[string]interface{}{"m.image.repository": "parent-values-yaml"},
+		},
+		{
+			name: "value from set is exported to dependency out of version range",
+			opts: layeredValuesRenderOptions{Set: []string{"g.repo=set"}},
+			want: map[string]interface{}{"m.image.repository": "set"},
+		},
+		{
+			name: "value from service values is exported to dependency out of version range",
+			opts: layeredValuesRenderOptions{ServiceValues: map[string]interface{}{"werf": map[string]interface{}{"repo": "service"}}},
+			want: map[string]interface{}{"m.svc": "service"},
+		},
+		{
+			name: "value is imported from dependency out of version range",
+			want: map[string]interface{}{"imp.k": "m-values"},
+		},
+		{
+			name: "value from set is imported from dependency out of version range",
+			opts: layeredValuesRenderOptions{Set: []string{"m.out.k=set"}},
+			want: map[string]interface{}{"imp.k": "set"},
+		},
+		{
+			name: "value is not exported to dependency out of version range disabled by condition",
+			opts: layeredValuesRenderOptions{Set: []string{"g.repo=set", "m.enabled=false"}},
+			want: map[string]interface{}{"m.image": absentValue{}, "imp": absentValue{}},
+		},
+		{
+			name: "value is not exported to alias dependency out of version range",
+			opts: layeredValuesRenderOptions{Set: []string{"g.repo=set"}},
+			want: map[string]interface{}{"s.image.repository": "s-default", "al": absentValue{}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.opts.ChartDir = "version-mismatch-chart"
+			vals := renderedChartValues(t, renderLayeredValuesChart(t, tt.opts))
+
+			for path, want := range tt.want {
+				assert.Equal(t, want, valueAtPath(t, vals, path), path)
+			}
+		})
+	}
+}
+
 func TestRenderChart_ExportAndImportValuesEdgeCases(t *testing.T) {
 	edgeValuesFile := filepath.Join("testdata", "layered-values", "edge-values-file.yaml")
 
@@ -158,6 +211,82 @@ func TestRenderChart_ExportAndImportValuesSkippedWarnings(t *testing.T) {
 				return strings.HasPrefix(warning, "Skipping")
 			})
 			assert.Equal(t, []string{tt.want}, skipWarnings)
+		})
+	}
+}
+
+func TestRenderChart_ExportGlobalValuesFromNestedChart(t *testing.T) {
+	serviceValues := map[string]interface{}{"global": map[string]interface{}{
+		"img":  map[string]interface{}{"repo": "service"},
+		"werf": map[string]interface{}{"images": map[string]interface{}{"leaf": map[string]interface{}{"repository": "service-repo", "tag": "service-tag"}}},
+	}}
+
+	tests := []struct {
+		name              string
+		opts              layeredValuesRenderOptions
+		want              map[string]interface{}
+		wantReleaseConfig map[string]interface{}
+	}{
+		{
+			name: "global values from root and nested chart values.yaml, root wins",
+			want: map[string]interface{}{
+				"mid.leaf.image.repository": "leaf-default",
+				"mid.leaf.fromRoot":         "root-values-yaml",
+				"mid.leaf.fromMid":          "mid-values-yaml",
+				"mid.leaf.fromBoth":         "root-values-yaml",
+			},
+			wantReleaseConfig: map[string]interface{}{},
+		},
+		{
+			name: "global value from set",
+			opts: layeredValuesRenderOptions{Set: []string{"global.img.repo=set"}},
+			want: map[string]interface{}{"mid.leaf.image.repository": "set"},
+			wantReleaseConfig: map[string]interface{}{
+				"global": map[string]interface{}{"img": map[string]interface{}{"repo": "set"}},
+				"mid":    map[string]interface{}{"leaf": map[string]interface{}{"image": map[string]interface{}{"repository": "set"}}},
+			},
+		},
+		{
+			name: "global value from values file",
+			opts: layeredValuesRenderOptions{ValuesFiles: []string{filepath.Join("testdata", "layered-values", "nested-global-values-file.yaml")}},
+			want: map[string]interface{}{"mid.leaf.image.repository": "values-file"},
+		},
+		{
+			name: "global value from set overrides global value from nested chart values.yaml",
+			opts: layeredValuesRenderOptions{Set: []string{"global.mid=set"}},
+			want: map[string]interface{}{"mid.leaf.fromMid": "set"},
+		},
+		{
+			name: "nested chart global value from set",
+			opts: layeredValuesRenderOptions{Set: []string{"mid.global.img.repo=mid-set"}},
+			want: map[string]interface{}{"mid.leaf.image.repository": "mid-set"},
+		},
+		{
+			name: "root global value from set overrides nested chart global value from set",
+			opts: layeredValuesRenderOptions{Set: []string{"global.img.repo=set", "mid.global.img.repo=mid-set"}},
+			want: map[string]interface{}{"mid.leaf.image.repository": "set"},
+		},
+		{
+			name:              "global values from service values",
+			opts:              layeredValuesRenderOptions{ServiceValues: serviceValues, Set: []string{"global.img.repo=set"}},
+			want:              map[string]interface{}{"mid.leaf.image.repository": "service", "mid.leaf.werfImage": map[string]interface{}{"repository": "service-repo", "tag": "service-tag"}},
+			wantReleaseConfig: map[string]interface{}{"global": map[string]interface{}{"img": map[string]interface{}{"repo": "set"}}, "mid": map[string]interface{}{"leaf": map[string]interface{}{"image": map[string]interface{}{"repository": "set"}}}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.opts.ChartDir = "nested-global-export-chart"
+			result := renderLayeredValuesChart(t, tt.opts)
+			vals := renderedChartValues(t, result)
+
+			for path, want := range tt.want {
+				assert.Equal(t, want, valueAtPath(t, vals, path), path)
+			}
+
+			if tt.wantReleaseConfig != nil {
+				assert.Equal(t, tt.wantReleaseConfig, result.ReleaseConfig)
+			}
 		})
 	}
 }

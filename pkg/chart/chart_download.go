@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"path/filepath"
 
 	"github.com/werf/nelm/v2/pkg/common"
 	helmdownloader "github.com/werf/nelm/v2/pkg/helm/pkg/downloader"
@@ -22,27 +23,26 @@ type chartDownloaderOptions struct {
 	ChartProvenanceKeyring  string
 	ChartProvenanceStrategy string
 	ChartVersion            string
+	ChartVersionLiteral     bool
 }
 
-func downloadChart(ctx context.Context, chartPath string, registryClient *helmregistry.Client, opts RenderChartOptions) (string, error) {
+// downloadChart downloads and verifies a remote chart into destDir, which must be private to the
+// caller: the archive is verified there and not again when it is loaded.
+func downloadChart(ctx context.Context, chartPath string, registryClient *helmregistry.Client, destDir string, opts chartDownloaderOptions) (string, error) {
 	if !isLocalChart(chartPath) {
-		chartDownloader, chartRef, err := newChartDownloader(ctx, chartPath, registryClient, chartDownloaderOptions{
-			ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
-			ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
-			ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
-			ChartVersion:               opts.ChartVersion,
-		})
+		chartDownloader, chartRef, err := newChartDownloader(ctx, chartPath, registryClient, opts)
 		if err != nil {
 			return "", fmt.Errorf("construct chart downloader: %w", err)
 		}
 
-		if err := os.MkdirAll(helmpath.CachePath("repository"), 0o755); err != nil {
-			return "", fmt.Errorf("create repository cache directory: %w", err)
-		}
-
-		chartPath, _, err = chartDownloader.DownloadTo(chartRef, opts.ChartVersion, helmpath.CachePath("repository"))
+		chartPath, _, err = chartDownloader.DownloadTo(chartRef, opts.ChartVersion, destDir)
 		if err != nil {
 			return "", fmt.Errorf("download chart %q: %w", chartRef, err)
+		}
+
+		// A relative path would be taken for a remote chart again.
+		if chartPath, err = filepath.Abs(chartPath); err != nil {
+			return "", fmt.Errorf("get absolute path of downloaded chart: %w", err)
 		}
 	}
 
@@ -70,11 +70,13 @@ func newChartDownloader(ctx context.Context, chartRef string, registryClient *he
 			helmgetter.WithPlainHTTP(opts.ChartRepoInsecure),
 			helmgetter.WithRegistryClient(registryClient),
 			helmgetter.WithTimeout(opts.ChartRepoRequestTimeout),
+			helmgetter.WithContext(ctx),
 		},
 		RegistryClient:   registryClient,
 		RepositoryConfig: helmpath.ConfigPath("repositories.yaml"),
 		RepositoryCache:  helmpath.CachePath("repository"),
 		ContentCache:     helmpath.CachePath("content"),
+		LiteralTag:       opts.ChartVersionLiteral,
 	}
 
 	if opts.ChartRepoURL != "" {

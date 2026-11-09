@@ -34,6 +34,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/resource/spec"
 	"github.com/werf/nelm/v2/pkg/track"
 	"github.com/werf/nelm/v2/pkg/util"
+	"github.com/werf/nelm/v2/pkg/werfdata"
 )
 
 const DefaultReleaseInstallLogLevel = log.InfoLevel
@@ -296,6 +297,36 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		opts.ReleaseInstallRuntimeOptions = planArtifact.Data.Options
 	}
 
+	var helmRegistryClient *registry.Client
+	if !usePlan && opts.LegacyChartRenderResult == nil {
+		helmRegistryClient, err = newChartRegistryClient(ctx, opts.Chart, opts.ChartRepoConnectionOptions, opts.RegistryCredentialsPath, opts.LegacyLogRegistryStreamOut)
+		if err != nil {
+			return nil, fmt.Errorf("construct registry client: %w", err)
+		}
+	}
+
+	if !usePlan && opts.LegacyChartRenderResult == nil && (releaseName == "" || releaseNamespace == "") {
+		downloadDir, err := os.MkdirTemp(opts.TempDirPath, "chart-download-")
+		if err != nil {
+			return nil, fmt.Errorf("create chart download directory: %w", err)
+		}
+		defer os.RemoveAll(downloadDir)
+
+		opts.Chart, releaseName, releaseNamespace, err = loadRecordedRelease(ctx, opts.Chart, helmRegistryClient, downloadDir, releaseName, releaseNamespace, chart.DownloadChartOptions{
+			ChartRepoConnectionOptions: opts.ChartRepoConnectionOptions,
+			ChartProvenanceKeyring:     opts.ChartProvenanceKeyring,
+			ChartProvenanceStrategy:    opts.ChartProvenanceStrategy,
+			ChartVersion:               opts.ChartVersion,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("resolve release: %w", err)
+		}
+	}
+
+	if err := requireRelease(releaseName, releaseNamespace); err != nil {
+		return nil, err
+	}
+
 	if renderResult := opts.LegacyChartRenderResult; renderResult != nil {
 		if renderResult.installable.ReleaseName != releaseName || renderResult.installable.ReleaseNamespace != releaseNamespace {
 			return nil, fmt.Errorf("chart render result release mismatch: expected %q (namespace: %q), got %q (namespace: %q)",
@@ -314,27 +345,6 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 	clientFactory, err := kube.NewClientFactory(ctx, kubeConfig)
 	if err != nil {
 		return nil, fmt.Errorf("construct kube client factory: %w", err)
-	}
-
-	var helmRegistryClient *registry.Client
-	if !usePlan && opts.LegacyChartRenderResult == nil {
-		helmRegistryClientOpts := []registry.ClientOption{
-			registry.ClientOptDebug(log.Default.AcceptLevel(ctx, log.DebugLevel)), // TODO(log):
-			registry.ClientOptWriter(opts.LegacyLogRegistryStreamOut),
-			registry.ClientOptCredentialsFile(opts.RegistryCredentialsPath),
-		}
-
-		if opts.ChartRepoInsecure {
-			helmRegistryClientOpts = append(
-				helmRegistryClientOpts,
-				registry.ClientOptPlainHTTP(),
-			)
-		}
-
-		helmRegistryClient, err = registry.NewClient(helmRegistryClientOpts...)
-		if err != nil {
-			return nil, fmt.Errorf("construct registry client: %w", err)
-		}
 	}
 
 	releaseStorage, err := release.NewReleaseStorage(ctx, releaseNamespace, opts.ReleaseStorageDriver, clientFactory, release.ReleaseStorageOptions{
@@ -395,6 +405,13 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		}
 	}
 
+	// Like release rollback, auto-rollback uses the caller's options, without the ones from the
+	// .werf-data of the new chart that are merged below.
+	rollbackRuntimeOptions := opts.ReleaseInstallRuntimeOptions
+	if usePlan && planArtifact.Data.RollbackOptions != nil {
+		rollbackRuntimeOptions = *planArtifact.Data.RollbackOptions
+	}
+
 	var (
 		installPlan  *plan.Plan
 		newRelease   helmrel.Accessor
@@ -433,6 +450,11 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			log.Default.Debug(ctx, "Use chart render result")
 
 			installable := opts.LegacyChartRenderResult.installable
+
+			opts.ReleaseInstallRuntimeOptions, err = mergeWerfDataRuntimeOptions(installable.Chart, opts.ReleaseInstallRuntimeOptions)
+			if err != nil {
+				return nil, fmt.Errorf("merge chart %s options: %w", werfdata.DirName, err)
+			}
 
 			if installable.Revision != newRevision {
 				return nil, fmt.Errorf("chart render result release revision mismatch: expected %d, got %d", installable.Revision, newRevision)
@@ -515,6 +537,11 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			})
 			if err != nil {
 				return nil, fmt.Errorf("render chart: %w", err)
+			}
+
+			opts.ReleaseInstallRuntimeOptions, err = mergeWerfDataRuntimeOptions(renderChartResult.Chart, opts.ReleaseInstallRuntimeOptions)
+			if err != nil {
+				return nil, fmt.Errorf("merge chart %s options: %w", werfdata.DirName, err)
 			}
 
 			log.Default.Debug(ctx, "Resolve patches")
@@ -809,7 +836,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		if opts.AutoRollback && prevDeployedRelease != nil {
 			runRollbackPlanResult, nonCritErrs, critErrs := runRollbackPlan(ctx, releaseName, releaseNamespace, newRelease, prevDeployedRelease, taskStore, logStore, informerFactory, history, clientFactory, runRollbackPlanOptions{
-				ReleaseInstallRuntimeOptions: opts.ReleaseInstallRuntimeOptions,
+				ReleaseInstallRuntimeOptions: rollbackRuntimeOptions,
 				TrackingOptions:              opts.TrackingOptions,
 				LegacyPatches:                opts.LegacyPatches,
 				NetworkParallelism:           opts.NetworkParallelism,

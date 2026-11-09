@@ -22,9 +22,9 @@
   - [chart render](#chart-render)
   - [chart download](#chart-download)
   - [chart upload](#chart-upload)
+  - [chart copy](#chart-copy)
   - [chart pack](#chart-pack)
   - [chart secret key create](#chart-secret-key-create)
-  - [chart secret key rotate](#chart-secret-key-rotate)
   - [chart secret values-file edit](#chart-secret-values-file-edit)
   - [chart secret values-file encrypt](#chart-secret-values-file-encrypt)
   - [chart secret values-file decrypt](#chart-secret-values-file-decrypt)
@@ -71,12 +71,12 @@
 - [`nelm chart render`](#chart-render) — Render a chart\.
 - [`nelm chart download`](#chart-download) — Download a chart from a repository\.
 - [`nelm chart upload`](#chart-upload) — Upload a chart archive to a repository\.
+- [`nelm chart copy`](#chart-copy) — Copy a chart with its images\.
 - [`nelm chart pack`](#chart-pack) — Pack a chart into an archive to distribute via a repository\.
 
 ### Secret commands
 
 - [`nelm chart secret key create`](#chart-secret-key-create) — Create a new chart secret key\.
-- [`nelm chart secret key rotate`](#chart-secret-key-rotate) — Reencrypt secret files with a new secret key\.
 - [`nelm chart secret values-file edit`](#chart-secret-values-file-edit) — Interactively edit encrypted values file\.
 - [`nelm chart secret values-file encrypt`](#chart-secret-values-file-encrypt) — Encrypt values file and print result to stdout\.
 - [`nelm chart secret values-file decrypt`](#chart-secret-values-file-decrypt) — Decrypt values file and print result to stdout\.
@@ -119,7 +119,7 @@ Deploy a chart to Kubernetes\.
 **Usage:**
 
 ```shell
-nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]
+nelm release install [options...] [-n namespace] [-r release] [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]
 ```
 
 **Options:**
@@ -142,7 +142,7 @@ nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-
 
 - `-n`, `--namespace` (default: `""`)
 
-  The release namespace\. Resources with no namespace will be deployed here\. Vars: \$NELM\_NAMESPACE, \$NELM\_RELEASE\_INSTALL\_NAMESPACE
+  The release namespace\. Resources with no namespace will be deployed here\. Defaults to the one recorded in the chart's \.werf\-data\. Vars: \$NELM\_NAMESPACE, \$NELM\_RELEASE\_INSTALL\_NAMESPACE
 
 - `--no-create-namespace` (default: `false`)
 
@@ -174,7 +174,7 @@ nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-
 
 - `-r`, `--release` (default: `""`)
 
-  The release name\. Must be unique within the release namespace\. Vars: \$NELM\_RELEASE, \$NELM\_RELEASE\_INSTALL\_RELEASE
+  The release name\. Must be unique within the release namespace\. Defaults to the one recorded in the chart's \.werf\-data\. Vars: \$NELM\_RELEASE, \$NELM\_RELEASE\_INSTALL\_RELEASE
 
 - `--release-info-annotations` (default: `{}`)
 
@@ -387,7 +387,7 @@ nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-
 
 - `--chart-repo-request-timeout` (default: `0s`)
 
-  Set timeout for all requests to chart repository\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_RELEASE\_INSTALL\_CHART\_REPO\_REQUEST\_TIMEOUT
+  Set timeout for all requests to chart repository\. A request includes its whole body, so the timeout also bounds a whole blob download or upload\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_RELEASE\_INSTALL\_CHART\_REPO\_REQUEST\_TIMEOUT
 
 - `--chart-repo-url` (default: `""`)
 
@@ -849,7 +849,7 @@ Plan a release install to Kubernetes\.
 **Usage:**
 
 ```shell
-nelm release plan install [options...] -n namespace -r release [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]
+nelm release plan install [options...] [-n namespace] [-r release] [chart-dir|chart-repo-name/chart-name|chart-archive|chart-archive-url]
 ```
 
 **Options:**
@@ -876,7 +876,7 @@ nelm release plan install [options...] -n namespace -r release [chart-dir|chart-
 
 - `-n`, `--namespace` (default: `""`)
 
-  The release namespace\. Resources with no namespace will be deployed here\. Vars: \$NELM\_NAMESPACE, \$NELM\_RELEASE\_PLAN\_INSTALL\_NAMESPACE
+  The release namespace\. Resources with no namespace will be deployed here\. Defaults to the one recorded in the chart's \.werf\-data\. Vars: \$NELM\_NAMESPACE, \$NELM\_RELEASE\_PLAN\_INSTALL\_NAMESPACE
 
 - `--no-install-crds` (default: `false`)
 
@@ -896,7 +896,7 @@ nelm release plan install [options...] -n namespace -r release [chart-dir|chart-
 
 - `-r`, `--release` (default: `""`)
 
-  The release name\. Must be unique within the release namespace\. Vars: \$NELM\_RELEASE, \$NELM\_RELEASE\_PLAN\_INSTALL\_RELEASE
+  The release name\. Must be unique within the release namespace\. Defaults to the one recorded in the chart's \.werf\-data\. Vars: \$NELM\_RELEASE, \$NELM\_RELEASE\_PLAN\_INSTALL\_RELEASE
 
 - `--release-info-annotations` (default: `{}`)
 
@@ -1089,7 +1089,7 @@ nelm release plan install [options...] -n namespace -r release [chart-dir|chart-
 
 - `--chart-repo-request-timeout` (default: `0s`)
 
-  Set timeout for all requests to chart repository\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_RELEASE\_PLAN\_INSTALL\_CHART\_REPO\_REQUEST\_TIMEOUT
+  Set timeout for all requests to chart repository\. A request includes its whole body, so the timeout also bounds a whole blob download or upload\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_RELEASE\_PLAN\_INSTALL\_CHART\_REPO\_REQUEST\_TIMEOUT
 
 - `--chart-repo-url` (default: `""`)
 
@@ -2099,9 +2099,9 @@ nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive
 
   Manifest files used as a cluster stub for the lookup template function in non\-remote mode\. Multi\-document and kind:List supported\. Namespaced resources must set metadata\.namespace, otherwise namespace\-scoped lookups ignore the requested namespace\. Vars: \$NELM\_LOOKUP\_RESOURCES\_\*, \$NELM\_CHART\_LINT\_LOOKUP\_RESOURCES\_\*
 
-- `-n`, `--namespace` (default: `"stub-namespace"`)
+- `-n`, `--namespace` (default: `""`)
 
-  The release namespace\. Resources with no namespace will be deployed here\. Vars: \$NELM\_NAMESPACE, \$NELM\_CHART\_LINT\_NAMESPACE
+  The release namespace\. Resources with no namespace will be deployed here\. Defaults to the one recorded in the chart's \.werf\-data, else to a stub\. Vars: \$NELM\_NAMESPACE, \$NELM\_CHART\_LINT\_NAMESPACE
 
 - `--no-remove-manual-changes` (default: `false`)
 
@@ -2115,9 +2115,9 @@ nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive
 
   Strategy for provenance verifying\. Vars: \$NELM\_PROVENANCE\_STRATEGY, \$NELM\_CHART\_LINT\_PROVENANCE\_STRATEGY
 
-- `-r`, `--release` (default: `"stub-release"`)
+- `-r`, `--release` (default: `""`)
 
-  The release name\. Must be unique within the release namespace\. Vars: \$NELM\_RELEASE, \$NELM\_CHART\_LINT\_RELEASE
+  The release name\. Must be unique within the release namespace\. Defaults to the one recorded in the chart's \.werf\-data, else to a stub\. Vars: \$NELM\_RELEASE, \$NELM\_CHART\_LINT\_RELEASE
 
 - `--remote` (default: `false`)
 
@@ -2282,7 +2282,7 @@ nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive
 
 - `--chart-repo-request-timeout` (default: `0s`)
 
-  Set timeout for all requests to chart repository\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_LINT\_CHART\_REPO\_REQUEST\_TIMEOUT
+  Set timeout for all requests to chart repository\. A request includes its whole body, so the timeout also bounds a whole blob download or upload\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_LINT\_CHART\_REPO\_REQUEST\_TIMEOUT
 
 - `--chart-repo-url` (default: `""`)
 
@@ -2482,9 +2482,9 @@ nelm chart render [options...] [chart-dir|chart-repo-name/chart-name|chart-archi
 
   Manifest files used as a cluster stub for the lookup template function in non\-remote mode\. Multi\-document and kind:List supported\. Namespaced resources must set metadata\.namespace, otherwise namespace\-scoped lookups ignore the requested namespace\. Vars: \$NELM\_LOOKUP\_RESOURCES\_\*, \$NELM\_CHART\_RENDER\_LOOKUP\_RESOURCES\_\*
 
-- `-n`, `--namespace` (default: `"stub-namespace"`)
+- `-n`, `--namespace` (default: `""`)
 
-  The release namespace\. Resources with no namespace will be deployed here\. Vars: \$NELM\_NAMESPACE, \$NELM\_CHART\_RENDER\_NAMESPACE
+  The release namespace\. Resources with no namespace will be deployed here\. Defaults to the one recorded in the chart's \.werf\-data, else to a stub\. Vars: \$NELM\_NAMESPACE, \$NELM\_CHART\_RENDER\_NAMESPACE
 
 - `--provenance-keyring` (default: `""`)
 
@@ -2494,9 +2494,9 @@ nelm chart render [options...] [chart-dir|chart-repo-name/chart-name|chart-archi
 
   Strategy for provenance verifying\. Vars: \$NELM\_PROVENANCE\_STRATEGY, \$NELM\_CHART\_RENDER\_PROVENANCE\_STRATEGY
 
-- `-r`, `--release` (default: `"stub-release"`)
+- `-r`, `--release` (default: `""`)
 
-  The release name\. Must be unique within the release namespace\. Vars: \$NELM\_RELEASE, \$NELM\_CHART\_RENDER\_RELEASE
+  The release name\. Must be unique within the release namespace\. Defaults to the one recorded in the chart's \.werf\-data, else to a stub\. Vars: \$NELM\_RELEASE, \$NELM\_CHART\_RENDER\_RELEASE
 
 - `--remote` (default: `false`)
 
@@ -2646,7 +2646,7 @@ nelm chart render [options...] [chart-dir|chart-repo-name/chart-name|chart-archi
 
 - `--chart-repo-request-timeout` (default: `0s`)
 
-  Set timeout for all requests to chart repository\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_RENDER\_CHART\_REPO\_REQUEST\_TIMEOUT
+  Set timeout for all requests to chart repository\. A request includes its whole body, so the timeout also bounds a whole blob download or upload\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_RENDER\_CHART\_REPO\_REQUEST\_TIMEOUT
 
 - `--chart-repo-url` (default: `""`)
 
@@ -2990,149 +2990,283 @@ nelm chart download [chart URL | repo/chartname] [...] [flags]
 
 ### chart upload
 
-
-Upload a chart to a registry\.
-
-If the chart has an associated provenance file,
-it will also be uploaded\.
-
+Upload a chart archive to the OCI repository REMOTE/\<chart name\>, where REMOTE is oci://HOST\[/PATH\], under the chart version and the \-\-tag tags, with a "\+" in a tag pushed as "\_"\. The provenance file \<chart\-archive\>\.prov is uploaded with the chart if it exists\. A tag equal to the tag of an image from the helm\.sh/images annotation of the chart in the same repository is refused before anything is uploaded\. Loopback registries, like localhost:5000, are reached over plain HTTP unless TLS options are given\.
 
 **Usage:**
 
 ```shell
-nelm chart upload [archive] [remote] [flags]
+nelm chart upload [options...] chart-archive remote
 ```
+
+**Options:**
+
+- `--tag` (default: `[]`)
+
+  Additional tag pointing to the uploaded chart, besides its version tag\. Vars: \$NELM\_TAG, \$NELM\_CHART\_UPLOAD\_TAG
+
+
+**Chart repository options:**
+
+- `--chart-repo-basic-password` (default: `""`)
+
+  Basic auth password to authenticate in chart repository\. Vars: \$NELM\_CHART\_REPO\_BASIC\_PASSWORD, \$NELM\_CHART\_UPLOAD\_CHART\_REPO\_BASIC\_PASSWORD
+
+- `--chart-repo-basic-username` (default: `""`)
+
+  Basic auth username to authenticate in chart repository\. Vars: \$NELM\_CHART\_REPO\_BASIC\_USERNAME, \$NELM\_CHART\_UPLOAD\_CHART\_REPO\_BASIC\_USERNAME
+
+- `--chart-repo-ca` (default: `""`)
+
+  Path to TLS CA file for connecting to chart repository\. Vars: \$NELM\_CHART\_REPO\_CA, \$NELM\_CHART\_UPLOAD\_CHART\_REPO\_CA
+
+- `--chart-repo-cert` (default: `""`)
+
+  Path to TLS client cert file for connecting to chart repository\. Vars: \$NELM\_CHART\_REPO\_CERT, \$NELM\_CHART\_UPLOAD\_CHART\_REPO\_CERT
+
+- `--chart-repo-key` (default: `""`)
+
+  Path to TLS client key file for connecting to chart repository\. Vars: \$NELM\_CHART\_REPO\_KEY, \$NELM\_CHART\_UPLOAD\_CHART\_REPO\_KEY
+
+- `--chart-repo-request-timeout` (default: `0s`)
+
+  Set timeout for all requests to chart repository\. A request includes its whole body, so the timeout also bounds a whole blob download or upload\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_UPLOAD\_CHART\_REPO\_REQUEST\_TIMEOUT
+
+- `--insecure-chart-repos` (default: `false`)
+
+  Allow insecure HTTP connections to chart repository\. Vars: \$NELM\_INSECURE\_CHART\_REPOS, \$NELM\_CHART\_UPLOAD\_INSECURE\_CHART\_REPOS
+
+- `--no-verify-chart-repos-tls` (default: `false`)
+
+  Don't verify TLS certificates of chart repository\. Vars: \$NELM\_NO\_VERIFY\_CHART\_REPOS\_TLS, \$NELM\_CHART\_UPLOAD\_NO\_VERIFY\_CHART\_REPOS\_TLS
+
+- `--oci-chart-repos-creds` (default: `""`)
+
+  Credentials to access OCI chart repositories\. Vars: \$NELM\_OCI\_CHART\_REPOS\_CREDS, \$NELM\_CHART\_UPLOAD\_OCI\_CHART\_REPOS\_CREDS
+
 
 **Other options:**
 
-- `--burst-limit` (default: `100`)
+- `--color-mode` (default: `"auto"`)
 
-  client\-side default throttling limit
+  Color mode for logs\. Allowed: auto, off, on\. Vars: \$NELM\_COLOR\_MODE, \$NELM\_CHART\_UPLOAD\_COLOR\_MODE
 
-- `--ca-file` (default: `""`)
+- `--log-level` (default: `"info"`)
 
-  verify certificates of HTTPS\-enabled servers using this CA bundle
+  Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_UPLOAD\_LOG\_LEVEL
 
-- `--cert-file` (default: `""`)
+- `--log-width` (default: `0`)
 
-  identify registry client using this SSL certificate file
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_UPLOAD\_LOG\_WIDTH
 
-- `--color` (default: `"auto"`)
 
-  use colored output \(never, auto, always\)
+### chart copy
 
-- `--colour` (default: `"auto"`)
+Copy a chart with every image listed in its helm\.sh/images annotation\. FROM and TO are either an OCI repository, oci://REPO\[:TAG\] \(docker://REPO\[:TAG\] or REPO\[:TAG\] also work\), or an archive, archive:PATH or a path ending in \.tar, \.tar\.gz or \.tgz\. A source repository without a tag means the "latest" tag\. An archive is written as an OCI image layout; legacy bundle archives are also read\. Copied to a repository, the chart is renamed to the repository basename and its images are copied into the repository by digest, keeping their tags\. With TAG the chart version is TAG if it is a semver version \(without the "v" prefix\), or 0\.0\.0\-\<unix time\>\-\<TAG slug\> otherwise, and the chart is pushed under the version and TAG, with a "\+" in either pushed as "\_"; without TAG the chart keeps its version and is pushed under it and the source tag, if any \(a legacy bundle archive has none\)\. Images of chart dependencies are copied too, non\-distributable layers included; referrers of the images, like signatures and SBOMs, are not copied\. Loopback registries, like localhost:5000, are reached over plain HTTP\.
 
-  use colored output \(never, auto, always\)
+**Usage:**
 
-- `--content-cache` (default: `"~/.cache/helm/content"`)
+```shell
+nelm chart copy FROM TO
+```
 
-  path to the directory containing cached content \(e\.g\. charts\)
+**Options:**
 
-- `--debug` (default: `false`)
+- `--archive-max-expanded-size` (default: `"64Gi"`)
 
-  enable verbose output
+  Maximum size the source archive may decompress to, nested image tarballs included, and, separately, the maximum size extracted from its tars, e\.g\. 64Gi\. Temporary files may take up to about twice as much\. Vars: \$NELM\_ARCHIVE\_MAX\_EXPANDED\_SIZE, \$NELM\_CHART\_COPY\_ARCHIVE\_MAX\_EXPANDED\_SIZE
 
-- `--insecure-skip-tls-verify` (default: `false`)
+- `--sign` (default: `false`)
 
-  skip tls certificate checks for the chart upload
+  Sign the copy if it changes the chart\. Without it, the provenance of a changed chart is dropped\. Vars: \$NELM\_SIGN, \$NELM\_CHART\_COPY\_SIGN
 
-- `--key-file` (default: `""`)
+- `--sign-key` (default: `""`)
 
-  identify registry client using this SSL key file
+  Name of the key to sign with\. Vars: \$NELM\_SIGN\_KEY, \$NELM\_CHART\_COPY\_SIGN\_KEY
 
-- `--kube-apiserver` (default: `""`)
+- `--sign-keyring` (default: `""`)
 
-  the address and the port for the Kubernetes API server
+  Path to the keyring with the signing key\. Vars: \$NELM\_SIGN\_KEYRING, \$NELM\_CHART\_COPY\_SIGN\_KEYRING
 
-- `--kube-as-group` (default: `[]`)
+- `--sign-passphrase-file` (default: `""`)
 
-  group to impersonate for the operation, this flag can be repeated to specify multiple groups\.
+  Path to a file with the passphrase of the signing key, "\-" for stdin\. Vars: \$NELM\_SIGN\_PASSPHRASE\_FILE, \$NELM\_CHART\_COPY\_SIGN\_PASSPHRASE\_FILE
 
-- `--kube-as-user` (default: `""`)
 
-  username to impersonate for the operation
+**Chart repository options:**
 
-- `--kube-ca-file` (default: `""`)
+- `--chart-repo-basic-password` (default: `""`)
 
-  the certificate authority file for the Kubernetes API server connection
+  Basic auth password to authenticate in chart repository\. Vars: \$NELM\_CHART\_REPO\_BASIC\_PASSWORD, \$NELM\_CHART\_COPY\_CHART\_REPO\_BASIC\_PASSWORD
 
-- `--kube-context` (default: `""`)
+- `--chart-repo-basic-username` (default: `""`)
 
-  name of the kubeconfig context to use
+  Basic auth username to authenticate in chart repository\. Vars: \$NELM\_CHART\_REPO\_BASIC\_USERNAME, \$NELM\_CHART\_COPY\_CHART\_REPO\_BASIC\_USERNAME
 
-- `--kube-insecure-skip-tls-verify` (default: `false`)
+- `--chart-repo-ca` (default: `""`)
 
-  if true, the Kubernetes API server's certificate will not be checked for validity\. This will make your HTTPS connections insecure
+  Path to TLS CA file for connecting to chart repository\. Vars: \$NELM\_CHART\_REPO\_CA, \$NELM\_CHART\_COPY\_CHART\_REPO\_CA
 
-- `--kube-tls-server-name` (default: `""`)
+- `--chart-repo-cert` (default: `""`)
 
-  server name to use for Kubernetes API server certificate validation\. If it is not provided, the hostname used to contact the server is used
+  Path to TLS client cert file for connecting to chart repository\. Vars: \$NELM\_CHART\_REPO\_CERT, \$NELM\_CHART\_COPY\_CHART\_REPO\_CERT
 
-- `--kube-token` (default: `""`)
+- `--chart-repo-key` (default: `""`)
 
-  bearer token used for authentication
+  Path to TLS client key file for connecting to chart repository\. Vars: \$NELM\_CHART\_REPO\_KEY, \$NELM\_CHART\_COPY\_CHART\_REPO\_KEY
 
-- `--kubeconfig` (default: `""`)
+- `--chart-repo-pass-creds` (default: `false`)
 
-  path to the kubeconfig file
+  Allow sending chart repository credentials to domains different from the chart repository domain when downloading charts\. Vars: \$NELM\_CHART\_REPO\_PASS\_CREDS, \$NELM\_CHART\_COPY\_CHART\_REPO\_PASS\_CREDS
 
-- `-n`, `--namespace` (default: `""`)
+- `--chart-repo-request-timeout` (default: `0s`)
 
-  namespace scope for this request
+  Set timeout for all requests to chart repository\. A request includes its whole body, so the timeout also bounds a whole blob download or upload\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_COPY\_CHART\_REPO\_REQUEST\_TIMEOUT
 
-- `--password` (default: `""`)
+- `--chart-repo-url` (default: `""`)
 
-  chart repository password where to locate the requested chart
+  Set URL of chart repo to be used to look for chart\. Vars: \$NELM\_CHART\_REPO\_URL, \$NELM\_CHART\_COPY\_CHART\_REPO\_URL
 
-- `--plain-http` (default: `false`)
+- `--insecure-chart-repos` (default: `false`)
 
-  use insecure HTTP connections for the chart upload
+  Allow insecure HTTP connections to chart repository\. Vars: \$NELM\_INSECURE\_CHART\_REPOS, \$NELM\_CHART\_COPY\_INSECURE\_CHART\_REPOS
 
-- `--qps` (default: `0`)
+- `--no-verify-chart-repos-tls` (default: `false`)
 
-  queries per second used when communicating with the Kubernetes API, not including bursting
+  Don't verify TLS certificates of chart repository\. Vars: \$NELM\_NO\_VERIFY\_CHART\_REPOS\_TLS, \$NELM\_CHART\_COPY\_NO\_VERIFY\_CHART\_REPOS\_TLS
 
-- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
+- `--oci-chart-repos-creds` (default: `""`)
 
-  path to the registry config file
+  Credentials to access OCI chart repositories\. Vars: \$NELM\_OCI\_CHART\_REPOS\_CREDS, \$NELM\_CHART\_COPY\_OCI\_CHART\_REPOS\_CREDS
 
-- `--repository-cache` (default: `"~/.cache/helm/repository"`)
 
-  path to the directory containing cached repository indexes
+**Other options:**
 
-- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
+- `--color-mode` (default: `"auto"`)
 
-  path to the file containing repository names and URLs
+  Color mode for logs\. Allowed: auto, off, on\. Vars: \$NELM\_COLOR\_MODE, \$NELM\_CHART\_COPY\_COLOR\_MODE
 
-- `--username` (default: `""`)
+- `--log-level` (default: `"info"`)
 
-  chart repository username where to locate the requested chart
+  Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_COPY\_LOG\_LEVEL
+
+- `--log-width` (default: `0`)
+
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_COPY\_LOG\_WIDTH
+
+- `--temp-dir` (default: `""`)
+
+  The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Reading an archive needs space for about the decompressed archive and twice its images\. Var: \$NELM\_TEMP\_DIR
 
 
 ### chart pack
 
-
-This command packages a chart into a versioned chart archive file\. If a path
-is given, this will look at that path for a chart \(which must contain a
-Chart\.yaml file\) and then package that directory\.
-
-Versioned chart archives are used by Helm package repositories\.
-
-To sign a chart, use the '\-\-sign' flag\. In most cases, you should also
-provide '\-\-keyring path/to/secret/keys' and '\-\-key keyname'\.
-
-  \$ nelm chart pack \-\-sign \./mychart \-\-key mykey \-\-keyring \~/\.gnupg/secring\.gpg
-
-If '\-\-keyring' is not specified, Helm usually defaults to the public keyring
-unless your environment is otherwise configured\.
-
+Pack a chart directory into a versioned chart archive\. The publish\-time inputs \(values, secret values, set values, patches and default switches\) are stored in \.werf\-data of the chart, on top of the ones the chart directory already has\.
 
 **Usage:**
 
 ```shell
-nelm chart pack [CHART_PATH] [...] [flags]
+nelm chart pack [options...] [chart-dir]
 ```
+
+**Options:**
+
+- `--dependency-update` (default: `false`)
+
+  Update Chart\.lock and charts/ of the chart directory from Chart\.yaml before packing\. Vars: \$NELM\_DEPENDENCY\_UPDATE, \$NELM\_CHART\_PACK\_DEPENDENCY\_UPDATE
+
+- `--destination` (default: `"."`)
+
+  The directory to save the chart archive to\. Vars: \$NELM\_DESTINATION, \$NELM\_CHART\_PACK\_DESTINATION
+
+- `--sign` (default: `false`)
+
+  Sign the chart archive with a PGP private key and save the provenance file next to it\. Vars: \$NELM\_SIGN, \$NELM\_CHART\_PACK\_SIGN
+
+- `--sign-key` (default: `""`)
+
+  Name of the key to sign the chart archive with\. Vars: \$NELM\_SIGN\_KEY, \$NELM\_CHART\_PACK\_SIGN\_KEY
+
+- `--sign-keyring` (default: `""`)
+
+  Path to keyring containing the key to sign the chart archive with\. Vars: \$NELM\_SIGN\_KEYRING, \$NELM\_CHART\_PACK\_SIGN\_KEYRING
+
+- `--sign-passphrase-file` (default: `""`)
+
+  Path to file with the passphrase of the signing key, "\-" to read it from stdin\. Prompted for if not set\. Vars: \$NELM\_SIGN\_PASSPHRASE\_FILE, \$NELM\_CHART\_PACK\_SIGN\_PASSPHRASE\_FILE
+
+
+**Values options:**
+
+- `--no-default-values` (default: `false`)
+
+  Ignore values\.yaml of the top\-level chart\. Vars: \$NELM\_NO\_DEFAULT\_VALUES, \$NELM\_CHART\_PACK\_NO\_DEFAULT\_VALUES
+
+- `--reset-values` (default: `false`)
+
+  Drop all publish\-time inputs stored in \.werf\-data of the chart by previous packs \(values, secret values, set values, patches, default switches, release defaults, extra values, annotations, labels and images\) before storing the ones of this pack\. Vars: \$NELM\_RESET\_VALUES, \$NELM\_CHART\_PACK\_RESET\_VALUES
+
+- `--set` (default: `[]`)
+
+  Set new values, where the key is the value path and the value is the value\. Vars: \$NELM\_SET, \$NELM\_CHART\_PACK\_SET
+
+- `--set-file` (default: `[]`)
+
+  Set new values, where the key is the value path and the value is the path to the file with the value content\. Vars: \$NELM\_SET\_FILE, \$NELM\_CHART\_PACK\_SET\_FILE
+
+- `--set-json` (default: `[]`)
+
+  Set new values, where the key is the value path and the value is JSON\. Vars: \$NELM\_SET\_JSON, \$NELM\_CHART\_PACK\_SET\_JSON
+
+- `--set-literal` (default: `[]`)
+
+  Set new values, where the key is the value path and the value is the value\. The value will always become a literal string\. Vars: \$NELM\_SET\_LITERAL, \$NELM\_CHART\_PACK\_SET\_LITERAL
+
+- `--set-root-json` (default: `[]`)
+
+  Set new keys in the global context \(\$\), where the key is the value path and the value is JSON\. This is meant to be generated inside the program, so use \-\-set\-json instead, unless you know what you are doing\. Vars: \$NELM\_SET\_ROOT\_JSON, \$NELM\_CHART\_PACK\_SET\_ROOT\_JSON
+
+- `--set-string` (default: `[]`)
+
+  Set new values, where the key is the value path and the value is the value\. The value will always become a string\. Vars: \$NELM\_SET\_STRING, \$NELM\_CHART\_PACK\_SET\_STRING
+
+- `--values` (default: `[]`)
+
+  Additional values files\. Vars: \$NELM\_VALUES, \$NELM\_CHART\_PACK\_VALUES
+
+
+**Secret options:**
+
+- `--no-default-secret-values` (default: `false`)
+
+  Ignore secret\-values\.yaml of the top\-level chart\. Vars: \$NELM\_NO\_DEFAULT\_SECRET\_VALUES, \$NELM\_CHART\_PACK\_NO\_DEFAULT\_SECRET\_VALUES
+
+- `--secret-values` (default: `[]`)
+
+  Secret values files paths\. Vars: \$NELM\_SECRET\_VALUES, \$NELM\_CHART\_PACK\_SECRET\_VALUES
+
+
+**Patch options:**
+
+- `--app-version` (default: `""`)
+
+  Set appVersion of Chart\.yaml\. Vars: \$NELM\_APP\_VERSION, \$NELM\_CHART\_PACK\_APP\_VERSION
+
+- `--chart-name` (default: `""`)
+
+  Set name of Chart\.yaml\. Vars: \$NELM\_CHART\_NAME, \$NELM\_CHART\_PACK\_CHART\_NAME
+
+- `--chart-version` (default: `""`)
+
+  Set version of Chart\.yaml\. Vars: \$NELM\_CHART\_VERSION, \$NELM\_CHART\_PACK\_CHART\_VERSION
+
+- `--no-default-patches` (default: `false`)
+
+  Ignore patches\.yaml of the top\-level chart and subcharts\. Vars: \$NELM\_NO\_DEFAULT\_PATCHES, \$NELM\_CHART\_PACK\_NO\_DEFAULT\_PATCHES
+
+- `--patches` (default: `[]`)
+
+  Additional patches files \(render patches for rendered resources, diff patches for drift detection\)\. Vars: \$NELM\_PATCHES, \$NELM\_CHART\_PACK\_PATCHES
+
 
 **TypeScript options:**
 
@@ -3140,144 +3274,75 @@ nelm chart pack [CHART_PATH] [...] [flags]
 
   Path to the Node\.js binary to use instead of the one in PATH\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_PACK\_NODE\_BINARY\_PATH
 
+- `--ts-no-rebuild` (default: `false`)
+
+  Reuse the existing TypeScript bundle instead of rebuilding it\. Vars: \$NELM\_TS\_NO\_REBUILD, \$NELM\_CHART\_PACK\_TS\_NO\_REBUILD
+
+
+**Chart repository options:**
+
+- `--chart-repo-basic-password` (default: `""`)
+
+  Basic auth password to authenticate in chart repository\. Vars: \$NELM\_CHART\_REPO\_BASIC\_PASSWORD, \$NELM\_CHART\_PACK\_CHART\_REPO\_BASIC\_PASSWORD
+
+- `--chart-repo-basic-username` (default: `""`)
+
+  Basic auth username to authenticate in chart repository\. Vars: \$NELM\_CHART\_REPO\_BASIC\_USERNAME, \$NELM\_CHART\_PACK\_CHART\_REPO\_BASIC\_USERNAME
+
+- `--chart-repo-ca` (default: `""`)
+
+  Path to TLS CA file for connecting to chart repository\. Vars: \$NELM\_CHART\_REPO\_CA, \$NELM\_CHART\_PACK\_CHART\_REPO\_CA
+
+- `--chart-repo-cert` (default: `""`)
+
+  Path to TLS client cert file for connecting to chart repository\. Vars: \$NELM\_CHART\_REPO\_CERT, \$NELM\_CHART\_PACK\_CHART\_REPO\_CERT
+
+- `--chart-repo-key` (default: `""`)
+
+  Path to TLS client key file for connecting to chart repository\. Vars: \$NELM\_CHART\_REPO\_KEY, \$NELM\_CHART\_PACK\_CHART\_REPO\_KEY
+
+- `--chart-repo-request-timeout` (default: `0s`)
+
+  Set timeout for all requests to chart repository\. A request includes its whole body, so the timeout also bounds a whole blob download or upload\. Vars: \$NELM\_CHART\_REPO\_REQUEST\_TIMEOUT, \$NELM\_CHART\_PACK\_CHART\_REPO\_REQUEST\_TIMEOUT
+
+- `--docker-config` (default: `"~/.docker"`)
+
+  Docker config directory path\. Vars: \$DOCKER\_CONFIG, \$NELM\_DOCKER\_CONFIG, \$NELM\_CHART\_PACK\_DOCKER\_CONFIG
+
+- `--insecure-chart-repos` (default: `false`)
+
+  Allow insecure HTTP connections to chart repository\. Vars: \$NELM\_INSECURE\_CHART\_REPOS, \$NELM\_CHART\_PACK\_INSECURE\_CHART\_REPOS
+
+- `--no-update-chart-repos` (default: `false`)
+
+  Don't update chart repositories index\. Vars: \$NELM\_NO\_UPDATE\_CHART\_REPOS, \$NELM\_CHART\_PACK\_NO\_UPDATE\_CHART\_REPOS
+
+- `--no-verify-chart-repos-tls` (default: `false`)
+
+  Don't verify TLS certificates of chart repository\. Vars: \$NELM\_NO\_VERIFY\_CHART\_REPOS\_TLS, \$NELM\_CHART\_PACK\_NO\_VERIFY\_CHART\_REPOS\_TLS
+
+- `--oci-chart-repos-creds` (default: `""`)
+
+  Credentials to access OCI chart repositories\. Vars: \$NELM\_OCI\_CHART\_REPOS\_CREDS, \$NELM\_CHART\_PACK\_OCI\_CHART\_REPOS\_CREDS
+
 
 **Other options:**
 
-- `--app-version` (default: `""`)
+- `--color-mode` (default: `"auto"`)
 
-  set the appVersion on the chart to this version
+  Color mode for logs\. Allowed: auto, off, on\. Vars: \$NELM\_COLOR\_MODE, \$NELM\_CHART\_PACK\_COLOR\_MODE
 
-- `--burst-limit` (default: `100`)
+- `--log-level` (default: `"info"`)
 
-  client\-side default throttling limit
+  Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_PACK\_LOG\_LEVEL
 
-- `--ca-file` (default: `""`)
+- `--log-width` (default: `0`)
 
-  verify certificates of HTTPS\-enabled servers using this CA bundle
+  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_PACK\_LOG\_WIDTH
 
-- `--cert-file` (default: `""`)
+- `--temp-dir` (default: `""`)
 
-  identify HTTPS client using this SSL certificate file
-
-- `--color` (default: `"auto"`)
-
-  use colored output \(never, auto, always\)
-
-- `--colour` (default: `"auto"`)
-
-  use colored output \(never, auto, always\)
-
-- `--content-cache` (default: `"~/.cache/helm/content"`)
-
-  path to the directory containing cached content \(e\.g\. charts\)
-
-- `--debug` (default: `false`)
-
-  enable verbose output
-
-- `-u`, `--dependency-update` (default: `false`)
-
-  update dependencies from "Chart\.yaml" to dir "charts/" before packaging
-
-- `-d`, `--destination` (default: `"."`)
-
-  location to write the chart\.
-
-- `--insecure-skip-tls-verify` (default: `false`)
-
-  skip tls certificate checks for the chart download
-
-- `--key` (default: `""`)
-
-  name of the key to use when signing\. Used if \-\-sign is true
-
-- `--key-file` (default: `""`)
-
-  identify HTTPS client using this SSL key file
-
-- `--keyring` (default: `"~/.gnupg/pubring.gpg"`)
-
-  location of a public keyring
-
-- `--kube-apiserver` (default: `""`)
-
-  the address and the port for the Kubernetes API server
-
-- `--kube-as-group` (default: `[]`)
-
-  group to impersonate for the operation, this flag can be repeated to specify multiple groups\.
-
-- `--kube-as-user` (default: `""`)
-
-  username to impersonate for the operation
-
-- `--kube-ca-file` (default: `""`)
-
-  the certificate authority file for the Kubernetes API server connection
-
-- `--kube-context` (default: `""`)
-
-  name of the kubeconfig context to use
-
-- `--kube-insecure-skip-tls-verify` (default: `false`)
-
-  if true, the Kubernetes API server's certificate will not be checked for validity\. This will make your HTTPS connections insecure
-
-- `--kube-tls-server-name` (default: `""`)
-
-  server name to use for Kubernetes API server certificate validation\. If it is not provided, the hostname used to contact the server is used
-
-- `--kube-token` (default: `""`)
-
-  bearer token used for authentication
-
-- `--kubeconfig` (default: `""`)
-
-  path to the kubeconfig file
-
-- `-n`, `--namespace` (default: `""`)
-
-  namespace scope for this request
-
-- `--passphrase-file` (default: `""`)
-
-  location of a file which contains the passphrase for the signing key\. Use "\-" in order to read from stdin\.
-
-- `--password` (default: `""`)
-
-  chart repository password where to locate the requested chart
-
-- `--plain-http` (default: `false`)
-
-  use insecure HTTP connections for the chart download
-
-- `--qps` (default: `0`)
-
-  queries per second used when communicating with the Kubernetes API, not including bursting
-
-- `--registry-config` (default: `"~/.config/helm/registry/config.json"`)
-
-  path to the registry config file
-
-- `--repository-cache` (default: `"~/.cache/helm/repository"`)
-
-  path to the directory containing cached repository indexes
-
-- `--repository-config` (default: `"~/.config/helm/repositories.yaml"`)
-
-  path to the file containing repository names and URLs
-
-- `--sign` (default: `false`)
-
-  use a PGP private key to sign this package
-
-- `--username` (default: `""`)
-
-  chart repository username where to locate the requested chart
-
-- `--version` (default: `""`)
-
-  set the version on the chart to this semver version
+  The directory for temporary files\. By default, use the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
 
 
 ### chart secret key create
@@ -3303,50 +3368,6 @@ nelm chart secret key create [options...]
 - `--log-width` (default: `0`)
 
   Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_SECRET\_KEY\_CREATE\_LOG\_WIDTH
-
-- `--temp-dir` (default: `""`)
-
-  The directory for temporary files\. By default, create a new directory in the default system directory for temporary files\. Var: \$NELM\_TEMP\_DIR
-
-
-### chart secret key rotate
-
-Decrypt with an old secret key, then encrypt with a new secret key chart files secret\-values\.yaml and secret/\*\.
-
-**Usage:**
-
-```shell
-nelm chart secret key rotate [options...] --old-secret-key secret-key --new-secret-key secret-key [chart-dir]
-```
-
-**Options:**
-
-- `--new-secret-key` (default: `""`)
-
-  New secret key\. Var: \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_NEW\_SECRET\_KEY
-
-- `--old-secret-key` (default: `""`)
-
-  Old secret key\. Var: \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_OLD\_SECRET\_KEY
-
-- `--secret-values` (default: `[]`)
-
-  Secret values files paths\. Vars: \$NELM\_SECRET\_VALUES, \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_SECRET\_VALUES
-
-
-**Other options:**
-
-- `--color-mode` (default: `"auto"`)
-
-  Color mode for logs\. Allowed: auto, off, on\. Vars: \$NELM\_COLOR\_MODE, \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_COLOR\_MODE
-
-- `--log-level` (default: `"info"`)
-
-  Set log level\. Allowed: silent, error, warning, info, debug, trace\. Vars: \$NELM\_LOG\_LEVEL, \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_LOG\_LEVEL
-
-- `--log-width` (default: `0`)
-
-  Set log width\. 0 to detect automatically\. Vars: \$NELM\_LOG\_WIDTH, \$NELM\_CHART\_SECRET\_KEY\_ROTATE\_LOG\_WIDTH
 
 - `--temp-dir` (default: `""`)
 

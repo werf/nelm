@@ -217,7 +217,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.ReleaseName, "release", common.StubReleaseName, "The release name. Must be unique within the release namespace", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.ReleaseName, "release", "", "The release name. Must be unique within the release namespace. Defaults to the one recorded in the chart's .werf-data, else to a stub", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
 			ShortName:            "r",
@@ -225,7 +225,7 @@ func newChartLintCommand(ctx context.Context, afterAllCommandsBuiltFuncs map[*co
 			return fmt.Errorf("add flag: %w", err)
 		}
 
-		if err := cli.AddFlag(cmd, &cfg.ReleaseNamespace, "namespace", common.StubReleaseNamespace, "The release namespace. Resources with no namespace will be deployed here", cli.AddFlagOptions{
+		if err := cli.AddFlag(cmd, &cfg.ReleaseNamespace, "namespace", "", "The release namespace. Resources with no namespace will be deployed here. Defaults to the one recorded in the chart's .werf-data, else to a stub", cli.AddFlagOptions{
 			GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 			Group:                mainFlagGroup,
 			ShortName:            "n",

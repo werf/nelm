@@ -1,0 +1,3 @@
+global:
+  root: root-values-yaml
+  both: root-values-yaml

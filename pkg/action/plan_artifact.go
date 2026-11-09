@@ -38,6 +38,10 @@ type PlanArtifactData struct {
 	Release                  *release.VersionedRelease           `json:"release"`
 	InstallableResourceInfos []*plan.InstallableResourceInfo     `json:"installableResourceInfos"`
 	ReleaseInfos             []*plan.ReleaseInfo                 `json:"releaseInfos"`
+	// RollbackOptions are the options of the plan caller, without the ones from the .werf-data of the
+	// chart, for the auto-rollback. Absent in artifacts made before they were stored: Options are
+	// used then.
+	RollbackOptions *common.ReleaseInstallRuntimeOptions `json:"rollbackOptions,omitempty"`
 }
 
 type PlanArtifactRelease struct {
