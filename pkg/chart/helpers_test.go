@@ -390,6 +390,19 @@ func renderedChartValues(t *testing.T, result *RenderChartResult) map[string]int
 	return vals.AsMap()
 }
 
+func renderedConfigMapNames(result *RenderChartResult) []string {
+	var names []string
+	for _, res := range result.ResourceSpecs {
+		if res.GroupVersionKind.Kind == "ConfigMap" {
+			names = append(names, res.Name)
+		}
+	}
+
+	sort.Strings(names)
+
+	return names
+}
+
 // storedReleaseValues returns the values that release get prints for the release stored from the
 // result: the chart as stored in the release coalesced with the release config.
 func storedReleaseValues(t *testing.T, result *RenderChartResult) map[string]interface{} {
@@ -490,6 +503,56 @@ func werfDataVersionedChart(apiVersion string) map[string]string {
 	}
 
 	return files
+}
+
+// werfServiceValuesTestChart returns the files of a chart "root" with a dependency "sub" with a
+// dependency "subsub", each rendering a ConfigMap named after the chart. The dependency fields are
+// appended to the dependency entries of root and sub.
+func werfServiceValuesTestChart(rootDependencyFields, subDependencyFields, subValues string) map[string]string {
+	const template = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: {{ .Chart.Name }}\n"
+
+	return map[string]string{
+		"Chart.yaml":                                 "apiVersion: v2\nname: root\nversion: 1.0.0\ndependencies:\n- name: sub\n  version: 1.0.0\n" + rootDependencyFields,
+		"templates/cm.yaml":                          template,
+		"charts/sub/Chart.yaml":                      "apiVersion: v2\nname: sub\nversion: 1.0.0\ndependencies:\n- name: subsub\n  version: 1.0.0\n" + subDependencyFields,
+		"charts/sub/values.yaml":                     subValues,
+		"charts/sub/templates/cm.yaml":               template,
+		"charts/sub/charts/subsub/Chart.yaml":        "apiVersion: v2\nname: subsub\nversion: 1.0.0\n",
+		"charts/sub/charts/subsub/templates/cm.yaml": template,
+	}
+}
+
+// werfStubServiceValues returns the service values werf passes to werf render without images built,
+// for an image "app" and the environment, none if empty.
+func werfStubServiceValues(env string) string {
+	var werfEnv, globalWerfEnv string
+	if env != "" {
+		werfEnv = "\n  env: " + env
+		globalWerfEnv = "\n    env: " + env
+	}
+
+	return fmt.Sprintf(`werf:
+  name: proj
+  repo: REPO
+  is_stub: true
+  stub_image: REPO:TAG%s
+  image:
+    app: REPO:TAG
+  tag:
+    app: TAG
+global:
+  werf:
+    name: proj
+    repo: REPO
+    is_stub: true
+    stub_image: REPO:TAG%s
+    images:
+      app:
+        registry: REGISTRY
+        repository: NAMESPACE/NAME
+        tag: TAG
+        image: REPO
+`, werfEnv, globalWerfEnv)
 }
 
 func writeTestFile(t *testing.T, filePath, data string) string {
