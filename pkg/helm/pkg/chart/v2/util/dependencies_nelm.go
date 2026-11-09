@@ -223,6 +223,12 @@ func prepareChartValuesExports(c *chart.Chart, merge bool) ([]chartValuesExport,
 		if err := overrideChartValues(c, map[string]interface{}{}, merge); err != nil {
 			return nil, fmt.Errorf("merge values of dependency %q: %w", c.ChartPath(), err)
 		}
+	} else if c.Parent() != nil {
+		// A declared dependency gets its secret-values.yaml above, via overrideChartValues. An undeclared
+		// one gets it at the same step, so that the export-values see it as for a declared one.
+		if err := util.ApplyDefaultSecretValues(c); err != nil {
+			return nil, fmt.Errorf("apply secret values of undeclared dependency %q: %w", c.ChartPath(), err)
+		}
 	}
 
 	for _, d := range c.Dependencies() {

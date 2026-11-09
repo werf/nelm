@@ -45,6 +45,10 @@ func ProcessDependenciesWithMergedValues(c *chart.Chart, v common.Values) error 
 		return err
 	}
 
+	if err := applyDependenciesDefaultSecretValues(c); err != nil {
+		return fmt.Errorf("apply dependencies secret values: %w", err)
+	}
+
 	return processDependencyImportValues(c, true)
 }
 

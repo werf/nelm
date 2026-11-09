@@ -86,12 +86,13 @@ func (l *warningsLogger) Warn(_ context.Context, format string, a ...interface{}
 }
 
 type layeredValuesRenderOptions struct {
-	ChartDir          string
-	SecretValuesFiles []string
-	ServiceValues     map[string]interface{}
-	Set               []string
-	SetJSON           []string
-	ValuesFiles       []string
+	ChartDir                   string
+	DefaultSecretValuesDisable bool
+	SecretValuesFiles          []string
+	ServiceValues              map[string]interface{}
+	Set                        []string
+	SetJSON                    []string
+	ValuesFiles                []string
 }
 
 // werfDataFlagsAsFiles returns the .werf-data files that store the inputs. The default paths of
@@ -361,6 +362,7 @@ func renderLayeredValuesChart(t *testing.T, opts layeredValuesRenderOptions) *Re
 	renderOpts.ValuesSetJSON = opts.SetJSON
 	renderOpts.ValuesFiles = opts.ValuesFiles
 	renderOpts.HelmOptions.ChartLoadOpts.SecretValuesFiles = opts.SecretValuesFiles
+	renderOpts.HelmOptions.ChartLoadOpts.DefaultSecretValuesDisable = opts.DefaultSecretValuesDisable
 
 	ctx := logboek.NewContext(context.Background(), logboek.DefaultLogger())
 

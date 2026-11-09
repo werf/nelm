@@ -390,7 +390,7 @@ func AddResourceValidationFlags(cmd *cobra.Command, cfg *common.ResourceValidati
 }
 
 func AddSecretValuesFlags(cmd *cobra.Command, cfg *common.SecretValuesOptions) error {
-	if err := cli.AddFlag(cmd, &cfg.DefaultSecretValuesDisable, "no-default-secret-values", false, "Ignore secret-values.yaml of the top-level chart", cli.AddFlagOptions{
+	if err := cli.AddFlag(cmd, &cfg.DefaultSecretValuesDisable, "no-default-secret-values", false, "Ignore secret-values.yaml of the top-level chart and its subcharts", cli.AddFlagOptions{
 		GetEnvVarRegexesFunc: cli.GetFlagGlobalAndLocalEnvVarRegexes,
 		Group:                secretFlagGroup,
 	}); err != nil {

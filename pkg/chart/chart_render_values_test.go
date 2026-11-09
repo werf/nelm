@@ -6,6 +6,74 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestRenderChart_NoDefaultSecretValuesIgnoresSubchartSecretValues(t *testing.T) {
+	tests := []struct {
+		chartDir    string
+		subchartKey string
+	}{
+		{chartDir: "subchart-secret-v2-declared", subchartKey: "sub"},
+		{chartDir: "subchart-secret-v2-alias", subchartKey: "sub-alias"},
+		{chartDir: "subchart-secret-v2-undeclared", subchartKey: "sub"},
+		{chartDir: "subchart-secret-v3", subchartKey: "sub"},
+		{chartDir: "subchart-secret-v3-alias", subchartKey: "sub-alias"},
+		{chartDir: "subchart-secret-v3-undeclared", subchartKey: "sub"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.chartDir, func(t *testing.T) {
+			vals := renderedChartValues(t, renderLayeredValuesChart(t, layeredValuesRenderOptions{
+				ChartDir:                   tt.chartDir,
+				DefaultSecretValuesDisable: true,
+			}))
+
+			assert.Equal(t, absentValue{}, valueAtPath(t, vals, tt.subchartKey+".s"))
+			assert.Equal(t, "sub-values", valueAtPath(t, vals, tt.subchartKey+".k"))
+		})
+	}
+}
+
+func TestRenderChart_SubchartSecretValues(t *testing.T) {
+	tests := []struct {
+		chartDir    string
+		subchartKey string
+	}{
+		{chartDir: "subchart-secret-v2-declared", subchartKey: "sub"},
+		{chartDir: "subchart-secret-v2-alias", subchartKey: "sub-alias"},
+		{chartDir: "subchart-secret-v2-undeclared", subchartKey: "sub"},
+		{chartDir: "subchart-secret-v3", subchartKey: "sub"},
+		{chartDir: "subchart-secret-v3-alias", subchartKey: "sub-alias"},
+		{chartDir: "subchart-secret-v3-undeclared", subchartKey: "sub"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.chartDir, func(t *testing.T) {
+			result := renderLayeredValuesChart(t, layeredValuesRenderOptions{ChartDir: tt.chartDir})
+			vals := renderedChartValues(t, result)
+
+			assert.Equal(t, "sub-values", valueAtPath(t, vals, tt.subchartKey+".v"))
+			assert.Equal(t, "sub-secret", valueAtPath(t, vals, tt.subchartKey+".s"))
+			assert.Equal(t, "sub-secret", valueAtPath(t, vals, tt.subchartKey+".k"), "subchart secret-values.yaml overrides subchart values.yaml")
+			assert.Equal(t, "parent-values", valueAtPath(t, vals, tt.subchartKey+".pk"), "parent values.yaml overrides subchart secret-values.yaml")
+			assert.Empty(t, result.ReleaseConfig)
+		})
+
+		t.Run(tt.chartDir+" with set", func(t *testing.T) {
+			vals := renderedChartValues(t, renderLayeredValuesChart(t, layeredValuesRenderOptions{
+				ChartDir: tt.chartDir,
+				Set:      []string{tt.subchartKey + ".k=set"},
+			}))
+
+			assert.Equal(t, "set", valueAtPath(t, vals, tt.subchartKey+".k"), "set values override subchart secret-values.yaml")
+		})
+	}
+
+	t.Run("nested undeclared subchart", func(t *testing.T) {
+		vals := renderedChartValues(t, renderLayeredValuesChart(t, layeredValuesRenderOptions{ChartDir: "subchart-secret-v2-undeclared"}))
+
+		assert.Equal(t, "subsub-secret", valueAtPath(t, vals, "sub.subsub.s"))
+	})
+}
+
 func TestRenderChart_ValuesLayersExportUserValues(t *testing.T) {
 	tests := []struct {
 		name              string

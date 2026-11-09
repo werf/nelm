@@ -3,7 +3,10 @@ package util
 import (
 	"fmt"
 
+	v3 "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
 	"github.com/werf/nelm/v2/pkg/helm/intern/copystructure"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	v2 "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 )
 
 // DeepCopyValues returns a deep copy of vals, or an empty map if vals is nil.
@@ -36,4 +39,32 @@ func DeleteValuesAtPaths(vals map[string]any, paths [][]string) {
 			delete(table, path[len(path)-1])
 		}
 	}
+}
+
+// ApplyDefaultSecretValues merges the decrypted secret-values.yaml of the chart over its values.yaml
+// in place, so that it has the priority of the chart defaults. Use it for subcharts: CoalesceValues
+// and MergeValues apply the secret-values.yaml of the chart passed to them, but not of its subcharts.
+func ApplyDefaultSecretValues(chrt chart.Charter) error {
+	switch c := chrt.(type) {
+	case *v2.Chart:
+		vals, err := mergeDefaultSecretValues(c.Values, c.SecretsRuntimeData)
+		if err != nil {
+			return fmt.Errorf("merge secret values of chart %q: %w", c.Name(), err)
+		}
+
+		if vals != nil {
+			c.Values = vals
+		}
+	case *v3.Chart:
+		vals, err := mergeDefaultSecretValues(c.Values, c.SecretsRuntimeData)
+		if err != nil {
+			return fmt.Errorf("merge secret values of chart %q: %w", c.Name(), err)
+		}
+
+		if vals != nil {
+			c.Values = vals
+		}
+	}
+
+	return nil
 }
