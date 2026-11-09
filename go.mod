@@ -61,7 +61,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/sjson v1.2.5
 	github.com/wI2L/jsondiff v0.7.0
-	github.com/werf/common-go v0.0.0-20260831162604-46c3b45163be
+	github.com/werf/common-go v0.0.0-20261109135412-993ea4351bc0
 	github.com/werf/kubedog v0.13.1-0.20261103160714-1ed920dee18b
 	github.com/werf/lockgate v0.1.1
 	github.com/werf/logboek v0.6.1
