@@ -376,4 +376,14 @@ func TestInitTSBoilerplate(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "typescript directory already exists")
 	})
+
+	t.Run("tells what to do when ts/ directory already exists", func(t *testing.T) {
+		chartPath := filepath.Join(t.TempDir(), "test-chart")
+		require.NoError(t, os.MkdirAll(filepath.Join(chartPath, "ts"), 0o755))
+
+		err := ts.InitChartStructure(context.Background(), chartPath, "test-chart")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "remove it to initialize the chart again")
+		assert.Contains(t, err.Error(), "npm install")
+	})
 }
