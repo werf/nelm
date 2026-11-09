@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/Masterminds/sprig/v3"
@@ -111,6 +112,8 @@ const (
 	ChartTSEntryPointTS = "src/index.ts"
 	// ChartTSInputFile is the name of the input file with context for the TypeScript chart.
 	ChartTSInputFile = "input.yaml"
+	// ChartTSNodeModulesDir holds the dependencies of the TypeScript chart, which are bundled.
+	ChartTSNodeModulesDir = ChartTSSourceDir + "node_modules/"
 	// ChartTSOutputFile is the name of the output file with rendered manifests from the TypeScript chart.
 	ChartTSOutputFile = "output.yaml"
 	// ChartTSSourceDir is the directory containing TypeScript sources in a Helm chart.
@@ -321,6 +324,27 @@ func HelmOptionsFromContext(ctx context.Context) HelmOptions {
 	opts, _ := ctx.Value(helmOptionsContextKey{}).(HelmOptions)
 
 	return opts
+}
+
+// IsChartTSNodeModulesInTree reports whether name, slash-separated and relative to the chart root,
+// is ts/node_modules or is in it, in the chart or in a subchart under charts/. The chart loaders
+// leave these out: the dependencies are bundled, and their files, native binaries included, would
+// otherwise end up in the chart archive and in the release.
+func IsChartTSNodeModulesInTree(name string) bool {
+	for {
+		if strings.HasPrefix(name+"/", ChartTSNodeModulesDir) {
+			return true
+		}
+
+		rest, ok := strings.CutPrefix(name, "charts/")
+		if !ok {
+			return false
+		}
+
+		if _, name, ok = strings.Cut(rest, "/"); !ok {
+			return false
+		}
+	}
 }
 
 func StagesSortHandler(stage1, stage2 Stage) bool {

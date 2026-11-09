@@ -118,6 +118,10 @@ func getFilesFromLocalFilesystem(dir string) ([]*archive.BufferedFile, error) {
 			return err
 		}
 		if fi.IsDir() {
+			if nelmcommon.IsChartTSNodeModulesInTree(n) {
+				return filepath.SkipDir
+			}
+
 			// Directory-based ignore rules should involve skipping the entire
 			// contents of that directory.
 			if !werfdata.IsWerfDataFileInTree(n) && rules.Ignore(n, fi) {

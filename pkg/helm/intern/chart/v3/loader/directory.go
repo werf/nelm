@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	nelmcommon "github.com/werf/nelm/v2/pkg/common"
 	chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
 	"github.com/werf/nelm/v2/pkg/helm/intern/sympath"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader/archive"
@@ -82,6 +83,10 @@ func LoadDir(ctx context.Context, dir string) (*chart.Chart, error) {
 			return err
 		}
 		if fi.IsDir() {
+			if nelmcommon.IsChartTSNodeModulesInTree(n) {
+				return filepath.SkipDir
+			}
+
 			// Directory-based ignore rules should involve skipping the entire
 			// contents of that directory.
 			if !werfdata.IsWerfDataFileInTree(n) && rules.Ignore(n, fi) {
