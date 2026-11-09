@@ -369,6 +369,13 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		}
 	}
 
+	log.Default.Debug(ctx, "Build last deployed only resource specs")
+
+	lastDeployedOnlyResSpecs, err := buildLastDeployedOnlyResSpecs(ctx, prevRelease, prevRelResSpecs, prevDeployedRelease, opts.ReleaseNamespace)
+	if err != nil {
+		return fmt.Errorf("build last deployed only resource specs: %w", err)
+	}
+
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
 	newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, opts.ReleaseNamespace)
@@ -383,6 +390,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 	}, resource.BuildResourcesOptions{
 		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
+		DeleteOnlyResSpecs:       lastDeployedOnlyResSpecs,
 	})
 	if err != nil {
 		return fmt.Errorf("build resources: %w", err)
