@@ -1,262 +1,123 @@
 package ts_test
 
 import (
-	"archive/tar"
-	"bytes"
-	"compress/gzip"
 	"context"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
-	"strings"
 	"testing"
 
-	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/werf/nelm/v2/pkg/common"
 	"github.com/werf/nelm/v2/pkg/ts"
-	"github.com/werf/nelm/v2/pkg/ts/nodelock"
 )
 
-func TestExtractEmbeddedNPM(t *testing.T) {
-	files := map[string]string{
-		"bin/npm-cli.js":                   "// cli",
-		"package.json":                     `{"version":"11.20.0"}`,
-		"node_modules/abbrev/package.json": "{}",
+func TestFindNode(t *testing.T) {
+	const probeArgs = "process.execPath + ' ' + process.versions.node"
+
+	t.Run("takes the real path and the version from node in PATH", func(t *testing.T) {
+		binDir := stubPath(t)
+		t.Setenv("NELM_TEST_CANARY", "inherited")
+		writeStub(t, binDir, "node", "printf '/opt/node versions/26.13.0/bin/node 26.13.0\\n'\n")
+
+		execPath, err := ts.FindNode(context.Background(), "")
+		require.NoError(t, err)
+		assert.Equal(t, "/opt/node versions/26.13.0/bin/node", execPath)
+
+		run := readStubRun(t, binDir, "node")
+		assert.Equal(t, []string{"-p", probeArgs}, run.args)
+		assert.Equal(t, "inherited", run.canary, "the probe must run with the environment of nelm")
+	})
+
+	t.Run("prefers the node binary path over node in PATH", func(t *testing.T) {
+		binDir := stubPath(t)
+		writeStub(t, binDir, "node", "printf '/usr/bin/node 26.0.0\\n'\n")
+
+		explicitDir := t.TempDir()
+		writeStub(t, explicitDir, "my-node", "printf '/opt/node/bin/node 27.1.0\\n'\n")
+
+		execPath, err := ts.FindNode(context.Background(), filepath.Join(explicitDir, "my-node"))
+		require.NoError(t, err)
+		assert.Equal(t, "/opt/node/bin/node", execPath)
+		requireStubNotRun(t, binDir, "node")
+	})
+
+	for name, test := range map[string]struct {
+		body    string
+		wantErr []string
+	}{
+		"fails with Node.js older than 26": {
+			body:    "printf '/usr/bin/node 24.13.0\\n'\n",
+			wantErr: []string{"Node.js >= 26 is required", "--node-binary-path", "found Node.js 24.13.0 at /usr/bin/node"},
+		},
+		"fails when node does not run": {
+			body:    "printf 'node: something went wrong\\n' >&2\nexit 3\n",
+			wantErr: []string{"Node.js >= 26 is required", "exit status 3", "node: something went wrong"},
+		},
+		"suggests installing libatomic when node misses it": {
+			body: "printf 'node: error while loading shared libraries: libatomic.so.1: cannot open shared object file: No such file or directory\\n' >&2\nexit 127\n",
+			wantErr: []string{
+				"libatomic.so.1: cannot open shared object file",
+				"Install the libatomic1 package (Debian/Ubuntu) or libatomic (RHEL/Fedora).",
+			},
+		},
+		"fails on unexpected output": {
+			body:    "printf 'v26.13.0\\n'\n",
+			wantErr: []string{`want "<path> <version>", got "v26.13.0"`},
+		},
+		"fails on an unparsable version": {
+			body:    "printf '/usr/bin/node nightly\\n'\n",
+			wantErr: []string{`parse major version of "nightly"`},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			binDir := stubPath(t)
+			writeStub(t, binDir, "node", test.body)
+
+			_, err := ts.FindNode(context.Background(), "")
+			require.Error(t, err)
+
+			for _, want := range test.wantErr {
+				assert.Contains(t, err.Error(), want)
+			}
+		})
 	}
-	compressed, expectedSHA256 := tarGzNPM(t, files)
 
-	t.Run("extracts, caches on second call, and is content-addressed", func(t *testing.T) {
-		t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Run("does not suggest a package for other failures", func(t *testing.T) {
+		binDir := stubPath(t)
+		writeStub(t, binDir, "node", "exit 1\n")
 
-		npmDir, err := ts.ExtractEmbeddedNPM(context.Background(), compressed, expectedSHA256)
-		require.NoError(t, err)
-		assert.Contains(t, npmDir, "embedded-npm-"+expectedSHA256[:16])
-
-		for name, content := range files {
-			data, err := os.ReadFile(filepath.Join(npmDir, filepath.FromSlash(name)))
-			require.NoError(t, err)
-			assert.Equal(t, content, string(data))
-		}
-
-		cachedDir, err := ts.ExtractEmbeddedNPM(context.Background(), compressed, expectedSHA256)
-		require.NoError(t, err)
-		assert.Equal(t, npmDir, cachedDir)
-
-		assertOnlyEntries(t, filepath.Dir(npmDir), "npm", "lock")
-	})
-
-	t.Run("fails on digest mismatch and leaves no package", func(t *testing.T) {
-		t.Setenv("XDG_CACHE_HOME", t.TempDir())
-
-		wrongSHA256 := strings.Repeat("0", 64)
-
-		npmDir, err := ts.ExtractEmbeddedNPM(context.Background(), compressed, wrongSHA256)
+		_, err := ts.FindNode(context.Background(), "")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "integrity check failed")
-		assert.Empty(t, npmDir)
-
-		matches, err := filepath.Glob(filepath.Join(os.Getenv("XDG_CACHE_HOME"), "*", "nelm", "node", "embedded-npm-*", "*"))
-		require.NoError(t, err)
-
-		for _, match := range matches {
-			assert.Equal(t, "lock", filepath.Base(match), "nothing but the lock must be left behind")
-		}
+		assert.NotContains(t, err.Error(), "Install the")
 	})
 
-	t.Run("rejects a path escaping the package", func(t *testing.T) {
-		t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Run("fails without node in PATH", func(t *testing.T) {
+		stubPath(t)
 
-		malicious, digest := tarGzNPM(t, map[string]string{"../escaped": "x"})
-
-		_, err := ts.ExtractEmbeddedNPM(context.Background(), malicious, digest)
+		_, err := ts.FindNode(context.Background(), "")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unsafe path")
+		assert.Contains(t, err.Error(), "Node.js >= 26 is required to render TypeScript charts, put it in PATH or pass --node-binary-path: no node in PATH")
 	})
 
-	t.Run("rejects a path with a newline", func(t *testing.T) {
-		t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Run("fails with a missing node binary path", func(t *testing.T) {
+		missing := filepath.Join(t.TempDir(), "node")
 
-		ambiguous, digest := tarGzNPM(t, map[string]string{"a\nb": "x"})
-
-		_, err := ts.ExtractEmbeddedNPM(context.Background(), ambiguous, digest)
+		_, err := ts.FindNode(context.Background(), missing)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unsafe path")
+		assert.Contains(t, err.Error(), "run "+missing)
+		assert.NoFileExists(t, missing)
 	})
 
-	t.Run("rejects a symlink", func(t *testing.T) {
-		t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Run("finds a real Node.js", func(t *testing.T) {
+		nodePath := requireTestNode(t)
 
-		var buf bytes.Buffer
-
-		gzWriter := gzip.NewWriter(&buf)
-		tarWriter := tar.NewWriter(gzWriter)
-		require.NoError(t, tarWriter.WriteHeader(&tar.Header{Name: "bin/npm", Typeflag: tar.TypeSymlink, Linkname: "/etc/passwd"}))
-		require.NoError(t, tarWriter.Close())
-		require.NoError(t, gzWriter.Close())
-
-		_, err := ts.ExtractEmbeddedNPM(context.Background(), buf.Bytes(), nodelock.TreeSHA256(map[string]string{}))
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unexpected entry")
-	})
-}
-
-func TestExtractEmbeddedNode(t *testing.T) {
-	payload := []byte("#!/bin/sh\necho fake-node\n")
-	compressed, expectedSHA256 := gzipPayload(t, payload)
-
-	t.Run("extracts, caches on second call, and is content-addressed", func(t *testing.T) {
-		t.Setenv("XDG_CACHE_HOME", t.TempDir())
-
-		path, err := ts.ExtractEmbeddedNode(context.Background(), compressed, expectedSHA256)
+		execPath, err := ts.FindNode(context.Background(), nodePath)
 		require.NoError(t, err)
 
-		assert.Equal(t, nodelock.BinaryName(runtime.GOOS), filepath.Base(path))
-		assert.Contains(t, path, "embedded-"+expectedSHA256[:16])
-
-		content, err := os.ReadFile(path)
+		info, err := os.Stat(execPath)
 		require.NoError(t, err)
-		assert.Equal(t, payload, content)
-
-		info, err := os.Stat(path)
-		require.NoError(t, err)
-
-		if runtime.GOOS != "windows" {
-			assert.NotZero(t, info.Mode().Perm()&0o100, "must be executable")
-		}
-
-		cachedPath, err := ts.ExtractEmbeddedNode(context.Background(), compressed, expectedSHA256)
-		require.NoError(t, err)
-		assert.Equal(t, path, cachedPath)
-
-		cachedInfo, err := os.Stat(cachedPath)
-		require.NoError(t, err)
-		assert.Equal(t, info.ModTime(), cachedInfo.ModTime(), "cache hit must not rewrite the binary")
-
-		assertOnlyEntries(t, filepath.Dir(path), filepath.Base(path), "lock")
+		assert.True(t, filepath.IsAbs(execPath))
+		assert.False(t, info.IsDir())
 	})
-
-	t.Run("fails on sha256 mismatch and leaves no binary", func(t *testing.T) {
-		t.Setenv("XDG_CACHE_HOME", t.TempDir())
-
-		wrongSHA256 := strings.Repeat("0", 64)
-
-		path, err := ts.ExtractEmbeddedNode(context.Background(), compressed, wrongSHA256)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "integrity check failed")
-		assert.Empty(t, path)
-	})
-
-	t.Run("fails on corrupted gzip data", func(t *testing.T) {
-		t.Setenv("XDG_CACHE_HOME", t.TempDir())
-
-		path, err := ts.ExtractEmbeddedNode(context.Background(), []byte("not gzip at all"), expectedSHA256)
-		require.Error(t, err)
-		assert.Empty(t, path)
-	})
-}
-
-func TestGetNPMCLI(t *testing.T) {
-	t.Run("ctx bytes that are not the pinned npm are rejected", func(t *testing.T) {
-		t.Setenv("XDG_CACHE_HOME", t.TempDir())
-
-		compressed, _ := tarGzNPM(t, map[string]string{"bin/npm-cli.js": "// cli"})
-
-		ctx := ts.NewContextWithTSOptions(context.Background(), common.TypeScriptOptions{
-			EmbeddedNPMCompressed: compressed,
-		})
-
-		_, err := ts.GetNPMCLI(ctx)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "integrity check failed")
-	})
-
-	t.Run("empty ctx options fall through to download cache", func(t *testing.T) {
-		cacheDir := populateDownloadCache(t)
-
-		path, err := ts.GetNPMCLI(context.Background())
-		require.NoError(t, err)
-		assert.Equal(t, filepath.Join(cacheDir, "npm", "bin", "npm-cli.js"), path)
-	})
-}
-
-func TestGetNodeBinary(t *testing.T) {
-	payload := []byte("#!/bin/sh\necho fake-node\n")
-	compressed, _ := gzipPayload(t, payload)
-
-	t.Run("explicit binary path wins over ctx data without extraction", func(t *testing.T) {
-		cacheHome := t.TempDir()
-		t.Setenv("XDG_CACHE_HOME", cacheHome)
-
-		explicit := filepath.Join(t.TempDir(), "node")
-		require.NoError(t, os.WriteFile(explicit, payload, 0o755))
-
-		ctx := ts.NewContextWithTSOptions(context.Background(), common.TypeScriptOptions{
-			EmbeddedNodeCompressed: compressed,
-		})
-
-		path, err := ts.GetNodeBinary(ctx, explicit)
-		require.NoError(t, err)
-		assert.Equal(t, explicit, path)
-		assertNoEmbeddedCacheDirs(t, cacheHome)
-	})
-
-	t.Run("missing explicit binary path is an error", func(t *testing.T) {
-		_, err := ts.GetNodeBinary(context.Background(), filepath.Join(t.TempDir(), "missing"))
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "node binary not found")
-	})
-
-	t.Run("ctx bytes that are not the pinned release are rejected", func(t *testing.T) {
-		t.Setenv("XDG_CACHE_HOME", t.TempDir())
-
-		ctx := ts.NewContextWithTSOptions(context.Background(), common.TypeScriptOptions{
-			EmbeddedNodeCompressed: compressed,
-		})
-
-		path, err := ts.GetNodeBinary(ctx, "")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "integrity check failed")
-		assert.Empty(t, path)
-	})
-
-	t.Run("empty ctx options fall through to download cache", func(t *testing.T) {
-		cacheDir := populateDownloadCache(t)
-
-		path, err := ts.GetNodeBinary(ts.NewContextWithTSOptions(context.Background(), common.TypeScriptOptions{}), "")
-		require.NoError(t, err)
-		assert.Equal(t, filepath.Join(cacheDir, nodelock.BinaryName(runtime.GOOS)), path)
-	})
-}
-
-func assertNoEmbeddedCacheDirs(t *testing.T, cacheHome string) {
-	t.Helper()
-
-	var matches []string
-	require.NoError(t, filepath.WalkDir(cacheHome, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if strings.HasPrefix(d.Name(), "embedded-") {
-			matches = append(matches, path)
-		}
-
-		return nil
-	}))
-	assert.Empty(t, matches)
-}
-
-func assertOnlyEntries(t *testing.T, dir string, names ...string) {
-	t.Helper()
-
-	paths, err := filepath.Glob(filepath.Join(dir, "*"))
-	require.NoError(t, err)
-
-	actual := lo.Map(paths, func(path string, _ int) string { return filepath.Base(path) })
-
-	assert.ElementsMatch(t, names, actual, "no temporary files must be left behind")
 }

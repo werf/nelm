@@ -325,7 +325,7 @@ nelm release install [options...] -n namespace -r release [chart-dir|chart-repo-
 
 - `--node-binary-path` (default: `""`)
 
-  Path to the Node\.js binary to use instead of the embedded or auto\-downloaded one\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_RELEASE\_INSTALL\_NODE\_BINARY\_PATH
+  Path to the Node\.js binary to use instead of the one in PATH\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_RELEASE\_INSTALL\_NODE\_BINARY\_PATH
 
 
 **Progress options:**
@@ -1051,7 +1051,7 @@ nelm release plan install [options...] -n namespace -r release [chart-dir|chart-
 
 - `--node-binary-path` (default: `""`)
 
-  Path to the Node\.js binary to use instead of the embedded or auto\-downloaded one\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_RELEASE\_PLAN\_INSTALL\_NODE\_BINARY\_PATH
+  Path to the Node\.js binary to use instead of the one in PATH\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_RELEASE\_PLAN\_INSTALL\_NODE\_BINARY\_PATH
 
 
 **Progress options:**
@@ -2244,7 +2244,7 @@ nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive
 
 - `--node-binary-path` (default: `""`)
 
-  Path to the Node\.js binary to use instead of the embedded or auto\-downloaded one\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_LINT\_NODE\_BINARY\_PATH
+  Path to the Node\.js binary to use instead of the one in PATH\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_LINT\_NODE\_BINARY\_PATH
 
 
 **Progress options:**
@@ -2615,7 +2615,7 @@ nelm chart render [options...] [chart-dir|chart-repo-name/chart-name|chart-archi
 
 - `--node-binary-path` (default: `""`)
 
-  Path to the Node\.js binary to use instead of the embedded or auto\-downloaded one\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_RENDER\_NODE\_BINARY\_PATH
+  Path to the Node\.js binary to use instead of the one in PATH\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_RENDER\_NODE\_BINARY\_PATH
 
 
 **Chart repository options:**
@@ -3138,7 +3138,7 @@ nelm chart pack [CHART_PATH] [...] [flags]
 
 - `--node-binary-path` (default: `""`)
 
-  Path to the Node\.js binary to use instead of the embedded or auto\-downloaded one\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_PACK\_NODE\_BINARY\_PATH
+  Path to the Node\.js binary to use instead of the one in PATH\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_PACK\_NODE\_BINARY\_PATH
 
 
 **Other options:**
@@ -4395,7 +4395,7 @@ nelm chart ts init [PATH]
 
 - `--node-binary-path` (default: `""`)
 
-  Path to the Node\.js binary to use instead of the embedded or auto\-downloaded one\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_TS\_INIT\_NODE\_BINARY\_PATH
+  Path to the Node\.js binary to use instead of the one in PATH\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_TS\_INIT\_NODE\_BINARY\_PATH
 
 
 **Other options:**
@@ -4431,7 +4431,7 @@ nelm chart ts build [PATH]
 
 - `--node-binary-path` (default: `""`)
 
-  Path to the Node\.js binary to use instead of the embedded or auto\-downloaded one\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_TS\_BUILD\_NODE\_BINARY\_PATH
+  Path to the Node\.js binary to use instead of the one in PATH\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_TS\_BUILD\_NODE\_BINARY\_PATH
 
 
 **Other options:**

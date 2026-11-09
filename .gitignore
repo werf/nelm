@@ -11,9 +11,6 @@
 /go.work.sum
 node_modules/
 !/pkg/ts/testdata/**/node_modules/
-/pkg/ts/embed/*/*/node.gz
-/pkg/ts/embed/*/*/npm.tar.gz
-/pkg/ts/embed/*/*/*.tmp
 /.opencode/
 /.sisyphus
 

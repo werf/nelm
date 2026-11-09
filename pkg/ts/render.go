@@ -25,13 +25,13 @@ func RenderChart(ctx context.Context, chart helmchart.Accessor, renderedValues c
 		return map[string]string{}, nil
 	}
 
-	if err := BundleChartsRecursive(ctx, chart, chartPath, rebuildBundle, nodeBinaryPath); err != nil {
+	if err := BundleChartsRecursive(ctx, chart, chartPath, rebuildBundle); err != nil {
 		return nil, fmt.Errorf("bundle chart recursive: %w", err)
 	}
 
-	nodeBin, err := getNodeBinary(ctx, nodeBinaryPath)
+	nodeBin, err := findNode(ctx, nodeBinaryPath)
 	if err != nil {
-		return nil, fmt.Errorf("ensure Node.js is available: %w", err)
+		return nil, fmt.Errorf("find Node.js: %w", err)
 	}
 
 	allRendered, err := renderChartRecursive(ctx, chart, renderedValues, chart.Name(), chartPath, tempDirPath, nodeBin)
@@ -216,7 +216,7 @@ func runBundle(ctx context.Context, nodeBin, renderDir string, bundle []byte) er
 	inputPath := filepath.Join(resolvedRenderDir, common.ChartTSInputFile)
 	outputPath := filepath.Join(resolvedRenderDir, common.ChartTSOutputFile)
 
-	cmd := exec.CommandContext(ctx, nodeBin, //nolint:gosec // G204: nodeBin is the pinned Node.js or the one the user passed explicitly
+	cmd := exec.CommandContext(ctx, nodeBin, //nolint:gosec // G204: nodeBin is the Node.js found in PATH or the one the user passed explicitly
 		"--permission",
 		"--allow-fs-read="+inputPath,
 		"--allow-fs-write="+outputPath,

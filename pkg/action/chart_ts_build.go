@@ -63,7 +63,7 @@ func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {
 		return fmt.Errorf("create chart accessor: %w", err)
 	}
 
-	if err = ts.BundleChartsRecursive(ctx, chartAccessor, absPath, true, opts.NodeBinaryPath); err != nil {
+	if err = ts.BundleChartsRecursive(ctx, chartAccessor, absPath, true); err != nil {
 		return fmt.Errorf("process chart: %w", err)
 	}
 

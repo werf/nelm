@@ -106,7 +106,7 @@ type ReleasePlanInstallOptions struct {
 	// NoFinalTracking, when true, disables final tracking operations in the plan that have no
 	// create/update/delete resource operations after them. This speeds up plan generation.
 	NoFinalTracking bool
-	// NodeBinaryPath, if specified, uses this path as the Node.js binary instead of the embedded or auto-downloaded one.
+	// NodeBinaryPath, if specified, uses this path as the Node.js binary instead of the one in PATH.
 	NodeBinaryPath string
 	// PlanArtifactPath, if specified, saves the install plan artifact to this file path.
 	PlanArtifactPath string

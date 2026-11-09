@@ -301,12 +301,7 @@ type ChartLoadOptions struct {
 }
 
 type TypeScriptOptions struct {
-	// EmbeddedNPMCompressed is a gzipped tar of the npm package from the pinned Node.js release, with
-	// paths relative to the package root, as produced by scripts/embed-node.
-	EmbeddedNPMCompressed []byte
-	// EmbeddedNodeCompressed is the gzipped Node.js binary of the pinned Node.js release.
-	EmbeddedNodeCompressed []byte
-	NodeBinaryPath         string
+	NodeBinaryPath string
 }
 
 type helmOptionsContextKey struct{}

@@ -11,9 +11,6 @@ jobs:
   lint:
     uses: ./.github/workflows/_lint.yml
 
-  check_node_lock_upstream:
-    uses: ./.github/workflows/_check_node_lock_upstream.yml
-
   unit:
     uses: ./.github/workflows/_test_unit.yml
     with:
@@ -29,7 +26,6 @@ jobs:
     if: always()
     needs:
       - lint
-      - check_node_lock_upstream
       - coverage_report
     uses: werf/common-ci/.github/workflows/notification.yml@main
     secrets:

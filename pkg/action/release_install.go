@@ -129,7 +129,7 @@ type ReleaseInstallOptions struct {
 	// NoShowNotes, when true, suppresses printing of NOTES.txt after successful installation.
 	// NOTES.txt typically contains usage instructions and next steps.
 	NoShowNotes bool
-	// NodeBinaryPath, if specified, uses this path as the Node.js binary instead of the embedded or auto-downloaded one.
+	// NodeBinaryPath, if specified, uses this path as the Node.js binary instead of the one in PATH.
 	NodeBinaryPath string
 	// PlanArtifactLifetime, specifies how long plan artifact be valid.
 	PlanArtifactLifetime time.Duration

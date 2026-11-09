@@ -17,7 +17,6 @@ vars:
   kubeconformValidationSchemasUpstreamKubeVersion: "1.37.1"
 
   tags: ""
-  buildTags: "{{if .tags}}{{.tags}},{{end}}embednode"
   ldFlags: "-s -w -X github.com/werf/nelm/v2/pkg/common.Brand={{.brand}} -X github.com/werf/nelm/v2/pkg/common.Version={{.version}}"
 
 tasks:
@@ -49,7 +48,7 @@ tasks:
     <<: *build_dev
     cmds:
       - go build -o "{{.outputDir | default (printf "./dist/%s/%s-%s/bin" .version .targetOS .targetArch)}}/{{.brandSlug}}{{if (eq .targetOS "windows")}}.exe{{end}}"
-        -ldflags="{{.ldFlags}}" -tags="{{.buildTags}}" {{.extraGoBuildArgs}} {{.CLI_ARGS}} {{.pkg | default .package}}
+        -ldflags="{{.ldFlags}}" -tags="{{.tags}}" {{.extraGoBuildArgs}} {{.CLI_ARGS}} {{.pkg | default .package}}
 
   _golangci-lint:
     internal: true
@@ -70,9 +69,7 @@ tasks:
   _wormatter:
     internal: true
     cmds:
-      # pkg/ts/embed_ is excluded because wormatter drops the //go:embed directive of a single var
-      # declaration, which would silently produce a binary with an empty embedded Node.js.
-      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work -w /work ghcr.io/werf/wormatter:1.5.0 {{if eq .onlyLint "true"}}-c{{end}} -e ^pkg/helm/ -e ^pkg/ts/embed_ {{.paths | default "cmd/ pkg/"}}
+      - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work -w /work ghcr.io/werf/wormatter:1.5.0 {{if eq .onlyLint "true"}}-c{{end}} -e ^pkg/helm/ {{.paths | default "cmd/ pkg/"}}
     vars:
       onlyLint: '{{.onlyLint | default "false"}}'
       paths: "{{.paths}}"
@@ -118,10 +115,6 @@ tasks:
 
   build:dist:linux:amd64:
     desc: 'Build main release binary for linux/amd64. Important vars: "version".'
-    deps:
-      - task: node:embed
-        vars:
-          platform: "linux/amd64"
     cmds:
       - task: _build:dist
         vars:
@@ -143,10 +136,6 @@ tasks:
 
   build:dist:linux:arm64:
     desc: 'Build main release binary for linux/arm64. Important vars: "version".'
-    deps:
-      - task: node:embed
-        vars:
-          platform: "linux/arm64"
     cmds:
       - task: _build:dist
         vars:
@@ -168,10 +157,6 @@ tasks:
 
   build:dist:darwin:amd64:
     desc: 'Build main release binary for darwin/amd64. Important vars: "version".'
-    deps:
-      - task: node:embed
-        vars:
-          platform: "darwin/amd64"
     cmds:
       - task: _build:dist
         vars:
@@ -192,10 +177,6 @@ tasks:
 
   build:dist:darwin:arm64:
     desc: 'Build main release binary for darwin/arm64. Important vars: "version".'
-    deps:
-      - task: node:embed
-        vars:
-          platform: "darwin/arm64"
     cmds:
       - task: _build:dist
         vars:
@@ -216,10 +197,6 @@ tasks:
 
   build:dist:windows:amd64:
     desc: 'Build main release binary for windows/amd64. Important vars: "version".'
-    deps:
-      - task: node:embed
-        vars:
-          platform: "windows/amd64"
     cmds:
       - task: _build:dist
         vars:
@@ -317,30 +294,6 @@ tasks:
     cmds:
       - docker run --rm -u "$(id -u):$(id -g)" -v $(pwd):/work tmknom/prettier -w "**/*.yaml" "**/*.yml"
 
-  node:embed:
-    desc: 'Download and embed the Node.js binary and npm for one platform. Important vars: "platform".'
-    label: "node:embed {{.platform}}"
-    run: when_changed
-    vars:
-      platform: '{{.platform | default (printf "%s/%s" .os .arch)}}'
-    sources:
-      - pkg/ts/downloader.go
-      - pkg/ts/embedded_node.go
-      - pkg/ts/nodelock/archive.go
-      - pkg/ts/nodelock/data/lock.json
-      - scripts/embed-node/main.go
-    generates:
-      - pkg/ts/embed/{{.platform}}/node.gz
-      - pkg/ts/embed/{{.platform}}/npm.tar.gz
-    cmds:
-      - env -u GOOS -u GOARCH NODE_EMBED_PLATFORM="{{.platform}}" go run ./scripts/embed-node
-
-  node:lock:
-    desc: "Re-pin the Node.js release nelm downloads and embeds, and commit the result. Bump with: task node:lock -- -version 26.14.0."
-    cmds:
-      # Takes the version to pin from the lock itself, so it needs no vars.
-      - go run ./scripts/nodelock {{.CLI_ARGS}}
-
   generate:
     desc: 'Run all generators. Important vars: "paths".'
     run: once
@@ -388,22 +341,11 @@ tasks:
       - lint:prettier
       - lint:golangci-lint
       - lint:validation-schemas
-      - lint:node-lock
 
   lint:validation-schemas:
     desc: 'Check that the committed embedded JSON schema archives match their index and the pinned Kubernetes version. Runs offline. Important vars: "kubeconformValidationSchemasUpstreamKubeVersion".'
     cmds:
       - go run ./scripts/schemagen -kube-version {{.kubeconformValidationSchemasUpstreamKubeVersion}} -verify {{.CLI_ARGS}}
-
-  lint:node-lock:
-    desc: "Check that the committed Node.js lock is well formed and covers the platforms nelm builds for. Runs offline."
-    cmds:
-      - go run ./scripts/nodelock -verify {{.CLI_ARGS}}
-
-  check:node-lock-upstream:
-    desc: "Report whether the Node.js release assets the lock pins still hash to what it records. Needs network, so it is not part of lint: it runs on a schedule."
-    cmds:
-      - go run ./scripts/nodelock -check-upstream {{.CLI_ARGS}}
 
   lint:golangci-lint:
     desc: 'Lint with golangci-lint. Important vars: "paths".'

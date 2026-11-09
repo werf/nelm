@@ -119,7 +119,7 @@ type ChartLintOptions struct {
 	// NoRemoveManualChanges, when true, preserves fields during validation that would be manually added.
 	// Used in the validation dry-run to check resource compatibility.
 	NoRemoveManualChanges bool
-	// NodeBinaryPath, if specified, uses this path as the Node.js binary instead of the embedded or auto-downloaded one.
+	// NodeBinaryPath, if specified, uses this path as the Node.js binary instead of the one in PATH.
 	NodeBinaryPath string
 	// PatchesFiles are paths to patches files (same format as a chart-shipped
 	// patches.yaml) whose rules are applied on top of chart-shipped ones. Rules from

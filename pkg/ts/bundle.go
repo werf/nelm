@@ -20,9 +20,8 @@ import (
 var chartTSEntryPoints = [...]string{common.ChartTSEntryPointTS, common.ChartTSEntryPointJS}
 
 // BundleChartsRecursive builds the bundle of the chart and of its unpacked subcharts, if it is
-// missing or if rebuildBundle is set, installing their dependencies first if needed. nodeBinaryPath
-// is the Node.js binary to install them with instead of the embedded or downloaded one.
-func BundleChartsRecursive(ctx context.Context, chart helmchart.Accessor, path string, rebuildBundle bool, nodeBinaryPath string) error {
+// missing or if rebuildBundle is set, installing their dependencies first if needed.
+func BundleChartsRecursive(ctx context.Context, chart helmchart.Accessor, path string, rebuildBundle bool) error {
 	entrypoint, bundle := getEntrypointAndBundle(chart.RuntimeFiles())
 
 	if entrypoint != "" && (bundle == nil || rebuildBundle) {
@@ -33,7 +32,7 @@ func BundleChartsRecursive(ctx context.Context, chart helmchart.Accessor, path s
 			return fmt.Errorf("get absolute path of TypeScript directory: %w", err)
 		}
 
-		if err := ensureDependencies(ctx, tsDir, nodeBinaryPath); err != nil {
+		if err := ensureDependencies(ctx, tsDir, false); err != nil {
 			return fmt.Errorf("install TypeScript dependencies of chart %q: %w", chart.Name(), err)
 		}
 
@@ -63,7 +62,7 @@ func BundleChartsRecursive(ctx context.Context, chart helmchart.Accessor, path s
 			continue
 		}
 
-		if err := BundleChartsRecursive(ctx, depAcc, depPath, rebuildBundle, nodeBinaryPath); err != nil {
+		if err := BundleChartsRecursive(ctx, depAcc, depPath, rebuildBundle); err != nil {
 			return fmt.Errorf("process dependency %q: %w", depAcc.Name(), err)
 		}
 	}

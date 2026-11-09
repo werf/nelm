@@ -72,7 +72,7 @@ func ChartTSInit(ctx context.Context, opts ChartTSInitOptions) error {
 		return fmt.Errorf("ensure .gitignore: %w", err)
 	}
 
-	if err := ts.RunNPMInstall(ctx, absPath, opts.NodeBinaryPath); err != nil {
+	if err := ts.InstallDependencies(ctx, absPath); err != nil {
 		return fmt.Errorf("install TypeScript dependencies: %w", err)
 	}
 

@@ -1,12 +1,7 @@
 package ts_test
 
 import (
-	"archive/tar"
-	"bytes"
-	"compress/gzip"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -18,11 +13,10 @@ import (
 	"github.com/werf/nelm/v2/pkg/common"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
-	"github.com/werf/nelm/v2/pkg/ts"
-	"github.com/werf/nelm/v2/pkg/ts/nodelock"
 )
 
-const fakeNodeScript = `#!/bin/sh
+const (
+	fakeNodeScript = `#!/bin/sh
 cat > "$0.stdin"
 printf '%s\n' "$@" > "$0.args"
 env > "$0.env"
@@ -33,6 +27,14 @@ for arg; do
   esac
 done
 `
+	// stubScript records its arguments, working directory and $NELM_TEST_CANARY next to itself, and then
+	// runs the body. It uses shell builtins only, as PATH in the tests holds nothing but the stubs.
+	stubScript = `#!/bin/sh
+printf '%s\n' "$@" > "$0.args"
+pwd -P > "$0.pwd"
+printf '%s' "$NELM_TEST_CANARY" > "$0.canary"
+`
+)
 
 type fakeNodeRun struct {
 	args  []string
@@ -41,66 +43,22 @@ type fakeNodeRun struct {
 	stdin string
 }
 
-func gzipPayload(t *testing.T, payload []byte) ([]byte, string) {
-	t.Helper()
-
-	var buf bytes.Buffer
-
-	writer := gzip.NewWriter(&buf)
-	_, err := writer.Write(payload)
-	require.NoError(t, err)
-	require.NoError(t, writer.Close())
-
-	return buf.Bytes(), sha256Hex(payload)
+type stubRun struct {
+	args   []string
+	canary string
+	dir    string
 }
 
-// populateDownloadCache puts a fake Node.js binary and npm where the downloaded release is cached,
-// so that they are used without downloading anything. It returns the cache directory.
-func populateDownloadCache(t *testing.T) string {
+// stubPath makes PATH hold nothing but a new directory and returns it.
+func stubPath(t *testing.T) string {
 	t.Helper()
 
-	if embeddedNodeEnabled {
-		t.Skip("the embedded Node.js takes priority over the download cache")
-	}
+	skipWithoutShell(t)
 
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	binDir := t.TempDir()
+	t.Setenv("PATH", binDir)
 
-	link, err := nodelock.ArchiveURL(runtime.GOOS, runtime.GOARCH)
-	require.NoError(t, err)
-
-	cacheDir, err := ts.GetNodeFolder(link)
-	require.NoError(t, err)
-
-	writeFakeNode(t, filepath.Join(cacheDir, nodelock.BinaryName(runtime.GOOS)))
-
-	npmCLI := filepath.Join(cacheDir, "npm", "bin", "npm-cli.js")
-	require.NoError(t, os.MkdirAll(filepath.Dir(npmCLI), 0o755))
-	require.NoError(t, os.WriteFile(npmCLI, []byte("// npm"), 0o644))
-
-	return cacheDir
-}
-
-func tarGzNPM(t *testing.T, files map[string]string) ([]byte, string) {
-	t.Helper()
-
-	var buf bytes.Buffer
-
-	gzWriter := gzip.NewWriter(&buf)
-	tarWriter := tar.NewWriter(gzWriter)
-	fileSHA256s := map[string]string{}
-
-	for name, content := range files {
-		require.NoError(t, tarWriter.WriteHeader(&tar.Header{Name: name, Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(content))}))
-		_, err := tarWriter.Write([]byte(content))
-		require.NoError(t, err)
-
-		fileSHA256s[name] = sha256Hex([]byte(content))
-	}
-
-	require.NoError(t, tarWriter.Close())
-	require.NoError(t, gzWriter.Close())
-
-	return buf.Bytes(), nodelock.TreeSHA256(fileSHA256s)
+	return binDir
 }
 
 func copyTestChart(t *testing.T) string {
@@ -153,23 +111,50 @@ func readFakeNodeRun(t *testing.T, nodePath string) fakeNodeRun {
 	}
 }
 
-func sha256Hex(data []byte) string {
-	sum := sha256.Sum256(data)
+func readStubRun(t *testing.T, binDir, name string) stubRun {
+	t.Helper()
 
-	return hex.EncodeToString(sum[:])
+	path := filepath.Join(binDir, name)
+
+	args, err := os.ReadFile(path + ".args")
+	require.NoError(t, err, "%s was not run", name)
+
+	dir, err := os.ReadFile(path + ".pwd")
+	require.NoError(t, err)
+
+	canary, err := os.ReadFile(path + ".canary")
+	require.NoError(t, err)
+
+	return stubRun{
+		args:   strings.Split(strings.TrimSuffix(string(args), "\n"), "\n"),
+		canary: string(canary),
+		dir:    strings.TrimSpace(string(dir)),
+	}
+}
+
+func requireStubNotRun(t *testing.T, binDir, name string) {
+	t.Helper()
+
+	require.NoFileExists(t, filepath.Join(binDir, name+".args"), "%s must not be run", name)
+}
+
+func resolvePath(t *testing.T, path string) string {
+	t.Helper()
+
+	resolved, err := filepath.EvalSymlinks(path)
+	require.NoError(t, err)
+
+	return resolved
 }
 
 func skipWithoutShell(t *testing.T) {
 	t.Helper()
 
 	if runtime.GOOS == "windows" {
-		t.Skip("the fake Node.js binary is a shell script")
+		t.Skip("the stubs are shell scripts")
 	}
 }
 
-// writeFakeNode writes a Node.js stand-in that records the arguments, environment, working
-// directory and stdin it was run with next to itself, and writes a manifest to the file given in
-// --output-file, if any.
 func writeFakeNode(t *testing.T, path string) string {
 	t.Helper()
 
@@ -177,4 +162,31 @@ func writeFakeNode(t *testing.T, path string) string {
 	require.NoError(t, os.WriteFile(path, []byte(fakeNodeScript), 0o755))
 
 	return path
+}
+
+// writeFiles creates the files under dir, given their slash-separated paths and contents. A path
+// ending with "/" is created as a directory.
+func writeFiles(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+
+	for name, content := range files {
+		path := filepath.Join(dir, filepath.FromSlash(name))
+
+		if strings.HasSuffix(name, "/") {
+			require.NoError(t, os.MkdirAll(path, 0o755))
+
+			continue
+		}
+
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+	}
+}
+
+// writeStub writes an executable named name into binDir that records how it was run and then runs
+// body.
+func writeStub(t *testing.T, binDir, name, body string) {
+	t.Helper()
+
+	require.NoError(t, os.WriteFile(filepath.Join(binDir, name), []byte(stubScript+body), 0o755))
 }

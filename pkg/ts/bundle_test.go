@@ -55,13 +55,11 @@ func TestBuildBundle(t *testing.T) {
 }
 
 func TestBundleChartsRecursive(t *testing.T) {
-	missingNode := filepath.Join(t.TempDir(), "missing-node")
-
 	t.Run("bundles the chart and its subcharts without installing what is installed", func(t *testing.T) {
 		chartDir := copyTestChart(t)
 		chart := loadChart(t, chartDir)
 
-		require.NoError(t, ts.BundleChartsRecursive(context.Background(), chart, chartDir, false, missingNode))
+		require.NoError(t, ts.BundleChartsRecursive(context.Background(), chart, chartDir, false))
 
 		assert.Contains(t, string(findBundle(t, chart)), "async function render(")
 
@@ -76,12 +74,29 @@ func TestBundleChartsRecursive(t *testing.T) {
 
 		chart := loadChart(t, chartDir)
 
-		require.NoError(t, ts.BundleChartsRecursive(context.Background(), chart, chartDir, false, missingNode))
+		require.NoError(t, ts.BundleChartsRecursive(context.Background(), chart, chartDir, false))
 		assert.Equal(t, "// prebuilt", string(findBundle(t, chart)))
 
-		require.NoError(t, ts.BundleChartsRecursive(context.Background(), chart, chartDir, true, missingNode))
+		require.NoError(t, ts.BundleChartsRecursive(context.Background(), chart, chartDir, true))
 		assert.Contains(t, string(findBundle(t, chart)), "async function render(")
 	})
+}
+
+func TestBundleChartsRecursiveInstallsDependencies(t *testing.T) {
+	binDir := stubPath(t)
+	writeStub(t, binDir, "npm", "")
+
+	chartDir := copyTestChart(t)
+	require.NoError(t, os.RemoveAll(filepath.Join(chartDir, "ts", "node_modules")))
+	require.NoError(t, os.WriteFile(filepath.Join(chartDir, "ts", "package-lock.json"), []byte("{}"), 0o644))
+
+	err := ts.BundleChartsRecursive(context.Background(), loadChart(t, chartDir), chartDir, false)
+	require.Error(t, err, "the stub installs nothing, so the bundle must fail to resolve the dependency")
+	assert.Contains(t, err.Error(), `Could not resolve "fake-chart-ts-sdk"`)
+
+	run := readStubRun(t, binDir, "npm")
+	assert.Equal(t, []string{"ci", "--ignore-scripts", "--no-audit", "--no-fund"}, run.args)
+	assert.Equal(t, resolvePath(t, filepath.Join(chartDir, "ts")), run.dir)
 }
 
 func findBundle(t *testing.T, chart helmchart.Accessor) []byte {
