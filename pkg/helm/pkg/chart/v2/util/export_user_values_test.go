@@ -316,3 +316,24 @@ func TestExportUserValuesGlobalValueOfNestedChartBeforeExportReadingIt(t *testin
 		"a":      map[string]interface{}{"global": map[string]interface{}{"baz": "foo"}, "b": map[string]interface{}{"bar": "foo"}},
 	}, got)
 }
+
+func TestExportUserValuesChainOfManyDependencies(t *testing.T) {
+	c := chainOfExportsChart(200)
+
+	got, _, err := ExportUserValues(c, map[string]interface{}{"src": "exported"}, ExportUserValuesOptions{})
+	require.NoError(t, err)
+
+	for _, dep := range c.Metadata.Dependencies {
+		value, found := userValueAtPath(got, dep.Name+".out")
+		require.True(t, found, dep.Name)
+		assert.Equal(t, "exported", value, dep.Name)
+	}
+}
+
+func BenchmarkSortValuesExports(b *testing.B) {
+	exports := collectUserValuesExports(chainOfExportsChart(200), nil)
+
+	for b.Loop() {
+		sortValuesExports(exports)
+	}
+}
