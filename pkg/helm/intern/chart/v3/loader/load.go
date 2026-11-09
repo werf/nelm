@@ -108,6 +108,8 @@ func LoadFiles(ctx context.Context, files []*archive.BufferedFile) (*chart.Chart
 	}
 	for _, f := range files {
 		switch {
+		case nelmcommon.IsChartTSNodeModulesInTree(f.Name):
+			continue
 		case f.Name == "Chart.yaml":
 			continue
 		case f.Name == "Chart.lock":
@@ -139,8 +141,6 @@ func LoadFiles(ctx context.Context, files []*archive.BufferedFile) (*chart.Chart
 				subChartsKeys = append(subChartsKeys, cname)
 			}
 			subcharts[cname] = append(subcharts[cname], &archive.BufferedFile{Name: fname, ModTime: f.ModTime, Data: f.Data})
-		case nelmcommon.IsChartTSNodeModulesInTree(f.Name):
-			continue
 		case applyWerfExtensions && strings.HasPrefix(f.Name, "ts/"):
 			c.RuntimeFiles = append(c.RuntimeFiles, &chartcommon.File{Name: f.Name, ModTime: f.ModTime, Data: f.Data})
 		case werfdata.IsWerfDataFile(f.Name):
