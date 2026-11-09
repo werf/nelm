@@ -4,6 +4,7 @@ import (
 	"context"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -141,12 +142,19 @@ func TestRunBundleOutput(t *testing.T) {
 		assert.Equal(t, []logEntry{{level: "error", message: "TypeError: boom"}}, logger.entries())
 	})
 
+	// The fake Node.js gets no PATH, so it is given the absolute paths of the tools.
+	ddPath, err := exec.LookPath("dd")
+	require.NoError(t, err)
+
+	sleepPath, err := exec.LookPath("sleep")
+	require.NoError(t, err)
+
 	for name, redirect := range map[string]string{"stdout": " 2>/dev/null", "stderr": " >&2 2>/dev/null"} {
 		t.Run("stops the chart writing too much to "+name, func(t *testing.T) {
 			recordLogs(t)
 
 			nodePath := filepath.Join(t.TempDir(), "node")
-			require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\n/bin/dd if=/dev/zero bs=1048576 count=20"+redirect+"\nexec /bin/sleep 60\n"), 0o755))
+			require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\n"+ddPath+" if=/dev/zero bs=1048576 count=20"+redirect+"\nexec "+sleepPath+" 60\n"), 0o755))
 
 			start := time.Now()
 			err := ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte(""))
