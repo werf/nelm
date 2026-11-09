@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/samber/lo"
-
 	"github.com/werf/nelm/v2/pkg/common"
 	"github.com/werf/nelm/v2/pkg/log"
 )
@@ -39,9 +37,7 @@ func ReleasePlanShow(ctx context.Context, opts ReleasePlanShowOptions) error {
 		return fmt.Errorf("build release plan show options: %w", err)
 	}
 
-	if opts.SecretKey != "" {
-		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
-	}
+	defer setEnvUntilRestore("WERF_SECRET_KEY", opts.SecretKey)()
 
 	var planArtifact *PlanArtifact
 
