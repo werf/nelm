@@ -2,6 +2,7 @@ package ts_test
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -190,6 +191,20 @@ func TestEnsureDependencies(t *testing.T) {
 			},
 			wantErr: []string{"are not installed", `run "npm install" in workspace root`},
 		},
+		"fails when ts is in a workspace matched with braces": {
+			files: map[string]string{
+				"package.json":      `{"workspaces": ["{apps/*,t[sx]}"]}`,
+				"package-lock.json": "{}",
+			},
+			wantErr: []string{`run "npm install" in workspace root`},
+		},
+		"fails when ts is excluded from a workspace and then included again": {
+			files: map[string]string{
+				"pnpm-workspace.yaml": "packages:\n  - '*'\n  - '!ts'\n  - 'ts'\n",
+				"pnpm-lock.yaml":      "",
+			},
+			wantErr: []string{`run "pnpm install" in workspace root`},
+		},
 		"fails when ts is in a yarn classic workspace": {
 			files: map[string]string{
 				"package.json": `{"workspaces": {"packages": ["*"]}}`,
@@ -279,6 +294,26 @@ func TestEnsureDependencies(t *testing.T) {
 		assert.Contains(t, err.Error(), `run "npm ci --ignore-scripts --no-audit --no-fund"`)
 		assert.Contains(t, err.Error(), "exit status 1")
 	})
+}
+
+func TestEnsureDependenciesThroughSymlink(t *testing.T) {
+	binDir := stubPath(t)
+	writeStub(t, binDir, "npm", "")
+
+	repoDir := filepath.Join(t.TempDir(), "repo")
+	writeFiles(t, repoDir, map[string]string{
+		"package.json":               `{"workspaces": ["charts/*/ts"]}`,
+		"package-lock.json":          "{}",
+		"node_modules/":              "",
+		"charts/app/ts/package.json": "{}",
+	})
+
+	linkDir := filepath.Join(t.TempDir(), "app")
+	require.NoError(t, os.Symlink(filepath.Join(repoDir, "charts", "app"), linkDir))
+
+	require.NoError(t, ts.EnsureDependencies(context.Background(), filepath.Join(linkDir, "ts"), false),
+		"the workspace must be found among the ancestors of the symlink target")
+	requireStubNotRun(t, binDir, "npm")
 }
 
 func TestInstallDependencies(t *testing.T) {

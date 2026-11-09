@@ -9,9 +9,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 
+	"github.com/gobwas/glob"
 	"github.com/samber/lo"
 	"sigs.k8s.io/yaml"
 
@@ -58,17 +58,23 @@ func InstallDependencies(ctx context.Context, chartPath string) error {
 }
 
 func ensureDependencies(ctx context.Context, tsDir string, createLockFile bool) error {
-	tsDir, err := filepath.Abs(tsDir)
+	absTSDir, err := filepath.Abs(tsDir)
 	if err != nil {
 		return fmt.Errorf("get absolute path of %s: %w", tsDir, err)
 	}
 
-	if exists, err := fileExists(filepath.Join(tsDir, "package.json")); err != nil {
+	if exists, err := fileExists(filepath.Join(absTSDir, "package.json")); err != nil {
 		return err
 	} else if !exists {
-		log.Default.Debug(ctx, "No package.json in %s, nothing to install", tsDir)
+		log.Default.Debug(ctx, "No package.json in %s, nothing to install", absTSDir)
 
 		return nil
+	}
+
+	// The workspace the chart belongs to is found among the ancestors of where it really is.
+	tsDir, err = filepath.EvalSymlinks(absTSDir)
+	if err != nil {
+		return fmt.Errorf("resolve symlinks in %s: %w", absTSDir, err)
 	}
 
 	root, err := findWorkspaceRoot(tsDir)
@@ -137,7 +143,12 @@ func findWorkspaceRoot(tsDir string) (string, error) {
 			return "", fmt.Errorf("get path of %s relative to %s: %w", tsDir, dir, err)
 		}
 
-		if matchesWorkspacePatterns(patterns, filepath.ToSlash(relPath)) {
+		matched, err := matchesWorkspacePatterns(patterns, filepath.ToSlash(relPath))
+		if err != nil {
+			return "", fmt.Errorf("match workspace patterns of %s: %w", dir, err)
+		}
+
+		if matched {
 			return dir, nil
 		}
 
@@ -197,27 +208,26 @@ func detectPackageManager(root string) (packageManager, error) {
 	}
 }
 
-// matchesWorkspacePatterns reports whether relPath, slash-separated, is matched by a workspace glob
-// pattern and not excluded by a "!"-prefixed one.
-func matchesWorkspacePatterns(patterns []string, relPath string) bool {
-	var included, excluded bool
+// matchesWorkspacePatterns reports whether relPath, slash-separated, is matched by the workspace glob
+// patterns, where a "!"-prefixed pattern excludes what the patterns before it included.
+func matchesWorkspacePatterns(patterns []string, relPath string) (bool, error) {
+	var included bool
 
 	for _, pattern := range patterns {
 		negated := strings.HasPrefix(pattern, "!")
 		pattern = strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(pattern, "!"), "./"), "/")
 
-		if !workspaceGlobToRegexp(pattern).MatchString(relPath) {
-			continue
+		matched, err := matchWorkspacePattern(pattern, relPath)
+		if err != nil {
+			return false, err
 		}
 
-		if negated {
-			excluded = true
-		} else {
-			included = true
+		if matched {
+			included = !negated
 		}
 	}
 
-	return included && !excluded
+	return included, nil
 }
 
 func readWorkspacePatterns(dir string) ([]string, error) {
@@ -349,6 +359,24 @@ func isYarnBerry(root string, manager packageManager) (bool, error) {
 	return major >= 2, nil
 }
 
+func matchWorkspacePattern(pattern, relPath string) (bool, error) {
+	compiled, err := glob.Compile(pattern, '/')
+	if err != nil {
+		return false, fmt.Errorf("compile workspace pattern %q: %w", pattern, err)
+	}
+
+	if compiled.Match(relPath) {
+		return true, nil
+	}
+
+	// Unlike in gobwas/glob, "**/" also matches no directories at all.
+	if withoutGlobstars := strings.ReplaceAll(pattern, "**/", ""); withoutGlobstars != pattern {
+		return matchWorkspacePattern(withoutGlobstars, relPath)
+	}
+
+	return false, nil
+}
+
 func readPackageJSON(dir string) (*packageJSON, bool, error) {
 	path := filepath.Join(dir, "package.json")
 
@@ -398,33 +426,4 @@ func validatePackageManager(manager packageManager, field string) (packageManage
 	}
 
 	return manager, nil
-}
-
-func workspaceGlobToRegexp(pattern string) *regexp.Regexp {
-	var expr strings.Builder
-
-	expr.WriteString("^")
-
-	for i := 0; i < len(pattern); i++ {
-		switch {
-		case strings.HasPrefix(pattern[i:], "**/"):
-			expr.WriteString("(?:.*/)?")
-
-			i += 2
-		case strings.HasPrefix(pattern[i:], "**"):
-			expr.WriteString(".*")
-
-			i++
-		case pattern[i] == '*':
-			expr.WriteString("[^/]*")
-		case pattern[i] == '?':
-			expr.WriteString("[^/]")
-		default:
-			expr.WriteString(regexp.QuoteMeta(pattern[i : i+1]))
-		}
-	}
-
-	expr.WriteString("$")
-
-	return regexp.MustCompile(expr.String())
 }
