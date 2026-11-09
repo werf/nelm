@@ -13,6 +13,7 @@ import (
 
 	"github.com/werf/nelm/v2/pkg/common"
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	chartcommonutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common/util"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
 	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	"github.com/werf/nelm/v2/pkg/log"
@@ -606,7 +607,7 @@ func TestRenderChart_WerfDataDependencyEquivalence(t *testing.T) {
 
 				wantStoredValues := dependencyValues
 				if tt.storedWithoutNulls {
-					wantStoredValues, err = deepCopyValues(dependencyValues)
+					wantStoredValues, err = chartcommonutil.DeepCopyValues(dependencyValues)
 					require.NoError(t, err)
 
 					deleteNulls(wantStoredValues)

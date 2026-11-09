@@ -14,6 +14,7 @@ import (
 	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	chartcommonutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common/util"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
 	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	chartv2util "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
@@ -197,7 +198,7 @@ func dependencyHasWerfDataExtraValues(chrt helmchart.Charter) bool {
 // dependencyValuesLayer returns a values layer of a dependency at its path in the root chart
 // values, without the values that its parent charts override.
 func dependencyValuesLayer(layer valuesLayer, depPath chartValuesPath) (valuesLayer, error) {
-	vals, err := deepCopyValues(layer.Values)
+	vals, err := chartcommonutil.DeepCopyValues(layer.Values)
 	if err != nil {
 		return valuesLayer{}, fmt.Errorf("copy dependency values layer: %w", err)
 	}
@@ -209,7 +210,7 @@ func dependencyValuesLayer(layer valuesLayer, depPath chartValuesPath) (valuesLa
 		replacedPaths = append(replacedPaths, append(slices.Clone(depPath.path), path...))
 	}
 
-	ancestorValues, err := deepCopyValues(depPath.ancestorValues)
+	ancestorValues, err := chartcommonutil.DeepCopyValues(depPath.ancestorValues)
 	if err != nil {
 		return valuesLayer{}, fmt.Errorf("copy ancestor values: %w", err)
 	}
@@ -337,7 +338,7 @@ func werfDataLayers(ctx context.Context, chrt helmchart.Charter, withoutServiceV
 		chartSecretValues = defaultSecretValuesOf(c.SecretsRuntimeData)
 	}
 
-	chartSecretValuesLayer, err := deepCopyValues(chartSecretValues)
+	chartSecretValuesLayer, err := chartcommonutil.DeepCopyValues(chartSecretValues)
 	if err != nil {
 		return nil, fmt.Errorf("copy chart secret values: %w", err)
 	}
