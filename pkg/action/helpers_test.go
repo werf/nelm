@@ -523,6 +523,23 @@ func pushChartCopyTestImage(t *testing.T, repo, tag string, architectures ...str
 	return chartCopyTestImage{Children: manifests, Desc: indexDesc, Ref: fmt.Sprintf("%s:%s@%s", repo, tag, indexDesc.Digest)}
 }
 
+func renderSecretValuesTypesChart(t *testing.T) {
+	t.Helper()
+
+	chartDir := newSecretValuesTypesChart(t)
+	encryptSecretValuesTypesFile(t, filepath.Join(chartDir, "secret-values.yaml"))
+
+	_, err := ChartRender(context.Background(), ChartRenderOptions{
+		Chart:         chartDir,
+		OutputNoPrint: true,
+		SecretValuesOptions: common.SecretValuesOptions{
+			SecretKey: secretValuesTypesSecretKey,
+		},
+		TempDirPath: t.TempDir(),
+	})
+	require.NoError(t, err)
+}
+
 // requireChartCopyTestImage checks that the image is in repo under tag with all its manifests.
 func requireChartCopyTestImage(t *testing.T, repo, tag string, image chartCopyTestImage) {
 	t.Helper()

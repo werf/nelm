@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/samber/lo"
-
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/v2/pkg/legacy/secret"
 	"github.com/werf/nelm/v2/pkg/log"
@@ -31,9 +29,7 @@ func SecretFileEdit(ctx context.Context, filePath string, opts SecretFileEditOpt
 		return fmt.Errorf("build secret file edit options: %w", err)
 	}
 
-	if opts.SecretKey != "" {
-		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
-	}
+	defer setEnvUntilRestore("WERF_SECRET_KEY", opts.SecretKey)()
 
 	if err := secret.SecretEdit(ctx, secrets_manager.Manager, opts.SecretWorkDir, opts.TempDirPath, filePath, false); err != nil {
 		return fmt.Errorf("secret edit: %w", err)
