@@ -102,7 +102,7 @@ func TestRenderChart_ExportAndImportValuesEdgeCases(t *testing.T) {
 		{
 			name: "null imported to dependency path resets dependency values",
 			opts: layeredValuesRenderOptions{Set: []string{"a.out=null"}},
-			want: map[string]interface{}{"b.repo": "a-values"},
+			want: map[string]interface{}{"b.repo": "parent-values-yaml"},
 		},
 		{
 			name: "set-json replaces import child map exported from values file",
@@ -288,6 +288,52 @@ func TestRenderChart_ExportGlobalValuesFromNestedChart(t *testing.T) {
 				assert.Equal(t, tt.wantReleaseConfig, result.ReleaseConfig)
 			}
 		})
+	}
+}
+
+func TestRenderChart_ExportValuesIndependentOfDependencyOrder(t *testing.T) {
+	tests := []struct {
+		name string
+		opts layeredValuesRenderOptions
+		want map[string]interface{}
+	}{
+		{
+			name: "value from values.yaml is exported through exports to sibling dependencies",
+			want: map[string]interface{}{
+				"a.fromB":               "parent-values-yaml",
+				"b.foo":                 "parent-values-yaml",
+				"c.bar":                 "parent-values-yaml",
+				"mid.reader.fromWriter": "parent-values-yaml",
+				"mid.writer.v":          "parent-values-yaml",
+			},
+		},
+		{
+			name: "value from set is exported through exports to sibling dependencies",
+			opts: layeredValuesRenderOptions{Set: []string{"g.bar=set", "g.src=set"}},
+			want: map[string]interface{}{"a.fromB": "set", "mid.reader.fromWriter": "set"},
+		},
+		{
+			name: "later export to same child path wins",
+			want: map[string]interface{}{"c.same": "second"},
+		},
+	}
+
+	chartDirs := map[string]string{
+		"listed order":   "export-order-chart",
+		"reversed order": reversedDependenciesChartDir(t, "export-order-chart"),
+	}
+
+	for _, tt := range tests {
+		for order, chartDir := range chartDirs {
+			t.Run(tt.name+"/"+order, func(t *testing.T) {
+				tt.opts.ChartDir = chartDir
+				vals := renderedChartValues(t, renderLayeredValuesChart(t, tt.opts))
+
+				for path, want := range tt.want {
+					assert.Equal(t, want, valueAtPath(t, vals, path), path)
+				}
+			})
+		}
 	}
 }
 

@@ -494,103 +494,6 @@ func processDependencyImportExportValues(c *chart.Chart, merge bool) error {
 	return nil
 }
 
-func processDependencyExportValues(c *chart.Chart, merge bool) error {
-	if err := processExportValues(c, merge); err != nil {
-		return fmt.Errorf("process export values: %w", err)
-	}
-
-	for _, d := range c.Dependencies() {
-		if err := processDependencyExportValues(d, merge); err != nil {
-			return fmt.Errorf("process dependency export values recursively: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func processExportValues(c *chart.Chart, merge bool) error {
-	if c.Parent() == nil || c.Parent().Metadata.Dependencies == nil {
-		return nil
-	}
-
-	r := dependencyForChart(c)
-	if r == nil {
-		return nil
-	}
-
-	pvals, err := valuesForChart(c.Parent(), merge)
-	if err != nil {
-		return fmt.Errorf("get parent values: %w", err)
-	}
-
-	globalPvals := pvals
-	if c.Parent().Parent() != nil && exportsGlobalValues(r) {
-		if globalPvals, err = valuesWithRootGlobalsForChart(c.Parent(), merge); err != nil {
-			return fmt.Errorf("get parent values with root chart globals: %w", err)
-		}
-	}
-
-	cvals, err := valuesForChart(c, merge)
-	if err != nil {
-		return fmt.Errorf("get chart values: %w", err)
-	}
-
-	exportedValues, err := getExportedValues(c.Parent().Name(), r, pvals, globalPvals, merge)
-	if err != nil {
-		return fmt.Errorf("get exported values: %w", err)
-	}
-
-	if merge {
-		c.Values = util.MergeTables(deepCopyMap(exportedValues), deepCopyMap(cvals))
-	} else {
-		c.Values = util.CoalesceTables(deepCopyMap(exportedValues), deepCopyMap(cvals))
-	}
-
-	if err := syncChartOverridesToParentsValues(c, deepCopyMap(exportedValues), merge); err != nil {
-		return fmt.Errorf("sync chart overrides to parent values: %w", err)
-	}
-
-	return nil
-}
-
-func getExportedValues(parentName string, r *chart.Dependency, pvals, globalPvals common.Values, merge bool) (map[string]interface{}, error) {
-	b := make(map[string]interface{})
-	var normalizedExportValues []interface{}
-
-	for _, rev := range dependencyExportValues(r) {
-		parent, child, err := parseExportValues(rev)
-		if err != nil {
-			slog.Warn(
-				"invalid ExportValues definition",
-				slog.String("chart", parentName),
-				slog.String("dependency", r.Name),
-				slog.Any("error", err),
-			)
-			continue
-		}
-
-		normalizedExportValues = append(normalizedExportValues, map[string]string{
-			"parent": parent,
-			"child":  child,
-		})
-
-		childValMap, ok := valueMapFromExport(parentName, r.Name, lo.Ternary(isGlobalValuesPath(parent), globalPvals, pvals), parent, child)
-		if !ok {
-			continue
-		}
-
-		if merge {
-			b = util.MergeTables(deepCopyMap(childValMap), b)
-		} else {
-			b = util.CoalesceTables(deepCopyMap(childValMap), b)
-		}
-	}
-
-	setDependencyExportValues(r, normalizedExportValues)
-
-	return b, nil
-}
-
 func valueMapFromExport(parentChartName, dependencyName string, pvals common.Values, parent, child string) (map[string]interface{}, bool) {
 	vm, err := pvals.Table(parent)
 	if err == nil {
@@ -782,8 +685,8 @@ func collectUserValuesExports(c *chart.Chart, chartPath string) []userValuesExpo
 		dep := getAliasDependency(c.Dependencies(), req)
 		inRange := dep != nil
 		// processDependencyEnabled keeps a chart that matches no dependency by name and version range,
-		// and processExportValues applies the export-values of the non-alias dependency with its name to
-		// it, so they are applied here too. Such a chart is recursed into in the loop above.
+		// and prepareChartValuesExports collects the export-values of the non-alias dependency with its
+		// name for it, so they are applied here too. Such a chart is recursed into in the loop above.
 		if !inRange && req.Alias == "" {
 			dep, _ = lo.Find(c.Dependencies(), func(d *chart.Chart) bool {
 				return d.Name() == req.Name && !chartMatchesDependency(d, c.Metadata.Dependencies)
