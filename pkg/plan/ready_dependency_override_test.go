@@ -158,6 +158,30 @@ func TestReadyDependencyDoesNotForceSkipCreateAbsentTarget(t *testing.T) {
 		"fail mode must remain the resource's own value when not forced")
 }
 
+func TestReadyDependencyDoesNotForceTrackingWhenDependentUnchanged(t *testing.T) {
+	targetSpec := readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil)
+	target := readyDepInstallableResource(targetSpec, statestore.WaitUntilResourceReady, statestore.IgnoreAndContinueDeployProcess)
+
+	dependentSpec := readyDepConfigMapSpec("dependent", readyDepReleaseNamespace, nil)
+	dependent := readyDependentResource("target", "")
+
+	infos := buildReadyDepInfos(t, target, dependent, func(cf *fake.ClientFactory) {
+		readyDepCreateInCluster(t, cf, targetSpec)
+		readyDepCreateInCluster(t, cf, dependentSpec)
+	})
+
+	targetInfo := findInfo(t, infos, "target")
+	require.Equal(t, plan.ResourceInstallTypeNone, targetInfo.MustInstall, "target must be an unchanged no-op")
+	require.Equal(t, plan.ResourceInstallTypeNone, findInfo(t, infos, "dependent").MustInstall, "dependent must be an unchanged no-op")
+	require.False(t, targetInfo.MustTrackReadiness, "unchanged target of an unchanged dependent must not be tracked")
+	require.Equal(t, statestore.IgnoreAndContinueDeployProcess, targetInfo.FailMode,
+		"fail mode must remain the resource's own value when not forced")
+
+	p, err := plan.BuildPlan(context.Background(), infos, nil, nil, readyDepReleaseNamespace, plan.BuildPlanOptions{})
+	require.NoError(t, err)
+	require.False(t, plan.PlanTriggersRelease(p), "a no-op deploy must not trigger a new release revision")
+}
+
 func TestReadyDependencyDoesNotForceUnmatchedTarget(t *testing.T) {
 	target := readyDepInstallableResource(
 		readyDepConfigMapSpec("target", readyDepReleaseNamespace, nil),
