@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/samber/lo"
 
@@ -106,4 +107,29 @@ func mergeUserGlobals(higher, lower map[string]interface{}) map[string]interface
 	}
 
 	return lower
+}
+
+func newUserValuesExport(chartPath, depPath, parent, child string) userValuesExport {
+	export := userValuesExport{
+		ChildPath:        joinNonEmptyPath(depPath, child),
+		ParentPath:       joinNonEmptyPath(chartPath, parent),
+		ToDependencyRoot: child == "",
+	}
+
+	if chartPath != "" && isGlobalValuesPath(parent) {
+		export.GlobalPaths = userValuesGlobalPaths(chartPath)
+		export.ParentPath = parent
+	}
+
+	return export
+}
+
+// valuesExportParentPaths returns the paths from the root chart that the export reads.
+func valuesExportParentPaths(export userValuesExport) []string {
+	parentPaths := []string{export.ParentPath}
+	for _, globalPath := range export.GlobalPaths {
+		parentPaths = append(parentPaths, globalPath+strings.TrimPrefix(export.ParentPath, common.GlobalKey))
+	}
+
+	return parentPaths
 }

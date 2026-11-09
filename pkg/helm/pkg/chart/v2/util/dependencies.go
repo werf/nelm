@@ -99,8 +99,11 @@ func ExportUserValues(c *chart.Chart, v map[string]interface{}, opts ExportUserV
 
 	deleteUserValuesAtPaths(vals, opts.ReplacedPaths)
 
+	exports := collectUserValuesExports(c, "")
+
 	var skipped []string
-	for _, export := range sortUserValuesExports(collectUserValuesExports(c, "")) {
+	for _, i := range sortValuesExports(exports) {
+		export := exports[i]
 		value, found, err := userValuesExportParentValue(vals, export)
 		if err != nil {
 			return nil, nil, fmt.Errorf("get value %q: %w", export.ParentPath, err)
@@ -799,18 +802,7 @@ func collectUserValuesExports(c *chart.Chart, chartPath string) []userValuesExpo
 				continue
 			}
 
-			export := userValuesExport{
-				ChildPath:        joinNonEmptyPath(depPath, child),
-				ParentPath:       joinNonEmptyPath(chartPath, parent),
-				ToDependencyRoot: child == "",
-			}
-
-			if chartPath != "" && isGlobalValuesPath(parent) {
-				export.GlobalPaths = userValuesGlobalPaths(chartPath)
-				export.ParentPath = parent
-			}
-
-			exports = append(exports, export)
+			exports = append(exports, newUserValuesExport(chartPath, depPath, parent, child))
 		}
 
 		if inRange {
@@ -827,12 +819,12 @@ func chartMatchesDependency(c *chart.Chart, reqs []*chart.Dependency) bool {
 	})
 }
 
-// sortUserValuesExports orders the exports so that each export comes after the exports that write
-// to its parent path, e.g. when its parent path is the child path of an export to a sibling
-// dependency listed after it, and after the exports listed before it that write to its child path.
-// Otherwise the order is kept. A cycle is broken at its first listed export.
-func sortUserValuesExports(exports []userValuesExport) []userValuesExport {
-	sorted := make([]userValuesExport, 0, len(exports))
+// sortValuesExports returns the indexes of the exports in the order to apply them: each export comes
+// after the exports that write to its parent path, e.g. when its parent path is the child path of an
+// export to a sibling dependency listed after it, and after the exports listed before it that write
+// to its child path. Otherwise the order is kept. A cycle is broken at its first listed export.
+func sortValuesExports(exports []userValuesExport) []int {
+	sorted := make([]int, 0, len(exports))
 	done := make([]bool, len(exports))
 
 	for len(sorted) < len(exports) {
@@ -853,17 +845,14 @@ func sortUserValuesExports(exports []userValuesExport) []userValuesExport {
 		}
 
 		done[next] = true
-		sorted = append(sorted, exports[next])
+		sorted = append(sorted, next)
 	}
 
 	return sorted
 }
 
 func exportWaitsForOtherExports(exports []userValuesExport, done []bool, i int) bool {
-	parentPaths := []string{exports[i].ParentPath}
-	for _, globalPath := range exports[i].GlobalPaths {
-		parentPaths = append(parentPaths, globalPath+strings.TrimPrefix(exports[i].ParentPath, common.GlobalKey))
-	}
+	parentPaths := valuesExportParentPaths(exports[i])
 
 	for j := range exports {
 		if done[j] || j == i {
