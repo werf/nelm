@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	stdlog "log"
+	"log/slog"
 	"os"
 
 	cdlog "github.com/containerd/log"
@@ -41,6 +42,10 @@ func SetupLogging(ctx context.Context, logLevel log.Level, opts SetupLoggingOpti
 	if opts.LogWidth > 0 {
 		logboek.Context(ctx).Streams().SetWidth(opts.LogWidth)
 	}
+
+	// Must precede the standard library logger setup below: slog.SetDefault also redirects the
+	// standard library logger to this handler.
+	slog.SetDefault(slog.New(log.NewSlogHandler(ctx)))
 
 	spew.Config.DisablePointerAddresses = true
 	spew.Config.DisableCapacities = true
