@@ -194,6 +194,53 @@ func TestEnsureDependencies(t *testing.T) {
 			wantManager: "npm",
 			wantArgs:    npmCI,
 		},
+		"installs into ts excluded by a negated character class": {
+			files: map[string]string{
+				"package.json":         `{"workspaces": ["*", "!t[!x]"]}`,
+				"ts/package-lock.json": "{}",
+			},
+			wantManager: "npm",
+			wantArgs:    npmCI,
+		},
+		"installs into ts in braces without alternatives, which are literal": {
+			files: map[string]string{
+				"package.json":         `{"workspaces": ["{ts}"]}`,
+				"ts/package-lock.json": "{}",
+			},
+			wantManager: "npm",
+			wantArgs:    npmCI,
+		},
+		"installs into ts under a test directory, which pnpm never takes into a workspace": {
+			files: map[string]string{
+				"pnpm-workspace.yaml":    "packages:\n  - '**'\n",
+				"pnpm-lock.yaml":         "",
+				"test/ts/package.json":   packageJSON,
+				"test/ts/pnpm-lock.yaml": "",
+			},
+			tsDir:       "test/ts",
+			wantManager: "pnpm",
+			wantArgs:    pnpmFrozen,
+		},
+		"installs into ts under a dot directory that a pnpm exclusion matches": {
+			files: map[string]string{
+				"pnpm-workspace.yaml":     "packages:\n  - '.helm/*'\n  - '!**/ts'\n",
+				"pnpm-lock.yaml":          "",
+				".helm/ts/package.json":   packageJSON,
+				".helm/ts/pnpm-lock.yaml": "",
+			},
+			tsDir:       ".helm/ts",
+			wantManager: "pnpm",
+			wantArgs:    pnpmFrozen,
+		},
+		"installs into ts listed in package.json of a pnpm workspace that excludes it": {
+			files: map[string]string{
+				"package.json":         `{"workspaces": ["ts"]}`,
+				"pnpm-workspace.yaml":  "packages:\n  - 'packages/*'\n",
+				"ts/package-lock.json": "{}",
+			},
+			wantManager: "npm",
+			wantArgs:    npmCI,
+		},
 		"ignores workspaces in package.json of a pnpm project": {
 			files: map[string]string{
 				"package.json":         `{"workspaces": ["*"]}`,
@@ -290,6 +337,21 @@ func TestEnsureDependencies(t *testing.T) {
 				"package.json":      `{"workspaces": ["{apps/*,t[sx]}"]}`,
 				"package-lock.json": "{}",
 			},
+			wantErr: []string{`run "npm install" in workspace root`},
+		},
+		"fails when ts is in a workspace matched with a negated character class": {
+			files: map[string]string{
+				"package.json":      `{"workspaces": ["t[!x]"]}`,
+				"package-lock.json": "{}",
+			},
+			wantErr: []string{`run "npm install" in workspace root`},
+		},
+		"fails when ts is in a workspace matched with a numeric range": {
+			files: map[string]string{
+				"package.json":      `{"workspaces": ["chart-{1..3}/ts"]}`,
+				"package-lock.json": "{}",
+			},
+			tsDir:   "chart-2/ts",
 			wantErr: []string{`run "npm install" in workspace root`},
 		},
 		"fails when ts is in a workspace matched with several globstars": {

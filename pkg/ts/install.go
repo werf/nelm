@@ -98,12 +98,7 @@ func ensureDependencies(ctx context.Context, tsDir string, createLockFile bool) 
 		}
 	}
 
-	isPNPMWorkspace, err := fileExists(filepath.Join(root, pnpmWorkspaceFile))
-	if err != nil {
-		return fmt.Errorf("check %s: %w", pnpmWorkspaceFile, err)
-	}
-
-	manager, err := detectPackageManager(root, lo.Ternary(isPNPMWorkspace, packageManagerPNPM, packageManagerNPM))
+	manager, isPNPMWorkspace, err := detectRootPackageManager(root)
 	if err != nil {
 		return fmt.Errorf("detect package manager of %s: %w", root, err)
 	}
@@ -177,7 +172,7 @@ func findWorkspaceRoot(tsDir string) (string, error) {
 			pnpmWorkspaceFound = found
 
 			if found && dir != tsDir {
-				root, err := workspaceRootIfIncluded(dir, relPath, patterns, packageManagerPNPM)
+				root, err := workspaceRootIfIncluded(dir, relPath, patterns, true)
 				if err != nil {
 					return "", fmt.Errorf("check pnpm workspace of %s: %w", dir, err)
 				}
@@ -195,7 +190,7 @@ func findWorkspaceRoot(tsDir string) (string, error) {
 			}
 
 			if len(patterns) > 0 {
-				root, err := workspaceRootIfIncluded(dir, relPath, patterns, packageManagerNPM)
+				root, err := workspaceRootIfIncluded(dir, relPath, patterns, false)
 				if err != nil {
 					return "", fmt.Errorf("check workspace of %s: %w", dir, err)
 				}
@@ -212,10 +207,11 @@ func findWorkspaceRoot(tsDir string) (string, error) {
 	}
 }
 
-// workspaceRootIfIncluded returns dir if the patterns include relPath and the package manager of dir
-// reads them: pnpm only reads pnpm-workspace.yaml, the others only package.json.
-func workspaceRootIfIncluded(dir, relPath string, patterns []string, defaultManager string) (string, error) {
-	included, err := matchesWorkspacePatterns(patterns, relPath)
+// workspaceRootIfIncluded returns dir if the patterns, from pnpm-workspace.yaml if fromPNPMWorkspace
+// or else from package.json, include relPath and the package manager of dir reads them: pnpm only
+// reads pnpm-workspace.yaml, the others only package.json.
+func workspaceRootIfIncluded(dir, relPath string, patterns []string, fromPNPMWorkspace bool) (string, error) {
+	included, err := matchesWorkspacePatterns(patterns, relPath, fromPNPMWorkspace)
 	if err != nil {
 		return "", fmt.Errorf("match workspace patterns of %s: %w", dir, err)
 	}
@@ -224,16 +220,66 @@ func workspaceRootIfIncluded(dir, relPath string, patterns []string, defaultMana
 		return "", nil
 	}
 
-	manager, err := detectPackageManager(dir, defaultManager)
+	manager, _, err := detectRootPackageManager(dir)
 	if err != nil {
 		return "", fmt.Errorf("detect package manager of %s: %w", dir, err)
 	}
 
-	if (manager.name == packageManagerPNPM) != (defaultManager == packageManagerPNPM) {
+	if (manager.name == packageManagerPNPM) != fromPNPMWorkspace {
 		return "", nil
 	}
 
 	return dir, nil
+}
+
+// detectRootPackageManager detects the package manager of root, which defaults to pnpm if root has
+// pnpm-workspace.yaml, and reports whether it has one.
+func detectRootPackageManager(root string) (packageManager, bool, error) {
+	isPNPMWorkspace, err := fileExists(filepath.Join(root, pnpmWorkspaceFile))
+	if err != nil {
+		return packageManager{}, false, fmt.Errorf("check %s: %w", pnpmWorkspaceFile, err)
+	}
+
+	manager, err := detectPackageManager(root, lo.Ternary(isPNPMWorkspace, packageManagerPNPM, packageManagerNPM))
+	if err != nil {
+		return packageManager{}, false, err
+	}
+
+	return manager, isPNPMWorkspace, nil
+}
+
+// matchesWorkspacePatterns reports whether relPath, slash-separated, is matched by a workspace glob
+// pattern and not excluded by a "!" pattern, wherever it is in the list. For pnpm exclusions also
+// match names starting with a dot, and test, tests, node_modules and bower_components directories
+// are never in a workspace.
+func matchesWorkspacePatterns(patterns []string, relPath string, pnpm bool) (bool, error) {
+	pathSegments := strings.Split(relPath, "/")
+
+	if pnpm && lo.Some(pathSegments, []string{"test", "tests", "node_modules", "bower_components"}) {
+		return false, nil
+	}
+
+	var included, excluded bool
+
+	for _, pattern := range patterns {
+		negated := strings.HasPrefix(pattern, "!")
+		pattern = strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(pattern, "!"), "./"), "/")
+
+		for _, expanded := range expandBraces(pattern) {
+			matched, err := matchWorkspaceGlob(strings.Split(expanded, "/"), pathSegments, pnpm && negated)
+			if err != nil {
+				return false, fmt.Errorf("match workspace pattern %q: %w", pattern, err)
+			}
+
+			if matched && negated {
+				excluded = true
+			} else if matched {
+				included = true
+			}
+		}
+	}
+
+	return included && !excluded, nil
 }
 
 // detectPackageManager takes the package manager from the packageManager or devEngines.packageManager
@@ -286,6 +332,100 @@ func detectPackageManager(root, defaultManager string) (packageManager, error) {
 	default:
 		return packageManager{}, fmt.Errorf("lock files of several package managers: %s, set the packageManager field in package.json to choose one", strings.Join(foundLockFiles, ", "))
 	}
+}
+
+// expandBraces expands "{a,b}" alternatives, nested ones included, and "{1..3}" and "{a..c}" ranges
+// into separate patterns. Braces with neither stay as they are.
+func expandBraces(pattern string) []string {
+	start := strings.IndexByte(pattern, '{')
+	if start < 0 {
+		return []string{pattern}
+	}
+
+	depth := 0
+	alternativeStart := start + 1
+
+	var alternatives []string
+
+	for i := start; i < len(pattern); i++ {
+		switch pattern[i] {
+		case '{':
+			depth++
+		case ',':
+			if depth == 1 {
+				alternatives = append(alternatives, pattern[alternativeStart:i])
+				alternativeStart = i + 1
+			}
+		case '}':
+			depth--
+			if depth > 0 {
+				continue
+			}
+
+			if len(alternatives) == 0 {
+				alternatives = braceRange(pattern[start+1 : i])
+			} else {
+				alternatives = append(alternatives, pattern[alternativeStart:i])
+			}
+
+			var expanded []string
+
+			for _, rest := range expandBraces(pattern[i+1:]) {
+				if alternatives == nil {
+					for _, inner := range expandBraces(pattern[start+1 : i]) {
+						expanded = append(expanded, pattern[:start]+"{"+inner+"}"+rest)
+					}
+
+					continue
+				}
+
+				for _, alternative := range alternatives {
+					for _, expandedAlternative := range expandBraces(alternative) {
+						expanded = append(expanded, pattern[:start]+expandedAlternative+rest)
+					}
+				}
+			}
+
+			return expanded
+		}
+	}
+
+	return []string{pattern}
+}
+
+// braceRange expands "1..3" or "a..c", or returns nil for anything else.
+func braceRange(body string) []string {
+	from, to, found := strings.Cut(body, "..")
+	if !found {
+		return nil
+	}
+
+	fromNumber, fromErr := strconv.Atoi(from)
+	toNumber, toErr := strconv.Atoi(to)
+
+	if fromErr == nil && toErr == nil {
+		step := lo.Ternary(fromNumber <= toNumber, 1, -1)
+
+		var values []string
+		for n := fromNumber; n != toNumber+step; n += step {
+			values = append(values, strconv.Itoa(n))
+		}
+
+		return values
+	}
+
+	if len(from) == 1 && len(to) == 1 && isASCIILetter(from[0]) && isASCIILetter(to[0]) {
+		step := lo.Ternary[rune](from[0] <= to[0], 1, -1)
+
+		var values []string
+		for c := rune(from[0]); c != rune(to[0])+step; c += step {
+			values = append(values, string(c))
+		}
+
+		return values
+	}
+
+	return nil
 }
 
 // chooseDevEnginesPackageManager takes the first supported alternative that has a lock file in root,
@@ -346,32 +486,6 @@ func isYarnBerry(root string, manager packageManager) (bool, error) {
 	major, found := versionRangeMajor(manager.version)
 
 	return found && major >= 2, nil
-}
-
-// matchesWorkspacePatterns reports whether relPath, slash-separated, is matched by a workspace glob
-// pattern and not excluded by a "!" pattern, wherever it is in the list.
-func matchesWorkspacePatterns(patterns []string, relPath string) (bool, error) {
-	var included, excluded bool
-
-	for _, pattern := range patterns {
-		negated := strings.HasPrefix(pattern, "!")
-		pattern = strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(pattern, "!"), "./"), "/")
-
-		for _, expanded := range expandBraces(pattern) {
-			matched, err := matchWorkspaceGlob(strings.Split(expanded, "/"), strings.Split(relPath, "/"))
-			if err != nil {
-				return false, fmt.Errorf("match workspace pattern %q: %w", pattern, err)
-			}
-
-			if matched && negated {
-				excluded = true
-			} else if matched {
-				included = true
-			}
-		}
-	}
-
-	return included && !excluded, nil
 }
 
 func readPackageJSONWorkspacePatterns(dir string) ([]string, error) {
@@ -442,47 +556,6 @@ func devEnginesPackageManagers(raw json.RawMessage) ([]packageManager, error) {
 	}), nil
 }
 
-// expandBraces expands "{a,b}" alternatives, nested ones included, into separate patterns.
-func expandBraces(pattern string) []string {
-	start := strings.IndexByte(pattern, '{')
-	if start < 0 {
-		return []string{pattern}
-	}
-
-	depth := 0
-	alternativeStart := start + 1
-
-	var alternatives []string
-
-	for i := start; i < len(pattern); i++ {
-		switch pattern[i] {
-		case '{':
-			depth++
-		case ',':
-			if depth == 1 {
-				alternatives = append(alternatives, pattern[alternativeStart:i])
-				alternativeStart = i + 1
-			}
-		case '}':
-			depth--
-			if depth > 0 {
-				continue
-			}
-
-			alternatives = append(alternatives, pattern[alternativeStart:i])
-
-			var expanded []string
-			for _, alternative := range alternatives {
-				expanded = append(expanded, expandBraces(pattern[:start]+alternative+pattern[i+1:])...)
-			}
-
-			return expanded
-		}
-	}
-
-	return []string{pattern}
-}
-
 func hasLockFileOf(root, managerName string) (bool, error) {
 	for _, lockFile := range lockFiles {
 		if lockFile.packageManager != managerName {
@@ -520,34 +593,39 @@ func installArgs(managerName string, yarnBerry, frozen bool) []string {
 	}
 }
 
+func isASCIILetter(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+}
+
 // matchWorkspaceGlob matches path segments against pattern segments. As in the glob libraries of the
-// package managers, wildcards and "**" do not match names starting with a dot.
-func matchWorkspaceGlob(patternSegments, pathSegments []string) (bool, error) {
+// package managers, wildcards and "**" do not match names starting with a dot unless dot is set.
+func matchWorkspaceGlob(patternSegments, pathSegments []string, dot bool) (bool, error) {
 	if len(patternSegments) == 0 {
 		return len(pathSegments) == 0, nil
 	}
 
 	if patternSegments[0] == "**" {
-		if matched, err := matchWorkspaceGlob(patternSegments[1:], pathSegments); err != nil || matched {
+		if matched, err := matchWorkspaceGlob(patternSegments[1:], pathSegments, dot); err != nil || matched {
 			return matched, err
 		}
 
-		if len(pathSegments) == 0 || strings.HasPrefix(pathSegments[0], ".") {
+		if len(pathSegments) == 0 || !dot && strings.HasPrefix(pathSegments[0], ".") {
 			return false, nil
 		}
 
-		return matchWorkspaceGlob(patternSegments, pathSegments[1:])
+		return matchWorkspaceGlob(patternSegments, pathSegments[1:], dot)
 	}
 
 	if len(pathSegments) == 0 {
 		return false, nil
 	}
 
-	if strings.HasPrefix(pathSegments[0], ".") && !strings.HasPrefix(patternSegments[0], ".") {
+	if !dot && strings.HasPrefix(pathSegments[0], ".") && !strings.HasPrefix(patternSegments[0], ".") {
 		return false, nil
 	}
 
-	matched, err := path.Match(patternSegments[0], pathSegments[0])
+	// JavaScript globs negate a character class with "!", path.Match only with "^".
+	matched, err := path.Match(strings.ReplaceAll(patternSegments[0], "[!", "[^"), pathSegments[0])
 	if err != nil {
 		return false, fmt.Errorf("match %q: %w", patternSegments[0], err)
 	}
@@ -556,7 +634,7 @@ func matchWorkspaceGlob(patternSegments, pathSegments []string) (bool, error) {
 		return false, nil
 	}
 
-	return matchWorkspaceGlob(patternSegments[1:], pathSegments[1:])
+	return matchWorkspaceGlob(patternSegments[1:], pathSegments[1:], dot)
 }
 
 func readPNPMWorkspacePatterns(dir string) ([]string, bool, error) {
