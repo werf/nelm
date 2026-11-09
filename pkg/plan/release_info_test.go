@@ -41,6 +41,86 @@ func TestBuildPlan_DeleteReleaseUsesRevisionWithoutReleaseBody(t *testing.T) {
 	assert.Equal(t, 2, deleteConfigs[0].ReleaseRevision)
 }
 
+func TestBuildPlan_FailsStuckPendingRevisionOnlyInFinalStage(t *testing.T) {
+	newRel := newTestReleaseAccessorForPlan(t, "myrelease", "test-ns", 3, helmreleasecommon.StatusPendingUpgrade)
+
+	infos, err := BuildReleaseInfos(context.Background(), common.DeployTypeUpgrade, []helmrel.Accessor{
+		newTestReleaseAccessorForPlan(t, "myrelease", "test-ns", 1, helmreleasecommon.StatusDeployed),
+		newTestReleaseAccessorForPlan(t, "myrelease", "test-ns", 2, helmreleasecommon.StatusPendingUpgrade),
+	}, newRel)
+	require.NoError(t, err)
+
+	builtPlan, err := BuildPlan(context.Background(), nil, nil, infos, "test-ns", BuildPlanOptions{})
+	require.NoError(t, err)
+
+	failOpID := OperationID(OperationTypeUpdateRelease, OperationVersionUpdateRelease, 0, releaseID("test-ns", "myrelease", 2))
+	failOp, found := builtPlan.Operation(failOpID)
+	require.True(t, found)
+
+	cfg, ok := failOp.Config.(*OperationConfigUpdateRelease)
+	require.True(t, ok)
+	assert.Equal(t, helmreleasecommon.StatusFailed.String(), cfg.Release.Accessor.Status())
+	assert.Equal(t, 2, cfg.Release.Accessor.Version())
+	assert.True(t, cfg.IgnoreNotFound, "the history limit may prune the stuck revision when the new one is created")
+	assert.True(t, cfg.KeepDeployedTimestamps, "the stuck revision was never deployed by this deploy")
+
+	predMap, err := builtPlan.Graph.PredecessorMap()
+	require.NoError(t, err)
+	assert.Equal(t, []string{stageOperationID(common.StageFinal, common.StageStartSuffix)}, lo.Keys(predMap[failOpID]), "the stuck revision is marked failed only after every resource stage completed")
+
+	failurePlan, err := BuildFailurePlan(builtPlan, nil, infos, BuildFailurePlanOptions{})
+	require.NoError(t, err)
+
+	_, found = failurePlan.Operation(failOpID)
+	assert.False(t, found, "a failed deploy must leave the stuck revision as is")
+}
+
+func TestBuildReleaseInfos_FailsStuckPendingRevisions(t *testing.T) {
+	for _, tt := range []struct {
+		deployType common.DeployType
+		newMust    ReleaseType
+	}{
+		{deployType: common.DeployTypeInstall, newMust: ReleaseTypeInstall},
+		{deployType: common.DeployTypeUpgrade, newMust: ReleaseTypeUpgrade},
+		{deployType: common.DeployTypeRollback, newMust: ReleaseTypeRollback},
+	} {
+		t.Run(string(tt.deployType), func(t *testing.T) {
+			prevReleases := []helmrel.Accessor{
+				newTestReleaseAccessorForPlan(t, "myrelease", "test-ns", 1, helmreleasecommon.StatusSuperseded),
+				newTestReleaseAccessorForPlan(t, "myrelease", "test-ns", 2, helmreleasecommon.StatusPendingInstall),
+				newTestReleaseAccessorForPlan(t, "myrelease", "test-ns", 3, helmreleasecommon.StatusFailed),
+				newTestReleaseAccessorForPlan(t, "myrelease", "test-ns", 4, helmreleasecommon.StatusDeployed),
+				newTestReleaseAccessorForPlan(t, "myrelease", "test-ns", 5, helmreleasecommon.StatusPendingUpgrade),
+				newTestReleaseAccessorForPlan(t, "myrelease", "test-ns", 6, helmreleasecommon.StatusUninstalled),
+				newTestReleaseAccessorForPlan(t, "myrelease", "test-ns", 7, helmreleasecommon.StatusPendingRollback),
+			}
+			newRel := newTestReleaseAccessorForPlan(t, "myrelease", "test-ns", 8, helmreleasecommon.StatusPendingUpgrade)
+
+			infos, err := BuildReleaseInfos(context.Background(), tt.deployType, prevReleases, newRel)
+			require.NoError(t, err)
+
+			type versionMust struct {
+				Must    ReleaseType
+				Version int
+			}
+
+			assert.Equal(t, []versionMust{
+				{Must: tt.newMust, Version: 8},
+				{Must: ReleaseTypeFail, Version: 2},
+				{Must: ReleaseTypeSupersede, Version: 4},
+				{Must: ReleaseTypeFail, Version: 5},
+				{Must: ReleaseTypeFail, Version: 7},
+			}, lo.Map(infos, func(info *ReleaseInfo, _ int) versionMust {
+				return versionMust{Must: info.Must, Version: info.Revision.Version}
+			}))
+
+			for _, info := range infos[1:] {
+				assert.False(t, info.MustFailOnFailedDeploy, "a failed deploy must not touch revision %d", info.Revision.Version)
+			}
+		})
+	}
+}
+
 func TestBuildReleaseInfos_FillsRevisionAndKeepsDeployedOnlySupersedes(t *testing.T) {
 	prevReleases := []helmrel.Accessor{
 		newTestReleaseAccessorForPlan(t, "myrelease", "test-ns", 1, helmreleasecommon.StatusSuperseded),

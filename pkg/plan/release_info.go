@@ -21,6 +21,9 @@ const (
 	ReleaseTypeRollback ReleaseType = "rollback"
 	// One of the previous revisions is to be superseded by a successful release
 	ReleaseTypeSupersede ReleaseType = "supersede"
+	// One of the previous revisions, left pending by an interrupted deploy, is to be marked failed by
+	// a successful release
+	ReleaseTypeFail ReleaseType = "fail"
 	// Release is to be uninstalled as a whole, with its resources
 	ReleaseTypeUninstall ReleaseType = "uninstall"
 	// Release revision is to be dropped/deleted (its resources are untouched)
@@ -53,16 +56,6 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 			Release:                &release.VersionedRelease{Accessor: newRel},
 			Revision:               release.NewRevisionFromAccessor(newRel),
 		})
-
-		for _, rel := range prevReleases {
-			if rel.Status() == helmreleasecommon.StatusDeployed.String() {
-				infos = append(infos, &ReleaseInfo{
-					Must:     ReleaseTypeSupersede,
-					Release:  &release.VersionedRelease{Accessor: rel},
-					Revision: release.NewRevisionFromAccessor(rel),
-				})
-			}
-		}
 	case common.DeployTypeUpgrade:
 		infos = append(infos, &ReleaseInfo{
 			Must:                   ReleaseTypeUpgrade,
@@ -70,16 +63,6 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 			Release:                &release.VersionedRelease{Accessor: newRel},
 			Revision:               release.NewRevisionFromAccessor(newRel),
 		})
-
-		for _, rel := range prevReleases {
-			if rel.Status() == helmreleasecommon.StatusDeployed.String() {
-				infos = append(infos, &ReleaseInfo{
-					Must:     ReleaseTypeSupersede,
-					Release:  &release.VersionedRelease{Accessor: rel},
-					Revision: release.NewRevisionFromAccessor(rel),
-				})
-			}
-		}
 	case common.DeployTypeRollback:
 		infos = append(infos, &ReleaseInfo{
 			Must:                   ReleaseTypeRollback,
@@ -87,18 +70,26 @@ func BuildReleaseInfos(ctx context.Context, deployType common.DeployType, prevRe
 			Release:                &release.VersionedRelease{Accessor: newRel},
 			Revision:               release.NewRevisionFromAccessor(newRel),
 		})
-
-		for _, rel := range prevReleases {
-			if rel.Status() == helmreleasecommon.StatusDeployed.String() {
-				infos = append(infos, &ReleaseInfo{
-					Must:     ReleaseTypeSupersede,
-					Release:  &release.VersionedRelease{Accessor: rel},
-					Revision: release.NewRevisionFromAccessor(rel),
-				})
-			}
-		}
 	default:
 		panic("unexpected deploy type")
+	}
+
+	for _, rel := range prevReleases {
+		var must ReleaseType
+		switch status := helmreleasecommon.Status(rel.Status()); {
+		case status == helmreleasecommon.StatusDeployed:
+			must = ReleaseTypeSupersede
+		case status.IsPending():
+			must = ReleaseTypeFail
+		default:
+			continue
+		}
+
+		infos = append(infos, &ReleaseInfo{
+			Must:     must,
+			Release:  &release.VersionedRelease{Accessor: rel},
+			Revision: release.NewRevisionFromAccessor(rel),
+		})
 	}
 
 	return infos, nil
