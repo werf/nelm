@@ -187,3 +187,17 @@ func valuesForChart(c *chart.Chart, merge bool) (common.Values, error) {
 
 	return mergeOrCoalesceValues(c, extraVals, merge)
 }
+
+func applyDependenciesDefaultSecretValues(c *chart.Chart) error {
+	for _, d := range c.Dependencies() {
+		if err := util.ApplyDefaultSecretValues(d); err != nil {
+			return err
+		}
+
+		if err := applyDependenciesDefaultSecretValues(d); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
