@@ -140,7 +140,7 @@ func coalesceDeps(printf printFn, chrt chart.Charter, dest map[string]any, prefi
 			// subchart gets its defaults.
 			dest[sub.Name()] = make(map[string]any)
 		} else if !istable(c) {
-			return dest, fmt.Errorf("type mismatch on %s: %t", sub.Name(), c)
+			return dest, fmt.Errorf("type mismatch on %s: expected a table, got %T (%v)", concatPrefix(concatPrefix(prefix, ch.Name()), sub.Name()), c, c)
 		}
 		if dv, ok := dest[sub.Name()]; ok {
 			dvmap := dv.(map[string]any)

@@ -361,3 +361,25 @@ func TestProcessDependencies_ExportsReadingGlobalsMergedFromDependencyGlobals(t 
 	require.True(t, found)
 	assert.Equal(t, "parent-values", midChart.Values["sink"])
 }
+
+func TestProcessDependenciesWithMergedValues_TypeMismatchNamesSubchartPath(t *testing.T) {
+	leaf := &chart.Chart{Metadata: &chart.Metadata{APIVersion: chart.APIVersionV2, Name: "leaf", Version: "0.1.0"}}
+	mid := &chart.Chart{Metadata: &chart.Metadata{
+		APIVersion:   chart.APIVersionV2,
+		Name:         "mid",
+		Version:      "0.1.0",
+		Dependencies: []*chart.Dependency{{Name: "leaf", Version: "0.1.0"}},
+	}}
+	mid.AddDependency(leaf)
+	c := &chart.Chart{Metadata: &chart.Metadata{
+		APIVersion:   chart.APIVersionV2,
+		Name:         "parent",
+		Version:      "0.1.0",
+		Dependencies: []*chart.Dependency{{Name: "mid", Version: "0.1.0"}},
+	}}
+	c.AddDependency(mid)
+
+	err := ProcessDependenciesWithMergedValues(c, map[string]any{"mid": map[string]any{"leaf": "some-string"}})
+
+	assert.EqualError(t, err, "process dependency enabled: coalesce values: type mismatch on parent.mid.leaf: expected a table, got string (some-string)")
+}
