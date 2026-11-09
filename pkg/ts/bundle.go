@@ -152,16 +152,22 @@ func hasTSFiles(chart helmchart.Accessor) bool {
 	return false
 }
 
-// checkExternalImports fails on the imports esbuild left out of the bundle other than Node.js
-// built-in modules, such as URL imports, which Node.js does not load.
+// checkExternalImports fails on the imports the bundle leaves to Node.js other than those of
+// built-in modules, such as URL imports, which Node.js does not load. Bare names, which esbuild
+// leaves out for built-in modules and for requires in try/catch it cannot resolve, are let through.
 func checkExternalImports(metafile string) error {
+	type metaImport struct {
+		External bool   `json:"external"`
+		Path     string `json:"path"`
+	}
+
 	var meta struct {
 		Inputs map[string]struct {
-			Imports []struct {
-				External bool   `json:"external"`
-				Path     string `json:"path"`
-			} `json:"imports"`
+			Imports []metaImport `json:"imports"`
 		} `json:"inputs"`
+		Outputs map[string]struct {
+			Imports []metaImport `json:"imports"`
+		} `json:"outputs"`
 	}
 
 	if err := json.Unmarshal([]byte(metafile), &meta); err != nil {
@@ -170,21 +176,31 @@ func checkExternalImports(metafile string) error {
 
 	var unsupported []string
 
-	for _, input := range slices.Sorted(maps.Keys(meta.Inputs)) {
-		for _, imported := range meta.Inputs[input].Imports {
-			// esbuild leaves out bare names only for built-in modules on the node platform.
-			builtin := strings.HasPrefix(imported.Path, "node:") || !strings.Contains(imported.Path, ":") && !strings.HasPrefix(imported.Path, "/")
-			if imported.External && !builtin {
-				unsupported = append(unsupported, fmt.Sprintf("%q imported by %s", imported.Path, input))
+	for _, output := range meta.Outputs {
+		for _, imported := range output.Imports {
+			bare := !strings.Contains(imported.Path, ":") && !strings.HasPrefix(imported.Path, "/")
+			if !imported.External || bare || strings.HasPrefix(imported.Path, "node:") || slices.Contains(unsupported, imported.Path) {
+				continue
 			}
+
+			unsupported = append(unsupported, imported.Path)
 		}
 	}
 
-	if len(unsupported) > 0 {
-		return fmt.Errorf("unsupported imports: %s: Node.js loads only built-in modules at run time, so install the package with the package manager and import it by its name", strings.Join(unsupported, ", "))
+	if len(unsupported) == 0 {
+		return nil
 	}
 
-	return nil
+	// The outputs do not tell where the imports come from, which the inputs do.
+	descriptions := lo.Map(unsupported, func(path string, _ int) string {
+		importers := lo.Filter(slices.Sorted(maps.Keys(meta.Inputs)), func(input string, _ int) bool {
+			return lo.ContainsBy(meta.Inputs[input].Imports, func(imported metaImport) bool { return imported.Path == path })
+		})
+
+		return fmt.Sprintf("%q imported by %s", path, strings.Join(importers, ", "))
+	})
+
+	return fmt.Errorf("unsupported imports: %s: Node.js loads only built-in modules at run time, so install the package with the package manager and import it by its name", strings.Join(descriptions, "; "))
 }
 
 func findEntrypointInFiles(files []*chartcommon.File) string {
