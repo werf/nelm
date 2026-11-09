@@ -2,10 +2,13 @@ package ts
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/evanw/esbuild/pkg/api"
@@ -70,6 +73,48 @@ func BundleChartsRecursive(ctx context.Context, chart helmchart.Accessor, path s
 	return nil
 }
 
+// buildBundle bundles the chart with the esbuild options agreed on with the CLI of
+// @nelm/chart-ts-sdk, which bundles the same way for local development.
+func buildBundle(ctx context.Context, tsDir, entryPoint string) ([]byte, error) {
+	result := api.Build(api.BuildOptions{
+		AbsWorkingDir: tsDir,
+		// CommonJS dependencies need require for Node.js builtins and __dirname/__filename, which an ES
+		// module lacks. Declaring the latter in the banner would clash with ES modules declaring them.
+		Banner: map[string]string{
+			"js": "import { createRequire as __nelmCreateRequire } from 'node:module'; const require = __nelmCreateRequire(import.meta.url);",
+		},
+		Bundle: true,
+		Define: map[string]string{
+			"__dirname":  "import.meta.dirname",
+			"__filename": "import.meta.filename",
+		},
+		Engines:     []api.Engine{{Name: api.EngineNode, Version: "26"}},
+		EntryPoints: []string{entryPoint},
+		Format:      api.FormatESModule,
+		// Does not change the bundle, which must stay the same as the one the SDK builds.
+		Metafile: true,
+		Platform: api.PlatformNode,
+	})
+
+	for _, warning := range api.FormatMessages(result.Warnings, api.FormatMessagesOptions{Kind: api.WarningMessage}) {
+		log.Default.Warn(ctx, "%s", strings.TrimSpace(warning))
+	}
+
+	if len(result.Errors) > 0 {
+		return nil, errors.New(strings.TrimSpace(strings.Join(api.FormatMessages(result.Errors, api.FormatMessagesOptions{Kind: api.ErrorMessage}), "")))
+	}
+
+	if err := checkExternalImports(result.Metafile); err != nil {
+		return nil, err
+	}
+
+	if len(result.OutputFiles) != 1 {
+		return nil, fmt.Errorf("expected 1 output file from esbuild, got %d", len(result.OutputFiles))
+	}
+
+	return result.OutputFiles[0].Contents, nil
+}
+
 func getEntrypointAndBundle(files []*chartcommon.File) (string, *chartcommon.File) {
 	entrypoint := findEntrypointInFiles(files)
 	if entrypoint == "" {
@@ -107,40 +152,39 @@ func hasTSFiles(chart helmchart.Accessor) bool {
 	return false
 }
 
-// buildBundle bundles the chart with the esbuild options agreed on with the CLI of
-// @nelm/chart-ts-sdk, which bundles the same way for local development.
-func buildBundle(ctx context.Context, tsDir, entryPoint string) ([]byte, error) {
-	result := api.Build(api.BuildOptions{
-		AbsWorkingDir: tsDir,
-		// CommonJS dependencies need require for Node.js builtins and __dirname/__filename, which an ES
-		// module lacks. Declaring the latter in the banner would clash with ES modules declaring them.
-		Banner: map[string]string{
-			"js": "import { createRequire as __nelmCreateRequire } from 'node:module'; const require = __nelmCreateRequire(import.meta.url);",
-		},
-		Bundle: true,
-		Define: map[string]string{
-			"__dirname":  "import.meta.dirname",
-			"__filename": "import.meta.filename",
-		},
-		Engines:     []api.Engine{{Name: api.EngineNode, Version: "26"}},
-		EntryPoints: []string{entryPoint},
-		Format:      api.FormatESModule,
-		Platform:    api.PlatformNode,
-	})
-
-	for _, warning := range api.FormatMessages(result.Warnings, api.FormatMessagesOptions{Kind: api.WarningMessage}) {
-		log.Default.Warn(ctx, "%s", strings.TrimSpace(warning))
+// checkExternalImports fails on the imports esbuild left out of the bundle other than Node.js
+// built-in modules, such as URL imports, which Node.js does not load.
+func checkExternalImports(metafile string) error {
+	var meta struct {
+		Inputs map[string]struct {
+			Imports []struct {
+				External bool   `json:"external"`
+				Path     string `json:"path"`
+			} `json:"imports"`
+		} `json:"inputs"`
 	}
 
-	if len(result.Errors) > 0 {
-		return nil, errors.New(strings.TrimSpace(strings.Join(api.FormatMessages(result.Errors, api.FormatMessagesOptions{Kind: api.ErrorMessage}), "")))
+	if err := json.Unmarshal([]byte(metafile), &meta); err != nil {
+		return fmt.Errorf("decode esbuild metafile: %w", err)
 	}
 
-	if len(result.OutputFiles) != 1 {
-		return nil, fmt.Errorf("expected 1 output file from esbuild, got %d", len(result.OutputFiles))
+	var unsupported []string
+
+	for _, input := range slices.Sorted(maps.Keys(meta.Inputs)) {
+		for _, imported := range meta.Inputs[input].Imports {
+			// esbuild leaves out bare names only for built-in modules on the node platform.
+			builtin := strings.HasPrefix(imported.Path, "node:") || !strings.Contains(imported.Path, ":") && !strings.HasPrefix(imported.Path, "/")
+			if imported.External && !builtin {
+				unsupported = append(unsupported, fmt.Sprintf("%q imported by %s", imported.Path, input))
+			}
+		}
 	}
 
-	return result.OutputFiles[0].Contents, nil
+	if len(unsupported) > 0 {
+		return fmt.Errorf("unsupported imports: %s: Node.js loads only built-in modules at run time, so install the package with the package manager and import it by its name", strings.Join(unsupported, ", "))
+	}
+
+	return nil
 }
 
 func findEntrypointInFiles(files []*chartcommon.File) string {

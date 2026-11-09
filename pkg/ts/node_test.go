@@ -13,12 +13,16 @@ import (
 )
 
 func TestFindNode(t *testing.T) {
-	const probeArgs = "process.execPath + ' ' + process.versions.node"
+	const probeArgs = "'nelm-node-probe:' + JSON.stringify({ execPath: process.execPath, version: process.versions.node })"
+
+	probeOutput := func(execPath, version string) string {
+		return `printf '%s\n' 'nelm-node-probe:{"execPath":"` + execPath + `","version":"` + version + `"}'` + "\n"
+	}
 
 	t.Run("takes the real path and the version from node in PATH", func(t *testing.T) {
 		binDir := stubPath(t)
 		t.Setenv("NELM_TEST_CANARY", "inherited")
-		writeStub(t, binDir, "node", "printf '/opt/node versions/26.13.0/bin/node 26.13.0\\n'\n")
+		writeStub(t, binDir, "node", probeOutput("/opt/node versions/26.13.0/bin/node", "26.13.0"))
 
 		execPath, err := ts.FindNode(context.Background(), "")
 		require.NoError(t, err)
@@ -29,12 +33,21 @@ func TestFindNode(t *testing.T) {
 		assert.Equal(t, "inherited", run.canary, "the probe must run with the environment of nelm")
 	})
 
+	t.Run("ignores what preloaded modules print", func(t *testing.T) {
+		binDir := stubPath(t)
+		writeStub(t, binDir, "node", "printf 'hello from preload\\n/not/node 1.0.0\\n'\n"+probeOutput("/opt/node/bin/node", "26.13.0")+"printf 'bye from preload\\n'\n")
+
+		execPath, err := ts.FindNode(context.Background(), "")
+		require.NoError(t, err)
+		assert.Equal(t, "/opt/node/bin/node", execPath)
+	})
+
 	t.Run("prefers the node binary path over node in PATH", func(t *testing.T) {
 		binDir := stubPath(t)
-		writeStub(t, binDir, "node", "printf '/usr/bin/node 26.0.0\\n'\n")
+		writeStub(t, binDir, "node", probeOutput("/usr/bin/node", "26.0.0"))
 
 		explicitDir := t.TempDir()
-		writeStub(t, explicitDir, "my-node", "printf '/opt/node/bin/node 27.1.0\\n'\n")
+		writeStub(t, explicitDir, "my-node", probeOutput("/opt/node/bin/node", "27.1.0"))
 
 		execPath, err := ts.FindNode(context.Background(), filepath.Join(explicitDir, "my-node"))
 		require.NoError(t, err)
@@ -47,7 +60,7 @@ func TestFindNode(t *testing.T) {
 		wantErr []string
 	}{
 		"fails with Node.js older than 26": {
-			body:    "printf '/usr/bin/node 24.13.0\\n'\n",
+			body:    probeOutput("/usr/bin/node", "24.13.0"),
 			wantErr: []string{"Node.js >= 26 is required", "--node-binary-path", "found Node.js 24.13.0 at /usr/bin/node"},
 		},
 		"fails when node does not run": {
@@ -63,10 +76,10 @@ func TestFindNode(t *testing.T) {
 		},
 		"fails on unexpected output": {
 			body:    "printf 'v26.13.0\\n'\n",
-			wantErr: []string{`want "<path> <version>", got "v26.13.0"`},
+			wantErr: []string{`no line starting with "nelm-node-probe:" in the output: "v26.13.0\n"`},
 		},
 		"fails on an unparsable version": {
-			body:    "printf '/usr/bin/node nightly\\n'\n",
+			body:    probeOutput("/usr/bin/node", "nightly"),
 			wantErr: []string{`parse major version of "nightly"`},
 		},
 	} {

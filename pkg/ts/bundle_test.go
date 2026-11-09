@@ -45,6 +45,28 @@ func TestBuildBundle(t *testing.T) {
 		assert.Contains(t, string(bundle), `name: "subchart"`)
 	})
 
+	t.Run("fails on imports that Node.js does not resolve to built-in modules", func(t *testing.T) {
+		tsDir := filepath.Join(copyTestChart(t), "ts")
+		require.NoError(t, os.WriteFile(filepath.Join(tsDir, "src", "index.ts"), []byte("import yaml from 'https://deno.land/std/yaml/mod.ts';\nimport cdn from '//cdn.example.com/x.js';\nimport fs from 'fs';\nimport { join } from 'node:path';\nconsole.log(yaml, cdn, fs, join);\n"), 0o644))
+
+		_, err := ts.BuildBundle(context.Background(), tsDir, common.ChartTSEntryPointTS)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `"https://deno.land/std/yaml/mod.ts" imported by src/index.ts`)
+		assert.Contains(t, err.Error(), `"//cdn.example.com/x.js" imported by src/index.ts`)
+		assert.Contains(t, err.Error(), "install the package with the package manager")
+		assert.NotContains(t, err.Error(), `"fs"`)
+		assert.NotContains(t, err.Error(), `"node:path"`)
+	})
+
+	t.Run("keeps built-in modules external", func(t *testing.T) {
+		tsDir := filepath.Join(copyTestChart(t), "ts")
+		require.NoError(t, os.WriteFile(filepath.Join(tsDir, "src", "index.ts"), []byte("import fs from 'fs';\nimport { readFile } from 'fs/promises';\nimport { join } from 'node:path';\nconst tty = require('tty');\nconsole.log(fs, readFile, join, tty);\n"), 0o644))
+
+		bundle, err := ts.BuildBundle(context.Background(), tsDir, common.ChartTSEntryPointTS)
+		require.NoError(t, err)
+		assert.Contains(t, string(bundle), `from "fs/promises"`)
+	})
+
 	t.Run("fails on an unresolvable import", func(t *testing.T) {
 		tsDir := filepath.Join(copyTestChart(t), "ts")
 		require.NoError(t, os.WriteFile(filepath.Join(tsDir, "src", "index.ts"), []byte("import 'missing-package';\n"), 0o644))

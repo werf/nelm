@@ -3,6 +3,7 @@ package ts
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -10,7 +11,10 @@ import (
 	"strings"
 )
 
-const minNodeMajorVersion = 26
+const (
+	minNodeMajorVersion = 26
+	nodeProbeMarker     = "nelm-node-probe:"
+)
 
 // findNode returns the real path of the Node.js binary to render with: binaryPath if set, otherwise
 // node from PATH. The candidate is run once with the environment of nelm, so that version manager
@@ -20,7 +24,7 @@ func findNode(ctx context.Context, binaryPath string) (string, error) {
 	if candidate == "" {
 		path, err := exec.LookPath("node")
 		if err != nil {
-			return "", newNodeNotFoundError("no node in PATH", "")
+			return "", newNodeNotFoundError(fmt.Sprintf("no node in PATH: %s", err), "")
 		}
 
 		candidate = path
@@ -28,7 +32,8 @@ func findNode(ctx context.Context, binaryPath string) (string, error) {
 
 	var stdout, stderr bytes.Buffer
 
-	cmd := exec.CommandContext(ctx, candidate, "-p", "process.execPath + ' ' + process.versions.node")
+	// Preloaded modules, such as those NODE_OPTIONS can name, may print too.
+	cmd := exec.CommandContext(ctx, candidate, "-p", "'"+nodeProbeMarker+"' + JSON.stringify({ execPath: process.execPath, version: process.versions.node })")
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -36,7 +41,7 @@ func findNode(ctx context.Context, binaryPath string) (string, error) {
 		return "", newNodeNotFoundError(fmt.Sprintf("run %s: %s", candidate, err), stderr.String())
 	}
 
-	execPath, version, err := parseNodeExecPathAndVersion(stdout.String())
+	execPath, version, err := parseNodeProbeOutput(stdout.String())
 	if err != nil {
 		return "", newNodeNotFoundError(fmt.Sprintf("parse output of %s: %s", candidate, err), stderr.String())
 	}
@@ -78,15 +83,33 @@ func nodeMajorVersion(version string) (int, error) {
 	return number, nil
 }
 
-// parseNodeExecPathAndVersion parses "<execPath> <version>": the path may contain spaces, the version
-// does not.
-func parseNodeExecPathAndVersion(output string) (string, string, error) {
-	output = strings.TrimSpace(output)
+// parseNodeProbeOutput takes the path and the version from the last line of the output that starts
+// with nodeProbeMarker.
+func parseNodeProbeOutput(output string) (string, string, error) {
+	var probeLine string
 
-	separator := strings.LastIndex(output, " ")
-	if separator <= 0 || separator == len(output)-1 {
-		return "", "", fmt.Errorf("want \"<path> <version>\", got %q", output)
+	for line := range strings.Lines(output) {
+		if found, ok := strings.CutPrefix(strings.TrimSpace(line), nodeProbeMarker); ok {
+			probeLine = found
+		}
 	}
 
-	return output[:separator], output[separator+1:], nil
+	if probeLine == "" {
+		return "", "", fmt.Errorf("no line starting with %q in the output: %q", nodeProbeMarker, output)
+	}
+
+	var probe struct {
+		ExecPath string `json:"execPath"`
+		Version  string `json:"version"`
+	}
+
+	if err := json.Unmarshal([]byte(probeLine), &probe); err != nil {
+		return "", "", fmt.Errorf("decode %q: %w", probeLine, err)
+	}
+
+	if probe.ExecPath == "" || probe.Version == "" {
+		return "", "", fmt.Errorf("no execPath or version in %q", probeLine)
+	}
+
+	return probe.ExecPath, probe.Version, nil
 }
