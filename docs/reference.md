@@ -3270,10 +3270,6 @@ nelm chart pack [options...] [chart-dir]
 
 **TypeScript options:**
 
-- `--node-binary-path` (default: `""`)
-
-  Path to the Node\.js binary to use instead of the one in PATH\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_PACK\_NODE\_BINARY\_PATH
-
 - `--ts-no-rebuild` (default: `false`)
 
   Reuse the existing TypeScript bundle instead of rebuilding it\. Vars: \$NELM\_TS\_NO\_REBUILD, \$NELM\_CHART\_PACK\_TS\_NO\_REBUILD
@@ -4412,13 +4408,6 @@ Initialize the files needed to render manifests using TypeScript\. If PATH is no
 nelm chart ts init [PATH]
 ```
 
-**TypeScript options:**
-
-- `--node-binary-path` (default: `""`)
-
-  Path to the Node\.js binary to use instead of the one in PATH\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_TS\_INIT\_NODE\_BINARY\_PATH
-
-
 **Other options:**
 
 - `--color-mode` (default: `"auto"`)
@@ -4447,13 +4436,6 @@ Build TypeScript chart in the specified directory\. If PATH is not specified, us
 ```shell
 nelm chart ts build [PATH]
 ```
-
-**TypeScript options:**
-
-- `--node-binary-path` (default: `""`)
-
-  Path to the Node\.js binary to use instead of the one in PATH\. Vars: \$NELM\_NODE\_BINARY\_PATH, \$NELM\_CHART\_TS\_BUILD\_NODE\_BINARY\_PATH
-
 
 **Other options:**
 

@@ -29,7 +29,6 @@ import (
 	"golang.org/x/term"
 	"sigs.k8s.io/yaml"
 
-	"github.com/werf/nelm/v2/pkg/common"
 	"github.com/werf/nelm/v2/pkg/featgate"
 	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
 	ci "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
@@ -63,8 +62,6 @@ type Package struct {
 	KeyFile               string
 	CaFile                string
 	InsecureSkipTLSVerify bool
-
-	TypeScriptOps common.TypeScriptOptions
 }
 
 const (

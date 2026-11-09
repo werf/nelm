@@ -280,8 +280,7 @@ type ResourceState string
 type StoreAs string
 
 type HelmOptions struct {
-	ChartLoadOpts  ChartLoadOptions
-	TypeScriptOpts TypeScriptOptions
+	ChartLoadOpts ChartLoadOptions
 }
 
 type ChartLoadOptions struct {
@@ -304,10 +303,6 @@ type ChartLoadOptions struct {
 	// WerfDataValuesSwitches makes the loader apply the default values switches of the .werf-data of
 	// the chart and of every dependency on top of these, to the chart and its dependencies.
 	WerfDataValuesSwitches bool
-}
-
-type TypeScriptOptions struct {
-	NodeBinaryPath string
 }
 
 type helmOptionsContextKey struct{}

@@ -103,8 +103,6 @@ type ChartPackOptions struct {
 	Images []chartyaml.Image
 	// Name overrides the chart name.
 	Name string
-	// NodeBinaryPath, if specified, uses this path as the Node.js binary instead of the one in PATH.
-	NodeBinaryPath string
 	// PatchesFiles are appended to the stored patches files.
 	PatchesFiles []string
 	// RegistryCredentialsPath is the path to Docker config.json file with registry credentials,

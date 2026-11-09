@@ -16,7 +16,6 @@ import (
 type ChartTSInitOptions struct {
 	ChartDirPath      string
 	ChartName         string
-	NodeBinaryPath    string
 	RenderContextType string
 	TempDirPath       string
 }

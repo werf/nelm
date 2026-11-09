@@ -21,9 +21,8 @@ import (
 )
 
 type ChartTSBuildOptions struct {
-	ChartDirPath   string
-	NodeBinaryPath string
-	TempDirPath    string
+	ChartDirPath string
+	TempDirPath  string
 }
 
 func ChartTSBuild(ctx context.Context, opts ChartTSBuildOptions) error {
