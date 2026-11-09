@@ -1176,6 +1176,23 @@ releaseInfoAnnotations:
 	}
 }
 
+func TestRenderChart_WerfDataLegacySecretValuesWarning(t *testing.T) {
+	const legacySecretKey = "bc3458408a5687e60b9417adb84e4ad0" //nolint:gosec // Test-only key of the legacy ciphertext below.
+
+	logger := &warningsLogger{Logger: log.Default}
+	log.Default = logger
+	t.Cleanup(func() { log.Default = logger.Logger })
+
+	files := werfDataFlagsAsFiles(t, werfDataFlags{SecretValues: "int: 1"})
+	files[werfdata.DirName+"/"+werfdata.SecretValuesFileName] = "int: 100049fb3706a4dc50af98db279edad4d2eee12ebc001536f6f07f28a99af986bcb7\n"
+	chartPath := writeWerfDataTestChart(t, werfDataCardChart("", "", "", ""), files)
+
+	result, err := renderWerfDataTestChartWithSecretKey(t, chartPath, legacySecretKey, RenderChartOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "123", renderedChartValues(t, result)["int"])
+	assert.Equal(t, []string{"Secret values file \".werf-data/secret-values.yaml\" has values encrypted in an old format that does not store YAML types, so they are read as strings: int. To make them numbers or booleans, re-enter them with `nelm chart secret values-file edit`."}, logger.warnings)
+}
+
 func TestRenderChart_WerfDataLoadsChartOnce(t *testing.T) {
 	const loadWarning = "chart loaded"
 
