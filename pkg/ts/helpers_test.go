@@ -113,6 +113,10 @@ func copyTestChart(t *testing.T) string {
 	return chartDir
 }
 
+func jsString(value string) string {
+	return "'" + strings.ReplaceAll(strings.ReplaceAll(value, `\`, `\\`), "'", `\'`) + "'"
+}
+
 func loadChart(t *testing.T, chartDir string) helmchart.Accessor {
 	t.Helper()
 
@@ -192,6 +196,19 @@ func requireStubNotRun(t *testing.T, binDir, name string) {
 	t.Helper()
 
 	require.NoFileExists(t, filepath.Join(binDir, name+".args"), "%s must not be run", name)
+}
+
+// requireTestNode returns the Node.js to run the tests that need a real one with, taken from
+// NELM_TEST_NODE_BINARY_PATH, and skips the test if it is not set.
+func requireTestNode(t *testing.T) string {
+	t.Helper()
+
+	nodePath := os.Getenv("NELM_TEST_NODE_BINARY_PATH")
+	if nodePath == "" {
+		t.Skip("NELM_TEST_NODE_BINARY_PATH is not set")
+	}
+
+	return nodePath
 }
 
 func resolvePath(t *testing.T, path string) string {

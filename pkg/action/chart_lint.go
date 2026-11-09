@@ -85,7 +85,8 @@ type ChartLintOptions struct {
 	// ForceAdoption, when true, allows adopting resources during validation that belong to a different Helm release.
 	// Used during the validation phase to check if resources could be adopted.
 	ForceAdoption bool
-	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources.
+	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources,
+	// installing their dependencies with the package manager of the chart if they are not installed.
 	IgnoreBundleJS bool
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.

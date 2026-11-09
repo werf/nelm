@@ -5,7 +5,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -54,9 +53,6 @@ func TestRenderChartRemovesRenderFiles(t *testing.T) {
 		})
 	}
 }
-
-// The tests below run a real Node.js, which they take from NELM_TEST_NODE_BINARY_PATH: the pinned
-// release is not downloaded in unit tests.
 
 func TestRenderChartWithNode(t *testing.T) {
 	nodePath := requireTestNode(t)
@@ -268,19 +264,4 @@ func TestRunBundleWithCJSDependency(t *testing.T) {
 	output, err := os.ReadFile(filepath.Join(renderDir, "output.yaml"))
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"dirname":"string","filename":"string","joined":"a/b","platform":"string"}`, string(output))
-}
-
-func jsString(value string) string {
-	return "'" + strings.ReplaceAll(strings.ReplaceAll(value, `\`, `\\`), "'", `\'`) + "'"
-}
-
-func requireTestNode(t *testing.T) string {
-	t.Helper()
-
-	nodePath := os.Getenv("NELM_TEST_NODE_BINARY_PATH")
-	if nodePath == "" {
-		t.Skip("NELM_TEST_NODE_BINARY_PATH is not set")
-	}
-
-	return nodePath
 }

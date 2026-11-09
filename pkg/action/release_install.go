@@ -79,7 +79,8 @@ type ReleaseInstallOptions struct {
 	DockerConfig string
 	// DropInvalidAnnotationsAndLabels disables strict annotations and labels validation.
 	DropInvalidAnnotationsAndLabels bool
-	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources.
+	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources,
+	// installing their dependencies with the package manager of the chart if they are not installed.
 	IgnoreBundleJS bool
 	// InstallGraphPath, if specified, saves the Graphviz representation of the install plan to this file path.
 	// Useful for debugging and visualizing the dependency graph of resource operations.

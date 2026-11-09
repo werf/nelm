@@ -171,15 +171,19 @@ func findWorkspaceRoot(tsDir string) (string, error) {
 		if !pnpmWorkspaceFound {
 			patterns, found, err := readPNPMWorkspacePatterns(dir)
 			if err != nil {
-				return "", err
+				return "", fmt.Errorf("read pnpm workspace of %s: %w", dir, err)
 			}
 
 			pnpmWorkspaceFound = found
 
 			if found && dir != tsDir {
 				root, err := workspaceRootIfIncluded(dir, relPath, patterns, packageManagerPNPM)
-				if err != nil || root != "" {
-					return root, err
+				if err != nil {
+					return "", fmt.Errorf("check pnpm workspace of %s: %w", dir, err)
+				}
+
+				if root != "" {
+					return root, nil
 				}
 			}
 		}
@@ -187,13 +191,17 @@ func findWorkspaceRoot(tsDir string) (string, error) {
 		if dir != tsDir {
 			patterns, err := readPackageJSONWorkspacePatterns(dir)
 			if err != nil {
-				return "", err
+				return "", fmt.Errorf("read workspaces of %s: %w", dir, err)
 			}
 
 			if len(patterns) > 0 {
 				root, err := workspaceRootIfIncluded(dir, relPath, patterns, packageManagerNPM)
-				if err != nil || root != "" {
-					return root, err
+				if err != nil {
+					return "", fmt.Errorf("check workspace of %s: %w", dir, err)
+				}
+
+				if root != "" {
+					return root, nil
 				}
 			}
 		}
@@ -233,7 +241,7 @@ func workspaceRootIfIncluded(dir, relPath string, patterns []string, defaultMana
 func detectPackageManager(root, defaultManager string) (packageManager, error) {
 	manifest, _, err := readPackageJSON(root)
 	if err != nil {
-		return packageManager{}, err
+		return packageManager{}, fmt.Errorf("read package.json: %w", err)
 	}
 
 	if manifest.PackageManager != "" {
@@ -368,8 +376,12 @@ func matchesWorkspacePatterns(patterns []string, relPath string) (bool, error) {
 
 func readPackageJSONWorkspacePatterns(dir string) ([]string, error) {
 	manifest, found, err := readPackageJSON(dir)
-	if err != nil || !found || len(manifest.Workspaces) == 0 {
-		return nil, err
+	if err != nil {
+		return nil, fmt.Errorf("read package.json: %w", err)
+	}
+
+	if !found || len(manifest.Workspaces) == 0 {
+		return nil, nil
 	}
 
 	var patterns []string

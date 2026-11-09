@@ -321,7 +321,7 @@ nelm release install [options...] [-n namespace] [-r release] [chart-dir|chart-r
 
 - `--ignore-bundle-js` (default: `false`)
 
-  Do not use the existing bundle\.js file\. Requires TypeScript source files to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_RELEASE\_INSTALL\_IGNORE\_BUNDLE\_JS
+  Do not use the existing bundle\.js file\. Rebuilding needs the TypeScript sources, and, unless their dependencies are installed, a lock file and the package manager it belongs to in PATH\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_RELEASE\_INSTALL\_IGNORE\_BUNDLE\_JS
 
 - `--node-binary-path` (default: `""`)
 
@@ -1047,7 +1047,7 @@ nelm release plan install [options...] [-n namespace] [-r release] [chart-dir|ch
 
 - `--ignore-bundle-js` (default: `false`)
 
-  Do not use the existing bundle\.js file\. Requires TypeScript source files to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_RELEASE\_PLAN\_INSTALL\_IGNORE\_BUNDLE\_JS
+  Do not use the existing bundle\.js file\. Rebuilding needs the TypeScript sources, and, unless their dependencies are installed, a lock file and the package manager it belongs to in PATH\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_RELEASE\_PLAN\_INSTALL\_IGNORE\_BUNDLE\_JS
 
 - `--node-binary-path` (default: `""`)
 
@@ -2240,7 +2240,7 @@ nelm chart lint [options...] [chart-dir|chart-repo-name/chart-name|chart-archive
 
 - `--ignore-bundle-js` (default: `false`)
 
-  Do not use the existing bundle\.js file\. Requires TypeScript source files to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_CHART\_LINT\_IGNORE\_BUNDLE\_JS
+  Do not use the existing bundle\.js file\. Rebuilding needs the TypeScript sources, and, unless their dependencies are installed, a lock file and the package manager it belongs to in PATH\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_CHART\_LINT\_IGNORE\_BUNDLE\_JS
 
 - `--node-binary-path` (default: `""`)
 
@@ -2611,7 +2611,7 @@ nelm chart render [options...] [chart-dir|chart-repo-name/chart-name|chart-archi
 
 - `--ignore-bundle-js` (default: `false`)
 
-  Do not use the existing bundle\.js file\. Requires TypeScript source files to rebuild\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_CHART\_RENDER\_IGNORE\_BUNDLE\_JS
+  Do not use the existing bundle\.js file\. Rebuilding needs the TypeScript sources, and, unless their dependencies are installed, a lock file and the package manager it belongs to in PATH\. Vars: \$NELM\_IGNORE\_BUNDLE\_JS, \$NELM\_CHART\_RENDER\_IGNORE\_BUNDLE\_JS
 
 - `--node-binary-path` (default: `""`)
 

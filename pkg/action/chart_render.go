@@ -78,7 +78,8 @@ type ChartRenderOptions struct {
 	// ExtraRuntimeAnnotations are additional annotations to add to resources at runtime.
 	ExtraRuntimeAnnotations map[string]string
 	ExtraRuntimeLabels      map[string]string
-	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources.
+	// IgnoreBundleJS, when true, ignores the existing bundle.js and rebuilds it from TypeScript sources,
+	// installing their dependencies with the package manager of the chart if they are not installed.
 	IgnoreBundleJS bool
 	// LegacyChartType specifies the chart type for legacy compatibility.
 	// Used internally for backward compatibility with werf integration.
