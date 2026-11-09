@@ -1,0 +1,5 @@
+g:
+  bar: parent-values-yaml
+  first: first
+  second: second
+  src: parent-values-yaml

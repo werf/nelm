@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -340,7 +342,11 @@ func renderLayeredValuesChart(t *testing.T, opts layeredValuesRenderOptions) *Re
 		chartDir = "chart"
 	}
 
-	chartPath, err := filepath.Abs(filepath.Join("testdata", "layered-values", chartDir))
+	if !filepath.IsAbs(chartDir) {
+		chartDir = filepath.Join("testdata", "layered-values", chartDir)
+	}
+
+	chartPath, err := filepath.Abs(chartDir)
 	require.NoError(t, err)
 
 	renderOpts := RenderChartOptions{
@@ -401,6 +407,48 @@ func renderedConfigMapNames(result *RenderChartResult) []string {
 	sort.Strings(names)
 
 	return names
+}
+
+// reversedDependenciesChartDir copies the chart from testdata/layered-values and reverses the
+// dependencies in each Chart.yaml of the copy.
+func reversedDependenciesChartDir(t *testing.T, chartDir string) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	require.NoError(t, os.CopyFS(dir, os.DirFS(filepath.Join("testdata", "layered-values", chartDir))))
+
+	root, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+
+	err = fs.WalkDir(root.FS(), ".", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.Name() != "Chart.yaml" {
+			return err
+		}
+
+		data, err := root.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read %q: %w", path, err)
+		}
+
+		var metadata map[string]interface{}
+		if err := yaml.Unmarshal(data, &metadata); err != nil {
+			return fmt.Errorf("unmarshal %q: %w", path, err)
+		}
+
+		if deps, ok := metadata["dependencies"].([]interface{}); ok {
+			slices.Reverse(deps)
+		}
+
+		if data, err = yaml.Marshal(metadata); err != nil {
+			return fmt.Errorf("marshal %q: %w", path, err)
+		}
+
+		return root.WriteFile(path, data, 0o600)
+	})
+	require.NoError(t, err)
+	require.NoError(t, root.Close())
+
+	return dir
 }
 
 // storedReleaseValues returns the values that release get prints for the release stored from the

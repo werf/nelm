@@ -1,0 +1,14 @@
+apiVersion: v2
+name: mid
+version: 0.1.0
+dependencies:
+  - name: reader
+    version: 0.1.0
+    export-values:
+      - parent: writer.v
+        child: fromWriter
+  - name: writer
+    version: 0.1.0
+    export-values:
+      - parent: src
+        child: v
