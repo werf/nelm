@@ -398,6 +398,44 @@ func TestRenderChart_ExportedValueOverridesValuesFileForDependencyWithSameNameAs
 	}
 }
 
+// TestRenderChart_ImportValuesNotChainedBetweenSiblings pins that, like in Helm, a value imported into
+// the values of a sibling dependency is not imported again by the import-values of that sibling.
+func TestRenderChart_ImportValuesNotChainedBetweenSiblings(t *testing.T) {
+	tests := []struct {
+		name string
+		opts layeredValuesRenderOptions
+		want map[string]interface{}
+	}{
+		{
+			name: "value from values.yaml",
+			want: map[string]interface{}{"b.tbl.k": "a-values", "z": absentValue{}},
+		},
+		{
+			name: "value from set",
+			opts: layeredValuesRenderOptions{Set: []string{"a.out.k=set"}},
+			want: map[string]interface{}{"b.tbl.k": "set", "z": absentValue{}},
+		},
+	}
+
+	chartDirs := map[string]string{
+		"listed order":   "sibling-import-chain-chart",
+		"reversed order": reversedDependenciesChartDir(t, "sibling-import-chain-chart"),
+	}
+
+	for _, tt := range tests {
+		for order, chartDir := range chartDirs {
+			t.Run(tt.name+"/"+order, func(t *testing.T) {
+				tt.opts.ChartDir = chartDir
+				vals := renderedChartValues(t, renderLayeredValuesChart(t, tt.opts))
+
+				for path, want := range tt.want {
+					assert.Equal(t, want, valueAtPath(t, vals, path), path)
+				}
+			})
+		}
+	}
+}
+
 func TestRenderChart_NullInSecretValuesYAMLWhenChartValuesAreInvalidAlone(t *testing.T) {
 	tests := []struct {
 		chartDir         string
