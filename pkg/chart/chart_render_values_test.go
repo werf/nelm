@@ -6,6 +6,32 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestRenderChart_NoDefaultSecretValuesIgnoresSubchartSecretValues(t *testing.T) {
+	tests := []struct {
+		chartDir    string
+		subchartKey string
+	}{
+		{chartDir: "subchart-secret-v2-declared", subchartKey: "sub"},
+		{chartDir: "subchart-secret-v2-alias", subchartKey: "sub-alias"},
+		{chartDir: "subchart-secret-v2-undeclared", subchartKey: "sub"},
+		{chartDir: "subchart-secret-v3", subchartKey: "sub"},
+		{chartDir: "subchart-secret-v3-alias", subchartKey: "sub-alias"},
+		{chartDir: "subchart-secret-v3-undeclared", subchartKey: "sub"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.chartDir, func(t *testing.T) {
+			vals := renderedChartValues(t, renderLayeredValuesChart(t, layeredValuesRenderOptions{
+				ChartDir:                   tt.chartDir,
+				DefaultSecretValuesDisable: true,
+			}))
+
+			assert.Equal(t, absentValue{}, valueAtPath(t, vals, tt.subchartKey+".s"))
+			assert.Equal(t, "sub-values", valueAtPath(t, vals, tt.subchartKey+".k"))
+		})
+	}
+}
+
 func TestRenderChart_SubchartSecretValues(t *testing.T) {
 	tests := []struct {
 		chartDir    string
