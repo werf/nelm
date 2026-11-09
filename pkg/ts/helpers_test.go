@@ -2,10 +2,13 @@ package ts_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -13,6 +16,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/common"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
+	"github.com/werf/nelm/v2/pkg/log"
 )
 
 const (
@@ -35,6 +39,45 @@ pwd -P > "$0.pwd"
 printf '%s' "$NELM_TEST_CANARY" > "$0.canary"
 `
 )
+
+type logEntry struct {
+	level   string
+	message string
+}
+
+// recordingLogger records the debug, warning and error messages and passes the rest to log.Default.
+type recordingLogger struct {
+	log.Logger
+
+	mu      sync.Mutex
+	records []logEntry
+}
+
+func (l *recordingLogger) Debug(_ context.Context, format string, a ...interface{}) {
+	l.record("debug", format, a)
+}
+
+func (l *recordingLogger) Error(_ context.Context, format string, a ...interface{}) {
+	l.record("error", format, a)
+}
+
+func (l *recordingLogger) Warn(_ context.Context, format string, a ...interface{}) {
+	l.record("warn", format, a)
+}
+
+func (l *recordingLogger) entries() []logEntry {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return slices.Clone(l.records)
+}
+
+func (l *recordingLogger) record(level, format string, a []interface{}) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.records = append(l.records, logEntry{level: level, message: fmt.Sprintf(format, a...)})
+}
 
 type fakeNodeRun struct {
 	args  []string
@@ -130,6 +173,19 @@ func readStubRun(t *testing.T, binDir, name string) stubRun {
 		canary: string(canary),
 		dir:    strings.TrimSpace(string(dir)),
 	}
+}
+
+// recordLogs makes log.Default record messages until the test ends.
+func recordLogs(t *testing.T) *recordingLogger {
+	t.Helper()
+
+	previous := log.Default
+	logger := &recordingLogger{Logger: previous}
+	log.Default = logger
+
+	t.Cleanup(func() { log.Default = previous })
+
+	return logger
 }
 
 func requireStubNotRun(t *testing.T, binDir, name string) {

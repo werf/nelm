@@ -20,6 +20,55 @@ import (
 	"github.com/werf/nelm/v2/pkg/log"
 )
 
+const maxChartOutputBytes = 10 << 20
+
+// chartOutputWriter passes what the chart writes to onLine line by line, and stops the chart once it
+// has written more than maxChartOutputBytes.
+type chartOutputWriter struct {
+	exceeded bool
+	name     string
+	onLine   func(line string)
+	partial  []byte
+	stop     context.CancelFunc
+	written  int
+}
+
+func (w *chartOutputWriter) Write(p []byte) (int, error) {
+	if w.exceeded {
+		return len(p), nil
+	}
+
+	w.written += len(p)
+	if w.written > maxChartOutputBytes {
+		w.exceeded = true
+		w.partial = nil
+		w.stop()
+
+		return len(p), nil
+	}
+
+	w.partial = append(w.partial, p...)
+
+	for {
+		line, rest, found := bytes.Cut(w.partial, []byte("\n"))
+		if !found {
+			break
+		}
+
+		w.onLine(string(line))
+		w.partial = rest
+	}
+
+	return len(p), nil
+}
+
+func (w *chartOutputWriter) flush() {
+	if len(w.partial) > 0 {
+		w.onLine(string(w.partial))
+		w.partial = nil
+	}
+}
+
 func RenderChart(ctx context.Context, chart helmchart.Accessor, renderedValues chartcommon.Values, rebuildBundle bool, chartPath, tempDirPath, nodeBinaryPath string) (map[string]string, error) {
 	if !hasTSFiles(chart) {
 		return map[string]string{}, nil
@@ -94,13 +143,24 @@ func renderChart(ctx context.Context, bundle *chartcommon.File, chart helmchart.
 		return "", fmt.Errorf("create temp dir for render context: %w", err)
 	}
 
+	renderFiles := []string{common.ChartTSInputFile, common.ChartTSOutputFile}
+
 	// The temp dir may be reused: whatever is left there, symlinks included, must not be written
 	// through or passed to Node.js in place of the files created here.
-	for _, file := range []string{common.ChartTSInputFile, common.ChartTSOutputFile} {
+	for _, file := range renderFiles {
 		if err := os.Remove(filepath.Join(renderDir, file)); err != nil && !os.IsNotExist(err) {
 			return "", fmt.Errorf("remove leftover %s: %w", file, err)
 		}
 	}
+
+	// The input holds the values, decrypted secrets included.
+	defer func() {
+		for _, file := range renderFiles {
+			if err := os.Remove(filepath.Join(renderDir, file)); err != nil && !os.IsNotExist(err) {
+				log.Default.Warn(ctx, "Unable to remove %s: %s", filepath.Join(renderDir, file), err)
+			}
+		}
+	}()
 
 	if err := writeInputRenderContext(renderedValues, chart, renderDir); err != nil {
 		return "", fmt.Errorf("write input render context: %w", err)
@@ -199,15 +259,16 @@ func buildChartMetadata(chart helmchart.Accessor) map[string]any {
 }
 
 // runBundle runs the bundle, passed through stdin, on the input file in renderDir. Node.js may read
-// only the input file and write only the output file, and gets no environment, so that neither the
-// chart nor its dependencies can reach anything else on the machine.
+// only the input file and write only the output file, and gets no environment. This keeps a chart
+// and its dependencies from reaching the rest of the machine by accident, and is not meant to
+// contain malicious code: the Node.js permission model does not cover everything, such as sending
+// signals to other processes.
 func runBundle(ctx context.Context, nodeBin, renderDir string, bundle []byte) error {
 	absRenderDir, err := filepath.Abs(renderDir)
 	if err != nil {
 		return fmt.Errorf("get absolute path of %s: %w", renderDir, err)
 	}
 
-	// Node.js checks permissions against resolved paths.
 	resolvedRenderDir, err := filepath.EvalSymlinks(absRenderDir)
 	if err != nil {
 		return fmt.Errorf("resolve symlinks in %s: %w", absRenderDir, err)
@@ -216,8 +277,19 @@ func runBundle(ctx context.Context, nodeBin, renderDir string, bundle []byte) er
 	inputPath := filepath.Join(resolvedRenderDir, common.ChartTSInputFile)
 	outputPath := filepath.Join(resolvedRenderDir, common.ChartTSOutputFile)
 
-	cmd := exec.CommandContext(ctx, nodeBin, //nolint:gosec // G204: nodeBin is the Node.js found in PATH or the one the user passed explicitly
+	for _, path := range []string{inputPath, outputPath} {
+		if strings.Contains(path, "*") {
+			return fmt.Errorf("path %q contains \"*\", which Node.js would take as a wildcard in its permissions: use a --temp-dir and chart names without \"*\"", path)
+		}
+	}
+
+	runCtx, stop := context.WithCancel(ctx)
+	defer stop()
+
+	cmd := exec.CommandContext(runCtx, nodeBin, //nolint:gosec // G204: nodeBin is the Node.js found in PATH or the one the user passed explicitly
 		"--permission",
+		// node:sqlite creates database files regardless of the permissions.
+		"--no-experimental-sqlite",
 		"--allow-fs-read="+inputPath,
 		"--allow-fs-write="+outputPath,
 		// Without a package.json Node.js would guess the module type of stdin.
@@ -234,19 +306,39 @@ func runBundle(ctx context.Context, nodeBin, renderDir string, bundle []byte) er
 		cmd.Env = []string{"SystemRoot=" + os.Getenv("SystemRoot")}
 	}
 
-	var stdout, stderr bytes.Buffer
+	var stderrLines []string
 
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	stdout := &chartOutputWriter{
+		name:   "stdout",
+		onLine: func(line string) { log.Default.Debug(ctx, "%s", line) },
+		stop:   stop,
+	}
+	stderr := &chartOutputWriter{
+		name:   "stderr",
+		onLine: func(line string) { stderrLines = append(stderrLines, line) },
+		stop:   stop,
+	}
+
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 
 	runErr := cmd.Run()
 
-	for line := range strings.Lines(stdout.String()) {
-		log.Default.Debug(ctx, "%s", strings.TrimRight(line, "\n"))
+	stdout.flush()
+	stderr.flush()
+
+	for _, line := range stderrLines {
+		if runErr != nil {
+			log.Default.Error(ctx, "%s", line)
+		} else {
+			log.Default.Warn(ctx, "%s", line)
+		}
 	}
 
-	for line := range strings.Lines(stderr.String()) {
-		log.Default.Error(ctx, "error from node app: %s", strings.TrimRight(line, "\n"))
+	for _, writer := range []*chartOutputWriter{stdout, stderr} {
+		if writer.exceeded {
+			return fmt.Errorf("the chart wrote more than %d MiB to %s", maxChartOutputBytes>>20, writer.name)
+		}
 	}
 
 	if runErr != nil {

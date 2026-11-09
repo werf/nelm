@@ -2,10 +2,12 @@ package ts_test
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,6 +17,43 @@ import (
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 	"github.com/werf/nelm/v2/pkg/ts"
 )
+
+func TestRenderChartRemovesRenderFiles(t *testing.T) {
+	skipWithoutShell(t)
+
+	chartDir := copyTestChart(t)
+	chart := loadChart(t, chartDir)
+	require.NoError(t, ts.BundleChartsRecursive(context.Background(), chart, chartDir, false))
+
+	for name, test := range map[string]struct {
+		body    string
+		wantErr bool
+	}{
+		"after success": {body: fakeNodeScript},
+		"after failure": {body: "#!/bin/sh\nexit 1\n", wantErr: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			nodePath := filepath.Join(t.TempDir(), "node")
+			require.NoError(t, os.WriteFile(nodePath, []byte(test.body), 0o755))
+
+			tempDir := t.TempDir()
+			values := chartcommon.Values{"Values": map[string]any{"password": "secret"}}
+
+			_, err := ts.RenderChartRecursive(context.Background(), chart, values, chart.Name(), chartDir, tempDir, nodePath)
+			assert.Equal(t, test.wantErr, err != nil, "error: %v", err)
+
+			var leftovers []string
+			require.NoError(t, filepath.WalkDir(tempDir, func(path string, entry fs.DirEntry, err error) error {
+				if err == nil && !entry.IsDir() {
+					leftovers = append(leftovers, path)
+				}
+
+				return err
+			}))
+			assert.Empty(t, leftovers, "the input with the values and the output must be removed")
+		})
+	}
+}
 
 // The tests below run a real Node.js, which they take from NELM_TEST_NODE_BINARY_PATH: the pinned
 // release is not downloaded in unit tests.
@@ -66,6 +105,7 @@ func TestRunBundle(t *testing.T) {
 	run := readFakeNodeRun(t, nodePath)
 	assert.Equal(t, []string{
 		"--permission",
+		"--no-experimental-sqlite",
 		"--allow-fs-read=" + inputPath,
 		"--allow-fs-write=" + outputPath,
 		"--input-type=module",
@@ -77,6 +117,61 @@ func TestRunBundle(t *testing.T) {
 	assert.Equal(t, resolvedRenderDir, run.dir)
 	assert.NotContains(t, run.env, "NELM_TEST_CANARY", "the environment must not be passed")
 	assert.NotContains(t, run.env, "HOME=", "the environment must not be passed")
+}
+
+func TestRunBundleOutput(t *testing.T) {
+	skipWithoutShell(t)
+
+	t.Run("logs stdout as debug and stderr as warnings when the chart succeeds", func(t *testing.T) {
+		logger := recordLogs(t)
+
+		nodePath := filepath.Join(t.TempDir(), "node")
+		require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\nprintf 'out 100%%\\n'\nprintf 'deprecated\\n' >&2\n"), 0o755))
+
+		require.NoError(t, ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte("")))
+
+		assert.Equal(t, []logEntry{{level: "debug", message: "out 100%"}, {level: "warn", message: "deprecated"}}, logger.entries())
+	})
+
+	t.Run("logs stderr as errors when the chart fails", func(t *testing.T) {
+		logger := recordLogs(t)
+
+		nodePath := filepath.Join(t.TempDir(), "node")
+		require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\nprintf 'TypeError: boom\\n' >&2\nexit 1\n"), 0o755))
+
+		err := ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte(""))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "exit status 1")
+		assert.Equal(t, []logEntry{{level: "error", message: "TypeError: boom"}}, logger.entries())
+	})
+
+	for name, redirect := range map[string]string{"stdout": " 2>/dev/null", "stderr": " >&2 2>/dev/null"} {
+		t.Run("stops the chart writing too much to "+name, func(t *testing.T) {
+			recordLogs(t)
+
+			nodePath := filepath.Join(t.TempDir(), "node")
+			require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\n/bin/dd if=/dev/zero bs=1048576 count=20"+redirect+"\nexec /bin/sleep 60\n"), 0o755))
+
+			start := time.Now()
+			err := ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte(""))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "the chart wrote more than 10 MiB to "+name)
+			assert.Less(t, time.Since(start), 30*time.Second, "the chart must be stopped")
+		})
+	}
+}
+
+func TestRunBundleRejectsWildcardInPaths(t *testing.T) {
+	skipWithoutShell(t)
+
+	nodePath := writeFakeNode(t, filepath.Join(t.TempDir(), "node"))
+	renderDir := filepath.Join(t.TempDir(), "my*chart")
+	require.NoError(t, os.MkdirAll(renderDir, 0o755))
+
+	err := ts.RunBundle(context.Background(), nodePath, renderDir, []byte(""))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `contains "*"`)
+	assert.NoFileExists(t, nodePath+".args", "Node.js must not be run")
 }
 
 func TestRunBundleSandbox(t *testing.T) {
@@ -145,6 +240,13 @@ await writeFile(values['output-file'], JSON.stringify({ result }));
 
 	t.Run("gets no environment", func(t *testing.T) {
 		assert.NotContains(t, runProbe(t, `return Object.keys(process.env).join(',');`), "NELM_TEST_CANARY")
+	})
+
+	t.Run("cannot write files through node:sqlite", func(t *testing.T) {
+		databasePath := filepath.Join(t.TempDir(), "escape.db")
+
+		assert.Equal(t, "denied: ERR_UNKNOWN_BUILTIN_MODULE", runProbe(t, `const { DatabaseSync } = await import('node:sqlite'); new DatabaseSync(`+jsString(databasePath)+`).exec('create table t (x)'); return 'written';`))
+		assert.NoFileExists(t, databasePath)
 	})
 }
 
