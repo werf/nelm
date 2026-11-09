@@ -637,6 +637,7 @@ func processDependencies(chrt helmchart.Charter, userVals userValues) (map[strin
 
 		return vals, releaseConfig, lo.Uniq(skipped), storedValues, nil
 	case *v3chart.Chart:
+		warnings := v3ExportValuesWarnings(c)
 		layers := userValuesLayers(userVals)
 		chartVals := coalescedChartValues(c)
 
@@ -658,18 +659,52 @@ func processDependencies(chrt helmchart.Charter, userVals userValues) (map[strin
 			return layer.DependencyPath == nil || hasDependencyAtPath(c, layer.DependencyPath)
 		})
 
-		if len(enabledLayers) < len(layers) {
-			if vals, err = mergeValuesLayers(enabledLayers, chartVals); err != nil {
-				return nil, nil, nil, nil, fmt.Errorf("merge values layers of enabled dependencies: %w", err)
+		var (
+			importedLayers []valuesLayer
+			skipped        []string
+		)
+
+		for i, layer := range enabledLayers {
+			replacedPaths := higherLayersReplacedPaths(enabledLayers, i)
+
+			importedLayerValues, importSkipped, err := chartv3util.ImportUserValues(c, layer.Values, chartv3util.ImportUserValuesOptions{
+				ReplacedPaths: replacedPaths,
+			})
+			if err != nil {
+				return nil, nil, nil, nil, fmt.Errorf("import user values: %w", err)
 			}
+
+			if layer.AncestorValues != nil {
+				if importedLayerValues, err = chartcommonutil.DeepCopyValues(importedLayerValues); err != nil {
+					return nil, nil, nil, nil, fmt.Errorf("copy imported values: %w", err)
+				}
+
+				unimportedLayerValues, err := chartcommonutil.DeepCopyValues(layer.Values)
+				if err != nil {
+					return nil, nil, nil, nil, fmt.Errorf("copy unimported values: %w", err)
+				}
+
+				chartcommonutil.DeleteValuesAtPaths(unimportedLayerValues, replacedPaths)
+
+				deleteOverriddenImportedValues(importedLayerValues, unimportedLayerValues, layer.AncestorValues)
+			}
+
+			layer.Values = importedLayerValues
+			importedLayers = append(importedLayers, layer)
+			skipped = append(skipped, importSkipped...)
 		}
 
-		storedValues, err := chartValuesWithDependencyLayers(c.Values, enabledLayers)
+		vals, err = mergeValuesLayers(importedLayers, coalescedChartValues(c))
+		if err != nil {
+			return nil, nil, nil, nil, fmt.Errorf("merge imported values layers: %w", err)
+		}
+
+		storedValues, err := chartValuesWithDependencyLayers(c.Values, importedLayers)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
 
-		return vals, releaseConfig, nil, storedValues, nil
+		return vals, releaseConfig, lo.Uniq(append(warnings, skipped...)), storedValues, nil
 	default:
 		return nil, nil, nil, nil, fmt.Errorf("unexpected chart type %T", chrt)
 	}
@@ -1411,6 +1446,23 @@ func setValuesReplacedPaths(setPaths map[string]interface{}, applySet func(vals 
 	}
 
 	return replacedPaths
+}
+
+func v3ExportValuesWarnings(c *v3chart.Chart) []string {
+	var warnings []string
+	for _, dep := range c.Metadata.Dependencies {
+		if dep == nil || len(dep.ExportValues) == 0 {
+			continue
+		}
+
+		warnings = append(warnings, fmt.Sprintf("Ignoring export-values of dependency %q of chart %q: export-values are not supported in charts with apiVersion v3", lo.CoalesceOrEmpty(dep.Alias, dep.Name), c.ChartFullPath()))
+	}
+
+	for _, sub := range c.Dependencies() {
+		warnings = append(warnings, v3ExportValuesWarnings(sub)...)
+	}
+
+	return warnings
 }
 
 func validateChart(ctx context.Context, chrt helmchart.Charter, acc helmchart.Accessor) error {

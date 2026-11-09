@@ -1,0 +1,30 @@
+apiVersion: v3
+name: parent
+version: 0.1.0
+dependencies:
+  - name: sub
+    version: 0.1.0
+    export-values:
+      - parent: g.repo
+        child: image.repository
+      - parent: g.map
+        child: m
+    import-values:
+      - child: out
+        parent: imported
+      - data
+  - name: sub
+    alias: aliased
+    version: 0.1.0
+    export-values:
+      - parent: g.aliasRepo
+        child: image.repository
+    import-values:
+      - child: out
+        parent: importedAlias
+  - name: toggled
+    version: 0.1.0
+    condition: toggled.enabled
+    export-values:
+      - parent: toggle
+        child: enabled
