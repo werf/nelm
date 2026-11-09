@@ -321,6 +321,74 @@ func TestRenderChart_WerfDataDependencyBelowParentValues(t *testing.T) {
 	}
 }
 
+func TestRenderChart_WerfDataDependencyBelowParentValuesV3(t *testing.T) {
+	published := mergeTestFiles(map[string]string{
+		"charts/pub/Chart.yaml":            "apiVersion: v3\nname: pub\nversion: 1.0.0\ndependencies:\n- name: sub\n  version: 1.0.0\n  import-values:\n  - child: fromchild\n    parent: imported\n",
+		"charts/pub/charts/sub/Chart.yaml": "apiVersion: v3\nname: sub\nversion: 1.0.0\n",
+	}, prefixTestFiles("charts/pub/", werfDataFlagsAsFiles(t, werfDataFlags{
+		Values: "exported:\n  k: pub-published\nsub:\n  fromchild:\n    k: pub-published\n    l: pub-published",
+	})))
+
+	tests := []struct {
+		name         string
+		dependencies string
+		values       string
+		want         map[string]interface{}
+		// nested puts the dependency into a dependency "mid" that imports its "exported" values.
+		nested bool
+	}{
+		{
+			name:         "the parent values at an import-values destination",
+			dependencies: "- name: pub\n  version: 1.0.0\n  import-values:\n  - child: exported\n    parent: imported",
+			values:       "imported:\n  k: parent",
+			want:         map[string]interface{}{"imported.k": "parent", "pub.exported.k": "pub-published"},
+		},
+		{
+			name:         "the parent values at an import-values destination of a nested dependency",
+			dependencies: "- name: mid\n  version: 1.0.0",
+			values:       "mid:\n  imported:\n    k: parent",
+			want:         map[string]interface{}{"mid.imported.k": "parent", "mid.pub.exported.k": "pub-published", "mid.pub.imported.l": "pub-published"},
+			nested:       true,
+		},
+		{
+			name:         "the parent values at an import-values destination of the dependency",
+			dependencies: "- name: pub\n  version: 1.0.0",
+			values:       "pub:\n  imported:\n    k: parent",
+			want:         map[string]interface{}{"pub.imported.k": "parent", "pub.imported.l": "pub-published", "pub.sub.fromchild.k": "pub-published"},
+		},
+		{
+			name:         "a disabled dependency",
+			dependencies: "- name: pub\n  version: 1.0.0\n  condition: pub.enabled",
+			values:       "pub:\n  enabled: false",
+			want:         map[string]interface{}{"pub": map[string]interface{}{"enabled": false}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dependencyFiles := published
+			if tt.nested {
+				dependencyFiles = prefixTestFiles("charts/mid/", published)
+				dependencyFiles["charts/mid/Chart.yaml"] = "apiVersion: v3\nname: mid\nversion: 1.0.0\ndependencies:\n- name: pub\n  version: 1.0.0\n  import-values:\n  - child: exported\n    parent: imported\n"
+			}
+
+			result, err := renderWerfDataTestChart(t, writeWerfDataTestChart(t, dependencyFiles, map[string]string{
+				"Chart.yaml":  "apiVersion: v3\nname: root\nversion: 1.0.0\ndependencies:\n" + tt.dependencies + "\n",
+				"values.yaml": tt.values,
+			}), RenderChartOptions{})
+			require.NoError(t, err)
+
+			vals := renderedChartValues(t, result)
+			storedVals := storedReleaseValues(t, result)
+
+			for path, want := range tt.want {
+				assert.Equal(t, want, valueAtPath(t, vals, path), path)
+				assert.Equal(t, want, valueAtPath(t, storedVals, path), "release get view of %s", path)
+			}
+		})
+	}
+}
+
 func TestRenderChart_WerfDataDependencyDefaultSecretValuesDisable(t *testing.T) {
 	chartPath := writeWerfDataTestChart(t, map[string]string{ //nolint:gosec // Test values, not credentials.
 		"Chart.yaml":                                 "apiVersion: v2\nname: root\nversion: 1.0.0\ndependencies:\n- name: pub\n  version: 1.0.0\n- name: sibling\n  version: 1.0.0\n",
@@ -764,6 +832,22 @@ func TestRenderChart_WerfDataDependencyMetadataIgnored(t *testing.T) {
 	}
 }
 
+func TestRenderChart_WerfDataDependencySecretNullAtImportSourceV3(t *testing.T) {
+	result, err := renderWerfDataTestChart(t, writeWerfDataTestChart(t, map[string]string{ //nolint:gosec // Test values, not credentials.
+		"Chart.yaml":                        "apiVersion: v3\nname: root\nversion: 1.0.0\ndependencies:\n- name: pub\n  version: 1.0.0\n",
+		"charts/pub/Chart.yaml":             "apiVersion: v3\nname: pub\nversion: 1.0.0\ndependencies:\n- name: sub\n  version: 1.0.0\n  import-values:\n  - child: fromchild\n    parent: imported\n",
+		"charts/pub/secret-values.yaml":     "sub:\n  fromchild:\n    k: null",
+		"charts/pub/charts/sub/Chart.yaml":  "apiVersion: v3\nname: sub\nversion: 1.0.0\n",
+		"charts/pub/charts/sub/values.yaml": "fromchild:\n  k: default\n  l: default",
+	}, prefixTestFiles("charts/pub/", werfDataFlagsAsFiles(t, werfDataFlags{Values: "own: published"}))), RenderChartOptions{})
+	require.NoError(t, err)
+
+	vals := renderedChartValues(t, result)
+
+	assert.Equal(t, absentValue{}, valueAtPath(t, vals, "pub.imported.k"))
+	assert.Equal(t, "default", valueAtPath(t, vals, "pub.imported.l"))
+}
+
 // TestRenderChart_WerfDataEquivalence renders each chart with the flags passed as the caller's
 // options and with the same flags stored in .werf-data, and expects the same values and release
 // config.
@@ -924,6 +1008,16 @@ func TestRenderChart_WerfDataEquivalence(t *testing.T) {
 			},
 			flags: werfDataFlags{SecretValues: "sub:\n  fromchild:\n    a: custom-secret", ExtraValues: "sub:\n  fromchild:\n    b: service"}, //nolint:gosec // Test values, not credentials.
 			want:  "imported:\n  a: custom-secret\n  b: service\n  c: sub\nsub:\n  fromchild:\n    a: custom-secret\n    b: service\n    c: sub\n  global: {}",
+		},
+		{
+			name: "chart apiVersion v3 imports from values files and set values",
+			chart: map[string]string{
+				"Chart.yaml":             "apiVersion: v3\nname: root\nversion: 1.0.0\ndependencies:\n- name: sub\n  version: 1.0.0\n  import-values:\n  - child: fromchild\n    parent: imported\n",
+				"charts/sub/Chart.yaml":  "apiVersion: v3\nname: sub\nversion: 1.0.0\n",
+				"charts/sub/values.yaml": "fromchild:\n  a: sub\n  b: sub\n  c: sub",
+			},
+			flags: werfDataFlags{Values: "sub:\n  fromchild:\n    a: values", Set: []string{"sub.fromchild.b=set"}},
+			want:  "imported:\n  a: values\n  b: set\n  c: sub\nsub:\n  fromchild:\n    a: values\n    b: set\n    c: sub\n  global: {}",
 		},
 		{
 			name:  "chart apiVersion v1",

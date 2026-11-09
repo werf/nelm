@@ -266,17 +266,7 @@ func processImportValues(c *chart.Chart, merge bool) error {
 	if c.Metadata.Dependencies == nil {
 		return nil
 	}
-	extraVals, err := util.ServiceAndCustomSecretValues(c)
-	if err != nil {
-		return err
-	}
-
-	var cvals common.Values
-	if merge {
-		cvals, err = util.MergeValues(c, extraVals)
-	} else {
-		cvals, err = util.CoalesceValues(c, extraVals)
-	}
+	cvals, err := valuesForChart(c, merge)
 	if err != nil {
 		return err
 	}

@@ -272,6 +272,16 @@ func TestRenderChart_ImportValuesFromValuesLayers(t *testing.T) {
 			},
 		},
 		{
+			name: "set-json replaces imported map from secret values file",
+			opts: layeredValuesRenderOptions{
+				SecretValuesFiles: []string{layeredImportExportSecretValuesFile},
+				SetJSON:           []string{`imported={"z":"set"}`},
+			},
+			want: map[string]interface{}{
+				"imported": map[string]interface{}{"k": "sub-values-yaml", "z": "set", "fromDeep": map[string]interface{}{"k": "deep-values-yaml"}},
+			},
+		},
+		{
 			name: "service values",
 			opts: layeredValuesRenderOptions{ServiceValues: map[string]interface{}{"sub": map[string]interface{}{"out": map[string]interface{}{"k": "service"}}}},
 			want: map[string]interface{}{
@@ -300,15 +310,17 @@ func TestRenderChart_ImportValuesFromValuesLayers(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.opts.ChartDir = "import-export-chart"
-			vals := renderedChartValues(t, renderLayeredValuesChart(t, tt.opts))
+	for _, chartDir := range []string{"import-export-chart", "import-export-chart-v3"} {
+		for _, tt := range tests {
+			t.Run(chartDir+"/"+tt.name, func(t *testing.T) {
+				tt.opts.ChartDir = chartDir
+				vals := renderedChartValues(t, renderLayeredValuesChart(t, tt.opts))
 
-			for path, want := range tt.want {
-				assert.Equal(t, want, valueAtPath(t, vals, path), path)
-			}
-		})
+				for path, want := range tt.want {
+					assert.Equal(t, want, valueAtPath(t, vals, path), path)
+				}
+			})
+		}
 	}
 }
 
