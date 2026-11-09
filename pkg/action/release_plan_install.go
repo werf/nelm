@@ -362,6 +362,13 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		}
 	}
 
+	log.Default.Debug(ctx, "Build last deployed only resource specs")
+
+	lastDeployedOnlyResSpecs, err := buildLastDeployedOnlyResSpecs(ctx, prevRelease, prevRelResSpecs, prevDeployedRelease, releaseNamespace)
+	if err != nil {
+		return nil, fmt.Errorf("build last deployed only resource specs: %w", err)
+	}
+
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
 	newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, releaseNamespace)
@@ -376,6 +383,7 @@ func releasePlanInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc
 		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 	}, resource.BuildResourcesOptions{
 		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
+		DeleteOnlyResSpecs:       lastDeployedOnlyResSpecs,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build resources: %w", err)

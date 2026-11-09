@@ -37,6 +37,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes/scheme"
 	"oras.land/oras-go/v2"
@@ -412,6 +413,24 @@ type chartCopyTestTarEntry struct {
 	Name string
 }
 
+func newDeleteCandidatesInstallOptions(t *testing.T, api *progressPhasesAPI, manifest string) ReleaseInstallOptions {
+	t.Helper()
+
+	return ReleaseInstallOptions{
+		KubeConnectionOptions: api.kubeOpts,
+		Chart:                 newDeleteCandidatesChart(t, manifest),
+		LegacyNoReleaseLock:   true,
+		NoCreateNamespace:     true,
+		NoShowNotes:           true,
+		ReleaseInstallRuntimeOptions: common.ReleaseInstallRuntimeOptions{
+			ReleaseStorageDriver:      "configmap",
+			ResourceValidationOptions: common.ResourceValidationOptions{NoResourceValidation: true},
+		},
+		TempDirPath:     t.TempDir(),
+		TrackingOptions: common.TrackingOptions{NoProgressTablePrint: true},
+	}
+}
+
 func newTriggersReleaseChart(t *testing.T, api *progressPhasesAPI, annotations map[string]string) string {
 	t.Helper()
 
@@ -478,6 +497,16 @@ spec:
       openAPIV3Schema:
         type: object
 `), 0o600))
+
+	return chartPath
+}
+
+func newDeleteCandidatesChart(t *testing.T, manifest string) string {
+	t.Helper()
+
+	chartPath := newProgressPhasesChart(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(chartPath, "templates"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(chartPath, "templates", "cm.yaml"), []byte(manifest), 0o600))
 
 	return chartPath
 }
@@ -672,6 +701,31 @@ func addProgressPhasesConfigMap(t *testing.T, api *progressPhasesAPI) string {
 	return string(body)
 }
 
+func addReleaseConfigMap(t *testing.T, api *progressPhasesAPI, name string, annotations map[string]string) string {
+	t.Helper()
+
+	cm := corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{Kind: "ConfigMap", APIVersion: "v1"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name, Namespace: "progress-ns", UID: types.UID("uid-" + name),
+			// The fake API serves no events, so readiness tracking must not block on them.
+			Annotations: lo.Assign(map[string]string{
+				"meta.helm.sh/release-name": "progress-release", "meta.helm.sh/release-namespace": "progress-ns",
+				"werf.io/track-termination-mode": "NonBlocking",
+			}, annotations),
+			Labels: map[string]string{"app.kubernetes.io/managed-by": "Helm"},
+		},
+		Data: map[string]string{"key": "value"},
+	}
+	body, err := json.Marshal(cm)
+	require.NoError(t, err)
+	api.state.RWTransaction(func(s *progressPhasesAPIState) {
+		s.configMaps[cm.Name] = cm
+	})
+
+	return string(body)
+}
+
 // buildChartCopyTestChart returns a chart archive with the files under the app directory.
 func buildChartCopyTestChart(t *testing.T, files map[string]string) []byte {
 	t.Helper()
@@ -726,6 +780,20 @@ func collectSlowProgressPhaseReports(ch <-chan progrep.ProgressReport) <-chan []
 	}()
 
 	return done
+}
+
+func deletedResourceConfigMaps(api *progressPhasesAPI) []string {
+	var names []string
+	api.state.RTransaction(func(s *progressPhasesAPIState) {
+		for _, request := range s.requests {
+			name, found := strings.CutPrefix(request, "DELETE /api/v1/namespaces/progress-ns/configmaps/")
+			if found && !strings.HasPrefix(name, "sh.helm.release.v1.") {
+				names = append(names, name)
+			}
+		}
+	})
+
+	return names
 }
 
 func encryptSecretValuesTypesFile(t *testing.T, outputPath string) {

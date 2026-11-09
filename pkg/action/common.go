@@ -256,6 +256,28 @@ func subchartContexts(chart helmchart.Accessor, values interface{}) (map[string]
 	return contexts, nil
 }
 
+// The deletions planned by a pending or failed revision after the last deployed one might never
+// have run, so the resources of the last deployed revision that the last revision does not have
+// must be deleted too.
+func buildLastDeployedOnlyResSpecs(ctx context.Context, lastRelease helmrel.Accessor, lastRelResSpecs []*spec.ResourceSpec, lastDeployedRelease helmrel.Accessor, releaseNamespace string) ([]*spec.ResourceSpec, error) {
+	if lastDeployedRelease == nil || lastDeployedRelease.Version() == lastRelease.Version() {
+		return nil, nil
+	}
+
+	lastDeployedResSpecs, err := release.ReleaseToResourceSpecs(ctx, lastDeployedRelease, releaseNamespace)
+	if err != nil {
+		return nil, fmt.Errorf("convert last deployed release to resource specs: %w", err)
+	}
+
+	lastRelResIDs := lo.SliceToMap(lastRelResSpecs, func(resSpec *spec.ResourceSpec) (string, struct{}) {
+		return resSpec.ID(), struct{}{}
+	})
+
+	return lo.Filter(lastDeployedResSpecs, func(resSpec *spec.ResourceSpec, _ int) bool {
+		return !lo.HasKey(lastRelResIDs, resSpec.ID())
+	}), nil
+}
+
 // chartMetadata mirrors what the render engine puts in .Chart: the chart's own
 // metadata plus IsRoot, which the metadata itself does not carry.
 func chartMetadata(chart helmchart.Accessor) map[string]interface{} {
