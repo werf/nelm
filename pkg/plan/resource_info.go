@@ -616,6 +616,13 @@ func forceReadinessTrackingForReadyDependencyTargets(infos []*InstallableResourc
 
 	var readyMatchers []readyMatcher
 	for _, info := range infos {
+		// A dependent without operations in this stage has nothing to order after the target's
+		// readiness, so tracking an otherwise untracked target would only make a no-op deploy
+		// look like a change.
+		if info.MustInstall == ResourceInstallTypeNone && !info.MustTrackReadiness {
+			continue
+		}
+
 		for _, dep := range info.LocalResource.ManualDependencies {
 			// External dependencies get their own track-readiness operation keyed on the
 			// dependency itself, so forcing a same-named local resource would not serve the
