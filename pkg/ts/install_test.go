@@ -136,6 +136,30 @@ func TestEnsureDependencies(t *testing.T) {
 			wantManager: "yarn",
 			wantArgs:    []string{"install", "--frozen-lockfile", "--ignore-scripts"},
 		},
+		"takes yarn classic from a range starting at a prerelease of 1 in devEngines": {
+			files: map[string]string{
+				"ts/package.json": `{"devEngines": {"packageManager": {"name": "yarn", "version": ">=1.22.0-rc-4 <2"}}}`,
+				"ts/yarn.lock":    "",
+			},
+			wantManager: "yarn",
+			wantArgs:    []string{"install", "--frozen-lockfile", "--ignore-scripts"},
+		},
+		"takes yarn berry from a range greater than 1 in devEngines": {
+			files: map[string]string{
+				"ts/package.json": `{"devEngines": {"packageManager": {"name": "yarn", "version": ">1"}}}`,
+				"ts/yarn.lock":    "",
+			},
+			wantManager: "yarn",
+			wantArgs:    []string{"install", "--immutable", "--mode=skip-build"},
+		},
+		"takes yarn classic from a range greater than a 1.x version in devEngines": {
+			files: map[string]string{
+				"ts/package.json": `{"devEngines": {"packageManager": {"name": "yarn", "version": ">1.22"}}}`,
+				"ts/yarn.lock":    "",
+			},
+			wantManager: "yarn",
+			wantArgs:    []string{"install", "--frozen-lockfile", "--ignore-scripts"},
+		},
 		"takes yarn berry from a range starting at 2 or above in devEngines": {
 			files: map[string]string{
 				"ts/package.json": `{"devEngines": {"packageManager": {"name": "yarn", "version": ">=3.2.0 <5"}}}`,
@@ -432,6 +456,17 @@ func TestEnsureDependencies(t *testing.T) {
 		"fails without a lock file": {
 			wantErr: []string{"no lock file of npm in", `run "npm install" there and commit the lock file`},
 		},
+		"tells to keep npm out of the workspace of an ancestor without a lock file": {
+			files:   map[string]string{"package.json": `{"workspaces": ["packages/*"]}`},
+			wantErr: []string{`run "npm install --workspaces=false" there and commit the lock file`},
+		},
+		"tells to keep pnpm out of the workspace of an ancestor without a lock file": {
+			files: map[string]string{
+				"pnpm-workspace.yaml": "packages:\n  - 'packages/*'\n",
+				"ts/package.json":     `{"packageManager": "pnpm@10.34.9"}`,
+			},
+			wantErr: []string{`run "pnpm install --ignore-workspace" there and commit the lock file`},
+		},
 		"fails without a lock file of the chosen package manager": {
 			files:   map[string]string{"ts/package.json": `{"packageManager": "pnpm@10.20.0"}`, "ts/package-lock.json": "{}"},
 			wantErr: []string{"no lock file of pnpm in"},
@@ -678,6 +713,21 @@ func TestInstallDependencies(t *testing.T) {
 		assert.Contains(t, err.Error(), `run "npm install" in `+resolvePath(t, filepath.Join(chartDir, "ts")))
 	})
 
+	t.Run("tells how to finish outside the workspace of an ancestor when installing fails", func(t *testing.T) {
+		binDir := stubPath(t)
+		writeStub(t, binDir, "npm", "exit 1\n")
+
+		projectDir := filepath.Join(t.TempDir(), "project")
+		writeFiles(t, projectDir, map[string]string{
+			"package.json":          `{"workspaces": ["packages/*"]}`,
+			"chart/ts/package.json": "{}",
+		})
+
+		err := ts.InstallDependencies(context.Background(), filepath.Join(projectDir, "chart"))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `run "npm install --workspaces=false" in `+resolvePath(t, filepath.Join(projectDir, "chart", "ts")))
+	})
+
 	t.Run("tells how to finish without the package manager in PATH", func(t *testing.T) {
 		stubPath(t)
 
@@ -687,6 +737,6 @@ func TestInstallDependencies(t *testing.T) {
 		err := ts.InstallDependencies(context.Background(), chartDir)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "package manager pnpm is not found in PATH")
-		assert.Contains(t, err.Error(), `run "pnpm install" in `)
+		assert.Contains(t, err.Error(), `run "pnpm install --ignore-workspace" in `)
 	})
 }

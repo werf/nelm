@@ -30,9 +30,9 @@ const (
 )
 
 var (
-	// versionComparatorRegexp matches the operator and the major version of each comparator of an npm
-	// version range.
-	versionComparatorRegexp  = regexp.MustCompile(`(>=|<=|>|<|=|\^|~)?\s*v?(\d+|[xX*])(?:\.[\dxX*]+)*(?:[-+][\w.]+)?`)
+	// versionComparatorRegexp matches the operator, the major version and the minor version of each
+	// comparator of an npm version range.
+	versionComparatorRegexp  = regexp.MustCompile(`(>=|<=|>|<|=|\^|~)?\s*v?(\d+|[xX*])(?:\.(\d+|[xX*]))?(?:\.(?:\d+|[xX*]))?(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?`)
 	supportedPackageManagers = []string{packageManagerBun, packageManagerNPM, packageManagerPNPM, packageManagerYarn}
 	lockFiles                = []struct {
 		name           string
@@ -116,15 +116,31 @@ func ensureDependencies(ctx context.Context, tsDir string, createLockFile bool) 
 		return fmt.Errorf("detect package manager of %s: %w", root, err)
 	}
 
-	installCommand := manager.name + " install"
+	workspaceInstallCommand := manager.name + " install"
 
 	if root != tsDir && createLockFile {
-		return fmt.Errorf("%s is in a workspace\nThe chart files are created: run %q in workspace root %s to install the dependencies", tsDir, installCommand, root)
+		return fmt.Errorf("%s is in a workspace\nThe chart files are created: run %q in workspace root %s to install the dependencies", tsDir, workspaceInstallCommand, root)
 	}
 
 	if root != tsDir {
-		return fmt.Errorf("dependencies of %s are not installed: run %q in workspace root %s", tsDir, installCommand, root)
+		return fmt.Errorf("dependencies of %s are not installed: run %q in workspace root %s", tsDir, workspaceInstallCommand, root)
 	}
+
+	var outsideWorkspaceArgs []string
+
+	// Otherwise pnpm would install a pnpm-workspace.yaml above, that does not include the chart,
+	// instead of the chart.
+	if manager.name == packageManagerPNPM && !isPNPMWorkspace {
+		outsideWorkspaceArgs = append(outsideWorkspaceArgs, "--ignore-workspace")
+	}
+
+	// Otherwise npm would install the workspace of an ancestor that lists the chart, even if its
+	// package manager is another one, instead of the chart.
+	if manager.name == packageManagerNPM && outsideAncestorWorkspace {
+		outsideWorkspaceArgs = append(outsideWorkspaceArgs, "--workspaces=false")
+	}
+
+	installCommand := strings.Join(append([]string{manager.name, "install"}, outsideWorkspaceArgs...), " ")
 
 	// In chart ts init the chart files are already created, so the user only has to finish the install.
 	nextStep := func(err error) error {
@@ -154,19 +170,7 @@ func ensureDependencies(ctx context.Context, tsDir string, createLockFile bool) 
 		return fmt.Errorf("detect yarn version: %w", err)
 	}
 
-	args := installArgs(manager.name, yarnBerry, hasLockFile)
-
-	// Otherwise pnpm would install a pnpm-workspace.yaml above, that does not include the chart,
-	// instead of the chart.
-	if manager.name == packageManagerPNPM && !isPNPMWorkspace {
-		args = append(args, "--ignore-workspace")
-	}
-
-	// Otherwise npm would install the workspace of an ancestor that lists the chart, even if its
-	// package manager is another one, instead of the chart.
-	if manager.name == packageManagerNPM && outsideAncestorWorkspace {
-		args = append(args, "--workspaces=false")
-	}
+	args := append(installArgs(manager.name, yarnBerry, hasLockFile), outsideWorkspaceArgs...)
 
 	return nextStep(runPackageManager(ctx, root, managerPath, manager.name, args))
 }
@@ -764,14 +768,22 @@ func versionRangeLowestMajor(versionRange string) (int, bool) {
 		alternativeLowest := 0
 
 		for _, comparator := range comparators {
-			operator, major := comparator[1], comparator[2]
+			operator, major, minor := comparator[1], comparator[2], comparator[3]
 			if operator == "<" || operator == "<=" {
 				continue
 			}
 
-			if number, err := strconv.Atoi(major); err == nil {
-				alternativeLowest = max(alternativeLowest, number)
+			number, err := strconv.Atoi(major)
+			if err != nil {
+				continue
 			}
+
+			// As in npm, ">1" and ">1.x" mean ">=2.0.0".
+			if _, err := strconv.Atoi(minor); operator == ">" && err != nil {
+				number++
+			}
+
+			alternativeLowest = max(alternativeLowest, number)
 		}
 
 		if !found || alternativeLowest < lowest {
