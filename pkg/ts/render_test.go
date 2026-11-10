@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -103,6 +104,7 @@ func TestRunBundle(t *testing.T) {
 	assert.Equal(t, []string{
 		"--permission",
 		"--no-experimental-sqlite",
+		"--freeze-flags-after-init",
 		"--allow-fs-read=" + inputPath,
 		"--allow-fs-write=" + outputPath,
 		"--input-type=module",
@@ -252,6 +254,42 @@ await writeFile(values['output-file'], JSON.stringify({ result }));
 		assert.Equal(t, "denied: ERR_UNKNOWN_BUILTIN_MODULE", runProbe(t, `const { DatabaseSync } = await import('node:sqlite'); new DatabaseSync(`+jsString(databasePath)+`).exec('create table t (x)'); return 'written';`))
 		assert.NoFileExists(t, databasePath)
 	})
+
+	for name, flags := range map[string]func(dir string) []string{
+		"redirected code traces": func(dir string) []string {
+			return []string{"--redirect-code-traces-to=" + filepath.Join(dir, "traces.txt"), "--redirect-code-traces", "--print-opt-code"}
+		},
+		"turbofan traces": func(dir string) []string {
+			return []string{"--trace-turbo", "--trace-turbo-path=" + dir}
+		},
+	} {
+		t.Run("cannot write files through V8 flags for "+name, func(t *testing.T) {
+			targetDir := t.TempDir()
+			renderDir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(renderDir, "input.yaml"), []byte("{}"), 0o644))
+
+			var setFlags strings.Builder
+			for _, flag := range flags(targetDir) {
+				setFlags.WriteString("v8.setFlagsFromString(" + jsString(flag) + ");\n")
+			}
+
+			bundle := "import v8 from 'node:v8';\n" + setFlags.String() + `function hot(x) { let s = 0; for (let i = 0; i < 100; i++) s += (x * i) % 7; return s; }
+let total = 0;
+for (let i = 0; i < 300000; i++) total += hot(i);
+`
+
+			recordLogs(t)
+			require.Error(t, ts.RunBundle(context.Background(), nodePath, renderDir, []byte(bundle)), "changing V8 flags must stop the chart")
+
+			entries, err := os.ReadDir(targetDir)
+			require.NoError(t, err)
+			assert.Empty(t, entries)
+
+			entries, err = os.ReadDir(renderDir)
+			require.NoError(t, err)
+			assert.Len(t, entries, 1, "nothing but the input file must be in the render dir")
+		})
+	}
 }
 
 func TestRunBundleWithCJSDependency(t *testing.T) {

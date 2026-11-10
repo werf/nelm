@@ -44,7 +44,7 @@ func TestFindNode(t *testing.T) {
 
 	t.Run("prefers the node binary path over node in PATH", func(t *testing.T) {
 		binDir := stubPath(t)
-		writeStub(t, binDir, "node", probeOutput("/usr/bin/node", "26.0.0"))
+		writeStub(t, binDir, "node", probeOutput("/usr/bin/node", "26.12.1"))
 
 		explicitDir := t.TempDir()
 		writeStub(t, explicitDir, "my-node", probeOutput("/opt/node/bin/node", "27.1.0"))
@@ -61,11 +61,15 @@ func TestFindNode(t *testing.T) {
 	}{
 		"fails with Node.js older than 26": {
 			body:    probeOutput("/usr/bin/node", "24.13.0"),
-			wantErr: []string{"Node.js >= 26 is required", "--node-binary-path", "found Node.js 24.13.0 at /usr/bin/node"},
+			wantErr: []string{"Node.js >= 26.12.1 is required", "--node-binary-path", "found Node.js 24.13.0 at /usr/bin/node"},
+		},
+		"fails with Node.js 26 without the latest permission model fixes": {
+			body:    probeOutput("/usr/bin/node", "26.12.0"),
+			wantErr: []string{"Node.js >= 26.12.1 is required", "found Node.js 26.12.0 at /usr/bin/node"},
 		},
 		"fails when node does not run": {
 			body:    "printf 'node: something went wrong\\n' >&2\nexit 3\n",
-			wantErr: []string{"Node.js >= 26 is required", "exit status 3", "node: something went wrong"},
+			wantErr: []string{"Node.js >= 26.12.1 is required", "exit status 3", "node: something went wrong"},
 		},
 		"suggests installing libatomic when node misses it": {
 			body: "printf 'node: error while loading shared libraries: libatomic.so.1: cannot open shared object file: No such file or directory\\n' >&2\nexit 127\n",
@@ -80,7 +84,7 @@ func TestFindNode(t *testing.T) {
 		},
 		"fails on an unparsable version": {
 			body:    probeOutput("/usr/bin/node", "nightly"),
-			wantErr: []string{`parse major version of "nightly"`},
+			wantErr: []string{`parse version "nightly" of /usr/bin/node`},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -110,7 +114,7 @@ func TestFindNode(t *testing.T) {
 
 		_, err := ts.FindNode(context.Background(), "")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "Node.js >= 26 is required to render TypeScript charts, put it in PATH or pass --node-binary-path: no node in PATH")
+		assert.Contains(t, err.Error(), "Node.js >= 26.12.1 is required to render TypeScript charts, put it in PATH or pass --node-binary-path: no node in PATH")
 	})
 
 	t.Run("fails with a missing node binary path", func(t *testing.T) {

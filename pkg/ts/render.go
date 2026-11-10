@@ -290,6 +290,8 @@ func runBundle(ctx context.Context, nodeBin, renderDir string, bundle []byte) er
 		"--permission",
 		// node:sqlite creates database files regardless of the permissions.
 		"--no-experimental-sqlite",
+		// V8 flags set at run time, such as those for traces, write files regardless of the permissions.
+		"--freeze-flags-after-init",
 		"--allow-fs-read="+inputPath,
 		"--allow-fs-write="+outputPath,
 		// Without a package.json Node.js would guess the module type of stdin.
