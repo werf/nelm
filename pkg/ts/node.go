@@ -7,16 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
-
-	"github.com/Masterminds/semver/v3"
 )
 
 const (
-	// minNodeVersion is the first Node.js with all the fixes to the permission model the render
-	// sandbox relies on.
-	minNodeVersion  = "26.12.1"
-	nodeProbeMarker = "nelm-node-probe:"
+	minNodeMajorVersion = 26
+	nodeProbeMarker     = "nelm-node-probe:"
 )
 
 // findNode returns the real path of the Node.js binary to render with: binaryPath if set, otherwise
@@ -49,12 +46,12 @@ func findNode(ctx context.Context, binaryPath string) (string, error) {
 		return "", newNodeNotFoundError(fmt.Sprintf("parse output of %s: %s", candidate, err), stderr.String())
 	}
 
-	parsedVersion, err := semver.StrictNewVersion(strings.TrimPrefix(version, "v"))
+	major, err := nodeMajorVersion(version)
 	if err != nil {
-		return "", newNodeNotFoundError(fmt.Sprintf("parse version %q of %s: %s", version, execPath, err), "")
+		return "", newNodeNotFoundError(fmt.Sprintf("parse version of %s: %s", execPath, err), "")
 	}
 
-	if parsedVersion.LessThan(semver.MustParse(minNodeVersion)) {
+	if major < minNodeMajorVersion {
 		return "", newNodeNotFoundError(fmt.Sprintf("found Node.js %s at %s", version, execPath), "")
 	}
 
@@ -62,7 +59,7 @@ func findNode(ctx context.Context, binaryPath string) (string, error) {
 }
 
 func newNodeNotFoundError(found, stderr string) error {
-	message := fmt.Sprintf("Node.js >= %s is required to render TypeScript charts, put it in PATH or pass --node-binary-path: %s", minNodeVersion, found)
+	message := fmt.Sprintf("Node.js >= %d is required to render TypeScript charts, put it in PATH or pass --node-binary-path: %s", minNodeMajorVersion, found)
 
 	if stderr = strings.TrimSpace(stderr); stderr != "" {
 		message += ": " + stderr
@@ -73,6 +70,17 @@ func newNodeNotFoundError(found, stderr string) error {
 	}
 
 	return errors.New(message)
+}
+
+func nodeMajorVersion(version string) (int, error) {
+	major, _, _ := strings.Cut(strings.TrimPrefix(version, "v"), ".")
+
+	number, err := strconv.Atoi(major)
+	if err != nil {
+		return 0, fmt.Errorf("parse major version of %q: %w", version, err)
+	}
+
+	return number, nil
 }
 
 // parseNodeProbeOutput takes the path and the version from the last line of the output that starts
