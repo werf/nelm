@@ -80,6 +80,17 @@ func TestRenderChart_ExportValuesFromValuesLayers(t *testing.T) {
 			},
 		},
 		{
+			name: "exported value from set overrides child value from set-string as all set values are one layer",
+			opts: layeredValuesRenderOptions{
+				Set:       []string{"g.repo=set"},
+				SetString: []string{"sub.image.repository=set-string"},
+			},
+			want: map[string]interface{}{
+				"sub.image.repository": "set",
+				"sub.deep.repo":        "set",
+			},
+		},
+		{
 			name: "null from set for subchart",
 			opts: layeredValuesRenderOptions{Set: []string{"sub=null"}},
 			want: map[string]interface{}{
