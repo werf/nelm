@@ -133,6 +133,12 @@ type valuesLayer struct {
 	Values        map[string]interface{}
 }
 
+type processDependenciesOptions struct {
+	// NoNotFoundWarnings disables the warnings about the export-values and import-values paths set
+	// in no values, for when not all values are known yet.
+	NoNotFoundWarnings bool
+}
+
 type buildChartCapabilitiesOptions struct {
 	ExtraAPIVersions []string
 	LocalKubeVersion string
@@ -250,7 +256,7 @@ func RenderChart(ctx context.Context, chartPath, releaseName, releaseNamespace s
 
 	log.Default.TraceStruct(ctx, userVals, "Override values layers:")
 
-	vals, releaseConfig, skippedWarnings, storedChartValues, err := processDependencies(loadedChart, userVals)
+	vals, releaseConfig, skippedWarnings, storedChartValues, err := processDependencies(loadedChart, userVals, processDependenciesOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("process chart %q dependencies: %w", chartAccessor.Name(), err)
 	}
@@ -538,7 +544,7 @@ func loadServiceFreeChart(ctx context.Context, chartPath string, userVals userVa
 		mergePublishedValuesIntoChart(freshChart, userVals)
 	}
 
-	vals, _, _, _, err := processDependencies(freshChart, userVals)
+	vals, _, _, _, err := processDependencies(freshChart, userVals, processDependenciesOptions{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("process reloaded chart at %q dependencies: %w", chartPath, err)
 	}
@@ -554,7 +560,7 @@ func loadServiceFreeChart(ctx context.Context, chartPath string, userVals userVa
 // processDependencies processes the dependencies of the chart and returns the values, the values to
 // store in the release config, the messages about the skipped imports and exports, and the chart
 // values to store in the release.
-func processDependencies(chrt helmchart.Charter, userVals userValues) (map[string]interface{}, map[string]interface{}, []string, map[string]interface{}, error) {
+func processDependencies(chrt helmchart.Charter, userVals userValues, opts processDependenciesOptions) (map[string]interface{}, map[string]interface{}, []string, map[string]interface{}, error) {
 	switch c := chrt.(type) {
 	case *v2chart.Chart:
 		layers := userValuesLayers(userVals)
@@ -619,16 +625,18 @@ func processDependencies(chrt helmchart.Charter, userVals userValues) (map[strin
 			skipped = append(skipped, importSkipped...)
 		}
 
-		checkedLayers := lo.Map(slices.Concat(layers, importedLayers), func(layer valuesLayer, _ int) map[string]interface{} {
-			return layer.Values
-		})
+		if !opts.NoNotFoundWarnings {
+			checkedLayers := lo.Map(slices.Concat(layers, importedLayers), func(layer valuesLayer, _ int) map[string]interface{} {
+				return layer.Values
+			})
 
-		notFound, err := chartv2util.ExportAndImportValuesNotFoundWarnings(c, checkedLayers, chartValsBeforeProcessing)
-		if err != nil {
-			return nil, nil, nil, nil, fmt.Errorf("check export and import values paths: %w", err)
+			notFound, err := chartv2util.ExportAndImportValuesNotFoundWarnings(c, checkedLayers, chartValsBeforeProcessing)
+			if err != nil {
+				return nil, nil, nil, nil, fmt.Errorf("check export and import values paths: %w", err)
+			}
+
+			skipped = append(skipped, notFound...)
 		}
-
-		skipped = append(skipped, notFound...)
 
 		vals, err = mergeValuesLayers(importedLayers, coalescedChartValues(c))
 		if err != nil {
