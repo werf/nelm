@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"log/slog"
 
 	v3 "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
 	"github.com/werf/nelm/v2/pkg/helm/intern/copystructure"
@@ -67,4 +68,8 @@ func ApplyDefaultSecretValues(chrt chart.Charter) error {
 	}
 
 	return nil
+}
+
+func logWarning(format string, v ...any) {
+	slog.Warn(fmt.Sprintf(format, v...))
 }
