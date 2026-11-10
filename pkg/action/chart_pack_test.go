@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -27,6 +29,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/helm/intern/resolver"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/chartyaml"
+	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader/archive"
 	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
@@ -1095,7 +1098,161 @@ func TestChartPack_VendorsDependenciesFromChartLock(t *testing.T) {
 	}
 }
 
-// newChartPackTestChartRepo serves a chart repository with the dep chart 0.1.0.
+func TestChartPack_WarnsAboutSkippedExportAndImportValues(t *testing.T) {
+	const (
+		exportWarning = `Skipping export-values of "g" to dependency "sub": only a map can be exported to the dependency root`
+		importWarning = `Skipping import-values of "sub.out": only a map can be imported`
+	)
+
+	subWerfDataFiles := func(data *werfdata.Data) map[string]string {
+		files, err := data.ChartFiles()
+		require.NoError(t, err)
+
+		return lo.SliceToMap(files, func(f *chartcommon.File) (string, string) {
+			return path.Join("charts/sub", f.Name), string(f.Data)
+		})
+	}
+
+	tests := []struct {
+		name             string
+		condition        string
+		chartFiles       map[string]string
+		inputs           map[string]string
+		opts             ChartPackOptions
+		expectedWarnings []string
+	}{
+		{
+			name:             "scalar exported from set values",
+			opts:             ChartPackOptions{ValuesOptions: common.ValuesOptions{ValuesSet: []string{"g=scalar"}}},
+			expectedWarnings: []string{exportWarning},
+		},
+		{
+			name:             "scalar exported from values files",
+			inputs:           map[string]string{"values.yaml": "g: scalar\n"},
+			opts:             ChartPackOptions{ValuesOptions: common.ValuesOptions{ValuesFiles: []string{"values.yaml"}}},
+			expectedWarnings: []string{exportWarning},
+		},
+		{
+			name:             "scalar exported from encrypted secret values files",
+			inputs:           map[string]string{"secret-values.yaml": encryptChartPackTestValues(t, "g: scalar\n")},
+			opts:             ChartPackOptions{SecretValuesFiles: []string{"secret-values.yaml"}},
+			expectedWarnings: []string{exportWarning},
+		},
+		{
+			name:             "scalar exported from extra values",
+			opts:             ChartPackOptions{ExtraValues: map[string]interface{}{"g": "scalar"}},
+			expectedWarnings: []string{exportWarning},
+		},
+		{
+			name: "scalar exported from every layer",
+			inputs: map[string]string{
+				"values.yaml":        "g: scalar\n",
+				"secret-values.yaml": encryptChartPackTestValues(t, "g: scalar\n"),
+			},
+			opts: ChartPackOptions{
+				ExtraValues:       map[string]interface{}{"g": "scalar"},
+				SecretValuesFiles: []string{"secret-values.yaml"},
+				ValuesOptions: common.ValuesOptions{
+					ValuesFiles: []string{"values.yaml"},
+					ValuesSet:   []string{"g=scalar"},
+				},
+			},
+			expectedWarnings: []string{exportWarning},
+		},
+		{
+			name: "map exported",
+			opts: ChartPackOptions{ValuesOptions: common.ValuesOptions{ValuesSet: []string{"g.k=v"}}},
+		},
+		{
+			name:   "scalar replaced by a higher layer",
+			inputs: map[string]string{"values.yaml": "g: scalar\n"},
+			opts: ChartPackOptions{ValuesOptions: common.ValuesOptions{
+				ValuesFiles:   []string{"values.yaml"},
+				ValuesSetJSON: []string{`g={"k":"v"}`},
+			}},
+		},
+		{
+			name:             "scalar imported",
+			opts:             ChartPackOptions{ValuesOptions: common.ValuesOptions{ValuesSet: []string{"sub.out=scalar"}}},
+			expectedWarnings: []string{importWarning},
+		},
+		{
+			name: "exported and imported paths set in no values",
+			opts: ChartPackOptions{ValuesOptions: common.ValuesOptions{ValuesSet: []string{"other=v"}}},
+		},
+		{
+			name: "no publish-time values",
+		},
+		{
+			name:      "scalar exported to a disabled dependency",
+			condition: "sub.enabled",
+			chartFiles: map[string]string{
+				"charts/sub/values.yaml": "enabled: false\n",
+			},
+			opts: ChartPackOptions{ValuesOptions: common.ValuesOptions{ValuesSet: []string{"g=scalar"}}},
+		},
+		{
+			name:      "scalar exported to a dependency enabled by its own publish-time values",
+			condition: "sub.enabled",
+			chartFiles: lo.Assign(
+				map[string]string{"charts/sub/values.yaml": "enabled: false\n"},
+				subWerfDataFiles(&werfdata.Data{Values: map[string]interface{}{"enabled": true}}),
+			),
+			opts:             ChartPackOptions{ValuesOptions: common.ValuesOptions{ValuesSet: []string{"g=scalar"}}},
+			expectedWarnings: []string{exportWarning},
+		},
+		{
+			name:      "scalar exported to a dependency enabled by its own publish-time extra values",
+			condition: "sub.enabled",
+			chartFiles: lo.Assign(
+				map[string]string{"charts/sub/values.yaml": "enabled: false\n"},
+				subWerfDataFiles(&werfdata.Data{
+					ExtraValues: map[string]interface{}{"enabled": true},
+					Metadata:    werfdata.Metadata{ExtraAnnotations: map[string]string{"team": "payments"}},
+				}),
+			),
+			opts:             ChartPackOptions{ValuesOptions: common.ValuesOptions{ValuesSet: []string{"g=scalar"}}},
+			expectedWarnings: []string{exportWarning},
+		},
+		{
+			name: "chart secret values that the check can't decrypt",
+			chartFiles: map[string]string{
+				"values.yaml":        "sub: placeholder\n",
+				"secret-values.yaml": encryptChartPackTestValues(t, "sub:\n  token: secret\n"),
+			},
+			opts: ChartPackOptions{ValuesOptions: common.ValuesOptions{ValuesSet: []string{"g=scalar"}}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			chartYAML := "apiVersion: v2\nname: mychart\nversion: 1.0.0\ndependencies:\n- name: sub\n  version: 1.0.0\n  export-values:\n  - parent: g\n    child: .\n  import-values:\n  - child: out\n    parent: imported\n"
+			if tt.condition != "" {
+				chartYAML += "  condition: " + tt.condition + "\n"
+			}
+
+			chartDir := filepath.Join(t.TempDir(), "mychart")
+			writeChartPackTestFiles(t, chartDir, lo.Assign(map[string]string{
+				"Chart.yaml":            chartYAML,
+				"charts/sub/Chart.yaml": "apiVersion: v2\nname: sub\nversion: 1.0.0\n",
+			}, tt.chartFiles))
+
+			inputsDir := t.TempDir()
+			writeChartPackTestFiles(t, inputsDir, tt.inputs)
+			t.Chdir(inputsDir)
+
+			tt.opts.Destination = t.TempDir()
+
+			ctx, logs := newLogCapturingContext(t)
+			packed, err := ChartPack(ctx, chartDir, tt.opts)
+			require.NoError(t, err)
+
+			lines := strings.Split(strings.TrimSpace(logs.String()), "\n")
+			assert.Equal(t, append(slices.Clone(tt.expectedWarnings), "Successfully packaged chart and saved it to: "+packed.ArchivePath), lines)
+		})
+	}
+}
+
 func newChartPackTestChartRepo(t *testing.T) *httptest.Server {
 	t.Helper()
 

@@ -24,6 +24,7 @@ import (
 	"github.com/samber/lo"
 	"sigs.k8s.io/yaml"
 
+	"github.com/werf/nelm/v2/pkg/chart"
 	"github.com/werf/nelm/v2/pkg/common"
 	"github.com/werf/nelm/v2/pkg/featgate"
 	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
@@ -323,6 +324,16 @@ func ChartPack(ctx context.Context, chartPath string, opts ChartPackOptions) (*C
 
 	if err := checkChartPackArchiveSize(stagedArchivePath); err != nil {
 		return nil, err
+	}
+
+	// The check sees only the values known at pack time, so it can fail where a deploy succeeds.
+	valuesWarnings, err := chart.PackedValuesWarnings(ctx, stagedArchivePath)
+	if err != nil {
+		log.Default.Debug(ctx, "Skipping the check of export-values and import-values of the packed values: %s", err)
+	}
+
+	for _, warning := range valuesWarnings {
+		log.Default.Warn(ctx, "%s", warning)
 	}
 
 	archivePath := filepath.Join(opts.Destination, filepath.Base(stagedArchivePath))
