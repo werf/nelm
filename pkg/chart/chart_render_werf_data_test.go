@@ -264,6 +264,12 @@ func TestRenderChart_WerfDataDependencyBelowParentValues(t *testing.T) {
 			want:         map[string]interface{}{"pub.imported.k": "parent", "pub.sub.fromchild.k": "pub-published"},
 		},
 		{
+			name:         "the parent values at the chart name of a dependency out of the version range of its alias",
+			dependencies: "- name: pub\n  alias: p1\n  version: ~2.0.0",
+			values:       "pub:\n  own: parent",
+			want:         map[string]interface{}{"pub.own": "parent", "pub.published": "pub-set", "pub.sub.x": "pub-published", "p1": absentValue{}},
+		},
+		{
 			name:         "an export-values of the dependency beats the parent values, like its values.yaml does",
 			dependencies: "- name: pub\n  version: 1.0.0",
 			values:       "pub:\n  sub:\n    x: parent",
@@ -355,6 +361,12 @@ func TestRenderChart_WerfDataDependencyBelowParentValuesV3(t *testing.T) {
 			dependencies: "- name: pub\n  version: 1.0.0",
 			values:       "pub:\n  imported:\n    k: parent",
 			want:         map[string]interface{}{"pub.imported.k": "parent", "pub.imported.l": "pub-published", "pub.sub.fromchild.k": "pub-published"},
+		},
+		{
+			name:         "the parent values at the chart name of a dependency out of the version range of its alias",
+			dependencies: "- name: pub\n  alias: p1\n  version: ~2.0.0",
+			values:       "pub:\n  exported:\n    k: parent",
+			want:         map[string]interface{}{"pub.exported.k": "parent", "pub.imported.l": "pub-published", "p1": absentValue{}},
 		},
 		{
 			name:         "a disabled dependency",
