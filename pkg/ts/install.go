@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -29,6 +30,9 @@ const (
 )
 
 var (
+	// versionComparatorRegexp matches the operator and the major version of each comparator of an npm
+	// version range.
+	versionComparatorRegexp  = regexp.MustCompile(`(>=|<=|>|<|=|\^|~)?\s*v?(\d+|[xX*])(?:\.[\dxX*]+)*(?:[-+][\w.]+)?`)
 	supportedPackageManagers = []string{packageManagerBun, packageManagerNPM, packageManagerPNPM, packageManagerYarn}
 	lockFiles                = []struct {
 		name           string
@@ -83,10 +87,12 @@ func ensureDependencies(ctx context.Context, tsDir string, createLockFile bool) 
 		return fmt.Errorf("resolve symlinks in %s: %w", absTSDir, err)
 	}
 
-	root, err := findWorkspaceRoot(tsDir)
+	root, outsideAncestorWorkspace, err := findWorkspaceRoot(ctx, tsDir)
 	if err != nil {
 		return fmt.Errorf("find workspace root of %s: %w", tsDir, err)
 	}
+
+	installed := false
 
 	for _, marker := range []string{"node_modules", ".pnp.cjs"} {
 		if exists, err := fileExists(filepath.Join(root, marker)); err != nil {
@@ -94,8 +100,15 @@ func ensureDependencies(ctx context.Context, tsDir string, createLockFile bool) 
 		} else if exists {
 			log.Default.Debug(ctx, "Dependencies in %s are already installed: %s exists", root, marker)
 
-			return nil
+			installed = true
+
+			break
 		}
+	}
+
+	// A chart ts init has just added the chart to the workspace, which has yet to install it.
+	if installed && (!createLockFile || root == tsDir) {
+		return nil
 	}
 
 	manager, isPNPMWorkspace, err := detectRootPackageManager(root)
@@ -104,6 +117,10 @@ func ensureDependencies(ctx context.Context, tsDir string, createLockFile bool) 
 	}
 
 	installCommand := manager.name + " install"
+
+	if root != tsDir && createLockFile {
+		return fmt.Errorf("%s is in a workspace\nThe chart files are created: run %q in workspace root %s to install the dependencies", tsDir, installCommand, root)
+	}
 
 	if root != tsDir {
 		return fmt.Errorf("dependencies of %s are not installed: run %q in workspace root %s", tsDir, installCommand, root)
@@ -145,66 +162,90 @@ func ensureDependencies(ctx context.Context, tsDir string, createLockFile bool) 
 		args = append(args, "--ignore-workspace")
 	}
 
+	// Otherwise npm would install the workspace of an ancestor that lists the chart, even if its
+	// package manager is another one, instead of the chart.
+	if manager.name == packageManagerNPM && outsideAncestorWorkspace {
+		args = append(args, "--workspaces=false")
+	}
+
 	return nextStep(runPackageManager(ctx, root, managerPath, manager.name, args))
 }
 
 // findWorkspaceRoot returns the workspace root including tsDir as the package managers find it, or
 // tsDir itself if there is none. npm, yarn and bun take the closest ancestor whose package.json
 // lists tsDir in workspaces, and pnpm the closest pnpm-workspace.yaml, if it lists tsDir. Both look
-// up to the root of the filesystem, and neither reads the workspaces of the other.
-func findWorkspaceRoot(tsDir string) (string, error) {
-	pnpmWorkspaceFound := false
+// up to the root of the filesystem, and neither reads the workspaces of the other. What cannot be
+// read, decoded or matched in an ancestor means it has no workspace, as for npm. It also reports
+// whether tsDir, without workspaces of its own, is its own root under an ancestor package.json that
+// declares workspaces.
+func findWorkspaceRoot(ctx context.Context, tsDir string) (string, bool, error) {
+	ownPatterns, err := readPackageJSONWorkspacePatterns(tsDir)
+	if err != nil {
+		return "", false, fmt.Errorf("read workspaces of %s: %w", tsDir, err)
+	}
 
-	for dir := tsDir; ; dir = filepath.Dir(dir) {
+	_, pnpmWorkspaceFound, err := readPNPMWorkspacePatterns(tsDir)
+	if err != nil {
+		return "", false, fmt.Errorf("read pnpm workspace of %s: %w", tsDir, err)
+	}
+
+	ancestorDeclaresWorkspaces := false
+
+	for dir := filepath.Dir(tsDir); ; dir = filepath.Dir(dir) {
 		relPath, err := filepath.Rel(dir, tsDir)
 		if err != nil {
-			return "", fmt.Errorf("get path of %s relative to %s: %w", tsDir, dir, err)
+			return "", false, fmt.Errorf("get path of %s relative to %s: %w", tsDir, dir, err)
 		}
 
 		relPath = filepath.ToSlash(relPath)
 
 		if !pnpmWorkspaceFound {
-			patterns, found, err := readPNPMWorkspacePatterns(dir)
+			root, found, err := ancestorPNPMWorkspaceRoot(dir, relPath)
 			if err != nil {
-				return "", fmt.Errorf("read pnpm workspace of %s: %w", dir, err)
+				log.Default.Debug(ctx, "Taking %s as no pnpm workspace: %s", dir, err)
 			}
 
 			pnpmWorkspaceFound = found
 
-			if found && dir != tsDir {
-				root, err := workspaceRootIfIncluded(dir, relPath, patterns, true)
-				if err != nil {
-					return "", fmt.Errorf("check pnpm workspace of %s: %w", dir, err)
-				}
-
-				if root != "" {
-					return root, nil
-				}
+			if root != "" {
+				return root, false, nil
 			}
 		}
 
-		if dir != tsDir {
-			patterns, err := readPackageJSONWorkspacePatterns(dir)
+		patterns, err := readPackageJSONWorkspacePatterns(dir)
+		if err != nil {
+			log.Default.Debug(ctx, "Taking %s as no workspace: %s", dir, err)
+		} else if len(patterns) > 0 {
+			ancestorDeclaresWorkspaces = true
+
+			root, err := workspaceRootIfIncluded(dir, relPath, patterns, false)
 			if err != nil {
-				return "", fmt.Errorf("read workspaces of %s: %w", dir, err)
-			}
-
-			if len(patterns) > 0 {
-				root, err := workspaceRootIfIncluded(dir, relPath, patterns, false)
-				if err != nil {
-					return "", fmt.Errorf("check workspace of %s: %w", dir, err)
-				}
-
-				if root != "" {
-					return root, nil
-				}
+				log.Default.Debug(ctx, "Taking %s as no workspace: %s", dir, err)
+			} else if root != "" {
+				return root, false, nil
 			}
 		}
 
 		if filepath.Dir(dir) == dir {
-			return tsDir, nil
+			return tsDir, ancestorDeclaresWorkspaces && len(ownPatterns) == 0, nil
 		}
 	}
+}
+
+// ancestorPNPMWorkspaceRoot returns dir if its pnpm-workspace.yaml includes relPath, and reports
+// whether dir has pnpm-workspace.yaml, which pnpm stops looking for at.
+func ancestorPNPMWorkspaceRoot(dir, relPath string) (string, bool, error) {
+	patterns, found, err := readPNPMWorkspacePatterns(dir)
+	if err != nil || !found {
+		return "", false, err
+	}
+
+	root, err := workspaceRootIfIncluded(dir, relPath, patterns, true)
+	if err != nil {
+		return "", true, err
+	}
+
+	return root, true, nil
 }
 
 // workspaceRootIfIncluded returns dir if the patterns, from pnpm-workspace.yaml if fromPNPMWorkspace
@@ -483,7 +524,7 @@ func isYarnBerry(root string, manager packageManager) (bool, error) {
 		return true, nil
 	}
 
-	major, found := versionRangeMajor(manager.version)
+	major, found := versionRangeLowestMajor(manager.version)
 
 	return found && major >= 2, nil
 }
@@ -672,6 +713,9 @@ func readPackageJSON(dir string) (*packageJSON, bool, error) {
 		return nil, false, fmt.Errorf("read %s: %w", path, err)
 	}
 
+	// Editors on Windows may save package.json with a byte order mark, which npm accepts.
+	manifestBytes = bytes.TrimPrefix(manifestBytes, []byte("\ufeff"))
+
 	var manifest packageJSON
 	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
 		return nil, false, fmt.Errorf("decode %s: %w", path, err)
@@ -703,22 +747,37 @@ func runPackageManager(ctx context.Context, dir, managerPath, managerName string
 	return nil
 }
 
-// versionRangeMajor returns the first number of a version or a version range such as "^4.0.0".
-func versionRangeMajor(version string) (int, bool) {
-	start := strings.IndexFunc(version, func(r rune) bool { return r >= '0' && r <= '9' })
-	if start < 0 {
-		return 0, false
+// versionRangeLowestMajor returns the lowest major version that a version or an npm version range,
+// such as "^4.0.0", "<2.0.0" or ">=1.22.0 || ^4", allows, or false if there is no version in it.
+func versionRangeLowestMajor(versionRange string) (int, bool) {
+	lowest, found := 0, false
+
+	for _, alternative := range strings.Split(versionRange, "||") {
+		// In "1.2.3 - 2.3.4" the lower bound is the first version.
+		alternative, _, _ = strings.Cut(alternative, " - ")
+
+		comparators := versionComparatorRegexp.FindAllStringSubmatch(alternative, -1)
+		if len(comparators) == 0 {
+			continue
+		}
+
+		alternativeLowest := 0
+
+		for _, comparator := range comparators {
+			operator, major := comparator[1], comparator[2]
+			if operator == "<" || operator == "<=" {
+				continue
+			}
+
+			if number, err := strconv.Atoi(major); err == nil {
+				alternativeLowest = max(alternativeLowest, number)
+			}
+		}
+
+		if !found || alternativeLowest < lowest {
+			lowest, found = alternativeLowest, true
+		}
 	}
 
-	digits := version[start:]
-	if end := strings.IndexFunc(digits, func(r rune) bool { return r < '0' || r > '9' }); end >= 0 {
-		digits = digits[:end]
-	}
-
-	major, err := strconv.Atoi(digits)
-	if err != nil {
-		return 0, false
-	}
-
-	return major, true
+	return lowest, found
 }
