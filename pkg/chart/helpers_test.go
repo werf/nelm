@@ -92,6 +92,7 @@ type layeredValuesRenderOptions struct {
 	ServiceValues              map[string]interface{}
 	Set                        []string
 	SetJSON                    []string
+	SetString                  []string
 	ValuesFiles                []string
 }
 
@@ -360,6 +361,7 @@ func renderLayeredValuesChart(t *testing.T, opts layeredValuesRenderOptions) *Re
 	}
 	renderOpts.ValuesSet = opts.Set
 	renderOpts.ValuesSetJSON = opts.SetJSON
+	renderOpts.ValuesSetString = opts.SetString
 	renderOpts.ValuesFiles = opts.ValuesFiles
 	renderOpts.HelmOptions.ChartLoadOpts.SecretValuesFiles = opts.SecretValuesFiles
 	renderOpts.HelmOptions.ChartLoadOpts.DefaultSecretValuesDisable = opts.DefaultSecretValuesDisable

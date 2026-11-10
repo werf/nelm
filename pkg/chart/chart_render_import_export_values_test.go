@@ -80,6 +80,17 @@ func TestRenderChart_ExportValuesFromValuesLayers(t *testing.T) {
 			},
 		},
 		{
+			name: "exported value from set overrides child value from set-string as all set values are one layer",
+			opts: layeredValuesRenderOptions{
+				Set:       []string{"g.repo=set"},
+				SetString: []string{"sub.image.repository=set-string"},
+			},
+			want: map[string]interface{}{
+				"sub.image.repository": "set",
+				"sub.deep.repo":        "set",
+			},
+		},
+		{
 			name: "null from set for subchart",
 			opts: layeredValuesRenderOptions{Set: []string{"sub=null"}},
 			want: map[string]interface{}{
@@ -257,6 +268,36 @@ func TestRenderChart_ImportValuesFromValuesLayers(t *testing.T) {
 			opts: layeredValuesRenderOptions{Set: []string{"sub.out.k=set-child", "imported.k=set-parent"}},
 			want: map[string]interface{}{
 				"imported.k": "set-parent",
+			},
+		},
+		{
+			name: "parent value from set-json overrides imported value from set as all set values are one layer",
+			opts: layeredValuesRenderOptions{
+				SetJSON: []string{`imported.k="set-json"`},
+				Set:     []string{"sub.out.k=set"},
+			},
+			want: map[string]interface{}{
+				"imported.k": "set-json",
+			},
+		},
+		{
+			name: "set overrides the same parent key from set-json",
+			opts: layeredValuesRenderOptions{
+				SetJSON: []string{`imported.k="set-json"`},
+				Set:     []string{"imported.k=set"},
+			},
+			want: map[string]interface{}{
+				"imported.k": "set",
+			},
+		},
+		{
+			name: "set overrides the same child key from set-json before import",
+			opts: layeredValuesRenderOptions{
+				SetJSON: []string{`sub.out.k="set-json"`},
+				Set:     []string{"sub.out.k=set"},
+			},
+			want: map[string]interface{}{
+				"imported.k": "set",
 			},
 		},
 		{
