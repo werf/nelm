@@ -1,15 +1,17 @@
 package ts
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 
 	"github.com/samber/lo"
@@ -21,120 +23,9 @@ import (
 	"github.com/werf/nelm/v2/pkg/log"
 )
 
-const (
-	maxChartOutputBytes = 10 << 20
-	// maxChartOutputLineBytes keeps a long line, such as a large JSON written at once, from slowing
-	// the logger down, as bufio.Scanner did before.
-	maxChartOutputLineBytes = 64 << 10
-	// maxStderrExcerptBytes limits the stderr of a failed chart put into the error, which is the only
-	// place it is seen with the default log level of chart render.
-	maxStderrExcerptBytes = 64 << 10
-)
-
-// chartOutputWriter passes what the chart writes to onLine line by line, cutting lines longer than
-// maxChartOutputLineBytes, and stops the chart once it has written more than maxChartOutputBytes.
-type chartOutputWriter struct {
-	exceeded       bool
-	name           string
-	onLine         func(line string)
-	partial        []byte
-	stop           context.CancelFunc
-	truncatedBytes int
-	written        int
-}
-
-func (w *chartOutputWriter) Write(p []byte) (int, error) {
-	if w.exceeded {
-		return len(p), nil
-	}
-
-	written := len(p)
-
-	if allowed := maxChartOutputBytes - w.written; len(p) > allowed {
-		w.exceeded = true
-		w.stop()
-
-		p = p[:allowed]
-	}
-
-	w.written += len(p)
-
-	for len(p) > 0 {
-		lineEnd := bytes.IndexByte(p, '\n')
-
-		chunk := p
-		if lineEnd >= 0 {
-			chunk = p[:lineEnd]
-		}
-
-		kept := min(len(chunk), max(maxChartOutputLineBytes-len(w.partial), 0))
-		w.partial = append(w.partial, chunk[:kept]...)
-		w.truncatedBytes += len(chunk) - kept
-
-		if lineEnd < 0 {
-			break
-		}
-
-		w.flush()
-
-		p = p[lineEnd+1:]
-	}
-
-	if w.exceeded {
-		w.partial = nil
-		w.truncatedBytes = 0
-	}
-
-	return written, nil
-}
-
-func (w *chartOutputWriter) flush() {
-	if len(w.partial) == 0 && w.truncatedBytes == 0 {
-		return
-	}
-
-	line := string(w.partial)
-	if w.truncatedBytes > 0 {
-		line += fmt.Sprintf(" [line truncated, %d more bytes]", w.truncatedBytes)
-	}
-
-	w.onLine(line)
-
-	w.partial = nil
-	w.truncatedBytes = 0
-}
-
-// stderrExcerpt keeps the beginning and the end of what it is given, up to maxStderrExcerptBytes.
-type stderrExcerpt struct {
-	head  []byte
-	tail  []byte
-	total int
-}
-
-func (e *stderrExcerpt) String() string {
-	if e.total <= maxStderrExcerptBytes {
-		return strings.TrimRight(string(e.head)+string(e.tail), "\n")
-	}
-
-	tail := e.tail[len(e.tail)-maxStderrExcerptBytes/2:]
-	skipped := e.total - len(e.head) - len(tail)
-
-	return strings.TrimRight(fmt.Sprintf("%s\n[... %d bytes of stderr skipped ...]\n%s", e.head, skipped, tail), "\n")
-}
-
-func (e *stderrExcerpt) add(text string) {
-	const half = maxStderrExcerptBytes / 2
-
-	e.total += len(text)
-
-	headRoom := min(half-len(e.head), len(text))
-	e.head = append(e.head, text[:headRoom]...)
-	e.tail = append(e.tail, text[headRoom:]...)
-
-	if len(e.tail) > 2*half {
-		e.tail = slices.Clone(e.tail[len(e.tail)-half:])
-	}
-}
+const
+// logger down.
+maxChartOutputLineBytes = 64 << 10
 
 func RenderChart(ctx context.Context, chart helmchart.Accessor, renderedValues chartcommon.Values, rebuildBundle bool, chartPath, tempDirPath, nodeBinaryPath string) (map[string]string, error) {
 	if !hasTSFiles(chart) {
@@ -245,6 +136,102 @@ func renderChart(ctx context.Context, bundle *chartcommon.File, chart helmchart.
 	return strings.TrimSpace(string(resultBytes)), nil
 }
 
+// runBundle runs the bundle, passed through stdin, on the input file in renderDir. Node.js may read
+// only the input file and write only the output file, and gets no environment. This keeps a chart
+// and its dependencies from reaching the rest of the machine by accident, and is not meant to
+// contain malicious code: the Node.js permission model does not cover everything, such as sending
+// signals to other processes.
+func runBundle(ctx context.Context, nodeBin, renderDir string, bundle []byte) error {
+	absRenderDir, err := filepath.Abs(renderDir)
+	if err != nil {
+		return fmt.Errorf("get absolute path of %s: %w", renderDir, err)
+	}
+
+	resolvedRenderDir, err := filepath.EvalSymlinks(absRenderDir)
+	if err != nil {
+		return fmt.Errorf("resolve symlinks in %s: %w", absRenderDir, err)
+	}
+
+	inputPath := filepath.Join(resolvedRenderDir, common.ChartTSInputFile)
+	outputPath := filepath.Join(resolvedRenderDir, common.ChartTSOutputFile)
+
+	for _, path := range []string{inputPath, outputPath} {
+		if strings.Contains(path, "*") {
+			return fmt.Errorf("path %q contains \"*\", which Node.js would take as a wildcard in its permissions: use a --temp-dir and chart names without \"*\"", path)
+		}
+	}
+
+	cmd := exec.CommandContext(ctx, nodeBin, //nolint:gosec // G204: nodeBin is the Node.js found in PATH or the one the user passed explicitly
+		"--permission",
+		// node:sqlite creates database files regardless of the permissions.
+		"--no-experimental-sqlite",
+		// V8 flags set at run time, such as those for traces, write files regardless of the permissions.
+		"--freeze-flags-after-init",
+		// Deprecation warnings of dependencies would look like errors of the chart.
+		"--no-deprecation",
+		"--allow-fs-read="+inputPath,
+		"--allow-fs-write="+outputPath,
+		// Without a package.json Node.js would guess the module type of stdin.
+		"--input-type=module",
+		"-",
+		"--input-file="+inputPath,
+		"--output-file="+outputPath,
+	)
+	cmd.Dir = resolvedRenderDir
+	cmd.Env = []string{}
+	cmd.Stdin = bytes.NewReader(bundle)
+
+	if runtime.GOOS == "windows" {
+		cmd.Env = []string{"SystemRoot=" + os.Getenv("SystemRoot")}
+	}
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("get stdout pipe: %w", err)
+	}
+
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("get stderr pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start process: %w", err)
+	}
+
+	stdoutErrChan := make(chan error, 1)
+	go func() {
+		stdoutErrChan <- readOutputLines(stdoutPipe, func(line string) {
+			log.Default.Debug(ctx, "%s", line)
+		})
+	}()
+
+	stderrErrChan := make(chan error, 1)
+	go func() {
+		stderrErrChan <- readOutputLines(stderrPipe, func(line string) {
+			log.Default.Error(ctx, "error from node app: %s", line)
+		})
+	}()
+
+	// Wait closes the pipes, so they are read to the end first.
+	stdoutErr := <-stdoutErrChan
+	stderrErr := <-stderrErrChan
+
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("wait process: %w", err)
+	}
+
+	if stdoutErr != nil {
+		return fmt.Errorf("read stdout: %w", stdoutErr)
+	}
+
+	if stderrErr != nil {
+		return fmt.Errorf("read stderr: %w", stderrErr)
+	}
+
+	return nil
+}
+
 func scopeValuesForSubchart(parentValues chartcommon.Values, subchartName string, subchart helmchart.Accessor) chartcommon.Values {
 	scoped := chartcommon.Values{
 		"Chart":  buildChartMetadata(subchart),
@@ -325,96 +312,39 @@ func buildChartMetadata(chart helmchart.Accessor) map[string]any {
 	return metadata
 }
 
-// runBundle runs the bundle, passed through stdin, on the input file in renderDir. Node.js may read
-// only the input file and write only the output file, and gets no environment. This keeps a chart
-// and its dependencies from reaching the rest of the machine by accident, and is not meant to
-// contain malicious code: the Node.js permission model does not cover everything, such as sending
-// signals to other processes.
-func runBundle(ctx context.Context, nodeBin, renderDir string, bundle []byte) error {
-	absRenderDir, err := filepath.Abs(renderDir)
-	if err != nil {
-		return fmt.Errorf("get absolute path of %s: %w", renderDir, err)
-	}
+// readOutputLines passes what reader gives to onLine line by line, cutting lines longer than
+// maxChartOutputLineBytes.
+func readOutputLines(reader io.Reader, onLine func(line string)) error {
+	bufferedReader := bufio.NewReaderSize(reader, maxChartOutputLineBytes)
 
-	resolvedRenderDir, err := filepath.EvalSymlinks(absRenderDir)
-	if err != nil {
-		return fmt.Errorf("resolve symlinks in %s: %w", absRenderDir, err)
-	}
+	for {
+		chunk, err := bufferedReader.ReadSlice('\n')
+		line := string(bytes.TrimSuffix(chunk, []byte("\n")))
+		lineEnded := err == nil
 
-	inputPath := filepath.Join(resolvedRenderDir, common.ChartTSInputFile)
-	outputPath := filepath.Join(resolvedRenderDir, common.ChartTSOutputFile)
+		truncatedBytes := 0
+		for errors.Is(err, bufio.ErrBufferFull) {
+			chunk, err = bufferedReader.ReadSlice('\n')
+			truncatedBytes += len(bytes.TrimSuffix(chunk, []byte("\n")))
+			lineEnded = err == nil
+		}
 
-	for _, path := range []string{inputPath, outputPath} {
-		if strings.Contains(path, "*") {
-			return fmt.Errorf("path %q contains \"*\", which Node.js would take as a wildcard in its permissions: use a --temp-dir and chart names without \"*\"", path)
+		if truncatedBytes > 0 {
+			// Leaves room for the marker, so that the line with it stays within the limit.
+			keptBytes := maxChartOutputLineBytes - 64
+			line = fmt.Sprintf("%s [line truncated, %d more bytes]", line[:keptBytes], truncatedBytes+len(line)-keptBytes)
+		}
+
+		if lineEnded || line != "" {
+			onLine(line)
+		}
+
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+
+		if err != nil {
+			return fmt.Errorf("read line: %w", err)
 		}
 	}
-
-	runCtx, stop := context.WithCancel(ctx)
-	defer stop()
-
-	cmd := exec.CommandContext(runCtx, nodeBin, //nolint:gosec // G204: nodeBin is the Node.js found in PATH or the one the user passed explicitly
-		"--permission",
-		// node:sqlite creates database files regardless of the permissions.
-		"--no-experimental-sqlite",
-		// V8 flags set at run time, such as those for traces, write files regardless of the permissions.
-		"--freeze-flags-after-init",
-		"--allow-fs-read="+inputPath,
-		"--allow-fs-write="+outputPath,
-		// Without a package.json Node.js would guess the module type of stdin.
-		"--input-type=module",
-		"-",
-		"--input-file="+inputPath,
-		"--output-file="+outputPath,
-	)
-	cmd.Dir = resolvedRenderDir
-	cmd.Env = []string{}
-	cmd.Stdin = bytes.NewReader(bundle)
-
-	if runtime.GOOS == "windows" {
-		cmd.Env = []string{"SystemRoot=" + os.Getenv("SystemRoot")}
-	}
-
-	// Whether the chart fails is unknown until it exits, so stderr is logged as warnings as it comes,
-	// and also goes into the error of a failed chart.
-	var excerpt stderrExcerpt
-
-	stdout := &chartOutputWriter{
-		name:   "stdout",
-		onLine: func(line string) { log.Default.Debug(ctx, "%s", line) },
-		stop:   stop,
-	}
-	stderr := &chartOutputWriter{
-		name: "stderr",
-		onLine: func(line string) {
-			log.Default.Warn(ctx, "%s", line)
-			excerpt.add(line + "\n")
-		},
-		stop: stop,
-	}
-
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-
-	runErr := cmd.Run()
-
-	stdout.flush()
-	stderr.flush()
-
-	switch {
-	case stdout.exceeded:
-		err = fmt.Errorf("the chart wrote more than %d MiB to stdout", maxChartOutputBytes>>20)
-	case stderr.exceeded:
-		err = fmt.Errorf("the chart wrote more than %d MiB to stderr", maxChartOutputBytes>>20)
-	case runErr != nil:
-		err = fmt.Errorf("run process: %w", runErr)
-	default:
-		return nil
-	}
-
-	if stderrText := excerpt.String(); stderrText != "" {
-		return fmt.Errorf("%w:\n%s", err, stderrText)
-	}
-
-	return err
 }

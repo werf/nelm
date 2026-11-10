@@ -107,6 +107,7 @@ func TestRunBundle(t *testing.T) {
 		"--permission",
 		"--no-experimental-sqlite",
 		"--freeze-flags-after-init",
+		"--no-deprecation",
 		"--allow-fs-read=" + inputPath,
 		"--allow-fs-write=" + outputPath,
 		"--input-type=module",
@@ -123,7 +124,7 @@ func TestRunBundle(t *testing.T) {
 func TestRunBundleOutput(t *testing.T) {
 	skipWithoutShell(t)
 
-	t.Run("logs stdout as debug and stderr as warnings when the chart succeeds", func(t *testing.T) {
+	t.Run("logs stdout as debug and stderr as errors", func(t *testing.T) {
 		logger := recordLogs(t)
 
 		nodePath := filepath.Join(t.TempDir(), "node")
@@ -136,28 +137,15 @@ func TestRunBundleOutput(t *testing.T) {
 		assert.ElementsMatch(t, []logEntry{
 			{level: "debug", message: "out 100%"},
 			{level: "debug", message: "out 2"},
-			{level: "warn", message: "deprecated"},
-			{level: "warn", message: "still deprecated"},
+			{level: "error", message: "error from node app: deprecated"},
+			{level: "error", message: "error from node app: still deprecated"},
 		}, entries)
 		assert.Equal(t, []string{"out 100%", "out 2"}, logMessages(entries, "debug"))
-		assert.Equal(t, []string{"deprecated", "still deprecated"}, logMessages(entries, "warn"))
+		assert.Equal(t, []string{"error from node app: deprecated", "error from node app: still deprecated"}, logMessages(entries, "error"))
 	})
 
-	t.Run("puts stderr into the error when the chart fails", func(t *testing.T) {
+	t.Run("fails with the exit status and logs all of a long error message", func(t *testing.T) {
 		logger := recordLogs(t)
-
-		nodePath := filepath.Join(t.TempDir(), "node")
-		require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\nprintf 'TypeError: boom\\n    at render (bundle.js:1:1)\\n' >&2\nexit 1\n"), 0o755))
-
-		err := ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte(""))
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "exit status 1")
-		assert.Contains(t, err.Error(), "TypeError: boom\n    at render (bundle.js:1:1)")
-		assert.Equal(t, []logEntry{{level: "warn", message: "TypeError: boom"}, {level: "warn", message: "    at render (bundle.js:1:1)"}}, logger.entries())
-	})
-
-	t.Run("puts all of a long error message into the error", func(t *testing.T) {
-		recordLogs(t)
 
 		var script strings.Builder
 		script.WriteString("#!/bin/sh\n{\nprintf 'Error: Validation failed: [\\n'\n")
@@ -166,17 +154,20 @@ func TestRunBundleOutput(t *testing.T) {
 			fmt.Fprintf(&script, "printf '  { \"path\": [\"spec\", %d], \"message\": \"Required\" },\\n'\n", i)
 		}
 
-		script.WriteString("printf ']\\n'\n} >&2\nexit 1\n")
+		script.WriteString("printf ']\\n'\n} >&2\nexit 3\n")
 
 		nodePath := filepath.Join(t.TempDir(), "node")
 		require.NoError(t, os.WriteFile(nodePath, []byte(script.String()), 0o755))
 
 		err := ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte(""))
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "Error: Validation failed: [")
-		assert.Contains(t, err.Error(), `"path": ["spec", 0]`)
-		assert.Contains(t, err.Error(), `"path": ["spec", 27]`)
-		assert.NotContains(t, err.Error(), "skipped")
+		assert.Equal(t, "wait process: exit status 3", err.Error())
+
+		errors := logMessages(logger.entries(), "error")
+		require.Len(t, errors, 30)
+		assert.Equal(t, "error from node app: Error: Validation failed: [", errors[0])
+		assert.Equal(t, `error from node app:   { "path": ["spec", 27], "message": "Required" },`, errors[28])
+		assert.Equal(t, "error from node app: ]", errors[29])
 	})
 
 	// The fake Node.js gets no PATH, so it is given the absolute paths of the tools.
@@ -189,46 +180,58 @@ func TestRunBundleOutput(t *testing.T) {
 	trPath, err := exec.LookPath("tr")
 	require.NoError(t, err)
 
-	t.Run("puts the beginning and the end of a large stderr into the error", func(t *testing.T) {
-		recordLogs(t)
-
-		nodePath := filepath.Join(t.TempDir(), "node")
-		require.NoError(t, os.WriteFile(nodePath, []byte(`#!/bin/sh
-{
-printf 'Error: first\n'
-i=0
-while [ $i -lt 5000 ]; do printf 'line %05d of the middle of stderr\n' $i; i=$((i+1)); done
-printf 'Error: last\n'
-} >&2
-exit 1
-`), 0o755))
-
-		err := ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte(""))
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "Error: first\n")
-		assert.Contains(t, err.Error(), "Error: last")
-		assert.Contains(t, err.Error(), "bytes of stderr skipped")
-		assert.Less(t, len(err.Error()), 80<<10)
-	})
-
-	t.Run("truncates a long stderr line in the log and in the error", func(t *testing.T) {
+	t.Run("truncates a long line and goes on reading", func(t *testing.T) {
 		logger := recordLogs(t)
 
 		nodePath := filepath.Join(t.TempDir(), "node")
-		require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\n"+ddPath+" if=/dev/zero bs=1024 count=1024 2>/dev/null | "+trPath+" '\\000' x >&2\nexit 1\n"), 0o755))
+		require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\n"+ddPath+" if=/dev/zero bs=1024 count=1024 2>/dev/null | "+trPath+" '\\000' x >&2\nprintf '\\nafter the long line\\n' >&2\n"), 0o755))
 
-		start := time.Now()
-		err := ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte(""))
-		require.Error(t, err)
-		assert.Less(t, time.Since(start), 10*time.Second)
-		assert.Less(t, len(err.Error()), 80<<10)
+		done := make(chan error, 1)
+		go func() { done <- ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte("")) }()
 
-		entries := logger.entries()
-		require.Len(t, entries, 1)
-		assert.Equal(t, "warn", entries[0].level)
-		assert.True(t, strings.HasPrefix(entries[0].message, strings.Repeat("x", 64<<10)))
-		assert.Contains(t, entries[0].message, "truncated")
-		assert.Less(t, len(entries[0].message), 65<<10)
+		select {
+		case err := <-done:
+			require.NoError(t, err)
+		case <-time.After(30 * time.Second):
+			require.FailNow(t, "the render must not hang on a long line")
+		}
+
+		errors := logMessages(logger.entries(), "error")
+		require.Len(t, errors, 2)
+		assert.True(t, strings.HasPrefix(errors[0], "error from node app: "+strings.Repeat("x", 60<<10)))
+		assert.Contains(t, errors[0], "[line truncated, ")
+		assert.LessOrEqual(t, len(strings.TrimPrefix(errors[0], "error from node app: ")), 64<<10)
+		assert.Equal(t, "error from node app: after the long line", errors[1])
+	})
+
+	catPath, err := exec.LookPath("cat")
+	require.NoError(t, err)
+
+	t.Run("keeps the last lines of a chart that exits right after writing them", func(t *testing.T) {
+		const lineCount = 5000
+
+		var lines strings.Builder
+		for i := range lineCount {
+			fmt.Fprintf(&lines, "line %05d of the chart output\n", i)
+		}
+
+		linesPath := filepath.Join(t.TempDir(), "lines")
+		require.NoError(t, os.WriteFile(linesPath, []byte(lines.String()), 0o644))
+
+		nodePath := filepath.Join(t.TempDir(), "node")
+		require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\n"+catPath+" '"+linesPath+"' &\n"+catPath+" '"+linesPath+"' >&2\nwait\n"), 0o755))
+
+		for range 50 {
+			logger := recordLogs(t)
+
+			require.NoError(t, ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte("")))
+
+			entries := logger.entries()
+			require.Len(t, logMessages(entries, "debug"), lineCount)
+			require.Len(t, logMessages(entries, "error"), lineCount)
+			assert.Equal(t, fmt.Sprintf("line %05d of the chart output", lineCount-1), logMessages(entries, "debug")[lineCount-1])
+			assert.Equal(t, fmt.Sprintf("error from node app: line %05d of the chart output", lineCount-1), logMessages(entries, "error")[lineCount-1])
+		}
 	})
 
 	t.Run("logs stderr while the chart runs", func(t *testing.T) {
@@ -247,7 +250,7 @@ while [ ! -e '`+releaseFile+`' ] && [ $i -lt 100 ]; do `+sleepPath+` 0.1; i=$((i
 		go func() { done <- ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte("")) }()
 
 		logged := assert.Eventually(t, func() bool {
-			return slices.Contains(logger.entries(), logEntry{level: "warn", message: "still rendering"})
+			return slices.Contains(logger.entries(), logEntry{level: "error", message: "error from node app: still rendering"})
 		}, 5*time.Second, 10*time.Millisecond, "a stderr line must be logged before the chart exits")
 
 		if logged {
@@ -256,36 +259,6 @@ while [ ! -e '`+releaseFile+`' ] && [ $i -lt 100 ]; do `+sleepPath+` 0.1; i=$((i
 
 		assert.NoError(t, <-done)
 	})
-
-	for name, redirect := range map[string]string{"stdout": " 2>/dev/null", "stderr": " >&2 2>/dev/null"} {
-		t.Run("stops the chart writing too much to "+name, func(t *testing.T) {
-			recordLogs(t)
-
-			nodePath := filepath.Join(t.TempDir(), "node")
-			require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\n"+ddPath+" if=/dev/zero bs=1048576 count=20"+redirect+"\nexec "+sleepPath+" 60\n"), 0o755))
-
-			start := time.Now()
-			err := ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte(""))
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "the chart wrote more than 10 MiB to "+name)
-			assert.Less(t, time.Since(start), 30*time.Second, "the chart must be stopped")
-		})
-	}
-
-	for name, redirect := range map[string]string{"stdout": " 2>/dev/null", "stderr": " >&2 2>/dev/null"} {
-		t.Run("puts stderr into the error of the chart writing too much to "+name, func(t *testing.T) {
-			recordLogs(t)
-
-			nodePath := filepath.Join(t.TempDir(), "node")
-			require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\nprintf 'Error: before the flood\\n' >&2\n"+ddPath+" if=/dev/zero bs=1048576 count=20"+redirect+"\nexec "+sleepPath+" 60\n"), 0o755))
-
-			err := ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte(""))
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "the chart wrote more than 10 MiB to "+name)
-			assert.Contains(t, err.Error(), "Error: before the flood")
-			assert.Less(t, len(err.Error()), 80<<10)
-		})
-	}
 }
 
 func TestRunBundleRejectsWildcardInPaths(t *testing.T) {
@@ -367,6 +340,13 @@ await writeFile(values['output-file'], JSON.stringify({ result }));
 
 	t.Run("gets no environment", func(t *testing.T) {
 		assert.NotContains(t, runProbe(t, `return Object.keys(process.env).join(',');`), "NELM_TEST_CANARY")
+	})
+
+	t.Run("writes no deprecation warnings", func(t *testing.T) {
+		logger := recordLogs(t)
+
+		assert.Equal(t, "object", runProbe(t, `const { createRequire } = await import('node:module'); return typeof createRequire(import.meta.url)('punycode');`))
+		assert.Empty(t, logMessages(logger.entries(), "error"))
 	})
 
 	t.Run("cannot write files through node:sqlite", func(t *testing.T) {
