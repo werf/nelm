@@ -260,6 +260,36 @@ func TestRenderChart_ImportValuesFromValuesLayers(t *testing.T) {
 			},
 		},
 		{
+			name: "parent value from set-json overrides imported value from set as all set values are one layer",
+			opts: layeredValuesRenderOptions{
+				SetJSON: []string{`imported.k="set-json"`},
+				Set:     []string{"sub.out.k=set"},
+			},
+			want: map[string]interface{}{
+				"imported.k": "set-json",
+			},
+		},
+		{
+			name: "set overrides the same parent key from set-json",
+			opts: layeredValuesRenderOptions{
+				SetJSON: []string{`imported.k="set-json"`},
+				Set:     []string{"imported.k=set"},
+			},
+			want: map[string]interface{}{
+				"imported.k": "set",
+			},
+		},
+		{
+			name: "set overrides the same child key from set-json before import",
+			opts: layeredValuesRenderOptions{
+				SetJSON: []string{`sub.out.k="set-json"`},
+				Set:     []string{"sub.out.k=set"},
+			},
+			want: map[string]interface{}{
+				"imported.k": "set",
+			},
+		},
+		{
 			name: "values file",
 			opts: layeredValuesRenderOptions{ValuesFiles: []string{layeredImportExportValuesFile}},
 			want: map[string]interface{}{
