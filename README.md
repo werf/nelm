@@ -21,6 +21,8 @@
 * advanced resource lifecycle capabilities;
 * improved resource state/error tracking;
 * continuous printing of logs, events, resource statuses, and errors during deployment;
+* resource patching to modify chart resources without forking the chart;
+* powerful out-of-the-box linting and validation;
 * fixed hundreds of Helm bugs, e.g. ["no matches for kind Deployment in version apps/v1beta1"](https://github.com/helm/helm/issues/7219);
 * performance and stability improvements and more.
 
@@ -48,6 +50,8 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [Encrypted values and encrypted files](#encrypted-values-and-encrypted-files)
   - [Improved CRD management](#improved-crd-management)
   - [Render and diff patches](#render-and-diff-patches)
+  - [Resource validation](#resource-validation)
+  - [TypeScript charts](#typescript-charts)
 - [Usage](#usage)
   - [Encrypted values files](#encrypted-values-files)
   - [Encrypted arbitrary files](#encrypted-arbitrary-files)
@@ -272,11 +276,15 @@ To ensure that these exact changes will be applied during the release install, y
 
 1. **Plan:** Generate, review, and save a plan artifact using the `--save-plan` flag:
 ```
-nelm release plan install --save-plan=plan.gz
+nelm release plan install -n myns -r myrls --save-plan=plan.gz
 ```
-2. **Apply:** Perform the release install rapidly using the pre-generated reviewed plan:
+2. **Review:** Show the changes saved in the plan artifact again at any time, e.g. in another CI job:
 ```
-nelm release install --use-plan=plan.gz
+nelm release plan show plan.gz
+```
+3. **Apply:** Perform the release install rapidly using the pre-generated reviewed plan:
+```
+nelm release install -n myns -r myrls --use-plan=plan.gz
 ```
 
 ### Encrypted values and encrypted files
@@ -292,6 +300,14 @@ CRDs from the `crds/` directory of the chart deployed not only on the very first
 Nelm can patch chart resources with jq after rendering, using `patches.yaml` of the chart or files passed with the `--patches` option. There are two kinds of patches:
 * Render patches modify resources before deploy, similar to Helm's `--post-renderer`. Use them to change what the chart doesn't let you configure, without forking it.
 * Diff patches don't change what is deployed: they make Nelm ignore changes in the patched fields when deciding whether to update a resource. Use them to avoid needless updates caused by fields that change on every render or are modified in the cluster.
+
+### Resource validation
+
+Before deploying, Nelm validates rendered resources against the Kubernetes JSON schemas and a catalog of popular CRD schemas, both embedded into the Nelm binary, so validation works offline. Validation runs in `nelm release install`, `nelm release plan install`, `nelm release rollback` and `nelm chart lint`. Use `--resource-validation-skip` to skip some resources, `--resource-validation-extra-schema` to add your own schema sources, or `--no-resource-validation` to turn validation off.
+
+### TypeScript charts
+
+With the `NELM_FEAT_TYPESCRIPT` feature gate, charts can render manifests with TypeScript code from the `ts/` directory of the chart, in addition to or instead of Go templates in `templates/`. `nelm chart ts init` adds the TypeScript boilerplate to a chart, `nelm chart ts build` bundles the code into `ts/dist/bundle.js`, and `nelm chart pack` bundles it automatically. See [`NELM_FEAT_TYPESCRIPT`](#nelm_feat_typescript-environment-variable).
 
 ## Usage
 
@@ -328,7 +344,9 @@ nelm chart render
 password: verysecurepassword123
 ```
 
-NOTE: `$NELM_SECRET_KEY` must be set for any command that encrypts/decrypts secrets, including `nelm chart render`.
+NOTE: `$NELM_SECRET_KEY` (or the `--secret-key` option) must be set for any command that encrypts/decrypts secrets, including `nelm chart render`, unless `--no-decrypt-secrets` is specified.
+
+`secret-values.yaml` of the chart is used by default. Encrypted values files outside the chart can be passed with the `--secret-values` option.
 
 ### Encrypted arbitrary files
 
