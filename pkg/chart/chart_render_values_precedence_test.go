@@ -70,6 +70,9 @@ func TestRenderChart_ExportAndImportValuesDependencyVersionMismatch(t *testing.T
 
 func TestRenderChart_ExportAndImportValuesEdgeCases(t *testing.T) {
 	edgeValuesFile := filepath.Join("testdata", "layered-values", "edge-values-file.yaml")
+	edgeValuesNullFile := filepath.Join("testdata", "layered-values", "edge-values-file-null.yaml")
+	edgeSecretValuesNullFile := filepath.Join("testdata", "layered-values", "edge-secret-values-file-null.yaml")
+	edgeSecretValuesDependencyNullFile := filepath.Join("testdata", "layered-values", "edge-secret-values-file-dependency-null.yaml")
 
 	tests := []struct {
 		name string
@@ -102,7 +105,7 @@ func TestRenderChart_ExportAndImportValuesEdgeCases(t *testing.T) {
 		{
 			name: "null imported to dependency path resets dependency values",
 			opts: layeredValuesRenderOptions{Set: []string{"a.out=null"}},
-			want: map[string]interface{}{"b.repo": "a-values"},
+			want: map[string]interface{}{"b.repo": "parent-values-yaml"},
 		},
 		{
 			name: "set-json replaces import child map exported from values file",
@@ -134,6 +137,26 @@ func TestRenderChart_ExportAndImportValuesEdgeCases(t *testing.T) {
 			want: map[string]interface{}{"nested": map[string]interface{}{"bar": "secret-values-yaml"}},
 		},
 		{
+			name: "null from set for dependency deletes values file values",
+			opts: layeredValuesRenderOptions{Set: []string{"a=null"}, ValuesFiles: []string{edgeValuesFile}},
+			want: map[string]interface{}{"a.image.repository": "parent-values-yaml", "a.other": absentValue{}},
+		},
+		{
+			name: "exported value from secret values file replaces null from secret values file for dependency and keeps values file values",
+			opts: layeredValuesRenderOptions{SecretValuesFiles: []string{edgeSecretValuesNullFile}, ValuesFiles: []string{edgeValuesFile}},
+			want: map[string]interface{}{"a.image.repository": "secret-values-file-null", "a.other": "values-file"},
+		},
+		{
+			name: "null from secret values file for dependency deletes values file values despite export from set",
+			opts: layeredValuesRenderOptions{SecretValuesFiles: []string{edgeSecretValuesDependencyNullFile}, Set: []string{"g.repo=set"}, ValuesFiles: []string{edgeValuesFile}},
+			want: map[string]interface{}{"a.image.repository": "set", "a.other": absentValue{}},
+		},
+		{
+			name: "null from later values file for dependency deletes earlier values file values despite export",
+			opts: layeredValuesRenderOptions{ValuesFiles: []string{edgeValuesFile, edgeValuesNullFile}},
+			want: map[string]interface{}{"a.image.repository": "values-file-null", "a.other": absentValue{}},
+		},
+		{
 			name: "value is not exported to dependency disabled by condition",
 			opts: layeredValuesRenderOptions{Set: []string{"g.repo=set"}},
 			want: map[string]interface{}{"t": absentValue{}},
@@ -153,6 +176,114 @@ func TestRenderChart_ExportAndImportValuesEdgeCases(t *testing.T) {
 			for path, want := range tt.want {
 				assert.Equal(t, want, valueAtPath(t, vals, path), path)
 			}
+		})
+	}
+}
+
+func TestRenderChart_ExportAndImportValuesNotFoundWarnings(t *testing.T) {
+	const (
+		exportWarning     = `Skipping export-values of "img.repo" from chart "parent" to dependency "sub": the path is not set in any values`
+		importMapWarning  = `Skipping import-values of "out" from dependency "sub" to chart "parent": no map is set at the path in any values`
+		importNameWarning = `Skipping import-values of "exports.data" from dependency "sub" to chart "parent": no map is set at the path in any values`
+	)
+
+	allPathsSet := []string{"img.repo=set", "sub.out.k=set", "sub.exports.data.k=set"}
+
+	tests := []struct {
+		name string
+		opts layeredValuesRenderOptions
+		want []string
+	}{
+		{
+			name: "paths set nowhere",
+			want: []string{exportWarning, importMapWarning, importNameWarning},
+		},
+		{
+			name: "export parent path set nowhere",
+			opts: layeredValuesRenderOptions{Set: []string{"img.repoo=typo", "sub.out.k=set", "sub.exports.data.k=set"}},
+			want: []string{exportWarning},
+		},
+		{
+			name: "import child tables set nowhere",
+			opts: layeredValuesRenderOptions{Set: []string{"img.repo=set", "sub.outt.k=typo", "sub.exportz.data.k=typo"}},
+			want: []string{importMapWarning, importNameWarning},
+		},
+		{
+			name: "paths set only in set",
+			opts: layeredValuesRenderOptions{Set: allPathsSet},
+		},
+		{
+			name: "paths set only in values file",
+			opts: layeredValuesRenderOptions{ValuesFiles: []string{filepath.Join("testdata", "layered-values", "not-found-paths-values-file.yaml")}},
+		},
+		{
+			name: "paths set only in extra values",
+			opts: layeredValuesRenderOptions{ServiceValues: readValuesFile(t, filepath.Join("testdata", "layered-values", "not-found-paths-values-file.yaml"))},
+		},
+		{
+			name: "paths of enabled dependency set nowhere",
+			opts: layeredValuesRenderOptions{Set: append([]string{"disabled.enabled=true"}, allPathsSet...)},
+			want: []string{
+				`Skipping export-values of "disabledExport" from chart "parent" to dependency "disabled": the path is not set in any values`,
+				`Skipping import-values of "disabledImport" from dependency "disabled" to chart "parent": no map is set at the path in any values`,
+			},
+		},
+		{
+			name: "paths set in nested chart values overridden by parent chart values",
+			opts: layeredValuesRenderOptions{ChartDir: "not-found-paths-nested-chart"},
+		},
+		{
+			name: "paths read before exports overwrite them",
+			opts: layeredValuesRenderOptions{ChartDir: "not-found-paths-overwrite-chart"},
+			want: []string{`Skipping export-values of "sub.typoCycle.typo" from chart "parent" to dependency "sub": the path is not set in any values`},
+		},
+		{
+			name: "paths read from set before exports overwrite them",
+			opts: layeredValuesRenderOptions{ChartDir: "not-found-paths-overwrite-chart", Set: []string{"sub.cycle.k=set", "sub.self.k=set"}},
+			want: []string{`Skipping export-values of "sub.typoCycle.typo" from chart "parent" to dependency "sub": the path is not set in any values`},
+		},
+		{
+			name: "import child paths set to scalars in chart values",
+			opts: layeredValuesRenderOptions{ChartDir: "not-found-paths-scalar-import-chart"},
+			want: []string{importMapWarning, importNameWarning},
+		},
+		{
+			name: "dependency not in Chart.yaml with values invalid without set",
+			opts: layeredValuesRenderOptions{ChartDir: "scalar-sub-no-dependencies-chart", Set: []string{"sub.enabled=true"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := &warningsLogger{Logger: log.Default}
+			log.Default = logger
+			t.Cleanup(func() { log.Default = logger.Logger })
+
+			defaultLogger, stdLogWriter, stdLogFlags := slog.Default(), stdlog.Writer(), stdlog.Flags()
+			t.Cleanup(func() {
+				slog.SetDefault(defaultLogger)
+				stdlog.SetOutput(stdLogWriter)
+				stdlog.SetFlags(stdLogFlags)
+			})
+
+			var slogWarnings bytes.Buffer
+			slog.SetDefault(slog.New(slog.NewTextHandler(&slogWarnings, &slog.HandlerOptions{Level: slog.LevelWarn})))
+
+			if tt.opts.ChartDir == "" {
+				tt.opts.ChartDir = "not-found-paths-chart"
+			}
+
+			renderLayeredValuesChart(t, tt.opts)
+
+			skipWarnings := lo.Filter(logger.warnings, func(warning string, _ int) bool {
+				return strings.HasPrefix(warning, "Skipping")
+			})
+			assert.ElementsMatch(t, tt.want, skipWarnings)
+
+			nonCoalesceSlogWarnings := lo.Filter(strings.Split(slogWarnings.String(), "\n"), func(line string, _ int) bool {
+				return line != "" && !strings.Contains(line, `msg="warning: `)
+			})
+			assert.Empty(t, nonCoalesceSlogWarnings)
 		})
 	}
 }
@@ -208,7 +339,7 @@ func TestRenderChart_ExportAndImportValuesSkippedWarnings(t *testing.T) {
 			renderLayeredValuesChart(t, layeredValuesRenderOptions{ChartDir: "export-import-edge-chart", Set: []string{tt.set}})
 
 			skipWarnings := lo.Filter(logger.warnings, func(warning string, _ int) bool {
-				return strings.HasPrefix(warning, "Skipping")
+				return strings.HasPrefix(warning, "Skipping") && strings.Contains(warning, "only a map")
 			})
 			assert.Equal(t, []string{tt.want}, skipWarnings)
 		})
@@ -291,6 +422,52 @@ func TestRenderChart_ExportGlobalValuesFromNestedChart(t *testing.T) {
 	}
 }
 
+func TestRenderChart_ExportValuesIndependentOfDependencyOrder(t *testing.T) {
+	tests := []struct {
+		name string
+		opts layeredValuesRenderOptions
+		want map[string]interface{}
+	}{
+		{
+			name: "value from values.yaml is exported through exports to sibling dependencies",
+			want: map[string]interface{}{
+				"a.fromB":               "parent-values-yaml",
+				"b.foo":                 "parent-values-yaml",
+				"c.bar":                 "parent-values-yaml",
+				"mid.reader.fromWriter": "parent-values-yaml",
+				"mid.writer.v":          "parent-values-yaml",
+			},
+		},
+		{
+			name: "value from set is exported through exports to sibling dependencies",
+			opts: layeredValuesRenderOptions{Set: []string{"g.bar=set", "g.src=set"}},
+			want: map[string]interface{}{"a.fromB": "set", "mid.reader.fromWriter": "set"},
+		},
+		{
+			name: "later export to same child path wins",
+			want: map[string]interface{}{"c.same": "second"},
+		},
+	}
+
+	chartDirs := map[string]string{
+		"listed order":   "export-order-chart",
+		"reversed order": reversedDependenciesChartDir(t, "export-order-chart"),
+	}
+
+	for _, tt := range tests {
+		for order, chartDir := range chartDirs {
+			t.Run(tt.name+"/"+order, func(t *testing.T) {
+				tt.opts.ChartDir = chartDir
+				vals := renderedChartValues(t, renderLayeredValuesChart(t, tt.opts))
+
+				for path, want := range tt.want {
+					assert.Equal(t, want, valueAtPath(t, vals, path), path)
+				}
+			})
+		}
+	}
+}
+
 func TestRenderChart_ExportedValueOverridesValuesFileForDependencyWithSameNameAsParent(t *testing.T) {
 	serviceValues := readValuesFile(t, filepath.Join("testdata", "layered-values", "same-name-service-values.yaml"))
 
@@ -342,13 +519,58 @@ func TestRenderChart_ExportedValueOverridesValuesFileForDependencyWithSameNameAs
 			var warnings bytes.Buffer
 			slog.SetDefault(slog.New(slog.NewTextHandler(&warnings, &slog.HandlerOptions{Level: slog.LevelWarn})))
 
+			logger := &warningsLogger{Logger: log.Default}
+			log.Default = logger
+			t.Cleanup(func() { log.Default = logger.Logger })
+
 			result := renderLayeredValuesChart(t, tt.opts)
 
 			require.Len(t, result.ResourceSpecs, 1)
 			assert.Equal(t, map[string]interface{}{"image": tt.wantImage, "pullPolicy": "Always"}, result.ResourceSpecs[0].Unstruct.Object["data"])
 			assert.Equal(t, tt.wantReleaseConfig, result.ReleaseConfig)
 			assert.Empty(t, warnings.String())
+			assert.Empty(t, lo.Filter(logger.warnings, func(warning string, _ int) bool {
+				return strings.HasPrefix(warning, "Skipping")
+			}))
 		})
+	}
+}
+
+// TestRenderChart_ImportValuesNotChainedBetweenSiblings pins that, like in Helm, a value imported into
+// the values of a sibling dependency is not imported again by the import-values of that sibling.
+func TestRenderChart_ImportValuesNotChainedBetweenSiblings(t *testing.T) {
+	tests := []struct {
+		name string
+		opts layeredValuesRenderOptions
+		want map[string]interface{}
+	}{
+		{
+			name: "value from values.yaml",
+			want: map[string]interface{}{"b.tbl.k": "a-values", "z": absentValue{}},
+		},
+		{
+			name: "value from set",
+			opts: layeredValuesRenderOptions{Set: []string{"a.out.k=set"}},
+			want: map[string]interface{}{"b.tbl.k": "set", "z": absentValue{}},
+		},
+	}
+
+	chartDirs := map[string]string{
+		"listed order":   "sibling-import-chain-chart",
+		"reversed order": reversedDependenciesChartDir(t, "sibling-import-chain-chart"),
+	}
+
+	for _, tt := range tests {
+		for order, chartDir := range chartDirs {
+			t.Run(tt.name+"/"+order, func(t *testing.T) {
+				tt.opts.ChartDir = chartDir
+				vals := renderedChartValues(t, renderLayeredValuesChart(t, tt.opts))
+
+				for path, want := range tt.want {
+					assert.Equal(t, want, valueAtPath(t, vals, path), path)
+				}
+			})
+		}
 	}
 }
 
@@ -376,6 +598,7 @@ func TestRenderChart_NullInSecretValuesYAMLWhenChartValuesAreInvalidAlone(t *tes
 
 func TestRenderChart_ReleaseConfigFollowsExportAndImportValuesPrecedence(t *testing.T) {
 	edgeValuesFile := filepath.Join("testdata", "layered-values", "edge-values-file.yaml")
+	edgeSecretValuesNullFile := filepath.Join("testdata", "layered-values", "edge-secret-values-file-null.yaml")
 
 	tests := []struct {
 		name string
@@ -430,6 +653,16 @@ func TestRenderChart_ReleaseConfigFollowsExportAndImportValuesPrecedence(t *test
 			name: "exported value from set replaces null from set for dependency",
 			opts: layeredValuesRenderOptions{Set: []string{"a=null", "g.repo=set"}},
 			want: map[string]interface{}{"a.image.repository": "set"},
+		},
+		{
+			name: "exported value from set replaces null from set for dependency and keeps values file values",
+			opts: layeredValuesRenderOptions{Set: []string{"a=null", "g.repo=set"}, ValuesFiles: []string{edgeValuesFile}},
+			want: map[string]interface{}{"a.image.repository": "set", "a.other": "values-file"},
+		},
+		{
+			name: "exported value from secret values file replaces null from secret values file for dependency and keeps values file values",
+			opts: layeredValuesRenderOptions{SecretValuesFiles: []string{edgeSecretValuesNullFile}, ValuesFiles: []string{edgeValuesFile}},
+			want: map[string]interface{}{"a.image.repository": "secret-values-file-null", "a.other": "values-file"},
 		},
 		{
 			name: "value is not exported to dependency disabled by condition",

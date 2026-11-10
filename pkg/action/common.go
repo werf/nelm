@@ -185,21 +185,24 @@ func handleBuildPlanErr(ctx context.Context, installPlan *plan.Plan, planErr err
 	log.Default.Warn(ctx, "Plan graph saved to %q for debugging", graphPath)
 }
 
-// loadDeployedReleases loads the bodies of the revisions BuildReleaseInfos would keep, i.e. the
-// ones with status exactly "deployed". release.DeployedRevisions is deliberately not used here:
+// loadDeployedAndPendingReleases loads the bodies of the revisions BuildReleaseInfos acts on: the
+// ones with status exactly "deployed", to be superseded, and the "pending-*" ones an interrupted
+// deploy left behind, to be marked failed. release.DeployedRevisions is deliberately not used here:
 // it also returns superseded revisions, which would turn into extra supersede operations.
 // Bodies the caller already holds are passed in preloaded and reused instead of being fetched
 // again; this never changes which revisions are returned, only where their bodies come from.
-// A revision whose body cannot be read is an error: it would otherwise stay deployed forever.
-func loadDeployedReleases(ctx context.Context, history *release.History, preloaded []helmrel.Accessor) ([]helmrel.Accessor, error) {
-	return loadDeployedReleasesWith(ctx, history, preloaded, false)
+// A deployed revision whose body cannot be read is an error: it would otherwise stay deployed
+// forever. A pending one is skipped with a warning: it only stays pending, as it did before.
+func loadDeployedAndPendingReleases(ctx context.Context, history *release.History, preloaded []helmrel.Accessor) ([]helmrel.Accessor, error) {
+	return loadDeployedAndPendingReleasesWith(ctx, history, preloaded, false)
 }
 
-// loadDeployedReleasesSkippingPruned is loadDeployedReleases for the one reader that runs after
-// plan execution: a revision the history limit pruned meanwhile no longer exists and has nothing
-// left to supersede, so ErrReleaseNotFound is skipped. An undecodable body is still an error.
-func loadDeployedReleasesSkippingPruned(ctx context.Context, history *release.History) ([]helmrel.Accessor, error) {
-	return loadDeployedReleasesWith(ctx, history, nil, true)
+// loadDeployedAndPendingReleasesSkippingPruned is loadDeployedAndPendingReleases for the one reader
+// that runs after plan execution: a revision the history limit pruned meanwhile no longer exists
+// and has nothing left to supersede, so ErrReleaseNotFound is skipped. An undecodable deployed body
+// is still an error.
+func loadDeployedAndPendingReleasesSkippingPruned(ctx context.Context, history *release.History) ([]helmrel.Accessor, error) {
+	return loadDeployedAndPendingReleasesWith(ctx, history, nil, true)
 }
 
 // resolveDiffPatches compiles only the diff rules, for rollback, uninstall, install from a
@@ -251,6 +254,28 @@ func subchartContexts(chart helmchart.Accessor, values interface{}) (map[string]
 	}
 
 	return contexts, nil
+}
+
+// The deletions planned by a pending or failed revision after the last deployed one might never
+// have run, so the resources of the last deployed revision that the last revision does not have
+// must be deleted too.
+func buildLastDeployedOnlyResSpecs(ctx context.Context, lastRelease helmrel.Accessor, lastRelResSpecs []*spec.ResourceSpec, lastDeployedRelease helmrel.Accessor, releaseNamespace string) ([]*spec.ResourceSpec, error) {
+	if lastDeployedRelease == nil || lastDeployedRelease.Version() == lastRelease.Version() {
+		return nil, nil
+	}
+
+	lastDeployedResSpecs, err := release.ReleaseToResourceSpecs(ctx, lastDeployedRelease, releaseNamespace)
+	if err != nil {
+		return nil, fmt.Errorf("convert last deployed release to resource specs: %w", err)
+	}
+
+	lastRelResIDs := lo.SliceToMap(lastRelResSpecs, func(resSpec *spec.ResourceSpec) (string, struct{}) {
+		return resSpec.ID(), struct{}{}
+	})
+
+	return lo.Filter(lastDeployedResSpecs, func(resSpec *spec.ResourceSpec, _ int) bool {
+		return !lo.HasKey(lastRelResIDs, resSpec.ID())
+	}), nil
 }
 
 // chartMetadata mirrors what the render engine puts in .Chart: the chart's own
@@ -316,13 +341,15 @@ func collectPatches(chart helmchart.Accessor, defaultDisable bool, patchesFiles 
 	return patches, nil
 }
 
-func loadDeployedReleasesWith(ctx context.Context, history *release.History, preloaded []helmrel.Accessor, skipPruned bool) ([]helmrel.Accessor, error) {
-	deployedRevisions := lo.Filter(history.Revisions(), func(r release.Revision, _ int) bool {
-		return r.Status == helmreleasestatus.StatusDeployed.String()
+func loadDeployedAndPendingReleasesWith(ctx context.Context, history *release.History, preloaded []helmrel.Accessor, skipPruned bool) ([]helmrel.Accessor, error) {
+	revisions := lo.Filter(history.Revisions(), func(r release.Revision, _ int) bool {
+		status := helmreleasestatus.Status(r.Status)
+
+		return status == helmreleasestatus.StatusDeployed || status.IsPending()
 	})
 
-	rels := make([]helmrel.Accessor, 0, len(deployedRevisions))
-	for _, revision := range deployedRevisions {
+	rels := make([]helmrel.Accessor, 0, len(revisions))
+	for _, revision := range revisions {
 		if rel, found := lo.Find(preloaded, func(r helmrel.Accessor) bool {
 			return r != nil && r.Version() == revision.Version
 		}); found {
@@ -334,6 +361,12 @@ func loadDeployedReleasesWith(ctx context.Context, history *release.History, pre
 		rel, err := history.Release(ctx, revision.Version)
 		if err != nil {
 			if skipPruned && stderrors.Is(err, release.ErrReleaseNotFound) {
+				continue
+			}
+
+			if helmreleasestatus.Status(revision.Status).IsPending() {
+				log.Default.Warn(ctx, "Skipped stuck revision %d of release %q with status %q: %s", revision.Version, revision.Name, revision.Status, err)
+
 				continue
 			}
 
@@ -514,6 +547,23 @@ func saveReport(reportPath string, report *ReleaseReportV3) error {
 	}
 
 	return nil
+}
+
+func setEnvUntilRestore(name, value string) func() {
+	if value == "" {
+		return func() {}
+	}
+
+	prevValue, wasSet := os.LookupEnv(name)
+	lo.Must0(os.Setenv(name, value))
+
+	return func() {
+		if wasSet {
+			lo.Must0(os.Setenv(name, prevValue))
+		} else {
+			lo.Must0(os.Unsetenv(name))
+		}
+	}
 }
 
 func subchartValues(values interface{}, subchartName string) interface{} {

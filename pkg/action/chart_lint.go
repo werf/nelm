@@ -173,9 +173,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		return fmt.Errorf("build chart lint options: %w", err)
 	}
 
-	if opts.SecretKey != "" {
-		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
-	}
+	defer setEnvUntilRestore("WERF_SECRET_KEY", opts.SecretKey)()
 
 	if !opts.Remote {
 		opts.ReleaseStorageDriver = common.ReleaseStorageDriverMemory
@@ -372,6 +370,13 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		}
 	}
 
+	log.Default.Debug(ctx, "Build last deployed only resource specs")
+
+	lastDeployedOnlyResSpecs, err := buildLastDeployedOnlyResSpecs(ctx, prevRelease, prevRelResSpecs, prevDeployedRelease, opts.ReleaseNamespace)
+	if err != nil {
+		return fmt.Errorf("build last deployed only resource specs: %w", err)
+	}
+
 	log.Default.Debug(ctx, "Convert new release to resource specs")
 
 	newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, opts.ReleaseNamespace)
@@ -386,6 +391,7 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 		spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 	}, resource.BuildResourcesOptions{
 		DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
+		DeleteOnlyResSpecs:       lastDeployedOnlyResSpecs,
 	})
 	if err != nil {
 		return fmt.Errorf("build resources: %w", err)
@@ -433,9 +439,9 @@ func ChartLint(ctx context.Context, opts ChartLintOptions) error {
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	prevDeployedReleases, err := loadDeployedReleases(ctx, history, []helmrel.Accessor{prevRelease, prevDeployedRelease})
+	prevDeployedReleases, err := loadDeployedAndPendingReleases(ctx, history, []helmrel.Accessor{prevRelease, prevDeployedRelease})
 	if err != nil {
-		return fmt.Errorf("load deployed releases: %w", err)
+		return fmt.Errorf("load deployed and pending releases: %w", err)
 	}
 
 	relInfos, err := plan.BuildReleaseInfos(ctx, deployType, prevDeployedReleases, newRelease)

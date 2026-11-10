@@ -1,0 +1,7 @@
+cycle:
+  k: sub-values-yaml
+self:
+  k: sub-values-yaml
+typoCycle:
+  k: sub-values-yaml
+typoCycleSaved: sub-values-yaml

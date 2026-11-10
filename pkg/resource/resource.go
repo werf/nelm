@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"time"
 
@@ -221,16 +222,22 @@ type DeletableResourceOptions struct {
 
 type BuildResourcesOptions struct {
 	DefaultDeletePropagation metav1.DeletionPropagation
-	NoPodLogs                bool
+	// DeleteOnlyResSpecs are more resources of previous releases to delete. Unlike prevRelResSpecs,
+	// they are never installed, so their install-on-delete hooks do not run on uninstall and they
+	// are not validated as installable.
+	DeleteOnlyResSpecs []*spec.ResourceSpec
+	NoPodLogs          bool
 }
 
 // Build Installable/DeletableResources from ResourceSpecs. Resulting Resources can be used to
 // construct Installable/DeletableResourceInfos later. Must never contact the cluster, because this
 // is called even when no cluster access allowed.
 func BuildResources(ctx context.Context, deployType common.DeployType, releaseNamespace string, prevRelResSpecs, newRelResSpecs []*spec.ResourceSpec, patchers []spec.ResourcePatcher, opts BuildResourcesOptions) ([]*InstallableResource, []*DeletableResource, error) {
+	delCandidateResSpecs := append(slices.Clone(prevRelResSpecs), opts.DeleteOnlyResSpecs...)
+
 	var prevRelDelResources []*DeletableResource
-	for _, resSpec := range prevRelResSpecs {
-		deletableRes, err := NewDeletableResource(ctx, resSpec, lo.Without(prevRelResSpecs, resSpec), releaseNamespace, DeletableResourceOptions{
+	for _, resSpec := range delCandidateResSpecs {
+		deletableRes, err := NewDeletableResource(ctx, resSpec, lo.Without(delCandidateResSpecs, resSpec), releaseNamespace, DeletableResourceOptions{
 			DefaultDeletePropagation: opts.DefaultDeletePropagation,
 		})
 		if err != nil {

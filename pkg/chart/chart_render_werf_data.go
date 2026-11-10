@@ -12,8 +12,10 @@ import (
 	"github.com/werf/common-go/pkg/secrets_manager"
 	"github.com/werf/nelm/v2/pkg/common"
 	v3chart "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3"
+	chartv3util "github.com/werf/nelm/v2/pkg/helm/intern/chart/v3/util"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	chartcommonutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common/util"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
 	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	chartv2util "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2/util"
@@ -194,10 +196,31 @@ func dependencyHasWerfDataExtraValues(chrt helmchart.Charter) bool {
 	return false
 }
 
+// dependencyValuesKeys returns the keys of the dependency values in the values of the chart: the
+// aliases of the Chart.yaml dependencies it matches by name and version range, or its name when it
+// matches none. It must match dependencies the same way processing the chart dependencies does.
+func dependencyValuesKeys(acc, depAcc helmchart.Accessor) []string {
+	var keys []string
+	for _, metaDep := range acc.MetaDependencies() {
+		metaDepAcc, err := helmchart.NewDependencyAccessor(metaDep)
+		if err != nil || metaDepAcc.Name() != depAcc.Name() || !dependencyVersionMatches(metaDep, depAcc.Charter()) {
+			continue
+		}
+
+		keys = append(keys, lo.CoalesceOrEmpty(metaDepAcc.Alias(), metaDepAcc.Name()))
+	}
+
+	if len(keys) == 0 {
+		return []string{depAcc.Name()}
+	}
+
+	return lo.Uniq(keys)
+}
+
 // dependencyValuesLayer returns a values layer of a dependency at its path in the root chart
 // values, without the values that its parent charts override.
 func dependencyValuesLayer(layer valuesLayer, depPath chartValuesPath) (valuesLayer, error) {
-	vals, err := deepCopyValues(layer.Values)
+	vals, err := chartcommonutil.DeepCopyValues(layer.Values)
 	if err != nil {
 		return valuesLayer{}, fmt.Errorf("copy dependency values layer: %w", err)
 	}
@@ -209,7 +232,7 @@ func dependencyValuesLayer(layer valuesLayer, depPath chartValuesPath) (valuesLa
 		replacedPaths = append(replacedPaths, append(slices.Clone(depPath.path), path...))
 	}
 
-	ancestorValues, err := deepCopyValues(depPath.ancestorValues)
+	ancestorValues, err := chartcommonutil.DeepCopyValues(depPath.ancestorValues)
 	if err != nil {
 		return valuesLayer{}, fmt.Errorf("copy ancestor values: %w", err)
 	}
@@ -337,7 +360,7 @@ func werfDataLayers(ctx context.Context, chrt helmchart.Charter, withoutServiceV
 		chartSecretValues = defaultSecretValuesOf(c.SecretsRuntimeData)
 	}
 
-	chartSecretValuesLayer, err := deepCopyValues(chartSecretValues)
+	chartSecretValuesLayer, err := chartcommonutil.DeepCopyValues(chartSecretValues)
 	if err != nil {
 		return nil, fmt.Errorf("copy chart secret values: %w", err)
 	}
@@ -410,7 +433,7 @@ func decryptPublishedSecretValues(ctx context.Context, data *werfdata.Data) (map
 		return nil, fmt.Errorf("get secrets yaml encoder: %w", err)
 	}
 
-	vals, err := legacysecret.LoadChartSecretValueFiles([]*common.BufferedFile{
+	vals, err := legacysecret.LoadChartSecretValueFiles(ctx, []*common.BufferedFile{
 		{Name: path.Join(werfdata.DirName, werfdata.SecretValuesFileName), Data: data.SecretValues},
 	}, encoder)
 	if err != nil {
@@ -464,24 +487,17 @@ func deleteOverriddenValues(vals, overrides map[string]interface{}) {
 	}
 }
 
-// dependencyValuesKeys returns the keys of the dependency values in the values of the chart: its
-// aliases, or its name.
-func dependencyValuesKeys(acc, depAcc helmchart.Accessor) []string {
-	var keys []string
-	for _, metaDep := range acc.MetaDependencies() {
-		metaDepAcc, err := helmchart.NewDependencyAccessor(metaDep)
-		if err != nil || metaDepAcc.Name() != depAcc.Name() {
-			continue
-		}
-
-		keys = append(keys, lo.CoalesceOrEmpty(metaDepAcc.Alias(), metaDepAcc.Name()))
+func dependencyVersionMatches(metaDep helmchart.Dependency, chrt helmchart.Charter) bool {
+	switch d := metaDep.(type) {
+	case *v2chart.Dependency:
+		c, ok := chrt.(*v2chart.Chart)
+		return ok && chartv2util.IsCompatibleRange(d.Version, c.Metadata.Version)
+	case *v3chart.Dependency:
+		c, ok := chrt.(*v3chart.Chart)
+		return ok && chartv3util.IsCompatibleRange(d.Version, c.Metadata.Version)
+	default:
+		return false
 	}
-
-	if len(keys) == 0 {
-		return []string{depAcc.Name()}
-	}
-
-	return lo.Uniq(keys)
 }
 
 // hasDependencyAtPath reports whether the processed chart has the dependency at the path of its

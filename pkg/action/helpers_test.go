@@ -37,6 +37,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes/scheme"
 	"oras.land/oras-go/v2"
@@ -48,6 +49,7 @@ import (
 	helmaction "github.com/werf/nelm/v2/pkg/helm/pkg/action"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/provenance"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/registry"
+	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/legacy/progrep"
 	"github.com/werf/nelm/v2/pkg/release"
@@ -168,6 +170,9 @@ type progressPhasesAPIState struct {
 	requests             []string
 	retainNamespace      bool
 	trackNamespaceStatus int
+	// updateMissingConfigMapNotFound makes PUT of a missing ConfigMap fail as in a real cluster
+	// instead of creating it.
+	updateMissingConfigMapNotFound bool
 }
 
 type progressPhasesAPI struct {
@@ -291,6 +296,12 @@ func newProgressPhasesAPI(t *testing.T) *progressPhasesAPI {
 						break
 					}
 
+					if _, found := s.configMaps[cm.Name]; s.updateMissingConfigMapNotFound && r.Method == http.MethodPut && !found {
+						status = http.StatusNotFound
+
+						break
+					}
+
 					cm.Kind, cm.APIVersion = "ConfigMap", "v1"
 					cm.Namespace, cm.ResourceVersion = "progress-ns", "1"
 
@@ -402,6 +413,59 @@ type chartCopyTestTarEntry struct {
 	Name string
 }
 
+func newDeleteCandidatesInstallOptions(t *testing.T, api *progressPhasesAPI, manifest string) ReleaseInstallOptions {
+	t.Helper()
+
+	return ReleaseInstallOptions{
+		KubeConnectionOptions: api.kubeOpts,
+		Chart:                 newDeleteCandidatesChart(t, manifest),
+		LegacyNoReleaseLock:   true,
+		NoCreateNamespace:     true,
+		NoShowNotes:           true,
+		ReleaseInstallRuntimeOptions: common.ReleaseInstallRuntimeOptions{
+			ReleaseStorageDriver:      "configmap",
+			ResourceValidationOptions: common.ResourceValidationOptions{NoResourceValidation: true},
+		},
+		TempDirPath:     t.TempDir(),
+		TrackingOptions: common.TrackingOptions{NoProgressTablePrint: true},
+	}
+}
+
+func newTriggersReleaseChart(t *testing.T, api *progressPhasesAPI, annotations map[string]string) string {
+	t.Helper()
+
+	cm := corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{Kind: "ConfigMap", APIVersion: "v1"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "progress-resource", Namespace: "progress-ns",
+			Annotations: lo.Assign(map[string]string{
+				"meta.helm.sh/release-name": "progress-release", "meta.helm.sh/release-namespace": "progress-ns",
+				"werf.io/delete-policy": "before-creation",
+			}, annotations),
+			Labels: map[string]string{"app.kubernetes.io/managed-by": "Helm"},
+		},
+		Data: map[string]string{"key": "value"},
+	}
+	body, err := json.Marshal(cm)
+	require.NoError(t, err)
+	api.state.RWTransaction(func(s *progressPhasesAPIState) {
+		s.configMaps[cm.Name] = cm
+	})
+	addProgressPhaseRevision(t, api, 1, string(body))
+
+	chartPath := newProgressPhasesChart(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(chartPath, "templates"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(chartPath, "templates", "cm.yaml"), body, 0o600))
+
+	return chartPath
+}
+
+func addProgressPhaseRevision(t *testing.T, api *progressPhasesAPI, revision int, manifest string) {
+	t.Helper()
+
+	addProgressPhaseRevisionWithStatus(t, api, revision, manifest, helmreleasestatus.StatusDeployed)
+}
+
 func newChartCopyTestRegistry(t *testing.T) string {
 	t.Helper()
 
@@ -437,40 +501,21 @@ spec:
 	return chartPath
 }
 
+func newDeleteCandidatesChart(t *testing.T, manifest string) string {
+	t.Helper()
+
+	chartPath := newProgressPhasesChart(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(chartPath, "templates"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(chartPath, "templates", "cm.yaml"), []byte(manifest), 0o600))
+
+	return chartPath
+}
+
 func newLatestRevisionSummary(namespace, name string, version int) release.RevisionSummary {
 	return release.RevisionSummary{
 		Revision: release.Revision{Namespace: namespace, Name: name, Version: version, Status: "deployed"},
 		Summary:  newTestReleaseSummary(),
 	}
-}
-
-func newTriggersReleaseChart(t *testing.T, api *progressPhasesAPI, annotations map[string]string) string {
-	t.Helper()
-
-	cm := corev1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{Kind: "ConfigMap", APIVersion: "v1"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "progress-resource", Namespace: "progress-ns",
-			Annotations: lo.Assign(map[string]string{
-				"meta.helm.sh/release-name": "progress-release", "meta.helm.sh/release-namespace": "progress-ns",
-				"werf.io/delete-policy": "before-creation",
-			}, annotations),
-			Labels: map[string]string{"app.kubernetes.io/managed-by": "Helm"},
-		},
-		Data: map[string]string{"key": "value"},
-	}
-	body, err := json.Marshal(cm)
-	require.NoError(t, err)
-	api.state.RWTransaction(func(s *progressPhasesAPIState) {
-		s.configMaps[cm.Name] = cm
-	})
-	addProgressPhaseRevision(t, api, 1, string(body))
-
-	chartPath := newProgressPhasesChart(t)
-	require.NoError(t, os.MkdirAll(filepath.Join(chartPath, "templates"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(chartPath, "templates", "cm.yaml"), body, 0o600))
-
-	return chartPath
 }
 
 // pushChartCopyTestImage pushes an image with a manifest per architecture, under an index if there
@@ -521,6 +566,23 @@ func pushChartCopyTestImage(t *testing.T, repo, tag string, architectures ...str
 	require.NoError(t, err)
 
 	return chartCopyTestImage{Children: manifests, Desc: indexDesc, Ref: fmt.Sprintf("%s:%s@%s", repo, tag, indexDesc.Digest)}
+}
+
+func renderSecretValuesTypesChart(t *testing.T) {
+	t.Helper()
+
+	chartDir := newSecretValuesTypesChart(t)
+	encryptSecretValuesTypesFile(t, filepath.Join(chartDir, "secret-values.yaml"))
+
+	_, err := ChartRender(context.Background(), ChartRenderOptions{
+		Chart:         chartDir,
+		OutputNoPrint: true,
+		SecretValuesOptions: common.SecretValuesOptions{
+			SecretKey: secretValuesTypesSecretKey,
+		},
+		TempDirPath: t.TempDir(),
+	})
+	require.NoError(t, err)
 }
 
 // requireChartCopyTestImage checks that the image is in repo under tag with all its manifests.
@@ -596,12 +658,12 @@ func writeLegacyBundleChartCopyTestArchive(t *testing.T, chartData []byte, image
 	return archivePath
 }
 
-func addProgressPhaseRevision(t *testing.T, api *progressPhasesAPI, revision int, manifest string) {
+func addProgressPhaseRevisionWithStatus(t *testing.T, api *progressPhasesAPI, revision int, manifest string, status helmreleasestatus.Status) {
 	t.Helper()
 
 	body, err := json.Marshal(map[string]any{
 		"name": "progress-release", "namespace": "progress-ns", "version": revision,
-		"info": map[string]any{"status": "deployed"}, "manifest": manifest,
+		"info": map[string]any{"status": status}, "manifest": manifest,
 		"chart": map[string]any{"metadata": map[string]any{"apiVersion": "v2", "name": "progress-chart", "version": "1.0.0"}},
 	})
 	require.NoError(t, err)
@@ -611,7 +673,7 @@ func addProgressPhaseRevision(t *testing.T, api *progressPhasesAPI, revision int
 		s.configMaps[key] = corev1.ConfigMap{
 			TypeMeta: metav1.TypeMeta{Kind: "ConfigMap", APIVersion: "v1"},
 			ObjectMeta: metav1.ObjectMeta{Name: key, Namespace: "progress-ns", Labels: map[string]string{
-				"owner": "helm", "name": "progress-release", "version": fmt.Sprint(revision), "status": "deployed",
+				"owner": "helm", "name": "progress-release", "version": fmt.Sprint(revision), "status": status.String(),
 			}},
 			Data: map[string]string{"release": base64.StdEncoding.EncodeToString(body)},
 		}
@@ -627,6 +689,31 @@ func addProgressPhasesConfigMap(t *testing.T, api *progressPhasesAPI) string {
 			Name: "progress-resource", Namespace: "progress-ns",
 			Annotations: map[string]string{"meta.helm.sh/release-name": "progress-release", "meta.helm.sh/release-namespace": "progress-ns"},
 			Labels:      map[string]string{"app.kubernetes.io/managed-by": "Helm"},
+		},
+		Data: map[string]string{"key": "value"},
+	}
+	body, err := json.Marshal(cm)
+	require.NoError(t, err)
+	api.state.RWTransaction(func(s *progressPhasesAPIState) {
+		s.configMaps[cm.Name] = cm
+	})
+
+	return string(body)
+}
+
+func addReleaseConfigMap(t *testing.T, api *progressPhasesAPI, name string, annotations map[string]string) string {
+	t.Helper()
+
+	cm := corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{Kind: "ConfigMap", APIVersion: "v1"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name, Namespace: "progress-ns", UID: types.UID("uid-" + name),
+			// The fake API serves no events, so readiness tracking must not block on them.
+			Annotations: lo.Assign(map[string]string{
+				"meta.helm.sh/release-name": "progress-release", "meta.helm.sh/release-namespace": "progress-ns",
+				"werf.io/track-termination-mode": "NonBlocking",
+			}, annotations),
+			Labels: map[string]string{"app.kubernetes.io/managed-by": "Helm"},
 		},
 		Data: map[string]string{"key": "value"},
 	}
@@ -693,6 +780,20 @@ func collectSlowProgressPhaseReports(ch <-chan progrep.ProgressReport) <-chan []
 	}()
 
 	return done
+}
+
+func deletedResourceConfigMaps(api *progressPhasesAPI) []string {
+	var names []string
+	api.state.RTransaction(func(s *progressPhasesAPIState) {
+		for _, request := range s.requests {
+			name, found := strings.CutPrefix(request, "DELETE /api/v1/namespaces/progress-ns/configmaps/")
+			if found && !strings.HasPrefix(name, "sh.helm.release.v1.") {
+				names = append(names, name)
+			}
+		}
+	})
+
+	return names
 }
 
 func encryptSecretValuesTypesFile(t *testing.T, outputPath string) {
@@ -855,6 +956,17 @@ func newChartRenderInstallRenderOptions(t *testing.T, api *progressPhasesAPI, ch
 		Remote:                true,
 		TempDirPath:           t.TempDir(),
 	}
+}
+
+func newLogCapturingContext(t *testing.T) (context.Context, *bytes.Buffer) {
+	t.Helper()
+
+	var logs bytes.Buffer
+
+	ctx := logboek.NewContext(context.Background(), logboek.NewLogger(&logs, &logs))
+	logboek.Context(ctx).Streams().SetWidth(1000)
+
+	return ctx, &logs
 }
 
 func newMetadataReleaseListStorager(revisions []release.Revision, summaries map[string]*release.ReleaseSummary, loadErrs ...error) *latestReleaseListStorager {

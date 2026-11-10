@@ -16,8 +16,14 @@ var _ Historier = (*History)(nil)
 
 type Historier interface {
 	CreateRelease(ctx context.Context, rel helmrel.Accessor) error
-	UpdateRelease(ctx context.Context, rel helmrel.Accessor) error
+	UpdateRelease(ctx context.Context, rel helmrel.Accessor, opts UpdateReleaseOptions) error
 	DeleteRelease(ctx context.Context, name string, revision int) error
+}
+
+type UpdateReleaseOptions struct {
+	// KeepDeployedTimestamps leaves the first and last deployed times of the release as they are
+	// instead of setting them to now.
+	KeepDeployedTimestamps bool
 }
 
 type History struct {
@@ -81,13 +87,15 @@ func (h *History) Revisions() []Revision {
 	return slices.Clone(h.revisions)
 }
 
-func (h *History) UpdateRelease(ctx context.Context, rel helmrel.Accessor) error {
+func (h *History) UpdateRelease(ctx context.Context, rel helmrel.Accessor, opts UpdateReleaseOptions) error {
 	h.updateLock.Lock()
 	defer h.updateLock.Unlock()
 
-	now := time.Now()
-	rel.SetFirstDeployed(now)
-	rel.SetLastDeployed(now)
+	if !opts.KeepDeployedTimestamps {
+		now := time.Now()
+		rel.SetFirstDeployed(now)
+		rel.SetLastDeployed(now)
+	}
 
 	if err := h.storage.Update(context.WithoutCancel(ctx), rel); err != nil {
 		return fmt.Errorf("update release %q (namespace: %q, revision: %d): %w", rel.Name(), rel.Namespace(), rel.Version(), err)

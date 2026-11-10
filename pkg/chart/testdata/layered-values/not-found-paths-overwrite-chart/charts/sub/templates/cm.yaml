@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sub
+data:
+  cycle: {{ .Values.cycle | quote }}
+  self: {{ .Values.self | quote }}

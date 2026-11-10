@@ -14,6 +14,7 @@ import (
 	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmreleasecommon "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	helmrelease "github.com/werf/nelm/v2/pkg/helm/pkg/release/v1"
+	"github.com/werf/nelm/v2/pkg/helm/pkg/strvals"
 	"github.com/werf/nelm/v2/pkg/release"
 	"github.com/werf/nelm/v2/pkg/resource/spec"
 )
@@ -55,6 +56,29 @@ data:
 			Manifest: cmManifest("value1"),
 			Hooks:    []*helmrelease.Hook{{Manifest: cmManifest("hookval1")}},
 		}
+	}
+
+	setValues := func(set string) map[string]interface{} {
+		vals := map[string]interface{}{}
+		require.NoError(t, strvals.ParseInto(set, vals))
+
+		return vals
+	}
+
+	storedValues := func(vals map[string]interface{}) map[string]interface{} {
+		data, err := json.Marshal(vals)
+		require.NoError(t, err)
+
+		var stored map[string]interface{}
+		require.NoError(t, json.Unmarshal(data, &stored))
+
+		return stored
+	}
+
+	withConfig := func(r *helmrelease.Release, config map[string]interface{}) *helmrelease.Release {
+		r.Config = config
+
+		return r
 	}
 
 	tests := []struct {
@@ -121,6 +145,41 @@ data:
 
 				return r
 			}(),
+			expectedUpToDate: false,
+			expectedReason:   release.ReleaseOutdatedReasonValuesChanged,
+		},
+		{
+			name:             "set-number-unchanged-after-storage-round-trip",
+			oldRel:           withConfig(baseOldRel(), storedValues(setValues("replicas=3,ratio=0.5,enabled=true"))),
+			newRel:           withConfig(baseNewRel(), setValues("replicas=3,ratio=0.5,enabled=true")),
+			expectedUpToDate: true,
+			expectedReason:   release.ReleaseOutdatedReasonNone,
+		},
+		{
+			name:             "set-number-changed",
+			oldRel:           withConfig(baseOldRel(), storedValues(setValues("replicas=3"))),
+			newRel:           withConfig(baseNewRel(), setValues("replicas=4")),
+			expectedUpToDate: false,
+			expectedReason:   release.ReleaseOutdatedReasonValuesChanged,
+		},
+		{
+			name:             "set-number-replaced-with-string",
+			oldRel:           withConfig(baseOldRel(), storedValues(setValues("replicas=3"))),
+			newRel:           withConfig(baseNewRel(), map[string]interface{}{"replicas": "3"}),
+			expectedUpToDate: false,
+			expectedReason:   release.ReleaseOutdatedReasonValuesChanged,
+		},
+		{
+			name:             "set-nested-numbers-unchanged-after-storage-round-trip",
+			oldRel:           withConfig(baseOldRel(), storedValues(setValues("app.replicas=3,app.ports[0]=80,app.ports[1]=443,app.backends[0].weight=10"))),
+			newRel:           withConfig(baseNewRel(), setValues("app.replicas=3,app.ports[0]=80,app.ports[1]=443,app.backends[0].weight=10")),
+			expectedUpToDate: true,
+			expectedReason:   release.ReleaseOutdatedReasonNone,
+		},
+		{
+			name:             "set-nested-number-changed",
+			oldRel:           withConfig(baseOldRel(), storedValues(setValues("app.replicas=3,app.ports[0]=80,app.ports[1]=443,app.backends[0].weight=10"))),
+			newRel:           withConfig(baseNewRel(), setValues("app.replicas=3,app.ports[0]=80,app.ports[1]=8443,app.backends[0].weight=10")),
 			expectedUpToDate: false,
 			expectedReason:   release.ReleaseOutdatedReasonValuesChanged,
 		},

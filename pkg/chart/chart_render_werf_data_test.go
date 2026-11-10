@@ -13,6 +13,7 @@ import (
 
 	"github.com/werf/nelm/v2/pkg/common"
 	chartcommon "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common"
+	chartcommonutil "github.com/werf/nelm/v2/pkg/helm/pkg/chart/common/util"
 	"github.com/werf/nelm/v2/pkg/helm/pkg/chart/loader"
 	v2chart "github.com/werf/nelm/v2/pkg/helm/pkg/chart/v2"
 	"github.com/werf/nelm/v2/pkg/log"
@@ -263,6 +264,12 @@ func TestRenderChart_WerfDataDependencyBelowParentValues(t *testing.T) {
 			want:         map[string]interface{}{"pub.imported.k": "parent", "pub.sub.fromchild.k": "pub-published"},
 		},
 		{
+			name:         "the parent values at the chart name of a dependency out of the version range of its alias",
+			dependencies: "- name: pub\n  alias: p1\n  version: ~2.0.0",
+			values:       "pub:\n  own: parent",
+			want:         map[string]interface{}{"pub.own": "parent", "pub.published": "pub-set", "pub.sub.x": "pub-published", "p1": absentValue{}},
+		},
+		{
 			name:         "an export-values of the dependency beats the parent values, like its values.yaml does",
 			dependencies: "- name: pub\n  version: 1.0.0",
 			values:       "pub:\n  sub:\n    x: parent",
@@ -312,6 +319,80 @@ func TestRenderChart_WerfDataDependencyBelowParentValues(t *testing.T) {
 			vals := renderedChartValues(t, result)
 
 			storedVals := storedReleaseValues(t, result)
+			for path, want := range tt.want {
+				assert.Equal(t, want, valueAtPath(t, vals, path), path)
+				assert.Equal(t, want, valueAtPath(t, storedVals, path), "release get view of %s", path)
+			}
+		})
+	}
+}
+
+func TestRenderChart_WerfDataDependencyBelowParentValuesV3(t *testing.T) {
+	published := mergeTestFiles(map[string]string{
+		"charts/pub/Chart.yaml":            "apiVersion: v3\nname: pub\nversion: 1.0.0\ndependencies:\n- name: sub\n  version: 1.0.0\n  import-values:\n  - child: fromchild\n    parent: imported\n",
+		"charts/pub/charts/sub/Chart.yaml": "apiVersion: v3\nname: sub\nversion: 1.0.0\n",
+	}, prefixTestFiles("charts/pub/", werfDataFlagsAsFiles(t, werfDataFlags{
+		Values: "exported:\n  k: pub-published\nsub:\n  fromchild:\n    k: pub-published\n    l: pub-published",
+	})))
+
+	tests := []struct {
+		name         string
+		dependencies string
+		values       string
+		want         map[string]interface{}
+		// nested puts the dependency into a dependency "mid" that imports its "exported" values.
+		nested bool
+	}{
+		{
+			name:         "the parent values at an import-values destination",
+			dependencies: "- name: pub\n  version: 1.0.0\n  import-values:\n  - child: exported\n    parent: imported",
+			values:       "imported:\n  k: parent",
+			want:         map[string]interface{}{"imported.k": "parent", "pub.exported.k": "pub-published"},
+		},
+		{
+			name:         "the parent values at an import-values destination of a nested dependency",
+			dependencies: "- name: mid\n  version: 1.0.0",
+			values:       "mid:\n  imported:\n    k: parent",
+			want:         map[string]interface{}{"mid.imported.k": "parent", "mid.pub.exported.k": "pub-published", "mid.pub.imported.l": "pub-published"},
+			nested:       true,
+		},
+		{
+			name:         "the parent values at an import-values destination of the dependency",
+			dependencies: "- name: pub\n  version: 1.0.0",
+			values:       "pub:\n  imported:\n    k: parent",
+			want:         map[string]interface{}{"pub.imported.k": "parent", "pub.imported.l": "pub-published", "pub.sub.fromchild.k": "pub-published"},
+		},
+		{
+			name:         "the parent values at the chart name of a dependency out of the version range of its alias",
+			dependencies: "- name: pub\n  alias: p1\n  version: ~2.0.0",
+			values:       "pub:\n  exported:\n    k: parent",
+			want:         map[string]interface{}{"pub.exported.k": "parent", "pub.imported.l": "pub-published", "p1": absentValue{}},
+		},
+		{
+			name:         "a disabled dependency",
+			dependencies: "- name: pub\n  version: 1.0.0\n  condition: pub.enabled",
+			values:       "pub:\n  enabled: false",
+			want:         map[string]interface{}{"pub": map[string]interface{}{"enabled": false}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dependencyFiles := published
+			if tt.nested {
+				dependencyFiles = prefixTestFiles("charts/mid/", published)
+				dependencyFiles["charts/mid/Chart.yaml"] = "apiVersion: v3\nname: mid\nversion: 1.0.0\ndependencies:\n- name: pub\n  version: 1.0.0\n  import-values:\n  - child: exported\n    parent: imported\n"
+			}
+
+			result, err := renderWerfDataTestChart(t, writeWerfDataTestChart(t, dependencyFiles, map[string]string{
+				"Chart.yaml":  "apiVersion: v3\nname: root\nversion: 1.0.0\ndependencies:\n" + tt.dependencies + "\n",
+				"values.yaml": tt.values,
+			}), RenderChartOptions{})
+			require.NoError(t, err)
+
+			vals := renderedChartValues(t, result)
+			storedVals := storedReleaseValues(t, result)
+
 			for path, want := range tt.want {
 				assert.Equal(t, want, valueAtPath(t, vals, path), path)
 				assert.Equal(t, want, valueAtPath(t, storedVals, path), "release get view of %s", path)
@@ -606,7 +687,7 @@ func TestRenderChart_WerfDataDependencyEquivalence(t *testing.T) {
 
 				wantStoredValues := dependencyValues
 				if tt.storedWithoutNulls {
-					wantStoredValues, err = deepCopyValues(dependencyValues)
+					wantStoredValues, err = chartcommonutil.DeepCopyValues(dependencyValues)
 					require.NoError(t, err)
 
 					deleteNulls(wantStoredValues)
@@ -761,6 +842,22 @@ func TestRenderChart_WerfDataDependencyMetadataIgnored(t *testing.T) {
 			}))
 		})
 	}
+}
+
+func TestRenderChart_WerfDataDependencySecretNullAtImportSourceV3(t *testing.T) {
+	result, err := renderWerfDataTestChart(t, writeWerfDataTestChart(t, map[string]string{ //nolint:gosec // Test values, not credentials.
+		"Chart.yaml":                        "apiVersion: v3\nname: root\nversion: 1.0.0\ndependencies:\n- name: pub\n  version: 1.0.0\n",
+		"charts/pub/Chart.yaml":             "apiVersion: v3\nname: pub\nversion: 1.0.0\ndependencies:\n- name: sub\n  version: 1.0.0\n  import-values:\n  - child: fromchild\n    parent: imported\n",
+		"charts/pub/secret-values.yaml":     "sub:\n  fromchild:\n    k: null",
+		"charts/pub/charts/sub/Chart.yaml":  "apiVersion: v3\nname: sub\nversion: 1.0.0\n",
+		"charts/pub/charts/sub/values.yaml": "fromchild:\n  k: default\n  l: default",
+	}, prefixTestFiles("charts/pub/", werfDataFlagsAsFiles(t, werfDataFlags{Values: "own: published"}))), RenderChartOptions{})
+	require.NoError(t, err)
+
+	vals := renderedChartValues(t, result)
+
+	assert.Equal(t, absentValue{}, valueAtPath(t, vals, "pub.imported.k"))
+	assert.Equal(t, "default", valueAtPath(t, vals, "pub.imported.l"))
 }
 
 // TestRenderChart_WerfDataEquivalence renders each chart with the flags passed as the caller's
@@ -925,6 +1022,16 @@ func TestRenderChart_WerfDataEquivalence(t *testing.T) {
 			want:  "imported:\n  a: custom-secret\n  b: service\n  c: sub\nsub:\n  fromchild:\n    a: custom-secret\n    b: service\n    c: sub\n  global: {}",
 		},
 		{
+			name: "chart apiVersion v3 imports from values files and set values",
+			chart: map[string]string{
+				"Chart.yaml":             "apiVersion: v3\nname: root\nversion: 1.0.0\ndependencies:\n- name: sub\n  version: 1.0.0\n  import-values:\n  - child: fromchild\n    parent: imported\n",
+				"charts/sub/Chart.yaml":  "apiVersion: v3\nname: sub\nversion: 1.0.0\n",
+				"charts/sub/values.yaml": "fromchild:\n  a: sub\n  b: sub\n  c: sub",
+			},
+			flags: werfDataFlags{Values: "sub:\n  fromchild:\n    a: values", Set: []string{"sub.fromchild.b=set"}},
+			want:  "imported:\n  a: values\n  b: set\n  c: sub\nsub:\n  fromchild:\n    a: values\n    b: set\n    c: sub\n  global: {}",
+		},
+		{
 			name:  "chart apiVersion v1",
 			chart: werfDataVersionedChart("v1"),
 			flags: werfDataFlags{Values: "l:\n- values-0\n- values-1", SecretValues: "s: custom-secret", Set: []string{"l[1]=set"}, ExtraValues: "werf:\n  repo: service"},
@@ -1079,6 +1186,23 @@ releaseInfoAnnotations:
 			}))
 		})
 	}
+}
+
+func TestRenderChart_WerfDataLegacySecretValuesWarning(t *testing.T) {
+	const legacySecretKey = "bc3458408a5687e60b9417adb84e4ad0" //nolint:gosec // Test-only key of the legacy ciphertext below.
+
+	logger := &warningsLogger{Logger: log.Default}
+	log.Default = logger
+	t.Cleanup(func() { log.Default = logger.Logger })
+
+	files := werfDataFlagsAsFiles(t, werfDataFlags{SecretValues: "int: 1"})
+	files[werfdata.DirName+"/"+werfdata.SecretValuesFileName] = "int: 100049fb3706a4dc50af98db279edad4d2eee12ebc001536f6f07f28a99af986bcb7\n"
+	chartPath := writeWerfDataTestChart(t, werfDataCardChart("", "", "", ""), files)
+
+	result, err := renderWerfDataTestChartWithSecretKey(t, chartPath, legacySecretKey, RenderChartOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "123", renderedChartValues(t, result)["int"])
+	assert.Equal(t, []string{"Secret values file \".werf-data/secret-values.yaml\" has values encrypted in an old format that does not store YAML types, so they are read as strings: int. To make them numbers or booleans, re-enter them with `nelm chart secret values-file edit`."}, logger.warnings)
 }
 
 func TestRenderChart_WerfDataLoadsChartOnce(t *testing.T) {

@@ -19,6 +19,7 @@ import (
 	kdutil "github.com/werf/kubedog/pkg/dyntracker/util"
 	"github.com/werf/nelm/v2/pkg/common"
 	helmchart "github.com/werf/nelm/v2/pkg/helm/pkg/chart"
+	helmrel "github.com/werf/nelm/v2/pkg/helm/pkg/release"
 	helmreleasestatus "github.com/werf/nelm/v2/pkg/helm/pkg/release/common"
 	"github.com/werf/nelm/v2/pkg/kube"
 	"github.com/werf/nelm/v2/pkg/legacy/progrep"
@@ -253,6 +254,13 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 			return fmt.Errorf("get last release: %w", err)
 		}
 
+		var prevDeployedRelease helmrel.Accessor
+		if lastDeployedRevision, found := lo.Last(release.DeployedRevisions(revisions)); found && lastDeployedRevision.Version != lastRevision.Version {
+			if prevDeployedRelease, err = history.Release(ctx, lastDeployedRevision.Version); err != nil {
+				return fmt.Errorf("get last deployed release: %w", err)
+			}
+		}
+
 		prevReleaseFailed := prevRelease.Status() == helmreleasestatus.StatusFailed.String()
 		deployType := common.DeployTypeUninstall
 
@@ -261,6 +269,13 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 		prevRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, prevRelease, releaseNamespace)
 		if err != nil {
 			return fmt.Errorf("convert previous release to resource specs: %w", err)
+		}
+
+		log.Default.Debug(ctx, "Build last deployed only resource specs")
+
+		lastDeployedOnlyResSpecs, err := buildLastDeployedOnlyResSpecs(ctx, prevRelease, prevRelResSpecs, prevDeployedRelease, releaseNamespace)
+		if err != nil {
+			return fmt.Errorf("build last deployed only resource specs: %w", err)
 		}
 
 		patchers := []spec.ResourcePatcher{
@@ -275,6 +290,7 @@ func releaseUninstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, 
 
 		instResources, delResources, err := resource.BuildResources(ctx, deployType, releaseNamespace, prevRelResSpecs, nil, patchers, resource.BuildResourcesOptions{
 			DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
+			DeleteOnlyResSpecs:       lastDeployedOnlyResSpecs,
 			NoPodLogs:                opts.NoPodLogs,
 		})
 		if err != nil {

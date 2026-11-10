@@ -264,9 +264,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 		return nil, fmt.Errorf("build release install options: %w", err)
 	}
 
-	if opts.SecretKey != "" {
-		lo.Must0(os.Setenv("WERF_SECRET_KEY", opts.SecretKey))
-	}
+	defer setEnvUntilRestore("WERF_SECRET_KEY", opts.SecretKey)()
 
 	var planArtifact *PlanArtifact
 
@@ -616,6 +614,13 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			}
 		}
 
+		log.Default.Debug(ctx, "Build last deployed only resource specs")
+
+		lastDeployedOnlyResSpecs, err := buildLastDeployedOnlyResSpecs(ctx, prevRelease, prevRelResSpecs, prevDeployedRelease, releaseNamespace)
+		if err != nil {
+			return nil, fmt.Errorf("build last deployed only resource specs: %w", err)
+		}
+
 		log.Default.Debug(ctx, "Convert new release to resource specs")
 
 		newRelResSpecs, err := release.ReleaseToResourceSpecs(ctx, newRelease, releaseNamespace)
@@ -630,6 +635,7 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 			spec.NewExtraMetadataPatcher(opts.ExtraRuntimeAnnotations, opts.ExtraRuntimeLabels),
 		}, resource.BuildResourcesOptions{
 			DefaultDeletePropagation: metav1.DeletionPropagation(opts.DefaultDeletePropagation),
+			DeleteOnlyResSpecs:       lastDeployedOnlyResSpecs,
 			NoPodLogs:                opts.NoPodLogs,
 		})
 		if err != nil {
@@ -690,9 +696,9 @@ func releaseInstall(ctx context.Context, ctxCancelFn context.CancelCauseFunc, re
 
 		log.Default.Debug(ctx, "Build release infos")
 
-		prevDeployedReleases, err := loadDeployedReleases(ctx, history, []helmrel.Accessor{prevRelease, prevDeployedRelease})
+		prevDeployedReleases, err := loadDeployedAndPendingReleases(ctx, history, []helmrel.Accessor{prevRelease, prevDeployedRelease})
 		if err != nil {
-			return nil, fmt.Errorf("load deployed releases: %w", err)
+			return nil, fmt.Errorf("load deployed and pending releases: %w", err)
 		}
 
 		relInfos, err = plan.BuildReleaseInfos(ctx, deployType, prevDeployedReleases, newRelease)
@@ -1188,9 +1194,9 @@ func runRollbackPlan(ctx context.Context, releaseName, releaseNamespace string, 
 
 	log.Default.Debug(ctx, "Build release infos")
 
-	prevDeployedReleases, err := loadDeployedReleasesSkippingPruned(ctx, history)
+	prevDeployedReleases, err := loadDeployedAndPendingReleasesSkippingPruned(ctx, history)
 	if err != nil {
-		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("load deployed releases: %w", err))
+		return nil, nonCritErrs, critErrs.Add(fmt.Errorf("load deployed and pending releases: %w", err))
 	}
 
 	relInfos, err := plan.BuildReleaseInfos(ctx, common.DeployTypeRollback, prevDeployedReleases, newRelease)
