@@ -213,6 +213,8 @@ func TestInitTSBoilerplate(t *testing.T) {
 		var packageJSON map[string]any
 		require.NoError(t, json.Unmarshal(content, &packageJSON))
 
+		assert.Equal(t, "my-custom-chart-ts", packageJSON["name"])
+		assert.Equal(t, "0.0.0", packageJSON["version"])
 		assert.Equal(t, "module", packageJSON["type"])
 		assert.Equal(t, true, packageJSON["private"])
 		assert.Equal(t, map[string]any{
@@ -221,6 +223,27 @@ func TestInitTSBoilerplate(t *testing.T) {
 		}, packageJSON["scripts"])
 		assert.Equal(t, map[string]any{"@nelm/chart-ts-sdk": "^0.2.0"}, packageJSON["dependencies"])
 		assert.Contains(t, packageJSON["devDependencies"], "typescript")
+	})
+
+	t.Run("names the package after the chart as npm allows", func(t *testing.T) {
+		for chartName, wantName := range map[string]string{
+			"My_Chart":      "my_chart-ts",
+			"_private.app":  "private.app-ts",
+			"app@1 (copy)!": "app-1--copy-ts",
+			"...":           "chart-ts",
+		} {
+			chartPath := filepath.Join(t.TempDir(), "chart")
+			require.NoError(t, os.MkdirAll(chartPath, 0o755))
+
+			require.NoError(t, ts.InitTSBoilerplate(context.Background(), chartPath, chartName, ts.InitTSBoilerplateOptions{}))
+
+			content, err := os.ReadFile(filepath.Join(chartPath, "ts", "package.json"))
+			require.NoError(t, err)
+
+			var packageJSON map[string]any
+			require.NoError(t, json.Unmarshal(content, &packageJSON))
+			assert.Equal(t, wantName, packageJSON["name"], "chart name %q", chartName)
+		}
 	})
 
 	t.Run("includes correct tsconfig.json", func(t *testing.T) {

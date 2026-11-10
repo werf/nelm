@@ -190,6 +190,8 @@ Values:
     type: ClusterIP
 `
 	packageJSONTmpl = `{
+  "name": "{{ .PackageName }}",
+  "version": "0.0.0",
   "type": "module",
   "private": true,
   "scripts": {
