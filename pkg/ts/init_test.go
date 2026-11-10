@@ -231,6 +231,10 @@ func TestInitTSBoilerplate(t *testing.T) {
 			"_private.app":  "private.app-ts",
 			"app@1 (copy)!": "app-1--copy-ts",
 			"...":           "chart-ts",
+			"-app":          "app-ts",
+			"~app":          "app-ts",
+			"a~b":           "a-b-ts",
+			"-._~":          "chart-ts",
 		} {
 			chartPath := filepath.Join(t.TempDir(), "chart")
 			require.NoError(t, os.MkdirAll(chartPath, 0o755))

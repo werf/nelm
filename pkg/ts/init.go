@@ -159,18 +159,19 @@ func ensureValuesFile(ctx context.Context, chartPath string) error {
 	return nil
 }
 
-// chartPackageName names the package of the TypeScript chart after the chart, as npm allows: workspace
-// members need distinct names, and yarn classic also ignores members without a version.
+// chartPackageName names the package of the TypeScript chart after the chart, as npm allows for new
+// packages: workspace members need distinct names, and yarn classic also ignores members without a
+// version.
 func chartPackageName(chartName string) string {
 	name := strings.Map(func(r rune) rune {
-		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || strings.ContainsRune("-._~", r) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || strings.ContainsRune("-._", r) {
 			return r
 		}
 
 		return '-'
 	}, strings.ToLower(chartName))
 
-	name = strings.TrimRight(strings.TrimLeft(name, "._"), "-")
+	name = strings.TrimRight(strings.TrimLeft(name, "-._"), "-")
 	if name == "" {
 		name = "chart"
 	}
