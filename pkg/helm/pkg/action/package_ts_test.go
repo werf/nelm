@@ -22,14 +22,14 @@ func TestRun_TypeScriptChartIsPackagedAsIs(t *testing.T) {
 
 	chartDir := filepath.Join(t.TempDir(), "mychart")
 	for name, content := range map[string]string{
-		"Chart.yaml":                     "apiVersion: v2\nname: mychart\nversion: 1.0.0\n",
-		"ts/package.json":                `{"type": "module", "private": true}`,
-		"ts/src/index.ts":                "export {};\n",
-		"ts/dist/bundle.js":              bundle,
-		"charts/sub/Chart.yaml":          "apiVersion: v2\nname: sub\nversion: 1.0.0\n",
-		"charts/sub/ts/package.json":     `{"type": "module", "private": true}`,
-		"charts/sub/ts/src/index.ts":     "export {};\n",
-		"charts/sub/ts/dist/bundle.js":   bundle,
+		"Chart.yaml":                   "apiVersion: v2\nname: mychart\nversion: 1.0.0\n",
+		"ts/package.json":              `{"type": "module", "private": true}`,
+		"ts/src/index.ts":              "export {};\n",
+		"ts/dist/bundle.js":            bundle,
+		"charts/sub/Chart.yaml":        "apiVersion: v2\nname: sub\nversion: 1.0.0\n",
+		"charts/sub/ts/package.json":   `{"type": "module", "private": true}`,
+		"charts/sub/ts/src/index.ts":   "export {};\n",
+		"charts/sub/ts/dist/bundle.js": bundle,
 	} {
 		path := filepath.Join(chartDir, filepath.FromSlash(name))
 		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))

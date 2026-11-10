@@ -108,7 +108,7 @@ func LoadFiles(ctx context.Context, files []*archive.BufferedFile) (*chart.Chart
 	}
 	for _, f := range files {
 		switch {
-		case nelmcommon.IsChartTSNodeModulesInTree(f.Name):
+		case nelmcommon.IsChartTSDependencyFileInTree(f.Name):
 			continue
 		case f.Name == "Chart.yaml":
 			continue

@@ -127,7 +127,7 @@ func LoadArchiveFiles(in io.Reader) ([]*BufferedFile, error) {
 		}
 
 		// Skipped before the size checks, as native binaries of dependencies are often too large.
-		if nelmcommon.IsChartTSNodeModulesInTree(n) {
+		if nelmcommon.IsChartTSDependencyFileInTree(n) {
 			continue
 		}
 

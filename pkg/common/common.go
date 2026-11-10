@@ -112,8 +112,6 @@ const (
 	ChartTSEntryPointTS = "src/index.ts"
 	// ChartTSInputFile is the name of the input file with context for the TypeScript chart.
 	ChartTSInputFile = "input.yaml"
-	// ChartTSNodeModulesDir holds the dependencies of the TypeScript chart, which are bundled.
-	ChartTSNodeModulesDir = ChartTSSourceDir + "node_modules/"
 	// ChartTSOutputFile is the name of the output file with rendered manifests from the TypeScript chart.
 	ChartTSOutputFile = "output.yaml"
 	// ChartTSSourceDir is the directory containing TypeScript sources in a Helm chart.
@@ -326,14 +324,18 @@ func HelmOptionsFromContext(ctx context.Context) HelmOptions {
 	return opts
 }
 
-// IsChartTSNodeModulesInTree reports whether name, slash-separated and relative to the chart root,
-// is ts/node_modules or is in it, in the chart or in a subchart under charts/. The chart loaders
-// leave these out: the dependencies are bundled, and their files, native binaries included, would
-// otherwise end up in the chart archive and in the release.
-func IsChartTSNodeModulesInTree(name string) bool {
+// IsChartTSDependencyFileInTree reports whether name, slash-separated and relative to the chart
+// root, is where a package manager installs the dependencies of the TypeScript chart, in the chart or
+// in a subchart under charts/: ts/node_modules and, for yarn Plug'n'Play, ts/.yarn and ts/.pnp.*, or
+// is in them. The chart loaders leave these out: the dependencies are bundled, and their files,
+// native binaries included, would otherwise end up in the chart archive and in the release.
+func IsChartTSDependencyFileInTree(name string) bool {
 	for {
-		if strings.HasPrefix(name+"/", ChartTSNodeModulesDir) {
-			return true
+		if tsPath, ok := strings.CutPrefix(name, ChartTSSourceDir); ok {
+			topName, _, _ := strings.Cut(tsPath, "/")
+			if topName == "node_modules" || topName == ".yarn" || strings.HasPrefix(topName, ".pnp.") {
+				return true
+			}
 		}
 
 		rest, ok := strings.CutPrefix(name, "charts/")

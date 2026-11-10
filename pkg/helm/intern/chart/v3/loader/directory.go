@@ -82,11 +82,15 @@ func LoadDir(ctx context.Context, dir string) (*chart.Chart, error) {
 		if err != nil {
 			return err
 		}
-		if fi.IsDir() {
-			if nelmcommon.IsChartTSNodeModulesInTree(n) {
+		if nelmcommon.IsChartTSDependencyFileInTree(n) {
+			if fi.IsDir() {
 				return filepath.SkipDir
 			}
 
+			return nil
+		}
+
+		if fi.IsDir() {
 			// Directory-based ignore rules should involve skipping the entire
 			// contents of that directory.
 			if !werfdata.IsWerfDataFileInTree(n) && rules.Ignore(n, fi) {
