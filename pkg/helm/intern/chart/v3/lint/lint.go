@@ -43,6 +43,9 @@ func WithSkipSchemaValidation(skipSchemaValidation bool) LinterOption {
 	}
 }
 
+// Deprecated: the values passed to the templates are computed differently from
+// [github.com/werf/nelm/v2/pkg/chart.RenderChart], so the result may differ from what Nelm
+// renders. Use [github.com/werf/nelm/v2/pkg/action.ChartLint] instead.
 func RunAll(baseDir string, values map[string]any, namespace string, options ...LinterOption) support.Linter {
 
 	chartDir, _ := filepath.Abs(baseDir)
