@@ -269,7 +269,7 @@ tasks:
     cmds:
       - task: test:ginkgo
         vars:
-          paths: '{{.paths | default "./pkg ./cmd"}}'
+          paths: '{{.paths | default "./pkg ./cmd ./scripts"}}'
           skipPackage: "{{.skipPackage}}"
           parallel: "{{.parallel}}"
 
