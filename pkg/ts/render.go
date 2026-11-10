@@ -12,7 +12,9 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/samber/lo"
 	"sigs.k8s.io/yaml"
@@ -23,9 +25,7 @@ import (
 	"github.com/werf/nelm/v2/pkg/log"
 )
 
-const
-// logger down.
-maxChartOutputLineBytes = 64 << 10
+const maxChartOutputLineBytes = 64 << 10
 
 func RenderChart(ctx context.Context, chart helmchart.Accessor, renderedValues chartcommon.Values, rebuildBundle bool, chartPath, tempDirPath, nodeBinaryPath string) (map[string]string, error) {
 	if !hasTSFiles(chart) {
@@ -312,31 +312,50 @@ func buildChartMetadata(chart helmchart.Accessor) map[string]any {
 	return metadata
 }
 
-// readOutputLines passes what reader gives to onLine line by line, cutting lines longer than
-// maxChartOutputLineBytes.
+// readOutputLines passes what reader gives to onLine line by line, without "\n" or "\r\n" at the ends,
+// as bufio.Scanner does, and cuts lines longer than maxChartOutputLineBytes.
 func readOutputLines(reader io.Reader, onLine func(line string)) error {
 	bufferedReader := bufio.NewReaderSize(reader, maxChartOutputLineBytes)
 
 	for {
 		chunk, err := bufferedReader.ReadSlice('\n')
-		line := string(bytes.TrimSuffix(chunk, []byte("\n")))
-		lineEnded := err == nil
 
-		truncatedBytes := 0
+		// The chunk is overwritten by the next read.
+		head := slices.Clone(chunk)
+		lineBytes := len(chunk)
+		lastBytes := slices.Clone(chunk[max(len(chunk)-2, 0):])
+
 		for errors.Is(err, bufio.ErrBufferFull) {
 			chunk, err = bufferedReader.ReadSlice('\n')
-			truncatedBytes += len(bytes.TrimSuffix(chunk, []byte("\n")))
-			lineEnded = err == nil
+			lineBytes += len(chunk)
+			lastBytes = append(lastBytes, chunk...)
+			lastBytes = slices.Clone(lastBytes[max(len(lastBytes)-2, 0):])
 		}
 
-		if truncatedBytes > 0 {
-			// Leaves room for the marker, so that the line with it stays within the limit.
+		if bytes.HasSuffix(lastBytes, []byte("\n")) {
+			lineBytes--
+			lastBytes = lastBytes[:len(lastBytes)-1]
+		}
+
+		if bytes.HasSuffix(lastBytes, []byte("\r")) {
+			lineBytes--
+		}
+
+		if lineBytes <= maxChartOutputLineBytes {
+			head = head[:lineBytes]
+		} else {
+			// Leaves room for the marker, so that the line with it stays within the limit, and does not
+			// cut a character.
 			keptBytes := maxChartOutputLineBytes - 64
-			line = fmt.Sprintf("%s [line truncated, %d more bytes]", line[:keptBytes], truncatedBytes+len(line)-keptBytes)
+			for keptBytes > 0 && !utf8.RuneStart(head[keptBytes]) {
+				keptBytes--
+			}
+
+			head = fmt.Appendf(head[:keptBytes], " [line truncated, %d more bytes]", lineBytes-keptBytes)
 		}
 
-		if lineEnded || line != "" {
-			onLine(line)
+		if err == nil || len(head) > 0 {
+			onLine(string(head))
 		}
 
 		if errors.Is(err, io.EOF) {

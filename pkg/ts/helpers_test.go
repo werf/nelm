@@ -62,10 +62,6 @@ func (l *recordingLogger) Error(_ context.Context, format string, a ...interface
 	l.record("error", format, a)
 }
 
-func (l *recordingLogger) Warn(_ context.Context, format string, a ...interface{}) {
-	l.record("warn", format, a)
-}
-
 func (l *recordingLogger) entries() []logEntry {
 	l.mu.Lock()
 	defer l.mu.Unlock()

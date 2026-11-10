@@ -11,7 +11,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
@@ -171,41 +173,74 @@ func TestRunBundleOutput(t *testing.T) {
 	})
 
 	// The fake Node.js gets no PATH, so it is given the absolute paths of the tools.
-	ddPath, err := exec.LookPath("dd")
-	require.NoError(t, err)
-
 	sleepPath, err := exec.LookPath("sleep")
 	require.NoError(t, err)
 
-	trPath, err := exec.LookPath("tr")
+	catPath, err := exec.LookPath("cat")
 	require.NoError(t, err)
 
-	t.Run("truncates a long line and goes on reading", func(t *testing.T) {
+	// runOutput runs a fake Node.js that writes output to stderr and exits, and returns the stderr
+	// lines logged. The fake Node.js is a single process, so stopping it stops writing.
+	runOutput := func(t *testing.T, output string) []string {
+		t.Helper()
+
 		logger := recordLogs(t)
 
+		outputPath := filepath.Join(t.TempDir(), "output")
+		require.NoError(t, os.WriteFile(outputPath, []byte(output), 0o644))
+
 		nodePath := filepath.Join(t.TempDir(), "node")
-		require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\n"+ddPath+" if=/dev/zero bs=1024 count=1024 2>/dev/null | "+trPath+" '\\000' x >&2\nprintf '\\nafter the long line\\n' >&2\n"), 0o755))
+		require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\nexec "+catPath+" '"+outputPath+"' >&2\n"), 0o755))
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
 		done := make(chan error, 1)
-		go func() { done <- ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte("")) }()
+		go func() { done <- ts.RunBundle(ctx, nodePath, t.TempDir(), []byte("")) }()
 
 		select {
 		case err := <-done:
 			require.NoError(t, err)
 		case <-time.After(30 * time.Second):
-			require.FailNow(t, "the render must not hang on a long line")
+			cancel()
+			require.Error(t, <-done, "the stopped render must fail")
+			require.FailNow(t, "the render must not hang")
 		}
 
-		errors := logMessages(logger.entries(), "error")
-		require.Len(t, errors, 2)
-		assert.True(t, strings.HasPrefix(errors[0], "error from node app: "+strings.Repeat("x", 60<<10)))
-		assert.Contains(t, errors[0], "[line truncated, ")
-		assert.LessOrEqual(t, len(strings.TrimPrefix(errors[0], "error from node app: ")), 64<<10)
-		assert.Equal(t, "error from node app: after the long line", errors[1])
+		return lo.Map(logMessages(logger.entries(), "error"), func(message string, _ int) string {
+			return strings.TrimPrefix(message, "error from node app: ")
+		})
+	}
+
+	t.Run("truncates a long line and goes on reading", func(t *testing.T) {
+		lines := runOutput(t, strings.Repeat("x", 1<<20)+"\nafter the long line\n")
+
+		require.Len(t, lines, 2)
+		assert.True(t, strings.HasPrefix(lines[0], strings.Repeat("x", 60<<10)))
+		assert.Contains(t, lines[0], "[line truncated, ")
+		assert.LessOrEqual(t, len(lines[0]), 64<<10)
+		assert.Equal(t, "after the long line", lines[1])
 	})
 
-	catPath, err := exec.LookPath("cat")
-	require.NoError(t, err)
+	t.Run("drops carriage returns at the ends of lines", func(t *testing.T) {
+		assert.Equal(t, []string{"a", "b", "c\rd", "last"}, runOutput(t, "a\r\nb\r\nc\rd\nlast\r"))
+	})
+
+	t.Run("keeps a line of exactly the limit whole", func(t *testing.T) {
+		fullLine := strings.Repeat("x", 64<<10)
+
+		assert.Equal(t, []string{fullLine, fullLine, "next"}, runOutput(t, fullLine+"\r\n"+fullLine+"\nnext\n"))
+	})
+
+	t.Run("does not cut a character when truncating a line", func(t *testing.T) {
+		line := strings.Repeat("x", 65471) + "é" + strings.Repeat("y", 200)
+
+		lines := runOutput(t, line+"\r\n")
+
+		require.Len(t, lines, 1)
+		assert.True(t, utf8.ValidString(lines[0]), "the truncated line must be valid UTF-8")
+		assert.Equal(t, strings.Repeat("x", 65471)+fmt.Sprintf(" [line truncated, %d more bytes]", len(line)-65471), lines[0])
+	})
 
 	t.Run("keeps the last lines of a chart that exits right after writing them", func(t *testing.T) {
 		const lineCount = 5000
