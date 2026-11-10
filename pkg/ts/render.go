@@ -20,7 +20,10 @@ import (
 	"github.com/werf/nelm/v2/pkg/log"
 )
 
-const maxChartOutputBytes = 10 << 20
+const (
+	maxChartOutputBytes = 10 << 20
+	maxStderrTailLines  = 20
+)
 
 // chartOutputWriter passes what the chart writes to onLine line by line, and stops the chart once it
 // has written more than maxChartOutputBytes.
@@ -308,7 +311,9 @@ func runBundle(ctx context.Context, nodeBin, renderDir string, bundle []byte) er
 		cmd.Env = []string{"SystemRoot=" + os.Getenv("SystemRoot")}
 	}
 
-	var stderrLines []string
+	// Whether the chart fails is unknown until it exits, so stderr is logged as warnings as it comes,
+	// and its end, which has the error of a failed chart, also goes into the returned error.
+	var stderrTail []string
 
 	stdout := &chartOutputWriter{
 		name:   "stdout",
@@ -316,9 +321,16 @@ func runBundle(ctx context.Context, nodeBin, renderDir string, bundle []byte) er
 		stop:   stop,
 	}
 	stderr := &chartOutputWriter{
-		name:   "stderr",
-		onLine: func(line string) { stderrLines = append(stderrLines, line) },
-		stop:   stop,
+		name: "stderr",
+		onLine: func(line string) {
+			log.Default.Warn(ctx, "%s", line)
+
+			stderrTail = append(stderrTail, line)
+			if len(stderrTail) > maxStderrTailLines {
+				stderrTail = stderrTail[1:]
+			}
+		},
+		stop: stop,
 	}
 
 	cmd.Stdout = stdout
@@ -329,18 +341,14 @@ func runBundle(ctx context.Context, nodeBin, renderDir string, bundle []byte) er
 	stdout.flush()
 	stderr.flush()
 
-	for _, line := range stderrLines {
-		if runErr != nil {
-			log.Default.Error(ctx, "%s", line)
-		} else {
-			log.Default.Warn(ctx, "%s", line)
-		}
-	}
-
 	for _, writer := range []*chartOutputWriter{stdout, stderr} {
 		if writer.exceeded {
 			return fmt.Errorf("the chart wrote more than %d MiB to %s", maxChartOutputBytes>>20, writer.name)
 		}
+	}
+
+	if runErr != nil && len(stderrTail) > 0 {
+		return fmt.Errorf("run process: %w:\n%s", runErr, strings.Join(stderrTail, "\n"))
 	}
 
 	if runErr != nil {

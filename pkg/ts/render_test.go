@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -132,16 +133,17 @@ func TestRunBundleOutput(t *testing.T) {
 		assert.Equal(t, []logEntry{{level: "debug", message: "out 100%"}, {level: "warn", message: "deprecated"}}, logger.entries())
 	})
 
-	t.Run("logs stderr as errors when the chart fails", func(t *testing.T) {
+	t.Run("puts the end of stderr into the error when the chart fails", func(t *testing.T) {
 		logger := recordLogs(t)
 
 		nodePath := filepath.Join(t.TempDir(), "node")
-		require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\nprintf 'TypeError: boom\\n' >&2\nexit 1\n"), 0o755))
+		require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\nprintf 'TypeError: boom\\n    at render (bundle.js:1:1)\\n' >&2\nexit 1\n"), 0o755))
 
 		err := ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte(""))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "exit status 1")
-		assert.Equal(t, []logEntry{{level: "error", message: "TypeError: boom"}}, logger.entries())
+		assert.Contains(t, err.Error(), "TypeError: boom\n    at render (bundle.js:1:1)")
+		assert.Equal(t, []logEntry{{level: "warn", message: "TypeError: boom"}, {level: "warn", message: "    at render (bundle.js:1:1)"}}, logger.entries())
 	})
 
 	// The fake Node.js gets no PATH, so it is given the absolute paths of the tools.
@@ -150,6 +152,32 @@ func TestRunBundleOutput(t *testing.T) {
 
 	sleepPath, err := exec.LookPath("sleep")
 	require.NoError(t, err)
+
+	t.Run("logs stderr while the chart runs", func(t *testing.T) {
+		logger := recordLogs(t)
+
+		releaseFile := filepath.Join(t.TempDir(), "release")
+		nodePath := filepath.Join(t.TempDir(), "node")
+		require.NoError(t, os.WriteFile(nodePath, []byte(`#!/bin/sh
+printf 'still rendering\n' >&2
+i=0
+while [ ! -e '`+releaseFile+`' ] && [ $i -lt 100 ]; do `+sleepPath+` 0.1; i=$((i+1)); done
+[ -e '`+releaseFile+`' ]
+`), 0o755))
+
+		done := make(chan error, 1)
+		go func() { done <- ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte("")) }()
+
+		logged := assert.Eventually(t, func() bool {
+			return slices.Contains(logger.entries(), logEntry{level: "warn", message: "still rendering"})
+		}, 5*time.Second, 10*time.Millisecond, "a stderr line must be logged before the chart exits")
+
+		if logged {
+			require.NoError(t, os.WriteFile(releaseFile, nil, 0o644))
+		}
+
+		assert.NoError(t, <-done)
+	})
 
 	for name, redirect := range map[string]string{"stdout": " 2>/dev/null", "stderr": " >&2 2>/dev/null"} {
 		t.Run("stops the chart writing too much to "+name, func(t *testing.T) {
