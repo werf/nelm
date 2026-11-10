@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/require"
 
 	"github.com/werf/nelm/v2/pkg/common"
@@ -133,6 +134,12 @@ func loadChart(t *testing.T, chartDir string) helmchart.Accessor {
 	require.NoError(t, err)
 
 	return accessor
+}
+
+func logMessages(entries []logEntry, level string) []string {
+	return lo.FilterMap(entries, func(entry logEntry, _ int) (string, bool) {
+		return entry.message, entry.level == level
+	})
 }
 
 func readFakeNodeRun(t *testing.T, nodePath string) fakeNodeRun {

@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/samber/lo"
@@ -22,18 +23,24 @@ import (
 
 const (
 	maxChartOutputBytes = 10 << 20
-	maxStderrTailLines  = 20
+	// maxChartOutputLineBytes keeps a long line, such as a large JSON written at once, from slowing
+	// the logger down, as bufio.Scanner did before.
+	maxChartOutputLineBytes = 64 << 10
+	// maxStderrExcerptBytes limits the stderr of a failed chart put into the error, which is the only
+	// place it is seen with the default log level of chart render.
+	maxStderrExcerptBytes = 64 << 10
 )
 
-// chartOutputWriter passes what the chart writes to onLine line by line, and stops the chart once it
-// has written more than maxChartOutputBytes.
+// chartOutputWriter passes what the chart writes to onLine line by line, cutting lines longer than
+// maxChartOutputLineBytes, and stops the chart once it has written more than maxChartOutputBytes.
 type chartOutputWriter struct {
-	exceeded bool
-	name     string
-	onLine   func(line string)
-	partial  []byte
-	stop     context.CancelFunc
-	written  int
+	exceeded       bool
+	name           string
+	onLine         func(line string)
+	partial        []byte
+	stop           context.CancelFunc
+	truncatedBytes int
+	written        int
 }
 
 func (w *chartOutputWriter) Write(p []byte) (int, error) {
@@ -41,34 +48,91 @@ func (w *chartOutputWriter) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 
-	w.written += len(p)
-	if w.written > maxChartOutputBytes {
+	written := len(p)
+
+	if allowed := maxChartOutputBytes - w.written; len(p) > allowed {
 		w.exceeded = true
-		w.partial = nil
 		w.stop()
 
-		return len(p), nil
+		p = p[:allowed]
 	}
 
-	w.partial = append(w.partial, p...)
+	w.written += len(p)
 
-	for {
-		line, rest, found := bytes.Cut(w.partial, []byte("\n"))
-		if !found {
+	for len(p) > 0 {
+		lineEnd := bytes.IndexByte(p, '\n')
+
+		chunk := p
+		if lineEnd >= 0 {
+			chunk = p[:lineEnd]
+		}
+
+		kept := min(len(chunk), max(maxChartOutputLineBytes-len(w.partial), 0))
+		w.partial = append(w.partial, chunk[:kept]...)
+		w.truncatedBytes += len(chunk) - kept
+
+		if lineEnd < 0 {
 			break
 		}
 
-		w.onLine(string(line))
-		w.partial = rest
+		w.flush()
+
+		p = p[lineEnd+1:]
 	}
 
-	return len(p), nil
+	if w.exceeded {
+		w.partial = nil
+		w.truncatedBytes = 0
+	}
+
+	return written, nil
 }
 
 func (w *chartOutputWriter) flush() {
-	if len(w.partial) > 0 {
-		w.onLine(string(w.partial))
-		w.partial = nil
+	if len(w.partial) == 0 && w.truncatedBytes == 0 {
+		return
+	}
+
+	line := string(w.partial)
+	if w.truncatedBytes > 0 {
+		line += fmt.Sprintf(" [line truncated, %d more bytes]", w.truncatedBytes)
+	}
+
+	w.onLine(line)
+
+	w.partial = nil
+	w.truncatedBytes = 0
+}
+
+// stderrExcerpt keeps the beginning and the end of what it is given, up to maxStderrExcerptBytes.
+type stderrExcerpt struct {
+	head  []byte
+	tail  []byte
+	total int
+}
+
+func (e *stderrExcerpt) String() string {
+	if e.total <= maxStderrExcerptBytes {
+		return strings.TrimRight(string(e.head)+string(e.tail), "\n")
+	}
+
+	tail := e.tail[len(e.tail)-maxStderrExcerptBytes/2:]
+	skipped := e.total - len(e.head) - len(tail)
+
+	return strings.TrimRight(fmt.Sprintf("%s\n[... %d bytes of stderr skipped ...]\n%s", e.head, skipped, tail), "\n")
+}
+
+func (e *stderrExcerpt) add(text string) {
+	const half = maxStderrExcerptBytes / 2
+
+	e.total += len(text)
+
+	headRoom := min(half-len(e.head), len(text))
+	e.head = append(e.head, text[:headRoom]...)
+	e.tail = append(e.tail, text[headRoom:]...)
+
+	if len(e.tail) > 2*half {
+		e.tail = slices.Clone(e.tail[len(e.tail)-half:])
 	}
 }
 
@@ -312,8 +376,8 @@ func runBundle(ctx context.Context, nodeBin, renderDir string, bundle []byte) er
 	}
 
 	// Whether the chart fails is unknown until it exits, so stderr is logged as warnings as it comes,
-	// and its end, which has the error of a failed chart, also goes into the returned error.
-	var stderrTail []string
+	// and also goes into the error of a failed chart.
+	var excerpt stderrExcerpt
 
 	stdout := &chartOutputWriter{
 		name:   "stdout",
@@ -324,11 +388,7 @@ func runBundle(ctx context.Context, nodeBin, renderDir string, bundle []byte) er
 		name: "stderr",
 		onLine: func(line string) {
 			log.Default.Warn(ctx, "%s", line)
-
-			stderrTail = append(stderrTail, line)
-			if len(stderrTail) > maxStderrTailLines {
-				stderrTail = stderrTail[1:]
-			}
+			excerpt.add(line + "\n")
 		},
 		stop: stop,
 	}
@@ -341,19 +401,20 @@ func runBundle(ctx context.Context, nodeBin, renderDir string, bundle []byte) er
 	stdout.flush()
 	stderr.flush()
 
-	for _, writer := range []*chartOutputWriter{stdout, stderr} {
-		if writer.exceeded {
-			return fmt.Errorf("the chart wrote more than %d MiB to %s", maxChartOutputBytes>>20, writer.name)
-		}
+	switch {
+	case stdout.exceeded:
+		err = fmt.Errorf("the chart wrote more than %d MiB to stdout", maxChartOutputBytes>>20)
+	case stderr.exceeded:
+		err = fmt.Errorf("the chart wrote more than %d MiB to stderr", maxChartOutputBytes>>20)
+	case runErr != nil:
+		err = fmt.Errorf("run process: %w", runErr)
+	default:
+		return nil
 	}
 
-	if runErr != nil && len(stderrTail) > 0 {
-		return fmt.Errorf("run process: %w:\n%s", runErr, strings.Join(stderrTail, "\n"))
+	if stderrText := excerpt.String(); stderrText != "" {
+		return fmt.Errorf("%w:\n%s", err, stderrText)
 	}
 
-	if runErr != nil {
-		return fmt.Errorf("run process: %w", runErr)
-	}
-
-	return nil
+	return err
 }

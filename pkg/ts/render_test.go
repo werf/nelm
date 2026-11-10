@@ -2,6 +2,7 @@ package ts_test
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -126,14 +127,23 @@ func TestRunBundleOutput(t *testing.T) {
 		logger := recordLogs(t)
 
 		nodePath := filepath.Join(t.TempDir(), "node")
-		require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\nprintf 'out 100%%\\n'\nprintf 'deprecated\\n' >&2\n"), 0o755))
+		require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\nprintf 'out 100%%\\n'\nprintf 'deprecated\\n' >&2\nprintf 'out 2\\n'\nprintf 'still deprecated\\n' >&2\n"), 0o755))
 
 		require.NoError(t, ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte("")))
 
-		assert.Equal(t, []logEntry{{level: "debug", message: "out 100%"}, {level: "warn", message: "deprecated"}}, logger.entries())
+		// Stdout and stderr are read in parallel, so only the order within each of them is kept.
+		entries := logger.entries()
+		assert.ElementsMatch(t, []logEntry{
+			{level: "debug", message: "out 100%"},
+			{level: "debug", message: "out 2"},
+			{level: "warn", message: "deprecated"},
+			{level: "warn", message: "still deprecated"},
+		}, entries)
+		assert.Equal(t, []string{"out 100%", "out 2"}, logMessages(entries, "debug"))
+		assert.Equal(t, []string{"deprecated", "still deprecated"}, logMessages(entries, "warn"))
 	})
 
-	t.Run("puts the end of stderr into the error when the chart fails", func(t *testing.T) {
+	t.Run("puts stderr into the error when the chart fails", func(t *testing.T) {
 		logger := recordLogs(t)
 
 		nodePath := filepath.Join(t.TempDir(), "node")
@@ -146,12 +156,80 @@ func TestRunBundleOutput(t *testing.T) {
 		assert.Equal(t, []logEntry{{level: "warn", message: "TypeError: boom"}, {level: "warn", message: "    at render (bundle.js:1:1)"}}, logger.entries())
 	})
 
+	t.Run("puts all of a long error message into the error", func(t *testing.T) {
+		recordLogs(t)
+
+		var script strings.Builder
+		script.WriteString("#!/bin/sh\n{\nprintf 'Error: Validation failed: [\\n'\n")
+
+		for i := range 28 {
+			fmt.Fprintf(&script, "printf '  { \"path\": [\"spec\", %d], \"message\": \"Required\" },\\n'\n", i)
+		}
+
+		script.WriteString("printf ']\\n'\n} >&2\nexit 1\n")
+
+		nodePath := filepath.Join(t.TempDir(), "node")
+		require.NoError(t, os.WriteFile(nodePath, []byte(script.String()), 0o755))
+
+		err := ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte(""))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Error: Validation failed: [")
+		assert.Contains(t, err.Error(), `"path": ["spec", 0]`)
+		assert.Contains(t, err.Error(), `"path": ["spec", 27]`)
+		assert.NotContains(t, err.Error(), "skipped")
+	})
+
 	// The fake Node.js gets no PATH, so it is given the absolute paths of the tools.
 	ddPath, err := exec.LookPath("dd")
 	require.NoError(t, err)
 
 	sleepPath, err := exec.LookPath("sleep")
 	require.NoError(t, err)
+
+	trPath, err := exec.LookPath("tr")
+	require.NoError(t, err)
+
+	t.Run("puts the beginning and the end of a large stderr into the error", func(t *testing.T) {
+		recordLogs(t)
+
+		nodePath := filepath.Join(t.TempDir(), "node")
+		require.NoError(t, os.WriteFile(nodePath, []byte(`#!/bin/sh
+{
+printf 'Error: first\n'
+i=0
+while [ $i -lt 5000 ]; do printf 'line %05d of the middle of stderr\n' $i; i=$((i+1)); done
+printf 'Error: last\n'
+} >&2
+exit 1
+`), 0o755))
+
+		err := ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte(""))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Error: first\n")
+		assert.Contains(t, err.Error(), "Error: last")
+		assert.Contains(t, err.Error(), "bytes of stderr skipped")
+		assert.Less(t, len(err.Error()), 80<<10)
+	})
+
+	t.Run("truncates a long stderr line in the log and in the error", func(t *testing.T) {
+		logger := recordLogs(t)
+
+		nodePath := filepath.Join(t.TempDir(), "node")
+		require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\n"+ddPath+" if=/dev/zero bs=1024 count=1024 2>/dev/null | "+trPath+" '\\000' x >&2\nexit 1\n"), 0o755))
+
+		start := time.Now()
+		err := ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte(""))
+		require.Error(t, err)
+		assert.Less(t, time.Since(start), 10*time.Second)
+		assert.Less(t, len(err.Error()), 80<<10)
+
+		entries := logger.entries()
+		require.Len(t, entries, 1)
+		assert.Equal(t, "warn", entries[0].level)
+		assert.True(t, strings.HasPrefix(entries[0].message, strings.Repeat("x", 64<<10)))
+		assert.Contains(t, entries[0].message, "truncated")
+		assert.Less(t, len(entries[0].message), 65<<10)
+	})
 
 	t.Run("logs stderr while the chart runs", func(t *testing.T) {
 		logger := recordLogs(t)
@@ -191,6 +269,21 @@ while [ ! -e '`+releaseFile+`' ] && [ $i -lt 100 ]; do `+sleepPath+` 0.1; i=$((i
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "the chart wrote more than 10 MiB to "+name)
 			assert.Less(t, time.Since(start), 30*time.Second, "the chart must be stopped")
+		})
+	}
+
+	for name, redirect := range map[string]string{"stdout": " 2>/dev/null", "stderr": " >&2 2>/dev/null"} {
+		t.Run("puts stderr into the error of the chart writing too much to "+name, func(t *testing.T) {
+			recordLogs(t)
+
+			nodePath := filepath.Join(t.TempDir(), "node")
+			require.NoError(t, os.WriteFile(nodePath, []byte("#!/bin/sh\nprintf 'Error: before the flood\\n' >&2\n"+ddPath+" if=/dev/zero bs=1048576 count=20"+redirect+"\nexec "+sleepPath+" 60\n"), 0o755))
+
+			err := ts.RunBundle(context.Background(), nodePath, t.TempDir(), []byte(""))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "the chart wrote more than 10 MiB to "+name)
+			assert.Contains(t, err.Error(), "Error: before the flood")
+			assert.Less(t, len(err.Error()), 80<<10)
 		})
 	}
 }
