@@ -86,12 +86,9 @@ Nelm is production-ready: as the werf deployment engine, it was battle-tested ac
   - [`tpl_debug` function](#tpl_debug-function)
   - [`patches.yaml` file](#patchesyaml-file)
 - [Feature gates](#feature-gates)
-  - [`NELM_FEAT_PREVIEW_V2` environment variable](#nelm_feat_preview_v2-environment-variable)
-  - [`NELM_FEAT_REMOTE_CHARTS` environment variable](#nelm_feat_remote_charts-environment-variable)
-  - [`NELM_FEAT_NATIVE_RELEASE_LIST` environment variable](#nelm_feat_native_release_list-environment-variable)
-  - [`NELM_FEAT_NATIVE_RELEASE_UNINSTALL` environment variable](#nelm_feat_native_release_uninstall-environment-variable)
+  - [`NELM_FEAT_TYPESCRIPT` environment variable](#nelm_feat_typescript-environment-variable)
   - [`NELM_FEAT_PERIODIC_STACK_TRACES` environment variable](#nelm_feat_periodic_stack_traces-environment-variable)
-  - [`NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN` environment variable](#nelm_feat_more_detailed_exit_code_for_plan-environment-variable)
+  - [`NELM_FEAT_ADOPT_DECKHOUSE_CONTROLLER_FIELDS` environment variable](#nelm_feat_adopt_deckhouse_controller_fields-environment-variable)
 - [More documentation](#more-documentation)
 - [Limitations](#limitations)
 - [Contributing](#contributing)
@@ -159,15 +156,17 @@ Release commands:
   release rollback                   Rollback to a previously deployed release.
   release plan install               Plan a release install to Kubernetes.
   release uninstall                  Uninstall a Helm Release from Kubernetes.
-  release list                       List all releases in a namespace.
   release history                    Show release history.
+  release list                       List all deployed releases.
   release get                        Get information about a deployed release.
+  release plan show                  Show plan artifact planned changes.
 
 Chart commands:
   chart lint                         Lint a chart.
   chart render                       Render a chart.
   chart download                     Download a chart from a repository.
-  chart upload                       Upload a chart to a repository.
+  chart upload                       Upload a chart archive to a repository.
+  chart copy                         Copy a chart with its images.
   chart pack                         Pack a chart into an archive to distribute via a repository.
 
 Secret commands:
@@ -190,6 +189,10 @@ Repo commands:
   chart repo login                   Log in to an OCI registry with charts.
   chart repo logout                  Log out from an OCI registry with charts.
 
+TypeScript commands:
+  chart ts init                      Initialize the files needed to render manifests using TypeScript.
+  chart ts build                     Build TypeScript chart.
+
 Other commands:
   completion bash                    Generate the autocompletion script for bash
   completion fish                    Generate the autocompletion script for fish
@@ -197,6 +200,8 @@ Other commands:
   completion zsh                     Generate the autocompletion script for zsh
   version                            Show version.
 ```
+
+The full list of options of every command is in the [CLI reference](docs/reference.md).
    
 ## Helm compatibility
 
@@ -943,50 +948,17 @@ diffPatches:
 
 ## Feature gates
 
-### `NELM_FEAT_PREVIEW_V2` environment variable
+Feature gates of Nelm v1 that became the default behavior in Nelm v2, such as `NELM_FEAT_PREVIEW_V2`, `NELM_FEAT_REMOTE_CHARTS`, `NELM_FEAT_NATIVE_RELEASE_LIST`, `NELM_FEAT_NATIVE_RELEASE_UNINSTALL` and `NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN`, no longer exist: setting them only prints a warning.
 
-Activates all feature gates that will be enabled by default in v2.
+### `NELM_FEAT_TYPESCRIPT` environment variable
 
-Example:
-```shell
-export NELM_FEAT_PREVIEW_V2=true
-nelm release list
-```
-
-### `NELM_FEAT_REMOTE_CHARTS` environment variable
-
-Allows specifying not only local, but also remote charts as a command-line argument to commands such as `nelm release install`. Adds the `--chart-version` option as well.
-
-Will be the default in the next major release.
+Render manifests with TypeScript code from the `ts/` directory of the chart, in addition to or instead of Go templates. Enables the `nelm chart ts` commands as well.
 
 Example:
 ```shell
-export NELM_FEAT_REMOTE_CHARTS=true
-nelm release install -n myproject -r myproject --chart-version 19.1.1 bitnami/nginx
-```
-
-### `NELM_FEAT_NATIVE_RELEASE_LIST` environment variable
-
-Use native Nelm implementation of the `release list` command instead of `helm list` exposed as `release list`. Implementations differ a bit, but serve the same purpose.
-
-Will be the default in the next major release.
-
-Example:
-```shell
-export NELM_FEAT_NATIVE_RELEASE_LIST=true
-nelm release list
-```
-
-### `NELM_FEAT_NATIVE_RELEASE_UNINSTALL` environment variable
-
-Use a new native Nelm implementation of the `release uninstall` command. Not fully backwards compatible with previous implementation.
-
-Will be the default in the next major release.
-
-Example:
-```shell
-export NELM_FEAT_NATIVE_RELEASE_UNINSTALL=true
-nelm release uninstall -n myproject -r myproject
+export NELM_FEAT_TYPESCRIPT=true
+nelm chart ts init
+nelm chart render
 ```
 
 ### `NELM_FEAT_PERIODIC_STACK_TRACES` environment variable
@@ -999,21 +971,21 @@ export NELM_FEAT_PERIODIC_STACK_TRACES=true
 nelm release install -n myproject -r myproject
 ```
 
-### `NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN` environment variable
+### `NELM_FEAT_ADOPT_DECKHOUSE_CONTROLLER_FIELDS` environment variable
 
-When the `--exit-code` flag is specified for `nelm release plan install`, return exit code 3, if no resource changes planned, but release still must be installed. Previously, exit code 2 was returned in this case.
-
-Will be the default in the next major release.
+Adopt managed fields owned by the legacy `deckhouse-controller` field manager (the pre-Nelm Helm 3 engine). Unsafe if any resource still has hook-owned `deckhouse-controller` entries.
 
 Example:
 ```shell
-export NELM_FEAT_MORE_DETAILED_EXIT_CODE_FOR_PLAN=true
-nelm release plan install -n myproject -r myproject --exit-code
+export NELM_FEAT_ADOPT_DECKHOUSE_CONTROLLER_FIELDS=true
+nelm release install -n myproject -r myproject
 ```
 
 ## More documentation
 
 For documentation on regular Helm features, see [Helm docs](https://helm.sh/docs/). A lot of useful documentation can be found in [werf docs](https://werf.io/docs/v2/usage/deploy/overview.html).
+
+All commands and their options are described in the [CLI reference](docs/reference.md).
 
 ## Limitations
 
@@ -1037,12 +1009,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [x] Refactor, stabilize.
 - [x] Advanced resource lifecycle management.
 - [x] Advanced Kubeconform-based local validation.
-- [ ] Nelm v2.
-- [ ] Migration to Helm v4.
-- [ ] The Nelm operator, which can integrate with ArgoCD/Flux ([#494](https://github.com/werf/nelm/issues/494)).
-- [ ] An alternative to Helm templating ([#54](https://github.com/werf/nelm/issues/54)).
-- [ ] Resource patching support ([#115](https://github.com/werf/nelm/issues/115)).
+- [x] Nelm v2.
+- [x] Migration to Helm v4.
+- [x] The [Nelm operator](https://github.com/werf/nelm-operator), which can integrate with ArgoCD/Flux ([#494](https://github.com/werf/nelm/issues/494)).
+- [x] An alternative to Helm templating: TypeScript charts ([#54](https://github.com/werf/nelm/issues/54)).
+- [x] Resource patching support ([#115](https://github.com/werf/nelm/issues/115)).
 - [ ] DRY values.yaml files ([#495](https://github.com/werf/nelm/issues/495)).
 - [ ] Downloading charts directly from Git.
-- [ ] Migrate the built-in secrets management to Mozilla SOPS ([#62](https://github.com/werf/nelm/issues/62)).
 - [ ] Nelmfile.
